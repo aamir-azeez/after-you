@@ -484,6 +484,9 @@ func purchase_completed(id: String, operation: String, payload: Dictionary) -> v
 		store_action_pending=false
 		if not identity_ready(): return
 		host._toast("Full Journey unlocked." if host.purchases.has_entitlement() else PlayerCopy.MAIN_FF5EB2A130CC)
+		# The monthly Pollen starts with the wallet read this sends (services/pollen_client.gd), not on the next launch.
+		var pollen: Variant = host.get("pollen_client")
+		if host.purchases.has_entitlement() and pollen is RefCounted: pollen.note_full_journey_bought()
 		if host.mode==MODE_PAYWALL:
 			if host.purchases.has_entitlement(): _show_full_journey_unlocked()
 			elif not purchase_offer.is_empty(): _show_store_offer()

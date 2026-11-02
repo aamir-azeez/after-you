@@ -32,6 +32,7 @@ import { dropEarned, validEarnedItems } from "./pollen/earned";
 import { anyBundlesOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
 import { knownBoard } from "./leaderboards/boards";
 import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/grant-settle";
+import type { GrantHint } from "./pollen/grant";
 import { readGrant } from "./pollen/grant-provider";
 import { claimBundlesFor, claimFor } from "./pollen/claims";
 import { bundleCheckDue, bundlesView, dropBundles, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
@@ -197,15 +198,16 @@ export class Player extends DurableObject<Env> {
    * authorize() plus the wallet or its history (GET /v1/pollen and /v1/pollen/history), from one call.
    * While the wardrobe is on (`mode`) the wallet also carries it; while the shop is on, with what is sold, the next name change price and the price of the change after it.
    * While the grant is on, the wallet read first pays any monthly instalment that is due (pollen/grant-settle.ts)
-   * and carries the player's `grant` ladder once they have one.
+   * and carries the player's `grant` ladder once they have one. `hint`: what the phone said about Full Journey
+   * (pollen/routes.ts grantHint), which may start a subscriber's first read.
    */
-  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
+  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off", hint: GrantHint = "none"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
     const grant = grantOn(this.env), refunds = refundsOn(this.env), bundles = mode === "shop" && anyBundlesOn(this.env);
     if (grant) {
-      await this.settleGrant(identity.player_id);
+      await this.settleGrant(identity.player_id, hint);
       // A recovery may have replaced the device while the provider answered.
       if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
     }
@@ -256,13 +258,13 @@ export class Player extends DurableObject<Env> {
     return ok(outcome.reply);
   }
   /** The monthly grant check (pollen/grant-settle.ts); a failure never stops the wallet read it rides on. */
-  private async settleGrant(owner: string): Promise<void> {
+  private async settleGrant(owner: string, hint: GrantHint): Promise<void> {
     const now = Date.now();
     try {
       await settleGrant(this.ctx.storage, now, this.pollenActive(owner), {
         read: lifetime => readGrant(owner, this.env, lifetime),
         claim: keys => claimFor(this.env, owner, keys, now)
-      });
+      }, hint);
     } catch (error) { logWarning("pollen_grant_failed", { reason: errorCode(error) }); }
   }
   /**

@@ -10,7 +10,10 @@ extends RefCounted
 ## has not said Pollen earning is on.
 ## While the monthly grant is on, a phone that has Full Journey also reads the
 ## wallet at most every GRANT_READ_MS: the server pays an instalment that is due
-## inside that read (services/pollen_grant.gd keeps what it says).
+## inside that read (services/pollen_grant.gd keeps what it says). That read says
+## so in FULL_JOURNEY_HEADER, and the read right after a Full Journey purchase or
+## restore says "bought", so a subscriber the server has not seen yet is paid at
+## once (backend/src/pollen/routes.ts grantHint; the server bounds each).
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
@@ -28,6 +31,9 @@ const MAX_REQUESTS := 4
 ## How often a Full Journey phone reads the wallet for the monthly grant (memory
 ## only, so each launch reads once). A free player's phone never reads for it.
 const GRANT_READ_MS := 6 * 3600 * 1000
+## The wallet read's word on Full Journey: "1" while this phone has it, "bought"
+## on the read right after a purchase or restore. It only lets the server look.
+const FULL_JOURNEY_HEADER := "X-AfterYou-Full-Journey"
 
 ## A flush finished; the wallet or a result may have changed.
 signal settled
@@ -42,8 +48,15 @@ var wardrobe: RefCounted
 var grant: RefCounted
 ## () -> bool: whether this phone holds Full Journey (Main's cached entitlement).
 var subscribed: Callable
+## () -> bool: a Full Journey purchase or restore is under way (Main: store_flow.store_action_pending).
+## The grant's own reads wait for it: the store reports Full Journey (and the app
+## resumes from the store's sheet) before the purchase's answer, and a plain read
+## sent then would spend the server's look before the "bought" read could use it.
+var purchasing: Callable
 ## Scope key -> Time.get_ticks_msec() of the last wallet read made for the grant.
 var _grant_read_at: Dictionary = {}
+## Scope key -> true: a Full Journey purchase or restore waits for its wallet read (memory only).
+var _bought: Dictionary = {}
 var _api: Node
 ## () -> {server, owner} of the signed-in player, or {}.
 var _scope: Callable
@@ -104,12 +117,15 @@ func _run() -> void:
 		# A phone with no wallet (a new install, or a file that could not be read) asks for it,
 		# and so does one whose wardrobe is missing or older than the server's offered items
 		# (services/wardrobe.gd needs_read): the same read carries both.
-		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_stale(context) or _grant_due(context):
+		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_stale(context) or _grant_due(context) or _bought_waiting(context):
 			requests += 1
-			var read: Dictionary = await _request(HTTPClient.METHOD_GET, WALLET_PATH, {})
+			var bought := _bought_waiting(context)
+			var read: Dictionary = await _request(HTTPClient.METHOD_GET, WALLET_PATH, {}, grant_headers(context))
 			if scope() != context or not read.get("ok", false) or not wallet.note_wallet(context.server, context.owner, read.get("data")): break
 			# Only an answered read counts for the grant: an offline launch tries again on the next flush.
-			if _grant_wanted(context): _grant_read_at[PollenWallet.scope_key(context.server, context.owner)] = Time.get_ticks_msec()
+			var key := PollenWallet.scope_key(context.server, context.owner)
+			if _grant_wanted(context): _grant_read_at[key] = Time.get_ticks_msec()
+			if bought: _bought.erase(key)
 			if wardrobe != null: wardrobe.note_view(context.server, context.owner, read.get("data"))
 			if grant != null: grant.note_view(context.server, context.owner, read.get("data"))
 		if not _again: break
@@ -118,13 +134,30 @@ func _run() -> void:
 
 ## A Full Journey phone while the grant is on.
 func _grant_wanted(context: Dictionary) -> bool:
-	return grant != null and grant.enabled(context.server, context.owner) and subscribed.is_valid() and bool(subscribed.call())
+	return grant != null and grant.enabled(context.server, context.owner) and subscribed.is_valid() and bool(subscribed.call()) and not (purchasing.is_valid() and bool(purchasing.call()))
 
 ## The grant wants a wallet read: none yet this launch, or the last one is GRANT_READ_MS old.
 func _grant_due(context: Dictionary) -> bool:
 	if not _grant_wanted(context): return false
 	var key := PollenWallet.scope_key(context.server, context.owner)
 	return not _grant_read_at.has(key) or Time.get_ticks_msec() - int(_grant_read_at[key]) >= GRANT_READ_MS
+
+## A Full Journey purchase or restore just went through: the next flush reads the
+## wallet saying "bought", so its first monthly Pollen comes with that read.
+func note_full_journey_bought() -> void:
+	var context := scope()
+	if context.is_empty(): return
+	_bought[PollenWallet.scope_key(context.server, context.owner)] = true
+	flush()
+
+func _bought_waiting(context: Dictionary) -> bool:
+	return grant != null and grant.enabled(context.server, context.owner) and _bought.has(PollenWallet.scope_key(context.server, context.owner))
+
+## The wallet read's Full Journey header, or none while the grant is off or this phone has no word to give.
+func grant_headers(context: Dictionary) -> PackedStringArray:
+	if _bought_waiting(context): return PackedStringArray([FULL_JOURNEY_HEADER + ": bought"])
+	if _grant_wanted(context): return PackedStringArray([FULL_JOURNEY_HEADER + ": 1"])
+	return PackedStringArray()
 
 func _wardrobe_stale(context: Dictionary) -> bool:
 	return wardrobe != null and wardrobe.needs_read(context.server, context.owner)
@@ -172,8 +205,11 @@ func history() -> Dictionary:
 	if scope() != context or not response.get("ok", false): return {}
 	return PollenHistory.checked(response.get("data"))
 
-func _request(method: int, path: String, body: Dictionary) -> Dictionary:
+## `headers`: extra request headers (only the grant's); a test transport takes them as a fourth argument.
+func _request(method: int, path: String, body: Dictionary, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
 	var response: Variant
-	if _transport.is_valid(): response = await _transport.call(method, path, body)
-	elif is_instance_valid(_api): response = await _api.request_json(method, path, body)
+	if _transport.is_valid() and headers.is_empty(): response = await _transport.call(method, path, body)
+	elif _transport.is_valid(): response = await _transport.call(method, path, body, headers)
+	elif is_instance_valid(_api) and headers.is_empty(): response = await _api.request_json(method, path, body)
+	elif is_instance_valid(_api): response = await _api.request_json_with_headers(method, path, body, headers)
 	return response if response is Dictionary else {"ok": false, "code": "invalid_response"}

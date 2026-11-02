@@ -390,6 +390,7 @@ func _ready() -> void:
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
 	# Only a phone with Full Journey reads the wallet for the monthly grant; each flush may bring a card.
 	pollen_client.subscribed=_full_journey_access
+	pollen_client.purchasing=func() -> bool: return store_flow != null and store_flow.store_action_pending
 	# An item bloom's item is owned at once in the wardrobe.
 	Wardrobe.shared().follow_drops(PollenWallet.shared().item_dropped)
 	pollen_client.settled.connect(func() -> void: grant_card_check=true)
@@ -1487,6 +1488,8 @@ func _purchase_session_identity() -> bool:
 	return identity_read_state == IdentityReadState.LOADED and not identity_restart_required and not identity_loading and not identity_busy and pending_recovery.is_empty() and not saves.data.has(DeletedPhotos.MARKER_KEY)
 
 func _customer_info_changed(_payload: Dictionary) -> void:
+	# The store often reports Full Journey after launch's first flush: the grant's wallet read then goes now, not on the next resume.
+	if pollen_client != null and _full_journey_access(): pollen_client.flush()
 	# The store may finish loading after the grid opens. Refresh the locks here;
 	# button callbacks still check the current entitlement when pressed. The
 	# store reports on every launch and resume, mostly with nothing new, and a

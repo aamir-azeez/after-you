@@ -1,6 +1,6 @@
 import { POLLEN_GRANT_TABLES } from "../storage-schema";
 import { RATES, type Rates } from "./rates";
-import { LIFETIME_KEY, anniversary, claimsNeeded, grantDue, ladder, planGrant, purchaseClaimKey, refundKey, subscriptionClaimKey, validGrant, type ClaimAnswer, type GrantState, type PaidInstalment } from "./grant";
+import { LIFETIME_KEY, anniversary, claimsNeeded, grantDue, ladder, planGrant, purchaseClaimKey, refundKey, subscriptionClaimKey, validGrant, type ClaimAnswer, type GrantHint, type GrantState, type PaidInstalment } from "./grant";
 import { applyLedger, fullJourneyUntil, inLedger, ledgerLines, noteFullJourney, type LedgerEntry } from "./wallet";
 import type { GrantRead } from "./grant-provider";
 
@@ -8,8 +8,10 @@ import type { GrantRead } from "./grant-provider";
  * The monthly grant in the player's own Player Durable Object (POLLEN_GRANT), run inside the wallet
  * read (GET /v1/pollen), which is already a Player request:
  *
- * 1. A date check on the stored state (grant.ts grantDue). Nothing is due: nothing else happens, no
- *    provider call and no write. A player who never subscribed has no state and no Full Journey end.
+ * 1. A date check on the stored state and the phone's hint (grant.ts grantDue). Nothing is due: nothing
+ *    else happens, no provider call and no write. A hint is how a subscriber whose Full Journey end was
+ *    never noted (no hosting check since they bought) starts: at most one read a day while the phone says
+ *    it has Full Journey, one per BOUGHT_GAP_MS right after a purchase, and one ever on a legacy app.
  * 2. Due: one RevenueCat read from inside this call (an outbound subrequest, not a DO request), and
  *    one PollenClaims request (claims.ts) for the listed subscriptions that can give cover.
  * 3. After those awaits, one synchronous transaction plans again from the state as stored now (another
@@ -17,7 +19,8 @@ import type { GrantRead } from "./grant-provider";
  *    wallet's ledger, takes back refunded ones, and saves the state. Two overlapping reads pay once.
  *
  * A failed provider or claims call pays nothing and writes nothing; a later read tries again after a
- * short in-memory pause. Storage: pollen_grant (storage-schema.ts POLLEN_GRANT_TABLES), one row.
+ * short in-memory pause. Reads that overlap while one is out share its outcome, so a burst of wallet
+ * reads costs one provider read. Storage: pollen_grant (storage-schema.ts POLLEN_GRANT_TABLES), one row.
  */
 export type GrantDeps = {
   /** The player's counted subscriptions (grant-provider.ts readGrant); `lifetime`: also look for the old Lifetime unlock. */
@@ -39,6 +42,7 @@ export const WAIT_PAUSE_MS = 60 * 60_000;
 const [GRANT] = POLLEN_GRANT_TABLES;
 const known = new WeakMap<DurableObjectStorage, boolean>();
 const paused = new WeakMap<DurableObjectStorage, number>();
+const running = new WeakMap<DurableObjectStorage, Promise<GrantOutcome>>();
 function present(storage: DurableObjectStorage): boolean {
   let found = known.get(storage);
   if (found === undefined) {
@@ -72,13 +76,23 @@ function paidBy(storage: DurableObjectStorage) {
 }
 
 /**
- * Pays what is due, if anything. `active` re-checks the identity inside the transaction. Never throws
- * for a provider or claims failure; a stored state that fails its check throws, as the wallet does.
+ * Pays what is due, if anything. `active` re-checks the identity inside the transaction; `hint` is what
+ * the phone said (grant.ts GrantHint). Never throws for a provider or claims failure; a stored state
+ * that fails its check throws, as the wallet does.
  */
-export async function settleGrant(storage: DurableObjectStorage, now: number, active: () => boolean, deps: GrantDeps, rates: Rates = RATES): Promise<GrantOutcome> {
+export async function settleGrant(storage: DurableObjectStorage, now: number, active: () => boolean, deps: GrantDeps, hint: GrantHint = "none", rates: Rates = RATES): Promise<GrantOutcome> {
   if ((paused.get(storage) ?? 0) > now) return "paused";
+  // One provider read at a time per Player: a read that comes in while one is out takes its outcome.
+  const busy = running.get(storage);
+  if (busy) return busy;
   const before = storedGrant(storage), fjUntil = fullJourneyUntil(storage);
-  if (!grantDue(before, fjUntil, now)) return "not_due";
+  if (!grantDue(before, fjUntil, now, hint)) return "not_due";
+  const run: Promise<GrantOutcome> = settleDue(storage, now, active, deps, before, fjUntil, rates).finally(() => { if (running.get(storage) === run) running.delete(storage); });
+  running.set(storage, run);
+  return run;
+}
+
+async function settleDue(storage: DurableObjectStorage, now: number, active: () => boolean, deps: GrantDeps, before: GrantState | null, fjUntil: number, rates: Rates): Promise<GrantOutcome> {
   const read = await deps.read(fjUntil >= LIFETIME_END && !before?.lifetime);
   if (!read.ok) { paused.set(storage, now + OUTAGE_PAUSE_MS); return "unavailable"; }
   const keys = [...claimsNeeded(before, read.subs).map(subscriptionClaimKey), ...(read.lifetime && !before?.lifetime ? [purchaseClaimKey(read.lifetime.id)] : [])];
@@ -125,5 +139,5 @@ export function grantView(storage: DurableObjectStorage, rates: Rates = RATES): 
 /** Account erasure: the grant state goes with the wallet (its ledger rows are the wallet's). */
 export function dropGrant(storage: DurableObjectStorage): void {
   for (const table of POLLEN_GRANT_TABLES) storage.sql.exec(`DROP TABLE IF EXISTS ${table.name}`);
-  known.delete(storage); paused.delete(storage);
+  known.delete(storage); paused.delete(storage); running.delete(storage);
 }

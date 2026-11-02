@@ -2,13 +2,14 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { anniversary, claimsNeeded, emptyGrant, grantDue, instalmentAmount, planGrant, type ClaimAnswer, type GrantState, type GrantSub, type Instalment } from "../src/pollen/grant";
+import { BOUGHT_GAP_MS, RETRY_MS, anniversary, claimsNeeded, emptyGrant, grantDue, instalmentAmount, planGrant, type ClaimAnswer, type GrantState, type GrantSub, type Instalment } from "../src/pollen/grant";
 import { grantSub, readGrant } from "../src/pollen/grant-provider";
 import { OUTAGE_PAUSE_MS, settleGrant, storedGrant, type GrantDeps } from "../src/pollen/grant-settle";
 import { claimFor, POLLEN_CLAIMS_OBJECT } from "../src/pollen/claims";
 import { grantOn } from "../src/pollen/features";
-import { ledgerLines, noteFullJourney, walletView } from "../src/pollen/wallet";
-import { POLLEN_HEADER } from "../src/pollen/routes";
+import { fullJourneyUntil, ledgerLines, noteFullJourney, walletView } from "../src/pollen/wallet";
+import { FULL_JOURNEY_HEADER, POLLEN_GRANT_HINT_MIN_VERSION, POLLEN_HEADER, grantHint } from "../src/pollen/routes";
+import { CLIENT_HEADER } from "../src/app-status";
 import { countingEnv, meterRows } from "./meter";
 import { POLLEN_CLIENT, configJson } from "./config";
 
@@ -252,6 +253,35 @@ describe("when the grant reads RevenueCat", () => {
     expect(grantDue({ ...live, retry_at: at(2026, 7, 3) }, 0, at(2026, 7, 2))).toBe(false);
     expect(grantDue({ ...emptyGrant(), recheck_at: now }, 0, now)).toBe(true);
   });
+  it("on the phone's word only within its bounds: once with no state, daily while it says Full Journey, ten minutes apart after a purchase", () => {
+    expect(grantDue(null, 0, now, "none")).toBe(false);
+    for (const hint of ["held", "bought", "legacy"] as const) expect(grantDue(null, 0, now, hint)).toBe(true);
+    // What a read that found nothing saves.
+    const looked: GrantState = { ...emptyGrant(), checked_at: now, retry_at: now + RETRY_MS };
+    // A legacy app's one read is spent: its word, or none, never reads again.
+    expect(grantDue(looked, 0, now + 30 * DAY, "legacy")).toBe(false);
+    expect(grantDue(looked, 0, now + 30 * DAY, "none")).toBe(false);
+    expect(grantDue(looked, 0, now + RETRY_MS - 1, "held")).toBe(false);
+    expect(grantDue(looked, 0, now + RETRY_MS, "held")).toBe(true);
+    expect(grantDue(looked, 0, now + BOUGHT_GAP_MS - 1, "bought")).toBe(false);
+    expect(grantDue(looked, 0, now + BOUGHT_GAP_MS, "bought")).toBe(true);
+    // A live anchor keeps its own dates: a purchase hint reads nothing before the next is due.
+    const live: GrantState = { ...emptyGrant(), anchor: at(2026, 6, 1), next: 1, live: true, renews: false, months: 1, checked_at: at(2026, 6, 1), subs: { m: { from: at(2026, 6, 1), through: at(2026, 7, 1), claimed_at: 1, held: false } } };
+    expect(grantDue(live, 0, now, "bought")).toBe(false);
+    // A plan that said it would not renew, whose phone still says Full Journey past its date: worth a read.
+    expect(grantDue(live, 0, at(2026, 7, 2))).toBe(false);
+    expect(grantDue(live, 0, at(2026, 7, 2), "held")).toBe(true);
+  });
+  it("takes the phone's word from its header, and an app before the hint version as legacy", () => {
+    const ask = (headers: Record<string, string>) => grantHint(new Request("https://grant.test/v1/pollen", { headers }));
+    const newer = { [CLIENT_HEADER]: POLLEN_GRANT_HINT_MIN_VERSION + " play" };
+    expect(ask({ ...newer })).toBe("none");
+    expect(ask({ ...newer, [FULL_JOURNEY_HEADER]: "1" })).toBe("held");
+    expect(ask({ ...newer, [FULL_JOURNEY_HEADER]: "bought" })).toBe("bought");
+    expect(ask({ ...newer, [FULL_JOURNEY_HEADER]: "yes" })).toBe("none");
+    expect(ask({ ...POLLEN_CLIENT })).toBe("legacy");
+    expect(ask({})).toBe("legacy");
+  });
 });
 
 describe("the grant's own RevenueCat status filter", () => {
@@ -351,7 +381,7 @@ const self = async (keys: string[]) => Object.fromEntries(keys.map(key => [key, 
 
 describe("settling the grant in the Player", () => {
   afterEach(async () => { await reset(); });
-  it("never reads RevenueCat or writes anything for a player who never subscribed", async () => {
+  it("never reads RevenueCat or writes anything for a player who never subscribed, on a phone that says nothing", async () => {
     serial++;
     await inPlayer(async storage => {
       const read = vi.fn<GrantDeps["read"]>();
@@ -396,6 +426,71 @@ describe("settling the grant in the Player", () => {
       expect(storedGrant(storage)!.months).toBe(1);
     });
   });
+  it("starts a subscriber whose Full Journey end was never noted on a legacy app's read, once, and notes the end", async () => {
+    serial++;
+    await inPlayer(async storage => {
+      const sub = monthly(DUE - 4 * DAY), read = vi.fn<GrantDeps["read"]>(async () => ({ ok: true, subs: [sub], lifetime: null }));
+      expect(fullJourneyUntil(storage)).toBe(0);
+      expect(await settleGrant(storage, DUE, () => true, { read, claim: self }, "legacy")).toBe("settled");
+      expect(walletView(storage, DUE).balance).toBe(4500);
+      expect(fullJourneyUntil(storage)).toBe(sub.access_until);
+      expect(await settleGrant(storage, DUE + HOUR, () => true, { read, claim: self }, "legacy")).toBe("not_due");
+      expect(await settleGrant(storage, DUE + 2 * DAY, () => true, { read, claim: self }, "held")).toBe("not_due");
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(ledgerLines(storage, "grant").map(line => line.amount)).toEqual([4500]);
+    });
+  });
+  it("reads a free player at most once ever on a legacy app, once a day while the phone says Full Journey, and ten minutes apart after a purchase", async () => {
+    serial++;
+    await inPlayer(async storage => {
+      const read = vi.fn<GrantDeps["read"]>(async () => ({ ok: true, subs: [], lifetime: null })), deps = { read, claim: self };
+      expect(await settleGrant(storage, DUE, () => true, deps, "legacy")).toBe("settled");
+      for (const later of [HOUR, DAY, 40 * DAY]) expect(await settleGrant(storage, DUE + later, () => true, deps, "legacy")).toBe("not_due");
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(storedGrant(storage)).toMatchObject({ live: false, latest: null, subs: {} });
+      // Held: one more read a day after the last, whatever the phone sends in between.
+      for (const later of [HOUR, 12 * HOUR, RETRY_MS - 1]) expect(await settleGrant(storage, DUE + later, () => true, deps, "held")).toBe("not_due");
+      expect(await settleGrant(storage, DUE + RETRY_MS, () => true, deps, "held")).toBe("settled");
+      expect(read).toHaveBeenCalledTimes(2);
+      // Bought: not within ten minutes of the last read, then once.
+      const last = DUE + RETRY_MS;
+      expect(await settleGrant(storage, last + BOUGHT_GAP_MS - 1, () => true, deps, "bought")).toBe("not_due");
+      expect(await settleGrant(storage, last + BOUGHT_GAP_MS, () => true, deps, "bought")).toBe("settled");
+      expect(await settleGrant(storage, last + BOUGHT_GAP_MS + 60_000, () => true, deps, "bought")).toBe("not_due");
+      expect(read).toHaveBeenCalledTimes(3);
+      // A newer phone that says nothing never reads.
+      expect(await settleGrant(storage, last + 30 * DAY, () => true, deps, "none")).toBe("not_due");
+      expect(read).toHaveBeenCalledTimes(3);
+    });
+  });
+  it("pays a purchase at once on the read right after it, though a read found nothing minutes before", async () => {
+    serial++;
+    await inPlayer(async storage => {
+      let subs: GrantSub[] = [];
+      const read = vi.fn<GrantDeps["read"]>(async () => ({ ok: true, subs, lifetime: null })), deps = { read, claim: self };
+      expect(await settleGrant(storage, DUE - BOUGHT_GAP_MS, () => true, deps, "held")).toBe("settled");
+      subs = [monthly(DUE - 60_000)];
+      expect(await settleGrant(storage, DUE, () => true, deps, "bought")).toBe("settled");
+      expect(walletView(storage, DUE).balance).toBe(4500);
+      expect(storedGrant(storage)!.live).toBe(true);
+      // Live now: another purchase word reads nothing before next month.
+      expect(await settleGrant(storage, DUE + BOUGHT_GAP_MS * 2, () => true, deps, "bought")).toBe("not_due");
+      expect(read).toHaveBeenCalledTimes(2);
+    });
+  });
+  it("makes one provider read for a burst of hinted reads that overlap", async () => {
+    serial++;
+    await inPlayer(async storage => {
+      let answer!: () => void;
+      const gate = new Promise<void>(resolve => { answer = resolve; });
+      const read = vi.fn<GrantDeps["read"]>(async () => { await gate; return { ok: true, subs: [monthly(DUE - 4 * DAY)], lifetime: null }; });
+      const burst = Promise.all(Array.from({ length: 6 }, (_, n) => settleGrant(storage, DUE, () => true, { read, claim: self }, n % 2 ? "bought" : "held")));
+      answer();
+      expect(await burst).toEqual(Array(6).fill("settled"));
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(walletView(storage, DUE).balance).toBe(4500);
+    });
+  });
   it("is refused by PollenClaims for a subscription another identity holds", async () => {
     const holder = "H".repeat(22), mover = "M".repeat(22), sub = monthly();
     const deps = (player: string): GrantDeps => ({ read: async () => ({ ok: true, subs: [sub], lifetime: null }), claim: keys => claimFor(keyed(), player, keys, DUE) });
@@ -430,10 +525,12 @@ const VARS: Record<string, string> = {
 const shared = env as unknown as Record<string, unknown>;
 let address = 0, offset = 0, items: unknown[] = [], providerCalls = 0;
 const realNow = Date.now.bind(Date);
-async function call(path: string, method = "GET", account?: Account, base: Env = env): Promise<Response> {
+/** An app that sends the Full Journey hint (pollen/routes.ts grantHint); POLLEN_CLIENT is older, a legacy app. */
+const HINT_CLIENT = { [CLIENT_HEADER]: POLLEN_GRANT_HINT_MIN_VERSION + " play" };
+async function call(path: string, method = "GET", account?: Account, base: Env = env, extra: Record<string, string> = {}): Promise<Response> {
   const configured = Object.assign({ ...base }, VARS) as Env;
   return worker.fetch(new Request("https://grant.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.93." + (++address % 250),
-    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1", ...POLLEN_CLIENT }, body: method === "POST" ? "{}" : undefined }), configured);
+    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1", ...POLLEN_CLIENT, ...extra }, body: method === "POST" ? "{}" : undefined }), configured);
 }
 const subscription = (start: number, months = 1, extra: Record<string, unknown> = {}) => ({ object: "subscription", id: "sub_worker_1", product_id: months === 12 ? "prodYearly" : "prodMonthly", store: "play_store",
   environment: "production", ownership: "purchased", status: "active", gives_access: true, current_period_starts_at: start, current_period_ends_at: anniversary(start, months), ends_at: anniversary(start, months), auto_renewal_status: "will_renew", ...extra });
@@ -490,14 +587,43 @@ describe("the grant through the wallet read", () => {
     expect(first.rows.claims.written).toBeGreaterThanOrEqual(1);
     expect(month.rows.player.written).toBeLessThanOrEqual(4);
   });
-  it("costs a free player's wallet read nothing more: no provider call and no write", async () => {
+  it("costs a free player's wallet read from a newer app that says nothing no provider call and no write", async () => {
     const player = await create();
     const meter = countingEnv({ ...env, ...VARS } as unknown as Env);
-    const read = await meterRows({ player: env.PLAYERS.getByName(player.player_id) }, async () => (await call("/v1/pollen", "GET", player, meter.env)).json<Wallet>());
+    const read = await meterRows({ player: env.PLAYERS.getByName(player.player_id) }, async () => (await call("/v1/pollen", "GET", player, meter.env, HINT_CLIENT)).json<Wallet>());
     expect(meter.calls).toEqual(["PLAYERS.authorizeWallet"]);
     expect(providerCalls).toBe(0);
     expect(read.rows.player.written).toBe(0);
     expect(read.value).not.toHaveProperty("grant");
+  });
+  it("costs a free player on a legacy app one provider read and one grant row (with its table), once ever", async () => {
+    const player = await create();
+    const meter = countingEnv({ ...env, ...VARS } as unknown as Env), stubs = { player: env.PLAYERS.getByName(player.player_id) };
+    const first = await meterRows(stubs, async () => (await call("/v1/pollen", "GET", player, meter.env)).json<Wallet>());
+    expect(meter.calls).toEqual(["PLAYERS.authorizeWallet"]);
+    expect(providerCalls).toBe(1);
+    expect(first.value).not.toHaveProperty("grant");
+    expect(first.rows.player.written).toBeLessThanOrEqual(3);
+    for (const later of [HOUR, 2 * DAY, 40 * DAY]) {
+      offset = later;
+      const again = await meterRows(stubs, async () => (await call("/v1/pollen", "GET", player)).json<Wallet>());
+      expect(again.rows.player.written).toBe(0);
+    }
+    expect(providerCalls).toBe(1);
+  });
+  it("pays a subscriber whose Full Journey end was never noted on their next wallet read, from a legacy app or a hinting one", async () => {
+    const cases = [{}, { ...HINT_CLIENT, [FULL_JOURNEY_HEADER]: "1" }, { ...HINT_CLIENT, [FULL_JOURNEY_HEADER]: "bought" }];
+    for (const [n, extra] of cases.entries()) {
+      providerCalls = 0;
+      const player = await create(), start = Date.now() - 4 * DAY;
+      // Each its own subscription: PollenClaims would see one id on three identities as moved.
+      items = [subscription(start, 1, { id: "sub_start_" + n })];
+      const first = await (await call("/v1/pollen", "GET", player, env, extra)).json<Wallet>();
+      expect(first).toMatchObject({ balance: 4500, grant: { months: 1, next: 4750, latest: { amount: 4500 } } });
+      expect(providerCalls).toBe(1);
+      for (let n = 0; n < 3; n++) expect((await (await call("/v1/pollen", "GET", player, env, extra)).json<Wallet>()).balance).toBe(4500);
+      expect(providerCalls).toBe(1);
+    }
   });
   it("pays a trial nothing through the read, and reads again only when the trial ends", async () => {
     const player = await create(), start = Date.now() - HOUR;

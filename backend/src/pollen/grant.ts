@@ -142,19 +142,34 @@ export function validGrant(value: unknown): value is GrantState {
 }
 
 /**
- * Whether a wallet read should ask RevenueCat now: only when an instalment is due, a trial or a
- * moved subscription's cover is ready to look at, or a Full Journey end is noted with no live anchor.
- * A player who never subscribed (no state, no Full Journey end) never costs a read.
+ * What the phone said on the wallet read (pollen/routes.ts grantHint): nothing; that it has Full Journey
+ * ("held", from its store SDK); that it just bought or restored it ("bought"); or "legacy", an app too old
+ * to say either. A hint only ever allows a read; what is paid still comes from RevenueCat alone.
  */
-export function grantDue(state: GrantState | null, fjUntil: number, now: number): boolean {
-  if (state === null) return fjUntil > now;
+export type GrantHint = "none" | "held" | "bought" | "legacy";
+/** A "bought" read asks RevenueCat this long after the last complete read at the soonest, whatever retry_at says. */
+export const BOUGHT_GAP_MS = 10 * 60_000;
+
+/**
+ * Whether a wallet read should ask RevenueCat now: only when an instalment is due, a trial or a
+ * moved subscription's cover is ready to look at, a Full Journey end is noted with no live anchor,
+ * or the phone says it has Full Journey and no read looked in the last day (RETRY_MS, kept in
+ * `retry_at`), or just bought it and no read looked in the last BOUGHT_GAP_MS (`checked_at`).
+ * A player with no state yet is read once on a hint, and once on a legacy app's read (it never says):
+ * that read saves a state even when it finds nothing, so it is never repeated. A newer app that
+ * says nothing never costs a read.
+ */
+export function grantDue(state: GrantState | null, fjUntil: number, now: number, hint: GrantHint = "none"): boolean {
+  if (state === null) return fjUntil > now || hint !== "none";
+  const said = hint === "held" || hint === "bought";
+  if (hint === "bought" && !state.live && now - state.checked_at >= BOUGHT_GAP_MS) return true;
   if (now < state.retry_at) return false;
   if (state.recheck_at > 0 && now >= state.recheck_at) return true;
   if (state.live) {
     const due = anniversary(state.anchor, state.next);
-    return due <= now && (state.renews || due < Math.max(fjUntil, coverEnd(state)));
+    return due <= now && (state.renews || said || due < Math.max(fjUntil, coverEnd(state)));
   }
-  return fjUntil > now;
+  return fjUntil > now || said;
 }
 const coverEnd = (state: GrantState) => Object.values(state.subs).reduce((end, sub) => Math.max(end, sub.through), 0);
 

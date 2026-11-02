@@ -8,6 +8,7 @@ import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
 import type { PollenMember, TurnFacts } from "./turn-facts";
 import type { HistoryView, PollenReceipt, WalletView } from "./wallet";
+import type { GrantHint } from "./grant";
 import { clientHeader, compareVersions } from "../app-status";
 import { parseVersion, type Version } from "../config";
 
@@ -20,7 +21,10 @@ import { parseVersion, type Version } from "../config";
  * more to the partner's Player on the turn that finishes a chapter together, and none on reads:
  * GET /v1/pollen and its history ride on auth()'s own Player call (authorizeWallet). While the grant
  * is on, that call itself reads RevenueCat when an instalment is due (a subrequest, about once a month
- * per subscriber) and asks PollenClaims once per subscription new to the player (grant-settle.ts).
+ * per subscriber) and asks PollenClaims once per subscription new to the player (grant-settle.ts). A
+ * subscriber whose Full Journey end was never noted starts through the phone's hint (grantHint): at most
+ * one subrequest a day while it says it has Full Journey, one per ten minutes right after a purchase, and
+ * one ever for a player on an app older than POLLEN_GRANT_HINT_MIN_VERSION, which never says.
  *
  * Bundles (POLLEN_BUNDLES on Google Play, POLLEN_BUNDLES_APP_STORE on the App Store): POST /v1/pollen/bundle-claims costs auth()'s Player call, one more Player call
  * that reads RevenueCat itself (a subrequest), and one PollenClaims request only when RevenueCat lists a
@@ -86,6 +90,22 @@ const SHOP_MINIMUM = parseVersion(POLLEN_SHOP_MIN_VERSION) as Version;
 export function pollenShopClient(request: Request): boolean {
   const client = clientHeader(request);
   return client !== null && compareVersions(client.version, SHOP_MINIMUM) >= 0;
+}
+/**
+ * The wallet read's word on Full Journey for the monthly grant (grant.ts GrantHint): X-AfterYou-Full-Journey
+ * is "1" from a phone whose store says it has Full Journey, and "bought" on the read right after a purchase or
+ * restore. An app older than POLLEN_GRANT_HINT_MIN_VERSION (or one naming no version) never sends it, so its
+ * read counts as "legacy". The header only allows a bounded read; it never pays anything by itself.
+ */
+export const FULL_JOURNEY_HEADER = "X-AfterYou-Full-Journey";
+export const POLLEN_GRANT_HINT_MIN_VERSION = "0.7.8";
+const HINT_MINIMUM = parseVersion(POLLEN_GRANT_HINT_MIN_VERSION) as Version;
+export function grantHint(request: Request): GrantHint {
+  const said = request.headers.get(FULL_JOURNEY_HEADER);
+  if (said === "1") return "held";
+  if (said === "bought") return "bought";
+  const client = clientHeader(request);
+  return client === null || compareVersions(client.version, HINT_MINIMUM) < 0 ? "legacy" : "none";
 }
 /** What the wallet read carries for this request (features.ts wardrobeMode): an app older than the shop's gets the wardrobe without it. */
 export function walletMode(request: Request, env: ServerVars): WardrobeMode {

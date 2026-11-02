@@ -9,7 +9,10 @@ extends SceneTree
 ## - the Full Journey card lists the chapters first, then the room boost, then
 ##   the monthly Pollen, and the Pollen panels only while the server pays them;
 ## - a phone with Full Journey reads the wallet for the grant once a launch and
-##   then at most every few hours; a free player's phone never does.
+##   then at most every few hours, saying so in its Full Journey header; a free
+##   player's phone never does;
+## - a Full Journey purchase or restore sends one wallet read saying "bought" at
+##   once, even right after a grant read, and only while the grant is on.
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const Client = preload("res://services/pollen_client.gd")
@@ -35,8 +38,8 @@ class Fake extends RefCounted:
 	var tree: SceneTree
 	var sent: Array = []
 	var replies: Array = []
-	func call_it(method: int, path: String, body: Dictionary) -> Dictionary:
-		sent.append({"method": method, "path": path, "body": body.duplicate(true)})
+	func call_it(method: int, path: String, body: Dictionary, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
+		sent.append({"method": method, "path": path, "body": body.duplicate(true), "headers": headers})
 		await tree.process_frame
 		return replies.pop_front() if not replies.is_empty() else {"ok": false, "code": "connection_interrupted"}
 
@@ -162,18 +165,52 @@ func _client_reads() -> void:
 	t.client.flush()
 	await _settle(t.client)
 	_check(t.fake.sent.size() == 1 and t.fake.sent[0].path == "/v1/pollen", "A Full Journey phone reads the wallet for the grant, though it has one")
+	_check(t.fake.sent[0].headers == PackedStringArray(["X-AfterYou-Full-Journey: 1"]), "and says it has Full Journey: " + str(t.fake.sent[0].headers))
 	_check(t.grant.pending(t.api.base_url, ME).amount == 4500 and t.wallet.wallet(t.api.base_url, ME).balance == 4500, "and keeps the grant and the balance")
 	t.client.flush()
 	await _settle(t.client)
 	_check(t.fake.sent.size() == 1, "Not again on the next flush: at most every few hours")
+	# A purchase or restore reads at once, saying so, though the grant read just went.
+	t.fake.replies = [{"ok": true, "data": _answer(1, 4750, "grant:1790000000000:1", 4500)}, {"ok": true, "data": _answer(1, 4750, "grant:1790000000000:1", 4500)}]
+	t.client.note_full_journey_bought()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 2 and t.fake.sent[1].headers == PackedStringArray(["X-AfterYou-Full-Journey: bought"]), "A purchase reads the wallet at once, saying bought: " + str(t.fake.sent.back().get("headers")))
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 2, "Once: the next flush reads nothing more")
 	var free := _setup(false, true)
 	free.client.flush()
 	await _settle(free.client)
 	_check(free.fake.sent.is_empty(), "A free player's phone never reads for the grant")
+	# A purchase whose read gets no answer goes again on the next flush, and only once answered stops.
+	free.fake.replies = [{"ok": false, "code": "connection_interrupted"}, {"ok": true, "data": _answer(1, 4750, "grant:1790000000000:1", 4500)}]
+	free.client.note_full_journey_bought()
+	await _settle(free.client)
+	free.client.flush()
+	await _settle(free.client)
+	free.client.flush()
+	await _settle(free.client)
+	_check(free.fake.sent.size() == 2 and free.fake.sent.all(func(each: Dictionary) -> bool: return each.headers == PackedStringArray(["X-AfterYou-Full-Journey: bought"])), "A purchase read that failed goes again, then stops: " + str(free.fake.sent.size()))
 	var off := _setup(true, false)
 	off.client.flush()
 	await _settle(off.client)
-	_check(off.fake.sent.is_empty(), "Nor while the grant is off")
+	# While a purchase is under way the store already says Full Journey (and the app resumes from its sheet):
+	# the plain grant read waits, so the purchase's own "bought" read is the one the server sees.
+	var buying := _setup(true, true)
+	var store := {"busy": true}
+	buying.client.purchasing = func() -> bool: return bool(store.busy)
+	buying.client.flush()
+	await _settle(buying.client)
+	_check(buying.fake.sent.is_empty(), "No plain grant read while a purchase is under way")
+	store.busy = false
+	buying.fake.replies = [{"ok": true, "data": _answer(1, 4750, "grant:1790000000000:1", 4500)}]
+	buying.client.note_full_journey_bought()
+	await _settle(buying.client)
+	_check(buying.fake.sent.size() == 1 and buying.fake.sent[0].headers == PackedStringArray(["X-AfterYou-Full-Journey: bought"]), "then the purchase's read says bought, and it alone goes: " + str(buying.fake.sent.size()))
+	buying.api.queue_free()
+	off.client.note_full_journey_bought()
+	await _settle(off.client)
+	_check(off.fake.sent.is_empty(), "Nor while the grant is off, even after a purchase")
 	for each: Dictionary in [t, free, off]: each.api.queue_free()
 	await process_frame
 
