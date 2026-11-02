@@ -200,6 +200,8 @@ func _run() -> void:
 	await _cancelled_and_failed()
 	await _claim_waits()
 	await _resume_flush_first()
+	await _second_purchase_while_trying()
+	await _other_bundle_credited_first()
 	await _refund()
 	await _offline_store()
 	await _first_tap_waits()
@@ -419,6 +421,80 @@ func _resume_flush_first() -> void:
 		_check(t.fake.sent.size() == (2 if flushed_first else 1), "%s: the purchase's claim asks no more than it needs: %d" % [case, t.fake.sent.size()])
 		t.host.queue_free()
 		await _frames(2)
+
+## A second bundle bought while the first purchase's claim still pauses between
+## tries: each purchase keeps its own snapshot and price. The first, credited by
+## a flush during the pause, shows its receipt (never "on its way"); the second
+## shows its own receipt with its own price, or, when the first one's receipt
+## already showed it, says nothing wrong.
+func _second_purchase_while_trying() -> void:
+	var nothing_new := func(balance: int) -> Dictionary: return {"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": float(balance), "pending": false, "refunded": [], "credited": []}}
+	for both_at_once: bool in [false, true]:
+		var case := "the first claim credits both" if both_at_once else "each claim credits its own"
+		var t := _setup()
+		t.purchases.outcome = "silent"
+		t.flow.show_store()
+		await _frames()
+		t.flow.buy("pouch")
+		await _frames(2)
+		var first: String = t.flow._buying
+		t.fake.replies = [nothing_new.call(9000)]
+		t.purchases.completed.emit(first, "purchase_package", {"schema_version": 1})
+		await _frames(4)
+		_check(t.fake.sent.size() == 1 and t.claims.unseen().is_empty(), "%s: the first claim found nothing yet and pauses" % case)
+		# The app's return from the store's sheet credits the first purchase during the pause.
+		t.fake.replies = [_credited("pouch", 0, 30000)]
+		await t.claims.flush()
+		t.flow.buy("jar")
+		await _frames(2)
+		var second: String = t.flow._buying
+		_check(second != first and not second.is_empty(), "%s: the second bundle's sheet opens while the first still tries" % case)
+		var jar := _credited("jar", 0, 74000, "GPA.1234-5678-9012-34568")
+		t.fake.replies = [jar if both_at_once else nothing_new.call(30000)]
+		await create_timer(Flow.CLAIM_PAUSE_S + 0.5).timeout
+		await _frames(4)
+		var lines := _texts(t.host.ui.find_child("PollenStoreReceipt", true, false))
+		if both_at_once: _check(PlayerCopy.POLLEN_STORE_ADDED % "44,000" in lines, "%s: the first purchase's claim shows the newest receipt: %s" % [case, lines])
+		else: _check(PlayerCopy.POLLEN_STORE_ADDED % "21,000" in lines and PlayerCopy.POLLEN_STORE_ORDER % ["$3.99", "GPA.1234-5678-9012-34567"] in lines, "%s: the first purchase shows its receipt and its own price: %s" % [case, lines])
+		_check(not PlayerCopy.POLLEN_STORE_ON_ITS_WAY in t.host.toasts, "%s: the first purchase never says 'on its way' once credited: %s" % [case, t.host.toasts])
+		t.fake.replies = [nothing_new.call(74000) if both_at_once else jar]
+		t.purchases.completed.emit(second, "purchase_package", {"schema_version": 1})
+		await create_timer(Flow.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+		await _frames(4)
+		# The first receipt was still freeing as this one opened, so this one is found by its sheet, not its name.
+		lines = _texts(t.flow._sheet.get_ref() if t.flow._sheet != null else null)
+		if not both_at_once: _check(PlayerCopy.POLLEN_STORE_ADDED % "44,000" in lines and PlayerCopy.POLLEN_STORE_ORDER % ["$7.99", "GPA.1234-5678-9012-34568"] in lines, "%s: the second purchase shows its own receipt and price: %s" % [case, lines])
+		_check(not PlayerCopy.POLLEN_STORE_ON_ITS_WAY in t.host.toasts, "%s: neither purchase says 'on its way' once credited: %s" % [case, t.host.toasts])
+		_check(t.wallet.wallet(SERVER, ME).balance == 74000 and t.claims.unseen().is_empty(), "%s: both are credited and seen" % case)
+		t.host.queue_free()
+		await _frames(2)
+
+## The second bundle's claim is credited while the first purchase is still not
+## listed: that receipt is the second purchase's, so the first keeps trying and
+## then says it is on its way.
+func _other_bundle_credited_first() -> void:
+	var t := _setup()
+	t.purchases.outcome = "silent"
+	t.flow.show_store()
+	await _frames()
+	t.flow.buy("pouch")
+	await _frames(2)
+	var first: String = t.flow._buying
+	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": 9000.0, "pending": false, "refunded": [], "credited": []}}]
+	t.purchases.completed.emit(first, "purchase_package", {"schema_version": 1})
+	await _frames(4)
+	t.flow.buy("jar")
+	await _frames(2)
+	t.fake.replies = [_credited("jar", 0, 53000, "GPA.1234-5678-9012-34568")]
+	t.purchases.completed.emit(t.flow._buying, "purchase_package", {"schema_version": 1})
+	await _frames(4)
+	var lines := _texts(t.flow._sheet.get_ref() if t.flow._sheet != null else null)
+	_check(PlayerCopy.POLLEN_STORE_ADDED % "44,000" in lines and PlayerCopy.POLLEN_STORE_ORDER % ["$7.99", "GPA.1234-5678-9012-34568"] in lines, "The second purchase shows its own receipt and price: %s" % [lines])
+	await create_timer(Flow.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+	await _frames(4)
+	_check(PlayerCopy.POLLEN_STORE_ON_ITS_WAY in t.host.toasts and t.claims.pending(), "The first purchase, never listed, keeps waiting and says it is on its way: %s" % [t.host.toasts])
+	t.host.queue_free()
+	await _frames(2)
 
 func _refund() -> void:
 	var t := _setup()

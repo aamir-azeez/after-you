@@ -82,9 +82,14 @@ var _buying := ""
 var _bought: Dictionary = {}
 ## Whether this purchase set the waiting mark (a cancel then drops it).
 var _marked := false
-## The unseen receipts when this purchase began: a change means its claim was
-## credited, even by a flush the app sent on its return from the store's sheet.
-var _unseen_at_buy: Array = []
+## The receipts known when this purchase began (_receipts_known): a new one
+## for its bundle means its claim was credited, even by a flush the app sent on
+## its return from the store's sheet. Its claim takes this and _bought as its own when the
+## sheet closes, so a purchase made while it still tries never changes them.
+var _known_at_buy: Array = []
+## Receipts this page showed (and so marked seen), newest last: a claim whose
+## receipt another purchase showed first still counts as credited.
+var _shown: Array = []
 var _generation := 0
 ## Where Back returns: "wardrobe" (Main goes to the Wardrobe, or Home) or "friends".
 var return_to := "wardrobe"
@@ -202,9 +207,13 @@ func _on_completed(id: String, operation: String, payload: Dictionary) -> void:
 		_retry = not _loaded
 		_redraw()
 	elif operation == "purchase_package" and id == _buying:
+		var bought := _bought
+		var known := _known_at_buy
 		_buying = ""
+		_bought = {}
+		_known_at_buy = []
 		_marked = false
-		await _claim_after_purchase()
+		await _claim_after_purchase(bought, known)
 
 func _on_failed(id: String, operation: String, _code: String, message: String, cancelled: bool) -> void:
 	if operation == "get_offerings" and id == _request:
@@ -213,6 +222,7 @@ func _on_failed(id: String, operation: String, _code: String, message: String, c
 	elif operation == "purchase_package" and id == _buying:
 		_buying = ""
 		_bought = {}
+		_known_at_buy = []
 		# Only a cancelled sheet surely took no payment; any other failure may settle later, so its mark stays.
 		if cancelled and _marked: _claims().drop_mark()
 		_marked = false
@@ -249,39 +259,49 @@ func buy(id: String) -> void:
 	_bought.bundle = id
 	# The mark goes on before the sheet, so a purchase is claimed even if the app closes during it.
 	_marked = _claims().mark_pending()
-	_unseen_at_buy = _claims().unseen()
+	_known_at_buy = _receipts_known()
 	_buying = host.purchases.purchase(str(_bought.offering_id), str(_bought.id))
 
 ## After the store took the payment: the server claims it, then the receipt shows.
-func _claim_after_purchase() -> void:
+## `bought` and `known` are this purchase's own (_bought and _known_at_buy at its Buy).
+func _claim_after_purchase(bought: Dictionary, known: Array) -> void:
 	# RevenueCat may list a purchase a moment after the store's sheet closes: a few quick tries, then the flush's.
 	for attempt in range(CLAIM_TRIES):
 		if attempt > 0: await get_tree().create_timer(CLAIM_PAUSE_S * attempt).timeout
 		# Always asked once: a flush that credited an older purchase first clears the mark this one needs.
 		await _claims().claim()
 		# Credited by this claim, or by a flush (the app's return from the store's sheet) before it.
-		if _claims().unseen() != _unseen_at_buy: break
+		if _credited_since(known, str(bought.get("bundle", ""))): break
 		if not is_inside_tree(): return
-	if _claims().unseen() == _unseen_at_buy:
+	if not _credited_since(known, str(bought.get("bundle", ""))):
 		# The purchase stands; the claim stays waiting and goes again on the next flush.
 		_toast(PlayerCopy.POLLEN_STORE_ON_ITS_WAY)
-		_bought = {}
 		_redraw()
 		return
-	_show_unseen()
-	_bought = {}
+	_show_unseen(bought)
 
-## Shows the receipts the player has not seen, newest last on top.
-func _show_unseen() -> void:
+## The receipts this page showed and those still unseen.
+func _receipts_known() -> Array:
+	return _shown + _claims().unseen()
+
+## Whether a receipt for `bundle` came that `known` (_receipts_known at a Buy)
+## did not have. Another bundle's receipt is another purchase's.
+func _credited_since(known: Array, bundle: String) -> bool:
+	return _receipts_known().any(func(receipt: Dictionary) -> bool: return str(receipt.bundle) == bundle and not receipt in known)
+
+## Shows the receipts the player has not seen, newest last on top. `bought`,
+## the package a purchase just paid for, gives the receipt its local price.
+func _show_unseen(bought: Dictionary = {}) -> void:
 	if not is_open(): return
 	var receipts: Array = _claims().unseen()
 	if receipts.is_empty():
 		_redraw()
 		return
 	_claims().mark_seen()
+	_shown = (_shown + receipts).slice(-BundleClaims.MAX_UNSEEN * 2)
 	_close_sheet()
 	var newest: Dictionary = receipts.back()
-	var paid := str(_bought.get("price", "")) if str(_bought.get("bundle", "")) == str(newest.bundle) else ""
+	var paid := str(bought.get("price", "")) if str(bought.get("bundle", "")) == str(newest.bundle) else ""
 	_sheet = weakref(Sheets.receipt(host.ui, newest, int(newest.get("balance", _balance())), paid, func() -> void: wardrobe_requested.emit(), null))
 	Soundscape.play_on(host, "ui_bought")
 	_redraw()
