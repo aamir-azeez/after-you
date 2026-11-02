@@ -24,7 +24,11 @@ extends SceneTree
 ##   off show the same frame with only Owned: no price, no Buy, no shelf, no +;
 ## - an empty list shows the one hanger drawing (presentation/empty_state.gd)
 ##   with its case's line: nothing owned, nothing in the shop, or the shop off;
-##   never while loading or offline, made once and still on idle frames.
+##   never while loading or offline, made once and still on idle frames;
+## - every slot of Owned ends with a Get more card (the hanger drawing, no pip)
+##   while the shop has anything not owned; it opens All items on its slot, or
+##   on a slot with something to buy; never on All items, with nothing owned,
+##   or without the shop.
 const Flow = preload("res://presentation/wardrobe_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
@@ -35,6 +39,7 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const TierFrame = preload("res://presentation/kit/tier_frame.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
+const Page = preload("res://presentation/wardrobe_page.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -134,6 +139,7 @@ func _run() -> void:
 	await _owned_only()
 	await _server_shop_off()
 	await _empty_lists()
+	await _get_more()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -480,6 +486,64 @@ func _empty_lists() -> void:
 	_check(empty != null and empty.art == "wardrobe" and PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(page) and not PlayerCopy.WARDROBE_NOTHING_OWNED in _texts(page), "The shop off: the drawing says what you earn shows here")
 	t.host.queue_free()
 	await _frames(2)
+
+func _get_more() -> void:
+	var t := _setup()
+	t.store.note_view(SERVER, ME, _answer(["daisy", "gold_leaf"], {}, 24000).data)
+	t.wallet.note_wallet(SERVER, ME, _answer([], {}, 24000).data)
+	t.fake.replies = [_answer(["daisy", "gold_leaf"], {}, 24000)]
+	t.flow.show_wardrobe()
+	await _frames()
+	var page: Node = t.host.overlay
+	_check(page.find_child("WardrobeGetMore", true, false) == null, "Get more: not on All items")
+	t.flow.set_tab("owned")
+	var kinds: Array = t.flow.model().kinds
+	_check(kinds == ["hat", "leaf"], "Get more: Owned has the Hat and Leaf chips: " + str(kinds))
+	for kind: String in kinds:
+		t.flow.set_kind(kind)
+		var grid: Node = page.find_child("WardrobeItems", true, false)
+		var tile: Button = page.find_child("WardrobeGetMore", true, false)
+		_check(tile != null and tile.get_parent() == grid and grid.get_child(-1) == tile and grid.get_child_count() == 2 and tile.custom_minimum_size == Page.CARD_SIZE, "Get more: the last card on Owned %s, an item card's size" % kind)
+		_check(tile != null and _texts(tile) == [PlayerCopy.WARDROBE_GET_MORE] and tile.accessibility_name == PlayerCopy.WARDROBE_GET_MORE and tile.find_child("PipAvatar*", true, false) == null and tile.find_children("*", "SubViewport", true, false).is_empty(), "Get more: its words and the hanger drawing, with no pip render on %s" % kind)
+	t.flow.select("gold_leaf")
+	var picked: Button = page.find_child("WardrobeGetMore", true, false)
+	_check(picked != null and (picked.get_theme_stylebox("normal") as StyleBoxFlat).bg_color.a == 0.0 and (picked.get_theme_stylebox("normal") as StyleBoxFlat).border_width_left == 0, "Get more: picking an item leaves the card's dashed look alone")
+	picked.pressed.emit()
+	var model: Dictionary = t.flow.model()
+	_check(model.tab == "all" and model.kind == "hat" and page.find_child("WardrobeGetMore", true, false) == null, "Get more on Leaf (nothing more to buy there): All items on Hat: %s %s" % [model.tab, model.kind])
+	t.flow.set_tab("owned")
+	t.flow.set_kind("hat")
+	page.find_child("WardrobeGetMore", true, false).pressed.emit()
+	model = t.flow.model()
+	_check(model.tab == "all" and model.kind == "hat" and page.find_child("WardrobeCard_seashell", true, false) != null, "Get more on Hat: All items on Hat")
+	t.flow.set_tab("owned")
+	_check(t.flow.model().more and page.find_child("WardrobeGetMore", true, false) != null, "Get more: back on Owned")
+	t.store.set_enabled(SERVER, ME, true, false, true)
+	t.flow._redraw()
+	_check(not t.flow.model().more and page.find_child("WardrobeGetMore", true, false) == null, "Get more: gone when the shop turns off while Owned shows")
+	t.store.set_enabled(SERVER, ME, true, true, false)
+	t.store.note_view(SERVER, ME, _answer(SOLD + ["gold_leaf"], {}, 24000).data)
+	t.flow.set_tab("owned")
+	_check(page.find_child("WardrobeGetMore", true, false) == null, "Get more: none once everything on sale is owned")
+	t.store.note_view(SERVER, ME, _answer([], {}, 24000).data)
+	t.flow._redraw()
+	_check(page.find_child("WardrobeGetMore", true, false) == null and _empty(page) != null, "Get more: none on an empty Owned, which keeps its drawing")
+	t.host.queue_free()
+	await _frames(2)
+	for sells: bool in [true, false]:
+		var off := _setup(false)
+		off.store.set_enabled(SERVER, ME, true, false, true)
+		off.wallet.set_enabled(SERVER, ME, true)
+		off.flow.surfaces = PollenSurfaces.new(sells, sells)
+		off.store.note_view(SERVER, ME, _owned_answer(["gold_leaf", "top_ten_ribbon"], 3000).data)
+		off.fake.replies = [_owned_answer(["gold_leaf", "top_ten_ribbon"], 3000)]
+		off.flow.show_wardrobe()
+		await _frames()
+		_check(off.flow.model().tab == "owned" and off.host.overlay.find_child("WardrobeCard_gold_leaf", true, false) != null and off.host.overlay.find_child("WardrobeGetMore", true, false) == null, "%s, shop off: no Get more" % _build(sells))
+		off.flow.show_more("hat")
+		_check(off.flow.model().tab == "owned", "%s, shop off: Get more never opens All items" % _build(sells))
+		off.host.queue_free()
+		await _frames(2)
 
 ## The page's empty list drawing, or null.
 static func _empty(page: Node) -> Control:

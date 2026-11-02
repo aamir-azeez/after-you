@@ -13,6 +13,10 @@ extends Control
 ##   item cards in their tier frames (kit/tier_frame.gd) with the tier mark and
 ##   word, and the price with its grain and about line, or Yours and Wearing.
 ##   An earned item has the Earned frame and a "Not for sale" lock chip.
+##   While the shop has anything the player does not own, every slot of Owned
+##   ends with a "Get more" card, an item card's size: the empty Wardrobe's bare
+##   hanger in a dashed card (presentation/empty_state_art.gd, drawn once, no
+##   pip). It asks for All items on its slot (more_chosen).
 ## Every item stays in the shop: nothing here counts down, runs out or leaves.
 ##
 ## Without the shop (a build that sells nothing, as iOS, or a server with
@@ -25,7 +29,8 @@ extends Control
 ##   the chip's +), tab ("all" or "owned"), kind (the slot chip picked), kinds
 ##   (slots that have something in this tab), selected (id or ""), view ("you"
 ##   or "friend"), preview (the look the big pip wears), featured (ids), and
-##   items: Array of {id, name, tier, slot, price, owned, worn, locked,
+##   more (bool: Owned ends with Get more), items: Array of {id, name, tier,
+##   slot, price, owned, worn, locked,
 ##   unlock_name, sold}, in shop order.
 ## Cards draw still pips (kit/pip_avatar.gd still mode), so a long list shares
 ## the one offscreen renderer; only the big pip is live, and it is made again
@@ -40,6 +45,7 @@ const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 const TierFrame = preload("res://presentation/kit/tier_frame.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
+const EmptyArt = preload("res://presentation/empty_state_art.gd")
 const Outfit = preload("res://services/outfit.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
@@ -55,6 +61,9 @@ const PICTURE := Color("efe8d4")
 const CHIP := Color("e6e0cc")
 const MINT := Color("a6d9c4")
 const CARD_SIZE := Vector2(206, 158)
+## An item card's inner margin and picture height.
+const CARD_PAD := 10
+const CARD_PICTURE := 72
 const SHELF_CARD_SIZE := Vector2(150, 150)
 const CARD_PIP := Vector2(56, 70)
 const SHELF_PIP := Vector2(50, 62)
@@ -65,6 +74,8 @@ signal tab_chosen(tab: String)
 signal kind_chosen(kind: String)
 signal view_chosen(view: String)
 signal item_chosen(id: String)
+## The Owned tab's Get more card: All items on slot `kind` ("" for every slot).
+signal more_chosen(kind: String)
 signal action_pressed(id: String)
 signal retry_pressed
 signal plus_pressed
@@ -332,12 +343,15 @@ func render(model: Dictionary) -> void:
 	var empty := ""
 	if shown.is_empty() and status.is_empty():
 		empty = PlayerCopy.WARDROBE_NOTHING_EARNED if not shop else (PlayerCopy.WARDROBE_NOTHING_IN_SHOP if tab == "all" else PlayerCopy.WARDROBE_NOTHING_OWNED)
-	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty])
+	# Owned ends with Get more when the flow says so (model.more), after at least one owned card.
+	var more := bool(model.get("more", false)) and not shown.is_empty()
+	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty, more])
 	if key != _cards_key:
 		_cards_key = key
 		_fill(_featured, featured, true)
 		_fill_kinds(model.get("kinds", []), kind)
 		_fill(_grid, shown, false)
+		if more: _grid.add_child(_more_card(kind))
 		_show_empty(empty)
 	else:
 		_restyle(_featured)
@@ -426,7 +440,7 @@ func _fill(box: Container, entries: Array, small: bool) -> void:
 func _restyle(box: Container) -> void:
 	var picked := str(_model.get("selected", ""))
 	for card: Node in box.get_children():
-		if not card is Button: continue
+		if not card is Button or not card.has_meta("item_id"): continue
 		var id := str(card.get_meta("item_id", ""))
 		var tier := str(card.get_meta("tier", "common"))
 		var on := id == picked
@@ -471,7 +485,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for side: String in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 8 if small else 10)
+	for side: String in ["left", "right", "top", "bottom"]: margin.add_theme_constant_override("margin_" + side, 8 if small else CARD_PAD)
 	card.add_child(margin)
 	var column := VBoxContainer.new()
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -480,7 +494,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	var picture := PanelContainer.new()
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
-	picture.custom_minimum_size.y = 64 if small else 72
+	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
 	column.add_child(picture)
 	var pip := PipAvatar.new(true, SpiritLook.PEACH, SHELF_PIP if small else CARD_PIP, true)
 	pip.outfit = Outfit.of(str(entry.id))
@@ -508,6 +522,27 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 		bottom.add_child(_tag(PlayerCopy.WARDROBE_WEARING if bool(entry.worn) else PlayerCopy.WARDROBE_OWNED_TAG))
 	elif bool(entry.sold) and shop:
 		bottom.add_child(ShopKit.price(int(entry.price), 13 if small else 15, INK))
+	return card
+
+## The Owned tab's Get more card for slot `kind`: an item card's size, the
+## bare hanger where the pip would be, and the words under it.
+func _more_card(kind: String) -> Button:
+	var card := Button.new()
+	card.name = "WardrobeGetMore"
+	card.custom_minimum_size = CARD_SIZE
+	card.accessibility_name = PlayerCopy.WARDROBE_GET_MORE
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+		card.add_theme_stylebox_override(state, ThemeRules.rounded(Color.TRANSPARENT if state in ["normal", "focus"] else Color(CHIP, 0.6), 16))
+	card.pressed.connect(func() -> void: more_chosen.emit(kind))
+	var art := MoreArt.new()
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	card.add_child(art)
+	var words := ShopKit.text(PlayerCopy.WARDROBE_GET_MORE, 15, INK_SOFT, ShopKit.bold_font())
+	words.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	words.offset_top = CARD_PAD + CARD_PICTURE
+	words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	words.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	card.add_child(words)
 	return card
 
 ## Yours or Wearing, in a small mint pill.
@@ -566,6 +601,19 @@ class Floor extends Control:
 		draw_set_transform(centre, 0.0, Vector2(1.0, 0.24))
 		draw_circle(Vector2.ZERO, size.x * 0.48, Color("24524b"), true, -1.0, true)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+## The Get more card's drawing: a dashed card and picture with the empty
+## Wardrobe's bare hanger in it (empty_state_art.gd "wardrobe"). It draws in
+## _draw only, so it costs nothing on idle frames.
+class MoreArt extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var spec: Dictionary = EmptyArt.CARDS.wardrobe
+		var picture := Rect2(CARD_PAD, CARD_PAD, size.x - CARD_PAD * 2, CARD_PICTURE)
+		EmptyArt.ghost_outline(self, Rect2(Vector2.ONE, size - Vector2(2, 2)), spec.radius, picture, spec.slot_radius, spec.ink)
+		EmptyArt.scene(self, "wardrobe", picture)
 
 ## The small four-point sparkle beside "Featured this week".
 class Sparkle extends Control:

@@ -355,8 +355,7 @@ static func plane_trail(ci: CanvasItem, from: Vector2, to: Vector2, bow: float) 
 static func ghost_card(ci: CanvasItem, spec: Dictionary, rect: Rect2, fade: float, bars: bool) -> Dictionary:
 	var parts := card_parts(spec, rect)
 	var tone: Color = spec.get("ink", LINE)
-	dashed(ci, round_rect(rect, spec.radius), Color(tone, 0.3 * fade), 1.5, 7.0, 6.0)
-	if parts.has("slot"): dashed(ci, round_rect(parts.slot, spec.slot_radius), Color(tone, 0.22 * fade), 1.5, 5.0, 5.0)
+	ghost_outline(ci, rect, spec.radius, parts.get("slot", Rect2()), spec.slot_radius, tone, fade)
 	if parts.has("button") and parts.button.size.x > 0.0: dashed(ci, round_rect(parts.button, minf(14.0, parts.button.size.y * 0.5)), Color(tone, 0.18 * fade), 1.5, 5.0, 5.0)
 	if bars:
 		var text: Rect2 = parts.text
@@ -364,6 +363,12 @@ static func ghost_card(ci: CanvasItem, spec: Dictionary, rect: Rect2, fade: floa
 			var bar := Rect2(text.position.x, text.get_center().y + line.z, text.size.x * line.x, line.y)
 			fill(ci, Transform2D.IDENTITY, round_rect(bar, line.y * 0.5), Color(tone, 0.07 * fade))
 	return parts
+
+## A ghost card's dashed edge and, when `picture` has an area, its dashed
+## picture slot (ghost_card's lines; the Wardrobe's Get more card draws them too).
+static func ghost_outline(ci: CanvasItem, rect: Rect2, radius: float, picture: Rect2, picture_radius: float, tone: Color, fade: float = 1.0) -> void:
+	dashed(ci, round_rect(rect, radius), Color(tone, 0.3 * fade), 1.5, 7.0, 6.0)
+	if picture.has_area(): dashed(ci, round_rect(picture, picture_radius), Color(tone, 0.22 * fade), 1.5, 5.0, 5.0)
 
 ## The wide Replays preview card (replays_flow._begin_replay_split): a picture
 ## over the text, with the full-width button outline at the bottom.

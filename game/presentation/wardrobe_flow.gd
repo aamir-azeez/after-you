@@ -109,6 +109,7 @@ func show_wardrobe(from: String = "settings") -> void:
 	_page.kind_chosen.connect(set_kind)
 	_page.view_chosen.connect(set_view)
 	_page.item_chosen.connect(select)
+	_page.more_chosen.connect(show_more)
 	_page.action_pressed.connect(tap_action)
 	_page.retry_pressed.connect(refresh)
 	_page.plus_pressed.connect(func() -> void: if bundles(): store_requested.emit())
@@ -138,6 +139,21 @@ func set_tab(tab: String) -> void:
 	_tab = _allowed_tab(tab)
 	_kind = ""
 	_redraw()
+
+## The Owned tab's Get more card: All items on slot `kind`, in one step, or on
+## the first slot with something to buy when this one has nothing more (the
+## earned leaves).
+func show_more(kind: String) -> void:
+	if not shop(): return
+	var buyable := _buyable_slots(model().items)
+	_tab = "all"
+	_kind = kind if kind in buyable or buyable.is_empty() else str(buyable[0])
+	if not _kind in Catalog.slots(): _kind = ""
+	_redraw()
+
+## The slots, in shop order, with something on sale the player does not own.
+static func _buyable_slots(items: Array) -> Array:
+	return Catalog.slots().filter(func(slot: String) -> bool: return items.any(func(entry: Dictionary) -> bool: return bool(entry.sold) and not bool(entry.owned) and entry.slot == slot))
 
 ## A slot chip: Hat, Body or Leaf.
 func set_kind(kind: String) -> void:
@@ -261,8 +277,10 @@ func model() -> Dictionary:
 	var kind: String = _kind if _kind in kinds else (str(picked.slot) if not picked.is_empty() and picked.slot in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
 	var preview := Outfit.from(look)
 	if not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
+	# Owned ends with Get more on every slot while the shop has anything the player does not own (show_more picks where it leads).
+	var more := selling and tab == "owned" and not _buyable_slots(items).is_empty()
 	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "status": _status, "retry": _retry, "shop": selling, "bundles": bundles(), "tab": tab, "kind": kind, "kinds": kinds,
-		"selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}
+		"more": more, "selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}
 
 ## The item picked while the player has picked none: what they wear, else the
 ## shelf's top slot, else the first item listed.

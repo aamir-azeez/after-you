@@ -250,6 +250,8 @@ const WARDROBE_BALANCE := "%s Pollen"
 const WARDROBE_FEATURED := "Featured this week"
 const WARDROBE_ALL := "All items"
 const WARDROBE_OWNED := "Owned"
+## The Owned tab's last card while the shop has more for that slot: it opens All items there.
+const WARDROBE_GET_MORE := "Get more"
 const WARDROBE_TIERS := {"common": "Common", "uncommon": "Uncommon", "rare": "Rare", "epic": "Epic", "special": "Special", "earned": "Earned"}
 const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf"}
 const WARDROBE_PRICE := "%s Pollen"
