@@ -14,6 +14,8 @@ extends RefCounted
 ##   until this phone keeps the look it was accepted in.
 ## - solo(): both pips are the player's own, so both wear their look now,
 ##   live and in replays alike (solo turns keep no looks of their own).
+## - home(): the Home island's pair (IslandWorld actors "a" and "b") is the
+##   player's own too, so it wears what solo() gives.
 ## Rooms name the viewer's slot in `player_slot` (p0 hosts, p1 joined).
 const OwnLook = preload("res://services/own_look.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
@@ -34,6 +36,10 @@ static func solo() -> Dictionary:
 	var result := {}
 	for slot: String in SLOTS: result[slot] = own.duplicate()
 	return result
+
+static func home() -> Dictionary:
+	var looks := solo()
+	return {"a": looks.p0, "b": looks.p1}
 
 static func replay(recordings: Array, looks: RefCounted = null, unsent: Array = []) -> Dictionary:
 	var store: RefCounted = looks if looks != null else TurnLooks.shared()

@@ -869,10 +869,12 @@ func _refresh_home_pollen() -> void:
 	home_menu_view.show_wardrobe(wardrobe_flow.available())
 	_refresh_pollen_chip()
 
-## The wardrobe changed (services/wardrobe.gd changed): the row and the chip, and the row's pip in the current look.
+## The wardrobe changed (services/wardrobe.gd changed): the row and the chip, and the row's pip and the island's pips in the current look.
 func _refresh_home_wardrobe() -> void:
 	_refresh_home_pollen()
-	if mode == "home" and is_instance_valid(home_menu_view): home_menu_view.refresh_wardrobe_look()
+	if mode != "home": return
+	if is_instance_valid(home_menu_view): home_menu_view.refresh_wardrobe_look()
+	if is_instance_valid(home_stage_view): home_stage_view.refresh_look()
 
 ## The identity was read or made: the wardrobe follows the signed-in player
 ## (their look, and what the catalogue releases), then Home's row and chip.

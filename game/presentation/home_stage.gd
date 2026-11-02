@@ -10,6 +10,7 @@ const KeepsakeCard = preload("res://presentation/keepsakes/keepsake_card.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
 const ReactionCatalog = preload("res://services/reaction_catalog.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+const SlotLooks = preload("res://presentation/slot_looks.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 ## Explore mode: the gold spirit walks the islands with the joystick and the
 ## camera follows it, closer in. Presentation only; nothing is saved.
@@ -241,6 +242,7 @@ func _ready() -> void:
 		_goals[role] = actor.position
 		_rests[role] = 0.7 if _actors.size()==1 else 1.4
 	_world.home_presentation_owner = get_instance_id()
+	refresh_look()
 	_reset = _pill("HomeResetView", "Reset view", RESET_ICON)
 	_reset.pressed.connect(_reset_view)
 	add_child(_reset)
@@ -274,6 +276,14 @@ func _ready() -> void:
 	_fold_job = StaticBatch.start(_terrain, [_world, self, get_tree().current_scene])
 	_layout()
 	_frame_camera()
+
+## Both Home pips wear the player's look, as in a solo chapter
+## (presentation/slot_looks.gd home()). Main calls it again whenever the
+## wardrobe changes; a pip already in that look keeps its items as they are
+## (SpiritVisual.wear).
+func refresh_look() -> void:
+	if not is_instance_valid(_world) or _world.home_presentation_owner != get_instance_id() or _world.terrain != _terrain: return
+	_world.wear_slots(SlotLooks.home())
 
 func _stage_rect() -> Rect2:
 	return _stage_in(get_global_rect())

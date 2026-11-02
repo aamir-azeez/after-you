@@ -6,6 +6,8 @@ const Levels = preload("res://core/levels.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Spirit = preload("res://presentation/spirit_visual.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
 
 ## Stands in for the Wardrobe in the real app: on, and where it was opened from.
 class WardrobeStub extends "res://presentation/wardrobe_flow.gd":
@@ -43,6 +45,8 @@ func _run() -> void:
 	await _test_explore_zoom()
 	Stage._retained_view.clear()
 	await _test_tall_screen()
+	Stage._retained_view.clear()
+	await _test_own_look()
 	print("AFTER YOU HOME STAGE: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -939,3 +943,63 @@ func _test_tall_screen() -> void:
 	stage._frame_camera()
 	_check(is_equal_approx(world.camera.size,stage.zoom_size),"A side inset at 16:9 keeps Home's authored camera size")
 	viewport.free()
+
+## Both Home pips wear the player's look, as in a solo chapter: from the
+## wardrobe's first read, at once when the look changes (a pending look put
+## on offline too), only in items the server offers, and Home shown again
+## keeps the items it already wore. A level built after Home wears nothing.
+func _test_own_look() -> void:
+	var server := "https://home-look.example.test"
+	var me := "dddddddddddddddddddddd"
+	var tag := Crypto.new().generate_random_bytes(8).hex_encode()
+	var path := "user://home-look-"+tag+".json"
+	var wardrobe_path := "user://home-look-wardrobe-"+tag+".json"
+	var wardrobe: RefCounted = Wardrobe.new(wardrobe_path)
+	Wardrobe.use_shared(wardrobe)
+	var worn := {"hat": "daisy", "body": "tide", "leaf": "gold_leaf"}
+	var offered := ["daisy", "tide", "gold_leaf"]
+	var view := func(look: Dictionary, offer: Array) -> Dictionary:
+		return {"name_price": 0.0, "wardrobe": {"items": offered, "packs": [], "look": look, "look_revision": 1.0,
+			"offered": offer, "offered_packs": [], "sets": {}, "unlocked": []}}
+	var viewport := SubViewport.new()
+	viewport.size=Vector2i(1280,720)
+	root.add_child(viewport)
+	var app := Main.new()
+	app.saves=Storage.new(path)
+	app.saves.data.settings.sound=false
+	app.saves.data.settings.haptics=false
+	app.saves.flush()
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	await process_frame
+	await process_frame
+	var actors: Dictionary = app.world.actors
+	_check(actors.a.outfit().is_empty() and actors.b.outfit().is_empty(),"Home pips wear the default look while the wardrobe is off")
+	wardrobe.scope_source = func() -> Dictionary: return {"server": server, "owner": me}
+	wardrobe.set_enabled(server, me, true)
+	wardrobe.note_view(server, me, view.call(worn, offered))
+	_check(actors.a.outfit()==worn and actors.b.outfit()==worn,"Both Home pips wear the player's look once the wardrobe reads it: %s %s" % [actors.a.outfit(), actors.b.outfit()])
+	var hat: Node = actors.a.head.find_child("Wear",true,false)
+	_check(hat!=null,"The hat is on the own pip's head")
+	app._show_home()
+	await process_frame
+	_check(app.world.actors.a==actors.a and actors.a.outfit()==worn and is_instance_valid(hat) and actors.a.head.find_child("Wear",true,false)==hat,"Home shown again keeps the items it already wore")
+	wardrobe.put_on(server, me, {"hat": "daisy"}, 1000)
+	_check(actors.a.outfit()=={"hat": "daisy"} and actors.b.outfit()=={"hat": "daisy"},"A look put on (pending, offline too) shows on both Home pips at once")
+	wardrobe.note_view(server, me, view.call({"hat": "daisy"}, ["tide"]))
+	_check(actors.a.outfit().is_empty() and actors.b.outfit().is_empty(),"An item the server no longer offers comes off the Home pips")
+	wardrobe.note_view(server, me, view.call(worn, offered))
+	wardrobe.set_enabled(server, me, false)
+	_check(actors.a.outfit().is_empty() and actors.b.outfit().is_empty(),"The wardrobe turned off takes the look off the Home pips")
+	wardrobe.set_enabled(server, me, true)
+	app.world.load_level(Levels.get_level("first-light"))
+	_check(app.world.actors.a.outfit().is_empty() and app.world.actors.b.outfit().is_empty(),"A level built after Home wears nothing of Home's look")
+	viewport.free()
+	await process_frame
+	await create_timer(0.15).timeout
+	Wardrobe.use_shared(null)
+	Catalog.set_offered([])
+	for file: String in [path, wardrobe_path]:
+		for suffix: String in ["",".tmp",".backup"]:
+			if FileAccess.file_exists(file+suffix): DirAccess.remove_absolute(file+suffix)
