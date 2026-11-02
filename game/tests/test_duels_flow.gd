@@ -489,6 +489,14 @@ func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow._tick(at + 80000)
 	await _frames(3)
 	_check(reads.call(lobby_path) == lobby_reads + 1, "a hint for a duel the lobby already has as new reads nothing")
+	# Each turn in a running duel sends a hint; its tile shows the dots, time and whose turn it is, so the lobby reads once per burst.
+	for index in range(3): live.duels_changed.emit(DUEL, 250 + index)
+	flow._tick(at + 85000)
+	await _frames(3)
+	flow._tick(at + 85001)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 2, "turn hints for a duel the lobby shows read it once: %d" % (reads.call(lobby_path) - lobby_reads - 1))
+	lobby_reads += 1
 	live.duels_changed.emit(other, 300)
 	flow._tick(at + 90000)
 	await _frames(3)
@@ -529,11 +537,19 @@ func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow._tick(later + Clock.DUEL_INTERVAL_MS + 1)
 	await _frames(3)
 	_check(reads.call(duel_path) == duel_reads and reads.call(lobby_path) == lobby_reads, "an older hint for the open duel and hints for the lobby under it read nothing")
+	# The other pair takes two turns: their hints read the open duel once, and its page shows the new steps.
+	var turned := running.duplicate(true)
+	turned.updated_ms = 501
+	turned.sides[1].steps = 2
+	turned.sides[1].ticks = 190
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": turned, "duel_hints_version": 1}}
 	live.duels_changed.emit(DUEL, 500)
 	live.duels_changed.emit(DUEL, 501)
 	flow._tick(later + Clock.DUEL_INTERVAL_MS + 2)
 	await _frames(3)
 	_check(reads.call(duel_path) == duel_reads + 1 and reads.call(lobby_path) == lobby_reads, "hints for the open duel read it once, and not the lobby")
+	var open_page: CanvasLayer = flow.screen.overlay()
+	_check(open_page != null and int(open_page.view.sides[1].steps) == 2 and int(open_page.view.updated_ms) == 501, "a turn hint brings the other pair's new steps to the open duel")
 	flow._tick(later + Clock.DUEL_INTERVAL_MS + 2 + Clock.DUEL_BACKUP_MS)
 	await _frames(3)
 	_check(reads.call(duel_path) == duel_reads + 2, "an open duel still reads at its backup pace")

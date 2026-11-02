@@ -361,7 +361,7 @@ describe("duel pay", () => {
 });
 
 describe("duel news", () => {
-  it("tells both pairs of an answer, a finish, a leave, a check result and an end, never the player who acted", () => {
+  it("tells both pairs of an answer, every turn, a finish, a leave, a check result and an end, never the player who acted", () => {
     const duel = friend();
     expect(newsRecipients(null, duel, A1).sort()).toEqual([A2, B1, B2].sort());
     let before = milestone(duel);
@@ -373,10 +373,20 @@ describe("duel news", () => {
     expect(newsRecipients(before, duel, A1)).toEqual([A2]);
     expect(claimRoom(duel, B2, { room_id: "rb", invite_code: "ib" }, T0 + 3).ok).toBe(true);
     before = milestone(duel);
+    // A mid-run turn moves the steps, time and whose turn it is that both pages show: the other pair and the partner hear it.
     expect(progress(duel, note("ra", 1, 100), T0 + 4).ok).toBe(true);
-    expect(progress(duel, note("rb", 1, 90), T0 + 5).ok).toBe(true);
-    // Mid-run turns move steps and ticks, which are no milestone.
+    expect(newsRecipients(before, duel, A1).sort()).toEqual([A2, B1, B2].sort());
+    before = milestone(duel);
+    // A repeated or older note moves nothing, so it tells nobody.
+    expect(progress(duel, note("ra", 1, 100), T0 + 4).ok).toBe(true);
     expect(newsRecipients(before, duel, A1)).toEqual([]);
+    expect(progress(duel, note("rb", 1, 90), T0 + 5).ok).toBe(true);
+    expect(newsRecipients(before, duel, B2).sort()).toEqual([A1, A2, B1].sort());
+    // Whose turn alone is news too: the partner's pill turns to "Your turn".
+    before = milestone(duel);
+    expect(progress(duel, { ...note("rb", 2, 90), turn: B2 }, T0 + 5).ok).toBe(true);
+    expect(newsRecipients(before, duel, B1).sort()).toEqual([A1, A2, B2].sort());
+    before = milestone(duel);
     expect(progress(duel, note("ra", 4, 400, true), T0 + 6).ok).toBe(true);
     expect(newsRecipients(before, duel, A1).sort()).toEqual([A2, B1, B2].sort());
     before = milestone(duel);
@@ -390,9 +400,13 @@ describe("duel news", () => {
     expect(newsRecipients(milestone(duel), duel, null)).toEqual([]);
   });
 
-  it("tells a ghost race's pair of its check result and an expired challenge's players, and nobody erased", () => {
+  it("tells a ghost race's pair of its turns and check result and an expired challenge's players, and nobody erased", () => {
     const race = ghost(1000, T0, "developer");
     expect(claimRoom(race, A1, { room_id: "ra", invite_code: "ia" }, T0 + 1).ok).toBe(true);
+    const claimed = milestone(race);
+    expect(progress(race, note("ra", 1, 100), T0 + 2).ok).toBe(true);
+    // A ghost race's turn has only the partner to tell.
+    expect(newsRecipients(claimed, race, A1)).toEqual([A2]);
     expect(progress(race, note("ra", 4, 900, true), T0 + 2).ok).toBe(true);
     const waiting = milestone(race);
     expect(verdict(race, race.sides[0].entry_id!, "passed", T0 + 3)).toBe(true);

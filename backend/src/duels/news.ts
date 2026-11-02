@@ -7,9 +7,11 @@ import { duelsOn } from "./turn-hook";
  * when something it shows has moved, instead of polling.
  *
  * - The board (leaderboards/board.ts) announces the changes it makes to a duel
- *   it holds: an answer, a room claimed (that side only), a finish, a leave, a
- *   check result, an expiry or an end (model.ts milestone). A mid-run turn
- *   announces nothing.
+ *   it holds: an answer, a room claimed (that side only), every accepted turn
+ *   (its steps, time and whose turn it is), a finish, a leave, a check result,
+ *   an expiry or an end (model.ts milestone). A turn tells the other pair and
+ *   the partner, never the player who took it: three Player RPCs in a friend
+ *   duel, one in a ghost race.
  * - The routes (routes.ts) announce a new duel once every player's pointer to
  *   it exists, and party changes, to the players whose rows changed.
  *

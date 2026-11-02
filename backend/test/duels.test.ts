@@ -749,7 +749,7 @@ describe("duel hints", () => {
     await step(sockets, () => party(b, "leave"), { a: 1, b: 0, c: 0 });
   });
 
-  it("follow a friend duel's milestones to the players who did not act, and never a mid-run turn", async () => {
+  it("follow a friend duel's milestones and every turn to the players who did not act", async () => {
     const { a1, a2, b1, b2 } = await pairs();
     await objectsLive([...players(a1, a2, b1, b2), board()]);
     const sockets = { a1: await connect(a1), a2: await connect(a2), b1: await connect(b1), b2: await connect(b2) };
@@ -767,13 +767,30 @@ describe("duel hints", () => {
     const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: room.invite_code }));
     const run = await relayRun(0);
     const hosting: [Account, Account] = joined.host_id === a1.player_id ? [a1, a2] : [a2, a1];
-    let replies: MutationV2[] = [];
-    await step(sockets, async () => { replies = await play(joined, hosting, { ...run, turns: run.turns.slice(0, -1) }); }, { a1: 0, a2: 0, b1: 0, b2: 0 });
+    const named: [string, Account][] = [["a1", a1], ["a2", a2], ["b1", b1], ["b2", b2]];
+    const allBut = (actor: Account) => Object.fromEntries(named.map(([name, account]) => [name, account === actor ? 0 : 1]));
+    // Every mid-run turn tells the other pair and the partner (whose page shows whose turn it is): three Player
+    // requests, none to the player who took it, and no row on the other pair's Players. A retried turn tells nobody.
+    // Duel hints only: the room hint each turn already sends the partner is the room's own.
+    const hints = vi.spyOn(Player.prototype, "liveHint"), duelHints = () => hints.mock.calls.filter(([, hint]) => hint.kind === "duels").length;
+    let current = joined;
+    for (const [index, [who, recording, checkpoint]] of run.turns.slice(0, -1).entries()) {
+      const actor = hosting[who], body = turn(current, recording, checkpoint), sent = duelHints();
+      const told = await meterRows({ b1: players(b1)[0], b2: players(b2)[0] }, () => step(sockets, async () => {
+        current = (await ok<MutationV2>(call("/v2/rooms/" + joined.room_id + "/turns", "POST", actor, body))).room;
+      }, allBut(actor)));
+      expect(duelHints() - sent).toBe(3);
+      expect(told.rows.b1.written + told.rows.b2.written).toBe(0);
+      // The hint names the duel at the time its next read shows, with the new step.
+      const seen = (await detail(b1, duel)).duel;
+      expect(told.value.b1[0]).toEqual({ type: "duels_changed", duel: duel.duel_id, at: seen.updated_ms });
+      expect(seen.sides[0].steps).toBe(index + 1);
+      await step(sockets, () => ok(call("/v2/rooms/" + joined.room_id + "/turns", "POST", actor, body)), { a1: 0, a2: 0, b1: 0, b2: 0 });
+      expect(duelHints() - sent).toBe(3);
+    }
     const [who, recording, checkpoint] = run.turns[run.turns.length - 1];
     const finisher = hosting[who];
-    const named: [string, Account][] = [["a1", a1], ["a2", a2], ["b1", b1], ["b2", b2]];
-    const others = Object.fromEntries(named.map(([name, account]) => [name, account === finisher ? 0 : 1]));
-    await step(sockets, () => ok(call("/v2/rooms/" + joined.room_id + "/turns", "POST", finisher, turn(replies[replies.length - 1].room, recording, checkpoint))), others);
+    await step(sockets, () => ok(call("/v2/rooms/" + joined.room_id + "/turns", "POST", finisher, turn(current, recording, checkpoint))), allBut(finisher));
     await step(sockets, () => ok(call(path(duel, "leave"), "POST", b2, { schema_version: 1 })), { a1: 1, a2: 1, b1: 1, b2: 0 });
     // The check result has no actor: all four hear the duel end.
     const ended = await step(sockets, async () => verdicts((await job()).entries, () => true), { a1: 1, a2: 1, b1: 1, b2: 1 });

@@ -319,14 +319,15 @@ export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
 }
 
 /**
- * What a duel's players are told of (duels/news.ts): the changes that matter to them, never a mid-run turn.
- * `shared` goes to both pairs (an answer, a finish, a leave, a check result, an end); `rooms[i]` only to side
- * i, whose members open or join that room. Steps, ticks and whose turn it is are left out on purpose.
+ * What a duel's players are told of (duels/news.ts): the changes that matter to them. `shared` goes to both
+ * pairs (an answer, every accepted turn, a finish, a leave, a check result, an end): a turn moves the steps,
+ * time and whose turn it is that both duel pages show. `rooms[i]` goes only to side i, whose members open or
+ * join that room. A repeated or older turn moves nothing, so it tells nobody.
  */
 export type Milestone = { shared: string; rooms: (string | null)[] };
 export function milestone(duel: Duel): Milestone {
   return {
-    shared: JSON.stringify([duel.status, duel.accepted_ms, duel.sides.map(side => side && [side.finished_ms !== null, side.left, side.check])]),
+    shared: JSON.stringify([duel.status, duel.accepted_ms, duel.sides.map(side => side && [side.finished_ms !== null, side.left, side.check, side.steps, side.ticks, side.turn])]),
     rooms: duel.sides.map(side => side?.room?.room_id ?? null)
   };
 }
