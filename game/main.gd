@@ -1293,12 +1293,12 @@ func _host_room_sharing() -> RoomSharing:
 	return sharing
 
 ## An internal child, so the socket closes with Main. It opens once an online
-## screen is up (the hub, a room or Friends) and reuses the capability answer
+## screen is up (the hub, a room, Friends or Duels) and reuses the capability answer
 ## the relay session already holds.
 func _host_live_connection() -> LiveConnection:
 	var live := LiveConnection.new()
 	live.capabilities = func() -> Dictionary: return relay_session.capabilities if relay_session != null else {}
-	live.wanted = func() -> bool: return mode in [RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS, "relay_online"] or is_instance_valid(relay_child)
+	live.wanted = func() -> bool: return mode in [RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS, DuelsFlow.MODE_DUELS, "relay_online"] or is_instance_valid(relay_child)
 	add_child(live,false,Node.INTERNAL_MODE_BACK)
 	return live
 

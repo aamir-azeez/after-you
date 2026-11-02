@@ -17,6 +17,11 @@ const DUELS_LOBBY_INTERVAL_MS := 60000
 const DUEL_INTERVAL_MS := 30000
 ## An open ghost race whose run waits for its replay check (the job runs every 15 minutes).
 const DUEL_CHECK_INTERVAL_MS := 60000
+## The backup paces while duel changes come as live hints (duels_flow.gd): only
+## for a hint the server could not deliver, so the lobby costs about 16 Durable
+## Object requests an hour (4 reads of about 4) and an open duel about 12 (6 of 2).
+const DUELS_LOBBY_BACKUP_MS := 900000
+const DUEL_BACKUP_MS := 600000
 const FAILURE_DELAYS_MS := [5000, 15000, 30000]
 const PollBackoff = preload("res://services/poll_backoff.gd")
 

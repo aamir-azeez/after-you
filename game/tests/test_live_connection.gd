@@ -87,6 +87,7 @@ func _run() -> void:
 	live.set_process(false)
 	live.room_changed.connect(func(room: String, seq: int) -> void: events.append(["room", room, seq]))
 	live.friends_changed.connect(func(early: bool) -> void: events.append(["friends", early]))
+	live.duels_changed.connect(func(duel: String, at: int) -> void: events.append(["duels", duel, at]))
 	live.missed_hints.connect(func(since: int) -> void: events.append(["missed", since]))
 	live.health_changed.connect(func(healthy: bool) -> void: events.append(["health", healthy]))
 	await _capability_gate()
@@ -143,8 +144,14 @@ func _handshake_and_hints() -> void:
 	socket.push(JSON.stringify({"type": "something_else"}))
 	socket.push("not json")
 	socket.push(JSON.stringify({"type": "friends_changed", "pad": "x".repeat(Live.MAX_MESSAGE_BYTES)}))
+	socket.push(JSON.stringify({"type": "duels_changed", "duel": "d".repeat(32), "at": 1700000000000}))
+	socket.push(JSON.stringify({"type": "duels_changed", "at": 5}))
+	socket.push(JSON.stringify({"type": "duels_changed", "duel": "short", "at": 5}))
+	socket.push(JSON.stringify({"type": "duels_changed", "duel": "z".repeat(32), "at": 5}))
+	socket.push(JSON.stringify({"type": "duels_changed", "duel": "d".repeat(32)}))
+	socket.push(JSON.stringify({"type": "duels_changed", "at": -1}))
 	await step()
-	check(events == [["room", ROOM, 7], ["friends", true]], "Valid hints are passed on; malformed, unknown and oversized ones are dropped")
+	check(events == [["room", ROOM, 7], ["friends", true], ["duels", "d".repeat(32), 1700000000000], ["duels", "", 5]], "Valid hints are passed on; malformed, unknown and oversized ones are dropped: %s" % [events])
 
 func _keepalive_and_silence() -> void:
 	var socket := last()

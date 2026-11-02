@@ -22,6 +22,7 @@ extends Node
 ## - rooms: relay_lobby_flow (open_lobby, lobby_action, join_room)
 ## - node: add_child
 ## - sound: soundscape when Main has it (play_fixed_cue), for a won result's bell, once per duel
+## - live: live_connection when Main has it (duels_changed, missed_hints, healthy)
 ##
 ## Reads on their own (services/refresh_schedule.gd keeps the pace): the lobby
 ## once a minute while a challenge or running duel can change without this
@@ -30,6 +31,15 @@ extends Node
 ## or while the lobby is hidden (the other pair's run playing over it); coming
 ## back reads the screen in front once, at once. Opening, a page closing and
 ## this player's own actions read at once. A failed read keeps the same pace.
+##
+## Hints (services/live_connection.gd duels_changed): while the live socket is
+## healthy and the server says it sends duel hints (duel_hints_version), a
+## change reads only the screen it touches, once however many arrive, and the
+## timed reads drop to a backup pace (DUELS_LOBBY_BACKUP_MS, DUEL_BACKUP_MS).
+## A hint for the open duel reads that duel; any other reads the lobby, unless
+## a page other than Party is over it (closing that page reads it anyway). A
+## socket that comes back after dropping reads both once (missed_hints), and
+## the moment it drops the pace goes back to the one above.
 const DuelsScreen = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
@@ -77,6 +87,47 @@ func _init(main: Node = null) -> void:
 
 func _ready() -> void:
 	set_process(is_open())
+	var live: Node = host.get("live_connection") if host != null else null
+	if not is_instance_valid(live): return
+	live.duels_changed.connect(_hinted)
+	live.missed_hints.connect(_caught_up)
+
+## Whether duel changes reach this phone as hints now: a healthy socket to a server that sends them.
+func _hints_live() -> bool:
+	var live: Node = host.get("live_connection")
+	return is_instance_valid(live) and live.healthy() and host.relay_session != null and host.relay_session.duel_hints_supported()
+
+## A duel this player is in changed at `at_ms` (`duel_id` empty: the party or the list of duels).
+## The read starts on the next frame, so hints arriving together read once.
+func _hinted(duel_id: String, at_ms: int) -> void:
+	if not _reading(): return
+	var now := Time.get_ticks_msec()
+	var page := _bind(now)
+	if page != null and page.view.duel_id == duel_id:
+		if int(page.view.get("updated_ms", 0)) < at_ms: _duel_reads.hint(now)
+		return
+	if not duel_id.is_empty() and _lobby_holds(duel_id, at_ms): return
+	_ask_lobby(now)
+
+## Hints were lost while the socket was down since `since_ms`: each screen in front reads once, unless a read begun after that covers it.
+func _caught_up(since_ms: int) -> void:
+	if not _reading(): return
+	var now := Time.get_ticks_msec()
+	_bind(now)
+	_duel_reads.hint(now, since_ms)
+	_ask_lobby(now, since_ms)
+
+## One lobby read for a hint, while nothing but Party is over it (closing any other page reads it anyway).
+func _ask_lobby(now: int, covered_since: int = -1) -> void:
+	var overlay: CanvasLayer = screen.overlay()
+	if overlay != null and not overlay is PartyPage: return
+	if _lobby_reads.hint(now, covered_since): _lobby_asked = true
+
+## Whether the kept lobby already has `duel_id` as of `at_ms` or later.
+func _lobby_holds(duel_id: String, at_ms: int) -> bool:
+	for view: Dictionary in client().last_lobby().get("duels", []):
+		if view.duel_id == duel_id: return int(view.updated_ms) >= at_ms
+	return false
 
 func _process(_delta: float) -> void:
 	_tick(Time.get_ticks_msec())
@@ -100,12 +151,13 @@ func _tick(now: int) -> void:
 
 ## Binds both clocks to what is open now and returns the duel page being read, or null.
 func _bind(now: int) -> CanvasLayer:
-	_lobby_reads.bind("lobby/%d" % screen.get_instance_id(), now, RefreshClock.DUELS_LOBBY_INTERVAL_MS)
+	var hinted := _hints_live()
+	_lobby_reads.bind("lobby/%d" % screen.get_instance_id(), now, RefreshClock.DUELS_LOBBY_BACKUP_MS if hinted else RefreshClock.DUELS_LOBBY_INTERVAL_MS)
 	var page: CanvasLayer = screen.overlay()
 	if not page is DuelPage or not page.alive() or page.view.is_empty():
 		_duel_reads.bind("", now)
 		return null
-	_duel_reads.bind("duel/%d/%s" % [page.get_instance_id(), page.view.duel_id], now, refresh_ms(page.view))
+	_duel_reads.bind("duel/%d/%s" % [page.get_instance_id(), page.view.duel_id], now, refresh_ms(page.view, hinted))
 	return page
 
 func _notification(what: int) -> void:
@@ -401,8 +453,10 @@ func _show_duel(page: CanvasLayer, duel: Dictionary) -> void:
 		page.close()
 		_open_result(duel)
 
-## How often an open duel reads again: DUEL_CHECK_INTERVAL_MS while your ghost race run waits for its check, else DUEL_INTERVAL_MS.
-static func refresh_ms(view: Dictionary) -> int:
+## How often an open duel reads again: DUEL_BACKUP_MS while hints come (`hinted`, the check result is one),
+## else DUEL_CHECK_INTERVAL_MS while your ghost race run waits for its check, else DUEL_INTERVAL_MS.
+static func refresh_ms(view: Dictionary, hinted: bool = false) -> int:
+	if hinted: return RefreshClock.DUEL_BACKUP_MS
 	var waiting: bool = view.kind == "ghost" and view.sides[view.mine].check == "waiting"
 	return RefreshClock.DUEL_CHECK_INTERVAL_MS if waiting else RefreshClock.DUEL_INTERVAL_MS
 

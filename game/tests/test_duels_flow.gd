@@ -41,6 +41,9 @@ class FakeApi extends Node:
 
 class FakeSession extends RefCounted:
 	var on := true
+	## The server sends duel hints (duel_hints_version).
+	var hints := false
+	func duel_hints_supported() -> bool: return on and hints
 	var capabilities := {"duels_version": 1}
 	var last_lobby_code := ""
 	func duels_supported() -> bool: return on
@@ -66,6 +69,13 @@ class FakeFriends extends RefCounted:
 	func view() -> Dictionary: return {"friends": [{"player_id": MAYA, "status": "accepted"}, {"player_id": FINN, "status": "accepted"}]}
 	func refresh(_manual: bool = false) -> bool: return true
 
+## Main's live socket: hints by hand, healthy while `good`.
+class FakeLive extends Node:
+	signal duels_changed(duel_id: String, at_ms: int)
+	signal missed_hints(since_ms: int)
+	var good := false
+	func healthy() -> bool: return good
+
 ## A page that closes, standing in for the ghost and challenge pages.
 class FakePage extends CanvasLayer:
 	func close() -> void: queue_free()
@@ -81,6 +91,7 @@ class SlowFriends extends FakeFriends:
 
 class FakeMain extends Node:
 	var api: Node
+	var live_connection: Node
 	var config := {}
 	var relay_session := FakeSession.new()
 	var relay_lobby_flow := FakeLobby.new()
@@ -114,6 +125,8 @@ func _run() -> void:
 	root.add_child(main)
 	root.add_child(api)
 	main.add_child(main.ui)
+	main.live_connection = FakeLive.new()
+	main.add_child(main.live_connection)
 	var flow := Flow.new(main)
 	main.add_child(flow)
 	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_view({}, "challenged")]}}
@@ -230,6 +243,7 @@ func _run() -> void:
 	await _polling(main, api, flow)
 	await _leaving(api, flow)
 	await _already_open(main, api, flow)
+	await _hinted(main, api, flow)
 	flow.open()
 	await _frames(2)
 	flow.close()
@@ -440,6 +454,94 @@ func _already_open(main: FakeMain, api: FakeApi, flow: Node) -> void:
 		flow.close()
 		await _frames(2)
 	api.replies.erase("POST /v1/duels/challenge")
+
+## With a healthy socket to a server that sends duel hints, a hint reads only
+## the screen it touches, once per burst, and the timed reads drop to the
+## backup pace; a dropped socket brings back the old pace, and a socket that
+## comes back reads once.
+func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
+	var lobby_path := "/v1/duels"
+	var duel_path := "/v1/duels/%s/%s" % [BOARD, DUEL]
+	var other := "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+	var reads := func(path: String) -> int: return api.requests.filter(func(item: Array) -> bool: return item[0] == "GET" and item[1] == path).size()
+	var live: FakeLive = main.live_connection
+	var running := _view({})
+	running.updated_ms = 200
+	api.replies["GET " + lobby_path] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [running]}}
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": running}}
+	live.good = true
+	main.relay_session.hints = true
+	flow.open()
+	flow.set_process(false)
+	await _frames(3)
+	var lobby_reads: int = reads.call(lobby_path)
+	var at := Time.get_ticks_msec() + 4000000
+	flow._tick(at)
+	flow._tick(at + Clock.DUELS_LOBBY_INTERVAL_MS + 1000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads, "with hints the lobby does not read every minute")
+	for index in range(3): live.duels_changed.emit("", 300)
+	flow._tick(at + 70000)
+	await _frames(3)
+	flow._tick(at + 70001)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 1, "hints arriving together read the lobby once: %d" % (reads.call(lobby_path) - lobby_reads))
+	live.duels_changed.emit(DUEL, 200)
+	flow._tick(at + 80000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 1, "a hint for a duel the lobby already has as new reads nothing")
+	live.duels_changed.emit(other, 300)
+	flow._tick(at + 90000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 2, "a hint for a duel the lobby lacks reads the lobby")
+	flow._tick(at + 90000 + Clock.DUELS_LOBBY_BACKUP_MS)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 3, "the lobby still reads at the backup pace")
+	# The socket drops: the minute comes back at once.
+	live.good = false
+	var dropped := at + 100000 + Clock.DUELS_LOBBY_BACKUP_MS
+	flow._tick(dropped)
+	flow._tick(dropped + Clock.DUELS_LOBBY_INTERVAL_MS)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 4, "without the socket the lobby reads every minute again")
+	# A socket that comes back reads once, unless a read begun since it dropped covers it.
+	live.good = true
+	live.missed_hints.emit(dropped)
+	flow._tick(dropped + Clock.DUELS_LOBBY_INTERVAL_MS + 1)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 4, "a read begun after the socket dropped covers the hints it missed")
+	live.missed_hints.emit(dropped + Clock.DUELS_LOBBY_INTERVAL_MS + 1)
+	flow._tick(dropped + Clock.DUELS_LOBBY_INTERVAL_MS + 2)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 5, "a socket that comes back reads the lobby once")
+	# An open duel: its hint reads it alone, other hints wait for the page to close.
+	flow._open_duel(Client.valid_view(running))
+	await _frames(3)
+	lobby_reads = reads.call(lobby_path)
+	var duel_reads: int = reads.call(duel_path)
+	var later := dropped + 2 * Clock.DUELS_LOBBY_INTERVAL_MS
+	flow._tick(later)
+	flow._tick(later + Clock.DUEL_INTERVAL_MS)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads, "with hints an open duel does not read every 30 s")
+	live.duels_changed.emit(DUEL, 150)
+	live.duels_changed.emit(other, 400)
+	live.duels_changed.emit("", 400)
+	flow._tick(later + Clock.DUEL_INTERVAL_MS + 1)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads and reads.call(lobby_path) == lobby_reads, "an older hint for the open duel and hints for the lobby under it read nothing")
+	live.duels_changed.emit(DUEL, 500)
+	live.duels_changed.emit(DUEL, 501)
+	flow._tick(later + Clock.DUEL_INTERVAL_MS + 2)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 1 and reads.call(lobby_path) == lobby_reads, "hints for the open duel read it once, and not the lobby")
+	flow._tick(later + Clock.DUEL_INTERVAL_MS + 2 + Clock.DUEL_BACKUP_MS)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 2, "an open duel still reads at its backup pace")
+	live.good = false
+	main.relay_session.hints = false
+	flow.close()
+	await _frames(2)
 
 func _frames(count: int) -> void:
 	for index in range(count): await process_frame

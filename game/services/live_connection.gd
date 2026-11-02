@@ -38,6 +38,9 @@ signal room_changed(room_id: String, seq: int)
 ## `early`: the server opened an early friends list read for it (a shared room
 ## changed, a request was accepted). A request that arrived or was cancelled is not early.
 signal friends_changed(early: bool)
+## A duel this player is in moved on at `at_ms` (server time), or, with `duel_id`
+## empty, their party or list of duels changed (presentation/duels/duels_flow.gd).
+signal duels_changed(duel_id: String, at_ms: int)
 ## The socket reopened after one that was open dropped or was paused: hints sent
 ## since `since_ms` are lost, so each screen reads once unless a read it began
 ## after `since_ms` already covers them.
@@ -265,7 +268,7 @@ func _service_socket(now: int) -> void:
 			_socket = null
 			_after_close(now, code, opened)
 
-## A hint names a room or says friends changed; nothing else is trusted from it.
+## A hint names a room, says friends changed, or names a duel (or the duel lobby) that changed; nothing else is trusted from it.
 func _handle(packet: PackedByteArray) -> void:
 	if packet.size() > MAX_MESSAGE_BYTES: return
 	var text := packet.get_string_from_utf8()
@@ -281,6 +284,10 @@ func _handle(packet: PackedByteArray) -> void:
 			friends_changed.emit(true)
 		"friend_requests_changed":
 			friends_changed.emit(false)
+		"duels_changed":
+			var duel: Variant = value.get("duel", "")
+			var at := RoomsApi.json_int(value.get("at"))
+			if at >= 0 and (duel == "" or (duel is String and duel.length() == 32 and duel.is_valid_hex_number())): duels_changed.emit(duel, at)
 
 ## Keeps the earliest moment: a drop while an earlier one is still owed changes nothing.
 func _note_missed(now: int) -> void:
