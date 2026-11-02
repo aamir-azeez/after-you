@@ -9,6 +9,8 @@ extends SceneTree
 ##   once it goes;
 ## - its first taps land: Done closes it at once, Open the Wardrobe closes it
 ##   and opens the Wardrobe;
+## - an instalment the Wardrobe's own wallet read paid (the owner's 0.7.7 case)
+##   shows once back on Home, and one paid while the store card is up waits for Home;
 ## - a build that names no Full Journey (iPhone without a store) shows neither
 ##   the panels nor the card.
 const Main = preload("res://tests/unlocked_main.gd")
@@ -41,6 +43,20 @@ var paths: Array[String] = []
 class Offline extends RefCounted:
 	func call_it(_method: int, _path: String, _body: Dictionary) -> Dictionary:
 		return {"ok": false, "status": 0, "code": "connection_interrupted"}
+
+## The Wardrobe's server, online, answering every wallet read with `data`.
+class Paid extends RefCounted:
+	var tree: SceneTree
+	var data: Dictionary
+	var reads := 0
+	func call_it(method: int, _path: String, _body: Dictionary) -> Dictionary:
+		await tree.process_frame
+		if method != HTTPClient.METHOD_GET: return {"ok": false, "status": 0, "code": "connection_interrupted"}
+		reads += 1
+		return {"ok": true, "status": 200, "data": data.duplicate(true)}
+
+class Online extends RefCounted:
+	func online() -> bool: return true
 
 class FakeStore extends Purchases:
 	func _connect_native() -> bool: return true
@@ -93,6 +109,7 @@ func _run() -> void:
 
 	await _card_states(app, wallet, grant, scope, viewport)
 	await _grant_over_home(app, grant, scope, viewport)
+	await _wardrobe_paid(app, grant, scope)
 	await _iphone(app, grant, scope)
 
 	PlatformSupport.override_platform = ""
@@ -277,11 +294,71 @@ func _grant_over_home(app: Node, grant: RefCounted, scope: Dictionary, viewport:
 	_check(app.mode != "home" and not app.wardrobe_flow.is_open(), "Opened from Settings later, its Back goes to Settings: " + str(app.mode))
 	app.wardrobe_flow.client = null
 
+## The owner's 0.7.7 case: the Wardrobe's own wallet read is the one that pays.
+## No card over the Wardrobe; back on Home it shows once with nothing set by
+## hand, and never again, a restart included. A payment that lands while the
+## store card is up (a purchase's "bought" read) waits for Home the same way.
+func _wardrobe_paid(app: Node, grant: RefCounted, scope: Dictionary) -> void:
+	var server := str(scope.server)
+	var owner := str(scope.owner)
+	var wardrobe := Wardrobe.new(_path("fj-board-wardrobe-paid"))
+	wardrobe.set_enabled(server, owner, true, false)
+	var paid := Paid.new()
+	paid.tree = self
+	paid.data = {"schema_version": 1.0, "balance": 9500.0, "earned": 9500.0, "bank": 12.0,
+		"wardrobe": {"items": [], "packs": [], "look": {}, "look_revision": 1.0, "offered": ["daisy", "seashell"], "offered_packs": [], "sets": {}, "unlocked": []},
+		"grant": {"months": 3.0, "next": 5250.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:3", "amount": 5000.0, "at": float(_now())}}}
+	var client: RefCounted = WardrobeClient.new(null, app._names_scope, paid.call_it, wardrobe, PollenWallet.shared())
+	client.connectivity = Online.new()
+	app.wardrobe_flow.client = client
+	app._show_home()
+	for i in range(4): await process_frame
+	app._service_grant_card()
+	app.wardrobe_flow.show_wardrobe("home")
+	for i in range(6): await process_frame
+	_check(paid.reads == 1, "Opening the Wardrobe reads the wallet: %d" % paid.reads)
+	app._service_grant_card()
+	await process_frame
+	_check(app.ui.find_child("PollenGrantCard", false, false) == null, "No card over the Wardrobe")
+	_check(not grant.pending(server, owner).is_empty(), "but the instalment its read paid is kept")
+	app.wardrobe_flow.back_requested.emit()
+	for i in range(4): await process_frame
+	_check(app.mode == "home" and not app.grant_card_check, "Back on Home, nothing set by hand")
+	app._service_grant_card()
+	await process_frame
+	var card: Control = app.ui.find_child("PollenGrantCard", false, false)
+	var texts: Array = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
+	_check(card != null and "+5,000" in texts, "The card shows on Home for the Wardrobe's payment: " + str(texts))
+	if card != null: app._close_top_modal()
+	await process_frame
+	app._service_grant_card()
+	await process_frame
+	_check(app.ui.find_child("PollenGrantCard", false, false) == null, "once")
+	_check(PollenGrant.new(grant.path).pending(server, owner).is_empty(), "and not after a restart either")
+	# Paid while the store card is up: the card waits for Home to be free.
+	app.mode = app.store_flow.MODE_PAYWALL
+	app.store_flow.purchase_offer = OFFER.duplicate(true)
+	app.store_flow._show_store_offer()
+	for i in range(4): await process_frame
+	grant.note_view(server, owner, {"grant": {"months": 4.0, "next": 5500.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:4", "amount": 5250.0, "at": float(_now())}}})
+	app._service_grant_card()
+	await process_frame
+	_check(app.ui.find_child("PollenGrantCard", false, false) == null, "No card over the store card")
+	app._show_home()
+	for i in range(4): await process_frame
+	app._service_grant_card()
+	await process_frame
+	var bought: Control = app.ui.find_child("PollenGrantCard", false, false)
+	_check(bought != null, "Back on Home it shows")
+	if bought != null: app._close_top_modal()
+	await process_frame
+	app.wardrobe_flow.client = null
+
 ## A build that names no Full Journey: no card, and the store card keeps no panel.
 func _iphone(app: Node, grant: RefCounted, scope: Dictionary) -> void:
 	var server := str(scope.server)
 	var owner := str(scope.owner)
-	grant.note_view(server, owner, {"grant": {"months": 4.0, "next": 5500.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:4", "amount": 5250.0, "at": float(_now())}}})
+	grant.note_view(server, owner, {"grant": {"months": 5.0, "next": 5750.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:5", "amount": 5500.0, "at": float(_now())}}})
 	PlatformSupport.override_platform = PlatformSupport.IOS
 	for key: String in ["purchase_mode", "entitlement_id", "revenuecat_public_key"]: app.config.erase(key)
 	app.config.merge(TESTER_ONLY, true)

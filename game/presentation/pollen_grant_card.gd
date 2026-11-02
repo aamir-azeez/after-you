@@ -3,7 +3,8 @@ extends RefCounted
 ## instalment the server paid (services/pollen_grant.gd pending()), drawn as
 ## pollen-concepts board 3 has it: the Pollen bag beside the title, which month
 ## of the ladder arrived and what next month pays, the big "+4,500" with the
-## grain, then Open the Wardrobe and Done. It sits right of the island over a
+## grain, then Open the Wardrobe and Done. Months paid together after a long
+## absence share one card: how many, and their Pollen added up (summary). It sits right of the island over a
 ## light dim, so both pips show behind it making their joy face until it closes.
 ## Plain and quiet: no countdown, no "don't lose" wording, nothing to buy, and
 ## never on a build that names no Full Journey (services/pollen_surfaces.gd
@@ -16,6 +17,7 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
+const Benefits = preload("res://presentation/full_journey_benefits.gd")
 const PollenBag = preload("res://presentation/pollen_bag.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
@@ -36,20 +38,42 @@ const BAG := 74.0
 ## The pips keep their joy face while the card is up: a timed reaction this
 ## long, which a doze never takes over, cleared as the card goes.
 const JOY_SECONDS := 3600.0
+## The most months one wallet read pays (backend/src/pollen/grant.ts MAX_CATCH_UP).
+const CATCH_UP := 48
 
-## The line under the title: "From Full Journey, month 1 of your ladder.\nNext month: 4,750."
+## The line under the title: "From Full Journey, month 1 of your ladder.\nNext month: 4,750.",
+## or for several months paid at once "From Full Journey, 2 months of your ladder.\nNext month: 5,250."
 static func month_line(card: Dictionary) -> String:
 	if str(card.get("key", "")) == LIFETIME_KEY: return PlayerCopy.POLLEN_GRANT_LIFETIME
 	var next := PollenMoney.grouped(int(card.get("next", 0)))
 	# A refund can take the count below this instalment's month: then no month is named.
 	if int(card.get("months", 0)) < 1: return PlayerCopy.POLLEN_GRANT_NEXT % next
+	var count := int(summary(card).count)
+	if count > 1: return PlayerCopy.POLLEN_GRANT_MONTHS % [count, next]
 	return PlayerCopy.POLLEN_GRANT_MONTH % [PollenMoney.grouped(int(card.months)), next]
+
+## What the card names: {count, total}. Every month the ladder counted since
+## the last card (`since`, services/pollen_grant.gd pending) and what they paid
+## together, each at its own step; the newest one alone when that cannot be
+## told for sure: no card to count from, the Lifetime thank you, a refund in
+## between, or a sum whose last month does not match what the server paid.
+static func summary(card: Dictionary) -> Dictionary:
+	var amount := int(card.get("amount", 0))
+	var single := {"count": 1, "total": amount}
+	var since := int(card.get("since", 0))
+	var months := int(card.get("months", 0))
+	var top := int(card.get("top", 0))
+	if since < 2 or since > CATCH_UP or months < since or top < 1 or str(card.get("key", "")) == LIFETIME_KEY: return single
+	if Benefits.instalment(months, top) != amount: return single
+	var total := 0
+	for month in range(months - since + 1, months + 1): total += Benefits.instalment(month, top)
+	return {"count": since, "total": total}
 
 ## "+4,500".
 static func amount_text(amount: int) -> String:
 	return "+" + PollenMoney.grouped(amount)
 
-## Opens the card for `card` ({key, amount, next, top, months}) over `parent`.
+## Opens the card for `card` ({key, amount, next, top, months, since?}) over `parent`.
 ## `spirits`: Home's pips, which make their joy face until it closes.
 ## `wardrobe`: opens the Wardrobe; without one the card offers Done alone.
 static func open(parent: Control, card: Dictionary, spirits: Array = [], wardrobe: Callable = Callable(), opener: Control = null) -> Control:
@@ -60,7 +84,7 @@ static func open(parent: Control, card: Dictionary, spirits: Array = [], wardrob
 	amount.name = "PollenGrantAmount"
 	amount.add_theme_constant_override("separation", 14)
 	amount.add_child(PollenMark.beside(AMOUNT_SIZE))
-	var figure := modal.label(amount_text(int(card.get("amount", 0))), AMOUNT_SIZE, amount)
+	var figure := modal.label(amount_text(int(summary(card).total)), AMOUNT_SIZE, amount)
 	figure.name = "PollenGrantFigure"
 	figure.autowrap_mode = TextServer.AUTOWRAP_OFF
 	figure.add_theme_font_override("font", modal.heading_font)

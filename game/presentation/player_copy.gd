@@ -224,6 +224,8 @@ const POLLEN_GRANT_MONTH := "From Full Journey, month %s of your ladder.\nNext m
 const POLLEN_GRANT_LIFETIME := "From Full Journey, a thank you for your Lifetime unlock."
 ## When the server's month count is below this instalment (after a refund): no month named.
 const POLLEN_GRANT_NEXT := "From Full Journey.\nNext month: %s."
+## Several months paid at one read (the app not opened for a while): how many, and what next month pays.
+const POLLEN_GRANT_MONTHS := "From Full Journey, %s months of your ladder.\nNext month: %s."
 const POLLEN_GRANT_WARDROBE := "Open the Wardrobe"
 const POLLEN_GRANT_DONE := "Done"
 

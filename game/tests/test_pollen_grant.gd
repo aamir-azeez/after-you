@@ -6,6 +6,12 @@ extends SceneTree
 ## - "Your monthly Pollen arrived" shows once per instalment, only while the
 ##   grant is on and only for a recent one, and says the month and what next
 ##   month pays (its board, Home and first taps: test_full_journey_board.gd);
+## - months paid together after a long absence (2, 3, across the top step)
+##   share one card naming how many and their Pollen added up, and anything
+##   that cannot be told for sure shows the newest month alone;
+## - replies that land out of order never bring back an older instalment, nor
+##   its card, and a file from before shown_at keeps what it showed;
+## - the Wardrobe's wallet read keeps the grant part too;
 ## - the Full Journey card lists the chapters first, then the room boost, then
 ##   the monthly Pollen, and the Pollen panels only while the server pays them;
 ## - a phone with Full Journey reads the wallet for the grant once a launch and
@@ -19,6 +25,9 @@ const Client = preload("res://services/pollen_client.gd")
 const GrantCard = preload("res://presentation/pollen_grant_card.gd")
 const Benefits = preload("res://presentation/full_journey_benefits.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const WardrobeClient = preload("res://services/wardrobe_client.gd")
 
 # Synthetic ids only.
 const SERVER := "https://pollen.example.test"
@@ -49,6 +58,9 @@ func _initialize() -> void:
 func _run() -> void:
 	_checked()
 	_cards()
+	_catch_up()
+	_order()
+	await _wardrobe_read()
 	await _card_view()
 	_benefits()
 	await _client_reads()
@@ -87,23 +99,121 @@ func _cards() -> void:
 	_check(store.pending(SERVER, ME).is_empty(), "No card while the grant is off")
 	store.set_enabled(SERVER, ME, true)
 	var card: Dictionary = store.pending(SERVER, ME)
-	_check(card == {"key": "grant:1790000000000:1", "amount": 4500, "next": 4750, "top": 12000}, "A new instalment has its card: " + str(card))
+	_check(card == {"key": "grant:1790000000000:1", "amount": 4500, "next": 4750, "top": 12000, "months": 1, "since": 0}, "A new instalment has its card: " + str(card))
 	store.mark_shown(SERVER, ME, card.key)
 	_check(store.pending(SERVER, ME).is_empty(), "Once shown, it never shows again")
 	var reloaded := PollenGrant.new(store.path)
 	_check(reloaded.pending(SERVER, ME).is_empty() and reloaded.ladder(SERVER, ME).next == 4750, "That survives a restart, with the ladder")
 	reloaded.note_view(SERVER, ME, _answer(2, 5000, "grant:1790000000000:2", 4750))
 	_check(reloaded.pending(SERVER, ME).amount == 4750, "Next month's instalment has its own card")
-	reloaded.note_view(SERVER, ME, _answer(3, 5250, "grant:1790000000000:3", 5000, _now() - 40 * DAY_MS))
-	_check(reloaded.pending(SERVER, ME).is_empty(), "An old instalment (a new install, a long absence) is not news")
+	var fresh := PollenGrant.new(_path("cards-old"))
+	fresh.set_enabled(SERVER, ME, true)
+	fresh.note_view(SERVER, ME, _answer(3, 5250, "grant:1790000000000:3", 5000, _now() - 40 * DAY_MS))
+	_check(fresh.pending(SERVER, ME).is_empty(), "An old instalment (a new install, a long absence) is not news")
 	_check(not reloaded.note_view(SERVER, ME, {"schema_version": 1.0, "balance": 0.0}), "A wallet answer with no grant part changes nothing")
+
+## Months paid together share one card: how many, and their Pollen added up.
+func _catch_up() -> void:
+	var store := PollenGrant.new(_path("catch-up"))
+	store.set_enabled(SERVER, ME, true)
+	store.note_view(SERVER, ME, _answer(1, 4750, "grant:1790000000000:1", 4500, _now() - 3 * DAY_MS))
+	var first: Dictionary = store.pending(SERVER, ME)
+	_check(GrantCard.summary(first) == {"count": 1, "total": 4500}, "The first card names its month alone: " + str(GrantCard.summary(first)))
+	store.mark_shown(SERVER, ME, first.key)
+	# Two months away: the next read pays months 2 and 3.
+	store.note_view(SERVER, ME, _answer(3, 5250, "grant:1790000000000:3", 5000, _now() - 2 * DAY_MS))
+	var two: Dictionary = store.pending(SERVER, ME)
+	_check(two.since == 2 and GrantCard.summary(two) == {"count": 2, "total": 9750}, "Two months at once: both, added up: " + str(two) + " " + str(GrantCard.summary(two)))
+	_check(GrantCard.month_line(two) == "From Full Journey, 2 months of your ladder.\nNext month: 5,250.", "and the line says so: " + GrantCard.month_line(two))
+	store.mark_shown(SERVER, ME, two.key)
+	var reloaded := PollenGrant.new(store.path)
+	_check(reloaded.pending(SERVER, ME).is_empty(), "Shown, it stays shown after a restart")
+	# Three months away.
+	var before: int = reloaded.revision
+	reloaded.note_view(SERVER, ME, _answer(6, 6000, "grant:1790000000000:6", 5750, _now() - DAY_MS))
+	_check(reloaded.revision == before + 1, "A new instalment moves the revision, so Home looks again")
+	reloaded.note_view(SERVER, ME, _answer(6, 6000, "grant:1790000000000:6", 5750, _now() - DAY_MS))
+	_check(reloaded.revision == before + 1, "The same instalment read again does not")
+	var three: Dictionary = reloaded.pending(SERVER, ME)
+	_check(three.since == 3 and GrantCard.summary(three) == {"count": 3, "total": 16500}, "Three months at once: " + str(GrantCard.summary(three)))
+	_check(GrantCard.amount_text(int(GrantCard.summary(three).total)) == "+16,500", "The big figure is their sum")
+	# A card not shown yet (the phone never reached Home) and another month on top: one card for all four.
+	reloaded.note_view(SERVER, ME, _answer(7, 6250, "grant:1790000000000:7", 6000, _now() - 12 * 3600000))
+	_check(GrantCard.summary(reloaded.pending(SERVER, ME)) == {"count": 4, "total": 22500}, "Months kept while no card showed add up too")
+	# Across the top step: months 30 and 31 pay 11,750 and 12,000.
+	_check(GrantCard.summary({"key": "grant:1790000000000:31", "amount": 12000, "next": 12000, "top": 12000, "months": 31, "since": 2}) == {"count": 2, "total": 23750}, "Each month at its own step, up to the top")
+	var single := {"count": 1, "total": 4500}
+	for unsure: Dictionary in [
+			{"key": "grant:1790000000000:5", "amount": 4500, "next": 5750, "top": 12000, "months": 5, "since": 2},
+			{"key": "grant:1790000000000:5", "amount": 4500, "next": 4750, "top": 12000, "months": 1, "since": 0},
+			{"key": "grant:lifetime", "amount": 4500, "next": 5250, "top": 12000, "months": 3, "since": 2},
+			{"key": "grant:1790000000000:49", "amount": 4500, "next": 12000, "top": 12000, "months": 60, "since": 49}]:
+		_check(GrantCard.summary(unsure) == single, "What cannot be told for sure shows the newest month alone: " + str(unsure))
+	var unknown := PollenGrant.new(_path("catch-up-new"))
+	unknown.set_enabled(SERVER, ME, true)
+	unknown.note_view(SERVER, ME, _answer(3, 5250, "grant:1790000000000:3", 5000))
+	_check(GrantCard.summary(unknown.pending(SERVER, ME)) == {"count": 1, "total": 5000}, "A phone with no card to count from (a new install) names the newest month alone")
+
+## Replies land out of order: an older instalment never comes back, nor its card.
+func _order() -> void:
+	var store := PollenGrant.new(_path("order"))
+	store.set_enabled(SERVER, ME, true)
+	store.note_view(SERVER, ME, _answer(2, 5000, "grant:1790000000000:2", 4750, _now() - DAY_MS))
+	store.note_view(SERVER, ME, _answer(1, 4750, "grant:1790000000000:1", 4500, _now() - 2 * DAY_MS))
+	_check(store.ladder(SERVER, ME).months == 2 and store.pending(SERVER, ME).key == "grant:1790000000000:2", "A late reply with an older instalment changes nothing")
+	store.mark_shown(SERVER, ME, "grant:1790000000000:2")
+	store.note_view(SERVER, ME, _answer(1, 4750, "grant:1790000000000:1", 4500, _now() - 2 * DAY_MS))
+	_check(store.pending(SERVER, ME).is_empty(), "nor shows its card after a newer one")
+	var scope := PollenGrant.scope_key(SERVER, ME)
+	var older := _path("order-file")
+	var ladder := {"months": 1, "next": 4750, "top": 12000, "latest": {"key": "grant:1790000000000:1", "amount": 4500, "at": _now() - 2 * DAY_MS}}
+	AtomicFile.write_text(older, JSON.stringify({"schema_version": 1, "scopes": {scope: {"enabled": true, "ladder": ladder, "shown": "grant:1790000000000:2", "shown_at": _now() - DAY_MS, "shown_months": 2}}}))
+	_check(PollenGrant.new(older).pending(SERVER, ME).is_empty(), "A kept instalment older than the one shown never shows")
+	# A file from before shown_at: what it showed stays shown, and counts for the next card.
+	var legacy := _path("order-legacy")
+	AtomicFile.write_text(legacy, JSON.stringify({"schema_version": 1, "scopes": {scope: {"enabled": true, "ladder": ladder, "shown": "grant:1790000000000:1"}}}))
+	var loaded := PollenGrant.new(legacy)
+	_check(loaded.pending(SERVER, ME).is_empty(), "An older file's shown card does not show again")
+	loaded.note_view(SERVER, ME, _answer(3, 5250, "grant:1790000000000:3", 5000, _now() - DAY_MS))
+	_check(int(loaded.pending(SERVER, ME).get("since", 0)) == 2, "and the next card counts from it")
+	var unseen := _path("order-unseen")
+	AtomicFile.write_text(unseen, JSON.stringify({"schema_version": 1, "scopes": {scope: {"enabled": true, "ladder": ladder, "shown": ""}}}))
+	_check(PollenGrant.new(unseen).pending(SERVER, ME).get("key") == "grant:1790000000000:1", "An instalment an earlier build kept and never showed shows once")
+	var off := PollenGrant.new(_path("order-enable"))
+	var turned: int = off.revision
+	off.set_enabled(SERVER, ME, true)
+	_check(off.revision == turned + 1, "The grant turning on moves the revision too")
+
+## The Wardrobe's own wallet read can be the one that pays: it keeps the grant part.
+func _wardrobe_read() -> void:
+	var wardrobe := Wardrobe.new(_path("wardrobe-store"))
+	var wallet := PollenWallet.new(_path("wardrobe-wallet"))
+	var grant := PollenGrant.new(_path("wardrobe-grant"))
+	wardrobe.set_enabled(SERVER, ME, true, false)
+	wallet.set_enabled(SERVER, ME, true)
+	grant.set_enabled(SERVER, ME, true)
+	var data := _answer(1, 4750, "grant:1790000000000:1", 4500)
+	data["wardrobe"] = {"items": [], "packs": [], "look": {}, "look_revision": 1.0, "offered": ["daisy", "seashell"], "offered_packs": [], "sets": {}, "unlocked": []}
+	var replies := [{"ok": true, "status": 200, "data": data}]
+	var transport := func(_method: int, _path_: String, _body: Dictionary) -> Dictionary:
+		await process_frame
+		return replies.pop_front() if not replies.is_empty() else {"ok": false, "code": "connection_interrupted"}
+	var client: RefCounted = WardrobeClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, transport, wardrobe, wallet)
+	client.grant = grant
+	await client.refresh()
+	_check(grant.pending(SERVER, ME).get("amount") == 4500, "The Wardrobe's read keeps the monthly Pollen it paid")
+	var broken := _answer(2, 5000, "grant:1790000000000:2", 4750)
+	broken["wardrobe"] = "not a wardrobe"
+	replies.append({"ok": true, "status": 200, "data": broken})
+	await client.refresh()
+	_check(grant.pending(SERVER, ME).get("amount") == 4750, "even when its wardrobe part could not be kept")
 
 func _card_view() -> void:
 	_check(GrantCard.amount_text(4750) == "+4,750", "The big amount")
 	_check(GrantCard.month_line({"key": "grant:1790000000000:2", "amount": 4750, "next": 5000, "top": 12000, "months": 2}) == "From Full Journey, month 2 of your ladder.\nNext month: 5,000.", "The month line")
 	_check(GrantCard.month_line({"key": "grant:1790000000000:1", "amount": 4500, "next": 4750, "top": 12000, "months": 0}) == PlayerCopy.POLLEN_GRANT_NEXT % "4,750", "A month count below the instalment (a refund) names no month")
 	_check(GrantCard.month_line({"key": "grant:lifetime", "amount": 4500, "next": 12000, "top": 12000, "months": 31}) == PlayerCopy.POLLEN_GRANT_LIFETIME, "The Lifetime thank you names no month")
-	for line: String in [PlayerCopy.POLLEN_GRANT_TITLE, PlayerCopy.POLLEN_GRANT_MONTH, PlayerCopy.POLLEN_GRANT_LIFETIME, PlayerCopy.POLLEN_GRANT_NEXT, PlayerCopy.POLLEN_GRANT_WARDROBE, PlayerCopy.POLLEN_GRANT_DONE,
+	for line: String in [PlayerCopy.POLLEN_GRANT_TITLE, PlayerCopy.POLLEN_GRANT_MONTH, PlayerCopy.POLLEN_GRANT_MONTHS, PlayerCopy.POLLEN_GRANT_LIFETIME, PlayerCopy.POLLEN_GRANT_NEXT, PlayerCopy.POLLEN_GRANT_WARDROBE, PlayerCopy.POLLEN_GRANT_DONE,
 			PlayerCopy.FULL_JOURNEY_ROOM_BOOST, PlayerCopy.FULL_JOURNEY_ROOM_BOOST_NOTE, PlayerCopy.FULL_JOURNEY_GRANT, PlayerCopy.FULL_JOURNEY_GRANT_TOP, PlayerCopy.FULL_JOURNEY_GRANT_NOTE,
 			PlayerCopy.FULL_JOURNEY_LADDER_NEXT, PlayerCopy.FULL_JOURNEY_LADDER_BY, PlayerCopy.FULL_JOURNEY_LADDER_TOP]:
 		_check(not line.contains("-") and not line.contains("—") and not line.contains("–"), "No dashes: " + line)

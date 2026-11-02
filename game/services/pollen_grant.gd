@@ -11,7 +11,15 @@ extends RefCounted
 ##   and the top step;
 ## - latest: {key, amount, at}: the newest instalment the server paid, and when;
 ## - shown: the key of the newest instalment whose card this phone showed, so
-##   each instalment's "Your monthly Pollen arrived" card shows once.
+##   each instalment's "Your monthly Pollen arrived" card shows once;
+## - shown_at: that instalment's `at`, so an older one never shows after it;
+## - shown_months: the ladder's count when that card showed (-1 unknown), so a
+##   card after a long absence counts every month paid since (`since`).
+##
+## Every wallet read that carries the grant part comes here, whichever client
+## made it (services/pollen_client.gd, services/wardrobe_client.gd), and replies
+## may land out of order: one older than the instalment kept is ignored.
+## `revision` moves whenever a card may have become due, so Main looks again.
 ##
 ## Every value read from the file or a server reply is checked; anything that
 ## fails is dropped, and a file that cannot be read reads as empty.
@@ -32,6 +40,8 @@ static var _key := RegEx.create_from_string(KEY_PATTERN)
 
 var path := PATH
 var _scopes: Dictionary = {}
+## Moves when a new instalment is kept or the grant turns on: a card may be due (Main's check).
+var revision := 0
 
 static func shared() -> RefCounted:
 	if _shared == null: _shared = load("res://services/pollen_grant.gd").new()
@@ -68,7 +78,7 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 	var key := scope_key(server, owner)
 	if not _scopes.has(key):
 		if not create: return {}
-		_scopes[key] = {"enabled": false, "ladder": {}, "shown": ""}
+		_scopes[key] = {"enabled": false, "ladder": {}, "shown": "", "shown_at": 0, "shown_months": -1}
 	return _scopes[key]
 
 ## Whether the server said the monthly grant is on for this player.
@@ -79,41 +89,58 @@ func set_enabled(server: String, owner: String, on: bool) -> void:
 	var scope := _scope(server, owner, on)
 	if scope.is_empty() or bool(scope.enabled) == on: return
 	scope.enabled = on
+	if on: revision += 1
 	_save()
 
-## A wallet answer: keeps its grant part when it has one.
+## A wallet answer: keeps its grant part when it has one. A reply whose newest
+## instalment is older than the one kept (a read that landed late) changes nothing.
 func note_view(server: String, owner: String, value: Variant) -> bool:
 	if not value is Dictionary or not value.has("grant"): return false
 	var kept := checked_grant(value.grant)
 	var scope := _scope(server, owner, not kept.is_empty())
 	if kept.is_empty() or scope.is_empty(): return false
-	if scope.ladder != kept:
+	var before: Dictionary = scope.ladder
+	if _at(before) > _at(kept): return true
+	if before != kept:
 		scope.ladder = kept
+		if kept.has("latest") and (not before.has("latest") or before.latest.key != kept.latest.key): revision += 1
 		_save()
 	return true
+
+static func _at(kept: Dictionary) -> int:
+	return int(kept.latest.at) if kept.has("latest") else -1
 
 ## The last ladder the server sent ({} until it has).
 func ladder(server: String, owner: String) -> Dictionary:
 	var scope := _scope(server, owner)
 	return (scope.ladder as Dictionary).duplicate(true) if not scope.is_empty() else {}
 
-## The card to show: {key, amount, next, top} for an instalment this phone has
-## not shown yet and that is recent, or {} when there is none (or the grant is
-## off). `now_ms` is this phone's clock.
+## The card to show: {key, amount, next, top, months, since} for an instalment
+## this phone has not shown yet, newer than the last one shown and recent, or {}
+## when there is none (or the grant is off). `amount` is that newest
+## instalment's; `since` is how many the ladder counted since the last card
+## shown (0 when this phone has none to count from; presentation/pollen_grant_card.gd
+## checks it before naming more than one). `now_ms` is this phone's clock.
 func pending(server: String, owner: String, now_ms: int = -1) -> Dictionary:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not bool(scope.enabled): return {}
 	var kept: Dictionary = scope.ladder
-	if not kept.has("latest") or kept.latest.key == scope.shown: return {}
+	if not kept.has("latest") or kept.latest.key == scope.shown or int(kept.latest.at) <= int(scope.shown_at): return {}
 	var now := now_ms if now_ms >= 0 else int(Time.get_unix_time_from_system() * 1000.0)
 	if int(kept.latest.at) < now - CARD_DAYS * 86400000: return {}
-	return {"key": kept.latest.key, "amount": kept.latest.amount, "next": kept.next, "top": kept.top}
+	var since: int = maxi(0, int(kept.months) - int(scope.shown_months)) if int(scope.shown_months) >= 0 else 0
+	return {"key": kept.latest.key, "amount": kept.latest.amount, "next": kept.next, "top": kept.top, "months": kept.months, "since": since}
 
-## The card for `key` was shown: it never shows again.
+## The card for the newest instalment, `key`, was shown: it never shows again,
+## nor any older one, and the next card counts the months from here.
 func mark_shown(server: String, owner: String, key: String) -> void:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or scope.shown == key: return
 	scope.shown = key
+	var kept: Dictionary = scope.ladder
+	if kept.has("latest") and kept.latest.key == key:
+		scope.shown_at = int(kept.latest.at)
+		scope.shown_months = int(kept.months)
 	_save()
 
 ## Forgets everything kept for a player on every server (account deletion).
@@ -135,8 +162,16 @@ func _load() -> void:
 		var value: Variant = parsed.scopes[key]
 		if not key is String or not key.contains("|") or not value is Dictionary: continue
 		var shown: Variant = value.get("shown", "")
-		_scopes[key] = {"enabled": value.get("enabled") == true, "ladder": checked_grant(value.get("ladder")),
-			"shown": shown if shown is String and (shown.is_empty() or _key.search(shown) != null) else ""}
+		var kept := checked_grant(value.get("ladder"))
+		var entry := {"enabled": value.get("enabled") == true, "ladder": kept,
+			"shown": shown if shown is String and (shown.is_empty() or _key.search(shown) != null) else "",
+			"shown_at": Typed.as_int(value.get("shown_at")) if _count(value.get("shown_at"), MAX_TIME) else 0,
+			"shown_months": Typed.as_int(value.get("shown_months")) if _count(value.get("shown_months"), 100000) else -1}
+		# A file from before shown_at: the newest instalment it showed gives both.
+		if not value.has("shown_at") and kept.has("latest") and kept.latest.key == entry.shown:
+			entry.shown_at = int(kept.latest.at)
+			entry.shown_months = int(kept.months)
+		_scopes[key] = entry
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "scopes": _scopes}))

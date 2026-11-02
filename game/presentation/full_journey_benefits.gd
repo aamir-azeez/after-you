@@ -54,6 +54,10 @@ static func _first_month(ladder: Dictionary) -> int:
 	var next := int(ladder.get("next", 0))
 	return mini(next, _top(ladder)) if next > 0 else GRANT_FIRST
 
+## What month `month` of the ladder pays (backend/src/pollen/grant.ts instalmentAmount).
+static func instalment(month: int, top: int = GRANT_TOP) -> int:
+	return mini(GRANT_FIRST + GRANT_STEP * (maxi(1, month) - 1), top)
+
 static func _top(ladder: Dictionary) -> int:
 	var top := int(ladder.get("top", 0))
 	return top if top > 0 else GRANT_TOP

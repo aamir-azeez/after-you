@@ -128,8 +128,12 @@ const ScenePrewarm = preload("res://services/scene_prewarm.gd")
 var _whats_new_unseen := false
 var _whats_new_card: Control
 var _whats_new_card_mode := ""
-## A Pollen flush finished: Home looks once for a monthly Pollen card to show (presentation/pollen_grant_card.gd).
+## Home looks once more for a monthly Pollen card to show (presentation/pollen_grant_card.gd).
+## Set by tests; the app itself looks whenever the grant store's revision moves.
 var grant_card_check := false
+## The grant store and revision Home last looked at: whichever wallet read keeps a
+## new instalment (the Pollen flush, the Wardrobe's read), Home looks once it is free.
+var _grant_card_seen: Array = [null, -1]
 ## The leaderboard celebration Home opened, while it is up.
 var _home_celebration: Control
 ## Tests set this to see a link instead of opening the browser.
@@ -405,12 +409,11 @@ func _ready() -> void:
 	# The reaction packs the player may pick faces from (services/face_packs.gd).
 	FacePacks.source=_face_packs_state
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
-	# Only a phone with Full Journey reads the wallet for the monthly grant; each flush may bring a card.
+	# Only a phone with Full Journey reads the wallet for the monthly grant (any wallet read may bring a card: _service_grant_card).
 	pollen_client.subscribed=_full_journey_access
 	pollen_client.purchasing=func() -> bool: return store_flow != null and store_flow.store_action_pending
 	# An item bloom's item is owned at once in the wardrobe.
 	Wardrobe.shared().follow_drops(PollenWallet.shared().item_dropped)
-	pollen_client.settled.connect(func() -> void: grant_card_check=true)
 	# A wallet read that lands while Home shows updates its chip (the gain shows then).
 	# Every capabilities read with Pollen on ends in a flush, so the Wardrobe row follows it too.
 	pollen_client.settled.connect(_refresh_home_pollen)
@@ -2254,17 +2257,24 @@ func _home_free_for_card() -> bool:
 	return not (is_instance_valid(home_stage_view) and home_stage_view.is_exploring())
 
 ## "Your monthly Pollen arrived", once per instalment, on Home only and only
-## when nothing else is up: never over a turn, a card or a held finger.
+## when nothing else is up: never over a turn, a card or a held finger. Home
+## looks at launch (a card kept from before shows once) and again each time the
+## grant store keeps a new instalment, from whichever wallet read brought it.
 func _service_grant_card() -> void:
-	if not grant_card_check or not _grant_card_allowed() or _update_gate_active() or not _home_free_for_card(): return
-	grant_card_check=false
+	var grant := PollenGrant.shared()
+	if not grant_card_check and _grant_card_seen[0]==grant and _grant_card_seen[1]==grant.revision: return
+	# A build that names no Full Journey never shows it: nothing to wait for.
+	var allowed := _grant_card_allowed()
+	if allowed and (_update_gate_active() or not _home_free_for_card()): return
 	var scope := _names_scope()
-	if scope.is_empty(): return
-	var card: Dictionary = PollenGrant.shared().pending(str(scope.server),str(scope.owner))
+	if allowed and scope.is_empty(): return
+	grant_card_check=false
+	_grant_card_seen=[grant,grant.revision]
+	if not allowed: return
+	var card: Dictionary = grant.pending(str(scope.server),str(scope.owner))
 	if card.is_empty(): return
-	PollenGrant.shared().mark_shown(str(scope.server),str(scope.owner),str(card.key))
-	# The card says which month of the ladder arrived; Home's pips cheer behind it.
-	card["months"]=int(PollenGrant.shared().ladder(str(scope.server),str(scope.owner)).get("months",0))
+	# Marked before it opens, so it never shows twice; the card says which month (or months) arrived.
+	grant.mark_shown(str(scope.server),str(scope.owner),str(card.key))
 	PollenGrantCard.open(ui,card,world.actors.values() if is_instance_valid(world) else [],_open_wardrobe_from_home if wardrobe_flow.available() else Callable())
 	soundscape.play_fixed_cue("ui_pollen")
 

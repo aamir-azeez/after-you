@@ -1,7 +1,8 @@
 extends RefCounted
 ## Talks to the wardrobe routes (backend/src/pollen/routes.ts) and records each
 ## answer: the wallet read (GET /v1/pollen, which carries the wardrobe while it
-## is on), a look (POST /v1/pollen/equip, POLLEN_WARDROBE) and a purchase (POST
+## is on and the monthly grant, services/pollen_grant.gd, while that pays), a
+## look (POST /v1/pollen/equip, POLLEN_WARDROBE) and a purchase (POST
 ## /v1/pollen/spend, POLLEN_SHOP). Nothing is sent while the server has not said
 ## the wardrobe is on, and no purchase while it has not said the shop is.
 ##
@@ -26,6 +27,7 @@ extends RefCounted
 ## it needs an answer, so offline it is refused ("offline").
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const PollenGrant = preload("res://services/pollen_grant.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Connectivity = preload("res://services/connectivity.gd")
@@ -46,6 +48,9 @@ signal changed
 
 var store: RefCounted
 var wallet: RefCounted
+## The monthly grant kept from the same wallet read (services/pollen_grant.gd): a read
+## made here may be the one that pays an instalment, and its card must still show.
+var grant: RefCounted
 var _api: Node
 ## () -> {server, owner} of the signed-in player, or {} (Main's _names_scope).
 var _scope: Callable
@@ -61,6 +66,7 @@ func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), 
 	_transport = transport
 	store = wardrobe if wardrobe != null else Wardrobe.shared()
 	wallet = pollen if pollen != null else PollenWallet.shared()
+	grant = PollenGrant.shared()
 
 ## {server, owner} while the server has said the wardrobe is on, else {}.
 func scope() -> Dictionary:
@@ -182,6 +188,8 @@ func _note_wallet(context: Dictionary, response: Dictionary) -> Dictionary:
 	var data: Variant = response.get("data")
 	var noted: bool = wallet.note_wallet(context.server, context.owner, data)
 	noted = store.note_view(context.server, context.owner, data) and noted
+	# The grant part stands on its own: a read the server answered may have paid an instalment.
+	if grant != null: grant.note_view(context.server, context.owner, data)
 	if noted: changed.emit()
 	return {"ok": noted, "code": "" if noted else "invalid_response"}
 
