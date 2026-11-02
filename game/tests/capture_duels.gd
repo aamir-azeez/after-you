@@ -214,6 +214,13 @@ func _room() -> void:
 	GraphicsPolicy.apply(world, {"graphics_quality": "balanced"})
 	world.wear_slots(SlotLooks.live({"player_slot": "p0", "host_id": ME, "guest_id": MAYA, "duel": true}))
 	world.load_level(Registry.definition(key))
+	for frame in range(4): await process_frame
+	# Both pips start on one spot: the partner steps aside so both looks show.
+	if world.actors.has("p1"):
+		var aside := Vector3(1.3, 0, 0.5)
+		for role: Variant in world.actors.keys():
+			if world.actors[role] == world.actors.p1 and world.actor_targets.has(role): world.actor_targets[role] += aside
+		world.actors.p1.position += aside
 	await _save("duel-room-turn", 60)
 	world.queue_free()
 	TurnLooks.use_shared(null)
