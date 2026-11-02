@@ -73,9 +73,9 @@ class Games extends Node:
 	var refreshes := 0
 	func name_offered() -> bool: return on
 	func account_key() -> String: return "k".repeat(64) if on else ""
-	func refresh_offer() -> void: refreshes += 1
+	func ensure_started() -> void: refreshes += 1
 	func kind() -> String: return "play_games"
-	func player_name() -> Dictionary:
+	func player_name(_wanted: Callable = Callable()) -> Dictionary:
 		reads += 1
 		await get_tree().process_frame
 		return {"ok": true, "name": "RobinPlays"}

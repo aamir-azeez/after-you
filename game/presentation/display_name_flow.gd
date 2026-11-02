@@ -17,7 +17,8 @@ extends Node
 ## prompt is open, since Play Games is checked a few seconds after launch). Every
 ## card that offers the platform name (the first-run prompt and Change) opens
 ## through _open, so all of them read the one source: PlatformGames.name_offered,
-## account_key and player_name, which signs in on the tap when it has to.
+## ensure_started, account_key and player_name, which signs in on the tap when
+## it has to.
 ## While the shop is on, the prompt shows the name change price from the
 ## wardrobe and wallet this phone keeps, and a saved change asks wardrobe_flow
 ## (refresh) to read them again. While the balance is short, the prompt's "Get
@@ -113,7 +114,7 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 	var modal: Control = Prompt.open(parent, context, opener)
 	_prompt = weakref(modal)
 	# An offer this session never learned (a launch read that failed) is read again; the card follows it.
-	if platform != null: platform.refresh_offer()
+	if platform != null: platform.ensure_started()
 	# Flush a send that waited from an earlier visit.
 	_client().flush()
 
@@ -211,7 +212,8 @@ func _platform_account() -> String:
 func _read_platform() -> Dictionary:
 	var platform := _games()
 	if platform == null: return {"ok": false, "code": "unavailable"}
-	return await platform.player_name()
+	# The sign-in sheet shows only while this card still asks for the name.
+	return await platform.player_name(prompt_open)
 
 ## The PlatformGames service, or null (no autoload, or this node is out of the tree).
 func _games() -> Node:

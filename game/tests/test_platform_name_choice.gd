@@ -7,10 +7,12 @@ extends SceneTree
 ## - a tap on the row while the quiet check is still running waits, then fills the name;
 ## - the quiet check answers signed out: the row is still offered, and a tap shows the sheet once;
 ## - the sheet is cancelled: the card says so and nothing changes; another tap asks again;
+## - the card closes while the quiet check runs: no sheet comes up afterwards;
 ## - a fresh install (no friend code yet): the probe, the quiet sign-in, then the prompt;
 ## - the server's offer could not be read at launch: opening the prompt asks again;
 ## - another account signs in after the name was read: that name is dropped;
 ## - no Play Games on the phone, the server offering none, or a build Play Games refuses: no row;
+## - Game Center: the same row and tap, and the row goes once Apple's one sheet was turned down;
 ## - the Friends chip's Change shows the same row from the same source.
 const Main = preload("res://main.gd")
 const Save = preload("res://services/local_save.gd")
@@ -42,6 +44,9 @@ class FakeNative extends Node:
 	var quiet := "in"
 	var sheet := "in"
 	var delay := 0.0
+	## Quiet checks and sheets wait for release while held.
+	var hold := false
+	signal release
 	var signed := false
 	var key := "a".repeat(64)
 	var gamer := "RobinPlays"
@@ -65,6 +70,7 @@ class FakeNative extends Node:
 	func _answer(id: String, operation: String, outcome: String) -> void:
 		if delay > 0.0: await get_tree().create_timer(delay).timeout
 		else: await get_tree().process_frame
+		if hold: await release
 		match outcome:
 			"in":
 				signed = true
@@ -84,8 +90,9 @@ class FakeApi extends Node:
 	var busy := false
 	## "on", "off" or "offline" for both the capability read and the probe.
 	var offer := "on"
-	## Seconds each answer takes.
-	var wait := 0.0
+	signal release
+	## Answers wait for release while held.
+	var hold := false
 	var calls: Array = []
 	func configured() -> bool: return true
 	func request_json(_method: int, path: String, _body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
@@ -93,7 +100,7 @@ class FakeApi extends Node:
 		await _answer_later()
 		if path == "/v1/platform/restore":
 			match offer:
-				"on": return {"ok": false, "status": 400, "code": "invalid_platform_request", "data": {}}
+				"on", "game_center": return {"ok": false, "status": 400, "code": "invalid_platform_request", "data": {}}
 				"off": return {"ok": false, "status": 401, "code": "unauthorized", "data": {}}
 		return {"ok": false, "status": 0, "code": "connection_interrupted", "data": {}, "error": ""}
 	func request_json_with_headers(_method: int, path: String, _body: Dictionary, _extra: PackedStringArray, _still: Callable = Callable()) -> Dictionary:
@@ -102,11 +109,12 @@ class FakeApi extends Node:
 		if path == "/v2/capabilities" and offer != "offline":
 			var data := {"api_version": 2}
 			if offer == "on": data.merge({"play_games_version": 1, "play_games_web_client_id": "123456789012-servclientabcd.apps.googleusercontent.com"})
+			if offer == "game_center": data.game_center_version = 1
 			return {"ok": true, "status": 200, "data": data}
 		return {"ok": false, "status": 0, "code": "connection_interrupted", "data": {}, "error": ""}
 	func _answer_later() -> void:
-		if wait > 0.0: await get_tree().create_timer(wait).timeout
-		else: await get_tree().process_frame
+		await get_tree().process_frame
+		if hold: await release
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -162,6 +170,8 @@ func _run() -> void:
 	await _no_platform("absent")
 	await _no_platform("server_off")
 	await _no_platform("not_configured")
+	await _closed_during_check()
+	await _game_center()
 	await _edit_same_source()
 	_service_node().queue_free()
 	app.queue_free()
@@ -180,7 +190,7 @@ func _service_node() -> Node:
 	return root.get_node_or_null("PlatformGames")
 
 ## A fresh service at /root/PlatformGames (where Main finds it) with this plugin, handed to Main.
-func _fresh(native: FakeNative, identity: String) -> Node:
+func _fresh(native: FakeNative, identity: String, kind: String = GamesProvider.PLAY_GAMES) -> Node:
 	app.platform_games_flow.detach()
 	var old := _service_node()
 	if old != null:
@@ -188,7 +198,7 @@ func _fresh(native: FakeNative, identity: String) -> Node:
 		old.free()
 	var service: Node = Service.new()
 	service.name = "PlatformGames"
-	service.configure(NativeProvider.new(native, GamesProvider.PLAY_GAMES, self), _path("state"))
+	service.configure(NativeProvider.new(native, kind, self), _path("state"))
 	root.add_child(service)
 	app.platform_games_flow.service = null
 	_identity(identity)
@@ -237,20 +247,23 @@ static func _note(prompt: Node) -> String:
 
 # --- Orders -----------------------------------------------------------------
 
-## A phone with a friend code: the prompt opens before the service read the server's offer
-## (the launch's read has not happened yet, so opening the card starts it), and the player taps
-## the row while the quiet check is still running.
+## A phone with a friend code: the prompt opens before the service read the server's offer, and
+## the player taps the row while the quiet check is still running. On a phone a card opened in
+## the first seconds gets the offer from the launch's own start (provider built 4 s in); here the
+## suite's service has no autostart, so this also shows that opening the card starts a read the
+## session never made (a launch read cut short).
 func _prompt_before_offer() -> void:
 	var native := _native()
 	native.delay = 0.6
-	api.wait = 0.4
+	api.hold = true
 	var service := _fresh(native, "ready")
 	var prompt := await _ask()
 	_check(prompt != null and prompt.platform_row == null, "Before the server's offer is known: no Play Games row")
 	_check(native.calls.is_empty(), "and Play Games is not asked anything yet")
 	_check(service._running and api.calls.has("/v2/capabilities"), "Opening the card started the offer read")
+	api.hold = false
+	api.release.emit()
 	_check(await _until(func() -> bool: return prompt.platform_row != null), "The offer arrives while the card is open: the row appears")
-	api.wait = 0.0
 	_check(_row_label(prompt) == PlayerCopy.DISPLAY_NAME_PLAY_GAMES, "labelled Use my Play Games name: " + _row_label(prompt))
 	_check(not service.signed_in(), "while the quiet sign-in is still running")
 	prompt.platform_row.pressed.emit()
@@ -357,6 +370,52 @@ func _no_platform(why: String) -> void:
 	await _frames(3)
 	_check(prompt.platform_row == null, "No row (%s)" % why)
 	if why != "not_configured": _check(not native.calls.has("status"), "and Play Games is never asked (%s)" % why)
+	api.offer = "on"
+	await _close(prompt, native)
+
+## The player taps the row while the quiet check runs, then closes the card: the check answers
+## signed out after the card is gone, and no sheet comes up over a screen that no longer asks.
+func _closed_during_check() -> void:
+	var native := _native()
+	native.quiet = "out"
+	native.hold = true
+	var service := _fresh(native, "ready")
+	service.start()
+	var prompt := await _ask()
+	await _until(func() -> bool: return prompt.platform_row != null)
+	prompt.platform_row.pressed.emit()
+	await _frames(1)
+	prompt.modal.close()
+	await _frames(3)
+	native.hold = false
+	native.release.emit()
+	await _until(func() -> bool: return not service._running and service.sign_in == Service.SignIn.SIGNED_OUT)
+	await create_timer(0.4).timeout
+	_check(native.count("status") == 1 and native.count("sign_in") == 0, "Closed during the check: no sign-in sheet afterwards: " + str(native.calls))
+	await _close(null, native)
+
+## Game Center on iPhone: the same row (its own words), a tap signs in with Apple's sheet; once
+## the sheet was turned down Apple does not offer it again this launch, so the row goes.
+func _game_center() -> void:
+	var native := _native()
+	native.quiet = "out"
+	api.offer = "game_center"
+	var service := _fresh(native, "ready", GamesProvider.GAME_CENTER)
+	await service.start()
+	var prompt := await _ask()
+	_check(_row_label(prompt) == PlayerCopy.DISPLAY_NAME_GAME_CENTER, "Game Center: Use my Game Center name: " + _row_label(prompt))
+	native.sheet = "cancelled"
+	prompt.platform_row.pressed.emit()
+	_check(await _until(func() -> bool: return prompt.platform_row == null), "Apple's sheet turned down: the row goes for this launch")
+	_check(prompt.choice() != "platform", "and nothing was chosen")
+	await _close(prompt, native)
+	native = _native()
+	native.quiet = "out"
+	service = _fresh(native, "ready", GamesProvider.GAME_CENTER)
+	await service.start()
+	prompt = await _ask()
+	prompt.platform_row.pressed.emit()
+	_check(await _until(func() -> bool: return prompt.choice() == "platform" and prompt.tag.text == "RobinPlays"), "Signed in with the sheet: the Game Center name fills in")
 	api.offer = "on"
 	await _close(prompt, native)
 

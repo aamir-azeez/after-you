@@ -16,7 +16,7 @@ extends Node
 ##    linked elsewhere asks which to keep (platform_games_flow.gd).
 ## 4. Cloud save: progress is joined with a Saved Games slot after meaningful moments. It needs a
 ##    signed-in account and the server's offer, not a friend link, so solo players get it too.
-## 5. The gamer name, for the name prompt only (name_offered, player_name): offered whenever the
+## 5. The gamer name, for the name prompt only (name_offered, ensure_started, player_name): offered whenever the
 ##    server offers the platform and its account can be had, and signed in on the player's tap
 ##    when the quiet check did not (Play Games may want its own sheet on a phone).
 ## Every call is async with a timeout; every failure leaves the game as it was. Main is freed
@@ -53,8 +53,9 @@ const LINK_ERROR := "error"
 const START_DELAY_MS := 4000
 ## How long the service waits for Main to finish loading an identity before giving up for now.
 const ACCOUNT_WAIT_MS := 60000
-## A player who asked for the gamer name waits this long for a quiet check already under way,
-## and at most this long for the platform's sign-in sheet (a little over the provider's own limits).
+## A player who asked for the gamer name waits this long for a quiet check already under way
+## (counted again once the check starts), and at most this long for the platform's sign-in
+## sheet (each a little over the provider's own limit).
 const NAME_CHECK_WAIT_MS := 16000
 const NAME_SHEET_WAIT_MS := 125000
 
@@ -185,10 +186,13 @@ func signed_in() -> bool:
 ## the server offers the platform and its account can be had, signed in, being checked, or one
 ## sign-in sheet away. Play Games often answers the quiet check "signed out" on a phone that
 ## needs its sheet, so a signed-out account still counts; a phone or build the platform refuses
-## (unavailable, not configured) does not.
+## (unavailable, not configured) does not, and neither does Game Center once its sheet was
+## turned down (Apple offers it once per launch).
 func name_offered() -> bool:
 	if not offered(): return false
-	return sign_in != SignIn.SIGNED_OUT or sign_in_code not in ["unavailable", "not_configured"]
+	if sign_in != SignIn.SIGNED_OUT: return true
+	if sign_in_code in ["unavailable", "not_configured"]: return false
+	return not (kind() == GamesProvider.GAME_CENTER and sign_in_code == "cancelled")
 
 ## The signed-in account's one-way key ("" while signed out), so a screen holding that account's
 ## gamer name can tell when another account (or none) took its place.
@@ -196,10 +200,14 @@ func account_key() -> String:
 	return _player_key if signed_in() else ""
 
 ## A screen that offers the platform opened (the name prompt): when this session never learned
-## the server's offer (a read that failed or was cut short at launch) or never ran the quiet
-## check, try again now. The screen follows `changed`; nothing waits on this.
-func refresh_offer() -> void:
+## the server's offer (a launch read that failed or was cut short) or never ran the quiet check,
+## try again now. The screen follows `changed`; nothing waits on this.
+func ensure_started() -> void:
 	if _running or busy or provider == null or not provider.available() or state == null or _account == null: return
+	if signed_in():
+		# Only the daily answer expired: read it again, as note_progress does.
+		if state.capability().is_empty() and _account.identity_state() == "ready": await _refresh_offer()
+		return
 	if not state.capability().is_empty() and (not offered() or sign_in != SignIn.UNAVAILABLE): return
 	await start()
 
@@ -216,31 +224,41 @@ func offer_pending() -> bool:
 ## The player's gamer name, read only now (the player picked "Use my Play Games name" or
 ## "Use my Game Center name"): {"ok", "name"} or a code. The player asked for it, so it signs in
 ## first when needed: a quiet check under way is waited for, and an account that is still
-## signed out gets the platform's sign-in sheet once.
-func player_name() -> Dictionary:
+## signed out gets the platform's sign-in sheet once, only while `wanted` (the asking card is
+## still open) holds.
+func player_name(wanted: Callable = Callable()) -> Dictionary:
 	if provider == null or not provider.available(): return {"ok": false, "code": "unavailable"}
 	if not signed_in():
-		var signed: Dictionary = await _sign_in_for_name()
+		var signed: Dictionary = await _sign_in_for_name(wanted)
 		if not signed.ok: return signed
 	return await provider.player_name()
 
-func _sign_in_for_name() -> Dictionary:
+func _sign_in_for_name(wanted: Callable) -> Dictionary:
 	if not name_offered(): return {"ok": false, "code": "unavailable"}
-	# The launch's own quiet check (or a sheet from Settings) is under way: its answer comes first.
-	await _wait_sign_in(NAME_CHECK_WAIT_MS, func() -> bool: return sign_in == SignIn.CHECKING or (_running and sign_in == SignIn.UNAVAILABLE))
+	await _wait_for_quiet_check()
 	if signed_in(): return {"ok": true}
+	# The card closed while the check ran: no sheet over a screen that no longer asks.
+	if wanted.is_valid() and not wanted.call(): return {"ok": false, "code": "cancelled"}
 	if _running or busy or not name_offered(): return {"ok": false, "code": "busy" if _running or busy else "unavailable"}
 	# Not awaited: the sign-in's link and cloud steps go on after the name is read.
 	sign_in_now()
-	await _wait_sign_in(NAME_SHEET_WAIT_MS, func() -> bool: return sign_in == SignIn.CHECKING)
+	var deadline := Time.get_ticks_msec() + NAME_SHEET_WAIT_MS
+	while is_inside_tree() and sign_in == SignIn.CHECKING and Time.get_ticks_msec() < deadline:
+		await get_tree().create_timer(0.1).timeout
 	if signed_in(): return {"ok": true}
 	return {"ok": false, "code": sign_in_code if not sign_in_code.is_empty() else "signed_out"}
 
-## Waits while `pending` holds (checked a few times a second, never past `limit_ms`).
-func _wait_sign_in(limit_ms: int, pending: Callable) -> void:
-	var deadline := Time.get_ticks_msec() + limit_ms
-	while is_inside_tree() and pending.call() and Time.get_ticks_msec() < deadline:
+## The launch's own pipeline (offer read, then the quiet check) or a sheet from Settings is under
+## way: its answer comes first. The limit counts again from the moment the check itself starts,
+## so a slow offer read never cuts a quiet check short.
+func _wait_for_quiet_check() -> void:
+	var deadline := Time.get_ticks_msec() + NAME_CHECK_WAIT_MS
+	var checking := sign_in == SignIn.CHECKING
+	while is_inside_tree() and not signed_in() and (sign_in == SignIn.CHECKING or _running) and Time.get_ticks_msec() < deadline:
 		await get_tree().create_timer(0.1).timeout
+		if sign_in == SignIn.CHECKING and not checking:
+			checking = true
+			deadline = Time.get_ticks_msec() + NAME_CHECK_WAIT_MS
 
 ## The platform's name as players know it.
 func display_name() -> String:
