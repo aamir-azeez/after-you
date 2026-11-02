@@ -1607,6 +1607,16 @@ const MAIN_A72C1BFFB5C9 := "You now have access to Full Journey, which includes 
 const MAIN_C7E8A28B2803 := "An internet connection is needed for this check. Your purchase records and saved journeys stay unchanged."
 # Request tester access — message
 const MAIN_B7C7E85171CD := "There is no tester access saved for this identity at this time."
+# A tester's own test codes (services/tester_switches.gd), seen only by players on the server's
+# tester list, on the tester code screen.
+const TESTER_KEEPSAKES_ALL := "Every keepsake and upgrade now shows on this phone. Type the same code again to see your own progress."
+const TESTER_KEEPSAKES_FRESH := "Home now starts fresh on this phone. Only what you play from now on shows. Type the same code again to see your own progress."
+const TESTER_KEEPSAKES_REAL := "Home shows your own progress again."
+const TESTER_JOURNEY_OFF := "Full Journey is off for this account while you test. Your purchase is kept. Type the same code again to turn it back on."
+const TESTER_JOURNEY_ON := "Full Journey is back on for this account."
+const TESTER_SWITCH_NOT_SAVED := "The code worked, but this phone couldn't keep the change. Type it again."
+const TESTER_JOURNEY_NOT_SAVED := "The code worked, but this phone couldn't keep the change yet. It catches up the next time it reaches the server."
+const TESTER_JOURNEY_BUY_HELD := "Full Journey is off for testing. Type your test code again to turn it back on."
 # Request tester access — message
 const MAIN_85B232C00485 := "Couldn't save or confirm tester access. Check your code and connection. Use Restore tester access to check a previous redemption."
 # Relay chapter — ready

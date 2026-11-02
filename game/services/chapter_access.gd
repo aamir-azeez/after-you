@@ -7,6 +7,7 @@ signal state_changed(state: String, reason: String)
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
+const TesterSwitches = preload("res://services/tester_switches.gd")
 
 var purchase_service_factory: Callable
 var tester_access_factory: Callable
@@ -64,6 +65,10 @@ func check_access(force_refresh: bool = false) -> void:
 	_generation += 1
 	_tester_admitted = false
 	_set_state("checking", "checking")
+	# A tester testing as a free player (services/tester_switches.gd) is held as one.
+	if TesterSwitches.shared().full_journey_off():
+		_set_state("hold", "purchase_required")
+		return
 	if not PlatformSupport.store_gated() and not tester_access_factory.is_valid():
 		_check_purchase()
 		return

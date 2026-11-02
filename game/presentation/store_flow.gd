@@ -10,7 +10,8 @@ extends Node
 ## - card kit: _card, _label, _paragraph, _button, _style, _screen_shell,
 ##   _replay_preview_thumb, _toast
 ## - identity and access rules: _ensure_identity, _relay_identity, _tester_context,
-##   _tester_checks_enabled, _tester_active, _load_cached_tester,
+##   _tester_checks_enabled, _tester_active, _tester_owned, _store_owned,
+##   _switched_off, _load_cached_tester,
 ##   _hosting_lock_reason, _store_identity_settled, _purchase_session_identity,
 ##   _chapter_unlocks
 ##
@@ -32,6 +33,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const StoreSupport = preload("res://services/store_support.gd")
+const TesterSwitches = preload("res://services/tester_switches.gd")
 const BenefitPanel = preload("res://presentation/kit/benefit_panel.gd")
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
@@ -82,7 +84,7 @@ func show_paywall(manual_store: bool = false) -> void:
 		var view: int = host.store_view_generation
 		await host._load_cached_tester()
 		if host.mode != MODE_PAYWALL or view != host.store_view_generation: return
-	if host._tester_active() and not manual_store:
+	if host._tester_owned() and not manual_store:
 		_show_tester_active()
 		return
 	var card := _full_journey_card()
@@ -323,10 +325,10 @@ func _show_store_offer() -> void:
 	if not _play_store_enabled():
 		show_paywall(tester_store_manual)
 		return
-	if host._tester_active() and not tester_store_manual:
+	if host._tester_owned() and not tester_store_manual:
 		_show_tester_active()
 		return
-	if host.purchases.has_entitlement():
+	if host._store_owned():
 		_show_full_journey_unlocked()
 		return
 	var card := _full_journey_card()
@@ -360,6 +362,10 @@ func _buy_full_journey(package: Dictionary) -> void:
 	if store_action_pending or host.mode!=MODE_PAYWALL or not package in purchase_offer.get("packages",[]): return
 	if not identity_ready():
 		host._toast(PlayerCopy.MAIN_5FE98B59E6BA)
+		return
+	# A tester testing as a free player never starts a real purchase.
+	if host._switched_off():
+		host._toast(PlayerCopy.TESTER_JOURNEY_BUY_HELD)
 		return
 	if host.purchases.has_entitlement():
 		_show_full_journey_unlocked()
@@ -519,7 +525,7 @@ func configure_purchases(manual_store: bool = false) -> void:
 		var context: String = host._tester_context()
 		await host._load_cached_tester()
 		if context.is_empty() or context != host._tester_context() or _tester_cache_checking(): return
-		if host._tester_active() and not manual_store: return
+		if host._tester_owned() and not manual_store: return
 	if not _play_store_enabled() or host.identity_restart_required or not store_configure_request.is_empty():
 		return
 	var key := str(host.config.get("revenuecat_public_key",""))
@@ -552,6 +558,15 @@ func _tester_form(message: String = "") -> void:
 	card.add_child(host._label("Tester code",32,CREAM,true))
 	card.add_child(host._paragraph(PlayerCopy.MAIN_A44444872701,620))
 	if not message.is_empty(): card.add_child(host._paragraph(message,620))
+	_add_code_field(card, "Redeem tester code")
+	var restore: Button = host._button("Restore tester access",_restore_tester_access,false)
+	restore.disabled = not host._relay_identity().ready or tester_action_pending
+	card.add_child(restore)
+	card.add_child(host._paragraph(PlayerCopy.MAIN_2E2A18416368,620))
+	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
+
+## The tester code field and its button. Masked; the code is cleared from the field on submit.
+func _add_code_field(card: VBoxContainer, label: String) -> void:
 	var field := LineEdit.new()
 	field.name = "TesterCode"
 	field.placeholder_text = "Tester code"
@@ -560,20 +575,18 @@ func _tester_form(message: String = "") -> void:
 	field.custom_minimum_size.y = 52
 	KeyboardLift.attach(field)
 	card.add_child(field)
-	var submit: Button = host._button("Redeem tester code",func(): _submit_tester_code(field))
+	var submit: Button = host._button(label,func(): _submit_tester_code(field))
 	submit.disabled = not host._relay_identity().ready or tester_action_pending
 	card.add_child(submit)
-	var restore: Button = host._button("Restore tester access",_restore_tester_access,false)
-	restore.disabled = not host._relay_identity().ready or tester_action_pending
-	card.add_child(restore)
-	card.add_child(host._paragraph(PlayerCopy.MAIN_2E2A18416368,620))
-	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
 
-func _show_tester_active() -> void:
+func _show_tester_active(message: String = "") -> void:
 	host.mode = MODE_TESTER_ACCESS
 	var card: VBoxContainer = host._card(700)
 	card.add_child(host._label("Tester access active",32,CREAM,true))
+	if not message.is_empty(): card.add_child(host._paragraph(message,620))
 	card.add_child(host._back_button("Back to chapters",func(): chapters_requested.emit()))
+	# A tester's own test codes are typed here too (services/tester_switches.gd).
+	_add_code_field(card, "Use code")
 	if _play_store_enabled(): card.add_child(host._button("Store purchases",show_store_from_settings,false))
 	elif PlatformSupport.play_listing_offered(): card.add_child(host._button("Get it on Google Play",func(): google_play_requested.emit(),false))
 	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
@@ -600,24 +613,42 @@ func _request_tester_access(code: String, restoring: bool) -> void:
 	code = ""
 	tester_action_pending = false
 	if context != host._tester_context(): return
+	# A test code is carried out even when its screen has gone: the server has said yes.
+	var test_message := _apply_test_action(str(result.test_action)) if result.get("ok",false) and result.has("test_action") else ""
 	if result.get("ok", false) and host.purchases is Purchases: host.purchases.invalidate_session_reads()
 	host.tester_access.note_cache_checked(context, host.api.base_url, host.api.player_id, host.api.device_token)
 	if host.application_backgrounded or host.mode != MODE_TESTER_ACCESS: return
 	if view != host.store_view_generation:
 		_refresh_tester_screen_if_idle()
 		return
-	if result.get("ok",false) and result.get("granted",false) and result.get("durable",false) and host._tester_active():
+	if not test_message.is_empty():
+		if host._tester_active(): _show_tester_active(test_message)
+		else: _tester_form(test_message)
+	elif result.get("ok",false) and result.get("granted",false) and result.get("durable",false) and host._tester_active():
 		_show_tester_active()
 	elif result.get("ok",false) and not result.get("granted",false):
 		_tester_form(PlayerCopy.MAIN_B7C7E85171CD)
 	else:
 		_tester_form(PlayerCopy.MAIN_85B232C00485)
 
+## Keeps a test code's action on this phone and says what changed. Home, the chapters and the
+## store read the switches when they next draw.
+func _apply_test_action(action: String) -> String:
+	var applied: Dictionary = TesterSwitches.shared().apply(action)
+	# The server has already flipped a Full Journey switch, so typing that code again would flip it back.
+	if not applied.get("ok", false): return PlayerCopy.TESTER_JOURNEY_NOT_SAVED if action.begins_with("full_journey") else PlayerCopy.TESTER_SWITCH_NOT_SAVED
+	match str(applied.get("state", "")):
+		"all": return PlayerCopy.TESTER_KEEPSAKES_ALL
+		"fresh": return PlayerCopy.TESTER_KEEPSAKES_FRESH
+		"real": return PlayerCopy.TESTER_KEEPSAKES_REAL
+		"off": return PlayerCopy.TESTER_JOURNEY_OFF
+	return PlayerCopy.TESTER_JOURNEY_ON
+
 func resume_purchase_access() -> void:
 	if host._tester_checks_enabled(): await host._load_cached_tester()
 	if host.application_backgrounded or _tester_cache_checking(): return
 	_refresh_tester_screen_if_idle()
-	if host._tester_active(): return
+	if host._tester_owned(): return
 	if not store_configured:
 		if host._relay_identity().ready and not store_action_pending:
 			configure_purchases()

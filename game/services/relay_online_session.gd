@@ -26,6 +26,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const StoreSupport = preload("res://services/store_support.gd")
+const TesterSwitches = preload("res://services/tester_switches.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const OwnLook = preload("res://services/own_look.gd")
@@ -428,6 +429,8 @@ func load_capabilities() -> bool:
 	# before the Wardrobe announces, so what that redraws already reads the new answer.
 	if not scope.is_empty() and PlatformSupport.is_ios(): StoreSupport.shared().note(str(scope.server), str(scope.owner), app_store_full_journey_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_enabled(str(scope.server), str(scope.owner), pollen_supported())
+	# A listed tester's Full Journey switch, as the server keeps it (services/tester_switches.gd).
+	if not scope.is_empty(): TesterSwitches.shared().note_full_journey(str(scope.server), str(scope.owner), capabilities.get("full_journey_off") == true)
 	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), wardrobe_supported(), shop_supported(), bundles_supported())
 	# Before the flush below, so a wardrobe read under an older offered tag is read again.
 	if not scope.is_empty(): Wardrobe.shared().note_offered_tag(str(scope.server), str(scope.owner), capabilities.get("pollen_offered_tag") if wardrobe_supported() else null)

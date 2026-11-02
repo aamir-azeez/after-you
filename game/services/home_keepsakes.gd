@@ -33,6 +33,9 @@ const SCAN_VERSION := 1
 const MAX_SCAN_BYTES := 262144
 static var _active: WeakRef
 static var _unclaimed: Dictionary = {}
+## Hears every award gameplay records (ids, "solo" or "friend"), before the ledger takes it. Main
+## sets it to TesterSwitches.note_award; it must not fail or write gameplay records.
+static var award_observer: Callable
 var last_error := ""
 var read_only := false
 var _path := PATH
@@ -395,6 +398,7 @@ static func record_legacy_friend(level_id: String) -> void:
 	_dispatch(["earlier/" + level_id], "friend")
 
 static func _dispatch(ids: Array, variant: String) -> void:
+	if award_observer.is_valid() and not ids.is_empty(): award_observer.call(ids, variant)
 	var target: RefCounted = _active.get_ref() if _active != null else null
 	if target != null:
 		target._award(ids, variant)

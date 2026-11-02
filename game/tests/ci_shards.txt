@@ -353,6 +353,7 @@ subscription_access 1
 tap_reliability 3
 tester_access 3
 tester_access_integration 2
+tester_switches 1
 tide_world 1
 toast 3
 touch_scrolling 2

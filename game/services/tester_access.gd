@@ -4,6 +4,7 @@ extends Node
 const Secrets = preload("res://services/secure_store.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Typed = preload("res://services/typed_values.gd")
+const TesterSwitches = preload("res://services/tester_switches.gd")
 const LIMIT_MS := 60000
 var secret_factory: Callable
 var api_factory: Callable
@@ -152,6 +153,11 @@ func _bound(operation: String, authority: String, expected_owner: String, code: 
 		return _error(_response_code(response), name)
 	var data: Variant = response.get("data")
 	if not data is Dictionary: return _error("invalid_tester_response", name)
+	# A listed tester's test code (backend src/test-codes.ts): the saved receipt stays as it is,
+	# and the caller carries the action out (services/tester_switches.gd).
+	if operation == "redeem" and _test_action(data, owner):
+		var kept := name == _binding and _loaded and not _receipt.is_empty()
+		return {"ok":true,"granted":kept,"durable":kept,"test_action":str(data.test_action)}
 	if _no_grant(data, owner):
 		# A permanent locally verified grant is not revoked by an optional request.
 		if name == _binding and not _receipt.is_empty(): return _error("tester_state_mismatch", name)
@@ -251,6 +257,9 @@ static func _exact(value: Dictionary, keys: Array) -> bool:
 
 static func _grant(value: Dictionary, owner: String) -> bool:
 	return _exact(value, ["schema_version","granted","access_source","entitlement","player_id","granted_at"]) and _schema_one(value.get("schema_version")) and value.get("granted") is bool and value.granted and Typed.equal(value.get("access_source"), "tester_grant") and Typed.equal(value.get("entitlement"), "full_journey") and Typed.equal(value.get("player_id"), owner) and _date(value.get("granted_at"))
+
+static func _test_action(value: Dictionary, owner: String) -> bool:
+	return _exact(value, ["schema_version","player_id","test_action"]) and _schema_one(value.get("schema_version")) and Typed.equal(value.get("player_id"), owner) and value.get("test_action") is String and value.test_action in TesterSwitches.ACTIONS
 
 static func _no_grant(value: Dictionary, owner: String) -> bool:
 	return _exact(value, ["schema_version","granted","player_id"]) and _schema_one(value.get("schema_version")) and value.get("granted") is bool and not value.granted and Typed.equal(value.get("player_id"), owner)

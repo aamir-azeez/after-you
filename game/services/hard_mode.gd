@@ -47,6 +47,9 @@ const MAX_MARKS_BYTES := 16384
 const MAX_STAGES := 64
 
 static var _launch: Dictionary = {}
+## Hears every Hard play recorded in the phone's own marks file (offered key, mode), done before or
+## not. Main sets it to TesterSwitches.note_hard.
+static var record_observer: Callable
 ## Run files are written on workers (keep_run) and read here; one at a time.
 static var _files := Mutex.new()
 static var _tasks: Array[int] = []
@@ -177,12 +180,15 @@ func record(chapter_key: String, mode: String) -> bool:
 	if mode not in MODES: return false
 	_load()
 	var key := Registry.offered_key(chapter_key)
-	if completed(key, mode): return true
-	var mark: Dictionary = _marks.get(key, {SOLO: false, TOGETHER: false}).duplicate()
-	mark[mode] = true
-	var next := _marks.duplicate(true)
-	next[key] = mark
-	return _write(next)
+	var saved := completed(key, mode)
+	if not saved:
+		var mark: Dictionary = _marks.get(key, {SOLO: false, TOGETHER: false}).duplicate()
+		mark[mode] = true
+		var next := _marks.duplicate(true)
+		next[key] = mark
+		saved = _write(next)
+	if saved and path == MARKS_PATH and record_observer.is_valid(): record_observer.call(key, mode)
+	return saved
 
 ## Every mark, {offered chapter key: {"solo": bool, "together": bool}}: what
 ## Home's keepsakes show and what cloud save carries. A copy.

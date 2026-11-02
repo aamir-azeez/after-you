@@ -60,6 +60,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrantCard = preload("res://presentation/pollen_grant_card.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const StoreSupport = preload("res://services/store_support.gd")
+const TesterSwitches = preload("res://services/tester_switches.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -391,6 +392,11 @@ func _ready() -> void:
 	Wardrobe.shared().scope_source=_names_scope
 	# On iPhone, whether the server takes App Store purchases follows the signed-in player (services/store_support.gd).
 	StoreSupport.shared().scope_source=_names_scope
+	# A tester's own test codes follow the signed-in player too, and hear the keepsakes and Hard
+	# plays gameplay records, for a fresh view (services/tester_switches.gd).
+	TesterSwitches.shared().scope_source=_names_scope
+	HomeKeepsakes.award_observer=TesterSwitches.shared().note_award
+	HardMode.record_observer=TesterSwitches.shared().note_hard
 	# Home's Wardrobe row and Pollen chip follow the server's wardrobe capability and the player's look.
 	Wardrobe.shared().changed.connect(_refresh_home_wardrobe)
 	# Bundle purchases whose claim got no answer go again with each flush (services/bundle_claims.gd).
@@ -805,7 +811,7 @@ func _show_home() -> void:
 	_keepsakes_reconcile_frame = Engine.get_process_frames()
 	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
 	# A build that sells nothing counts and shows the free chapters' keepsakes alone.
-	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors(),_paid_content_hidden())
+	home_stage.configure(world,home_active,_keepsake_earned(),_paid_content_hidden())
 	# A card over Home (What's new) keeps its wheel and pinch for itself.
 	home_stage.input_blocked = func() -> bool: return _top_modal() != null
 	_set_home_hard(home_stage)
@@ -927,14 +933,32 @@ func hard_states(together: Variant = null) -> Dictionary:
 ## remembers what it handed, so the keepsake poll only hands them on again
 ## when the marks file or the switch changed.
 func _set_home_hard(stage: Control) -> void:
-	_home_hard_stamp = [FileAccess.get_modified_time(HardMode.MARKS_PATH), hard_together()]
-	stage.set_hard(HardMode.new().marks(), hard_together())
+	_home_hard_stamp = _home_hard_now()
+	stage.set_hard(_hard_marks(), hard_together())
+
+## What _set_home_hard depends on: the marks file, the together Hard switch and the tester switches.
+func _home_hard_now() -> Array:
+	return [FileAccess.get_modified_time(HardMode.MARKS_PATH), hard_together(), TesterSwitches.shared().generation]
+
+## The keepsake marks Home, the chapter chain and the Hard picker read: the ledger's, unless a
+## tester's test code switched the view (services/tester_switches.gd). Cloud save and Pollen
+## first clears read the ledger itself.
+func _keepsake_earned() -> Array[Dictionary]:
+	return TesterSwitches.shared().earned(home_keepsakes.earned_descriptors())
+
+## The Hard marks, read as _keepsake_earned reads the keepsakes.
+func _hard_marks() -> Dictionary:
+	return TesterSwitches.shared().hard(HardMode.new().marks())
+
+## Whether a tester's test code has this player treated as without Full Journey (the server's switch).
+func _switched_off() -> bool:
+	return TesterSwitches.shared().full_journey_off()
 
 func hard_together() -> bool:
 	return relay_session != null and relay_session.hard_mode_supported()
 
 func _chapter_marks() -> Dictionary:
-	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
+	return ChapterCompletion.chapters(_keepsake_earned())
 
 ## What the chapter unlock gate answers from (services/chapter_unlocks.gd):
 ## the marks Home's keepsakes read, the chapters already played or in a room
@@ -944,13 +968,17 @@ func _chapter_marks() -> Dictionary:
 ## so every chapter is open and joins say nothing (ChapterUnlocks.unsettled).
 var _unlocks_kept: Array = []
 func _chapter_unlocks() -> Dictionary:
-	if home_keepsakes.read_only or home_keepsakes.backfill_pending(): return ChapterUnlocks.unsettled(_full_journey_access())
-	var earned := home_keepsakes.earned_descriptors()
+	# A tester's switched view (services/tester_switches.gd) does not wait on the ledger.
+	var view: String = TesterSwitches.shared().keepsakes()
+	if view.is_empty() and (home_keepsakes.read_only or home_keepsakes.backfill_pending()): return ChapterUnlocks.unsettled(_full_journey_access())
+	var earned := _keepsake_earned()
 	var rooms: Dictionary = room_hub_flow.known_rooms()
-	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access()]
+	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access(), TesterSwitches.shared().generation]
 	if _unlocks_kept.size() == 2 and _unlocks_kept[0] == stamp: return _unlocks_kept[1]
+	# A fresh view opens only what its own marks open: chapters played before it stay closed.
+	var fresh: bool = view == TesterSwitches.FRESH
 	# A duel's room is an ordinary room, so a duel's clear is among rooms.finished.
-	var progress := ChapterUnlocks.progress(earned, HardMode.new().marks(), ChapterUnlocks.touched(rooms.chapters), stamp[3], rooms.finished)
+	var progress := ChapterUnlocks.progress(earned, _hard_marks(), {} if fresh else ChapterUnlocks.touched(rooms.chapters), stamp[3], [] if fresh else rooms.finished)
 	_unlocks_kept = [stamp, progress]
 	return progress
 
@@ -981,10 +1009,10 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}, hard:
 	if identity_restart_required or identity_loading or identity_busy:
 		_toast(PlayerCopy.MAIN_FCB8424B7F88)
 		return
-	if _tester_active():
+	if _tester_owned():
 		_open_chapter_preview(scene,replay_context,hard)
 		return
-	if not purchases.has_entitlement():
+	if not _store_owned():
 		store_flow.show_paywall()
 		return
 	if not store_flow.identity_ready():
@@ -1499,7 +1527,7 @@ func _hosting_entitled() -> bool:
 ## purchase opens solo only, so hosting waits for a code; a Google Play purchase
 ## opens hosting too. Reads cached entitlement only, never a per-screen store query.
 func _hosting_lock_reason() -> String:
-	return Purchases.hosting_lock_reason(config,purchases.has_entitlement(),_tester_active())
+	return Purchases.hosting_lock_reason(config,_store_owned(),_tester_owned())
 
 ## The identity half of the store's readiness: a saved identity that no load,
 ## recovery, restart or deletion holds.
@@ -2455,8 +2483,8 @@ func _service_home_keepsakes(delta: float) -> void:
 	if mode == JourneyFlow.MODE_JOURNEY:
 		journey_flow.refresh_marks()
 	elif is_instance_valid(home_stage_view):
-		home_stage_view.set_keepsakes(home_keepsakes.earned_descriptors())
-		if [FileAccess.get_modified_time(HardMode.MARKS_PATH), hard_together()] != _home_hard_stamp: _set_home_hard(home_stage_view)
+		home_stage_view.set_keepsakes(_keepsake_earned())
+		if _home_hard_now() != _home_hard_stamp: _set_home_hard(home_stage_view)
 		var offer := overlay.get_node_or_null("HomeFullJourney") as Button
 		if offer != null: offer.visible = _full_journey_offered()
 		# The Duels row follows whatever capabilities this session has read since Home opened; it asks nothing itself.
@@ -2792,7 +2820,15 @@ func _tester_active() -> bool:
 	return _tester_checks_enabled() and is_instance_valid(tester_access) and not _tester_context().is_empty() and tester_access.active(api.base_url, api.player_id, api.device_token)
 
 func _full_journey_access() -> bool:
-	return _tester_active() or purchases.has_entitlement()
+	return _tester_owned() or _store_owned()
+
+## Tester access that opens Full Journey: a saved tester grant, unless the tester switched it off.
+func _tester_owned() -> bool:
+	return _tester_active() and not _switched_off()
+
+## A store purchase that opens Full Journey, unless the tester switched it off. The purchase itself stays.
+func _store_owned() -> bool:
+	return purchases.has_entitlement() and not _switched_off()
 
 ## True on an iOS build that sells nothing: every paid surface (chapter cards,
 ## earlier islands, the Full Journey offer, hosting access) is left out, never
@@ -2833,7 +2869,7 @@ func _load_cached_tester() -> void:
 ## identity now in use. Otherwise the scene reads the receipt itself.
 func _hand_over_tester_check(scene: String) -> void:
 	if _tester_checks_enabled() and is_instance_valid(tester_access) and tester_access.checked_for(_tester_context(), api.base_url, api.player_id, api.device_token):
-		ChapterAccess.hand_over(scene, api.base_url, _tester_active())
+		ChapterAccess.hand_over(scene, api.base_url, _tester_owned())
 	else:
 		ChapterAccess.drop_hand_over()
 
