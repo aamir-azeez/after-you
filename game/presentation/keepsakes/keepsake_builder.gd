@@ -17,7 +17,12 @@ extends RefCounted
 ## - beats(state) is the tap's timeline: the base beat, then one per earned
 ##   upgrade, each {"beat", "time"}. The base takes at most BASE_MAX seconds and
 ##   each upgrade at most UPGRADE_MAX. The layer then eases every part back to
-##   its rest pose over SETTLE seconds.
+##   its rest pose over SETTLE seconds, except what the beats anim.keep() (or
+##   anim.spin()): that stays as the tap left it while Home shows, until the
+##   keepsake is pressed again. press_again() says what that press does:
+##   REPLAY puts it back to rest and plays it from the start; SWITCH plays its
+##   "off" beat (off_time() long, at most UPGRADE_MAX), after which everything
+##   goes back to rest.
 ## - play(beat, anim, parts, state) adds one beat to the tap through anim
 ##   (presentation/keepsakes/keepsake_anim.gd), times from the beat's start.
 ##   When the pip set it off in Explore, anim.rider is the pip and play() may
@@ -47,6 +52,9 @@ const UPGRADE_MAX := 0.8
 ## The layer's ease back to rest after the last beat.
 const SETTLE := 0.3
 const UPGRADES := ["together", "hard", "top"]
+## What pressing a keepsake that holds its end state does (press_again()).
+const REPLAY := "replay"
+const SWITCH := "switch"
 
 func build(root: Node3D, state: Dictionary) -> Dictionary:
 	return {}
@@ -67,6 +75,13 @@ func beats(state: Dictionary) -> Array:
 func play(_beat: String, _anim: RefCounted, _parts: Dictionary, _state: Dictionary) -> void:
 	pass
 
+func press_again() -> String:
+	return REPLAY
+
+## The "off" beat's length, for a keepsake that SWITCHes.
+func off_time() -> float:
+	return 0.0
+
 ## Every upgrade on, for the warm-up and the budget checks.
 func full_state() -> Dictionary:
 	return {"together": true, "hard": true, "top": true}
@@ -84,6 +99,7 @@ func materials() -> Array[Material]:
 	anim.rider = Node3D.new()
 	root.add_child(anim.rider)
 	for beat: Dictionary in beats(state): play(str(beat.beat), anim, parts, state)
+	if press_again() == SWITCH: play("off", anim, parts, state)
 	var result: Array[Material] = []
 	if stay().has_area():
 		var visit := Node3D.new()

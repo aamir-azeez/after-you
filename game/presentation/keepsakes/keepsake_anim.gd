@@ -4,7 +4,8 @@ extends RefCounted
 ## from the beat's start; the layer owns the Tween, so leaving Home ends it.
 ## Every node a call moves, lights or shows must be one of the parts its
 ## build() returned, or a part made for the tap with spawn(), which goes when
-## the tap ends; the layer puts every part back to its rest pose after.
+## the tap ends; the layer puts every part back to its rest pose after, except
+## what a beat keep()s or spin()s, which it holds until the next press.
 ##
 ## With reduced motion on nothing slides or spins: each node and property jumps
 ## once to the first value a beat gives it (the lit pose: a path's `peak`) when
@@ -44,9 +45,50 @@ var landing: Variant = null
 ## the pip, () -> void gives a light tap of the phone. Either may be empty.
 var pop_heart: Callable
 var haptic: Callable
+## What the tap leaves as it ends, by node (keep()), and what keeps turning
+## after it (spin()): the layer holds both until the keepsake is pressed again.
+var kept: Dictionary = {}
+var spins: Array[Dictionary] = []
 var _landing_at := -INF
 var _first: Dictionary = {}
 var _jumps: Array = []
+
+## Leaves `node` (a moving part or a part made for the tap) as the tap ends it
+## instead of putting it back: the keepsake's builder says what pressing it
+## again does (keepsake_builder.gd press_again()).
+func keep(node: Node) -> void:
+	kept[node] = true
+
+## Keeps `node` turning about its up axis at `rate` radians a second once the
+## tap ends, for as long as the keepsake holds its end state (never under
+## Reduce motion, and only while Home is drawn). `beams` evenly spaced arms
+## turn on it; each of `answers`, [part, bearing, lit look, dark look], is lit
+## while an arm points within ANSWER_WIDTH of its bearing.
+func spin(node: Node3D, rate: float, beams: int = 1, answers: Array = []) -> void:
+	keep(node)
+	for answer: Array in answers:
+		keep(answer[0])
+		looks.append_array([answer[2], answer[3]])
+	spins.append({"node": node, "rate": rate, "beams": maxi(1, beams), "answers": answers})
+
+## How near an arm points to an answer's bearing to light it (radians).
+const ANSWER_WIDTH := 0.22
+
+## Turns every spin on by `step` seconds and lights its answers. Writes
+## nothing else; a light changes only as an arm comes or goes.
+static func advance_spins(list: Array[Dictionary], step: float) -> void:
+	for turning: Dictionary in list:
+		var node: Node3D = turning.node
+		if not is_instance_valid(node): continue
+		var angle := fposmod(node.rotation.y + float(turning.rate) * step, TAU)
+		node.rotation.y = angle
+		var gap := TAU / int(turning.beams)
+		for answer: Array in turning.answers:
+			var part: MeshInstance3D = answer[0]
+			if not is_instance_valid(part): continue
+			var off := fposmod(angle - float(answer[1]), gap)
+			var look: Material = answer[2] if minf(off, gap - off) <= ANSWER_WIDTH else answer[3]
+			if part.material_override != look: part.material_override = look
 
 ## Tweens `node`'s `property` (a subpath such as "rotation:y" is fine) to `to`
 ## over `time` seconds, starting `at`.

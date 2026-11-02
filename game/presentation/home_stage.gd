@@ -771,6 +771,8 @@ func _process(delta: float) -> void:
 	else: zoom_size = lerpf(zoom_size,zoom_target,1.0-exp(-12.0*step))
 	_ease_pan(step)
 	_frame_camera()
+	# A keepsake left on (the lighthouse's beam) turns only while Home runs.
+	if is_instance_valid(_keepsake_layer): _keepsake_layer.advance_held(step)
 	_world.update_spirit_attention()
 	for role: String in _actors:
 		var actor: Node3D = _actors[role]

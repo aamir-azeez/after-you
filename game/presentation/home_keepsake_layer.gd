@@ -13,8 +13,10 @@ extends Node3D
 ## swapped in whole, so nothing flickers. A tap, an Explore press or the pip
 ## walking into one plays one keepsake: this layer owns the Tween, ignores a
 ## second start while it plays, waits with any rebuild until it ends, then eases
-## every part back to its rest pose. Leaving Home frees the layer, and the
-## Tween with it.
+## every part back to its rest pose, except what its beats keep (a flower left
+## grown, a lamp left on): that is held, and only turns (advance_held()), until
+## the keepsake is pressed again or the set is rebuilt. Nothing held is saved.
+## Leaving Home frees the layer, and the Tween with it.
 ##
 ## In Explore the stage reports each step the pip takes (walked()); nothing
 ## here runs while the pip stands still. A step can set a keepsake off (its
@@ -75,8 +77,13 @@ var _next: Dictionary = {}
 var _held: Array[Node] = []
 var _fold: Dictionary = {}
 var _rebuild_in := -1.0
-## The tap playing now: {"id", "tween", "anim", "rest", "settling"}.
+## The tap playing now: {"id", "tween", "anim", "rest", "settling", "spins"}.
 var _play: Dictionary = {}
+## Keepsakes holding what their last tap kept (keepsake_anim.gd keep, spin),
+## by id: {"rest", "spawned", "fx", "made", "spins"}. A rebuilt set has none.
+var _kept: Dictionary = {}
+## Every spin turning now, held or in a tap's ease back (advance_held()).
+var _spins: Array[Dictionary] = []
 var _highlight: MeshInstance3D
 ## Walkable floors and island middles by island id ("left", "right" and the isles).
 var _floors: Dictionary = {}
@@ -250,6 +257,9 @@ func _swap() -> void:
 		remove_child(old)
 		old.queue_free()
 	(_set.root as Node3D).name = "Props"
+	# What the old set held went with it.
+	_kept.clear()
+	_sync_spins()
 	_held.clear()
 	for id: String in _set.props:
 		for part: Node in _moving(_set.props[id].parts): _held.append(part)
@@ -268,8 +278,11 @@ func playable(id: String) -> bool:
 
 ## Plays a keepsake. A second start on the one playing changes nothing; a
 ## start on another ends the first in its rest pose and plays the new one,
-## except during a ride, which always finishes. `rider`: the pip, when it set
-## the keepsake off in Explore. False for a keepsake that is not drawn earned.
+## except during a ride, which always finishes. A keepsake holding what its
+## last tap kept goes back to rest and plays from the start, or, if its
+## builder SWITCHes, plays its "off" beat from where it stands. `rider`: the
+## pip, when it set the keepsake off in Explore. False for a keepsake that is
+## not drawn earned.
 func play(id: String, rider: Node3D = null) -> bool:
 	if not playable(id) or _play.get("id") == id or riding(): return false
 	if not _play.is_empty(): _end_play()
@@ -277,6 +290,10 @@ func play(id: String, rider: Node3D = null) -> bool:
 	var holder := (_set.root as Node3D).get_node_or_null(NodePath(prop.name)) as Node3D
 	if holder == null: return false
 	var builder: RefCounted = _builders[id]
+	var held: Dictionary = _kept.get(id, {})
+	var off: bool = not held.is_empty() and builder.press_again() == Builder.SWITCH
+	if off: _kept.erase(id)
+	else: _release(id)
 	var state: Dictionary = prop.state.duplicate()
 	state.sounds = _entry(id).keepsake.get("sounds", {})
 	# Where the other spirit stands, in the keepsake's frame (the Crossroads points there).
@@ -289,9 +306,15 @@ func play(id: String, rider: Node3D = null) -> bool:
 	anim.pop_heart = pop_heart
 	anim.haptic = haptic
 	anim.reduced = _reduced()
-	anim.fx = Node3D.new()
-	anim.fx.name = "Tap"
-	holder.add_child(anim.fx)
+	if off:
+		# The off beat starts from what was held: its parts go when it ends.
+		anim.fx = held.fx
+		anim.made = held.made
+		anim.spawned.append_array(held.spawned)
+	else:
+		anim.fx = Node3D.new()
+		anim.fx.name = "Tap"
+		holder.add_child(anim.fx)
 	if is_instance_valid(rider):
 		anim.rider = rider
 		anim.rider_frame = transform * slot_transform(id)
@@ -299,19 +322,24 @@ func play(id: String, rider: Node3D = null) -> bool:
 	var tween := create_tween().set_parallel(true)
 	if not anim.reduced: anim.tween = tween
 	var time := _approach(id, builder, state, anim)
-	for beat: Dictionary in builder.beats(state):
+	for beat: Dictionary in [{"beat": "off", "time": builder.off_time()}] if off else builder.beats(state):
 		anim.start = time
 		builder.play(str(beat.beat), anim, prop.parts, state)
 		time += float(beat.time)
-	var rest: Array = []
+	# Held parts go back to the rest they had before the tap that kept them.
+	var rest: Array = held.rest.duplicate() if off else []
+	var known := {}
+	for entry: Array in rest: known[entry[0]] = true
 	for node: Variant in anim.touched:
-		if is_instance_valid(node) and not anim.spawned.has(node): rest.append(_rest_of(node))
+		if is_instance_valid(node) and not anim.spawned.has(node) and not known.has(node): rest.append(_rest_of(node))
 	if anim.reduced: anim.apply_jumps()
 	# A ride gives the pip back the moment it lands, while the rest still plays.
 	elif anim.landing != null: tween.tween_callback(_land.bind(anim, true)).set_delay(anim.landing_time())
 	tween.tween_interval(REDUCED_HOLD if anim.reduced else time)
 	tween.finished.connect(_settle)
-	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest, "settling": false}
+	# A held turn keeps turning through the off beat.
+	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest, "settling": false, "spins": held.spins if off else []}
+	_sync_spins()
 	return true
 
 ## A ride set off where the pip cannot ride from (the Explore action beside or
@@ -336,20 +364,42 @@ static func _rest_of(node: Node) -> Array:
 	var look: Material = (node as MeshInstance3D).material_override if node is MeshInstance3D else null
 	return [node, shape.transform if shape != null else Transform3D.IDENTITY, shape.visible if shape != null else true, look]
 
+static func _restore(rest: Array) -> void:
+	var node: Variant = rest[0]
+	if not is_instance_valid(node): return
+	if node is Node3D:
+		(node as Node3D).transform = rest[1]
+		(node as Node3D).visible = rest[2]
+	if node is MeshInstance3D: (node as MeshInstance3D).material_override = rest[3]
+
+static func _free_part(part: Variant) -> void:
+	if not is_instance_valid(part): return
+	var node := part as Node
+	if node.get_parent() != null: node.get_parent().remove_child(node)
+	node.queue_free()
+
 ## The beats are over: the pip lands, the tap's own parts go, and every moved
-## part eases back to rest over SETTLE seconds (at once with Reduce motion).
+## part eases back to rest over SETTLE seconds (at once with Reduce motion);
+## what the beats kept stays, and a kept spin starts turning now.
 func _settle() -> void:
 	if _play.is_empty() or _play.settling: return
 	var anim: RefCounted = _play.anim
 	_land(anim)
-	if is_instance_valid(anim.fx): anim.fx.visible = false
-	var moved: Array = (_play.rest as Array).filter(func(rest: Array) -> bool: return is_instance_valid(rest[0]) and rest[0] is Node3D and (rest[0] as Node3D).transform != rest[1])
+	if is_instance_valid(anim.fx):
+		if anim.kept.is_empty(): anim.fx.visible = false
+		else:
+			for part: Variant in anim.spawned:
+				if is_instance_valid(part) and part is Node3D and not anim.kept.has(part): (part as Node3D).visible = false
+	var moved: Array = (_play.rest as Array).filter(func(rest: Array) -> bool: return is_instance_valid(rest[0]) and rest[0] is Node3D and not anim.kept.has(rest[0]) and (rest[0] as Node3D).transform != rest[1])
+	if not anim.spins.is_empty():
+		_play.spins = anim.spins
+		_sync_spins()
 	if anim.reduced or moved.is_empty():
-		_end_play()
+		_end_play(true)
 		return
 	var tween := create_tween().set_parallel(true)
 	for rest: Array in moved: tween.tween_property(rest[0], "transform", rest[1], Builder.SETTLE).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.finished.connect(_end_play)
+	tween.finished.connect(_end_play.bind(true))
 	_play.tween = tween
 	_play.settling = true
 
@@ -365,26 +415,53 @@ func _land(anim: RefCounted, landed: bool = false) -> void:
 		if anim.rider.has_method("end_ride"): anim.rider.end_ride(LANDED_FACE if landed else 0.0)
 	anim.landing = null
 
-func _end_play() -> void:
+## Ends the tap: everything goes back to rest and its parts go, except, when
+## it `finished` (not cut off), what its beats kept, which the keepsake holds.
+func _end_play(finished: bool = false) -> void:
 	if _play.is_empty(): return
 	var anim: RefCounted = _play.anim
 	if is_instance_valid(_play.tween): (_play.tween as Tween).kill()
 	_land(anim)
+	var keeping: Dictionary = anim.kept if finished else {}
+	var held_rest: Array = []
 	for rest: Array in _play.rest:
-		var node: Variant = rest[0]
-		if not is_instance_valid(node): continue
-		if node is Node3D:
-			(node as Node3D).transform = rest[1]
-			(node as Node3D).visible = rest[2]
-		if node is MeshInstance3D: (node as MeshInstance3D).material_override = rest[3]
-	for part: Node in anim.spawned:
-		if not is_instance_valid(part): continue
-		if part.get_parent() != null: part.get_parent().remove_child(part)
-		part.queue_free()
-	if is_instance_valid(anim.fx):
-		if anim.fx.get_parent() != null: anim.fx.get_parent().remove_child(anim.fx)
-		anim.fx.queue_free()
+		if keeping.has(rest[0]): held_rest.append(rest)
+		else: _restore(rest)
+	var held_parts: Array[Node] = []
+	for part: Variant in anim.spawned:
+		if keeping.has(part) and is_instance_valid(part): held_parts.append(part)
+		else: _free_part(part)
+	if not keeping.is_empty(): _kept[str(_play.id)] = {"rest": held_rest, "spawned": held_parts, "fx": anim.fx, "made": anim.made, "spins": anim.spins}
+	else: _free_part(anim.fx)
 	_play = {}
+	_sync_spins()
+
+## Puts a held keepsake back to rest at once, its kept parts gone.
+func _release(id: String) -> void:
+	var held: Dictionary = _kept.get(id, {})
+	if held.is_empty(): return
+	_kept.erase(id)
+	for rest: Array in held.rest: _restore(rest)
+	for part: Variant in held.spawned: _free_part(part)
+	_free_part(held.fx)
+	_sync_spins()
+
+func _sync_spins() -> void:
+	_spins.clear()
+	for id: String in _kept: _spins.append_array(_kept[id].spins)
+	if not _play.is_empty(): _spins.append_array(_play.get("spins", []))
+
+## Whether a keepsake holds what its last tap kept (a flower grown, a lamp on).
+func holding(id: String) -> bool:
+	return _kept.has(id)
+
+## Turns what the keepsakes hold turning (a lighthouse left on) on by `step`
+## seconds. Home's stage calls it each frame it runs (Home showing, in the
+## foreground); nothing turns while a screen covers the 3D world, or under
+## Reduce motion, where a held beam stands still. Nothing held: one check.
+func advance_held(step: float) -> void:
+	if _spins.is_empty() or _reduced() or get_viewport().disable_3d: return
+	Anim.advance_spins(_spins, step)
 
 ## Ends a tap now, in its rest pose (a carried pip lands at its ride's end).
 func stop_play() -> void:
