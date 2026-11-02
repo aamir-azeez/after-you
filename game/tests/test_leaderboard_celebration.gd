@@ -292,6 +292,10 @@ func _screen() -> void:
 	_check(clock != null and clock.texture == Rows.CLOCK_ICON and clock.accessibility_name == PlayerCopy.LEADERBOARD_WAITING_CHECK and _has_text(mine, Runs.time_text(6250)) and board.find_children("LeaderboardWaiting", "", true, false).size() == 1, "the pair's run waiting for its check stands in the pair's place with a clock")
 	var mine_pips: Array = mine.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
 	_check(mine_pips.size() == 2 and mine_pips[0].own, "its first pip is this player's own")
+	var checking_card: Control = screen.find_child("LeaderboardChecking", true, false)
+	_check(checking_card != null and checking_card.visible and _has_text(checking_card, PlayerCopy.LEADERBOARD_RUN_CHECKING) and _has_text(checking_card, Runs.time_text(6250)) and _has_text(checking_card, PlayerCopy.LEADERBOARD_RUN_CHECKING_NOTE) and not board.is_ancestor_of(checking_card), "the card beside the board says the waiting run's time is being checked")
+	var card_clock: TextureRect = checking_card.find_child("LeaderboardCheckingClock", true, false)
+	_check(card_clock != null and card_clock.texture == Rows.CLOCK_ICON and checking_card.find_child("LeaderboardWaiting", true, false) == null, "with the rows' clock, never counted as a waiting row's")
 	_check(_has_text(screen.find_child("LeaderboardSharedNote", true, false), PlayerCopy.LEADERBOARD_SHARED_BOARD), "normal and duel runs share the board while duels are on")
 	var cards: Array = screen.find_child("LeaderboardChapters", true, false).find_children("Chapter_*", "Button", true, false)
 	_check(not cards.is_empty() and cards.all(func(card: Node) -> bool: return (card.find_children("*", "TextureRect", true, false)[0] as TextureRect).texture != null), "each chapter shows its capture")
@@ -311,6 +315,7 @@ func _screen() -> void:
 	_check(passed != null and passed.modulate.a < 1.0 and board.find_child("LeaderboardRow4", true, false).modulate.a == 1.0, "only the row that passed its check fades in")
 	var own_after: Node = screen.find_child("LeaderboardOwnRow", true, false)
 	_check(board.find_child("LeaderboardWaiting", true, false) == null and own_after.find_child("LeaderboardWaiting", true, false) == null and _has_text(own_after, "5") and own_after.find_child("LeaderboardWatch", true, false) != null, "once it passes the clock goes, and Your best has its place and Watch")
+	_check(not checking_card.visible, "and the checking card goes with it")
 	var deadline := Time.get_ticks_msec() + 3000
 	while is_instance_valid(passed) and passed.modulate.a < 1.0 and Time.get_ticks_msec() < deadline: await process_frame
 	_check(is_instance_valid(passed) and passed.modulate.a == 1.0, "over about 0.4 s")

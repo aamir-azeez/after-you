@@ -10,6 +10,7 @@ extends CanvasLayer
 ## best pinned under them. A run of this player's that waits for its replay
 ## check stands at the place it would get, with a clock, on this phone only
 ## (services/board_status.gd shown_rows); it goes quietly if it does not pass.
+## While it waits, a card under the chapters says its time is being checked.
 ## Which runs are this player's comes from services/leaderboard_runs.gd; the
 ## board itself never names anyone who did not choose to show their name. It reads boards through
 ## services/leaderboard_client.gd only and keeps no live view of its own, so it
@@ -77,6 +78,7 @@ var _body: BoxContainer
 var _chapters: BoxContainer
 var _chapter_cards: Dictionary = {}
 var _side: VBoxContainer
+var _checking_card: PanelContainer
 var _board_scroll: ScrollContainer
 var _board: VBoxContainer
 var _heading: Label
@@ -244,11 +246,13 @@ func _build_body() -> void:
 	_own = VBoxContainer.new()
 	_own.name = "LeaderboardOwn"
 	column.add_child(_own)
-	# The shared board note sits under the chapters, or under the board when
-	# the chapters are a strip.
+	# The checking card and the shared board note sit under the chapters, or
+	# under the board when the chapters are a strip.
 	_side = VBoxContainer.new()
 	_side.add_theme_constant_override("separation", 10)
 	(column if _stacked else rail_column).add_child(_side)
+	_checking_card = _checking()
+	_side.add_child(_checking_card)
 	if duels_on: _side.add_child(_shared_note())
 	_render_chapters()
 	_render_board()
@@ -348,6 +352,7 @@ func _render_board() -> void:
 	_clear(_board)
 	_clear(_own)
 	_heading.text = RoomChapterTitle.title(_selected, PlayerCopy.LEADERBOARDS) if not _selected.is_empty() else PlayerCopy.LEADERBOARDS
+	_checking_card.visible = false
 	if _state != "ready":
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_LOADING if _state == "loading" else PlayerCopy.LEADERBOARD_FAILED))
 		return
@@ -380,6 +385,7 @@ func _render_board() -> void:
 		_board.add_child(line)
 		if row.entry_id in passed and not row.pending: _fade_in(line)
 	_render_own(mine, mine_by_id, rows, checking)
+	_show_checking(rows)
 	_keep_offset.call_deferred(offset)
 
 func _keep_offset(offset: int) -> void:
@@ -422,6 +428,15 @@ func _render_own(mine: Array, mine_by_id: Dictionary, rows: Array, checking: Arr
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_ASSISTED))
 	elif mine.is_empty():
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_NO_RUN))
+
+## The checking card while a run of this player's waits on the board this
+## phone shows: the time of the first waiting row, the one Your best shows.
+func _show_checking(rows: Array) -> void:
+	for row: Dictionary in rows:
+		if bool(row.pending):
+			(_checking_card.find_child("LeaderboardCheckingTime", true, false) as Label).text = Runs.time_text(int(row.ticks))
+			_checking_card.visible = true
+			return
 
 ## Shows a celebration waiting for this player, once the page is free for it.
 func _celebrate() -> void:
@@ -479,6 +494,43 @@ static func _clear(holder: Node) -> void:
 
 static func _showing(node: Variant) -> bool:
 	return is_instance_valid(node) and not node.is_queued_for_deletion()
+
+## "Your time is being checked", the waiting run's time, and who sees its place when.
+func _checking() -> PanelContainer:
+	var card := PanelContainer.new()
+	card.name = "LeaderboardChecking"
+	var style := ThemeRules.rounded(Color("1d4c46"), 14, UiTokens.SECONDARY_BORDER)
+	ThemeRules.padded(style, 14.0, 10.0)
+	card.add_theme_stylebox_override("panel", style)
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 12)
+	card.add_child(line)
+	# The rows' clock (presentation/leaderboard_rows.gd), larger and in cream.
+	var clock := TextureRect.new()
+	clock.name = "LeaderboardCheckingClock"
+	clock.texture = Rows.CLOCK_ICON
+	clock.modulate = UiTokens.CREAM
+	clock.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	clock.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	clock.custom_minimum_size = Vector2(30, 30)
+	clock.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	clock.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(clock)
+	var words := VBoxContainer.new()
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.add_theme_constant_override("separation", 0)
+	line.add_child(words)
+	var title := _text(PlayerCopy.LEADERBOARD_RUN_CHECKING, 18 if _compact else 20, UiTokens.CREAM, true)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.add_child(title)
+	var time := _text("", 30, UiTokens.CREAM, true)
+	time.name = "LeaderboardCheckingTime"
+	words.add_child(time)
+	var note := _text(PlayerCopy.LEADERBOARD_RUN_CHECKING_NOTE, 15, UiTokens.SOFT)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	words.add_child(note)
+	card.visible = false
+	return card
 
 func _shared_note() -> Control:
 	var line := HBoxContainer.new()

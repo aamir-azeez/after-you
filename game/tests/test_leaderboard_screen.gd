@@ -190,7 +190,7 @@ func _screen() -> void:
 	_check(unlisted_pips.size() == 2 and unlisted_pips[0].own and unlisted_pips[1].outfit == {"hat": "straw_hat"}, "Your best on a run the board does not list dresses the partner in the look this phone last heard for them")
 	unlisted.free()
 	_check(own != null and _texts(own).has("2") and _texts(own).has(Runs.time_text(1470)), "Your best is pinned with its rank")
-	_check(screen.find_child("LeaderboardWaiting", true, false) == null, "a run listed as checking that is no faster than the pair's ranked run shows no clock")
+	_check(screen.find_child("LeaderboardWaiting", true, false) == null and not screen.find_child("LeaderboardChecking", true, false).visible, "a run listed as checking that is no faster than the pair's ranked run shows no clock and no checking card")
 	var celebration: Node = screen.find_child(Celebration.NODE_NAME, true, false)
 	var pips := screen.find_children("*", "SubViewport", true, false).filter(func(view: Node) -> bool: return celebration == null or not celebration.is_ancestor_of(view))
 	_check(pips.is_empty(), "rows and Your best draw still pips, never a view of their own: %d views" % pips.size())
@@ -246,12 +246,15 @@ func _waiting_first() -> void:
 	_check(second != null and _texts(second).has(PlayerCopy.LEADERBOARD_NAMES % ["Cy", "Di"]) and second.find_child("LeaderboardGoldLeaf", true, false) == null, "the first place it passes loses the leaf on this phone")
 	var own: Node = screen.find_child("LeaderboardOwnRow", true, false)
 	_check(own != null and own.find_child("LeaderboardWaiting", true, false) != null and _texts(own).has(PlayerCopy.LEADERBOARD_NAMES % ["Ada", "Bo"]), "Your best is the waiting first place, named too")
+	var card: Control = screen.find_child("LeaderboardChecking", true, false)
+	_check(card != null and card.visible and _texts(card).has(Runs.time_text(1470)), "the checking card shows the waiting run's time")
 	# The check fails: the board lists it nowhere.
 	api.replies["GET /v1/leaderboards/sleeping-lighthouse@2"] = {"ok": true, "data": {"schema_version": 1, "board": "sleeping-lighthouse@2", "top": top, "checking": []}}
 	screen._load(true)
 	for frame in range(6): await process_frame
 	first = board.find_child("LeaderboardRow1", true, false)
 	_check(first != null and first.find_child("LeaderboardGoldLeaf", true, false) != null and first.find_child("LeaderboardWaiting", true, false) == null and _texts(first).has(PlayerCopy.LEADERBOARD_NAMES % ["Cy", "Di"]) and screen.find_children("LeaderboardWaiting", "", true, false).is_empty(), "a failed check takes the row away quietly and the first place has its leaf back")
+	_check(not card.visible, "and the checking card goes")
 	screen.queue_free()
 	await process_frame
 	# On a narrow screen the leaf, the place and the clock still fit the place column.
