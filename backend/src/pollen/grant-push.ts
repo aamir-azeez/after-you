@@ -18,8 +18,9 @@ type Registration = { token: string; device_hash: string; updated_at: number; pl
  * Player after its alarm paid an instalment (pollen/grant-alarm.ts). Through the existing FCM sender to this
  * player's own registered phones: the current device's rows, registered in the last POLLEN_PUSH_REACH_MS. It
  * rides the main notification setting: an iOS row (with IOS_PUSH_ENABLED) gets it only with "turns" on, and an
- * Android phone shows it only with turn notifications on (the app checks, as for turns). An Android or iOS app
- * too old to know the message drops it unshown.
+ * Android phone shows it only with turn notifications on (the app checks, as for turns). An Android app too old
+ * to know the message drops it unshown, as does an old iPhone app while IOS_PUSH_ENABLED is off; with it on, iOS
+ * shows the server's alert itself, and on an old app a tap just opens the app where it was.
  *
  * Best effort: one try per phone, never retried and never re-arming the alarm, since the Pollen is already
  * paid and the Home card shows it. A token FCM calls gone is erased, as the turn push does. Reads only

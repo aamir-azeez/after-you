@@ -174,8 +174,8 @@ describe("the grant's alarm in the Player", () => {
     expect(await runInDurableObject(player(account), async (_, state) => walletView(state.storage, Date.now()).balance)).toBe(4500 + 4750);
     expect(await alarmOf(account)).toEqual({ alarm: anniversary(first, 2) + SETTLE_MS, marker: anniversary(first, 2) + SETTLE_MS });
     console.log("grant alarm rows", JSON.stringify(run.rows));
-    // Ledger line, wallet, grant state and the alarm marker; PollenClaims reads its holder row and writes nothing.
-    expect(run.rows.player.written).toBeLessThanOrEqual(5);
+    // Ledger line, wallet, grant state and the alarm marker twice (the backoff before the read, next month after); PollenClaims reads its holder row and writes nothing.
+    expect(run.rows.player.written).toBeLessThanOrEqual(6);
     expect(run.rows.claims.written).toBe(0);
     const sent = pollenPushes();
     expect(sent.map(message => message.token).sort()).toEqual(["synthetic-android-token-0001", "synthetic-iphone-turns-0001"]);
@@ -303,6 +303,36 @@ describe("the grant's alarm in the Player", () => {
 });
 
 describe("the one alarm shared with presence", () => {
+  it("stays set and owned while the wake waits on RevenueCat, so a heartbeat in between works", async () => {
+    const { account, first } = await subscriber();
+    at(anniversary(first, 1) + SETTLE_MS);
+    items = [subscription(anniversary(first, 1))];
+    let open!: () => void;
+    gate = new Promise<void>(resolve => { open = resolve; });
+    const calls = providerCalls, wake = runDurableObjectAlarm(player(account));
+    while (providerCalls === calls) await new Promise(resolve => setTimeout(resolve, 5));
+    // Mid settle: the alarm already names the backoff time, and presence still answers.
+    expect(await alarmOf(account)).toEqual({ alarm: anniversary(first, 1) + SETTLE_MS + LATE_MIN_MS, marker: anniversary(first, 1) + SETTLE_MS + LATE_MIN_MS });
+    expect((await call("/v1/presence", "POST", account, { schema_version: 1, session_id: "a".repeat(36), online: true })).status).toBe(200);
+    open();
+    expect(await wake).toBe(true);
+    const after = await alarmOf(account);
+    expect(after.alarm).toBe(after.marker);
+    expect(after.alarm).toBeLessThan(anniversary(first, 2));
+    expect((await call("/v1/presence", "POST", account, { schema_version: 1, session_id: "a".repeat(36), online: false })).status).toBe(200);
+    expect(await alarmOf(account)).toEqual({ alarm: anniversary(first, 2) + SETTLE_MS, marker: anniversary(first, 2) + SETTLE_MS });
+  });
+  it("sets a missing wake on a wallet read that settles nothing, for a subscriber paid before the flag went on", async () => {
+    const { account, first } = await subscriber();
+    await runInDurableObject(player(account), async (_, state) => { state.storage.sql.exec("DELETE FROM presence_alarm"); await state.storage.deleteAlarm(); });
+    const calls = providerCalls;
+    const read = await meterRows({ player: player(account) }, () => wallet(account));
+    expect(providerCalls).toBe(calls);
+    expect(read.rows.player.written).toBe(1);
+    expect(await alarmOf(account)).toEqual({ alarm: anniversary(first, 1) + SETTLE_MS, marker: anniversary(first, 1) + SETTLE_MS });
+    // Set already: the next read writes nothing.
+    expect((await meterRows({ player: player(account) }, () => wallet(account))).rows.player.written).toBe(0);
+  });
   it("keeps the grant's wake under presence leases, and gets it back when the phone goes offline", async () => {
     const { account, first } = await subscriber();
     const grantAt = anniversary(first, 1) + SETTLE_MS;
@@ -348,10 +378,7 @@ describe("the one alarm shared with presence", () => {
     expect((await call("/v1/identity", "DELETE", account)).status).toBe(200);
     const left = await runInDurableObject(player(account), async (_, state) => state.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='pollen_grant'").toArray());
     expect(left).toEqual([]);
-    // A wake left from before cleans itself up without a read, once.
-    const calls = providerCalls;
-    await runDurableObjectAlarm(player(account));
-    expect(providerCalls).toBe(calls);
+    expect(await alarmOf(account)).toEqual({ alarm: null, marker: null });
     expect(await runDurableObjectAlarm(player(account))).toBe(false);
   });
 });

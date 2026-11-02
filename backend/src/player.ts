@@ -216,7 +216,7 @@ export class Player extends DurableObject<Env> {
     const grant = grantOn(this.env), refunds = refundsOn(this.env), bundles = mode === "shop" && anyBundlesOn(this.env);
     if (grant) {
       // A read that saved the grant also sets its alarm to the next instalment (pollen/grant-alarm.ts).
-      if (await this.settleGrant(identity.player_id, hint) === "settled") await this.armGrantAlarm();
+      if (await this.settleGrant(identity.player_id, hint) === "settled" || grantAlarmOn(this.env) && this.grantAlarmMissing()) await this.armGrantAlarm();
       // A recovery may have replaced the device while the provider answered.
       if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
     }
@@ -303,14 +303,31 @@ export class Player extends DurableObject<Env> {
       });
     } catch (error) { logWarning("pollen_grant_alarm_failed", { reason: errorCode(error) }); }
   }
-  /** The alarm's grant part: settles only once the grant's own wake has come (presence wakes the alarm far more often). Returns what it paid. */
-  private async settleGrantWake(): Promise<{ key: string; amount: number }[]> {
-    const identity = this.identity(), paid: { key: string; amount: number }[] = [];
-    if (!grantAlarmOn(this.env) || identity?.state !== "active") return paid;
-    try { if (!grantWake(storedGrant(this.ctx.storage), fullJourneyUntil(this.ctx.storage), Date.now())?.run) return paid; }
-    catch (error) { logWarning("pollen_grant_alarm_failed", { reason: errorCode(error) }); return paid; }
-    await this.settleGrant(identity.player_id, "none", lines => paid.push(...lines));
-    return paid;
+  /** The player whose grant wake has come, for the alarm to settle; null otherwise (presence wakes the alarm far more often). */
+  private grantWakeOwner(): string | null {
+    const identity = this.identity();
+    if (!grantAlarmOn(this.env) || identity?.state !== "active") return null;
+    try { return grantWake(storedGrant(this.ctx.storage), fullJourneyUntil(this.ctx.storage), Date.now())?.run ? identity.player_id : null; }
+    catch (error) { logWarning("pollen_grant_alarm_failed", { reason: errorCode(error) }); return null; }
+  }
+  /**
+   * Whether a wallet read that settled nothing should still set the grant's wake: one is due and no alarm the marker
+   * names comes at or before it (a subscriber paid before POLLEN_GRANT_ALARM went on, or after older code dropped it).
+   * One marker row read; the arming writes only then.
+   */
+  private grantAlarmMissing(): boolean {
+    const wake = this.grantAlarm(Date.now());
+    if (wake === null) return false;
+    const marker = this.ctx.storage.sql.exec<{ due_at: number }>("SELECT due_at FROM presence_alarm WHERE id=1").toArray()[0]?.due_at ?? null;
+    return marker === null || marker > wake;
+  }
+  /** Prunes presence and sets the one alarm again; the alarm handler's own step, so it accepts the alarm it consumed. */
+  private async resetAlarm(): Promise<void> {
+    await this.ctx.storage.transaction(async () => {
+      const actual = await this.ctx.storage.getAlarm();
+      if (!presenceAlarmOwned(this.ctx.storage, actual, true)) throw new Error("unowned_presence_alarm");
+      prunePresence(this.ctx.storage); await this.scheduleAlarm();
+    });
   }
   /** The monthly Pollen push for what the alarm paid (pollen/grant-push.ts); best effort, never thrown. */
   private async pushPollen(lines: readonly { key: string; amount: number }[]): Promise<void> {
@@ -686,20 +703,22 @@ export class Player extends DurableObject<Env> {
     return this.ctx.storage.sql.exec<{ expires_at: number | null }>("SELECT MAX(expires_at) AS expires_at FROM presence_leases WHERE device_hash=?", identity.device_hash).one().expires_at ?? 0;
   }
   /**
-   * The one alarm: an identity deletion's batches while one runs; otherwise the monthly grant once its wake has come
-   * (pollen/grant-alarm.ts; its provider calls run before the transaction), presence lease pruning, and the next
+   * The one alarm: an identity deletion's batches while one runs; otherwise presence lease pruning and, once its wake
+   * has come, the monthly grant (pollen/grant-alarm.ts; its provider calls run outside any transaction), then the next
    * wake for both. The push for what the grant paid goes last, after the alarm is set again.
    */
   async alarm(): Promise<void> {
     if (roomErasurePending(this.ctx.storage)) return this.continueRoomErasure();
-    const paid = await this.settleGrantWake();
+    const owner = this.grantWakeOwner();
+    // Set first, so while the settle waits on RevenueCat the alarm matches its marker (presence and the other owned
+    // checks keep working) and a settle cut short still wakes again; a due wake moves to its backoff time.
+    await this.resetAlarm();
+    if (owner === null) return;
+    const paid: { key: string; amount: number }[] = [];
+    await this.settleGrant(owner, "none", lines => paid.push(...lines));
     // A deletion that began during the settle took the alarm over.
     if (roomErasurePending(this.ctx.storage)) return;
-    await this.ctx.storage.transaction(async () => {
-      const actual = await this.ctx.storage.getAlarm();
-      if (!presenceAlarmOwned(this.ctx.storage, actual, true)) throw new Error("unowned_presence_alarm");
-      prunePresence(this.ctx.storage); await this.scheduleAlarm();
-    });
+    await this.resetAlarm();
     if (paid.length) await this.pushPollen(paid);
   }
   /** Binding-only host lookup; the logical owner and active identity must match. */
@@ -1130,7 +1149,10 @@ export class Player extends DurableObject<Env> {
       dropEarned(this.ctx.storage);
       dropGrant(this.ctx.storage);
       dropBundles(this.ctx.storage);
+      // The one alarm's marker may name a grant wake a month away; nothing is left to wake for.
+      this.ctx.storage.sql.exec("DELETE FROM presence_alarm");
     });
+    if (!roomErasurePending(this.ctx.storage)) await this.ctx.storage.deleteAlarm();
     await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner);
     return ok({ deleted: true });
   }
