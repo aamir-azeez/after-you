@@ -769,7 +769,8 @@ describe("bundles through the Worker", () => {
     expect(await (await claim(tester)).json<Reply>()).toMatchObject({ balance: firstPay("pouch") + 5000, credited: [] });
     const keys = await runInDurableObject(env.PLAYERS.getByName(tester.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => [line.key, line.detail.environment]).sort());
     expect(keys).toEqual([["bundle:GPA.3300-rc_600", "sandbox"], ["bundle:appstore:2000000000000601", "sandbox"]]);
-    // Anyone else's Play sandbox buy mints nothing, even with POLLEN_SANDBOX_APP_STORE on (App Store only), and the same order restored there pays nothing.
+    // Anyone else's Play sandbox buy mints nothing, even with POLLEN_SANDBOX_APP_STORE on (App Store only), and the tester's own order restored there pays nothing.
+    lists[other.player_id].push(test("rc_600", { id: "rc_603" }));
     providerCalls = 0;
     expect(await (await claim(other)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
     expect(providerCalls).toBe(2);
