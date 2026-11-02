@@ -985,11 +985,19 @@ func _test_own_look() -> void:
 	app._show_home()
 	await process_frame
 	_check(app.world.actors.a==actors.a and actors.a.outfit()==worn and is_instance_valid(hat) and actors.a.head.find_child("Wear",true,false)==hat,"Home shown again keeps the items it already wore")
+	# A look put on away from Home (the Wardrobe page, a chapter's end) shows once Home is back.
+	app.mode = "wardrobe"
+	wardrobe.put_on(server, me, {"body": "tide"}, 500)
+	_check(actors.a.outfit()==worn,"Away from Home the island's pips are left as they are")
+	app._show_home()
+	await process_frame
+	_check(actors.a.outfit()=={"body": "tide"} and actors.b.outfit()=={"body": "tide"},"Home shown again wears the look put on away from it: %s" % [actors.a.outfit()])
 	wardrobe.put_on(server, me, {"hat": "daisy"}, 1000)
 	_check(actors.a.outfit()=={"hat": "daisy"} and actors.b.outfit()=={"hat": "daisy"},"A look put on (pending, offline too) shows on both Home pips at once")
 	wardrobe.note_view(server, me, view.call({"hat": "daisy"}, ["tide"]))
 	_check(actors.a.outfit().is_empty() and actors.b.outfit().is_empty(),"An item the server no longer offers comes off the Home pips")
 	wardrobe.note_view(server, me, view.call(worn, offered))
+	_check(actors.a.outfit()=={"hat": "daisy"} and actors.b.outfit()=={"hat": "daisy"},"The item offered again shows again")
 	wardrobe.set_enabled(server, me, false)
 	_check(actors.a.outfit().is_empty() and actors.b.outfit().is_empty(),"The wardrobe turned off takes the look off the Home pips")
 	wardrobe.set_enabled(server, me, true)
