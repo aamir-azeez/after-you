@@ -19,9 +19,9 @@ const DRESSING := {"tide": 1, "journey_left": 2, "journey_right": 3}
 ## Each isle: its middle and size in metres, and its plank bridge from the
 ## Home island's edge into the isle.
 const ISLES := {
-	"tide": {"center": Vector2(8.9, 0.2), "size": Vector2(4.8, 6.4), "bridge": [Vector2(5.6, 0.0), Vector2(6.6, 0.0)]},
-	"journey_left": {"center": Vector2(-3.5, -8.9), "size": Vector2(5.0, 8.6), "bridge": [Vector2(-3.0, -2.9), Vector2(-3.0, -4.8)]},
-	"journey_right": {"center": Vector2(3.5, -8.9), "size": Vector2(5.0, 8.6), "bridge": [Vector2(3.2, -2.9), Vector2(3.2, -4.8)]},
+	"tide": {"center": Vector2(9.2, 0.2), "size": Vector2(5.4, 7.0), "bridge": [Vector2(5.6, 0.0), Vector2(6.6, 0.0)]},
+	"journey_left": {"center": Vector2(-3.8, -9.4), "size": Vector2(5.6, 9.6), "bridge": [Vector2(-3.0, -2.9), Vector2(-3.0, -4.8)]},
+	"journey_right": {"center": Vector2(3.8, -9.4), "size": Vector2(5.6, 9.6), "bridge": [Vector2(3.2, -2.9), Vector2(3.2, -4.8)]},
 }
 const BRIDGE_WIDTH := 1.0
 const PLANK_STEP := 0.34

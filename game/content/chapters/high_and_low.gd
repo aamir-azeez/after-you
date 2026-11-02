@@ -22,7 +22,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/giant_steps.gd",
 		"island": "tide",
-		"slot": [-0.65, 1.55],
+		"slot": [-0.95, 1.55],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_GIANT_STEPS_NAME,
 			"action": PlayerCopy.KEEPSAKE_GIANT_STEPS_ACTION,

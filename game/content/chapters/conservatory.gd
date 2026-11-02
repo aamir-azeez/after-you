@@ -35,7 +35,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/glasshouse.gd",
 		"island": "journey_left",
-		"slot": [-0.3, 0.5],
+		"slot": [0.0, 0.8],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_GLASSHOUSE_NAME,
 			"action": PlayerCopy.KEEPSAKE_GLASSHOUSE_ACTION,

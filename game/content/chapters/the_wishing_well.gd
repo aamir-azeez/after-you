@@ -26,7 +26,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/wishing_well.gd",
 		"island": "right",
-		"slot": [0.9, 0.3],
+		"slot": [0.6, 0.6],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_WISHING_WELL_NAME,
 			"action": PlayerCopy.KEEPSAKE_WISHING_WELL_ACTION,

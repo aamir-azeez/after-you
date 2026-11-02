@@ -24,7 +24,10 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/relay_masts.gd",
 		"island": "right",
-		"slot": [-0.2, -1.2],
+		"slot": [0.2, -1.7],
+		# Turned about, so its basket and first mast stand clear of the Bell
+		# Arch and the pip walks straight on from the Home bridge.
+		"yaw": PI,
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_RELAY_MASTS_NAME,
 			"action": PlayerCopy.KEEPSAKE_RELAY_MASTS_ACTION,

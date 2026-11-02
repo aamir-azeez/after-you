@@ -41,38 +41,10 @@ const POCKET := 0.05
 const HOUSE_ID := "a-house-for-two"
 const OPEN := -1.45
 
-## Room checks the Home layout still fails, by key ("look|what"): the
-## squeezes between keepsakes as they stand on Home now. Each still runs: it
-## prints as KNOWN while it fails, and fails the suite once it passes, until
-## it is taken off this list. The layout that clears them all waits for the
-## owner's look (branch explore-collisions).
-const KNOWN_SQUEEZES: Array[String] = [
-	"no upgrades|bridge tide", "no upgrades|near high-and-low", "no upgrades|near turn-of-the-tide",
-	"no upgrades|squeeze on journey_left by a-house-for-two", "no upgrades|squeeze on journey_left by conservatory",
-	"no upgrades|squeeze on tide by high-and-low", "no upgrades|trigger high-and-low", "no upgrades|trigger sleeping-lighthouse",
-	"no upgrades|trigger turn-of-the-tide", "no upgrades|way through first-steps",
-	"Together|bridge tide", "Together|near a-house-for-two", "Together|near conservatory", "Together|near high-and-low",
-	"Together|near turn-of-the-tide", "Together|squeeze on journey_left by a-house-for-two", "Together|squeeze on journey_left by conservatory",
-	"Together|squeeze on journey_left by sleeping-lighthouse", "Together|squeeze on journey_right by long-way-home",
-	"Together|squeeze on tide by high-and-low", "Together|squeeze on tide by turn-of-the-tide", "Together|trigger a-house-for-two",
-	"Together|trigger conservatory", "Together|trigger high-and-low", "Together|trigger long-way-home", "Together|trigger sleeping-lighthouse",
-	"Together|trigger turn-of-the-tide", "Together|way through first-steps",
-	"Hard|bridge journey_right", "Hard|bridge tide", "Hard|near high-and-low", "Hard|near long-way-home", "Hard|near rolling-home",
-	"Hard|near turn-of-the-tide", "Hard|squeeze on journey_left by a-house-for-two", "Hard|squeeze on journey_left by conservatory",
-	"Hard|squeeze on journey_left by sleeping-lighthouse", "Hard|squeeze on journey_right by long-way-home", "Hard|squeeze on right by relay-isles",
-	"Hard|squeeze on tide by high-and-low", "Hard|trigger high-and-low", "Hard|trigger long-way-home", "Hard|trigger rolling-home",
-	"Hard|trigger sleeping-lighthouse", "Hard|trigger turn-of-the-tide", "Hard|way through first-steps",
-	"every upgrade|bridge journey_right", "every upgrade|bridge tide", "every upgrade|near a-house-for-two", "every upgrade|near conservatory",
-	"every upgrade|near high-and-low", "every upgrade|near long-way-home", "every upgrade|near rolling-home", "every upgrade|near turn-of-the-tide",
-	"every upgrade|squeeze on a walkway by relay-isles", "every upgrade|squeeze on journey_left by a-house-for-two",
-	"every upgrade|squeeze on journey_left by conservatory", "every upgrade|squeeze on journey_left by sleeping-lighthouse",
-	"every upgrade|squeeze on journey_right by long-way-home", "every upgrade|squeeze on right by relay-isles",
-	"every upgrade|squeeze on tide by high-and-low", "every upgrade|squeeze on tide by turn-of-the-tide", "every upgrade|trigger a-house-for-two",
-	"every upgrade|trigger conservatory", "every upgrade|trigger high-and-low", "every upgrade|trigger long-way-home",
-	"every upgrade|trigger rolling-home", "every upgrade|trigger sleeping-lighthouse", "every upgrade|trigger turn-of-the-tide",
-	"every upgrade|way through first-steps",
-	"walk|the Journey bridge", "walk|the tide bridge"
-]
+## Room checks the Home layout still fails, by key ("look|what"). Each still
+## runs: it prints as KNOWN while it fails, and fails the suite once it
+## passes, until it is taken off this list. None: this layout clears them all.
+const KNOWN_SQUEEZES: Array[String] = []
 
 var checks := 0
 var failures := 0

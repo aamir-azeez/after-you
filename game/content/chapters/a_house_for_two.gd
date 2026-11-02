@@ -22,7 +22,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/little_house.gd",
 		"island": "journey_left",
-		"slot": [-0.1, -2.5],
+		"slot": [-0.8, -2.3],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_HOUSE_NAME,
 			"action": PlayerCopy.KEEPSAKE_HOUSE_ACTION,

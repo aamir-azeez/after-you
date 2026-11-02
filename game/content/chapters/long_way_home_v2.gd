@@ -32,7 +32,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/crossroads.gd",
 		"island": "journey_right",
-		"slot": [-0.3, -1.0],
+		"slot": [-0.6, -0.6],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_CROSSROADS_NAME,
 			"action": PlayerCopy.KEEPSAKE_CROSSROADS_ACTION,

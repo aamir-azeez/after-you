@@ -24,7 +24,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/rolling_rail.gd",
 		"island": "journey_right",
-		"slot": [-0.2, 2.5],
+		"slot": [-0.5, 3.0],
 		"yaw": 0.0,
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_ROLLING_RAIL_NAME,
