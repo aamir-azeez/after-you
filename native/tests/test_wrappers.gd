@@ -12,6 +12,15 @@ class SyntheticClipboardNative extends RefCounted:
 	func secure_copy_recovery(player_id: String, recovery_code: String, request_id: String) -> void:
 		copied_arguments = [player_id, recovery_code, request_id]
 
+class SyntheticGuardNative extends RefCounted:
+	var calls: Array = []
+	func secure_confirm_device(request_id: String) -> void:
+		calls.append(["confirm", request_id])
+	func secure_private_screen(on: bool) -> void:
+		calls.append(["private", on])
+	func secure_clear_recovery_clip(recovery_code: String) -> void:
+		calls.append(["clear", recovery_code])
+
 func _init() -> void:
 	_run.call_deferred()
 
@@ -84,6 +93,19 @@ func _run() -> void:
 	secrets._on_error(unanswered_copy, "copy_recovery", "clipboard_unavailable")
 	secrets._process(0.0)
 	check(secret_results.size() == 1 and secret_errors.size() == errors_before + 1, "Late or duplicate native callbacks must not resurrect an expired request.")
+	# The recovery code's guards: a plugin without them (iOS for now) is asked nothing.
+	check(not secrets.device_check_supported(), "A plugin without the screen lock check reports none.")
+	secrets.set_private_screen(true)
+	secrets.clear_recovery_clip("r".repeat(43))
+	var guard_native := SyntheticGuardNative.new()
+	secrets._native = guard_native
+	check(secrets.device_check_supported(), "A plugin with the screen lock check reports it.")
+	var confirm_id: String = secrets.confirm_device()
+	check(guard_native.calls == [["confirm", confirm_id]], "The screen lock check forwards only its request ID.")
+	check(int(secrets._deadlines.get(confirm_id, 0)) >= Time.get_ticks_msec() + Secrets.CONFIRM_TIMEOUT_MS - 1000 and Secrets.CONFIRM_TIMEOUT_MS >= 120000, "The screen lock check waits for the player, not the nine second limit.")
+	secrets.set_private_screen(true)
+	secrets.clear_recovery_clip("r".repeat(43))
+	check(guard_native.calls.slice(1) == [["private", true], ["clear", "r".repeat(43)]], "The private screen and clipboard calls reach the plugin unchanged.")
 	if failures.is_empty():
 		print("PASS: native wrapper unavailable/error/schema/revocation checks")
 	else:

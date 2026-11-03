@@ -12,6 +12,10 @@ internal object PlayerCopy {
     const val AFTERYOUANDROID_78CD9EAA1477 = "The store request could not start."
     // afteryouandroid.0ca1ab0e2240
     const val AFTERYOUANDROID_0CA1AB0E2240 = "The purchase settings for this store are invalid."
+    // devicelock.title: the screen lock prompt before the recovery code shows or is copied.
+    const val DEVICE_LOCK_TITLE = "Show your recovery details"
+    // devicelock.description
+    const val DEVICE_LOCK_DESCRIPTION = "Use your screen lock to see or copy your recovery code."
     // afteryouandroid.214e3ef36387
     const val AFTERYOUANDROID_214E3EF36387 = "Restart the app before changing purchase identity or store."
     // afteryouandroid.a32dd7a64c03

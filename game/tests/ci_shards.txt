@@ -258,6 +258,7 @@ recovery_copy 1
 recovery_details 1
 recovery_discard 1
 recovery_import 3
+recovery_lock 2
 redo_client 3
 redo_cooldown 3
 redo_navigation 2

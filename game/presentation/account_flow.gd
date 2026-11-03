@@ -29,8 +29,12 @@ extends Node
 ## Main asks holds_back() before Android Back or Escape.
 ##
 ## Recovery codes and device tokens never reach a log or the ordinary save;
-## their formats live in RecoveryDetails.
+## their formats live in RecoveryDetails. Every reveal and copy of the code goes
+## through `guard` (services/recovery_guard.gd): the phone's screen lock first,
+## Android's private screen while it shows. Main calls application_paused() and
+## application_resumed() so shown details hide when the app goes to the background.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const RecoveryGuard = preload("res://services/recovery_guard.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
@@ -73,9 +77,17 @@ var deletion_photo_cleanup: Node
 var deletion_cache_cleanup: RefCounted
 ## True while Check hosting access waits for the server; its row rests meanwhile.
 var hosting_check_busy := false
+## The recovery code's screen lock, private screen and clipboard clean-up.
+var guard: RefCounted
+## True while the Settings recovery row waits for the screen lock.
+var recovery_reveal_busy := false
+## The Settings box (and its row) showing the details, hidden again on pause.
+var _shown_detail: WeakRef
+var _shown_row: WeakRef
 
 func _init(main: Node = null) -> void:
 	host = main
+	guard = RecoveryGuard.new(main)
 
 ## Deletion and its device cleanup cannot be left with Back.
 func holds_back() -> bool:
@@ -184,14 +196,22 @@ func show_hosting_access(detail: VBoxContainer, response: Dictionary) -> void:
 		host.store_flow.add_store_elsewhere(detail, SettingsKit.detail_button)
 		detail.visible = detail.get_child_count() > 0
 
-## The recovery details row: shows the identity and its recovery code in
-## place, with Copy; a second tap hides them again.
+## The recovery details row: after the phone's screen lock, shows the identity
+## and its recovery code in place, with Copy; a second tap hides them again.
 func toggle_recovery_details(detail: VBoxContainer, row: Control) -> void:
-	var label := row.find_child("Label", true, false) as Label
 	if detail.visible:
-		_fill(detail, [])
-		if label != null: label.text = PlayerCopy.SETTINGS_RECOVERY_DETAILS
+		_hide_recovery_row(detail, row)
 		return
+	if recovery_reveal_busy: return
+	recovery_reveal_busy = true
+	var view: int = host.settings_flow.view_token()
+	var allowed: bool = await guard.unlock()
+	recovery_reveal_busy = false
+	if not allowed:
+		host._toast(PlayerCopy.RECOVERY_LOCKED)
+		return
+	# The prompt may have outlived this Settings view.
+	if not host.settings_flow.view_current(view) or not is_instance_valid(detail) or not is_instance_valid(row) or detail.visible: return
 	var player := str(host.identity_data.get("player_id",""))
 	var code := str(host.identity_data.get("recovery_code",""))
 	var items: Array = [SettingsKit.detail_text(PlayerCopy.MAIN_4E6353EBBDB9,true), SettingsKit.detail_text(PlayerCopy.MAIN_B1B6CAA8087E)]
@@ -202,45 +222,88 @@ func toggle_recovery_details(detail: VBoxContainer, row: Control) -> void:
 	copy.disabled = not _copyable(player, code)
 	items.append(copy)
 	_fill(detail, items)
+	guard.protect(detail)
+	_shown_detail = weakref(detail)
+	_shown_row = weakref(row)
+	var label := row.find_child("Label", true, false) as Label
 	if label != null: label.text = PlayerCopy.SETTINGS_RECOVERY_DETAILS_HIDE
+
+func _hide_recovery_row(detail: VBoxContainer, row: Control) -> void:
+	_fill(detail, [])
+	var label := row.find_child("Label", true, false) as Label if is_instance_valid(row) else null
+	if label != null: label.text = PlayerCopy.SETTINGS_RECOVERY_DETAILS
+
+## The app went to the background: shown details hide (so the app switcher's
+## picture never holds them) and the next look asks for the screen lock again.
+func application_paused() -> void:
+	guard.lock()
+	var detail: Variant = _shown_detail.get_ref() if _shown_detail != null else null
+	if detail is VBoxContainer and detail.visible:
+		_hide_recovery_row(detail, _shown_row.get_ref() if _shown_row != null else null)
+	if host.mode == MODE_RECOVERY_DETAILS: _recovery_details_card(false)
+
+func application_resumed() -> void:
+	guard.resumed()
 
 static func _copyable(player: String, code: String) -> bool:
 	return Typed.valid_id(player) and RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN)
 
 ## Recovery details on a screen of their own, for the recovery steps that
 ## happen outside Settings (a restart, a storage failure, a new identity).
+## The phone's screen lock comes first; without it the current screen stays.
 func show_recovery_details() -> void:
+	var screen: String = host.mode
+	if not await guard.unlock():
+		host._toast(PlayerCopy.RECOVERY_LOCKED)
+		return
+	if host.mode != screen: return
+	_recovery_details_card(true)
+
+## shown false: the same screen with the two fields empty, after the app went to
+## the background, and a button to show them again.
+func _recovery_details_card(shown: bool) -> void:
 	host.mode=MODE_RECOVERY_DETAILS
 	var card: VBoxContainer = host._card(680)
 	card.add_child(host._label(PlayerCopy.MAIN_4E6353EBBDB9,32,CREAM,true))
 	card.add_child(host._paragraph(PlayerCopy.MAIN_B1B6CAA8087E,580))
-	for entry: Array in [["Identity",str(host.identity_data.get("player_id",""))],["Recovery code",str(host.identity_data.get("recovery_code",""))]]:
+	var player := str(host.identity_data.get("player_id",""))
+	var code := str(host.identity_data.get("recovery_code",""))
+	for entry: Array in [["Identity",player],["Recovery code",code]]:
 		card.add_child(host._label(entry[0],18,MUTED))
 		var field := LineEdit.new()
-		field.text=entry[1]
+		field.text=entry[1] if shown else ""
 		field.editable=false
 		field.custom_minimum_size=Vector2(580,48)
 		card.add_child(field)
-	var player := str(host.identity_data.get("player_id",""))
-	var code := str(host.identity_data.get("recovery_code",""))
+	if not shown:
+		card.add_child(host._button(PlayerCopy.SETTINGS_RECOVERY_DETAILS,show_recovery_details,false))
 	var copy: Button = host._button("Copy recovery details",func(): copy_recovery_details(player,code))
 	copy.disabled=not _copyable(player,code)
 	card.add_child(copy)
 	card.add_child(host._back_button("Back",_back_to_account,false))
+	if shown: guard.protect(card)
 
 func copy_recovery_details(player: String, code: String) -> void:
 	if recovery_copy_busy:
 		return
-	if host.identity_busy or (not host.pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=host.identity_data.get("player_id","") or code!=host.identity_data.get("recovery_code","") or not Typed.valid_id(player) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN):
+	if not _copy_allowed(player, code):
 		host._toast(PlayerCopy.MAIN_6F5191162022)
 		return
 	recovery_copy_busy=true
-	var result: Dictionary=await host._await_secret(host.secrets.copy_recovery(player,code))
+	var result: Dictionary=await guard.copy(player,code,_copy_allowed.bind(player,code))
 	recovery_copy_busy=false
 	if result.get("ok",false) and Typed.equal(result.get("payload",{}).get("copied"), true):
 		host._toast(PlayerCopy.MAIN_B3745871EB1C)
+	elif result.get("code","")==RecoveryGuard.NOT_CONFIRMED:
+		host._toast(PlayerCopy.RECOVERY_LOCKED)
+	elif result.get("code","")==RecoveryGuard.NOT_CURRENT:
+		host._toast(PlayerCopy.MAIN_6F5191162022)
 	else:
 		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
+
+## These are the current, final recovery details (no unconfirmed rotation pending).
+func _copy_allowed(player: String, code: String) -> bool:
+	return not host.identity_busy and (host.pending_recovery.is_empty() or _can_copy_acknowledged_recovery()) and player==host.identity_data.get("player_id","") and code==host.identity_data.get("recovery_code","") and Typed.valid_id(player) and RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN)
 
 func _can_copy_acknowledged_recovery() -> bool:
 	# If secure storage fails after the server confirms rotation, the new code
@@ -279,12 +342,17 @@ func show_recovery_form() -> void:
 	card.add_child(status)
 	card.add_child(host._button("Recover identity",func(): recover_identity(player.text.strip_edges(),code.text.strip_edges())))
 	card.add_child(host._back_button("Cancel",_back_to_account,false))
+	# The pasted code sits in the form, so it gets the private screen too. It stays
+	# on a pause: the player may leave to fetch the code.
+	guard.protect(card)
 
+## Fills the form from pasted details, then takes them off the clipboard.
 func import_recovery_details(text: String, player: LineEdit, code: LineEdit, status: Label) -> void:
 	var details: Dictionary=RecoveryDetails.parse(text)
 	if details.is_empty():
 		status.text=PlayerCopy.MAIN_B3DD2F6125BC
 		return
+	guard.clear_clip(details.recovery_code)
 	player.text=details.player_id
 	code.text=details.recovery_code
 	player.release_focus()

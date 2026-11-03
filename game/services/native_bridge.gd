@@ -14,3 +14,11 @@ static func singleton(service: String) -> Object:
 	if Engine.has_singleton(ANDROID): return Engine.get_singleton(ANDROID)
 	if service in IOS_SERVICES and Engine.has_singleton(IOS): return Engine.get_singleton(IOS)
 	return null
+
+## Whether `native` answers `method`, for a method one platform has before the other.
+## Android's JNI methods cannot be listed (has_method does not see them), and its plugin
+## and these wrappers ship together, so Android always does; iOS binds its methods, so
+## has_method tells.
+static func has_method_on(native: Object, method: String) -> bool:
+	if native == null: return false
+	return Engine.has_singleton(ANDROID) or native.has_method(method)

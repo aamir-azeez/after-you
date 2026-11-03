@@ -7,7 +7,7 @@ extends Node
 ## identity_read_state, IdentityReadState, identity_data, identity_loading, identity_busy,
 ## identity_restart_required, pending_recovery, deleted_identity_owner, _await_secret,
 ## _apply_settings, _toast, _tester_checks_enabled, tester_access, store_flow, settings_flow,
-## account_flow (copy_recovery_details, _finish_identity_change).
+## account_flow (guard, which copies the recovery details; _finish_identity_change).
 ##
 ## Restoring an identity uses the recovery code's safety: the next device token and recovery
 ## code are made here, kept in secure storage before the request, and the server only rotates
@@ -22,6 +22,7 @@ const Sources = preload("res://services/platform_games/cloud_save_sources.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Typed = preload("res://services/typed_values.gd")
+const RecoveryGuard = preload("res://services/recovery_guard.gd")
 
 const PENDING_SECRET := "platform_restore_pending"
 const WEB_CLIENT_ID := "^[0-9]{6,20}-[a-z0-9]{8,64}\\.apps\\.googleusercontent\\.com$"
@@ -197,12 +198,16 @@ func _copy_recovery() -> void:
 		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
 		return
 	_copy_busy = true
-	var result: Dictionary = await host._await_secret(host.secrets.copy_recovery(player, code))
+	# Through account_flow's guard: the phone's screen lock first, as on every copy of the code.
+	var still_current := func() -> bool: return player == str(host.identity_data.get("player_id", "")) and code == str(host.identity_data.get("recovery_code", ""))
+	var result: Dictionary = await host.account_flow.guard.copy(player, code, still_current)
 	_copy_busy = false
 	if result.get("ok", false) and Typed.equal(result.get("payload", {}).get("copied"), true):
 		_copied_player = player
 		host._toast(PlayerCopy.MAIN_B3745871EB1C)
 		_on_changed()
+	elif result.get("code", "") == RecoveryGuard.NOT_CONFIRMED:
+		host._toast(PlayerCopy.RECOVERY_LOCKED)
 	else:
 		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
 

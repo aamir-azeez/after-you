@@ -1644,8 +1644,8 @@ func _secret_failed(id: String, _operation: String, code: String) -> void:
 		secret_results.erase(id)
 		settings_flow.refresh()
 
-func _await_secret(id: String) -> Dictionary:
-	var deadline := Time.get_ticks_msec()+10000
+func _await_secret(id: String, wait_ms: int = 10000) -> Dictionary:
+	var deadline := Time.get_ticks_msec()+wait_ms
 	while not secret_results.has(id) and Time.get_ticks_msec()<deadline:
 		await get_tree().process_frame
 	var result: Dictionary=secret_results.get(id,{"ok":false,"code":"storage_timeout"})
@@ -2581,11 +2581,14 @@ func _notification(what: int) -> void:
 	if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or friends_flow.is_open() or duels_flow.is_open() or legacy_room_flow.redo_open()):
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
+		# Before anything else: shown recovery details hide before the app switcher's picture.
+		if is_instance_valid(account_flow): account_flow.application_paused()
 		_background_application()
 		_write_backup_plan()
 	elif what==NOTIFICATION_APPLICATION_RESUMED:
 		if is_instance_valid(turn_notifications): turn_notifications.queue_reconcile()
 		_resume_application()
+		if is_instance_valid(account_flow): account_flow.application_resumed()
 	elif what==NOTIFICATION_APPLICATION_FOCUS_OUT and running:
 		# A notification shade or another app over a turn pauses it, as in a chapter.
 		earlier_islands_flow.pause()

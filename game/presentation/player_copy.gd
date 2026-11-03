@@ -1530,6 +1530,8 @@ const RECOVERY_DISCARD_WARNING := "If the identity you tried to recover still ex
 const RECOVERY_DISCARD_CONFIRM := "Stop recovery"
 const RECOVERY_DISCARD_FAILED := "This device could not remove the saved recovery request. Try again."
 const RECOVERY_DISCARD_UNUSABLE_NOTE := "The recovery request saved on this device can't be finished."
+# Toast: the phone's screen lock was cancelled, so the recovery code is not shown or copied.
+const RECOVERY_LOCKED := "Your recovery details stay hidden until you use your screen lock."
 # Recovery storage failure — heading / label
 const MAIN_4156CE133C4E := "Leave this recovery window open."
 # Recovery storage failure — body text

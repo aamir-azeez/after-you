@@ -55,6 +55,15 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     private var purchaseInProgress = false
     private val packages = mutableMapOf<String, Package>()
     private val secureStore by lazy { SecureStore(requireNotNull(activity).applicationContext) }
+    /** Recovery details: the clipboard expiry, the screen lock check and the private screen. */
+    private var recoveryClip: RecoveryClipExpiry? = null
+    private val deviceLock = DeviceLock { id, payload, error ->
+        if (pending.remove(id)) {
+            if (payload != null) emitSignal("secure_result", id, "confirm_device", payload.toString())
+            else emitSignal("secure_error", id, "confirm_device", error ?: "device_check_cancelled")
+        }
+    }
+    @Volatile private var privateScreen = false
     @Volatile private var linkReady = false
     @Volatile private var linkResumed = false
     private val linkListener = InviteLinkListener { announceLink() }
@@ -124,6 +133,10 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         gamesBridge?.close()
         gamesBridge = null
         InviteLinkRuntime.inbox.attach(linkListener)
+        deviceLock.close()
+        recoveryClip?.detach()
+        recoveryClip = activity?.let { host -> RecoveryClipExpiry(host).also { it.attach(host) } }
+        if (activity != null) PrivateScreen.apply(activity, privateScreen)
         return super.onMainCreate(activity)
     }
 
@@ -380,6 +393,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                         return@runOnUiThread
                     }
                     val copied = RecoveryClipboard.copy(playerId, recoveryCode) { clipboard.setPrimaryClip(it) }
+                    if (copied) recoveryClip?.copied()
                     if (!copied) {
                         reject("invalid_recovery_details")
                     } else if (pending.remove(requestId)) {
@@ -392,6 +406,41 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         } catch (_: Exception) {
             reject("activity_unavailable")
         }
+    }
+
+    /**
+     * The phone's screen lock before the recovery code shows or is copied. Answers
+     * {"confirmed":true,"locked":bool} (locked false: the phone has no screen lock), or
+     * device_check_cancelled, device_check_busy, device_check_unavailable or activity_unavailable.
+     */
+    @UsedByGodot
+    fun secure_confirm_device(requestId: String) {
+        if (!begin(requestId)) return
+        val current = activity
+        if (current == null) {
+            if (pending.remove(requestId)) emitSignal("secure_error", requestId, "confirm_device", "activity_unavailable")
+            return
+        }
+        current.runOnUiThread {
+            try { deviceLock.confirm(current, requestId) } catch (_: Exception) {
+                if (pending.remove(requestId)) emitSignal("secure_error", requestId, "confirm_device", "device_check_unavailable")
+            }
+        }
+    }
+
+    /** Blocks screenshots and the recents picture while the game shows recovery details. */
+    @UsedByGodot
+    fun secure_private_screen(on: Boolean) {
+        privateScreen = on
+        val current = activity ?: return
+        current.runOnUiThread { try { PrivateScreen.apply(current, privateScreen) } catch (_: Exception) { } }
+    }
+
+    /** After a paste import: takes the recovery details off the clipboard when they are still there. */
+    @UsedByGodot
+    fun secure_clear_recovery_clip(recoveryCode: String) {
+        val current = activity ?: return
+        current.runOnUiThread { try { recoveryClip?.imported(recoveryCode) } catch (_: Exception) { } }
     }
 
     private fun photoSuccess(id: String, operation: String, data: JSONObject) {
@@ -550,12 +599,17 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         super.onMainRequestPermissionsResult(requestCode, permissions, grantResults)
     }
     override fun onGodotMainLoopStarted() { super.onGodotMainLoopStarted(); notificationBridge?.ready(); linkReady = true; announceLink() }
-    override fun onMainResume() { super.onMainResume(); notificationBridge?.resume(); linkResumed = true; announceLink() }
-    override fun onMainPause() { linkResumed = false; notificationBridge?.pause(); super.onMainPause() }
+    override fun onMainResume() {
+        super.onMainResume(); notificationBridge?.resume(); linkResumed = true; announceLink()
+        activity?.let { PrivateScreen.apply(it, privateScreen) }
+        recoveryClip?.check()
+    }
+    override fun onMainPause() { linkResumed = false; notificationBridge?.pause(); recoveryClip?.check(); super.onMainPause() }
 
     override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         val flow = optionalPhoto
-        if (flow != null && flow.handles(requestCode)) flow.onActivityResult(requestCode, resultCode)
+        if (deviceLock.handles(requestCode)) deviceLock.onActivityResult(resultCode)
+        else if (flow != null && flow.handles(requestCode)) flow.onActivityResult(requestCode, resultCode)
         // The Activity that opened the camera was recreated: recover from the persisted request.
         else if (photoRecovery.owns(requestCode)) try { photoRecovery.recover(photoExecutor, resultCode) } catch (_: Exception) { }
         super.onMainActivityResult(requestCode, resultCode, data)
@@ -569,6 +623,9 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         notificationBridge = null
         gamesBridge?.close()
         gamesBridge = null
+        deviceLock.close()
+        recoveryClip?.detach()
+        recoveryClip = null
         // Never close the camera here: Android may destroy this Activity while the camera is in
         // front, and the photo must come back to the recreated one.
         optionalPhoto?.hostDestroyed()
