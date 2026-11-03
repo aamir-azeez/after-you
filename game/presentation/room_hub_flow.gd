@@ -52,6 +52,7 @@ const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const Purchases = preload("res://services/purchases.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
+const RoomPartnerNames = preload("res://services/room_partner_names.gd")
 const Typed = preload("res://services/typed_values.gd")
 const CREAM := Color("eceddb")
 ## Main's mode while the hub (or its no-service card) is up.
@@ -527,8 +528,12 @@ func _add_partner_friend(room: Dictionary, partner: String) -> void:
 	var line := PlayerCopy.add_friend_sent(host._friend_display_name(partner))
 	host._toast(line if await host.partner_friends.send(partner) else PlayerCopy.ROOM_ADD_FRIEND_FAILED)
 
-func _member_name(member: String) -> String:
+## A member's name on a room's card ("" for this player). In a public duel's room the partner
+## is who the duel says (services/room_partner_names.gd), never "a friend" for a stand-in id.
+func _member_name(member: String, room: Dictionary = {}) -> String:
 	if member == str(host.api.player_id): return ""
+	var public := RoomPartnerNames.public_partner(str(room.get("room_id", "")), func(friend: String) -> String: return str(host._friend_display_name(friend)))
+	if not public.is_empty(): return public
 	return FriendNicknames.sentence_start(host._friend_display_name(member))
 
 func close() -> void:

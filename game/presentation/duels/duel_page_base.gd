@@ -30,6 +30,8 @@ var _subtitle: Label
 var _header: HBoxContainer
 var _alive := true
 var _modal: Control
+## A screen of another kind over this page that takes Back itself (hold_back), while it is up.
+var _back_holder: Node
 
 func _ready() -> void:
 	layer = stack_layer
@@ -140,6 +142,7 @@ func alive() -> bool:
 	return _alive and is_inside_tree()
 
 func go_back() -> void:
+	if back_held(): return
 	if Kit.showing(_modal): _modal.go_back()
 	else: close()
 
@@ -149,6 +152,14 @@ func sheet(node_name: String, title: String, subtitle: String = "", opener: Cont
 	if Kit.showing(_modal) or not _alive: return null
 	_modal = preload("res://presentation/in_game_modal.gd").open(root, node_name, title, subtitle, opener)
 	return _modal
+
+## Lets `screen` (a full screen of its own, such as the community rules) take Back while it is up,
+## so one Back never closes it and this page too.
+func hold_back(screen: Node) -> void:
+	_back_holder = screen
+
+func back_held() -> bool:
+	return is_instance_valid(_back_holder) and _back_holder.is_inside_tree()
 
 ## Keeps `modal` (a card another script opened over this page's root) as this page's own
 ## pop-up, so Back closes it first and a second card waits for it to close.

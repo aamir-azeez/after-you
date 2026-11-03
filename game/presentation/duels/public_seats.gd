@@ -45,8 +45,8 @@ class Ring extends Control:
 
 ## One seat: {open, you, label, look} plus `name` (the words under it). A taken
 ## seat that is this player's is their own pip. `slot` picks the pip colour.
-## With `tap`, the seat is a flat button that calls tap() (a ring to join there).
-static func seat(held: Dictionary, slot: int, edge: float, lit: bool = false, tap: Callable = Callable(), font_size: int = 13) -> Control:
+## With `tap`, the seat is a flat button that calls tap() (a ring to join there). Without `named`, no words under it (a lobby tile).
+static func seat(held: Dictionary, slot: int, edge: float, lit: bool = false, tap: Callable = Callable(), font_size: int = 13, named: bool = true) -> Control:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 0)
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -57,10 +57,11 @@ static func seat(held: Dictionary, slot: int, edge: float, lit: bool = false, ta
 		column.add_child(ring)
 	else:
 		column.add_child(Kit.pip(Vector2(edge * 0.86, edge), Kit.FIRST_PIP if slot % 2 == 0 else Kit.SECOND_PIP, held.get("you", false), held.get("look", {})))
-	var words := Kit.text(str(held.get("name", "")), font_size, UiTokens.CREAM if not held.get("open", false) else UiTokens.SOFT)
-	words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	Kit.fitted(words, edge, edge + 26.0)
-	column.add_child(words)
+	if named:
+		var words := Kit.text(str(held.get("name", "")), font_size, UiTokens.CREAM if not held.get("open", false) else UiTokens.SOFT)
+		words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		Kit.fitted(words, edge, edge + 26.0)
+		column.add_child(words)
 	if not tap.is_valid(): return column
 	var button := Button.new()
 	button.flat = true
@@ -125,6 +126,44 @@ static func tag(font_size: int = 14) -> PanelContainer:
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_child(Kit.text(PlayerCopy.PUBLIC_TAG, font_size, UiTokens.INK, true))
 	return box
+
+## A choice chip (Joining as, the sorts, Start a duel's Post as): mint while chosen, outlined
+## otherwise, with `art` (a pip or two) before its words.
+static func chip(node_name: String, label: String, chosen: bool, action: Callable, art: Control = null) -> Button:
+	var button := Button.new()
+	button.name = node_name
+	button.text = label
+	button.custom_minimum_size = Vector2(0, 44)
+	button.add_theme_font_size_override("font_size", 17)
+	for state: String in ["normal", "hover", "pressed", "hover_pressed"]:
+		var fill := UiTokens.MINT if chosen else Color.TRANSPARENT
+		var style := ThemeRules.rounded(fill.lightened(0.05) if state.begins_with("hover") and chosen else fill, 10, Color.TRANSPARENT if chosen else Kit.PANEL_EDGE)
+		ThemeRules.padded(style, 12.0, 4.0)
+		button.add_theme_stylebox_override(state, style)
+	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+		button.add_theme_color_override(state, UiTokens.INK if chosen else UiTokens.CREAM)
+	button.add_theme_stylebox_override("focus", ThemeRules.rounded(Color.TRANSPARENT, 10, UiTokens.CREAM))
+	if art != null:
+		var holder := MarginContainer.new()
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_theme_constant_override("margin_left", 8)
+		holder.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+		holder.add_child(art)
+		button.add_child(holder)
+		button.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		button.custom_minimum_size.x = button.get_theme_font("font").get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x + 24.0 + art.get_combined_minimum_size().x + 16.0
+	button.pressed.connect(action)
+	return button
+
+## Your pip, or yours beside your partner's: the art on a Joining as or Post as chip.
+static func chip_pips(partner_look: Variant = null) -> Control:
+	if partner_look == null: return Kit.pip(Vector2(24, 28), Kit.FIRST_PIP, true)
+	var pair := HBoxContainer.new()
+	pair.add_theme_constant_override("separation", 0)
+	pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pair.add_child(Kit.pip(Vector2(22, 26), Kit.FIRST_PIP, true))
+	pair.add_child(Kit.pip(Vector2(22, 26), Kit.SECOND_PIP, false, partner_look))
+	return pair
 
 ## A list row's seats as seat() draws them: each with its name ("You", a shown name,
 ## "A player" or "Open") and a stranger's look as DuelModel.stranger_look allows.

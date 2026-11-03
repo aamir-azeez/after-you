@@ -588,7 +588,10 @@ func create_duel_room(chapter: String, duel_id: String, board: String) -> String
 	var requested_rules := int(_simulation_versions().get(chapter, Registry.definition(chapter).simulation_version))
 	if requested_rules != int(Registry.definition(chapter).simulation_version):
 		body["simulation_version"] = requested_rules
-	return await _start_lobby("/v2/rooms", body)
+	var made := await _start_lobby("/v2/rooms", body)
+	# A public duel's room is known as one from the moment it is made (its partner is a stand-in).
+	if not made.is_empty(): DuelsClient.note_duel_room(duel_id, made)
+	return made
 
 func join_room(code: String) -> String:
 	if not _can_lobby_mutate():

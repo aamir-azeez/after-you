@@ -28,6 +28,7 @@ const EMPTY_ART := "duels_f"
 ## The empty Open duels column's art (presentation/empty_state.gd SPOTS), the owner's pick.
 const OPEN_EMPTY_ART := "open_a"
 const Seats = preload("res://presentation/duels/public_seats.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 
 signal start_requested
 signal party_requested
@@ -77,6 +78,8 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST: go_back()
 
 func go_back() -> void:
+	# A screen over Duels that takes Back itself (the community rules) closes alone.
+	if back_held(): return
 	if Kit.showing(_overlay): _overlay.go_back()
 	else: super()
 
@@ -356,15 +359,12 @@ func _lane(view: Dictionary, index: int) -> Control:
 ## A public side on a tile: pips and dashed rings, no names (public_seats.gd).
 func _public_pips(view: Dictionary, index: int) -> Control:
 	var seats := Seats.view_seats(view, index, me, name_of)
-	for held: Dictionary in seats: held["name"] = ""
 	var pair := HBoxContainer.new()
 	pair.alignment = BoxContainer.ALIGNMENT_CENTER
 	pair.add_theme_constant_override("separation", 4)
 	pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for slot in range(2):
-		var made := Seats.seat(seats[slot], slot, 36.0, false, Callable(), 1)
-		made.get_child(made.get_child_count() - 1).visible = false
-		pair.add_child(made)
+		pair.add_child(Seats.seat(seats[slot], slot, 36.0, false, Callable(), 13, false))
 	return pair
 
 ## The Public duels row (board 1A), above Race a recorded run: it opens the list, or while the
@@ -400,6 +400,8 @@ func _public_entry() -> Control:
 func _render_public() -> void:
 	if not is_instance_valid(_public_row): return
 	_public_row.visible = public_shown
+	# It reads the list from the server: greyed while the phone is offline.
+	OfflineHold.hold(_public_row)
 	var on: bool = _lobby.get("public", {}).get("on", false)
 	_public_note.text = PlayerCopy.PUBLIC_DUELS_ROW_NOTE if on else PlayerCopy.PUBLIC_DUELS_ROW_OFF
 

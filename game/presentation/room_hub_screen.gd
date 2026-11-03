@@ -65,6 +65,7 @@ signal cards_redrawn
 var client: RefCounted
 var chapters: Array[Dictionary] = []
 var display_name: Callable
+## (display_name is called with the member and its room: a public duel's room names its partner by the duel.)
 ## (room_id) -> "friend", "ghost" or "": a duel's room shows a small Duel tag beside its title.
 var duel_kind: Callable
 ## (room: Dictionary) -> {"state": PartnerFriends state, "partner": id}: whether
@@ -744,7 +745,7 @@ func _room_cards_key(filtered: Array[Dictionary], list_status: String) -> int:
 	for room: Dictionary in filtered:
 		var names: Array[String] = []
 		for member: Variant in room.get("member_ids",[]):
-			names.append(str(display_name.call(str(member))) if display_name.is_valid() else "")
+			names.append(_member_shown(str(member), room))
 		parts.append([room, client != null and client.unread(room), _removal(room), _menu_ids(room), names])
 	if _tab == "Completed": parts.append([_hidden_open, _hidden_rooms().map(func(room: Dictionary) -> Array: return [room, _friend(room)])])
 	return hash(parts)
@@ -819,7 +820,7 @@ func _add_room_card(room: Dictionary) -> void:
 	for member: String in room.get("member_ids",[]):
 		# The display-name hook returns an empty string for the local player.
 		# Without the hook nobody is named, so a raw player id never shows.
-		var shown := str(display_name.call(member)) if display_name.is_valid() else ""
+		var shown := _member_shown(member, room)
 		if not shown.is_empty(): names.append(shown)
 	if not names.is_empty(): meta.append(" · ".join(names))
 	var part := _part_line(room)
@@ -965,10 +966,15 @@ func page_root() -> Control:
 func room_menu() -> CanvasLayer:
 	return _menu if is_instance_valid(_menu) and not _menu.is_closed() else null
 
+## A member's name from display_name, given the room too when it takes it (a public duel's room names its partner by the duel).
+func _member_shown(member: String, room: Dictionary) -> String:
+	if not display_name.is_valid(): return ""
+	return str(display_name.call(member, room) if display_name.get_argument_count() >= 2 else display_name.call(member))
+
 ## The friend's nickname for a room's texts, or ROOM_FRIEND.
 func _friend(room: Dictionary) -> String:
 	for member: Variant in room.get("member_ids",[]):
-		var shown := str(display_name.call(str(member))) if display_name.is_valid() else ""
+		var shown := _member_shown(str(member), room)
 		if not shown.is_empty(): return shown
 	return PlayerCopy.ROOM_FRIEND
 

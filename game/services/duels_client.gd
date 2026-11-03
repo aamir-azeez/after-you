@@ -67,6 +67,10 @@ static var _shared: RefCounted
 ## is up (a room opened from Your rooms before Duels this launch), and again after each save.
 static var _public_rooms: Dictionary = {}
 static var _public_read := false
+## This launch: public duels seen, and each public room's partner as its duel names them
+## ({label, friend}: a stranger's shown name, or the id of a partner this player knows), by room.
+static var _public_duels: Dictionary = {}
+static var _room_partners: Dictionary = {}
 
 ## One client per signed-in player, so the pages, Home and Your rooms share it.
 static func shared(api: Node, owner: String) -> RefCounted:
@@ -268,6 +272,30 @@ func _party(action: String, body: Dictionary) -> Dictionary:
 func duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 	return _duel_answer(response, detail)
 
+## The partner seat of this player's own public side: {label, friend}.
+func _partner_seat(own: Dictionary) -> Dictionary:
+	var seats: Array = own.get("seats", [])
+	for slot in range(mini(2, seats.size())):
+		if seats[slot].get("you", false) or seats[slot].get("open", false): continue
+		var id: Variant = own.members[slot]
+		return {"label": str(seats[slot].get("label", "")), "friend": str(id) if id is String and id != _owner else ""}
+	return {"label": "", "friend": ""}
+
+## A public duel's room's partner as its duel names them ({label, friend}), {} for any other room.
+## A room known as public from the file, before any duel read this launch, has neither yet.
+static func room_partner(room_id: String) -> Dictionary:
+	if not public_room(room_id): return {}
+	return _room_partners.get(room_id, {"label": "", "friend": ""})
+
+## A duel's room was just made (services/relay_online_session.gd create_duel_room): a public
+## duel's is noted as public now, before any duel read names it.
+static func note_duel_room(duel_id: String, room_id: String) -> void:
+	if _shared == null or not _public_duels.has(duel_id) or not Typed.valid_id(room_id) or _shared.room_kind(room_id) == "public": return
+	var rooms: Dictionary = _shared._saved.get("rooms", {}).duplicate()
+	rooms[room_id] = "public"
+	_shared._saved.rooms = rooms
+	_shared._save()
+
 ## Whether `room_id` is a public duel's room as the signed-in player's client knows it
 ## (services/partner_friends.gd, the photo card): its partner is a stand-in, never a friend.
 static func public_room(room_id: String) -> bool:
@@ -334,6 +362,9 @@ func _remember(views: Array) -> void:
 	var rooms: Dictionary = _saved.get("rooms", {}).duplicate()
 	for view: Dictionary in views:
 		var own: Dictionary = view.sides[view.mine]
+		if view.has("public"):
+			_public_duels[view.duel_id] = true
+			if own.get("room_id") is String and not str(own.room_id).is_empty(): _room_partners[own.room_id] = _partner_seat(own)
 		if own.get("room_id") is String and not str(own.room_id).is_empty():
 			rooms[own.room_id] = "public" if view.has("public") else view.kind
 			if view.kind == "ghost" and not (_ghost_rooms.has(own.room_id) and _older(view, _ghost_rooms[own.room_id])): _ghost_rooms[own.room_id] = view

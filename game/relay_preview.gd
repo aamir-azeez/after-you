@@ -50,6 +50,7 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
+const RoomPartnerNames = preload("res://services/room_partner_names.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
 const TurnEndings = preload("res://presentation/turn_endings.gd")
@@ -692,7 +693,7 @@ func _plain_card(title: String, body: String) -> VBoxContainer:
 	return card
 
 func _presence_available() -> bool:
-	return is_instance_valid(friend_presence) and online_session != null
+	return is_instance_valid(friend_presence) and online_session != null and RoomPartnerNames.presence_shown(str(journey.snapshot().get("room_id", "")) if journey != null else "")
 
 func _presence_badge() -> Label:
 	var badge := PresenceBadge.new()
@@ -1128,8 +1129,11 @@ func _waiting_partner_name(room: Dictionary) -> String:
 	var id := _partner_id(room)
 	if id.is_empty(): return ""
 	var scope: Dictionary = online_session.nickname_scope() if online_session != null and online_session.has_method("nickname_scope") else {}
-	if scope.is_empty(): return FriendNicknames.FALLBACK
 	var names: RefCounted = nickname_store if nickname_store != null else FriendNicknames.new()
+	# A public duel's room: the partner as the duel names them, never "a friend" for a stand-in id.
+	var public := RoomPartnerNames.public_partner(str(room.get("room_id", "")), func(friend: String) -> String: return names.display_name(str(scope.server), str(scope.owner), friend) if not scope.is_empty() else "")
+	if not public.is_empty(): return public
+	if scope.is_empty(): return FriendNicknames.FALLBACK
 	return names.display_name(str(scope.server), str(scope.owner), id)
 
 

@@ -43,6 +43,8 @@ var _keys: Dictionary = {}
 var _befriended: Dictionary = {}
 ## True while Turn on runs (the rules, then the switch), so a second tap waits for it.
 var _turning_on := false
+## What Settings' switch shows while its request is out (true or false), or null when none is.
+var _switch_asked: Variant = null
 
 func _init(duels_flow: Node) -> void:
 	flow = duels_flow
@@ -104,8 +106,9 @@ func _turn_on(show_name: Variant) -> bool:
 		# The rules screen every photo share shows; Accept there sets terms_accepted.
 		var rules := SafetyScreen.new(safety, {}, Callable(), Callable(), true)
 		host().add_child(rules)
-		# Over the duel pages, whose layers start at 61.
+		# Over the duel pages, whose layers start at 61; it takes Back itself, so Duels waits for it.
 		rules.layer = 90
+		if flow.is_open(): flow.screen.hold_back(rules)
 		await rules.tree_exited
 		if not safety.terms_accepted: return false
 	if show_name is bool:
@@ -116,15 +119,28 @@ func _turn_on(show_name: Variant) -> bool:
 	if flow.is_open(): flow._refresh()
 	return true
 
-## Settings' Public duels switch: on goes through turn_on (the rules first); off at once.
-## Answers what the switch shows now; a refusal comes back as a toast and the switch's next read.
+## Settings' Public duels switch as it shows: what a request still out asked for, else the server's last word.
+func switch_shown() -> bool:
+	return bool(_switch_asked) if _switch_asked != null else switched_on()
+
+## Settings' Public duels switch: on goes through turn_on (the rules first), off at once. The
+## switch shows the ask until the server answers, then Settings reads it again; a refusal is a toast.
+## Off while Turn on is still out waits for it.
 func choose(on: bool) -> bool:
-	if on:
-		turn_on()
-		return true
+	if _switch_asked != null or _turning_on: return true
 	if OfflineHold.refuse(host()._toast): return false
-	client().set_on(false)
+	_settle_switch(on)
 	return true
+
+func _settle_switch(on: bool) -> void:
+	_switch_asked = on
+	if on: await turn_on()
+	else:
+		var answer: Dictionary = await client().set_on(false)
+		if not answer.get("ok", false): _say(_failure_text(answer))
+	_switch_asked = null
+	var settings: Variant = host().get("settings_flow")
+	if settings != null and is_instance_valid(settings): settings.refresh()
 
 func _show_list() -> void:
 	if not flow.is_open(): return
@@ -144,12 +160,16 @@ func _show_list() -> void:
 	flow.screen.open_overlay(page)
 	_read(page, 0)
 
-## One page of the list: the first replaces it, a later one adds to it.
+## One page of the list: the first replaces it, a later one adds to it. Each read carries its
+## serial, scope and sort, so an answer that a newer read or another filter overtook is dropped.
 func _read(page: CanvasLayer, index: int) -> void:
 	_scope = page.scope
 	_sort = page.sort
-	var answer: Dictionary = await client().list(page.scope, page.sort, index)
-	if not is_instance_valid(page) or not page.alive(): return
+	var serial: int = page.begin_read()
+	var asked_scope: String = page.scope
+	var asked_sort: String = page.sort
+	var answer: Dictionary = await client().list(asked_scope, asked_sort, index)
+	if not is_instance_valid(page) or not page.alive() or not page.answered(serial, asked_scope, asked_sort): return
 	if answer.get("ok", false): page.show_rows(answer.rows, int(answer.next), index > 0)
 	elif index == 0: page.show_failed()
 	else: host()._toast(PlayerCopy.PUBLIC_LIST_FAILED)

@@ -276,12 +276,12 @@ func open() -> void:
 	screen.start_requested.connect(_open_challenge)
 	screen.party_requested.connect(_open_party)
 	screen.ghosts_requested.connect(_open_ghosts)
-	screen.public_shown = public().supported()
 	screen.public_requested.connect(func() -> void: public().open_list())
 	screen.duel_action.connect(_on_duel_action)
 	screen.refresh_requested.connect(_refresh)
 	host.add_child(screen)
 	var kept: Dictionary = client().last_lobby()
+	screen.public_shown = public().supported()
 	if not kept.is_empty(): screen.show_lobby(kept)
 	set_process(true)
 	_refresh()
@@ -319,6 +319,7 @@ func _read_lobby(ticket: Dictionary) -> void:
 	# A failed read waits the same minute: the schedule's quicker failure retries would cost more.
 	_lobby_reads.complete(ticket, Time.get_ticks_msec(), true)
 	if not is_open(): return
+	screen.public_shown = public().supported()
 	screen.show_lobby(answer.get("lobby", {}), not answer.get("ok", false))
 	var ghosts := _race_ghost()
 	if ghosts != null and answer.get("ok", false): ghosts.release_ended(answer.lobby)
@@ -574,8 +575,11 @@ func _open_duel(view: Dictionary) -> void:
 			return
 		_show_duel(page, answer.duel))
 	screen.open_overlay(page)
-	# A public duel's page shows the duel extra held so far, from its detail read.
-	if view.has("public"): _read_public_detail(page, view)
+	# A public duel's page shows the duel extra held so far: its first timed read goes at once and brings it.
+	if view.has("public"):
+		var now := Time.get_ticks_msec()
+		_bind(now)
+		_duel_reads.request_now(now)
 	# The phone's room may be ahead of the duel (a lost note): ask the server to look once.
 	var own: Dictionary = view.sides[view.mine]
 	if view.status == "running" and not own.finished and not str(own.get("room_id", "")).is_empty():
@@ -823,6 +827,9 @@ func public_offered() -> bool:
 func public_choose(on: bool) -> bool:
 	return public().choose(on)
 
+func public_switch() -> bool:
+	return public().switch_shown()
+
 ## Start a duel's "Anyone" while public duels are open: posting goes through public_duels_flow.gd post().
 func _offer_public(page: CanvasLayer, anyone: bool) -> void:
 	if not public().supported(): return
@@ -832,13 +839,6 @@ func _offer_public(page: CanvasLayer, anyone: bool) -> void:
 	page.partner_name = _name_of(party.partner) if party.get("intact", false) and party.get("partner") != null else ""
 	page.partner_look = party.get("partner_look", {})
 	page.post_requested.connect(func(joining: String, chapter: String, control: Control) -> void: page.tap(control, func() -> void: await public().post(page, joining, chapter)))
-
-## A public duel's detail read as its page opens: the held duel extra and the duel as it is now.
-func _read_public_detail(page: CanvasLayer, view: Dictionary) -> void:
-	var answer: Dictionary = await client().duel(view.board, view.duel_id)
-	if not answer.get("ok", false) or not is_instance_valid(page) or not page.alive(): return
-	page.held = answer.get("held", {})
-	_show_duel(page, answer.duel)
 
 ## The bundled chapter key for the duel's board (its own version).
 func _chapter_key(view: Dictionary) -> String:

@@ -112,21 +112,8 @@ func _update_send() -> void:
 
 ## "Anyone": two lines, your pips, chosen like a friend (board 5A).
 func _anyone() -> Button:
-	var chosen := _friend == ANYONE
 	var art := Kit.pips(Vector2(30, 40), [null, null], "", [{}, {}], -8)
-	var button := _choice("PairAnyone", PlayerCopy.PUBLIC_ANYONE, chosen, func(): _pick_friend(ANYONE), art)
-	var words: Label = button.get_child(0).get_child(1)
-	words.text = ""
-	var lines := VBoxContainer.new()
-	lines.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lines.alignment = BoxContainer.ALIGNMENT_CENTER
-	lines.add_theme_constant_override("separation", 0)
-	lines.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	lines.add_child(Kit.text(PlayerCopy.PUBLIC_ANYONE, 20, UiTokens.INK if chosen else UiTokens.CREAM, true))
-	lines.add_child(Kit.text(PlayerCopy.PUBLIC_ANYONE_NOTE, 15, UiTokens.INK if chosen else UiTokens.SOFT))
-	button.get_child(0).add_child(lines)
-	words.queue_free()
-	return button
+	return _choice("PairAnyone", PlayerCopy.PUBLIC_ANYONE, _friend == ANYONE, func(): _pick_friend(ANYONE), art, PlayerCopy.PUBLIC_ANYONE_NOTE)
 
 ## Post as (With your partner or Alone) and the seats the list will show, under Anyone.
 func _post_as_part() -> void:
@@ -137,8 +124,8 @@ func _post_as_part() -> void:
 	if not partner_name.is_empty():
 		var switch := HBoxContainer.new()
 		switch.add_theme_constant_override("separation", 6)
-		switch.add_child(_as_chip("PostWithPartner", PlayerCopy.PUBLIC_WITH % partner_name, party, "party"))
-		switch.add_child(_as_chip("PostAlone", PlayerCopy.PUBLIC_ALONE, not party, "alone"))
+		switch.add_child(Seats.chip("PostWithPartner", PlayerCopy.PUBLIC_WITH % partner_name, party, func(): _post_as_chosen("party"), Seats.chip_pips(partner_look)))
+		switch.add_child(Seats.chip("PostAlone", PlayerCopy.PUBLIC_ALONE, not party, func(): _post_as_chosen("alone"), Seats.chip_pips()))
 		_friend_list.add_child(switch)
 	var you := {"open": false, "you": true, "name": PlayerCopy.DUEL_YOU, "look": {}}
 	var open := {"open": true, "you": false, "name": PlayerCopy.PUBLIC_OPEN, "look": {}}
@@ -149,13 +136,9 @@ func _post_as_part() -> void:
 	_friend_list.add_child(preview)
 	_friend_list.add_child(Kit.wrapped(PlayerCopy.PUBLIC_POST_NOTE, 15))
 
-func _as_chip(node_name: String, label: String, chosen: bool, value: String) -> Button:
-	var chip := Kit.button(label, func():
-		_post_as = value
-		_render_friends(), chosen, 44)
-	chip.name = node_name
-	chip.add_theme_font_size_override("font_size", 17)
-	return chip
+func _post_as_chosen(value: String) -> void:
+	_post_as = value
+	_render_friends()
 
 func _pick_friend(id: String) -> void:
 	_friend = id
@@ -165,7 +148,8 @@ func _pick_chapter(key: String) -> void:
 	_chapter = key
 	_render_chapters()
 
-func _choice(node_name: String, label: String, chosen: bool, action: Callable, art: Control) -> Button:
+## `note`: a second, smaller line under `label` ("Anyone"'s), or none.
+func _choice(node_name: String, label: String, chosen: bool, action: Callable, art: Control, note: String = "") -> Button:
 	var button := Button.new()
 	button.name = node_name
 	button.custom_minimum_size = Vector2(0, 76)
@@ -186,5 +170,15 @@ func _choice(node_name: String, label: String, chosen: bool, action: Callable, a
 	var text := Kit.text(label, 20, UiTokens.INK if chosen else UiTokens.CREAM, true)
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	line.add_child(text)
+	if note.is_empty():
+		line.add_child(text)
+		return button
+	var lines := VBoxContainer.new()
+	lines.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lines.alignment = BoxContainer.ALIGNMENT_CENTER
+	lines.add_theme_constant_override("separation", 0)
+	lines.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lines.add_child(text)
+	lines.add_child(Kit.text(note, 15, UiTokens.INK if chosen else UiTokens.SOFT))
+	line.add_child(lines)
 	return button

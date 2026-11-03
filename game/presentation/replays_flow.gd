@@ -28,6 +28,7 @@ extends Node
 ## replays, invalidate_identity when the identity changes and release_workers
 ## when it leaves the tree.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const RoomPartnerNames = preload("res://services/room_partner_names.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
@@ -1216,6 +1217,9 @@ func _shared_room_line(room: Dictionary, with_title: bool) -> String:
 ## "a friend". Never a raw id.
 func _room_partner_name(room: Dictionary) -> String:
 	if room.is_empty(): return ""
+	# A public duel's room names its partner by the duel (services/room_partner_names.gd).
+	var public := RoomPartnerNames.public_partner(str(room.get("room_id", "")), func(friend: String) -> String: return str(host._friend_display_name(friend)))
+	if not public.is_empty(): return public
 	var shown := _room_partner_nickname(room)
 	return shown if not shown.is_empty() else FriendNicknames.FALLBACK
 

@@ -56,6 +56,10 @@ var _filters: HBoxContainer
 var _gate: BusyTapGate
 var _pull_from := Vector2.INF
 var _pulled := 0.0
+## The newest read asked for (begin_read), and whether it is still out: an older answer is dropped,
+## and a pull while one is out asks nothing more.
+var _read_serial := 0
+var _reading := false
 
 func page_name() -> String: return "PublicList"
 func title_text() -> String: return PlayerCopy.PUBLIC_DUELS_TITLE
@@ -77,9 +81,30 @@ func opened() -> void:
 func tap(control: Control, run: Callable) -> void:
 	await _gate.tap(control, "...", Callable(), run, alive)
 
-## A page of rows from the flow: the first page replaces the list, a later one adds to it.
+## A read starts: its serial, which its answer brings back to answered().
+func begin_read() -> int:
+	_read_serial += 1
+	_reading = true
+	return _read_serial
+
+## Whether a read is out now.
+func reading() -> bool:
+	return _reading
+
+## Whether the answer to read `serial`, asked for `asked_scope` and `asked_sort`, is still the
+## one to show: the newest read, for the list as it is filtered now. It ends that read.
+func answered(serial: int, asked_scope: String, asked_sort: String) -> bool:
+	if serial != _read_serial: return false
+	_reading = false
+	return asked_scope == scope and asked_sort == sort
+
+## A page of rows from the flow: the first page replaces the list, a later one adds the rows it doesn't hold yet.
 func show_rows(rows: Array, next: int, append: bool = false) -> void:
-	if append: _rows.append_array(rows)
+	if append:
+		var held := {}
+		for row: Dictionary in _rows: held[row.duel_id] = true
+		for row: Dictionary in rows:
+			if not held.has(row.duel_id): _rows.append(row)
 	else:
 		_rows = rows.duplicate()
 		_notes.clear()
@@ -134,14 +159,9 @@ func _build() -> void:
 func _render_filters() -> void:
 	Kit.clear(_filters)
 	_filters.add_child(Kit.text(PlayerCopy.PUBLIC_JOINING_AS, 17, UiTokens.SOFT))
-	_filters.add_child(_chip("JoinAlone", PlayerCopy.PUBLIC_ALONE, joining == Spots.ALONE, func() -> void: _set_joining(Spots.ALONE), Kit.pip(Vector2(24, 28), Kit.FIRST_PIP, true)))
+	_filters.add_child(Seats.chip("JoinAlone", PlayerCopy.PUBLIC_ALONE, joining == Spots.ALONE, func() -> void: _set_joining(Spots.ALONE), Seats.chip_pips()))
 	if not partner_name.is_empty():
-		var pair := HBoxContainer.new()
-		pair.add_theme_constant_override("separation", 0)
-		pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		pair.add_child(Kit.pip(Vector2(22, 26), Kit.FIRST_PIP, true))
-		pair.add_child(Kit.pip(Vector2(22, 26), Kit.SECOND_PIP, false, partner_look))
-		_filters.add_child(_chip("JoinParty", PlayerCopy.PUBLIC_WITH % partner_name, joining == Spots.PARTY, func() -> void: _set_joining(Spots.PARTY), pair))
+		_filters.add_child(Seats.chip("JoinParty", PlayerCopy.PUBLIC_WITH % partner_name, joining == Spots.PARTY, func() -> void: _set_joining(Spots.PARTY), Seats.chip_pips(partner_look)))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_filters.add_child(spacer)
@@ -150,11 +170,10 @@ func _render_filters() -> void:
 	chapters.text = _scope_title()
 	chapters.flat = false
 	chapters.custom_minimum_size = Vector2(0, 44)
-	chapters.icon = CHEVRON_ICON
-	chapters.expand_icon = true
-	chapters.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	chapters.add_theme_constant_override("icon_max_width", 16)
 	ThemeRules.secondary(chapters)
+	Kit.icon_on(chapters, CHEVRON_ICON, false, 16)
+	for state: String in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_hover_pressed_color", "icon_focus_color"]:
+		chapters.add_theme_color_override(state, UiTokens.CREAM)
 	var menu := chapters.get_popup()
 	menu.add_item(PlayerCopy.PUBLIC_ALL_CHAPTERS, 0)
 	for index in range(boards.size()): menu.add_item(_chapter_title(str(boards[index][1])), index + 1)
@@ -162,8 +181,8 @@ func _render_filters() -> void:
 	_filters.add_child(chapters)
 	var sorts := HBoxContainer.new()
 	sorts.add_theme_constant_override("separation", 0)
-	sorts.add_child(_chip("SortNewest", PlayerCopy.PUBLIC_NEWEST, sort == "newest", func() -> void: _set_sort("newest")))
-	sorts.add_child(_chip("SortAlmostFull", PlayerCopy.PUBLIC_ALMOST_FULL, sort == "almost_full", func() -> void: _set_sort("almost_full")))
+	sorts.add_child(Seats.chip("SortNewest", PlayerCopy.PUBLIC_NEWEST, sort == "newest", func() -> void: _set_sort("newest")))
+	sorts.add_child(Seats.chip("SortAlmostFull", PlayerCopy.PUBLIC_ALMOST_FULL, sort == "almost_full", func() -> void: _set_sort("almost_full")))
 	_filters.add_child(sorts)
 
 func _scope_title() -> String:
@@ -307,32 +326,6 @@ static func status_line(row: Dictionary, partner: String = "") -> String:
 		return PlayerCopy.PUBLIC_PLAYED_ONE % named[0].label if steps == 1 else PlayerCopy.PUBLIC_PLAYED % [named[0].label, steps]
 	return PlayerCopy.DUEL_STEPS % [int(side.steps), int(row.steps)]
 
-func _chip(node_name: String, label: String, chosen: bool, action: Callable, art: Control = null) -> Button:
-	var button := Button.new()
-	button.name = node_name
-	button.text = label
-	button.custom_minimum_size = Vector2(0, 44)
-	button.add_theme_font_size_override("font_size", 17)
-	for state: String in ["normal", "hover", "pressed", "hover_pressed"]:
-		var fill := UiTokens.MINT if chosen else Color.TRANSPARENT
-		var style := ThemeRules.rounded(fill.lightened(0.05) if state.begins_with("hover") and chosen else fill, 10, Color.TRANSPARENT if chosen else Kit.PANEL_EDGE)
-		ThemeRules.padded(style, 12.0, 4.0)
-		button.add_theme_stylebox_override(state, style)
-	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
-		button.add_theme_color_override(state, UiTokens.INK if chosen else UiTokens.CREAM)
-	button.add_theme_stylebox_override("focus", ThemeRules.rounded(Color.TRANSPARENT, 10, UiTokens.CREAM))
-	if art != null:
-		var holder := MarginContainer.new()
-		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		holder.add_theme_constant_override("margin_left", 8)
-		holder.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-		holder.add_child(art)
-		button.add_child(holder)
-		button.alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		button.custom_minimum_size.x = button.get_theme_font("font").get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x + 24.0 + art.get_combined_minimum_size().x + 16.0
-	button.pressed.connect(action)
-	return button
-
 ## Pull down from the top of the list: once the drag passes PULL_PX, the list reads again.
 func _input(event: InputEvent) -> void:
 	if not alive() or not is_instance_valid(_scroll) or Kit.showing(_modal): return
@@ -345,7 +338,7 @@ func _input(event: InputEvent) -> void:
 		var pulled := _pulled
 		_pull_from = Vector2.INF
 		_pulled = 0.0
-		if pulled >= PULL_PX: refresh_requested.emit()
+		if pulled >= PULL_PX and not _reading: refresh_requested.emit()
 	elif (event is InputEventScreenDrag or event is InputEventMouseMotion) and _pull_from != Vector2.INF:
 		_pulled = maxf(_pulled, event.position.y - _pull_from.y)
 

@@ -11,7 +11,8 @@ extends SceneTree
 ## (b) wallet replies: services/wallet_reply.gd alone feeds the stores;
 ## (c) feature switches: capability fields are read in relay_online_session.gd;
 ## (d) offline: a screen that reaches the server holds its buttons (offline_hold.gd);
-## (e) names: FriendNicknames.display_name, the leaderboard pair title;
+## (e) names: FriendNicknames.display_name, the leaderboard pair title, and in a public
+##     duel's room services/room_partner_names.gd (its partner id is a stand-in);
 ## (f) Pollen amounts: PollenMoney.grouped beside every amount;
 ## (g) saves: services/atomic_file.gd writes every file;
 ## (h) server writes: each one is classed, keyed or safe to repeat;
@@ -107,6 +108,9 @@ const NAME_EXEMPT := {
 	"res://presentation/friends_screen.gd": "edits nicknames and shows a friend's chosen name under one",
 	"res://presentation/display_name_flow.gd": "the player's own anonymous name",
 }
+
+## The room surfaces that name a room's partner: each asks room_partner_names.gd first.
+const ROOM_NAME_SURFACES := ["res://relay_preview.gd", "res://presentation/room_hub_flow.gd", "res://presentation/replays_flow.gd"]
 
 ## (f) Constants holding a count that is never Pollen, though they read like an amount.
 const POLLEN_COUNTS := {"POLLEN_BANK_REFILL": "turns the bank gains each Monday"}
@@ -387,6 +391,8 @@ func _names() -> void:
 			_check(_found("LEADERBOARD_A_PAIR|LEADERBOARD_NAMES\\b", source) == 0, "%s builds a leaderboard pair's name itself: use leaderboard_rows.gd pair_title" % path)
 	for path: String in NAME_EXEMPT:
 		_check(_sources.has(path), "NAME_EXEMPT names %s, which is gone: delete it" % path)
+	for path: String in ROOM_NAME_SURFACES:
+		_check(str(_sources.get(path, "")).contains("RoomPartnerNames.public_partner("), "%s names a room's partner without services/room_partner_names.gd: in a public duel's room it would call a stranger 'a friend'" % path)
 
 # (f) Pollen amounts ---------------------------------------------------------
 

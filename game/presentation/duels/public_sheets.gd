@@ -7,9 +7,11 @@ extends RefCounted
 ## - first_time(): the short yes or no before the list, with the one Show my
 ##   name switch (the leaderboard name choice, shared) right there.
 ## - stranger(): a player you don't know, from their pip on the duel page: who
-##   they are to you, the faces card (presentation/end_reactions.gd, the same
-##   one every turn's end uses), Report and Block, and Add friend once the duel
-##   is over.
+##   they are to you, the Reactions grid (the game's preset faces, drawn as
+##   presentation/end_reactions.gd draws them), Report and Block, and Add friend
+##   once the duel is over. The server has no route for a face outside a turn,
+##   so a face picked here only sets the default face your next turn's pill
+##   offers (services/end_reaction_store.gd use_last); nothing is sent.
 ## - block(): what blocking does: leaving the duel when it's your partner.
 ## - report(): the six report reasons, as the community rules list them.
 ## The flow (public_duels_flow.gd) does every request; a card only says what
@@ -22,6 +24,10 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
+const FaceStore = preload("res://services/end_reaction_store.gd")
+## The Reactions grid's paper and ink, as the faces card draws them (presentation/end_reactions.gd).
+const PAPER := Color("f6f1e1")
+const FACE_CELL := Vector2(78, 66)
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const FACES_ICON = preload("res://assets/ui/social/users.svg")
 const NAME_ICON = preload("res://assets/ui/social/user.svg")
@@ -117,20 +123,14 @@ static func first_time(root: Control, show_name: bool, confirm: Callable) -> Con
 ## A stranger's card (board 6.3). `who`: {name, partner (your own partner), color
 ## ("peach" or "mint"), look, over (the duel ended), friend_sent}. `actions`:
 ## {report, block, befriend, pick(face)} callables; each runs after the card closes,
-## except pick, which keeps the face for your next turn in the duel's room.
-static func stranger(root: Control, who: Dictionary, settings: Dictionary, actions: Dictionary) -> Control:
+## except pick, which only sets the default face of your next turn (see above).
+static func stranger(root: Control, who: Dictionary, _settings: Dictionary, actions: Dictionary) -> Control:
 	var modal := Modal.open(root, "PublicStrangerCard", str(who.get("name", "")), PlayerCopy.PUBLIC_CARD_PARTNER if who.get("partner", false) else PlayerCopy.PUBLIC_CARD_OTHER)
 	modal.widen(520.0)
 	var pip := Kit.pip(Vector2(44, 52), Kit.FIRST_PIP if who.get("color", "peach") == "peach" else Kit.SECOND_PIP, false, who.get("look", {}))
 	modal.header.add_child(pip)
 	modal.header.move_child(pip, 0)
-	# The faces card every turn's end uses: a face picked here goes with your next turn in this duel.
-	var faces := EndReactions.attach(modal.content, {"pick": true, "run": "public-duel:" + str(who.get("duel_id", "")), "color": "peach" if who.get("color", "peach") == "mint" else "mint",
-		"settings": settings, "on_pick": actions.get("pick", Callable())})
-	if faces != null:
-		faces.name = "PublicStrangerFaces"
-		# The faces grid shows open, as the card is drawn (board 6.3); it closes with the card.
-		if faces.has_method("open_faces"): faces.call_deferred("open_faces")
+	modal.content.add_child(_faces("peach" if who.get("color", "peach") == "mint" else "mint", actions.get("pick", Callable())))
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 12)
 	modal.content.add_child(buttons)
@@ -189,6 +189,54 @@ static func report(root: Control, name: String, confirm: Callable) -> Control:
 		grid.add_child(button)
 	modal.refresh_focus_order()
 	return modal
+
+## The Reactions grid inside the card (board 6.3): the preset faces in your colour. A tap marks
+## the face and makes it your next turn's default face (FaceStore.use_last); it sends nothing.
+static func _faces(color: String, on_pick: Variant) -> PanelContainer:
+	var box := PanelContainer.new()
+	box.name = "PublicStrangerFaces"
+	var style := ThemeRules.rounded(PAPER, 18, Color(UiTokens.INK, 0.18))
+	ThemeRules.padded(style, 12.0, 8.0)
+	box.add_theme_stylebox_override("panel", style)
+	var stack := VBoxContainer.new()
+	stack.add_theme_constant_override("separation", 6)
+	box.add_child(stack)
+	stack.add_child(Kit.text(PlayerCopy.END_REACTIONS_TITLE, 22, UiTokens.INK, true))
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	stack.add_child(grid)
+	var chosen := FaceStore.last_known()
+	for face: String in FaceStore.FACES:
+		if face == FaceStore.HEART: continue
+		var cell := Button.new()
+		cell.name = "Face_" + face
+		cell.custom_minimum_size = FACE_CELL
+		cell.accessibility_name = EndReactions.face_name(face)
+		cell.toggle_mode = true
+		cell.button_pressed = face == chosen
+		for state: String in ["normal", "hover", "pressed", "hover_pressed"]:
+			cell.add_theme_stylebox_override(state, ThemeRules.rounded(Color(UiTokens.MINT, 0.45) if state.ends_with("pressed") else Color(UiTokens.INK, 0.06), 12))
+		cell.add_theme_stylebox_override("focus", ThemeRules.rounded(Color.TRANSPARENT, 12, UiTokens.INK))
+		var column := VBoxContainer.new()
+		column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		column.alignment = BoxContainer.ALIGNMENT_CENTER
+		column.add_theme_constant_override("separation", 0)
+		column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var icon := EndReactions.FaceIcon.new(face, color, 34.0)
+		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		column.add_child(icon)
+		var label := Kit.text(EndReactions.face_name(face), 13, UiTokens.INK)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		column.add_child(label)
+		cell.add_child(column)
+		cell.pressed.connect(func() -> void:
+			for other: Node in grid.get_children(): (other as Button).set_pressed_no_signal(other == cell)
+			FaceStore.use_last(face)
+			if on_pick is Callable and (on_pick as Callable).is_valid(): (on_pick as Callable).call(face))
+		grid.add_child(cell)
+	return box
 
 ## One line with its small icon.
 static func _point(icon: Texture2D, words: String) -> HBoxContainer:

@@ -27,6 +27,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const ReplaysFlow = preload("res://presentation/replays_flow.gd")
+const RoomPartnerNames = preload("res://services/room_partner_names.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -216,6 +217,12 @@ func _leave() -> void:
 	shared._remember([DuelsClient.valid_view(_public_view())])
 	_check(DuelsClient.public_room(ROOM) and shared.room_kind(ROOM) == "public", "A public duel's room is kept as public")
 	_check(not ReplaysFlow._replay_save_transient({"status": 409, "code": "public_duel_history_off"}), "The server keeping a public room's recordings is final, never retried")
+	_check(RoomPartnerNames.public_partner(ROOM) == PlayerCopy.PUBLIC_A_PLAYER and RoomPartnerNames.public_partner("x".repeat(22)) == "", "A public room's unnamed stranger is A player; another room asks its own resolver")
+	_check(not RoomPartnerNames.presence_shown(ROOM), "A public room shows no partner presence")
+	var named := _public_view()
+	named.sides[0].seats[1].label = "Kite"
+	shared._remember([DuelsClient.valid_view(named)])
+	_check(RoomPartnerNames.public_partner(ROOM) == "Kite", "A named stranger partner keeps their shown name in the room")
 	DuelsClient.clear_owner(ME)
 	_check(not DuelsClient.public_room(ROOM), "Account deletion forgets it")
 	api.free()
@@ -284,6 +291,13 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 	page.update_row("b".repeat(32), _row([false, false, true, true], [1, 0]), PlayerCopy.PUBLIC_SPOT_TAKEN)
 	await _settle()
 	_check(page.root.find_children("PublicReason", "Label", true, false).any(func(label: Label) -> bool: return label.text == PlayerCopy.PUBLIC_SPOT_TAKEN), "%s: a spot taken first says so on its row" % name)
+	var older: int = page.begin_read()
+	var newer: int = page.begin_read()
+	_check(not page.answered(older, page.scope, page.sort) and page.reading(), "%s: an answer a newer read overtook is dropped" % name)
+	_check(not page.answered(newer, "all", "almost_full") and not page.reading(), "%s: an answer for another sort is dropped, and the read is over" % name)
+	var count: int = page.rows().size()
+	page.show_rows([page.rows()[0]], -1, true)
+	_check(page.rows().size() == count, "%s: a row already listed is not added twice" % name)
 	# The join cards (boards 3 and 4).
 	var confirmed := [0]
 	for case: Array in [[Spots.ALONE, 1], [Spots.ALONE, 2], [Spots.PARTY, 2]]:
@@ -343,6 +357,7 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 	var stranger := Sheets.stranger(duel.root, {"name": "Kite", "partner": false, "color": "peach", "over": false, "duel_id": "c".repeat(32)}, {}, actions)
 	await _settle()
 	_check(stranger.find_child("PublicReport", true, false) != null and stranger.find_child("PublicBlock", true, false) != null and stranger.find_child("PublicAddFriend", true, false) == null, "%s: a running duel's stranger card has Report and Block, no Add friend" % name)
+	_check(stranger.find_child("PublicStrangerFaces", true, false) != null and stranger.find_children("Face_*", "Button", true, false).size() == 8, "%s: the Reactions grid sits inside the card" % name)
 	stranger.close()
 	actions["befriend"] = func() -> void: pass
 	stranger = Sheets.stranger(duel.root, {"name": "Kite", "partner": true, "color": "peach", "over": true, "duel_id": "c".repeat(32)}, {}, actions)

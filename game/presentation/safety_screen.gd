@@ -165,6 +165,7 @@ func _render() -> void:
 				var player: String = blocked[index]
 				_button("Unblock player " + str(index + 1) + " · " + player.substr(0, 6), func(): _unblock(player))
 		# Strangers blocked from public duels: no id reaches this phone, so they are named as the duel showed them.
+		if blocked.is_empty() and not client.duel_blocks.is_empty(): _label("Players you blocked", 25)
 		for item: Dictionary in client.duel_blocks:
 			var handle: String = item.handle
 			_button(PlayerCopy.PUBLIC_UNBLOCK % (item.label if not str(item.label).is_empty() else PlayerCopy.PUBLIC_BLOCKED_PLAYER), func(): _unblock_duel(handle))
