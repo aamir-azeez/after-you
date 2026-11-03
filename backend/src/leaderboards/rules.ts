@@ -73,3 +73,9 @@ export function holdsFor(ticks: number, developerBest: number | null, firstTicks
   if (firstTicks !== null && ticks < WIDE_MARGIN_RATIO * firstTicks) holds.push("wide_margin");
   return holds;
 }
+/**
+ * Runs waiting for their checks (state "checking") that may name one player, across all their pairs, per board.
+ * The account check passes any account while its minimums are 0, so this is what keeps one player and a crowd of
+ * partners from filling the waiting pools with made-up times: a post past it answers "busy" and waits for none.
+ */
+export const MAX_WAITING_PER_MEMBER = 2;

@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import type { ChapterKey } from "../v2/chapter-types";
 import { BoardRewardLedger, REWARD_LEDGER_SCHEMA, openRewardSync, type RewardDelivery, type RewardGrant, type RewardSink } from "./rewards";
-import { KEPT_RANKED, MAX_CHECKED, MAX_REPLAY_BYTES, MAX_REPORTERS, MAX_REVIEW, MAX_UNCHECKED, REVIEW_REASONS, TOP_PLACES, compareRuns, holdsFor, strictlyFirst } from "./rules";
+import { KEPT_RANKED, MAX_CHECKED, MAX_REPLAY_BYTES, MAX_REPORTERS, MAX_REVIEW, MAX_UNCHECKED, MAX_WAITING_PER_MEMBER, REVIEW_REASONS, TOP_PLACES, compareRuns, holdsFor, strictlyFirst } from "./rules";
 import type { LeaderboardRun } from "./run";
 import { samePair, type PairKeys } from "./pair-accounts";
 import { keptLook, servedLook, type PairLooks } from "./run-looks";
@@ -30,7 +30,9 @@ import type { Duel, ProgressNote, SideRoom } from "../duels/model";
  * to lb_replays in the shared blob format (blob-codec.ts) and stays only while
  * the run waits for a person or ranks in the top 10; every other way out
  * deletes it (rank, drop, forget). Settled runs leave a short tombstone
- * (lb_outcomes) so a retried submission of the same run never comes back.
+ * (lb_outcomes) so a retried submission of the same run never comes back; a run
+ * pushed out of the full checked pool was never judged and leaves none, so its
+ * retry may enter again.
  *
  * Every write is one synchronous transaction, so out-of-order and repeated
  * calls are safe: a verdict names the proof hash it checked and is ignored
@@ -121,6 +123,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
       if (others.length >= TOP_PLACES && compareRuns(timed, others[TOP_PLACES - 1]) > 0) return "not_placed";
       if (checked && (!checked.eligible || checked.entry_id !== run.entry_id)) return "ineligible";
       const waiting = all.filter(entry => entry.state === "checking" && !samePair(keysOf(entry), run));
+      // A player already waiting in MAX_WAITING_PER_MEMBER other pairs' runs posts no more until those are checked.
+      if (run.members.some(id => waiting.filter(entry => entry.data.members.some(member => member.id === id)).length >= MAX_WAITING_PER_MEMBER)) return "busy";
       if (!checked) {
         // Unchecked runs never push anyone out; the poster checks the accounts and posts again.
         if (waiting.filter(entry => entry.data.eligible === null).length >= MAX_UNCHECKED) return "crowded";
@@ -128,7 +132,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
         const pool = waiting.filter(entry => entry.data.eligible === true).sort(compareRuns);
         if (pool.length >= MAX_CHECKED) {
           if (compareRuns(timed, pool[pool.length - 1]) > 0) return "busy";
-          this.drop(pool[pool.length - 1].entry_id, "crowded");
+          // No tombstone: the pushed out run was never judged, so its retry may come back.
+          this.drop(pool[pool.length - 1].entry_id, null);
         }
       }
       for (const older of mine) if (older.state !== "ranked") this.drop(older.entry_id, "superseded");
@@ -444,11 +449,12 @@ export class LeaderboardBoard extends DurableObject<Env> {
   private save(entry: Entry): void {
     this.ctx.storage.sql.exec("UPDATE lb_entries SET state=?,data=? WHERE entry_id=?", entry.state, JSON.stringify(entry.data), entry.entry_id);
   }
-  /** Removes a run, its proof and its replay, and leaves its tombstone. */
-  private drop(id: string, outcome: string): void {
+  /** Removes a run, its proof and its replay, and leaves its tombstone (none for a null `outcome`). */
+  private drop(id: string, outcome: string | null): void {
     this.ctx.storage.sql.exec("DELETE FROM lb_entries WHERE entry_id=?", id);
     this.proofs.remove(id);
     this.ctx.storage.sql.exec("DELETE FROM lb_replays WHERE entry_id=?", id);
+    if (outcome === null) return;
     this.ctx.storage.sql.exec("INSERT OR REPLACE INTO lb_outcomes VALUES (?,?,?)", id, outcome, Date.now());
     this.ctx.storage.sql.exec("DELETE FROM lb_outcomes WHERE entry_id IN (SELECT entry_id FROM lb_outcomes ORDER BY at DESC, entry_id LIMIT -1 OFFSET ?)", MAX_OUTCOMES);
   }

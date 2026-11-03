@@ -8,7 +8,7 @@ import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { boardKey, boardKeys, developerBest } from "../src/leaderboards/boards";
 import { DEVELOPER_BESTS } from "../src/leaderboards/developer-bests";
 import { JOB_TOKEN_LABEL, deriveJobToken } from "../src/leaderboards/job-token";
-import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED, MAX_REPLAY_BYTES, MIN_ACCOUNT_AGE_MS, MIN_PARTNERS } from "../src/leaderboards/rules";
+import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED, MAX_WAITING_PER_MEMBER, MAX_REPLAY_BYTES, MIN_ACCOUNT_AGE_MS, MIN_PARTNERS } from "../src/leaderboards/rules";
 import { entryId, finishedRun, pairKey, runTicks, type LeaderboardRun } from "../src/leaderboards/run";
 import { eligible, playerStanding, type Standing } from "../src/leaderboards/standing";
 import { VIEW_TTL_MS, cachedView, forgetViews, storeView } from "../src/leaderboards/view-cache";
@@ -341,6 +341,43 @@ describe("board ordering", () => {
     const quick = await run(40, 1);
     expect((await board().submit(RELAY_BOARD, quick, { ...checked, entry_id: quick.entry_id })).status).toBe("checking");
     expect((await board().pendingWork()).replay).toHaveLength(MAX_CHECKED);
+  });
+  it("leaves no tombstone for a run pushed out of the full checked pool, so its retry is taken again, and unchecked posts push nobody out", async () => {
+    const ranked = await run(30, 1);
+    await rankDirect(ranked);
+    const checkedFor = (entry: LeaderboardRun) => ({ entry_id: entry.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 1 }, { show: false, name: null, rev: 1 }] });
+    const pool: LeaderboardRun[] = [];
+    for (let index = 0; index < MAX_CHECKED; index++) { const entry = await run(60 + index, 1); pool.push(entry); expect((await board().submit(RELAY_BOARD, entry, checkedFor(entry))).status).toBe("checking"); }
+    // A flood of unchecked posts fills its own pool, then answers crowded: the checked and ranked runs stay.
+    for (let index = 0; index < MAX_UNCHECKED; index++) expect((await board().submit(RELAY_BOARD, await run(2, 9000 + index))).status).toBe("checking");
+    expect((await board().submit(RELAY_BOARD, await run(1, 1))).status).toBe("crowded");
+    expect((await board().pendingWork()).replay.map(item => item.entry_id).sort()).toEqual(pool.map(entry => entry.entry_id).sort());
+    expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id)).toEqual([ranked.entry_id]);
+    // A faster checked run pushes out the slowest; that run's retry is a new post, never "known".
+    const quick = await run(40, 1), pushed = pool[pool.length - 1];
+    expect((await board().submit(RELAY_BOARD, quick, checkedFor(quick))).status).toBe("checking");
+    expect((await board().submit(RELAY_BOARD, pushed)).status).toBe("crowded");
+    expect((await board().submit(RELAY_BOARD, pushed, checkedFor(pushed))).status).toBe("busy");
+    // Once the fast one fails its replay, the pushed out run's retry is taken.
+    const work = await board().pendingWork();
+    await board().verdicts(RELAY_BOARD, [{ entry_id: quick.entry_id, proof_hash: work.replay.find(item => item.entry_id === quick.entry_id)!.proof_hash, valid: false, measured_ticks: 0, reason: "mismatch" }], 1);
+    expect((await board().submit(RELAY_BOARD, pushed, checkedFor(pushed))).status).toBe("checking");
+    await runInDurableObject(board(), async (_, ctx) => {
+      expect(ctx.storage.sql.exec("SELECT outcome FROM lb_outcomes WHERE outcome='crowded'").toArray()).toEqual([]);
+    });
+  });
+  it("lets one player wait in at most MAX_WAITING_PER_MEMBER other pairs' runs, and again once one is judged", async () => {
+    const player = "w".repeat(22), partner = (n: number) => `m${n}`.padEnd(22, "m");
+    const entries: LeaderboardRun[] = [];
+    for (let n = 0; n < MAX_WAITING_PER_MEMBER; n++) { const entry = await run(100 + n, 1, [player, partner(n)]); entries.push(entry); expect((await board().submit(RELAY_BOARD, entry)).status).toBe("checking"); }
+    const extra = await run(50, 1, [partner(9), player]);
+    expect((await board().submit(RELAY_BOARD, extra)).status).toBe("busy");
+    expect((await board().submit(RELAY_BOARD, extra, { entry_id: extra.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 1 }, { show: false, name: null, rev: 1 }] })).status).toBe("busy");
+    // Someone else posts as before.
+    expect((await board().submit(RELAY_BOARD, await run(50, 1))).status).toBe("checking");
+    // One of the player's runs is judged (here, found ineligible): the next post is taken.
+    await board().standings(RELAY_BOARD, [{ entry_id: entries[0].entry_id, eligible: false, reason: "erased", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
+    expect((await board().submit(RELAY_BOARD, extra)).status).toBe("checking");
   });
   it("sends a run the job could not judge to a person, and never writes an older name choice over a newer one", async () => {
     const entry = await run(100, 1000);
