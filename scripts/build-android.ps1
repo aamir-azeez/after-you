@@ -98,6 +98,10 @@ $application.SetAttribute('networkSecurityConfig', $androidNamespace, '@xml/afte
 $application.SetAttribute('allowBackup', $androidNamespace, 'true') | Out-Null
 $application.SetAttribute('backupAgent', $androidNamespace, 'com.aamirazeez.afteryou.nativebridge.AfterYouBackupAgent') | Out-Null
 $application.SetAttribute('fullBackupOnly', $androidNamespace, 'true') | Out-Null
+# Defence in depth for the agent: the plugin's rules keep out what the plan never sends
+# (Android 12+ reads dataExtractionRules, older versions fullBackupContent).
+$application.SetAttribute('dataExtractionRules', $androidNamespace, '@xml/after_you_backup_rules') | Out-Null
+$application.SetAttribute('fullBackupContent', $androidNamespace, '@xml/after_you_full_backup_rules') | Out-Null
 $activity = @($application.SelectNodes('activity')) | Where-Object { $_.GetAttribute('name', $androidNamespace) -eq '.GodotApp' }
 if ($null -eq $activity) { throw 'Unexpected Android template: GodotApp Activity not found.' }
 $activity.SetAttribute('launchMode', $androidNamespace, 'singleTop') | Out-Null
@@ -275,6 +279,7 @@ try {
     if ($manifestTree -notmatch 'android:allowBackup[^\r\n]*\(type 0x12\)0xffffffff') { throw 'APK must allow backup through its own agent.' }
     if ($manifestTree -notmatch 'android:backupAgent[^\r\n]*com\.aamirazeez\.afteryou\.nativebridge\.AfterYouBackupAgent') { throw 'APK does not name the quota-aware backup agent.' }
     if ($manifestTree -notmatch 'android:fullBackupOnly[^\r\n]*\(type 0x12\)0xffffffff') { throw 'APK backup must be full backup only.' }
+    if ($manifestTree -notmatch 'android:dataExtractionRules[^\r\n]*=@0x' -or $manifestTree -notmatch 'android:fullBackupContent[^\r\n]*=@0x') { throw 'APK does not name its backup rules.' }
     # Release optimization may rename XML files; resolve the manifest's actual resource
     # reference instead of assuming the source filename survives packaging.
     $networkIdMatch = [regex]::Match($manifestTree, 'android:networkSecurityConfig[^\r\n]*=@(0x[0-9a-fA-F]+)')

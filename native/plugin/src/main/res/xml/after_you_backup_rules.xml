@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ backup rules (android:dataExtractionRules, set by scripts/build-android.ps1).
+     AfterYouBackupAgent picks the files (game/services/backup_plan.gd); these rules only keep out
+     what that plan never sends, so a restore can never bring it back either. Excludes only: an
+     include list cannot name the plan's journal, attempt and hard-run files, and Android would drop
+     them on restore. Keep the file excludes in step with after_you_full_backup_rules.xml and with
+     BackupRulesTest. Credentials live in noBackupFilesDir, which Android never backs up. -->
+<data-extraction-rules>
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <exclude domain="file" path="relay-online" />
+        <exclude domain="file" path="photo-transfer" />
+        <exclude domain="file" path="safety" />
+        <exclude domain="file" path="photo-library" />
+        <exclude domain="file" path="turn-photos" />
+        <exclude domain="file" path="photo-capture-resume" />
+        <exclude domain="file" path="cloud-save-staging" />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="relay-online" />
+        <exclude domain="file" path="photo-transfer" />
+        <exclude domain="file" path="safety" />
+        <exclude domain="file" path="photo-library" />
+        <exclude domain="file" path="turn-photos" />
+        <exclude domain="file" path="photo-capture-resume" />
+        <exclude domain="file" path="cloud-save-staging" />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

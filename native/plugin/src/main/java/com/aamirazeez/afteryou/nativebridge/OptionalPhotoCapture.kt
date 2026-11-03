@@ -54,7 +54,9 @@ internal class OptionalPhotoCapture(
             val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                 putExtra(MediaStore.EXTRA_OUTPUT, outputUri)
                 clipData = ClipData.newRawUri("Optional After You photo", outputUri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                // The camera app only writes the photo; it never needs to read this file.
+                // (Revoking still names both flags, which also covers grants made by older builds.)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
             val code = generations.cameraRequest(ticket)
             // Durable before the camera opens: Android may destroy this Activity or process
