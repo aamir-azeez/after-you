@@ -142,6 +142,11 @@ export async function addRefs(env: Env, players: readonly string[], ref: DuelRef
   await pooled([...new Set(players)], BOARD_CONCURRENCY, async id => { await party(env, id).partyApply(id, { kind: "add_duels", refs: [ref], ...(final.length ? { final } : {}) }, now); });
 }
 
+/** Open public duels among `duels` holding any of `players`: they share the friend duels' limit of 10. */
+function openPublicWith(duels: readonly Duel[], players: readonly string[]): number {
+  return duels.filter(duel => duel.public && isOpen(duel) && duel.sides.some(side => side?.members.some(id => id !== null && players.includes(id)))).length;
+}
+
 /** Open friend duels (or ghost races still being played: a finished run waiting for its check holds no slot) of the pair `keys` (pair-accounts.ts samePair) among `duels`. */
 function openFor(duels: readonly Duel[], keys: PairKeys, kind: Duel["kind"]): number {
   return duels.filter(duel => duel.kind === kind && isOpen(duel) && (kind === "friend" || duel.sides[0].finished_ms === null) && duel.sides.some(side => side !== null && samePair(side, keys))).length;
@@ -304,7 +309,8 @@ async function challenge(env: Env, player: string, input: unknown, now: number, 
   // While the platform rule is on a pair is also its two platform accounts (leaderboards/pair-accounts.ts).
   const [aKeys, bKeys] = await duelPairKeys(env, [a, b]);
   const { duels } = await duelsOf(env, mine.state.duels, player);
-  if (openFor(duels, aKeys, "friend") >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
+  // One limit of 10, friend and public together (rules.ts): the pair's friend duels and the public duels either of them is in.
+  if (openFor(duels, aKeys, "friend") + openPublicWith(duels, a) >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
   if (duels.some(duel => duel.kind === "friend" && isOpen(duel) && duel.board === key && duel.sides.some(side => side !== null && samePair(side, bKeys)))) throw new ApiError(409, "duel_already_open");
   const known = await knownAcross(env, a, b);
   // Each side starts in the looks its members' party rows keep (read above); turns bring their room's looks.
@@ -372,7 +378,7 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
       intact = pair.intact && pair.partner === partner;
       if (intact) {
         const { duels } = await duelsOf(env, pair.state.duels.filter(ref => ref.duel_id !== duelId), player);
-        if (duels.filter(item => item.kind === "friend" && item.status === "running" && item.sides.some(side => side !== null && samePair(side, duel.sides[1]!))).length >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
+        if (duels.filter(item => item.kind === "friend" && item.status === "running" && item.sides.some(side => side !== null && samePair(side, duel.sides[1]!))).length + openPublicWith(duels, [player, partner]) >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
       }
     }
     const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact }));

@@ -376,6 +376,16 @@ describe("public duels", () => {
     expect((await detail(p1, posted)).duel.status).toBe("running");
   });
 
+  it("share one limit of 10 with friend duels: posts past it are refused, and so is a friend challenge", async () => {
+    const [a1, a2, b1, b2] = await Promise.all([player(), player(), player(), player()]);
+    await partner(a1, a2); await partner(b1, b2); await befriend(a1, b1);
+    for (let index = 0; index < 10; index++) await ok(post(a1));
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a1))).public).toMatchObject({ running: 10 });
+    expect((await errorOf(post(a1))).code).toBe("duel_limit_reached");
+    const challenge = call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY });
+    expect((await errorOf(challenge)).code).toBe("duel_limit_reached");
+  });
+
   it("keep the directory's rows only while listed, and drop an erased player's rows", async () => {
     const [poster, lone] = await Promise.all([player(), player()]);
     const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
