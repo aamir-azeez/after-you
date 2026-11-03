@@ -143,11 +143,9 @@ describe("leaderboard rules", () => {
     expect(strictlyFirst(10, [{ ticks: 10 }])).toBe(false);
     expect(strictlyFirst(9, [{ ticks: 10 }])).toBe(true);
   });
-  it("holds a run below 0.8 of the developers' best, a wide new first, and any run on a board with no best yet", () => {
-    expect(holdsFor(79, 100, null)).toEqual(["below_floor"]);
-    expect(holdsFor(80, 100, null)).toEqual([]);
-    expect(holdsFor(84, 100, 100)).toEqual(["wide_margin"]);
-    expect(holdsFor(85, 100, 100)).toEqual([]);
+  it("ranks any checked run straight away, however fast, and holds only a run on a board with no best yet", () => {
+    expect(holdsFor(1, 100, null)).toEqual([]);
+    expect(holdsFor(1, 100, 100)).toEqual([]);
     expect(holdsFor(500, null, null)).toEqual(["no_developer_best"]);
   });
   it("has one board per chapter version and a developers' best slot for each", () => {
@@ -421,9 +419,9 @@ describe("board ordering", () => {
     const first = await run(100, 1000);
     await rankDirect(first);
     const held = await run(10, 500);
-    await rankDirect(held, 1000);
+    await rankDirect(held, null);
     let review = await board().reviewList();
-    expect(review.map(item => [item.entry_id, item.holds])).toEqual([[held.entry_id, ["below_floor", "wide_margin"]]]);
+    expect(review.map(item => [item.entry_id, item.holds])).toEqual([[held.entry_id, ["no_developer_best"]]]);
     expect((await board().view(RELAY_BOARD)).checking).toEqual([held.entry_id]);
     await board().review(RELAY_BOARD, held.entry_id, true);
     expect((await board().view(RELAY_BOARD)).top.map(row => [row.entry_id, row.gold_leaf])).toEqual([[held.entry_id, true], [first.entry_id, false]]);
@@ -700,8 +698,8 @@ describe("kept replays", () => {
     const first = await run(100, 1000);
     await rankDirect(first);
     const held = await run(10, 500), refused = await run(11, 600);
-    await rankDirect(held, 1000);
-    await rankDirect(refused, 1000);
+    await rankDirect(held, null);
+    await rankDirect(refused, null);
     expect((await kept()).sort()).toEqual([first.entry_id, held.entry_id, refused.entry_id].sort());
     // Waiting for a person shows no Watch: only ranked rows are on the board.
     expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id)).toEqual([first.entry_id]);

@@ -37,10 +37,14 @@ export const MAX_CHECKED = 24;
 export const MAX_REVIEW = 48;
 /** Verdicts that send a run to a person instead of dropping it: the job could not judge it. */
 export const REVIEW_REASONS: readonly string[] = ["replay_error", "no_verdict", "unknown_chapter"];
-/** A time below this share of the developers' best waits for a person. */
-export const FLOOR_RATIO = 0.8;
-/** A new first this much faster than the old first, or more, waits for a person. */
-export const WIDE_MARGIN_RATIO = 0.85;
+/**
+ * A time below this share of the developers' best waits for a person. 0 since 2026-11-03: the owner wants
+ * glitch runs that really played out to rank straight away, so any run that passes its replay check ranks.
+ * Raise it again (it was 0.8) if made-up times appear.
+ */
+export const FLOOR_RATIO = 0;
+/** A new first this much faster than the old first, or more, waits for a person. 0 since 2026-11-03, as above (it was 0.85). */
+export const WIDE_MARGIN_RATIO = 0;
 /**
  * The account check's two conditions, relaxed to 0 on 2026-10-29 so a new pair ranks once its replay
  * passes. The checks stay in place (standing.ts eligible); raise them again if cheating appears
