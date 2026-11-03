@@ -44,14 +44,20 @@ describe("public policies and authenticated safety", () => {
   });
   it("names the Pollen purchase record, both stores and the duel run copy in the privacy policy", async () => {
     const body = await (await call("/privacy")).text();
-    expect(body).toContain("<p>Effective 2 November 2026.</p>");
-    expect(body).toContain("Deleting your online identity deletes them. If you buy Pollen, we keep a record of each purchase (the bundle, its date, its price, and Google Play's order number or the App Store's transaction ID) so we can credit it once and take it back if it is refunded.</p>");
+    expect(body).toContain("<p>Effective 3 November 2026.</p>");
+    expect(body).toContain("Deleting your online identity deletes them. If you buy Pollen, we keep a record of each purchase (the bundle, its date, its price, and Google Play's order number or the App Store's transaction ID) so we can credit it once and take it back if it is refunded. After you delete your online identity, we still keep each purchase's order number");
     expect(body).toContain("The Play edition uses Google Play and the iPhone edition uses the App Store, each with RevenueCat for purchase validation");
     expect(body).toContain("<p>When duels are on, after a friend duel each pair can watch the other pair's run.");
     expect(body).toContain("We delete the server's copy once both of them have saved it, and in any case one year after the duel ends.");
     expect(body).toContain("Recordings that are not saved on both phones stay on our server for one year, counted from the first time either of you opens the room after it is finished.");
     expect(body).toContain("have no routine expiry, apart from the unsaved recordings and duel runs described above;");
     expect(body).toContain("does not refund a purchase or erase Google Play or App Store transaction records.</p>");
+    expect(body).toContain("Online status lets your room partners and accepted friends see whether After You is open on your device.");
+    expect(body).toContain("a friend's turn or redo request, a friend's room you asked to hear about, and your monthly Full Journey Pollen.");
+    expect(body).toContain("While the row stays on the board, we keep a scrambled code for each player who reported it, never their player ID.");
+    expect(body).toContain("what each pip wore and what each turn earned in Pollen.");
+    expect(body).toContain("If you left a finished room before deleting, your partner keeps that room's replay");
+    expect(body).toContain("Leaderboards also keep a marker with your old player ID");
     expect(body).not.toContain("no in-app purchases yet");
     expect(body.replace(/<title>[^<]*<\/title>/, "")).not.toMatch(new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]"));
   });
@@ -59,6 +65,7 @@ describe("public policies and authenticated safety", () => {
     const body = await (await call("/account-deletion")).text();
     expect(body).toContain("Delete identity and shared rooms. The iPhone app has the same steps.</p>");
     expect(body).toContain("It requests removal of your RevenueCat customer information.");
+    expect(body).toContain("If you left a finished room before deleting, your partner keeps that room's replay, which includes your turns and your old player ID.");
     expect(body).toContain("It does not refund a content purchase or erase Google Play's or the App Store's transaction records.</p>");
     expect(body).not.toContain("no in-app purchases yet");
     expect(body.replace(/<title>[^<]*<\/title>/, "")).not.toMatch(new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]"));
