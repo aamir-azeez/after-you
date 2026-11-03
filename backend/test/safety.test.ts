@@ -53,9 +53,9 @@ describe("public policies and authenticated safety", () => {
     expect(body).toContain("have no routine expiry, apart from the unsaved recordings and duel runs described above;");
     expect(body).toContain("does not refund a purchase or erase Google Play or App Store transaction records.</p>");
     expect(body).toContain("Online status lets your room partners and accepted friends see whether After You is open on your device.");
-    expect(body).toContain("a friend's turn or redo request, a friend's room you asked to hear about, and your monthly Full Journey Pollen.");
-    expect(body).toContain("While the row stays on the board, we keep a scrambled code for each player who reported it, never their player ID.");
-    expect(body).toContain("what each pip wore and what each turn earned in Pollen.");
+    expect(body).toContain("a friend's turn or redo request, a new room from a friend you asked to hear from, and your monthly Full Journey Pollen.");
+    expect(body).toContain("While we keep the run, we keep a scrambled code for each player who reported it, never their player ID.");
+    expect(body).toContain("what each pip wore, and the details each turn's Pollen is worked out from, including whether each of you had Full Journey.");
     expect(body).toContain("If you left a finished room before deleting, your partner keeps that room's replay");
     expect(body).toContain("Leaderboards also keep a marker with your old player ID");
     expect(body).not.toContain("no in-app purchases yet");
@@ -65,7 +65,7 @@ describe("public policies and authenticated safety", () => {
     const body = await (await call("/account-deletion")).text();
     expect(body).toContain("Delete identity and shared rooms. The iPhone app has the same steps.</p>");
     expect(body).toContain("It requests removal of your RevenueCat customer information.");
-    expect(body).toContain("If you left a finished room before deleting, your partner keeps that room's replay, which includes your turns and your old player ID.");
+    expect(body).toContain("If you left a finished room before deleting, your partner keeps that room's replay, which includes your turns, your old player ID and the details of your turns' Pollen.");
     expect(body).toContain("It does not refund a content purchase or erase Google Play's or the App Store's transaction records.</p>");
     expect(body).not.toContain("no in-app purchases yet");
     expect(body.replace(/<title>[^<]*<\/title>/, "")).not.toMatch(new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]"));
