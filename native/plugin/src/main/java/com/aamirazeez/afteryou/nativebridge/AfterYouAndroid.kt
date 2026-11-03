@@ -55,8 +55,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     private var purchaseInProgress = false
     private val packages = mutableMapOf<String, Package>()
     private val secureStore by lazy { SecureStore(requireNotNull(activity).applicationContext) }
-    /** Recovery details: the clipboard expiry, the screen lock check and the private screen. */
-    private var recoveryClip: RecoveryClipExpiry? = null
+    /** Recovery details: the screen lock check and the private screen. */
     private val deviceLock = DeviceLock { id, payload, error ->
         if (pending.remove(id)) {
             if (payload != null) emitSignal("secure_result", id, "confirm_device", payload.toString())
@@ -134,8 +133,6 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         gamesBridge = null
         InviteLinkRuntime.inbox.attach(linkListener)
         deviceLock.close()
-        recoveryClip?.detach()
-        recoveryClip = activity?.let { host -> RecoveryClipExpiry(host).also { it.attach(host) } }
         if (activity != null) PrivateScreen.apply(activity, privateScreen)
         return super.onMainCreate(activity)
     }
@@ -393,7 +390,6 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                         return@runOnUiThread
                     }
                     val copied = RecoveryClipboard.copy(playerId, recoveryCode) { clipboard.setPrimaryClip(it) }
-                    if (copied) recoveryClip?.copied()
                     if (!copied) {
                         reject("invalid_recovery_details")
                     } else if (pending.remove(requestId)) {
@@ -440,7 +436,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     @UsedByGodot
     fun secure_clear_recovery_clip(recoveryCode: String) {
         val current = activity ?: return
-        current.runOnUiThread { try { recoveryClip?.imported(recoveryCode) } catch (_: Exception) { } }
+        current.runOnUiThread { try { RecoveryClipboard.clearImported(current, recoveryCode) } catch (_: Exception) { } }
     }
 
     private fun photoSuccess(id: String, operation: String, data: JSONObject) {
@@ -602,9 +598,8 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     override fun onMainResume() {
         super.onMainResume(); notificationBridge?.resume(); linkResumed = true; announceLink()
         activity?.let { PrivateScreen.apply(it, privateScreen) }
-        recoveryClip?.check()
     }
-    override fun onMainPause() { linkResumed = false; notificationBridge?.pause(); recoveryClip?.check(); super.onMainPause() }
+    override fun onMainPause() { linkResumed = false; notificationBridge?.pause(); super.onMainPause() }
 
     override fun onMainActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         val flow = optionalPhoto
@@ -624,8 +619,6 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         gamesBridge?.close()
         gamesBridge = null
         deviceLock.close()
-        recoveryClip?.detach()
-        recoveryClip = null
         // Never close the camera here: Android may destroy this Activity while the camera is in
         // front, and the photo must come back to the recreated one.
         optionalPhoto?.hostDestroyed()
