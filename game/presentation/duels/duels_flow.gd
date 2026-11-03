@@ -790,6 +790,8 @@ func return_instead(notice: String) -> bool:
 		_stop()
 		return false
 	var code := str(host.relay_session.last_lobby_code) if host.relay_session != null else ""
+	# A public seat the board no longer gives you (you left it, or it closed): the duel again, as it is now.
+	if code == "duel_pair_only": notice = PlayerCopy.PUBLIC_GONE
 	if not code.is_empty() and code in _goes_on:
 		_goes_on = []
 		_held = true

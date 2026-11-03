@@ -1814,4 +1814,5 @@ func _replay_save_idle() -> bool:
 ## A save that met a busy API, a lost connection or an outage; worth repeating.
 static func _replay_save_transient(result: Dictionary) -> bool:
 	var status := int(result.get("status", 0))
+	if str(result.get("code", "")) == "public_duel_history_off": return false
 	return status == 0 or status == 429 or status >= 500 or str(result.get("code", "")) in ["request_busy", "connection_interrupted", "replay_transfer_busy", "replay_transfer_unavailable", "replay_transfer_context_changed", "rate_limited", "replay_transfer_rate_limited"]

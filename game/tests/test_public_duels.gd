@@ -26,6 +26,7 @@ const Breakdown = preload("res://presentation/pollen_breakdown.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
+const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -210,6 +211,13 @@ func _leave() -> void:
 	var taken: Dictionary = await post.join(BOARD, "b".repeat(32), Spots.ALONE, -1, "k".repeat(22))
 	_check(not taken.ok and taken.code == "spot_taken" and taken.row.duel_id == "b".repeat(32), "A spot taken first comes back with its row")
 	_check(api.asked[-1][2] == {"schema_version": 1, "idempotency_key": "k".repeat(22), "as": "alone", "seat": null}, "Join sends its key and lets the server pick: %s" % [api.asked[-1][2]])
+	# A public duel's room is known as one, for the room screens and the history passes that skip it.
+	var shared: RefCounted = DuelsClient.shared(api, ME)
+	shared._remember([DuelsClient.valid_view(_public_view())])
+	_check(DuelsClient.public_room(ROOM) and shared.room_kind(ROOM) == "public", "A public duel's room is kept as public")
+	_check(not ReplaysFlow._replay_save_transient({"status": 409, "code": "public_duel_history_off"}), "The server keeping a public room's recordings is final, never retried")
+	DuelsClient.clear_owner(ME)
+	_check(not DuelsClient.public_room(ROOM), "Account deletion forgets it")
 	api.free()
 
 # Surfaces -----------------------------------------------------------------------

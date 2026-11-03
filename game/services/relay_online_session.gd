@@ -210,7 +210,7 @@ func history_client() -> RefCounted:
 ## refuses history for Story rooms, so no local standalone proof is needed, and a
 ## phone with no journal for the room (recovered onto a new phone) has nothing pending.
 func _history_eligibility(room_id: String) -> Dictionary:
-	if not _ready() or _server_key().is_empty(): return {"ok": false}
+	if not _ready() or _server_key().is_empty() or history_off(room_id): return {"ok": false}
 	if archived_room_kind(room_id) == "story": return {"ok": false}
 	var scope := _pending_work(room_id, false)
 	scope.merge({"ok": true, "server_key": _server_key(), "owner": _owner, "standalone": true, "offload_enabled": Typed.equal(capabilities.get("history_offload_enabled"), true)}, true)
@@ -223,7 +223,16 @@ func _history_transport(method: int, path: String, body: Variant, raw: bool) -> 
 
 ## Downloads this room's finished attempts, confirms them when nothing is pending,
 ## and sends back any the friend's phone asked for.
+## A public duel's room keeps its recordings on the server (they name both players, who may be
+## strangers): no history pass, replay transfer or acknowledgement starts for it, and the server's
+## own refusal (409 public_duel_history_off) is final, never retried or shown.
+const HISTORY_OFF := {"ok": false, "status": 409, "code": "public_duel_history_off"}
+
+func history_off(room_id: String) -> bool:
+	return DuelsClient.public_room(room_id)
+
 func sync_room_history(room_id: String) -> Dictionary:
+	if history_off(room_id): return HISTORY_OFF.duplicate()
 	if not _ready() or busy() or not history_mode(): return {"ok": false, "code": "replay_transfer_unavailable"}
 	var generation := _generation
 	var key := _server_key()
@@ -244,6 +253,7 @@ func history_pair(room_id: String, chapter_key: String, pair_id: String) -> Dict
 
 ## Asks the friend's phone, through the server, for an attempt this phone lacks.
 func want_room_attempt(room_id: String, position: int) -> Dictionary:
+	if history_off(room_id): return HISTORY_OFF.duplicate()
 	if not _ready() or busy() or not history_mode(): return {"ok": false, "code": "replay_transfer_unavailable"}
 	_transfer_busy = true
 	var generation := _generation
@@ -251,7 +261,7 @@ func want_room_attempt(room_id: String, position: int) -> Dictionary:
 	return _finish_transfer(generation, result)
 
 func _transfer_eligibility(room_id: String) -> Dictionary:
-	if not _ready() or not standalone_room_proven(room_id) or _server_key().is_empty(): return {"ok": false}
+	if not _ready() or not standalone_room_proven(room_id) or _server_key().is_empty() or history_off(room_id): return {"ok": false}
 	if archived_room_kind(room_id) == "story": return {"ok": false}
 	var work := _pending_work(room_id, true)
 	return {"ok": true, "server_key": _server_key(), "standalone": true, "gameplay_pending": work.gameplay_pending,
@@ -297,6 +307,7 @@ func _finish_transfer(generation: int, result: Dictionary) -> Dictionary:
 	return result
 
 func sync_complete_replay(room_id: String) -> Dictionary:
+	if history_off(room_id): return HISTORY_OFF.duplicate()
 	if history_mode():
 		var history: Dictionary = await sync_room_history(room_id)
 		if history.get("mode") != "v1": return history
