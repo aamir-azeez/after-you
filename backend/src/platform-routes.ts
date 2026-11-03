@@ -35,6 +35,8 @@ export function platformCapability(request: Request, env: ServerVars): Record<st
   // The web client id is public: the phone needs it to ask Google for a server auth code.
   if (play) { out.play_games_version = 1; out.play_games_web_client_id = play.clientId; }
   if (flags.gameCenter(env)) out.game_center_version = 1;
+  // Chapter times on the platform boards (phone side only): offered beside a provider while our boards are on.
+  if (flags.platformBoards(env) && flags.leaderboards(env) && (play || flags.gameCenter(env))) out.platform_boards_version = 1;
   return out;
 }
 

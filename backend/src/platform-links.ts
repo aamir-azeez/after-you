@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { digest } from "./protocol";
 
 /**
  * Links a verified platform games account (Play Games or Game Center) to one After You player.
@@ -27,6 +28,9 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS platform_nonces (nonce TEXT PRIMARY KEY, expires_at INTEGER NOT NULL) WITHOUT ROWID",
 ];
 const HASH = /^[a-f0-9]{64}$/, PLAYER = /^[a-zA-Z0-9_-]{22}$/;
+/** A duel's four players at most. */
+export const MAX_ACCOUNT_IDS = 4;
+const ACCOUNT_DOMAIN = "after-you pair account v1\n";
 const validProvider = (value: string): value is PlatformProvider => (PLATFORM_PROVIDERS as readonly string[]).includes(value);
 
 export class PlatformLinks extends DurableObject<Env> {
@@ -86,13 +90,20 @@ export class PlatformLinks extends DurableObject<Env> {
     return this.ctx.storage.sql.exec("DELETE FROM platform_links WHERE player_id=?", playerId).rowsWritten;
   }
   /**
-   * Which of these players have a link for any provider (leaderboards/platform-rule.ts): one indexed read on
-   * platform_links_player, nothing written. Ids that are not player ids are left out.
+   * Each of these players' account token, for the platform rule (leaderboards/platform-rule.ts) and pair keys
+   * (leaderboards/pair-accounts.ts): one indexed read on platform_links_player, nothing written. A linked player's
+   * token is a SHA-256 of ACCOUNT_DOMAIN, the provider and the stored hash of the link made first (lowest
+   * linked_at, then provider), so a second provider linked later never changes it; the stored hash never leaves
+   * this object. Unlinked players and ids that are not player ids are left out. At most MAX_ACCOUNT_IDS ids.
    */
-  linkedAmong(playerIds: string[]): string[] {
-    const ids = [...new Set(playerIds.filter(id => PLAYER.test(id)))].slice(0, 2);
+  async accountsAmong(playerIds: string[]): Promise<{ player_id: string; account: string }[]> {
+    const ids = [...new Set(playerIds.filter(id => PLAYER.test(id)))].slice(0, MAX_ACCOUNT_IDS);
     if (ids.length === 0) return [];
-    return this.ctx.storage.sql.exec<{ player_id: string }>(`SELECT DISTINCT player_id FROM platform_links WHERE player_id IN (${ids.map(() => "?").join(",")})`, ...ids).toArray().map(row => row.player_id);
+    const rows = this.ctx.storage.sql.exec<{ player_id: string; provider: string; external_hash: string }>(
+      `SELECT player_id,provider,external_hash FROM platform_links WHERE player_id IN (${ids.map(() => "?").join(",")}) ORDER BY player_id, linked_at, provider`, ...ids).toArray();
+    const first = new Map<string, { provider: string; external_hash: string }>();
+    for (const row of rows) if (!first.has(row.player_id)) first.set(row.player_id, row);
+    return Promise.all([...first].map(async ([player_id, row]) => ({ player_id, account: await digest(`${ACCOUNT_DOMAIN}${row.provider}\n${row.external_hash}`) })));
   }
   /** Tests and operator checks only: is this player linked for this provider. */
   linkedProviders(playerId: string): string[] {

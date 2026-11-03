@@ -953,7 +953,7 @@ describe("the platform rule (LEADERBOARD_REQUIRE_PLATFORM)", () => {
       const { value: answer, rows } = await meterRows({ board: board() as unknown as DurableObjectStub, links: links() as unknown as DurableObjectStub }, () => played.last(PLATFORM, meter.env));
       expect(answer.status).toBe(200);
       expect(Object.keys(await answer.json<MutationV2>())).not.toContain("leaderboard");
-      expect(meter.calls.filter(name => name.startsWith("LEADERBOARD") || name.startsWith("PLATFORM"))).toEqual(["PLATFORM_LINKS.linkedAmong"]);
+      expect(meter.calls.filter(name => name.startsWith("LEADERBOARD") || name.startsWith("PLATFORM"))).toEqual(["PLATFORM_LINKS.accountsAmong"]);
       expect(rows.links.written + rows.board.written).toBe(0);
       expect(await view(RELAY_BOARD, PLATFORM)).toMatchObject({ top: [], checking: [] });
     }
@@ -964,7 +964,7 @@ describe("the platform rule (LEADERBOARD_REQUIRE_PLATFORM)", () => {
     expect((await links().link("game_center", "f".repeat(64), played.guest.player_id, false)).status).toBe("linked");
     const meter = countingEnv(configured(PLATFORM));
     expect((await played.last(PLATFORM, meter.env)).status).toBe(200);
-    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD") || name.startsWith("PLATFORM"))).toEqual(["PLATFORM_LINKS.linkedAmong", "LEADERBOARD_BOARDS.submit"]);
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD") || name.startsWith("PLATFORM"))).toEqual(["PLATFORM_LINKS.accountsAmong", "LEADERBOARD_BOARDS.submit"]);
     expect((await view(RELAY_BOARD, PLATFORM)).checking).toEqual([await entryId(played.room.room_id, played.room.branch)]);
   });
   it("reads no link while the rule is off, and says it is on only while it is", async () => {
@@ -992,7 +992,7 @@ describe("the platform rule (LEADERBOARD_REQUIRE_PLATFORM)", () => {
     const meter = countingEnv(configured(PLATFORM));
     expect(await (await repost(played.guest, played.room.room_id, PLATFORM, meter.env)).json()).toEqual({ schema_version: 1, status: "posted" });
     console.log(`posting a room's run after linking: ${meter.calls.join(", ")}`);
-    expect(meter.calls.filter(name => !name.startsWith("PLAYERS."))).toEqual(["ROOMS_V2.boardSnapshot", "PLATFORM_LINKS.linkedAmong", "LEADERBOARD_BOARDS.submit"]);
+    expect(meter.calls.filter(name => !name.startsWith("PLAYERS."))).toEqual(["ROOMS_V2.boardSnapshot", "PLATFORM_LINKS.accountsAmong", "LEADERBOARD_BOARDS.submit"]);
     expect((await view(RELAY_BOARD, PLATFORM)).checking).toEqual([id]);
     // Its time and finish are the room's final turn: the job checks it as any other.
     const { entries } = await runJob();
@@ -1016,5 +1016,74 @@ describe("the platform rule (LEADERBOARD_REQUIRE_PLATFORM)", () => {
     expect((await repost(stranger, played.room.room_id)).status).toBe(404);
     expect((await call("/v1/leaderboards/post", "POST", played.host, { schema_version: 1, room_id: "nope" }, PLATFORM)).status).toBe(400);
     expect((await call("/v1/leaderboards/post", "GET", played.host, undefined, PLATFORM)).status).toBe(405);
+  });
+});
+
+describe("pair keys by platform account (PAIR-KEYS.md)", () => {
+  const PLATFORM: Vars = { ...ON, features: ["LEADERBOARDS", "LEADERBOARD_REQUIRE_PLATFORM"] };
+  const links = () => env.PLATFORM_LINKS.getByName(PLATFORM_LINKS_OBJECT);
+  const hash = (letter: string) => letter.repeat(64);
+  const linkBoth = async (host: Account, guest: Account, accounts: [string, string], replace = false) => {
+    expect((await links().link("play_games", hash(accounts[0]), host.player_id, replace)).status).toBe("linked");
+    expect((await links().link("game_center", hash(accounts[1]), guest.player_id, replace)).status).toBe("linked");
+  };
+  const keyed = async (ticks: number, finished_ms: number, members: [string, string], account_key?: string): Promise<LeaderboardRun> => ({ ...await run(ticks, finished_ms, members), ...(account_key ? { account_key } : {}) });
+  const entryRows = async () => runInDurableObject(board(), async (_, ctx) => ctx.storage.sql.exec<{ entry_id: string; pair_key: string; state: string; data: string }>("SELECT entry_id,pair_key,state,data FROM lb_entries").toArray());
+
+  it("counts two identity pairs behind the same two platform accounts as one pair, for the same one read", async () => {
+    const first = await almostDone(undefined, undefined, PLATFORM);
+    await linkBoth(first.host, first.guest, ["a", "b"]);
+    expect((await first.last(PLATFORM)).status).toBe(200);
+    const firstId = await entryId(first.room.room_id, first.room.branch);
+    // The same two people on two new identities: "Keep this phone" moves each link.
+    const second = await almostDone(undefined, undefined, PLATFORM);
+    await linkBoth(second.host, second.guest, ["a", "b"], true);
+    const meter = countingEnv(configured(PLATFORM));
+    expect((await second.last(PLATFORM, meter.env)).status).toBe(200);
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD") || name.startsWith("PLATFORM"))).toEqual(["PLATFORM_LINKS.accountsAmong", "LEADERBOARD_BOARDS.submit"]);
+    // An equal time behind the same accounts never enters: the pair's own run finished first.
+    expect((await view(RELAY_BOARD, PLATFORM)).checking).toEqual([firstId]);
+    // Other accounts are another pair.
+    const third = await almostDone(undefined, undefined, PLATFORM);
+    await linkBoth(third.host, third.guest, ["c", "d"]);
+    expect((await third.last(PLATFORM)).status).toBe(200);
+    expect((await view(RELAY_BOARD, PLATFORM)).checking.sort()).toEqual([firstId, await entryId(third.room.room_id, third.room.branch)].sort());
+    // The key is kept in the entry's JSON, never in a view.
+    const rows = await entryRows();
+    const accountKeys = rows.map(row => (JSON.parse(row.data) as { account_key?: string }).account_key);
+    expect(accountKeys.every(key => typeof key === "string" && /^[a-f0-9]{64}$/.test(key))).toBe(true);
+    const shown = JSON.stringify(await view(RELAY_BOARD, PLATFORM)) + JSON.stringify(await board().view(RELAY_BOARD));
+    for (const secret of [...accountKeys as string[], ...rows.map(row => row.pair_key), "account_key", hash("a")]) expect(shown).not.toContain(secret);
+  });
+
+  it("matches a pair's entry from before the rule by its player ids, and supersedes it", async () => {
+    const members: [string, string] = ["p".repeat(22), "q".repeat(22)];
+    const old = await keyed(900, 1_000, members);
+    expect((await rankDirect(old)).ranked.map(note => note.entry_id)).toEqual([old.entry_id]);
+    // After the flip the same players carry an account key too. A slower run is no better than their own.
+    expect((await board().submit(RELAY_BOARD, await keyed(950, 2_000, members, hash("k")))).status).toBe("not_placed");
+    const faster = await keyed(800, 3_000, members, hash("k"));
+    expect((await rankDirect(faster)).ranked.map(note => note.entry_id)).toEqual([faster.entry_id]);
+    expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id)).toEqual([faster.entry_id]);
+    // Other identities behind the same accounts: slower never enters, faster replaces, and the board keeps one row.
+    expect((await board().submit(RELAY_BOARD, await keyed(850, 4_000, ["r".repeat(22), "s".repeat(22)], hash("k")))).status).toBe("not_placed");
+    const moved = await keyed(700, 5_000, ["r".repeat(22), "s".repeat(22)], hash("k"));
+    expect((await rankDirect(moved)).ranked.map(note => note.entry_id)).toEqual([moved.entry_id]);
+    expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id)).toEqual([moved.entry_id]);
+    // Rule off again: runs carry no account key and match by player ids only.
+    const plain = await keyed(750, 6_000, ["t".repeat(22), "u".repeat(22)]);
+    expect((await rankDirect(plain)).ranked.map(note => note.entry_id)).toEqual([plain.entry_id]);
+    expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id)).toEqual([moved.entry_id, plain.entry_id]);
+  });
+
+  it("drops the account key with an erased player's id", async () => {
+    const members: [string, string] = ["v".repeat(22), "w".repeat(22)];
+    await rankDirect(await keyed(900, 1_000, members, hash("e")));
+    expect((await entryRows())[0].data).toContain("account_key");
+    await board().forget(RELAY_BOARD, members[0]);
+    const [row] = await entryRows();
+    expect(row.state).toBe("ranked");
+    expect(row.data).not.toContain("account_key");
+    expect(row.data).not.toContain(members[0]);
   });
 });

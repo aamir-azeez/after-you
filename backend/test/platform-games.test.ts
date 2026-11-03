@@ -72,6 +72,17 @@ describe("platform games capability", () => {
     expect(await read({ ...GC_ON })).toEqual({ ...off, game_center_version: 1 });
     expect(JSON.stringify(await read({ ...PLAY_ON }))).not.toContain(SECRET);
   });
+  it("offers the platform boards (PLATFORM_BOARDS) only beside a provider and our own boards, in the same opt-in answer", async () => {
+    const off = await read({ ...env });
+    const vars = (flags: Record<string, string>) => withConfig({ ...env, PLAY_GAMES_CLIENT_SECRET: SECRET, ...flags });
+    expect(await read(vars({ PLAY_GAMES_ENABLED: "true", LEADERBOARDS: "true", PLATFORM_BOARDS: "true" }))).toEqual({ ...off, play_games_version: 1, play_games_web_client_id: CLIENT_ID, platform_boards_version: 1 });
+    expect(await read(vars({ GAME_CENTER_ENABLED: "true", LEADERBOARDS: "true", PLATFORM_BOARDS: "true" }))).toEqual({ ...off, game_center_version: 1, platform_boards_version: 1 });
+    // Absent while the flag, our boards or every provider is off, and without the opt-in header.
+    expect(await read(vars({ PLAY_GAMES_ENABLED: "true", LEADERBOARDS: "true" }))).not.toHaveProperty("platform_boards_version");
+    expect(await read(vars({ PLAY_GAMES_ENABLED: "true", PLATFORM_BOARDS: "true" }))).not.toHaveProperty("platform_boards_version");
+    expect(await read(vars({ LEADERBOARDS: "true", PLATFORM_BOARDS: "true" }))).toEqual(off);
+    expect(await read(vars({ PLAY_GAMES_ENABLED: "true", LEADERBOARDS: "true", PLATFORM_BOARDS: "true" }), false)).toEqual(off);
+  });
 });
 
 describe("platform routes while off", () => {
@@ -335,5 +346,30 @@ describe("Play Games verification transport", () => {
     expect(await verifyPlayGames(42, PLAY_ON)).toEqual({ ok: false, reason: "invalid" });
     expect(await verifyPlayGames("x".repeat(30), env)).toEqual({ ok: false, reason: "unconfigured" });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("account tokens for pair keys (accountsAmong)", () => {
+  it("answers linked players only, from the link made first, in one read that writes nothing, and never the stored hash", async () => {
+    const [a, b, c] = [await create(), await create(), await create()];
+    await links().link("game_center", "1".repeat(64), a.player_id, false);
+    await links().link("play_games", "2".repeat(64), b.player_id, false);
+    const tokens = async (ids: string[]) => new Map((await links().accountsAmong(ids)).map(row => [row.player_id, row.account]));
+    const before = await tokens([a.player_id, b.player_id, c.player_id, "not a player"]);
+    expect([...before.keys()].sort()).toEqual([a.player_id, b.player_id].sort());
+    for (const token of before.values()) expect(token).toMatch(/^[a-f0-9]{64}$/);
+    expect(before.get(a.player_id)).not.toBe(before.get(b.player_id));
+    expect(JSON.stringify([...before.values()])).not.toContain("1".repeat(64));
+    // A second provider linked later keeps the first one's token; the token follows the account when a link moves.
+    await links().link("play_games", "3".repeat(64), a.player_id, false);
+    const { value: after, rows } = await meterRows({ links: links() as unknown as DurableObjectStub }, () => tokens([a.player_id]));
+    expect(rows.links.written).toBe(0);
+    expect(after.get(a.player_id)).toBe(before.get(a.player_id));
+    await links().link("play_games", "2".repeat(64), c.player_id, true);
+    expect((await tokens([c.player_id])).get(c.player_id)).toBe(before.get(b.player_id));
+    // At most four ids are read.
+    const five = await Promise.all([1, 2, 3, 4, 5].map(() => create()));
+    for (const [index, account] of five.entries()) await links().link("play_games", String(5 + index).repeat(64), account.player_id, false);
+    expect(await links().accountsAmong(five.map(account => account.player_id))).toHaveLength(4);
   });
 });

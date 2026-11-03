@@ -5,7 +5,7 @@ import { checkRun } from "./eligibility";
 import { TOP_PLACES } from "./rules";
 import { finishedRun, type LeaderboardRun } from "./run";
 import type { SubmitStatus } from "./board";
-import { platformRequiredOn, unlinkedMembers } from "./platform-rule";
+import { pairAccounts, platformRequiredOn } from "./platform-rule";
 import type { PairLooks } from "./run-looks";
 import { cachedView, storeView } from "./view-cache";
 import { mightPlace } from "./view";
@@ -44,7 +44,9 @@ export type PostOutcome = { status: SubmitStatus | "listed" | "skipped" } | { st
  * Posts a finished run that might place. That is at most one board request,
  * and none when the cached board already holds ten faster runs or lists the
  * run. While the platform rule is on (platform-rule.ts) one PlatformLinks read
- * comes first, and a pair with an unlinked member writes nothing anywhere.
+ * comes first, and a pair with an unlinked member writes nothing anywhere; the
+ * same read gives a linked pair its account key (pair-accounts.ts), so the
+ * board counts every identity pair behind the same two accounts as one.
  *
  * When the board's unchecked runs are full ("crowded"), this post runs the
  * account check itself (4 more requests: Player and Member for each player)
@@ -56,8 +58,9 @@ export async function postRun(env: Env, run: LeaderboardRun): Promise<PostOutcom
   if (cached && (cached.checking.includes(run.entry_id) || cached.top.some(row => row.entry_id === run.entry_id))) return { status: "listed" };
   if (cached && !mightPlace(cached, run.ticks, TOP_PLACES)) return { status: "skipped" };
   if (platformRequiredOn(env)) {
-    const unlinked = await unlinkedMembers(env, run.members);
-    if (unlinked.length > 0) return { status: "platform_required", unlinked };
+    const accounts = await pairAccounts(env, run.members);
+    if (accounts.account_key === undefined) return { status: "platform_required", unlinked: accounts.unlinked };
+    run = { ...run, account_key: accounts.account_key };
   }
   const stub = env.LEADERBOARD_BOARDS.getByName(run.board);
   let answer = await stub.submit(run.board, run);

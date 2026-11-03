@@ -15,6 +15,8 @@ export type LeaderboardRun = {
   checkpoint: CheckpointV2;
   /** What each member wore when it finished, in `members` order, when the room handed it over while looks are on (run-looks.ts). */
   looks?: PairLooks;
+  /** The pair's two platform accounts as one key, set by submit.ts postRun while the platform rule is on (pair-accounts.ts). */
+  account_key?: string;
 };
 
 const ENTRY_DOMAIN = "after-you leaderboard entry v1\n";

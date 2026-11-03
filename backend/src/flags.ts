@@ -68,6 +68,8 @@ export const FLAG_VARS = Object.freeze({
   duels: "DUELS",
   /** Duel run checks (duels/model.ts awaitsCheck): friend duel runs, and ghost race runs faster than the developers' ghost, wait for the board's replay check before the duel is decided. Off (the owner's choice, 2026-11-02), every duel is decided as its runs finish and a run still waiting counts as passed. Needs DUELS. */
   duelRunChecks: "DUEL_RUN_CHECKS",
+  /** Chapter times on Google Play Games and Game Center leaderboards (phone side, game/services/platform_games/platform_boards.gd): the platform capability says so with platform_boards_version, and phones post and show the platform boards. Needs LEADERBOARDS and PLAY_GAMES_ENABLED or GAME_CENTER_ENABLED. No server work beside the capability field. */
+  platformBoards: "PLATFORM_BOARDS",
   /** Pauses the replay time limit on finished rooms (v2/replay-expiry.ts), which is on unless CONFIG lists this: replays no phone saved go REPLAY_KEEP_MS (a year) after the room finished. */
   replayExpiryPaused: "REPLAY_EXPIRY_PAUSED",
 } as const);

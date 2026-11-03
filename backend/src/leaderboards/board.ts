@@ -4,6 +4,7 @@ import type { ChapterKey } from "../v2/chapter-types";
 import { BoardRewardLedger, REWARD_LEDGER_SCHEMA, openRewardSync, type RewardDelivery, type RewardGrant, type RewardSink } from "./rewards";
 import { KEPT_RANKED, MAX_CHECKED, MAX_REPLAY_BYTES, MAX_REPORTERS, MAX_REVIEW, MAX_UNCHECKED, REVIEW_REASONS, TOP_PLACES, compareRuns, holdsFor, strictlyFirst } from "./rules";
 import type { LeaderboardRun } from "./run";
+import { samePair, type PairKeys } from "./pair-accounts";
 import { keptLook, servedLook, type PairLooks } from "./run-looks";
 import type { Look } from "../pollen/catalog";
 import { emptyView, type BoardRow, type BoardView } from "./view";
@@ -19,7 +20,8 @@ import type { Duel, ProgressNote, SideRoom } from "../duels/model";
 /**
  * One chapter version's board, one Durable Object named by its board key.
  *
- * An entry is a finished together run, at most one live entry per pair, in one state:
+ * An entry is a finished together run, at most one live entry per pair (pair-accounts.ts samePair: the same two
+ * players, or the same two platform accounts while the platform rule keyed it), in one state:
  * - "checking": waits for the account check (eligible null), then the replay check;
  * - "review": passed the replay and waits for a person (`holds` says why);
  * - "ranked": counts. Only ranked runs push anyone down or earn anything.
@@ -50,6 +52,8 @@ export type MemberChoice = { show: boolean; name: string | null; rev: number };
 type EntryData = {
   finished_at: string; chapter: ChapterKey; simulation_version: number; members: [Member, Member];
   eligible: boolean | null; holds: string[]; reports: string[]; gold: boolean; submitted_at: number;
+  /** The pair's platform accounts as one key (pair-accounts.ts), from a post while the platform rule was on. Kept in the JSON, not a column, so older code reads the row as before. */
+  account_key?: string;
 };
 type EntryRow = { entry_id: string; pair_key: string; state: "checking" | "review" | "ranked"; ticks: number; finished_ms: number; data: string };
 type Entry = Omit<EntryRow, "data"> & { data: EntryData };
@@ -110,13 +114,13 @@ export class LeaderboardBoard extends DurableObject<Env> {
       const timed = { ticks: run.ticks, finished_ms: run.finished_ms, entry_id: run.entry_id };
       const all = this.entries();
       const ranked = all.filter(entry => entry.state === "ranked").sort(compareRuns);
-      const mine = all.filter(entry => entry.pair_key === run.pair_key);
+      const mine = all.filter(entry => samePair(keysOf(entry), run));
       // One entry per pair: a run no better than the pair's own ranked or waiting run never enters.
       if (mine.some(entry => compareRuns(entry, timed) <= 0)) return "not_placed";
-      const others = ranked.filter(entry => entry.pair_key !== run.pair_key);
+      const others = ranked.filter(entry => !samePair(keysOf(entry), run));
       if (others.length >= TOP_PLACES && compareRuns(timed, others[TOP_PLACES - 1]) > 0) return "not_placed";
       if (checked && (!checked.eligible || checked.entry_id !== run.entry_id)) return "ineligible";
-      const waiting = all.filter(entry => entry.state === "checking" && entry.pair_key !== run.pair_key);
+      const waiting = all.filter(entry => entry.state === "checking" && !samePair(keysOf(entry), run));
       if (!checked) {
         // Unchecked runs never push anyone out; the poster checks the accounts and posts again.
         if (waiting.filter(entry => entry.data.eligible === null).length >= MAX_UNCHECKED) return "crowded";
@@ -131,7 +135,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       const members: [Member, Member] = [withLook({ id: run.members[0], show: false, name: null }, run.looks?.[0]), withLook({ id: run.members[1], show: false, name: null }, run.looks?.[1])];
       if (checked) members.forEach((member, index) => choose(member, checked.members[index]));
       const data: EntryData = { finished_at: run.finished_at, chapter: run.chapter, simulation_version: run.simulation_version, members,
-        eligible: checked ? true : null, holds: [], reports: [], gold: false, submitted_at: Date.now() };
+        eligible: checked ? true : null, holds: [], reports: [], gold: false, submitted_at: Date.now(), ...(run.account_key ? { account_key: run.account_key } : {}) };
       this.ctx.storage.sql.exec("INSERT INTO lb_entries VALUES (?,?,?,?,?,?)", run.entry_id, run.pair_key, "checking", run.ticks, run.finished_ms, JSON.stringify(data));
       this.proofs.put(run.entry_id, proof);
       return "checking";
@@ -228,7 +232,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
         // The job could not judge it (its build lacks the chapter, or the check broke): a person looks.
         if (!verdict.valid && REVIEW_REASONS.includes(verdict.reason)) { this.toReview(entry, [verdict.reason], replay); continue; }
         if (!verdict.valid || verdict.measured_ticks !== entry.ticks) { this.drop(entry.entry_id, "failed"); continue; }
-        const first = this.ranked().find(item => item.pair_key !== entry.pair_key);
+        const first = this.ranked().find(item => !samePair(keysOf(item), keysOf(entry)));
         const holds = holdsFor(entry.ticks, developerBest, first ? first.ticks : null);
         if (holds.length) { this.toReview(entry, holds, replay); continue; }
         const note = this.rank(board, entry, replay);
@@ -326,6 +330,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
         count++;
         if (entry.state !== "ranked") { this.drop(entry.entry_id, "forgotten"); continue; }
         for (const member of entry.data.members) if (member.id === player) { member.id = null; member.show = false; member.name = null; delete member.look; }
+        // The account key came from the player's platform link: it goes with their id.
+        delete entry.data.account_key;
         this.save(entry);
         this.ctx.storage.sql.exec("DELETE FROM lb_replays WHERE entry_id=?", entry.entry_id);
         // The pair key was a hash of both ids; a random one keeps the row without them.
@@ -344,8 +350,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   /** Ranks a run that passed every check, inside the caller's transaction, keeping `replay` when given. Null when it no longer reaches the top 10. */
   private rank(board: string, entry: Entry, replay?: KeptReplay): RankedNote | null {
     this.proofs.remove(entry.entry_id);
-    const older = this.ranked().filter(item => item.pair_key === entry.pair_key);
-    const place = [...this.ranked().filter(item => item.pair_key !== entry.pair_key), entry].sort(compareRuns).findIndex(item => item.entry_id === entry.entry_id);
+    const older = this.ranked().filter(item => samePair(keysOf(item), keysOf(entry)));
+    const place = [...this.ranked().filter(item => !samePair(keysOf(item), keysOf(entry))), entry].sort(compareRuns).findIndex(item => item.entry_id === entry.entry_id);
     // Out of the top 10 now: it goes, and the pair keeps any run it already had.
     if (place >= TOP_PLACES) { this.drop(entry.entry_id, "not_placed"); return null; }
     entry.state = "ranked";
@@ -404,7 +410,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       const entry = this.entry(verdict.entry_id);
       if (!entry || entry.state !== "checking" || entry.data.eligible !== true) continue;
       if (verdict.valid ? verdict.measured_ticks !== entry.ticks : !REVIEW_REASONS.includes(verdict.reason)) continue;
-      const others = ranked.filter(item => item.pair_key !== entry.pair_key);
+      const others = ranked.filter(item => !samePair(keysOf(item), keysOf(entry)));
       if (others.length >= TOP_PLACES && compareRuns(entry, others[TOP_PLACES - 1]) > 0) continue;
       const proof = this.proofs.get(verdict.entry_id);
       if (!proof || proof.proof_hash !== verdict.proof_hash) continue;
@@ -470,6 +476,10 @@ function withLook(member: Member, look: unknown): Member {
 /** Both looks in slot order, the default for a member with none; also on a hidden-name row. */
 function shownLooks(members: [Member, Member]): PairLooks {
   return [servedLook(members[0].look), servedLook(members[1].look)];
+}
+/** The keys that say which pair an entry is (pair-accounts.ts samePair). */
+function keysOf(entry: Entry): PairKeys {
+  return entry.data.account_key ? { pair_key: entry.pair_key, account_key: entry.data.account_key } : { pair_key: entry.pair_key };
 }
 function noteOf(entry: Entry): RankedNote {
   return { entry_id: entry.entry_id, members: entry.data.members.filter(member => member.id !== null).map(member => member.id!) };

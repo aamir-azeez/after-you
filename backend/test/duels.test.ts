@@ -18,7 +18,8 @@ import { pairKey } from "../src/leaderboards/run";
 import gameDuelsClient from "../../game/services/duels_client.gd?raw";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
 import { countingEnv, meterRows } from "./meter";
-import { noteFullJourney } from "../src/pollen/wallet";
+import { ledgerLines, noteFullJourney } from "../src/pollen/wallet";
+import { PLATFORM_LINKS_OBJECT } from "../src/platform-links";
 import { POLLEN_CLIENT, configJson } from "./config";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
 import { dropRunCopies } from "../src/duels/their-run-sweep";
@@ -1177,5 +1178,63 @@ describe("the platform rule for board posts", () => {
     await playWith(joined, [a2, a1], await relayRun(0), PLATFORM);
     expect((await lobby(a1, PLATFORM)).duels.find(item => item.duel_id === started.duel_id)).toMatchObject({ status: "decided" });
     expect((await env.LEADERBOARD_BOARDS.getByName(RELAY).view(RELAY)).checking).toEqual([]);
+  }, 60_000);
+});
+
+describe("pair keys by platform account in duels (PAIR-KEYS.md)", () => {
+  const PLATFORM = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "LEADERBOARD_REQUIRE_PLATFORM"] }) };
+  const links = () => env.PLATFORM_LINKS.getByName(PLATFORM_LINKS_OBJECT);
+  const linkAs = async (account: Account, provider: "play_games" | "game_center", letter: string, replace = false) =>
+    expect((await links().link(provider, letter.repeat(64), account.player_id, replace)).status).toBe("linked");
+  const send = (from: Account, to: Account, vars: Record<string, string>, base: Env = env) =>
+    call("/v1/duels/challenge", "POST", from, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: to.player_id, board: RELAY }, vars, {}, base);
+
+  it("treats identity pairs behind the same two accounts as one opposing pair, for one more read, and only while the rule is on", async () => {
+    const { a1, b1, b2 } = await pairs();
+    await linkAs(b1, "play_games", "1"); await linkAs(b2, "game_center", "2");
+    const meter = countingEnv(Object.assign({ ...env }, PLATFORM) as Env);
+    await ok(send(a1, b1, PLATFORM, meter.env));
+    expect(meter.calls.filter(name => name.startsWith("PLATFORM"))).toEqual(["PLATFORM_LINKS.accountsAmong"]);
+    // The same two people on new identities, their links moved with "Keep this phone".
+    const [b3, b4] = await Promise.all([create(), create()]);
+    await befriend(b3, b4); await befriend(a1, b3); await partner(b3, b4);
+    await linkAs(b3, "play_games", "1", true); await linkAs(b4, "game_center", "2", true);
+    const again = await send(a1, b3, PLATFORM);
+    expect(again.status).toBe(409);
+    expect(await errorCode(again)).toBe("duel_already_open");
+    // Rule off: no read, and they are another pair.
+    const off = countingEnv(Object.assign({ ...env }, ON) as Env);
+    await ok(send(a1, b3, ON, off.env));
+    expect(off.calls.filter(name => name.startsWith("PLATFORM"))).toEqual([]);
+    // No view carries either key.
+    const shown = JSON.stringify(await lobby(a1, PLATFORM)) + JSON.stringify(await lobby(b3, PLATFORM));
+    expect(shown).not.toContain("account_key");
+    expect(shown).not.toContain("pair_key");
+  }, 60_000);
+
+  it("caps the win bonus once a week per opposing pair by either key, before and after the rule", async () => {
+    const { a1, a2 } = await pairs();
+    const ids = [a1.player_id, a2.player_id] as [string, string];
+    const key = await pairKey(...ids), now = Date.now(), refs: { duel_id: string; board: string; at: number }[] = [];
+    // Before the rule (id key P), the same pair after it (P with account K), other identities behind K (Q with K), and another pair (R).
+    const opponents: [string, string | undefined][] = [["P", undefined], ["P", "K"], ["Q", "K"], ["R", undefined]];
+    for (const [index, [pair, account]] of opponents.entries()) {
+      const duel_id = (await digest(`won\n${key}\n${index}\n${now}`)).slice(0, 32);
+      const others = [`s${index}`.padEnd(22, "s"), `t${index}`.padEnd(22, "t")] as [string, string];
+      const duel = newFriendDuel({ duel_id, board: RELAY, chapter: { ...RELAY_KEY }, steps: CHAPTERS[0].adapter.stages.length * 2, starter: ids[0], a: blankSide(ids, key),
+        b: blankSide(others, pair.repeat(64), undefined, account?.repeat(64)), known: [] }, now);
+      Object.assign(duel, { status: "decided", accepted_ms: now, result: { winner: 0, reason: "faster", decided_ms: now, margin_ticks: 30 } });
+      await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (target: LeaderboardBoard) => { target.duelCreate(duel); });
+      refs.push({ duel_id, board: RELAY, at: now });
+    }
+    for (const id of ids) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs }, now);
+    await lobby(a1);
+    const lines = await runInDurableObject(env.PLAYERS.getByName(a1.player_id), async (_, ctx) => ledgerLines(ctx.storage, "duelwin:", 16));
+    expect(lines).toHaveLength(4);
+    const paid = lines.filter(line => line.amount > 0).map(line => String(line.detail.opponent)).sort();
+    // One of the three wins over the same people counts, whichever came first, and the other pair's win counts.
+    expect(paid).toHaveLength(2);
+    expect(paid).toContain("R".repeat(64));
+    expect(lines.filter(line => line.detail.reason === "same_pair")).toHaveLength(2);
   }, 60_000);
 });

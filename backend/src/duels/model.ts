@@ -55,6 +55,8 @@ export type Side = {
   members: [string | null, string | null];
   /** leaderboards/run.ts pairKey of the two members: the same pair on the boards. */
   pair_key: string;
+  /** The members' two platform accounts as one key, while the platform rule was on when the side was made (leaderboards/pair-accounts.ts). Never in a view. */
+  account_key?: string;
   room: SideRoom | null;
   /** The room revision the progress below came from; older notes are ignored. */
   revision: number; steps: number; ticks: number;
@@ -106,8 +108,9 @@ export type Duel = {
 export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null; looks?: Record<string, Look> };
 
 /** `looks`: what the members wear, in `members` order, when known (while looks are on). */
-export function blankSide(members: [string, string], pairKey: string, looks?: readonly (Look | undefined)[]): Side {
+export function blankSide(members: [string, string], pairKey: string, looks?: readonly (Look | undefined)[], accountKey?: string): Side {
   const side: Side = { members, pair_key: pairKey, room: null, revision: 0, steps: 0, ticks: 0, turn: null, finished_ms: null, entry_id: null, check: "none", left: false, last_ms: null };
+  if (accountKey !== undefined) side.account_key = accountKey;
   if (looks) wearLooks(side, id => looks[side.members.indexOf(id)]);
   return side;
 }
@@ -371,6 +374,8 @@ export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
     if (!side) continue;
     // An erased member's look goes with their id.
     if (side.looks) wearLooks(side, id => id === player ? {} : undefined);
+    // The account key came from their platform link: it goes with their id.
+    if (side.members.includes(player)) delete side.account_key;
     side.members = side.members.map(id => id === player ? null : id) as [string | null, string | null];
     if (side.room?.host === player) side.room.host = null;
     if (side.turn === player) side.turn = null;

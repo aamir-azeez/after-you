@@ -21,7 +21,8 @@ import { applyLedger, ledgerLines, walletBalance, type LedgerEntry } from "./wal
  * The duel's pay: what the player's turns in the duel's room paid, from their turn claims, split
  * the way the result card shows it.
  */
-export type DuelWin = { duel_id: string; opponent: string; decided_ms: number };
+/** `opponent`: the opposing pair's key; `opponent_pair`: its id key too when `opponent` is its account key (leaderboards/pair-accounts.ts). */
+export type DuelWin = { duel_id: string; opponent: string; decided_ms: number; opponent_pair?: string };
 export type GhostWin = { duel_id: string; board: string };
 export type BonusReason = "weekly_cap" | "same_pair" | "board_paid";
 export type DuelWinAnswer = { amount: number; counted: boolean; reason?: BonusReason; balance: number };
@@ -55,9 +56,12 @@ export function creditDuelWin(storage: DurableObjectStorage, win: DuelWin, now: 
   return creditOnce(storage, key, now, active, rates, () => {
     if (now - win.decided_ms > rates.claims.turn_claim_days * DAY_MS) return fail(410, "duel_win_expired");
     const week = weekIndex(win.decided_ms);
-    const lines = ledgerLines(storage, WIN_PREFIX, MAX_WEEK_LINES).filter(line => line.detail.week === week && line.amount > 0);
-    const reason = lines.length >= rates.duels.wins_per_week ? "weekly_cap" : lines.some(line => line.detail.opponent === win.opponent) ? "same_pair" : undefined;
-    return ok({ key, kind: "duelwin", amount: reason ? 0 : rates.duels.win_bonus, detail: { duel_id: win.duel_id, week, opponent: win.opponent, ...(reason ? { reason } : {}) } });
+    const weekLines = ledgerLines(storage, WIN_PREFIX, MAX_WEEK_LINES).filter(line => line.detail.week === week);
+    const lines = weekLines.filter(line => line.amount > 0);
+    const theirs = samePairKeys(weekLines.map(line => line.detail), win.opponent_pair ? [win.opponent, win.opponent_pair] : [win.opponent]);
+    const met = lines.some(line => keysOf(line.detail).some(id => theirs.has(id)));
+    const reason = lines.length >= rates.duels.wins_per_week ? "weekly_cap" : met ? "same_pair" : undefined;
+    return ok({ key, kind: "duelwin", amount: reason ? 0 : rates.duels.win_bonus, detail: { duel_id: win.duel_id, week, opponent: win.opponent, ...(win.opponent_pair ? { opponent_pair: win.opponent_pair } : {}), ...(reason ? { reason } : {}) } });
   }, (detail, amount) => ({ amount, reason: detail.reason }));
 }
 
@@ -67,6 +71,28 @@ export function creditGhostWin(storage: DurableObjectStorage, win: GhostWin, now
   return creditOnce(storage, key, now, active, rates,
     () => ok({ key, kind: "ghostwin", amount: rates.duels.ghost_win_bonus, detail: { duel_id: win.duel_id } }),
     (detail, amount) => detail.duel_id === win.duel_id ? { amount } : { amount: 0, reason: "board_paid" });
+}
+
+/** A win line's opponent keys: its pair key, or its account key and the id key beside it (leaderboards/pair-accounts.ts). */
+function keysOf(detail: Record<string, unknown>): unknown[] {
+  return detail.opponent_pair === undefined ? [detail.opponent] : [detail.opponent, detail.opponent_pair];
+}
+
+/**
+ * Every key the week's lines tie to `start`: a line naming an account key and an id key says both are the same
+ * pair, so a win before the platform rule (id key only) and one after it by other identities (account key only)
+ * meet through the line that named both, whatever order they were paid in. At most MAX_WEEK_LINES lines.
+ */
+function samePairKeys(details: readonly Record<string, unknown>[], start: readonly unknown[]): Set<unknown> {
+  const keys = new Set<unknown>(start);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const detail of details) {
+      const own = keysOf(detail);
+      if (own.some(id => keys.has(id)) && own.some(id => !keys.has(id))) { for (const id of own) keys.add(id); grew = true; }
+    }
+  }
+  return keys;
 }
 
 function answer(amount: number, reason: unknown, balance: number): DuelWinAnswer {
