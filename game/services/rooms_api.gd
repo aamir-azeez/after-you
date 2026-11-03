@@ -20,6 +20,7 @@ const MAX_HISTORY_RESPONSE_BYTES := 4 * 1024 * 1024 + 65536
 ## only then may the server let a room's finished attempts leave it.
 static var history_supported := false
 const END_REACTIONS_HEADER := "X-AfterYou-End-Reactions: 1"
+const PUBLIC_DUELS_SAFETY_HEADER := "X-AfterYou-Public-Duels: 1"
 const RUN_REACTIONS_HEADER := "X-AfterYou-Run-Reactions: 1"
 const FACE_PACKS_HEADER := "X-AfterYou-Face-Packs: 1"
 ## This build draws each player's look (backend src/pollen/looks-routes.ts).
@@ -204,6 +205,9 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Leaderboards: 1")
 	# This build plays duels (presentation/duels/), so the server may say they are open.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Duels: 1")
+	# This build knows public duels' safety (services/safety_client.gd): their rules version and
+	# `duel_blocks`. An older phone, which never sends it, keeps the old rules and the old blocks reply.
+	if path.begins_with("/v1/safety/"): headers.append(PUBLIC_DUELS_SAFETY_HEADER)
 	# This build plays hard rooms (services/hard_mode.gd): it may be told of them and join one.
 	if path in ["/v2/capabilities", "/v2/rooms/join"]: headers.append("X-AfterYou-Hard-Mode: 1")
 	# This build keeps Pollen (services/pollen_wallet.gd): the capability, and a turn's

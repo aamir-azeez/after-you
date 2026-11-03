@@ -25,6 +25,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const Breakdown = preload("res://presentation/pollen_breakdown.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -190,6 +191,9 @@ func _safety() -> void:
 	_check(SafetyClient.valid_version("2026-11-03") and SafetyClient.valid_version(SafetyClient.TERMS_VERSION) and not SafetyClient.valid_version("soon"), "Any dated rules version reads")
 	_check(SafetyClient.valid_duel_blocks([{"handle": "h".repeat(22), "label": null}, {"handle": "k".repeat(22), "label": "Kite"}]).size() == 2, "Duel blocks read by handle")
 	_check(SafetyClient.valid_duel_blocks([{"handle": "bad id!", "label": null}]) == null, "A handle that is not one is refused")
+	for path: String in ["/v1/safety/config", "/v1/safety/terms", "/v1/safety/blocks"]:
+		_check(RoomsApi.capability_headers(HTTPClient.METHOD_GET, path).has(RoomsApi.PUBLIC_DUELS_SAFETY_HEADER), "%s asks with the public duels header, so the server sends their rules and duel blocks" % path)
+	_check(not RoomsApi.capability_headers(HTTPClient.METHOD_GET, "/v1/friends").has(RoomsApi.PUBLIC_DUELS_SAFETY_HEADER), "Other routes do not send it")
 
 # A seat given back ------------------------------------------------------------
 
