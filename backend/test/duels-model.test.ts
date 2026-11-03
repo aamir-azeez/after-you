@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
-import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "../src/duels/rules";
+import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS } from "../src/duels/rules";
 import { applyParty, blankParty, noteLook } from "../src/duels/party";
 import { runProgress } from "../src/duels/ticks";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -210,6 +210,46 @@ describe("duel state machine", () => {
     expect(duel.result!.reason).toBe("stalled");
     expect(progress(duel, note("rb", 20, 10, true), T0 + STALL_MS * 2).ok).toBe(true);
     expect(duel.sides[1]!.finished_ms).toBeNull();
+  });
+
+  it("a ghost race nobody opened ends unfinished after UNCLAIMED_RACE_MS; one with a room keeps to STALL_MS", () => {
+    const idle = ghost();
+    expect(settle(idle, T0 + UNCLAIMED_RACE_MS - 1)).toBe(false);
+    expect(settle(idle, T0 + UNCLAIMED_RACE_MS)).toBe(true);
+    expect(idle).toMatchObject({ status: "unfinished", result: { winner: null, reason: "stalled" } });
+    expect(claimRoom(idle, A1, { room_id: "ra", invite_code: "ia" }, T0 + UNCLAIMED_RACE_MS + 1)).toMatchObject({ ok: false, code: "duel_not_running" });
+    const opened = ghost();
+    expect(claimRoom(opened, A2, { room_id: "ra", invite_code: "ia" }, T0 + UNCLAIMED_RACE_MS - 1).ok).toBe(true);
+    expect(settle(opened, T0 + STALL_MS - 1)).toBe(false);
+    expect(opened.status).toBe("running");
+  });
+
+  it("an accepted friend duel neither pair opened ends after UNCLAIMED_DUEL_MS from the accept; one claim keeps it to STALL_MS", () => {
+    const idle = friend();
+    const acceptAt = T0 + 5 * 86_400_000;
+    expect(accept(idle, B1, acceptAt, true).ok).toBe(true);
+    expect(settle(idle, acceptAt + UNCLAIMED_DUEL_MS - 1)).toBe(false);
+    expect(settle(idle, acceptAt + UNCLAIMED_DUEL_MS)).toBe(true);
+    expect(idle).toMatchObject({ status: "unfinished", result: { reason: "stalled" } });
+    const half = friend();
+    expect(accept(half, B1, acceptAt, true).ok).toBe(true);
+    expect(claimRoom(half, B2, { room_id: "rb", invite_code: "ib" }, acceptAt + 60_000).ok).toBe(true);
+    expect(settle(half, acceptAt + UNCLAIMED_DUEL_MS * 3)).toBe(false);
+    expect(half.status).toBe("running");
+    // The stored duel keeps its shape: the same keys before and after an expiry.
+    expect(Object.keys(idle).sort()).toEqual(Object.keys(friend()).sort());
+  });
+
+  it("a full pointer list drops pointers to settled duels before open ones", () => {
+    const state = blankParty();
+    const refs = Array.from({ length: MAX_MEMBER_DUELS }, (_, index) => ({ duel_id: "d" + index, board: "relay-isles@2", at: T0 + index }));
+    expect(applyParty(state, A1, { kind: "add_duels", refs }, T0).ok).toBe(true);
+    applyParty(state, A1, { kind: "add_duels", refs: [{ duel_id: "new", board: "relay-isles@2", at: T0 + 99 }], final: ["d5", "d9"] }, T0);
+    expect(state.duels.map(ref => ref.duel_id)).toEqual([...refs.map(ref => ref.duel_id).filter(id => id !== "d5"), "new"]);
+    // Without a known settled one, the oldest goes, as before.
+    applyParty(state, A1, { kind: "add_duels", refs: [{ duel_id: "newer", board: "relay-isles@2", at: T0 + 100 }] }, T0);
+    expect(state.duels[0].duel_id).toBe("d1");
+    expect(state.duels).toHaveLength(MAX_MEMBER_DUELS);
   });
 
   it("a race against a board run is decided the moment the pair finishes, with no check", () => {

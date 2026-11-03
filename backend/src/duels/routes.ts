@@ -120,8 +120,10 @@ async function duelsOf(env: Env, refs: readonly DuelRef[], player: string): Prom
   return { duels, missing: refs.map(ref => ref.duel_id).filter(id => !found.has(id)) };
 }
 
-async function addRefs(env: Env, players: readonly string[], ref: DuelRef, now: number): Promise<void> {
-  await pooled([...new Set(players)], BOARD_CONCURRENCY, async id => { await party(env, id).partyApply(id, { kind: "add_duels", refs: [ref] }, now); });
+/** `read`: the duels the caller just read; those already over lose their pointers first when a list is full (party.ts add_duels). */
+async function addRefs(env: Env, players: readonly string[], ref: DuelRef, now: number, read: readonly Duel[] = []): Promise<void> {
+  const final = read.filter(isFinal).map(duel => duel.duel_id);
+  await pooled([...new Set(players)], BOARD_CONCURRENCY, async id => { await party(env, id).partyApply(id, { kind: "add_duels", refs: [ref], ...(final.length ? { final } : {}) }, now); });
 }
 
 /** Open friend duels (or ghost races still being played: a finished run waiting for its check holds no slot) of the pair `keys` (pair-accounts.ts samePair) among `duels`. */
@@ -290,7 +292,7 @@ async function challenge(env: Env, player: string, input: unknown, now: number, 
     a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), b: blankSide(b, bKeys.pair_key, shownLooks ? theirs.looks : undefined, bKeys.account_key), known }, now));
   const made = await duel;
   if (!made) throw new ApiError(503, "duels_busy");
-  await addRefs(env, [...a, ...b], { duel_id: duelId, board: key, at: now }, now);
+  await addRefs(env, [...a, ...b], { duel_id: duelId, board: key, at: now }, now, duels);
   // Only now does every lobby list it.
   await announceLobby(env, [...a, ...b].filter(id => id !== player), made.updated_ms, duelId);
   return { schema_version: 1, duel: viewFor(made, player, shownLooks) };
@@ -328,7 +330,7 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number, 
   const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
     a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), ghost }, now));
   if (!made) throw new ApiError(503, "duels_busy");
-  await addRefs(env, a, { duel_id: duelId, board: key, at: now }, now);
+  await addRefs(env, a, { duel_id: duelId, board: key, at: now }, now, duels);
   await announceLobby(env, [mine.partner], made.updated_ms, duelId);
   return { schema_version: 1, duel: viewFor(made, player, shownLooks) };
 }

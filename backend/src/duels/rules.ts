@@ -48,3 +48,18 @@ export const MAX_BOARD_DUELS = 512;
 export const MAX_DUEL_PROOF_CHARS = 1_900_000;
 /** Ticks per second, as every recording's tick_rate. */
 export const TICK_RATE = 30;
+/**
+ * A ghost race whose pair never opened its room (no claim) ends unfinished this long after it started. The phone
+ * opens the race's page with Play the moment it starts (presentation/duels/duels_flow.gd _race), and its first tap
+ * on Play claims the room, so a race nobody claimed in two days was never going to be played.
+ */
+export const UNCLAIMED_RACE_MS = 2 * 86_400_000;
+/**
+ * An accepted friend duel in which neither pair opened its room ends unfinished this long after the accept. The
+ * accepting player taps it on the lobby, whose tile then offers Play (duels_flow.gd _on_duel_action), and the sending
+ * pair hears of it within a minute (lobby read, or a hint); once either pair taps Play the duel runs to STALL_MS as before. One day still spans
+ * every time zone.
+ */
+export const UNCLAIMED_DUEL_MS = 86_400_000;
+/** A full board settles at most this many of its oldest open duels before it refuses a new one (store.ts makeRoom). */
+export const MAX_SETTLED_ON_FULL = 32;

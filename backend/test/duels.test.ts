@@ -12,8 +12,9 @@ import { developerGhost } from "../src/duels/developer-ghosts";
 import { deriveJobToken } from "../src/leaderboards/job-token";
 import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
-import { blankSide, newFriendDuel, newGhostRace, type DuelView } from "../src/duels/model";
-import { MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS } from "../src/duels/rules";
+import { accept, blankSide, newFriendDuel, newGhostRace, type DuelView } from "../src/duels/model";
+import { DuelStore } from "../src/duels/store";
+import { MAX_BOARD_DUELS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, UNCLAIMED_RACE_MS } from "../src/duels/rules";
 import { pairKey } from "../src/leaderboards/run";
 import gameDuelsClient from "../../game/services/duels_client.gd?raw";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
@@ -1237,4 +1238,51 @@ describe("pair keys by platform account in duels (PAIR-KEYS.md)", () => {
     expect(paid).toContain("R".repeat(64));
     expect(lines.filter(line => line.detail.reason === "same_pair")).toHaveLength(2);
   }, 60_000);
+});
+
+describe("duel board guards", () => {
+  const T0 = 1_900_000_000_000;
+  const side = (n: number) => blankSide(["p" + n + "a".padEnd(20, "a"), "p" + n + "b".padEnd(20, "b")], "pk" + n);
+  const race = (n: number, now: number) => newGhostRace({ duel_id: n.toString(16).padStart(32, "0"), board: RELAY, chapter: RELAY_KEY, steps: 4, starter: side(n).members[0]!, a: side(n),
+    ghost: { source: "developer", entry_id: null, rank: null, ticks: 900, names: null } }, now);
+  it("a board full of races nobody opened refuses until they expire, then settles the oldest and takes the new one", async () => {
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName("guards-" + RELAY), async (_, ctx) => {
+      const store = new DuelStore(ctx.storage);
+      for (let n = 0; n < MAX_BOARD_DUELS; n++) expect(store.create(race(n, T0 + n), T0 + n)).not.toBeNull();
+      const count = () => ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duels").one().n;
+      expect(store.create(race(MAX_BOARD_DUELS, T0 + 3_600_000), T0 + 3_600_000)).toBeNull();
+      // Two days on, the oldest unclaimed races have expired: one row goes and the new race fits.
+      const later = T0 + UNCLAIMED_RACE_MS + 1_000;
+      expect(store.create(race(MAX_BOARD_DUELS + 1, later), later)).not.toBeNull();
+      expect(count()).toBe(MAX_BOARD_DUELS);
+      expect(ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duels WHERE status='unfinished'").one().n).toBe(31);
+    });
+  }, 120_000);
+  it("a claimed race keeps its board row past the unclaimed limit", async () => {
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName("guards-claimed-" + RELAY), async (_, ctx) => {
+      const store = new DuelStore(ctx.storage);
+      for (let n = 0; n < MAX_BOARD_DUELS; n++) {
+        const duel = race(n, T0 + n);
+        store.create(duel, T0 + n);
+        expect(store.act(duel.duel_id, { kind: "claim", player: duel.sides[0].members[0]!, room_id: "room" + n, invite_code: "code" + n, room_absent: false }, T0 + n).ok).toBe(true);
+      }
+      const later = T0 + UNCLAIMED_RACE_MS + 1_000;
+      expect(store.create(race(MAX_BOARD_DUELS, later), later)).toBeNull();
+    });
+  }, 120_000);
+  it("queues a run copy row only for the room a claim made the side's own", async () => {
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName("guards-copies-" + RELAY), async (_, ctx) => {
+      const store = new DuelStore(ctx.storage);
+      const [a, b] = [side(1), side(2)];
+      const duel = newFriendDuel({ duel_id: "f".repeat(32), board: RELAY, chapter: RELAY_KEY, steps: 4, starter: a.members[0]!, a, b, known: [] }, T0);
+      accept(duel, b.members[0]!, T0 + 1, true);
+      store.create(duel, T0 + 1);
+      const claim = (player: string, room: string) => store.act(duel.duel_id, { kind: "claim", player, room_id: room, invite_code: "i" + room, room_absent: false }, T0 + 2);
+      expect(claim(a.members[0]!, "won")).toMatchObject({ ok: true, value: { room: { room_id: "won" } } });
+      // The partner's own room lost the race: the side's room is the first one, and no row names the loser.
+      expect(claim(a.members[1]!, "lost")).toMatchObject({ ok: true, value: { room: { room_id: "won" } } });
+      const rooms = ctx.storage.sql.exec<{ room_id: string }>("SELECT room_id FROM duel_run_copies").toArray().map(row => row.room_id);
+      expect(rooms).toEqual(["won"]);
+    });
+  });
 });

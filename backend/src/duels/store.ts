@@ -6,7 +6,7 @@ import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
 import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, milestone, newsRecipients, progress, settle, verdict, waiveChecks, type Duel, type Milestone, type ProgressNote, type SideRoom } from "./model";
 import type { DuelNews } from "./news";
-import { MAX_BOARD_DUELS, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, STALL_MS } from "./rules";
+import { MAX_BOARD_DUELS, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, MAX_SETTLED_ON_FULL, STALL_MS } from "./rules";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
 
 /**
@@ -83,7 +83,7 @@ export class DuelStore {
     return this.storage.transactionSync(() => {
       const held = this.duel(duel.duel_id);
       if (held) { if (settle(held, now)) this.save(held); return held; }
-      if (!this.makeRoom()) return null;
+      if (!this.makeRoom(now)) return null;
       this.save(duel);
       return duel;
     });
@@ -116,7 +116,8 @@ export class DuelStore {
       else answer = claimRoom(duel, action.player, { room_id: action.room_id, invite_code: action.invite_code }, now, action.room_absent);
       // A friend duel's room may come to hold a run copy, however the duel ends, or if it is never read again: a row
       // from the moment it is claimed, due at the latest a duel can last plus the keep; settling brings it forward.
-      if (answer.ok && action.kind === "claim" && duel.kind === "friend") this.queueRoom(action.room_id, duel.duel_id, "", now + STALL_MS + THEIR_RUN_KEEP_MS);
+      // Only a claim that made this room the side's: a losing claim's room never holds a copy.
+      if (answer.ok && action.kind === "claim" && duel.kind === "friend" && (answer.value as SideRoom).room_id === action.room_id) this.queueRoom(action.room_id, duel.duel_id, "", now + STALL_MS + THEIR_RUN_KEEP_MS);
       if (JSON.stringify(duel) !== before) this.save(duel);
       if (!answer.ok) return answer;
       return ok({ duel, ...(action.kind === "claim" ? { room: answer.value as SideRoom } : {}) });
@@ -226,11 +227,25 @@ export class DuelStore {
       JSON.stringify({ ...duel.chapter, simulation_version: simulationVersion }), kept.byte_length, kept.body, now);
   }
 
-  /** Keeps the duel table within MAX_BOARD_DUELS: settled duels go first, oldest first. False when every row is still open. */
-  private makeRoom(): boolean {
+  /**
+   * Keeps the duel table within MAX_BOARD_DUELS: settled duels go first, oldest first. With none settled, the
+   * MAX_SETTLED_ON_FULL open rows changed longest ago are settled to `now` first (a faded challenge, a race nobody
+   * opened), so expired ones free their rows. False when every row is still open.
+   */
+  private makeRoom(now: number): boolean {
     const count = this.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duels").one().n;
     if (count < MAX_BOARD_DUELS) return true;
-    const oldest = this.storage.sql.exec<{ duel_id: string }>("SELECT duel_id FROM duels WHERE status NOT IN ('challenged','running') ORDER BY updated_ms LIMIT 1").toArray()[0];
+    const settled = () => this.storage.sql.exec<{ duel_id: string }>("SELECT duel_id FROM duels WHERE status NOT IN ('challenged','running') ORDER BY updated_ms LIMIT 1").toArray()[0];
+    let oldest = settled();
+    if (!oldest) {
+      const checks = this.checks();
+      for (const row of this.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE status IN ('challenged','running') ORDER BY updated_ms LIMIT ?", MAX_SETTLED_ON_FULL).toArray()) {
+        const duel = JSON.parse(row.data) as Duel;
+        const waived = this.waive(duel, now, checks);
+        if (settle(duel, now) || waived) this.save(duel);
+      }
+      oldest = settled();
+    }
     if (!oldest) return false;
     this.storage.sql.exec("DELETE FROM duels WHERE duel_id=?", oldest.duel_id);
     this.storage.sql.exec("DELETE FROM duel_proofs WHERE duel_id=?", oldest.duel_id);

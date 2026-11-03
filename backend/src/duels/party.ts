@@ -41,7 +41,8 @@ export type PartyOp =
   | { kind: "cancel" }
   | { kind: "unpartner"; partner: string }
   | { kind: "leave" }
-  | { kind: "add_duels"; refs: DuelRef[] }
+  /** `final`: duel ids the caller just read as over; past MAX_MEMBER_DUELS their pointers go first, oldest first. */
+  | { kind: "add_duels"; refs: DuelRef[]; final?: string[] }
   | { kind: "drop_duels"; ids: string[] }
   | { kind: "settle_wins"; ids: string[] };
 /** `previous`: the partner this op replaced or removed, whose own row should be told. */
@@ -103,7 +104,10 @@ export function applyParty(state: PartyState, owner: string, op: PartyOp, now: n
       break;
     case "add_duels": {
       const fresh = op.refs.filter(ref => !state.duels.some(held => held.duel_id === ref.duel_id));
-      state.duels = [...state.duels, ...fresh].slice(-MAX_MEMBER_DUELS);
+      const held = [...state.duels, ...fresh], over = new Set(op.final ?? []);
+      // Pointers to duels known to be over make room first, so an open duel never drops off for a settled one.
+      const gone = new Set(held.filter(ref => over.has(ref.duel_id)).slice(0, Math.max(0, held.length - MAX_MEMBER_DUELS)).map(ref => ref.duel_id));
+      state.duels = held.filter(ref => !gone.has(ref.duel_id)).slice(-MAX_MEMBER_DUELS);
       break;
     }
     case "drop_duels":
