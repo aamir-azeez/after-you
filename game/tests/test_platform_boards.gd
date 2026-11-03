@@ -84,6 +84,10 @@ func _entry() -> String:
 func _run_of(ticks: int, board: String = RELAY, finished: String = "2026-11-01T10:00:00Z", assisted: bool = false) -> Dictionary:
 	return {"board": board, "entry_id": _entry(), "ticks": ticks, "assisted": assisted, "finished_at": finished, "partner": "", "refused": ""}
 
+## A board as services/leaderboard_client.gd kept_for hands it over: the view and when it was read.
+func _read(view: Dictionary, read_unix: float) -> Dictionary:
+	return {"view": view, "read_unix": read_unix}
+
 func _view(board: String, times: Array, checking: Array = []) -> Dictionary:
 	var top: Array = []
 	for index in range(times.size()):
@@ -143,7 +147,7 @@ func _judging() -> void:
 	var assisted := _run_of(5000, RELAY, "2026-11-01T10:00:00Z", true)
 	var other := _run_of(2000, "first-steps@1")
 	var runs := [slow, fast, assisted, other]
-	var first := Policy.judge(runs, {RELAY: full}, {}, now)
+	var first := Policy.judge(runs, {RELAY: _read(full, now)}, {})
 	_check(first.get(slow.entry_id) == Policy.GO, "A run as slow as tenth place on a full board goes at once")
 	_check(not first.has(assisted.entry_id), "An assisted run never goes")
 	_check(not first.has(other.entry_id), "A run whose board this phone has not read waits for a read, with no verdict kept")
@@ -151,22 +155,26 @@ func _judging() -> void:
 	# A run still checking waits; ranked, it goes; settled off the board, never.
 	var waiting := _run_of(450, RELAY, "2026-11-01T11:58:00Z")
 	var listed := _view(RELAY, [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000], [waiting.entry_id])
-	var verdicts := Policy.judge([waiting], {RELAY: listed}, {}, now)
+	var verdicts := Policy.judge([waiting], {RELAY: _read(listed, now)}, {})
 	_check(verdicts.get(waiting.entry_id) == Policy.WAIT, "A run listed as checking waits")
-	_check(Policy.judge([waiting], {}, verdicts, now).get(waiting.entry_id) == Policy.WAIT, "A waiting run keeps waiting with no read")
+	_check(Policy.judge([waiting], {}, verdicts).get(waiting.entry_id) == Policy.WAIT, "A waiting run keeps waiting with no read")
 	var ranked := _view(RELAY, [100, 200, 300, 400, waiting, 600, 700, 800, 900, 1000])
-	_check(Policy.judge([waiting], {RELAY: ranked}, verdicts, now).get(waiting.entry_id) == Policy.GO, "Once a read shows it ranked it goes")
-	_check(Policy.judge([waiting], {RELAY: full}, verdicts, now + 3600).get(waiting.entry_id) == Policy.NEVER, "Settled off the board after the settle window, it never goes")
-	_check(Policy.judge([waiting], {RELAY: full}, verdicts, now).get(waiting.entry_id) == Policy.WAIT, "Within the settle window a run the read lists nowhere still waits")
+	_check(Policy.judge([waiting], {RELAY: _read(ranked, now)}, verdicts).get(waiting.entry_id) == Policy.GO, "Once a read shows it ranked it goes")
+	_check(Policy.judge([waiting], {RELAY: _read(full, now + 3600)}, verdicts).get(waiting.entry_id) == Policy.NEVER, "Settled off the board after the settle window, it never goes")
+	_check(Policy.judge([waiting], {RELAY: _read(full, now)}, verdicts).get(waiting.entry_id) == Policy.WAIT, "Within the settle window a run the read lists nowhere still waits")
+	# A read made before the run finished says nothing about it, however late the pass runs.
+	var early := _run_of(450, RELAY, "2026-11-01T11:59:00Z")
+	_check(Policy.judge([early], {RELAY: _read(_view(RELAY, [100, 200]), now - 3600)}, {}).get(early.entry_id) == Policy.WAIT, "A board read before the run finished keeps it waiting, never dropped")
+	_check(Policy.judge([early], {RELAY: _read(full, now - 3600)}, {}).get(early.entry_id) == Policy.WAIT and BoardStatus.below_tenth(slow, full) and not BoardStatus.below_tenth(early, full), "Faster than tenth on an old read still waits; the tenth place rule is board_status.gd's")
 	# A board with fewer than ten runs: anything could place, so it waits.
 	var short := _view(RELAY, [100, 200])
 	var recent := _run_of(9000, RELAY, "2026-11-01T11:59:00Z")
-	_check(Policy.judge([recent], {RELAY: short}, {}, now).get(recent.entry_id) == Policy.WAIT, "On a board with fewer than ten runs even a slow run waits for its check")
+	_check(Policy.judge([recent], {RELAY: _read(short, now)}, {}).get(recent.entry_id) == Policy.WAIT, "On a board with fewer than ten runs even a slow run waits for its check")
 	# A run listed in the top 10 is never judged by its time alone.
 	var ten := _view(RELAY, [100, 200, 300, 400, 500, 600, 700, 800, 900, slow])
-	_check(Policy.judge([slow], {RELAY: ten}, {}, now).get(slow.entry_id) == Policy.GO, "A run ranked tenth goes")
+	_check(Policy.judge([slow], {RELAY: _read(ten, now)}, {}).get(slow.entry_id) == Policy.GO, "A run ranked tenth goes")
 	# Verdicts once GO or NEVER stay, whatever a later read says.
-	_check(Policy.judge([slow, fast], {RELAY: short}, first, now) == {slow.entry_id: Policy.GO, fast.entry_id: Policy.NEVER}, "GO and NEVER are final")
+	_check(Policy.judge([slow, fast], {RELAY: _read(short, now)}, first) == {slow.entry_id: Policy.GO, fast.entry_id: Policy.NEVER}, "GO and NEVER are final")
 	# Best only, per board, and only when it beats what this account posted.
 	var faster_go := _run_of(1500)
 	var go := {slow.entry_id: Policy.GO, faster_go.entry_id: Policy.GO, fast.entry_id: Policy.NEVER, other.entry_id: Policy.GO}
@@ -190,6 +198,12 @@ func _store() -> void:
 	_check(cleaned.judged.is_empty() and cleaned.posted == {Store.account(GamesProvider.PLAY_GAMES, KEY_B): {"first-steps@1": 400}}, "Only well formed entries are read")
 	AtomicFile.write_text(path, "{not json")
 	_check(Store.new(path).judged.is_empty(), "A damaged file reads as empty")
+	var kept := _dir.path_join("kept.json")
+	var holder := Store.new(kept)
+	holder.keep_verdicts({_entry(): Policy.GO})
+	holder.remember_posted(Store.account(GamesProvider.GAME_CENTER, KEY_A), RELAY, 900)
+	_check(Store.forget_verdicts(kept) and Store.new(kept).judged.is_empty() and Store.new(kept).posted_for(Store.account(GamesProvider.GAME_CENTER, KEY_A)) == {RELAY: 900}, "Erasure forgets every verdict and keeps the platform bests")
+	_check(Store.forget_verdicts(_dir.path_join("never-written.json")), "Erasure with no file is done")
 	var many := Store.new(_dir.path_join("many.json"))
 	var verdicts := {}
 	for index in range(Store.MAX_JUDGED + 20): verdicts[_entry()] = Policy.GO
@@ -229,7 +243,7 @@ func _service() -> void:
 	var client: RefCounted = LeaderboardClient.shared(api, OWNER)
 	var slow_ticks := 1500
 	var full := _view(RELAY, [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000])
-	client._views[RELAY] = {"at": Time.get_ticks_msec(), "view": full}
+	client._views[RELAY] = {"at": Time.get_ticks_msec(), "unix": Time.get_unix_time_from_system(), "view": full}
 	# The run list keeps only rooms with a real final checkpoint; the test puts its run in directly.
 	var run := _run_of(slow_ticks)
 	Runs._data[OWNER] = [run]
@@ -239,7 +253,7 @@ func _service() -> void:
 	var choices := _dir.path_join("names.json")
 	AtomicFile.write_text(choices, JSON.stringify({OWNER: {"show": true, "pending": false, "synced": true}, "x_synthetic_player_00c": {"show": false, "pending": false, "synced": true}}))
 	_check(LeaderboardClient.name_shown(OWNER, choices) and not LeaderboardClient.name_shown("x_synthetic_player_00c", choices) and not LeaderboardClient.name_shown("", choices), "The name choice reads from the file when no client holds it")
-	_check(LeaderboardClient.kept_for("x_synthetic_player_00c").is_empty() and LeaderboardClient.kept_for(OWNER).has(RELAY), "Kept boards come only from this player's client, and asking makes none")
+	_check(LeaderboardClient.kept_for("x_synthetic_player_00c").is_empty() and LeaderboardClient.kept_for(OWNER).get(RELAY, {}).get("view") == full, "Kept boards come only from this player's client, and asking makes none")
 
 	# Name hidden: judged and kept, nothing posted.
 	_choose_name(client, false)
@@ -303,6 +317,10 @@ func _button() -> void:
 	provider.release.emit()
 	for frame in range(3): await process_frame
 	_check(service.board_showing(), "Another tap waits a moment after it opened")
+	var told := [0]
+	service.changed.connect(func() -> void: told[0] += 1)
+	await create_timer(Service.BOARD_SHOW_GAP_MS / 1000.0 + 0.2).timeout
+	_check(not service.board_showing() and told[0] >= 1, "When the gap is over the service tells the button again, so it is live")
 	service.state.remember_capability({"game_center": true, "boards": false, "web_client_id": ""})
 	service.changed.emit()
 	_check(not button.visible, "The server switching the boards off hides the button at the next change")

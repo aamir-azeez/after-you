@@ -186,10 +186,13 @@ static func pair_names(runs: Array, views: Dictionary, show_own: bool) -> Dictio
 ## finished first, backend rules.ts compareRuns), or the pair's own run there
 ## no slower (pair_ahead).
 static func ruled_out(run: Dictionary, view: Dictionary, mine: Array) -> bool:
+	return below_tenth(run, view) or pair_ahead(run, view, mine)
+
+## Whether `view` lists ten runs no slower than `run`: the board is full and it is not faster
+## than tenth place (on equal times the listed run finished first, backend rules.ts compareRuns).
+static func below_tenth(run: Dictionary, view: Dictionary) -> bool:
 	var top: Variant = view.get("top")
-	if not top is Array: return false
-	var full: bool = top.size() >= TOP_PLACES and int(run.get("ticks", 0)) >= int(top[TOP_PLACES - 1].get("ticks", 0))
-	return full or pair_ahead(run, view, mine)
+	return top is Array and top.size() >= TOP_PLACES and int(run.get("ticks", 0)) >= int(top[TOP_PLACES - 1].get("ticks", 0))
 
 ## Whether `view` lists the run as waiting for its check (never a guess).
 static func listed_checking(run: Dictionary, view: Dictionary) -> bool:

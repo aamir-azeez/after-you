@@ -1,6 +1,7 @@
 extends RefCounted
 ## Forgets a deleted player's part of the files every player of this phone
-## shares (names, friends, nicknames, Pollen, wardrobe, leaderboard, duels).
+## shares (names, friends, nicknames, Pollen, wardrobe, leaderboard, duels,
+## platform board verdicts).
 ##
 ## Account deletion calls forget() once the identity's secret is removed. A
 ## marker naming the deleted player goes on first, so a clear that cannot write,
@@ -23,10 +24,11 @@ const StoreSupport = preload("res://services/store_support.gd")
 const TesterSwitches = preload("res://services/tester_switches.gd")
 const LeaderboardPlacings = preload("res://services/leaderboard_placings.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
+const PlatformBoardStore = preload("res://services/platform_games/platform_board_store.gd")
 const PATH := "user://deleted_identity_stores.json"
 const VERSION := 1
 ## Every store cleared, in order, by the name a marker keeps for one still to finish.
-const STORES := ["nicknames", "names", "friends", "wallet", "wardrobe", "runs", "duels", "bundle_claims", "monthly_pollen", "store_support", "placings", "name_choice", "tester_switches"]
+const STORES := ["nicknames", "names", "friends", "wallet", "wardrobe", "runs", "duels", "bundle_claims", "monthly_pollen", "store_support", "placings", "name_choice", "tester_switches", "platform_boards"]
 ## Deletions kept waiting; more than this keeps the newest.
 const MAX_OWNERS := 8
 const MAX_SERVER := 2048
@@ -82,6 +84,7 @@ func _clear(store: String, owner: String, server: String, nicknames: RefCounted)
 		"placings": return LeaderboardPlacings.shared().clear_owner(owner)
 		"name_choice": return LeaderboardClient.clear_owner(owner)
 		"tester_switches": return TesterSwitches.shared().clear_owner(owner)
+		"platform_boards": return PlatformBoardStore.forget_verdicts()
 	return false
 
 ## Keeps `stores` as what `owner` still needs (none drops the entry). False when

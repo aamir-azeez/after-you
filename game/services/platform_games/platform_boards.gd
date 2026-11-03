@@ -11,8 +11,9 @@ extends RefCounted
 ##   place on a full board, not listed there, is GO at once: our board never checks such a run.
 ## - WAIT: it could make our top 10 (faster than tenth, a board with fewer than ten runs, or
 ##   listed as checking). It turns GO once a board read shows it RANKED, and NEVER once a read
-##   shows it settled off the board (services/board_status.gd of_run: failed its check, or the
-##   pair already had a faster run there).
+##   made after its settle window shows it off the board (services/board_status.gd of_run, at
+##   the read's own time: failed its check, or the pair already had a faster run there). A read
+##   older than that can only keep it waiting.
 ## - no verdict yet: no read of its board this session. Nothing is posted until one comes, and
 ##   no new read is made for it (the end card, Home and the board screen already read boards).
 ## A run waiting for its check that no read of this phone ever saw is the accepted gap: if it
@@ -40,9 +41,10 @@ static func score(kind: String, hundredths_value: int) -> int:
 	return hundredths_value * 10 if kind == GamesProvider.PLAY_GAMES else hundredths_value
 
 ## The verdicts for `runs` (this player's runs, Runs.runs_of) given the boards read (board ->
-## view) and the verdicts kept (entry_id -> verdict). Returns the verdicts of these runs only;
-## a run with none yet is left out.
-static func judge(runs: Array, views: Dictionary, kept: Dictionary, now_unix: float) -> Dictionary:
+## {view, read_unix}, services/leaderboard_client.gd kept_for) and the verdicts kept (entry_id ->
+## verdict). Each board is judged as of its read. Returns the verdicts of these runs only; a run
+## with none yet is left out.
+static func judge(runs: Array, reads: Dictionary, kept: Dictionary) -> Dictionary:
 	var verdicts: Dictionary = {}
 	var by_board: Dictionary = {}
 	for run: Dictionary in runs:
@@ -55,14 +57,16 @@ static func judge(runs: Array, views: Dictionary, kept: Dictionary, now_unix: fl
 		if held in [GO, NEVER]:
 			verdicts[id] = held
 			continue
-		var view: Variant = views.get(run.board)
+		var read: Variant = reads.get(run.board)
+		var view: Variant = read.get("view") if read is Dictionary else null
 		if not _readable(view):
 			if held == WAIT: verdicts[id] = WAIT
 			continue
-		if held.is_empty() and not _listed(run, view) and _below_tenth(run, view):
+		# Boards only get faster, so a full board's tenth place from any read still rules a run out.
+		if held.is_empty() and not _listed(run, view) and BoardStatus.below_tenth(run, view):
 			verdicts[id] = GO
 			continue
-		var state := str(BoardStatus.of_run(run, true, view, now_unix, by_board[run.board]).state)
+		var state := str(BoardStatus.of_run(run, true, view, float(read.get("read_unix", 0.0)), by_board[run.board]).state)
 		verdicts[id] = GO if state == BoardStatus.RANKED else NEVER if state == BoardStatus.NOT_LISTED else WAIT
 	return verdicts
 
@@ -88,9 +92,3 @@ static func _listed(run: Dictionary, view: Dictionary) -> bool:
 	for row: Dictionary in view.top:
 		if row.get("entry_id") == run.entry_id: return true
 	return false
-
-## Slower than, or as fast as, tenth place on a full board: our board would never take it
-## (backend leaderboards/view.ts mightPlace; on equal times the listed run finished first).
-static func _below_tenth(run: Dictionary, view: Dictionary) -> bool:
-	var top: Array = view.top
-	return top.size() >= BoardStatus.TOP_PLACES and int(run.ticks) >= int(top[BoardStatus.TOP_PLACES - 1].get("ticks", 0))

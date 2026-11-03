@@ -1232,7 +1232,7 @@ describe("pair keys by platform account in duels (PAIR-KEYS.md)", () => {
     const lines = await runInDurableObject(env.PLAYERS.getByName(a1.player_id), async (_, ctx) => ledgerLines(ctx.storage, "duelwin:", 16));
     expect(lines).toHaveLength(4);
     const paid = lines.filter(line => line.amount > 0).map(line => String(line.detail.opponent)).sort();
-    // One of the three wins over the same people counts, whichever came first, and the other pair's win counts.
+    // One of the three wins over the same people counts and the other pair's win counts. The ids-only and accounts-only wins meet through the line naming both, so a payment order where that line comes last can still count two.
     expect(paid).toHaveLength(2);
     expect(paid).toContain("R".repeat(64));
     expect(lines.filter(line => line.detail.reason === "same_pair")).toHaveLength(2);

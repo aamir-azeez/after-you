@@ -49,6 +49,15 @@ func keep_verdicts(verdicts: Dictionary) -> bool:
 	while judged.size() > MAX_JUDGED: judged.erase(judged.keys()[0])
 	return _save()
 
+## Account erasure (services/deleted_identity_stores.gd): every verdict goes, since they are kept
+## by run and not by player; the posted bests, which name only platform accounts, stay. The next
+## board reads work the verdicts out again. False when the file could not be written.
+static func forget_verdicts(file_path: String = PATH) -> bool:
+	if not FileAccess.file_exists(file_path): return AtomicFile.remove_unreadable(file_path)
+	var store: RefCounted = load("res://services/platform_games/platform_board_store.gd").new(file_path)
+	store.judged = {}
+	return store._save() and AtomicFile.remove_unreadable(file_path)
+
 func remember_posted(account_key: String, board: String, hundredths: int) -> bool:
 	var mine: Dictionary = posted.get(account_key, {})
 	if mine.get(board) == hundredths: return true

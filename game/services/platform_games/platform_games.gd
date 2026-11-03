@@ -107,7 +107,6 @@ var _offer_reading := false
 var _boards_queued := false
 var _boards_posting := false
 var _boards_again := false
-var _board_store: RefCounted
 ## The platform's board screen is opening (one at a time), and when it last opened.
 var _board_showing := false
 var _board_shown_at := -BOARD_SHOW_GAP_MS
@@ -147,7 +146,6 @@ func _open_state(path: String) -> void:
 func configure(test_provider: RefCounted, state_path: String) -> void:
 	_autostart = false
 	_board_store_path = state_path.get_basename() + "-boards.json"
-	_board_store = null
 	provider = test_provider
 	_open_state(state_path)
 	if not provider.account_changed.is_connected(_on_account_changed): provider.account_changed.connect(_on_account_changed)
@@ -608,6 +606,7 @@ func _cloud_allowed() -> bool:
 
 ## Progress may have changed (a chapter finished, Settings closed): sync after a quiet moment.
 func note_progress() -> void:
+	post_boards_soon()
 	if _cloud_allowed(): cloud.note()
 	elif signed_in() and state != null and state.capability().is_empty() and not _running and _account != null and _account.identity_state() == "ready":
 		# The daily answer expired in a long session: ask again, then sync.
@@ -663,7 +662,10 @@ func show_board(board: String, wanted: Callable = Callable()) -> Dictionary:
 	if not signed_in(): answer = await _sign_in_on_tap(wanted)
 	if answer.get("ok", false):
 		answer = await provider.show_board(BoardIds.id(board, kind()))
-		if answer.get("ok", false): _board_shown_at = Time.get_ticks_msec()
+		if answer.get("ok", false):
+			_board_shown_at = Time.get_ticks_msec()
+			# The button follows `changed`: tell it again once the gap is over.
+			if is_inside_tree(): get_tree().create_timer(BOARD_SHOW_GAP_MS / 1000.0 + 0.05).timeout.connect(func() -> void: changed.emit())
 	_board_showing = false
 	changed.emit()
 	return answer
@@ -701,7 +703,7 @@ func _post_boards_once() -> void:
 	var policy: Script = load(BOARD_POLICY)
 	var runs: Array = load(RUNS).runs_of(owner)
 	var store := _boards_store()
-	var verdicts: Dictionary = policy.judge(runs, load(LEADERBOARD_CLIENT).kept_for(owner), store.judged, Time.get_unix_time_from_system())
+	var verdicts: Dictionary = policy.judge(runs, load(LEADERBOARD_CLIENT).kept_for(owner), store.judged)
 	store.keep_verdicts(verdicts)
 	if not signed_in() or not load(LEADERBOARD_CLIENT).name_shown(owner): return
 	var generation := _generation
@@ -717,6 +719,7 @@ func _post_boards_once() -> void:
 		if answer.get("ok", false): store.remember_posted(account, board, int(due[board]))
 		elif str(answer.get("code", "")) in ["signed_out", "offline", "unavailable", "not_configured", "timeout"]: return
 
+## Read again for each pass (a few a session, one small file), so an erasure that cleared the
+## verdicts (services/deleted_identity_stores.gd) is never written back from memory.
 func _boards_store() -> RefCounted:
-	if _board_store == null: _board_store = load(BOARD_STORE).new(_board_store_path)
-	return _board_store
+	return load(BOARD_STORE).new(_board_store_path)

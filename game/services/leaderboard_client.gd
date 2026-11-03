@@ -63,7 +63,7 @@ func board(key: String, fresh: bool = false) -> Dictionary:
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
 	var view := valid_view(response.get("data"), key)
 	if view.is_empty(): return {"ok": false, "code": "invalid_board"}
-	_views[key] = {"at": Time.get_ticks_msec(), "view": view}
+	_views[key] = {"at": Time.get_ticks_msec(), "unix": Time.get_unix_time_from_system(), "view": view}
 	Placings.shared().learn(_owner, key, view)
 	Runs.clear_listed(_owner, key, view)
 	_tell_listeners()
@@ -91,10 +91,16 @@ func set_show_name(show: bool) -> bool:
 	_tell_listeners()
 	return kept
 
-## The boards the shared client of `owner` last read, however old, or {} (no request, and no
-## client made: making one here would drop the boards another screen's client keeps).
+## The boards the shared client of `owner` last read, however old, each with when it was read:
+## board -> {view, read_unix}. {} when no client of `owner` exists (no request, and no client
+## made: making one here would drop the boards another screen's client keeps).
 static func kept_for(owner: String) -> Dictionary:
-	return _shared.kept_views() if _shared != null and not owner.is_empty() and _shared._owner == owner else {}
+	var reads: Dictionary = {}
+	if _shared == null or owner.is_empty() or _shared._owner != owner: return reads
+	for key: String in _shared._views:
+		var held: Dictionary = _shared._views[key]
+		reads[key] = {"view": held.view, "read_unix": float(held.get("unix", 0.0))}
+	return reads
 
 ## Whether `owner` chose to show their name: the shared client's copy, else the phone's file.
 static func name_shown(owner: String, choice_path: String = CHOICE_PATH) -> bool:
