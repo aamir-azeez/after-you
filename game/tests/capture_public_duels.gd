@@ -171,7 +171,7 @@ func _run() -> void:
 	await process_frame
 	start._pick_chapter(Registry.LIGHTHOUSE_V2)
 	await _save("public-5a-post")
-	start.set_party_reason(PlayerCopy.PUBLIC_PARTNER_RULES % "Maya")
+	start.set_partner("Maya", MAYA_LOOK, PlayerCopy.PUBLIC_PARTNER_RULES % "Maya")
 	await _save("public-5b-post-partner-rules")
 	start.close()
 	# The lobby tile of a posted duel (board 5C) is in public-1a-lobby; the safety cards (board 6).

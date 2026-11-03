@@ -122,9 +122,12 @@ func _anyone() -> Button:
 func _posting_party() -> bool:
 	return not partner_name.is_empty() and _post_as == "party"
 
-## A fresh reason for posting with your partner (a lobby read since the page opened), drawn at once.
-func set_party_reason(reason: String) -> void:
-	if party_reason == reason: return
+## Your partner as a fresh lobby read has them (name "" once the party is gone, which posts alone)
+## and why posting with them is greyed, drawn at once.
+func set_partner(name_now: String, look: Dictionary, reason: String) -> void:
+	if partner_name == name_now and partner_look == look and party_reason == reason: return
+	partner_name = name_now
+	partner_look = look
 	party_reason = reason
 	if is_instance_valid(_friend_list): _render_friends()
 

@@ -147,7 +147,8 @@ func _hinted(duel_id: String, at_ms: int) -> void:
 		return
 	var asks := HintReads.route(client().last_lobby(), duel_id, at_ms)
 	if _under_page():
-		public().hinted_under(screen.overlay(), asks == HintReads.LOBBY)
+		# Under the list or Start a duel while the partner greys a party post or join: the lobby, spaced, redraws that page.
+		if asks == HintReads.LOBBY and public().reads_under(screen.overlay()): _ask_lobby(now, -1, RefreshClock.DUELS_LIST_HINT_GAP_MS, true)
 		return
 	if asks == HintReads.DUEL: _hint_reads.note(duel_id, at_ms)
 	elif asks == HintReads.LOBBY: _ask_lobby(now, -1, RefreshClock.DUELS_LIST_HINT_GAP_MS)
@@ -160,10 +161,10 @@ func _caught_up(since_ms: int) -> void:
 	_duel_reads.hint(now, since_ms)
 	_ask_lobby(now, since_ms)
 
-## One lobby read for a hint, while nothing but Party is over it (closing any other page reads it anyway),
-## no sooner than `gap_ms` after the last one began.
-func _ask_lobby(now: int, covered_since: int = -1, gap_ms: int = 0) -> void:
-	if _under_page(): return
+## One lobby read for a hint, while nothing but Party is over it (closing any other page reads it anyway)
+## or `under_page` says the page wants it, no sooner than `gap_ms` after the last one began.
+func _ask_lobby(now: int, covered_since: int = -1, gap_ms: int = 0, under_page := false) -> void:
+	if _under_page() and not under_page: return
 	if _lobby_reads.hint(now, covered_since, gap_ms): _lobby_asked = true
 
 ## Whether a page other than Party is over the lobby.
@@ -332,6 +333,7 @@ func _read_lobby(ticket: Dictionary) -> void:
 	if ghosts != null and answer.get("ok", false): ghosts.release_ended(answer.lobby)
 	var overlay: CanvasLayer = screen.overlay()
 	if answer.get("ok", false) and overlay is PartyPage: overlay.show_party(answer.lobby.party)
+	elif answer.get("ok", false) and overlay != null: public().lobby_read(overlay)
 	# The rules card once Duels opened, from its first answer, unless a page other than Party is up by then (the next read asks).
 	if answer.get("ok", false) and _rules_due and not _under_page():
 		_rules_due = false

@@ -42,7 +42,6 @@ const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
-const RefreshClock = preload("res://services/refresh_schedule.gd")
 const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
 
 ## The duels flow this belongs to; Main through its host.
@@ -64,9 +63,6 @@ var _opening := false
 var _switch_asked: Variant = null
 ## True while ask_rules checks the safety client, so a second ask waits for it.
 var _asking_rules := false
-## A lobby read for the partner's state (partner_again) is out, and when the last began (ticks ms).
-var _partner_reading := false
-var _partner_read_at := -RefreshClock.DUELS_LIST_HINT_GAP_MS
 
 func _init(duels_flow: Node) -> void:
 	flow = duels_flow
@@ -143,13 +139,18 @@ func ask_rules(lobby: Dictionary, again := false) -> void:
 	if safety.terms_accepted:
 		safety.accept_rules()
 		return
-	_rules_asked = true
+	# A page opened over the lobby meanwhile (a duel, a result): its next read asks instead.
+	if not again and flow._under_page():
+		flow._rules_due = true
+		return
 	_first_time(func() -> void: flow._refresh())
 
 ## The first-time card over whatever page is in front; `then` runs once the rules are accepted and the switch is on.
 ## With the switch on (the default) its Continue only asks for the rules and the name choice: it never sends the
-## switch, so a phone that has not heard the server's word yet can't turn a parent's off back on.
+## switch, so a phone that has not heard the server's word yet can't turn a parent's off back on. Any card shown
+## counts as the launch's ask, so opening Duels after it asks no more (ask_rules).
 func _first_time(then: Callable) -> void:
+	_rules_asked = true
 	var page: CanvasLayer = flow.screen.overlay() if flow.screen.overlay() != null else flow.screen
 	var name_on: bool = LeaderboardClient.shared(host().api, str(host().api.player_id)).show_name()
 	var continuing := switched_on()
@@ -246,7 +247,7 @@ func _show_list() -> void:
 func _read(page: CanvasLayer, index: int, pulled := false) -> void:
 	_scope = page.scope
 	_sort = page.sort
-	if pulled and partner_waiting(): partner_again(page)
+	if pulled and partner_waiting(): flow._refresh()
 	var serial: int = page.begin_read()
 	var asked_scope: String = page.scope
 	var asked_sort: String = page.sort
@@ -289,36 +290,28 @@ func partner_text() -> String:
 	if partner.is_empty(): return ""
 	return ListPage.reason_text(Spots.partner_reason(_partner_known()), str(partner.name), flow.client().limit("friend"))
 
-## Reads the lobby again for the partner's state and redraws `page` (the list, or Start a duel's
-## Post duel) with it: a pull, a hint while a page covers the lobby, or a refusal that named the
-## partner. One at a time, and a hint no sooner than DUELS_LIST_HINT_GAP_MS after the last.
-func partner_again(page: CanvasLayer, hinted := false) -> void:
-	var now := Time.get_ticks_msec()
-	if _partner_reading or (hinted and now - _partner_read_at < RefreshClock.DUELS_LIST_HINT_GAP_MS): return
-	_partner_reading = true
-	_partner_read_at = now
-	var answer: Dictionary = await flow.client().lobby()
-	_partner_reading = false
-	if not answer.get("ok", false) or not flow.is_open(): return
-	flow.screen.show_lobby(answer.lobby)
+## Whether a lobby hint should read the lobby while `page` covers it: the list or Start a duel,
+## while the partner greys a party post or join there (the hint may say they accepted the rules).
+func reads_under(page: CanvasLayer) -> bool:
+	return (page is ListPage or page is ChallengePage) and partner_waiting()
+
+## A lobby read landed (duels_flow.gd _read_lobby, the one read path) while `page` is up: the list
+## and Start a duel draw the partner as it says now (accepted, switched off, or gone, which joins
+## and posts alone).
+func lobby_read(page: CanvasLayer) -> void:
 	if not is_instance_valid(page) or not page.alive(): return
+	var partner := _partner()
 	if page is ListPage:
-		var partner := _partner()
 		page.partner_name = str(partner.get("name", ""))
 		page.partner_look = partner.get("look", {})
 		if page.partner_name.is_empty(): page.joining = Spots.ALONE
 		page.redraw()
-	elif page is ChallengePage: page.set_party_reason(partner_text())
-
-## A lobby hint while `page` covers the lobby: read again only while the partner greys a party
-## post or join there, since that is what the hint may have changed (they accepted the rules).
-func hinted_under(page: CanvasLayer, for_lobby: bool) -> void:
-	if for_lobby and (page is ListPage or page is ChallengePage) and partner_waiting(): partner_again(page, true)
+	elif page is ChallengePage: page.set_partner(str(partner.get("name", "")), partner.get("look", {}), partner_text())
 
 ## A post or join refused for the partner (their switch, their rules, or no party any more):
 ## the lobby again, so the page greys with the reason instead of saying it once more on the next tap.
-func _partner_refused(page: CanvasLayer, answer: Dictionary) -> void:
-	if str(answer.get("code", "")) in ["partner_public_off", "partner_rules_required", "party_required"]: partner_again(page)
+func _partner_refused(answer: Dictionary) -> void:
+	if str(answer.get("code", "")) in ["partner_public_off", "partner_rules_required", "party_required"]: flow._refresh()
 
 func _ask_join(page: CanvasLayer, row: Dictionary, seat: int, control: Control) -> void:
 	var reason: String = page.reason_of(row)
@@ -354,7 +347,7 @@ func _join(page: CanvasLayer, row: Dictionary, seat: int, joining: String, retri
 			host()._toast(PlayerCopy.PUBLIC_GONE)
 		_:
 			host()._toast(_failure_text(answer))
-			_partner_refused(page, answer)
+			_partner_refused(answer)
 
 ## Start a duel's Post duel: `joining` "alone" or "party" on `chapter`. A switch turned off,
 ## or rules not yet accepted, go through the first-time card first; a posted duel opens at once.
@@ -370,7 +363,7 @@ func post(page: CanvasLayer, joining: String, chapter: String, retried := false)
 	if _rules_first(answer, retried, again): return
 	if not answer.get("ok", false):
 		host()._toast(_failure_text(answer))
-		_partner_refused(page, answer)
+		_partner_refused(answer)
 		return
 	host()._toast(PlayerCopy.PUBLIC_POSTED)
 	page.close()

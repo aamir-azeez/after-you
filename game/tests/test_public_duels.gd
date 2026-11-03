@@ -375,7 +375,7 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 	send.pressed.emit()
 	_check(posted == [["party", BOARD]], "%s: Post duel posts with Maya on the chapter" % name)
 	# Maya has not accepted the community rules: Post duel with her greys with the reason; Alone posts.
-	start.set_party_reason(PlayerCopy.PUBLIC_PARTNER_RULES % "Maya")
+	start.set_partner("Maya", {}, PlayerCopy.PUBLIC_PARTNER_RULES % "Maya")
 	await _settle()
 	var post_reason := start.root.find_child("PublicPostReason", true, false) as Label
 	_check(send.disabled and post_reason != null and post_reason.text == PlayerCopy.PUBLIC_PARTNER_RULES % "Maya" and _inside(post_reason, safe), "%s: Post duel with Maya greys with the reason" % name)

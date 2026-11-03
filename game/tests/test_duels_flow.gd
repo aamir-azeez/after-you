@@ -1067,7 +1067,6 @@ func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow.close()
 	await _frames(2)
 
-## A duel as the server answers it, with this phone's side as `own` says.
 ## The community rules card before anything public: the first lobby read after Duels opens (once a
 ## launch) and a party invite just accepted, only while public duels are open, the switch is on and
 ## the lobby says the rules are not accepted. A partner without them greys Post duel with the reason.
@@ -1122,6 +1121,17 @@ func _rules_card(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	await _frames(4)
 	var start: CanvasLayer = flow.screen.overlay()
 	_check(start is ChallengePage and start.party_reason == PlayerCopy.PUBLIC_PARTNER_RULES % "Maya", "Post duel with a partner who has not accepted the rules says why: %s" % [start.get("party_reason") if start != null else null])
+	# Maya accepts while the page is up: the next lobby read (the one read path) clears it there.
+	api.replies["GET /v1/duels"] = lobby.call(true, true)
+	flow._refresh()
+	await _frames(6)
+	_check(start.party_reason == "" and start.partner_name == "Maya", "a lobby read after the partner accepted clears the reason on Start a duel")
+	# Maya leaves the party: Start a duel posts alone, never live with a partner who is gone.
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": null, "intact": false, "invites_in": [], "invite_out": null}, "duels": [],
+		"public": {"version": 1, "on": true, "show_name": false, "partner_on": null, "paused": false, "running": 0, "rules": true, "partner_rules": null}}}
+	flow._refresh()
+	await _frames(6)
+	_check(start.partner_name == "" and not start._posting_party(), "a partner who left takes With partner off Start a duel")
 	if start != null: start.close()
 	await _frames(2)
 	flow.close()
@@ -1130,6 +1140,7 @@ func _rules_card(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	main.relay_session.safety = null
 	PublicFlow._rules_asked = false
 
+## A duel as the server answers it, with this phone's side as `own` says.
 func _server_view(kind: String, own: Dictionary) -> Dictionary:
 	var view := _view(own)
 	if kind == "ghost":
