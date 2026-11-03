@@ -436,6 +436,19 @@ export class RoomV2 extends DurableObject<Env> {
     });
   }
   /**
+   * A finished standalone room as its member sees it, for posting its run again (leaderboards/routes.ts POST_PATH),
+   * with both members' looks as the finishing commit hands them over (`board_looks`) when `looks` and the room is
+   * complete. Reads only: no history note, no alarm.
+   */
+  boardSnapshot(player: string, looks: boolean): Promise<Outcome<RoomSnapshotV2 & { board_looks?: PairLooks }>> {
+    return this.project(player, undefined, () => {
+      const state = this.polledState(player, undefined, undefined);
+      if (!state.ok) return state;
+      const view = this.view(state.value, player);
+      return ok(looks && view.active_role === "complete" ? { ...view, board_looks: pairLooks(this.ctx.storage, view.host_id, view.guest_id) } : view);
+    });
+  }
+  /**
    * A standalone room poll from a member that already holds `known`. Every check
    * runs exactly as in `snapshot`, history support is still noted, and only then
    * an unchanged room answers with a small reply instead of the full view.

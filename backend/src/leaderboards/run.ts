@@ -3,7 +3,7 @@ import { chapter } from "../v2/chapters";
 import { nestedProof } from "../v2/checkpoint-chain";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
-import type { MutationV2 } from "../v2/room";
+import type { MutationV2, RoomSnapshotV2 } from "../v2/room";
 import { boardKey } from "./boards";
 import { boardLooksOf, type PairLooks } from "./run-looks";
 
@@ -76,8 +76,18 @@ export function runTicks(checkpoint: CheckpointV2, stages: number): { ticks: num
  */
 export async function finishedRun(mutation: MutationV2, context: unknown, handed?: unknown): Promise<LeaderboardRun | null> {
   const { receipt, room } = mutation;
-  if (context !== undefined || receipt.operation !== "turns" || room.active_role !== "complete") return null;
+  if (context !== undefined || receipt.operation !== "turns") return null;
   if (receipt.accepted_revision !== room.revision || receipt.branch !== room.branch) return null;
+  return roomRun(room, handed);
+}
+
+/**
+ * The run a finished standalone room holds, read from the room alone, or null. A finished room changes only by a
+ * turn, a fork or a join (v2/room.ts write), so while it is still complete its `updated_at` is when its final turn
+ * was accepted. Used by finishedRun and by a member posting the room's run again (routes.ts POST_PATH).
+ */
+export async function roomRun(room: RoomSnapshotV2, handed?: unknown): Promise<LeaderboardRun | null> {
+  if (room.active_role !== "complete") return null;
   const host = room.host_id, guest = room.guest_id;
   if (!guest || guest === host) return null;
   let stages: number;

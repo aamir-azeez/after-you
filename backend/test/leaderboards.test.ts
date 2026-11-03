@@ -16,6 +16,7 @@ import { forgetReplays } from "../src/leaderboards/replays";
 import { bytesDigest, decodeBlob, ENCODING_DEFLATE } from "../src/blob-codec";
 import { emptyView, type BoardView } from "../src/leaderboards/view";
 import { countingEnv, meterAllRows, meterRows } from "./meter";
+import { PLATFORM_LINKS_OBJECT } from "../src/platform-links";
 import { noteFullJourney } from "../src/pollen/wallet";
 import { POLLEN_CLIENT, withConfig } from "./config";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -828,7 +829,8 @@ describe("looks on rows (art 01)", () => {
     expect(retried.status).toBe(200);
     expect(await retried.text()).not.toContain("board_looks");
     expect((await board().view(RELAY_BOARD)).checking).toHaveLength(1);
-    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_BOARDS.submit", "LEADERBOARD_BOARDS.submit"]);
+    // The retry finds its run in the board the first post cached (submit.ts postRun), so it asks the board nothing.
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_BOARDS.submit"]);
     // Host first, as `members` and `names`.
     const [members] = await storedMembers();
     expect(members.map(member => member.look)).toEqual([HAT, DAISY]);
@@ -839,6 +841,17 @@ describe("looks on rows (art 01)", () => {
     expect(rows.board.written).toBe(plainRows.board.written);
     expect((await storedMembers())[0].map(member => member.look)).toEqual([undefined, undefined]);
     console.log(`final turn with looks and its retry: ${meter.calls.length} DO requests (${meter.calls.join(", ")}); board rows written ${rows.board.written} with looks, ${plainRows.board.written} without`);
+  });
+  it("keeps both looks on a run posted after its pair linked their platform accounts", async () => {
+    const RULE: Vars = { ...LOOKS, features: [...(LOOKS.features as string[]), "LEADERBOARD_REQUIRE_PLATFORM"] };
+    const { host, guest, played } = await dressedPair(RULE);
+    expect((await played.last(RULE)).status).toBe(200);
+    expect((await view(RELAY_BOARD, RULE)).checking).toEqual([]);
+    const links = env.PLATFORM_LINKS.getByName(PLATFORM_LINKS_OBJECT);
+    await links.link("play_games", "1".repeat(64), host.player_id, false); await links.link("play_games", "2".repeat(64), guest.player_id, false);
+    const posted = await call("/v1/leaderboards/post", "POST", guest, { schema_version: 1, room_id: played.room.room_id }, RULE);
+    expect(await posted.json()).toEqual({ schema_version: 1, status: "posted" });
+    expect((await storedMembers())[0].map(member => member.look)).toEqual([HAT, DAISY]);
   });
 
   it("serves a ranked row with both looks, also for a pair that hides its names, from the cached read", async () => {
@@ -903,5 +916,105 @@ describe("looks on rows (art 01)", () => {
     expect((await finishedRun(answer, undefined, [DAISY]))?.looks).toBeUndefined();
     expect((await finishedRun(answer, undefined))?.looks).toBeUndefined();
     expect((await finishedRun(answer, undefined, [HAT, DAISY]))?.looks).toEqual([HAT, DAISY]);
+  });
+});
+
+describe("pairs that share a player", () => {
+  it("ranks A and B, then B and C, as two entries, so B is on the board twice", async () => {
+    bests.live[RELAY_BOARD] = 1;
+    const a = await create(), b = await create(), c = await create();
+    const first = await almostDone(a, b), second = await almostDone(c, b);
+    expect((await first.last()).status).toBe(200);
+    expect((await second.last()).status).toBe(200);
+    const { entries } = await runJob();
+    expect(entries).toHaveLength(2);
+    await pass(entries);
+    const ids = [await entryId(first.room.room_id, first.room.branch), await entryId(second.room.room_id, second.room.branch)];
+    expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id).sort()).toEqual(ids.sort());
+    expect(await pairKey(a.player_id, b.player_id)).not.toBe(await pairKey(b.player_id, c.player_id));
+  });
+});
+
+describe("the platform rule (LEADERBOARD_REQUIRE_PLATFORM)", () => {
+  const PLATFORM: Vars = { ...ON, features: ["LEADERBOARDS", "LEADERBOARD_REQUIRE_PLATFORM"] };
+  const links = () => env.PLATFORM_LINKS.getByName(PLATFORM_LINKS_OBJECT);
+  let external = 0;
+  const link = async (account: Account) => {
+    expect((await links().link("play_games", (++external).toString(16).padStart(64, "0"), account.player_id, false)).status).toBe("linked");
+  };
+  const repost = (account: Account, roomId: string, vars = PLATFORM, target?: Env) => call("/v1/leaderboards/post", "POST", account, { schema_version: 1, room_id: roomId }, vars, {}, target);
+
+  it("keeps a run off the board while either player has no platform link, for one read and no row written", async () => {
+    for (const linked of [[], ["host"], ["guest"]]) {
+      await forgetViews(boardKeys());
+      const played = await almostDone(undefined, undefined, PLATFORM);
+      for (const who of linked) await link(who === "host" ? played.host : played.guest);
+      const meter = countingEnv(configured(PLATFORM));
+      const { value: answer, rows } = await meterRows({ board: board() as unknown as DurableObjectStub, links: links() as unknown as DurableObjectStub }, () => played.last(PLATFORM, meter.env));
+      expect(answer.status).toBe(200);
+      expect(Object.keys(await answer.json<MutationV2>())).not.toContain("leaderboard");
+      expect(meter.calls.filter(name => name.startsWith("LEADERBOARD") || name.startsWith("PLATFORM"))).toEqual(["PLATFORM_LINKS.linkedAmong"]);
+      expect(rows.links.written + rows.board.written).toBe(0);
+      expect(await view(RELAY_BOARD, PLATFORM)).toMatchObject({ top: [], checking: [] });
+    }
+  });
+  it("posts a run both of whose players are linked, any provider, with one more request than without the rule", async () => {
+    const played = await almostDone(undefined, undefined, PLATFORM);
+    await link(played.host);
+    expect((await links().link("game_center", "f".repeat(64), played.guest.player_id, false)).status).toBe("linked");
+    const meter = countingEnv(configured(PLATFORM));
+    expect((await played.last(PLATFORM, meter.env)).status).toBe(200);
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD") || name.startsWith("PLATFORM"))).toEqual(["PLATFORM_LINKS.linkedAmong", "LEADERBOARD_BOARDS.submit"]);
+    expect((await view(RELAY_BOARD, PLATFORM)).checking).toEqual([await entryId(played.room.room_id, played.room.branch)]);
+  });
+  it("reads no link while the rule is off, and says it is on only while it is", async () => {
+    const played = await almostDone();
+    const meter = countingEnv(configured(ON));
+    expect((await played.last(ON, meter.env)).status).toBe(200);
+    expect(meter.calls.filter(name => name.startsWith("PLATFORM"))).toEqual([]);
+    const capability = async (vars: Vars) => (await call("/v2/capabilities", "GET", played.host, undefined, vars, { "X-AfterYou-Leaderboards": "1" })).json<Record<string, unknown>>();
+    expect(await capability(ON)).not.toHaveProperty("leaderboards_platform_required");
+    expect(await capability(PLATFORM)).toMatchObject({ leaderboards_version: 1, leaderboards_platform_required: 1 });
+    expect(await capability({ ...ON, features: ["LEADERBOARD_REQUIRE_PLATFORM"] })).not.toHaveProperty("leaderboards_version");
+    // The post route is there only while the rule is.
+    expect((await repost(played.host, played.room.room_id, ON)).status).toBe(404);
+  });
+  it("posts the room's run once both have linked since it finished, from either member, and says who is missing until then", async () => {
+    const played = await almostDone(undefined, undefined, PLATFORM);
+    expect((await played.last(PLATFORM)).status).toBe(200);
+    const id = await entryId(played.room.room_id, played.room.branch);
+    expect(await (await repost(played.guest, played.room.room_id)).json()).toEqual({ schema_version: 1, status: "platform_required", you: false, partner: false });
+    await link(played.host);
+    expect(await (await repost(played.guest, played.room.room_id)).json()).toEqual({ schema_version: 1, status: "platform_required", you: false, partner: true });
+    expect(await (await repost(played.host, played.room.room_id)).json()).toEqual({ schema_version: 1, status: "platform_required", you: true, partner: false });
+    expect((await view(RELAY_BOARD, PLATFORM)).checking).toEqual([]);
+    await link(played.guest);
+    const meter = countingEnv(configured(PLATFORM));
+    expect(await (await repost(played.guest, played.room.room_id, PLATFORM, meter.env)).json()).toEqual({ schema_version: 1, status: "posted" });
+    console.log(`posting a room's run after linking: ${meter.calls.join(", ")}`);
+    expect(meter.calls.filter(name => !name.startsWith("PLAYERS."))).toEqual(["ROOMS_V2.boardSnapshot", "PLATFORM_LINKS.linkedAmong", "LEADERBOARD_BOARDS.submit"]);
+    expect((await view(RELAY_BOARD, PLATFORM)).checking).toEqual([id]);
+    // Its time and finish are the room's final turn: the job checks it as any other.
+    const { entries } = await runJob();
+    expect(entries.map(entry => [entry.entry_id, entry.ticks])).toEqual([[id, RELAY_TICKS]]);
+    // Again, from the other member: already there, and the cached board says so with no board request.
+    const again = countingEnv(configured(PLATFORM));
+    expect(await (await repost(played.host, played.room.room_id, PLATFORM, again.env)).json()).toEqual({ schema_version: 1, status: "posted" });
+    expect(again.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual([]);
+    expect((await view(RELAY_BOARD, PLATFORM)).checking).toEqual([id]);
+  });
+  it("posts nothing for a room that is not a finished run, an assisted one, or someone else's", async () => {
+    const played = await almostDone(undefined, undefined, PLATFORM);
+    await link(played.host); await link(played.guest);
+    expect(await (await repost(played.host, played.room.room_id)).json()).toEqual({ schema_version: 1, status: "not_postable" });
+    const assisted = await almostDone(undefined, undefined, PLATFORM, true);
+    expect((await assisted.last(PLATFORM)).status).toBe(200);
+    await link(assisted.host); await link(assisted.guest);
+    expect(await (await repost(assisted.host, assisted.room.room_id)).json()).toEqual({ schema_version: 1, status: "not_postable" });
+    expect((await played.last(PLATFORM)).status).toBe(200);
+    const stranger = await create();
+    expect((await repost(stranger, played.room.room_id)).status).toBe(404);
+    expect((await call("/v1/leaderboards/post", "POST", played.host, { schema_version: 1, room_id: "nope" }, PLATFORM)).status).toBe(400);
+    expect((await call("/v1/leaderboards/post", "GET", played.host, undefined, PLATFORM)).status).toBe(405);
   });
 });

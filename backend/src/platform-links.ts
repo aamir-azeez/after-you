@@ -85,6 +85,15 @@ export class PlatformLinks extends DurableObject<Env> {
     if (!PLAYER.test(playerId)) return 0;
     return this.ctx.storage.sql.exec("DELETE FROM platform_links WHERE player_id=?", playerId).rowsWritten;
   }
+  /**
+   * Which of these players have a link for any provider (leaderboards/platform-rule.ts): one indexed read on
+   * platform_links_player, nothing written. Ids that are not player ids are left out.
+   */
+  linkedAmong(playerIds: string[]): string[] {
+    const ids = [...new Set(playerIds.filter(id => PLAYER.test(id)))].slice(0, 2);
+    if (ids.length === 0) return [];
+    return this.ctx.storage.sql.exec<{ player_id: string }>(`SELECT DISTINCT player_id FROM platform_links WHERE player_id IN (${ids.map(() => "?").join(",")})`, ...ids).toArray().map(row => row.player_id);
+  }
   /** Tests and operator checks only: is this player linked for this provider. */
   linkedProviders(playerId: string): string[] {
     return this.ctx.storage.sql.exec<{ provider: string }>("SELECT provider FROM platform_links WHERE player_id=? ORDER BY provider", playerId).toArray().map(row => row.provider);

@@ -1149,5 +1149,33 @@ describe("duel looks", () => {
     const changed = await meterRows(member, () => looksLobby(a1));
     expect(changed.rows.a1.written).toBe(1);
     expect((await partyRow(a1)).look).toEqual({ hat: "seashell" });
+  });
+});
+
+describe("the platform rule for board posts", () => {
+  // LEADERBOARD_REQUIRE_PLATFORM keeps unlinked pairs' runs off the board (leaderboards/platform-rule.ts); duels never wait on a board entry.
+  const RULE = ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "LEADERBOARD_REQUIRE_PLATFORM"];
+  const PLATFORM = { ...ON, CONFIG: configJson({ features: RULE }) };
+  async function playWith(room: RoomSnapshotV2, players: [Account, Account], run: Awaited<ReturnType<typeof relayRun>>, vars: Record<string, string>): Promise<void> {
+    for (const [who, recording, checkpoint] of run.turns) room = (await ok<MutationV2>(call(`/v2/rooms/${room.room_id}/turns`, "POST", players[who], turn(room, recording, checkpoint), vars))).room;
+  }
+  it("still decides a checked friend duel and a ghost race of pairs with no platform link, whose runs stay off the board", async () => {
+    await checksOn(configJson({ features: [...RULE, "DUEL_RUN_CHECKS"] }));
+    const { a1, a2, b1, b2 } = await pairs();
+    const { duel, joinedA, joinedB } = await friendRooms(a1, a2, b1, b2);
+    await playWith(joinedA, [a1, a2], await relayRun(0), PLATFORM);
+    await playWith(joinedB, [b1, b2], await relayRun(40), PLATFORM);
+    const entries = (await job()).entries;
+    // Only the duel's own two runs wait for the check: neither run entered the board.
+    expect(entries).toHaveLength(2);
+    expect((await env.LEADERBOARD_BOARDS.getByName(RELAY).view(RELAY)).checking).toEqual([]);
+    await verdicts(entries, () => true);
+    expect((await detail(a1, duel)).duel.result).toMatchObject({ outcome: "won", reason: "faster", margin_ticks: 40 });
+    const started = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }, PLATFORM))).duel;
+    const room = await ok<RoomSnapshotV2>(openRoom(a2, started, crypto.randomUUID(), PLATFORM));
+    const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a1, { invite_code: room.invite_code }, PLATFORM));
+    await playWith(joined, [a2, a1], await relayRun(0), PLATFORM);
+    expect((await lobby(a1, PLATFORM)).duels.find(item => item.duel_id === started.duel_id)).toMatchObject({ status: "decided" });
+    expect((await env.LEADERBOARD_BOARDS.getByName(RELAY).view(RELAY)).checking).toEqual([]);
   }, 60_000);
 });

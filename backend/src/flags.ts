@@ -62,6 +62,8 @@ export const FLAG_VARS = Object.freeze({
   pollenSandboxAppStore: "POLLEN_SANDBOX_APP_STORE",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
+  /** Leaderboard posts need platform accounts (leaderboards/platform-rule.ts): a finished together run enters its board only when both players have a Play Games or Game Center link, and phones learn it from the leaderboards capability. Needs LEADERBOARDS. Keep it off while Game Center is off, or iPhone pairs can never post. */
+  leaderboardRequirePlatform: "LEADERBOARD_REQUIRE_PLATFORM",
   /** Duels (duels/): parties, friend challenges, ghost races, the duel premium and win bonus, and their capability. Needs LEADERBOARDS: duels live in the boards. */
   duels: "DUELS",
   /** Duel run checks (duels/model.ts awaitsCheck): friend duel runs, and ghost race runs faster than the developers' ghost, wait for the board's replay check before the duel is decided. Off (the owner's choice, 2026-11-02), every duel is decided as its runs finish and a run still waiting counts as passed. Needs DUELS. */
