@@ -33,6 +33,11 @@ const SHEET_WIDTH := 1000.0
 const SHEET_CHROME := 250.0
 const LIST_LEAST := 140.0
 const ROW_GAP := 4
+## Heights the list is sized from, set before the sheet lays out (a wrapped
+## line has no width yet): a row, a one or two line note, the limit bar.
+const ROW_HEIGHT := Rows.TARGET + 2.0
+const NOTE_HEIGHT := 56.0
+const BANNER_HEIGHT := 48.0
 
 ## source: "board" (entry_id the run's) or "developer" (Our run, entry_id null).
 signal race_requested(source: String, entry_id: Variant, control: Control)
@@ -96,17 +101,18 @@ func show_board(rows: Array, mine_by_id: Dictionary, full: bool, limit: int, dev
 	if rows.is_empty():
 		_list.add_child(Kit.wrapped(PlayerCopy.LEADERBOARD_EMPTY, 18))
 		if developer_ticks > 0: _list.add_child(_our_run(developer_ticks, full))
+		_fit(NOTE_HEIGHT + (ROW_GAP + ROW_HEIGHT if developer_ticks > 0 else 0.0), full)
 	for row: Dictionary in rows:
 		var pending := bool(row.get("pending", false))
 		var race := Callable() if full or pending else func(control: Control): race_requested.emit("board", row.entry_id, control)
 		_list.add_child(Rows.ranked(row, mine_by_id.has(row.entry_id), compact, [Rows.race_cell(race, compact, pending)]))
-	_fit(rows.size())
+	if not rows.is_empty(): _fit(rows.size() * ROW_HEIGHT + (rows.size() - 1) * ROW_GAP, full)
 	modal.refresh_focus_order()
 
 func _note_only(line: String) -> void:
 	_clear()
 	_list.add_child(Kit.wrapped(line, 18))
-	_fit(1)
+	_fit(NOTE_HEIGHT, false)
 
 func _clear() -> void:
 	Kit.clear(_banner)
@@ -124,15 +130,15 @@ func _our_run(ticks: int, full: bool) -> Button:
 	button.name = "RacePickerOurRun"
 	Kit.icon_on(button, Rows.RACE_ICON, true, 20)
 	button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	button.custom_minimum_size.x = 200
+	button.custom_minimum_size.x = 230
 	if full:
 		button.disabled = true
 		DashedBox.grey(button)
 	else: button.pressed.connect(func(): race_requested.emit("developer", null, button))
 	return button
 
-## The rows scroll once ten of them no longer fit under the sheet's heading.
-func _fit(count: int) -> void:
-	var tall := maxf(1.0, float(count)) * (Rows.TARGET + 2.0) + maxf(0.0, float(count - 1)) * ROW_GAP
-	var room := maxf(LIST_LEAST, get_viewport_rect().size.y - SHEET_CHROME - (_banner.get_combined_minimum_size().y if _banner.get_child_count() > 0 else 0.0))
+## The list is `tall`, and scrolls once that no longer fits under the sheet's
+## heading (and the limit bar while `banner`).
+func _fit(tall: float, banner: bool) -> void:
+	var room := maxf(LIST_LEAST, get_viewport_rect().size.y - SHEET_CHROME - (BANNER_HEIGHT if banner else 0.0))
 	_scroll.custom_minimum_size.y = minf(tall, room)

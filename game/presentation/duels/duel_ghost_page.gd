@@ -96,7 +96,8 @@ func _top_button(key: String, has_times: bool) -> Button:
 	button.name = "RaceTop_" + key.replace("@", "_")
 	Kit.icon_on(button, Icons.LEADERBOARD, true, 22)
 	button.add_theme_constant_override("h_separation", 10)
-	button.custom_minimum_size.x = 128
+	# Wide enough for the trophy beside its words: an expanding icon gets only the room the words leave.
+	button.custom_minimum_size.x = 128 if has_times else 170
 	if has_times: button.pressed.connect(func(): picker_requested.emit(key, button))
 	else:
 		button.disabled = true
