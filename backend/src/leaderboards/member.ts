@@ -27,6 +27,9 @@ import type { Look } from "../pollen/catalog";
  */
 export type MemberState = { schema_version: 1; show_name: boolean; boards: string[]; revision: number; erased?: true };
 
+/** A repeated name choice tells the boards again at most this often (LeaderboardMember.touch). */
+export const MEMBER_REPEAT_GAP_MS = 10 * 60_000;
+
 function blank(): MemberState { return { schema_version: 1, show_name: false, boards: [], revision: 0 }; }
 
 export class LeaderboardMember extends DurableObject<Env> {
@@ -40,11 +43,23 @@ export class LeaderboardMember extends DurableObject<Env> {
     const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM lb_member WHERE id=1").toArray()[0];
     return row ? { ...blank(), ...JSON.parse(row.data) as MemberState } : blank();
   }
-  /** Sets the name choice (or, with `show` undefined, keeps it) and moves the revision on; returns the state, whose boards the caller tells. */
-  touch(show?: boolean): MemberState {
+  /** When a repeated choice last told the boards (memory only): at most once per MEMBER_REPEAT_GAP_MS. */
+  private repeatedAt = 0;
+  /**
+   * Sets the name choice (or, with `show` undefined, keeps it) and moves the revision on; returns the state, whose boards the caller tells.
+   * A choice the member already holds writes nothing and keeps the revision, so the boards save only where they missed one
+   * (a reply lost after a partial update); `quiet` when such a repeat came within MEMBER_REPEAT_GAP_MS of the last, and no board is told.
+   */
+  touch(show?: boolean): MemberState & { quiet?: true } {
     return this.ctx.storage.transactionSync(() => {
       const state = this.read();
       if (state.erased) return state;
+      if (show !== undefined && show === state.show_name) {
+        const now = Date.now();
+        if (now - this.repeatedAt < MEMBER_REPEAT_GAP_MS) return { ...state, quiet: true as const };
+        this.repeatedAt = now;
+        return state;
+      }
       if (show !== undefined) state.show_name = show;
       state.revision++;
       this.write(state);

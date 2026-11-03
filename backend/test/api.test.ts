@@ -51,6 +51,8 @@ async function complete(room: RoomSnapshot, a: Credentials, b: Credentials) {
   const secondResponse = await commit(next, second, synthetic("b", room.level_id as typeof LEVEL_IDS[0]));
   expect(secondResponse.status).toBe(200); return secondResponse.json<RoomSnapshot>();
 }
+/** Drops a player's remembered Full Journey answer, as its quarter of an hour passing or an evicted Player does. */
+const forgetEntitlement = (id: string) => env.PLAYERS.getByName(id).noteEntitlement(id, null);
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("native client HTTP contract in Workers runtime", () => {
@@ -262,7 +264,8 @@ describe("native client HTTP contract in Workers runtime", () => {
     const committed = await send("turns", turn, b); expect(committed.status).toBe(200); current = await committed.json<RoomSnapshot>();
     const fork = { base_revision: current.revision, idempotency_key: key() };
     const forked = await send("fork", fork, a); expect(forked.status).toBe(200); current = await forked.json<RoomSnapshot>();
-    expect(provider).toHaveBeenCalledTimes(3);
+    // One provider check; the host's verified answer is then remembered for the sitting (entitlement.ts EntitlementMemo).
+    expect(provider).toHaveBeenCalledTimes(1);
     provider.mockImplementation(async () => new Response(null, { status: 503 }));
     for (const [operation, body, actor] of [["advance", advance, a], ["turns", turn, b], ["fork", fork, a]] as const) {
       const retried = await send(operation, body, actor); expect(retried.status).toBe(200);
@@ -270,11 +273,13 @@ describe("native client HTTP contract in Workers runtime", () => {
       expect(snapshot).toMatchObject({ revision: current.revision, attempt: current.attempt, level_index: current.level_index, recordings: current.recordings });
       if (actor === b) expect(snapshot.invite_code).toBeUndefined();
     }
-    expect(provider).toHaveBeenCalledTimes(3);
+    expect(provider).toHaveBeenCalledTimes(1);
     const conflict = await send("turns", { ...turn, recording: { ...turn.recording, catch_assistance: false } }, b);
-    expect(conflict.status).toBe(409); expect(provider).toHaveBeenCalledTimes(3);
+    expect(conflict.status).toBe(409); expect(provider).toHaveBeenCalledTimes(1);
+    // Once the memo is gone (its quarter of an hour, or an evicted Player), a new mutation asks the provider again.
+    await forgetEntitlement(a.player_id);
     expect((await send("turns", { ...turn, base_revision: current.revision, idempotency_key: key() }, b)).status).toBe(503);
-    expect(provider).toHaveBeenCalledTimes(4);
+    expect(provider).toHaveBeenCalledTimes(2);
     expect(await (await call(`/v1/rooms/${room.room_id}`, "GET", undefined, a)).json()).toEqual(current);
   });
   it("uses the host's verified purchase for a guest entering premium and rejects revocation", async () => {
@@ -294,6 +299,8 @@ describe("native client HTTP contract in Workers runtime", () => {
     expect(String(spy.mock.calls[0][0])).toBe(`https://api.revenuecat.com/v2/projects/projtest/customers/${a.player_id}/active_entitlements?limit=100`);
     current = await premium.json<RoomSnapshot>(); expect(current.level_index).toBe(3);
     spy.mockResolvedValueOnce(Response.json({ object: "list", items: [], next_page: null }));
+    // A revocation shows once the host's remembered answer is gone (at most HOST_ACCESS_FRESH_MS, as a room's own memo).
+    await forgetEntitlement(a.player_id);
     const revoked = await worker.fetch(new Request(`https://after-you.test/v1/rooms/${room.room_id}/turns`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Player-Id": b.player_id, Authorization: "Bearer " + b.device_token },
       body: JSON.stringify({ base_revision: current.revision, idempotency_key: key(), recording: synthetic("a", current.level_id as typeof LEVEL_IDS[0]) })

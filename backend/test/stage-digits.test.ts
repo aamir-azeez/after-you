@@ -3,7 +3,7 @@ import { reset } from "cloudflare:test";
 import { afterEach, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
-import { withConfig } from "./config";
+import { openCostly, withConfig } from "./config";
 import { RELAY_KEY } from "../src/v2/protocol";
 import { TERMS_VERSION } from "../src/public-policy";
 
@@ -104,7 +104,7 @@ const EXPECTED: Record<string, string> = {
 it("keeps every published safety-report and photo-transfer stage-digit outcome on a two-stage room", async () => {
   const on = { ...flags, PHOTO_TRANSFER_ENABLED: "true" };
   const send = (path: string, method: string, account: Account | undefined, body: unknown, overrides: Record<string, string> = {}) => {
-    const configured: Env = withConfig({ ...env, ...on, ...overrides });
+    const configured: Env = withConfig({ ...env, ...openCostly(env), ...on, ...overrides });
     return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.18." + (++requestNo % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: JSON.stringify(body) }), configured);
   };

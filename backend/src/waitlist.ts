@@ -1,8 +1,9 @@
 import { JSON_HEADERS, errorResponse, json } from "./http";
 import { flags, type ServerVars } from "./flags";
 import { APP } from "./config";
-import { ApiError, boundedJson, digest, exactKeys, object } from "./protocol";
+import { ApiError, boundedJson, exactKeys, object } from "./protocol";
 import { logWarning } from "./log";
+import { limitWaitlist, limitWaitlistAddress } from "./limits";
 import { MIN_CONFIRM_SECRET_LENGTH, TOKEN_PATTERN, signConfirmToken, verifyConfirmToken } from "./waitlist-token";
 import { confirmEmail, sender } from "./waitlist-email";
 
@@ -58,7 +59,7 @@ export async function routeWaitlist(request: Request, path: string, env: Waitlis
     if (path === WAITLIST_PATH && request.method === "GET") return json({ schema_version: 1, site_key: config.siteKey }, 200, CORS);
     if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     const ip = request.headers.get("CF-Connecting-IP");
-    if (!(await env.PUBLIC_LIMITER.limit({ key: await digest("waitlist:" + ipKey(ip)) })).success) throw new ApiError(429, "rate_limited");
+    await limitWaitlist(request, env);
     return path === WAITLIST_PATH ? await signUp(request, ip, env, config) : await confirm(request, env, config);
   } catch (error) {
     return errorResponse(error, error instanceof ApiError && error.code === FULL ? { ...CORS, "Retry-After": "3600" } : CORS, "waitlist_unavailable");
@@ -121,19 +122,7 @@ export function inboxKey(email: string): string {
   return local + "@" + domain;
 }
 async function limitAddress(env: WaitlistEnv, scope: string, email: string): Promise<void> {
-  if (!(await env.WAITLIST_ADDRESS_LIMITER.limit({ key: await digest(scope + inboxKey(email)) })).success) throw new ApiError(429, "rate_limited");
-}
-
-/** The limiter's IP key: an IPv4 address as is (also when mapped into IPv6), an IPv6 address as its /64. */
-export function ipKey(ip: string | null): string {
-  if (!ip) return "local";
-  const v4 = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(ip);
-  if (v4) return v4[1];
-  if (!ip.includes(":")) return ip;
-  const [head, tail] = ip.toLowerCase().split("::");
-  const front = head ? head.split(":") : [], back = tail === undefined ? [] : tail ? tail.split(":") : [];
-  const groups = tail === undefined ? front : [...front, ...Array(Math.max(0, 8 - front.length - back.length)).fill("0"), ...back];
-  return groups.slice(0, 4).map(group => group.replace(/^0+(?=.)/, "")).join(":") + "::/64";
+  await limitWaitlistAddress(env, scope + inboxKey(email));
 }
 
 async function upstream(service: string, step: string, url: string, init: RequestInit): Promise<Response> {

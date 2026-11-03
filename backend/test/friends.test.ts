@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { withConfig } from "./config";
+import { openCostly, withConfig } from "./config";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { FRIEND_REQUEST_TTL_MS, MAX_FRIENDS } from "../src/friends";
 import { RELAY_KEY } from "../src/v2/chapters";
@@ -17,7 +17,7 @@ const value = <T>(r: Outcome<T>): T => { if (!r.ok) throw new Error(r.code); ret
 async function call(path: string, method = "GET", a?: Account, body?: unknown, overrides: Partial<Env> = {}) {
   return worker.fetch(new Request("https://friends.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.7." + ++address, ...(a ? { "X-Player-Id": a.player_id, Authorization: "Bearer " + a.device_token } : {}) },
-    body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, ...overrides }));
+    body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, ...openCostly(env), ...overrides }));
 }
 async function create(): Promise<Account> { const r = await call("/v1/identity", "POST", undefined, {}); expect(r.status).toBe(201); return r.json<Account>(); }
 async function request(a: Account, b: Account) { return call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: b.player_id }); }
@@ -129,7 +129,7 @@ describe("bounded friends by code", () => {
 
   it("does not let a list read erase an outgoing request between the two durable writes", async () => {
     const a = await create(), b = await create(), id = randomToken(16), hash = await digest(a.device_token);
-    const proposed = value(await env.PLAYERS.getByName(a.player_id).friendPropose(a.player_id, hash, b.player_id, id));
+    const proposed = value(await env.PLAYERS.getByName(a.player_id).friendPropose(a.player_id, hash, b.player_id, id)).link;
     expect((await (await call("/v1/friends", "GET", a)).json<List>()).friends).toEqual([]);
     expect(await env.PLAYERS.getByName(a.player_id).friendEdge(a.player_id, b.player_id)).toMatchObject({ link: { request_id: id } });
     value(await env.PLAYERS.getByName(b.player_id).friendReceive(b.player_id, a.player_id, id, proposed.created_at));
@@ -142,6 +142,8 @@ describe("bounded friends by code", () => {
     const half = await (await call("/v1/friends", "GET", b)).json<List>();
     expect(half.friends[0]).toMatchObject({ status: "incoming", online: false, join_available: false });
     expect((await accept(b, a, sent.request_id)).status).toBe(200);
+    // b's own approval was already stored, so the accept wrote nothing on b's side and b's list keeps its refresh floor.
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31_000);
     expect((await (await call("/v1/friends", "GET", b)).json<List>()).friends[0]).toMatchObject({ status: "accepted", online: true });
   });
 

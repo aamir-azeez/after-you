@@ -533,6 +533,16 @@ describe("names and privacy", () => {
     expect((await view()).top[0].names).toEqual(["Ada", "Cy"]);
     await show(host, false);
     expect((await view()).top[0].names).toBeNull();
+    // The same choice again writes no row: neither the member nor any board (it only repairs a board that missed it).
+    const member = env.LEADERBOARD_MEMBERS.getByName(host.player_id) as unknown as DurableObjectStub;
+    const repeat = await meterRows({ member, board: board() as unknown as DurableObjectStub }, () => show(host, false));
+    expect(repeat.value.status).toBe(200);
+    expect(repeat.rows.member.written).toBe(0); expect(repeat.rows.board.written).toBe(0);
+    // Repeated again within MEMBER_REPEAT_GAP_MS, the boards are not even asked.
+    const counted = countingEnv(withConfig({ ...env, ...ON }));
+    const quiet = await worker.fetch(new Request("https://leaderboards.test/v1/leaderboards/me", { method: "PUT", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.51.100.77", "X-Player-Id": host.player_id, Authorization: "Bearer " + host.device_token },
+      body: JSON.stringify({ schema_version: 1, show_name: false }) }), counted.env);
+    expect(quiet.status).toBe(200); expect(counted.calls.filter(name => name.startsWith("LEADERBOARD_BOARDS."))).toEqual([]);
   });
   it("takes a name off the boards when an operator clears it, and forgets an erased account", async () => {
     const { host, guest } = await rankedPair();

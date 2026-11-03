@@ -3,6 +3,7 @@ import { flags, type ServerVars } from "./flags";
 import { json } from "./http";
 import { GAME_CENTER_WINDOW_MS, gameCenterNonceSource, playGamesConfig, verifyGameCenter, verifyPlayGames, type Verified } from "./platform-verify";
 import { PLATFORM_LINKS_OBJECT, type PlatformProvider } from "./platform-links";
+import { limitPlatformLink, limitPlatformRestore } from "./limits";
 
 /**
  * Platform games accounts (Play Games, Game Center) as a way back to an existing friend identity.
@@ -67,11 +68,6 @@ async function prove(kind: PlatformProvider, credential: unknown, env: ServerVar
   return { externalHash: await digest(`${kind}:${verified.external_id}`), nonce, nonceExpiresAt: Date.now() + 2 * GAME_CENTER_WINDOW_MS };
 }
 
-async function limitPublic(request: Request, env: Env): Promise<void> {
-  // Restore is public and costs two upstream calls: a tight IP bucket of its own key space.
-  const ip = await digest(request.headers.get("CF-Connecting-IP") || "local");
-  if (!(await env.TESTER_CODE_LIMITER.limit({ key: "platform-ip:" + ip })).success) throw new ApiError(429, "rate_limited");
-}
 
 /** Signed-in link and unlink. Returns null for any other path, or when the provider is off, so routing falls through. */
 export async function routePlatform(request: Request, path: string, playerId: string, env: Env & ServerVars): Promise<Response | null> {
@@ -91,7 +87,7 @@ export async function routePlatform(request: Request, path: string, playerId: st
   // A link can later rotate this identity's recovery code (restore), so it needs the recovery code too:
   // a device token alone never gets that power. Checked before any upstream call.
   const recovery = text(input.recovery_code, SECRET_PATTERN, "invalid_recovery");
-  if (!(await env.TESTER_CODE_LIMITER.limit({ key: "platform-player:" + playerId })).success) throw new ApiError(429, "rate_limited");
+  await limitPlatformLink(env, playerId);
   if (!(await env.PLAYERS.getByName(playerId).recoveryMatches(await digest(recovery)))) throw new ApiError(401, "invalid_recovery");
   const proof = await prove(kind, input.credential, env);
   const answer = await links.link(kind, proof.externalHash, playerId, input.replace === true, proof.nonce, proof.nonceExpiresAt);
@@ -102,7 +98,7 @@ export async function routePlatform(request: Request, path: string, playerId: st
 /** Public restore. Null when no provider is on, so the path falls through to auth() (401) as before. */
 export async function routePlatformRestore(request: Request, path: string, env: Env & ServerVars): Promise<Response | null> {
   if (path !== RESTORE_PATH || request.method !== "POST" || !anyProviderEnabled(env)) return null;
-  await limitPublic(request, env);
+  await limitPlatformRestore(request, env);
   const input = object(await boundedJson(request, MAX_BODY));
   exactKeys(input, ["schema_version", "provider", "credential", "idempotency_key", "next_device_token", "next_recovery_code", "check"]);
   // Provider first: a phone with no identity learns on (400) from off (404) without any proof.

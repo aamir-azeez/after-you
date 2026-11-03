@@ -28,6 +28,7 @@ import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
 import { endReactionField, endReactionsWanted, FACE_PACKS_VERSION, facePacksWanted } from "./end-reactions";
 import { requireOwnedFaces } from "./face-packs";
+import { limitRoomTransfer } from "../limits";
 import { runReactionField, runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { CHAPTER_NOT_OPEN, chapterOpen, openChapters } from "./chapter-unlocks";
@@ -203,7 +204,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (request.method === "GET" && !key && (!action || action === "manifest")) return json(unwrap(await target.replayTransfer(playerId, !action, looksShown(request, env))));
     if (request.method === "GET" && action === "operations" && key) return json(unwrap(await target.replayTransferOperation(playerId, text(key, IDEMPOTENCY_PATTERN))));
     if (request.method === "POST" && !key && (action === "ack" || action === "restore")) {
-      if (!(await env.PHOTO_ACK_LIMITER.limit({ key: "replay:" + playerId + ":" + roomId })).success) throw new ApiError(429, "replay_transfer_rate_limited");
+      await limitRoomTransfer(env, "replay", playerId, roomId);
       const input = await boundedJson(request, action === "restore" ? MAX_REPLAY_ARCHIVE_BYTES + 4096 : 4096);
       await reauthorize(request, playerId, env);
       if (action === "ack") return json(unwrap(await target.acknowledgeReplayTransfer(playerId, input)));
@@ -220,7 +221,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const position = item === undefined ? -1 : parsePosition(item);
     if (request.method === "GET" && !action && position >= 0) return bytes(unwrap(await target.historyAttempt(playerId, position, support)));
     if (request.method !== "POST" || position < 0) throw new ApiError(405, "method_not_allowed");
-    if (!(await env.PHOTO_ACK_LIMITER.limit({ key: "history:" + playerId + ":" + roomId })).success) throw new ApiError(429, "history_rate_limited");
+    await limitRoomTransfer(env, "history", playerId, roomId);
     if (!action) {
       const body = await boundedBytes(request, MAX_ATTEMPT_BYTES + 1);
       await reauthorize(request, playerId, env);
@@ -238,7 +239,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireInteraction(env, playerId, "relay", roomId, context, safetyToken);
     if (action === "delivery" && request.method === "GET") return json(unwrap(await target.photoDelivery(playerId, turnId, context)));
     if (action === "ack" && request.method === "POST") {
-      if (!(await env.PHOTO_ACK_LIMITER.limit({ key: playerId + ":" + roomId })).success) throw new ApiError(429, "photo_ack_rate_limited");
+      await limitRoomTransfer(env, "photo", playerId, roomId);
       return json(unwrap(await target.acknowledgePhoto(playerId, turnId, await boundedJson(request, 4096), context)));
     }
     throw new ApiError(405, "method_not_allowed");

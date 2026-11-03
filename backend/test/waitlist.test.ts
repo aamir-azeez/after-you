@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { inboxKey, ipKey, normalEmail } from "../src/waitlist";
+import { inboxKey, normalEmail } from "../src/waitlist";
+import { ipKey } from "../src/limits";
 import { CONFIRM_TTL_SECONDS, signConfirmToken, verifyConfirmToken } from "../src/waitlist-token";
 import { confirmEmail } from "../src/waitlist-email";
 import { APP } from "../src/config";

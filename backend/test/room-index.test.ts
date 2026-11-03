@@ -586,10 +586,10 @@ describe("room index costs and erasure", () => {
       expect(await links(owner)).toEqual([]);
       const job = () => runInDurableObject(safety, async (_, ctx) => readErasure(ctx.storage));
       const due = async () => { await runInDurableObject(safety, async (_, ctx) => { const current = readErasure(ctx.storage)!; current.next_at = Date.now(); writeErasure(ctx.storage, current); }); await runDurableObjectAlarm(safety); };
-      // The provider refuses until the job holds after 8 attempts; nothing else would resume it.
+      // The provider refuses through the 8 fast attempts; the job then retries once a day (safety.ts ERASURE_STALLED_RETRY_MS).
       for (let attempt = 0; attempt < 10 && (await job())!.attempts < 8; attempt++) await due();
       expect(await job()).toMatchObject({ state: "pending", attempts: 8 });
-      expect(await runInDurableObject(safety, async (_, ctx) => ctx.storage.getAlarm())).toBeNull();
+      expect(await runInDurableObject(safety, async (_, ctx) => ctx.storage.getAlarm())).toBe((await job())!.next_at);
       const ack = () => call("/v1/identity/deletion-ack", "POST", owner, { schema_version: 1 });
       // The device's acknowledgement retry resumes the held job and answers as before.
       expect((await ack()).status).toBe(401);

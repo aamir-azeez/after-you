@@ -51,3 +51,11 @@ export function withConfig<T extends object>(vars: T): T & { CONFIG: string } {
   if (on.size) settings.features = [...FLAG_NAMES].filter(name => on.has(name));
   return { ...out, CONFIG: configJson(settings) } as T & { CONFIG: string };
 }
+
+/**
+ * A TESTER_CODE_LIMITER whose costly class (src/limits.ts) never refuses, for tests about a route's own answers that send a
+ * costly route more often than its 5 a minute; tester code and platform keys still go to `base`'s own limiter.
+ */
+export function openCostly(base: { TESTER_CODE_LIMITER: RateLimit }): { TESTER_CODE_LIMITER: RateLimit } {
+  return { TESTER_CODE_LIMITER: { limit: async options => options.key.startsWith("costly:") ? { success: true } : base.TESTER_CODE_LIMITER.limit(options) } };
+}

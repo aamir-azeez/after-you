@@ -2,6 +2,7 @@ import { ApiError, HASH_PATTERN, boundedJson, canonicalJson, digest, object, tex
 import type { ServerVars } from "./flags";
 import { requireOperator } from "./operator-auth";
 import { routeDisplayNameOperator } from "./display-names";
+import { ERASED_REPORTER } from "./safety";
 
 /** Separate operator credential; never accepts a player credential or a caller target. */
 export async function routeSafetyOperator(request: Request, path: string, env: Env & ServerVars): Promise<unknown> {
@@ -9,7 +10,13 @@ export async function routeSafetyOperator(request: Request, path: string, env: E
   const clearedName = await routeDisplayNameOperator(request, path, env); if (clearedName) return clearedName;
   const inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   if (path === "/operator/safety/reports" && request.method === "GET") return { schema_version: 1, reports: await inbox.listReports() };
-  const match = path.match(/^\/operator\/safety\/reports\/([a-f0-9]{64})\/(resolve|remove-photo|block)$/);
+  // Purge: every report resolved at least `resolved_days_ago` days ago (0 for all resolved ones).
+  if (path === "/operator/safety/reports/purge-resolved" && request.method === "POST") {
+    const input = object(await boundedJson(request, 1024));
+    if (input.schema_version !== 1 || Object.keys(input).length !== 2 || typeof input.resolved_days_ago !== "number") throw new ApiError(400, "invalid_safety_request");
+    return unwrap(await inbox.purgeResolved(input.resolved_days_ago));
+  }
+  const match = path.match(/^\/operator\/safety\/reports\/([a-f0-9]{64})\/(resolve|remove-photo|block|purge)$/);
   if (!match) throw new ApiError(404, "not_found");
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const input = object(await boundedJson(request, 1024));
@@ -17,6 +24,9 @@ export async function routeSafetyOperator(request: Request, path: string, env: E
   if (input.schema_version !== 1 || Object.keys(input).length !== keys.length || Object.keys(input).some(key => !keys.includes(key))) throw new ApiError(400, "invalid_safety_request");
   const report = unwrap(await inbox.getReport(text(match[1], HASH_PATTERN)));
   if (match[2] === "resolve") return unwrap(await inbox.resolveReport(report.report_id));
+  if (match[2] === "purge") return unwrap(await inbox.purgeReport(report.report_id));
+  // A deleted reporter's report keeps no reporter to block for; its photo is read as its owner instead.
+  if (match[2] === "block" && report.reporter_id === ERASED_REPORTER) throw new ApiError(409, "reporter_unavailable");
   if (match[2] === "block") return unwrap(await env.SAFETY_PROFILES.getByName(report.reporter_id).operatorBlock(report.reporter_id, report.target_id));
   if (!report.photo || report.room_family !== "relay" || input.photo_revision !== report.photo.photo_revision || input.sha256 !== report.photo.sha256) throw new ApiError(409, "reported_photo_changed");
   const room = env.ROOMS_V2.getByName(report.room_id), key = "moderation_" + report.report_id;
@@ -24,7 +34,7 @@ export async function routeSafetyOperator(request: Request, path: string, env: E
   // later shares a replacement. Never remove that newer photo on an old report.
   const previous = await room.photoOperation(report.target_id, key);
   if (!previous.ok) {
-    const current = unwrap(await room.photoDelivery(report.reporter_id, report.photo.turn_id)).photo;
+    const current = unwrap(await room.photoDelivery(report.reporter_id === ERASED_REPORTER ? report.target_id : report.reporter_id, report.photo.turn_id)).photo;
     if (!current || current.owner_player_id !== report.target_id || current.sha256 !== report.photo.sha256 || current.photo_revision !== report.photo.photo_revision) throw new ApiError(409, "reported_photo_changed");
     unwrap(await room.updatePhoto(report.target_id, report.photo.turn_id, { idempotency_key: key, recording_hash: current.recording_hash, expected_photo_revision: report.photo.photo_revision, expected_photo_hash: report.photo.sha256 }, true));
   } else {

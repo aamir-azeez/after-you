@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { digest, randomToken, type Outcome } from "../src/protocol";
 import { RELAY_KEY } from "../src/v2/chapters";
-import { PRESENCE_TTL_MS } from "../src/presence";
+import { PRESENCE_CHANGES_PER_MINUTE, PRESENCE_TTL_MS } from "../src/presence";
+import { meterRows } from "./meter";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Room = { room_id: string; invite_code: string };
@@ -76,6 +77,8 @@ describe("short-lived room-scoped presence", () => {
     const p = await pair();
     for (let i = 0; i < 8; i++) expect((await heartbeat(p.guest, true, i.toString(16).padStart(36, "0"))).status).toBe(200);
     expect((await heartbeat(p.guest, true, NEXT_SESSION)).status).toBe(409);
+    // A minute on (inside the leases' life), so the session changes below fit the per-minute budget (PRESENCE_CHANGES_PER_MINUTE).
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 61_000);
     expect((await heartbeat(p.guest, true, "0".repeat(36))).status).toBe(200);
     expect((await heartbeat(p.guest, false, "0".repeat(36))).status).toBe(200);
     expect((await heartbeat(p.guest, true, NEXT_SESSION)).status).toBe(200);
@@ -170,5 +173,29 @@ describe("short-lived room-scoped presence", () => {
     await runInDurableObject(target, async (_, ctx) => { expect(await ctx.storage.getAlarm()).toBe(due); expect(ctx.storage.sql.exec("SELECT * FROM presence_leases").toArray()).toEqual([]); });
     expect(await target.exportSnapshot(COMMIT)).toMatchObject({ ok: false, code: "unsupported_storage_alarm" });
     expect((await heartbeat(a, true, SESSION, { PLAYER_LIMITER: { limit: async () => ({ success: false }) } })).status).toBe(429);
+  });
+});
+
+describe("presence writes only when the lease changes", () => {
+  const leases = (a: Account) => runInDurableObject(env.PLAYERS.getByName(a.player_id), async (_, ctx) => ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM presence_leases").one().n);
+  it("answers a heartbeat for a lease with more than half its time left without writing, and extends it after", async () => {
+    const a = await create(), player = env.PLAYERS.getByName(a.player_id) as unknown as DurableObjectStub;
+    expect((await heartbeat(a)).status).toBe(200);
+    const fresh = await meterRows({ player }, () => heartbeat(a), /presence/);
+    expect(await fresh.value.json()).toEqual({ schema_version: 1, heartbeat_seconds: 30, expires_after_seconds: 90 });
+    expect(fresh.rows.player.written).toBe(0);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + PRESENCE_TTL_MS / 2 + 1000);
+    const extended = await meterRows({ player }, () => heartbeat(a), /presence_leases/);
+    expect(extended.rows.player.written).toBeGreaterThan(0);
+  });
+  it("adds or removes at most a few leases a minute, answering as usual past it", async () => {
+    const a = await create(), sessions = Array.from({ length: PRESENCE_CHANGES_PER_MINUTE }, (_, i) => i.toString(16).padStart(36, "c"));
+    for (let i = 0; i < PRESENCE_CHANGES_PER_MINUTE / 2; i++) { expect((await heartbeat(a, true, sessions[i])).status).toBe(200); expect((await heartbeat(a, false, sessions[i])).status).toBe(200); }
+    const past = await heartbeat(a, true, sessions[PRESENCE_CHANGES_PER_MINUTE - 1]);
+    expect(past.status).toBe(200);
+    expect(await leases(a)).toBe(0);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 61_000);
+    expect((await heartbeat(a, true, sessions[PRESENCE_CHANGES_PER_MINUTE - 1])).status).toBe(200);
+    expect(await leases(a)).toBe(1);
   });
 });

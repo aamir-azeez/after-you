@@ -5,6 +5,8 @@ import worker from "../src/index";
 import { withConfig } from "./config";
 import { digest, randomToken } from "../src/protocol";
 import { forgetFcmAccess, makeFriendRoomHint, validFriendRoomHint } from "../src/notifications";
+import { FRIEND_ROOM_EVENT_TTL_MS, FRIEND_ROOM_PUSH_WINDOW_MS, type FriendRoomEvent } from "../src/friend-room-events";
+import { countingEnv, meterRows } from "./meter";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type FriendLink = { player_id: string; request_id: string; status: string };
@@ -226,7 +228,8 @@ describe("friend room publication events", () => {
     const pairState = await pair(); await subscription(pairState.host, pairState.guest, pairState.requestId, "subscribe");
     await configureInbox(pairState.guest.player_id);
     const first = await publish(pairState.host, pairState.room, randomToken(16)); expect(first.status).toBe(200);
-    const next = await publish(pairState.host, pairState.room, randomToken(16)); expect(await next.json()).toMatchObject({ publication_epoch: 2, queued: 1 });
+    // The same room again inside the push window answers the current epoch and reaches nobody again.
+    const next = await publish(pairState.host, pairState.room, randomToken(16)); expect(await next.json()).toMatchObject({ publication_epoch: 1, queued: 0 });
     expect(await eventRows(pairState.guest.player_id)).toHaveLength(1);
     expect((await call("/v1/friends/share", "POST", pairState.host, { schema_version: 1, room: null })).status).toBe(200);
     expect(await eventRows(pairState.guest.player_id)).toEqual([]);
@@ -287,5 +290,64 @@ describe("friend room publication events", () => {
       expect(await ctx.storage.getAlarm()).toBeNull();
       objectEnv.PLAYERS = originalPlayers;
     });
+  });
+});
+
+describe("hosting alert guards", () => {
+  it("pushes once per host, room and friend in the window; a newer event for the same room only updates the app", async () => {
+    const host = randomToken(16), recipient = await create(), inbox = env.FRIEND_ROOM_EVENTS.getByName(recipient.player_id);
+    await configureInbox(recipient.player_id);
+    const room = { api_version: 1 as const, room_id: randomToken(16) }, other = { api_version: 1 as const, room_id: randomToken(16) }, request = randomToken(16), now = Date.now();
+    const event = (epoch: number, target = room, at = now): FriendRoomEvent => ({ schema_version: 1, category: "room_available", event_id: `${host}_${epoch}`, host_id: host, recipient_id: recipient.player_id,
+      request_id: request, publication_epoch: epoch, room: target, published_at: at });
+    const state = async () => JSON.parse((await eventRows(recipient.player_id))[0].data).push_state;
+    expect(await inbox.enqueue(event(1))).toMatchObject({ ok: true }); expect(await state()).toBe("pending");
+    // The alarm's push of event 1 leaves its marker (friend-room-events.ts markPushed).
+    await runInDurableObject(inbox, async instance => (instance as unknown as { markPushed(row: unknown, at: number): void }).markPushed({ ...event(1), created_at: now, attempts: 0, next_at: now, push_state: "pending" }, now));
+    expect(await inbox.enqueue(event(2))).toMatchObject({ ok: true }); expect(await state()).toBe("sent");
+    expect(await inbox.enqueue(event(3, other))).toMatchObject({ ok: true }); expect(await state()).toBe("pending");
+    // Past the window the same room pushes again; the marker is no event id, so no ack or enqueue ever matches it.
+    vi.spyOn(Date, "now").mockReturnValue(now + FRIEND_ROOM_PUSH_WINDOW_MS + 1000);
+    expect(await inbox.enqueue(event(4, room, now + FRIEND_ROOM_PUSH_WINDOW_MS))).toMatchObject({ ok: true }); expect(await state()).toBe("pending");
+    const marker = await runInDurableObject(inbox, async (_, ctx) => ctx.storage.sql.exec<{ event_id: string; expires_at: number }>("SELECT event_id,expires_at FROM friend_room_event_acks").toArray());
+    expect(marker).toEqual([{ event_id: `${host}_0${room.room_id}`, expires_at: now + FRIEND_ROOM_EVENT_TTL_MS }]);
+  });
+
+  it("repeats a publication's fan-out only for a lost reply's retry, and stops fresh rooms past the hourly cap", async () => {
+    const pairState = await pair();
+    await configureInbox(pairState.guest.player_id);
+    expect((await subscription(pairState.host, pairState.guest, pairState.requestId, "subscribe")).status).toBe(200);
+    const id = randomToken(16);
+    expect(await (await publish(pairState.host, pairState.room, id)).json()).toEqual({ schema_version: 1, publication_epoch: 1, queued: 1 });
+    expect(await (await publish(pairState.host, pairState.room, id)).json()).toEqual({ schema_version: 1, publication_epoch: 1, queued: 1 });
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 121_000);
+    expect(await (await publish(pairState.host, pairState.room, id)).json()).toEqual({ schema_version: 1, publication_epoch: 1, queued: 0 });
+    // Twelve fresh rooms in the last hour already: the next one is published but reaches no inbox.
+    await runInDurableObject(env.PLAYERS.getByName(pairState.host.player_id), async (_, ctx) => {
+      for (let i = 0; i < 12; i++) ctx.storage.sql.exec("INSERT INTO friend_room_publication_ops VALUES (?,?)", randomToken(16), JSON.stringify({ published_at: Date.now() - 1000 }));
+      ctx.storage.sql.exec("UPDATE friend_room_publication SET data=json_set(data,'$.current',json('null'))");
+    });
+    expect(await (await publish(pairState.host, pairState.room, randomToken(16))).json()).toEqual({ schema_version: 1, publication_epoch: 2, queued: 0 });
+  });
+
+  it("writes nothing for a repeated subscription, and the inbox shows an event it checked within a minute without its checks", async () => {
+    const pairState = await pair();
+    await configureInbox(pairState.guest.player_id);
+    expect((await subscription(pairState.host, pairState.guest, pairState.requestId, "subscribe")).status).toBe(200);
+    const guest = env.PLAYERS.getByName(pairState.guest.player_id) as unknown as DurableObjectStub;
+    const repeat = await meterRows({ guest }, () => subscription(pairState.host, pairState.guest, pairState.requestId, "subscribe"));
+    expect(repeat.value.status).toBe(200); expect(repeat.rows.guest.written).toBe(0);
+    expect((await publish(pairState.host, pairState.room, randomToken(16))).status).toBe(200);
+    const read = async () => {
+      const counted = countingEnv(env);
+      const { CONFIG: _, ...base } = counted.env as Env & { CONFIG?: string };
+      const response = await worker.fetch(new Request("https://social-events.test/v1/social/inbox", { headers: { "CF-Connecting-IP": `198.18.8.${++address}`, "X-AfterYou-Friend-Events": "2", "X-Player-Id": pairState.guest.player_id, Authorization: `Bearer ${pairState.guest.device_token}` } }),
+        withConfig({ ...base, ...objectFlags, FRIEND_ROOM_EVENTS_ENABLED: "true" }));
+      return { inbox: await response.json<Inbox>(), calls: counted.calls };
+    };
+    const first = await read(), second = await read();
+    expect(first.inbox.events).toHaveLength(1); expect(second.inbox).toEqual(first.inbox);
+    expect(first.calls.filter(name => name === "PLAYERS.friendPublication")).toHaveLength(1);
+    expect(second.calls.filter(name => name === "PLAYERS.friendPublication")).toHaveLength(0);
   });
 });

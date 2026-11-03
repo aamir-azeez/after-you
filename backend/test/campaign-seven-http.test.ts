@@ -71,7 +71,7 @@ import { campaignContinueKey, campaignDefinition } from "../src/v2/campaign-prot
 import type { CampaignDefinition, CampaignKey, CampaignView, CampaignContinueResult } from "../src/v2/campaign-types";
 import type { MutationV2, PairV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { CampaignRedoAccept, CampaignRedoBinding } from "../src/v2/campaign-redo";
-import { withConfig } from "./config";
+import { openCostly, withConfig } from "./config";
 import type { RedoState } from "../src/redo-control";
 
 // Synthetic story registry with actual current chapter pins and native-verified
@@ -106,7 +106,7 @@ async function configure() {
   });
 }
 async function call(path: string, method = "GET", body?: unknown, owner = H) {
-  const configured: Env = withConfig({ ...base(), ...flags });
+  const configured: Env = withConfig({ ...base(), ...openCostly(base()), ...flags });
   return worker.fetch(new Request("https://seven-chapter.test" + path, { method, headers: {
     "Content-Type": "application/json", "CF-Connecting-IP": "198.22.1." + ++address,
     "X-Player-Id": owner, Authorization: "Bearer " + T, "X-AfterYou-Campaign-Schema": "2"

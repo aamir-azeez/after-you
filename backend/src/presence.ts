@@ -2,11 +2,26 @@ import { ApiError, HASH_PATTERN, isObject } from "./protocol";
 import { safetyMembers } from "./safety-routes";
 import { interactionBlocked } from "./safety";
 import type { CampaignRoomContext } from "./v2/campaign-room-access";
+import { MemoryBudget } from "./limits";
 
 export const PRESENCE_SESSION = /^[a-f0-9]{36}$/;
 export const PRESENCE_HEARTBEAT_SECONDS = 30;
-export const PRESENCE_TTL_MS = 90_000;
+/**
+ * A lease's life. The phone heartbeats every 30 seconds and is told leases last 90 (presencePolicy, and every read caps
+ * what it shows at 90), so a lease extended only in its last minute (PRESENCE_EXTEND_WITHIN_MS) still survives one lost
+ * heartbeat while costing one write a minute.
+ */
+export const PRESENCE_TTL_MS = 120_000;
 export const MAX_PRESENCE_SESSIONS = 8;
+/** A heartbeat for a lease with more than this left writes nothing, so a phone's 30 second heartbeat writes about once a minute. */
+export const PRESENCE_EXTEND_WITHIN_MS = 60_000;
+/**
+ * Lease rows a Player adds or removes in a minute at most (a new session, an offline). A phone makes one pair per
+ * focus change; past this an answer is the usual one with nothing written: an online lease waits for the next
+ * heartbeat and an offline one simply expires. Memory only.
+ */
+export const PRESENCE_CHANGES_PER_MINUTE = 10;
+export const presenceChangeBudget = (): MemoryBudget => new MemoryBudget(PRESENCE_CHANGES_PER_MINUTE, 60_000);
 export const PRESENCE_TABLES = [
   { name: "presence_leases", schema: "CREATE TABLE presence_leases (session_id TEXT PRIMARY KEY, device_hash TEXT NOT NULL, expires_at INTEGER NOT NULL)" },
   { name: "presence_alarm", schema: "CREATE TABLE presence_alarm (id INTEGER PRIMARY KEY CHECK(id=1), due_at INTEGER NOT NULL)" }

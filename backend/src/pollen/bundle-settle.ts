@@ -82,12 +82,40 @@ export const BUNDLE_OUTAGE_PAUSE_MS = 5 * 60_000;
 export const BUNDLE_CHECK_MS = DAY_MS;
 /** At most this many paid bundles missing from the list are looked up in one check: within the Workers cap on subrequests, and on simultaneous connections, so they go in one round. */
 export const MAX_BUNDLE_LOOKUPS = 6;
+/**
+ * The claim route's pace per player (memory only). After a claim that credited and took back nothing, the next one
+ * reads RevenueCat only after CLAIM_GAP_MS, doubling each time up to CLAIM_GAP_MAX_MS; a claim that settled something,
+ * or one a full CLAIM_GAP_MAX_MS after the last, starts it again. The phone's own tries right after a purchase (at 0, 1.5 and 4.5 seconds) fit the first gaps.
+ * A claim inside the gap, or while another is running, is refused with a retryable 429 and costs no provider call
+ * and no row; the phone keeps its claim waiting and sends it on its next flush.
+ */
+export const CLAIM_GAP_MS = 1_000;
+export const CLAIM_GAP_MAX_MS = 60_000;
 
 const [CHECK] = POLLEN_BUNDLE_TABLES;
 export const bundleKey = (id: string) => `bundle:${id}`;
 export const bundleRefundKey = (id: string) => `bundlerefund:${id}`;
 const known = new WeakMap<DurableObjectStorage, boolean>();
 const paused = new WeakMap<DurableObjectStorage, number>();
+type Pace = { next_at: number; gap: number; running: boolean; last_at: number };
+const paces = new WeakMap<DurableObjectStorage, Pace>();
+/** Forgets the claim pace (memory only), as an evicted object does: account erasure, and tests that claim back to back. */
+export function forgetClaimPace(storage: DurableObjectStorage): void { paces.delete(storage); }
+/** The claim route's settle under its pace (CLAIM_GAP_MS), or "busy" without a provider call. */
+export async function pacedClaim(storage: DurableObjectStorage, now: number, settle: () => Promise<BundleOutcome>): Promise<BundleOutcome | "busy"> {
+  const pace = paces.get(storage) ?? { next_at: 0, gap: 0, running: false, last_at: 0 };
+  if (pace.running || now < pace.next_at) return "busy";
+  // A quiet minute is a new purchase's first claim: its quick tries get the short gaps again.
+  if (now - pace.last_at >= CLAIM_GAP_MAX_MS) pace.gap = 0;
+  pace.running = true; pace.last_at = now; paces.set(storage, pace);
+  let outcome: BundleOutcome = { status: "unavailable", reason: "claim_failed" };
+  try { outcome = await settle(); return outcome; }
+  finally {
+    const moved = outcome.status === "settled" && (outcome.reply.credited.length > 0 || outcome.reply.refunded.length > 0);
+    pace.gap = moved ? 0 : Math.min(CLAIM_GAP_MAX_MS, pace.gap === 0 ? CLAIM_GAP_MS : pace.gap * 2);
+    pace.next_at = Date.now() + pace.gap; pace.running = false;
+  }
+}
 function present(storage: DurableObjectStorage): boolean {
   let found = known.get(storage);
   if (found === undefined) {
@@ -233,7 +261,8 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
     const refunded = new Set(refundLines(storage).map(line => line.key));
     const plan = planBundles([...listed, ...moved], order => answers[order] === true, lines, refunded, lines.length === 0, bundles);
     applyLedger(storage, plan.entries, now, rates);
-    if (checked) noteCheck(storage, now);
+    // Only the daily check notes its time: a claim that finds nothing new writes no row.
+    if (checked && deps.lookup) noteCheck(storage, now);
     outcome = { status: "settled", reply: { schema_version: 1, balance: walletBalance(storage, now, rates), credited: plan.credited, refunded: plan.refunds, pending: false }, ...(lookupFailed ? { lookup_failed: lookupFailed } : {}) };
   });
   if (lookupFailed) paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); else paused.delete(storage);
@@ -252,5 +281,5 @@ export function bundlesView(storage: DurableObjectStorage, bundles: Bundles = BU
 /** Account erasure: the check time goes with the wallet (its ledger rows are the wallet's). */
 export function dropBundles(storage: DurableObjectStorage): void {
   for (const table of POLLEN_BUNDLE_TABLES) storage.sql.exec(`DROP TABLE IF EXISTS ${table.name}`);
-  known.delete(storage); paused.delete(storage);
+  known.delete(storage); paused.delete(storage); forgetClaimPace(storage);
 }

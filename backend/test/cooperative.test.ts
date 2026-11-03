@@ -89,6 +89,8 @@ function provider(access: boolean | (() => boolean) = true) {
     { object: "list", items: (typeof access === "function" ? access() : access) ? [{ entitlement_id: "entlPlay", expires_at: null }] : [], next_page: null } :
     { object: "list", items: [{ object: "purchase", product_id: "prodPlay", store: "play_store", environment: "production", status: "owned", ownership: "purchased", purchased_at: Date.now() - 10000 }], next_page: null }));
 }
+/** Drops a player's remembered Full Journey answer, as its time passing or an evicted Player does. */
+const forgetEntitlement = (id: string) => env.PLAYERS.getByName(id).noteEntitlement(id, null);
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("bounded cooperative chapters", () => {
@@ -243,6 +245,8 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
     const before = await env.PLAYERS.getByName(host.player_id).listRooms();
     const denied = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: key() }, playConfig); expect(denied.status).toBe(402); expect(await denied.json()).toMatchObject({ error: { code: "host_unlock_required" } });
     requests.mockResolvedValue(new Response(null, { status: 503 }));
+    // The refusal is remembered for seconds only (NEGATIVE_FRESH_MS); past them an outage answers 503.
+    await forgetEntitlement(host.player_id);
     const unavailable = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: key() }, playConfig); expect(unavailable.status).toBe(503); expect(await unavailable.json()).toMatchObject({ error: { code: "entitlement_unavailable" } });
     expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual(before);
   });
@@ -250,8 +254,8 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
     const requests = provider(), { host, guest, room } = await pair(fixture.adapter, false, playConfig);
     expect(requests).toHaveBeenCalledTimes(2);
     const a = await submit(room, host, fixture.a, undefined, playConfig), b = await submit(a.room, guest, fixture.b, fixture.middle, playConfig);
-    // Creation checks twice; the first turn checks once (two requests) and the room remembers it for the second.
-    expect(b.room.stage_index).toBe(1); expect(requests).toHaveBeenCalledTimes(4);
+    // Creation checks once (two requests); the host's Player remembers that answer (entitlement.ts EntitlementMemo), so the turns make none.
+    expect(b.room.stage_index).toBe(1); expect(requests).toHaveBeenCalledTimes(2);
     for (const [input] of requests.mock.calls) { const url = input instanceof Request ? input.url : String(input); expect(url).toContain(`/customers/${host.player_id}/`); expect(url).not.toContain(guest.player_id); }
     expect(await env.PLAYERS.getByName(guest.player_id).storedTesterGrant(guest.player_id)).toBeNull();
   });
@@ -302,10 +306,14 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
   it("admits the same retained turn once host access returns and never creates a duplicate receipt", async () => {
     let owned = true; const requests = provider(() => owned), { host, room } = await pair(fixture.adapter, false, playConfig), body = turn(room, fixture.a), path = `/v2/rooms/${room.room_id}`;
     owned = false;
+    // Past the creation check's memo: the turn asks the provider and is refused.
+    await forgetEntitlement(host.player_id);
     expect((await call(path + "/turns", "POST", host, body, playConfig)).status).toBe(402);
     expect((await call(path + "/operations/" + body.idempotency_key, "GET", host)).status).toBe(404);
     expect(value(await env.ROOMS_V2.getByName(room.room_id).snapshot(host.player_id)).revision).toBe(room.revision);
     owned = true;
+    // A refusal is remembered for seconds only (NEGATIVE_FRESH_MS); after it the returned access is seen.
+    await forgetEntitlement(host.player_id);
     const accepted = await call(path + "/turns", "POST", host, body, playConfig); expect(accepted.status).toBe(200); const result = await accepted.json<MutationV2>();
     requests.mockClear();
     expect(await (await call(path + "/turns", "POST", host, body, playConfig)).json()).toEqual(result); expect(requests).not.toHaveBeenCalled();
@@ -319,6 +327,7 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
   });
   it("rejects a new turn after credential recovery during the host's purchase lookup", async () => {
     const requests = provider(), { host, room } = await pair(fixture.adapter, false, playConfig); let next: Account | undefined;
+    await forgetEntitlement(host.player_id);
     requests.mockImplementation(async () => { if (!next) next = await recover(host); return Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: null }], next_page: null }); });
     const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(room, fixture.a), { ...playConfig, revenuecat: { ...playConfig.revenuecat, reviewer_ids: [host.player_id] } });
     expect(response.status).toBe(401); expect(value(await env.ROOMS_V2.getByName(room.room_id).snapshot(host.player_id)).revision).toBe(room.revision);

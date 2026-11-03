@@ -5,7 +5,7 @@ import { encode } from "jpeg-js";
 import worker from "../src/index";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { TERMS_VERSION } from "../src/public-policy";
-import { REPORT_TTL, type SafetyReport, type ReportBody } from "../src/safety";
+import { ERASED_REPORTER, REPORT_TTL, type SafetyReport, type ReportBody } from "../src/safety";
 import { RELAY_KEY } from "../src/v2/protocol";
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -27,10 +27,13 @@ async function pair(family = "relay") {
   expect((await call(prefix + "/join", "POST", guest, { invite_code: room.invite_code })).status).toBe(200);
   return { host, guest, room, path: prefix + "/" + room.room_id, target: { schema_version: 1, room_family: family, room_id: room.room_id } };
 }
-async function report(owner = "a".repeat(22), key = crypto.randomUUID(), created_at = Date.now()): Promise<SafetyReport> {
+let reportSerial = 0;
+/** A report by `owner`; each names its own room and player unless `same` asks for the shared ones (inbox caps are per room and player). */
+async function report(owner = "a".repeat(22), key = crypto.randomUUID(), created_at = Date.now(), same = false): Promise<SafetyReport> {
   const player = env.PLAYERS.getByName(owner); if (!await player.authorize("d".repeat(64))) value(await player.create(owner, "d".repeat(64), "e".repeat(64)));
-  const body: ReportBody = { schema_version: 1, idempotency_key: key, room_family: "relay", room_id: "r".repeat(22), reason: "harassment", photo: null };
-  return { ...body, reporter_id: owner, target_id: "b".repeat(22), request_hash: await digest(canonicalJson({ operation: "safety_report", reporter_id: owner, ...body })), report_id: await digest(owner + ":" + key), created_at, resolved_at: null };
+  const n = (++reportSerial).toString(36), room = same ? "r".repeat(22) : ("r" + n).padEnd(22, "r"), target = same ? "b".repeat(22) : ("b" + n).padEnd(22, "b");
+  const body: ReportBody = { schema_version: 1, idempotency_key: key, room_family: "relay", room_id: room, reason: "harassment", photo: null };
+  return { ...body, reporter_id: owner, target_id: target, request_hash: await digest(canonicalJson({ operation: "safety_report", reporter_id: owner, ...body })), report_id: await digest(owner + ":" + key), created_at, resolved_at: null };
 }
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 describe("public policies and authenticated safety", () => {
@@ -220,7 +223,8 @@ describe("bounded safety retention and portable state", () => {
     value(await inbox.submit(first, "d".repeat(64))); value(await inbox.submit(other, "d".repeat(64)));
     const archive = await inbox.exportSnapshot(); const restored = env.SAFETY_INBOX.get(env.SAFETY_INBOX.newUniqueId()); expect((await restored.restoreSnapshot(archive)).ok).toBe(true);
     expect(await restored.reportReceipt(first.reporter_id, first.idempotency_key)).toEqual(await inbox.reportReceipt(first.reporter_id, first.idempotency_key));
-    await restored.eraseReporter(first.reporter_id); expect(await restored.listReports()).toEqual([other]);
+    // A deleted reporter's report stays for review, without their id (safety.ts ERASED_REPORTER).
+    await restored.eraseReporter(first.reporter_id); expect(await restored.listReports()).toEqual([{ ...first, reporter_id: ERASED_REPORTER }, other].sort((x, y) => x.created_at - y.created_at || x.report_id.localeCompare(y.report_id)));
     const forged = JSON.parse(archive); forged.payload.reports[0].reason = "other"; forged.checksum = await digest(canonicalJson(forged.payload));
     expect((await env.SAFETY_INBOX.get(env.SAFETY_INBOX.newUniqueId()).restoreSnapshot(canonicalJson(forged))).ok).toBe(false);
   });

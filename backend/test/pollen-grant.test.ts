@@ -627,6 +627,13 @@ describe("the grant through the wallet read", () => {
       expect(providerCalls).toBe(1);
     }
   });
+  it("lets a just-bought hint start a provider read at most three times a day", async () => {
+    const player = await create(), bought = { ...HINT_CLIENT, [FULL_JOURNEY_HEADER]: "bought" };
+    items = [];
+    // The first read of a player with no grant state is the hint's own; then one read per BOUGHT_GAP_MS, three a day.
+    for (let n = 0; n < 6; n++) { offset = n * BOUGHT_GAP_MS; await call("/v1/pollen", "GET", player, env, bought); }
+    expect(providerCalls).toBe(4);
+  });
   it("pays a trial nothing through the read, and reads again only when the trial ends", async () => {
     const player = await create(), start = Date.now() - HOUR;
     items = [subscription(start, 1, { status: "trialing", current_period_ends_at: start + 7 * DAY, ends_at: start + 7 * DAY })];

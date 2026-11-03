@@ -63,14 +63,15 @@ describe("premium turn host access", () => {
     expect(requests).toHaveBeenCalledTimes(2); // Creation still checks every time.
     expect(await memoAge(room, host)).toBeNull();
     const a = await accepted(await post(room, host, weightA));
-    expect(requests).toHaveBeenCalledTimes(4); expect(await memoAge(room, host)).not.toBeNull();
+    // The creation's verified answer is remembered by the host's Player (entitlement.ts EntitlementMemo), and the room keeps its own memo of it.
+    expect(requests).toHaveBeenCalledTimes(2); expect(await memoAge(room, host)).not.toBeNull();
     const b = await accepted(await post(a.room, guest, weightB, rollingMiddle));
-    expect(requests).toHaveBeenCalledTimes(4);
+    expect(requests).toHaveBeenCalledTimes(2);
     for (const [input] of requests.mock.calls) expect(input instanceof Request ? input.url : String(input)).toContain(`/customers/${host.player_id}/`);
 
     state = "down"; later(HOST_ACCESS_FRESH_MS + 60_000);
     const c = await accepted(await post(b.room, guest, homeA));
-    expect(requests).toHaveBeenCalledTimes(5);
+    expect(requests).toHaveBeenCalledTimes(3);
     later(HOST_ACCESS_OUTAGE_GRACE_MS);
     const refused = await post(c.room, host, homeB, rollingFinal);
     expect(refused.status).toBe(503); expect(refused.headers.get("Retry-After")).toBe("15"); expect(await refused.text()).toBe(ERROR_503);
@@ -92,15 +93,18 @@ describe("premium turn host access", () => {
     expect(denied.status).toBe(402); expect(await denied.text()).toBe(ERROR_402);
     expect(await memoAge(room, host)).toBeNull();
     state = "down";
+    // The refusal itself is remembered for seconds only (NEGATIVE_FRESH_MS); past them the outage answers 503, never access.
+    await env.PLAYERS.getByName(host.player_id).noteEntitlement(host.player_id, null);
     const unavailable = await post(b, guest, homeA);
     expect(unavailable.status).toBe(503); expect(await unavailable.text()).toBe(ERROR_503);
   });
 
-  it("checks the provider again after the room is evicted", async () => {
+  it("checks the provider again after the room and the host's Player are evicted", async () => {
     let state: Provider = "owned"; const requests = provider(() => state);
     const { host, guest, room } = await pair();
     const a = await accepted(await post(room, host, weightA)); requests.mockClear();
-    await evictDurableObject(env.ROOMS_V2.getByName(room.room_id));
+    // Both memos live in memory only (the room's, and the Player's entitlement.ts EntitlementMemo).
+    await evictDurableObject(env.ROOMS_V2.getByName(room.room_id)); await evictDurableObject(env.PLAYERS.getByName(host.player_id));
     expect(await memoAge(room, host)).toBeNull();
     state = "down";
     const refused = await post(a.room, guest, weightB, rollingMiddle);

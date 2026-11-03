@@ -20,7 +20,7 @@ import type { LeaderboardBoard } from "../src/leaderboards/board";
 import { countingEnv, meterRows } from "./meter";
 import { ledgerLines, noteFullJourney } from "../src/pollen/wallet";
 import { PLATFORM_LINKS_OBJECT } from "../src/platform-links";
-import { POLLEN_CLIENT, configJson } from "./config";
+import { POLLEN_CLIENT, configJson, openCostly } from "./config";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
 import { dropRunCopies } from "../src/duels/their-run-sweep";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -48,7 +48,7 @@ async function call(path: string, method = "GET", account?: Account, body?: unkn
   return worker.fetch(new Request("https://duels.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + (++address % 250), "X-AfterYou-Pollen": "1", ...POLLEN_CLIENT,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
-    body: body === undefined ? undefined : JSON.stringify(body) }), Object.assign({ ...base }, vars) as Env);
+    body: body === undefined ? undefined : JSON.stringify(body) }), Object.assign({ ...base, ...openCostly(base) }, vars) as Env);
 }
 async function ok<T = Any>(response: Promise<Response>, status = 200): Promise<T> {
   const answer = await response;

@@ -5,6 +5,7 @@ import { interactionBlocked } from "./safety";
 import { sameFriendLink, validSharedFriendRoom, type FriendEdge } from "./friends";
 import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomEvent } from "./friend-room-events";
 import type { FriendPublication } from "./friend-room-event-storage";
+import { limitCostly } from "./limits";
 
 const exact = (value: Record<string, unknown>, keys: string[]) => {
   if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key)) || value.schema_version !== 1) throw new ApiError(400, "invalid_friend_notification");
@@ -44,9 +45,11 @@ export async function publishSocialRoom(request: Request, owner: string, env: En
   const host = env.PLAYERS.getByName(owner);
   const current = await host.friendList(owner, hash, false);
   if (!current.ok) throw new ApiError(current.status, current.code);
-  const publication = unwrap(await host.publishFriendRoom(owner, hash, publicationId, input.room));
+  const { publication, fresh } = unwrap(await host.publishFriendRoom(owner, hash, publicationId, input.room));
   let queued = 0;
-  if (flags.friendRoomEvents(env)) {
+  // Friends hear of it only when it is fresh (player.ts publishFriendRoom): not the same room again inside the push window,
+  // not a publication id repeated after its retry window, and not past the hourly cap.
+  if (fresh && flags.friendRoomEvents(env)) {
     const candidates = current.value.links.filter(link => link.accepted);
     const results = await Promise.all(candidates.map(async link => {
       const subscription = await env.PLAYERS.getByName(link.player_id).friendSubscription(link.player_id, owner);
@@ -68,8 +71,10 @@ export async function socialInbox(owner: string, env: Env, capable = true): Prom
   // choices and sees no events. Events stay queued for an update within a day.
   if (!capable && FRIEND_EVENTS_CLIENT_GATE(env)) return { schema_version: 1, available: false, events: [], preferences };
   const inbox = env.FRIEND_ROOM_EVENTS.getByName(owner);
-  const queued = await inbox.inbox(), visible: FriendRoomEvent[] = [];
+  const queued = await inbox.inbox(), visible: FriendRoomEvent[] = [], checked: string[] = [];
   for (const item of queued) {
+    // Checked by a read within the last minute (friend-room-events.ts FRIEND_ROOM_EVENT_CHECKED_MS): shown without its 8 calls again.
+    if (item.checked) { visible.push(item); continue; }
     try {
       const [links, subscription, publication, allowed, roomOk] = await Promise.all([
         Promise.all([player.friendEdge(owner, item.host_id), env.PLAYERS.getByName(item.host_id).friendEdge(item.host_id, owner)]),
@@ -82,15 +87,18 @@ export async function socialInbox(owner: string, env: Env, capable = true): Prom
         publication.room.api_version !== item.room.api_version || allowed || !roomOk || Date.now() - item.published_at >= 24 * 60 * 60 * 1000) {
         await inbox.revoke(item.host_id, item.event_id); continue;
       }
-      visible.push(item);
+      visible.push(item); checked.push(item.event_id);
     } catch { /* inaccessible events are omitted; the alarm repeats eligibility checks before any push */ }
   }
+  if (checked.length) await inbox.noteChecked(checked).catch(() => undefined);
   return { schema_version: 1, available: visible.length > 0, events: visible.map(item => ({ event_id: item.event_id, category: item.category, player_id: item.host_id,
     request_id: item.request_id, publication_epoch: item.publication_epoch, room: item.room, published_at: item.published_at })), preferences };
 }
 export async function friendNotifications(request: Request, owner: string, hostId: string, env: Env): Promise<unknown> {
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const raw = object(await boundedJson(request, 1024));
+  // Turning alerts on or off is a tap in the costly class; acknowledgements are per shown event and are not.
+  if (raw.action === "subscribe" || raw.action === "unsubscribe") await limitCostly(env, "friend-alerts", owner);
   if (raw.action === "ack") {
     exact(raw, ["schema_version", "request_id", "action", "event_id"]);
     const requestId = text(raw.request_id, ID_PATTERN), eventId = text(raw.event_id, /^[A-Za-z0-9_-]{22}_[1-9][0-9]{0,15}$/);
@@ -105,14 +113,14 @@ export async function friendNotifications(request: Request, owner: string, hostI
   const player = env.PLAYERS.getByName(owner);
   if (raw.action === "subscribe") {
     await relationship(env, owner, hostId, requestId);
-    unwrap(await player.setFriendSubscription(owner, hostId, requestId, true));
+    const { changed } = unwrap(await player.setFriendSubscription(owner, hostId, requestId, true));
     try { await relationship(env, owner, hostId, requestId); }
     catch (error) { await player.setFriendSubscription(owner, hostId, requestId, false); throw error; }
-    const publication = await env.PLAYERS.getByName(hostId).friendPublication(hostId);
+    // A repeat of a subscription already on queues nothing new: its event was queued when it went on.
+    const publication = changed ? await env.PLAYERS.getByName(hostId).friendPublication(hostId) : null;
     if (publication) await enqueueFor(env, hostId, owner, requestId, publication);
     return { schema_version: 1, subscribed: true, request_id: requestId };
   }
-  unwrap(await player.setFriendSubscription(owner, hostId, requestId, false));
-  await env.FRIEND_ROOM_EVENTS.getByName(owner).revoke(hostId);
+  if (unwrap(await player.setFriendSubscription(owner, hostId, requestId, false)).changed) await env.FRIEND_ROOM_EVENTS.getByName(owner).revoke(hostId);
   return { schema_version: 1, subscribed: false, request_id: requestId };
 }

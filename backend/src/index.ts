@@ -50,6 +50,7 @@ import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
 import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
 import { forgetLeaderboardPlayer, forgetLeaderboardPlayerIfKnown } from "./leaderboards/members";
 import { routeDuels } from "./duels/routes";
+import { limitAuth, limitCostly, limitCostlyRoute, limitPlayer, limitPublic } from "./limits";
 
 /**
  * Every route under a room id except leave, which is already a quiet success for a room the caller has
@@ -73,6 +74,8 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   if (!value?.startsWith("Bearer ")) throw new ApiError(401, "invalid_auth");
   const token = value.slice(7);
   if (!SECRET_PATTERN.test(token)) throw new ApiError(401, "invalid_auth");
+  // Per address before the Player is asked, so requests with bad credentials cost no Player request past it.
+  await limitAuth(request, env);
   const hash = await digest(token), player = env.PLAYERS.getByName(id), room = ROOM_ROUTE.exec(path)?.[1];
   // The same single Player call either way; a room route also learns whether the room is linked.
   const memberRoute = pollenMemberRoute(request, path, env), view = pollenAuthView(request, path, env), looks = looksMemberRoute(request, path, env) || looksDuelRoute(request, path, env);
@@ -80,15 +83,10 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
     : namesRoomRoute(request, path, env) || memberRoute || looks ? await player.authorizeNamed(hash, memberRoute, looks) : view !== null ? await player.authorizeWallet(hash, view, walletMode(request, env), grantHint(request))
     : { authorized: await player.authorize(hash, deleting), linked: true };
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
-  if (!(await env.PLAYER_LIMITER.limit({ key: id })).success) throw new ApiError(429, "rate_limited");
+  await limitPlayer(env, id);
   if (!access.linked) throw new ApiError(404, "room_not_found");
   return { playerId: id, safetyToken: access.safety_token, memberName: flags.displayNames(env) ? access.display_name : undefined, pollen: pollenMember(access), pollenView: access.pollen, memberLook: looks ? memberLookOf(access) : undefined,
     facePacks: Array.isArray(access.face_packs) ? access.face_packs : undefined };
-}
-async function publicLimit(request: Request, env: Env): Promise<void> {
-  // Bootstrap has no player identity yet. The edge-provided IP is used only as an ephemeral limiter key.
-  const address = request.headers.get("CF-Connecting-IP") || "local";
-  if (!(await env.PUBLIC_LIMITER.limit({ key: await digest(address) })).success) throw new ApiError(429, "rate_limited");
 }
 async function ensurePremium(snapshot: RoomSnapshot, nextLevel: boolean, env: Env): Promise<void> {
   if (snapshot.level_index + (nextLevel ? 1 : 0) < 3) return;
@@ -103,26 +101,26 @@ export default {
       if (path === "/health" && request.method === "GET") return json({ status: "ok", api_version: 1, environment: APP.environment });
       // The friend link page's headline name: public, read-only, limited per address.
       const linkCode = friendLinkCode(path);
-      if (linkCode !== null && request.method === "GET") { await publicLimit(request, env); return await routeFriendLinkName(request, linkCode, env); }
+      if (linkCode !== null && request.method === "GET") { await limitPublic(request, env); return await routeFriendLinkName(request, linkCode, env); }
       // Public: whether this client must update before playing online (app-status.ts).
-      if (path === "/v1/app-status" && request.method === "GET") { await publicLimit(request, env); return json(appStatus(request, env)); }
-      if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
-      if (path.startsWith(LEADERBOARD_OPERATOR_PREFIX)) { await publicLimit(request, env); return await routeLeaderboardOperator(request, path, env); }
+      if (path === "/v1/app-status" && request.method === "GET") { await limitPublic(request, env); return json(appStatus(request, env)); }
+      if (path.startsWith("/operator/safety/")) { await limitPublic(request, env); return json(await routeSafetyOperator(request, path, env)); }
+      if (path.startsWith(LEADERBOARD_OPERATOR_PREFIX)) { await limitPublic(request, env); return await routeLeaderboardOperator(request, path, env); }
       // Absent unless CONFIG lists LEADERBOARDS: a board read is public and cached, so it needs no Player request.
       const board = await routeLeaderboardRead(request, path, env); if (board) return board;
       // Absent unless CONFIG lists STORY_DRAIN_ENABLED: the path then falls through to auth() as before.
-      if (path.startsWith(DRAIN_PREFIX) && flags.storyDrain(env)) { await publicLimit(request, env); return json(await routeCampaignDrain(request, path, env)); }
+      if (path.startsWith(DRAIN_PREFIX) && flags.storyDrain(env)) { await limitPublic(request, env); return json(await routeCampaignDrain(request, path, env)); }
       // Absent unless CONFIG lists IOS_WAITLIST_ENABLED: the path then falls through as before (OPTIONS 405, others to auth()).
       const waitlist = await routeWaitlist(request, path, env); if (waitlist) return waitlist;
       if (request.method === "OPTIONS") return new Response(null, { status: 405, headers: JSON_HEADERS });
       if (path === "/v1/identity" && request.method === "POST") {
-        await publicLimit(request, env); const input = object(await boundedJson(request, 4096)); exactKeys(input, []);
+        await limitPublic(request, env); const input = object(await boundedJson(request, 4096)); exactKeys(input, []);
         const player_id = randomToken(16), device_token = randomToken(), recovery_code = randomToken();
         unwrap(await env.PLAYERS.getByName(player_id).create(player_id, await digest(device_token), await digest(recovery_code)));
         return json({ player_id, device_token, recovery_code }, 201);
       }
       if (path === "/v1/identity/recover" && request.method === "POST") {
-        await publicLimit(request, env); const input = object(await boundedJson(request, 4096));
+        await limitPublic(request, env); const input = object(await boundedJson(request, 4096));
         exactKeys(input, ["player_id", "recovery_code", "idempotency_key", "next_device_token", "next_recovery_code"]);
         // Legacy clients cannot safely receive server-generated secrets if their
         // response is lost. Reject that protocol without rotating anything.
@@ -136,7 +134,7 @@ export default {
       // Absent unless CONFIG lists PLAY_GAMES_ENABLED or GAME_CENTER_ENABLED: the path then falls through to auth() as before.
       const restored = await routePlatformRestore(request, path, env); if (restored) return restored;
       if (path === "/v1/identity/deletion-ack" && request.method === "POST") {
-        await publicLimit(request, env);
+        await limitPublic(request, env);
         const owner = text(request.headers.get("X-Player-Id"), ID_PATTERN, "invalid_auth");
         const authorization = request.headers.get("Authorization");
         if (!authorization?.startsWith("Bearer ") || !SECRET_PATTERN.test(authorization.slice(7))) throw new ApiError(401, "invalid_auth");
@@ -146,6 +144,7 @@ export default {
       }
       const { playerId, safetyToken, memberName, pollen, pollenView, memberLook, facePacks } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      await limitCostlyRoute(request, path, playerId, env);
       // Absent unless a platform games flag is on: the paths then answer 404 as before.
       const platform = await routePlatform(request, path, playerId, env); if (platform) return platform;
       // Absent unless CONFIG lists LIVE_CONNECTION_ENABLED: the path then answers 404 as before.
@@ -224,7 +223,7 @@ export default {
       if (path === "/v1/entitlement" && request.method === "GET") {
         // While Pollen earning is on, the Full Journey end this check reports is noted by the authorize call it already makes.
         let until: number | undefined;
-        const checked = await entitlement(playerId, env, pollenEarning(env) ? value => { until = value; } : undefined);
+        const checked = await entitlement(playerId, env, pollenEarning(env) ? value => { until = value; } : undefined, () => limitCostly(env, "entitlement", playerId));
         if (!await player.authorize(await bearerDigest(request), false, pollenEarning(env) ? paidUntil(checked, until) : undefined)) throw new ApiError(401, "invalid_auth");
         return json(checked);
       }

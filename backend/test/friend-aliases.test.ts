@@ -6,6 +6,7 @@ import { digest, randomToken, type Outcome } from "../src/protocol";
 import { FRIEND_REFRESH_SECONDS } from "../src/friends";
 import { FRIEND_ALIAS_HEADER } from "../src/friend-aliases";
 import { MAX_FRIEND_ALIASES, aliasesFrom } from "../src/config";
+import { openCostly } from "./config";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 let address = 0;
@@ -15,7 +16,7 @@ async function call(path: string, method: string, a: Account | undefined, body: 
   const config: Record<string, unknown> = aliases === undefined ? {} : { CONFIG: `{"friend_aliases":${aliases}}` };
   return worker.fetch(new Request("https://aliases.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.9." + ++address, ...(a ? { "X-Player-Id": a.player_id, Authorization: "Bearer " + a.device_token } : {}), ...headers },
-    body: body === undefined ? undefined : JSON.stringify(body) }), Object.assign({}, env, config));
+    body: body === undefined ? undefined : JSON.stringify(body) }), Object.assign({}, env, openCostly(env), config));
 }
 async function create(): Promise<Account> { const r = await call("/v1/identity", "POST", undefined, {}); expect(r.status).toBe(201); return r.json<Account>(); }
 const request = (a: Account, code: unknown, aliases?: string) => call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: code }, aliases);

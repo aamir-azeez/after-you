@@ -5,6 +5,7 @@ import { interactionBlocked } from "./safety";
 import { FRIEND_ALIAS_HEADER, aliasShaped, friendAliasFor, resolveFriendAlias } from "./friend-aliases";
 import { announceToFriends } from "./live";
 import { displayNamesShown, shownName } from "./display-names";
+import { limitCostly } from "./limits";
 
 const exact = (v: Record<string, unknown>, keys: string[]) => {
   if (Object.keys(v).length !== keys.length || keys.some(k => !Object.hasOwn(v, k)) || v.schema_version !== 1) throw new ApiError(400, "invalid_friend_request");
@@ -28,6 +29,10 @@ async function allowed(env: Env, owner: string, peer: string): Promise<void> {
 }
 const responseLink = (owner: string, link: FriendLink, accepted = link.accepted) => ({ schema_version: 1, player_id: link.player_id, request_id: link.request_id,
   status: accepted ? "accepted" : link.requested_by === owner ? "outgoing" : "incoming" });
+/** A pending request one side pushed out of a full list (player.ts oldestIncoming) also goes from its sender's list, so it never keeps a slot there. */
+async function clearEvicted(env: Env, holder: string, evicted: FriendLink | null): Promise<void> {
+  if (evicted) await env.PLAYERS.getByName(evicted.player_id).friendForget(evicted.player_id, holder, evicted.request_id).catch(() => undefined);
+}
 async function pair(env: Env, owner: string, peer: string, requestId: string): Promise<[FriendEdge, FriendEdge]> {
   const [a, b] = await Promise.all([env.PLAYERS.getByName(owner).friendEdge(owner, peer), env.PLAYERS.getByName(peer).friendEdge(peer, owner)]);
   if (!a || !b || a.link.request_id !== requestId || !sameFriendLink(a.link, b.link, owner)) throw new ApiError(409, "friend_request_changed");
@@ -98,6 +103,9 @@ export async function routeFriends(request: Request, path: string, owner: string
     const peer = friendCode(env, input.friend_code); await allowed(env, owner, peer);
     // Reject nonexistent codes before reserving the caller's limited slots.
     if (!await env.PLAYERS.getByName(peer).safetyIdentityActive(peer)) throw new ApiError(404, "friend_unavailable");
+    // A player who declined this one lately answers as an unknown code does (friend-declines.ts); this Add clears the caller's own decline of the peer.
+    const [barred] = await Promise.all([env.FRIEND_ROOM_EVENTS.getByName(peer).declined(owner), env.FRIEND_ROOM_EVENTS.getByName(owner).clearDecline(peer)]);
+    if (barred) throw new ApiError(404, "friend_unavailable");
     const [local, remote] = await Promise.all([player.friendEdge(owner, peer), env.PLAYERS.getByName(peer).friendEdge(peer, owner)]);
     // A lost second DELETE reply can leave an orphan. Repair only on an
     // explicit Add action, never on a list read between proposal/delivery.
@@ -109,13 +117,15 @@ export async function routeFriends(request: Request, path: string, owner: string
       // Both people explicitly chose Add. Finish delivery of their retained
       // proposal and apply this person's consent through the usual handshake.
       await authorized(env, owner, hash);
-      unwrap(await player.friendReceive(owner, peer, remote.link.request_id, remote.link.created_at));
+      await clearEvicted(env, owner, unwrap(await player.friendReceive(owner, peer, remote.link.request_id, remote.link.created_at, true)).evicted);
       return accept(env, owner, hash, peer, remote.link.request_id);
     }
-    const proposed = unwrap(await player.friendPropose(owner, hash, peer, randomToken(16)));
+    const { link: proposed, evicted: pushedOut } = unwrap(await player.friendPropose(owner, hash, peer, randomToken(16)));
+    await clearEvicted(env, owner, pushedOut);
     if (proposed.requested_by === peer) return accept(env, owner, hash, peer, proposed.request_id);
     const received = await env.PLAYERS.getByName(peer).friendReceive(peer, owner, proposed.request_id, proposed.created_at);
     if (!received.ok) { await player.friendForget(owner, peer, proposed.request_id, hash); return unwrap(received); }
+    await clearEvicted(env, peer, received.value.evicted);
     try {
       const [current, other] = await pair(env, owner, peer, proposed.request_id);
       await allowed(env, owner, peer); await authorized(env, owner, hash);
@@ -142,6 +152,8 @@ export async function routeFriends(request: Request, path: string, owner: string
       unwrap(input.room.api_version === 1 ? await env.ROOMS.getByName(input.room.room_id).friendInvite(owner, owner) : await env.ROOMS_V2.getByName(input.room.room_id).friendInvite(owner, owner));
     }
     const previous = unwrap(await player.friendList(owner, hash, false));
+    // A change reaches every friend (hints and revokes below), so changes are in the costly class; a repeat is free.
+    if (previous.shared_room?.room_id !== input.room?.room_id || previous.shared_room?.api_version !== input.room?.api_version) await limitCostly(env, "friend-share", owner);
     const result = unwrap(await player.friendShare(owner, hash, input.room));
     if (previous.shared_room?.room_id !== result.shared_room?.room_id || previous.shared_room?.api_version !== result.shared_room?.api_version) {
       await Promise.all([announceToFriends(env, owner, previous.links),
@@ -154,9 +166,12 @@ export async function routeFriends(request: Request, path: string, owner: string
     const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "request_id"]);
     const peer = match[1], requestId = text(input.request_id, ID_PATTERN);
     if (request.method === "DELETE") {
-      unwrap(await player.friendForget(owner, peer, requestId, hash));
-      unwrap(await env.PLAYERS.getByName(peer).friendForget(peer, owner, requestId));
-      await Promise.all([env.FRIEND_ROOM_EVENTS.getByName(owner).revoke(peer), env.FRIEND_ROOM_EVENTS.getByName(peer).revoke(owner)].map(promise => promise.catch(() => undefined)));
+      // The peer's side is always asked, so a lost reply's half removal is repaired; a removal of nothing writes nothing anywhere.
+      const mine = unwrap(await player.friendForget(owner, peer, requestId, hash));
+      const theirs = unwrap(await env.PLAYERS.getByName(peer).friendForget(peer, owner, requestId));
+      // Removing a pending request from the peer is a decline (friend-declines.ts).
+      if (mine.declined) await env.FRIEND_ROOM_EVENTS.getByName(owner).noteDecline(peer);
+      if (mine.changed || theirs.changed) await Promise.all([env.FRIEND_ROOM_EVENTS.getByName(owner).revoke(peer), env.FRIEND_ROOM_EVENTS.getByName(peer).revoke(owner)].map(promise => promise.catch(() => undefined)));
       return { schema_version: 1, removed: true };
     }
     await allowed(env, owner, peer);

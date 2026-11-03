@@ -4,6 +4,7 @@
 interface __BaseEnv_Env {
 	TESTER_CODE_LIMITER: RateLimit;
 	WAITLIST_ADDRESS_LIMITER: RateLimit;
+	AUTH_LIMITER: RateLimit;
 	PUBLIC_LIMITER: RateLimit;
 	PLAYER_LIMITER: RateLimit;
 	PHOTO_ACK_LIMITER: RateLimit;

@@ -6,9 +6,36 @@ import { isAlarmMetadataTable } from "./notification-storage";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
 import { LEGACY_STAGE_COUNT, MAX_ROOM_STAGES } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, stageDigit } from "./v2/room-stage";
+import { logWarning } from "./log";
 
 export const SAFETY_REPORT_REASONS = ["sexual_content", "child_safety", "harassment", "hate", "privacy", "other"] as const;
 export const REPORT_TTL = 90 * 86400000;
+/**
+ * The report inbox's guards (SafetyInbox.submit), all on the one existing table, so older code reads it as before:
+ * - REPORT_INBOX_ROWS rows at most, the most listReports and a snapshot carry. A report that needs room pushes out
+ *   the oldest resolved one; only open reports can fill the inbox.
+ * - Reports other than child_safety stop at OPEN_REPORT_CAP open ones, so child safety reports always keep the rest.
+ * - REPORTS_PER_REPORTER a day per reporter (as before). Other than child_safety: REPORTS_PER_TARGET open ones a day
+ *   naming one player and REPORTS_PER_ROOM naming one room; past them the answer is report_rate_limited.
+ * - The same report again while one is open (reporter, player, room and photo, for the same reason or already as
+ *   child_safety) is received without a second row: the phone gets its receipt and the open one is reviewed.
+ */
+/**
+ * An identity deletion's provider step (RevenueCat) and its cleanup each get ERASURE_FAST_ATTEMPTS tries with a doubling
+ * delay, then one a day with no limit (the counters stay at ERASURE_FAST_ATTEMPTS, the most older code accepts), and each
+ * failed daily try logs that the deletion is stalled. An explicit retry from the phone still starts the fast tries again.
+ */
+export const ERASURE_FAST_ATTEMPTS = 8;
+export const ERASURE_STALLED_RETRY_MS = 86_400_000;
+export const REPORT_INBOX_ROWS = 1000;
+export const OPEN_REPORT_CAP = 900;
+export const REPORTS_PER_REPORTER = 10;
+export const REPORTS_PER_TARGET = 5;
+export const REPORTS_PER_ROOM = 3;
+/** The reporter id a deleted identity's reports keep: a valid id that no player has, never the target. */
+export const ERASED_REPORTER = "erased_reporter".padEnd(22, "_");
+const OPEN = "json_extract(data,'$.resolved_at') IS NULL";
+const CHILD = "json_extract(data,'$.reason')='child_safety'";
 const PROFILE_SCHEMA = "CREATE TABLE safety_profile (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)";
 const INBOX_SCHEMA = "CREATE TABLE safety_reports (report_id TEXT PRIMARY KEY, reporter_id TEXT NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL)";
 function knownSchema(storage: DurableObjectStorage, schemas: string[]): void {
@@ -166,25 +193,27 @@ export class SafetyProfile extends DurableObject<Env> {
     this.erasureBusy = true;
     try {
       if (job.state === "pending") {
-        if (job.attempts >= 8) { await this.ctx.storage.deleteAlarm(); return; }
-        job.attempts++; job.next_at = Date.now() + Math.min(86400000, 60000 * 2 ** (job.attempts - 1));
+        const stalled = job.attempts >= ERASURE_FAST_ATTEMPTS;
+        if (!stalled) job.attempts++;
+        job.next_at = Date.now() + (stalled ? ERASURE_STALLED_RETRY_MS : Math.min(86400000, 60000 * 2 ** (job.attempts - 1)));
         // Reserve the retry before outbound I/O. Provider DELETE is idempotent.
         await this.ctx.storage.transaction(async () => { writeErasure(this.ctx.storage, job); await this.ctx.storage.setAlarm(job.next_at!); });
         const accepted = await requestProviderErasure(job.owner, this.env);
         const current = readErasure(this.ctx.storage);
         if (!current || current.state !== "pending" || current.owner !== job.owner || !equalHash(current.device_hash, job.device_hash)) return;
-        if (!accepted) { if (job.attempts >= 8) await this.ctx.storage.deleteAlarm(); return; }
+        if (!accepted) { if (job.attempts >= ERASURE_FAST_ATTEMPTS) logWarning("erasure_provider_stalled", { attempts: job.attempts, daily: stalled }); return; }
         current.state = "accepted"; current.next_at = Date.now() + 60000; writeErasure(this.ctx.storage, current); await this.ctx.storage.setAlarm(current.next_at);
       }
       if (finishAccount) {
         const current = readErasure(this.ctx.storage)!;
         // Reserve cleanup retry too: provider acceptance does not imply that
         // room, transfer, safety or local provider-state cleanup succeeded.
-        if (current.cleanup_attempts >= 8) { await this.ctx.storage.deleteAlarm(); return; }
-        current.cleanup_attempts++; current.next_at = Date.now() + Math.min(86400000, 60000 * 2 ** (current.cleanup_attempts - 1));
+        const stalled = current.cleanup_attempts >= ERASURE_FAST_ATTEMPTS;
+        if (!stalled) current.cleanup_attempts++;
+        current.next_at = Date.now() + (stalled ? ERASURE_STALLED_RETRY_MS : Math.min(86400000, 60000 * 2 ** (current.cleanup_attempts - 1)));
         await this.ctx.storage.transaction(async () => { writeErasure(this.ctx.storage, current); await this.ctx.storage.setAlarm(current.next_at!); });
         try { await this.env.PLAYERS.get(this.env.PLAYERS.idFromString(current.player_object_id)).finalizeErasure(current.owner, current.device_hash); } catch { /* Reserved retry owns transient cleanup failures. */ }
-        if (readErasure(this.ctx.storage)?.state === "accepted" && current.cleanup_attempts >= 8) await this.ctx.storage.deleteAlarm();
+        if (readErasure(this.ctx.storage)?.state === "accepted" && current.cleanup_attempts >= ERASURE_FAST_ATTEMPTS) logWarning("erasure_cleanup_stalled", { attempts: current.cleanup_attempts, daily: stalled });
       }
     } finally { this.erasureBusy = false; }
   }
@@ -216,7 +245,8 @@ export class SafetyProfile extends DurableObject<Env> {
         if (this.ctx.storage.sql.exec("SELECT id FROM safety_profile").toArray().length || readErasure(this.ctx.storage) || await this.ctx.storage.getAlarm() !== null) return fail(409, "restore_target_not_empty");
         if (profile) this.write(profile);
         if (erasure) {
-          if (erasure.next_at !== null && (erasure.state === "pending" && erasure.attempts < 8 || erasure.state === "accepted" && erasure.cleanup_attempts < 8)) {
+          // A job past its fast tries is on its daily retry, so it gets its alarm too.
+          if (erasure.next_at !== null && erasure.state !== "complete") {
             erasure.next_at = Math.max(Date.now() + 1000, erasure.next_at); await this.ctx.storage.setAlarm(erasure.next_at);
           }
           writeErasure(this.ctx.storage, erasure);
@@ -232,12 +262,23 @@ export class SafetyProfile extends DurableObject<Env> {
 
 // A SafetyProfile nobody wrote answers the deletion checks as an empty one, and stores nothing.
 answerWhileBlank(SafetyProfile, {
+  // Block checks name any player id (friend routes check blocks before any link): one nobody wrote has no blocks and stays blank.
+  hasBlocked: owner => { text(owner, ID_PATTERN); return false; },
+  blocks: owner => { text(owner, ID_PATTERN); return { schema_version: 1, blocked_players: [] }; },
   deletionReceipt: () => false,
-  acknowledgeDeletion: async (owner, deviceHash) => { text(owner, ID_PATTERN); text(deviceHash, HASH_PATTERN); return ok({ schema_version: 1, acknowledged: true }); }
+  // As a profile with empty tables answers: an erasure still running holds the acknowledgement (a blank profile is now usual,
+  // since the block checks above no longer create one).
+  acknowledgeDeletion: async function (this: unknown, owner: string, deviceHash: string) {
+    text(owner, ID_PATTERN); text(deviceHash, HASH_PATTERN);
+    if (await (this as { env: Env }).env.PLAYERS.getByName(owner).deletingWith(owner, deviceHash)) return fail(409, "deletion_not_ready");
+    return ok({ schema_version: 1 as const, acknowledged: true as const });
+  }
 });
 
 /** Only report submission/review uses the bounded inbox; gameplay never does. */
 export class SafetyInbox extends DurableObject<Env> {
+  /** Whether the full inbox was already logged since the last report that fit (memory only). */
+  private fullLogged = false;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ctx.storage.sql.exec(INBOX_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
@@ -256,9 +297,25 @@ export class SafetyInbox extends DurableObject<Env> {
       this.prune();
       const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM safety_reports WHERE report_id=?", report.report_id).toArray()[0];
       if (old) { const existing = checkedReport(JSON.parse(old.data)); return equalHash(existing.request_hash, report.request_hash) ? ok(receipt(existing)) : fail(409, "idempotency_key_reused"); }
-      if (this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM safety_reports WHERE reporter_id=? AND created_at>?", report.reporter_id, Date.now() - 86400000).one().n >= 10) return fail(429, "report_rate_limited");
-      if (this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM safety_reports").one().n >= 1000) return fail(503, "report_inbox_full");
+      const day = Date.now() - 86400000, count = (sql: string, ...args: unknown[]) => this.ctx.storage.sql.exec<{ n: number }>(sql, ...args).one().n;
+      if (count("SELECT COUNT(*) AS n FROM safety_reports WHERE reporter_id=? AND created_at>?", report.reporter_id, day) >= REPORTS_PER_REPORTER) return fail(429, "report_rate_limited");
+      const child = report.reason === "child_safety";
+      // The same report again (an open one from this reporter on the same player, room and photo, for the same reason or
+      // already as child safety) is received without a second row: its receipt answers, and the open one is reviewed.
+      if (count(`SELECT COUNT(*) AS n FROM safety_reports WHERE reporter_id=? AND json_extract(data,'$.target_id')=? AND json_extract(data,'$.room_id')=? AND ${OPEN} AND IFNULL(json_extract(data,'$.photo.turn_id'),'')=? AND IFNULL(json_extract(data,'$.photo.sha256'),'')=? AND (json_extract(data,'$.reason')=? OR ${CHILD})`,
+        report.reporter_id, report.target_id, report.room_id, report.photo?.turn_id ?? "", report.photo?.sha256 ?? "", report.reason) > 0) return ok(receipt(report));
+      if (!child) {
+        if (count(`SELECT COUNT(*) AS n FROM safety_reports WHERE json_extract(data,'$.target_id')=? AND created_at>? AND ${OPEN} AND NOT ${CHILD}`, report.target_id, day) >= REPORTS_PER_TARGET ||
+          count(`SELECT COUNT(*) AS n FROM safety_reports WHERE json_extract(data,'$.room_id')=? AND created_at>? AND ${OPEN} AND NOT ${CHILD}`, report.room_id, day) >= REPORTS_PER_ROOM) return fail(429, "report_rate_limited");
+        if (count(`SELECT COUNT(*) AS n FROM safety_reports WHERE ${OPEN} AND NOT ${CHILD}`) >= OPEN_REPORT_CAP) return this.full(child);
+      }
+      if (count("SELECT COUNT(*) AS n FROM safety_reports") >= REPORT_INBOX_ROWS) {
+        const resolved = this.ctx.storage.sql.exec<{ report_id: string }>(`SELECT report_id FROM safety_reports WHERE NOT ${OPEN} ORDER BY created_at,report_id LIMIT 1`).toArray()[0]?.report_id;
+        if (resolved === undefined) return this.full(child);
+        this.ctx.storage.sql.exec("DELETE FROM safety_reports WHERE report_id=?", resolved);
+      }
       this.ctx.storage.sql.exec("INSERT INTO safety_reports VALUES (?,?,?,?)", report.report_id, report.reporter_id, report.created_at, JSON.stringify(report));
+      this.fullLogged = false;
       await this.schedule(); return ok(receipt(report));
     });
     if (result.ok && !await this.env.PLAYERS.getByName(report.reporter_id).authorize(deviceHash)) {
@@ -279,9 +336,35 @@ export class SafetyInbox extends DurableObject<Env> {
     const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM safety_reports WHERE report_id=? AND reporter_id=?", id, owner).toArray()[0];
     return row ? ok(receipt(checkedReport(JSON.parse(row.data)))) : fail(404, "report_not_found");
   }
+  /** The inbox has no room for this report: logged once until one fits again. */
+  private full(child: boolean): Outcome<never> {
+    if (!this.fullLogged) { logWarning("report_inbox_full", { child_safety: child }); this.fullLogged = true; }
+    return fail(503, "report_inbox_full");
+  }
+  /**
+   * Account erasure: the player's reports stay until their own 90 days end, so a report is still reviewed, but they
+   * no longer name the player (ERASED_REPORTER). Nothing is stored about who made them.
+   */
   async eraseReporter(owner: string): Promise<Outcome<{ erased: true }>> {
-    try { text(owner, ID_PATTERN); knownSchema(this.ctx.storage, [INBOX_SCHEMA]); this.ctx.storage.sql.exec("DELETE FROM safety_reports WHERE reporter_id=?", owner); await this.schedule(); return ok({ erased: true }); }
+    try {
+      text(owner, ID_PATTERN); knownSchema(this.ctx.storage, [INBOX_SCHEMA]);
+      if (owner !== ERASED_REPORTER) this.ctx.storage.sql.exec("UPDATE safety_reports SET reporter_id=?, data=json_set(data,'$.reporter_id',?) WHERE reporter_id=?", ERASED_REPORTER, ERASED_REPORTER, owner);
+      return ok({ erased: true });
+    }
     catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  /** Binding only (operator): removes one report now, open or resolved. */
+  async purgeReport(id: string): Promise<Outcome<{ schema_version: 1; purged: number }>> {
+    text(id, HASH_PATTERN); this.prune();
+    const purged = this.ctx.storage.sql.exec("DELETE FROM safety_reports WHERE report_id=?", id).rowsWritten;
+    await this.schedule(); return ok({ schema_version: 1, purged });
+  }
+  /** Binding only (operator): removes every report resolved at least `days` days ago (0 for all resolved ones). */
+  async purgeResolved(days: number): Promise<Outcome<{ schema_version: 1; purged: number }>> {
+    if (!Number.isSafeInteger(days) || days < 0 || days > 90) return fail(400, "invalid_safety_request");
+    this.prune();
+    const purged = this.ctx.storage.sql.exec(`DELETE FROM safety_reports WHERE NOT ${OPEN} AND json_extract(data,'$.resolved_at')<=?`, Date.now() - days * 86400000).rowsWritten;
+    await this.schedule(); return ok({ schema_version: 1, purged });
   }
   // Binding-only operator tools; no public route exposes report contents.
   getReport(id: string): Outcome<SafetyReport> {
@@ -310,6 +393,8 @@ export class SafetyInbox extends DurableObject<Env> {
       const reports = p.reports.map(checkedReport); if (new Set(reports.map(r => r.report_id)).size !== reports.length) throw new ApiError(409, "invalid_safety_archive");
       for (const r of reports) {
         const { reporter_id, target_id: _target, request_hash, report_id, created_at: _created, resolved_at: _resolved, ...body } = r;
+        // A deleted reporter's report no longer carries the id its hashes were made from.
+        if (reporter_id === ERASED_REPORTER) continue;
         if (report_id !== await digest(reporter_id + ":" + body.idempotency_key) || request_hash !== await digest(canonicalJson({ operation: "safety_report", reporter_id, ...body }))) throw new ApiError(409, "invalid_safety_archive");
       }
       return await this.ctx.storage.transaction(async () => {

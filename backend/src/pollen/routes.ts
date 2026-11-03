@@ -304,5 +304,5 @@ async function routeBundles(request: Request, playerId: string, env: Env): Promi
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const input = await boundedJson(request, 256);
   if (!isObject(input) || !only(input, ["schema_version"]) || input.schema_version !== 1) throw new ApiError(400, "invalid_pollen_bundle_claim");
-  return unwrap(await env.PLAYERS.getByName(playerId).pollenBundleClaim(playerId, await bearerDigest(request)));
+  return unwrap(await env.PLAYERS.getByName(playerId).pollenBundleClaim(playerId, await bearerDigest(request), clientHeader(request)?.channel === "app_store"));
 }

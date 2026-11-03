@@ -9,6 +9,7 @@ import type { RedoState } from "../src/redo-control";
 import type { RoomSnapshotV2, MutationV2 } from "../src/v2/room";
 import { RELAY_KEY } from "../src/v2/protocol";
 import { configJson, withConfig } from "./config";
+import { meterRows } from "./meter";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
@@ -417,8 +418,15 @@ describe("partner redo request notifications", () => {
     expect((await categories({ ...account, device_token: randomToken() }, true)).status).toBe(401);
     for (const value of [true, false]) expect((await categories(account, value)).status).toBe(404);
     expect((await register(account)).status).toBe(200);
+    // The phone registers on every cold start: the same registration again answers the same and writes no row.
+    const again = await meterRows({ player: player as unknown as DurableObjectStub }, () => register(account), /notification_registrations/);
+    expect(await again.value.json()).toEqual({ registered: true, binding_epoch: epoch }); expect(again.rows.player.written).toBe(0);
     const on = await categories(account, true); expect(on.status).toBe(200); expect(await on.json()).toEqual({ schema_version: 1, binding_epoch: epoch, redo_requests: true });
     expect(await rows(player, "notification_categories")).toHaveLength(1);
+    // The phone repeats its choice on every cold start: a repeat answers the same and writes no row.
+    const repeat = await meterRows({ player: player as unknown as DurableObjectStub }, () => categories(account, true), /notification_categories/);
+    expect(await repeat.value.json()).toEqual({ schema_version: 1, binding_epoch: epoch, redo_requests: true });
+    expect(repeat.rows.player.written).toBe(0);
     // The registration request and acknowledgement keep their exact shape.
     expect(await (await register(account, epoch, token + "-rotated")).json()).toEqual({ registered: true, binding_epoch: epoch });
     expect(await rows(player, "notification_categories")).toHaveLength(1);

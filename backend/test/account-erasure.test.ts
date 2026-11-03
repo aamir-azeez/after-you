@@ -6,6 +6,7 @@ import worker from "../src/index";
 import { digest, canonicalJson, randomToken } from "../src/protocol";
 import { readErasure, writeErasure, type ErasureJob } from "../src/account-erasure";
 import { TERMS_VERSION } from "../src/public-policy";
+import { ERASURE_FAST_ATTEMPTS, ERASURE_STALLED_RETRY_MS } from "../src/safety";
 import { configJson } from "./config";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const realNow = Date.now.bind(Date);
@@ -78,14 +79,26 @@ describe("durable account and provider erasure", () => {
     expect(await job(a)).toMatchObject({ state: "complete", attempts: 2 });
     expect((await call("/v1/identity", "DELETE", a)).status).toBe(200);
   });
-  it("bounds automatic provider retries and resumes only on explicit authenticated retry", async () => {
+  it("after the fast provider retries, retries daily with no limit and logs the stall; an explicit retry starts the fast ones again", async () => {
     const a = await create(); const stub = await configured(a); const provider = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     expect((await call("/v1/identity", "DELETE", a)).status).toBe(503);
     for (let i = 0; i < 7; i++) await due(a);
     expect(provider).toHaveBeenCalledTimes(8); expect(await job(a)).toMatchObject({ state: "pending", attempts: 8 });
-    await runInDurableObject(stub, async (_, ctx) => { expect(await ctx.storage.getAlarm()).toBeNull(); });
+    for (let i = 0; i < 3; i++) {
+      const before = Date.now();
+      await runInDurableObject(stub, async (_, ctx) => { expect(await ctx.storage.getAlarm()).toBe(readErasure(ctx.storage)!.next_at); });
+      await due(a);
+      // The counter stays within what older code reads; the next try is a day out.
+      const daily = (await job(a))!;
+      expect(daily).toMatchObject({ state: "pending", attempts: ERASURE_FAST_ATTEMPTS });
+      expect(daily.next_at! - before).toBeGreaterThanOrEqual(ERASURE_STALLED_RETRY_MS);
+    }
+    expect(provider).toHaveBeenCalledTimes(11);
+    const stalls = warn.mock.calls.map(args => JSON.parse(String(args[0]))).filter(line => line.event === "erasure_provider_stalled");
+    expect(stalls.length).toBe(4); expect(stalls.every(line => line.attempts === 8 && Object.keys(line).sort().join() === "attempts,daily,event")).toBe(true);
     provider.mockResolvedValue(new Response(null, { status: 200 }));
-    expect((await call("/v1/identity", "DELETE", a)).status).toBe(200); expect(provider).toHaveBeenCalledTimes(9);
+    expect((await call("/v1/identity", "DELETE", a)).status).toBe(200); expect(provider).toHaveBeenCalledTimes(12);
   });
   it("reserves retry after provider acceptance when another store temporarily refuses cleanup", async () => {
     const a = await create(); const stub = await configured(a); vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 200 }));

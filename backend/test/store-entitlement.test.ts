@@ -385,6 +385,8 @@ describe("paid room creation through the Worker", () => {
     provider({ subscriptions: list([iosPlan()]) });
     const off = await call("/v2/rooms", host, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, live);
     expect(off.status).toBe(402); expect(await off.json()).toMatchObject({ error: { code: "host_unlock_required" } });
+    // The refusal is remembered for seconds only (entitlement.ts NEGATIVE_FRESH_MS); the settings change below is checked afresh.
+    await env.PLAYERS.getByName(host.player_id).noteEntitlement(host.player_id, null);
     const held = await call("/v2/rooms", host, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, { ...live, features: APP_STORE_ON, app_store_subscription_product_ids: ["after_you_full_journey_monthly_ios"] });
     expect(held.status).toBe(503); expect(await held.json()).toMatchObject({ error: { code: "entitlement_unavailable" } });
     const on = await call("/v2/rooms", host, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, { ...live, features: APP_STORE_ON });

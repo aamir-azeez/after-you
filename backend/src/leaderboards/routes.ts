@@ -10,6 +10,7 @@ import { looksOn } from "../pollen/features";
 import { platformRequiredOn } from "./platform-rule";
 import { roomRun } from "./run";
 import { postRun } from "./submit";
+import { limitBoardRead } from "../limits";
 
 /**
  * The phone's leaderboard routes, all absent (falling through to 404) while
@@ -48,8 +49,7 @@ export async function routeLeaderboardRead(request: Request, path: string, env: 
   const replay = REPLAY_PATH.exec(path);
   const board = knownBoard((replay ?? BOARD_PATH.exec(path))?.[1]);
   if (!board) return null;
-  const address = request.headers.get("CF-Connecting-IP") || "local";
-  if (!(await env.PLAYER_LIMITER.limit({ key: "leaderboard:" + await digest(address) })).success) throw new ApiError(429, "rate_limited");
+  await limitBoardRead(request, env);
   if (replay) return serveReplay(env, board, replay[2]);
   const cached = await cachedView(board);
   if (cached) return json(publicView(cached, looksOn(env)));

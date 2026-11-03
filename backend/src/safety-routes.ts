@@ -27,6 +27,22 @@ async function reportStages(env: Env, input: unknown): Promise<number> {
   const roomId = v.room_id;
   return roomStages(() => env.ROOMS_V2.getByName(roomId), photo.turn_id);
 }
+/**
+ * POST /v1/safety/blocks/<id> with {schema_version: 1, request_id}: blocks a player on the caller's Friends list (a friend,
+ * or a request either way) by that link, with no shared room; a room partner is blocked through the room as before.
+ * The link then goes from both lists, so a blocked request never keeps a slot. Same answer as a room block.
+ */
+async function blockFriend(env: Env, owner: string, deviceHash: string, peer: string, raw: unknown) {
+  const input = object(raw); exact(input, ["schema_version", "request_id"]);
+  if (input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
+  const requestId = text(input.request_id, ID_PATTERN), player = env.PLAYERS.getByName(owner);
+  const edge = await player.friendEdge(owner, peer);
+  if (!edge || edge.link.request_id !== requestId) throw new ApiError(404, "friend_unavailable");
+  const blocked = unwrap(await env.SAFETY_PROFILES.getByName(owner).setBlock(owner, deviceHash, peer, true));
+  unwrap(await player.friendForget(owner, peer, requestId, deviceHash));
+  await env.PLAYERS.getByName(peer).friendForget(peer, owner, requestId).catch(() => undefined);
+  return blocked;
+}
 export async function routeSafety(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
   const profile = env.SAFETY_PROFILES.getByName(owner), inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   const deviceHash = await bearerDigest(request);
@@ -42,6 +58,7 @@ export async function routeSafety(request: Request, path: string, owner: string,
   if (path === "/v1/safety/blocks" && request.method === "GET") return profile.blocks(owner);
   const blockId = path.match(/^\/v1\/safety\/blocks\/([A-Za-z0-9_-]{22})$/);
   if (blockId && request.method === "DELETE") return unwrap(await profile.setBlock(owner, deviceHash, blockId[1], false));
+  if (blockId && request.method === "POST") return blockFriend(env, owner, deviceHash, blockId[1], await boundedJson(request, 1024));
   if (path === "/v1/safety/block" && request.method === "POST") {
     const input = object(await boundedJson(request, 2048)); exact(input, ["schema_version", "room_family", "room_id"]);
     if (input.schema_version !== 1 || typeof input.room_family !== "string" || typeof input.room_id !== "string") throw new ApiError(400, "invalid_safety_request");

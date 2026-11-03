@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { entitlement } from "../src/entitlement";
+import { NEGATIVE_FRESH_MS, entitlement } from "../src/entitlement";
+import { HOST_ACCESS_FRESH_MS } from "../src/v2/host-access";
 import { playEntitlement, revenuecatRequest } from "../src/play-entitlement";
 import type { ServerVars } from "../src/flags";
 import { configJson } from "./config";
@@ -127,5 +128,43 @@ describe("server-selected Play purchase policy", () => {
     });
     const response = await worker.fetch(new Request("https://game.test/v1/entitlement", { headers: { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } }), { ...env, ...rc({ reviewer_ids: [account.player_id] }) } as unknown as Env);
     expect(response.status).toBe(401); expect(await response.json()).toMatchObject({ error: { code: "invalid_auth" } });
+  });
+});
+
+describe("the remembered Full Journey answer", () => {
+  const create = async () => (await worker.fetch(new Request("https://game.test/v1/identity", { method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.44.1" }, body: "{}" }), env)).json<{ player_id: string; device_token: string }>();
+  const check = (account: { player_id: string; device_token: string }, settings: ServerVars, limiter?: RateLimit) => worker.fetch(new Request("https://game.test/v1/entitlement", { headers: { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } }),
+    { ...env, ...settings, ...(limiter ? { TESTER_CODE_LIMITER: limiter } : {}) } as unknown as Env);
+  it("answers from the Player's memory for a quarter of an hour once found, ends it at the entitlement's end, and spends the costly bucket only on a provider check", async () => {
+    const account = await create(), settings = rc({ reviewer_ids: [account.player_id] }), keys: string[] = [];
+    const limiter = { limit: async ({ key }: { key: string }) => { keys.push(key); return { success: true }; } } as unknown as RateLimit;
+    const end = Date.now() + 20 * 60_000, provider = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: end }], next_page: null }));
+    expect(await (await check(account, settings, limiter)).json()).toMatchObject({ full_journey: true, access_source: "review_grant" });
+    expect(await (await check(account, settings, limiter)).json()).toMatchObject({ full_journey: true, access_source: "review_grant" });
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(keys).toEqual(["costly:entitlement:" + account.player_id]);
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + HOST_ACCESS_FRESH_MS + 1000);
+    await check(account, settings, limiter);
+    expect(provider).toHaveBeenCalledTimes(2);
+    expect(keys.length).toBe(2);
+    // An entitlement that ends sooner ends the memo with it.
+    const short = await create(), shortSettings = rc({ reviewer_ids: [short.player_id] });
+    provider.mockImplementation(async () => Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: now + HOST_ACCESS_FRESH_MS + 5000 }], next_page: null }));
+    await check(short, shortSettings);
+    await check(short, shortSettings);
+    expect(provider).toHaveBeenCalledTimes(3);
+    vi.spyOn(Date, "now").mockReturnValue(now + HOST_ACCESS_FRESH_MS + 6000);
+    await check(short, shortSettings);
+    expect(provider).toHaveBeenCalledTimes(4);
+  });
+  it("holds a refusal only for seconds, so a purchase is seen almost at once", async () => {
+    const account = await create(), provider = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ object: "list", items: [], next_page: null }));
+    expect(await (await check(account, config)).json()).toMatchObject({ full_journey: false, status: "verified" });
+    expect(await (await check(account, config)).json()).toMatchObject({ full_journey: false, status: "verified" });
+    expect(provider).toHaveBeenCalledTimes(1);
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + NEGATIVE_FRESH_MS + 1);
+    await check(account, config);
+    expect(provider).toHaveBeenCalledTimes(2);
   });
 });

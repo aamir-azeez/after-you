@@ -2,6 +2,12 @@ import { ID_PATTERN, fail, isObject, ok, type Outcome } from "./protocol";
 import { isMember } from "./room-departure";
 
 export const MAX_FRIENDS = 20;
+/**
+ * Pending incoming requests a player holds at most, inside MAX_FRIENDS. A new request past it (or into a full
+ * list) takes the place of the oldest pending incoming one; accepted friends and outgoing requests are never
+ * pushed out, so strangers can never fill a list.
+ */
+export const MAX_INCOMING_REQUESTS = 10;
 export const FRIEND_REFRESH_SECONDS = 30;
 export const FRIEND_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export type SharedFriendRoom = { api_version: 1 | 2; room_id: string };

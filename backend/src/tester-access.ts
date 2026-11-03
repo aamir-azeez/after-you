@@ -2,6 +2,7 @@ import { ApiError, HASH_PATTERN, boundedJson, digest, equalHash, isObject, unwra
 import { bearerDigest } from "./http";
 import { flags, type ServerVars } from "./flags";
 import { isTester, matchTestCode, runTestAction, type TestActionReply } from "./test-codes";
+import { limitTesterCode } from "./limits";
 
 export const TESTER_CODE_DOMAIN = "afteryou.tester-code.v1:";
 export type TesterGrant = { schema_version: 1; granted_at: string };
@@ -31,9 +32,7 @@ export async function routeTesterAccess(request: Request, owner: string, env: En
   if (request.method === "GET" || existing.granted && !tester) return existing;
   // Separate actor and edge-IP buckets bound guessing across credential rotation
   // and fresh identities. Neither code nor credentials appear in limiter keys.
-  const ip = await digest(request.headers.get("CF-Connecting-IP") || "local");
-  if (!(await env.TESTER_CODE_LIMITER.limit({ key: "owner:" + owner })).success ||
-      !(await env.TESTER_CODE_LIMITER.limit({ key: "ip:" + ip })).success) throw new ApiError(429, "tester_rate_limited");
+  await limitTesterCode(request, env, owner);
   const body = await boundedJson(request, 1024);
   if (!isObject(body) || Object.keys(body).sort().join() !== "code,schema_version" || body.schema_version !== 1 || typeof body.code !== "string" || !/^[!-~]{8,128}$/.test(body.code)) throw new ApiError(400, "invalid_tester_request");
   if (tester) {

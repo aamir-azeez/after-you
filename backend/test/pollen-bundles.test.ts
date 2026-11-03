@@ -6,7 +6,7 @@ import gameBundles from "../../game/content/pollen_bundles.json";
 import serverBundles from "../src/pollen/bundles.json";
 import { APP_STORE_BUNDLES_READY, BUNDLES, checkedBundles, firstGift, storeReady, type BundleKey, type Bundles } from "../src/pollen/bundles";
 import { bundleProducts, bundlePurchase, lookupBundles, readBundles, type BundleAsk, type BundlePurchase } from "../src/pollen/bundle-provider";
-import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundleCheckDue, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
+import { BUNDLE_CHECK_MS, CLAIM_GAP_MAX_MS, CLAIM_GAP_MS, MAX_BUNDLE_LOOKUPS, bundleCheckDue, bundlesView, forgetClaimPace, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
 import { anyBundlesOn, appStoreBundlesOn, bundlesOn, itemDropsOn, refundsOn, sandboxAppStoreOn } from "../src/pollen/features";
 import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
 import { applyLedger, ledgerLines, walletView } from "../src/pollen/wallet";
@@ -210,7 +210,13 @@ async function call(path: string, method = "GET", account?: Account, body?: unkn
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1", ...client },
   body: body === undefined ? (method === "POST" ? "{}" : undefined) : JSON.stringify(body) }), configured);
 }
-const claim = (account: Account, base: Env = env) => call("/v1/pollen/bundle-claims", "POST", account, { schema_version: 1 }, base);
+/** An App Store build's client header: only its claims read the App Store sandbox list for anyone (POLLEN_SANDBOX_APP_STORE). */
+const APP_STORE_CLIENT = { [CLIENT_HEADER]: POLLEN_SHOP_MIN_VERSION + " app_store" };
+/** A claim as the phone sends it, past the claim pace (bundle-settle.ts pacedClaim), which the pacing tests drive with `paced`. */
+const claim = async (account: Account, base: Env = env, client: Record<string, string> = POLLEN_CLIENT, paced = false) => {
+  if (!paced) await runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, state) => forgetClaimPace(state.storage));
+  return call("/v1/pollen/bundle-claims", "POST", account, { schema_version: 1 }, base, client);
+};
 const wallet = async (account: Account) => (await call("/v1/pollen", "GET", account)).json<Wallet>();
 const tables = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, state) =>
   state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE name LIKE 'pollen_%' ORDER BY name").toArray().map(row => row.name));
@@ -402,13 +408,41 @@ describe("bundles through the Worker", () => {
     lists[player.player_id] = [owned("rc_20", "proda8a9bcf221")];
     let open!: () => void;
     gate = new Promise(resolve => { open = resolve; });
-    const both = Promise.all([claim(player), claim(player)]);
+    await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => forgetClaimPace(state.storage));
+    const both = Promise.all([claim(player, env, POLLEN_CLIENT, true), claim(player, env, POLLEN_CLIENT, true)]);
     await new Promise(resolve => setTimeout(resolve, 20));
     open();
-    const replies = await Promise.all((await both).map(response => response.json<Reply>()));
-    expect(replies.flatMap(reply => reply.credited).map(each => each.pollen + each.first_gift)).toEqual([firstPay("jar")]);
-    expect(replies.map(reply => reply.balance)).toEqual([firstPay("jar"), firstPay("jar")]);
+    // One reads RevenueCat and pays; the one that overlapped it is refused as busy (retryable, the phone keeps its claim waiting).
+    const answers = await both, ok = answers.find(response => response.status === 200)!, busy = answers.find(response => response.status === 429)!;
+    expect((await ok.json<Reply>()).credited.map(each => each.pollen + each.first_gift)).toEqual([firstPay("jar")]);
+    expect(await busy.json()).toEqual({ error: { code: "rate_limited", retryable: true } });
+    expect(providerCalls).toBe(1);
     expect((await wallet(player)).balance).toBe(firstPay("jar"));
+  });
+
+  it("paces claims per player: the purchase tries pass, a claim inside the gap costs no provider call and no row, and a quiet minute starts again", async () => {
+    const player = await create(), stub = env.PLAYERS.getByName(player.player_id) as unknown as DurableObjectStub;
+    lists[player.player_id] = [];
+    providerCalls = 0;
+    // The phone's tries after a purchase: at 0, 1.5 and 4.5 seconds.
+    for (const at of [0, 1500, 4500]) { offset = at; expect((await claim(player, env, POLLEN_CLIENT, true)).status).toBe(200); }
+    expect(providerCalls).toBe(3);
+    // Inside the gap that has grown to 4 seconds: refused, retryable, with no provider call and no row.
+    offset = 4500 + 2 * CLAIM_GAP_MS;
+    const busy = await meterRows({ player: stub }, () => claim(player, env, POLLEN_CLIENT, true));
+    expect(busy.value.status).toBe(429); expect(busy.value.headers.get("Retry-After")).toBe("60");
+    expect(await busy.value.json()).toEqual({ error: { code: "rate_limited", retryable: true } });
+    expect(busy.rows.player.written).toBe(0); expect(providerCalls).toBe(3);
+    // A claim that finds nothing new writes no row either.
+    offset = 4500 + 4 * CLAIM_GAP_MS;
+    const empty = await meterRows({ player: stub }, () => claim(player, env, POLLEN_CLIENT, true));
+    expect(empty.value.status).toBe(200); expect(empty.rows.player.written).toBe(0);
+    // A new purchase after a quiet minute gets the short gaps again, and its credit lands on the quick try.
+    lists[player.player_id] = [owned("rc_25", "prodd4e2b730e5")];
+    offset += CLAIM_GAP_MAX_MS + 1000;
+    expect((await (await claim(player, env, POLLEN_CLIENT, true)).json<Reply>()).credited).toHaveLength(1);
+    offset += CLAIM_GAP_MS;
+    expect((await claim(player, env, POLLEN_CLIENT, true)).status).toBe(200);
   });
 
   it("takes back a refunded bundle, may go below zero and blocks spending until earning repays it", async () => {
@@ -468,8 +502,12 @@ describe("bundles through the Worker", () => {
     expect(providerCalls).toBe(0);
     lists[buyer.player_id] = [owned("rc_70", "prodd4e2b730e5")];
     await claim(buyer);
-    const checked = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => lastBundleCheck(state.storage));
-    expect(checked).toBeGreaterThan(0);
+    // A claim notes no check time (it writes no row when nothing is new), so the first wallet read makes the day's check.
+    expect(await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => lastBundleCheck(state.storage))).toBe(0);
+    providerCalls = 0;
+    expect((await wallet(buyer)).balance).toBe(firstPay("pinch"));
+    expect(providerCalls).toBe(1);
+    expect(await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => lastBundleCheck(state.storage))).toBeGreaterThan(0);
     providerCalls = 0;
     lists[buyer.player_id] = [owned("rc_70", "prodd4e2b730e5", { status: "refunded" })];
     expect((await wallet(buyer)).balance).toBe(firstPay("pinch"));
@@ -495,6 +533,8 @@ describe("bundles through the Worker", () => {
     lists[other.player_id] = [owned("rc_100", "prodd4e2b730e5")];
     expect((await (await claim(buyer)).json<Reply>()).balance).toBe(firstPay("pinch"));
     expect((await (await claim(other)).json<Reply>()).balance).toBe(0);
+    // The buyer's first wallet read makes the day's check (a claim notes none).
+    await wallet(buyer);
     // "Transfer to new App User ID": the purchase now lists only under the other account, and is refunded there.
     const refunded = owned("rc_100", "prodd4e2b730e5", { status: "refunded", customer_id: other.player_id });
     lists[buyer.player_id] = []; lists[other.player_id] = [refunded]; orders["GPA.0000-rc_100"] = [refunded];
@@ -772,8 +812,12 @@ describe("bundles through the Worker", () => {
     // Anyone else's Play sandbox buy mints nothing, even with POLLEN_SANDBOX_APP_STORE on (App Store only), and the tester's own order restored there pays nothing.
     lists[other.player_id].push(test("rc_600", { id: "rc_603" }));
     providerCalls = 0;
-    expect(await (await claim(other)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
+    expect(await (await claim(other, env, APP_STORE_CLIENT)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
     expect(providerCalls).toBe(2);
+    // A Play build's claim reads no sandbox list for anyone.
+    providerCalls = 0;
+    expect(await (await claim(other)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
+    expect(providerCalls).toBe(1);
     use(BOTH); providerCalls = 0;
     expect(await (await claim(other)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
     expect(providerCalls).toBe(1);
@@ -811,7 +855,7 @@ describe("bundles through the Worker", () => {
     lists[other.player_id] = [sandbox("rc_502", { store_purchase_identifier: "2000000000000500" })];
     // Off: nobody's sandbox buy pays (the review identity aside), with one list request.
     use(BOTH); providerCalls = 0;
-    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
+    expect(await (await claim(player, env, APP_STORE_CLIENT)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
     expect(providerCalls).toBe(1);
     // On: the App Store sandbox Pouch pays once; the Play sandbox Pinch never does.
     use([...BOTH, "POLLEN_SANDBOX_APP_STORE"]); providerCalls = 0;
@@ -821,11 +865,11 @@ describe("bundles through the Worker", () => {
     const fetched = vi.mocked(globalThis.fetch);
     const real = fetched.getMockImplementation()!;
     fetched.mockImplementation(async input => String(input instanceof Request ? input.url : input).includes("environment=sandbox") ? new Response(null, { status: 500 }) : real(input));
-    expect((await claim(player)).status).toBe(503);
+    expect((await claim(player, env, APP_STORE_CLIENT)).status).toBe(503);
     expect(await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundle:"))).toEqual([]);
     fetched.mockImplementation(real);
     providerCalls = 0;
-    const paid = await meterRows(stubs, async () => (await claim(player, meter.env)).json<Reply>());
+    const paid = await meterRows(stubs, async () => (await claim(player, meter.env, APP_STORE_CLIENT)).json<Reply>());
     expect(String(fetched.mock.calls.at(-1)?.[0])).toContain("environment=sandbox");
     expect(paid.value).toMatchObject({ balance: firstPay("pouch"), credited: [{ bundle: "pouch", order: "2000000000000500", store: "app_store", first_gift: firstGift("pouch") }] });
     expect(paid.value.credited).toHaveLength(1);
@@ -833,22 +877,27 @@ describe("bundles through the Worker", () => {
     expect(meter.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenBundleClaim"]);
     expect(providerCalls).toBe(2);
     expect(paid.rows.claims.written).toBe(1);
-    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: firstPay("pouch"), credited: [] });
+    expect(await (await claim(player, env, APP_STORE_CLIENT)).json<Reply>()).toMatchObject({ balance: firstPay("pouch"), credited: [] });
     const keys = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key));
     expect(keys).toEqual(["bundle:appstore:2000000000000500"]);
+    // A Play build's claim never reads the sandbox list for anyone.
+    providerCalls = 0;
+    expect(await (await claim(player)).json<Reply>()).toMatchObject({ credited: [] });
+    expect(providerCalls).toBe(1);
     // The same transaction restored onto another account pays nothing there.
-    expect(await (await claim(other)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
+    expect(await (await claim(other, env, APP_STORE_CLIENT)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
     // A claim with something new in production makes no sandbox request.
     lists[player.player_id].push(owned("rc_503", "prodd4e2b730e5"));
     providerCalls = 0;
-    expect(await (await claim(player)).json<Reply>()).toMatchObject({ credited: [{ bundle: "pinch", first_gift: 0 }] });
+    expect(await (await claim(player, env, APP_STORE_CLIENT)).json<Reply>()).toMatchObject({ credited: [{ bundle: "pinch", first_gift: 0 }] });
     expect(providerCalls).toBe(1);
-    // The wallet read makes no sandbox request; the daily check takes a refunded sandbox bundle back through its lookup.
+    // The wallet read's first daily check (claims note no check time) reads the list and looks the sandbox line up by its id.
     providerCalls = 0;
     await wallet(player);
-    expect(providerCalls).toBe(0);
+    expect(providerCalls).toBe(2);
+    // The next day's check takes a refunded sandbox bundle back through its lookup.
     orders["2000000000000500"] = [sandbox("rc_500", { status: "refunded", customer_id: "moved" })];
-    offset = BUNDLE_CHECK_MS + 1000;
+    offset = BUNDLE_CHECK_MS + 1000; providerCalls = 0;
     expect((await wallet(player)).balance).toBe(5000);
     expect(providerCalls).toBe(2);
     const back = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]));
@@ -860,7 +909,7 @@ describe("bundles through the Worker", () => {
     const sandbox = (extra: Record<string, unknown> = {}) => apple("rc_510", "prod235f72a2e0", { environment: "sandbox", ...extra });
     lists[player.player_id] = [sandbox()];
     use([...BOTH, "POLLEN_SANDBOX_APP_STORE"]);
-    expect((await (await claim(player)).json<Reply>()).balance).toBe(firstPay("pinch"));
+    expect((await (await claim(player, env, APP_STORE_CLIENT)).json<Reply>()).balance).toBe(firstPay("pinch"));
     use(BOTH);
     // Refunded in sandbox: the daily check finds it by its transaction id, in sandbox, and takes it back once.
     orders["2000000000000510"] = [sandbox({ status: "refunded" })];
@@ -934,6 +983,8 @@ describe("bundles through the Worker", () => {
     const player = await create();
     lists[player.player_id] = [owned("rc_80", "prodd4e2b730e5")];
     await claim(player);
+    // The wallet read's daily check keeps the check time.
+    await wallet(player);
     expect(await tables(player)).toEqual(expect.arrayContaining([POLLEN_BUNDLE_TABLES[0].name, "pollen_claims", "pollen_wallet"]));
     expect(POLLEN_PLAYER_TABLES.map(table => table.name)).toContain(POLLEN_BUNDLE_TABLES[0].name);
     expect((await call("/v1/identity", "DELETE", player)).status).toBe(200);

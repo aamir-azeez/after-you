@@ -6,7 +6,7 @@ import { flags } from "./flags";
 import { ApiError, ID_PATTERN, equalHash, fail, isObject, ok, randomToken, type Outcome } from "./protocol";
 import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
-import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS, validSocial, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom, type SocialState } from "./friends";
+import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS, MAX_INCOMING_REQUESTS, validSocial, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom, type SocialState } from "./friends";
 import { initializeSchema } from "./storage-schema";
 import { blankPlayerInventory, campaignPlayerAllocation, campaignPlayerInventory } from "./v2/campaign-drain";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
@@ -22,11 +22,13 @@ import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, mak
 import { pushPhones, sendToPhones, type FinishedPushes } from "./notification-phones";
 import { clearRegistrations, initializeNotifications, pruneNotificationCategories, type DeliveryResult } from "./notification-storage";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS, PUBLICATION_ID_PATTERN, type FriendPublication, type FriendSubscription } from "./friend-room-event-storage";
-import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
+import { FRIEND_EVENTS_CLIENT_GATE, FRIEND_ROOM_PUSH_WINDOW_MS, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
 import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
+import { entitlementFresh, type EntitlementMemo } from "./entitlement";
+import { MemoryBudget } from "./limits";
 import { switchApplies } from "./test-codes";
-import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
+import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_EXTEND_WITHIN_MS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceChangeBudget, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, ownedPackIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
@@ -36,10 +38,10 @@ import { knownBoard } from "./leaderboards/boards";
 import { dropGrant, grantView, settleGrant, storedGrant, type GrantOutcome, type GrantView } from "./pollen/grant-settle";
 import { grantAlarmAt, grantWake } from "./pollen/grant-alarm";
 import { sendPollenPush } from "./pollen/grant-push";
-import type { GrantHint } from "./pollen/grant";
+import { grantDue, type GrantHint } from "./pollen/grant";
 import { readGrant } from "./pollen/grant-provider";
 import { claimBundlesFor, claimFor } from "./pollen/claims";
-import { bundleCheckDue, bundlesView, dropBundles, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
+import { bundleCheckDue, bundlesView, dropBundles, pacedClaim, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
 import { SANDBOX, lookupBundles, readBundles, sandboxBundles, type BundleAsk } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
@@ -54,6 +56,16 @@ type FriendPublicationState = { schema_version: 1; epoch_counter: number; curren
 function isPublicationState(value: unknown): value is FriendPublicationState {
   return isObject(value) && Object.keys(value).length === 3 && value.schema_version === 1 && Number.isSafeInteger(value.epoch_counter) && Number(value.epoch_counter) >= 0 &&
     (value.current === null || checkedFriendPublication(JSON.stringify(value.current)) !== null && (value.current as FriendPublication).publication_epoch <= Number(value.epoch_counter));
+}
+/** A publication id repeated within this long (a lost reply's retry) fans out again; later it reaches nobody again. */
+const PUBLICATION_RETRY_MS = 120_000;
+/** New hosted rooms an hour whose publication reaches friends' inboxes; more show on their lists only. */
+const MAX_FRESH_PUBLICATIONS_PER_HOUR = 12;
+/** A registration the phone repeats unchanged is written again only this long after the last write (its age counts toward REGISTRATION_TTL_MS). */
+const REGISTRATION_REFRESH_MS = 86_400_000;
+/** The oldest pending request a list holds from someone else, the one a new request takes the place of; null when there is none. */
+function oldestIncoming(links: readonly FriendLink[]): FriendLink | null {
+  return links.filter(link => !link.accepted && link.requested_by === link.player_id).reduce<FriendLink | null>((oldest, link) => oldest === null || link.created_at < oldest.created_at ? link : oldest, null);
 }
 /** Remembered finished pushes per Player instance; a few events times five phones. */
 const MAX_FINISHED_PUSHES = 64;
@@ -212,14 +224,26 @@ export class Player extends DurableObject<Env> {
    * and carries the player's `grant` ladder once they have one. `hint`: what the phone said about Full Journey
    * (pollen/routes.ts grantHint), which may start a subscriber's first read.
    */
+  /** "Just bought Full Journey" wallet hints that may start a RevenueCat read (pollen/grant.ts BOUGHT_GAP_MS): at most 3 a day; later ones count as "held". Memory only. */
+  private readonly boughtHints = new MemoryBudget(3, 86_400_000);
+  /** The hint a wallet read settles with: "bought" counts against boughtHints only when it alone would start a read. */
+  private boughtHint(hint: GrantHint, now: number): GrantHint {
+    if (hint !== "bought") return hint;
+    try {
+      const state = storedGrant(this.ctx.storage), until = fullJourneyUntil(this.ctx.storage);
+      if (grantDue(state, until, now, "bought") && !grantDue(state, until, now, "held") && !this.boughtHints.take(now)) return "held";
+    } catch { /* the settle reports a malformed grant itself */ }
+    return hint;
+  }
   async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off", hint: GrantHint = "none"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
     const grant = grantOn(this.env), refunds = refundsOn(this.env), bundles = mode === "shop" && anyBundlesOn(this.env);
     if (grant) {
+      const said = this.boughtHint(hint, Date.now());
       // A read that saved the grant also sets its alarm to the next instalment (pollen/grant-alarm.ts).
-      if (await this.settleGrant(identity.player_id, hint) === "settled" || grantAlarmOn(this.env) && this.grantAlarmMissing()) await this.armGrantAlarm();
+      if (await this.settleGrant(identity.player_id, said) === "settled" || grantAlarmOn(this.env) && this.grantAlarmMissing()) await this.armGrantAlarm();
       // A recovery may have replaced the device while the provider answered.
       if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
     }
@@ -244,12 +268,12 @@ export class Player extends DurableObject<Env> {
   }
   /**
    * `daily`: the refund check, which also looks up paid bundles a restore moved off this player's list. While
-   * POLLEN_SANDBOX_APP_STORE is on, a claim with nothing new in production also reads the App Store sandbox list (the
-   * review identity and a tester always read it, a tester for Play too). A sandbox line keeps that mark, so the refund
-   * check looks it up in sandbox and takes it back when refunded, whatever the flag or the lists say by then.
+   * POLLEN_SANDBOX_APP_STORE is on, a claim from an App Store build (`appStore`) with nothing new in production also reads
+   * the App Store sandbox list (the review identity and a tester always read it, a tester for Play too). A sandbox line keeps
+   * that mark, so the refund check looks it up in sandbox and takes it back when refunded, whatever the flag or the lists say by then.
    */
-  private settleBundles(owner: string, daily = false) {
-    const now = Date.now(), listed = sandboxBundles(owner, this.env), anyone = sandboxAppStoreOn(this.env);
+  private settleBundles(owner: string, daily = false, appStore = false) {
+    const now = Date.now(), listed = sandboxBundles(owner, this.env), anyone = sandboxAppStoreOn(this.env) && appStore;
     return settleBundles(this.ctx.storage, now, this.pollenActive(owner), {
       read: () => readBundles(owner, this.env),
       claim: purchases => claimBundlesFor(this.env, owner, purchases, now),
@@ -259,12 +283,14 @@ export class Player extends DurableObject<Env> {
   }
   /**
    * Binding only: credits the player's Play and App Store bundle purchases that RevenueCat lists, and takes back refunded
-   * ones (POST /v1/pollen/bundle-claims, pollen/bundle-settle.ts). The device is checked again here.
+   * ones (POST /v1/pollen/bundle-claims, pollen/bundle-settle.ts). The device is checked again here. `appStore`: the
+   * claim came from an App Store build. Paced per player (bundle-settle.ts pacedClaim): a claim too soon answers 429.
    */
-  async pollenBundleClaim(owner: string, deviceHash: string): Promise<Outcome<BundleReply>> {
+  async pollenBundleClaim(owner: string, deviceHash: string, appStore = false): Promise<Outcome<BundleReply>> {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
-    const outcome = await this.settleBundles(owner);
+    const outcome = await pacedClaim(this.ctx.storage, Date.now(), () => this.settleBundles(owner, false, appStore));
+    if (outcome === "busy") return fail(429, "rate_limited");
     if (outcome.status === "unavailable") return fail(503, "pollen_bundles_unavailable");
     if (outcome.status === "absent" || !this.authorized(deviceHash)) return fail(401, "invalid_auth");
     return ok(outcome.reply);
@@ -496,37 +522,54 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
     return ok(this.listRooms().filter(link => roomLinkVersion(link) === 2).slice(0, MAX_CLEARED_ROOMS).map(link => link.room_id));
   }
-  friendPropose(owner: string, deviceHash: string, peer: string, requestId: string): Outcome<FriendLink> {
+  /**
+   * This player's Add. Into a full list it takes the place of the oldest pending incoming request, as a received one
+   * does (`evicted`, for the router to clear on its sender's side), so strangers' requests never stop a player adding.
+   */
+  friendPropose(owner: string, deviceHash: string, peer: string, requestId: string): Outcome<{ link: FriendLink; evicted: FriendLink | null }> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
     if (!ID_PATTERN.test(peer) || peer === owner || !ID_PATTERN.test(requestId)) return fail(400, "invalid_friend_request");
-    const identity = this.identity()!, social = this.social(identity);
+    const identity = this.identity()!, social = this.social(identity), before = social.links.length;
     social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > Date.now());
     const old = social.links.find(x => x.player_id === peer);
-    if (old) { this.writeSocial(identity, social); return ok(old); }
-    if (social.links.length >= MAX_FRIENDS) return fail(409, "friend_list_full");
+    // An existing link answers as it is: only expired requests dropped here are written, and the list's refresh floor stays.
+    if (old) { if (social.links.length !== before) this.writeSocial(identity, social, false); return ok({ link: old, evicted: null }); }
+    const evicted = social.links.length >= MAX_FRIENDS ? oldestIncoming(social.links) : null;
+    if (social.links.length >= MAX_FRIENDS && !evicted) return fail(409, "friend_list_full");
+    if (evicted) social.links = social.links.filter(link => link !== evicted);
     const link: FriendLink = { player_id: peer, request_id: requestId, requested_by: owner, accepted: false, created_at: Date.now() };
-    social.links.push(link); this.writeSocial(identity, social); return ok(link);
+    social.links.push(link); this.writeSocial(identity, social); return ok({ link, evicted });
   }
-  /** Binding only: router retains the sender's durable proposal across this hop. */
-  friendReceive(owner: string, peer: string, requestId: string, createdAt: number): Outcome<FriendLink> {
+  /**
+   * Binding only: router retains the sender's durable proposal across this hop. `consented`: this player chose Add
+   * too (the router then accepts at once), so the incoming cap does not apply. Past MAX_INCOMING_REQUESTS, or into
+   * a full list, it takes the place of the oldest pending incoming request (`evicted`, for the router to clear on its
+   * sender's side); only a list full of friends and outgoing requests refuses it. A stranger's request leaves the
+   * list's refresh floor alone, so it can never make an open Friends page read again; the next read shows it.
+   */
+  friendReceive(owner: string, peer: string, requestId: string, createdAt: number, consented = false): Outcome<{ link: FriendLink; evicted: FriendLink | null }> {
     const identity = this.identity();
     if (!identity || identity.player_id !== owner || identity.state !== "active") return fail(404, "friend_unavailable");
     if (!ID_PATTERN.test(peer) || peer === owner || !ID_PATTERN.test(requestId) || !Number.isSafeInteger(createdAt) || createdAt <= 0) return fail(400, "invalid_friend_request");
-    const social = this.social(identity);
-    social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > Date.now());
+    const social = this.social(identity), now = Date.now();
+    social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > now);
     const old = social.links.find(x => x.player_id === peer);
-    if (old) return old.request_id === requestId && old.requested_by === peer ? ok(old) : fail(409, "friend_request_changed");
-    if (social.links.length >= MAX_FRIENDS) return fail(409, "friend_list_full");
+    if (old) return old.request_id === requestId && old.requested_by === peer ? ok({ link: old, evicted: null }) : fail(409, "friend_request_changed");
+    const incoming = social.links.filter(link => !link.accepted && link.requested_by === link.player_id).length;
+    const evicted = social.links.length >= MAX_FRIENDS || !consented && incoming >= MAX_INCOMING_REQUESTS ? oldestIncoming(social.links) : null;
+    if (social.links.length >= MAX_FRIENDS && !evicted) return fail(409, "friend_list_full");
+    if (evicted) social.links = social.links.filter(link => link !== evicted);
     const link: FriendLink = { player_id: peer, request_id: requestId, requested_by: peer, accepted: false, created_at: createdAt };
-    social.links.push(link); this.writeSocial(identity, social); this.pushFriendsChanged(identity, false); return ok(link);
+    social.links.push(link); this.writeSocial(identity, social, consented); this.pushFriendsChanged(identity, false); return ok({ link, evicted });
   }
   friendApprove(owner: string, deviceHash: string, peer: string, requestId: string): Outcome<FriendLink> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
     const identity = this.identity()!, social = this.social(identity), link = social.links.find(x => x.player_id === peer);
     if (!link || link.request_id !== requestId || link.requested_by !== peer || !link.accepted && link.created_at + FRIEND_REQUEST_TTL_MS <= Date.now()) return fail(409, "friend_request_changed");
     // The accepter's own phones read the list early: only an accepted row carries the new friend's name, and the reply has none.
-    const accepted = !link.accepted;
-    link.accepted = true; this.writeSocial(identity, social); if (accepted) this.pushFriendsChanged(identity, true); return ok(link);
+    // A repeat of an acceptance already made writes nothing and leaves the list's refresh floor alone.
+    if (link.accepted) return ok(link);
+    link.accepted = true; this.writeSocial(identity, social); this.pushFriendsChanged(identity, true); return ok(link);
   }
   /** Binding only, after the recipient's matching approval is read. */
   friendConfirm(owner: string, peer: string, requestId: string): Outcome<FriendLink> {
@@ -534,21 +577,26 @@ export class Player extends DurableObject<Env> {
     if (!identity || identity.player_id !== owner || identity.state !== "active") return fail(404, "friend_unavailable");
     const social = this.social(identity), link = social.links.find(x => x.player_id === peer);
     if (!link || link.request_id !== requestId || link.requested_by !== owner) return fail(409, "friend_request_changed");
-    const accepted = !link.accepted;
-    link.accepted = true; this.writeSocial(identity, social); if (accepted) this.pushFriendsChanged(identity, true); return ok(link);
+    if (link.accepted) return ok(link);
+    link.accepted = true; this.writeSocial(identity, social); this.pushFriendsChanged(identity, true); return ok(link);
   }
-  /** Exact-token removal cannot erase a newer request after a lost reply. */
-  friendForget(owner: string, peer: string, requestId: string, deviceHash?: string): Outcome<{ removed: true }> {
+  /**
+   * Exact-token removal cannot erase a newer request after a lost reply. `changed`: whether a link went. A removal
+   * of nothing writes nothing, sends no hint and leaves the list's refresh floor alone, since any player id can be named.
+   * `declined`: the link that went was a pending request from `peer` (the router then notes the decline, friend-declines.ts).
+   */
+  friendForget(owner: string, peer: string, requestId: string, deviceHash?: string): Outcome<{ removed: true; changed: boolean; declined?: true }> {
     const identity = this.identity();
     if (deviceHash !== undefined && (!this.authorize(deviceHash) || identity?.player_id !== owner)) return fail(401, "invalid_auth");
-    if (!identity || identity.player_id !== owner) return ok({ removed: true });
-    const social = this.social(identity);
-    social.links = social.links.filter(x => x.player_id !== peer || x.request_id !== requestId);
+    if (!identity || identity.player_id !== owner) return ok({ removed: true, changed: false });
+    const social = this.social(identity), gone = social.links.find(x => x.player_id === peer && x.request_id === requestId);
+    if (!gone) return ok({ removed: true, changed: false });
+    social.links = social.links.filter(x => x !== gone);
     this.ctx.storage.sql.exec("DELETE FROM friend_room_subscriptions WHERE host_id=? AND json_extract(data,'$.request_id')=?", peer, requestId);
     this.writeSocial(identity, social);
     // A peer's removal (no device hash) reaches this player's open Friends page.
     if (deviceHash === undefined && identity.state === "active") this.pushFriendsChanged(identity, false);
-    return ok({ removed: true });
+    return ok({ removed: true, changed: true, ...(!gone.accepted && gone.requested_by === peer ? { declined: true as const } : {}) });
   }
   friendShare(owner: string, deviceHash: string, room: SharedFriendRoom | null): Outcome<{ shared_room: SharedFriendRoom | null }> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
@@ -556,6 +604,8 @@ export class Player extends DurableObject<Env> {
     return this.ctx.storage.transactionSync(() => {
       const identity = this.identity()!, social = this.social(identity), old = social.shared_room;
       const changed = old?.room_id !== room?.room_id || old?.api_version !== room?.api_version;
+      // The same room again writes nothing and leaves the list's refresh floor alone.
+      if (!changed) return ok({ shared_room: room });
       const row = changed ? this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication WHERE id=1").toArray()[0] : undefined;
       let publicationState: FriendPublicationState | null = null;
       if (row) {
@@ -579,7 +629,11 @@ export class Player extends DurableObject<Env> {
       return parsed.current && social.shared_room?.room_id === parsed.current.room.room_id && social.shared_room.api_version === parsed.current.room.api_version ? parsed.current : null;
     } catch { throw new Error("unsupported_friend_publication"); }
   }
-  publishFriendRoom(owner: string, deviceHash: string, publicationId: string, room: SharedFriendRoom): Outcome<FriendPublication> {
+  /**
+   * `fresh`: whether friends should hear of it. A republish of the room already published inside the push window
+   * (friend-room-events.ts FRIEND_ROOM_PUSH_WINDOW_MS) answers that publication, with no new epoch and no write.
+   */
+  publishFriendRoom(owner: string, deviceHash: string, publicationId: string, room: SharedFriendRoom): Outcome<{ publication: FriendPublication; fresh: boolean }> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
     if (!PUBLICATION_ID_PATTERN.test(publicationId) || !validSharedFriendRoom(room)) return fail(400, "invalid_friend_publication");
     const identity = this.identity()!, social = this.social(identity);
@@ -588,7 +642,10 @@ export class Player extends DurableObject<Env> {
       const existingReceipt = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication_ops WHERE publication_id=?", publicationId).toArray()[0];
       if (existingReceipt) {
         const receipt = checkedFriendPublication(existingReceipt.data);
-        return receipt && receipt.room.api_version === room.api_version && receipt.room.room_id === room.room_id ? ok(receipt) : fail(409, "friend_publication_changed");
+        if (!receipt || receipt.room.api_version !== room.api_version || receipt.room.room_id !== room.room_id) return fail(409, "friend_publication_changed");
+        // A lost reply's retry finishes the fan-out; a later repeat of the same id reaches nobody again.
+        const current = this.friendPublication(owner);
+        return ok({ publication: receipt, fresh: current?.publication_epoch === receipt.publication_epoch && Date.now() - receipt.published_at < PUBLICATION_RETRY_MS });
       }
       const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication WHERE id=1").toArray()[0];
       let state = { schema_version: 1 as const, epoch_counter: 0, current: null as FriendPublication | null };
@@ -596,13 +653,17 @@ export class Player extends DurableObject<Env> {
         try { const parsed: unknown = JSON.parse(row.data); if (!isPublicationState(parsed)) return fail(409, "unsupported_friend_publication"); state = parsed; }
         catch { return fail(409, "unsupported_friend_publication"); }
       }
+      const current = state.current;
+      if (current && current.room.room_id === room.room_id && current.room.api_version === room.api_version && Date.now() - current.published_at < FRIEND_ROOM_PUSH_WINDOW_MS) return ok({ publication: current, fresh: false });
       if (state.epoch_counter >= Number.MAX_SAFE_INTEGER) return fail(409, "friend_publication_epoch_exhausted");
       const publication: FriendPublication = { schema_version: 1, publication_epoch: state.epoch_counter + 1, publication_id: publicationId, room, published_at: Date.now() };
       state = { schema_version: 1, epoch_counter: publication.publication_epoch, current: publication };
       this.ctx.storage.sql.exec("INSERT OR REPLACE INTO friend_room_publication VALUES (1,?)", JSON.stringify(state));
       this.ctx.storage.sql.exec("INSERT INTO friend_room_publication_ops VALUES (?,?)", publicationId, JSON.stringify(publication));
       this.ctx.storage.sql.exec("DELETE FROM friend_room_publication_ops WHERE publication_id IN (SELECT publication_id FROM friend_room_publication_ops ORDER BY json_extract(data,'$.published_at') DESC LIMIT -1 OFFSET ?)", MAX_PUBLICATION_RECEIPTS);
-      return ok(publication);
+      // Past MAX_FRESH_PUBLICATIONS_PER_HOUR new rooms an hour, friends see the room on their list but get no new event.
+      const lastHour = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM friend_room_publication_ops WHERE json_extract(data,'$.published_at')>?", publication.published_at - 3_600_000).one().n;
+      return ok({ publication, fresh: lastHour <= MAX_FRESH_PUBLICATIONS_PER_HOUR });
     });
   }
   friendSubscription(owner: string, host: string): FriendSubscription | null {
@@ -619,15 +680,19 @@ export class Player extends DurableObject<Env> {
       return [{ player_id: row.host_id, request_id: sub.request_id, enabled: sub.enabled }];
     });
   }
-  setFriendSubscription(owner: string, host: string, requestId: string, enabled: boolean): Outcome<{ subscribed: boolean }> {
+  /** `changed`: whether anything was written; the same choice again writes nothing. */
+  setFriendSubscription(owner: string, host: string, requestId: string, enabled: boolean): Outcome<{ subscribed: boolean; changed: boolean }> {
     const identity = this.identity(); if (!identity || identity.player_id !== owner || identity.state !== "active") return fail(404, "friend_unavailable");
     if (!ID_PATTERN.test(host) || !ID_PATTERN.test(requestId) || typeof enabled !== "boolean") return fail(400, "invalid_friend_notification");
     return this.ctx.storage.transactionSync(() => {
       const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_subscriptions WHERE host_id=?", host).toArray()[0];
+      const current = old ? checkedFriendSubscription(old.data) : null, held = current?.enabled === true && current.request_id === requestId;
       if (!old && enabled && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM friend_room_subscriptions").one().n >= MAX_FRIEND_SUBSCRIPTIONS) return fail(409, "friend_subscription_limit");
+      if (enabled && held) return ok({ subscribed: true, changed: false });
       if (enabled) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO friend_room_subscriptions VALUES (?,?)", host, JSON.stringify({ schema_version: 1, request_id: requestId, enabled, updated_at: Date.now() } satisfies FriendSubscription));
-      else this.ctx.storage.sql.exec("DELETE FROM friend_room_subscriptions WHERE host_id=? AND json_extract(data,'$.request_id')=?", host, requestId);
-      return ok({ subscribed: enabled });
+      else if (current?.request_id === requestId) this.ctx.storage.sql.exec("DELETE FROM friend_room_subscriptions WHERE host_id=? AND json_extract(data,'$.request_id')=?", host, requestId);
+      else return ok({ subscribed: false, changed: false });
+      return ok({ subscribed: enabled, changed: true });
     });
   }
   /** Called only by the recipient-keyed event DO after the in-app row is durable. */
@@ -666,6 +731,12 @@ export class Player extends DurableObject<Env> {
     if (outcomes.length > 0 && outcomes.every(value => value.status === "cancelled")) return { status: "cancelled" };
     return { status: "done" };
   }
+  /** Lease rows added or removed lately (presence.ts PRESENCE_CHANGES_PER_MINUTE); memory only. */
+  private readonly presenceChanges = presenceChangeBudget();
+  /**
+   * POST /v1/presence. Writes only when the lease changes: a heartbeat for a lease with more than half its time left
+   * answers without writing, and new sessions and offlines past PRESENCE_CHANGES_PER_MINUTE answer the same way.
+   */
   async updatePresence(owner: string, deviceHash: string, session: string, online: boolean): Promise<Outcome<PresencePolicy>> {
     if (!PRESENCE_SESSION.test(session) || typeof online !== "boolean") return fail(400, "invalid_presence_request");
     return this.ctx.storage.transaction(async () => {
@@ -673,11 +744,17 @@ export class Player extends DurableObject<Env> {
       if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
       if (!presenceAlarmOwned(this.ctx.storage, alarm)) return fail(503, "presence_unavailable");
       prunePresence(this.ctx.storage);
+      const now = Date.now();
+      const lease = this.ctx.storage.sql.exec<{ device_hash: string; expires_at: number }>("SELECT device_hash,expires_at FROM presence_leases WHERE session_id=?", session).toArray()[0];
       if (online) {
-        const existing = this.ctx.storage.sql.exec("SELECT session_id FROM presence_leases WHERE session_id=?", session).toArray();
-        if (!existing.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM presence_leases").one().n >= MAX_PRESENCE_SESSIONS) return fail(409, "presence_session_limit");
-        this.ctx.storage.sql.exec("INSERT OR REPLACE INTO presence_leases VALUES (?,?,?)", session, deviceHash, Date.now() + PRESENCE_TTL_MS);
-      } else this.ctx.storage.sql.exec("DELETE FROM presence_leases WHERE session_id=?", session);
+        if (lease && lease.device_hash === deviceHash && lease.expires_at - now > PRESENCE_EXTEND_WITHIN_MS) return ok(presencePolicy());
+        if (!lease && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM presence_leases").one().n >= MAX_PRESENCE_SESSIONS) return fail(409, "presence_session_limit");
+        if (!lease && !this.presenceChanges.take(now)) return ok(presencePolicy());
+        this.ctx.storage.sql.exec("INSERT OR REPLACE INTO presence_leases VALUES (?,?,?)", session, deviceHash, now + PRESENCE_TTL_MS);
+      } else {
+        if (!lease || !this.presenceChanges.take(now)) return ok(presencePolicy());
+        this.ctx.storage.sql.exec("DELETE FROM presence_leases WHERE session_id=?", session);
+      }
       await this.scheduleAlarm();
       return ok(presencePolicy());
     });
@@ -719,14 +796,24 @@ export class Player extends DurableObject<Env> {
     if (!validTesterGrant(identity.tester_grant)) throw new Error("unsupported_tester_grant");
     return { ...identity.tester_grant };
   }
+  /** The last verified Full Journey check (entitlement.ts EntitlementMemo); memory only, never stored. */
+  private entitlementMemo: EntitlementMemo | null = null;
   /**
    * Binding only, for the Full Journey check (entitlement.ts): the stored tester grant and the tester switch,
-   * from one identity read, so the check makes no more Player calls than before.
+   * from one identity read, so the check makes no more Player calls than before, and the memo of a recent check
+   * that found Full Journey while it is still fresh (entitlementFresh).
    */
-  storedAccess(owner: string): { grant: TesterGrant | null; full_journey_off: boolean } {
+  storedAccess(owner: string): { grant: TesterGrant | null; full_journey_off: boolean; memo?: EntitlementMemo } {
     const grant = this.storedTesterGrant(owner);
     const identity = this.identity();
-    return { grant, full_journey_off: !!identity && identity.player_id === owner && identity.state === "active" && identity.full_journey_off === true };
+    const active = !!identity && identity.player_id === owner && identity.state === "active";
+    const memo = active && this.entitlementMemo && entitlementFresh(this.entitlementMemo, Date.now()) ? { memo: this.entitlementMemo } : {};
+    return { grant, full_journey_off: active && identity.full_journey_off === true, ...memo };
+  }
+  /** Binding only (entitlement.ts): remembers a verified check, or forgets the memo with null. Writes nothing. */
+  noteEntitlement(owner: string, memo: EntitlementMemo | null): void {
+    const identity = this.identity();
+    this.entitlementMemo = memo && identity?.player_id === owner && identity.state === "active" ? memo : null;
   }
   /**
    * Binding only, after the route matched a tester's toggle code (test-codes.ts): flips the switch in one
@@ -737,6 +824,7 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity()!;
     if (identity.full_journey_off === true) delete identity.full_journey_off;
     else identity.full_journey_off = true;
+    this.entitlementMemo = null;
     this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
     return ok({ full_journey_off: identity.full_journey_off === true });
   }
@@ -763,9 +851,14 @@ export class Player extends DurableObject<Env> {
     const now = Date.now();
     return this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE json_extract(data,'$.device_hash')!=? OR json_extract(data,'$.updated_at')<? OR (json_extract(data,'$.token')=? AND binding_epoch!=?)", deviceHash, now - REGISTRATION_TTL_MS, token, epoch);
-      const old = this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_registrations WHERE binding_epoch=?", epoch).toArray();
+      const old = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", epoch).toArray();
       if (!old.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM notification_registrations").one().n >= MAX_REGISTRATIONS) return fail(409, "notification_registration_limit");
-      this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_registrations VALUES (?,?)", epoch, JSON.stringify({ token, device_hash: deviceHash, updated_at: now, ...(friendEvents ? { friend_events: 2 } : {}), ...(ios ? { platform: ios.platform, categories: ios.categories } : {}) }));
+      const fields = { token, device_hash: deviceHash, ...(friendEvents ? { friend_events: 2 } : {}), ...(ios ? { platform: ios.platform, categories: ios.categories } : {}) };
+      // The phone registers on every cold start: the same registration writes again only to refresh its age once a day.
+      const held = old.length ? JSON.parse(old[0].data) as Record<string, unknown> : null;
+      const same = held !== null && typeof held.updated_at === "number" && now - held.updated_at < REGISTRATION_REFRESH_MS &&
+        Object.keys(held).length === Object.keys(fields).length + 1 && Object.entries(fields).every(([key, value]) => JSON.stringify(held[key]) === JSON.stringify(value));
+      if (!same) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_registrations VALUES (?,?)", epoch, JSON.stringify({ token, device_hash: deviceHash, updated_at: now, ...(friendEvents ? { friend_events: 2 } : {}), ...(ios ? { platform: ios.platform, categories: ios.categories } : {}) }));
       pruneNotificationCategories(this.ctx.storage);
       return ok({ registered: true, binding_epoch: epoch });
     });
@@ -790,8 +883,10 @@ export class Player extends DurableObject<Env> {
       const registration = row ? JSON.parse(row.data) as { device_hash: string; updated_at: number } : null;
       if (!registration || registration.device_hash !== deviceHash || now - registration.updated_at >= REGISTRATION_TTL_MS) return fail(404, "notification_registration_missing");
       pruneNotificationCategories(this.ctx.storage);
-      if (redoRequests) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_categories VALUES (?,?)", epoch, JSON.stringify({ schema_version: 1, redo_requests: true, updated_at: now }));
-      else this.ctx.storage.sql.exec("DELETE FROM notification_categories WHERE binding_epoch=?", epoch);
+      // Writes only on a change: the phone repeats its choice on every cold start.
+      const held = this.ctx.storage.sql.exec("SELECT 1 FROM notification_categories WHERE binding_epoch=?", epoch).toArray().length > 0;
+      if (redoRequests && !held) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO notification_categories VALUES (?,?)", epoch, JSON.stringify({ schema_version: 1, redo_requests: true, updated_at: now }));
+      else if (!redoRequests && held) this.ctx.storage.sql.exec("DELETE FROM notification_categories WHERE binding_epoch=?", epoch);
       return ok({ schema_version: 1 as const, binding_epoch: epoch, redo_requests: redoRequests });
     });
   }
@@ -1025,6 +1120,7 @@ export class Player extends DurableObject<Env> {
       if (!supportedVersions.includes(version)) return version === 2 ? fail(503, "room_service_unavailable") : fail(409, "unsupported_room_version");
     }
     identity.state = "deleting";
+    this.entitlementMemo = null;
     if (identity.social) identity.social.shared_room = null;
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
@@ -1148,8 +1244,11 @@ answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ autho
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined, leaderboardStanding: () => null,
+  // Friend calls can name any player id: one nobody made answers as an empty identity and stores nothing.
+  friendEdge: () => null, safetyIdentityActive: () => false, friendReceive: () => fail(404, "friend_unavailable"),
+  friendForget: (_owner, _peer, _request, deviceHash) => deviceHash !== undefined ? fail(401, "invalid_auth") : ok({ removed: true as const, changed: false }),
   // A link that outlived its player: the restore route drops it.
   restoreLinked: () => fail(404, "identity_absent"), recoveryMatches: () => false,
-  storedAccess: () => ({ grant: null, full_journey_off: false }),
+  storedAccess: () => ({ grant: null, full_journey_off: false }), noteEntitlement: () => undefined,
   // No identity, so no socket: a hint is dropped and an upgrade (unreachable past auth()) is refused.
   liveHint: async () => false, fetch: () => liveUnauthorized() });

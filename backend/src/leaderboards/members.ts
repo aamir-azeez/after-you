@@ -20,8 +20,8 @@ const BOARD_CONCURRENCY = 4;
  * Requests: 1 (Member) + 1 (Player, only while showing and on a board) + 1 per board listed.
  */
 export async function syncMemberName(env: Env, playerId: string, show?: boolean): Promise<MemberState> {
-  const state = await env.LEADERBOARD_MEMBERS.getByName(playerId).touch(show);
-  if (!state.boards.length || state.erased) return state;
+  const { quiet, ...state } = await env.LEADERBOARD_MEMBERS.getByName(playerId).touch(show);
+  if (!state.boards.length || state.erased || quiet) return state;
   const name = state.show_name ? shownName(await env.PLAYERS.getByName(playerId).publicDisplayName(playerId)) : null;
   await pooled(state.boards, BOARD_CONCURRENCY, async board => {
     const answer = await env.LEADERBOARD_BOARDS.getByName(board).setMember(board, playerId, state.show_name, name, state.revision);
