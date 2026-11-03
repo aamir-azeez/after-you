@@ -73,7 +73,10 @@ function Write-AndroidReleaseBuildReceipt {
         throw 'The R8 mapping file is missing or empty.'
     }
     if ($SignerSha256 -notmatch '^[0-9a-fA-F]{64}$') { throw 'Release signer SHA-256 is invalid.' }
-    if ($PurchaseMode -cne 'google_play') { throw 'Release artifacts must use the Google Play purchase configuration.' }
+    # Play artifacts use Google Play; the GitHub Test Store APK is the one other Release build.
+    if ($PurchaseMode -cne 'google_play' -and ($PurchaseMode -cne 'test_store' -or [IO.Path]::GetExtension($artifact) -ne '.apk')) {
+        throw 'Release artifacts must use Google Play, or Test Store for an APK.'
+    }
     if ($SourceIdentity.commit -notmatch '^[0-9a-f]{40,64}$' -or $SourceIdentity.tree -notmatch '^[0-9a-f]{40,64}$' -or
         $SourceIdentity.sha256 -notmatch '^[0-9a-f]{64}$') { throw 'Committed source identity is invalid.' }
 

@@ -48,7 +48,19 @@ try {
     Assert-Check ($receiptText -match '"verified_utc"\s*:\s*"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z"') 'Receipt verification time is not UTC.'
     Assert-Check ($receiptText -notmatch 'revenuecat_public_key|api_key|password|secret') 'Receipt unexpectedly contains secret/config fields.'
     Reject { Write-AndroidReleaseBuildReceipt -ArtifactPath $artifact -MappingPath $mapping -SourceIdentity $source -BuildMetadata $metadata -PurchaseMode 'google_play' -SignerSha256 ('a' * 64) } 'Receipt overwrite was accepted.'
-    Reject { Write-AndroidReleaseBuildReceipt -ArtifactPath $artifact -MappingPath $mapping -SourceIdentity $source -BuildMetadata $metadata -PurchaseMode 'test_store' -SignerSha256 ('a' * 64) } 'Tester-store Release receipt was accepted.'
+    Reject { Write-AndroidReleaseBuildReceipt -ArtifactPath $artifact -MappingPath $mapping -SourceIdentity $source -BuildMetadata $metadata -PurchaseMode 'test_store' -SignerSha256 ('a' * 64) } 'A Test Store bundle receipt was accepted.'
+    # The GitHub Test Store APK is a Release build with its own receipt; tester builds never are.
+    $apkCandidate = Join-Path $fixture 'apk-candidate'
+    New-Item -ItemType Directory -Path $apkCandidate | Out-Null
+    $apk = Join-Path $apkCandidate 'After You.apk'
+    $apkMapping = Join-Path $apkCandidate 'mapping.txt'
+    [IO.File]::WriteAllBytes($apk, [byte[]](6,7,8))
+    [IO.File]::WriteAllText($apkMapping, 'R8 mapping fixture' + "`n")
+    foreach ($mode in @('tester_only', 'TEST_STORE', '')) {
+        Reject { Write-AndroidReleaseBuildReceipt -ArtifactPath $apk -MappingPath $apkMapping -SourceIdentity $source -BuildMetadata $metadata -PurchaseMode $mode -SignerSha256 ('a' * 64) } 'A receipt was written for a build that is not Play or Test Store.'
+    }
+    $apkReceipt = Get-Content -LiteralPath (Write-AndroidReleaseBuildReceipt -ArtifactPath $apk -MappingPath $apkMapping -SourceIdentity $source -BuildMetadata $metadata -PurchaseMode 'test_store' -SignerSha256 ('a' * 64)) -Raw | ConvertFrom-Json
+    Assert-Check ($apkReceipt.purchase_mode -ceq 'test_store' -and $apkReceipt.artifact_file -ceq 'After You.apk') 'The Test Store Release APK receipt was not written.'
     Remove-Item -LiteralPath $mapping -Force
     Reject { Write-AndroidReleaseBuildReceipt -ArtifactPath $artifact -MappingPath $mapping -SourceIdentity $source -BuildMetadata $metadata -PurchaseMode 'google_play' -SignerSha256 ('a' * 64) } 'Missing mapping file was accepted.'
 

@@ -39,10 +39,43 @@ function Get-AndroidBuildConfig {
     } catch { throw 'Invalid app configuration; values are withheld.' }
     if ($Configuration -cnotin @('Debug', 'Release') -or $ExportFormat -cnotin @('APK', 'AAB')) { throw 'Unsupported Android build kind.' }
     if ($config.purchase_mode -ceq 'tester_only' -and ($Configuration -cne 'Debug' -or $ExportFormat -cne 'APK')) { throw 'Tester-only configuration requires a Debug APK.' }
-    if ($config.purchase_mode -ceq 'test_store' -and ($Configuration -cne 'Debug' -or $ExportFormat -cne 'APK')) { throw 'Test Store configuration requires a Debug APK.' }
-    if ($Configuration -ceq 'Release' -and (!$ConfigPath -or $config.purchase_mode -cne 'google_play')) { throw 'Release requires an explicit private Google Play configuration.' }
+    # The GitHub Test Store APK is a Release build: only local tester builds are debuggable.
+    if ($config.purchase_mode -ceq 'test_store' -and ($Configuration -cne 'Release' -or $ExportFormat -cne 'APK')) { throw 'Test Store configuration requires a Release APK.' }
+    if ($Configuration -ceq 'Release' -and (!$ConfigPath -or $config.purchase_mode -cnotin @('google_play', 'test_store'))) { throw 'Release requires an explicit private Google Play or Test Store configuration.' }
     if ($ExportFormat -eq 'AAB' -and ($Configuration -ne 'Release' -or !$ConfigPath)) { throw 'AAB requires Release and an explicit private AppConfigPath.' }
     return $config
+}
+
+# The native plugin's ALLOW_TEST_STORE flag: on only for the Test Store configuration.
+function Get-AndroidTestStoreFlag {
+    param($Config)
+    if ($Config.purchase_mode -ceq 'test_store') { return 'true' }
+    return 'false'
+}
+
+# R8 inlines the flag, so the built AAR's BuildConfig is where it can still be read.
+function Assert-AndroidPluginTestStoreFlag {
+    param([string]$AarPath, [string]$Expected, [string]$JdkPath)
+    if ($Expected -cnotin @('true', 'false')) { throw 'Unexpected Test Store flag.' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $directory = Join-Path ([IO.Path]::GetTempPath()) ('after-you-aar-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $directory | Out-Null
+    try {
+        $archive = [IO.Compression.ZipFile]::OpenRead($AarPath)
+        try {
+            $entry = $archive.GetEntry('classes.jar')
+            if ($null -eq $entry) { throw 'Native plugin AAR has no classes.' }
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $directory 'classes.jar'), $false)
+        } finally { $archive.Dispose() }
+        $dump = (& (Join-Path $JdkPath 'bin/javap.exe') -constants -cp (Join-Path $directory 'classes.jar') 'com.aamirazeez.afteryou.nativebridge.BuildConfig') -join "`n"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not read the native plugin build flags.' }
+        if ($dump -cnotmatch ('(?m)^\s*public static final boolean ALLOW_TEST_STORE = ' + $Expected + ';\s*$')) {
+            throw "Native plugin Test Store flag is not $Expected."
+        }
+    } finally {
+        $resolved = [IO.Path]::GetFullPath($directory)
+        if ([IO.Path]::GetFileName($resolved).StartsWith('after-you-aar-')) { Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 function Assert-AndroidReleaseSigning {

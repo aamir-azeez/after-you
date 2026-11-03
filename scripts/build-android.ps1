@@ -206,11 +206,15 @@ try {
         $nativeArguments = @(':plugin:packagePlugin', '--no-daemon', '--console=plain')
         if ($FirebaseConfigPath) { $nativeArguments += "-PafterYouFirebaseConfig=$FirebaseConfigPath" }
         $nativeArguments += "-PafterYouPlayGamesAppId=$PlayGamesAppId"
+        $testStoreFlag = Get-AndroidTestStoreFlag $appConfig
+        $nativeArguments += "-PafterYouAllowTestStore=$testStoreFlag"
         & .\gradlew.bat @nativeArguments
         if ($LASTEXITCODE -ne 0) { throw 'Native plugin build failed.' }
     } finally { Pop-Location }
     foreach ($variant in @('debug', 'release')) {
-        Assert-AndroidFirebaseAar -Path (Join-Path $game "addons/after_you_android/after-you-$variant.aar") -Expected $firebaseExpected
+        $aar = Join-Path $game "addons/after_you_android/after-you-$variant.aar"
+        Assert-AndroidFirebaseAar -Path $aar -Expected $firebaseExpected
+        Assert-AndroidPluginTestStoreFlag -AarPath $aar -Expected $testStoreFlag -JdkPath $JdkPath
     }
     $importState = [pscustomobject]@{ ScriptError = $false }
     & $GodotExe --headless --editor --path $game --import 2>&1 | ForEach-Object {
@@ -267,7 +271,9 @@ try {
     $aapt = Join-Path $buildTools.FullName 'aapt.exe'
     $badging = (& $aapt dump badging $inspectionApk) -join "`n"
     if ($LASTEXITCODE -ne 0 -or $badging -notmatch "package: name='com\.aamirazeez\.afteryou'") { throw 'Unexpected Android package identity.' }
-    if ($Configuration -eq 'Release' -and $badging -match 'application-debuggable') { throw 'Release APK is unexpectedly debuggable.' }
+    # Every APK meant for players (Play, or the GitHub Test Store APK) is non-debuggable;
+    # only a local tester build may be.
+    if (($Configuration -eq 'Release' -or $appConfig.purchase_mode -cne 'tester_only') -and $badging -match 'application-debuggable') { throw 'Only a local tester build may be debuggable.' }
     if ($Configuration -eq 'Release' -and $badging -notmatch "targetSdkVersion:'36'") { throw 'Release must target Android API 36.' }
     $manifestTree = (& $aapt dump xmltree $inspectionApk 'AndroidManifest.xml') -join "`n"
     if ($LASTEXITCODE -ne 0 -or $manifestTree -match 'android.intent.category.HOME') { throw 'APK must not register as an Android Home replacement.' }

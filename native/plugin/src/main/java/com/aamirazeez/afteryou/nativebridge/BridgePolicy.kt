@@ -3,8 +3,9 @@ package com.aamirazeez.afteryou.nativebridge
 /** Validation only: this class never grants an entitlement. */
 internal object BridgePolicy {
     fun configError(apiKey: String, playerId: String, mode: String, allowTestStore: Boolean = false): String? {
-        // The bridge supplies the compile-time build flag; caller configuration cannot
-        // enable Test Store in Release. Tester codes never configure a purchase SDK.
+        // The bridge supplies the compile-time ALLOW_TEST_STORE flag (on only in the GitHub
+        // Test Store build); caller configuration cannot enable Test Store anywhere else.
+        // Tester codes never configure a purchase SDK.
         val prefix = when {
             mode == "google_play" -> "goog_"
             mode == "test_store" && allowTestStore -> "test_"

@@ -3,6 +3,13 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// RevenueCat Test Store keys work only in a build made for the GitHub Test Store APK.
+// scripts/build-android.ps1 passes the value on every build; anything else stays off.
+val allowTestStore = providers.gradleProperty("afterYouAllowTestStore").orElse("false").map {
+    require(it == "true" || it == "false") { "afterYouAllowTestStore must be true or false." }
+    it
+}
+
 android {
     namespace = "com.aamirazeez.afteryou.nativebridge"
     compileSdk = 36
@@ -13,6 +20,7 @@ android {
         targetSdk = 36
         consumerProguardFiles("consumer-rules.pro")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "ALLOW_TEST_STORE", allowTestStore.get())
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

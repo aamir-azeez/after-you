@@ -86,13 +86,16 @@ try {
     $testStore = @{api_base_url='https://example.invalid'; entitlement_id='full_journey'; purchase_mode='test_store'; revenuecat_public_key='test_synthetic_public_key'}
     Write-Config $testStore
     Copy-Item -LiteralPath $configPath -Destination (Join-Path $repository 'game/app_config.json') -Force
-    $debugTestStore = Get-AndroidBuildConfig -Repository $repository -Configuration Debug -ExportFormat APK
-    Assert-Check ($debugTestStore.purchase_mode -ceq 'test_store' -and $debugTestStore.entitlement_id -ceq 'full_journey') 'Source Test Store Debug APK rejected.'
-    $privateTestStore = Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Debug -ExportFormat APK
-    Assert-Check ($privateTestStore.revenuecat_public_key -ceq 'test_synthetic_public_key') 'Explicit Test Store Debug APK rejected.'
-    foreach ($kind in @(@('Debug', 'AAB'), @('Release', 'APK'), @('Release', 'AAB'), @('Other', 'APK'), @('Debug', 'Other'))) {
-        Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration $kind[0] -ExportFormat $kind[1] } 'Test Store configuration escaped its Debug APK boundary.'
+    # The GitHub Test Store APK is a non-debuggable Release APK from an explicit private configuration.
+    $privateTestStore = Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Release -ExportFormat APK
+    Assert-Check ($privateTestStore.purchase_mode -ceq 'test_store' -and $privateTestStore.revenuecat_public_key -ceq 'test_synthetic_public_key') 'Explicit Test Store Release APK rejected.'
+    Assert-Check ((Get-AndroidTestStoreFlag $privateTestStore) -ceq 'true') 'The Test Store build does not turn on the native Test Store flag.'
+    Reject { Get-AndroidBuildConfig -Repository $repository -Configuration Release -ExportFormat APK } 'Test Store Release APK accepted implicit source configuration.'
+    foreach ($kind in @(@('Debug', 'APK'), @('Debug', 'AAB'), @('Release', 'AAB'), @('Other', 'APK'), @('Release', 'Other'))) {
+        Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration $kind[0] -ExportFormat $kind[1] } 'Test Store configuration escaped its Release APK boundary.'
     }
+    Assert-Check ((Get-AndroidTestStoreFlag $play) -ceq 'false' -and (Get-AndroidTestStoreFlag $tester) -ceq 'false') 'A Play or tester build turns on the native Test Store flag.'
+    Reject { Assert-AndroidPluginTestStoreFlag -AarPath $configPath -Expected 'maybe' -JdkPath $fixture } 'An unknown native Test Store flag value was accepted.'
     foreach ($invalid in @(
         @{purchase_mode='google_play'},
         @{purchase_mode='TEST_STORE'},
@@ -109,14 +112,14 @@ try {
         $candidate = $testStore.Clone()
         foreach ($name in $invalid.Keys) { $candidate[$name] = $invalid[$name] }
         Write-Config $candidate
-        Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Debug -ExportFormat APK } 'Mismatched or malformed Test Store configuration accepted.'
+        Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Release -ExportFormat APK } 'Mismatched or malformed Test Store configuration accepted.'
     }
     $client = '123456789012-synthetic0client.apps.googleusercontent.com'
     foreach ($base in @($play, $testStore)) {
         $candidate = $base.Clone()
         $candidate.play_games_web_client_id = $client
         Write-Config $candidate
-        $kind = if ($base.purchase_mode -ceq 'google_play') { $arguments } else { @{Repository=$repository; ConfigPath=$configPath; Configuration='Debug'; ExportFormat='APK'} }
+        $kind = if ($base.purchase_mode -ceq 'google_play') { $arguments } else { @{Repository=$repository; ConfigPath=$configPath; Configuration='Release'; ExportFormat='APK'} }
         $withClient = Get-AndroidBuildConfig @kind
         Assert-Check ($withClient.play_games_web_client_id -ceq $client) 'Configuration with a Play Games web client rejected.'
         foreach ($invalid in @('', 'synthetic', '123456789012-synthetic0client.apps.googleusercontent.com.evil', '123-short.apps.googleusercontent.com', 'https://123456789012-synthetic0client.apps.googleusercontent.com', 17)) {
