@@ -22,6 +22,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const FACES_ICON = preload("res://assets/ui/social/users.svg")
 const NAME_ICON = preload("res://assets/ui/social/user.svg")
 const FLAG_ICON = preload("res://assets/ui/room/flag.svg")
@@ -79,6 +80,7 @@ static func join(root: Control, row: Dictionary, seat: int, joining: String, nam
 		modal.close(false)
 		confirm.call(), PlayerCopy.DUELS_NOT_NOW)
 	go.name = "PublicJoinConfirm"
+	OfflineHold.hold(go)
 	go.grab_focus()
 	return modal
 
@@ -108,6 +110,7 @@ static func first_time(root: Control, show_name: bool, confirm: Callable) -> Con
 		modal.close(false)
 		confirm.call(named), PlayerCopy.DUELS_NOT_NOW)
 	go.name = "PublicTurnOn"
+	OfflineHold.hold(go)
 	go.grab_focus()
 	return modal
 
@@ -137,6 +140,7 @@ static func stranger(root: Control, who: Dictionary, settings: Dictionary, actio
 		button.pressed.connect(func() -> void:
 			modal.close(false)
 			(run as Callable).call())
+		OfflineHold.hold(button)
 		buttons.add_child(button)
 	add.call("PublicReport", PlayerCopy.PUBLIC_REPORT, "report")
 	add.call("PublicBlock", PlayerCopy.PUBLIC_BLOCK, "block")
@@ -159,6 +163,7 @@ static func block(root: Control, name: String, partner: bool, confirm: Callable)
 		modal.close(false)
 		confirm.call(), PlayerCopy.DUELS_NOT_NOW)
 	go.name = "PublicBlockConfirm"
+	OfflineHold.hold(go)
 	return modal
 
 ## The report reasons for `name`; confirm(reason) runs after the card closes.

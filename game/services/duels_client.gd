@@ -63,6 +63,10 @@ var _saved: Dictionary = {}
 var _ghost_rooms: Dictionary = {}
 
 static var _shared: RefCounted
+## Public duel rooms of every player this phone keeps, read from the file once while no client
+## is up (a room opened from Your rooms before Duels this launch), and again after each save.
+static var _public_rooms: Dictionary = {}
+static var _public_read := false
 
 ## One client per signed-in player, so the pages, Home and Your rooms share it.
 static func shared(api: Node, owner: String) -> RefCounted:
@@ -255,7 +259,17 @@ func duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 ## Whether `room_id` is a public duel's room as the signed-in player's client knows it
 ## (services/partner_friends.gd, the photo card): its partner is a stand-in, never a friend.
 static func public_room(room_id: String) -> bool:
-	return _shared != null and not room_id.is_empty() and _shared.room_kind(room_id) == "public"
+	if room_id.is_empty(): return false
+	if _shared != null and _shared.room_kind(room_id) == "public": return true
+	if not _public_read:
+		_public_read = true
+		_public_rooms.clear()
+		for mine: Variant in _read_all(SAVE_PATH).values():
+			var rooms: Variant = mine.get("rooms") if mine is Dictionary else null
+			if not rooms is Dictionary: continue
+			for id: Variant in rooms:
+				if rooms[id] == "public" and Typed.valid_id(id): _public_rooms[id] = true
+	return _public_rooms.has(room_id)
 
 func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", "")), "status": int(response.get("status", 0))}
@@ -322,6 +336,7 @@ func _save() -> void:
 	var all := _read_all(_path)
 	all[_owner] = {"rooms": _saved.rooms, "rung": _saved.rung.keys(), "public_on": public_on()}
 	AtomicFile.write_text(_path, JSON.stringify(all))
+	_public_read = false
 
 ## Forgets a player's part of the file (account deletion); other players' parts stay.
 ## False when the file, or a damaged copy of it kept aside, could not be changed (services/deleted_identity_stores.gd tries again).
@@ -335,6 +350,7 @@ static func clear_owner(owner: String, path: String = SAVE_PATH) -> bool:
 	# Written even when nothing changed: a damaged file read as empty, and the
 	# copy of it kept aside (AtomicFile.read_json), hold every player's part here.
 	var saved := AtomicFile.write_text(path, JSON.stringify(all))
+	_public_read = false
 	return AtomicFile.remove_unreadable(path) and saved
 
 ## Every player's part of the file, or {} when no copy of it reads.

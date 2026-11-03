@@ -633,6 +633,7 @@ func _open_result(view: Dictionary) -> void:
 	page.view = view
 	page.watch_requested.connect(func(next: Dictionary, control: Control) -> void: _play(next))
 	page.their_run_requested.connect(func(next: Dictionary, _control: Control) -> void: _watch_theirs(page, next))
+	page.stranger_requested.connect(func(next: Dictionary, index: int, slot: int) -> void: public().stranger(page, next, index, slot))
 	screen.open_overlay(page)
 	var answer: Dictionary = await client().duel(view.board, view.duel_id)
 	if not is_instance_valid(page) or not answer.get("ok", false): return

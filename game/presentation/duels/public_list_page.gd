@@ -13,6 +13,7 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## on a timer; Show more reads the next page. Taps wait through a BusyTapGate, so
 ## a first tap always registers and a second one waits.
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const Spots = preload("res://services/public_duel_spots.gd")
 const Seats = preload("res://presentation/duels/public_seats.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -66,6 +67,7 @@ func header_action() -> Control:
 	post.custom_minimum_size.x = 220
 	Kit.icon_on(post, PLUS_ICON, false, 22)
 	post.pressed.connect(func() -> void: post_requested.emit(post))
+	OfflineHold.hold(post)
 	return post
 
 func opened() -> void:
@@ -203,6 +205,7 @@ func _render_list() -> void:
 		more.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		more.custom_minimum_size.x = 220
 		more.pressed.connect(func() -> void: more_requested.emit(more))
+		OfflineHold.hold(more)
 		_list.add_child(more)
 
 ## Why `row` is greyed for the current Joining as, or "" (Spots.greyed with what the phone knows).
@@ -253,6 +256,7 @@ func _row(row: Dictionary) -> Control:
 	join.disabled = greyed
 	join.pressed.connect(func() -> void: join_requested.emit(row, -1, join))
 	right.add_child(join)
+	if not greyed: OfflineHold.hold(join)
 	var under := str(_notes.get(row.duel_id, "")) if not _notes.get(row.duel_id, "").is_empty() else reason_text(reason, partner_name, limit)
 	if not under.is_empty():
 		var note := Kit.wrapped(under, 13, UiTokens.MUTED)

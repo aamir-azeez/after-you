@@ -14,12 +14,15 @@ const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
 const PLAY_ICON = preload("res://assets/ui/play-circle.svg")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
+const Seats = preload("res://presentation/duels/public_seats.gd")
 const Backdrop = preload("res://presentation/duels/duel_result_backdrop.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 
 signal watch_requested(view: Dictionary, control: Control)
 ## Watch their run: the other pair's run, after a friend duel (services/duel_their_run.gd).
 signal their_run_requested(view: Dictionary, control: Control)
+## A public duel's stranger was tapped: side `index`, seat `slot` (their card offers Add friend now).
+signal stranger_requested(view: Dictionary, index: int, slot: int)
 
 var me := ""
 var name_of: Callable
@@ -143,7 +146,7 @@ func _card(index: int, won: bool) -> Control:
 	column.add_child(head)
 	var middle := HBoxContainer.new()
 	middle.add_theme_constant_override("separation", 14)
-	var pips := Kit.pips(Vector2(84, 100) if not compact else Vector2(70, 84), DuelModel.members(view, index), me, DuelModel.looks(view, index))
+	var pips: Control = Kit.pips(Vector2(84, 100) if not compact else Vector2(70, 84), DuelModel.members(view, index), me, DuelModel.looks(view, index)) if not DuelModel.is_public(view) else _public_pips(index)
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	middle.add_child(pips)
 	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 54 if not compact else 46, UiTokens.CREAM, true)
@@ -155,6 +158,18 @@ func _card(index: int, won: bool) -> Control:
 	var steps := DuelModel.steps(view, index)
 	column.add_child(Kit.stage_line(steps.x / 2, steps.y / 2, _picture_key(), 340.0 if not compact else 290.0))
 	return card
+
+## A public side's pips (public_seats.gd), a stranger's tappable for their card.
+func _public_pips(index: int) -> Control:
+	var seats := Seats.view_seats(view, index, me, name_of)
+	var pair := HBoxContainer.new()
+	pair.add_theme_constant_override("separation", 4)
+	for slot in range(2):
+		var tap := func() -> void: stranger_requested.emit(view, index, slot)
+		var made := Seats.seat(seats[slot], slot, 84.0 if not compact else 70.0, false, tap if DuelModel.seat_stranger(view, index, slot) else Callable(), 15)
+		made.name = "ResultSeat%d_%d" % [index, slot]
+		pair.add_child(made)
+	return pair
 
 ## The cream Pollen earned card: each line and the total, each in the one Pollen
 ## row shape (pollen_breakdown_view.gd amount_row: words, then the mark and the

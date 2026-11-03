@@ -407,7 +407,7 @@ func _home() -> void:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 
 func _settings_rows() -> void:
-	var expected := ["leaderboard_name", "retry_cleanup", "finish_recovery", "hosting_access", "photo_transfer", "safety_reports", "create_identity", "recover_identity", "delete_identity"]
+	var expected := ["public_duels", "leaderboard_name", "retry_cleanup", "finish_recovery", "hosting_access", "photo_transfer", "safety_reports", "create_identity", "recover_identity", "delete_identity"]
 	var source := FileAccess.get_file_as_string("res://presentation/settings_rows.gd")
 	var marked: Array = []
 	var pattern := RegEx.create_from_string("\\{\"id\": \"([a-z_]+)\", \"online\": true")
