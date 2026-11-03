@@ -32,7 +32,7 @@ const RELAY = "relay-isles@2";
 const RELAY_KEY = { level_id: "relay-isles", level_version: 2, definition_hash: CHAPTERS[0].adapter.key.definition_hash };
 let address = 0;
 
-async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = {}): Promise<Response> {
+async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, unknown> = ON, headers: Record<string, string> = {}): Promise<Response> {
   return worker.fetch(new Request("https://public.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + (++address % 250), "X-AfterYou-Pollen": "1", ...POLLEN_CLIENT,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
@@ -65,8 +65,10 @@ async function player(): Promise<Account> {
   await ok(call("/v1/duels/public/me", "PUT", account, { schema_version: 1, on: true }));
   return account;
 }
-const post = (account: Account, as: JoinAs = "alone", key = crypto.randomUUID()) =>
-  call("/v1/duels/public", "POST", account, { schema_version: 1, idempotency_key: key, board: RELAY, as });
+const post = (account: Account, as: JoinAs = "alone", key = crypto.randomUUID(), vars: Record<string, unknown> = ON) =>
+  call("/v1/duels/public", "POST", account, { schema_version: 1, idempotency_key: key, board: RELAY, as }, vars);
+/** The costly class's 5 a minute (limits.ts) let through, for a test that posts more than that on purpose. */
+const UNLIMITED = { ...ON, TESTER_CODE_LIMITER: { limit: async () => ({ success: true }) } };
 const join = (account: Account, duel: { duel_id: string }, as: JoinAs = "alone", seat: number | null = null, key = crypto.randomUUID()) =>
   call(`/v1/duels/public/${RELAY}/${duel.duel_id}/join`, "POST", account, { schema_version: 1, idempotency_key: key, as, seat });
 const detail = (account: Account, duel: { duel_id: string }) => ok<{ duel: DuelView; held?: Any; pay?: Any }>(call(`/v1/duels/${RELAY}/${duel.duel_id}`, "GET", account));
@@ -379,9 +381,9 @@ describe("public duels", () => {
   it("share one limit of 10 with friend duels: posts past it are refused, and so is a friend challenge", async () => {
     const [a1, a2, b1, b2] = await Promise.all([player(), player(), player(), player()]);
     await partner(a1, a2); await partner(b1, b2); await befriend(a1, b1);
-    for (let index = 0; index < 10; index++) await ok(post(a1));
+    for (let index = 0; index < 10; index++) await ok(post(a1, "alone", crypto.randomUUID(), UNLIMITED));
     expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a1))).public).toMatchObject({ running: 10 });
-    expect((await errorOf(post(a1))).code).toBe("duel_limit_reached");
+    expect((await errorOf(post(a1, "alone", crypto.randomUUID(), UNLIMITED))).code).toBe("duel_limit_reached");
     const challenge = call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY });
     expect((await errorOf(challenge)).code).toBe("duel_limit_reached");
   });

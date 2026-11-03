@@ -98,6 +98,12 @@ export const COSTLY_ROUTES = Object.freeze([
   { kind: "duel-challenge", method: "POST", path: /^\/v1\/duels\/challenge$/ },
   { kind: "duel-ghost", method: "POST", path: /^\/v1\/duels\/ghost$/ },
   { kind: "duel-party-invite", method: "POST", path: /^\/v1\/duels\/party\/invite$/ },
+  // Public duels (duels/public-routes.ts): posting, taking a spot (so a script can't sweep the list), the safety
+  // actions by seat, and the switch, each a tap.
+  { kind: "public-duel-post", method: "POST", path: /^\/v1\/duels\/public$/ },
+  { kind: "public-duel-join", method: "POST", path: /^\/v1\/duels\/public\/[a-z0-9-]{1,48}@[1-9][0-9]{0,3}\/[a-f0-9]{32}\/join$/ },
+  { kind: "public-duel-seat", method: "POST", path: /^\/v1\/duels\/public\/[a-z0-9-]{1,48}@[1-9][0-9]{0,3}\/[a-f0-9]{32}\/(?:block|report|friend)$/ },
+  { kind: "public-duel-switch", method: "PUT", path: /^\/v1\/duels\/public\/me$/ },
   { kind: "report", method: "POST", path: /^\/v1\/safety\/report$/ },
   { kind: "block", method: "POST", path: /^\/v1\/safety\/(?:block|blocks\/[A-Za-z0-9_-]{22})$/ }
 ] as const);

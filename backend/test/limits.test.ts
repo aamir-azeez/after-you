@@ -62,6 +62,10 @@ describe("the costly class", () => {
     expect(costlyKind("POST", "/v1/friends/request")).toBe("friend-request");
     expect(costlyKind("PUT", "/v1/leaderboards/me")).toBe("leaderboard-name");
     expect(costlyKind("POST", "/v1/safety/blocks/" + "a".repeat(22))).toBe("block");
+    const duel = "/v1/duels/public/relay-isles@2/" + "a".repeat(32);
+    expect([costlyKind("POST", "/v1/duels/public"), costlyKind("POST", duel + "/join"), costlyKind("POST", duel + "/report"), costlyKind("PUT", "/v1/duels/public/me")])
+      .toEqual(["public-duel-post", "public-duel-join", "public-duel-seat", "public-duel-switch"]);
+    expect(costlyKind("GET", "/v1/duels/public/list/all/newest/0")).toBeNull();
     // Read on timers and live hints, or sent in quick tries, each with its own guard; or costly only in part (COSTLY_IN_ROUTE).
     for (const [method, path] of [["GET", "/v1/friends"], ["GET", "/v1/social/inbox"], ["POST", "/v1/presence"], ["GET", "/v1/leaderboards/me"], ["DELETE", "/v1/safety/blocks/" + "a".repeat(22)],
       ["DELETE", "/v1/friends/" + "a".repeat(22)], ["POST", "/v1/friends/accept"], ["POST", "/v1/pollen/bundle-claims"], ["GET", "/v1/entitlement"], ["POST", "/v1/friends/share"], ["POST", `/v1/friends/${"a".repeat(22)}/notifications`]])
