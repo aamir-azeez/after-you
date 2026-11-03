@@ -24,7 +24,12 @@ extends Node
 ## the Wardrobe only wears what the player owns, earned items and item bloom
 ## drops, with the balance: no shelf of the week, no price and no Buy. Its All
 ## items tab shows only while an earned item the player does not own is
-## offered, and it opens on Owned.
+## offered, and it opens on Owned once the player owns something.
+## Until the player picks a tab, the page opens on All items with the shop,
+## and on any build while the player owns nothing yet (owner, 2026-11-03), so
+## an empty Owned is never the first thing shown; Owned stays one tap away
+## (_start_tab, read on every draw, so an answer that comes after opening,
+## such as the first read or the shop's switch, still decides it).
 ## Earned items (catalogue tier "earned") show in All items once the server
 ## offers them, owned or not, so players know they exist: never sold, never on
 ## the shelf, never counted as something to buy (Get more, the short card).
@@ -85,7 +90,8 @@ var client: RefCounted
 var surfaces: RefCounted
 var _page: Page
 var _sheet: WeakRef = null
-var _tab := "all"
+## The tab the player picked; empty until they pick one (_start_tab decides it).
+var _tab := ""
 var _selected := ""
 var _kind := ""
 var _view_mode := "you"
@@ -146,7 +152,7 @@ func show_wardrobe(from: String = "settings") -> void:
 	host.overlay.add_child(_page)
 	_gate = BusyTapGate.new(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
-	_tab = "all" if shop() else "owned"
+	_tab = ""
 	_selected = ""
 	_kind = ""
 	_view_mode = "you"
@@ -236,6 +242,11 @@ func tap_action(id: String) -> void:
 ## (`all_items`: the shop, or an earned item listed and not owned).
 static func _allowed_tab(tab: String, all_items: bool) -> String:
 	return "all" if tab == "all" and all_items else "owned"
+
+## The tab shown before the player picks one: All items while the shop sells
+## (`selling`) or the player owns nothing yet (`owns_any`), else Owned.
+static func _start_tab(selling: bool, owns_any: bool) -> String:
+	return "all" if selling or not owns_any else "owned"
 
 func select(id: String) -> void:
 	_selected = id if Catalog.has(id) else ""
@@ -359,7 +370,8 @@ func model() -> Dictionary:
 	var featured: Array = FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier).map(func(slot: Dictionary) -> String: return slot.id) if selling else []
 	# All items shows with the shop, and without it while an earned item is listed and not owned.
 	var all_items: bool = selling or items.any(func(entry: Dictionary) -> bool: return entry.tier == Catalog.EARNED and not bool(entry.owned))
-	var tab := _allowed_tab(_tab, all_items)
+	var owns_any: bool = items.any(func(entry: Dictionary) -> bool: return bool(entry.owned))
+	var tab := _allowed_tab(_tab if not _tab.is_empty() else _start_tab(selling, owns_any), all_items)
 	# The slot chips list only slots with something in this tab; a chip with nothing left falls back to the first.
 	var kinds: Array = []
 	for slot: String in Catalog.slots():

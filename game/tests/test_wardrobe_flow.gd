@@ -182,6 +182,7 @@ func _run() -> void:
 	await _get_more()
 	await _earned_in_shop()
 	await _earned_without_shop()
+	await _start_tab()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -765,6 +766,54 @@ func _earned_without_shop() -> void:
 		bare.flow.show_wardrobe()
 		await _frames()
 		var empty_model: Dictionary = bare.flow.model()
-		_check(empty_model.tab == "owned" and str(empty_model.selected).is_empty() and (empty_model.preview as Dictionary).is_empty() and PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(bare.host.overlay), label + ": nothing owned opens on the empty Owned with nothing picked or tried on")
+		_check(empty_model.tab == "all" and empty_model.all_items and (bare.host.overlay.find_child("WardrobeTab_owned", true, false) as Control).visible, label + ": nothing owned opens on All items, with Owned one tap away")
+		bare.flow.set_tab("owned")
+		empty_model = bare.flow.model()
+		_check(empty_model.tab == "owned" and str(empty_model.selected).is_empty() and (empty_model.preview as Dictionary).is_empty() and PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(bare.host.overlay), label + ": the empty Owned, one tap away, has nothing picked or tried on")
 		bare.host.queue_free()
 		await _frames(2)
+
+## The tab the Wardrobe opens on (owner, 2026-11-03): All items while the player
+## owns nothing yet, on a build that sells (Android) and one that sells nothing
+## (iPhone without a store), from Settings and from Home, even when the first
+## read comes after the page opened; Owned stays one tap away and a picked tab
+## holds until the page opens again. A player who owns something opens on
+## Owned without the shop, and on All items once the shop's switch arrives.
+func _start_tab() -> void:
+	for sells: bool in [true, false]:
+		for from: String in ["settings", "home"]:
+			var label := "%s, from %s" % [_build(sells), from]
+			var t := _setup(false)
+			t.store.set_enabled(SERVER, ME, true, false, true)
+			t.wallet.set_enabled(SERVER, ME, true)
+			t.flow.surfaces = PollenSurfaces.new(sells, sells)
+			t.fake.replies = [_answer([], {}, 3000), _answer([], {}, 3000)]
+			t.flow.show_wardrobe(from)
+			await _frames()
+			var page: Node = t.host.overlay
+			var model: Dictionary = t.flow.model()
+			_check(t.fake.sent.size() == 1 and model.tab == "all" and model.all_items and (page.find_child("WardrobeTab_owned", true, false) as Control).visible, label + ": the first read after opening, nothing owned: All items, Owned beside it")
+			t.flow.set_tab("owned")
+			t.flow._redraw()
+			_check(t.flow.model().tab == "owned", label + ": Owned, once picked, holds through a redraw")
+			t.flow.show_wardrobe(from)
+			await _frames()
+			_check(t.flow.model().tab == "all", label + ": opening again starts on All items again")
+			t.host.queue_free()
+			await _frames(2)
+	var keeper := _setup(false)
+	keeper.store.set_enabled(SERVER, ME, true, false, false)
+	keeper.wallet.set_enabled(SERVER, ME, true)
+	keeper.flow.surfaces = PollenSurfaces.new(true, false)
+	var answer := _answer(["daisy"], {"hat": "daisy"}, 3000)
+	keeper.store.note_view(SERVER, ME, answer.data)
+	keeper.wallet.note_wallet(SERVER, ME, answer.data)
+	keeper.fake.replies = [answer]
+	keeper.flow.show_wardrobe()
+	await _frames()
+	_check(not keeper.flow.model().shop and keeper.flow.model().tab == "owned", "Something owned, shop off: opens on Owned")
+	keeper.store.set_enabled(SERVER, ME, true, true, false)
+	keeper.flow._redraw()
+	_check(keeper.flow.model().shop and keeper.flow.model().tab == "all", "The shop's switch after opening: All items")
+	keeper.host.queue_free()
+	await _frames(2)
