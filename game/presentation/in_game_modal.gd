@@ -107,6 +107,37 @@ func _build(heading: String, subtitle: String) -> void:
 	close_button.pressed.connect(func(): close())
 	header.add_child(close_button)
 
+## The heading as one line: `icon` before the title and `line` after it, in
+## place of the subtitle under it (a sheet whose rows need the height). Returns the line's label.
+func heading_line(icon: Texture2D, line: String) -> Label:
+	var row := HBoxContainer.new()
+	row.name = "ModalHeadingLine"
+	row.add_theme_constant_override("separation",14)
+	var titles := title_label.get_parent()
+	titles.add_child(row)
+	titles.move_child(row,0)
+	var mark := TextureRect.new()
+	mark.name = "ModalHeadingIcon"
+	mark.texture = icon
+	mark.modulate = CREAM
+	mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	mark.custom_minimum_size = Vector2(28,28)
+	mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(mark)
+	title_label.reparent(row)
+	title_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if is_instance_valid(subtitle_label): subtitle_label.queue_free()
+	subtitle_label = label(line,17,row)
+	subtitle_label.name = "ModalHeadingText"
+	subtitle_label.add_theme_color_override("font_color",MUTED)
+	subtitle_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	subtitle_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	subtitle_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	subtitle_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	return subtitle_label
+
 ## A wider panel for content laid out in rows, still inside the screen edges.
 func widen(width: float) -> void:
 	_panel.custom_minimum_size.x = clampf(get_viewport_rect().size.x - 48.0, 280.0, width)

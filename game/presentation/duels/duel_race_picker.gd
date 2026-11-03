@@ -23,6 +23,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
+const DashedBox = preload("res://presentation/kit/dashed_box.gd")
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -62,29 +63,7 @@ func _build(sheet: Control, line: String) -> void:
 	modal = sheet
 	modal.widen(SHEET_WIDTH)
 	# The heading row as drawn: the trophy, the chapter, then the line beside it.
-	var heading := HBoxContainer.new()
-	heading.add_theme_constant_override("separation", 14)
-	var titles: Node = modal.title_label.get_parent()
-	titles.add_child(heading)
-	titles.move_child(heading, 0)
-	var icon := TextureRect.new()
-	icon.name = "RacePickerIcon"
-	icon.texture = Icons.LEADERBOARD
-	icon.modulate = UiTokens.CREAM
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(28, 28)
-	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	heading.add_child(icon)
-	modal.title_label.reparent(heading)
-	modal.title_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var with := Kit.text(line, 17, UiTokens.SOFT)
-	with.name = "RacePickerLine"
-	with.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	with.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	with.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	heading.add_child(with)
+	modal.heading_line(Icons.LEADERBOARD, line).name = "RacePickerLine"
 	add_theme_constant_override("separation", 6)
 	modal.content.add_child(self)
 	_banner = VBoxContainer.new()
@@ -146,7 +125,9 @@ func _our_run(ticks: int, full: bool) -> Button:
 	Kit.icon_on(button, Rows.RACE_ICON, true, 20)
 	button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	button.custom_minimum_size.x = 200
-	if full: button.disabled = true
+	if full:
+		button.disabled = true
+		DashedBox.grey(button)
 	else: button.pressed.connect(func(): race_requested.emit("developer", null, button))
 	return button
 

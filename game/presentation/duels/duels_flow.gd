@@ -457,12 +457,22 @@ func _open_picker(page: CanvasLayer, chapter: String, opener: Control) -> void:
 	if not is_open() or not is_instance_valid(page): return
 	var picker: Control = RacePicker.open(page, chapter, _partner_name(), opener)
 	if picker == null: return
-	picker.race_requested.connect(func(source: String, entry_id: Variant, control: Control) -> void: page.tap(control, func() -> void: await _race(page, chapter, source, entry_id, picker)))
+	picker.race_requested.connect(_picker_race.bind(page, chapter, picker))
+	# Every row would grey from a lobby read that may be old, and a greyed row
+	# can't be tapped for the server to say otherwise: read the lobby once first.
+	if client().ghost_races_full():
+		var answer: Dictionary = await client().lobby()
+		if is_open() and answer.get("ok", false) and screen is DuelsScreen: screen.show_lobby(answer.lobby)
 	await _fill_picker(page, picker, chapter, false)
+
+## A Race on the picker, through the page's gate; a sheet closed before the finger lifted sends nothing.
+func _picker_race(source: String, entry_id: Variant, control: Control, page: CanvasLayer, chapter: String, picker: Variant) -> void:
+	page.tap(control, func() -> void:
+		if is_instance_valid(picker): await _race(page, chapter, source, entry_id, picker))
 
 ## Reads the chapter's board (`fresh`: past the phone's minute) and redraws the
 ## picker; `full`: the server just said the pair has its limit of races going.
-func _fill_picker(page: CanvasLayer, picker: Control, chapter: String, fresh: bool, full: bool = false) -> void:
+func _fill_picker(page: CanvasLayer, picker: Variant, chapter: String, fresh: bool, full: bool = false) -> void:
 	var board := Runs.board_key(chapter)
 	var boards: RefCounted = LeaderboardClient.shared(host.api, str(host.api.player_id))
 	var answer: Dictionary = await boards.board(board, fresh)
@@ -479,10 +489,10 @@ func _partner_name() -> String:
 	var partner: Variant = party.get("partner") if party.get("intact", false) else null
 	return host._friend_display_name(str(partner)) if partner != null else ""
 
-## `picker`: the top 10 picker the race was tapped on, or null. A run that left
+## `picker`: the top 10 picker the race was tapped on (closed since, perhaps), or null. A run that left
 ## the top 10 since the picker's read says so and the picker reads the board
 ## again; a refused limit greys its rows.
-func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant, picker: Control = null) -> void:
+func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant, picker: Variant = null) -> void:
 	var board := Runs.board_key(chapter)
 	var answer: Dictionary = await _send_once("ghost|%s|%s|%s" % [board, source, entry_id], func(key: String) -> Dictionary: return await client().race_ghost(board, source, entry_id, key))
 	if not is_instance_valid(page): return

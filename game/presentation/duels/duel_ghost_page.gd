@@ -13,6 +13,7 @@ const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
+const DashedBox = preload("res://presentation/kit/dashed_box.gd")
 
 ## source: "developer" or "board"; entry_id: the board run's, or null.
 signal race_requested(chapter_key: String, source: String, entry_id: Variant, control: Control)
@@ -99,6 +100,7 @@ func _top_button(key: String, has_times: bool) -> Button:
 	if has_times: button.pressed.connect(func(): picker_requested.emit(key, button))
 	else:
 		button.disabled = true
+		DashedBox.grey(button)
 		button.add_theme_font_size_override("font_size", 16)
 	return button
 

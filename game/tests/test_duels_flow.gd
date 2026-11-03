@@ -979,7 +979,7 @@ func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	_check(races.size() == 2 and races.all(func(button: Button) -> bool: return not button.disabled), "each top 10 row has its own Race: %d" % races.size())
 	var line: Label = picker.modal.find_child("RacePickerLine", true, false)
 	_check(line != null and line.text == PlayerCopy.RACE_PICK_WITH % "Maya", "the sheet names the partner you race with")
-	_check((picker.modal.find_child("RacePickerIcon", true, false) as TextureRect).texture == Icons.LEADERBOARD, "with the shared leaderboard trophy beside the chapter")
+	_check((picker.modal.find_child("ModalHeadingIcon", true, false) as TextureRect).texture == Icons.LEADERBOARD, "with the shared leaderboard trophy beside the chapter")
 	# The second run left the board between the read and the tap.
 	api.replies["POST /v1/duels/ghost"] = {"ok": false, "status": 404, "code": "ghost_not_found"}
 	api.replies[board_path] = {"ok": true, "data": {"schema_version": 1, "board": BOARD, "top": [row.call(1, "a", 1400)], "checking": []}}
@@ -1005,10 +1005,36 @@ func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	var one_done: Dictionary = lobby.duplicate(true)
 	one_done.duels[0].sides[0].finished = true
 	_check(Client.ghost_races_going(Client.valid_lobby(one_done)) == 2, "a race whose own side finished no longer counts, as on the server")
+	# Opened at the limit, the picker reads the lobby once first: an old lobby never greys rows the server would race.
+	var lobby_reads := func() -> int: return api.requests.filter(func(item: Array) -> bool: return item[0] == "GET" and item[1] == "/v1/duels").size()
 	api.replies["GET /v1/duels"] = kept_lobby
-	await flow.client().lobby()
+	page.go_back()
+	await _frames(2)
+	var asked_lobby: int = lobby_reads.call()
+	await flow._open_picker(page, Registry.FIRST_STEPS, null)
+	picker = page.root.find_child("RacePicker", true, false)
+	_check(lobby_reads.call() == asked_lobby + 1 and not flow.client().ghost_races_full() and picker != null and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return not button.disabled), "a picker opened at the limit reads the lobby once and races what the server allows")
+	# The server says the limit is reached after all: the toast, and the rows grey.
+	api.replies["POST /v1/duels/ghost"] = {"ok": false, "status": 409, "code": "duel_limit_reached"}
+	(picker.find_children("LeaderboardRace", "Button", true, false)[0] as Button).pressed.emit()
+	await _frames(10)
+	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % Client.GHOST_LIMIT and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return button.disabled), "a race refused at the limit says so and greys every row")
 	api.replies.erase("POST /v1/duels/ghost")
+	# Closed while its board read is out: nothing writes to the gone sheet.
+	page.go_back()
+	await _frames(2)
+	var watch: LogWatch = LogWatch.start(["previously freed", "Invalid"])
+	api.delays[board_path] = 6
+	flow._open_picker(page, Registry.FIRST_STEPS, null)
+	await _frames(1)
+	api.replies[board_path] = {"ok": true, "data": {"schema_version": 1, "board": BOARD, "top": [row.call(1, "a", 1400)], "checking": []}}
+	page.go_back()
+	await _frames(10)
+	_check(watch.count("previously freed") == 0 and watch.count("Invalid") == 0 and page.alive(), "a picker closed while its board loads is left alone")
+	watch.stop()
+	api.delays.erase(board_path)
 	# Back closes the sheet first, then the page.
+	await flow._open_picker(page, Registry.FIRST_STEPS, null)
 	page.go_back()
 	await _frames(2)
 	_check(is_instance_valid(page) and page.alive() and page.root.find_child("RacePicker", true, false) == null, "Back closes the picker and leaves Race a recorded run open")

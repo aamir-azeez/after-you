@@ -25,6 +25,7 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const DashedBox = preload("res://presentation/kit/dashed_box.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const BoardStatus = preload("res://services/board_status.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
@@ -254,7 +255,9 @@ static func race_cell(action: Callable, compact: bool, waiting: bool = false) ->
 		button.add_theme_constant_override("h_separation", 6)
 		button.tooltip_text = PlayerCopy.LEADERBOARD_WAITING_CHECK
 	if action.is_valid(): button.pressed.connect(action.bind(button))
-	else: button.disabled = true
+	else:
+		button.disabled = true
+		DashedBox.grey(button, 14.0)
 	return button
 
 ## A trailing cell's outlined button: cream words and icon, as wide as Watch.
