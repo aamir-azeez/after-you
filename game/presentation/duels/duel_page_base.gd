@@ -143,10 +143,16 @@ func go_back() -> void:
 	if Kit.showing(_modal): _modal.go_back()
 	else: close()
 
-## Opens a question card over this page (presentation/in_game_modal.gd).
+## Opens a card over this page (presentation/in_game_modal.gd), the one Back
+## closes before the page; null while another card is up or the page is closing.
+func sheet(node_name: String, title: String, subtitle: String = "", opener: Control = null) -> Control:
+	if Kit.showing(_modal) or not _alive: return null
+	_modal = preload("res://presentation/in_game_modal.gd").open(root, node_name, title, subtitle, opener)
+	return _modal
+
+## Opens a question card over this page.
 func ask(node_name: String, title: String, line: String, confirm_text: String, confirm: Callable, cancel_text: String) -> void:
-	if Kit.showing(_modal) or not _alive: return
-	_modal = preload("res://presentation/in_game_modal.gd").open(root, node_name, title)
+	if sheet(node_name, title) == null: return
 	_modal.label(line)
 	var send: Button = _modal.add_actions(confirm_text, func() -> void:
 		_modal.close(false)

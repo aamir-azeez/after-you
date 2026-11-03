@@ -13,6 +13,8 @@ const LogWatch = preload("res://tests/log_watch.gd")
 const Clock = preload("res://services/refresh_schedule.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
+const GhostPage = preload("res://presentation/duels/duel_ghost_page.gd")
+const Icons = preload("res://presentation/kit/icons.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -306,6 +308,7 @@ func _run() -> void:
 	await _leaving(api, flow)
 	await _already_open(main, api, flow)
 	await _hinted(main, api, flow)
+	await _picker(main, api, flow)
 	flow.open()
 	await _frames(2)
 	flow.close()
@@ -952,6 +955,66 @@ func _tap_play(main: FakeMain, flow: Node, view: Dictionary, refuse: Array = [])
 func _leave_room(main: FakeMain) -> void:
 	if is_instance_valid(main.relay_child): main.relay_child.free()
 	main.relay_child = null
+
+## The top 10 picker over Race a recorded run: the board's rows with Race,
+## a run that left the board before the tap, and the pair's race limit.
+func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
+	var board_path := "GET /v1/leaderboards/" + BOARD
+	var row := func(rank: int, entry: String, ticks: int) -> Dictionary: return {"rank": rank, "entry_id": entry.repeat(32), "ticks": ticks, "gold_leaf": rank == 1, "names": ["Lee", "Sam"]}
+	api.replies[board_path] = {"ok": true, "data": {"schema_version": 1, "board": BOARD, "top": [row.call(1, "a", 1400), row.call(2, "b", 1500)], "checking": []}}
+	flow.open()
+	await _frames(2)
+	flow._open_ghosts()
+	await _frames(4)
+	var page: CanvasLayer = flow.screen.overlay()
+	_check(page is GhostPage, "Race a recorded run opens")
+	if not page is GhostPage: return
+	var reads := func() -> int: return api.requests.filter(func(item: Array) -> bool: return "GET " + item[1] == board_path).size()
+	var before: int = reads.call()
+	await flow._open_picker(page, Registry.FIRST_STEPS, null)
+	var picker: Node = page.root.find_child("RacePicker", true, false)
+	_check(picker != null and reads.call() == before + 1, "the leaderboard button opens the chapter's top 10, read once")
+	if picker == null: return
+	var races: Array = picker.find_children("LeaderboardRace", "Button", true, false)
+	_check(races.size() == 2 and races.all(func(button: Button) -> bool: return not button.disabled), "each top 10 row has its own Race: %d" % races.size())
+	var line: Label = picker.modal.find_child("RacePickerLine", true, false)
+	_check(line != null and line.text == PlayerCopy.RACE_PICK_WITH % "Maya", "the sheet names the partner you race with")
+	_check((picker.modal.find_child("RacePickerIcon", true, false) as TextureRect).texture == Icons.LEADERBOARD, "with the shared leaderboard trophy beside the chapter")
+	# The second run left the board between the read and the tap.
+	api.replies["POST /v1/duels/ghost"] = {"ok": false, "status": 404, "code": "ghost_not_found"}
+	api.replies[board_path] = {"ok": true, "data": {"schema_version": 1, "board": BOARD, "top": [row.call(1, "a", 1400)], "checking": []}}
+	before = reads.call()
+	(races[1] as Button).pressed.emit()
+	await _frames(10)
+	_check(main.toasts.back() == PlayerCopy.RACE_PICK_LEFT and reads.call() == before + 1, "a run that left the top 10 says so and the board is read again: %s" % main.toasts.back())
+	_check(is_instance_valid(picker) and picker.find_children("LeaderboardRace", "Button", true, false).size() == 1, "the picker shows the board as it is now")
+	# Three races going: every Race greys before a tap, under the lobby's limit line.
+	var kept_lobby: Dictionary = api.replies["GET /v1/duels"]
+	var going: Array = []
+	for index in range(3):
+		var race := _server_view("ghost", {})
+		race.duel_id = str(index).repeat(32)
+		going.append(race)
+	var lobby := {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": going}
+	api.replies["GET /v1/duels"] = {"ok": true, "data": lobby}
+	await flow.client().lobby()
+	_check(flow.client().ghost_races_full(), "three ghost races going fill the pair's limit")
+	await flow._fill_picker(page, picker, Registry.FIRST_STEPS, false)
+	var greyed: Array = picker.find_children("LeaderboardRace", "Button", true, false)
+	_check(not greyed.is_empty() and greyed.all(func(button: Button) -> bool: return button.disabled) and picker.find_child("RacePickerLimit", true, false) != null, "at the limit every Race greys under the limit line")
+	var one_done: Dictionary = lobby.duplicate(true)
+	one_done.duels[0].sides[0].finished = true
+	_check(Client.ghost_races_going(Client.valid_lobby(one_done)) == 2, "a race whose own side finished no longer counts, as on the server")
+	api.replies["GET /v1/duels"] = kept_lobby
+	await flow.client().lobby()
+	api.replies.erase("POST /v1/duels/ghost")
+	# Back closes the sheet first, then the page.
+	page.go_back()
+	await _frames(2)
+	_check(is_instance_valid(page) and page.alive() and page.root.find_child("RacePicker", true, false) == null, "Back closes the picker and leaves Race a recorded run open")
+	page.close()
+	flow.close()
+	await _frames(2)
 
 ## A duel as the server answers it, with this phone's side as `own` says.
 func _server_view(kind: String, own: Dictionary) -> Dictionary:

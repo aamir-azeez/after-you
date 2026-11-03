@@ -35,8 +35,9 @@ const MAX_HIGHLIGHT_CHARS := 60
 ## Bounds for the archive: room for years of releases, still a small read.
 const MAX_ARCHIVE_ENTRIES := 500
 const MAX_ARCHIVE_BYTES := 262144
-## Icons a highlight can use: assets/ui/whats_new/<name>.svg.
-const ICONS := ["spark", "leaf", "tap", "link", "sun", "people", "home", "bell", "play", "picture", "star", "key"]
+## Icons a highlight can use: assets/ui/whats_new/<name>.svg, and "trophy", the
+## shared leaderboard icon (presentation/whats_new_kit.gd icon_path).
+const ICONS := ["spark", "leaf", "tap", "link", "sun", "people", "home", "bell", "play", "picture", "star", "key", "trophy"]
 ## Every version's full notes. iOS builds don't link here: the GitHub pages talk
 ## about the Android APK.
 const RELEASES_URL := "https://github.com/aamir-azeez/after-you/releases"

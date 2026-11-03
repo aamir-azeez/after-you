@@ -53,6 +53,9 @@ const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
 const PartyPage = preload("res://presentation/duels/duel_party_page.gd")
 const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
 const GhostPage = preload("res://presentation/duels/duel_ghost_page.gd")
+const RacePicker = preload("res://presentation/duels/duel_race_picker.gd")
+const Rows = preload("res://presentation/leaderboard_rows.gd")
+const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
 const DuelModel = preload("res://services/duel_model.gd")
 const PollenBreakdown = preload("res://presentation/pollen_breakdown.gd")
@@ -441,16 +444,57 @@ func _open_ghosts() -> void:
 	var page := GhostPage.new()
 	page.chapters = _open_chapters()
 	page.race_requested.connect(func(chapter: String, source: String, entry_id: Variant, control: Control) -> void: page.tap(control, func() -> void: await _race(page, chapter, source, entry_id)))
+	page.picker_requested.connect(func(chapter: String, control: Control) -> void: _open_picker(page, chapter, control))
 	screen.open_overlay(page)
 	var answer: Dictionary = await client().ghosts()
 	if is_instance_valid(page): page.show_ghosts(answer.get("boards", []), not answer.get("ok", false))
 
-func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant) -> void:
+## The chapter's top 10 picker over the ghost page (duel_race_picker.gd): the
+## board Fastest pair reads (services/leaderboard_client.gd, kept a minute, so
+## usually no request), drawn through the rows that page draws (Rows.shown).
+## Its Race taps go through the page's gate like the page's own.
+func _open_picker(page: CanvasLayer, chapter: String, opener: Control) -> void:
+	if not is_open() or not is_instance_valid(page): return
+	var picker: Control = RacePicker.open(page, chapter, _partner_name(), opener)
+	if picker == null: return
+	picker.race_requested.connect(func(source: String, entry_id: Variant, control: Control) -> void: page.tap(control, func() -> void: await _race(page, chapter, source, entry_id, picker)))
+	await _fill_picker(page, picker, chapter, false)
+
+## Reads the chapter's board (`fresh`: past the phone's minute) and redraws the
+## picker; `full`: the server just said the pair has its limit of races going.
+func _fill_picker(page: CanvasLayer, picker: Control, chapter: String, fresh: bool, full: bool = false) -> void:
+	var board := Runs.board_key(chapter)
+	var boards: RefCounted = LeaderboardClient.shared(host.api, str(host.api.player_id))
+	var answer: Dictionary = await boards.board(board, fresh)
+	if not is_instance_valid(picker) or not is_instance_valid(page): return
+	if not answer.get("ok", false):
+		picker.show_failed()
+		return
+	var shown := Rows.shown(boards, str(host.api.player_id), board, answer.view)
+	picker.show_board(shown.rows, shown.mine_by_id, full or client().ghost_races_full(), client().limit("ghost"), page.developer_ticks(chapter))
+
+## The partner's name in the middle of a line ("a friend" for one never named), or "" with no pair.
+func _partner_name() -> String:
+	var party: Dictionary = client().last_lobby().get("party", {})
+	var partner: Variant = party.get("partner") if party.get("intact", false) else null
+	return host._friend_display_name(str(partner)) if partner != null else ""
+
+## `picker`: the top 10 picker the race was tapped on, or null. A run that left
+## the top 10 since the picker's read says so and the picker reads the board
+## again; a refused limit greys its rows.
+func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant, picker: Control = null) -> void:
 	var board := Runs.board_key(chapter)
 	var answer: Dictionary = await _send_once("ghost|%s|%s|%s" % [board, source, entry_id], func(key: String) -> Dictionary: return await client().race_ghost(board, source, entry_id, key))
 	if not is_instance_valid(page): return
 	if not answer.get("ok", false):
+		var code := str(answer.get("code", ""))
+		var on_picker := is_instance_valid(picker)
+		if on_picker and source == "board" and code == "ghost_not_found":
+			host._toast(PlayerCopy.RACE_PICK_LEFT)
+			_fill_picker(page, picker, chapter, true)
+			return
 		_toast_failure(answer, "ghost")
+		if on_picker and code == "duel_limit_reached": _fill_picker(page, picker, chapter, false, true)
 		return
 	page.close()
 	_open_duel(answer.duel)

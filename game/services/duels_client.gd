@@ -81,6 +81,22 @@ func last_lobby() -> Dictionary:
 func limit(kind: String) -> int:
 	return int(_lobby.get("limits", {}).get(kind, GHOST_LIMIT if kind == "ghost" else FRIEND_LIMIT))
 
+## Whether the pair already has as many ghost races going as it may (limit("ghost")),
+## counted as the server counts them (backend duels/routes.ts openFor): open races
+## of the current pair whose own side has not finished. From the last lobby read
+## (no request), so the race picker greys its rows before a tap.
+func ghost_races_full() -> bool:
+	return ghost_races_going(_lobby) >= limit("ghost")
+
+static func ghost_races_going(lobby: Dictionary) -> int:
+	var partner: Variant = lobby.get("party", {}).get("partner")
+	var going := 0
+	for view: Dictionary in lobby.get("duels", []):
+		if view.kind != "ghost" or not view.status in ["challenged", "running"]: continue
+		var own: Variant = view.sides[view.mine]
+		if own is Dictionary and not own.finished and (partner == null or partner in own.members): going += 1
+	return going
+
 ## {ok, boards: [{board, developer, top}]}, kept a minute.
 func ghosts(fresh: bool = false) -> Dictionary:
 	if not fresh and not _ghosts.is_empty() and Time.get_ticks_msec() - _ghosts_at < GHOSTS_KEEP_MS: return {"ok": true, "boards": _ghosts.boards}

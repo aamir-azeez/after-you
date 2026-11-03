@@ -1,12 +1,16 @@
 extends RefCounted
-## The rows of a leaderboard (presentation/leaderboard_screen.gd), in fixed
-## columns so header() lines up with every row: the place (with a gold leaf
-## mark on a first place that earned the Gold leaf, or on this phone a waiting
-## run that would earn it), the pair's two pips, their
-## names or "A pair", the time, Watch on a run whose replay the server keeps,
-## and Report on another pair's run. A run of this player's that waits for its
-## check (services/board_status.gd shown_rows, `pending`) stands at the place it
-## would get with a small clock beside the number, only on this phone.
+## The rows of a leaderboard, in fixed columns so header() lines up with every
+## row. Each ranked row has the shared core: the place (with a gold leaf mark on
+## a first place that earned the Gold leaf, or on this phone a waiting run that
+## would earn it), the pair's two pips, their names or "A pair", and the time.
+## The caller adds the trailing cells and header() keeps their width:
+## - the Fastest pair page (presentation/leaderboard_screen.gd): watch_cell, on
+##   a run whose replay the server keeps, and report_cell, on another pair's run;
+## - the race picker (presentation/duels/duel_race_picker.gd): race_cell.
+## A run of this player's that waits for its check (services/board_status.gd
+## shown_rows, `pending`) stands at the place it would get with a small clock
+## beside the number, only on this phone. shown() is the one path from a board
+## to the rows this phone shows, for both screens.
 ##
 ## Pips are kit/pip_avatar.gd in still mode: one shared offscreen render per
 ## look (kit/pip_snapshots.gd), never a live view per row. A pair shows the
@@ -22,10 +26,14 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
+const BoardStatus = preload("res://services/board_status.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
 const Outfit = preload("res://services/outfit.gd")
 const LEAF_ICON = preload("res://assets/ui/whats_new/leaf.svg")
 const WATCH_ICON = preload("res://assets/ui/play-circle.svg")
 const REPORT_ICON = preload("res://assets/ui/room/flag.svg")
+## Race wears the flag, as on the race picker boards.
+const RACE_ICON = REPORT_ICON
 const CLOCK_ICON = preload("res://assets/ui/social/clock.svg")
 ## The worlds' pips by slot (presentation/island_world.gd GOLD and TEAL).
 const FIRST_PIP := Color("f4c38d")
@@ -39,16 +47,48 @@ const HEADER_FILL := Color("1a4540")
 const GOLD_INK := Color("f4d77b")
 ## Buttons in a row are this tall, and a row a little taller.
 const TARGET := 44.0
-## Column widths (wide, compact): place, pips, time, Watch.
+## Column widths (wide, compact): place, pips, time, Watch (and Race, as wide).
 const PLACE := Vector2(92, 64)
 const PIPS := Vector2(104, 96)
 const TIME := Vector2(130, 96)
 const WATCH := Vector2(184, 128)
 ## "Your best" keeps its place narrower, beside its label.
 const OWN_PLACE := 56.0
+## The space between cells in a row.
+const GAP := 8.0
 
-## The column headings: Place, Pair, Time.
-static func header(compact: bool) -> Control:
+## This player's runs on the board (`mine`, and `mine_by_id` by entry_id) and
+## the rows this phone shows for `view`, board `board` (services/board_status.gd shown_rows):
+## a run of theirs waiting for its check stands at the place it would get, as
+## their own pip beside their partner's last heard look, named as the board
+## would name the pair. `client`: services/leaderboard_client.gd (its kept
+## boards and the name choice; no request). `gone`: entry_id -> true for runs
+## this screen saw fail their check.
+static func shown(client: RefCounted, player_id: String, board: String, view: Dictionary, gone: Dictionary = {}) -> Dictionary:
+	var mine: Array = Runs.on_board(player_id, board)
+	var mine_by_id: Dictionary = {}
+	for run: Dictionary in mine: mine_by_id[run.entry_id] = run
+	var known := BoardStatus.pair_names(Runs.runs_of(player_id), client.kept_views(), client.show_name()) if client != null else {}
+	var rows: Array = BoardStatus.shown_rows(view, mine, Time.get_unix_time_from_system(), gone, known)
+	for row: Dictionary in rows:
+		if row.pending: row.looks = [{}, partner_look(mine_by_id[row.entry_id])]
+	return {"rows": rows, "mine": mine, "mine_by_id": mine_by_id}
+
+## The look services/turn_looks.gd last heard for a run's partner ({} when unknown).
+static func partner_look(run: Dictionary) -> Dictionary:
+	var partner := str(run.get("partner", ""))
+	return TurnLooks.shared().member(partner) if not partner.is_empty() else {}
+
+## How wide the Fastest pair page's trailing cells are: Watch, then Report.
+static func board_trailing(compact: bool) -> float:
+	return _width(WATCH, compact) + GAP + TARGET
+
+## How wide the race picker's trailing cell is: Race, as wide as Watch.
+static func race_trailing(compact: bool) -> float:
+	return _width(WATCH, compact)
+
+## The column headings: Place, Pair, Time, then a space `trailing` wide over the caller's cells.
+static func header(compact: bool, trailing: float) -> Control:
 	var box := _row(HEADER_FILL, ROW_EDGE, 32.0)
 	box.name = "LeaderboardHeader"
 	var line: HBoxContainer = box.get_child(0)
@@ -59,12 +99,12 @@ static func header(compact: bool) -> Control:
 	pair.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	line.add_child(pair)
 	_cell(line, _label(PlayerCopy.LEADERBOARD_TIME, 17 if compact else 19, UiTokens.SOFT), _width(TIME, compact), HORIZONTAL_ALIGNMENT_CENTER)
-	line.add_child(_gap(_width(WATCH, compact) + TARGET + 8.0))
+	line.add_child(_gap(trailing))
 	return box
 
-## A ranked run. `report` and `watch` (Callables, may be empty) show Report and Watch; `mine` lights the row.
+## A ranked run, with `trailing` (the caller's cells) after its time; `mine` lights the row.
 ## A `pending` row has the clock, and its first pip is this player's own.
-static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool, watch: Callable = Callable()) -> Control:
+static func ranked(row: Dictionary, mine: bool, compact: bool, trailing: Array[Control]) -> Control:
 	var box := _row(MINE_FILL if mine else ROW_FILL, MINE_EDGE if mine else ROW_EDGE, TARGET + 2.0)
 	box.name = "LeaderboardRow%d" % int(row.rank)
 	var line: HBoxContainer = box.get_child(0)
@@ -73,8 +113,7 @@ static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool,
 	_pips(line, pending, compact, row.get("looks", []))
 	_name(line, pair_title(row), compact)
 	_time(line, int(row.ticks), compact)
-	line.add_child(_watch(watch, compact))
-	line.add_child(_report(report))
+	for cell: Control in trailing: line.add_child(cell)
 	return box
 
 ## The pinned "Your best": the place when ranked (0: none), the pair, the time and Watch.
@@ -96,7 +135,7 @@ static func own(ticks: int, rank: int, title: String, compact: bool, watch: Call
 	else: _pips(line, true, compact, [{}, partner_look])
 	_name(line, title, compact)
 	_time(line, ticks, compact)
-	line.add_child(_watch(watch, compact))
+	line.add_child(watch_cell(watch, compact))
 	line.add_child(_gap(TARGET))
 	return box
 
@@ -116,7 +155,7 @@ static func _row(fill: Color, edge: Color, height: float) -> PanelContainer:
 	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	panel.custom_minimum_size.y = height
 	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 8)
+	line.add_theme_constant_override("separation", int(GAP))
 	panel.add_child(line)
 	return panel
 
@@ -195,14 +234,37 @@ static func _time(line: HBoxContainer, ticks: int, compact: bool) -> void:
 	_cell(line, _label(Runs.time_text(ticks), 22 if compact else 25, UiTokens.CREAM, true), _width(TIME, compact), HORIZONTAL_ALIGNMENT_CENTER)
 
 ## Watch, or a space as wide, so the columns stay put.
-static func _watch(action: Callable, compact: bool) -> Control:
+static func watch_cell(action: Callable, compact: bool) -> Control:
 	if not action.is_valid(): return _gap(_width(WATCH, compact))
+	var button := _cell_button("LeaderboardWatch", PlayerCopy.LEADERBOARD_WATCH, WATCH_ICON, 26, compact)
+	button.pressed.connect(action)
+	return button
+
+## Race (the race picker): a button as wide as Watch whose tap calls
+## `action(button)`, and with no `action` the same button greyed and untappable. `waiting`: the run waits for its check,
+## so the greyed button says so beside the clock instead.
+static func race_cell(action: Callable, compact: bool, waiting: bool = false) -> Control:
+	var button := _cell_button("LeaderboardRace", PlayerCopy.RACE_PICK_RACE, RACE_ICON, 20, compact)
+	if waiting:
+		button.name = "LeaderboardRaceWaiting"
+		button.text = PlayerCopy.RACE_PICK_WAITING
+		button.icon = CLOCK_ICON
+		button.add_theme_font_size_override("font_size", 15)
+		button.add_theme_constant_override("icon_max_width", 18)
+		button.add_theme_constant_override("h_separation", 6)
+		button.tooltip_text = PlayerCopy.LEADERBOARD_WAITING_CHECK
+	if action.is_valid(): button.pressed.connect(action.bind(button))
+	else: button.disabled = true
+	return button
+
+## A trailing cell's outlined button: cream words and icon, as wide as Watch.
+static func _cell_button(node_name: String, text: String, icon: Texture2D, icon_width: int, compact: bool) -> Button:
 	var button := Button.new()
-	button.name = "LeaderboardWatch"
-	button.text = PlayerCopy.LEADERBOARD_WATCH
-	button.icon = WATCH_ICON
+	button.name = node_name
+	button.text = text
+	button.icon = icon
 	button.expand_icon = true
-	button.add_theme_constant_override("icon_max_width", 26)
+	button.add_theme_constant_override("icon_max_width", icon_width)
 	button.add_theme_constant_override("h_separation", 12)
 	button.focus_mode = Control.FOCUS_ALL
 	button.custom_minimum_size = Vector2(_width(WATCH, compact), TARGET)
@@ -212,11 +274,10 @@ static func _watch(action: Callable, compact: bool) -> Control:
 	button.add_theme_color_override("font_color", UiTokens.CREAM)
 	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 		button.add_theme_color_override("icon_" + state + "_color", UiTokens.CREAM)
-	button.pressed.connect(action)
 	return button
 
 ## Report as a flag, or a space as wide.
-static func _report(action: Callable) -> Control:
+static func report_cell(action: Callable) -> Control:
 	if not action.is_valid(): return _gap(TARGET)
 	var button := Button.new()
 	button.name = "LeaderboardReport"

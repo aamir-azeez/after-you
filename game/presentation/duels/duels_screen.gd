@@ -16,8 +16,8 @@ const DuelModel = preload("res://services/duel_model.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
-## Phosphor "trophy" (assets/ui/social, MIT, with its LICENSE.txt).
-const TROPHY_ICON = preload("res://assets/ui/social/trophy.svg")
+## The leaderboard icon every screen shares (presentation/kit/icons.gd): Race a recorded run picks from the board.
+const Icons = preload("res://presentation/kit/icons.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 ## The party boost line's font size; its Pollen mark is sized from it.
 const BOOST_FONT := 26
@@ -356,7 +356,7 @@ func _ghost_row() -> Control:
 	line.add_theme_constant_override("separation", 14)
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	button.add_child(line)
-	line.add_child(_icon(TROPHY_ICON, 34))
+	line.add_child(_icon(Icons.LEADERBOARD, 34))
 	var words := VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.alignment = BoxContainer.ALIGNMENT_CENTER

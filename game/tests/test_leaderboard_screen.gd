@@ -268,7 +268,7 @@ func _waiting_first() -> void:
 	await process_frame
 	# On a narrow screen the leaf, the place and the clock still fit the place column.
 	for compact: bool in [false, true]:
-		var row: Control = Rows.ranked({"rank": 1, "entry_id": waiting, "ticks": 1470, "names": null, "gold_leaf": true, "pending": true, "looks": []}, true, Callable(), compact)
+		var row: Control = Rows.ranked({"rank": 1, "entry_id": waiting, "ticks": 1470, "names": null, "gold_leaf": true, "pending": true, "looks": []}, true, compact, [Rows.watch_cell(Callable(), compact), Rows.report_cell(Callable())])
 		root.add_child(row)
 		await process_frame
 		var cell: Control = row.get_child(0).get_child(0)

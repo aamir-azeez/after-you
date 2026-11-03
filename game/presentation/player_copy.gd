@@ -836,8 +836,15 @@ const DUELS_SENT := "Challenge sent."
 const DUELS_GHOST_TITLE := "Race a recorded run"
 const DUELS_GHOST_SUBTITLE := "Beat the time with your partner."
 const DUELS_GHOST_DEVELOPERS := "Our run"
-const DUELS_GHOST_PLACE := "The board's %s"
-const DUELS_GHOST_NONE := "No recorded run for this chapter yet."
+## A chapter's leaderboard button, and the same button greyed while its board has no times.
+const RACE_PICK_TOP := "Top 10"
+const RACE_PICK_NO_TIMES := "No times yet"
+## The race picker: its line with your partner's name, a row's Race, a run
+## still waiting for its check, and a run that left the board before the tap.
+const RACE_PICK_WITH := "Pick a run to race with %s."
+const RACE_PICK_RACE := "Race"
+const RACE_PICK_WAITING := "Being checked"
+const RACE_PICK_LEFT := "That time left the top 10. Pick another."
 ## The duel page.
 const DUEL_IN_PROGRESS := "Duel in progress."
 const DUEL_STEPS := "%d of %d steps"

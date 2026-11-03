@@ -1,17 +1,23 @@
 extends "res://presentation/duels/duel_page_base.gd"
-## Race a recorded run: one row per chapter open to you, with the times on
-## offer: our own run (the developers' time) and the Fastest pair board's top
-## runs. Race starts a ghost race with your partner, which the flow
-## (duels_flow.gd) opens like any duel. Ghost races pay like ordinary turns
-## together; the first win over our own run on a chapter adds a one time
-## bonus, shown on the result page only, so nothing here mentions a prize.
+## Race a recorded run: one row per chapter open to you, with our own run
+## (the developers' time) and the chapter's leaderboard button, the shared
+## trophy and "Top 10" (race-picker board 1B). The button opens the top 10
+## picker (duel_race_picker.gd) through the flow (picker_requested), and is
+## greyed while the board has no times ("No times yet"); /v1/duels/ghosts only
+## says whether a board has any. A race starts a ghost race with your partner,
+## which the flow (duels_flow.gd) opens like any duel. Ghost races pay like
+## ordinary turns together; the first win over our own run on a chapter adds a
+## one time bonus, shown on the result page only, so nothing here mentions a prize.
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
+const Icons = preload("res://presentation/kit/icons.gd")
 
 ## source: "developer" or "board"; entry_id: the board run's, or null.
 signal race_requested(chapter_key: String, source: String, entry_id: Variant, control: Control)
+## The chapter's leaderboard button: open its top 10 picker.
+signal picker_requested(chapter_key: String, control: Control)
 
 ## Chapter keys open to you, in the Chapters order.
 var chapters: Array = []
@@ -33,6 +39,10 @@ func show_ghosts(boards: Array, did_fail: bool = false) -> void:
 	for item: Dictionary in boards: ghosts[item.board] = item
 	failed = did_fail
 	if is_instance_valid(_list): _render()
+
+## Our run's time on the chapter, or -1 when there is none.
+func developer_ticks(key: String) -> int:
+	return int(ghosts.get(key, {}).get("developer", -1))
 
 func tap(control: Control, run: Callable) -> void:
 	await _gate.tap(control, "...", Callable(), run, alive)
@@ -75,12 +85,22 @@ func _chapter_row(key: String, ghost: Dictionary) -> Control:
 	options.add_theme_constant_override("separation", 10)
 	column.add_child(options)
 	if int(ghost.get("developer", -1)) > 0: options.add_child(_option(key, PlayerCopy.DUELS_GHOST_DEVELOPERS, int(ghost.developer), "developer", null))
-	for row: Dictionary in ghost.get("top", []):
-		var ordinals := PlayerCopy.LEADERBOARD_ORDINALS
-		var place := ordinals[int(row.rank) - 1] if int(row.rank) >= 1 and int(row.rank) <= ordinals.size() else str(row.rank)
-		options.add_child(_option(key, PlayerCopy.DUELS_GHOST_PLACE % place, int(row.ticks), "board", row.entry_id))
-	if options.get_child_count() == 0: options.add_child(Kit.text(PlayerCopy.DUELS_GHOST_NONE, 17, UiTokens.MUTED))
+	options.add_child(_top_button(key, not (ghost.get("top", []) as Array).is_empty()))
 	return card
+
+## The chapter's leaderboard button, beside Our run: the trophy and Top 10, or
+## greyed with "No times yet" while the board has none.
+func _top_button(key: String, has_times: bool) -> Button:
+	var button := Kit.button(PlayerCopy.RACE_PICK_TOP if has_times else PlayerCopy.RACE_PICK_NO_TIMES, Callable(), false, 48)
+	button.name = "RaceTop_" + key.replace("@", "_")
+	Kit.icon_on(button, Icons.LEADERBOARD, true, 22)
+	button.add_theme_constant_override("h_separation", 10)
+	button.custom_minimum_size.x = 128
+	if has_times: button.pressed.connect(func(): picker_requested.emit(key, button))
+	else:
+		button.disabled = true
+		button.add_theme_font_size_override("font_size", 16)
+	return button
 
 func _option(key: String, label: String, ticks: int, source: String, entry_id: Variant) -> Control:
 	var button := Kit.button("%s  %s" % [label, DuelModel.time_text(ticks)], Callable(), false, 48)

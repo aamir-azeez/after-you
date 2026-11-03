@@ -2,8 +2,11 @@ extends RefCounted
 ## What's new's shared look: icon tiles, highlight rows and their colours, used by
 ## the card (whats_new_card.gd) and its Earlier versions list (whats_new_history.gd).
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const Icons = preload("res://presentation/kit/icons.gd")
 
 const ICON_DIR := "res://assets/ui/whats_new/"
+## The highlight icon that means the leaderboard: the shared trophy (presentation/kit/icons.gd), never a copy.
+const LEADERBOARD_ICON := "trophy"
 # One step lighter than the shared pop-up's panel, so the tiles read on it.
 const TILE := Color("2a5a50")
 const ICON_TINT := Color("9ed8c2")
@@ -13,7 +16,11 @@ const TEXT := Color("dfe6dc")
 const CREAM := Color("eceddb")
 
 static func icon(name: String) -> Texture2D:
-	return load(ICON_DIR + name + ".svg")
+	return Icons.LEADERBOARD if name == LEADERBOARD_ICON else load(icon_path(name))
+
+## Where a highlight icon's file is: assets/ui/whats_new/<name>.svg, or the shared leaderboard trophy.
+static func icon_path(name: String) -> String:
+	return Icons.LEADERBOARD.resource_path if name == LEADERBOARD_ICON else ICON_DIR + name + ".svg"
 
 ## A rounded square holding one icon, as on the card and its highlight rows.
 static func tile(name: String, size: float, background: Color, tint: Color) -> PanelContainer:

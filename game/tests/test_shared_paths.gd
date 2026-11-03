@@ -18,7 +18,9 @@ extends SceneTree
 ## (i) button ticks and first taps: button_ticks.gd and touch_input.gd alone;
 ## (j) cutout bleed: test_full_screen_bleed.gd, which must stay in CI;
 ## (k) the recovery code: services/recovery_guard.gd alone copies it and works the screen
-##     lock and private screen; each screen that reads it is in RECOVERY_SURFACES.
+##     lock and private screen; each screen that reads it is in RECOVERY_SURFACES;
+## (l) the leaderboard icon: presentation/kit/icons.gd LEADERBOARD alone names the
+##     trophy, and each screen that shows a leaderboard icon is in LEADERBOARD_ICON_SURFACES.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -161,6 +163,20 @@ const RECOVERY_SURFACES := {
 	"res://presentation/platform_games_flow.gd": "copies it through account_flow.copy_recovery_details",
 }
 
+## (l) The one leaderboard icon, and each screen that shows it with where.
+const ICONS := "res://presentation/kit/icons.gd"
+const LEADERBOARD_ICON_FILE := "trophy.svg"
+## The star leaderboards wore before the owner picked the trophy (2026-11-03); What's new loads it by name only.
+const OLD_LEADERBOARD_ICON := "whats_new/star.svg"
+const LEADERBOARD_ICON_SURFACES := {
+	"res://presentation/friends_screen.gd": "the Leaderboards button in the Friends header",
+	"res://presentation/settings_rows.gd": "the Show my name on leaderboards row",
+	"res://presentation/duels/duels_screen.gd": "the lobby's Race a recorded run row, which picks from the board",
+	"res://presentation/duels/duel_ghost_page.gd": "each chapter's Top 10 button",
+	"res://presentation/duels/duel_race_picker.gd": "the top 10 picker's heading",
+	"res://presentation/whats_new_kit.gd": "What's new highlights about the board (icon trophy)",
+}
+
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity"]
 
@@ -185,6 +201,7 @@ func _initialize() -> void:
 	_writes()
 	_taps()
 	_recovery()
+	_leaderboard_icon()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -193,6 +210,7 @@ func _initialize() -> void:
 
 ## The scans find what they should in small sources first.
 func _self_checks() -> void:
+	_check(_alias("const Icons = preload(\"res://presentation/kit/icons.gd\")\n", ICONS) == "Icons" and _found("\\bIcons\\.LEADERBOARD\\b", "x.icon = Icons.LEADERBOARD\n") == 1, "A leaderboard icon through the shared module is found")
 	_check(_code("a\n\t## OwnLook.color()\n# x\nb") == "a\n\n\nb", "Comment lines are taken out, line numbers kept")
 	_check(_makers("const P = preload(\"res://presentation/kit/pip_avatar.gd\")\nvar p := P.new(true, P.PEACH, S, true, true)\n").size() == 1, "A pip made through an alias is found")
 	_check(_makers("var x := SpiritVisual.GREETING\n").is_empty(), "A pip script's constant is no pip")
@@ -472,6 +490,22 @@ func _recovery() -> void:
 		_check(source.contains("guard.") or source.contains("copy_recovery_details("), "%s is in RECOVERY_SURFACES but goes through no guard" % path)
 	for path: String in RECOVERY_SURFACES:
 		_check(seen.has(path), "RECOVERY_SURFACES names %s, which no longer reads the code: delete it" % path)
+
+# (l) The leaderboard icon ----------------------------------------------------
+
+func _leaderboard_icon() -> void:
+	var seen := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path != ICONS: _check(not source.contains(LEADERBOARD_ICON_FILE), "%s names the leaderboard trophy itself: use presentation/kit/icons.gd LEADERBOARD, so every screen shows the same icon" % path)
+		_check(not source.contains(OLD_LEADERBOARD_ICON), "%s loads the old leaderboard star: a leaderboard shows presentation/kit/icons.gd LEADERBOARD (the trophy)" % path)
+		var alias := _alias(source, ICONS)
+		if alias.is_empty() or _found("\\b" + alias + "\\.LEADERBOARD\\b", source) == 0: continue
+		seen[path] = true
+		_check(LEADERBOARD_ICON_SURFACES.has(path), "%s shows the leaderboard icon: add it to LEADERBOARD_ICON_SURFACES with where" % path)
+	for path: String in LEADERBOARD_ICON_SURFACES:
+		_check(seen.has(path), "LEADERBOARD_ICON_SURFACES names %s, which shows no leaderboard icon through presentation/kit/icons.gd now" % path)
+	_check(str(_sources.get(ICONS, "")).contains("const LEADERBOARD = preload(\"res://assets/ui/social/" + LEADERBOARD_ICON_FILE + "\")"), "presentation/kit/icons.gd LEADERBOARD is the Phosphor trophy")
 
 # (j) and the guard suites ---------------------------------------------------
 

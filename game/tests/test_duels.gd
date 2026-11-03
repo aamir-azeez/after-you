@@ -17,6 +17,7 @@ const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
 const PartyPage = preload("res://presentation/duels/duel_party_page.gd")
 const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
 const GhostPage = preload("res://presentation/duels/duel_ghost_page.gd")
+const Picker = preload("res://presentation/duels/duel_race_picker.gd")
 const HomeMenu = preload("res://presentation/home_menu.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -308,7 +309,7 @@ func _pages() -> void:
 	var boost: Node = lobby.find_child("DuelsBoost", true, false)
 	_check(boost != null and boost.find_child("PollenMark", true, false) != null, "the Pollen mark sits beside the boost")
 	_check(lobby.find_child("DuelsFullJourneyTag", true, false) != null and _has_text(lobby.find_child("DuelsFullJourneyTag", true, false), PlayerCopy.SETTINGS_FULL_JOURNEY), "Full Journey shows under your pip while it counts")
-	_check(Lobby.TROPHY_ICON.resource_path.ends_with("trophy.svg"), "Race a recorded run has its trophy")
+	_check(Lobby.Icons.LEADERBOARD.resource_path.ends_with("trophy.svg"), "Race a recorded run has the leaderboard trophy")
 	var pips: Array = lobby.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
 	_check(not pips.is_empty() and pips.all(func(pip: Node) -> bool: return pip.still), "the lobby draws still pips only")
 	var seen: Array = []
@@ -444,7 +445,17 @@ func _pages() -> void:
 	await process_frame
 	_check(_has_text(ghosts, PlayerCopy.DUELS_LOADING), "the ghost list loads")
 	ghosts.show_ghosts([{"board": BOARD, "developer": 1470, "top": [{"entry_id": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1", "ticks": 1400, "rank": 1, "names": null}]}])
-	_check(ghosts.find_child("Race_developer", true, false) != null and ghosts.find_child("Race_board_e1e1e1", true, false) != null and _has_text(ghosts, "0:49.0"), "our run and the board's runs with their times")
+	var top: Button = ghosts.find_child("RaceTop_" + BOARD.replace("@", "_"), true, false)
+	_check(ghosts.find_child("Race_developer", true, false) != null and _has_text(ghosts, "0:49.0") and top != null and not top.disabled and top.text == PlayerCopy.RACE_PICK_TOP and top.icon == preload("res://presentation/kit/icons.gd").LEADERBOARD, "our run with its time, and the chapter's Top 10 with the leaderboard trophy")
+	_check(ghosts.find_children("Race_board*", "", true, false).is_empty(), "the board's times are picked from the top 10, never listed here")
+	var picked: Array = []
+	ghosts.picker_requested.connect(func(chapter: String, _control: Control) -> void: picked.append(chapter))
+	top.pressed.emit()
+	_check(picked == [BOARD], "Top 10 asks for the chapter's picker")
+	ghosts.show_ghosts([{"board": BOARD, "developer": 1470, "top": []}])
+	top = ghosts.find_child("RaceTop_" + BOARD.replace("@", "_"), true, false)
+	_check(top != null and top.disabled and top.text == PlayerCopy.RACE_PICK_NO_TIMES, "a board with no times greys its button and says so")
+	await _picker_states(ghosts)
 	ghosts.close()
 	# Nothing at all: the hand drawn empty art the other lists use, in the owner's pick.
 	lobby.show_lobby(Client.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": []}))
@@ -463,6 +474,43 @@ func _pages() -> void:
 	_check(gone == null or gone.is_queued_for_deletion(), "and it goes once a duel arrives")
 	lobby.close()
 	await process_frame
+
+## The top 10 picker's states (race-picker board 2): every row races, the pair's
+## own included; a run waiting for its check is the one row that can't; the
+## limit greys them all; an empty board offers Our run.
+func _picker_states(page: CanvasLayer) -> void:
+	var picker: Node = Picker.open(page, BOARD, "Maya")
+	_check(picker != null and page.root.find_child("RacePickerSheet", true, false) != null, "the picker opens as a sheet over the page")
+	_check(Picker.open(page, BOARD, "Maya") == null, "a second tap while it is up opens no second sheet")
+	var raced: Array = []
+	picker.race_requested.connect(func(source: String, entry_id: Variant, _control: Control) -> void: raced.append([source, entry_id]))
+	var mine := "c".repeat(32)
+	var rows := [{"rank": 1, "entry_id": "a".repeat(32), "ticks": 1400, "names": null, "gold_leaf": true, "pending": false, "looks": []},
+		{"rank": 2, "entry_id": mine, "ticks": 1450, "names": ["You", "Maya"], "gold_leaf": false, "pending": false, "looks": []},
+		{"rank": 3, "entry_id": "d".repeat(32), "ticks": 1500, "names": null, "gold_leaf": false, "pending": true, "looks": []}]
+	picker.show_board(rows, {mine: {}, "d".repeat(32): {}}, false, 3, 1470)
+	await process_frame
+	var races: Array = picker.find_children("LeaderboardRace", "Button", true, false)
+	_check(races.size() == 2 and races.all(func(button: Button) -> bool: return not button.disabled), "every ranked row races, your own pair's too")
+	var own: Control = picker.find_child("LeaderboardRow2", true, false)
+	_check(own != null and (own.get_theme_stylebox("panel") as StyleBoxFlat).bg_color == preload("res://presentation/leaderboard_rows.gd").MINE_FILL, "your own row stays lit")
+	(races[1] as Button).pressed.emit()
+	_check(raced == [["board", mine]], "Race names the row's run")
+	var waiting: Button = picker.find_child("LeaderboardRaceWaiting", true, false)
+	_check(waiting != null and waiting.disabled and waiting.text == PlayerCopy.RACE_PICK_WAITING, "a run waiting for its check is greyed, Being checked")
+	picker.show_board(rows, {}, true, 3, 1470)
+	await process_frame
+	_check(picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return button.disabled) and _has_text(picker, PlayerCopy.DUELS_RACE_LIMIT % 3), "three races going grey every row under the limit line")
+	picker.show_board([], {}, false, 3, 1470)
+	await process_frame
+	var ours: Button = picker.find_child("RacePickerOurRun", true, false)
+	_check(_has_text(picker, PlayerCopy.LEADERBOARD_EMPTY) and ours != null and not ours.disabled, "an empty board says so and offers Our run")
+	raced.clear()
+	ours.pressed.emit()
+	_check(raced == [["developer", null]], "which races Our run")
+	page.go_back()
+	await process_frame
+	_check(page.alive() and page.root.find_child("RacePicker", true, false) == null, "Back closes the sheet before the page")
 
 func _home() -> void:
 	var holder := Control.new()

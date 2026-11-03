@@ -12,7 +12,8 @@ const REMOVE_ICON = preload("res://assets/ui/social/minus-circle.svg")
 const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
 const ADD_ICON = preload("res://assets/ui/social/plus.svg")
 const USERS_ICON = preload("res://assets/ui/social/users.svg")
-const LEADERBOARD_ICON = preload("res://assets/ui/whats_new/star.svg")
+## The leaderboard icon every screen shares (presentation/kit/icons.gd).
+const Icons = preload("res://presentation/kit/icons.gd")
 const PENCIL_ICON = preload("res://assets/ui/social/pencil-simple.svg")
 const CHECK_ICON = preload("res://assets/ui/check.svg")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
@@ -189,7 +190,7 @@ func _ready() -> void:
 	show_name_chip()
 	_countdown = Label.new()
 	_countdown.add_theme_color_override("font_color",MUTED)
-	_leaderboards_button = _online(_icon_button(LEADERBOARD_ICON,PlayerCopy.LEADERBOARDS,_open_leaderboards,true,refresh_row))
+	_leaderboards_button = _online(_icon_button(Icons.LEADERBOARD,PlayerCopy.LEADERBOARDS,_open_leaderboards,true,refresh_row))
 	_leaderboards_button.visible = false
 	_refresh_button = _online(_icon_button(REFRESH_ICON,"Refresh",func(): _refresh(true),true,refresh_row))
 	refresh_row.add_child(_countdown)

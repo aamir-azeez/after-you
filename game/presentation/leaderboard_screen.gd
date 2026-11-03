@@ -37,7 +37,6 @@ const Celebration = preload("res://presentation/leaderboard_celebration.gd")
 const StatusLine = preload("res://presentation/board_status_line.gd")
 const PlatformGames = preload("res://services/platform_games/platform_games.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
-const TurnLooks = preload("res://services/turn_looks.gd")
 const BoardStatus = preload("res://services/board_status.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -243,7 +242,7 @@ func _build_body() -> void:
 	title_row.add_child(_heading)
 	_platform_board = PlatformBoardButton.new(PlatformGames.shared(get_tree()), func(text: String) -> void: notice.emit(text, false))
 	title_row.add_child(_platform_board)
-	column.add_child(Rows.header(_compact))
+	column.add_child(Rows.header(_compact, Rows.board_trailing(_compact)))
 	_board_scroll = ScrollContainer.new()
 	_board_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_board_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -369,9 +368,6 @@ func _render_board() -> void:
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_LOADING if _state == "loading" else PlayerCopy.LEADERBOARD_FAILED))
 		return
 	var board := Runs.board_key(_selected)
-	var mine: Array = Runs.on_board(player_id, board)
-	var mine_by_id: Dictionary = {}
-	for run: Dictionary in mine: mine_by_id[run.entry_id] = run
 	var checking: Array = _view.get("checking", [])
 	var passed: Array = _was_checking.get(board, [])
 	_was_checking[board] = checking.duplicate()
@@ -382,18 +378,18 @@ func _render_board() -> void:
 	for id: String in checking: gone.erase(id)
 	for row: Dictionary in _view.get("top", []): gone.erase(row.entry_id)
 	_gone[board] = gone
-	# A waiting row is named as the board would name its pair once it ranks.
-	var known := BoardStatus.pair_names(Runs.runs_of(player_id), client.kept_views(), client.show_name()) if client != null else {}
-	var rows: Array = BoardStatus.shown_rows(_view, mine, Time.get_unix_time_from_system(), gone, known)
+	# A waiting row stands where it would rank, named and dressed as the board would show its pair (the shared path the race picker uses too).
+	var shown := Rows.shown(client, player_id, board, _view, gone)
+	var rows: Array = shown.rows
+	var mine: Array = shown.mine
+	var mine_by_id: Dictionary = shown.mine_by_id
 	if rows.is_empty():
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_EMPTY))
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_RULES))
 	for row: Dictionary in rows:
 		var is_mine := mine_by_id.has(row.entry_id)
-		# A waiting run is this player's own pip beside their partner's last heard look.
-		if row.pending: row.looks = [{}, _partner_look(mine_by_id[row.entry_id])]
 		var report := Callable() if is_mine else func(): _ask_report(board, row.entry_id)
-		var line := Rows.ranked(row, is_mine, report, _compact, _watcher(row))
+		var line := Rows.ranked(row, is_mine, _compact, [Rows.watch_cell(_watcher(row), _compact), Rows.report_cell(report)])
 		_board.add_child(line)
 		if row.entry_id in passed and not row.pending: _fade_in(line)
 	_render_own(mine, mine_by_id, rows, checking)
@@ -412,11 +408,6 @@ func _fade_in(line: Control) -> void:
 func _watcher(row: Dictionary) -> Callable:
 	return (func(): _watch(row)) if row.get("replay_hash") != null else Callable()
 
-## The look services/turn_looks.gd last heard for a run's partner, as the celebration dresses them ({} when unknown).
-static func _partner_look(run: Dictionary) -> Dictionary:
-	var partner := str(run.get("partner", ""))
-	return TurnLooks.shared().member(partner) if not partner.is_empty() else {}
-
 ## "Your best": this player's best placed row on the board this phone shows
 ## (a waiting one with its clock), else their fastest run that is not waiting
 ## for its check. A player in several pairs (A with B, then B with C) has a
@@ -431,16 +422,16 @@ func _render_own(mine: Array, mine_by_id: Dictionary, rows: Array, checking: Arr
 	var eligible: Array = settled.filter(func(run: Dictionary) -> bool: return not run.assisted)
 	if not placed.is_empty():
 		var pending := bool(placed.pending)
-		_own.add_child(Rows.own(int(placed.ticks), int(placed.rank), Rows.pair_title(placed), _compact, _watcher(placed), _partner_look(mine_by_id[placed.entry_id]), [] if pending else placed.get("looks", []), pending))
+		_own.add_child(Rows.own(int(placed.ticks), int(placed.rank), Rows.pair_title(placed), _compact, _watcher(placed), Rows.partner_look(mine_by_id[placed.entry_id]), [] if pending else placed.get("looks", []), pending))
 	elif not eligible.is_empty():
-		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact, Callable(), _partner_look(eligible[0])))
+		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact, Callable(), Rows.partner_look(eligible[0])))
 		# Why it has no place (services/board_status.gd): a run this new may not show in the board's copy yet.
 		var status := BoardStatus.of_run(eligible[0], true, _view, Time.get_unix_time_from_system(), mine)
 		if status.state == BoardStatus.NOT_LISTED: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_NOT_LISTED))
 		# Kept off the board for want of a platform account (services/leaderboard_runs.gd refused): who must sign in.
 		elif status.state == BoardStatus.PLATFORM: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_PLATFORM_YOU % StatusLine.platform_of(PlatformGames.shared(get_tree())) if status.refused == Runs.REFUSED_YOU else PlayerCopy.LEADERBOARD_OWN_PLATFORM_PARTNER))
 	elif not settled.is_empty():
-		_own.add_child(Rows.own(int(settled[0].ticks), 0, "", _compact, Callable(), _partner_look(settled[0])))
+		_own.add_child(Rows.own(int(settled[0].ticks), 0, "", _compact, Callable(), Rows.partner_look(settled[0])))
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_ASSISTED))
 	elif mine.is_empty():
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_NO_RUN))

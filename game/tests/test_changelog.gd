@@ -7,6 +7,7 @@ extends SceneTree
 const Changelog = preload("res://services/changelog.gd")
 const VersionOrder = preload("res://services/version_order.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
+const WhatsNewKit = preload("res://presentation/whats_new_kit.gd")
 
 var checks := 0
 var failures := 0
@@ -124,7 +125,8 @@ func _highlights() -> void:
 	var sample := Changelog.for_channel(Changelog.parse(JSON.stringify(_sample())), Changelog.GITHUB)
 	_check(sample[0].highlights == [{"icon": "spark", "text": "First line"}, {"icon": "leaf", "text": "Second line"}], "The loader hands over the highlights and their icons in order")
 	for name: String in Changelog.ICONS + ["gift"]:
-		_check(ResourceLoader.exists("res://assets/ui/whats_new/%s.svg" % name), "The What's new icon ships: " + name)
+		_check(ResourceLoader.exists(WhatsNewKit.icon_path(name)) and WhatsNewKit.icon(name) != null, "The What's new icon ships: " + name)
+	_check(WhatsNewKit.icon(WhatsNewKit.LEADERBOARD_ICON) == preload("res://presentation/kit/icons.gd").LEADERBOARD, "A leaderboard highlight shows the shared trophy")
 
 ## Highlights show on every build, so they never name a store, a platform or a
 ## test build; the archived ones keep the same rules.
@@ -137,7 +139,7 @@ func _highlight_rules(entries: Array) -> void:
 		for item: Dictionary in lines:
 			var line: String = item.text
 			var where := "%s: %s" % [entry.version, line]
-			_check(item.icon in Changelog.ICONS and ResourceLoader.exists("res://assets/ui/whats_new/%s.svg" % item.icon), "A highlight's icon is in the set and ships: " + where)
+			_check(item.icon in Changelog.ICONS and ResourceLoader.exists(WhatsNewKit.icon_path(item.icon)), "A highlight's icon is in the set and ships: " + where)
 			_check(line.length() <= Changelog.MAX_HIGHLIGHT_CHARS, "A highlight fits one short line: " + where)
 			_check(line.left(1) == line.left(1).to_upper(), "A highlight starts with a capital: " + where)
 			_check(not line.ends_with(".") and not line.ends_with("!"), "A highlight is a line, not a sentence: " + where)
