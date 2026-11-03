@@ -441,11 +441,17 @@ static func valid_lobby(value: Variant) -> Dictionary:
 	if not public.is_empty(): kept["public"] = public
 	return kept
 
-## The lobby's public duels part ({version 1, on, show_name, partner_on, paused, running}), or {} without one.
+## The lobby's public duels part ({version 1, on, show_name, partner_on, paused, running, rules,
+## partner_rules}), or {} without one. `rules` and `partner_rules`: whether you and your partner accepted
+## the community rules in force (backend duels/public-routes.ts publicLobby); null when the server
+## did not say (an older server, or no partner), which greys and asks nothing.
 static func _public_part(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("version"), 1) or not value.get("on") is bool or not value.get("show_name") is bool or not value.get("paused") is bool or not Typed.whole_number(value.get("running")): return {}
 	var partner: Variant = value.get("partner_on")
-	return {"on": value.on, "show_name": value.show_name, "partner_on": partner if partner is bool else null, "paused": value.paused, "running": int(value.running)}
+	var rules: Variant = value.get("rules")
+	var partner_rules: Variant = value.get("partner_rules")
+	return {"on": value.on, "show_name": value.show_name, "partner_on": partner if partner is bool else null, "paused": value.paused, "running": int(value.running),
+		"rules": rules if rules is bool else null, "partner_rules": partner_rules if partner_rules is bool else null}
 
 static func _limit(limits: Variant, kind: String, fallback: int) -> int:
 	var value: Variant = limits.get(kind) if limits is Dictionary else null

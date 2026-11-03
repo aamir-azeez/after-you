@@ -28,6 +28,9 @@ var anyone := false
 ## Your party partner's name and look for Post as, or "" without an intact party.
 var partner_name := ""
 var partner_look: Dictionary = {}
+## Why Post duel with your partner is greyed (their switch is off, or they have not accepted the
+## community rules), or "": the same words as the list's greyed rows (public_duels_flow.gd partner_text).
+var party_reason := ""
 var _post_as := "party"
 var _friend := ""
 var _chapter := ""
@@ -107,13 +110,23 @@ func _render_chapters() -> void:
 
 func _update_send() -> void:
 	if not is_instance_valid(_send): return
-	_send.disabled = _friend.is_empty() or _chapter.is_empty()
+	_send.disabled = _friend.is_empty() or _chapter.is_empty() or (_friend == ANYONE and _posting_party() and not party_reason.is_empty())
 	_send.text = PlayerCopy.PUBLIC_POST_DUEL if _friend == ANYONE else PlayerCopy.DUELS_SEND
 
 ## "Anyone": two lines, your pips, chosen like a friend (board 5A).
 func _anyone() -> Button:
 	var art := Kit.pips(Vector2(30, 40), [null, null], "", [{}, {}], -8)
 	return _choice("PairAnyone", PlayerCopy.PUBLIC_ANYONE, _friend == ANYONE, func(): _pick_friend(ANYONE), art, PlayerCopy.PUBLIC_ANYONE_NOTE)
+
+## Whether Post duel posts with your partner (Post as With your partner, which an intact party starts on).
+func _posting_party() -> bool:
+	return not partner_name.is_empty() and _post_as == "party"
+
+## A fresh reason for posting with your partner (a lobby read since the page opened), drawn at once.
+func set_party_reason(reason: String) -> void:
+	if party_reason == reason: return
+	party_reason = reason
+	if is_instance_valid(_friend_list): _render_friends()
 
 ## Post as (With your partner or Alone) and the seats the list will show, under Anyone.
 func _post_as_part() -> void:
@@ -134,6 +147,10 @@ func _post_as_part() -> void:
 	preview.alignment = BoxContainer.ALIGNMENT_BEGIN
 	preview.name = "PublicPostPreview"
 	_friend_list.add_child(preview)
+	if party and not party_reason.is_empty():
+		var reason := Kit.wrapped(party_reason, 15, UiTokens.MUTED)
+		reason.name = "PublicPostReason"
+		_friend_list.add_child(reason)
 	_friend_list.add_child(Kit.wrapped(PlayerCopy.PUBLIC_POST_NOTE, 15))
 
 func _post_as_chosen(value: String) -> void:

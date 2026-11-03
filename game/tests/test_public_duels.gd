@@ -86,6 +86,9 @@ func _spots() -> void:
 	_check(Spots.greyed(row, Spots.ALONE, {}) == "", "A row with a spot beside a player is open to a player alone")
 	_check(Spots.greyed(row, Spots.PARTY, {"partner_on": true}) == "", "With a whole pair open it is open to a party too")
 	_check(Spots.greyed(row, Spots.PARTY, {"partner_on": false}) == Spots.PARTNER_OFF, "A partner who has public duels off greys it for the party")
+	_check(Spots.greyed(row, Spots.PARTY, {"partner_on": true, "partner_rules": false}) == Spots.PARTNER_RULES, "A partner who has not accepted the rules greys it for the party")
+	_check(Spots.greyed(row, Spots.PARTY, {"partner_on": true, "partner_rules": null}) == "" and Spots.greyed(row, Spots.ALONE, {"partner_rules": false}) == "", "Only a clear no greys, and only a party join")
+	_check(ListPage.reason_text(Spots.PARTNER_RULES, "Maya", 10) == PlayerCopy.PUBLIC_PARTNER_RULES % "Maya", "The greyed line is the approved partner rules line")
 	_check(Spots.greyed(row, Spots.ALONE, {"chapter_open": false}) == Spots.CHAPTER, "A chapter you can't play greys it")
 	_check(Spots.greyed(row, Spots.ALONE, {"at_limit": true}) == Spots.LIMIT, "Ten duels going greys it")
 	var mine := row.duplicate(true)
@@ -125,7 +128,10 @@ func _replies() -> void:
 	_check(DuelsClient.valid_view(broken).is_empty(), "A public duel with a side missing its seats is refused")
 	var lobby := DuelsClient.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [],
 		"public": {"version": 1, "on": true, "show_name": false, "partner_on": null, "paused": false, "running": 3}})
-	_check(lobby.public == {"on": true, "show_name": false, "partner_on": null, "paused": false, "running": 3}, "The lobby keeps its public part")
+	_check(lobby.public == {"on": true, "show_name": false, "partner_on": null, "paused": false, "running": 3, "rules": null, "partner_rules": null}, "The lobby keeps its public part; a server that says nothing of the rules leaves them unknown")
+	var told := DuelsClient.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [],
+		"public": {"version": 1, "on": true, "show_name": false, "partner_on": true, "paused": false, "running": 0, "rules": true, "partner_rules": false}})
+	_check(told.public.rules == true and told.public.partner_rules == false, "The lobby keeps whether you and your partner accepted the rules")
 	_check(not DuelsClient.valid_lobby({"schema_version": 1, "party": {"partner": null, "intact": false, "invites_in": [], "invite_out": null}, "duels": []}).has("public"), "A lobby from a server without public duels has no public part")
 	_check(DuelsClient._held({"amount": 40, "state": "forfeit", "reason": "left"}) == {"amount": 40, "state": "forfeit", "reason": "left"} and DuelsClient._held({"amount": 40, "state": "kept"}).is_empty(), "The held extra reads only in its three states")
 	_check(DuelsClient._pay({"turns": 2, "plain": 100, "blooms": 0, "duel": 0, "duel_percent": 50, "boost": 0, "boost_percent": 0, "total": 100, "held": 50}).held == 50, "A public duel's pay keeps its held part")
@@ -310,6 +316,18 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 	_check(not joins[0].disabled and joins[1].disabled and joins[2].disabled, "%s: with Maya, only the duel with a whole open pair joins" % name)
 	var reasons := page.root.find_children("PublicReason", "Label", true, false).map(func(label: Label) -> String: return label.text)
 	_check(reasons.has(PlayerCopy.PUBLIC_REASON_ONE_LEFT) and reasons.has(PlayerCopy.PUBLIC_REASON_SPLIT), "%s: greyed rows say why: %s" % [name, reasons])
+	# Maya has not accepted the rules (the lobby said so): every party Join greys with that reason, before any tap.
+	page.known = func(_row: Dictionary) -> Dictionary: return {"chapter_open": true, "partner_on": true, "partner_rules": false, "at_limit": false}
+	page.redraw()
+	await _settle()
+	joins = page.root.find_children("PublicJoin", "Button", true, false)
+	reasons = page.root.find_children("PublicReason", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	_check(joins.all(func(button: Button) -> bool: return button.disabled) and reasons.count(PlayerCopy.PUBLIC_PARTNER_RULES % "Maya") == 3, "%s: a partner without the rules greys every party Join: %s" % [name, reasons])
+	for label: Label in page.root.find_children("PublicReason", "Label", true, false): _check(_inside(label, safe), "%s: the reason fits inside the safe area" % name)
+	page.known = func(_row: Dictionary) -> Dictionary: return {"chapter_open": true, "partner_on": true, "partner_rules": true, "at_limit": false}
+	page.redraw()
+	await _settle()
+	joins = page.root.find_children("PublicJoin", "Button", true, false)
 	var tapped := []
 	page.join_requested.connect(func(item: Dictionary, seat: int, _control: Control) -> void: tapped.append(seat))
 	joins[0].pressed.emit()
@@ -356,6 +374,14 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 	start.post_requested.connect(func(joining: String, chapter: String, _control: Control) -> void: posted.append([joining, chapter]))
 	send.pressed.emit()
 	_check(posted == [["party", BOARD]], "%s: Post duel posts with Maya on the chapter" % name)
+	# Maya has not accepted the community rules: Post duel with her greys with the reason; Alone posts.
+	start.set_party_reason(PlayerCopy.PUBLIC_PARTNER_RULES % "Maya")
+	await _settle()
+	var post_reason := start.root.find_child("PublicPostReason", true, false) as Label
+	_check(send.disabled and post_reason != null and post_reason.text == PlayerCopy.PUBLIC_PARTNER_RULES % "Maya" and _inside(post_reason, safe), "%s: Post duel with Maya greys with the reason" % name)
+	start._post_as_chosen("alone")
+	await _settle()
+	_check(not send.disabled and start.root.find_child("PublicPostReason", true, false) == null, "%s: posting alone is open" % name)
 	start.close()
 	await _settle()
 	# The duel page (boards 3 and 6), its stranger card and block card.

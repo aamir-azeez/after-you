@@ -9,7 +9,10 @@ extends SceneTree
 ## public-3a-join-beside, public-3b-duel-beside, public-3c-join-pair-spot,
 ## public-3d-duel-pair-spot, public-4a-join-with-maya, public-4b-duel-with-maya,
 ## public-5a-post, public-5c-tile, public-6b-first-time, public-6c-stranger,
-## public-6d-block and public-result-held. Synthetic ids only.
+## public-6d-block and public-result-held; and for a partner who has not accepted
+## the community rules, public-2c-list-partner-rules, public-5b-post-partner-rules
+## and public-6e-rules-on-lobby (the card their own phone shows on opening Duels).
+## Synthetic ids only.
 const Client = preload("res://services/duels_client.gd")
 const PublicClient = preload("res://services/public_duels_client.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
@@ -24,6 +27,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -108,6 +112,10 @@ func _run() -> void:
 	lobby.show_lobby(Client.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null, "partner_look": MAYA_LOOK},
 		"duels": [_wire_of(posted)], "public": {"version": 1, "on": true, "show_name": true, "partner_on": true, "paused": false, "running": 1}}))
 	await _save("public-1a-lobby")
+	# The rules card a player who has not accepted the rules meets on opening Duels (public_duels_flow.gd ask_rules).
+	lobby.hold_modal(Sheets.first_time(lobby.root, false, func(_named: bool) -> void: pass, PlayerCopy.PUBLIC_FIRST_CONTINUE))
+	await _save("public-6e-rules-on-lobby")
+	lobby._modal.close()
 	# The list, Alone, then With Maya (boards 2A, 2B).
 	var rows := [
 		_row("2a", lighthouse, 4, [[false, "Kite", shell], [true], [true], [true]], [1, 0]),
@@ -125,6 +133,13 @@ func _run() -> void:
 	await _save("public-2a-list-alone")
 	list._set_joining("party")
 	await _save("public-2b-list-with-maya")
+	# Maya has not accepted the community rules: every party Join greys with the reason.
+	var known_before: Callable = list.known
+	list.known = func(_row_now: Dictionary) -> Dictionary: return {"chapter_open": true, "partner_on": true, "partner_rules": false, "at_limit": false}
+	list.redraw()
+	await _save("public-2c-list-partner-rules")
+	list.known = known_before
+	list.redraw()
 	# Joining beside Kite (board 3, top).
 	list._set_joining("alone")
 	var names := {"title": "Sleeping Lighthouse", "partner": "Maya", "partner_look": MAYA_LOOK}
@@ -156,6 +171,8 @@ func _run() -> void:
 	await process_frame
 	start._pick_chapter(Registry.LIGHTHOUSE_V2)
 	await _save("public-5a-post")
+	start.set_party_reason(PlayerCopy.PUBLIC_PARTNER_RULES % "Maya")
+	await _save("public-5b-post-partner-rules")
 	start.close()
 	# The lobby tile of a posted duel (board 5C) is in public-1a-lobby; the safety cards (board 6).
 	var strangers := _view("6a", lighthouse, [[ME, null], [[false, true, null], [false, false, "Kite"]], 1, 21, 1, [{}, shell]], [[null, null], [[false, false, null], [false, false, null]], 2, 34, 0, [tidey, {}]])

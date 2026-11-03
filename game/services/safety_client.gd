@@ -154,7 +154,8 @@ func check_terms() -> bool:
 	return _finish(ticket, true)
 
 func accept_rules() -> bool:
-	# This is called only by the explicit acceptance button after showing rules.
+	# This is called only by the explicit acceptance button after showing rules, and by public duels'
+	# ask_rules when the server already holds this acceptance (a repeat it keeps, for the lobby's copy).
 	if not valid_config(config): return _fail("safety_unavailable")
 	var ticket := _begin()
 	if ticket < 0: return false

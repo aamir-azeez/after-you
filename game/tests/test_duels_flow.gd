@@ -3,7 +3,8 @@ extends SceneTree
 ## the server has them off, Play opens your pair's room, joins the one your
 ## partner made, or makes it, and joins your partner's when both of you made
 ## one at once; a chapter you have not reached is never played; Accept and
-## Not now go to the server once per tap. Synthetic ids only.
+## Not now go to the server once per tap; the community rules card comes before
+## anything public (public_duels_flow.gd ask_rules). Synthetic ids only.
 const Flow = preload("res://presentation/duels/duels_flow.gd")
 const Client = preload("res://services/duels_client.gd")
 const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
@@ -15,6 +16,8 @@ const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const GhostPage = preload("res://presentation/duels/duel_ghost_page.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
+const PublicFlow = preload("res://presentation/duels/public_duels_flow.gd")
+const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -46,8 +49,11 @@ class FakeSession extends RefCounted:
 	var capabilities := {"duels_version": 1}
 	var last_lobby_code := ""
 	var pending := {}
+	var public_on := false
+	var safety: RefCounted
 	func duels_supported() -> bool: return on
-	func public_duels_supported() -> bool: return false
+	func public_duels_supported() -> bool: return public_on
+	func safety_client() -> RefCounted: return safety
 	func pollen_supported() -> bool: return true
 	func load_capabilities() -> void: pass
 	func pending_lobby() -> Dictionary: return pending.duplicate(true)
@@ -86,6 +92,23 @@ class FakeLobby extends RefCounted:
 		session.last_lobby_code = code
 		if code.is_empty(): host.enter_room()
 		else: host._return_to_room_hub("refused " + code)
+
+## The safety client as the rules card uses it: the server's answer (`server_accepts`) a frame later.
+class FakeSafety extends RefCounted:
+	var terms_accepted := false
+	var server_accepts := false
+	var checks := 0
+	var accepts := 0
+	var last_error := ""
+	func check_terms() -> bool:
+		checks += 1
+		await Engine.get_main_loop().process_frame
+		terms_accepted = server_accepts
+		return true
+	func accept_rules() -> bool:
+		accepts += 1
+		terms_accepted = true
+		return true
 
 class FakeFriends extends RefCounted:
 	func view() -> Dictionary: return {"friends": [{"player_id": MAYA, "status": "accepted"}, {"player_id": FINN, "status": "accepted"}]}
@@ -310,6 +333,7 @@ func _run() -> void:
 	await _already_open(main, api, flow)
 	await _hinted(main, api, flow)
 	await _picker(main, api, flow)
+	await _rules_card(main, api, flow)
 	flow.open()
 	await _frames(2)
 	flow.close()
@@ -1044,6 +1068,68 @@ func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	await _frames(2)
 
 ## A duel as the server answers it, with this phone's side as `own` says.
+## The community rules card before anything public: the first lobby read after Duels opens (once a
+## launch) and a party invite just accepted, only while public duels are open, the switch is on and
+## the lobby says the rules are not accepted. A partner without them greys Post duel with the reason.
+func _rules_card(main: FakeMain, api: FakeApi, flow: Node) -> void:
+	var safety := FakeSafety.new()
+	main.relay_session.safety = safety
+	main.relay_session.public_on = true
+	var party := {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}
+	var lobby := func(rules: bool, partner_rules: Variant, on := true) -> Dictionary:
+		return {"ok": true, "data": {"schema_version": 1, "party": party, "duels": [],
+			"public": {"version": 1, "on": on, "show_name": false, "partner_on": true, "paused": false, "running": 0, "rules": rules, "partner_rules": partner_rules}}}
+	var card := func() -> bool: return flow.is_open() and flow.screen.find_child("PublicFirstTime", true, false) != null
+	var reopen := func() -> void:
+		if flow.is_open(): flow.close()
+		await _frames(2)
+		flow.open()
+		await _frames(8)
+	PublicFlow._rules_asked = false
+	# Switched off (a child's phone): never asked.
+	api.replies["GET /v1/duels"] = lobby.call(false, true, false)
+	await reopen.call()
+	_check(not card.call() and safety.checks == 0, "a player who switched public duels off is never asked for the rules")
+	# Accepted: nothing asked, nothing checked.
+	api.replies["GET /v1/duels"] = lobby.call(true, true)
+	await reopen.call()
+	_check(not card.call() and safety.checks == 0, "a player whose lobby says the rules are accepted is not asked")
+	# The lobby lost its copy but the server holds the acceptance: sent again, no card.
+	api.replies["GET /v1/duels"] = lobby.call(false, true)
+	safety.server_accepts = true
+	await reopen.call()
+	_check(not card.call() and safety.checks == 1 and safety.accepts == 1, "an acceptance the server holds is sent again for the lobby's copy, with no card")
+	# Not accepted: the card on opening Duels, once a launch.
+	safety.server_accepts = false
+	await reopen.call()
+	_check(card.call(), "opening Duels without the rules shows the rules card first")
+	await reopen.call()
+	_check(not card.call(), "opening Duels again the same launch asks no more")
+	# A party invite just accepted asks again, after the accept went through.
+	api.replies["POST /v1/duels/party/accept"] = lobby.call(false, null)
+	flow._open_party()
+	await _frames(4)
+	var accepted: CanvasLayer = flow.screen.overlay()
+	await flow._party(accepted, "accept", MAYA)
+	await _frames(4)
+	_check(api.requests.any(func(item: Array) -> bool: return item[1] == "/v1/duels/party/accept") and accepted.find_child("PublicFirstTime", true, false) != null, "a party invite accepted shows the rules card after it")
+	accepted.close()
+	await _frames(2)
+	# A partner without the rules: Start a duel's Post duel with them greys with the approved line.
+	api.replies["GET /v1/duels"] = lobby.call(true, false)
+	await reopen.call()
+	flow._open_challenge(true)
+	await _frames(4)
+	var start: CanvasLayer = flow.screen.overlay()
+	_check(start is ChallengePage and start.party_reason == PlayerCopy.PUBLIC_PARTNER_RULES % "Maya", "Post duel with a partner who has not accepted the rules says why: %s" % [start.get("party_reason") if start != null else null])
+	if start != null: start.close()
+	await _frames(2)
+	flow.close()
+	await _frames(2)
+	main.relay_session.public_on = false
+	main.relay_session.safety = null
+	PublicFlow._rules_asked = false
+
 func _server_view(kind: String, own: Dictionary) -> Dictionary:
 	var view := _view(own)
 	if kind == "ghost":

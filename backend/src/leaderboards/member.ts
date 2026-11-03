@@ -6,6 +6,7 @@ import { applyParty, blankParty, noteLook, parsedParty, prune, type DuelRef, typ
 import type { Look } from "../pollen/catalog";
 import { MemoryBudget } from "../limits";
 import { MAX_BLOCKED_BY, PUBLIC_REPORTS_TO_PAUSE, PUBLIC_REPORT_WINDOW_MS } from "../duels/rules";
+import { termsCovered } from "../public-policy";
 
 /**
  * One player's leaderboard settings, one Durable Object per player id: whether
@@ -28,18 +29,21 @@ import { MAX_BLOCKED_BY, PUBLIC_REPORTS_TO_PAUSE, PUBLIC_REPORT_WINDOW_MS } from
  * player whose only trace is a duel.
  */
 /**
- * Public duels (duels/public.ts) keep five optional keys here, absent until used, so a row nobody used for them reads
+ * Public duels (duels/public.ts) keep six optional keys here, absent until used, so a row nobody used for them reads
  * byte for byte as before: `public_off` (the player turned the switch off; absent is the default, on, and only
  * publicDuelsChosen reads it), `blocked_by` (players who blocked
  * this one, so their duels never list for them), `public_reports` (reports from public duels, newest last, inside
  * PUBLIC_REPORT_WINDOW_MS) and `public_paused` (set at PUBLIC_REPORTS_TO_PAUSE different reporters; only an operator
  * clears it). `duel_blocks`: players this one blocked from a public duel without knowing their id; the phone sees
  * each only by its handle and label (duels/public-routes.ts), the SafetyProfile holds the block itself.
+ * `rules_version`: the public duel community rules this player last accepted, a copy of their SafetyProfile's
+ * (noteRules), so the party read every lobby makes already says whether a partner may join a public duel.
  */
 export type PublicReport = { from: string; at: number };
 export type DuelBlock = { handle: string; id: string; label: string | null; at: number };
 export type MemberState = { schema_version: 1; show_name: boolean; boards: string[]; revision: number; erased?: true;
-  public_off?: true; blocked_by?: string[]; public_reports?: PublicReport[]; public_paused?: true; duel_blocks?: DuelBlock[] };
+  public_off?: true; blocked_by?: string[]; public_reports?: PublicReport[]; public_paused?: true; duel_blocks?: DuelBlock[];
+  rules_version?: string };
 
 /**
  * Whether the player has public duels on: on unless they turned the switch off (owner, 2026-11-03: on by default, off in
@@ -124,6 +128,21 @@ export class LeaderboardMember extends DurableObject<Env> {
   addPublicRef(owner: string, ref: DuelRef, now: number): { open: boolean } {
     const added = this.partyApply(owner, { kind: "add_duels", refs: [ref] }, now);
     return { open: added.ok && publicOpenTo(this.read()) };
+  }
+  /**
+   * The player accepted the public duel rules `version` (safety-routes.ts, after their SafetyProfile took it). Writes only
+   * a newer version than the one held, and moves the revision on, so erasure never skips a player whose only trace is this.
+   * Answers whether it changed and the party partner, who the caller tells (their lobby greys a party join until then).
+   */
+  noteRules(version: string): { changed: boolean; partner: string | null } {
+    let changed = false;
+    this.change(state => {
+      if (termsCovered(state.rules_version ?? null, version)) return false;
+      state.rules_version = version;
+      state.revision++;
+      return changed = true;
+    });
+    return { changed, partner: changed ? this.partyRow().partner : null };
   }
   /** `peer` blocked this player (or took it back): the public list hides their duels from this player. */
   noteBlockedBy(peer: string, blocked: boolean): MemberState {

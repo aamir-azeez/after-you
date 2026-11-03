@@ -139,9 +139,10 @@ describe("public duels", () => {
     expect(await ok<Any>(call("/v1/safety/config", "GET", a))).toMatchObject({ terms_version: TERMS_VERSION });
     expect(await ok<Any>(call("/v1/safety/config", "GET", a, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ terms_version: PUBLIC_TERMS_VERSION });
     expect(await ok<Any>(call("/v1/safety/config", "GET", a, undefined, OFF, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ terms_version: TERMS_VERSION });
-    // An older phone's acceptance stands for photos; it never covers the newer rules.
+    // An older phone's acceptance stands for photos; it never covers the newer rules, and the lobby says so.
     await ok(call("/v1/safety/terms", "POST", a, { schema_version: 1, terms_version: TERMS_VERSION }));
     expect(await ok<Any>(call("/v1/safety/terms", "GET", a))).toMatchObject({ accepted: true });
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ rules: false, partner_rules: null });
     expect(await ok<Any>(call("/v1/safety/terms", "GET", a, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ accepted: false });
     expect((await errorOf(call("/v1/duels/public/me", "PUT", a, { schema_version: 1, on: true })))).toMatchObject({ code: "terms_acceptance_required" });
     // An older phone posting the newer rules is refused; the newer acceptance covers the older rules.
@@ -187,7 +188,7 @@ describe("public duels", () => {
     expect(JSON.parse((await member())!)).not.toHaveProperty("public_off");
     await ok(post(a));
     const b = await player();
-    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", b))).public).toMatchObject({ version: 1, on: true, paused: false, partner_on: null, running: 0 });
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", b))).public).toMatchObject({ version: 1, on: true, paused: false, partner_on: null, running: 0, rules: true, partner_rules: null });
     // A first post writes the Member row the pause goes into.
     await ok(post(b));
     await runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(b.player_id), async (_, ctx) => {
@@ -387,16 +388,48 @@ describe("public duels", () => {
     const [a, b, poster] = await Promise.all([player(), create(), player()]);
     await partner(a, b);
     const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
-    // Maya never opened public duels: her switch is on by default, but she has not accepted the rules.
-    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ on: true, partner_on: true });
+    // Maya never opened public duels: her switch is on by default, but she has not accepted the rules, and the lobby
+    // says so from the party read it makes anyway, so the phone greys a party post or join before the tap.
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ on: true, partner_on: true, rules: true, partner_rules: false });
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", b))).public).toMatchObject({ rules: false, partner_rules: true });
     expect((await errorOf(post(a, "party"))).code).toBe("partner_rules_required");
     expect((await errorOf(join(a, posted, "party"))).code).toBe("partner_rules_required");
     await acceptRules(b);
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ rules: true, partner_rules: true });
     await ok(setSwitch(b, false));
     expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ partner_on: false });
     expect((await errorOf(join(a, posted, "party"))).code).toBe("partner_public_off");
     await ok(setSwitch(b, true));
     expect((await ok<{ duel: DuelView }>(join(a, posted, "party"))).duel.mine).toBe(1);
+  });
+
+  it("keep each player's accepted rules on their Member row, written again when lost and never by an older phone", async () => {
+    const [a, b] = await Promise.all([player(), create()]);
+    await partner(a, b);
+    const stored = (id: string) => runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(id), async (_, ctx) =>
+      (JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM lb_member WHERE id=1").toArray()[0]?.data ?? "{}") as Any).rules_version ?? null);
+    expect(await stored(a.player_id)).toBe(PUBLIC_TERMS_VERSION);
+    // An older phone accepts the rules it knows: nothing for public duels is written.
+    await ok(call("/v1/safety/terms", "POST", b, { schema_version: 1, terms_version: TERMS_VERSION }));
+    expect(await stored(b.player_id)).toBeNull();
+    // The copy lost after the SafetyProfile took the rules: the lobby greys, the next accept or post writes it again.
+    await acceptRules(b);
+    const drop = (id: string) => runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(id), async (_, ctx) => {
+      ctx.storage.sql.exec("UPDATE lb_member SET data=json_remove(data,'$.rules_version') WHERE id=1");
+    });
+    await drop(b.player_id);
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ partner_rules: false });
+    await acceptRules(b);
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ partner_rules: true });
+    await drop(b.player_id);
+    await ok(post(a, "party"));
+    expect(await stored(b.player_id)).toBe(PUBLIC_TERMS_VERSION);
+    // With public duels off the lobby has no public part at all, and an accept then writes nothing.
+    const c = await create();
+    expect((await ok<Any>(call("/v1/duels", "GET", c, undefined, OFF))).public).toBeUndefined();
+    await ok(call("/v1/safety/terms", "POST", c, { schema_version: 1, terms_version: TERMS_VERSION }, OFF, { [PUBLIC_DUELS_HEADER]: "1" }));
+    expect(await runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(c.player_id), async (_, ctx) =>
+      ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='lb_member'").toArray().length)).toBe(0);
   });
 
   it("send a friend request by seat only once the duel is over, which the asker's own list does not show until accepted", async () => {

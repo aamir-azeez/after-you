@@ -118,6 +118,8 @@ var _goes_on: Array = []
 var _held := false
 var _open_token := 0
 var _public: RefCounted
+## Duels just opened: its first lobby read may ask for the community rules (public_duels_flow.gd ask_rules).
+var _rules_due := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -143,8 +145,10 @@ func _hinted(duel_id: String, at_ms: int) -> void:
 	if page != null and page.view.duel_id == duel_id:
 		if int(page.view.get("updated_ms", 0)) < at_ms: _duel_reads.hint(now)
 		return
-	if _under_page(): return
 	var asks := HintReads.route(client().last_lobby(), duel_id, at_ms)
+	if _under_page():
+		public().hinted_under(screen.overlay(), asks == HintReads.LOBBY)
+		return
 	if asks == HintReads.DUEL: _hint_reads.note(duel_id, at_ms)
 	elif asks == HintReads.LOBBY: _ask_lobby(now, -1, RefreshClock.DUELS_LIST_HINT_GAP_MS)
 
@@ -284,6 +288,7 @@ func open() -> void:
 	screen.public_shown = public().supported()
 	screen.public_on = public().switched_on()
 	if not kept.is_empty(): screen.show_lobby(kept)
+	_rules_due = true
 	set_process(true)
 	_refresh()
 
@@ -327,6 +332,10 @@ func _read_lobby(ticket: Dictionary) -> void:
 	if ghosts != null and answer.get("ok", false): ghosts.release_ended(answer.lobby)
 	var overlay: CanvasLayer = screen.overlay()
 	if answer.get("ok", false) and overlay is PartyPage: overlay.show_party(answer.lobby.party)
+	# The rules card once Duels opened, from its first answer, unless a page other than Party is up by then (the next read asks).
+	if answer.get("ok", false) and _rules_due and not _under_page():
+		_rules_due = false
+		public().ask_rules(answer.lobby)
 
 ## A player's name for the duel pages: "You", a friend's or partner's name, or "".
 func _name_of(id: Variant) -> String:
@@ -391,6 +400,8 @@ func _party(page: CanvasLayer, action: String, friend: String) -> void:
 	if answer.get("ok", false):
 		page.show_party(answer.lobby.party)
 		if is_open(): screen.show_lobby(answer.lobby)
+		# A party just made: the rules card before anything public, so the new partner never greys a party join.
+		if action == "accept": public().ask_rules(answer.lobby, true)
 	else: _toast_failure(answer)
 
 func _open_challenge(anyone: bool = false) -> void:
@@ -840,6 +851,7 @@ func _offer_public(page: CanvasLayer, anyone: bool) -> void:
 	page.anyone = anyone
 	page.partner_name = _name_of(party.partner) if party.get("intact", false) and party.get("partner") != null else ""
 	page.partner_look = party.get("partner_look", {})
+	page.party_reason = public().partner_text()
 	page.post_requested.connect(func(joining: String, chapter: String, control: Control) -> void: page.tap(control, func() -> void: await public().post(page, joining, chapter)))
 
 ## The bundled chapter key for the duel's board (its own version).

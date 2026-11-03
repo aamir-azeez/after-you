@@ -10,7 +10,7 @@ import type { Look } from "../pollen/catalog";
 import type { DuelExtraAnswer, DuelWinAnswer } from "../pollen/duel-pay";
 import { publicDuelsChosen, publicOpenTo, type DuelBlock, type MemberState } from "../leaderboards/member";
 import { creatable } from "../v2/chapters";
-import { termsVersion } from "../public-policy";
+import { termsCovered, termsVersion } from "../public-policy";
 import { SAFETY_REPORT_REASONS, type SafetyReport } from "../safety";
 import { DUEL_REQUEST_PREFIX, requestFriend } from "../friends-routes";
 import { isFinal, isOpen, knownKey, viewFor, type Duel } from "./model";
@@ -35,7 +35,8 @@ import { MAX_FRIEND_DUELS_PER_PAIR } from "./rules";
  * on the duel page (publicDetail), which duels/routes.ts calls.
  *
  * Requests (Cloudflare Free plan, PLAN 11): a list page is auth + Member + SafetyProfile + the directory only when
- * the list cache misses; a post or join adds one SafetyProfile per joiner (the rules and blocks), the boards holding the player's duels (the limit of 10), the board's
+ * the list cache misses; a post or join adds one SafetyProfile per joiner (the rules and blocks, and a Member write
+ * only when its copy of the rules was lost), the boards holding the player's duels (the limit of 10), the board's
  * create or claim, the pointer writes and the hints; the board sends the directory its new listing (1 request, 1 row).
  */
 const PUBLIC_PREFIX = "/v1/duels/public";
@@ -79,6 +80,7 @@ async function joiners(env: Env, player: string, as: JoinAs, now: number, look?:
   if (!publicDuelsChosen(mine.member)) throw new ApiError(403, "public_duels_off");
   if (mine.member.public_paused) throw new ApiError(403, "public_paused");
   if (!myGate.accepted) throw new ApiError(403, "terms_acceptance_required");
+  await healRules(env, player, mine.member, version, now);
   const avoid = (rows: readonly Seated[], lists: readonly string[][]) => new Set([...lists.flat(), ...rows.flatMap(row => row.member.blocked_by ?? [])]);
   if (as === "alone") return { players: [player], rows: [mine], looks: [mine.party.look], avoid: avoid([mine], [myGate.blocked_players]) };
   const partner = mine.party.partner;
@@ -87,7 +89,30 @@ async function joiners(env: Env, player: string, as: JoinAs, now: number, look?:
   if (theirs.party.partner !== player) throw new ApiError(409, "party_required");
   if (!publicOpenTo(theirs.member)) throw new ApiError(409, "partner_public_off");
   if (!theirGate.accepted) throw new ApiError(409, "partner_rules_required");
+  await healRules(env, partner, theirs.member, version, now);
   return { players: [player, partner], rows: [mine, theirs], looks: [mine.party.look, theirs.party.look], avoid: avoid([mine, theirs], [myGate.blocked_players, theirGate.blocked_players]) };
+}
+
+/**
+ * Whether the Member row says `member` accepted the rules in force (`rules_version`, kept by noteRulesAccepted): what
+ * the lobby tells the phone, so a party join greys before the tap with no SafetyProfile read. The SafetyProfile stays
+ * the truth for a post or join (joiners).
+ */
+function rulesNoted(env: ServerVars, member: MemberState): boolean { return termsCovered(member.rules_version ?? null, termsVersion(env)); }
+
+/**
+ * The player accepted the public duel rules `version` (POST /v1/safety/terms from a phone shown them): their Member row
+ * keeps a copy, and their party partner, whose lobby greyed a party join, hears of it. Every accept writes it again
+ * when missing, so a lost write heals on the next one. 1 Member request (1 row only when it changed), 1 hint then.
+ */
+export async function noteRulesAccepted(env: Env, player: string, version: string, now: number): Promise<void> {
+  const noted = await party(env, player).noteRules(version);
+  if (noted.partner) await announceLobby(env, [noted.partner], now).catch(() => undefined);
+}
+
+/** A gate that says accepted while the Member row has no copy (a write lost after the SafetyProfile's): written now. */
+async function healRules(env: Env, player: string, member: MemberState, version: string, now: number): Promise<void> {
+  if (!termsCovered(member.rules_version ?? null, version)) await noteRulesAccepted(env, player, version, now);
 }
 
 /** Stops a post or join past the limit of 10, counted over the players' own pointers. */
@@ -378,12 +403,16 @@ export async function routePublicDuels(request: Request, path: string, player: s
   return friend(env, request, player, board, duelId, input);
 }
 
-/** The lobby's `public` part while public duels are on: the switches and the count toward the limit of 10. */
+/**
+ * The lobby's `public` part while public duels are on: the switches, whether the player and their partner accepted the
+ * rules in force (`rules`, `partner_rules`, from the Member rows the party read brings: no request added) and the count
+ * toward the limit of 10. Older phones read only the keys they know.
+ */
 export function publicLobby(env: Env, player: string, members: readonly (MemberState | null)[] | undefined, intact: boolean, duels: readonly Duel[]): { public?: Record<string, unknown> } {
   if (!publicDuelsOn(env) || !members?.[0]) return {};
   const [mine, theirs] = [members[0], intact ? members[1] ?? null : null];
   return { public: { version: 1, on: publicDuelsChosen(mine), show_name: mine.show_name, partner_on: theirs ? publicOpenTo(theirs) : null, paused: !!mine.public_paused,
-    running: running(duels, [player]) } };
+    running: running(duels, [player]), rules: rulesNoted(env, mine), partner_rules: theirs ? rulesNoted(env, theirs) : null } };
 }
 
 export type PublicSettle = { extra: DuelExtraAnswer | null; win: DuelWinAnswer | null };

@@ -16,6 +16,7 @@ const PARTY := "party"
 const MINE := "mine"
 const CHAPTER := "chapter"
 const PARTNER_OFF := "partner_off"
+const PARTNER_RULES := "partner_rules"
 const LIMIT := "limit"
 const SEAT_TAKEN := "seat_taken"
 const FULL := "full"
@@ -55,12 +56,21 @@ static func open_flags(sides: Array) -> Array:
 	return flags
 
 ## Why a list row is greyed for this player, or "" when it can be joined.
-## `known`: {chapter_open: bool, partner_on: bool, at_limit: bool}; a party
-## join also needs the partner's switch on.
+## `known`: {chapter_open: bool, partner_on: bool, partner_rules: bool or null,
+## at_limit: bool}; a party join also needs the partner (partner_reason).
 static func greyed(row: Dictionary, joining: String, known: Dictionary) -> String:
 	if row.get("mine", false): return MINE
 	if not known.get("chapter_open", true): return CHAPTER
-	if joining == PARTY and not known.get("partner_on", false): return PARTNER_OFF
+	if joining == PARTY and not partner_reason(known).is_empty(): return partner_reason(known)
 	if known.get("at_limit", false): return LIMIT
 	var spot := spot_for(open_flags(row.get("sides", [])), joining)
 	return str(spot.get("reason", ""))
+
+## Why your partner can't post or join with you, or "": their switch is off, or
+## the lobby said they have not accepted the community rules in force (only a
+## clear false greys; unknown leaves it to the server's partner_rules_required).
+static func partner_reason(known: Dictionary) -> String:
+	if not known.get("partner_on", false): return PARTNER_OFF
+	var rules: Variant = known.get("partner_rules")
+	if rules is bool and not rules: return PARTNER_RULES
+	return ""

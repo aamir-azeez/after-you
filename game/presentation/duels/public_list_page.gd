@@ -42,7 +42,7 @@ var scope := "all"
 var sort := "newest"
 ## [[board key, chapter key]] the chapter menu offers, in the Chapters order.
 var boards: Array = []
-## (row) -> {chapter_open, partner_on, at_limit}: what the phone knows that greys a row.
+## (row) -> {chapter_open, partner_on, partner_rules, at_limit}: what the phone knows that greys a row.
 var known: Callable
 ## The shared limit, for its greyed line.
 var limit := 10
@@ -129,6 +129,12 @@ func update_row(duel_id: String, row: Dictionary, note: String = "") -> void:
 
 func rows() -> Array:
 	return _rows
+
+## Draws the switch and the rows again with what `known` says now (a fresh lobby: the partner accepted, switched off or left).
+func redraw() -> void:
+	if not is_instance_valid(_list): return
+	_render_filters()
+	_render_list()
 
 ## The page Show more reads next, or -1 at the end.
 func next_page() -> int:
@@ -290,6 +296,7 @@ static func reason_text(reason: String, partner: String, limit_count: int) -> St
 		Spots.MINE: return PlayerCopy.PUBLIC_REASON_MINE
 		Spots.CHAPTER: return PlayerCopy.PUBLIC_REASON_CHAPTER
 		Spots.PARTNER_OFF: return PlayerCopy.PUBLIC_REASON_PARTNER_OFF % partner
+		Spots.PARTNER_RULES: return PlayerCopy.PUBLIC_PARTNER_RULES % partner
 		Spots.LIMIT: return PlayerCopy.PUBLIC_REASON_LIMIT % limit_count
 		Spots.ONE_LEFT: return PlayerCopy.PUBLIC_REASON_ONE_LEFT
 		Spots.SPLIT: return PlayerCopy.PUBLIC_REASON_SPLIT

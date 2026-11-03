@@ -2,9 +2,9 @@ import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, 
 import { bearerDigest } from "./http";
 import { LEGACY_STAGE_COUNT } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, roomStages } from "./v2/room-stage";
-import { PUBLIC_DUELS_HEADER, termsVersionFor } from "./public-policy";
+import { PUBLIC_DUELS_HEADER, TERMS_VERSION, termsVersionFor } from "./public-policy";
 import { flags } from "./flags";
-import { blockPlayer, countReport, duelBlocks, leaveForBlock, publicDuelsOn, unblockHandle } from "./duels/public-routes";
+import { blockPlayer, countReport, duelBlocks, leaveForBlock, noteRulesAccepted, publicDuelsOn, unblockHandle } from "./duels/public-routes";
 import { interactionBlocked, parseReport, type SafetyReport } from "./safety";
 import { campaignRequestContext, type CampaignRoomContext } from "./v2/campaign-room-access";
 const exact = (value: Record<string, unknown>, keys: string[]) => { if (Object.keys(value).length !== keys.length || Object.keys(value).some(key => !keys.includes(key))) throw new ApiError(400, "invalid_safety_request"); };
@@ -54,7 +54,11 @@ export async function routeSafety(request: Request, path: string, owner: string,
     if (request.method === "POST") {
       const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "terms_version"]);
       if (input.schema_version !== 1 || typeof input.terms_version !== "string") throw new ApiError(400, "invalid_safety_request");
-      return unwrap(await profile.accept(owner, deviceHash, input.terms_version, termsVersionFor(request, env)));
+      const current = termsVersionFor(request, env);
+      const accepted = unwrap(await profile.accept(owner, deviceHash, input.terms_version, current));
+      // The public duel rules: the Member row keeps a copy for the lobby (duels/public-routes.ts), every time, so a lost write heals.
+      if (current !== TERMS_VERSION) await noteRulesAccepted(env, owner, current, Date.now());
+      return accepted;
     }
   }
   if (path === "/v1/safety/blocks" && request.method === "GET") {
