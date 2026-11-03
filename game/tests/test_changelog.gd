@@ -428,7 +428,8 @@ func _export() -> void:
 	for kept_out: String in ["tests/test_changelog.gd", "content/campaigns/a-place-for-two-v1.json", "content/compatibility/a-place-for-two-definition-v1.json"]:
 		_check(_matches(android_exclude, kept_out), "Android exports leave out " + kept_out)
 	_check(presets.get_value("preset.1", "platform", "") == "iOS", "The iOS preset follows Android")
-	_check(str(presets.get_value("preset.1", "exclude_filter", "")) == android_exclude and presets.get_value("preset.1", "include_filter", "") == presets.get_value("preset.0", "include_filter", ""), "iOS ships exactly the files Android ships")
+	# The one difference: Android leaves out ios_only/ (the Game Center icon, iOS builds only; tests/test_platform_boards.gd).
+	_check(android_exclude == str(presets.get_value("preset.1", "exclude_filter", "")) + ",ios_only/*" and presets.get_value("preset.1", "include_filter", "") == presets.get_value("preset.0", "include_filter", ""), "iOS ships exactly the files Android ships, plus ios_only/")
 	_check(presets.get_value("preset.1.options", "application/bundle_identifier", "") == presets.get_value("preset.0.options", "package/unique_name", "x"), "The iOS bundle id matches the Android package")
 
 func _matches(filters: String, path: String) -> bool:
