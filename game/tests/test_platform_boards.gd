@@ -51,6 +51,13 @@ class FakeAccount extends RefCounted:
 	func player_id() -> String: return player
 	func cloud_sources() -> RefCounted: return null
 
+## Main's api as the leaderboard client uses it: one board read, answered with `view`.
+class FakeApi extends Node:
+	var view: Dictionary = {}
+	func request_json(_method: int, _path: String, _body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
+		await Engine.get_main_loop().process_frame
+		return {"ok": true, "status": 200, "data": view}
+
 class FakeNative extends Object:
 	signal games_result(request_id: String, operation: String, payload_json: String)
 	signal games_error(request_id: String, operation: String, code: String)
@@ -238,7 +245,7 @@ func _choose_name(client: RefCounted, show: bool) -> void:
 
 func _service() -> void:
 	Runs.use_path(_dir.path_join("runs.json"))
-	var api := Node.new()
+	var api := FakeApi.new()
 	root.add_child(api)
 	var client: RefCounted = LeaderboardClient.shared(api, OWNER)
 	var slow_ticks := 1500
@@ -294,6 +301,20 @@ func _service() -> void:
 	await android.post_boards()
 	_check(off_provider.posts.is_empty() and signed_out_provider.posts.is_empty() and play.posts.is_empty() and not off.board_offered(RELAY) and not android.board_offered(RELAY), "Off, signed out or a platform with no board ids: nothing goes up and no button shows")
 	_check(Service.LEADERBOARD_LISTENERS == LeaderboardClient.LISTENERS, "The service listens on the group the leaderboard client tells")
+	# A run that could place waits; the board read that shows it ranked (the end card's, Home's or
+	# the board screen's, all through the shared client) is what posts it, a moment later.
+	var waiting := _run_of(450, RELAY, Time.get_datetime_string_from_unix_time(int(Time.get_unix_time_from_system()) - 60) + "Z")
+	Runs._data[OWNER] = [run, waiting]
+	var checking := _view(RELAY, [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000], [waiting.entry_id])
+	client._views[RELAY] = {"at": Time.get_ticks_msec(), "unix": Time.get_unix_time_from_system(), "view": checking}
+	await service.post_boards()
+	_check(provider.posts.size() == 2, "A run still being checked does not go up")
+	var ranked := _view(RELAY, [100, 200, 300, 400, waiting, 600, 700, 800, 900, 1000])
+	ranked.schema_version = 1
+	api.view = ranked
+	_check((await client.board(RELAY, true)).ok, "The board read answers")
+	await create_timer(Service.BOARD_POST_DELAY_S + 0.5).timeout
+	_check(provider.posts.size() == 3 and provider.posts[-1] == ["afteryou.relay_isles.v2", Policy.hundredths(450)], "The read that shows it ranked posts it, with no request of its own: %s" % [provider.posts])
 	for node: Node in [service, offline, off, signed_out, android, api]: node.queue_free()
 	LeaderboardClient._shared = null
 
