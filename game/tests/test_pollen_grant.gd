@@ -104,7 +104,8 @@ func _cards() -> void:
 	_check(store.pending(SERVER, ME).is_empty(), "Once shown, it never shows again")
 	var reloaded := PollenGrant.new(store.path)
 	_check(reloaded.pending(SERVER, ME).is_empty() and reloaded.ladder(SERVER, ME).next == 4750, "That survives a restart, with the ladder")
-	reloaded.note_view(SERVER, ME, _answer(2, 5000, "grant:1790000000000:2", 4750))
+	# A month later in real life; a fixed second keeps it newer than the first even when both land in one millisecond.
+	reloaded.note_view(SERVER, ME, _answer(2, 5000, "grant:1790000000000:2", 4750, _now() + 1000))
 	_check(reloaded.pending(SERVER, ME).amount == 4750, "Next month's instalment has its own card")
 	var fresh := PollenGrant.new(_path("cards-old"))
 	fresh.set_enabled(SERVER, ME, true)
@@ -200,7 +201,7 @@ func _wardrobe_read() -> void:
 	var client: RefCounted = WardrobeClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, transport, wardrobe, wallet, grant)
 	await client.refresh()
 	_check(grant.pending(SERVER, ME).get("amount") == 4500, "The Wardrobe's read keeps the monthly Pollen it paid")
-	var broken := _answer(2, 5000, "grant:1790000000000:2", 4750)
+	var broken := _answer(2, 5000, "grant:1790000000000:2", 4750, _now() + 1000)
 	broken["wardrobe"] = "not a wardrobe"
 	replies.append({"ok": true, "status": 200, "data": broken})
 	await client.refresh()
