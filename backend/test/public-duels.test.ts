@@ -386,7 +386,10 @@ describe("public duels", () => {
 
   it("hold a party's partner to the same switch and rules, and the lobby says whether the partner is open", async () => {
     const [a, b, poster] = await Promise.all([player(), create(), player()]);
-    await partner(a, b);
+    await befriend(a, b);
+    await ok(call("/v1/duels/party/invite", "POST", a, { schema_version: 1, friend: b.player_id }));
+    // The accept's own answer says the rules are not accepted yet, so Maya's phone asks for them right after.
+    expect((await ok<{ public: Any }>(call("/v1/duels/party/accept", "POST", b, { schema_version: 1, from: a.player_id }))).public).toMatchObject({ rules: false, partner_rules: true });
     const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
     // Maya never opened public duels: her switch is on by default, but she has not accepted the rules, and the lobby
     // says so from the party read it makes anyway, so the phone greys a party post or join before the tap.
