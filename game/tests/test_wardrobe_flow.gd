@@ -784,7 +784,7 @@ func _start_tab() -> void:
 		for from: String in ["settings", "home"]:
 			var label := "%s, from %s" % [_build(sells), from]
 			var t := _setup(false)
-			t.store.set_enabled(SERVER, ME, true, false, true)
+			t.store.set_enabled(SERVER, ME, true, sells, true)
 			t.wallet.set_enabled(SERVER, ME, true)
 			t.flow.surfaces = PollenSurfaces.new(sells, sells)
 			t.fake.replies = [_answer([], {}, 3000), _answer([], {}, 3000)]
@@ -816,4 +816,23 @@ func _start_tab() -> void:
 	keeper.flow._redraw()
 	_check(keeper.flow.model().shop and keeper.flow.model().tab == "all", "The shop's switch after opening: All items")
 	keeper.host.queue_free()
+	await _frames(2)
+	# A tap on an item holds the tab: a late read that turns up an owned item never moves the player off it.
+	var tapped := _setup(false)
+	tapped.store.set_enabled(SERVER, ME, true, false, true)
+	tapped.wallet.set_enabled(SERVER, ME, true)
+	tapped.flow.surfaces = PollenSurfaces.new(false)
+	var empty := _answer([], {}, 3000)
+	tapped.store.note_view(SERVER, ME, empty.data)
+	tapped.wallet.note_wallet(SERVER, ME, empty.data)
+	tapped.fake.replies = [empty]
+	tapped.flow.show_wardrobe()
+	await _frames()
+	tapped.flow.select("every_hard")
+	_check(tapped.flow.model().tab == "all" and tapped.flow.model().selected == "every_hard", "Nothing owned: All items, the tapped item picked")
+	var late := _answer(["gold_leaf"], {}, 3000)
+	tapped.store.note_view(SERVER, ME, late.data)
+	tapped.flow._redraw()
+	_check(tapped.flow.model().tab == "all" and tapped.flow.model().selected == "every_hard", "A late read with an owned item keeps All items and the tapped item")
+	tapped.host.queue_free()
 	await _frames(2)

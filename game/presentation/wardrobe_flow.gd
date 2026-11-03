@@ -28,8 +28,9 @@ extends Node
 ## Until the player picks a tab, the page opens on All items with the shop,
 ## and on any build while the player owns nothing yet (owner, 2026-11-03), so
 ## an empty Owned is never the first thing shown; Owned stays one tap away
-## (_start_tab, read on every draw, so an answer that comes after opening,
-## such as the first read or the shop's switch, still decides it).
+## (_start_tab, read on every draw until the player touches the page, so an
+## answer that comes after opening, such as the first read or the shop's
+## switch, still decides it; _keep_tab).
 ## Earned items (catalogue tier "earned") show in All items once the server
 ## offers them, owned or not, so players know they exist: never sold, never on
 ## the shelf, never counted as something to buy (Get more, the short card).
@@ -224,6 +225,7 @@ static func _buyable_slots(items: Array) -> Array:
 
 ## A slot chip: Hat, Body or Leaf.
 func set_kind(kind: String) -> void:
+	_keep_tab()
 	_kind = kind if kind in Catalog.slots() else ""
 	_redraw()
 
@@ -243,12 +245,18 @@ func tap_action(id: String) -> void:
 static func _allowed_tab(tab: String, all_items: bool) -> String:
 	return "all" if tab == "all" and all_items else "owned"
 
+## The player touched the page: the tab on screen stays, so a late answer never
+## moves them off it (first taps register).
+func _keep_tab() -> void:
+	if _tab.is_empty(): _tab = str(model().tab)
+
 ## The tab shown before the player picks one: All items while the shop sells
 ## (`selling`) or the player owns nothing yet (`owns_any`), else Owned.
 static func _start_tab(selling: bool, owns_any: bool) -> String:
 	return "all" if selling or not owns_any else "owned"
 
 func select(id: String) -> void:
+	_keep_tab()
 	_selected = id if Catalog.has(id) else ""
 	_redraw()
 
