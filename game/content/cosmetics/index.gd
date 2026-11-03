@@ -35,6 +35,10 @@ const OPTIONAL := {
 	## Buying a set's missing pieces together costs less
 	## (backend/src/pollen/spend.ts).
 	"set": "",
+	## How an earned item is earned, a PlayerCopy constant: the Wardrobe shows
+	## it under a picked earned item the player does not own. "" for an item
+	## that is sold.
+	"earn": "",
 }
 const REQUIRED := ["id", "slot", "tier", "name", "art"]
 

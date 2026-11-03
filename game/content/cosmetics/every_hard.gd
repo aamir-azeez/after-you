@@ -6,6 +6,7 @@ const DATA := {
 	"slot": "leaf",
 	"tier": "earned",
 	"name": PlayerCopy.COSMETIC_EVERY_HARD,
+	"earn": PlayerCopy.COSMETIC_EVERY_HARD_EARN,
 	"art": "res://presentation/pip_wear/every_hard.gd",
 	## A together Hard clear of every chapter with Hard.
 }

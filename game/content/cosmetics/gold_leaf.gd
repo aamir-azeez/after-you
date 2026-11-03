@@ -6,6 +6,7 @@ const DATA := {
 	"slot": "leaf",
 	"tier": "earned",
 	"name": PlayerCopy.COSMETIC_GOLD_LEAF,
+	"earn": PlayerCopy.COSMETIC_GOLD_LEAF_EARN,
 	"art": "res://presentation/pip_wear/gold_leaf.gd",
 	## Ever holding first place on a chapter board.
 	## Its sparkles stand above the leaf.

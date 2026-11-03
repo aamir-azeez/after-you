@@ -61,6 +61,10 @@ static func price(id: String) -> int:
 static func sold(id: String) -> bool:
 	return has(id) and str(Index.data(id).get("tier", "")) != EARNED and price(id) > 0
 
+## How an earned item is earned (its PlayerCopy line), or "" for one that is sold.
+static func earn(id: String) -> String:
+	return str(Index.data(id).get("earn", "")) if tier(id) == EARNED else ""
+
 ## Released item ids in shop order.
 static func released_ids() -> Array[String]:
 	var result: Array[String] = []

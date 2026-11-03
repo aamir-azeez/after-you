@@ -24,6 +24,10 @@ const COSMETIC_TIDE := "Tide"
 const COSMETIC_GOLD_LEAF := "Gold leaf"
 const COSMETIC_EVERY_HARD := "Every Hard"
 const COSMETIC_TOP_TEN_RIBBON := "Top 10 ribbon"
+## How each earned item is earned (content/cosmetics/ "earn"), under a picked one in the Wardrobe.
+const COSMETIC_GOLD_LEAF_EARN := "Hold first place on any chapter board, together."
+const COSMETIC_EVERY_HARD_EARN := "Clear every chapter on Hard, together."
+const COSMETIC_TOP_TEN_RIBBON_EARN := "Finish in a chapter board's top 10, together."
 
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
@@ -253,7 +257,6 @@ const WARDROBE_TAKE_OFF := "Take off"
 const WARDROBE_WEARING := "Wearing"
 const WARDROBE_OWNED_TAG := "Yours"
 const WARDROBE_LOCKED := "Opens in the shop after you clear %s."
-const WARDROBE_EARNED := "Earned by playing. Never for sale."
 const WARDROBE_SET := "%s set"
 const WARDROBE_SET_PRICE := "The pieces you're missing, together: %s Pollen"
 const WARDROBE_NOTHING_OWNED := "Things you buy or earn show here."

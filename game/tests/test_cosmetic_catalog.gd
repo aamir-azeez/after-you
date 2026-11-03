@@ -55,6 +55,9 @@ func _descriptors() -> void:
 		if not art.is_empty(): _check(load(art).has_method("wear"), "%s's art has wear()" % id)
 		_check(data.released is bool and data.tall is bool and data.unlock is String and (data.leaf_lift is float or data.leaf_lift is int), "%s's optional fields have their types" % id)
 		_check(data.unlock == "" or data.unlock in level_ids, "%s unlocks after a registered level: %s" % [id, data.unlock])
+		if data.tier == Catalog.EARNED:
+			_check(data.earn is String and not str(data.earn).is_empty() and data.earn in names and not str(data.earn).contains("-") and not str(data.earn).contains("—") and Catalog.earn(id) == data.earn, "%s (earned) says how it is earned, a PlayerCopy line with no dashes" % id)
+		else: _check(str(data.earn).is_empty() and Catalog.earn(id).is_empty(), "%s (sold) has no earn line" % id)
 		_check(data.is_read_only(), "%s's descriptor is read only" % id)
 	_check(Index.data("nothing").is_empty() and not Catalog.has("nothing"), "An unknown id has no descriptor")
 	_check(Index.SLOTS == ["hat", "body", "leaf"], "The slots are the hat, the body and the leaf")

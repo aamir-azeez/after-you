@@ -15,7 +15,9 @@ extends SceneTree
 ## - the page offline: it opens over a saved wardrobe only, wears and takes
 ##   off, says it is offline, keeps All items browsable with Buy greyed and a
 ##   line saying why, and reads again and enables Buy once back online;
-## - with the server's shop off, owned items stay wearable offline.
+## - with the server's shop off, owned items stay wearable offline;
+## - earned items the saved catalogue offers show offline on All items, locked,
+##   saying how they are earned, and nothing is sent.
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -117,6 +119,7 @@ func _run() -> void:
 	await _no_buying_offline()
 	await _page()
 	await _page_shop_off()
+	await _page_earned()
 	await _retry_soon()
 	Catalog.set_offered([])
 	Connectivity.use_shared(null)
@@ -401,6 +404,28 @@ func _page_shop_off() -> void:
 	t.flow.select("daisy")
 	await t.flow.act("daisy")
 	_check(t.store.effective_look(SERVER, ME).get("hat") == "daisy" and t.fake.sent.is_empty(), "Shop off: owned items are still wearable offline")
+	t.host.queue_free()
+	await _frames(2)
+
+func _page_earned() -> void:
+	var state: RefCounted = Connectivity.new()
+	Connectivity.use_shared(state)
+	state.force(false)
+	var t := _setup_page(state, false)
+	var data := wallet(["daisy"], {}, 5)
+	data.wardrobe.offered = SOLD + ["gold_leaf", "every_hard", "top_ten_ribbon"]
+	t.store.note_view(SERVER, ME, data)
+	t.flow.client.wallet.note_wallet(SERVER, ME, data)
+	t.flow.show_wardrobe()
+	await _frames()
+	t.flow.set_kind("leaf")
+	var page: Node = t.host.overlay
+	_check(t.flow.model().tab == "all" and page.find_child("WardrobeCard_every_hard", true, false) != null and page.find_child("WardrobeCard_gold_leaf", true, false) != null, "Offline: the earned items show from the saved catalogue")
+	t.flow.select("every_hard")
+	var note: Label = page.find_child("WardrobeItemNote", true, false)
+	_check(note.visible and note.text == Catalog.earn("every_hard") and not (page.find_child("WardrobeAction", true, false) as Control).visible, "Offline: an earned item says how it is earned, with no button")
+	await t.flow.act("every_hard")
+	_check(t.fake.sent.is_empty() and t.host.ui.get_child_count() == 0 and t.host.toasts.is_empty(), "Offline: tapping an earned item sends nothing and says nothing")
 	t.host.queue_free()
 	await _frames(2)
 

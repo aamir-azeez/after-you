@@ -22,8 +22,14 @@ extends Node
 ## needs POLLEN_WARDROBE, the shop POLLEN_SHOP too. Without the shop (a build
 ## that sells nothing, as iOS without a store, or a server with the shop off)
 ## the Wardrobe only wears what the player owns, earned items and item bloom
-## drops, with the balance: no All items tab, no shelf of the week, no price
-## and no Buy.
+## drops, with the balance: no shelf of the week, no price and no Buy. Its All
+## items tab shows only while an earned item the player does not own is
+## offered, and it opens on Owned.
+## Earned items (catalogue tier "earned") show in All items once the server
+## offers them, owned or not, so players know they exist: never sold, never on
+## the shelf, never counted as something to buy (Get more, the short card).
+## Picking one the player does not own puts it on the big pip and says how it
+## is earned (services/cosmetic_catalog.gd earn).
 ## While bundles sell too (the server's POLLEN_BUNDLES and a build that sells
 ## them, services/pollen_surfaces.gd bundles_visible), the balance chip's + asks
 ## the host to open the Pollen store (store_requested), and the short card
@@ -140,7 +146,7 @@ func show_wardrobe(from: String = "settings") -> void:
 	host.overlay.add_child(_page)
 	_gate = BusyTapGate.new(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
-	_tab = _allowed_tab("all")
+	_tab = "all" if shop() else "owned"
 	_selected = ""
 	_kind = ""
 	_view_mode = "you"
@@ -191,7 +197,7 @@ func refresh() -> void:
 	_redraw()
 
 func set_tab(tab: String) -> void:
-	_tab = _allowed_tab(tab)
+	_tab = _allowed_tab(tab if tab in ["all", "owned"] else "all", bool(model().all_items))
 	_kind = ""
 	_redraw()
 
@@ -226,10 +232,10 @@ func tap_action(id: String) -> void:
 	if not is_open() or _gate == null: return
 	_gate.tap(_page.action_button, "", func() -> bool: return not _client().busy(), func() -> void: await act(id), func() -> bool: return is_open() and (_selected == id or _selected.is_empty()))
 
-## Without the shop there is only Owned.
-func _allowed_tab(tab: String) -> String:
-	if not shop(): return "owned"
-	return tab if tab in ["all", "owned"] else "all"
+## The tab shown for the one asked for: Owned while All items does not show
+## (`all_items`: the shop, or an earned item listed and not owned).
+static func _allowed_tab(tab: String, all_items: bool) -> String:
+	return "all" if tab == "all" and all_items else "owned"
 
 func select(id: String) -> void:
 	_selected = id if Catalog.has(id) else ""
@@ -334,27 +340,32 @@ func model() -> Dictionary:
 	var look := _look()
 	var unlocked: Array = view.get("unlocked", [])
 	var prices: Dictionary = view.get("prices", {})
+	var offered: Array = view.get("offered", [])
 	var items: Array = []
 	var by_tier := {}
 	for id: String in Catalog.ids():
 		var mine := id in owned
-		# The server's catalogue decides what shows: what it sells, and anything owned (earned items too).
-		var sold: bool = selling and Catalog.sold(id) and id in view.get("offered", [])
-		if not mine and not sold: continue
+		# The server's catalogue decides what shows: what it sells, anything owned, and every earned item it offers.
+		var sold: bool = selling and Catalog.sold(id) and id in offered
+		var earned: bool = Catalog.tier(id) == Catalog.EARNED and id in offered
+		if not mine and not sold and not earned: continue
 		if Catalog.slot(id).is_empty(): continue
 		var unlock := Catalog.unlock(id)
 		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": int(prices.get(id, Catalog.price(id))) if selling else 0,
 			"owned": mine, "worn": look.get(Catalog.slot(id)) == id, "sold": sold, "locked": not mine and not unlock.is_empty() and not id in unlocked,
-			"unlock_name": _chapter_name(unlock)}
+			"unlock_name": _chapter_name(unlock), "earn": Catalog.earn(id)}
 		items.append(entry)
 		if sold: (by_tier.get_or_add(entry.tier, []) as Array).append(id)
 	var featured: Array = FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier).map(func(slot: Dictionary) -> String: return slot.id) if selling else []
-	var tab := _allowed_tab(_tab)
+	# All items shows with the shop, and without it while an earned item is listed and not owned.
+	var all_items: bool = selling or items.any(func(entry: Dictionary) -> bool: return entry.tier == Catalog.EARNED and not bool(entry.owned))
+	var tab := _allowed_tab(_tab, all_items)
 	# The slot chips list only slots with something in this tab; a chip with nothing left falls back to the first.
 	var kinds: Array = []
 	for slot: String in Catalog.slots():
 		if items.any(func(entry: Dictionary) -> bool: return entry.slot == slot and (tab == "all" or bool(entry.owned))): kinds.append(slot)
-	var selected := _selected if not _entry_in(items, _selected).is_empty() else _default_pick(items, look, featured)
+	var listed: Array = items.filter(func(entry: Dictionary) -> bool: return tab == "all" or bool(entry.owned))
+	var selected := _selected if not _entry_in(listed, _selected).is_empty() else _default_pick(listed, look, featured if tab == "all" else [])
 	var picked := _entry_in(items, selected)
 	# With no chip picked, the chip of the picked item's slot, so its card is on screen.
 	var kind: String = _kind if _kind in kinds else (str(picked.slot) if not picked.is_empty() and picked.slot in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
@@ -363,12 +374,12 @@ func model() -> Dictionary:
 	# Owned ends with Get more on every slot while the shop has anything the player does not own (show_more picks where it leads).
 	var more := selling and tab == "owned" and not _buyable_slots(items).is_empty()
 	var offline: bool = not _client().online()
-	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "status": _status, "retry": _retry, "shop": selling, "bundles": bundles() and not offline, "tab": tab, "kind": kind, "kinds": kinds,
+	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "status": _status, "retry": _retry, "shop": selling, "all_items": all_items, "bundles": bundles() and not offline, "tab": tab, "kind": kind, "kinds": kinds,
 		"buy_offline": selling and offline, "note": PlayerCopy.WARDROBE_OFFLINE_NOTE if offline and not view.is_empty() else "",
 		"more": more, "selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}
 
 ## The item picked while the player has picked none: what they wear, else the
-## shelf's top slot, else the first item listed.
+## shelf's top slot, else the first item the tab lists (`items`).
 static func _default_pick(items: Array, look: Dictionary, featured: Array) -> String:
 	for slot: String in Catalog.slots():
 		if look.has(slot) and not _entry_in(items, str(look[slot])).is_empty(): return str(look[slot])

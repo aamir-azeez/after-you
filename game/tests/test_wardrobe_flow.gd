@@ -19,10 +19,15 @@ extends SceneTree
 ## - the balance chip's + shows only while bundles sell; its balance asks for the Pollen page;
 ## - the pip switch draws your pip in mint "as your friend sees you";
 ## - an earned item has the Earned frame and a Not for sale chip;
+## - All items lists every earned item the server offers, owned or not, on its
+##   slot chip: one not owned has the lock, no price and no Buy, picking it puts
+##   it on the big pip and says how it is earned, and it is never on the shelf,
+##   never bought, never behind Get more or the short card; one owned says Yours;
 ## - Wear and Take off send the whole look; Back asks the host to leave and
 ##   remembers where the Wardrobe was opened from;
 ## - a build without the shop (iOS selling nothing) and a server with the shop
-##   off show the same frame with only Owned: no price, no Buy, no shelf, no +;
+##   off show the same frame on Owned: no price, no Buy, no shelf, no +, and All
+##   items only while an earned item not owned is offered, with no sale wording;
 ## - an empty list shows the one hanger drawing (presentation/empty_state.gd)
 ##   with its case's line: nothing owned, nothing in the shop, or the shop off;
 ##   never while loading or offline, made once and still on idle frames;
@@ -42,6 +47,7 @@ const Page = preload("res://presentation/wardrobe_page.gd")
 const Sheets = preload("res://presentation/wardrobe_sheets.gd")
 const Bundles = preload("res://services/pollen_bundles.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -174,6 +180,8 @@ func _run() -> void:
 	await _server_shop_off()
 	await _empty_lists()
 	await _get_more()
+	await _earned_in_shop()
+	await _earned_without_shop()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -201,7 +209,7 @@ func _buying() -> void:
 	_check(t.host.mode == Flow.MODE_WARDROBE and t.flow.is_open() and t.flow.return_to == "settings", "The page opens, from Settings by default")
 	await _frames()
 	var model: Dictionary = t.flow.model()
-	_check(model.balance == 24000 and model.items.size() == 6 and t.fake.sent.size() == 1 and t.fake.sent[0].path == "/v1/pollen", "It reads the wardrobe and lists the six items the server sells")
+	_check(model.balance == 24000 and model.items.size() == 9 and model.items.filter(func(entry: Dictionary) -> bool: return entry.sold).size() == 6 and t.fake.sent.size() == 1 and t.fake.sent[0].path == "/v1/pollen", "It reads the wardrobe and lists the six items the server sells, and the three earned ones")
 	_check(model.featured.size() == 4 and model.featured[3] == "lighthouse_lamp", "Week 3's shelf: the Commons, the Uncommon and the Special in the top slot")
 	_check(model.selected == "lighthouse_lamp", "With nothing picked, the shelf's top slot is on the big pip")
 	_check(t.host.overlay.find_child("WardrobeCard_daisy", true, false) != null and t.host.overlay.find_child("WardrobeShelfCard_lighthouse_lamp", true, false) != null, "The items and the shelf are drawn")
@@ -441,14 +449,15 @@ func _owned_only() -> void:
 		var all_tab: Control = page.find_child("WardrobeTab_all", true, false)
 		_check(t.flow.available() and "3,000" in _texts(page.find_child("WardrobeBalance", true, false)), "%s: the Wardrobe opens with the balance" % _build(sells))
 		if sells:
-			_check(model.shop and model.tab == "all" and model.items.size() == 6 and all_tab.visible and shelf.visible and _plus_shown(page), "Selling: the tabs, the shelf, every item and the chip's +")
+			_check(model.shop and model.tab == "all" and model.items.size() == 9 and all_tab.visible and shelf.visible and _plus_shown(page), "Selling: the tabs, the shelf, every item and the chip's +")
 			_check(t.flow._error_line("not_owned") == PlayerCopy.WARDROBE_ERRORS.not_owned, "Selling: refusals keep their words")
 		else:
-			_check(not model.shop and not model.bundles and model.tab == "owned" and model.featured.is_empty() and model.items.map(func(entry: Dictionary) -> String: return entry.id) == ["daisy"], "Selling nothing: only the owned item, no shelf, no bundles")
-			_check(not all_tab.visible and (page.find_child("WardrobeTab_owned", true, false) as Control).visible and not shelf.visible and page.find_child("WardrobeCard_tide", true, false) == null and not _plus_shown(page), "Selling nothing: Owned alone, no shelf, no item on sale, no +")
+			_check(not model.shop and not model.bundles and model.tab == "owned" and model.featured.is_empty() and model.items.map(func(entry: Dictionary) -> String: return entry.id) == ["daisy", "gold_leaf", "every_hard", "top_ten_ribbon"], "Selling nothing: the owned item and the earned ones, no shelf, no bundles")
+			_check(all_tab.visible and (page.find_child("WardrobeTab_owned", true, false) as Control).visible and not shelf.visible and page.find_child("WardrobeCard_tide", true, false) == null and not _plus_shown(page), "Selling nothing: Owned first with All items for the earned ones, no shelf, no item on sale, no +")
 			_check(not _texts(page).any(func(text: String) -> bool: return text.contains("$") or text.contains("Buy") or text.contains("sale") or text.contains("about") or text == PlayerCopy.WARDROBE_STAYS), "Selling nothing: no price anywhere: " + str(_texts(page)))
 			t.flow.set_tab("all")
-			_check(t.flow.model().tab == "owned", "Selling nothing: All items cannot be chosen")
+			_check(t.flow.model().tab == "all" and page.find_child("WardrobeCard_tide", true, false) == null and not _texts(page).any(func(text: String) -> bool: return text.contains("Buy") or text.contains("sale")), "Selling nothing: All items holds no item on sale and no sale wording")
+			t.flow.set_tab("owned")
 			var sent: int = t.fake.sent.size()
 			await t.flow.act("tide")
 			t.flow.confirm_buy("tide", 20000)
@@ -648,3 +657,114 @@ static func _texts(node: Node) -> Array:
 	if (node is Label or node is Button) and not str(node.text).is_empty(): out.append(node.text)
 	for child: Node in node.get_children(): out.append_array(_texts(child))
 	return out
+
+## Earned items in All items on the build that sells: every one the server
+## offers, on its slot chip, locked with no price; picking one tries it on and
+## says how it is earned; nothing buys it, features it or counts it as more to buy.
+func _earned_in_shop() -> void:
+	var earned := ["gold_leaf", "every_hard", "top_ten_ribbon"]
+	var t := _setup()
+	t.store.note_view(SERVER, ME, _answer(["daisy"], {}, 100).data)
+	t.wallet.note_wallet(SERVER, ME, _answer([], {}, 100).data)
+	t.fake.replies = [_answer(["daisy"], {}, 100)]
+	t.flow.show_wardrobe()
+	await _frames()
+	var page: Node = t.host.overlay
+	var model: Dictionary = t.flow.model()
+	var rows: Array = model.items.filter(func(entry: Dictionary) -> bool: return entry.id in earned)
+	_check(model.tab == "all" and rows.size() == 3 and rows.all(func(entry: Dictionary) -> bool: return not entry.owned and not entry.sold and int(entry.price) == 0 and not entry.locked and entry.tier == "earned"), "Earned in the shop: all three listed, not owned, not sold, no price")
+	_check(rows.all(func(entry: Dictionary) -> bool: return entry.earn == Catalog.earn(entry.id) and not str(entry.earn).is_empty()), "Earned in the shop: each row carries how it is earned")
+	for kind: Array in [["leaf", ["gold_leaf", "every_hard"]], ["hat", ["top_ten_ribbon"]]]:
+		t.flow.set_kind(kind[0])
+		for id: String in kind[1]:
+			var card: Button = page.find_child("WardrobeCard_" + id, true, false)
+			_check(card != null and card.find_child("WardrobeNotForSale", true, false) != null and card.find_child("PollenMark", true, false) == null and card.find_child("WardrobeTag", true, false) == null and _texts(card).has(TierFrame.word("earned")), "Earned in the shop: %s on the %s chip with the Earned word and lock, no price, no Yours: %s" % [id, kind[0], _texts(card)])
+	_check(t.flow.model().kinds == ["hat", "body", "leaf"], "Earned in the shop: the Leaf chip shows for the earned leaves")
+	var weeks_clean := true
+	for week: int in range(0, 60):
+		t.flow.week = week
+		if (t.flow.model().featured as Array).any(func(id: String) -> bool: return id in earned): weeks_clean = false
+	t.flow.week = 3
+	_check(weeks_clean, "Earned in the shop: never on the Featured shelf, any week")
+	for id: String in earned:
+		t.flow.select(id)
+		var action: Control = page.find_child("WardrobeAction", true, false)
+		var note: Label = page.find_child("WardrobeItemNote", true, false)
+		_check(not action.visible and note.visible and note.text == Catalog.earn(id) and (page.find_child("WardrobeItemName", true, false) as Label).text == Catalog.display_name(id), "Earned in the shop: picking %s shows its name and how it is earned, with no button: %s" % [id, note.text])
+		_check(t.flow.model().preview.get(Catalog.slot(id), "") == id, "Earned in the shop: picking %s tries it on the big pip" % id)
+	_check(PlayerCopy.COSMETIC_GOLD_LEAF_EARN == "Hold first place on any chapter board, together." and PlayerCopy.COSMETIC_EVERY_HARD_EARN == "Clear every chapter on Hard, together." and PlayerCopy.COSMETIC_TOP_TEN_RIBBON_EARN == "Finish in a chapter board's top 10, together.", "Earned in the shop: the three lines")
+	t.flow.select("top_ten_ribbon")
+	t.flow.set_tab("owned")
+	var owned_model: Dictionary = t.flow.model()
+	_check(owned_model.selected == "daisy" and not owned_model.preview.has("leaf") and owned_model.preview.get("hat", "") == "daisy" and not (page.find_child("WardrobeItemNote", true, false) as Control).visible, "Earned in the shop: on Owned an earned item picked on All items gives way to what is owned: %s" % [owned_model.selected])
+	t.flow.set_tab("all")
+	_check(t.flow.model().selected == "top_ten_ribbon", "Earned in the shop: back on All items it is picked again")
+	var sent: int = t.fake.sent.size()
+	await t.flow.act("every_hard")
+	await _frames()
+	_check(t.fake.sent.size() == sent and t.host.ui.get_child_count() == 0, "Earned in the shop: nothing is sent and no card opens, not even the short card on a low balance")
+	t.flow.set_tab("owned")
+	_check(not t.flow.model().items.any(func(entry: Dictionary) -> bool: return entry.id in earned and entry.owned) and page.find_child("WardrobeCard_gold_leaf", true, false) == null, "Earned in the shop: Owned lists none of them")
+	t.store.note_view(SERVER, ME, _answer(SOLD + ["gold_leaf"], {}, 100).data)
+	t.flow._redraw()
+	_check(not t.flow.model().more and page.find_child("WardrobeGetMore", true, false) == null and Flow._buyable_slots(t.flow.model().items).is_empty(), "Earned in the shop: with everything on sale owned, the earned ones left never bring Get more")
+	t.flow.set_tab("all")
+	t.flow.set_kind("leaf")
+	var mine: Button = page.find_child("WardrobeCard_gold_leaf", true, false)
+	_check(mine != null and PlayerCopy.WARDROBE_OWNED_TAG in _texts(mine) and mine.find_child("WardrobeNotForSale", true, false) != null, "Earned in the shop: an owned one still says Yours: %s" % [_texts(mine)])
+	t.flow.select("gold_leaf")
+	_check(_texts(page.find_child("WardrobeAction", true, false)) == [PlayerCopy.WARDROBE_WEAR] and not (page.find_child("WardrobeItemNote", true, false) as Control).visible, "Earned in the shop: an owned one offers Wear")
+	t.host.queue_free()
+	await _frames(2)
+
+## Without the shop (the build that sells nothing, and the server's shop off):
+## an earned item not owned shows on All items, which opens beside Owned, with
+## its lock and word and no sale wording; with every earned item owned, Owned is alone.
+func _earned_without_shop() -> void:
+	for sells: bool in [true, false]:
+		var t := _setup(false)
+		t.store.set_enabled(SERVER, ME, true, false, true)
+		t.wallet.set_enabled(SERVER, ME, true)
+		t.flow.surfaces = PollenSurfaces.new(sells, sells)
+		var label := "%s, shop off" % _build(sells)
+		var answer := _answer(["gold_leaf"], {"leaf": "gold_leaf"}, 3000)
+		t.store.note_view(SERVER, ME, answer.data)
+		t.wallet.note_wallet(SERVER, ME, answer.data)
+		t.fake.replies = [answer]
+		t.flow.show_wardrobe()
+		await _frames()
+		var page: Node = t.host.overlay
+		var model: Dictionary = t.flow.model()
+		_check(not model.shop and model.all_items and model.tab == "owned" and (page.find_child("WardrobeTab_all", true, false) as Control).visible and not (page.find_child("WardrobeStays", true, false) as Control).visible, label + ": opens on Owned, with All items beside it")
+		t.flow.set_tab("all")
+		model = t.flow.model()
+		var ids: Array = model.items.map(func(entry: Dictionary) -> String: return entry.id)
+		_check(model.tab == "all" and model.kinds == ["hat", "leaf"] and ids == ["gold_leaf", "every_hard", "top_ten_ribbon"] and page.find_child("WardrobeCard_every_hard", true, false) != null, label + ": All items lists the earned items and nothing on sale: " + str(ids))
+		t.flow.set_kind("hat")
+		var ribbon: Node = page.find_child("WardrobeCard_top_ten_ribbon", true, false)
+		_check(ribbon != null and ribbon.find_child("WardrobeNotForSale", true, false) == null and _texts(ribbon).has(TierFrame.word("earned")) and ribbon.find_child("TierMark", true, false) != null, label + ": an earned card keeps its word and lock mark, with no Not for sale chip")
+		t.flow.select("top_ten_ribbon")
+		var note: Label = page.find_child("WardrobeItemNote", true, false)
+		_check(note.visible and note.text == Catalog.earn("top_ten_ribbon") and not (page.find_child("WardrobeAction", true, false) as Control).visible, label + ": picking one says how it is earned, with no button")
+		_check(not _texts(page).any(func(text: String) -> bool: return text.contains("$") or text.contains("Buy") or text.contains("sale") or text.contains("about")), label + ": no sale wording: " + str(_texts(page)))
+		var sent: int = t.fake.sent.size()
+		await t.flow.act("top_ten_ribbon")
+		_check(t.fake.sent.size() == sent and t.host.ui.get_child_count() == 0, label + ": nothing is sent")
+		var all_owned := _answer(["gold_leaf", "every_hard", "top_ten_ribbon"], {}, 3000)
+		t.store.note_view(SERVER, ME, all_owned.data)
+		t.flow._redraw()
+		_check(not t.flow.model().all_items and t.flow.model().tab == "owned" and not (page.find_child("WardrobeTab_all", true, false) as Control).visible, label + ": every earned item owned: Owned alone")
+		t.host.queue_free()
+		await _frames(2)
+		var bare := _setup(false)
+		bare.store.set_enabled(SERVER, ME, true, false, true)
+		bare.wallet.set_enabled(SERVER, ME, true)
+		bare.flow.surfaces = PollenSurfaces.new(sells, sells)
+		bare.store.note_view(SERVER, ME, _answer([], {}, 3000).data)
+		bare.fake.replies = [_answer([], {}, 3000)]
+		bare.flow.show_wardrobe()
+		await _frames()
+		var empty_model: Dictionary = bare.flow.model()
+		_check(empty_model.tab == "owned" and str(empty_model.selected).is_empty() and (empty_model.preview as Dictionary).is_empty() and PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(bare.host.overlay), label + ": nothing owned opens on the empty Owned with nothing picked or tried on")
+		bare.host.queue_free()
+		await _frames(2)

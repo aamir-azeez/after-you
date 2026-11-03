@@ -12,7 +12,9 @@ extends Control
 ##   chips (Hat, Body, Leaf: only slots that have something to show), and the
 ##   item cards in their tier frames (kit/tier_frame.gd) with the tier mark and
 ##   word, and the price with its grain, or Yours and Wearing.
-##   An earned item has the Earned frame and a "Not for sale" lock chip.
+##   An earned item has the Earned frame and a "Not for sale" lock chip. All
+##   items lists every earned item the server offers, owned or not: one not
+##   owned has no price and no Buy, and picking it says how it is earned.
 ##   While the shop has anything the player does not own, every slot of Owned
 ##   ends with a "Get more" card, an item card's size: the empty Wardrobe's bare
 ##   hanger in a dashed card (presentation/empty_state_art.gd, drawn once, no
@@ -20,12 +22,15 @@ extends Control
 ## Every item stays in the shop: nothing here counts down, runs out or leaves.
 ##
 ## Without the shop (a build that sells nothing, as iOS, or a server with
-## POLLEN_SHOP off) the same frame shows only the Owned tab and what the player
-## owns: no price, no Buy, no shelf, no + and no sale wording.
+## POLLEN_SHOP off) the same frame shows the Owned tab and what the player
+## owns: no price, no Buy, no shelf, no + and no sale wording. All items shows
+## too while an earned item the player does not own is offered (model
+## all_items); its card keeps the Earned frame and word with their lock mark.
 ##
 ## A view only. presentation/wardrobe_flow.gd builds the model and answers the
 ## signals; render(model) redraws from it. The model:
-##   balance (int, -1 while unknown), status, retry, shop (bool), bundles (bool:
+##   balance (int, -1 while unknown), status, retry, shop (bool), all_items
+##   (bool: the All items tab shows; the shop's value when left out), bundles (bool:
 ##   the chip's +), tab ("all" or "owned"), kind (the slot chip picked), kinds
 ##   (slots that have something in this tab), selected (id or ""), view ("you"
 ##   or "friend"), preview (the look the big pip wears), featured (ids), and
@@ -33,7 +38,7 @@ extends Control
 ##   line saying it needs a connection), note (a line shown while no status is:
 ##   the offline note), items: Array of {id, name, tier,
 ##   slot, price, owned, worn, locked,
-##   unlock_name, sold}, in shop order.
+##   unlock_name, sold, earn (how an earned item is earned, else "")}, in shop order.
 ## Cards draw still pips (kit/pip_avatar.gd still mode), so a long list shares
 ## the one offscreen renderer; only the big pip is live, and it is made again
 ## only when the switch changes its colour.
@@ -327,7 +332,7 @@ func render(model: Dictionary) -> void:
 	_retry.visible = bool(model.get("retry", false))
 	var shop := bool(model.get("shop", PollenSurfaces.shared().shop_visible()))
 	var tab := str(model.get("tab", "all"))
-	_tabs.all.visible = shop
+	_tabs.all.visible = bool(model.get("all_items", shop))
 	_stays.visible = shop
 	for key: String in _tabs:
 		if key == tab: _pill(_tabs[key], true)
@@ -405,7 +410,7 @@ func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false) ->
 		label = PlayerCopy.WARDROBE_TAKE_OFF if bool(entry.worn) else PlayerCopy.WARDROBE_WEAR
 	elif not bool(entry.sold) or not shop:
 		action_button.visible = false
-		if entry.tier == "earned" and shop: _set_note(PlayerCopy.WARDROBE_EARNED)
+		if entry.tier == "earned" and not str(entry.get("earn", "")).is_empty(): _set_note(str(entry.earn))
 	elif bool(entry.locked):
 		action_button.disabled = true
 		_set_note(PlayerCopy.WARDROBE_LOCKED % str(entry.unlock_name))

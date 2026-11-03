@@ -6,6 +6,7 @@ const DATA := {
 	"slot": "hat",
 	"tier": "earned",
 	"name": PlayerCopy.COSMETIC_TOP_TEN_RIBBON,
+	"earn": PlayerCopy.COSMETIC_TOP_TEN_RIBBON_EARN,
 	"art": "res://presentation/pip_wear/top_ten_ribbon.gd",
 	## The views pull back so the whole rosette shows.
 	"tall": true,
