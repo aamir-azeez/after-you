@@ -30,6 +30,10 @@ const VIEW_KEEP_MS := 60_000
 const CHOICE_PATH := "user://leaderboard-name.json"
 const MAX_ROWS := 10
 const MAX_CHECKING := 64
+## Nodes in this group hear `leaderboard_changed(owner)` after a board read from the server and
+## after the name choice changes (services/platform_games/platform_games.gd posts chapter times
+## then). The engine's own group call, so this client needs nothing from them.
+const LISTENERS := "leaderboard_listeners"
 
 var _api: Node
 var _owner: String
@@ -62,6 +66,7 @@ func board(key: String, fresh: bool = false) -> Dictionary:
 	_views[key] = {"at": Time.get_ticks_msec(), "view": view}
 	Placings.shared().learn(_owner, key, view)
 	Runs.clear_listed(_owner, key, view)
+	_tell_listeners()
 	return {"ok": true, "view": view}
 
 ## The board this client last read from the server, however old, or {} (no request).
@@ -83,7 +88,24 @@ func set_show_name(show: bool) -> bool:
 	_choice = {"show": show, "pending": true, "synced": bool(_choice.get("synced", false))}
 	var kept := _write_choice()
 	sync()
+	_tell_listeners()
 	return kept
+
+## The boards the shared client of `owner` last read, however old, or {} (no request, and no
+## client made: making one here would drop the boards another screen's client keeps).
+static func kept_for(owner: String) -> Dictionary:
+	return _shared.kept_views() if _shared != null and not owner.is_empty() and _shared._owner == owner else {}
+
+## Whether `owner` chose to show their name: the shared client's copy, else the phone's file.
+static func name_shown(owner: String, choice_path: String = CHOICE_PATH) -> bool:
+	if owner.is_empty(): return false
+	if _shared != null and _shared._owner == owner and _shared._choice_path == choice_path: return _shared.show_name()
+	var mine: Variant = _read_choices_at(choice_path).get(owner)
+	return mine is Dictionary and mine.get("show") == true
+
+func _tell_listeners() -> void:
+	var tree: SceneTree = _api.get_tree() if is_instance_valid(_api) and _api.is_inside_tree() else null
+	if tree != null and not _owner.is_empty(): tree.call_group(LISTENERS, "leaderboard_changed", _owner)
 
 ## Sends a pending choice, or reads the server's when this install never has.
 func sync() -> void:

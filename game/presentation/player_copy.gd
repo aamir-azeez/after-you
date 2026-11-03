@@ -936,6 +936,8 @@ const SETTINGS_LICENSES := "Licenses"
 # (presentation/platform_games_flow.gd, services/platform_games/platform_games.gd).
 const PLATFORM_GAMES_PLAY_GAMES := "Play Games"
 const PLATFORM_GAMES_GAME_CENTER := "Game Center"
+## The leaderboard screen's button to the chapter's Play Games board (presentation/platform_board_button.gd): Google's name for it in game text.
+const PLATFORM_BOARD_PLAY_GAMES := "Google Play Games"
 ## The saved games slot's description in the platform's own list.
 const PLATFORM_GAMES_SAVE_DESCRIPTION := "After You progress"
 const PLATFORM_GAMES_UNAVAILABLE := "Not available on this phone."

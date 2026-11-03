@@ -29,6 +29,17 @@ class PlayGamesPolicyTest {
         assertFalse(key.contains("12345678901234567890"))
     }
 
+    @Test fun leaderboardPostsTakeOnlyPlayConsoleIdsAndBoundedTimes() {
+        assertTrue(PlayGamesPolicy.validLeaderboardId("CgkIsyntheticEAIQAQ"))
+        assertFalse(PlayGamesPolicy.validLeaderboardId(""))
+        assertFalse(PlayGamesPolicy.validLeaderboardId("afteryou.first_steps.v1"))
+        assertFalse(PlayGamesPolicy.validLeaderboardId("CgkI synthetic"))
+        assertTrue(PlayGamesPolicy.validScore(222_030L))
+        assertFalse(PlayGamesPolicy.validScore(0L))
+        assertFalse(PlayGamesPolicy.validScore(-10L))
+        assertFalse(PlayGamesPolicy.validScore(PlayGamesPolicy.MAX_SCORE + 1))
+    }
+
     @Test fun sdkStatusCodesBecomeTheGamesFewCodes() {
         assertEquals("signed_out", PlayGamesPolicy.errorCode(4))
         assertEquals("offline", PlayGamesPolicy.errorCode(7))

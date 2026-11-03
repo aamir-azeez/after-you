@@ -159,6 +159,8 @@ int main(void) {
 		// Game Center: the same request shapes as Android's PlayGamesPolicy, and a one-way key.
 		check([[AYGamesPolicy playerKey:@"T:_synthetic_team_player"] isEqualToString:@"d814ecfc33e4de3163fcacc697464f16a476e0fa6c17ceab191a280c45ed5f51"], @"The Game Center player key is SHA-256 of the prefixed team player id");
 		check(![[AYGamesPolicy playerKey:@"T:_a"] isEqualToString:[AYGamesPolicy playerKey:@"T:_b"]], @"Different players get different keys");
+		check([AYGamesPolicy validLeaderboardId:@"afteryou.first_steps.v1"] && ![AYGamesPolicy validLeaderboardId:@""] && ![AYGamesPolicy validLeaderboardId:@"first-steps@1"] && ![AYGamesPolicy validLeaderboardId:repeat(@"a", 101)], @"Leaderboard ids are Game Center ids only");
+		check([AYGamesPolicy validScore:22203] && ![AYGamesPolicy validScore:0] && ![AYGamesPolicy validScore:-5] && ![AYGamesPolicy validScore:8640001], @"Scores are hundredths above 0 and at most a day");
 		check([AYGamesPolicy validSnapshotName:@"after-you-progress"] && ![AYGamesPolicy validSnapshotName:@"../x"] && ![AYGamesPolicy validSnapshotName:repeat(@"a", 65)], @"Saved game names are bounded");
 		NSString *handle = [AYGamesPolicy newHandle];
 		check([AYGamesPolicy validHandle:handle] && ![handle isEqualToString:[AYGamesPolicy newHandle]] && ![AYGamesPolicy validHandle:@"zz"], @"Slot handles are random 32-hex strings");

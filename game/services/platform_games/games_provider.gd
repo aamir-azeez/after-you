@@ -62,10 +62,17 @@ func snapshot_resolve(_handle: String, _data: PackedByteArray) -> Dictionary:
 func snapshot_discard(_handle: String) -> Dictionary:
 	return {"ok": false, "code": "unavailable"}
 
-## Achievements and leaderboards: the interface is ready, but After You defines, unlocks and
-## shows none yet (owner decision). Every provider answers not_enabled until that changes.
+## Achievements: the interface is ready, but After You defines and unlocks none yet (owner
+## decision). Every provider answers not_enabled until that changes.
 func unlock_achievement(_id: String) -> Dictionary:
 	return {"ok": false, "code": "not_enabled"}
 
+## A chapter time on one platform leaderboard (`board` is the platform's own id): {"ok"} or a
+## code. `score` is milliseconds on Play Games and hundredths on Game Center
+## (platform_boards.gd score). The platforms keep each player's best themselves.
 func submit_score(_board: String, _score: int) -> Dictionary:
+	return {"ok": false, "code": "not_enabled"}
+
+## The platform's own screen of one leaderboard, all time: {"ok"} once it is on screen, or a code.
+func show_board(_board: String) -> Dictionary:
 	return {"ok": false, "code": "not_enabled"}

@@ -11,6 +11,10 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSUInteger)maxSnapshotBytes;
 + (BOOL)validSnapshotName:(NSString *)name;
 + (BOOL)validHandle:(NSString *)handle;
+/// A Game Center leaderboard id ("afteryou.first_steps.v1"): letters, digits, dots and underscores, 1 to 100.
++ (BOOL)validLeaderboardId:(NSString *)board;
+/// A chapter time in hundredths of a second, above 0 and at most a day.
++ (BOOL)validScore:(int64_t)score;
 + (BOOL)validDescription:(NSString *)description;
 /// Decoded slot bytes, or nil when the text is too long or not base64. "" is an empty slot.
 + (nullable NSData *)decodeSnapshot:(NSString *)base64;

@@ -11,7 +11,8 @@ var _api: Node
 func _init(api: Node) -> void:
 	_api = api
 
-## What this server offers, read with the opt-in header: {"ok", "play_games", "web_client_id", "game_center"}.
+## What this server offers, read with the opt-in header: {"ok", "play_games", "web_client_id", "game_center", "boards"}.
+## `boards`: chapter times go to the platform leaderboards (PLATFORM_BOARDS, platform_boards.gd).
 func capability() -> Dictionary:
 	if _api == null: return {"ok": false, "code": "unavailable"}
 	var response: Dictionary = await _api.request_json_with_headers(HTTPClient.METHOD_GET, "/v2/capabilities", {}, PackedStringArray([CAPABILITY_HEADER]))
@@ -19,7 +20,8 @@ func capability() -> Dictionary:
 	var data: Dictionary = response.data
 	var client: Variant = data.get("play_games_web_client_id")
 	var play: bool = Typed.equal(data.get("play_games_version"), 1) and client is String and RegEx.create_from_string(WEB_CLIENT_ID).search(client) != null
-	return {"ok": true, "play_games": play, "web_client_id": client if play else "", "game_center": Typed.equal(data.get("game_center_version"), 1)}
+	var game_center := Typed.equal(data.get("game_center_version"), 1)
+	return {"ok": true, "play_games": play, "web_client_id": client if play else "", "game_center": game_center, "boards": (play or game_center) and Typed.equal(data.get("platform_boards_version"), 1)}
 
 ## {"ok", "status": linked | conflict | other_account, "changed"} or {"ok": false, "code"}.
 ## The recovery code proves this phone may set up a restore for its identity (a device token alone may not).

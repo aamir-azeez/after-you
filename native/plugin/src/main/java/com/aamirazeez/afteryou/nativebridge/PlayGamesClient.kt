@@ -7,6 +7,7 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.games.PlayGames
 import com.google.android.gms.games.PlayGamesSdk
 import com.google.android.gms.games.SnapshotsClient
+import com.google.android.gms.games.leaderboard.LeaderboardVariant
 import com.google.android.gms.games.snapshot.Snapshot
 import com.google.android.gms.games.snapshot.SnapshotMetadataChange
 import java.util.concurrent.Executor
@@ -26,6 +27,10 @@ internal interface GamesClient {
     fun resolve(opened: OpenedSnapshot, bytes: ByteArray, done: (OpenedSnapshot?, Int?) -> Unit)
     fun commit(opened: OpenedSnapshot, bytes: ByteArray, description: String, done: (Boolean, Int?) -> Unit)
     fun discard(opened: OpenedSnapshot, done: (Boolean) -> Unit)
+    /** A chapter time on one leaderboard (milliseconds on a Time board). */
+    fun submitScore(boardId: String, score: Long, done: (Boolean, Int?) -> Unit)
+    /** Opens Play Games' own screen of one leaderboard, all time, public. Answers once it is started. */
+    fun showBoard(boardId: String, done: (Boolean, Int?) -> Unit)
 }
 
 /**
@@ -128,5 +133,24 @@ internal class GooglePlayGamesClient(private val activity: Activity, private val
         val snapshot = opened.snapshot as? Snapshot
         if (snapshot == null || !ready()) { done(false); return }
         snapshots().discardAndClose(snapshot).addOnCompleteListener(worker) { result -> done(result.isSuccessful) }
+    }
+
+    override fun submitScore(boardId: String, score: Long, done: (Boolean, Int?) -> Unit) {
+        if (!ready()) { done(false, 10); return }
+        // Immediate, so a failure is known now and the game tries again at its next moment.
+        PlayGames.getLeaderboardsClient(activity).submitScoreImmediate(boardId, score).addOnCompleteListener(worker) { result ->
+            done(result.isSuccessful, status(result.exception))
+        }
+    }
+
+    override fun showBoard(boardId: String, done: (Boolean, Int?) -> Unit) {
+        if (!ready()) { done(false, 10); return }
+        PlayGames.getLeaderboardsClient(activity).getLeaderboardIntent(boardId, LeaderboardVariant.TIME_SPAN_ALL_TIME, LeaderboardVariant.COLLECTION_PUBLIC)
+            .addOnCompleteListener { result ->
+                // Main thread: the listener runs there by default, as starting an Activity needs.
+                val intent = if (result.isSuccessful) result.result else null
+                if (intent == null) { done(false, status(result.exception)); return@addOnCompleteListener }
+                try { activity.startActivityForResult(intent, PlayGamesPolicy.SHOW_BOARD_REQUEST); done(true, null) } catch (_: Exception) { done(false, null) }
+            }
     }
 }

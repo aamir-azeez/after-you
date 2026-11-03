@@ -14,6 +14,12 @@ internal object PlayGamesPolicy {
     private val WEB_CLIENT_ID = Regex("[0-9]{6,20}-[a-z0-9]{8,64}\\.apps\\.googleusercontent\\.com")
     private val SNAPSHOT_NAME = Regex("[a-z][a-z0-9-]{0,63}")
     private val HANDLE = Regex("[a-f0-9]{32}")
+    /** Play Console leaderboard ids ("CgkI..."): letters, digits, '-' and '_'. */
+    private val LEADERBOARD_ID = Regex("[A-Za-z0-9_-]{8,64}")
+    /** A day in milliseconds: no chapter time is longer, and the game never sends one. */
+    const val MAX_SCORE = 86_400_000L
+    /** Request code for Play Games' leaderboard screen; nothing reads its result. */
+    const val SHOW_BOARD_REQUEST = 0x4159
     /** Saved Games allows 3 MiB a slot. */
     const val MAX_SNAPSHOT_BYTES = 3 * 1024 * 1024
     /** Base64 of the largest slot, plus padding. */
@@ -30,6 +36,8 @@ internal object PlayGamesPolicy {
     fun validWebClientId(value: String): Boolean = WEB_CLIENT_ID.matches(value)
     fun validSnapshotName(value: String): Boolean = SNAPSHOT_NAME.matches(value)
     fun validHandle(value: String): Boolean = HANDLE.matches(value)
+    fun validLeaderboardId(value: String): Boolean = LEADERBOARD_ID.matches(value)
+    fun validScore(value: Long): Boolean = value in 1..MAX_SCORE
     fun validDescription(value: String): Boolean = value.length <= MAX_DESCRIPTION && value.none { it.isISOControl() }
     fun validBase64Length(value: String): Boolean = value.length <= MAX_SNAPSHOT_BASE64
     /** Only a bound on the gamer name; it is passed on unchanged and the game validates it. */

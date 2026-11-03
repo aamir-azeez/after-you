@@ -42,6 +42,7 @@ const BoardStatus = preload("res://services/board_status.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
+const PlatformBoardButton = preload("res://presentation/platform_board_button.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
 const INFO_ICON = preload("res://assets/ui/social/info.svg")
@@ -84,6 +85,8 @@ var _checking_card: PanelContainer
 var _board_scroll: ScrollContainer
 var _board: VBoxContainer
 var _heading: Label
+## The chapter's board on Google Play Games or Game Center (presentation/platform_board_button.gd), in the title row.
+var _platform_board: Button
 var _own: VBoxContainer
 var _keys: Array[String] = []
 var _selected := ""
@@ -230,10 +233,16 @@ func _build_body() -> void:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 4)
 	board_panel.add_child(column)
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 12)
+	column.add_child(title_row)
 	_heading = _text("", 28 if _compact else 30, UiTokens.CREAM, true)
 	_heading.name = "LeaderboardChapterTitle"
 	_heading.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	column.add_child(_heading)
+	_heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(_heading)
+	_platform_board = PlatformBoardButton.new(PlatformGames.shared(get_tree()), func(text: String) -> void: notice.emit(text, false))
+	title_row.add_child(_platform_board)
 	column.add_child(Rows.header(_compact))
 	_board_scroll = ScrollContainer.new()
 	_board_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -354,6 +363,7 @@ func _render_board() -> void:
 	_clear(_board)
 	_clear(_own)
 	_heading.text = RoomChapterTitle.title(_selected, PlayerCopy.LEADERBOARDS) if not _selected.is_empty() else PlayerCopy.LEADERBOARDS
+	_platform_board.show_for(Runs.board_key(_selected) if not _selected.is_empty() else "")
 	_checking_card.visible = false
 	if _state != "ready":
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_LOADING if _state == "loading" else PlayerCopy.LEADERBOARD_FAILED))

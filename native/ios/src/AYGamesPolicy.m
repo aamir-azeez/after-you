@@ -22,6 +22,14 @@
 	return [self matches:handle pattern:@"[a-f0-9]{32}"];
 }
 
++ (BOOL)validLeaderboardId:(NSString *)board {
+	return [self matches:board pattern:@"[A-Za-z0-9._]{1,100}"];
+}
+
++ (BOOL)validScore:(int64_t)score {
+	return score > 0 && score <= 8640000;
+}
+
 + (BOOL)validDescription:(NSString *)description {
 	if (description.length > 100) {
 		return NO;

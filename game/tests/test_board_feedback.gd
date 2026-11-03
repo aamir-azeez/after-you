@@ -928,6 +928,8 @@ class FakeGames extends Node:
 	func display_name() -> String: return PlayerCopy.PLATFORM_GAMES_PLAY_GAMES
 	func offered() -> bool: return offers
 	func linked() -> bool: return is_linked
+	## The leaderboard screen's platform board button asks this (presentation/platform_board_button.gd); no board here.
+	func board_offered(_board: String) -> bool: return false
 	func sign_in_now() -> void:
 		sign_ins += 1
 		await Engine.get_main_loop().process_frame

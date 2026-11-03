@@ -50,4 +50,6 @@ public:
 	void games_snapshot_commit(const godot::String &p_handle, const godot::String &p_data, const godot::String &p_description, const godot::String &p_request_id);
 	void games_snapshot_resolve(const godot::String &p_handle, const godot::String &p_data, const godot::String &p_request_id);
 	void games_snapshot_discard(const godot::String &p_handle, const godot::String &p_request_id);
+	void games_submit_score(const godot::String &p_board, int64_t p_score, const godot::String &p_request_id);
+	void games_show_board(const godot::String &p_board, const godot::String &p_request_id);
 };

@@ -13,7 +13,7 @@
 @implementation AYGamesSlot
 @end
 
-@interface AYGameCenter ()
+@interface AYGameCenter () <GKGameCenterControllerDelegate>
 @property (nonatomic, copy, nullable) AYGamesResult resultSink;
 @property (nonatomic, copy, nullable) AYGamesError errorSink;
 @property (nonatomic, copy, nullable) AYGamesAccountChanged accountSink;
@@ -395,6 +395,60 @@
 	}
 	BOOL held = [self takeSlot:handle] != nil;
 	[self succeed:requestId operation:@"snapshot_discard" payload:@{ @"discarded" : @(held) }];
+}
+
+#pragma mark - Leaderboards
+
+- (void)submitScore:(NSString *)board score:(int64_t)score requestId:(NSString *)requestId {
+	if (![self begin:requestId]) {
+		return;
+	}
+	if (![AYGamesPolicy validLeaderboardId:board] || ![AYGamesPolicy validScore:score]) {
+		[self fail:requestId operation:@"submit_score" code:@"failed"];
+		return;
+	}
+	GKLocalPlayer *player = [GKLocalPlayer localPlayer];
+	if (![self available] || !player.isAuthenticated) {
+		[self fail:requestId operation:@"submit_score" code:[self available] ? @"signed_out" : @"unavailable"];
+		return;
+	}
+	// Classic boards keep each player's best themselves; the game sends only a new best of its own.
+	[GKLeaderboard submitScore:(NSInteger)score context:0 player:player leaderboardIDs:@[ board ] completionHandler:^(NSError *_Nullable error) {
+		if (error != nil) {
+			[self fail:requestId operation:@"submit_score" code:[self codeFor:error]];
+		} else {
+			[self succeed:requestId operation:@"submit_score" payload:@{ @"submitted" : @YES }];
+		}
+	}];
+}
+
+- (void)showBoard:(NSString *)board requestId:(NSString *)requestId {
+	if (![self begin:requestId]) {
+		return;
+	}
+	if (![AYGamesPolicy validLeaderboardId:board]) {
+		[self fail:requestId operation:@"show_board" code:@"failed"];
+		return;
+	}
+	if (![self available] || ![GKLocalPlayer localPlayer].isAuthenticated) {
+		[self fail:requestId operation:@"show_board" code:[self available] ? @"signed_out" : @"unavailable"];
+		return;
+	}
+	UIViewController *top = self.presenter ? self.presenter() : nil;
+	if (top == nil || top.presentedViewController != nil) {
+		[self fail:requestId operation:@"show_board" code:top == nil ? @"unavailable" : @"busy"];
+		return;
+	}
+	// iOS 14 and later, below the iOS 15 minimum, so no newer access point call is needed.
+	GKGameCenterViewController *controller = [[GKGameCenterViewController alloc] initWithLeaderboardID:board playerScope:GKLeaderboardPlayerScopeGlobal timeScope:GKLeaderboardTimeScopeAllTime];
+	controller.gameCenterDelegate = self;
+	[top presentViewController:controller animated:YES completion:^{
+		[self succeed:requestId operation:@"show_board" payload:@{ @"shown" : @YES }];
+	}];
+}
+
+- (void)gameCenterViewControllerDidFinish:(GKGameCenterViewController *)gameCenterViewController {
+	[gameCenterViewController dismissViewControllerAnimated:YES completion:nil];
 }
 
 @end

@@ -589,6 +589,8 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     @UsedByGodot fun games_snapshot_commit(handle: String, data: String, description: String, requestId: String) = gamesCall(requestId, "snapshot_commit") { it.snapshotCommit(handle, data, description, requestId) }
     @UsedByGodot fun games_snapshot_resolve(handle: String, data: String, requestId: String) = gamesCall(requestId, "snapshot_resolve") { it.snapshotResolve(handle, data, requestId) }
     @UsedByGodot fun games_snapshot_discard(handle: String, requestId: String) = gamesCall(requestId, "snapshot_discard") { it.snapshotDiscard(handle, requestId) }
+    @UsedByGodot fun games_submit_score(boardId: String, score: Long, requestId: String) = gamesCall(requestId, "submit_score") { it.submitScore(boardId, score, requestId) }
+    @UsedByGodot fun games_show_board(boardId: String, requestId: String) = gamesCall(requestId, "show_board") { it.showBoard(boardId, requestId) }
 
     override fun onMainRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         notificationBridge?.permissionResult(requestCode, permissions)

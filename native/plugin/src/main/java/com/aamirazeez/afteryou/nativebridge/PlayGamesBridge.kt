@@ -150,6 +150,20 @@ internal class PlayGamesBridge(
         client.discard(opened) { discarded -> success(ticket, JSONObject().put("discarded", discarded)) }
     }
 
+    /** A chapter time (milliseconds) on one Play Games leaderboard; the game posts only a new best. */
+    fun submitScore(boardId: String, score: Long, id: String) = call(id, "submit_score", PlayGamesPolicy.QUIET_TIMEOUT_MS) { ticket ->
+        if (!PlayGamesPolicy.validLeaderboardId(boardId) || !PlayGamesPolicy.validScore(score)) { fail(ticket, "failed"); return@call }
+        if (!client.available()) { fail(ticket, "unavailable"); return@call }
+        client.submitScore(boardId, score) { submitted, status -> if (submitted) success(ticket, JSONObject().put("submitted", true)) else failStatus(ticket, status) }
+    }
+
+    /** Play Games' own screen of one leaderboard, opened on the player's tap. */
+    fun showBoard(boardId: String, id: String) = call(id, "show_board", PlayGamesPolicy.QUIET_TIMEOUT_MS) { ticket ->
+        if (!PlayGamesPolicy.validLeaderboardId(boardId)) { fail(ticket, "failed"); return@call }
+        if (!client.available()) { fail(ticket, "unavailable"); return@call }
+        client.showBoard(boardId) { shown, status -> if (shown) success(ticket, JSONObject().put("shown", true)) else failStatus(ticket, status) }
+    }
+
     private fun encode(bytes: ByteArray): String = if (bytes.isEmpty()) "" else Base64.encodeToString(bytes, Base64.NO_WRAP)
     private fun decode(value: String): ByteArray? {
         if (!PlayGamesPolicy.validBase64Length(value)) return null

@@ -19,11 +19,17 @@ extends Node
 ## 5. The gamer name, for the name prompt only (name_offered, ensure_started, player_name): offered whenever the
 ##    server offers the platform and its account can be had, and signed in on the player's tap
 ##    when the quiet check did not (Play Games may want its own sheet on a phone).
+## 6. Chapter times on the platform leaderboards (post_boards, show_board), while the server offers
+##    them (PLATFORM_BOARDS, `boards` in the capability): platform_boards.gd decides what goes up,
+##    platform_board_ids.gd says where, platform_board_store.gd remembers what went up per account.
+##    It runs a few seconds after sign-in, a finished chapter (note_progress), the app coming back,
+##    a board read or the name choice changing (services/leaderboard_client.gd LISTENERS); one post
+##    at a time, every failure silent and tried again at the next of those moments.
 ## Every call is async with a timeout; every failure leaves the game as it was. Main is freed
 ## while a solo chapter is open: detach() abandons work that ran through Main, and the next
 ## attach() starts again from the top.
 ##
-## Achievements and leaderboards: the provider interface has them, nothing uses them yet.
+## Achievements: the provider interface has them, nothing uses them yet.
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
 const NativeProvider = preload("res://services/platform_games/native_games_provider.gd")
 const LinkClient = preload("res://services/platform_games/platform_link_client.gd")
@@ -32,6 +38,14 @@ const CloudSync = preload("res://services/platform_games/cloud_save_sync.gd")
 const NativeBridge = preload("res://services/native_bridge.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const BoardIds = preload("res://services/platform_games/platform_board_ids.gd")
+## Loaded on first use, never with this autoload: they bring the chapter registry with them.
+const BOARD_POLICY := "res://services/platform_games/platform_boards.gd"
+const BOARD_STORE := "res://services/platform_games/platform_board_store.gd"
+const LEADERBOARD_CLIENT := "res://services/leaderboard_client.gd"
+const RUNS := "res://services/leaderboard_runs.gd"
+## The group services/leaderboard_client.gd tells after a board read or a name choice (its LISTENERS).
+const LEADERBOARD_LISTENERS := "leaderboard_listeners"
 
 ## Any state a screen shows changed.
 signal changed
@@ -58,6 +72,10 @@ const ACCOUNT_WAIT_MS := 60000
 ## sheet (each a little over the provider's own limit).
 const NAME_CHECK_WAIT_MS := 16000
 const NAME_SHEET_WAIT_MS := 125000
+## Chapter times go up this long after the moment that asked, so they never meet a screen change.
+const BOARD_POST_DELAY_S := 3.0
+## After the platform's board screen opened, another tap does nothing for this long.
+const BOARD_SHOW_GAP_MS := 1500
 
 var provider: RefCounted
 var sign_in := SignIn.UNAVAILABLE
@@ -85,6 +103,15 @@ var _interrupted := false
 var offer_declined := false
 ## A capability read outside the start pipeline is in flight (one at a time).
 var _offer_reading := false
+## Platform board posting: a pass is waiting for its delay, one is running, another was asked meanwhile.
+var _boards_queued := false
+var _boards_posting := false
+var _boards_again := false
+var _board_store: RefCounted
+## The platform's board screen is opening (one at a time), and when it last opened.
+var _board_showing := false
+var _board_shown_at := -BOARD_SHOW_GAP_MS
+var _board_store_path := "user://platform-boards-v1.json"
 
 ## The service, or null (a tree without the autoload, such as a tool script).
 static func shared(tree: SceneTree) -> Node:
@@ -92,6 +119,7 @@ static func shared(tree: SceneTree) -> Node:
 
 func _ready() -> void:
 	set_process(false)
+	add_to_group(LEADERBOARD_LISTENERS)
 	# Desktop, headless suites and builds without the plugin: inert, no files, no network.
 	# A phone build waits START_DELAY_MS before even asking the plugin, so the first frames pay nothing.
 	if provider == null and _native_present() and _autostart: _start_later()
@@ -115,9 +143,11 @@ func _open_state(path: String) -> void:
 	cloud.description = PlayerCopy.PLATFORM_GAMES_SAVE_DESCRIPTION
 	if _account != null: cloud.set_sources(_account.cloud_sources())
 
-## Tests: a provider and a state file of their own, and no automatic start.
+## Tests: a provider and a state file of their own (and a board file beside it), and no automatic start.
 func configure(test_provider: RefCounted, state_path: String) -> void:
 	_autostart = false
+	_board_store_path = state_path.get_basename() + "-boards.json"
+	_board_store = null
 	provider = test_provider
 	_open_state(state_path)
 	if not provider.account_changed.is_connected(_on_account_changed): provider.account_changed.connect(_on_account_changed)
@@ -142,7 +172,9 @@ func start() -> void:
 		if generation == _generation and capability.get(kind()) == true:
 			await _authenticate(false, generation)
 			if generation == _generation and signed_in(): await _after_sign_in(capability, generation)
-	if generation == _generation: _running = false
+	if generation == _generation:
+		_running = false
+		post_boards_soon()
 
 # ---- Main's side ---------------------------------------------------------------------------
 
@@ -231,11 +263,13 @@ func offer_pending() -> bool:
 func player_name(wanted: Callable = Callable()) -> Dictionary:
 	if provider == null or not provider.available(): return {"ok": false, "code": "unavailable"}
 	if not signed_in():
-		var signed: Dictionary = await _sign_in_for_name(wanted)
+		var signed: Dictionary = await _sign_in_on_tap(wanted)
 		if not signed.ok: return signed
 	return await provider.player_name()
 
-func _sign_in_for_name(wanted: Callable) -> Dictionary:
+## A tap that needs the account (the gamer name, the platform's board screen) while signed out:
+## waits for a quiet check under way, else shows the platform's sheet once, only while `wanted` holds.
+func _sign_in_on_tap(wanted: Callable) -> Dictionary:
 	if not name_offered(): return {"ok": false, "code": "unavailable"}
 	await _wait_for_quiet_check()
 	if signed_in(): return {"ok": true}
@@ -339,7 +373,9 @@ func sign_in_now() -> void:
 	var generation := _generation
 	await _authenticate(true, generation)
 	if generation == _generation and signed_in(): await _after_sign_in(state.capability(), generation)
-	if generation == _generation: _running = false
+	if generation == _generation:
+		_running = false
+		post_boards_soon()
 
 func _authenticate(interactive: bool, generation: int) -> void:
 	sign_in = SignIn.CHECKING
@@ -593,12 +629,94 @@ func _process(delta: float) -> void:
 func _notification(what: int) -> void:
 	# The run itself waits for frames, so it finishes on resume; the dirty flag also survives a kill.
 	if what == NOTIFICATION_APPLICATION_PAUSED and _cloud_allowed(): cloud.flush()
+	elif what == NOTIFICATION_APPLICATION_RESUMED: post_boards_soon()
 
-## Achievements and leaderboards are not used yet; these forward to the provider when they are.
+## Achievements are not used yet; this forwards to the provider when they are.
 func unlock_achievement(id: String) -> Dictionary:
 	if provider == null: return {"ok": false, "code": "unavailable"}
 	return await provider.unlock_achievement(id)
 
-func submit_score(board: String, score: int) -> Dictionary:
-	if provider == null: return {"ok": false, "code": "unavailable"}
-	return await provider.submit_score(board, score)
+# ---- Chapter times on the platform leaderboards ----------------------------------------------
+
+## Whether the server offers the platform boards (PLATFORM_BOARDS) beside this platform.
+func boards_offered() -> bool:
+	return offered() and state.capability().get("boards") == true
+
+## Whether the leaderboard screen shows the "Google Play Games" / "Game Center" button for our
+## board `board`: the boards are offered, the platform has that board, and its account can be
+## had (signed in, or one sign-in sheet away; name_offered's rule).
+func board_offered(board: String) -> bool:
+	return boards_offered() and name_offered() and not BoardIds.id(board, kind()).is_empty()
+
+## The platform's board screen is opening or just opened (the button waits).
+func board_showing() -> bool:
+	return _board_showing or Time.get_ticks_msec() - _board_shown_at < BOARD_SHOW_GAP_MS
+
+## The button's tap: the platform's own screen of our board `board`, signing in first when needed.
+## One at a time; every failure leaves the screen as it was. {"ok"} or a code.
+func show_board(board: String, wanted: Callable = Callable()) -> Dictionary:
+	if board_showing(): return {"ok": false, "code": "busy"}
+	if not board_offered(board): return {"ok": false, "code": "unavailable"}
+	_board_showing = true
+	changed.emit()
+	var answer: Dictionary = {"ok": true}
+	if not signed_in(): answer = await _sign_in_on_tap(wanted)
+	if answer.get("ok", false):
+		answer = await provider.show_board(BoardIds.id(board, kind()))
+		if answer.get("ok", false): _board_shown_at = Time.get_ticks_msec()
+	_board_showing = false
+	changed.emit()
+	return answer
+
+## services/leaderboard_client.gd read a board or changed the name choice for `owner`.
+func leaderboard_changed(owner: String) -> void:
+	if _account != null and owner == _account.player_id(): post_boards_soon()
+
+## Posts what is owed a few seconds from now; repeated asks meanwhile make one pass.
+func post_boards_soon() -> void:
+	if _boards_queued or not boards_offered() or not is_inside_tree(): return
+	_boards_queued = true
+	await get_tree().create_timer(BOARD_POST_DELAY_S).timeout
+	_boards_queued = false
+	await post_boards()
+
+## One pass: this player's runs judged against the boards this phone read, kept, and each board's
+## new best posted while signed in and the player shows their name on leaderboards. One post at a
+## time; a pass asked for while one runs follows it.
+func post_boards() -> void:
+	if _boards_posting:
+		_boards_again = true
+		return
+	_boards_posting = true
+	await _post_boards_once()
+	while _boards_again and is_inside_tree():
+		_boards_again = false
+		await _post_boards_once()
+	_boards_posting = false
+
+func _post_boards_once() -> void:
+	if not boards_offered() or _account == null or _account.identity_state() != "ready": return
+	var owner: String = _account.player_id()
+	if owner.is_empty(): return
+	var policy: Script = load(BOARD_POLICY)
+	var runs: Array = load(RUNS).runs_of(owner)
+	var store := _boards_store()
+	var verdicts: Dictionary = policy.judge(runs, load(LEADERBOARD_CLIENT).kept_for(owner), store.judged, Time.get_unix_time_from_system())
+	store.keep_verdicts(verdicts)
+	if not signed_in() or not load(LEADERBOARD_CLIENT).name_shown(owner): return
+	var generation := _generation
+	var platform := kind()
+	var account: String = store.account(platform, _player_key)
+	var due: Dictionary = policy.due(runs, verdicts, BoardIds.boards(platform), store.posted_for(account))
+	var boards: Array = due.keys()
+	boards.sort()
+	for board: String in boards:
+		# Main left, the account changed or signed out: the rest waits for the next moment.
+		if generation != _generation or not signed_in() or store.account(kind(), _player_key) != account or _account == null: return
+		var answer: Dictionary = await provider.submit_score(BoardIds.id(board, platform), policy.score(platform, int(due[board])))
+		if answer.get("ok", false): store.remember_posted(account, board, int(due[board]))
+		elif str(answer.get("code", "")) in ["signed_out", "offline", "unavailable", "not_configured", "timeout"]: return
+
+func _boards_store() -> RefCounted:
+	if _board_store == null: _board_store = load(BOARD_STORE).new(_board_store_path)
+	return _board_store

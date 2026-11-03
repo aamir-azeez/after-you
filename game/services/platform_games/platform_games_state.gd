@@ -61,7 +61,7 @@ func capability(now: int = now_ms()) -> Dictionary:
 	return held
 
 func remember_capability(answer: Dictionary, now: int = now_ms()) -> void:
-	data.capability = {"checked_ms": now, "play_games": answer.get("play_games") == true, "web_client_id": str(answer.get("web_client_id", "")), "game_center": answer.get("game_center") == true}
+	data.capability = {"checked_ms": now, "play_games": answer.get("play_games") == true, "web_client_id": str(answer.get("web_client_id", "")), "game_center": answer.get("game_center") == true, "boards": answer.get("boards") == true}
 	save()
 
 func forget_capability() -> void:
