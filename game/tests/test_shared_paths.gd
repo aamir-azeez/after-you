@@ -66,6 +66,7 @@ const PIP_MAKERS := {
 	"res://presentation/leaderboard_rows.gd": ["dressed", "the player's own pip and the partner's look from the run"],
 	"res://presentation/leaderboard_celebration.gd": ["dressed", "OwnLook beside the partner's TurnLooks"],
 	"res://presentation/duels/duel_kit.gd": ["dressed", "both pairs in every duel page"],
+	"res://presentation/race_ghost_view.gd": ["dressed", "the raced player in the look the race kept, on the turn and its timer"],
 	"res://presentation/wardrobe_page.gd": ["preview", "shows each item on the plain pip"],
 	"res://presentation/wardrobe_sheets.gd": ["preview", "the buy sheet shows the item on the plain pip"],
 	"res://presentation/pollen_result_line.gd": ["preview", "owner 2026-11-02: the dropped item shows alone on a plain pip"],

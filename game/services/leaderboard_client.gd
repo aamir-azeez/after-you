@@ -184,6 +184,16 @@ func replay(key: String, chapter_key: String, row: Dictionary) -> Dictionary:
 	if not parts is Array or parts.is_empty(): return {"ok": false, "code": "invalid_replay"}
 	return {"ok": true, "parts": parts}
 
+## {ok, blob} for the run `entry_id` of board `key` whose replay is `replay_hash`:
+## its replay still encoded ({digest, byte_length, body}, services/leaderboard_replay.gd
+## blob), for a copy the phone keeps (the race ghost, services/race_ghost.gd); or {ok: false, code}.
+func replay_blob(key: String, entry_id: String, replay_hash: String) -> Dictionary:
+	if not _hash(replay_hash) or not _entry(entry_id): return {"ok": false, "code": "no_replay"}
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_GET, "%s%s/replay/%s" % [PREFIX, key, entry_id])
+	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
+	var kept := LeaderboardReplay.blob(response.get("data"), key, entry_id, replay_hash)
+	return {"ok": true, "blob": kept} if not kept.is_empty() else {"ok": false, "code": "invalid_replay"}
+
 ## The board as the server sent it, or {} when it is not one this build reads.
 static func valid_view(value: Variant, key: String) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("board"), key) or not value.get("top") is Array or not value.get("checking") is Array: return {}

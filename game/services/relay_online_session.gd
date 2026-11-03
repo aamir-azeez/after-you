@@ -1353,6 +1353,14 @@ func leaderboards_platform_required() -> bool:
 func duels_supported() -> bool:
 	return Typed.equal(capabilities.get("duels_version"), 1.0)
 
+## The server has the race ghost on (backend flags.ts RACE_GHOST): a ghost race plays its raced run as a see-through pip beside each turn.
+func race_ghost_supported() -> bool:
+	return duels_supported() and Typed.equal(capabilities.get("race_ghost_version"), 1.0)
+
+## The race ghost's data for this session's player (services/race_ghost.gd), or null while the server has it off.
+func race_ghost() -> RefCounted:
+	return load("res://services/race_ghost.gd").shared(_api, _owner) if race_ghost_supported() and is_instance_valid(_api) and not _owner.is_empty() else null
+
 func nickname_scope() -> Dictionary:
 	## Server and owner that key this device's local friend nicknames and the
 	## display names it keeps; {} without a server address (a test's API).

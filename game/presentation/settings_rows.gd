@@ -82,6 +82,9 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"confirm_on": {"title": PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_TITLE, "body": PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_BODY, "accept": PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_ACCEPT}},
 		{"id": "left_handed", "icon": preload("res://assets/ui/settings/swap.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.MAIN_A1E007823FF0, "note": PlayerCopy.SETTINGS_LEFT_HANDED_NOTE, "key": "left_handed"},
 		{"id": "photo_prompts", "icon": preload("res://assets/ui/settings/camera.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.MAIN_289D745F1246, "note": PlayerCopy.SETTINGS_PHOTO_PROMPTS_NOTE, "key": "photo_prompts"},
+		# The race ghost (presentation/race_ghost_view.gd), on by default; shown while the server has it on.
+		{"id": "race_ghost", "icon": preload("res://assets/ui/settings/race-ghost.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_RACE_GHOST, "note": PlayerCopy.SETTINGS_RACE_GHOST_NOTE, "key": "race_ghost",
+			"visible_if": func() -> bool: return host.relay_session != null and host.relay_session.race_ghost_supported()},
 
 		{"id": "graphics_quality", "category": GRAPHICS, "kind": CHOICE, "label": PlayerCopy.SETTINGS_QUALITY, "note": PlayerCopy.SETTINGS_QUALITY_NOTE, "key": "graphics_quality",
 			"options": GraphicsPolicy.QUALITIES.map(func(quality: String) -> Array: return [quality, quality.capitalize()])},

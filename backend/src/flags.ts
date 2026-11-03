@@ -70,6 +70,8 @@ export const FLAG_VARS = Object.freeze({
   duelRunChecks: "DUEL_RUN_CHECKS",
   /** Chapter times on Google Play Games and Game Center leaderboards (phone side, game/services/platform_games/platform_boards.gd): the platform capability says so with platform_boards_version, and phones post and show the platform boards. Needs LEADERBOARDS and PLAY_GAMES_ENABLED or GAME_CENTER_ENABLED. No server work beside the capability field. */
   platformBoards: "PLATFORM_BOARDS",
+  /** The race ghost (duels/routes.ts duelsCapability): `race_ghost_version` on the duels capability, so phones play the raced board run as a see-through pip beside each turn of a ghost race. Every race started from a board run keeps that run's replay_hash whether this is on or off, so a race started before the flip plays too. Needs DUELS. */
+  raceGhost: "RACE_GHOST",
   /** Pauses the replay time limit on finished rooms (v2/replay-expiry.ts), which is on unless CONFIG lists this: replays no phone saved go REPLAY_KEEP_MS (a year) after the room finished. */
   replayExpiryPaused: "REPLAY_EXPIRY_PAUSED",
 } as const);

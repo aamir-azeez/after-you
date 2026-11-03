@@ -24,7 +24,7 @@ func _init(save_path: String = PATH) -> void:
 	path = save_path
 
 static func defaults() -> Dictionary:
-	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false, "frame_rate": GraphicsPolicy.DEFAULT_FRAME_RATE, "skip_waits": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
+	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false, "frame_rate": GraphicsPolicy.DEFAULT_FRAME_RATE, "skip_waits": false, "race_ghost": true}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
 
 ## Settings a brand new install starts with, over defaults(), applied by Main
 ## to the main save only when it was `fresh`. defaults() stays as it was,

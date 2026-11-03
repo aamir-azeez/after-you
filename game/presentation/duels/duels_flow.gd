@@ -311,6 +311,8 @@ func _read_lobby(ticket: Dictionary) -> void:
 	_lobby_reads.complete(ticket, Time.get_ticks_msec(), true)
 	if not is_open(): return
 	screen.show_lobby(answer.get("lobby", {}), not answer.get("ok", false))
+	var ghosts := _race_ghost()
+	if ghosts != null and answer.get("ok", false): ghosts.release_ended(answer.lobby)
 	var overlay: CanvasLayer = screen.overlay()
 	if answer.get("ok", false) and overlay is PartyPage: overlay.show_party(answer.lobby.party)
 
@@ -507,7 +509,15 @@ func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant
 		if on_picker and code == "duel_limit_reached": _fill_picker(page, picker, chapter, false, true)
 		return
 	page.close()
+	# The race ghost keeps the raced run now, so one that leaves the top 10 before the first turn still plays.
+	var ghosts := _race_ghost()
+	if ghosts != null: ghosts.prefetch(answer.duel)
 	_open_duel(answer.duel)
+
+## The race ghost's data (services/race_ghost.gd) while the server has it on, else null.
+func _race_ghost() -> RefCounted:
+	var session: RefCounted = host.relay_session
+	return session.race_ghost() if session != null and session.has_method("race_ghost") else null
 
 func _on_duel_action(view: Dictionary, action: String, control: Control) -> void:
 	if not is_open(): return

@@ -845,6 +845,10 @@ const RACE_PICK_WITH := "Pick a run to race with %s."
 const RACE_PICK_RACE := "Race"
 const RACE_PICK_WAITING := "Being checked"
 const RACE_PICK_LEFT := "That time left the top 10. Pick another."
+## The race ghost: its name when the raced pair hides theirs, and its Settings tile.
+const RACE_GHOST_RECORDED := "Recorded run"
+const SETTINGS_RACE_GHOST := "Race ghost"
+const SETTINGS_RACE_GHOST_NOTE := "Show the run you race as a see-through pip."
 ## The duel page.
 const DUEL_IN_PROGRESS := "Duel in progress."
 const DUEL_STEPS := "%d of %d steps"

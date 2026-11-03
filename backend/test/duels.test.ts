@@ -201,6 +201,11 @@ describe("duels while off", () => {
     expect(caps).not.toHaveProperty("duels_version");
     expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, ON, { "X-AfterYou-Duels": "1" }))).toHaveProperty("duels_version", 1);
     expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, ON))).not.toHaveProperty("duels_version");
+    // The race ghost rides on the duels capability, only while RACE_GHOST is on, and never without duels.
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, ON, { "X-AfterYou-Duels": "1" }))).not.toHaveProperty("race_ghost_version");
+    const GHOSTED = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "RACE_GHOST"] }) };
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, GHOSTED, { "X-AfterYou-Duels": "1" }))).toMatchObject({ duels_version: 1, race_ghost_version: 1 });
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "POLLEN_EARN", "RACE_GHOST"] }) }, { "X-AfterYou-Duels": "1" }))).not.toHaveProperty("race_ghost_version");
   });
 });
 
@@ -1100,6 +1105,12 @@ describe("duel looks", () => {
     expect(top.length).toBeGreaterThan(0);
     const raced = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "board", entry_id: top[0].entry_id }, LOOKS))).duel;
     expect(raced.ghost!.looks).toEqual([{ hat: "daisy" }, {}]);
+    // The race keeps the run's replay_hash as the board row names it (the race ghost), and the developers' run has none.
+    const row = (await ok<{ top: { entry_id: string; replay_hash: string | null }[] }>(call(`/v1/leaderboards/${RELAY}`, "GET", a1, undefined, LOOKS))).top.find(item => item.entry_id === top[0].entry_id)!;
+    expect(row.replay_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(raced.ghost!.replay_hash).toBe(row.replay_hash);
+    expect((await detail(a1, raced)).duel.ghost!.replay_hash).toBe(row.replay_hash);
+    expect(first.ghost).not.toHaveProperty("replay_hash");
     expect((await detail(a1, raced)).duel.ghost).not.toHaveProperty("looks");
   }, 60_000);
 

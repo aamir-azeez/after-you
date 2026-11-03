@@ -82,7 +82,8 @@ export type Side = {
   looks?: Look[];
 };
 /** `looks`: a board run's pair looks as its row showed them when the race began (leaderboards/run-looks.ts). */
-export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null; looks?: Look[] };
+/** `replay_hash`: a board run's replay as its row named it when the race began (absent on races made before it was kept, and on the developers' run). */
+export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null; replay_hash?: string; looks?: Look[] };
 export type ResultReason = "faster" | "draw" | "left" | "failed_check" | "unchecked" | "stalled" | "erased";
 /** `winner`: the side index that won (1 is the ghost in a ghost race), or null for a draw or no result. */
 export type DuelResult = { winner: 0 | 1 | null; reason: ResultReason; decided_ms: number; margin_ticks: number | null };

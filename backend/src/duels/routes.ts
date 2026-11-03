@@ -20,6 +20,7 @@ import { developerGhost } from "./developer-ghosts";
 import { announceLobby, hintsField } from "./news";
 import { blobBase64 } from "../blob-codec";
 import { looksOn } from "../pollen/features";
+import { flags } from "../flags";
 import type { Look } from "../pollen/catalog";
 import { servedLook } from "../leaderboards/run-looks";
 
@@ -50,9 +51,14 @@ const PARTY_PATH = new RegExp(`^/v1/duels/party/(${PARTY_ACTIONS.join("|")})$`);
 const BOARD_CONCURRENCY = 4;
 const GHOSTS_SHOWN = 3;
 
-/** `duels_version: 1` on /v2/capabilities for a phone that asks while duels are on. */
-export function duelsCapability(request: Request, env: Env): { duels_version?: number } {
-  return duelsOn(env) && request.headers.get(DUELS_HEADER) === "1" ? { duels_version: 1 } : {};
+/**
+ * `duels_version: 1` on /v2/capabilities for a phone that asks while duels are on, and `race_ghost_version: 1` with it
+ * while RACE_GHOST is on (flags.ts): the phone then plays a ghost race's raced run beside each turn, from the run's
+ * replay_hash on the race (model.ts Ghost) and the board's replay route. No request or row is added by the flag.
+ */
+export function duelsCapability(request: Request, env: Env): { duels_version?: number; race_ghost_version?: number } {
+  if (!duelsOn(env) || request.headers.get(DUELS_HEADER) !== "1") return {};
+  return flags.raceGhost(env) ? { duels_version: 1, race_ghost_version: 1 } : { duels_version: 1 };
 }
 
 function fields(input: unknown, keys: string[]): Record<string, unknown> {
@@ -322,7 +328,9 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number, 
     if (!top) throw new ApiError(404, "ghost_not_found");
     // Names stay on the board, where erasure reaches them; the race keeps only the place, the time and, while looks are on,
     // the pair's cosmetic looks as the row showed them (no ids, so nobody's account is named by them).
-    ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: null, ...(shownLooks && top.looks ? { looks: top.looks } : {}) };
+    // The run's replay_hash too, so a phone can play the raced run beside each turn (the race ghost): the same hash the
+    // board row already shows anyone, naming no account. Kept whatever RACE_GHOST says; older code reads it as extra.
+    ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: null, ...(top.replay_hash ? { replay_hash: top.replay_hash } : {}), ...(shownLooks && top.looks ? { looks: top.looks } : {}) };
   }
   const a = [player, mine.partner] as [string, string], [aKeys] = await duelPairKeys(env, [a]);
   const { duels } = await duelsOf(env, mine.state.duels, player);

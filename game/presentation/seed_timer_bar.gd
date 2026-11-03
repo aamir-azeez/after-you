@@ -42,6 +42,14 @@ var reduced_motion := false:
 		queue_redraw()
 ## Counts real redraws, so tests can prove unchanged values cost nothing.
 var draw_count := 0
+## A ghost race's mark (race-picker board 5C): where the raced run finished
+## this turn, as a fraction of it (-1 for none), and the small still pip above
+## the track there (presentation/race_ghost_view.gd gives both). Beat the mark
+## and you beat that turn. Drawn with the bar; nothing per frame.
+var race_ratio := -1.0
+var _race_pip: Control
+const MARK_TICK := Color(0.93, 0.93, 0.86, 0.55)
+const MARK_GAP := 3.0
 
 func _init() -> void:
 	step = 0.01
@@ -87,6 +95,37 @@ static func format_remaining(remaining: float) -> String:
 	var left := maxf(0.0, remaining)
 	return "%d" % ceili(left) if left > TENTHS_BELOW else "%.1f" % left
 
+## Shows the raced run's finish at `ratio` of the turn, with `pip` standing over it.
+func set_race_mark(ratio: float, pip: Control) -> void:
+	clear_race_mark()
+	race_ratio = clampf(ratio, 0.0, 1.0)
+	_race_pip = pip
+	pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(pip)
+	_place_race_pip()
+	queue_redraw()
+
+func clear_race_mark() -> void:
+	if is_instance_valid(_race_pip): _race_pip.queue_free()
+	_race_pip = null
+	if race_ratio < 0.0: return
+	race_ratio = -1.0
+	queue_redraw()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED: _place_race_pip()
+
+## Where on the track a fraction of the turn sits (the seed's own path).
+func track_x(ratio: float) -> float:
+	var seed_half := SEED_SIZE.x * SEED_BODY_HALF_WIDTH
+	return lerpf(seed_half, maxf(seed_half, size.x - seed_half), clampf(ratio, 0.0, 1.0))
+
+func _place_race_pip() -> void:
+	if not is_instance_valid(_race_pip) or race_ratio < 0.0: return
+	var pip_size := _race_pip.custom_minimum_size
+	_race_pip.size = pip_size
+	_race_pip.position = Vector2(track_x(race_ratio) - pip_size.x * 0.5, TRACK_CENTRE - TRACK_HEIGHT * 0.5 - MARK_GAP - pip_size.y)
+
 func ratio_elapsed() -> float:
 	var span := max_value - min_value
 	return clampf((value - min_value) / span, 0.0, 1.0) if span > 0.0 else 0.0
@@ -109,6 +148,9 @@ func _draw() -> void:
 		draw_circle(Vector2(dot_x, TRACK_CENTRE), 1.6, PATH_DOT, true, -1.0, true)
 		dot_x -= DOT_SPACING
 	_draw_sprout(Vector2(track.end.x - 8.0, track.position.y + 1.0))
+	if race_ratio >= 0.0:
+		var mark_x := track_x(race_ratio)
+		draw_line(Vector2(mark_x, track.position.y - MARK_GAP), Vector2(mark_x, track.end.y), MARK_TICK, 1.5, true)
 	# Before the first tick the seed alone marks the start; no gold peeks behind it.
 	if edge > low + 0.5:
 		draw_style_box(_style("fill"), Rect2(track.position, Vector2(maxf(TRACK_HEIGHT, edge - track.position.x), TRACK_HEIGHT)))

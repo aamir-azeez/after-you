@@ -20,10 +20,17 @@ const ANSWER_KEYS := ["schema_version", "board", "entry_id", "rank", "ticks", "f
 ## The viewer's parts for `answer`, or [] unless it is exactly the replay the row
 ## named (`entry_id` and `replay_hash` on `board`) and a whole run of `chapter_key`.
 static func parts(answer: Variant, board: String, entry_id: String, replay_hash: String, chapter_key: String) -> Array:
+	var kept := blob(answer, board, entry_id, replay_hash)
+	return [] if kept.is_empty() else checkpoint_parts(kept.body, kept.byte_length, replay_hash, chapter_key)
+
+## The answer's replay still encoded, {digest, byte_length, body} as services/duel_their_run.gd
+## keeps a run, or {} unless it is exactly the replay the row named. Nothing is decoded.
+static func blob(answer: Variant, board: String, entry_id: String, replay_hash: String) -> Dictionary:
 	# Fields a later server adds are ignored, as a board's are (leaderboard_client.gd valid_view).
-	if not answer is Dictionary or ANSWER_KEYS.any(func(key: String) -> bool: return not answer.has(key)): return []
-	if not Typed.equal(answer.schema_version, 1) or not Typed.equal(answer.board, board) or not Typed.equal(answer.entry_id, entry_id) or not Typed.equal(answer.digest, replay_hash): return []
-	return checkpoint_parts(answer.body, answer.byte_length, replay_hash, chapter_key)
+	if not answer is Dictionary or ANSWER_KEYS.any(func(key: String) -> bool: return not answer.has(key)): return {}
+	if not Typed.equal(answer.schema_version, 1) or not Typed.equal(answer.board, board) or not Typed.equal(answer.entry_id, entry_id) or not Typed.equal(answer.digest, replay_hash): return {}
+	if not Typed.whole_number(answer.byte_length) or not answer.body is String: return {}
+	return {"digest": replay_hash, "byte_length": int(answer.byte_length), "body": answer.body}
 
 ## The viewer's parts for a whole run of `chapter_key` whose final checkpoint is
 ## `body` (the shared blob format, base64) of `byte_length` canonical bytes

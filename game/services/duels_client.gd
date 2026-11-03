@@ -50,6 +50,8 @@ var _ghosts_at := -GHOSTS_KEEP_MS
 var _hints := false
 ## {rooms: {room_id: kind}, rung: {duel_id: true} oldest first} for this player.
 var _saved: Dictionary = {}
+## The ghost races this session read, by the room each is played in (room_id -> the newest view), for the race ghost (services/race_ghost.gd).
+var _ghost_rooms: Dictionary = {}
 
 static var _shared: RefCounted
 
@@ -197,6 +199,10 @@ func _ack_their_run(board: String, duel_id: String, digest: String) -> bool:
 static func new_key() -> String:
 	return RoomsApi.new_key()
 
+## The ghost race played in `room_id` as this session last read it, or {} (no request).
+func ghost_race(room_id: String) -> Dictionary:
+	return _ghost_rooms.get(room_id, {})
+
 ## "friend", "ghost" or "" for a room this phone knows as a duel room.
 func room_kind(room_id: String) -> String:
 	return str(_saved.get("rooms", {}).get(room_id, ""))
@@ -272,7 +278,9 @@ func _remember(views: Array) -> void:
 	var rooms: Dictionary = _saved.get("rooms", {}).duplicate()
 	for view: Dictionary in views:
 		var own: Dictionary = view.sides[view.mine]
-		if own.get("room_id") is String and not str(own.room_id).is_empty(): rooms[own.room_id] = view.kind
+		if own.get("room_id") is String and not str(own.room_id).is_empty():
+			rooms[own.room_id] = view.kind
+			if view.kind == "ghost" and not (_ghost_rooms.has(own.room_id) and _older(view, _ghost_rooms[own.room_id])): _ghost_rooms[own.room_id] = view
 	if rooms == _saved.get("rooms", {}): return
 	while rooms.size() > MAX_DUELS * 2: rooms.erase(rooms.keys()[0])
 	_saved.rooms = rooms
@@ -359,7 +367,10 @@ static func valid_view(value: Variant) -> Dictionary:
 	var kept_ghost: Variant = null
 	if value.kind == "ghost":
 		if not ghost is Dictionary or not Typed.whole_number(ghost.get("ticks")) or not ghost.get("source") in ["board", "developer"]: return {}
-		kept_ghost = {"source": ghost.source, "ticks": int(ghost.ticks), "rank": int(ghost.rank) if Typed.whole_number(ghost.get("rank")) else 0, "names": ghost.get("names") if ghost.get("names") is Array else null, "looks": _looks(ghost.get("looks"))}
+		# A board run's entry_id and replay_hash (backend model.ts Ghost) let the race ghost play it; a server before them sends none.
+		var hash: Variant = ghost.get("replay_hash")
+		kept_ghost = {"source": ghost.source, "ticks": int(ghost.ticks), "rank": int(ghost.rank) if Typed.whole_number(ghost.get("rank")) else 0, "names": ghost.get("names") if ghost.get("names") is Array else null, "looks": _looks(ghost.get("looks")),
+			"entry_id": ghost.entry_id if _entry(ghost.get("entry_id")) else null, "replay_hash": hash if hash is String and hash.length() == 64 and hash.is_valid_hex_number() and hash == hash.to_lower() else null}
 	var result: Variant = value.get("result")
 	var kept_result: Variant = null
 	if result != null:

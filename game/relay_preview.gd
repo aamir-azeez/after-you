@@ -32,6 +32,7 @@ const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const RedoClient = preload("res://services/redo_client.gd")
+const RaceGhostView = preload("res://presentation/race_ghost_view.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const RedoRequestNotice = preload("res://presentation/redo_request_notice.gd")
 const SoloRedoOffer = preload("res://presentation/solo_redo_offer.gd")
@@ -1870,6 +1871,37 @@ func _start_play() -> void:
 	hud.visible = true
 	running = true
 	_update_hud(sim.snapshot())
+	_show_race_ghost()
+
+## The race ghost (presentation/race_ghost_view.gd) while this turn is a ghost
+## race's, the server has it on and Settings shows it: the raced run's matching
+## turn, read by this turn's tick. Gone when the turn stops playing.
+var _race_ghost: Node
+var _race_ghost_token := 0
+
+func _show_race_ghost() -> void:
+	_hide_race_ghost()
+	if online_session == null or not bool(settings.get("race_ghost", true)) or not is_instance_valid(journey) or not journey.has_method("duel_room"): return
+	var ghosts: RefCounted = online_session.race_ghost()
+	if ghosts == null: return
+	var token := _race_ghost_token
+	var track: Dictionary = await ghosts.turn(str(journey.snapshot().get("room_id", "")), journey.duel_room(), chapter_key, int(checkpoint.stage_index), role)
+	if token != _race_ghost_token or mode != "play" or track.is_empty() or not is_instance_valid(world) or not is_inside_tree(): return
+	var view: Node = RaceGhostView.new()
+	add_child(view)
+	var state: Dictionary = sim.snapshot()
+	if not view.show_track(world, track, controls.turn_progress, int(state.get("duration_ticks", 600)), bool(settings.get("reduced_motion", false))):
+		view.queue_free()
+		return
+	view.at_tick(int(state.get("tick", 0)), true)
+	_race_ghost = view
+
+func _hide_race_ghost() -> void:
+	_race_ghost_token += 1
+	if is_instance_valid(_race_ghost):
+		_race_ghost.release()
+		_race_ghost.queue_free()
+	_race_ghost = null
 
 
 ## A turn's first try glances at its goal when the goal starts off screen
@@ -1952,6 +1984,9 @@ func advance_input(input: Dictionary) -> void:
 	# Both touch/keyboard input and input-driven QA use this single tick path.
 	var state: Dictionary = sim.step(input)
 	if mode == "replay": replay_cursor += 1
+	if is_instance_valid(_race_ghost):
+		if mode == "play": _race_ghost.at_tick(int(state.tick))
+		else: _hide_race_ghost()
 	if mode == "play" and _try_due:
 		_try_due = false
 		_live_tries = turn_tries.start(_try_slot)
@@ -1976,6 +2011,7 @@ func advance_input(input: Dictionary) -> void:
 ## The rules keep no draft of such a turn (the earlier autosave is cleared),
 ## and the controls stop taking input while the beat shows.
 func _begin_drown_beat() -> void:
+	_hide_race_ghost()
 	running = false
 	action_pressed = false
 	if not _persist_draft("review"): return
@@ -2051,6 +2087,7 @@ func _end_drown_beat() -> void:
 ## The lit beacon stays on screen, as in the solo Lighthouse, until the
 ## player continues; a played turn is saved as a draft first.
 func _show_final_moment() -> void:
+	_hide_race_ghost()
 	_moment_replay = mode == "replay"
 	if not _moment_replay and not _persist_draft("review"): return
 	# The moment holds the world still: a ring waiting for the wake sounds now.
@@ -2231,6 +2268,7 @@ func _persist_draft(after_retry: String = "play", periodic: bool = false) -> boo
 
 
 func _finish() -> void:
+	_hide_race_ghost()
 	if mode == "moment":
 		_continue_final_moment()
 		return
