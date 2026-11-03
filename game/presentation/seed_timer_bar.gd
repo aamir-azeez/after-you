@@ -120,11 +120,17 @@ func track_x(ratio: float) -> float:
 	var seed_half := SEED_SIZE.x * SEED_BODY_HALF_WIDTH
 	return lerpf(seed_half, maxf(seed_half, size.x - seed_half), clampf(ratio, 0.0, 1.0))
 
+## The pip stands over its tick, stepping aside from the seconds number when the two would meet.
 func _place_race_pip() -> void:
 	if not is_instance_valid(_race_pip) or race_ratio < 0.0: return
 	var pip_size := _race_pip.custom_minimum_size
 	_race_pip.size = pip_size
-	_race_pip.position = Vector2(track_x(race_ratio) - pip_size.x * 0.5, TRACK_CENTRE - TRACK_HEIGHT * 0.5 - MARK_GAP - pip_size.y)
+	var x := track_x(race_ratio) - pip_size.x * 0.5
+	var number := label.get_minimum_size().x * 0.5 + 4.0
+	var middle := size.x * 0.5
+	if x + pip_size.x > middle - number and x < middle + number:
+		x = middle + number if track_x(race_ratio) >= middle else middle - number - pip_size.x
+	_race_pip.position = Vector2(x, TRACK_CENTRE - TRACK_HEIGHT * 0.5 - MARK_GAP - pip_size.y)
 
 func ratio_elapsed() -> float:
 	var span := max_value - min_value

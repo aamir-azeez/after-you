@@ -10,9 +10,11 @@ extends RefCounted
 ##   no ghost yet: its recordings don't ship.
 ## - The replay: fetched once from the board (services/leaderboard_client.gd
 ##   replay_blob) and kept still encoded and hash-checked in the shared blob
-##   format, beside a friend duel's other run (services/duel_their_run.gd, by
-##   the race's duel_id, so account erasure clears it with the rest). Decoded
-##   on a worker. release_ended() drops the copy once its race has ended.
+##   format, beside a friend duel's other run (services/duel_their_run.gd, as
+##   the race's ghost copy, so account erasure clears it with the rest; ghost
+##   copies are pruned first and never push out another pair's run). Decoded
+##   on a worker. release_ended() drops every copy whose race the lobby no
+##   longer shows running, so a copy lives no longer than its race.
 ## - The track: services/race_ghost_track.gd, on a worker, once per stage and
 ##   role, kept in memory for the race being played only.
 ## - Who and how: the raced player's look from the race (`ghost.looks`, slot
@@ -33,7 +35,8 @@ const Outfit = preload("res://services/outfit.gd")
 ## phone's copy until the race ends, even after the board stops serving it (an
 ## account erased, or the run left the top 10; the board answers both the same
 ## way). false drops the ghost from the next turn on once the board stops
-## serving it: each turn asks the board again (one read, usually cached).
+## serving it: each turn checks the board's row (the board read Fastest pair
+## shares, kept a minute), and nothing is kept on disk.
 const KEEP_COPY_UNTIL_RACE_ENDS := true
 
 var _api: Node
@@ -50,6 +53,13 @@ static var _shared: RefCounted
 static func shared(api: Node, owner: String) -> RefCounted:
 	if _shared == null or _shared._api != api or _shared._owner != owner: _shared = load("res://services/race_ghost.gd").new(api, owner)
 	return _shared
+
+## Account erasure (services/deleted_identity_cache_cleanup.gd): a fetch still
+## out for `owner` must never write their copy back once their folder is gone.
+static func clear_owner(owner: String) -> void:
+	if _shared != null and _shared._owner == owner:
+		_shared._owner = ""
+		_shared = null
 
 func _init(api: Node, owner: String) -> void:
 	_api = api
@@ -82,22 +92,26 @@ func turn(room_id: String, duel_room: bool, chapter_key: String, stage_index: in
 func prefetch(race: Dictionary) -> void:
 	var ghost: Variant = race.get("ghost")
 	if not KEEP_COPY_UNTIL_RACE_ENDS or not ghost is Dictionary or ghost.get("replay_hash") == null or ghost.get("entry_id") == null: return
-	if not TheirRun.kept_run(_owner, str(race.duel_id)).get("digest", "") == ghost.replay_hash: await _fetch(race)
+	if not TheirRun.kept_run(_owner, str(race.duel_id), true).get("digest", "") == ghost.replay_hash: await _fetch(race)
 
-## Lets go of the copy and tracks of every ghost race in `lobby` that has ended.
+## Lets go of the copy and tracks of every ghost race `lobby` does not show
+## running: ended, or dropped from the lobby by the server.
 func release_ended(lobby: Dictionary) -> void:
+	var open: Dictionary = {}
 	for view: Dictionary in lobby.get("duels", []):
-		if view.kind != "ghost" or view.status in ["running", "challenged"]: continue
-		TheirRun.forget(_owner, str(view.duel_id))
-		if view.duel_id == _duel_id: _forget_memory()
+		if view.kind == "ghost" and view.status in ["running", "challenged"]: open[view.duel_id] = true
+	for duel_id: String in TheirRun.kept_ghosts(_owner):
+		if not open.has(duel_id): TheirRun.forget(_owner, duel_id, true)
+	if not _duel_id.is_empty() and not open.has(_duel_id): _forget_memory()
 
 func _race(room_id: String, duel_room: bool) -> Dictionary:
 	var client: RefCounted = DuelsClient.shared(_api, _owner)
 	var race: Dictionary = client.ghost_race(room_id)
 	if race.is_empty() and duel_room and not _asked_rooms.has(room_id):
-		_asked_rooms[room_id] = true
 		var answer: Dictionary = await client.lobby()
+		# Only an answer settles it: a read lost offline asks again on the next turn.
 		if answer.get("ok", false):
+			_asked_rooms[room_id] = true
 			release_ended(answer.lobby)
 			race = client.ghost_race(room_id)
 	return race
@@ -108,36 +122,45 @@ func _parts_of(race: Dictionary, chapter_key: String) -> Array:
 	if duel_id != _duel_id:
 		_forget_memory()
 		_duel_id = duel_id
-	var kept: Dictionary = TheirRun.kept_run(_owner, duel_id) if KEEP_COPY_UNTIL_RACE_ENDS else {}
-	if kept.get("digest", "") != race.ghost.replay_hash:
-		kept = await _fetch(race)
-	elif not _parts.is_empty(): return _parts
-	if kept.is_empty():
-		# The board no longer serves it: with the copy dropped on erasure, no ghost from here on.
-		if not KEEP_COPY_UNTIL_RACE_ENDS: _forget_memory()
-		return []
+	# The switch off: the run plays only while the board still lists it with this replay.
+	if not KEEP_COPY_UNTIL_RACE_ENDS:
+		var row := await _row(race)
+		if duel_id != _duel_id: return []
+		if row.get("replay_hash") != race.ghost.replay_hash:
+			_forget_memory()
+			return []
 	if not _parts.is_empty(): return _parts
+	var kept: Dictionary = TheirRun.kept_run(_owner, duel_id, true) if KEEP_COPY_UNTIL_RACE_ENDS else {}
+	if kept.get("digest", "") != race.ghost.replay_hash: kept = await _fetch(race)
+	if kept.is_empty() or duel_id != _duel_id: return []
 	var parts: Variant = await Reaper.run(Callable(TheirRun, "parts").bind(kept, chapter_key), true)
 	if duel_id != _duel_id: return []
 	if not parts is Array or parts.is_empty():
-		TheirRun.forget(_owner, duel_id)
+		TheirRun.forget(_owner, duel_id, true)
 		return []
 	_parts = parts
 	return _parts
 
 func _fetch(race: Dictionary) -> Dictionary:
-	var answer: Dictionary = await LeaderboardClient.shared(_api, _owner).replay_blob(str(race.board), str(race.ghost.entry_id), str(race.ghost.replay_hash))
-	if not answer.get("ok", false): return {}
-	if KEEP_COPY_UNTIL_RACE_ENDS: TheirRun.keep(_owner, str(race.duel_id), answer.blob)
+	var owner := _owner
+	var answer: Dictionary = await LeaderboardClient.shared(_api, owner).replay_blob(str(race.board), str(race.ghost.entry_id), str(race.ghost.replay_hash))
+	# An account erased while the read was out (clear_owner) gets nothing written back.
+	if not answer.get("ok", false) or _owner != owner or owner.is_empty(): return {}
+	if KEEP_COPY_UNTIL_RACE_ENDS: TheirRun.keep(owner, str(race.duel_id), answer.blob, true)
 	return answer.blob
+
+## The raced run's row on the board this phone reads (kept a minute), or {} when it is not listed.
+func _row(race: Dictionary) -> Dictionary:
+	var answer: Dictionary = await LeaderboardClient.shared(_api, _owner).board(str(race.board))
+	if not answer.get("ok", false): return {}
+	for row: Dictionary in answer.view.get("top", []):
+		if row.entry_id == race.ghost.entry_id: return row
+	return {}
 
 ## The raced player's name as the board shows it now, or "" (names hidden, or the run no longer listed).
 func _name(race: Dictionary, index: int) -> String:
-	var answer: Dictionary = await LeaderboardClient.shared(_api, _owner).board(str(race.board))
-	if not answer.get("ok", false): return ""
-	for row: Dictionary in answer.view.get("top", []):
-		if row.entry_id == race.ghost.entry_id and row.get("names") is Array and row.names.size() > index: return str(row.names[index])
-	return ""
+	var row := await _row(race)
+	return str(row.names[index]) if row.get("names") is Array and row.names.size() > index else ""
 
 func _forget_memory() -> void:
 	_duel_id = ""

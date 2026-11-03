@@ -26,6 +26,8 @@ func erase_owner(owner: String) -> Dictionary:
 		if FileAccess.file_exists(path) and DirAccess.remove_absolute(path) != OK:
 			return {"ok": false, "error": "cache_cleanup_unfinished"}
 	if not History.new(history_directory).erase_owner(owner): return {"ok": false, "error": "cache_cleanup_unfinished"}
+	# A race ghost read still out must not write the erased player's copy back (services/race_ghost.gd).
+	load("res://services/race_ghost.gd").clear_owner(owner)
 	if not TheirRuns.erase_owner(owner, duel_runs_directory): return {"ok": false, "error": "cache_cleanup_unfinished"}
 	if not Safety.new(safety_directory).erase(owner): return {"ok": false, "error": "safety_cleanup_unfinished"}
 	return {"ok": true}

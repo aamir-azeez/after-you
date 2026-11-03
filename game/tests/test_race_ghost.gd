@@ -98,7 +98,7 @@ func _service(relay: Dictionary) -> void:
 	_check(not turn.is_empty() and api.requests.count("GET /v1/duels") == 1, "a duel room with no race read yet reads the lobby once and finds its race")
 	var index := 1 if str(turn.get("slot")) == "p1" else 0
 	_check(turn.get("look") == Outfit.from(race.ghost.looks[index]) and turn.get("name") == ["Lee", "Sam"][index], "the ghost wears the raced player's look and name, by their slot: %s %s %s" % [turn.get("slot"), turn.get("look"), turn.get("name")])
-	_check(TheirRun.kept_run(OWNER, DUEL).get("digest") == relay.proof_hash, "the replay is kept on the phone, still encoded")
+	_check(TheirRun.kept_run(OWNER, DUEL, true).get("digest") == relay.proof_hash and TheirRun.kept_run(OWNER, DUEL).is_empty(), "the replay is kept on the phone, still encoded, as a ghost copy apart from a duel's other run")
 	var second: Dictionary = await service.turn(ROOM, true, chapter, 0, "b")
 	_check(not second.is_empty() and api.requests.count(replay_path) == 1 and api.requests.count("GET /v1/duels") == 1, "the next turn reads nothing more")
 	# The board stops serving the run (an erased account, or it left the top 10): the race keeps playing from the copy.
@@ -111,14 +111,43 @@ func _service(relay: Dictionary) -> void:
 	# A friend room, or a room never raced: no ghost.
 	_check((await later.turn("SSSSSSSSSSSSSSSSSSSSSS", false, chapter, 0, "a")).is_empty(), "a room that is no ghost race has no ghost")
 	# The race ends: its copy goes.
+	later.release_ended({"duels": [DuelsClient.valid_view(_race_view(board, "running", str(relay.proof_hash)))]})
+	_check(not TheirRun.kept_run(OWNER, DUEL, true).is_empty(), "a running race keeps its copy")
 	later.release_ended({"duels": [DuelsClient.valid_view(_race_view(board, "decided", str(relay.proof_hash)))]})
-	_check(TheirRun.kept_run(OWNER, DUEL).is_empty(), "the copy goes once the race has ended")
+	_check(TheirRun.kept_run(OWNER, DUEL, true).is_empty(), "the copy goes once the race has ended")
+	await _copies(relay)
 	# The developers' run has no ghost yet (its recordings don't ship).
 	var ours := _race_view(board, "running", str(relay.proof_hash))
 	ours.ghost = {"source": "developer", "entry_id": null, "rank": null, "ticks": 588, "names": null}
 	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": PARTNER, "intact": true, "invites_in": [], "invite_out": null}, "duels": [ours]}}
 	await DuelsClient.shared(api, OWNER).lobby()
 	_check((await RaceGhost.new(api, OWNER).turn(ROOM, true, chapter, 0, "a")).is_empty(), "a race against Our run has no ghost")
+	api.queue_free()
+
+## Ghost copies never push out another pair's run, stay few, go when the
+## lobby no longer shows their race, and are never written for an erased player.
+func _copies(relay: Dictionary) -> void:
+	var blob := {"digest": relay.proof_hash, "byte_length": int(relay.byte_length), "body": relay.body}
+	var friend_run := "f".repeat(32)
+	TheirRun.keep(OWNER, friend_run, blob)
+	for index in range(TheirRun.MAX_GHOST_KEPT + 3):
+		TheirRun.keep(OWNER, ("%02d" % index).repeat(16), blob, true)
+	_check(TheirRun.kept_ghosts(OWNER).size() == TheirRun.MAX_GHOST_KEPT and not TheirRun.kept_run(OWNER, friend_run).is_empty(), "ghost copies stay at most %d, and the other pair's run stays" % TheirRun.MAX_GHOST_KEPT)
+	RaceGhost.new(null, OWNER).release_ended({"duels": []})
+	_check(TheirRun.kept_ghosts(OWNER).is_empty() and not TheirRun.kept_run(OWNER, friend_run).is_empty(), "a lobby that no longer shows a race lets its copy go, and only ghost copies")
+	TheirRun.forget(OWNER, friend_run)
+	# Erased while a read is out: nothing is written back.
+	var api := FakeApi.new()
+	root.add_child(api)
+	var replay_path := "GET /v1/leaderboards/%s/replay/%s" % [relay.board, ENTRY]
+	api.replies[replay_path] = {"ok": true, "data": {"schema_version": 1, "board": relay.board, "entry_id": ENTRY, "rank": 1, "ticks": int(relay.ticks), "finished_on": "2026-11-01", "names": null, "gold_leaf": true, "digest": relay.proof_hash, "byte_length": int(relay.byte_length), "body": relay.body}}
+	var erased: RefCounted = RaceGhost.shared(api, OWNER)
+	var race := DuelsClient.valid_view(_race_view(str(relay.board), "running", str(relay.proof_hash)))
+	race.duel_id = "c".repeat(32)
+	erased.prefetch(race)
+	RaceGhost.clear_owner(OWNER)
+	for frame in range(4): await process_frame
+	_check(TheirRun.kept_run(OWNER, race.duel_id, true).is_empty() and RaceGhost.shared(api, OWNER) != erased, "a read still out when the account is erased writes nothing back")
 	api.queue_free()
 
 ## A ghost race against the board's run, played in ROOM.
@@ -161,6 +190,11 @@ func _view() -> void:
 	_check(is_equal_approx(timer.race_ratio, 0.25) and timer.find_child("RaceGhostMark", true, false) != null, "the timer marks where the raced turn finished")
 	view.at_tick(2, true)
 	_check(spirit.position.is_equal_approx(Vector3(2.0, 0.5, 0.0)), "the pip stands where the run stood at the turn's tick: %s" % spirit.position)
+	view.at_tick(1, true)
+	view.at_tick(2)
+	_check(not spirit.position.is_equal_approx(Vector3(2.0, 0.5, 0.0)), "a tick at a time, the pip eases there")
+	view.at_tick(99)
+	_check(spirit.position.is_equal_approx(Vector3(2.0, 0.5, 0.0)), "a jump (a skipped memory wait) puts it there at once, never sliding across")
 	view.at_tick(99, true)
 	_check(spirit.position.is_equal_approx(Vector3(2.0, 0.5, 0.0)), "and waits at its finish")
 	view.release()

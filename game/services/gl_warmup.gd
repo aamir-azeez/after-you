@@ -63,9 +63,6 @@ const MATERIALS: Array[Dictionary] = [
 	# Pip cosmetics (presentation/kit/pip_wear_kit.gd): a glow sprite and a beam.
 	{"albedo_texture": true, "billboard_mode": BaseMaterial3D.BILLBOARD_ENABLED, "blend_mode": BaseMaterial3D.BLEND_MODE_ADD, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA},
 	{"blend_mode": BaseMaterial3D.BLEND_MODE_ADD, "cull_mode": BaseMaterial3D.CULL_DISABLED, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA, "vertex_color_use_as_albedo": true},
-	# The race ghost (presentation/race_ghost_view.gd): a pip's parts see-through, a lit outfit piece too.
-	{"transparency": BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS},
-	{"emission_enabled": true, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS},
 ]
 ## Which listed keys each chapter draws: "m" indices into MATERIALS, "s" into
 ## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.

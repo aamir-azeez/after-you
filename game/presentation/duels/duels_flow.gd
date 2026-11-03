@@ -514,9 +514,11 @@ func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant
 	if ghosts != null: ghosts.prefetch(answer.duel)
 	_open_duel(answer.duel)
 
-## The race ghost's data (services/race_ghost.gd) while the server has it on, else null.
+## The race ghost's data (services/race_ghost.gd) while the server has it on and Settings shows it, else null.
 func _race_ghost() -> RefCounted:
 	var session: RefCounted = host.relay_session
+	var saves: Variant = host.get("saves")
+	if saves != null and not bool(saves.data.settings.get("race_ghost", true)): return null
 	return session.race_ghost() if session != null and session.has_method("race_ghost") else null
 
 func _on_duel_action(view: Dictionary, action: String, control: Control) -> void:

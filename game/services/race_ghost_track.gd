@@ -31,6 +31,8 @@ static func build(chapter_key: String, pair: Dictionary, role: String) -> Dictio
 	var start := Registry.previous_checkpoint(chapter_key, pair.checkpoint)
 	var prior: Dictionary = pair.a if role == "b" and pair.get("a") is Dictionary else {}
 	if not Registry.reset_simulation(sim, chapter_key, Registry.definition(chapter_key), str(recording.get("stage_id", "")), start, prior, role, recording): return {}
+	# As every replay plays a turn: with the Forgiving catches its player had (shared_replay_view.gd).
+	sim.catch_assistance = bool(recording.get("catch_assistance", true))
 	var frames: Array = engine.expand_recording_inputs(recording)
 	if frames.is_empty() or frames.size() > MAX_TICKS: return {}
 	var points := PackedFloat32Array()

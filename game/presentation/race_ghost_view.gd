@@ -34,6 +34,8 @@ var spirit: Node3D
 var name_badge: Label3D
 var _track: Dictionary = {}
 var _target := Vector3.ZERO
+var _tick := 0
+var _color := FIRST_PIP
 var _reduced := false
 var _timer: Control
 ## See-through copies of the kit's shared materials (Primitives SHARED_META), made
@@ -51,11 +53,12 @@ func show_track(world: Node3D, track: Dictionary, timer: Control, duration_ticks
 	_track = track
 	_reduced = reduced_motion
 	var color := SECOND_PIP if str(track.slot) == "p1" else FIRST_PIP
-	spirit = SpiritVisual.new(color.lerp(Color.WHITE, PALER))
+	_color = color.lerp(Color.WHITE, PALER)
+	spirit = SpiritVisual.new(_color)
 	spirit.name = "RaceGhost"
 	spirit.wear(track.get("look", {}))
 	(beside as Node3D).get_parent().add_child(spirit)
-	_veil(spirit)
+	_veil(spirit, _color)
 	name_badge = Badges.make(spirit)
 	name_badge.name = "RaceGhostName"
 	var shown := str(track.get("name", ""))
@@ -73,11 +76,15 @@ func show_track(world: Node3D, track: Dictionary, timer: Control, duration_ticks
 	set_process(true)
 	return true
 
-## The live turn reached `tick`: the ghost goes where its run stood then (`immediate`: at once).
+## The live turn reached `tick`: the ghost goes where its run stood then. At
+## once when `immediate`, or when the turn jumped ahead (a memory wait skipped
+## steps the turn without drawing it), so the ghost never slides across.
 func at_tick(tick: int, immediate: bool = false) -> void:
 	if not is_instance_valid(spirit): return
 	_target = Track.point(_track, tick) / 100.0
-	if immediate:
+	var jumped := absi(tick - _tick) > 1
+	_tick = tick
+	if immediate or jumped:
 		spirit.position = _target
 		spirit.reset_motion()
 
@@ -104,9 +111,12 @@ func _process(delta: float) -> void:
 
 ## Half strength on every part, its outfit too: the face draws with its
 ## see-through variant (spirit_face_ghost.gdshader, so its eyes still move) and
-## every other part with a see-through copy of its material. Its ground shadow
-## and ring would read as solid, so they go.
-static func _veil(node: Node) -> void:
+## every other part with a see-through copy of its material. A part a body
+## cosmetic draws with its own shader (the Tide torso) shows as the plain body,
+## and the face loses that cosmetic's pattern: the ghost shows the outfit's
+## shape, never a second solid pip. Its ground shadow and ring would read as
+## solid, so they go.
+static func _veil(node: Node, body: Color) -> void:
 	var face: Variant = node.get("face_art")
 	var face_material: Material = face.material if face != null else null
 	if face != null: face.set_shader(GHOST_FACE, {"veil": VEIL})
@@ -114,8 +124,9 @@ static func _veil(node: Node) -> void:
 		var mesh_part := part as MeshInstance3D
 		mesh_part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var material: Material = mesh_part.material_override if mesh_part.material_override != null else mesh_part.get_active_material(0)
-		if material == face_material or not material is BaseMaterial3D: continue
-		mesh_part.material_override = _veiled(material)
+		if material == face_material: continue
+		if material is ShaderMaterial: material = Primitives.shared_material(body, 0.9)
+		if material is BaseMaterial3D: mesh_part.material_override = _veiled(material)
 	var shadow: Variant = node.get("ground_shadow")
 	if shadow is Node3D: (shadow as Node3D).visible = false
 	var ring: Variant = node.get("ground_ring")
@@ -126,7 +137,8 @@ static func _veiled(material: BaseMaterial3D) -> BaseMaterial3D:
 	if shared and _veils.has(material): return _veils[material]
 	var veiled: BaseMaterial3D = material.duplicate()
 	if veiled.has_meta(Primitives.SHARED_META): veiled.remove_meta(Primitives.SHARED_META)
-	veiled.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	# Plain alpha: a depth pre-pass draws nothing below full strength, so it would only add a pass.
+	veiled.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	veiled.albedo_color.a = material.albedo_color.a * VEIL
 	if shared:
 		if _veils.is_empty(): SessionRelease.on_exit(Callable(load("res://presentation/race_ghost_view.gd"), "release_cached"))

@@ -1977,7 +1977,9 @@ func _physics_process(_delta: float) -> void:
 
 
 func advance_input(input: Dictionary) -> void:
-	if _room_context_lost: return
+	if _room_context_lost:
+		_hide_race_ghost()
+		return
 	if mode == "replay":
 		if not _replay_ready() or replay_cursor >= replay_frames.size(): return
 		input = replay_frames[replay_cursor]
