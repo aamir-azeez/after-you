@@ -61,11 +61,10 @@ describe("the costly class", () => {
     expect(costlyKind("POST", "/v1/social/publication")).toBe("publication");
     expect(costlyKind("POST", "/v1/friends/request")).toBe("friend-request");
     expect(costlyKind("PUT", "/v1/leaderboards/me")).toBe("leaderboard-name");
-    expect(costlyKind("POST", "/v1/friends/accept")).toBe("friend-accept");
     expect(costlyKind("POST", "/v1/safety/blocks/" + "a".repeat(22))).toBe("block");
     // Read on timers and live hints, or sent in quick tries, each with its own guard; or costly only in part (COSTLY_IN_ROUTE).
     for (const [method, path] of [["GET", "/v1/friends"], ["GET", "/v1/social/inbox"], ["POST", "/v1/presence"], ["GET", "/v1/leaderboards/me"], ["DELETE", "/v1/safety/blocks/" + "a".repeat(22)],
-      ["DELETE", "/v1/friends/" + "a".repeat(22)], ["POST", "/v1/pollen/bundle-claims"], ["GET", "/v1/entitlement"], ["POST", "/v1/friends/share"], ["POST", `/v1/friends/${"a".repeat(22)}/notifications`]])
+      ["DELETE", "/v1/friends/" + "a".repeat(22)], ["POST", "/v1/friends/accept"], ["POST", "/v1/pollen/bundle-claims"], ["GET", "/v1/entitlement"], ["POST", "/v1/friends/share"], ["POST", `/v1/friends/${"a".repeat(22)}/notifications`]])
       expect(costlyKind(method, path)).toBeNull();
     expect(new Set([...COSTLY_ROUTES.map(route => route.kind), ...COSTLY_IN_ROUTE]).size).toBe(COSTLY_ROUTES.length + COSTLY_IN_ROUTE.length);
   });

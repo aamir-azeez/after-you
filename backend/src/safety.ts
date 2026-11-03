@@ -31,7 +31,8 @@ export const REPORT_INBOX_ROWS = 1000;
 export const OPEN_REPORT_CAP = 900;
 export const REPORTS_PER_REPORTER = 10;
 export const REPORTS_PER_TARGET = 5;
-export const REPORTS_PER_ROOM = 3;
+/** Rooms are pairs, so this is per partner too: no lower than REPORTS_PER_TARGET, so one victim's distinct reports are held by neither first. */
+export const REPORTS_PER_ROOM = 5;
 /** The reporter id a deleted identity's reports keep: a valid id that no player has, never the target. */
 export const ERASED_REPORTER = "erased_reporter".padEnd(22, "_");
 const OPEN = "json_extract(data,'$.resolved_at') IS NULL";

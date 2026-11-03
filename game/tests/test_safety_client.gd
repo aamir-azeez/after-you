@@ -30,6 +30,7 @@ class Server:
 	var drop := false
 	var corrupt := false
 	var wrong_peer := false
+	var limit_reports := false
 	var hold_path := ""
 	var waiting := false
 	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
@@ -57,6 +58,9 @@ class Server:
 			var player := path.get_file()
 			blocked.erase(player)
 			data = {"schema_version": 1, "blocked": false, "player_id": player}
+		elif path == "/v1/safety/report" and limit_reports:
+			busy = false
+			return {"ok": false, "status": 429, "code": "report_rate_limited"}
 		elif path == "/v1/safety/report":
 			var material := body.duplicate(true)
 			material.merge({"operation": "safety_report", "reporter_id": player_id})
@@ -125,6 +129,10 @@ func _run() -> void:
 	check(server.calls[-1].path == "/v1/safety/blocks/" + PEER and server.calls[-1].body == {"schema_version": 1, "request_id": row.request_id}, "the row block sends only the request id")
 	check(PEER in client.blocked_players() and PEER in Store.new(_directory).read(OWNER).value.blocked_players, "the row block is kept like a room block")
 	check(await client.unblock(PEER) and PEER not in client.blocked_players(), "a row block is undone by the same unblock")
+	# A daily report limit is final for today: the saved report goes, so Report opens again later.
+	server.limit_reports = true
+	check(not await client.report(TARGET, "harassment") and client.last_code == "report_rate_limited" and client.pending_report().is_empty(), "a daily limit clears the saved report")
+	server.limit_reports = false
 	var photo := {"turn_id": "t0-1-b", "photo_revision": 2, "sha256": "photo".sha256_text()}
 	server.drop = true
 	check(not await client.report(TARGET, "privacy", photo), "lost report reply remains unresolved")

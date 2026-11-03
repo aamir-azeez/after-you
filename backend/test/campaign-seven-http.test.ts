@@ -460,4 +460,5 @@ it("carries two players through seven actual chapter adapters, survives returnin
   expect(await response(await call(`/v2/campaigns/${R}/reconcile-deletion`, "POST", { schema_version: 1 }, G)))
     .toMatchObject({ status: "released", player_id: G, campaign_room_id: R });
   expect(await env.PLAYERS.getByName(G).listRooms()).toEqual([]);
-}, 30_000);
+  // Each signed-in request also asks the address limiter, which the test runtime serves from an object of its own.
+}, 60_000);

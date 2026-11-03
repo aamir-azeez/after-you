@@ -88,12 +88,12 @@ export function limitRoomTransfer(env: Env, kind: keyof typeof ROOM_SCOPES, play
  * rate_limited, which every caller already keeps and retries (see DEPLOY-A-NOTES.md for each route).
  * Deliberately absent, each with its own guard: GET /v1/friends and GET /v1/social/inbox (read on the phone's
  * timers and live hints; the list's refresh floor, the inbox's re-check memo), POST /v1/pollen/bundle-claims (sent
- * three times in five seconds after a purchase; its own pace, pollen/bundle-settle.ts pacedClaim).
+ * three times in five seconds after a purchase; its own pace, pollen/bundle-settle.ts pacedClaim), POST
+ * /v1/friends/accept (up to ten held requests accepted in a row; a repeat costs a few reads and writes nothing).
  */
 export const COSTLY_ROUTES = Object.freeze([
   { kind: "publication", method: "POST", path: /^\/v1\/social\/publication$/ },
   { kind: "friend-request", method: "POST", path: /^\/v1\/friends\/request$/ },
-  { kind: "friend-accept", method: "POST", path: /^\/v1\/friends\/accept$/ },
   { kind: "leaderboard-name", method: "PUT", path: /^\/v1\/leaderboards\/me$/ },
   { kind: "duel-challenge", method: "POST", path: /^\/v1\/duels\/challenge$/ },
   { kind: "duel-ghost", method: "POST", path: /^\/v1\/duels\/ghost$/ },

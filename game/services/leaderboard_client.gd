@@ -137,11 +137,18 @@ func _sync_once() -> void:
 	elif not sending.get("synced", false): response = await _api.request_json(HTTPClient.METHOD_GET, ME)
 	else: return
 	var data: Variant = response.get("data")
+	# A choice the server takes only a few of an hour stays pending and goes again after its wait.
+	if response.get("code") == "rate_limited" and sending.get("pending", false) and is_instance_valid(_api) and _api.is_inside_tree():
+		_resend_after(maxi(1000, int(response.get("retry_after_ms", 60000))))
 	if not response.get("ok", false) or not data is Dictionary or not data.get("show_name") is bool: return
 	# A newer choice made while this one was out stays pending.
 	if _choice.get("pending", false) and _choice.show != sending.get("show"): return
 	_choice = {"show": data.show_name, "pending": false, "synced": true}
 	_write_choice()
+
+func _resend_after(wait_ms: int) -> void:
+	await _api.get_tree().create_timer(wait_ms / 1000.0).timeout
+	if _choice.get("pending", false): sync()
 
 ## {ok} for a report of a ranked run.
 func report(key: String, entry_id: String) -> Dictionary:

@@ -327,7 +327,10 @@ describe("hosting alert guards", () => {
       for (let i = 0; i < 12; i++) ctx.storage.sql.exec("INSERT INTO friend_room_publication_ops VALUES (?,?)", randomToken(16), JSON.stringify({ published_at: Date.now() - 1000 }));
       ctx.storage.sql.exec("UPDATE friend_room_publication SET data=json_set(data,'$.current',json('null'))");
     });
-    expect(await (await publish(pairState.host, pairState.room, randomToken(16))).json()).toEqual({ schema_version: 1, publication_epoch: 2, queued: 0 });
+    const over = randomToken(16);
+    expect(await (await publish(pairState.host, pairState.room, over)).json()).toEqual({ schema_version: 1, publication_epoch: 2, queued: 0 });
+    // Its retry within the retry window is still past the cap.
+    expect(await (await publish(pairState.host, pairState.room, over)).json()).toEqual({ schema_version: 1, publication_epoch: 2, queued: 0 });
   });
 
   it("writes nothing for a repeated subscription, and the inbox shows an event it checked within a minute without its checks", async () => {

@@ -267,7 +267,14 @@ func retry_report() -> bool:
 func _send_report(ticket: int, body: Dictionary) -> bool:
 	var response := await _net(ticket, HTTPClient.METHOD_POST, "/v1/safety/report", body)
 	if not _same(ticket): return false
-	if not response.get("ok", false): return _finish(ticket, false)
+	if not response.get("ok", false):
+		# The daily limits (per reporter, per player, per room) are final for today: the saved report goes, so Report
+		# is open again later. A full inbox keeps it saved to send again.
+		if last_code == "report_rate_limited" and Typed.same(_state.pending, body):
+			var next := _state.duplicate(true)
+			next.pending = {}
+			_persist(next)
+		return _finish(ticket, false)
 	return _finish(ticket, _accept_receipt(response.get("data"), body))
 
 func check_report() -> bool:

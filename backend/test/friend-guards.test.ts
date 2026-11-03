@@ -63,7 +63,14 @@ describe("an Add into a full list", () => {
     expect((await request(owner, await create())).status).toBe(200);
     expect(await env.PLAYERS.getByName(owner.player_id).friendEdge(owner.player_id, strangers[0].player_id)).toBeNull();
     expect(await env.PLAYERS.getByName(strangers[0].player_id).friendEdge(strangers[0].player_id, owner.player_id)).toBeNull();
-  });
+    // An Add the other side refuses (its own list full of friends and outgoing requests) loses nobody's request.
+    const full = await create();
+    for (let i = 0; i < MAX_FRIENDS; i++) expect((await request(full, await create())).status).toBe(200);
+    const kept = strangers[1];
+    expect((await request(owner, full)).status).toBe(409);
+    expect(await env.PLAYERS.getByName(owner.player_id).friendEdge(owner.player_id, kept.player_id)).not.toBeNull();
+    expect(await env.PLAYERS.getByName(kept.player_id).friendEdge(kept.player_id, owner.player_id)).not.toBeNull();
+  }, 60_000);
 });
 
 describe("repeats write nothing", () => {

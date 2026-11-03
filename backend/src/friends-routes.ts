@@ -40,8 +40,10 @@ async function pair(env: Env, owner: string, peer: string, requestId: string): P
 }
 async function accept(env: Env, owner: string, hash: string, peer: string, requestId: string) {
   await allowed(env, owner, peer);
-  const [a] = await pair(env, owner, peer, requestId);
+  const [a, b] = await pair(env, owner, peer, requestId);
   if (a.link.requested_by !== peer) throw new ApiError(409, "friend_request_changed");
+  // A repeat of an acceptance both sides already hold answers as it is, with no further calls or writes.
+  if (a.link.accepted && b.link.accepted) return responseLink(owner, a.link);
   unwrap(await env.PLAYERS.getByName(owner).friendApprove(owner, hash, peer, requestId));
   await allowed(env, owner, peer); await authorized(env, owner, hash);
   const [approved] = await pair(env, owner, peer, requestId);
@@ -121,10 +123,15 @@ export async function routeFriends(request: Request, path: string, owner: string
       return accept(env, owner, hash, peer, remote.link.request_id);
     }
     const { link: proposed, evicted: pushedOut } = unwrap(await player.friendPropose(owner, hash, peer, randomToken(16)));
-    await clearEvicted(env, owner, pushedOut);
     if (proposed.requested_by === peer) return accept(env, owner, hash, peer, proposed.request_id);
     const received = await env.PLAYERS.getByName(peer).friendReceive(peer, owner, proposed.request_id, proposed.created_at);
-    if (!received.ok) { await player.friendForget(owner, peer, proposed.request_id, hash); return unwrap(received); }
+    if (!received.ok) {
+      await player.friendForget(owner, peer, proposed.request_id, hash);
+      // The request this Add pushed out takes its place again, so a refused Add loses nobody's request.
+      if (pushedOut) await player.friendReceive(owner, pushedOut.player_id, pushedOut.request_id, pushedOut.created_at).catch(() => undefined);
+      return unwrap(received);
+    }
+    await clearEvicted(env, owner, pushedOut);
     await clearEvicted(env, peer, received.value.evicted);
     try {
       const [current, other] = await pair(env, owner, peer, proposed.request_id);
@@ -154,8 +161,8 @@ export async function routeFriends(request: Request, path: string, owner: string
     const previous = unwrap(await player.friendList(owner, hash, false));
     // A change reaches every friend (hints and revokes below), so changes are in the costly class; a repeat is free.
     if (previous.shared_room?.room_id !== input.room?.room_id || previous.shared_room?.api_version !== input.room?.api_version) await limitCostly(env, "friend-share", owner);
-    const result = unwrap(await player.friendShare(owner, hash, input.room));
-    if (previous.shared_room?.room_id !== result.shared_room?.room_id || previous.shared_room?.api_version !== result.shared_room?.api_version) {
+    const { quiet, ...result } = unwrap(await player.friendShare(owner, hash, input.room));
+    if (!quiet && (previous.shared_room?.room_id !== result.shared_room?.room_id || previous.shared_room?.api_version !== result.shared_room?.api_version)) {
       await Promise.all([announceToFriends(env, owner, previous.links),
         ...previous.links.filter(link => link.accepted).map(async link => { try { await env.FRIEND_ROOM_EVENTS.getByName(link.player_id).revoke(owner); } catch { /* eligibility rechecks still cancel a stale event */ } })]);
     }

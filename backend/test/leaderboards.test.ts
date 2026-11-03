@@ -538,11 +538,11 @@ describe("names and privacy", () => {
     const repeat = await meterRows({ member, board: board() as unknown as DurableObjectStub }, () => show(host, false));
     expect(repeat.value.status).toBe(200);
     expect(repeat.rows.member.written).toBe(0); expect(repeat.rows.board.written).toBe(0);
-    // Repeated again within MEMBER_REPEAT_GAP_MS, the boards are not even asked.
+    // Repeated again within MEMBER_REPEAT_GAP_MS, the boards are not even asked, and the answer is retryable so the phone keeps the choice.
     const counted = countingEnv(withConfig({ ...env, ...ON }));
     const quiet = await worker.fetch(new Request("https://leaderboards.test/v1/leaderboards/me", { method: "PUT", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.51.100.77", "X-Player-Id": host.player_id, Authorization: "Bearer " + host.device_token },
       body: JSON.stringify({ schema_version: 1, show_name: false }) }), counted.env);
-    expect(quiet.status).toBe(200); expect(counted.calls.filter(name => name.startsWith("LEADERBOARD_BOARDS."))).toEqual([]);
+    expect(quiet.status).toBe(429); expect(counted.calls.filter(name => name.startsWith("LEADERBOARD_BOARDS."))).toEqual([]);
   });
   it("takes a name off the boards when an operator clears it, and forgets an erased account", async () => {
     const { host, guest } = await rankedPair();

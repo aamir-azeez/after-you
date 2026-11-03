@@ -4,6 +4,7 @@ import { knownBoard } from "./boards";
 import { fail, type Outcome } from "../protocol";
 import { applyParty, blankParty, noteLook, parsedParty, prune, type PartyAnswer, type PartyOp, type PartyState } from "../duels/party";
 import type { Look } from "../pollen/catalog";
+import { MemoryBudget } from "../limits";
 
 /**
  * One player's leaderboard settings, one Durable Object per player id: whether
@@ -29,6 +30,8 @@ export type MemberState = { schema_version: 1; show_name: boolean; boards: strin
 
 /** A repeated name choice tells the boards again at most this often (LeaderboardMember.touch). */
 export const MEMBER_REPEAT_GAP_MS = 10 * 60_000;
+/** Name choice changes a player makes an hour at most; each rewrites their rows on every board. */
+export const MEMBER_CHANGES_PER_HOUR = 6;
 
 function blank(): MemberState { return { schema_version: 1, show_name: false, boards: [], revision: 0 }; }
 
@@ -45,21 +48,26 @@ export class LeaderboardMember extends DurableObject<Env> {
   }
   /** When a repeated choice last told the boards (memory only): at most once per MEMBER_REPEAT_GAP_MS. */
   private repeatedAt = 0;
+  /** Name choice changes this hour (memory only): MEMBER_CHANGES_PER_HOUR. */
+  private readonly changes = new MemoryBudget(MEMBER_CHANGES_PER_HOUR, 3_600_000);
   /**
    * Sets the name choice (or, with `show` undefined, keeps it) and moves the revision on; returns the state, whose boards the caller tells.
    * A choice the member already holds writes nothing and keeps the revision, so the boards save only where they missed one
-   * (a reply lost after a partial update); `quiet` when such a repeat came within MEMBER_REPEAT_GAP_MS of the last, and no board is told.
+   * (a reply lost after a partial update). `quiet`: nothing was done, a repeat within MEMBER_REPEAT_GAP_MS of the last or a change past
+   * MEMBER_CHANGES_PER_HOUR; the route answers it retryable, so the phone keeps its choice and sends it again later.
    */
   touch(show?: boolean): MemberState & { quiet?: true } {
     return this.ctx.storage.transactionSync(() => {
       const state = this.read();
       if (state.erased) return state;
+      const now = Date.now();
       if (show !== undefined && show === state.show_name) {
-        const now = Date.now();
         if (now - this.repeatedAt < MEMBER_REPEAT_GAP_MS) return { ...state, quiet: true as const };
         this.repeatedAt = now;
         return state;
       }
+      // A real change rewrites the player's rows on every board: a few an hour (memory only).
+      if (show !== undefined && !this.changes.take(now)) return { ...state, quiet: true as const };
       if (show !== undefined) state.show_name = show;
       state.revision++;
       this.write(state);

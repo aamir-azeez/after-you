@@ -6,6 +6,7 @@ import { storeView } from "./view-cache";
 import { forgetDuelParty } from "../duels/erase";
 import { dropRunCopies } from "../duels/their-run-sweep";
 import { errorCode, logWarning } from "../log";
+import { ApiError } from "../protocol";
 
 /**
  * A player's name on the boards that hold a run of theirs. Names show only
@@ -21,7 +22,9 @@ const BOARD_CONCURRENCY = 4;
  */
 export async function syncMemberName(env: Env, playerId: string, show?: boolean): Promise<MemberState> {
   const { quiet, ...state } = await env.LEADERBOARD_MEMBERS.getByName(playerId).touch(show);
-  if (!state.boards.length || state.erased || quiet) return state;
+  // Nothing was done (member.ts touch): retryable, so the phone keeps its choice pending and sends it again.
+  if (quiet) throw new ApiError(429, "rate_limited");
+  if (!state.boards.length || state.erased) return state;
   const name = state.show_name ? shownName(await env.PLAYERS.getByName(playerId).publicDisplayName(playerId)) : null;
   await pooled(state.boards, BOARD_CONCURRENCY, async board => {
     const answer = await env.LEADERBOARD_BOARDS.getByName(board).setMember(board, playerId, state.show_name, name, state.revision);

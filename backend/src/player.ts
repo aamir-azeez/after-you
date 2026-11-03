@@ -598,7 +598,8 @@ export class Player extends DurableObject<Env> {
     if (deviceHash === undefined && identity.state === "active") this.pushFriendsChanged(identity, false);
     return ok({ removed: true, changed: true, ...(!gone.accepted && gone.requested_by === peer ? { declined: true as const } : {}) });
   }
-  friendShare(owner: string, deviceHash: string, room: SharedFriendRoom | null): Outcome<{ shared_room: SharedFriendRoom | null }> {
+  /** `quiet`: the change is past this hour's shareNews, so the router tells no friend (their next read and the events' own checks still see it). */
+  friendShare(owner: string, deviceHash: string, room: SharedFriendRoom | null): Outcome<{ shared_room: SharedFriendRoom | null; quiet?: true }> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
     if (room !== null && (!validSharedFriendRoom(room) || !this.listRooms().some(x => x.host && x.room_id === room.room_id && roomLinkVersion(x) === room.api_version))) return fail(404, "room_not_found");
     return this.ctx.storage.transactionSync(() => {
@@ -614,7 +615,7 @@ export class Player extends DurableObject<Env> {
       }
       social.shared_room = room; this.writeSocial(identity, social);
       if (publicationState?.current) this.ctx.storage.sql.exec("UPDATE friend_room_publication SET data=? WHERE id=1", JSON.stringify({ ...publicationState, current: null }));
-      return ok({ shared_room: room });
+      return ok({ shared_room: room, ...(this.shareNews.take(Date.now()) ? {} : { quiet: true as const }) });
     });
   }
   /** Separate from SocialState so its exact persisted validator and API shape stay frozen. */
@@ -643,9 +644,9 @@ export class Player extends DurableObject<Env> {
       if (existingReceipt) {
         const receipt = checkedFriendPublication(existingReceipt.data);
         if (!receipt || receipt.room.api_version !== room.api_version || receipt.room.room_id !== room.room_id) return fail(409, "friend_publication_changed");
-        // A lost reply's retry finishes the fan-out; a later repeat of the same id reaches nobody again.
+        // A lost reply's retry finishes the fan-out of a publication that was fresh when made; any other repeat reaches nobody again.
         const current = this.friendPublication(owner);
-        return ok({ publication: receipt, fresh: current?.publication_epoch === receipt.publication_epoch && Date.now() - receipt.published_at < PUBLICATION_RETRY_MS });
+        return ok({ publication: receipt, fresh: current?.publication_epoch === receipt.publication_epoch && Date.now() - receipt.published_at < PUBLICATION_RETRY_MS && this.withinPublicationCap(receipt.published_at) });
       }
       const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_publication WHERE id=1").toArray()[0];
       let state = { schema_version: 1 as const, epoch_counter: 0, current: null as FriendPublication | null };
@@ -661,11 +662,15 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("INSERT OR REPLACE INTO friend_room_publication VALUES (1,?)", JSON.stringify(state));
       this.ctx.storage.sql.exec("INSERT INTO friend_room_publication_ops VALUES (?,?)", publicationId, JSON.stringify(publication));
       this.ctx.storage.sql.exec("DELETE FROM friend_room_publication_ops WHERE publication_id IN (SELECT publication_id FROM friend_room_publication_ops ORDER BY json_extract(data,'$.published_at') DESC LIMIT -1 OFFSET ?)", MAX_PUBLICATION_RECEIPTS);
-      // Past MAX_FRESH_PUBLICATIONS_PER_HOUR new rooms an hour, friends see the room on their list but get no new event.
-      const lastHour = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM friend_room_publication_ops WHERE json_extract(data,'$.published_at')>?", publication.published_at - 3_600_000).one().n;
-      return ok({ publication, fresh: lastHour <= MAX_FRESH_PUBLICATIONS_PER_HOUR });
+      return ok({ publication, fresh: this.withinPublicationCap(publication.published_at) });
     });
   }
+  /** Whether a publication made at `at` was within MAX_FRESH_PUBLICATIONS_PER_HOUR (the receipts in the hour up to it); past it, friends see the room on their list but get no new event. */
+  private withinPublicationCap(at: number): boolean {
+    return this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM friend_room_publication_ops WHERE json_extract(data,'$.published_at')>? AND json_extract(data,'$.published_at')<=?", at - 3_600_000, at).one().n <= MAX_FRESH_PUBLICATIONS_PER_HOUR;
+  }
+  /** Shared-room changes whose hints and revokes reach friends: MAX_FRESH_PUBLICATIONS_PER_HOUR an hour; later ones change only this list (memory only). */
+  private readonly shareNews = new MemoryBudget(MAX_FRESH_PUBLICATIONS_PER_HOUR, 3_600_000);
   friendSubscription(owner: string, host: string): FriendSubscription | null {
     const identity = this.identity(); if (!identity || identity.player_id !== owner || identity.state !== "active") return null;
     const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM friend_room_subscriptions WHERE host_id=?", host).toArray()[0];
