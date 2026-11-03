@@ -113,6 +113,11 @@ export class SafetyProfile extends DurableObject<Env> {
    */
   terms(owner: string, current: string = TERMS_VERSION) { const p = this.read(owner); return { schema_version: 1, terms_version: current, accepted: termsCovered(p.terms_version, current), accepted_at: p.accepted_at }; }
   blocks(owner: string) { return { schema_version: 1, blocked_players: [...this.read(owner).blocks] }; }
+  /** What a public duel post or join checks of a player, in one request: the rules `current` accepted, and their blocks. */
+  publicGate(owner: string, current: string): { accepted: boolean; blocked_players: string[] } {
+    const p = this.read(owner);
+    return { accepted: termsCovered(p.terms_version, current), blocked_players: [...p.blocks] };
+  }
   hasBlocked(owner: string, peer: string): boolean { return this.read(owner).blocks.includes(peer); }
   /** `current`: the rules this phone is shown, which the Worker chose from its flags (public-policy.ts termsVersionFor). */
   async accept(owner: string, deviceHash: string, version: string, current: string = TERMS_VERSION): Promise<Outcome<ReturnType<SafetyProfile["terms"]>>> {
@@ -283,6 +288,8 @@ answerWhileBlank(SafetyProfile, {
   // Block checks name any player id (friend routes check blocks before any link): one nobody wrote has no blocks and stays blank.
   hasBlocked: owner => { text(owner, ID_PATTERN); return false; },
   blocks: owner => { text(owner, ID_PATTERN); return { schema_version: 1, blocked_players: [] }; },
+  // Nobody wrote it, so nobody accepted any rules here.
+  publicGate: owner => { text(owner, ID_PATTERN); return { accepted: false, blocked_players: [] }; },
   deletionReceipt: () => false,
   // As a profile with empty tables answers: an erasure still running holds the acknowledgement (a blank profile is now usual,
   // since the block checks above no longer create one).

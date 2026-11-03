@@ -26,7 +26,12 @@ import { MAX_PUBLIC_DUEL_MS, PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "./rules";
  * Ids never leave the server: views carry ids only for the viewer and players they already know (their party, a
  * friend checked at posting or joining), and the list row (rowFor) carries none.
  */
-export type PublicSeat = { label: string | null; entered?: true; gone?: true };
+/**
+ * `hidden`: strangers may not meet this seat's player now (their switch is off, or they were paused after reports:
+ * leaderboards/member.ts publicOpenTo), so the duel stays off the list while they hold it. Per seat, so one player's
+ * change never lists a duel another player in it keeps off. A seat taken again starts clear.
+ */
+export type PublicSeat = { label: string | null; entered?: true; gone?: true; hidden?: true };
 export type PublicState = {
   posted_ms: number; open_until_ms: number;
   /** Four seats in seat order. */
@@ -35,8 +40,6 @@ export type PublicState = {
   full_once?: true;
   /** Seats that forfeited their held extra while the duel ran (a leave); the result adds a stall's. */
   forfeit?: number[];
-  /** Off the list though still open: a player in it was paused after reports (leaderboards/member.ts). */
-  hidden?: true;
 };
 export type JoinAs = "alone" | "party";
 export type SpotAnswer = { seat: number } | { reason: "seat_taken" | "full" | "one_left" | "split" };
@@ -72,10 +75,11 @@ export function openSeats(duel: Duel): boolean[] {
 export function seated(duel: Duel): string[] {
   return [0, 1, 2, 3].map(seat => holder(duel, seat)).filter((id): id is string => id !== null);
 }
-/** Whether the duel is on the list now: running, inside its window, with a spot open and nobody in it paused. */
+/** Whether the duel is on the list now: running, inside its window, with a spot open and nobody in it hidden (switched off or paused). */
 export function listed(duel: Duel, now: number): boolean {
-  return !!duel.public && duel.status === "running" && now < duel.public.open_until_ms && !duel.public.hidden && openSeats(duel).some(Boolean);
+  return !!duel.public && duel.status === "running" && now < duel.public.open_until_ms && !hiddenSeat(duel) && openSeats(duel).some(Boolean);
 }
+const hiddenSeat = (duel: Duel) => duel.public!.seats.some((seat, index) => seat.hidden && holder(duel, index) !== null && !seat.gone);
 
 export type PublicPost = { duel_id: string; board: string; chapter: ChapterKey; steps: number; players: string[]; labels: (string | null)[]; looks?: (Look | undefined)[]; known: string[] };
 /** A posted duel: the poster (and partner) on side 0, every other seat open. Running at once: there is no challenge step. */
@@ -279,10 +283,15 @@ export function relabel(duel: Duel, player: string, label: string | null, now: n
   return true;
 }
 
-/** Takes a duel off the list (or puts it back) for a paused player in it. Returns whether it changed. */
-export function hide(duel: Duel, hidden: boolean, now: number): boolean {
-  if (!duel.public || !!duel.public.hidden === hidden) return false;
-  if (hidden) duel.public.hidden = true; else delete duel.public.hidden;
+/**
+ * Marks `player`'s seat hidden or clear (their switch, or a pause after reports): a duel with a hidden seat leaves the
+ * list, and the claim (claimSeats, through listed) refuses it in the same transaction. Returns whether it changed.
+ */
+export function hide(duel: Duel, player: string, hidden: boolean, now: number): boolean {
+  // A duel that is over never lists again: its row is left as it is (no write for a switch or a pause).
+  const seat = duel.public && duel.status === "running" ? seatOf(duel, player) : -1;
+  if (seat < 0 || !!duel.public!.seats[seat].hidden === hidden) return false;
+  if (hidden) duel.public!.seats[seat].hidden = true; else delete duel.public!.seats[seat].hidden;
   duel.updated_ms = now;
   return true;
 }

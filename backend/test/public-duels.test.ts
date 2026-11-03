@@ -55,16 +55,20 @@ async function partner(a: Account, b: Account): Promise<void> {
   await ok(call("/v1/duels/party/invite", "POST", a, { schema_version: 1, friend: b.player_id }));
   await ok(call("/v1/duels/party/accept", "POST", b, { schema_version: 1, from: a.player_id }));
 }
-/** A player with the community rules accepted and public duels on. */
-async function player(): Promise<Account> {
-  const account = await create();
+/** Accepts the public duel rules, as the phone's rules screen does. */
+async function acceptRules(account: Account): Promise<void> {
   const knows = { [PUBLIC_DUELS_HEADER]: "1" };
   const { terms_version } = await ok<{ terms_version: string }>(call("/v1/safety/terms", "GET", account, undefined, ON, knows));
   expect(terms_version).toBe(PUBLIC_TERMS_VERSION);
   await ok(call("/v1/safety/terms", "POST", account, { schema_version: 1, terms_version }, ON, knows));
-  await ok(call("/v1/duels/public/me", "PUT", account, { schema_version: 1, on: true }));
+}
+/** A player with the community rules accepted; public duels are on by default, so nothing else. */
+async function player(): Promise<Account> {
+  const account = await create();
+  await acceptRules(account);
   return account;
 }
+const setSwitch = (account: Account, on: boolean) => call("/v1/duels/public/me", "PUT", account, { schema_version: 1, on });
 const post = (account: Account, as: JoinAs = "alone", key = crypto.randomUUID(), vars: Record<string, unknown> = ON) =>
   call("/v1/duels/public", "POST", account, { schema_version: 1, idempotency_key: key, board: RELAY, as }, vars);
 /** The costly class's 5 a minute (limits.ts) let through, for a test that posts more than that on purpose. */
@@ -147,16 +151,53 @@ describe("public duels", () => {
     expect(await ok<Any>(call("/v1/safety/blocks", "GET", a, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ duel_blocks: [] });
   });
 
-  it("need the switch, which needs the community rules, and a paused player can neither post nor join", async () => {
+  it("serve the rules and privacy pages that say public duels are on unless turned off only while public duels are on", async () => {
+    const page = async (path: string, vars: Record<string, unknown>) => (await call(path, "GET", undefined, undefined, vars)).text();
+    for (const path of ["/privacy", "/community-rules"]) expect(await page(path, OFF), path).not.toMatch(/public duel/i);
+    const rules = await page("/community-rules", ON), privacy = await page("/privacy", ON);
+    expect(rules).toContain(`Version ${PUBLIC_TERMS_VERSION}. After You connects two invited players, and in public duels it connects players who don't know each other.`);
+    expect(rules).toContain("before uploading shared photos or playing a public duel.");
+    expect(rules).toContain("Public duels are on unless you turn them off in Settings, for example on a child's phone.");
+    expect(rules).not.toMatch(/turn them on|turning on public duels/);
+    expect(privacy).toContain("Public duels let you duel players you don't know. They are on unless you turn them off in Settings, for example on a child's phone.");
+    expect(privacy).toContain("In a public duel, players you don't know see your name only if you turn on Show my name");
+    expect(privacy).toContain("room/photo-reference metadata (for a public duel, the duel and seat)");
+    // Today's page otherwise: everything else on it is unchanged.
+    expect(privacy.replace(/<p>Public duels let you[^]*?<\/p>| In a public duel, players[^"<]*?there\.| \(for a public duel, the duel and seat\)/g, "")).toBe(await page("/privacy", OFF));
+  });
+
+  it("are on by default and stored only when switched off, need the rules for every post and join, and a paused player can neither post nor join", async () => {
     const a = await create();
-    expect((await errorOf(call("/v1/duels/public/me", "PUT", a, { schema_version: 1, on: true }))).code).toBe("terms_acceptance_required");
+    // Never touched: on, with nothing stored, and the first post asks for the rules.
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ on: true, paused: false });
+    expect((await errorOf(post(a))).code).toBe("terms_acceptance_required");
+    expect((await errorOf(setSwitch(a, true))).code).toBe("terms_acceptance_required");
+    // The Member object makes its table only on its first write (lazy-storage.ts).
+    const member = () => runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(a.player_id), async (_, ctx) =>
+      ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='lb_member'").toArray().length
+        ? ctx.storage.sql.exec<{ data: string }>("SELECT data FROM lb_member WHERE id=1").toArray()[0]?.data ?? null : null);
+    expect(await member()).toBeNull();
+    // Off is kept, needs no rules, and stops posting; on again needs the rules and stores nothing.
+    expect(await ok<Any>(setSwitch(a, false))).toEqual({ schema_version: 1, on: false, show_name: false, paused: false });
+    expect(JSON.parse((await member())!)).toMatchObject({ public_off: true });
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ on: false });
+    await acceptRules(a);
     expect((await errorOf(post(a))).code).toBe("public_duels_off");
+    expect(await ok<Any>(setSwitch(a, true))).toMatchObject({ on: true });
+    expect(JSON.parse((await member())!)).not.toHaveProperty("public_off");
+    await ok(post(a));
     const b = await player();
     expect((await ok<{ public: Any }>(call("/v1/duels", "GET", b))).public).toMatchObject({ version: 1, on: true, paused: false, partner_on: null, running: 0 });
+    // A first post writes the Member row the pause goes into.
+    await ok(post(b));
     await runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(b.player_id), async (_, ctx) => {
       ctx.storage.sql.exec("UPDATE lb_member SET data=json_set(data,'$.public_paused',json('true')) WHERE id=1");
     });
     expect((await errorOf(post(b))).code).toBe("public_paused");
+    // A post or join that was on its way when the player was paused (or switched off) learns it with its pointer, in the same request.
+    const ref = { duel_id: "f".repeat(32), board: RELAY, at: Date.now(), public: true as const };
+    expect(await env.LEADERBOARD_MEMBERS.getByName(b.player_id).addPublicRef(b.player_id, ref, Date.now())).toEqual({ open: false });
+    expect(await env.LEADERBOARD_MEMBERS.getByName(a.player_id).addPublicRef(a.player_id, ref, Date.now())).toEqual({ open: true });
   });
 
   it("post to the list with no id in it, and a retried post answers the same duel", async () => {
@@ -303,6 +344,59 @@ describe("public duels", () => {
     await ok(call(`/operator/safety/players/${target.player_id}/public-unpause`, "POST", undefined, { schema_version: 1 }, ON, { Authorization: "Bearer " + OPERATOR }));
     expect((await ok<{ public: Any }>(call("/v1/duels", "GET", target))).public).toMatchObject({ paused: false });
     expect((await listFor(reader, rows => rows.some(row => row.duel_id === second.duel_id))).rows.map(row => row.duel_id)).toContain(second.duel_id);
+  });
+
+  it("never seat a player who switched off: their open duels leave the list, a join is refused, and neither a pause clear nor another player's change lists them", async () => {
+    const [poster, other, lone, reader] = await Promise.all([player(), player(), player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    const shared = (await ok<{ duel: DuelView }>(post(other))).duel;
+    await ok(join(poster, shared));
+    expect((await listFor(reader, rows => rows.length === 2)).rows).toHaveLength(2);
+    await ok(setSwitch(poster, false));
+    // Both duels holding the poster are off the list, and the board refuses a join to either.
+    expect((await listFor(reader, rows => rows.length === 0)).rows).toEqual([]);
+    expect((await errorOf(join(lone, posted))).code).toBe("spot_taken");
+    expect((await errorOf(join(lone, shared))).code).toBe("spot_taken");
+    expect((await boardDuel(posted.duel_id)).public!.seats[0]).toMatchObject({ hidden: true });
+    // A pause and its clear on the other player in the shared duel leave the poster's mark alone.
+    await runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(other.player_id), async (_, ctx) => {
+      ctx.storage.sql.exec("UPDATE lb_member SET data=json_set(data,'$.public_paused',json('true')) WHERE id=1");
+    });
+    await ok(call(`/operator/safety/players/${other.player_id}/public-unpause`, "POST", undefined, { schema_version: 1 }, ON, { Authorization: "Bearer " + OPERATOR }));
+    // The poster's own pause clear, while switched off, keeps them off the list too.
+    await ok(call(`/operator/safety/players/${poster.player_id}/public-unpause`, "POST", undefined, { schema_version: 1 }, ON, { Authorization: "Bearer " + OPERATOR }));
+    expect((await listFor(reader, () => true)).rows).toEqual([]);
+    // On again: both come back.
+    await ok(setSwitch(poster, true));
+    expect((await listFor(reader, rows => rows.length === 2)).rows.map(row => row.duel_id).sort()).toEqual([posted.duel_id, shared.duel_id].sort());
+    expect((await ok<{ duel: DuelView }>(join(lone, posted))).duel.duel_id).toBe(posted.duel_id);
+    // A seat whose player switched off and then gave it back before entering starts clear for the next one.
+    await ok(setSwitch(lone, false));
+    expect((await boardDuel(posted.duel_id)).public!.seats[1]).toMatchObject({ hidden: true });
+    await ok(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", lone, { schema_version: 1 }));
+    expect((await boardDuel(posted.duel_id)).public!.seats[1]).toEqual({ label: null });
+    expect((await listFor(reader, rows => rows.some(row => row.duel_id === posted.duel_id))).rows.map(row => row.duel_id)).toContain(posted.duel_id);
+    // An on sent again (its reply lost after a failed hiding) settles the marks again, though the switch did not change.
+    await rewriteDuel(shared.duel_id, duel => { duel.public!.seats[0].hidden = true; });
+    await forgetCachedListings();
+    await ok(setSwitch(other, true));
+    expect((await boardDuel(shared.duel_id)).public!.seats[0]).not.toHaveProperty("hidden");
+  });
+
+  it("hold a party's partner to the same switch and rules, and the lobby says whether the partner is open", async () => {
+    const [a, b, poster] = await Promise.all([player(), create(), player()]);
+    await partner(a, b);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    // Maya never opened public duels: her switch is on by default, but she has not accepted the rules.
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ on: true, partner_on: true });
+    expect((await errorOf(post(a, "party"))).code).toBe("partner_rules_required");
+    expect((await errorOf(join(a, posted, "party"))).code).toBe("partner_rules_required");
+    await acceptRules(b);
+    await ok(setSwitch(b, false));
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a))).public).toMatchObject({ partner_on: false });
+    expect((await errorOf(join(a, posted, "party"))).code).toBe("partner_public_off");
+    await ok(setSwitch(b, true));
+    expect((await ok<{ duel: DuelView }>(join(a, posted, "party"))).duel.mine).toBe(1);
   });
 
   it("send a friend request by seat only once the duel is over, which the asker's own list does not show until accepted", async () => {

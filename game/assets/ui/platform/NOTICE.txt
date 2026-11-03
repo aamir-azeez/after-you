@@ -1,0 +1,25 @@
+google-play-games-badge.png
+
+The Google Play game controller icon, from Google's Play Games Services branding files.
+Google Play and Google Play Games are trademarks of Google LLC. The icon is Google's and is
+not covered by the After You licenses.
+
+Source: https://developer.android.com/static/games/pgs/download-files/games-branding-icons.zip
+(games-branding-icons/Individual_Badges_PNG/games_controller_white.png), linked from
+https://developer.android.com/games/pgs/downloads, downloaded 2026-11-03.
+Zip SHA-256: A5FFC9026BCD827AFE909F51AE358F937BDFD142FA9B22F5775E0032C6C3A9CE
+
+Terms: Google's Play Games Services branding guidelines, https://developer.android.com/games/pgs/branding,
+and the Guidelines for Third Party Use of Google Brand Features they point to. In short, as read
+on 2026-11-03:
+- Games may use these branding elements without pre-approval when they follow the guidelines.
+  Any other use of Google brands needs Google's written consent.
+- The controller icon is the one Google asks for on buttons and other elements that open the
+  default Play Games UI, such as a leaderboard.
+- Games may change the icon's colour, texture and size to match their style, but must not
+  substantially change its shape, cover it with other elements or put it on a busy background.
+- Google's icons must not be used in the game's own app icon, and Google trademarks must not be
+  used in the game's title. "Google Play Games" may be used nominatively in game text.
+
+Changes: resized from 512x512 to 96x96. Shape and colour (white) are as downloaded.
+Used by: game/presentation/platform_board_button.gd (the leaderboard screen's Google Play Games button).

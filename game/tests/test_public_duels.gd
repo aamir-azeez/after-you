@@ -28,6 +28,8 @@ const PartnerFriends = preload("res://services/partner_friends.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const RoomPartnerNames = preload("res://services/room_partner_names.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
+const PublicFlow = preload("res://presentation/duels/public_duels_flow.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -63,6 +65,7 @@ func _run() -> void:
 	_replies()
 	_names()
 	_receipts()
+	_switch_kept()
 	_safety()
 	await _leave()
 	await _surfaces()
@@ -175,7 +178,30 @@ func _names() -> void:
 	_check(ListPage.status_line(_row([false, false, false, true], [2, 2], ["", "", "Juniper", ""])) == "Both pairs have played 2 steps", "Both pairs level")
 	_check(ListPage.status_line(_row([false, false, true, true], [5, 0], ["Pebble", "", "", ""])) == "5 of 12 steps", "A pair with an unnamed player")
 	_check(ListPage.posted_text(0, 4 * 60_000) == "Posted 4 min ago" and ListPage.posted_text(0, 3 * 3_600_000) == "Posted 3 h ago", "Posted times read as drawn")
-	_check(ListPage.reason_text(Spots.PARTNER_OFF, "Maya", 10) == "Maya hasn't turned on public duels" and ListPage.reason_text(Spots.LIMIT, "", 10) == "You have 10 duels going", "Greyed lines name the reason")
+	_check(ListPage.reason_text(Spots.PARTNER_OFF, "Maya", 10) == "Maya has public duels off" and ListPage.reason_text(Spots.LIMIT, "", 10) == "You have 10 duels going", "Greyed lines name the reason")
+
+# The switch as the phone keeps it -----------------------------------------------
+
+## On by default, as the server keeps it (backend leaderboards/member.ts publicDuelsChosen): only an
+## off the server said is saved, and an older save's own `public_on: false` never turns it off.
+func _switch_kept() -> void:
+	var path := "user://test-public-switch.json"
+	AtomicFile.write_text(path, JSON.stringify({ME: {"rooms": {}, "rung": [], "public_on": false}}))
+	var api := FakeApi.new()
+	var client: RefCounted = DuelsClient.new(api, ME, path)
+	_check(client.public_on(), "A player the server never answered, or an older save that kept its own default, reads on")
+	client.note_public(false)
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(not DuelsClient.new(api, ME, path).public_on() and saved is Dictionary and saved[ME].get("public_off") == true and not saved[ME].has("public_on"), "An off the server said is kept across launches")
+	client.note_public(true)
+	saved = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(DuelsClient.new(api, ME, path).public_on() and not saved[ME].has("public_off"), "On again keeps nothing: the default")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	api.free()
+	# On by default, a player meets the rules at their first post or join: the refusal opens the card once.
+	var rules := {"ok": false, "status": 403, "code": "terms_acceptance_required"}
+	_check(PublicFlow.rules_refusal(rules, false) and not PublicFlow.rules_refusal(rules, true), "A post or join refused for the rules asks for them, once")
+	_check(not PublicFlow.rules_refusal({"ok": false, "code": "public_duels_off"}, false) and not PublicFlow.rules_refusal({"ok": true}, false), "Any other answer is said as usual")
 
 # Receipts -----------------------------------------------------------------------
 
@@ -371,7 +397,12 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 	var first := Sheets.first_time(duel.root, false, func(_named: bool) -> void: pass)
 	await _settle()
 	_check(first.find_child("PublicShowNameSwitch", true, false) != null and _inside(first.find_child("PublicTurnOn", true, false), safe), "%s: the first-time card has the name switch and Turn on" % name)
+	_check((first.find_child("PublicTurnOn", true, false) as Button).text == PlayerCopy.PUBLIC_TURN_ON, "%s: with the switch turned off it says Turn on" % name)
 	first.close()
+	var rules_first := Sheets.first_time(duel.root, false, func(_named: bool) -> void: pass, PlayerCopy.PUBLIC_FIRST_CONTINUE)
+	await _settle()
+	_check((rules_first.find_child("PublicTurnOn", true, false) as Button).text == PlayerCopy.PUBLIC_FIRST_CONTINUE, "%s: with the switch on by default it says Continue, the rules next" % name)
+	rules_first.close()
 	duel.close()
 	await _settle()
 	# The result's held extra.

@@ -2,7 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import { knownBoard } from "./boards";
 import { fail, type Outcome } from "../protocol";
-import { applyParty, blankParty, noteLook, parsedParty, prune, type PartyAnswer, type PartyOp, type PartyState } from "../duels/party";
+import { applyParty, blankParty, noteLook, parsedParty, prune, type DuelRef, type PartyAnswer, type PartyOp, type PartyState } from "../duels/party";
 import type { Look } from "../pollen/catalog";
 import { MemoryBudget } from "../limits";
 import { MAX_BLOCKED_BY, PUBLIC_REPORTS_TO_PAUSE, PUBLIC_REPORT_WINDOW_MS } from "../duels/rules";
@@ -28,8 +28,9 @@ import { MAX_BLOCKED_BY, PUBLIC_REPORTS_TO_PAUSE, PUBLIC_REPORT_WINDOW_MS } from
  * player whose only trace is a duel.
  */
 /**
- * Public duels (duels/public.ts) keep four optional keys here, absent until used, so a row nobody used for them reads
- * byte for byte as before: `public_duels` (the player's switch, off by default), `blocked_by` (players who blocked
+ * Public duels (duels/public.ts) keep five optional keys here, absent until used, so a row nobody used for them reads
+ * byte for byte as before: `public_off` (the player turned the switch off; absent is the default, on, and only
+ * publicDuelsChosen reads it), `blocked_by` (players who blocked
  * this one, so their duels never list for them), `public_reports` (reports from public duels, newest last, inside
  * PUBLIC_REPORT_WINDOW_MS) and `public_paused` (set at PUBLIC_REPORTS_TO_PAUSE different reporters; only an operator
  * clears it). `duel_blocks`: players this one blocked from a public duel without knowing their id; the phone sees
@@ -38,7 +39,16 @@ import { MAX_BLOCKED_BY, PUBLIC_REPORTS_TO_PAUSE, PUBLIC_REPORT_WINDOW_MS } from
 export type PublicReport = { from: string; at: number };
 export type DuelBlock = { handle: string; id: string; label: string | null; at: number };
 export type MemberState = { schema_version: 1; show_name: boolean; boards: string[]; revision: number; erased?: true;
-  public_duels?: true; blocked_by?: string[]; public_reports?: PublicReport[]; public_paused?: true; duel_blocks?: DuelBlock[] };
+  public_off?: true; blocked_by?: string[]; public_reports?: PublicReport[]; public_paused?: true; duel_blocks?: DuelBlock[] };
+
+/**
+ * Whether the player has public duels on: on unless they turned the switch off (owner, 2026-11-03: on by default, off in
+ * Settings, for example on a child's phone). The one place that decides it; the phone shows the same default until the
+ * server's first word (game/services/duels_client.gd public_on).
+ */
+export function publicDuelsChosen(state: Pick<MemberState, "public_off">): boolean { return !state.public_off; }
+/** Whether strangers may meet the player in a public duel: switch on and not paused after reports. */
+export function publicOpenTo(state: Pick<MemberState, "public_off" | "public_paused">): boolean { return publicDuelsChosen(state) && !state.public_paused; }
 
 /** A repeated name choice tells the boards again at most this often (LeaderboardMember.touch). */
 export const MEMBER_REPEAT_GAP_MS = 10 * 60_000;
@@ -95,13 +105,25 @@ export class LeaderboardMember extends DurableObject<Env> {
       return state;
     });
   }
-  /** The public duels switch. Turning it on is the caller's to allow (the community rules, duels/public-routes.ts). */
+  /**
+   * The public duels switch: off is stored, on is the default and stores nothing. Turning it on is the caller's to allow
+   * (the community rules, duels/public-routes.ts).
+   */
   setPublicDuels(on: boolean): MemberState {
-    return this.change(state => {
-      if (!!state.public_duels === on) return false;
-      if (on) state.public_duels = true; else delete state.public_duels;
+    return this.change(held => {
+      if (publicDuelsChosen(held) === on) return false;
+      if (on) delete held.public_off; else held.public_off = true;
       return true;
     });
+  }
+  /**
+   * A public duel's pointer (as duels/routes.ts addRefs keeps it) and, in the same request, whether strangers may still
+   * meet this player: a switch turned off, or a pause, while their post or join was on its way leaves that duel to be
+   * hidden (duels/public-routes.ts addPublicRefs).
+   */
+  addPublicRef(owner: string, ref: DuelRef, now: number): { open: boolean } {
+    const added = this.partyApply(owner, { kind: "add_duels", refs: [ref] }, now);
+    return { open: added.ok && publicOpenTo(this.read()) };
   }
   /** `peer` blocked this player (or took it back): the public list hides their duels from this player. */
   noteBlockedBy(peer: string, blocked: boolean): MemberState {

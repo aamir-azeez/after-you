@@ -8,14 +8,14 @@ import { pollenEarning } from "../pollen/routes";
 import { looksOn } from "../pollen/features";
 import type { Look } from "../pollen/catalog";
 import type { DuelExtraAnswer, DuelWinAnswer } from "../pollen/duel-pay";
-import type { DuelBlock, MemberState } from "../leaderboards/member";
+import { publicDuelsChosen, publicOpenTo, type DuelBlock, type MemberState } from "../leaderboards/member";
 import { creatable } from "../v2/chapters";
 import { termsVersion } from "../public-policy";
 import { SAFETY_REPORT_REASONS, type SafetyReport } from "../safety";
 import { DUEL_REQUEST_PREFIX, requestFriend } from "../friends-routes";
 import { isFinal, isOpen, knownKey, viewFor, type Duel } from "./model";
 import { heldState, holder, listingOf, newPublicDuel, publicKnown, seatOf, seated, type JoinAs } from "./public";
-import { addRefs, boardOf, chapterRow, duelsAt, duelsOf, fields, party } from "./routes";
+import { boardOf, chapterRow, duelsAt, duelsOf, fields, party } from "./routes";
 import { duelsOn } from "./turn-hook";
 import { announceLobby } from "./news";
 import { sendListings } from "./directory";
@@ -25,7 +25,8 @@ import { MAX_FRIEND_DUELS_PER_PAIR } from "./rules";
 
 /**
  * Public duels' routes (PLAN 2 to 8), all absent while PUBLIC_DUELS is off (publicDuelsOn), after auth():
- * - PUT  /v1/duels/public/me: the player's switch, {on}; turning on needs the current community rules accepted.
+ * - PUT  /v1/duels/public/me: the player's switch, {on}, on by default; turning on needs the current community rules
+ *   accepted, and so does every post and join (joiners).
  * - GET  /v1/duels/public/list/<all|board>/<newest|almost_full>/<page>: the list, 20 a page, for this reader.
  * - POST /v1/duels/public: post a duel, alone or with the party.
  * - POST /v1/duels/public/<board>/<duel_id>/{join,block,report,friend}: take a spot; block, report or ask to be
@@ -34,7 +35,7 @@ import { MAX_FRIEND_DUELS_PER_PAIR } from "./rules";
  * on the duel page (publicDetail), which duels/routes.ts calls.
  *
  * Requests (Cloudflare Free plan, PLAN 11): a list page is auth + Member + SafetyProfile + the directory only when
- * the list cache misses; a post or join adds the boards holding the player's duels (the limit of 10), the board's
+ * the list cache misses; a post or join adds one SafetyProfile per joiner (the rules and blocks), the boards holding the player's duels (the limit of 10), the board's
  * create or claim, the pointer writes and the hints; the board sends the directory its new listing (1 request, 1 row).
  */
 const PUBLIC_PREFIX = "/v1/duels/public";
@@ -63,24 +64,30 @@ function running(duels: readonly Duel[], players: readonly string[]): number {
 }
 const seatIn = (duel: Duel, id: string) => duel.sides.some(side => side?.members.includes(id));
 
-/** The player (and partner) as a post or join needs them: on, not paused, with a party that counts when asked. */
-async function joiners(env: Env, player: string, as: JoinAs, now: number, look?: Look): Promise<{ players: string[]; rows: Seated[]; looks: (Look | undefined)[] }> {
-  const mine = await read(env, player, now, look);
-  if (!mine.member.public_duels) throw new ApiError(403, "public_duels_off");
+type Team = { players: string[]; rows: Seated[]; looks: (Look | undefined)[];
+  /** Everyone the joiners blocked or who blocked them: their own block lists and the rows' `blocked_by`. */
+  avoid: Set<string> };
+/**
+ * The player (and partner) as a post or join needs them: switch on (on unless turned off, leaderboards/member.ts
+ * publicDuelsChosen), not paused, the community rules in force accepted, and a party that counts when asked. Public
+ * duels are on by default, so accepting the rules here, at the first post or join, is what lets a player meet strangers;
+ * the partner of a party is held to the same. One SafetyProfile request each gives the rules and the blocks.
+ */
+async function joiners(env: Env, player: string, as: JoinAs, now: number, look?: Look): Promise<Team> {
+  const version = termsVersion(env), gate = (id: string) => env.SAFETY_PROFILES.getByName(id).publicGate(id, version);
+  const [mine, myGate] = await Promise.all([read(env, player, now, look), gate(player)]);
+  if (!publicDuelsChosen(mine.member)) throw new ApiError(403, "public_duels_off");
   if (mine.member.public_paused) throw new ApiError(403, "public_paused");
-  if (as === "alone") return { players: [player], rows: [mine], looks: [mine.party.look] };
+  if (!myGate.accepted) throw new ApiError(403, "terms_acceptance_required");
+  const avoid = (rows: readonly Seated[], lists: readonly string[][]) => new Set([...lists.flat(), ...rows.flatMap(row => row.member.blocked_by ?? [])]);
+  if (as === "alone") return { players: [player], rows: [mine], looks: [mine.party.look], avoid: avoid([mine], [myGate.blocked_players]) };
   const partner = mine.party.partner;
   if (!partner) throw new ApiError(409, "party_required");
-  const theirs = await read(env, partner, now);
+  const [theirs, theirGate] = await Promise.all([read(env, partner, now), gate(partner)]);
   if (theirs.party.partner !== player) throw new ApiError(409, "party_required");
-  if (!theirs.member.public_duels || theirs.member.public_paused) throw new ApiError(409, "partner_public_off");
-  return { players: [player, partner], rows: [mine, theirs], looks: [mine.party.look, theirs.party.look] };
-}
-
-/** Everyone the joiners blocked or who blocked them, from rows already read and their own block lists (1 SafetyProfile each). */
-async function avoided(env: Env, players: readonly string[], rows: readonly Seated[]): Promise<Set<string>> {
-  const lists = await Promise.all(players.map(async id => (await env.SAFETY_PROFILES.getByName(id).blocks(id)).blocked_players));
-  return new Set([...lists.flat(), ...rows.flatMap(row => row.member.blocked_by ?? [])]);
+  if (!publicOpenTo(theirs.member)) throw new ApiError(409, "partner_public_off");
+  if (!theirGate.accepted) throw new ApiError(409, "partner_rules_required");
+  return { players: [player, partner], rows: [mine, theirs], looks: [mine.party.look, theirs.party.look], avoid: avoid([mine, theirs], [myGate.blocked_players, theirGate.blocked_players]) };
 }
 
 /** Stops a post or join past the limit of 10, counted over the players' own pointers. */
@@ -117,7 +124,7 @@ async function post(env: Env, player: string, input: unknown, now: number, look?
   if (!made) throw new ApiError(503, "public_list_full");
   // Listed before the reply, not only after the board's: a lost update would leave a post nobody can find.
   await sendListings(env, [{ duel_id: duelId, listing: listingOf(made, now), updated_ms: made.updated_ms }]);
-  await addRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
+  await addPublicRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
   forgetListings();
   await announceLobby(env, team.players.filter(id => id !== player), made.updated_ms, duelId);
   return { schema_version: 1, duel: viewFor(made, player, looksOn(env)) };
@@ -138,7 +145,7 @@ async function join(env: Env, player: string, board: string, duelId: string, inp
   if (!current?.public) throw new ApiError(404, "duel_not_found");
   if (seatOf(current, player) >= 0) return { schema_version: 1, duel: viewFor(current, player, looksOn(env)) };
   const team = await joiners(env, player, as, now, look);
-  const avoid = await avoided(env, team.players, team.rows);
+  const avoid = team.avoid;
   // The seated players' own blocks of the joiners, which a block made before public duels did not note on the joiners' rows.
   const others = seated(current).filter(id => !avoid.has(id));
   const theirs = await pooled(others, 4, async id => (await env.SAFETY_PROFILES.getByName(id).blocks(id)).blocked_players.some(blocked => team.players.includes(blocked)) ? id : null);
@@ -157,7 +164,7 @@ async function join(env: Env, player: string, board: string, duelId: string, inp
     throw new ApiError(409, "spot_taken", { row: listing && !listing.sides.some(side => side.seats.some(seat => seat.id !== null && avoid.has(seat.id))) ? page([listing], player, avoid, "all", "newest", 0, now, looksOn(env)).rows[0] ?? null : null });
   }
   const duel = answer.value.duel;
-  await addRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
+  await addPublicRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
   forgetListings();
   // "A partner joined": every player already in the duel hears of it, besides the board's own news of the change.
   await announceLobby(env, seated(duel).filter(id => !team.players.includes(id) && id !== player), duel.updated_ms, duelId);
@@ -259,7 +266,7 @@ export async function countReport(env: Env, reporter: string, target: string, no
   if (counted.paused_now) await hidePlayer(env, target, true, now);
 }
 
-/** Takes a paused player's public duels off the list, or puts them back once cleared. */
+/** Takes a player's public duels off the list (switched off or paused), or puts them back once they are open to strangers again. */
 export async function hidePlayer(env: Env, player: string, hidden: boolean, now: number): Promise<void> {
   const refs = (await party(env, player).partyRead(now)).duels.filter(ref => ref.public);
   await byBoard(refs, (board, ids) => duelsAt(env, board).publicPlayer(player, ids, { hidden }));
@@ -306,18 +313,37 @@ export async function routePublicPauseOperator(request: Request, path: string, e
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const body = await boundedJson(request, 1024);
   if (!isObject(body) || Object.keys(body).length !== 1 || body.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
-  await party(env, match[1]).clearPublicPause();
-  await hidePlayer(env, match[1], false, Date.now());
+  const state = (await party(env, match[1]).clearPublicPause()) as unknown as MemberState;
+  // A player who turned the switch off stays off the list.
+  await hidePlayer(env, match[1], !publicOpenTo(state), Date.now());
   return { schema_version: 1, unpaused: true };
 }
 
-/** PUT /v1/duels/public/me {on}: the switch; on needs the current community rules accepted. */
-async function setSwitch(env: Env, player: string, input: unknown): Promise<unknown> {
+/**
+ * PUT /v1/duels/public/me {on}: the switch, on by default (leaderboards/member.ts publicDuelsChosen). Turning it on
+ * needs the current community rules accepted. Off takes the player's open duels off the list before the switch says
+ * so, so no join lands between the two; every on puts them back unless a pause keeps them off. A post or join already on
+ * its way meets the off through its pointer (addPublicRefs).
+ */
+async function setSwitch(env: Env, player: string, input: unknown, now: number): Promise<unknown> {
   const body = fields(input, ["on"]);
   if (typeof body.on !== "boolean") throw new ApiError(400, "invalid_duel_request");
   if (body.on && !(await env.SAFETY_PROFILES.getByName(player).terms(player, termsVersion(env))).accepted) throw new ApiError(403, "terms_acceptance_required");
+  if (!body.on) await hidePlayer(env, player, true, now);
   const state = (await party(env, player).setPublicDuels(body.on)) as unknown as MemberState;
-  return { schema_version: 1, on: !!state.public_duels, show_name: state.show_name, paused: !!state.public_paused };
+  // Every on settles the marks again, so an on retried after a lost reply, or after a failed off, still lists them.
+  if (body.on) await hidePlayer(env, player, !publicOpenTo(state), now);
+  return { schema_version: 1, on: publicDuelsChosen(state), show_name: state.show_name, paused: !!state.public_paused };
+}
+
+/**
+ * The joiners' pointers to a public duel they just posted or joined (as addRefs, one Member request each), and their
+ * seats hidden there when one of them switched off or was paused meanwhile: the switch's own hiding (setSwitch) reads
+ * the pointers, and this duel's was not there yet.
+ */
+async function addPublicRefs(env: Env, players: readonly string[], ref: DuelRef, now: number): Promise<void> {
+  const closed = await pooled([...new Set(players)], 2, async id => (await party(env, id).addPublicRef(id, ref, now)).open ? null : id);
+  for (const id of closed) if (id) await duelsAt(env, ref.board).publicPlayer(id, [ref.duel_id], { hidden: true });
 }
 
 /** GET .../list/<scope>/<sort>/<page>: one reader's page. */
@@ -338,7 +364,7 @@ export async function routePublicDuels(request: Request, path: string, player: s
   }
   if (path === PUBLIC_PREFIX + "/me") {
     if (request.method !== "PUT") throw new ApiError(405, "method_not_allowed");
-    return setSwitch(env, player, input);
+    return setSwitch(env, player, input, now);
   }
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   if (path === PUBLIC_PREFIX) return post(env, player, input, now, look);
@@ -356,7 +382,7 @@ export async function routePublicDuels(request: Request, path: string, player: s
 export function publicLobby(env: Env, player: string, members: readonly (MemberState | null)[] | undefined, intact: boolean, duels: readonly Duel[]): { public?: Record<string, unknown> } {
   if (!publicDuelsOn(env) || !members?.[0]) return {};
   const [mine, theirs] = [members[0], intact ? members[1] ?? null : null];
-  return { public: { version: 1, on: !!mine.public_duels, show_name: mine.show_name, partner_on: theirs ? !!theirs.public_duels && !theirs.public_paused : null, paused: !!mine.public_paused,
+  return { public: { version: 1, on: publicDuelsChosen(mine), show_name: mine.show_name, partner_on: theirs ? publicOpenTo(theirs) : null, paused: !!mine.public_paused,
     running: running(duels, [player]) } };
 }
 

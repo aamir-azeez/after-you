@@ -90,9 +90,12 @@ static func join(root: Control, row: Dictionary, seat: int, joining: String, nam
 	go.grab_focus()
 	return modal
 
-## The first time the list opens with the switch off (board 6.2). `show_name`: the
-## name switch as it is now. confirm(show_name) runs after the card closes.
-static func first_time(root: Control, show_name: bool, confirm: Callable) -> Control:
+## The first time the list opens with the switch off, or the first post or join
+## before the community rules are accepted (board 6.2). `show_name`: the name
+## switch as it is now. `action`: the go button's words, Turn on while the switch
+## is off, else Continue (public duels are on by default). confirm(show_name)
+## runs after the card closes.
+static func first_time(root: Control, show_name: bool, confirm: Callable, action: String = PlayerCopy.PUBLIC_TURN_ON) -> Control:
 	var modal := Modal.open(root, "PublicFirstTime", PlayerCopy.PUBLIC_FIRST_TITLE)
 	modal.widen(WIDE)
 	modal.label(PlayerCopy.PUBLIC_FIRST_LINE, 18).add_theme_color_override("font_color", UiTokens.SOFT)
@@ -111,7 +114,7 @@ static func first_time(root: Control, show_name: bool, confirm: Callable) -> Con
 	toggle.accessibility_name = PlayerCopy.PUBLIC_FIRST_SHOW_NAME
 	line.add_child(toggle)
 	modal.content.add_child(row)
-	var go: Button = modal.add_actions(PlayerCopy.PUBLIC_TURN_ON, func() -> void:
+	var go: Button = modal.add_actions(action, func() -> void:
 		var named := toggle.button_pressed
 		modal.close(false)
 		confirm.call(named), PlayerCopy.DUELS_NOT_NOW)

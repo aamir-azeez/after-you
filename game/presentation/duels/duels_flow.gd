@@ -282,6 +282,7 @@ func open() -> void:
 	host.add_child(screen)
 	var kept: Dictionary = client().last_lobby()
 	screen.public_shown = public().supported()
+	screen.public_on = public().switched_on()
 	if not kept.is_empty(): screen.show_lobby(kept)
 	set_process(true)
 	_refresh()
@@ -320,6 +321,7 @@ func _read_lobby(ticket: Dictionary) -> void:
 	_lobby_reads.complete(ticket, Time.get_ticks_msec(), true)
 	if not is_open(): return
 	screen.public_shown = public().supported()
+	screen.public_on = public().switched_on()
 	screen.show_lobby(answer.get("lobby", {}), not answer.get("ok", false))
 	var ghosts := _race_ghost()
 	if ghosts != null and answer.get("ok", false): ghosts.release_ended(answer.lobby)

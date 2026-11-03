@@ -237,13 +237,16 @@ func room_kind(room_id: String) -> String:
 	return str(_saved.get("rooms", {}).get(room_id, ""))
 
 ## The player's Public duels switch as the server last said (a lobby read or the switch's own
-## answer), kept in this file so Settings shows it before any read this launch.
+## answer), kept in this file so Settings shows it before any read this launch. The server
+## decides (backend leaderboards/member.ts publicDuelsChosen): on unless turned off. Only an off
+## the server said is kept, as `public_off`, so before its first word this shows the same
+## default; the older `public_on` key, which saved its own default, is never read.
 func public_on() -> bool:
-	return _saved.get("public_on", false) == true
+	return _saved.get("public_off", false) != true
 
 func note_public(on: bool) -> void:
 	if public_on() == on or _owner.is_empty(): return
-	_saved["public_on"] = on
+	_saved["public_off"] = not on
 	_save()
 
 ## Whether a won duel's result has not rung its bell on this phone yet.
@@ -377,7 +380,9 @@ func _remember(views: Array) -> void:
 func _save() -> void:
 	if _owner.is_empty(): return
 	var all := _read_all(_path)
-	all[_owner] = {"rooms": _saved.rooms, "rung": _saved.rung.keys(), "public_on": public_on()}
+	var mine := {"rooms": _saved.rooms, "rung": _saved.rung.keys()}
+	if not public_on(): mine["public_off"] = true
+	all[_owner] = mine
 	AtomicFile.write_text(_path, JSON.stringify(all))
 	_public_read = false
 
@@ -405,14 +410,14 @@ func _read_saved() -> Dictionary:
 	var mine: Variant = _read_all(_path).get(_owner)
 	var rooms := {}
 	var rung := {}
-	if not mine is Dictionary: return {"rooms": rooms, "rung": rung, "public_on": false}
+	if not mine is Dictionary: return {"rooms": rooms, "rung": rung, "public_off": false}
 	if mine.get("rooms") is Dictionary:
 		for room_id: Variant in mine.rooms:
 			if Typed.valid_id(room_id) and mine.rooms[room_id] in ["friend", "ghost", "public"]: rooms[room_id] = mine.rooms[room_id]
 	if mine.get("rung") is Array:
 		for duel_id: Variant in (mine.rung as Array).slice(maxi((mine.rung as Array).size() - MAX_DUELS * 2, 0)):
 			if _entry(duel_id): rung[duel_id] = true
-	return {"rooms": rooms, "rung": rung, "public_on": mine.get("public_on") == true}
+	return {"rooms": rooms, "rung": rung, "public_off": mine.get("public_off") == true}
 
 ## A lobby as the server sent it, or {} when it is not one this build reads.
 static func valid_lobby(value: Variant) -> Dictionary:

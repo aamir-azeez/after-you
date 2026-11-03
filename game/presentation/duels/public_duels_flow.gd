@@ -3,10 +3,15 @@ extends RefCounted
 ## (presentation/duels/duels_flow.gd), which hosts the lobby and the pages over
 ## it. Every request goes through services/public_duels_client.gd, and every
 ## duel it answers opens on the duel flow's own pages:
-## - open_list(): the list (public_list_page.gd). With the player's switch off,
-##   the first-time card asks first (public_sheets.gd first_time); its Turn on
-##   shows the community rules when they are not accepted yet (the safety
-##   screen every photo share uses), then sets the switch and the name choice.
+## - open_list(): the list (public_list_page.gd). Public duels are on by default
+##   (the server's switch, backend leaderboards/member.ts publicDuelsChosen).
+##   With the player's switch turned off, the first-time card asks first
+##   (public_sheets.gd first_time); its Turn on shows the community rules when
+##   they are not accepted yet (the safety screen every photo share uses), then
+##   sets the switch and the name choice. A player who never turned it off
+##   meets the same card, with Continue, at their first post or join: the
+##   server refuses both until the rules in force are accepted, and the post or
+##   join goes again once they are.
 ## - join(): the join card, then the join with the attempt's idempotency key.
 ##   A spot someone took first redraws its row with a note; a duel that closed
 ##   leaves the list with a word. A joined duel opens at once.
@@ -43,6 +48,8 @@ var _keys: Dictionary = {}
 var _befriended: Dictionary = {}
 ## True while Turn on runs (the rules, then the switch), so a second tap waits for it.
 var _turning_on := false
+## True while the list's open asks about the rules, so a second tap opens nothing more.
+var _opening := false
 ## What Settings' switch shows while its request is out (true or false), or null when none is.
 var _switch_asked: Variant = null
 
@@ -74,32 +81,62 @@ func _partner() -> Dictionary:
 	if not party.get("intact", false) or party.get("partner") == null: return {}
 	return {"id": party.partner, "name": flow._name_of(party.partner), "look": party.get("partner_look", {})}
 
-## The list, over the lobby; the first-time card first while the switch is off.
+## The list, over the lobby; the first-time card first while the switch is off or the rules in
+## force are not accepted yet (asked once a launch; a failed ask opens the list, and the server
+## still refuses a post or join until the rules are accepted).
 func open_list() -> void:
-	if not flow.is_open() or not supported(): return
-	if switched_on():
-		_show_list()
-		return
-	_first_time(func() -> void: _show_list())
+	if _opening or not flow.is_open() or not supported(): return
+	_opening = true
+	var listed := switched_on()
+	if listed: listed = await _rules_accepted()
+	_opening = false
+	if not flow.is_open(): return
+	if listed: _show_list()
+	else: _first_time(func() -> void: _show_list())
 
-## The first-time card over whatever page is in front; `then` runs once the switch is on.
+## Whether this player accepted the community rules in force, as far as this launch knows: the
+## safety client's last answer, else one ask. Anything but a clear "not accepted" answers true.
+func _rules_accepted() -> bool:
+	var safety := _safety()
+	if safety == null or safety.terms_accepted: return true
+	if not await safety.check_terms(): return true
+	return safety.terms_accepted
+
+func _safety() -> RefCounted:
+	return host().relay_session.safety_client() if host().relay_session != null and host().relay_session.has_method("safety_client") else null
+
+## The first-time card over whatever page is in front; `then` runs once the rules are accepted and the switch is on.
+## With the switch on (the default) its Continue only asks for the rules and the name choice: it never sends the
+## switch, so a phone that has not heard the server's word yet can't turn a parent's off back on.
 func _first_time(then: Callable) -> void:
 	var page: CanvasLayer = flow.screen.overlay() if flow.screen.overlay() != null else flow.screen
 	var name_on: bool = LeaderboardClient.shared(host().api, str(host().api.player_id)).show_name()
+	var continuing := switched_on()
 	page.hold_modal(Sheets.first_time(page.root, name_on, func(show_name: bool) -> void:
-		if await turn_on(show_name) and flow.is_open(): then.call()))
+		if await turn_on(show_name, not continuing) and flow.is_open(): then.call(), PlayerCopy.PUBLIC_FIRST_CONTINUE if continuing else PlayerCopy.PUBLIC_TURN_ON))
+
+## A post or join the server refused for the rules (terms_acceptance_required): the first-time card and the
+## rules, then `again` once. False for any other answer, or for a second refusal (then said as usual).
+func _rules_first(answer: Dictionary, retried: bool, again: Callable) -> bool:
+	if not rules_refusal(answer, retried): return false
+	_first_time(again)
+	return true
+
+## Whether a post or join answer asks for the rules first: the refusal, the first time only.
+static func rules_refusal(answer: Dictionary, retried: bool) -> bool:
+	return not retried and not answer.get("ok", false) and str(answer.get("code", "")) == "terms_acceptance_required"
 
 ## Turns the switch on: the community rules first when not accepted, then the name choice and
-## the switch. False when it did not go through (said in a toast).
-func turn_on(show_name: Variant = null) -> bool:
+## the switch (`set_switch` false: the rules and the name only). False when it did not go through (said in a toast).
+func turn_on(show_name: Variant = null, set_switch := true) -> bool:
 	if _turning_on or OfflineHold.refuse(host()._toast): return false
 	_turning_on = true
-	var done := await _turn_on(show_name)
+	var done := await _turn_on(show_name, set_switch)
 	_turning_on = false
 	return done
 
-func _turn_on(show_name: Variant) -> bool:
-	var safety: RefCounted = host().relay_session.safety_client() if host().relay_session != null and host().relay_session.has_method("safety_client") else null
+func _turn_on(show_name: Variant, set_switch: bool) -> bool:
+	var safety := _safety()
 	if safety == null: return _say(PlayerCopy.DUELS_ACTION_FAILED)
 	if not await safety.check_terms(): return _say(safety.last_error if not str(safety.last_error).is_empty() else PlayerCopy.DUELS_ACTION_FAILED)
 	if not safety.terms_accepted:
@@ -114,6 +151,7 @@ func _turn_on(show_name: Variant) -> bool:
 	if show_name is bool:
 		var names: RefCounted = LeaderboardClient.shared(host().api, str(host().api.player_id))
 		if names.show_name() != show_name: names.set_show_name(show_name)
+	if not set_switch: return true
 	var answer: Dictionary = await client().set_on(true)
 	if not answer.get("ok", false): return _say(_failure_text(answer))
 	if flow.is_open(): flow._refresh()
@@ -190,7 +228,7 @@ func _known(row: Dictionary) -> Dictionary:
 	var public := _public()
 	var chapter := Runs.chapter_of(str(row.board))
 	return {"chapter_open": not chapter.is_empty() and ChapterUnlocks.open(chapter, host()._chapter_unlocks()),
-		"partner_on": public.get("partner_on") == true, "at_limit": int(public.get("running", 0)) >= flow.client().limit("friend")}
+		"partner_on": public.get("partner_on") != false, "at_limit": int(public.get("running", 0)) >= flow.client().limit("friend")}
 
 func _ask_join(page: CanvasLayer, row: Dictionary, seat: int, control: Control) -> void:
 	var reason: String = page.reason_of(row)
@@ -205,11 +243,12 @@ func _ask_join(page: CanvasLayer, row: Dictionary, seat: int, control: Control) 
 	page.hold_modal(Sheets.join(page.root, row, int(spot.seat), page.joining, names, func() -> void:
 		page.tap(control, func() -> void: await _join(page, row, seat, page.joining))))
 
-func _join(page: CanvasLayer, row: Dictionary, seat: int, joining: String) -> void:
+func _join(page: CanvasLayer, row: Dictionary, seat: int, joining: String, retried := false) -> void:
 	if OfflineHold.refuse(host()._toast): return
 	var asked := "join|%s|%d|%s" % [row.duel_id, seat, joining]
 	var answer := await _keyed(asked, func(key: String) -> Dictionary: return await client().join(str(row.board), str(row.duel_id), joining, seat, key))
 	if not is_instance_valid(page) or not page.alive() or not flow.is_open(): return
+	if _rules_first(answer, retried, func() -> void: if is_instance_valid(page) and page.alive(): await _join(page, row, seat, joining, true)): return
 	if answer.get("ok", false):
 		page.close()
 		flow._refresh()
@@ -225,16 +264,18 @@ func _join(page: CanvasLayer, row: Dictionary, seat: int, joining: String) -> vo
 			host()._toast(PlayerCopy.PUBLIC_GONE)
 		_: host()._toast(_failure_text(answer))
 
-## Start a duel's Post duel: `joining` "alone" or "party" on `chapter`. The switch must be on
-## first (the first-time card), and a posted duel opens at once.
-func post(page: CanvasLayer, joining: String, chapter: String) -> void:
+## Start a duel's Post duel: `joining` "alone" or "party" on `chapter`. A switch turned off,
+## or rules not yet accepted, go through the first-time card first; a posted duel opens at once.
+func post(page: CanvasLayer, joining: String, chapter: String, retried := false) -> void:
 	if OfflineHold.refuse(host()._toast): return
+	var again := func() -> void: if is_instance_valid(page) and page.alive(): await post(page, joining, chapter, true)
 	if not switched_on():
-		_first_time(func() -> void: if is_instance_valid(page) and page.alive(): await post(page, joining, chapter))
+		_first_time(again)
 		return
 	var board := Runs.board_key(chapter)
 	var answer := await _keyed("post|%s|%s" % [board, joining], func(key: String) -> Dictionary: return await client().post(board, joining, key))
 	if not is_instance_valid(page) or not page.alive() or not flow.is_open(): return
+	if _rules_first(answer, retried, again): return
 	if not answer.get("ok", false):
 		host()._toast(_failure_text(answer))
 		return
@@ -299,6 +340,7 @@ func _failure_text(answer: Dictionary) -> String:
 	match str(answer.get("code", "")):
 		"public_duels_off": return PlayerCopy.PUBLIC_TURN_ON_FIRST
 		"partner_public_off": return PlayerCopy.PUBLIC_PARTNER_OFF % partner
+		"partner_rules_required": return PlayerCopy.PUBLIC_PARTNER_RULES % partner
 		"public_paused": return PlayerCopy.PUBLIC_PAUSED
 		"public_list_full": return PlayerCopy.PUBLIC_LIST_FULL
 		"terms_acceptance_required": return PlayerCopy.PUBLIC_RULES_FIRST

@@ -8,16 +8,18 @@ extends Button
 ## this launch. Signed out, a tap signs in first, then opens the board. Offline it greys like
 ## every other server button (presentation/offline_hold.gd). One open at a time.
 ##
-## The label is the platform's own name. Google's controller badge and Apple's Game Center
-## artwork go beside it once their official files are in ICONS; until then it shows the name only.
+## The label is the platform's own name. On Android, Google's controller badge goes beside it
+## (assets/ui/platform, with its NOTICE.txt), inked cream by the secondary style as Google's
+## branding rules allow. Game Center shows its name only: Apple's artwork license allows the
+## icon only in builds for Apple systems and never recoloured, and it waits for the owner
+## (claude-20261011 platform-boards\badges), so it has no entry here and nothing in the shared assets.
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
-## The platforms' own artwork, as downloaded from Google and Apple (never redrawn).
+## The platforms' own artwork, as downloaded (never redrawn); a platform without one shows its name.
 const ICONS := {
 	GamesProvider.PLAY_GAMES: "res://assets/ui/platform/google-play-games-badge.png",
-	GamesProvider.GAME_CENTER: "res://assets/ui/platform/game-center-icon.png",
 }
 
 ## Our board key ("<level_id>@<version>") whose platform board a tap opens.
@@ -34,7 +36,8 @@ func _init(service: Node = null, notice: Callable = Callable()) -> void:
 	visible = false
 	focus_mode = Control.FOCUS_ALL
 	size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	expand_icon = true
+	# The badge at a fixed 26 px beside the label, counted in the button's width (an expanding icon
+	# only takes the room left over, and a button sized to its label leaves none).
 	add_theme_constant_override("icon_max_width", 26)
 	ThemeRules.secondary(self)
 	pressed.connect(_open)

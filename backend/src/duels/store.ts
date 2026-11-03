@@ -121,7 +121,7 @@ export class DuelStore {
 
   /**
    * A player's label on the public duels named (a changed name or name choice, leaderboards/members.ts), and whether
-   * their duels show on the list (`hidden`, a pause after reports). Returns how many changed.
+   * their seats keep the duel off the list (`hidden`: switched off or paused, public.ts hide). Returns how many changed.
    */
   publicPlayer(player: string, ids: readonly string[], change: { label?: string | null; hidden?: boolean }, now: number): number {
     if (!this.present() || !ids.length) return 0;
@@ -130,7 +130,7 @@ export class DuelStore {
       for (const duel of ids.map(id => this.duel(id)).filter((item): item is Duel => item !== null && !!item.public)) {
         settle(duel, now);
         const labelled = change.label !== undefined && relabel(duel, player, change.label, now);
-        const hidden = change.hidden !== undefined && hide(duel, change.hidden, now);
+        const hidden = change.hidden !== undefined && hide(duel, player, change.hidden, now);
         if (labelled || hidden) { this.save(duel); count++; }
       }
       return count;

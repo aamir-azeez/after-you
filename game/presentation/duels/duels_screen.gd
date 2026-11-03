@@ -45,6 +45,8 @@ var name_of: Callable
 var boost_percent := 0
 ## Whether the server has public duels open: the Public duels row shows only then.
 var public_shown := false
+## The player's switch as the duels client keeps it (services/duels_client.gd public_on), set by the flow: the row's words before a lobby brings its own.
+var public_on := true
 var _lobby: Dictionary = {}
 var _state := "loading"
 var _party_box: Control
@@ -402,7 +404,7 @@ func _render_public() -> void:
 	_public_row.visible = public_shown
 	# It reads the list from the server: greyed while the phone is offline.
 	OfflineHold.hold(_public_row)
-	var on: bool = _lobby.get("public", {}).get("on", false)
+	var on: bool = _lobby.get("public", {}).get("on", public_on)
 	_public_note.text = PlayerCopy.PUBLIC_DUELS_ROW_NOTE if on else PlayerCopy.PUBLIC_DUELS_ROW_OFF
 
 func _ghost_row() -> Control:

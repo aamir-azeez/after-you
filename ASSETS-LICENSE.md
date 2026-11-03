@@ -29,4 +29,5 @@ These keep their own licenses and are not covered by this notice:
 - The name filter word lists in game/content/display_name_blocklist.json, partly adapted from the lists named in game/assets/licenses/name-filter-word-lists-MIT.txt.
 - The backend dependencies in backend/THIRD_PARTY_NOTICES.md and backend/licenses.
 - The iOS notices in native/ios/licenses.
+- The Google Play game controller badge in game/assets/ui/platform, with its NOTICE.txt. It belongs to Google.
 - The RevenueCat logo and the Shipaton wordmark in docs/images, and those marks where they appear in docs/branding/AfterYou-YouTube-Shipaton.png and docs/branding/AfterYou-YouTube-Devpost-Safe.png. They belong to their owners.

@@ -44,6 +44,14 @@ class FakeProvider extends "res://services/platform_games/games_provider.gd":
 		await Engine.get_main_loop().process_frame
 		return {"ok": true}
 
+## PlatformGames as the board button reads it, on Android with a board for every chapter.
+class FakeBoards extends Node:
+	signal changed
+	func kind() -> String: return "play_games"
+	func board_offered(_board: String) -> bool: return true
+	func board_showing() -> bool: return false
+	func show_board(_board: String, _still: Callable) -> Dictionary: return {"ok": true}
+
 class FakeAccount extends RefCounted:
 	var player := OWNER
 	func api() -> Node: return null
@@ -327,6 +335,24 @@ func _button() -> void:
 	root.add_child(button)
 	button.show_for(RELAY)
 	_check(button.visible and button.text == PlayerCopy.PLATFORM_GAMES_GAME_CENTER, "The button shows Game Center for a board Game Center has")
+	_check(button.icon == null, "Game Center shows its name only: Apple's artwork waits for its license")
+	# Google's controller badge on the Play Games button (board 1), as downloaded and resized.
+	var boards := FakeBoards.new()
+	var play_button: Button = Button_.new(boards)
+	root.add_child(play_button)
+	play_button.show_for(RELAY)
+	_check(play_button.visible and play_button.text == PlayerCopy.PLATFORM_BOARD_PLAY_GAMES and play_button.icon != null and play_button.icon.get_width() == 96, "The Play Games button carries Google's controller badge")
+	var badge: Texture2D = play_button.icon
+	var with_badge := play_button.get_combined_minimum_size().x
+	play_button.icon = null
+	var label_only := play_button.get_combined_minimum_size().x
+	play_button.icon = badge
+	_check(with_badge >= label_only + 26, "The badge has its own room beside the label, never squeezed to nothing: %s against %s" % [with_badge, label_only])
+	# Only Google's badge and its notice are in the shared assets: Apple's license keeps its artwork out of Android and desktop builds.
+	var shipped := Array(DirAccess.get_files_at("res://assets/ui/platform")).filter(func(file: String) -> bool: return not file.ends_with(".import"))
+	shipped.sort()
+	_check(shipped == ["NOTICE.txt", "google-play-games-badge.png"], "The platform folder holds Google's badge and its notice only: %s" % [shipped])
+	for node: Node in [play_button, boards]: node.queue_free()
 	button.show_for("unknown@1")
 	_check(not button.visible, "No button for a board the platform lacks")
 	button.show_for(RELAY)

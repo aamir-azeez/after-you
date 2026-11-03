@@ -92,7 +92,8 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"options": [["30", PlayerCopy.SETTINGS_FPS_30], ["60", PlayerCopy.SETTINGS_FPS_60], ["unlimited", PlayerCopy.SETTINGS_FPS_UNLIMITED]]},
 
 		{"id": "share_online_status", "icon": preload("res://assets/ui/whats_new/people.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ONLINE_STATUS, "note": PlayerCopy.SETTINGS_ONLINE_STATUS_NOTE, "key": "share_online_status"},
-		# Public duels (board 6.1): off by default; on goes through the community rules first (presentation/duels/public_duels_flow.gd).
+		# Public duels (board 6.1): on by default, as the server keeps it (services/duels_client.gd public_on), and off here,
+		# for example on a child's phone; on again goes through the community rules first (presentation/duels/public_duels_flow.gd).
 		{"id": "public_duels", "online": true, "icon": preload("res://assets/ui/social/users.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_PUBLIC_DUELS, "note": PlayerCopy.SETTINGS_PUBLIC_DUELS_NOTE,
 			"get": func() -> bool: return host.duels_flow.public_switch(),
 			"set": func(on: bool) -> bool: return host.duels_flow.public_choose(on),
