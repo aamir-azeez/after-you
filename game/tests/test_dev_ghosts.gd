@@ -1,5 +1,5 @@
 extends SceneTree
-## The developers' ghost runs (tests/fixtures/dev_ghosts.json, made by
+## The developers' ghost runs (content/dev_ghosts.json, made by
 ## tests/dev_ghost_recorder.gd) that duels' ghost races time. Every chapter a
 ## duel can be played on has one; each is a whole run with Forgiving catches off
 ## on every turn, at the rules a new room plays, that passes the leaderboard

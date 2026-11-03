@@ -62,7 +62,7 @@ func show_track(world: Node3D, track: Dictionary, timer: Control, duration_ticks
 	name_badge = Badges.make(spirit)
 	name_badge.name = "RaceGhostName"
 	var shown := str(track.get("name", ""))
-	name_badge.text = shown if not shown.is_empty() else PlayerCopy.RACE_GHOST_RECORDED
+	name_badge.text = PlayerCopy.DUELS_GHOST_DEVELOPERS if track.get("developer", false) else shown if not shown.is_empty() else PlayerCopy.RACE_GHOST_RECORDED
 	name_badge.modulate.a = NAME_ALPHA
 	name_badge.outline_modulate.a = NAME_ALPHA * 0.6
 	at_tick(0, true)

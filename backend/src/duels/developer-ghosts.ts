@@ -3,7 +3,7 @@
  * summed over every turn), that a ghost race against "Our run" races. Each is
  * a whole run recorded with Forgiving catches off at the rules a new room
  * plays, as duel rooms always play, kept in the shared blob format in
- * game/tests/fixtures/dev_ghosts.json (made by game/tests/dev_ghost_recorder.gd;
+ * game/content/dev_ghosts.json (made by game/tests/dev_ghost_recorder.gd;
  * game/tests/test_dev_ghosts.gd replays each through the leaderboard replay
  * check). developer-ghosts.test.ts keeps these numbers equal to that file's and
  * the keys equal to the boards.

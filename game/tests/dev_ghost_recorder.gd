@@ -24,7 +24,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const BlobCodec = preload("res://services/blob_codec.gd")
 
-const MANIFEST := "res://tests/fixtures/dev_ghosts.json"
+const MANIFEST := "res://content/dev_ghosts.json"
 ## Board key -> [fixture under tests/fixtures/, where its run is]: "final" for a
 ## final checkpoint file, "chain" for a {"checkpoints"} file's last one, else the
 ## entry of a recordings file that holds {"pairs"}.

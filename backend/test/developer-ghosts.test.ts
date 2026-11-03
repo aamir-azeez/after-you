@@ -5,11 +5,11 @@ import { boardKey, boardKeys } from "../src/leaderboards/boards";
 import { runTicks, walkRun } from "../src/leaderboards/run";
 import { CHAPTERS } from "../src/v2/chapters";
 import type { CheckpointV2 } from "../src/v2/protocol";
-import manifest from "../../game/tests/fixtures/dev_ghosts.json";
+import manifest from "../../game/content/dev_ghosts.json";
 
 /**
  * The developers' ghosts a ghost race times (src/duels/developer-ghosts.ts)
- * against the recorded runs in game/tests/fixtures/dev_ghosts.json: one per
+ * against the recorded runs in game/content/dev_ghosts.json: one per
  * board, each the same time as its run, and each run whole, unassisted on every
  * turn and played at the newest rules its chapter takes, as the board itself
  * would rank it. game/tests/test_dev_ghosts.gd replays every turn.

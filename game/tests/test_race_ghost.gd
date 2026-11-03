@@ -3,7 +3,7 @@ extends SceneTree
 ## every chapter's stages and roles, the same on every build of it; the replay
 ## kept from the race's first turn to its end and let go after; the ghost's
 ## look and name; the see-through pip, its faint name and the timer mark.
-## Real whole runs come from tests/fixtures/dev_ghosts.json (the developers'
+## Real whole runs come from content/dev_ghosts.json (the developers'
 ## ghosts, each a final checkpoint in the shared blob format). Synthetic ids only.
 const Track = preload("res://services/race_ghost_track.gd")
 const RaceGhost = preload("res://services/race_ghost.gd")
@@ -46,7 +46,7 @@ class FakeWorld extends Node3D:
 
 func _run() -> void:
 	_clear()
-	var ghosts: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/dev_ghosts.json")).ghosts
+	var ghosts: Array = JSON.parse_string(FileAccess.get_file_as_string("res://content/dev_ghosts.json")).ghosts
 	_check(ghosts.size() >= 12, "the developers' whole runs load: %d" % ghosts.size())
 	for row: Dictionary in ghosts: _tracks(row)
 	var relay: Dictionary = ghosts.filter(func(row: Dictionary) -> bool: return row.board == "relay-isles@2")[0]
@@ -79,6 +79,11 @@ func _tracks(row: Dictionary) -> void:
 	var first: Dictionary = parts[0].pair
 	_check(Track.build(str(row.board), first, "b").points == Track.build(str(row.board), first, "b").points, "%s builds the same track every time" % row.board)
 	_check(Track.build(str(row.board), first, "c").is_empty() and Track.build(str(row.board), {"a": first.a}, "a").is_empty(), "%s: a role or set-up the run lacks has no track" % row.board)
+	# A turn this build plays differently from its recording (a replay check off) shows no ghost, never a wrong one.
+	for role: String in ["a", "b"]:
+		var off: Dictionary = first.duplicate(true)
+		off[role].replay_checks[-1].state_hash = "0".repeat(64)
+		_check(Track.build(str(row.board), off, role).is_empty(), "%s turn %s: a replay check that does not match gives no track" % [row.board, role])
 
 ## The service: the race found by its room, the replay fetched once and kept,
 ## the look and name, a turn after the board stopped serving the run, and the copy let go when the race ends.
@@ -116,13 +121,43 @@ func _service(relay: Dictionary) -> void:
 	later.release_ended({"duels": [DuelsClient.valid_view(_race_view(board, "decided", str(relay.proof_hash)))]})
 	_check(TheirRun.kept_run(OWNER, DUEL, true).is_empty(), "the copy goes once the race has ended")
 	await _copies(relay)
-	# The developers' run has no ghost yet (its recordings don't ship).
+	# Our run plays from the run the game ships, with no request, in the default look.
 	var ours := _race_view(board, "running", str(relay.proof_hash))
-	ours.ghost = {"source": "developer", "entry_id": null, "rank": null, "ticks": 588, "names": null}
+	ours.ghost = {"source": "developer", "entry_id": null, "rank": null, "ticks": int(relay.ticks), "names": null}
 	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": PARTNER, "intact": true, "invites_in": [], "invite_out": null}, "duels": [ours]}}
 	await DuelsClient.shared(api, OWNER).lobby()
-	_check((await RaceGhost.new(api, OWNER).turn(ROOM, true, chapter, 0, "a")).is_empty(), "a race against Our run has no ghost")
+	var asked := api.requests.size()
+	var developer: Dictionary = await RaceGhost.new(api, OWNER).turn(ROOM, true, chapter, 0, "a")
+	_check(not developer.is_empty() and developer.developer and developer.look == {} and api.requests.size() == asked, "a race against Our run plays the shipped run, asking nothing")
+	_check(RaceGhost.developer_run(board, int(relay.ticks) + 1).is_empty() and RaceGhost.developer_run("no-such-board@1", 1).is_empty(), "a race whose time is not the shipped run's has no ghost")
 	api.queue_free()
+	await _drop_mode(relay)
+
+## The other side of the erasure switch (KEEP_COPY_UNTIL_RACE_ENDS false): the
+## run plays while the board lists it, nothing is kept, and once the board
+## stops serving it the next turn has no ghost.
+func _drop_mode(relay: Dictionary) -> void:
+	var board := str(relay.board)
+	var race := _race_view(board, "running", str(relay.proof_hash))
+	race.duel_id = "b".repeat(32)
+	var row := {"rank": 1, "entry_id": ENTRY, "ticks": int(relay.ticks), "names": null, "gold_leaf": true, "replay_hash": relay.proof_hash}
+	var served := FakeApi.new()
+	root.add_child(served)
+	served.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": PARTNER, "intact": true, "invites_in": [], "invite_out": null}, "duels": [race]}}
+	served.replies["GET /v1/leaderboards/%s/replay/%s" % [board, ENTRY]] = {"ok": true, "data": {"schema_version": 1, "board": board, "entry_id": ENTRY, "rank": 1, "ticks": int(relay.ticks), "finished_on": "2026-11-01", "names": null, "gold_leaf": true, "digest": relay.proof_hash, "byte_length": int(relay.byte_length), "body": relay.body}}
+	served.replies["GET /v1/leaderboards/" + board] = {"ok": true, "data": {"schema_version": 1, "board": board, "top": [row], "checking": []}}
+	var service: RefCounted = RaceGhost.new(served, OWNER)
+	service.keep_copy = false
+	_check(not (await service.turn(ROOM, true, board, 0, "a")).is_empty() and TheirRun.kept_ghosts(OWNER).is_empty(), "switched to drop: the run plays while the board lists it, and nothing is kept")
+	# The board stops serving it (a fresh read: a phone keeps a board a minute).
+	var gone := FakeApi.new()
+	root.add_child(gone)
+	gone.replies["GET /v1/duels"] = served.replies["GET /v1/duels"]
+	gone.replies["GET /v1/leaderboards/" + board] = {"ok": true, "data": {"schema_version": 1, "board": board, "top": [], "checking": []}}
+	service._api = gone
+	_check((await service.turn(ROOM, true, board, 1, "a")).is_empty() and TheirRun.kept_ghosts(OWNER).is_empty(), "and the next turn after the board stops serving it has no ghost")
+	served.queue_free()
+	gone.queue_free()
 
 ## Ghost copies never push out another pair's run, stay few, go when the
 ## lobby no longer shows their race, and are never written for an erased player.
@@ -183,6 +218,9 @@ func _view() -> void:
 	root.add_child(again)
 	again.show_track(world, {"slot": "p0", "points": points, "duration_ticks": 2, "look": {}, "name": "Lee"}, null, 8, true)
 	_check(again.name_badge.text == "Lee", "a named pair's player races by name")
+	again.release()
+	again.show_track(world, {"slot": "p0", "points": points, "duration_ticks": 2, "look": {}, "name": "", "developer": true}, null, 8, true)
+	_check(again.name_badge.text == PlayerCopy.DUELS_GHOST_DEVELOPERS, "Our run races as Our run")
 	again.release()
 	again.queue_free()
 	_check(not (spirit.get("ground_shadow") as Node3D).visible, "with no ground shadow")
