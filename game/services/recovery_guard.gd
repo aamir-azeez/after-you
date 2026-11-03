@@ -13,8 +13,19 @@ extends RefCounted
 const Typed = preload("res://services/typed_values.gd")
 const SecretStore = preload("res://services/secure_store.gd")
 const UNLOCK_MS := 300000
-## copy()'s answers when the player did not unlock, and when the details changed meanwhile.
+## unlock()'s answers: show the code; say it stays hidden; or say nothing, because a
+## screen lock prompt is already open and its answer is still coming.
+enum { ALLOWED, REFUSED, WAITING }
+## The phone answered that it cannot show its lock check at all. The code shows then:
+## it may be the only copy of a new code (the recovery storage failure screen), and
+## nobody holding the phone can bring this answer about.
+const OPEN_ON := ["device_check_unavailable"]
+## The native side still has a prompt open.
+const WAIT_ON := ["device_check_busy"]
+## copy()'s answers when the player did not unlock, when a prompt is already open, and
+## when the details changed meanwhile.
 const NOT_CONFIRMED := "not_confirmed"
+const WAITING_CODE := "waiting"
 const NOT_CURRENT := "not_current"
 
 var host: Node
@@ -39,29 +50,35 @@ func check_supported() -> bool:
 func unlocked() -> bool:
 	return _unlocked_at >= 0 and Time.get_ticks_msec() - _unlocked_at < UNLOCK_MS
 
-## True when the code may show or be copied now. One screen lock prompt at a time: a tap
-## while one is open answers false and asks nothing more.
-func unlock() -> bool:
-	if unlocked() or not check_supported(): return true
-	if _confirming: return false
+## ALLOWED when the code may show or be copied now, REFUSED when the player cancelled
+## (or the check failed or timed out), WAITING when a prompt is already open: one prompt
+## at a time, so a second tap asks nothing more.
+func unlock() -> int:
+	if unlocked() or not check_supported(): return ALLOWED
+	if _confirming: return WAITING
 	_confirming = true
 	var result: Dictionary = await host._await_secret(_secrets().confirm_device(), SecretStore.CONFIRM_TIMEOUT_MS + 1000)
 	_confirming = false
 	var payload: Variant = result.get("payload")
 	if result.get("ok", false) and payload is Dictionary and Typed.equal(payload.get("confirmed"), true):
 		_unlocked_at = Time.get_ticks_msec()
-		return true
-	return false
+		return ALLOWED
+	var code := str(result.get("code", ""))
+	if code in OPEN_ON: return ALLOWED
+	return WAITING if code in WAIT_ON else REFUSED
 
 ## The app went to the background: the next look asks again.
 func lock() -> void:
 	_unlocked_at = -1
 
 ## Copies the details once the screen lock allows it. The secure store's answer, or
-## {"ok": false, "code": NOT_CONFIRMED} when the player did not unlock, or NOT_CURRENT
-## when `still_current` (asked again after the prompt) says the details changed meanwhile.
+## {"ok": false, "code": NOT_CONFIRMED} when the player did not unlock, WAITING_CODE when a
+## prompt is already open, or NOT_CURRENT when `still_current` (asked again after the
+## prompt) says the details changed meanwhile.
 func copy(player: String, code: String, still_current: Callable = Callable()) -> Dictionary:
-	if not await unlock(): return {"ok": false, "code": NOT_CONFIRMED}
+	var answer: int = await unlock()
+	if answer == WAITING: return {"ok": false, "code": WAITING_CODE}
+	if answer != ALLOWED: return {"ok": false, "code": NOT_CONFIRMED}
 	if still_current.is_valid() and still_current.call() != true: return {"ok": false, "code": NOT_CURRENT}
 	return await host._await_secret(_secrets().copy_recovery(player, code))
 

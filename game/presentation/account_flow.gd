@@ -205,12 +205,13 @@ func toggle_recovery_details(detail: VBoxContainer, row: Control) -> void:
 	if recovery_reveal_busy: return
 	recovery_reveal_busy = true
 	var view: int = host.settings_flow.view_token()
-	var allowed: bool = await guard.unlock()
+	var answer: int = await guard.unlock()
 	recovery_reveal_busy = false
-	if not allowed:
-		host._toast(PlayerCopy.RECOVERY_LOCKED)
+	if answer != RecoveryGuard.ALLOWED:
+		if answer == RecoveryGuard.REFUSED: host._toast(PlayerCopy.RECOVERY_LOCKED)
 		return
-	# The prompt may have outlived this Settings view.
+	# The prompt may have outlived this Settings view; the unlock holds, so the
+	# next tap on the redrawn row shows them without asking again.
 	if not host.settings_flow.view_current(view) or not is_instance_valid(detail) or not is_instance_valid(row) or detail.visible: return
 	var player := str(host.identity_data.get("player_id",""))
 	var code := str(host.identity_data.get("recovery_code",""))
@@ -253,8 +254,9 @@ static func _copyable(player: String, code: String) -> bool:
 ## The phone's screen lock comes first; without it the current screen stays.
 func show_recovery_details() -> void:
 	var screen: String = host.mode
-	if not await guard.unlock():
-		host._toast(PlayerCopy.RECOVERY_LOCKED)
+	var answer: int = await guard.unlock()
+	if answer != RecoveryGuard.ALLOWED:
+		if answer == RecoveryGuard.REFUSED: host._toast(PlayerCopy.RECOVERY_LOCKED)
 		return
 	if host.mode != screen: return
 	_recovery_details_card(true)
@@ -283,23 +285,28 @@ func _recovery_details_card(shown: bool) -> void:
 	card.add_child(host._back_button("Back",_back_to_account,false))
 	if shown: guard.protect(card)
 
-func copy_recovery_details(player: String, code: String) -> void:
+## The one copy of the recovery details, for every screen that offers it (here and
+## platform_games_flow's choice): the screen lock first, then the native copy. True
+## once the details are on the clipboard.
+func copy_recovery_details(player: String, code: String) -> bool:
 	if recovery_copy_busy:
-		return
+		return false
 	if not _copy_allowed(player, code):
 		host._toast(PlayerCopy.MAIN_6F5191162022)
-		return
+		return false
 	recovery_copy_busy=true
 	var result: Dictionary=await guard.copy(player,code,_copy_allowed.bind(player,code))
 	recovery_copy_busy=false
-	if result.get("ok",false) and Typed.equal(result.get("payload",{}).get("copied"), true):
+	var copied: bool=result.get("ok",false) and Typed.equal(result.get("payload",{}).get("copied"), true)
+	if copied:
 		host._toast(PlayerCopy.MAIN_B3745871EB1C)
 	elif result.get("code","")==RecoveryGuard.NOT_CONFIRMED:
 		host._toast(PlayerCopy.RECOVERY_LOCKED)
 	elif result.get("code","")==RecoveryGuard.NOT_CURRENT:
 		host._toast(PlayerCopy.MAIN_6F5191162022)
-	else:
+	elif result.get("code","")!=RecoveryGuard.WAITING_CODE:
 		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
+	return copied
 
 ## These are the current, final recovery details (no unconfirmed rotation pending).
 func _copy_allowed(player: String, code: String) -> bool:

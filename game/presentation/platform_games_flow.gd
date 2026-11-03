@@ -7,7 +7,7 @@ extends Node
 ## identity_read_state, IdentityReadState, identity_data, identity_loading, identity_busy,
 ## identity_restart_required, pending_recovery, deleted_identity_owner, _await_secret,
 ## _apply_settings, _toast, _tester_checks_enabled, tester_access, store_flow, settings_flow,
-## account_flow (guard, which copies the recovery details; _finish_identity_change).
+## account_flow (copy_recovery_details, the one guarded copy; _finish_identity_change).
 ##
 ## Restoring an identity uses the recovery code's safety: the next device token and recovery
 ## code are made here, kept in secure storage before the request, and the server only rotates
@@ -22,7 +22,6 @@ const Sources = preload("res://services/platform_games/cloud_save_sources.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Typed = preload("res://services/typed_values.gd")
-const RecoveryGuard = preload("res://services/recovery_guard.gd")
 
 const PENDING_SECRET := "platform_restore_pending"
 const WEB_CLIENT_ID := "^[0-9]{6,20}-[a-z0-9]{8,64}\\.apps\\.googleusercontent\\.com$"
@@ -189,27 +188,17 @@ static func _set_items(detail: VBoxContainer, items: Array) -> void:
 func recovery_copied() -> bool:
 	return host != null and not _copied_player.is_empty() and _copied_player == str(host.identity_data.get("player_id", ""))
 
-## Copies this phone's recovery details; only a confirmed copy unlocks "Use the linked one".
+## Copies this phone's recovery details through account_flow's one copy (the screen lock
+## first, and its checks and notes); only a confirmed copy unlocks "Use the linked one".
 func _copy_recovery() -> void:
 	if _copy_busy: return
 	var player := str(host.identity_data.get("player_id", ""))
-	var code := str(host.identity_data.get("recovery_code", ""))
-	if not Typed.valid_id(player) or not RecoveryDetails.field_matches(code, RecoveryDetails.SECRET_PATTERN):
-		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
-		return
 	_copy_busy = true
-	# Through account_flow's guard: the phone's screen lock first, as on every copy of the code.
-	var still_current := func() -> bool: return player == str(host.identity_data.get("player_id", "")) and code == str(host.identity_data.get("recovery_code", ""))
-	var result: Dictionary = await host.account_flow.guard.copy(player, code, still_current)
+	var copied: bool = await host.account_flow.copy_recovery_details(player, str(host.identity_data.get("recovery_code", "")))
 	_copy_busy = false
-	if result.get("ok", false) and Typed.equal(result.get("payload", {}).get("copied"), true):
+	if copied:
 		_copied_player = player
-		host._toast(PlayerCopy.MAIN_B3745871EB1C)
 		_on_changed()
-	elif result.get("code", "") == RecoveryGuard.NOT_CONFIRMED:
-		host._toast(PlayerCopy.RECOVERY_LOCKED)
-	else:
-		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
 
 # ---- Main's side of the service ------------------------------------------------------------
 

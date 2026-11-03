@@ -8,7 +8,11 @@ import android.os.PersistableBundle
 internal object RecoveryClipboard {
     /** The clip's label; RecoveryClipExpiry clears only a clip that still carries it. */
     const val LABEL = "After You recovery details"
-    /** As on iOS: the copied details leave the clipboard after two minutes. */
+    /**
+     * The copied details leave the clipboard two minutes after the copy, like iOS's expiry,
+     * except that Android lets the app read (and so check) the clipboard only while it is in
+     * front: a deadline that passes in the background is met when the player comes back.
+     */
     const val LIFETIME_MS = 120_000L
 
     fun copy(playerId: String, recoveryCode: String, write: (ClipData) -> Unit): Boolean {

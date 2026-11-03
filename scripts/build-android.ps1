@@ -272,8 +272,8 @@ try {
     $badging = (& $aapt dump badging $inspectionApk) -join "`n"
     if ($LASTEXITCODE -ne 0 -or $badging -notmatch "package: name='com\.aamirazeez\.afteryou'") { throw 'Unexpected Android package identity.' }
     # Every APK meant for players (Play, or the GitHub Test Store APK) is non-debuggable;
-    # only a local tester build may be.
-    if (($Configuration -eq 'Release' -or $appConfig.purchase_mode -cne 'tester_only') -and $badging -match 'application-debuggable') { throw 'Only a local tester build may be debuggable.' }
+    # only a local Debug build may be.
+    if (($Configuration -eq 'Release' -or $appConfig.purchase_mode -ceq 'test_store') -and $badging -match 'application-debuggable') { throw 'Only a local Debug build may be debuggable.' }
     if ($Configuration -eq 'Release' -and $badging -notmatch "targetSdkVersion:'36'") { throw 'Release must target Android API 36.' }
     $manifestTree = (& $aapt dump xmltree $inspectionApk 'AndroidManifest.xml') -join "`n"
     if ($LASTEXITCODE -ne 0 -or $manifestTree -match 'android.intent.category.HOME') { throw 'APK must not register as an Android Home replacement.' }
@@ -301,6 +301,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or $networkTree -notmatch 'cleartextTrafficPermitted[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK network security resource is missing its HTTPS restriction.' }
     $permissions = (& $aapt dump permissions $inspectionApk) -join "`n"
     if ($LASTEXITCODE -ne 0 -or $permissions -notmatch "uses-permission: name='com.android.vending.BILLING'") { throw 'APK is missing the Google Play billing permission.' }
+    if ($permissions -notmatch "uses-permission: name='android.permission.USE_BIOMETRIC'") { throw 'APK is missing the screen lock prompt permission.' }
     if ($permissions -match 'android.permission.(CAMERA|RECORD_AUDIO|ACCESS_FINE_LOCATION|READ_CONTACTS|WRITE_EXTERNAL_STORAGE)') { throw 'APK unexpectedly requests a protected device permission.' }
     if ($Configuration -eq 'Release') {
         & $PythonExe (Join-Path $PSScriptRoot 'check-android-pages.py') $inspectionApk

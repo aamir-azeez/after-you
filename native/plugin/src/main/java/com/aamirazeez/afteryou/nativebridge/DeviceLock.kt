@@ -6,6 +6,7 @@ import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
 import android.os.Build
 import android.os.CancellationSignal
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.annotation.RequiresApi
 import org.json.JSONObject
@@ -18,14 +19,19 @@ import org.json.JSONObject
  */
 internal class DeviceLock(private val done: (requestId: String, payload: JSONObject?, error: String?) -> Unit) {
     private var active: String? = null
+    private var activeSince = 0L
     private var cancel: CancellationSignal? = null
 
     fun confirm(activity: Activity, requestId: String) {
+        // The game stops waiting after five minutes; a prompt whose answer never came
+        // (a lost Activity result) must not keep every later check busy.
+        if (active != null && SystemClock.elapsedRealtime() - activeSince > STALE_MS) close()
         if (active != null) { done(requestId, null, "device_check_busy"); return }
         val keyguard = activity.getSystemService(KeyguardManager::class.java)
         if (keyguard == null) { done(requestId, null, "device_check_unavailable"); return }
         if (!keyguard.isDeviceSecure) { done(requestId, JSONObject().put("confirmed", true).put("locked", false), null); return }
         active = requestId
+        activeSince = SystemClock.elapsedRealtime()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && prompt(activity)) return
         // Before Android 11, or when the system prompt cannot start.
         @Suppress("DEPRECATION")
@@ -76,6 +82,8 @@ internal class DeviceLock(private val done: (requestId: String, payload: JSONObj
     companion object {
         /** Below the photo camera's reserved range (PhotoCameraRequestCodes, 0x4100 and up). */
         const val REQUEST_CODE = 0x40A7
+        /** Past the game's own wait (secure_store.gd CONFIRM_TIMEOUT_MS, five minutes). */
+        const val STALE_MS = 310_000L
     }
 }
 

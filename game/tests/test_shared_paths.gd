@@ -16,7 +16,9 @@ extends SceneTree
 ## (g) saves: services/atomic_file.gd writes every file;
 ## (h) server writes: each one is classed, keyed or safe to repeat;
 ## (i) button ticks and first taps: button_ticks.gd and touch_input.gd alone;
-## (j) cutout bleed: test_full_screen_bleed.gd, which must stay in CI.
+## (j) cutout bleed: test_full_screen_bleed.gd, which must stay in CI;
+## (k) the recovery code: services/recovery_guard.gd alone copies it and works the screen
+##     lock and private screen; each screen that reads it is in RECOVERY_SURFACES.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -151,6 +153,14 @@ const WRITES := {
 }
 const SEND := "(?:request_json(?:_with_headers)?|_request|_net|_call|_mutation|_transport\\.call)(?:\\.bind)?\\(\\s*(?:[\\w.]+,\\s*)?HTTPClient\\.METHOD_(?:POST|PUT|PATCH|DELETE)"
 
+## (k) The one gate in front of the recovery code, and each screen that reads the code with
+## how it goes through that gate.
+const RECOVERY_GUARD := "res://services/recovery_guard.gd"
+const RECOVERY_SURFACES := {
+	"res://presentation/account_flow.gd": "shows, copies and imports it through its guard",
+	"res://presentation/platform_games_flow.gd": "copies it through account_flow.copy_recovery_details",
+}
+
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity"]
 
@@ -174,6 +184,7 @@ func _initialize() -> void:
 	_saves()
 	_writes()
 	_taps()
+	_recovery()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -444,6 +455,23 @@ func _taps() -> void:
 		if path != "res://main.gd": _check(_found("ButtonTicks\\.install\\(", source) == 0, "%s installs the button ticks again: Main installs them once" % path)
 		if path != "res://presentation/touch_input.gd": _check(_found("scroll_deadzone\\s*=[^=]", source) == 0, "%s sets a list's scroll slop itself: presentation/touch_input.gd gives every list the same slop, so a first tap registers" % path)
 	_check(str(_sources.get("res://main.gd", "")).contains("ButtonTicks.install(") and str(_sources.get("res://main.gd", "")).contains("TouchInput.install("), "Main installs the button ticks and the touch slop")
+
+# (k) The recovery code ------------------------------------------------------
+
+func _recovery() -> void:
+	var seen := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path != RECOVERY_GUARD:
+			_check(_found("\\.copy_recovery\\(|\\.confirm_device\\(|\\.set_private_screen\\(", source) == 0, "%s copies the recovery code or works the screen lock itself: go through services/recovery_guard.gd" % path)
+		if not path.begins_with("res://presentation/") or not source.contains("\"recovery_code\""): continue
+		if not RECOVERY_SURFACES.has(path):
+			_check(false, "%s reads the recovery code on a screen: show and copy it through account_flow's guard (services/recovery_guard.gd), then add it to RECOVERY_SURFACES" % path)
+			continue
+		seen[path] = true
+		_check(source.contains("guard.") or source.contains("copy_recovery_details("), "%s is in RECOVERY_SURFACES but goes through no guard" % path)
+	for path: String in RECOVERY_SURFACES:
+		_check(seen.has(path), "RECOVERY_SURFACES names %s, which no longer reads the code: delete it" % path)
 
 # (j) and the guard suites ---------------------------------------------------
 

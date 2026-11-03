@@ -33,6 +33,8 @@ class LockProbe:
 		match outcome:
 			"confirm": completed.emit(id,"confirm_device",{"confirmed":true,"locked":true})
 			"no_lock": completed.emit(id,"confirm_device",{"confirmed":true,"locked":false})
+			"unavailable": failed.emit(id,"confirm_device","device_check_unavailable")
+			"timeout": failed.emit(id,"confirm_device","native_request_timeout")
 			_: failed.emit(id,"confirm_device","device_check_cancelled")
 	func copy_recovery(player: String, code: String) -> String:
 		var id := "copy-"+str(copies.size())
@@ -126,6 +128,45 @@ func _run() -> void:
 	await _settle()
 	_check(not box.visible and probe.private_calls.back()==false,"Hiding them with the row lets the private screen go")
 
+	# The screen lock pauses the app while it is open (the PIN screen on older phones).
+	guard.lock()
+	probe.before_reply=func():
+		app._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+		app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	row.pressed.emit()
+	await _settle()
+	probe.before_reply=Callable()
+	_check(box.visible and guard.unlocked() and guard.private_screen(),"A screen lock that pauses the app still shows the details when it answers")
+	row.pressed.emit()
+	await _settle()
+	# Settings redrawn while the prompt is open: the old row shows nothing, and the
+	# next tap shows them without asking again.
+	guard.lock()
+	probe.before_reply=func(): app.settings_flow.show_settings(Flow.ACCOUNT)
+	row.pressed.emit()
+	await _settle()
+	probe.before_reply=Callable()
+	var redrawn := app.overlay.find_child("recovery_details",true,false) as Button
+	var redrawn_box: VBoxContainer = app.settings_flow.detail("recovery_details")
+	_check(redrawn != null and redrawn != row and redrawn_box != null and not redrawn_box.visible and not guard.private_screen(),"A Settings redraw during the screen lock shows nothing")
+	var asked: int = probe.confirms
+	redrawn.pressed.emit()
+	await _settle()
+	_check(probe.confirms==asked and redrawn_box.visible,"The next tap shows them without asking again")
+	row=redrawn
+	box=redrawn_box
+	row.pressed.emit()
+	await _settle()
+	# A check the phone cannot show at all lets the code show (it may be the only copy of a new code).
+	guard.lock()
+	probe.outcome="unavailable"
+	row.pressed.emit()
+	await _settle()
+	_check(box.visible,"A phone that cannot show its lock check still shows the details")
+	row.pressed.emit()
+	await _settle()
+	probe.outcome="confirm"
+
 	# A phone with no screen lock has nothing to ask.
 	guard.lock()
 	probe.outcome="no_lock"
@@ -168,6 +209,9 @@ func _run() -> void:
 	probe.outcome="cancel"
 	await app.account_flow.copy_recovery_details(player,code)
 	_check(probe.copies.size()==copies and app.toast.text==PlayerCopy.RECOVERY_LOCKED,"A cancelled screen lock copies nothing")
+	probe.outcome="timeout"
+	await app.account_flow.copy_recovery_details(player,code)
+	_check(probe.copies.size()==copies and not guard.unlocked(),"A screen lock that never answers copies nothing")
 
 	# The Play Games choice copies through the same guard.
 	guard.lock()
