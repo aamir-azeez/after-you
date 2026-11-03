@@ -6,6 +6,11 @@ extends Node
 ## partner made, or makes it (relay_lobby_flow.gd "duel"). When both of you
 ## made one at once, the server keeps the first and this phone joins it.
 ##
+## Public duels (presentation/duels/public_duels_flow.gd, public()) live on the
+## same pages: the lobby's Public duels row opens their list, Start a duel's
+## Anyone posts one, and a public duel's page offers a stranger's card. Every
+## public entry hides while the server says public duels are off.
+##
 ## Every duel entry hides while the server says duels are off
 ## (relay_online_session.gd duels_supported): the lobby, the Duel tag in Your
 ## rooms, and Home's row (offer), which also follows the public switch.
@@ -70,6 +75,7 @@ const Soundscape = preload("res://services/soundscape.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
 const HintReads = preload("res://services/duel_hint_reads.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
+const PublicFlow = preload("res://presentation/duels/public_duels_flow.gd")
 ## Main's mode while Duels is up.
 const MODE_DUELS := "duels"
 ## A room claimed a moment ago is joined up to JOIN_TRIES times, this far apart.
@@ -111,6 +117,7 @@ var _opening_player := ""
 var _goes_on: Array = []
 var _held := false
 var _open_token := 0
+var _public: RefCounted
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -269,6 +276,8 @@ func open() -> void:
 	screen.start_requested.connect(_open_challenge)
 	screen.party_requested.connect(_open_party)
 	screen.ghosts_requested.connect(_open_ghosts)
+	screen.public_shown = public().supported()
+	screen.public_requested.connect(func() -> void: public().open_list())
 	screen.duel_action.connect(_on_duel_action)
 	screen.refresh_requested.connect(_refresh)
 	host.add_child(screen)
@@ -381,10 +390,11 @@ func _party(page: CanvasLayer, action: String, friend: String) -> void:
 		if is_open(): screen.show_lobby(answer.lobby)
 	else: _toast_failure(answer)
 
-func _open_challenge() -> void:
+func _open_challenge(anyone: bool = false) -> void:
 	if not is_open(): return
 	var page := ChallengePage.new()
 	page.chapters = _open_chapters()
+	_offer_public(page, anyone)
 	var partner: Variant = client().last_lobby().get("party", {}).get("partner")
 	page.send_requested.connect(func(friend: String, chapter: String, control: Control) -> void: page.tap(control, func() -> void: await _challenge(page, friend, chapter)))
 	screen.open_overlay(page)
@@ -549,6 +559,7 @@ func _open_duel(view: Dictionary) -> void:
 	page.name_of = _name_of
 	page.view = view
 	page.play_requested.connect(func(next: Dictionary, control: Control) -> void: _play(next))
+	page.stranger_requested.connect(func(next: Dictionary, index: int, slot: int) -> void: public().stranger(page, next, index, slot))
 	page.leave_requested.connect(func(next: Dictionary) -> void:
 		var answer: Dictionary = await client().act(next.board, next.duel_id, "leave")
 		if not answer.get("ok", false):
@@ -558,6 +569,8 @@ func _open_duel(view: Dictionary) -> void:
 		if is_open(): screen.show_lobby(client().last_lobby())
 		_show_duel(page, answer.duel))
 	screen.open_overlay(page)
+	# A public duel's page shows the duel extra held so far, from its detail read.
+	if view.has("public"): _read_public_detail(page, view)
 	# The phone's room may be ahead of the duel (a lost note): ask the server to look once.
 	var own: Dictionary = view.sides[view.mine]
 	if view.status == "running" and not own.finished and not str(own.get("room_id", "")).is_empty():
@@ -569,6 +582,7 @@ func _read_duel(page: CanvasLayer, ticket: Dictionary) -> void:
 	var answer: Dictionary = await client().duel(page.view.board, page.view.duel_id)
 	# A failed read waits the same pace, as the lobby's does.
 	_duel_reads.complete(ticket, Time.get_ticks_msec(), true)
+	if answer.get("ok", false) and is_instance_valid(page): page.held = answer.get("held", {})
 	if answer.get("ok", false): _show_duel(page, answer.duel)
 
 ## A newer copy of the open duel, from a read or this player's own action
@@ -577,6 +591,8 @@ func _read_duel(page: CanvasLayer, ticket: Dictionary) -> void:
 ## before Leave, changes nothing.
 func _show_duel(page: CanvasLayer, duel: Dictionary) -> void:
 	if not is_instance_valid(page) or not page.alive() or int(duel.updated_ms) < int(page.view.get("updated_ms", 0)): return
+	# A public duel whose open seat beside you just filled says so, once, quietly.
+	if duel.status == "running" and DuelModel.open_seats(duel, duel.mine) < DuelModel.open_seats(page.view, page.view.get("mine", 0)): host._toast(PlayerCopy.PUBLIC_PARTNER_JOINED)
 	if duel.status == "running":
 		page.show_duel(duel)
 	else:
@@ -620,6 +636,7 @@ func _open_result(view: Dictionary) -> void:
 	screen.open_overlay(page)
 	var answer: Dictionary = await client().duel(view.board, view.duel_id)
 	if not is_instance_valid(page) or not answer.get("ok", false): return
+	page.held = answer.get("held", {})
 	page.show_result(answer.duel, answer.get("pay", {}), answer.get("win_bonus", {}))
 	# A win rings once, the first time its result opens on this phone, as a leaderboard celebration shows once.
 	var cue := DuelModel.result_cue(answer.duel)
@@ -785,6 +802,35 @@ func _back_to(view: Dictionary, notice: String) -> void:
 		host.mode = MODE_DUELS
 		_left()
 	if not notice.is_empty(): host._toast(notice)
+
+## Public duels' glue (public_duels_flow.gd), made once.
+func public() -> RefCounted:
+	if _public == null: _public = PublicFlow.new(self)
+	return _public
+
+## Settings' Public duels row: shown while the server has them (or last said so) and switched through public_duels_flow.gd.
+func public_offered() -> bool:
+	return public().offered()
+
+func public_choose(on: bool) -> bool:
+	return public().choose(on)
+
+## Start a duel's "Anyone" while public duels are open: posting goes through public_duels_flow.gd post().
+func _offer_public(page: CanvasLayer, anyone: bool) -> void:
+	if not public().supported(): return
+	var party: Dictionary = client().last_lobby().get("party", {})
+	page.public_offered = true
+	page.anyone = anyone
+	page.partner_name = _name_of(party.partner) if party.get("intact", false) and party.get("partner") != null else ""
+	page.partner_look = party.get("partner_look", {})
+	page.post_requested.connect(func(joining: String, chapter: String, control: Control) -> void: page.tap(control, func() -> void: await public().post(page, joining, chapter)))
+
+## A public duel's detail read as its page opens: the held duel extra and the duel as it is now.
+func _read_public_detail(page: CanvasLayer, view: Dictionary) -> void:
+	var answer: Dictionary = await client().duel(view.board, view.duel_id)
+	if not answer.get("ok", false) or not is_instance_valid(page) or not page.alive(): return
+	page.held = answer.get("held", {})
+	_show_duel(page, answer.duel)
 
 ## The bundled chapter key for the duel's board (its own version).
 func _chapter_key(view: Dictionary) -> String:

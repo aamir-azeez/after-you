@@ -61,6 +61,7 @@ func set_on(on: bool) -> Dictionary:
 	if not response.get("ok", false): return _failure(response)
 	var data: Variant = response.get("data")
 	if not data is Dictionary or not data.get("on") is bool or not data.get("show_name") is bool or not data.get("paused") is bool: return {"ok": false, "code": "invalid_public_duels"}
+	duels.note_public(data.on)
 	return {"ok": true, "on": data.on, "show_name": data.show_name, "paused": data.paused}
 
 ## Blocks the player in `seat`: {ok, left} (blocking your own partner leaves the duel).

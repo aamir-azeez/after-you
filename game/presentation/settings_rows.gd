@@ -36,6 +36,7 @@ const HistoryStore = preload("res://services/history_store.gd")
 const Changelog = preload("res://services/changelog.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
 const PollenOdds = preload("res://presentation/pollen_odds.gd")
 
 const EVERYDAY := "everyday"
@@ -92,8 +93,16 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"options": [["30", PlayerCopy.SETTINGS_FPS_30], ["60", PlayerCopy.SETTINGS_FPS_60], ["unlimited", PlayerCopy.SETTINGS_FPS_UNLIMITED]]},
 
 		{"id": "share_online_status", "icon": preload("res://assets/ui/whats_new/people.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ONLINE_STATUS, "note": PlayerCopy.SETTINGS_ONLINE_STATUS_NOTE, "key": "share_online_status"},
+		# Public duels (board 6.1): off by default; on goes through the community rules first (presentation/duels/public_duels_flow.gd).
+		{"id": "public_duels", "online": true, "icon": preload("res://assets/ui/social/users.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_PUBLIC_DUELS, "note": PlayerCopy.SETTINGS_PUBLIC_DUELS_NOTE,
+			"get": func() -> bool: return DuelsClient.shared(host.api, str(host.api.player_id)).public_on(),
+			"set": func(on: bool) -> bool: return host.duels_flow.public_choose(on),
+			"visible_if": func() -> bool: return host.duels_flow != null and host.duels_flow.public_offered() and not str(host.api.player_id).is_empty()},
 		# Shown while the server has leaderboards open (presentation/leaderboard_screen.gd, Main._leaderboards_offered); off by default.
-		{"id": "leaderboard_name", "online": true, "icon": Icons.LEADERBOARD, "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_LEADERBOARD_NAME, "note": PlayerCopy.SETTINGS_LEADERBOARD_NAME_NOTE,
+		# While public duels are open the same choice also names you to players you don't know there, and its words say so.
+		{"id": "leaderboard_name", "online": true, "icon": Icons.LEADERBOARD, "category": FRIENDS, "kind": TOGGLE,
+			"label": func() -> String: return PlayerCopy.SETTINGS_SHOW_NAME_STRANGERS if host.duels_flow != null and host.duels_flow.public_offered() else PlayerCopy.SETTINGS_LEADERBOARD_NAME,
+			"note": func() -> String: return PlayerCopy.SETTINGS_SHOW_NAME_STRANGERS_NOTE if host.duels_flow != null and host.duels_flow.public_offered() else PlayerCopy.SETTINGS_LEADERBOARD_NAME_NOTE,
 			"get": func() -> bool: return LeaderboardClient.shared(host.api, str(host.api.player_id)).show_name(),
 			"set": func(on: bool) -> bool: return LeaderboardClient.shared(host.api, str(host.api.player_id)).set_show_name(on),
 			"visible_if": func() -> bool: return host._leaderboards_offered() and not str(host.api.player_id).is_empty()},

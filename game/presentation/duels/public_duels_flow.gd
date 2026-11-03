@@ -1,0 +1,296 @@
+extends RefCounted
+## Public duels' glue (boards 1 to 6), owned by the duels flow
+## (presentation/duels/duels_flow.gd), which hosts the lobby and the pages over
+## it. Every request goes through services/public_duels_client.gd, and every
+## duel it answers opens on the duel flow's own pages:
+## - open_list(): the list (public_list_page.gd). With the player's switch off,
+##   the first-time card asks first (public_sheets.gd first_time); its Turn on
+##   shows the community rules when they are not accepted yet (the safety
+##   screen every photo share uses), then sets the switch and the name choice.
+## - join(): the join card, then the join with the attempt's idempotency key.
+##   A spot someone took first redraws its row with a note; a duel that closed
+##   leaves the list with a word. A joined duel opens at once.
+## - post(): Start a duel's "Anyone" (duel_challenge_page.gd), with its key.
+## - stranger(): a stranger's card from the duel page: faces, Report, Block
+##   (leaving when it's your partner) and Add friend once the duel is over.
+## Each request is refused at once while the phone is offline (offline_hold.gd),
+## and every key is kept until the server answers it, so a retry after a lost
+## answer is the same post, join or report, never a second one.
+const PublicClient = preload("res://services/public_duels_client.gd")
+const Spots = preload("res://services/public_duel_spots.gd")
+const DuelModel = preload("res://services/duel_model.gd")
+const ListPage = preload("res://presentation/duels/public_list_page.gd")
+const Sheets = preload("res://presentation/duels/public_sheets.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
+const ServerSwitches = preload("res://services/server_switches.gd")
+const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
+const Runs = preload("res://services/leaderboard_runs.gd")
+const LeaderboardClient = preload("res://services/leaderboard_client.gd")
+const SafetyScreen = preload("res://presentation/safety_screen.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
+
+## The duels flow this belongs to; Main through its host.
+var flow: Node
+## The list's chapter and sort, kept for this launch, so it opens as it was left.
+static var _scope := "all"
+static var _sort := "newest"
+## Each attempt's idempotency key, by what it asked, until the server answers it.
+var _keys: Dictionary = {}
+## Friend requests sent this launch, by duel and seat, so the card offers each once.
+var _befriended: Dictionary = {}
+## True while Turn on runs (the rules, then the switch), so a second tap waits for it.
+var _turning_on := false
+
+func _init(duels_flow: Node) -> void:
+	flow = duels_flow
+
+func host() -> Node:
+	return flow.host
+
+func client() -> RefCounted:
+	return PublicClient.new(host().api, flow.client())
+
+## Whether the server has public duels open: this session's capabilities, else the switch last heard.
+func offered() -> bool:
+	return supported() or ServerSwitches.shared().on_for(host().api, "public_duels")
+
+func supported() -> bool:
+	return host().relay_session != null and host().relay_session.public_duels_supported()
+
+## The player's own switch, as the server last said.
+func switched_on() -> bool:
+	return flow.client().public_on()
+
+func _public() -> Dictionary:
+	return flow.client().last_lobby().get("public", {})
+
+func _partner() -> Dictionary:
+	var party: Dictionary = flow.client().last_lobby().get("party", {})
+	if not party.get("intact", false) or party.get("partner") == null: return {}
+	return {"id": party.partner, "name": flow._name_of(party.partner), "look": party.get("partner_look", {})}
+
+## The list, over the lobby; the first-time card first while the switch is off.
+func open_list() -> void:
+	if not flow.is_open() or not supported(): return
+	if switched_on():
+		_show_list()
+		return
+	_first_time(func() -> void: _show_list())
+
+## The first-time card over whatever page is in front; `then` runs once the switch is on.
+func _first_time(then: Callable) -> void:
+	var page: CanvasLayer = flow.screen.overlay() if flow.screen.overlay() != null else flow.screen
+	var name_on: bool = LeaderboardClient.shared(host().api, str(host().api.player_id)).show_name()
+	page.hold_modal(Sheets.first_time(page.root, name_on, func(show_name: bool) -> void:
+		if await turn_on(show_name) and flow.is_open(): then.call()))
+
+## Turns the switch on: the community rules first when not accepted, then the name choice and
+## the switch. False when it did not go through (said in a toast).
+func turn_on(show_name: Variant = null) -> bool:
+	if _turning_on or OfflineHold.refuse(host()._toast): return false
+	_turning_on = true
+	var done := await _turn_on(show_name)
+	_turning_on = false
+	return done
+
+func _turn_on(show_name: Variant) -> bool:
+	var safety: RefCounted = host().relay_session.safety_client() if host().relay_session != null and host().relay_session.has_method("safety_client") else null
+	if safety == null: return _say(PlayerCopy.DUELS_ACTION_FAILED)
+	if not await safety.check_terms(): return _say(safety.last_error if not str(safety.last_error).is_empty() else PlayerCopy.DUELS_ACTION_FAILED)
+	if not safety.terms_accepted:
+		# The rules screen every photo share shows; Accept there sets terms_accepted.
+		var rules := SafetyScreen.new(safety, {}, Callable(), Callable(), true)
+		host().add_child(rules)
+		# Over the duel pages, whose layers start at 61.
+		rules.layer = 90
+		await rules.tree_exited
+		if not safety.terms_accepted: return false
+	if show_name is bool:
+		var names: RefCounted = LeaderboardClient.shared(host().api, str(host().api.player_id))
+		if names.show_name() != show_name: names.set_show_name(show_name)
+	var answer: Dictionary = await client().set_on(true)
+	if not answer.get("ok", false): return _say(_failure_text(answer))
+	if flow.is_open(): flow._refresh()
+	return true
+
+## Settings' Public duels switch: on goes through turn_on (the rules first); off at once.
+## Answers what the switch shows now; a refusal comes back as a toast and the switch's next read.
+func choose(on: bool) -> bool:
+	if on:
+		turn_on()
+		return true
+	if OfflineHold.refuse(host()._toast): return false
+	client().set_on(false)
+	return true
+
+func _show_list() -> void:
+	if not flow.is_open(): return
+	var page := ListPage.new()
+	var partner := _partner()
+	page.partner_name = str(partner.get("name", ""))
+	page.partner_look = partner.get("look", {})
+	page.boards = _boards()
+	page.scope = _scope if _scope == "all" or page.boards.any(func(board: Array) -> bool: return board[0] == _scope) else "all"
+	page.sort = _sort
+	page.limit = flow.client().limit("friend")
+	page.known = _known
+	page.refresh_requested.connect(func() -> void: _read(page, 0))
+	page.more_requested.connect(func(control: Control) -> void: page.tap(control, func() -> void: await _read(page, page.next_page())))
+	page.join_requested.connect(func(row: Dictionary, seat: int, control: Control) -> void: _ask_join(page, row, seat, control))
+	page.post_requested.connect(func(_control: Control) -> void: flow._open_challenge(true))
+	flow.screen.open_overlay(page)
+	_read(page, 0)
+
+## One page of the list: the first replaces it, a later one adds to it.
+func _read(page: CanvasLayer, index: int) -> void:
+	_scope = page.scope
+	_sort = page.sort
+	var answer: Dictionary = await client().list(page.scope, page.sort, index)
+	if not is_instance_valid(page) or not page.alive(): return
+	if answer.get("ok", false): page.show_rows(answer.rows, int(answer.next), index > 0)
+	elif index == 0: page.show_failed()
+	else: host()._toast(PlayerCopy.PUBLIC_LIST_FAILED)
+
+## [[board key, chapter key]] for every chapter with a board, in the Chapters order: a duel on any
+## of them may be listed, and one you can't play yet greys with its reason.
+func _boards() -> Array:
+	var found: Array = []
+	for key: String in ChapterUnlocks.chain():
+		var board := Runs.board_key(key)
+		if board.is_empty() or (host()._paid_content_hidden() and bool(Registry.descriptor(key).get("premium", false))): continue
+		found.append([board, key])
+	return found
+
+## What greys a row (services/public_duel_spots.gd greyed): the chapter for you (and your partner,
+## whose Start a duel checks theirs), your partner's switch and the shared limit.
+func _known(row: Dictionary) -> Dictionary:
+	var public := _public()
+	var chapter := Runs.chapter_of(str(row.board))
+	return {"chapter_open": not chapter.is_empty() and ChapterUnlocks.open(chapter, host()._chapter_unlocks()),
+		"partner_on": public.get("partner_on") == true, "at_limit": int(public.get("running", 0)) >= flow.client().limit("friend")}
+
+func _ask_join(page: CanvasLayer, row: Dictionary, seat: int, control: Control) -> void:
+	var reason: String = page.reason_of(row)
+	var spot := Spots.spot_for(Spots.open_flags(row.sides), page.joining, seat)
+	if reason.is_empty() and spot.has("reason"): reason = str(spot.reason)
+	if not reason.is_empty():
+		host()._toast(ListPage.reason_text(reason, page.partner_name, page.limit))
+		return
+	var partner := _partner()
+	var names := {"title": _chapter_title(str(row.chapter)), "partner": str(partner.get("name", "")), "partner_look": partner.get("look", {})}
+	# A tapped ring is sent as tapped; Join lets the server pick again, so a spot taken meanwhile finds the next one.
+	page.hold_modal(Sheets.join(page.root, row, int(spot.seat), page.joining, names, func() -> void:
+		page.tap(control, func() -> void: await _join(page, row, seat, page.joining))))
+
+func _join(page: CanvasLayer, row: Dictionary, seat: int, joining: String) -> void:
+	if OfflineHold.refuse(host()._toast): return
+	var asked := "join|%s|%d|%s" % [row.duel_id, seat, joining]
+	var answer := await _keyed(asked, func(key: String) -> Dictionary: return await client().join(str(row.board), str(row.duel_id), joining, seat, key))
+	if not is_instance_valid(page) or not page.alive() or not flow.is_open(): return
+	if answer.get("ok", false):
+		page.close()
+		flow._refresh()
+		flow._open_duel(answer.duel)
+		return
+	match str(answer.get("code", "")):
+		"spot_taken":
+			var fresh: Dictionary = answer.get("row", {})
+			page.update_row(str(row.duel_id), fresh, PlayerCopy.PUBLIC_SPOT_TAKEN)
+			if fresh.is_empty(): host()._toast(PlayerCopy.PUBLIC_GONE)
+		"duel_not_found", "duel_not_running", "public_closed":
+			page.update_row(str(row.duel_id), {})
+			host()._toast(PlayerCopy.PUBLIC_GONE)
+		_: host()._toast(_failure_text(answer))
+
+## Start a duel's Post duel: `joining` "alone" or "party" on `chapter`. The switch must be on
+## first (the first-time card), and a posted duel opens at once.
+func post(page: CanvasLayer, joining: String, chapter: String) -> void:
+	if OfflineHold.refuse(host()._toast): return
+	if not switched_on():
+		_first_time(func() -> void: if is_instance_valid(page) and page.alive(): await post(page, joining, chapter))
+		return
+	var board := Runs.board_key(chapter)
+	var answer := await _keyed("post|%s|%s" % [board, joining], func(key: String) -> Dictionary: return await client().post(board, joining, key))
+	if not is_instance_valid(page) or not page.alive() or not flow.is_open(): return
+	if not answer.get("ok", false):
+		host()._toast(_failure_text(answer))
+		return
+	host()._toast(PlayerCopy.PUBLIC_POSTED)
+	page.close()
+	flow._refresh()
+	flow._open_duel(answer.duel)
+
+## A stranger's card from the duel page: the player in seat `slot` of side `index`.
+func stranger(page: CanvasLayer, view: Dictionary, index: int, slot: int) -> void:
+	if not DuelModel.seat_stranger(view, index, slot): return
+	var seat := index * 2 + slot
+	var name := DuelModel.seat_name(view, index, slot, flow._name_of)
+	var partner: bool = index == view.mine
+	var over: bool = view.status != "running"
+	var actions := {
+		"report": func() -> void: page.hold_modal(Sheets.report(page.root, name, func(reason: String) -> void: _report(view, seat, reason))),
+		"block": func() -> void: page.hold_modal(Sheets.block(page.root, name, partner and not over, func() -> void: _block(page, view, seat))),
+	}
+	if over: actions["befriend"] = func() -> void: _befriend(view, seat)
+	var who := {"name": name, "partner": partner, "color": "peach" if slot == 0 else "mint", "look": DuelModel.looks(view, index)[slot], "over": over,
+		"friend_sent": _befriended.has("%s|%d" % [view.duel_id, seat]), "duel_id": view.duel_id}
+	var settings: Dictionary = host().settings_flow.show_settings() if "settings_flow" in host() and host().settings_flow != null else {}
+	page.hold_modal(Sheets.stranger(page.root, who, settings, actions))
+
+func _report(view: Dictionary, seat: int, reason: String) -> void:
+	if OfflineHold.refuse(host()._toast): return
+	var answer := await _keyed("report|%s|%d|%s" % [view.duel_id, seat, reason], func(key: String) -> Dictionary: return await client().report(str(view.board), str(view.duel_id), seat, reason, key))
+	host()._toast(PlayerCopy.PUBLIC_REPORTED if answer.get("ok", false) else _failure_text(answer))
+
+func _block(page: CanvasLayer, view: Dictionary, seat: int) -> void:
+	if OfflineHold.refuse(host()._toast): return
+	var answer: Dictionary = await client().block(str(view.board), str(view.duel_id), seat)
+	if not answer.get("ok", false):
+		host()._toast(_failure_text(answer))
+		return
+	host()._toast(PlayerCopy.PUBLIC_BLOCKED)
+	if not flow.is_open(): return
+	flow._refresh()
+	# Blocking your partner left the duel: the page shows it as the server has it now.
+	if answer.get("left", false) and is_instance_valid(page) and page.alive():
+		var fresh: Dictionary = await flow.client().duel(str(view.board), str(view.duel_id))
+		if fresh.get("ok", false) and is_instance_valid(page): flow._show_duel(page, fresh.duel)
+
+func _befriend(view: Dictionary, seat: int) -> void:
+	if OfflineHold.refuse(host()._toast): return
+	var answer: Dictionary = await client().befriend(str(view.board), str(view.duel_id), seat)
+	if answer.get("ok", false): _befriended["%s|%d" % [view.duel_id, seat]] = true
+	host()._toast(PlayerCopy.PUBLIC_FRIEND_SENT if answer.get("ok", false) else _failure_text(answer))
+
+## Sends `request` with the key kept for `asked`, made on its first try, dropped once the server answers it.
+func _keyed(asked: String, request: Callable) -> Dictionary:
+	if not _keys.has(asked): _keys[asked] = RoomsApi.new_key()
+	var answer: Dictionary = await request.call(_keys[asked])
+	var status := int(answer.get("status", 0))
+	if answer.get("ok", false) or (status >= 400 and status < 500): _keys.erase(asked)
+	return answer
+
+## The words for a refused public duel request.
+func _failure_text(answer: Dictionary) -> String:
+	var partner := str(_partner().get("name", PlayerCopy.DUEL_PARTNER))
+	match str(answer.get("code", "")):
+		"public_duels_off": return PlayerCopy.PUBLIC_TURN_ON_FIRST
+		"partner_public_off": return PlayerCopy.PUBLIC_PARTNER_OFF % partner
+		"public_paused": return PlayerCopy.PUBLIC_PAUSED
+		"public_list_full": return PlayerCopy.PUBLIC_LIST_FULL
+		"terms_acceptance_required": return PlayerCopy.PUBLIC_RULES_FIRST
+		"duel_limit_reached": return PlayerCopy.DUELS_LIMIT % flow.client().limit("friend")
+		"party_required": return PlayerCopy.DUELS_NO_PARTY
+		"chapter_creation_disabled": return PlayerCopy.DUELS_CHAPTER_CLOSED
+		"duel_not_found", "duel_not_running": return PlayerCopy.PUBLIC_GONE
+	return PlayerCopy.DUELS_ACTION_FAILED
+
+func _say(text: String) -> bool:
+	host()._toast(text)
+	return false
+
+static func _chapter_title(key: String) -> String:
+	return RoomChapterTitle.title(key, str(Registry.descriptor(key).get("title", key)))

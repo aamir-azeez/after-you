@@ -12,6 +12,7 @@ extends RefCounted
 const FriendRoster = preload("res://services/friend_roster.gd")
 const SafetyStore = preload("res://services/safety_store.gd")
 const Presence = preload("res://services/friend_presence.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
 
 ## What a room screen shows for a partner: nothing, "Add friend", or "Request sent".
 const HIDDEN := ""
@@ -37,6 +38,9 @@ func _init(scope_source: Callable, friends_source: Callable, roster_store: RefCo
 func state(peer: String, family: String = "", room: String = "") -> String:
 	var current: Dictionary = scope.call() if scope.is_valid() else {}
 	if current.is_empty() or not Presence.valid_id(peer) or peer == current.owner: return HIDDEN
+	# A public duel's room names its partner by a stand-in id, never a player: no request goes to it
+	# (a friend request after the duel goes by seat, presentation/duels/public_duels_flow.gd).
+	if not room.is_empty() and DuelsClient.public_room(room): return HIDDEN
 	if not family.is_empty():
 		# One read of the safety record: a blocked partner or room, or a report
 		# about this room waiting to be sent.

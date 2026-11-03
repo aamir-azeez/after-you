@@ -4,16 +4,31 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## Journey included); the other pair checks theirs before they accept. The
 ## server answers when the friend has no duel partner yet. Send challenge goes
 ## through the flow (duels_flow.gd) with one idempotency key per tap.
+## While public duels are open (board 5A), "Anyone" tops Pick a pair: it posts
+## the duel on the public list instead, as your party or alone ("Post as"), with
+## a preview of the seats others will see, and the button reads Post duel.
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
+const Seats = preload("res://presentation/duels/public_seats.gd")
+## The Pick a pair choice that posts on the public list.
+const ANYONE := "*anyone*"
 
 signal send_requested(friend: String, chapter_key: String, control: Control)
+## Post duel: `joining` "alone" or "party" on `chapter_key` (public duels).
+signal post_requested(joining: String, chapter_key: String, control: Control)
 
 ## Accepted friends who are not your partner: [{id, name}].
 var friends: Array = []
 ## Chapter keys open to you, in the Chapters order.
 var chapters: Array = []
+## Whether "Anyone" is offered (the server has public duels open), and whether it starts chosen.
+var public_offered := false
+var anyone := false
+## Your party partner's name and look for Post as, or "" without an intact party.
+var partner_name := ""
+var partner_look: Dictionary = {}
+var _post_as := "party"
 var _friend := ""
 var _chapter := ""
 var _friend_list: VBoxContainer
@@ -32,7 +47,9 @@ func header_action() -> Control:
 	_send.name = "DuelSend"
 	_send.custom_minimum_size.x = 260
 	_send.disabled = true
-	_send.pressed.connect(func(): send_requested.emit(_friend, _chapter, _send))
+	_send.pressed.connect(func():
+		if _friend == ANYONE: post_requested.emit(_post_as if not partner_name.is_empty() else "alone", _chapter, _send)
+		else: send_requested.emit(_friend, _chapter, _send))
 	return _send
 
 func tap(control: Control, run: Callable) -> void:
@@ -73,9 +90,12 @@ func _render() -> void:
 
 func _render_friends() -> void:
 	Kit.clear(_friend_list)
+	if public_offered and anyone and _friend.is_empty(): _friend = ANYONE
+	if public_offered: _friend_list.add_child(_anyone())
 	for friend: Dictionary in friends:
 		_friend_list.add_child(_choice("Pair_" + str(friend.id).left(6), str(friend.name), friend.id == _friend, func(): _pick_friend(friend.id), Kit.pips(Vector2(30, 40), [friend.id, null], "", [Kit.last_seen(friend.id), {}])))
-	if friends.is_empty(): _friend_list.add_child(Kit.wrapped(PlayerCopy.DUELS_PARTY_NO_FRIENDS, 18))
+	if friends.is_empty() and not public_offered: _friend_list.add_child(Kit.wrapped(PlayerCopy.DUELS_PARTY_NO_FRIENDS, 18))
+	if _friend == ANYONE: _post_as_part()
 	_update_send()
 
 func _render_chapters() -> void:
@@ -86,7 +106,56 @@ func _render_chapters() -> void:
 	_update_send()
 
 func _update_send() -> void:
-	if is_instance_valid(_send): _send.disabled = _friend.is_empty() or _chapter.is_empty()
+	if not is_instance_valid(_send): return
+	_send.disabled = _friend.is_empty() or _chapter.is_empty()
+	_send.text = PlayerCopy.PUBLIC_POST_DUEL if _friend == ANYONE else PlayerCopy.DUELS_SEND
+
+## "Anyone": two lines, your pips, chosen like a friend (board 5A).
+func _anyone() -> Button:
+	var chosen := _friend == ANYONE
+	var art := Kit.pips(Vector2(30, 40), [null, null], "", [{}, {}], -8)
+	var button := _choice("PairAnyone", PlayerCopy.PUBLIC_ANYONE, chosen, func(): _pick_friend(ANYONE), art)
+	var words: Label = button.get_child(0).get_child(1)
+	words.text = ""
+	var lines := VBoxContainer.new()
+	lines.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lines.alignment = BoxContainer.ALIGNMENT_CENTER
+	lines.add_theme_constant_override("separation", 0)
+	lines.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lines.add_child(Kit.text(PlayerCopy.PUBLIC_ANYONE, 20, UiTokens.INK if chosen else UiTokens.CREAM, true))
+	lines.add_child(Kit.text(PlayerCopy.PUBLIC_ANYONE_NOTE, 15, UiTokens.INK if chosen else UiTokens.SOFT))
+	button.get_child(0).add_child(lines)
+	words.queue_free()
+	return button
+
+## Post as (With your partner or Alone) and the seats the list will show, under Anyone.
+func _post_as_part() -> void:
+	var heading := Kit.text(PlayerCopy.PUBLIC_POST_AS, 24, UiTokens.CREAM, true)
+	heading.name = "PublicPostAs"
+	_friend_list.add_child(heading)
+	var party := not partner_name.is_empty() and _post_as == "party"
+	if not partner_name.is_empty():
+		var switch := HBoxContainer.new()
+		switch.add_theme_constant_override("separation", 6)
+		switch.add_child(_as_chip("PostWithPartner", PlayerCopy.PUBLIC_WITH % partner_name, party, "party"))
+		switch.add_child(_as_chip("PostAlone", PlayerCopy.PUBLIC_ALONE, not party, "alone"))
+		_friend_list.add_child(switch)
+	var you := {"open": false, "you": true, "name": PlayerCopy.DUEL_YOU, "look": {}}
+	var open := {"open": true, "you": false, "name": PlayerCopy.PUBLIC_OPEN, "look": {}}
+	var mine: Array = [you, {"open": false, "you": false, "name": partner_name, "look": partner_look}] if party else [you, open]
+	var preview := Seats.duel([{"seats": mine}, {"seats": [open, open]}], 0, 36.0)
+	preview.alignment = BoxContainer.ALIGNMENT_BEGIN
+	preview.name = "PublicPostPreview"
+	_friend_list.add_child(preview)
+	_friend_list.add_child(Kit.wrapped(PlayerCopy.PUBLIC_POST_NOTE, 15))
+
+func _as_chip(node_name: String, label: String, chosen: bool, value: String) -> Button:
+	var chip := Kit.button(label, func():
+		_post_as = value
+		_render_friends(), chosen, 44)
+	chip.name = node_name
+	chip.add_theme_font_size_override("font_size", 17)
+	return chip
 
 func _pick_friend(id: String) -> void:
 	_friend = id

@@ -216,6 +216,16 @@ func ghost_race(room_id: String) -> Dictionary:
 func room_kind(room_id: String) -> String:
 	return str(_saved.get("rooms", {}).get(room_id, ""))
 
+## The player's Public duels switch as the server last said (a lobby read or the switch's own
+## answer), kept in this file so Settings shows it before any read this launch.
+func public_on() -> bool:
+	return _saved.get("public_on", false) == true
+
+func note_public(on: bool) -> void:
+	if public_on() == on or _owner.is_empty(): return
+	_saved["public_on"] = on
+	_save()
+
 ## Whether a won duel's result has not rung its bell on this phone yet.
 func bell_due(view: Dictionary) -> bool:
 	var result: Variant = view.get("result")
@@ -285,6 +295,7 @@ func _take(checked: Dictionary) -> Dictionary:
 		if held.has(fresh.duel_id) and _older(fresh, held[fresh.duel_id]): checked.duels[index] = held[fresh.duel_id]
 	_lobby = checked
 	_remember(checked.duels)
+	if checked.has("public"): note_public(bool(checked.public.on))
 	return checked
 
 ## Whether `view` is an older copy of the same duel than `than`.
@@ -309,7 +320,7 @@ func _remember(views: Array) -> void:
 func _save() -> void:
 	if _owner.is_empty(): return
 	var all := _read_all(_path)
-	all[_owner] = {"rooms": _saved.rooms, "rung": _saved.rung.keys()}
+	all[_owner] = {"rooms": _saved.rooms, "rung": _saved.rung.keys(), "public_on": public_on()}
 	AtomicFile.write_text(_path, JSON.stringify(all))
 
 ## Forgets a player's part of the file (account deletion); other players' parts stay.
@@ -335,14 +346,14 @@ func _read_saved() -> Dictionary:
 	var mine: Variant = _read_all(_path).get(_owner)
 	var rooms := {}
 	var rung := {}
-	if not mine is Dictionary: return {"rooms": rooms, "rung": rung}
+	if not mine is Dictionary: return {"rooms": rooms, "rung": rung, "public_on": false}
 	if mine.get("rooms") is Dictionary:
 		for room_id: Variant in mine.rooms:
 			if Typed.valid_id(room_id) and mine.rooms[room_id] in ["friend", "ghost", "public"]: rooms[room_id] = mine.rooms[room_id]
 	if mine.get("rung") is Array:
 		for duel_id: Variant in (mine.rung as Array).slice(maxi((mine.rung as Array).size() - MAX_DUELS * 2, 0)):
 			if _entry(duel_id): rung[duel_id] = true
-	return {"rooms": rooms, "rung": rung}
+	return {"rooms": rooms, "rung": rung, "public_on": mine.get("public_on") == true}
 
 ## A lobby as the server sent it, or {} when it is not one this build reads.
 static func valid_lobby(value: Variant) -> Dictionary:

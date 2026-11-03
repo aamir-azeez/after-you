@@ -9,19 +9,33 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## pair left, the card says so and offers nothing more.
 ## The flow (duels_flow.gd) reads the duel again while this page is up and
 ## hands it in through show_duel(); nothing here polls or draws per frame.
+## A public duel (boards 3 to 6) adds the PUBLIC tag, draws its seats through
+## public_seats.gd (an open seat is a ring, a stranger a pip you can tap for
+## their card: stranger_requested), says which spots are open on the list, and
+## shows the duel extra held for you so far (`held`, from the detail read).
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const INFO_ICON = preload("res://assets/ui/social/info.svg")
+const Seats = preload("res://presentation/duels/public_seats.gd")
+const PollenMoney = preload("res://services/pollen_money.gd")
 
 ## Play your turn or View turns: the flow opens (or makes, or joins) the pair's room.
 signal play_requested(view: Dictionary, control: Control)
 signal leave_requested(view: Dictionary)
+## A stranger's pip was tapped: side `index`, seat `slot` (public duels only).
+signal stranger_requested(view: Dictionary, index: int, slot: int)
 
 var me := ""
 var name_of: Callable
 var view: Dictionary = {}
+## A public duel's held duel extra for this player (services/duels_client.gd duel `held`), {} for none.
+var held: Dictionary = {}:
+	set(value):
+		held = value
+		if is_instance_valid(_sides): _render()
 var _sides: HBoxContainer
+var _tag: Control
 var _note: Label
 var _card: VBoxContainer
 var _picture_holder: Control
@@ -77,10 +91,11 @@ func _build() -> void:
 func _render() -> void:
 	if view.is_empty(): return
 	set_title(_chapter_title(), PlayerCopy.DUEL_IN_PROGRESS)
+	_show_tag()
 	Kit.clear(_sides)
 	for index: int in [view.mine, 1 - view.mine]: _sides.add_child(_side_card(index))
 	var ahead := DuelModel.ahead_line(view)
-	_note.text = PlayerCopy.DUEL_WAITING_NO_TIME + ("  " + ahead + "." if not ahead.is_empty() else "")
+	_note.text = _public_note() if DuelModel.is_public(view) and _open_anywhere() else PlayerCopy.DUEL_WAITING_NO_TIME + ("  " + ahead + "." if not ahead.is_empty() else "")
 	_render_card()
 
 func _side_card(index: int) -> Control:
@@ -99,7 +114,8 @@ func _side_card(index: int) -> Control:
 	pips.add_theme_constant_override("separation", 14)
 	var side: Variant = view.sides[index]
 	var looks := DuelModel.looks(view, index)
-	for slot in range(2):
+	if DuelModel.is_public(view): _public_seats(pips, index)
+	for slot in range(2 if not DuelModel.is_public(view) else 0):
 		var column := VBoxContainer.new()
 		column.add_theme_constant_override("separation", 0)
 		column.add_child(Kit.pip(Vector2(92, 108) if not compact else Vector2(74, 88), Kit.FIRST_PIP if slot == 0 else Kit.SECOND_PIP, own and side.members[slot] == me, looks[slot]))
@@ -155,6 +171,7 @@ func _render_card() -> void:
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(words)
 	var partner := _partner_name()
+	var open_beside := DuelModel.is_public(view) and partner.is_empty()
 	if own.left:
 		# Your pair left: the duel goes on for the other pair, with nothing left to play here.
 		words.add_child(Kit.text(PlayerCopy.DUEL_LEFT, 40, UiTokens.CREAM, true))
@@ -166,10 +183,15 @@ func _render_card() -> void:
 		words.add_child(Kit.wrapped(DuelModel.checking_line(view), 19))
 	elif mine_now:
 		words.add_child(Kit.text(PlayerCopy.DUEL_YOUR_TURN_TITLE, 46 if not compact else 38, UiTokens.CREAM, true))
-		words.add_child(Kit.wrapped(PlayerCopy.DUEL_PARTNER_LEFT_PATH % partner if own.steps > 0 else PlayerCopy.DUEL_FIRST_TURN, 20))
+		words.add_child(Kit.wrapped(_first_line(own, partner, open_beside), 20))
 	else:
-		words.add_child(Kit.wrapped(PlayerCopy.DUEL_WAITING_TITLE % partner, 38, UiTokens.CREAM, true))
+		words.add_child(Kit.wrapped(PlayerCopy.PUBLIC_WAITING_PARTNER if open_beside else PlayerCopy.DUEL_WAITING_TITLE % partner, 38, UiTokens.CREAM, true))
 		words.add_child(Kit.wrapped(PlayerCopy.DUEL_WAITING_BODY, 19))
+	# The duel extra your public duel turns hold until the duel ends (backend pollen/duel-pay.ts).
+	if int(held.get("amount", 0)) > 0 and held.get("state") == "running":
+		var line := Kit.text(PlayerCopy.PUBLIC_HELD_LINE % PollenMoney.grouped(int(held.amount)), 17, UiTokens.SOFT)
+		line.name = "DuelHeld"
+		words.add_child(line)
 	_card.add_child(head)
 	if not own.finished:
 		var play := Kit.button(PlayerCopy.DUEL_PLAY_TURN if mine_now else PlayerCopy.DUEL_VIEW_TURNS, Callable(), mine_now, 70 if not compact else 60)
@@ -193,11 +215,51 @@ func _render_card() -> void:
 		leave.pressed.connect(func(): ask("DuelLeaveModal", PlayerCopy.DUEL_LEAVE_TITLE, PlayerCopy.DUEL_LEAVE_BODY, PlayerCopy.DUEL_LEAVE_CONFIRM, func(): leave_requested.emit(view), PlayerCopy.DUEL_LEAVE_KEEP))
 		_card.add_child(leave)
 
+## Your partner's name, "your partner", or "" while a public duel's seat beside you is open.
 func _partner_name() -> String:
-	var own: Dictionary = view.sides[view.mine]
-	for id: Variant in own.members:
-		if id != null and id != me and name_of.is_valid(): return str(name_of.call(id))
-	return PlayerCopy.DUEL_PARTNER
+	return DuelModel.partner_name(view, me, name_of)
+
+## The line under Your turn: the partner's path, the first turn, or a public duel's first step.
+func _first_line(own: Dictionary, partner: String, open_beside: bool) -> String:
+	if own.steps > 0 and not open_beside: return PlayerCopy.DUEL_PARTNER_LEFT_PATH % partner
+	if not DuelModel.is_public(view): return PlayerCopy.DUEL_FIRST_TURN
+	if open_beside: return PlayerCopy.PUBLIC_GO_FIRST
+	return PlayerCopy.PUBLIC_EITHER_FIRST % partner if own.steps == 0 else PlayerCopy.DUEL_PARTNER_LEFT_PATH % partner
+
+## A public side's seats: rings for open seats, pips with names, a stranger's pip tappable for their card.
+func _public_seats(row: HBoxContainer, index: int) -> void:
+	var seats := Seats.view_seats(view, index, me, name_of)
+	var edge := 92.0 if not compact else 74.0
+	for slot in range(2):
+		var tap := func() -> void: stranger_requested.emit(view, index, slot)
+		var made := Seats.seat(seats[slot], slot, edge, false, tap if DuelModel.seat_stranger(view, index, slot) else Callable(), 19)
+		made.name = "DuelSeat%d_%d" % [index, slot]
+		row.add_child(made)
+
+## Whether any seat of the duel is still open on the list.
+func _open_anywhere() -> bool:
+	return DuelModel.open_seats(view, 0) + DuelModel.open_seats(view, 1) > 0
+
+## The info line while spots are open: yours, the other pair's beside a named player, or the list's.
+func _public_note() -> String:
+	if DuelModel.open_seats(view, view.mine) == 1: return PlayerCopy.PUBLIC_NOTE_YOUR_SPOT
+	var other := 1 - int(view.mine)
+	if DuelModel.open_seats(view, other) == 1:
+		for slot in range(2):
+			if not DuelModel.seat(view, other, slot).get("open", true): return PlayerCopy.PUBLIC_NOTE_THEIR_SPOT % DuelModel.seat_name(view, other, slot, name_of)
+	return PlayerCopy.PUBLIC_NOTE_SPOTS
+
+## The PUBLIC tag after the subtitle while the duel is public.
+func _show_tag() -> void:
+	if not DuelModel.is_public(view) or is_instance_valid(_tag) or not is_instance_valid(_subtitle): return
+	_tag = Seats.tag(15)
+	_subtitle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_header.add_child(_tag)
+	_header.move_child(_tag, _subtitle.get_index() + 1)
+	_header.add_child(spacer)
+	_header.move_child(spacer, _tag.get_index() + 1)
 
 func _chapter_title() -> String:
 	var key := str(view.get("chapter", ""))

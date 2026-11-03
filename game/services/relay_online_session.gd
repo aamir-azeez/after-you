@@ -428,7 +428,7 @@ func load_capabilities() -> bool:
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
 	# Home's rows that follow the server's public switches keep this answer too (services/server_switches.gd).
-	if not scope.is_empty(): ServerSwitches.shared().note(str(scope.server), {"duels": duels_supported(), "leaderboards": leaderboards_supported(), "hard_mode": hard_mode_supported(), "leaderboards_platform": leaderboards_platform_required()})
+	if not scope.is_empty(): ServerSwitches.shared().note(str(scope.server), {"duels": duels_supported(), "leaderboards": leaderboards_supported(), "hard_mode": hard_mode_supported(), "leaderboards_platform": leaderboards_platform_required(), "public_duels": public_duels_supported()})
 	# Only an iPhone asks whether the server takes App Store purchases (services/store_support.gd), noted
 	# before the Wardrobe announces, so what that redraws already reads the new answer.
 	if not scope.is_empty() and PlatformSupport.is_ios(): StoreSupport.shared().note(str(scope.server), str(scope.owner), app_store_full_journey_supported())
@@ -1360,6 +1360,11 @@ func race_ghost_supported() -> bool:
 ## The race ghost's data for this session's player (services/race_ghost.gd), or null while the server has it off.
 func race_ghost() -> RefCounted:
 	return load("res://services/race_ghost.gd").shared(_api, _owner) if race_ghost_supported() and is_instance_valid(_api) and not _owner.is_empty() else null
+
+## The server has public duels open (backend PUBLIC_DUELS, duels public routes): the lobby's
+## Public duels row, Start a duel's Anyone and Settings' switch show only then.
+func public_duels_supported() -> bool:
+	return duels_supported() and Typed.equal(capabilities.get("public_duels_version"), 1.0)
 
 func nickname_scope() -> Dictionary:
 	## Server and owner that key this device's local friend nicknames and the

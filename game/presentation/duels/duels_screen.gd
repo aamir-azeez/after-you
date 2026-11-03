@@ -2,7 +2,8 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## The Duels lobby, your pair's duel home (duels-concepts OWNER-CHOSEN-lobby):
 ## - Your party: both pips, the room boost line while it applies, and Party;
 ## - Open duels: challenges to your pair with Accept and Not now, and the ones
-##   you sent, waiting; then Race a recorded run;
+##   you sent, waiting; then Public duels (while the server has them, board 1A)
+##   and Race a recorded run;
 ## - Your duels: running duels and ghost races as tiles with both pairs' dots
 ##   and times, and finished ones as result tiles.
 ## Start a duel sits in the header. Every request goes through the flow
@@ -21,16 +22,17 @@ const Icons = preload("res://presentation/kit/icons.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 ## The party boost line's font size; its Pollen mark is sized from it.
 const BOOST_FONT := 26
-const INFO_ICON = preload("res://assets/ui/social/info.svg")
 const TILE_WIDTH := 268.0
 ## The empty lobby's art (presentation/empty_state.gd SPOTS), the owner's pick.
 const EMPTY_ART := "duels_f"
 ## The empty Open duels column's art (presentation/empty_state.gd SPOTS), the owner's pick.
 const OPEN_EMPTY_ART := "open_a"
+const Seats = preload("res://presentation/duels/public_seats.gd")
 
 signal start_requested
 signal party_requested
 signal ghosts_requested
+signal public_requested
 ## A tile's or challenge's button: "accept", "decline", "play", "open" or "result".
 signal duel_action(view: Dictionary, action: String, control: Control)
 signal refresh_requested
@@ -40,6 +42,8 @@ var me := ""
 var name_of: Callable
 ## The party's room boost percent this phone knows of (this player's own Full Journey).
 var boost_percent := 0
+## Whether the server has public duels open: the Public duels row shows only then.
+var public_shown := false
 var _lobby: Dictionary = {}
 var _state := "loading"
 var _party_box: Control
@@ -52,6 +56,8 @@ var _empty: VBoxContainer
 var empty_art := EMPTY_ART
 var _overlay: CanvasLayer
 var _gate: BusyTapGate
+var _public_row: Button
+var _public_note: Label
 
 func page_name() -> String: return "DuelsScreen"
 func title_text() -> String: return PlayerCopy.DUELS_TITLE
@@ -128,12 +134,8 @@ func _build() -> void:
 	_open_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_open_list.add_theme_constant_override("separation", 10)
 	open_scroll.add_child(_open_list)
+	left_column.add_child(_public_entry())
 	left_column.add_child(_ghost_row())
-	var note := HBoxContainer.new()
-	note.add_theme_constant_override("separation", 8)
-	note.add_child(_icon(INFO_ICON, 20))
-	note.add_child(Kit.text(PlayerCopy.DUELS_RECORDING_READY, 16, UiTokens.SOFT))
-	left_column.add_child(note)
 	var right := Kit.panel("DuelsYours")
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	columns.add_child(right)
@@ -161,6 +163,7 @@ func _build() -> void:
 
 func _render() -> void:
 	_render_party()
+	_render_public()
 	Kit.clear(_open_list)
 	Kit.clear(_tiles)
 	Kit.clear(_empty)
@@ -301,6 +304,11 @@ func _tile(view: Dictionary) -> Control:
 	var picture := Kit.picture(view.chapter, Vector2(TILE_WIDTH - 20.0, 106 if compact else 132))
 	picture.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(picture)
+	# A public duel's small tag on its picture (board 5C).
+	if DuelModel.is_public(view):
+		var tag := Seats.tag(12)
+		tag.position = Vector2(8, 8)
+		picture.add_child(tag)
 	var title := Kit.text(_chapter_title(view.chapter), 22, UiTokens.CREAM, true)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -333,15 +341,67 @@ func _lane(view: Dictionary, index: int) -> Control:
 	who.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	who.custom_minimum_size.x = 100
 	column.add_child(who)
-	var pips := Kit.pips(Vector2(30, 40), DuelModel.members(view, index), me, DuelModel.looks(view, index))
+	var pips: Control = Kit.pips(Vector2(30, 40), DuelModel.members(view, index), me, DuelModel.looks(view, index)) if not DuelModel.is_public(view) else _public_pips(view, index)
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	column.add_child(pips)
 	var steps := DuelModel.steps(view, index)
 	column.add_child(Kit.dots_within(steps.x, steps.y, TILE_WIDTH * 0.5 - 24.0, 10.0))
-	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 24, UiTokens.CREAM, true)
+	# An open pair has no time yet (board 5C).
+	var nobody := DuelModel.open_seats(view, index) == 2
+	var time := Kit.text(PlayerCopy.PUBLIC_NOBODY_YET if nobody else DuelModel.time_text(DuelModel.ticks(view, index)), 16 if nobody else 24, UiTokens.SOFT if nobody else UiTokens.CREAM, not nobody)
 	time.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(time)
 	return column
+
+## A public side on a tile: pips and dashed rings, no names (public_seats.gd).
+func _public_pips(view: Dictionary, index: int) -> Control:
+	var seats := Seats.view_seats(view, index, me, name_of)
+	for held: Dictionary in seats: held["name"] = ""
+	var pair := HBoxContainer.new()
+	pair.alignment = BoxContainer.ALIGNMENT_CENTER
+	pair.add_theme_constant_override("separation", 4)
+	pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for slot in range(2):
+		var made := Seats.seat(seats[slot], slot, 36.0, false, Callable(), 1)
+		made.get_child(made.get_child_count() - 1).visible = false
+		pair.add_child(made)
+	return pair
+
+## The Public duels row (board 1A), above Race a recorded run: it opens the list, or while the
+## player's switch is off reads "Play with players you don't know" and opens the first-time card.
+func _public_entry() -> Control:
+	_public_row = Button.new()
+	_public_row.name = "DuelsPublic"
+	_public_row.custom_minimum_size = Vector2(0, 84)
+	_public_row.visible = public_shown
+	ThemeRules.secondary(_public_row)
+	_public_row.pressed.connect(func(): public_requested.emit())
+	var line := HBoxContainer.new()
+	line.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	line.offset_left = 12
+	line.offset_right = -14
+	line.add_theme_constant_override("separation", 10)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_public_row.add_child(line)
+	var pair := Kit.pips(Vector2(30, 38), [me, null], me, [{}, {}], -6)
+	line.add_child(pair)
+	var words := VBoxContainer.new()
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.alignment = BoxContainer.ALIGNMENT_CENTER
+	words.add_theme_constant_override("separation", 0)
+	words.add_child(Kit.text(PlayerCopy.PUBLIC_DUELS_ROW, 21, UiTokens.CREAM, true))
+	_public_note = Kit.text(PlayerCopy.PUBLIC_DUELS_ROW_NOTE, 16, UiTokens.SOFT)
+	words.add_child(_public_note)
+	line.add_child(words)
+	line.add_child(_icon(preload("res://assets/ui/settings/chevron.svg"), 20))
+	return _public_row
+
+## The row's words follow the player's switch: off, it invites them in.
+func _render_public() -> void:
+	if not is_instance_valid(_public_row): return
+	_public_row.visible = public_shown
+	var on: bool = _lobby.get("public", {}).get("on", false)
+	_public_note.text = PlayerCopy.PUBLIC_DUELS_ROW_NOTE if on else PlayerCopy.PUBLIC_DUELS_ROW_OFF
 
 func _ghost_row() -> Control:
 	var button := Button.new()

@@ -22,9 +22,10 @@ const Typed = preload("res://services/typed_values.gd")
 
 ## Asked with app-status; the value is the switch set this build reads.
 const SWITCHES_HEADER := "X-AfterYou-Switches: 1"
-## hard_mode and leaderboards_platform (posts need platform accounts, backend
-## leaderboards/platform-rule.ts) come only from capabilities reads, kept so a launch knows them.
-const NAMES: Array[String] = ["duels", "leaderboards", "hard_mode", "leaderboards_platform"]
+## hard_mode, leaderboards_platform (posts need platform accounts, backend
+## leaderboards/platform-rule.ts) and public_duels (Settings' Public duels switch)
+## come only from capabilities reads, kept so a launch knows them.
+const NAMES: Array[String] = ["duels", "leaderboards", "hard_mode", "leaderboards_platform", "public_duels"]
 const PATH := "user://server_switches.json"
 const VERSION := 1
 ## Servers kept; more than this keeps the newest.

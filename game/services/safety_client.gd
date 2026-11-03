@@ -6,6 +6,9 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
+## The community rules' first version. The server names the current one in its config
+## (/v1/safety/config): it moves on when the rules change (public duels add theirs), and
+## this phone accepts whichever dated version the server asks for.
 const TERMS_VERSION := "2026-09-16"
 const PATHS := ["/privacy", "/account-deletion", "/community-rules"]
 var busy := false
@@ -13,6 +16,8 @@ var last_error := ""
 var last_code := ""
 var terms_accepted := false
 var config: Dictionary = {}
+## Strangers this player blocked from public duels: [{handle, label}], never an id (the server keeps those).
+var duel_blocks: Array = []
 var _api: Node
 var _identity: Callable
 var _transport: Callable
@@ -121,11 +126,15 @@ func open_public(path: String) -> bool:
 	var url := public_url(path)
 	return not url.is_empty() and OS.shell_open(url) == OK
 
-static func valid_config(value: Variant) -> bool:
-	return value is Dictionary and value.size() == 6 and Typed.equal(value.get("schema_version"), 1) and value.get("enforced") is bool and Typed.equal(value.get("terms_version"), TERMS_VERSION) and Typed.equal(value.get("privacy_path"), "/privacy") and Typed.equal(value.get("deletion_path"), "/account-deletion") and Typed.equal(value.get("rules_path"), "/community-rules")
+## A rules version as the server names one: a date, YYYY-MM-DD.
+static func valid_version(value: Variant) -> bool:
+	return value is String and value.length() == 10 and RegEx.create_from_string("^\\d{4}-\\d{2}-\\d{2}$").search(value) != null
 
-static func valid_terms(value: Variant) -> bool:
-	return value is Dictionary and value.size() == 4 and Typed.equal(value.get("schema_version"), 1) and Typed.equal(value.get("terms_version"), TERMS_VERSION) and value.get("accepted") is bool and value.has("accepted_at") and ((value.accepted_at is String and value.accepted_at.length() >= 20 and value.accepted_at.length() <= 40) if value.accepted else value.accepted_at == null)
+static func valid_config(value: Variant) -> bool:
+	return value is Dictionary and value.size() == 6 and Typed.equal(value.get("schema_version"), 1) and value.get("enforced") is bool and valid_version(value.get("terms_version")) and Typed.equal(value.get("privacy_path"), "/privacy") and Typed.equal(value.get("deletion_path"), "/account-deletion") and Typed.equal(value.get("rules_path"), "/community-rules")
+
+static func valid_terms(value: Variant, version: Variant = null) -> bool:
+	return value is Dictionary and value.size() == 4 and Typed.equal(value.get("schema_version"), 1) and valid_version(value.get("terms_version")) and (version == null or Typed.equal(value.get("terms_version"), version)) and value.get("accepted") is bool and value.has("accepted_at") and ((value.accepted_at is String and value.accepted_at.length() >= 20 and value.accepted_at.length() <= 40) if value.accepted else value.accepted_at == null)
 
 func check_terms() -> bool:
 	var ticket := _begin()
@@ -140,7 +149,7 @@ func check_terms() -> bool:
 	response = await _net(ticket, HTTPClient.METHOD_GET, "/v1/safety/terms")
 	if not _same(ticket): return false
 	if not response.get("ok", false): return _finish(ticket, false)
-	if not valid_terms(response.get("data")): return _finish(ticket, _fail("unsupported_safety_response"))
+	if not valid_terms(response.get("data"), config.terms_version): return _finish(ticket, _fail("unsupported_safety_response"))
 	terms_accepted = response.data.accepted
 	return _finish(ticket, true)
 
@@ -150,10 +159,10 @@ func accept_rules() -> bool:
 	var ticket := _begin()
 	if ticket < 0: return false
 	if not valid_config(config): return _finish(ticket, _fail("safety_unavailable"))
-	var response := await _net(ticket, HTTPClient.METHOD_POST, "/v1/safety/terms", {"schema_version": 1, "terms_version": TERMS_VERSION})
+	var response := await _net(ticket, HTTPClient.METHOD_POST, "/v1/safety/terms", {"schema_version": 1, "terms_version": config.terms_version})
 	if not _same(ticket): return false
 	if not response.get("ok", false): return _finish(ticket, false)
-	if not valid_terms(response.get("data")) or not response.data.accepted: return _finish(ticket, _fail("unsupported_safety_response"))
+	if not valid_terms(response.get("data"), config.terms_version) or not response.data.accepted: return _finish(ticket, _fail("unsupported_safety_response"))
 	terms_accepted = true
 	return _finish(ticket, true)
 
@@ -176,7 +185,10 @@ func refresh_blocks() -> bool:
 	if not _same(ticket): return false
 	if not response.get("ok", false): return _finish(ticket, false)
 	var value: Variant = response.get("data")
-	if not value is Dictionary or value.size() != 2 or not Typed.equal(value.get("schema_version"), 1) or not value.get("blocked_players") is Array or value.blocked_players.size() > 128: return _finish(ticket, _fail("unsupported_safety_response"))
+	if not value is Dictionary or value.size() != (3 if value.has("duel_blocks") else 2) or not Typed.equal(value.get("schema_version"), 1) or not value.get("blocked_players") is Array or value.blocked_players.size() > 128: return _finish(ticket, _fail("unsupported_safety_response"))
+	var strangers := valid_duel_blocks(value.get("duel_blocks", []))
+	if strangers == null: return _finish(ticket, _fail("unsupported_safety_response"))
+	duel_blocks = strangers
 	var next := _state.duplicate(true)
 	next.blocked_players = value.blocked_players.duplicate()
 	for key: String in next.blocked_rooms.keys():
@@ -245,6 +257,33 @@ func unblock(player: String) -> bool:
 	if saved:
 		for key: String in cleared: Store.suppressed_rooms.erase(key)
 	return _finish(ticket, saved)
+
+## Undoes a public duel block by its handle (the server never sends the player's id).
+func unblock_duel(handle: String) -> bool:
+	if not _handle(handle): return _fail("invalid_safety_target")
+	var ticket := _begin()
+	if ticket < 0: return false
+	var response := await _net(ticket, HTTPClient.METHOD_DELETE, "/v1/safety/blocks/duel/" + handle)
+	if not _same(ticket): return false
+	if not response.get("ok", false): return _finish(ticket, false)
+	var value: Variant = response.get("data")
+	if not value is Dictionary or not Typed.equal(value.get("blocked"), false): return _finish(ticket, _fail("unsupported_safety_response"))
+	duel_blocks = duel_blocks.filter(func(item: Dictionary) -> bool: return item.handle != handle)
+	return _finish(ticket, true)
+
+## A blocks reply's `duel_blocks` as kept ([{handle, label}]), or null when it is not one.
+static func valid_duel_blocks(value: Variant) -> Variant:
+	if not value is Array or value.size() > 128: return null
+	var kept: Array = []
+	for item: Variant in value:
+		if not item is Dictionary or not _handle(item.get("handle")): return null
+		var label: Variant = item.get("label")
+		if label != null and (not label is String or label.length() > 40): return null
+		kept.append({"handle": item.handle, "label": str(label) if label != null else ""})
+	return kept
+
+static func _handle(value: Variant) -> bool:
+	return value is String and value.length() >= 8 and value.length() <= 64 and RegEx.create_from_string("^[A-Za-z0-9_-]+$").search(value) != null
 
 func report(room: Dictionary, reason: String, photo: Variant = null) -> bool:
 	if not valid_room(room): return _fail("invalid_safety_target")

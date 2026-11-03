@@ -49,6 +49,7 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
 const TurnEndings = preload("res://presentation/turn_endings.gd")
@@ -1458,6 +1459,8 @@ func _offer_recent_photo(receipt: Dictionary) -> void:
 func _recent_photo_receipt() -> Dictionary:
 	if not is_instance_valid(reaction_photos) or not journey.pending().is_empty(): return {}
 	var receipt: Dictionary = journey.last_receipt()
+	# A public duel's room takes no photos (the server refuses them): its partner is someone you don't know.
+	if DuelsClient.public_room(str(receipt.get("room_id", ""))): return {}
 	return receipt if Typed.equal(receipt.get("operation"), "turns") else {}
 
 func _ordinary_redo_available() -> bool:

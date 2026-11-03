@@ -113,6 +113,19 @@ static func duel(sides: Array, first: int, edge: float, lit_seats: Array = [], t
 		line.add_child(pair(side.get("seats", []), edge, lit, on_tap if tap.is_valid() else Callable(), font_size))
 	return line
 
+## The small gold PUBLIC tag beside a public duel's title (boards 3 to 5).
+static func tag(font_size: int = 14) -> PanelContainer:
+	var box := PanelContainer.new()
+	box.name = "PublicTag"
+	var style := ThemeRules.rounded(UiTokens.SOLO, 8)
+	ThemeRules.padded(style, 9.0, 1.0)
+	box.add_theme_stylebox_override("panel", style)
+	box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(Kit.text(PlayerCopy.PUBLIC_TAG, font_size, UiTokens.INK, true))
+	return box
+
 ## A list row's seats as seat() draws them: each with its name ("You", a shown name,
 ## "A player" or "Open") and a stranger's look as DuelModel.stranger_look allows.
 static func row_seats(row: Dictionary) -> Array:

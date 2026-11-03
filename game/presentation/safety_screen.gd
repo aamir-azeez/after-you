@@ -164,6 +164,10 @@ func _render() -> void:
 			for index in range(blocked.size()):
 				var player: String = blocked[index]
 				_button("Unblock player " + str(index + 1) + " · " + player.substr(0, 6), func(): _unblock(player))
+		# Strangers blocked from public duels: no id reaches this phone, so they are named as the duel showed them.
+		for item: Dictionary in client.duel_blocks:
+			var handle: String = item.handle
+			_button(PlayerCopy.PUBLIC_UNBLOCK % (item.label if not str(item.label).is_empty() else PlayerCopy.PUBLIC_BLOCKED_PLAYER), func(): _unblock_duel(handle))
 	if not _owner_context.is_empty(): _button("Check again", _load,true,"secondary")
 	_button("Back to your photo" if terms_only else "Back",close,true,"primary" if terms_only else "")
 
@@ -187,6 +191,16 @@ func _accept() -> void:
 	if not _current(): return
 	_busy = false
 	_message = PlayerCopy.SAFETY_SCREEN_98CB7DC115E5 if ok else client.last_error
+	_render()
+
+func _unblock_duel(handle: String) -> void:
+	if _busy or not _current(): return
+	_busy = true
+	_render()
+	var ok: bool = await client.unblock_duel(handle)
+	if not _current(): return
+	_busy = false
+	_message = "" if ok else client.last_error
 	_render()
 
 func _report(reason: String) -> void:

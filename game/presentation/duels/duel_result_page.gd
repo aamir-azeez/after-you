@@ -13,6 +13,7 @@ const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
 const PLAY_ICON = preload("res://assets/ui/play-circle.svg")
 const PollenMoney = preload("res://services/pollen_money.gd")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const Backdrop = preload("res://presentation/duels/duel_result_backdrop.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 
@@ -26,6 +27,9 @@ var view: Dictionary = {}
 ## services/duels_client.gd duel(): the pay and win bonus (a ghost race's first win over Our run), {} when none.
 var pay: Dictionary = {}
 var win_bonus: Dictionary = {}
+## A public duel's held duel extra (services/duels_client.gd `held`): paid, a line in the card;
+## not paid, the reason under it with the amount.
+var held: Dictionary = {}
 ## Whether this build names Full Journey (services/pollen_surfaces.gd), and shows Pollen at all.
 var show_boost := true
 var show_pollen := true
@@ -79,8 +83,18 @@ func _render() -> void:
 		var gap := Kit.text(line, 22, UiTokens.SOFT, true)
 		gap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_column.add_child(gap)
-	var paid := DuelModel.pay_lines(pay, win_bonus, show_boost, view.kind == "ghost")
+	var paid := DuelModel.pay_lines(pay, win_bonus, show_boost, view.kind == "ghost", held)
 	if show_pollen and not paid.lines.is_empty(): _column.add_child(_pollen(paid))
+	if show_pollen and not str(paid.note).is_empty():
+		# Why the held duel extra was not paid, with its amount beside the Pollen mark.
+		var note := HBoxContainer.new()
+		note.name = "DuelHeldNote"
+		note.alignment = BoxContainer.ALIGNMENT_CENTER
+		note.add_theme_constant_override("separation", 8)
+		note.add_child(Kit.text(str(paid.note), 19, UiTokens.SOFT))
+		note.add_child(PollenMark.beside(19))
+		note.add_child(Kit.text(PollenMoney.grouped(int(paid.note_amount)), 19, UiTokens.SOFT, true))
+		_column.add_child(note)
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_theme_constant_override("separation", 22)

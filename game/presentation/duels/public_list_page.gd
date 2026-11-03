@@ -103,6 +103,10 @@ func update_row(duel_id: String, row: Dictionary, note: String = "") -> void:
 func rows() -> Array:
 	return _rows
 
+## The page Show more reads next, or -1 at the end.
+func next_page() -> int:
+	return _next
+
 func _build() -> void:
 	_filters = HBoxContainer.new()
 	_filters.name = "PublicFilters"

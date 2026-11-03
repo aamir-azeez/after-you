@@ -58,6 +58,8 @@ static func rows(receipt: Dictionary, full_journey: bool = true) -> Array[Dictio
 		# This turn: everything but a bloom's extra, which the bloom row adds.
 		out.append(_row("total", PlayerCopy.POLLEN_ROW_THIS_TURN, PollenMoney.grouped(int(turn.total) - int(turn.bloom_extra)), true))
 		if int(turn.bloom) > 1: out.append(_row("bloom", PlayerCopy.POLLEN_BLOOM % int(turn.bloom), PollenMoney.grouped(int(turn.total)), true))
+		# A public duel turn's duel extra, held outside the total until the duel ends.
+		if int(turn.get("duel_held", 0)) > 0: out.append(_row("reason", PlayerCopy.POLLEN_ROW_DUEL_HELD % PollenMoney.grouped(int(turn.duel_held))))
 		match str(turn.get("reason", "")):
 			"repeat": out.append(_row("reason", PlayerCopy.POLLEN_REPEAT))
 			"bank_empty": out.append(_row("reason", PlayerCopy.POLLEN_BANK_EMPTY))

@@ -150,6 +150,12 @@ func sheet(node_name: String, title: String, subtitle: String = "", opener: Cont
 	_modal = preload("res://presentation/in_game_modal.gd").open(root, node_name, title, subtitle, opener)
 	return _modal
 
+## Keeps `modal` (a card another script opened over this page's root) as this page's own
+## pop-up, so Back closes it first and a second card waits for it to close.
+func hold_modal(modal: Control) -> void:
+	if not Kit.showing(_modal): _modal = modal
+	elif modal != _modal: modal.queue_free()
+
 ## Opens a question card over this page.
 func ask(node_name: String, title: String, line: String, confirm_text: String, confirm: Callable, cancel_text: String) -> void:
 	if sheet(node_name, title) == null: return

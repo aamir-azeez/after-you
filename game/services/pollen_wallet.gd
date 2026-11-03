@@ -141,6 +141,11 @@ static func checked_receipt(value: Variant) -> Dictionary:
 			if not _count(turn.duel) or not _count(turn.get("duel_percent"), 100): return {}
 			kept.turn["duel"] = Typed.as_int(turn.duel)
 			kept.turn["duel_percent"] = Typed.as_int(turn.duel_percent)
+		# A public duel's turn: the duel extra is held, outside the total, until the duel ends (backend pollen/duel-pay.ts).
+		if turn.has("duel_held"):
+			if not _count(turn.duel_held) or not _count(turn.get("duel_percent"), 100): return {}
+			kept.turn["duel_held"] = Typed.as_int(turn.duel_held)
+			kept.turn["duel_percent"] = Typed.as_int(turn.duel_percent)
 	if value.has("item_bloom"):
 		var bloom := checked_item_bloom(value.item_bloom)
 		if bloom.is_empty(): return {}
