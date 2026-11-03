@@ -249,6 +249,7 @@ pollen_surfaces 3
 pollen_wallet 2
 premium_open_cost 1
 proof_warmup 1
+public_duels 2
 purchase_recovery 3
 purchase_session 2
 purchase_session_startup 3

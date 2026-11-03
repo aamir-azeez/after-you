@@ -36,6 +36,7 @@ var held: Dictionary = {}:
 		if is_instance_valid(_sides): _render()
 var _sides: HBoxContainer
 var _tag: Control
+var _held: Label
 var _note: Label
 var _card: VBoxContainer
 var _picture_holder: Control
@@ -66,7 +67,13 @@ func _build() -> void:
 	line.add_child(icon)
 	_note = Kit.text("", 19, UiTokens.SOFT)
 	_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_note.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	line.add_child(_note)
+	# The duel extra your public duel turns hold until the duel ends (backend pollen/duel-pay.ts), at the line's end.
+	_held = Kit.text("", 19, UiTokens.CREAM, true)
+	_held.name = "DuelHeld"
+	_held.visible = false
+	line.add_child(_held)
 	body.add_child(info)
 	var bottom := HBoxContainer.new()
 	bottom.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -96,6 +103,8 @@ func _render() -> void:
 	for index: int in [view.mine, 1 - view.mine]: _sides.add_child(_side_card(index))
 	var ahead := DuelModel.ahead_line(view)
 	_note.text = _public_note() if DuelModel.is_public(view) and _open_anywhere() else PlayerCopy.DUEL_WAITING_NO_TIME + ("  " + ahead + "." if not ahead.is_empty() else "")
+	_held.visible = int(held.get("amount", 0)) > 0 and held.get("state") == "running"
+	if _held.visible: _held.text = PlayerCopy.PUBLIC_HELD_LINE % PollenMoney.grouped(int(held.amount))
 	_render_card()
 
 func _side_card(index: int) -> Control:
@@ -187,11 +196,6 @@ func _render_card() -> void:
 	else:
 		words.add_child(Kit.wrapped(PlayerCopy.PUBLIC_WAITING_PARTNER if open_beside else PlayerCopy.DUEL_WAITING_TITLE % partner, 38, UiTokens.CREAM, true))
 		words.add_child(Kit.wrapped(PlayerCopy.DUEL_WAITING_BODY, 19))
-	# The duel extra your public duel turns hold until the duel ends (backend pollen/duel-pay.ts).
-	if int(held.get("amount", 0)) > 0 and held.get("state") == "running":
-		var line := Kit.text(PlayerCopy.PUBLIC_HELD_LINE % PollenMoney.grouped(int(held.amount)), 17, UiTokens.SOFT)
-		line.name = "DuelHeld"
-		words.add_child(line)
 	_card.add_child(head)
 	if not own.finished:
 		var play := Kit.button(PlayerCopy.DUEL_PLAY_TURN if mine_now else PlayerCopy.DUEL_VIEW_TURNS, Callable(), mine_now, 70 if not compact else 60)

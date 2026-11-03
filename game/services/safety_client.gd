@@ -186,7 +186,7 @@ func refresh_blocks() -> bool:
 	if not response.get("ok", false): return _finish(ticket, false)
 	var value: Variant = response.get("data")
 	if not value is Dictionary or value.size() != (3 if value.has("duel_blocks") else 2) or not Typed.equal(value.get("schema_version"), 1) or not value.get("blocked_players") is Array or value.blocked_players.size() > 128: return _finish(ticket, _fail("unsupported_safety_response"))
-	var strangers := valid_duel_blocks(value.get("duel_blocks", []))
+	var strangers: Variant = valid_duel_blocks(value.get("duel_blocks", []))
 	if strangers == null: return _finish(ticket, _fail("unsupported_safety_response"))
 	duel_blocks = strangers
 	var next := _state.duplicate(true)

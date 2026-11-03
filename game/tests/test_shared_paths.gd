@@ -90,7 +90,7 @@ const WALLET_REPLY := "res://services/wallet_reply.gd"
 const SWITCH_READER := "res://services/relay_online_session.gd"
 
 ## (d) Online clients: a screen that preloads one reaches the server.
-const ONLINE_CLIENTS := ["duels_client", "friends_client", "leaderboard_client", "wardrobe_client", "pollen_client", "safety_client", "display_name_client", "bundle_claims", "redo_client", "hard_room_client", "photo_transfer_client", "tester_access", "platform_link_client", "friend_room_events_client", "replay_transfer", "history_sync", "turn_photo_controller", "rooms_api", "relay_online_session", "room_inbox_client"]
+const ONLINE_CLIENTS := ["duels_client", "public_duels_client", "friends_client", "leaderboard_client", "wardrobe_client", "pollen_client", "safety_client", "display_name_client", "bundle_claims", "redo_client", "hard_room_client", "photo_transfer_client", "tester_access", "platform_link_client", "friend_room_events_client", "replay_transfer", "history_sync", "turn_photo_controller", "rooms_api", "relay_online_session", "room_inbox_client"]
 ## Screens that reach the server without holding a button, and why that is fine.
 const OFFLINE_EXEMPT := {
 	"res://presentation/board_feedback_flow.gd": "no button: Home's background board watch",
@@ -135,6 +135,7 @@ const WRITES := {
 	"res://services/deleted_identity_ack.gd": [1, "unkeyed: an acknowledgement"],
 	"res://services/display_name_client.gd": [2, "unkeyed: PUT sets the whole name"],
 	"res://services/duels_client.gd": [5, "keyed: challenge and ghost race, one key per tap; answers, acks and party moves name what they change"],
+	"res://services/public_duels_client.gd": [4, "keyed: a public post, join and report each carry their attempt's key; the switch sets a state; block and Add friend name a seat and end the same when repeated"],
 	"res://services/friend_presence.gd": [2, "unkeyed: sets online or offline"],
 	"res://services/friend_room_events_client.gd": [3, "unkeyed: the publication keeps its own id across launches; acks and alert switches set a state"],
 	"res://services/friends_client.gd": [5, "unkeyed: each names the request or friend code it acts on"],
@@ -148,7 +149,7 @@ const WRITES := {
 	"res://services/relay_online_session.gd": [1, "keyed: room create and duel rooms"],
 	"res://services/relay_room_coordinator.gd": [1, "keyed: turns and stage moves"],
 	"res://services/replay_transfer.gd": [2, "unkeyed: ack and restore name their manifest"],
-	"res://services/safety_client.gd": [5, "keyed: reports; terms, room block, Friends row block and unblock set a state"],
+	"res://services/safety_client.gd": [6, "keyed: reports; terms, room block, Friends row block, unblock and a public duel unblock set a state"],
 	"res://services/tester_access.gd": [1, "unkeyed: redeeming a code again keeps one grant"],
 	"res://services/turn_notifications.gd": [4, "unkeyed: registration and categories carry a binding epoch"],
 	"res://services/turn_photo_controller.gd": [2, "keyed: photo upload and delete"],

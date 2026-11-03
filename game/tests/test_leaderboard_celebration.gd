@@ -57,6 +57,7 @@ class FakeSession extends RefCounted:
 	var open := true
 	func leaderboards_supported() -> bool: return open
 	func duels_supported() -> bool: return false
+	func public_duels_supported() -> bool: return false
 
 ## Friends' page, as far as its flow opens a page over it.
 class FakeFriends extends CanvasLayer:

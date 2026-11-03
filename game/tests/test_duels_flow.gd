@@ -47,6 +47,7 @@ class FakeSession extends RefCounted:
 	var last_lobby_code := ""
 	var pending := {}
 	func duels_supported() -> bool: return on
+	func public_duels_supported() -> bool: return false
 	func pollen_supported() -> bool: return true
 	func load_capabilities() -> void: pass
 	func pending_lobby() -> Dictionary: return pending.duplicate(true)

@@ -332,7 +332,7 @@ func _chip(node_name: String, label: String, chosen: bool, action: Callable, art
 ## Pull down from the top of the list: once the drag passes PULL_PX, the list reads again.
 func _input(event: InputEvent) -> void:
 	if not alive() or not is_instance_valid(_scroll) or Kit.showing(_modal): return
-	var pressed := event is InputEventScreenTouch or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT)
+	var pressed: bool = event is InputEventScreenTouch or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT)
 	if pressed and event.pressed:
 		var at: Vector2 = event.position
 		_pull_from = at if _scroll.scroll_vertical == 0 and _scroll.get_global_rect().has_point(at) else Vector2.INF
