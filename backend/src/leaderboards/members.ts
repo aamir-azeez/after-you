@@ -4,6 +4,8 @@ import { boardKeys } from "./boards";
 import type { MemberState } from "./member";
 import { storeView } from "./view-cache";
 import { forgetDuelParty } from "../duels/erase";
+import { publicDuelsOn, relabelPlayer } from "../duels/public-routes";
+import { DIRECTORY_NAME } from "../duels/directory";
 import { dropRunCopies } from "../duels/their-run-sweep";
 import { errorCode, logWarning } from "../log";
 import { ApiError } from "../protocol";
@@ -24,8 +26,12 @@ export async function syncMemberName(env: Env, playerId: string, show?: boolean)
   const { quiet, ...state } = await env.LEADERBOARD_MEMBERS.getByName(playerId).touch(show);
   // Nothing was done (member.ts touch): retryable, so the phone keeps its choice pending and sends it again.
   if (quiet) throw new ApiError(429, "rate_limited");
-  if (!state.boards.length || state.erased) return state;
+  if (state.erased) return state;
+  // The same choice names the player to strangers in public duels (duels/public-routes.ts): their seats take the new label.
+  const publicDuels = publicDuelsOn(env);
+  if (!state.boards.length && !publicDuels) return state;
   const name = state.show_name ? shownName(await env.PLAYERS.getByName(playerId).publicDisplayName(playerId)) : null;
+  if (publicDuels) await relabelPlayer(env, playerId, name, Date.now()).catch(error => logWarning("public_label_sync_failed", { code: errorCode(error) }));
   await pooled(state.boards, BOARD_CONCURRENCY, async board => {
     const answer = await env.LEADERBOARD_BOARDS.getByName(board).setMember(board, playerId, state.show_name, name, state.revision);
     if (answer.changed) await storeView(answer.view);
@@ -63,6 +69,8 @@ export async function forgetLeaderboardPlayerIfKnown(env: Env, playerId: string)
  */
 export async function forgetLeaderboardPlayer(env: Env, playerId: string): Promise<void> {
   await forgetDuelParty(env, playerId);
+  // The public list drops rows naming them at once; each board sends its fresh listing as it forgets them below.
+  if (env.PUBLIC_DUEL_DIRECTORY) await env.PUBLIC_DUEL_DIRECTORY.getByName(DIRECTORY_NAME).forget(playerId);
   await env.LEADERBOARD_MEMBERS.getByName(playerId).forget();
   await pooled([...boardKeys()], BOARD_CONCURRENCY, async board => {
     const answer = await env.LEADERBOARD_BOARDS.getByName(board).forget(board, playerId);

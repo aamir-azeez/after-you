@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, canonicalJson, digest, equalHash, fail, object, ok, text, type Outcome } from "./protocol";
-import { TERMS_VERSION } from "./public-policy";
+import { KNOWN_TERMS_VERSIONS, termsCovered, termsVersion } from "./public-policy";
 import { ERASURE_SCHEMA, checkedErasure, erasureReceipt, readErasure, requestProviderErasure, writeErasure } from "./account-erasure";
 import { isAlarmMetadataTable } from "./notification-storage";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
@@ -44,16 +44,27 @@ function knownSchema(storage: DurableObjectStorage, schemas: string[]): void {
   if (JSON.stringify(found) !== JSON.stringify([...schemas].sort()) || [...storage.kv.list({ limit: 1 })].length) throw new ApiError(409, "unsupported_safety_storage");
 }
 type Profile = { schema_version: 1; owner: string; accepted_at: string | null; terms_version: string | null; blocks: string[] };
-export type ReportBody = { schema_version: 1; idempotency_key: string; room_family: "legacy" | "relay"; room_id: string; reason: typeof SAFETY_REPORT_REASONS[number]; photo: { turn_id: string; photo_revision: number; sha256: string } | null };
+/**
+ * `room_family` "duel": a report on a player in a public duel's seat (duels/public-routes.ts), made only by that
+ * route; `room_id` is the duel id's first 22 characters and `duel` names the duel and the seat, with no photo.
+ */
+export type ReportBody = { schema_version: 1; idempotency_key: string; room_family: "legacy" | "relay" | "duel"; room_id: string; reason: typeof SAFETY_REPORT_REASONS[number]; photo: { turn_id: string; photo_revision: number; sha256: string } | null;
+  duel?: { board: string; duel_id: string; seat: number } };
 export type SafetyReport = ReportBody & { reporter_id: string; target_id: string; request_hash: string; report_id: string; created_at: number; resolved_at: number | null };
 export type ReportReceipt = { schema_version: 1; report_id: string; request_hash: string; received: true };
 const exact = (v: Record<string, unknown>, keys: string[]) => { if (Object.keys(v).length !== keys.length || Object.keys(v).some(key => !keys.includes(key))) throw new ApiError(400, "invalid_safety_request"); };
 const iso = (v: unknown) => typeof v === "string" && Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v;
 /** A photo names its turn; the stage digit must lie in the room's chapter (stages comes from the room, the published 2 by default). */
 export function parseReport(input: unknown, stages = LEGACY_STAGE_COUNT): ReportBody {
-  const v = object(input); exact(v, ["schema_version", "idempotency_key", "room_family", "room_id", "reason", "photo"]);
-  if (v.schema_version !== 1 || !["legacy", "relay"].includes(String(v.room_family)) || !SAFETY_REPORT_REASONS.includes(v.reason as ReportBody["reason"])) throw new ApiError(400, "invalid_safety_request");
+  const v = object(input), duel = v.room_family === "duel";
+  exact(v, ["schema_version", "idempotency_key", "room_family", "room_id", "reason", "photo", ...(duel ? ["duel"] : [])]);
+  if (v.schema_version !== 1 || !["legacy", "relay", "duel"].includes(String(v.room_family)) || !SAFETY_REPORT_REASONS.includes(v.reason as ReportBody["reason"])) throw new ApiError(400, "invalid_safety_request");
   text(v.idempotency_key, IDEMPOTENCY_PATTERN); text(v.room_id, ID_PATTERN);
+  if (duel) {
+    const target = object(v.duel); exact(target, ["board", "duel_id", "seat"]);
+    text(target.board, /^[a-z0-9-]{1,48}@[1-9][0-9]{0,3}$/); text(target.duel_id, /^[a-f0-9]{32}$/);
+    if (v.photo !== null || target.duel_id !== `${v.room_id}${String(target.duel_id).slice(22)}` || !(typeof target.seat === "number" && Number.isInteger(target.seat) && target.seat >= 0 && target.seat <= 3)) throw new ApiError(400, "invalid_safety_request");
+  }
   if (v.photo !== null) {
     const photo = object(v.photo); exact(photo, ["turn_id", "photo_revision", "sha256"]);
     text(photo.turn_id, STAGE_TURN_PATTERN); if (stageDigit(photo.turn_id as string) >= stages) throw new ApiError(400, "invalid_field");
@@ -65,13 +76,14 @@ export function parseReport(input: unknown, stages = LEGACY_STAGE_COUNT): Report
 function checkedProfile(input: unknown, owner: string): Profile {
   const v = object(input); exact(v, ["schema_version", "owner", "accepted_at", "terms_version", "blocks"]);
   if (v.schema_version !== 1 || v.owner !== owner || !ID_PATTERN.test(owner) ||
-    !(v.accepted_at === null && v.terms_version === null || iso(v.accepted_at) && v.terms_version === TERMS_VERSION) ||
+    !(v.accepted_at === null && v.terms_version === null || iso(v.accepted_at) && KNOWN_TERMS_VERSIONS.includes(v.terms_version as string)) ||
     !Array.isArray(v.blocks) || v.blocks.length > 128 || v.blocks.some(x => typeof x !== "string" || !ID_PATTERN.test(x) || x === owner) || new Set(v.blocks).size !== v.blocks.length) throw new ApiError(409, "unsupported_safety_state");
   return v as Profile;
 }
 function checkedReport(input: unknown): SafetyReport {
-  const v = object(input); exact(v, ["schema_version", "idempotency_key", "room_family", "room_id", "reason", "photo", "reporter_id", "target_id", "request_hash", "report_id", "created_at", "resolved_at"]);
-  parseReport({ schema_version: v.schema_version, idempotency_key: v.idempotency_key, room_family: v.room_family, room_id: v.room_id, reason: v.reason, photo: v.photo }, MAX_ROOM_STAGES);
+  const v = object(input), duel = Object.hasOwn(v, "duel");
+  exact(v, ["schema_version", "idempotency_key", "room_family", "room_id", "reason", "photo", "reporter_id", "target_id", "request_hash", "report_id", "created_at", "resolved_at", ...(duel ? ["duel"] : [])]);
+  parseReport({ schema_version: v.schema_version, idempotency_key: v.idempotency_key, room_family: v.room_family, room_id: v.room_id, reason: v.reason, photo: v.photo, ...(duel ? { duel: v.duel } : {}) }, MAX_ROOM_STAGES);
   text(v.reporter_id, ID_PATTERN); text(v.target_id, ID_PATTERN); text(v.request_hash, HASH_PATTERN); text(v.report_id, HASH_PATTERN);
   if (v.reporter_id === v.target_id || typeof v.created_at !== "number" || !Number.isSafeInteger(v.created_at) || v.created_at <= 0 ||
     !(v.resolved_at === null || typeof v.resolved_at === "number" && Number.isSafeInteger(v.resolved_at) && v.resolved_at >= v.created_at)) throw new ApiError(409, "unsupported_safety_state");
@@ -95,15 +107,17 @@ export class SafetyProfile extends DurableObject<Env> {
     return row ? checkedProfile(JSON.parse(row.data), owner) : { schema_version: 1, owner, terms_version: null, accepted_at: null, blocks: [] };
   }
   private write(state: Profile): void { this.ctx.storage.sql.exec("INSERT OR REPLACE INTO safety_profile VALUES (1,?)", JSON.stringify(state)); }
-  terms(owner: string) { const p = this.read(owner); return { schema_version: 1, terms_version: TERMS_VERSION, accepted: p.terms_version === TERMS_VERSION, accepted_at: p.accepted_at }; }
+  /** The rules in force follow the flags (public-policy.ts termsVersion): an acceptance of older rules reads as not accepted. */
+  terms(owner: string) { const p = this.read(owner), current = termsVersion(this.env); return { schema_version: 1, terms_version: current, accepted: termsCovered(p.terms_version, current), accepted_at: p.accepted_at }; }
   blocks(owner: string) { return { schema_version: 1, blocked_players: [...this.read(owner).blocks] }; }
   hasBlocked(owner: string, peer: string): boolean { return this.read(owner).blocks.includes(peer); }
   async accept(owner: string, deviceHash: string, version: string): Promise<Outcome<ReturnType<SafetyProfile["terms"]>>> {
-    if (version !== TERMS_VERSION) return fail(409, "unsupported_terms_version");
+    const current = termsVersion(this.env);
+    if (version !== current) return fail(409, "unsupported_terms_version");
     if (!await this.env.PLAYERS.getByName(owner).authorize(deviceHash)) return fail(401, "invalid_auth");
     if (readErasure(this.ctx.storage)) return fail(409, "identity_deletion_pending");
     const p = this.read(owner);
-    if (p.terms_version !== TERMS_VERSION) { p.terms_version = TERMS_VERSION; p.accepted_at = new Date().toISOString(); this.write(p); }
+    if (!termsCovered(p.terms_version, current)) { p.terms_version = current; p.accepted_at = new Date().toISOString(); this.write(p); }
     return ok(this.terms(owner));
   }
   async setBlock(owner: string, deviceHash: string, peer: string, blocked: boolean): Promise<Outcome<{ schema_version: 1; blocked: boolean; player_id: string }>> {

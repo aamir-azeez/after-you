@@ -1,6 +1,7 @@
 import { fail, ok, type Outcome } from "../protocol";
 import type { ChapterKey } from "../v2/chapter-types";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "./rules";
+import { enterSeat, publicForget, publicKnown, publicLeave, publicSeatsView, publicSettle, publicView, stallForfeits, type PublicState } from "./public";
 import { keptLook, servedLook } from "../leaderboards/run-looks";
 import type { Look } from "../pollen/catalog";
 
@@ -80,13 +81,20 @@ export type Side = {
   waived?: true;
   /** What each member wears, in `members` order ({} for the default); absent while neither wears anything known. */
   looks?: Look[];
+  /** Public duels only: the seat (0 to 3) whose player left after entering the room, which ended this side (duels/public.ts). */
+  left_by?: number;
 };
 /** `looks`: a board run's pair looks as its row showed them when the race began (leaderboards/run-looks.ts). */
 /** `replay_hash`: a board run's replay as its row named it when the race began (absent on races made before it was kept, and on the developers' run). */
 export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null; replay_hash?: string; looks?: Look[] };
-export type ResultReason = "faster" | "draw" | "left" | "failed_check" | "unchecked" | "stalled" | "erased";
-/** `winner`: the side index that won (1 is the ghost in a ghost race), or null for a draw or no result. */
-export type DuelResult = { winner: 0 | 1 | null; reason: ResultReason; decided_ms: number; margin_ticks: number | null };
+export type ResultReason = "faster" | "draw" | "left" | "failed_check" | "unchecked" | "stalled" | "erased" | "nobody_joined";
+/**
+ * `winner`: the side index that won (1 is the ghost in a ghost race), or null for a draw or no result.
+ * `forfeit`: public duels only, the seats (0 to 3) whose held duel extra is not paid: a player who left, the one whose
+ * turn it was when their side stalled, an erased player (duels/public.ts; pollen/duel-pay.ts creditDuelExtra).
+ */
+export type DuelResult = { winner: 0 | 1 | null; reason: ResultReason; decided_ms: number; margin_ticks: number | null; forfeit?: number[] };
+
 /** A card layer's effect on the score, later. Always empty today. */
 export type Modifier = { kind: string };
 export type Duel = {
@@ -109,6 +117,12 @@ export type Duel = {
   modifiers: Modifier[];
   /** A settled friend duel's rooms are queued for the board's sweep of their run copies (store.ts, their-run.ts). */
   copies_queued?: true;
+  /**
+   * A public duel (duels/public.ts): its seats fill from the list, so a member is null while that seat is open, and
+   * its sides' `pair_key` stays "" (the Worker derives a pair's key when it needs one). Kind stays "friend", so turns,
+   * results and the run copies work as in any friend duel.
+   */
+  public?: PublicState;
 };
 /** `looks`: the room's members' looks by player id, while looks are on (v2/room.ts commit `duel_looks`). */
 export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null; looks?: Record<string, Look> };
@@ -181,6 +195,7 @@ export function score(duel: Duel, index: 0 | 1): number {
 
 /** Applies the time rules. Returns whether the duel changed. */
 export function settle(duel: Duel, now: number): boolean {
+  if (duel.public) return publicSettle(duel, now);
   if (duel.status === "challenged") {
     if (now - duel.created_ms < CHALLENGE_TTL_MS) return false;
     duel.status = "expired";
@@ -195,14 +210,16 @@ export function settle(duel: Duel, now: number): boolean {
   return conclude(duel, null, "stalled", now, null);
 }
 
-function lastActivity(duel: Duel): number {
+export function lastActivity(duel: Duel): number {
   const sides = duel.sides.filter((side): side is Side => side !== null);
   return Math.max(duel.accepted_ms ?? duel.created_ms, ...sides.map(side => side.last_ms ?? 0));
 }
 
-function conclude(duel: Duel, winner: 0 | 1 | null, reason: ResultReason, now: number, margin: number | null): boolean {
+export function conclude(duel: Duel, winner: 0 | 1 | null, reason: ResultReason, now: number, margin: number | null): boolean {
+  // A public duel's held extra: who forfeits it is fixed as the duel ends (duels/public.ts), before turns are cleared.
+  const forfeit = duel.public ? [...new Set([...(duel.public.forfeit ?? []), ...(reason === "stalled" ? stallForfeits(duel) : [])])].sort() : [];
   duel.status = winner !== null || reason === "draw" ? "decided" : "unfinished";
-  duel.result = { winner, reason, decided_ms: now, margin_ticks: margin };
+  duel.result = { winner, reason, decided_ms: now, margin_ticks: margin, ...(forfeit.length ? { forfeit } : {}) };
   for (const side of duel.sides) if (side) side.turn = null;
   duel.updated_ms = now;
   return true;
@@ -313,6 +330,8 @@ export function progress(duel: Duel, note: ProgressNote, now: number, checks: bo
   // A pair that left hands the duel over: its room's later turns change nothing here.
   if (duel.status !== "running" || side.left || side.finished_ms !== null || note.revision <= side.revision) return ok({ finished: false });
   Object.assign(side, { revision: note.revision, steps: Math.min(note.steps, duel.steps), ticks: note.ticks, turn: note.complete ? null : note.turn, last_ms: note.at_ms });
+  // A public seat whose player the room names is in the room, whatever became of the room's own word (public.ts).
+  if (duel.public && side.turn !== null) enterSeat(duel, index as 0 | 1, side.turn, now);
   // The pair's looks as their room holds them at this turn; a member the note leaves out keeps theirs.
   const looks = note.looks;
   if (looks) wearLooks(side, id => Object.hasOwn(looks, id) ? looks[id] : undefined);
@@ -358,10 +377,11 @@ export function verdict(duel: Duel, entryId: string, check: "passed" | "failed" 
  * challenge back); while running it hands the other pair the win once its run
  * passes. Turned off once the pair has finished.
  */
-export function leave(duel: Duel, player: string, now: number): Outcome<Duel> {
+export function leave(duel: Duel, player: string, now: number, blocked = false): Outcome<Duel> {
   const index = sideOf(duel, player);
   if (index < 0) return fail(403, "duel_not_yours");
   settle(duel, now);
+  if (duel.public) return publicLeave(duel, player, now, blocked);
   if (duel.status === "challenged") return decline(duel, player, now);
   if (isFinal(duel)) return ok(duel);
   const side = duel.sides[index as 0 | 1]!;
@@ -378,6 +398,7 @@ export function leave(duel: Duel, player: string, now: number): Outcome<Duel> {
 /** Account erasure: the player's id goes everywhere; an open duel ends unfinished. Returns whether it changed. */
 export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
   if (sideOf(duel, player) < 0 && duel.starter !== player) return false;
+  if (duel.public && publicForget(duel, player, now)) return true;
   for (const side of duel.sides) {
     if (!side) continue;
     // An erased member's look goes with their id.
@@ -433,13 +454,17 @@ export type SideView = {
   room_id?: string | null; invite_code?: string | null; hosting?: boolean;
   /** While looks are on: what each member wears, in `members` order, {} for the default; also for a member whose id is hidden. */
   looks?: Look[];
+  /** Public duels only: each seat open or taken, the viewer's or not, and its label (duels/public.ts). */
+  seats?: SeatView[];
 };
+export type SeatView = { open: boolean; you: boolean; label: string | null };
 export type DuelView = {
   schema_version: 1; duel_id: string; kind: DuelKind; board: string; status: DuelStatus; steps: number;
   created_ms: number; accepted_ms: number | null; updated_ms: number;
   mine: 0 | 1; sides: [SideView, SideView | null]; ghost: Ghost | null;
   result: { outcome: "won" | "lost" | "draw" | "none"; reason: ResultReason; margin_ticks: number | null; decided_ms: number } | null;
   eligible: boolean | null;
+  public?: { posted_ms: number; open_until_ms: number; seats_open: number };
 };
 
 /** `looks`: whether looks are on (POLLEN_LOOKS); off, a view carries none, as before looks. */
@@ -449,12 +474,13 @@ export function viewFor(duel: Duel, viewer: string, looks = false): DuelView | n
   const known = new Set(duel.known);
   const sideView = (side: Side, index: 0 | 1): SideView => {
     const own = index === mine;
-    const members = side.members.map(id => id !== null && (own || known.has(knownKey(viewer, id))) ? id : null);
+    // A public duel shows an id only to its own player and to a player who already knows it (duels/public.ts publicKnown).
+    const members = side.members.map(id => id !== null && (duel.public ? publicKnown(duel, viewer, id) : own || known.has(knownKey(viewer, id))) ? id : null);
     const turn = side.turn === null ? -1 : side.members.indexOf(side.turn);
     // A run that counted without its check (waived) shows none, so no phone says it waits for one.
     return { members, you: own, steps: side.steps, ticks: side.ticks, turn: turn < 0 ? null : turn, finished: side.finished_ms !== null, left: side.left, check: side.waived ? "none" : side.check,
       ...(own ? { room_id: side.room?.room_id ?? null, invite_code: side.room?.invite_code ?? null, hosting: side.room?.host === viewer } : {}),
-      ...(looks ? { looks: pairShown(side.looks) } : {}) };
+      ...(looks ? { looks: pairShown(side.looks) } : {}), ...(duel.public ? { seats: publicSeatsView(duel, index, viewer) } : {}) };
   };
   const result = duel.result;
   const outcome = !result ? null : result.winner === null ? (result.reason === "draw" ? "draw" : "none") : result.winner === mine ? "won" : "lost";
@@ -463,7 +489,7 @@ export function viewFor(duel: Duel, viewer: string, looks = false): DuelView | n
     created_ms: duel.created_ms, accepted_ms: duel.accepted_ms, updated_ms: duel.updated_ms, mine: mine as 0 | 1,
     sides: [sideView(duel.sides[0], 0), duel.sides[1] ? sideView(duel.sides[1], 1) : null], ghost: ghostView(duel.ghost, looks),
     result: result && outcome ? { outcome, reason: result.reason, margin_ticks: result.margin_ticks, decided_ms: result.decided_ms } : null,
-    eligible: duel.eligible
+    eligible: duel.eligible, ...(duel.public ? { public: publicView(duel) } : {})
   };
 }
 

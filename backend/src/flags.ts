@@ -72,6 +72,8 @@ export const FLAG_VARS = Object.freeze({
   platformBoards: "PLATFORM_BOARDS",
   /** The race ghost (duels/routes.ts duelsCapability): `race_ghost_version` on the duels capability, so phones play the raced board run as a see-through pip beside each turn of a ghost race. Every race started from a board run keeps that run's replay_hash whether this is on or off, so a race started before the flip plays too. Needs DUELS. */
   raceGhost: "RACE_GHOST",
+  /** Public duels (duels/public.ts): the list across chapters, posting and joining open spots with players you don't know, their safety routes, the held duel extra in their rooms, the community rules version they need, and their capability. Needs DUELS. */
+  publicDuels: "PUBLIC_DUELS",
   /** Pauses the replay time limit on finished rooms (v2/replay-expiry.ts), which is on unless CONFIG lists this: replays no phone saved go REPLAY_KEEP_MS (a year) after the room finished. */
   replayExpiryPaused: "REPLAY_EXPIRY_PAUSED",
 } as const);

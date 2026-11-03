@@ -46,11 +46,13 @@ export { RoomV2 } from "./v2/room";
 export { LeaderboardBoard } from "./leaderboards/board";
 export { LeaderboardMember } from "./leaderboards/member";
 export { PollenClaims } from "./pollen/claims";
+export { PublicDuelDirectory } from "./duels/directory";
 import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
 import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
 import { forgetLeaderboardPlayer, forgetLeaderboardPlayerIfKnown } from "./leaderboards/members";
 import { routeDuels } from "./duels/routes";
 import { limitAuth, limitCostly, limitCostlyRoute, limitPlayer, limitPublic } from "./limits";
+import { maskedResponse } from "./duels/public-mask";
 
 /**
  * Every route under a room id except leave, which is already a quiet success for a room the caller has
@@ -96,7 +98,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
       const url = new URL(request.url); const path = url.pathname;
-      const policy = publicPolicy(request); if (policy) return policy;
+      const policy = publicPolicy(request, env); if (policy) return policy;
       if (url.search) throw new ApiError(400, "query_not_supported");
       if (path === "/health" && request.method === "GET") return json({ status: "ok", api_version: 1, environment: APP.environment });
       // The friend link page's headline name: public, read-only, limited per address.
@@ -155,7 +157,7 @@ export default {
         // The face on the friend's latest turn, only for clients that show it.
         const showReactions = endReactionsWanted(request), showNames = displayNamesShown(request, env);
         const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, facePacksWanted(request));
-        return withNext(json(page.body), page.next);
+        return await maskedResponse(withNext(json(page.body), page.next), playerId);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
       if (pollenRoute(path, env)) return json(await routePollen(request, path, playerId, env, pollenView));
@@ -164,7 +166,7 @@ export default {
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        return json(await socialInbox(playerId, env, friendEventsCapable(request)));
+        return await maskedResponse(json(await socialInbox(playerId, env, friendEventsCapable(request))), playerId);
       }
       if (path === "/v1/social/publication") return json(await publishSocialRoom(request, playerId, env));
       const friendNotificationsMatch = path.match(/^\/v1\/friends\/([A-Za-z0-9_-]{22})\/notifications$/);
@@ -227,7 +229,8 @@ export default {
         if (!await player.authorize(await bearerDigest(request), false, pollenEarning(env) ? paidUntil(checked, until) : undefined)) throw new ApiError(401, "invalid_auth");
         return json(checked);
       }
-      if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken, memberName, pollen, memberLook, facePacks);
+      // A public duel's room shows a phone its partner's stand-in, never their id (duels/public-mask.ts).
+      if (path.startsWith("/v2/")) return await maskedResponse(await routeV2(request, path, playerId, env, safetyToken, memberName, pollen, memberLook, facePacks), playerId);
       if (path === "/v1/rooms" && request.method === "GET") {
         const page = await indexedLegacyRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next);
       }

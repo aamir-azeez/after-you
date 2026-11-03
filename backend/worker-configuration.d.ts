@@ -21,11 +21,12 @@ interface __BaseEnv_Env {
 	LEADERBOARD_BOARDS: DurableObjectNamespace<import("./src/index").LeaderboardBoard>;
 	LEADERBOARD_MEMBERS: DurableObjectNamespace<import("./src/index").LeaderboardMember>;
 	POLLEN_CLAIMS: DurableObjectNamespace<import("./src/index").PollenClaims>;
+	PUBLIC_DUEL_DIRECTORY: DurableObjectNamespace<import("./src/index").PublicDuelDirectory>;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {
 		mainModule: typeof import("./src/index");
-		durableNamespaces: "Player" | "Room" | "RoomV2" | "PhotoTransfer" | "PhotoTransferBudget" | "SafetyProfile" | "SafetyInbox" | "FriendRoomEvents" | "PlatformLinks" | "LeaderboardBoard" | "LeaderboardMember" | "PollenClaims";
+		durableNamespaces: "Player" | "Room" | "RoomV2" | "PhotoTransfer" | "PhotoTransferBudget" | "SafetyProfile" | "SafetyInbox" | "FriendRoomEvents" | "PlatformLinks" | "LeaderboardBoard" | "LeaderboardMember" | "PollenClaims" | "PublicDuelDirectory";
 	}
 	interface Env extends __BaseEnv_Env {}
 }

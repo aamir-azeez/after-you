@@ -4,9 +4,10 @@ import type { ReplayWork } from "../leaderboards/board";
 import { REVIEW_REASONS } from "../leaderboards/rules";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
-import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, milestone, newsRecipients, progress, settle, verdict, waiveChecks, type Duel, type Milestone, type ProgressNote, type SideRoom } from "./model";
+import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, milestone, newsRecipients, progress, settle, sideOf, verdict, waiveChecks, type Duel, type Milestone, type ProgressNote, type SideRoom } from "./model";
 import type { DuelNews } from "./news";
-import { MAX_BOARD_DUELS, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, MAX_SETTLED_ON_FULL, STALL_MS } from "./rules";
+import { MAX_BOARD_DUELS, MAX_BOARD_PUBLIC, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, MAX_SETTLED_ON_FULL, STALL_MS } from "./rules";
+import { claimSeats, enterSeat, hide, listed, listingOf, relabel, type Listing, type PublicClaim } from "./public";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
 
 /**
@@ -43,6 +44,10 @@ import { THEIR_RUN_KEEP_MS } from "./their-run";
  * that moved a duel past a milestone (model.ts) hands `announce` who to tell,
  * once its transaction is done; a new duel is announced by its route instead,
  * once every player's pointer to it exists. Nothing is stored for it.
+ *
+ * The public list (duels/public.ts, duels/directory.ts): any save that changes how a public duel shows on the list
+ * (posted, a seat taken or freed, steps, a label, off the list) hands `list` its new listing, or null once it is off,
+ * after the transaction, the same way. A listing that only times out changes nothing: the list filters by time.
  */
 const COPIES_TABLE = "CREATE TABLE IF NOT EXISTS duel_run_copies (room_id TEXT NOT NULL, duel_id TEXT NOT NULL, player TEXT NOT NULL, due_ms INTEGER NOT NULL, PRIMARY KEY (room_id, duel_id, player)) WITHOUT ROWID";
 /** One room to tell, for the sweep (their-run.ts dropTheirRuns): with no player, the copy's keep is over. */
@@ -61,8 +66,14 @@ export type DuelVerdict = { entry_id: string; proof_hash: string; valid: boolean
 export type DuelAction =
   | { kind: "accept"; player: string; intact: boolean }
   | { kind: "decline"; player: string }
-  | { kind: "leave"; player: string }
-  | { kind: "claim"; player: string; room_id: string; invite_code: string; room_absent: boolean };
+  | { kind: "leave"; player: string; blocked?: boolean }
+  | { kind: "claim"; player: string; room_id: string; invite_code: string; room_absent: boolean }
+  /** Public duels: take a spot from the list (public.ts claimSeats). */
+  | { kind: "join"; player: string; claim: PublicClaim }
+  /** Public duels: the side's room admits a seated player as its guest (public.ts enterSeat). */
+  | { kind: "enter"; player: string; side: 0 | 1 };
+/** A public duel's listing as it changed: the listing, or null once off the list. */
+export type ListingChange = { duel_id: string; listing: Listing | null };
 /** The finished run's raw final checkpoint, sent with the note of the turn that finished it. */
 export type FinishProof = { checkpoint: CheckpointV2; simulation_version: number };
 
@@ -73,20 +84,57 @@ export class DuelStore {
   private loaded: Map<string, Milestone> | null = null;
   private news = new Map<string, DuelNews>();
   private actor: string | null = null;
-  /** `checks`: whether duel run checks are on (duels/turn-hook.ts duelRunChecksOn), read once per call. */
+  /** While one call runs: each public duel's listing as first loaded (JSON), and the changes so far. */
+  private listings = new Map<string, string>();
+  private changes = new Map<string, ListingChange>();
+  /**
+   * `checks`: whether duel run checks are on (duels/turn-hook.ts duelRunChecksOn), read once per call.
+   * `list`: told of public listing changes after each call (the board sends them to the directory).
+   */
   constructor(private readonly storage: DurableObjectStorage, private readonly announce: (news: DuelNews[]) => void = () => undefined,
-    private readonly checks: () => boolean = () => false) {}
+    private readonly checks: () => boolean = () => false, private readonly list: (changes: ListingChange[]) => void = () => undefined) {}
 
-  /** Adds a new duel; the same id again answers the one already held. Null when the board is full of open duels. */
+  /**
+   * Adds a new duel; the same id again answers the one already held. Null when the board is full of open duels, or,
+   * for a public duel, when the board already lists MAX_BOARD_PUBLIC.
+   */
   create(duel: Duel, now: number): Duel | null {
     this.ensure();
-    return this.storage.transactionSync(() => {
+    return this.tell(null, () => this.storage.transactionSync(() => {
       const held = this.duel(duel.duel_id);
       if (held) { if (settle(held, now)) this.save(held); return held; }
+      if (duel.public && this.listedCount(now) >= MAX_BOARD_PUBLIC) return null;
       if (!this.makeRoom(now)) return null;
+      // A new duel is announced by its route once every pointer exists, so its save tells nobody; a public one goes on the list.
+      this.loaded!.set(duel.duel_id, milestone(duel));
+      this.listings.set(duel.duel_id, "null");
       this.save(duel);
       return duel;
-    });
+    }));
+  }
+
+  /** Public duels on the list here now. Read only at posting, at most MAX_BOARD_DUELS rows. */
+  private listedCount(now: number): number {
+    return this.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE status='running' AND json_extract(data,'$.public.open_until_ms') > ?", now).toArray()
+      .filter(row => listed(JSON.parse(row.data) as Duel, now)).length;
+  }
+
+  /**
+   * A player's label on the public duels named (a changed name or name choice, leaderboards/members.ts), and whether
+   * their duels show on the list (`hidden`, a pause after reports). Returns how many changed.
+   */
+  publicPlayer(player: string, ids: readonly string[], change: { label?: string | null; hidden?: boolean }, now: number): number {
+    if (!this.present() || !ids.length) return 0;
+    return this.tell(null, () => this.storage.transactionSync(() => {
+      let count = 0;
+      for (const duel of ids.map(id => this.duel(id)).filter((item): item is Duel => item !== null && !!item.public)) {
+        settle(duel, now);
+        const labelled = change.label !== undefined && relabel(duel, player, change.label, now);
+        const hidden = change.hidden !== undefined && hide(duel, change.hidden, now);
+        if (labelled || hidden) { this.save(duel); count++; }
+      }
+      return count;
+    }));
   }
 
   /** The duels named, settled to `now` (a changed one is saved), in the order asked; unknown ids are left out. */
@@ -112,8 +160,14 @@ export class DuelStore {
       let answer: Outcome<unknown>;
       if (action.kind === "accept") answer = accept(duel, action.player, now, action.intact);
       else if (action.kind === "decline") answer = decline(duel, action.player, now);
-      else if (action.kind === "leave") answer = leave(duel, action.player, now);
-      else answer = claimRoom(duel, action.player, { room_id: action.room_id, invite_code: action.invite_code }, now, action.room_absent);
+      else if (action.kind === "leave") answer = leave(duel, action.player, now, action.blocked === true);
+      else if (action.kind === "join") { settle(duel, now); answer = claimSeats(duel, action.claim, now); }
+      else if (action.kind === "enter") { settle(duel, now); answer = enterSeat(duel, action.side, action.player, now); }
+      else {
+        answer = claimRoom(duel, action.player, { room_id: action.room_id, invite_code: action.invite_code }, now, action.room_absent);
+        // A public seat whose player opened its side's room is entered: leaving now ends the side (public.ts).
+        if (answer.ok && duel.public && (answer.value as SideRoom).host === action.player) enterSeat(duel, sideOf(duel, action.player) as 0 | 1, action.player, now);
+      }
       // A friend duel's room may come to hold a run copy, however the duel ends, or if it is never read again: a row
       // from the moment it is claimed, due at the latest a duel can last plus the keep; settling brings it forward.
       // Only a claim that made this room the side's: a losing claim's room never holds a copy.
@@ -268,7 +322,10 @@ export class DuelStore {
   }
   /** Notes a duel's milestone the first time a call loads it, so its save can tell what moved. */
   private track(duel: Duel): Duel {
-    if (this.loaded && !this.loaded.has(duel.duel_id)) this.loaded.set(duel.duel_id, milestone(duel));
+    if (this.loaded && !this.loaded.has(duel.duel_id)) {
+      this.loaded.set(duel.duel_id, milestone(duel));
+      if (duel.public) this.listings.set(duel.duel_id, JSON.stringify(listingOf(duel, 0)));
+    }
     return duel;
   }
   /**
@@ -278,17 +335,23 @@ export class DuelStore {
   private tell<T>(actor: string | null, work: () => T): T {
     this.loaded = new Map();
     this.news = new Map();
+    this.listings = new Map();
+    this.changes = new Map();
     this.actor = actor;
-    let found: DuelNews[] = [];
+    let found: DuelNews[] = [], changed: ListingChange[] = [];
     try {
       const value = work();
       found = [...this.news.values()];
+      changed = [...this.changes.values()];
       return value;
     } finally {
       this.loaded = null;
       this.news = new Map();
+      this.listings = new Map();
+      this.changes = new Map();
       this.actor = null;
       if (found.length) this.announce(found);
+      if (changed.length) this.list(changed);
     }
   }
   /** Rooms whose run copy is due to go or to hear of an erasure by `now`, oldest first, at most `limit`. */
@@ -335,6 +398,12 @@ export class DuelStore {
       if (recipients.length) this.news.set(duel.duel_id, { duel_id: duel.duel_id, at: duel.updated_ms, recipients });
     }
     if (isFinal(duel) && duel.kind === "friend" && !duel.copies_queued) { this.queueCopies(duel, duel.updated_ms); duel.copies_queued = true; }
+    if (duel.public && this.loaded) {
+      // The list hears of a public duel only when what it shows changed (public.ts listingOf); time is left out (0),
+      // since the list filters on open_until_ms itself and settle ends a timed out duel.
+      const listing = listingOf(duel, 0), text = JSON.stringify(listing);
+      if (this.listings.get(duel.duel_id) !== text) { this.listings.set(duel.duel_id, text); this.changes.set(duel.duel_id, { duel_id: duel.duel_id, listing }); }
+    }
     this.storage.sql.exec("INSERT OR REPLACE INTO duels VALUES (?,?,?,?)", duel.duel_id, duel.status, duel.updated_ms, JSON.stringify(duel));
     if (isFinal(duel)) this.storage.sql.exec("DELETE FROM duel_proofs WHERE duel_id=?", duel.duel_id);
   }

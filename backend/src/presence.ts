@@ -85,6 +85,7 @@ export async function roomPresence(env: Env, owner: string, deviceHash: string, 
     const latest = await safetyMembers(env, owner, family, roomId, context);
     if (latest.host_id !== members.host_id || latest.guest_id !== members.guest_id) throw new ApiError(409, "room_membership_changed");
   }
-  const seconds = Math.max(0, Math.min(90, Math.ceil((expires - Date.now()) / 1000)));
+  // A public duel's partner may be a stranger, who never learns when you are online.
+  const seconds = members.public_duel ? 0 : Math.max(0, Math.min(90, Math.ceil((expires - Date.now()) / 1000)));
   return { schema_version: 1, partner_joined: partner !== null, partner_online: seconds > 0, expires_after_seconds: seconds };
 }

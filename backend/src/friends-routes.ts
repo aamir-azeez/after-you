@@ -63,6 +63,67 @@ async function sharedInvite(env: Env, host: string, visitor: string, shared: Sha
 }
 
 /** Authenticated only. No public player lookup, room discovery, or additional presence lease. */
+/**
+ * A friend request sent from a public duel (duels/public-routes.ts) carries an id that starts so. The sender's own
+ * list leaves it out until it is accepted, so their phone never learns the other player's id without their yes.
+ */
+export const DUEL_REQUEST_PREFIX = "duelq";
+const hiddenOutgoing = (link: { request_id: string; accepted: boolean; requested_by: string }, owner: string) => !link.accepted && link.requested_by === owner && link.request_id.startsWith(DUEL_REQUEST_PREFIX);
+
+/**
+ * A friend request from `owner` to `peer`, the one path both Add friend and a public duel's seat use: it repairs an
+ * orphan, accepts a request already waiting the other way, or proposes and delivers a new one. `requestId`: the
+ * new request's id (a public duel's starts with DUEL_REQUEST_PREFIX). Answers the link as the owner sees it.
+ */
+export async function requestFriend(env: Env, owner: string, hash: string, peer: string, requestId = randomToken(16)) {
+  const player = env.PLAYERS.getByName(owner);
+  await allowed(env, owner, peer);
+  // Reject nonexistent codes before reserving the caller's limited slots.
+  if (!await env.PLAYERS.getByName(peer).safetyIdentityActive(peer)) throw new ApiError(404, "friend_unavailable");
+  // A player who declined this one lately answers as an unknown code does (friend-declines.ts); this Add clears the caller's own decline of the peer.
+  const [barred] = await Promise.all([env.FRIEND_ROOM_EVENTS.getByName(peer).declined(owner), env.FRIEND_ROOM_EVENTS.getByName(owner).clearDecline(peer)]);
+  if (barred) throw new ApiError(404, "friend_unavailable");
+  const [local, remote] = await Promise.all([player.friendEdge(owner, peer), env.PLAYERS.getByName(peer).friendEdge(peer, owner)]);
+  // A lost second DELETE reply can leave an orphan. Repair only on an
+  // explicit Add action, never on a list read between proposal/delivery.
+  if (local && !remote && (local.link.accepted || local.link.requested_by === peer)) unwrap(await player.friendForget(owner, peer, local.link.request_id, hash));
+  if (remote && !local && (remote.link.accepted || remote.link.requested_by === owner)) {
+    await authorized(env, owner, hash);
+    unwrap(await env.PLAYERS.getByName(peer).friendForget(peer, owner, remote.link.request_id));
+  } else if (remote && !local && remote.link.requested_by === peer) {
+    // Both people explicitly chose Add. Finish delivery of their retained
+    // proposal and apply this person's consent through the usual handshake.
+    await authorized(env, owner, hash);
+    await clearEvicted(env, owner, unwrap(await player.friendReceive(owner, peer, remote.link.request_id, remote.link.created_at, true)).evicted);
+    return accept(env, owner, hash, peer, remote.link.request_id);
+  }
+  const { link: proposed, evicted: pushedOut } = unwrap(await player.friendPropose(owner, hash, peer, requestId));
+  if (proposed.requested_by === peer) return accept(env, owner, hash, peer, proposed.request_id);
+  const received = await env.PLAYERS.getByName(peer).friendReceive(peer, owner, proposed.request_id, proposed.created_at);
+  if (!received.ok) {
+    await player.friendForget(owner, peer, proposed.request_id, hash);
+    // The request this Add pushed out takes its place again, so a refused Add loses nobody's request.
+    if (pushedOut) await player.friendReceive(owner, pushedOut.player_id, pushedOut.request_id, pushedOut.created_at).catch(() => undefined);
+    return unwrap(received);
+  }
+  await clearEvicted(env, owner, pushedOut);
+  await clearEvicted(env, peer, received.value.evicted);
+  try {
+    const [current, other] = await pair(env, owner, peer, proposed.request_id);
+    await allowed(env, owner, peer); await authorized(env, owner, hash);
+    if (other.link.accepted && !current.link.accepted) unwrap(await player.friendConfirm(owner, peer, proposed.request_id));
+    return responseLink(owner, { ...current.link, accepted: other.link.accepted && (current.link.accepted || current.link.requested_by === owner) });
+  } catch (error) {
+    // If removal/recovery/deletion won the race, do not leave an actionable
+    // invitation behind. Exact-token cleanup cannot remove a newer request.
+    if (error instanceof ApiError && ["invalid_auth", "player_blocked", "friend_request_changed"].includes(error.code)) {
+      await env.PLAYERS.getByName(peer).friendForget(peer, owner, proposed.request_id);
+      await player.friendForget(owner, peer, proposed.request_id);
+    }
+    throw error;
+  }
+}
+
 export async function routeFriends(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
   const hash = await bearerDigest(request), player = env.PLAYERS.getByName(owner);
   if (path === "/v1/friends" && request.method === "GET") {
@@ -95,58 +156,14 @@ export async function routeFriends(request: Request, path: string, owner: string
     // One batched local recheck replaces twenty same-owner RPCs. It also
     // reauthorizes the device after all peer/room I/O and honors removals.
     const current = unwrap(await player.friendList(owner, hash, false, names));
-    const visible = friends.filter(row => current.links.some(link => link.player_id === row.player_id && link.request_id === row.request_id));
+    const visible = friends.filter(row => current.links.some(link => link.player_id === row.player_id && link.request_id === row.request_id && !hiddenOutgoing(link, owner)));
     // Only clients that ask get the optional alias; older ones require exactly these five keys.
     const alias = request.headers.get(FRIEND_ALIAS_HEADER) === "2" ? friendAliasFor(env, owner) : undefined;
     return { schema_version: 1, friend_code: owner, ...(alias ? { friend_alias: alias } : {}), ...(names ? { display_name: shownName(current.display_name) } : {}), refresh_after_seconds: FRIEND_REFRESH_SECONDS, shared_room: current.shared_room, friends: visible };
   }
   if (path === "/v1/friends/request" && request.method === "POST") {
     const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "friend_code"]);
-    const peer = friendCode(env, input.friend_code); await allowed(env, owner, peer);
-    // Reject nonexistent codes before reserving the caller's limited slots.
-    if (!await env.PLAYERS.getByName(peer).safetyIdentityActive(peer)) throw new ApiError(404, "friend_unavailable");
-    // A player who declined this one lately answers as an unknown code does (friend-declines.ts); this Add clears the caller's own decline of the peer.
-    const [barred] = await Promise.all([env.FRIEND_ROOM_EVENTS.getByName(peer).declined(owner), env.FRIEND_ROOM_EVENTS.getByName(owner).clearDecline(peer)]);
-    if (barred) throw new ApiError(404, "friend_unavailable");
-    const [local, remote] = await Promise.all([player.friendEdge(owner, peer), env.PLAYERS.getByName(peer).friendEdge(peer, owner)]);
-    // A lost second DELETE reply can leave an orphan. Repair only on an
-    // explicit Add action, never on a list read between proposal/delivery.
-    if (local && !remote && (local.link.accepted || local.link.requested_by === peer)) unwrap(await player.friendForget(owner, peer, local.link.request_id, hash));
-    if (remote && !local && (remote.link.accepted || remote.link.requested_by === owner)) {
-      await authorized(env, owner, hash);
-      unwrap(await env.PLAYERS.getByName(peer).friendForget(peer, owner, remote.link.request_id));
-    } else if (remote && !local && remote.link.requested_by === peer) {
-      // Both people explicitly chose Add. Finish delivery of their retained
-      // proposal and apply this person's consent through the usual handshake.
-      await authorized(env, owner, hash);
-      await clearEvicted(env, owner, unwrap(await player.friendReceive(owner, peer, remote.link.request_id, remote.link.created_at, true)).evicted);
-      return accept(env, owner, hash, peer, remote.link.request_id);
-    }
-    const { link: proposed, evicted: pushedOut } = unwrap(await player.friendPropose(owner, hash, peer, randomToken(16)));
-    if (proposed.requested_by === peer) return accept(env, owner, hash, peer, proposed.request_id);
-    const received = await env.PLAYERS.getByName(peer).friendReceive(peer, owner, proposed.request_id, proposed.created_at);
-    if (!received.ok) {
-      await player.friendForget(owner, peer, proposed.request_id, hash);
-      // The request this Add pushed out takes its place again, so a refused Add loses nobody's request.
-      if (pushedOut) await player.friendReceive(owner, pushedOut.player_id, pushedOut.request_id, pushedOut.created_at).catch(() => undefined);
-      return unwrap(received);
-    }
-    await clearEvicted(env, owner, pushedOut);
-    await clearEvicted(env, peer, received.value.evicted);
-    try {
-      const [current, other] = await pair(env, owner, peer, proposed.request_id);
-      await allowed(env, owner, peer); await authorized(env, owner, hash);
-      if (other.link.accepted && !current.link.accepted) unwrap(await player.friendConfirm(owner, peer, proposed.request_id));
-      return responseLink(owner, { ...current.link, accepted: other.link.accepted && (current.link.accepted || current.link.requested_by === owner) });
-    } catch (error) {
-      // If removal/recovery/deletion won the race, do not leave an actionable
-      // invitation behind. Exact-token cleanup cannot remove a newer request.
-      if (error instanceof ApiError && ["invalid_auth", "player_blocked", "friend_request_changed"].includes(error.code)) {
-        await env.PLAYERS.getByName(peer).friendForget(peer, owner, proposed.request_id);
-        await player.friendForget(owner, peer, proposed.request_id);
-      }
-      throw error;
-    }
+    return requestFriend(env, owner, hash, friendCode(env, input.friend_code));
   }
   if (path === "/v1/friends/accept" && request.method === "POST") {
     const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "player_id", "request_id"]);

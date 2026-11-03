@@ -49,7 +49,9 @@ import { clearLooks, eraseMemberLook, eraseTurnLooksOf, memberLook, recordMember
 import type { Look } from "../pollen/catalog";
 import { pairLooks, type PairLooks } from "../leaderboards/run-looks";
 import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
-import { clearDuelLink, duelJoinAllowed, duelLink, duelPremium, markDuelDone, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
+import { admitToDuelLink, clearDuelLink, duelHeld, duelJoinAllowed, duelLink, duelMasks, duelPremium, markDuelDone, needsAdmission, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
+import { enteredSeat, seatHeld } from "../duels/public-rooms";
+import { unmaskRedo, type DuelMasks } from "../duels/public-mask";
 import { acknowledgeTheirRun, dropTheirRun, encodeTheirRun, keepTheirRun, serveTheirRun, type TheirRun } from "../duels/their-run";
 import { errorCode as logCode, logWarning } from "../log";
 import { armable, armReplayExpiry, clearReplayExpiry, finishedRoom, REPLAY_KEEP_MS, replayExpiryDue, runReplayExpiry } from "./replay-expiry";
@@ -65,6 +67,11 @@ export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   api_version: 2; invite_code?: string; hard?: HardRun; active_role: "a" | "b" | "complete";
   /** Only in a duel's room (duels/room-link.ts): its turns never use Forgiving catches, so the phone records none. */
   duel?: true;
+  /**
+   * Only in a public duel's room: the stand-ins a phone sees in place of the other member's id (duels/public-mask.ts).
+   * Server side every reply keeps the real ids; the Worker swaps them on the way out.
+   */
+  duel_masks?: DuelMasks;
   first_player_id: string | null; active_player_id: string | null; player_slot: Slot;
   stage_id: string; recording_a: RecordingV2 | null; validation: "structural_client_replay_required";
   /** Only beside a read for a member that asked for end reactions (end-reactions.ts). */
@@ -325,7 +332,9 @@ export class RoomV2 extends DurableObject<Env> {
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return this.unavailable(player);
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
-      const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(value);
+      // A public duel's phone names its partner by a stand-in (duels/public-mask.ts); the redo source holds the ids.
+      const shown = value === undefined || binding ? value : unmaskRedo(value, duelMasks(duelLink(this.ctx.storage), observed).duel_masks ?? null);
+      const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(shown);
       const access = binding ? await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context) : null;
       if (deviceHash !== undefined && !await this.env.PLAYERS.getByName(player).authorize(deviceHash)) return fail(401, "invalid_auth");
       const outcome = await this.ctx.storage.transaction(async () => {
@@ -338,11 +347,13 @@ export class RoomV2 extends DurableObject<Env> {
         const state = this.read();
         if (!state || !this.member(state, player)) return this.unavailable(player);
         const source = this.redoSource(state);
-        if (!input) return ok(redoState(this.ctx.storage, source));
+        // A public duel's redo reply carries its masks too, so the Worker shows the partner's stand-in in it.
+        if (!input) return ok({ ...redoState(this.ctx.storage, source), ...(binding ? {} : duelMasks(duelLink(this.ctx.storage), state)) });
         if (this.hard.run(this.ctx.storage)) return fail(409, "hard_run_no_redo");
         // Only a first request on a standalone room reaches the partner; Story rooms stay excluded.
         const first = !binding && input.action === "request" && source !== null && redoState(this.ctx.storage, source).request === null;
-        const result = mutateRedo(this.ctx.storage, source, player, input);
+        const mutated = mutateRedo(this.ctx.storage, source, player, input);
+        const result = mutated.ok && !binding ? ok({ ...mutated.value, ...duelMasks(duelLink(this.ctx.storage), state) }) : mutated;
         if (first && result.ok && result.value.request?.status === "pending" && this.notificationsAvailable() &&
           queueRedoHint(this.ctx.storage, this.env, "relay", state, source.first_player_id, result.value.request.request_id)) await scheduleGameplayNotifications(this.ctx.storage);
         return result;
@@ -362,8 +373,9 @@ export class RoomV2 extends DurableObject<Env> {
     const stage = chapter(state).stages[state.stage_index];
     const first = !stage ? null : stage.first_player_slot === "p0" ? state.host_id : state.guest_id;
     const second = !stage ? null : stage.first_player_slot === "p0" ? state.guest_id : state.host_id;
-    const hard = this.hard.run(this.ctx.storage);
-    return { ...safe, ...(player === state.host_id ? { invite_code } : {}), ...(hard ? { hard } : {}), ...(duelLink(this.ctx.storage) ? { duel: true as const } : {}), api_version: 2,
+    const hard = this.hard.run(this.ctx.storage), link = duelLink(this.ctx.storage);
+    return { ...safe, ...(player === state.host_id ? { invite_code } : {}), ...(hard ? { hard } : {}), ...(link ? { duel: true as const } : {}),
+      ...duelMasks(link, state), api_version: 2,
       active_role: !stage ? "complete" : state.a_turn_id ? "b" : "a", first_player_id: first,
       active_player_id: !stage ? null : state.a_turn_id ? second : first,
       player_slot: player === state.host_id ? "p0" : "p1", stage_id: stage?.id ?? "",
@@ -489,10 +501,11 @@ export class RoomV2 extends DurableObject<Env> {
       return ok<RoomLobbyV2>({ ...metadata, replay_transfer_version: 1, api_version: 2, active_role: "complete" });
     });
   }
-  safetyMembers(player: string, context?: CampaignRoomContext): Promise<Outcome<{ host_id: string; guest_id: string | null }>> {
+  /** `public_duel`: a public duel's room, whose members may be strangers (presence and the block route treat it so). */
+  safetyMembers(player: string, context?: CampaignRoomContext): Promise<Outcome<{ host_id: string; guest_id: string | null; public_duel?: true }>> {
     return this.project(player, context, () => {
       const state = this.memberView(player); if (!state) return fail(404, "room_not_found");
-      return ok({ host_id: state.host_id, guest_id: state.guest_id });
+      return ok({ host_id: state.host_id, guest_id: state.guest_id, ...(duelLink(this.ctx.storage)?.masks ? { public_duel: true as const } : {}) });
     });
   }
   /** Binding only; ordinary social invites cannot admit campaign members. */
@@ -514,6 +527,9 @@ export class RoomV2 extends DurableObject<Env> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.stored();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
+    // A public duel side's second player: its board must say they hold the seat (duels/public-rooms.ts), asked once, before the transaction.
+    const pending = duelLink(this.ctx.storage);
+    const admit = !!observed && equalHash(observed.invite_code, invite) && needsAdmission(pending, player) && await seatHeld(this.env, pending!, player);
     let joined = false;
     const outcome = await this.ctx.storage.transaction(async () => {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
@@ -531,6 +547,7 @@ export class RoomV2 extends DurableObject<Env> {
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     if (!chapterOpen(state.level_id, open)) return fail(403, CHAPTER_NOT_OPEN);
+    if (admit) admitToDuelLink(this.ctx.storage, player);
     if (!duelJoinAllowed(duelLink(this.ctx.storage), player)) return fail(403, "duel_pair_only");
     state.guest_id = player; state.revision++; this.write(state);
     recordMemberName(this.ctx.storage, player, name);
@@ -543,6 +560,7 @@ export class RoomV2 extends DurableObject<Env> {
     return ok(this.view(state, player));
     });
     if (joined && outcome.ok) this.announce(player, outcome.value);
+    if (joined && outcome.ok && admit) await enteredSeat(this.env, pending!, player);
     return outcome;
   }
   operation(player: string, key: string, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
@@ -823,7 +841,7 @@ export class RoomV2 extends DurableObject<Env> {
           recordTurnFacts(this.ctx.storage, { room_id: state.room_id, recording_hash: recording.recording_hash, turn_id, player, partner: this.partnerOf(state, player),
             host: player === state.host_id, level_id: state.level_id, stage_id, role: recording.role, ticks: recording.duration_ticks, tries,
             premium: chapter(state).premium, hard: Boolean(current.hard), complete: recording.role === "b" && state.stage_index >= chapter(state).stages.length, accepted_at: Date.now(),
-            duel: duelPremium(duelLink(this.ctx.storage)) });
+            duel: duelPremium(duelLink(this.ctx.storage)), duel_held: duelHeld(duelLink(this.ctx.storage)) });
         }
         // A duel room's run is over for the duel once it first finishes (duels/room-link.ts).
         if (recording.role === "b" && state.stage_index >= chapter(state).stages.length) {

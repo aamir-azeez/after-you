@@ -39,7 +39,8 @@
       { "name": "PLATFORM_LINKS", "class_name": "PlatformLinks" },
       { "name": "LEADERBOARD_BOARDS", "class_name": "LeaderboardBoard" },
       { "name": "LEADERBOARD_MEMBERS", "class_name": "LeaderboardMember" },
-      { "name": "POLLEN_CLAIMS", "class_name": "PollenClaims" }
+      { "name": "POLLEN_CLAIMS", "class_name": "PollenClaims" },
+      { "name": "PUBLIC_DUEL_DIRECTORY", "class_name": "PublicDuelDirectory" }
     ]
   },
   "migrations": [
@@ -67,7 +68,8 @@
     { "tag": "friend-room-events-v1", "new_sqlite_classes": ["FriendRoomEvents"] },
     { "tag": "platform-links-v1", "new_sqlite_classes": ["PlatformLinks"] },
     { "tag": "leaderboards-v1", "new_sqlite_classes": ["LeaderboardBoard", "LeaderboardMember"] },
-    { "tag": "pollen-claims-v1", "new_sqlite_classes": ["PollenClaims"] }
+    { "tag": "pollen-claims-v1", "new_sqlite_classes": ["PollenClaims"] },
+    { "tag": "public-duels-v1", "new_sqlite_classes": ["PublicDuelDirectory"] }
   ],
   "ratelimits": [
     { "name": "TESTER_CODE_LIMITER", "namespace_id": "583705", "simple": { "limit": 5, "period": 60 } },

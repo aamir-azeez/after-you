@@ -2,11 +2,12 @@ import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, 
 import { bearerDigest } from "./http";
 import { LEGACY_STAGE_COUNT } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, roomStages } from "./v2/room-stage";
-import { TERMS_VERSION } from "./public-policy";
+import { termsVersion } from "./public-policy";
+import { blockPlayer, countReport, duelBlocks, publicDuelsOn, unblockHandle } from "./duels/public-routes";
 import { interactionBlocked, parseReport, type SafetyReport } from "./safety";
 import { campaignRequestContext, type CampaignRoomContext } from "./v2/campaign-room-access";
 const exact = (value: Record<string, unknown>, keys: string[]) => { if (Object.keys(value).length !== keys.length || Object.keys(value).some(key => !keys.includes(key))) throw new ApiError(400, "invalid_safety_request"); };
-export async function safetyMembers(env: Env, owner: string, family: string, room: string, context?: CampaignRoomContext) {
+export async function safetyMembers(env: Env, owner: string, family: string, room: string, context?: CampaignRoomContext): Promise<{ host_id: string; guest_id: string | null; public_duel?: true }> {
   text(room, ID_PATTERN); if (!["legacy", "relay"].includes(family)) throw new ApiError(400, "invalid_safety_request");
   return unwrap(family === "legacy" ? await env.ROOMS.getByName(room).safetyMembers(owner) : await env.ROOMS_V2.getByName(room).safetyMembers(owner, context));
 }
@@ -46,7 +47,7 @@ async function blockFriend(env: Env, owner: string, deviceHash: string, peer: st
 export async function routeSafety(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
   const profile = env.SAFETY_PROFILES.getByName(owner), inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   const deviceHash = await bearerDigest(request);
-  if (path === "/v1/safety/config" && request.method === "GET") return { schema_version: 1, enforced: true, terms_version: TERMS_VERSION, privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" };
+  if (path === "/v1/safety/config" && request.method === "GET") return { schema_version: 1, enforced: true, terms_version: termsVersion(env), privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" };
   if (path === "/v1/safety/terms") {
     if (request.method === "GET") return profile.terms(owner);
     if (request.method === "POST") {
@@ -55,7 +56,15 @@ export async function routeSafety(request: Request, path: string, owner: string,
       return unwrap(await profile.accept(owner, deviceHash, input.terms_version));
     }
   }
-  if (path === "/v1/safety/blocks" && request.method === "GET") return profile.blocks(owner);
+  if (path === "/v1/safety/blocks" && request.method === "GET") {
+    const list = await profile.blocks(owner);
+    if (!publicDuelsOn(env)) return list;
+    // A stranger blocked from a public duel shows by handle and label only, never by id (duels/public-routes.ts).
+    const strangers = await duelBlocks(env, owner);
+    return { ...list, blocked_players: list.blocked_players.filter(id => !strangers.ids.has(id)), duel_blocks: strangers.shown };
+  }
+  const duelHandle = path.match(/^\/v1\/safety\/blocks\/duel\/([a-f0-9]{22})$/);
+  if (duelHandle && request.method === "DELETE") return unblockHandle(env, request, owner, duelHandle[1]);
   const blockId = path.match(/^\/v1\/safety\/blocks\/([A-Za-z0-9_-]{22})$/);
   if (blockId && request.method === "DELETE") return unwrap(await profile.setBlock(owner, deviceHash, blockId[1], false));
   if (blockId && request.method === "POST") return blockFriend(env, owner, deviceHash, blockId[1], await boundedJson(request, 1024));
@@ -68,6 +77,8 @@ export async function routeSafety(request: Request, path: string, owner: string,
     if (!peer) throw new ApiError(409, "room_partner_required");
     // Recheck room publication after the first membership lookup yields.
     if (context) await safetyMembers(env, owner, input.room_family, input.room_id, context);
+    // A public duel room's stranger: blocked by handle, so the reply and the block list never carry their id.
+    if (members.public_duel) return { schema_version: 1, blocked: true, player_id: await blockPlayer(env, owner, deviceHash, peer, null, Date.now()) };
     return unwrap(await profile.setBlock(owner, deviceHash, peer, true));
   }
   const reportKey = path.match(/^\/v1\/safety\/reports\/([A-Za-z0-9_-]{16,80})$/);
@@ -97,7 +108,10 @@ export async function routeSafety(request: Request, path: string, owner: string,
     const report: SafetyReport = { ...body, reporter_id: owner, target_id: target, request_hash: hash, report_id: await digest(owner + ":" + body.idempotency_key), created_at: Date.now(), resolved_at: null };
     if (!await env.PLAYERS.getByName(owner).authorize(deviceHash)) throw new ApiError(401, "invalid_auth");
     if (context) await safetyMembers(env, owner, body.room_family, body.room_id, context);
-    return unwrap(await inbox.submit(report, deviceHash));
+    const receipt = unwrap(await inbox.submit(report, deviceHash));
+    // A report on a public duel room's stranger counts toward their pause, as a report from the duel page does.
+    if (members.public_duel) await countReport(env, owner, target, report.created_at);
+    return receipt;
   }
   throw new ApiError(404, "not_found");
 }

@@ -23,7 +23,8 @@ import { lookText, type Look } from "../pollen/catalog";
  * rows they already read (routes.ts pairOf). Kept only when not the default.
  */
 export type PartyInvite = { from: string; at: number };
-export type DuelRef = { duel_id: string; board: string; at: number };
+/** `public`: a public duel (duels/public.ts), so a name change reaches only the boards holding those. */
+export type DuelRef = { duel_id: string; board: string; at: number; public?: true };
 export type PartyState = {
   schema_version: 1; partner: string | null; since: number;
   invites_in: PartyInvite[]; invite_out: { to: string; at: number } | null; duels: DuelRef[];

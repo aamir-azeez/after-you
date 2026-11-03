@@ -29,6 +29,8 @@ export type TurnFacts = {
   boost_percent: number;
   /** Only on a friend duel's turn (duels/room-link.ts), which pays the duel premium; absent everywhere else, as on facts frozen before duels. */
   duel?: true;
+  /** Only beside `duel`, in a public duel's room (duels/room-link.ts duelHeld): the premium is held until the duel ends. */
+  duel_held?: true;
 };
 
 const [FACTS, MEMBERS] = POLLEN_ROOM_TABLES;
@@ -43,9 +45,9 @@ const KEYS = ["schema_version", "room_id", "recording_hash", "turn_id", "player_
 /** The exact shape, as the Player checks facts that reach it. */
 export function validTurnFacts(value: unknown): value is TurnFacts {
   if (!isObject(value)) return false;
-  const duel = Object.hasOwn(value, "duel");
-  if (duel && value.duel !== true) return false;
-  if (Object.keys(value).length !== KEYS.length + Number(duel) || !KEYS.every(key => Object.hasOwn(value, key))) return false;
+  const duel = Object.hasOwn(value, "duel"), held = Object.hasOwn(value, "duel_held");
+  if (duel && value.duel !== true || held && (value.duel_held !== true || !duel)) return false;
+  if (Object.keys(value).length !== KEYS.length + Number(duel) + Number(held) || !KEYS.every(key => Object.hasOwn(value, key))) return false;
   return value.schema_version === 1 && typeof value.room_id === "string" && ID_PATTERN.test(value.room_id) && typeof value.recording_hash === "string" && HASH_PATTERN.test(value.recording_hash) &&
     typeof value.turn_id === "string" && /^t[0-9]{1,2}-[0-9]{1,2}-[ab]$/.test(value.turn_id) && typeof value.player_id === "string" && ID_PATTERN.test(value.player_id) &&
     count(value.accepted_at, 1) && typeof value.week === "string" && ISO_WEEK_PATTERN.test(value.week) && value.week === isoWeek(value.accepted_at) &&
@@ -102,6 +104,8 @@ export type AcceptedTurn = {
   premium: boolean; hard: boolean; complete: boolean; accepted_at: number;
   /** A friend duel's room. */
   duel?: boolean;
+  /** A public duel's room, whose premium is held. */
+  duel_held?: boolean;
 };
 
 /**
@@ -114,7 +118,7 @@ export function recordTurnFacts(storage: DurableObjectStorage, turn: AcceptedTur
   const facts: TurnFacts = { schema_version: 1, room_id: turn.room_id, recording_hash: turn.recording_hash, turn_id: turn.turn_id, player_id: turn.player,
     accepted_at: turn.accepted_at, week: isoWeek(turn.accepted_at), level_id: turn.level_id, stage_id: turn.stage_id, role: turn.role,
     ticks: turn.ticks, tries: turn.tries ?? null, premium: turn.premium, hard: turn.hard, host: turn.host, together: turn.partner !== null, complete: turn.complete,
-    subscriber, partner_subscriber, boost_percent: boostPercent(Number(subscriber) + Number(partner_subscriber)), ...(turn.duel ? { duel: true as const } : {}) };
+    subscriber, partner_subscriber, boost_percent: boostPercent(Number(subscriber) + Number(partner_subscriber)), ...(turn.duel ? { duel: true as const } : {}), ...(turn.duel && turn.duel_held ? { duel_held: true as const } : {}) };
   create(storage, FACTS);
   storage.sql.exec("INSERT OR IGNORE INTO pollen_turn_facts VALUES (?,?,?,?)", facts.recording_hash, facts.player_id, facts.accepted_at, JSON.stringify(facts));
   storage.sql.exec("DELETE FROM pollen_turn_facts WHERE recording_hash IN (SELECT recording_hash FROM pollen_turn_facts ORDER BY accepted_at DESC, recording_hash LIMIT -1 OFFSET ?)", MAX_FACTS);

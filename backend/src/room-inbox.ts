@@ -6,6 +6,7 @@ import { departed, isMember } from "./room-departure";
 import { chapter } from "./v2/chapters";
 import { partnerFace, shownFace, type Face } from "./v2/end-reactions";
 import { partnerNameField, shownName } from "./display-names";
+import { duelLink, duelMasks } from "./duels/room-link";
 
 export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_their_turn" | "completed" | "unavailable" | "closed";
 /** Clients from 0.5.2 send this header and understand the "closed" status; older clients validate the status list exactly. */
@@ -94,7 +95,9 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     membership: { host_id: row.host_id, guest_id: row.guest_id, you_are_host: row.host_id === player },
     status: turnStatus(player, row.guest_id, active), revision: row.revision,
     remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at, ...partnerLeft(storage, row, player), ...partnerReaction(storage, row, player),
-    ...(names ? partnerNameField(storage, player === row.host_id ? row.guest_id : row.host_id) : {})
+    ...(names ? partnerNameField(storage, player === row.host_id ? row.guest_id : row.host_id) : {}),
+    // A public duel's room: the Worker shows the partner's stand-in, never their id (duels/public-mask.ts).
+    ...duelMasks(duelLink(storage), row)
   });
 }
 

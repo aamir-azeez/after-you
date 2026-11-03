@@ -1,5 +1,6 @@
 import { canonicalJson, digest, equalHash, fail, HASH_PATTERN, IDEMPOTENCY_PATTERN, integer, object, ok, text, type Outcome } from "../protocol";
 import { exact } from "./protocol";
+import { duelLink } from "../duels/room-link";
 import { checkPhoto, type CheckedPhoto } from "./photo-image";
 
 export const MAX_PHOTOS = 32, MAX_PHOTO_OPERATIONS = 256;
@@ -49,6 +50,8 @@ export function getPhotoOperation(storage: DurableObjectStorage, room: Room | nu
 /** Caller wraps this synchronous function in transactionSync after image validation. */
 export function mutatePhoto(storage: DurableObjectStorage, room: Room | null, player: string, input: ParsedPhotoMutation): Outcome<PhotoMutation> {
   if (!member(room)) return fail(404, "room_not_found");
+  // Players in a public duel may not know each other: its rooms take no photos (duels/public.ts).
+  if (duelLink(storage)?.public) return fail(403, "public_duel_photos_off");
   const turn = storage.sql.exec<{ player_id: string; data: string }>("SELECT player_id,data FROM turns WHERE turn_id=?", input.turn_id).toArray()[0];
   if (!turn || turn.player_id !== player) return fail(404, "turn_not_found");
   if (JSON.parse(turn.data).recording_hash !== input.recording_hash) return fail(409, "photo_recording_mismatch");

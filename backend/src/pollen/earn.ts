@@ -29,6 +29,8 @@ export type TurnPrice = {
   /** A friend duel's bank turn only: the duel premium's percent and its Pollen (see price). */
   duel_percent?: number;
   duel?: number;
+  /** A public duel's bank turn: the same premium, held until the duel ends (pollen/duel-pay.ts creditDuelExtra), so left out of `total` and of `duel`. */
+  duel_held?: number;
   total: number;
 };
 export type ClearPrice = { amount: number; boost_percent: number; boost: number; total: number };
@@ -50,7 +52,7 @@ export function bloomEligible(facts: Pick<TurnFacts, "level_id" | "premium">, ra
 }
 
 export type PriceInput = {
-  facts: Pick<TurnFacts, "level_id" | "stage_id" | "role" | "ticks" | "tries" | "premium" | "hard" | "host" | "subscriber" | "boost_percent" | "duel">;
+  facts: Pick<TurnFacts, "level_id" | "stage_id" | "role" | "ticks" | "tries" | "premium" | "hard" | "host" | "subscriber" | "boost_percent" | "duel" | "duel_held">;
   /** A bank turn (full rate) or an after-bank one. */
   bank: boolean;
   /** For an after-bank turn: how many after-bank turns came before it in its week. */
@@ -85,6 +87,8 @@ export function price(input: PriceInput, rates: Rates = RATES): TurnPrice {
   // The duel premium and the room boost are one percentage of the unboosted amount, rounded once;
   // the duel line is that less the boost line, so the two lines always add up to it.
   const duel = halfUp(amount * (facts.boost_percent + rates.duels.turn_percent), 100) - boost;
+  // A public duel's premium is held: priced the same, paid only when the duel ends.
+  if (facts.duel_held) return { ...priced, duel_percent: rates.duels.turn_percent, duel_held: duel };
   return { ...priced, duel_percent: rates.duels.turn_percent, duel, total: priced.total + duel };
 }
 

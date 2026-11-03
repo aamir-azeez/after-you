@@ -5,6 +5,7 @@ import { fail, type Outcome } from "../protocol";
 import { applyParty, blankParty, noteLook, parsedParty, prune, type PartyAnswer, type PartyOp, type PartyState } from "../duels/party";
 import type { Look } from "../pollen/catalog";
 import { MemoryBudget } from "../limits";
+import { MAX_BLOCKED_BY, PUBLIC_REPORTS_TO_PAUSE, PUBLIC_REPORT_WINDOW_MS } from "../duels/rules";
 
 /**
  * One player's leaderboard settings, one Durable Object per player id: whether
@@ -26,7 +27,18 @@ import { MemoryBudget } from "../limits";
  * moves the revision on, so account erasure (members.ts) never skips a
  * player whose only trace is a duel.
  */
-export type MemberState = { schema_version: 1; show_name: boolean; boards: string[]; revision: number; erased?: true };
+/**
+ * Public duels (duels/public.ts) keep four optional keys here, absent until used, so a row nobody used for them reads
+ * byte for byte as before: `public_duels` (the player's switch, off by default), `blocked_by` (players who blocked
+ * this one, so their duels never list for them), `public_reports` (reports from public duels, newest last, inside
+ * PUBLIC_REPORT_WINDOW_MS) and `public_paused` (set at PUBLIC_REPORTS_TO_PAUSE different reporters; only an operator
+ * clears it). `duel_blocks`: players this one blocked from a public duel without knowing their id; the phone sees
+ * each only by its handle and label (duels/public-routes.ts), the SafetyProfile holds the block itself.
+ */
+export type PublicReport = { from: string; at: number };
+export type DuelBlock = { handle: string; id: string; label: string | null; at: number };
+export type MemberState = { schema_version: 1; show_name: boolean; boards: string[]; revision: number; erased?: true;
+  public_duels?: true; blocked_by?: string[]; public_reports?: PublicReport[]; public_paused?: true; duel_blocks?: DuelBlock[] };
 
 /** A repeated name choice tells the boards again at most this often (LeaderboardMember.touch). */
 export const MEMBER_REPEAT_GAP_MS = 10 * 60_000;
@@ -83,6 +95,82 @@ export class LeaderboardMember extends DurableObject<Env> {
       return state;
     });
   }
+  /** The public duels switch. Turning it on is the caller's to allow (the community rules, duels/public-routes.ts). */
+  setPublicDuels(on: boolean): MemberState {
+    return this.change(state => {
+      if (!!state.public_duels === on) return false;
+      if (on) state.public_duels = true; else delete state.public_duels;
+      return true;
+    });
+  }
+  /** `peer` blocked this player (or took it back): the public list hides their duels from this player. */
+  noteBlockedBy(peer: string, blocked: boolean): MemberState {
+    return this.change(state => {
+      const list = state.blocked_by ?? [], has = list.includes(peer);
+      if (has === blocked) return false;
+      const next = blocked ? [...list, peer].slice(-MAX_BLOCKED_BY) : list.filter(id => id !== peer);
+      if (next.length) state.blocked_by = next; else delete state.blocked_by;
+      return true;
+    });
+  }
+  /**
+   * A report from a public duel (duels/public-routes.ts). Reports older than the window go; one reporter counts once.
+   * Answers the state and whether this report paused the player.
+   */
+  publicReport(from: string, now: number): { state: MemberState; paused_now: boolean } {
+    let pausedNow = false;
+    const state = this.change(held => {
+      const recent = (held.public_reports ?? []).filter(item => now - item.at < PUBLIC_REPORT_WINDOW_MS);
+      const fresh = recent.some(item => item.from === from) ? recent : [...recent, { from, at: now }].slice(-PUBLIC_REPORTS_TO_PAUSE * 4);
+      const changed = JSON.stringify(fresh) !== JSON.stringify(held.public_reports ?? []);
+      if (fresh.length) held.public_reports = fresh; else delete held.public_reports;
+      if (!held.public_paused && new Set(fresh.map(item => item.from)).size >= PUBLIC_REPORTS_TO_PAUSE) { held.public_paused = true; pausedNow = true; return true; }
+      return changed;
+    });
+    return { state, paused_now: pausedNow };
+  }
+  /** Keeps a block made from a public duel by its handle (a repeat keeps one). */
+  addDuelBlock(entry: DuelBlock): MemberState {
+    return this.change(state => {
+      if ((state.duel_blocks ?? []).some(item => item.id === entry.id)) return false;
+      state.duel_blocks = [...(state.duel_blocks ?? []), entry].slice(-MAX_BLOCKED_BY);
+      return true;
+    });
+  }
+  /** Forgets a public duel block by its handle; answers the blocked id, or null when there was none. */
+  removeDuelBlock(handle: string): string | null {
+    let id: string | null = null;
+    this.change(state => {
+      const found = (state.duel_blocks ?? []).find(item => item.handle === handle);
+      if (!found) return false;
+      id = found.id;
+      const rest = state.duel_blocks!.filter(item => item.handle !== handle);
+      if (rest.length) state.duel_blocks = rest; else delete state.duel_blocks;
+      return true;
+    });
+    return id;
+  }
+  /** The party row (as partyRead) and these settings, in one request: what the public duel routes need. */
+  publicRead(now: number, look?: Look): { party: PartyState; member: MemberState } {
+    return { party: this.partyRead(now, look), member: this.read() };
+  }
+  /** The operator's clear of a pause; the reports that led to it go too. */
+  clearPublicPause(): MemberState {
+    return this.change(state => {
+      if (!state.public_paused && !state.public_reports) return false;
+      delete state.public_paused;
+      delete state.public_reports;
+      return true;
+    });
+  }
+  /** One change of the row in a transaction, written only when `apply` says it changed; an erased player changes nothing. */
+  private change(apply: (state: MemberState) => boolean): MemberState {
+    return this.ctx.storage.transactionSync(() => {
+      const state = this.read();
+      if (!state.erased && apply(state)) this.write(state);
+      return state;
+    });
+  }
   /** Account erasure: keeps nothing but the mark that the player is gone. */
   forget(): void {
     this.ctx.storage.transactionSync(() => {
@@ -135,4 +223,4 @@ export class LeaderboardMember extends DurableObject<Env> {
 }
 
 // A player who never touched leaderboards reads as the default and stores nothing.
-answerWhileBlank(LeaderboardMember, { read: () => blank(), partyRead: () => blankParty() });
+answerWhileBlank(LeaderboardMember, { read: () => blank(), partyRead: () => blankParty(), publicRead: () => ({ party: blankParty(), member: blank() }), removeDuelBlock: () => null });

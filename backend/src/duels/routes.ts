@@ -1,4 +1,4 @@
-import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, digest, isObject, ok, unwrap, type Outcome } from "../protocol";
+import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, digest, isObject, ok, randomToken, unwrap, type Outcome } from "../protocol";
 import { pooled } from "../room-inbox";
 import { interactionBlocked } from "../safety";
 import { duelPairKeys } from "../leaderboards/platform-rule";
@@ -23,6 +23,7 @@ import { looksOn } from "../pollen/features";
 import { flags } from "../flags";
 import type { Look } from "../pollen/catalog";
 import { servedLook } from "../leaderboards/run-looks";
+import { publicDetail, publicDuelsCapability, publicDuelsOn, publicLobby, routePublicDuels, settlePublic, type PublicSettle } from "./public-routes";
 
 /**
  * The phone's duel routes, all absent (falling through to 404) unless duels
@@ -45,6 +46,7 @@ import { servedLook } from "../leaderboards/run-looks";
  */
 export const DUELS_PREFIX = "/v1/duels";
 export const DUELS_HEADER = "X-AfterYou-Duels";
+const PUBLIC_PREFIX = "/v1/duels/public";
 const BOARD = "([a-z0-9-]{1,48}@[1-9][0-9]{0,3})", DUEL_ID = "([a-f0-9]{32})";
 const DUEL_PATH = new RegExp(`^/v1/duels/${BOARD}/${DUEL_ID}(?:/(accept|decline|leave|sync|their-run|their-run/ack))?$`);
 const PARTY_PATH = new RegExp(`^/v1/duels/party/(${PARTY_ACTIONS.join("|")})$`);
@@ -56,44 +58,47 @@ const GHOSTS_SHOWN = 3;
  * while RACE_GHOST is on (flags.ts): the phone then plays a ghost race's raced run beside each turn, from the run's
  * replay_hash on the race (model.ts Ghost) and the board's replay route. No request or row is added by the flag.
  */
-export function duelsCapability(request: Request, env: Env): { duels_version?: number; race_ghost_version?: number } {
+export function duelsCapability(request: Request, env: Env): { duels_version?: number; race_ghost_version?: number; public_duels_version?: number } {
   if (!duelsOn(env) || request.headers.get(DUELS_HEADER) !== "1") return {};
-  return flags.raceGhost(env) ? { duels_version: 1, race_ghost_version: 1 } : { duels_version: 1 };
+  // Public duels ride the same header (public-routes.ts publicDuelsCapability).
+  return { duels_version: 1, ...(flags.raceGhost(env) ? { race_ghost_version: 1 } : {}), ...publicDuelsCapability(request, env, DUELS_HEADER) };
 }
 
-function fields(input: unknown, keys: string[]): Record<string, unknown> {
+export function fields(input: unknown, keys: string[]): Record<string, unknown> {
   if (!isObject(input) || input.schema_version !== 1 || Object.keys(input).length !== keys.length + 1 || !keys.every(key => Object.hasOwn(input, key))) throw new ApiError(400, "invalid_duel_request");
   return input;
 }
-function playerId(value: unknown): string {
+export function playerId(value: unknown): string {
   if (typeof value !== "string" || !ID_PATTERN.test(value)) throw new ApiError(400, "invalid_duel_request");
   return value;
 }
-function boardOf(value: unknown): string {
+export function boardOf(value: unknown): string {
   const board = knownBoard(value);
   if (!board) throw new ApiError(400, "invalid_duel_request");
   return board;
 }
 /** The chapter row a board key names. */
-function chapterRow(board: string) {
+export function chapterRow(board: string) {
   const row = CHAPTERS.find(item => `${item.adapter.key.level_id}@${item.adapter.key.level_version}` === board);
   if (!row) throw new ApiError(400, "invalid_duel_request");
   return row;
 }
-const party = (env: Env, id: string) => env.LEADERBOARD_MEMBERS.getByName(id);
+export const party = (env: Env, id: string) => env.LEADERBOARD_MEMBERS.getByName(id);
 const board = (env: Env, key: string) => env.LEADERBOARD_BOARDS.getByName(key);
 /**
  * The board's duel calls, typed as the model's own shapes: RPC answers come back as plain
  * structured clones, which TypeScript sees with tuples widened to arrays.
  */
-function duelsAt(env: Env, key: string) {
+export function duelsAt(env: Env, key: string) {
   const stub = board(env, key);
   return {
     /** `reader`: whose read this is; a duel it settles (an expiry, a stall) is news to the others only. */
     read: async (ids: string[], reader?: string) => (await stub.duelRead(ids, reader)) as unknown as Duel[],
     create: async (duel: Duel) => (await stub.duelCreate(duel)) as unknown as Duel | null,
     act: async (id: string, action: DuelAction) => (await stub.duelAct(id, action)) as unknown as Outcome<{ duel: Duel; room?: SideRoom }>,
-    progress: async (id: string, note: ProgressNote, proof?: FinishProof, actor?: string) => (await stub.duelProgress(id, note, proof, actor)) as unknown as Outcome<Duel>
+    progress: async (id: string, note: ProgressNote, proof?: FinishProof, actor?: string) => (await stub.duelProgress(id, note, proof, actor)) as unknown as Outcome<Duel>,
+    /** A player's label or list pause on the public duels named (duels/public-routes.ts). */
+    publicPlayer: (player: string, ids: string[], change: { label?: string | null; hidden?: boolean }) => stub.duelPublicPlayer(player, ids, change)
   };
 }
 
@@ -117,7 +122,7 @@ async function pairOf(env: Env, player: string, now: number, look?: Look): Promi
 }
 
 /** The duels `player`'s pointers name, settled now, read one request per board. */
-async function duelsOf(env: Env, refs: readonly DuelRef[], player: string): Promise<{ duels: Duel[]; missing: string[] }> {
+export async function duelsOf(env: Env, refs: readonly DuelRef[], player: string): Promise<{ duels: Duel[]; missing: string[] }> {
   const byBoard = new Map<string, string[]>();
   for (const ref of refs) byBoard.set(ref.board, [...(byBoard.get(ref.board) ?? []), ref.duel_id]);
   const lists = await pooled([...byBoard], BOARD_CONCURRENCY, async ([key, ids]) => duelsAt(env, key).read(ids, player));
@@ -127,7 +132,7 @@ async function duelsOf(env: Env, refs: readonly DuelRef[], player: string): Prom
 }
 
 /** `read`: the duels the caller just read; those already over lose their pointers first when a list is full (party.ts add_duels). */
-async function addRefs(env: Env, players: readonly string[], ref: DuelRef, now: number, read: readonly Duel[] = []): Promise<void> {
+export async function addRefs(env: Env, players: readonly string[], ref: DuelRef, now: number, read: readonly Duel[] = []): Promise<void> {
   const final = read.filter(isFinal).map(duel => duel.duel_id);
   await pooled([...new Set(players)], BOARD_CONCURRENCY, async id => { await party(env, id).partyApply(id, { kind: "add_duels", refs: [ref], ...(final.length ? { final } : {}) }, now); });
 }
@@ -152,6 +157,8 @@ function opponentWin(duel: Duel, other: Side, decidedMs: number): DuelWin {
  * wallet only while the player's party row has not settled it. Null when nothing is due.
  */
 async function winBonus(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<DuelWinAnswer | null> {
+  // A public duel settles its win with its held extra (public-routes.ts settlePublic).
+  if (duel.public) return null;
   const mine = sideOf(duel, player);
   // Only a win on time pays (POLLEN-RULES.md), its runs passed by the replay check while duel run checks are on (model.ts
   // awaitsCheck), as they finished while off: never one the other pair left or failed.
@@ -185,8 +192,9 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
   const stale = duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS).map(duel => duel.duel_id);
   const shown = duels.filter(duel => !stale.includes(duel.duel_id));
   const settled: string[] = [];
-  // Every won duel is paid before its pointer goes, so a winner who stays away a while still gets it.
-  for (const duel of duels) if (await winBonus(env, player, duel, pair.state.settled)) settled.push(duel.duel_id);
+  // Every won duel is paid before its pointer goes, so a winner who stays away a while still gets it; a public duel's
+  // held extra too, for every player of it, once.
+  for (const duel of duels) if (duel.public ? await settlePublic(env, player, duel, pair.state.settled) : await winBonus(env, player, duel, pair.state.settled)) settled.push(duel.duel_id);
   const ops: PartyOp[] = [];
   if (missing.length || stale.length) ops.push({ kind: "drop_duels", ids: [...missing, ...stale] });
   if (settled.length) ops.push({ kind: "settle_wins", ids: settled });
@@ -197,7 +205,7 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
       ...(shownLooks && pair.partner ? { partner_look: servedLook(pair.looks[1]) } : {}) },
     duels: shown.map(duel => viewFor(duel, player, shownLooks)).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms),
     limits: { friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR },
-    ...hintsField(env)
+    ...hintsField(env), ...await publicLobby(env, player, pair.partner, pair.intact, duels)
   };
 }
 
@@ -390,14 +398,16 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
 async function duelDetail(env: Env, player: string, duel: Duel, now: number): Promise<unknown> {
   const view = viewFor(duel, player, looksOn(env))!;
   const room = duel.sides[sideOf(duel, player) as 0 | 1]!.room;
-  let pay: DuelRoomPay | undefined, bonus: DuelWinAnswer | null = null;
+  let pay: DuelRoomPay | undefined, bonus: DuelWinAnswer | null = null, settledNow: PublicSettle | null = null;
   if (isFinal(duel) && pollenEarning(env)) {
     if (room) pay = await env.PLAYERS.getByName(player).duelRoomPay(room.room_id);
-    bonus = await winBonus(env, player, duel, [], true);
-    if (bonus) await party(env, player).partyApply(player, { kind: "settle_wins", ids: [duel.duel_id] }, now);
+    if (duel.public) { settledNow = await settlePublic(env, player, duel, [], true); bonus = settledNow?.win ?? null; }
+    else bonus = await winBonus(env, player, duel, [], true);
+    if (bonus || settledNow) await party(env, player).partyApply(player, { kind: "settle_wins", ids: [duel.duel_id] }, now);
   }
   const shown = bonus ? { amount: bonus.amount, counted: bonus.counted, ...(bonus.reason ? { reason: bonus.reason } : {}) } : null;
-  return { schema_version: 1, duel: view, ...(pay ? { pay } : {}), ...(shown && duel.kind === "friend" ? { win_bonus: shown } : {}), ...(shown?.counted && duel.kind === "ghost" ? { ghost_bonus: shown } : {}), ...hintsField(env) };
+  return { schema_version: 1, duel: view, ...(pay ? { pay } : {}), ...(shown && duel.kind === "friend" ? { win_bonus: shown } : {}), ...(shown?.counted && duel.kind === "ghost" ? { ghost_bonus: shown } : {}),
+    ...await publicDetail(env, player, duel, settledNow), ...hintsField(env) };
 }
 
 /**
@@ -407,9 +417,12 @@ async function duelDetail(env: Env, player: string, duel: Duel, now: number): Pr
 export async function routeDuels(request: Request, path: string, player: string, env: Env, look?: Look): Promise<unknown | null> {
   if ((path !== DUELS_PREFIX && !path.startsWith(DUELS_PREFIX + "/")) || !duelsOn(env)) return null;
   const now = Date.now();
+  // PUT is only the public duels switch.
+  if (request.method === "PUT" && path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) return routePublicDuels(request, path, player, env, now, await boundedJson(request, 1024), look);
   if (request.method === "GET") {
     if (path === DUELS_PREFIX) return lobby(env, player, now, look);
     if (path === DUELS_PREFIX + "/ghosts") return ghosts(env);
+    if (path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) { const answer = await routePublicDuels(request, path, player, env, now, null, look); if (answer !== null) return answer; }
     const match = DUEL_PATH.exec(path);
     if (match && !match[3]) return duelAction(env, player, boardOf(match[1]), match[2], undefined, null, now);
     if (match?.[3] === "their-run") return theirRun(env, player, boardOf(match[1]), match[2], now);
@@ -417,6 +430,8 @@ export async function routeDuels(request: Request, path: string, player: string,
   }
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const input = await boundedJson(request, 2048);
+  // Public duels (public-routes.ts), absent while PUBLIC_DUELS is off.
+  if (path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) { const answer = await routePublicDuels(request, path, player, env, now, input, look); if (answer !== null) return answer; }
   const partyMatch = PARTY_PATH.exec(path);
   if (partyMatch) return partyRoute(env, partyMatch[1], player, input, now, look);
   if (path === DUELS_PREFIX + "/challenge") return challenge(env, player, input, now, look);
@@ -489,10 +504,16 @@ export async function prepareDuelRoom(env: Env, player: string, ask: DuelRoomAsk
   const c = duel.chapter;
   if (c.level_id !== key.level_id || c.level_version !== key.level_version || c.definition_hash !== key.definition_hash) throw new ApiError(422, "duel_chapter_mismatch");
   const members = duel.sides[side as 0 | 1]!.members;
-  if (members.some(id => id === null)) throw new ApiError(409, "duel_not_running");
+  // A public duel's side may still have an open seat: its room starts with the players seated now (public-rooms.ts).
+  if (!duel.public && members.some(id => id === null)) throw new ApiError(409, "duel_not_running");
+  const seatedHere = members.filter((id): id is string => id !== null);
   // A friend duel's room knows the other pair, who may watch its run once it is over (their-run.ts).
   const others = duel.kind === "friend" ? ((duel.sides[1 - side]?.members ?? []) as (string | null)[]).filter((id): id is string => id !== null) : [];
-  return { schema_version: 1, duel_id: duel.duel_id, board: duel.board, kind: duel.kind, side: side as 0 | 1, members: members as string[], ...(duel.kind === "friend" ? { others } : {}) };
+  // Strangers may share a public duel's room, so its replies show stand-ins for the partner (public-mask.ts); a party
+  // that joined together knows each other and keeps ids.
+  const strangers = !!duel.public && !(seatedHere.length === 2 && duel.known.includes(knownKey(seatedHere[0], seatedHere[1])));
+  return { schema_version: 1, duel_id: duel.duel_id, board: duel.board, kind: duel.kind, side: side as 0 | 1, members: seatedHere, ...(duel.kind === "friend" ? { others } : {}),
+    ...(duel.public ? { public: true as const } : {}), ...(strangers ? { masks: [randomToken(16), randomToken(16)] } : {}) };
 }
 
 /**

@@ -34,8 +34,8 @@ const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;
 export function looksMemberRoute(request: Request, path: string, env: ServerVars): boolean {
   return request.method === "POST" && (path === "/v2/rooms" || path === "/v2/rooms/join" || TURN_ROUTE.test(path)) && looksOn(env);
 }
-const DUEL_LOOK_ROUTE = new RegExp(`^/v1/duels(?:/party/(?:${PARTY_ACTIONS.join("|")})|/challenge|/ghost)?$`);
-/** The duel routes that keep the caller's look in their party row while looks are on: the lobby, party actions, a challenge and a race. */
+const DUEL_LOOK_ROUTE = new RegExp(`^/v1/duels(?:/party/(?:${PARTY_ACTIONS.join("|")})|/challenge|/ghost|/public|/public/[a-z0-9-]{1,48}@[1-9][0-9]{0,3}/[a-f0-9]{32}/join)?$`);
+/** The duel routes that keep the caller's look in their party row while looks are on: the lobby, party actions, a challenge, a race, and posting or joining a public duel. */
 export function looksDuelRoute(request: Request, path: string, env: ServerVars): boolean {
   return DUEL_LOOK_ROUTE.test(path) && (path === "/v1/duels" ? request.method === "GET" : request.method === "POST") && looksOn(env);
 }

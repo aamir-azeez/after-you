@@ -20,13 +20,25 @@ import { applyLedger, ledgerLines, walletBalance, type LedgerEntry } from "./wal
  *
  * The duel's pay: what the player's turns in the duel's room paid, from their turn claims, split
  * the way the result card shows it.
+ *
+ * The held extra (public duels, duels/public.ts): a public duel room's bank turns price the duel premium as
+ * `duel_held`, left out of the turn's total and the balance (pollen/earn.ts price). When the duel is final, each
+ * player's read pays the sum of their held turns in their room once, as the ledger line `duelextra:<duel_id>`, or 0
+ * with the reason when they forfeit it (a leave, the stop that stalled their side, nobody joined). Like a win, it is
+ * refused once the duel ended more than the turn claim window ago, and pruned with duel wins; held turn claims are
+ * kept until MAX_PUBLIC_DUEL_MS has passed, so they are always there to be summed (wallet.ts prune).
  */
 /** `opponent`: the opposing pair's key; `opponent_pair`: its id key too when `opponent` is its account key (leaderboards/pair-accounts.ts). */
 export type DuelWin = { duel_id: string; opponent: string; decided_ms: number; opponent_pair?: string };
 export type GhostWin = { duel_id: string; board: string };
 export type BonusReason = "weekly_cap" | "same_pair" | "board_paid";
 export type DuelWinAnswer = { amount: number; counted: boolean; reason?: BonusReason; balance: number };
-export type DuelRoomPay = { turns: number; plain: number; blooms: number; duel: number; duel_percent: number; boost: number; boost_percent: number; total: number };
+/** `held`: the duel premium the turns hold for the end of a public duel (absent from `total`). */
+export type DuelRoomPay = { turns: number; plain: number; blooms: number; duel: number; duel_percent: number; boost: number; boost_percent: number; total: number; held: number };
+/** A public duel's held extra for one player: `paid` false with the reason when forfeited (duels/public.ts heldState). */
+export type DuelExtra = { duel_id: string; room_id: string | null; decided_ms: number; paid: boolean; reason?: string };
+export type DuelExtraAnswer = { amount: number; held: number; paid: boolean; reason?: string; balance: number };
+const EXTRA_PREFIX = "duelextra:";
 
 const WIN_PREFIX = "duelwin:";
 const GHOST_PREFIX = "ghostwin:";
@@ -95,13 +107,35 @@ function samePairKeys(details: readonly Record<string, unknown>[], start: readon
   return keys;
 }
 
+/** A public duel's held extra, once per player per duel (EXTRA_PREFIX). A repeat answers the line as written. */
+export function creditDuelExtra(storage: DurableObjectStorage, extra: DuelExtra, now: number, active: () => boolean, rates: Rates = RATES): Outcome<DuelExtraAnswer> {
+  const key = EXTRA_PREFIX + extra.duel_id;
+  return storage.transactionSync((): Outcome<DuelExtraAnswer> => {
+    if (!active()) return fail(404, "identity_absent");
+    const prior = ledgerLines(storage, key, 1).find(line => line.key === key);
+    if (prior) return ok(extraAnswer(prior.amount, prior.detail, walletBalance(storage, now, rates)));
+    if (now - extra.decided_ms > rates.claims.turn_claim_days * DAY_MS) return fail(410, "duel_extra_expired");
+    const held = extra.room_id ? duelRoomPay(storage, extra.room_id).held : 0;
+    const amount = extra.paid ? held : 0;
+    // Nothing held writes nothing: a player who never took a duel turn here has no line to keep.
+    if (held === 0) return ok(extraAnswer(0, { held: 0, ...(extra.paid ? {} : { reason: extra.reason }) }, walletBalance(storage, now, rates)));
+    applyLedger(storage, [{ key, kind: "duelextra", amount, detail: { duel_id: extra.duel_id, held, ...(extra.paid ? {} : { reason: extra.reason ?? "forfeit" }) } }], now, rates);
+    return ok(extraAnswer(amount, { held, ...(extra.paid ? {} : { reason: extra.reason ?? "forfeit" }) }, walletBalance(storage, now, rates)));
+  });
+}
+
+function extraAnswer(amount: number, detail: Record<string, unknown>, balance: number): DuelExtraAnswer {
+  const held = typeof detail.held === "number" ? detail.held : amount;
+  return { amount, held, paid: detail.reason === undefined, ...(typeof detail.reason === "string" ? { reason: detail.reason } : {}), balance };
+}
+
 function answer(amount: number, reason: unknown, balance: number): DuelWinAnswer {
   return { amount, counted: amount > 0, ...(REASONS.includes(reason) ? { reason: reason as BonusReason } : {}), balance };
 }
 
 /** What the player's turns in `roomId` paid, read from their turn claims. Reads only. */
 export function duelRoomPay(storage: DurableObjectStorage, roomId: string): DuelRoomPay {
-  const pay: DuelRoomPay = { turns: 0, plain: 0, blooms: 0, duel: 0, duel_percent: 0, boost: 0, boost_percent: 0, total: 0 };
+  const pay: DuelRoomPay = { turns: 0, plain: 0, blooms: 0, duel: 0, duel_percent: 0, boost: 0, boost_percent: 0, total: 0, held: 0 };
   let rows: { data: string }[] = [];
   try {
     const prefix = `turn:${roomId}:`, end = `turn:${roomId};`;
@@ -114,6 +148,7 @@ export function duelRoomPay(storage: DurableObjectStorage, roomId: string): Duel
     pay.plain += turn.amount ?? 0;
     pay.blooms += turn.bloom_extra ?? 0;
     pay.duel += turn.duel ?? 0;
+    pay.held += turn.duel_held ?? 0;
     // The premium's percent as the turns were priced (pollen/earn.ts price, rates.duels.turn_percent).
     pay.duel_percent = Math.max(pay.duel_percent, turn.duel_percent ?? 0);
     pay.boost += turn.boost ?? 0;

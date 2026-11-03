@@ -1,4 +1,21 @@
+import { flags, type ServerVars } from "./flags";
+
 export const TERMS_VERSION = "2026-09-16";
+/**
+ * The community rules with public duels (draft waiting for the owner's OK: claude-20261011/public-duels/
+ * COMMUNITY-RULES-DRAFT.md), in force while public duels are on: the version changes, so every player accepts again.
+ */
+export const PUBLIC_TERMS_VERSION = "2026-11-03";
+/** Every version a stored acceptance may name, oldest first. */
+export const KNOWN_TERMS_VERSIONS: readonly string[] = [TERMS_VERSION, PUBLIC_TERMS_VERSION];
+/** The rules in force: the public duel rules while PUBLIC_DUELS is on beside duels, else today's. */
+export function termsVersion(env: ServerVars): string {
+  return flags.publicDuels(env) && flags.duels(env) && flags.leaderboards(env) ? PUBLIC_TERMS_VERSION : TERMS_VERSION;
+}
+/** Whether an acceptance of `stored` covers `current`: the same rules or newer ones (a flag turned off again asks nobody twice). */
+export function termsCovered(stored: string | null, current: string): boolean {
+  return stored !== null && KNOWN_TERMS_VERSIONS.indexOf(stored) >= KNOWN_TERMS_VERSIONS.indexOf(current);
+}
 export const SUPPORT_EMAIL = "hackathon-shipaton@aamirazeez.com";
 /** Where waitlist removal requests go; the waitlist emails' reply-to too. */
 export const WAITLIST_CONTACT = "afteryou-reply@aamirazeez.com";
@@ -32,13 +49,21 @@ const pages: Record<string, string> = {
 <p>If the app is installed, use Settings → Account &amp; recovery → Delete online identity → Delete identity and shared rooms. The iPhone app has the same steps.</p><p>Deletion removes your online identity, shared rooms and their server recordings/replays/photos for both players, temporary photo transfers and alert registrations. If you left a finished room before deleting, your partner keeps that room's replay, which includes your turns, your old player ID and the details of your turns' Pollen. It requests removal of your RevenueCat customer information. This cannot be undone using the old recovery code. It does not refund a content purchase or erase Google Play's or the App Store's transaction records.</p>
 <p>On the deleting device, the app clears local photo data and credentials after confirmation and offers retry if cleanup fails. Solo progress remains. We cannot remotely erase another person's downloaded photos, screenshots or local replays, or data on an offline device. Limited safety reports and legally required provider records may remain as described in the <a href="/privacy">Privacy Policy</a>.</p>
 <p>We will respond with verification steps and the expected completion time. If you have lost all proof of ownership, contact us so we can explain what is possible without risking another player's account.</p>`),
-  "/community-rules": shell("After You Community Rules", `<p>Version ${TERMS_VERSION}. After You connects two invited players. You must accept these rules before uploading shared photos.</p>
-<ul><li>Share only images you have permission to share and want the invited player to receive.</li><li>No sexual content, child exploitation, threats, harassment, hateful content, illegal content, or disclosure of another person's private information without permission.</li><li>Display names follow the same rules: no slurs, threats, sexual content or someone else's private information.</li><li>Do not misuse reporting, invitations or account recovery to harm another person.</li></ul>
-<p>Use Report in the app to submit a fixed reason and the room/photo reference for review. Reports do not automatically include a copy of your image. We may need you to provide evidence voluntarily if the server's photo has already been removed. Use Block to stop further room interaction and photo delivery with that identity; copies already saved on devices cannot be recalled. You can also contact <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.</p><p>We may remove content or restrict access when we find a violation. We can remove a display name that breaks these rules, and that identity then cannot choose a new name for a week. You can always give a friend your own nickname on your phone, and Block stops a room partner's name reaching you through that room. There is no public photo feed or free-text chat. Do not share an invitation with someone you do not want to play with.</p>`)
+  "/community-rules": rulesPage(false)
 };
+/** The public duel rules page, served only while termsVersion says they are in force. */
+const PUBLIC_RULES = rulesPage(true);
 
-export function publicPolicy(request: Request): Response | null {
-  const page = pages[new URL(request.url).pathname]; if (!page) return null;
+/** The community rules: today's, or with public duels (`open`), whose added text waits for the owner's OK. */
+function rulesPage(open: boolean): string {
+  return shell("After You Community Rules", `<p>Version ${open ? PUBLIC_TERMS_VERSION : TERMS_VERSION}. ${open ? "After You connects two invited players, and players who turn on public duels with people they don't know. You must accept these rules before uploading shared photos or turning on public duels." : "After You connects two invited players. You must accept these rules before uploading shared photos."}</p>
+<ul><li>Share only images you have permission to share and want the invited player to receive.</li><li>No sexual content, child exploitation, threats, harassment, hateful content, illegal content, or disclosure of another person's private information without permission.</li><li>Display names follow the same rules: no slurs, threats, sexual content or someone else's private information.</li>${open ? "<li>In public duels, be kind. The game's faces are the only messages there, so use them to cheer people on, never to pile on.</li>" : ""}<li>Do not misuse reporting, invitations or account recovery to harm another person.</li></ul>
+<p>Use Report in the app to submit a fixed reason and the room/photo reference for review. Reports do not automatically include a copy of your image. We may need you to provide evidence voluntarily if the server's photo has already been removed. Use Block to stop further room interaction and photo delivery with that identity; copies already saved on devices cannot be recalled. You can also contact <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.</p>${open ? "<p>Public duels are off until you turn them on in Settings. Players you don't know see your pip, your pair's steps and time, and your name only if you turn on Show my name. Tap a player's name on the duel page to report or block them. Once you block someone, the two of you are never put in a duel together again. If 3 different players report someone within 7 days, that player can't post or join public duels until we've looked at the reports.</p>" : ""}<p>We may remove content or restrict access when we find a violation. We can remove a display name that breaks these rules, and that identity then cannot choose a new name for a week. You can always give a friend your own nickname on your phone, and Block stops a room partner's name reaching you through that room. There is no public photo feed or free-text chat${open ? ", and public duel rooms take no photos" : ""}. Do not share an invitation with someone you do not want to play with.</p>`);
+}
+
+export function publicPolicy(request: Request, env: ServerVars = {}): Response | null {
+  const path = new URL(request.url).pathname;
+  const page = path === "/community-rules" && termsVersion(env) === PUBLIC_TERMS_VERSION ? PUBLIC_RULES : pages[path]; if (!page) return null;
   if (!["GET", "HEAD"].includes(request.method)) return new Response(null, { status: 405, headers: { Allow: "GET, HEAD" } });
   return new Response(request.method === "HEAD" ? null : page, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" } });
 }

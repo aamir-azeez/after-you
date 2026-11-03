@@ -1,5 +1,6 @@
 import { ID_PATTERN } from "../protocol";
 import { DUEL_ROOM_TABLES, isLazyTable } from "../storage-schema";
+import type { DuelMasks } from "./public-mask";
 
 /**
  * The duel a room plays for, kept in the room itself (storage-schema.ts
@@ -13,8 +14,14 @@ import { DUEL_ROOM_TABLES, isLazyTable } from "../storage-schema";
 /**
  * `done`: the room has finished its run once; turns after that (a redo) are ordinary turns and pay no duel premium.
  * `others`: in a friend duel, the other pair's players still in it when the room was made, who may watch this room's run (duels/their-run.ts).
+ * `public`: a public duel's room (duels/public.ts). Its side may hold one player when the room is made; the other joins
+ * once the board says they hold the seat (admitToDuelLink). Its turns hold the duel extra until the duel ends
+ * (pollen/turn-facts.ts duel_held).
+ * `masks`: only in a public duel's room whose members may be strangers (all but a party that joined together): the
+ * stand-ins a phone sees for the other member (the host's, then the guest's), random id-shaped values made with the
+ * link, never a player's id (duels/public-mask.ts).
  */
-export type DuelLink = { schema_version: 1; duel_id: string; board: string; kind: "friend" | "ghost"; side: 0 | 1; members: string[]; done?: true; others?: string[] };
+export type DuelLink = { schema_version: 1; duel_id: string; board: string; kind: "friend" | "ghost"; side: 0 | 1; members: string[]; done?: true; others?: string[]; public?: true; masks?: string[] };
 const [TABLE] = DUEL_ROOM_TABLES;
 const DUEL_ID = /^[a-f0-9]{32}$/;
 const BOARD = /^[a-z0-9-]{1,48}@[1-9][0-9]{0,3}$/;
@@ -24,9 +31,11 @@ export function validDuelLink(value: unknown): value is DuelLink {
   const keys = typeof value === "object" && value !== null ? Object.keys(value).length : 0;
   const others = link?.others;
   if (others !== undefined && (!Array.isArray(others) || others.length > 2 || link.kind !== "friend" || !others.every(id => typeof id === "string" && ID_PATTERN.test(id) && !link.members?.includes(id)) || new Set(others).size !== others.length)) return false;
-  return keys === 6 + Number(link?.done === true) + Number(others !== undefined) && link.schema_version === 1 && typeof link.duel_id === "string" && DUEL_ID.test(link.duel_id) &&
+  const open = link?.public === true, masks = link?.masks;
+  if (open && link.kind !== "friend" || masks !== undefined && !(open && Array.isArray(masks) && masks.length === 2 && masks.every(id => typeof id === "string" && ID_PATTERN.test(id) && !link.members?.includes(id)) && masks[0] !== masks[1])) return false;
+  return keys === 6 + Number(link?.done === true) + Number(others !== undefined) + Number(open) + Number(masks !== undefined) && link.schema_version === 1 && typeof link.duel_id === "string" && DUEL_ID.test(link.duel_id) &&
     typeof link.board === "string" && BOARD.test(link.board) && (link.kind === "friend" || link.kind === "ghost") && (link.side === 0 || link.side === 1) &&
-    Array.isArray(link.members) && link.members.length === 2 && link.members.every(id => typeof id === "string" && ID_PATTERN.test(id)) && link.members[0] !== link.members[1];
+    Array.isArray(link.members) && (link.members.length === 2 || open && link.members.length === 1) && link.members.every(id => typeof id === "string" && ID_PATTERN.test(id)) && link.members[0] !== link.members[1];
 }
 
 /** The answer per room instance; a write or clear forgets it. */
@@ -65,6 +74,29 @@ export function markDuelDone(storage: DurableObjectStorage): void {
 /** Whether a turn in this room pays the friend duel premium: a friend duel's room until its run first finished. */
 export function duelPremium(link: DuelLink | null): boolean {
   return link?.kind === "friend" && !link.done;
+}
+
+/** Whether this room's duel premium is held until the duel ends (a public duel's room, pollen/duel-pay.ts creditDuelExtra). */
+export function duelHeld(link: DuelLink | null): boolean {
+  return duelPremium(link) && link?.public === true;
+}
+
+/** Inside the join transaction: a public duel side's second player, whom its board just seated (RoomV2.join). */
+export function admitToDuelLink(storage: DurableObjectStorage, player: string): void {
+  const link = duelLink(storage);
+  if (!link?.public || link.members.includes(player) || link.members.length >= 2) return;
+  storage.sql.exec("UPDATE duel_link SET data=? WHERE id=1", JSON.stringify({ ...link, members: [...link.members, player] }));
+  memo.delete(storage);
+}
+
+/** Whether a join must first ask the board: a public duel side's seat this player does not hold here yet. */
+export function needsAdmission(link: DuelLink | null, player: string): boolean {
+  return link?.public === true && link.members.length < 2 && !link.members.includes(player);
+}
+
+/** The masks a public duel room's replies carry for the Worker (duels/public-mask.ts), or none. */
+export function duelMasks(link: DuelLink | null, state: { host_id: string; guest_id: string | null }): { duel_masks?: DuelMasks } {
+  return link?.masks ? { duel_masks: { host: link.masks[0], guest: link.masks[1], host_id: state.host_id, guest_id: state.guest_id } } : {};
 }
 
 /** Whether a retried create names the same duel as the room holds (both null for an ordinary room). */

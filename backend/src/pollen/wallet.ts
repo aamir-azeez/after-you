@@ -3,6 +3,7 @@ import type { ServerVars } from "../flags";
 import { POLLEN_PLAYER_TABLES, POLLEN_WALLET_TABLES, isLazyTable } from "../storage-schema";
 import { DAY_MS, RATES, chapterTier, tailLength, type Rates } from "./rates";
 import { weekIndex } from "./week";
+import { MAX_PUBLIC_DUEL_MS } from "../duels/rules";
 import { bloomEligible, boostPercent, clearPrice, price, type ClearPrice, type TurnPrice } from "./earn";
 import { bloomRoll } from "./blooms";
 import { itemBloomRoll, resolveItemBloom, type ItemBloom, type ItemDrops } from "./item-blooms";
@@ -24,6 +25,7 @@ import { refId, refStore } from "./claims";
  *     hardclear:<level_id>              a chapter's first Hard clear together (kept); once every chapter
  *                                       Every Hard asks for has one, the player earns it (earned.ts)
  *     duelwin:<duel_id>                 a friend duel's win bonus, 0 when past its weekly limits (duel-pay.ts; pruned with turns)
+ *     duelextra:<duel_id>               a public duel's held extra, paid at its end, 0 when forfeited (duel-pay.ts; pruned with duel wins)
  *     ghostwin:<board>                  the first win over the developers' ghost on a board (duel-pay.ts; kept)
  *     grant:<anchor>:<n>, grant:lifetime, grantrefund:<anchor>:<n>
  *                                       the monthly grant and its refunds (grant-settle.ts; kept)
@@ -164,7 +166,9 @@ function save(storage: DurableObjectStorage, wallet: WalletState, now: number, r
 function prune(storage: DurableObjectStorage, wallet: WalletState, now: number, rates: Rates = RATES): void {
   const day = Math.floor(now / DAY_MS);
   if (wallet.pruned_day === day) return;
-  storage.sql.exec("DELETE FROM pollen_claims WHERE kind IN ('turn','duelwin') AND created_at<?", now - rates.claims.turn_prune_days * DAY_MS);
+  // A turn holding a public duel's extra stays until the longest public duel is over and its extra could be paid (pollen/duel-pay.ts).
+  storage.sql.exec("DELETE FROM pollen_claims WHERE kind IN ('turn','duelwin','duelextra') AND created_at<? AND (kind!='turn' OR json_extract(data,'$.receipt.turn.duel_held') IS NULL OR created_at<?)",
+    now - rates.claims.turn_prune_days * DAY_MS, now - MAX_PUBLIC_DUEL_MS - rates.claims.turn_claim_days * DAY_MS);
   wallet.pruned_day = day;
 }
 

@@ -68,3 +68,22 @@ export const UNCLAIMED_DUEL_MS = 3 * 86_400_000;
 export const UNCLAIMED_SINCE_MS = Date.UTC(2026, 10, 3);
 /** A full board settles at most this many of its open duels (those past a time rule) before it refuses a new one (store.ts makeRoom). */
 export const MAX_SETTLED_ON_FULL = 32;
+
+// ---- Public duels (duels/public.ts), owner decisions 2026-11-03 ----
+/** A public duel's open spots stay on the list this long after posting; a spot still open then ends the duel as nobody_joined. */
+export const PUBLIC_OPEN_MS = 7 * 86_400_000;
+/** A public duel with no turn from anyone for this long ends unfinished (friend duels keep STALL_MS). */
+export const PUBLIC_STALL_MS = 14 * 86_400_000;
+/** The longest a public duel runs, from posting, before it ends as stalled: its held turn claims must outlive it (pollen/wallet.ts prune). */
+export const MAX_PUBLIC_DUEL_MS = 90 * 86_400_000;
+/** Open public duels one board lists at once, well under MAX_BOARD_DUELS, so posts never push friend challenges into duels_busy. */
+export const MAX_BOARD_PUBLIC = 128;
+/** Rows the public list holds across every chapter (duels/directory.ts): every board's cap together, with room to spare. */
+export const MAX_DIRECTORY_ROWS = 1536;
+/** Rows one list page shows. */
+export const PUBLIC_PAGE_ROWS = 20;
+/** Different reporters within PUBLIC_REPORT_WINDOW_MS that pause a player's public duels until an operator clears it. */
+export const PUBLIC_REPORTS_TO_PAUSE = 3;
+export const PUBLIC_REPORT_WINDOW_MS = 7 * 86_400_000;
+/** Players who blocked a player, kept on that player's member row for the list (leaderboards/member.ts). As SafetyProfile's own cap. */
+export const MAX_BLOCKED_BY = 128;

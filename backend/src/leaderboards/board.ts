@@ -11,6 +11,7 @@ import { emptyView, type BoardRow, type BoardView } from "./view";
 import { fail, type Outcome } from "../protocol";
 import { DuelStore, type DuelAction, type DuelReplayWork, type FinishProof, type RunCopyWork } from "../duels/store";
 import { announceDuelNews } from "../duels/news";
+import { sendListings } from "../duels/directory";
 import { duelRunChecksOn } from "../duels/turn-hook";
 /** Run copy rooms one board hands the sweep at a time (duels/their-run-sweep.ts). */
 const MAX_COPY_SWEEP = 32;
@@ -97,7 +98,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
     this.rewards = new BoardRewardLedger(ctx.storage);
     // A duel that moved past a milestone tells its other players over the live socket (duels/news.ts), after the reply.
     // Duel run checks are read from this object's own CONFIG at each call (duels/turn-hook.ts duelRunChecksOn).
-    this.duels = new DuelStore(ctx.storage, news => ctx.waitUntil(announceDuelNews(env, news)), () => duelRunChecksOn(env));
+    // A public duel whose listing changed is sent to the list across chapters (duels/directory.ts), after the reply too.
+    this.duels = new DuelStore(ctx.storage, news => ctx.waitUntil(announceDuelNews(env, news)), () => duelRunChecksOn(env), changes => ctx.waitUntil(sendListings(env, changes)));
     this.proofs = new BoardProofs(ctx.storage);
     ctx.blockConcurrencyWhile(async () => openLazyStorage(this, ctx.storage, "lb_entries", () => { for (const sql of SCHEMA) ctx.storage.sql.exec(sql); openRewardSync(ctx.storage); }));
   }
@@ -256,6 +258,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   duelAct(duelId: string, action: DuelAction): Outcome<{ duel: Duel; room?: SideRoom }> { return this.duels.act(duelId, action, Date.now()); }
   /** A turn accepted in one of the duel's rooms; the finishing turn of a friend run brings its final checkpoint. `actor`: whose turn it was. */
   duelProgress(duelId: string, note: ProgressNote, proof?: FinishProof, actor?: string): Promise<Outcome<Duel>> { return this.duels.progress(duelId, note, Date.now(), proof, actor ?? null); }
+  /** A player's label or list pause on the public duels named here (duels/public-routes.ts). Returns how many changed. */
+  duelPublicPlayer(player: string, ids: string[], change: { label?: string | null; hidden?: boolean }): number { return this.duels.publicPlayer(player, ids, change, Date.now()); }
   /** The rooms that answered the run copy sweep (duels/their-run-sweep.ts). */
   runCopiesDone(done: RunCopyWork[]): void { this.duels.copiesDone(done); }
 
@@ -497,5 +501,5 @@ answerWhileBlank(LeaderboardBoard, {
   verdicts: async (board: string) => ({ ranked: [], view: emptyView(board) }), review: (board: string) => ({ done: false, ranked: null, view: emptyView(board) }),
   strike: (board: string) => ({ done: false, promoted: [], view: emptyView(board) }), report: () => null, reviewList: () => [], rewardsDelivered: () => undefined,
   setMember: (board: string) => ({ changed: 0, view: emptyView(board) }), forget: (board: string) => ({ changed: 0, view: emptyView(board), copies: [] }), rewardsFor: () => [],
-  duelRead: () => [], duelAct: () => fail(404, "duel_not_found"), duelProgress: async () => fail(404, "duel_not_found"), runCopiesDone: () => undefined
+  duelRead: () => [], duelAct: () => fail(404, "duel_not_found"), duelProgress: async () => fail(404, "duel_not_found"), runCopiesDone: () => undefined, duelPublicPlayer: () => 0
 });

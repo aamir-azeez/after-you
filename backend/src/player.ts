@@ -1,4 +1,4 @@
-import { creditDuelWin, creditGhostWin, duelRoomPay, type DuelRoomPay, type DuelWin, type DuelWinAnswer, type GhostWin } from "./pollen/duel-pay";
+import { creditDuelExtra, creditDuelWin, creditGhostWin, duelRoomPay, type DuelExtra, type DuelExtraAnswer, type DuelRoomPay, type DuelWin, type DuelWinAnswer, type GhostWin } from "./pollen/duel-pay";
 import { DurableObject } from "cloudflare:workers";
 import { playerStanding, type Standing } from "./leaderboards/standing";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
@@ -429,6 +429,14 @@ export class Player extends DurableObject<Env> {
   }
   /** Binding only: what the player's turns in a duel's room paid, for its result card. Reads only. */
   duelRoomPay(roomId: string): DuelRoomPay { return duelRoomPay(this.ctx.storage, roomId); }
+  /**
+   * Binding only: a public duel's end for this player, in one request: the held extra, and the win bonus when `win`
+   * is given (pollen/duel-pay.ts). Each pays once; a repeat answers the same.
+   */
+  settlePublicDuel(owner: string, extra: DuelExtra, win?: DuelWin): { extra: Outcome<DuelExtraAnswer>; win?: Outcome<DuelWinAnswer> } {
+    const active = this.pollenActive(owner), now = Date.now();
+    return { extra: creditDuelExtra(this.ctx.storage, extra, now, active), ...(win ? { win: creditDuelWin(this.ctx.storage, win, now, active) } : {}) };
+  }
   /**
    * Story rooms are not linked one by one, and the Story drain releases a player's v3 links but keeps the
    * Story creation and admission rows that fence them (creation_schema 2 and 3). A player with either may
@@ -1246,7 +1254,7 @@ export class Player extends DurableObject<Env> {
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
   authorizeNamed: () => ({ authorized: false, linked: true }), authorizeWallet: async () => ({ authorized: false, linked: true }),
-  creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), creditDuelWin: () => fail(404, "identity_absent"), creditGhostWin: () => fail(404, "identity_absent"), duelRoomPay: () => ({ turns: 0, plain: 0, blooms: 0, duel: 0, duel_percent: 0, boost: 0, boost_percent: 0, total: 0 }), setDisplayName: () => fail(401, "invalid_auth"), pollenSpend: () => fail(401, "invalid_auth"), pollenEquip: () => fail(401, "invalid_auth"), pollenBundleClaim: async () => fail(401, "invalid_auth"), noteBoardRewards: () => fail(404, "identity_absent"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
+  creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), creditDuelWin: () => fail(404, "identity_absent"), creditGhostWin: () => fail(404, "identity_absent"), duelRoomPay: () => ({ turns: 0, plain: 0, blooms: 0, duel: 0, duel_percent: 0, boost: 0, boost_percent: 0, total: 0, held: 0 }), settlePublicDuel: () => ({ extra: fail(404, "identity_absent") }), setDisplayName: () => fail(401, "invalid_auth"), pollenSpend: () => fail(401, "invalid_auth"), pollenEquip: () => fail(401, "invalid_auth"), pollenBundleClaim: async () => fail(401, "invalid_auth"), noteBoardRewards: () => fail(404, "identity_absent"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined, leaderboardStanding: () => null,
