@@ -78,6 +78,8 @@ jobs:
 
       - name: Set up Godot for iOS export
         uses: ./.github/actions/setup-godot-ios
+        # No Game Center icon here: this job uploads its Xcode project, game pack included, as
+        # an artifact anyone can download from the public repo, and Apple's license forbids that.
         with:
           store-config: ${{ matrix.services == 'linked' && '{"purchase_mode":"test_store","entitlement_id":"full_journey","revenuecat_public_key":"test_link_check_only"}' || '' }}
 
@@ -280,6 +282,8 @@ jobs:
       - name: Set up Godot for iOS export
         if: env.SIM_SKIP == ''
         uses: ./.github/actions/setup-godot-ios
+        with:
+          game-center-icon-base64: ${{ secrets.IOS_GAME_CENTER_ICON_BASE64 }}
 
       - name: Export the Xcode project
         if: env.SIM_SKIP == ''
@@ -417,6 +421,7 @@ jobs:
           # aamirazeez.com (see claude-20261011\ios\site-upload). The plugin already handles links.
           universal-links: "false"
           game-center: "true"
+          game-center-icon-base64: ${{ secrets.IOS_GAME_CENTER_ICON_BASE64 }}
           icloud-container: ${{ env.ICLOUD_CONTAINER }}
 
       - name: Set the version, build number and signing identity

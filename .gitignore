@@ -18,3 +18,5 @@ artifacts/
 Thumbs.db
 __pycache__/
 *.pyc
+# Apple's Game Center icon: written into the iOS build copy only (.github/actions/setup-godot-ios), never in Git.
+game/ios_only/

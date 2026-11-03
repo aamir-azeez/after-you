@@ -18,6 +18,7 @@ const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Button_ = preload("res://presentation/platform_board_button.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const ThemeRules = preload("res://presentation/control_theme.gd")
 
 const OWNER := "o_synthetic_player_00a"
 const KEY_A := "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
@@ -335,7 +336,9 @@ func _button() -> void:
 	root.add_child(button)
 	button.show_for(RELAY)
 	_check(button.visible and button.text == PlayerCopy.PLATFORM_GAMES_GAME_CENTER, "The button shows Game Center for a board Game Center has")
-	_check(button.icon == null, "Game Center shows its name only: Apple's artwork waits for its license")
+	if not ResourceLoader.exists(Button_.ICONS[GamesProvider.GAME_CENTER]):
+		_check(button.icon == null, "Without Apple's icon (it is never in Git) Game Center shows its name only")
+	await _game_center_icon(service)
 	# Google's controller badge on the Play Games button (board 1), as downloaded and resized.
 	var boards := FakeBoards.new()
 	var play_button: Button = Button_.new(boards)
@@ -377,3 +380,53 @@ func _button() -> void:
 	desktop.show_for(RELAY)
 	_check(not desktop.visible, "No service (desktop): no button")
 	for node: Node in [button, desktop, service]: node.queue_free()
+	_ios_only_exports()
+
+## Apple's Game Center icon on the iPhone button: the words alone while its file is missing (it
+## is never in Git; the iOS build writes it), its own colours in every state when present.
+func _game_center_icon(service: Node) -> void:
+	var missing: Button = Button_.new(service)
+	missing.icons = {GamesProvider.GAME_CENTER: "res://ios_only/not-here-for-the-test.png"}
+	root.add_child(missing)
+	missing.show_for(RELAY)
+	_check(missing.visible and missing.text == PlayerCopy.PLATFORM_GAMES_GAME_CENTER and missing.icon == null, "Without the icon file the Game Center button still shows, with its name only")
+	_check(not missing.has_theme_color_override("icon_hover_color"), "With no icon the secondary style's inks stay as they were")
+	# Any PNG stands in for Apple's file, which a test run never has. The screen's button theme
+	# (leaderboard_screen.gd) inks icons on hover and press, so the button sits under it.
+	var screen := Control.new()
+	screen.theme = Theme.new()
+	ThemeRules.install_buttons(screen.theme)
+	root.add_child(screen)
+	var present: Button = Button_.new(service)
+	present.icons = {GamesProvider.GAME_CENTER: Button_.ICONS[GamesProvider.PLAY_GAMES]}
+	screen.add_child(present)
+	present.show_for(RELAY)
+	_check(present.visible and present.icon != null, "With the icon file the Game Center button carries it")
+	var states := ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_hover_pressed_color", "icon_focus_color", "icon_disabled_color"]
+	var tinted := states.filter(func(color: String) -> bool: return present.get_theme_color(color) != Color.WHITE)
+	_check(tinted.is_empty(), "Apple's icon keeps its own colours in every state, never inked like the label: %s" % [tinted])
+	var with_icon := present.get_combined_minimum_size().x
+	present.icon = null
+	_check(with_icon >= present.get_combined_minimum_size().x + 26, "The icon has its own room beside the label")
+	for node: Node in [missing, screen]: node.queue_free()
+	await process_frame
+
+## Apple's icon lives under ios_only/, which every export preset but iOS leaves out (its license
+## allows it only in builds for Apple systems).
+func _ios_only_exports() -> void:
+	_check(Button_.ICONS[GamesProvider.GAME_CENTER].begins_with("res://ios_only/"), "The Game Center icon is read from the iOS only folder")
+	var presets := ConfigFile.new()
+	_check(presets.load("res://export_presets.cfg") == OK, "export_presets.cfg reads")
+	var platforms: Array = []
+	for section: String in presets.get_sections():
+		if not section.begins_with("preset.") or section.ends_with(".options"): continue
+		var platform: String = presets.get_value(section, "platform", "")
+		platforms.append(platform)
+		var excluded := Array(String(presets.get_value(section, "exclude_filter", "")).split(",", false))
+		var included := Array(String(presets.get_value(section, "include_filter", "")).split(",", false))
+		var names_folder := func(filter: String) -> bool: return filter.begins_with("ios_only")
+		if platform == "iOS":
+			_check(not excluded.any(names_folder), "The iOS preset keeps the iOS only folder")
+		else:
+			_check("ios_only/*" in excluded and not included.any(names_folder), "The %s preset leaves the iOS only folder out: %s" % [platform, excluded])
+	_check("iOS" in platforms and platforms.size() >= 2, "The presets were all read: %s" % [platforms])

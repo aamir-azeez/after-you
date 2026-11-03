@@ -10,23 +10,33 @@ extends Button
 ##
 ## The label is the platform's own name. On Android, Google's controller badge goes beside it
 ## (assets/ui/platform, with its NOTICE.txt), inked cream by the secondary style as Google's
-## branding rules allow. Game Center shows its name only: Apple's artwork license allows the
-## icon only in builds for Apple systems and never recoloured, and it waits for the owner
-## (claude-20261011 platform-boards\badges), so it has no entry here and nothing in the shared assets.
+## branding rules allow. On iPhone, Apple's Game Center icon goes beside it in its own colours:
+## Apple's artwork license allows it only in builds for Apple systems, never recoloured, and the
+## repo is public, so it is never in Git or the shared assets. The iOS build workflow
+## (.github/actions/setup-godot-ios) writes it into ios_only/, which every other export preset
+## leaves out. Without the file (Android, desktop, a build without the secret) the button shows
+## the name only.
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
-## The platforms' own artwork, as downloaded (never redrawn); a platform without one shows its name.
+## The platforms' own artwork, as downloaded (never redrawn); a platform whose file is missing shows its name.
 const ICONS := {
 	GamesProvider.PLAY_GAMES: "res://assets/ui/platform/google-play-games-badge.png",
+	GamesProvider.GAME_CENTER: "res://ios_only/game-center-icon.png",
 }
+## Platforms whose artwork keeps its own colours in every state (Apple's license forbids recolouring).
+const OWN_COLOURS := [GamesProvider.GAME_CENTER]
 
 ## Our board key ("<level_id>@<version>") whose platform board a tap opens.
 var board := ""
+## Where each platform's artwork is read from (ICONS; tests point it elsewhere).
+var icons: Dictionary = ICONS
 ## (text) -> void: where a reason goes (the screen's notice).
 var say: Callable
 var _service: Node
+## The icon's colours were set to its own once (the platform never changes in a launch).
+var _own_colours := false
 
 ## The button for `service` (PlatformGames, or null without the autoload).
 func _init(service: Node = null, notice: Callable = Callable()) -> void:
@@ -63,8 +73,11 @@ func refresh() -> void:
 	text = PlayerCopy.PLATFORM_BOARD_PLAY_GAMES if platform == GamesProvider.PLAY_GAMES else PlayerCopy.PLATFORM_GAMES_GAME_CENTER
 	accessibility_name = text
 	tooltip_text = text
-	var path: String = ICONS.get(platform, "")
+	var path: String = icons.get(platform, "")
 	icon = load(path) if not path.is_empty() and ResourceLoader.exists(path) else null
+	if icon != null and platform in OWN_COLOURS and not _own_colours:
+		_own_colours = true
+		ThemeRules.own_colour_icon(self)
 	OfflineHold.set_enabled(self, not _service.board_showing())
 
 func _open() -> void:

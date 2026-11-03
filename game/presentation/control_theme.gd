@@ -161,6 +161,15 @@ static func secondary(button: Button) -> void:
 	button.add_theme_color_override("icon_focus_color",CREAM)
 	if button is OptionButton: choice_button(button)
 
+## Every button state the theme can tint an icon in.
+const ICON_STATES := ["normal","hover","pressed","hover_pressed","focus","disabled"]
+
+## `button`'s icon in its own colours in every state, disabled too, never inked like the label:
+## for artwork whose license forbids recolouring (Apple's Game Center icon).
+static func own_colour_icon(button: Button) -> void:
+	for state: String in ICON_STATES:
+		button.add_theme_color_override("icon_%s_color" % state, Color.WHITE)
+
 static func selected_tab(button: Button) -> void:
 	## The current tab or toggle option: a lighter teal pill. Cream stays
 	## reserved for the screen's primary action.

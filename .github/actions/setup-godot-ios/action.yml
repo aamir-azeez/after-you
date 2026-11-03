@@ -47,6 +47,15 @@ inputs:
       iCloud out. Signed builds only; the App ID must have the container assigned.
     required: false
     default: ""
+  game-center-icon-base64:
+    description: >
+      Base64 of Apple's Game Center icon (repository secret IOS_GAME_CENTER_ICON_BASE64) for the
+      leaderboard screen's Game Center button. Apple's artwork license allows it only in builds
+      for Apple systems and the repo is public, so it is written into the iOS copy only, at
+      ios_only/game-center-icon.png (gitignored, left out of every other export preset). It must
+      match GAME_CENTER_ICON_SHA256 below. Empty: the button shows its name only.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -138,6 +147,9 @@ runs:
         UNIVERSAL_LINKS: ${{ inputs.universal-links }}
         GAME_CENTER: ${{ inputs.game-center }}
         ICLOUD_CONTAINER: ${{ inputs.icloud-container }}
+        GAME_CENTER_ICON_BASE64: ${{ inputs.game-center-icon-base64 }}
+        # SHA-256 of the 96x96 icon the secret holds (private NOTICE in signing\apple\game-center-icon).
+        GAME_CENTER_ICON_SHA256: 6f399d5b15e37d7a1fc5af604d904de8442205630738cbccbf58b696522b53ea
       run: |
         set -euo pipefail
         rm -rf "$GAME_COPY"
@@ -147,10 +159,24 @@ runs:
           ditto "$IOS_ADDON" "$GAME_COPY/addons/after_you_ios"
         fi
         python3 - <<'PY'
-        import base64, json, os, re
+        import base64, hashlib, json, os, re
         from pathlib import Path
 
         root = Path(os.environ["GAME_COPY"])
+        # Apple's Game Center icon goes into this iOS copy only, before the import below.
+        icon_text = "".join(os.environ["GAME_CENTER_ICON_BASE64"].split())
+        if icon_text:
+            try:
+                icon = base64.b64decode(icon_text, validate=True)
+            except ValueError:
+                icon = b""
+            if not icon.startswith(b"\x89PNG\r\n\x1a\n") or hashlib.sha256(icon).hexdigest() != os.environ["GAME_CENTER_ICON_SHA256"]:
+                raise SystemExit("IOS_GAME_CENTER_ICON_BASE64 is not the pinned Game Center icon")
+            (root / "ios_only").mkdir(exist_ok=True)
+            (root / "ios_only" / "game-center-icon.png").write_bytes(icon)
+            print("Game Center icon added to the iOS copy")
+        else:
+            print("::warning::No Game Center icon (IOS_GAME_CENTER_ICON_BASE64): the button shows its name only")
         config_path = root / "app_config.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
         if os.environ["APP_CONFIG_BASE64"]:
