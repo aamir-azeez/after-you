@@ -163,9 +163,21 @@ func race_ghost(board: String, source: String, entry_id: Variant, key: String) -
 	return _duel_answer(response)
 
 ## accept, decline, leave or sync on one duel.
+## A public duel left before its room was entered answers {ok, duel: {}, left: true}: the seat went back
+## on the list and this player is no longer in the duel, so it leaves the kept lobby.
 func act(board: String, duel_id: String, action: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s/%s/%s/%s" % [PREFIX, board, duel_id, action], {"schema_version": 1})
+	var data: Variant = response.get("data")
+	if action == "leave" and response.get("ok", false) and data is Dictionary and data.get("duel") == null and data.get("left") == true:
+		_drop_from_lobby(duel_id)
+		return {"ok": true, "duel": {}, "left": true}
 	return _duel_answer(response)
+
+func _drop_from_lobby(duel_id: String) -> void:
+	if _lobby.is_empty(): return
+	var kept := _lobby.duplicate()
+	kept.duels = (_lobby.get("duels", []) as Array).filter(func(view: Dictionary) -> bool: return view.duel_id != duel_id)
+	_lobby = kept
 
 ## {ok, parts} for the other pair's run in friend duel `view`, in chapter `chapter_key`,
 ## or {ok: false, code}. The phone's own copy plays first; otherwise the server's

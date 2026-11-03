@@ -127,7 +127,10 @@ static func stranger(root: Control, who: Dictionary, settings: Dictionary, actio
 	# The faces card every turn's end uses: a face picked here goes with your next turn in this duel.
 	var faces := EndReactions.attach(modal.content, {"pick": true, "run": "public-duel:" + str(who.get("duel_id", "")), "color": "peach" if who.get("color", "peach") == "mint" else "mint",
 		"settings": settings, "on_pick": actions.get("pick", Callable())})
-	if faces != null: faces.name = "PublicStrangerFaces"
+	if faces != null:
+		faces.name = "PublicStrangerFaces"
+		# The faces grid shows open, as the card is drawn (board 6.3); it closes with the card.
+		if faces.has_method("open_faces"): faces.call_deferred("open_faces")
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 12)
 	modal.content.add_child(buttons)

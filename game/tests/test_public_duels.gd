@@ -35,6 +35,14 @@ const SCREENS := [[Vector2i(2340, 1080), Vector4.ZERO, "2340x1080 phone"], [Vect
 var checks := 0
 var failures := 0
 
+## Answers every request with `answer`, and keeps what was asked.
+class FakeApi extends Node:
+	var answer: Dictionary = {}
+	var asked: Array = []
+	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
+		asked.append([method, path, body])
+		return answer
+
 func _initialize() -> void:
 	_run.call_deferred()
 
@@ -53,6 +61,7 @@ func _run() -> void:
 	_names()
 	_receipts()
 	_safety()
+	await _leave()
 	await _surfaces()
 	print("AFTER YOU PUBLIC DUELS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
@@ -181,6 +190,23 @@ func _safety() -> void:
 	_check(SafetyClient.valid_version("2026-11-03") and SafetyClient.valid_version(SafetyClient.TERMS_VERSION) and not SafetyClient.valid_version("soon"), "Any dated rules version reads")
 	_check(SafetyClient.valid_duel_blocks([{"handle": "h".repeat(22), "label": null}, {"handle": "k".repeat(22), "label": "Kite"}]).size() == 2, "Duel blocks read by handle")
 	_check(SafetyClient.valid_duel_blocks([{"handle": "bad id!", "label": null}]) == null, "A handle that is not one is refused")
+
+# A seat given back ------------------------------------------------------------
+
+func _leave() -> void:
+	var api := FakeApi.new()
+	var client: RefCounted = DuelsClient.new(api, "", "user://test-public-duels.json")
+	client._lobby = {"party": {}, "duels": [DuelsClient.valid_view(_public_view())], "limits": {}}
+	api.answer = {"ok": true, "status": 200, "data": {"schema_version": 1, "duel": null, "left": true}}
+	var answer: Dictionary = await client.act(BOARD, "c".repeat(32), "leave")
+	_check(answer.ok and answer.left and (answer.duel as Dictionary).is_empty(), "A seat given back answers left with no duel")
+	_check(client.last_lobby().duels.is_empty(), "and the duel leaves the kept lobby")
+	var post := PublicClient.new(api, client)
+	api.answer = {"ok": false, "status": 409, "code": "spot_taken", "data": {"error": {"code": "spot_taken", "row": _wire_row()}}}
+	var taken: Dictionary = await post.join(BOARD, "b".repeat(32), Spots.ALONE, -1, "k".repeat(22))
+	_check(not taken.ok and taken.code == "spot_taken" and taken.row.duel_id == "b".repeat(32), "A spot taken first comes back with its row")
+	_check(api.asked[-1][2] == {"schema_version": 1, "idempotency_key": "k".repeat(22), "as": "alone", "seat": null}, "Join sends its key and lets the server pick: %s" % [api.asked[-1][2]])
+	api.free()
 
 # Surfaces -----------------------------------------------------------------------
 

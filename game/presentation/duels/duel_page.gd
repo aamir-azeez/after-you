@@ -258,6 +258,7 @@ func _show_tag() -> void:
 	if not DuelModel.is_public(view) or is_instance_valid(_tag) or not is_instance_valid(_subtitle): return
 	_tag = Seats.tag(15)
 	_subtitle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_subtitle.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_header.add_child(_tag)

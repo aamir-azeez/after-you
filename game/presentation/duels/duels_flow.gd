@@ -567,6 +567,11 @@ func _open_duel(view: Dictionary) -> void:
 			return
 		# The lobby under the page shows the duel as left too (services/duels_client.gd keeps the answer).
 		if is_open(): screen.show_lobby(client().last_lobby())
+		# A public seat given back before its room was entered: this player is out of the duel.
+		if answer.get("left", false) and (answer.duel as Dictionary).is_empty():
+			if is_instance_valid(page): page.close()
+			_refresh()
+			return
 		_show_duel(page, answer.duel))
 	screen.open_overlay(page)
 	# A public duel's page shows the duel extra held so far, from its detail read.
