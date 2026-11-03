@@ -14,7 +14,7 @@ import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
 import { accept, blankSide, newFriendDuel, newGhostRace, type DuelView } from "../src/duels/model";
 import { DuelStore } from "../src/duels/store";
-import { MAX_BOARD_DUELS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, UNCLAIMED_RACE_MS } from "../src/duels/rules";
+import { MAX_BOARD_DUELS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, MAX_SETTLED_ON_FULL, STALL_MS, UNCLAIMED_RACE_MS } from "../src/duels/rules";
 import { pairKey } from "../src/leaderboards/run";
 import gameDuelsClient from "../../game/services/duels_client.gd?raw";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
@@ -1256,6 +1256,37 @@ describe("duel board guards", () => {
       expect(store.create(race(MAX_BOARD_DUELS + 1, later), later)).not.toBeNull();
       expect(count()).toBe(MAX_BOARD_DUELS);
       expect(ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duels WHERE status='unfinished'").one().n).toBe(31);
+    });
+  }, 120_000);
+  it("settles expired races however many claimed ones are older, and keeps a decided duel over other settled ones", async () => {
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName("guards-pinned-" + RELAY), async (_, ctx) => {
+      const store = new DuelStore(ctx.storage);
+      const claim = (n: number, at: number) => { const duel = race(n, at); store.create(duel, at);
+        expect(store.act(duel.duel_id, { kind: "claim", player: duel.sides[0].members[0]!, room_id: "room" + n, invite_code: "code" + n, room_absent: false }, at).ok).toBe(true); return duel; };
+      // The oldest rows: a race that was decided, then MAX_SETTLED_ON_FULL claimed races that are still running.
+      const won = claim(0, T0);
+      expect((await store.progress(won.duel_id, { room_id: "room0", revision: 1, steps: 4, ticks: 500, turn: null, complete: true, at_ms: T0 + 1, entry_id: "e".repeat(32) }, T0 + 1)).ok).toBe(true);
+      for (let n = 1; n <= MAX_SETTLED_ON_FULL; n++) claim(n, T0 + 10 + n);
+      // One race that ended unfinished long after, then roomless races fill the board.
+      const stalled = race(MAX_SETTLED_ON_FULL + 1, T0 + 100);
+      store.create(stalled, T0 + 100);
+      store.read([stalled.duel_id], T0 + 100 + UNCLAIMED_RACE_MS);
+      for (let n = MAX_SETTLED_ON_FULL + 2; n < MAX_BOARD_DUELS; n++) store.create(race(n, T0 + UNCLAIMED_RACE_MS + n), T0 + UNCLAIMED_RACE_MS + n);
+      const statusOf = (id: string) => ctx.storage.sql.exec<{ status: string }>("SELECT status FROM duels WHERE duel_id=?", id).toArray()[0]?.status;
+      expect(statusOf(won.duel_id)).toBe("decided");
+      // Full: the unfinished race goes first, though the decided one is older.
+      const next = T0 + UNCLAIMED_RACE_MS + 1_000;
+      expect(store.create(race(MAX_BOARD_DUELS, next), next)).not.toBeNull();
+      expect(statusOf(stalled.duel_id)).toBeUndefined();
+      expect(statusOf(won.duel_id)).toBe("decided");
+      // Then the decided one goes before any open race; after that, expired roomless races free rows past the claimed ones.
+      expect(store.create(race(MAX_BOARD_DUELS + 1, next), next)).not.toBeNull();
+      expect(statusOf(won.duel_id)).toBeUndefined();
+      expect(store.create(race(MAX_BOARD_DUELS + 2, next), next)).toBeNull();
+      const later = T0 + 2 * UNCLAIMED_RACE_MS + MAX_BOARD_DUELS + 1_000;
+      expect(later).toBeLessThan(T0 + STALL_MS);
+      expect(store.create(race(MAX_BOARD_DUELS + 3, later), later)).not.toBeNull();
+      expect(ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duels WHERE status='running' AND json_extract(data,'$.sides[0].room') IS NOT NULL").one().n).toBe(MAX_SETTLED_ON_FULL);
     });
   }, 120_000);
   it("a claimed race keeps its board row past the unclaimed limit", async () => {

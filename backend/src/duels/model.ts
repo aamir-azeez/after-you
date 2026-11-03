@@ -1,6 +1,6 @@
 import { fail, ok, type Outcome } from "../protocol";
 import type { ChapterKey } from "../v2/chapter-types";
-import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS } from "./rules";
+import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "./rules";
 import { keptLook, servedLook } from "../leaderboards/run-looks";
 import type { Look } from "../pollen/catalog";
 
@@ -33,8 +33,9 @@ import type { Look } from "../pollen/catalog";
  * unfinished, with no win and no loss, even when one pair finished. A running
  * duel whose rooms were never claimed ends the same way sooner: a ghost race
  * after UNCLAIMED_RACE_MS, a friend duel neither pair opened after
- * UNCLAIMED_DUEL_MS, both counted from the accept (a race's start), so
- * throwaway duels free their board rows (store.ts makeRoom).
+ * UNCLAIMED_DUEL_MS, both counted from the accept (a race's start), and never
+ * from before UNCLAIMED_SINCE_MS, so throwaway duels free their board rows
+ * (store.ts makeRoom).
  *
  * Looks (POLLEN_LOOKS): each side keeps what its two members wear, in
  * `members` order (`looks`), taken from data a call already holds: the party
@@ -189,7 +190,7 @@ export function settle(duel: Duel, now: number): boolean {
   if (decide(duel, now)) return true;
   const unclaimed = duel.sides.every(side => side === null || side.room === null);
   const limit = !unclaimed ? STALL_MS : duel.kind === "ghost" ? UNCLAIMED_RACE_MS : UNCLAIMED_DUEL_MS;
-  if (now - lastActivity(duel) < limit) return false;
+  if (now - (unclaimed ? Math.max(lastActivity(duel), UNCLAIMED_SINCE_MS) : lastActivity(duel)) < limit) return false;
   return conclude(duel, null, "stalled", now, null);
 }
 

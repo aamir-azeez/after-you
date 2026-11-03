@@ -57,9 +57,14 @@ export const UNCLAIMED_RACE_MS = 2 * 86_400_000;
 /**
  * An accepted friend duel in which neither pair opened its room ends unfinished this long after the accept. The
  * accepting player taps it on the lobby, whose tile then offers Play (duels_flow.gd _on_duel_action), and the sending
- * pair hears of it within a minute (lobby read, or a hint); once either pair taps Play the duel runs to STALL_MS as before. One day still spans
- * every time zone.
+ * pair hears of it within a minute (lobby read, or a hint), but nothing pushes it and no deadline shows, so three days
+ * leave room for a pair that accepts on Friday to play on Sunday. Once either pair taps Play the duel runs to STALL_MS.
  */
-export const UNCLAIMED_DUEL_MS = 86_400_000;
-/** A full board settles at most this many of its oldest open duels before it refuses a new one (store.ts makeRoom). */
+export const UNCLAIMED_DUEL_MS = 3 * 86_400_000;
+/**
+ * The no-room timers above count from this date at the earliest: while duels are off nobody can open a room, so a duel
+ * accepted or a race started before duels came back on must not end the moment they do. Set it to the DUELS flip date.
+ */
+export const UNCLAIMED_SINCE_MS = Date.UTC(2026, 10, 3);
+/** A full board settles at most this many of its open duels (those past a time rule) before it refuses a new one (store.ts makeRoom). */
 export const MAX_SETTLED_ON_FULL = 32;

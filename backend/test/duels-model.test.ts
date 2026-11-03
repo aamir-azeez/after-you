@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
-import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS } from "../src/duels/rules";
+import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "../src/duels/rules";
 import { applyParty, blankParty, noteLook } from "../src/duels/party";
 import { runProgress } from "../src/duels/ticks";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -238,6 +238,17 @@ describe("duel state machine", () => {
     expect(half.status).toBe("running");
     // The stored duel keeps its shape: the same keys before and after an expiry.
     expect(Object.keys(idle).sort()).toEqual(Object.keys(friend()).sort());
+  });
+
+  it("counts no-room time only from UNCLAIMED_SINCE_MS, so duels held while duels were off do not end at the flip", () => {
+    const early = UNCLAIMED_SINCE_MS - 20 * 86_400_000;
+    const race = ghost(1000, early);
+    expect(settle(race, UNCLAIMED_SINCE_MS + UNCLAIMED_RACE_MS - 1)).toBe(false);
+    expect(settle(race, UNCLAIMED_SINCE_MS + UNCLAIMED_RACE_MS)).toBe(true);
+    const duel = friend(early);
+    expect(accept(duel, B1, early + 1, true).ok).toBe(true);
+    expect(settle(duel, UNCLAIMED_SINCE_MS + UNCLAIMED_DUEL_MS - 1)).toBe(false);
+    expect(settle(duel, UNCLAIMED_SINCE_MS + UNCLAIMED_DUEL_MS)).toBe(true);
   });
 
   it("a full pointer list drops pointers to settled duels before open ones", () => {

@@ -228,21 +228,25 @@ export class DuelStore {
   }
 
   /**
-   * Keeps the duel table within MAX_BOARD_DUELS: settled duels go first, oldest first. With none settled, the
-   * MAX_SETTLED_ON_FULL open rows changed longest ago are settled to `now` first (a faded challenge, a race nobody
-   * opened), so expired ones free their rows. False when every row is still open.
+   * Keeps the duel table within MAX_BOARD_DUELS: settled duels go first, oldest first, a decided one (whose win may
+   * still be paid on its next read) only after every other kind. With none settled, every open row (at most
+   * MAX_BOARD_DUELS) is settled to `now` in memory, oldest change first, and up to MAX_SETTLED_ON_FULL that moved (a
+   * faded challenge, a race nobody opened) are saved, so expired ones free their rows however long older open ones
+   * still run. False when every row is still open.
    */
   private makeRoom(now: number): boolean {
     const count = this.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duels").one().n;
     if (count < MAX_BOARD_DUELS) return true;
-    const settled = () => this.storage.sql.exec<{ duel_id: string }>("SELECT duel_id FROM duels WHERE status NOT IN ('challenged','running') ORDER BY updated_ms LIMIT 1").toArray()[0];
+    const settled = () => this.storage.sql.exec<{ duel_id: string }>("SELECT duel_id FROM duels WHERE status NOT IN ('challenged','running') ORDER BY status='decided', updated_ms LIMIT 1").toArray()[0];
     let oldest = settled();
     if (!oldest) {
       const checks = this.checks();
-      for (const row of this.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE status IN ('challenged','running') ORDER BY updated_ms LIMIT ?", MAX_SETTLED_ON_FULL).toArray()) {
+      let saved = 0;
+      for (const row of this.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE status IN ('challenged','running') ORDER BY updated_ms").toArray()) {
+        if (saved >= MAX_SETTLED_ON_FULL) break;
         const duel = JSON.parse(row.data) as Duel;
         const waived = this.waive(duel, now, checks);
-        if (settle(duel, now) || waived) this.save(duel);
+        if (settle(duel, now) || waived) { this.save(duel); saved++; }
       }
       oldest = settled();
     }
