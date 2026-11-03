@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.6.1",
+      "date": "2026-10-14",
+      "highlights": [{"icon": "spark", "text": "Sleeping Lighthouse is one chapter you can host online", "paid": true}, {"icon": "leaf", "text": "Smoother play, without the pause after a turn"}, {"icon": "link", "text": "Finished rooms stay in Your rooms"}, {"icon": "people", "text": "Friends show by the nickname you gave them"}]
+    },
+    {
       "version": "0.6.0",
       "date": "2026-10-13",
       "highlights": [{"icon": "spark", "text": "Two free chapters: The Wishing Well and Turn of the Tide"}, {"icon": "home", "text": "Long Way Home has a harder finale", "paid": true}, {"icon": "star", "text": "Keepsakes stand on the home island"}, {"icon": "key", "text": "Full Journey is a monthly or yearly subscription", "paid": true}]

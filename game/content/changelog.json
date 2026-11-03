@@ -2,6 +2,21 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.9",
+      "date": "2026-11-03",
+      "highlights": [{"icon": "play", "text": "Play on a duel opens its room again"}, {"icon": "people", "text": "Every pip in a duel wears its own look"}, {"icon": "home", "text": "Your pips on Home wear your look"}, {"icon": "leaf", "text": "The Wardrobe opens while you're offline"}, {"icon": "star", "text": "All items shows the looks you can earn"}, {"icon": "leaf", "text": "Pollen rows show what each bonus added"}],
+      "paragraphs": [
+        {"text": "Play on a duel opens the duel's room again. Whichever of you taps Play first makes the room, and your partner joins it, whoever's turn it is. If the room can't open, the game comes back to the duel page and says why. Every pip on the duel pages wears its player's look, your pip sits in your own seat whether you started the pair or joined it, and the other pair's run plays each turn in the looks they wore. Start a duel shows each friend in the look they last wore. Duel pages scroll with your finger, long names stay readable, the lobby tiles fit on a phone and Leave duel stays on screen."},
+        {"text": "When your phone is offline, the buttons that need the internet grey out, like Play with your friend, Duels and Add friend. Tap one and the game tells you it needs a connection. They come back by themselves once you're online. If you've opened the Wardrobe before, it opens offline too. You can put things on and take them off, and friends see your new look once you're back online. Buy stays greyed until then."},
+        {"text": "All items in the Wardrobe lists the looks you earn by playing, the Gold leaf, Every Hard and the Top 10 ribbon, even before you have them. Pick one to try it on your pip and see how to earn it. They're never for sale. After a turn, each Pollen bonus row shows its percent and the Pollen it added, like First try (25%), and the rows above This turn add up to it."},
+        {"text": "Both pips on Home wear your look, as they do in a solo chapter. The Daisy is half again as big. The Lantern sits on the side of the head away from the leaf, and the views of your pip pull back so it stays in frame. The Tide's lower shade is deeper."},
+        {"text": "While your time waits for its check, a card beside the leaderboard says so. You and your partner see its place right away, and other players see it once the check passes. In What's new, tapping an earlier version opens it where it is, and the list no longer jumps to the end."},
+        {"text": "Showing or copying your recovery code asks for your screen lock first, if your phone has one, and the code stays out of screenshots and the recent apps picture. When you pick a name, Use my Play Games name shows straight away, and tapping it signs you in to Play Games if you aren't already.", "ios_text": ""},
+        {"text": "The Full Journey row after a turn shows how many of you have it and the Pollen it added, like Full Journey (2 × 10%). Your first monthly Pollen from Full Journey arrives right after you subscribe, and months paid while you were away share one card with their total. On Home, your pip walks round the low dip of the Rolling Rail.", "paid": true},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.8",
       "date": "2026-11-02",
       "highlights": [{"icon": "leaf", "text": "Tap your Pollen balance to open the Pollen page"}, {"icon": "leaf", "text": "Short of Pollen? Buy the bundle you need on the spot", "paid": true}, {"icon": "star", "text": "Your leaderboard place shows as soon as you finish"}, {"icon": "people", "text": "Friends see each other's looks"}, {"icon": "bell", "text": "Duels update as they happen"}, {"icon": "home", "text": "More room to walk in Explore"}, {"icon": "sun", "text": "The Lighthouse stays lit until you rest the lamp", "paid": true}],
@@ -149,21 +164,6 @@
         {"text": "Watch replay opens the room you tapped it in, and saves a finished room's replay first if it needs to. Android Back now leaves Together replays the same way their Back button does.", "ios_text": "Watch replay opens the room you tapped it in, and saves a finished room's replay first if it needs to."},
         {"text": "The spirit's shadow sits just above every floor, so it doesn't flicker anymore, the Wishing Well's floors included."},
         {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.6.1",
-      "date": "2026-10-14",
-      "highlights": [{"icon": "spark", "text": "Sleeping Lighthouse is one chapter you can host online", "paid": true}, {"icon": "leaf", "text": "Smoother play, without the pause after a turn"}, {"icon": "link", "text": "Finished rooms stay in Your rooms"}, {"icon": "people", "text": "Friends show by the nickname you gave them"}],
-      "paragraphs": [
-        {"text": "The Sleeping Lighthouse is now one six-stage chapter, and you can play it solo or host it for a friend online. Hosting it needs Full Journey, and your friend can join without buying anything. Your solo Lighthouse progress carries over the first time you open the new chapter. Each Lighthouse place also has a together keepsake now, so Home has 64 keepsakes in all.", "paid": true},
-        {"text": "The game runs much more smoothly. Long attempts no longer stutter as the turn grows, and the pauses at the end of a turn, when you leave Home and when you reopen a finished chapter are gone. Chapters build over several frames behind the opening card while the loading bar keeps moving, and Home stops drawing its island behind Friends and other full pages."},
-        {"text": "Finished rooms show up properly in Your rooms. Each one stays in the list with its chapter after you both save the replay, and Watch replay clears its dot. A shared replay lists every part when it opens, rooms show when they last changed, and the newest room comes first. Your friend's turn photos download into a shared replay by themselves."},
-        {"text": "Friends appear by the nickname you gave them, or as \"a friend\", on room cards, on the waiting card and in shared replays, never by a raw id."},
-        {"text": "Play with a friend doesn't get stuck anymore when your last room's replay has moved to your phones or the room is gone. Joining from the room hub by typing a room code works now."},
-        {"text": "Hosting alerts were fixed. A room you host for Friends is shared as soon as you host it, the alert is kept if the app restarts, and it is sent again if the first try fails. Alerts stay on after a cold start, and after a reinstall the game asks once for notification permission. A friend's hosting alert also shows inside the app while it's open."},
-        {"text": "Speech bubbles slide beside a spirit instead of covering it, and every lever bubble points at the top of the knob. Balanced and High graphics don't draw shadows now, and the lighting is as bright as before. In Explore on Home, the bridge rises as you walk up to it, and the keepsake arrows are hidden."},
-        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code, and the game now says so when you try to host.", "channels": ["github"]}
       ]
     }
   ]
