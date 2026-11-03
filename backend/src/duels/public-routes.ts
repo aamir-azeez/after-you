@@ -115,6 +115,8 @@ async function post(env: Env, player: string, input: unknown, now: number, look?
     looks: looksOn(env) ? team.looks : undefined, known: team.players.length === 2 ? [knownKey(team.players[0], team.players[1])] : [] }, now);
   const made = await duelsAt(env, board).create(duel);
   if (!made) throw new ApiError(503, "public_list_full");
+  // Listed before the reply, not only after the board's: a lost update would leave a post nobody can find.
+  await sendListings(env, [{ duel_id: duelId, listing: listingOf(made, now), updated_ms: made.updated_ms }]);
   await addRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
   forgetListings();
   await announceLobby(env, team.players.filter(id => id !== player), made.updated_ms, duelId);
@@ -150,7 +152,7 @@ async function join(env: Env, player: string, board: string, duelId: string, inp
     // The list may be a moment behind: the board's listing now heals it, and the phone redraws the row from it.
     const [fresh] = await at.read([duelId], player);
     const listing = fresh ? listingOf(fresh, now) : null;
-    await sendListings(env, [{ duel_id: duelId, listing }]);
+    if (fresh) await sendListings(env, [{ duel_id: duelId, listing, updated_ms: fresh.updated_ms }]);
     forgetListings();
     throw new ApiError(409, "spot_taken", { row: listing && !listing.sides.some(side => side.seats.some(seat => seat.id !== null && avoid.has(seat.id))) ? page([listing], player, avoid, "all", "newest", 0, now, looksOn(env)).rows[0] ?? null : null });
   }
@@ -185,9 +187,20 @@ async function blockHandle(owner: string, target: string): Promise<string> { ret
 async function block(env: Env, request: Request, player: string, board: string, duelId: string, input: unknown, now: number): Promise<unknown> {
   const { duel, seat, target } = await seatTarget(env, player, board, duelId, input, []);
   await blockPlayer(env, player, await bearerDigest(request), target, publicKnown(duel, player, target) ? undefined : duel.public!.seats[seat].label, now);
-  const partner = seat >> 1 === seatOf(duel, player) >> 1;
-  if (partner && !isFinal(duel)) unwrap(await duelsAt(env, board).act(duelId, { kind: "leave", player, blocked: true }));
-  return { schema_version: 1, blocked: true, left: partner && !isFinal(duel) };
+  const left = seat >> 1 === seatOf(duel, player) >> 1 && await leaveForBlock(env, player, board, duelId);
+  return { schema_version: 1, blocked: true, left };
+}
+
+/**
+ * Blocking your own partner leaves the duel, a leave that costs neither of you the held extra (PLAN 7). A duel already
+ * over, or a side already finished, leaves nothing; the block stands either way. Answers whether this left the duel.
+ */
+export async function leaveForBlock(env: Env, player: string, board: string, duelId: string): Promise<boolean> {
+  const answer = await duelsAt(env, board).act(duelId, { kind: "leave", player, blocked: true });
+  if (!answer.ok) return false;
+  const seat = seatOf(answer.value.duel, player);
+  // Gone from the seat (it went back on the list) or their side ended by this leave.
+  return seat < 0 || answer.value.duel.sides.some(side => side?.left_by === seat);
 }
 
 /**
@@ -195,21 +208,22 @@ async function block(env: Env, request: Request, player: string, board: string, 
  * blocker knows (an ordinary block), else the stranger's label for their handle entry. Answers the handle or the id.
  */
 export async function blockPlayer(env: Env, owner: string, deviceHash: string, target: string, label: string | null | undefined, now: number): Promise<string> {
+  // The handle first, so a block list never shows a stranger's block by id, even when a later step fails.
+  const handle = label === undefined ? null : await blockHandle(owner, target);
+  if (handle !== null) await party(env, owner).addDuelBlock({ handle, id: target, label: label ?? null, at: now } satisfies DuelBlock);
   unwrap(await env.SAFETY_PROFILES.getByName(owner).setBlock(owner, deviceHash, target, true));
   await party(env, target).noteBlockedBy(owner, true);
-  if (label === undefined) return target;
-  const handle = await blockHandle(owner, target);
-  const entry: DuelBlock = { handle, id: target, label, at: now };
-  await party(env, owner).addDuelBlock(entry);
-  return handle;
+  return handle ?? target;
 }
 
 /** DELETE /v1/safety/blocks/duel/<handle>: undoes a stranger's block by its handle. */
 export async function unblockHandle(env: Env, request: Request, owner: string, handle: string): Promise<unknown> {
-  const target = await party(env, owner).removeDuelBlock(handle);
-  if (target) {
-    unwrap(await env.SAFETY_PROFILES.getByName(owner).setBlock(owner, await bearerDigest(request), target, false));
-    await party(env, target).noteBlockedBy(owner, false);
+  const entry = ((await party(env, owner).read()) as unknown as MemberState).duel_blocks?.find(item => item.handle === handle);
+  // The block goes before its handle, so a failure in between never leaves the id in the plain list.
+  if (entry) {
+    unwrap(await env.SAFETY_PROFILES.getByName(owner).setBlock(owner, await bearerDigest(request), entry.id, false));
+    await party(env, entry.id).noteBlockedBy(owner, false);
+    await party(env, owner).removeDuelBlock(handle);
   }
   return { schema_version: 1, blocked: false };
 }
@@ -339,9 +353,9 @@ export async function routePublicDuels(request: Request, path: string, player: s
 }
 
 /** The lobby's `public` part while public duels are on: the switches and the count toward the limit of 10. */
-export async function publicLobby(env: Env, player: string, partner: string | null, intact: boolean, duels: readonly Duel[]): Promise<{ public?: Record<string, unknown> }> {
-  if (!publicDuelsOn(env)) return {};
-  const [mine, theirs] = await Promise.all([party(env, player).read() as Promise<MemberState>, intact && partner ? party(env, partner).read() as Promise<MemberState> : Promise.resolve(null)]);
+export function publicLobby(env: Env, player: string, members: readonly (MemberState | null)[] | undefined, intact: boolean, duels: readonly Duel[]): { public?: Record<string, unknown> } {
+  if (!publicDuelsOn(env) || !members?.[0]) return {};
+  const [mine, theirs] = [members[0], intact ? members[1] ?? null : null];
   return { public: { version: 1, on: !!mine.public_duels, show_name: mine.show_name, partner_on: theirs ? !!theirs.public_duels && !theirs.public_paused : null, paused: !!mine.public_paused,
     running: running(duels, [player]) } };
 }

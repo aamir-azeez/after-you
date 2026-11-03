@@ -50,7 +50,8 @@ import type { Look } from "../pollen/catalog";
 import { pairLooks, type PairLooks } from "../leaderboards/run-looks";
 import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
 import { admitToDuelLink, clearDuelLink, duelHeld, duelJoinAllowed, duelLink, duelMasks, duelPremium, markDuelDone, needsAdmission, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
-import { enteredSeat, seatHeld } from "../duels/public-rooms";
+import { admitSeat } from "../duels/public-rooms";
+import { setTheirRunViewers } from "../duels/their-run";
 import { unmaskRedo, type DuelMasks } from "../duels/public-mask";
 import { acknowledgeTheirRun, dropTheirRun, encodeTheirRun, keepTheirRun, serveTheirRun, type TheirRun } from "../duels/their-run";
 import { errorCode as logCode, logWarning } from "../log";
@@ -527,9 +528,9 @@ export class RoomV2 extends DurableObject<Env> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.stored();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
-    // A public duel side's second player: its board must say they hold the seat (duels/public-rooms.ts), asked once, before the transaction.
+    // A public duel side's second player: its board marks their seat entered first (duels/public-rooms.ts), asked once, before the transaction.
     const pending = duelLink(this.ctx.storage);
-    const admit = !!observed && equalHash(observed.invite_code, invite) && needsAdmission(pending, player) && await seatHeld(this.env, pending!, player);
+    const admission = observed && equalHash(observed.invite_code, invite) && needsAdmission(pending, player) ? await admitSeat(this.env, pending!, player) : null;
     let joined = false;
     const outcome = await this.ctx.storage.transaction(async () => {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
@@ -547,7 +548,7 @@ export class RoomV2 extends DurableObject<Env> {
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     if (!chapterOpen(state.level_id, open)) return fail(403, CHAPTER_NOT_OPEN);
-    if (admit) admitToDuelLink(this.ctx.storage, player);
+    if (admission) admitToDuelLink(this.ctx.storage, player, admission.known);
     if (!duelJoinAllowed(duelLink(this.ctx.storage), player)) return fail(403, "duel_pair_only");
     state.guest_id = player; state.revision++; this.write(state);
     recordMemberName(this.ctx.storage, player, name);
@@ -560,7 +561,6 @@ export class RoomV2 extends DurableObject<Env> {
     return ok(this.view(state, player));
     });
     if (joined && outcome.ok) this.announce(player, outcome.value);
-    if (joined && outcome.ok && admit) await enteredSeat(this.env, pending!, player);
     return outcome;
   }
   operation(player: string, key: string, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
@@ -586,6 +586,7 @@ export class RoomV2 extends DurableObject<Env> {
   }
   /** `looks`: also every turn's look by recording hash, beside the archive and never in it (the archive's hash is unchanged; pollen/room-looks.ts). */
   async replayTransfer(player: string, includeArchive = true, looks = false): Promise<Outcome<ReplayTransfer & { archive: ReplayArchive | null; turn_looks?: Record<string, Look> }>> {
+    const closed = this.strangersHistory(); if (closed) return closed;
     try {
       const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
       // A v1 archive needs every row; once attempt history has offloaded one, only history can bring it back.
@@ -612,6 +613,7 @@ export class RoomV2 extends DurableObject<Env> {
     return looks ? { turn_looks: turnLooks(this.ctx.storage) } : {};
   }
   async acknowledgeReplayTransfer(player: string, input: unknown): Promise<Outcome<ReplayTransfer>> {
+    const closed = this.strangersHistory(); if (closed) return closed;
     try {
       const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
       // A v1 archive needs every row; once attempt history has offloaded one, only history can bring it back.
@@ -635,6 +637,7 @@ export class RoomV2 extends DurableObject<Env> {
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   async restoreReplayTransfer(player: string, input: unknown): Promise<Outcome<{ restored: true; transfer: ReplayTransfer }>> {
+    const closed = this.strangersHistory(); if (closed) return closed;
     try {
       const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
       // A v1 archive needs every row; once attempt history has offloaded one, only history can bring it back.
@@ -698,13 +701,17 @@ export class RoomV2 extends DurableObject<Env> {
       return ok(historyView(this.ctx.storage, room, await loadChain(this.ctx.storage, room, false), player));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
+  /** A public duel room whose members may be strangers keeps its recordings here: their bytes name both players (duels/public-mask.ts). */
+  private strangersHistory(): Outcome<never> | null { return duelLink(this.ctx.storage)?.masks ? fail(409, "public_duel_history_off") : null; }
   async historyAttempt(player: string, position: number, support?: HistorySupport): Promise<Outcome<Uint8Array>> {
+    const closed = this.strangersHistory(); if (closed) return closed;
     try {
       const { room, record } = await this.historyRecord(player, position, support, false);
       return ok(await attemptDownload(this.ctx.storage, room, record));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   async acknowledgeHistory(player: string, position: number, input: unknown, support?: HistorySupport): Promise<Outcome<HistoryView>> {
+    const closed = this.strangersHistory(); if (closed) return closed;
     try {
       const link = parseAck(input), { record } = await this.historyRecord(player, position, support, true);
       if (record.link !== link) return fail(409, "history_mismatch");
@@ -716,6 +723,7 @@ export class RoomV2 extends DurableObject<Env> {
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   async uploadHistory(player: string, position: number, body: Uint8Array, support?: HistorySupport): Promise<Outcome<HistoryView>> {
+    const closed = this.strangersHistory(); if (closed) return closed;
     try {
       const { room, record, records } = await this.historyRecord(player, position, support, false);
       const blob = await checkedUpload(records, position, body, room);
@@ -727,6 +735,7 @@ export class RoomV2 extends DurableObject<Env> {
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   async wantHistory(player: string, position: number, input: unknown, support?: HistorySupport): Promise<Outcome<HistoryView>> {
+    const closed = this.strangersHistory(); if (closed) return closed;
     try {
       parseWant(input);
       const { room, record } = await this.historyRecord(player, position, support, false);
@@ -1158,6 +1167,8 @@ export class RoomV2 extends DurableObject<Env> {
    */
   /** The duel this room plays for, or null (duels/room-link.ts); a retried premium turn's hook asks it. */
   duelLinkOf(): DuelLink | null { return duelLink(this.ctx.storage); }
+  /** A public duel's other pair, from its board once this room's run finished: who may watch the run (duels/their-run.ts). */
+  duelTheirRunViewers(ids: string[]): boolean { return setTheirRunViewers(this.ctx.storage, ids); }
   /** Binding only: a friend duel's run for one of the other pair (duels/their-run.ts), in the blob format. */
   /** `looks` (POLLEN_LOOKS on): also each turn's look by recording hash (pollen/room-looks.ts), so the run plays in the looks it was played in. */
   async theirRun(viewer: string, now: number = Date.now(), looks = false): Promise<Outcome<TheirRun & { turn_looks?: Record<string, Look> }>> {

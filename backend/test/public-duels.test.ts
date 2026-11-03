@@ -354,6 +354,28 @@ describe("public duels", () => {
     expect((await detail(lone, posted)).held).toEqual({ amount: held, state: "forfeit", reason: "stopped" });
   });
 
+  it("admit a joiner to the side's room only through the board, close a side its entered player left, and carry the duel on past an erasure", async () => {
+    const [poster, lone, p1, p2, stranger] = await Promise.all([player(), player(), player(), player(), player()]);
+    await partner(p1, p2);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    const room = await ok<RoomSnapshotV2>(openRoom(poster, posted));
+    // Someone not seated is refused by the room, even holding the invite code.
+    expect((await call("/v2/rooms/join", "POST", stranger, { invite_code: room.invite_code })).status).toBe(403);
+    await ok(join(lone, posted));
+    await ok(call("/v2/rooms/join", "POST", lone, { invite_code: room.invite_code }));
+    await ok(join(p1, posted, "party"));
+    // The joiner entered: leaving now ends side 0, and its seats never go back on the list.
+    await ok(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", lone, { schema_version: 1 }));
+    const after = await boardDuel(posted.duel_id);
+    expect([after.status, after.sides[0].left, after.sides[0].left_by, after.public!.forfeit]).toEqual(["running", true, 1, [1]]);
+    expect((await detail(p1, posted)).duel.public?.seats_open).toBe(0);
+    // The poster's account goes: their id leaves the duel, which carries on for the other pair.
+    await ok(call("/v1/identity", "DELETE", poster));
+    const erased = await boardDuel(posted.duel_id);
+    expect(JSON.stringify(erased)).not.toContain(poster.player_id);
+    expect((await detail(p1, posted)).duel.status).toBe("running");
+  });
+
   it("keep the directory's rows only while listed, and drop an erased player's rows", async () => {
     const [poster, lone] = await Promise.all([player(), player()]);
     const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;

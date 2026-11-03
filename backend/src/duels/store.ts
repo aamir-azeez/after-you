@@ -72,8 +72,8 @@ export type DuelAction =
   | { kind: "join"; player: string; claim: PublicClaim }
   /** Public duels: the side's room admits a seated player as its guest (public.ts enterSeat). */
   | { kind: "enter"; player: string; side: 0 | 1 };
-/** A public duel's listing as it changed: the listing, or null once off the list. */
-export type ListingChange = { duel_id: string; listing: Listing | null };
+/** A public duel's listing as it changed: the listing, or null once off the list; `updated_ms` orders changes (duels/directory.ts). */
+export type ListingChange = { duel_id: string; listing: Listing | null; updated_ms: number };
 /** The finished run's raw final checkpoint, sent with the note of the turn that finished it. */
 export type FinishProof = { checkpoint: CheckpointV2; simulation_version: number };
 
@@ -402,7 +402,7 @@ export class DuelStore {
       // The list hears of a public duel only when what it shows changed (public.ts listingOf); time is left out (0),
       // since the list filters on open_until_ms itself and settle ends a timed out duel.
       const listing = listingOf(duel, 0), text = JSON.stringify(listing);
-      if (this.listings.get(duel.duel_id) !== text) { this.listings.set(duel.duel_id, text); this.changes.set(duel.duel_id, { duel_id: duel.duel_id, listing }); }
+      if (this.listings.get(duel.duel_id) !== text) { this.listings.set(duel.duel_id, text); this.changes.set(duel.duel_id, { duel_id: duel.duel_id, listing, updated_ms: duel.updated_ms }); }
     }
     this.storage.sql.exec("INSERT OR REPLACE INTO duels VALUES (?,?,?,?)", duel.duel_id, duel.status, duel.updated_ms, JSON.stringify(duel));
     if (isFinal(duel)) this.storage.sql.exec("DELETE FROM duel_proofs WHERE duel_id=?", duel.duel_id);

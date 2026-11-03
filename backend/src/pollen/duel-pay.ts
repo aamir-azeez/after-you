@@ -119,7 +119,7 @@ export function creditDuelExtra(storage: DurableObjectStorage, extra: DuelExtra,
     const amount = extra.paid ? held : 0;
     // Nothing held writes nothing: a player who never took a duel turn here has no line to keep.
     if (held === 0) return ok(extraAnswer(0, { held: 0, ...(extra.paid ? {} : { reason: extra.reason }) }, walletBalance(storage, now, rates)));
-    applyLedger(storage, [{ key, kind: "duelextra", amount, detail: { duel_id: extra.duel_id, held, ...(extra.paid ? {} : { reason: extra.reason ?? "forfeit" }) } }], now, rates);
+    applyLedger(storage, [{ key, kind: "duelextra", amount, detail: { duel_id: extra.duel_id, room_id: extra.room_id, held, ...(extra.paid ? {} : { reason: extra.reason ?? "forfeit" }) } }], now, rates);
     return ok(extraAnswer(amount, { held, ...(extra.paid ? {} : { reason: extra.reason ?? "forfeit" }) }, walletBalance(storage, now, rates)));
   });
 }

@@ -4,7 +4,7 @@ import { LEGACY_STAGE_COUNT } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, roomStages } from "./v2/room-stage";
 import { PUBLIC_DUELS_HEADER, termsVersionFor } from "./public-policy";
 import { flags } from "./flags";
-import { blockPlayer, countReport, duelBlocks, publicDuelsOn, unblockHandle } from "./duels/public-routes";
+import { blockPlayer, countReport, duelBlocks, leaveForBlock, publicDuelsOn, unblockHandle } from "./duels/public-routes";
 import { interactionBlocked, parseReport, type SafetyReport } from "./safety";
 import { campaignRequestContext, type CampaignRoomContext } from "./v2/campaign-room-access";
 const exact = (value: Record<string, unknown>, keys: string[]) => { if (Object.keys(value).length !== keys.length || Object.keys(value).some(key => !keys.includes(key))) throw new ApiError(400, "invalid_safety_request"); };
@@ -81,7 +81,13 @@ export async function routeSafety(request: Request, path: string, owner: string,
     // Recheck room publication after the first membership lookup yields.
     if (context) await safetyMembers(env, owner, input.room_family, input.room_id, context);
     // A public duel room's stranger: blocked by handle, so the reply and the block list never carry their id.
-    if (members.public_duel) return { schema_version: 1, blocked: true, player_id: await blockPlayer(env, owner, deviceHash, peer, null, Date.now()) };
+    if (members.public_duel) {
+      const handle = await blockPlayer(env, owner, deviceHash, peer, null, Date.now());
+      // Their partner, blocked from the room: the player leaves the duel, costing neither of them the held extra (PLAN 7).
+      const link = await env.ROOMS_V2.getByName(input.room_id).duelLinkOf();
+      if (link) await leaveForBlock(env, owner, link.board, link.duel_id).catch(() => false);
+      return { schema_version: 1, blocked: true, player_id: handle };
+    }
     return unwrap(await profile.setBlock(owner, deviceHash, peer, true));
   }
   const reportKey = path.match(/^\/v1\/safety\/reports\/([A-Za-z0-9_-]{16,80})$/);

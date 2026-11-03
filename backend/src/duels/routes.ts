@@ -12,6 +12,7 @@ import { CHAPTERS, creatable } from "../v2/chapters";
 import { blankSide, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type Side, type SideRoom } from "./model";
 import type { DuelAction, FinishProof } from "./store";
 import { mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
+import type { MemberState } from "../leaderboards/member";
 import { CHALLENGE_TTL_MS, PARTY_ACTIONS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, RESULT_SHOWN_MS } from "./rules";
 import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
@@ -114,11 +115,15 @@ async function friends(env: Env, a: string, b: string): Promise<boolean> {
  * them (party.ts `look`), the player's first. `look`: the caller's own look from auth(), kept in their row when it
  * changed. Requests: 1, or 2 with a partner.
  */
-async function pairOf(env: Env, player: string, now: number, look?: Look): Promise<{ state: PartyState; partner: string | null; intact: boolean; looks: [Look | undefined, Look | undefined] }> {
-  const state = await party(env, player).partyRead(now, look);
-  if (!state.partner) return { state, partner: null, intact: false, looks: [state.look, undefined] };
-  const theirs = await party(env, state.partner).partyRead(now);
-  return { state, partner: state.partner, intact: mutual(player, state, state.partner, theirs), looks: [state.look, theirs.look] };
+async function pairOf(env: Env, player: string, now: number, look?: Look): Promise<{ state: PartyState; partner: string | null; intact: boolean; looks: [Look | undefined, Look | undefined]; members?: (MemberState | null)[] }> {
+  // While public duels are on, the same request also brings each player's settings (their switch, pause): no request added.
+  const open = publicDuelsOn(env);
+  const read = async (id: string, worn?: Look): Promise<{ party: PartyState; member: MemberState | null }> =>
+    open ? (await party(env, id).publicRead(now, worn)) as unknown as { party: PartyState; member: MemberState } : { party: await party(env, id).partyRead(now, worn), member: null };
+  const mine = await read(player, look), state = mine.party;
+  if (!state.partner) return { state, partner: null, intact: false, looks: [state.look, undefined], ...(open ? { members: [mine.member, null] } : {}) };
+  const theirs = await read(state.partner);
+  return { state, partner: state.partner, intact: mutual(player, state, state.partner, theirs.party), looks: [state.look, theirs.party.look], ...(open ? { members: [mine.member, theirs.member] } : {}) };
 }
 
 /** The duels `player`'s pointers name, settled now, read one request per board. */
@@ -206,7 +211,7 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
       ...(shownLooks && pair.partner ? { partner_look: servedLook(pair.looks[1]) } : {}) },
     duels: shown.map(duel => viewFor(duel, player, shownLooks)).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms),
     limits: { friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR },
-    ...hintsField(env), ...await publicLobby(env, player, pair.partner, pair.intact, duels)
+    ...hintsField(env), ...publicLobby(env, player, pair.members, pair.intact, duels)
   };
 }
 
@@ -507,16 +512,14 @@ export async function prepareDuelRoom(env: Env, player: string, ask: DuelRoomAsk
   const c = duel.chapter;
   if (c.level_id !== key.level_id || c.level_version !== key.level_version || c.definition_hash !== key.definition_hash) throw new ApiError(422, "duel_chapter_mismatch");
   const members = duel.sides[side as 0 | 1]!.members;
-  // A public duel's side may still have an open seat: its room starts with the players seated now (public-rooms.ts).
   if (!duel.public && members.some(id => id === null)) throw new ApiError(409, "duel_not_running");
-  const seatedHere = members.filter((id): id is string => id !== null);
   // A friend duel's room knows the other pair, who may watch its run once it is over (their-run.ts).
   const others = duel.kind === "friend" ? ((duel.sides[1 - side]?.members ?? []) as (string | null)[]).filter((id): id is string => id !== null) : [];
-  // Strangers may share a public duel's room, so its replies show stand-ins for the partner (public-mask.ts); a party
-  // that joined together knows each other and keeps ids.
-  const strangers = !!duel.public && !(seatedHere.length === 2 && duel.known.includes(knownKey(seatedHere[0], seatedHere[1])));
-  return { schema_version: 1, duel_id: duel.duel_id, board: duel.board, kind: duel.kind, side: side as 0 | 1, members: seatedHere, ...(duel.kind === "friend" ? { others } : {}),
-    ...(duel.public ? { public: true as const } : {}), ...(strangers ? { masks: [randomToken(16), randomToken(16)] } : {}) };
+  // A public duel's room names only the player making it; whoever else takes a seat on the side is admitted by the board
+  // when they join (public-rooms.ts). Its replies show stand-ins for the partner (public-mask.ts) until the room learns the
+  // second player is someone the first knows.
+  if (duel.public) return { schema_version: 1, duel_id: duel.duel_id, board: duel.board, kind: duel.kind, side: side as 0 | 1, members: [player], others, public: true, masks: [randomToken(16), randomToken(16)] };
+  return { schema_version: 1, duel_id: duel.duel_id, board: duel.board, kind: duel.kind, side: side as 0 | 1, members: members as string[], ...(duel.kind === "friend" ? { others } : {}) };
 }
 
 /**

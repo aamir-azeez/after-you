@@ -65,8 +65,9 @@ export function seatOf(duel: Duel, player: string): number {
   for (let seat = 0; seat < 4; seat++) if (holder(duel, seat) === player) return seat;
   return -1;
 }
+/** Seats anyone may still take: empty, never given up after entering, on a side still playing. */
 export function openSeats(duel: Duel): boolean[] {
-  return [0, 1, 2, 3].map(seat => holder(duel, seat) === null && !duel.public!.seats[seat].gone);
+  return [0, 1, 2, 3].map(seat => holder(duel, seat) === null && !duel.public!.seats[seat].gone && !sideOfSeat(duel, seat).left && sideOfSeat(duel, seat).finished_ms === null);
 }
 export function seated(duel: Duel): string[] {
   return [0, 1, 2, 3].map(seat => holder(duel, seat)).filter((id): id is string => id !== null);
@@ -128,15 +129,30 @@ export function enterSeat(duel: Duel, side: 0 | 1, player: string, now: number):
   return ok(true);
 }
 
-/** Frees a seat whose player never entered the room (never the last player's: they withdraw it instead). */
-function freeSeat(duel: Duel, seat: number, now: number): void {
+/** Takes `player`'s id out of the duel: their seat, look, room claim, turn, known pairs and starter. */
+function dropPlayer(duel: Duel, seat: number, now: number): void {
   const side = sideOfSeat(duel, seat), player = side.members[seat & 1]!;
   if (side.looks) wearLooks(side, id => id === player ? {} : undefined);
   side.members[seat & 1] = null;
   if (side.turn === player) side.turn = null;
-  duel.public!.seats[seat] = { label: null };
+  if (side.room?.host === player) side.room.host = null;
   duel.known = duel.known.filter(key => !key.split("|").includes(player));
   if (duel.starter === player) duel.starter = null;
+  duel.updated_ms = now;
+}
+
+/** Frees a seat whose player never entered the room (never the last player's: they withdraw it instead). */
+function freeSeat(duel: Duel, seat: number, now: number): void {
+  dropPlayer(duel, seat, now);
+  duel.public!.seats[seat] = { label: null };
+}
+
+/** Ends the side of a seat whose player entered and is gone: the side has left, and the seat forfeits unless `blocked`. */
+function endSide(duel: Duel, seat: number, now: number, blocked: boolean): void {
+  const side = sideOfSeat(duel, seat), state = duel.public!;
+  if (!side.left) { side.left = true; side.left_by = seat; side.turn = null; }
+  state.seats[seat].gone = true;
+  if (!blocked) state.forfeit = [...new Set([...(state.forfeit ?? []), seat])].sort();
   duel.updated_ms = now;
 }
 
@@ -153,28 +169,33 @@ export function publicLeave(duel: Duel, player: string, now: number, blocked: bo
   if (seated(duel).length === 1) { duel.status = "withdrawn"; duel.updated_ms = now; return ok(duel); }
   if (!state.seats[seat].entered) { freeSeat(duel, seat, now); return ok(duel); }
   if (side.left) return ok(duel);
-  side.left = true;
-  side.left_by = seat;
-  side.turn = null;
-  state.seats[seat].gone = true;
-  if (!blocked) state.forfeit = [...new Set([...(state.forfeit ?? []), seat])].sort();
-  duel.updated_ms = now;
+  endSide(duel, seat, now, blocked);
   decide(duel, now);
   return ok(duel);
 }
 
 /**
- * Account erasure in a public duel. A seat never entered is freed, as a leave would; the caller's general erasure is
- * then skipped (answers true). Otherwise the seat is gone and forfeits, and model.ts forgetPlayer carries on (false).
+ * Account erasure in a public duel (PLAN 12): the player's id goes and the duel carries on for everyone else. Running,
+ * the last player in it withdraws it; a seat never entered goes back on the list; otherwise their side ends as if they
+ * left, and their held extra is forfeit. Final, their seat forfeits. Answers true: model.ts forgetPlayer has nothing to add.
  */
 export function publicForget(duel: Duel, player: string, now: number): boolean {
   const seat = seatOf(duel, player), state = duel.public!;
   if (seat < 0) return false;
-  if (duel.status === "running" && !state.seats[seat].entered && seated(duel).length > 1) { freeSeat(duel, seat, now); return true; }
+  if (duel.status === "running") {
+    if (seated(duel).length === 1) { duel.status = "withdrawn"; dropPlayer(duel, seat, now); state.seats[seat] = { label: null, gone: true }; return true; }
+    if (!state.seats[seat].entered) { freeSeat(duel, seat, now); return true; }
+    endSide(duel, seat, now, false);
+    dropPlayer(duel, seat, now);
+    state.seats[seat] = { label: null, gone: true };
+    decide(duel, now);
+    return true;
+  }
+  dropPlayer(duel, seat, now);
   state.seats[seat] = { label: null, gone: true };
   state.forfeit = [...new Set([...(state.forfeit ?? []), seat])].sort();
   if (duel.result) duel.result.forfeit = [...new Set([...(duel.result.forfeit ?? []), seat])].sort();
-  return false;
+  return true;
 }
 
 /** The time rules of a public duel (model.ts settle). Returns whether it changed. */

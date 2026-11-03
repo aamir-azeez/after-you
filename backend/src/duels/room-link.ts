@@ -81,11 +81,15 @@ export function duelHeld(link: DuelLink | null): boolean {
   return duelPremium(link) && link?.public === true;
 }
 
-/** Inside the join transaction: a public duel side's second player, whom its board just seated (RoomV2.join). */
-export function admitToDuelLink(storage: DurableObjectStorage, player: string): void {
+/**
+ * Inside the join transaction: a public duel side's second player, whose seat its board just marked entered
+ * (RoomV2.join). `known`: the first player knows them (a party that joined together), so the room drops its masks.
+ */
+export function admitToDuelLink(storage: DurableObjectStorage, player: string, known: boolean): void {
   const link = duelLink(storage);
   if (!link?.public || link.members.includes(player) || link.members.length >= 2) return;
-  storage.sql.exec("UPDATE duel_link SET data=? WHERE id=1", JSON.stringify({ ...link, members: [...link.members, player] }));
+  const { masks, ...rest } = link;
+  storage.sql.exec("UPDATE duel_link SET data=? WHERE id=1", JSON.stringify({ ...rest, members: [...link.members, player], ...(known || !masks ? {} : { masks }) }));
   memo.delete(storage);
 }
 

@@ -3,7 +3,7 @@ import { errorCode, logWarning } from "../log";
 import { entryId } from "../leaderboards/run";
 import { chapter } from "../v2/chapters";
 import type { RoomSnapshotV2 } from "../v2/room";
-import type { ProgressNote } from "./model";
+import type { Duel, ProgressNote } from "./model";
 import type { DuelLink } from "./room-link";
 import type { FinishProof } from "./store";
 import { runProgress } from "./ticks";
@@ -51,7 +51,12 @@ export async function noteDuelTurn(env: Env, room: RoomSnapshotV2, link: DuelLin
   if (!link || !duelsOn(env)) return;
   try {
     const made = await roomNote(room, link, looks);
-    if (made) await env.LEADERBOARD_BOARDS.getByName(link.board).duelProgress(link.duel_id, made.note, made.proof, actor);
+    const noted = made ? await env.LEADERBOARD_BOARDS.getByName(link.board).duelProgress(link.duel_id, made.note, made.proof, actor) : null;
+    // A public duel's finished run: the room learns who on the other pair may watch it, which it could not know when made.
+    if (made?.note.complete && link.public && noted?.ok) {
+      const duel = noted.value as unknown as Duel, others = duel.sides[1 - link.side]?.members.filter((id): id is string => id !== null) ?? [];
+      if (others.length) await env.ROOMS_V2.getByName(room.room_id).duelTheirRunViewers(others);
+    }
   } catch (error) {
     logWarning("duel_note_failed", { code: errorCode(error) });
   }

@@ -63,11 +63,12 @@ function remove(storage: DurableObjectStorage): void {
  */
 export function keepTheirRun(storage: DurableObjectStorage, checkpoint: CheckpointV2, now: number): boolean {
   const link = duelLink(storage);
-  if (!link || link.kind !== "friend" || link.done || !link.others?.length || read(storage)) return false;
+  // A public duel's other pair may still be filling: its room keeps the copy, and its board names the viewers once the run is done (setTheirRunViewers).
+  if (!link || link.kind !== "friend" || link.done || !link.others?.length && !link.public || read(storage)) return false;
   // Never fails the turn: a copy that cannot be made is simply not there (the other pair reads it as gone).
   try {
     storage.sql.exec(TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
-    write(storage, { duel_id: link.duel_id, finished_ms: now, pending: [...link.others], digest: null, byte_length: null, raw: true }, new TextEncoder().encode(canonicalJson(checkpoint)));
+    write(storage, { duel_id: link.duel_id, finished_ms: now, pending: [...(link.others ?? [])], digest: null, byte_length: null, raw: true }, new TextEncoder().encode(canonicalJson(checkpoint)));
     return true;
   } catch { return false; }
 }
@@ -118,6 +119,23 @@ export function acknowledgeTheirRun(storage: DurableObjectStorage, viewer: strin
     if (!pending.length) { remove(storage); return ok({ kept: false }); }
     if (pending.length !== held.row.pending.length) write(storage, { ...held.row, pending }, held.body);
     return ok({ kept: true });
+  });
+}
+
+/**
+ * A public duel's other pair as its board knows them once this room's run finished (duels/turn-hook.ts): they become
+ * the room's `others` and, while nobody is waiting on the copy yet, the players it waits for. Returns whether it changed.
+ */
+export function setTheirRunViewers(storage: DurableObjectStorage, ids: readonly string[]): boolean {
+  return storage.transactionSync(() => {
+    const link = duelLink(storage);
+    if (!link?.public) return false;
+    const others = [...new Set(ids)].filter(id => !link.members.includes(id)).slice(0, 2);
+    if (!others.length || (link.others ?? []).join() === others.join()) return false;
+    recordDuelLink(storage, { ...link, others });
+    const held = read(storage);
+    if (held && !held.row.pending.length) write(storage, { ...held.row, pending: others }, held.body);
+    return true;
   });
 }
 

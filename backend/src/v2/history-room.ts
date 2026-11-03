@@ -8,6 +8,7 @@ import { boundedArchiveStructure, compactPair, type TransferredRoom } from "./re
 import type { PairV2, RoomStateV2 } from "./room";
 import type { RecordingV2 } from "./protocol";
 import { historyPresent, initializeHistory } from "./storage-schema";
+import { duelLink, duelMasks } from "../duels/room-link";
 import { anyDeparture } from "../room-departure";
 
 /** A live room, or a finished one whose replays left the server. */
@@ -39,13 +40,15 @@ function attemptView(record: AttemptRecord, room: HistoryRoom, player: string): 
     state: record.state, acked_by_you: record.acked.includes(player), partner_acked: partner !== null && record.acked.includes(partner),
     wanted_by_partner: partner !== null && record.wanted.includes(partner), pair_ids: record.pair_ids };
 }
-const roomFacts = (room: HistoryRoom): HistoryRoomFacts => ({ ...roomKey(room), host_id: room.host_id, guest_id: room.guest_id });
+/** The room's members; in a public duel's room with strangers, beside the masks the Worker swaps them for (duels/public-mask.ts). */
+const roomFacts = (room: HistoryRoom, storage?: DurableObjectStorage): HistoryRoomFacts => ({ ...roomKey(room), host_id: room.host_id, guest_id: room.guest_id,
+  ...(storage ? duelMasks(duelLink(storage), room) : {}) });
 const partnerSupports = (storage: DurableObjectStorage, room: HistoryRoom, player: string) => { const partner = partnerOf(room, player); return partner !== null && historyMembers(storage).get(partner) === 1; };
 export function historyView(storage: DurableObjectStorage, room: HistoryRoom, records: AttemptRecord[], player: string): HistoryView {
-  return { schema_version: 1, mode: "attempts", head: records.at(-1)?.link ?? ZERO_LINK, room: roomFacts(room), partner_supports: partnerSupports(storage, room, player), attempts: records.map(record => attemptView(record, room, player)) };
+  return { schema_version: 1, mode: "attempts", head: records.at(-1)?.link ?? ZERO_LINK, room: roomFacts(room, storage), partner_supports: partnerSupports(storage, room, player), attempts: records.map(record => attemptView(record, room, player)) };
 }
 export function v1Transferred(storage: DurableObjectStorage, room: HistoryRoom, player: string): HistoryView {
-  return { schema_version: 1, mode: "v1_transferred", head: ZERO_LINK, room: roomFacts(room), partner_supports: partnerSupports(storage, room, player), attempts: [] };
+  return { schema_version: 1, mode: "v1_transferred", head: ZERO_LINK, room: roomFacts(room, storage), partner_supports: partnerSupports(storage, room, player), attempts: [] };
 }
 
 /**

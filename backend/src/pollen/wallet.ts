@@ -162,6 +162,18 @@ function save(storage: DurableObjectStorage, wallet: WalletState, now: number, r
   storage.sql.exec("INSERT OR REPLACE INTO pollen_wallet VALUES (1,?)", JSON.stringify(wallet));
 }
 
+/**
+ * A public duel turn credited only after its duel's held extra was settled (a claim that waited): nothing would sum it
+ * again, so it is paid with the turn when the extra was paid, and stays held (never paid) when it was forfeit.
+ */
+function heldAfterSettle(storage: DurableObjectStorage, roomId: string, turn: TurnLine): TurnLine {
+  if (!turn.duel_held || !present(storage)) return turn;
+  const settled = ledgerLines(storage, "duelextra:", 64).find(item => item.detail.room_id === roomId);
+  if (!settled || settled.detail.reason !== undefined) return turn;
+  const { duel_held: held, ...rest } = turn;
+  return { ...rest, duel: held, total: turn.total + held };
+}
+
 /** Turn claims older than the prune window go, at most once a day, before a new claim lands. */
 function prune(storage: DurableObjectStorage, wallet: WalletState, now: number, rates: Rates = RATES): void {
   const day = Math.floor(now / DAY_MS);
@@ -244,7 +256,8 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     else if (state.tail < tailLength(rates)) state.tail++;
     const priced = price({ facts, bank, tail_index: tailIndex, bloom: roll.multiplier }, rates);
     const boostFrom = [...(facts.subscriber ? ["you" as const] : []), ...(facts.partner_subscriber ? ["partner" as const] : [])];
-    const turn: TurnLine = { ...priced, ...(bank ? {} : { reason: repeat ? "repeat" as const : late ? "late" as const : "bank_empty" as const }), ...(priced.boost_percent > 0 ? { boost_from: boostFrom } : {}) };
+    const line: TurnLine = { ...priced, ...(bank ? {} : { reason: repeat ? "repeat" as const : late ? "late" as const : "bank_empty" as const }), ...(priced.boost_percent > 0 ? { boost_from: boostFrom } : {}) };
+    const turn = heldAfterSettle(storage, facts.room_id, line);
     ensureTables(storage);
     const clears = facts.complete ? payClears(storage, { level_id: facts.level_id, hard: facts.hard && facts.together, boost_percent: facts.boost_percent }, now, rates) : [];
     if (!bank && turn.total === 0 && clears.length === 0) return zero(turn);
