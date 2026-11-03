@@ -82,6 +82,9 @@ func _ready() -> void:
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true
+	# A drag anywhere on the page scrolls it, with a finger's slop so taps still press.
+	ThemeRules.touch_scroll(scroll)
+	SettingsKit.style_scroll(scroll, false)
 	layout.add_child(scroll)
 	body = VBoxContainer.new()
 	body.name = page_name() + "Body"

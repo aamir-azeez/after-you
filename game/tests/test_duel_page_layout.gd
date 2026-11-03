@@ -2,13 +2,21 @@ extends SceneTree
 ## The duel in progress page fits every phone and tablet: its turn card, with
 ## Play, View turns and Leave duel, sits whole inside the safe area with the
 ## page's own bottom spacing (duel_page_base.gd, SafeArea.pad), and the page
-## body scrolls rather than running off the screen when it ever cannot fit. Every card state
+## body scrolls rather than running off the screen when it ever cannot fit.
+## The other duel pages (the lobby, Party, Start a duel, Race a recorded run, a
+## result with its Pollen) fit every phone height without scrolling either. Every card state
 ## (your turn, waiting for your partner, finished, left), in a friend duel and
 ## a ghost race. Synthetic ids only.
 const SafeArea = preload("res://presentation/safe_area.gd")
 const DuelsScreen = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
+const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
+const PartyPage = preload("res://presentation/duels/duel_party_page.gd")
+const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
+const GhostPage = preload("res://presentation/duels/duel_ghost_page.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -100,6 +108,7 @@ func _test_screen(size: Vector2i, insets: Vector4, name: String) -> void:
 				await _check_page(page, safe, "%s, %s %s, partner %s" % [name, kind, state, partner])
 				page.close()
 				await _settle()
+		if partner == "Maya": await _other_pages(lobby, safe, name)
 		lobby.close()
 		await _settle()
 
@@ -111,10 +120,12 @@ func _check_page(page: CanvasLayer, safe: Rect2, context: String) -> void:
 	var card := page.root.find_child("DuelTurnCard", true, false) as Control
 	_check(card != null and card.is_visible_in_tree(), "%s: the turn card shows" % context)
 	if card == null: return
+	var spacing := _bottom_spacing(page, safe)
+	# Where the card sits as drawn, before any scrolling: whole, above the page's bottom spacing (a long name may scroll).
+	if not context.ends_with("Marigold"): _check(card.get_global_rect().end.y <= safe.end.y - spacing + 1.0 and safe.grow(0.5).encloses(card.get_global_rect()), "%s: the turn card shows whole, %.1f above the safe bottom (wanted %.0f)" % [context, safe.end.y - card.get_global_rect().end.y, spacing])
 	var scroll := _scroll_of(card)
 	_check(scroll != null, "%s: the page body sits in a scroll" % context)
 	if scroll == null: return
-	var spacing := _bottom_spacing(page, safe)
 	var view := scroll.get_global_rect()
 	# Within a unit: SafeArea.pad keeps whole units of a fractional inset.
 	_check(view.position.y >= safe.position.y - 0.5 and view.end.y <= safe.end.y - spacing + 1.0, "%s: the page ends %.1f above the safe bottom, wanted at least %.0f" % [context, safe.end.y - view.end.y, spacing])
@@ -128,6 +139,69 @@ func _check_page(page: CanvasLayer, safe: Rect2, context: String) -> void:
 	await _settle()
 	_check(view.grow(0.5).encloses(lowest.get_global_rect()), "%s: scrolled to, %s shows whole above the bottom spacing" % [context, lowest.name])
 	_check(safe.grow(0.5).encloses(lowest.get_global_rect()), "%s: %s is inside the safe area" % [context, lowest.name])
+
+## Every other duel page over `lobby`: it fits without scrolling, and every
+## button and line on it shows inside the safe area.
+func _other_pages(lobby: CanvasLayer, safe: Rect2, name: String) -> void:
+	var chapters: Array = []
+	for key: String in ChapterUnlocks.chain(): if Registry.definition(key).has("stages"): chapters.append(key)
+	lobby.show_lobby(DuelsClient.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [FINN], "invite_out": null},
+		"duels": [_duel_wire("friend", "d1"), _duel_wire("ghost", "d2"), _duel_wire("friend", "d3", "decided")]}))
+	await _settle()
+	_check_fits(lobby, safe, "%s, the lobby" % name)
+	var result := ResultPage.new()
+	result.me = ME
+	result.name_of = lobby.name_of
+	result.view = DuelsClient.valid_view(_duel_wire("friend", "d3", "decided"))
+	result.pay = {"turns": 6, "plain": 600, "blooms": 120, "duel": 300, "duel_percent": 50, "boost": 60, "boost_percent": 10, "total": 1080}
+	result.win_bonus = {"amount": 250, "counted": true, "reason": ""}
+	var party := PartyPage.new()
+	party.name_of = lobby.name_of
+	party.party = {"partner": MAYA, "intact": true, "invites_in": [FINN], "invite_out": null}
+	party.friends = [{"id": MAYA, "name": "Maya"}, {"id": FINN, "name": "Finn"}]
+	var start := ChallengePage.new()
+	start.friends = [{"id": FINN, "name": "Finn"}]
+	start.chapters = chapters
+	var race := GhostPage.new()
+	race.chapters = chapters
+	for page: CanvasLayer in [result, party, start, race]:
+		lobby.open_overlay(page)
+		await _settle()
+		if page == start:
+			start._pick_friend(FINN)
+			start._pick_chapter(BOARD)
+		if page == race: race.show_ghosts([{"board": BOARD, "developer": 1470, "top": [{"entry_id": "e1".repeat(16), "ticks": 1400, "rank": 1, "names": null}]}])
+		await _settle()
+		_check_fits(page, safe, "%s, %s" % [name, page.page_name()])
+		page.close()
+		await _settle()
+
+func _check_fits(page: CanvasLayer, safe: Rect2, context: String) -> void:
+	var scroll := page.root.find_child(page.page_name() + "Scroll", true, false) as ScrollContainer
+	_check(scroll != null and scroll.get_v_scroll_bar().max_value <= scroll.size.y + 0.5, "%s: fits without scrolling (%.0f of %.0f)" % [context, scroll.get_v_scroll_bar().max_value if scroll != null else -1.0, scroll.size.y if scroll != null else -1.0])
+	_check_inside(page.root, safe, context)
+
+## Buttons and lines inside the safe area, past any list that scrolls with more to show.
+func _check_inside(node: Node, safe: Rect2, context: String) -> void:
+	var control := node as Control
+	if control is ScrollContainer and (control.get_v_scroll_bar().max_value > control.size.y + 0.5 or control.get_h_scroll_bar().max_value > control.size.x + 0.5): return
+	if control != null and control.is_visible_in_tree() and (control is Button or control is Label) and control.size.x > 0.0:
+		_check(safe.grow(0.5).encloses(control.get_global_rect()), "%s: %s is inside the safe area (%s)" % [context, control.name, control.get_global_rect()])
+	for child: Node in node.get_children():
+		_check_inside(child, safe, context)
+
+## A duel as the server sends it, its id `id` repeated.
+static func _duel_wire(kind: String, id: String, status: String = "running") -> Dictionary:
+	var decided := status == "decided"
+	var wire := {"schema_version": 1, "duel_id": id.repeat(16), "kind": kind, "board": BOARD, "status": status, "steps": 12,
+		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "eligible": true,
+		"result": {"outcome": "won", "reason": "faster", "margin_ticks": 720, "decided_ms": 9} if decided else null,
+		"sides": [{"members": [ME, MAYA], "you": true, "steps": 12 if decided else 6, "ticks": 3240, "turn": null if decided else 0, "finished": decided, "left": false, "check": "passed" if decided else "none", "room_id": "RRRRRRRRRRRRRRRRRRRRRR", "invite_code": "abcdefabcdefabcdefab", "hosting": true},
+			{"members": [FINN, null], "you": false, "steps": 12 if decided else 4, "ticks": 3960, "turn": null if decided else 1, "finished": decided, "left": false, "check": "passed" if decided else "none"}]}
+	if kind == "ghost":
+		wire.sides[1] = null
+		wire.ghost = {"source": "developer", "entry_id": null, "rank": null, "ticks": 1470, "names": null}
+	return wire
 
 static func _scroll_of(control: Control) -> ScrollContainer:
 	var ancestor := control.get_parent()

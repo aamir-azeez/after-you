@@ -105,7 +105,8 @@ func _side_card(index: int) -> Control:
 		column.add_child(Kit.pip(Vector2(92, 108) if not compact else Vector2(74, 88), Kit.FIRST_PIP if slot == 0 else Kit.SECOND_PIP, own and side.members[slot] == me, looks[slot]))
 		var shown := ""
 		if side is Dictionary and side.members[slot] != null and name_of.is_valid(): shown = str(name_of.call(side.members[slot]))
-		var name_label := Kit.fitted(Kit.text(shown, 19), 92.0 if not compact else 74.0)
+		var pip_width := 92.0 if not compact else 74.0
+		var name_label := Kit.fitted(Kit.text(shown, 19), pip_width, pip_width + 40.0)
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		column.add_child(name_label)
 		pips.add_child(column)
@@ -123,7 +124,8 @@ func _side_card(index: int) -> Control:
 	var turn := DuelModel.turn_line(view, index, name_of)
 	var lit := own and DuelModel.your_turn(view, me) and turn == PlayerCopy.DUEL_YOUR_TURN
 	var pill := Kit.pill(turn, lit, 20)
-	Kit.fitted(pill.get_child(0))
+	# The pill's own padding is 14 a side: a long name trims only past the column's width.
+	Kit.fitted(pill.get_child(0), 0.0, right.custom_minimum_size.x - 28.0)
 	pill.custom_minimum_size.x = 230
 	right.add_child(pill)
 	var steps := DuelModel.steps(view, index)
@@ -166,7 +168,7 @@ func _render_card() -> void:
 		words.add_child(Kit.text(PlayerCopy.DUEL_YOUR_TURN_TITLE, 46 if not compact else 38, UiTokens.CREAM, true))
 		words.add_child(Kit.wrapped(PlayerCopy.DUEL_PARTNER_LEFT_PATH % partner if own.steps > 0 else PlayerCopy.DUEL_FIRST_TURN, 20))
 	else:
-		words.add_child(Kit.fitted(Kit.text(PlayerCopy.DUEL_WAITING_TITLE % partner, 38, UiTokens.CREAM, true)))
+		words.add_child(Kit.wrapped(PlayerCopy.DUEL_WAITING_TITLE % partner, 38, UiTokens.CREAM, true))
 		words.add_child(Kit.wrapped(PlayerCopy.DUEL_WAITING_BODY, 19))
 	_card.add_child(head)
 	if not own.finished:

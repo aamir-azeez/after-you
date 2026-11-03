@@ -297,7 +297,8 @@ func _tile(view: Dictionary) -> Control:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 6)
 	card.add_child(column)
-	var picture := Kit.picture(view.chapter, Vector2(TILE_WIDTH - 20.0, 122 if compact else 140))
+	# Sized so a lobby with an invite and a result tile fits a phone without scrolling (tests/test_duel_page_layout.gd).
+	var picture := Kit.picture(view.chapter, Vector2(TILE_WIDTH - 20.0, 106 if compact else 132))
 	picture.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(picture)
 	var title := Kit.text(_chapter_title(view.chapter), 22, UiTokens.CREAM, true)

@@ -39,15 +39,17 @@ static func text(value: String, font_size: int, ink: Color = UiTokens.CREAM, hea
 	return label
 
 ## A one-line `label` that never grows past its place: a long name ends in an
-## ellipsis instead of widening the card around it. `width`: the least it keeps.
-static func fitted(label: Label, width: float = 0.0) -> Label:
+## ellipsis instead of widening the card around it. It keeps at least `least`
+## and, when `most` is given, its text's own width up to `most`.
+static func fitted(label: Label, least: float = 0.0, most: float = 0.0) -> Label:
+	var own := label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.custom_minimum_size.x = width
+	label.custom_minimum_size.x = maxf(least, minf(ceilf(own), most)) if most > 0.0 else least
 	return label
 
-static func wrapped(value: String, font_size: int, ink: Color = UiTokens.SOFT) -> Label:
-	var label := text(value, font_size, ink)
+static func wrapped(value: String, font_size: int, ink: Color = UiTokens.SOFT, heading: bool = false) -> Label:
+	var label := text(value, font_size, ink, heading)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return label
 

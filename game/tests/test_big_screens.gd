@@ -222,6 +222,9 @@ func _check_duel_page(page: CanvasLayer, safe: Rect2, name: String) -> void:
 	if safe.size.y > SafeArea.PAGE_HEIGHT:
 		_check(block.size.y <= SafeArea.PAGE_HEIGHT + DUEL_SLACK and absf(above - below) <= 1.5, "%s: %s centres a page block no taller than the phone's (%.0f tall, %.0f above, %.0f below)" % [name, page.page_name(), block.size.y, above, below])
 	_check(block.size.x <= 1240.0 + DUEL_SLACK and absf((block.position.x - safe.position.x) - (safe.end.x - block.end.x)) <= DUEL_SLACK, "%s: %s keeps a centred block about 1240 wide (%.0f)" % [name, page.page_name(), block.size.x])
+	# Its body scrolls only when it cannot fit (duel_page_base.gd): on these screens it always fits.
+	var scroll := page.root.find_child(page.page_name() + "Scroll", true, false) as ScrollContainer
+	_check(scroll != null and scroll.get_v_scroll_bar().max_value <= scroll.size.y + 0.5, "%s: %s fits without scrolling" % [name, page.page_name()])
 	_check_inside(page.root, safe, "%s %s" % [name, page.page_name()])
 
 ## The chapter HUD: every control inside the safe area and none on another.
