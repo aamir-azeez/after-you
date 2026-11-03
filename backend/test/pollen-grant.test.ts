@@ -2,8 +2,9 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { BOUGHT_GAP_MS, RETRY_MS, anniversary, claimsNeeded, emptyGrant, grantDue, instalmentAmount, planGrant, type ClaimAnswer, type GrantState, type GrantSub, type Instalment } from "../src/pollen/grant";
-import { grantSub, readGrant } from "../src/pollen/grant-provider";
+import { BOUGHT_GAP_MS, RETRY_MS, anniversary, claimsNeeded, emptyGrant, grantDue, instalmentAmount, planGrant, type ClaimAnswer, type GrantState, type GrantSub, type Instalment, type MovedSub } from "../src/pollen/grant";
+import { grantSub, lookupGrantSubs, readGrant } from "../src/pollen/grant-provider";
+import { RATES } from "../src/pollen/rates";
 import { OUTAGE_PAUSE_MS, settleGrant, storedGrant, type GrantDeps } from "../src/pollen/grant-settle";
 import { claimFor, POLLEN_CLAIMS_OBJECT } from "../src/pollen/claims";
 import { grantOn } from "../src/pollen/features";
@@ -36,10 +37,10 @@ class Identity {
     this.holders.set(id, { holder: this.name, since: now, moved: !!row });
     return { self: !row, since: now };
   }
-  read(subs: GrantSub[], now: number) {
+  read(subs: GrantSub[], now: number, moved: MovedSub[] = []) {
     const claims = Object.fromEntries(claimsNeeded(this.state, subs).map(id => [id, this.claim(id, now)]));
     const plan = planGrant(this.state, subs, claims, now, (sub, from, to) => this.ledger
-      .filter(each => each.sub === sub && each.due >= from && each.due < to && !this.refunded.has(each.key)).map(({ key, amount, anchor, n, due }) => ({ key, amount, anchor, n, due, sub })));
+      .filter(each => each.sub === sub && each.due >= from && each.due < to && !this.refunded.has(each.key)).map(({ key, amount, anchor, n, due }) => ({ key, amount, anchor, n, due, sub })), null, RATES, moved);
     for (const each of plan.pay) if (!this.ledger.some(other => other.key === each.key)) this.ledger.push(each);
     for (const refund of plan.refunds) this.refunded.add(refund.refunds);
     this.state = plan.state;
@@ -153,6 +154,47 @@ describe("grant instalments", () => {
     const later = second.read([paid("s", anchor, year)], anniversary(moveAt, 1) + HOUR);
     expect(later.pay.map(each => [each.anchor, each.amount])).toEqual([[anniversary(moveAt, 1), 4500]]);
     expect(first.ledger.length + second.ledger.length).toBe(2);
+  });
+  it("takes back a moved subscription's refunded month once, looking it up daily until nothing more can be taken back", () => {
+    const holders = new Map<string, { holder: string; since: number; moved: boolean }>();
+    const first = new Identity(holders, "first"), second = new Identity(holders, "second");
+    const anchor = at(2026, 6, 1), next = anniversary(anchor, 1);
+    first.read([paid("s", anchor, next)], anchor + HOUR);
+    expect(first.balance).toBe(4500);
+    // Restored to the second identity; the first no longer lists it.
+    second.read([paid("s", anchor, next)], anchor + DAY);
+    const gone = first.read([], anchor + 2 * DAY);
+    expect(gone.refunds).toEqual([]);
+    expect(gone.state.recheck_at).toBe(anchor + 2 * DAY + RETRY_MS);
+    // Still in the period this identity saw: kept, and looked at again tomorrow.
+    const live = first.read([], anchor + 3 * DAY, [{ id: "s", sub: paid("s", anchor, next), others: [] }]);
+    expect(live.refunds).toEqual([]);
+    expect(live.state.subs.s).toBeDefined();
+    expect(live.state.recheck_at).toBe(anchor + 3 * DAY + RETRY_MS);
+    // Refunded at the new holder: ended early, with no plan carrying on there.
+    const refundAt = anchor + 4 * DAY;
+    const back = first.read([], refundAt + HOUR, [{ id: "s", sub: ended("s", anchor, next, refundAt), others: [] }]);
+    expect(back.refunds).toEqual([{ key: `grantrefund:${anchor}:1`, refunds: `grant:${anchor}:1`, amount: 4500, sub: "s" }]);
+    expect(first.balance).toBe(0);
+    expect(back.state.months).toBe(0);
+    // Forgotten here: no more lookups, no daily read for it, and nothing taken back twice.
+    expect(back.state.subs.s).toBeUndefined();
+    expect(back.state.recheck_at).toBe(0);
+    expect(first.read([], refundAt + 2 * HOUR, [{ id: "s", sub: ended("s", anchor, next, refundAt), others: [] }]).refunds).toEqual([]);
+    expect(Object.keys(back.state)).toHaveLength(13);
+  });
+  it("takes nothing back from a moved subscription that switched plan at its holder, renewed past the cover seen here, or is gone", () => {
+    const anchor = at(2026, 6, 1), next = anniversary(anchor, 1), endAt = anchor + 9 * DAY;
+    const setup = () => { const one = new Identity(new Map(), "one"); one.read([paid("s", anchor, next)], anchor + HOUR); one.read([], anchor + DAY); return one; };
+    const switched = setup().read([], endAt + HOUR, [{ id: "s", sub: ended("s", anchor, next, endAt), others: [paid("y", endAt, anniversary(endAt, 12))] }]);
+    expect(switched.refunds).toEqual([]);
+    expect(switched.state.subs.s).toBeUndefined();
+    const renewed = setup().read([], next + DAY, [{ id: "s", sub: paid("s", next, anniversary(anchor, 2)), others: [] }]);
+    expect(renewed.refunds).toEqual([]);
+    expect(renewed.state.subs.s).toBeUndefined();
+    const missing = setup().read([], next + DAY, [{ id: "s", sub: null, others: [] }]);
+    expect(missing.refunds).toEqual([]);
+    expect(missing.state.subs.s).toBeUndefined();
   });
   it("never pays one store month to two identities when a subscription is restored back and forth", () => {
     const holders = new Map<string, { holder: string; since: number; moved: boolean }>();
@@ -340,6 +382,29 @@ describe("the grant's own RevenueCat status filter", () => {
   });
 });
 
+describe("looking up a moved subscription", () => {
+  const store = { store: "play_store", environment: "production", product_id: "prodMonthly", ownership: "purchased" };
+  const config = { REVENUECAT_SECRET_KEY: "synthetic-test-key", CONFIG: configJson({ revenuecat: { project_id: "proj1234", play_subscription_product_ids: ["prodMonthly"] } }) };
+  const item = (id: string, extra: Record<string, unknown> = {}) => ({ object: "subscription", id, customer_id: "holder_2", ...store, status: "expired", gives_access: false,
+    current_period_starts_at: 1_000, current_period_ends_at: 9_000, ends_at: 3_000, starts_at: 1_000, auto_renewal_status: "will_not_renew", ...extra });
+  it("reads each by id in one round, and an ended one's holder list, so a switch there is seen", async () => {
+    const request = vi.fn(async (url: string) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/subscriptions/sub_a")) return { ok: true as const, status: 200, value: item("sub_a") };
+      if (path.endsWith("/subscriptions/sub_b")) return { ok: true as const, status: 200, value: item("sub_b", { status: "active", gives_access: true, ends_at: 9_000 }) };
+      if (path.endsWith("/subscriptions/sub_c")) return { ok: true as const, status: 404, value: null };
+      return { ok: true as const, status: 200, value: { object: "list", items: [item("sub_new", { status: "active", gives_access: true, starts_at: 3_000, current_period_starts_at: 3_000, ends_at: 99_000, current_period_ends_at: 99_000 })], next_page: null } };
+    });
+    const found = await lookupGrantSubs(["sub_a", "sub_b", "sub_c"], "P".repeat(22), config, request);
+    expect(found).toMatchObject({ ok: true, found: [{ id: "sub_a", sub: { status: "ended", ends_at: 3_000 }, others: [{ id: "sub_new", started_at: 3_000 }] }, { id: "sub_b", sub: { status: "paid" }, others: [] }, { id: "sub_c", sub: null, others: [] }] });
+    const paths = request.mock.calls.map(([url]) => new URL(url).pathname + new URL(url).search);
+    expect(paths.filter(path => path.includes("/customers/"))).toEqual(["/v2/projects/proj1234/customers/holder_2/subscriptions?environment=production&limit=100"]);
+    expect(paths.filter(path => !path.includes("/customers/")).sort()).toEqual(["/v2/projects/proj1234/subscriptions/sub_a", "/v2/projects/proj1234/subscriptions/sub_b", "/v2/projects/proj1234/subscriptions/sub_c"]);
+    // One failed request takes nothing back.
+    expect(await lookupGrantSubs(["sub_a"], "P".repeat(22), config, async url => url.includes("/customers/") ? { ok: false, reason: "provider_http_500" } : request(url))).toEqual({ ok: false, reason: "provider_http_500" });
+  });
+});
+
 describe("a tester's fast test renewals", () => {
   it("pay one instalment a calendar month however often the test subscription renews or is bought again", () => {
     // A Play license tester's monthly plan renews every 5 minutes, up to 6 times, then expires.
@@ -411,6 +476,38 @@ describe("settling the grant in the Player", () => {
       noteFullJourney(storage, DUE + 20 * DAY, DUE);
       expect(await settleGrant(storage, DUE, () => true, { read: async () => ({ ok: true, subs: [monthly()], lifetime: null }), claim: async () => null })).toBe("unavailable");
       expect(walletView(storage, DUE).balance).toBe(0);
+    });
+  });
+  it("looks up a moved subscription without asking PollenClaims about it, and takes its refunded month back once", async () => {
+    serial++;
+    await inPlayer(async storage => {
+      noteFullJourney(storage, DUE + 20 * DAY, DUE);
+      const sub = monthly();
+      const claimed: string[] = [];
+      const claim = async (keys: string[]) => { claimed.push(...keys); return self(keys); };
+      expect(await settleGrant(storage, DUE, () => true, { read: async () => ({ ok: true, subs: [sub], lifetime: null }), claim })).toBe("settled");
+      expect(walletView(storage, DUE).balance).toBe(4500);
+      claimed.length = 0;
+      // Moved away: the read at the next due date lists nothing and looks it up; still in its period (grace at the new
+      // holder), it is kept and looked at again in a day.
+      const lookup = vi.fn<NonNullable<GrantDeps["lookup"]>>(async (ids: string[]) => ({ ok: true, found: ids.map(id => ({ id, sub: { ...sub, status: "grace" }, others: [] })) }));
+      const due = anniversary(sub.period_start, 1) + HOUR;
+      const empty = async () => ({ ok: true as const, subs: [] as GrantSub[], lifetime: null });
+      expect(await settleGrant(storage, due, () => true, { read: empty, claim, lookup })).toBe("settled");
+      expect(lookup).toHaveBeenCalledWith(["sub_settle"]);
+      expect(storedGrant(storage)!.recheck_at).toBe(due + RETRY_MS);
+      expect(await settleGrant(storage, due + RETRY_MS - 1, () => true, { read: empty, claim, lookup })).toBe("not_due");
+      // Refunded at its new holder: the month is taken back under its key, once.
+      const refundAt = DUE + 5 * DAY;
+      lookup.mockImplementation(async (ids: string[]) => ({ ok: true as const, found: ids.map(id => ({ id, sub: { ...sub, status: "ended" as const, ends_at: refundAt, renews: false, access_until: 0 }, others: [] as GrantSub[] })) }));
+      expect(await settleGrant(storage, due + RETRY_MS, () => true, { read: empty, claim, lookup })).toBe("settled");
+      expect(walletView(storage, due + RETRY_MS).balance).toBe(0);
+      expect(ledgerLines(storage, "grantrefund").map(line => line.amount)).toEqual([-4500]);
+      expect(claimed).toEqual([]);
+      expect(storedGrant(storage)!.subs).toEqual({});
+      lookup.mockClear();
+      expect(await settleGrant(storage, due + 3 * RETRY_MS, () => true, { read: empty, claim, lookup }, "held")).toBe("settled");
+      expect(lookup).not.toHaveBeenCalled();
     });
   });
   it("pays once when two reads overlap across the provider call", async () => {

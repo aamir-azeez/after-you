@@ -98,8 +98,8 @@ export function bundleProducts(bundles: Bundles = BUNDLES): BundleProducts {
   })));
 }
 
-/** The project's REST v2 base and key, or null while unconfigured. */
-function project(env: ServerVars): { base: string; key: string } | null {
+/** The project's REST v2 base and key, or null while unconfigured. Also the grant's lookups (grant-provider.ts lookupGrantSubs). */
+export function project(env: ServerVars): { base: string; key: string } | null {
   const id = serverConfig(env).revenuecat.project_id ?? "", key = env.REVENUECAT_SECRET_KEY;
   return key && PROJECT_PATTERN.test(id) ? { base: `https://api.revenuecat.com/v2/projects/${encodeURIComponent(id)}`, key } : null;
 }

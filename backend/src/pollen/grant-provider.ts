@@ -2,7 +2,8 @@ import { isObject } from "../protocol";
 import { flags, type ServerVars } from "../flags";
 import { APP, PRODUCT_PATTERN, PROJECT_PATTERN, serverConfig } from "../config";
 import { revenuecatRequest, type ProviderResult } from "../play-entitlement";
-import { SUB_ID_PATTERN, type GrantStatus, type GrantSub } from "./grant";
+import { SUB_ID_PATTERN, type GrantStatus, type GrantSub, type MovedSub } from "./grant";
+import { project } from "./bundle-provider";
 
 /**
  * The grant's own read of RevenueCat (REST v2, the same customer subscriptions list the hosting check
@@ -97,4 +98,33 @@ export async function readGrant(playerId: string, env: ServerVars, lifetime: boo
     owned = isObject(purchase) ? { id: purchase.id as string } : null;
   }
   return { ok: true, subs, lifetime: owned };
+}
+
+export type GrantLookup = { ok: true; found: MovedSub[] } | { ok: false; reason: string };
+
+/**
+ * The refund check's second read, as bundle-provider.ts lookupBundles is for bundles: each subscription this identity
+ * was paid for that its own list no longer shows (a restore with "Transfer to new App User ID" moved it), by its
+ * RevenueCat id, whoever holds it now (https://www.revenuecat.com/docs/api-v2#tag/Subscription/operation/get-subscription).
+ * An ended one also reads its holder's own list (customer_id), so a plan switch there is told from a refund: one more
+ * request, only for an ended one. All in one round, so a slow provider costs one request timeout. Counted by the same
+ * filter as this identity's own read (grantSub, its stores); one that filter does not count, or a 404, is gone.
+ * Any failed or partial request answers { ok: false }: nothing is taken back on it.
+ */
+export async function lookupGrantSubs(ids: readonly string[], playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<GrantLookup> {
+  const configured = stores(playerId, env), at = project(env);
+  if (configured === null || at === null) return { ok: false, reason: "unconfigured" };
+  const counted = (item: unknown): GrantSub | null => configured.map(store => grantSub(item, store)).find(sub => sub !== null) ?? null;
+  const found = await Promise.all(ids.map(async (id): Promise<MovedSub | string> => {
+    const result = await request(`${at.base}/subscriptions/${encodeURIComponent(id)}`, at.key);
+    if (!result.ok) return result.reason;
+    const item = result.status === 404 ? null : result.value, sub = counted(item);
+    if (sub === null || sub.id !== id) return { id, sub: null, others: [] };
+    if (sub.status !== "ended" || !isObject(item) || typeof item.customer_id !== "string") return { id, sub, others: [] };
+    const items = list(await request(`${at.base}/customers/${encodeURIComponent(item.customer_id)}/subscriptions?environment=${encodeURIComponent(String(item.environment))}&limit=100`, at.key));
+    if (typeof items === "string") return items;
+    return { id, sub, others: items.map(counted).filter((other): other is GrantSub => other !== null) };
+  }));
+  const failed = found.find((each): each is string => typeof each === "string");
+  return failed !== undefined ? { ok: false, reason: failed } : { ok: true, found: found as MovedSub[] };
 }

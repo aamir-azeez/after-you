@@ -1,8 +1,9 @@
 import { POLLEN_GRANT_TABLES } from "../storage-schema";
-import { RATES, type Rates } from "./rates";
-import { LIFETIME_KEY, anniversary, claimsNeeded, grantDue, ladder, planGrant, purchaseClaimKey, refundKey, subscriptionClaimKey, validGrant, type ClaimAnswer, type GrantHint, type GrantState, type PaidInstalment } from "./grant";
+import { DAY_MS, RATES, type Rates } from "./rates";
+import { LIFETIME_KEY, anniversary, claimsNeeded, grantDue, ladder, movedSubs, planGrant, purchaseClaimKey, refundKey, subscriptionClaimKey, validGrant, type ClaimAnswer, type GrantHint, type GrantState, type MovedSub, type PaidInstalment } from "./grant";
 import { applyLedger, fullJourneyUntil, inLedger, ledgerLines, noteFullJourney, type LedgerEntry } from "./wallet";
-import type { GrantRead } from "./grant-provider";
+import type { GrantLookup, GrantRead } from "./grant-provider";
+import { MAX_BUNDLE_LOOKUPS } from "./bundle-settle";
 
 /**
  * The monthly grant in the player's own Player Durable Object (POLLEN_GRANT), run inside the wallet
@@ -33,6 +34,8 @@ export type GrantDeps = {
    * that joins one already out takes its outcome only.
    */
   paid?: (lines: readonly { key: string; amount: number }[]) => void;
+  /** Subscriptions paid here that moved away, looked up by id (grant-provider.ts lookupGrantSubs). Absent: none are looked up. */
+  lookup?: (ids: string[]) => Promise<GrantLookup>;
 };
 /** What GET /v1/pollen adds for a player with a grant: the loyalty count, the next step, the top step and the newest instalment. */
 export type GrantView = { months: number; next: number; top: number; latest?: { key: string; amount: number; at: number } };
@@ -106,13 +109,20 @@ async function settleDue(storage: DurableObjectStorage, now: number, active: () 
   if (answers === null) { paused.set(storage, now + OUTAGE_PAUSE_MS); return "unavailable"; }
   const subClaims = Object.fromEntries(read.subs.filter(sub => answers[subscriptionClaimKey(sub.id)]).map(sub => [sub.id, answers[subscriptionClaimKey(sub.id)]]));
   const lifetimeClaim = read.lifetime ? answers[purchaseClaimKey(read.lifetime.id)] : undefined;
+  // Moved subscriptions, as bundle-settle.ts missingBundles bounds its lookups: at most MAX_BUNDLE_LOOKUPS, a different
+  // window each day when there are more. A failed lookup takes nothing back; the daily look again (grant.ts) retries it.
+  const missing = deps.lookup ? movedSubs(before, read.subs, paidBy(storage)) : [];
+  const start = (Math.floor(now / DAY_MS) * MAX_BUNDLE_LOOKUPS) % Math.max(1, missing.length);
+  const asks = missing.length <= MAX_BUNDLE_LOOKUPS ? missing : Array.from({ length: MAX_BUNDLE_LOOKUPS }, (_, index) => missing[(start + index) % missing.length]);
+  const looked = asks.length ? await deps.lookup!(asks) : null;
+  const moved: MovedSub[] = looked?.ok ? looked.found : [];
   let waiting = false, alive = false, newly: LedgerEntry[] = [];
   storage.transactionSync(() => {
     if (!active()) return;
     alive = true;
     // Planned again from the state as stored now: what an overlapping read paid is never paid twice.
     const fresh = storedGrant(storage);
-    const plan = planGrant(fresh, read.subs, subClaims, now, paidBy(storage), lifetimeClaim ? { claim: lifetimeClaim } : null, rates);
+    const plan = planGrant(fresh, read.subs, subClaims, now, paidBy(storage), lifetimeClaim ? { claim: lifetimeClaim } : null, rates, moved);
     const entries: LedgerEntry[] = [
       ...plan.refunds.map(refund => ({ key: refund.key, kind: "grantrefund", amount: -refund.amount, detail: { refunds: refund.refunds, sub: refund.sub } })),
       ...plan.pay.map(paid => ({ key: paid.key, kind: "grant", amount: paid.amount, detail: { anchor: paid.anchor, n: paid.n, due: paid.due, step: paid.step, sub: paid.sub } })),

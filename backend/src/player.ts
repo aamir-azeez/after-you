@@ -39,7 +39,7 @@ import { dropGrant, grantView, settleGrant, storedGrant, type GrantOutcome, type
 import { grantAlarmAt, grantWake } from "./pollen/grant-alarm";
 import { sendPollenPush } from "./pollen/grant-push";
 import { grantDue, type GrantHint } from "./pollen/grant";
-import { readGrant } from "./pollen/grant-provider";
+import { lookupGrantSubs, readGrant } from "./pollen/grant-provider";
 import { claimBundlesFor, claimFor } from "./pollen/claims";
 import { bundleCheckDue, bundlesView, dropBundles, pacedClaim, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
 import { SANDBOX, lookupBundles, readBundles, sandboxBundles, type BundleAsk } from "./pollen/bundle-provider";
@@ -305,6 +305,7 @@ export class Player extends DurableObject<Env> {
       return await settleGrant(this.ctx.storage, now, this.pollenActive(owner), {
         read: lifetime => readGrant(owner, this.env, lifetime),
         claim: keys => claimFor(this.env, owner, keys, now),
+        lookup: ids => lookupGrantSubs(ids, owner, this.env),
         ...(paid ? { paid } : {})
       }, hint);
     } catch (error) { logWarning("pollen_grant_failed", { reason: errorCode(error) }); return "failed"; }
