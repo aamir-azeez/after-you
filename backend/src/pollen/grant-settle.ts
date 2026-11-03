@@ -111,7 +111,7 @@ async function settleDue(storage: DurableObjectStorage, now: number, active: () 
   const lifetimeClaim = read.lifetime ? answers[purchaseClaimKey(read.lifetime.id)] : undefined;
   // Moved subscriptions, as bundle-settle.ts missingBundles bounds its lookups: at most MAX_BUNDLE_LOOKUPS, a different
   // window each day when there are more. A failed lookup takes nothing back; the daily look again (grant.ts) retries it.
-  const missing = deps.lookup ? movedSubs(before, read.subs, paidBy(storage)) : [];
+  const missing = deps.lookup ? movedSubs(before, read.subs, paidBy(storage), now) : [];
   const start = (Math.floor(now / DAY_MS) * MAX_BUNDLE_LOOKUPS) % Math.max(1, missing.length);
   const asks = missing.length <= MAX_BUNDLE_LOOKUPS ? missing : Array.from({ length: MAX_BUNDLE_LOOKUPS }, (_, index) => missing[(start + index) % missing.length]);
   const looked = asks.length ? await deps.lookup!(asks) : null;

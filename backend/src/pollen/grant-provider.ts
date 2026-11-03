@@ -108,7 +108,8 @@ export type GrantLookup = { ok: true; found: MovedSub[] } | { ok: false; reason:
  * RevenueCat id, whoever holds it now (https://www.revenuecat.com/docs/api-v2#tag/Subscription/operation/get-subscription).
  * An ended one also reads its holder's own list (customer_id), so a plan switch there is told from a refund: one more
  * request, only for an ended one. All in one round, so a slow provider costs one request timeout. Counted by the same
- * filter as this identity's own read (grantSub, its stores); one that filter does not count, or a 404, is gone.
+ * filter as this identity's own read (grantSub, its stores); one that filter does not count, or a 404, is gone. One
+ * still held by this player (its list only lost it to a config change: products, flags, testers, environment) is `held`.
  * Any failed or partial request answers { ok: false }: nothing is taken back on it.
  */
 export async function lookupGrantSubs(ids: readonly string[], playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<GrantLookup> {
@@ -118,7 +119,9 @@ export async function lookupGrantSubs(ids: readonly string[], playerId: string, 
   const found = await Promise.all(ids.map(async (id): Promise<MovedSub | string> => {
     const result = await request(`${at.base}/subscriptions/${encodeURIComponent(id)}`, at.key);
     if (!result.ok) return result.reason;
-    const item = result.status === 404 ? null : result.value, sub = counted(item);
+    const item = result.status === 404 ? null : result.value;
+    if (isObject(item) && item.customer_id === playerId) return { id, sub: null, others: [], held: true };
+    const sub = counted(item);
     if (sub === null || sub.id !== id) return { id, sub: null, others: [] };
     if (sub.status !== "ended" || !isObject(item) || typeof item.customer_id !== "string") return { id, sub, others: [] };
     const items = list(await request(`${at.base}/customers/${encodeURIComponent(item.customer_id)}/subscriptions?environment=${encodeURIComponent(String(item.environment))}&limit=100`, at.key));

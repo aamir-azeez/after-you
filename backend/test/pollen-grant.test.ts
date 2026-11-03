@@ -155,7 +155,7 @@ describe("grant instalments", () => {
     expect(later.pay.map(each => [each.anchor, each.amount])).toEqual([[anniversary(moveAt, 1), 4500]]);
     expect(first.ledger.length + second.ledger.length).toBe(2);
   });
-  it("takes back a moved subscription's refunded month once, looking it up daily until nothing more can be taken back", () => {
+  it("takes back a moved subscription's refunded month once, looking it up when the cover seen here ends", () => {
     const holders = new Map<string, { holder: string; since: number; moved: boolean }>();
     const first = new Identity(holders, "first"), second = new Identity(holders, "second");
     const anchor = at(2026, 6, 1), next = anniversary(anchor, 1);
@@ -165,22 +165,23 @@ describe("grant instalments", () => {
     second.read([paid("s", anchor, next)], anchor + DAY);
     const gone = first.read([], anchor + 2 * DAY);
     expect(gone.refunds).toEqual([]);
-    expect(gone.state.recheck_at).toBe(anchor + 2 * DAY + RETRY_MS);
-    // Still in the period this identity saw: kept, and looked at again tomorrow.
-    const live = first.read([], anchor + 3 * DAY, [{ id: "s", sub: paid("s", anchor, next), others: [] }]);
+    // One read when the cover seen here ends, not a daily one.
+    expect(gone.state.recheck_at).toBe(next);
+    // Still in the period this identity saw past its end (grace at the new holder): kept, and looked at again tomorrow.
+    const live = first.read([], next + HOUR, [{ id: "s", sub: status("s", "grace", anchor, next), others: [] }]);
     expect(live.refunds).toEqual([]);
     expect(live.state.subs.s).toBeDefined();
-    expect(live.state.recheck_at).toBe(anchor + 3 * DAY + RETRY_MS);
+    expect(live.state.recheck_at).toBe(next + HOUR + RETRY_MS);
     // Refunded at the new holder: ended early, with no plan carrying on there.
     const refundAt = anchor + 4 * DAY;
-    const back = first.read([], refundAt + HOUR, [{ id: "s", sub: ended("s", anchor, next, refundAt), others: [] }]);
+    const back = first.read([], next + DAY, [{ id: "s", sub: ended("s", anchor, next, refundAt), others: [] }]);
     expect(back.refunds).toEqual([{ key: `grantrefund:${anchor}:1`, refunds: `grant:${anchor}:1`, amount: 4500, sub: "s" }]);
     expect(first.balance).toBe(0);
     expect(back.state.months).toBe(0);
     // Forgotten here: no more lookups, no daily read for it, and nothing taken back twice.
     expect(back.state.subs.s).toBeUndefined();
     expect(back.state.recheck_at).toBe(0);
-    expect(first.read([], refundAt + 2 * HOUR, [{ id: "s", sub: ended("s", anchor, next, refundAt), others: [] }]).refunds).toEqual([]);
+    expect(first.read([], next + 2 * DAY, [{ id: "s", sub: ended("s", anchor, next, refundAt), others: [] }]).refunds).toEqual([]);
     expect(Object.keys(back.state)).toHaveLength(13);
   });
   it("takes nothing back from a moved subscription that switched plan at its holder, renewed past the cover seen here, or is gone", () => {
@@ -195,6 +196,11 @@ describe("grant instalments", () => {
     const missing = setup().read([], next + DAY, [{ id: "s", sub: null, others: [] }]);
     expect(missing.refunds).toEqual([]);
     expect(missing.state.subs.s).toBeUndefined();
+    // Still this identity's (only a config change dropped it from the list): kept, with no daily read for it.
+    const held = setup().read([], next + DAY, [{ id: "s", sub: null, others: [], held: true }]);
+    expect(held.refunds).toEqual([]);
+    expect(held.state.subs.s).toBeDefined();
+    expect(held.state.recheck_at).toBe(0);
   });
   it("never pays one store month to two identities when a subscription is restored back and forth", () => {
     const holders = new Map<string, { holder: string; since: number; moved: boolean }>();
@@ -400,6 +406,8 @@ describe("looking up a moved subscription", () => {
     const paths = request.mock.calls.map(([url]) => new URL(url).pathname + new URL(url).search);
     expect(paths.filter(path => path.includes("/customers/"))).toEqual(["/v2/projects/proj1234/customers/holder_2/subscriptions?environment=production&limit=100"]);
     expect(paths.filter(path => !path.includes("/customers/")).sort()).toEqual(["/v2/projects/proj1234/subscriptions/sub_a", "/v2/projects/proj1234/subscriptions/sub_b", "/v2/projects/proj1234/subscriptions/sub_c"]);
+    // One this player still holds is never treated as moved.
+    expect(await lookupGrantSubs(["sub_a"], "holder_2", config, request)).toEqual({ ok: true, found: [{ id: "sub_a", sub: null, others: [], held: true }] });
     // One failed request takes nothing back.
     expect(await lookupGrantSubs(["sub_a"], "P".repeat(22), config, async url => url.includes("/customers/") ? { ok: false, reason: "provider_http_500" } : request(url))).toEqual({ ok: false, reason: "provider_http_500" });
   });

@@ -33,9 +33,11 @@ import { DAY_MS, RATES, type Rates } from "./rates";
  *   paid in that period and moves the count back by one for each.
  * - A subscription this identity was paid for that a read no longer lists (a store restore moved it to another
  *   identity) is looked up by its id (grant-provider.ts lookupGrantSubs, at most MAX_BUNDLE_LOOKUPS a read, rotated by
- *   day), and its refund is taken back by the same rule, under the same keys. It never counts for cover here and is
- *   never asked of PollenClaims. Once a lookup shows nothing paid here can still be taken back (it ended, it renewed
- *   past the cover this identity saw, or it is gone), this identity forgets it; until then a read looks again daily.
+ *   day) once the cover this identity saw has ended (a refund then shows as an end before it), and its refund is taken
+ *   back by the same rule, under the same keys. It never counts for cover here and is never asked of PollenClaims.
+ *   Once a lookup shows nothing paid here can still be taken back (it ended, it renewed past that cover, or it is gone),
+ *   this identity forgets it; one the lookup finds still in that period is looked at again daily, and one that is still
+ *   this identity's (only a config change dropped it from its list) is kept and left alone.
  */
 export const SWITCH_GAP_MS = DAY_MS;
 /** A plan switch: the new subscription started this close to the old one's early end, before or after. A rebuy after a refund starts later; a second plan bought earlier is not a switch. */
@@ -96,8 +98,9 @@ export type GrantPlan = { state: GrantState; pay: Instalment[]; refunds: GrantRe
 /**
  * A moved subscription looked up by id: `sub` as the grant counts it, null when it is gone or not one the grant
  * counts; `others`: for an ended one, the subscriptions its holder lists now, so a plan switch there is no refund.
+ * `held`: it is still this identity's, so it never moved (a config change dropped it from the list): left alone.
  */
-export type MovedSub = { id: string; sub: GrantSub | null; others: GrantSub[] };
+export type MovedSub = { id: string; sub: GrantSub | null; others: GrantSub[]; held?: true };
 
 const count = (value: unknown, min = 0, max = MAX_TIME): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
 export const SUB_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
@@ -196,12 +199,13 @@ export function claimsNeeded(state: GrantState | null, subs: readonly GrantSub[]
 export const MAX_CLAIMED = 15;
 
 /**
- * The subscriptions to look up by id: known here, paid at least one instalment here not taken back yet, and missing
- * from this read's list (moved away by a restore). Sorted, so a day's window of them is stable.
+ * The subscriptions to look up by id: known here, paid at least one instalment here not taken back yet, missing
+ * from this read's list (moved away by a restore), and past the cover this identity saw. Sorted, so a day's window
+ * of them is stable.
  */
-export function movedSubs(state: GrantState | null, subs: readonly GrantSub[], paidBy: (sub: string, from: number, to: number) => PaidInstalment[]): string[] {
+export function movedSubs(state: GrantState | null, subs: readonly GrantSub[], paidBy: (sub: string, from: number, to: number) => PaidInstalment[], now: number): string[] {
   const listed = new Set(subs.map(sub => sub.id));
-  return Object.keys(state?.subs ?? {}).filter(id => !listed.has(id) && paidBy(id, 0, MAX_TIME).length > 0).sort();
+  return Object.entries(state?.subs ?? {}).filter(([id, sub]) => !listed.has(id) && sub.through <= now && paidBy(id, 0, MAX_TIME).length > 0).map(([id]) => id).sort();
 }
 
 /**
@@ -259,7 +263,7 @@ export function planGrant(prev: GrantState | null, subs: readonly GrantSub[], cl
   // A subscription that moved away, as its lookup found it: the same refund rule, a switch read from its holder's list.
   for (const look of moved) {
     const known = state.subs[look.id], sub = look.sub;
-    if (!known || listed.has(look.id)) continue;
+    if (!known || listed.has(look.id) || look.held) continue;
     if (sub && sub.status === "ended") {
       const early = sub.ends_at + REFUND_MARGIN_MS < known.through;
       const carried = look.others.some(other => other.id !== sub.id && Math.abs(other.started_at - sub.ends_at) <= CARRY_GAP_MS && paidTo(other) > sub.ends_at);
@@ -304,8 +308,11 @@ export function planGrant(prev: GrantState | null, subs: readonly GrantSub[], cl
   if (lifetime && !state.lifetime) { state.lifetime = true; thanks = lifetime.claim.self ? rates.grant.lifetime_thanks : 0; }
   // 5. What to watch next. A plan in grace or on hold may still recover, so its due dates stay worth a read.
   state.renews = subs.some(sub => state.subs[sub.id] && ((sub.status === "paid" && sub.renews) || sub.status === "grace" || sub.status === "hold"));
-  // A moved subscription still to look up is read again in a day (none is left once its lookup settles it).
-  const lookAgain = movedSubs(state, subs, paidBy).length ? [now + RETRY_MS] : [];
+  // A moved subscription still to look up: read at the end of the cover seen here, or again in a day once past it
+  // (none is left once its lookup settles it; one still this identity's waits for a read made anyway).
+  const held = new Set(moved.filter(look => look.held).map(look => look.id));
+  const lookAgain = Object.entries(state.subs).filter(([id]) => !listed.has(id) && !held.has(id) && paidBy(id, 0, MAX_TIME).length > 0)
+    .map(([, sub]) => sub.through > now ? sub.through : now + RETRY_MS);
   const watch = [...subs.filter(sub => sub.status === "trial").map(sub => sub.period_end), ...Object.values(state.subs).filter(sub => sub.from > now).map(sub => sub.from), ...lookAgain];
   state.recheck_at = watch.length ? Math.min(...watch) : 0;
   // With no live anchor, nothing new is looked for before what is being watched (or a day): a noted end alone is not news.
