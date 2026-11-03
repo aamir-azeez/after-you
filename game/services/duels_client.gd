@@ -20,6 +20,15 @@ extends RefCounted
 ##   the partner's (`party.partner_look`). Kept as sent ({} for anything that is
 ##   not a Dictionary); the pages clean them (services/outfit.gd) as they draw,
 ##   so only offered items ever show. A server without them reads as the default.
+## - public duels (services/public_duels_client.gd): a public duel is a friend
+##   duel whose seats fill from the list. Its view carries `public` and each side
+##   `seats` ({open, you, label}); members hold ids only for this player and the
+##   players this phone already knows, so a stranger is a seat, never an id. Its
+##   room is kept as kind "public" (public_room()), which room screens read to
+##   offer no friend request, nickname or photo on the stand-in partner. The
+##   lobby's `public` part says whether this player and the partner have the
+##   switch on and how many duels count toward the limit. A detail read of a
+##   public duel carries `held`: the duel extra held for this player.
 ## - hints_sent(): whether the latest lobby or duel read said duel changes also
 ##   come over the live socket (duel_hints_version), so the screens may read at
 ##   their backup pace. A server rolled back to one without hints says nothing,
@@ -203,7 +212,7 @@ static func new_key() -> String:
 func ghost_race(room_id: String) -> Dictionary:
 	return _ghost_rooms.get(room_id, {})
 
-## "friend", "ghost" or "" for a room this phone knows as a duel room.
+## "friend", "ghost", "public" or "" for a room this phone knows as a duel room.
 func room_kind(room_id: String) -> String:
 	return str(_saved.get("rooms", {}).get(room_id, ""))
 
@@ -229,6 +238,15 @@ func _party(action: String, body: Dictionary) -> Dictionary:
 	if checked.is_empty(): return {"ok": false, "code": "invalid_duels"}
 	return {"ok": true, "lobby": _take(checked)}
 
+## A duel answer from another duel route (services/public_duels_client.gd), checked and kept like this client's own.
+func duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
+	return _duel_answer(response, detail)
+
+## Whether `room_id` is a public duel's room as the signed-in player's client knows it
+## (services/partner_friends.gd, the photo card): its partner is a stand-in, never a friend.
+static func public_room(room_id: String) -> bool:
+	return _shared != null and not room_id.is_empty() and _shared.room_kind(room_id) == "public"
+
 func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", "")), "status": int(response.get("status", 0))}
 	var data: Variant = response.get("data")
@@ -240,6 +258,7 @@ func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 	if detail:
 		answer["pay"] = _pay(data.get("pay"))
 		answer["win_bonus"] = _bonus(data.get("ghost_bonus" if view.kind == "ghost" else "win_bonus"))
+		answer["held"] = _held(data.get("held")) if view.has("public") else {}
 	return answer
 
 ## Puts a duel's newer copy into the kept lobby, so the lobby under a page
@@ -279,7 +298,7 @@ func _remember(views: Array) -> void:
 	for view: Dictionary in views:
 		var own: Dictionary = view.sides[view.mine]
 		if own.get("room_id") is String and not str(own.room_id).is_empty():
-			rooms[own.room_id] = view.kind
+			rooms[own.room_id] = "public" if view.has("public") else view.kind
 			if view.kind == "ghost" and not (_ghost_rooms.has(own.room_id) and _older(view, _ghost_rooms[own.room_id])): _ghost_rooms[own.room_id] = view
 	if rooms == _saved.get("rooms", {}): return
 	while rooms.size() > MAX_DUELS * 2: rooms.erase(rooms.keys()[0])
@@ -319,7 +338,7 @@ func _read_saved() -> Dictionary:
 	if not mine is Dictionary: return {"rooms": rooms, "rung": rung}
 	if mine.get("rooms") is Dictionary:
 		for room_id: Variant in mine.rooms:
-			if Typed.valid_id(room_id) and mine.rooms[room_id] in ["friend", "ghost"]: rooms[room_id] = mine.rooms[room_id]
+			if Typed.valid_id(room_id) and mine.rooms[room_id] in ["friend", "ghost", "public"]: rooms[room_id] = mine.rooms[room_id]
 	if mine.get("rung") is Array:
 		for duel_id: Variant in (mine.rung as Array).slice(maxi((mine.rung as Array).size() - MAX_DUELS * 2, 0)):
 			if _entry(duel_id): rung[duel_id] = true
@@ -341,8 +360,17 @@ static func valid_lobby(value: Variant) -> Dictionary:
 		duels.append(view)
 	if duels.size() > MAX_DUELS: return {}
 	var limits: Variant = value.get("limits")
-	return {"party": {"partner": partner, "intact": party.intact, "invites_in": party.invites_in.duplicate(), "invite_out": out, "partner_look": _look(party.get("partner_look"))}, "duels": duels,
+	var kept := {"party": {"partner": partner, "intact": party.intact, "invites_in": party.invites_in.duplicate(), "invite_out": out, "partner_look": _look(party.get("partner_look"))}, "duels": duels,
 		"limits": {"friend": _limit(limits, "friend", FRIEND_LIMIT), "ghost": _limit(limits, "ghost", GHOST_LIMIT)}}
+	var public := _public_part(value.get("public"))
+	if not public.is_empty(): kept["public"] = public
+	return kept
+
+## The lobby's public duels part ({version 1, on, show_name, partner_on, paused, running}), or {} without one.
+static func _public_part(value: Variant) -> Dictionary:
+	if not value is Dictionary or not Typed.equal(value.get("version"), 1) or not value.get("on") is bool or not value.get("show_name") is bool or not value.get("paused") is bool or not Typed.whole_number(value.get("running")): return {}
+	var partner: Variant = value.get("partner_on")
+	return {"on": value.on, "show_name": value.show_name, "partner_on": partner if partner is bool else null, "paused": value.paused, "running": int(value.running)}
 
 static func _limit(limits: Variant, kind: String, fallback: int) -> int:
 	var value: Variant = limits.get(kind) if limits is Dictionary else null
@@ -376,9 +404,16 @@ static func valid_view(value: Variant) -> Dictionary:
 	if result != null:
 		if not result is Dictionary or not result.get("outcome") in OUTCOMES or not result.get("reason") is String: return {}
 		kept_result = {"outcome": result.outcome, "reason": result.reason, "margin_ticks": int(result.margin_ticks) if Typed.whole_number(result.get("margin_ticks")) else -1}
-	return {"duel_id": value.duel_id, "chapter": value.board, "board": value.board, "kind": value.kind, "status": value.status, "steps": int(value.steps),
+	var kept := {"duel_id": value.duel_id, "chapter": value.board, "board": value.board, "kind": value.kind, "status": value.status, "steps": int(value.steps),
 		"mine": int(mine), "sides": sides, "ghost": kept_ghost, "result": kept_result, "eligible": value.get("eligible") == true,
 		"created_ms": int(value.get("created_ms", 0)), "updated_ms": int(value.get("updated_ms", 0))}
+	# A public duel: its list times, and every side's seats (a friend duel has none).
+	var public: Variant = value.get("public")
+	if public != null:
+		if value.kind != "friend" or not public is Dictionary or not Typed.whole_number(public.get("posted_ms")) or not Typed.whole_number(public.get("open_until_ms")) or not Typed.whole_number(public.get("seats_open")): return {}
+		if sides.any(func(side: Variant) -> bool: return not side is Dictionary or not side.has("seats")): return {}
+		kept["public"] = {"posted_ms": int(public.posted_ms), "open_until_ms": int(public.open_until_ms), "seats_open": int(public.seats_open)}
+	return kept
 
 static func _side(value: Variant) -> Dictionary:
 	if not value is Dictionary or not value.get("members") is Array or value.members.size() != 2 or not value.get("you") is bool: return {}
@@ -388,6 +423,17 @@ static func _side(value: Variant) -> Dictionary:
 	var turn: Variant = value.get("turn")
 	var side := {"members": value.members.duplicate(), "you": value.you, "steps": int(value.steps), "ticks": int(value.ticks),
 		"turn": int(turn) if Typed.whole_number(turn) and int(turn) < 2 else -1, "finished": value.finished, "left": value.left, "check": value.check, "looks": _looks(value.get("looks"))}
+	# A public duel's seats: open, this player's own, and a stranger's label ("" when they show no name).
+	if value.has("seats"):
+		var seats: Variant = value.seats
+		if not seats is Array or seats.size() != 2: return {}
+		var kept_seats: Array = []
+		for seat: Variant in seats:
+			if not seat is Dictionary or not seat.get("open") is bool or not seat.get("you") is bool: return {}
+			var label: Variant = seat.get("label")
+			if label != null and (not label is String or label.length() > 40): return {}
+			kept_seats.append({"open": seat.open, "you": seat.you, "label": "" if label == null or seat.open else str(label)})
+		side["seats"] = kept_seats
 	if value.you:
 		var room: Variant = value.get("room_id")
 		var invite: Variant = value.get("invite_code")
@@ -410,7 +456,17 @@ static func _pay(value: Variant) -> Dictionary:
 	for field: String in ["turns", "plain", "blooms", "duel", "duel_percent", "boost", "boost_percent", "total"]:
 		if not Typed.whole_number(value.get(field)): return {}
 		pay[field] = int(value[field])
+	# A public duel's held duel extra, which the total leaves out until the duel pays it.
+	if value.has("held"):
+		if not Typed.whole_number(value.held): return {}
+		pay["held"] = int(value.held)
 	return pay
+
+## A public duel's held duel extra for this player: {amount, state running|paid|forfeit, reason}, or {}.
+static func _held(value: Variant) -> Dictionary:
+	if not value is Dictionary or not Typed.whole_number(value.get("amount")) or not value.get("state") in ["running", "paid", "forfeit"]: return {}
+	var reason: Variant = value.get("reason", "")
+	return {"amount": int(value.amount), "state": value.state, "reason": str(reason) if reason is String else ""}
 
 static func _bonus(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.whole_number(value.get("amount")) or not value.get("counted") is bool: return {}

@@ -1,0 +1,19 @@
+{
+  "about": "Public duel spot rules, one table for the server (backend/src/duels/public.ts spotFor) and the phone (game/services/public_duel_spots.gd). seats: four flags in seat order (side 0 seats 0 and 1, side 1 seats 2 and 3), true while the seat is open. wanted: a tapped seat or null. Answers: seat, or reason.",
+  "cases": [
+    { "name": "alone takes the spot beside a player first", "seats": [false, true, true, true], "as": "alone", "wanted": null, "seat": 1 },
+    { "name": "alone beside a player on the other pair", "seats": [true, true, false, true], "as": "alone", "wanted": null, "seat": 3 },
+    { "name": "alone with only pair spots takes the first half", "seats": [false, false, true, true], "as": "alone", "wanted": null, "seat": 2 },
+    { "name": "alone with one spot left takes it", "seats": [false, false, false, true], "as": "alone", "wanted": null, "seat": 3 },
+    { "name": "alone may tap any open ring", "seats": [false, true, true, true], "as": "alone", "wanted": 2, "seat": 2 },
+    { "name": "alone tapping a taken seat", "seats": [false, true, true, true], "as": "alone", "wanted": 0, "reason": "seat_taken" },
+    { "name": "alone on a full duel", "seats": [false, false, false, false], "as": "alone", "wanted": null, "reason": "full" },
+    { "name": "party takes the whole open pair", "seats": [false, true, true, true], "as": "party", "wanted": null, "seat": 2 },
+    { "name": "party tapping a ring of the open pair takes that pair", "seats": [false, true, true, true], "as": "party", "wanted": 3, "seat": 2 },
+    { "name": "party tapping a lone spot", "seats": [false, true, true, true], "as": "party", "wanted": 1, "reason": "split" },
+    { "name": "party with one spot left", "seats": [false, false, false, true], "as": "party", "wanted": null, "reason": "one_left" },
+    { "name": "party with spots in different pairs", "seats": [false, true, false, true], "as": "party", "wanted": null, "reason": "split" },
+    { "name": "party on a full duel", "seats": [false, false, false, false], "as": "party", "wanted": null, "reason": "full" },
+    { "name": "party picks the first open pair", "seats": [true, true, true, true], "as": "party", "wanted": null, "seat": 0 }
+  ]
+}
