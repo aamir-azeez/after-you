@@ -21,9 +21,20 @@ const SIZES := [Vector2i(1560, 720), Vector2i(1600, 720), Vector2i(1280, 720)]
 var checks := 0
 var failures := 0
 var _paths: Array[String] = []
+## Taps to land at the start of the next frame, before it lays anything out.
+var _frame_start_taps: Array[Callable] = []
 
 func _initialize() -> void:
 	_run.call_deferred()
+
+## A phone hands a tap over at the top of a frame. With no physics tick in that
+## frame (30 ticks a second against 60 or more frames), the tap's changes are not
+## laid out until after the frame's process_frame signal.
+func _process(_delta: float) -> bool:
+	var taps := _frame_start_taps.duplicate()
+	_frame_start_taps.clear()
+	for tap: Callable in taps: tap.call()
+	return false
 
 func _run() -> void:
 	var original_touch := Input.emulate_touch_from_mouse
@@ -36,6 +47,8 @@ func _run() -> void:
 	await _release_link()
 	await _ios_card()
 	await _earlier_versions()
+	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720)]:
+		await _earlier_tap_keeps_place(size)
 	await _wheel_over_card()
 	await _broken_archive()
 	await _card_rules()
@@ -488,6 +501,78 @@ func _earlier_versions() -> void:
 	_check(_card(app) == null and app.mode == "home", "Close shuts the card from the list")
 	await _close(made)
 
+## Tapping a version near the top, middle or bottom of the list, with the list at
+## its start, part way down or at its end, keeps the row where it was, or moves it
+## up only as far as its highlights need and never past the top. Every row is
+## opened for the first time, the tap lands either at the start of a frame or
+## after a physics tick has laid the list out, with and without a wobble.
+func _earlier_tap_keeps_place(size: Vector2i) -> void:
+	var made := await _boot(_storage({Changelog.SAVE_KEY: "0.6.0"}), size, true)
+	var app: Node = made[1]
+	app._show_home()
+	await _settle()
+	for frame_start: bool in [true, false]:
+		for wobble: Array in [[], WOBBLE]:
+			var when := "%s, %s, at %s" % ["at a frame's start" if frame_start else "after a physics tick", "wobbling" if not wobble.is_empty() else "still", size]
+			app._open_whats_new_card()
+			await _settle()
+			var card := _card(app)
+			var more := card.find_child("WhatsNewEarlier", true, false) as Button if card != null else null
+			if more != null: await _tap(made[0], more.get_global_rect().get_center(), WOBBLE)
+			var scroll := card.find_child("WhatsNewEarlierScroll", true, false) as ScrollContainer if card != null else null
+			_check(scroll != null and scroll.is_visible_in_tree(), "Earlier versions is open " + when)
+			if scroll == null:
+				await _close(made)
+				return
+			await _settle()
+			var view := scroll.get_global_rect()
+			var bar := scroll.get_v_scroll_bar()
+			var kept := true
+			var tapped := 0
+			for start: float in [0.0, 0.3, 1.0]:
+				scroll.scroll_vertical = roundi((bar.max_value - bar.page) * start)
+				await _settle()
+				for spot: float in [0.1, 0.5, 0.9]:
+					var row := _row_near(card, view, view.position.y + view.size.y * spot)
+					if row == null: continue
+					var before := row.get_global_rect().position.y
+					var at := row.get_global_rect().get_center()
+					if frame_start:
+						_frame_start_taps.append(_press_and_lift.bind(made[0], at, wobble))
+					else:
+						await physics_frame
+						_press_and_lift(made[0], at, wobble)
+					var highest := scroll.scroll_vertical
+					for frame: int in range(8):
+						await process_frame
+						highest = maxi(highest, scroll.scroll_vertical)
+					var holder := row.get_parent() as Control
+					var details := _details(row)
+					tapped += 1
+					# Where the row belongs: where it was, or higher by what the open
+					# highlights need, but never above the list's top.
+					var want := maxf(view.position.y, minf(before, view.end.y - holder.size.y))
+					var after := row.get_global_rect().position.y
+					if details == null or not details.visible or absf(after - want) > 1.0 or highest > scroll.scroll_vertical:
+						kept = false
+						push_error("A version tap moved the list %s: list from %d%%, row %d%% down, y %.0f -> %.0f (want %.0f), scroll peaked at %d and settled at %d" % [when, roundi(start * 100), roundi(spot * 100), before, after, want, highest, scroll.scroll_vertical])
+					row.pressed.emit()
+					await _settle()
+			_check(kept and tapped == 9, "A tap on a version keeps its row in place and scrolls only as far as its highlights need, " + when)
+			card.close(false)
+			await _settle()
+	await _close(made)
+
+## The version row fully in `view` whose centre is nearest `y`, from those not yet
+## opened.
+func _row_near(card: Node, view: Rect2, y: float) -> Button:
+	var found: Button = null
+	for row: Button in _rows(card):
+		var box := row.get_global_rect()
+		if _details(row) != null or not view.encloses(box): continue
+		if found == null or absf(box.get_center().y - y) < absf(found.get_global_rect().get_center().y - y): found = row
+	return found
+
 ## A broken archive only hides the older rows: the card and the file's versions stay.
 func _broken_archive() -> void:
 	var path := "user://whats-new-archive-" + Crypto.new().generate_random_bytes(6).hex_encode() + ".json"
@@ -530,13 +615,16 @@ func _has_label(node: Node, text: String) -> bool:
 
 ## A finger tap at `at` that wobbles through `wobble` before lifting.
 func _tap(target: Viewport, at: Vector2, wobble: Array = []) -> void:
+	_press_and_lift(target, at, wobble)
+	await _settle()
+
+func _press_and_lift(target: Viewport, at: Vector2, wobble: Array = []) -> void:
 	_touch(target, at, true)
 	var point := at
 	for step: Vector2 in wobble:
 		point += step
 		_move(target, point, step)
 	_touch(target, point, false)
-	await _settle()
 
 func _touch(target: Viewport, at: Vector2, pressed: bool) -> void:
 	var mouse := InputEventMouseButton.new()

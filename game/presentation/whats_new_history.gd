@@ -17,10 +17,14 @@ const ROW_HOVER := Color("2a5a50")
 const MUTED := Color("afc6be")
 const ROW_HEIGHT := 56.0
 const DETAILS := "WhatsNewVersionHighlights"
+## Frames an opened row waits for its layout before it scrolls into view anyway.
+const REVEAL_FRAMES := 4
 
 var _scroll: ScrollContainer
 var _rows: VBoxContainer
 var _limit := 0.0
+## Opened rows waiting for their layout, with the frames each has left.
+var _reveals := {}
 
 ## `entries` are Changelog.earlier_entries(): [{"version", "date", "highlights"}].
 func _init(entries: Array, see_all: Callable) -> void:
@@ -148,10 +152,31 @@ func _toggle(holder: VBoxContainer, highlights: Array, chevron: TextureRect) -> 
 	else:
 		details.visible = not details.visible
 	chevron.texture = OPEN_ICON if details.visible else CLOSED_ICON
-	var reveal := _reveal.bind(details)
-	if details.visible and is_inside_tree() and not get_tree().process_frame.is_connected(reveal):
-		get_tree().process_frame.connect(reveal, CONNECT_ONE_SHOT)
+	if details.visible and is_inside_tree():
+		_reveals[holder] = REVEAL_FRAMES
+		if not get_tree().process_frame.is_connected(_reveal_laid_out): get_tree().process_frame.connect(_reveal_laid_out)
 
-## Scrolls an opened version's highlights into view once the list has laid them out.
-func _reveal(details: Control) -> void:
-	if is_instance_valid(details) and details.is_visible_in_tree(): _scroll.ensure_control_visible(details)
+## Each frame, reveals the opened rows the list has laid out. A tap can arrive
+## before the frame that lays its row out (a phone draws 60 or more frames a
+## second against 30 physics ticks), and until then new highlights measure one
+## word wide and thousands of pixels tall, which used to throw the list to its
+## end. A row still not laid out after REVEAL_FRAMES is revealed anyway.
+func _reveal_laid_out() -> void:
+	for holder: Variant in _reveals.keys():
+		var shown: bool = is_instance_valid(holder) and (holder as Control).is_visible_in_tree()
+		if shown and _reveals[holder] > 0 and absf(holder.size.y - holder.get_combined_minimum_size().y) > 1.0:
+			_reveals[holder] -= 1
+			continue
+		_reveals.erase(holder)
+		if shown: _reveal(holder)
+	if _reveals.is_empty() and is_inside_tree(): get_tree().process_frame.disconnect(_reveal_laid_out)
+
+## Scrolls just far enough to show an opened version's highlights under its row,
+## and never so far that the row leaves the top of the list.
+func _reveal(holder: Control) -> void:
+	var view := _scroll.get_global_rect()
+	var row := holder.get_global_rect()
+	var below := row.end.y - view.end.y
+	var above := row.position.y - view.position.y
+	var by := minf(maxf(below, 0.0), above)
+	if absf(by) >= 1.0: _scroll.scroll_vertical += roundi(by)
