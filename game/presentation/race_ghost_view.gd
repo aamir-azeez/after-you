@@ -16,6 +16,9 @@ const Badges = preload("res://presentation/kit/badges.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const Track = preload("res://services/race_ghost_track.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const GHOST_FACE = preload("res://presentation/spirit_face_ghost.gdshader")
 ## The pip's strength (board 4A: half), its name's, and how much paler it is than a live pip.
 const VEIL := 0.5
 const NAME_ALPHA := 0.55
@@ -33,6 +36,10 @@ var _track: Dictionary = {}
 var _target := Vector3.ZERO
 var _reduced := false
 var _timer: Control
+## See-through copies of the kit's shared materials (Primitives SHARED_META), made
+## once each and let go at shutdown (SessionRelease); any other material is
+## copied for its ghost alone and goes with it.
+static var _veils: Dictionary = {}
 
 ## Shows the ghost of `track` (services/race_ghost.gd turn) in `world`, beside
 ## the pip of its slot, and its finish on `timer` (presentation/seed_timer_bar.gd)
@@ -95,12 +102,37 @@ func _process(delta: float) -> void:
 	spirit.position = previous.lerp(_target, minf(delta * 14.0, 1.0))
 	spirit.advance_motion(spirit.position - previous, delta, _reduced)
 
-## Half strength on every part, its outfit too; its ground shadow would read as solid, so it goes.
+## Half strength on every part, its outfit too: the face draws with its
+## see-through variant (spirit_face_ghost.gdshader, so its eyes still move) and
+## every other part with a see-through copy of its material. Its ground shadow
+## and ring would read as solid, so they go.
 static func _veil(node: Node) -> void:
-	for part: Node in node.find_children("*", "GeometryInstance3D", true, false):
-		(part as GeometryInstance3D).transparency = 1.0 - VEIL
-		(part as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var face: Variant = node.get("face_art")
+	var face_material: Material = face.material if face != null else null
+	if face != null: face.set_shader(GHOST_FACE, {"veil": VEIL})
+	for part: Node in node.find_children("*", "MeshInstance3D", true, false):
+		var mesh_part := part as MeshInstance3D
+		mesh_part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var material: Material = mesh_part.material_override if mesh_part.material_override != null else mesh_part.get_active_material(0)
+		if material == face_material or not material is BaseMaterial3D: continue
+		mesh_part.material_override = _veiled(material)
 	var shadow: Variant = node.get("ground_shadow")
 	if shadow is Node3D: (shadow as Node3D).visible = false
 	var ring: Variant = node.get("ground_ring")
 	if ring is Node3D: (ring as Node3D).visible = false
+
+static func _veiled(material: BaseMaterial3D) -> BaseMaterial3D:
+	var shared := material.has_meta(Primitives.SHARED_META)
+	if shared and _veils.has(material): return _veils[material]
+	var veiled: BaseMaterial3D = material.duplicate()
+	if veiled.has_meta(Primitives.SHARED_META): veiled.remove_meta(Primitives.SHARED_META)
+	veiled.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS
+	veiled.albedo_color.a = material.albedo_color.a * VEIL
+	if shared:
+		if _veils.is_empty(): SessionRelease.on_exit(Callable(load("res://presentation/race_ghost_view.gd"), "release_cached"))
+		_veils[material] = veiled
+	return veiled
+
+## Lets go of the see-through copies (SessionRelease calls this).
+static func release_cached() -> void:
+	_veils.clear()

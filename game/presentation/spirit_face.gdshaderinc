@@ -1,6 +1,10 @@
 // The spirit face shader's body, shared by spirit_face.gdshader and the body
 // cosmetics' variants, which define SPIRIT_SKIN and vec3 skin_color(vec3 p,
-// vec3 body) before including it.
+// vec3 body) before including it. The race ghost's see-through variant
+// (spirit_face_ghost.gdshader) defines SPIRIT_VEIL: the whole face at `veil` strength.
+#ifdef SPIRIT_VEIL
+uniform float veil = 0.5;
+#endif
 uniform vec3 body_color : source_color = vec3(0.96, 0.76, 0.55);
 uniform vec3 cream_color : source_color = vec3(0.98, 0.94, 0.85);
 uniform vec3 pupil_color : source_color = vec3(0.06, 0.13, 0.2);
@@ -205,4 +209,7 @@ void fragment() {
 	}
 	ALBEDO = color;
 	ROUGHNESS = 0.9;
+#ifdef SPIRIT_VEIL
+	ALPHA = veil;
+#endif
 }

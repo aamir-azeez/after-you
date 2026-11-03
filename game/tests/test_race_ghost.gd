@@ -13,6 +13,7 @@ const View = preload("res://presentation/race_ghost_view.gd")
 const TimerBar = preload("res://presentation/seed_timer_bar.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Outfit = preload("res://services/outfit.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
 const OWNER := "GGGGGGGGGGGGGGGGGGGGGG"
 const PARTNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -144,8 +145,17 @@ func _view() -> void:
 	_check(view.show_track(world, {"slot": "p0", "points": points, "duration_ticks": 2, "look": {}, "name": ""}, timer, 8, true), "the ghost shows")
 	var spirit: Node3D = view.spirit
 	_check(is_instance_valid(spirit) and spirit.get_parent() == holder, "beside the pips, under their parent")
-	var parts := spirit.find_children("*", "GeometryInstance3D", true, false).filter(func(part: Node) -> bool: return not part is Label3D)
-	_check(not parts.is_empty() and parts.all(func(part: GeometryInstance3D) -> bool: return is_equal_approx(part.transparency, 1.0 - View.VEIL)), "every part at half strength")
+	var face: Material = spirit.face_art.material
+	var parts := spirit.find_children("*", "MeshInstance3D", true, false).filter(func(part: MeshInstance3D) -> bool: return part.visible and part.material_override != face)
+	_check((face as ShaderMaterial).shader == View.GHOST_FACE and is_equal_approx(float((face as ShaderMaterial).get_shader_parameter("veil")), View.VEIL), "the face draws see-through at half strength")
+	_check(not parts.is_empty() and parts.all(func(part: MeshInstance3D) -> bool: return part.material_override is BaseMaterial3D and part.material_override.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED and part.material_override.albedo_color.a <= View.VEIL + 0.001), "and every other part")
+	_check(parts.all(func(part: MeshInstance3D) -> bool: return not part.material_override.has_meta(Primitives.SHARED_META)), "never changing a material the live pips share")
+	var again: Node = View.new()
+	root.add_child(again)
+	again.show_track(world, {"slot": "p0", "points": points, "duration_ticks": 2, "look": {}, "name": "Lee"}, null, 8, true)
+	_check(again.name_badge.text == "Lee", "a named pair's player races by name")
+	again.release()
+	again.queue_free()
 	_check(not (spirit.get("ground_shadow") as Node3D).visible, "with no ground shadow")
 	_check(view.name_badge.text == PlayerCopy.RACE_GHOST_RECORDED and view.name_badge.modulate.a < 1.0, "a pair that hides its names races as Recorded run, faintly")
 	_check(is_equal_approx(timer.race_ratio, 0.25) and timer.find_child("RaceGhostMark", true, false) != null, "the timer marks where the raced turn finished")
