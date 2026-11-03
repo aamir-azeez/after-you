@@ -740,6 +740,14 @@ const BOARD_LINE_TURNED_OFF := "Forgiving catches is off now. Your next run toge
 ## "%s", "%s": the run's time and its place ("3rd").
 const BOARD_LINE_RANKED := "Your time %s is %s on the leaderboard."
 const BOARD_LINE_NOT_LISTED := "Your time %s didn't make the leaderboard."
+## While the server posts only runs whose players both sign in to Play Games or Game Center
+## (backend leaderboards/platform-rule.ts). "%s": "Play Games" or "Game Center".
+const BOARD_LINE_PLATFORM_YOU := "Sign in to %s to post your time."
+const BOARD_LINE_PLATFORM_PARTNER := "Your partner needs to sign in to Play Games or Game Center to post this time."
+const BOARD_LINE_SIGN_IN := "Sign in"
+## Under "Your best" on the board for the same case ("%s" as above).
+const LEADERBOARD_OWN_PLATFORM_YOU := "Sign in to %s to post your times."
+const LEADERBOARD_OWN_PLATFORM_PARTNER := "This time posts once your partner signs in to Play Games or Game Center."
 ## A note on Home while a run of this player's waits for its check ("%s": its time).
 const BOARD_HOME_CHECKING := "Your time %s is being checked for the leaderboard."
 const LEADERBOARD_REPORT := "Report"

@@ -11,6 +11,9 @@ extends RefCounted
 ## - NOT_LISTED: settled and not on the board (no faster than the ten listed, a
 ##   pair's repeat no faster than its own run already there, or it did not
 ##   pass the checks);
+## - PLATFORM: the server needs platform accounts for posts and did not post
+##   it, since a player had none (services/leaderboard_runs.gd `refused`;
+##   `refused` in the status says who). A board that lists it still wins.
 ## - UNKNOWN: an older run and no board read to say where it stands: no line.
 ## shown_rows() is the board as this phone shows it, with this player's runs
 ## that wait for their check at their places.
@@ -24,6 +27,7 @@ const ASSISTED := "assisted"
 const CHECKING := "checking"
 const RANKED := "ranked"
 const NOT_LISTED := "not_listed"
+const PLATFORM := "platform"
 const UNKNOWN := ""
 ## A board read this soon after the run finished may come from a copy the
 ## server kept from before the post (backend view-cache.ts keeps one for up to
@@ -34,14 +38,17 @@ const TOP_PLACES := 10
 ## The state of `run` (a Runs entry: board, entry_id, ticks, assisted,
 ## finished_at, partner) given whether the server has leaderboards on, the
 ## newest board view ({} when none was read) and `mine`, this player's runs on
-## that board (Runs.on_board). {state, ticks, rank (0 unless RANKED)}.
+## that board (Runs.on_board). {state, ticks, rank (0 unless RANKED),
+## refused (Runs.REFUSED_YOU or REFUSED_PARTNER when PLATFORM, else "")}.
 static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix: float, mine: Array = []) -> Dictionary:
 	var ticks := int(run.get("ticks", 0))
-	var result := {"state": CHECKING, "ticks": ticks, "rank": 0}
+	var refused := str(run.get("refused", ""))
+	var result := {"state": CHECKING, "ticks": ticks, "rank": 0, "refused": ""}
 	if not supported: result.state = OFF
 	elif bool(run.get("assisted", false)): result.state = ASSISTED
 	elif not view.get("top") is Array or not view.get("checking") is Array:
-		if not recent(run, now_unix): result.state = UNKNOWN
+		if not refused.is_empty(): _refused(result, refused)
+		elif not recent(run, now_unix): result.state = UNKNOWN
 	else:
 		var id := str(run.get("entry_id", ""))
 		for row: Dictionary in view.top:
@@ -50,9 +57,14 @@ static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix:
 				result.rank = int(row.rank)
 				return result
 		if id in view.checking: return result
+		if not refused.is_empty(): return _refused(result, refused)
 		# On equal times the listed run finished first, so it stays ahead (backend rules.ts compareRuns).
-		var full: bool = view.top.size() >= TOP_PLACES and ticks >= int(view.top[TOP_PLACES - 1].get("ticks", 0))
-		if full or pair_ahead(run, view, mine) or not recent(run, now_unix): result.state = NOT_LISTED
+		if ruled_out(run, view, mine) or not recent(run, now_unix): result.state = NOT_LISTED
+	return result
+
+static func _refused(result: Dictionary, refused: String) -> Dictionary:
+	result.state = PLATFORM
+	result.refused = refused
 	return result
 
 ## The board as this phone shows it to this player: the top 10 of `view` with
@@ -169,6 +181,16 @@ static func pair_names(runs: Array, views: Dictionary, show_own: bool) -> Dictio
 				break
 	return known
 
+## Whether the server would never take `run` onto the board `view` shows,
+## whatever its age: ten listed runs no slower (on equal times the listed run
+## finished first, backend rules.ts compareRuns), or the pair's own run there
+## no slower (pair_ahead).
+static func ruled_out(run: Dictionary, view: Dictionary, mine: Array) -> bool:
+	var top: Variant = view.get("top")
+	if not top is Array: return false
+	var full: bool = top.size() >= TOP_PLACES and int(run.get("ticks", 0)) >= int(top[TOP_PLACES - 1].get("ticks", 0))
+	return full or pair_ahead(run, view, mine)
+
 ## Whether `view` lists the run as waiting for its check (never a guess).
 static func listed_checking(run: Dictionary, view: Dictionary) -> bool:
 	return view.get("checking") is Array and str(run.get("entry_id", "")) in view.checking
@@ -211,12 +233,13 @@ static func room_run(owner: String, snapshot: Dictionary, chapter_key: String) -
 	return {}
 
 ## This player's newest run on any board that may still be waiting for its
-## check: not assisted, finished within `window_seconds`, and not shown settled
-## by `settled` (entry_id -> true). {} when none.
+## check: not assisted, not kept off for want of a platform account, finished
+## within `window_seconds`, and not shown settled by `settled` (entry_id ->
+## true). {} when none.
 static func newest_waiting(owner: String, settled: Dictionary, now_unix: float, window_seconds: float) -> Dictionary:
 	var newest: Dictionary = {}
 	for run: Dictionary in Runs.runs_of(owner):
-		if run.assisted or settled.has(run.entry_id): continue
+		if run.assisted or not str(run.get("refused", "")).is_empty() or settled.has(run.entry_id): continue
 		var finished := finished_unix(run)
 		if finished <= 0.0 or now_unix - finished > window_seconds: continue
 		if newest.is_empty() or str(run.finished_at) > str(newest.finished_at): newest = run

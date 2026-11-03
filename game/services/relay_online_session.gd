@@ -428,7 +428,7 @@ func load_capabilities() -> bool:
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
 	# Home's rows that follow the server's public switches keep this answer too (services/server_switches.gd).
-	if not scope.is_empty(): ServerSwitches.shared().note(str(scope.server), {"duels": duels_supported(), "leaderboards": leaderboards_supported(), "hard_mode": hard_mode_supported()})
+	if not scope.is_empty(): ServerSwitches.shared().note(str(scope.server), {"duels": duels_supported(), "leaderboards": leaderboards_supported(), "hard_mode": hard_mode_supported(), "leaderboards_platform": leaderboards_platform_required()})
 	# Only an iPhone asks whether the server takes App Store purchases (services/store_support.gd), noted
 	# before the Wardrobe announces, so what that redraws already reads the new answer.
 	if not scope.is_empty() and PlatformSupport.is_ios(): StoreSupport.shared().note(str(scope.server), str(scope.owner), app_store_full_journey_supported())
@@ -1343,6 +1343,11 @@ func display_names_supported() -> bool:
 ## The server has leaderboards open for this build (backend src/leaderboards/routes.ts).
 func leaderboards_supported() -> bool:
 	return Typed.equal(capabilities.get("leaderboards_version"), 1.0)
+
+## The server posts a together run only when both players have a Play Games or
+## Game Center link (backend leaderboards/platform-rule.ts).
+func leaderboards_platform_required() -> bool:
+	return leaderboards_supported() and Typed.equal(capabilities.get("leaderboards_platform_required"), 1.0)
 
 ## The server has duels open for this build (backend src/duels/routes.ts). Every duel entry hides otherwise.
 func duels_supported() -> bool:

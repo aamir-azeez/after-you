@@ -135,7 +135,7 @@ const WRITES := {
 	"res://services/friends_client.gd": [5, "unkeyed: each names the request or friend code it acts on"],
 	"res://services/hard_room_client.gd": [1, "keyed: the hard reset"],
 	"res://services/history_sync.gd": [3, "unkeyed: parts go by room and position; acks and wants repeat safely"],
-	"res://services/leaderboard_client.gd": [2, "unkeyed: PUT sets the name switch; a report names its entry"],
+	"res://services/leaderboard_client.gd": [3, "unkeyed: PUT sets the name switch; a report names its entry; a room's run post names its room and the board takes a run once (known)"],
 	"res://services/photo_transfer_client.gd": [3, "keyed: sessions and restore acks"],
 	"res://services/platform_games/platform_link_client.gd": [5, "keyed: link and restore; unlink sets a state"],
 	"res://services/pollen_client.gd": [2, "unkeyed: each claim names its room and recording, which pay once"],

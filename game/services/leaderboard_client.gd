@@ -11,6 +11,8 @@ extends RefCounted
 ##   nothing pending, sync() reads the server's once per install (so a
 ##   reinstall shows it right) and otherwise asks nothing.
 ## - report(): POST .../entries/<entry>/report.
+## - post_room(): POST /v1/leaderboards/post, a finished room's run posted again
+##   while posts need platform accounts (presentation/board_feedback_flow.gd).
 ## - replay(): GET .../replay/<entry>, a top 10 run's replay for the viewer
 ##   (services/leaderboard_replay.gd), checked on a worker. Never kept: each
 ##   Watch asks once, and the server answers from its cache.
@@ -20,8 +22,10 @@ const LeaderboardReplay = preload("res://services/leaderboard_replay.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
 const Outfit = preload("res://services/outfit.gd")
+const Runs = preload("res://services/leaderboard_runs.gd")
 const PREFIX := "/v1/leaderboards/"
 const ME := "/v1/leaderboards/me"
+const POST_PATH := "/v1/leaderboards/post"
 const VIEW_KEEP_MS := 60_000
 const CHOICE_PATH := "user://leaderboard-name.json"
 const MAX_ROWS := 10
@@ -57,6 +61,7 @@ func board(key: String, fresh: bool = false) -> Dictionary:
 	if view.is_empty(): return {"ok": false, "code": "invalid_board"}
 	_views[key] = {"at": Time.get_ticks_msec(), "view": view}
 	Placings.shared().learn(_owner, key, view)
+	Runs.clear_listed(_owner, key, view)
 	return {"ok": true, "view": view}
 
 ## The board this client last read from the server, however old, or {} (no request).
@@ -99,6 +104,24 @@ func sync() -> void:
 func report(key: String, entry_id: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s%s/entries/%s/report" % [PREFIX, key, entry_id], {"schema_version": 1})
 	return {"ok": bool(response.get("ok", false)), "code": str(response.get("code", ""))}
+
+## Posts the run of a finished together room again, while the server needs
+## platform accounts for posts (POST /v1/leaderboards/post, backend
+## leaderboards/routes.ts): {ok, status} where status is "posted",
+## "not_placed", "not_postable", "off" (the server has the rule off now) or
+## "platform_required" with `you` and `partner` (whether each has a link);
+## {ok: false, code} when it could not ask.
+func post_room(room_id: String) -> Dictionary:
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, POST_PATH, {"schema_version": 1, "room_id": room_id})
+	if not response.get("ok", false):
+		if int(response.get("status", 0)) == 404 and str(response.get("code", "")) == "not_found": return {"ok": true, "status": "off"}
+		return {"ok": false, "code": str(response.get("code", ""))}
+	var data: Variant = response.get("data")
+	if not data is Dictionary or not Typed.equal(data.get("schema_version"), 1): return {"ok": false, "code": "invalid_response"}
+	var status: Variant = data.get("status")
+	if status == "platform_required" and data.get("you") is bool and data.get("partner") is bool: return {"ok": true, "status": status, "you": data.you, "partner": data.partner}
+	if status in ["posted", "not_placed", "not_postable"]: return {"ok": true, "status": status}
+	return {"ok": false, "code": "invalid_response"}
 
 ## {ok, parts} for the run `row` (a row of board `key`, with a replay_hash) of
 ## chapter `chapter_key`: the viewer's parts, decoded and hash-checked, or {ok: false, code}.

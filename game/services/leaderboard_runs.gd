@@ -11,7 +11,9 @@ extends RefCounted
 ## on any turn is kept but marked, since it never ranks. Its `partner` is the
 ## other member's player id ("" for runs kept before it was), so a celebration
 ## (presentation/leaderboard_celebration.gd) can dress their pip in the look
-## services/turn_looks.gd last heard for them.
+## services/turn_looks.gd last heard for them. Its `refused` says who the
+## server found without a platform account when it would not post the run
+## (REFUSED_YOU, REFUSED_PARTNER, "" for none; presentation/board_feedback_flow.gd).
 ##
 ## services/shared_replay_collection.gd calls note() for every chapter room it
 ## remembers; only a finished one is kept. One small file per phone, newest
@@ -24,6 +26,10 @@ const PATH := "user://leaderboard-runs.json"
 const MAX_RUNS := 128
 const TICK_RATE := 30
 const ENTRY_DOMAIN := "after-you leaderboard entry v1\n"
+## Who kept a run off its board for want of a platform account: this player
+## (alone or with their partner), or only their partner.
+const REFUSED_YOU := "you"
+const REFUSED_PARTNER := "partner"
 
 static var _path := PATH
 static var _loaded := false
@@ -86,9 +92,63 @@ static func note(owner: String, snapshot: Dictionary, chapter_key: String) -> vo
 			run.partner = partner
 			_save(owner, mine)
 		return
-	mine.append({"board": board, "entry_id": id, "ticks": int(time.ticks), "assisted": bool(time.assisted), "finished_at": str(snapshot.get("updated_at", "")), "partner": partner if TurnLooks.valid_player(partner) else ""})
+	mine.append({"board": board, "entry_id": id, "ticks": int(time.ticks), "assisted": bool(time.assisted), "finished_at": str(snapshot.get("updated_at", "")), "partner": partner if TurnLooks.valid_player(partner) else "", "refused": ""})
 	while mine.size() > MAX_RUNS: mine.pop_front()
 	_save(owner, mine)
+
+## Notes who the server found without a platform account for this run
+## (REFUSED_YOU, REFUSED_PARTNER) and its room, so it can be posted again
+## once this player links; "" once it posted (the room is then forgotten).
+## False when the run is not kept or the file could not be written.
+static func set_refused(owner: String, entry_id: String, who: String, room_id: String = "") -> bool:
+	if who not in ["", REFUSED_YOU, REFUSED_PARTNER] or (not who.is_empty() and not Typed.valid_id(room_id)): return false
+	var mine: Array = runs_of(owner)
+	for run: Dictionary in mine:
+		if run.entry_id != entry_id: continue
+		var room := room_id if not who.is_empty() else ""
+		if run.refused == who and str(run.get("room", "")) == room: return true
+		run.refused = who
+		if room.is_empty(): run.erase("room")
+		else: run.room = room
+		_data[owner] = mine
+		return _write()
+	return false
+
+## Takes the marks off this player's runs that `view` (board `board`) lists in
+## its top 10 or as checking: they reached the board after all (a partner
+## linked and posted). True when something changed.
+static func clear_listed(owner: String, board: String, view: Dictionary) -> bool:
+	var listed: Dictionary = {}
+	for row: Variant in view.get("top", []):
+		if row is Dictionary: listed[row.get("entry_id")] = true
+	for id: Variant in view.get("checking", []): listed[id] = true
+	return _unmark(owner, func(run: Dictionary) -> bool: return run.board == board and listed.has(run.entry_id))
+
+## Takes every mark off this player's runs (the server posts without platform
+## accounts again). True when something changed.
+static func clear_refused(owner: String) -> bool:
+	return _unmark(owner, func(_run: Dictionary) -> bool: return true)
+
+static func _unmark(owner: String, which: Callable) -> bool:
+	if owner.is_empty(): return false
+	var mine: Array = runs_of(owner)
+	var changed := false
+	for run: Dictionary in mine:
+		if run.refused.is_empty() or not which.call(run): continue
+		run.refused = ""
+		run.erase("room")
+		changed = true
+	if changed:
+		_data[owner] = mine
+		_write()
+	return changed
+
+## This player's runs the server kept off for want of their own platform
+## account, newest first, each with the `room` to post it from.
+static func refused_by_me(owner: String) -> Array:
+	var found: Array = runs_of(owner).filter(func(run: Dictionary) -> bool: return run.refused == REFUSED_YOU and run.has("room"))
+	found.reverse()
+	return found
 
 static func _save(owner: String, mine: Array) -> void:
 	_data[owner] = mine
@@ -137,5 +197,9 @@ static func _load() -> void:
 		var kept: Array = []
 		for run: Variant in list:
 			if run is Dictionary and run.get("board") is String and run.get("entry_id") is String and str(run.entry_id).length() == 32 and Typed.whole_number(run.get("ticks")) and run.get("assisted") is bool:
-				kept.append({"board": run.board, "entry_id": run.entry_id, "ticks": int(run.ticks), "assisted": run.assisted, "finished_at": str(run.get("finished_at", "")), "partner": run.partner if TurnLooks.valid_player(run.get("partner")) else ""})
+				var refused: Variant = run.get("refused", "")
+				var entry := {"board": run.board, "entry_id": run.entry_id, "ticks": int(run.ticks), "assisted": run.assisted, "finished_at": str(run.get("finished_at", "")), "partner": run.partner if TurnLooks.valid_player(run.get("partner")) else "",
+					"refused": refused if refused is String and refused in [REFUSED_YOU, REFUSED_PARTNER] else ""}
+				if not entry.refused.is_empty() and Typed.valid_id(run.get("room")): entry.room = run.room
+				kept.append(entry)
 		_data[owner] = kept.slice(maxi(kept.size() - MAX_RUNS, 0))

@@ -34,6 +34,8 @@ const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Rows = preload("res://presentation/leaderboard_rows.gd")
 const Celebration = preload("res://presentation/leaderboard_celebration.gd")
+const StatusLine = preload("res://presentation/board_status_line.gd")
+const PlatformGames = preload("res://services/platform_games/platform_games.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const BoardStatus = preload("res://services/board_status.gd")
@@ -407,7 +409,8 @@ static func _partner_look(run: Dictionary) -> Dictionary:
 
 ## "Your best": this player's best placed row on the board this phone shows
 ## (a waiting one with its clock), else their fastest run that is not waiting
-## for its check.
+## for its check. A player in several pairs (A with B, then B with C) has a
+## lit row for each, and Your best is the best placed of them.
 func _render_own(mine: Array, mine_by_id: Dictionary, rows: Array, checking: Array) -> void:
 	var placed: Dictionary = {}
 	for row: Dictionary in rows:
@@ -422,7 +425,10 @@ func _render_own(mine: Array, mine_by_id: Dictionary, rows: Array, checking: Arr
 	elif not eligible.is_empty():
 		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact, Callable(), _partner_look(eligible[0])))
 		# Why it has no place (services/board_status.gd): a run this new may not show in the board's copy yet.
-		if BoardStatus.of_run(eligible[0], true, _view, Time.get_unix_time_from_system(), mine).state == BoardStatus.NOT_LISTED: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_NOT_LISTED))
+		var status := BoardStatus.of_run(eligible[0], true, _view, Time.get_unix_time_from_system(), mine)
+		if status.state == BoardStatus.NOT_LISTED: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_NOT_LISTED))
+		# Kept off the board for want of a platform account (services/leaderboard_runs.gd refused): who must sign in.
+		elif status.state == BoardStatus.PLATFORM: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_PLATFORM_YOU % StatusLine.platform_of(PlatformGames.shared(get_tree())) if status.refused == Runs.REFUSED_YOU else PlayerCopy.LEADERBOARD_OWN_PLATFORM_PARTNER))
 	elif not settled.is_empty():
 		_own.add_child(Rows.own(int(settled[0].ticks), 0, "", _compact, Callable(), _partner_look(settled[0])))
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_ASSISTED))

@@ -21,6 +21,16 @@ extends RefCounted
 ##   free; a run that can't move its pair up says nothing. A read that finds it
 ##   ranked hands it to services/leaderboard_placings.gd (inside board()), so
 ##   Home's existing celebration shows the place. A run seen settled is not read again.
+## - While the server posts only runs whose players both have a Play Games or
+##   Game Center account (relay_online_session.gd leaderboards_platform_required,
+##   backend leaderboards/platform-rule.ts), the card first asks the server to
+##   post the room's run (services/leaderboard_client.gd post_room), once a
+##   session for each run. Posted: the line and celebration go on as above.
+##   Refused: the run is noted refused (services/leaderboard_runs.gd), so no
+##   surface calls it waiting, and the line says who must sign in; for this
+##   player a Sign in button runs the same sign-in and link as Settings
+##   (services/platform_games/platform_games.gd sign_in_now) and posts again.
+##   Linking any other way (Settings) posts this player's refused runs again too.
 ## Every board read goes through the shared client; nothing here keeps a view.
 const ServerSwitches = preload("res://services/server_switches.gd")
 const BoardStatus = preload("res://services/board_status.gd")
@@ -31,10 +41,13 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
 const Celebration = preload("res://presentation/leaderboard_celebration.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const PlatformGames = preload("res://services/platform_games/platform_games.gd")
 
 const CHECK_MS := 15_000
 const READ_MS := 600_000
 const WATCH_SECONDS := 172_800.0
+## Refused runs posted again at most when this player links (the newest first).
+const MAX_REPOST := 8
 
 var host: Node
 ## entry_id -> true: runs a read showed ranked or off the board.
@@ -47,6 +60,14 @@ var _seen_checking: Dictionary = {}
 var _read_at: Dictionary = {}
 var _next_check := 0
 var _reading := false
+## entry_id -> true: runs this session asked the server to post (the platform rule).
+var _asked: Dictionary = {}
+## Whether the platform service said linked when it last changed, and a repost is running.
+var _was_linked := false
+var _reposting := false
+## Whether this session swept this player's refused runs once linked, and the posts in flight (entry_id -> true).
+var _swept := false
+var _posting: Dictionary = {}
 
 func _init(main: Node) -> void:
 	host = main
@@ -62,25 +83,170 @@ func line_for(snapshot: Dictionary, chapter_key: String) -> Control:
 	var supported := _supported()
 	var client := _client() if supported else null
 	var kept: Dictionary = client.kept_view(run.board) if client != null else {}
-	line.show_status(BoardStatus.of_run(run, supported, kept, _now(), Runs.on_board(owner, run.board)))
-	if client != null and not run.assisted:
-		# Once the line is on the card, so the room it belongs to is known.
-		_celebrate.call_deferred(run, kept, line)
-		_read_for_line(client, run, line)
+	var gated: bool = client != null and not run.assisted and _platform_required()
+	if gated: _wire_sign_in(client, run, str(snapshot.room_id), line)
+	var guess := BoardStatus.of_run(run, supported, kept, _now(), Runs.on_board(owner, run.board))
+	line.show_status(guess)
+	if gated and _should_post(run, guess, kept): _read_then_post(client, run, str(snapshot.room_id), line)
+	elif client != null and not run.assisted:
+		# Once the line is on the card, so the room it belongs to is known. A refused run is
+		# never celebrated (BoardStatus.shown_rows leaves it out); the read still says where it stands.
+		# Under the platform rule a run this card did not just post is celebrated only once a read lists it.
+		if not gated: _celebrate.call_deferred(run, kept, line)
+		_read_for_line(client, run, line, gated)
 	return line
 
-func _read_for_line(client: RefCounted, run: Dictionary, line: Control) -> void:
+## Whether the server posts only runs whose players both have a platform account:
+## this session's capabilities when they say so, else the switch last heard
+## (services/server_switches.gd), as _supported() reads leaderboards.
+func _platform_required() -> bool:
+	var session: Variant = host.relay_session
+	if session != null and session.has_method("leaderboards_platform_required") and session.leaderboards_platform_required(): return true
+	return ServerSwitches.shared().on_for(host.api, "leaderboards_platform")
+
+## Whether the card may need to ask the server to post the run: once a
+## session, only for a run finished within WATCH_SECONDS or still marked
+## refused, never one the kept board already lists or rules out
+## (BoardStatus.ruled_out), and not a run this player kept off while this
+## phone is still not linked. _read_then_post reads first.
+func _should_post(run: Dictionary, guess: Dictionary, kept: Dictionary) -> bool:
+	if _asked.has(run.entry_id) or _posting.has(run.entry_id) or guess.state == BoardStatus.RANKED or BoardStatus.listed_checking(run, kept): return false
+	if BoardStatus.ruled_out(run, kept, Runs.on_board(_owner(), run.board)): return false
+	var refused := str(run.get("refused", ""))
+	# Play is turn by turn: the partner who did not take the final turn often opens this card hours later.
+	if refused.is_empty(): return _now() - BoardStatus.finished_unix(run) < WATCH_SECONDS
+	var games := _games()
+	return refused != Runs.REFUSED_YOU or (games != null and games.linked())
+
+## The card's fresh board read first (free while the board's copy is cached:
+## the turn's own post stored it), as for any run. Only a run that read neither
+## lists nor rules out is posted through the route (3 Durable Object requests
+## or so): a pair both linked already got on the board from the final turn.
+func _read_then_post(client: RefCounted, run: Dictionary, room_id: String, line: Control) -> void:
+	_asked[run.entry_id] = true
+	_posting[run.entry_id] = true
+	var view: Dictionary = await _read_for_line(client, run, line, true)
+	var mine: Array = Runs.on_board(_owner(), run.board)
+	# Settled only by what the read shows, never by the run's age: listed, or one the server would never take.
+	var settled: bool = not view.is_empty() and (BoardStatus.of_run(_kept_run(run), true, view, _now(), mine).state == BoardStatus.RANKED or BoardStatus.listed_checking(run, view) or BoardStatus.ruled_out(run, view, mine))
+	if not settled: await _post_for_line(client, run, room_id, line)
+	_posting.erase(run.entry_id)
+
+## Asks the server to post the room's run, then says who must sign in when it
+## did not. Posted: it goes on as any run, celebrated at once from the kept
+## board. Any other answer, or none: the card's read decides, and a place is
+## celebrated only once that read lists the run.
+func _post_for_line(client: RefCounted, run: Dictionary, room_id: String, line: Control) -> void:
+	var answer: Dictionary = await _post(client, run, room_id)
+	if not is_instance_valid(line): return
+	run = _kept_run(run)
+	if not str(run.get("refused", "")).is_empty():
+		line.show_status(BoardStatus.of_run(run, true, client.kept_view(run.board), _now(), Runs.on_board(_owner(), run.board)))
+		return
+	var posted: bool = answer.get("ok", false) and answer.get("status") == "posted"
+	if posted: _celebrate(run, client.kept_view(run.board), line)
+	_read_for_line(client, run, line, not posted)
+
+## One post of a room's run (services/leaderboard_client.gd post_room), noting
+## the answer on the run: who has no platform account, or "" otherwise. Returns the answer.
+func _post(client: RefCounted, run: Dictionary, room_id: String) -> Dictionary:
+	var owner := _owner()
+	_asked[run.entry_id] = true
+	var answer: Dictionary = await client.post_room(room_id)
+	if not answer.get("ok", false) or owner != _owner(): return answer
+	var who := ""
+	if answer.status == "platform_required": who = Runs.REFUSED_PARTNER if answer.you else Runs.REFUSED_YOU
+	Runs.set_refused(owner, run.entry_id, who, room_id)
+	return answer
+
+## The run as the runs file has it now (`run` itself when it is gone).
+func _kept_run(run: Dictionary) -> Dictionary:
+	for kept: Dictionary in Runs.runs_of(_owner()):
+		if kept.entry_id == run.entry_id: return kept
+	return run
+
+## The line's Sign in button: the platform's name, whether this phone offers
+## it, and what a tap does (sign in and link, then post again).
+func _wire_sign_in(client: RefCounted, run: Dictionary, room_id: String, line: Control) -> void:
+	var games := _games()
+	_watch_games(games)
+	line.platform_name = BoardStatusLine.platform_of(games)
+	line.sign_in_offered = func() -> bool: return games != null and is_instance_valid(games) and games.offered()
+	line.sign_in = func() -> void: _sign_in_for_line(client, run, room_id, line)
+
+func _sign_in_for_line(client: RefCounted, run: Dictionary, room_id: String, line: Control) -> void:
+	var games := _games()
+	# Linking just now also posts this player's other refused runs (_on_games_changed); this one goes here, once.
+	_posting[run.entry_id] = true
+	if games != null and not games.linked(): await games.sign_in_now()
+	if games != null and games.linked(): await _post_for_line(client, run, room_id, line)
+	elif is_instance_valid(line):
+		# Not linked (cancelled, offline, or a choice waiting in Settings): the button comes back.
+		line.show_status(BoardStatus.of_run(_kept_run(run), true, client.kept_view(run.board), _now(), Runs.on_board(_owner(), run.board)))
+	_posting.erase(run.entry_id)
+
+func _games() -> Node:
+	return PlatformGames.shared(host.get_tree()) if host.is_inside_tree() else null
+
+## Linking anywhere (Settings too) posts this player's refused runs again, once each time it becomes linked.
+func _watch_games(games: Node) -> void:
+	if games == null or games.changed.is_connected(_on_games_changed): return
+	_was_linked = games.linked()
+	games.changed.connect(_on_games_changed)
+
+func _on_games_changed() -> void:
+	var games := _games()
+	var linked: bool = games != null and games.linked()
+	var became := linked and not _was_linked
+	_was_linked = linked
+	if became: _repost_mine()
+
+## Posts this player's refused runs again (the newest MAX_REPOST), skipping any
+## a post from this session is still waiting on. One sweep at a time.
+func _repost_mine() -> void:
+	if _reposting or not _platform_required(): return
+	_reposting = true
+	_swept = true
+	var owner := _owner()
+	for run: Dictionary in Runs.refused_by_me(owner).slice(0, MAX_REPOST):
+		if owner != _owner(): break
+		if _posting.has(run.entry_id): continue
+		_posting[run.entry_id] = true
+		await _post(_client(), run, str(run.room))
+		_posting.erase(run.entry_id)
+	_reposting = false
+
+## Home's upkeep for the platform rule, at most every CHECK_MS: with the rule
+## off, no run stays marked refused; with it on and this player already linked
+## (Settings, or the quiet sign-in at launch), their refused runs go again once a session.
+func _platform_upkeep() -> void:
+	if not _supported(): return
+	var owner := _owner()
+	if not _platform_required():
+		# Only on this session's own capabilities read: a switch never heard (a launch before any read) says nothing.
+		var session: Variant = host.relay_session
+		if session != null and session.has_method("leaderboards_platform_required") and session.leaderboards_supported(): Runs.clear_refused(owner)
+		return
+	var games := _games()
+	_watch_games(games)
+	if not _swept and games != null and games.linked() and not Runs.refused_by_me(owner).is_empty(): _repost_mine()
+
+## `listed_only`: celebrate only when this read lists the run (a post the server did not confirm).
+## Returns the board read ({} when it failed).
+func _read_for_line(client: RefCounted, run: Dictionary, line: Control, listed_only: bool = false) -> Dictionary:
 	_read_at[run.board] = Time.get_ticks_msec()
 	# Fresh: a board kept from before the run never lists it, and this read is the post's answer.
 	var answer: Dictionary = await client.board(run.board, true)
-	if not answer.get("ok", false) or not is_instance_valid(line): return
+	if not answer.get("ok", false): return {}
+	if not is_instance_valid(line): return answer.view
 	var status := BoardStatus.of_run(run, true, answer.view, _now(), Runs.on_board(_owner(), run.board))
 	_note_settled(run, status)
 	# Home says it once when the player gets back there, with no read of its own,
 	# only when the board itself lists it (never on the just-finished guess).
 	if _waiting(run, answer.view): _seen_checking[run.entry_id] = true
 	line.show_status(status)
-	_celebrate(run, answer.view, line)
+	if not listed_only or status.state == BoardStatus.RANKED or BoardStatus.listed_checking(run, answer.view): _celebrate(run, answer.view, line)
+	return answer.view
 
 ## Celebrates the place `view` gives the run on this phone, over the room whose
 ## card holds `line`, once a run. No board read, a place outside the top 10, a
@@ -122,6 +288,7 @@ func service_home() -> void:
 	var now := Time.get_ticks_msec()
 	if _reading or now < _next_check: return
 	_next_check = now + CHECK_MS
+	_platform_upkeep()
 	if not _supported() or not host._home_free_for_card() or host._home_settling(): return
 	var owner := _owner()
 	var run := BoardStatus.newest_waiting(owner, _settled, _now(), WATCH_SECONDS)

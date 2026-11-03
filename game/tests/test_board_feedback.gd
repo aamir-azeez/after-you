@@ -6,7 +6,8 @@ extends SceneTree
 ## celebrated over the room before its check, and Home's throttled watch), the
 ## board as this phone shows it (a run waiting for its check at its place, with
 ## a clock), the board screen's reason under Your best, LocalSave's
-## one-time Forgiving catches switch off, and the cloud never turning it back on.
+## one-time Forgiving catches switch off, the cloud never turning it back on,
+## a player in two pairs lit on both rows, and the platform rule's refused runs.
 ## Every request goes to a fake transport; saves use their own files.
 const BoardStatus = preload("res://services/board_status.gd")
 const Line = preload("res://presentation/board_status_line.gd")
@@ -24,6 +25,9 @@ const Bundle = preload("res://services/platform_games/cloud_save_bundle.gd")
 const State = preload("res://services/platform_games/platform_games_state.gd")
 const OWNER := "OOOOOOOOOOOOOOOOOOOOOO"
 const PARTNER := "GGGGGGGGGGGGGGGGGGGGGG"
+const OTHER := "HHHHHHHHHHHHHHHHHHHHHH"
+const SHARED_PLACINGS_PATH := "user://board-feedback-placings-shared-test.json"
+const Rows = preload("res://presentation/leaderboard_rows.gd")
 const RUNS_PATH := "user://board-feedback-runs-test.json"
 const PLACINGS_PATH := "user://board-feedback-placings-test.json"
 const CHOICE_PATH := "user://board-feedback-name-test.json"
@@ -50,7 +54,9 @@ class FakeApi extends Node:
 
 class FakeSession extends RefCounted:
 	var on := true
+	var platform := false
 	func leaderboards_supported() -> bool: return on
+	func leaderboards_platform_required() -> bool: return on and platform
 
 class FakeSettingsFlow extends RefCounted:
 	var saves: RefCounted
@@ -112,6 +118,8 @@ func _run() -> void:
 	for me: String in [OWNER, PARTNER]: await _refused_run(me)
 	await _board_reasons()
 	await _refused_row()
+	await _shared_player()
+	await _platform_rule()
 	_settings_migration()
 	_cloud_never_turns_it_on()
 	Placings.use_shared(null)
@@ -859,3 +867,284 @@ func _cloud_never_turns_it_on() -> void:
 	_check(sources.settings_stamp(Sources._values(fresh_settings)) == 0, "a new install's untouched settings count as no change, so a restore takes the cloud's Sound and Haptics")
 	_clear(state_path)
 	host.queue_free()
+
+## A player in two pairs (A with B, then B with C): every row of theirs is lit
+## on the board, Your best is the best placed one, and each place is news.
+func _shared_player() -> void:
+	_fresh_runs()
+	_clear(PLACINGS_PATH)
+	Placings.use_shared(Placings.new(PLACINGS_PATH))
+	var api := FakeApi.new()
+	root.add_child(api)
+	var with_partner := "W1W1W1W1W1W1W1W1W1W1W1"
+	var with_other := "W2W2W2W2W2W2W2W2W2W2W2"
+	Runs.note(OWNER, _snapshot(with_partner, _lighthouse_final(), "2026-10-20T10:00:00.000Z"), Registry.LIGHTHOUSE_V2)
+	var other := _snapshot(with_other, _lighthouse_final(), "2026-10-21T10:00:00.000Z")
+	other.guest_id = OTHER
+	Runs.note(OWNER, other, Registry.LIGHTHOUSE_V2)
+	var first := Runs.entry_id(with_partner, 1)
+	var second := Runs.entry_id(with_other, 1)
+	var top := [_row(1, "01".repeat(16), 900), _row(2, second, 1470), _row(3, "03".repeat(16), 1470), _row(4, first, 1470), _row(5, "05".repeat(16), 2000)]
+	var view := _view(LIGHTHOUSE_BOARD, top, [])
+	api.replies["GET /v1/leaderboards/" + LIGHTHOUSE_BOARD] = {"ok": true, "data": view}
+	var screen := Screen.new()
+	screen.client = Client.new(api, OWNER, CHOICE_PATH)
+	screen.player_id = OWNER
+	screen.chapter_filter = func(key: String) -> bool: return key == Registry.LIGHTHOUSE_V2
+	root.add_child(screen)
+	await _frames(10)
+	var lit: Array = []
+	for rank in range(1, 6):
+		var row := screen.find_child("LeaderboardRow%d" % rank, true, false) as PanelContainer
+		if row != null and (row.get_theme_stylebox("panel") as StyleBoxFlat).bg_color == Rows.MINE_FILL: lit.append(rank)
+	_check(lit == [2, 4], "both pairs' rows are lit as this player's: %s" % [lit])
+	_check(screen.find_child("LeaderboardRow2", true, false).find_child("LeaderboardReport", true, false) == null and screen.find_child("LeaderboardRow4", true, false).find_child("LeaderboardReport", true, false) == null, "and neither offers Report")
+	var own: Node = screen.find_child("LeaderboardOwnRow", true, false)
+	_check(own != null and _texts(own).has("2") and not _texts(own).has("4"), "Your best is the best placed of them: %s" % [_texts(own) if own != null else []])
+	screen.close()
+	# Each place is celebrated once, whoever the partner was.
+	_clear(SHARED_PLACINGS_PATH)
+	var placings: RefCounted = Placings.new(SHARED_PLACINGS_PATH)
+	placings.learn(OWNER, LIGHTHOUSE_BOARD, view)
+	var news: Array = []
+	while placings.has_pending(OWNER):
+		var next: Dictionary = placings.next(OWNER)
+		news.append([next.rank, next.partner])
+		placings.mark_shown(OWNER, next.entry_id)
+	news.sort()
+	_check(news == [[2, OTHER], [4, PARTNER]], "a celebration for each pair's place: %s" % [news])
+	_clear(SHARED_PLACINGS_PATH)
+	api.queue_free()
+	await _frames(2)
+
+## The platform service as presentation/board_feedback_flow.gd reads it (services/platform_games/platform_games.gd).
+class FakeGames extends Node:
+	signal changed
+	var is_linked := false
+	var offers := true
+	var links_on_sign_in := true
+	var sign_ins := 0
+	func kind() -> String: return "play_games"
+	func display_name() -> String: return PlayerCopy.PLATFORM_GAMES_PLAY_GAMES
+	func offered() -> bool: return offers
+	func linked() -> bool: return is_linked
+	func sign_in_now() -> void:
+		sign_ins += 1
+		await Engine.get_main_loop().process_frame
+		if links_on_sign_in:
+			is_linked = true
+			changed.emit()
+
+## While the server posts only runs whose players both have a platform account
+## (backend leaderboards/platform-rule.ts): the end card asks it to post the
+## run, says who must sign in, offers Sign in to this player, and no surface
+## calls a refused run waiting.
+func _platform_rule() -> void:
+	var now := Time.get_unix_time_from_system()
+	# The state, shared by every surface.
+	var refused := _run_on("ab".repeat(16), 1250, PARTNER, _now_iso(-30))
+	refused.refused = Runs.REFUSED_YOU
+	var empty := _view(LIGHTHOUSE_BOARD, [], [])
+	var status := BoardStatus.of_run(refused, true, empty, now, [refused])
+	_check(status.state == BoardStatus.PLATFORM and status.refused == Runs.REFUSED_YOU, "a refused run says so, never checking: %s" % [status])
+	_check(BoardStatus.of_run(refused, true, {}, now).state == BoardStatus.PLATFORM, "also with no board read")
+	_check(BoardStatus.of_run(refused, true, _view(LIGHTHOUSE_BOARD, [], [refused.entry_id]), now, [refused]).state == BoardStatus.CHECKING, "a board that lists it still wins")
+	_check(BoardStatus.shown_rows(empty, [refused], now).is_empty() and not BoardStatus.stands_waiting(refused, empty, now, [refused]), "it never stands on the board as waiting, so no clock, card, celebration or Home note")
+	_check(Line.text(status, "Play Games") == PlayerCopy.BOARD_LINE_PLATFORM_YOU % "Play Games" and Line.text({"state": BoardStatus.PLATFORM, "refused": Runs.REFUSED_PARTNER}) == PlayerCopy.BOARD_LINE_PLATFORM_PARTNER, "the line says who must sign in")
+	var words := [PlayerCopy.BOARD_LINE_PLATFORM_YOU, PlayerCopy.BOARD_LINE_PLATFORM_PARTNER, PlayerCopy.BOARD_LINE_SIGN_IN, PlayerCopy.LEADERBOARD_OWN_PLATFORM_YOU, PlayerCopy.LEADERBOARD_OWN_PLATFORM_PARTNER]
+	_check(words.all(func(text: String) -> bool: return not text.is_empty() and not "—" in text and not "–" in text and not " - " in text), "the new words have no dashes")
+	# Kept on the run, with its room, and read back checked.
+	_fresh_runs()
+	var room_one := "P1P1P1P1P1P1P1P1P1P1P1"
+	var entry_one := Runs.entry_id(room_one, 1)
+	Runs.note(OWNER, _snapshot(room_one, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	_check(not Runs.set_refused(OWNER, entry_one, Runs.REFUSED_YOU, "bad") and Runs.set_refused(OWNER, entry_one, Runs.REFUSED_YOU, room_one), "a refusal needs the run's room")
+	Runs.use_path(RUNS_PATH)
+	var kept: Dictionary = Runs.runs_of(OWNER)[0]
+	_check(kept.refused == Runs.REFUSED_YOU and kept.room == room_one and Runs.refused_by_me(OWNER).size() == 1, "it survives a restart: %s" % [kept])
+	_check(BoardStatus.newest_waiting(OWNER, {}, now, Flow.WATCH_SECONDS).is_empty(), "Home never watches it")
+	Runs.set_refused(OWNER, entry_one, "")
+	_check(Runs.runs_of(OWNER)[0].refused == "" and not Runs.runs_of(OWNER)[0].has("room"), "posted: the mark and its room go")
+	var file := FileAccess.open(RUNS_PATH, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"schema_version": 1, "players": {OWNER: [{"board": LIGHTHOUSE_BOARD, "entry_id": entry_one, "ticks": 5, "assisted": false, "refused": "everyone", "room": 7}]}}))
+	file.close()
+	Runs.use_path(RUNS_PATH)
+	_check(Runs.runs_of(OWNER)[0].refused == "" and not Runs.runs_of(OWNER)[0].has("room"), "a mark that is not one is dropped")
+	# The end card.
+	_fresh_runs()
+	_clear(PLACINGS_PATH)
+	Placings.use_shared(Placings.new(PLACINGS_PATH))
+	var host := _host()
+	host.relay_session.platform = true
+	var room := FakeRoom.new()
+	room.host = host
+	host.relay_child = room
+	root.add_child(room)
+	var flow := Flow.new(host)
+	var board_path := "/v1/leaderboards/" + LIGHTHOUSE_BOARD
+	host.api.replies["GET " + board_path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 2000)], [])}
+	Client.shared(host.api, OWNER)._views.clear()
+	host.api.replies["POST " + Client.POST_PATH] = {"ok": true, "data": {"schema_version": 1, "status": "platform_required", "you": false, "partner": true}}
+	var line: Control = flow.line_for(_snapshot(room_one, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(5)
+	var text := line.find_child("BoardStatusText", true, false) as Label
+	_check(text.text == PlayerCopy.BOARD_LINE_PLATFORM_YOU % PlayerCopy.PLATFORM_GAMES_PLAY_GAMES and line.visible, "this player without an account is asked to sign in: %s" % text.text)
+	_check(host.api.requests.size() == 2 and host.api.requests[0][1] == board_path and host.api.requests[1][0] == "POST" and host.api.requests[1][1] == Client.POST_PATH and host.api.requests[1][2] == {"schema_version": 1, "room_id": room_one}, "the card's board read, then one post of the room it did not list: %s" % [host.api.requests])
+	_check(not Celebration.showing(room.ui) and not Placings.shared().was_shown(OWNER, entry_one), "and nothing celebrated, though it would place first")
+	_check(not (line.find_child("BoardStatusSignIn", true, false) as Button).visible, "with no platform service on this phone, no Sign in button")
+	_check(Runs.runs_of(OWNER)[0].refused == Runs.REFUSED_YOU, "the run is noted refused")
+	line.queue_free()
+	# Drawn again this session: not asked again.
+	line = flow.line_for(_snapshot(room_one, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(5)
+	_check(host.api.requests.filter(func(request: Array) -> bool: return request[0] == "POST").size() == 1 and (line.find_child("BoardStatusText", true, false) as Label).text == PlayerCopy.BOARD_LINE_PLATFORM_YOU % PlayerCopy.PLATFORM_GAMES_PLAY_GAMES, "the card drawn again keeps its line and asks nothing new")
+	line.queue_free()
+	# The partner is the one missing.
+	var room_two := "P2P2P2P2P2P2P2P2P2P2P2"
+	host.api.replies["POST " + Client.POST_PATH] = {"ok": true, "data": {"schema_version": 1, "status": "platform_required", "you": true, "partner": false}}
+	line = flow.line_for(_snapshot(room_two, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(5)
+	_check((line.find_child("BoardStatusText", true, false) as Label).text == PlayerCopy.BOARD_LINE_PLATFORM_PARTNER and not (line.find_child("BoardStatusSignIn", true, false) as Button).visible, "a partner without an account: says so, no button for this player")
+	line.queue_free()
+	# Sign in on the card: the same sign-in as Settings, then the run posts and goes on as any run.
+	# In place of the app's own service (an autoload) while this part runs.
+	var real: Node = root.get_node_or_null("PlatformGames")
+	if real != null: root.remove_child(real)
+	var games := FakeGames.new()
+	games.name = "PlatformGames"
+	root.add_child(games)
+	var room_three := "P3P3P3P3P3P3P3P3P3P3P3"
+	var entry_three := Runs.entry_id(room_three, 1)
+	host.api.replies["POST " + Client.POST_PATH] = {"ok": true, "data": {"schema_version": 1, "status": "platform_required", "you": false, "partner": true}}
+	line = flow.line_for(_snapshot(room_three, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(5)
+	var sign_in := line.find_child("BoardStatusSignIn", true, false) as Button
+	_check(sign_in.visible and sign_in.text == PlayerCopy.BOARD_LINE_SIGN_IN, "with the service offered, Sign in shows")
+	games.links_on_sign_in = false
+	sign_in.pressed.emit()
+	sign_in.pressed.emit()
+	await _frames(4)
+	_check(games.sign_ins == 1 and sign_in.visible and not sign_in.disabled, "one sign-in per tap; cancelled, the button comes back")
+	games.links_on_sign_in = true
+	host.api.requests.clear()
+	host.api.replies["POST " + Client.POST_PATH] = {"ok": true, "data": {"schema_version": 1, "status": "posted"}}
+	host.api.replies["GET " + board_path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 2000)], [entry_three])}
+	sign_in.pressed.emit()
+	await _frames(10)
+	var posts: Array = host.api.requests.filter(func(request: Array) -> bool: return request[0] == "POST")
+	_check(posts.any(func(request: Array) -> bool: return request[2].room_id == room_three), "linked, it posts the run again: %s" % [host.api.requests])
+	_check(_kept(OWNER, entry_three).refused == "" and not line.visible, "posted: no mark, and the card says nothing about the check")
+	var shown: Node = room.ui.find_child(Celebration.NODE_NAME, false, false)
+	_check(shown != null and shown.placing.entry_id == entry_three and shown.placing.rank == 1, "and its place is celebrated as for any run")
+	# Linking also posted the earlier refused run of this player (Settings links the same way).
+	_check(posts.any(func(request: Array) -> bool: return request[2].room_id == room_one) and _kept(OWNER, entry_one).refused == "", "this player's other refused run went again once linked: %s" % [posts])
+	_check(not posts.any(func(request: Array) -> bool: return request[2].room_id == room_two), "a run only the partner kept off is not this player's to post")
+	Celebration.close_over(room.ui)
+	line.queue_free()
+	await _frames(1)
+	# Both linked: the final turn posted it, the card's read lists it, so the route is never asked.
+	var listed_room := "P5P5P5P5P5P5P5P5P5P5P5"
+	host.api.requests.clear()
+	host.api.replies["GET " + board_path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 2000)], [Runs.entry_id(listed_room, 1)])}
+	line = flow.line_for(_snapshot(listed_room, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(8)
+	_check(host.api.requests.size() == 1 and host.api.requests[0][0] == "GET", "a run the board lists needs no post: %s" % [host.api.requests])
+	shown = room.ui.find_child(Celebration.NODE_NAME, false, false)
+	_check(shown != null and shown.placing.entry_id == Runs.entry_id(listed_room, 1), "and its place is celebrated once the read lists it")
+	Celebration.close_over(room.ui)
+	line.queue_free()
+	await _frames(1)
+	# A post the server did not confirm (not placed, or no answer): no celebration from the guess.
+	for reply: Dictionary in [{"ok": true, "data": {"schema_version": 1, "status": "not_placed"}}, {"ok": false, "status": 503, "code": "unavailable"}]:
+		var unsure_room := "P4P4P4P4P4P4P4P4P4P4P%d" % int(reply.ok)
+		host.api.replies["POST " + Client.POST_PATH] = reply
+		host.api.replies["GET " + board_path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 2000)], [])}
+		line = flow.line_for(_snapshot(unsure_room, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+		room.card.add_child(line)
+		await _frames(8)
+		_check(not Celebration.showing(room.ui) and _kept(OWNER, Runs.entry_id(unsure_room, 1)).refused == "", "a run the server did not confirm is not celebrated from a guess: %s" % [reply])
+		line.queue_free()
+	# The partner who did not take the final turn opens the card hours later: still asked, and still told to sign in.
+	var late_room := "P6P6P6P6P6P6P6P6P6P6P6"
+	host.api.requests.clear()
+	host.api.replies["GET " + board_path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 2000)], [])}
+	host.api.replies["POST " + Client.POST_PATH] = {"ok": true, "data": {"schema_version": 1, "status": "platform_required", "you": false, "partner": true}}
+	games.is_linked = false
+	line = flow.line_for(_snapshot(late_room, _lighthouse_final(), _now_iso(-3 * 3600)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(8)
+	_check(host.api.requests.any(func(request: Array) -> bool: return request[0] == "POST" and request[2].room_id == late_room) and (line.find_child("BoardStatusText", true, false) as Label).text == PlayerCopy.BOARD_LINE_PLATFORM_YOU % PlayerCopy.PLATFORM_GAMES_PLAY_GAMES, "a run finished hours ago is still posted or explained: %s" % [host.api.requests])
+	line.queue_free()
+	# One the board rules out (ten faster runs) is never asked about.
+	var slow_room := "P7P7P7P7P7P7P7P7P7P7P7"
+	var ten: Array = []
+	for index in range(10): ten.append(_row(index + 1, "%032x" % (index + 1), 100 + index))
+	host.api.requests.clear()
+	host.api.replies["GET " + board_path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, ten, [])}
+	line = flow.line_for(_snapshot(slow_room, _lighthouse_final(), _now_iso(-3 * 3600)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(8)
+	_check(not host.api.requests.any(func(request: Array) -> bool: return request[0] == "POST"), "a run the board rules out needs no post")
+	line.queue_free()
+	games.is_linked = true
+	# A board read that lists a refused run takes its mark off (the partner linked and posted).
+	Runs.note(OWNER, _snapshot(room_two, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	_check(_kept(OWNER, Runs.entry_id(room_two, 1)).refused == Runs.REFUSED_PARTNER, "the partner's refusal is still noted")
+	host.api.replies["GET " + board_path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [], [Runs.entry_id(room_two, 1)])}
+	await Client.shared(host.api, OWNER).board(LIGHTHOUSE_BOARD, true)
+	_check(_kept(OWNER, Runs.entry_id(room_two, 1)).refused == "", "listed on a board read, its mark goes")
+	# Already linked (Settings, or the quiet sign-in at launch): Home posts this player's refused runs once a session.
+	Runs.set_refused(OWNER, entry_one, Runs.REFUSED_YOU, room_one)
+	host.api.requests.clear()
+	host.api.replies["POST " + Client.POST_PATH] = {"ok": true, "data": {"schema_version": 1, "status": "posted"}}
+	var home := Flow.new(host)
+	home.service_home()
+	await _frames(4)
+	_check(host.api.requests.any(func(request: Array) -> bool: return request[0] == "POST" and request[2].room_id == room_one) and _kept(OWNER, entry_one).refused == "", "Home posts a linked player's refused run: %s" % [host.api.requests])
+	host.api.requests.clear()
+	Runs.set_refused(OWNER, entry_one, Runs.REFUSED_YOU, room_one)
+	home._next_check = 0
+	home.service_home()
+	await _frames(4)
+	_check(not host.api.requests.any(func(request: Array) -> bool: return request[0] == "POST"), "once a session")
+	# The rule off again: no run stays marked.
+	host.relay_session.platform = false
+	home._next_check = 0
+	home.service_home()
+	await _frames(2)
+	_check(Runs.refused_by_me(OWNER).is_empty() and _kept(OWNER, entry_one).refused == "", "with the rule off the marks go")
+	host.relay_session.platform = true
+	# Your best on the board screen says who must sign in.
+	_fresh_runs()
+	Runs.note(OWNER, _snapshot(room_one, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	Runs.set_refused(OWNER, entry_one, Runs.REFUSED_YOU, room_one)
+	var api := FakeApi.new()
+	root.add_child(api)
+	api.replies["GET " + board_path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [], [])}
+	var screen := Screen.new()
+	screen.client = Client.new(api, OWNER, CHOICE_PATH)
+	screen.player_id = OWNER
+	screen.chapter_filter = func(key: String) -> bool: return key == Registry.LIGHTHOUSE_V2
+	root.add_child(screen)
+	await _frames(10)
+	var own: Node = screen.find_child("LeaderboardOwn", true, false)
+	_check(own != null and _texts(own).has(PlayerCopy.LEADERBOARD_OWN_PLATFORM_YOU % PlayerCopy.PLATFORM_GAMES_PLAY_GAMES), "Your best says to sign in: %s" % [_texts(own) if own != null else []])
+	_check(not (screen.find_child("LeaderboardChecking", true, false) as Control).visible and screen.find_child("LeaderboardRow1", true, false) == null, "no waiting row and no checking card for it")
+	screen.close()
+	api.queue_free()
+	root.remove_child(games)
+	games.queue_free()
+	if real != null: root.add_child(real)
+	room.queue_free()
+	_drop(host)
+	await _frames(2)
+
+func _kept(owner: String, entry: String) -> Dictionary:
+	for run: Dictionary in Runs.runs_of(owner):
+		if run.entry_id == entry: return run
+	return {}
