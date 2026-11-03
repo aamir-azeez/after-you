@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, canonicalJson, digest, equalHash, fail, object, ok, text, type Outcome } from "./protocol";
-import { KNOWN_TERMS_VERSIONS, termsCovered, termsVersion } from "./public-policy";
+import { KNOWN_TERMS_VERSIONS, TERMS_VERSION, termsCovered } from "./public-policy";
 import { ERASURE_SCHEMA, checkedErasure, erasureReceipt, readErasure, requestProviderErasure, writeErasure } from "./account-erasure";
 import { isAlarmMetadataTable } from "./notification-storage";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
@@ -107,18 +107,21 @@ export class SafetyProfile extends DurableObject<Env> {
     return row ? checkedProfile(JSON.parse(row.data), owner) : { schema_version: 1, owner, terms_version: null, accepted_at: null, blocks: [] };
   }
   private write(state: Profile): void { this.ctx.storage.sql.exec("INSERT OR REPLACE INTO safety_profile VALUES (1,?)", JSON.stringify(state)); }
-  /** The rules in force follow the flags (public-policy.ts termsVersion): an acceptance of older rules reads as not accepted. */
-  terms(owner: string) { const p = this.read(owner), current = termsVersion(this.env); return { schema_version: 1, terms_version: current, accepted: termsCovered(p.terms_version, current), accepted_at: p.accepted_at }; }
+  /**
+   * `current`: the rules asked about (public-policy.ts termsVersionFor; photos need only TERMS_VERSION, public duels
+   * termsVersion). An acceptance of older rules than those reads as not accepted.
+   */
+  terms(owner: string, current: string = TERMS_VERSION) { const p = this.read(owner); return { schema_version: 1, terms_version: current, accepted: termsCovered(p.terms_version, current), accepted_at: p.accepted_at }; }
   blocks(owner: string) { return { schema_version: 1, blocked_players: [...this.read(owner).blocks] }; }
   hasBlocked(owner: string, peer: string): boolean { return this.read(owner).blocks.includes(peer); }
-  async accept(owner: string, deviceHash: string, version: string): Promise<Outcome<ReturnType<SafetyProfile["terms"]>>> {
-    const current = termsVersion(this.env);
-    if (version !== current) return fail(409, "unsupported_terms_version");
+  /** `current`: the rules this phone is shown, which the Worker chose from its flags (public-policy.ts termsVersionFor). */
+  async accept(owner: string, deviceHash: string, version: string, current: string = TERMS_VERSION): Promise<Outcome<ReturnType<SafetyProfile["terms"]>>> {
+    if (version !== current || !KNOWN_TERMS_VERSIONS.includes(current)) return fail(409, "unsupported_terms_version");
     if (!await this.env.PLAYERS.getByName(owner).authorize(deviceHash)) return fail(401, "invalid_auth");
     if (readErasure(this.ctx.storage)) return fail(409, "identity_deletion_pending");
     const p = this.read(owner);
     if (!termsCovered(p.terms_version, current)) { p.terms_version = current; p.accepted_at = new Date().toISOString(); this.write(p); }
-    return ok(this.terms(owner));
+    return ok(this.terms(owner, current));
   }
   async setBlock(owner: string, deviceHash: string, peer: string, blocked: boolean): Promise<Outcome<{ schema_version: 1; blocked: boolean; player_id: string }>> {
     text(peer, ID_PATTERN); if (owner === peer) return fail(400, "invalid_block_target");

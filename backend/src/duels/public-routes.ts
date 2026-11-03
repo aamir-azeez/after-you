@@ -1,4 +1,4 @@
-import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, randomToken, unwrap } from "../protocol";
+import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, isObject, randomToken, unwrap } from "../protocol";
 import { flags, type ServerVars } from "../flags";
 import { bearerDigest } from "../http";
 import { shownName } from "../display-names";
@@ -10,6 +10,7 @@ import type { Look } from "../pollen/catalog";
 import type { DuelExtraAnswer, DuelWinAnswer } from "../pollen/duel-pay";
 import type { DuelBlock, MemberState } from "../leaderboards/member";
 import { creatable } from "../v2/chapters";
+import { termsVersion } from "../public-policy";
 import { SAFETY_REPORT_REASONS, type SafetyReport } from "../safety";
 import { DUEL_REQUEST_PREFIX, requestFriend } from "../friends-routes";
 import { isFinal, isOpen, knownKey, viewFor, type Duel } from "./model";
@@ -280,11 +281,27 @@ async function friend(env: Env, request: Request, player: string, board: string,
   return { schema_version: 1, sent: true };
 }
 
+const UNPAUSE_PATH = /^\/operator\/safety\/players\/([A-Za-z0-9_-]{22})\/public-unpause$/;
+/**
+ * POST /operator/safety/players/<id>/public-unpause, after requireOperator: clears a public duels pause and the reports
+ * behind it, and puts the player's open public duels back on the list. Safe to repeat. Null for any other path.
+ */
+export async function routePublicPauseOperator(request: Request, path: string, env: Env): Promise<unknown | null> {
+  const match = UNPAUSE_PATH.exec(path);
+  if (!match) return null;
+  if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+  const body = await boundedJson(request, 1024);
+  if (!isObject(body) || Object.keys(body).length !== 1 || body.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
+  await party(env, match[1]).clearPublicPause();
+  await hidePlayer(env, match[1], false, Date.now());
+  return { schema_version: 1, unpaused: true };
+}
+
 /** PUT /v1/duels/public/me {on}: the switch; on needs the current community rules accepted. */
 async function setSwitch(env: Env, player: string, input: unknown): Promise<unknown> {
   const body = fields(input, ["on"]);
   if (typeof body.on !== "boolean") throw new ApiError(400, "invalid_duel_request");
-  if (body.on && !(await env.SAFETY_PROFILES.getByName(player).terms(player)).accepted) throw new ApiError(403, "terms_acceptance_required");
+  if (body.on && !(await env.SAFETY_PROFILES.getByName(player).terms(player, termsVersion(env))).accepted) throw new ApiError(403, "terms_acceptance_required");
   const state = (await party(env, player).setPublicDuels(body.on)) as unknown as MemberState;
   return { schema_version: 1, on: !!state.public_duels, show_name: state.show_name, paused: !!state.public_paused };
 }

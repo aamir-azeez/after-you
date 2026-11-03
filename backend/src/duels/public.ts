@@ -128,7 +128,7 @@ export function enterSeat(duel: Duel, side: 0 | 1, player: string, now: number):
   return ok(true);
 }
 
-/** Frees a seat whose player never entered the room; the duel is withdrawn once nobody is left in it. */
+/** Frees a seat whose player never entered the room (never the last player's: they withdraw it instead). */
 function freeSeat(duel: Duel, seat: number, now: number): void {
   const side = sideOfSeat(duel, seat), player = side.members[seat & 1]!;
   if (side.looks) wearLooks(side, id => id === player ? {} : undefined);
@@ -137,7 +137,6 @@ function freeSeat(duel: Duel, seat: number, now: number): void {
   duel.public!.seats[seat] = { label: null };
   duel.known = duel.known.filter(key => !key.split("|").includes(player));
   if (duel.starter === player) duel.starter = null;
-  if (!seated(duel).length) duel.status = "withdrawn";
   duel.updated_ms = now;
 }
 
@@ -150,7 +149,9 @@ export function publicLeave(duel: Duel, player: string, now: number, blocked: bo
   if (isFinal(duel)) return ok(duel);
   const seat = seatOf(duel, player), side = sideOfSeat(duel, seat), state = duel.public!;
   if (side.finished_ms !== null) return fail(409, "duel_finished_for_you");
-  if (!state.seats[seat].entered || seated(duel).length === 1) { freeSeat(duel, seat, now); return ok(duel); }
+  // The last player in it withdraws it and keeps their seat, so the duel still reads as theirs.
+  if (seated(duel).length === 1) { duel.status = "withdrawn"; duel.updated_ms = now; return ok(duel); }
+  if (!state.seats[seat].entered) { freeSeat(duel, seat, now); return ok(duel); }
   if (side.left) return ok(duel);
   side.left = true;
   side.left_by = seat;
@@ -169,7 +170,7 @@ export function publicLeave(duel: Duel, player: string, now: number, blocked: bo
 export function publicForget(duel: Duel, player: string, now: number): boolean {
   const seat = seatOf(duel, player), state = duel.public!;
   if (seat < 0) return false;
-  if (duel.status === "running" && !state.seats[seat].entered) { freeSeat(duel, seat, now); return true; }
+  if (duel.status === "running" && !state.seats[seat].entered && seated(duel).length > 1) { freeSeat(duel, seat, now); return true; }
   state.seats[seat] = { label: null, gone: true };
   state.forfeit = [...new Set([...(state.forfeit ?? []), seat])].sort();
   if (duel.result) duel.result.forfeit = [...new Set([...(duel.result.forfeit ?? []), seat])].sort();

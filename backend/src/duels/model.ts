@@ -1,7 +1,7 @@
 import { fail, ok, type Outcome } from "../protocol";
 import type { ChapterKey } from "../v2/chapter-types";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "./rules";
-import { enterSeat, publicForget, publicKnown, publicLeave, publicSeatsView, publicSettle, publicView, stallForfeits, type PublicState } from "./public";
+import { enterSeat, openSeats, publicForget, publicKnown, publicLeave, publicSeatsView, publicSettle, publicView, stallForfeits, type PublicState } from "./public";
 import { keptLook, servedLook } from "../leaderboards/run-looks";
 import type { Look } from "../pollen/catalog";
 
@@ -426,7 +426,9 @@ export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
 export type Milestone = { shared: string; rooms: (string | null)[] };
 export function milestone(duel: Duel): Milestone {
   return {
-    shared: JSON.stringify([duel.status, duel.accepted_ms, duel.sides.map(side => side && [side.finished_ms !== null, side.left, side.check, side.steps, side.ticks, side.turn])]),
+    // A public duel's seats are news too (one taken or given back), told to everyone in it; a friend duel's milestone is as before.
+    shared: JSON.stringify([duel.status, duel.accepted_ms, duel.sides.map(side => side && [side.finished_ms !== null, side.left, side.check, side.steps, side.ticks, side.turn]),
+      ...(duel.public ? [openSeats(duel)] : [])]),
     rooms: duel.sides.map(side => side?.room?.room_id ?? null)
   };
 }

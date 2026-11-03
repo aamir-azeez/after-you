@@ -2,7 +2,8 @@ import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, 
 import { bearerDigest } from "./http";
 import { LEGACY_STAGE_COUNT } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, roomStages } from "./v2/room-stage";
-import { termsVersion } from "./public-policy";
+import { PUBLIC_DUELS_HEADER, termsVersionFor } from "./public-policy";
+import { flags } from "./flags";
 import { blockPlayer, countReport, duelBlocks, publicDuelsOn, unblockHandle } from "./duels/public-routes";
 import { interactionBlocked, parseReport, type SafetyReport } from "./safety";
 import { campaignRequestContext, type CampaignRoomContext } from "./v2/campaign-room-access";
@@ -47,21 +48,23 @@ async function blockFriend(env: Env, owner: string, deviceHash: string, peer: st
 export async function routeSafety(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
   const profile = env.SAFETY_PROFILES.getByName(owner), inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   const deviceHash = await bearerDigest(request);
-  if (path === "/v1/safety/config" && request.method === "GET") return { schema_version: 1, enforced: true, terms_version: termsVersion(env), privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" };
+  if (path === "/v1/safety/config" && request.method === "GET") return { schema_version: 1, enforced: true, terms_version: termsVersionFor(request, env), privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" };
   if (path === "/v1/safety/terms") {
-    if (request.method === "GET") return profile.terms(owner);
+    if (request.method === "GET") return profile.terms(owner, termsVersionFor(request, env));
     if (request.method === "POST") {
       const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "terms_version"]);
       if (input.schema_version !== 1 || typeof input.terms_version !== "string") throw new ApiError(400, "invalid_safety_request");
-      return unwrap(await profile.accept(owner, deviceHash, input.terms_version));
+      return unwrap(await profile.accept(owner, deviceHash, input.terms_version, termsVersionFor(request, env)));
     }
   }
   if (path === "/v1/safety/blocks" && request.method === "GET") {
     const list = await profile.blocks(owner);
-    if (!publicDuelsOn(env)) return list;
-    // A stranger blocked from a public duel shows by handle and label only, never by id (duels/public-routes.ts).
+    // A stranger blocked from a public duel never shows by id, flag on or off (duels/public-routes.ts); a phone that knows
+    // public duels gets them by handle and label in the extra key, which an older phone (wanting exactly these keys) never sees.
+    if (!flags.leaderboards(env)) return list;
     const strangers = await duelBlocks(env, owner);
-    return { ...list, blocked_players: list.blocked_players.filter(id => !strangers.ids.has(id)), duel_blocks: strangers.shown };
+    const plain = { ...list, blocked_players: list.blocked_players.filter(id => !strangers.ids.has(id)) };
+    return publicDuelsOn(env) && request.headers.get(PUBLIC_DUELS_HEADER) === "1" ? { ...plain, duel_blocks: strangers.shown } : plain;
   }
   const duelHandle = path.match(/^\/v1\/safety\/blocks\/duel\/([a-f0-9]{22})$/);
   if (duelHandle && request.method === "DELETE") return unblockHandle(env, request, owner, duelHandle[1]);

@@ -189,7 +189,8 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
   const pair = await pairOf(env, player, now, look);
   const shownLooks = looksOn(env);
   const { duels, missing } = await duelsOf(env, pair.state.duels, player);
-  const stale = duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS).map(duel => duel.duel_id);
+  // A result shown long enough goes, and so does a public duel whose seat this player gave back (public.ts).
+  const stale = duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS || sideOf(duel, player) < 0).map(duel => duel.duel_id);
   const shown = duels.filter(duel => !stale.includes(duel.duel_id));
   const settled: string[] = [];
   // Every won duel is paid before its pointer goes, so a winner who stays away a while still gets it; a public duel's
@@ -374,7 +375,9 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
   }
   if (action === "decline" || action === "leave") {
     const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: action, player }));
-    return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks) };
+    // A public seat left before entering goes back on the list: the leaver is no longer in the duel (public.ts).
+    const view = viewFor(answer.duel, player, shownLooks);
+    return view ? { schema_version: 1, duel: view } : { schema_version: 1, duel: null, left: true };
   }
   // sync: the phone saw its room ahead of the duel; note the room as it is now.
   const room = duel.sides[mine as 0 | 1]!.room;

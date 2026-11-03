@@ -12,6 +12,16 @@ export const KNOWN_TERMS_VERSIONS: readonly string[] = [TERMS_VERSION, PUBLIC_TE
 export function termsVersion(env: ServerVars): string {
   return flags.publicDuels(env) && flags.duels(env) && flags.leaderboards(env) ? PUBLIC_TERMS_VERSION : TERMS_VERSION;
 }
+/**
+ * Phones that know public duels send this on their safety requests. Only they are shown the public duel rules, so an
+ * older phone, which knows only TERMS_VERSION, keeps reading and accepting the rules it knows, and its photo uploads
+ * (which need only those) carry on when the flag goes on.
+ */
+export const PUBLIC_DUELS_HEADER = "X-AfterYou-Public-Duels";
+/** The rules a request's phone is shown and may accept: termsVersion for a phone that knows public duels, else today's. */
+export function termsVersionFor(request: Request, env: ServerVars): string {
+  return request.headers.get(PUBLIC_DUELS_HEADER) === "1" ? termsVersion(env) : TERMS_VERSION;
+}
 /** Whether an acceptance of `stored` covers `current`: the same rules or newer ones (a flag turned off again asks nobody twice). */
 export function termsCovered(stored: string | null, current: string): boolean {
   return stored !== null && KNOWN_TERMS_VERSIONS.indexOf(stored) >= KNOWN_TERMS_VERSIONS.indexOf(current);

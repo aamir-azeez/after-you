@@ -1,0 +1,367 @@
+import { env } from "cloudflare:workers";
+import { reset, runInDurableObject } from "cloudflare:test";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import worker from "../src/index";
+import { canonicalJson, digest } from "../src/protocol";
+import { CHAPTERS } from "../src/v2/chapters";
+import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
+import { boardKeys } from "../src/leaderboards/boards";
+import { forgetViews } from "../src/leaderboards/view-cache";
+import { forgetCachedListings } from "../src/duels/public-list";
+import { spotFor, type JoinAs } from "../src/duels/public";
+import { DIRECTORY_NAME } from "../src/duels/directory";
+import { PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "../src/duels/rules";
+import type { Duel, DuelView } from "../src/duels/model";
+import { POLLEN_CLIENT, configJson } from "./config";
+import { PUBLIC_DUELS_HEADER, PUBLIC_TERMS_VERSION, TERMS_VERSION } from "../src/public-policy";
+import spots from "../../game/tests/fixtures/public_duels/spots.json";
+import firstA from "../../game/tests/fixtures/v2/relay-a.json";
+import firstB from "../../game/tests/fixtures/v2/relay-b.json";
+import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
+
+// Public duels end to end through the Worker (duels/public.ts, public-routes.ts): the list, posting, joining in any
+// order, leaving, the masked rooms, blocks, reports, friend asks and the held extra. Synthetic identities only.
+type Account = { player_id: string; device_token: string; recovery_code: string };
+type Any = Record<string, unknown>;
+type Row = { duel_id: string; board: string; mine: boolean; sides: { steps: number; seats: { open: boolean; label: string | null; you?: true }[] }[] };
+const SECRET = "synthetic-pollen-secret-for-tests-only-0003";
+const OPERATOR = "o".repeat(43);
+const ON = { CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "PUBLIC_DUELS", "DISPLAY_NAMES_ENABLED"] }), POLLEN_SECRET: SECRET, SAFETY_OPERATOR_TOKEN: OPERATOR };
+const OFF = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN"] }) };
+const RELAY = "relay-isles@2";
+const RELAY_KEY = { level_id: "relay-isles", level_version: 2, definition_hash: CHAPTERS[0].adapter.key.definition_hash };
+let address = 0;
+
+async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = {}): Promise<Response> {
+  return worker.fetch(new Request("https://public.test" + path, { method,
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + (++address % 250), "X-AfterYou-Pollen": "1", ...POLLEN_CLIENT,
+      ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
+    body: body === undefined ? undefined : JSON.stringify(body) }), Object.assign({ ...env }, vars) as Env);
+}
+async function ok<T = Any>(response: Promise<Response>, status = 200): Promise<T> {
+  const answer = await response;
+  const text = await answer.text();
+  expect(answer.status, text).toBe(status);
+  return JSON.parse(text) as T;
+}
+const errorOf = async (response: Promise<Response>) => (await (await response).json<{ error: Any }>()).error;
+async function create(): Promise<Account> { return ok<Account>(call("/v1/identity", "POST", undefined, {}), 201); }
+async function befriend(a: Account, b: Account): Promise<void> {
+  const { request_id } = await ok<{ request_id: string }>(call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: b.player_id }));
+  await ok(call("/v1/friends/accept", "POST", b, { schema_version: 1, player_id: a.player_id, request_id }));
+}
+async function partner(a: Account, b: Account): Promise<void> {
+  await befriend(a, b);
+  await ok(call("/v1/duels/party/invite", "POST", a, { schema_version: 1, friend: b.player_id }));
+  await ok(call("/v1/duels/party/accept", "POST", b, { schema_version: 1, from: a.player_id }));
+}
+/** A player with the community rules accepted and public duels on. */
+async function player(): Promise<Account> {
+  const account = await create();
+  const knows = { [PUBLIC_DUELS_HEADER]: "1" };
+  const { terms_version } = await ok<{ terms_version: string }>(call("/v1/safety/terms", "GET", account, undefined, ON, knows));
+  expect(terms_version).toBe(PUBLIC_TERMS_VERSION);
+  await ok(call("/v1/safety/terms", "POST", account, { schema_version: 1, terms_version }, ON, knows));
+  await ok(call("/v1/duels/public/me", "PUT", account, { schema_version: 1, on: true }));
+  return account;
+}
+const post = (account: Account, as: JoinAs = "alone", key = crypto.randomUUID()) =>
+  call("/v1/duels/public", "POST", account, { schema_version: 1, idempotency_key: key, board: RELAY, as });
+const join = (account: Account, duel: { duel_id: string }, as: JoinAs = "alone", seat: number | null = null, key = crypto.randomUUID()) =>
+  call(`/v1/duels/public/${RELAY}/${duel.duel_id}/join`, "POST", account, { schema_version: 1, idempotency_key: key, as, seat });
+const detail = (account: Account, duel: { duel_id: string }) => ok<{ duel: DuelView; held?: Any; pay?: Any }>(call(`/v1/duels/${RELAY}/${duel.duel_id}`, "GET", account));
+/** The list as `account` reads it, once the board's change reached the directory (it goes after the board's reply). */
+async function listFor(account: Account, until: (rows: Row[]) => boolean = () => true, scope = "all"): Promise<{ rows: Row[]; text: string }> {
+  for (let tries = 0; ; tries++) {
+    await forgetCachedListings();
+    const answer = await call(`/v1/duels/public/list/${scope}/newest/0`, "GET", account);
+    const text = await answer.text();
+    expect(answer.status, text).toBe(200);
+    const rows = (JSON.parse(text) as { rows: Row[] }).rows;
+    if (until(rows) || tries >= 20) return { rows, text };
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+}
+const boardDuel = (id: string) => runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (_, ctx) =>
+  JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE duel_id=?", id).one().data) as Duel);
+const rewriteDuel = (id: string, change: (duel: Duel) => void) => runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (_, ctx) => {
+  const duel = JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE duel_id=?", id).one().data) as Duel;
+  change(duel);
+  ctx.storage.sql.exec("UPDATE duels SET data=? WHERE duel_id=?", JSON.stringify(duel), id);
+});
+const openRoom = (host: Account, duel: DuelView) => call("/v2/rooms", "POST", host, { idempotency_key: crypto.randomUUID(), ...RELAY_KEY, duel: { duel_id: duel.duel_id, board: duel.board } });
+
+async function rerecord(input: Any): Promise<Any> { const body = { ...input }; delete body.recording_hash; return { ...input, recording_hash: await digest(canonicalJson(body)) }; }
+async function rehash(input: Any): Promise<Any> { const body = { ...input }; delete body.checkpoint_hash; delete body.proof; return { ...input, checkpoint_hash: await digest(canonicalJson(body)) }; }
+/** The Relay's first stage, unassisted (a duel room takes no Forgiving catches): two turns. */
+async function firstStage(): Promise<[Any, Any, Any]> {
+  const a1 = await rerecord({ ...firstA, catch_assistance: false });
+  const b1 = await rerecord({ ...firstB, catch_assistance: false, source_recording_hash: a1.recording_hash });
+  const mid = await rehash({ ...middle, a_recording_hash: a1.recording_hash, b_recording_hash: b1.recording_hash, proof: { ...(middle.proof as Any), a: a1, b: b1 } });
+  return [a1, b1, mid];
+}
+const turn = (room: RoomSnapshotV2, recording: unknown, checkpoint?: unknown) =>
+  ({ base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(), recording, ...(checkpoint === undefined ? {} : { checkpoint }) });
+
+const shared = env as unknown as Record<string, unknown>;
+beforeEach(async () => { shared.POLLEN_SECRET = SECRET; await forgetViews(boardKeys()); await forgetCachedListings(); });
+afterEach(async () => { delete shared.POLLEN_SECRET; await reset(); });
+
+describe("spot rules", () => {
+  it("answer the shared table the phone reads too", () => {
+    for (const item of spots.cases) {
+      const answer = spotFor(item.seats, item.as as JoinAs, item.wanted);
+      expect(answer, item.name).toEqual("seat" in item ? { seat: item.seat } : { reason: item.reason });
+    }
+  });
+});
+
+describe("public duels", () => {
+  it("are absent while PUBLIC_DUELS is off, and the lobby and capability say nothing of them", async () => {
+    const a = await create();
+    for (const [path, method, body] of [["/v1/duels/public/list/all/newest/0", "GET"], ["/v1/duels/public", "POST", { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, as: "alone" }],
+      ["/v1/duels/public/me", "PUT", { schema_version: 1, on: true }]] as [string, string, unknown?][]) expect((await call(path, method, a, body, OFF)).status, path).toBe(method === "PUT" ? 405 : 404);
+    const lobby = await ok<Any>(call("/v1/duels", "GET", a, undefined, OFF));
+    expect(lobby).not.toHaveProperty("public");
+    const caps = await ok<Any>(call("/v2/capabilities", "GET", a, undefined, OFF, { "X-AfterYou-Duels": "1" }));
+    expect(caps).not.toHaveProperty("public_duels_version");
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, ON, { "X-AfterYou-Duels": "1" }))).toMatchObject({ public_duels_version: 1 });
+  });
+
+  it("show the public duel rules only to phones that know them, so older phones keep the rules and photo checks they know", async () => {
+    const a = await create();
+    expect(await ok<Any>(call("/v1/safety/config", "GET", a))).toMatchObject({ terms_version: TERMS_VERSION });
+    expect(await ok<Any>(call("/v1/safety/config", "GET", a, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ terms_version: PUBLIC_TERMS_VERSION });
+    expect(await ok<Any>(call("/v1/safety/config", "GET", a, undefined, OFF, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ terms_version: TERMS_VERSION });
+    // An older phone's acceptance stands for photos; it never covers the newer rules.
+    await ok(call("/v1/safety/terms", "POST", a, { schema_version: 1, terms_version: TERMS_VERSION }));
+    expect(await ok<Any>(call("/v1/safety/terms", "GET", a))).toMatchObject({ accepted: true });
+    expect(await ok<Any>(call("/v1/safety/terms", "GET", a, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ accepted: false });
+    expect((await errorOf(call("/v1/duels/public/me", "PUT", a, { schema_version: 1, on: true })))).toMatchObject({ code: "terms_acceptance_required" });
+    // An older phone posting the newer rules is refused; the newer acceptance covers the older rules.
+    expect((await call("/v1/safety/terms", "POST", a, { schema_version: 1, terms_version: PUBLIC_TERMS_VERSION })).status).toBe(409);
+    const blocks = await ok<Any>(call("/v1/safety/blocks", "GET", a));
+    expect(Object.keys(blocks).sort()).toEqual(["blocked_players", "schema_version"]);
+    expect(await ok<Any>(call("/v1/safety/blocks", "GET", a, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ duel_blocks: [] });
+  });
+
+  it("need the switch, which needs the community rules, and a paused player can neither post nor join", async () => {
+    const a = await create();
+    expect((await errorOf(call("/v1/duels/public/me", "PUT", a, { schema_version: 1, on: true }))).code).toBe("terms_acceptance_required");
+    expect((await errorOf(post(a))).code).toBe("public_duels_off");
+    const b = await player();
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", b))).public).toMatchObject({ version: 1, on: true, paused: false, partner_on: null, running: 0 });
+    await runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(b.player_id), async (_, ctx) => {
+      ctx.storage.sql.exec("UPDATE lb_member SET data=json_set(data,'$.public_paused',json('true')) WHERE id=1");
+    });
+    expect((await errorOf(post(b))).code).toBe("public_paused");
+  });
+
+  it("post to the list with no id in it, and a retried post answers the same duel", async () => {
+    const [a, reader] = await Promise.all([player(), player()]);
+    const key = crypto.randomUUID();
+    const first = (await ok<{ duel: DuelView }>(post(a, "alone", key))).duel;
+    expect((await ok<{ duel: DuelView }>(post(a, "alone", key))).duel.duel_id).toBe(first.duel_id);
+    expect(first.public).toMatchObject({ seats_open: 3 });
+    expect(first.sides[0].seats).toEqual([{ open: false, you: true, label: null }, { open: true, you: false, label: null }]);
+    const { rows, text } = await listFor(reader, found => found.length > 0);
+    expect(rows.map(row => row.duel_id)).toEqual([first.duel_id]);
+    expect(rows[0]).toMatchObject({ mine: false, sides: [{ seats: [{ open: false, label: null }, { open: true, label: null }] }, { seats: [{ open: true }, { open: true }] }] });
+    expect(text).not.toContain(a.player_id);
+    const own = await listFor(a, found => found.length > 0);
+    expect(own.rows[0]).toMatchObject({ mine: true, sides: [{ seats: [{ you: true }, { open: true }] }, {}] });
+    // One chapter's scope lists it; another chapter's does not.
+    expect((await listFor(reader, found => found.length > 0, RELAY)).rows).toHaveLength(1);
+    expect((await listFor(reader, () => true, `${CHAPTERS[1].adapter.key.level_id}@${CHAPTERS[1].adapter.key.level_version}`)).rows).toHaveLength(0);
+  });
+
+  it("seat a lone joiner beside the poster first, answer a repeat with the same duel, and take a whole pair for a party", async () => {
+    const [poster, lone, p1, p2] = await Promise.all([player(), player(), player(), player()]);
+    await partner(p1, p2);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    const joined = (await ok<{ duel: DuelView }>(join(lone, posted))).duel;
+    expect(joined.mine).toBe(0);
+    expect(joined.sides[0].seats).toEqual([{ open: false, you: false, label: null }, { open: false, you: true, label: null }]);
+    // A stranger's id never shows; the partner seat reads as taken, its member null.
+    expect(joined.sides[0].members).toEqual([null, lone.player_id]);
+    expect((await ok<{ duel: DuelView }>(join(lone, posted))).duel.duel_id).toBe(posted.duel_id);
+    const party = (await ok<{ duel: DuelView }>(join(p1, posted, "party"))).duel;
+    expect(party.mine).toBe(1);
+    // A party knows each other: ids shown on their own side, strangers still hidden.
+    expect(party.sides[1]!.members.sort()).toEqual([p1.player_id, p2.player_id].sort());
+    expect(party.sides[0].members).toEqual([null, null]);
+    expect(party.public?.seats_open).toBe(0);
+    expect(JSON.stringify(party)).not.toContain(poster.player_id);
+    // Full: off the list.
+    expect((await listFor(lone, found => found.length === 0)).rows).toHaveLength(0);
+    // Maya is told at once; the party's duel is on her lobby.
+    expect((await ok<{ duels: DuelView[] }>(call("/v1/duels", "GET", p2))).duels.map(view => view.duel_id)).toContain(posted.duel_id);
+  });
+
+  it("let only one of two parties take the last pair spot, and the loser gets spot_taken every time", async () => {
+    const [poster, lone, p1, p2, q1, q2] = await Promise.all([player(), player(), player(), player(), player(), player()]);
+    await partner(p1, p2); await partner(q1, q2);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await ok(join(lone, posted));
+    const answers = await Promise.all([join(p1, posted, "party"), join(q1, posted, "party")]);
+    const statuses = answers.map(answer => answer.status).sort();
+    expect(statuses).toEqual([200, 409]);
+    const loser = answers[0].status === 409 ? q1 : p1;
+    const lost = await errorOf(join(answers[0].status === 409 ? p1 : q1, posted, "party"));
+    expect(lost).toMatchObject({ code: "spot_taken", row: null });
+    void loser;
+  });
+
+  it("put a seat back on the list when its player leaves before entering, end a side once they entered, and withdraw a duel its last player leaves", async () => {
+    const [poster, lone] = await Promise.all([player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await ok(join(lone, posted));
+    // The seat is free again: the leaver is no longer in the duel, so their answer names none.
+    expect(await ok<Any>(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", lone, { schema_version: 1 }))).toEqual({ schema_version: 1, duel: null, left: true });
+    expect((await ok<{ duels: DuelView[] }>(call("/v1/duels", "GET", lone))).duels).toEqual([]);
+    expect((await detail(poster, posted)).duel.public?.seats_open).toBe(3);
+    // The poster opens their room: entered. Leaving now, as the only player left, withdraws the duel.
+    await ok(openRoom(poster, (await detail(poster, posted)).duel));
+    const view = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", poster, { schema_version: 1 }))).duel;
+    expect(view.status).toBe("withdrawn");
+    expect((await errorOf(join(lone, posted))).code).toBe("spot_taken");
+  });
+
+  it("refuse a join after the spots closed, and end the duel as nobody_joined with no win or loss", async () => {
+    const [poster, late] = await Promise.all([player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await rewriteDuel(posted.duel_id, duel => { duel.public!.open_until_ms = Date.now() - 1; duel.public!.posted_ms -= PUBLIC_OPEN_MS; });
+    expect((await errorOf(join(late, posted))).code).toBe("spot_taken");
+    const view = (await detail(poster, posted)).duel;
+    expect([view.status, view.result?.reason, view.result?.outcome]).toEqual(["unfinished", "nobody_joined", "none"]);
+  });
+
+  it("show a stranger in the shared room only as a stand-in, with no name, no presence and no photos", async () => {
+    const [poster, lone] = await Promise.all([player(), player()]);
+    await ok(call("/v1/profile/name", "PUT", poster, { schema_version: 1, display_name: "Kite", revision: Date.now() }));
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    const room = await ok<RoomSnapshotV2>(openRoom(poster, posted));
+    const mine = (await ok<{ duel: DuelView }>(join(lone, posted))).duel;
+    const invite = mine.sides[0].invite_code as string;
+    expect(invite).toBeTruthy();
+    const joined = await call("/v2/rooms/join", "POST", lone, { invite_code: invite }, ON, { "X-AfterYou-Display-Names": "1" });
+    const text = await joined.text();
+    expect(joined.status, text).toBe(200);
+    expect(text).not.toContain(poster.player_id);
+    expect(text).not.toContain("Kite");
+    const seen = JSON.parse(text) as RoomSnapshotV2;
+    expect(seen.guest_id).toBe(lone.player_id);
+    expect(seen.host_id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(seen).not.toHaveProperty("duel_masks");
+    // The host sees the guest's stand-in too, on every read: the room, the inbox, presence.
+    for (const [path, account] of [[`/v2/rooms/${room.room_id}`, poster], ["/v1/room-inbox", poster], ["/v1/room-inbox", lone]] as [string, Account][]) {
+      const body = await (await call(path, "GET", account, undefined, ON, { "X-AfterYou-Display-Names": "1" })).text();
+      const other = account === poster ? lone : poster;
+      expect(body, path).not.toContain(other.player_id);
+    }
+    expect(await ok<Any>(call(`/v2/rooms/${room.room_id}/presence`, "GET", lone))).toMatchObject({ partner_online: false });
+    // The board knows the guest entered: their leaving now ends the side instead of reopening the seat.
+    expect((await boardDuel(posted.duel_id)).public!.seats[1].entered).toBe(true);
+  });
+
+  it("block by seat, leaving the duel for your own partner, list the block by handle only, and hide the blocker's duels from the blocked", async () => {
+    const [poster, lone, reader] = await Promise.all([player(), player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await ok(join(lone, posted));
+    const blocked = await ok<{ blocked: boolean; left: boolean }>(call(`/v1/duels/public/${RELAY}/${posted.duel_id}/block`, "POST", lone, { schema_version: 1, seat: 0 }));
+    expect(blocked).toEqual({ schema_version: 1, blocked: true, left: true });
+    const list = await ok<{ blocked_players: string[]; duel_blocks: { handle: string; label: string | null }[] }>(call("/v1/safety/blocks", "GET", lone, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }));
+    expect(list.blocked_players).toEqual([]);
+    // An older phone never sees the id either, only without the handles.
+    expect(await ok<Any>(call("/v1/safety/blocks", "GET", lone))).toEqual({ schema_version: 1, blocked_players: [] });
+    expect(list.duel_blocks).toHaveLength(1);
+    expect(JSON.stringify(list)).not.toContain(poster.player_id);
+    // The poster's next post never lists for the player who blocked them, or for the poster from theirs.
+    const again = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    expect((await listFor(reader, rows => rows.some(row => row.duel_id === again.duel_id))).rows.map(row => row.duel_id)).toContain(again.duel_id);
+    expect((await listFor(lone)).rows.map(row => row.duel_id)).not.toContain(again.duel_id);
+    expect((await errorOf(join(lone, again))).code).toBe("spot_taken");
+    await ok(call(`/v1/safety/blocks/duel/${list.duel_blocks[0].handle}`, "DELETE", lone));
+    expect((await ok<{ duel_blocks: unknown[] }>(call("/v1/safety/blocks", "GET", lone, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }))).duel_blocks).toEqual([]);
+  });
+
+  it("count reports from three different players in a week as a pause that takes the player's duels off the list", async () => {
+    const [target, r1, r2, r3, reader] = await Promise.all([player(), player(), player(), player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(target))).duel;
+    for (const reporter of [r1, r2, r3]) await ok(join(reporter, posted));
+    const second = (await ok<{ duel: DuelView }>(post(target))).duel;
+    for (const [reporter, again] of [[r1, false], [r1, true], [r2, false], [r3, false]] as [Account, boolean][]) {
+      const receipt = await ok<Any>(call(`/v1/duels/public/${RELAY}/${posted.duel_id}/report`, "POST", reporter, { schema_version: 1, idempotency_key: crypto.randomUUID(), seat: 0, reason: "harassment" }));
+      expect(receipt, String(again)).toMatchObject({ received: true });
+    }
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", target))).public).toMatchObject({ paused: true });
+    expect((await listFor(reader, rows => !rows.some(row => row.duel_id === second.duel_id))).rows.map(row => row.duel_id)).not.toContain(second.duel_id);
+    expect((await errorOf(post(target))).code).toBe("public_paused");
+    // An operator's clear puts them back.
+    await ok(call(`/operator/safety/players/${target.player_id}/public-unpause`, "POST", undefined, { schema_version: 1 }, ON, { Authorization: "Bearer " + OPERATOR }));
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", target))).public).toMatchObject({ paused: false });
+    expect((await listFor(reader, rows => rows.some(row => row.duel_id === second.duel_id))).rows.map(row => row.duel_id)).toContain(second.duel_id);
+  });
+
+  it("send a friend request by seat only once the duel is over, which the asker's own list does not show until accepted", async () => {
+    const [poster, lone] = await Promise.all([player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await ok(join(lone, posted));
+    const ask = () => call(`/v1/duels/public/${RELAY}/${posted.duel_id}/friend`, "POST", lone, { schema_version: 1, seat: 0 });
+    expect((await errorOf(ask())).code).toBe("duel_not_over");
+    await rewriteDuel(posted.duel_id, duel => { duel.status = "unfinished"; duel.result = { winner: null, reason: "stalled", decided_ms: Date.now(), margin_ticks: null }; });
+    expect(await ok<Any>(ask())).toEqual({ schema_version: 1, sent: true });
+    const asker = await (await call("/v1/friends", "GET", lone)).text();
+    expect(asker).not.toContain(poster.player_id);
+    const asked = await ok<{ friends: { player_id: string; status: string; request_id: string }[] }>(call("/v1/friends", "GET", poster));
+    expect(asked.friends).toEqual([expect.objectContaining({ player_id: lone.player_id, status: "incoming" })]);
+    await ok(call("/v1/friends/accept", "POST", poster, { schema_version: 1, player_id: lone.player_id, request_id: asked.friends[0].request_id }));
+    expect(await (await call("/v1/friends", "GET", lone)).text()).toContain(poster.player_id);
+  });
+
+  it("hold the duel extra of a public duel's turns, show it while it runs, and at a stall pay the player who played and not the one who stopped", async () => {
+    const [poster, lone, p1, p2] = await Promise.all([player(), player(), player(), player()]);
+    await partner(p1, p2);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    let room = await ok<RoomSnapshotV2>(openRoom(poster, posted));
+    const mine = (await ok<{ duel: DuelView }>(join(lone, posted))).duel;
+    room = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", lone, { invite_code: mine.sides[0].invite_code }));
+    await ok(join(p1, posted, "party"));
+    const [a1, b1, mid] = await firstStage();
+    const players = { [room.host_id]: poster, [room.guest_id ?? ""]: lone };
+    const first = await ok<MutationV2 & { pollen?: { turn: Any } }>(call(`/v2/rooms/${room.room_id}/turns`, "POST", poster, turn(room, a1)));
+    void players;
+    const second = await ok<MutationV2 & { pollen?: { turn: Any } }>(call(`/v2/rooms/${first.room.room_id}/turns`, "POST", lone, turn(first.room, b1, mid)));
+    for (const reply of [first, second]) {
+      expect(reply.pollen?.turn).toHaveProperty("duel_held");
+      expect(reply.pollen?.turn).not.toHaveProperty("duel");
+    }
+    // Turn replies show each player only the other's stand-in.
+    expect(JSON.stringify(first)).not.toContain(lone.player_id);
+    expect(JSON.stringify(second)).not.toContain(poster.player_id);
+    const held = (second.pollen!.turn.duel_held as number);
+    expect(held).toBeGreaterThan(0);
+    expect((await detail(lone, posted)).held).toEqual({ amount: held, state: "running" });
+    // Nobody plays for the stall time: the Relay's second stage opens with the guest, so the joiner stopped; the poster played theirs.
+    expect((await boardDuel(posted.duel_id)).sides[0].turn).toBe(lone.player_id);
+    await rewriteDuel(posted.duel_id, duel => { duel.accepted_ms! -= PUBLIC_STALL_MS; for (const side of duel.sides) if (side?.last_ms) side.last_ms -= PUBLIC_STALL_MS; duel.public!.posted_ms -= PUBLIC_STALL_MS; });
+    const ended = await detail(poster, posted);
+    expect([ended.duel.status, ended.duel.result?.reason]).toEqual(["unfinished", "stalled"]);
+    const paid = (first.pollen!.turn.duel_held as number);
+    expect(ended.held).toEqual({ amount: paid, state: "paid" });
+    // A repeat answers the same and pays nothing twice.
+    expect((await detail(poster, posted)).held).toEqual({ amount: paid, state: "paid" });
+    expect((await detail(lone, posted)).held).toEqual({ amount: held, state: "forfeit", reason: "stopped" });
+  });
+
+  it("keep the directory's rows only while listed, and drop an erased player's rows", async () => {
+    const [poster, lone] = await Promise.all([player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await listFor(lone, rows => rows.length === 1);
+    await ok(call("/v1/identity", "DELETE", poster));
+    const rows = await runInDurableObject(env.PUBLIC_DUEL_DIRECTORY.getByName(DIRECTORY_NAME), async (_, ctx) => ctx.storage.sql.exec<{ data: string }>("SELECT data FROM listings").toArray());
+    expect(rows.map(row => row.data).join()).not.toContain(poster.player_id);
+    expect((await listFor(lone, found => found.length === 0)).rows).toHaveLength(0);
+    void posted;
+  });
+});

@@ -3,11 +3,13 @@ import type { ServerVars } from "./flags";
 import { requireOperator } from "./operator-auth";
 import { routeDisplayNameOperator } from "./display-names";
 import { ERASED_REPORTER } from "./safety";
+import { routePublicPauseOperator } from "./duels/public-routes";
 
 /** Separate operator credential; never accepts a player credential or a caller target. */
 export async function routeSafetyOperator(request: Request, path: string, env: Env & ServerVars): Promise<unknown> {
   await requireOperator(request, env);
   const clearedName = await routeDisplayNameOperator(request, path, env); if (clearedName) return clearedName;
+  const unpaused = await routePublicPauseOperator(request, path, env); if (unpaused) return unpaused;
   const inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   if (path === "/operator/safety/reports" && request.method === "GET") return { schema_version: 1, reports: await inbox.listReports() };
   // Purge: every report resolved at least `resolved_days_ago` days ago (0 for all resolved ones).
