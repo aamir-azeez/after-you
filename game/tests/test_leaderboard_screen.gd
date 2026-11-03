@@ -151,6 +151,15 @@ func _choice() -> void:
 	api.requests.clear()
 	await again.sync()
 	_check(api.requests.is_empty(), "once taken and read, a sync asks nothing: %s" % [api.requests])
+	# Flips while a choice is out send only the last one, once it returns (the server takes a few a minute).
+	api.replies["PUT /v1/leaderboards/me"] = {"ok": true, "data": {"schema_version": 1, "show_name": false}}
+	again.set_show_name(true)
+	again.set_show_name(false)
+	again.set_show_name(true)
+	again.set_show_name(false)
+	for frame in range(6): await process_frame
+	_check(api.requests.map(func(request: Array) -> Variant: return request[2].show_name) == [true, false], "four flips send the first and the last choice only: %s" % [api.requests])
+	_check(not again.show_name() and not Client.new(api, OWNER, CHOICE_PATH).show_name(), "the last choice is the one kept")
 	api.queue_free()
 
 func _screen() -> void:

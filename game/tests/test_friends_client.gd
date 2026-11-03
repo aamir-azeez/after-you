@@ -108,6 +108,10 @@ func _run() -> void:
 	await client.join_friend(offline)
 	check(calls.size() == count and client.refresh_wait_ms(true) == 59000 and client.join_wait_ms() == 59000,"Manual refresh, polling and Check room cannot bypass Retry-After")
 	now += 120001
+	# A busy tap (the server limits each kind of tap on its own) holds only itself, never the list or Join.
+	response = {"ok":false,"code":"rate_limited","retry_after_ms":60000}
+	check(not await client.accept_friend({"player_id":PEER,"request_id":REQUEST}) and client.last_error == PlayerCopy.ROOMS_API_5743C6A33E2A,"A busy tap says requests are capped for now")
+	check(client.join_wait_ms() == 0,"A busy tap never holds Join or the list")
 	response = {"ok":true,"data":page()}
 	hold = true
 	_delayed_change.call_deferred()

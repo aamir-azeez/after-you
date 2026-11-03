@@ -46,6 +46,13 @@ class Server:
 		elif path == "/v1/safety/block":
 			if PEER not in blocked: blocked.append(PEER)
 			data = {"schema_version": 1, "blocked": true, "player_id": ROOM if wrong_peer else PEER}
+		elif path.begins_with("/v1/safety/blocks/") and method == HTTPClient.METHOD_POST:
+			var row_peer := path.get_file()
+			if body.get("request_id") == "STALESTALESTALESTALE00":
+				busy = false
+				return {"ok": false, "status": 404, "code": "friend_unavailable"}
+			if row_peer not in blocked: blocked.append(row_peer)
+			data = {"schema_version": 1, "blocked": true, "player_id": ROOM if wrong_peer else row_peer}
 		elif path.begins_with("/v1/safety/blocks/") and method == HTTPClient.METHOD_DELETE:
 			var player := path.get_file()
 			blocked.erase(player)
@@ -106,6 +113,18 @@ func _run() -> void:
 	check(Store.new(_directory).partner_allowed(PEER, "relay", ROOM, OWNER), "local block state is owner scoped")
 	check(await client.unblock(PEER), "explicit own unblock acknowledged")
 	check(store.partner_allowed(OWNER, "relay", ROOM, PEER), "successful unblock clears process and disk suppression")
+	# A Friends row block: by the row's player and request id, with no shared room.
+	var row := {"player_id": PEER, "request_id": "RQRQRQRQRQRQRQRQRQRQRQ"}
+	check(not await client.block_friend({"player_id": "short", "request_id": row.request_id}) and client.last_code == "invalid_safety_target", "a malformed row is refused before any request")
+	server.wrong_peer = true
+	check(not await client.block_friend(row) and client.last_code == "unsupported_safety_response", "a reply naming another player is refused")
+	server.wrong_peer = false
+	check(not await client.block_friend({"player_id": PEER, "request_id": "STALESTALESTALESTALE00"}) and client.last_code == "friend_unavailable", "a stale row keeps the server's code")
+	check(PEER not in client.blocked_players(), "a refused row block keeps nothing")
+	check(await client.block_friend(row), "a Friends row block is acknowledged")
+	check(server.calls[-1].path == "/v1/safety/blocks/" + PEER and server.calls[-1].body == {"schema_version": 1, "request_id": row.request_id}, "the row block sends only the request id")
+	check(PEER in client.blocked_players() and PEER in Store.new(_directory).read(OWNER).value.blocked_players, "the row block is kept like a room block")
+	check(await client.unblock(PEER) and PEER not in client.blocked_players(), "a row block is undone by the same unblock")
 	var photo := {"turn_id": "t0-1-b", "photo_revision": 2, "sha256": "photo".sha256_text()}
 	server.drop = true
 	check(not await client.report(TARGET, "privacy", photo), "lost report reply remains unresolved")

@@ -275,6 +275,7 @@ func _run() -> void:
 	await _notify_survives_reopen()
 	await _short_name_code()
 	await _accept_names_new_friend()
+	await _decline_asks_and_blocks()
 	api.queue_free()
 	await process_frame
 	print("Friends screen: ",failures," failures")
@@ -461,6 +462,47 @@ func _row_code_copy(copied: Array) -> void:
 	check(is_instance_valid(code) and code.icon == null,"The row code's tick clears")
 	var normal := code.get_theme_stylebox("hover")
 	check(normal is StyleBoxEmpty and code.get_theme_color("font_hover_color") != code.get_theme_color("font_color"),"Hover only brightens the code text, with no fill")
+
+## Decline asks first, on the card that also offers Block; Block takes the row off
+## through the block callable and keeps it when that answers a line to show.
+func _decline_asks_and_blocks() -> void:
+	var sender := "s".repeat(22)
+	var request_id := "t".repeat(22)
+	var asked := page()
+	asked.friends = [{"player_id":sender,"request_id":request_id,"status":"incoming","online":false,"expires_after_seconds":0,"join_available":false}]
+	var friends: RefCounted = Client.new(api,identity,queued_request)
+	friends.clock_ms = func(): return now
+	replies = [{"ok":true,"data":asked}]
+	check(await friends.refresh(),"The page with a friend request loads")
+	var view := Screen.new()
+	view.client = friends
+	var heard: Array = []
+	view.notice.connect(func(text: String, _news: bool) -> void: heard.append(text))
+	root.add_child(view)
+	for _i in 2: await process_frame
+	var count := calls.size()
+	var decline := find_button(view,"Decline")
+	check(decline != null,"An incoming request offers Decline")
+	decline.pressed.emit()
+	await process_frame
+	check(calls.size() == count and find_label(view,"Decline request?") != null and find_button(view,"Cancel") != null,"Decline asks first and sends nothing yet")
+	check(find_button(view,"Block") == null,"Without a block path the card offers no Block")
+	var blocked: Array = []
+	var answers: Array = ["Friend unavailable", ""]
+	view.block_player = func(row: Dictionary) -> String:
+		blocked.append(row.duplicate(true))
+		return answers.pop_front()
+	view._render()
+	await process_frame
+	check(find_button(view,"Block") != null and find_button(view,"Block").get_parent() == find_button(view,"Cancel").get_parent(),"Block sits on the Decline card beside Cancel")
+	await view._act("block",view._remove)
+	check(blocked.size() == 1 and blocked[0].player_id == sender and blocked[0].request_id == request_id and calls.size() == count,"Block goes through the block path with the row, not a Friends request")
+	check(friends.view().friends.size() == 1 and view._remove.is_empty() and heard.has("Friend unavailable"),"A refused block keeps the row and says why")
+	view._remove = friends.view().friends[0].duplicate(true)
+	await view._act("block",view._remove)
+	check(blocked.size() == 2 and friends.view().friends.is_empty() and view._remove.is_empty(),"A block takes the row off the page at once")
+	view.queue_free()
+	await process_frame
 
 func _background_join() -> void:
 	screen._notification(Node.NOTIFICATION_APPLICATION_PAUSED)

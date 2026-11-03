@@ -185,6 +185,13 @@ func remove_friend(row: Dictionary) -> bool:
 	if not _row(row): return false
 	return await _mutation(HTTPClient.METHOD_DELETE,"/v1/friends/"+str(row.player_id),{"schema_version":1,"request_id":row.request_id})
 
+## Drops a row another service already took off the server's lists (a block from
+## Friends, services/safety_client.gd block_friend), as a removal here does.
+func drop_row(row: Dictionary) -> void:
+	if not _row(row) or _page.is_empty(): return
+	_page.friends = _page.friends.filter(func(peer: Dictionary) -> bool: return peer.player_id != row.player_id or peer.request_id != row.request_id)
+	_take_page()
+
 func share_room(room: Variant) -> bool:
 	if room != null and not _room(room): return false
 	var response := await _request(HTTPClient.METHOD_POST,"/v1/friends/share",{"schema_version":1,"room":room})
@@ -282,10 +289,13 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 		if code == "rate_limited": retry = maxi(REFRESH_MS,retry)
 		# The list's own floor: refresh() waits for exactly that, not the generic minute.
 		var list_floor := code == "friends_refresh_limited" and method == HTTPClient.METHOD_GET and path == "/v1/friends"
-		if retry > 0 and not list_floor: _retry_until = maxi(_retry_until,int(clock_ms.call()) + retry)
+		# A busy tap (Add, Accept, Share, Remove: the server limits each kind of tap on its own) holds only itself,
+		# never the list's refresh or Join.
+		var own_tap := code == "rate_limited" and method != HTTPClient.METHOD_GET and not path.ends_with("/join")
+		if retry > 0 and not list_floor and not own_tap: _retry_until = maxi(_retry_until,int(clock_ms.call()) + retry)
 		if method == HTTPClient.METHOD_GET and path == "/v1/friends" and not list_floor:
 			_next_refresh = maxi(_next_refresh,int(clock_ms.call()) + REFRESH_MS)
-		last_error = "Friend unavailable" if code in ["friend_unavailable","friend_not_found","player_blocked"] else "Room unavailable" if code in ["friend_room_unavailable","friend_not_joinable","room_full"] else "Friends unavailable"
+		last_error = "Friend unavailable" if code in ["friend_unavailable","friend_not_found","player_blocked"] else "Room unavailable" if code in ["friend_room_unavailable","friend_not_joinable","room_full"] else PlayerCopy.ROOMS_API_5743C6A33E2A if own_tap else "Friends unavailable"
 	return response
 
 ## A display name as the wire carries it: null or a short string.

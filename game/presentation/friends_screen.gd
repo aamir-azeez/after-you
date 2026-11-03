@@ -116,6 +116,10 @@ var _utility_columns: BoxContainer
 var _utility_slots: Array[MarginContainer] = []
 var _utility_rows: Array = []
 var _title: Label
+## (row: Dictionary) -> String, awaited: blocks a friend or a request's sender by its row
+## (friends_flow.gd, through services/safety_client.gd block_friend); "" when blocked,
+## else the line to show. Without it the confirm card offers no Block.
+var block_player: Callable
 ## () -> Control or null: the Display name chip for the header
 ## (display_name_flow.gd chip), asked again once a list read turns names on.
 var name_chip: Callable
@@ -409,13 +413,15 @@ func _render() -> void:
 	if not _remove.is_empty():
 		var confirmation := _card(_content,24)
 		confirmation.get_parent().size_flags_vertical = Control.SIZE_FILL
-		_label("Remove friend?",28,confirmation)
+		var request := str(_remove.get("status","")) == "incoming"
+		_label("Decline request?" if request else "Remove friend?",28,confirmation)
 		_label(FriendNicknames.sentence_start(_display_name(str(_remove.player_id))),22,confirmation)
 		_label(ShareCodes.display(ShareCodes.FRIEND,str(_remove.player_id)),16,confirmation).add_theme_color_override("font_color",MUTED)
 		var choices := HBoxContainer.new()
 		choices.add_theme_constant_override("separation",12)
 		confirmation.add_child(choices)
-		_online(_button("Remove",func(): _act("remove",_remove),not _busy,choices))
+		_online(_button("Decline" if request else "Remove",func(): _act("remove",_remove),not _busy,choices))
+		if block_player.is_valid(): _secondary(_online(_button("Block",func(): _act("block",_remove),not _busy,choices)))
 		_secondary(_button("Cancel",func(): _remove = {}; _render(),not _busy,choices))
 		_update_countdowns()
 		return
@@ -805,7 +811,8 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	if peer.status == "incoming":
 		var accept := _online(_button("Accept",func(): _act("accept",peer),not _busy,actions))
 		accept.custom_minimum_size.x = 112
-		_online(_icon_button(REMOVE_ICON,"Decline",func(): _act("remove",peer),not _busy,actions))
+		# Decline asks first, so Block sits beside it on the same card.
+		_online(_icon_button(REMOVE_ICON,"Decline",func(): _remove = peer.duplicate(true); _render(),not _busy,actions))
 	elif peer.status == "outgoing": _online(_icon_button(REMOVE_ICON,"Cancel request",func(): _act("remove",peer),not _busy,actions))
 	else:
 		var action_width := 112 if _compact else 128
@@ -1178,6 +1185,11 @@ func hosting_hint() -> void:
 func _say(text: String, news: bool = false) -> void:
 	if not text.is_empty(): notice.emit(text,news)
 
+## After a row went (Remove, Decline or Block): its hosting alerts and nickname go too.
+func _forget_peer(peer: Dictionary) -> void:
+	if is_instance_valid(notification_transport): notification_transport.set_hosting_friend(str(peer.player_id),false)
+	_nicknames.clear_friend(str(_context.get("base_url","")),str(_context.get("player_id","")),str(peer.get("player_id","")))
+
 func _act(action: String, peer: Dictionary = {}) -> void:
 	# Enter in the code field and a tap kept for after a refresh come here too, past the greyed buttons.
 	if OfflineHold.refuse(func(text: String) -> void: _say(text)): return
@@ -1186,14 +1198,21 @@ func _act(action: String, peer: Dictionary = {}) -> void:
 	_busy = true
 	_render()
 	var descriptor := {}
+	var blocked_line := ""
 	match action:
 		"add":
 			if await client.add_friend(_code): _code = ""
 		"accept": await client.accept_friend(peer)
 		"remove":
-			if await client.remove_friend(peer):
-				if is_instance_valid(notification_transport): notification_transport.set_hosting_friend(str(peer.player_id),false)
-				_nicknames.clear_friend(str(_context.get("base_url","")),str(_context.get("player_id","")),str(peer.get("player_id","")))
+			if await client.remove_friend(peer): _forget_peer(peer)
+			_remove = {}
+		"block":
+			blocked_line = await block_player.call(peer) if block_player.is_valid() else "Friends unavailable"
+			if not _current(): return
+			if blocked_line.is_empty():
+				# The server took the row off both lists; this page drops it too.
+				client.drop_row(peer)
+				_forget_peer(peer)
 			_remove = {}
 		"share":
 			var room := shareable_room.duplicate(true)
@@ -1205,7 +1224,7 @@ func _act(action: String, peer: Dictionary = {}) -> void:
 		await client.refresh()
 		if not _current(): return
 	_busy = false
-	_say(client.last_error)
+	_say(blocked_line if action == "block" else client.last_error)
 	if not descriptor.is_empty() and _foreground:
 		join_requested.emit(descriptor)
 		close()

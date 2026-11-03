@@ -36,6 +36,8 @@ const MAX_CHECKING := 64
 const LISTENERS := "leaderboard_listeners"
 
 var _api: Node
+var _syncing := false
+var _sync_again := false
 var _owner: String
 var _choice_path := CHOICE_PATH
 var _views: Dictionary = {}
@@ -114,8 +116,21 @@ func _tell_listeners() -> void:
 	if tree != null and not _owner.is_empty(): tree.call_group(LISTENERS, "leaderboard_changed", _owner)
 
 ## Sends a pending choice, or reads the server's when this install never has.
+## One request at a time: switches flipped while one is out send only the last
+## choice, once it returns (the server limits name choices to a few a minute).
 func sync() -> void:
 	if _owner.is_empty(): return
+	if _syncing:
+		_sync_again = true
+		return
+	_syncing = true
+	await _sync_once()
+	_syncing = false
+	if _sync_again:
+		_sync_again = false
+		if _choice.get("pending", false): sync()
+
+func _sync_once() -> void:
 	var sending: Dictionary = _choice.duplicate()
 	var response: Dictionary
 	if sending.get("pending", false): response = await _api.request_json(HTTPClient.METHOD_PUT, ME, {"schema_version": 1, "show_name": bool(sending.show)})

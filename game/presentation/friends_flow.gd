@@ -36,6 +36,7 @@ const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Typed = preload("res://services/typed_values.gd")
+const Safety = preload("res://services/safety_client.gd")
 ## A leaderboard celebration sounds on the host's soundscape (play_on).
 const Soundscape = preload("res://services/soundscape.gd")
 ## Main's mode while Friends is up.
@@ -98,8 +99,18 @@ func open(from_home: bool) -> void:
 	screen.open_requested.connect(_return_to_room)
 	screen.join_requested.connect(_join)
 	screen.leaderboards_requested.connect(_open_leaderboards)
+	screen.block_player = _block_friend
 	host.add_child(screen)
 	_offer_leaderboards(screen)
+
+## Blocks a friend or a request's sender from their Friends row through the shared
+## safety client (its blocked list and saved names), with no shared room needed.
+## "" when blocked, else the line Friends shows.
+func _block_friend(row: Dictionary) -> String:
+	var safety: RefCounted = Safety.new(host.api, host._relay_identity)
+	if await safety.block_friend(row): return ""
+	if safety.last_code == "friend_unavailable": return "Friend unavailable"
+	return safety.last_error if safety.last_code in ["rate_limited", "request_busy", "identity_changed"] else "Friends unavailable"
 
 ## Shows Friends' Leaderboards button once the server's capabilities say they
 ## are open, reading them first when this session has not yet.

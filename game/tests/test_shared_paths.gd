@@ -145,7 +145,7 @@ const WRITES := {
 	"res://services/relay_online_session.gd": [1, "keyed: room create and duel rooms"],
 	"res://services/relay_room_coordinator.gd": [1, "keyed: turns and stage moves"],
 	"res://services/replay_transfer.gd": [2, "unkeyed: ack and restore name their manifest"],
-	"res://services/safety_client.gd": [4, "keyed: reports; terms, block and unblock set a state"],
+	"res://services/safety_client.gd": [5, "keyed: reports; terms, room block, Friends row block and unblock set a state"],
 	"res://services/tester_access.gd": [1, "unkeyed: redeeming a code again keeps one grant"],
 	"res://services/turn_notifications.gd": [4, "unkeyed: registration and categories carry a binding epoch"],
 	"res://services/turn_photo_controller.gd": [2, "keyed: photo upload and delete"],

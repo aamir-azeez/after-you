@@ -206,6 +206,25 @@ func block(room: Dictionary) -> bool:
 	DisplayNames.shared().forget(str(_api.base_url) if is_instance_valid(_api) else "", _owner, room.peer_id)
 	return _finish(ticket, _persist(next))
 
+## Blocks a player on the Friends list (a friend, or a request either way) by that
+## row, with no shared room. The server also takes the row off both lists.
+func block_friend(row: Dictionary) -> bool:
+	var peer: Variant = row.get("player_id")
+	if not Store.id(peer) or not Store.id(row.get("request_id")): return _fail("invalid_safety_target")
+	var ticket := _begin()
+	if ticket < 0: return false
+	if peer == _owner: return _finish(ticket, _fail("invalid_safety_target"))
+	var response := await _net(ticket, HTTPClient.METHOD_POST, "/v1/safety/blocks/" + str(peer), {"schema_version": 1, "request_id": row.request_id})
+	if not _same(ticket): return false
+	if not response.get("ok", false): return _finish(ticket, false)
+	var value: Variant = response.get("data")
+	if not value is Dictionary or value.size() != 3 or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("blocked"), true) or not Typed.equal(value.get("player_id"), peer): return _finish(ticket, _fail("unsupported_safety_response"))
+	var next := _state.duplicate(true)
+	if peer not in next.blocked_players: next.blocked_players.append(peer)
+	# A blocked player's chosen name is no longer kept on this phone.
+	DisplayNames.shared().forget(str(_api.base_url) if is_instance_valid(_api) else "", _owner, str(peer))
+	return _finish(ticket, _persist(next))
+
 func unblock(player: String) -> bool:
 	if not Store.id(player): return _fail("invalid_safety_target")
 	var ticket := _begin()
