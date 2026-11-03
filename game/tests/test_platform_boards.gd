@@ -299,7 +299,8 @@ func _service() -> void:
 	play.platform = GamesProvider.PLAY_GAMES
 	var android := _service_with(play, "android")
 	await android.post_boards()
-	_check(off_provider.posts.is_empty() and signed_out_provider.posts.is_empty() and play.posts.is_empty() and not off.board_offered(RELAY) and not android.board_offered(RELAY), "Off, signed out or a platform with no board ids: nothing goes up and no button shows")
+	_check(off_provider.posts.is_empty() and signed_out_provider.posts.is_empty() and not off.board_offered(RELAY), "Off or signed out: nothing goes up and no button shows")
+	_check(android.board_offered(RELAY) and not play.posts.is_empty() and play.posts.all(func(post: Array) -> bool: return str(post[0]).begins_with("CgkI")), "Play Games posts to its own board ids: %s" % [play.posts])
 	_check(Service.LEADERBOARD_LISTENERS == LeaderboardClient.LISTENERS, "The service listens on the group the leaderboard client tells")
 	# A run that could place waits; the board read that shows it ranked (the end card's, Home's or
 	# the board screen's, all through the shared client) is what posts it, a moment later.

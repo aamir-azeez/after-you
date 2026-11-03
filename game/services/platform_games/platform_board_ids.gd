@@ -10,16 +10,16 @@ extends RefCounted
 ## the offered chapters).
 
 const BOARDS := {
-	"first-steps@1": {"game_center": "afteryou.first_steps.v1", "play_games": ""},
-	"relay-isles@2": {"game_center": "afteryou.relay_isles.v2", "play_games": ""},
-	"high-and-low@1": {"game_center": "afteryou.high_and_low.v1", "play_games": ""},
-	"the-wishing-well@1": {"game_center": "afteryou.the_wishing_well.v1", "play_games": ""},
-	"turn-of-the-tide@2": {"game_center": "afteryou.turn_of_the_tide.v2", "play_games": ""},
-	"sleeping-lighthouse@2": {"game_center": "afteryou.sleeping_lighthouse.v2", "play_games": ""},
-	"rolling-home@1": {"game_center": "afteryou.rolling_home.v1", "play_games": ""},
-	"a-house-for-two@1": {"game_center": "afteryou.a_house_for_two.v1", "play_games": ""},
-	"conservatory@1": {"game_center": "afteryou.conservatory.v1", "play_games": ""},
-	"long-way-home@2": {"game_center": "afteryou.long_way_home.v2", "play_games": ""},
+	"first-steps@1": {"game_center": "afteryou.first_steps.v1", "play_games": "CgkIyOW9iLATEAIQAw"},
+	"relay-isles@2": {"game_center": "afteryou.relay_isles.v2", "play_games": "CgkIyOW9iLATEAIQBA"},
+	"high-and-low@1": {"game_center": "afteryou.high_and_low.v1", "play_games": "CgkIyOW9iLATEAIQBQ"},
+	"the-wishing-well@1": {"game_center": "afteryou.the_wishing_well.v1", "play_games": "CgkIyOW9iLATEAIQBg"},
+	"turn-of-the-tide@2": {"game_center": "afteryou.turn_of_the_tide.v2", "play_games": "CgkIyOW9iLATEAIQBw"},
+	"sleeping-lighthouse@2": {"game_center": "afteryou.sleeping_lighthouse.v2", "play_games": "CgkIyOW9iLATEAIQCA"},
+	"rolling-home@1": {"game_center": "afteryou.rolling_home.v1", "play_games": "CgkIyOW9iLATEAIQCQ"},
+	"a-house-for-two@1": {"game_center": "afteryou.a_house_for_two.v1", "play_games": "CgkIyOW9iLATEAIQCg"},
+	"conservatory@1": {"game_center": "afteryou.conservatory.v1", "play_games": "CgkIyOW9iLATEAIQCw"},
+	"long-way-home@2": {"game_center": "afteryou.long_way_home.v2", "play_games": "CgkIyOW9iLATEAIQDA"},
 }
 
 ## The platform's id for our board `board` on `kind` (games_provider.gd PLAY_GAMES or GAME_CENTER), or "".
