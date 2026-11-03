@@ -29,6 +29,8 @@ const SpiritFace = preload("res://presentation/spirit_face.gd")
 ## A pip's face and torso with the Tide body cosmetic (presentation/pip_wear/tide.gd).
 const SPIRIT_FACE_TIDE = preload("res://presentation/spirit_face_tide.gdshader")
 const SPIRIT_BODY_TIDE = preload("res://presentation/spirit_body_tide.gdshader")
+## The race ghost's see-through face (presentation/race_ghost_view.gd).
+const SPIRIT_FACE_GHOST = preload("res://presentation/spirit_face_ghost.gdshader")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
@@ -61,6 +63,9 @@ const MATERIALS: Array[Dictionary] = [
 	# Pip cosmetics (presentation/kit/pip_wear_kit.gd): a glow sprite and a beam.
 	{"albedo_texture": true, "billboard_mode": BaseMaterial3D.BILLBOARD_ENABLED, "blend_mode": BaseMaterial3D.BLEND_MODE_ADD, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA},
 	{"blend_mode": BaseMaterial3D.BLEND_MODE_ADD, "cull_mode": BaseMaterial3D.CULL_DISABLED, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA, "vertex_color_use_as_albedo": true},
+	# The race ghost (presentation/race_ghost_view.gd): a pip's parts see-through, a lit outfit piece too.
+	{"transparency": BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS},
+	{"emission_enabled": true, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA_DEPTH_PRE_PASS},
 ]
 ## Which listed keys each chapter draws: "m" indices into MATERIALS, "s" into
 ## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.
@@ -204,9 +209,9 @@ static func order(first: String) -> Array:
 			if [kind, index] not in result: result.append([kind, index])
 	return result
 
-## Every ShaderMaterial shader the worlds draw (the last: worn cosmetics).
+## Every ShaderMaterial shader the worlds draw (then worn cosmetics and the race ghost's face).
 static func shaders() -> Array[Shader]:
-	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE]
+	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST]
 
 ## A material with exactly that key (a small white texture for each texture).
 static func material_for(key: Dictionary) -> StandardMaterial3D:
