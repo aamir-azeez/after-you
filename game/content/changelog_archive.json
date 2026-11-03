@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.6.2",
+      "date": "2026-10-14",
+      "highlights": [{"icon": "leaf", "text": "Easier on your phone, so it stays cooler"}, {"icon": "tap", "text": "Taps in lists work the first time"}, {"icon": "link", "text": "Rooms with a friend recover when something fails"}, {"icon": "sun", "text": "The spirit's shadow stops flickering"}]
+    },
+    {
       "version": "0.6.1",
       "date": "2026-10-14",
       "highlights": [{"icon": "spark", "text": "Sleeping Lighthouse is one chapter you can host online", "paid": true}, {"icon": "leaf", "text": "Smoother play, without the pause after a turn"}, {"icon": "link", "text": "Finished rooms stay in Your rooms"}, {"icon": "people", "text": "Friends show by the nickname you gave them"}]

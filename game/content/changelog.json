@@ -2,6 +2,21 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.8.0",
+      "date": "2026-11-03",
+      "highlights": [{"icon": "people", "text": "Race players you don't know in public duels"}, {"icon": "trophy", "text": "Pick any top 10 run to race, yours included"}, {"icon": "spark", "text": "The run you race plays beside you as a see-through pip"}, {"icon": "trophy", "text": "A trophy marks the leaderboards"}, {"icon": "people", "text": "Block a player straight from Friends"}, {"icon": "leaf", "text": "The Wardrobe opens on All items until you own something"}],
+      "paragraphs": [
+        {"text": "Public duels let your pair race players you don't know. Open Duels and tap Public duels, just above Race a recorded run, to join one alone or with your party partner. To post your own, pick Anyone in Start a duel. You and your partner each play your turns whenever you like, and waiting adds no time. Open spots close after 7 days if nobody joins, and nobody loses a duel that never filled."},
+        {"text": "There's no chat in a public duel. The game's faces are the only thing you can send. Players you don't know see you as \"A player\" unless you turn on Show my name, and you see them the same way. Tap a player's pip on the duel page to report or block them, and undo a block in Settings under Reports & blocked players. You accept the community rules once, and your partner has to accept them too before the two of you post or join a duel together."},
+        {"text": "Public duels are on by default, and the Public duels switch in Settings turns them off. While they're open, Show my name on leaderboards in Settings becomes Show my name to players I don't know, one choice for public duels and the leaderboards. Each turn in a public duel holds a duel extra of Pollen, shown on the duel page and on the Pollen card after the turn, and it's paid when the duel ends. If it isn't paid, say because you left the duel, the result says why."},
+        {"text": "Race a recorded run has a Top 10 button with a trophy beside each chapter's Our run. It opens that chapter's top 10, and you can race any run there, your own included. A run of yours that's still waiting for its check shows Being checked until it can be raced, and the button greys out with No times yet while a board is empty. The trophy is now the leaderboard icon on Friends, in Duels, in Settings and in What's new."},
+        {"text": "When you race a recorded run, the run you race plays each turn beside you as a see-through pip in its player's look, with their name faint above it, or Recorded run if they hide their name. Only the pip shows, so it may walk through things or stand on a lift that's down for you. A small pip on the turn timer marks where that turn finished, and beating the mark beats the turn. Our run shows its ghost too. Race ghost in Settings turns it off."},
+        {"text": "Decline on a friend request asks first now, and the card has Block beside it. Remove friend has Block too, so you can block someone right from Friends without sharing a room. When you don't own anything yet, the Wardrobe opens on All items with Owned one tap away, and once you pick a tab it stays there while the Wardrobe finishes loading."},
+        {"text": "Joining a public duel on a paid chapter needs Full Journey.", "paid": true},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.9",
       "date": "2026-11-03",
       "highlights": [{"icon": "play", "text": "Play on a duel opens its room again"}, {"icon": "people", "text": "Every pip in a duel wears its own look"}, {"icon": "home", "text": "Your pips on Home wear your look"}, {"icon": "leaf", "text": "The Wardrobe opens while you're offline"}, {"icon": "star", "text": "All items shows the looks you can earn"}, {"icon": "leaf", "text": "Pollen rows show what each bonus added"}],
@@ -148,21 +163,6 @@
         {"text": "Rooms cope better with quick taps. If the room hub is busy when you tap Continue, Open or Host, it shows Opening room and carries on. Begin and Resume stay live while a room refreshes, and a finished room's replay opens straight away. Your rooms loads faster, and a room that fails to load shows as unavailable instead of failing the whole list. Hosting or joining at the room limit now says so. Finished and closed rooms no longer count toward the 20 rooms you can have in play."},
         {"text": "If Android backup is on, it now copies your solo progress and saved replays to your Google account, but only when the copy is encrypted with your phone's screen lock. Photos aren't included.", "ios_text": ""},
         {"text": "What's new is a button on Home, with a dot after an update, and See all changes opens the notes for every version on GitHub. Android Back now presses each screen's own way back and closes an open card first. Surfaces that flickered are fixed in several chapters, including the Wishing Well's rim and the Lighthouse's lens posts.", "ios_text": "What's new is a button on Home, with a dot after an update. Surfaces that flickered are fixed in several chapters, including the Wishing Well's rim and the Lighthouse's lens posts."},
-        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.6.2",
-      "date": "2026-10-14",
-      "highlights": [{"icon": "leaf", "text": "Easier on your phone, so it stays cooler"}, {"icon": "tap", "text": "Taps in lists work the first time"}, {"icon": "link", "text": "Rooms with a friend recover when something fails"}, {"icon": "sun", "text": "The spirit's shadow stops flickering"}],
-      "paragraphs": [
-        {"text": "After You asks less of your phone now, to help it stay cooler. Play runs at up to 60 frames a second. Menus and cards draw at most 30 a second, and only when something changes, then go back to full speed as soon as you touch the screen. The 3D view is drawn at most 720 lines tall on Low and 1080 on Balanced. Once a chapter loads, its fixed scenery is folded into a few large pieces, so your phone draws far fewer of them every frame."},
-        {"text": "To play at your screen's full refresh rate, turn on Unlimited frame rate on the Graphics page. It uses more battery and can warm your phone."},
-        {"text": "Taps in lists work the first time, even if your finger moves a little while you press. Join on the Friends page stays live while the list refreshes, and a tap made during the refresh goes through once it lands."},
-        {"text": "Playing with a friend copes better when something goes wrong. A room your friend closed shows as closed in the room hub, and a turn sent to it moves into the room's history instead of holding up your other rooms. If the reply to a saved turn is lost, the game checks with the server and sends the turn again. A room the server refused for good no longer blocks the rest, and after a restart the hub reads the chapter list before it opens a room, so that room's turn can be saved. You also get a notification when your friend closes a room."},
-        {"text": "Play with a friend keeps the chapter you picked after you visit Friends or a room, so it doesn't fall back to First Steps anymore. Each room in the hub is named after its own chapter."},
-        {"text": "Watch replay opens the room you tapped it in, and saves a finished room's replay first if it needs to. Android Back now leaves Together replays the same way their Back button does.", "ios_text": "Watch replay opens the room you tapped it in, and saves a finished room's replay first if it needs to."},
-        {"text": "The spirit's shadow sits just above every floor, so it doesn't flicker anymore, the Wishing Well's floors included."},
         {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
       ]
     }
