@@ -96,6 +96,8 @@ const PLAYER_READS: Read<PlayerStub>[] = [
   ["liveHint for a room", player => player.liveHint(P, { kind: "room", room_id: "r".repeat(22), revision: 1 })],
   ["liveHint from a friend", player => player.liveHint(P, { kind: "friends", from: Q, request_id: "q".repeat(22) })],
 ];
+type DirectoryStub = DurableObjectStub<import("../src/duels/directory").PublicDuelDirectory>;
+const DIRECTORY_READS: Read<DirectoryStub>[] = [["list", directory => directory.list(0)], ["forget", directory => directory.forget(P)]];
 const PROFILE_READS: Read<ProfileStub>[] = [
   ["deletionReceipt", (profile, id) => profile.deletionReceipt(id, HASH)],
   ["acknowledgeDeletion", (profile, id) => profile.acknowledgeDeletion(id, HASH)],
@@ -125,6 +127,7 @@ describe("an object nobody has written to", () => {
   it("answers every legacy room read as an empty room does and stores nothing", async () => { await compare(env.ROOMS, LEGACY_READS); });
   it("answers the Player identity checks as a Player with no identity does and stores nothing", async () => { await compare(env.PLAYERS, PLAYER_READS); });
   it("answers the SafetyProfile deletion checks as an empty profile does and stores nothing", async () => { await compare(env.SAFETY_PROFILES, PROFILE_READS); });
+  it("answers the public duel list's reads as an empty list does and stores nothing", async () => { await compare(env.PUBLIC_DUEL_DIRECTORY, DIRECTORY_READS); });
 
   it("stores nothing for requests that name random player ids, and real players work as before", async () => {
     let address = 0;
