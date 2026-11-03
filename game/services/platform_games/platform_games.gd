@@ -83,6 +83,8 @@ var _generation := 0
 var _interrupted := false
 ## The player said "Not now" to bringing a friend code back: not asked again this session.
 var offer_declined := false
+## A capability read outside the start pipeline is in flight (one at a time).
+var _offer_reading := false
 
 ## The service, or null (a tree without the autoload, such as a tool script).
 static func shared(tree: SceneTree) -> Node:
@@ -351,6 +353,9 @@ func _authenticate(interactive: bool, generation: int) -> void:
 	else:
 		sign_in = SignIn.SIGNED_OUT
 		sign_in_code = "" if answer.get("ok", false) else str(answer.get("code", "failed"))
+		# Game Center reports Apple's sheet turned down as a plain "not signed in"; Apple will not
+		# show it again this launch, so it reads as cancelled (Play Games can show its sheet again).
+		if interactive and sign_in_code.is_empty() and kind() == GamesProvider.GAME_CENTER: sign_in_code = "cancelled"
 		_player_key = ""
 		link_state = LINK_NONE
 		if cloud != null: cloud.stop()
@@ -573,7 +578,10 @@ func note_progress() -> void:
 		_refresh_offer.call_deferred()
 
 func _refresh_offer() -> void:
+	if _offer_reading: return
+	_offer_reading = true
 	await _capability()
+	_offer_reading = false
 	if _cloud_allowed(): cloud.note()
 
 func _process(delta: float) -> void:

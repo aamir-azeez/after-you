@@ -404,7 +404,8 @@ func _game_center() -> void:
 	await service.start()
 	var prompt := await _ask()
 	_check(_row_label(prompt) == PlayerCopy.DISPLAY_NAME_GAME_CENTER, "Game Center: Use my Game Center name: " + _row_label(prompt))
-	native.sheet = "cancelled"
+	# AYGameCenter answers a turned-down sheet as a plain "not signed in".
+	native.sheet = "out"
 	prompt.platform_row.pressed.emit()
 	_check(await _until(func() -> bool: return prompt.platform_row == null), "Apple's sheet turned down: the row goes for this launch")
 	_check(prompt.choice() != "platform", "and nothing was chosen")

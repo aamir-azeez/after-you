@@ -212,8 +212,9 @@ func _platform_account() -> String:
 func _read_platform() -> Dictionary:
 	var platform := _games()
 	if platform == null: return {"ok": false, "code": "unavailable"}
-	# The sign-in sheet shows only while this card still asks for the name.
-	return await platform.player_name(prompt_open)
+	# The sign-in sheet shows only while the card that asked is still open (not a later one).
+	var asked := _prompt
+	return await platform.player_name(func() -> bool: return _prompt == asked and asked != null and asked.get_ref() != null)
 
 ## The PlatformGames service, or null (no autoload, or this node is out of the tree).
 func _games() -> Node:
