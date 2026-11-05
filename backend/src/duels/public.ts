@@ -61,8 +61,8 @@ export function spotFor(open: readonly boolean[], as: JoinAs, wanted: number | n
 }
 
 const sideOfSeat = (duel: Duel, seat: number): Side => duel.sides[seat >> 1]!;
-/** The player in `seat`, or null. */
-export function holder(duel: Duel, seat: number): string | null { return sideOfSeat(duel, seat).members[seat & 1]; }
+/** The player in `seat`, or null (also on a ghost race, which has no second side). */
+export function holder(duel: Duel, seat: number): string | null { return duel.sides[seat >> 1]?.members[seat & 1] ?? null; }
 /** The seat `player` holds, or -1. */
 export function seatOf(duel: Duel, player: string): number {
   for (let seat = 0; seat < 4; seat++) if (holder(duel, seat) === player) return seat;

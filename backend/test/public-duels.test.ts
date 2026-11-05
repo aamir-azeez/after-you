@@ -18,6 +18,11 @@ import spots from "../../game/tests/fixtures/public_duels/spots.json";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
+import secondA from "../../game/tests/fixtures/v2/garden-a.json";
+import secondB from "../../game/tests/fixtures/v2/garden-b.json";
+import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
+import { ledgerLines } from "../src/pollen/wallet";
+import { countingEnv } from "./meter";
 
 // Public duels end to end through the Worker (duels/public.ts, public-routes.ts): the list, posting, joining in any
 // order, leaving, the masked rooms, blocks, reports, friend asks and the held extra. Synthetic identities only.
@@ -528,4 +533,123 @@ describe("public duels", () => {
     expect((await listFor(lone, found => found.length === 0)).rows).toHaveLength(0);
     void posted;
   });
+});
+
+describe("public duel payout receipts", () => {
+  const LATER = ["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead"];
+  const receipts = async (id: string) => Object.keys((await boardDuel(id)).receipts ?? {}).sort();
+  const lines = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) =>
+    [...ledgerLines(ctx.storage, "duelextra:"), ...ledgerLines(ctx.storage, "duelwin:")].map(line => [line.key.split(":")[0], line.amount]));
+  async function counted(account: Account, duel: { duel_id: string }) {
+    const meter = countingEnv(Object.assign({ ...env }, ON) as Env);
+    const answer = await ok<{ duel: DuelView; held?: Any; pay?: Any; win_bonus?: Any }>(call(`/v1/duels/${RELAY}/${duel.duel_id}`, "GET", account, undefined, Object.assign({ ...meter.env }, ON)));
+    return { answer, calls: meter.calls };
+  }
+  /** The Relay's whole run, `slower` ticks more on its last turn: four turns, host first. */
+  async function wholeRun(slower = 0): Promise<[0 | 1, Any, Any?][]> {
+    const [a1, b1, mid] = await firstStage();
+    const a2 = await rerecord({ ...secondA, catch_assistance: false, checkpoint_hash: mid.checkpoint_hash });
+    const last = secondB.actions.length - 1;
+    const actions = secondB.actions.map((action, index) => index === last ? { ...action, ticks: action.ticks + slower } : action);
+    const replay_checks = secondB.replay_checks.map((check, index) => index === secondB.replay_checks.length - 1 ? { ...check, tick: check.tick + slower } : check);
+    const b2 = await rerecord({ ...secondB, catch_assistance: false, actions, replay_checks, duration_ticks: secondB.duration_ticks + slower, checkpoint_hash: mid.checkpoint_hash, source_recording_hash: a2.recording_hash });
+    const fin = await rehash({ ...final, previous_checkpoint_hash: mid.checkpoint_hash, a_recording_hash: a2.recording_hash, b_recording_hash: b2.recording_hash, proof: { previous_checkpoint: mid, a: a2, b: b2 } });
+    return [[0, a1], [1, b1, mid], [1, a2], [0, b2, fin]];
+  }
+  async function playAll(room: RoomSnapshotV2, players: [Account, Account], run: [0 | 1, Any, Any?][]) {
+    for (const [who, recording, checkpoint] of run) room = (await ok<MutationV2>(call(`/v2/rooms/${room.room_id}/turns`, "POST", players[who], turn(room, recording, checkpoint)))).room;
+  }
+
+  /** A public duel of four strangers played to its end: the poster and a lone joiner beat a pair by 40 ticks. */
+  async function decided() {
+    const [poster, lone, p1, p2] = await Promise.all([player(), player(), player(), player()]);
+    await partner(p1, p2);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await ok<RoomSnapshotV2>(openRoom(poster, posted));
+    const mine = (await ok<{ duel: DuelView }>(join(lone, posted))).duel;
+    const joinedA = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", lone, { invite_code: mine.sides[0].invite_code }));
+    const theirs = (await ok<{ duel: DuelView }>(join(p1, posted, "party"))).duel;
+    const roomB = await ok<RoomSnapshotV2>(openRoom(p1, theirs));
+    const joinedB = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", p2, { invite_code: roomB.invite_code }));
+    await playAll(joinedA, [poster, lone], await wholeRun(0));
+    await playAll(joinedB, [p1, p2], await wholeRun(40));
+    return { poster, lone, p1, p2, posted };
+  }
+
+  it("pay each of the four their held extra and the winners their bonus once, then answer every later read from the duel row", async () => {
+    const { poster, lone, p1, p2, posted } = await decided();
+    const everyone = [poster, lone, p1, p2];
+    const firsts = [];
+    for (const account of everyone) {
+      const first = await counted(account, posted);
+      expect(first.answer.duel.status).toBe("decided");
+      expect(first.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.duelRoomPay", "PLAYERS.settlePublicDuel", "LEADERBOARD_BOARDS.duelReceipt"]);
+      expect(first.answer.held).toMatchObject({ state: "paid" });
+      expect((first.answer.held as { amount: number }).amount).toBeGreaterThan(0);
+      firsts.push(first.answer);
+    }
+    expect(await receipts(posted.duel_id)).toEqual(["0", "1", "2", "3"]);
+    for (const [index, account] of everyone.entries()) {
+      const later = await counted(account, posted);
+      expect(later.calls).toEqual(LATER);
+      expect({ held: later.answer.held, pay: later.answer.pay }).toEqual({ held: firsts[index].held, pay: firsts[index].pay });
+    }
+    // One held extra line each, and one win line for each winner, however many reads and lobbies.
+    await Promise.all(everyone.map(account => ok(call("/v1/duels", "GET", account))));
+    for (const [index, account] of [poster, lone].entries()) expect(await lines(account)).toEqual([["duelextra", (firsts[index].held as { amount: number }).amount], ["duelwin", 250]]);
+    for (const account of [p1, p2]) expect((await lines(account)).map(line => line[0])).toEqual(["duelextra"]);
+    const text = JSON.stringify((await boardDuel(posted.duel_id)).receipts);
+    for (const account of everyone) expect(text).not.toContain(account.player_id);
+  }, 60_000);
+
+  it("keep no receipt while nothing held was summed yet, so a held turn whose credit lands late is still paid", async () => {
+    const { lone, posted } = await decided();
+    // The joiner's held turns have not reached their wallet yet (a credit that failed, waiting for the phone's turn claim).
+    const wallet = env.PLAYERS.getByName(lone.player_id);
+    const HELD = "kind='turn' AND json_extract(data,'$.receipt.turn.duel_held') > 0";
+    const pending = await runInDurableObject(wallet, async (_, ctx) => {
+      const rows = ctx.storage.sql.exec<{ claim_key: string; kind: string; amount: number; created_at: number; data: string }>("SELECT claim_key,kind,amount,created_at,data FROM pollen_claims WHERE " + HELD).toArray();
+      ctx.storage.sql.exec("DELETE FROM pollen_claims WHERE " + HELD);
+      return rows;
+    });
+    expect(pending.length).toBeGreaterThan(0);
+    const early = await counted(lone, posted);
+    expect(early.answer.held).toEqual({ amount: 0, state: "paid" });
+    expect(early.calls).not.toContain("LEADERBOARD_BOARDS.duelReceipt");
+    expect(await receipts(posted.duel_id)).toEqual([]);
+    // The claims land; the next read sums and pays them, and only then keeps its receipt.
+    await runInDurableObject(wallet, async (_, ctx) => {
+      for (const item of pending) ctx.storage.sql.exec("INSERT INTO pollen_claims (claim_key,kind,amount,created_at,data) VALUES (?,?,?,?,?)", item.claim_key, item.kind, item.amount, item.created_at, item.data);
+    });
+    const held = pending.reduce((sum, item) => sum + (JSON.parse(item.data) as { receipt: { turn: { duel_held: number } } }).receipt.turn.duel_held, 0);
+    const late = await counted(lone, posted);
+    expect(late.answer.held).toEqual({ amount: held, state: "paid" });
+    expect(late.calls).toContain("LEADERBOARD_BOARDS.duelReceipt");
+    expect((await lines(lone))[0]).toEqual(["duelextra", held]);
+    expect((await counted(lone, posted)).calls).toEqual(LATER);
+  }, 60_000);
+
+  it("keep no receipt for a side whose room never finished its run, which may still hold duel turns, and still pay once", async () => {
+    const [poster, lone, p1, p2] = await Promise.all([player(), player(), player(), player()]);
+    await partner(p1, p2);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await ok<RoomSnapshotV2>(openRoom(poster, posted));
+    const mine = (await ok<{ duel: DuelView }>(join(lone, posted))).duel;
+    const room = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", lone, { invite_code: mine.sides[0].invite_code }));
+    await ok(join(p1, posted, "party"));
+    const [a1] = await firstStage();
+    const first = await ok<MutationV2 & { pollen?: { turn: Any } }>(call(`/v2/rooms/${room.room_id}/turns`, "POST", poster, turn(room, a1)));
+    await rewriteDuel(posted.duel_id, duel => { duel.accepted_ms! -= PUBLIC_STALL_MS; for (const side of duel.sides) if (side?.last_ms) side.last_ms -= PUBLIC_STALL_MS; duel.public!.posted_ms -= PUBLIC_STALL_MS; });
+    const held = first.pollen!.turn.duel_held as number;
+    for (let read = 0; read < 2; read++) {
+      const seen = await counted(poster, posted);
+      expect(seen.answer.held).toEqual({ amount: held, state: "paid" });
+      expect(seen.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.duelRoomPay", "PLAYERS.settlePublicDuel"]);
+    }
+    expect(await lines(poster)).toEqual([["duelextra", held]]);
+    // The pair that never opened a room has nothing that can still change: kept on its first read.
+    expect((await counted(p1, posted)).calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.settlePublicDuel", "LEADERBOARD_BOARDS.duelReceipt"]);
+    expect((await counted(p1, posted)).calls).toEqual(LATER);
+    expect(await receipts(posted.duel_id)).toEqual(["2"]);
+  }, 60_000);
 });

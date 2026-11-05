@@ -4,6 +4,7 @@ import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, 
 import { enterSeat, openSeats, publicForget, publicKnown, publicLeave, publicSeatsView, publicSettle, publicView, stallForfeits, type PublicState } from "./public";
 import { keptLook, servedLook } from "../leaderboards/run-looks";
 import type { Look } from "../pollen/catalog";
+import type { PayoutReceipt } from "./payout-receipt";
 
 /**
  * The duel state machine. Pure: every function takes the duel and the clock,
@@ -117,6 +118,8 @@ export type Duel = {
   modifiers: Modifier[];
   /** A settled friend duel's rooms are queued for the board's sweep of their run copies (store.ts, their-run.ts). */
   copies_queued?: true;
+  /** Once final: each seat's pay as its first paying read showed it (payout-receipt.ts). Never in a view. */
+  receipts?: Record<string, PayoutReceipt>;
   /**
    * A public duel (duels/public.ts): its seats fill from the list, so a member is null while that seat is open, and
    * its sides' `pair_key` stays "" (the Worker derives a pair's key when it needs one). Kind stays "friend", so turns,

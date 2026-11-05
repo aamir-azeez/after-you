@@ -9,6 +9,7 @@ import type { DuelNews } from "./news";
 import { MAX_BOARD_DUELS, MAX_BOARD_PUBLIC, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, MAX_SETTLED_ON_FULL, STALL_MS } from "./rules";
 import { claimSeats, enterSeat, hide, listed, listingOf, relabel, type Listing, type PublicClaim } from "./public";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
+import { dropReceipt, keepReceipt, type PayoutShown } from "./payout-receipt";
 
 /**
  * Duels in their chapter's board object (leaderboards/board.ts): every duel
@@ -249,6 +250,21 @@ export class DuelStore {
     }));
   }
 
+  /**
+   * Keeps a final duel's pay as `player`'s read showed it (payout-receipt.ts), once per seat: the first receipt stays.
+   * Refused (false) once the duel no longer seats the player, an erasure that landed mid read. Moves no time and tells
+   * nobody: what a phone or the list shows of the duel is unchanged.
+   */
+  receipt(duelId: string, player: string, shown: PayoutShown): boolean {
+    if (!this.present()) return false;
+    return this.storage.transactionSync(() => {
+      const duel = this.duel(duelId);
+      if (!duel || !keepReceipt(duel, player, shown)) return false;
+      this.save(duel);
+      return true;
+    });
+  }
+
   /** Account erasure: the player leaves every duel here; their waiting runs' proofs go. Returns how many duels changed. */
   forgetPlayer(player: string, now: number): number {
     if (!this.present()) return 0;
@@ -259,7 +275,9 @@ export class DuelStore {
         const duel = this.track(JSON.parse(row.data) as Duel);
         // Every room of theirs holding a run copy hears of it, before the duel forgets their id.
         this.queueCopies(duel, now, player);
-        if (!forgetPlayer(duel, player, now)) continue;
+        // Their receipt goes while their seat still names them.
+        const dropped = dropReceipt(duel, player);
+        if (!forgetPlayer(duel, player, now) && !dropped) continue;
         this.storage.sql.exec("DELETE FROM duel_proofs WHERE duel_id=?", duel.duel_id);
         this.save(duel);
         count++;

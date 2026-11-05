@@ -19,7 +19,7 @@ import { pairKey } from "../src/leaderboards/run";
 import gameDuelsClient from "../../game/services/duels_client.gd?raw";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
 import { countingEnv, meterRows } from "./meter";
-import { ledgerLines, noteFullJourney } from "../src/pollen/wallet";
+import { ledgerLines, noteFullJourney, walletBalance } from "../src/pollen/wallet";
 import { PLATFORM_LINKS_OBJECT } from "../src/platform-links";
 import { POLLEN_CLIENT, configJson, openCostly } from "./config";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
@@ -346,8 +346,9 @@ describe("friend duels", () => {
     };
     const on = await whole(true), off = await whole(false);
     // Rows written to the duel tables, measured 2026-11-02: duel run checks cost a friend duel 6 more (the two runs' proofs
-    // kept and dropped, and the duel saved again by their verdicts); the board runs cost the same either way.
-    expect({ on, off }).toEqual({ on: 16, off: 10 });
+    // kept and dropped, and the duel saved again by their verdicts); the board runs cost the same either way. Since
+    // 2026-11-04 the paying read adds 1 either way, its receipt on the duel row (duels/payout-receipt.ts).
+    expect({ on, off }).toEqual({ on: 17, off: 11 });
   }, 60_000);
 
   it("never take a Forgiving catches turn in a duel's room, which says it is one, while an ordinary room still does", async () => {
@@ -665,8 +666,9 @@ describe("the first win over Our run", () => {
       return metered.rows.board.written;
     };
     const on = await whole(true), off = await whole(false);
-    // Rows written to the duel tables, measured 2026-11-02: the check costs a race won over Our run 7 more.
-    expect({ on, off }).toEqual({ on: 13, off: 6 });
+    // Rows written to the duel tables, measured 2026-11-02: the check costs a race won over Our run 7 more. The paying read's
+    // receipt adds 1 either way (2026-11-04).
+    expect({ on, off }).toEqual({ on: 14, off: 7 });
   }, 60_000);
 
   it("pays once when two won races on the board are decided together and read at once", async () => {
@@ -684,19 +686,20 @@ describe("the first win over Our run", () => {
     }
   }, 60_000);
 
-  it("costs the first read of a paying race the credit and the party row's settle, and the lobby no wallet request after", async () => {
+  it("costs the first read of a paying race the credit and the receipt on its row, and the lobby no wallet request after", async () => {
     const { a1, a2 } = await pairs();
     const won = await played(a1, a2, -5);
     await judge((await relayRun(-5)).ticks, true);
     const meter = countingEnv(Object.assign({ ...env }, ON) as Env);
     const stubs = { wallet: env.PLAYERS.getByName(a1.player_id), party: env.LEADERBOARD_MEMBERS.getByName(a1.player_id), board: env.LEADERBOARD_BOARDS.getByName(RELAY) };
     const { rows } = await meterRows(stubs, () => ok(call(`/v1/duels/${RELAY}/${won.duel_id}`, "GET", a1, undefined, ON, {}, meter.env)));
-    // Measured 2026-10-31: auth, the board read and the room pay as any finished duel's read, then the credit and the settle.
-    expect(meter.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.duelRoomPay", "PLAYERS.creditGhostWin", "LEADERBOARD_MEMBERS.partyApply"]);
-    // Rows written: the claim row and the wallet row; the party row; nothing on the board, whose race was saved when decided.
+    // Measured 2026-11-04: auth, the board read and the room pay as any finished duel's read, then the credit and the
+    // receipt the board keeps on the race's row (duels/payout-receipt.ts), which the lobby reads too.
+    expect(meter.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.duelRoomPay", "PLAYERS.creditGhostWin", "LEADERBOARD_BOARDS.duelReceipt"]);
+    // Rows written: the claim row and the wallet row; the race's row again with the receipt; the party row no longer.
     expect(rows.wallet.written).toBe(2);
-    expect(rows.party.written).toBe(1);
-    expect(rows.board.written).toBe(0);
+    expect(rows.party.written).toBe(0);
+    expect(rows.board.written).toBe(1);
     const later = countingEnv(Object.assign({ ...env }, ON) as Env);
     await ok(call("/v1/duels", "GET", a1, undefined, ON, {}, later.env));
     expect(later.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_BOARDS.duelRead"]);
@@ -900,8 +903,11 @@ describe("duel lobby reads", () => {
     const { a1, a2 } = await pairs();
     const [won] = await seedDuels([a1, a2], 1, [RELAY], "won");
     const [lost] = await seedDuels([a1, a2], 1, [RELAY], "lost");
-    // The seeding lobby read already paid the win, so the read asks the wallet once more (it answers the same, once-only line) and settles again.
-    expect(await calls(a1, `/v1/duels/${won.board}/${won.duel_id}`)).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.creditDuelWin", "LEADERBOARD_MEMBERS.partyApply"]);
+    // The seeding lobby read already paid the win, so the first read asks the wallet once more (it answers the same, once-only
+    // line) and keeps its receipt on the duel row; every read after is the sign-in and the board read only.
+    expect(await calls(a1, `/v1/duels/${won.board}/${won.duel_id}`)).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.creditDuelWin", "LEADERBOARD_BOARDS.duelReceipt"]);
+    expect(await calls(a1, `/v1/duels/${won.board}/${won.duel_id}`)).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead"]);
+    // A loss with no room asks nothing, so it keeps nothing either.
     expect(await calls(a1, `/v1/duels/${lost.board}/${lost.duel_id}`)).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead"]);
   }, 60_000);
 });
@@ -1327,4 +1333,265 @@ describe("duel board guards", () => {
       expect(rooms).toEqual(["won"]);
     });
   });
+});
+
+describe("payout receipts on an ended duel", () => {
+  type Detail = Awaited<ReturnType<typeof detail>>;
+  const FIRST_WIN = ["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.duelRoomPay", "PLAYERS.creditDuelWin", "LEADERBOARD_BOARDS.duelReceipt"];
+  const LATER = ["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead"];
+  const NO_POLLEN = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS"] }) };
+  /** The board's stored row of a duel, as text and as its receipts by seat. */
+  const row = (id: string) => runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (_, ctx) => ctx.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE duel_id=?", id).one().data);
+  const receipts = async (id: string) => (JSON.parse(await row(id)) as { receipts?: Record<string, unknown> }).receipts ?? {};
+  /** A player's duel and ghost win lines. */
+  const lines = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) =>
+    [...ledgerLines(ctx.storage, "duelwin:"), ...ledgerLines(ctx.storage, "ghostwin:")].map(line => [line.key, line.amount]));
+  const balanceOf = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) => walletBalance(ctx.storage, Date.now()));
+  /** One duel read with its Durable Object calls counted, through `base` (a faulty env, say) and `vars`. */
+  async function counted(account: Account, duel: DuelView, base: Env = env, vars = ON): Promise<{ answer: Detail; calls: string[] }> {
+    const meter = countingEnv(Object.assign({ ...base }, vars) as Env);
+    const answer = await ok<Detail>(call(`/v1/duels/${duel.board}/${duel.duel_id}`, "GET", account, undefined, vars, {}, meter.env));
+    return { answer, calls: meter.calls };
+  }
+  type Real = (...args: unknown[]) => Promise<unknown>;
+  /** `base` with one RPC on `name`'s stubs replaced: `fault` gets the real call and the arguments. */
+  function faulty(base: Env, name: "PLAYERS" | "LEADERBOARD_BOARDS", method: string, fault: (real: Real, ...args: unknown[]) => Promise<unknown>): Env {
+    const namespace = base[name] as unknown as DurableObjectNamespace;
+    const wrapped = new Proxy(namespace, { get(target, key) {
+      if (key !== "getByName") { const value = Reflect.get(target, key); return typeof value === "function" ? value.bind(target) : value; }
+      return (id: string) => {
+        const stub = target.getByName(id) as unknown as Record<string, Real>;
+        return new Proxy(stub, { get(inner, prop) {
+          const value = Reflect.get(inner, prop);
+          if (typeof prop !== "string" || typeof value !== "function") return value;
+          const real: Real = (...args) => inner[prop](...args);
+          return prop === method ? (...args: unknown[]) => fault(real, ...args) : real;
+        } });
+      };
+    } });
+    return { ...base, [name]: wrapped } as Env;
+  }
+  /** A friend duel played to its end with duel run checks off: pair A wins by 40 ticks. */
+  async function ended() {
+    await checksOn(ON.CONFIG);
+    const { a1, a2, b1, b2 } = await pairs();
+    const { duel, joinedA, joinedB } = await friendRooms(a1, a2, b1, b2);
+    await play(joinedA, [a1, a2], await relayRun(0));
+    await play(joinedB, [b1, b2], await relayRun(40));
+    return { a1, a2, b1, b2, duel };
+  }
+
+  it("are kept by the board only on a final duel that seats the player, once, moving no time and telling nobody", async () => {
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName("receipts-" + RELAY), async (_, ctx) => {
+      const told: unknown[] = [];
+      const store = new DuelStore(ctx.storage, news => told.push(...news), () => false, changes => told.push(...changes));
+      const T0 = 1_900_000_000_000, ids = ["ra", "rb", "rc", "rd"].map(id => id.padEnd(22, "x"));
+      const make = (n: number, end: boolean) => {
+        const duel = newFriendDuel({ duel_id: n.toString(16).padStart(32, "0"), board: RELAY, chapter: RELAY_KEY, steps: 4, starter: ids[0], a: blankSide([ids[0], ids[1]], "pa"), b: blankSide([ids[2], ids[3]], "pb"), known: [] }, T0);
+        Object.assign(duel, { status: "running", accepted_ms: T0 });
+        if (end) Object.assign(duel, { status: "decided", result: { winner: 0, reason: "faster", decided_ms: T0, margin_ticks: 30 } });
+        store.create(duel, T0);
+        return duel.duel_id;
+      };
+      const rowOf = (id: string) => ctx.storage.sql.exec<{ data: string; updated_ms: number }>("SELECT data,updated_ms FROM duels WHERE duel_id=?", id).one();
+      const running = make(1, false), ended = make(2, true);
+      const shown = { win_bonus: { amount: 250, counted: true } };
+      told.length = 0;
+      // A running duel keeps none: a read that saw it running asked nothing.
+      expect(store.receipt(running, ids[0], shown)).toBe(false);
+      const before = rowOf(ended);
+      expect(store.receipt(ended, ids[3], { pay: { turns: 2, plain: 1, blooms: 0, duel: 0, duel_percent: 50, boost: 0, boost_percent: 0, total: 1, held: 0 } })).toBe(true);
+      expect(store.receipt(ended, ids[0], shown)).toBe(true);
+      // The first receipt for a seat stays; a stranger, or an id no longer seated, keeps none.
+      expect(store.receipt(ended, ids[0], { win_bonus: { amount: 0, counted: false } })).toBe(false);
+      expect(store.receipt(ended, "zz".padEnd(22, "z"), shown)).toBe(false);
+      const after = rowOf(ended);
+      expect(after.updated_ms).toBe(before.updated_ms);
+      expect((JSON.parse(after.data) as { updated_ms: number }).updated_ms).toBe((JSON.parse(before.data) as { updated_ms: number }).updated_ms);
+      expect(Object.keys((JSON.parse(after.data) as { receipts: Record<string, unknown> }).receipts).sort()).toEqual(["0", "3"]);
+      expect((JSON.parse(after.data) as { receipts: Record<string, unknown> }).receipts["0"]).toEqual({ v: 1, shown });
+      expect(told).toEqual([]);
+      // Erasure drops the player's receipt with their id.
+      expect(store.forgetPlayer(ids[0], T0 + 1)).toBe(2);
+      const erased = rowOf(ended).data;
+      expect(erased).not.toContain(ids[0]);
+      expect(Object.keys((JSON.parse(erased) as { receipts: Record<string, unknown> }).receipts)).toEqual(["3"]);
+    });
+  });
+
+  it("pay a won friend duel once and answer every later read from the duel row, two requests, with the same pay", async () => {
+    const { a1, b1, duel } = await ended();
+    const before = await balanceOf(a1);
+    const first = await counted(a1, duel);
+    expect(first.answer.win_bonus).toEqual({ amount: 250, counted: true });
+    expect(first.calls).toEqual(FIRST_WIN);
+    expect(await balanceOf(a1)).toBe(before + 250);
+    for (let read = 0; read < 3; read++) {
+      const later = await counted(a1, duel);
+      expect(later.calls).toEqual(LATER);
+      expect({ pay: later.answer.pay, win_bonus: later.answer.win_bonus }).toEqual({ pay: first.answer.pay, win_bonus: first.answer.win_bonus });
+    }
+    expect(await balanceOf(a1)).toBe(before + 250);
+    expect(await lines(a1)).toEqual([["duelwin:" + duel.duel_id, 250]]);
+    // The loser's read asks only the room pay, keeps it, and is two requests after.
+    const lost = await counted(b1, duel);
+    expect(lost.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.duelRoomPay", "LEADERBOARD_BOARDS.duelReceipt"]);
+    expect(lost.answer.win_bonus).toBeUndefined();
+    const again = await counted(b1, duel);
+    expect(again.calls).toEqual(LATER);
+    expect(again.answer.pay).toEqual(lost.answer.pay);
+    // Kept by seat, never by id: the row names no more ids than before.
+    const kept = await receipts(duel.duel_id);
+    expect(Object.keys(kept).sort()).toEqual(["0", "2"]);
+    expect(JSON.stringify(kept)).not.toMatch(new RegExp([a1, b1].map(account => account.player_id).join("|")));
+    // No view shows a receipt to anyone.
+    expect(JSON.stringify(first.answer.duel)).not.toContain("receipt");
+  }, 60_000);
+
+  it("let the lobby skip a duel the read already paid, though the party row was never told", async () => {
+    const { a1, duel } = await ended();
+    await counted(a1, duel);
+    expect((await env.LEADERBOARD_MEMBERS.getByName(a1.player_id).partyRead(Date.now())).settled).not.toContain(duel.duel_id);
+    const meter = countingEnv(Object.assign({ ...env }, ON) as Env);
+    await ok(call("/v1/duels", "GET", a1, undefined, ON, {}, meter.env));
+    expect(meter.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_BOARDS.duelRead"]);
+    expect(await lines(a1)).toEqual([["duelwin:" + duel.duel_id, 250]]);
+  }, 60_000);
+
+  it("pay once when two phones of each winner and the lobby read at the same moment", async () => {
+    const { a1, a2, duel } = await ended();
+    const before = [await balanceOf(a1), await balanceOf(a2)];
+    const answers = await Promise.all([detail(a1, duel), detail(a1, duel), detail(a2, duel), detail(a2, duel), lobby(a1), lobby(a2)]);
+    for (const answer of answers.slice(0, 4) as Detail[]) expect(answer.win_bonus).toEqual({ amount: 250, counted: true });
+    expect([await balanceOf(a1), await balanceOf(a2)]).toEqual(before.map(value => value + 250));
+    for (const account of [a1, a2]) expect(await lines(account)).toEqual([["duelwin:" + duel.duel_id, 250]]);
+    for (const account of [a1, a2]) expect((await counted(account, duel)).calls).toEqual(LATER);
+  }, 60_000);
+
+  it("pay nothing twice when the receipt is lost after the wallet paid, and keep it on the next read", async () => {
+    const { a1, duel } = await ended();
+    const before = await balanceOf(a1);
+    const lost = faulty(env, "LEADERBOARD_BOARDS", "duelReceipt", async () => { throw new Error("lost before the receipt"); });
+    expect((await counted(a1, duel, lost)).answer.win_bonus).toEqual({ amount: 250, counted: true });
+    expect(await receipts(duel.duel_id)).toEqual({});
+    const next = await counted(a1, duel);
+    expect(next.answer.win_bonus).toEqual({ amount: 250, counted: true });
+    expect(next.calls).toEqual(FIRST_WIN);
+    expect((await counted(a1, duel)).calls).toEqual(LATER);
+    expect(await balanceOf(a1)).toBe(before + 250);
+    expect(await lines(a1)).toEqual([["duelwin:" + duel.duel_id, 250]]);
+  }, 60_000);
+
+  it("keep no receipt when the wallet failed, so the next read pays", async () => {
+    const { a1, duel } = await ended();
+    const before = await balanceOf(a1);
+    const down = faulty(env, "PLAYERS", "creditDuelWin", async () => { throw new Error("wallet unreachable"); });
+    expect((await counted(a1, duel, down)).answer.win_bonus).toBeUndefined();
+    expect(await receipts(duel.duel_id)).toEqual({});
+    expect(await balanceOf(a1)).toBe(before);
+    expect((await counted(a1, duel)).answer.win_bonus).toEqual({ amount: 250, counted: true });
+    expect(await balanceOf(a1)).toBe(before + 250);
+    expect((await counted(a1, duel)).calls).toEqual(LATER);
+  }, 60_000);
+
+  it("keep no receipt and no id for a player erased mid payout, before or after the wallet answered", async () => {
+    const { a1, a2, duel } = await ended();
+    const erase = (account: Account) => async (real: Real, ...args: unknown[]) => {
+      expect((await call("/v1/identity", "DELETE", account)).status).toBe(200);
+      return real(...args);
+    };
+    // Erased after the wallet paid, before the receipt: the board no longer seats them, so nothing is kept.
+    await counted(a1, duel, faulty(env, "LEADERBOARD_BOARDS", "duelReceipt", erase(a1)));
+    // Erased before the wallet: it refuses, and nothing is kept either.
+    await (await call(`/v1/duels/${duel.board}/${duel.duel_id}`, "GET", a2, undefined, ON, {}, faulty(env, "PLAYERS", "creditDuelWin", erase(a2)))).text();
+    const text = await row(duel.duel_id);
+    for (const account of [a1, a2]) expect(text).not.toContain(account.player_id);
+    expect(await receipts(duel.duel_id)).toEqual({});
+  }, 60_000);
+
+  it("drop a player's receipt when their account is erased after it was kept", async () => {
+    const { a1, b1, duel } = await ended();
+    await counted(a1, duel);
+    await counted(b1, duel);
+    expect(Object.keys(await receipts(duel.duel_id)).sort()).toEqual(["0", "2"]);
+    expect((await call("/v1/identity", "DELETE", a1)).status).toBe(200);
+    expect(Object.keys(await receipts(duel.duel_id))).toEqual(["2"]);
+    expect((await counted(b1, duel)).calls).toEqual(LATER);
+  }, 60_000);
+
+  it("keep nothing for a duel that ends while its read is in flight, and pay on the read after", async () => {
+    await checksOn(ON.CONFIG);
+    const { a1, a2, b1, b2 } = await pairs();
+    const { duel, joinedA, joinedB } = await friendRooms(a1, a2, b1, b2);
+    await play(joinedA, [a1, a2], await relayRun(0));
+    const run = await relayRun(40);
+    const last = run.turns.pop()!;
+    const replies = await play(joinedB, [b1, b2], run);
+    const before = await balanceOf(a1);
+    // The board answers the running duel, then B's last turn ends it before the read replies.
+    const racing = faulty(env, "LEADERBOARD_BOARDS", "duelRead", async (real, ...args) => {
+      const read = await real(...args);
+      await ok(call(`/v2/rooms/${joinedB.room_id}/turns`, "POST", [b1, b2][last[0]], turn(replies[replies.length - 1].room, last[1], last[2])));
+      return read;
+    });
+    const stale = await counted(a1, duel, racing);
+    expect(stale.answer.duel.status).toBe("running");
+    expect(stale.answer.win_bonus).toBeUndefined();
+    expect(await receipts(duel.duel_id)).toEqual({});
+    const won = await counted(a1, duel);
+    expect([won.answer.duel.status, won.answer.win_bonus]).toEqual(["decided", { amount: 250, counted: true }]);
+    expect(won.calls).toEqual(FIRST_WIN);
+    expect(await balanceOf(a1)).toBe(before + 250);
+  }, 60_000);
+
+  it("keep nothing while Pollen is off, and pay once it is on", async () => {
+    const { a1, duel } = await ended();
+    const before = await balanceOf(a1);
+    const off = await counted(a1, duel, env, NO_POLLEN);
+    expect([off.answer.pay, off.answer.win_bonus]).toEqual([undefined, undefined]);
+    expect(off.calls).toEqual(LATER);
+    expect(await receipts(duel.duel_id)).toEqual({});
+    expect((await counted(a1, duel)).calls).toEqual(FIRST_WIN);
+    expect(await balanceOf(a1)).toBe(before + 250);
+  }, 60_000);
+
+  it("stay safe for older code, which asks the wallet again and gets the same once only line, and for a receipt it does not know", async () => {
+    const { a1, b1, duel } = await ended();
+    const first = await counted(a1, duel);
+    const before = await balanceOf(a1);
+    // Older code's read and lobby ask the wallet again whatever the row keeps: the same line answers, nothing more is paid.
+    const stored = JSON.parse(await row(duel.duel_id)) as { sides: { pair_key: string }[]; result: { decided_ms: number } };
+    const again = await env.PLAYERS.getByName(a1.player_id).creditDuelWin(a1.player_id, { duel_id: duel.duel_id, opponent: stored.sides[1].pair_key, decided_ms: stored.result.decided_ms });
+    expect(again).toMatchObject({ ok: true, value: { amount: 250, counted: true } });
+    expect(await balanceOf(a1)).toBe(before);
+    // A receipt in a shape this code does not know is left alone and the pay asked again, once only.
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (_, ctx) => {
+      ctx.storage.sql.exec("UPDATE duels SET data=json_set(data,'$.receipts.\"0\"',json('{\"v\":99}')) WHERE duel_id=?", duel.duel_id);
+    });
+    const unknown = await counted(a1, duel);
+    expect(unknown.answer.win_bonus).toEqual(first.answer.win_bonus);
+    expect(unknown.calls).toEqual(FIRST_WIN);
+    expect((await receipts(duel.duel_id))["0"]).toEqual({ v: 99 });
+    expect(await balanceOf(a1)).toBe(before);
+    // Reads and actions on the board keep the receipts.
+    await counted(b1, duel);
+    await ok(call(`/v1/duels/${RELAY}/${duel.duel_id}/leave`, "POST", b1, { schema_version: 1 }));
+    expect(Object.keys(await receipts(duel.duel_id)).sort()).toEqual(["0", "2"]);
+  }, 60_000);
+
+  it("pay the first win over Our run once and answer later reads of the race from its row", async () => {
+    await checksOn(ON.CONFIG);
+    const { a1, a2 } = await pairs();
+    const race = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
+    const room = await ok<RoomSnapshotV2>(openRoom(a1, race));
+    const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: room.invite_code }));
+    await play(joined, [a1, a2], await relayRun(-5));
+    const first = await counted(a2, race);
+    expect(first.answer.ghost_bonus).toEqual({ amount: 100, counted: true });
+    expect(first.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.duelRoomPay", "PLAYERS.creditGhostWin", "LEADERBOARD_BOARDS.duelReceipt"]);
+    const later = await counted(a2, race);
+    expect(later.calls).toEqual(LATER);
+    expect([later.answer.ghost_bonus, later.answer.pay]).toEqual([first.answer.ghost_bonus, first.answer.pay]);
+    expect(await lines(a2)).toEqual([["ghostwin:" + RELAY, 100]]);
+  }, 60_000);
 });

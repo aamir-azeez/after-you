@@ -25,6 +25,7 @@ import { flags } from "../flags";
 import type { Look } from "../pollen/catalog";
 import { servedLook } from "../leaderboards/run-looks";
 import { publicDetail, publicDuelsCapability, publicDuelsOn, publicLobby, routePublicDuels, settlePublic, type PublicSettle } from "./public-routes";
+import { lastingAnswer, receiptOf, type PayoutShown } from "./payout-receipt";
 
 /**
  * The phone's duel routes, all absent (falling through to 404) unless duels
@@ -99,7 +100,9 @@ export function duelsAt(env: Env, key: string) {
     act: async (id: string, action: DuelAction) => (await stub.duelAct(id, action)) as unknown as Outcome<{ duel: Duel; room?: SideRoom }>,
     progress: async (id: string, note: ProgressNote, proof?: FinishProof, actor?: string) => (await stub.duelProgress(id, note, proof, actor)) as unknown as Outcome<Duel>,
     /** A player's label or list pause on the public duels named (duels/public-routes.ts). */
-    publicPlayer: (player: string, ids: string[], change: { label?: string | null; hidden?: boolean }) => stub.duelPublicPlayer(player, ids, change)
+    publicPlayer: (player: string, ids: string[], change: { label?: string | null; hidden?: boolean }) => stub.duelPublicPlayer(player, ids, change),
+    /** Keeps a final duel's pay as `player`'s read showed it (payout-receipt.ts). */
+    receipt: (id: string, player: string, shown: PayoutShown) => stub.duelReceipt(id, player, shown)
   };
 }
 
@@ -162,33 +165,39 @@ function opponentWin(duel: Duel, other: Side, decidedMs: number): DuelWin {
 }
 
 /**
+ * `answer`: null when nothing is due or the wallet could not be asked. `asked`: the wallet was asked. `final`: the answer
+ * is one the wallet will give again, or nothing is due by the duel's own facts, so a read may keep it (payout-receipt.ts).
+ */
+type WinAsk = { answer: DuelWinAnswer | null; asked: boolean; final: boolean };
+const NOTHING_DUE: WinAsk = { answer: null, asked: false, final: true };
+/**
  * The bonus a decided duel owes `player`, once per player (pollen/duel-pay.ts): a won friend duel's
  * win bonus, or the first win over the developers' ghost on its board. No account rule (dropped 2026-10-31). Asked of the
- * wallet only while the player's party row has not settled it. Null when nothing is due.
+ * wallet only while `settled` (the party row's, and the duels whose row keeps the player's receipt) does not name it.
  */
-async function winBonus(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<DuelWinAnswer | null> {
+async function winBonus(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<WinAsk> {
   // A public duel settles its win with its held extra (public-routes.ts settlePublic).
-  if (duel.public) return null;
+  if (duel.public) return NOTHING_DUE;
   const mine = sideOf(duel, player);
   // Only a win on time pays (POLLEN-RULES.md), its runs passed by the replay check while duel run checks are on (model.ts
   // awaitsCheck), as they finished while off: never one the other pair left or failed.
-  if (!pollenEarning(env) || duel.status !== "decided" || duel.result?.winner !== mine || duel.result.reason !== "faster") return null;
+  if (!pollenEarning(env) || duel.status !== "decided" || duel.result?.winner !== mine || duel.result.reason !== "faster") return NOTHING_DUE;
   const friend = duel.kind === "friend";
   // A ghost race pays only against the developers' ghost, on a run the check passed or that counted without it while duel
   // run checks were off (model.ts Side.waived), never one decided before the bonus existed; a rate of 0 writes nothing.
   const run = duel.sides[0];
   const ghost = duel.kind === "ghost" && duel.ghost?.source === "developer" && (run.check === "passed" || run.waived === true) && RATES.duels.ghost_win_bonus > 0;
-  if (!friend && !ghost) return null;
-  if (!force && settled.includes(duel.duel_id)) return null;
+  if (!friend && !ghost) return NOTHING_DUE;
+  if (!force && settled.includes(duel.duel_id)) return NOTHING_DUE;
   const wallet = env.PLAYERS.getByName(player);
   try {
     const answer = friend
       ? await wallet.creditDuelWin(player, opponentWin(duel, duel.sides[1 - mine]!, duel.result.decided_ms))
       : await wallet.creditGhostWin(player, { duel_id: duel.duel_id, board: duel.board });
-    if (answer.ok) return answer.value;
-    // A final refusal (an old win, no identity) is settled too, so it is never asked again.
-    return answer.status < 500 ? { amount: 0, counted: false, balance: 0 } : null;
-  } catch { return null; }
+    if (answer.ok) return { answer: answer.value, asked: true, final: true };
+    // A final refusal (an old win, no identity) is settled too, so it is never asked again; a read keeps only the expiry.
+    return { answer: answer.status < 500 ? { amount: 0, counted: false, balance: 0 } : null, asked: true, final: lastingAnswer(answer) };
+  } catch { return { answer: null, asked: true, final: false }; }
 }
 
 /**
@@ -204,8 +213,9 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
   const shown = duels.filter(duel => !stale.includes(duel.duel_id));
   const settled: string[] = [];
   // Every won duel is paid before its pointer goes, so a winner who stays away a while still gets it; a public duel's
-  // held extra too, for every player of it, once.
-  for (const duel of duels) if (duel.public ? await settlePublic(env, player, duel, pair.state.settled) : await winBonus(env, player, duel, pair.state.settled)) settled.push(duel.duel_id);
+  // held extra too, for every player of it, once. A duel whose row keeps this player's receipt was paid by a read.
+  const paid = [...pair.state.settled, ...duels.filter(duel => receiptOf(duel, player)).map(duel => duel.duel_id)];
+  for (const duel of duels) if (duel.public ? await settlePublic(env, player, duel, paid) : (await winBonus(env, player, duel, paid)).answer) settled.push(duel.duel_id);
   const ops: PartyOp[] = [];
   if (missing.length || stale.length) ops.push({ kind: "drop_duels", ids: [...missing, ...stale] });
   if (settled.length) ops.push({ kind: "settle_wins", ids: settled });
@@ -368,7 +378,7 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
   const [duel] = await duelsAt(env, key).read([duelId], player);
   const mine = duel ? sideOf(duel, player) : -1;
   if (!duel || mine < 0) throw new ApiError(404, "duel_not_found");
-  if (action === undefined) return duelDetail(env, player, duel, now);
+  if (action === undefined) return duelDetail(env, player, duel);
   fields(input, []);
   if (action === "accept") {
     const partner = duel.sides[1]!.members.find(id => id !== player) ?? null;
@@ -407,21 +417,30 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
  * One duel, with this player's pay from it once it is over: `win_bonus` on a friend duel, `ghost_bonus`
  * on the ghost race that paid the first win over the developers' ghost on its board, and nothing on a
  * later win there. Requests: the board read, plus 1 or 2 on the player's own wallet when over, and the
- * party row's write when a bonus was asked.
+ * board's write of the receipt (payout-receipt.ts) once what they show can no longer change; a read after
+ * that answers from the receipt the board read brought, so it is the sign-in and the board read only.
  */
-async function duelDetail(env: Env, player: string, duel: Duel, now: number): Promise<unknown> {
+async function duelDetail(env: Env, player: string, duel: Duel): Promise<unknown> {
   const view = viewFor(duel, player, looksOn(env))!;
-  const room = duel.sides[sideOf(duel, player) as 0 | 1]!.room;
-  let pay: DuelRoomPay | undefined, bonus: DuelWinAnswer | null = null, settledNow: PublicSettle | null = null;
-  if (isFinal(duel) && pollenEarning(env)) {
+  const earning = isFinal(duel) && pollenEarning(env);
+  const kept = earning ? receiptOf(duel, player) : null;
+  if (kept) return { schema_version: 1, duel: view, ...kept, ...hintsField(env) };
+  const side = duel.sides[sideOf(duel, player) as 0 | 1]!, room = side.room;
+  let pay: DuelRoomPay | undefined, bonus: DuelWinAnswer | null = null, settledNow: PublicSettle | null = null, asked = false, final = false;
+  if (earning) {
     if (room) pay = await env.PLAYERS.getByName(player).duelRoomPay(room.room_id);
-    if (duel.public) { settledNow = await settlePublic(env, player, duel, [], true); bonus = settledNow?.win ?? null; }
-    else bonus = await winBonus(env, player, duel, [], true);
-    if (bonus || settledNow) await party(env, player).partyApply(player, { kind: "settle_wins", ids: [duel.duel_id] }, now);
+    if (duel.public) { settledNow = await settlePublic(env, player, duel, [], true); bonus = settledNow?.win ?? null; asked = true; final = settledNow?.final ?? false; }
+    else ({ answer: bonus, asked, final } = await winBonus(env, player, duel, [], true));
   }
-  const shown = bonus ? { amount: bonus.amount, counted: bonus.counted, ...(bonus.reason ? { reason: bonus.reason } : {}) } : null;
-  return { schema_version: 1, duel: view, ...(pay ? { pay } : {}), ...(shown && duel.kind === "friend" ? { win_bonus: shown } : {}), ...(shown?.counted && duel.kind === "ghost" ? { ghost_bonus: shown } : {}),
-    ...await publicDetail(env, player, duel, settledNow), ...hintsField(env) };
+  const won = bonus ? { amount: bonus.amount, counted: bonus.counted, ...(bonus.reason ? { reason: bonus.reason } : {}) } : null;
+  const shown: PayoutShown = { ...(pay ? { pay } : {}), ...(won && duel.kind === "friend" ? { win_bonus: won } : {}), ...(won?.counted && duel.kind === "ghost" ? { ghost_bonus: won } : {}),
+    ...await publicDetail(env, player, duel, settledNow) };
+  // Kept once nothing shown can change and a later read would ask something again. A side whose room never finished its
+  // run keeps none: that room may still take turns that hold or pay. A lost write only means the next read asks again.
+  if (earning && final && (room ? side.finished_ms !== null : asked)) {
+    try { await duelsAt(env, duel.board).receipt(duel.duel_id, player, shown); } catch { /* asked again next read */ }
+  }
+  return { schema_version: 1, duel: view, ...shown, ...hintsField(env) };
 }
 
 /**

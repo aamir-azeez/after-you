@@ -14,6 +14,7 @@ import { termsCovered, termsVersion } from "../public-policy";
 import { SAFETY_REPORT_REASONS, type SafetyReport } from "../safety";
 import { DUEL_REQUEST_PREFIX, requestFriend } from "../friends-routes";
 import { isFinal, isOpen, knownKey, viewFor, type Duel } from "./model";
+import { lastingAnswer, type ShownHeld } from "./payout-receipt";
 import { heldState, holder, listingOf, newPublicDuel, publicKnown, seatOf, seated, type JoinAs } from "./public";
 import { boardOf, chapterRow, duelsAt, duelsOf, fields, party } from "./routes";
 import { duelsOn } from "./turn-hook";
@@ -415,11 +416,12 @@ export function publicLobby(env: Env, player: string, members: readonly (MemberS
     running: running(duels, [player]), rules: rulesNoted(env, mine), partner_rules: theirs ? rulesNoted(env, theirs) : null } };
 }
 
-export type PublicSettle = { extra: DuelExtraAnswer | null; win: DuelWinAnswer | null };
+/** `final`: every answer is one the wallet will give again (paid, or refused for good), so a read may keep it (payout-receipt.ts). */
+export type PublicSettle = { extra: DuelExtraAnswer | null; win: DuelWinAnswer | null; final: boolean };
 /**
- * A final public duel's pay for `player`, once (their party row's `settled`, as a win today): the held extra, paid or
- * forfeited by the duel's rules (public.ts heldState), and the win bonus on a win on time, in one wallet request.
- * Null while there is nothing to ask: not final, Pollen off, or settled before unless `force`.
+ * A final public duel's pay for `player`, once (their party row's `settled`, as a win today, or the receipt on the duel's
+ * row): the held extra, paid or forfeited by the duel's rules (public.ts heldState), and the win bonus on a win on time,
+ * in one wallet request. Null while there is nothing to ask: not final, Pollen off, or settled before unless `force`.
  */
 export async function settlePublic(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<PublicSettle | null> {
   if (!duel.public || !isFinal(duel) || !pollenEarning(env) || (!force && settled.includes(duel.duel_id))) return null;
@@ -437,7 +439,10 @@ export async function settlePublic(env: Env, player: string, duel: Duel, settled
     const extra = answer.extra.ok ? answer.extra.value : null, paid = answer.win?.ok ? answer.win.value : null;
     // A final refusal (an old end, no identity) is settled too, so it is never asked again.
     if (!answer.extra.ok && answer.extra.status >= 500) return null;
-    return { extra, win: paid };
+    // An extra paid with nothing held wrote no line, so a held turn whose credit lands late (a turn claim) is summed only
+    // by a later ask: such an answer is not final while the side has a room. A forfeit stays unpaid either way.
+    const unsummed = extra !== null && extra.paid && extra.held === 0 && duel.sides[mine]!.room !== null;
+    return { extra, win: paid, final: lastingAnswer(answer.extra) && lastingAnswer(answer.win) && !unsummed };
   } catch { return null; }
 }
 
@@ -445,7 +450,7 @@ export async function settlePublic(env: Env, player: string, duel: Duel, settled
  * The duel page's held extra for a public duel: while it runs, what the player's turns in their room hold (1 Player
  * read); once over, what the settle paid or why not.
  */
-export async function publicDetail(env: Env, player: string, duel: Duel, settledNow: PublicSettle | null): Promise<{ held?: Record<string, unknown> }> {
+export async function publicDetail(env: Env, player: string, duel: Duel, settledNow: PublicSettle | null): Promise<{ held?: ShownHeld }> {
   if (!duel.public || !pollenEarning(env)) return {};
   const seat = seatOf(duel, player);
   if (seat < 0) return {};

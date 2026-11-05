@@ -10,6 +10,7 @@ import type { Look } from "../pollen/catalog";
 import { emptyView, type BoardRow, type BoardView } from "./view";
 import { fail, type Outcome } from "../protocol";
 import { DuelStore, type DuelAction, type DuelReplayWork, type FinishProof, type RunCopyWork } from "../duels/store";
+import type { PayoutShown } from "../duels/payout-receipt";
 import { announceDuelNews } from "../duels/news";
 import { sendListings } from "../duels/directory";
 import { duelRunChecksOn } from "../duels/turn-hook";
@@ -260,6 +261,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   duelProgress(duelId: string, note: ProgressNote, proof?: FinishProof, actor?: string): Promise<Outcome<Duel>> { return this.duels.progress(duelId, note, Date.now(), proof, actor ?? null); }
   /** A player's label or list pause on the public duels named here (duels/public-routes.ts). Returns how many changed. */
   duelPublicPlayer(player: string, ids: string[], change: { label?: string | null; hidden?: boolean }): number { return this.duels.publicPlayer(player, ids, change, Date.now()); }
+  /** Keeps a final duel's pay as one player's read showed it, once (duels/payout-receipt.ts). Returns whether it was kept. */
+  duelReceipt(duelId: string, player: string, shown: PayoutShown): boolean { return this.duels.receipt(duelId, player, shown); }
   /** The rooms that answered the run copy sweep (duels/their-run-sweep.ts). */
   runCopiesDone(done: RunCopyWork[]): void { this.duels.copiesDone(done); }
 
