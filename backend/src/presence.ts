@@ -1,4 +1,4 @@
-import { ApiError, HASH_PATTERN, isObject } from "./protocol";
+import { ApiError, HASH_PATTERN, fail, isObject, ok, unwrap, type Outcome } from "./protocol";
 import { safetyMembers } from "./safety-routes";
 import { interactionBlocked } from "./safety";
 import type { CampaignRoomContext } from "./v2/campaign-room-access";
@@ -70,8 +70,54 @@ export async function schedulePresence(storage: DurableObjectStorage, extra: num
 export async function resetPresence(storage: DurableObjectStorage): Promise<void> {
   clearPresence(storage); storage.sql.exec("DELETE FROM presence_alarm"); await storage.deleteAlarm();
 }
-/** The only public read is through a room both identities actually share. */
-export async function roomPresence(env: Env, owner: string, deviceHash: string, family: "legacy" | "relay", roomId: string, context?: CampaignRoomContext): Promise<RoomPresence> {
+/** A room's pair as its membership read answers it (RoomV2.safetyMembers); `public_duel`: a public duel's room, whose partner may be a stranger. */
+export type RoomPair = { host_id: string; guest_id: string | null; public_duel?: true };
+/** The room's half of a partner presence read: its pair and the partner's lease end (0 when nothing was read). */
+export type PartnerLease = RoomPair & { expires_at: number };
+const presenceAnswer = (joined: boolean, expires: number): RoomPresence => {
+  const seconds = Math.max(0, Math.min(90, Math.ceil((expires - Date.now()) / 1000)));
+  return { schema_version: 1, partner_joined: joined, partner_online: seconds > 0, expires_after_seconds: seconds };
+};
+
+/**
+ * The room's half of GET /v2/rooms/<id>/presence (RoomV2.partnerPresence), once its pair gate passed (membership, then
+ * blocks through the room's memo). A public duel's room, or one with no partner yet, answers here with nothing read:
+ * a stranger never learns when you are online. Otherwise the partner's lease is read, then the room reads its own
+ * membership again (no request), so a join, leave or erasure that landed while the read was out answers 409 or 404.
+ */
+export async function partnerLease(env: Env, player: string, pair: RoomPair, again: () => Promise<Outcome<RoomPair>>): Promise<Outcome<PartnerLease>> {
+  const partner = player === pair.host_id ? pair.guest_id : pair.host_id;
+  if (pair.public_duel || partner === null) return ok({ ...pair, expires_at: 0 });
+  const expires_at = await env.PLAYERS.getByName(partner).presenceExpiry(partner);
+  const current = await again(); if (!current.ok) return current;
+  if (current.value.host_id !== pair.host_id || current.value.guest_id !== pair.guest_id) return fail(409, "room_membership_changed");
+  return ok({ ...pair, expires_at });
+}
+
+/**
+ * The only public read is through a room both identities actually share. An ordinary Relay room (no Story context)
+ * takes the one shared path: auth() already checked the device and gave `safetyToken`; the room gates the pair with
+ * its block memo and reads the partner's lease (partnerLease). Every guard that can withhold the answer then runs
+ * after that read: the room's own membership read inside it, and here the asker's device and room link again, in the
+ * same call that gives their current safety token. A block involving the asker gives them a new token before it
+ * answers (safety.ts rotateSafetyTokens), so an unchanged token means no block landed since auth(); any other token
+ * checks both block lists. 4 requests with a warm memo (auth, room, partner, asker), 2 for a public duel's room.
+ * Legacy rooms and Story contexts keep the full sequence (legacyRoomPresence).
+ */
+export async function roomPresence(env: Env, owner: string, deviceHash: string, family: "legacy" | "relay", roomId: string, context?: CampaignRoomContext, safetyToken?: string): Promise<RoomPresence> {
+  if (family !== "relay" || context !== undefined) return legacyRoomPresence(env, owner, deviceHash, family, roomId, context);
+  const lease = unwrap(await env.ROOMS_V2.getByName(roomId).partnerPresence(owner, safetyToken));
+  const joined = (owner === lease.host_id ? lease.guest_id : lease.host_id) !== null;
+  if (lease.public_duel || !joined) return presenceAnswer(joined, 0);
+  const access = await env.PLAYERS.getByName(owner).authorizeRoom(deviceHash, roomId);
+  if (!access.authorized) throw new ApiError(401, "invalid_auth");
+  if (!access.linked) throw new ApiError(404, "room_not_found");
+  if ((safetyToken === undefined || access.safety_token !== safetyToken) && await interactionBlocked(env, lease.host_id, lease.guest_id)) throw new ApiError(403, "player_blocked");
+  return presenceAnswer(true, lease.expires_at);
+}
+
+/** Legacy rooms (no block memo) and Story contexts: membership and both block lists before and after the partner's read. */
+async function legacyRoomPresence(env: Env, owner: string, deviceHash: string, family: "legacy" | "relay", roomId: string, context?: CampaignRoomContext): Promise<RoomPresence> {
   const members = await safetyMembers(env, owner, family, roomId, context);
   if (await interactionBlocked(env, members.host_id, members.guest_id)) throw new ApiError(403, "player_blocked");
   const partner = owner === members.host_id ? members.guest_id : members.host_id;
@@ -86,6 +132,5 @@ export async function roomPresence(env: Env, owner: string, deviceHash: string, 
     if (latest.host_id !== members.host_id || latest.guest_id !== members.guest_id) throw new ApiError(409, "room_membership_changed");
   }
   // A public duel's partner may be a stranger, who never learns when you are online.
-  const seconds = members.public_duel ? 0 : Math.max(0, Math.min(90, Math.ceil((expires - Date.now()) / 1000)));
-  return { schema_version: 1, partner_joined: partner !== null, partner_online: seconds > 0, expires_after_seconds: seconds };
+  return presenceAnswer(partner !== null, members.public_duel ? 0 : expires);
 }

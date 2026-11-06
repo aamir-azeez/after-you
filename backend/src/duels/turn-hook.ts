@@ -45,20 +45,23 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
  * reply; a lost note is healed by the next turn or the phone's sync. `actor`:
  * who took the turn, whom the duel's news leaves out (duels/news.ts). `looks`:
  * the room's two members' looks, host first, while looks are on (v2/room.ts
- * commit `duel_looks`); they ride in the same note.
+ * commit `duel_looks`); they ride in the same note. `covered`: the actor's partner, whom the route tells itself
+ * (news.ts sendTurnHints), so the board leaves them out. Answers the duel as the board noted it, or null.
  */
-export async function noteDuelTurn(env: Env, room: RoomSnapshotV2, link: DuelLink | null | undefined, actor?: string, looks?: PairLooks): Promise<void> {
-  if (!link || !duelsOn(env)) return;
+export async function noteDuelTurn(env: Env, room: RoomSnapshotV2, link: DuelLink | null | undefined, actor?: string, looks?: PairLooks, covered?: string): Promise<{ duel_id: string; updated_ms: number } | null> {
+  if (!link || !duelsOn(env)) return null;
   try {
     const made = await roomNote(room, link, looks);
-    const noted = made ? await env.LEADERBOARD_BOARDS.getByName(link.board).duelProgress(link.duel_id, made.note, made.proof, actor) : null;
+    const noted = made ? await env.LEADERBOARD_BOARDS.getByName(link.board).duelProgress(link.duel_id, made.note, made.proof, actor, covered) : null;
     // A public duel's finished run: the room learns who on the other pair may watch it, which it could not know when made.
     if (made?.note.complete && link.public && noted?.ok) {
       const duel = noted.value as unknown as Duel, others = duel.sides[1 - link.side]?.members.filter((id): id is string => id !== null) ?? [];
       if (others.length) await env.ROOMS_V2.getByName(room.room_id).duelTheirRunViewers(others);
     }
+    return noted?.ok ? { duel_id: noted.value.duel_id, updated_ms: noted.value.updated_ms } : null;
   } catch (error) {
     logWarning("duel_note_failed", { code: errorCode(error) });
+    return null;
   }
 }
 

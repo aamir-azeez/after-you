@@ -258,7 +258,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   /** A player's accept, Not now, leave or room claim on one duel. */
   duelAct(duelId: string, action: DuelAction): Outcome<{ duel: Duel; room?: SideRoom }> { return this.duels.act(duelId, action, Date.now()); }
   /** A turn accepted in one of the duel's rooms; the finishing turn of a friend run brings its final checkpoint. `actor`: whose turn it was. */
-  duelProgress(duelId: string, note: ProgressNote, proof?: FinishProof, actor?: string): Promise<Outcome<Duel>> { return this.duels.progress(duelId, note, Date.now(), proof, actor ?? null); }
+  /** `covered`: the turn's partner, told by the room's own hint (duels/news.ts sendTurnHints), so left out of the news here. */
+  duelProgress(duelId: string, note: ProgressNote, proof?: FinishProof, actor?: string, covered?: string): Promise<Outcome<Duel>> { return this.duels.progress(duelId, note, Date.now(), proof, actor ?? null, covered ?? null); }
   /** A player's label or list pause on the public duels named here (duels/public-routes.ts). Returns how many changed. */
   duelPublicPlayer(player: string, ids: string[], change: { label?: string | null; hidden?: boolean }): number { return this.duels.publicPlayer(player, ids, change, Date.now()); }
   /** Keeps a final duel's pay as one player's read showed it, once (duels/payout-receipt.ts). Returns whether it was kept. */

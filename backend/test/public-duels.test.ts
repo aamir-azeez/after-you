@@ -13,6 +13,7 @@ import { DIRECTORY_NAME } from "../src/duels/directory";
 import { PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "../src/duels/rules";
 import type { Duel, DuelView } from "../src/duels/model";
 import { POLLEN_CLIENT, configJson } from "./config";
+import { countAllRequests } from "./meter";
 import { PUBLIC_DUELS_HEADER, PUBLIC_TERMS_VERSION, TERMS_VERSION } from "../src/public-policy";
 import spots from "../../game/tests/fixtures/public_duels/spots.json";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -309,8 +310,35 @@ describe("public duels", () => {
       expect(body, path).not.toContain(other.player_id);
     }
     expect(await ok<Any>(call(`/v2/rooms/${room.room_id}/presence`, "GET", lone))).toMatchObject({ partner_online: false });
+    // Even while the stranger is online nothing about it is read: the room answers after its pair gate, 2 requests with a warm memo (it was 9).
+    for (const [asker, other] of [[lone, poster], [poster, lone]] as [Account, Account][]) {
+      await ok(call("/v1/presence", "POST", other, { schema_version: 1, session_id: "d".repeat(36), online: true }));
+      expect(await ok<Any>(call(`/v2/rooms/${room.room_id}/presence`, "GET", asker))).toEqual({ schema_version: 1, partner_joined: true, partner_online: false, expires_after_seconds: 0 });
+      const read = await countAllRequests(env, async () => ok<Any>(call(`/v2/rooms/${room.room_id}/presence`, "GET", asker)));
+      expect(read.value).toEqual({ schema_version: 1, partner_joined: true, partner_online: false, expires_after_seconds: 0 });
+      expect(read.calls.sort()).toEqual(["PLAYERS.authorizeRoom", "ROOMS_V2.partnerPresence"]);
+    }
     // The board knows the guest entered: their leaving now ends the side instead of reopening the seat.
     expect((await boardDuel(posted.duel_id)).public!.seats[1].entered).toBe(true);
+  });
+
+  it("read a list page again for auth and the reader's Member row only, and read their own blocks afresh once a block changes their safety token", async () => {
+    const [poster, reader] = await Promise.all([player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await listFor(reader, rows => rows.some(row => row.duel_id === posted.duel_id));
+    const page = () => countAllRequests(env, async () => ok<{ rows: Row[] }>(call("/v1/duels/public/list/all/newest/0", "GET", reader)));
+    // The listing is cached in this isolate too, so a page read again is auth and the Member row: 2 requests (it was 3).
+    const again = await page();
+    expect(again.value.rows.map(row => row.duel_id)).toContain(posted.duel_id);
+    expect(again.calls.sort()).toEqual(["LEADERBOARD_MEMBERS.read", "PLAYERS.authorizeNamed"]);
+    // A block (here of the poster, through the seat) gives the reader a new token: the next page reads their blocks and hides the duel.
+    await ok(join(reader, posted));
+    await ok(call(`/v1/duels/public/${RELAY}/${posted.duel_id}/block`, "POST", reader, { schema_version: 1, seat: 0 }));
+    const second = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await forgetCachedListings();
+    const after = await page();
+    expect(after.calls).toContain("SAFETY_PROFILES.blocks");
+    expect(after.value.rows.map(row => row.duel_id)).not.toContain(second.duel_id);
   });
 
   it("block by seat, leaving the duel for your own partner, list the block by handle only, and hide the blocker's duels from the blocked", async () => {

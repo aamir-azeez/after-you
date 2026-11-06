@@ -445,9 +445,10 @@ async function duelDetail(env: Env, player: string, duel: Duel): Promise<unknown
 
 /**
  * The signed-in routes under /v1/duels; null for any other path or while duels are off. `look`: the caller's
- * look from auth() while looks are on (pollen/looks-routes.ts looksDuelRoute), undefined otherwise.
+ * look from auth() while looks are on (pollen/looks-routes.ts looksDuelRoute), undefined otherwise. `safetyToken`: the
+ * caller's, which auth() gives the public list read (public-routes.ts publicListRoute).
  */
-export async function routeDuels(request: Request, path: string, player: string, env: Env, look?: Look): Promise<unknown | null> {
+export async function routeDuels(request: Request, path: string, player: string, env: Env, look?: Look, safetyToken?: string): Promise<unknown | null> {
   if ((path !== DUELS_PREFIX && !path.startsWith(DUELS_PREFIX + "/")) || !duelsOn(env)) return null;
   const now = Date.now();
   // PUT is only the public duels switch.
@@ -455,7 +456,7 @@ export async function routeDuels(request: Request, path: string, player: string,
   if (request.method === "GET") {
     if (path === DUELS_PREFIX) return lobby(env, player, now, look);
     if (path === DUELS_PREFIX + "/ghosts") return ghosts(env);
-    if (path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) { const answer = await routePublicDuels(request, path, player, env, now, null, look); if (answer !== null) return answer; }
+    if (path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) { const answer = await routePublicDuels(request, path, player, env, now, null, look, safetyToken); if (answer !== null) return answer; }
     const match = DUEL_PATH.exec(path);
     if (match && !match[3]) return duelAction(env, player, boardOf(match[1]), match[2], undefined, null, now);
     if (match?.[3] === "their-run") return theirRun(env, player, boardOf(match[1]), match[2], now);

@@ -12,7 +12,7 @@ extends SceneTree
 ## (c) feature switches: capability fields are read in relay_online_session.gd;
 ## (d) offline: a screen that reaches the server holds its buttons (offline_hold.gd);
 ## (e) names: FriendNicknames.display_name, the leaderboard pair title, and in a public
-##     duel's room services/room_partner_names.gd (its partner id is a stand-in);
+##     duel's room services/room_partner_names.gd (its partner id is a stand-in, and it gates partner presence);
 ## (f) Pollen amounts: PollenMoney.grouped beside every amount;
 ## (g) saves: services/atomic_file.gd writes every file;
 ## (h) server writes: each one is classed, keyed or safe to repeat;
@@ -111,6 +111,9 @@ const NAME_EXEMPT := {
 
 ## The room surfaces that name a room's partner: each asks room_partner_names.gd first.
 const ROOM_NAME_SURFACES := ["res://relay_preview.gd", "res://presentation/room_hub_flow.gd", "res://presentation/replays_flow.gd"]
+## The room surfaces that read or show a partner's presence: each asks room_partner_names.gd presence_shown first, so a
+## public duel's room neither shows it nor spends a read on it.
+const ROOM_PRESENCE_SURFACES := ["res://main.gd", "res://relay_preview.gd"]
 
 ## (f) Constants holding a count that is never Pollen, though they read like an amount.
 const POLLEN_COUNTS := {"POLLEN_BANK_REFILL": "turns the bank gains each Monday"}
@@ -393,6 +396,13 @@ func _names() -> void:
 		_check(_sources.has(path), "NAME_EXEMPT names %s, which is gone: delete it" % path)
 	for path: String in ROOM_NAME_SURFACES:
 		_check(str(_sources.get(path, "")).contains("RoomPartnerNames.public_partner("), "%s names a room's partner without services/room_partner_names.gd: in a public duel's room it would call a stranger 'a friend'" % path)
+	for path: String in ROOM_PRESENCE_SURFACES:
+		_check(str(_sources.get(path, "")).contains("RoomPartnerNames.presence_shown("), "%s reads or shows a room partner's presence without services/room_partner_names.gd presence_shown: a public duel's room would read a stranger's" % path)
+	# Every presence badge the room screen builds is behind its gate, on the same line or the one before.
+	var lines: PackedStringArray = str(_sources.get("res://relay_preview.gd", "")).split("\n")
+	for index in lines.size():
+		if lines[index].contains("_presence_badge()") and not lines[index].strip_edges().begins_with("func "):
+			_check(lines[index].contains("_presence_available()") or (index > 0 and lines[index - 1].contains("_presence_available()")), "relay_preview.gd builds a presence badge without _presence_available(): a public duel's room would show a stranger's status (line %d)" % (index + 1))
 
 # (f) Pollen amounts ---------------------------------------------------------
 

@@ -21,8 +21,9 @@ const DUELS_BUSY_RUNNING := 5
 ## change, a duel that ended) comes at least this long after the last one
 ## began, so a burst of them reads once. Own actions and opening read at once.
 const DUELS_LIST_HINT_GAP_MS := 10000
-## An open duel's page (about 2 Durable Object requests a read).
-const DUEL_INTERVAL_MS := 30000
+## An open duel's page while the live socket is down (about 2 Durable Object requests a read); once a
+## minute, as its other pages are. With the socket up, changes come as hints (DUEL_BACKUP_MS).
+const DUEL_INTERVAL_MS := 60000
 ## An open ghost race whose run waits for its replay check (the job runs every 15 minutes).
 const DUEL_CHECK_INTERVAL_MS := 60000
 ## The backup paces while duel changes come as live hints (duels_flow.gd): only

@@ -5,7 +5,7 @@ import worker from "../src/index";
 import { digest, randomToken, type Outcome } from "../src/protocol";
 import { RELAY_KEY } from "../src/v2/chapters";
 import { PRESENCE_CHANGES_PER_MINUTE, PRESENCE_TTL_MS } from "../src/presence";
-import { meterRows } from "./meter";
+import { countAllRequests, meterRows } from "./meter";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Room = { room_id: string; invite_code: string };
@@ -152,6 +152,55 @@ describe("short-lived room-scoped presence", () => {
       } };
       expect((await call(p.path + "/presence", "GET", p.host, undefined, { PLAYERS: players })).status).toBe(action === "delete" ? 404 : 403);
     }
+  });
+  it.each(["block", "block_by_asker", "delete", "recover"] as const)("v2: a %s landing right after the partner's read is still caught, whichever object reads it", async action => {
+    const p = await pair(2); expect((await heartbeat(p.guest)).status).toBe(200);
+    // Warm the room's block memo first, so the read under test takes the cheap path.
+    expect((await call(p.path + "/presence", "GET", p.host)).status).toBe(200);
+    let fired = false, asker = p.host;
+    const act = async () => {
+      if (fired) return; fired = true;
+      if (action === "delete") value(await env.ROOMS_V2.getByName(p.room.room_id).eraseForPlayer(p.guest.player_id));
+      else if (action === "block") value(await env.SAFETY_PROFILES.getByName(p.guest.player_id).setBlock(p.guest.player_id, await digest(p.guest.device_token), p.host.player_id, true));
+      else if (action === "block_by_asker") value(await env.SAFETY_PROFILES.getByName(p.host.player_id).setBlock(p.host.player_id, await digest(p.host.device_token), p.guest.player_id, true));
+      else asker = await recover(p.host);
+    };
+    const deferring = (base: Env["PLAYERS"]) => ({ getByName: (id: string) => {
+      const target = base.getByName(id) as unknown as Record<string, (...args: unknown[]) => unknown>;
+      // Every other call goes through to the real Player (an RPC method is called through its stub).
+      return new Proxy({}, { get: (_, method) => method === "presenceExpiry"
+        ? async (owner: string) => { const expires = await target.presenceExpiry(owner); await act(); return expires; }
+        : typeof method === "string" ? (...args: unknown[]) => target[method](...args) : undefined });
+    } }) as unknown as Env["PLAYERS"];
+    // The partner's lease is read either by the Worker or by the room itself; both are made to defer.
+    const room = env.ROOMS_V2.getByName(p.room.room_id);
+    const original = await runInDurableObject(room, async instance => { const own = Reflect.get(instance, "env") as Env; Reflect.set(instance, "env", { ...own, PLAYERS: deferring(own.PLAYERS) }); return own; });
+    try {
+      const answer = await call(p.path + "/presence", "GET", p.host, undefined, { PLAYERS: deferring(env.PLAYERS) });
+      expect(fired).toBe(true);
+      expect(answer.status).toBe(action === "delete" ? 404 : action === "recover" ? 401 : 403);
+    } finally { await runInDurableObject(room, async instance => { Reflect.set(instance, "env", original); }); }
+    void asker;
+  });
+  it("a v2 partner presence read costs 6 requests with a cold block memo and 4 warm, all counted (it cost 9 either way)", async () => {
+    const p = await pair(2); expect((await heartbeat(p.guest)).status).toBe(200);
+    const read = () => countAllRequests(env, async counted => { const answer = await call(p.path + "/presence", "GET", p.host, undefined, counted as unknown as Record<string, unknown>); expect(answer.status).toBe(200); return answer.json<Record<string, unknown>>(); });
+    const cold = await read();
+    expect(cold.value).toMatchObject({ partner_joined: true, partner_online: true });
+    expect(cold.calls.sort()).toEqual(["PLAYERS.authorizeRoom", "PLAYERS.authorizeRoom", "PLAYERS.presenceExpiry", "ROOMS_V2.partnerPresence", "SAFETY_PROFILES.hasBlocked", "SAFETY_PROFILES.hasBlocked"]);
+    const warm = await read();
+    expect(warm.value).toMatchObject({ partner_joined: true, partner_online: true });
+    expect(warm.calls.sort()).toEqual(["PLAYERS.authorizeRoom", "PLAYERS.authorizeRoom", "PLAYERS.presenceExpiry", "ROOMS_V2.partnerPresence"]);
+    // A token the room has not seen (a block involving the asker elsewhere, or an evicted Player) takes the room's full check
+    // before the lease read; a token that changes during the read is checked after it (the deferred block tests above).
+    await env.PLAYERS.getByName(p.host.player_id).rotateSafetyToken();
+    const rotated = await read();
+    expect(rotated.calls.filter(name => name === "SAFETY_PROFILES.hasBlocked")).toHaveLength(2);
+    // A room with no partner yet reads nobody's lease and asks nothing after the room.
+    const lone = await pair(2, false);
+    const waiting = await countAllRequests(env, async counted => (await call(lone.path + "/presence", "GET", lone.host, undefined, counted as unknown as Record<string, unknown>)).json());
+    expect(waiting.value).toEqual({ schema_version: 1, partner_joined: false, partner_online: false, expires_after_seconds: 0 });
+    expect(waiting.calls.sort()).toEqual(["PLAYERS.authorizeRoom", "ROOMS_V2.partnerPresence"]);
   });
   it("omits leases from existing portable formats and restores offline without relaxing unknown storage holds", async () => {
     const a = await create(); expect((await heartbeat(a)).status).toBe(200);

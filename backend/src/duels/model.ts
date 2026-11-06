@@ -438,14 +438,16 @@ export function milestone(duel: Duel): Milestone {
 
 /**
  * The players to tell that `duel` moved from `before` (null: not seen before, so everyone), leaving out
- * `actor`, whose own reply already shows it. Empty when nothing that matters changed.
+ * `actor`, whose own reply already shows it, and `covered`, who hears of it another way (a duel room turn's partner,
+ * news.ts sendTurnHints). Empty when nothing that matters changed.
  */
-export function newsRecipients(before: Milestone | null, duel: Duel, actor: string | null): string[] {
+export function newsRecipients(before: Milestone | null, duel: Duel, actor: string | null, covered: string | null = null): string[] {
   const now = milestone(duel), told = new Set<string>();
   const members = (side: Side | null): string[] => ((side?.members ?? []) as (string | null)[]).filter((id): id is string => id !== null);
   if (!before || before.shared !== now.shared) for (const id of players(duel)) told.add(id);
   else duel.sides.forEach((side, index) => { if (before.rooms[index] !== now.rooms[index]) for (const id of members(side)) told.add(id); });
   if (actor) told.delete(actor);
+  if (covered) told.delete(covered);
   return [...told];
 }
 

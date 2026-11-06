@@ -200,7 +200,7 @@ func _run() -> void:
 	flow.open()
 	_check(not flow.is_open() and flow.room_kind(ROOM) == "", "duels stay hidden while the server has them off")
 	var ghost_wait := {"kind": "ghost", "mine": 0, "sides": [{"check": "waiting"}, null]}
-	_check(Flow.refresh_ms(ghost_wait) == Clock.DUEL_CHECK_INTERVAL_MS and Flow.refresh_ms({"kind": "ghost", "mine": 0, "sides": [{"check": "none"}, null]}) == Clock.DUEL_INTERVAL_MS and Flow.refresh_ms({"kind": "friend", "mine": 1, "sides": [{"check": "none"}, {"check": "waiting"}]}) == Clock.DUEL_INTERVAL_MS, "a ghost race waiting for its check reads less often, every other duel as before")
+	_check(Flow.refresh_ms(ghost_wait) == Clock.DUEL_CHECK_INTERVAL_MS and Flow.refresh_ms({"kind": "ghost", "mine": 0, "sides": [{"check": "none"}, null]}) == Clock.DUEL_INTERVAL_MS and Flow.refresh_ms({"kind": "friend", "mine": 1, "sides": [{"check": "none"}, {"check": "waiting"}]}) == Clock.DUEL_INTERVAL_MS and Clock.DUEL_INTERVAL_MS == 60000, "without hints an open duel reads once a minute, a ghost race waiting for its check too")
 	main.relay_session.on = true
 	flow.open()
 	await _frames(4)
@@ -410,7 +410,7 @@ func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	await _frames(3)
 	_check(reads.call(lobby_path) == before + 7, "a quiet lobby only reads when asked")
 	api.replies["GET " + lobby_path] = running_lobby
-	# An open duel reads every 30 s; the lobby under it does not read on its own.
+	# Without hints an open duel reads once a minute; the lobby under it does not read on its own.
 	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _view({})}}
 	flow._open_duel(Client.valid_view(_view({})))
 	await _frames(3)
@@ -418,12 +418,12 @@ func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	var duel_reads: int = reads.call(duel_path)
 	var at := t + 600000
 	flow._tick(at)
-	flow._tick(at + 29999)
+	flow._tick(at + 59999)
 	await _frames(3)
-	_check(reads.call(duel_path) == duel_reads, "an open duel does not read before 30 s")
-	flow._tick(at + 30000)
+	_check(reads.call(duel_path) == duel_reads, "an open duel does not read before a minute")
+	flow._tick(at + 60000)
 	await _frames(3)
-	_check(reads.call(duel_path) == duel_reads + 1 and reads.call(lobby_path) == lobby_reads, "an open duel reads after 30 s, and the lobby under it does not")
+	_check(reads.call(duel_path) == duel_reads + 1 and reads.call(lobby_path) == lobby_reads, "an open duel reads after a minute, and the lobby under it does not")
 	flow._notification(NOTIFICATION_APPLICATION_PAUSED)
 	flow._tick(at + 100000)
 	await _frames(3)
@@ -432,14 +432,14 @@ func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	await _frames(3)
 	_check(reads.call(duel_path) == duel_reads + 2 and reads.call(lobby_path) == lobby_reads, "coming back reads the open duel once, and not the lobby under it")
 	api.replies["GET " + duel_path] = {"ok": false, "code": "connection_interrupted"}
-	flow._tick(at + 130000)
-	await _frames(3)
-	for later: int in [135000, 145000]: flow._tick(at + later)
-	await _frames(3)
-	_check(reads.call(duel_path) == duel_reads + 3, "a failed duel read is not retried within 30 s")
 	flow._tick(at + 160000)
 	await _frames(3)
-	_check(reads.call(duel_path) == duel_reads + 4, "an open duel reads again 30 s after a failed read")
+	for later: int in [165000, 205000]: flow._tick(at + later)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 3, "a failed duel read is not retried within a minute")
+	flow._tick(at + 220000)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 4, "an open duel reads again a minute after a failed read")
 	# A ghost race waiting for its check reads once a minute.
 	var ghost := _view({"members": [ME, null], "finished": true, "check": "waiting"})
 	ghost.kind = "ghost"
@@ -449,7 +449,7 @@ func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow._open_duel(Client.valid_view(ghost))
 	await _frames(3)
 	duel_reads = reads.call(duel_path)
-	at = t + 800000
+	at = t + 900000
 	flow._tick(at)
 	flow._tick(at + 30000)
 	await _frames(3)

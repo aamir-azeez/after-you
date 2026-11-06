@@ -2,6 +2,7 @@ extends "res://tests/test_chapter_exit.gd"
 const Presence = preload("res://services/friend_presence.gd")
 const PresenceTests = preload("res://tests/test_friend_presence.gd")
 const LiveTick = preload("res://services/relay_journey.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
 
 func _run() -> void:
 	for key: String in Registry.keys():
@@ -31,6 +32,17 @@ func _room_ui(key: String) -> void:
 	app.api.base_url = "https://presence.invalid"
 	await RoomEntry.enter(self, app)
 	var preview: Node = app.relay_child
+	# A public duel's room shows no partner presence (RoomPartnerNames.presence_shown), so it asks for none; any other room does.
+	var room_id: String = app.relay_session.last_room()
+	_check(service._room == room_id, "An ordinary room's partner presence is read: " + key)
+	var duels: RefCounted = DuelsClient.shared(app.api, str(app.api.player_id))
+	var kept: Dictionary = duels._saved.duplicate(true)
+	duels._saved = {"rooms": {room_id: "public"}}
+	app._sync_presence()
+	_check(service._room.is_empty(), "A public duel's room reads no partner presence: " + key)
+	duels._saved = kept
+	app._sync_presence()
+	_check(service._room == room_id, "and the same room reads it again once it is not public: " + key)
 	preview.set_process(false)
 	preview.set_physics_process(false)
 	await process_frame

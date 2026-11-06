@@ -440,6 +440,28 @@ export class SafetyInbox extends DurableObject<Env> {
 async function rotateSafetyTokens(env: Env, players: string[]): Promise<void> {
   await Promise.all(players.map(id => env.PLAYERS.getByName(id).rotateSafetyToken()));
 }
+/** Own block lists kept in this isolate for reads that only hide (ownBlocks): how long, and for how many players at most. */
+export const OWN_BLOCKS_MS = 60_000;
+const OWN_BLOCKS_MAX = 512;
+const ownBlocksSeen = new Map<string, { token: string; blocked: readonly string[]; until: number }>();
+/**
+ * A player's own block list for a read that only hides what it lists (the public duel list, duels/public-routes.ts).
+ * With the safety token auth() gave this request, a list read in the last minute under the same token is reused:
+ * a block that involves the player gives them a new token before it answers (rotateSafetyTokens), so a new block
+ * always reads afresh, and an evicted Player starts a new token too. An unblock keeps the token, so the kept list may
+ * hide that player up to a minute longer; it never shows anyone blocked. Memory only, per isolate.
+ */
+export async function ownBlocks(env: Env, player: string, safetyToken?: string): Promise<readonly string[]> {
+  const now = Date.now(), seen = safetyToken === undefined ? undefined : ownBlocksSeen.get(player);
+  if (seen && seen.token === safetyToken && now < seen.until) return seen.blocked;
+  const blocked = (await env.SAFETY_PROFILES.getByName(player).blocks(player)).blocked_players;
+  if (safetyToken !== undefined) {
+    ownBlocksSeen.delete(player);
+    if (ownBlocksSeen.size >= OWN_BLOCKS_MAX) ownBlocksSeen.delete(ownBlocksSeen.keys().next().value!);
+    ownBlocksSeen.set(player, { token: safetyToken, blocked, until: now + OWN_BLOCKS_MS });
+  }
+  return blocked;
+}
 export async function interactionBlocked(env: Env, a: string, b: string | null): Promise<boolean> {
   if (!b) return false;
   const [ab, ba] = await Promise.all([env.SAFETY_PROFILES.getByName(a).hasBlocked(a, b), env.SAFETY_PROFILES.getByName(b).hasBlocked(b, a)]);

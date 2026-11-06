@@ -134,6 +134,13 @@ export class Player extends DurableObject<Env> {
     this.grantFriendsRefresh(current);
     return sendLive(liveSockets(this.ctx, current.device_hash), liveMessage(hint)) > 0;
   }
+  /** Room and duel hints in one call, in order, each as liveHint sends it (a duel room's turn, duels/news.ts sendTurnHints). Friends hints never ride here. */
+  async liveHints(owner: string, hints: LiveHint[]): Promise<boolean> {
+    let sent = false;
+    // Each on its own, so a failed room hint never drops the duel's.
+    for (const hint of Array.isArray(hints) ? hints.slice(0, 2) : []) if (validLiveHint(hint) && hint.kind !== "friends") sent = await this.liveHint(owner, hint).catch(() => false) || sent;
+    return sent;
+  }
   private acceptedFriend(identity: Identity, peer: string, requestId: string): boolean {
     const link = this.social(identity).links.find(x => x.player_id === peer);
     return !!link && link.accepted && link.request_id === requestId;
@@ -191,9 +198,10 @@ export class Player extends DurableObject<Env> {
    * auth() uses it only on the routes that write the name into a room (display-names.ts namesRoomRoute).
    * `pollen`: also the player's Full Journey end (fj_until), for routes that write it into a room while Pollen earning is on.
    */
-  authorizeNamed(deviceHash: string, pollen = false, looks = false): { authorized: boolean; linked: boolean; display_name?: string | null; fj_until?: number; look?: Look } {
+  authorizeNamed(deviceHash: string, pollen = false, looks = false, token = false): { authorized: boolean; linked: boolean; display_name?: string | null; fj_until?: number; look?: Look; safety_token?: string } {
     const identity = this.authorized(deviceHash);
-    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks) } : { authorized: false, linked: true };
+    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks),
+      ...(token ? { safety_token: this.safetyToken } : {}) } : { authorized: false, linked: true };
   }
   /** The Full Journey end a room copies for its boost: none while the tester switch has this player as without Full Journey. */
   private roomFullJourneyUntil(identity: Identity): number {
@@ -1265,4 +1273,4 @@ answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ autho
   restoreLinked: () => fail(404, "identity_absent"), recoveryMatches: () => false,
   storedAccess: () => ({ grant: null, full_journey_off: false }), noteEntitlement: () => undefined,
   // No identity, so no socket: a hint is dropped and an upgrade (unreachable past auth()) is refused.
-  liveHint: async () => false, fetch: () => liveUnauthorized() });
+  liveHint: async () => false, liveHints: async () => false, fetch: () => liveUnauthorized() });

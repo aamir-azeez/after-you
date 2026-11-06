@@ -18,7 +18,7 @@ import { MAX_BOARD_DUELS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, M
 import { pairKey } from "../src/leaderboards/run";
 import gameDuelsClient from "../../game/services/duels_client.gd?raw";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
-import { countingEnv, meterRows } from "./meter";
+import { countAllRequests, countingEnv, meterRows } from "./meter";
 import { ledgerLines, noteFullJourney, walletBalance } from "../src/pollen/wallet";
 import { PLATFORM_LINKS_OBJECT } from "../src/platform-links";
 import { POLLEN_CLIENT, configJson, openCostly } from "./config";
@@ -995,17 +995,32 @@ describe("duel hints", () => {
     const hosting: [Account, Account] = joined.host_id === a1.player_id ? [a1, a2] : [a2, a1];
     const named: [string, Account][] = [["a1", a1], ["a2", a2], ["b1", b1], ["b2", b2]];
     const allBut = (actor: Account) => Object.fromEntries(named.map(([name, account]) => [name, account === actor ? 0 : 1]));
-    // Every mid-run turn tells the other pair and the partner (whose page shows whose turn it is): three Player
-    // requests, none to the player who took it, and no row on the other pair's Players. A retried turn tells nobody.
-    // Duel hints only: the room hint each turn already sends the partner is the room's own.
+    // Every mid-run turn tells the other pair and the partner (whose page shows whose turn it is), none to the player
+    // who took it, and no row on the other pair's Players. A retried turn tells nobody. The partner hears once: the
+    // room's hint and the duel's in one Player request after the board has the turn (duels/news.ts sendTurnHints), so
+    // a turn costs three hint requests, not four. Duel hints counted here; the room hint is the partner's first message.
     const hints = vi.spyOn(Player.prototype, "liveHint"), duelHints = () => hints.mock.calls.filter(([, hint]) => hint.kind === "duels").length;
     let current = joined;
+    const others = { b1: players(b1)[0], b2: players(b2)[0] };
     for (const [index, [who, recording, checkpoint]] of run.turns.slice(0, -1).entries()) {
-      const actor = hosting[who], body = turn(current, recording, checkpoint), sent = duelHints();
-      const told = await meterRows({ b1: players(b1)[0], b2: players(b2)[0] }, () => step(sockets, async () => {
-        current = (await ok<MutationV2>(call("/v2/rooms/" + joined.room_id + "/turns", "POST", actor, body))).room;
-      }, allBut(actor)));
+      const actor = hosting[who], partner = hosting[1 - who], body = turn(current, recording, checkpoint), sent = duelHints();
+      const counted = await countAllRequests(env, () => meterRows(others, () => step(sockets, async () => {
+        const reply = await ok<MutationV2>(call("/v2/rooms/" + joined.room_id + "/turns", "POST", actor, body));
+        // The held partner hint is server only: never in the reply.
+        expect(JSON.stringify(reply)).not.toContain("duel_partner_hint");
+        current = reply.room;
+      }, allBut(actor))));
+      const told = counted.value;
       expect(duelHints() - sent).toBe(3);
+      expect(counted.calls.filter(name => name === "PLAYERS.liveHint")).toHaveLength(2);
+      expect(counted.calls.filter(name => name === "PLAYERS.liveHints")).toHaveLength(1);
+      // A mid-run turn costs 11 requests in all (12 before the partner's two hints became one). Block checks: the room's
+      // gate asks both lists only on a player's first gated request in this room instance (memo), and the commit asks
+      // both again after the body is read and hashed, always: that recheck is real, so it stays.
+      expect(counted.calls.filter(name => name === "SAFETY_PROFILES.hasBlocked")).toHaveLength(index < 2 ? 4 : 2);
+      expect(counted.calls).toHaveLength(index < 2 ? 13 : 11);
+      const partnerSaw = sockets[partner === a1 ? "a1" : "a2"].messages.slice(-2).map(message => message.type);
+      expect(partnerSaw).toEqual(["room_changed", "duels_changed"]);
       expect(told.rows.b1.written + told.rows.b2.written).toBe(0);
       // The hint names the duel at the time its next read shows, with the new step.
       const seen = (await detail(b1, duel)).duel;

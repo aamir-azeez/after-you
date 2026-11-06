@@ -85,6 +85,8 @@ export class DuelStore {
   private loaded: Map<string, Milestone> | null = null;
   private news = new Map<string, DuelNews>();
   private actor: string | null = null;
+  /** Who hears of this call's change another way, left out of its news (newsRecipients). */
+  private covered: string | null = null;
   /** While one call runs: each public duel's listing as first loaded (JSON), and the changes so far. */
   private listings = new Map<string, string>();
   private changes = new Map<string, ListingChange>();
@@ -183,9 +185,9 @@ export class DuelStore {
    * A turn accepted in a duel room. On the turn that finishes a run that
    * waits for the replay check (model.ts awaitsCheck), its final checkpoint
    * waits here for the replay job. Answers the duel. `actor`: the player whose
-   * turn it was, left out of the news.
+   * turn it was, left out of the news, as is `covered` (their partner, told by the room's own hint).
    */
-  async progress(duelId: string, note: ProgressNote, now: number, proof?: FinishProof, actor: string | null = null): Promise<Outcome<Duel>> {
+  async progress(duelId: string, note: ProgressNote, now: number, proof?: FinishProof, actor: string | null = null, covered: string | null = null): Promise<Outcome<Duel>> {
     if (!this.present()) return fail(404, "duel_not_found");
     const checks = this.checks();
     // Encoded before the transaction (compression is async), and only on the side's first finish of a run the check will want.
@@ -204,7 +206,7 @@ export class DuelStore {
       else if (side) { side.check = "error"; decide(duel, now); }
       if (JSON.stringify(duel) !== before) this.save(duel);
       return answer.ok ? ok(duel) : answer;
-    }));
+    }), covered);
   }
 
   /** Duel runs for the replay job, at most `maxChars` of canonical bytes, skipping entries the board already hands out. */
@@ -350,12 +352,13 @@ export class DuelStore {
    * Runs one synchronous call with news on, then hands what it found to `announce`
    * once the transaction is done, so a call that throws tells nobody. Never spans an await.
    */
-  private tell<T>(actor: string | null, work: () => T): T {
+  private tell<T>(actor: string | null, work: () => T, covered: string | null = null): T {
     this.loaded = new Map();
     this.news = new Map();
     this.listings = new Map();
     this.changes = new Map();
     this.actor = actor;
+    this.covered = covered;
     let found: DuelNews[] = [], changed: ListingChange[] = [];
     try {
       const value = work();
@@ -368,6 +371,7 @@ export class DuelStore {
       this.listings = new Map();
       this.changes = new Map();
       this.actor = null;
+      this.covered = null;
       if (found.length) this.announce(found);
       if (changed.length) this.list(changed);
     }
@@ -412,7 +416,7 @@ export class DuelStore {
   }
   private save(duel: Duel): void {
     if (this.loaded) {
-      const recipients = newsRecipients(this.loaded.get(duel.duel_id) ?? null, duel, this.actor);
+      const recipients = newsRecipients(this.loaded.get(duel.duel_id) ?? null, duel, this.actor, this.covered);
       if (recipients.length) this.news.set(duel.duel_id, { duel_id: duel.duel_id, at: duel.updated_ms, recipients });
     }
     if (isFinal(duel) && duel.kind === "friend" && !duel.copies_queued) { this.queueCopies(duel, duel.updated_ms); duel.copies_queued = true; }

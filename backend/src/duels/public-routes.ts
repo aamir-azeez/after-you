@@ -11,7 +11,7 @@ import type { DuelExtraAnswer, DuelWinAnswer } from "../pollen/duel-pay";
 import { publicDuelsChosen, publicOpenTo, type DuelBlock, type MemberState } from "../leaderboards/member";
 import { creatable } from "../v2/chapters";
 import { termsCovered, termsVersion } from "../public-policy";
-import { SAFETY_REPORT_REASONS, type SafetyReport } from "../safety";
+import { SAFETY_REPORT_REASONS, ownBlocks, type SafetyReport } from "../safety";
 import { DUEL_REQUEST_PREFIX, requestFriend } from "../friends-routes";
 import { isFinal, isOpen, knownKey, viewFor, type Duel } from "./model";
 import { lastingAnswer, type ShownHeld } from "./payout-receipt";
@@ -35,8 +35,9 @@ import { MAX_FRIEND_DUELS_PER_PAIR } from "./rules";
  * And the lobby's `public` part (publicLobby), a public duel's settling at its end (settlePublic) and its held extra
  * on the duel page (publicDetail), which duels/routes.ts calls.
  *
- * Requests (Cloudflare Free plan, PLAN 11): a list page is auth + Member + SafetyProfile + the directory only when
- * the list cache misses; a post or join adds one SafetyProfile per joiner (the rules and blocks, and a Member write
+ * Requests (Cloudflare Free plan, PLAN 11): a list page is auth + Member + SafetyProfile (none when this isolate read
+ * the reader's own blocks under their current safety token in the last minute, safety.ts ownBlocks) + the directory
+ * only when the list cache misses; a post or join adds one SafetyProfile per joiner (the rules and blocks, and a Member write
  * only when its copy of the rules was lost), the boards holding the player's duels (the limit of 10), the board's
  * create or claim, the pointer writes and the hints; the board sends the directory its new listing (1 request, 1 row).
  */
@@ -372,21 +373,27 @@ async function addPublicRefs(env: Env, players: readonly string[], ref: DuelRef,
   for (const id of closed) if (id) await duelsAt(env, ref.board).publicPlayer(id, [ref.duel_id], { hidden: true });
 }
 
-/** GET .../list/<scope>/<sort>/<page>: one reader's page. */
-async function list(env: Env, player: string, scope: string, sort: ListSort, index: number, now: number): Promise<unknown> {
+/** The list read (GET .../list/...), whose auth() also gives the reader's safety token for ownBlocks. */
+export function publicListRoute(request: Request, path: string): boolean { return request.method === "GET" && LIST_PATH.test(path); }
+
+/**
+ * GET .../list/<scope>/<sort>/<page>: one reader's page. Its own checks: the Member row (who blocked them) and their
+ * own block list, which safety.ts ownBlocks keeps per safety token, so a page read again soon costs auth and the Member.
+ */
+async function list(env: Env, player: string, scope: string, sort: ListSort, index: number, now: number, safetyToken?: string): Promise<unknown> {
   if (scope !== "all") boardOf(scope);
-  const [member, blocks, all] = await Promise.all([party(env, player).read() as Promise<MemberState>, env.SAFETY_PROFILES.getByName(player).blocks(player), listings(env, now)]);
-  const avoid = new Set([...blocks.blocked_players, ...(member.blocked_by ?? [])]);
+  const [member, blocked, all] = await Promise.all([party(env, player).read() as Promise<MemberState>, ownBlocks(env, player, safetyToken), listings(env, now)]);
+  const avoid = new Set([...blocked, ...(member.blocked_by ?? [])]);
   return { schema_version: 1, page: index, ...page(all, player, avoid, scope, sort, index, now, looksOn(env)) };
 }
 
 /** The signed-in routes under /v1/duels/public; null for any other path. The caller checked publicDuelsOn. */
-export async function routePublicDuels(request: Request, path: string, player: string, env: Env, now: number, input: unknown, look?: Look): Promise<unknown | null> {
+export async function routePublicDuels(request: Request, path: string, player: string, env: Env, now: number, input: unknown, look?: Look, safetyToken?: string): Promise<unknown | null> {
   if (path !== PUBLIC_PREFIX && !path.startsWith(PUBLIC_PREFIX + "/")) return null;
   if (request.method === "GET") {
     const match = LIST_PATH.exec(path);
     if (!match) throw new ApiError(404, "not_found");
-    return list(env, player, match[1], match[2] as ListSort, Number(match[3]), now);
+    return list(env, player, match[1], match[2] as ListSort, Number(match[3]), now, safetyToken);
   }
   if (path === PUBLIC_PREFIX + "/me") {
     if (request.method !== "PUT") throw new ApiError(405, "method_not_allowed");

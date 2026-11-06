@@ -54,6 +54,7 @@ const FacePacks = preload("res://services/face_packs.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
+const RoomPartnerNames = preload("res://services/room_partner_names.gd")
 const PollenClient = preload("res://services/pollen_client.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -2956,7 +2957,10 @@ func _sync_presence() -> void:
 	elif not active_room.is_empty() and (mode == LegacyRoomFlow.MODE_ROOM or (room_play and mode in ["ready", "play", "preview", "review", "paused", "saved", "completion"])):
 		family = "v1"
 		room = str(active_room.get("room_id", ""))
-	if family == "v2":
+	if family == "v2" and not RoomPartnerNames.presence_shown(room):
+		# A public duel's room never shows its partner's presence, so it reads none (the server answers it unread too).
+		friend_presence.monitor_room("", "")
+	elif family == "v2":
 		var factory := _room_context_factory()
 		var context: RefCounted = factory.for_room(room,"presence")
 		friend_presence.monitor_room(family,room,context,true)

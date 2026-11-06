@@ -592,7 +592,7 @@ func _build_ui() -> void:
 	run_reactions.visible = false
 	controls.dock_beside_finish(run_reactions, RunReactions.SIZE)
 	run_reactions.reacted.connect(_react_in_run)
-	if is_instance_valid(friend_presence) and online_session != null:
+	if _presence_available():
 		presence_hud = _presence_badge()
 		hud.add_child(presence_hud)
 		presence_hud.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)

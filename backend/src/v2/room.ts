@@ -41,8 +41,9 @@ import { anyDeparture, clearDepartures, departed, isMember, recordDeparture } fr
 import { HostAccessMemo } from "./host-access";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import { UnblockedPairMemo } from "./block-memo";
+import { partnerLease, type PartnerLease, type RoomPair } from "../presence";
 import { observeRoom, pushRoomIndex } from "../room-index-sync";
-import { announceRoomChange, liveRecipient, liveRoomHint, type LiveHint, type LiveRoomMembers } from "../live";
+import { announceRoomChange, liveRecipient, liveRoomHint, type LiveHint, type LiveRoomMembers, type PartnerHint } from "../live";
 import { clearMemberNames, eraseMemberName, memberName, recordMemberName } from "../display-names";
 import { clearPollenRoom, completionFacts, recordMember, recordTurnFacts, turnFacts, type PollenMember, type TurnFacts } from "../pollen/turn-facts";
 import { clearLooks, eraseMemberLook, eraseTurnLooksOf, memberLook, recordMemberLook, recordTurnLook, turnLooks } from "../pollen/room-looks";
@@ -101,7 +102,8 @@ export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 } & BesideFi
  * A standalone turn that finishes the room while looks are on returns both members' looks for its leaderboard post (leaderboards/run-looks.ts), also taken out.
  * A duel room's turn also returns its duel (duels/room-link.ts), which the Worker takes out likewise (duels/turn-hook.ts).
  */
-export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?: PairLooks; duel_link?: DuelLink; duel_looks?: PairLooks };
+/** `duel_partner_hint` (server only, like `duel_link`): a duel room's turn still in play holds its partner's live hint for the route to send with the duel's (duels/news.ts sendTurnHints). */
+export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?: PairLooks; duel_link?: DuelLink; duel_looks?: PairLooks; duel_partner_hint?: PartnerHint };
 /**
  * What a standalone member's read or turn reply carries beside the room, each
  * only when the member asked for it (names and looks also while their flags are on): the room's end reactions
@@ -192,14 +194,24 @@ export class RoomV2 extends DurableObject<Env> {
   campaignRoomNegotiation(supported: boolean) { return campaignRoomNegotiation(this.ctx.storage, supported === true); }
   private readonly unblocked = new UnblockedPairMemo();
   /**
-   * The router's check before a room request: membership as safetyMembers answers it, then blocks.
-   * With the requester's safety token the pair's "not blocked" is remembered until a block changes a token.
+   * The one pair gate: membership as safetyMembers answers it, then blocks. With the requester's safety token the
+   * pair's "not blocked" is remembered until a block changes a token. Answers the pair it checked.
    */
-  async interactionAllowed(player: string, context?: CampaignRoomContext, safetyToken?: string): Promise<Outcome<true>> {
+  private async pairGate(player: string, context: CampaignRoomContext | undefined, safetyToken: string | undefined): Promise<Outcome<RoomPair>> {
     const members = await this.safetyMembers(player, context); if (!members.ok) return members;
     const { host_id: host, guest_id: guest } = members.value, check = () => interactionBlocked(this.env, host, guest);
     const blocked = safetyToken === undefined ? await check() : await this.unblocked.blocked(player, safetyToken, host, guest, check);
-    return blocked ? fail(403, "player_blocked") : ok(true);
+    return blocked ? fail(403, "player_blocked") : members;
+  }
+  /** The router's check before a room request (pairGate). */
+  async interactionAllowed(player: string, context?: CampaignRoomContext, safetyToken?: string): Promise<Outcome<true>> {
+    const gate = await this.pairGate(player, context, safetyToken);
+    return gate.ok ? ok(true) : gate;
+  }
+  /** GET /v2/rooms/<id>/presence for an ordinary room: the pair gate, then the partner's lease (presence.ts partnerLease). */
+  async partnerPresence(player: string, safetyToken?: string): Promise<Outcome<PartnerLease>> {
+    const gate = await this.pairGate(player, undefined, safetyToken); if (!gate.ok) return gate;
+    return partnerLease(this.env, player, gate.value, () => this.safetyMembers(player));
   }
   // Premium turn admission memo; the policy lives in v2/host-access.ts.
   private readonly hostAccess = new HostAccessMemo();
@@ -280,7 +292,8 @@ export class RoomV2 extends DurableObject<Env> {
    * With `actor`, the member who did not act also gets one live hint
    * (live.ts): on the index push when there is one, else on its own call.
    */
-  private indexed<T>(outcome: Outcome<T>, reopened = false, actor?: string): Outcome<T> {
+  /** `hold`: takes the partner's live hint instead of sending it, for a change still in play (a duel room's turn, commit). */
+  private indexed<T>(outcome: Outcome<T>, reopened = false, actor?: string, hold?: (held: PartnerHint) => void): Outcome<T> {
     const live = actor !== undefined && flags.liveConnection(this.env);
     if (!outcome.ok) return outcome;
     const state = this.stored();
@@ -290,7 +303,8 @@ export class RoomV2 extends DurableObject<Env> {
     const project = (player: string) => this.projection(player);
     if (reopened || memberStateOf(project(state.host_id)) !== "in_play") {
       pushRoomIndex(this.ctx, this.env, state.room_id, 2, [state.host_id, state.guest_id], project, hint && partner ? { to: partner, hint } : undefined);
-    } else if (hint) announceRoomChange(this.env, promise => this.ctx.waitUntil(promise), state, actor!);
+    } else if (hint && hold && partner) hold({ to: partner, hint });
+    else if (hint) announceRoomChange(this.env, promise => this.ctx.waitUntil(promise), state, actor!);
     return outcome;
   }
   /** Whether this member's chapter has a stage left (or waits for a friend), is finished (archived replays too), or is gone. */
@@ -503,7 +517,7 @@ export class RoomV2 extends DurableObject<Env> {
     });
   }
   /** `public_duel`: a public duel's room, whose members may be strangers (presence and the block route treat it so). */
-  safetyMembers(player: string, context?: CampaignRoomContext): Promise<Outcome<{ host_id: string; guest_id: string | null; public_duel?: true }>> {
+  safetyMembers(player: string, context?: CampaignRoomContext): Promise<Outcome<RoomPair>> {
     return this.project(player, context, () => {
       const state = this.memberView(player); if (!state) return fail(404, "room_not_found");
       return ok({ host_id: state.host_id, guest_id: state.guest_id, ...(duelLink(this.ctx.storage)?.masks ? { public_duel: true as const } : {}) });
@@ -756,12 +770,16 @@ export class RoomV2 extends DurableObject<Env> {
    * `look`: the member's look while looks are on, kept as theirs and as this turn's own look (pollen/room-looks.ts).
    */
   async commit(player: string, value: unknown, context?: CampaignRoomContext, beside: Beside = {}, name?: string | null, pollen?: PollenMember, look?: Look): Promise<Outcome<CommittedV2>> {
-    const outcome = await this.commitTurn(player, value, context, name, pollen, look);
+    // A duel room's turn tells the partner once, after the duel has it (duels/news.ts sendTurnHints).
+    let held: PartnerHint | null = null;
+    const hold = context === undefined && duelLink(this.ctx.storage) ? (hint: PartnerHint) => { held = hint; } : undefined;
+    const outcome = await this.commitTurn(player, value, context, name, pollen, look, hold);
     if (!outcome.ok || context !== undefined) return outcome;
     const facts = pollen !== undefined && outcome.value.receipt.recording_hash ? turnFacts(this.ctx.storage, outcome.value.receipt.recording_hash) : null;
     const finished = outcome.value.room;
     const link = duelLink(this.ctx.storage);
     const extra = { ...(facts?.player_id === player ? { pollen_facts: facts } : {}),
+      ...(held ? { duel_partner_hint: held as PartnerHint } : {}),
       ...(look !== undefined && finished.active_role === "complete" ? { board_looks: pairLooks(this.ctx.storage, finished.host_id, finished.guest_id) } : {}),
       ...(link ? { duel_link: link } : {}),
       // A duel room's turn while looks are on: both members' looks now, host first, for the duel's side (duels/model.ts).
@@ -770,7 +788,7 @@ export class RoomV2 extends DurableObject<Env> {
     const state = this.stored();
     return state ? ok<CommittedV2>({ ...outcome.value, ...this.beside(state, player, beside), ...extra }) : outcome;
   }
-  private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext, name?: string | null, pollen?: PollenMember, look?: Look): Promise<Outcome<MutationV2>> {
+  private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext, name?: string | null, pollen?: PollenMember, look?: Look, hold?: (held: PartnerHint) => void): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value);
       const raw = object(input.recording);
@@ -866,7 +884,7 @@ export class RoomV2 extends DurableObject<Env> {
           await scheduleGameplayNotifications(this.ctx.storage);
         }
         return ok(saved);
-      }), false, player);
+      }), false, player, hold);
       if (theirRun && outcome.ok) this.ctx.waitUntil(encodeTheirRun(this.ctx.storage));
       return outcome;
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -1213,7 +1231,7 @@ answerWhileBlank(RoomV2, {
   safetyMembers: async () => roomNotFound(), snapshot: async () => roomNotFound(), snapshotIfChanged: async () => roomNotFound(), lobbySnapshot: async () => roomNotFound(),
   operation: async () => roomNotFound(), collection: async () => roomNotFound(), pairRecording: async () => roomNotFound(), reactions: async () => roomNotFound(),
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
-  redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
+  redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(), partnerPresence: async () => roomNotFound(),
   hardReset: async () => roomNotFound(), hardFailures: async () => roomNotFound(), clearMemberName: () => false, duelLinkOf: () => null,
   // As a room with no duel answers them (duels/their-run.ts), without making tables first.
   theirRun: async () => fail(410, "their_run_gone"), acknowledgeTheirRun: () => fail(404, "their_run_not_found"), dropTheirRun: () => false,

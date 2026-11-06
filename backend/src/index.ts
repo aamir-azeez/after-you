@@ -51,6 +51,7 @@ import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
 import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
 import { forgetLeaderboardPlayer, forgetLeaderboardPlayerIfKnown } from "./leaderboards/members";
 import { routeDuels } from "./duels/routes";
+import { publicListRoute } from "./duels/public-routes";
 import { limitAuth, limitCostly, limitCostlyRoute, limitPlayer, limitPublic } from "./limits";
 import { maskedResponse } from "./duels/public-mask";
 
@@ -81,8 +82,10 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   const hash = await digest(token), player = env.PLAYERS.getByName(id), room = ROOM_ROUTE.exec(path)?.[1];
   // The same single Player call either way; a room route also learns whether the room is linked.
   const memberRoute = pollenMemberRoute(request, path, env), view = pollenAuthView(request, path, env), looks = looksMemberRoute(request, path, env) || looksDuelRoute(request, path, env);
+  // The public duel list learns the reader's safety token from the same call (safety.ts ownBlocks).
+  const listing = publicListRoute(request, path);
   const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look; face_packs?: string[] } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks, facePacksTurnRoute(request, path))
-    : namesRoomRoute(request, path, env) || memberRoute || looks ? await player.authorizeNamed(hash, memberRoute, looks) : view !== null ? await player.authorizeWallet(hash, view, walletMode(request, env), grantHint(request))
+    : namesRoomRoute(request, path, env) || memberRoute || looks || listing ? await player.authorizeNamed(hash, memberRoute, looks, listing) : view !== null ? await player.authorizeWallet(hash, view, walletMode(request, env), grantHint(request))
     : { authorized: await player.authorize(hash, deleting), linked: true };
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   await limitPlayer(env, id);
@@ -162,7 +165,7 @@ export default {
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
       if (pollenRoute(path, env)) return json(await routePollen(request, path, playerId, env, pollenView));
       const leaderboards = await routeLeaderboards(request, path, playerId, env); if (leaderboards !== null) return json(leaderboards);
-      const duels = await routeDuels(request, path, playerId, env, memberLook); if (duels !== null) return json(duels);
+      const duels = await routeDuels(request, path, playerId, env, memberLook, safetyToken); if (duels !== null) return json(duels);
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
@@ -181,7 +184,7 @@ export default {
       const presenceMatch = path.match(/^\/v([12])\/rooms\/([A-Za-z0-9_-]{22})\/presence$/);
       if (presenceMatch) {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        return json(await roomPresence(env, playerId, await bearerDigest(request), presenceMatch[1] === "1" ? "legacy" : "relay", presenceMatch[2], presenceMatch[1] === "2" ? await campaignRequestContext(request, presenceMatch[2]) : undefined));
+        return json(await roomPresence(env, playerId, await bearerDigest(request), presenceMatch[1] === "1" ? "legacy" : "relay", presenceMatch[2], presenceMatch[1] === "2" ? await campaignRequestContext(request, presenceMatch[2]) : undefined, safetyToken));
       }
       if (path === "/v1/tester-access") return json(await routeTesterAccess(request, playerId, env));
       if (path.startsWith("/v1/safety/")) return json(await routeSafety(request, path, playerId, env));

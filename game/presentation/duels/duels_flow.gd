@@ -33,9 +33,9 @@ extends Node
 ## Reads on their own (services/refresh_schedule.gd keeps the pace): the lobby
 ## once a minute while a challenge or running duel can change without this
 ## player (every two minutes with 5 or more running, whose reads cost the
-## most), an open duel every 30 s (a ghost race waiting for its check once a
-## minute). Nothing reads while the app is in the background or has lost focus,
-## or while the lobby is hidden (the other pair's run playing over it); coming
+## most), and an open duel once a minute too. Nothing reads while the app is in
+## the background or has lost focus, or while the lobby is hidden (the other
+## pair's run playing over it); coming
 ## back reads the screen in front once, at once. Opening, a page closing and
 ## this player's own actions read at once. A failed read keeps the same pace.
 ##

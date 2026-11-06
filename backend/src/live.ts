@@ -125,6 +125,8 @@ function close(socket: WebSocket, code: number, reason: string): void { try { so
 
 type Waiter = (promise: Promise<unknown>) => void;
 type PlayerHints = { getByName(name: string): { liveHint(owner: string, hint: LiveHint): Promise<boolean> } };
+/** A change's one hint to the member who did not act, held back for the caller to send (a duel room's turn, duels/news.ts sendTurnHints). */
+export type PartnerHint = { to: string; hint: LiveHint };
 /** A room's members after a change; the recipient is whoever did not act. */
 export type LiveRoomMembers = { room_id: string; host_id: string; guest_id: string | null; revision: number };
 export function liveRoomHint(room: LiveRoomMembers): LiveHint { return { kind: "room", room_id: room.room_id, revision: room.revision }; }
