@@ -29,7 +29,7 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
   if (!progress || !Number.isFinite(at)) return null;
   const complete = progress.complete && room.active_role === "complete";
   const note: ProgressNote = { room_id: room.room_id, revision: room.revision, steps: progress.steps, ticks: progress.ticks,
-    turn: complete ? null : room.active_player_id, complete, at_ms: at, entry_id: complete ? await entryId(room.room_id, room.branch) : null,
+    turn: complete ? null : nextPlayer(room, link), complete, at_ms: at, entry_id: complete ? await entryId(room.room_id, room.branch) : null,
     ...(looks ? { looks: memberLooks(room, looks) } : {}) };
   // A finish that may wait for the check brings its checkpoint: every friend run, and a ghost race run faster than the
   // developers' ghost. The board decides (model.ts awaitsCheck, which reads DUEL_RUN_CHECKS in the board's own CONFIG),
@@ -37,6 +37,17 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
   const checked = link.kind === "friend" || progress.ticks < (developerGhost(link.board) ?? 0);
   const proof = complete && checked ? { checkpoint: room.checkpoint, simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
   return { note, ...(proof ? { proof } : {}) };
+}
+
+/**
+ * Whose move the room waits for. The room names the guest's slot by its guest, and a host may play the
+ * first turn before the partner joins, so a friend duel's or ghost race's room with no guest yet waits
+ * for the pair's other member, whom the link names. A public room's other seat may still be open or
+ * not yet entered (public.ts enterSeat), so it stays as the room says.
+ */
+function nextPlayer(room: RoomSnapshotV2, link: DuelLink): string | null {
+  if (room.active_player_id !== null || room.guest_id !== null || link.public || link.members.length !== 2 || !link.members.includes(room.host_id)) return room.active_player_id;
+  return link.members.find(id => id !== room.host_id) ?? null;
 }
 
 /**

@@ -500,6 +500,24 @@ describe("ghost races", () => {
     expect(done).toMatchObject({ status: "decided", result: { outcome: run.ticks < ghostTicks ? "won" : run.ticks > ghostTicks ? "lost" : "draw" } });
     expect((await detail(a1, started)).win_bonus).toBeUndefined();
   });
+
+  it("name the partner's turn after a first turn played before the partner joined the room", async () => {
+    const { a1, a2 } = await pairs();
+    const started = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
+    const room = await ok<RoomSnapshotV2>(openRoom(a2, started));
+    const run = await relayRun(0);
+    const [, firstTurn] = run.turns[0];
+    const first = await ok<MutationV2>(call(`/v2/rooms/${room.room_id}/turns`, "POST", a2, turn(room, firstTurn)));
+    expect(first.room).toMatchObject({ guest_id: null, active_role: "b", active_player_id: null });
+    const side = (await lobby(a1)).duels[0].sides[0];
+    // One turn, its own time, and the partner who has not joined yet to play next: never "Not started".
+    expect(side).toMatchObject({ steps: 1, ticks: firstTurn.duration_ticks, turn: side.members.indexOf(a1.player_id) });
+    expect((await lobby(a2)).duels[0].sides[0].turn).toBe(side.members.indexOf(a1.player_id));
+    const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a1, { invite_code: room.invite_code }));
+    const [, secondTurn, checkpoint] = run.turns[1];
+    await ok(call(`/v2/rooms/${room.room_id}/turns`, "POST", a1, turn(joined, secondTurn, checkpoint)));
+    expect((await lobby(a2)).duels[0].sides[0]).toMatchObject({ steps: 2, ticks: (firstTurn.duration_ticks as number) + (secondTurn.duration_ticks as number) });
+  });
 });
 
 describe("the first win over Our run", () => {
