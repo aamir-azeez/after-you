@@ -19,6 +19,8 @@ extends RefCounted
 ## - set_face(shader, extra): the head's own colours from a variant of the
 ##   face shader (spirit_face.gdshaderinc); the eyes and cheeks stay drawn by
 ##   the shared body of that shader.
+## - hide_leaf(): the pip's leaf, and whatever hangs from it, hides while the
+##   item is worn (a cap that brings its own stem and leaf).
 ## - lift_seed(metres, with_leaf): a carried seed sits `metres` higher while
 ##   the item is worn (a tall cap), plus the leaf's lift with `with_leaf` (a
 ##   big leaf that rises with it); the largest ask wins. The seed's place is
@@ -145,6 +147,13 @@ func set_face(shader: Shader, extra: Dictionary = {}) -> void:
 ## Sets one of the face variant's own parameters (from an animate() step).
 func set_face_parameter(key: StringName, value: Variant) -> void:
 	spirit.face_art.material.set_shader_parameter(key, value)
+
+## Hides the pip's leaf (and what hangs from it) while the item is worn.
+func hide_leaf() -> void:
+	var leaf: MeshInstance3D = spirit.sprout
+	if not leaf.visible: return
+	leaf.visible = false
+	_undo.append(func() -> void: if is_instance_valid(leaf): leaf.visible = true)
 
 ## Asks for a carried seed to sit `metres` higher, plus the leaf's lift with `with_leaf`.
 func lift_seed(metres: float, with_leaf: bool = false) -> void:

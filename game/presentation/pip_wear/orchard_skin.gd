@@ -16,8 +16,12 @@ const Meshes = preload("res://presentation/spirit_meshes.gd")
 
 const PETAL := Color("f5b8c9")
 const PETAL_DEEP := Color("ee9fb6")
-## A petal's half sizes: long, thick, wide.
-const PETAL_SIZE := Vector3(0.048, 0.007, 0.03)
+## A resting petal's half sizes: long, thick, wide. Big enough to read as a
+## petal on a shop card.
+const PETAL_SIZE := Vector3(0.072, 0.009, 0.046)
+## A drifting petal's: as long, but narrower, since its width points out from
+## the body and the drift stays inside the head's width.
+const DRIFT_SIZE := Vector3(0.068, 0.008, 0.032)
 const PETAL_SEGMENTS := 8
 const GAP := 0.003
 ## Resting petals: [direction from the part's centre, turn (radians) of the
@@ -25,20 +29,20 @@ const GAP := 0.003
 ## where a carried seed rests.
 const HEAD_PETALS := [
 	[Vector3(-0.3, -0.2, 0.22), 0.5],
-	[Vector3(0.24, 0.17, 0.18), -0.7],
+	[Vector3(0.2, 0.2, 0.24), -0.3],
 	[Vector3(0.33, -0.1, 0.05), 1.2],
 	[Vector3(-0.15, 0.2, -0.2), 0.2],
 ]
 const TORSO_PETALS := [
-	[Vector3(0.35, 0.15, 0.9), -0.4],
-	[Vector3(-0.45, -0.3, 0.85), 0.9],
+	[Vector3(0.35, -0.12, 0.9), -0.4],
+	[Vector3(-0.45, -0.35, 0.85), 0.9],
 	[Vector3(0.75, -0.35, 0.45), 0.3],
-	[Vector3(-0.8, 0.25, -0.2), -0.6],
+	[Vector3(-0.8, -0.15, -0.2), -0.6],
 ]
 ## The drift's petals, upper body space: [angle round the body, height,
 ## distance out, tilt]. All below the face, clear of the body and the feet,
 ## and no wider than the head, so every pip view keeps them in frame.
-const DRIFT := [[0.4, 0.18, 0.3, 0.5], [2.5, 0.26, 0.31, -0.6], [4.4, 0.34, 0.31, 0.9]]
+const DRIFT := [[0.4, 0.18, 0.3, 0.5], [2.5, 0.24, 0.31, -0.6], [4.4, 0.29, 0.31, 0.9]]
 ## Radians a second the drift turns, and its rise and fall (metres, radians a second).
 const DRIFT_TURN := 0.35
 const DRIFT_BOB := 0.025
@@ -74,7 +78,7 @@ static func _drift() -> Mesh:
 		var petal: Array = DRIFT[index]
 		var angle := float(petal[0])
 		var at := Vector3(sin(angle) * float(petal[2]), float(petal[1]), cos(angle) * float(petal[2]))
-		parts.blob(_colour(index), at, PETAL_SIZE, Vector3(float(petal[3]), angle, float(petal[3]) * 0.5), PETAL_SEGMENTS, 2)
+		parts.blob(_colour(index), at, DRIFT_SIZE, Vector3(float(petal[3]), angle, float(petal[3]) * 0.5), PETAL_SEGMENTS, 2)
 	return parts.commit()
 
 static func _colour(index: int) -> Color:

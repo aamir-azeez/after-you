@@ -9,8 +9,11 @@ extends RefCounted
 ## reaches past the head, and higher at the sides, where it rests on the
 ## head's rounded top, so the cap sits on the head and never sinks into it.
 ## The stem stands where a carried seed rests, so the cap lifts the seed
-## (pip_outfit.gd lift_seed) and the leaf pokes up through it (the
-## descriptor's "leaf_lift"). One baked mesh, one draw call.
+## (pip_outfit.gd lift_seed). The cap's stem and leaf stand in for the pip's
+## own leaf, which hides while it is worn. A worn leaf item still shows,
+## raised by the descriptor's "leaf_lift" so its stalk starts just under the
+## dome's shoulder and its blade grows out clear of the dome. One baked mesh,
+## one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const FruitMark = preload("res://presentation/kit/fruit_mark.gd")
 const Look = preload("res://presentation/spirit_look.gd")
@@ -52,6 +55,7 @@ const SEED_LIFT := 0.175
 
 static func wear(look: RefCounted) -> void:
 	look.mesh(look.head(), Kit.cached_mesh("fruit_cap", _build), Kit.vertex_material())
+	if not look.outfit.has("leaf"): look.hide_leaf()
 	look.lift_seed(SEED_LIFT)
 
 static func _build() -> Mesh:
@@ -61,6 +65,15 @@ static func _build() -> Mesh:
 	for index in range(STEM.size() - 1): parts.rod(GREEN, STEM[index], STEM[index + 1], STEM_RADIUS)
 	parts.blob(GREEN, LEAF_AT, LEAF_SIZE, LEAF_TURN, 8, 3)
 	return parts.commit()
+
+## The dome's height over head-space `point` (its x and z), or -INF past its
+## rim (tests check a worn leaf grows out of the dome and never cuts into it).
+static func dome_height(point: Vector3) -> float:
+	var lon := atan2(point.x, point.z)
+	var rim := _across(lon)
+	var out := Vector2(point.x, point.z).length() / Vector2(rim.x, rim.z).length()
+	if out >= 1.0: return -INF
+	return lerpf(_rim_y(lon), TOP, pow(1.0 - pow(out, PROFILE), 1.0 / PROFILE))
 
 ## The rim's shape across at `lon` (0 is the front): a rounded oval (ACROSS)
 ## of the dome's half width and depth, in head space at height 0.
