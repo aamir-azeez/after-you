@@ -16,7 +16,8 @@ extends SceneTree
 ## - with Fruits on (Fruits boards 5a and 5b): the monthly gifts as two tiles in
 ##   the same place, the Pollen tile and the plum Fruit tile with the server's
 ##   Fruits a month, the step they grow to and the welcome basket until it is
-##   paid, the whole card on screen at 1600x738 and 1600x720; the monthly card
+##   paid, the whole card on screen at 1600x738 and 1600x720, and with the duel
+##   energy perk too at 1600x738, 1280x720 and 1600x720; the monthly card
 ##   as "Your monthly gifts arrived" with both amounts and next month's two,
 ##   today's Pollen card whenever Fruits are off or the instalment brought none.
 const Main = preload("res://tests/unlocked_main.gd")
@@ -34,6 +35,7 @@ const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
+const DuelEnergy = preload("res://services/duel_energy.gd")
 
 const SIZE := Vector2i(1600, 738)
 const TESTER_ONLY := {"purchase_mode": "tester_only", "entitlement_id": "full_journey", "revenuecat_public_key": ""}
@@ -233,6 +235,24 @@ func _fruit_tiles(app: Node, fruits: RefCounted, scope: Dictionary, viewport: Su
 	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "achievements": [], "ladder": {"first": 15.0, "step": 1.0, "every": 2.0, "top": 30.0, "welcome": 25.0}}})
 	seen = await _open_card(app)
 	_check(seen.panels == ["FullJourneyBoost", "FullJourneyGifts"] and seen.after_intro and seen.on_screen and seen.subscribe == 2, "Fruits on: the chapters, the room boost, then the monthly gifts row, all on screen: %s %s" % [seen.panels, seen.rect])
+	# Duel energy on (board-10-energy-full-journey): the perk leads the panels and the
+	# whole column, down to Back to chapters, still fits with nothing to scroll.
+	var energy: RefCounted = DuelEnergy.new()
+	energy.set_enabled(server, owner, true)
+	energy.note_view(server, owner, {"energy": {"schema_version": 1.0, "energy": 5.0, "max": 5.0, "full_at": 0.0, "step_ms": 600000.0, "now": 0.0, "refill_fruits": 10.0, "base_max": 5.0, "full_journey_max": 7.0}})
+	DuelEnergy.use_shared(energy)
+	for screen: Vector2i in [SIZE, Vector2i(1280, 720), Vector2i(1600, 720)]:
+		viewport.size = screen
+		await process_frame
+		seen = await _open_card(app)
+		var scroll: ScrollContainer = app.overlay.find_child("FullJourneyDetailsScroll", true, false)
+		var energy_card: Control = _card_of(scroll) if scroll != null else null
+		var backs: Array = scroll.find_children("*", "Button", true, false).filter(func(button: Button) -> bool: return button.text == "Back to chapters") if scroll != null else []
+		var fits := energy_card != null and Rect2(Vector2.ZERO, Vector2(screen)).encloses(energy_card.get_global_rect()) and scroll.get_v_scroll_bar().max_value <= scroll.size.y + 1.0
+		_check(seen.panels == ["FullJourneyEnergy", "FullJourneyBoost", "FullJourneyGifts"] and fits and backs.size() == 1 and scroll.get_global_rect().encloses((backs[0] as Control).get_global_rect()), "Energy on at %s: the perk, the boost and the gifts, and Back to chapters shows with nothing to scroll: column %s in %s" % [screen, scroll.get_v_scroll_bar().max_value if scroll != null else -1.0, scroll.size.y if scroll != null else -1.0])
+	DuelEnergy.use_shared(null)
+	viewport.size = SIZE
+	await process_frame
 	var pollen: Control = app.overlay.find_child("FullJourneyGrant", true, false)
 	var fruit: Control = app.overlay.find_child("FullJourneyFruits", true, false)
 	_check(pollen != null and fruit != null and pollen.get_parent() == fruit.get_parent() and pollen.get_global_rect().end.x <= fruit.get_global_rect().position.x and absf(pollen.get_global_rect().position.y - fruit.get_global_rect().position.y) <= 0.5, "The Pollen tile and then the Fruit tile, side by side")

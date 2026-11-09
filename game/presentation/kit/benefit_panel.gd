@@ -24,6 +24,9 @@ const BODY := Color("4f6661")
 const TITLE_SIZE := 18
 const BODY_SIZE := 13
 const ICON := 30.0
+## Room inside a panel's edge: across, and above and below (kept short so the
+## Full Journey column fits a 720 tall screen with every panel).
+const PAD := Vector2(14.0, 6.0)
 ## The energy perk's sprouts at its right (spec `sprouts`).
 const SPROUT := 18.0
 const SPROUT_GAP := 3.0
@@ -35,11 +38,11 @@ static func make(spec: Dictionary) -> Control:
 	var icon_kind := str(spec.get("icon", "room"))
 	var plum := icon_kind == CurrencyMark.FRUITS
 	var panel: PanelContainer
-	if plum: panel = Orchard.card(16, false, Vector2(14, 10))
+	if plum: panel = Orchard.card(16, false, PAD)
 	else:
 		panel = PanelContainer.new()
 		var style := ControlTheme.rounded(FILL.get(icon_kind, FILL.room), 16)
-		ControlTheme.padded(style, 14.0, 10.0)
+		ControlTheme.padded(style, PAD.x, PAD.y)
 		panel.add_theme_stylebox_override("panel", style)
 	panel.name = str(spec.get("name", "FullJourneyPanel"))
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE

@@ -41,6 +41,11 @@ const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
 ## The card's chapter lines sit a size under the paragraphs elsewhere, as board 3 draws them.
 const INTRO_SIZE := 15
+## The details column's gap between its parts, and the renewal terms' size:
+## tight enough that the whole column, duel energy perk and all, fits a 720
+## tall screen without a scroll.
+const DETAILS_GAP := 5
+const TERMS_SIZE := 14
 ## Room the card keeps above and below its details column on a short screen.
 const DETAILS_MARGIN := 60.0
 ## Main's mode while a store card is up, including the locked-hosting page.
@@ -145,8 +150,8 @@ func _full_journey_card() -> VBoxContainer:
 	columns.add_child(gallery)
 	var column := VBoxContainer.new()
 	column.name = "FullJourneyDetails"
-	# Board 3 sets the column tighter than other cards, so both panels fit beside the chapters.
-	column.add_theme_constant_override("separation",8)
+	# Board 3 sets the column tighter than other cards, so every panel fits beside the chapters.
+	column.add_theme_constant_override("separation",DETAILS_GAP)
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -210,7 +215,7 @@ func _add_subscription_choices(card: VBoxContainer) -> void:
 		choices.add_child(option)
 	var terms: Label = host._paragraph(_subscription_terms(),0)
 	terms.name = "SubscriptionTerms"
-	terms.add_theme_font_size_override("font_size",16)
+	terms.add_theme_font_size_override("font_size",TERMS_SIZE)
 	card.add_child(terms)
 	_add_store_links(card)
 
