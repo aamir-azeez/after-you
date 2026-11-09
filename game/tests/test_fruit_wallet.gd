@@ -149,7 +149,9 @@ func _table() -> void:
 		var id: String = row[0]
 		_check(Bundles.currency_of(id) == "fruits" and Bundles.amount(id) == row[1] and Bundles.bonus(id) == row[2] and Bundles.usd_cents(id, Bundles.PLAY_STORE) == row[3] and Bundles.usd_cents(id, Bundles.APP_STORE) == row[4], "The %s: %d Fruits, %d bonus, its US prices" % [id, row[1], row[2]])
 		_check(Bundles.product(id, Bundles.PLAY_STORE) == "after_you_fruits_" + id and Bundles.product(id, Bundles.APP_STORE) == "after_you_fruits_%s_ios" % id, "The %s's product on each store" % id)
-		_check(raw.bundles[id].play_store.revenuecat_product == "" and raw.bundles[id].app_store.revenuecat_product == "", "The %s's RevenueCat product is not set up yet" % id)
+		var rc_play := str(raw.bundles[id].play_store.revenuecat_product)
+		var rc_app := str(raw.bundles[id].app_store.revenuecat_product)
+		_check(rc_play.begins_with("prod") and rc_app.begins_with("prod") and rc_play != rc_app, "The %s has its own RevenueCat product on each store" % id)
 	for id: String in ["pinch", "pouch", "jar", "basket"]:
 		_check(raw.bundles[id].currency == "pollen" and Bundles.product(id, Bundles.PLAY_STORE) == "after_you_pollen_" + id and not str(raw.bundles[id].play_store.revenuecat_product).is_empty(), "The %s keeps its product and RevenueCat id" % id)
 	_check(Bundles.bonus_percent("bowl") == 10 and Bundles.bonus_percent("crate") == 20 and Bundles.bonus_percent("barrel") == 30 and Bundles.bonus_percent("pouch") == 5, "Bonus percents of the base")
