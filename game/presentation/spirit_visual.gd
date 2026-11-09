@@ -214,6 +214,13 @@ func wear(outfit: Dictionary) -> void:
 func outfit() -> Dictionary:
 	return _wearing.outfit.duplicate() if _wearing != null else {}
 
+## Shows the pip's own leaf under an item that hides it (the Fruit cap brings
+## its own stem and leaf), as a worn leaf item would show: the item's
+## "leaf_lift" already stands it clear of the cap. The leaderboard celebration
+## gilds it this way. Wearing another outfit decides again.
+func show_leaf() -> void:
+	sprout.visible = true
+
 func reset_motion() -> void:
 	# A replay seek or level reset is a placement, not a giant walking step.
 	stride_phase=0.0

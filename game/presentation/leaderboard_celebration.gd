@@ -449,6 +449,8 @@ func _on_stage(point: Vector3, width: float, height: float) -> Vector2:
 ## Readies a pip's leaf to turn gold: the spread material over its own leaf
 ## (or, under Reduce motion, the Gold leaf at once) and a glint beside it.
 func _gild(spirit: Node3D) -> void:
+	# The gilded leaf counts as a worn leaf item: a cap that hides the plain leaf shows it.
+	spirit.show_leaf()
 	var leaf: MeshInstance3D = spirit.sprout
 	if reduced:
 		var look: RefCounted = PipOutfit.dress(spirit, {})

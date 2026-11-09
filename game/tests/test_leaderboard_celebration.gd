@@ -10,6 +10,7 @@ const Placings = preload("res://services/leaderboard_placings.gd")
 const Client = preload("res://services/leaderboard_client.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const Outfit = preload("res://services/outfit.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
 const Screen = preload("res://presentation/leaderboard_screen.gd")
 const Rows = preload("res://presentation/leaderboard_rows.gd")
 const Celebration = preload("res://presentation/leaderboard_celebration.gd")
@@ -248,6 +249,21 @@ func _gold() -> void:
 	_check(made.find_child("CelebrationGoldLeaves", true, false) != null, "it says both get gold leaves")
 	made.close()
 	await process_frame
+	# The Fruit cap hides the plain leaf; gilded, the leaf shows as a worn leaf
+	# item would, raised by the cap's lift, animated and under Reduce motion.
+	TurnLooks.shared().note_member(PARTNER, {"hat": "fruit_cap"})
+	for still: bool in [false, true]:
+		var capped: Control = Celebration.open(_parent, _placing(1, true), still)
+		await process_frame
+		var pip: Node3D = capped._spirits[1]
+		var plain: Node3D = capped._spirits[0]
+		_check(pip.outfit() == {"hat": "fruit_cap"} and pip.sprout.is_visible_in_tree(), "Under the Fruit cap the gilded leaf shows (Reduce motion %s)" % still)
+		_check(absf(pip.sprout.position.y - plain.sprout.position.y - Catalog.leaf_lift("fruit_cap")) < 0.01,"and stands where a worn leaf item would, clear of the cap: %.3f" % (pip.sprout.position.y - plain.sprout.position.y))
+		await _settle(capped)
+		_check(pip.sprout.is_visible_in_tree() and pip.sprout.material_override == GoldLeaf.material(), "and ends in the Gold leaf's own material (Reduce motion %s)" % still)
+		capped.close()
+		await process_frame
+	TurnLooks.shared().note_member(PARTNER, {"hat": "daisy"})
 	var tie: Control = Celebration.open(_parent, _placing(1, false), false)
 	await process_frame
 	_check(tie._spreads.is_empty() and tie.find_child("CelebrationGoldLeaves", true, false) == null, "a first place that earned no Gold leaf shows none")

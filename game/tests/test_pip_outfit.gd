@@ -229,40 +229,49 @@ func _leaf() -> void:
 ## The Fruit cap's stem and leaf stand in for the pip's leaf: the plain leaf
 ## hides under it and comes back with it off. A worn leaf item shows, its stalk
 ## tucked under the dome's shoulder, and no part of it farther than STALK_TUCK
-## from the stalk is under the dome, idle or walking.
+## from the stalk is under the dome, idle or walking. So does the plain leaf
+## shown on purpose (show_leaf(), the leaderboard celebration's gold leaf).
 func _fruit_cap_leaf() -> void:
-	var Cap: Script = load("res://presentation/pip_wear/fruit_cap.gd")
 	var spirit := _spirit()
 	spirit.wear(Outfit.of("fruit_cap", true))
 	_check(not spirit.sprout.visible, "The Fruit cap hides the plain leaf")
+	spirit.show_leaf()
+	_check(spirit.sprout.visible, "show_leaf() brings it back under the cap")
+	_leaf_clears_cap(spirit, "The plain leaf shown under the cap")
 	spirit.wear({})
 	_check(spirit.sprout.visible, "Off again, the leaf shows")
+	spirit.wear(Outfit.of("fruit_cap", true))
+	_check(not spirit.sprout.visible, "and the cap worn again hides it again")
 	spirit.free()
 	for leaf: String in Catalog.ids():
 		if Catalog.slot(leaf) != "leaf": continue
 		var capped := _spirit()
 		capped.wear(Outfit.from({"hat": "fruit_cap", "leaf": leaf}, true))
 		_check(capped.sprout.visible, "With %s the leaf shows under the Fruit cap" % leaf)
-		var under := 0
-		var tucked := true
-		var lowest := INF
-		for frame in range(240):
-			capped.advance_motion(Vector3(0.02, 0, 0) if frame >= 150 else Vector3.ZERO, DT, false)
-			if frame % 6 != 0: continue
-			var to_head: Transform3D = capped.head.global_transform.affine_inverse()
-			var stalk: Vector3 = to_head * capped.sprout.global_position
-			tucked = tucked and stalk.y < Cap.dome_height(stalk)
-			var leaf_parts: Array[MeshInstance3D] = [capped.sprout]
-			for node: Node in capped.sprout.find_children("*", "MeshInstance3D", true, false):
-				if not node.name in ["Halo", "Beam", "Stars"]: leaf_parts.append(node as MeshInstance3D)
-			for point: Vector3 in _points_in_head(capped, leaf_parts):
-				var dome: float = Cap.dome_height(point)
-				if point.distance_to(stalk) > STALK_TUCK and point.y < dome:
-					under += 1
-					lowest = minf(lowest, point.y - dome)
-		_check(tucked, "%s's stalk starts under the Fruit cap's dome" % leaf)
-		_check(under == 0, "%s grows out of the Fruit cap and never cuts into it: %d points (deepest %.3f)" % [leaf, under, lowest])
+		_leaf_clears_cap(capped, leaf)
 		capped.free()
+
+func _leaf_clears_cap(capped: Node3D, label: String) -> void:
+	var Cap: Script = load("res://presentation/pip_wear/fruit_cap.gd")
+	var under := 0
+	var tucked := true
+	var lowest := INF
+	for frame in range(240):
+		capped.advance_motion(Vector3(0.02, 0, 0) if frame >= 150 else Vector3.ZERO, DT, false)
+		if frame % 6 != 0: continue
+		var to_head: Transform3D = capped.head.global_transform.affine_inverse()
+		var stalk: Vector3 = to_head * capped.sprout.global_position
+		tucked = tucked and stalk.y < Cap.dome_height(stalk)
+		var leaf_parts: Array[MeshInstance3D] = [capped.sprout]
+		for node: Node in capped.sprout.find_children("*", "MeshInstance3D", true, false):
+			if not node.name in ["Halo", "Beam", "Stars"]: leaf_parts.append(node as MeshInstance3D)
+		for point: Vector3 in _points_in_head(capped, leaf_parts):
+			var dome: float = Cap.dome_height(point)
+			if point.distance_to(stalk) > STALK_TUCK and point.y < dome:
+				under += 1
+				lowest = minf(lowest, point.y - dome)
+	_check(tucked, "%s: its stalk starts under the Fruit cap's dome" % label)
+	_check(under == 0, "%s grows out of the Fruit cap and never cuts into it: %d points (deepest %.3f)" % [label, under, lowest])
 
 ## The Orchard skin's petals, resting or drifting, never sink into the head or
 ## the body.
