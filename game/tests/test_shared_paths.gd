@@ -29,9 +29,11 @@ extends SceneTree
 ##     (services/cosmetic_catalog.gd price), through sale and set_cost, which give
 ##     each price in the currency it is charged in (Pollen or Fruits); each screen
 ##     that shows an item or set price is in COSMETIC_PRICE_SURFACES.
-## (o) Fruits: every screen that reads the kept Fruits (services/fruit_wallet.gd)
-##     hides them while Fruits do not show, through services/pollen_surfaces.gd
-##     fruits_visible; each one that reaches them another way is in FRUIT_GATED.
+## (o) Fruits: every screen that reads the kept Fruits (services/fruit_wallet.gd:
+##     it preloads the store, or calls one of its reads on any Fruit receiver,
+##     `client.fruits.balance(`, `spend.fruits().part(`) hides them while Fruits do
+##     not show, through services/pollen_surfaces.gd fruits_visible; each one that
+##     asks the gate another way is in FRUIT_GATED with the call it asks through.
 ## (p) Fruit marks: kit/currency_mark.gd alone makes a Fruit mark for a screen
 ##     (no FruitMark.make or beside anywhere else), and each screen that takes a
 ##     mark from it is in CURRENCY_MARK_SURFACES with where. Older Pollen-only
@@ -223,16 +225,14 @@ const COSMETIC_PRICE_SURFACES := {
 	"res://presentation/wardrobe_flow.gd": "the Wardrobe and the Orchard (Fruits board 4a): every entry and set priced through Wardrobe.sale and set_cost",
 }
 
-## (o) The one Fruits gate, and the scripts that read the kept Fruits without asking it themselves, with who asks.
+## (o) The one Fruits gate, the store's reads on any receiver named for Fruits,
+## and the screens that ask the gate through another call: [that call, why].
 const FRUIT_GATE := "fruits_visible("
 const FRUIT_STORE := "res://services/fruit_wallet.gd"
+const FRUIT_READS := "(?i)\\b\\w*fruit\\w*(?:\\.shared)?(?:\\(\\))?\\.(?:balance|part|sunshine|offer|unlocks|convert_rules|sunshine_buyable|convert_valid|convert_pollen|grant_paid|blocked)\\("
 const FRUIT_GATED := {
-	"res://main.gd": "the host: it follows the kept Fruits for Home's chip, which asks the gate (kit/pollen_chip.gd), and its Fruit flows ask it themselves",
-}
-## The Fruit screens that read the kept Fruits through presentation/fruit_spend_flow.gd, which asks the gate (visible()).
-const FRUIT_SPEND_SURFACES := {
-	"res://presentation/fruits_page_flow.gd": "the Fruits page opens and stays only while spend.visible()",
-	"res://presentation/pollen_play_flow.gd": "the Sunshine card shows only while fruit_spends.visible()",
+	"res://presentation/fruits_page_flow.gd": ["spend.visible()", "the Fruits page opens and stays only while presentation/fruit_spend_flow.gd visible() asks the gate"],
+	"res://presentation/pollen_play_flow.gd": ["fruit_spends.visible()", "the Sunshine card shows only while presentation/fruit_spend_flow.gd visible() asks the gate"],
 }
 
 ## (p) The one maker of a currency's mark, and the screens that show one through it.
@@ -645,23 +645,25 @@ func _duel_times() -> void:
 # (o) Fruits -----------------------------------------------------------------
 
 func _fruits() -> void:
+	_check(_found(FRUIT_READS, "var n: int = _client().fruits.balance(s, o)\n") == 1 and _found(FRUIT_READS, "spend.fruits().part(s, o)\n") == 1 and _found(FRUIT_READS, "FruitWallet.shared().sunshine(s, o)\n") == 1, "A read of the kept Fruits is found on any receiver")
+	_check(_found(FRUIT_READS, "surfaces.fruits_visible(store, scope)\nwallet.balance(s, o)\n") == 0, "The gate itself and a Pollen read are no Fruit read")
 	var gated_seen := {}
 	var readers := 0
 	for path: String in _sources:
-		if not (path.begins_with("res://presentation/") or path in ["res://main.gd", "res://relay_preview.gd"]): continue
+		if not (path.begins_with("res://presentation/") or not path.trim_prefix("res://").contains("/")): continue
 		var source: String = _sources[path]
-		if not source.contains("preload(\"" + FRUIT_STORE + "\")"): continue
+		if not source.contains("preload(\"" + FRUIT_STORE + "\")") and _found(FRUIT_READS, source) == 0: continue
 		readers += 1
 		if FRUIT_GATED.has(path):
 			gated_seen[path] = true
+			var asks: String = FRUIT_GATED[path][0]
+			_check(source.contains(asks) or source.contains(FRUIT_GATE), "%s reads the kept Fruits but no longer asks %s (FRUIT_GATED: %s)" % [path, asks, FRUIT_GATED[path][1]])
 			continue
-		_check(source.contains(FRUIT_GATE), "%s reads the kept Fruits but never asks services/pollen_surfaces.gd fruits_visible: hide it while Fruits do not show, or add it to FRUIT_GATED with who asks" % path)
-	_check(readers >= 3, "The screens that read the kept Fruits are found: %d" % readers)
+		_check(source.contains(FRUIT_GATE), "%s reads the kept Fruits but never asks services/pollen_surfaces.gd fruits_visible: hide it while Fruits do not show, or add it to FRUIT_GATED with the call it asks through" % path)
+	_check(readers >= 8, "The screens that read the kept Fruits are found: %d" % readers)
 	for path: String in FRUIT_GATED:
 		_check(gated_seen.has(path), "FRUIT_GATED names %s, which no longer reads the kept Fruits: delete it" % path)
 	_check(str(_sources.get("res://presentation/fruit_spend_flow.gd", "")).contains(FRUIT_GATE), "presentation/fruit_spend_flow.gd visible() asks the Fruits gate")
-	for path: String in FRUIT_SPEND_SURFACES:
-		_check(_found("\\b(?:spend|fruit_spends)\\.visible\\(\\)", str(_sources.get(path, ""))) > 0, "%s shows Fruits without asking presentation/fruit_spend_flow.gd visible() (FRUIT_SPEND_SURFACES: %s)" % [path, FRUIT_SPEND_SURFACES[path]])
 
 # (j) and the guard suites ---------------------------------------------------
 

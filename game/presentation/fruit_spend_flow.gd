@@ -17,8 +17,9 @@ extends Node
 ## counts Fruits: the server answers, services/wallet_reply.gd keeps it, and
 ## the pages redraw from services/fruit_wallet.gd changed.
 ##
-## Main hosts it as a child and reads Main only through: api and _names_scope
-## (the client), _toast, and get_fruits (the store on its Fruits tab).
+## Main hosts it as a child and reads Main only through: wardrobe_client() (the
+## one client it shares with the Wardrobe; else api and _names_scope for its
+## own), _toast, and get_fruits (the store on its Fruits tab).
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const Soundscape = preload("res://services/soundscape.gd")
@@ -49,7 +50,8 @@ func _init(main: Node = null) -> void:
 	host = main
 
 func _client() -> RefCounted:
-	if client == null: client = WardrobeClient.new(host.api, host._names_scope)
+	# Main's one client, shared with the Wardrobe so one request at a time holds across Orchard buys, converting and Sunshine.
+	if client == null: client = host.wardrobe_client() if host.has_method("wardrobe_client") else WardrobeClient.new(host.api, host._names_scope)
 	return client
 
 func _surfaces() -> RefCounted:

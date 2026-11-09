@@ -143,7 +143,8 @@ func _init(main: Node = null) -> void:
 	host = main
 
 func _client() -> RefCounted:
-	if client == null: client = WardrobeClient.new(host.api, host._names_scope)
+	# Main's one client, shared with the Fruit spends so one request at a time holds across them.
+	if client == null: client = host.wardrobe_client() if host.has_method("wardrobe_client") else WardrobeClient.new(host.api, host._names_scope)
 	if not client.changed.is_connected(_redraw): client.changed.connect(_redraw)
 	# The Orchard and the chip's Fruit half follow the Fruits its client keeps (a pack bought, Fruits turned into Pollen).
 	if client.fruits != null and not client.fruits.changed.is_connected(_fruits_changed): client.fruits.changed.connect(_fruits_changed)
@@ -362,7 +363,7 @@ func act(id: String) -> void:
 		var scope: Dictionary = _client().scope()
 		# The smallest Fruit pack that covers the gap, and Get Fruits, only while packs sell.
 		_sheet = weakref(Sheets.short_of(parent, {"currency": FRUITS, "cost": price, "balance": balance, "opener": opener,
-			"offer": _client().fruits.offer(str(scope.server), str(scope.owner)), "get_fruits": _get_fruits()}))
+			"offer": _client().fruits.offer(str(scope.server), str(scope.owner)), "get_fruits": _get_fruits(), "priced": _fruit_prices()}))
 	elif balance < price:
 		# The card suggests the smallest bundle that covers the gap and buys it in place.
 		var card: Control = Sheets.short(parent, str(entry.name), str(entry.tier), price, balance, _buyer(), _after_bundle.bind(id), opener, true, _view().get("bundles", {}))
@@ -381,6 +382,16 @@ func _get_fruits() -> Callable:
 		if not is_open():
 			_reopen_tab = "orchard"
 			_reopen_pick = pick
+
+## The packs the store priced, so the Fruit short card names only one the Fruits
+## tab shows; null while the prices are not read yet (a read starts then).
+func _fruit_prices() -> Variant:
+	var buyer: Variant = _buyer()
+	if buyer == null: return null
+	if not buyer.priced():
+		buyer.ensure_prices()
+		return null
+	return buyer.packages
 
 ## The Pollen store's purchase engine (presentation/bundle_purchase.gd) while bundles sell, else null.
 func _buyer() -> Node:
@@ -416,6 +427,8 @@ func confirm_buy(id: String, cost: int, kind: String = "item") -> void:
 	if answer.get("ok", false):
 		Soundscape.play_on(host, "ui_bought")
 		_toast(PlayerCopy.WARDROBE_BOUGHT % named)
+		# An Orchard piece bought: the set's cost for this player changed, and only the server says it (one read).
+		if str((answer.receipt as Dictionary).get("currency", "")) == FRUITS and not _view().get("fruit_sets", {}).is_empty(): await refresh()
 	elif code == "fruits_short" and is_open() and _fruit_balance() < cost:
 		# The read that followed the refusal (services/wardrobe_client.gd STALE) says it is short: its card opens.
 		_redraw()
@@ -526,10 +539,10 @@ func model() -> Dictionary:
 		"more": more, "selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}
 
 ## The Orchard's sets as the page lists them: each set the server sells for
-## Fruits whose pieces it offers, at what its missing pieces cost the player
-## (services/wardrobe.gd set_cost): {id, set, name, pieces (names, in name
-## order), outfit (every piece worn), price, full, currency, owned (no piece
-## missing), sold, worn, locked, tier, slot}.
+## Fruits whose pieces it offers and that has a piece the player lacks, at the
+## server's cost for it (services/wardrobe.gd set_cost; no cost, no card): {id,
+## set, name, pieces (names, in name order), outfit (every piece worn), price,
+## full, currency, owned, sold, worn, locked, tier, slot}.
 func _orchard_sets(view: Dictionary, owned: Array, offered: Array, look: Dictionary) -> Array:
 	var sets: Array = []
 	for set_id: String in (view.get("fruit_sets", {}) as Dictionary):

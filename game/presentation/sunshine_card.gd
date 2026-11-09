@@ -2,8 +2,9 @@ extends PanelContainer
 ## The Sunshine card at the foot of the Turns with friends card on the Pollen
 ## page (Fruits board 7): the warm sun, its title and what it does, a dot for
 ## each of its turns (the used ones pale, the ones left golden), "21 of 24
-## turns left", and the price button (the Fruit mark and the price), only
-## while a new one can be bought: none left and Fruit spending not blocked.
+## turns left", and the price button (the Fruit mark and the price), greyed
+## while a new one cannot be bought (turns still left, or Fruit spending
+## blocked), as the board draws it.
 ## A tap on it is `buy_pressed`; presentation/fruit_spend_flow.gd decides
 ## between the confirm card and the short card. The button needs the server,
 ## so it greys offline (presentation/offline_hold.gd).
@@ -34,7 +35,7 @@ signal buy_pressed(button: Button)
 var buy_button: Button = null
 var dots: Dots
 
-## A card for `sunshine` ({left, turns, price}); `buyable`: the price button shows.
+## A card for `sunshine` ({left, turns, price}); `buyable`: the price button takes taps.
 static func make(sunshine: Dictionary, buyable: bool, title_font: Font = null, say: Callable = Callable()) -> Control:
 	var card: PanelContainer = load("res://presentation/sunshine_card.gd").new()
 	card._build(sunshine, buyable, title_font, say)
@@ -80,8 +81,8 @@ func _build(sunshine: Dictionary, buyable: bool, title_font: Font, say: Callable
 	count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	count.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.add_child(count)
-	if not buyable: return
 	var price := int(sunshine.get("price", 0))
+	if price <= 0: return
 	var content := HBoxContainer.new()
 	content.add_theme_constant_override("separation", 8)
 	content.add_child(CurrencyMark.beside(CurrencyMark.FRUITS, 22))
@@ -94,6 +95,9 @@ func _build(sunshine: Dictionary, buyable: bool, title_font: Font, say: Callable
 	Orchard.plum_button(buy_button)
 	buy_button.pressed.connect(func() -> void: buy_pressed.emit(buy_button))
 	OfflineHold.hold(buy_button, say)
+	OfflineHold.set_enabled(buy_button, buyable)
+	# Greyed, its Fruit and price fade with it.
+	if not buyable: content.modulate.a = 0.5
 	foot.add_child(buy_button)
 
 ## The turns as two rows of dots: the used ones first, pale, then the ones left, golden.

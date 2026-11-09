@@ -157,6 +157,9 @@ func _table() -> void:
 	var offer := {"first_gift": true, "first_gift_percent": 100}
 	_check(Bundles.adds("handful", offer) == 50 and Bundles.adds("handful") == 25 and Bundles.gift("barrel", 100) == 260, "A first Fruit pack pays double: the Handful gives 50")
 	_check(Bundles.cover(40, {}, "fruits") == "bowl" and Bundles.cover(40, offer, "fruits") == "handful" and Bundles.cover(1000, {}, "fruits") == "barrel" and Bundles.cover(5001) == "pouch", "The pack to suggest is per currency")
+	var priced := {"handful": {}, "crate": {}}
+	_check(Bundles.cover(40, {}, "fruits", priced) == "crate" and Bundles.cover(1000, {}, "fruits", priced) == "crate" and Bundles.cover(40, {}, "fruits", {}) == "" and Bundles.cover(40, {}, "fruits", null) == "bowl",
+		"Only a pack the store priced is named: the Crate when the Bowl has no price, none with no prices, any while prices are unknown")
 	_check(Bundles.per_unit("barrel", 19990000) == 13, "Fruits per $1 for the Barrel: 13")
 	var broken := Bundles.checked_table({"first_bonus_percent": {"pollen": "x"}, "bundles": {"a": {"currency": "gold", "amount": 5, "bonus": 0}, "b": {"currency": "fruits", "amount": 5.5, "bonus": 0},
 		"c": {"currency": "fruits", "amount": 5, "bonus": 0, "play_store": {"product": "p", "usd_cents": 1}}, "d": {"currency": "fruits", "amount": 10, "bonus": 2, "play_store": {"product": "p", "usd_cents": 1}, "app_store": {"product": "q", "usd_cents": 2}}}})
@@ -199,6 +202,15 @@ func _parts() -> void:
 	_check(FruitWallet.checked_part(part(-30.0)).balance == -30, "A balance below 0 after a refund is kept")
 	for broken: Variant in [null, "x", part(40.5), part(40.0, [], {"earned": -1.0}), part(40.0, [], {"schema_version": 2.0}), part(40.0, [], {"balance": "40"})]:
 		_check(FruitWallet.checked_part(broken).is_empty(), "A part without a whole balance and earned is refused: %s" % [broken])
+	var laddered := FruitWallet.checked_part(part(40.0, [], {"ladder": {"first": 15.0, "step": 1.0, "every": 2.0, "top": 30.0, "welcome": 25.0}}))
+	_check(laddered.ladder == {"first": 15, "step": 1, "every": 2, "top": 30, "welcome": 25}, "The Fruit ladder everyone is shown is kept: %s" % [laddered])
+	for broken_ladder: Variant in [{"first": 15.0, "step": 1.0, "every": 0.0, "top": 30.0, "welcome": 25.0}, {"first": 15.0, "step": 1.0, "every": 2.0, "top": 10.0, "welcome": 25.0}, {"first": 15.0, "step": 1.0, "every": 2.0, "top": 30.0}, "15"]:
+		_check(not FruitWallet.checked_part(part(40.0, [], {"ladder": broken_ladder})).has("ladder") and FruitWallet.checked_part(part(40.0, [], {"ladder": broken_ladder})).balance == 40, "A ladder off the contract is left out by itself: %s" % [broken_ladder])
+	var ladder_store: RefCounted = FruitWallet.new(_path("ladder"))
+	ladder_store.set_enabled(SERVER, ME, true)
+	_check(ladder_store.ladder(SERVER, ME).is_empty(), "No ladder before a read")
+	ladder_store.note_view(SERVER, ME, {"fruits": part(40.0, [], {"ladder": {"first": 15.0, "step": 1.0, "every": 2.0, "top": 30.0, "welcome": 25.0}})})
+	_check(ladder_store.ladder(SERVER, ME).top == 30 and FruitWallet.new(ladder_store.path).ladder(SERVER, ME).first == 15, "A read's ladder is kept, a restart included")
 	var sub := FruitWallet.checked_part(part(40.0, [], {"sunshine": {"left": 30.0, "turns": 24.0, "price": 10.0}, "convert": {"pollen_per_fruit": 0.0, "step": 10.0}, "first_pack_gift": "yes", "grant": {"next": 15.0}}))
 	_check(sub.balance == 40 and not sub.has("sunshine") and not sub.has("convert") and not sub.has("grant") and not sub.first_pack_gift and sub.achievements.size() == 4, "A broken sub part is left out by itself: %s" % [sub])
 	var rows := part()
@@ -510,12 +522,10 @@ func _claims() -> void:
 	claims.connect_to(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, fake.call_it)
 	_check(not claims.scope().is_empty(), "Fruit packs on alone open the claim route (Pollen bundles off)")
 	var credited := {"bundle": "bowl", "fruits": 110.0, "first_gift": 55.0, "order": "GPA.1111-2222-3333-44444", "purchased_at": 1.8e12, "usd_cents": 499.0}
-	var heard := {"credited": [], "refunded": []}
-	claims.fruits_settled.connect(func(c: Array, r: Array) -> void: heard.merge({"credited": c, "refunded": r}, true))
 	fake.replies = [_ok({"balance": 9000.0, "credited": [], "refunded": [], "fruit_credited": [credited, {"bundle": "pinch", "fruits": 5.0}], "fruit_refunded": [], "fruit_balance": 150.0})]
 	var answer_claim: Dictionary = await claims.claim()
 	_check(answer_claim.ok and answer_claim.fruit_credited.size() == 1 and answer_claim.fruit_credited[0].bundle == "bowl" and answer_claim.fruit_credited[0].fruits == 110 and answer_claim.fruit_balance == 150, "A Fruit pack is credited on the same claim; a Pollen bundle among Fruit lines is left out: %s" % [answer_claim])
-	_check(not claims.pending() and fruits.balance(SERVER, ME) == 150 and heard.credited.size() == 1, "A credited Fruit pack ends the waiting claim and its balance is kept")
+	_check(not claims.pending() and fruits.balance(SERVER, ME) == 150, "A credited Fruit pack ends the waiting claim and its balance is kept")
 	_check(claims.unseen().is_empty() and claims.unseen_fruits().size() == 1 and claims.unseen_fruits()[0].balance == 150, "Its receipt waits in the Fruits' own unseen list")
 	var again: RefCounted = BundleClaims.new(path, wardrobe, wallet, fruits)
 	again.connect_to(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, fake.call_it)

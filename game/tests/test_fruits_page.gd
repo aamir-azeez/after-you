@@ -260,7 +260,7 @@ func _sunshine_card() -> void:
 	await process_frame
 	_check(card.dots.golden() == 21 and card.dots.turns == 24, "A dot per turn, 21 of them golden")
 	_check((card.find_child("SunshineLeft", true, false) as Label).text == "21 of 24 turns left", "It says the turns left")
-	_check(card.buy_button == null and card.find_child("SunshineBuy", true, false) == null, "No price button while turns are left")
+	_check(card.buy_button != null and card.buy_button.disabled, "While turns are left the price button shows greyed, as board 7 draws it")
 	card.free()
 	var offered: Control = SunshineCard.make({"left": 0, "turns": 24, "price": 10}, true)
 	root.add_child(offered)
@@ -275,7 +275,8 @@ func _sunshine_card() -> void:
 	for fruits_on: bool in [true, false]:
 		var page := PlayPage.new()
 		root.add_child(page)
-		page.render({"history": {"turns": [{"amount": 222, "at": 0, "level_id": "relay-isles", "stage_id": "relay", "role": "a", "bonuses": ["first_try"], "bloom": 1, "reason": "", "sunshine": 111}], "first_clears": [], "bank": {}},
+		page.render({"history": {"turns": [{"amount": 222, "at": 0, "level_id": "relay-isles", "stage_id": "relay", "role": "a", "bonuses": ["first_try"], "bloom": 1, "reason": "", "sunshine": 111}], "first_clears": [], "bank": {},
+			"exchanges": [{"kind": "convert", "amount": 8000, "at": 5000}, {"kind": "reclaim", "amount": -4000, "at": 0}]},
 			"fruits": fruits_on, "sunshine": {"left": 21, "turns": 24, "price": 10}, "sunshine_buyable": false})
 		await process_frame
 		var foot: Node = page.find_child("PollenTurnsCardFoot", true, false)
@@ -283,6 +284,10 @@ func _sunshine_card() -> void:
 		var tag: Node = page.find_child("PollenTurnSunshine", true, false)
 		var tag_text: Array = tag.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if tag != null else []
 		_check((tag != null) == fruits_on and (not fruits_on or tag_text == ["First try · ", "Sunshine ×2"]), "The turn's tag reads 'First try · [sun] Sunshine ×2' only while Fruits show: %s" % [tag_text])
+		var moved: Array = page.find_children("PollenExchangeRow*", "HBoxContainer", true, false).map(func(row: Node) -> String: return (row.get_child(0) as Label).text)
+		_check(moved == (["Turned from Fruits", "Taken back with a Fruit refund"] if fruits_on else []), "Pollen moved by Fruits shows among the turns only while Fruits show: %s" % [moved])
+		var order: Array = page.find_children("Pollen*Row*", "HBoxContainer", true, false).map(func(row: Node) -> String: return row.name)
+		_check(not fruits_on or order == ["PollenExchangeRow0", "PollenTurnRow0", "PollenExchangeRow1"], "Newest first, by when: %s" % [order])
 		page.free()
 
 func _convert_sheet(online: Online) -> void:

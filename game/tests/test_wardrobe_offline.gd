@@ -478,6 +478,7 @@ func _page_orchard() -> void:
 	data.wardrobe.offered = SOLD + orchard
 	data.wardrobe.fruit_prices = {"fruit_cap": 50, "blossom_crown": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_coral": 10, "sprig_plum": 10, "sprig_sun": 10, "sprig_sky": 10}
 	data.wardrobe.fruit_sets = {"orchard": ["fruit_cap", "orchard_skin", "apple_leaf"]}
+	data.wardrobe.fruit_set_costs = {"orchard": 145.0}
 	data.fruits = {"schema_version": 1.0, "balance": 101.0, "earned": 101.0, "first_pack_gift": false, "first_pack_percent": 100.0, "achievements": []}
 	t.fake.replies = [{"ok": true, "status": 200, "data": data}]
 	t.flow.show_wardrobe()

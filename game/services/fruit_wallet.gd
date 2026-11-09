@@ -16,8 +16,9 @@ extends RefCounted
 ## - part: the last `fruits` part, as kept by checked_part ({} until read):
 ##   balance (below 0 after a refund: Fruit spending is blocked then), earned,
 ##   sunshine {left, turns, price}, convert {pollen_per_fruit, step},
-##   first_pack_gift and first_pack_percent, achievements (each with `paid`) and
-##   the Full Journey Fruits (grant). A sub part off the contract is left out, so
+##   first_pack_gift and first_pack_percent, achievements (each with `paid`), the
+##   Full Journey Fruits (grant) and the Fruit ladder everyone is shown (ladder:
+##   {first, step, every, top, welcome}). A sub part off the contract is left out, so
 ##   the screen hides only what it needs (Sunshine, converting, the grant line);
 ## - paid: every achievement id this phone knows was paid (reads and receipts);
 ## - unlocks: achievements paid since this phone last knew, each {id, fruits},
@@ -109,7 +110,18 @@ static func checked_part(value: Variant) -> Dictionary:
 			kept.achievements.append(achievement)
 	var grant := checked_grant(value.get("grant"))
 	if not grant.is_empty(): kept["grant"] = grant
+	var ladder := checked_ladder(value.get("ladder"))
+	if not ladder.is_empty(): kept["ladder"] = ladder
 	return kept
+
+## The Full Journey Fruit ladder as kept ({first, step, every, top, welcome}), or {}:
+## month n pays min(first + step * floor((n - 1) / every), top), and the welcome basket once.
+static func checked_ladder(value: Variant) -> Dictionary:
+	if not value is Dictionary: return {}
+	for field: String in ["first", "step", "every", "top", "welcome"]:
+		if not _count(value.get(field)): return {}
+	if int(value.first) <= 0 or int(value.every) <= 0 or int(value.top) < int(value.first): return {}
+	return {"first": Typed.as_int(value.first), "step": Typed.as_int(value.step), "every": Typed.as_int(value.every), "top": Typed.as_int(value.top), "welcome": Typed.as_int(value.welcome)}
 
 ## One achievement row as kept, or {}: {id, fruits, goal, progress, live, paid,
 ## paid_at?, level_id?, room_id?}. `paid` is true once its Fruits were paid.
@@ -247,6 +259,10 @@ func sunshine(server: String, owner: String) -> Dictionary:
 func sunshine_buyable(server: String, owner: String) -> bool:
 	var kept := sunshine(server, owner)
 	return not kept.is_empty() and int(kept.left) == 0 and balance(server, owner) >= int(kept.price) and not blocked(server, owner)
+
+## The Full Journey Fruit ladder as kept ({first, step, every, top, welcome}), or {} while unknown.
+func ladder(server: String, owner: String) -> Dictionary:
+	return (_kept(server, owner).get("ladder", {}) as Dictionary).duplicate()
 
 ## The convert rules as kept ({pollen_per_fruit, step}), or {} while unknown.
 func convert_rules(server: String, owner: String) -> Dictionary:

@@ -7,8 +7,8 @@ extends Node
 ## again when it changes (a spend, a read, a receipt), and only then.
 ##
 ## open(from) is its one opener: the chip's Fruit half (Home, the Pollen page,
-## the Wardrobe, the store), the store's "Fruits for playing together" and
-## Settings. Back returns to `from` (`return_to`; the host reads it); reopen()
+## the Wardrobe, the store), the store's "Fruits for playing together" and a
+## goal's toast. Back returns to `from` (`return_to`; the host reads it); reopen()
 ## opens it again with that Back, after a screen it opened goes Back. Its
 ## buttons go through routes Main sets, so the page never reaches into another
 ## screen: Get Fruits (`store_route`, the store on its Fruits tab), Open the
@@ -37,6 +37,8 @@ var spend: Node
 var surfaces: RefCounted
 ## () -> Control: the money chip for the header (presentation/pollen_play_flow.gd chip), or null.
 var chip_source: Callable
+## () -> Array: what that chip shows (presentation/pollen_play_flow.gd chip_state); a new chip only when it changes.
+var chip_state: Callable
 ## (from: String) -> void: the store on its Fruits tab, its Back coming here.
 var store_route: Callable
 ## (from: String) -> void: the Wardrobe on its Orchard tab, its Back coming here.
@@ -90,6 +92,7 @@ func open(from: String = "home") -> void:
 	_failed = false
 	_all = false
 	_drawn = ""
+	_chip_shown = chip_state.call() if chip_state.is_valid() else []
 	_chip = _make_chip()
 	_redraw()
 	refresh()
@@ -123,14 +126,23 @@ func _part() -> Dictionary:
 func _make_chip() -> Control:
 	return chip_source.call() if chip_source.is_valid() else null
 
+## The kept Fruits changed: a new chip only when what it shows changed, and the
+## page drawn again only when what it shows changed (_redraw), so a read that
+## changes neither never rebuilds a button under a finger.
 func _on_fruits_changed(_server: String, _owner: String) -> void:
 	if not is_open(): return
 	if not available():
 		back_requested.emit()
 		return
-	_chip = _make_chip()
-	_drawn = ""
+	var state: Array = chip_state.call() if chip_state.is_valid() else []
+	if state != _chip_shown:
+		_chip_shown = state
+		_chip = _make_chip()
+		_page.show_chip(_chip)
 	_redraw()
+
+## What the chip in the header shows (chip_state), as it was made.
+var _chip_shown: Array = []
 
 func _toggle_goals() -> void:
 	_all = not _all
@@ -154,7 +166,7 @@ func _redraw() -> void:
 	if not is_open(): return
 	var shown := model()
 	# Drawn again only when what it shows changed, so a late answer never rebuilds a button under a finger.
-	var key := var_to_str([shown, is_instance_valid(_chip)])
+	var key := var_to_str(shown)
 	if key == _drawn: return
 	_drawn = key
 	shown["chip"] = _chip

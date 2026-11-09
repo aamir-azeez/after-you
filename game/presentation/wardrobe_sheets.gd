@@ -183,7 +183,7 @@ static func _short_fruits(parent: Control, spec: Dictionary) -> Control:
 	column.add_child(line)
 	line.add_child(ShopKit.text(PlayerCopy.ORCHARD_SHORT_NEED, 18, CREAM))
 	line.add_child(ShopKit.amount(gap, 18, CREAM, "", PlayerCopy.ORCHARD_SHORT_MORE, FRUITS))
-	var pack := Bundles.cover(gap, spec.get("offer", {}), FRUITS) if get_fruits.is_valid() else ""
+	var pack := Bundles.cover(gap, spec.get("offer", {}), FRUITS, spec.get("priced")) if get_fruits.is_valid() else ""
 	if not pack.is_empty():
 		var reach := Bundles.adds(pack, spec.get("offer", {}))
 		var words := ShopKit.text((PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST if reach < gap else PlayerCopy.WARDROBE_SHORT_BUNDLE) % Bundles.display_name(pack), 18, CREAM)

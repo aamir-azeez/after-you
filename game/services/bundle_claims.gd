@@ -47,8 +47,6 @@ const MARK_DAYS := 7
 signal settled(credited: Array, refunded: Array)
 ## Every send's answer, as claim() returns it. A claim asked while a send runs takes that send's answer.
 signal answered(answer: Dictionary)
-## A claim answered with Fruit packs credited or taken back: what that answer applied.
-signal fruits_settled(credited: Array, refunded: Array)
 
 static var _shared: RefCounted = null
 static var _order := RegEx.create_from_string(ORDER_PATTERN)
@@ -184,7 +182,6 @@ func _settle(context: Dictionary, response: Dictionary) -> Dictionary:
 	wallet.note_balance(context.server, context.owner, answer.balance)
 	if fruits != null and answer.has("fruit_balance"): fruits.note_balance(context.server, context.owner, answer.fruit_balance)
 	settled.emit(answer.credited, answer.refunded)
-	if not answer.fruit_credited.is_empty() or not answer.fruit_refunded.is_empty(): fruits_settled.emit(answer.fruit_credited, answer.fruit_refunded)
 	var result := {"ok": true, "code": "", "credited": answer.credited, "refunded": answer.refunded, "balance": answer.balance, "fruit_credited": answer.fruit_credited, "fruit_refunded": answer.fruit_refunded}
 	if answer.has("fruit_balance"): result["fruit_balance"] = answer.fruit_balance
 	return result

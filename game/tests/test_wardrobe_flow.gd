@@ -863,6 +863,10 @@ static func _orchard_answer(items: Array, look: Dictionary, balance: int, fruits
 	part.offered = (part.offered as Array) + ORCHARD
 	part.fruit_prices = FRUIT_PRICES.duplicate() if fruit_prices == null else fruit_prices
 	part.fruit_sets = {"orchard": ["fruit_cap", "orchard_skin", "apple_leaf"]}
+	# What the server says the set costs this player: its pieces not owned, with its set rule (spend.ts).
+	var missing: Array = (part.fruit_sets.orchard as Array).filter(func(id: String) -> bool: return not id in items)
+	var costs := {3: 145, 2: 105, 1: 25}
+	part.fruit_set_costs = {"orchard": float(costs[missing.size()])} if not missing.is_empty() else {}
 	answer.data.fruits = {"schema_version": 1.0, "balance": float(fruits), "earned": float(maxi(fruits, 0)), "first_pack_gift": false, "first_pack_percent": 100.0, "achievements": []}
 	return answer
 
@@ -954,9 +958,10 @@ func _orchard_tab() -> void:
 	_check(sheet != null and "145" in _texts(sheet), "The set opens its confirm card at 145")
 	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "spend", "kind": "set", "id": "orchard", "pieces": ["fruit_cap", "orchard_skin", "apple_leaf"], "cost": 145.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 55.0}}]
 	await t.flow.confirm_buy("orchard", 145, "set")
-	var sent: Dictionary = t.fake.sent.back().body
+	var spends: Array = t.fake.sent.filter(func(entry: Dictionary) -> bool: return entry.path == "/v1/pollen/spend")
+	var sent: Dictionary = spends.back().body if not spends.is_empty() else {"kind": "", "id": "", "expected_cost": 0}
 	_check(sent.kind == "set" and sent.id == "orchard" and sent.expected_cost == 145, "Its Buy sends the set at 145")
-	_check(t.flow.model().sets[0].owned and t.flow.model().balance == 24000 and t.fruits.balance(SERVER, ME) == 55, "The pieces are owned, the Pollen untouched and the Fruits down to 55")
+	_check(t.flow.model().sets.is_empty() and t.flow.model().balance == 24000 and t.fruits.balance(SERVER, ME) == 55, "The pieces are owned (no set card once nothing is missing), the Pollen untouched and the Fruits down to 55")
 	(page.find_child("OrchardKind_hat", true, false) as Button).pressed.emit()
 	_check(t.flow.model().tab == "all" and t.flow.model().kind == "hat", "Hat on the Orchard's chips goes back to All items on hats")
 	t.flow.set_tab("owned")
@@ -991,10 +996,12 @@ func _orchard_confirm() -> void:
 	var buy: Button = sheet.find_child("WardrobeConfirmBuy", true, false)
 	_check(_texts(buy) == [PlayerCopy.WARDROBE_BUY_FOR, "50"] and buy.find_child("FruitMark", true, false) != null and _no_money(sheet), "Its Buy says Buy for [Fruit] 50, with no money figure")
 	var sends: int = t.fake.sent.size()
-	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "spend", "kind": "item", "id": "fruit_cap", "pieces": ["fruit_cap"], "cost": 50.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 51.0}}]
+	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "spend", "kind": "item", "id": "fruit_cap", "pieces": ["fruit_cap"], "cost": 50.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 51.0}}, _orchard_answer(["fruit_cap"], {}, 24000, 51)]
 	buy.pressed.emit()
-	await _frames(4)
-	_check(t.fake.sent.size() == sends + 1 and t.fake.sent.back().body.kind == "item" and t.fake.sent.back().body.id == "fruit_cap" and t.fake.sent.back().body.expected_cost == 50 and str(t.fake.sent.back().body.idempotency_key).length() == 32, "Its Buy sends the cap at 50 with its own key")
+	await _frames(8)
+	var spend: Dictionary = t.fake.sent[sends] if t.fake.sent.size() > sends else {}
+	_check(t.fake.sent.size() == sends + 2 and spend.path == "/v1/pollen/spend" and spend.body.kind == "item" and spend.body.id == "fruit_cap" and spend.body.expected_cost == 50 and str(spend.body.idempotency_key).length() == 32, "Its Buy sends the cap at 50 with its own key")
+	_check(t.fake.sent.back().path == "/v1/pollen" and t.flow.model().sets.size() == 1 and t.flow.model().sets[0].price == 105 and t.flow.model().sets[0].full == 125, "Then one read brings the set's new cost from the server: 105 for the two left")
 	_check("fruit_cap" in t.store.view(SERVER, ME).items and t.fruits.balance(SERVER, ME) == 51 and t.flow.model().balance == 24000 and PlayerCopy.WARDROBE_BOUGHT % "Fruit cap" in t.host.toasts, "Owned, 51 Fruits left, the Pollen untouched, and the player is told")
 	_check(_texts(t.host.overlay.find_child("WardrobeAction", true, false)) == [PlayerCopy.WARDROBE_WEAR], "The Fruit cap now offers Wear")
 	t.host.queue_free()

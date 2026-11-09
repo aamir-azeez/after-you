@@ -64,6 +64,7 @@ const PollenGrantCard = preload("res://presentation/pollen_grant_card.gd")
 const FruitsPageFlow = preload("res://presentation/fruits_page_flow.gd")
 const FruitSpendFlow = preload("res://presentation/fruit_spend_flow.gd")
 const FruitUnlockToasts = preload("res://presentation/fruit_unlock_toasts.gd")
+const WardrobeClient = preload("res://services/wardrobe_client.gd")
 # End of Fruits page and play.
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const StoreSupport = preload("res://services/store_support.gd")
@@ -1534,6 +1535,14 @@ func _pollen_page_back(page: PollenPlayFlow) -> void:
 
 # Fruits page and play ------------------------------------------------------
 
+## The one wardrobe client (services/wardrobe_client.gd) the Wardrobe, the
+## Orchard and the Fruit spends share, so one request at a time holds across
+## Orchard buys, converting and Sunshine. Made on first use, once api is set.
+var _wardrobe_client: RefCounted
+func wardrobe_client() -> RefCounted:
+	if _wardrobe_client == null: _wardrobe_client = WardrobeClient.new(api, _names_scope)
+	return _wardrobe_client
+
 ## An internal child, like StoreFlow: Sunshine and Fruits into Pollen from every
 ## screen that offers them. The Pollen page's Sunshine card goes through it.
 func _host_fruit_spend_flow() -> FruitSpendFlow:
@@ -1553,6 +1562,7 @@ func _host_fruits_page_flow() -> FruitsPageFlow:
 	flow.spend = fruit_spend_flow
 	flow.back_requested.connect(_fruits_page_back.bind(flow))
 	flow.chip_source = func() -> Control: return pollen_play_flow.chip(PollenPlayFlow.FROM_FRUITS)
+	flow.chip_state = pollen_play_flow.chip_state
 	flow.store_route = _fruit_store
 	flow.orchard_route = func(from: String) -> void:
 		# Back to a Wardrobe that opened the page keeps the Wardrobe's own Back.
@@ -1597,8 +1607,8 @@ func _fruit_screen() -> String:
 	if pollen_store_flow.is_open(): return "store"
 	return "home"
 
-## The Fruits page, its Back going to `from` ("home", "pollen", "wardrobe",
-## "store" or "settings"). From a screen the Fruits page itself opened, it goes
+## The Fruits page, its Back going to `from` ("home", "pollen", "wardrobe" or
+## "store"). From a screen the Fruits page itself opened, it goes
 ## Back there instead, so the two never send each other Back in a loop.
 func show_fruits_page(from: String) -> void:
 	var opener := {"pollen": pollen_play_flow.return_to, "wardrobe": wardrobe_flow.return_to, "store": pollen_store_flow.return_to}
@@ -1619,7 +1629,6 @@ func show_fruit_convert() -> void:
 ## The Fruits page's Back, to where it opened (its return_to).
 func _fruits_page_back(page: FruitsPageFlow) -> void:
 	match page.return_to:
-		"settings": settings_flow.show_settings()
 		"wardrobe": _back_to_wardrobe()
 		"pollen":
 			pollen_play_flow.reopen()

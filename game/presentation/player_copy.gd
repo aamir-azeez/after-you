@@ -535,6 +535,10 @@ const FRUIT_SPEND_ERRORS := {
 	"sunshine_active": "Your Sunshine still has turns left.",
 	"fruits_disabled": "Fruits aren't open right now.",
 }
+## Pollen that Fruits moved, among the turns on the Pollen page: Fruits turned
+## into Pollen, and Pollen taken back when refunded Fruits had been turned already.
+const POLLEN_EXCHANGE_CONVERT := "Turned from Fruits"
+const POLLEN_EXCHANGE_RECLAIM := "Taken back with a Fruit refund"
 ## A goal paid away from its result card: its toast, and the button that opens the Fruits page.
 const FRUIT_UNLOCK_TOAST := "%s: +%s Fruits"
 const FRUIT_UNLOCK_VIEW := "View"

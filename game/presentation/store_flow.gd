@@ -187,9 +187,9 @@ func _benefits() -> Dictionary:
 	if scope.is_empty(): return Benefits.content(false, false)
 	var server := str(scope.server)
 	var owner := str(scope.owner)
-	# While Fruits show, the monthly gifts are the Pollen and Fruit tiles, the Fruits from the server's grant part.
+	# While Fruits show, the monthly gifts are the Pollen and Fruit tiles, the Fruits from the server's ladder and grant.
 	var fruits: Variant = null
-	if PollenSurfaces.shared().fruits_visible(FruitWallet.shared(), scope): fruits = FruitWallet.shared().part(server, owner).get("grant", {})
+	if PollenSurfaces.shared().fruits_visible(FruitWallet.shared(), scope): fruits = FruitWallet.shared().part(server, owner)
 	return Benefits.content(PollenWallet.shared().enabled(server, owner), PollenGrant.shared().enabled(server, owner), PollenGrant.shared().ladder(server, owner), PollenSurfaces.shared().full_journey_visible(), fruits)
 
 ## The one subscription offer used by the store card and locked hosting: each

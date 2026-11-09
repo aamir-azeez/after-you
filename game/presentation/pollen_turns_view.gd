@@ -5,7 +5,9 @@ extends RefCounted
 ## with its chapter's picture, its bonuses or why it paid a little, a lucky
 ## bloom, its Pollen and when it was played; while Fruits show, a turn Sunshine
 ## paid more carries its tag after its bonuses ("First try · [sun] Sunshine ×2",
-## Fruits board 7). With few turns or none, the room
+## Fruits board 7), and Pollen that Fruits moved sits among the turns by its
+## time: Fruits turned into Pollen, and Pollen taken back when refunded Fruits
+## had already been turned (the history's `exchanges`). With few turns or none, the room
 ## left under them shows the player's own pip at rest among a few grains
 ## (presentation/pollen_play_spare.gd), only while that room is really spare.
 ## Pure drawing: presentation/pollen_play_page.gd gives it the card's column
@@ -26,20 +28,53 @@ const ROW_SIZE := Parts.ROW_SIZE
 ## The Sunshine tag's warm ink, readable on the cream card.
 const SUNSHINE_INK := Color("b06a12")
 
-## Fills `column` from {history (services/pollen_history.gd), fruits (Fruits show)}.
+## Fills `column` from {history (services/pollen_history.gd), fruits (Fruits
+## show: the Sunshine tags and the lines Fruits moved)}.
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
 	Parts.heading(column, PlayerCopy.POLLEN_TURNS_TITLE, PlayerCopy.POLLEN_TURNS_NOTE, title_font)
 	var history: Dictionary = model.get("history", {})
 	_bank(column, history.get("bank", {}), title_font)
 	var turns: Array = history.get("turns", [])
-	if turns.is_empty():
+	var fruits := bool(model.get("fruits", false))
+	var exchanges: Array = history.get("exchanges", []) if fruits else []
+	if turns.is_empty() and exchanges.is_empty():
 		var none := Parts.wrapped(PlayerCopy.POLLEN_TURNS_NONE, ROW_SIZE, Parts.SOFT_INK)
 		none.name = "PollenTurnsNone"
 		column.add_child(none)
-	for index in range(turns.size()):
-		if index > 0: column.add_child(Parts.rule())
-		column.add_child(_row(turns[index], index, bool(model.get("fruits", false))))
+	# Newest first, a turn before an exchange at the same moment.
+	var lines: Array = []
+	for index in range(turns.size()): lines.append([int(turns[index].get("at", 0)), 0, index])
+	for index in range(exchanges.size()): lines.append([int(exchanges[index].get("at", 0)), 1, index])
+	lines.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0] or (a[0] == b[0] and (a[1] < b[1] or (a[1] == b[1] and a[2] < b[2]))))
+	for place in range(lines.size()):
+		if place > 0: column.add_child(Parts.rule())
+		var line: Array = lines[place]
+		column.add_child(_row(turns[line[2]], line[2], fruits) if line[1] == 0 else _exchange_row(exchanges[line[2]], line[2]))
 	column.add_child(Spare.new())
+
+## Pollen that Fruits moved: "Turned from Fruits" with what it added, or "Taken
+## back with a Fruit refund" with what it took, and when.
+static func _exchange_row(entry: Dictionary, index: int) -> Control:
+	var row := HBoxContainer.new()
+	row.name = "PollenExchangeRow%d" % index
+	row.add_theme_constant_override("separation", 12)
+	var words := Parts.wrapped(PlayerCopy.POLLEN_EXCHANGE_CONVERT if str(entry.kind) == "convert" else PlayerCopy.POLLEN_EXCHANGE_RECLAIM, ROW_SIZE, Parts.INK)
+	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(words)
+	var paid := VBoxContainer.new()
+	paid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	paid.add_theme_constant_override("separation", 0)
+	row.add_child(paid)
+	var amount := int(entry.get("amount", 0))
+	var value := ShopKit.amount(absi(amount), ROW_SIZE, Parts.INK, PlayerCopy.WARDROBE_MINUS % "" if amount < 0 else "")
+	value.alignment = BoxContainer.ALIGNMENT_END
+	paid.add_child(value)
+	var when := WhenLabel.text(floori(int(entry.get("at", 0)) / 1000.0))
+	if not when.is_empty():
+		var said := Parts.text(when, Parts.NOTE_SIZE, Parts.SOFT_INK)
+		said.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		paid.add_child(said)
+	return row
 
 ## The turn bank: how many full rate turns are left, how full it is, and its rules.
 static func _bank(column: VBoxContainer, bank: Dictionary, title_font: Font) -> void:

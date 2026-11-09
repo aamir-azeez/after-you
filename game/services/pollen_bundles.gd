@@ -146,8 +146,11 @@ static func adds(id: String, offer: Dictionary = {}) -> int:
 
 ## The pack to suggest when the player is `shortfall` short in `currency`: the
 ## smallest (store order) whose adds() covers it, else the largest. "" when no pack is known.
-static func cover(shortfall: int, offer: Dictionary = {}, currency: String = POLLEN) -> String:
+## `priced`: the packs the store priced (packages()), or null while that is not
+## known yet; a pack the store did not price is never named.
+static func cover(shortfall: int, offer: Dictionary = {}, currency: String = POLLEN, priced: Variant = null) -> String:
 	var known := ids(currency)
+	if priced is Dictionary: known = known.filter(func(id: String) -> bool: return (priced as Dictionary).has(id))
 	for id: String in known:
 		if adds(id, offer) >= shortfall: return id
 	return known.back() if not known.is_empty() else ""

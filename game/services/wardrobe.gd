@@ -23,8 +23,9 @@ extends RefCounted
 ## - offered_packs, prices, pack_price, sets, unlocked: what the server sells,
 ##   its sets and the Specials whose chapter this player has cleared (only
 ##   while the shop is on; empty otherwise); prices and sets are in Pollen;
-## - fruit_prices, fruit_sets: the Orchard items and sets the server sells for
-##   Fruits while FRUITS is on (empty otherwise). spend_currency and spend_price
+## - fruit_prices, fruit_sets, fruit_set_costs: the Orchard items and sets the
+##   server sells for Fruits while FRUITS is on, and what each set with a missing
+##   piece costs this player now (empty otherwise). spend_currency and spend_price
 ##   say which a spend is in, so every screen prices it the same way;
 ## - name_price: what the next name change costs (0 while one is free, -1
 ##   while the server sends none, as without the shop);
@@ -140,7 +141,9 @@ static func checked_view(value: Variant) -> Dictionary:
 	# The Orchard's prices and sets in Fruits, while FRUITS is on: a part off the contract reads as none.
 	var fruit_prices := _checked_prices(part.get("fruit_prices", {}))
 	var fruit_sets := _checked_sets(part.get("fruit_sets", {}))
-	return {"fruit_prices": fruit_prices, "fruit_sets": fruit_sets, "items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
+	# What each Orchard set with a missing piece costs this player now (set_cost).
+	var fruit_set_costs := _checked_prices(part.get("fruit_set_costs", {}))
+	return {"fruit_prices": fruit_prices, "fruit_sets": fruit_sets, "fruit_set_costs": fruit_set_costs, "items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
 		"offered": _ids(part.offered), "prices": prices, "offered_packs": _ids(part.get("offered_packs", [])), "pack_price": Typed.as_int(part.get("pack_price"), 0), "sets": sets, "unlocked": _ids(part.get("unlocked", [])),
 		"name_price": Typed.as_int(price) if price != null else -1, "name_price_next": price_next, "bundles": checked_bundles(value.get("bundles"))}
 
@@ -197,37 +200,26 @@ static func sale(view: Dictionary, id: String) -> Dictionary:
 	if fruit_prices.has(id): return {}
 	return {"currency": "pollen", "price": int(prices.get(id, Catalog.price(id)))}
 
-## The set rules of the server's catalogue (backend/src/pollen/catalog.json
-## set_discount_percent, set_min_missing, set_round_down), mirrored here because
-## the wallet read carries the pieces but not the rules; a price that differs is
-## refused (pollen_price_changed) and read again, never charged.
-const SET_DISCOUNT_PERCENT := 15
-const SET_MIN_MISSING := 2
-const SET_ROUND_DOWN := {"pollen": 100, "fruits": 5}
-
-## What set `set_id` costs a player who owns `owned` (item ids), as the server's
-## spend.ts setCost charges it: {currency, pieces (the missing ones), full (their
-## prices added up), cost}. One missing piece costs its own price; two or more
-## cost SET_DISCOUNT_PERCENT less, rounded down to the currency's step. {} for an
-## unknown set or one with a piece not sold (sale); `pieces` empty once all are owned.
+## What Orchard set `set_id` costs this player now, as the server said it
+## (`fruit_set_costs`, the price the spend checks: the set rule is the server's
+## alone): {currency, pieces (the ones `owned` lacks), full (their own prices
+## added up, for the struck price), cost}. {} when the server gave no cost (every
+## piece owned, an unknown set, a Pollen set, Fruits off) or a piece is not sold
+## in Fruits (sale), so no set card shows a price the server did not send.
 static func set_cost(view: Dictionary, set_id: String, owned: Array) -> Dictionary:
-	var fruit := (view.get("fruit_sets", {}) as Dictionary).has(set_id)
+	var costs: Dictionary = view.get("fruit_set_costs", {})
 	var pieces := set_pieces(view, set_id)
-	if pieces.is_empty(): return {}
-	var currency := "fruits" if fruit else "pollen"
+	if not costs.has(set_id) or not (view.get("fruit_sets", {}) as Dictionary).has(set_id) or pieces.is_empty(): return {}
 	var missing: Array = []
 	var full := 0
 	for id: String in pieces:
 		var sold := sale(view, id)
-		if sold.is_empty() or sold.currency != currency: return {}
+		if sold.is_empty() or sold.currency != "fruits": return {}
 		if id in owned: continue
 		missing.append(id)
 		full += int(sold.price)
-	var cost := full
-	if missing.size() >= SET_MIN_MISSING:
-		var step := int(SET_ROUND_DOWN[currency])
-		cost = floori(float(full * (100 - SET_DISCOUNT_PERCENT)) / float(100 * step)) * step
-	return {"currency": currency, "pieces": missing, "full": full, "cost": cost}
+	if missing.is_empty(): return {}
+	return {"currency": "fruits", "pieces": missing, "full": full, "cost": int(costs[set_id])}
 
 ## The wallet read's bundles part (only while bundles sell) as kept, or {}.
 static func checked_bundles(value: Variant) -> Dictionary:
@@ -334,6 +326,10 @@ func note_spend(server: String, owner: String, receipt: Variant) -> bool:
 	for id: String in pieces:
 		if not id in scope.view[list]: scope.view[list].append(id)
 	scope.view[list].sort()
+	# A set the purchase took a piece of costs something else now: its cost goes until the next read says it.
+	var costs: Dictionary = scope.view.get("fruit_set_costs", {})
+	for set_id: String in costs.keys():
+		if ((scope.view.get("fruit_sets", {}) as Dictionary).get(set_id, []) as Array).any(func(id: String) -> bool: return id in pieces): costs.erase(set_id)
 	_save()
 	_announce(server, owner)
 	return true
