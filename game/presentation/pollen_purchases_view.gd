@@ -3,6 +3,8 @@ extends RefCounted
 ## 2's store, presentation/pollen_store_flow.gd show_purchases): each bundle bought
 ## or refunded, newest first, with its art, its Pollen, its date and the receipt
 ## line the store's receipt shows ("$3.99 · Google Play order GPA.1234-...").
+## While Fruits show, each Fruit pack bought or refunded joins the same list
+## (lines()), its Fruits with the Fruit mark.
 ## Money is the server's US figure (services/pollen_history.gd), so it shows
 ## only for a player whose store sells in US dollars (`money`); anyone else sees
 ## receipt lines with the order alone. No total shows anywhere.
@@ -17,6 +19,7 @@ const BundleArt = preload("res://presentation/kit/bundle_art.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const WhenLabel = preload("res://presentation/when_label.gd")
 const StoreSheets = preload("res://presentation/pollen_store_sheets.gd")
+const Bundles = preload("res://services/pollen_bundles.gd")
 
 const INK := Color("1d3230")
 const SOFT_INK := Color("4e6660")
@@ -28,9 +31,11 @@ const ROW_SIZE := 17
 const ART := 46.0
 const GUTTER := 10.0
 
-## The Previous purchases sheet over `parent`, its list empty until render().
-static func open(parent: Control, opener: Control = null) -> Control:
-	var modal: Control = InGameModal.open(parent, "PollenPurchases", PlayerCopy.POLLEN_PURCHASES_TITLE, PlayerCopy.for_platform(PlayerCopy.POLLEN_PURCHASES_NOTE, PlayerCopy.POLLEN_PURCHASES_NOTE_IOS), opener)
+## The Previous purchases sheet over `parent`, its list empty until render();
+## `fruits`: Fruit packs show on it too (its note names them).
+static func open(parent: Control, opener: Control = null, fruits: bool = false) -> Control:
+	var note := PlayerCopy.for_platform(PlayerCopy.FRUIT_PURCHASES_NOTE, PlayerCopy.FRUIT_PURCHASES_NOTE_IOS) if fruits else PlayerCopy.for_platform(PlayerCopy.POLLEN_PURCHASES_NOTE, PlayerCopy.POLLEN_PURCHASES_NOTE_IOS)
+	var modal: Control = InGameModal.open(parent, "PollenPurchases", PlayerCopy.POLLEN_PURCHASES_TITLE, note, opener)
 	modal.widen(680.0)
 	var card := PanelContainer.new()
 	card.name = "PollenPurchasesCard"
@@ -55,6 +60,25 @@ static func render(modal: Control, model: Dictionary) -> void:
 		column.remove_child(child)
 		child.queue_free()
 	fill(column, model)
+
+## The rows a history read (services/pollen_history.gd checked) lists: its
+## Pollen `purchases`, and with `fruits` its Fruit pack lines ("bundle" and
+## "bundlerefund" in fruit_entries) in the same shape, newest first.
+static func lines(history: Dictionary, fruits: bool) -> Array:
+	var rows: Array = (history.get("purchases", []) as Array).duplicate(true)
+	if fruits:
+		for entry: Dictionary in history.get("fruit_entries", []):
+			if not str(entry.kind) in ["bundle", "bundlerefund"] or not entry.has("bundle"): continue
+			var row := {"kind": entry.kind, "bundle": entry.bundle, "amount": entry.amount, "at": entry.at, "order": str(entry.get("order", "")), "usd_cents": int(entry.get("usd_cents", -1))}
+			if entry.has("store"): row["store"] = entry.store
+			rows.append(row)
+	# Stable, so lines with the same time keep the server's order.
+	var ordered: Array = []
+	for row: Dictionary in rows:
+		var at := ordered.size()
+		while at > 0 and int(ordered[at - 1].at) < int(row.at): at -= 1
+		ordered.insert(at, row)
+	return ordered
 
 ## Fills `column` (already empty) from {lines (services/pollen_history.gd
 ## purchases), money (false: no money anywhere on the list), status (shown
@@ -105,9 +129,9 @@ static func _row(line: Dictionary, index: int, money: bool) -> Control:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 8)
 	words.add_child(top)
-	var bundle_name := str(PlayerCopy.POLLEN_STORE_BUNDLES.get(str(line.bundle), str(line.bundle)))
+	var bundle_name := Bundles.display_name(str(line.bundle))
 	top.add_child(_wrapped(PlayerCopy.POLLEN_PURCHASE_REFUNDED % bundle_name if refund else bundle_name, ROW_SIZE, INK))
-	var pollen := ShopKit.amount(absi(int(line.amount)), ROW_SIZE, REFUND_INK if refund else INK, PlayerCopy.WARDROBE_MINUS % "" if refund else "")
+	var pollen := ShopKit.amount(absi(int(line.amount)), ROW_SIZE, REFUND_INK if refund else INK, PlayerCopy.WARDROBE_MINUS % "" if refund else "", "", Bundles.currency_of(str(line.bundle)))
 	pollen.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(pollen)
 	# Room for the card's scroll bar, which this card is the one most likely to show.

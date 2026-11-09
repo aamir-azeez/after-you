@@ -1,6 +1,7 @@
 extends Node
-## The one way a Pollen bundle is bought (Google Play, or the App Store on
-## iPhone): the store's prices, the store's own sheet and the claim after it.
+## The one way a Pollen bundle or a Fruit pack is bought (Google Play, or the
+## App Store on iPhone): the store's prices, the store's own sheet and the claim
+## after it.
 ## The Pollen store (presentation/pollen_store_flow.gd) owns it as its child, and
 ## a short of Pollen card buys through the same one (presentation/short_card_buy.gd),
 ## so only one purchase is ever out.
@@ -11,7 +12,9 @@ extends Node
 ## sheet drops the mark. After the sheet says the purchase went through, the
 ## server is asked to claim it a few times; a claim that gets no answer stays
 ## waiting and goes again on the next flush. The prices come only from the
-## RevenueCat offering "pollen" (services/pollen_bundles.gd). On iPhone the
+## RevenueCat offerings "pollen" and "fruits" (services/pollen_bundles.gd
+## packages; a Fruit pack is priced only while that offering has its product,
+## and the ids never collide, so one `packages` holds both). On iPhone the
 ## prices load, and a purchase starts, only after this run's capabilities read
 ## (Main._read_store_support, services/store_support.gd).
 ##
@@ -129,7 +132,9 @@ func _connect() -> void:
 
 func _priced(payload: Dictionary) -> void:
 	packages = Bundles.packages(payload)
+	# Loaded means the Pollen bundles were priced, as before; the Fruit packs come with the same read.
 	loaded = not packages.is_empty()
+	packages.merge(Bundles.packages(payload, "", Bundles.FRUITS))
 	_priced_for = flow._scope()
 	prices_changed.emit(loaded)
 
@@ -201,9 +206,9 @@ func _claim_after_purchase(bought: Dictionary, known: Array) -> String:
 		if not is_inside_tree(): return "on_its_way"
 	return "credited" if credited_since(known, bundle) else "on_its_way"
 
-## The receipts already shown or taken and those still unseen.
+## The receipts already shown or taken and those still unseen, Pollen and Fruits.
 func receipts_known() -> Array:
-	return _shown + _claims().unseen()
+	return _shown + _claims().unseen() + _claims().unseen_fruits()
 
 ## Whether a receipt for `bundle` came that `known` (receipts_known at a buy)
 ## did not have. Another bundle's receipt is another purchase's.
@@ -215,5 +220,13 @@ func take_unseen() -> Array:
 	var receipts: Array = _claims().unseen()
 	if receipts.is_empty(): return receipts
 	_claims().mark_seen()
-	_shown = (_shown + receipts).slice(-BundleClaims.MAX_UNSEEN * 2)
+	_shown = (_shown + receipts).slice(-BundleClaims.MAX_UNSEEN * 4)
+	return receipts
+
+## The Fruit pack receipts the player has not seen, oldest first, now marked seen.
+func take_unseen_fruits() -> Array:
+	var receipts: Array = _claims().unseen_fruits()
+	if receipts.is_empty(): return receipts
+	_claims().mark_fruits_seen()
+	_shown = (_shown + receipts).slice(-BundleClaims.MAX_UNSEEN * 4)
 	return receipts

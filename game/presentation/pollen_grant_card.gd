@@ -10,6 +10,12 @@ extends RefCounted
 ## never on a build that names no Full Journey (services/pollen_surfaces.gd
 ## full_journey_visible, asked by Main).
 ##
+## While Fruits show and the instalment brought Fruits (Fruits board 5b) it is
+## "Your monthly gifts arrived": next month names both ("Next month: 5,250
+## Pollen and 16 Fruits."), and the Fruits stand beside the Pollen on their own
+## plum tile (kit/orchard_surface.gd), the Fruit mark from kit/currency_mark.gd.
+## Without Fruits it is today's card, unchanged.
+##
 ## It is an InGameModal, so Android Back, the focus order and Main's "a card is
 ## up" checks treat it as every other card. The board has no X: Done and Back
 ## close it.
@@ -19,7 +25,8 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Benefits = preload("res://presentation/full_journey_benefits.gd")
 const PollenBag = preload("res://presentation/pollen_bag.gd")
-const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
+const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
+const Orchard = preload("res://presentation/kit/orchard_surface.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const HANGER = preload("res://assets/ui/hanger.svg")
@@ -33,6 +40,8 @@ const DIM := 0.26
 const RIGHT_MARGIN := 28.0
 const AMOUNT := Color("f8d77a")
 const AMOUNT_SIZE := 56
+## The Fruits on their tile, a little smaller so both fit the card's width.
+const FRUIT_SIZE := 48
 const TITLE_SIZE := 34
 const BAG := 74.0
 ## The pips keep their joy face while the card is up: a timed reaction this
@@ -44,14 +53,26 @@ const CATCH_UP := 48
 
 ## The line under the title: "From Full Journey, month 1 of your ladder.\nNext month: 4,750.",
 ## or for several months paid at once "From Full Journey, 2 months of your ladder.\nNext month: 5,250."
-static func month_line(card: Dictionary) -> String:
+## With `fruits` ({amount, next}, see open) next month names both: "Next month: 5,250 Pollen and 16 Fruits."
+static func month_line(card: Dictionary, fruits: Dictionary = {}) -> String:
 	if str(card.get("key", "")) == LIFETIME_KEY: return PlayerCopy.POLLEN_GRANT_LIFETIME
-	var next := PollenMoney.grouped(int(card.get("next", 0)))
-	# A refund can take the count below this instalment's month: then no month is named.
-	if int(card.get("months", 0)) < 1: return PlayerCopy.POLLEN_GRANT_NEXT % next
+	var next := int(card.get("next", 0))
 	var count := int(summary(card).count)
-	if count > 1: return PlayerCopy.POLLEN_GRANT_MONTHS % [count, next]
-	return PlayerCopy.POLLEN_GRANT_MONTH % [PollenMoney.grouped(int(card.months)), next]
+	if not fruits.is_empty():
+		var next_fruits := int(fruits.get("next", 0))
+		if int(card.get("months", 0)) < 1: return PlayerCopy.FRUIT_GRANT_NEXT % [PollenMoney.grouped(next), PollenMoney.grouped(next_fruits)]
+		if count > 1: return PlayerCopy.FRUIT_GRANT_MONTHS % [count, PollenMoney.grouped(next), PollenMoney.grouped(next_fruits)]
+		return PlayerCopy.FRUIT_GRANT_MONTH % [PollenMoney.grouped(int(card.months)), PollenMoney.grouped(next), PollenMoney.grouped(next_fruits)]
+	# A refund can take the count below this instalment's month: then no month is named.
+	if int(card.get("months", 0)) < 1: return PlayerCopy.POLLEN_GRANT_NEXT % PollenMoney.grouped(next)
+	if count > 1: return PlayerCopy.POLLEN_GRANT_MONTHS % [count, PollenMoney.grouped(next)]
+	return PlayerCopy.POLLEN_GRANT_MONTH % [PollenMoney.grouped(int(card.months)), PollenMoney.grouped(next)]
+
+## The Fruits a card names: what the server paid with the newest instalment
+## and its welcome basket. Months paid together are not added up for Fruits:
+## a month paid while Fruits were off paid none, and only the server knows which.
+static func fruit_total(fruits: Dictionary) -> int:
+	return int(fruits.get("amount", 0)) + int(fruits.get("welcome", 0))
 
 ## What the card names: {count, total}. Every month the ladder counted since
 ## the last card (`since`, services/pollen_grant.gd pending) and what they paid
@@ -78,23 +99,54 @@ static func amount_text(amount: int) -> String:
 ## Opens the card for `card` ({key, amount, next, top, months, since?}) over `parent`.
 ## `spirits`: Home's pips, which make their joy face until it closes.
 ## `wardrobe`: opens the Wardrobe; without one the card offers Done alone.
-static func open(parent: Control, card: Dictionary, spirits: Array = [], wardrobe: Callable = Callable(), opener: Control = null) -> Control:
-	var modal := InGameModal.open(parent, "PollenGrantCard", PlayerCopy.POLLEN_GRANT_TITLE, month_line(card), opener) as InGameModal
+## `fruits`: {} while Fruits do not show or the instalment brought none; else
+## {amount, welcome (services/fruit_wallet.gd grant_paid), next, top (its grant part)}.
+static func open(parent: Control, card: Dictionary, spirits: Array = [], wardrobe: Callable = Callable(), opener: Control = null, fruits: Dictionary = {}) -> Control:
+	var both := not fruits.is_empty() and str(card.get("key", "")) != LIFETIME_KEY
+	var shown_fruits := fruits if both else {}
+	var modal := InGameModal.open(parent, "PollenGrantCard", PlayerCopy.FRUIT_GRANT_TITLE if both else PlayerCopy.POLLEN_GRANT_TITLE, month_line(card, shown_fruits), opener) as InGameModal
 	modal.widen(WIDTH)
 	_restyle(modal)
 	var amount := HBoxContainer.new()
 	amount.name = "PollenGrantAmount"
 	amount.add_theme_constant_override("separation", 14)
-	amount.add_child(PollenMark.beside(AMOUNT_SIZE))
+	amount.add_child(CurrencyMark.beside(CurrencyMark.POLLEN, AMOUNT_SIZE))
 	var figure := modal.label(amount_text(int(summary(card).total)), AMOUNT_SIZE, amount)
 	figure.name = "PollenGrantFigure"
 	figure.autowrap_mode = TextServer.AUTOWRAP_OFF
 	figure.add_theme_font_override("font", modal.heading_font)
 	figure.add_theme_color_override("font_color", AMOUNT)
+	if both: amount.add_child(_fruit_tile(modal, fruit_total(shown_fruits)))
 	modal.content.add_child(amount)
 	_add_actions(modal, wardrobe)
 	_cheer(modal, spirits)
 	return modal
+
+## The Fruits on their plum tile, beside the Pollen (board 5b).
+static func _fruit_tile(modal: InGameModal, fruits: int) -> Control:
+	var gap := Control.new()
+	gap.custom_minimum_size.x = 18
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tile := Orchard.card(18, false, Vector2(18, 6))
+	tile.name = "PollenGrantFruits"
+	tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tile.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 12)
+	tile.add_child(row)
+	row.add_child(CurrencyMark.beside(CurrencyMark.FRUITS, FRUIT_SIZE))
+	var figure := modal.label(amount_text(fruits), FRUIT_SIZE, row)
+	figure.name = "PollenGrantFruitFigure"
+	figure.autowrap_mode = TextServer.AUTOWRAP_OFF
+	figure.add_theme_font_override("font", modal.heading_font)
+	figure.add_theme_color_override("font_color", Orchard.TEXT)
+	var holder := HBoxContainer.new()
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_theme_constant_override("separation", 0)
+	holder.add_child(gap)
+	holder.add_child(tile)
+	return holder
 
 ## The board's header: the bag before the titles, a bigger title that wraps,
 ## no X; the dim lightened and the card moved right of the island.

@@ -11,6 +11,9 @@ extends RefCounted
 ##   Pollen", the store's own sum with any first bundle gift), with a button
 ##   that shows that bundle's store price and buys it right there
 ##   (presentation/short_card_buy.gd), and a line under it for how a purchase ended. It never estimates how long earning takes.
+## Both cards take a currency (Fruits board 4b): a Fruit purchase shows the
+## Fruit on every row and a plum Buy, and short_of() is the one short card for
+## Pollen and Fruits (an Orchard item, Sunshine, converting).
 const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
@@ -23,7 +26,10 @@ const Bundles = preload("res://services/pollen_bundles.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Outfit = preload("res://services/outfit.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
+const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
+const OrchardSurface = preload("res://presentation/kit/orchard_surface.gd")
 const USERS_ICON = preload("res://assets/ui/social/users.svg")
+const FRUITS := "fruits"
 const MUTED := ShopKit.MUTED
 const CREAM := ShopKit.CREAM
 const BOX := Color("143a35")
@@ -35,18 +41,25 @@ const GETS_SIZE := 15
 ## and Special out ("epic", "special" here puts that back).
 const NO_BUNDLE_TIERS := []
 
-## The confirm card for item `id`; `buy` runs on its Buy button. Returns the modal.
-static func confirm(parent: Control, id: String, item_name: String, cost: int, balance: int, buy: Callable, opener: Control = null) -> Control:
-	var modal: Control = InGameModal.open(parent, "WardrobeConfirm", PlayerCopy.WARDROBE_CONFIRM_TITLE % item_name, PlayerCopy.WARDROBE_CONFIRM_NOTE, opener)
+## The confirm card for item `id` (or a set, worn as `outfit`); `buy` runs on
+## its Buy button. `currency` "fruits" shows the Fruit on each row and a plum
+## "Buy for [Fruit] 50" (board 4b); Pollen keeps board 5b. Returns the modal.
+## `art`, when given, stands where the pip would (Sunshine's sun) and no pip is made; `note` is the line under the title.
+static func confirm(parent: Control, id: String, item_name: String, cost: int, balance: int, buy: Callable, opener: Control = null, currency: String = "", outfit: Dictionary = {}, art: Control = null, note: String = PlayerCopy.WARDROBE_CONFIRM_NOTE) -> Control:
+	var modal: Control = InGameModal.open(parent, "WardrobeConfirm", PlayerCopy.WARDROBE_CONFIRM_TITLE % item_name, note, opener)
 	modal.widen(600.0)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
 	modal.content.add_child(row)
-	var pip := PipAvatar.new(true, SpiritLook.PEACH, Vector2(96, 118), true)
-	pip.name = "WardrobeConfirmPip"
-	pip.outfit = Outfit.of(id)
-	pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(pip)
+	if art != null:
+		art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(art)
+	else:
+		var pip := PipAvatar.new(true, SpiritLook.PEACH, Vector2(96, 118), true)
+		pip.name = "WardrobeConfirmPip"
+		pip.outfit = outfit if not outfit.is_empty() else Outfit.of(id)
+		pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(pip)
 	var table := GridContainer.new()
 	table.name = "WardrobeConfirmLines"
 	table.columns = 2
@@ -54,16 +67,32 @@ static func confirm(parent: Control, id: String, item_name: String, cost: int, b
 	table.add_theme_constant_override("h_separation", 18)
 	table.add_theme_constant_override("v_separation", 10)
 	row.add_child(table)
-	_line(table, PlayerCopy.WARDROBE_YOU_HAVE, ShopKit.amount(balance, 18, CREAM))
-	_line(table, item_name, ShopKit.amount(cost, 18, CREAM, PlayerCopy.WARDROBE_MINUS % ""))
-	_line(table, PlayerCopy.WARDROBE_LEFT, ShopKit.amount(balance - cost, 18, CREAM))
+	_line(table, PlayerCopy.WARDROBE_YOU_HAVE, ShopKit.amount(balance, 18, CREAM, "", "", currency))
+	_line(table, item_name, ShopKit.amount(cost, 18, CREAM, PlayerCopy.WARDROBE_MINUS % "", "", currency))
+	_line(table, PlayerCopy.WARDROBE_LEFT, ShopKit.amount(balance - cost, 18, CREAM, "", "", currency))
 	var button: Button = modal.add_actions(PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(cost), buy, PlayerCopy.DISPLAY_NAME_CANCEL)
+	if currency == FRUITS:
+		# Buy for [Fruit] 50 on plum, the words and the mark inside the one button.
+		button.text = ""
+		ShopKit.set_button_content(button, buy_words(cost, 20, OrchardSurface.TEXT, currency))
+		button.accessibility_name = PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(cost)
+		OrchardSurface.plum_button(button)
 	# A purchase sounds its own chord once the server confirms it.
 	ButtonTicks.quiet(button)
 	var cancel: Button = modal.find_child("ModalCancel", true, false)
 	if cancel != null: ThemeRules.secondary(cancel)
 	button.name = "WardrobeConfirmBuy"
 	return modal
+
+## "Buy for [mark] 50": the words, then the amount in its currency.
+static func buy_words(cost: int, font_size: int, color: Color, currency: String = "") -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.name = "WardrobeBuyContent"
+	row.add_theme_constant_override("separation", 10)
+	row.add_child(ShopKit.text(PlayerCopy.WARDROBE_BUY_FOR, font_size, color, ShopKit.bold_font()))
+	row.add_child(ShopKit.amount(cost, font_size, color, "", "", currency))
+	return row
+
 
 ## A row: `words`, then the amount.
 static func _line(table: GridContainer, words: String, amount: Control) -> void:
@@ -80,6 +109,33 @@ static func _line(table: GridContainer, words: String, amount: Control) -> void:
 ## for the first bundle gift. `in_shop` false (a name change, pollen board 6)
 ## words the suggestion for the name. Returns the modal.
 static func short(parent: Control, item_name: String, tier: String, cost: int, balance: int, buyer: Node = null, credited: Callable = Callable(), opener: Control = null, in_shop: bool = true, offer: Dictionary = {}) -> Control:
+	return short_of(parent, {"item_name": item_name, "tier": tier, "cost": cost, "balance": balance, "buyer": buyer, "credited": credited, "opener": opener, "in_shop": in_shop, "offer": offer})
+
+## The one short card, for Pollen and Fruits. `spec`:
+## - cost, balance (whole numbers; a balance below 0 counts the real gap),
+##   currency ("pollen" when left out, or "fruits"), opener (focus returns there),
+##   offer (the first pack gift: a wardrobe view's `bundles` part for Pollen,
+##   services/fruit_wallet.gd offer() for Fruits);
+## - Pollen (board 5b): item_name, tier, buyer, credited and in_shop, as short() says;
+## - Fruits (board 4b): "You need [Fruit] 20 more." and, only with `get_fruits`
+##   (a Callable that opens the store on its Fruit packs; pass it only while
+##   services/pollen_surfaces.gd fruit_packs_visible), the smallest pack that
+##   covers the gap ("Get the Handful to buy this.", Bundles.cover with
+##   "fruits") and a plum Get Fruits that closes the card and calls it. Without
+##   it neither the pack nor the button shows. No item is needed, so Sunshine
+##   and converting use it as an Orchard item does.
+## Returns the modal ("WardrobeShort").
+static func short_of(parent: Control, spec: Dictionary) -> Control:
+	if str(spec.get("currency", "")) == FRUITS: return _short_fruits(parent, spec)
+	var item_name := str(spec.get("item_name", ""))
+	var tier := str(spec.get("tier", ""))
+	var cost := int(spec.get("cost", 0))
+	var balance := int(spec.get("balance", 0))
+	var buyer: Node = spec.get("buyer") as Node
+	var credited: Callable = spec.get("credited", Callable())
+	var opener: Control = spec.get("opener") as Control
+	var in_shop := bool(spec.get("in_shop", true))
+	var offer: Dictionary = spec.get("offer", {})
 	var modal: Control = InGameModal.open(parent, "WardrobeShort", PlayerCopy.WARDROBE_SHORT_TITLE,
 		PlayerCopy.WARDROBE_SHORT_NOTE % [item_name, PollenMoney.grouped(cost), PollenMoney.grouped(balance)], opener)
 	modal.widen(600.0)
@@ -107,6 +163,47 @@ static func short(parent: Control, item_name: String, tier: String, cost: int, b
 	earn.add_child(ShopKit.text(PlayerCopy.WARDROBE_SHORT_EARN, 17, CREAM, ShopKit.bold_font()))
 	var bundle := Bundles.cover(cost - balance, offer)
 	if is_instance_valid(buyer) and not tier in NO_BUNDLE_TIERS and not bundle.is_empty(): _suggest(modal, bundle, offer, cost - balance, buyer, credited, in_shop)
+	modal.refresh_focus_order()
+	return modal
+
+## The Fruit short card (board 4b): the gap with the Fruit, then the pack and Get Fruits while packs sell.
+static func _short_fruits(parent: Control, spec: Dictionary) -> Control:
+	var gap := int(spec.get("cost", 0)) - int(spec.get("balance", 0))
+	var get_fruits: Callable = spec.get("get_fruits", Callable())
+	var modal: Control = InGameModal.open(parent, "WardrobeShort", PlayerCopy.ORCHARD_SHORT_TITLE, "", spec.get("opener") as Control)
+	modal.widen(600.0)
+	var box := _box(modal.content, "WardrobeShortNeed")
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 14)
+	box.add_child(column)
+	var line := HFlowContainer.new()
+	line.name = "WardrobeShortLine"
+	line.add_theme_constant_override("h_separation", 8)
+	line.add_theme_constant_override("v_separation", 4)
+	column.add_child(line)
+	line.add_child(ShopKit.text(PlayerCopy.ORCHARD_SHORT_NEED, 18, CREAM))
+	line.add_child(ShopKit.amount(gap, 18, CREAM, "", PlayerCopy.ORCHARD_SHORT_MORE, FRUITS))
+	var pack := Bundles.cover(gap, spec.get("offer", {}), FRUITS) if get_fruits.is_valid() else ""
+	if not pack.is_empty():
+		var reach := Bundles.adds(pack, spec.get("offer", {}))
+		var words := ShopKit.text((PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST if reach < gap else PlayerCopy.WARDROBE_SHORT_BUNDLE) % Bundles.display_name(pack), 18, CREAM)
+		words.name = "WardrobeShortBundleLine"
+		line.add_child(words)
+		var row := HBoxContainer.new()
+		column.add_child(row)
+		var content := HBoxContainer.new()
+		content.add_theme_constant_override("separation", 10)
+		content.add_child(CurrencyMark.beside(FRUITS, 20))
+		content.add_child(ShopKit.text(PlayerCopy.ORCHARD_GET_FRUITS, 20, OrchardSurface.TEXT, ShopKit.bold_font()))
+		var button := ShopKit.content_button(content, 50)
+		button.name = "WardrobeGetFruits"
+		button.custom_minimum_size.x = maxf(button.custom_minimum_size.x, 190.0)
+		button.accessibility_name = PlayerCopy.ORCHARD_GET_FRUITS
+		OrchardSurface.plum_button(button)
+		button.pressed.connect(func() -> void:
+			modal.close(false)
+			get_fruits.call())
+		row.add_child(button)
 	modal.refresh_focus_order()
 	return modal
 

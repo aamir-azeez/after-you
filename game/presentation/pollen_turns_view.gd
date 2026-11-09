@@ -3,7 +3,9 @@ extends RefCounted
 ## bank (turns left, how full it is, the Monday refill and the cap; when empty,
 ## what turns still earn, in the server's numbers), then the newest turns, each
 ## with its chapter's picture, its bonuses or why it paid a little, a lucky
-## bloom, its Pollen and when it was played. With few turns or none, the room
+## bloom, its Pollen and when it was played; while Fruits show, a turn Sunshine
+## paid more carries its tag after its bonuses ("First try · [sun] Sunshine ×2",
+## Fruits board 7). With few turns or none, the room
 ## left under them shows the player's own pip at rest among a few grains
 ## (presentation/pollen_play_spare.gd), only while that room is really spare.
 ## Pure drawing: presentation/pollen_play_page.gd gives it the card's column
@@ -18,10 +20,13 @@ const PollenResultLine = preload("res://presentation/pollen_result_line.gd")
 const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
 const Breakdown = preload("res://presentation/pollen_breakdown.gd")
 const WhenLabel = preload("res://presentation/when_label.gd")
+const SunMark = preload("res://presentation/kit/sun_mark.gd")
 
 const ROW_SIZE := Parts.ROW_SIZE
+## The Sunshine tag's warm ink, readable on the cream card.
+const SUNSHINE_INK := Color("b06a12")
 
-## Fills `column` from {history (services/pollen_history.gd)}.
+## Fills `column` from {history (services/pollen_history.gd), fruits (Fruits show)}.
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
 	Parts.heading(column, PlayerCopy.POLLEN_TURNS_TITLE, PlayerCopy.POLLEN_TURNS_NOTE, title_font)
 	var history: Dictionary = model.get("history", {})
@@ -33,7 +38,7 @@ static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> 
 		column.add_child(none)
 	for index in range(turns.size()):
 		if index > 0: column.add_child(Parts.rule())
-		column.add_child(_row(turns[index], index))
+		column.add_child(_row(turns[index], index, bool(model.get("fruits", false))))
 	column.add_child(Spare.new())
 
 ## The turn bank: how many full rate turns are left, how full it is, and its rules.
@@ -58,7 +63,7 @@ static func tail_line(bank: Dictionary) -> String:
 	return PlayerCopy.POLLEN_TAIL % [PlayerCopy.POLLEN_TAIL_THEN.join(steps), int(bank.get("refill", 0))]
 
 ## One turn: its chapter's picture, where, what added to it, its Pollen and when.
-static func _row(turn: Dictionary, index: int) -> Control:
+static func _row(turn: Dictionary, index: int, fruits: bool = false) -> Control:
 	var row := HBoxContainer.new()
 	row.name = "PollenTurnRow%d" % index
 	row.add_theme_constant_override("separation", 12)
@@ -71,7 +76,8 @@ static func _row(turn: Dictionary, index: int) -> Control:
 	row.add_child(words)
 	words.add_child(Parts.wrapped(place(turn), ROW_SIZE, Parts.INK))
 	var note := turn_note(turn)
-	if not note.is_empty(): words.add_child(Parts.wrapped(note, Parts.NOTE_SIZE, Parts.SOFT_INK))
+	if fruits and int(turn.get("sunshine", 0)) > 0: words.add_child(_sunshine_note(note))
+	elif not note.is_empty(): words.add_child(Parts.wrapped(note, Parts.NOTE_SIZE, Parts.SOFT_INK))
 	# The Pollen with a bloom's tag after it, and when the turn was played under it.
 	var paid := VBoxContainer.new()
 	paid.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -91,6 +97,17 @@ static func _row(turn: Dictionary, index: int) -> Control:
 		said.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		paid.add_child(said)
 	return row
+
+## A Sunshine turn's small line: its bonuses, then the sun and "Sunshine ×2".
+static func _sunshine_note(note: String) -> HBoxContainer:
+	var line := HBoxContainer.new()
+	line.name = "PollenTurnSunshine"
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 4)
+	if not note.is_empty(): line.add_child(Parts.text(note + PlayerCopy.POLLEN_TURN_BONUS_JOIN, Parts.NOTE_SIZE, Parts.SOFT_INK))
+	line.add_child(SunMark.beside(Parts.NOTE_SIZE, SUNSHINE_INK))
+	line.add_child(ShopKit.text(PlayerCopy.FRUIT_SUNSHINE_ROW, Parts.NOTE_SIZE, SUNSHINE_INK, ShopKit.bold_font()))
+	return line
 
 ## "The Wishing Well, stage 1".
 static func place(turn: Dictionary) -> String:

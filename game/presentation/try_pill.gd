@@ -4,11 +4,14 @@ extends PanelContainer
 ## on bright scenery), and a turn's count in Replays (quiet: Replays keeps
 ## cream for its main action). One shape, radius, icon and padding for both.
 ## A Replays turn played on its first try gets the mint First try chip, with a
-## check mark in place of the retry mark (the retry count concept).
+## check mark in place of the retry mark (the retry count concept). In play the
+## same pill also says Sunshine is on for the turn (show_sunshine: the line sun,
+## kit/sun_mark.gd, and "Sunshine ×2", Fruits board 7).
 ## Presentation only; the counts come from services/turn_tries.gd.
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DisplayNames = preload("res://services/display_names.gd")
+const SunMark = preload("res://presentation/kit/sun_mark.gd")
 const ICON := preload("res://assets/ui/retry.svg")
 const MUTED := Color("9dbeb4")
 ## The First try chip's fill: the kit's mint.
@@ -65,6 +68,18 @@ func show_try(tries: int, text: String = "") -> void:
 	_icon.visible = text.is_empty()
 	visible = tries > 1 or not text.is_empty()
 	if visible: label.text = text if not text.is_empty() else PlayerCopy.TRY_PILL % tries
+
+## The pill in play while the player's Sunshine has turns left: the sun and
+## "Sunshine ×2", still, with no count and no clock; hidden with `on` false.
+func show_sunshine(on: bool) -> void:
+	visible = on
+	if not on: return
+	label.text = PlayerCopy.FRUIT_SUNSHINE_ROW
+	_icon.visible = false
+	if _icon.get_parent().get_node_or_null("SunMark") == null:
+		var sun := SunMark.make(float(_font_size + 1), SunMark.LINE, ControlTheme.INK)
+		_icon.get_parent().add_child(sun)
+		_icon.get_parent().move_child(sun, 0)
 
 ## A Replays pill for one turn: who played it and how many tries it took, or
 ## the First try chip when it took one. Hidden when no count was kept (a turn

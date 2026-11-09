@@ -230,6 +230,9 @@ const OpeningCard = preload("res://presentation/chapter_loading_card.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Typed = preload("res://services/typed_values.gd")
 const PollenResultLine = preload("res://presentation/pollen_result_line.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 ## The turn after a solo first turn, set up on a worker while its review card
 ## is up, so Save turn need not replay that turn again on this thread. Joined
 ## in _process once it ends, before use; leaving hands it to the reaper.
@@ -1796,10 +1799,43 @@ func _show_tries() -> void:
 	# A hard run has no second try: its pill says so and where the run is.
 	var label: String = hard_flow.hud_label(int(checkpoint.get("stage_index", 0)), definition.stages.size()) if mode == "play" else ""
 	var shown := "%d|%s" % [tries, label]
+	_show_sunshine()
 	if shown == _shown_pill: return
 	_shown_pill = shown
 	if label.is_empty(): controls.show_tries(tries)
 	else: controls.show_tries(tries, label)
+
+## Whether the Sunshine pill shows now (it starts hidden), and what it was last
+## worked out for: the mode, and whether the kept Fruits changed since.
+var _sunshine_pill := false
+var _sunshine_mode := ""
+var _sunshine_stale := true
+
+## The Sunshine pill under the try pill: worked out again only when the mode
+## changes or the kept Fruits do (services/fruit_wallet.gd changed), never per frame.
+func _show_sunshine() -> void:
+	if mode == _sunshine_mode and not _sunshine_stale: return
+	_sunshine_mode = mode
+	_sunshine_stale = false
+	var sunny := mode == "play" and _sunshine_left()
+	if sunny != _sunshine_pill:
+		_sunshine_pill = sunny
+		controls.show_sunshine(sunny)
+
+func _on_sunshine_changed(_server: String, _owner: String) -> void:
+	_sunshine_stale = true
+
+## Whether this turn would get Sunshine: an online turn while Fruits show, the
+## player's Sunshine has turns left (services/fruit_wallet.gd) and the bank has
+## full rate turns (services/pollen_wallet.gd), as only bank turns use it.
+func _sunshine_left() -> bool:
+	if online_session == null or not online_session.has_method("nickname_scope"): return false
+	var fruits: RefCounted = FruitWallet.shared()
+	if not fruits.changed.is_connected(_on_sunshine_changed): fruits.changed.connect(_on_sunshine_changed)
+	var scope: Dictionary = online_session.nickname_scope()
+	if scope.is_empty() or not PollenSurfaces.shared().fruits_visible(fruits, scope): return false
+	if int(PollenWallet.shared().wallet(str(scope.server), str(scope.owner)).get("bank", 0)) <= 0: return false
+	return int(fruits.sunshine(str(scope.server), str(scope.owner)).get("left", 0)) > 0
 
 
 ## Begin and Resume stay live while a room poll (or another room request) is

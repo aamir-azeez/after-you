@@ -42,7 +42,8 @@ func _run() -> void:
 			_check(not text.contains(colour), "%s draws the Pollen grain's colour %s: use presentation/kit/pollen_mark.gd" % [path, colour])
 		if path != SEED_OWNER: _check(not text.contains(SEED), "%s uses the seed picture, which is not the Pollen mark" % path)
 	for path: String in USERS:
-		_check(FileAccess.get_file_as_string(path).contains("res://presentation/kit/pollen_mark.gd"), "%s takes its Pollen mark from the one source" % path)
+		var source := FileAccess.get_file_as_string(path)
+		_check(source.contains("res://presentation/kit/pollen_mark.gd") or source.contains("res://presentation/kit/currency_mark.gd"), "%s takes its Pollen mark from the one source (or the currency mark, which hands it out)" % path)
 	var mark: Control = PollenMark.make(34.0)
 	_check(mark.custom_minimum_size == Vector2(34, 34) and mark.mouse_filter == Control.MOUSE_FILTER_IGNORE and mark.name == "PollenMark", "a mark is square at its size and takes no input")
 	root.add_child(mark)
@@ -51,7 +52,7 @@ func _run() -> void:
 	mark.queue_free()
 	for path: String in USERS:
 		var text := FileAccess.get_file_as_string(path)
-		_check(text.contains("PollenMark.beside(") and not text.contains("PollenMark.make("), "%s sizes its mark from the amount's font" % path)
+		_check((text.contains("PollenMark.beside(") or text.contains("CurrencyMark.beside(")) and not text.contains("PollenMark.make(") and not text.contains("CurrencyMark.make("), "%s sizes its mark from the amount's font" % path)
 	# Beside an amount, at every size the game sets one: the grain's middle is the line's middle, and it stays inside the line.
 	for font_size: int in [16, 18, 22, 26, 32, 34]:
 		var row := HBoxContainer.new()

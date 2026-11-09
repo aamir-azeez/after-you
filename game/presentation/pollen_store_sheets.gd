@@ -1,5 +1,7 @@
 extends RefCounted
-## The Pollen store's two cards (Pollen board 2), on the shared in-game modal:
+## The store's two cards (Pollen board 2), on the shared in-game modal, for a
+## Pollen bundle or a Fruit pack alike (each amount with its own mark,
+## presentation/kit/shop_kit.gd amount):
 ## - confirm(): "Buy a Pouch?" with plain sums: the bundle with its bonus, the
 ##   first bundle gift while it is on and unused, You get, You'll have (the
 ##   balance before and after) and You pay (the store's own price). Its Buy
@@ -23,15 +25,18 @@ const ARROW := "  →  "
 ## bundle gift (0 when none); `known` false leaves out You'll have. `buy` runs
 ## on its Buy button. Returns the modal.
 static func confirm(parent: Control, bundle: String, price: String, gift: int, balance: int, known: bool, buy: Callable, opener: Control = null) -> Control:
-	var title := str(PlayerCopy.POLLEN_STORE_BUNDLES.get(bundle, bundle))
-	var modal: Control = InGameModal.open(parent, "PollenStoreConfirm", PlayerCopy.POLLEN_STORE_CONFIRM_TITLE % title, PlayerCopy.for_platform(PlayerCopy.POLLEN_STORE_CONFIRM_NOTE, PlayerCopy.POLLEN_STORE_CONFIRM_NOTE_IOS), opener)
+	var title := Bundles.display_name(bundle)
+	var currency := Bundles.currency_of(bundle)
+	var fruit := currency == Bundles.FRUITS
+	var note := PlayerCopy.for_platform(PlayerCopy.FRUIT_STORE_CONFIRM_NOTE, PlayerCopy.FRUIT_STORE_CONFIRM_NOTE_IOS) if fruit else PlayerCopy.for_platform(PlayerCopy.POLLEN_STORE_CONFIRM_NOTE, PlayerCopy.POLLEN_STORE_CONFIRM_NOTE_IOS)
+	var modal: Control = InGameModal.open(parent, "PollenStoreConfirm", PlayerCopy.POLLEN_STORE_CONFIRM_TITLE % title, note, opener)
 	modal.widen(620.0)
 	var table := _body(modal, bundle)
-	var pollen := Bundles.pollen(bundle)
-	_line(table, _bundle_words(bundle), ShopKit.amount(pollen, 17, CREAM))
-	if gift > 0: _line(table, PlayerCopy.POLLEN_STORE_GIFT % _gift_percent(bundle, gift), ShopKit.amount(gift, 17, CREAM))
-	_line(table, PlayerCopy.POLLEN_STORE_YOU_GET, ShopKit.amount(pollen + gift, 19, CREAM), true)
-	if known: _line(table, PlayerCopy.POLLEN_STORE_YOULL_HAVE, _before_after(balance, balance + pollen + gift))
+	var amount := Bundles.amount(bundle)
+	_line(table, _bundle_words(bundle), ShopKit.amount(amount, 17, CREAM, "", "", currency))
+	if gift > 0: _line(table, (PlayerCopy.FRUIT_STORE_GIFT if fruit else PlayerCopy.POLLEN_STORE_GIFT) % _gift_percent(bundle, gift), ShopKit.amount(gift, 17, CREAM, "", "", currency))
+	_line(table, PlayerCopy.POLLEN_STORE_YOU_GET, ShopKit.amount(amount + gift, 19, CREAM, "", "", currency), true)
+	if known: _line(table, PlayerCopy.POLLEN_STORE_YOULL_HAVE, _before_after(balance, balance + amount + gift, currency))
 	_line(table, PlayerCopy.POLLEN_STORE_YOU_PAY, ShopKit.text(price, 18, CREAM, ShopKit.bold_font()), true)
 	var button: Button = modal.add_actions(PlayerCopy.POLLEN_STORE_BUY % price, buy, PlayerCopy.DISPLAY_NAME_CANCEL)
 	var cancel: Button = modal.find_child("ModalCancel", true, false)
@@ -45,8 +50,12 @@ static func confirm(parent: Control, bundle: String, price: String, gift: int, b
 ## `open_wardrobe` runs on Open the Wardrobe (an empty Callable leaves it out).
 static func receipt(parent: Control, credited: Dictionary, balance_after: int, paid: String, open_wardrobe: Callable, opener: Control = null) -> Control:
 	var bundle := str(credited.bundle)
-	var added := int(credited.pollen) + int(credited.first_gift)
-	var modal: Control = InGameModal.open(parent, "PollenStoreReceipt", PlayerCopy.POLLEN_STORE_ADDED % PollenMoney.grouped(added), PlayerCopy.POLLEN_STORE_THANKS, opener)
+	var currency := Bundles.currency_of(bundle)
+	var fruit := currency == Bundles.FRUITS
+	# A Pollen receipt names its Pollen, a Fruit pack's its Fruits (services/bundle_claims.gd).
+	var paid_in := int(credited.get("fruits", 0)) if fruit else int(credited.get("pollen", 0))
+	var added := paid_in + int(credited.first_gift)
+	var modal: Control = InGameModal.open(parent, "PollenStoreReceipt", (PlayerCopy.FRUIT_STORE_ADDED if fruit else PlayerCopy.POLLEN_STORE_ADDED) % PollenMoney.grouped(added), PlayerCopy.POLLEN_STORE_THANKS, opener)
 	modal.widen(620.0)
 	var art := BundleArt.new(bundle, 76.0)
 	modal.header.add_child(art)
@@ -57,9 +66,9 @@ static func receipt(parent: Control, credited: Dictionary, balance_after: int, p
 	table.add_theme_constant_override("h_separation", 18)
 	table.add_theme_constant_override("v_separation", 10)
 	modal.content.add_child(table)
-	_line(table, _bundle_words(bundle), ShopKit.amount(int(credited.pollen), 17, CREAM))
-	if int(credited.first_gift) > 0: _line(table, PlayerCopy.POLLEN_STORE_GIFT % _gift_percent(bundle, int(credited.first_gift)), ShopKit.amount(int(credited.first_gift), 17, CREAM))
-	_line(table, PlayerCopy.POLLEN_STORE_BALANCE, _before_after(balance_after - added, balance_after))
+	_line(table, _bundle_words(bundle), ShopKit.amount(paid_in, 17, CREAM, "", "", currency))
+	if int(credited.first_gift) > 0: _line(table, (PlayerCopy.FRUIT_STORE_GIFT if fruit else PlayerCopy.POLLEN_STORE_GIFT) % _gift_percent(bundle, int(credited.first_gift)), ShopKit.amount(int(credited.first_gift), 17, CREAM, "", "", currency))
+	_line(table, PlayerCopy.POLLEN_STORE_BALANCE, _before_after(balance_after - added, balance_after, currency))
 	var paid_words := paid_line(paid, str(credited.get("order", "")), str(credited.get("store", "")))
 	if not paid_words.is_empty(): _line(table, PlayerCopy.POLLEN_STORE_PAID, ShopKit.text(paid_words, 16, CREAM))
 	var done: Button = modal.add_actions(PlayerCopy.POLLEN_STORE_DONE, func() -> void: modal.close(), PlayerCopy.POLLEN_STORE_OPEN_WARDROBE)
@@ -85,13 +94,13 @@ static func paid_line(paid: String, order: String, store: String = "") -> String
 	if paid.is_empty(): return (PlayerCopy.POLLEN_STORE_APP_STORE_ORDER_ONLY if apple else PlayerCopy.POLLEN_STORE_ORDER_ONLY) % order
 	return (PlayerCopy.POLLEN_STORE_APP_STORE_ORDER if apple else PlayerCopy.POLLEN_STORE_ORDER) % [paid, order]
 
-## "Pouch, with its 1,000 bonus", or the bundle's name alone when it has none.
+## "Pouch, with its 1,000 bonus", or the pack's name alone when it has none.
 static func _bundle_words(bundle: String) -> String:
-	var title := str(PlayerCopy.POLLEN_STORE_BUNDLES.get(bundle, bundle))
+	var title := Bundles.display_name(bundle)
 	return PlayerCopy.POLLEN_STORE_LINE_BONUS % [title, PollenMoney.grouped(Bundles.bonus(bundle))] if Bundles.bonus(bundle) > 0 else title
 
 static func _gift_percent(bundle: String, gift: int) -> int:
-	return roundi(100.0 * gift / Bundles.pollen(bundle)) if Bundles.pollen(bundle) > 0 else 0
+	return roundi(100.0 * gift / Bundles.amount(bundle)) if Bundles.amount(bundle) > 0 else 0
 
 static func _body(modal: Control, bundle: String) -> GridContainer:
 	var row := HBoxContainer.new()
@@ -114,12 +123,12 @@ static func _line(table: GridContainer, words: String, value: Control, strong: b
 	value.size_flags_horizontal = Control.SIZE_SHRINK_END
 	table.add_child(value)
 
-## "9,000 → [grain] 32,100"
-static func _before_after(before: int, after: int) -> Control:
+## "9,000 → [grain] 32,100", with the mark of `currency`.
+static func _before_after(before: int, after: int, currency: String = Bundles.POLLEN) -> Control:
 	var row := HBoxContainer.new()
 	row.name = "PollenBeforeAfter"
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 4)
 	row.add_child(ShopKit.text(PollenMoney.grouped(before) + ARROW, 16, MUTED))
-	row.add_child(ShopKit.amount(after, 17, CREAM))
+	row.add_child(ShopKit.amount(after, 17, CREAM, "", "", currency))
 	return row

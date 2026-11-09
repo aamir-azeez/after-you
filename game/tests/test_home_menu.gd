@@ -43,7 +43,7 @@ class StoreStub:
 	var opened := 0
 	var froms: Array = []
 	func available() -> bool: return on
-	func show_store(from: String = "wardrobe") -> void:
+	func show_store(from: String = "wardrobe", _tab_name: String = "pollen") -> void:
 		opened += 1
 		froms.append(from)
 	func reopen() -> void: show_store(return_to)

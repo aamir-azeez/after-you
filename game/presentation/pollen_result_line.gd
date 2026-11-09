@@ -15,7 +15,10 @@ extends RefCounted
 ## A receipt with the base and each bonus's percent (a server that sends them)
 ## shows as the results card's rows (pollen board 7b: presentation/
 ## pollen_breakdown.gd and pollen_breakdown_view.gd); an older one as the plain
-## lines below.
+## lines below. While Fruits show (services/pollen_surfaces.gd fruits_visible),
+## each achievement the credit paid follows as a plum line (Fruits board 6b), on
+## either shape; its first showing counts as that achievement's unlock, so no
+## toast says it again (services/fruit_wallet.gd mark_unlock_shown).
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
@@ -27,6 +30,7 @@ const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const Breakdown = preload("res://presentation/pollen_breakdown.gd")
 const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 
 const FONT_SIZE := 18
 ## The still pip beside an item bloom.
@@ -92,13 +96,15 @@ static func build(scope: Dictionary, room_id: String, recording_hash: String, co
 	var wallet: RefCounted = store if store != null else PollenWallet.shared()
 	if not wallet.enabled(str(scope.server), str(scope.owner)): return null
 	var receipt: Dictionary = wallet.result_for(str(scope.server), str(scope.owner), room_id, recording_hash)
-	var rows := Breakdown.rows(receipt, surfaces.full_journey_visible())
+	var fruits: bool = surfaces.fruits_visible(FruitWallet.shared(), scope)
+	var rows := Breakdown.rows(receipt, surfaces.full_journey_visible(), fruits)
 	if not rows.is_empty():
 		var card := BreakdownView.build(rows, color, dropped_pip, func() -> Control: return Flower.new())
 		card.name = "PollenResultLine"
 		return card
 	var text := lines(receipt, surfaces.full_journey_visible())
-	if text.is_empty(): return null
+	var fruit_rows := Breakdown.fruit_rows(receipt) if fruits else ([] as Array[Dictionary])
+	if text.is_empty() and fruit_rows.is_empty(): return null
 	# The earned amount, when there is one, is the first line, with the Pollen mark (kit/pollen_mark.gd) before it.
 	var marked := int(receipt.get("earned", 0)) > 0
 	var box := VBoxContainer.new()
@@ -129,6 +135,7 @@ static func build(scope: Dictionary, room_id: String, recording_hash: String, co
 		row.add_child(icon)
 		row.add_child(label)
 		box.add_child(row)
+	for fruit: Dictionary in fruit_rows: box.add_child(BreakdownView.fruit_line(fruit))
 	return box
 
 static func _label(text: String, color: Color) -> Label:
@@ -165,6 +172,10 @@ static func once(seen: Dictionary, screen: String, scope: Dictionary, receipt: D
 		wallet.mark_shown(str(scope.server), str(scope.owner), room_id, recording_hash)
 		seen[key] = screen
 		line.set_meta(FIRST_SHOWN, true)
+		# Its plum lines were each achievement's news: no toast says them again.
+		# Found by the id each keeps: a second line beside the first gets a name of its own.
+		for fruit: Node in line.find_children("*", "PanelContainer", true, false):
+			if fruit.has_meta(BreakdownView.FRUIT_ID): FruitWallet.shared().mark_unlock_shown(str(scope.server), str(scope.owner), str(fruit.get_meta(BreakdownView.FRUIT_ID)))
 	return line
 
 ## The receipt `once` takes for the first clear a room's finish paid this player

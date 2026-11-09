@@ -12,7 +12,13 @@ extends SceneTree
 ## - an instalment the Wardrobe's own wallet read paid (the owner's 0.7.7 case)
 ##   shows once back on Home, and one paid while the store card is up waits for Home;
 ## - a build that names no Full Journey (iPhone without a store) shows neither
-##   the panels nor the card.
+##   the panels nor the card;
+## - with Fruits on (Fruits boards 5a and 5b): the monthly gifts as two tiles in
+##   the same place, the Pollen tile and the plum Fruit tile with the server's
+##   Fruits a month, the step they grow to and the welcome basket until it is
+##   paid, the whole card on screen at 1600x738 and 1600x720; the monthly card
+##   as "Your monthly gifts arrived" with both amounts and next month's two,
+##   today's Pollen card whenever Fruits are off or the instalment brought none.
 const Main = preload("res://tests/unlocked_main.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const Purchases = preload("res://services/purchases.gd")
@@ -27,6 +33,7 @@ const GrantCard = preload("res://presentation/pollen_grant_card.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 
 const SIZE := Vector2i(1600, 738)
 const TESTER_ONLY := {"purchase_mode": "tester_only", "entitlement_id": "full_journey", "revenuecat_public_key": ""}
@@ -79,6 +86,9 @@ func _run() -> void:
 	storage.data.settings.haptics = false
 	storage.data.settings.reduced_motion = false
 	_check(storage.flush(), "Use an isolated muted save")
+	# Fruits stay off until a step turns them on; Main follows this store from its start.
+	var fruits := FruitWallet.new(_path("fj-board-fruits"))
+	FruitWallet.use_shared(fruits)
 	var viewport := SubViewport.new()
 	viewport.size = SIZE
 	viewport.handle_input_locally = true
@@ -108,14 +118,17 @@ func _run() -> void:
 	_check(not scope.is_empty(), "The test player is signed in")
 
 	await _card_states(app, wallet, grant, scope, viewport)
+	await _fruit_tiles(app, fruits, scope, viewport)
 	await _grant_over_home(app, grant, scope, viewport)
 	await _wardrobe_paid(app, grant, scope)
+	await _fruit_grant_card(app, grant, fruits, scope, viewport)
 	await _iphone(app, grant, scope)
 
 	PlatformSupport.override_platform = ""
 	PollenSurfaces.set_shared_for_tests(null)
 	PollenWallet.use_shared(null)
 	PollenGrant.use_shared(null)
+	FruitWallet.use_shared(null)
 	viewport.queue_free()
 	await process_frame
 	for path: String in paths:
@@ -209,6 +222,108 @@ func _open_card(app: Node) -> Dictionary:
 	var fits := scroll != null and scroll.get_v_scroll_bar().max_value <= scroll.size.y + 1.0
 	return {"panels": names, "after_intro": after_intro and intro_seen == 2, "on_screen": card != null and screen.encloses(rect) and fits, "rect": rect,
 		"subscribe": app.overlay.find_children("Subscribe_*", "Button", true, false).size()}
+
+## Board 5a: with Fruits on, the monthly Pollen panel becomes the Pollen and Fruit tiles, in the same place.
+func _fruit_tiles(app: Node, fruits: RefCounted, scope: Dictionary, viewport: SubViewport) -> void:
+	var server := str(scope.server)
+	var owner := str(scope.owner)
+	fruits.set_enabled(server, owner, true)
+	var seen := await _open_card(app)
+	_check(seen.panels == ["FullJourneyBoost", "FullJourneyGifts"] and seen.after_intro and seen.on_screen and seen.subscribe == 2, "Fruits on: the chapters, the room boost, then the monthly gifts row, all on screen: %s %s" % [seen.panels, seen.rect])
+	var pollen: Control = app.overlay.find_child("FullJourneyGrant", true, false)
+	var fruit: Control = app.overlay.find_child("FullJourneyFruits", true, false)
+	_check(pollen != null and fruit != null and pollen.get_parent() == fruit.get_parent() and pollen.get_global_rect().end.x <= fruit.get_global_rect().position.x and absf(pollen.get_global_rect().position.y - fruit.get_global_rect().position.y) <= 0.5, "The Pollen tile and then the Fruit tile, side by side")
+	_check(_words(pollen) == ["6,000 Pollen a month", "Grows by 250 every month you stay, up to 12,000."] and pollen.find_child("PollenMark", true, false) != null, "The Pollen tile as drawn, at this player's step: " + str(_words(pollen)))
+	_check(_words(fruit) == ["15 Fruits a month", "Grows to 30 as you stay, plus a 25 Fruit welcome basket with your next month."] and fruit.find_child("FruitMark", true, false) != null, "Before the server sent a Fruit grant: month 1's Fruits, and for this player already on the ladder the basket with the next month: " + str(_words(fruit)))
+	_check(Benefits.fruit_tile({}).body == "Grows to 30 as you stay, plus a [b]25 Fruit welcome basket[/b] in month 1.", "A player who never subscribed gets the basket in month 1, as drawn")
+	var takes_input: Array = []
+	for control: Control in fruit.find_children("*", "Control", true, false) + [fruit]:
+		if control.mouse_filter == Control.MOUSE_FILTER_STOP: takes_input.append(str(control.name))
+	_check(takes_input.is_empty(), "The Fruit tile takes no input either: %s" % [takes_input])
+	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 40.0, "earned": 40.0, "achievements": [], "grant": {"next": 16.0, "top": 30.0, "welcome": 25.0, "welcome_paid": true}}})
+	await _open_card(app)
+	fruit = app.overlay.find_child("FullJourneyFruits", true, false)
+	_check(_words(fruit) == ["16 Fruits a month", "Grows to 30 as you stay."], "The server's numbers win, and a paid welcome basket is no longer named: " + str(_words(fruit)))
+	_check(Benefits.fruit_tile({"next": 30, "top": 30, "welcome": 25, "welcome_paid": true}).title == "30 Fruits a month, the top step", "At the top step the tile stops saying it grows")
+	viewport.size = Vector2i(1600, 720)
+	await process_frame
+	await _open_card(app)
+	var card := _card_of(app.overlay.find_child("FullJourneyDetailsScroll", true, false))
+	var gifts: Control = app.overlay.find_child("FullJourneyGifts", true, false)
+	_check(card != null and Rect2(Vector2.ZERO, Vector2(1600, 720)).encloses(card.get_global_rect()) and gifts != null and card.get_global_rect().encloses(gifts.get_global_rect()), "At 1600x720 (an 800x360 phone) the card and both tiles stay on screen")
+	viewport.size = SIZE
+	await process_frame
+	fruits.set_enabled(server, owner, false)
+	seen = await _open_card(app)
+	_check(seen.panels == ["FullJourneyBoost", "FullJourneyGrant"] and app.overlay.find_child("FullJourneyFruits", true, false) == null, "Fruits off: today's Pollen panel and no Fruit tile")
+
+## Board 5b: the monthly card with both gifts while Fruits show, today's card otherwise.
+func _fruit_grant_card(app: Node, kept_grant: RefCounted, fruits: RefCounted, scope: Dictionary, viewport: SubViewport) -> void:
+	var server := str(scope.server)
+	var owner := str(scope.owner)
+	# A store of its own, so the instalments here never touch the steps after.
+	var grant := PollenGrant.new(_path("fj-board-fruit-grant"))
+	PollenGrant.use_shared(grant)
+	grant.set_enabled(server, owner, true)
+	var at := _now()
+	grant.note_view(server, owner, {"grant": {"months": 3.0, "next": 5250.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:3", "amount": 5000.0, "at": float(at)}}})
+	fruits.set_enabled(server, owner, true)
+	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 56.0, "earned": 56.0, "achievements": [], "grant": {"next": 16.0, "top": 30.0, "welcome": 25.0, "welcome_paid": true, "latest": {"amount": 16.0, "welcome": 0.0, "at": float(at)}}}})
+	app._show_home()
+	for i in range(4): await process_frame
+	app.grant_card_check = true
+	app._service_grant_card()
+	await process_frame
+	var card: Control = app.ui.find_child("PollenGrantCard", false, false)
+	var texts: Array = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
+	_check(card != null and PlayerCopy.FRUIT_GRANT_TITLE in texts and "+5,000" in texts and "+16" in texts and "From Full Journey, month 3 of your ladder.\nNext month: 5,250 Pollen and 16 Fruits." in texts, "Your monthly gifts arrived, both amounts and next month's two: " + str(texts))
+	if card != null:
+		var tile: Control = card.find_child("PollenGrantFruits", true, false)
+		var pollen: Control = card.find_child("PollenGrantFigure", true, false)
+		var panel: Control = card.find_child("ModalPanel", true, false)
+		_check(tile != null and tile.find_child("FruitMark", true, false) != null and card.find_child("PollenGrantAmount", true, false).find_child("PollenMark", true, false) != null, "The Fruits on their plum tile with the Fruit mark, the Pollen with its grain")
+		_check(tile != null and pollen.get_global_rect().end.x < tile.get_global_rect().position.x and panel.get_global_rect().encloses(tile.get_global_rect()), "The tile sits right of the Pollen, inside the card")
+		await _tap(viewport, card.find_child("PollenGrantDone", true, false))
+	# A first month with the welcome basket names the Fruits with the basket.
+	var welcome: Control = GrantCard.open(app.ui, {"key": "grant:1790000000000:1", "amount": 4500, "next": 4750, "top": 12000, "months": 1}, [], Callable(), null, {"amount": 15, "welcome": 25, "next": 15, "top": 30})
+	var welcome_texts: Array = welcome.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	_check("+40" in welcome_texts and "From Full Journey, month 1 of your ladder.\nNext month: 4,750 Pollen and 15 Fruits." in welcome_texts, "Month 1 names its Fruits with the welcome basket: " + str(welcome_texts))
+	welcome.close(false)
+	for i in range(3): await process_frame
+	_check(GrantCard.fruit_total({"amount": 16, "welcome": 0, "top": 30}) == 16 and GrantCard.fruit_total({"amount": 15, "welcome": 25}) == 40, "The card names what the server paid with the newest instalment and its welcome basket, never a guess for months paid together")
+	_check(Benefits.fruit_tile({}, 6).body == "Grows to 30 as you stay, plus a [b]25 Fruit welcome basket[/b] with your next month.", "A subscriber already on the ladder gets the basket with their next month")
+	# An instalment that brought no Fruits (paid before Fruits were on) keeps today's card.
+	grant.note_view(server, owner, {"grant": {"months": 4.0, "next": 5500.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:4", "amount": 5250.0, "at": float(at + 1000)}}})
+	app.grant_card_check = true
+	app._service_grant_card()
+	await process_frame
+	card = app.ui.find_child("PollenGrantCard", false, false)
+	texts = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
+	_check(card != null and PlayerCopy.POLLEN_GRANT_TITLE in texts and "From Full Journey, month 4 of your ladder.\nNext month: 5,500." in texts and card.find_child("PollenGrantFruits", true, false) == null, "An instalment with no Fruits: today's card: " + str(texts))
+	if card != null: app._close_top_modal()
+	await process_frame
+	# Fruits off: today's card, unchanged.
+	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 72.0, "earned": 72.0, "achievements": [], "grant": {"next": 17.0, "top": 30.0, "welcome": 25.0, "welcome_paid": true, "latest": {"amount": 17.0, "welcome": 0.0, "at": float(at + 2000)}}}})
+	fruits.set_enabled(server, owner, false)
+	grant.note_view(server, owner, {"grant": {"months": 5.0, "next": 5750.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:5", "amount": 5500.0, "at": float(at + 2000)}}})
+	app.grant_card_check = true
+	app._service_grant_card()
+	await process_frame
+	card = app.ui.find_child("PollenGrantCard", false, false)
+	texts = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
+	_check(card != null and PlayerCopy.POLLEN_GRANT_TITLE in texts and not "+17" in texts and card.find_child("FruitMark", true, false) == null, "Fruits off: today's Pollen card: " + str(texts))
+	if card != null: app._close_top_modal()
+	await process_frame
+	PollenGrant.use_shared(kept_grant)
+
+## Every word a panel shows, labels and rich text alike, in order.
+static func _words(node: Node) -> Array:
+	var out: Array = []
+	if node == null: return out
+	if node is Label: out.append((node as Label).text)
+	elif node is RichTextLabel: out.append((node as RichTextLabel).get_parsed_text())
+	for child: Node in node.get_children(): out.append_array(_words(child))
+	return out
 
 ## The grant card over Home, its pips, its first taps, and once only.
 func _grant_over_home(app: Node, grant: RefCounted, scope: Dictionary, viewport: SubViewport) -> void:

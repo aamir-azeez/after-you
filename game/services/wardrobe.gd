@@ -169,17 +169,65 @@ static func spend_currency(view: Dictionary, id: String) -> String:
 	if (view.get("prices", {}) as Dictionary).has(id) or (view.get("sets", {}) as Dictionary).has(id): return "pollen"
 	return Catalog.currency(id) if Catalog.has(id) else "pollen"
 
-## What an item costs in its own currency (spend_currency): the server's price,
-## else its tier's (0 for an earned or unknown item).
+## What an item costs in its own currency (spend_currency), as sale() prices it:
+## 0 for an item not sold (an Orchard item the server gives no Fruit price, an
+## earned or unknown item), so a tier's Fruit price is never read as Pollen.
 static func spend_price(view: Dictionary, id: String) -> int:
-	var fruit_prices: Dictionary = view.get("fruit_prices", {})
-	if fruit_prices.has(id): return int(fruit_prices[id])
-	return int((view.get("prices", {}) as Dictionary).get(id, Catalog.price(id)))
+	return int(sale(view, id).get("price", 0))
 
 ## The pieces of a set, Pollen or Orchard ([] for an unknown set).
 static func set_pieces(view: Dictionary, set_id: String) -> Array:
 	var pieces: Variant = (view.get("fruit_sets", {}) as Dictionary).get(set_id, (view.get("sets", {}) as Dictionary).get(set_id, []))
 	return (pieces as Array).duplicate()
+
+## What the server sells item `id` for in a kept view: {currency, price}, or {}
+## when it does not sell it. Every list and card that shows a price asks here,
+## so a price is only ever shown in the currency it is charged in: an Orchard
+## item (its tier's currency is Fruits, services/cosmetic_catalog.gd currency)
+## sells only at its `fruit_prices` price, never at its tier's price; a Pollen
+## item at its `prices` price, else its tier's Pollen price (a server that sends
+## no prices); an item the server prices in the other currency is not sold.
+## Whether it is offered and released is the caller's (wardrobe_flow.gd model).
+static func sale(view: Dictionary, id: String) -> Dictionary:
+	var fruit_prices: Dictionary = view.get("fruit_prices", {})
+	var prices: Dictionary = view.get("prices", {})
+	if Catalog.currency(id) == "fruits":
+		if not fruit_prices.has(id) or prices.has(id): return {}
+		return {"currency": "fruits", "price": int(fruit_prices[id])}
+	if fruit_prices.has(id): return {}
+	return {"currency": "pollen", "price": int(prices.get(id, Catalog.price(id)))}
+
+## The set rules of the server's catalogue (backend/src/pollen/catalog.json
+## set_discount_percent, set_min_missing, set_round_down), mirrored here because
+## the wallet read carries the pieces but not the rules; a price that differs is
+## refused (pollen_price_changed) and read again, never charged.
+const SET_DISCOUNT_PERCENT := 15
+const SET_MIN_MISSING := 2
+const SET_ROUND_DOWN := {"pollen": 100, "fruits": 5}
+
+## What set `set_id` costs a player who owns `owned` (item ids), as the server's
+## spend.ts setCost charges it: {currency, pieces (the missing ones), full (their
+## prices added up), cost}. One missing piece costs its own price; two or more
+## cost SET_DISCOUNT_PERCENT less, rounded down to the currency's step. {} for an
+## unknown set or one with a piece not sold (sale); `pieces` empty once all are owned.
+static func set_cost(view: Dictionary, set_id: String, owned: Array) -> Dictionary:
+	var fruit := (view.get("fruit_sets", {}) as Dictionary).has(set_id)
+	var pieces := set_pieces(view, set_id)
+	if pieces.is_empty(): return {}
+	var currency := "fruits" if fruit else "pollen"
+	var missing: Array = []
+	var full := 0
+	for id: String in pieces:
+		var sold := sale(view, id)
+		if sold.is_empty() or sold.currency != currency: return {}
+		if id in owned: continue
+		missing.append(id)
+		full += int(sold.price)
+	var cost := full
+	if missing.size() >= SET_MIN_MISSING:
+		var step := int(SET_ROUND_DOWN[currency])
+		cost = floori(float(full * (100 - SET_DISCOUNT_PERCENT)) / float(100 * step)) * step
+	return {"currency": currency, "pieces": missing, "full": full, "cost": cost}
 
 ## The wallet read's bundles part (only while bundles sell) as kept, or {}.
 static func checked_bundles(value: Variant) -> Dictionary:

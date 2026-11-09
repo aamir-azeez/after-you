@@ -115,12 +115,13 @@ func ladder(server: String, owner: String) -> Dictionary:
 	var scope := _scope(server, owner)
 	return (scope.ladder as Dictionary).duplicate(true) if not scope.is_empty() else {}
 
-## The card to show: {key, amount, next, top, months, since} for an instalment
+## The card to show: {key, amount, at, next, top, months, since} for an instalment
 ## this phone has not shown yet, newer than the last one shown and recent, or {}
 ## when there is none (or the grant is off). `amount` is that newest
 ## instalment's; `since` is how many the ladder counted since the last card
 ## shown (0 when this phone has none to count from; presentation/pollen_grant_card.gd
-## checks it before naming more than one). `now_ms` is this phone's clock.
+## checks it before naming more than one). `at` is when the server paid it, the
+## key services/fruit_wallet.gd grant_paid finds its Fruits by. `now_ms` is this phone's clock.
 func pending(server: String, owner: String, now_ms: int = -1) -> Dictionary:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not bool(scope.enabled): return {}
@@ -129,7 +130,7 @@ func pending(server: String, owner: String, now_ms: int = -1) -> Dictionary:
 	var now := now_ms if now_ms >= 0 else int(Time.get_unix_time_from_system() * 1000.0)
 	if int(kept.latest.at) < now - CARD_DAYS * 86400000: return {}
 	var since: int = maxi(0, int(kept.months) - int(scope.shown_months)) if int(scope.shown_months) >= 0 else 0
-	return {"key": kept.latest.key, "amount": kept.latest.amount, "next": kept.next, "top": kept.top, "months": kept.months, "since": since}
+	return {"key": kept.latest.key, "amount": kept.latest.amount, "at": int(kept.latest.at), "next": kept.next, "top": kept.top, "months": kept.months, "since": since}
 
 ## The card for the newest instalment, `key`, was shown: it never shows again,
 ## nor any older one, and the next card counts the months from here.

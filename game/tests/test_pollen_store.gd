@@ -27,6 +27,14 @@ extends SceneTree
 ##   page (or goes Back to it when the page opened the store); Previous
 ##   purchases opens the receipts list from one history read, money only in US
 ##   dollars; the footnote no longer points to Settings;
+## - the Fruits tab (Fruits board 3) shows only while Fruits show, its packs
+##   only while they sell and the "fruits" offering prices them: the first pack
+##   card that pays double with the Bowl pair, the ladder with the Barrel framed
+##   on plum under "Most Fruits per $1", the chip's Fruit half, "Fruits for
+##   playing together" and "Turn Fruits into Pollen" only while Main can open
+##   them; a Fruit pack buys through the same engine and claim, with its own
+##   confirm card and receipt; Previous purchases lists Fruit packs and refunds;
+##   the price buttons, convert and Previous purchases hold while offline;
 ## - a Wardrobe short card buys its bundle in place through the same purchase
 ##   engine (presentation/short_card_buy.gd): the bundle's name while the prices
 ##   load, then its store price; one purchase for any number of taps; once the
@@ -50,6 +58,9 @@ const PollenHistory = preload("res://services/pollen_history.gd")
 const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
+const Connectivity = preload("res://services/connectivity.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 
 # Synthetic ids only.
 const ME := "bbbbbbbbbbbbbbbbbbbbbb"
@@ -82,6 +93,19 @@ class Host extends Node:
 
 ## An iPhone's Main: its one capabilities read this run (Main._read_store_support)
 ## notes the server's answer, and the bundles that read carries.
+## A Main that hosts the Fruits page and its convert card (Main.open_fruits_page, open_fruit_convert).
+class FruitHost extends Host:
+	var fruit_pages: Array = []
+	var converts := 0
+	func show_fruits_page(from: String) -> void: fruit_pages.append(from)
+	func open_fruits_page(from: String) -> bool:
+		show_fruits_page(from)
+		return true
+	func show_fruit_convert() -> void: converts += 1
+	func open_fruit_convert() -> bool:
+		show_fruit_convert()
+		return true
+
 class IosHost extends Host:
 	var support: RefCounted
 	var store: RefCounted
@@ -124,6 +148,20 @@ class FakePurchases extends Node:
 			"silent": pass
 			_: failed.emit.call_deferred(id, "purchase_package", "revenuecat_STORE_PROBLEM", "The store had a problem.", false)
 		return id
+
+## The store's offerings with the "fruits" one: the four Fruit packs at the Play prices, or `without` left out.
+static func _fruit_offerings(without: String = "") -> Dictionary:
+	var offerings := _offerings()
+	var packages: Array = []
+	for row: Array in [["handful", "$2.49", 2490000], ["bowl", "$4.99", 4990000], ["crate", "$9.99", 9990000], ["barrel", "$19.99", 19990000]]:
+		if row[0] == without: continue
+		packages.append({"id": row[0], "product_id": Bundles.product(row[0], Bundles.PLAY_STORE), "type": "CUSTOM", "price": row[1], "price_micros": float(row[2]), "currency": "USD"})
+	offerings.offerings.append({"id": "fruits", "packages": packages})
+	return offerings
+
+## The `fruits` part of a wallet read: `balance` Fruits, the first pack gift while `gift`.
+static func _fruit_part(balance: int, gift: bool = true) -> Dictionary:
+	return {"fruits": {"schema_version": 1.0, "balance": float(balance), "earned": float(maxi(balance, 0)), "first_pack_gift": gift, "first_pack_percent": 100.0, "achievements": []}}
 
 ## The Pollen history read behind Previous purchases (services/pollen_client.gd history).
 class FakeHistory extends RefCounted:
@@ -192,8 +230,8 @@ static func _ios_offerings() -> Dictionary:
 		{"id": "default", "packages": [{"id": "$rc_monthly", "product_id": "after_you_full_journey_monthly_ios", "type": "MONTHLY", "price": "$1.49", "price_micros": 1490000.0, "currency": "USD"}]},
 		{"id": "pollen", "packages": packages}]}
 
-func _setup(server_bundles: bool = true, build_bundles: bool = true, sells: bool = true, iphone: bool = false) -> Dictionary:
-	var host: Host = IosHost.new() if iphone else Host.new()
+func _setup(server_bundles: bool = true, build_bundles: bool = true, sells: bool = true, iphone: bool = false, fruit_host: bool = false) -> Dictionary:
+	var host: Host = IosHost.new() if iphone else (FruitHost.new() if fruit_host else Host.new())
 	host.overlay = Control.new()
 	host.ui = Control.new()
 	for layer: Control in [host.overlay, host.ui]: layer.size = Vector2(1600, 738)
@@ -213,7 +251,9 @@ func _setup(server_bundles: bool = true, build_bundles: bool = true, sells: bool
 	wallet.note_wallet(SERVER, ME, _view(false))
 	var fake := Fake.new()
 	fake.tree = self
-	var claims: RefCounted = BundleClaims.new(_path("claims"), store, wallet)
+	# Fruits stay off unless a test turns them on.
+	var fruits: RefCounted = FruitWallet.new(_path("fruits"))
+	var claims: RefCounted = BundleClaims.new(_path("claims"), store, wallet, fruits)
 	claims.connect_to(null, host._names_scope, fake.call_it)
 	var flow: Node = Flow.new(host)
 	host.add_child(flow)
@@ -221,8 +261,17 @@ func _setup(server_bundles: bool = true, build_bundles: bool = true, sells: bool
 	flow.claims = claims
 	flow.wardrobe = store
 	flow.wallet = wallet
+	flow.fruits = fruits
 	flow.store_ready = func() -> bool: return true
-	return {"host": host, "purchases": purchases, "store": store, "wallet": wallet, "fake": fake, "claims": claims, "flow": flow}
+	return {"host": host, "purchases": purchases, "store": store, "wallet": wallet, "fake": fake, "claims": claims, "flow": flow, "fruits": fruits}
+
+## A store with Fruits on (`packs`: Fruit packs sell too) for a player with `balance` Fruits, on a Main that hosts the Fruits page.
+func _fruit_setup(packs: bool = true, balance: int = 101, gift: bool = true) -> Dictionary:
+	var t := _setup(true, true, true, false, true)
+	t.purchases.offerings = _fruit_offerings()
+	t.fruits.set_enabled(SERVER, ME, true, packs)
+	t.fruits.note_view(SERVER, ME, _fruit_part(balance, gift))
+	return t
 
 func _run() -> void:
 	await _gates()
@@ -243,6 +292,11 @@ func _run() -> void:
 	_cover()
 	await _suggested_and_routes()
 	await _previous_purchases()
+	await _fruits_tab()
+	await _fruit_packs_off()
+	await _fruit_purchase()
+	await _fruit_purchases_list()
+	await _fruit_offline()
 	await _short_card_buys()
 	await _short_card_outcomes()
 	await _short_card_iphone()
@@ -280,12 +334,19 @@ func _cards() -> void:
 		_check(page.find_child("PollenStoreBundle_" + id, true, false) != null and page.find_child("PollenStoreBuy_" + id, true, false) != null, "The %s card and its price button show" % id)
 	_check("$0.99" in words and "$3.99" in words and "$7.99" in words and "$19.99" in words, "Each price is the store's own: " + str(words))
 	_check(not "after_you_full_journey_monthly" in str(t.flow.purchase.packages) and t.flow.purchase.packages.size() == 4, "Only the Pollen offering's packages are read")
-	_check(PlayerCopy.POLLEN_STORE_NO_BONUS in words and PlayerCopy.POLLEN_STORE_BONUS % ["20,000", "1,000", 5] in words and PlayerCopy.POLLEN_STORE_BONUS % ["40,000", "4,000", 10] in words and PlayerCopy.POLLEN_STORE_BONUS % ["100,000", "15,000", 15] in words, "Bonus lines in plain Pollen and percent")
-	for row: Array in [["5,051"], ["5,263"], ["5,507"], ["5,753"]]:
-		_check(PlayerCopy.POLLEN_STORE_PER_DOLLAR % row[0] in words, "Pollen per $1: %s in %s" % [row[0], words])
+	_check(PlayerCopy.POLLEN_STORE_NO_BONUS in words and PlayerCopy.STORE_CARD_BONUS % ["1,000", 5] in words and PlayerCopy.STORE_CARD_BONUS % ["4,000", 10] in words, "Bonus lines in plain Pollen and percent: " + str(words))
+	# Board 9: only the bundle with the most Pollen for the money says its per $1, under its ribbon.
+	_check(PlayerCopy.STORE_CARD_BONUS % ["15,000", 15] + PlayerCopy.STORE_CARD_PER_DOLLAR % "5,753" in words and PlayerCopy.POLLEN_STORE_MOST in words, "The Wheelbarrow carries the ribbon and its 5,753 per $1")
+	_check(not words.any(func(word: String) -> bool: return word.contains("5,051") or word.contains("5,263") or word.contains("5,507")), "No other card says its per $1")
+	var ribbon: Node = page.find_child("PollenStoreRibbon", true, false)
+	_check(ribbon != null and page.find_child("PollenStoreBundle_basket", true, false).is_ancestor_of(ribbon), "The ribbon sits on the Wheelbarrow card")
+	var heights: Array = Bundles.ORDER.map(func(id: String) -> float: return (page.find_child("PollenStoreBundle_" + id, true, false) as Control).size.y)
+	var bottoms: Array = Bundles.ORDER.map(func(id: String) -> float: return (page.find_child("PollenStoreBundle_" + id, true, false) as Control).get_global_rect().end.y)
+	_check(heights[0] < heights[1] and heights[1] < heights[2] and heights[2] < heights[3] and bottoms.all(func(bottom: float) -> bool: return absf(bottom - bottoms[0]) <= 0.5), "The cards climb as a ladder, bottoms aligned: %s %s" % [heights, bottoms])
+	_check(page.find_child("PollenStoreTabFrame", true, false) != null and not (page.find_child("PollenStoreTabFrame", true, false) as Control).visible, "No tabs while Fruits are off")
 	_check(["5,000", "21,000", "44,000", "115,000"].all(func(amount: String) -> bool: return amount in words), "Each total with its grain")
 	_check(page.find_children("BundleArt", "", true, false).size() == 4, "Each card has its art")
-	_check(not (page.find_child("PollenStoreGift", true, false) as Control).visible, "No first bundle line while that gift is off")
+	_check(page.find_child("PollenStoreGift", true, false) == null, "No first bundle card while that gift is off")
 	_check("9,000" in _texts(page.find_child("PollenStoreBalance", true, false)) and PlayerCopy.POLLEN_STORE_YOU_HAVE in words, "The chip says You have 9,000")
 	_check(PlayerCopy.POLLEN_STORE_EARN in words and PlayerCopy.POLLEN_PURCHASES_TITLE in words and PlayerCopy.POLLEN_STORE_FOOT in words and not words.any(func(word: String) -> bool: return word.contains("Settings")),
 		"Earn Pollen free by playing, Previous purchases, and the footnote, which no longer points to Settings")
@@ -337,8 +398,13 @@ func _gift() -> void:
 	t.flow.show_store()
 	await _frames()
 	var gift: Control = t.host.overlay.find_child("PollenStoreGift", true, false)
-	var line := gift.find_children("*", "RichTextLabel", true, false)[0] as RichTextLabel
-	_check(gift.visible and line.get_parsed_text() == PlayerCopy.POLLEN_STORE_FIRST % 20, "The first bundle line shows while the gift is on, its percent and nothing more: " + line.get_parsed_text())
+	var gift_words := _texts(gift)
+	_check(gift != null and gift_words == [PlayerCopy.POLLEN_STORE_FIRST % 20, PlayerCopy.POLLEN_STORE_FIRST_AS % "Pouch", PlayerCopy.STORE_FIRST_SUM % ["21,000", "4,200"]] and gift.find_child("BundleArt", true, false).bundle == "pouch_pair",
+		"The first bundle card while the gift is on: its percent, the Pouch pair and 21,000 + 4,200, nothing more: " + str(gift_words))
+	var page_words := " | ".join(_texts(t.host.overlay))
+	for line: String in [PlayerCopy.POLLEN_STORE_CARD_NO_BONUS_FIRST % "6,000", PlayerCopy.POLLEN_STORE_CARD_FIRST % "25,200", PlayerCopy.POLLEN_STORE_CARD_FIRST % "52,800", PlayerCopy.POLLEN_STORE_CARD_FIRST % "138,000"]:
+		var cut := line.rfind(" ")
+		_check(page_words.contains(line.left(cut) + " | " + line.substr(cut + 1)), "Each card says what it adds as a first bundle, its amount in bold: %s in %s" % [line, page_words])
 	t.flow.confirm("pouch")
 	var words := _texts(t.host.ui.find_child("PollenStoreConfirm", true, false))
 	_check(PlayerCopy.POLLEN_STORE_GIFT % 20 in words and "4,200" in words and "25,200" in words and "34,200" in words, "The confirm card adds the gift: 4,200, you get 25,200, you'll have 34,200: " + str(words))
@@ -349,7 +415,8 @@ func _gift() -> void:
 	_check(PlayerCopy.POLLEN_STORE_ADDED % "25,200" in lines and PlayerCopy.POLLEN_STORE_GIFT % 20 in lines and "34,200" in lines, "The receipt: 25,200 Pollen added with the gift row: " + str(lines))
 	t.store.note_view(SERVER, ME, _view(false, 20))
 	t.flow._redraw()
-	_check(not gift.visible, "Once used, the line goes")
+	await _frames(2)
+	_check(t.host.overlay.find_child("PollenStoreGift", true, false) == null and not _texts(t.host.overlay).any(func(word: String) -> bool: return word.begins_with("First bundle")), "Once used, the card and the first bundle amounts go")
 	t.host.queue_free()
 	await _frames(2)
 
@@ -371,9 +438,16 @@ func _layout(size: Vector2) -> void:
 	_check(header == back.get_parent() and is_equal_approx(header.size.y, maxf(back.size.y, title.get_combined_minimum_size().y)), "The header is as tall as its back square or title, with no note under the title at %s: %s" % [size, header.size])
 	_check(_texts(header).slice(0, 2) == [PlayerCopy.POLLEN_STORE_TITLE, PlayerCopy.POLLEN_STORE_YOU_HAVE], "The title is followed by You have, with no note between at %s: %s" % [size, _texts(header)])
 	var gift: Control = page.find_child("PollenStoreGift", true, false)
-	var line := gift.find_children("*", "RichTextLabel", true, false)[0] as RichTextLabel
-	_check(gift.visible and line.get_line_count() == 1 and line.get_content_width() <= line.size.x + 0.5 and is_equal_approx(gift.size.y, gift.get_combined_minimum_size().y), "The first bundle line is one line inside its panel at %s" % size)
-	var parts: Array[Control] = [header, gift, page.find_child("PollenStoreBundles", true, false), (page.find_child("PollenStoreEarn", true, false) as Control).get_parent()]
+	_check(gift != null and page.get_global_rect().encloses(gift.get_global_rect()) and gift.size.x >= gift.get_combined_minimum_size().x - 0.5 and gift.size.y >= gift.get_combined_minimum_size().y - 0.5, "The first bundle card fits the page at %s" % size)
+	var cards: Array[Control] = [gift]
+	for id: String in Bundles.ORDER: cards.append(page.find_child("PollenStoreBundle_" + id, true, false))
+	var apart := true
+	for index in range(1, cards.size()): apart = apart and cards[index].get_global_rect().position.x >= cards[index - 1].get_global_rect().end.x - 0.5
+	_check(apart, "The first bundle card and the four cards sit side by side without overlap at %s" % size)
+	for card: Control in cards:
+		for label: Label in card.find_children("*", "Label", true, false):
+			if label.is_visible_in_tree(): _check(card.get_global_rect().grow(0.5).encloses(label.get_global_rect()), "%s keeps '%s' inside it at %s" % [card.name, label.text, size])
+	var parts: Array[Control] = [header, page.find_child("PollenStoreBundles", true, false), (page.find_child("PollenStoreEarn", true, false) as Control).get_parent()]
 	var ordered := true
 	for index in range(1, parts.size()): ordered = ordered and parts[index].get_global_rect().position.y >= parts[index - 1].get_global_rect().end.y - 0.5
 	_check(ordered and parts.back().get_global_rect().end.y <= page.get_global_rect().end.y + 0.5, "Header, first bundle line, cards and footer sit in order inside the page at %s" % size)
@@ -633,8 +707,7 @@ func _iphone() -> void:
 	var words := _texts(t.host.overlay)
 	_check(t.host.reads == 1, "The store asks the server once this run before it prices anything")
 	_check("$1.49" in words and "$4.99" in words and "$8.99" in words and "$21.99" in words and t.flow.purchase.packages.size() == 4, "Each price is the App Store's own: " + str(words))
-	for amount: String in ["3,356", "4,208", "4,894", "5,230"]:
-		_check(PlayerCopy.POLLEN_STORE_PER_DOLLAR % amount in words, "Pollen per $1 at the App Store's prices: %s in %s" % [amount, words])
+	_check(PlayerCopy.STORE_CARD_BONUS % ["15,000", 15] + PlayerCopy.STORE_CARD_PER_DOLLAR % "5,230" in words, "Pollen per $1 at the App Store's prices on the Wheelbarrow: %s" % [words])
 	_check(PlayerCopy.POLLEN_STORE_FOOT_IOS in words and not PlayerCopy.POLLEN_STORE_FOOT in words, "The footnote names the App Store")
 	t.flow.confirm("pouch")
 	var sheet: Node = t.host.ui.find_child("PollenStoreConfirm", true, false)
@@ -923,3 +996,201 @@ func _short_card_iphone() -> void:
 	await _frames(2)
 	StoreSupport.use_shared(null)
 	PlatformSupport.override_platform = ""
+
+## The Fruits tab as board 3 draws it, from the services' numbers.
+func _fruits_tab() -> void:
+	var off := _setup()
+	off.purchases.offerings = _fruit_offerings()
+	off.flow.show_store("home", "fruits")
+	await _frames()
+	_check(off.flow.tab == "pollen" and not (off.host.overlay.find_child("PollenStoreTabFrame", true, false) as Control).visible and off.host.overlay.find_child("PollenStoreBundle_barrel", true, false) == null, "Fruits off: no tabs, the store opens on Pollen and lists no Fruit pack")
+	off.flow.set_tab("fruits")
+	var chip: Control = off.flow._page.chip
+	_check(off.flow.tab == "pollen" and chip != null and chip.fruits_button == null, "Fruits off: the Fruits tab cannot be picked and the chip has no Fruit half")
+	off.host.queue_free()
+	var t := _fruit_setup()
+	t.flow.show_store("home")
+	await _frames()
+	var page: Node = t.host.overlay
+	_check((page.find_child("PollenStoreTabFrame", true, false) as Control).visible and t.flow.tab == "pollen", "Fruits on: both tabs show, the store opens on Pollen")
+	chip = t.flow._page.chip
+	_check(chip.fruits_button != null and chip.fruits_label.text == "101" and chip.plus_button == null, "The header's chip shows 101 Fruits on its plum half, with no plus")
+	(page.find_child("PollenStoreTab_fruits", true, false) as Button).pressed.emit()
+	await _frames()
+	_check(t.flow.tab == "fruits", "A tap on Fruits shows the Fruits tab")
+	var words := _texts(page)
+	for id: String in Bundles.FRUIT_ORDER:
+		_check(page.find_child("PollenStoreBundle_" + id, true, false) != null and page.find_child("PollenStoreBuy_" + id, true, false) != null, "The %s card and its price show" % id)
+	_check(["Handful", "Bowl", "Crate", "Barrel", "$2.49", "$4.99", "$9.99", "$19.99"].all(func(word: String) -> bool: return word in words) and page.find_child("PollenStoreBundle_pinch", true, false) == null, "The Fruit packs by name at the store's prices, and no Pollen bundle: " + str(words))
+	_check(PlayerCopy.FRUIT_STORE_MOST in words and page.find_child("PollenStoreBundle_barrel", true, false).is_ancestor_of(page.find_child("PollenStoreRibbon", true, false)), "The Barrel carries Most Fruits per $1")
+	_check(PlayerCopy.STORE_CARD_BONUS % ["60", 30] + PlayerCopy.STORE_CARD_PER_DOLLAR % "13" in words and PlayerCopy.STORE_CARD_BONUS % ["5", 10] in words and PlayerCopy.STORE_CARD_BONUS % ["20", 20] in words, "Bonus lines from the pack table, 13 per $1 on the Barrel: " + str(words))
+	var joined := " | ".join(words)
+	for line: Array in [["No bonus · first pack", "50"], ["First pack", "110"], ["First pack", "240"], ["First pack", "520"]]:
+		_check(joined.contains(line[0] + " | " + line[1]), "First pack amounts pay double: %s %s" % line)
+	var gift: Control = page.find_child("PollenStoreGift", true, false)
+	_check(gift != null and _texts(gift) == [PlayerCopy.FRUIT_STORE_FIRST_DOUBLE, PlayerCopy.FRUIT_STORE_FIRST_AS % "Bowl", PlayerCopy.STORE_FIRST_SUM % ["55", "55"]] and gift.find_child("BundleArt", true, false).bundle == "bowl_pair" and gift.find_child("FruitMark", true, false) != null,
+		"The first pack card pays double with the Bowl pair and 55 + 55 with the Fruit mark: " + str(_texts(gift)))
+	_check(page.find_child("PollenStoreBundle_barrel", true, false).find_child("FruitMark", true, false) != null and page.find_child("PollenStoreBundle_barrel", true, false).find_child("PollenMark", true, false) == null, "Fruit amounts wear the Fruit mark")
+	_check(page.find_child("PollenStoreEarn", true, false) == null and PlayerCopy.FRUIT_STORE_TOGETHER in words and PlayerCopy.FRUIT_STORE_CONVERT in words and PlayerCopy.POLLEN_PURCHASES_TITLE in words and PlayerCopy.POLLEN_STORE_FOOT in words, "The Fruits tab's buttons and footnote")
+	(page.find_child("PollenStoreTogether", true, false) as Button).pressed.emit()
+	(page.find_child("PollenStoreConvert", true, false) as Button).pressed.emit()
+	(t.flow._page.chip as Control).fruits_pressed.emit()
+	_check(t.host.fruit_pages == ["store", "store"] and t.host.converts == 1, "Fruits for playing together and the chip's Fruit half open the Fruits page; Turn Fruits into Pollen the convert card")
+	for size: Vector2 in [Vector2(1600, 738), Vector2(1600, 720), Vector2(1280, 720)]:
+		for layer: Control in [t.host.overlay, t.host.ui]: layer.size = size
+		await _frames(3)
+		var cards: Array[Control] = [page.find_child("PollenStoreGift", true, false)]
+		for id: String in Bundles.FRUIT_ORDER: cards.append(page.find_child("PollenStoreBundle_" + id, true, false))
+		var fits := true
+		for index in range(cards.size()):
+			fits = fits and page.find_child("PollenStorePage", true, false).get_global_rect().grow(0.5).encloses(cards[index].get_global_rect())
+			if index > 0: fits = fits and cards[index].get_global_rect().position.x >= cards[index - 1].get_global_rect().end.x - 0.5
+			for label: Label in cards[index].find_children("*", "Label", true, false): fits = fits and cards[index].get_global_rect().grow(0.5).encloses(label.get_global_rect())
+		_check(fits, "The Fruits tab's cards fit side by side, their words inside, at %s" % size)
+	# A pack the "fruits" offering does not have never shows; the ribbon goes to the best one left.
+	t.purchases.offerings = _fruit_offerings("barrel")
+	t.flow.load_store()
+	await _frames()
+	_check(page.find_child("PollenStoreBundle_barrel", true, false) == null and page.find_child("PollenStoreBundle_crate", true, false).is_ancestor_of(page.find_child("PollenStoreRibbon", true, false)), "Without the Barrel's product it is not shown and the Crate takes the ribbon")
+	# Back on the Pollen tab, from a Main that cannot open the Fruits page.
+	t.flow.set_tab("pollen")
+	await _frames()
+	_check(page.find_child("PollenStoreBundle_pinch", true, false) != null and page.find_child("PollenStoreBundle_handful", true, false) == null and page.find_child("PollenStoreEarn", true, false) != null, "The Pollen tab lists the bundles again")
+	t.host.queue_free()
+	var plain := _setup()
+	plain.purchases.offerings = _fruit_offerings()
+	plain.fruits.set_enabled(SERVER, ME, true, true)
+	plain.flow.show_store("home", "fruits")
+	await _frames()
+	_check(plain.flow.tab == "fruits" and plain.host.overlay.find_child("PollenStoreTogether", true, false) == null and plain.host.overlay.find_child("PollenStoreConvert", true, false) == null, "Opened on its Fruits tab; with no Fruits page to open, neither of its buttons shows")
+	_check((plain.flow._page.chip as Control).fruits_label.text == "0", "Before the first Fruits read the chip shows 0 Fruits")
+	plain.host.queue_free()
+	await _frames(2)
+
+## Fruits on but no Fruit packs on sale here: the tab shows its buttons and no card.
+func _fruit_packs_off() -> void:
+	var t := _fruit_setup(false)
+	t.flow.show_store("home", "fruits")
+	await _frames()
+	var page: Node = t.host.overlay
+	_check(t.flow.tab == "fruits" and page.find_child("PollenStoreGift", true, false) == null and Bundles.FRUIT_ORDER.all(func(id: String) -> bool: return page.find_child("PollenStoreBundle_" + id, true, false) == null), "Packs off: no first pack card and no pack")
+	_check(page.find_child("PollenStoreTogether", true, false) != null and page.find_child("PollenStoreConvert", true, false) != null, "Packs off: the Fruits tab still offers its two buttons")
+	t.flow.confirm("bowl")
+	_check(t.host.ui.find_child("PollenStoreConfirm", true, false) == null, "Packs off: a Fruit pack cannot be bought even when the offering lists it")
+	t.host.queue_free()
+	await _frames(2)
+
+## A Fruit pack bought through the same engine and claim, with its own confirm card and receipt.
+func _fruit_purchase() -> void:
+	var t := _fruit_setup()
+	t.flow.show_store("home", "fruits")
+	await _frames()
+	t.flow.confirm("bowl")
+	var sheet: Node = t.host.ui.find_child("PollenStoreConfirm", true, false)
+	var words := _texts(sheet)
+	_check(sheet != null and PlayerCopy.POLLEN_STORE_CONFIRM_TITLE % "Bowl" in words and PlayerCopy.FRUIT_STORE_CONFIRM_NOTE in words and PlayerCopy.FRUIT_STORE_GIFT % 100 in words and "110" in words and "101  →  " in words and "211" in words and "$4.99" in words,
+		"Buy a Bowl? 55 with its double, you get 110, 101 to 211, you pay $4.99: " + str(words))
+	_check(sheet.find_child("FruitMark", true, false) != null and sheet.find_child("PollenMark", true, false) == null, "The confirm card's amounts wear the Fruit mark")
+	var credited := {"bundle": "bowl", "fruits": 55.0, "first_gift": 55.0, "order": "GPA.9999-8888-7777-66666", "purchased_at": 1.8e12, "usd_cents": 499.0}
+	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": 9000.0, "pending": false, "refunded": [], "credited": [], "fruit_credited": [credited], "fruit_refunded": [], "fruit_balance": 211.0}}]
+	(sheet.find_child("PollenStoreConfirmBuy", true, false) as Button).pressed.emit()
+	await _frames(10)
+	_check(t.purchases.bought == [["fruits", "bowl"]], "Its Buy hands the Bowl's package from the fruits offering to the store")
+	var receipt: Node = t.host.ui.find_child("PollenStoreReceipt", true, false)
+	var lines := _texts(receipt)
+	_check(receipt != null and PlayerCopy.FRUIT_STORE_ADDED % "110" in lines and PlayerCopy.FRUIT_STORE_GIFT % 100 in lines and "101  →  " in lines and "211" in lines and PlayerCopy.POLLEN_STORE_ORDER % ["$4.99", "GPA.9999-8888-7777-66666"] in lines,
+		"The receipt: 110 Fruits added, the double, 101 to 211, the price and order: " + str(lines))
+	_check(t.fruits.balance(SERVER, ME) == 211 and t.claims.unseen_fruits().is_empty() and not PlayerCopy.FRUIT_STORE_ON_ITS_WAY in t.host.toasts, "The Fruit balance follows the server and the receipt counts as seen")
+	await _frames(2)
+	_check((t.flow._page.chip as Control).fruits_label.text == "211", "The header's chip follows the new Fruit balance")
+	t.host.queue_free()
+	await _frames(2)
+	# A claim that gets no answer says the Fruits are on their way.
+	var late := _fruit_setup()
+	late.flow.show_store("home", "fruits")
+	await _frames()
+	late.flow.buy("handful")
+	await create_timer(BundlePurchase.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+	await _frames(4)
+	_check(PlayerCopy.FRUIT_STORE_ON_ITS_WAY in late.host.toasts and late.claims.pending(), "With no answer the Fruits are on their way and the claim waits: " + str(late.host.toasts))
+	late.host.queue_free()
+	await _frames(2)
+	# A Pollen bundle and a Fruit pack credited by one claim: one receipt at a time, the other waits for the next visit.
+	var both := _fruit_setup()
+	var pollen_credit: Dictionary = _credited("pinch", 0, 14000).data.credited[0]
+	var fruit_credit := {"bundle": "handful", "fruits": 25.0, "first_gift": 25.0, "order": "GPA.9999-8888-7777-11111", "purchased_at": 1.8e12, "usd_cents": 249.0}
+	both.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": 14000.0, "pending": false, "refunded": [], "credited": [pollen_credit], "fruit_credited": [fruit_credit], "fruit_refunded": [], "fruit_balance": 151.0}}]
+	both.claims.mark_pending()
+	await both.claims.claim()
+	both.flow.show_store("home")
+	await _frames()
+	var first_receipt := _texts(both.host.ui.find_child("PollenStoreReceipt", true, false))
+	_check(PlayerCopy.POLLEN_STORE_ADDED % "5,000" in first_receipt and both.claims.unseen_fruits().size() == 1, "The Pollen receipt shows first and the Fruit one still waits: " + str(first_receipt))
+	both.flow._close_sheet()
+	both.flow.show_store("home")
+	await _frames()
+	var second_receipt := _texts(both.flow._sheet.get_ref() if both.flow._sheet != null else null)
+	_check(PlayerCopy.FRUIT_STORE_ADDED % "50" in second_receipt and both.claims.unseen_fruits().is_empty(), "The next visit shows the Fruit receipt: " + str(second_receipt))
+	both.host.queue_free()
+	await _frames(2)
+
+## Previous purchases with Fruits on: Fruit packs and their refunds join the list, newest first.
+func _fruit_purchases_list() -> void:
+	var t := _fruit_setup()
+	var history := FakeHistory.new()
+	history.tree = self
+	history.answer = PollenHistory.checked({"schema_version": 1.0, "entries": [], "first_clears": [], "spent_usd_cents": 1999.0,
+		"purchases": [{"kind": "bundle", "amount": 115000.0, "at": 1.80e12, "bundle": "basket", "order": "GPA.2222-3333-4444-55555", "usd_cents": 1999.0}],
+		"fruit_entries": [{"kind": "bundlerefund", "amount": -110.0, "at": 1.82e12, "bundle": "bowl", "order": "GPA.9999-8888-7777-66666"},
+			{"kind": "ach", "amount": 10.0, "at": 1.815e12, "id": "together_first"},
+			{"kind": "bundle", "amount": 110.0, "at": 1.81e12, "bundle": "bowl", "order": "GPA.9999-8888-7777-66666", "usd_cents": 499.0}]})
+	t.host.pollen_client = history
+	StoreCurrency.use_path(_path("currency"))
+	StoreCurrency.note(_offerings())
+	t.flow.show_store()
+	await _frames()
+	(t.host.overlay.find_child("PollenStorePurchases", true, false) as Button).pressed.emit()
+	await _frames()
+	var sheet: Node = t.host.ui.find_child("PollenPurchases", true, false)
+	var rows: Array = sheet.find_children("PollenPurchaseRow*", "", true, false)
+	var words := _texts(sheet)
+	_check(rows.size() == 3 and PlayerCopy.FRUIT_PURCHASES_NOTE in words and PlayerCopy.POLLEN_PURCHASE_REFUNDED % "Bowl" in words and "Bowl" in words and "Wheelbarrow" in words, "Fruit packs and their refund join the list, achievements do not: " + str(words))
+	_check(rows.size() == 3 and _texts(rows[0])[0] == PlayerCopy.POLLEN_PURCHASE_REFUNDED % "Bowl" and _texts(rows[1])[0] == "Bowl" and _texts(rows[2])[0] == "Wheelbarrow", "Newest first across both currencies")
+	_check(rows.size() == 3 and rows[1].find_child("FruitMark", true, false) != null and rows[2].find_child("PollenMark", true, false) != null and PlayerCopy.POLLEN_STORE_ORDER % ["$4.99", "GPA.9999-8888-7777-66666"] in words, "Each row wears its own mark and receipt line")
+	t.host.queue_free()
+	var off := _setup()
+	off.host.pollen_client = history
+	off.flow.show_store()
+	await _frames()
+	(off.host.overlay.find_child("PollenStorePurchases", true, false) as Button).pressed.emit()
+	await _frames()
+	sheet = off.host.ui.find_child("PollenPurchases", true, false)
+	_check(sheet.find_children("PollenPurchaseRow*", "", true, false).size() == 1 and PlayerCopy.POLLEN_PURCHASES_NOTE in _texts(sheet), "With Fruits off the list stays Pollen only")
+	off.host.queue_free()
+	await _frames(2)
+
+## Offline, every store button that needs the server greys and comes back with the connection.
+func _fruit_offline() -> void:
+	var state: RefCounted = Connectivity.new()
+	Connectivity.use_shared(state)
+	var t := _fruit_setup()
+	t.flow.show_store("home", "fruits")
+	await _frames()
+	var page: Node = t.host.overlay
+	var held := func() -> Array:
+		var out: Array = []
+		for name: String in ["PollenStoreBuy_handful", "PollenStoreBuy_barrel", "PollenStoreConvert", "PollenStorePurchases"]:
+			var button := page.find_child(name, true, false) as BaseButton
+			out.append(button != null and OfflineHold.held(button))
+		return out
+	_check(held.call() == [false, false, false, false], "Online nothing is held")
+	state.force(false)
+	await _frames(2)
+	_check(held.call() == [true, true, true, true], "Offline the prices, Turn Fruits into Pollen and Previous purchases hold: %s" % [held.call()])
+	_check(not OfflineHold.held(page.find_child("PollenStoreTogether", true, false) as BaseButton) and not OfflineHold.held(page.find_child("PollenStoreTab_pollen", true, false) as BaseButton), "The Fruits page and the tabs stay open offline")
+	state.force(true)
+	await _frames(2)
+	_check(held.call() == [false, false, false, false], "Back online they come back at once")
+	t.host.queue_free()
+	Connectivity.use_shared(null)
+	await _frames(2)

@@ -13,7 +13,7 @@ extends SceneTree
 ## (d) offline: a screen that reaches the server holds its buttons (offline_hold.gd);
 ## (e) names: FriendNicknames.display_name, the leaderboard pair title, and in a public
 ##     duel's room services/room_partner_names.gd (its partner id is a stand-in, and it gates partner presence);
-## (f) Pollen amounts: PollenMoney.grouped beside every amount;
+## (f) Pollen and Fruit amounts: PollenMoney.grouped beside every amount;
 ## (g) saves: services/atomic_file.gd writes every file;
 ## (h) server writes: each one is classed, keyed or safe to repeat;
 ## (i) button ticks and first taps: button_ticks.gd and touch_input.gd alone;
@@ -24,7 +24,18 @@ extends SceneTree
 ##     trophy, and each screen that shows a leaderboard icon is in LEADERBOARD_ICON_SURFACES;
 ## (m) duel times: services/duel_model.gd lane() alone gives a duel lane its time and dots (the
 ##     pair ahead set beside the pair behind after as many turns), and each screen that shows a
-##     duel time is in DUEL_TIME_SURFACES.
+##     duel time is in DUEL_TIME_SURFACES;
+## (n) cosmetic prices: only services/wardrobe.gd reads an item's tier price
+##     (services/cosmetic_catalog.gd price), through sale and set_cost, which give
+##     each price in the currency it is charged in (Pollen or Fruits); each screen
+##     that shows an item or set price is in COSMETIC_PRICE_SURFACES.
+## (o) Fruits: every screen that reads the kept Fruits (services/fruit_wallet.gd)
+##     hides them while Fruits do not show, through services/pollen_surfaces.gd
+##     fruits_visible; each one that reaches them another way is in FRUIT_GATED.
+## (p) Fruit marks: kit/currency_mark.gd alone makes a Fruit mark for a screen
+##     (no FruitMark.make or beside anywhere else), and each screen that takes a
+##     mark from it is in CURRENCY_MARK_SURFACES with where. Older Pollen-only
+##     screens still take the grain from kit/pollen_mark.gd (test_pollen_mark.gd).
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -73,6 +84,7 @@ const PIP_MAKERS := {
 	"res://presentation/race_ghost_view.gd": ["dressed", "the raced player in the look the race kept, on the turn and its timer"],
 	"res://presentation/wardrobe_page.gd": ["preview", "shows each item on the plain pip"],
 	"res://presentation/wardrobe_sheets.gd": ["preview", "the buy sheet shows the item on the plain pip"],
+	"res://presentation/wardrobe_orchard.gd": ["preview", "Fruits board 4a: each Orchard item on the plain pip"],
 	"res://presentation/pollen_result_line.gd": ["preview", "owner 2026-11-02: the dropped item shows alone on a plain pip"],
 	"res://presentation/story_memory_world.gd": ["unshown", "Story was removed; only tests load it"],
 }
@@ -205,6 +217,42 @@ const RAW_DUEL_TIME_EXEMPT := {
 ## A side's or the ghost's time or steps read straight off a duel view.
 const RAW_DUEL_TIME := "\\.(?:sides\\[[^\\]]+\\]|ghost)\\.(?:ticks|steps)\\b|\\.(?:sides\\[[^\\]]+\\]|ghost)\\.get\\(\"(?:ticks|steps|splits)\""
 
+## (n) The one reader of a cosmetic's tier price, and the screens that show item prices through it.
+const COSMETIC_PRICE_READER := "res://services/wardrobe.gd"
+const COSMETIC_PRICE_SURFACES := {
+	"res://presentation/wardrobe_flow.gd": "the Wardrobe and the Orchard (Fruits board 4a): every entry and set priced through Wardrobe.sale and set_cost",
+}
+
+## (o) The one Fruits gate, and the scripts that read the kept Fruits without asking it themselves, with who asks.
+const FRUIT_GATE := "fruits_visible("
+const FRUIT_STORE := "res://services/fruit_wallet.gd"
+const FRUIT_GATED := {
+	"res://main.gd": "the host: it follows the kept Fruits for Home's chip, which asks the gate (kit/pollen_chip.gd), and its Fruit flows ask it themselves",
+}
+## The Fruit screens that read the kept Fruits through presentation/fruit_spend_flow.gd, which asks the gate (visible()).
+const FRUIT_SPEND_SURFACES := {
+	"res://presentation/fruits_page_flow.gd": "the Fruits page opens and stays only while spend.visible()",
+	"res://presentation/pollen_play_flow.gd": "the Sunshine card shows only while fruit_spends.visible()",
+}
+
+## (p) The one maker of a currency's mark, and the screens that show one through it.
+const CURRENCY_MARK := "res://presentation/kit/currency_mark.gd"
+const CURRENCY_MARK_SURFACES := {
+	"res://presentation/kit/shop_kit.gd": "every amount on the Wardrobe, the store, its cards and Previous purchases (ShopKit.amount)",
+	"res://presentation/kit/pollen_chip.gd": "the money chip's Pollen and Fruit halves (Fruits board 2)",
+	"res://presentation/pollen_store_page.gd": "the store's tabs and its first pack card (Fruits boards 3 and 9)",
+	"res://presentation/kit/benefit_panel.gd": "the Full Journey card's Pollen and Fruit tiles (Fruits board 5a)",
+	"res://presentation/pollen_grant_card.gd": "the monthly card's Pollen and Fruits (Fruits board 5b)",
+	"res://presentation/pollen_breakdown_view.gd": "the result rows' amounts",
+	"res://presentation/wardrobe_page.gd": "the Wardrobe's prices",
+	"res://presentation/wardrobe_sheets.gd": "the Wardrobe's confirm and short cards",
+	"res://presentation/wardrobe_orchard.gd": "the Orchard shelf (Fruits board 4a)",
+	"res://presentation/fruit_convert_sheet.gd": "Fruits into Pollen (Fruits board 8)",
+	"res://presentation/fruit_goals_view.gd": "the Fruits page's goals (Fruits board 6a)",
+	"res://presentation/fruit_wallet_view.gd": "the Fruits page's balance (Fruits board 6a)",
+	"res://presentation/sunshine_card.gd": "the Sunshine card's price (Fruits board 7)",
+}
+
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity"]
 
@@ -231,6 +279,9 @@ func _initialize() -> void:
 	_recovery()
 	_leaderboard_icon()
 	_duel_times()
+	_cosmetic_prices()
+	_fruits()
+	_currency_marks()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -444,12 +495,12 @@ func _pollen() -> void:
 	for match: RegExMatch in RegEx.create_from_string("(?m)^const (\\w+)\\s*:?=\\s*\"([^\"\\n]*)\"").search_all(copy):
 		var name := match.get_string(1)
 		var text := match.get_string(2)
-		if _found("%d Pollen|\\+%d(?!%)", text) > 0:
+		if _found("%d (?:Pollen|Fruits)|\\+%d(?!%)", text) > 0:
 			if POLLEN_COUNTS.has(name):
 				counted[name] = true
 				continue
-			_check(false, "PlayerCopy.%s puts a Pollen amount in with %%d: use %%s and PollenMoney.grouped (\"24,000\")" % name)
-		if _found("%s Pollen|\\+%s", text) > 0: amounts.append(name)
+			_check(false, "PlayerCopy.%s puts a Pollen or Fruit amount in with %%d: use %%s and PollenMoney.grouped (\"24,000\")" % name)
+		if _found("%s (?:Pollen|Fruits)|\\+%s", text) > 0: amounts.append(name)
 	_check(amounts.size() >= 10, "The Pollen amount lines are found: %d" % amounts.size())
 	for name: String in POLLEN_COUNTS:
 		_check(counted.has(name), "POLLEN_COUNTS names %s, which holds no %%d now: delete it" % name)
@@ -468,6 +519,19 @@ func _pollen() -> void:
 			if not source.substr(match.get_end(), end - match.get_end()).contains("%"): continue
 			var line := source.substr(start, end - start)
 			_check(line.contains("grouped("), "%s fills PlayerCopy.%s without PollenMoney.grouped: %s" % [path, match.get_string(1), line.strip_edges().left(120)])
+
+# (n) Cosmetic prices --------------------------------------------------------
+
+func _cosmetic_prices() -> void:
+	for path: String in _sources:
+		var alias := _alias(_sources[path], "res://services/cosmetic_catalog.gd")
+		if alias.is_empty() or path == COSMETIC_PRICE_READER: continue
+		_check(_found("\\b" + alias + "\\.price\\(", _sources[path]) == 0, "%s reads a cosmetic's tier price itself: price it through services/wardrobe.gd sale or set_cost, which keep Pollen and Fruit prices apart" % path)
+	_check(str(_sources.get(COSMETIC_PRICE_READER, "")).contains("Catalog.price("), "services/wardrobe.gd is the one reader of the tier price")
+	for path: String in COSMETIC_PRICE_SURFACES:
+		var source: String = _sources.get(path, "")
+		var wardrobe := _alias(source, COSMETIC_PRICE_READER)
+		_check(not wardrobe.is_empty() and (source.contains(wardrobe + ".sale(") or source.contains(wardrobe + ".set_cost(")), "%s shows item prices without services/wardrobe.gd sale or set_cost" % path)
 
 # (g) Saves ------------------------------------------------------------------
 
@@ -578,7 +642,42 @@ func _duel_times() -> void:
 	for path: String in RAW_DUEL_TIME_EXEMPT:
 		_check(raw.has(path), "RAW_DUEL_TIME_EXEMPT names %s, which reads no duel time off a view now: delete it" % path)
 
+# (o) Fruits -----------------------------------------------------------------
+
+func _fruits() -> void:
+	var gated_seen := {}
+	var readers := 0
+	for path: String in _sources:
+		if not (path.begins_with("res://presentation/") or path in ["res://main.gd", "res://relay_preview.gd"]): continue
+		var source: String = _sources[path]
+		if not source.contains("preload(\"" + FRUIT_STORE + "\")"): continue
+		readers += 1
+		if FRUIT_GATED.has(path):
+			gated_seen[path] = true
+			continue
+		_check(source.contains(FRUIT_GATE), "%s reads the kept Fruits but never asks services/pollen_surfaces.gd fruits_visible: hide it while Fruits do not show, or add it to FRUIT_GATED with who asks" % path)
+	_check(readers >= 3, "The screens that read the kept Fruits are found: %d" % readers)
+	for path: String in FRUIT_GATED:
+		_check(gated_seen.has(path), "FRUIT_GATED names %s, which no longer reads the kept Fruits: delete it" % path)
+	_check(str(_sources.get("res://presentation/fruit_spend_flow.gd", "")).contains(FRUIT_GATE), "presentation/fruit_spend_flow.gd visible() asks the Fruits gate")
+	for path: String in FRUIT_SPEND_SURFACES:
+		_check(_found("\\b(?:spend|fruit_spends)\\.visible\\(\\)", str(_sources.get(path, ""))) > 0, "%s shows Fruits without asking presentation/fruit_spend_flow.gd visible() (FRUIT_SPEND_SURFACES: %s)" % [path, FRUIT_SPEND_SURFACES[path]])
+
 # (j) and the guard suites ---------------------------------------------------
+
+# (p) Currency marks ---------------------------------------------------------
+
+func _currency_marks() -> void:
+	var seen := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path != CURRENCY_MARK and path != "res://presentation/kit/fruit_mark.gd":
+			_check(_found("\\bFruitMark\\.(?:make|beside)\\(", source) == 0, "%s makes a Fruit mark itself: take it from presentation/kit/currency_mark.gd" % path)
+		if path == CURRENCY_MARK or _found("\\bCurrencyMark\\.(?:make|beside)\\(", source) == 0: continue
+		seen[path] = true
+		_check(CURRENCY_MARK_SURFACES.has(path), "%s shows a currency mark: add it to CURRENCY_MARK_SURFACES with where" % path)
+	for path: String in CURRENCY_MARK_SURFACES:
+		_check(seen.has(path), "CURRENCY_MARK_SURFACES names %s, which shows no mark through presentation/kit/currency_mark.gd now: delete it" % path)
 
 func _suites() -> void:
 	var shards := {}

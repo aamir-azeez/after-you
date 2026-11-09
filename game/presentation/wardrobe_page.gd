@@ -39,6 +39,14 @@ extends Control
 ##   the offline note), items: Array of {id, name, tier,
 ##   slot, price, owned, worn, locked,
 ##   unlock_name, sold, earn (how an earned item is earned, else "")}, in shop order.
+## The Orchard (Fruits board 4a): while Fruits show (model `orchard`) the slot
+## chips end with the Orchard chip (the Fruit and "Orchard"), which asks for the
+## "orchard" tab; on it the right panel is the plum Orchard
+## (presentation/wardrobe_orchard.gd) in place of the cream shop, and a picked
+## Orchard item's button is plum: "Buy for [Fruit] 50". Each item has its
+## `currency`; in_tab() says which tab lists it (All items is Pollen only), and
+## `sets` holds the Orchard's sets, picked like an item. `fruits_blocked`: the
+## Fruit balance is below 0, so a Fruit Buy greys and says why.
 ## Cards draw still pips (kit/pip_avatar.gd still mode), so a long list shares
 ## the one offscreen renderer; only the big pip is live, and it is made again
 ## only when the switch changes its colour.
@@ -55,6 +63,11 @@ const SpiritLook = preload("res://presentation/spirit_look.gd")
 const EmptyArt = preload("res://presentation/empty_state_art.gd")
 const Outfit = preload("res://services/outfit.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const PollenMoney = preload("res://services/pollen_money.gd")
+const Orchard = preload("res://presentation/wardrobe_orchard.gd")
+const Sheets = preload("res://presentation/wardrobe_sheets.gd")
+const OrchardSurface = preload("res://presentation/kit/orchard_surface.gd")
+const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 
 const CREAM := ShopKit.CREAM
@@ -88,6 +101,8 @@ signal retry_pressed
 signal plus_pressed
 ## The balance on the chip: the Pollen page.
 signal pollen_pressed
+## The chip's Fruit half: the Fruits page.
+signal fruits_pressed
 
 var back_button: Button
 var action_button: Button
@@ -111,6 +126,9 @@ var _featured: HBoxContainer
 var _grid: HFlowContainer
 ## The scroll's list, and the empty list's drawing in it while there is one.
 var _list: VBoxContainer
+## The cream shop panel, and the Orchard shown in its place on the Orchard tab.
+var _shop: Control
+var _orchard: Orchard
 var _empty: Control
 var _pip_box: CenterContainer
 var _reduced := false
@@ -140,7 +158,13 @@ func _init(reduced: bool = false) -> void:
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(body)
 	body.add_child(_pip_panel())
-	body.add_child(_shop_panel())
+	_shop = _shop_panel()
+	body.add_child(_shop)
+	_orchard = Orchard.new()
+	_orchard.visible = false
+	_orchard.item_chosen.connect(func(id: String) -> void: item_chosen.emit(id))
+	_orchard.kind_chosen.connect(func(kind: String) -> void: kind_chosen.emit(kind))
+	body.add_child(_orchard)
 
 func _header() -> Control:
 	var header := HBoxContainer.new()
@@ -324,7 +348,7 @@ func _shelf_panel() -> Control:
 ## Redraws the page from the flow's model.
 func render(model: Dictionary) -> void:
 	_model = model.duplicate(true)
-	_show_chip(int(model.get("balance", -1)), bool(model.get("balance_known", int(model.get("balance", -1)) >= 0)), bool(model.get("bundles", false)))
+	_show_chip(int(model.get("balance", -1)), bool(model.get("balance_known", int(model.get("balance", -1)) >= 0)), bool(model.get("bundles", false)), model.get("fruits", []))
 	var status := str(model.get("status", ""))
 	var line := status if not status.is_empty() else str(model.get("note", ""))
 	_status.text = line
@@ -343,10 +367,14 @@ func render(model: Dictionary) -> void:
 		_make_preview(SpiritLook.MINT if view == "friend" else SpiritLook.PEACH)
 	for key: String in _views: _switch_style(_views[key], key == view)
 	var by_id := {}
-	for entry: Dictionary in model.get("items", []): by_id[entry.id] = entry
+	for entry: Dictionary in model.get("items", []) + model.get("sets", []): by_id[entry.id] = entry
+	var orchard := tab == "orchard"
+	_shop.visible = not orchard
+	_orchard.visible = orchard
+	if orchard: _orchard.render(_model, line)
 	var featured: Array = (model.get("featured", []) as Array).filter(func(id: String) -> bool: return by_id.has(id)).map(func(id: String) -> Dictionary: return by_id[id])
 	var kind := str(model.get("kind", ""))
-	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return (tab == "all" or bool(entry.owned)) and (kind.is_empty() or entry.slot == kind))
+	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return in_tab(entry, tab) and (kind.is_empty() or entry.slot == kind))
 	# An empty list shows the drawing (empty_state.gd) with its case's line:
 	# nothing owned, nothing in the shop, or no shop. Never while the status
 	# line says loading or offline.
@@ -355,11 +383,11 @@ func render(model: Dictionary) -> void:
 		empty = PlayerCopy.WARDROBE_NOTHING_EARNED if not shop else (PlayerCopy.WARDROBE_NOTHING_IN_SHOP if tab == "all" else PlayerCopy.WARDROBE_NOTHING_OWNED)
 	# Owned ends with Get more when the flow says so (model.more), after at least one owned card.
 	var more := bool(model.get("more", false)) and not shown.is_empty()
-	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty, more])
-	if key != _cards_key:
+	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty, more, model.get("orchard", false)])
+	if key != _cards_key and not orchard:
 		_cards_key = key
 		_fill(_featured, featured, true)
-		_fill_kinds(model.get("kinds", []), kind)
+		_fill_kinds(model.get("kinds", []), kind, bool(model.get("orchard", false)))
 		_fill(_grid, shown, false)
 		if more: _grid.add_child(_more_card(kind))
 		_show_empty(empty)
@@ -367,8 +395,16 @@ func render(model: Dictionary) -> void:
 		_restyle(_featured)
 		_restyle(_grid)
 	_shelf.visible = shop and tab == "all" and not featured.is_empty()
-	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop, bool(model.get("buy_offline", false)))
+	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop, bool(model.get("buy_offline", false)), bool(model.get("fruits_blocked", false)))
 	if preview.has_method("wear"): preview.wear(model.get("preview", {}))
+
+## Whether `entry` lists in `tab`: the Orchard lists what is sold for Fruits,
+## Owned what is owned (either currency), All items the rest (Pollen and earned).
+static func in_tab(entry: Dictionary, tab: String) -> bool:
+	var fruit: bool = entry.get("currency", "pollen") == "fruits"
+	if tab == "orchard": return fruit
+	if tab == "owned": return bool(entry.get("owned", false))
+	return not fruit
 
 ## The empty list's drawing with `line` under it, or none when `line` is empty.
 func _show_empty(line: String) -> void:
@@ -380,9 +416,10 @@ func _show_empty(line: String) -> void:
 	if line.is_empty(): return
 	_empty = ThemeRules.empty_state(_list, "wardrobe", "", line)
 
-## The chip for `balance`, with its plus while bundles sell; none until the server has said.
-func _show_chip(balance: int, known: bool, plus: bool) -> void:
-	var wanted := [balance, known, plus]
+## The chip for `balance`, with its plus while bundles sell and its Fruit half
+## while Fruits show (`fruits`, kit/pollen_chip.gd fruits_for); none until the server has said.
+func _show_chip(balance: int, known: bool, plus: bool, fruits: Array = []) -> void:
+	var wanted := [balance, known, plus, fruits]
 	if wanted == _chip_shown: return
 	_chip_shown = wanted
 	if is_instance_valid(chip):
@@ -390,15 +427,19 @@ func _show_chip(balance: int, known: bool, plus: bool) -> void:
 		chip.queue_free()
 	chip = null
 	if not known: return
-	chip = PollenChip.make(balance, plus)
+	chip = PollenChip.make(balance, plus, fruits)
 	chip.amount_pressed.connect(func() -> void: pollen_pressed.emit())
+	chip.fruits_pressed.connect(func() -> void: fruits_pressed.emit())
 	chip.plus_pressed.connect(func() -> void: plus_pressed.emit())
 	_chip_box.add_child(chip)
 
-func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false) -> void:
+func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false, fruits_blocked: bool = false) -> void:
 	action_button.visible = not entry.is_empty()
 	_name.text = str(entry.get("name", ""))
 	_hint.visible = true
+	var fruit: bool = entry.get("currency", "") == "fruits"
+	var word := Orchard.tier_word(str(entry.get("tier", ""))) if fruit else ""
+	_hint.text = PlayerCopy.ORCHARD_HINT % word.to_lower() if not word.is_empty() else PlayerCopy.WARDROBE_DRAG
 	_note.text = ""
 	_note.visible = false
 	if entry.is_empty(): return
@@ -406,6 +447,10 @@ func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false) ->
 	# Wear and Take off sound their own chime; a press toward Buy ticks.
 	ButtonTicks.quiet(action_button, bool(entry.owned))
 	var label := ""
+	if bool(entry.owned) and bool(entry.get("set", false)):
+		# A set is worn piece by piece.
+		action_button.visible = false
+		return
 	if bool(entry.owned):
 		label = PlayerCopy.WARDROBE_TAKE_OFF if bool(entry.worn) else PlayerCopy.WARDROBE_WEAR
 	elif not bool(entry.sold) or not shop:
@@ -418,6 +463,10 @@ func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false) ->
 		# Buying needs the server: the button keeps its price, greyed, and says why.
 		action_button.disabled = true
 		_set_note(PlayerCopy.WARDROBE_CONNECT_TO_BUY)
+	elif fruit and fruits_blocked:
+		# Spending Fruits waits while a refund left them below zero.
+		action_button.disabled = true
+		_set_note(PlayerCopy.ORCHARD_ERRORS.fruits_blocked)
 	action_button.text = ""
 	action_button.tooltip_text = ""
 	if not label.is_empty():
@@ -426,16 +475,12 @@ func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false) ->
 		_cream(action_button)
 		return
 	if not action_button.visible: return
-	# Buy for [grain] 20,000, all inside the one button.
+	# Buy for [grain] 20,000 (or [Fruit] 50 on plum), all inside the one button.
 	var price := int(entry.price)
-	var row := HBoxContainer.new()
-	row.name = "WardrobeBuyContent"
-	row.add_theme_constant_override("separation", 10)
-	row.add_child(ShopKit.text(PlayerCopy.WARDROBE_BUY_FOR, 22, INK, ShopKit.bold_font()))
-	row.add_child(ShopKit.amount(price, 22, INK))
-	ShopKit.set_button_content(action_button, row)
-	action_button.accessibility_name = PlayerCopy.WARDROBE_BUY % str(price)
-	_cream(action_button)
+	ShopKit.set_button_content(action_button, Sheets.buy_words(price, 22, OrchardSurface.TEXT if fruit else INK, str(entry.get("currency", ""))))
+	action_button.accessibility_name = PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(price)
+	if fruit: OrchardSurface.plum_button(action_button)
+	else: _cream(action_button)
 
 func _set_note(text: String) -> void:
 	_note.text = text
@@ -460,11 +505,11 @@ func _restyle(box: Container) -> void:
 		for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 			card.add_theme_stylebox_override(state, TierFrame.style(tier, 16, on or state in ["pressed", "hover_pressed"]))
 
-func _fill_kinds(kinds: Array, picked: String) -> void:
+func _fill_kinds(kinds: Array, picked: String, orchard: bool = false) -> void:
 	for child: Node in _kinds.get_children():
 		_kinds.remove_child(child)
 		child.queue_free()
-	_kinds.visible = kinds.size() > 1
+	_kinds.visible = kinds.size() + (1 if orchard else 0) > 1
 	for kind: Variant in kinds:
 		var button := Button.new()
 		button.name = "WardrobeKind_" + str(kind)
@@ -478,6 +523,22 @@ func _fill_kinds(kinds: Array, picked: String) -> void:
 			button.add_theme_color_override("font_color" if state == "normal" else "font_%s_color" % state, CREAM if chosen else INK)
 		button.pressed.connect(func() -> void: kind_chosen.emit(str(kind)))
 		_kinds.add_child(button)
+	if orchard: _kinds.add_child(_orchard_chip())
+
+## The slot chips' last one while Fruits show: the Fruit and "Orchard", opening the Orchard.
+func _orchard_chip() -> Button:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 7)
+	row.add_child(CurrencyMark.beside("fruits", 15))
+	row.add_child(ShopKit.text(PlayerCopy.ORCHARD_TAB, 15, INK))
+	var button := ShopKit.content_button(row, 40)
+	button.name = "WardrobeKind_orchard"
+	button.accessibility_name = PlayerCopy.ORCHARD_TAB
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+		var fill := CHIP if state in ["normal", "focus"] else CHIP.darkened(0.06)
+		button.add_theme_stylebox_override(state, ThemeRules.padded(ThemeRules.rounded(fill, 12), 14, 6))
+	button.pressed.connect(func() -> void: tab_chosen.emit("orchard"))
+	return button
 
 ## One item card in its tier frame. `small` is a shelf card.
 func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
@@ -520,7 +581,9 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	title.clip_text = true
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title_row.add_child(title)
-	if not small: title_row.add_child(TierFrame.label(tier, 11, ShopKit.bold_font()))
+	# An Orchard item (in Owned) has its Orchard word; the Pollen tiers their mark and word.
+	if not small and entry.get("currency", "") == "fruits": title_row.add_child(ShopKit.text(Orchard.tier_word(tier).to_upper(), 11, INK_SOFT, ShopKit.bold_font()))
+	elif not small: title_row.add_child(TierFrame.label(tier, 11, ShopKit.bold_font()))
 	var bottom := HBoxContainer.new()
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bottom.add_theme_constant_override("separation", 6)
@@ -533,7 +596,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 		if tier == "earned" and shop and not small: bottom.add_child(spacer)
 		bottom.add_child(_tag(PlayerCopy.WARDROBE_WEARING if bool(entry.worn) else PlayerCopy.WARDROBE_OWNED_TAG))
 	elif bool(entry.sold) and shop:
-		bottom.add_child(ShopKit.amount(int(entry.price), 13 if small else 15, INK))
+		bottom.add_child(ShopKit.amount(int(entry.price), 13 if small else 15, INK, "", "", str(entry.get("currency", ""))))
 	return card
 
 ## The Owned tab's Get more card for slot `kind`: an item card's size, the

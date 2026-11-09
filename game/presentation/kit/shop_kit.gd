@@ -5,7 +5,7 @@ extends RefCounted
 ## from kit/pollen_mark.gd sized from its amount's font.
 ##
 ## Fonts are made once and shared. Every piece takes no input unless it is a button.
-const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
+const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
@@ -59,15 +59,16 @@ static func text(value: String, font_size: int, color: Color, font: Font = null)
 	label.add_theme_font_override("font", font if font != null else body_font())
 	return label
 
-## An amount of Pollen: the grain, then the grouped number ("24,000"), with an
+## An amount: its currency's mark (kit/currency_mark.gd; Pollen's grain unless
+## `currency` names Fruits), then the grouped number ("24,000"), with an
 ## optional `before` ("−") and `after` (" more") around the number.
-static func amount(value: int, font_size: int, color: Color, before: String = "", after: String = "") -> HBoxContainer:
+static func amount(value: int, font_size: int, color: Color, before: String = "", after: String = "", currency: String = "") -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "PollenAmount"
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", maxi(4, int(font_size / 4.0)))
 	if not before.is_empty(): row.add_child(text(before, font_size, color, bold_font()))
-	row.add_child(PollenMark.beside(font_size))
+	row.add_child(CurrencyMark.beside(currency, font_size))
 	var number := text(PollenMoney.grouped(value) + after, font_size, color, bold_font())
 	number.name = "PollenAmountValue"
 	row.add_child(number)

@@ -7,6 +7,9 @@ extends Control
 ##   the newest turns;
 ## - First chapter clears (presentation/pollen_clears_view.gd): what first
 ##   clears still pay, and each free chapter, paid or not.
+## While Fruits show and the server sent Sunshine, the Turns card ends with the
+## Sunshine card (presentation/sunshine_card.gd, Fruits board 7), held below
+## its scrolling list so a long list never hides it.
 ## Receipts live behind the Pollen store's Previous purchases, not here.
 ## presentation/pollen_play_flow.gd reads the data and calls render(); this
 ## script only draws it. Each card scrolls on its own. No timers, no countdown.
@@ -18,6 +21,7 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const Parts = preload("res://presentation/pollen_play_parts.gd")
 const TurnsView = preload("res://presentation/pollen_turns_view.gd")
 const ClearsView = preload("res://presentation/pollen_clears_view.gd")
+const SunshineCard = preload("res://presentation/sunshine_card.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 
 const CARD := Color("f3efdf")
@@ -26,6 +30,8 @@ const GUTTER := 12
 
 signal back_pressed
 signal retry_pressed
+## The Sunshine card's price button (its button, for the card that opens over it).
+signal sunshine_buy_pressed(button: Button)
 
 var back_button: Button
 var title_font: Font
@@ -33,6 +39,8 @@ var _chip_slot: HBoxContainer
 var _title_label: Label
 var _turns: VBoxContainer
 var _clears: VBoxContainer
+## Under the Turns card's list: the Sunshine card, or nothing.
+var _turns_foot: VBoxContainer
 
 func _init(heading_font: Font = null) -> void:
 	title_font = heading_font
@@ -53,7 +61,7 @@ func _init(heading_font: Font = null) -> void:
 	body.add_theme_constant_override("separation", 18)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(body)
-	_turns = _card(body, "PollenTurnsCard")
+	_turns = _card(body, "PollenTurnsCard", true)
 	_clears = _card(body, "PollenClearsCard")
 
 func _header() -> Control:
@@ -85,8 +93,9 @@ func _header() -> Control:
 	header.add_child(_chip_slot)
 	return header
 
-## A card's column, with room for the scroll bar while it shows.
-func _card(parent: Control, card_name: String) -> VBoxContainer:
+## A card's column, with room for the scroll bar while it shows; with `foot`,
+## a held part under the scrolling column (_turns_foot).
+func _card(parent: Control, card_name: String, foot: bool = false) -> VBoxContainer:
 	var panel := PanelContainer.new()
 	panel.name = card_name
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -94,7 +103,17 @@ func _card(parent: Control, card_name: String) -> VBoxContainer:
 	parent.add_child(panel)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	panel.add_child(scroll)
+	if foot:
+		var stack := VBoxContainer.new()
+		stack.add_theme_constant_override("separation", 12)
+		panel.add_child(stack)
+		scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		stack.add_child(scroll)
+		_turns_foot = VBoxContainer.new()
+		_turns_foot.name = card_name + "Foot"
+		stack.add_child(_turns_foot)
+	else:
+		panel.add_child(scroll)
 	# Fills the card's height, so the room under a short list is the card's own (presentation/pollen_play_spare.gd).
 	var inset := MarginContainer.new()
 	inset.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -111,7 +130,8 @@ func _card(parent: Control, card_name: String) -> VBoxContainer:
 
 ## Draws `model` from the flow: {chip (kit/pollen_chip.gd, or null before a
 ## balance is known), full_journey, status ("" when the history is in), retry,
-## history (services/pollen_history.gd)}.
+## history (services/pollen_history.gd), fruits (Fruits show), sunshine ({}
+## or services/fruit_wallet.gd sunshine), sunshine_buyable}.
 func render(model: Dictionary) -> void:
 	var chip: Variant = model.get("chip")
 	for child: Node in _chip_slot.get_children():
@@ -119,7 +139,7 @@ func render(model: Dictionary) -> void:
 		_chip_slot.remove_child(child)
 		child.queue_free()
 	if chip is Control and (chip as Control).get_parent() != _chip_slot: _chip_slot.add_child(chip)
-	for column: VBoxContainer in [_turns, _clears]:
+	for column: VBoxContainer in [_turns, _clears, _turns_foot]:
 		for child: Node in column.get_children():
 			column.remove_child(child)
 			child.queue_free()
@@ -140,6 +160,12 @@ func render(model: Dictionary) -> void:
 			retry.pressed.connect(func() -> void: retry_pressed.emit())
 			_turns.add_child(retry)
 		return
-	var cards := {"history": history, "full_journey": bool(model.get("full_journey", true))}
+	var fruits := bool(model.get("fruits", false))
+	var cards := {"history": history, "full_journey": bool(model.get("full_journey", true)), "fruits": fruits}
 	TurnsView.fill(_turns, cards, title_font)
 	ClearsView.fill(_clears, cards, title_font)
+	var sunshine: Dictionary = model.get("sunshine", {})
+	if fruits and not sunshine.is_empty():
+		var card := SunshineCard.make(sunshine, bool(model.get("sunshine_buyable", false)), title_font)
+		card.buy_pressed.connect(func(button: Button) -> void: sunshine_buy_pressed.emit(button))
+		_turns_foot.add_child(card)

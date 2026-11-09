@@ -4,8 +4,13 @@ extends SceneTree
 ## and the plus, only when asked for, on the right; each half its own button,
 ## at least 48 by 48, that answers only its own tap; a zero balance as the same
 ## plain chip; the mark level with the amount; and the gain shown on request
-## and gone after a moment.
+## and gone after a moment. With Fruits (Fruits board 2): the Fruit half on the
+## Orchard plum between the Pollen half and the plus, its own target and tap,
+## 0 for a player with none, and shown only while Fruits show (fruits_for).
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
+const Orchard = preload("res://presentation/kit/orchard_surface.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 
 var checks := 0
 var failures := 0
@@ -54,10 +59,55 @@ func _run() -> void:
 	viewport.add_child(fresh)
 	await _settle()
 	_check(fresh.amount_label.text == "1,234,567" and fresh.gain_label.visible, "A gain asked for before the chip is shown waits for it")
+	await _fruits(viewport)
 	viewport.queue_free()
 	await _settle()
 	print("AFTER YOU POLLEN CHIP: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
+
+## The Fruit half (Fruits board 2) and when it shows.
+func _fruits(viewport: SubViewport) -> void:
+	var chip := PollenChip.make(24000, true, [1101])
+	viewport.add_child(chip)
+	await _settle()
+	var halves: Array = [chip.amount_button, chip.fruits_button, chip.plus_button]
+	_check(chip.fruits_label.text == "1,101" and chip.fruits_button.find_child("FruitMark", true, false) != null and chip.amount_button.find_child("FruitMark", true, false) == null, "The Fruit half holds the Fruit mark and the grouped Fruit balance")
+	var in_order := true
+	for index in range(1, halves.size()):
+		var before: Rect2 = halves[index - 1].get_global_rect()
+		var after: Rect2 = halves[index].get_global_rect()
+		in_order = in_order and absf(before.end.x - after.position.x) <= 0.5 and absf(before.position.y - after.position.y) <= 0.5
+	_check(in_order and chip.fruits_button.size.y >= 48.0 and chip.fruits_button.size.x >= 48.0 and chip.fruits_button.get_global_rect().encloses(chip.fruits_label.get_global_rect()), "Pollen, Fruits, plus: one pill, each half a full target holding its amount")
+	var plum: StyleBoxFlat = chip.fruits_button.get_theme_stylebox("normal")
+	_check(plum.bg_color == Orchard.PLUM_DARK and plum.corner_radius_top_left == 0 and plum.corner_radius_top_right == 0 and chip.amount_button.get_theme_stylebox("normal").corner_radius_top_right == 0, "The Fruit half sits on the Orchard plum, square where it meets its neighbours")
+	var taps: Array = []
+	chip.amount_pressed.connect(func() -> void: taps.append("amount"))
+	chip.fruits_pressed.connect(func() -> void: taps.append("fruits"))
+	chip.plus_pressed.connect(func() -> void: taps.append("plus"))
+	for half: Button in halves: half.pressed.emit()
+	_check(taps == ["amount", "fruits", "plus"], "Each half answers its own tap: " + str(taps))
+	chip.queue_free()
+	chip = PollenChip.make(24000, false, [0])
+	viewport.add_child(chip)
+	await _settle()
+	_check(chip.fruits_label.text == "0" and chip.fruits_button.get_theme_stylebox("normal").corner_radius_top_right > 0, "A player with no Fruits sees 0; without a plus the Fruit half closes the pill")
+	chip.queue_free()
+	chip = PollenChip.make(24000, false)
+	viewport.add_child(chip)
+	await _settle()
+	_check(chip.fruits_button == null and chip.find_child("FruitMark", true, false) == null, "Without Fruits there is no Fruit half")
+	chip.queue_free()
+	var path := "user://test-pollen-chip-fruits-%s.json" % Crypto.new().generate_random_bytes(6).hex_encode()
+	var fruits: RefCounted = FruitWallet.new(path)
+	var scope := {"server": "https://chip.example.test", "owner": "cccccccccccccccccccccc"}
+	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(true), fruits) == [], "Fruits off on the server: no Fruit half")
+	fruits.set_enabled(scope.server, scope.owner, true)
+	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(true), fruits) == [0], "Fruits on, nothing read yet: 0")
+	fruits.note_view(scope.server, scope.owner, {"fruits": {"schema_version": 1.0, "balance": 101.0, "earned": 101.0, "achievements": []}})
+	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(true), fruits) == [101], "Fruits on: the kept balance")
+	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(false), fruits) == [] and PollenChip.fruits_for({}, PollenSurfaces.new(true), fruits) == [], "A build that sells nothing, or no player, shows no Fruit half")
+	for suffix: String in ["", ".tmp", ".backup"]:
+		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 
 func _settle() -> void:
 	for frame in range(4): await process_frame

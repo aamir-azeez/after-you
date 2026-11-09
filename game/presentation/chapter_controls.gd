@@ -47,6 +47,8 @@ var reset_view_button: Button
 var wait_row: HBoxContainer
 ## "Try 3" under the chapter title from the turn's second try on.
 var try_pill: TryPill
+## "Sunshine ×2" under the try pill while the player's Sunshine has turns left (an online turn).
+var sunshine_pill: TryPill
 var wait_label: Label
 var wait_bar: MemoryWaitBar
 ## Hold to fast-forward and Skip to end take the action and finish places
@@ -149,6 +151,12 @@ func show_tries(tries: int, text: String = "") -> void:
 	try_pill.show_try(tries, text)
 	_place_wait_row.call_deferred()
 
+## The Sunshine pill under the try pill (presentation/try_pill.gd show_sunshine).
+func show_sunshine(on: bool) -> void:
+	if not is_instance_valid(sunshine_pill) or sunshine_pill.visible == on: return
+	sunshine_pill.show_sunshine(on)
+	_place_wait_row.call_deferred()
+
 ## The try pill and then the wait row sit just under the chapter title,
 ## however many lines it wraps to.
 func _place_wait_row() -> void:
@@ -158,6 +166,10 @@ func _place_wait_row() -> void:
 		try_pill.position = Vector2(chapter_label.position.x, below + 2.0)
 		try_pill.size = try_pill.get_combined_minimum_size()
 		if try_pill.visible: below += try_pill.size.y + 8.0
+	if is_instance_valid(sunshine_pill):
+		sunshine_pill.position = Vector2(chapter_label.position.x, below + 2.0)
+		sunshine_pill.size = sunshine_pill.get_combined_minimum_size()
+		if sunshine_pill.visible: below += sunshine_pill.size.y + 8.0
 	wait_row.position = Vector2(chapter_label.position.x, below)
 
 func _build_ui() -> void:
@@ -197,6 +209,10 @@ func _build_ui() -> void:
 	try_pill = TryPill.new(17)
 	try_pill.visible = false
 	hud.add_child(try_pill)
+	sunshine_pill = TryPill.new(17)
+	sunshine_pill.name = "SunshinePill"
+	sunshine_pill.visible = false
+	hud.add_child(sunshine_pill)
 	wait_row = HBoxContainer.new()
 	wait_row.name = "MemoryWait"
 	wait_row.mouse_filter = Control.MOUSE_FILTER_IGNORE

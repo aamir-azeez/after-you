@@ -17,7 +17,10 @@ extends SceneTree
 ##   line saying why, and reads again and enables Buy once back online;
 ## - with the server's shop off, owned items stay wearable offline;
 ## - earned items the saved catalogue offers show offline on All items, locked,
-##   saying how they are earned, and nothing is sent.
+##   saying how they are earned, and nothing is sent;
+## - the Orchard offline: its Fruit prices stay browsable from the saved
+##   catalogue, a Fruit Buy greys with the same line, its action opens no card
+##   and sends nothing, and a Fruit card left open closes when the phone goes offline.
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -27,6 +30,7 @@ const Connectivity = preload("res://services/connectivity.gd")
 const Flow = preload("res://presentation/wardrobe_flow.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -120,6 +124,7 @@ func _run() -> void:
 	await _page()
 	await _page_shop_off()
 	await _page_earned()
+	await _page_orchard()
 	await _retry_soon()
 	Catalog.set_offered([])
 	Connectivity.use_shared(null)
@@ -456,3 +461,43 @@ static func _texts(node: Node) -> Array:
 	if (node is Label or node is Button) and not str(node.text).is_empty(): out.append(node.text)
 	for child: Node in node.get_children(): out.append_array(_texts(child))
 	return out
+
+## The Orchard offline over a saved wardrobe with Fruits on.
+func _page_orchard() -> void:
+	var orchard := ["fruit_cap", "blossom_crown", "orchard_skin", "apple_leaf", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]
+	Catalog.set_offered(SOLD + orchard)
+	var state: RefCounted = Connectivity.new()
+	Connectivity.use_shared(state)
+	state.note_reached()
+	var t := _setup_page(state, false)
+	var fruits: RefCounted = FruitWallet.new(_path("fruits"))
+	fruits.set_enabled(SERVER, ME, true)
+	t.flow.client = WardrobeClient.new(null, t.host._names_scope, t.fake.call_it, t.store, PollenWallet.new(_path("orchard-purse")), null, fruits)
+	t.flow.client.connectivity = state
+	var data := wallet(["daisy"], {}, 5)
+	data.wardrobe.offered = SOLD + orchard
+	data.wardrobe.fruit_prices = {"fruit_cap": 50, "blossom_crown": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_coral": 10, "sprig_plum": 10, "sprig_sun": 10, "sprig_sky": 10}
+	data.wardrobe.fruit_sets = {"orchard": ["fruit_cap", "orchard_skin", "apple_leaf"]}
+	data.fruits = {"schema_version": 1.0, "balance": 101.0, "earned": 101.0, "first_pack_gift": false, "first_pack_percent": 100.0, "achievements": []}
+	t.fake.replies = [{"ok": true, "status": 200, "data": data}]
+	t.flow.show_wardrobe()
+	await _frames()
+	t.flow.set_tab("orchard")
+	await t.flow.act("fruit_cap")
+	_check(t.host.ui.find_child("WardrobeConfirm", true, false) != null, "Online a Fruit Buy opens its confirm card")
+	state.force(false)
+	t.flow.connectivity_changed(false)
+	await _frames(2)
+	_check(t.host.ui.find_child("WardrobeConfirm", true, false) == null, "Going offline closes the Fruit card left open")
+	var page: Node = t.host.overlay
+	_check(t.flow.model().tab == "orchard" and page.find_child("OrchardCard_fruit_cap", true, false) != null and t.flow.model().buy_offline, "Offline the Orchard stays browsable from the saved catalogue")
+	var action: Button = page.find_child("WardrobeAction", true, false)
+	_check(action.visible and action.disabled and PlayerCopy.WARDROBE_CONNECT_TO_BUY in _texts(page), "A Fruit Buy greys and says it needs a connection")
+	var sends: int = t.fake.sent.size()
+	await t.flow.act("fruit_cap")
+	_check(t.fake.sent.size() == sends and t.host.ui.get_child_count() == 0 and t.host.toasts.has(PlayerCopy.OFFLINE_NEEDS_CONNECTION), "Its action offline opens no card, sends nothing and says why")
+	await t.flow.confirm_buy("orchard", 145, "set")
+	_check(t.fake.sent.size() == sends, "A set confirm that lands offline sends nothing")
+	t.host.queue_free()
+	Catalog.set_offered(SOLD)
+	await _frames(2)

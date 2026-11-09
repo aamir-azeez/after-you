@@ -334,20 +334,15 @@ const WARDROBE_SHORT_BUNDLE_GETS_GIFT := " Pollen with your first bundle gift"
 const POLLEN_CHIP_BALANCE := "Pollen: %s"
 
 # The Pollen store (board 2: presentation/pollen_store_page.gd, pollen_store_flow.gd).
-const POLLEN_STORE_TITLE := "Pollen"
+const POLLEN_STORE_TITLE := "Store"
 const POLLEN_STORE_YOU_HAVE := "You have"
-## The first bundle line, only while the gift is on and unused, with its percent.
-const POLLEN_STORE_FIRST := "Your first bundle comes with %d%% extra Pollen."
+## The first bundle card's title, only while the gift is on and unused, with its percent.
+const POLLEN_STORE_FIRST := "Your first bundle adds %d%%"
 const POLLEN_STORE_BUNDLES := {"pinch": "Pinch", "pouch": "Pouch", "jar": "Basket", "basket": "Wheelbarrow"}
 const POLLEN_STORE_NO_BONUS := "No bonus"
-## "20,000 + 1,000 bonus · 5% more"
-const POLLEN_STORE_BONUS := "%s + %s bonus · %d%% more"
-## "5,051 Pollen per $1"; the second is the store's own currency code ("per 1 EUR").
-const POLLEN_STORE_PER_DOLLAR := "%s Pollen per $1"
-const POLLEN_STORE_PER_UNIT := "%s Pollen per 1 %s"
 const POLLEN_STORE_EARN := "Earn Pollen free by playing"
-const POLLEN_STORE_FOOT := "Google Play shows the price in your currency before you pay."
-const POLLEN_STORE_FOOT_IOS := "The App Store shows the price in your currency before you pay."
+const POLLEN_STORE_FOOT := "Google Play shows the price before you pay."
+const POLLEN_STORE_FOOT_IOS := "The App Store shows the price before you pay."
 const POLLEN_STORE_LOADING := "Opening the store…"
 const POLLEN_STORE_OFFLINE := "The store isn't reachable right now. Try again in a moment."
 ## The confirm card ("Buy a Pouch?") with its plain sums.
@@ -379,6 +374,171 @@ const POLLEN_STORE_ON_ITS_WAY := "Your purchase went through. Your Pollen arrive
 # The Pollen bundles' names stay in POLLEN_STORE_BUNDLES above (ids never change).
 const FRUIT_PACKS := {"handful": "Handful", "bowl": "Bowl", "crate": "Crate", "barrel": "Barrel"}
 # End of Fruits services.
+
+# Fruits store and cards (presentation/kit/pollen_chip.gd, pollen_store_page.gd,
+# pollen_store_sheets.gd, pollen_purchases_view.gd, full_journey_benefits.gd,
+# pollen_grant_card.gd). Amounts come in grouped.
+## The chip's Fruit half, for screen readers.
+const FRUIT_CHIP_BALANCE := "Fruits: %s"
+## The store's two tabs.
+const STORE_TAB_POLLEN := "Pollen"
+const STORE_TAB_FRUITS := "Fruits"
+## The first pack card: its title (the Fruit gift at 100% pays double), the
+## pack it pictures, and that pack's amount with the gift ("21,000 + 4,200").
+const FRUIT_STORE_FIRST_DOUBLE := "Your first Fruit pack pays double"
+const FRUIT_STORE_FIRST := "Your first Fruit pack adds %d%%"
+const POLLEN_STORE_FIRST_AS := "The %s as your first bundle"
+const FRUIT_STORE_FIRST_AS := "The %s as your first pack"
+const STORE_FIRST_SUM := "%s + %s"
+## A pack card's lines: "1,000 bonus · 5% more", the best pack adds " · 5,753 per $1",
+## then "First bundle 25,200"; a pack with no bonus says both on one line.
+const STORE_CARD_BONUS := "%s bonus · %d%% more"
+const STORE_CARD_PER_DOLLAR := " · %s per $1"
+const STORE_CARD_PER_UNIT := " · %s per 1 %s"
+const POLLEN_STORE_CARD_FIRST := "First bundle %s"
+const FRUIT_STORE_CARD_FIRST := "First pack %s"
+const POLLEN_STORE_CARD_NO_BONUS_FIRST := "No bonus · first bundle %s"
+const FRUIT_STORE_CARD_NO_BONUS_FIRST := "No bonus · first pack %s"
+## The ribbon on the pack with the most for the money.
+const POLLEN_STORE_MOST := "Most Pollen per $1"
+const POLLEN_STORE_MOST_UNIT := "Most Pollen per 1 %s"
+const FRUIT_STORE_MOST := "Most Fruits per $1"
+const FRUIT_STORE_MOST_UNIT := "Most Fruits per 1 %s"
+## The Fruits tab's buttons.
+const FRUIT_STORE_TOGETHER := "Fruits for playing together"
+const FRUIT_STORE_CONVERT := "Turn Fruits into Pollen"
+## A Fruit pack's confirm card and receipt.
+const FRUIT_STORE_CONFIRM_NOTE := "Charged by Google Play. Fruits arrive right after."
+const FRUIT_STORE_CONFIRM_NOTE_IOS := "Charged to your Apple Account. Fruits arrive right after."
+const FRUIT_STORE_GIFT := "First pack gift (%d%%)"
+const FRUIT_STORE_ADDED := "%s Fruits added"
+const FRUIT_STORE_ON_ITS_WAY := "Your purchase went through. Your Fruits arrive as soon as the game reaches the server."
+## Previous purchases while Fruits show.
+const FRUIT_PURCHASES_NOTE := "Pollen bundles and Fruit packs you bought, each with its Google Play receipt."
+const FRUIT_PURCHASES_NOTE_IOS := "Pollen bundles and Fruit packs you bought, each with its store receipt."
+## The Full Journey card's two monthly tiles (board 5a), while Fruits show.
+const FULL_JOURNEY_POLLEN_TILE := "%s Pollen a month"
+const FULL_JOURNEY_POLLEN_TILE_NOTE := "Grows by %s every month you stay, up to %s."
+const FULL_JOURNEY_FRUIT_TILE := "%s Fruits a month"
+const FULL_JOURNEY_FRUIT_TILE_TOP := "%s Fruits a month, the top step"
+const FULL_JOURNEY_FRUIT_TILE_NOTE := "Grows to %s as you stay."
+const FULL_JOURNEY_FRUIT_TILE_WELCOME := "Grows to %s as you stay, plus a [b]%s Fruit welcome basket[/b] in month 1."
+const FULL_JOURNEY_FRUIT_TILE_WELCOME_NEXT := "Grows to %s as you stay, plus a [b]%s Fruit welcome basket[/b] with your next month."
+## The monthly card with both gifts (board 5b).
+const FRUIT_GRANT_TITLE := "Your monthly gifts arrived"
+const FRUIT_GRANT_MONTH := "From Full Journey, month %s of your ladder.\nNext month: %s Pollen and %s Fruits."
+const FRUIT_GRANT_MONTHS := "From Full Journey, %s months of your ladder.\nNext month: %s Pollen and %s Fruits."
+const FRUIT_GRANT_NEXT := "From Full Journey.\nNext month: %s Pollen and %s Fruits."
+# End of Fruits store and cards.
+
+# Orchard shelf (Fruits boards 4a and 4b: presentation/wardrobe_page.gd,
+# wardrobe_orchard.gd, wardrobe_flow.gd, wardrobe_sheets.gd). Amounts come in grouped.
+## The Wardrobe's fourth chip and the plum panel's title.
+const ORCHARD_TAB := "Orchard"
+const ORCHARD_TITLE := "The Orchard"
+## Each Orchard tier's word: the card's tag (in capitals) and the big pip's line.
+const ORCHARD_TIERS := {"fruit_hat": "Hat", "fruit_body": "Body", "fruit_small": "Small", "sprig": "Sprig"}
+## Under the big pip while an Orchard item is picked ("Orchard hat · drag to turn your pip").
+const ORCHARD_HINT := "Orchard %s · drag to turn your pip"
+## The sprig row's title, and the price they share ("· 10 each").
+const ORCHARD_SPRIGS := "Sprigs"
+const ORCHARD_EACH := "· %s each"
+## An Orchard set's name (WARDROBE_SET "%s set") and its pieces ("Apple leaf, Fruit cap and Orchard skin together").
+const ORCHARD_SETS := {"orchard": "Orchard"}
+const ORCHARD_SET_PIECES := "%s together"
+const ORCHARD_AND := "%s and %s"
+## The short card for Fruits ("You need [Fruit] 20 more."), and its button to the Fruit packs.
+const ORCHARD_SHORT_TITLE := "Not enough Fruits yet"
+const ORCHARD_SHORT_NEED := "You need"
+const ORCHARD_SHORT_MORE := " more."
+const ORCHARD_GET_FRUITS := "Get Fruits"
+## A Fruit spend the server refused.
+const ORCHARD_ERRORS := {
+	"fruits_short": "You need more Fruits for this.",
+	"fruits_blocked": "Spending is paused while your Fruits are below zero.",
+	"fruits_disabled": "The Orchard isn't open right now.",
+}
+# End of Orchard shelf.
+
+# Fruits page and play (presentation/fruits_page.gd and its views,
+# fruits_page_flow.gd, fruit_spend_flow.gd, fruit_convert_sheet.gd,
+# sunshine_card.gd, fruit_unlock_toasts.gd, pollen_breakdown.gd,
+# pollen_turns_view.gd, chapter_controls.gd). Amounts come in grouped.
+## The Fruits page (board 6a): its header, and its states before the history is in.
+const FRUITS_PAGE_TITLE := "Fruits"
+const FRUITS_PAGE_SUBTITLE := "Rare, and they never expire."
+const FRUITS_PAGE_BACK := "Back"
+const FRUITS_PAGE_LOADING := "Loading your Fruits…"
+const FRUITS_PAGE_OFFLINE := "Your Fruits did not load. Try again in a moment."
+const FRUITS_PAGE_RETRY := "Try again"
+## The goals card: its title, and the link that opens every goal ("All 15 goals, 260 Fruits in all") or closes them again.
+const FRUIT_GOALS_TITLE := "Fruits for playing together"
+const FRUIT_GOALS_ALL := "All %d goals, %s Fruits in all"
+const FRUIT_GOALS_FEWER := "Fewer goals"
+## A paid goal's Fruits ("+10").
+const FRUIT_GOAL_PAID := "+%s"
+## Each goal by its server id (backend fruits.json), in plain game words.
+const FRUIT_GOALS := {
+	"together_first": "First chapter cleared together",
+	"together_five": "Five chapters cleared together",
+	"together_all": "Every chapter cleared together",
+	"hard_first": "First Hard clear together",
+	"hard_five": "Five Hard clears together",
+	"hard_all": "Every Hard",
+	"duel_win_first": "First friend duel win",
+	"duel_win_ten": "Ten friend duel wins",
+	"ghost_first": "First time beating Our run",
+	"ghost_five": "Beat Our run on five boards",
+	"public_duel_first": "First public duel finished",
+	"top_ten": "First Top 10 ribbon",
+	"gold_leaf": "Gold leaf",
+	"keepsake_first": "First keepsake upgraded",
+	"keepsake_all": "Every keepsake at its best",
+}
+## The Your Fruits card: its title, each Fruit line's name, and its place and date ("The Relay Isles · Jan 12").
+const FRUIT_WALLET_TITLE := "Your Fruits"
+const FRUIT_LINE_GRANT := "Full Journey, month %d"
+const FRUIT_LINE_GRANT_PLAIN := "Full Journey"
+const FRUIT_LINE_WELCOME := "Welcome basket"
+const FRUIT_LINE_CONVERT := "Turned into Pollen"
+const FRUIT_LINE_REFUNDED := "%s, refunded"
+const FRUIT_LINE_DETAIL := "%s · %s"
+## The Your Fruits card's buttons.
+const FRUITS_PAGE_ORCHARD := "Open the Orchard"
+const FRUITS_PAGE_SUNSHINE := "Sunshine"
+const FRUITS_PAGE_CONVERT := "Turn into Pollen"
+## An amount of Fruits on a line ("10 Fruits").
+const FRUIT_AMOUNT := "%s Fruits"
+## The Sunshine row on a turn's results and its tag on Pollen from play (board 7).
+const FRUIT_SUNSHINE_ROW := "Sunshine ×2"
+## The Sunshine card on the Pollen page (board 7), its confirm card and what buying says.
+const SUNSHINE_TITLE := "Sunshine"
+const SUNSHINE_NOTE := "Double base and skill pay on your bank turns."
+const SUNSHINE_LEFT := "%d of %d turns left"
+const SUNSHINE_BUY := "Buy Sunshine for %s Fruits"
+const SUNSHINE_BOUGHT := "Sunshine is on for your next %d bank turns."
+## Turn Fruits into Pollen (board 8).
+const FRUIT_CONVERT_TITLE := "Turn Fruits into Pollen"
+const FRUIT_CONVERT_NOTE := "Pollen bundles give more Pollen for your money."
+const FRUIT_CONVERT_FRUITS := "Fruits"
+const FRUIT_CONVERT_POLLEN := "Pollen"
+const FRUIT_CONVERT_LESS := "Fewer Fruits"
+const FRUIT_CONVERT_MORE := "More Fruits"
+const FRUIT_CONVERT_YOUR_FRUITS := "Your Fruits"
+const FRUIT_CONVERT_YOUR_POLLEN := "Your Pollen"
+const FRUIT_CONVERT_TO := "to"
+const FRUIT_CONVERT_ONE_WAY := "Pollen never turns back into Fruits."
+const FRUIT_CONVERT_BUTTON := "Turn %s Fruits into Pollen"
+const FRUIT_CONVERT_DONE := "%s Fruits became %s Pollen."
+## Why a Fruit spend did not go through (with ORCHARD_ERRORS and WARDROBE_ERRORS).
+const FRUIT_SPEND_ERRORS := {
+	"sunshine_active": "Your Sunshine still has turns left.",
+	"fruits_disabled": "Fruits aren't open right now.",
+}
+## A goal paid away from its result card: its toast, and the button that opens the Fruits page.
+const FRUIT_UNLOCK_TOAST := "%s: +%s Fruits"
+const FRUIT_UNLOCK_VIEW := "View"
+# End of Fruits page and play.
 
 # End-of-run reactions (presentation/end_reactions.gd).
 ## The split pill's open half, and the faces card's title.

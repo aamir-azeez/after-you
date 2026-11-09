@@ -25,6 +25,7 @@ const Flow = preload("res://presentation/pollen_play_flow.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const PollenHistory = preload("res://services/pollen_history.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const HomeMenu = preload("res://presentation/home_menu.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
@@ -174,7 +175,7 @@ func _page_states() -> void:
 		await _settle()
 		_check(page.find_children("PollenTurnRow*", "", true, false).size() == 30 and not (page.find_child("PollenPlaySpare", true, false) as Spare).showing(), "A long list scrolls and leaves no room for the pip at %s" % size)
 		_check(str(_label(page.find_child("PollenTurnRow0", true, false), "PollenTurnWhen")).begins_with("Today, "), "Each turn says when it was played")
-		var bar := (page.find_child("PollenTurnsCard", true, false).get_child(0) as ScrollContainer).get_v_scroll_bar()
+		var bar := (page.find_child("PollenTurnsCard", true, false).find_children("*", "ScrollContainer", true, false)[0] as ScrollContainer).get_v_scroll_bar()
 		var first := page.find_child("PollenTurnRow0", true, false) as Control
 		var inset := first.get_parent().get_parent() as MarginContainer if first != null else null
 		_check(first != null and bar.visible and inset.get_theme_constant("margin_right") == Page.GUTTER and first.get_global_rect().end.x <= bar.get_global_rect().position.x - Page.GUTTER + 0.5,
@@ -366,8 +367,50 @@ func _chip_routes(flow: Node, host: Node, back: Array) -> void:
 	home_chip.plus_pressed.emit()
 	_check(routes == ["home", "pollen"], "A plus left on screen does nothing once the store stops selling")
 	home_chip.free()
+	# Fruits (board 2): the Fruit half only while Fruits show, and each chip's halves go where that chip is.
+	sells.on = true
+	var kept_surfaces: RefCounted = flow.surfaces
+	flow.surfaces = PollenSurfaces.new(true)
+	var fruit_path := "user://test-pollen-play-fruits-%d.json" % Time.get_ticks_usec()
+	var kept_fruits: RefCounted = FruitWallet.new(fruit_path)
+	flow.fruits = kept_fruits
+	var scope: Dictionary = host.pollen_client.scope()
+	_check(flow.chip_state()[2] == [] and _fruit_half(flow) == false, "Fruits off: no Fruit half on Home's chip, and its state says so")
+	kept_fruits.set_enabled(str(scope.server), str(scope.owner), true)
+	_check(flow.chip_state()[2] == [0] and _fruit_half(flow) == true, "Fruits on: the Fruit half shows 0 before the first Fruits read, and Home's chip state changes with it")
+	var fruit_routes: Array = []
+	flow.fruits_route = func(from: String) -> void: fruit_routes.append(from)
+	var page_chip_fruits: Control = flow.chip()
+	page_chip_fruits.fruits_pressed.emit()
+	var fruits_page_chip: Control = flow.chip(Flow.FROM_FRUITS)
+	fruits_page_chip.fruits_pressed.emit()
+	fruits_page_chip.plus_pressed.emit()
+	_check(fruit_routes == ["pollen"] and routes.back() == Flow.FROM_FRUITS, "The Pollen page's Fruit half opens the Fruits page with Back to it; on the Fruits page the Fruit half does nothing and the plus opens the store with Back there: %s %s" % [fruit_routes, routes])
+	fruits_page_chip.amount_pressed.emit()
+	await _settle()
+	_check(flow.is_open() and flow.return_to == Flow.FROM_FRUITS, "The Fruits page's Pollen half opens this page with Back to the Fruits page")
+	var page_routes: Array = []
+	flow.fruits_page_route = func(to: String) -> void: page_routes.append(to)
+	fruits_page_chip.amount_pressed.emit()
+	fruits_page_chip.plus_pressed.emit()
+	_check(page_routes == ["pollen", "store"], "With Main's Fruits page routes set, its chip goes through them, which keep Back from looping: %s" % [page_routes])
+	flow.fruits_page_route = Callable()
+	page_chip_fruits.free()
+	fruits_page_chip.free()
+	flow.fruits = null
+	flow.fruits_route = Callable()
+	flow.surfaces = kept_surfaces
+	for suffix: String in ["", ".tmp", ".backup"]:
+		if FileAccess.file_exists(fruit_path + suffix): DirAccess.remove_absolute(fruit_path + suffix)
 	flow.store_route = Callable()
 	flow.store_sells = Callable()
+
+## Whether a fresh chip from `flow` has its Fruit half (the chip is freed).
+static func _fruit_half(flow: Node) -> bool:
+	var made: Control = flow.chip()
+	var half := made.fruits_button != null
+	made.free()
+	return half
 
 ## Whether a fresh chip from `flow` has its plus (the chip is freed).
 static func _has_plus(flow: Node) -> bool:

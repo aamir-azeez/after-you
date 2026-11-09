@@ -45,12 +45,12 @@ func _draw(to_canvas_item: RID, rect: Rect2) -> void:
 				left = dash if on else gap
 
 ## The rounded rectangle's edge, clockwise from the top left corner's left end.
-static func outline(rect: Rect2, corner: float) -> PackedVector2Array:
+static func outline(rect: Rect2, corner: float, steps: int = CORNER_STEPS) -> PackedVector2Array:
 	var r := minf(corner, minf(rect.size.x, rect.size.y) * 0.5)
 	var centres := [rect.position + Vector2(r, r), Vector2(rect.end.x - r, rect.position.y + r), rect.end - Vector2(r, r), Vector2(rect.position.x + r, rect.end.y - r)]
 	var points := PackedVector2Array()
 	for side in range(4):
-		for step in range(CORNER_STEPS + 1):
-			var angle := deg_to_rad(180.0 + 90.0 * side + 90.0 * step / CORNER_STEPS)
+		for step in range(steps + 1):
+			var angle := deg_to_rad(180.0 + 90.0 * side + 90.0 * step / steps)
 			points.append(centres[side] + Vector2(cos(angle), sin(angle)) * r)
 	return points

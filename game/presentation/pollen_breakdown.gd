@@ -10,7 +10,12 @@ extends RefCounted
 ## bloom, item_id and tier. `value` is "" for a row that is all words. `grain`
 ## puts the Pollen mark before the value; `plus` a "+" before that, on the rows
 ## that add to Base (ADDED: "First try (25%)  +[grain] 22"). Kinds:
-## base, bonus, boost, duel, total, bloom, item, item_pollen, clear, reason, earned.
+## base, bonus, boost, duel, sunshine, total, bloom, item, item_pollen, clear,
+## reason, earned, fruit. A Sunshine turn (Fruits board 7) adds its Sunshine
+## row ("Sunshine ×2  +[grain] 89"), the plain amount paid again; the server
+## puts it in the turn's total and not in its amount. Each achievement the
+## credit paid (Fruits board 6b, the receipt's `fruits.paid`) is a fruit row
+## under everything else, its value in Fruits (`currency` "fruits").
 ##
 ## A receipt from a server that sends no base or bonus percents (older ones,
 ## and receipts kept before they came) has no rows: the plain lines show then.
@@ -23,7 +28,8 @@ const Catalog = preload("res://services/cosmetic_catalog.gd")
 ## What each Full Journey player in a room adds (backend rates.json boost_percent_per_subscriber).
 const BOOST_PERCENT_EACH := 10
 ## The rows that add to Base: each shows "+" before its mark.
-const ADDED := ["bonus", "boost", "duel"]
+const ADDED := ["bonus", "boost", "duel", "sunshine", "fruit"]
+const FRUITS := "fruits"
 const BONUS_NAMES := {"first_try": PlayerCopy.POLLEN_ROW_FIRST_TRY, "gold_pace": PlayerCopy.POLLEN_ROW_GOLD_PACE, "silver_pace": PlayerCopy.POLLEN_ROW_SILVER_PACE, "hard": PlayerCopy.POLLEN_ROW_HARD}
 
 ## Whether a receipt carries what the rows need.
@@ -39,7 +45,9 @@ static func detailed(receipt: Dictionary) -> bool:
 ## The rows for one receipt, top to bottom; [] when it is not detailed.
 ## Without `full_journey` (a build that names no Full Journey) the boost row
 ## is left out and its Pollen counts in Base, so the rows still add up.
-static func rows(receipt: Dictionary, full_journey: bool = true) -> Array[Dictionary]:
+## Without `fruits` (Fruits hidden: services/pollen_surfaces.gd fruits_visible)
+## the Sunshine row is left out the same way and no fruit row shows.
+static func rows(receipt: Dictionary, full_journey: bool = true, fruits: bool = true) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if not detailed(receipt): return out
 	var turn: Dictionary = receipt.get("turn", {})
@@ -47,7 +55,9 @@ static func rows(receipt: Dictionary, full_journey: bool = true) -> Array[Dictio
 		if turn.kind == "bank":
 			var boost := int(turn.boost)
 			var boost_row := int(turn.boost_percent) > 0 and full_journey
-			out.append(_row("base", PlayerCopy.POLLEN_ROW_BASE, PollenMoney.grouped(int(turn.base) + (0 if boost_row else boost)), true))
+			var sunshine := int(turn.get("sunshine", 0))
+			var sunshine_row := sunshine > 0 and fruits
+			out.append(_row("base", PlayerCopy.POLLEN_ROW_BASE, PollenMoney.grouped(int(turn.base) + (0 if boost_row else boost) + (0 if sunshine_row else sunshine)), true))
 			var percents: Array = turn.bonus_percents
 			var added := bonus_amounts(int(turn.base), int(turn.amount) - int(turn.base), percents)
 			for index in range(turn.bonuses.size()):
@@ -55,6 +65,7 @@ static func rows(receipt: Dictionary, full_journey: bool = true) -> Array[Dictio
 			if boost_row: out.append(_row("boost", boost_label(int(turn.boost_percent), (turn.get("boost_from", []) as Array).size()), PollenMoney.grouped(boost), true))
 			# A friend duel's turn: its premium, as the duel result page names it (duel_model.gd pay_lines).
 			if int(turn.get("duel", 0)) > 0: out.append(_row("duel", PlayerCopy.DUEL_PAY_PREMIUM % int(turn.duel_percent), PollenMoney.grouped(int(turn.duel)), true))
+			if sunshine_row: out.append(_row("sunshine", PlayerCopy.FRUIT_SUNSHINE_ROW, PollenMoney.grouped(sunshine), true))
 		# This turn: everything but a bloom's extra, which the bloom row adds.
 		out.append(_row("total", PlayerCopy.POLLEN_ROW_THIS_TURN, PollenMoney.grouped(int(turn.total) - int(turn.bloom_extra)), true))
 		if int(turn.bloom) > 1: out.append(_row("bloom", PlayerCopy.POLLEN_BLOOM % int(turn.bloom), PollenMoney.grouped(int(turn.total)), true))
@@ -79,6 +90,24 @@ static func rows(receipt: Dictionary, full_journey: bool = true) -> Array[Dictio
 	# More than one part (a turn and its clears, or a bloom's Pollen): what it all came to.
 	var parts := int(not turn.is_empty()) + clears.size() + int(item.has("pollen"))
 	if parts > 1: out.append(_row("earned", PlayerCopy.POLLEN_ROW_EARNED, PollenMoney.grouped(int(receipt.get("earned", 0))), true))
+	if fruits: out.append_array(fruit_rows(receipt))
+	return out
+
+## A fruit row for each achievement the receipt paid (`fruits.paid`, oldest
+## first as the server lists them): its name and "10 Fruits". [] for none, or
+## for an id this build has no name for.
+static func fruit_rows(receipt: Dictionary) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var credit: Variant = receipt.get("fruits")
+	if not credit is Dictionary: return out
+	for line: Variant in (credit as Dictionary).get("paid", []):
+		if not line is Dictionary: continue
+		var named := str(PlayerCopy.FRUIT_GOALS.get(str(line.get("id", "")), ""))
+		if named.is_empty() or int(line.get("amount", 0)) <= 0: continue
+		var row := _row("fruit", named, PlayerCopy.FRUIT_AMOUNT % PollenMoney.grouped(int(line.amount)), true)
+		row["currency"] = FRUITS
+		row["id"] = str(line.id)
+		out.append(row)
 	return out
 
 ## The Full Journey row's words, on every surface that shows the room boost:
