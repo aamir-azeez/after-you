@@ -1,10 +1,11 @@
 extends RefCounted
-## Blossom crown (hat): a ring of small five petal blossoms, pink and white in
-## turn, on a thin green vine round the top of the head, as the Orchard board
-## draws it (Fruits board 4a). Every part lies on the head's surface (kit
-## on_head), above the eyes and below a carried seed. Each blossom is one flat
-## five lobed shape with a gold heart, so the ring stays light. One baked
-## mesh, one draw call.
+## Blossom crown (hat): a full ring of five petal blossoms, pink and white in
+## turn, round the top of the head, as the Orchard board draws it (Fruits
+## board 4a). The blossoms are big and close enough that each one's petals
+## overlap the next, so the thin green vine under them barely shows from any
+## side. Every part lies on the head's surface (kit on_head), above the eyes
+## and below a carried seed. Each blossom is one flat five lobed shape with a
+## gold heart, so the ring stays light. One baked mesh, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 
@@ -12,20 +13,25 @@ const PINK := Color("f6c3cf")
 const WHITE := Color("fbe1e6")
 const HEART := Color("f2b45f")
 const VINE := Color("7f9d5f")
-const BLOSSOMS := 8
+## Enough blossoms of BLOSSOM's reach that neighbours overlap all round the ring.
+const BLOSSOMS := 16
 ## How far down from the top of the head the ring sits (radians from straight up).
-const RING_TILT := 1.0
+const RING_TILT := 0.9
 ## The blossom's reach, the gold heart's, and how far the heart stands above the petals.
-const BLOSSOM := 0.062
-const HEART_SIZE := 0.022
-const HEART_LIFT := 0.006
+const BLOSSOM := 0.085
+const HEART_SIZE := 0.03
+const HEART_LIFT := 0.009
+## Every other blossom lies this much higher, so overlapping petals never flicker.
+const STAGGER := 0.004
 ## The blossom's five lobes: points per lobe, and how deep the dips between them are.
 const LOBES := 5
-const LOBE_POINTS := 5
+const LOBE_POINTS := 4
 const LOBE_DIP := 0.45
+## The heart's outline points: a small disc needs few.
+const HEART_POINTS := 8
 ## The vine: pieces round the head, its thickness, and how far each piece runs past its ends.
 const VINE_PIECES := 16
-const VINE_RADIUS := 0.008
+const VINE_RADIUS := 0.006
 const VINE_OVERLAP := 0.004
 const VINE_SIDES := 4
 ## Clearance kept between a part and the head.
@@ -45,11 +51,11 @@ static func _build() -> Mesh:
 		var to := ring[(index + 1) % VINE_PIECES]
 		var along := (to - from).normalized() * VINE_OVERLAP
 		parts.rod(VINE, from - along, to + along, VINE_RADIUS, VINE_SIDES)
-	var flower := _flower(1.0)
-	var heart := _flower(0.0)
+	var flower := _flower(1.0, LOBES * LOBE_POINTS)
+	var heart := _flower(0.0, HEART_POINTS)
 	for index in range(BLOSSOMS):
 		var near := _around(TAU * index / BLOSSOMS)
-		var lie := GAP + VINE_RADIUS * 2.0
+		var lie := GAP + VINE_RADIUS * 2.0 + STAGGER * (index % 2)
 		parts.add(flower, PINK if index % 2 == 0 else WHITE, Kit.on_head(near, Vector3.UP, Vector3(BLOSSOM, BLOSSOM * 0.2, BLOSSOM), lie))
 		parts.add(heart, HEART, Kit.on_head(near, Vector3.UP, Vector3(HEART_SIZE, HEART_SIZE * 0.3, HEART_SIZE), lie + BLOSSOM * 0.2 + HEART_LIFT))
 	return parts.commit()
@@ -58,11 +64,11 @@ static func _build() -> Mesh:
 static func _around(angle: float) -> Vector3:
 	return Vector3(sin(RING_TILT) * sin(angle), cos(RING_TILT), sin(RING_TILT) * cos(angle))
 
-## A flat shape of reach 1 facing up (+y), its middle raised a little: five
-## lobes with `lobed` 1, a plain disc with 0. Its top face only; the head
+## A flat shape of reach 1 facing up (+y), its middle raised a little, with
+## `count` outline points: five lobes with `lobed` 1, a plain disc with 0
+## (the heart, which needs few points). Its top face only; the head
 ## hides its underside.
-static func _flower(lobed: float) -> ArrayMesh:
-	var count := LOBES * LOBE_POINTS
+static func _flower(lobed: float, count: int) -> ArrayMesh:
 	var vertices := PackedVector3Array([Vector3(0, 1, 0)])
 	var normals := PackedVector3Array([Vector3.UP])
 	var indices := PackedInt32Array()
