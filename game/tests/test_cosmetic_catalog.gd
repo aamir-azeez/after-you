@@ -80,7 +80,7 @@ func _rules() -> void:
 		"tide": ["body", "rare"], "lantern": ["hat", "epic"], "lighthouse_lamp": ["hat", "special"],
 		"gold_leaf": ["leaf", "earned"], "every_hard": ["leaf", "earned"], "top_ten_ribbon": ["hat", "earned"],
 		# The Orchard, as the server's catalogue sells it (FRUITS contract).
-		"fruit_cap": ["hat", "fruit_hat"], "blossom_crown": ["hat", "fruit_hat"], "orchard_skin": ["body", "fruit_body"], "apple_leaf": ["leaf", "fruit_small"],
+		"apple_hood": ["hat", "fruit_hat"], "blueberry_hood": ["hat", "fruit_hat"], "blossom_crown": ["hat", "fruit_hat"], "orchard_skin": ["body", "fruit_body"], "apple_leaf": ["leaf", "fruit_small"],
 		"sprig_coral": ["leaf", "sprig"], "sprig_plum": ["leaf", "sprig"], "sprig_sun": ["leaf", "sprig"], "sprig_sky": ["leaf", "sprig"],
 	}
 	_check(Array(Catalog.ids()) == expect.keys(), "The approved items, in shop order: %s" % [Catalog.ids()])
@@ -93,8 +93,8 @@ func _rules() -> void:
 	var orchard: Array[String] = []
 	for id: String in Catalog.ids():
 		if str(Catalog.item(id).set) == "orchard": orchard.append(id)
-	_check(orchard == ["fruit_cap", "orchard_skin", "apple_leaf"], "The Orchard set is the Fruit cap, the Orchard skin and the Apple leaf: %s" % [orchard])
-	for id: String in ["blossom_crown", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]: _check(str(Catalog.item(id).set).is_empty(), "%s is in no set" % id)
+	_check(orchard == ["apple_hood", "orchard_skin", "apple_leaf"], "The Orchard set is the Apple hood, the Orchard skin and the Apple leaf: %s" % [orchard])
+	for id: String in ["blueberry_hood", "blossom_crown", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]: _check(str(Catalog.item(id).set).is_empty(), "%s is in no set" % id)
 
 func _phase_one() -> void:
 	# Phase 1 ships the catalog unreleased: only the default look shows.

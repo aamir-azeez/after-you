@@ -464,7 +464,7 @@ static func _texts(node: Node) -> Array:
 
 ## The Orchard offline over a saved wardrobe with Fruits on.
 func _page_orchard() -> void:
-	var orchard := ["fruit_cap", "blossom_crown", "orchard_skin", "apple_leaf", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]
+	var orchard := ["apple_hood", "blueberry_hood", "blossom_crown", "orchard_skin", "apple_leaf", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]
 	Catalog.set_offered(SOLD + orchard)
 	var state: RefCounted = Connectivity.new()
 	Connectivity.use_shared(state)
@@ -476,26 +476,26 @@ func _page_orchard() -> void:
 	t.flow.client.connectivity = state
 	var data := wallet(["daisy"], {}, 5)
 	data.wardrobe.offered = SOLD + orchard
-	data.wardrobe.fruit_prices = {"fruit_cap": 50, "blossom_crown": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_coral": 10, "sprig_plum": 10, "sprig_sun": 10, "sprig_sky": 10}
-	data.wardrobe.fruit_sets = {"orchard": ["fruit_cap", "orchard_skin", "apple_leaf"]}
+	data.wardrobe.fruit_prices = {"apple_hood": 50, "blueberry_hood": 50, "blossom_crown": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_coral": 10, "sprig_plum": 10, "sprig_sun": 10, "sprig_sky": 10}
+	data.wardrobe.fruit_sets = {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]}
 	data.wardrobe.fruit_set_costs = {"orchard": 145.0}
 	data.fruits = {"schema_version": 1.0, "balance": 101.0, "earned": 101.0, "first_pack_gift": false, "first_pack_percent": 100.0, "achievements": []}
 	t.fake.replies = [{"ok": true, "status": 200, "data": data}]
 	t.flow.show_wardrobe()
 	await _frames()
 	t.flow.set_tab("orchard")
-	await t.flow.act("fruit_cap")
+	await t.flow.act("apple_hood")
 	_check(t.host.ui.find_child("WardrobeConfirm", true, false) != null, "Online a Fruit Buy opens its confirm card")
 	state.force(false)
 	t.flow.connectivity_changed(false)
 	await _frames(2)
 	_check(t.host.ui.find_child("WardrobeConfirm", true, false) == null, "Going offline closes the Fruit card left open")
 	var page: Node = t.host.overlay
-	_check(t.flow.model().tab == "orchard" and page.find_child("OrchardCard_fruit_cap", true, false) != null and t.flow.model().buy_offline, "Offline the Orchard stays browsable from the saved catalogue")
+	_check(t.flow.model().tab == "orchard" and page.find_child("OrchardCard_apple_hood", true, false) != null and t.flow.model().buy_offline, "Offline the Orchard stays browsable from the saved catalogue")
 	var action: Button = page.find_child("WardrobeAction", true, false)
 	_check(action.visible and action.disabled and PlayerCopy.WARDROBE_CONNECT_TO_BUY in _texts(page), "A Fruit Buy greys and says it needs a connection")
 	var sends: int = t.fake.sent.size()
-	await t.flow.act("fruit_cap")
+	await t.flow.act("apple_hood")
 	_check(t.fake.sent.size() == sends and t.host.ui.get_child_count() == 0 and t.host.toasts.has(PlayerCopy.OFFLINE_NEEDS_CONNECTION), "Its action offline opens no card, sends nothing and says why")
 	await t.flow.confirm_buy("orchard", 145, "set")
 	_check(t.fake.sent.size() == sends, "A set confirm that lands offline sends nothing")

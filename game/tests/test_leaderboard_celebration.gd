@@ -249,16 +249,16 @@ func _gold() -> void:
 	_check(made.find_child("CelebrationGoldLeaves", true, false) != null, "it says both get gold leaves")
 	made.close()
 	await process_frame
-	# The Fruit cap hides the plain leaf; gilded, the leaf shows as a worn leaf
+	# The Apple hood hides the plain leaf; gilded, the leaf shows as a worn leaf
 	# item would, raised by the cap's lift, animated and under Reduce motion.
-	TurnLooks.shared().note_member(PARTNER, {"hat": "fruit_cap"})
+	TurnLooks.shared().note_member(PARTNER, {"hat": "apple_hood"})
 	for still: bool in [false, true]:
 		var capped: Control = Celebration.open(_parent, _placing(1, true), still)
 		await process_frame
 		var pip: Node3D = capped._spirits[1]
 		var plain: Node3D = capped._spirits[0]
-		_check(pip.outfit() == {"hat": "fruit_cap"} and pip.sprout.is_visible_in_tree(), "Under the Fruit cap the gilded leaf shows (Reduce motion %s)" % still)
-		_check(absf(pip.sprout.position.y - plain.sprout.position.y - Catalog.leaf_lift("fruit_cap")) < 0.01,"and stands where a worn leaf item would, clear of the cap: %.3f" % (pip.sprout.position.y - plain.sprout.position.y))
+		_check(pip.outfit() == {"hat": "apple_hood"} and pip.sprout.is_visible_in_tree(), "Under the Apple hood the gilded leaf shows (Reduce motion %s)" % still)
+		_check(absf(pip.sprout.position.y - plain.sprout.position.y - Catalog.leaf_lift("apple_hood")) < 0.01,"and stands where a worn leaf item would, clear of the cap: %.3f" % (pip.sprout.position.y - plain.sprout.position.y))
 		await _settle(capped)
 		_check(pip.sprout.is_visible_in_tree() and pip.sprout.material_override == GoldLeaf.material(), "and ends in the Gold leaf's own material (Reduce motion %s)" % still)
 		capped.close()

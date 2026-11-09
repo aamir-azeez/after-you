@@ -338,7 +338,7 @@ func _set_card(entry: Dictionary) -> Control:
 	price.add_child(_price(entry, 27))
 	return card
 
-## "Apple leaf, Fruit cap and Orchard skin".
+## "Apple hood, Apple leaf and Orchard skin".
 static func _listed(names: Array) -> String:
 	if names.size() <= 1: return "" if names.is_empty() else str(names[0])
 	return PlayerCopy.ORCHARD_AND % [", ".join(PackedStringArray(names.slice(0, names.size() - 1))), str(names.back())]

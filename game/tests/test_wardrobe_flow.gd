@@ -65,8 +65,8 @@ const ME := "aaaaaaaaaaaaaaaaaaaaaa"
 const SERVER := "https://wardrobe-flow.example.test"
 const SOLD := ["daisy", "seashell", "straw_hat", "tide", "lantern", "lighthouse_lamp"]
 ## The Orchard as the server sells it (catalog.json), Fruit prices by id.
-const ORCHARD := ["fruit_cap", "blossom_crown", "orchard_skin", "apple_leaf", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]
-const FRUIT_PRICES := {"fruit_cap": 50, "blossom_crown": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_coral": 10, "sprig_plum": 10, "sprig_sun": 10, "sprig_sky": 10}
+const ORCHARD := ["apple_hood", "blueberry_hood", "blossom_crown", "orchard_skin", "apple_leaf", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]
+const FRUIT_PRICES := {"apple_hood": 50, "blueberry_hood": 50, "blossom_crown": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_coral": 10, "sprig_plum": 10, "sprig_sun": 10, "sprig_sky": 10}
 
 var checks := 0
 var failures := 0
@@ -867,7 +867,7 @@ static func _orchard_answer(items: Array, look: Dictionary, balance: int, fruits
 	var part: Dictionary = answer.data.wardrobe
 	part.offered = (part.offered as Array) + ORCHARD
 	part.fruit_prices = FRUIT_PRICES.duplicate() if fruit_prices == null else fruit_prices
-	part.fruit_sets = {"orchard": ["fruit_cap", "orchard_skin", "apple_leaf"]}
+	part.fruit_sets = {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]}
 	# What the server says the set costs this player: its pieces not owned, with its set rule (spend.ts).
 	var missing: Array = (part.fruit_sets.orchard as Array).filter(func(id: String) -> bool: return not id in items)
 	var costs := {3: 145, 2: 105, 1: 25}
@@ -891,7 +891,7 @@ func _orchard_money_safety() -> void:
 	var off := await _orchard_setup([], 101, false)
 	var model: Dictionary = off.flow.model()
 	_check(not model.orchard and model.sets.is_empty() and model.items.all(func(entry: Dictionary) -> bool: return not entry.id in ORCHARD), "Fruits off: no Orchard item, set or chip in the model: " + str(model.items.map(func(entry: Dictionary) -> String: return entry.id)))
-	_check(off.host.overlay.find_child("WardrobeKind_orchard", true, false) == null and off.host.overlay.find_child("WardrobeCard_fruit_cap", true, false) == null, "Fruits off: no Orchard chip and no Fruit cap card")
+	_check(off.host.overlay.find_child("WardrobeKind_orchard", true, false) == null and off.host.overlay.find_child("WardrobeCard_apple_hood", true, false) == null, "Fruits off: no Orchard chip and no Apple hood card")
 	off.flow.set_tab("orchard")
 	_check(off.flow.model().tab == "all", "The Orchard tab is not open while Fruits are off")
 	# Asked for before the read that turns Fruits on: a tap on All items keeps the player there when Fruits arrive.
@@ -942,26 +942,26 @@ func _orchard_tab() -> void:
 	_check(model.tab == "orchard" and orchard.visible and not (page.find_child("WardrobeShopPanel", true, false) as Control).visible, "The Orchard chip opens the Orchard in place of the cream shop")
 	_check(PlayerCopy.ORCHARD_TITLE in _texts(orchard) and PlayerCopy.WARDROBE_STAYS in _texts(orchard), "The Orchard says its title and that every item stays")
 	var cards: Array = orchard.find_child("OrchardItems", true, false).get_children().map(func(card: Node) -> String: return card.name)
-	_check(cards == ["OrchardCard_fruit_cap", "OrchardCard_blossom_crown", "OrchardCard_orchard_skin", "OrchardCard_apple_leaf"], "Four Orchard cards in order: " + str(cards))
-	var cap: Node = orchard.find_child("OrchardCard_fruit_cap", true, false)
-	_check(_texts(cap) == ["Fruit cap", "HAT", "50"] and cap.find_child("FruitMark", true, false) != null and cap.find_child("PollenMark", true, false) == null and cap.find_child("PipAvatar", true, false) != null, "A card: the pip wearing it, the name, its tag and the Fruit price: " + str(_texts(cap)))
+	_check(cards == ["OrchardCard_apple_hood", "OrchardCard_blueberry_hood", "OrchardCard_blossom_crown", "OrchardCard_orchard_skin", "OrchardCard_apple_leaf"], "Five Orchard cards in order: " + str(cards))
+	var cap: Node = orchard.find_child("OrchardCard_apple_hood", true, false)
+	_check(_texts(cap) == ["Apple hood", "HAT", "50"] and cap.find_child("FruitMark", true, false) != null and cap.find_child("PollenMark", true, false) == null and cap.find_child("PipAvatar", true, false) != null, "A card: the pip wearing it, the name, its tag and the Fruit price: " + str(_texts(cap)))
 	_check(_texts(orchard.find_child("OrchardCard_apple_leaf", true, false)).has("SMALL") and _texts(orchard.find_child("OrchardCard_orchard_skin", true, false)).has("BODY"), "Tags: SMALL and BODY")
 	var sprigs: Array = orchard.find_child("OrchardSprigTiles", true, false).get_children().map(func(tile: Node) -> String: return tile.name)
 	_check(sprigs == ["OrchardSprig_sprig_coral", "OrchardSprig_sprig_plum", "OrchardSprig_sprig_sun", "OrchardSprig_sprig_sky"] and (orchard.find_child("OrchardSprigsEach", true, false) as Label).text == PlayerCopy.ORCHARD_EACH % "10", "Four sprig tiles under Sprigs · 10 each: " + str(sprigs))
 	var set_card: Node = orchard.find_child("OrchardSet_orchard", true, false)
-	_check(set_card != null and _texts(set_card) == [PlayerCopy.WARDROBE_SET % "Orchard", PlayerCopy.ORCHARD_SET_PIECES % "Apple leaf, Fruit cap and Orchard skin", "175", "145"], "The Orchard set: its pieces, 175 struck and 145: " + str(_texts(set_card)))
-	_check(model.selected == "fruit_cap" and (cap as Button).button_pressed and (cap.find_child("OrchardRing", true, false) as Control).visible, "With nothing picked the Fruit cap is picked and ringed")
-	_check(model.preview == {"hat": "fruit_cap"} and (page.find_child("WardrobeDragHint", true, false) as Label).text == PlayerCopy.ORCHARD_HINT % "hat", "The big pip wears it, under it Orchard hat")
+	_check(set_card != null and _texts(set_card) == [PlayerCopy.WARDROBE_SET % "Orchard", PlayerCopy.ORCHARD_SET_PIECES % "Apple hood, Apple leaf and Orchard skin", "175", "145"], "The Orchard set: its pieces, 175 struck and 145: " + str(_texts(set_card)))
+	_check(model.selected == "apple_hood" and (cap as Button).button_pressed and (cap.find_child("OrchardRing", true, false) as Control).visible, "With nothing picked the Apple hood is picked and ringed")
+	_check(model.preview == {"hat": "apple_hood"} and (page.find_child("WardrobeDragHint", true, false) as Label).text == PlayerCopy.ORCHARD_HINT % "hat", "The big pip wears it, under it Orchard hat")
 	var action: Button = page.find_child("WardrobeAction", true, false)
 	_check(_texts(action) == [PlayerCopy.WARDROBE_BUY_FOR, "50"] and action.find_child("FruitMark", true, false) != null and action.find_child("PollenMark", true, false) == null, "Its button: Buy for [Fruit] 50: " + str(_texts(action)))
 	(orchard.find_child("OrchardSprig_sprig_sun", true, false) as Button).pressed.emit()
 	_check(t.flow.model().selected == "sprig_sun" and t.flow.model().preview == {"leaf": "sprig_sun"} and not (cap.find_child("OrchardRing", true, false) as Control).visible, "A sprig tile picks the sprig; the ring moves")
 	(orchard.find_child("OrchardSet_orchard", true, false) as Button).pressed.emit()
-	_check(t.flow.model().preview == {"hat": "fruit_cap", "body": "orchard_skin", "leaf": "apple_leaf"} and _texts(action) == [PlayerCopy.WARDROBE_BUY_FOR, "145"], "The set card puts every piece on the big pip and Buy says 145")
+	_check(t.flow.model().preview == {"hat": "apple_hood", "body": "orchard_skin", "leaf": "apple_leaf"} and _texts(action) == [PlayerCopy.WARDROBE_BUY_FOR, "145"], "The set card puts every piece on the big pip and Buy says 145")
 	await t.flow.act("orchard")
 	var sheet: Node = t.host.ui.find_child("WardrobeConfirm", true, false)
 	_check(sheet != null and "145" in _texts(sheet), "The set opens its confirm card at 145")
-	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "spend", "kind": "set", "id": "orchard", "pieces": ["fruit_cap", "orchard_skin", "apple_leaf"], "cost": 145.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 55.0}}]
+	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "spend", "kind": "set", "id": "orchard", "pieces": ["apple_hood", "orchard_skin", "apple_leaf"], "cost": 145.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 55.0}}]
 	await t.flow.confirm_buy("orchard", 145, "set")
 	var spends: Array = t.fake.sent.filter(func(entry: Dictionary) -> bool: return entry.path == "/v1/pollen/spend")
 	var sent: Dictionary = spends.back().body if not spends.is_empty() else {"kind": "", "id": "", "expected_cost": 0}
@@ -970,14 +970,14 @@ func _orchard_tab() -> void:
 	(page.find_child("OrchardKind_hat", true, false) as Button).pressed.emit()
 	_check(t.flow.model().tab == "all" and t.flow.model().kind == "hat", "Hat on the Orchard's chips goes back to All items on hats")
 	t.flow.set_tab("owned")
-	_check(t.flow.model().items.filter(func(entry: Dictionary) -> bool: return entry.owned).map(func(entry: Dictionary) -> String: return entry.id).has("fruit_cap"), "Owned lists the Orchard pieces too")
+	_check(t.flow.model().items.filter(func(entry: Dictionary) -> bool: return entry.owned).map(func(entry: Dictionary) -> String: return entry.id).has("apple_hood"), "Owned lists the Orchard pieces too")
 	t.flow.set_tab("orchard")
 	(page.find_child("OrchardKind_body", true, false) as Button).pressed.emit()
 	_check(t.flow.model().tab == "owned" and t.flow.model().kind == "body", "From Owned, the Orchard's slot chips go back to Owned")
 	t.host.queue_free()
 	await _frames(2)
-	# The set price after the Fruit cap: 125 struck, 105. Two owned: the last at its own price.
-	for row: Array in [[["fruit_cap"], ["175", "125"], "105"], [["fruit_cap", "orchard_skin"], [], "25"]]:
+	# The set price after the Apple hood: 125 struck, 105. Two owned: the last at its own price.
+	for row: Array in [[["apple_hood"], ["175", "125"], "105"], [["apple_hood", "orchard_skin"], [], "25"]]:
 		var s := await _orchard_setup(row[0], 101)
 		s.flow.set_tab("orchard")
 		var card: Node = s.host.overlay.find_child("OrchardSet_orchard", true, false)
@@ -1097,22 +1097,22 @@ func _orchard_confirm() -> void:
 	t.flow.show_orchard("fruits")
 	await _frames()
 	_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.flow.return_to == "fruits", "show_orchard opens the Wardrobe on the Orchard, Back going where it was asked from")
-	await t.flow.act("fruit_cap")
+	await t.flow.act("apple_hood")
 	var sheet: Node = t.host.ui.find_child("WardrobeConfirm", true, false)
 	var words := _texts(sheet)
-	_check(sheet != null and PlayerCopy.WARDROBE_CONFIRM_TITLE % "Fruit cap" in words and PlayerCopy.WARDROBE_CONFIRM_NOTE in words, "Buy opens Buy Fruit cap? with its line: " + str(words))
+	_check(sheet != null and PlayerCopy.WARDROBE_CONFIRM_TITLE % "Apple hood" in words and PlayerCopy.WARDROBE_CONFIRM_NOTE in words, "Buy opens Buy Apple hood? with its line: " + str(words))
 	_check("101" in words and "50" in words and "51" in words and sheet.find_child("WardrobeConfirmLines", true, false).find_children("FruitMark", "", true, false).size() == 3 and sheet.find_children("PollenMark", "", true, false).is_empty(), "You have 101, the cap 50, 51 left, each with the Fruit and no grain")
 	var buy: Button = sheet.find_child("WardrobeConfirmBuy", true, false)
 	_check(_texts(buy) == [PlayerCopy.WARDROBE_BUY_FOR, "50"] and buy.find_child("FruitMark", true, false) != null and _no_money(sheet), "Its Buy says Buy for [Fruit] 50, with no money figure")
 	var sends: int = t.fake.sent.size()
-	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "spend", "kind": "item", "id": "fruit_cap", "pieces": ["fruit_cap"], "cost": 50.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 51.0}}, _orchard_answer(["fruit_cap"], {}, 24000, 51)]
+	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "spend", "kind": "item", "id": "apple_hood", "pieces": ["apple_hood"], "cost": 50.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 51.0}}, _orchard_answer(["apple_hood"], {}, 24000, 51)]
 	buy.pressed.emit()
 	await _frames(8)
 	var spend: Dictionary = t.fake.sent[sends] if t.fake.sent.size() > sends else {}
-	_check(t.fake.sent.size() == sends + 2 and spend.path == "/v1/pollen/spend" and spend.body.kind == "item" and spend.body.id == "fruit_cap" and spend.body.expected_cost == 50 and str(spend.body.idempotency_key).length() == 32, "Its Buy sends the cap at 50 with its own key")
+	_check(t.fake.sent.size() == sends + 2 and spend.path == "/v1/pollen/spend" and spend.body.kind == "item" and spend.body.id == "apple_hood" and spend.body.expected_cost == 50 and str(spend.body.idempotency_key).length() == 32, "Its Buy sends the cap at 50 with its own key")
 	_check(t.fake.sent.back().path == "/v1/pollen" and t.flow.model().sets.size() == 1 and t.flow.model().sets[0].price == 105 and t.flow.model().sets[0].full == 125, "Then one read brings the set's new cost from the server: 105 for the two left")
-	_check("fruit_cap" in t.store.view(SERVER, ME).items and t.fruits.balance(SERVER, ME) == 51 and t.flow.model().balance == 24000 and PlayerCopy.WARDROBE_BOUGHT % "Fruit cap" in t.host.toasts, "Owned, 51 Fruits left, the Pollen untouched, and the player is told")
-	_check(_texts(t.host.overlay.find_child("WardrobeAction", true, false)) == [PlayerCopy.WARDROBE_WEAR], "The Fruit cap now offers Wear")
+	_check("apple_hood" in t.store.view(SERVER, ME).items and t.fruits.balance(SERVER, ME) == 51 and t.flow.model().balance == 24000 and PlayerCopy.WARDROBE_BOUGHT % "Apple hood" in t.host.toasts, "Owned, 51 Fruits left, the Pollen untouched, and the player is told")
+	_check(_texts(t.host.overlay.find_child("WardrobeAction", true, false)) == [PlayerCopy.WARDROBE_WEAR], "The Apple hood now offers Wear")
 	t.host.queue_free()
 	await _frames(2)
 
@@ -1163,7 +1163,7 @@ func _orchard_blocked_and_refused() -> void:
 	t.flow.set_tab("orchard")
 	var action: Button = t.host.overlay.find_child("WardrobeAction", true, false)
 	_check(action.disabled and PlayerCopy.ORCHARD_ERRORS.fruits_blocked in _texts(t.host.overlay), "Below 0 a Fruit Buy greys and says spending is paused")
-	await t.flow.act("fruit_cap")
+	await t.flow.act("apple_hood")
 	_check(t.host.ui.get_child_count() == 0 and PlayerCopy.ORCHARD_ERRORS.fruits_blocked in t.host.toasts and t.fake.sent.size() == 1, "Its action opens no card, sends nothing and says why")
 	t.host.queue_free()
 	await _frames(2)
@@ -1171,7 +1171,7 @@ func _orchard_blocked_and_refused() -> void:
 	var s := await _orchard_setup([], 101)
 	s.flow.set_tab("orchard")
 	s.fake.replies = [{"ok": false, "status": 402, "code": "fruits_short"}, _orchard_answer([], {}, 24000, 30)]
-	await s.flow.confirm_buy("fruit_cap", 50)
+	await s.flow.confirm_buy("apple_hood", 50)
 	_check(s.host.ui.find_child("WardrobeShort", true, false) != null and "20" + PlayerCopy.ORCHARD_SHORT_MORE in _texts(s.host.ui), "fruits_short: the short card opens on the balance read again")
 	s.host.queue_free()
 	await _frames(2)
@@ -1181,7 +1181,7 @@ func _orchard_blocked_and_refused() -> void:
 	# A 503 is sent again with the same key (services/wardrobe_client.gd MAX_SENDS) before it counts.
 	var off := {"ok": false, "status": 503, "code": "fruits_disabled"}
 	d.fake.replies = [off, off, off, _orchard_answer([], {}, 24000, 101, {})]
-	await d.flow.confirm_buy("fruit_cap", 50)
+	await d.flow.confirm_buy("apple_hood", 50)
 	_check(PlayerCopy.ORCHARD_ERRORS.fruits_disabled in d.host.toasts and d.flow.model().tab == "all" and not d.flow.model().orchard, "fruits_disabled: the player is told and the Orchard closes")
 	d.host.queue_free()
 	await _frames(2)

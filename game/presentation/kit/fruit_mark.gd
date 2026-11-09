@@ -23,7 +23,7 @@ const RENDER := "res://assets/store/fruit-rose.png"
 const RENDER_STEM := Vector2(57, 44)
 
 ## The Fruit's rose: the flat body's light and deep ends (its gradient) and
-## the seed's own green for the stem and leaf. Other Fruit art (the Fruit cap)
+## the seed's own green for the stem and leaf. Other Fruit art (the Apple hood)
 ## takes its colours from here.
 const ROSE_LIGHT := Color("f8bcc8")
 const ROSE_DEEP := Color("c25f7a")

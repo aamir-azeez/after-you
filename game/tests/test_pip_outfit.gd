@@ -4,8 +4,8 @@ extends SceneTree
 ## - the default look adds nothing and changes nothing;
 ## - each item stays within the board's budget (draw calls, triangles) and
 ##   comes off exactly, alone and in every combination of the three slots;
-## - leaf items hang from the leaf; the Straw hat lifts it; the Fruit cap
-##   hides the plain leaf, and a worn leaf item grows out of its dome without
+## - leaf items hang from the leaf; the Straw hat lifts it; each fruit hood
+##   hides the plain leaf, and a worn leaf item grows out of its top without
 ##   cutting into it at any sway;
 ## - placement: no item covers the eyes or reaches into a carried seed, the
 ##   daisy sits outside the head, and a glow sprite sits outside it too; the
@@ -42,8 +42,11 @@ const GLANCE := Vector2(0.018, 0.009)
 const FACE_PARAMS := ["body_color", "cream_color", "pupil_color", "blush_color", "blush_strength", "blush_soft", "eye_xy", "eye_squash", "look_shift", "pupil_rim", "tear_neck_root"]
 const DT := 1.0 / 60.0
 ## Hats seated on the head's surface: no part of them is inside the head.
-const SEATED := ["daisy", "top_ten_ribbon", "blossom_crown", "fruit_cap"]
-## How far from its stalk a leaf may still be inside the Fruit cap's hood.
+const SEATED := ["daisy", "top_ten_ribbon", "blossom_crown", "apple_hood", "blueberry_hood"]
+## The fruit hoods (presentation/pip_wear/fruit_hood.gd).
+const HOODS := ["apple_hood", "blueberry_hood"]
+const HOOD = preload("res://presentation/pip_wear/fruit_hood.gd")
+## How far from its stalk a leaf may still be inside a fruit hood.
 const STALK_TUCK := 0.045
 ## The pip views' control sizes (Settings, the name page, the Friends chip).
 const VIEWS := [Vector2(72, 100), Vector2(180, 236), Vector2(42, 56)]
@@ -68,7 +71,7 @@ func _run() -> void:
 	_each_item()
 	_combinations()
 	_leaf()
-	_fruit_cap_leaf()
+	_hood_leaf()
 	_hood_clears_body()
 	_petals_clear()
 	_placement()
@@ -229,33 +232,33 @@ func _leaf() -> void:
 	straw.free()
 	plain.free()
 
-## The Fruit cap's stem and leaf stand in for the pip's leaf: the plain leaf
-## hides under it and comes back with it off. A worn leaf item shows, its stalk
+## Each fruit hood's top stands in for the pip's leaf: the plain leaf hides
+## under it and comes back with it off. A worn leaf item shows, its stalk
 ## tucked under the hood's top, and no part of it farther than STALK_TUCK
 ## from the stalk is under the hood, idle or walking. So does the plain leaf
 ## shown on purpose (show_leaf(), the leaderboard celebration's gold leaf).
-func _fruit_cap_leaf() -> void:
-	var spirit := _spirit()
-	spirit.wear(Outfit.of("fruit_cap", true))
-	_check(not spirit.sprout.visible, "The Fruit cap hides the plain leaf")
-	spirit.show_leaf()
-	_check(spirit.sprout.visible, "show_leaf() brings it back under the cap")
-	_leaf_clears_cap(spirit, "The plain leaf shown under the cap")
-	spirit.wear({})
-	_check(spirit.sprout.visible, "Off again, the leaf shows")
-	spirit.wear(Outfit.of("fruit_cap", true))
-	_check(not spirit.sprout.visible, "and the cap worn again hides it again")
-	spirit.free()
-	for leaf: String in Catalog.ids():
-		if Catalog.slot(leaf) != "leaf": continue
-		var capped := _spirit()
-		capped.wear(Outfit.from({"hat": "fruit_cap", "leaf": leaf}, true))
-		_check(capped.sprout.visible, "With %s the leaf shows under the Fruit cap" % leaf)
-		_leaf_clears_cap(capped, leaf)
-		capped.free()
+func _hood_leaf() -> void:
+	for hood: String in HOODS:
+		var spirit := _spirit()
+		spirit.wear(Outfit.of(hood, true))
+		_check(not spirit.sprout.visible, "The %s hides the plain leaf" % hood)
+		spirit.show_leaf()
+		_check(spirit.sprout.visible, "show_leaf() brings it back under the %s" % hood)
+		_leaf_clears_hood(spirit, "The plain leaf shown under the %s" % hood)
+		spirit.wear({})
+		_check(spirit.sprout.visible, "Off again, the leaf shows")
+		spirit.wear(Outfit.of(hood, true))
+		_check(not spirit.sprout.visible, "and the %s worn again hides it again" % hood)
+		spirit.free()
+		for leaf: String in Catalog.ids():
+			if Catalog.slot(leaf) != "leaf": continue
+			var capped := _spirit()
+			capped.wear(Outfit.from({"hat": hood, "leaf": leaf}, true))
+			_check(capped.sprout.visible, "With %s the leaf shows under the %s" % [leaf, hood])
+			_leaf_clears_hood(capped, "%s under the %s" % [leaf, hood])
+			capped.free()
 
-func _leaf_clears_cap(capped: Node3D, label: String) -> void:
-	var Cap: Script = load("res://presentation/pip_wear/fruit_cap.gd")
+func _leaf_clears_hood(capped: Node3D, label: String) -> void:
 	var under := 0
 	var tucked := true
 	var lowest := INF
@@ -264,41 +267,42 @@ func _leaf_clears_cap(capped: Node3D, label: String) -> void:
 		if frame % 6 != 0: continue
 		var to_head: Transform3D = capped.head.global_transform.affine_inverse()
 		var stalk: Vector3 = to_head * capped.sprout.global_position
-		tucked = tucked and stalk.y < Cap.top_height(stalk)
+		tucked = tucked and stalk.y < HOOD.top_height(stalk)
 		var leaf_parts: Array[MeshInstance3D] = [capped.sprout]
 		for node: Node in capped.sprout.find_children("*", "MeshInstance3D", true, false):
 			if not node.name in ["Halo", "Beam", "Stars"]: leaf_parts.append(node as MeshInstance3D)
 		for point: Vector3 in _points_in_head(capped, leaf_parts):
-			var top: float = Cap.top_height(point)
+			var top: float = HOOD.top_height(point)
 			if point.distance_to(stalk) > STALK_TUCK and point.y < top:
 				under += 1
 				lowest = minf(lowest, point.y - top)
-	_check(tucked, "%s: its stalk starts under the Fruit cap's hood" % label)
-	_check(under == 0, "%s grows out of the Fruit cap and never cuts into it: %d points (deepest %.3f)" % [label, under, lowest])
+	_check(tucked, "%s: its stalk starts under the hood" % label)
+	_check(under == 0, "%s grows out of the hood and never cuts into it: %d points (deepest %.3f)" % [label, under, lowest])
 
-## The Fruit cap's hood reaches down to the jaw: idle, walking or dozing, it
+## Each fruit hood reaches round under to the jaw: idle, walking or dozing, it
 ## never sinks into the body, which moves apart from the head. Its face
 ## opening stays clear of the eyes even at their farthest glance (GLANCE).
 func _hood_clears_body() -> void:
-	var spirit := _spirit()
-	spirit.wear(Outfit.of("fruit_cap", true))
-	var near_eye := 0
-	for point: Vector3 in _solid_points(spirit):
-		for side: float in [-1.0, 1.0]:
-			for up: float in [-1.0, 1.0]:
-				if point.z > 0.0 and Vector2(point.x - side * (Look.EYE_X + GLANCE.x), point.y - Look.EYE_Y - up * GLANCE.y).length() < EYE_CLEAR: near_eye += 1
-	_check(near_eye == 0, "The Fruit cap's hood stays clear of the eyes at their farthest glance: %d points" % near_eye)
-	var in_body := 0
-	for frame in range(360):
-		if frame == 240: spirit.set_pose(&"doze")
-		spirit.advance_motion(Vector3(0.03, 0, 0.01) if frame >= 120 and frame < 240 else Vector3.ZERO, DT, false)
-		if frame % 6 != 0: continue
-		var to_torso: Transform3D = spirit.torso.global_transform.affine_inverse() * spirit.head.global_transform
+	for hood: String in HOODS:
+		var spirit := _spirit()
+		spirit.wear(Outfit.of(hood, true))
+		var near_eye := 0
 		for point: Vector3 in _solid_points(spirit):
-			var body: Vector3 = to_torso * point
-			if pow(absf(body.x / Look.TORSO_HALF.x), Look.TORSO_POWER) + pow(absf(body.y / Look.TORSO_HALF.y), Look.TORSO_POWER) + pow(absf(body.z / Look.TORSO_HALF.z), Look.TORSO_POWER) < 1.0: in_body += 1
-	_check(in_body == 0, "The Fruit cap's hood never sinks into the body: %d points" % in_body)
-	spirit.free()
+			for side: float in [-1.0, 1.0]:
+				for up: float in [-1.0, 1.0]:
+					if point.z > 0.0 and Vector2(point.x - side * (Look.EYE_X + GLANCE.x), point.y - Look.EYE_Y - up * GLANCE.y).length() < EYE_CLEAR: near_eye += 1
+		_check(near_eye == 0, "The %s stays clear of the eyes at their farthest glance: %d points" % [hood, near_eye])
+		var in_body := 0
+		for frame in range(360):
+			if frame == 240: spirit.set_pose(&"doze")
+			spirit.advance_motion(Vector3(0.03, 0, 0.01) if frame >= 120 and frame < 240 else Vector3.ZERO, DT, false)
+			if frame % 6 != 0: continue
+			var to_torso: Transform3D = spirit.torso.global_transform.affine_inverse() * spirit.head.global_transform
+			for point: Vector3 in _solid_points(spirit):
+				var body: Vector3 = to_torso * point
+				if pow(absf(body.x / Look.TORSO_HALF.x), Look.TORSO_POWER) + pow(absf(body.y / Look.TORSO_HALF.y), Look.TORSO_POWER) + pow(absf(body.z / Look.TORSO_HALF.z), Look.TORSO_POWER) < 1.0: in_body += 1
+		_check(in_body == 0, "The %s never sinks into the body: %d points" % [hood, in_body])
+		spirit.free()
 
 ## The Orchard skin's petals, resting or drifting, never sink into the head or
 ## the body.
@@ -346,7 +350,7 @@ func _placed_outfits() -> Array[Dictionary]:
 	for id: String in Catalog.ids():
 		outfits.append(Outfit.of(id, true))
 		if Catalog.slot(id) == "leaf":
-			for hat: String in ["straw_hat", "fruit_cap"]: outfits.append(Outfit.from({"hat": hat, "leaf": id}, true))
+			for hat: String in ["straw_hat", "apple_hood", "blueberry_hood"]: outfits.append(Outfit.from({"hat": hat, "leaf": id}, true))
 	return outfits
 
 func _placement() -> void:
@@ -535,7 +539,7 @@ func _seed_lift() -> void:
 	var capped := _spirit()
 	var leafy := _spirit()
 	var straw_leafy := _spirit()
-	capped.wear(Outfit.of("fruit_cap", true))
+	capped.wear(Outfit.of("apple_hood", true))
 	leafy.wear(Outfit.of("apple_leaf", true))
 	straw_leafy.wear(Outfit.from({"hat": "straw_hat", "leaf": "apple_leaf"}, true))
 	var spirits: Array[Node3D] = [plain, capped, leafy, straw_leafy]
@@ -543,7 +547,7 @@ func _seed_lift() -> void:
 		each.carrying_seed = true
 		each.advance_motion(Vector3.ZERO, 0.001, true)
 	var base: float = plain.carry_anchor_position().y
-	_check(is_equal_approx(capped.carry_anchor_position().y - base, load("res://presentation/pip_wear/fruit_cap.gd").SEED_LIFT), "The Fruit cap lifts a carried seed clear of its stem: %.3f" % (capped.carry_anchor_position().y - base))
+	_check(is_equal_approx(capped.carry_anchor_position().y - base, float(HOOD.LOOKS.apple_hood.seed_lift)), "The Apple hood lifts a carried seed clear of its stem: %.3f" % (capped.carry_anchor_position().y - base))
 	_check(is_equal_approx(leafy.carry_anchor_position().y, base), "The Apple leaf alone leaves the seed where it was")
 	_check(is_equal_approx(straw_leafy.carry_anchor_position().y - base, 0.075), "and lifts it with the leaf through the Straw hat's brim: %.3f" % (straw_leafy.carry_anchor_position().y - base))
 	capped.wear({})

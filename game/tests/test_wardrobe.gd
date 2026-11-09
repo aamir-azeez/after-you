@@ -109,22 +109,22 @@ func _run() -> void:
 ## server says it costs this player (fruit_set_costs: 145 with nothing owned, 105
 ## with the cap owned, one missing piece at its own price), struck from its pieces' sum.
 func _orchard_prices() -> void:
-	var fruit_view := {"prices": {"daisy": 1000}, "fruit_prices": {"fruit_cap": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_sun": 10}, "fruit_sets": {"orchard": ["fruit_cap", "orchard_skin", "apple_leaf"]}, "fruit_set_costs": {"orchard": 145}, "sets": {}}
-	_check(Wardrobe.sale(fruit_view, "fruit_cap") == {"currency": "fruits", "price": 50} and Wardrobe.sale(fruit_view, "sprig_sun") == {"currency": "fruits", "price": 10}, "An Orchard item sells at its Fruit price, in Fruits")
+	var fruit_view := {"prices": {"daisy": 1000}, "fruit_prices": {"apple_hood": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_sun": 10}, "fruit_sets": {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]}, "fruit_set_costs": {"orchard": 145}, "sets": {}}
+	_check(Wardrobe.sale(fruit_view, "apple_hood") == {"currency": "fruits", "price": 50} and Wardrobe.sale(fruit_view, "sprig_sun") == {"currency": "fruits", "price": 10}, "An Orchard item sells at its Fruit price, in Fruits")
 	_check(Wardrobe.sale(fruit_view, "daisy") == {"currency": "pollen", "price": 1000} and Wardrobe.sale(fruit_view, "tide") == {"currency": "pollen", "price": Catalog.price("tide")}, "A Pollen item sells at its Pollen price, its tier's while the server sends none")
 	_check(Wardrobe.sale(fruit_view, "blossom_crown").is_empty(), "An Orchard item the server does not price in Fruits is not sold")
-	_check(Wardrobe.sale({"prices": {}, "fruit_prices": {}}, "fruit_cap").is_empty() and Catalog.price("fruit_cap") == 50, "With Fruits off an Orchard item is never sold at its tier's 50 read as Pollen")
-	_check(Wardrobe.sale({"prices": {"fruit_cap": 50}, "fruit_prices": {"fruit_cap": 50}}, "fruit_cap").is_empty() and Wardrobe.sale({"prices": {"daisy": 1000}, "fruit_prices": {"daisy": 10}}, "daisy").is_empty(), "A price in the other currency than the tier's means not sold")
-	_check(Wardrobe.set_cost(fruit_view, "orchard", []) == {"currency": "fruits", "pieces": ["fruit_cap", "orchard_skin", "apple_leaf"], "full": 175, "cost": 145}, "The Orchard set with nothing owned: the server's 145, struck from 175")
+	_check(Wardrobe.sale({"prices": {}, "fruit_prices": {}}, "apple_hood").is_empty() and Catalog.price("apple_hood") == 50, "With Fruits off an Orchard item is never sold at its tier's 50 read as Pollen")
+	_check(Wardrobe.sale({"prices": {"apple_hood": 50}, "fruit_prices": {"apple_hood": 50}}, "apple_hood").is_empty() and Wardrobe.sale({"prices": {"daisy": 1000}, "fruit_prices": {"daisy": 10}}, "daisy").is_empty(), "A price in the other currency than the tier's means not sold")
+	_check(Wardrobe.set_cost(fruit_view, "orchard", []) == {"currency": "fruits", "pieces": ["apple_hood", "orchard_skin", "apple_leaf"], "full": 175, "cost": 145}, "The Orchard set with nothing owned: the server's 145, struck from 175")
 	var cap_owned := fruit_view.duplicate(true)
 	cap_owned.fruit_set_costs = {"orchard": 105}
-	_check(Wardrobe.set_cost(cap_owned, "orchard", ["fruit_cap"]) == {"currency": "fruits", "pieces": ["orchard_skin", "apple_leaf"], "full": 125, "cost": 105}, "With the Fruit cap owned: the server's 105 for the two left, struck from 125")
+	_check(Wardrobe.set_cost(cap_owned, "orchard", ["apple_hood"]) == {"currency": "fruits", "pieces": ["orchard_skin", "apple_leaf"], "full": 125, "cost": 105}, "With the Apple hood owned: the server's 105 for the two left, struck from 125")
 	var one_left := fruit_view.duplicate(true)
 	one_left.fruit_set_costs = {"orchard": 25}
-	_check(Wardrobe.set_cost(one_left, "orchard", ["fruit_cap", "orchard_skin"]) == {"currency": "fruits", "pieces": ["apple_leaf"], "full": 25, "cost": 25}, "One missing piece: the server's 25, its own price")
+	_check(Wardrobe.set_cost(one_left, "orchard", ["apple_hood", "orchard_skin"]) == {"currency": "fruits", "pieces": ["apple_leaf"], "full": 25, "cost": 25}, "One missing piece: the server's 25, its own price")
 	var all_owned := fruit_view.duplicate(true)
 	all_owned.fruit_set_costs = {}
-	_check(Wardrobe.set_cost(all_owned, "orchard", ["fruit_cap", "orchard_skin", "apple_leaf"]).is_empty(), "Every piece owned: the server sends no cost and no set shows")
+	_check(Wardrobe.set_cost(all_owned, "orchard", ["apple_hood", "orchard_skin", "apple_leaf"]).is_empty(), "Every piece owned: the server sends no cost and no set shows")
 	_check(Wardrobe.set_cost(all_owned, "orchard", []).is_empty(), "No cost from the server: no price, never one worked out here")
 	var off := fruit_view.duplicate(true)
 	(off.fruit_prices as Dictionary).erase("orchard_skin")

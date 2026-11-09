@@ -83,17 +83,17 @@ describe("the Fruit rules", () => {
   });
   it("prices the Orchard in Fruits (Sprig 10, small 25, hat 50, body 100, the set 145), sold only while Fruits are on, never from a bloom", () => {
     expect(Object.fromEntries(Object.keys(CATALOG.items).filter(id => itemCurrency(id) === "fruits").map(id => [id, CATALOG.tier_prices[CATALOG.items[id].tier]])))
-      .toEqual({ fruit_cap: 50, blossom_crown: 50, orchard_skin: 100, apple_leaf: 25, sprig_coral: 10, sprig_plum: 10, sprig_sun: 10, sprig_sky: 10 });
-    expect(sold("fruit_cap")).toBe(false);
-    expect(sold("fruit_cap", CATALOG, true)).toBe(true);
+      .toEqual({ apple_hood: 50, blueberry_hood: 50, blossom_crown: 50, orchard_skin: 100, apple_leaf: 25, sprig_coral: 10, sprig_plum: 10, sprig_sun: 10, sprig_sky: 10 });
+    expect(sold("apple_hood")).toBe(false);
+    expect(sold("apple_hood", CATALOG, true)).toBe(true);
     const owned = { owned: new Set<string>(), cleared: () => false };
-    expect(quote({ kind: "set", id: "orchard" }, owned, CATALOG, true)).toEqual({ ok: true, value: { kind: "set", id: "orchard", pieces: ["fruit_cap", "orchard_skin", "apple_leaf"], full: 175, cost: 145, currency: "fruits" } });
-    expect(quote({ kind: "set", id: "orchard" }, { ...owned, owned: new Set(["fruit_cap"]) }, CATALOG, true)).toMatchObject({ value: { full: 125, cost: 105 } });
+    expect(quote({ kind: "set", id: "orchard" }, owned, CATALOG, true)).toEqual({ ok: true, value: { kind: "set", id: "orchard", pieces: ["apple_hood", "orchard_skin", "apple_leaf"], full: 175, cost: 145, currency: "fruits" } });
+    expect(quote({ kind: "set", id: "orchard" }, { ...owned, owned: new Set(["apple_hood"]) }, CATALOG, true)).toMatchObject({ value: { full: 125, cost: 105 } });
     expect(quote({ kind: "item", id: "sprig_sun" }, owned)).toMatchObject({ ok: false, code: "not_for_sale" });
     expect(setCost(26000, 3, CATALOG, "pollen")).toBe(22100);
     for (const step of RATES.item_blooms.tiers) expect(droppable(step.tier).some(id => itemCurrency(id) === "fruits"), step.tier).toBe(false);
-    expect(offeredItems()).not.toContain("fruit_cap");
-    expect(offeredItems(CATALOG, true)).toContain("fruit_cap");
+    expect(offeredItems()).not.toContain("apple_hood");
+    expect(offeredItems(CATALOG, true)).toContain("apple_hood");
     expect(FRUITS_OFFERED_TAG).not.toBe(OFFERED_TAG);
   });
   it("turns on only with the shop, and sells packs only where that store's bundles sell and its Fruit products are set up", () => {
@@ -419,12 +419,12 @@ describe("the Fruit routes", () => {
     const read = await (await call("/v1/pollen", "GET", account, undefined, SHOP)).json<Read>();
     expect(read).not.toHaveProperty("fruits");
     expect(read.wardrobe).not.toHaveProperty("fruit_prices");
-    expect(read.wardrobe!.offered).not.toContain("fruit_cap");
+    expect(read.wardrobe!.offered).not.toContain("apple_hood");
     for (const body of [spendBody("convert", "10", 10), spendBody("sunshine", "sunshine", 10)]) {
       const refused = await call("/v1/pollen/spend", "POST", account, body, SHOP);
       expect(refused.status).toBe(503);
     }
-    expect((await call("/v1/pollen/spend", "POST", account, spendBody("item", "fruit_cap", 50), SHOP)).status).toBe(409);
+    expect((await call("/v1/pollen/spend", "POST", account, spendBody("item", "apple_hood", 50), SHOP)).status).toBe(409);
     expect(await inAccount(account, storage => storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='currency_purse'").toArray().length)).toBe(0);
   });
   it("read, sell the Orchard, convert and buy Sunshine while FRUITS is on, each once per key", async () => {
@@ -435,11 +435,11 @@ describe("the Fruit routes", () => {
     const first = await (await call("/v1/pollen", "GET", account)).json<Read>();
     expect(first.fruits).toMatchObject({ balance: 0, sunshine: { left: 0, turns: 24, price: 10 }, convert: { pollen_per_fruit: 400, step: 10 }, first_pack_gift: true, first_pack_percent: 100 });
     expect(first.fruits!.achievements.length).toBe(15);
-    expect(first.wardrobe).toMatchObject({ fruit_prices: { fruit_cap: 50, sprig_sun: 10, orchard_skin: 100 }, fruit_sets: { orchard: ["fruit_cap", "orchard_skin", "apple_leaf"] }, fruit_set_costs: { orchard: 145 } });
+    expect(first.wardrobe).toMatchObject({ fruit_prices: { apple_hood: 50, sprig_sun: 10, orchard_skin: 100 }, fruit_sets: { orchard: ["apple_hood", "orchard_skin", "apple_leaf"] }, fruit_set_costs: { orchard: 145 } });
     expect((first.fruits as Record<string, unknown>).ladder).toEqual({ first: 15, step: 1, every: 2, top: 30, welcome: 25 });
-    expect(Object.keys(first.wardrobe!.prices as object)).not.toContain("fruit_cap");
+    expect(Object.keys(first.wardrobe!.prices as object)).not.toContain("apple_hood");
     await inAccount(account, storage => { fund(storage, 100); });
-    const cap = spendBody("item", "fruit_cap", 50);
+    const cap = spendBody("item", "apple_hood", 50);
     const bought = await (await call("/v1/pollen/spend", "POST", account, cap)).json<Record<string, unknown>>();
     expect(bought).toMatchObject({ kind: "item", cost: 50, currency: "fruits", fruit_balance: 50, balance: 0 });
     expect(await (await call("/v1/pollen/spend", "POST", account, cap)).json()).toEqual(bought);

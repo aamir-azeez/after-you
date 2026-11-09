@@ -9,7 +9,8 @@
 		"gold_leaf",
 		"every_hard",
 		"top_ten_ribbon",
-		"fruit_cap",
+		"apple_hood",
+		"blueberry_hood",
 		"blossom_crown",
 		"orchard_skin",
 		"apple_leaf",
@@ -19,6 +20,17 @@
 		"sprig_sky"
 	],
 	"items": {
+		"apple_hood": {
+			"currency": "fruits",
+			"id": "apple_hood",
+			"price": 50,
+			"released": false,
+			"set": "orchard",
+			"slot": "hat",
+			"sold": true,
+			"tier": "fruit_hat",
+			"unlock": ""
+		},
 		"apple_leaf": {
 			"currency": "fruits",
 			"id": "apple_leaf",
@@ -33,6 +45,17 @@
 		"blossom_crown": {
 			"currency": "fruits",
 			"id": "blossom_crown",
+			"price": 50,
+			"released": false,
+			"set": "",
+			"slot": "hat",
+			"sold": true,
+			"tier": "fruit_hat",
+			"unlock": ""
+		},
+		"blueberry_hood": {
+			"currency": "fruits",
+			"id": "blueberry_hood",
 			"price": 50,
 			"released": false,
 			"set": "",
@@ -61,17 +84,6 @@
 			"slot": "leaf",
 			"sold": false,
 			"tier": "earned",
-			"unlock": ""
-		},
-		"fruit_cap": {
-			"currency": "fruits",
-			"id": "fruit_cap",
-			"price": 50,
-			"released": false,
-			"set": "orchard",
-			"slot": "hat",
-			"sold": true,
-			"tier": "fruit_hat",
 			"unlock": ""
 		},
 		"gold_leaf": {

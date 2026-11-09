@@ -30,7 +30,8 @@ const COSMETIC_EVERY_HARD_EARN := "Clear every chapter on Hard, together."
 const COSMETIC_TOP_TEN_RIBBON_EARN := "Finish in a chapter board's top 10, together."
 
 # Orchard items (content/cosmetics/, bought with Fruits): each item's name.
-const COSMETIC_FRUIT_CAP := "Fruit cap"
+const COSMETIC_APPLE_HOOD := "Apple hood"
+const COSMETIC_BLUEBERRY_HOOD := "Blueberry hood"
 const COSMETIC_BLOSSOM_CROWN := "Blossom crown"
 const COSMETIC_ORCHARD_SKIN := "Orchard skin"
 const COSMETIC_APPLE_LEAF := "Apple leaf"
@@ -443,7 +444,7 @@ const ORCHARD_HINT := "Orchard %s · drag to turn your pip"
 ## The sprig row's title, and the price they share ("· 10 each").
 const ORCHARD_SPRIGS := "Sprigs"
 const ORCHARD_EACH := "· %s each"
-## An Orchard set's name (WARDROBE_SET "%s set") and its pieces ("Apple leaf, Fruit cap and Orchard skin together").
+## An Orchard set's name (WARDROBE_SET "%s set") and its pieces ("Apple hood, Apple leaf and Orchard skin together").
 const ORCHARD_SETS := {"orchard": "Orchard"}
 const ORCHARD_SET_PIECES := "%s together"
 const ORCHARD_AND := "%s and %s"

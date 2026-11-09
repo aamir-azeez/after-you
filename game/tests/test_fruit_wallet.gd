@@ -128,7 +128,7 @@ static func part(balance: float = 40.0, paid: Array = [], extra: Dictionary = {}
 static func answer(fruits: Variant = part(), balance: float = 9000.0) -> Dictionary:
 	var value := {"schema_version": 1.0, "balance": balance, "earned": balance, "bank": 12.0, "name_price": 0.0,
 		"wardrobe": {"items": [], "packs": [], "look": {}, "look_revision": 1.0, "offered": ["daisy"], "offered_packs": [], "sets": {}, "unlocked": [],
-			"prices": {"daisy": 1000.0}, "fruit_prices": {"fruit_cap": 50.0, "apple_leaf": 25.0, "orchard_skin": 100.0, "sprig_sun": 10.0}, "fruit_sets": {"orchard": ["fruit_cap", "orchard_skin", "apple_leaf"]}}}
+			"prices": {"daisy": 1000.0}, "fruit_prices": {"apple_hood": 50.0, "apple_leaf": 25.0, "orchard_skin": 100.0, "sprig_sun": 10.0}, "fruit_sets": {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]}}}
 	if fruits != null: value.fruits = fruits
 	return value
 
@@ -474,9 +474,9 @@ func _spends() -> void:
 	_check(answer_sun.ok and sun.kind == "sunshine" and sun.id == "sunshine" and sun.expected_cost == 10 and _key(sun.idempotency_key) and sun.idempotency_key != body.idempotency_key, "Sunshine sends its own key and the server's price: %s" % [sun])
 	_check(t.fruits.balance(SERVER, ME) == 20 and t.fruits.sunshine(SERVER, ME).left == 24 and not t.fruits.sunshine_buyable(SERVER, ME), "Sunshine's turns are kept and it is not buyable again while they last")
 	fake.sent.clear()
-	fake.replies = [_ok({"kind": "item", "id": "fruit_cap", "pieces": ["fruit_cap"], "currency": "fruits", "balance": 13000.0, "fruit_balance": -30.0})]
-	var answer_item: Dictionary = await t.client.buy("item", "fruit_cap", 50)
-	_check(answer_item.ok and fake.sent[0].body.kind == "item" and fake.sent[0].body.expected_cost == 50 and "fruit_cap" in t.wardrobe.view(SERVER, ME).items, "An Orchard item goes through the same spend, its cost in Fruits")
+	fake.replies = [_ok({"kind": "item", "id": "apple_hood", "pieces": ["apple_hood"], "currency": "fruits", "balance": 13000.0, "fruit_balance": -30.0})]
+	var answer_item: Dictionary = await t.client.buy("item", "apple_hood", 50)
+	_check(answer_item.ok and fake.sent[0].body.kind == "item" and fake.sent[0].body.expected_cost == 50 and "apple_hood" in t.wardrobe.view(SERVER, ME).items, "An Orchard item goes through the same spend, its cost in Fruits")
 	_check(t.fruits.balance(SERVER, ME) == -30 and t.fruits.blocked(SERVER, ME), "A Fruit balance below 0 reads as blocked")
 	fake.sent.clear()
 	var bad: Dictionary = await t.client.convert(15)
@@ -564,11 +564,11 @@ func _history() -> void:
 
 func _wardrobe_prices() -> void:
 	var view := Wardrobe.checked_view(answer())
-	_check(view.fruit_prices == {"fruit_cap": 50, "apple_leaf": 25, "orchard_skin": 100, "sprig_sun": 10} and view.fruit_sets == {"orchard": ["fruit_cap", "orchard_skin", "apple_leaf"]} and view.prices == {"daisy": 1000}, "The view keeps the Orchard's prices and sets apart from Pollen's")
-	_check(Wardrobe.spend_currency(view, "fruit_cap") == "fruits" and Wardrobe.spend_currency(view, "orchard") == "fruits" and Wardrobe.spend_currency(view, "daisy") == "pollen", "Each spend names its currency")
-	_check(Wardrobe.spend_price(view, "fruit_cap") == 50 and Wardrobe.spend_price(view, "daisy") == 1000 and Wardrobe.set_pieces(view, "orchard").size() == 3, "and its price in that currency")
+	_check(view.fruit_prices == {"apple_hood": 50, "apple_leaf": 25, "orchard_skin": 100, "sprig_sun": 10} and view.fruit_sets == {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]} and view.prices == {"daisy": 1000}, "The view keeps the Orchard's prices and sets apart from Pollen's")
+	_check(Wardrobe.spend_currency(view, "apple_hood") == "fruits" and Wardrobe.spend_currency(view, "orchard") == "fruits" and Wardrobe.spend_currency(view, "daisy") == "pollen", "Each spend names its currency")
+	_check(Wardrobe.spend_price(view, "apple_hood") == 50 and Wardrobe.spend_price(view, "daisy") == 1000 and Wardrobe.set_pieces(view, "orchard").size() == 3, "and its price in that currency")
 	var broken := answer()
-	broken.wardrobe.fruit_prices = {"fruit_cap": -5.0, "Bad": 5.0, "sprig_sun": 10.0}
+	broken.wardrobe.fruit_prices = {"apple_hood": -5.0, "Bad": 5.0, "sprig_sun": 10.0}
 	broken.wardrobe.fruit_sets = "x"
 	var kept := Wardrobe.checked_view(broken)
 	_check(not kept.is_empty() and kept.fruit_prices == {"sprig_sun": 10} and kept.fruit_sets.is_empty(), "Broken Orchard prices or sets are left out; the wardrobe still reads")
@@ -578,5 +578,5 @@ func _wardrobe_prices() -> void:
 	_check(Wardrobe.new(store.path).view(SERVER, ME).fruit_prices.size() == 4, "The Orchard's prices survive a restart")
 	_check(Catalog.currency("daisy") == "pollen" and Catalog.currency("no_such_item") == "pollen", "Pollen items and unknown ids read as Pollen")
 	# The Orchard items and their tiers come with the art kit (content/cosmetics/index.gd TIER_CURRENCY).
-	for id: String in ["fruit_cap", "blossom_crown", "orchard_skin", "apple_leaf", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]:
+	for id: String in ["apple_hood", "blueberry_hood", "blossom_crown", "orchard_skin", "apple_leaf", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]:
 		if Catalog.has(id): _check(Catalog.currency(id) == "fruits", "%s is sold for Fruits by its tier" % id)

@@ -79,7 +79,8 @@ const ITEMS := [
 	preload("res://content/cosmetics/every_hard.gd"),
 	preload("res://content/cosmetics/top_ten_ribbon.gd"),
 	# The Orchard (Fruits).
-	preload("res://content/cosmetics/fruit_cap.gd"),
+	preload("res://content/cosmetics/apple_hood.gd"),
+	preload("res://content/cosmetics/blueberry_hood.gd"),
 	preload("res://content/cosmetics/blossom_crown.gd"),
 	preload("res://content/cosmetics/orchard_skin.gd"),
 	preload("res://content/cosmetics/apple_leaf.gd"),
