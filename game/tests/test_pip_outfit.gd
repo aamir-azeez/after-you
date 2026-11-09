@@ -40,8 +40,8 @@ const EYE_CLEAR := 0.11
 const FACE_PARAMS := ["body_color", "cream_color", "pupil_color", "blush_color", "blush_strength", "blush_soft", "eye_xy", "eye_squash", "look_shift", "pupil_rim", "tear_neck_root"]
 const DT := 1.0 / 60.0
 ## Hats seated on the head's surface: no part of them is inside the head.
-const SEATED := ["daisy", "top_ten_ribbon", "blossom_crown"]
-## How far from its stalk a leaf may still be inside the Fruit cap's dome.
+const SEATED := ["daisy", "top_ten_ribbon", "blossom_crown", "fruit_cap"]
+## How far from its stalk a leaf may still be inside the Fruit cap's hood.
 const STALK_TUCK := 0.045
 ## The pip views' control sizes (Settings, the name page, the Friends chip).
 const VIEWS := [Vector2(72, 100), Vector2(180, 236), Vector2(42, 56)]
@@ -67,6 +67,7 @@ func _run() -> void:
 	_combinations()
 	_leaf()
 	_fruit_cap_leaf()
+	_hood_clears_body()
 	_petals_clear()
 	_placement()
 	_in_frame()
@@ -228,8 +229,8 @@ func _leaf() -> void:
 
 ## The Fruit cap's stem and leaf stand in for the pip's leaf: the plain leaf
 ## hides under it and comes back with it off. A worn leaf item shows, its stalk
-## tucked under the dome's shoulder, and no part of it farther than STALK_TUCK
-## from the stalk is under the dome, idle or walking. So does the plain leaf
+## tucked under the hood's top, and no part of it farther than STALK_TUCK
+## from the stalk is under the hood, idle or walking. So does the plain leaf
 ## shown on purpose (show_leaf(), the leaderboard celebration's gold leaf).
 func _fruit_cap_leaf() -> void:
 	var spirit := _spirit()
@@ -261,17 +262,34 @@ func _leaf_clears_cap(capped: Node3D, label: String) -> void:
 		if frame % 6 != 0: continue
 		var to_head: Transform3D = capped.head.global_transform.affine_inverse()
 		var stalk: Vector3 = to_head * capped.sprout.global_position
-		tucked = tucked and stalk.y < Cap.dome_height(stalk)
+		tucked = tucked and stalk.y < Cap.top_height(stalk)
 		var leaf_parts: Array[MeshInstance3D] = [capped.sprout]
 		for node: Node in capped.sprout.find_children("*", "MeshInstance3D", true, false):
 			if not node.name in ["Halo", "Beam", "Stars"]: leaf_parts.append(node as MeshInstance3D)
 		for point: Vector3 in _points_in_head(capped, leaf_parts):
-			var dome: float = Cap.dome_height(point)
-			if point.distance_to(stalk) > STALK_TUCK and point.y < dome:
+			var top: float = Cap.top_height(point)
+			if point.distance_to(stalk) > STALK_TUCK and point.y < top:
 				under += 1
-				lowest = minf(lowest, point.y - dome)
-	_check(tucked, "%s: its stalk starts under the Fruit cap's dome" % label)
+				lowest = minf(lowest, point.y - top)
+	_check(tucked, "%s: its stalk starts under the Fruit cap's hood" % label)
 	_check(under == 0, "%s grows out of the Fruit cap and never cuts into it: %d points (deepest %.3f)" % [label, under, lowest])
+
+## The Fruit cap's hood reaches down to the jaw: idle, walking or dozing, it
+## never sinks into the body, which moves apart from the head.
+func _hood_clears_body() -> void:
+	var spirit := _spirit()
+	spirit.wear(Outfit.of("fruit_cap", true))
+	var in_body := 0
+	for frame in range(360):
+		if frame == 240: spirit.set_pose(&"doze")
+		spirit.advance_motion(Vector3(0.03, 0, 0.01) if frame >= 120 and frame < 240 else Vector3.ZERO, DT, false)
+		if frame % 6 != 0: continue
+		var to_torso: Transform3D = spirit.torso.global_transform.affine_inverse() * spirit.head.global_transform
+		for point: Vector3 in _solid_points(spirit):
+			var body: Vector3 = to_torso * point
+			if pow(absf(body.x / Look.TORSO_HALF.x), Look.TORSO_POWER) + pow(absf(body.y / Look.TORSO_HALF.y), Look.TORSO_POWER) + pow(absf(body.z / Look.TORSO_HALF.z), Look.TORSO_POWER) < 1.0: in_body += 1
+	_check(in_body == 0, "The Fruit cap's hood never sinks into the body: %d points" % in_body)
+	spirit.free()
 
 ## The Orchard skin's petals, resting or drifting, never sink into the head or
 ## the body.

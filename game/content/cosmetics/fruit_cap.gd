@@ -8,8 +8,8 @@ const DATA := {
 	"name": PlayerCopy.COSMETIC_FRUIT_CAP,
 	"art": "res://presentation/pip_wear/fruit_cap.gd",
 	"set": "orchard",
-	## Its stem and leaf stand above the head.
+	## Its collar, stem and leaf stand above the head.
 	"tall": true,
-	## A worn leaf item grows out of the dome's shoulder (the plain leaf hides).
-	"leaf_lift": 0.125,
+	## A worn leaf item grows out of the hood's top (the plain leaf hides).
+	"leaf_lift": 0.07,
 }
