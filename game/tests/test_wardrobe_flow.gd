@@ -1131,7 +1131,8 @@ func _orchard_scrolls() -> void:
 		var full := label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
 		_check(full <= label.size.x + 0.5, "%s shows its full name: %.0f in %.0f" % [card.name, full, label.size.x])
 	var peeking := cards.filter(func(card: Control) -> bool: return card.get_global_rect().position.x < view.end.x and card.get_global_rect().end.x > view.end.x)
-	_check(peeking.size() == 1, "and the next card peeks in at the right edge: %s" % [peeking.map(func(card: Control) -> String: return card.name)])
+	var shown := (view.end.x - (peeking[0] as Control).get_global_rect().position.x) / width if peeking.size() == 1 else 0.0
+	_check(peeking.size() == 1 and shown > 0.3 and shown < 0.6, "and the next card peeks in at the right edge, about half of it: %.2f of %s" % [shown, peeking.map(func(card: Control) -> String: return card.name)])
 	var tap_at := (cards[1] as Control).get_global_rect().get_center()
 	for pressed: bool in [true, false]:
 		var tap := InputEventMouseButton.new()

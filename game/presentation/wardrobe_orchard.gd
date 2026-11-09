@@ -43,6 +43,9 @@ const CARD_SIZE := Vector2(240, 175)
 ## between them); where the cards don't all fit, their row scrolls sideways.
 const CARD_NARROW := 168.0
 const CARD_NAME_GAP := 10.0
+## Where the row scrolls, the cards widen (up to CARD_SIZE.x) so whole cards
+## fill the view with this much of the next one peeking in at its edge.
+const CARD_PEEK := 0.45
 ## How far the cards' scroll view reaches past the cards on every side, so the
 ## picked card's ring (6 out from its plinth) is never clipped.
 const RING_ROOM := 8
@@ -60,6 +63,7 @@ var _seg: HBoxContainer
 var _cards: ShareRow
 var _card_scroll: ScrollContainer
 var _scrolled_to := ""
+var _card_floor := CARD_NARROW
 var _sprigs: HBoxContainer
 var _each: Label
 var _sets: VBoxContainer
@@ -163,6 +167,7 @@ func _scrolling(row: Control) -> Control:
 	_card_scroll.add_child(inset)
 	inset.add_child(row)
 	ThemeRules.touch_scroll(_card_scroll)
+	_card_scroll.resized.connect(_size_cards)
 	return reach
 
 ## Whether the cards' row is wider than its view (it scrolls).
@@ -409,7 +414,22 @@ func _even_cards() -> void:
 		var tag: Label = card.find_child("OrchardTag", true, false)
 		var name_width := label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
 		least = maxf(least, ceilf(name_width + tag.get_combined_minimum_size().x + CARD_NAME_GAP))
-	for card: Node in _cards.get_children(): (card as Control).custom_minimum_size.x = least
+	_card_floor = least
+	_size_cards()
+
+## Every card at the floor where the row fits (the row then shares out the
+## rest as it always has); where it scrolls, as wide as fills the view with
+## whole cards and CARD_PEEK of the next. The view's width never depends on
+## the cards', so this settles in one pass.
+func _size_cards() -> void:
+	var cards := _cards.get_children()
+	if cards.is_empty(): return
+	var view := _card_scroll.size.x - RING_ROOM * 2.0
+	var width := _card_floor
+	if cards.size() * (_card_floor + _cards.gap) - _cards.gap > view and view > 0.0:
+		var whole := maxi(floori((view - CARD_PEEK * _card_floor) / (_card_floor + _cards.gap)), 1)
+		width = clampf((view - whole * _cards.gap) / (whole + CARD_PEEK), _card_floor, CARD_SIZE.x)
+	for card: Node in cards: (card as Control).custom_minimum_size.x = width
 
 ## The ring on the picked card, tile or set; the rest without it. A newly
 ## picked card scrolls into view.
