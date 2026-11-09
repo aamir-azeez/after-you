@@ -39,7 +39,13 @@ const SET_RIM := Color(0.949, 0.718, 0.612, 0.35)
 const CARD_SIZE := Vector2(240, 175)
 ## The narrowest an item card and the set card get on a 16:9 phone (a safe
 ## area 1280 units wide); wider screens give them up to CARD_SIZE and SET_SIZE.
+## An item card is never narrower than its full name and tag need (CARD_NAME_GAP
+## between them); where the cards don't all fit, their row scrolls sideways.
 const CARD_NARROW := 168.0
+const CARD_NAME_GAP := 10.0
+## How far the cards' scroll view reaches past the cards on every side, so the
+## picked card's ring (6 out from its plinth) is never clipped.
+const RING_ROOM := 8
 const SET_SIZE := Vector2(515, 103)
 const SET_NARROW := 400.0
 const CARD_PIP := Vector2(140, 168)
@@ -52,6 +58,8 @@ signal kind_chosen(kind: String)
 var _status: Label
 var _seg: HBoxContainer
 var _cards: ShareRow
+var _card_scroll: ScrollContainer
+var _scrolled_to := ""
 var _sprigs: HBoxContainer
 var _each: Label
 var _sets: VBoxContainer
@@ -101,7 +109,8 @@ func _init() -> void:
 	column.add_child(_status)
 	_cards = ShareRow.new(24)
 	_cards.name = "OrchardItems"
-	column.add_child(_cards)
+	_cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_child(_scrolling(_cards))
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(filler)
@@ -131,6 +140,35 @@ func _init() -> void:
 	_sets.set_meta(ShareRow.CAP, SET_SIZE.x)
 	bottom.add_child(_sets)
 
+## The cards' row in a sideways scroll. Where every card fits the row fills
+## the width exactly as without it; where they don't, the cards keep their
+## size and the row scrolls (a drag or the wheel, no bar), the next card
+## peeking in at the edge. A drag scrolls and never picks; a tap still picks
+## (ThemeRules.touch_scroll). The view reaches RING_ROOM past the cards and the
+## cards sit back in by as much, so they stand where they would without it.
+func _scrolling(row: Control) -> Control:
+	var reach := MarginContainer.new()
+	reach.name = "OrchardItemsReach"
+	reach.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_card_scroll = ScrollContainer.new()
+	_card_scroll.name = "OrchardItemsScroll"
+	_card_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_card_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	reach.add_child(_card_scroll)
+	var inset := MarginContainer.new()
+	inset.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for side: String in ["left", "right", "top", "bottom"]:
+		reach.add_theme_constant_override("margin_" + side, -RING_ROOM)
+		inset.add_theme_constant_override("margin_" + side, RING_ROOM)
+	_card_scroll.add_child(inset)
+	inset.add_child(row)
+	ThemeRules.touch_scroll(_card_scroll)
+	return reach
+
+## Whether the cards' row is wider than its view (it scrolls).
+func cards_scroll() -> bool:
+	return _card_scroll.get_h_scroll_bar().max_value > _card_scroll.size.x + 0.5
+
 ## Whether an entry is drawn as a sprig tile (else an item card).
 static func is_sprig(entry: Dictionary) -> bool:
 	return str(entry.get("tier", "")) == "sprig"
@@ -153,6 +191,7 @@ func render(model: Dictionary, line: String) -> void:
 		_key = key
 		_fill_seg(model.get("kinds", []))
 		_fill(_cards, cards.map(_card))
+		_even_cards()
 		_fill(_sprigs, sprigs.map(_tile))
 		_fill(_sets, sets.map(_set_card))
 		_each.text = _each_line(sprigs)
@@ -257,6 +296,7 @@ func _card(entry: Dictionary) -> Control:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.clip_text = true
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.name = "OrchardName"
 	title.add_child(label)
 	var tag := ShopKit.text(tier_word(str(entry.tier)).to_upper(), 13, OrchardSurface.TEXT_SOFT, ShopKit.bold_font())
 	tag.name = "OrchardTag"
@@ -360,7 +400,19 @@ static func _struck(text: String, font_size: int) -> Control:
 	label.add_child(line)
 	return label
 
-## The ring on the picked card, tile or set; the rest without it.
+## Every item card as wide as the widest full name and tag need (at least
+## CARD_NARROW), so the cards match and no name is cut short.
+func _even_cards() -> void:
+	var least := CARD_NARROW
+	for card: Node in _cards.get_children():
+		var label: Label = card.find_child("OrchardName", true, false)
+		var tag: Label = card.find_child("OrchardTag", true, false)
+		var name_width := label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
+		least = maxf(least, ceilf(name_width + tag.get_combined_minimum_size().x + CARD_NAME_GAP))
+	for card: Node in _cards.get_children(): (card as Control).custom_minimum_size.x = least
+
+## The ring on the picked card, tile or set; the rest without it. A newly
+## picked card scrolls into view.
 func _restyle() -> void:
 	var picked := str(_model.get("selected", ""))
 	for box: Container in [_cards, _sprigs, _sets]:
@@ -370,6 +422,22 @@ func _restyle() -> void:
 			(node as Button).set_pressed_no_signal(on)
 			var ring: Node = node.find_child("OrchardRing", true, false)
 			if ring != null: (ring as Control).visible = on
+			if on and box == _cards and picked != _scrolled_to:
+				_scrolled_to = picked
+				_show_card.call_deferred(node)
+
+## Scrolls the cards' row so `card` and its ring show whole, once the row is
+## laid out (a frame on).
+func _show_card(card: Control) -> void:
+	if not is_inside_tree(): return
+	await get_tree().process_frame
+	if not is_instance_valid(card) or not card.is_inside_tree(): return
+	var scroll := _card_scroll.get_h_scroll_bar()
+	# In the view's own frame the cards sit RING_ROOM in, the ring 6 out from each.
+	var left := card.position.x
+	var right := card.position.x + card.size.x + RING_ROOM * 2
+	if left < scroll.value: scroll.value = left
+	elif right > scroll.value + _card_scroll.size.x: scroll.value = right - _card_scroll.size.x
 
 ## A leaf (the boards' leaf: a pointed oval with its midrib and a soft shine),
 ## in a unit frame built once and only moved and scaled when drawn.

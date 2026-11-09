@@ -202,6 +202,7 @@ func _run() -> void:
 	await _orchard_tab()
 	await _orchard_branch()
 	await _fits_every_screen()
+	await _orchard_scrolls()
 	await _orchard_confirm()
 	await _orchard_short()
 	await _orchard_blocked_and_refused()
@@ -1083,13 +1084,82 @@ func _fits_every_screen() -> void:
 	await _frames(2)
 
 ## Collects each visible button, label or panel under `node` that leaves
-## `inside`, skipping what a scroll holds out of view on purpose.
+## `inside`, skipping what a scroll holds out of view on purpose. A row that
+## scrolls sideways (the Orchard's cards) keeps its view inside; what it holds
+## may run past, clipped by the view.
 func _outside(node: Node, inside: Rect2, found: Array) -> void:
 	if node is ScrollContainer and ((node as ScrollContainer).get_v_scroll_bar().max_value > (node as Control).size.y + 0.5): return
+	if node is ScrollContainer and (node as Control).is_visible_in_tree() and ((node as ScrollContainer).get_h_scroll_bar().max_value > (node as Control).size.x + 0.5):
+		var view := (node as Control).get_global_rect()
+		if not inside.encloses(view): found.append("%s view %s" % [node.name, view])
+		return
 	if node is Control and (node as Control).is_visible_in_tree() and (node is Button or node is Label or node is PanelContainer or node is TextureRect):
 		var rect := (node as Control).get_global_rect()
 		if rect.has_area() and not inside.encloses(rect): found.append("%s %s" % [node.name, rect])
 	for child: Node in node.get_children(): _outside(child, inside, found)
+
+## Where the Orchard's cards don't all fit (a 16:9 phone) they keep one size
+## and their full names and the row scrolls sideways, the next card peeking in
+## at the edge; the wheel scrolls it, a tap on a card still picks it on the
+## first tap, and a card picked off to the side scrolls into view. Where every
+## card fits nothing scrolls.
+func _orchard_scrolls() -> void:
+	var t := await _orchard_setup([], 101)
+	# In its own view, so a tap and the wheel go through the GUI as a finger's
+	# would (the stand-in host's empty game layer lets them through).
+	var screen := SubViewport.new()
+	screen.size = Vector2i(1600, 720)
+	root.add_child(screen)
+	t.host.reparent(screen)
+	t.host.ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var page: Control = t.host.overlay
+	t.flow.set_tab("orchard")
+	page.size = Vector2(1600, 720)
+	await _frames(4)
+	var orchard: Control = page.find_child("WardrobeOrchard", true, false)
+	_check(not orchard.cards_scroll(), "At 1600 every Orchard card fits and nothing scrolls")
+	screen.size = Vector2i(1280, 720)
+	page.size = Vector2(1280, 720)
+	await _frames(4)
+	var scroll: ScrollContainer = page.find_child("OrchardItemsScroll", true, false)
+	var view := scroll.get_global_rect()
+	var cards: Array = page.find_child("OrchardItems", true, false).get_children()
+	var width: float = (cards[0] as Control).size.x
+	_check(orchard.cards_scroll() and cards.size() == 5 and cards.all(func(card: Control) -> bool: return is_equal_approx(card.size.x, width)), "At 1280 the cards keep one size and their row scrolls")
+	for card: Control in cards:
+		var label: Label = card.find_child("OrchardName", true, false)
+		var full := label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
+		_check(full <= label.size.x + 0.5, "%s shows its full name: %.0f in %.0f" % [card.name, full, label.size.x])
+	var peeking := cards.filter(func(card: Control) -> bool: return card.get_global_rect().position.x < view.end.x and card.get_global_rect().end.x > view.end.x)
+	_check(peeking.size() == 1, "and the next card peeks in at the right edge: %s" % [peeking.map(func(card: Control) -> String: return card.name)])
+	var tap_at := (cards[1] as Control).get_global_rect().get_center()
+	for pressed: bool in [true, false]:
+		var tap := InputEventMouseButton.new()
+		tap.position = tap_at
+		tap.global_position = tap_at
+		tap.button_index = MOUSE_BUTTON_LEFT
+		tap.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+		tap.pressed = pressed
+		screen.push_input(tap, true)
+	await _frames(2)
+	_check(t.flow.model().selected == "blueberry_hood", "One tap on a card picks it: " + str(t.flow.model().selected))
+	var wheel := InputEventMouseButton.new()
+	wheel.position = view.get_center()
+	wheel.global_position = view.get_center()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.factor = 1.0
+	wheel.pressed = true
+	screen.push_input(wheel, true)
+	await _frames(2)
+	_check(scroll.scroll_horizontal > 0, "The wheel scrolls the row sideways: %d" % scroll.scroll_horizontal)
+	scroll.scroll_horizontal = 0
+	await _frames(2)
+	orchard.item_chosen.emit("apple_leaf")
+	await _frames(4)
+	var last := (cards[4] as Control).get_global_rect()
+	_check(t.flow.model().selected == "apple_leaf" and scroll.get_global_rect().encloses(last), "A card picked off to the side scrolls into view: %s in %s" % [last, scroll.get_global_rect()])
+	screen.queue_free()
+	await _frames(2)
 
 ## Board 4b: the confirm card in Fruits, and a Fruit purchase.
 func _orchard_confirm() -> void:
