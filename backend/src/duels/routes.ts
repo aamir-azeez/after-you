@@ -326,10 +326,14 @@ async function challenge(env: Env, player: string, input: unknown, now: number, 
   if (duels.some(duel => duel.kind === "friend" && isOpen(duel) && duel.board === key && duel.sides.some(side => side !== null && samePair(side, bKeys)))) throw new ApiError(409, "duel_already_open");
   const known = await knownAcross(env, a, b);
   // Each side starts in the looks its members' party rows keep (read above); turns bring their room's looks.
-  const duel = duelsAt(env, key).create(newFriendDuel({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
-    a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), b: blankSide(b, bKeys.pair_key, shownLooks ? theirs.looks : undefined, bKeys.account_key), known }, now));
-  // Each of the starting pair pays 1 energy while ENERGY is on, given back if the board refuses (energy-charge.ts).
-  const { value: made, energy } = await withEnergy(env, player, a, duelId, async () => { const made = await duel; if (!made) throw new ApiError(503, "duels_busy"); return made; });
+  // Each of the starting pair pays 1 energy while ENERGY is on, given back if the board refuses (energy-charge.ts). The board
+  // is asked only inside, after the charge: an RPC starts when it is called, so it must not be called before.
+  const { value: made, energy } = await withEnergy(env, player, a, duelId, async () => {
+    const made = await duelsAt(env, key).create(newFriendDuel({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
+      a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), b: blankSide(b, bKeys.pair_key, shownLooks ? theirs.looks : undefined, bKeys.account_key), known }, now));
+    if (!made) throw new ApiError(503, "duels_busy");
+    return made;
+  });
   await addRefs(env, [...a, ...b], { duel_id: duelId, board: key, at: now }, now, duels);
   // Only now does every lobby list it.
   await announceLobby(env, [...a, ...b].filter(id => id !== player), made.updated_ms, duelId);

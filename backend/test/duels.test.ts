@@ -1659,3 +1659,40 @@ describe("payout receipts on an ended duel", () => {
     expect(await lines(a2)).toEqual([["ghostwin:" + RELAY, 100]]);
   }, 60_000);
 });
+
+// Duel energy through the real routes (pollen/energy.ts, duels/energy-charge.ts), ENERGY on.
+describe("duel energy on starts and accepts", () => {
+  const ENERGY_ON = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "ENERGY"] }) };
+  const spends = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) => ledgerLines(ctx.storage, "energy:", 64).length);
+  const drain = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) => {
+    const { spendEnergy } = await import("../src/pollen/energy");
+    for (let n = 0; n < 5; n++) spendEnergy(ctx.storage, "drain-" + n, Date.now());
+  });
+  const send = (from: Account, to: Account, key: string) => call("/v1/duels/challenge", "POST", from, { schema_version: 1, idempotency_key: key, friend: to.player_id, board: RELAY }, ENERGY_ON);
+  it("charges each of the starting pair once, a retry nothing more, and the accepting pair once each", async () => {
+    const { a1, a2, b1, b2 } = await pairs();
+    const key = crypto.randomUUID();
+    const sent = await ok<{ duel: DuelView; energy: { energy: number } }>(send(a1, b1, key));
+    expect(sent.energy).toMatchObject({ energy: 4 });
+    await ok(send(a1, b1, key));
+    expect([await spends(a1), await spends(a2), await spends(b1), await spends(b2)]).toEqual([1, 1, 0, 0]);
+    const accepted = await ok<{ duel: DuelView; energy: { energy: number } }>(call(`/v1/duels/${RELAY}/${sent.duel.duel_id}/accept`, "POST", b1, { schema_version: 1 }, ENERGY_ON));
+    expect(accepted.energy).toMatchObject({ energy: 4 });
+    // Accepting again answers the running duel and charges nothing.
+    await ok(call(`/v1/duels/${RELAY}/${sent.duel.duel_id}/accept`, "POST", b2, { schema_version: 1 }, ENERGY_ON));
+    expect([await spends(b1), await spends(b2)]).toEqual([1, 1]);
+  });
+  it("refuses a start whose partner has none before the board is asked, and nobody keeps a spend", async () => {
+    const { a1, a2, b1 } = await pairs();
+    await drain(a2);
+    const key = crypto.randomUUID();
+    const refused = await send(a1, b1, key);
+    expect([refused.status, await errorCode(refused)]).toEqual([409, "partner_energy_empty"]);
+    expect(await spends(a1)).toBe(0);
+    expect((await lobby(a1, ENERGY_ON)).duels).toEqual([]);
+    // Nothing on the board either: the board is asked only after the charge.
+    const { duelsAt } = await import("../src/duels/routes");
+    const duelId = (await digest(`after-you duel v1\n${a1.player_id}\n${key}`)).slice(0, 32);
+    expect(await duelsAt(Object.assign({ ...env, ...openCostly(env) }, ENERGY_ON) as Env, RELAY).read([duelId], a1.player_id)).toEqual([]);
+  });
+});
