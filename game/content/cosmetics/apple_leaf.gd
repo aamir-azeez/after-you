@@ -8,4 +8,6 @@ const DATA := {
 	"name": PlayerCopy.COSMETIC_APPLE_LEAF,
 	"art": "res://presentation/pip_wear/apple_leaf.gd",
 	"set": "orchard",
+	## The big leaf stands above and beside the head.
+	"tall": true,
 }

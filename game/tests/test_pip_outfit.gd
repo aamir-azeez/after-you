@@ -9,6 +9,8 @@ extends SceneTree
 ##   daisy sits outside the head, and a glow sprite sits outside it too;
 ## - a body item may swap the torso and feet meshes and add pieces, never the
 ##   head, and every gameplay value stays identical;
+## - a tall cap lifts a carried seed, a big leaf lifts it with the leaf's
+##   own lift, and off again the seed sits where it did;
 ## - moving parts step at the idle card rate of the pip's own clock and hold
 ##   still under Reduce motion;
 ## - shared meshes and materials are released at shutdown.
@@ -63,6 +65,7 @@ func _run() -> void:
 	_in_frame()
 	_body_shape()
 	_animation()
+	_seed_lift()
 	_released()
 	for child: Node in root.get_children():
 		if child is Spirit: child.free()
@@ -422,6 +425,29 @@ func _animation() -> void:
 	other.free()
 	tide.free()
 	orchard.free()
+
+func _seed_lift() -> void:
+	var plain := _spirit()
+	var capped := _spirit()
+	var leafy := _spirit()
+	var straw_leafy := _spirit()
+	capped.wear(Outfit.of("fruit_cap", true))
+	leafy.wear(Outfit.of("apple_leaf", true))
+	straw_leafy.wear(Outfit.from({"hat": "straw_hat", "leaf": "apple_leaf"}, true))
+	var spirits: Array[Node3D] = [plain, capped, leafy, straw_leafy]
+	for each: Node3D in spirits:
+		each.carrying_seed = true
+		each.advance_motion(Vector3.ZERO, 0.001, true)
+	var base: float = plain.carry_anchor_position().y
+	_check(is_equal_approx(capped.carry_anchor_position().y - base, load("res://presentation/pip_wear/fruit_cap.gd").SEED_LIFT), "The Fruit cap lifts a carried seed clear of its stem: %.3f" % (capped.carry_anchor_position().y - base))
+	_check(is_equal_approx(leafy.carry_anchor_position().y, base), "The Apple leaf alone leaves the seed where it was")
+	_check(is_equal_approx(straw_leafy.carry_anchor_position().y - base, 0.075), "and lifts it with the leaf through the Straw hat's brim: %.3f" % (straw_leafy.carry_anchor_position().y - base))
+	capped.wear({})
+	capped.advance_motion(Vector3.ZERO, 0.001, true)
+	_check(is_equal_approx(capped.carry_anchor_position().y, base), "Off again, the seed sits where it did")
+	var leaf_triangles := _triangles(leafy.sprout.mesh)
+	_check(leaf_triangles <= MAX_TRIANGLES, "The Apple leaf stays within about 600 triangles: %d" % leaf_triangles)
+	for each: Node3D in spirits: each.free()
 
 func _released() -> void:
 	var spirit := _spirit()

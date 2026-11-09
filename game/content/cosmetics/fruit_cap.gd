@@ -10,4 +10,6 @@ const DATA := {
 	"set": "orchard",
 	## Its stem and leaf stand above the head.
 	"tall": true,
+	## The leaf pokes up through the dome.
+	"leaf_lift": 0.03,
 }

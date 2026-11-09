@@ -131,6 +131,8 @@ var _placing := false
 var _wearing: RefCounted = null
 ## How much higher the leaf sits while an item lifts it.
 var _leaf_lift := Vector3.ZERO
+## How much higher a carried seed sits while an item lifts it (pip_outfit.gd lift_seed).
+var _seed_lift := 0.0
 ## A Home keepsake ride carrying the spirit (presentation/keepsakes/): a hop's
 ## crouch, stretch and landing squash, a seated tuck and a lean, laid over the
 ## pose. The ride moves the spirit itself; these only shape the body.
@@ -202,9 +204,11 @@ func wear(outfit: Dictionary) -> void:
 		_wearing.undress()
 		_wearing = null
 	_leaf_lift = Vector3.ZERO
+	_seed_lift = 0.0
 	if clean.is_empty(): return
 	_wearing = PipOutfit.dress(self, clean)
 	_leaf_lift = Vector3(0, _wearing.leaf_lift, 0)
+	_seed_lift = _wearing.seed_lift
 
 ## What the spirit wears ({} for the default look).
 func outfit() -> Dictionary:
@@ -687,7 +691,7 @@ func carry_anchor_position() -> Vector3:
 	if carrying_seed and not _reduced_motion:
 		wobble=Vector3(sin(stride_phase+expression_phase)*0.022*motion_blend+sin(_expression_time*1.8+expression_phase)*0.004*_idle_blend,0,cos(stride_phase+expression_phase)*0.012*motion_blend)
 	# The wider Lighthouse lens also clears the sprout beside the head.
-	var carry_height := 0.925+carried_radius+maxf(0.0,carried_radius-0.13)*0.5
+	var carry_height := 0.925+carried_radius+maxf(0.0,carried_radius-0.13)*0.5+_seed_lift
 	return facing.transform*(upper_body.transform*(Vector3(0,carry_height,0)+wobble))+Vector3(0,seed_hop,0)
 
 func photo_anchor_height() -> float:

@@ -19,6 +19,10 @@ extends RefCounted
 ## - set_face(shader, extra): the head's own colours from a variant of the
 ##   face shader (spirit_face.gdshaderinc); the eyes and cheeks stay drawn by
 ##   the shared body of that shader.
+## - lift_seed(metres, with_leaf): a carried seed sits `metres` higher while
+##   the item is worn (a tall cap), plus the leaf's lift with `with_leaf` (a
+##   big leaf that rises with it); the largest ask wins. The seed's place is
+##   presentation only, as everything here is.
 ## - animate(step): step(look, seconds) poses the item's moving parts (look is
 ##   this object, passed in so a step never holds it). It runs at the
 ##   idle card rate (ANIMATION_HZ) of the pip's own clock, so a replay, a still
@@ -40,6 +44,12 @@ var spirit: Node3D
 var outfit: Dictionary
 ## Metres the leaf sits higher (SpiritVisual reads it).
 var leaf_lift := 0.0
+## Metres a carried seed sits higher (SpiritVisual reads it), worked out in
+## dress() from the art scripts' lift_seed() asks.
+var seed_lift := 0.0
+var _seed_own := 0.0
+var _seed_with_leaf := 0.0
+var _seed_follows_leaf := false
 var _nodes: Array[Node] = []
 var _undo: Array[Callable] = []
 var _steps: Array[Callable] = []
@@ -54,6 +64,7 @@ static func dress(target: Node3D, worn: Dictionary) -> RefCounted:
 		if path.is_empty() or not ResourceLoader.exists(path): continue
 		made.apply_art(load(path))
 	made.leaf_lift = Outfit.leaf_lift(worn)
+	made.seed_lift = maxf(made._seed_own, made._seed_with_leaf + made.leaf_lift if made._seed_follows_leaf else 0.0)
 	made._pose(0.0)
 	return made
 
@@ -134,6 +145,13 @@ func set_face(shader: Shader, extra: Dictionary = {}) -> void:
 ## Sets one of the face variant's own parameters (from an animate() step).
 func set_face_parameter(key: StringName, value: Variant) -> void:
 	spirit.face_art.material.set_shader_parameter(key, value)
+
+## Asks for a carried seed to sit `metres` higher, plus the leaf's lift with `with_leaf`.
+func lift_seed(metres: float, with_leaf: bool = false) -> void:
+	if with_leaf:
+		_seed_follows_leaf = true
+		_seed_with_leaf = maxf(_seed_with_leaf, metres)
+	else: _seed_own = maxf(_seed_own, metres)
 
 func animate(step: Callable) -> void:
 	_steps.append(step)
