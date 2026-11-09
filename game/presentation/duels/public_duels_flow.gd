@@ -22,6 +22,10 @@ extends RefCounted
 ##   A spot someone took first redraws its row with a note; a duel that closed
 ##   leaves the list with a word. A joined duel opens at once.
 ## - post(): Start a duel's "Anyone" (duel_challenge_page.gd), with its key.
+## While duel energy is on (the duels flow's energy()), Join, Join and play and
+## Post a duel wear the cost chip; a join tapped with none left opens the
+## out-of-energy card in place of the join card, and a refusal for energy is
+## answered there (a partner without energy is a note under the row's Join).
 ## - stranger(): a stranger's card from the duel page: faces, Report, Block
 ##   (leaving when it's your partner) and Add friend once the duel is over.
 ## Each request is refused at once while the phone is offline (offline_hold.gd),
@@ -232,6 +236,7 @@ func _show_list() -> void:
 	page.scope = _scope if _scope == "all" or page.boards.any(func(board: Array) -> bool: return board[0] == _scope) else "all"
 	page.sort = _sort
 	page.limit = flow.client().limit("friend")
+	page.energy_cost = flow.energy().shown()
 	page.known = _known
 	page.refresh_requested.connect(func() -> void: _read(page, 0, true))
 	page.more_requested.connect(func(control: Control) -> void: page.tap(control, func() -> void: await _read(page, page.next_page())))
@@ -320,18 +325,24 @@ func _ask_join(page: CanvasLayer, row: Dictionary, seat: int, control: Control) 
 	if not reason.is_empty():
 		host()._toast(ListPage.reason_text(reason, page.partner_name, page.limit))
 		return
+	if flow.energy().blocks(page, control): return
 	var partner := _partner()
-	var names := {"title": _chapter_title(str(row.chapter)), "partner": str(partner.get("name", "")), "partner_look": partner.get("look", {})}
+	var names := {"title": _chapter_title(str(row.chapter)), "partner": str(partner.get("name", "")), "partner_look": partner.get("look", {}), "energy_cost": page.energy_cost}
 	# A tapped ring is sent as tapped; Join lets the server pick again, so a spot taken meanwhile finds the next one.
 	page.hold_modal(Sheets.join(page.root, row, int(spot.seat), page.joining, names, func() -> void:
-		page.tap(control, func() -> void: await _join(page, row, seat, page.joining))))
+		page.tap(control, func() -> void: await _join(page, row, seat, page.joining, false, control))))
 
-func _join(page: CanvasLayer, row: Dictionary, seat: int, joining: String, retried := false) -> void:
+func _join(page: CanvasLayer, row: Dictionary, seat: int, joining: String, retried := false, control: Control = null) -> void:
 	if OfflineHold.refuse(host()._toast): return
 	var asked := "join|%s|%d|%s" % [row.duel_id, seat, joining]
 	var answer := await _keyed(asked, func(key: String) -> Dictionary: return await client().join(str(row.board), str(row.duel_id), joining, seat, key))
 	if not is_instance_valid(page) or not page.alive() or not flow.is_open(): return
-	if _rules_first(answer, retried, func() -> void: if is_instance_valid(page) and page.alive(): await _join(page, row, seat, joining, true)): return
+	if _rules_first(answer, retried, func() -> void: if is_instance_valid(page) and page.alive(): await _join(page, row, seat, joining, true, control)): return
+	# The partner's wait shows under the row's Join, the list's own note; an empty meter opens its card.
+	if str(answer.get("code", "")) == "partner_energy_empty":
+		page.update_row(str(row.duel_id), row, flow.energy().waiting_words(str(_partner().get("name", ""))))
+		return
+	if flow.energy().refused(page, answer, control): return
 	if answer.get("ok", false):
 		page.close()
 		flow._refresh()
@@ -351,9 +362,9 @@ func _join(page: CanvasLayer, row: Dictionary, seat: int, joining: String, retri
 
 ## Start a duel's Post duel: `joining` "alone" or "party" on `chapter`. A switch turned off,
 ## or rules not yet accepted, go through the first-time card first; a posted duel opens at once.
-func post(page: CanvasLayer, joining: String, chapter: String, retried := false) -> void:
+func post(page: CanvasLayer, joining: String, chapter: String, retried := false, control: Control = null) -> void:
 	if OfflineHold.refuse(host()._toast): return
-	var again := func() -> void: if is_instance_valid(page) and page.alive(): await post(page, joining, chapter, true)
+	var again := func() -> void: if is_instance_valid(page) and page.alive(): await post(page, joining, chapter, true, control)
 	if not switched_on():
 		_first_time(again)
 		return
@@ -362,6 +373,7 @@ func post(page: CanvasLayer, joining: String, chapter: String, retried := false)
 	if not is_instance_valid(page) or not page.alive() or not flow.is_open(): return
 	if _rules_first(answer, retried, again): return
 	if not answer.get("ok", false):
+		if flow.energy().refused(page, answer, control, str(_partner().get("name", ""))): return
 		host()._toast(_failure_text(answer))
 		_partner_refused(answer)
 		return

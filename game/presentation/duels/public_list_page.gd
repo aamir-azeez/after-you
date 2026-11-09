@@ -14,6 +14,7 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## a first tap always registers and a second one waits.
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
+const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 const Spots = preload("res://services/public_duel_spots.gd")
 const Seats = preload("res://presentation/duels/public_seats.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -46,6 +47,8 @@ var boards: Array = []
 var known: Callable
 ## The shared limit, for its greyed line.
 var limit := 10
+## Whether starting and joining cost energy (services/duel_energy.gd): the cost chips show only then.
+var energy_cost := false
 var _rows: Array = []
 var _notes: Dictionary = {}
 var _state := "loading"
@@ -72,6 +75,8 @@ func header_action() -> Control:
 	Kit.icon_on(post, PLUS_ICON, false, 22)
 	post.pressed.connect(func() -> void: post_requested.emit(post))
 	OfflineHold.hold(post)
+	# Posting costs energy, as Start a duel does: the chip in the plus's place.
+	if energy_cost: EnergyChip.on_button(post, 20)
 	return post
 
 func opened() -> void:
@@ -280,6 +285,7 @@ func _row(row: Dictionary) -> Control:
 	join.size_flags_horizontal = Control.SIZE_SHRINK_END
 	join.disabled = greyed
 	join.pressed.connect(func() -> void: join_requested.emit(row, -1, join))
+	if energy_cost: EnergyChip.on_button(join, 18)
 	right.add_child(join)
 	if not greyed: OfflineHold.hold(join)
 	var under := str(_notes.get(row.duel_id, "")) if not _notes.get(row.duel_id, "").is_empty() else reason_text(reason, partner_name, limit)

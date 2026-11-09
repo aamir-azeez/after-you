@@ -14,6 +14,10 @@ extends VBoxContainer
 ##   lobby's limit line above them (services/duels_client.gd ghost_races_full).
 ## An empty board says so with the board's own line and offers Our run.
 ##
+## While duel energy is on (the page's energy_cost), each Race and Our run
+## wears the cost chip (kit/energy_chip.gd) in place of the flag on a narrow
+## screen, so the column keeps its width.
+##
 ## It draws what it is given and asks for nothing: the flow
 ## (presentation/duels/duels_flow.gd) reads the board and races, so a tap waits
 ## on the page's BusyTapGate like every other Race.
@@ -24,6 +28,7 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
 const DashedBox = preload("res://presentation/kit/dashed_box.gd")
+const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -44,6 +49,8 @@ signal race_requested(source: String, entry_id: Variant, control: Control)
 
 var chapter_key := ""
 var compact := false
+## Whether starting and joining cost energy (services/duel_energy.gd): the cost chips show only then.
+var energy_cost := false
 ## The sheet holding this picker (presentation/in_game_modal.gd).
 var modal: Control
 var _banner: Control
@@ -61,6 +68,7 @@ static func open(page: CanvasLayer, chapter: String, partner: String, opener: Co
 	picker.name = "RacePicker"
 	picker.chapter_key = chapter
 	picker.compact = page.compact
+	picker.energy_cost = bool(page.get("energy_cost"))
 	picker._build(sheet, PlayerCopy.RACE_PICK_WITH % partner if not partner.is_empty() else PlayerCopy.DUELS_GHOST_SUBTITLE)
 	return picker
 
@@ -105,7 +113,9 @@ func show_board(rows: Array, mine_by_id: Dictionary, full: bool, limit: int, dev
 	for row: Dictionary in rows:
 		var pending := bool(row.get("pending", false))
 		var race := Callable() if full or pending else func(control: Control): race_requested.emit("board", row.entry_id, control)
-		_list.add_child(Rows.ranked(row, mine_by_id.has(row.entry_id), compact, [Rows.race_cell(race, compact, pending)]))
+		var cell := Rows.race_cell(race, compact, pending)
+		if not pending: _cost(cell)
+		_list.add_child(Rows.ranked(row, mine_by_id.has(row.entry_id), compact, [cell]))
 	if not rows.is_empty(): _fit(rows.size() * ROW_HEIGHT + (rows.size() - 1) * ROW_GAP, full)
 	modal.refresh_focus_order()
 
@@ -135,7 +145,14 @@ func _our_run(ticks: int, full: bool) -> Button:
 		button.disabled = true
 		DashedBox.grey(button)
 	else: button.pressed.connect(func(): race_requested.emit("developer", null, button))
+	_cost(button)
 	return button
+
+## The cost chip on a Race, while energy is on; on a narrow screen it takes the flag's place.
+func _cost(button: Control) -> void:
+	if not energy_cost or not button is Button: return
+	if compact: (button as Button).icon = null
+	EnergyChip.on_button(button, 18)
 
 ## The list is `tall`, and scrolls once that no longer fits under the sheet's
 ## heading (and the limit bar while `banner`).

@@ -13,7 +13,10 @@ extends RefCounted
 ##   (presentation/short_card_buy.gd), and a line under it for how a purchase ended. It never estimates how long earning takes.
 ## Both cards take a currency (Fruits board 4b): a Fruit purchase shows the
 ## Fruit on every row and a plum Buy, and short_of() is the one short card for
-## Pollen and Fruits (an Orchard item, Sunshine, converting).
+## Pollen and Fruits (an Orchard item, Sunshine, converting, the energy refill).
+## confirm_of() is the one confirm card: an item's (confirm()), Sunshine's and
+## the duel energy refill's (board-10-energy-refill: no pip, the energy line on
+## top, a peach Refill).
 const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
@@ -46,18 +49,40 @@ const NO_BUNDLE_TIERS := []
 ## "Buy for [Fruit] 50" (board 4b); Pollen keeps board 5b. Returns the modal.
 ## `art`, when given, stands where the pip would (Sunshine's sun) and no pip is made; `note` is the line under the title.
 static func confirm(parent: Control, id: String, item_name: String, cost: int, balance: int, buy: Callable, opener: Control = null, currency: String = "", outfit: Dictionary = {}, art: Control = null, note: String = PlayerCopy.WARDROBE_CONFIRM_NOTE) -> Control:
-	var modal: Control = InGameModal.open(parent, "WardrobeConfirm", PlayerCopy.WARDROBE_CONFIRM_TITLE % item_name, note, opener)
+	return confirm_of(parent, {"id": id, "item_name": item_name, "cost": cost, "balance": balance, "buy": buy, "opener": opener, "currency": currency, "outfit": outfit, "art": art, "note": note})
+
+## The one confirm card, from a spec (confirm() is the item's):
+## - cost, balance, buy, opener, currency as confirm() takes them;
+## - id, item_name, outfit, art: what stands at the left (`art`, else a pip in
+##   the item); `bare` true leaves the left empty, the rows taking the card;
+## - title (default "Buy [item_name]?") and note, the line under it ("" for none);
+## - lead: [words, Control], a row above You have (the energy refill's
+##   "Energy [now] to [full]", board-10-energy-refill);
+## - row: the cost row's words (default item_name);
+## - action: the button's words before a Fruit price (default "Buy for"), and
+##   peach: the peach button with plum ink instead of the plum one.
+## Returns the modal ("WardrobeConfirm").
+static func confirm_of(parent: Control, spec: Dictionary) -> Control:
+	var item_name := str(spec.get("item_name", ""))
+	var cost := int(spec.get("cost", 0))
+	var balance := int(spec.get("balance", 0))
+	var buy: Callable = spec.get("buy", Callable())
+	var currency := str(spec.get("currency", ""))
+	var title := str(spec.get("title", PlayerCopy.WARDROBE_CONFIRM_TITLE % item_name))
+	var modal: Control = InGameModal.open(parent, "WardrobeConfirm", title, str(spec.get("note", PlayerCopy.WARDROBE_CONFIRM_NOTE)), spec.get("opener") as Control)
 	modal.widen(600.0)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 18)
 	modal.content.add_child(row)
+	var art: Control = spec.get("art") as Control
 	if art != null:
 		art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(art)
-	else:
+	elif not bool(spec.get("bare", false)):
 		var pip := PipAvatar.new(true, SpiritLook.PEACH, Vector2(96, 118), true)
 		pip.name = "WardrobeConfirmPip"
-		pip.outfit = outfit if not outfit.is_empty() else Outfit.of(id)
+		var outfit: Dictionary = spec.get("outfit", {})
+		pip.outfit = outfit if not outfit.is_empty() else Outfit.of(str(spec.get("id", "")))
 		pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(pip)
 	var table := GridContainer.new()
@@ -67,16 +92,21 @@ static func confirm(parent: Control, id: String, item_name: String, cost: int, b
 	table.add_theme_constant_override("h_separation", 18)
 	table.add_theme_constant_override("v_separation", 10)
 	row.add_child(table)
+	var lead: Variant = spec.get("lead")
+	if lead is Array and lead.size() == 2 and lead[1] is Control: _line(table, str(lead[0]), lead[1])
 	_line(table, PlayerCopy.WARDROBE_YOU_HAVE, ShopKit.amount(balance, 18, CREAM, "", "", currency))
-	_line(table, item_name, ShopKit.amount(cost, 18, CREAM, PlayerCopy.WARDROBE_MINUS % "", "", currency))
+	_line(table, str(spec.get("row", item_name)), ShopKit.amount(cost, 18, CREAM, PlayerCopy.WARDROBE_MINUS % "", "", currency))
 	_line(table, PlayerCopy.WARDROBE_LEFT, ShopKit.amount(balance - cost, 18, CREAM, "", "", currency))
 	var button: Button = modal.add_actions(PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(cost), buy, PlayerCopy.DISPLAY_NAME_CANCEL)
 	if currency == FRUITS:
-		# Buy for [Fruit] 50 on plum, the words and the mark inside the one button.
+		# Buy for [Fruit] 50 on plum (or peach), the words and the mark inside the one button.
+		var action := str(spec.get("action", PlayerCopy.WARDROBE_BUY_FOR))
+		var peach := bool(spec.get("peach", false))
 		button.text = ""
-		ShopKit.set_button_content(button, buy_words(cost, 20, OrchardSurface.TEXT, currency))
-		button.accessibility_name = PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(cost)
-		OrchardSurface.plum_button(button)
+		ShopKit.set_button_content(button, buy_words(cost, 20, OrchardSurface.PEACH_INK if peach else OrchardSurface.TEXT, currency, action))
+		button.accessibility_name = "%s %s" % [action, PollenMoney.grouped(cost)]
+		if peach: OrchardSurface.peach_button(button)
+		else: OrchardSurface.plum_button(button)
 	# A purchase sounds its own chord once the server confirms it.
 	ButtonTicks.quiet(button)
 	var cancel: Button = modal.find_child("ModalCancel", true, false)
@@ -84,12 +114,12 @@ static func confirm(parent: Control, id: String, item_name: String, cost: int, b
 	button.name = "WardrobeConfirmBuy"
 	return modal
 
-## "Buy for [mark] 50": the words, then the amount in its currency.
-static func buy_words(cost: int, font_size: int, color: Color, currency: String = "") -> HBoxContainer:
+## "Buy for [mark] 50": the words (`words`, "Buy for" unless given), then the amount in its currency.
+static func buy_words(cost: int, font_size: int, color: Color, currency: String = "", words: String = PlayerCopy.WARDROBE_BUY_FOR) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.name = "WardrobeBuyContent"
 	row.add_theme_constant_override("separation", 10)
-	row.add_child(ShopKit.text(PlayerCopy.WARDROBE_BUY_FOR, font_size, color, ShopKit.bold_font()))
+	row.add_child(ShopKit.text(words, font_size, color, ShopKit.bold_font()))
 	row.add_child(ShopKit.amount(cost, font_size, color, "", "", currency))
 	return row
 

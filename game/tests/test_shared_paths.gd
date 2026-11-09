@@ -8,7 +8,8 @@ extends SceneTree
 ## The scans read every game script with its comment lines taken out, so a
 ## comment naming the shared path never counts as using it:
 ## (a) pips: PipAvatar with `own`, or a look source; worlds through wear_slots;
-## (b) wallet replies and spend receipts: services/wallet_reply.gd alone feeds the stores, the Fruit store too;
+## (b) wallet replies, spend receipts and duel start replies: services/wallet_reply.gd alone feeds the
+##     stores, the Fruit store and the duel energy meter too;
 ## (c) feature switches: capability fields are read in relay_online_session.gd;
 ## (d) offline: a screen that reaches the server holds its buttons (offline_hold.gd);
 ## (e) names: FriendNicknames.display_name, the leaderboard pair title, and in a public
@@ -38,6 +39,10 @@ extends SceneTree
 ##     (no FruitMark.make or beside anywhere else), and each screen that takes a
 ##     mark from it is in CURRENCY_MARK_SURFACES with where. Older Pollen-only
 ##     screens still take the grain from kit/pollen_mark.gd (test_pollen_mark.gd).
+## (q) duel energy: kit/energy_chip.gd alone makes the cost chip and kit/sprout_mark.gd
+##     alone draws a sprout (the plan's greens appear nowhere else); each screen
+##     that wears the chip is in ENERGY_CHIP_SURFACES and each that shows the meter
+##     (presentation/duels/energy_meter.gd) in ENERGY_METER_SURFACES, with where.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -253,6 +258,24 @@ const CURRENCY_MARK_SURFACES := {
 	"res://presentation/sunshine_card.gd": "the Sunshine card's price (Fruits board 7)",
 }
 
+## (q) The one cost chip, the one sprout and its colours, the one meter, and the screens that show them.
+const ENERGY_CHIP := "res://presentation/kit/energy_chip.gd"
+const SPROUT_MARK := "res://presentation/kit/sprout_mark.gd"
+const SPROUT_COLOURS := ["d9f59d", "8fca5c", "7fae55", "5f8478", "f2ffd8", "e9ffc4"]
+const ENERGY_CHIP_SURFACES := {
+	"res://presentation/duels/duels_screen.gd": "Start a duel, Accept and the Race a recorded run row (board-10-energy-lobby)",
+	"res://presentation/duels/duel_challenge_page.gd": "Send challenge and Post duel",
+	"res://presentation/duels/duel_ghost_page.gd": "Race against our run",
+	"res://presentation/duels/duel_race_picker.gd": "the top 10 picker's Race and Our run",
+	"res://presentation/duels/public_list_page.gd": "each row's Join and Post a duel",
+	"res://presentation/duels/public_sheets.gd": "Join and play on the join card",
+}
+const ENERGY_METER := "res://presentation/duels/energy_meter.gd"
+const ENERGY_METER_SURFACES := {
+	"res://presentation/duels/duel_energy_flow.gd": "the Duels lobby header's pill (meter())",
+	"res://presentation/duels/energy_out_card.gd": "the out-of-energy card's meter",
+}
+
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity"]
 
@@ -282,6 +305,7 @@ func _initialize() -> void:
 	_cosmetic_prices()
 	_fruits()
 	_currency_marks()
+	_energy()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -410,13 +434,18 @@ func _wallet() -> void:
 			_check(_found("\\.note_view\\(", source) == 0, "%s keeps a wardrobe, grant or Fruits part of a wallet answer itself: go through services/wallet_reply.gd" % path)
 			var through := 0 if alias.is_empty() else _found("\\b" + alias + "\\.note_spend\\(", source)
 			_check(_found("\\.note_spend\\(", source) == through, "%s keeps a spend receipt itself: go through services/wallet_reply.gd note_spend, which feeds the wardrobe and both balances" % path)
-		# Every wallet reply and spend receipt names the Fruit store too (its last argument), so no read drops the Fruits part.
+			var duel_through := 0 if alias.is_empty() else _found("\\b" + alias + "\\.note_duel\\(", source)
+			_check(_found("\\.note_duel\\(", source) == duel_through, "%s keeps a duel reply's energy itself: go through services/wallet_reply.gd note_duel" % path)
+		# Every wallet reply and spend receipt names the Fruit store and the energy meter too (its last two
+		# arguments), so no read drops the Fruits or the energy part; a duel reply names the meter.
 		if not alias.is_empty():
-			for call: String in [alias + ".note(", alias + ".note_spend("]:
+			for call: String in [alias + ".note(", alias + ".note_spend(", alias + ".note_duel("]:
 				var at := _call_at(source, call, 0)
+				var wanted := 8 if call.ends_with(".note(") else 7 if call.ends_with(".note_spend(") else 4
 				while at >= 0:
 					var args := _arguments(source, at + call.length())
-					_check(args.size() == (7 if call.ends_with(".note(") else 6) and args.back() != "null", "%s calls %s without the Fruit store (services/fruit_wallet.gd) as its last argument: %s" % [path, call, args])
+					var stores_named: bool = args.size() == wanted and args.back() != "null" and (wanted == 4 or args[wanted - 2] != "null")
+					_check(stores_named, "%s calls %s without the Fruit store and the energy meter (services/fruit_wallet.gd, services/duel_energy.gd) as its last arguments: %s" % [path, call, args])
 					at = _call_at(source, call, at + call.length())
 		if not source.contains("\"/v1/pollen\""): continue
 		readers += 1
@@ -680,6 +709,27 @@ func _currency_marks() -> void:
 		_check(CURRENCY_MARK_SURFACES.has(path), "%s shows a currency mark: add it to CURRENCY_MARK_SURFACES with where" % path)
 	for path: String in CURRENCY_MARK_SURFACES:
 		_check(seen.has(path), "CURRENCY_MARK_SURFACES names %s, which shows no mark through presentation/kit/currency_mark.gd now: delete it" % path)
+
+# (q) Duel energy -------------------------------------------------------------
+
+func _energy() -> void:
+	var chips := {}
+	var meters := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path != SPROUT_MARK:
+			for colour: String in SPROUT_COLOURS:
+				_check(not source.to_lower().contains(colour), "%s draws the sprout's colour %s itself: draw it through presentation/kit/sprout_mark.gd" % [path, colour])
+		if path != ENERGY_CHIP and _found("\\bEnergyChip\\.(?:on_button|make)\\(", source) > 0:
+			chips[path] = true
+			_check(ENERGY_CHIP_SURFACES.has(path), "%s wears the energy cost chip: add it to ENERGY_CHIP_SURFACES with where" % path)
+		if path != ENERGY_METER and _found("\\bEnergyMeter\\.(?:pill|card)\\(", source) > 0:
+			meters[path] = true
+			_check(ENERGY_METER_SURFACES.has(path), "%s shows the energy meter: add it to ENERGY_METER_SURFACES with where" % path)
+	for path: String in ENERGY_CHIP_SURFACES:
+		_check(chips.has(path), "ENERGY_CHIP_SURFACES names %s, which wears no chip through presentation/kit/energy_chip.gd now: delete it" % path)
+	for path: String in ENERGY_METER_SURFACES:
+		_check(meters.has(path), "ENERGY_METER_SURFACES names %s, which shows no meter through presentation/duels/energy_meter.gd now: delete it" % path)
 
 func _suites() -> void:
 	var shards := {}

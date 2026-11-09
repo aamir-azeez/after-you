@@ -10,7 +10,13 @@ extends Node
 ##   card (short_of); Buy sends services/wardrobe_client.gd buy_sunshine();
 ## - convert(): the convert card (presentation/fruit_convert_sheet.gd) when the
 ##   balance covers one step, else the short card for one step; its button sends
-##   convert(n).
+##   convert(n);
+## - refill_energy(): the duel energy refill (board-10-energy-refill), from the
+##   out-of-energy card: the same confirm card with no pip, the energy line on
+##   top (the meter now, to full) and a peach Refill, when the balance covers
+##   the price, else the short card; Refill sends refill_energy(). Offered only
+##   below the max (services/duel_energy.gd refill_offered); at the max the
+##   server's energy_full reads the meter again and says nothing.
 ## A refusal reads as a plain line in the toast (error_line); a short answer
 ## opens the short card with the balance the server gave. Offline, nothing is
 ## sent and the reason shows (presentation/offline_hold.gd). Nothing here
@@ -29,10 +35,14 @@ const Sheets = preload("res://presentation/wardrobe_sheets.gd")
 const ConvertSheet = preload("res://presentation/fruit_convert_sheet.gd")
 const SunMark = preload("res://presentation/kit/sun_mark.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
+const SproutMark = preload("res://presentation/kit/sprout_mark.gd")
 
 const FRUITS := "fruits"
 const SUNSHINE_ID := "sunshine"
 const SUNSHINE_ART := 108.0
+## The refill card's energy line: its sprouts, and the card's title as the board sets it.
+const ENERGY_SPROUT := 26.0
+const ENERGY_TITLE_SIZE := 34
 
 ## A Fruit spend went through (the pages redraw from the Fruit store as well).
 signal spent(kind: String)
@@ -161,6 +171,74 @@ func _convert(parent: Control, opener: Control, count: int) -> void:
 		var scope := _scope()
 		_short(parent, count, _client().fruits.balance(str(scope.server), str(scope.owner)), opener)
 	else: _say(error_line(code))
+
+## The duel energy refill from `parent` (the duel page the out-of-energy card
+## was on), from `opener`. Returns the card it opened (the confirm or the short
+## card), or null, so the page can keep it as its own.
+## Dropped from the board (owner, 2026-11-09: show, don't tell): "Fills all 5
+## at once. It never goes above 5." The energy line shows it.
+func refill_energy(parent: Control, opener: Control = null) -> Control:
+	if not visible() or OfflineHold.refuse(_say_callable()): return null
+	var scope := _scope()
+	var energy: RefCounted = _client().energy
+	if not energy.refill_offered(str(scope.server), str(scope.owner)): return null
+	var fruits: RefCounted = _client().fruits
+	if fruits.blocked(str(scope.server), str(scope.owner)):
+		_say(error_line("fruits_blocked"))
+		return null
+	var meter: Dictionary = energy.meter(str(scope.server), str(scope.owner))
+	var price := int(meter.refill_fruits)
+	var balance: int = fruits.balance(str(scope.server), str(scope.owner))
+	_close_sheet()
+	if balance < price:
+		_short(parent, price, balance, opener)
+		return sheet()
+	var modal: Control = Sheets.confirm_of(parent, {"title": PlayerCopy.ENERGY_REFILL_TITLE, "note": "", "bare": true,
+		"lead": [PlayerCopy.ENERGY_LINE, _energy_line(int(meter.energy), int(meter.max))], "row": PlayerCopy.ENERGY_REFILL_ROW,
+		"cost": price, "balance": balance, "currency": FRUITS, "action": PlayerCopy.ENERGY_REFILL_FOR, "peach": true, "opener": opener,
+		"buy": func() -> void: _refill(parent, opener)})
+	modal.title_label.add_theme_font_size_override("font_size", ENERGY_TITLE_SIZE)
+	modal.find_child("WardrobeConfirmBuy", true, false).name = "EnergyRefillConfirm"
+	_sheet = weakref(modal)
+	return modal
+
+## "[the meter now] to [full]": the sprouts lit as they are, then all of them lit.
+static func _energy_line(have: int, top: int) -> HBoxContainer:
+	var line := HBoxContainer.new()
+	line.name = "EnergyRefillLine"
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation", 10)
+	var now := SproutMark.row(have, top, ENERGY_SPROUT, 2.0)
+	now.name = "EnergyNow"
+	line.add_child(now)
+	var to := Label.new()
+	to.text = PlayerCopy.ENERGY_TO
+	to.add_theme_color_override("font_color", Sheets.MUTED)
+	to.add_theme_font_size_override("font_size", 18)
+	to.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_child(to)
+	var full := SproutMark.row(top, top, ENERGY_SPROUT, 2.0)
+	full.name = "EnergyFull"
+	line.add_child(full)
+	return line
+
+func _refill(parent: Control, opener: Control) -> void:
+	_close_sheet()
+	if _client().busy():
+		_say(error_line("busy"))
+		return
+	var answer: Dictionary = await _client().refill_energy()
+	var code := str(answer.get("code", ""))
+	if answer.get("ok", false):
+		# The meter fills from the receipt (services/wallet_reply.gd): it shows the refill, no line says it.
+		Soundscape.play_on(host, "ui_bought")
+		spent.emit(WardrobeClient.ENERGY)
+	elif code == "fruits_short" and is_instance_valid(parent) and parent.is_inside_tree():
+		var scope := _scope()
+		var price := int(_client().energy.meter(str(scope.server), str(scope.owner)).get("refill_fruits", 0))
+		if price > 0: _short(parent, price, _client().fruits.balance(str(scope.server), str(scope.owner)), opener)
+	# Full already (another phone, or time): the meter is read again and shows it.
+	elif code != "energy_full": _say(error_line(code))
 
 ## The shared short-of-Fruits card for `cost` against `balance`, with Get Fruits while packs sell.
 func _short(parent: Control, cost: int, balance: int, opener: Control) -> void:

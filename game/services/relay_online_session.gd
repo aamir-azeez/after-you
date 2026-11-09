@@ -25,6 +25,7 @@ const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
+const DuelEnergy = preload("res://services/duel_energy.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const StoreSupport = preload("res://services/store_support.gd")
 const TesterSwitches = preload("res://services/tester_switches.gd")
@@ -454,6 +455,8 @@ func load_capabilities() -> bool:
 	if not scope.is_empty(): PollenGrant.shared().set_enabled(str(scope.server), str(scope.owner), grant_supported())
 	# Before the flush below, so a phone with Fruits on and none kept reads the wallet in it.
 	if not scope.is_empty(): FruitWallet.shared().set_enabled(str(scope.server), str(scope.owner), fruits_supported(), fruit_packs_supported())
+	# The duel energy meter too, so the flush below reads the wallet for it when none is kept.
+	if not scope.is_empty(): DuelEnergy.shared().set_enabled(str(scope.server), str(scope.owner), duels_energy_supported())
 	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	return true
@@ -1380,6 +1383,11 @@ func leaderboards_platform_required() -> bool:
 ## The server has duels open for this build (backend src/duels/routes.ts). Every duel entry hides otherwise.
 func duels_supported() -> bool:
 	return Typed.equal(capabilities.get("duels_version"), 1.0)
+
+## The server charges duel energy (backend flags.ts ENERGY, duels routes.ts): the meter, the
+## cost chips and the out-of-energy card show only then (services/duel_energy.gd).
+func duels_energy_supported() -> bool:
+	return duels_supported() and Typed.equal(capabilities.get("duels_energy_version"), 1.0)
 
 ## The server has the race ghost on (backend flags.ts RACE_GHOST): a ghost race plays its raced run as a see-through pip beside each turn.
 func race_ghost_supported() -> bool:

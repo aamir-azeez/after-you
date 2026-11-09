@@ -544,6 +544,30 @@ const FRUIT_UNLOCK_TOAST := "%s: +%s Fruits"
 const FRUIT_UNLOCK_VIEW := "View"
 # End of Fruits page and play.
 
+# Duel energy (presentation/duels/energy_meter.gd, energy_out_card.gd,
+# duel_energy_flow.gd, fruit_spend_flow.gd refill_energy, full_journey_benefits.gd).
+# Show, don't tell (owner, 2026-11-09): the meter, the cost chip and the
+# minutes line carry it, so no line explains energy. No seconds, no hurry words.
+## The lobby's meter (board 10): how many are left of the most, and while below it, the minutes to the next one.
+const ENERGY_METER := "Energy %d of %d"
+const ENERGY_NEXT := "Next in %d min"
+## The out-of-energy card: its title, when the next one comes ("6 min" in bold) and its free choice.
+const ENERGY_OUT_TITLE := "Out of energy"
+const ENERGY_OUT_NEXT := "Your next energy comes in %s."
+const ENERGY_MINUTES := "%d min"
+const ENERGY_WAIT := "Wait"
+## The refill: its button words before the Fruit price, and its confirm card's title and rows.
+const ENERGY_REFILL_FOR := "Refill for"
+const ENERGY_REFILL_TITLE := "Refill energy?"
+const ENERGY_LINE := "Energy"
+const ENERGY_REFILL_ROW := "Refill"
+const ENERGY_TO := "to"
+## Where the button is, when a start or join waits for the partner's energy.
+const ENERGY_PARTNER_WAITING := "%s is waiting for energy"
+## The Full Journey card's perk line.
+const ENERGY_FULL_JOURNEY := "Duel energy: %d instead of %d"
+# End of Duel energy.
+
 # End-of-run reactions (presentation/end_reactions.gd).
 ## The split pill's open half, and the faces card's title.
 const END_REACTIONS_REACT := "React"

@@ -9,8 +9,12 @@ extends RefCounted
 ## caller). While Fruits show (Fruits board 5a) the monthly gifts are two tiles
 ## side by side in the same place: the Pollen tile, then the plum Fruit tile
 ## with the Fruits a month, the step they grow to and, until it is paid, the
-## welcome basket. The store card (presentation/store_flow.gd) draws this with
-## presentation/kit/benefit_panel.gd.
+## welcome basket. While the server charges duel energy
+## (board-10-energy-full-journey) the duel energy perk leads the panels: "Duel
+## energy: 7 instead of 5" with seven sprouts, as the board places it. Its
+## explainer line on the board ("Start or join two more duels before you
+## wait.") is dropped (owner, 2026-11-09: show, don't tell). The store card
+## (presentation/store_flow.gd) draws this with presentation/kit/benefit_panel.gd.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
@@ -34,10 +38,14 @@ const SEPARATOR := " · "
 ## (services/fruit_wallet.gd part): its `ladder` (the Fruit ladder everyone is
 ## shown) and, for a player with a grant, its `grant` ({next, top, welcome,
 ## welcome_paid}). No Fruit tile shows until a read brought the ladder.
-## Returns {intro: the chapter lines, panels: [{name, icon, title, body, ladder?}
+## `energy`: {} while the server charges no duel energy; else the perk
+## ({full_journey, plain}: services/duel_energy.gd perk()).
+## Returns {intro: the chapter lines, panels: [{name, icon, title, body, ladder?, sprouts?}
 ## or {name, tiles: [two such panels]}]}.
-static func content(boost: bool, grant: bool, ladder: Dictionary = {}, shown: bool = true, fruits: Variant = null) -> Dictionary:
+static func content(boost: bool, grant: bool, ladder: Dictionary = {}, shown: bool = true, fruits: Variant = null, energy: Dictionary = {}) -> Dictionary:
 	var panels: Array[Dictionary] = []
+	var perk := energy_panel(energy)
+	if shown and not perk.is_empty(): panels.append(perk)
 	if boost and shown:
 		panels.append({"name": "FullJourneyBoost", "icon": "room", "title": PlayerCopy.FULL_JOURNEY_ROOM_BOOST, "body": PlayerCopy.FULL_JOURNEY_ROOM_BOOST_NOTE})
 	if boost and grant and shown:
@@ -50,6 +58,14 @@ static func content(boost: bool, grant: bool, ladder: Dictionary = {}, shown: bo
 			panels.append({"name": "FullJourneyGrant", "icon": "pollen", "title": (PlayerCopy.FULL_JOURNEY_GRANT_TOP if first >= top else PlayerCopy.FULL_JOURNEY_GRANT) % PollenMoney.grouped(first),
 				"body": PlayerCopy.FULL_JOURNEY_GRANT_NOTE % [PollenMoney.grouped(GRANT_STEP), PollenMoney.grouped(top)], "ladder": ladder_line(ladder)})
 	return {"intro": PackedStringArray([PlayerCopy.SUBSCRIPTION_PURPOSE, PlayerCopy.COOPERATIVE_HOST_ACCESS]), "panels": panels}
+
+## The duel energy perk (board-10-energy-full-journey): "Duel energy: 7 instead
+## of 5" and a row of seven sprouts, or {} without the perk's numbers.
+static func energy_panel(energy: Dictionary) -> Dictionary:
+	var more := int(energy.get("full_journey", 0))
+	var plain := int(energy.get("plain", 0))
+	if more <= plain or plain <= 0: return {}
+	return {"name": "FullJourneyEnergy", "icon": "energy", "title": PlayerCopy.ENERGY_FULL_JOURNEY % [more, plain], "body": "", "sprouts": more}
 
 ## The Pollen tile beside the Fruit tile (board 5a): "4,500 Pollen a month",
 ## then how it grows; at the top step the title says so and nothing grows.

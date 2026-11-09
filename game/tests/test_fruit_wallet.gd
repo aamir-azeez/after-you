@@ -381,11 +381,11 @@ func _surfaces() -> void:
 func _reply() -> void:
 	var wallet: RefCounted = PollenWallet.new(_path("reply-wallet"))
 	var fruits := _fruit_store()
-	var kept: Dictionary = WalletReply.note(SERVER, ME, answer(part(40.0, [], {"balance": "broken"})), wallet, null, null, fruits)
+	var kept: Dictionary = WalletReply.note(SERVER, ME, answer(part(40.0, [], {"balance": "broken"})), wallet, null, null, fruits, null)
 	_check(kept.wallet and not kept.fruits and fruits.part(SERVER, ME).is_empty(), "A broken Fruits part never stops the Pollen wallet")
-	kept = WalletReply.note(SERVER, ME, answer(part(40.0)), wallet, null, null, fruits)
+	kept = WalletReply.note(SERVER, ME, answer(part(40.0)), wallet, null, null, fruits, null)
 	_check(kept.wallet and kept.fruits and fruits.balance(SERVER, ME) == 40, "One read feeds the Fruits beside the wallet")
-	kept = WalletReply.note(SERVER, ME, answer(part(40.0)), wallet, null, null)
+	kept = WalletReply.note(SERVER, ME, answer(part(40.0)), wallet, null, null, null, null)
 	_check(kept.wallet and not kept.fruits, "An older caller without the Fruit store still works")
 
 # --- Receipts ------------------------------------------------------------------
@@ -443,7 +443,7 @@ func _client(fake: Fake, online: Online = null) -> Dictionary:
 	wallet.set_enabled(SERVER, ME, true)
 	var fruits := _fruit_store()
 	var grant: RefCounted = PollenGrant.new(_path("grant"))
-	WalletReply.note(SERVER, ME, answer(part(40.0)), wallet, wardrobe, grant, fruits)
+	WalletReply.note(SERVER, ME, answer(part(40.0)), wallet, wardrobe, grant, fruits, null)
 	var client: RefCounted = WardrobeClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, fake.call_it, wardrobe, wallet, grant, fruits)
 	client.connectivity = online if online != null else Online.new()
 	return {"client": client, "wardrobe": wardrobe, "wallet": wallet, "fruits": fruits}
@@ -514,7 +514,7 @@ func _claims() -> void:
 	var wallet: RefCounted = PollenWallet.new(_path("claims-wallet"))
 	wallet.set_enabled(SERVER, ME, true)
 	var fruits := _fruit_store()
-	WalletReply.note(SERVER, ME, answer(part(40.0)), wallet, wardrobe, null, fruits)
+	WalletReply.note(SERVER, ME, answer(part(40.0)), wallet, wardrobe, null, fruits, null)
 	var path := _path("claims")
 	var claims: RefCounted = BundleClaims.new(path, wardrobe, wallet, fruits)
 	var fake := Fake.new()

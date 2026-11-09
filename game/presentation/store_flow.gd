@@ -36,6 +36,7 @@ const StoreSupport = preload("res://services/store_support.gd")
 const TesterSwitches = preload("res://services/tester_switches.gd")
 const BenefitPanel = preload("res://presentation/kit/benefit_panel.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
+const DuelEnergy = preload("res://services/duel_energy.gd")
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
 ## The card's chapter lines sit a size under the paragraphs elsewhere, as board 3 draws them.
@@ -181,7 +182,8 @@ func _fit_details(details: ScrollContainer, column: VBoxContainer) -> void:
 ## What the subscription brings, chapters first (presentation/full_journey_benefits.gd).
 ## The Pollen panels follow what the server last said for the signed-in player,
 ## and show only on a build that names Full Journey Pollen; the Fruit tile only
-## while Fruits show (services/pollen_surfaces.gd fruits_visible).
+## while Fruits show (services/pollen_surfaces.gd fruits_visible); the duel
+## energy perk only while the server charges energy (services/duel_energy.gd).
 func _benefits() -> Dictionary:
 	var scope: Dictionary = host._names_scope() if host.has_method("_names_scope") else {}
 	if scope.is_empty(): return Benefits.content(false, false)
@@ -190,7 +192,8 @@ func _benefits() -> Dictionary:
 	# While Fruits show, the monthly gifts are the Pollen and Fruit tiles, the Fruits from the server's ladder and grant.
 	var fruits: Variant = null
 	if PollenSurfaces.shared().fruits_visible(FruitWallet.shared(), scope): fruits = FruitWallet.shared().part(server, owner)
-	return Benefits.content(PollenWallet.shared().enabled(server, owner), PollenGrant.shared().enabled(server, owner), PollenGrant.shared().ladder(server, owner), PollenSurfaces.shared().full_journey_visible(), fruits)
+	var energy: Dictionary = DuelEnergy.perk() if DuelEnergy.shared().enabled(server, owner) else {}
+	return Benefits.content(PollenWallet.shared().enabled(server, owner), PollenGrant.shared().enabled(server, owner), PollenGrant.shared().ladder(server, owner), PollenSurfaces.shared().full_journey_visible(), fruits, energy)
 
 ## The one subscription offer used by the store card and locked hosting: each
 ## store package with its store price and period, the renewal terms, Restore

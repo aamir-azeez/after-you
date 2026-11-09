@@ -1,6 +1,8 @@
 extends CanvasLayer
 ## What every duel page shares: the deep green page, a header with Back, a
-## title, a quiet line beside it and an optional button at the right, and a
+## title, a quiet line beside it (or, while a page shows one, something that
+## takes its place: the lobby's energy meter, header_beside) and an optional
+## button at the right, and a
 ## body that lays out again only when the safe area changes. The body scrolls
 ## when it is taller than the space under the header (a long name, a short
 ## screen), so nothing runs past the page's bottom spacing. A page builds its
@@ -77,6 +79,12 @@ func _ready() -> void:
 	_subtitle.custom_minimum_size.y = 52
 	_subtitle.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_header.add_child(_subtitle)
+	# The quiet line gives way to what stands beside the title while that shows (the energy meter).
+	var beside := header_beside()
+	if beside != null:
+		_header.add_child(beside)
+		beside.visibility_changed.connect(_beside_shown.bind(beside))
+		_beside_shown(beside)
 	var trailing := header_action()
 	if trailing != null: _header.add_child(trailing)
 	var scroll := ScrollContainer.new()
@@ -107,6 +115,11 @@ func subtitle_text() -> String: return ""
 func backdrop() -> Control: return null
 ## A button at the header's right, or null.
 func header_action() -> Control: return null
+## What stands beside the title in place of the quiet line while it shows, or null.
+func header_beside() -> Control: return null
+
+func _beside_shown(beside: Control) -> void:
+	if is_instance_valid(_subtitle): _subtitle.text = "" if beside.visible else subtitle_text()
 ## Builds the body for the current size.
 func _build() -> void: pass
 ## Called once, after the first build.
@@ -152,6 +165,11 @@ func sheet(node_name: String, title: String, subtitle: String = "", opener: Cont
 	if Kit.showing(_modal) or not _alive: return null
 	_modal = preload("res://presentation/in_game_modal.gd").open(root, node_name, title, subtitle, opener)
 	return _modal
+
+## Closes the card over this page, if one is up (a card that must show now, such as the out-of-energy card).
+func close_sheet() -> void:
+	if Kit.showing(_modal): _modal.close(false)
+	_modal = null
 
 ## Lets `screen` (a full screen of its own, such as the community rules) take Back while it is up,
 ## so one Back never closes it and this page too.

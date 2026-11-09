@@ -22,6 +22,8 @@ extends RefCounted
 ## own key, its retries and its refusals as any purchase. Each receipt is kept
 ## through services/wallet_reply.gd note_spend: `balance` stays the Pollen
 ## balance, `fruit_balance` the Fruit one, `sunshine_left` the Sunshine turns.
+## A duel energy refill (refill_energy(), Fruits too) keeps the receipt's
+## `energy` meter in services/duel_energy.gd the same way.
 ##
 ## Wearing works offline (services/wardrobe.gd pending): wear() puts the look on
 ## this phone at once, with its revision and key fixed then, and sync() sends
@@ -40,6 +42,7 @@ const Presence = preload("res://services/friend_presence.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Connectivity = preload("res://services/connectivity.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
+const DuelEnergy = preload("res://services/duel_energy.gd")
 
 const WALLET_PATH := "/v1/pollen"
 const SPEND_PATH := "/v1/pollen/spend"
@@ -47,10 +50,12 @@ const EQUIP_PATH := "/v1/pollen/equip"
 ## Sends of one action that got no answer before it gives up (the next tap starts a new one).
 const MAX_SENDS := 3
 ## Answers after which the phone reads the wardrobe again, because what it showed was out of date.
-const STALE := ["already_owned", "pollen_price_changed", "not_for_sale", "not_owned", "pollen_locked", "fruits_short", "fruits_blocked", "sunshine_active"]
+const STALE := ["already_owned", "pollen_price_changed", "not_for_sale", "not_owned", "pollen_locked", "fruits_short", "fruits_blocked", "sunshine_active", "energy_full"]
 ## The spend kinds that turn Fruits into Pollen, and that buy Sunshine (the server's spend route).
 const CONVERT := "convert"
 const SUNSHINE := "sunshine"
+## The spend kind and id that fill the duel energy meter for Fruits.
+const ENERGY := "energy"
 ## Equip refusals that will not pass: the look put on goes. Anything else
 ## (rate limits, a token problem, an update needed, a server error) keeps it.
 const FINAL_REFUSALS := ["invalid_pollen_equip", "not_owned", "identity_absent"]
@@ -65,6 +70,8 @@ var wallet: RefCounted
 var grant: RefCounted
 ## The Fruits kept from the same reads and spends (services/fruit_wallet.gd).
 var fruits: RefCounted
+## The duel energy meter kept from the same reads and the refill's receipt (services/duel_energy.gd).
+var energy: RefCounted
 var _api: Node
 ## () -> {server, owner} of the signed-in player, or {} (Main's _names_scope).
 var _scope: Callable
@@ -74,7 +81,7 @@ var _busy := false
 var connectivity: RefCounted
 
 ## transport(method, path, body) -> response, for tests; else the API's queue.
-func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), wardrobe: RefCounted = null, pollen: RefCounted = null, monthly: RefCounted = null, fruit_store: RefCounted = null) -> void:
+func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), wardrobe: RefCounted = null, pollen: RefCounted = null, monthly: RefCounted = null, fruit_store: RefCounted = null, energy_store: RefCounted = null) -> void:
 	_api = api
 	_scope = scope_source
 	_transport = transport
@@ -82,6 +89,7 @@ func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), 
 	wallet = pollen if pollen != null else PollenWallet.shared()
 	grant = monthly if monthly != null else PollenGrant.shared()
 	fruits = fruit_store if fruit_store != null else FruitWallet.shared()
+	energy = energy_store if energy_store != null else DuelEnergy.shared()
 
 ## {server, owner} while the server has said the wardrobe is on, else {}.
 func scope() -> Dictionary:
@@ -133,6 +141,18 @@ func buy_sunshine() -> Dictionary:
 		return {"ok": false, "code": "invalid_pollen_spend", "receipt": {}}
 	return await _spend(SUNSHINE, SUNSHINE, price, true)
 
+## Fills the duel energy meter at the price the server last said
+## (services/duel_energy.gd meter's refill_fruits), only below its max.
+## {ok, code, receipt}; refused "energy_full" at the max (the meter is read
+## again with the wallet, as STALE says), "energy_disabled" while energy is off.
+func refill_energy() -> Dictionary:
+	var context := scope()
+	if not context.is_empty() and not energy.enabled(str(context.server), str(context.owner)): return {"ok": false, "code": "energy_disabled", "receipt": {}}
+	var price := 0
+	if not context.is_empty(): price = int(energy.meter(str(context.server), str(context.owner)).get("refill_fruits", 0))
+	if not context.is_empty() and price <= 0: return {"ok": false, "code": "invalid_pollen_spend", "receipt": {}}
+	return await _spend(ENERGY, ENERGY, price, true)
+
 ## One spend: never queued (it needs an answer, so offline it is refused), one
 ## key for every send of it, the receipt kept in every store it feeds.
 ## `fruit_only`: a convert or Sunshine, which needs Fruits on too.
@@ -147,7 +167,7 @@ func _spend(kind: String, id: String, cost: int, fruit_only: bool) -> Dictionary
 	var response := await _send(SPEND_PATH, body)
 	var answer := _answer(response)
 	if answer.ok and scope() == context:
-		WalletReply.note_spend(context.server, context.owner, answer.receipt, wallet, store, fruits)
+		WalletReply.note_spend(context.server, context.owner, answer.receipt, wallet, store, fruits, energy)
 		changed.emit()
 	_busy = false
 	if not answer.ok and answer.code in STALE: await refresh()
@@ -230,7 +250,7 @@ func _note_wallet(context: Dictionary, response: Dictionary) -> Dictionary:
 	if not response.get("ok", false) or scope() != context: return {"ok": false, "code": str(response.get("code", "connection_interrupted"))}
 	var data: Variant = response.get("data")
 	# Every store the read feeds keeps its part, the grant's too (services/wallet_reply.gd).
-	var kept: Dictionary = WalletReply.note(context.server, context.owner, data, wallet, store, grant, fruits)
+	var kept: Dictionary = WalletReply.note(context.server, context.owner, data, wallet, store, grant, fruits, energy)
 	var noted: bool = kept.wallet and kept.wardrobe
 	if noted: changed.emit()
 	return {"ok": noted, "code": "" if noted else "invalid_response"}

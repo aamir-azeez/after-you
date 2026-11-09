@@ -33,11 +33,18 @@ extends RefCounted
 ##   come over the live socket (duel_hints_version), so the screens may read at
 ##   their backup pace. A server rolled back to one without hints says nothing,
 ##   and the next read brings the old pace back.
+## - duel energy (services/duel_energy.gd): while the server charges it, every
+##   start or join reply (a challenge, a ghost race, an accept, and the public
+##   post and join through duel_answer) carries this player's meter after the
+##   spend, kept through services/wallet_reply.gd note_duel. A start refused as
+##   energy_empty marks the kept meter empty until the next read.
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const TheirRun = preload("res://services/duel_their_run.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
+const WalletReply = preload("res://services/wallet_reply.gd")
+const DuelEnergy = preload("res://services/duel_energy.gd")
 const PREFIX := "/v1/duels"
 const SAVE_PATH := "user://duels.json"
 const GHOSTS_KEEP_MS := 60_000
@@ -315,8 +322,12 @@ static func public_room(room_id: String) -> bool:
 	return _public_rooms.has(room_id)
 
 func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
-	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", "")), "status": int(response.get("status", 0))}
+	if not response.get("ok", false):
+		if str(response.get("code", "")) == "energy_empty": DuelEnergy.shared().note_empty(_server(), _owner)
+		return {"ok": false, "code": str(response.get("code", "")), "status": int(response.get("status", 0))}
 	var data: Variant = response.get("data")
+	# A start or join carries this player's energy meter after its spend (only those routes send one).
+	WalletReply.note_duel(_server(), _owner, data, DuelEnergy.shared())
 	var view := valid_view(data.get("duel") if data is Dictionary else null)
 	if view.is_empty(): return {"ok": false, "code": "invalid_duels"}
 	_remember([view])
@@ -327,6 +338,11 @@ func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 		answer["win_bonus"] = _bonus(data.get("ghost_bonus" if view.kind == "ghost" else "win_bonus"))
 		answer["held"] = _held(data.get("held")) if view.has("public") else {}
 	return answer
+
+## The server this client's player is on, as the energy meter keys it ("" for a test API without one).
+func _server() -> String:
+	var base: Variant = _api.get("base_url") if is_instance_valid(_api) else null
+	return base if base is String else ""
 
 ## Puts a duel's newer copy into the kept lobby, so the lobby under a page
 ## shows what an action answered (a duel just left) before the next read.

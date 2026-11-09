@@ -7,10 +7,12 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## While public duels are open (board 5A), "Anyone" tops Pick a pair: it posts
 ## the duel on the public list instead, as your party or alone ("Post as"), with
 ## a preview of the seats others will see, and the button reads Post duel.
+## While duel energy is on, the button wears the cost chip (kit/energy_chip.gd).
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Seats = preload("res://presentation/duels/public_seats.gd")
+const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 ## The Pick a pair choice that posts on the public list.
 const ANYONE := "*anyone*"
 
@@ -31,6 +33,8 @@ var partner_look: Dictionary = {}
 ## Why Post duel with your partner is greyed (their switch is off, or they have not accepted the
 ## community rules), or "": the same words as the list's greyed rows (public_duels_flow.gd partner_text).
 var party_reason := ""
+## Whether starting and joining cost energy (services/duel_energy.gd): the cost chips show only then.
+var energy_cost := false
 var _post_as := "party"
 var _friend := ""
 var _chapter := ""
@@ -53,6 +57,7 @@ func header_action() -> Control:
 	_send.pressed.connect(func():
 		if _friend == ANYONE: post_requested.emit(_post_as if not partner_name.is_empty() else "alone", _chapter, _send)
 		else: send_requested.emit(_friend, _chapter, _send))
+	if energy_cost: EnergyChip.on_button(_send, 20)
 	return _send
 
 func tap(control: Control, run: Callable) -> void:
@@ -112,6 +117,7 @@ func _update_send() -> void:
 	if not is_instance_valid(_send): return
 	_send.disabled = _friend.is_empty() or _chapter.is_empty() or (_friend == ANYONE and _posting_party() and not party_reason.is_empty())
 	_send.text = PlayerCopy.PUBLIC_POST_DUEL if _friend == ANYONE else PlayerCopy.DUELS_SEND
+	EnergyChip.fade(_send, _send.disabled)
 
 ## "Anyone": two lines, your pips, chosen like a friend (board 5A).
 func _anyone() -> Button:

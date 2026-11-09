@@ -4,11 +4,14 @@ extends RefCounted
 ## ladder line in bold. While Fruits show, the monthly gifts are a row of two
 ## tiles (Fruits board 5a): the Pollen tile in the warm cream and the Fruit tile
 ## on the Orchard plum (kit/orchard_surface.gd), each mark from
-## kit/currency_mark.gd. presentation/full_journey_benefits.gd says what each
+## kit/currency_mark.gd. The duel energy perk is a cool cream panel with the
+## sprout (kit/sprout_mark.gd) and its row of sprouts at the right
+## (board-10-energy-full-journey). presentation/full_journey_benefits.gd says what each
 ## panel holds; this only draws it. Panels take no input, so a drag that starts
 ## on one still scrolls the card.
 const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
 const Orchard = preload("res://presentation/kit/orchard_surface.gd")
+const SproutMark = preload("res://presentation/kit/sprout_mark.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ROOM_ICON = preload("res://assets/ui/social/users.svg")
@@ -21,9 +24,12 @@ const BODY := Color("4f6661")
 const TITLE_SIZE := 18
 const BODY_SIZE := 13
 const ICON := 30.0
+## The energy perk's sprouts at its right (spec `sprouts`).
+const SPROUT := 18.0
+const SPROUT_GAP := 3.0
 
-## A panel for `spec` ({name, icon, title, body, ladder, rich}), or a row of
-## tiles for {name, tiles: [specs]}.
+## A panel for `spec` ({name, icon, title, body, ladder, rich, sprouts}), or a row of
+## tiles for {name, tiles: [specs]}. `sprouts`: a row of that many full sprouts at the right.
 static func make(spec: Dictionary) -> Control:
 	if spec.has("tiles"): return _row(spec)
 	var icon_kind := str(spec.get("icon", "room"))
@@ -61,6 +67,11 @@ static func make(spec: Dictionary) -> Control:
 		var line := _text(ladder, BODY_SIZE, UiTokens.INK, _font(NUNITO, 800.0))
 		line.name = "PanelLadder"
 		column.add_child(line)
+	var sprouts := int(spec.get("sprouts", 0))
+	if sprouts > 0:
+		var row_of := SproutMark.row(sprouts, sprouts, SPROUT, SPROUT_GAP)
+		row_of.name = "PanelSprouts"
+		row.add_child(row_of)
 	return panel
 
 ## Two tiles side by side, each as wide as the other, as tall as the taller.
@@ -95,6 +106,10 @@ static func _rich(words: String, color: Color, strong: Color) -> RichTextLabel:
 	return body
 
 static func _icon(kind: String, side: float = ICON) -> Control:
+	if kind == "energy":
+		var sprout := SproutMark.make(true, side)
+		sprout.name = "EnergyIcon"
+		return sprout
 	if kind in [CurrencyMark.POLLEN, CurrencyMark.FRUITS]:
 		var mark := CurrencyMark.make(kind, side)
 		mark.mouse_filter = Control.MOUSE_FILTER_IGNORE

@@ -11,6 +11,11 @@ extends Node
 ## Anyone posts one, and a public duel's page offers a stranger's card. Every
 ## public entry hides while the server says public duels are off.
 ##
+## Duel energy (presentation/duels/duel_energy_flow.gd, energy()): while the
+## server charges it, the lobby shows the meter and every start and join button
+## its cost; a start or join with none left opens the out-of-energy card, and
+## each refusal for energy is answered there before the usual line.
+##
 ## Every duel entry hides while the server says duels are off
 ## (relay_online_session.gd duels_supported): the lobby, the Duel tag in Your
 ## rooms, and Home's row (offer), which also follows the public switch.
@@ -20,7 +25,8 @@ extends Node
 ## an ordinary room, so the chapter chain already counts it as a finished room. It reads Main only through
 ## this host contract (read at call time):
 ## - services: api, config, relay_session, ensure_relay_session,
-##   _friends_client, _friend_display_name
+##   _friends_client, _friend_display_name, pollen_client and fruit_spend_flow
+##   (duel energy's wallet read and refill)
 ## - screen: mode, ui, application_backgrounded, _toast, _online_gated,
 ##   _relay_available, _ensure_identity
 ## - chapters: _chapter_unlocks, _full_journey_access, _paid_content_hidden
@@ -76,6 +82,7 @@ const RefreshClock = preload("res://services/refresh_schedule.gd")
 const HintReads = preload("res://services/duel_hint_reads.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const PublicFlow = preload("res://presentation/duels/public_duels_flow.gd")
+const EnergyFlow = preload("res://presentation/duels/duel_energy_flow.gd")
 ## Main's mode while Duels is up.
 const MODE_DUELS := "duels"
 ## A room claimed a moment ago is joined up to JOIN_TRIES times, this far apart.
@@ -118,6 +125,7 @@ var _goes_on: Array = []
 var _held := false
 var _open_token := 0
 var _public: RefCounted
+var _energy: RefCounted
 ## Duels just opened: its first lobby read may ask for the community rules (public_duels_flow.gd ask_rules).
 var _rules_due := false
 
@@ -276,6 +284,8 @@ func open() -> void:
 	screen.me = str(host.api.player_id)
 	screen.name_of = _name_of
 	screen.boost_percent = PollenBreakdown.BOOST_PERCENT_EACH if host._full_journey_access() and _surfaces().full_journey_visible() else 0
+	screen.energy_cost = energy().shown()
+	screen.energy_meter = energy().meter()
 	screen.closed.connect(_left)
 	screen.notice.connect(func(text: String, _news: bool) -> void: host._toast(text))
 	screen.start_requested.connect(_open_challenge)
@@ -291,6 +301,7 @@ func open() -> void:
 	if not kept.is_empty(): screen.show_lobby(kept)
 	_rules_due = true
 	set_process(true)
+	energy().opened()
 	_refresh()
 
 ## Closes Duels for a screen Main shows instead; Main sets its mode first.
@@ -410,16 +421,19 @@ func _open_challenge(anyone: bool = false) -> void:
 	if not is_open(): return
 	var page := ChallengePage.new()
 	page.chapters = _open_chapters()
+	page.energy_cost = energy().shown()
 	_offer_public(page, anyone)
 	var partner: Variant = client().last_lobby().get("party", {}).get("partner")
-	page.send_requested.connect(func(friend: String, chapter: String, control: Control) -> void: page.tap(control, func() -> void: await _challenge(page, friend, chapter)))
+	page.send_requested.connect(func(friend: String, chapter: String, control: Control) -> void:
+		if energy().blocks(page, control): return
+		page.tap(control, func() -> void: await _challenge(page, friend, chapter, control)))
 	screen.open_overlay(page)
 	var friends := await _friends(partner)
 	if not is_instance_valid(page): return
 	page.friends = friends
 	if page.is_inside_tree(): page._render()
 
-func _challenge(page: CanvasLayer, friend: String, chapter: String) -> void:
+func _challenge(page: CanvasLayer, friend: String, chapter: String, control: Control = null) -> void:
 	var board := Runs.board_key(chapter)
 	var answer: Dictionary = await _send_once("challenge|%s|%s" % [friend, board], func(key: String) -> Dictionary: return await client().challenge(friend, board, key))
 	if not is_instance_valid(page): return
@@ -427,7 +441,7 @@ func _challenge(page: CanvasLayer, friend: String, chapter: String) -> void:
 		await _already_open(page, friend, board)
 		return
 	if not answer.get("ok", false):
-		_toast_failure(answer)
+		if not energy().refused(page, answer, control, _partner_label()): _toast_failure(answer)
 		return
 	host._toast(PlayerCopy.DUELS_SENT)
 	page.close()
@@ -471,7 +485,10 @@ func _open_ghosts() -> void:
 	if not is_open(): return
 	var page := GhostPage.new()
 	page.chapters = _open_chapters()
-	page.race_requested.connect(func(chapter: String, source: String, entry_id: Variant, control: Control) -> void: page.tap(control, func() -> void: await _race(page, chapter, source, entry_id)))
+	page.energy_cost = energy().shown()
+	page.race_requested.connect(func(chapter: String, source: String, entry_id: Variant, control: Control) -> void:
+		if energy().blocks(page, control): return
+		page.tap(control, func() -> void: await _race(page, chapter, source, entry_id, null, control)))
 	page.picker_requested.connect(func(chapter: String, control: Control) -> void: _open_picker(page, chapter, control))
 	screen.open_overlay(page)
 	var answer: Dictionary = await client().ghosts()
@@ -495,8 +512,9 @@ func _open_picker(page: CanvasLayer, chapter: String, opener: Control) -> void:
 
 ## A Race on the picker, through the page's gate; a sheet closed before the finger lifted sends nothing.
 func _picker_race(source: String, entry_id: Variant, control: Control, page: CanvasLayer, chapter: String, picker: Variant) -> void:
+	if energy().blocks(page, control): return
 	page.tap(control, func() -> void:
-		if is_instance_valid(picker): await _race(page, chapter, source, entry_id, picker))
+		if is_instance_valid(picker): await _race(page, chapter, source, entry_id, picker, control))
 
 ## Reads the chapter's board (`fresh`: past the phone's minute) and redraws the
 ## picker; `full`: the server just said the pair has its limit of races going.
@@ -511,6 +529,11 @@ func _fill_picker(page: CanvasLayer, picker: Variant, chapter: String, fresh: bo
 	var shown := Rows.shown(boards, str(host.api.player_id), board, answer.view)
 	picker.show_board(shown.rows, shown.mine_by_id, full or client().ghost_races_full(), client().limit("ghost"), page.developer_ticks(chapter))
 
+## The partner's name at the start of a line (duel energy's "Maya is waiting for energy"), or "" with no pair.
+func _partner_label() -> String:
+	var party: Dictionary = client().last_lobby().get("party", {})
+	return _name_of(party.partner) if party.get("intact", false) and party.get("partner") != null else ""
+
 ## The partner's name in the middle of a line ("a friend" for one never named), or "" with no pair.
 func _partner_name() -> String:
 	var party: Dictionary = client().last_lobby().get("party", {})
@@ -520,11 +543,12 @@ func _partner_name() -> String:
 ## `picker`: the top 10 picker the race was tapped on (closed since, perhaps), or null. A run that left
 ## the top 10 since the picker's read says so and the picker reads the board
 ## again; a refused limit greys its rows.
-func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant, picker: Variant = null) -> void:
+func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant, picker: Variant = null, control: Control = null) -> void:
 	var board := Runs.board_key(chapter)
 	var answer: Dictionary = await _send_once("ghost|%s|%s|%s" % [board, source, entry_id], func(key: String) -> Dictionary: return await client().race_ghost(board, source, entry_id, key))
 	if not is_instance_valid(page): return
 	if not answer.get("ok", false):
+		if energy().refused(page, answer, control, _partner_label()): return
 		var code := str(answer.get("code", ""))
 		var on_picker := is_instance_valid(picker)
 		if on_picker and source == "board" and code == "ghost_not_found":
@@ -554,9 +578,11 @@ func _on_duel_action(view: Dictionary, action: String, control: Control) -> void
 			if action == "accept" and not ChapterUnlocks.open(view.chapter, host._chapter_unlocks()):
 				host._toast(PlayerCopy.DUELS_CHAPTER_CLOSED)
 				return
+			if action == "accept" and energy().blocks(screen, control): return
 			screen.tap(control, func() -> void:
 				var answer: Dictionary = await client().act(view.board, view.duel_id, action)
-				if not answer.get("ok", false): _toast_failure(answer)
+				var keep_note := func(words: String) -> void: if is_open(): screen.note(str(view.duel_id), words)
+				if not answer.get("ok", false) and not (action == "accept" and energy().refused(screen, answer, control, _partner_label(), keep_note)): _toast_failure(answer)
 				_refresh())
 		"play": screen.tap(control, func() -> void: await _play(_latest(view)))
 		"result": _open_result(view)
@@ -835,6 +861,11 @@ func public() -> RefCounted:
 	if _public == null: _public = PublicFlow.new(self)
 	return _public
 
+## Duel energy's glue (duel_energy_flow.gd), made once.
+func energy() -> RefCounted:
+	if _energy == null: _energy = EnergyFlow.new(self)
+	return _energy
+
 ## Settings' Public duels row: shown while the server has them (or last said so) and switched through public_duels_flow.gd.
 func public_offered() -> bool:
 	return public().offered()
@@ -854,7 +885,9 @@ func _offer_public(page: CanvasLayer, anyone: bool) -> void:
 	page.partner_name = _name_of(party.partner) if party.get("intact", false) and party.get("partner") != null else ""
 	page.partner_look = party.get("partner_look", {})
 	page.party_reason = public().partner_text()
-	page.post_requested.connect(func(joining: String, chapter: String, control: Control) -> void: page.tap(control, func() -> void: await public().post(page, joining, chapter)))
+	page.post_requested.connect(func(joining: String, chapter: String, control: Control) -> void:
+		if energy().blocks(page, control): return
+		page.tap(control, func() -> void: await public().post(page, joining, chapter, false, control)))
 
 ## The bundled chapter key for the duel's board (its own version).
 func _chapter_key(view: Dictionary) -> String:

@@ -8,12 +8,15 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## which the flow (duels_flow.gd) opens like any duel. Ghost races pay like
 ## ordinary turns together; the first win over our own run on a chapter adds a
 ## one time bonus, shown on the result page only, so nothing here mentions a prize.
+## While duel energy is on, every Race wears the cost chip (kit/energy_chip.gd),
+## the picker's too (duel_race_picker.gd reads energy_cost here).
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
 const DashedBox = preload("res://presentation/kit/dashed_box.gd")
+const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 
 ## source: "developer" or "board"; entry_id: the board run's, or null.
 signal race_requested(chapter_key: String, source: String, entry_id: Variant, control: Control)
@@ -25,6 +28,8 @@ var chapters: Array = []
 ## services/duels_client.gd ghosts(): board key -> {developer, top}; empty while loading.
 var ghosts: Dictionary = {}
 var failed := false
+## Whether starting and joining cost energy (services/duel_energy.gd): the cost chips show only then.
+var energy_cost := false
 var _list: VBoxContainer
 var _gate: BusyTapGate
 
@@ -110,4 +115,5 @@ func _option(key: String, label: String, ticks: int, source: String, entry_id: V
 	button.name = "Race_" + source + ("_" + str(entry_id).left(6) if entry_id != null else "")
 	button.custom_minimum_size.x = 190
 	button.pressed.connect(func(): race_requested.emit(key, source, entry_id, button))
+	if energy_cost: EnergyChip.on_button(button, 18)
 	return button

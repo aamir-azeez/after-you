@@ -6,7 +6,11 @@ extends "res://presentation/duels/duel_page_base.gd"
 ##   and Race a recorded run;
 ## - Your duels: running duels and ghost races as tiles with both pairs' dots
 ##   and times, and finished ones as result tiles.
-## Start a duel sits in the header. Every request goes through the flow
+## Start a duel sits in the header. While the server charges duel energy
+## (board-10-energy-lobby), the energy meter (energy_meter.gd pill, made by the
+## flow) stands beside the title in place of the quiet line, and Start a duel,
+## Accept and Race a recorded run wear the cost chip (kit/energy_chip.gd).
+## Every request goes through the flow
 ## (presentation/duels/duels_flow.gd), which owns the client; this page only
 ## draws the lobby it is given and says what was tapped. Taps wait through a
 ## BusyTapGate, so a first tap always registers and a second one waits.
@@ -29,6 +33,7 @@ const EMPTY_ART := "duels_f"
 const OPEN_EMPTY_ART := "open_a"
 const Seats = preload("res://presentation/duels/public_seats.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
+const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 
 signal start_requested
 signal party_requested
@@ -47,6 +52,13 @@ var boost_percent := 0
 var public_shown := false
 ## The player's switch as the duels client keeps it (services/duels_client.gd public_on), set by the flow: the row's words before a lobby brings its own.
 var public_on := true
+## The energy meter's pill beside the title (presentation/duels/energy_meter.gd), or null while
+## the server charges no energy; set by the flow before the lobby opens.
+var energy_meter: Control = null
+## Whether starting and joining cost energy: the cost chips show only then.
+var energy_cost := false
+## A line under a challenge's buttons, by duel id, kept across redraws (the partner waiting for energy).
+var _notes: Dictionary = {}
 var _lobby: Dictionary = {}
 var _state := "loading"
 var _party_box: Control
@@ -71,7 +83,12 @@ func header_action() -> Control:
 	start.name = "DuelsStart"
 	Kit.icon_on(start, ARROW_ICON)
 	start.custom_minimum_size = Vector2(260, 56)
+	# The chip in the arrow's place, as the board draws it.
+	if energy_cost: EnergyChip.on_button(start, 22)
 	return start
+
+func header_beside() -> Control:
+	return energy_meter
 
 func opened() -> void:
 	_gate = BusyTapGate.new(root)
@@ -109,6 +126,12 @@ func show_lobby(lobby: Dictionary, failed: bool = false) -> void:
 		_state = "ready"
 	elif _lobby.is_empty():
 		_state = "failed" if failed else "loading"
+	if is_instance_valid(_tiles): _render()
+
+## Says `words` under the buttons of the challenge `duel_id` ("Maya is waiting for energy"), kept
+## across the lobby's redraws until the next tap on it.
+func note(duel_id: String, words: String) -> void:
+	_notes[duel_id] = words
 	if is_instance_valid(_tiles): _render()
 
 ## A tap that waits for its work: `run` is awaited with the control holding a short label.
@@ -284,13 +307,20 @@ func _challenge_card(view: Dictionary) -> Control:
 		var accept := Kit.button(PlayerCopy.DUELS_ACCEPT, Callable(), true, 46)
 		accept.name = "Accept"
 		accept.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		accept.pressed.connect(func(): duel_action.emit(view, "accept", accept))
+		accept.pressed.connect(func():
+			_notes.erase(view.duel_id)
+			duel_action.emit(view, "accept", accept))
+		if energy_cost: EnergyChip.on_button(accept, 18)
 		buttons.add_child(accept)
 		var later := Kit.button(PlayerCopy.DUELS_NOT_NOW, Callable(), false, 46)
 		later.name = "NotNow"
 		later.pressed.connect(func(): duel_action.emit(view, "decline", later))
 		buttons.add_child(later)
 		column.add_child(buttons)
+		if _notes.has(view.duel_id):
+			var said := Kit.wrapped(str(_notes[view.duel_id]), 15, UiTokens.SOFT)
+			said.name = "ChallengeNote"
+			column.add_child(said)
 	else:
 		column.add_child(Kit.text(PlayerCopy.DUELS_WAITING_ANSWER, 16, UiTokens.MUTED))
 	return card
@@ -427,7 +457,16 @@ func _ghost_row() -> Control:
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.alignment = BoxContainer.ALIGNMENT_CENTER
 	words.add_theme_constant_override("separation", 0)
-	words.add_child(Kit.text(PlayerCopy.DUELS_RACE_RECORDED, 21, UiTokens.CREAM, true))
+	var title := Kit.text(PlayerCopy.DUELS_RACE_RECORDED, 21, UiTokens.CREAM, true)
+	if energy_cost:
+		# The race's cost beside its title (board-10-energy-lobby).
+		var line_up := HBoxContainer.new()
+		line_up.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		line_up.add_theme_constant_override("separation", 12)
+		line_up.add_child(title)
+		line_up.add_child(EnergyChip.make(20))
+		words.add_child(line_up)
+	else: words.add_child(title)
 	words.add_child(Kit.text(PlayerCopy.DUELS_RACE_RECORDED_NOTE, 16, UiTokens.SOFT))
 	line.add_child(words)
 	line.add_child(_icon(preload("res://assets/ui/settings/chevron.svg"), 20))

@@ -29,6 +29,7 @@ const FaceStore = preload("res://services/end_reaction_store.gd")
 const PAPER := Color("f6f1e1")
 const FACE_CELL := Vector2(78, 66)
 const OfflineHold = preload("res://presentation/offline_hold.gd")
+const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 const FACES_ICON = preload("res://assets/ui/social/users.svg")
 const NAME_ICON = preload("res://assets/ui/social/user.svg")
 const FLAG_ICON = preload("res://assets/ui/room/flag.svg")
@@ -37,7 +38,8 @@ const INFO_ICON = preload("res://assets/ui/social/info.svg")
 const WIDE := 620.0
 
 ## The join card for `row` taking `seat` (0 to 3) as `joining` ("alone" or
-## "party"). `names`: {title (the chapter), partner (your party partner's name)}.
+## "party"). `names`: {title (the chapter), partner (your party partner's name),
+## energy_cost (true while joining costs energy: Join and play wears the chip)}.
 ## confirm() runs after the card closes.
 static func join(root: Control, row: Dictionary, seat: int, joining: String, names: Dictionary, confirm: Callable) -> Control:
 	var side := seat / 2
@@ -87,6 +89,7 @@ static func join(root: Control, row: Dictionary, seat: int, joining: String, nam
 		confirm.call(), PlayerCopy.DUELS_NOT_NOW)
 	go.name = "PublicJoinConfirm"
 	OfflineHold.hold(go)
+	if bool(names.get("energy_cost", false)): EnergyChip.on_button(go, 18)
 	go.grab_focus()
 	return modal
 
