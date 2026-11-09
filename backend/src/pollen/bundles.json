@@ -15,16 +15,16 @@
       "play_store": { "product": "after_you_pollen_basket", "revenuecat_product": "prodde607106a6", "usd_cents": 1999 },
       "app_store": { "product": "after_you_pollen_basket_ios", "revenuecat_product": "prod9dfc202990", "usd_cents": 2199 } },
     "handful": { "currency": "fruits", "amount": 25, "bonus": 0,
-      "play_store": { "product": "after_you_fruits_handful", "revenuecat_product": "", "usd_cents": 249 },
-      "app_store": { "product": "after_you_fruits_handful_ios", "revenuecat_product": "", "usd_cents": 299 } },
+      "play_store": { "product": "after_you_fruits_handful", "revenuecat_product": "prod7892abfd3c", "usd_cents": 249 },
+      "app_store": { "product": "after_you_fruits_handful_ios", "revenuecat_product": "prod3e7f8241c1", "usd_cents": 299 } },
     "bowl": { "currency": "fruits", "amount": 55, "bonus": 5,
-      "play_store": { "product": "after_you_fruits_bowl", "revenuecat_product": "", "usd_cents": 499 },
-      "app_store": { "product": "after_you_fruits_bowl_ios", "revenuecat_product": "", "usd_cents": 599 } },
+      "play_store": { "product": "after_you_fruits_bowl", "revenuecat_product": "prodcc28b790c7", "usd_cents": 499 },
+      "app_store": { "product": "after_you_fruits_bowl_ios", "revenuecat_product": "prod6a470b1ea4", "usd_cents": 599 } },
     "crate": { "currency": "fruits", "amount": 120, "bonus": 20,
-      "play_store": { "product": "after_you_fruits_crate", "revenuecat_product": "", "usd_cents": 999 },
-      "app_store": { "product": "after_you_fruits_crate_ios", "revenuecat_product": "", "usd_cents": 1099 } },
+      "play_store": { "product": "after_you_fruits_crate", "revenuecat_product": "prod469a26333b", "usd_cents": 999 },
+      "app_store": { "product": "after_you_fruits_crate_ios", "revenuecat_product": "prod61614930c9", "usd_cents": 1099 } },
     "barrel": { "currency": "fruits", "amount": 260, "bonus": 60,
-      "play_store": { "product": "after_you_fruits_barrel", "revenuecat_product": "", "usd_cents": 1999 },
-      "app_store": { "product": "after_you_fruits_barrel_ios", "revenuecat_product": "", "usd_cents": 2199 } }
+      "play_store": { "product": "after_you_fruits_barrel", "revenuecat_product": "prod274cbe2031", "usd_cents": 1999 },
+      "app_store": { "product": "after_you_fruits_barrel_ios", "revenuecat_product": "prod324242471f", "usd_cents": 2199 } }
   }
 }

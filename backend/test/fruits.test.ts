@@ -71,13 +71,13 @@ describe("the Fruit rules", () => {
       expect(() => checkedFruitRules(value)).toThrow(/invalid_fruit_rules/);
     }
   });
-  it("sells Handful 25, Bowl 55, Crate 120 and Barrel 260 at the plan's prices, not yet set up in RevenueCat, the first paying double", () => {
+  it("sells Handful 25, Bowl 55, Crate 120 and Barrel 260 at the plan's prices, set up in RevenueCat on both stores, the first paying double", () => {
     expect(keysOf("fruits").map(key => [key, BUNDLES.bundles[key].amount, BUNDLES.bundles[key].bonus, BUNDLES.bundles[key].play_store.usd_cents, BUNDLES.bundles[key].app_store.usd_cents]))
       .toEqual([["handful", 25, 0, 249, 299], ["bowl", 55, 5, 499, 599], ["crate", 120, 20, 999, 1099], ["barrel", 260, 60, 1999, 2199]]);
     expect(keysOf("fruits").map(key => firstGift(key))).toEqual([25, 55, 120, 260]);
     expect(keysOf("fruits").map(key => BUNDLES.bundles[key].play_store.product)).toEqual(["after_you_fruits_handful", "after_you_fruits_bowl", "after_you_fruits_crate", "after_you_fruits_barrel"]);
     expect(keysOf("fruits").map(key => BUNDLES.bundles[key].app_store.product)).toEqual(["after_you_fruits_handful_ios", "after_you_fruits_bowl_ios", "after_you_fruits_crate_ios", "after_you_fruits_barrel_ios"]);
-    expect([storeReady("play_store", "fruits"), storeReady("app_store", "fruits"), storeReady("play_store", "pollen"), storeReady("app_store", "pollen")]).toEqual([false, false, true, true]);
+    expect([storeReady("play_store", "fruits"), storeReady("app_store", "fruits"), storeReady("play_store", "pollen"), storeReady("app_store", "pollen")]).toEqual([true, true, true, true]);
     // Pollen keeps its own 20% gift.
     expect(firstGift("pouch")).toBe(4200);
   });
@@ -101,8 +101,10 @@ describe("the Fruit rules", () => {
     expect(fruitsOn(vars(["FRUITS"]))).toBe(false);
     expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"]))).toBe(false);
     expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "FRUITS"]))).toBe(true);
-    // Not set up in RevenueCat yet: no store sells Fruit packs whatever the flags say.
-    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES", "FRUITS"]))).toBe(false);
+    // Set up in RevenueCat: Play sells Fruit packs once Fruits and Play's bundles are both on.
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES", "FRUITS"]))).toBe(true);
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES"]))).toBe(false);
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "FRUITS"]))).toBe(false);
   });
 });
 

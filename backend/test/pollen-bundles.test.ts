@@ -62,8 +62,9 @@ describe("the bundle table", () => {
     for (const key of ["pinch", "pouch", "jar", "basket"]) unset.bundles[key].app_store.revenuecat_product = "";
     const table = checkedBundles(unset);
     expect(storeReady("app_store", "pollen", table)).toBe(false);
-    expect(Object.values(bundleProducts(table)).map(each => each.store)).toEqual(["play_store", "play_store", "play_store", "play_store"]);
-    expect(Object.values(bundleProducts()).filter(each => each.store === "app_store").map(each => each.bundle)).toEqual(["pinch", "pouch", "jar", "basket"]);
+    expect(Object.values(bundleProducts(table)).filter(each => each.store === "app_store").map(each => each.bundle)).toEqual(["handful", "bowl", "crate", "barrel"]);
+    expect(Object.values(bundleProducts(table)).filter(each => each.store === "play_store")).toHaveLength(8);
+    expect(Object.values(bundleProducts()).filter(each => each.store === "app_store").map(each => each.bundle)).toEqual(["pinch", "pouch", "jar", "basket", "handful", "bowl", "crate", "barrel"]);
   });
   it("refuses a table outside its shape", () => {
     const copy = () => JSON.parse(JSON.stringify(serverBundles));
