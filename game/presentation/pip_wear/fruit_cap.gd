@@ -36,9 +36,10 @@ const CENTER := Vector3(0.0, 0.02, -0.005)
 const HALF := Vector3(0.395, 0.335, 0.365)
 const POWER := 2.5
 ## The face opening seen from the front: a rounded oblong (FACE_POWER) of half
-## size FACE_HALF about height FACE_Y. Its top is just over the eyes, its sides
-## are past the cheeks, and below it runs open into the jaw line.
-const FACE_HALF := Vector2(0.31, 0.3)
+## size FACE_HALF about height FACE_Y. Its top is just over the eyes and its
+## sides past the cheeks, clear of the eyes even at their farthest glance;
+## below, it runs open into the jaw line.
+const FACE_HALF := Vector2(0.325, 0.31)
 const FACE_Y := -0.115
 const FACE_POWER := 3.0
 ## The jaw line: the hood's lower edge at the sides (x) and at the back (y).

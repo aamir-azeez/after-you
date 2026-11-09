@@ -37,6 +37,8 @@ const MAX_TRIANGLES := 640
 ## Nothing solid comes nearer the eyes' anchors than this (the open eye's outer
 ## radius is up to about 0.10).
 const EYE_CLEAR := 0.11
+## How far a glance moves each eye (spirit_visual.gd: the eye markers' gaze).
+const GLANCE := Vector2(0.018, 0.009)
 const FACE_PARAMS := ["body_color", "cream_color", "pupil_color", "blush_color", "blush_strength", "blush_soft", "eye_xy", "eye_squash", "look_shift", "pupil_rim", "tear_neck_root"]
 const DT := 1.0 / 60.0
 ## Hats seated on the head's surface: no part of them is inside the head.
@@ -275,10 +277,17 @@ func _leaf_clears_cap(capped: Node3D, label: String) -> void:
 	_check(under == 0, "%s grows out of the Fruit cap and never cuts into it: %d points (deepest %.3f)" % [label, under, lowest])
 
 ## The Fruit cap's hood reaches down to the jaw: idle, walking or dozing, it
-## never sinks into the body, which moves apart from the head.
+## never sinks into the body, which moves apart from the head. Its face
+## opening stays clear of the eyes even at their farthest glance (GLANCE).
 func _hood_clears_body() -> void:
 	var spirit := _spirit()
 	spirit.wear(Outfit.of("fruit_cap", true))
+	var near_eye := 0
+	for point: Vector3 in _solid_points(spirit):
+		for side: float in [-1.0, 1.0]:
+			for up: float in [-1.0, 1.0]:
+				if point.z > 0.0 and Vector2(point.x - side * (Look.EYE_X + GLANCE.x), point.y - Look.EYE_Y - up * GLANCE.y).length() < EYE_CLEAR: near_eye += 1
+	_check(near_eye == 0, "The Fruit cap's hood stays clear of the eyes at their farthest glance: %d points" % near_eye)
 	var in_body := 0
 	for frame in range(360):
 		if frame == 240: spirit.set_pose(&"doze")
