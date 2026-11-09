@@ -4,12 +4,28 @@ const Keepsakes = preload("res://services/home_keepsakes.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const Unlocks = preload("res://services/chapter_unlocks.gd")
+const Hub = preload("res://presentation/room_hub_screen.gd")
+const Picker = preload("res://presentation/chapter_picker.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
+## The game's units for each window the closing line must fit, as [size, side,
+## top, side, bottom insets, name]. The project stretches canvas items and keeps
+## 720 units of height, so 1600x738 and 800x360 windows are about 1561 and 1600
+## units wide. An iPhone in landscape (2556x1179 with 186 px side insets and a
+## 63 px home bar, as in test_big_screens.gd) is 1561x720 with 114 and 38 units.
+const COMING_SOON_SCREENS := [
+	[Vector2i(1561,720), Vector4.ZERO, "1600x738"],
+	[Vector2i(1280,720), Vector4.ZERO, "1280x720"],
+	[Vector2i(1600,720), Vector4.ZERO, "800x360"],
+	[Vector2i(1561,720), Vector4(114,0,114,38), "an iPhone in landscape"],
+]
 
 class Routes extends Main:
 	var routed: Array = []
 	var toasts: Array[String] = []
 	var owned := false
+	var free_only := false
 	func _full_journey_access() -> bool: return owned
+	func _paid_content_hidden() -> bool: return free_only or super._paid_content_hidden()
 	func _toast(text: String) -> void: toasts.append(text)
 	func _open_chapter_preview(scene: String, _replay_context: Dictionary = {}, _hard: Dictionary = {}) -> void: routed.append("free:"+scene)
 	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}, _hard: Dictionary = {}) -> void: routed.append("premium:"+scene)
@@ -50,6 +66,7 @@ func _run() -> void:
 		if size==Vector2i(1280,720):
 			await _peek_heights(app,viewport)
 			await _locked_chain(app,viewport)
+	await _coming_soon(app,viewport)
 	_check(FileAccess.get_file_as_string(path)==saved,"Menu visits and route clicks preserve the gameplay save")
 	viewport.queue_free()
 	await _settle()
@@ -453,3 +470,74 @@ func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer
 		var rect := card.get_global_rect()
 		if rect.intersects(scroll.get_global_rect()) and not scroll.get_global_rect().grow(0.5).encloses(rect) and rect.intersection(scroll.get_global_rect()).size.y >= 24.0: partial = true
 	_check(partial,"Part of the next row of chapters peeks into view"+context)
+
+## The closing "more chapters" line on both chapter pickers, Play Solo (Hard
+## chip on and off, and a build that sells nothing) and Play with a friend:
+## the last item of the list after the cards, in the card caption look, taking
+## no taps, scrolling with the cards, and whole inside the list and the safe
+## area once the list is scrolled to its end, at each COMING_SOON_SCREENS size.
+func _coming_soon(app: Node, viewport: SubViewport) -> void:
+	var empty := Picker.new()
+	empty.size = Vector2(800,400)
+	root.add_child(empty)
+	var none: Array[Dictionary] = []
+	empty.set_entries(none,Picker.picture_for(800.0))
+	_check(empty.coming_soon != null and not empty.coming_soon.visible,"A picker with no cards shows no more chapters line")
+	empty.free()
+	for screen: Array in COMING_SOON_SCREENS:
+		var units: Vector2i = screen[0]
+		var inset: Vector4 = screen[1]
+		viewport.size = units
+		var safe := Rect2(inset.x,inset.y,units.x-inset.x-inset.z,units.y-inset.y-inset.w)
+		var context := " at "+str(screen[2])
+		SafeArea.simulate(safe if inset != Vector4.ZERO else Rect2())
+		app._apply_safe_area(safe)
+		for page: Array in [[false,false,"Play Solo"],[true,false,"Play Solo on Hard"],[false,true,"Play Solo with nothing sold"]]:
+			app.journey_flow.hard = page[0]
+			app.free_only = page[1]
+			app.journey_flow.show_journey()
+			await _settle()
+			await _settle()
+			await _check_coming_soon(app.journey_flow.picker,safe,str(page[2])+context)
+		app.journey_flow.hard = false
+		app.free_only = false
+		var hub := Hub.new()
+		hub.set_chapters(app.room_hub_flow.together_chapters())
+		viewport.add_child(hub)
+		await _settle()
+		hub.open_chapter_picker()
+		await _settle()
+		await _settle()
+		await _check_coming_soon(hub._picker,SafeArea.rect(viewport),"Play with a friend"+context)
+		hub.queue_free()
+		await _settle()
+	SafeArea.simulate(Rect2())
+	viewport.size = Vector2i(1280,720)
+	app._apply_safe_area(Rect2(Vector2.ZERO,Vector2(viewport.size)))
+	await _settle()
+
+func _check_coming_soon(picker: ScrollContainer, bounds: Rect2, context: String) -> void:
+	var line: Label = picker.coming_soon if picker != null else null
+	_check(line != null and line.visible and line.text == PlayerCopy.CHAPTERS_COMING_SOON,"The chapter list closes with the more chapters line: "+context)
+	if line == null: return
+	var grid: GridContainer = picker.grid
+	_check(picker.is_ancestor_of(line) and not grid.is_ancestor_of(line) and line.get_parent() == grid.get_parent() and line.get_index() == line.get_parent().get_child_count()-1 and grid.get_index() < line.get_index(),"The line is the list's last item, after the card grid: "+context)
+	_check(line.get_theme_font_size("font_size") == 18 and line.get_theme_color("font_color") == Picker.MUTED and line.horizontal_alignment == HORIZONTAL_ALIGNMENT_CENTER and line.mouse_filter == Control.MOUSE_FILTER_IGNORE,"The line takes the card caption look, centred, and never takes a tap: "+context)
+	var bar := picker.get_v_scroll_bar()
+	picker.scroll_vertical = 0
+	await _settle()
+	var top := line.get_global_rect()
+	picker.scroll_vertical = int(bar.max_value)
+	await _settle()
+	var rect := line.get_global_rect()
+	var view := picker.get_global_rect()
+	_check(is_equal_approx(top.position.y-rect.position.y,float(picker.scroll_vertical)),"The line scrolls with the cards: "+context)
+	var last_card := 0.0
+	for card: Control in grid.get_children(): last_card = maxf(last_card,card.get_global_rect().end.y)
+	_check(rect.position.y >= last_card+12.0,"The line sits clear below the last card (%.1f, card ends %.1f): %s" % [rect.position.y,last_card,context])
+	_check(view.grow(0.5).encloses(rect) and bounds.grow(0.5).encloses(rect),"At the list's end the whole line shows inside the list and the safe area (%s in %s, %s): %s" % [rect,view,bounds,context])
+	var font := line.get_theme_font("font")
+	var width := font.get_string_size(line.text,HORIZONTAL_ALIGNMENT_LEFT,-1,18).x
+	_check(line.get_line_count() == 1 and width <= rect.size.x,"The line fits on one line: "+context)
+	picker.scroll_vertical = 0
+	await _settle()

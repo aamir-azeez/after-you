@@ -24,7 +24,9 @@ extends SceneTree
 ##     trophy, and each screen that shows a leaderboard icon is in LEADERBOARD_ICON_SURFACES;
 ## (m) duel times: services/duel_model.gd lane() alone gives a duel lane its time and dots (the
 ##     pair ahead set beside the pair behind after as many turns), and each screen that shows a
-##     duel time is in DUEL_TIME_SURFACES.
+##     duel time is in DUEL_TIME_SURFACES;
+## (n) chapter lists: each screen listing the chapters to play builds presentation/chapter_picker.gd
+##     (its cards and the closing "more chapters" line) and is in CHAPTER_PICKER_SURFACES.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -205,6 +207,16 @@ const RAW_DUEL_TIME_EXEMPT := {
 ## A side's or the ghost's time or steps read straight off a duel view.
 const RAW_DUEL_TIME := "\\.(?:sides\\[[^\\]]+\\]|ghost)\\.(?:ticks|steps)\\b|\\.(?:sides\\[[^\\]]+\\]|ghost)\\.get\\(\"(?:ticks|steps|splits)\""
 
+## (n) The one chapter picker, and each screen that builds one with where.
+const CHAPTER_PICKER := "res://presentation/chapter_picker.gd"
+const CHAPTER_PICKER_SURFACES := {
+	"res://presentation/journey_flow.gd": "Play Solo's Chapters page, Hard chip included",
+	"res://presentation/room_hub_screen.gd": "Play with a friend's Start another journey",
+}
+## The closing line only the picker shows, and where it is written.
+const COMING_SOON_COPY := "CHAPTERS_COMING_SOON"
+const PLAYER_COPY := "res://presentation/player_copy.gd"
+
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity"]
 
@@ -231,6 +243,7 @@ func _initialize() -> void:
 	_recovery()
 	_leaderboard_icon()
 	_duel_times()
+	_chapter_lists()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -567,6 +580,22 @@ func _duel_times() -> void:
 		_check(seen.has(path), "DUEL_TIME_SURFACES names %s, which shows no duel time through DuelModel.lane() now: delete it" % path)
 	for path: String in RAW_DUEL_TIME_EXEMPT:
 		_check(raw.has(path), "RAW_DUEL_TIME_EXEMPT names %s, which reads no duel time off a view now: delete it" % path)
+
+# (n) Chapter lists ------------------------------------------------------------
+
+func _chapter_lists() -> void:
+	var seen := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path == CHAPTER_PICKER: continue
+		_check(path == PLAYER_COPY or not source.contains(COMING_SOON_COPY), "%s shows the more chapters line itself: build presentation/chapter_picker.gd, which closes every chapter list with it" % path)
+		var alias := _alias(source, CHAPTER_PICKER)
+		if alias.is_empty() or _found("\\b" + alias + "\\.new\\(", source) == 0: continue
+		seen[path] = true
+		_check(CHAPTER_PICKER_SURFACES.has(path), "%s builds a chapter picker: add it to CHAPTER_PICKER_SURFACES with where" % path)
+	for path: String in CHAPTER_PICKER_SURFACES:
+		_check(seen.has(path), "CHAPTER_PICKER_SURFACES names %s, which builds no chapter picker now: delete it" % path)
+	_check(_found("\\bPlayerCopy\\." + COMING_SOON_COPY + "\\b", str(_sources.get(CHAPTER_PICKER, ""))) == 1, "presentation/chapter_picker.gd closes its list with PlayerCopy." + COMING_SOON_COPY)
 
 # (j) and the guard suites ---------------------------------------------------
 
