@@ -21,6 +21,8 @@ const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const GHOST_FACE = preload("res://presentation/spirit_face_ghost.gdshader")
 ## The pip's strength (board 4A: half), its name's, and how much paler it is than a live pip.
 const VEIL := 0.5
+## A part's meta naming the instance uniform its own shader fades it by.
+const VEIL_UNIFORM := &"veil_uniform"
 const NAME_ALPHA := 0.55
 const PALER := 0.18
 ## The timer mark's pip.
@@ -111,9 +113,11 @@ func _process(delta: float) -> void:
 
 ## Half strength on every part, its outfit too: the face draws with its
 ## see-through variant (spirit_face_ghost.gdshader, so its eyes still move) and
-## every other part with a see-through copy of its material. A part a body
-## cosmetic draws with its own shader (the Tide torso) shows as the plain body,
-## and the face loses that cosmetic's pattern: the ghost shows the outfit's
+## every other part with a see-through copy of its material. A part whose own
+## shader places it names the instance uniform that fades it (meta
+## VEIL_UNIFORM: the Orchard skin's falling petals) and keeps its shader at
+## VEIL strength. A part a body cosmetic draws with its own shader (the Tide
+## torso) shows as the plain body, and the face loses that cosmetic's pattern: the ghost shows the outfit's
 ## shape, never a second solid pip. Its ground shadow and ring would read as
 ## solid, so they go.
 static func _veil(node: Node, body: Color) -> void:
@@ -125,6 +129,9 @@ static func _veil(node: Node, body: Color) -> void:
 		mesh_part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var material: Material = mesh_part.material_override if mesh_part.material_override != null else mesh_part.get_active_material(0)
 		if material == face_material: continue
+		if mesh_part.has_meta(VEIL_UNIFORM):
+			mesh_part.set_instance_shader_parameter(mesh_part.get_meta(VEIL_UNIFORM), VEIL)
+			continue
 		if material is ShaderMaterial: material = Primitives.shared_material(body, 0.9)
 		if material is BaseMaterial3D: mesh_part.material_override = _veiled(material)
 	var shadow: Variant = node.get("ground_shadow")

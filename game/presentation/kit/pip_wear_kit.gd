@@ -9,7 +9,8 @@ extends RefCounted
 ## (cached_mesh); the halo texture, the quads and the shared materials are
 ## kept too. They hold GPU resources, so their release is registered with
 ## kit/session_release.gd. Materials an item animates (a lamp that brightens
-## and dims) are made per pip and go with it.
+## and dims) are made per pip and go with it; a shader material that moves on
+## its own (TIME) is shared through cached_material.
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 const SCRIPT_PATH := "res://presentation/kit/pip_wear_kit.gd"
@@ -20,6 +21,7 @@ const SEGMENTS := 8
 const RINGS := 4
 
 static var _meshes: Dictionary = {}
+static var _materials: Dictionary = {}
 static var _vertex_material: StandardMaterial3D
 static var _star_materials: Dictionary = {}
 static var _halo_texture: GradientTexture2D
@@ -27,6 +29,7 @@ static var _halo_texture: GradientTexture2D
 ## Lets go of every kept mesh, material and texture (at shutdown).
 static func release_cached() -> void:
 	_meshes.clear()
+	_materials.clear()
 	_vertex_material = null
 	_star_materials.clear()
 	_halo_texture = null
@@ -41,6 +44,17 @@ static func cached_mesh(key: String, build: Callable) -> Mesh:
 	if found != null: return found
 	found = build.call()
 	_meshes[key] = found
+	_keep()
+	return found
+
+## The material made by `build` (a Callable returning a Material) for `key`,
+## built the first time and shared after (a shader every pip wearing the item
+## draws with; a pip's own values go in instance uniforms).
+static func cached_material(key: String, build: Callable) -> Material:
+	var found: Material = _materials.get(key)
+	if found != null: return found
+	found = build.call()
+	_materials[key] = found
 	_keep()
 	return found
 

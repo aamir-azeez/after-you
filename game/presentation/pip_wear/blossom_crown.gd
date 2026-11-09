@@ -13,14 +13,15 @@ const PINK := Color("f6c3cf")
 const WHITE := Color("fbe1e6")
 const HEART := Color("f2b45f")
 const VINE := Color("7f9d5f")
-## Enough blossoms of BLOSSOM's reach that neighbours overlap all round the ring.
-const BLOSSOMS := 16
+## Enough blossoms of BLOSSOM's reach that neighbours overlap all round the
+## ring: a few big flowers read better on a small pip than many small ones.
+const BLOSSOMS := 10
 ## How far down from the top of the head the ring sits (radians from straight up).
-const RING_TILT := 0.9
+const RING_TILT := 0.8
 ## The blossom's reach, the gold heart's, and how far the heart stands above the petals.
-const BLOSSOM := 0.085
-const HEART_SIZE := 0.03
-const HEART_LIFT := 0.009
+const BLOSSOM := 0.12
+const HEART_SIZE := 0.042
+const HEART_LIFT := 0.01
 ## Every other blossom lies this much higher, so overlapping petals never flicker.
 const STAGGER := 0.004
 ## The blossom's five lobes: points per lobe, and how deep the dips between them are.
