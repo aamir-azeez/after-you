@@ -201,6 +201,7 @@ func _run() -> void:
 	await _orchard_money_safety()
 	await _orchard_tab()
 	await _orchard_branch()
+	await _fits_every_screen()
 	await _orchard_confirm()
 	await _orchard_short()
 	await _orchard_blocked_and_refused()
@@ -1000,10 +1001,10 @@ func _orchard_branch() -> void:
 	var render := Image.load_from_file(ProjectSettings.globalize_path(FruitMark.RENDER))
 	var stem := render.get_pixelv(Vector2i(FruitMark.RENDER_STEM))
 	_check(stem.a > 0.9 and stem.g > stem.r, "The render's stem is at RENDER_STEM: %s" % stem)
-	for screen: Vector2 in [Vector2(1280, 720), Vector2(1561, 720), Vector2(1600, 720)]:
+	for screen: Vector2 in SCREENS:
 		page.size = screen
 		await _frames()
-		var parts: Dictionary = Orchard.Branch.layout(branch.size.x / Orchard.Branch.FRAME_WIDTH, Vector2(render.get_size()))
+		var parts: Dictionary = Orchard.Branch.layout(branch.size.x / Orchard.Branch.FRAME_WIDTH, Vector2(render.get_size()), branch.span())
 		var curves: Array = parts.curves
 		var on_branch := func(point: Vector2, skip: int) -> bool:
 			for index in range(curves.size()):
@@ -1020,7 +1021,11 @@ func _orchard_branch() -> void:
 			var scale := box.size.y / render.get_height()
 			var pixel := Vector2i(((parts.stalks[index][1] as Vector2) - box.position - Vector2((box.size.x - render.get_width() * scale) * 0.5, 0.0)) / scale)
 			if render.get_pixelv(pixel).a < 0.9: loose.append("Fruit %d's stalk ends at %s, off its stem" % [index, pixel])
-		_check(loose.is_empty(), "%s: every twig and stalk starts on the branch and every Fruit's stalk runs into its stem: %s" % [screen, loose])
+		for index in range(parts.leaves.size()):
+			var leaf: Array = parts.leaves[index]
+			var outline: PackedVector2Array = Transform2D(deg_to_rad(leaf[2]), Vector2(leaf[1], leaf[1]) * 0.5, 0.0, leaf[0]) * Orchard.LeafArt.outline
+			if not Geometry2D.is_point_in_polygon(parts.stalks[parts.fruits.size() + index][1], outline): loose.append("leaf %d's stalk ends outside it" % index)
+		_check(loose.is_empty(), "%s: every twig and stalk starts on the branch, every Fruit's stalk runs into its stem and every leaf's into the leaf: %s" % [screen, loose])
 		var to_branch := branch.get_global_transform().affine_inverse()
 		var blocked := {"the chips": to_branch * orchard.find_child("OrchardChips", true, false).get_global_rect(), "the cards": to_branch * orchard.find_child("OrchardItems", true, false).get_global_rect()}
 		for label: Label in orchard.find_children("", "Label", true, false):
@@ -1041,9 +1046,50 @@ func _orchard_branch() -> void:
 		for shape: Rect2 in shapes:
 			for what: String in blocked: if shape.intersects(blocked[what]): hits.append("%s covers %s" % [shape, what])
 		for shape: Rect2 in shapes.slice(0, parts.fruits.size() + parts.leaves.size()): if not panel.encloses(shape): hits.append("%s leaves the panel" % shape)
-		_check(blocked.size() == 4 and hits.is_empty(), "%s: the branch keeps off the title, the chips and the cards and stays in the panel: %s" % [screen, hits])
+		_check(blocked.size() == 4 and hits.is_empty(), "%s (panel %.0f wide): the branch keeps off the title, the chips and the cards and stays in the panel: %s" % [screen, branch.size.x, hits])
 	t.host.queue_free()
 	await _frames(2)
+
+## The safe areas the Wardrobe gets on landscape screens, in units (the root
+## stretch is canvas_items, expand, at 1280x720, and SafeArea.fit_width keeps a
+## safe area at least 1280 wide): a 16:9 phone (1280x720, 1920x1080), the
+## 1600x738 phone, a 20:9 phone (2400x1080, 800x360), the same with a 136 px
+## camera hole, an iPhone with both side insets (2556x1179, 186 px each side)
+## and a 4:3 iPad (1366x1024, 2732x2048).
+const SCREENS := [Vector2(1280, 720), Vector2(1561, 720), Vector2(1600, 720), Vector2(1509, 720), Vector2(1334, 720), Vector2(1280, 960)]
+
+## Every tab on every screen: each control that shows is inside the page, and
+## the header, the pip panel and the shop or Orchard never cover each other.
+func _fits_every_screen() -> void:
+	var t := await _orchard_setup(["daisy", "straw_hat"], 101)
+	var page: Control = t.host.overlay
+	var views := [["all", "hat"], ["all", "body"], ["all", "leaf"], ["owned", "hat"], ["orchard", ""]]
+	for screen: Vector2 in SCREENS:
+		page.size = screen
+		for view: Array in views:
+			t.flow.set_tab(view[0])
+			if not (view[1] as String).is_empty(): t.flow.set_kind(view[1])
+			await _frames(3)
+			var label := "%s on %s %s" % [screen, view[0], view[1]]
+			var outside: Array = []
+			_outside(page, Rect2(Vector2.ZERO, screen).grow(0.5), outside)
+			_check(outside.is_empty(), "%s: every control is on screen: %s" % [label, outside.slice(0, 6)])
+			var blocks: Array = ["WardrobeHeader", "WardrobePipPanel", "WardrobeShopPanel" if view[0] != "orchard" else "WardrobeOrchard"].map(func(id: String) -> Control: return page.find_child(id, true, false))
+			var covered := false
+			for a in range(blocks.size()):
+				for b in range(a + 1, blocks.size()): covered = covered or (blocks[a] as Control).get_global_rect().intersects((blocks[b] as Control).get_global_rect())
+			_check(not covered and blocks.all(func(block: Control) -> bool: return block.is_visible_in_tree()), "%s: the header, the pip panel and the shop sit apart" % label)
+	t.host.queue_free()
+	await _frames(2)
+
+## Collects each visible button, label or panel under `node` that leaves
+## `inside`, skipping what a scroll holds out of view on purpose.
+func _outside(node: Node, inside: Rect2, found: Array) -> void:
+	if node is ScrollContainer and ((node as ScrollContainer).get_v_scroll_bar().max_value > (node as Control).size.y + 0.5): return
+	if node is Control and (node as Control).is_visible_in_tree() and (node is Button or node is Label or node is PanelContainer or node is TextureRect):
+		var rect := (node as Control).get_global_rect()
+		if rect.has_area() and not inside.encloses(rect): found.append("%s %s" % [node.name, rect])
+	for child: Node in node.get_children(): _outside(child, inside, found)
 
 ## Board 4b: the confirm card in Fruits, and a Fruit purchase.
 func _orchard_confirm() -> void:

@@ -37,6 +37,11 @@ const LEAF_LIGHT := Color("93b874")
 const GLASS := Color(0.078, 0.031, 0.086, 0.45)
 const SET_RIM := Color(0.949, 0.718, 0.612, 0.35)
 const CARD_SIZE := Vector2(240, 175)
+## The narrowest an item card and the set card get on a 16:9 phone (a safe
+## area 1280 units wide); wider screens give them up to CARD_SIZE and SET_SIZE.
+const CARD_NARROW := 168.0
+const SET_SIZE := Vector2(515, 103)
+const SET_NARROW := 400.0
 const CARD_PIP := Vector2(140, 168)
 const TILE := 77.0
 const RADIUS := 22
@@ -46,7 +51,7 @@ signal kind_chosen(kind: String)
 
 var _status: Label
 var _seg: HBoxContainer
-var _cards: HBoxContainer
+var _cards: ShareRow
 var _sprigs: HBoxContainer
 var _each: Label
 var _sets: VBoxContainer
@@ -74,7 +79,8 @@ func _init() -> void:
 	var titles := VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	titles.add_theme_constant_override("separation", 0)
-	titles.add_child(ShopKit.text(PlayerCopy.ORCHARD_TITLE, 32, OrchardSurface.TEXT, ShopKit.heading_font()))
+	var title := ShopKit.text(PlayerCopy.ORCHARD_TITLE, 32, OrchardSurface.TEXT, ShopKit.heading_font())
+	titles.add_child(title)
 	var stays := ShopKit.text(PlayerCopy.WARDROBE_STAYS, 17, OrchardSurface.TEXT_SOFT)
 	stays.name = "OrchardStays"
 	titles.add_child(stays)
@@ -84,6 +90,8 @@ func _init() -> void:
 	seg_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	seg_panel.add_theme_stylebox_override("panel", ThemeRules.padded(ThemeRules.rounded(GLASS, 15), 4, 4))
 	header.add_child(seg_panel)
+	var lines: Array[Label] = [title, stays]
+	decor.keep_between(lines, seg_panel)
 	_seg = HBoxContainer.new()
 	_seg.add_theme_constant_override("separation", 4)
 	seg_panel.add_child(_seg)
@@ -91,15 +99,13 @@ func _init() -> void:
 	_status.name = "OrchardStatus"
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(_status)
-	_cards = HBoxContainer.new()
+	_cards = ShareRow.new(24)
 	_cards.name = "OrchardItems"
-	_cards.add_theme_constant_override("separation", 24)
 	column.add_child(_cards)
 	var filler := Control.new()
 	filler.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(filler)
-	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", 24)
+	var bottom := ShareRow.new(24)
 	column.add_child(bottom)
 	var sprig_column := VBoxContainer.new()
 	sprig_column.name = "OrchardSprigs"
@@ -122,6 +128,7 @@ func _init() -> void:
 	_sets.name = "OrchardSets"
 	_sets.size_flags_vertical = Control.SIZE_SHRINK_END
 	_sets.add_theme_constant_override("separation", 10)
+	_sets.set_meta(ShareRow.CAP, SET_SIZE.x)
 	bottom.add_child(_sets)
 
 ## Whether an entry is drawn as a sprig tile (else an item card).
@@ -228,14 +235,15 @@ static func _plinth(minimum: Vector2, radius: int) -> PanelContainer:
 
 ## An Orchard item: the pip wearing it on its plinth, the name and tag, the price.
 func _card(entry: Dictionary) -> Control:
-	var card := _pickable(str(entry.id), str(entry.name), Vector2(CARD_SIZE.x, 0))
+	var card := _pickable(str(entry.id), str(entry.name), Vector2(CARD_NARROW, 0))
 	card.name = "OrchardCard_" + str(entry.id)
+	card.set_meta(ShareRow.CAP, CARD_SIZE.x)
 	var column := VBoxContainer.new()
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_theme_constant_override("separation", 4)
 	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	card.add_child(column)
-	var plinth := _plinth(CARD_SIZE, 17)
+	var plinth := _plinth(Vector2(0, CARD_SIZE.y), 17)
 	column.add_child(plinth)
 	var pip := PipAvatar.new(true, SpiritLook.PEACH, CARD_PIP, true)
 	pip.outfit = Outfit.of(str(entry.id))
@@ -290,7 +298,7 @@ func _tile(entry: Dictionary) -> Control:
 
 ## An Orchard set: its name and pieces, the full price struck and the set price.
 func _set_card(entry: Dictionary) -> Control:
-	var card := _pickable(str(entry.id), str(entry.name), Vector2(515, 103))
+	var card := _pickable(str(entry.id), str(entry.name), Vector2(SET_NARROW, SET_SIZE.y))
 	card.name = "OrchardSet_" + str(entry.id)
 	var back := Panel.new()
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -401,25 +409,38 @@ class Leaf extends Control:
 ## leaves and three Fruits (kit/fruit_mark.gd's render). Every part is placed
 ## from a point on the bough or a twig (layout()): each Fruit hangs from a
 ## green stalk that runs into its own stem, each leaf joins on a short stalk
-## of its own green, and each twig starts on the bough, so nothing floats. It all stays above
-## the title, the chips and the cards (test_wardrobe_flow.gd checks it at the
-## phones' widths). Once per resize.
+## of its own green, and each twig starts on the bough, so nothing floats.
+## What hangs below the bough spreads across the gap between the title and
+## the chips (span()), so a 16:9 phone's narrower panel keeps it clear of
+## them too; test_wardrobe_flow.gd checks it at the phones' widths. Once per
+## resize, and again when the title or the chips move.
 class Branch extends Control:
 	const FRAME_WIDTH := 1715.0
-	## [cubic curve, width]: the bough's two halves, then the twigs, each
-	## starting on the bough.
+	## [cubic curve, width]: the bough's two halves (x only grows along them),
+	## then the twig that rises from the bough on the right.
 	const CURVES := [
 		[[Vector2(-20, 70), Vector2(260, 30), Vector2(520, 120), Vector2(820, 80)], 16.0],
 		[[Vector2(820, 80), Vector2(1120, 40), Vector2(1380, 30), Vector2(1740, 96)], 16.0],
-		[[Vector2(433, 78), Vector2(465, 96), Vector2(505, 103), Vector2(548, 102)], 8.0],
-		[[Vector2(952, 64), Vector2(980, 80), Vector2(1025, 92), Vector2(1060, 94)], 8.0],
 		[[Vector2(1169, 49), Vector2(1200, 30), Vector2(1250, 18), Vector2(1300, 22)], 8.0]]
-	## [curve, how far along it, the stalk down to the Fruit's stem, side]:
-	## long enough to show past the curve's edge and above the Fruit's own leaf.
-	const HUNG := [[2, 1.0, Vector2(0, 24), 64.0], [0, 0.97, Vector2(0, 27), 66.0], [3, 1.0, Vector2(0, 24), 64.0]]
-	## [curve, how far along it, stalk length, the way the leaf points in
-	## degrees (0 right, 90 down), side, light].
-	const LEAVES := [[0, 0.2, 16.0, -140.0, 56.0, false], [0, 0.8, 16.0, 70.0, 60.0, true], [4, 1.0, 10.0, 10.0, 56.0, false], [1, 0.8, 16.0, -35.0, 54.0, true]]
+	const TWIG := 8.0
+	## A twig a Fruit hangs from, seen from its end: its start on the bough,
+	## then its two middle points from its start and from its end.
+	const TWIG_LEFT := [Vector2(-115, -24), Vector2(32, 18), Vector2(-43, 1)]
+	const TWIG_RIGHT := [Vector2(-108, -30), Vector2(28, 16), Vector2(-35, -2)]
+	## The gap between the title and the chips on the 1600x738 board, in frame
+	## units, for while the header is not laid out; and how far inside the
+	## gap's ends what hangs keeps.
+	const SPAN := Vector2(401, 1171)
+	const SPAN_INSET := 30.0
+	## Below the bough, across the gap: [how far across, twig ([] hangs from
+	## the bough), the stalk down to the Fruit's stem, side]. The stalk is long
+	## enough to show past the twig and above the Fruit's own leaf.
+	const HUNG := [[0.165, TWIG_LEFT, Vector2(0, 24), 64.0], [0.51, [], Vector2(0, 27), 66.0], [0.886, TWIG_RIGHT, Vector2(0, 24), 64.0]]
+	## A leaf hanging off the bough in the gap: [how far across, stalk length,
+	## the way it points in degrees (0 right, 90 down), side, light].
+	const HUNG_LEAVES := [[0.31, 16.0, 70.0, 60.0, true]]
+	## Leaves above the bough: [curve, how far along it, stalk length, degrees, side, light].
+	const LEAVES := [[0, 0.2, 16.0, -140.0, 56.0, false], [2, 1.0, 10.0, 10.0, 56.0, false], [1, 0.8, 16.0, -35.0, 54.0, true]]
 	const FRUIT_STALK := 4.5
 	const LEAF_STALK := 4.0
 	## How far a stalk runs on into the Fruit's stem, and into the leaf's thin
@@ -427,6 +448,9 @@ class Branch extends Control:
 	const TUCK := 0.03
 	const LEAF_TUCK := 0.12
 	var _render: Texture2D
+	## The title's lines and the chips, which the gap lies between.
+	var _titles: Array[Label] = []
+	var _chips: Control
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -435,9 +459,28 @@ class Branch extends Control:
 		_render = FruitMark.render()
 		resized.connect(queue_redraw)
 
+	## Hangs the Fruits between the end of `titles` and the start of `chips`.
+	func keep_between(titles: Array[Label], chips: Control) -> void:
+		_titles = titles
+		_chips = chips
+		for each: Control in titles: each.item_rect_changed.connect(queue_redraw)
+		chips.item_rect_changed.connect(queue_redraw)
+
+	## The gap between the title and the chips in frame units at this size,
+	## inset by SPAN_INSET; SPAN while they are not laid out.
+	func span() -> Vector2:
+		var zoom := size.x / FRAME_WIDTH
+		if zoom <= 0.0 or _chips == null or not _chips.is_visible_in_tree() or _chips.size.x <= 0.0: return SPAN + Vector2(SPAN_INSET, -SPAN_INSET)
+		var to_here := get_global_transform().affine_inverse()
+		var left := 0.0
+		for label: Label in _titles:
+			var wide := label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
+			left = maxf(left, (to_here * label.global_position).x + wide)
+		return Vector2(left / zoom + SPAN_INSET, (to_here * _chips.global_position).x / zoom - SPAN_INSET)
+
 	func _draw() -> void:
 		if size.x <= 0.0 or _render == null: return
-		var parts := layout(size.x / FRAME_WIDTH, _render.get_size())
+		var parts := layout(size.x / FRAME_WIDTH, _render.get_size(), span())
 		# Stalks first, so they grow out from under the bough and the Fruits.
 		for stalk: Array in parts.stalks: draw_line(stalk[0], stalk[1], stalk[3], stalk[2], true)
 		for curve: Array in parts.curves: draw_polyline(curve[0], BRANCH, curve[1], true)
@@ -445,29 +488,50 @@ class Branch extends Control:
 		for box: Rect2 in parts.fruits: FruitMark.draw_render(self, _render, box)
 
 	## The branch at `zoom` (panel pixels per frame unit), the Fruit's render
-	## being `picture_size`: curves [points, width], stalks [from, to, width,
-	## colour] (from on a curve), leaves [centre, side, degrees, light] for
-	## LeafArt.draw, and the Fruits' draw_render boxes.
-	static func layout(zoom: float, picture_size: Vector2) -> Dictionary:
+	## being `picture_size`, what hangs spread across `gap` (frame units):
+	## curves [points, width], stalks [from, to, width, colour] (from on a
+	## curve), leaves [centre, side, degrees, light] for LeafArt.draw, and the
+	## Fruits' draw_render boxes.
+	static func layout(zoom: float, picture_size: Vector2, gap: Vector2) -> Dictionary:
 		var parts := {"curves": [], "stalks": [], "leaves": [], "fruits": []}
 		for curve: Array in CURVES: parts.curves.append([_bezier(curve[0], zoom), curve[1] * zoom])
 		for fruit: Array in HUNG:
-			var from := _point(CURVES[fruit[0]][0], fruit[1]) * zoom
-			var stem: Vector2 = from + fruit[2] * zoom
+			var x := lerpf(gap.x, gap.y, fruit[0])
+			var twig: Array = fruit[1]
+			var from := bough_at(x)
+			if not twig.is_empty():
+				var start := bough_at(x + twig[0].x)
+				from = Vector2(x, start.y - twig[0].y)
+				parts.curves.append([_bezier([start, start + twig[1], from + twig[2], from], zoom), TWIG * zoom])
+			var stem: Vector2 = (from + fruit[2]) * zoom
 			var side: float = fruit[3] * zoom
-			parts.stalks.append([from, stem + (fruit[2] as Vector2).normalized() * side * TUCK, FRUIT_STALK * zoom, FruitMark.GREEN])
+			parts.stalks.append([from * zoom, stem + (fruit[2] as Vector2).normalized() * side * TUCK, FRUIT_STALK * zoom, FruitMark.GREEN])
 			parts.fruits.append(FruitMark.hung_box(picture_size, stem, side))
-		for leaf: Array in LEAVES:
-			var from := _point(CURVES[leaf[0]][0], leaf[1]) * zoom
-			var way := Vector2.from_angle(deg_to_rad(leaf[3]))
-			var base: Vector2 = from + way * leaf[2] * zoom
-			var side: float = leaf[4] * zoom
-			# LeafArt's base is its unit frame's (-0.7, 0.7) corner and it points
-			# along (1, -1): turned 45 degrees past the way it points.
-			var degrees: float = leaf[3] + 45.0
-			parts.stalks.append([from, base + way * side * LEAF_TUCK, LEAF_STALK * zoom, LEAF_LIGHT if leaf[5] else LEAF_DARK])
-			parts.leaves.append([base - Vector2(-0.35, 0.35).rotated(deg_to_rad(degrees)) * side, side, degrees, leaf[5]])
+		for leaf: Array in HUNG_LEAVES: _leaf(parts, bough_at(lerpf(gap.x, gap.y, leaf[0])), leaf.slice(1), zoom)
+		for leaf: Array in LEAVES: _leaf(parts, _point(CURVES[leaf[0]][0], leaf[1]), leaf.slice(2), zoom)
 		return parts
+
+	## A leaf on a stalk from `from` (frame units): [stalk length, degrees, side, light].
+	static func _leaf(parts: Dictionary, from: Vector2, leaf: Array, zoom: float) -> void:
+		var way := Vector2.from_angle(deg_to_rad(leaf[1]))
+		var base: Vector2 = (from + way * leaf[0]) * zoom
+		var side: float = leaf[2] * zoom
+		# LeafArt's base is its unit frame's (-0.7, 0.7) corner and it points
+		# along (1, -1): turned 45 degrees past the way it points.
+		var degrees: float = leaf[1] + 45.0
+		parts.stalks.append([from * zoom, base + way * side * LEAF_TUCK, LEAF_STALK * zoom, LEAF_LIGHT if leaf[3] else LEAF_DARK])
+		parts.leaves.append([base - Vector2(-0.35, 0.35).rotated(deg_to_rad(degrees)) * side, side, degrees, leaf[3]])
+
+	## The point on the bough's centre line at `x` (frame units).
+	static func bough_at(x: float) -> Vector2:
+		var curve: Array = CURVES[0][0] if x <= (CURVES[0][0][3] as Vector2).x else CURVES[1][0]
+		var low := 0.0
+		var high := 1.0
+		for step in range(24):
+			var mid := (low + high) * 0.5
+			if _point(curve, mid).x < x: low = mid
+			else: high = mid
+		return _point(curve, (low + high) * 0.5)
 
 	static func _point(curve: Array, t: float) -> Vector2:
 		var u := 1.0 - t
@@ -477,3 +541,62 @@ class Branch extends Control:
 		var points := PackedVector2Array()
 		for step in range(25): points.append(_point(curve, step / 24.0) * zoom)
 		return points
+
+## A row that gives each child its least width, then shares what is left
+## equally up to each child's cap (its ShareRow.CAP meta, or no cap for one
+## that expands, else its least width); the rest stays empty at the end. So
+## the Orchard's cards keep their board size on a wide screen and narrow
+## together on a 16:9 phone. A child that shrinks to the end or centre
+## vertically keeps its own height; the others fill the row's height.
+class ShareRow extends Container:
+	const CAP := &"share_cap"
+	var gap := 0.0
+
+	func _init(separation: float) -> void:
+		gap = separation
+
+	func _shown() -> Array[Control]:
+		var shown: Array[Control] = []
+		for child: Node in get_children():
+			if child is Control and (child as Control).visible and not (child as Control).top_level: shown.append(child)
+		return shown
+
+	func _get_minimum_size() -> Vector2:
+		var least := Vector2.ZERO
+		var shown := _shown()
+		for child: Control in shown:
+			var each := child.get_combined_minimum_size()
+			least = Vector2(least.x + each.x, maxf(least.y, each.y))
+		return least + Vector2(gap * maxi(shown.size() - 1, 0), 0)
+
+	## Each child's width when the row is `room` wide.
+	static func widths(floors: Array, caps: Array, room: float) -> Array:
+		var given := floors.duplicate()
+		var spare := room
+		for width: float in floors: spare -= width
+		while spare > 0.01:
+			var open := range(given.size()).filter(func(index: int) -> bool: return given[index] < caps[index] - 0.01)
+			if open.is_empty(): break
+			var share := spare / open.size()
+			for index: int in open:
+				var add := minf(share, caps[index] - given[index])
+				given[index] += add
+				spare -= add
+		return given
+
+	func _notification(what: int) -> void:
+		if what != NOTIFICATION_SORT_CHILDREN: return
+		var shown := _shown()
+		var floors := shown.map(func(child: Control) -> float: return child.get_combined_minimum_size().x)
+		var caps := shown.map(func(child: Control) -> float: return maxf(float(child.get_meta(CAP)), child.get_combined_minimum_size().x) if child.has_meta(CAP) else (INF if child.size_flags_horizontal & Control.SIZE_EXPAND else child.get_combined_minimum_size().x))
+		var given := widths(floors, caps, size.x - gap * maxi(shown.size() - 1, 0))
+		var x := 0.0
+		for index in range(shown.size()):
+			var child := shown[index]
+			var tall := child.get_combined_minimum_size().y
+			var y := 0.0
+			if child.size_flags_vertical & Control.SIZE_SHRINK_END: y = size.y - tall
+			elif child.size_flags_vertical & Control.SIZE_SHRINK_CENTER: y = (size.y - tall) * 0.5
+			else: tall = size.y
+			fit_child_in_rect(child, Rect2(x, y, given[index], tall))
+			x += given[index] + gap
