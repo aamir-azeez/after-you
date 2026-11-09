@@ -69,6 +69,9 @@ var _each: Label
 var _sets: VBoxContainer
 var _model: Dictionary = {}
 var _key := ""
+## The player's Reduce motion setting: with it off, a card whose item moves
+## on its own shows it moving (kit/pip_avatar.gd animate_moving).
+var reduced := false
 
 func _init() -> void:
 	name = "WardrobeOrchard"
@@ -289,8 +292,9 @@ func _card(entry: Dictionary) -> Control:
 	card.add_child(column)
 	var plinth := _plinth(Vector2(0, CARD_SIZE.y), 17)
 	column.add_child(plinth)
-	var pip := PipAvatar.new(true, SpiritLook.PEACH, CARD_PIP, true)
+	var pip := PipAvatar.new(reduced, SpiritLook.PEACH, CARD_PIP, true)
 	pip.outfit = Outfit.of(str(entry.id))
+	pip.animate_moving = true
 	pip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	plinth.add_child(pip)
 	_ring(plinth, 17)

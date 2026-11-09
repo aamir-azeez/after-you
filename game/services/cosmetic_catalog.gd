@@ -87,6 +87,10 @@ static func released_ids() -> Array[String]:
 static func tall(id: String) -> bool:
 	return bool(Index.data(id).get("tall", false))
 
+## Whether its look moves on its own (a Wardrobe card shows it live).
+static func moving(id: String) -> bool:
+	return bool(Index.data(id).get("moving", false))
+
 ## Whether wearing it pulls the pip views back further and toward its side.
 static func wide(id: String) -> bool:
 	return bool(Index.data(id).get("wide", false))

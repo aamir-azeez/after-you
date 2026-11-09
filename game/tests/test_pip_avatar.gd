@@ -8,6 +8,11 @@ extends SceneTree
 ##   a list of still pips makes no view per row; the cache keeps the newest 64;
 ##   a pip nobody waits for any more is skipped; the renderer frees itself
 ##   when idle;
+## - a Wardrobe card's still pip (animate_moving) wearing an item that moves
+##   on its own is drawn live at the idle rate, taking no input; it waits
+##   while hidden (the Wardrobe closed or another tab), scrolled out of its
+##   list or off screen, and stays a picture under Reduce motion; every other
+##   card stays a picture;
 ## - `own` follows services/own_look.gd; a tall item pulls the view back;
 ## - the three screens' pips keep their names.
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
@@ -37,6 +42,7 @@ func _run() -> void:
 	# The items are not released yet; these suites wear them all.
 	Outfit.show_unreleased = true
 	await _live()
+	await _moving_cards()
 	await _still_shares_one_render()
 	await _still_one_a_frame()
 	await _skips_and_idles()
@@ -85,6 +91,67 @@ func _live() -> void:
 	pip.wear({})
 	pip.queue_free()
 	await process_frame
+
+func _moving_cards() -> void:
+	var views := _live_views()
+	var plain := PipAvatar.new(false, Look.PEACH, PipAvatar.MIN_SIZE, true)
+	plain.outfit = Outfit.of("daisy", true)
+	plain.animate_moving = true
+	_add(plain)
+	var calm := PipAvatar.new(true, Look.PEACH, PipAvatar.MIN_SIZE, true)
+	calm.outfit = Outfit.of("orchard_skin", true)
+	calm.animate_moving = true
+	_add(calm)
+	var elsewhere := PipAvatar.new(false, Look.PEACH, PipAvatar.MIN_SIZE, true)
+	elsewhere.outfit = Outfit.of("orchard_skin", true)
+	_add(elsewhere)
+	await process_frame
+	_check(not plain.live() and not calm.live() and not elsewhere.live() and _live_views() == views, "A card whose item stays still, a card under Reduce motion and a still pip off the Wardrobe stay pictures, with no view of their own")
+	var card := PipAvatar.new(false, Look.PEACH, PipAvatar.MIN_SIZE, true)
+	card.outfit = Outfit.of("orchard_skin", true)
+	card.animate_moving = true
+	_add(card)
+	await process_frame
+	card.set_process(false)
+	_check(card.live() and card.find_child("SpiritView", true, false) is SubViewport and _live_views() == views + 1, "A Wardrobe card wearing the Orchard skin is drawn live, one view for it alone")
+	_check(card.mouse_filter == Control.MOUSE_FILTER_IGNORE, "and takes no input, so a tap still picks the card")
+	var hz := int(IslandWorld.IDLE_CARD_HZ)
+	var idle := _draws(card, 60)
+	_check(idle >= hz - 2 and idle <= hz + 1, "It draws at the idle rate: %d in 1 s" % idle)
+	_check(_draws(plain, 60) == 0 and _draws(calm, 60) == 0, "and the still cards never do")
+	var holder := Control.new()
+	root.add_child(holder)
+	card.reparent(holder)
+	holder.visible = false
+	_check(_draws(card, 60) == 0, "Hidden (the Wardrobe closed or on another tab), it waits")
+	holder.visible = true
+	card.position = Vector2(-4000, 0)
+	_check(_draws(card, 60) == 0, "Off screen, it waits")
+	var list := ScrollContainer.new()
+	list.size = Vector2(200, 120)
+	list.clip_contents = true
+	holder.add_child(list)
+	var row := Control.new()
+	row.custom_minimum_size = Vector2(200, 1000)
+	list.add_child(row)
+	card.reparent(row)
+	card.position = Vector2(0, 600)
+	_check(_draws(card, 60) == 0, "Scrolled out of its list, it waits")
+	card.position = Vector2(0, 0)
+	idle = _draws(card, 60)
+	_check(idle >= hz - 2, "and back in view it moves again: %d in 1 s" % idle)
+	card.set_reduced(true)
+	_draws(card, 6)
+	_check(_draws(card, 60) == 0, "Under Reduce motion it settles and draws no more")
+	holder.queue_free()
+	for each: Control in [plain, calm, elsewhere]: each.queue_free()
+	await process_frame
+	_check(_live_views() == views, "Closed, its view goes with it")
+	# The still cards' pictures finish before the still tests start afresh.
+	await _frames(12)
+
+func _live_views() -> int:
+	return root.find_children("SpiritView", "SubViewport", true, false).size()
 
 func _still(size: Vector2 = Vector2(42, 56), color: Color = Look.PEACH, outfit: Dictionary = {}) -> Control:
 	var pip: Control = PipAvatar.new(false, color, size, true, false)

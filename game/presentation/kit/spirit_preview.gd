@@ -8,7 +8,8 @@ extends TextureRect
 ## written IDLE_HZ times a second and the little view is drawn only then, so a
 ## calm screen draws that often and no more. Under Reduce motion one step
 ## settles it and nothing more is drawn. It runs only while it is in the tree,
-## and the screen frees it with everything else.
+## and the screen frees it with everything else; while it is hidden or off
+## screen (scrolled out of a clipping list) its idle steps wait.
 ##
 ## A sideways drag on it turns it (presentation/kit/drag_turn.gd). While a
 ## finger turns it, or it coasts or eases back, it is drawn every frame; once
@@ -138,8 +139,23 @@ func _process(delta: float) -> void:
 	_clock += maxf(delta, 0.0)
 	var face_moving := _face_due or _spirit.face_art.swapping()
 	if not turned and not face_moving and _clock < 1.0 / IDLE_HZ: return
+	if not turned and not face_moving and not on_screen():
+		_clock = 0.0
+		return
 	_step(_clock)
 	_clock = 0.0
+
+## Whether any of it shows: visible, inside the window and inside every
+## clipping parent (a scrolled list).
+func on_screen() -> bool:
+	if not is_visible_in_tree(): return false
+	var rect := get_global_rect()
+	if not rect.intersects(get_viewport_rect()): return false
+	var parent := get_parent()
+	while parent != null:
+		if parent is Control and (parent as Control).clip_contents and not rect.intersects((parent as Control).get_global_rect()): return false
+		parent = parent.get_parent()
+	return true
 
 func _hold_face() -> void:
 	var holding := turn.dragging()

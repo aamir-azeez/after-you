@@ -5,15 +5,26 @@ extends "res://presentation/kit/spirit_preview.gd"
 ## - still: a texture of the pip at rest from the one shared offscreen renderer
 ##   (kit/pip_snapshots.gd). No view of its own and no processing, so a list
 ##   may show many; matching pips share one render. It takes no input.
+##   With `animate_moving` (the Wardrobe's item cards), a still pip whose
+##   outfit moves on its own (Outfit.moving: the Orchard skin's petals) is
+##   drawn live instead, still taking no input, unless Reduce motion is on;
+##   like any live pip it draws at the idle card rate and only while on screen.
+##   Every other still pip stays a picture.
 ## With `own`, it is the player's own pip: its colour and outfit come from
 ## services/own_look.gd when it enters the tree.
 const Snapshots = preload("res://presentation/kit/pip_snapshots.gd")
 const OwnLook = preload("res://services/own_look.gd")
+const Outfit = preload("res://services/outfit.gd")
 
 ## Drawn as a still texture instead of live.
 var still := false
 ## The player's own pip (services/own_look.gd).
 var own := false
+## A still pip wearing an item that moves on its own is drawn live (set before
+## it enters the tree).
+var animate_moving := false
+## Still, but drawn live because its outfit moves.
+var _live_still := false
 ## The snapshot key this pip shows or waits for (still mode).
 var _wanted := ""
 
@@ -28,22 +39,27 @@ func _ready() -> void:
 	if own:
 		_color = OwnLook.color()
 		outfit = OwnLook.outfit()
-	if not still:
+	_live_still = still and animate_moving and not _reduced and Outfit.moving(Outfit.from(outfit))
+	if not still or _live_still:
 		super()
 		return
 	set_process(false)
 	_show_still()
 
+## Whether it draws a live view (live mode, or a still pip whose outfit moves).
+func live() -> bool:
+	return not still or _live_still
+
 ## Dresses the pip in `worn` (services/outfit.gd).
 func wear(worn: Dictionary) -> void:
-	if not still:
+	if live():
 		super(worn)
 		return
 	outfit = worn.duplicate()
 	if is_inside_tree(): _show_still()
 
 func set_reduced(reduced: bool) -> void:
-	if still:
+	if not live():
 		_reduced = reduced
 		return
 	super(reduced)
@@ -53,7 +69,7 @@ func _gui_input(event: InputEvent) -> void:
 	super(event)
 
 func _process(delta: float) -> void:
-	if still:
+	if not live():
 		set_process(false)
 		return
 	super(delta)

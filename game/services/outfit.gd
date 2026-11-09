@@ -60,6 +60,12 @@ static func tall(outfit: Dictionary) -> bool:
 		if Catalog.tall(id): return true
 	return false
 
+## Whether any worn item's look moves on its own.
+static func moving(outfit: Dictionary) -> bool:
+	for id: String in items(outfit):
+		if Catalog.moving(id): return true
+	return false
+
 ## Whether any worn item hangs out past the head's far side in the pip views.
 static func wide(outfit: Dictionary) -> bool:
 	for id: String in items(outfit):

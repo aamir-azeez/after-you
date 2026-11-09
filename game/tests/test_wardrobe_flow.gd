@@ -947,6 +947,8 @@ func _orchard_tab() -> void:
 	var cap: Node = orchard.find_child("OrchardCard_apple_hood", true, false)
 	_check(_texts(cap) == ["Apple hood", "HAT", "50"] and cap.find_child("FruitMark", true, false) != null and cap.find_child("PollenMark", true, false) == null and cap.find_child("PipAvatar", true, false) != null, "A card: the pip wearing it, the name, its tag and the Fruit price: " + str(_texts(cap)))
 	_check(_texts(orchard.find_child("OrchardCard_apple_leaf", true, false)).has("SMALL") and _texts(orchard.find_child("OrchardCard_orchard_skin", true, false)).has("BODY"), "Tags: SMALL and BODY")
+	var skin_pip: Node = orchard.find_child("OrchardCard_orchard_skin", true, false).find_child("PipAvatar", true, false)
+	_check(skin_pip.live() and not cap.find_child("PipAvatar", true, false).live(), "The Orchard skin's card shows its petals falling; the other cards stay still pictures")
 	var sprigs: Array = orchard.find_child("OrchardSprigTiles", true, false).get_children().map(func(tile: Node) -> String: return tile.name)
 	_check(sprigs == ["OrchardSprig_sprig_coral", "OrchardSprig_sprig_plum", "OrchardSprig_sprig_sun", "OrchardSprig_sprig_sky"] and (orchard.find_child("OrchardSprigsEach", true, false) as Label).text == PlayerCopy.ORCHARD_EACH % "10", "Four sprig tiles under Sprigs · 10 each: " + str(sprigs))
 	var set_card: Node = orchard.find_child("OrchardSet_orchard", true, false)

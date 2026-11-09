@@ -161,6 +161,7 @@ func _init(reduced: bool = false) -> void:
 	_shop = _shop_panel()
 	body.add_child(_shop)
 	_orchard = Orchard.new()
+	_orchard.reduced = _reduced
 	_orchard.visible = false
 	_orchard.item_chosen.connect(func(id: String) -> void: item_chosen.emit(id))
 	_orchard.kind_chosen.connect(func(kind: String) -> void: kind_chosen.emit(kind))
@@ -569,8 +570,9 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
 	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
 	column.add_child(picture)
-	var pip := PipAvatar.new(true, SpiritLook.PEACH, SHELF_PIP if small else CARD_PIP, true)
+	var pip := PipAvatar.new(_reduced, SpiritLook.PEACH, SHELF_PIP if small else CARD_PIP, true)
 	pip.outfit = Outfit.of(str(entry.id))
+	pip.animate_moving = true
 	pip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	picture.add_child(pip)
 	var title_row := HBoxContainer.new()

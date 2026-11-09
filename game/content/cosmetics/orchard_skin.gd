@@ -8,4 +8,5 @@ const DATA := {
 	"name": PlayerCopy.COSMETIC_ORCHARD_SKIN,
 	"art": "res://presentation/pip_wear/orchard_skin.gd",
 	"set": "orchard",
+	"moving": true,
 }

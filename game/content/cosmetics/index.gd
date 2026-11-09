@@ -35,6 +35,10 @@ const OPTIONAL := {
 	## Metres the leaf sits higher while the item is worn (it pokes up through
 	## a hat's brim).
 	"leaf_lift": 0.0,
+	## true: its look moves on its own (the Orchard skin's falling petals), so
+	## a Wardrobe item card showing it draws a live pip at the idle card rate
+	## instead of a still picture (kit/pip_avatar.gd animate_moving).
+	"moving": false,
 	## The set the item belongs to (lower case letters, digits and "_"), or "".
 	## Buying a set's missing pieces together costs less
 	## (backend/src/pollen/spend.ts).
