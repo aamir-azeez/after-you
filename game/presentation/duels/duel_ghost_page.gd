@@ -16,6 +16,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
 const DashedBox = preload("res://presentation/kit/dashed_box.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 
 ## source: "developer" or "board"; entry_id: the board run's, or null.
@@ -116,4 +117,5 @@ func _option(key: String, label: String, ticks: int, source: String, entry_id: V
 	button.custom_minimum_size.x = 190
 	button.pressed.connect(func(): race_requested.emit(key, source, entry_id, button))
 	if energy_cost: EnergyChip.on_button(button, 18)
+	OfflineHold.hold(button)
 	return button

@@ -85,6 +85,8 @@ func header_action() -> Control:
 	start.custom_minimum_size = Vector2(260, 56)
 	# The chip in the arrow's place, as the board draws it.
 	if energy_cost: EnergyChip.on_button(start, 22)
+	# Starting needs the server: greyed while the phone is offline.
+	OfflineHold.hold(start)
 	return start
 
 func header_beside() -> Control:
@@ -311,6 +313,7 @@ func _challenge_card(view: Dictionary) -> Control:
 			_notes.erase(view.duel_id)
 			duel_action.emit(view, "accept", accept))
 		if energy_cost: EnergyChip.on_button(accept, 18)
+		OfflineHold.hold(accept)
 		buttons.add_child(accept)
 		var later := Kit.button(PlayerCopy.DUELS_NOT_NOW, Callable(), false, 46)
 		later.name = "NotNow"

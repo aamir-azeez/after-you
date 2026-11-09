@@ -39,7 +39,7 @@ const SEPARATOR := " · "
 ## shown) and, for a player with a grant, its `grant` ({next, top, welcome,
 ## welcome_paid}). No Fruit tile shows until a read brought the ladder.
 ## `energy`: {} while the server charges no duel energy; else the perk
-## ({full_journey, plain}: services/duel_energy.gd perk()).
+## ({full_journey, plain}: services/duel_energy.gd perk(), the server's two tops).
 ## Returns {intro: the chapter lines, panels: [{name, icon, title, body, ladder?, sprouts?}
 ## or {name, tiles: [two such panels]}]}.
 static func content(boost: bool, grant: bool, ladder: Dictionary = {}, shown: bool = true, fruits: Variant = null, energy: Dictionary = {}) -> Dictionary:

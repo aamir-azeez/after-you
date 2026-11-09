@@ -192,7 +192,7 @@ func _benefits() -> Dictionary:
 	# While Fruits show, the monthly gifts are the Pollen and Fruit tiles, the Fruits from the server's ladder and grant.
 	var fruits: Variant = null
 	if PollenSurfaces.shared().fruits_visible(FruitWallet.shared(), scope): fruits = FruitWallet.shared().part(server, owner)
-	var energy: Dictionary = DuelEnergy.perk() if DuelEnergy.shared().enabled(server, owner) else {}
+	var energy: Dictionary = DuelEnergy.shared().perk(server, owner)
 	return Benefits.content(PollenWallet.shared().enabled(server, owner), PollenGrant.shared().enabled(server, owner), PollenGrant.shared().ladder(server, owner), PollenSurfaces.shared().full_journey_visible(), fruits, energy)
 
 ## The one subscription offer used by the store card and locked hosting: each

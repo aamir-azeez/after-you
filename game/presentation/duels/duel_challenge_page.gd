@@ -12,6 +12,7 @@ const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Seats = preload("res://presentation/duels/public_seats.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 ## The Pick a pair choice that posts on the public list.
 const ANYONE := "*anyone*"
@@ -58,6 +59,8 @@ func header_action() -> Control:
 		if _friend == ANYONE: post_requested.emit(_post_as if not partner_name.is_empty() else "alone", _chapter, _send)
 		else: send_requested.emit(_friend, _chapter, _send))
 	if energy_cost: EnergyChip.on_button(_send, 20)
+	# Sending needs the server: greyed while the phone is offline (set_enabled below keeps the hold).
+	OfflineHold.hold(_send)
 	return _send
 
 func tap(control: Control, run: Callable) -> void:
@@ -115,7 +118,7 @@ func _render_chapters() -> void:
 
 func _update_send() -> void:
 	if not is_instance_valid(_send): return
-	_send.disabled = _friend.is_empty() or _chapter.is_empty() or (_friend == ANYONE and _posting_party() and not party_reason.is_empty())
+	OfflineHold.set_enabled(_send, not (_friend.is_empty() or _chapter.is_empty() or (_friend == ANYONE and _posting_party() and not party_reason.is_empty())))
 	_send.text = PlayerCopy.PUBLIC_POST_DUEL if _friend == ANYONE else PlayerCopy.DUELS_SEND
 	EnergyChip.fade(_send, _send.disabled)
 

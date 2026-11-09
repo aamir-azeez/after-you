@@ -54,7 +54,6 @@ extends SceneTree
 const KNOWN_FAILURES := {
 	"capabilities:res://presentation/reaction_photo_flow.gd": "unowned (shared-paths audit): photo_uploads_enabled is read raw; give it an accessor",
 	"capabilities:res://presentation/replays_flow.gd": "unowned (shared-paths audit): replay_transfer_version is read raw; give it an accessor",
-	"offline:res://presentation/duels/duels_flow.gd": "unowned (shared-paths audit): Challenge, Race, Party and the duel answers stay live offline",
 	"offline:res://presentation/room_hub_flow.gd": "unowned (shared-paths audit): room hub actions (leave, close, invite lookup) never grey offline",
 	"offline:res://presentation/room_hub_screen.gd": "unowned (shared-paths audit): greys from its own list state, a second offline system",
 	"offline:res://presentation/photo_transfer_screen.gd": "unowned (shared-paths audit): the transfer screen's buttons stay live offline",

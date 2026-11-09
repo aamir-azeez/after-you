@@ -13,7 +13,9 @@ extends SceneTree
 ## - the out-of-energy card (Wait always, Refill only with Fruits and below the
 ##   max, held offline), the refusals (energy_empty, partner_energy_empty) and
 ##   the refill confirm (presentation/fruit_spend_flow.gd refill_energy);
-## - the Full Journey perk line.
+## - the Full Journey perk line, from the server's two tops only;
+## - offline: Start a duel, Accept, Send challenge and every Race grey, and the
+##   duels flow sends nothing.
 const DuelEnergy = preload("res://services/duel_energy.gd")
 const WalletReply = preload("res://services/wallet_reply.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
@@ -41,6 +43,7 @@ const SpendFlow = preload("res://presentation/fruit_spend_flow.gd")
 const Benefits = preload("res://presentation/full_journey_benefits.gd")
 const BenefitPanel = preload("res://presentation/kit/benefit_panel.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const DuelsFlow = preload("res://presentation/duels/duels_flow.gd")
 
 # Synthetic ids only.
 const SERVER := "https://energy.example.test"
@@ -132,7 +135,8 @@ func _frames(count: int) -> void:
 	for index in range(count): await process_frame
 
 static func part(energy: int, top: int = 5, full_at: int = FULL_AT, now: int = T0) -> Dictionary:
-	return {"schema_version": 1.0, "energy": float(energy), "max": float(top), "full_at": float(full_at), "step_ms": float(STEP), "now": float(now), "refill_fruits": 10.0}
+	return {"schema_version": 1.0, "energy": float(energy), "max": float(top), "full_at": float(full_at), "step_ms": float(STEP), "now": float(now), "refill_fruits": 10.0,
+		"base_max": 5.0, "full_journey_max": 7.0}
 
 ## A store for the test player, energy on, its clock `clock`, read once with `kept` unless it is {}.
 func _store(clock: Clock, kept: Dictionary = {}) -> RefCounted:
@@ -155,6 +159,7 @@ func _run() -> void:
 	await _flow(online)
 	await _refill_card(online)
 	_full_journey()
+	await _offline(online)
 	DuelEnergy.use_shared(null)
 	Connectivity.use_shared(null)
 	PollenSurfaces.set_shared_for_tests(null)
@@ -555,12 +560,93 @@ func _refill_card(online: Online) -> void:
 # --- Full Journey ------------------------------------------------------------
 
 func _full_journey() -> void:
-	var with: Dictionary = Benefits.content(true, true, {}, true, null, DuelEnergy.perk())
+	var clock := Clock.new()
+	clock.ms = T0
+	var store := _store(clock)
+	_check(store.perk(SERVER, ME).is_empty(), "No perk line until a read brought the server's tops")
+	var bare := part(3)
+	bare.erase("full_journey_max")
+	store.note_view(SERVER, ME, {"energy": bare})
+	_check(store.perk(SERVER, ME).is_empty() and store.meter(SERVER, ME).energy == 3, "A part without both tops keeps the meter but names no perk")
+	var odd := part(3, 5, FULL_AT, T0 + 1)
+	odd.full_journey_max = 5.0
+	store.note_view(SERVER, ME, {"energy": odd})
+	_check(store.perk(SERVER, ME).is_empty(), "Tops that name no perk (the same top) show none")
+	store.note_view(SERVER, ME, {"energy": part(3, 5, FULL_AT, T0 + 2)})
+	var perk: Dictionary = store.perk(SERVER, ME)
+	_check(perk == {"full_journey": 7, "plain": 5}, "The perk's numbers are the server's tops: %s" % [perk])
+	var tops := part(3, 5, FULL_AT, T0 + 3)
+	tops.base_max = 6.0
+	tops.full_journey_max = 9.0
+	store.note_view(SERVER, ME, {"energy": tops})
+	_check(Benefits.content(true, true, {}, true, null, store.perk(SERVER, ME)).panels[0].title == "Duel energy: 9 instead of 6", "Whatever the server sends, the line says it")
+	store.set_enabled(SERVER, ME, false)
+	_check(store.perk(SERVER, ME).is_empty(), "Energy off: no perk")
+	var with: Dictionary = Benefits.content(true, true, {}, true, null, {"full_journey": 7, "plain": 5})
 	_check(with.panels.size() == 3 and with.panels[0].name == "FullJourneyEnergy", "The energy perk leads the panels, as the board places it: %s" % [with.panels.map(func(panel: Dictionary) -> String: return panel.name)])
 	_check(with.panels[0].title == "Duel energy: 7 instead of 5" and with.panels[0].body == "" and with.panels[0].sprouts == 7, "Duel energy: 7 instead of 5, seven sprouts, no explainer")
 	_check(Benefits.content(true, true).panels.all(func(panel: Dictionary) -> bool: return panel.name != "FullJourneyEnergy"), "Energy off: no perk line")
-	_check(Benefits.content(true, true, {}, false, null, DuelEnergy.perk()).panels.is_empty(), "A build that names no Full Journey shows no perk either")
+	_check(Benefits.content(true, true, {}, false, null, {"full_journey": 7, "plain": 5}).panels.is_empty(), "A build that names no Full Journey shows no perk either")
 	var panel: Control = BenefitPanel.make(with.panels[0])
 	var sprouts: Control = panel.find_child("PanelSprouts", true, false)
 	_check(sprouts != null and sprouts.lit == 7 and sprouts.count == 7 and panel.find_child("EnergyIcon", true, false) != null, "The panel draws the sprout and seven lit sprouts")
 	panel.free()
+
+# --- Offline -----------------------------------------------------------------
+
+func _held(button: Node) -> bool:
+	return button is BaseButton and (button as BaseButton).disabled
+
+func _offline(online: Online) -> void:
+	online.on = false
+	online.changed.emit(false)
+	# The lobby: Start a duel and Accept.
+	var screen := DuelsScreen.new()
+	screen.me = ME
+	screen.name_of = func(_id: Variant) -> String: return ""
+	screen.energy_cost = true
+	root.add_child(screen)
+	screen.show_lobby({"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_challenge_in()], "limits": {"friend": 10, "ghost": 3}})
+	await _frames(2)
+	_check(_held(screen.root.find_child("DuelsStart", true, false)) and _held(screen.root.find_child("Accept", true, false)), "Offline: Start a duel and Accept grey")
+	# Send challenge, with a pair and a chapter picked.
+	var challenge := ChallengePage.new()
+	challenge.chapters = [Registry.FIRST_STEPS]
+	challenge.friends = [{"id": FINN, "name": "Finn"}]
+	root.add_child(challenge)
+	await _frames(2)
+	challenge._pick_friend(FINN)
+	challenge._pick_chapter(Registry.FIRST_STEPS)
+	var send: Button = challenge.root.find_child("DuelSend", true, false)
+	_check(_held(send), "Offline: Send challenge greys though a pair and a chapter are picked")
+	# Race against our run, and the picker's Race and Our run.
+	var ghosts := GhostPage.new()
+	ghosts.chapters = [Registry.FIRST_STEPS]
+	root.add_child(ghosts)
+	ghosts.show_ghosts([{"board": Registry.FIRST_STEPS, "developer": 3000, "top": []}])
+	await _frames(2)
+	_check(_held(ghosts.root.find_child("Race_developer", true, false)), "Offline: Race against our run greys")
+	var picker: Control = RacePicker.open(ghosts, Registry.FIRST_STEPS, "Maya")
+	picker.show_board([], {}, false, 3, 3000)
+	await _frames(2)
+	_check(_held(picker.find_child("RacePickerOurRun", true, false)), "Offline: the picker's Race greys")
+	# The flow sends nothing and says why.
+	var main := FakeMain.new()
+	root.add_child(main)
+	var flow: Node = DuelsFlow.new(main)
+	main.add_child(flow)
+	_check(flow._offline() and main.said.back() == PlayerCopy.OFFLINE_NEEDS_CONNECTION, "Offline: the duels flow refuses a start or join and says why")
+	# Back online: each comes back, Send with the picks it had.
+	online.on = true
+	online.changed.emit(true)
+	await _frames(1)
+	_check(not _held(screen.root.find_child("DuelsStart", true, false)) and not _held(screen.root.find_child("Accept", true, false)) and not _held(send), "Online again: Start a duel, Accept and Send challenge come back")
+	_check(not _held(ghosts.root.find_child("Race_developer", true, false)) and not _held(picker.find_child("RacePickerOurRun", true, false)), "and every Race")
+	_check(not flow._offline(), "and the flow sends again")
+	challenge._pick_friend("")
+	_check(_held(send), "A Send with nothing picked stays grey for its own reason")
+	screen.close()
+	challenge.close()
+	ghosts.close()
+	main.queue_free()
+	await _frames(2)

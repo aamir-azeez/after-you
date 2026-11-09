@@ -16,6 +16,10 @@ extends Node
 ## its cost; a start or join with none left opens the out-of-energy card, and
 ## each refusal for energy is answered there before the usual line.
 ##
+## Offline (presentation/offline_hold.gd): Start a duel, Accept, Send challenge and
+## every Race grey on their pages, and each party move, answer, start and leave is
+## refused here before anything is sent, with the reason in the app's pop-up.
+##
 ## Every duel entry hides while the server says duels are off
 ## (relay_online_session.gd duels_supported): the lobby, the Duel tag in Your
 ## rooms, and Home's row (offer), which also follows the public switch.
@@ -83,6 +87,7 @@ const HintReads = preload("res://services/duel_hint_reads.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const PublicFlow = preload("res://presentation/duels/public_duels_flow.gd")
 const EnergyFlow = preload("res://presentation/duels/duel_energy_flow.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 ## Main's mode while Duels is up.
 const MODE_DUELS := "duels"
 ## A room claimed a moment ago is joined up to JOIN_TRIES times, this far apart.
@@ -394,7 +399,9 @@ func _open_party() -> void:
 	page.name_of = _name_of
 	page.show_boost = _surfaces().full_journey_visible()
 	page.party = client().last_lobby().get("party", {})
-	page.party_action.connect(func(action: String, friend: String, control: Control) -> void: page.tap(control, func() -> void: await _party(page, action, friend)))
+	page.party_action.connect(func(action: String, friend: String, control: Control) -> void:
+		if _offline(): return
+		page.tap(control, func() -> void: await _party(page, action, friend)))
 	screen.open_overlay(page)
 	var friends := await _friends()
 	# Back may close the page while the friends list loads.
@@ -425,7 +432,7 @@ func _open_challenge(anyone: bool = false) -> void:
 	_offer_public(page, anyone)
 	var partner: Variant = client().last_lobby().get("party", {}).get("partner")
 	page.send_requested.connect(func(friend: String, chapter: String, control: Control) -> void:
-		if energy().blocks(page, control): return
+		if _offline() or energy().blocks(page, control): return
 		page.tap(control, func() -> void: await _challenge(page, friend, chapter, control)))
 	screen.open_overlay(page)
 	var friends := await _friends(partner)
@@ -487,7 +494,7 @@ func _open_ghosts() -> void:
 	page.chapters = _open_chapters()
 	page.energy_cost = energy().shown()
 	page.race_requested.connect(func(chapter: String, source: String, entry_id: Variant, control: Control) -> void:
-		if energy().blocks(page, control): return
+		if _offline() or energy().blocks(page, control): return
 		page.tap(control, func() -> void: await _race(page, chapter, source, entry_id, null, control)))
 	page.picker_requested.connect(func(chapter: String, control: Control) -> void: _open_picker(page, chapter, control))
 	screen.open_overlay(page)
@@ -512,7 +519,7 @@ func _open_picker(page: CanvasLayer, chapter: String, opener: Control) -> void:
 
 ## A Race on the picker, through the page's gate; a sheet closed before the finger lifted sends nothing.
 func _picker_race(source: String, entry_id: Variant, control: Control, page: CanvasLayer, chapter: String, picker: Variant) -> void:
-	if energy().blocks(page, control): return
+	if _offline() or energy().blocks(page, control): return
 	page.tap(control, func() -> void:
 		if is_instance_valid(picker): await _race(page, chapter, source, entry_id, picker, control))
 
@@ -578,7 +585,7 @@ func _on_duel_action(view: Dictionary, action: String, control: Control) -> void
 			if action == "accept" and not ChapterUnlocks.open(view.chapter, host._chapter_unlocks()):
 				host._toast(PlayerCopy.DUELS_CHAPTER_CLOSED)
 				return
-			if action == "accept" and energy().blocks(screen, control): return
+			if _offline() or (action == "accept" and energy().blocks(screen, control)): return
 			screen.tap(control, func() -> void:
 				var answer: Dictionary = await client().act(view.board, view.duel_id, action)
 				var keep_note := func(words: String) -> void: if is_open(): screen.note(str(view.duel_id), words)
@@ -603,6 +610,7 @@ func _open_duel(view: Dictionary) -> void:
 	page.play_requested.connect(func(next: Dictionary, control: Control) -> void: _play(next))
 	page.stranger_requested.connect(func(next: Dictionary, index: int, slot: int) -> void: public().stranger(page, next, index, slot))
 	page.leave_requested.connect(func(next: Dictionary) -> void:
+		if _offline(): return
 		var answer: Dictionary = await client().act(next.board, next.duel_id, "leave")
 		if not answer.get("ok", false):
 			_toast_failure(answer)
@@ -861,6 +869,10 @@ func public() -> RefCounted:
 	if _public == null: _public = PublicFlow.new(self)
 	return _public
 
+## True (and the reason shows) while the phone is offline: a duel request is never sent then.
+func _offline() -> bool:
+	return OfflineHold.refuse(Callable(host, "_toast"))
+
 ## Duel energy's glue (duel_energy_flow.gd), made once.
 func energy() -> RefCounted:
 	if _energy == null: _energy = EnergyFlow.new(self)
@@ -886,7 +898,7 @@ func _offer_public(page: CanvasLayer, anyone: bool) -> void:
 	page.partner_look = party.get("partner_look", {})
 	page.party_reason = public().partner_text()
 	page.post_requested.connect(func(joining: String, chapter: String, control: Control) -> void:
-		if energy().blocks(page, control): return
+		if _offline() or energy().blocks(page, control): return
 		page.tap(control, func() -> void: await public().post(page, joining, chapter, false, control)))
 
 ## The bundled chapter key for the duel's board (its own version).

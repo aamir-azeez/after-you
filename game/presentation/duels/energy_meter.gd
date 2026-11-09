@@ -143,8 +143,8 @@ func refresh() -> void:
 	var now := reading()
 	# The pill shows only with a meter to show; the card keeps its place (an empty meter until the read lands).
 	if style == PILL: visible = not now.is_empty()
-	# The card opened on a refusal before any read draws the usual max, empty, until the read lands.
-	var top := int(now.get("max", 0 if style == PILL else DuelEnergy.PLAIN_MAX))
+	# Nothing kept yet (a refusal before any read): no sprouts until the read lands.
+	var top := int(now.get("max", 0))
 	var have := int(now.get("energy", 0))
 	var next := int(now.get("next_ms", 0))
 	_sprouts.show_count(have, top)

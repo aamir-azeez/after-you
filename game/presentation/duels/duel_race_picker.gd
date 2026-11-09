@@ -28,6 +28,7 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
 const DashedBox = preload("res://presentation/kit/dashed_box.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -115,6 +116,7 @@ func show_board(rows: Array, mine_by_id: Dictionary, full: bool, limit: int, dev
 		var race := Callable() if full or pending else func(control: Control): race_requested.emit("board", row.entry_id, control)
 		var cell := Rows.race_cell(race, compact, pending)
 		if not pending: _cost(cell)
+		if race.is_valid(): OfflineHold.hold(cell)
 		_list.add_child(Rows.ranked(row, mine_by_id.has(row.entry_id), compact, [cell]))
 	if not rows.is_empty(): _fit(rows.size() * ROW_HEIGHT + (rows.size() - 1) * ROW_GAP, full)
 	modal.refresh_focus_order()
@@ -144,7 +146,9 @@ func _our_run(ticks: int, full: bool) -> Button:
 	if full:
 		button.disabled = true
 		DashedBox.grey(button)
-	else: button.pressed.connect(func(): race_requested.emit("developer", null, button))
+	else:
+		button.pressed.connect(func(): race_requested.emit("developer", null, button))
+		OfflineHold.hold(button)
 	_cost(button)
 	return button
 

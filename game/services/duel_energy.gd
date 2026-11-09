@@ -31,12 +31,6 @@ const MAX_PRICE := 1000000
 ## A kept meter older than this is read again when Duels opens: a partner's
 ## start, or a start on another phone, spends from it unseen.
 const FRESH_MS := 5 * 60 * 1000
-## The Full Journey card's perk line ("Duel energy: 7 instead of 5"): the
-## server's ENERGY.full_journey_max and ENERGY.max (backend/src/pollen/energy.ts).
-## The wallet part carries only this player's own max, so a player without Full
-## Journey never hears the 7; these stand in until the server sends both.
-const PLAIN_MAX := 5
-const FULL_JOURNEY_MAX := 7
 
 ## The kept meter of a scope changed (a part, a refusal, the switch).
 signal changed(server: String, owner: String)
@@ -74,14 +68,20 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 static func _count(value: Variant, top: int) -> bool:
 	return Typed.whole_number(value) and float(value) >= 0.0 and float(value) <= float(top)
 
-## An `energy` part as kept ({energy, max, full_at, step_ms, now, refill_fruits}), or {} when it is not the contract's.
+## An `energy` part as kept ({energy, max, full_at, step_ms, now, refill_fruits, base_max?,
+## full_journey_max?}), or {} when it is not the contract's. The two tops (both, the Full
+## Journey one above the base one) are kept only together, for the Full Journey card.
 static func checked(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1): return {}
 	if not _count(value.get("max"), MAX_TOP) or int(value.max) < 1 or not _count(value.get("energy"), int(value.max)): return {}
 	if not _count(value.get("step_ms"), MAX_STEP_MS) or int(value.step_ms) < 1: return {}
 	if not _count(value.get("full_at"), MAX_TIME) or not _count(value.get("now"), MAX_TIME) or not _count(value.get("refill_fruits"), MAX_PRICE): return {}
-	return {"energy": Typed.as_int(value.energy), "max": Typed.as_int(value.max), "full_at": Typed.as_int(value.full_at), "step_ms": Typed.as_int(value.step_ms),
+	var kept := {"energy": Typed.as_int(value.energy), "max": Typed.as_int(value.max), "full_at": Typed.as_int(value.full_at), "step_ms": Typed.as_int(value.step_ms),
 		"now": Typed.as_int(value.now), "refill_fruits": Typed.as_int(value.refill_fruits)}
+	if _count(value.get("base_max"), MAX_TOP) and _count(value.get("full_journey_max"), MAX_TOP) and int(value.base_max) >= 1 and int(value.full_journey_max) > int(value.base_max):
+		kept["base_max"] = Typed.as_int(value.base_max)
+		kept["full_journey_max"] = Typed.as_int(value.full_journey_max)
+	return kept
 
 # --- Switch ----------------------------------------------------------------
 
@@ -211,6 +211,11 @@ func empty_now(server: String, owner: String) -> bool:
 	var now := meter(server, owner)
 	return not now.is_empty() and int(now.energy) <= 0 and int(now.next_ms) >= 0
 
-## The Full Journey perk for its card: {full_journey, plain} (see FULL_JOURNEY_MAX).
-static func perk() -> Dictionary:
-	return {"full_journey": FULL_JOURNEY_MAX, "plain": PLAIN_MAX}
+## The Full Journey perk for its card, {full_journey, plain}, from the server's two tops in
+## the kept meter (base_max, full_journey_max), or {} until a part brought them or while energy is off.
+func perk(server: String, owner: String) -> Dictionary:
+	var scope := _scope(server, owner)
+	if scope.is_empty() or not bool(scope.enabled): return {}
+	var part: Dictionary = scope.part
+	if not part.has("full_journey_max"): return {}
+	return {"full_journey": int(part.full_journey_max), "plain": int(part.base_max)}
