@@ -29,6 +29,17 @@ const COSMETIC_GOLD_LEAF_EARN := "Hold first place on any chapter board, togethe
 const COSMETIC_EVERY_HARD_EARN := "Clear every chapter on Hard, together."
 const COSMETIC_TOP_TEN_RIBBON_EARN := "Finish in a chapter board's top 10, together."
 
+# Orchard items (content/cosmetics/, bought with Fruits): each item's name.
+const COSMETIC_FRUIT_CAP := "Fruit cap"
+const COSMETIC_BLOSSOM_CROWN := "Blossom crown"
+const COSMETIC_ORCHARD_SKIN := "Orchard skin"
+const COSMETIC_APPLE_LEAF := "Apple leaf"
+const COSMETIC_SPRIG_CORAL := "Coral sprig"
+const COSMETIC_SPRIG_PLUM := "Plum sprig"
+const COSMETIC_SPRIG_SUN := "Sun sprig"
+const COSMETIC_SPRIG_SKY := "Sky sprig"
+# End of Orchard items.
+
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
 const DISPLAY_NAME_ASK_NOTE := "Friends and room partners see it on rooms and replays."
@@ -327,7 +338,7 @@ const POLLEN_STORE_TITLE := "Pollen"
 const POLLEN_STORE_YOU_HAVE := "You have"
 ## The first bundle line, only while the gift is on and unused, with its percent.
 const POLLEN_STORE_FIRST := "Your first bundle comes with %d%% extra Pollen."
-const POLLEN_STORE_BUNDLES := {"pinch": "Pinch", "pouch": "Pouch", "jar": "Jar", "basket": "Basket"}
+const POLLEN_STORE_BUNDLES := {"pinch": "Pinch", "pouch": "Pouch", "jar": "Basket", "basket": "Wheelbarrow"}
 const POLLEN_STORE_NO_BONUS := "No bonus"
 ## "20,000 + 1,000 bonus · 5% more"
 const POLLEN_STORE_BONUS := "%s + %s bonus · %d%% more"
@@ -363,6 +374,11 @@ const POLLEN_STORE_OPEN_WARDROBE := "Open the Wardrobe"
 const POLLEN_STORE_DONE := "Done"
 ## After the store took the payment but the server has not answered yet.
 const POLLEN_STORE_ON_ITS_WAY := "Your purchase went through. Your Pollen arrives as soon as the game reaches the server."
+
+# Fruits services (services/pollen_bundles.gd display_name): the Fruit packs by id.
+# The Pollen bundles' names stay in POLLEN_STORE_BUNDLES above (ids never change).
+const FRUIT_PACKS := {"handful": "Handful", "bowl": "Bowl", "crate": "Crate", "barrel": "Barrel"}
+# End of Fruits services.
 
 # End-of-run reactions (presentation/end_reactions.gd).
 ## The split pill's open half, and the faces card's title.

@@ -28,6 +28,12 @@ static func head_surface(direction: Vector3) -> Array[Vector3]:
 	var point := unit * _reach(unit, Look.HEAD_HALF, Look.HEAD_POWER)
 	return [point, _normal(point, Look.HEAD_HALF, Look.HEAD_POWER)]
 
+## The same for the torso (torso space, its centre the origin).
+static func torso_surface(direction: Vector3) -> Array[Vector3]:
+	var unit := direction.normalized()
+	var point := unit * _reach(unit, Look.TORSO_HALF, Look.TORSO_POWER)
+	return [point, _normal(point, Look.TORSO_HALF, Look.TORSO_POWER)]
+
 ## Where `point` (head space) lies against the head's surface: below 1
 ## inside, 1 on it, above 1 outside.
 static func head_level(point: Vector3) -> float:

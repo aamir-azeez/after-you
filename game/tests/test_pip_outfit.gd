@@ -35,7 +35,7 @@ const EYE_CLEAR := 0.11
 const FACE_PARAMS := ["body_color", "cream_color", "pupil_color", "blush_color", "blush_strength", "blush_soft", "eye_xy", "eye_squash", "look_shift", "pupil_rim", "tear_neck_root"]
 const DT := 1.0 / 60.0
 ## Hats seated on the head's surface: no part of them is inside the head.
-const SEATED := ["daisy", "top_ten_ribbon"]
+const SEATED := ["daisy", "top_ten_ribbon", "blossom_crown"]
 ## The pip views' control sizes (Settings, the name page, the Friends chip).
 const VIEWS := [Vector2(72, 100), Vector2(180, 236), Vector2(42, 56)]
 
@@ -233,11 +233,12 @@ func _solid_points(spirit: Node3D, leaf: bool = false) -> PackedVector3Array:
 func _inside_head(point: Vector3) -> float:
 	return pow(absf(point.x / Look.HEAD_HALF.x), Look.HEAD_POWER) + pow(absf(point.y / Look.HEAD_HALF.y), Look.HEAD_POWER) + pow(absf(point.z / Look.HEAD_HALF.z), Look.HEAD_POWER)
 
-## Each hat and leaf item alone, and a lifting hat with each leaf item.
+## Each item alone (a body item's petals keep off the eyes too), and a
+## lifting hat with each leaf item.
 func _placed_outfits() -> Array[Dictionary]:
 	var outfits: Array[Dictionary] = []
 	for id: String in Catalog.ids():
-		if Catalog.slot(id) in ["hat", "leaf"]: outfits.append(Outfit.of(id, true))
+		outfits.append(Outfit.of(id, true))
 		if Catalog.slot(id) == "leaf": outfits.append(Outfit.from({"hat": "straw_hat", "leaf": id}, true))
 	return outfits
 
@@ -399,9 +400,28 @@ func _animation() -> void:
 	for frame in range(6): tide.advance_motion(Vector3.ZERO, DT, false)
 	_check(tide.face_art.material.get_shader_parameter("skin_phase") != phase, "and its waves move")
 	_check(tide.face_art.material.get_shader_parameter("body_color") == Look.MINT and tide.face_art.material.get_shader_parameter("eye_xy") == tide.face_art._eye_xy, "with the pip's own colour and its eyes where they were")
+	var orchard := _spirit()
+	orchard.wear(Outfit.of("orchard_skin", true))
+	var drift: Node3D = orchard.find_child("Drift", true, false)
+	_check(drift != null and orchard.upper_body.is_ancestor_of(drift), "The Orchard skin's blossom drift circles the body")
+	if drift != null:
+		var turns := 0
+		var turned := drift.rotation.y
+		for frame in range(60):
+			orchard.advance_motion(Vector3.ZERO, DT, false)
+			if drift.rotation.y != turned: turns += 1
+			turned = drift.rotation.y
+		_check(turns >= 10 and turns <= 12, "and drifts at the idle rate: %d steps in 1 s" % turns)
+		for frame in range(30): orchard.advance_motion(Vector3.ZERO, DT, true)
+		_check(drift.rotation.y == 0.0, "Under Reduce motion it holds its first pose")
+		orchard.visible = false
+		var hidden_at := drift.rotation.y
+		for frame in range(30): orchard.advance_motion(Vector3.ZERO, DT, false)
+		_check(drift.rotation.y == hidden_at, "and a hidden pip's drift stays still")
 	lamp.free()
 	other.free()
 	tide.free()
+	orchard.free()
 
 func _released() -> void:
 	var spirit := _spirit()

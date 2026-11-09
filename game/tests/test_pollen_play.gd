@@ -392,7 +392,7 @@ func _purchase_card() -> void:
 		PurchasesView.render(sheet, {"lines": bought.purchases, "money": true})
 		await _settle()
 		var texts := _texts(sheet)
-		_check(sheet.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and texts.has(PlayerCopy.POLLEN_PURCHASE_REFUNDED % "Pouch") and texts.has("Basket") and texts.has("Pinch")
+		_check(sheet.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and texts.has(PlayerCopy.POLLEN_PURCHASE_REFUNDED % "Pouch") and texts.has("Wheelbarrow") and texts.has("Pinch")
 			and texts.has(PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"]), "Each bundle and refund with its receipt line: " + str(texts))
 		_check(sheet.find_child("PollenPurchaseRow0", true, false).find_children("BundleArt", "", true, false).size() == 1, "A purchase row has its bundle's art")
 		_check(not texts.has("$19.99") and sheet.find_child("PollenPurchasesTotal", true, false) == null, "No total is ever shown")

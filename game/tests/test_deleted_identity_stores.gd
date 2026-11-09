@@ -13,6 +13,7 @@ const Runs = preload("res://services/leaderboard_runs.gd")
 const Duels = preload("res://services/duels_client.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 const StoreSupport = preload("res://services/store_support.gd")
 const TesterSwitches = preload("res://services/tester_switches.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
@@ -24,10 +25,10 @@ const SECOND := "JJJJJJJJJJJJJJJJJJJJJJ"
 const NEW := "GGGGGGGGGGGGGGGGGGGGGG"
 const FRIEND := "FFFFFFFFFFFFFFFFFFFFFF"
 ## Stores that keep every player in one {"schema_version", "scopes": {"server|owner": ...}} file.
-const SCOPED := {"wallet": PollenWallet, "wardrobe": Wardrobe, "bundle claims": BundleClaims, "monthly Pollen": PollenGrant, "App Store support": StoreSupport, "names": DisplayNames, "friends": FriendRoster, "tester switches": TesterSwitches}
-const SCOPE_VALUES := {"wallet": {}, "wardrobe": {}, "bundle claims": {"pending": true}, "monthly Pollen": {"enabled": true}, "App Store support": true, "names": {"enabled": true}, "friends": {}, "tester switches": {"full_journey_off": true}}
+const SCOPED := {"wallet": PollenWallet, "wardrobe": Wardrobe, "bundle claims": BundleClaims, "monthly Pollen": PollenGrant, "App Store support": StoreSupport, "names": DisplayNames, "friends": FriendRoster, "tester switches": TesterSwitches, "fruits": FruitWallet}
+const SCOPE_VALUES := {"wallet": {}, "wardrobe": {}, "bundle claims": {"pending": true}, "monthly Pollen": {"enabled": true}, "App Store support": true, "names": {"enabled": true}, "friends": {}, "tester switches": {"full_journey_off": true}, "fruits": {"enabled": true}}
 ## Every shared store: the scoped ones, runs, placings, duels, name choice and nicknames.
-const ALL := 13
+const ALL := 14
 
 var checks := 0
 var failures := 0
@@ -92,6 +93,7 @@ func _install() -> void:
 	var wardrobe: RefCounted = Wardrobe.new(_path("wardrobe"))
 	PollenWallet.use_shared(wallet)
 	Wardrobe.use_shared(wardrobe)
+	FruitWallet.use_shared(FruitWallet.new(_path("fruits")))
 	BundleClaims.use_shared(BundleClaims.new(_path("bundle claims"), wardrobe, wallet))
 	PollenGrant.use_shared(PollenGrant.new(_path("monthly Pollen")))
 	StoreSupport.use_shared(StoreSupport.new(_path("App Store support")))
@@ -206,7 +208,7 @@ func _digests(skip: Array = []) -> Dictionary:
 	return found
 
 func _restore() -> void:
-	for store: Variant in [PollenWallet, Wardrobe, BundleClaims, PollenGrant, StoreSupport, TesterSwitches, DisplayNames, FriendRoster, Placings]: store.use_shared(null)
+	for store: Variant in [PollenWallet, Wardrobe, BundleClaims, PollenGrant, FruitWallet, StoreSupport, TesterSwitches, DisplayNames, FriendRoster, Placings]: store.use_shared(null)
 	Runs.use_path(Runs.PATH)
 	for path: String in [Duels.SAVE_PATH, Board.CHOICE_PATH]:
 		AtomicFile.remove(path)

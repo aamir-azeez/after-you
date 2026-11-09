@@ -52,9 +52,4 @@ static func _build() -> Mesh:
 ## its x along `toward`, its y the surface normal there, raised so its
 ## underside clears the surface by GAP (plus `extra`).
 static func _on_head(near: Vector3, toward: Vector3, size: Vector3, extra: float = 0.0) -> Transform3D:
-	var surface: Array[Vector3] = Meshes.head_surface(near)
-	var up: Vector3 = surface[1]
-	var x := (toward - up * toward.dot(up)).normalized()
-	var z := x.cross(up).normalized()
-	var basis := Basis(x * size.x, up * size.y, z * size.z)
-	return Transform3D(basis, surface[0] + up * (size.y + GAP + extra))
+	return Kit.on_head(near, toward, size, GAP + extra)

@@ -16,6 +16,13 @@ extends RefCounted
 ##   price that changed in between is refused instead of charged;
 ## - one request at a time: an action asked for while one is out answers "busy".
 ##
+## Fruits (services/fruit_wallet.gd) are spent on the same route the same way:
+## an Orchard item or set through buy() with its cost in Fruits, Fruits into
+## Pollen through convert() and Sunshine through buy_sunshine(), each with its
+## own key, its retries and its refusals as any purchase. Each receipt is kept
+## through services/wallet_reply.gd note_spend: `balance` stays the Pollen
+## balance, `fruit_balance` the Fruit one, `sunshine_left` the Sunshine turns.
+##
 ## Wearing works offline (services/wardrobe.gd pending): wear() puts the look on
 ## this phone at once, with its revision and key fixed then, and sync() sends
 ## it with the equip call whenever the app reaches the server (now, or from
@@ -32,6 +39,7 @@ const WalletReply = preload("res://services/wallet_reply.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Connectivity = preload("res://services/connectivity.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 
 const WALLET_PATH := "/v1/pollen"
 const SPEND_PATH := "/v1/pollen/spend"
@@ -39,7 +47,10 @@ const EQUIP_PATH := "/v1/pollen/equip"
 ## Sends of one action that got no answer before it gives up (the next tap starts a new one).
 const MAX_SENDS := 3
 ## Answers after which the phone reads the wardrobe again, because what it showed was out of date.
-const STALE := ["already_owned", "pollen_price_changed", "not_for_sale", "not_owned", "pollen_locked"]
+const STALE := ["already_owned", "pollen_price_changed", "not_for_sale", "not_owned", "pollen_locked", "fruits_short", "fruits_blocked", "sunshine_active"]
+## The spend kinds that turn Fruits into Pollen, and that buy Sunshine (the server's spend route).
+const CONVERT := "convert"
+const SUNSHINE := "sunshine"
 ## Equip refusals that will not pass: the look put on goes. Anything else
 ## (rate limits, a token problem, an update needed, a server error) keeps it.
 const FINAL_REFUSALS := ["invalid_pollen_equip", "not_owned", "identity_absent"]
@@ -52,6 +63,8 @@ var wallet: RefCounted
 ## The monthly grant kept from the same wallet read (services/pollen_grant.gd): a read
 ## made here may be the one that pays an instalment, and its card must still show.
 var grant: RefCounted
+## The Fruits kept from the same reads and spends (services/fruit_wallet.gd).
+var fruits: RefCounted
 var _api: Node
 ## () -> {server, owner} of the signed-in player, or {} (Main's _names_scope).
 var _scope: Callable
@@ -61,13 +74,14 @@ var _busy := false
 var connectivity: RefCounted
 
 ## transport(method, path, body) -> response, for tests; else the API's queue.
-func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), wardrobe: RefCounted = null, pollen: RefCounted = null, monthly: RefCounted = null) -> void:
+func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), wardrobe: RefCounted = null, pollen: RefCounted = null, monthly: RefCounted = null, fruit_store: RefCounted = null) -> void:
 	_api = api
 	_scope = scope_source
 	_transport = transport
 	store = wardrobe if wardrobe != null else Wardrobe.shared()
 	wallet = pollen if pollen != null else PollenWallet.shared()
 	grant = monthly if monthly != null else PollenGrant.shared()
+	fruits = fruit_store if fruit_store != null else FruitWallet.shared()
 
 ## {server, owner} while the server has said the wardrobe is on, else {}.
 func scope() -> Dictionary:
@@ -93,19 +107,47 @@ func refresh() -> Dictionary:
 	_sync_later()
 	return answer
 
-## Buys `id` (kind "item", "set" or "pack") for the cost the player saw. {ok, code, receipt}.
+## Buys `id` (kind "item", "set" or "pack") for the cost the player saw: in
+## Pollen, or in Fruits for an Orchard item or set (services/wardrobe.gd
+## spend_currency). {ok, code, receipt}.
 func buy(kind: String, id: String, cost: int) -> Dictionary:
+	return await _spend(kind, id, cost, false)
+
+## Turns `count` Fruits into Pollen, one way (the Pollen it makes shows before
+## the player confirms: services/fruit_wallet.gd convert_pollen). `count` is a
+## whole number of the server's steps. {ok, code, receipt}; the receipt's
+## `pollen` is the Pollen added.
+func convert(count: int) -> Dictionary:
 	var context := scope()
-	if context.is_empty() or not store.shop(str(context.server), str(context.owner)): return {"ok": false, "code": "pollen_shop_disabled"}
-	if not online(): return {"ok": false, "code": "offline"}
-	if _busy: return {"ok": false, "code": "busy"}
+	if not context.is_empty() and fruits.enabled(str(context.server), str(context.owner)) and not fruits.convert_valid(str(context.server), str(context.owner), count):
+		return {"ok": false, "code": "invalid_pollen_spend", "receipt": {}}
+	return await _spend(CONVERT, str(count), count, true)
+
+## Buys Sunshine at the price the server last said (services/fruit_wallet.gd
+## sunshine). {ok, code, receipt}; refused "sunshine_active" while turns are left.
+func buy_sunshine() -> Dictionary:
+	var context := scope()
+	var price := 0
+	if not context.is_empty(): price = int(fruits.sunshine(str(context.server), str(context.owner)).get("price", 0))
+	if not context.is_empty() and fruits.enabled(str(context.server), str(context.owner)) and price <= 0:
+		return {"ok": false, "code": "invalid_pollen_spend", "receipt": {}}
+	return await _spend(SUNSHINE, SUNSHINE, price, true)
+
+## One spend: never queued (it needs an answer, so offline it is refused), one
+## key for every send of it, the receipt kept in every store it feeds.
+## `fruit_only`: a convert or Sunshine, which needs Fruits on too.
+func _spend(kind: String, id: String, cost: int, fruit_only: bool) -> Dictionary:
+	var context := scope()
+	if context.is_empty() or not store.shop(str(context.server), str(context.owner)): return {"ok": false, "code": "pollen_shop_disabled", "receipt": {}}
+	if fruit_only and not fruits.enabled(str(context.server), str(context.owner)): return {"ok": false, "code": "fruits_disabled", "receipt": {}}
+	if not online(): return {"ok": false, "code": "offline", "receipt": {}}
+	if _busy: return {"ok": false, "code": "busy", "receipt": {}}
 	_busy = true
 	var body := {"schema_version": 1, "idempotency_key": new_key(), "kind": kind, "id": id, "expected_cost": cost}
 	var response := await _send(SPEND_PATH, body)
 	var answer := _answer(response)
 	if answer.ok and scope() == context:
-		store.note_spend(context.server, context.owner, answer.receipt)
-		wallet.note_balance(context.server, context.owner, answer.receipt.get("balance"))
+		WalletReply.note_spend(context.server, context.owner, answer.receipt, wallet, store, fruits)
 		changed.emit()
 	_busy = false
 	if not answer.ok and answer.code in STALE: await refresh()
@@ -188,7 +230,7 @@ func _note_wallet(context: Dictionary, response: Dictionary) -> Dictionary:
 	if not response.get("ok", false) or scope() != context: return {"ok": false, "code": str(response.get("code", "connection_interrupted"))}
 	var data: Variant = response.get("data")
 	# Every store the read feeds keeps its part, the grant's too (services/wallet_reply.gd).
-	var kept: Dictionary = WalletReply.note(context.server, context.owner, data, wallet, store, grant)
+	var kept: Dictionary = WalletReply.note(context.server, context.owner, data, wallet, store, grant, fruits)
 	var noted: bool = kept.wallet and kept.wardrobe
 	if noted: changed.emit()
 	return {"ok": noted, "code": "" if noted else "invalid_response"}

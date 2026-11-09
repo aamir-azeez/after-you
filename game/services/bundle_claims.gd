@@ -15,12 +15,20 @@ extends RefCounted
 ## Receipts the player has not seen yet stay with it, with the balance their
 ## answer gave, so the store shows them the next time it opens.
 ##
+## Fruit packs are claimed on the same route, in the same claim: the answer's
+## `fruit_credited`, `fruit_refunded` and `fruit_balance` sit beside the Pollen
+## ones (`credited`, `refunded` and `balance` stay Pollen only), the Fruit
+## balance goes to services/fruit_wallet.gd, and a Fruit receipt waits in its
+## own unseen list (unseen_fruits) for the Fruits tab. A claim whose answer
+## credits a Fruit pack counts as credited, as a Pollen one does.
+##
 ## Kept per server and player (a scope) in one file written whole with AtomicFile.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Bundles = preload("res://services/pollen_bundles.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 const Presence = preload("res://services/friend_presence.gd")
 
 const PATH := "user://pollen_bundle_claims.json"
@@ -39,6 +47,8 @@ const MARK_DAYS := 7
 signal settled(credited: Array, refunded: Array)
 ## Every send's answer, as claim() returns it. A claim asked while a send runs takes that send's answer.
 signal answered(answer: Dictionary)
+## A claim answered with Fruit packs credited or taken back: what that answer applied.
+signal fruits_settled(credited: Array, refunded: Array)
 
 static var _shared: RefCounted = null
 static var _order := RegEx.create_from_string(ORDER_PATTERN)
@@ -46,6 +56,8 @@ static var _order := RegEx.create_from_string(ORDER_PATTERN)
 var path := PATH
 var wardrobe: RefCounted
 var wallet: RefCounted
+## The Fruits a claim's answer feeds (services/fruit_wallet.gd).
+var fruits: RefCounted
 var _api: Node
 var _scope_source: Callable
 var _transport: Callable
@@ -60,10 +72,11 @@ static func shared() -> RefCounted:
 static func use_shared(store: RefCounted) -> void:
 	_shared = store
 
-func _init(storage_path: String = PATH, wardrobe_store: RefCounted = null, pollen: RefCounted = null) -> void:
+func _init(storage_path: String = PATH, wardrobe_store: RefCounted = null, pollen: RefCounted = null, fruit_store: RefCounted = null) -> void:
 	path = storage_path
 	wardrobe = wardrobe_store if wardrobe_store != null else Wardrobe.shared()
 	wallet = pollen if pollen != null else PollenWallet.shared()
+	fruits = fruit_store if fruit_store != null else FruitWallet.shared()
 	_load()
 
 ## Where claims go: Main's api and _names_scope, or a test's transport(method, path, body).
@@ -72,11 +85,14 @@ func connect_to(api: Node, scope_source: Callable, transport: Callable = Callabl
 	_scope_source = scope_source
 	_transport = transport
 
-## {server, owner} while the server has said bundles sell for the signed-in player, else {}.
+## {server, owner} while the server has said Pollen bundles or Fruit packs sell for the signed-in player, else {}.
 func scope() -> Dictionary:
 	var value: Variant = _scope_source.call() if _scope_source.is_valid() else null
 	if not value is Dictionary or value.is_empty() or not Presence.valid_id(value.get("owner")): return {}
-	return value if wardrobe.bundles(str(value.server), str(value.owner)) else {}
+	var server := str(value.server)
+	var owner := str(value.owner)
+	var selling: bool = wardrobe.bundles(server, owner) or (fruits != null and wardrobe.shop(server, owner) and fruits.packs(server, owner))
+	return value if selling else {}
 
 func sending() -> bool:
 	return _sending
@@ -150,17 +166,28 @@ func _settle(context: Dictionary, response: Dictionary) -> Dictionary:
 	var entry := _entry(context, true)
 	# A claim right after a purchase that found nothing new yet stays waiting (RevenueCat may list
 	# the purchase a moment later), for at most MAX_EMPTY answers, so a purchase that never lands stops asking.
-	entry.empty = int(entry.get("empty", 0)) + 1 if answer.credited.is_empty() and bool(entry.pending) else 0
-	entry.pending = bool(entry.pending) and answer.credited.is_empty() and int(entry.empty) < MAX_EMPTY
+	# A Fruit pack credited counts as much as a Pollen bundle.
+	var none: bool = answer.credited.is_empty() and answer.fruit_credited.is_empty()
+	entry.empty = int(entry.get("empty", 0)) + 1 if none and bool(entry.pending) else 0
+	entry.pending = bool(entry.pending) and none and int(entry.empty) < MAX_EMPTY
 	for receipt: Dictionary in answer.credited:
 		var kept := receipt.duplicate()
 		kept.balance = answer.balance
 		(entry.unseen as Array).append(kept)
 	while (entry.unseen as Array).size() > MAX_UNSEEN: (entry.unseen as Array).pop_front()
+	for receipt: Dictionary in answer.fruit_credited:
+		var kept := receipt.duplicate()
+		if answer.has("fruit_balance"): kept.balance = answer.fruit_balance
+		(entry.unseen_fruits as Array).append(kept)
+	while (entry.unseen_fruits as Array).size() > MAX_UNSEEN: (entry.unseen_fruits as Array).pop_front()
 	_save()
 	wallet.note_balance(context.server, context.owner, answer.balance)
+	if fruits != null and answer.has("fruit_balance"): fruits.note_balance(context.server, context.owner, answer.fruit_balance)
 	settled.emit(answer.credited, answer.refunded)
-	return {"ok": true, "code": "", "credited": answer.credited, "refunded": answer.refunded, "balance": answer.balance}
+	if not answer.fruit_credited.is_empty() or not answer.fruit_refunded.is_empty(): fruits_settled.emit(answer.fruit_credited, answer.fruit_refunded)
+	var result := {"ok": true, "code": "", "credited": answer.credited, "refunded": answer.refunded, "balance": answer.balance, "fruit_credited": answer.fruit_credited, "fruit_refunded": answer.fruit_refunded}
+	if answer.has("fruit_balance"): result["fruit_balance"] = answer.fruit_balance
+	return result
 
 ## Credited receipts the player has not seen yet, oldest first.
 func unseen() -> Array:
@@ -174,6 +201,21 @@ func mark_seen() -> void:
 	var entry := _entry(context)
 	if entry.is_empty() or (entry.unseen as Array).is_empty(): return
 	entry.unseen = []
+	_save()
+
+## Credited Fruit pack receipts the player has not seen yet, oldest first
+## (checked_fruit_receipt, each with the Fruit balance its answer gave).
+func unseen_fruits() -> Array:
+	var context := scope()
+	return (_entry(context).get("unseen_fruits", []) as Array).duplicate(true) if not context.is_empty() else []
+
+## The player saw the Fruit pack receipts.
+func mark_fruits_seen() -> void:
+	var context := scope()
+	if context.is_empty(): return
+	var entry := _entry(context)
+	if entry.is_empty() or (entry.unseen_fruits as Array).is_empty(): return
+	entry.unseen_fruits = []
 	_save()
 
 ## A claim answer as kept, or {} when any part is not the contract's.
@@ -191,7 +233,43 @@ static func checked_answer(value: Variant) -> Dictionary:
 		var back := {"bundle": str(item.bundle), "amount": Typed.as_int(item.amount), "order": str(item.get("order", ""))}
 		if item.get("store") == Bundles.APP_STORE: back.store = Bundles.APP_STORE
 		refunded.append(back)
-	return {"balance": Typed.as_int(value.balance), "credited": credited, "refunded": refunded}
+	var answer := {"balance": Typed.as_int(value.balance), "credited": credited, "refunded": refunded, "fruit_credited": [], "fruit_refunded": []}
+	_keep_fruit_parts(value, answer)
+	return answer
+
+## The Fruit packs a claim answer carries (a server from before Fruits sends
+## none). A list or line off the contract is left out on its own; the Pollen
+## part still counts.
+static func _keep_fruit_parts(value: Dictionary, answer: Dictionary) -> void:
+	if Typed.whole_number(value.get("fruit_balance")): answer["fruit_balance"] = Typed.as_int(value.fruit_balance)
+	var credited: Variant = value.get("fruit_credited")
+	if credited is Array and credited.size() <= 100:
+		for item: Variant in credited:
+			var kept := checked_fruit_receipt(item)
+			if not kept.is_empty(): answer.fruit_credited.append(kept)
+	var refunded: Variant = value.get("fruit_refunded")
+	if refunded is Array and refunded.size() <= 100:
+		for item: Variant in refunded:
+			if not item is Dictionary or not str(item.get("bundle", "")) in Bundles.ids(Bundles.FRUITS) or not Typed.whole_number(item.get("amount")) or not Typed.whole_number(item.get("pollen_taken")) or float(item.pollen_taken) < 0.0: continue
+			var order: Variant = item.get("order", "")
+			if not order is String or (not order.is_empty() and _order.search(order) == null): continue
+			var back := {"bundle": str(item.bundle), "amount": Typed.as_int(item.amount), "order": order, "pollen_taken": Typed.as_int(item.pollen_taken)}
+			if item.get("store") == Bundles.APP_STORE: back.store = Bundles.APP_STORE
+			answer.fruit_refunded.append(back)
+
+## One credited Fruit pack as kept, or {}: {bundle, fruits, first_gift, order,
+## purchased_at, usd_cents, store?, balance?}.
+static func checked_fruit_receipt(item: Variant) -> Dictionary:
+	if not item is Dictionary or not str(item.get("bundle", "")) in Bundles.ids(Bundles.FRUITS): return {}
+	for field: String in ["fruits", "first_gift", "purchased_at", "usd_cents"]:
+		if not Typed.whole_number(item.get(field)) or float(item.get(field)) < 0.0: return {}
+	var order: Variant = item.get("order", "")
+	if not order is String or (not order.is_empty() and _order.search(order) == null): return {}
+	var kept := {"bundle": str(item.bundle), "fruits": Typed.as_int(item.fruits), "first_gift": Typed.as_int(item.first_gift), "order": order,
+		"purchased_at": Typed.as_int(item.purchased_at), "usd_cents": Typed.as_int(item.usd_cents)}
+	if item.get("store") == Bundles.APP_STORE: kept.store = Bundles.APP_STORE
+	if Typed.whole_number(item.get("balance")): kept.balance = Typed.as_int(item.balance)
+	return kept
 
 ## One credited purchase as kept, or {}.
 static func checked_receipt(item: Variant) -> Dictionary:
@@ -212,7 +290,7 @@ func _entry(context: Dictionary, create: bool = false) -> Dictionary:
 	var key := Wardrobe.scope_key(str(context.server), str(context.owner))
 	if not _scopes.has(key):
 		if not create: return {}
-		_scopes[key] = {"pending": false, "empty": 0, "since": 0, "unseen": []}
+		_scopes[key] = {"pending": false, "empty": 0, "since": 0, "unseen": [], "unseen_fruits": []}
 	return _scopes[key]
 
 func _request(method: int, route: String, body: Dictionary) -> Dictionary:
@@ -243,7 +321,12 @@ func _load() -> void:
 		for item: Variant in (value.unseen if value.get("unseen") is Array else []):
 			var kept := checked_receipt(item)
 			if not kept.is_empty(): unseen.append(kept)
-		_scopes[key] = {"pending": value.get("pending") == true, "empty": clampi(Typed.as_int(value.get("empty"), 0), 0, MAX_EMPTY), "since": maxi(0, Typed.as_int(value.get("since"), 0)), "unseen": unseen.slice(-MAX_UNSEEN)}
+		var unseen_fruits: Array = []
+		for item: Variant in (value.unseen_fruits if value.get("unseen_fruits") is Array else []):
+			var kept := checked_fruit_receipt(item)
+			if not kept.is_empty(): unseen_fruits.append(kept)
+		_scopes[key] = {"pending": value.get("pending") == true, "empty": clampi(Typed.as_int(value.get("empty"), 0), 0, MAX_EMPTY), "since": maxi(0, Typed.as_int(value.get("since"), 0)),
+			"unseen": unseen.slice(-MAX_UNSEEN), "unseen_fruits": unseen_fruits.slice(-MAX_UNSEEN)}
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "scopes": _scopes}))

@@ -8,10 +8,41 @@
 		"lighthouse_lamp",
 		"gold_leaf",
 		"every_hard",
-		"top_ten_ribbon"
+		"top_ten_ribbon",
+		"fruit_cap",
+		"blossom_crown",
+		"orchard_skin",
+		"apple_leaf",
+		"sprig_coral",
+		"sprig_plum",
+		"sprig_sun",
+		"sprig_sky"
 	],
 	"items": {
+		"apple_leaf": {
+			"currency": "fruits",
+			"id": "apple_leaf",
+			"price": 25,
+			"released": false,
+			"set": "orchard",
+			"slot": "leaf",
+			"sold": true,
+			"tier": "fruit_small",
+			"unlock": ""
+		},
+		"blossom_crown": {
+			"currency": "fruits",
+			"id": "blossom_crown",
+			"price": 50,
+			"released": false,
+			"set": "",
+			"slot": "hat",
+			"sold": true,
+			"tier": "fruit_hat",
+			"unlock": ""
+		},
 		"daisy": {
+			"currency": "pollen",
 			"id": "daisy",
 			"price": 1000,
 			"released": false,
@@ -22,6 +53,7 @@
 			"unlock": ""
 		},
 		"every_hard": {
+			"currency": "pollen",
 			"id": "every_hard",
 			"price": 0,
 			"released": false,
@@ -31,7 +63,19 @@
 			"tier": "earned",
 			"unlock": ""
 		},
+		"fruit_cap": {
+			"currency": "fruits",
+			"id": "fruit_cap",
+			"price": 50,
+			"released": false,
+			"set": "orchard",
+			"slot": "hat",
+			"sold": true,
+			"tier": "fruit_hat",
+			"unlock": ""
+		},
 		"gold_leaf": {
+			"currency": "pollen",
 			"id": "gold_leaf",
 			"price": 0,
 			"released": false,
@@ -42,6 +86,7 @@
 			"unlock": ""
 		},
 		"lantern": {
+			"currency": "pollen",
 			"id": "lantern",
 			"price": 50000,
 			"released": false,
@@ -52,6 +97,7 @@
 			"unlock": ""
 		},
 		"lighthouse_lamp": {
+			"currency": "pollen",
 			"id": "lighthouse_lamp",
 			"price": 100000,
 			"released": false,
@@ -61,7 +107,19 @@
 			"tier": "special",
 			"unlock": "sleeping-lighthouse"
 		},
+		"orchard_skin": {
+			"currency": "fruits",
+			"id": "orchard_skin",
+			"price": 100,
+			"released": false,
+			"set": "orchard",
+			"slot": "body",
+			"sold": true,
+			"tier": "fruit_body",
+			"unlock": ""
+		},
 		"seashell": {
+			"currency": "pollen",
 			"id": "seashell",
 			"price": 1000,
 			"released": false,
@@ -71,7 +129,52 @@
 			"tier": "common",
 			"unlock": ""
 		},
+		"sprig_coral": {
+			"currency": "fruits",
+			"id": "sprig_coral",
+			"price": 10,
+			"released": false,
+			"set": "",
+			"slot": "leaf",
+			"sold": true,
+			"tier": "sprig",
+			"unlock": ""
+		},
+		"sprig_plum": {
+			"currency": "fruits",
+			"id": "sprig_plum",
+			"price": 10,
+			"released": false,
+			"set": "",
+			"slot": "leaf",
+			"sold": true,
+			"tier": "sprig",
+			"unlock": ""
+		},
+		"sprig_sky": {
+			"currency": "fruits",
+			"id": "sprig_sky",
+			"price": 10,
+			"released": false,
+			"set": "",
+			"slot": "leaf",
+			"sold": true,
+			"tier": "sprig",
+			"unlock": ""
+		},
+		"sprig_sun": {
+			"currency": "fruits",
+			"id": "sprig_sun",
+			"price": 10,
+			"released": false,
+			"set": "",
+			"slot": "leaf",
+			"sold": true,
+			"tier": "sprig",
+			"unlock": ""
+		},
 		"straw_hat": {
+			"currency": "pollen",
 			"id": "straw_hat",
 			"price": 5000,
 			"released": false,
@@ -82,6 +185,7 @@
 			"unlock": ""
 		},
 		"tide": {
+			"currency": "pollen",
 			"id": "tide",
 			"price": 20000,
 			"released": false,
@@ -92,6 +196,7 @@
 			"unlock": ""
 		},
 		"top_ten_ribbon": {
+			"currency": "pollen",
 			"id": "top_ten_ribbon",
 			"price": 0,
 			"released": false,
@@ -107,12 +212,22 @@
 		"body",
 		"leaf"
 	],
+	"tier_currency": {
+		"fruit_body": "fruits",
+		"fruit_hat": "fruits",
+		"fruit_small": "fruits",
+		"sprig": "fruits"
+	},
 	"tier_prices": {
 		"common": 1000,
 		"earned": 0,
 		"epic": 50000,
+		"fruit_body": 100,
+		"fruit_hat": 50,
+		"fruit_small": 25,
 		"rare": 20000,
 		"special": 100000,
+		"sprig": 10,
 		"uncommon": 5000
 	}
 }

@@ -1,6 +1,6 @@
 extends RefCounted
 ## Forgets a deleted player's part of the files every player of this phone
-## shares (names, friends, nicknames, Pollen, wardrobe, leaderboard, duels,
+## shares (names, friends, nicknames, Pollen, Fruits, wardrobe, leaderboard, duels,
 ## platform board verdicts).
 ##
 ## Account deletion calls forget() once the identity's secret is removed. A
@@ -20,6 +20,7 @@ const LeaderboardRuns = preload("res://services/leaderboard_runs.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 const StoreSupport = preload("res://services/store_support.gd")
 const TesterSwitches = preload("res://services/tester_switches.gd")
 const LeaderboardPlacings = preload("res://services/leaderboard_placings.gd")
@@ -28,7 +29,7 @@ const PlatformBoardStore = preload("res://services/platform_games/platform_board
 const PATH := "user://deleted_identity_stores.json"
 const VERSION := 1
 ## Every store cleared, in order, by the name a marker keeps for one still to finish.
-const STORES := ["nicknames", "names", "friends", "wallet", "wardrobe", "runs", "duels", "bundle_claims", "monthly_pollen", "store_support", "placings", "name_choice", "tester_switches", "platform_boards"]
+const STORES := ["nicknames", "names", "friends", "wallet", "wardrobe", "runs", "duels", "bundle_claims", "monthly_pollen", "store_support", "placings", "name_choice", "tester_switches", "platform_boards", "fruits"]
 ## Deletions kept waiting; more than this keeps the newest.
 const MAX_OWNERS := 8
 const MAX_SERVER := 2048
@@ -85,6 +86,7 @@ func _clear(store: String, owner: String, server: String, nicknames: RefCounted)
 		"name_choice": return LeaderboardClient.clear_owner(owner)
 		"tester_switches": return TesterSwitches.shared().clear_owner(owner)
 		"platform_boards": return PlatformBoardStore.forget_verdicts()
+		"fruits": return FruitWallet.shared().clear_owner(owner)
 	return false
 
 ## Keeps `stores` as what `owner` still needs (none drops the entry). False when

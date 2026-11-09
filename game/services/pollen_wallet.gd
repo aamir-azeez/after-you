@@ -27,6 +27,7 @@ extends RefCounted
 ## then asks the server for the wallet again, so nothing is lost.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 
 const PATH := "user://pollen_wallet.json"
 const VERSION := 1
@@ -64,10 +65,16 @@ static var _item := RegEx.create_from_string(ITEM_PATTERN)
 
 var path := PATH
 var _scopes: Dictionary = {}
+## The Fruits each confirmed receipt also feeds (services/fruit_wallet.gd), the
+## shared one unless a test sets its own.
+var fruits: RefCounted = null
 
 static func shared() -> RefCounted:
 	if _shared == null: _shared = load("res://services/pollen_wallet.gd").new()
 	return _shared
+
+func _fruits() -> RefCounted:
+	return fruits if fruits != null else FruitWallet.shared()
 
 ## Installs a store as the shared one (tests), or clears it with null.
 static func use_shared(store: RefCounted) -> void:
@@ -150,7 +157,22 @@ static func checked_receipt(value: Variant) -> Dictionary:
 		var bloom := checked_item_bloom(value.item_bloom)
 		if bloom.is_empty(): return {}
 		kept["item_bloom"] = bloom
+	_keep_fruit_parts(value, kept)
 	return kept
+
+## The Fruits parts a receipt may carry while FRUITS is on, each left out on its
+## own when it is off the contract, so the Pollen line still shows:
+## - turn.sunshine: the extra Pollen Sunshine paid on this bank turn, already in
+##   the turn's total ("Sunshine x2" on the results card);
+## - sunshine_left: Sunshine turns left after this one;
+## - fruits: {balance, paid: [{id, amount}]}, achievements this credit paid
+##   (services/fruit_wallet.gd checked_credit).
+static func _keep_fruit_parts(value: Dictionary, kept: Dictionary) -> void:
+	if kept.has("turn") and value.turn.has("sunshine") and _count(value.turn.sunshine) and int(value.turn.sunshine) > 0 and kept.turn.kind == "bank":
+		kept.turn["sunshine"] = Typed.as_int(value.turn.sunshine)
+	if _count(value.get("sunshine_left")): kept["sunshine_left"] = Typed.as_int(value.sunshine_left)
+	var credit := FruitWallet.checked_credit(value.get("fruits"))
+	if not credit.is_empty(): kept["fruits"] = credit
 
 ## First clear lines as kept, or null when any is not the contract's.
 static func _checked_clears(value: Variant) -> Variant:
@@ -249,6 +271,8 @@ func note_receipt(server: String, owner: String, room_id: String, recording_hash
 	# taken from a wallet answer, so a phone that has none asks for one.
 	if not (scope.wallet as Dictionary).is_empty(): scope.wallet.balance = kept.balance
 	_save()
+	# Its Fruits, achievements paid and Sunshine turns left go to the Fruit store.
+	_fruits().note_receipt(server, owner, kept)
 	result_noted.emit(server, owner, room_id, recording_hash)
 	# An item bloom's item is owned now: the wardrobe shows it without asking again.
 	if kept.has("item_bloom") and kept.item_bloom.has("item_id"): item_dropped.emit(server, owner, str(kept.item_bloom.item_id))
@@ -375,13 +399,18 @@ func settle_clear(server: String, owner: String, key: String, answer: Variant) -
 		_remember_cleared(scope, key)
 		var receipt := checked_receipt(answer.get("receipt"))
 		if not receipt.is_empty() and not (scope.wallet as Dictionary).is_empty(): scope.wallet.balance = receipt.balance
+		# A first clear may pay an achievement (its first chapter together): the Fruit store keeps it.
+		if not receipt.is_empty(): _fruits().note_receipt(server, owner, receipt)
 		# A room's first clear, for its end card: what this claim paid, or else what the
 		# room's finish paid already (a server from before `paid_clears` says nothing).
 		var lines: Array = receipt.get("clears", []) if not receipt.get("clears", []).is_empty() else receipt.get("paid_clears", [])
 		if key.begins_with("room:") and not lines.is_empty():
 			room = key.substr(5)
 			var earned: int = lines.reduce(func(sum: int, line: Dictionary) -> int: return sum + int(line.total), 0)
-			_keep_result(scope, room, ROOM_CLEAR, {"earned": earned, "balance": receipt.balance, "clears": lines})
+			var line := {"earned": earned, "balance": receipt.balance, "clears": lines}
+			# Achievements this claim paid show on the room's end card with its first clear.
+			if receipt.has("fruits"): line["fruits"] = receipt.fruits
+			_keep_result(scope, room, ROOM_CLEAR, line)
 	else:
 		scope.clears.append(key)
 	_save()

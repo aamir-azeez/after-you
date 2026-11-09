@@ -8,7 +8,7 @@ extends SceneTree
 ## The scans read every game script with its comment lines taken out, so a
 ## comment naming the shared path never counts as using it:
 ## (a) pips: PipAvatar with `own`, or a look source; worlds through wear_slots;
-## (b) wallet replies: services/wallet_reply.gd alone feeds the stores;
+## (b) wallet replies and spend receipts: services/wallet_reply.gd alone feeds the stores, the Fruit store too;
 ## (c) feature switches: capability fields are read in relay_online_session.gd;
 ## (d) offline: a screen that reaches the server holds its buttons (offline_hold.gd);
 ## (e) names: FriendNicknames.display_name, the leaderboard pair title, and in a public
@@ -353,12 +353,22 @@ func _wallet() -> void:
 	var readers := 0
 	for path: String in _sources:
 		var source: String = _sources[path]
+		var alias := _alias(source, WALLET_REPLY)
 		if path != WALLET_REPLY:
-			_check(_found("\\.note_wallet\\(", source) == 0, "%s keeps a wallet answer itself: go through services/wallet_reply.gd, which feeds the wallet, wardrobe and grant together" % path)
-			_check(_found("\\.note_view\\(", source) == 0, "%s keeps a wardrobe or grant part of a wallet answer itself: go through services/wallet_reply.gd" % path)
+			_check(_found("\\.note_wallet\\(", source) == 0, "%s keeps a wallet answer itself: go through services/wallet_reply.gd, which feeds the wallet, wardrobe, grant and Fruits together" % path)
+			_check(_found("\\.note_view\\(", source) == 0, "%s keeps a wardrobe, grant or Fruits part of a wallet answer itself: go through services/wallet_reply.gd" % path)
+			var through := 0 if alias.is_empty() else _found("\\b" + alias + "\\.note_spend\\(", source)
+			_check(_found("\\.note_spend\\(", source) == through, "%s keeps a spend receipt itself: go through services/wallet_reply.gd note_spend, which feeds the wardrobe and both balances" % path)
+		# Every wallet reply and spend receipt names the Fruit store too (its last argument), so no read drops the Fruits part.
+		if not alias.is_empty():
+			for call: String in [alias + ".note(", alias + ".note_spend("]:
+				var at := _call_at(source, call, 0)
+				while at >= 0:
+					var args := _arguments(source, at + call.length())
+					_check(args.size() == (7 if call.ends_with(".note(") else 6) and args.back() != "null", "%s calls %s without the Fruit store (services/fruit_wallet.gd) as its last argument: %s" % [path, call, args])
+					at = _call_at(source, call, at + call.length())
 		if not source.contains("\"/v1/pollen\""): continue
 		readers += 1
-		var alias := _alias(source, WALLET_REPLY)
 		_check(not alias.is_empty() and source.contains(alias + ".note("), "%s reads the wallet (GET /v1/pollen) without services/wallet_reply.gd note()" % path)
 	_check(readers >= 2, "The wallet readers are found: %d" % readers)
 

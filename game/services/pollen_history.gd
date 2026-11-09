@@ -19,6 +19,14 @@ extends RefCounted
 ##   cents as Google Play reported it: the server's figure, or -1 from a server
 ##   that sends none (its few lines would undercount; the flow then asks the
 ##   wallet read's figure).
+## - exchanges: Pollen moved by Fruits, newest first, {kind, amount, at}: "convert"
+##   (Pollen made from Fruits, amount above 0) and "reclaim" (Pollen taken back
+##   when refunded Fruits were already turned into Pollen, amount below 0).
+## - fruit_entries: the Fruit lines (only while FRUITS is on), newest first, at
+##   most MAX_ENTRIES, {kind, amount (signed Fruits), at} with what each kind
+##   names: id (an achievement), level_id, step (the month), bundle, order,
+##   store ("app_store"), usd_cents. A line off the contract is left out.
+## A turn may carry `sunshine`: the extra Pollen Sunshine paid, already in its amount.
 ## A purchases part off the contract reads as no purchases; the rest still shows.
 ## A history that is not the contract's reads as {}, and the page says so.
 const Typed = preload("res://services/typed_values.gd")
@@ -30,10 +38,20 @@ const MAX_ENTRIES := 50
 const BONUSES := ["first_try", "gold_pace", "silver_pace", "hard"]
 const REASONS := ["repeat", "bank_empty", "late"]
 const PURCHASE_KINDS := ["bundle", "bundlerefund"]
+## Pollen kinds that Fruits move: Fruits made into Pollen, and Pollen taken back after a Fruit refund.
+const EXCHANGE_KINDS := ["convert", "reclaim"]
+## The Fruit line kinds (backend fruit ledger lines).
+const FRUIT_KINDS := ["grant", "grantrefund", "welcome", "welcomerefund", "bundle", "bundlerefund", "ach", "convert", "reclaim"]
+## Fruit kinds that add (amount above 0); every other kind takes away (amount below 0).
+const FRUIT_ADDS := ["grant", "welcome", "bundle", "ach"]
+const ID_PATTERN := "^[a-z0-9_]{1,40}$"
+const LEVEL_PATTERN := "^[a-z0-9-]{1,64}$"
 ## As the server's PURCHASE_LIMIT (backend/src/pollen/wallet.ts).
 const MAX_PURCHASES := 100
 
 static var _order := RegEx.create_from_string(BundleClaims.ORDER_PATTERN)
+static var _id := RegEx.create_from_string(ID_PATTERN)
+static var _level := RegEx.create_from_string(LEVEL_PATTERN)
 
 static func checked(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not value.get("entries") is Array or value.entries.size() > MAX_ENTRIES: return {}
@@ -55,8 +73,53 @@ static func checked(value: Variant) -> Dictionary:
 			var line := _purchase(entry)
 			if not line.is_empty(): purchases.append(line)
 	var spent: Variant = value.get("spent_usd_cents")
+	var exchanges: Array[Dictionary] = []
+	for entry: Variant in value.entries:
+		var line := _exchange(entry)
+		if not line.is_empty(): exchanges.append(line)
+	var fruit_entries: Array[Dictionary] = []
+	var sent_fruits: Variant = value.get("fruit_entries")
+	if sent_fruits is Array:
+		for entry: Variant in (sent_fruits as Array).slice(0, MAX_ENTRIES):
+			var line := _fruit_line(entry)
+			if not line.is_empty(): fruit_entries.append(line)
 	return {"turns": turns, "first_clears": clears, "bank": _bank(value.get("bank")), "purchases": purchases,
-		"spent_usd_cents": Typed.as_int(spent) if _count(spent) and value.has("purchases") else -1}
+		"spent_usd_cents": Typed.as_int(spent) if _count(spent) and value.has("purchases") else -1, "exchanges": exchanges, "fruit_entries": fruit_entries}
+
+## A Pollen line Fruits moved ("convert" adds, "reclaim" takes back) as kept, or {}.
+static func _exchange(entry: Variant) -> Dictionary:
+	if not entry is Dictionary or not entry.get("kind") in EXCHANGE_KINDS or not Typed.whole_number(entry.get("amount")) or not _count(entry.get("at")): return {}
+	if (float(entry.amount) <= 0.0) if entry.kind == "convert" else (float(entry.amount) >= 0.0): return {}
+	return {"kind": entry.kind, "amount": Typed.as_int(entry.amount), "at": Typed.as_int(entry.at)}
+
+## One Fruit line as kept, or {}: its sign must match its kind, and each named part must be the contract's.
+static func _fruit_line(entry: Variant) -> Dictionary:
+	if not entry is Dictionary or not entry.get("kind") in FRUIT_KINDS or not Typed.whole_number(entry.get("amount")) or not _count(entry.get("at")): return {}
+	var adds: bool = entry.kind in FRUIT_ADDS
+	if (float(entry.amount) <= 0.0) if adds else (float(entry.amount) >= 0.0): return {}
+	var kept := {"kind": entry.kind, "amount": Typed.as_int(entry.amount), "at": Typed.as_int(entry.at)}
+	if entry.has("id"):
+		if not entry.id is String or _id.search(entry.id) == null: return {}
+		kept["id"] = entry.id
+	if entry.has("level_id"):
+		if not entry.level_id is String or _level.search(entry.level_id) == null: return {}
+		kept["level_id"] = entry.level_id
+	if entry.has("step"):
+		if not _count(entry.step): return {}
+		kept["step"] = Typed.as_int(entry.step)
+	if entry.has("bundle"):
+		if not str(entry.bundle) in Bundles.ids(Bundles.FRUITS): return {}
+		kept["bundle"] = str(entry.bundle)
+	if entry.has("order"):
+		if not entry.order is String or (not entry.order.is_empty() and _order.search(entry.order) == null): return {}
+		kept["order"] = entry.order
+	if entry.has("store"):
+		if entry.store != Bundles.APP_STORE: return {}
+		kept["store"] = Bundles.APP_STORE
+	if entry.has("usd_cents"):
+		if not _count(entry.usd_cents): return {}
+		kept["usd_cents"] = Typed.as_int(entry.usd_cents)
+	return kept
 
 ## One bundle or refund line as kept, or {} (a turn's entry, or one off the contract).
 static func _purchase(entry: Variant) -> Dictionary:
@@ -78,8 +141,11 @@ static func _turn(entry: Variant) -> Dictionary:
 	if not bonuses is Array or bonuses.any(func(bonus: Variant) -> bool: return not bonus in BONUSES): return {}
 	var bloom := Typed.as_int(entry.get("bloom", 1), 0)
 	if not bloom in [1, 2, 3] or not entry.get("reason", "") in [""] + REASONS: return {}
-	return {"amount": Typed.as_int(entry.amount), "at": Typed.as_int(entry.at), "level_id": entry.level_id, "stage_id": entry.stage_id, "role": entry.role,
+	var kept := {"amount": Typed.as_int(entry.amount), "at": Typed.as_int(entry.at), "level_id": entry.level_id, "stage_id": entry.stage_id, "role": entry.role,
 		"bonuses": bonuses.duplicate(), "bloom": bloom, "reason": str(entry.get("reason", ""))}
+	# Sunshine's extra Pollen on a bank turn, already in its amount; a value off the contract is left out.
+	if _count(entry.get("sunshine")) and int(entry.sunshine) > 0: kept["sunshine"] = Typed.as_int(entry.sunshine)
+	return kept
 
 static func _bank(value: Variant) -> Dictionary:
 	if not value is Dictionary or not _count(value.get("left")) or not _count(value.get("refill")) or not _count(value.get("cap")) or not value.get("tail") is Array or value.tail.size() > 4: return {}

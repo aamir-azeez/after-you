@@ -1,6 +1,7 @@
 extends SceneTree
 ## The cosmetic manifest: the slots, the tier prices and one row per item with
-## the facts the server must agree on, written from content/cosmetics/ into
+## the facts the server must agree on (the currency each tier is sold in
+## among them), written from content/cosmetics/ into
 ## tests/fixtures/golden/cosmetic_manifest.json. The server's catalog is to be
 ## checked against the same file once it exists, so an item whose game and
 ## server facts drift apart fails CI instead of being sold at the wrong price.
@@ -37,8 +38,9 @@ func _run() -> void:
 			"released": Catalog.released(id),
 			"unlock": str(data.unlock),
 			"set": str(data.set),
+			"currency": str(Index.TIER_CURRENCY.get(str(data.tier), "pollen")),
 		}
-	var result := Golden.check(GOLDEN, {"ids": Catalog.ids(), "slots": Catalog.slots(), "tier_prices": Index.TIER_PRICES, "items": items})
+	var result := Golden.check(GOLDEN, {"ids": Catalog.ids(), "slots": Catalog.slots(), "tier_prices": Index.TIER_PRICES, "tier_currency": Index.TIER_CURRENCY, "items": items})
 	for message: String in result.messages:
 		push_error(message)
 	_check(result.ok, "Cosmetic manifest matches golden " + GOLDEN)

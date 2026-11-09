@@ -11,6 +11,7 @@ extends RefCounted
 ## kit/session_release.gd. Materials an item animates (a lamp that brightens
 ## and dims) are made per pip and go with it.
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const Meshes = preload("res://presentation/spirit_meshes.gd")
 const SCRIPT_PATH := "res://presentation/kit/pip_wear_kit.gd"
 
 ## How many sides the small round parts get: enough at a pip's size, and an
@@ -177,6 +178,20 @@ static func _star_material(color: Color) -> StandardMaterial3D:
 	_star_materials[color] = found
 	_keep()
 	return found
+
+## A part of half sizes `size` lying on the head's surface under `near` (head
+## space): its x along `toward`, its y the surface's normal there, raised so
+## its underside clears the surface by `clear` (a flower, a petal).
+static func on_head(near: Vector3, toward: Vector3, size: Vector3, clear: float) -> Transform3D:
+	return lie_on(Meshes.head_surface(near), toward, size, clear)
+
+## The same on any surface point: `surface` is [point, outward normal]
+## (spirit_meshes.gd head_surface, torso_surface).
+static func lie_on(surface: Array[Vector3], toward: Vector3, size: Vector3, clear: float) -> Transform3D:
+	var up: Vector3 = surface[1]
+	var x := (toward - up * toward.dot(up)).normalized()
+	var z := x.cross(up).normalized()
+	return Transform3D(Basis(x * size.x, up * size.y, z * size.z), surface[0] + up * (size.y + clear))
 
 ## A part's mesh scaled about its own origin, as a new mesh (a bigger leaf).
 static func scaled(mesh: Mesh, scale: float) -> ArrayMesh:

@@ -18,6 +18,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const WalletReply = preload("res://services/wallet_reply.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const CLAIMS_PATH := "/v1/pollen/turn-claims"
 const CLEARS_PATH := "/v1/pollen/clear-claims"
@@ -52,6 +53,8 @@ var wallet: RefCounted
 var wardrobe: RefCounted
 ## The monthly grant kept from the same wallet read while it is on (services/pollen_grant.gd).
 var grant: RefCounted
+## The Fruits kept from the same wallet read while they are on (services/fruit_wallet.gd).
+var fruits: RefCounted
 ## () -> bool: whether this phone holds Full Journey (Main's cached entitlement).
 var subscribed: Callable
 ## () -> bool: a Full Journey purchase or restore is under way (Main: store_flow.store_action_pending).
@@ -82,6 +85,7 @@ func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), 
 	wallet = store if store != null else PollenWallet.shared()
 	wardrobe = Wardrobe.shared()
 	grant = PollenGrant.shared()
+	fruits = FruitWallet.shared()
 
 ## {server, owner} while the server has said Pollen earning is on, else {}.
 func scope() -> Dictionary:
@@ -124,14 +128,15 @@ func _run() -> void:
 			continue
 		# A phone with no wallet (a new install, or a file that could not be read) asks for it,
 		# and so does one whose wardrobe is missing or older than the server's offered items
-		# (services/wardrobe.gd needs_read): the same read carries both.
-		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_stale(context) or _grant_due(context) or _bought_waiting(context):
+		# (services/wardrobe.gd needs_read), or whose Fruits are on with none kept
+		# (services/fruit_wallet.gd needs_read): the same read carries them all.
+		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_stale(context) or _fruits_stale(context) or _grant_due(context) or _bought_waiting(context):
 			requests += 1
 			var bought := _bought_waiting(context)
 			var read: Dictionary = await _request(HTTPClient.METHOD_GET, WALLET_PATH, {}, grant_headers(context))
 			if scope() != context or not read.get("ok", false): break
 			# Every store the read feeds keeps its part (services/wallet_reply.gd); a wallet part that cannot be kept stops the flush.
-			if not WalletReply.note(context.server, context.owner, read.get("data"), wallet, wardrobe, grant).wallet: break
+			if not WalletReply.note(context.server, context.owner, read.get("data"), wallet, wardrobe, grant, fruits).wallet: break
 			# Only an answered read counts for the grant: an offline launch tries again on the next flush.
 			var key := PollenWallet.scope_key(context.server, context.owner)
 			if _grant_wanted(context): _grant_read_at[key] = Time.get_ticks_msec()
@@ -181,6 +186,10 @@ func grant_headers(context: Dictionary) -> PackedStringArray:
 
 func _wardrobe_stale(context: Dictionary) -> bool:
 	return wardrobe != null and wardrobe.needs_read(context.server, context.owner)
+
+## Fruits are on and no Fruits part is kept yet (a phone that read the wallet before FRUITS went on).
+func _fruits_stale(context: Dictionary) -> bool:
+	return fruits != null and fruits.needs_read(context.server, context.owner)
 
 ## Records each claim's answer; false when the request itself failed (sent again later).
 func _settle_claims(context: Dictionary, batch: Array, response: Dictionary) -> bool:

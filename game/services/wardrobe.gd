@@ -22,7 +22,10 @@ extends RefCounted
 ##   (needs_read) and a friend's new item shows on this phone;
 ## - offered_packs, prices, pack_price, sets, unlocked: what the server sells,
 ##   its sets and the Specials whose chapter this player has cleared (only
-##   while the shop is on; empty otherwise);
+##   while the shop is on; empty otherwise); prices and sets are in Pollen;
+## - fruit_prices, fruit_sets: the Orchard items and sets the server sells for
+##   Fruits while FRUITS is on (empty otherwise). spend_currency and spend_price
+##   say which a spend is in, so every screen prices it the same way;
 ## - name_price: what the next name change costs (0 while one is free, -1
 ##   while the server sends none, as without the shop);
 ## - name_price_next: what the change after that one costs, once it went
@@ -132,19 +135,51 @@ static func checked_view(value: Variant) -> Dictionary:
 	var look := checked_look(part.look)
 	if look.size() != (part.look as Dictionary).size(): return {}
 	# The server's prices for what it sells: what a confirm card shows and a spend checks.
-	var prices := {}
-	var sent: Variant = part.get("prices", {})
-	if sent is Dictionary:
-		for id: Variant in sent:
-			if valid_id(id) and Typed.whole_number(sent[id]) and float(sent[id]) > 0.0: prices[id] = Typed.as_int(sent[id])
-	var sets := {}
-	var sent_sets: Dictionary = part.get("sets", {})
-	for set_id: Variant in sent_sets:
-		var pieces := _ids(sent_sets[set_id])
-		if valid_id(set_id) and not pieces.is_empty() and pieces.size() <= MAX_SET_PIECES: sets[set_id] = pieces
-	return {"items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
+	var prices := _checked_prices(part.get("prices", {}))
+	var sets := _checked_sets(part.get("sets", {}))
+	# The Orchard's prices and sets in Fruits, while FRUITS is on: a part off the contract reads as none.
+	var fruit_prices := _checked_prices(part.get("fruit_prices", {}))
+	var fruit_sets := _checked_sets(part.get("fruit_sets", {}))
+	return {"fruit_prices": fruit_prices, "fruit_sets": fruit_sets, "items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
 		"offered": _ids(part.offered), "prices": prices, "offered_packs": _ids(part.get("offered_packs", [])), "pack_price": Typed.as_int(part.get("pack_price"), 0), "sets": sets, "unlocked": _ids(part.get("unlocked", [])),
 		"name_price": Typed.as_int(price) if price != null else -1, "name_price_next": price_next, "bundles": checked_bundles(value.get("bundles"))}
+
+## {id: price} for well formed ids and prices above 0; anything else is left out.
+static func _checked_prices(sent: Variant) -> Dictionary:
+	var prices := {}
+	if not sent is Dictionary: return prices
+	for id: Variant in sent:
+		if valid_id(id) and Typed.whole_number(sent[id]) and float(sent[id]) > 0.0: prices[id] = Typed.as_int(sent[id])
+	return prices
+
+## {set id: [piece ids]} for well formed sets; anything else is left out.
+static func _checked_sets(sent: Variant) -> Dictionary:
+	var sets := {}
+	if not sent is Dictionary: return sets
+	for set_id: Variant in sent:
+		var pieces := _ids(sent[set_id])
+		if valid_id(set_id) and not pieces.is_empty() and pieces.size() <= MAX_SET_PIECES: sets[set_id] = pieces
+	return sets
+
+## The currency a spend of `id` costs in a kept view: "fruits" for an Orchard
+## item or set the server prices in Fruits, else what the item's tier says
+## (services/cosmetic_catalog.gd currency), else "pollen".
+static func spend_currency(view: Dictionary, id: String) -> String:
+	if (view.get("fruit_prices", {}) as Dictionary).has(id) or (view.get("fruit_sets", {}) as Dictionary).has(id): return "fruits"
+	if (view.get("prices", {}) as Dictionary).has(id) or (view.get("sets", {}) as Dictionary).has(id): return "pollen"
+	return Catalog.currency(id) if Catalog.has(id) else "pollen"
+
+## What an item costs in its own currency (spend_currency): the server's price,
+## else its tier's (0 for an earned or unknown item).
+static func spend_price(view: Dictionary, id: String) -> int:
+	var fruit_prices: Dictionary = view.get("fruit_prices", {})
+	if fruit_prices.has(id): return int(fruit_prices[id])
+	return int((view.get("prices", {}) as Dictionary).get(id, Catalog.price(id)))
+
+## The pieces of a set, Pollen or Orchard ([] for an unknown set).
+static func set_pieces(view: Dictionary, set_id: String) -> Array:
+	var pieces: Variant = (view.get("fruit_sets", {}) as Dictionary).get(set_id, (view.get("sets", {}) as Dictionary).get(set_id, []))
+	return (pieces as Array).duplicate()
 
 ## The wallet read's bundles part (only while bundles sell) as kept, or {}.
 static func checked_bundles(value: Variant) -> Dictionary:

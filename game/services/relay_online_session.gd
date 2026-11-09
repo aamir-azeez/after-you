@@ -24,6 +24,7 @@ const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const StoreSupport = preload("res://services/store_support.gd")
 const TesterSwitches = preload("res://services/tester_switches.gd")
@@ -451,6 +452,8 @@ func load_capabilities() -> bool:
 	if not scope.is_empty(): Wardrobe.shared().note_offered_tag(str(scope.server), str(scope.owner), capabilities.get("pollen_offered_tag") if wardrobe_supported() else null)
 	if not scope.is_empty(): PollenWallet.shared().set_item_blooms(str(scope.server), str(scope.owner), item_blooms_supported())
 	if not scope.is_empty(): PollenGrant.shared().set_enabled(str(scope.server), str(scope.owner), grant_supported())
+	# Before the flush below, so a phone with Fruits on and none kept reads the wallet in it.
+	if not scope.is_empty(): FruitWallet.shared().set_enabled(str(scope.server), str(scope.owner), fruits_supported(), fruit_packs_supported())
 	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	return true
@@ -1345,6 +1348,17 @@ func pollen_supported() -> bool:
 ## Free chapter turns may drop a shop item (the receipt's item_bloom).
 func item_blooms_supported() -> bool:
 	return pollen_supported() and Typed.equal(capabilities.get("pollen_item_blooms_version"), 1.0)
+
+## The server has Fruits on (FRUITS, never without the shop): the wallet read's
+## Fruits part, Orchard prices, converting, Sunshine and achievements (services/fruit_wallet.gd).
+func fruits_supported() -> bool:
+	return shop_supported() and Typed.equal(capabilities.get("pollen_fruits_version"), 1.0)
+
+## The server sells Fruit packs in this phone's store (never without Fruits): Google Play's
+## anywhere but iOS, the App Store's on iOS. Each store switches on and off by itself.
+func fruit_packs_supported() -> bool:
+	var field := "pollen_app_store_fruit_packs_version" if PlatformSupport.is_ios() else "pollen_fruit_packs_version"
+	return fruits_supported() and Typed.equal(capabilities.get(field), 1.0)
 
 ## Full Journey pays monthly Pollen on the wallet read (services/pollen_grant.gd).
 func grant_supported() -> bool:

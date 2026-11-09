@@ -18,6 +18,16 @@ extends RefCounted
 ## - full_journey_visible: Pollen words that name Full Journey. The monthly
 ##   grant card, the Full Journey boost lines after a turn and the odds note's
 ##   paid chapter sentence.
+## - fruits_visible: every Fruit surface (the Fruit amount on the chip, the
+##   Orchard, the Fruits page with its achievements, Sunshine and converting,
+##   Fruit lines on results and in the monthly card). Fruits buy only, so a build
+##   that sells nothing shows none, and the server decides per player
+##   (services/fruit_wallet.gd enabled: capabilities pollen_fruits_version).
+## - fruit_packs_visible: the Fruit packs, the Fruits tab of the store and the
+##   Fruit short card's "Get Fruits": a build that sells bundles, Fruits on, and
+##   the server selling Fruit packs in this phone's store (fruit_wallet.gd packs).
+##   Each pack shows only while RevenueCat's "fruits" offering has its product
+##   (services/pollen_bundles.gd packages with "fruits").
 ##
 ## A build that sells nothing (Purchases.paid_content_hidden: iOS without a
 ## store it can use) earns, holds a balance and wears what it owns, but shows no
@@ -87,3 +97,13 @@ func store_sells(store: RefCounted, scope: Dictionary) -> bool:
 
 func full_journey_visible() -> bool:
 	return _selling()
+
+## The one "Fruits show" gate: this build sells and `fruits` (services/fruit_wallet.gd)
+## says the server has Fruits on for the player of `scope`. Every Fruit surface hides otherwise.
+func fruits_visible(fruits: RefCounted, scope: Dictionary) -> bool:
+	return shop_visible() and fruits != null and not scope.is_empty() and fruits.enabled(str(scope.server), str(scope.owner))
+
+## The one "Fruit packs sell now" gate: this build sells bundles and `fruits` says the
+## server sells Fruit packs in this phone's store for the player of `scope` (never without Fruits).
+func fruit_packs_visible(fruits: RefCounted, scope: Dictionary) -> bool:
+	return bundles_visible() and fruits_visible(fruits, scope) and fruits.packs(str(scope.server), str(scope.owner))

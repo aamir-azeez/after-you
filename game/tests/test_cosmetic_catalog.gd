@@ -1,7 +1,8 @@
 extends SceneTree
 ## The pip cosmetic catalog (content/cosmetics/, services/cosmetic_catalog.gd):
 ## every descriptor is valid data, prices come only from tiers, earned items
-## are never sold, a Special names a real chapter to clear, and in this phase
+## are never sold, a Special names a real chapter to clear, the Orchard is
+## sold in Fruits with the server's slots, tiers and set, and in this phase
 ## nothing is released, so only the default look shows.
 const Index = preload("res://content/cosmetics/index.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
@@ -63,7 +64,9 @@ func _descriptors() -> void:
 	_check(Index.SLOTS == ["hat", "body", "leaf"], "The slots are the hat, the body and the leaf")
 
 func _prices() -> void:
-	_check(Index.TIER_PRICES == {"common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0}, "Tier prices follow the ramp, and earned costs nothing because it is never sold")
+	_check(Index.TIER_PRICES == {"common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 10, "fruit_small": 25, "fruit_hat": 50, "fruit_body": 100}, "Tier prices follow the ramp, earned costs nothing because it is never sold, and the Orchard tiers are priced in Fruits")
+	_check(Index.TIER_CURRENCY == {"sprig": "fruits", "fruit_small": "fruits", "fruit_hat": "fruits", "fruit_body": "fruits"}, "Only the Orchard tiers are sold in Fruits; every other tier is Pollen")
+	for tier: String in Index.TIER_CURRENCY: _check(Index.TIER_PRICES.has(tier), "The Fruit tier %s has a price" % tier)
 	for id: String in Catalog.ids():
 		var tier := str(Catalog.item(id).tier)
 		_check(Catalog.price(id) == int(Index.TIER_PRICES[tier]), "%s costs its tier's price" % id)
@@ -76,6 +79,9 @@ func _rules() -> void:
 		"daisy": ["hat", "common"], "seashell": ["hat", "common"], "straw_hat": ["hat", "uncommon"],
 		"tide": ["body", "rare"], "lantern": ["hat", "epic"], "lighthouse_lamp": ["hat", "special"],
 		"gold_leaf": ["leaf", "earned"], "every_hard": ["leaf", "earned"], "top_ten_ribbon": ["hat", "earned"],
+		# The Orchard, as the server's catalogue sells it (FRUITS contract).
+		"fruit_cap": ["hat", "fruit_hat"], "blossom_crown": ["hat", "fruit_hat"], "orchard_skin": ["body", "fruit_body"], "apple_leaf": ["leaf", "fruit_small"],
+		"sprig_coral": ["leaf", "sprig"], "sprig_plum": ["leaf", "sprig"], "sprig_sun": ["leaf", "sprig"], "sprig_sky": ["leaf", "sprig"],
 	}
 	_check(Array(Catalog.ids()) == expect.keys(), "The approved items, in shop order: %s" % [Catalog.ids()])
 	for id: String in expect:
@@ -84,6 +90,11 @@ func _rules() -> void:
 	_check(Catalog.wide("lantern") and not Catalog.wide("daisy") and not Catalog.wide("nothing"), "Only the Lantern, hanging on the far side, pulls the view back further")
 	_check(is_equal_approx(Catalog.leaf_lift("straw_hat"), 0.075), "The Straw hat lifts the leaf 7.5 cm through its brim")
 	for id: String in Catalog.ids(): _check(not Catalog.art(id).is_empty() and not Catalog.slot(id).is_empty(), "%s has its art and its slot" % id)
+	var orchard: Array[String] = []
+	for id: String in Catalog.ids():
+		if str(Catalog.item(id).set) == "orchard": orchard.append(id)
+	_check(orchard == ["fruit_cap", "orchard_skin", "apple_leaf"], "The Orchard set is the Fruit cap, the Orchard skin and the Apple leaf: %s" % [orchard])
+	for id: String in ["blossom_crown", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]: _check(str(Catalog.item(id).set).is_empty(), "%s is in no set" % id)
 
 func _phase_one() -> void:
 	# Phase 1 ships the catalog unreleased: only the default look shows.

@@ -3,6 +3,7 @@ extends RefCounted
 ## item is, what it costs and whether it is offered. Pure: no saves, no
 ## server, no nodes. What a pip may wear is services/outfit.gd.
 const Index = preload("res://content/cosmetics/index.gd")
+const INDEX_PATH := "res://content/cosmetics/index.gd"
 
 const EARNED := "earned"
 
@@ -56,6 +57,16 @@ static func display_name(id: String) -> String:
 ## Pollen it costs, from its tier: 0 for an earned item or an unknown one.
 static func price(id: String) -> int:
 	return int(Index.TIER_PRICES.get(str(Index.data(id).get("tier", "")), 0))
+
+## The currency the item is sold in, from its tier: content/cosmetics/index.gd
+## TIER_CURRENCY names the Orchard tiers ("fruits"); any tier it does not name
+## is "pollen". Read from the script's constant map, so a build whose index has
+## no Fruit tiers yet reads every item as Pollen.
+static func currency(id: String) -> String:
+	if _tier_currency.is_empty(): _tier_currency = {"": (load(INDEX_PATH) as Script).get_script_constant_map().get("TIER_CURRENCY", {})}
+	return str((_tier_currency[""] as Dictionary).get(tier(id), "pollen"))
+
+static var _tier_currency: Dictionary = {}
 
 ## Whether it can ever be bought with Pollen (earned items never can).
 static func sold(id: String) -> bool:

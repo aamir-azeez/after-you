@@ -48,7 +48,8 @@ const REQUIRED := ["id", "slot", "tier", "name", "art"]
 
 ## The places on a pip, one item each, in the order they are listed and dressed.
 const SLOTS: Array[String] = ["hat", "body", "leaf"]
-## Pollen per tier. 0: earned only, never sold.
+## The price per tier, in the tier's currency (TIER_CURRENCY). 0: earned
+## only, never sold.
 const TIER_PRICES := {
 	"common": 1000,
 	"uncommon": 5000,
@@ -56,7 +57,16 @@ const TIER_PRICES := {
 	"epic": 50000,
 	"special": 100000,
 	"earned": 0,
+	# The Orchard, bought with Fruits (backend catalog.json tier_currency).
+	"sprig": 10,
+	"fruit_small": 25,
+	"fruit_hat": 50,
+	"fruit_body": 100,
 }
+## The currency each tier is sold in, for the tiers not sold with Pollen: a
+## tier left out of this list is "pollen". The server's catalogue names the
+## same currencies, so a price is always read in the currency it was set in.
+const TIER_CURRENCY := {"sprig": "fruits", "fruit_small": "fruits", "fruit_hat": "fruits", "fruit_body": "fruits"}
 
 const ITEMS := [
 	preload("res://content/cosmetics/daisy.gd"),
@@ -68,6 +78,15 @@ const ITEMS := [
 	preload("res://content/cosmetics/gold_leaf.gd"),
 	preload("res://content/cosmetics/every_hard.gd"),
 	preload("res://content/cosmetics/top_ten_ribbon.gd"),
+	# The Orchard (Fruits).
+	preload("res://content/cosmetics/fruit_cap.gd"),
+	preload("res://content/cosmetics/blossom_crown.gd"),
+	preload("res://content/cosmetics/orchard_skin.gd"),
+	preload("res://content/cosmetics/apple_leaf.gd"),
+	preload("res://content/cosmetics/sprig_coral.gd"),
+	preload("res://content/cosmetics/sprig_plum.gd"),
+	preload("res://content/cosmetics/sprig_sun.gd"),
+	preload("res://content/cosmetics/sprig_sky.gd"),
 ]
 
 ## Worked out once when this file loads, then only read.

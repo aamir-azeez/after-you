@@ -293,7 +293,7 @@ func _short_card() -> void:
 		_check(PlayerCopy.WARDROBE_SHORT_NOTE % ["Tide", "20,000", "14,500"] in words and PlayerCopy.WARDROBE_SHORT_NEEDED in words and "5,500" + PlayerCopy.WARDROBE_SHORT_MORE in words, "It says what it costs, what you have and Needed: 5,500 more: " + str(words))
 		_check(not "It stays in the shop." in words and PlayerCopy.WARDROBE_SHORT_EARN in words, "It says to keep playing with friends, and no more that it stays in the shop")
 		_check(not words.any(func(text: String) -> bool: return text.contains("$") or text.contains("week") or text.contains("day")), "It never shows money or a time to earn it")
-		_check((PlayerCopy.WARDROBE_SHORT_BUNDLE % "Pouch" in words) == bundles and words.any(func(text: String) -> bool: return text.contains("Pinch") or text.contains("Basket")) == false,
+		_check((PlayerCopy.WARDROBE_SHORT_BUNDLE % "Pouch" in words) == bundles and words.any(func(text: String) -> bool: return text.contains("Pinch") or text.contains("Basket") or text.contains("Wheelbarrow")) == false,
 			"While bundles sell it names the smallest bundle that covers 5,500, the Pouch (%s): %s" % [bundles, words])
 		var buy: BaseButton = sheet.find_child("WardrobeShortBuy", true, false)
 		_check((buy != null) == bundles and (sheet.find_child("WardrobeShortBundle", true, false) != null) == bundles and sheet.find_child("WardrobeGetPollen", true, false) == null, "The bundle and its buy button show only while bundles sell (%s)" % bundles)
@@ -307,7 +307,7 @@ func _short_card() -> void:
 		t.flow.select("lantern")
 		await t.flow.act("lantern")
 		var epic: Node = t.host.ui.find_child("WardrobeShort", true, false)
-		_check(epic != null and (PlayerCopy.WARDROBE_SHORT_BUNDLE % "Jar" in _texts(epic)) == bundles, "Short 35,500 for an Epic: the Jar while bundles sell (%s)" % bundles)
+		_check(epic != null and (PlayerCopy.WARDROBE_SHORT_BUNDLE % "Basket" in _texts(epic)) == bundles, "Short 35,500 for an Epic: the jar bundle, shown as the Basket, while bundles sell (%s)" % bundles)
 		if bundles:
 			var gets: Node = epic.find_child("WardrobeShortBundleGets", true, false)
 			_check(gets != null and gets.find_child("PollenMark", true, false) != null and _texts(gets) == ["44,000" + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS], "Under it the grain and what the Jar gives, its bonus in: " + str(_texts(gets)))
@@ -322,11 +322,11 @@ func _short_card() -> void:
 	s.flow.select("lighthouse_lamp")
 	await s.flow.act("lighthouse_lamp")
 	var special: Node = s.host.ui.find_child("WardrobeShort", true, false)
-	_check(special != null and PlayerCopy.WARDROBE_SHORT_BUNDLE % "Basket" in _texts(special) and special.find_child("WardrobeShortBuy", true, false) != null, "Short 99,500 for a Special: the Basket")
+	_check(special != null and PlayerCopy.WARDROBE_SHORT_BUNDLE % "Wheelbarrow" in _texts(special) and special.find_child("WardrobeShortBuy", true, false) != null, "Short 99,500 for a Special: the basket bundle, shown as the Wheelbarrow")
 	s.host.queue_free()
 	await _frames(2)
-	# With the first bundle gift on, a 50,000 gap is the Jar's 44,000 and its 8,800 gift; past the Basket it gets you closest.
-	for row: Array in [[0, "Jar", PlayerCopy.WARDROBE_SHORT_BUNDLE], [-100000, "Basket", PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST]]:
+	# With the first bundle gift on, a 50,000 gap is the jar's 44,000 and its 8,800 gift (shown as the Basket); past the basket (the Wheelbarrow) it gets you closest.
+	for row: Array in [[0, "jar", PlayerCopy.WARDROBE_SHORT_BUNDLE], [-100000, "basket", PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST]]:
 		var g := _setup(true, true)
 		g.fake.replies = [_answer([], {}, row[0], [], {"first_gift": true, "first_gift_percent": 20.0, "spent_usd_cents": 0.0})]
 		g.flow.show_wardrobe()
@@ -334,13 +334,13 @@ func _short_card() -> void:
 		g.flow.select("lantern")
 		await g.flow.act("lantern")
 		var gifted: Node = g.host.ui.find_child("WardrobeShort", true, false)
-		_check(gifted != null and row[2] % row[1] in _texts(gifted), "Balance %d with the gift on: %s" % [row[0], _texts(gifted)])
+		_check(gifted != null and row[2] % Bundles.display_name(row[1]) in _texts(gifted), "Balance %d with the gift on: %s" % [row[0], _texts(gifted)])
 		# The store's confirm card sums the same: the bundle with its bonus and the 20% gift.
-		var total := Bundles.adds(str(row[1]).to_lower(), {"first_gift": true, "first_gift_percent": 20})
+		var total := Bundles.adds(str(row[1]), {"first_gift": true, "first_gift_percent": 20})
 		var value: Label = gifted.find_child("WardrobeShortBundleGets", true, false).find_child("PollenAmountValue", true, false)
 		var long := PollenMoney.grouped(total) + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS_GIFT
 		var fits := value.get_theme_font("font").get_string_size(long, HORIZONTAL_ALIGNMENT_LEFT, -1, value.get_theme_font_size("font_size")).x <= value.size.x
-		_check(value.text == (long if fits else PollenMoney.grouped(total) + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS) and PollenMoney.grouped(total) == ("52,800" if row[1] == "Jar" else "138,000"), "With the gift on it gives %s, naming the gift only while that fits: %s" % [PollenMoney.grouped(total), value.text])
+		_check(value.text == (long if fits else PollenMoney.grouped(total) + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS) and PollenMoney.grouped(total) == ("52,800" if row[1] == "jar" else "138,000"), "With the gift on it gives %s, naming the gift only while that fits: %s" % [PollenMoney.grouped(total), value.text])
 		g.host.queue_free()
 		await _frames(2)
 

@@ -737,7 +737,7 @@ func _previous_purchases() -> void:
 	_check(sheet != null and PlayerCopy.POLLEN_PLAY_LOADING in _texts(sheet) and history.reads == 1, "It opens the receipts list at once, loading, from one read")
 	await _frames()
 	var words := _texts(sheet)
-	_check(PlayerCopy.POLLEN_PURCHASES_TITLE in words and "Basket" in words and PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"] in words and sheet.find_children("PollenPurchaseRow*", "", true, false).size() == 1,
+	_check(PlayerCopy.POLLEN_PURCHASES_TITLE in words and "Wheelbarrow" in words and PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"] in words and sheet.find_children("PollenPurchaseRow*", "", true, false).size() == 1,
 		"Each bundle with its receipt line: " + str(words))
 	_check(not words.any(func(word: String) -> bool: return word.contains("total")), "No total")
 	sheet.close()
