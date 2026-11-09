@@ -619,6 +619,8 @@ const HARD_HOST_UNAVAILABLE := "Hard rooms aren't open yet."
 # Chapter unlocks (services/chapter_unlocks.gd): a locked chapter's card, and
 # the line a tap on it shows. %s is the chapter before it.
 const CHAPTER_LOCKED_NOTE := "Finish %s to open this chapter"
+## Under the last card of every chapter picker (presentation/chapter_picker.gd).
+const CHAPTERS_COMING_SOON := "More chapters coming soon."
 const CHAPTER_LOCKED := "Finish %s to open this chapter."
 const CHAPTER_LOCKED_FULL_JOURNEY := "This chapter is part of the Full Journey."
 # Full Journey unlocked before the player reaches it: the chapter before the

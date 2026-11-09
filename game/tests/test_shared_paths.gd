@@ -43,6 +43,8 @@ extends SceneTree
 ##     alone draws a sprout (the plan's greens appear nowhere else); each screen
 ##     that wears the chip is in ENERGY_CHIP_SURFACES and each that shows the meter
 ##     (presentation/duels/energy_meter.gd) in ENERGY_METER_SURFACES, with where.
+## (r) chapter lists: each screen listing the chapters to play builds presentation/chapter_picker.gd
+##     (its cards and the closing "more chapters" line) and is in CHAPTER_PICKER_SURFACES.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -274,6 +276,15 @@ const ENERGY_METER_SURFACES := {
 	"res://presentation/duels/duel_energy_flow.gd": "the Duels lobby header's pill (meter())",
 	"res://presentation/duels/energy_out_card.gd": "the out-of-energy card's meter",
 }
+## (r) The one chapter picker, and each screen that builds one with where.
+const CHAPTER_PICKER := "res://presentation/chapter_picker.gd"
+const CHAPTER_PICKER_SURFACES := {
+	"res://presentation/journey_flow.gd": "Play Solo's Chapters page, Hard chip included",
+	"res://presentation/room_hub_screen.gd": "Play with a friend's Start another journey",
+}
+## The closing line only the picker shows, and where it is written.
+const COMING_SOON_COPY := "CHAPTERS_COMING_SOON"
+const PLAYER_COPY := "res://presentation/player_copy.gd"
 
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity"]
@@ -305,6 +316,7 @@ func _initialize() -> void:
 	_fruits()
 	_currency_marks()
 	_energy()
+	_chapter_lists()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -692,6 +704,21 @@ func _fruits() -> void:
 	for path: String in FRUIT_GATED:
 		_check(gated_seen.has(path), "FRUIT_GATED names %s, which no longer reads the kept Fruits: delete it" % path)
 	_check(str(_sources.get("res://presentation/fruit_spend_flow.gd", "")).contains(FRUIT_GATE), "presentation/fruit_spend_flow.gd visible() asks the Fruits gate")
+# (r) Chapter lists ------------------------------------------------------------
+
+func _chapter_lists() -> void:
+	var seen := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path == CHAPTER_PICKER: continue
+		_check(path == PLAYER_COPY or not source.contains(COMING_SOON_COPY), "%s shows the more chapters line itself: build presentation/chapter_picker.gd, which closes every chapter list with it" % path)
+		var alias := _alias(source, CHAPTER_PICKER)
+		if alias.is_empty() or _found("\\b" + alias + "\\.new\\(", source) == 0: continue
+		seen[path] = true
+		_check(CHAPTER_PICKER_SURFACES.has(path), "%s builds a chapter picker: add it to CHAPTER_PICKER_SURFACES with where" % path)
+	for path: String in CHAPTER_PICKER_SURFACES:
+		_check(seen.has(path), "CHAPTER_PICKER_SURFACES names %s, which builds no chapter picker now: delete it" % path)
+	_check(_found("\\bPlayerCopy\\." + COMING_SOON_COPY + "\\b", str(_sources.get(CHAPTER_PICKER, ""))) == 1, "presentation/chapter_picker.gd closes its list with PlayerCopy." + COMING_SOON_COPY)
 
 # (j) and the guard suites ---------------------------------------------------
 

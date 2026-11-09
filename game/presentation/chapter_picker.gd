@@ -2,7 +2,8 @@ extends ScrollContainer
 ## The chapter picker shared by Play Solo and Play with a friend: a scrolling grid
 ## of picture cards, free chapters first and then the Full Journey. Each card has
 ## a picture, its title, a completion tick and one square button. The screen that
-## owns the picker decides what the button does through `chosen`.
+## owns the picker decides what the button does through `chosen`. One quiet line
+## under the last card says more chapters are coming, on every picker.
 const PlaySquare = preload("res://presentation/play_square.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
@@ -23,6 +24,9 @@ const CHECK_ICON = preload("res://assets/ui/check.svg")
 const CHOOSER_ICON = preload("res://assets/ui/social/chevron-right.svg")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
+## Space above and below the closing "more chapters" line.
+const COMING_SOON_GAP := 18
 
 ## A card's square button was pressed. `key` is the entry's key.
 signal chosen(key: String)
@@ -46,6 +50,9 @@ var heading_font: Font
 ## the owning screen measures from something that does not grow with it.
 var available_width: Callable
 var grid: GridContainer
+## The line under the last card saying more chapters are coming; shown while
+## there are cards.
+var coming_soon: Label
 var _signature := 0
 var _buttons: Array[Button] = []
 
@@ -71,14 +78,31 @@ func _init() -> void:
 	gutter.mouse_filter = Control.MOUSE_FILTER_PASS
 	gutter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	gutter.add_theme_constant_override("margin_right",SCROLLBAR_GAP)
+	gutter.add_theme_constant_override("margin_bottom",COMING_SOON_GAP)
 	add_child(gutter)
+	# The cards, then one quiet closing line that scrolls with them.
+	var column := VBoxContainer.new()
+	column.name = "JourneyColumn"
+	column.mouse_filter = Control.MOUSE_FILTER_PASS
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation",COMING_SOON_GAP)
+	gutter.add_child(column)
 	grid = GridContainer.new()
 	grid.name = "JourneyChapters"
 	grid.mouse_filter = Control.MOUSE_FILTER_PASS
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation",16)
 	grid.add_theme_constant_override("v_separation",14)
-	gutter.add_child(grid)
+	column.add_child(grid)
+	# The card's caption look (ChapterAccess), centred and free to wrap so it
+	# never widens the list.
+	coming_soon = _text(PlayerCopy.CHAPTERS_COMING_SOON,18,MUTED)
+	coming_soon.name = "ChaptersComingSoon"
+	coming_soon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	coming_soon.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	coming_soon.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	coming_soon.visible = false
+	column.add_child(coming_soon)
 	resized.connect(_fit)
 	grid.minimum_size_changed.connect(func(): _fit.call_deferred())
 
@@ -103,6 +127,7 @@ func set_entries(entries: Array[Dictionary], picture: Vector2) -> void:
 		card.queue_free()
 	_buttons.clear()
 	for item: Dictionary in shown_order(entries): grid.add_child(_card(item,picture))
+	coming_soon.visible = grid.get_child_count() > 0
 	_fit()
 
 ## The entries in the order their cards show (Registry.picker_rank): free
