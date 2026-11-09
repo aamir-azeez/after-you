@@ -9,7 +9,8 @@ import { POLLEN_PURSE_TABLES } from "../storage-schema";
  * - "sunshine": bank turns of Sunshine left (balance), and turns ever bought (earned);
  * - "converted": Fruits turned into Pollen that no refund has taken back yet (fruits.ts reclaim);
  * - "count:<track>": an achievement counter whose ledger lines are pruned (achievements.ts);
- * - "swept": the one-time achievement check on a player's first Fruits read (achievements.ts).
+ * - "swept": the one-time achievement check on a player's first Fruits read (achievements.ts);
+ * - "energy": duel energy, its balance the time the meter is full (energy.ts).
  * Every write runs inside the caller's transaction. The table is made by its first write only.
  */
 export const CURRENCIES = Object.freeze(["pollen", "fruits"] as const);
@@ -19,7 +20,7 @@ export const FRUIT_PREFIX = "fruit:";
 export const keyIn = (currency: Currency, key: string) => currency === "fruits" ? FRUIT_PREFIX + key : key;
 export const currencyOfKey = (key: string): Currency => key.startsWith(FRUIT_PREFIX) ? "fruits" : "pollen";
 
-export type PurseKind = "fruits" | "sunshine" | "converted" | "swept" | `count:${string}`;
+export type PurseKind = "fruits" | "sunshine" | "converted" | "swept" | "energy" | `count:${string}`;
 export type PurseRow = { balance: number; earned: number };
 
 const [PURSE] = POLLEN_PURSE_TABLES;

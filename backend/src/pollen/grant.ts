@@ -1,5 +1,6 @@
 import { isObject } from "../protocol";
 import { DAY_MS, RATES, type Rates } from "./rates";
+import { ladderAmount } from "./fruits";
 
 /**
  * The Full Journey monthly grant (POLLEN-RULES.md "The Full Journey grant"), as pure rules over a
@@ -107,7 +108,8 @@ export const SUB_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 /** What month n (1-based) of a subscription pays. */
 export function instalmentAmount(n: number, rates: Rates = RATES): number {
-  return Math.min(rates.grant.first + rates.grant.step * (Math.max(1, n) - 1), rates.grant.top);
+  // One ladder prices both currencies (fruits.ts ladderAmount); the Pollen grant steps every month.
+  return ladderAmount(n, { ...rates.grant, every: 1 });
 }
 
 /** The k-th monthly anniversary of `anchor` (UTC): its day of the month, or the month's last day, at its time of day. */

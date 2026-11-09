@@ -195,8 +195,9 @@ function prune(storage: DurableObjectStorage, wallet: WalletState, now: number, 
   const day = Math.floor(now / DAY_MS);
   if (wallet.pruned_day === day) return;
   // A turn holding a public duel's extra stays until the longest public duel is over and its extra could be paid (pollen/duel-pay.ts).
+  // Energy lines (energy.ts) only keep a duel's spend once; they go with turns too.
   // Conversion lines (fruit-ops.ts) are history only (their receipts are the spend's), so they go with turns and rows stay bounded.
-  storage.sql.exec("DELETE FROM pollen_claims WHERE kind IN ('turn','duelwin','duelextra','convert','fruitconvert') AND created_at<? AND (kind!='turn' OR json_extract(data,'$.receipt.turn.duel_held') IS NULL OR created_at<?)",
+  storage.sql.exec("DELETE FROM pollen_claims WHERE kind IN ('turn','duelwin','duelextra','convert','fruitconvert','energy') AND created_at<? AND (kind!='turn' OR json_extract(data,'$.receipt.turn.duel_held') IS NULL OR created_at<?)",
     now - rates.claims.turn_prune_days * DAY_MS, now - MAX_PUBLIC_DUEL_MS - rates.claims.turn_claim_days * DAY_MS);
   wallet.pruned_day = day;
 }
@@ -282,15 +283,15 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     const turn = heldAfterSettle(storage, facts.room_id, line);
     ensureTables(storage);
     const clears = facts.complete ? payClears(storage, { level_id: facts.level_id, hard: facts.hard && facts.together, boost_percent: facts.boost_percent, together: true }, now, rates) : [];
-    if (!bank && turn.total === 0 && clears.length === 0) return zero(turn);
+    // A chapter finished together may complete an achievement, even on a turn that pays nothing; paid in this transaction.
+    const paidFruits = facts.complete && fruits ? fruits.achievements(storage, now, { level_id: facts.level_id, room_id: facts.room_id, together_level: facts.level_id }) : null;
+    if (!bank && turn.total === 0 && clears.length === 0) return ok({ schema_version: 1, earned: 0, balance: wallet.balance, turn, clears: [], ...(paidFruits ? { fruits: paidFruits } : {}) });
     prune(storage, wallet, now, rates);
     // Only a bank turn rolls for an item: never an after-bank, repeat or late turn.
     const item = bank && drops && itemRoll?.tier ? resolveItemBloom(itemRoll, drops.owned(storage), drops.catalog) : null;
     if (item && "item_id" in item) drops!.give(storage, item.item_id, now);
     const itemPollen = item && "pollen" in item ? item.pollen : 0;
     const earned = turn.total + total(clears) + itemPollen;
-    // A chapter finished together may complete an achievement; paid in this transaction, kept on the receipt.
-    const paidFruits = facts.complete && fruits ? fruits.achievements(storage, now, { level_id: facts.level_id, room_id: facts.room_id, together_level: facts.level_id }) : null;
     const receipt: Omit<PollenReceipt, "balance"> = { schema_version: 1, earned, turn, clears, ...(item ? { item_bloom: item } : {}),
       ...(sunshineLeft !== null ? { sunshine_left: sunshineLeft } : {}), ...(paidFruits ? { fruits: paidFruits } : {}) };
     if (turn.total > 0 || bank) insertClaim(storage, key, "turn", turn.total + itemPollen, now, receipt,
@@ -378,7 +379,7 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
   const bank: BankRules = { left: current(storage, now, rates).bank, refill: rates.bank.refill, cap: rates.bank.cap, tail: rates.tail.map(step => ({ pay: step.pay, turns: step.turns })) };
   if (!present(storage)) return { schema_version: 1, entries: [], first_clears, bank };
   // Pollen lines only: a Fruit line (currency.ts FRUIT_PREFIX) is listed by the Fruits history (fruit-ops.ts fruitHistory).
-  const entries = storage.sql.exec<{ kind: string; amount: number; created_at: number; data: string }>("SELECT kind,amount,created_at,data FROM pollen_claims WHERE NOT (claim_key>=? AND claim_key<?) ORDER BY created_at DESC, claim_key LIMIT ?",
+  const entries = storage.sql.exec<{ kind: string; amount: number; created_at: number; data: string }>("SELECT kind,amount,created_at,data FROM pollen_claims WHERE NOT (claim_key>=? AND claim_key<?) AND kind!='energy' ORDER BY created_at DESC, claim_key LIMIT ?",
     FRUIT_PREFIX, prefixEnd(FRUIT_PREFIX), HISTORY_LIMIT).toArray().map(row => {
     const stored = JSON.parse(row.data) as StoredClaim;
     const detail = stored.detail ?? {};
@@ -502,13 +503,13 @@ export function newestLines(storage: DurableObjectStorage, prefix: string, limit
   return storage.sql.exec<{ claim_key: string; kind: string; amount: number; created_at: number; data: string }>("SELECT claim_key,kind,amount,created_at,data FROM pollen_claims WHERE claim_key>=? AND claim_key<? ORDER BY created_at DESC, claim_key LIMIT ?",
     prefix, prefixEnd(prefix), limit).toArray().map(row => ({ key: row.claim_key, kind: row.kind, amount: row.amount, at: row.created_at, detail: (JSON.parse(row.data) as StoredClaim).detail ?? {} }));
 }
-/** Adds `amount` Pollen (an exchange, fruit-ops.ts) or takes it, inside the caller's transaction, without counting it as earned; may go below 0. The new balance. */
-export function movePollen(storage: DurableObjectStorage, amount: number, now: number, rates: Rates = RATES): number {
-  ensureTables(storage);
-  const wallet = current(storage, now, rates);
-  wallet.balance += amount;
-  save(storage, wallet, now, rates);
-  return wallet.balance;
+/** Removes a 0 Pollen line (a duel's energy spend, energy.ts, given back), inside the caller's transaction. Whether it was there. */
+export function dropLedgerLine(storage: DurableObjectStorage, key: string): boolean {
+  if (!present(storage)) return false;
+  const row = claimed(storage, key);
+  if (!row) return false;
+  storage.sql.exec("DELETE FROM pollen_claims WHERE claim_key=? AND amount=0", key);
+  return true;
 }
 /** Whether a ledger key is taken. */
 export function inLedger(storage: DurableObjectStorage, key: string): boolean { return present(storage) && claimed(storage, key) !== null; }

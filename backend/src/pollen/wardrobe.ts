@@ -3,7 +3,8 @@ import { POLLEN_SHOP_TABLES, isLazyTable } from "../storage-schema";
 import { CATALOG, isDefaultLook, itemCurrency, itemPrice, offeredItems, offeredPacks, offeredSets, setCurrency, setPieces, sold, validLook, type Catalog, type Look } from "./catalog";
 import { purse } from "./currency";
 import { buySunshine, convertFruits, payFruits } from "./fruit-ops";
-import { charge, quote, type SpendRequest } from "./spend";
+import { refillEnergy, type EnergyView } from "./energy";
+import { charge, quote, setCost, type SpendRequest } from "./spend";
 import { chapterCleared, payFromWallet, walletBalance } from "./wallet";
 import { boardSource, earnedItems, setEarned } from "./earned";
 
@@ -34,7 +35,7 @@ export type OpKey = { key: string; hash: string };
  * conversion added; `sunshine_left`: the Sunshine turns a purchase gave.
  */
 export type SpendReceipt = { schema_version: 1; op: "spend"; kind: SpendRequest["kind"]; id: string; pieces: string[]; cost: number; balance: number;
-  currency?: "pollen" | "fruits"; fruit_balance?: number; pollen?: number; sunshine_left?: number };
+  currency?: "pollen" | "fruits"; fruit_balance?: number; pollen?: number; sunshine_left?: number; energy?: EnergyView };
 export type LookState = { schema_version: 1; look: Look; revision: number };
 export type EquipReceipt = LookState & { op: "equip" };
 /**
@@ -51,7 +52,9 @@ export type OwnedView = { items: string[]; packs: string[]; look: Look; look_rev
  */
 export type ShopView = { prices: Record<string, number>; offered_packs: string[]; pack_price: number; sets: Record<string, string[]>; unlocked: string[];
   /** While Fruits are on: the Orchard's prices in Fruits and its sets, apart from `prices` and `sets` so an older app never shows a Fruit price as Pollen. */
-  fruit_prices?: Record<string, number>; fruit_sets?: Record<string, string[]> };
+  fruit_prices?: Record<string, number>; fruit_sets?: Record<string, string[]>;
+  /** What each Orchard set with a missing piece costs this player now (spend.ts set rule), the cost the spend checks. */
+  fruit_set_costs?: Record<string, number> };
 export type WardrobeView = OwnedView & ShopView;
 
 const [ITEMS, OPS] = POLLEN_SHOP_TABLES;
@@ -142,7 +145,7 @@ export function spend(storage: DurableObjectStorage, op: OpKey, request: SpendRe
   return storage.transactionSync((): Outcome<SpendReceipt> => {
     if (!active()) return fail(404, "identity_absent");
     const prior = priorOp<SpendReceipt>(storage, op); if (prior) return prior;
-    if (request.kind === "convert" || request.kind === "sunshine") return fruitSpend(storage, op, request, expected, now, fruits);
+    if (request.kind === "convert" || request.kind === "sunshine" || request.kind === "energy") return fruitSpend(storage, op, request, expected, now, fruits);
     const items = owned(storage);
     const quoted = quote(request, { owned: new Set(items.keys()), cleared: level => chapterCleared(storage, level) }, catalog, fruits);
     if (!quoted.ok) return quoted;
@@ -160,7 +163,7 @@ export function spend(storage: DurableObjectStorage, op: OpKey, request: SpendRe
   });
 }
 
-/** Turning Fruits into Pollen ("convert", `id` the Fruit count) and buying Sunshine ("sunshine"), receipted like any spend (fruit-ops.ts). */
+/** Turning Fruits into Pollen ("convert", `id` the Fruit count), buying Sunshine ("sunshine") and refilling duel energy ("energy"), receipted like any spend (fruit-ops.ts, energy.ts). */
 function fruitSpend(storage: DurableObjectStorage, op: OpKey, request: SpendRequest, expected: number, now: number, fruits: boolean): Outcome<SpendReceipt> {
   if (!fruits) return fail(503, "fruits_disabled");
   const base = { schema_version: 1 as const, op: "spend" as const, kind: request.kind, id: request.id, pieces: [], currency: "fruits" as const };
@@ -170,6 +173,12 @@ function fruitSpend(storage: DurableObjectStorage, op: OpKey, request: SpendRequ
     const done = convertFruits(storage, op.key, Number(request.id), expected, now);
     if (!done.ok) return done;
     receipt = { ...base, cost: done.value.fruits, balance: done.value.balance, fruit_balance: done.value.fruit_balance, pollen: done.value.pollen };
+  } else if (request.kind === "energy") {
+    // A duel energy refill (energy.ts): fills the meter, only below its top.
+    if (request.id !== "energy") return fail(400, "invalid_pollen_spend");
+    const done = refillEnergy(storage, expected, now);
+    if (!done.ok) return done;
+    receipt = { ...base, cost: expected, balance: walletBalance(storage, now), fruit_balance: done.value.fruit_balance, energy: done.value.energy };
   } else {
     if (request.id !== "sunshine") return fail(400, "invalid_pollen_spend");
     const done = buySunshine(storage, expected);
@@ -233,8 +242,14 @@ export function wardrobeView(storage: DurableObjectStorage, shop: boolean, catal
   const setsIn = (pollen: boolean) => Object.fromEntries(offeredSets(catalog, fruits).filter(set => (setCurrency(set, catalog) === "pollen") === pollen).map(set => [set, setPieces(set, catalog, fruits)]));
   const pricesIn = (pollen: boolean) => Object.fromEntries(soldNow.filter(id => inPollen(id) === pollen).map(id => [id, itemPrice(id, catalog)]));
   const unlocked = offeredItems(catalog, fruits).filter(id => catalog.items[id].unlock !== "" && chapterCleared(storage, catalog.items[id].unlock));
+  // What each Orchard set costs this player now (its missing pieces, with the set rule), so the phone shows the price the spend checks.
+  const fruitSets = fruits ? setsIn(false) : {};
+  const setCosts = Object.fromEntries(Object.entries(fruitSets).flatMap(([set, pieces]) => {
+    const missing = pieces.filter(id => !items.has(id));
+    return missing.length ? [[set, setCost(missing.reduce((sum, id) => sum + itemPrice(id, catalog), 0), missing.length, catalog, "fruits")]] : [];
+  }));
   return { ...base, prices: pricesIn(true), offered_packs: offeredPacks(catalog), pack_price: catalog.pack_price, sets: setsIn(true), unlocked,
-    ...(fruits ? { fruit_prices: pricesIn(false), fruit_sets: setsIn(false) } : {}) };
+    ...(fruits ? { fruit_prices: pricesIn(false), fruit_sets: fruitSets, fruit_set_costs: setCosts } : {}) };
 }
 
 /** Account erasure: owned items, receipts and the look go. */

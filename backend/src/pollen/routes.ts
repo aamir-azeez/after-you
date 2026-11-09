@@ -1,7 +1,7 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
-import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
+import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
 import { FRUITS_OFFERED_TAG, ITEM_ID_PATTERN, OFFERED_TAG } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
@@ -131,6 +131,8 @@ export function pollenCapability(request: Request, env: ServerVars): { pollen_ve
     ...(fruits ? { pollen_fruits_version: FRUITS_VERSION } : {}), ...(shop && fruitPacksOn(env) ? { pollen_fruit_packs_version: FRUIT_PACKS_VERSION } : {}),
     ...(shop && appStoreFruitPacksOn(env) ? { pollen_app_store_fruit_packs_version: FRUIT_PACKS_VERSION } : {}) };
 }
+/** Whether this request's wallet read carries duel energy (features.ts energyOn): any app that asks for Pollen; older apps ignore it. */
+export function energyFor(env: ServerVars): boolean { return energyOn(env); }
 /** Whether this request gets Fruits (features.ts fruitsOn), for an app offered the shop. */
 export function fruitsFor(request: Request, env: ServerVars): boolean { return pollenShopClient(request) && fruitsOn(env); }
 
@@ -276,7 +278,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
 }
 
 /** "convert" (id: the Fruit count) and "sunshine" (id "sunshine") are Fruit spends (pollen/fruit-ops.ts), refused while Fruits are off. */
-const SPEND_KINDS = ["item", "set", "pack", "convert", "sunshine"] as const;
+const SPEND_KINDS = ["item", "set", "pack", "convert", "sunshine", "energy"] as const;
 /**
  * POST /v1/pollen/equip (POLLEN_WARDROBE) and /spend (POLLEN_SHOP), after auth(). The body is hashed here, as room
  * operations are, so the Player's spend or equip runs in one synchronous transaction.
@@ -298,7 +300,8 @@ async function routeWardrobe(request: Request, path: string, playerId: string, e
     if (!SPEND_KINDS.includes(input.kind as typeof SPEND_KINDS[number]) || typeof input.id !== "string" || !ITEM_ID_PATTERN.test(input.id) ||
       typeof input.expected_cost !== "number" || !Number.isSafeInteger(input.expected_cost) || input.expected_cost < 0) throw new ApiError(400, code);
     const kind = input.kind as typeof SPEND_KINDS[number];
-    if ((kind === "convert" || kind === "sunshine") && !fruitsOn(env)) throw new ApiError(503, "fruits_disabled");
+    if ((kind === "convert" || kind === "sunshine" || kind === "energy") && !fruitsOn(env)) throw new ApiError(503, "fruits_disabled");
+    if (kind === "energy" && !energyOn(env)) throw new ApiError(503, "energy_disabled");
     return unwrap(await player.pollenSpend(playerId, device, op, { kind, id: input.id }, input.expected_cost, fruitsOn(env)));
   }
   if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1 || !isObject(input.look)) throw new ApiError(400, code);

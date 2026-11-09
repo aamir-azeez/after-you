@@ -53,14 +53,17 @@ export function convertFruits(storage: DurableObjectStorage, opKey: string, coun
   const step = rules.convert.step;
   if (!Number.isSafeInteger(count) || count < step || count % step !== 0 || count > 1_000_000) return fail(400, "invalid_pollen_spend");
   if (expected !== count) return fail(409, "pollen_price_changed");
+  // A request whose receipt left pollen_ops (64 newer spends) but whose lines are still kept never converts again.
+  if (inLedger(storage, `${FRUIT_PREFIX}convert:${opKey}`)) return fail(409, "idempotency_key_reused");
   const fruits = purse(storage, "fruits").balance;
   if (fruits < 0 || walletBalance(storage, now) < 0) return fail(403, "fruits_blocked");
   if (fruits < count) return fail(402, "fruits_short");
   const pollen = count * rules.convert.pollen_per_fruit;
-  applyLedger(storage, [
+  const applied = applyLedger(storage, [
     { key: `${FRUIT_PREFIX}convert:${opKey}`, kind: "fruitconvert", amount: -count, detail: { pollen } },
     { key: `convert:${opKey}`, kind: "convert", amount: pollen, earns: false, detail: { fruits: count } }
   ], now);
+  if (applied.length !== 2) throw new Error("fruit_convert_partial");
   const converted = purse(storage, "converted");
   setPurse(storage, "converted", { balance: converted.balance + count, earned: converted.earned + count });
   return ok({ fruits: count, pollen, fruit_balance: purse(storage, "fruits").balance, balance: walletBalance(storage, now) });

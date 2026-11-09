@@ -51,7 +51,7 @@ type Held = { amount: number; reason?: unknown };
  * missing one asks `price` for the line to write, or a refusal.
  */
 function creditOnce(storage: DurableObjectStorage, key: string, now: number, active: () => boolean, rates: Rates,
-  price: () => Outcome<LedgerEntry>, held: (detail: Record<string, unknown>, amount: number) => Held, fresh?: (storage: DurableObjectStorage) => void): Outcome<DuelWinAnswer> {
+  price: () => Outcome<LedgerEntry>, held: (detail: Record<string, unknown>, amount: number) => Held, fresh?: (storage: DurableObjectStorage, paid: boolean) => void): Outcome<DuelWinAnswer> {
   return storage.transactionSync((): Outcome<DuelWinAnswer> => {
     if (!active()) return fail(404, "identity_absent");
     const prior = ledgerLines(storage, key, 1).find(line => line.key === key);
@@ -59,16 +59,17 @@ function creditOnce(storage: DurableObjectStorage, key: string, now: number, act
     const entry = price();
     if (!entry.ok) return entry;
     applyLedger(storage, [entry.value], now, rates);
-    fresh?.(storage);
+    fresh?.(storage, entry.value.amount > 0);
     return ok(answer(entry.value.amount, entry.value.detail.reason, walletBalance(storage, now, rates)));
   });
 }
 
 /**
- * `fresh`: run inside the transaction once the line is first written (achievements.ts, while Fruits are on);
+ * `fresh`: run inside the transaction once the line is first written, told whether it paid (achievements.ts, while Fruits are on:
+ * a win past the weekly limits or against the same pair again counts toward no achievement);
  * `public`: a public duel's win, kept on the line so it never counts as a friend duel win.
  */
-export type CreditOptions = { fresh?: (storage: DurableObjectStorage) => void; public?: boolean };
+export type CreditOptions = { fresh?: (storage: DurableObjectStorage, paid: boolean) => void; public?: boolean };
 export function creditDuelWin(storage: DurableObjectStorage, win: DuelWin, now: number, active: () => boolean, rates: Rates = RATES, options: CreditOptions = {}): Outcome<DuelWinAnswer> {
   const key = WIN_PREFIX + win.duel_id;
   return creditOnce(storage, key, now, active, rates, () => {
@@ -122,7 +123,7 @@ export function creditDuelExtra(storage: DurableObjectStorage, extra: DuelExtra,
     if (prior) return ok(extraAnswer(prior.amount, prior.detail, walletBalance(storage, now, rates)));
     if (now - extra.decided_ms > rates.claims.turn_claim_days * DAY_MS) return fail(410, "duel_extra_expired");
     // A public duel finished and not forfeited (achievements.ts public_duels: at least 1, so a repeat changes nothing).
-    if (extra.paid) options.fresh?.(storage);
+    if (extra.paid) options.fresh?.(storage, true);
     const held = extra.room_id ? duelRoomPay(storage, extra.room_id).held : 0;
     const amount = extra.paid ? held : 0;
     // Nothing held writes nothing: a player who never took a duel turn here has no line to keep.

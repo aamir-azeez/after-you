@@ -17,6 +17,8 @@ export type FruitsView = {
   convert: { pollen_per_fruit: number; step: number };
   first_pack_gift: boolean; first_pack_percent: number;
   achievements: AchievementView[];
+  /** The Full Journey Fruit ladder for everyone (the Full Journey card shows it before a player subscribes). */
+  ladder: { first: number; step: number; every: number; top: number; welcome: number };
   grant?: FruitGrantView;
 };
 
@@ -30,6 +32,7 @@ export function fruitsView(storage: DurableObjectStorage, now: number, rules: Fr
     convert: { pollen_per_fruit: rules.convert.pollen_per_fruit, step: rules.convert.step },
     first_pack_gift: percent > 0 && !hasBundles(storage, "fruits"), first_pack_percent: percent,
     achievements: achievementsView(storage, rules),
+    ladder: { ...rules.grant },
     ...(grant ? { grant } : {})
   };
 }

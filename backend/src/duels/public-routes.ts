@@ -1,3 +1,4 @@
+import { withEnergy } from "./energy-charge";
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, isObject, randomToken, unwrap } from "../protocol";
 import { flags, type ServerVars } from "../flags";
 import { bearerDigest } from "../http";
@@ -147,14 +148,14 @@ async function post(env: Env, player: string, input: unknown, now: number, look?
   const labels = await Promise.all(team.players.map((id, index) => labelOf(env, id, team.rows[index].member)));
   const duel = newPublicDuel({ duel_id: duelId, board, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, players: team.players, labels,
     looks: looksOn(env) ? team.looks : undefined, known: team.players.length === 2 ? [knownKey(team.players[0], team.players[1])] : [] }, now);
-  const made = await duelsAt(env, board).create(duel);
-  if (!made) throw new ApiError(503, "public_list_full");
+  // Each poster pays 1 energy while ENERGY is on, given back if the board refuses (energy-charge.ts).
+  const { value: made, energy } = await withEnergy(env, player, team.players, duelId, async () => { const made = await duelsAt(env, board).create(duel); if (!made) throw new ApiError(503, "public_list_full"); return made; });
   // Listed before the reply, not only after the board's: a lost update would leave a post nobody can find.
   await sendListings(env, [{ duel_id: duelId, listing: listingOf(made, now), updated_ms: made.updated_ms }]);
   await addPublicRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
   forgetListings();
   await announceLobby(env, team.players.filter(id => id !== player), made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player, looksOn(env)) };
+  return { schema_version: 1, duel: viewFor(made, player, looksOn(env)), ...(energy ? { energy } : {}) };
 }
 
 /**
@@ -179,8 +180,13 @@ async function join(env: Env, player: string, board: string, duelId: string, inp
   for (const id of theirs) if (id) avoid.add(id);
   await underLimit(env, team.players, team.rows, player);
   const labels = await Promise.all(team.players.map((id, index) => labelOf(env, id, team.rows[index].member)));
-  const answer = await at.act(duelId, { kind: "join", player, claim: { players: team.players, as, seat: body.seat as number | null, labels,
-    looks: looksOn(env) ? team.looks : undefined, avoid: [...avoid], known: team.players.length === 2 ? [knownKey(team.players[0], team.players[1])] : [] } });
+  // Each joiner pays 1 energy while ENERGY is on; a join the board refuses (a spot taken first) gives it back (energy-charge.ts).
+  const { value: answer, energy } = await withEnergy(env, player, team.players, duelId, async () => {
+    const answer = await at.act(duelId, { kind: "join", player, claim: { players: team.players, as, seat: body.seat as number | null, labels,
+      looks: looksOn(env) ? team.looks : undefined, avoid: [...avoid], known: team.players.length === 2 ? [knownKey(team.players[0], team.players[1])] : [] } });
+    if (!answer.ok) throw new RefusedJoin(answer);
+    return answer;
+  }).catch(error => { if (error instanceof RefusedJoin) return { value: error.answer, energy: null }; throw error; });
   if (!answer.ok) {
     if (answer.code !== "spot_taken") unwrap(answer);
     // The list may be a moment behind: the board's listing now heals it, and the phone redraws the row from it.
@@ -196,7 +202,11 @@ async function join(env: Env, player: string, board: string, duelId: string, inp
   // "A partner joined": every player already in the duel hears of it, besides the board's own news of the change.
   await announceLobby(env, seated(duel).filter(id => !team.players.includes(id) && id !== player), duel.updated_ms, duelId);
   if (team.players.length === 2) await announceLobby(env, [team.players[1]], duel.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(duel, player, looksOn(env)) };
+  return { schema_version: 1, duel: viewFor(duel, player, looksOn(env)), ...(energy ? { energy } : {}) };
+}
+/** A join the board refused, carried out of withEnergy (which gives the energy back) to the route's own answer. */
+class RefusedJoin extends Error {
+  constructor(readonly answer: { ok: false; status: number; code: string }) { super(answer.code); }
 }
 
 /** The duel and the player in `seat` for a player in it; the seat must hold someone else. */

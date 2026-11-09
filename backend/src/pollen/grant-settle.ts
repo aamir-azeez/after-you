@@ -51,7 +51,7 @@ export type GrantDeps = {
  * months paid before Fruits pay no Fruits, by the owner's call: no back pay). A refunded instalment takes back the Fruit
  * line paid with it, if any, under `fruit:grantrefund:<anchor>:<n>`, and the welcome basket if it came with that month.
  */
-export function fruitGrantEntries(storage: DurableObjectStorage, pay: readonly Instalment[], refunds: readonly GrantRefund[], fruits: boolean, rules: FruitRules = FRUIT_RULES): LedgerEntry[] {
+export function fruitGrantEntries(storage: DurableObjectStorage, pay: readonly Instalment[], refunds: readonly GrantRefund[], fruits: boolean, now: number, rules: FruitRules = FRUIT_RULES): LedgerEntry[] {
   const entries: LedgerEntry[] = [];
   const welcome = ledgerLine(storage, keyIn("fruits", WELCOME));
   for (const refund of refunds) {
@@ -59,12 +59,17 @@ export function fruitGrantEntries(storage: DurableObjectStorage, pay: readonly I
     if (line) entries.push({ key: keyIn("fruits", refund.key), kind: "fruitgrantrefund", amount: -line.amount, detail: { refunds: line.key, sub: refund.sub } });
     if (welcome && welcome.detail.with === refund.refunds) entries.push({ key: keyIn("fruits", WELCOME_REFUND), kind: "fruitwelcomerefund", amount: -welcome.amount, detail: { refunds: welcome.key } });
   }
-  if (!fruits || pay.length === 0) return entries;
-  for (const paid of pay) entries.push({ key: keyIn("fruits", paid.key), kind: "fruitgrant", amount: fruitInstalment(paid.step, rules), detail: { anchor: paid.anchor, n: paid.n, due: paid.due, step: paid.step, sub: paid.sub } });
-  if (!welcome && rules.grant.welcome > 0) entries.push({ key: keyIn("fruits", WELCOME), kind: "fruitwelcome", amount: rules.grant.welcome, detail: { with: pay[0].key } });
+  // A catch-up after a long absence pays Fruits only for months due within FRUIT_CATCH_UP_MS: months that fell due
+  // before Fruits went on never pay them (no back pay).
+  const recent = pay.filter(paid => paid.due >= now - FRUIT_CATCH_UP_MS);
+  if (!fruits || recent.length === 0) return entries;
+  for (const paid of recent) entries.push({ key: keyIn("fruits", paid.key), kind: "fruitgrant", amount: fruitInstalment(paid.step, rules), detail: { anchor: paid.anchor, n: paid.n, due: paid.due, step: paid.step, sub: paid.sub } });
+  if (!welcome && rules.grant.welcome > 0) entries.push({ key: keyIn("fruits", WELCOME), kind: "fruitwelcome", amount: rules.grant.welcome, detail: { with: recent[0].key } });
   return entries;
 }
 const WELCOME = "welcome", WELCOME_REFUND = "welcomerefund";
+/** How far back a catch-up pays Fruits: about one month. */
+export const FRUIT_CATCH_UP_MS = 31 * DAY_MS;
 
 /** The wallet read's Fruit part of the grant (fruit-ops.ts fruitsView): the next instalment's Fruits, the top, and what came with the newest instalment. */
 export type FruitGrantView = { next: number; top: number; welcome: number; welcome_paid: boolean; latest?: { amount: number; welcome: number; at: number } };
@@ -169,7 +174,7 @@ async function settleDue(storage: DurableObjectStorage, now: number, active: () 
       ...plan.refunds.map(refund => ({ key: refund.key, kind: "grantrefund", amount: -refund.amount, detail: { refunds: refund.refunds, sub: refund.sub } })),
       ...plan.pay.map(paid => ({ key: paid.key, kind: "grant", amount: paid.amount, detail: { anchor: paid.anchor, n: paid.n, due: paid.due, step: paid.step, sub: paid.sub } })),
       ...(plan.lifetime > 0 ? [{ key: LIFETIME_KEY, kind: "grant", amount: plan.lifetime, detail: { lifetime: true } }] : []),
-      ...fruitGrantEntries(storage, plan.pay, plan.refunds, deps.fruits === true)
+      ...fruitGrantEntries(storage, plan.pay, plan.refunds, deps.fruits === true, now)
     ];
     // A Fruit take-back the balance can't cover, because those Fruits were turned into Pollen, takes them back as Pollen (fruit-ops.ts).
     const applied = applyLedger(storage, withReclaim(storage, entries).entries, now, rates);

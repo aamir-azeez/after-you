@@ -1,3 +1,5 @@
+import { withEnergy } from "./energy-charge";
+import { energyOn } from "../pollen/features";
 import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, digest, isObject, ok, randomToken, unwrap, type Outcome } from "../protocol";
 import { pooled } from "../room-inbox";
 import { interactionBlocked } from "../safety";
@@ -63,7 +65,7 @@ const GHOSTS_SHOWN = 3;
 export function duelsCapability(request: Request, env: Env): { duels_version?: number; race_ghost_version?: number; public_duels_version?: number } {
   if (!duelsOn(env) || request.headers.get(DUELS_HEADER) !== "1") return {};
   // Public duels ride the same header (public-routes.ts publicDuelsCapability).
-  return { duels_version: 1, ...(flags.raceGhost(env) ? { race_ghost_version: 1 } : {}), ...publicDuelsCapability(request, env, DUELS_HEADER) };
+  return { duels_version: 1, ...(flags.raceGhost(env) ? { race_ghost_version: 1 } : {}), ...publicDuelsCapability(request, env, DUELS_HEADER), ...(energyOn(env) ? { duels_energy_version: 1 } : {}) };
 }
 
 export function fields(input: unknown, keys: string[]): Record<string, unknown> {
@@ -326,12 +328,12 @@ async function challenge(env: Env, player: string, input: unknown, now: number, 
   // Each side starts in the looks its members' party rows keep (read above); turns bring their room's looks.
   const duel = duelsAt(env, key).create(newFriendDuel({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
     a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), b: blankSide(b, bKeys.pair_key, shownLooks ? theirs.looks : undefined, bKeys.account_key), known }, now));
-  const made = await duel;
-  if (!made) throw new ApiError(503, "duels_busy");
+  // Each of the starting pair pays 1 energy while ENERGY is on, given back if the board refuses (energy-charge.ts).
+  const { value: made, energy } = await withEnergy(env, player, a, duelId, async () => { const made = await duel; if (!made) throw new ApiError(503, "duels_busy"); return made; });
   await addRefs(env, [...a, ...b], { duel_id: duelId, board: key, at: now }, now, duels);
   // Only now does every lobby list it.
   await announceLobby(env, [...a, ...b].filter(id => id !== player), made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player, shownLooks) };
+  return { schema_version: 1, duel: viewFor(made, player, shownLooks), ...(energy ? { energy } : {}) };
 }
 
 async function ghostRace(env: Env, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
@@ -367,12 +369,15 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number, 
   const a = [player, mine.partner] as [string, string], [aKeys] = await duelPairKeys(env, [a]);
   const { duels } = await duelsOf(env, mine.state.duels, player);
   if (openFor(duels, aKeys, "ghost") >= MAX_GHOST_RACES_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
-  const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
-    a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), ghost }, now));
-  if (!made) throw new ApiError(503, "duels_busy");
+  const { value: made, energy } = await withEnergy(env, player, a, duelId, async () => {
+    const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
+      a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), ghost }, now));
+    if (!made) throw new ApiError(503, "duels_busy");
+    return made;
+  });
   await addRefs(env, a, { duel_id: duelId, board: key, at: now }, now, duels);
   await announceLobby(env, [mine.partner], made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player, shownLooks) };
+  return { schema_version: 1, duel: viewFor(made, player, shownLooks), ...(energy ? { energy } : {}) };
 }
 
 async function duelAction(env: Env, player: string, key: string, duelId: string, action: string | undefined, input: unknown, now: number): Promise<unknown> {
@@ -393,8 +398,11 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
         if (duels.filter(item => item.kind === "friend" && item.status === "running" && item.sides.some(side => side !== null && samePair(side, duel.sides[1]!))).length + openPublicWith(duels, [player, partner]) >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
       }
     }
-    const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact }));
-    return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks) };
+    // The accepting pair pays 1 energy each; a refused accept gives it back (energy-charge.ts).
+    const payers = duel.status === "challenged" ? duel.sides[1]!.members.filter((id): id is string => typeof id === "string") : [];
+    const { value: answer, energy } = payers.length ? await withEnergy(env, player, payers, duelId, async () => unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact })))
+      : { value: unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact })), energy: null };
+    return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks), ...(energy ? { energy } : {}) };
   }
   if (action === "decline" || action === "leave") {
     const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: action, player }));

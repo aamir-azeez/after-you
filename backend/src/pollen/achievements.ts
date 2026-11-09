@@ -43,7 +43,7 @@ function sweep(storage: DurableObjectStorage, now: number, rates: Rates): boolea
   // Friend duel wins still kept: a public duel's win shares the prefix, so its duel (one with a held extra line) is left out.
   const extras = ledgerLines(storage, "duelextra:", 512);
   const publicIds = new Set(extras.map(line => line.detail.duel_id));
-  const wins = ledgerLines(storage, "duelwin:", 512).filter(line => !line.detail.public && !publicIds.has(line.detail.duel_id)).length;
+  const wins = ledgerLines(storage, "duelwin:", 512).filter(line => line.amount > 0 && !line.detail.public && !publicIds.has(line.detail.duel_id)).length;
   const finished = extras.filter(line => line.detail.reason === undefined).length;
   for (const [counter, found] of [[COUNTERS.duel_wins, wins], [COUNTERS.public_duels, finished]] as const) {
     const row = purse(storage, counter);

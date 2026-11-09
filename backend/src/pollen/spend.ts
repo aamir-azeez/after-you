@@ -13,12 +13,12 @@ import type { Currency } from "./currency";
  *   (Pollen 100, Fruits 5); one missing piece costs its own price. Owned pieces are never charged.
  * - A reaction pack costs `pack_price` Pollen.
  * - Nothing owned is sold again, so a purchase can never charge twice for one thing.
- * The spend kinds "convert" and "sunshine" are Fruit operations (fruit-ops.ts), not priced here.
+ * The spend kinds "convert", "sunshine" and "energy" are Fruit operations (fruit-ops.ts, energy.ts), not priced here.
  *
  * charge() then refuses a negative balance in the purchase's currency (it blocks every spend in it), a cost the
  * phone did not show (`expected`), and a balance that is short.
  */
-export type SpendKind = "item" | "set" | "pack" | "convert" | "sunshine";
+export type SpendKind = "item" | "set" | "pack" | "convert" | "sunshine" | "energy";
 export type SpendRequest = { kind: SpendKind; id: string };
 /** `pieces`: what the purchase adds; `full`: their prices added up; `cost`: what is charged, in `currency`. */
 export type Quote = { kind: SpendKind; id: string; pieces: string[]; full: number; cost: number; currency: Currency };

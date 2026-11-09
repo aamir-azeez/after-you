@@ -60,6 +60,8 @@ export type BundleDeps = {
    * the production list has nothing new to pay (one more RevenueCat request, no DO request), so App Review's sandbox buy pays.
    */
   sandbox?: () => Promise<BundleRead>;
+  /** Fruits are on (features.ts fruitsOn): Fruit packs are paid. Off, they wait. */
+  fruits?: boolean;
 };
 /**
  * What a reply says about one purchase: `order` is the store's own id as its receipt shows it (the Play order, or the
@@ -75,7 +77,7 @@ export function receiptOf(ref: string): Receipt {
 /**
  * `credited` and `refunded` are Pollen bundles only, as older apps read them; Fruit packs answer in `fruit_credited` and
  * `fruit_refunded` (`fruits` and `amount` in Fruits; `pollen_taken`: Pollen taken back for Fruits already turned into Pollen),
- * with `fruit_balance`, only once the player has any Fruit line.
+ * with `fruit_balance`, only once the player has bought a Fruit pack.
  */
 export type FruitCredit = Omit<BundleCredit, "pollen"> & { fruits: number };
 export type FruitRefund = BundleRefund & { pollen_taken: number };
@@ -251,7 +253,9 @@ export type BundlePlan = { entries: LedgerEntry[]; credited: BundleCredit[]; ref
 export async function settleBundles(storage: DurableObjectStorage, now: number, active: () => boolean, deps: BundleDeps, rates: Rates = RATES, bundles: Bundles = BUNDLES): Promise<BundleOutcome> {
   const read = await deps.read();
   if (!read.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: read.reason }; }
-  let listed = read.purchases;
+  // While Fruits are off a Fruit pack waits unpaid (as a Pollen bundle waits for a store that sells), so nothing Fruit is
+  // written; a refund of one already paid is still taken back.
+  let listed = deps.fruits ? read.purchases : read.purchases.filter(purchase => purchase.refunded || bundles.bundles[purchase.bundle].currency !== "fruits");
   if (deps.sandbox) {
     const paid = paidIndex(bundleLines(storage)), gone = refundedOrders(listed);
     if (!listed.some(purchase => !purchase.refunded && purchase.order !== "" && !gone.has(purchase.order) && !paidLine(purchase, paid))) {

@@ -10,7 +10,7 @@ import { quote, setCost } from "../src/pollen/spend";
 import { RATES } from "../src/pollen/rates";
 import { droppable } from "../src/pollen/item-blooms";
 import { FRUIT_PREFIX, purse, setPurse } from "../src/pollen/currency";
-import { applyLedger, creditClear, creditTurn, historyView, ledgerLines, noteFullJourney, validWallet, walletView, type FruitHooks } from "../src/pollen/wallet";
+import { applyLedger, creditClear, creditTurn, dropWallet, historyView, ledgerLines, noteFullJourney, validWallet, walletView, type FruitHooks } from "../src/pollen/wallet";
 import { forgetClaimPace, planBundles, settleBundles } from "../src/pollen/bundle-settle";
 import type { BundlePurchase } from "../src/pollen/bundle-provider";
 import { buySunshine, convertFruits, spendSunshineTurn, withReclaim } from "../src/pollen/fruit-ops";
@@ -120,6 +120,13 @@ describe("Fruit lines on the shared ledger", () => {
       expect(historyView(storage, MONDAY).entries.map(entry => entry.kind)).toEqual(["grant"]);
     });
   });
+  it("go with the wallet on account erasure", async () => {
+    await inPlayer(storage => {
+      fund(storage, 10);
+      dropWallet(storage);
+      expect(storage.sql.exec("SELECT name FROM sqlite_master WHERE name IN ('currency_purse','pollen_claims','pollen_wallet')").toArray()).toEqual([]);
+    });
+  });
   it("write nothing at all for a player Fruits never touched", async () => {
     await inPlayer(async storage => {
       value(await creditTurn(storage, { POLLEN_SECRET: SECRET }, OWNER, facts(), MONDAY, () => true));
@@ -131,7 +138,7 @@ describe("Fruit lines on the shared ledger", () => {
 describe("Fruit packs", () => {
   const p = (id: string, bundle: BundlePurchase["bundle"], extra: Partial<BundlePurchase> = {}): BundlePurchase => ({ id, bundle, refunded: false, quantity: 1, order: "GPA." + id, usd_cents: 249, purchased_at: ++serial, ...extra });
   const settle = (storage: DurableObjectStorage, purchases: BundlePurchase[]) => { forgetClaimPace(storage);
-    return settleBundles(storage, MONDAY, () => true, { read: async () => ({ ok: true as const, purchases }), claim: async asked => Object.fromEntries(asked.map(each => [each.order, true])) }); };
+    return settleBundles(storage, MONDAY, () => true, { read: async () => ({ ok: true as const, purchases }), claim: async asked => Object.fromEntries(asked.map(each => [each.order, true])), fruits: true }); };
   it("pay the first Fruit pack double once, apart from the Pollen gift, and a refund takes the pack and its gift back", async () => {
     await inPlayer(async storage => {
       const one = p("f1", "handful"), two = p("f2", "bowl"), pollen = p("p1", "pouch");
@@ -142,6 +149,15 @@ describe("Fruit packs", () => {
       // Paid once: the same list again changes nothing.
       expect(await settle(storage, [{ ...one, refunded: true }, two, pollen])).toMatchObject({ reply: { fruit_credited: [], fruit_refunded: [], fruit_balance: 55 } });
       expect(walletView(storage, MONDAY).balance).toBe(25200);
+    });
+  });
+  it("wait unpaid while Fruits are off, and pay once they are on", async () => {
+    await inPlayer(async storage => {
+      const pack = p("w1", "crate"), read = async () => ({ ok: true as const, purchases: [pack] }), claim = async (asked: BundlePurchase[]) => Object.fromEntries(asked.map(each => [each.order, true]));
+      forgetClaimPace(storage);
+      expect(await settleBundles(storage, MONDAY, () => true, { read, claim, fruits: false })).toMatchObject({ reply: { credited: [] } });
+      expect(storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='currency_purse'").toArray()).toEqual([]);
+      expect(await settleBundles(storage, MONDAY, () => true, { read, claim, fruits: true })).toMatchObject({ reply: { fruit_credited: [{ bundle: "crate", fruits: 120, first_gift: 120 }] } });
     });
   });
   it("pay one App Store sandbox Fruit pack per identity", () => {
@@ -164,6 +180,24 @@ describe("turning Fruits into Pollen", () => {
       expect(purse(storage, "converted").balance).toBe(20);
       applyLedger(storage, [{ key: "bundlerefund:x", kind: "bundlerefund", amount: -9000, detail: {} }], MONDAY);
       expect(convertFruits(storage, "key-b", 10, 10, MONDAY)).toMatchObject({ ok: false, status: 403, code: "fruits_blocked" });
+    });
+  });
+  it("never converts twice for one request key, even after its receipt is gone", async () => {
+    await inPlayer(storage => {
+      fund(storage, 40);
+      value(convertFruits(storage, "same-key", 10, 10, MONDAY));
+      expect(convertFruits(storage, "same-key", 10, 10, MONDAY)).toMatchObject({ ok: false, status: 409, code: "idempotency_key_reused" });
+      expect([fruitBalance(storage), walletView(storage, MONDAY).balance, purse(storage, "converted").balance]).toEqual([30, 4000, 10]);
+    });
+  });
+  it("takes back several Fruit refunds in one settle in order, Pollen only for what was converted", async () => {
+    await inPlayer(storage => {
+      applyLedger(storage, [{ key: "fruit:bundle:GPA.m1", kind: "fruitbundle", amount: 30, detail: {} }, { key: "fruit:bundle:GPA.m2", kind: "fruitbundle", amount: 30, detail: {} }], MONDAY);
+      value(convertFruits(storage, "convert-m", 50, 50, MONDAY));
+      const back = withReclaim(storage, [{ key: "fruit:bundlerefund:GPA.m1", kind: "fruitbundlerefund", amount: -30, detail: {} }, { key: "fruit:bundlerefund:GPA.m2", kind: "fruitbundlerefund", amount: -30, detail: {} }]);
+      applyLedger(storage, back.entries, MONDAY);
+      expect([back.pollen.get("fruit:bundlerefund:GPA.m1"), back.pollen.get("fruit:bundlerefund:GPA.m2")]).toEqual([8000, 12000]);
+      expect([fruitBalance(storage), walletView(storage, MONDAY).balance, purse(storage, "converted").balance]).toEqual([0, 0, 0]);
     });
   });
   it("never keeps anything when bought, converted and refunded: the converted shortfall comes back as Pollen", async () => {
@@ -255,15 +289,22 @@ describe("achievements", () => {
       expect(ledgerLines(storage, "fruit:ach:", 64).length).toBe(2);
     });
   });
-  it("count friend duel wins, never a public duel's, and pay the first and the tenth", async () => {
+  it("count paid friend duel wins only, never a public duel's or one past the weekly limits, and pay the first and the tenth", async () => {
     await inPlayer(storage => {
       settleAchievements(storage, MONDAY);
-      const fresh = { fresh: (s: DurableObjectStorage) => { settleAchievements(s, MONDAY, { duel_win: true }); } };
+      const fresh = (at: number) => ({ fresh: (s: DurableObjectStorage, paid: boolean) => { settleAchievements(s, at, paid ? { duel_win: true } : {}); } });
       creditDuelWin(storage, { duel_id: "public-1", opponent: "pair-x", decided_ms: MONDAY }, MONDAY, () => true, RATES, { fresh: s => { settleAchievements(s, MONDAY); }, public: true });
       expect(purse(storage, "count:duel_wins").balance).toBe(0);
-      for (let n = 0; n < 10; n++) creditDuelWin(storage, { duel_id: "friend-" + n, opponent: "pair-" + n, decided_ms: MONDAY }, MONDAY, () => true, RATES, fresh);
+      // Four friend wins in the public win's week: the week pays three wins in all, so two of them count and two pay 0 and count toward nothing.
+      for (let n = 0; n < 4; n++) creditDuelWin(storage, { duel_id: "week-" + n, opponent: "pair-" + n, decided_ms: MONDAY }, MONDAY, () => true, RATES, fresh(MONDAY));
+      expect(purse(storage, "count:duel_wins").balance).toBe(2);
+      // One more a week for eight weeks: ten paid friend wins.
+      for (let week = 1; week <= 8; week++) {
+        const at = MONDAY + week * 7 * DAY;
+        creditDuelWin(storage, { duel_id: "later-" + week, opponent: "pair-later-" + week, decided_ms: at }, at, () => true, RATES, fresh(at));
+      }
       // A repeat of a win is not a new one.
-      creditDuelWin(storage, { duel_id: "friend-0", opponent: "pair-0", decided_ms: MONDAY }, MONDAY, () => true, RATES, fresh);
+      creditDuelWin(storage, { duel_id: "week-0", opponent: "pair-0", decided_ms: MONDAY }, MONDAY, () => true, RATES, fresh(MONDAY));
       expect(purse(storage, "count:duel_wins").balance).toBe(10);
       expect(ledgerLines(storage, "fruit:ach:duel_win", 8).map(line => [line.key, line.amount])).toEqual([["fruit:ach:duel_win_first", 10], ["fruit:ach:duel_win_ten", 20]]);
     });
@@ -301,6 +342,33 @@ describe("the grant's Fruits", () => {
       noteFullJourney(storage, anniversary(start, 2) + 20 * DAY, anniversary(start, 2));
       expect(await settleGrant(storage, anniversary(start, 2) + HOUR, () => true, deps([paid("sub_f", anniversary(start, 2), anniversary(start, 3))], false))).toBe("settled");
       expect([walletView(storage, anniversary(start, 2) + HOUR).balance, fruitBalance(storage)]).toEqual([4500 + 4750 + 5000, 55]);
+    });
+  });
+  it("pays no Fruits in a trial, the basket with an existing subscriber's next month, and no Fruits for months due before the catch-up window", async () => {
+    await inPlayer(async storage => {
+      noteFullJourney(storage, DUE + 20 * DAY, DUE);
+      const start = DUE - HOUR, next = anniversary(start, 1);
+      const trial: GrantSub = { ...paid("sub_t", start, next), status: "trial" };
+      await settleGrant(storage, DUE, () => true, { read: async () => ({ ok: true, subs: [trial], lifetime: null }), claim: self, fruits: true });
+      expect(fruitBalance(storage)).toBe(0);
+    });
+    await inPlayer(async storage => {
+      noteFullJourney(storage, DUE + 20 * DAY, DUE);
+      const start = DUE - HOUR, next = anniversary(start, 1);
+      // A month paid before Fruits went on: no Fruits for it, ever.
+      expect(await settleGrant(storage, DUE, () => true, { read: async () => ({ ok: true, subs: [paid("sub_e", start, next)], lifetime: null }), claim: self, fruits: false })).toBe("settled");
+      noteFullJourney(storage, next + 20 * DAY, next);
+      expect(await settleGrant(storage, next + HOUR, () => true, { read: async () => ({ ok: true, subs: [paid("sub_e", next, anniversary(start, 2))], lifetime: null }), claim: self, fruits: true })).toBe("settled");
+      // Month 2 at its step (15) and the welcome basket with it.
+      expect(fruitBalance(storage)).toBe(40);
+    });
+    await inPlayer(async storage => {
+      // Three months caught up at once, long after: only the month due within the window pays Fruits.
+      const start = DUE - 70 * DAY, now = anniversary(start, 2) + HOUR;
+      noteFullJourney(storage, anniversary(start, 3), now);
+      expect(await settleGrant(storage, now, () => true, { read: async () => ({ ok: true, subs: [paid("sub_c", anniversary(start, 2), anniversary(start, 3))].map(sub => ({ ...sub, started_at: start })), lifetime: null }), claim: async keys => Object.fromEntries(keys.map(key => [key, { self: true, since: start }])), fruits: true })).toBe("settled");
+      const fruitLines = ledgerLines(storage, "fruit:grant:", 8);
+      expect(fruitLines.every(line => (line.detail.due as number) >= now - 31 * DAY)).toBe(true);
     });
   });
   it("takes a refunded first month's Fruits and welcome basket back with its Pollen", async () => {
@@ -365,7 +433,8 @@ describe("the Fruit routes", () => {
     const first = await (await call("/v1/pollen", "GET", account)).json<Read>();
     expect(first.fruits).toMatchObject({ balance: 0, sunshine: { left: 0, turns: 24, price: 10 }, convert: { pollen_per_fruit: 400, step: 10 }, first_pack_gift: true, first_pack_percent: 100 });
     expect(first.fruits!.achievements.length).toBe(15);
-    expect(first.wardrobe).toMatchObject({ fruit_prices: { fruit_cap: 50, sprig_sun: 10, orchard_skin: 100 }, fruit_sets: { orchard: ["fruit_cap", "orchard_skin", "apple_leaf"] } });
+    expect(first.wardrobe).toMatchObject({ fruit_prices: { fruit_cap: 50, sprig_sun: 10, orchard_skin: 100 }, fruit_sets: { orchard: ["fruit_cap", "orchard_skin", "apple_leaf"] }, fruit_set_costs: { orchard: 145 } });
+    expect((first.fruits as Record<string, unknown>).ladder).toEqual({ first: 15, step: 1, every: 2, top: 30, welcome: 25 });
     expect(Object.keys(first.wardrobe!.prices as object)).not.toContain("fruit_cap");
     await inAccount(account, storage => { fund(storage, 100); });
     const cap = spendBody("item", "fruit_cap", 50);
