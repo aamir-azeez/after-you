@@ -1,5 +1,5 @@
 import { RATES, type Rates } from "./rates";
-import { CATALOG, sold, type Catalog } from "./catalog";
+import { CATALOG, sold, tierCurrency, type Catalog } from "./catalog";
 import { KEY_LABELS, derivedKey, hmac } from "./keys";
 import type { BloomSlot } from "./blooms";
 import type { ServerVars } from "../flags";
@@ -29,7 +29,8 @@ export type ItemBloomRoll = { roll: number; pick: number; tier: string | null };
 export type ItemBloom = { tier: string; roll: number } & ({ item_id: string } | { pollen: number });
 
 // Every tier a roll can drop pays its catalogue price when nothing is left to drop, so each needs one.
-for (const step of RATES.item_blooms.tiers) if (!((CATALOG.tier_prices[step.tier] ?? 0) > 0)) throw new Error("invalid_item_bloom_tier: " + step.tier);
+// Orchard items (Fruit tiers) never drop: a bloom tier must be a Pollen tier, and `sold` below never offers a Fruit item.
+for (const step of RATES.item_blooms.tiers) if (!((CATALOG.tier_prices[step.tier] ?? 0) > 0) || tierCurrency(step.tier) !== "pollen") throw new Error("invalid_item_bloom_tier: " + step.tier);
 
 const u32 = (bytes: Uint8Array, at: number) => ((bytes[at] << 24) >>> 0) + (bytes[at + 1] << 16) + (bytes[at + 2] << 8) + bytes[at + 3];
 

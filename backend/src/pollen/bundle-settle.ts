@@ -4,6 +4,8 @@ import { BUNDLES, BUNDLE_KEYS, firstGift, type BundleKey, type Bundles } from ".
 import { applyLedger, ledgerLines, purchaseLines, walletBalance, type LedgerEntry } from "./wallet";
 import { byPurchaseTime, type BundleAsk, type BundleLookup, type BundlePurchase, type BundleRead } from "./bundle-provider";
 import { refId, refStore } from "./claims";
+import { CURRENCIES, currencyOfKey, keyIn, purse, type Currency } from "./currency";
+import { withReclaim } from "./fruit-ops";
 
 /**
  * Pollen bundles in the player's own Player Durable Object (POLLEN_BUNDLES): bought Pollen is credited
@@ -70,7 +72,14 @@ export type BundleRefund = { bundle: BundleKey; amount: number } & Receipt;
 export function receiptOf(ref: string): Receipt {
   return refStore(ref) === "app_store" ? { order: refId(ref), store: "app_store" } : { order: ref };
 }
-export type BundleReply = { schema_version: 1; balance: number; credited: BundleCredit[]; refunded: BundleRefund[]; pending: boolean };
+/**
+ * `credited` and `refunded` are Pollen bundles only, as older apps read them; Fruit packs answer in `fruit_credited` and
+ * `fruit_refunded` (`fruits` and `amount` in Fruits; `pollen_taken`: Pollen taken back for Fruits already turned into Pollen),
+ * with `fruit_balance`, only once the player has any Fruit line.
+ */
+export type FruitCredit = Omit<BundleCredit, "pollen"> & { fruits: number };
+export type FruitRefund = BundleRefund & { pollen_taken: number };
+export type BundleReply = { schema_version: 1; balance: number; credited: BundleCredit[]; refunded: BundleRefund[]; pending: boolean; fruit_credited?: FruitCredit[]; fruit_refunded?: FruitRefund[]; fruit_balance?: number };
 /** What GET /v1/pollen adds while bundles are on: whether a first gift is still open (and set above 0), its percent, and the money spent (refunds taken off). */
 export type BundlesView = { first_gift: boolean; first_gift_percent: number; spent_usd_cents: number };
 /** `lookup_failed`: the daily check's lookups could not be made (the rest settled; the check stays due). */
@@ -93,8 +102,11 @@ export const CLAIM_GAP_MS = 1_000;
 export const CLAIM_GAP_MAX_MS = 60_000;
 
 const [CHECK] = POLLEN_BUNDLE_TABLES;
-export const bundleKey = (id: string) => `bundle:${id}`;
-export const bundleRefundKey = (id: string) => `bundlerefund:${id}`;
+/** A pack's ledger keys: `bundle:<order>` and `bundlerefund:<order>`, under FRUIT_PREFIX for a Fruit pack (currency.ts). */
+export const bundleKey = (id: string, currency: Currency = "pollen") => keyIn(currency, `bundle:${id}`);
+export const bundleRefundKey = (id: string, currency: Currency = "pollen") => keyIn(currency, `bundlerefund:${id}`);
+/** The order (or older RevenueCat id) a pack line's key names, whichever currency. */
+const idOfKey = (key: string) => key.slice(key.indexOf("bundle:") + "bundle:".length);
 const known = new WeakMap<DurableObjectStorage, boolean>();
 const paused = new WeakMap<DurableObjectStorage, number>();
 type Pace = { next_at: number; gap: number; running: boolean; last_at: number };
@@ -135,8 +147,10 @@ function noteCheck(storage: DurableObjectStorage, now: number): void {
 }
 
 type Line = { key: string; amount: number; detail: Record<string, unknown> };
-const bundleLines = (storage: DurableObjectStorage): Line[] => ledgerLines(storage, "bundle:", 1024);
-const refundLines = (storage: DurableObjectStorage): Line[] => ledgerLines(storage, "bundlerefund:", 1024);
+/** Every pack line of both currencies (two primary key ranges). */
+const bundleLines = (storage: DurableObjectStorage): Line[] => CURRENCIES.flatMap(currency => ledgerLines(storage, bundleKey("", currency), 1024));
+const refundLines = (storage: DurableObjectStorage): Line[] => CURRENCIES.flatMap(currency => ledgerLines(storage, bundleRefundKey("", currency), 1024));
+const currencyOfLine = (line: Line): Currency => currencyOfKey(line.key);
 
 /** The paid lines, by kept order and by key, to match a listed purchase to the line that paid it. */
 type Paid = { byOrder: Map<string, Line>; byKey: Map<string, Line> };
@@ -152,11 +166,13 @@ function paidIndex(lines: readonly Line[]): Paid {
 /** The line that paid `purchase`: by its order, or (an older line) by its RevenueCat id. */
 const paidLine = (purchase: { id: string; order: string }, paid: Paid): Line | undefined =>
   (purchase.order ? paid.byOrder.get(purchase.order) : undefined) ?? paid.byKey.get(bundleKey(purchase.id));
-/** A paid line's refund key: `bundlerefund:` with the same suffix, whichever form the line has. */
-const refundKeyOf = (line: Line) => bundleRefundKey(line.key.slice(bundleKey("").length));
+/** A paid line's refund key: `bundlerefund:` with the same suffix and currency, whichever form the line has. */
+const refundKeyOf = (line: Line) => bundleRefundKey(idOfKey(line.key), currencyOfLine(line));
 
-/** Whether the player has ever been paid for a bundle: only then does the wallet read check for refunds. */
-export function hasBundles(storage: DurableObjectStorage): boolean { return ledgerLines(storage, "bundle:", 1).length > 0; }
+/** Whether the player has ever been paid for a pack of `currency` (either, when absent): only then does the wallet read check for refunds. */
+export function hasBundles(storage: DurableObjectStorage, currency?: Currency): boolean {
+  return (currency ? [currency] : CURRENCIES).some(each => ledgerLines(storage, bundleKey("", each), 1).length > 0);
+}
 
 /** Whether the daily refund check is due: a player with bundles, a day after the last check, and no outage pause. */
 export function bundleCheckDue(storage: DurableObjectStorage, now: number): boolean {
@@ -175,7 +191,7 @@ export function missingBundles(storage: DurableObjectStorage, listed: readonly B
   const asks = lines.flatMap(line => {
     const { bundle, order, purchase_id: id, environment } = line.detail;
     if (shown.has(line.key) || back.has(refundKeyOf(line)) || !(BUNDLE_KEYS as readonly unknown[]).includes(bundle)) return [];
-    return [{ id: typeof id === "string" ? id : line.key.slice(bundleKey("").length), bundle: bundle as BundleKey, order: typeof order === "string" ? order : "", ...(environment === "sandbox" ? { sandbox: true } : {}) }];
+    return [{ id: typeof id === "string" ? id : idOfKey(line.key), bundle: bundle as BundleKey, order: typeof order === "string" ? order : "", ...(environment === "sandbox" ? { sandbox: true } : {}) }];
   });
   if (asks.length <= MAX_BUNDLE_LOOKUPS) return asks;
   const start = (Math.floor(now / DAY_MS) * MAX_BUNDLE_LOOKUPS) % asks.length;
@@ -193,33 +209,40 @@ const refundedOrders = (purchases: readonly BundlePurchase[]) => new Set(purchas
  * this player holds an order (PollenClaims). Two records of one order in one read pay or take back once, and an
  * order any record shows refunded is never paid.
  */
-export function planBundles(purchases: readonly BundlePurchase[], held: (order: string) => boolean, lines: readonly Line[], refunded: ReadonlySet<string>, giftOpen: boolean, bundles: Bundles = BUNDLES): { entries: LedgerEntry[]; credited: BundleCredit[]; refunds: BundleRefund[] } {
-  const entries: LedgerEntry[] = [], credited: BundleCredit[] = [], refunds: BundleRefund[] = [];
+export function planBundles(purchases: readonly BundlePurchase[], held: (order: string) => boolean, lines: readonly Line[], refunded: ReadonlySet<string>, giftOpen: Readonly<Record<Currency, boolean>>, bundles: Bundles = BUNDLES): BundlePlan {
+  const plan: BundlePlan = { entries: [], credited: [], refunds: [], fruitCredited: [], fruitRefunds: [] };
   const paid = paidIndex(lines), back = new Set(refunded), gone = refundedOrders(purchases);
-  let open = giftOpen;
+  const open = { ...giftOpen };
+  // An App Store sandbox Fruit pack pays once per identity (the owner's call, 2026-11-09): sandbox purchases cost nothing.
+  let sandboxFruit = lines.some(line => currencyOfLine(line) === "fruits" && line.detail.environment === "sandbox");
   for (const purchase of purchases) {
-    const prior = paidLine(purchase, paid);
+    const prior = paidLine(purchase, paid), currency = bundles.bundles[purchase.bundle].currency;
     if (purchase.refunded) {
       if (!prior || back.has(refundKeyOf(prior))) continue;
       back.add(refundKeyOf(prior));
       const order = typeof prior.detail.order === "string" && prior.detail.order ? prior.detail.order : purchase.order;
-      entries.push({ key: refundKeyOf(prior), kind: "bundlerefund", amount: -prior.amount,
+      const fruit = currencyOfLine(prior) === "fruits";
+      plan.entries.push({ key: refundKeyOf(prior), kind: fruit ? "fruitbundlerefund" : "bundlerefund", amount: -prior.amount,
         detail: { bundle: purchase.bundle, purchase_id: purchase.id, order, usd_cents: Number(prior.detail.usd_cents ?? purchase.usd_cents), refunds: prior.key } });
-      refunds.push({ bundle: purchase.bundle, amount: prior.amount, ...receiptOf(order) });
+      (fruit ? plan.fruitRefunds : plan.refunds).push({ bundle: purchase.bundle, amount: prior.amount, ...receiptOf(order), key: refundKeyOf(prior) });
       continue;
     }
     if (prior || !purchase.order || gone.has(purchase.order) || !held(purchase.order)) continue;
-    const pollen = bundles.bundles[purchase.bundle].pollen * purchase.quantity, gift = open ? firstGift(purchase.bundle, bundles) : 0;
-    // Only the first bundle a player ever buys can carry the gift, whatever the percent was then.
-    open = false;
-    const line: Line = { key: bundleKey(purchase.order), amount: pollen + gift,
+    if (currency === "fruits" && purchase.sandbox) { if (sandboxFruit) continue; sandboxFruit = true; }
+    const amount = bundles.bundles[purchase.bundle].amount * purchase.quantity, gift = open[currency] ? firstGift(purchase.bundle, bundles) : 0;
+    // Only the first pack a player ever buys in a currency can carry its gift, whatever the percent was then.
+    open[currency] = false;
+    const line: Line = { key: bundleKey(purchase.order, currency), amount: amount + gift,
       detail: { bundle: purchase.bundle, purchase_id: purchase.id, order: purchase.order, usd_cents: purchase.usd_cents, first_gift: gift, quantity: purchase.quantity, purchased_at: purchase.purchased_at, ...(purchase.sandbox ? { environment: "sandbox" } : {}) } };
     paid.byOrder.set(purchase.order, line); paid.byKey.set(line.key, line);
-    entries.push({ ...line, kind: "bundle" });
-    credited.push({ bundle: purchase.bundle, pollen, first_gift: gift, ...receiptOf(purchase.order), purchased_at: purchase.purchased_at, usd_cents: purchase.usd_cents });
+    plan.entries.push({ ...line, kind: currency === "fruits" ? "fruitbundle" : "bundle" });
+    const receipt = { bundle: purchase.bundle, first_gift: gift, ...receiptOf(purchase.order), purchased_at: purchase.purchased_at, usd_cents: purchase.usd_cents };
+    if (currency === "fruits") plan.fruitCredited.push({ ...receipt, fruits: amount }); else plan.credited.push({ ...receipt, pollen: amount });
   }
-  return { entries, credited, refunds };
+  return plan;
 }
+/** One read's plan; each refund names its ledger key (`key`), dropped from the reply. */
+export type BundlePlan = { entries: LedgerEntry[]; credited: BundleCredit[]; refunds: (BundleRefund & { key: string })[]; fruitCredited: FruitCredit[]; fruitRefunds: (BundleRefund & { key: string })[] };
 
 /**
  * Reads RevenueCat and pays or takes back what is due. `active` re-checks the identity inside the
@@ -259,11 +282,18 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
     // Planned again from the ledger as stored now: what an overlapping call paid is never paid twice.
     const lines = bundleLines(storage);
     const refunded = new Set(refundLines(storage).map(line => line.key));
-    const plan = planBundles([...listed, ...moved], order => answers[order] === true, lines, refunded, lines.length === 0, bundles);
-    applyLedger(storage, plan.entries, now, rates);
+    const giftOpen = { pollen: !lines.some(line => currencyOfLine(line) === "pollen"), fruits: !lines.some(line => currencyOfLine(line) === "fruits") };
+    const plan = planBundles([...listed, ...moved], order => answers[order] === true, lines, refunded, giftOpen, bundles);
+    // A Fruit refund that finds those Fruits already turned into Pollen takes the shortfall back as Pollen (fruit-ops.ts).
+    const taken = withReclaim(storage, plan.entries);
+    applyLedger(storage, taken.entries, now, rates);
     // Only the daily check notes its time: a claim that finds nothing new writes no row.
     if (checked && deps.lookup) noteCheck(storage, now);
-    outcome = { status: "settled", reply: { schema_version: 1, balance: walletBalance(storage, now, rates), credited: plan.credited, refunded: plan.refunds, pending: false }, ...(lookupFailed ? { lookup_failed: lookupFailed } : {}) };
+    const strip = <T extends { key: string }>({ key: _, ...rest }: T) => rest;
+    const fruity = plan.fruitCredited.length > 0 || plan.fruitRefunds.length > 0 || hasBundles(storage, "fruits");
+    outcome = { status: "settled", reply: { schema_version: 1, balance: walletBalance(storage, now, rates), credited: plan.credited, refunded: plan.refunds.map(strip), pending: false,
+      ...(fruity ? { fruit_credited: plan.fruitCredited, fruit_refunded: plan.fruitRefunds.map(refund => ({ ...strip(refund), pollen_taken: taken.pollen.get(refund.key) ?? 0 })), fruit_balance: purse(storage, "fruits").balance } : {}) },
+      ...(lookupFailed ? { lookup_failed: lookupFailed } : {}) };
   });
   if (lookupFailed) paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); else paused.delete(storage);
   return outcome;
@@ -271,10 +301,10 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
 
 /** GET /v1/pollen's bundles part. Read only; never throws. */
 export function bundlesView(storage: DurableObjectStorage, bundles: Bundles = BUNDLES): BundlesView {
-  const percent = bundles.first_bonus_percent;
+  const percent = bundles.first_bonus_percent.pollen;
   try {
     // The same total the history shows (wallet.ts purchaseLines).
-    return { first_gift: percent > 0 && !hasBundles(storage), first_gift_percent: percent, spent_usd_cents: purchaseLines(storage).spent_usd_cents ?? 0 };
+    return { first_gift: percent > 0 && !hasBundles(storage, "pollen"), first_gift_percent: percent, spent_usd_cents: purchaseLines(storage).spent_usd_cents ?? 0 };
   } catch { return { first_gift: false, first_gift_percent: percent, spent_usd_cents: 0 }; }
 }
 

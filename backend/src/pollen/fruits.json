@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "grant": { "first": 15, "step": 1, "every": 2, "top": 30, "welcome": 25 },
+  "convert": { "pollen_per_fruit": 400, "step": 10 },
+  "sunshine": { "price": 10, "turns": 24 },
+  "achievements": [
+    { "id": "together_first", "fruits": 10, "track": "together_clears", "goal": 1 },
+    { "id": "together_five", "fruits": 15, "track": "together_clears", "goal": 5 },
+    { "id": "together_all", "fruits": 30, "track": "together_clears", "goal": 0 },
+    { "id": "hard_first", "fruits": 10, "track": "hard_clears", "goal": 1 },
+    { "id": "hard_five", "fruits": 15, "track": "hard_clears", "goal": 5 },
+    { "id": "hard_all", "fruits": 30, "track": "every_hard", "goal": 1 },
+    { "id": "duel_win_first", "fruits": 10, "track": "duel_wins", "goal": 1 },
+    { "id": "duel_win_ten", "fruits": 20, "track": "duel_wins", "goal": 10 },
+    { "id": "ghost_first", "fruits": 10, "track": "ghost_wins", "goal": 1 },
+    { "id": "ghost_five", "fruits": 15, "track": "ghost_wins", "goal": 5 },
+    { "id": "public_duel_first", "fruits": 10, "track": "public_duels", "goal": 1 },
+    { "id": "top_ten", "fruits": 15, "track": "top_ten_ribbon", "goal": 1 },
+    { "id": "gold_leaf", "fruits": 30, "track": "gold_leaf", "goal": 1 },
+    { "id": "keepsake_first", "fruits": 10, "track": "keepsakes", "goal": 1 },
+    { "id": "keepsake_all", "fruits": 30, "track": "keepsakes_best", "goal": 1 }
+  ]
+}

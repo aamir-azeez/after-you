@@ -1,6 +1,8 @@
 import { HASH_PATTERN, IDEMPOTENCY_PATTERN, equalHash, fail, isObject, ok, type Outcome } from "../protocol";
 import { POLLEN_SHOP_TABLES, isLazyTable } from "../storage-schema";
-import { CATALOG, isDefaultLook, itemPrice, offeredItems, offeredPacks, offeredSets, setPieces, sold, validLook, type Catalog, type Look } from "./catalog";
+import { CATALOG, isDefaultLook, itemCurrency, itemPrice, offeredItems, offeredPacks, offeredSets, setCurrency, setPieces, sold, validLook, type Catalog, type Look } from "./catalog";
+import { purse } from "./currency";
+import { buySunshine, convertFruits, payFruits } from "./fruit-ops";
 import { charge, quote, type SpendRequest } from "./spend";
 import { chapterCleared, payFromWallet, walletBalance } from "./wallet";
 import { boardSource, earnedItems, setEarned } from "./earned";
@@ -26,7 +28,13 @@ import { boardSource, earnedItems, setEarned } from "./earned";
  * hashes the body first, and nothing here awaits.
  */
 export type OpKey = { key: string; hash: string };
-export type SpendReceipt = { schema_version: 1; op: "spend"; kind: SpendRequest["kind"]; id: string; pieces: string[]; cost: number; balance: number };
+/**
+ * `balance` is always the Pollen balance. `currency`: what the spend cost, "fruits" for an Orchard item, a conversion or
+ * Sunshine (absent on receipts kept before Fruits, read as Pollen), with `fruit_balance` after it; `pollen`: what a
+ * conversion added; `sunshine_left`: the Sunshine turns a purchase gave.
+ */
+export type SpendReceipt = { schema_version: 1; op: "spend"; kind: SpendRequest["kind"]; id: string; pieces: string[]; cost: number; balance: number;
+  currency?: "pollen" | "fruits"; fruit_balance?: number; pollen?: number; sunshine_left?: number };
 export type LookState = { schema_version: 1; look: Look; revision: number };
 export type EquipReceipt = LookState & { op: "equip" };
 /**
@@ -41,7 +49,9 @@ export type OwnedView = { items: string[]; packs: string[]; look: Look; look_rev
  * What it adds beside that while the shop is on. `prices`, `sets` and `pack_price` come from the server's
  * catalogue, which decides what is sold and for how much, so a phone shows the price the spend checks.
  */
-export type ShopView = { prices: Record<string, number>; offered_packs: string[]; pack_price: number; sets: Record<string, string[]>; unlocked: string[] };
+export type ShopView = { prices: Record<string, number>; offered_packs: string[]; pack_price: number; sets: Record<string, string[]>; unlocked: string[];
+  /** While Fruits are on: the Orchard's prices in Fruits and its sets, apart from `prices` and `sets` so an older app never shows a Fruit price as Pollen. */
+  fruit_prices?: Record<string, number>; fruit_sets?: Record<string, string[]> };
 export type WardrobeView = OwnedView & ShopView;
 
 const [ITEMS, OPS] = POLLEN_SHOP_TABLES;
@@ -127,24 +137,48 @@ export function validOpKey(op: OpKey): boolean { return IDEMPOTENCY_PATTERN.test
  * balance and the cost the phone showed (`expected`), then paid, owned and receipted together.
  * `active` re-checks the identity inside the transaction.
  */
-export function spend(storage: DurableObjectStorage, op: OpKey, request: SpendRequest, expected: number, now: number, active: () => boolean, catalog: Catalog = CATALOG): Outcome<SpendReceipt> {
+export function spend(storage: DurableObjectStorage, op: OpKey, request: SpendRequest, expected: number, now: number, active: () => boolean, catalog: Catalog = CATALOG, fruits = false): Outcome<SpendReceipt> {
   if (!validOpKey(op)) return fail(400, "invalid_pollen_spend");
   return storage.transactionSync((): Outcome<SpendReceipt> => {
     if (!active()) return fail(404, "identity_absent");
     const prior = priorOp<SpendReceipt>(storage, op); if (prior) return prior;
+    if (request.kind === "convert" || request.kind === "sunshine") return fruitSpend(storage, op, request, expected, now, fruits);
     const items = owned(storage);
-    const quoted = quote(request, { owned: new Set(items.keys()), cleared: level => chapterCleared(storage, level) }, catalog);
+    const quoted = quote(request, { owned: new Set(items.keys()), cleared: level => chapterCleared(storage, level) }, catalog, fruits);
     if (!quoted.ok) return quoted;
-    const left = charge(quoted.value, walletBalance(storage, now), expected);
+    const inFruits = quoted.value.currency === "fruits";
+    const left = charge(quoted.value, inFruits ? purse(storage, "fruits").balance : walletBalance(storage, now), expected);
     if (!left.ok) return left;
-    const balance = payFromWallet(storage, quoted.value.cost, now);
-    if (balance === null || balance !== left.value) return fail(409, "pollen_price_changed");
+    const paid = inFruits ? payFruits(storage, quoted.value.cost) : payFromWallet(storage, quoted.value.cost, now);
+    if (paid === null || paid !== left.value) return fail(409, "pollen_price_changed");
     ensureTables(storage);
     for (const id of quoted.value.pieces) storage.sql.exec("INSERT INTO pollen_items VALUES (?,?,?,?)", id, request.kind === "pack" ? "pack" : "item", "bought", now);
-    const receipt: SpendReceipt = { schema_version: 1, op: "spend", kind: request.kind, id: request.id, pieces: quoted.value.pieces, cost: quoted.value.cost, balance };
+    const receipt: SpendReceipt = { schema_version: 1, op: "spend", kind: request.kind, id: request.id, pieces: quoted.value.pieces, cost: quoted.value.cost,
+      balance: inFruits ? walletBalance(storage, now) : paid, ...(inFruits ? { currency: "fruits" as const, fruit_balance: paid } : {}) };
     saveOp(storage, op, now, receipt);
     return ok(receipt);
   });
+}
+
+/** Turning Fruits into Pollen ("convert", `id` the Fruit count) and buying Sunshine ("sunshine"), receipted like any spend (fruit-ops.ts). */
+function fruitSpend(storage: DurableObjectStorage, op: OpKey, request: SpendRequest, expected: number, now: number, fruits: boolean): Outcome<SpendReceipt> {
+  if (!fruits) return fail(503, "fruits_disabled");
+  const base = { schema_version: 1 as const, op: "spend" as const, kind: request.kind, id: request.id, pieces: [], currency: "fruits" as const };
+  let receipt: SpendReceipt;
+  if (request.kind === "convert") {
+    if (!/^[1-9][0-9]{0,6}$/.test(request.id)) return fail(400, "invalid_pollen_spend");
+    const done = convertFruits(storage, op.key, Number(request.id), expected, now);
+    if (!done.ok) return done;
+    receipt = { ...base, cost: done.value.fruits, balance: done.value.balance, fruit_balance: done.value.fruit_balance, pollen: done.value.pollen };
+  } else {
+    if (request.id !== "sunshine") return fail(400, "invalid_pollen_spend");
+    const done = buySunshine(storage, expected);
+    if (!done.ok) return done;
+    receipt = { ...base, cost: expected, balance: walletBalance(storage, now), fruit_balance: done.value.fruit_balance, sunshine_left: done.value.sunshine_left };
+  }
+  ensureTables(storage);
+  saveOp(storage, op, now, receipt);
+  return ok(receipt);
 }
 
 /**
@@ -189,15 +223,18 @@ export function noteBoardRewards(storage: DurableObjectStorage, board: string, i
 }
 
 /** GET /v1/pollen's wardrobe part: what is owned and worn, and with `shop` what is sold and for how much. Read only. */
-export function wardrobeView(storage: DurableObjectStorage, shop: boolean, catalog: Catalog = CATALOG): OwnedView | WardrobeView {
+export function wardrobeView(storage: DurableObjectStorage, shop: boolean, catalog: Catalog = CATALOG, fruits = false): OwnedView | WardrobeView {
   const items = owned(storage), look = storedLook(storage, catalog);
   const base: OwnedView = { items: [...items].filter(([, kind]) => kind === "item").map(([id]) => id).sort(), packs: [...items].filter(([, kind]) => kind === "pack").map(([id]) => id).sort(),
-    look: look.look, look_revision: look.revision, offered: offeredItems(catalog) };
+    look: look.look, look_revision: look.revision, offered: offeredItems(catalog, fruits) };
   if (!shop) return base;
-  const sets = Object.fromEntries(offeredSets(catalog).map(set => [set, setPieces(set, catalog)]));
-  const unlocked = offeredItems(catalog).filter(id => catalog.items[id].unlock !== "" && chapterCleared(storage, catalog.items[id].unlock));
-  return { ...base, prices: Object.fromEntries(offeredItems(catalog).filter(id => sold(id, catalog)).map(id => [id, itemPrice(id, catalog)])),
-    offered_packs: offeredPacks(catalog), pack_price: catalog.pack_price, sets, unlocked };
+  // Each currency's prices and sets apart: `prices` and `sets` stay Pollen only, as older apps read them.
+  const inPollen = (id: string) => itemCurrency(id, catalog) === "pollen", soldNow = offeredItems(catalog, fruits).filter(id => sold(id, catalog, fruits));
+  const setsIn = (pollen: boolean) => Object.fromEntries(offeredSets(catalog, fruits).filter(set => (setCurrency(set, catalog) === "pollen") === pollen).map(set => [set, setPieces(set, catalog, fruits)]));
+  const pricesIn = (pollen: boolean) => Object.fromEntries(soldNow.filter(id => inPollen(id) === pollen).map(id => [id, itemPrice(id, catalog)]));
+  const unlocked = offeredItems(catalog, fruits).filter(id => catalog.items[id].unlock !== "" && chapterCleared(storage, catalog.items[id].unlock));
+  return { ...base, prices: pricesIn(true), offered_packs: offeredPacks(catalog), pack_price: catalog.pack_price, sets: setsIn(true), unlocked,
+    ...(fruits ? { fruit_prices: pricesIn(false), fruit_sets: setsIn(false) } : {}) };
 }
 
 /** Account erasure: owned items, receipts and the look go. */

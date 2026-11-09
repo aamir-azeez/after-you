@@ -30,26 +30,28 @@ const vars = (features: string[] = ON, revenuecat: Record<string, unknown> = { p
   ({ POLLEN_SECRET: SECRET, REVENUECAT_SECRET_KEY: "synthetic-revenuecat-key-for-tests", CONFIG: configJson({ features, revenuecat }) });
 
 /** The table with another first gift (+10%), and with none, as the owner may set them. */
-const GIFT: Bundles = checkedBundles({ ...JSON.parse(JSON.stringify(serverBundles)), first_bonus_percent: 10 });
-const OFF: Bundles = checkedBundles({ ...JSON.parse(JSON.stringify(serverBundles)), first_bonus_percent: 0 });
+const GIFT: Bundles = checkedBundles({ ...JSON.parse(JSON.stringify(serverBundles)), first_bonus_percent: { pollen: 10, fruits: 100 } });
+const OFF: Bundles = checkedBundles({ ...JSON.parse(JSON.stringify(serverBundles)), first_bonus_percent: { pollen: 0, fruits: 100 } });
 /** What a player's first bundle pays at the shipped table: its Pollen and the first gift. */
-const firstPay = (key: BundleKey) => BUNDLES.bundles[key].pollen + firstGift(key);
+const firstPay = (key: BundleKey) => BUNDLES.bundles[key].amount + firstGift(key);
+/** The Pollen bundles alone, as the Pollen rules list them. */
+const pollenOnly = () => Object.entries(BUNDLES.bundles).filter(([, bundle]) => bundle.currency === "pollen");
 
 describe("the bundle table", () => {
   it("is the same file the game reads", () => {
     expect(gameBundles).toEqual(serverBundles);
   });
   it("pays the rules' amounts in both stores, with the owner's 20% first gift rounded down, and 10% when set", () => {
-    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.pollen, bundle.bonus, bundle.play_store.usd_cents, bundle.app_store.usd_cents]])))
+    expect(Object.fromEntries(pollenOnly().map(([key, bundle]) => [key, [bundle.amount, bundle.bonus, bundle.play_store.usd_cents, bundle.app_store.usd_cents]])))
       .toEqual({ pinch: [5000, 0, 99, 149], pouch: [21000, 1000, 399, 499], jar: [44000, 4000, 799, 899], basket: [115000, 15000, 1999, 2199] });
-    expect(BUNDLES.first_bonus_percent).toBe(20);
+    expect(BUNDLES.first_bonus_percent).toEqual({ pollen: 20, fruits: 100 });
     expect(["pinch", "pouch", "jar", "basket"].map(key => firstGift(key as "pinch"))).toEqual([1000, 4200, 8800, 23000]);
     expect(["pinch", "pouch", "jar", "basket"].map(key => firstGift(key as "pinch", GIFT))).toEqual([500, 2100, 4400, 11500]);
   });
   it("names the real Play, App Store and RevenueCat products, each once", () => {
-    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.play_store.product, bundle.play_store.revenuecat_product]])))
+    expect(Object.fromEntries(pollenOnly().map(([key, bundle]) => [key, [bundle.play_store.product, bundle.play_store.revenuecat_product]])))
       .toEqual({ pinch: ["after_you_pollen_pinch", "prodd4e2b730e5"], pouch: ["after_you_pollen_pouch", "prod25def0f41d"], jar: ["after_you_pollen_jar", "proda8a9bcf221"], basket: ["after_you_pollen_basket", "prodde607106a6"] });
-    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.app_store.product, bundle.app_store.revenuecat_product]])))
+    expect(Object.fromEntries(pollenOnly().map(([key, bundle]) => [key, [bundle.app_store.product, bundle.app_store.revenuecat_product]])))
       .toEqual({ pinch: ["after_you_pollen_pinch_ios", "prod235f72a2e0"], pouch: ["after_you_pollen_pouch_ios", "prodc18dc7e8e6"], jar: ["after_you_pollen_jar_ios", "prod5920f90735"], basket: ["after_you_pollen_basket_ios", "prod9dfc202990"] });
   });
   it("keeps the App Store's ids apart from Play's, and a store set up only when all four of its products are", () => {
@@ -59,14 +61,14 @@ describe("the bundle table", () => {
     const unset = JSON.parse(JSON.stringify(serverBundles));
     for (const key of ["pinch", "pouch", "jar", "basket"]) unset.bundles[key].app_store.revenuecat_product = "";
     const table = checkedBundles(unset);
-    expect(storeReady("app_store", table)).toBe(false);
+    expect(storeReady("app_store", "pollen", table)).toBe(false);
     expect(Object.values(bundleProducts(table)).map(each => each.store)).toEqual(["play_store", "play_store", "play_store", "play_store"]);
     expect(Object.values(bundleProducts()).filter(each => each.store === "app_store").map(each => each.bundle)).toEqual(["pinch", "pouch", "jar", "basket"]);
   });
   it("refuses a table outside its shape", () => {
     const copy = () => JSON.parse(JSON.stringify(serverBundles));
     for (const change of [(v: any) => { delete v.bundles.jar; }, (v: any) => { v.bundles.extra = v.bundles.jar; }, (v: any) => { v.bundles.pinch.bonus = 6000; },
-      (v: any) => { v.first_bonus_percent = 101; }, (v: any) => { v.bundles.pouch.pollen = 1.5; }, (v: any) => { v.schema_version = 1; },
+      (v: any) => { v.first_bonus_percent.pollen = 101; }, (v: any) => { v.bundles.pouch.amount = 1.5; }, (v: any) => { v.schema_version = 1; },
       (v: any) => { v.bundles.jar.play_store.revenuecat_product = v.bundles.pouch.play_store.revenuecat_product; }, (v: any) => { v.bundles.jar.play_store.product = "Jar Product"; },
       (v: any) => { v.bundles.jar.play_store.revenuecat_product = "jar"; }, (v: any) => { v.bundles.jar.app_store.revenuecat_product = v.bundles.jar.play_store.revenuecat_product; },
       (v: any) => { v.bundles.jar.app_store.product = v.bundles.jar.play_store.product; }, (v: any) => { v.bundles.jar.app_store.revenuecat_product = ""; },

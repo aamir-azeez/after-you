@@ -1,8 +1,8 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
-import { anyBundlesOn, appStoreBundlesOn, bundlesOn, earningOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
-import { ITEM_ID_PATTERN, OFFERED_TAG } from "./catalog";
+import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
+import { FRUITS_OFFERED_TAG, ITEM_ID_PATTERN, OFFERED_TAG } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
@@ -54,6 +54,10 @@ export const GRANT_VERSION = 1;
 export const BUNDLES_VERSION = 1;
 /** The same for the App Store's bundles, which switch on by themselves: an iPhone sells bundles only while this is sent. */
 export const APP_STORE_BUNDLES_VERSION = 1;
+/** Fruits (the wallet read's `fruits`, Orchard prices, converting, Sunshine, achievements), so a phone shows them only while they are on. */
+export const FRUITS_VERSION = 1;
+/** Fruit packs per store (Play, and the App Store's own field), each only once that store's Fruit products are set up. */
+export const FRUIT_PACKS_VERSION = 1;
 /** Claims one request may carry; each costs a Room read and a Player credit. */
 export const MAX_CLAIMS_PER_REQUEST = 4;
 /** A Full Journey with no end (a lifetime unlock): the latest time a Date holds. */
@@ -117,13 +121,18 @@ export function pollenWanted(request: Request): boolean { return request.headers
 /** Earning works only with the flag on and a usable POLLEN_SECRET (no turn is paid without its bloom roll). */
 export function pollenEarning(env: ServerVars): boolean { return earningOn(env); }
 /** The capability field for GET /v2/capabilities: empty unless the client asked while earning works. */
-export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_offered_tag?: string; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number; pollen_bundles_version?: number; pollen_app_store_bundles_version?: number } {
+export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_offered_tag?: string; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number; pollen_bundles_version?: number; pollen_app_store_bundles_version?: number;
+  pollen_fruits_version?: number; pollen_fruit_packs_version?: number; pollen_app_store_fruit_packs_version?: number } {
   if (!pollenWanted(request) || !pollenEarning(env)) return {};
-  const shop = pollenShopClient(request);
-  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION, pollen_offered_tag: OFFERED_TAG } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
+  const shop = pollenShopClient(request), fruits = shop && fruitsOn(env);
+  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION, pollen_offered_tag: fruits ? FRUITS_OFFERED_TAG : OFFERED_TAG } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
     ...(shop && itemBloomsOn(env) ? { pollen_item_blooms_version: ITEM_BLOOMS_VERSION } : {}), ...(grantOn(env) ? { pollen_grant_version: GRANT_VERSION } : {}),
-    ...(shop && bundlesOn(env) ? { pollen_bundles_version: BUNDLES_VERSION } : {}), ...(shop && appStoreBundlesOn(env) ? { pollen_app_store_bundles_version: APP_STORE_BUNDLES_VERSION } : {}) };
+    ...(shop && bundlesOn(env) ? { pollen_bundles_version: BUNDLES_VERSION } : {}), ...(shop && appStoreBundlesOn(env) ? { pollen_app_store_bundles_version: APP_STORE_BUNDLES_VERSION } : {}),
+    ...(fruits ? { pollen_fruits_version: FRUITS_VERSION } : {}), ...(shop && fruitPacksOn(env) ? { pollen_fruit_packs_version: FRUIT_PACKS_VERSION } : {}),
+    ...(shop && appStoreFruitPacksOn(env) ? { pollen_app_store_fruit_packs_version: FRUIT_PACKS_VERSION } : {}) };
 }
+/** Whether this request gets Fruits (features.ts fruitsOn), for an app offered the shop. */
+export function fruitsFor(request: Request, env: ServerVars): boolean { return pollenShopClient(request) && fruitsOn(env); }
 
 const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;
 /** A standalone turn POST while the flag is on: auth() then reads the player's Full Journey end with the room check. */
@@ -266,7 +275,8 @@ export async function routePollen(request: Request, path: string, playerId: stri
   return { schema_version: 1, results: pollenReplyClient(request) ? results : results.map(result => { const { receipt: _, ...rest } = result as Record<string, unknown>; return rest; }) };
 }
 
-const SPEND_KINDS = ["item", "set", "pack"] as const;
+/** "convert" (id: the Fruit count) and "sunshine" (id "sunshine") are Fruit spends (pollen/fruit-ops.ts), refused while Fruits are off. */
+const SPEND_KINDS = ["item", "set", "pack", "convert", "sunshine"] as const;
 /**
  * POST /v1/pollen/equip (POLLEN_WARDROBE) and /spend (POLLEN_SHOP), after auth(). The body is hashed here, as room
  * operations are, so the Player's spend or equip runs in one synchronous transaction.
@@ -287,7 +297,9 @@ async function routeWardrobe(request: Request, path: string, playerId: string, e
   if (spend) {
     if (!SPEND_KINDS.includes(input.kind as typeof SPEND_KINDS[number]) || typeof input.id !== "string" || !ITEM_ID_PATTERN.test(input.id) ||
       typeof input.expected_cost !== "number" || !Number.isSafeInteger(input.expected_cost) || input.expected_cost < 0) throw new ApiError(400, code);
-    return unwrap(await player.pollenSpend(playerId, device, op, { kind: input.kind as typeof SPEND_KINDS[number], id: input.id }, input.expected_cost));
+    const kind = input.kind as typeof SPEND_KINDS[number];
+    if ((kind === "convert" || kind === "sunshine") && !fruitsOn(env)) throw new ApiError(503, "fruits_disabled");
+    return unwrap(await player.pollenSpend(playerId, device, op, { kind, id: input.id }, input.expected_cost, fruitsOn(env)));
   }
   if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1 || !isObject(input.look)) throw new ApiError(400, code);
   return unwrap(await player.pollenEquip(playerId, device, op, input.look, input.revision));

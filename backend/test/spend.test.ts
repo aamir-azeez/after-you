@@ -36,7 +36,8 @@ describe("the shop catalogue", () => {
     }
   });
   it("keeps the 1:5:20:50:100 ramp and sells no earned item", () => {
-    expect(CATALOG.tier_prices).toEqual({ common: 1000, uncommon: 5000, rare: 20000, epic: 50000, special: 100000, earned: 0 });
+    expect(CATALOG.tier_prices).toEqual({ common: 1000, uncommon: 5000, rare: 20000, epic: 50000, special: 100000, earned: 0, sprig: 10, fruit_small: 25, fruit_hat: 50, fruit_body: 100 });
+    expect(CATALOG.tier_currency).toEqual(manifest.tier_currency);
     for (const id of ["gold_leaf", "every_hard", "top_ten_ribbon"]) expect(quote({ kind: "item", id }, holding()), id).toMatchObject({ ok: false, code: "not_for_sale" });
   });
   it("refuses a catalogue that breaks its own rules", () => {
@@ -66,14 +67,14 @@ describe("the shop catalogue", () => {
 
 describe("spend maths", () => {
   it("prices one item by its tier", () => {
-    expect(quote({ kind: "item", id: "daisy_pin" }, holding(), FIXTURE)).toEqual({ ok: true, value: { kind: "item", id: "daisy_pin", pieces: ["daisy_pin"], full: 5000, cost: 5000 } });
+    expect(quote({ kind: "item", id: "daisy_pin" }, holding(), FIXTURE)).toEqual({ ok: true, value: { kind: "item", id: "daisy_pin", pieces: ["daisy_pin"], full: 5000, cost: 5000, currency: "pollen" } });
     expect(quote({ kind: "item", id: "nope" }, holding(), FIXTURE)).toMatchObject({ ok: false, status: 404, code: "unknown_item" });
     expect(quote({ kind: "item", id: "hidden" }, holding(), FIXTURE)).toMatchObject({ ok: false, code: "not_for_sale" });
     expect(quote({ kind: "item", id: "ribbon" }, holding(), FIXTURE)).toMatchObject({ ok: false, code: "not_for_sale" });
   });
   it("takes 15% off a set with two or more missing pieces, rounded down to 100", () => {
     // The rules' own example: a Common, an Uncommon and a Rare, 26,000 apart or 22,100 together.
-    expect(quote({ kind: "set", id: "meadow" }, holding(), FIXTURE)).toEqual({ ok: true, value: { kind: "set", id: "meadow", pieces: ["acorn_cap", "daisy_pin", "petal_trail"], full: 26000, cost: 22100 } });
+    expect(quote({ kind: "set", id: "meadow" }, holding(), FIXTURE)).toEqual({ ok: true, value: { kind: "set", id: "meadow", pieces: ["acorn_cap", "daisy_pin", "petal_trail"], full: 26000, cost: 22100, currency: "pollen" } });
     expect(setCost(6000, 2, FIXTURE)).toBe(5100);
     expect(setCost(1100, 2, FIXTURE)).toBe(900);
     expect(setCost(5000, 1, FIXTURE)).toBe(5000);
@@ -101,7 +102,7 @@ describe("spend maths", () => {
     expect(quote({ kind: "pack", id: "acorn_cap" }, holding(), FIXTURE)).toMatchObject({ ok: false, code: "unknown_item" });
   });
   it("refuses a negative balance, a cost the phone did not show and a short balance", () => {
-    const quoted = { kind: "item" as const, id: "daisy_pin", pieces: ["daisy_pin"], full: 5000, cost: 5000 };
+    const quoted = { kind: "item" as const, id: "daisy_pin", pieces: ["daisy_pin"], full: 5000, cost: 5000, currency: "pollen" as const };
     expect(charge(quoted, 5000, 5000)).toEqual({ ok: true, value: 0 });
     expect(charge(quoted, 24000, 5000)).toEqual({ ok: true, value: 19000 });
     expect(charge(quoted, -1, 5000)).toMatchObject({ ok: false, status: 403, code: "pollen_blocked" });

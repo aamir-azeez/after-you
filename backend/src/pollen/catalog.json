@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
   "slots": ["hat", "body", "leaf"],
-  "tier_prices": { "common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0 },
+  "tier_prices": { "common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 10, "fruit_small": 25, "fruit_hat": 50, "fruit_body": 100 },
+  "tier_currency": { "sprig": "fruits", "fruit_small": "fruits", "fruit_hat": "fruits", "fruit_body": "fruits" },
   "set_discount_percent": 15,
-  "set_round_down": 100,
+  "set_round_down": { "pollen": 100, "fruits": 5 },
   "set_min_missing": 2,
   "pack_price": 5000,
   "items": {
@@ -15,7 +16,15 @@
     "lighthouse_lamp": { "slot": "hat", "tier": "special", "unlock": "sleeping-lighthouse", "set": "", "released": true },
     "gold_leaf": { "slot": "leaf", "tier": "earned", "unlock": "", "set": "", "released": true },
     "every_hard": { "slot": "leaf", "tier": "earned", "unlock": "", "set": "", "released": true },
-    "top_ten_ribbon": { "slot": "hat", "tier": "earned", "unlock": "", "set": "", "released": true }
+    "top_ten_ribbon": { "slot": "hat", "tier": "earned", "unlock": "", "set": "", "released": true },
+    "fruit_cap": { "slot": "hat", "tier": "fruit_hat", "unlock": "", "set": "orchard", "released": true },
+    "blossom_crown": { "slot": "hat", "tier": "fruit_hat", "unlock": "", "set": "", "released": true },
+    "orchard_skin": { "slot": "body", "tier": "fruit_body", "unlock": "", "set": "orchard", "released": true },
+    "apple_leaf": { "slot": "leaf", "tier": "fruit_small", "unlock": "", "set": "orchard", "released": true },
+    "sprig_coral": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
+    "sprig_plum": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
+    "sprig_sun": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
+    "sprig_sky": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true }
   },
   "packs": {
     "garden_faces": { "released": true, "faces": ["heart_eyes", "proud", "wink"] },

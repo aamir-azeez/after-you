@@ -60,6 +60,8 @@ export const FLAG_VARS = Object.freeze({
   pollenBundlesAppStore: "POLLEN_BUNDLES_APP_STORE",
   /** App Store sandbox Pollen bundles for any player (pollen/bundle-settle.ts), so App Review sees a sandbox purchase pay: read only by a claim that finds nothing new in production. Needs POLLEN_BUNDLES_APP_STORE. Set only through FEATURES. */
   pollenSandboxAppStore: "POLLEN_SANDBOX_APP_STORE",
+  /** Fruits, the rarer second currency (pollen/fruits.ts): the wallet read's Fruits part, Orchard prices, turning Fruits into Pollen, Sunshine, achievements, the grant's Fruits and its capability. Fruit packs also need that store's bundle flag. Needs POLLEN_SHOP. Off, nothing Fruit is written or shown. */
+  fruits: "FRUITS",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
   /** Leaderboard posts need platform accounts (leaderboards/platform-rule.ts): a finished together run enters its board only when both players have a Play Games or Game Center link, and phones learn it from the leaderboards capability. Needs LEADERBOARDS. Keep it off while Game Center is off, or iPhone pairs can never post. */

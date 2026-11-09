@@ -51,7 +51,7 @@ type Held = { amount: number; reason?: unknown };
  * missing one asks `price` for the line to write, or a refusal.
  */
 function creditOnce(storage: DurableObjectStorage, key: string, now: number, active: () => boolean, rates: Rates,
-  price: () => Outcome<LedgerEntry>, held: (detail: Record<string, unknown>, amount: number) => Held): Outcome<DuelWinAnswer> {
+  price: () => Outcome<LedgerEntry>, held: (detail: Record<string, unknown>, amount: number) => Held, fresh?: (storage: DurableObjectStorage) => void): Outcome<DuelWinAnswer> {
   return storage.transactionSync((): Outcome<DuelWinAnswer> => {
     if (!active()) return fail(404, "identity_absent");
     const prior = ledgerLines(storage, key, 1).find(line => line.key === key);
@@ -59,11 +59,17 @@ function creditOnce(storage: DurableObjectStorage, key: string, now: number, act
     const entry = price();
     if (!entry.ok) return entry;
     applyLedger(storage, [entry.value], now, rates);
+    fresh?.(storage);
     return ok(answer(entry.value.amount, entry.value.detail.reason, walletBalance(storage, now, rates)));
   });
 }
 
-export function creditDuelWin(storage: DurableObjectStorage, win: DuelWin, now: number, active: () => boolean, rates: Rates = RATES): Outcome<DuelWinAnswer> {
+/**
+ * `fresh`: run inside the transaction once the line is first written (achievements.ts, while Fruits are on);
+ * `public`: a public duel's win, kept on the line so it never counts as a friend duel win.
+ */
+export type CreditOptions = { fresh?: (storage: DurableObjectStorage) => void; public?: boolean };
+export function creditDuelWin(storage: DurableObjectStorage, win: DuelWin, now: number, active: () => boolean, rates: Rates = RATES, options: CreditOptions = {}): Outcome<DuelWinAnswer> {
   const key = WIN_PREFIX + win.duel_id;
   return creditOnce(storage, key, now, active, rates, () => {
     if (now - win.decided_ms > rates.claims.turn_claim_days * DAY_MS) return fail(410, "duel_win_expired");
@@ -73,16 +79,16 @@ export function creditDuelWin(storage: DurableObjectStorage, win: DuelWin, now: 
     const theirs = samePairKeys(weekLines.map(line => line.detail), win.opponent_pair ? [win.opponent, win.opponent_pair] : [win.opponent]);
     const met = lines.some(line => keysOf(line.detail).some(id => theirs.has(id)));
     const reason = lines.length >= rates.duels.wins_per_week ? "weekly_cap" : met ? "same_pair" : undefined;
-    return ok({ key, kind: "duelwin", amount: reason ? 0 : rates.duels.win_bonus, detail: { duel_id: win.duel_id, week, opponent: win.opponent, ...(win.opponent_pair ? { opponent_pair: win.opponent_pair } : {}), ...(reason ? { reason } : {}) } });
-  }, (detail, amount) => ({ amount, reason: detail.reason }));
+    return ok({ key, kind: "duelwin", amount: reason ? 0 : rates.duels.win_bonus, detail: { duel_id: win.duel_id, week, opponent: win.opponent, ...(win.opponent_pair ? { opponent_pair: win.opponent_pair } : {}), ...(reason ? { reason } : {}), ...(options.public ? { public: true } : {}) } });
+  }, (detail, amount) => ({ amount, reason: detail.reason }), options.fresh);
 }
 
 /** The first win over the developers' ghost on a board. Never pruned (wallet.ts prunes only turns and duel wins), so it pays once for good. */
-export function creditGhostWin(storage: DurableObjectStorage, win: GhostWin, now: number, active: () => boolean, rates: Rates = RATES): Outcome<DuelWinAnswer> {
+export function creditGhostWin(storage: DurableObjectStorage, win: GhostWin, now: number, active: () => boolean, rates: Rates = RATES, options: CreditOptions = {}): Outcome<DuelWinAnswer> {
   const key = GHOST_PREFIX + win.board;
   return creditOnce(storage, key, now, active, rates,
     () => ok({ key, kind: "ghostwin", amount: rates.duels.ghost_win_bonus, detail: { duel_id: win.duel_id } }),
-    (detail, amount) => detail.duel_id === win.duel_id ? { amount } : { amount: 0, reason: "board_paid" });
+    (detail, amount) => detail.duel_id === win.duel_id ? { amount } : { amount: 0, reason: "board_paid" }, options.fresh);
 }
 
 /** A win line's opponent keys: its pair key, or its account key and the id key beside it (leaderboards/pair-accounts.ts). */
@@ -108,13 +114,15 @@ function samePairKeys(details: readonly Record<string, unknown>[], start: readon
 }
 
 /** A public duel's held extra, once per player per duel (EXTRA_PREFIX). A repeat answers the line as written. */
-export function creditDuelExtra(storage: DurableObjectStorage, extra: DuelExtra, now: number, active: () => boolean, rates: Rates = RATES): Outcome<DuelExtraAnswer> {
+export function creditDuelExtra(storage: DurableObjectStorage, extra: DuelExtra, now: number, active: () => boolean, rates: Rates = RATES, options: CreditOptions = {}): Outcome<DuelExtraAnswer> {
   const key = EXTRA_PREFIX + extra.duel_id;
   return storage.transactionSync((): Outcome<DuelExtraAnswer> => {
     if (!active()) return fail(404, "identity_absent");
     const prior = ledgerLines(storage, key, 1).find(line => line.key === key);
     if (prior) return ok(extraAnswer(prior.amount, prior.detail, walletBalance(storage, now, rates)));
     if (now - extra.decided_ms > rates.claims.turn_claim_days * DAY_MS) return fail(410, "duel_extra_expired");
+    // A public duel finished and not forfeited (achievements.ts public_duels: at least 1, so a repeat changes nothing).
+    if (extra.paid) options.fresh?.(storage);
     const held = extra.room_id ? duelRoomPay(storage, extra.room_id).held : 0;
     const amount = extra.paid ? held : 0;
     // Nothing held writes nothing: a player who never took a duel turn here has no line to keep.

@@ -1,6 +1,7 @@
 import { isObject } from "../protocol";
 import raw from "./catalog.json";
 import { PACK_FACES } from "../v2/end-reactions";
+import { CURRENCIES, type Currency } from "./currency";
 
 /**
  * The wardrobe catalogue the server sells from (POLLEN-RULES.md "Prices"), as data: catalog.json
@@ -11,8 +12,11 @@ import { PACK_FACES } from "../v2/end-reactions";
  * game/tests/fixtures/golden/cosmetic_manifest.json.
  *
  * - items: the pip cosmetics, keyed by id; each worn in one slot. An "earned" tier is never sold.
+ * - tier_currency: the tiers priced in Fruits (the Orchard: sprig, fruit_small, fruit_hat, fruit_body); every other
+ *   tier is Pollen. An Orchard item is sold, offered and drawn only while Fruits are on (the `fruits` argument below),
+ *   and never drops from an item bloom (item-blooms.ts takes Pollen tiers only).
  * - sets: an item's `set` names the set it belongs to; buying a set's missing pieces together
- *   costs less (spend.ts). No item has a set yet.
+ *   costs less (spend.ts), rounded down to its currency's `set_round_down`. A set's pieces share one currency.
  * - packs: reaction packs at `pack_price`, each listing its faces. Every pack face of the end reactions
  *   (v2/end-reactions.ts PACK_FACES) belongs to exactly one pack, and a pack holds nothing else, so the
  *   face a turn may carry and the pack that owns it can never drift apart.
@@ -20,8 +24,8 @@ import { PACK_FACES } from "../v2/end-reactions";
 export type CatalogItem = { slot: string; tier: string; unlock: string; set: string; released: boolean };
 export type CatalogPack = { released: boolean; faces: readonly string[] };
 export type Catalog = {
-  schema_version: 1; slots: readonly string[]; tier_prices: Readonly<Record<string, number>>;
-  set_discount_percent: number; set_round_down: number; set_min_missing: number; pack_price: number;
+  schema_version: 1; slots: readonly string[]; tier_prices: Readonly<Record<string, number>>; tier_currency: Readonly<Record<string, "fruits">>;
+  set_discount_percent: number; set_round_down: Readonly<Record<Currency, number>>; set_min_missing: number; pack_price: number;
   items: Readonly<Record<string, CatalogItem>>; packs: Readonly<Record<string, CatalogPack>>;
 };
 /** What a pip wears: one item id per filled slot. {} is the default look. */
@@ -31,19 +35,22 @@ export const EARNED_TIER = "earned";
 export const ITEM_ID_PATTERN = /^[a-z0-9_]{1,40}$/;
 const LEVEL_PATTERN = /^[a-z0-9-]{1,64}$/;
 const count = (value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
-const exact = (value: Record<string, unknown>, keys: string[]) => Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+const exact = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 
 /** Throws on any entry outside the shapes above, so a bad edit fails every test and every deploy check. */
 export function checkedCatalog(value: unknown): Catalog {
   const bad = (what: string): never => { throw new Error(`invalid_pollen_catalog: ${what}`); };
   if (!isObject(value) || value.schema_version !== 1) bad("schema_version");
   const v = value as Record<string, unknown>;
-  if (!exact(v, ["schema_version", "slots", "tier_prices", "set_discount_percent", "set_round_down", "set_min_missing", "pack_price", "items", "packs"])) bad("fields");
+  if (!exact(v, ["schema_version", "slots", "tier_prices", "tier_currency", "set_discount_percent", "set_round_down", "set_min_missing", "pack_price", "items", "packs"])) bad("fields");
   if (!Array.isArray(v.slots) || !v.slots.length || !v.slots.every(slot => typeof slot === "string" && ITEM_ID_PATTERN.test(slot)) || new Set(v.slots).size !== v.slots.length) bad("slots");
   if (!isObject(v.tier_prices) || !Object.values(v.tier_prices).every(price => count(price)) || v.tier_prices[EARNED_TIER] !== 0) bad("tier_prices");
-  if (!count(v.set_discount_percent, 0, 99) || !count(v.set_round_down, 1) || !count(v.set_min_missing, 2) || !count(v.pack_price, 1)) bad("set or pack rules");
+  if (!isObject(v.tier_currency) || !Object.entries(v.tier_currency).every(([tier, currency]) => currency === "fruits" && tier !== EARNED_TIER && Object.hasOwn(v.tier_prices as object, tier))) bad("tier_currency");
+  const rounding = v.set_round_down as Record<string, unknown>;
+  if (!count(v.set_discount_percent, 0, 99) || !isObject(rounding) || !exact(rounding, CURRENCIES) || !CURRENCIES.every(currency => count(rounding[currency], 1)) || !count(v.set_min_missing, 2) || !count(v.pack_price, 1)) bad("set or pack rules");
   if (!isObject(v.items) || !isObject(v.packs)) bad("items");
-  const slots = v.slots as string[], prices = v.tier_prices as Record<string, number>;
+  const slots = v.slots as string[], prices = v.tier_prices as Record<string, number>, currencies = v.tier_currency as Record<string, string>;
+  const setCurrency = new Map<string, string>();
   for (const [id, item] of Object.entries(v.items as Record<string, unknown>)) {
     if (!ITEM_ID_PATTERN.test(id) || !isObject(item) || !exact(item, ["slot", "tier", "unlock", "set", "released"])) bad(id);
     const entry = item as Record<string, unknown>;
@@ -52,6 +59,9 @@ export function checkedCatalog(value: unknown): Catalog {
     if (entry.set !== "" && !(typeof entry.set === "string" && ITEM_ID_PATTERN.test(entry.set))) bad(id);
     // An earned item is never sold, so it never sits in a set or behind an unlock.
     if (entry.tier === EARNED_TIER && (entry.set !== "" || entry.unlock !== "")) bad(id);
+    // A set is bought in one currency.
+    const currency = currencies[entry.tier as string] ?? "pollen";
+    if (entry.set !== "") { if ((setCurrency.get(entry.set as string) ?? currency) !== currency) bad(`${entry.set} mixes currencies`); setCurrency.set(entry.set as string, currency); }
   }
   const packed = new Set<string>();
   for (const [id, pack] of Object.entries(v.packs as Record<string, unknown>)) {
@@ -74,40 +84,58 @@ function deepFreeze<T>(value: T): T {
 
 export const CATALOG: Catalog = checkedCatalog(raw);
 
-/** An item's price in Pollen, from its tier; 0 for an earned or unknown item. */
+/** The currency a tier is priced in. */
+export function tierCurrency(tier: string, catalog: Catalog = CATALOG): Currency { return catalog.tier_currency[tier] ?? "pollen"; }
+/** The currency an item is sold in (Pollen for an unknown one). */
+export function itemCurrency(id: string, catalog: Catalog = CATALOG): Currency {
+  const item = catalog.items[id];
+  return item ? tierCurrency(item.tier, catalog) : "pollen";
+}
+/** An item's price in its currency, from its tier; 0 for an earned or unknown item. */
 export function itemPrice(id: string, catalog: Catalog = CATALOG): number {
   const item = catalog.items[id];
   return item ? catalog.tier_prices[item.tier] ?? 0 : 0;
 }
-/** Whether the item can be bought now: known, released and not earned only. */
-export function sold(id: string, catalog: Catalog = CATALOG): boolean {
+/** Whether an item may be shown and drawn now: released, and a Fruit item only while Fruits are on. */
+function shown(id: string, catalog: Catalog, fruits: boolean): boolean {
   const item = catalog.items[id];
-  return !!item && item.released && item.tier !== EARNED_TIER && itemPrice(id, catalog) > 0;
+  return !!item && item.released && (fruits || itemCurrency(id, catalog) === "pollen");
+}
+/** Whether the item can be bought now: shown and not earned only. `fruits`: Fruits are on (features.ts fruitsOn). */
+export function sold(id: string, catalog: Catalog = CATALOG, fruits = false): boolean {
+  return shown(id, catalog, fruits) && catalog.items[id].tier !== EARNED_TIER && itemPrice(id, catalog) > 0;
 }
 /** The released, sold pieces of a set, in catalogue order. */
-export function setPieces(setId: string, catalog: Catalog = CATALOG): string[] {
-  return Object.keys(catalog.items).filter(id => catalog.items[id].set === setId && sold(id, catalog));
+export function setPieces(setId: string, catalog: Catalog = CATALOG, fruits = false): string[] {
+  return Object.keys(catalog.items).filter(id => catalog.items[id].set === setId && sold(id, catalog, fruits));
 }
-/** Every set with at least one released piece, in catalogue order of first piece. */
-export function offeredSets(catalog: Catalog = CATALOG): string[] {
-  return [...new Set(Object.keys(catalog.items).filter(id => sold(id, catalog)).map(id => catalog.items[id].set).filter(Boolean))];
+/** The currency a set is bought in (its pieces share one). */
+export function setCurrency(setId: string, catalog: Catalog = CATALOG): Currency {
+  const piece = Object.keys(catalog.items).find(id => catalog.items[id].set === setId);
+  return piece ? itemCurrency(piece, catalog) : "pollen";
 }
-/** Released items (sold or earned) and released packs: what a phone may show and draw. */
-export function offeredItems(catalog: Catalog = CATALOG): string[] {
-  return Object.keys(catalog.items).filter(id => catalog.items[id].released);
+/** Every set with at least one sold piece, in catalogue order of first piece. */
+export function offeredSets(catalog: Catalog = CATALOG, fruits = false): string[] {
+  return [...new Set(Object.keys(catalog.items).filter(id => sold(id, catalog, fruits)).map(id => catalog.items[id].set).filter(Boolean))];
+}
+/** Released items (sold or earned) a phone may show and draw: an Orchard item only while Fruits are on. */
+export function offeredItems(catalog: Catalog = CATALOG, fruits = false): string[] {
+  return Object.keys(catalog.items).filter(id => shown(id, catalog, fruits));
 }
 /**
  * A short tag of offeredItems() (FNV-1a, 8 hex), sent beside the wardrobe's capability (routes.ts pollenCapability).
  * A phone keeps the `offered` of its last wallet read and draws nothing else on any pip, so it reads the wallet
  * again once this tag differs from the one its kept read came with: releasing an item reaches every phone on its
- * next launch, without a wallet read on each launch.
+ * next launch, without a wallet read on each launch. Turning Fruits on or off changes it too.
  */
-export function offeredTag(catalog: Catalog = CATALOG): string {
+export function offeredTag(catalog: Catalog = CATALOG, fruits = false): string {
   let hash = 0x811c9dc5;
-  for (const char of offeredItems(catalog).join(",")) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+  for (const char of offeredItems(catalog, fruits).join(",")) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
   return hash.toString(16).padStart(8, "0");
 }
 export const OFFERED_TAG = offeredTag();
+/** The tag while Fruits are on. */
+export const FRUITS_OFFERED_TAG = offeredTag(CATALOG, true);
 export function offeredPacks(catalog: Catalog = CATALOG): string[] {
   return Object.keys(catalog.packs).filter(id => catalog.packs[id].released);
 }

@@ -1,6 +1,6 @@
 import { flags, type ServerVars } from "../flags";
 import { pollenSecret } from "./keys";
-import { APP_STORE_BUNDLES_READY } from "./bundles";
+import { APP_STORE_BUNDLES_READY, APP_STORE_FRUIT_PACKS_READY, PLAY_FRUIT_PACKS_READY } from "./bundles";
 
 /**
  * Which Pollen parts are on. Earning needs POLLEN_EARN and a usable POLLEN_SECRET (no turn is paid
@@ -35,6 +35,14 @@ export function sandboxAppStoreOn(env: ServerVars): boolean { return appStoreBun
 export function itemDropsOn(env: ServerVars, shopClient: boolean): boolean { return shopClient === true && itemBloomsOn(env); }
 /** Bundles sell in at least one store: the claim route and the wallet read's `bundles` part. */
 export function anyBundlesOn(env: ServerVars): boolean { return bundlesOn(env) || appStoreBundlesOn(env); }
+/**
+ * Fruits (pollen/fruits.ts) need the shop: Orchard items are sold and worn through it, and Fruits only buy what it sells.
+ * Off, nothing Fruit is shown, paid or written; Fruit lines already kept are still taken back by a refund.
+ */
+export function fruitsOn(env: ServerVars): boolean { return shopOn(env) && flags.fruits(env); }
+/** Fruit packs sell in a store while Fruits are on, that store's bundles sell, and its four Fruit products are set up (bundles.ts storeReady). */
+export function fruitPacksOn(env: ServerVars): boolean { return fruitsOn(env) && bundlesOn(env) && PLAY_FRUIT_PACKS_READY; }
+export function appStoreFruitPacksOn(env: ServerVars): boolean { return fruitsOn(env) && flags.pollenBundlesAppStore(env) && refundsOn(env) && APP_STORE_FRUIT_PACKS_READY; }
 
 /** What the wallet read carries: nothing more, the wardrobe (owned items and the look), or the wardrobe with the shop. */
 export type WardrobeMode = "off" | "wardrobe" | "shop";

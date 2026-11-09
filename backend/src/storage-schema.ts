@@ -73,8 +73,17 @@ export const POLLEN_EARNED_TABLES: readonly LazyTable[] = Object.freeze([
 export const POLLEN_BUNDLE_TABLES: readonly LazyTable[] = Object.freeze([
   { name: "pollen_bundle_check", schema: "CREATE TABLE pollen_bundle_check (id INTEGER PRIMARY KEY CHECK(id=1), checked_at INTEGER NOT NULL)", maxRows: 1 }
 ]);
+/**
+ * Player: the purse (pollen/currency.ts), made by its first write, never for a player Fruits never touched, so a Player
+ * with FRUITS off stores nothing new. One row per kind: "fruits" (balance and lifetime earned; Fruits stay out of the
+ * wallet row, which older code checks key by key), "sunshine" (bank turns left), "converted" (Fruits turned into Pollen
+ * that no refund took back yet), the achievement counters ("count:…") and the one-time achievement check ("swept").
+ */
+export const POLLEN_PURSE_TABLES: readonly LazyTable[] = Object.freeze([
+  { name: "currency_purse", schema: "CREATE TABLE currency_purse (kind TEXT PRIMARY KEY, balance INTEGER NOT NULL, earned INTEGER NOT NULL) WITHOUT ROWID", maxRows: 16 }
+]);
 /** Every Pollen table a Player may hold: account erasure drops them all, and snapshots refuse a Player that has any. */
-export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([...POLLEN_WALLET_TABLES, ...POLLEN_SHOP_TABLES, ...POLLEN_GRANT_TABLES, ...POLLEN_EARNED_TABLES, ...POLLEN_BUNDLE_TABLES]);
+export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([...POLLEN_WALLET_TABLES, ...POLLEN_SHOP_TABLES, ...POLLEN_GRANT_TABLES, ...POLLEN_EARNED_TABLES, ...POLLEN_BUNDLE_TABLES, ...POLLEN_PURSE_TABLES]);
 /** RoomV2: frozen Pollen facts per accepted turn and each member's Full Journey end (pollen/turn-facts.ts). */
 export const POLLEN_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
   // One row per accepted turn, as the turns table (MAX_TURNS); the oldest go first past it.

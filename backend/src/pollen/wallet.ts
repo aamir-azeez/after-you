@@ -10,6 +10,7 @@ import { itemBloomRoll, resolveItemBloom, type ItemBloom, type ItemDrops } from 
 import { validTurnFacts } from "./turn-facts";
 import { noteEveryHard } from "./earned";
 import { refId, refStore } from "./claims";
+import { FRUIT_PREFIX, addToPurse, currencyOfKey, dropPurse } from "./currency";
 
 /**
  * The Pollen wallet, in the player's own Player Durable Object: the only real balance. Phones keep
@@ -54,21 +55,35 @@ export type WalletState = {
  * the current bank, so no week's turns move onto a later bank). `boost_from`: whose Full Journey
  * boosted it, from the turn player's side.
  */
-export type TurnLine = TurnPrice & { reason?: "repeat" | "bank_empty" | "late"; boost_from?: ("you" | "partner")[] };
+/** `sunshine`: what Sunshine added on a bank turn (the plain amount again, fruit-ops.ts), already in `total`. */
+export type TurnLine = TurnPrice & { reason?: "repeat" | "bank_empty" | "late"; boost_from?: ("you" | "partner")[]; sunshine?: number };
 export type ClearLine = { kind: "clear" | "hardclear"; level_id: string } & ClearPrice;
+/** The achievements one credit paid (achievements.ts), and the Fruit balance after them. */
+export type FruitsReceipt = { balance: number; paid: { id: string; amount: number }[] };
 /**
  * What a credit answers, and what the turn reply's `pollen` field carries. `item_bloom`: what an item
  * bloom gave (an item, or its tier's price), only on a turn that dropped one; its Pollen is in `earned`
- * but never in the turn's own total, and is never boosted.
+ * but never in the turn's own total, and is never boosted. `sunshine_left`: Sunshine turns left after one
+ * this turn used; `fruits`: achievements it paid. Both only while Fruits are on; older apps ignore them.
  */
-export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[]; item_bloom?: ItemBloom; paid_clears?: ClearLine[] };
+export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[]; item_bloom?: ItemBloom; paid_clears?: ClearLine[]; sunshine_left?: number; fruits?: FruitsReceipt };
+/**
+ * Given to a credit while Fruits are on (player.ts), so the wallet never reaches into the Fruit modules itself
+ * (as ItemDrops does for the wardrobe). Both run inside the credit's transaction.
+ * - sunshine: spends one Sunshine turn for a bank turn, answering the turns left after it, or null when none was left.
+ * - achievements: pays every achievement now due (achievements.ts), or null when nothing was.
+ */
+export type FruitHooks = {
+  sunshine: (storage: DurableObjectStorage) => number | null;
+  achievements: (storage: DurableObjectStorage, now: number, moment: { level_id?: string; room_id?: string; together_level?: string }) => FruitsReceipt | null;
+};
 export type WalletView = { schema_version: 1; balance: number; earned: number; bank: number };
 /**
  * One paid claim. A turn's also says what its line said, for the app's Pollen from play page:
  * its skill bonuses, a lucky bloom (2 or 3) and why it paid the after-bank rate.
  * `bundle`, `order` and `usd_cents`: a bundle's or a bundle refund's line (bundle-settle.ts).
  */
-export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string; bonuses?: TurnPrice["bonuses"]; bloom?: number; reason?: TurnLine["reason"]; bundle?: string; order?: string; usd_cents?: number };
+export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string; bonuses?: TurnPrice["bonuses"]; bloom?: number; reason?: TurnLine["reason"]; sunshine?: number; bundle?: string; order?: string; usd_cents?: number };
 /** A chapter's first clear: what it pays before any room boost, and what it paid once it has (`paid`, with its boost). */
 export type FirstClear = { level_id: string; price: number; paid?: number };
 /**
@@ -90,8 +105,9 @@ export type HistoryView = { schema_version: 1; entries: HistoryEntry[]; first_cl
 /**
  * A first clear to pay: from the turn that finished a chapter together, or claimed by the app for a solo clear.
  * `room_id`: the room whose finish pays it, kept on the claim row, so a later claim from that room can say what it paid.
+ * `together`: made together (kept on the row as `together`, for the achievements, since a solo clear shares its key).
  */
-export type ClearClaim = { level_id: string; hard: boolean; boost_percent: number; room_id?: string };
+export type ClearClaim = { level_id: string; hard: boolean; boost_percent: number; room_id?: string; together?: boolean };
 
 const [WALLET, CLAIMS] = POLLEN_WALLET_TABLES;
 export const MAX_CLAIMS = CLAIMS.maxRows;
@@ -179,7 +195,8 @@ function prune(storage: DurableObjectStorage, wallet: WalletState, now: number, 
   const day = Math.floor(now / DAY_MS);
   if (wallet.pruned_day === day) return;
   // A turn holding a public duel's extra stays until the longest public duel is over and its extra could be paid (pollen/duel-pay.ts).
-  storage.sql.exec("DELETE FROM pollen_claims WHERE kind IN ('turn','duelwin','duelextra') AND created_at<? AND (kind!='turn' OR json_extract(data,'$.receipt.turn.duel_held') IS NULL OR created_at<?)",
+  // Conversion lines (fruit-ops.ts) are history only (their receipts are the spend's), so they go with turns and rows stay bounded.
+  storage.sql.exec("DELETE FROM pollen_claims WHERE kind IN ('turn','duelwin','duelextra','convert','fruitconvert') AND created_at<? AND (kind!='turn' OR json_extract(data,'$.receipt.turn.duel_held') IS NULL OR created_at<?)",
     now - rates.claims.turn_prune_days * DAY_MS, now - MAX_PUBLIC_DUEL_MS - rates.claims.turn_claim_days * DAY_MS);
   wallet.pruned_day = day;
 }
@@ -200,7 +217,8 @@ function payClears(storage: DurableObjectStorage, claim: ClearClaim, now: number
     const key = clearClaimKey(kind, claim.level_id), cost = clearPrice(claim.level_id, claim.boost_percent, rates);
     if (cost === null || claimed(storage, key)) continue;
     const line: ClearLine = { kind, level_id: claim.level_id, ...cost };
-    insertClaim(storage, key, kind, cost.total, now, { schema_version: 1, earned: cost.total, clears: [line] }, { level_id: claim.level_id, ...(claim.room_id ? { room_id: claim.room_id } : {}) });
+    insertClaim(storage, key, kind, cost.total, now, { schema_version: 1, earned: cost.total, clears: [line] },
+      { level_id: claim.level_id, ...(claim.room_id ? { room_id: claim.room_id } : {}), ...(claim.together ? { together: true } : {}) });
     lines.push(line);
   }
   if (lines.some(line => line.kind === "hardclear")) noteEveryHard(storage, level => claimed(storage, clearClaimKey("hardclear", level)) !== null, now);
@@ -230,7 +248,7 @@ function paidBy(storage: DurableObjectStorage, claim: ClearClaim): { paid_clears
  * The roll is the weekly slot's, like the lucky bloom's, so a retry or a later claim of the same
  * turn finds its receipt and rolls nothing new.
  */
-export async function creditTurn(storage: DurableObjectStorage, env: ServerVars, owner: string, facts: unknown, now: number, active: () => boolean, rates: Rates = RATES, drops?: ItemDrops): Promise<Outcome<PollenReceipt>> {
+export async function creditTurn(storage: DurableObjectStorage, env: ServerVars, owner: string, facts: unknown, now: number, active: () => boolean, rates: Rates = RATES, drops?: ItemDrops, fruits?: FruitHooks): Promise<Outcome<PollenReceipt>> {
   if (!validTurnFacts(facts)) return fail(400, "invalid_pollen_facts");
   if (facts.player_id !== owner) return fail(403, "pollen_claim_refused");
   const slot = { player_id: owner, week: facts.week, level_id: facts.level_id, stage_id: facts.stage_id, role: facts.role };
@@ -257,9 +275,13 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     const priced = price({ facts, bank, tail_index: tailIndex, bloom: roll.multiplier }, rates);
     const boostFrom = [...(facts.subscriber ? ["you" as const] : []), ...(facts.partner_subscriber ? ["partner" as const] : [])];
     const line: TurnLine = { ...priced, ...(bank ? {} : { reason: repeat ? "repeat" as const : late ? "late" as const : "bank_empty" as const }), ...(priced.boost_percent > 0 ? { boost_from: boostFrom } : {}) };
+    // Sunshine pays the plain amount (base and skill) again on a bank turn, and only there: a bank turn is always
+    // written below, so the Sunshine turn it spends is kept with this claim and a retry answers it, never spending twice.
+    const sunshineLeft = bank && fruits ? fruits.sunshine(storage) : null;
+    if (sunshineLeft !== null) { line.sunshine = line.amount; line.total += line.amount; }
     const turn = heldAfterSettle(storage, facts.room_id, line);
     ensureTables(storage);
-    const clears = facts.complete ? payClears(storage, { level_id: facts.level_id, hard: facts.hard && facts.together, boost_percent: facts.boost_percent }, now, rates) : [];
+    const clears = facts.complete ? payClears(storage, { level_id: facts.level_id, hard: facts.hard && facts.together, boost_percent: facts.boost_percent, together: true }, now, rates) : [];
     if (!bank && turn.total === 0 && clears.length === 0) return zero(turn);
     prune(storage, wallet, now, rates);
     // Only a bank turn rolls for an item: never an after-bank, repeat or late turn.
@@ -267,7 +289,10 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     if (item && "item_id" in item) drops!.give(storage, item.item_id, now);
     const itemPollen = item && "pollen" in item ? item.pollen : 0;
     const earned = turn.total + total(clears) + itemPollen;
-    const receipt: Omit<PollenReceipt, "balance"> = { schema_version: 1, earned, turn, clears, ...(item ? { item_bloom: item } : {}) };
+    // A chapter finished together may complete an achievement; paid in this transaction, kept on the receipt.
+    const paidFruits = facts.complete && fruits ? fruits.achievements(storage, now, { level_id: facts.level_id, room_id: facts.room_id, together_level: facts.level_id }) : null;
+    const receipt: Omit<PollenReceipt, "balance"> = { schema_version: 1, earned, turn, clears, ...(item ? { item_bloom: item } : {}),
+      ...(sunshineLeft !== null ? { sunshine_left: sunshineLeft } : {}), ...(paidFruits ? { fruits: paidFruits } : {}) };
     if (turn.total > 0 || bank) insertClaim(storage, key, "turn", turn.total + itemPollen, now, receipt,
       { room_id: facts.room_id, week: facts.week, level_id: facts.level_id, stage_id: facts.stage_id, role: facts.role, roll: roll.roll,
         ...(itemRoll ? { item_roll: itemRoll.roll } : {}), ...(item ? { item_tier: item.tier, ...("item_id" in item ? { item_id: item.item_id } : { item_pollen: item.pollen }) } : {}) });
@@ -279,20 +304,25 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
 }
 
 /** Credits a first clear (and a first Hard clear) once per chapter. Nothing new to pay writes nothing. */
-export function creditClear(storage: DurableObjectStorage, claim: ClearClaim, now: number, active: () => boolean, rates: Rates = RATES): Outcome<PollenReceipt> {
+export function creditClear(storage: DurableObjectStorage, claim: ClearClaim, now: number, active: () => boolean, rates: Rates = RATES, fruits?: FruitHooks): Outcome<PollenReceipt> {
   return storage.transactionSync((): Outcome<PollenReceipt> => {
     if (!active()) return fail(404, "identity_absent");
     if (chapterTier(claim.level_id, rates) === null) return fail(422, "unsupported_chapter");
     if (!count(claim.boost_percent, 0, boostPercent(2, rates))) return fail(400, "invalid_pollen_clear");
     const wallet = current(storage, now, rates);
-    if (present(storage) && (claim.hard ? ["clear", "hardclear"] as const : ["clear"] as const).every(kind => claimed(storage, clearClaimKey(kind, claim.level_id))))
-      return ok({ schema_version: 1, earned: 0, balance: wallet.balance, clears: [], ...paidBy(storage, claim) });
+    // A chapter finished together (a claim with Fruit hooks) may complete an achievement even when its clears were paid before.
+    const moment = { level_id: claim.level_id, ...(claim.room_id ? { room_id: claim.room_id } : {}), together_level: claim.level_id };
+    if (present(storage) && (claim.hard ? ["clear", "hardclear"] as const : ["clear"] as const).every(kind => claimed(storage, clearClaimKey(kind, claim.level_id)))) {
+      const paidFruits = fruits ? fruits.achievements(storage, now, moment) : null;
+      return ok({ schema_version: 1, earned: 0, balance: wallet.balance, clears: [], ...paidBy(storage, claim), ...(paidFruits ? { fruits: paidFruits } : {}) });
+    }
     ensureTables(storage);
     const clears = payClears(storage, claim, now, rates);
     const earned = total(clears);
     wallet.balance += earned; wallet.earned += earned;
     save(storage, wallet, now, rates);
-    return ok({ schema_version: 1, earned, balance: wallet.balance, clears });
+    const paidFruits = fruits ? fruits.achievements(storage, now, moment) : null;
+    return ok({ schema_version: 1, earned, balance: wallet.balance, clears, ...(paidFruits ? { fruits: paidFruits } : {}) });
   });
 }
 
@@ -304,6 +334,7 @@ export function creditSoloClear(storage: DurableObjectStorage, levelId: string, 
   if (!active()) return fail(404, "identity_absent");
   const subscriber = fullJourneyUntil(storage) > now;
   if (premium && !subscriber) return fail(403, "full_journey_required");
+  // A solo clear completes no achievement (they are all for playing together), so it gets no Fruit hooks.
   return creditClear(storage, { level_id: levelId, hard: false, boost_percent: boostPercent(Number(subscriber), rates) }, now, active, rates);
 }
 
@@ -346,7 +377,9 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
   const first_clears: FirstClear[] = Object.keys(rates.chapters).map(level_id => ({ level_id, price: rates.tiers[rates.chapters[level_id]].first_clear }));
   const bank: BankRules = { left: current(storage, now, rates).bank, refill: rates.bank.refill, cap: rates.bank.cap, tail: rates.tail.map(step => ({ pay: step.pay, turns: step.turns })) };
   if (!present(storage)) return { schema_version: 1, entries: [], first_clears, bank };
-  const entries = storage.sql.exec<{ kind: string; amount: number; created_at: number; data: string }>("SELECT kind,amount,created_at,data FROM pollen_claims ORDER BY created_at DESC, claim_key LIMIT ?", HISTORY_LIMIT).toArray().map(row => {
+  // Pollen lines only: a Fruit line (currency.ts FRUIT_PREFIX) is listed by the Fruits history (fruit-ops.ts fruitHistory).
+  const entries = storage.sql.exec<{ kind: string; amount: number; created_at: number; data: string }>("SELECT kind,amount,created_at,data FROM pollen_claims WHERE NOT (claim_key>=? AND claim_key<?) ORDER BY created_at DESC, claim_key LIMIT ?",
+    FRUIT_PREFIX, prefixEnd(FRUIT_PREFIX), HISTORY_LIMIT).toArray().map(row => {
     const stored = JSON.parse(row.data) as StoredClaim;
     const detail = stored.detail ?? {};
     const entry: HistoryEntry = { kind: row.kind, amount: row.amount, at: row.created_at };
@@ -356,6 +389,7 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
       if (turn.bonuses.length) entry.bonuses = turn.bonuses;
       if (turn.bloom > 1) entry.bloom = turn.bloom;
       if (turn.reason) entry.reason = turn.reason;
+      if (turn.sunshine) entry.sunshine = turn.sunshine;
     }
     if (row.kind === "bundle" || row.kind === "bundlerefund") Object.assign(entry, receiptFields(detail));
     return entry;
@@ -369,7 +403,7 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
 }
 
 /** A bundle or refund line's receipt fields, from what bundle-settle.ts kept with it. */
-function receiptFields(detail: Record<string, unknown>): { bundle?: string; order?: string; store?: "app_store"; usd_cents?: number } {
+export function receiptFields(detail: Record<string, unknown>): { bundle?: string; order?: string; store?: "app_store"; usd_cents?: number } {
   // The ledger keeps the reference (claims.ts bundleRef); the receipt shows the store's own id, and names the App Store.
   const order = typeof detail.order === "string" ? detail.order : undefined;
   return { ...(typeof detail.bundle === "string" ? { bundle: detail.bundle } : {}), ...(order !== undefined ? { order: refId(order), ...(refStore(order) === "app_store" ? { store: "app_store" as const } : {}) } : {}),
@@ -421,7 +455,7 @@ export function chapterCleared(storage: DurableObjectStorage, levelId: string): 
  * One line of the ledger that is not a turn or a clear (the monthly grant, its refunds): its claim key,
  * kind, signed amount and what to keep for checking it later.
  */
-export type LedgerEntry = { key: string; kind: string; amount: number; detail: Record<string, unknown> };
+export type LedgerEntry = { key: string; kind: string; amount: number; detail: Record<string, unknown>; earns?: false };
 /**
  * Pays (or, for a negative amount, takes back) each entry whose key is not in the ledger yet, inside
  * the caller's transaction; an entry already there changes nothing. The entries it applied.
@@ -430,24 +464,51 @@ export function applyLedger(storage: DurableObjectStorage, entries: readonly Led
   const fresh = entries.filter(entry => !inLedger(storage, entry.key));
   if (fresh.length === 0) return [];
   ensureTables(storage);
-  const wallet = current(storage, now, rates);
-  for (const entry of fresh) {
-    insertClaim(storage, entry.key, entry.kind, entry.amount, now, { schema_version: 1, earned: Math.max(0, entry.amount), clears: [] }, entry.detail);
-    wallet.balance += entry.amount;
-    if (entry.amount > 0) wallet.earned += entry.amount;
+  // Each line goes to its own currency's balance (currency.ts): a Fruit line to the purse, so a line in one currency
+  // never writes the other's row. A gain adds to lifetime earned unless the entry says it was exchanged (`earns` false).
+  const pollen = fresh.filter(entry => currencyOfKey(entry.key) === "pollen");
+  for (const entry of fresh) insertClaim(storage, entry.key, entry.kind, entry.amount, now, { schema_version: 1, earned: Math.max(0, entry.amount), clears: [] }, entry.detail);
+  for (const entry of fresh) if (currencyOfKey(entry.key) === "fruits") addToPurse(storage, "fruits", entry.amount, entry.earns !== false);
+  if (pollen.length) {
+    const wallet = current(storage, now, rates);
+    for (const entry of pollen) {
+      wallet.balance += entry.amount;
+      if (entry.amount > 0 && entry.earns !== false) wallet.earned += entry.amount;
+    }
+    save(storage, wallet, now, rates);
   }
-  save(storage, wallet, now, rates);
   return fresh;
 }
+/** The first key after every key that starts with `prefix`. */
+export const prefixEnd = (prefix: string) => prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
 /**
  * The ledger lines whose key starts with `prefix` ("grant:"), read as a range of the primary key so
- * no other line is scanned (for refunds of the grant).
+ * no other line is scanned (for refunds of the grant). A Pollen prefix never reaches a Fruit line ("fruit:…").
  */
 export function ledgerLines(storage: DurableObjectStorage, prefix: string, limit = 64): { key: string; amount: number; at: number; detail: Record<string, unknown> }[] {
   if (!present(storage) || prefix.length === 0) return [];
-  const end = prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
-  return storage.sql.exec<{ claim_key: string; amount: number; created_at: number; data: string }>("SELECT claim_key,amount,created_at,data FROM pollen_claims WHERE claim_key>=? AND claim_key<? LIMIT ?", prefix, end, limit).toArray()
+  return storage.sql.exec<{ claim_key: string; amount: number; created_at: number; data: string }>("SELECT claim_key,amount,created_at,data FROM pollen_claims WHERE claim_key>=? AND claim_key<? LIMIT ?", prefix, prefixEnd(prefix), limit).toArray()
     .map(row => ({ key: row.claim_key, amount: row.amount, at: row.created_at, detail: (JSON.parse(row.data) as StoredClaim).detail ?? {} }));
+}
+/** One ledger line by its exact key, or null. */
+export function ledgerLine(storage: DurableObjectStorage, key: string): { key: string; amount: number; at: number; detail: Record<string, unknown> } | null {
+  if (!present(storage)) return null;
+  const row = storage.sql.exec<{ amount: number; created_at: number; data: string }>("SELECT amount,created_at,data FROM pollen_claims WHERE claim_key=?", key).toArray()[0];
+  return row ? { key, amount: row.amount, at: row.created_at, detail: (JSON.parse(row.data) as StoredClaim).detail ?? {} } : null;
+}
+/** Lines of `kind` by when they landed, newest first (the Fruits history), skipping none of the prefix's range. */
+export function newestLines(storage: DurableObjectStorage, prefix: string, limit: number): { key: string; kind: string; amount: number; at: number; detail: Record<string, unknown> }[] {
+  if (!present(storage)) return [];
+  return storage.sql.exec<{ claim_key: string; kind: string; amount: number; created_at: number; data: string }>("SELECT claim_key,kind,amount,created_at,data FROM pollen_claims WHERE claim_key>=? AND claim_key<? ORDER BY created_at DESC, claim_key LIMIT ?",
+    prefix, prefixEnd(prefix), limit).toArray().map(row => ({ key: row.claim_key, kind: row.kind, amount: row.amount, at: row.created_at, detail: (JSON.parse(row.data) as StoredClaim).detail ?? {} }));
+}
+/** Adds `amount` Pollen (an exchange, fruit-ops.ts) or takes it, inside the caller's transaction, without counting it as earned; may go below 0. The new balance. */
+export function movePollen(storage: DurableObjectStorage, amount: number, now: number, rates: Rates = RATES): number {
+  ensureTables(storage);
+  const wallet = current(storage, now, rates);
+  wallet.balance += amount;
+  save(storage, wallet, now, rates);
+  return wallet.balance;
 }
 /** Whether a ledger key is taken. */
 export function inLedger(storage: DurableObjectStorage, key: string): boolean { return present(storage) && claimed(storage, key) !== null; }
@@ -456,6 +517,8 @@ export function inLedger(storage: DurableObjectStorage, key: string): boolean { 
 export function dropWallet(storage: DurableObjectStorage): void {
   for (const table of POLLEN_WALLET_TABLES) storage.sql.exec(`DROP TABLE IF EXISTS ${table.name}`);
   known.delete(storage);
+  // The Fruit balance and the rest of the purse are the wallet's too.
+  dropPurse(storage);
 }
 
 /** The tables as sqlite_master lists them (snapshot.ts refuses a Player that has them). */

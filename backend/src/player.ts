@@ -1,4 +1,4 @@
-import { creditDuelExtra, creditDuelWin, creditGhostWin, duelRoomPay, type DuelExtra, type DuelExtraAnswer, type DuelRoomPay, type DuelWin, type DuelWinAnswer, type GhostWin } from "./pollen/duel-pay";
+import { creditDuelExtra, creditDuelWin, creditGhostWin, duelRoomPay, type CreditOptions, type DuelExtra, type DuelExtraAnswer, type DuelRoomPay, type DuelWin, type DuelWinAnswer, type GhostWin } from "./pollen/duel-pay";
 import { DurableObject } from "cloudflare:workers";
 import { playerStanding, type Standing } from "./leaderboards/standing";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
@@ -30,10 +30,13 @@ import { MemoryBudget } from "./limits";
 import { switchApplies } from "./test-codes";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_EXTEND_WITHIN_MS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceChangeBudget, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
-import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
+import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type FruitHooks, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, ownedPackIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { anyBundlesOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
+import { anyBundlesOn, fruitsOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
+import { fruitHistoryView, fruitsView, type FruitsView } from "./pollen/fruits-view";
+import { settleAchievements, type Moment } from "./pollen/achievements";
+import { spendSunshineTurn } from "./pollen/fruit-ops";
 import { knownBoard } from "./leaderboards/boards";
 import { dropGrant, grantView, settleGrant, storedGrant, type GrantOutcome, type GrantView } from "./pollen/grant-settle";
 import { grantAlarmAt, grantWake } from "./pollen/grant-alarm";
@@ -45,7 +48,7 @@ import { bundleCheckDue, bundlesView, dropBundles, pacedClaim, settleBundles, ty
 import { SANDBOX, lookupBundles, readBundles, sandboxBundles, type BundleAsk } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
-import type { Look } from "./pollen/catalog";
+import { CATALOG, type Look } from "./pollen/catalog";
 import type { SpendRequest } from "./pollen/spend";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
 
@@ -243,10 +246,12 @@ export class Player extends DurableObject<Env> {
     } catch { /* the settle reports a malformed grant itself */ }
     return hint;
   }
-  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off", hint: GrantHint = "none"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
+  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off", hint: GrantHint = "none", withFruits = false): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
-    if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
+    // Fruits ride the shop's read (an app offered the shop), with their own history lines.
+    const fruits = mode === "shop" && withFruits;
+    if (view === "history") return { authorized: true, linked: true, pollen: { ...historyView(this.ctx.storage, Date.now()), ...(fruits ? fruitHistoryView(this.ctx.storage) : {}) } };
     const grant = grantOn(this.env), refunds = refundsOn(this.env), bundles = mode === "shop" && anyBundlesOn(this.env);
     if (grant) {
       const said = this.boughtHint(hint, Date.now());
@@ -263,8 +268,24 @@ export class Player extends DurableObject<Env> {
     const now = Date.now(), wallet = walletView(this.ctx.storage, now), ladder = grant ? grantView(this.ctx.storage) : undefined;
     const read = ladder ? { ...wallet, grant: ladder } : wallet;
     if (mode === "off") return { authorized: true, linked: true, pollen: read };
-    const wardrobe = wardrobeView(this.ctx.storage, mode === "shop");
-    return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), name_price_next: nextNamePriceAfter(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}) } : { ...read, wardrobe } };
+    const wardrobe = wardrobeView(this.ctx.storage, mode === "shop", CATALOG, fruits);
+    // The Fruits part reads in one transaction: its first read may pay what the player's records already earned (achievements.ts).
+    const fruitPart = fruits ? this.fruitsPart(now) : undefined;
+    return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), name_price_next: nextNamePriceAfter(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}),
+      ...(fruitPart ? { fruits: fruitPart } : {}) } : { ...read, wardrobe } };
+  }
+  /** The wallet read's Fruits part; a failure never stops the read it rides on (the phone keeps its last copy). */
+  private fruitsPart(now: number): FruitsView | undefined {
+    try { return this.ctx.storage.transactionSync(() => fruitsView(this.ctx.storage, now)); }
+    catch (error) { logWarning("fruits_read_failed", { reason: errorCode(error) }); return undefined; }
+  }
+  /** What a credit gets while Fruits are on (pollen/wallet.ts FruitHooks): Sunshine on bank turns and achievements at their moments. */
+  private fruitHooks(): FruitHooks | undefined {
+    return fruitsOn(this.env) ? { sunshine: spendSunshineTurn, achievements: (storage, now, moment) => settleAchievements(storage, now, moment) } : undefined;
+  }
+  /** The duel credits' achievement moment, while Fruits are on. */
+  private fruitMoment(moment: Moment): CreditOptions {
+    return fruitsOn(this.env) ? { fresh: storage => { settleAchievements(storage, Date.now(), moment); } } : {};
   }
   /** The daily bundle refund check (pollen/bundle-settle.ts); a failure never stops the wallet read it rides on. */
   private async checkBundles(owner: string): Promise<void> {
@@ -314,6 +335,7 @@ export class Player extends DurableObject<Env> {
         read: lifetime => readGrant(owner, this.env, lifetime),
         claim: keys => claimFor(this.env, owner, keys, now),
         lookup: ids => lookupGrantSubs(ids, owner, this.env),
+        fruits: fruitsOn(this.env),
         ...(paid ? { paid } : {})
       }, hint);
     } catch (error) { logWarning("pollen_grant_failed", { reason: errorCode(error) }); return "failed"; }
@@ -379,10 +401,10 @@ export class Player extends DurableObject<Env> {
    * Binding only: one purchase (POST /v1/pollen/spend, pollen/wardrobe.ts spend). The device is checked
    * again here, in the call that spends, so a recovery that replaced it can never be spent through.
    */
-  pollenSpend(owner: string, deviceHash: string, op: OpKey, request: SpendRequest, expected: number): Outcome<SpendReceipt> {
+  pollenSpend(owner: string, deviceHash: string, op: OpKey, request: SpendRequest, expected: number, fruits = false): Outcome<SpendReceipt> {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
-    return spend(this.ctx.storage, op, request, expected, Date.now(), this.pollenActive(owner));
+    return spend(this.ctx.storage, op, request, expected, Date.now(), this.pollenActive(owner), CATALOG, fruits);
   }
   /** Binding only: wears a look (POST /v1/pollen/equip, pollen/wardrobe.ts equip). */
   pollenEquip(owner: string, deviceHash: string, op: OpKey, look: unknown, revision: number): Outcome<EquipReceipt> {
@@ -397,7 +419,13 @@ export class Player extends DurableObject<Env> {
   noteBoardRewards(owner: string, board: string, items: string[], seq: number): Outcome<{ changed: boolean }> {
     if (knownBoard(board) === null || !validEarnedItems(items) || !Number.isSafeInteger(seq) || seq < 1) return fail(400, "invalid_board_rewards");
     if (!this.pollenActive(owner)()) return fail(404, "identity_absent");
-    return noteBoardRewards(this.ctx.storage, board, items, seq, Date.now(), this.pollenActive(owner));
+    const noted = noteBoardRewards(this.ctx.storage, board, items, seq, Date.now(), this.pollenActive(owner));
+    // A Top 10 ribbon or Gold leaf may complete an achievement.
+    if (noted.ok && noted.value.changed && fruitsOn(this.env)) {
+      try { this.ctx.storage.transactionSync(() => settleAchievements(this.ctx.storage, Date.now())); }
+      catch (error) { logWarning("fruits_achievements_failed", { reason: errorCode(error) }); }
+    }
+    return noted;
   }
   private pollenActive(owner: string): () => boolean {
     return () => { const identity = this.identity(); return identity?.state === "active" && identity.player_id === owner; };
@@ -410,7 +438,7 @@ export class Player extends DurableObject<Env> {
   creditTurn(owner: string, facts: unknown, drops = false): Promise<Outcome<PollenReceipt>> {
     if (!this.pollenActive(owner)()) return Promise.resolve(fail(404, "identity_absent"));
     return creditTurn(this.ctx.storage, this.env, owner, facts, Date.now(), this.pollenActive(owner), RATES,
-      itemDropsOn(this.env, drops) ? { owned: ownedItemIds, give: addDroppedItem } : undefined);
+      itemDropsOn(this.env, drops) ? { owned: ownedItemIds, give: addDroppedItem } : undefined, this.fruitHooks());
   }
   /**
    * Binding only: a first clear made together, from the facts of the turn that finished the chapter.
@@ -418,7 +446,7 @@ export class Player extends DurableObject<Env> {
    * `roomId`: that room, so the partner's later clear claim from it answers what it paid (`paid_clears`).
    */
   creditTogetherClear(owner: string, levelId: string, hard: boolean, boost: number, roomId?: string): Outcome<PollenReceipt> {
-    return creditClear(this.ctx.storage, { level_id: levelId, hard, boost_percent: boost, ...(roomId ? { room_id: roomId } : {}) }, Date.now(), this.pollenActive(owner));
+    return creditClear(this.ctx.storage, { level_id: levelId, hard, boost_percent: boost, ...(roomId ? { room_id: roomId } : {}), together: true }, Date.now(), this.pollenActive(owner), RATES, this.fruitHooks());
   }
   /**
    * Binding only: a solo first clear the app claims. A paid chapter needs Full Journey (the stored
@@ -429,11 +457,11 @@ export class Player extends DurableObject<Env> {
   }
   /** Binding only: a friend duel's win bonus, once per duel (pollen/duel-pay.ts). */
   creditDuelWin(owner: string, win: DuelWin): Outcome<DuelWinAnswer> {
-    return creditDuelWin(this.ctx.storage, win, Date.now(), this.pollenActive(owner));
+    return creditDuelWin(this.ctx.storage, win, Date.now(), this.pollenActive(owner), RATES, this.fruitMoment({ duel_win: true }));
   }
   /** Binding only: the first win over the developers' ghost on a board, once per board (pollen/duel-pay.ts). */
   creditGhostWin(owner: string, win: GhostWin): Outcome<DuelWinAnswer> {
-    return creditGhostWin(this.ctx.storage, win, Date.now(), this.pollenActive(owner));
+    return creditGhostWin(this.ctx.storage, win, Date.now(), this.pollenActive(owner), RATES, this.fruitMoment({}));
   }
   /** Binding only: what the player's turns in a duel's room paid, for its result card. Reads only. */
   duelRoomPay(roomId: string): DuelRoomPay { return duelRoomPay(this.ctx.storage, roomId); }
@@ -443,7 +471,9 @@ export class Player extends DurableObject<Env> {
    */
   settlePublicDuel(owner: string, extra: DuelExtra, win?: DuelWin): { extra: Outcome<DuelExtraAnswer>; win?: Outcome<DuelWinAnswer> } {
     const active = this.pollenActive(owner), now = Date.now();
-    return { extra: creditDuelExtra(this.ctx.storage, extra, now, active), ...(win ? { win: creditDuelWin(this.ctx.storage, win, now, active) } : {}) };
+    // A public duel's win never counts as a friend duel win; finishing one is its own achievement.
+    return { extra: creditDuelExtra(this.ctx.storage, extra, now, active, RATES, this.fruitMoment({ public_duel: true })),
+      ...(win ? { win: creditDuelWin(this.ctx.storage, win, now, active, RATES, { ...this.fruitMoment({}), public: true }) } : {}) };
   }
   /**
    * Story rooms are not linked one by one, and the Story drain releases a player's v3 links but keeps the

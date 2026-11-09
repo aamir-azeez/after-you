@@ -1,18 +1,30 @@
 {
-  "schema_version": 2,
-  "first_bonus_percent": 20,
+  "schema_version": 3,
+  "first_bonus_percent": { "pollen": 20, "fruits": 100 },
   "bundles": {
-    "pinch": { "pollen": 5000, "bonus": 0,
+    "pinch": { "currency": "pollen", "amount": 5000, "bonus": 0,
       "play_store": { "product": "after_you_pollen_pinch", "revenuecat_product": "prodd4e2b730e5", "usd_cents": 99 },
       "app_store": { "product": "after_you_pollen_pinch_ios", "revenuecat_product": "prod235f72a2e0", "usd_cents": 149 } },
-    "pouch": { "pollen": 21000, "bonus": 1000,
+    "pouch": { "currency": "pollen", "amount": 21000, "bonus": 1000,
       "play_store": { "product": "after_you_pollen_pouch", "revenuecat_product": "prod25def0f41d", "usd_cents": 399 },
       "app_store": { "product": "after_you_pollen_pouch_ios", "revenuecat_product": "prodc18dc7e8e6", "usd_cents": 499 } },
-    "jar": { "pollen": 44000, "bonus": 4000,
+    "jar": { "currency": "pollen", "amount": 44000, "bonus": 4000,
       "play_store": { "product": "after_you_pollen_jar", "revenuecat_product": "proda8a9bcf221", "usd_cents": 799 },
       "app_store": { "product": "after_you_pollen_jar_ios", "revenuecat_product": "prod5920f90735", "usd_cents": 899 } },
-    "basket": { "pollen": 115000, "bonus": 15000,
+    "basket": { "currency": "pollen", "amount": 115000, "bonus": 15000,
       "play_store": { "product": "after_you_pollen_basket", "revenuecat_product": "prodde607106a6", "usd_cents": 1999 },
-      "app_store": { "product": "after_you_pollen_basket_ios", "revenuecat_product": "prod9dfc202990", "usd_cents": 2199 } }
+      "app_store": { "product": "after_you_pollen_basket_ios", "revenuecat_product": "prod9dfc202990", "usd_cents": 2199 } },
+    "handful": { "currency": "fruits", "amount": 25, "bonus": 0,
+      "play_store": { "product": "after_you_fruits_handful", "revenuecat_product": "", "usd_cents": 249 },
+      "app_store": { "product": "after_you_fruits_handful_ios", "revenuecat_product": "", "usd_cents": 299 } },
+    "bowl": { "currency": "fruits", "amount": 55, "bonus": 5,
+      "play_store": { "product": "after_you_fruits_bowl", "revenuecat_product": "", "usd_cents": 499 },
+      "app_store": { "product": "after_you_fruits_bowl_ios", "revenuecat_product": "", "usd_cents": 599 } },
+    "crate": { "currency": "fruits", "amount": 120, "bonus": 20,
+      "play_store": { "product": "after_you_fruits_crate", "revenuecat_product": "", "usd_cents": 999 },
+      "app_store": { "product": "after_you_fruits_crate_ios", "revenuecat_product": "", "usd_cents": 1099 } },
+    "barrel": { "currency": "fruits", "amount": 260, "bonus": 60,
+      "play_store": { "product": "after_you_fruits_barrel", "revenuecat_product": "", "usd_cents": 1999 },
+      "app_store": { "product": "after_you_fruits_barrel_ios", "revenuecat_product": "", "usd_cents": 2199 } }
   }
 }

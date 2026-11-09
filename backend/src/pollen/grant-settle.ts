@@ -1,7 +1,11 @@
 import { POLLEN_GRANT_TABLES } from "../storage-schema";
 import { DAY_MS, RATES, type Rates } from "./rates";
 import { LIFETIME_KEY, anniversary, claimsNeeded, grantDue, ladder, movedSubs, planGrant, purchaseClaimKey, refundKey, subscriptionClaimKey, validGrant, type ClaimAnswer, type GrantHint, type GrantState, type MovedSub, type PaidInstalment } from "./grant";
-import { applyLedger, fullJourneyUntil, inLedger, ledgerLines, noteFullJourney, type LedgerEntry } from "./wallet";
+import { applyLedger, fullJourneyUntil, inLedger, ledgerLine, ledgerLines, noteFullJourney, type LedgerEntry } from "./wallet";
+import type { GrantRefund, Instalment } from "./grant";
+import { currencyOfKey, keyIn } from "./currency";
+import { FRUIT_RULES, fruitInstalment, type FruitRules } from "./fruits";
+import { withReclaim } from "./fruit-ops";
 import type { GrantLookup, GrantRead } from "./grant-provider";
 import { MAX_BUNDLE_LOOKUPS } from "./bundle-settle";
 
@@ -36,7 +40,45 @@ export type GrantDeps = {
   paid?: (lines: readonly { key: string; amount: number }[]) => void;
   /** Subscriptions paid here that moved away, looked up by id (grant-provider.ts lookupGrantSubs). Absent: none are looked up. */
   lookup?: (ids: string[]) => Promise<GrantLookup>;
+  /** Fruits are on (features.ts fruitsOn): each instalment paid also pays its Fruits, and the first the welcome basket. A refund takes back Fruit lines either way. */
+  fruits?: boolean;
 };
+
+/**
+ * The Fruit lines of one settle (PLAN v2 section 7): beside each Pollen instalment paid while Fruits are on,
+ * `fruit:grant:<anchor>:<n>` at the Fruit ladder's step for the same month count (fruits.ts fruitInstalment), and once per
+ * player `fruit:welcome` with the first of them (a subscriber already on Full Journey gets it with their next instalment;
+ * months paid before Fruits pay no Fruits, by the owner's call: no back pay). A refunded instalment takes back the Fruit
+ * line paid with it, if any, under `fruit:grantrefund:<anchor>:<n>`, and the welcome basket if it came with that month.
+ */
+export function fruitGrantEntries(storage: DurableObjectStorage, pay: readonly Instalment[], refunds: readonly GrantRefund[], fruits: boolean, rules: FruitRules = FRUIT_RULES): LedgerEntry[] {
+  const entries: LedgerEntry[] = [];
+  const welcome = ledgerLine(storage, keyIn("fruits", WELCOME));
+  for (const refund of refunds) {
+    const line = ledgerLine(storage, keyIn("fruits", refund.refunds));
+    if (line) entries.push({ key: keyIn("fruits", refund.key), kind: "fruitgrantrefund", amount: -line.amount, detail: { refunds: line.key, sub: refund.sub } });
+    if (welcome && welcome.detail.with === refund.refunds) entries.push({ key: keyIn("fruits", WELCOME_REFUND), kind: "fruitwelcomerefund", amount: -welcome.amount, detail: { refunds: welcome.key } });
+  }
+  if (!fruits || pay.length === 0) return entries;
+  for (const paid of pay) entries.push({ key: keyIn("fruits", paid.key), kind: "fruitgrant", amount: fruitInstalment(paid.step, rules), detail: { anchor: paid.anchor, n: paid.n, due: paid.due, step: paid.step, sub: paid.sub } });
+  if (!welcome && rules.grant.welcome > 0) entries.push({ key: keyIn("fruits", WELCOME), kind: "fruitwelcome", amount: rules.grant.welcome, detail: { with: pay[0].key } });
+  return entries;
+}
+const WELCOME = "welcome", WELCOME_REFUND = "welcomerefund";
+
+/** The wallet read's Fruit part of the grant (fruit-ops.ts fruitsView): the next instalment's Fruits, the top, and what came with the newest instalment. */
+export type FruitGrantView = { next: number; top: number; welcome: number; welcome_paid: boolean; latest?: { amount: number; welcome: number; at: number } };
+export function fruitGrantView(storage: DurableObjectStorage, rules: FruitRules = FRUIT_RULES): FruitGrantView | undefined {
+  try {
+    const state = storedGrant(storage);
+    if (state === null) return undefined;
+    const welcome = ledgerLine(storage, keyIn("fruits", WELCOME));
+    const view: FruitGrantView = { next: fruitInstalment(state.months + 1, rules), top: rules.grant.top, welcome: rules.grant.welcome, welcome_paid: welcome !== null };
+    const latest = state.latest ? ledgerLine(storage, keyIn("fruits", state.latest.key)) : null;
+    if (latest) view.latest = { amount: latest.amount, welcome: welcome && welcome.detail.with === state.latest!.key ? welcome.amount : 0, at: latest.at };
+    return view;
+  } catch { return undefined; }
+}
 /** What GET /v1/pollen adds for a player with a grant: the loyalty count, the next step, the top step and the newest instalment. */
 export type GrantView = { months: number; next: number; top: number; latest?: { key: string; amount: number; at: number } };
 export type GrantOutcome = "not_due" | "paused" | "unavailable" | "settled";
@@ -126,9 +168,13 @@ async function settleDue(storage: DurableObjectStorage, now: number, active: () 
     const entries: LedgerEntry[] = [
       ...plan.refunds.map(refund => ({ key: refund.key, kind: "grantrefund", amount: -refund.amount, detail: { refunds: refund.refunds, sub: refund.sub } })),
       ...plan.pay.map(paid => ({ key: paid.key, kind: "grant", amount: paid.amount, detail: { anchor: paid.anchor, n: paid.n, due: paid.due, step: paid.step, sub: paid.sub } })),
-      ...(plan.lifetime > 0 ? [{ key: LIFETIME_KEY, kind: "grant", amount: plan.lifetime, detail: { lifetime: true } }] : [])
+      ...(plan.lifetime > 0 ? [{ key: LIFETIME_KEY, kind: "grant", amount: plan.lifetime, detail: { lifetime: true } }] : []),
+      ...fruitGrantEntries(storage, plan.pay, plan.refunds, deps.fruits === true)
     ];
-    const paid = applyLedger(storage, entries, now, rates).filter(entry => entry.amount > 0);
+    // A Fruit take-back the balance can't cover, because those Fruits were turned into Pollen, takes them back as Pollen (fruit-ops.ts).
+    const applied = applyLedger(storage, withReclaim(storage, entries).entries, now, rates);
+    // The Pollen lines alone set `latest` and the push, as before Fruits: older apps read them as Pollen.
+    const paid = applied.filter(entry => entry.amount > 0 && currencyOfKey(entry.key) === "pollen");
     if (paid.length) plan.state.latest = { key: paid[paid.length - 1].key, amount: paid[paid.length - 1].amount, at: now };
     saveGrant(storage, plan.state);
     waiting = plan.state.live && anniversary(plan.state.anchor, plan.state.next) <= now;
