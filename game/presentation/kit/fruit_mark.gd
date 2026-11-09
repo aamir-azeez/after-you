@@ -18,6 +18,9 @@ const BESIDE := 0.92
 ## The largest side drawn flat; anything bigger draws the render.
 const SMALL := 26.0
 const RENDER := "res://assets/store/fruit-rose.png"
+## Where the render's stem leaves the Fruit, in the render's own pixels (below
+## its leaf): art that hangs the Fruit from a stalk joins it here.
+const RENDER_STEM := Vector2(57, 44)
 
 ## The Fruit's rose: the flat body's light and deep ends (its gradient) and
 ## the seed's own green for the stem and leaf. Other Fruit art (the Fruit cap)
@@ -96,6 +99,12 @@ static func draw_render(canvas: CanvasItem, picture: Texture2D, box: Rect2) -> v
 	var scale := minf(box.size.x / shape.x, box.size.y / shape.y)
 	var drawn := shape * scale
 	canvas.draw_texture_rect(picture, Rect2(box.position + (box.size - drawn) * 0.5, drawn), false)
+
+## The box, `side` pixels square, that draw_render fits a picture of
+## `picture_size` (render()) into so that its stem (RENDER_STEM) lies at `stem`.
+static func hung_box(picture_size: Vector2, stem: Vector2, side: float) -> Rect2:
+	var scale := minf(side / picture_size.x, side / picture_size.y)
+	return Rect2(stem - (Vector2(side, side) - picture_size * scale) * 0.5 - RENDER_STEM * scale, Vector2(side, side))
 
 ## A filled outline with a soft one pixel edge, in one colour or one per point.
 static func _edged(canvas: CanvasItem, points: PackedVector2Array, colours: PackedColorArray) -> void:

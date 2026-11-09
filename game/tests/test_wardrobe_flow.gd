@@ -39,7 +39,8 @@ extends SceneTree
 ##   or buys in Pollen, and none shows while Fruits are off or the server gives
 ##   no Fruit price; with Fruits on the Orchard chip opens the plum Orchard with
 ##   its cards, sprigs and set (145, 105 with the cap owned, one piece at its own
-##   price); the confirm and short cards in Fruits; Get Fruits only while Fruit
+##   price); its branch, every Fruit and leaf on a stalk from the bough or a
+##   twig, clear of the title, the chips and the cards; the confirm and short cards in Fruits; Get Fruits only while Fruit
 ##   packs sell; a Fruit balance below 0 blocks buying; fruits_short and
 ##   fruits_disabled land on their cards.
 const Flow = preload("res://presentation/wardrobe_flow.gd")
@@ -56,6 +57,8 @@ const Bundles = preload("res://services/pollen_bundles.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
+const FruitMark = preload("res://presentation/kit/fruit_mark.gd")
+const Orchard = preload("res://presentation/wardrobe_orchard.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -197,6 +200,7 @@ func _run() -> void:
 	await _start_tab()
 	await _orchard_money_safety()
 	await _orchard_tab()
+	await _orchard_branch()
 	await _orchard_confirm()
 	await _orchard_short()
 	await _orchard_blocked_and_refused()
@@ -981,6 +985,65 @@ func _orchard_tab() -> void:
 		_check(words.back() == row[2] and (full != null) == not (row[1] as Array).is_empty() and (full == null or full.text == row[1][1]), "Owning %s the set costs %s: %s" % [row[0], row[2], words])
 		s.host.queue_free()
 		await _frames(2)
+
+## Board 4a's branch: every stalk starts on the bough or a twig, each Fruit's
+## stalk runs into the render's own stem, each twig starts on the bough, and
+## no part covers the title, the chips or the cards, or leaves the panel, at
+## the phones' logical sizes (16:9, the 1600x738 phone, 20:9).
+func _orchard_branch() -> void:
+	var t := await _orchard_setup([], 200)
+	t.flow.set_tab("orchard")
+	await _frames()
+	var page: Control = t.host.overlay
+	var orchard: Control = page.find_child("WardrobeOrchard", true, false)
+	var branch: Control = orchard.find_child("OrchardBranch", true, false)
+	var render := Image.load_from_file(ProjectSettings.globalize_path(FruitMark.RENDER))
+	var stem := render.get_pixelv(Vector2i(FruitMark.RENDER_STEM))
+	_check(stem.a > 0.9 and stem.g > stem.r, "The render's stem is at RENDER_STEM: %s" % stem)
+	for screen: Vector2 in [Vector2(1280, 720), Vector2(1561, 720), Vector2(1600, 720)]:
+		page.size = screen
+		await _frames()
+		var parts: Dictionary = Orchard.Branch.layout(branch.size.x / Orchard.Branch.FRAME_WIDTH, Vector2(render.get_size()))
+		var curves: Array = parts.curves
+		var on_branch := func(point: Vector2, skip: int) -> bool:
+			for index in range(curves.size()):
+				if index == skip: continue
+				var line: PackedVector2Array = curves[index][0]
+				for at in range(line.size() - 1):
+					if point.distance_to(Geometry2D.get_closest_point_to_segment(point, line[at], line[at + 1])) <= curves[index][1] * 0.5: return true
+			return false
+		var loose: Array = []
+		for index in range(2, curves.size()): if not on_branch.call(curves[index][0][0], index): loose.append("twig %d" % index)
+		for stalk: Array in parts.stalks: if not on_branch.call(stalk[0], -1): loose.append("stalk at %s" % stalk[0])
+		for index in range(parts.fruits.size()):
+			var box: Rect2 = parts.fruits[index]
+			var scale := box.size.y / render.get_height()
+			var pixel := Vector2i(((parts.stalks[index][1] as Vector2) - box.position - Vector2((box.size.x - render.get_width() * scale) * 0.5, 0.0)) / scale)
+			if render.get_pixelv(pixel).a < 0.9: loose.append("Fruit %d's stalk ends at %s, off its stem" % [index, pixel])
+		_check(loose.is_empty(), "%s: every twig and stalk starts on the branch and every Fruit's stalk runs into its stem: %s" % [screen, loose])
+		var to_branch := branch.get_global_transform().affine_inverse()
+		var blocked := {"the chips": to_branch * orchard.find_child("OrchardChips", true, false).get_global_rect(), "the cards": to_branch * orchard.find_child("OrchardItems", true, false).get_global_rect()}
+		for label: Label in orchard.find_children("", "Label", true, false):
+			if label.text in [PlayerCopy.ORCHARD_TITLE, PlayerCopy.WARDROBE_STAYS]:
+				var wide := label.get_theme_font("font").get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
+				blocked[label.text] = to_branch * Rect2(label.global_position, Vector2(wide, label.size.y))
+		var shapes: Array = []
+		for box: Rect2 in parts.fruits: shapes.append(box.grow_individual(-box.size.x * 0.17, 0, -box.size.x * 0.17, 0))
+		for leaf: Array in parts.leaves:
+			var outline: PackedVector2Array = Transform2D(deg_to_rad(leaf[2]), Vector2(leaf[1], leaf[1]) * 0.5, 0.0, leaf[0]) * Orchard.LeafArt.outline
+			var bounds := Rect2(outline[0], Vector2.ZERO)
+			for point: Vector2 in outline: bounds = bounds.expand(point)
+			shapes.append(bounds)
+		for curve: Array in curves:
+			for point: Vector2 in curve[0]: shapes.append(Rect2(point, Vector2.ZERO).grow(curve[1] * 0.5))
+		var hits: Array = []
+		var panel := Rect2(Vector2.ZERO, branch.size).grow(-2.0)
+		for shape: Rect2 in shapes:
+			for what: String in blocked: if shape.intersects(blocked[what]): hits.append("%s covers %s" % [shape, what])
+		for shape: Rect2 in shapes.slice(0, parts.fruits.size() + parts.leaves.size()): if not panel.encloses(shape): hits.append("%s leaves the panel" % shape)
+		_check(blocked.size() == 4 and hits.is_empty(), "%s: the branch keeps off the title, the chips and the cards and stays in the panel: %s" % [screen, hits])
+	t.host.queue_free()
+	await _frames(2)
 
 ## Board 4b: the confirm card in Fruits, and a Fruit purchase.
 func _orchard_confirm() -> void:

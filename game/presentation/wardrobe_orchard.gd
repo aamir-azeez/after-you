@@ -398,15 +398,34 @@ class Leaf extends Control:
 
 ## The branch over the Orchard (board 4a), drawn in the board's own frame
 ## (1715 wide) scaled to the panel's width: the bough and three twigs, four
-## leaves and three Fruits (kit/fruit_mark.gd's render). Once per resize.
+## leaves and three Fruits (kit/fruit_mark.gd's render). Every part is placed
+## from a point on the bough or a twig (layout()): each Fruit hangs from a
+## green stalk that runs into its own stem, each leaf joins on a short stalk
+## of its own green, and each twig starts on the bough, so nothing floats. It all stays above
+## the title, the chips and the cards (test_wardrobe_flow.gd checks it at the
+## phones' widths). Once per resize.
 class Branch extends Control:
 	const FRAME_WIDTH := 1715.0
-	const BOUGH := [[Vector2(-20, 70), Vector2(260, 30), Vector2(520, 120), Vector2(820, 80)], [Vector2(820, 80), Vector2(1120, 40), Vector2(1380, 30), Vector2(1740, 96)]]
-	const TWIGS := [[Vector2(380, 82), Vector2(420, 120), Vector2(470, 130), Vector2(520, 128)], [Vector2(1180, 64), Vector2(1220, 30), Vector2(1270, 20), Vector2(1320, 26)], [Vector2(960, 70), Vector2(990, 110), Vector2(1010, 140), Vector2(1000, 170)]]
-	## [centre, side, degrees, light] in the board's frame.
-	const LEAVES := [[Vector2(155, 57), 70.0, -30.0, false], [Vector2(670, 100), 60.0, 150.0, true], [Vector2(1272, 36), 64.0, 10.0, false], [Vector2(1588, 98), 56.0, 120.0, true]]
-	## [centre, side] in the board's frame.
-	const FRUIT_SPOTS := [[Vector2(555, 105), 70.0], [Vector2(1070, 126), 60.0], [Vector2(1336, 46), 72.0]]
+	## [cubic curve, width]: the bough's two halves, then the twigs, each
+	## starting on the bough.
+	const CURVES := [
+		[[Vector2(-20, 70), Vector2(260, 30), Vector2(520, 120), Vector2(820, 80)], 16.0],
+		[[Vector2(820, 80), Vector2(1120, 40), Vector2(1380, 30), Vector2(1740, 96)], 16.0],
+		[[Vector2(433, 78), Vector2(465, 96), Vector2(505, 103), Vector2(548, 102)], 8.0],
+		[[Vector2(952, 64), Vector2(980, 80), Vector2(1025, 92), Vector2(1060, 94)], 8.0],
+		[[Vector2(1169, 49), Vector2(1200, 30), Vector2(1250, 18), Vector2(1300, 22)], 8.0]]
+	## [curve, how far along it, the stalk down to the Fruit's stem, side]:
+	## long enough to show past the curve's edge and above the Fruit's own leaf.
+	const HUNG := [[2, 1.0, Vector2(0, 24), 64.0], [0, 0.97, Vector2(0, 27), 66.0], [3, 1.0, Vector2(0, 24), 64.0]]
+	## [curve, how far along it, stalk length, the way the leaf points in
+	## degrees (0 right, 90 down), side, light].
+	const LEAVES := [[0, 0.2, 16.0, -140.0, 56.0, false], [0, 0.8, 16.0, 70.0, 60.0, true], [4, 1.0, 10.0, 10.0, 56.0, false], [1, 0.8, 16.0, -35.0, 54.0, true]]
+	const FRUIT_STALK := 4.5
+	const LEAF_STALK := 4.0
+	## How far a stalk runs on into the Fruit's stem, and into the leaf's thin
+	## base, per side.
+	const TUCK := 0.03
+	const LEAF_TUCK := 0.12
 	var _render: Texture2D
 
 	func _init() -> void:
@@ -417,19 +436,44 @@ class Branch extends Control:
 		resized.connect(queue_redraw)
 
 	func _draw() -> void:
-		if size.x <= 0.0: return
-		var zoom := size.x / FRAME_WIDTH
-		for curve: Array in BOUGH: draw_polyline(_bezier(curve, zoom), BRANCH, 16.0 * zoom, true)
-		for curve: Array in TWIGS: draw_polyline(_bezier(curve, zoom), BRANCH, 8.0 * zoom, true)
-		for leaf: Array in LEAVES: LeafArt.draw(self, leaf[0] * zoom, leaf[1] * zoom, leaf[2], LEAF_LIGHT if leaf[3] else LEAF_DARK)
-		for spot: Array in FRUIT_SPOTS:
-			var side: float = spot[1] * zoom
-			FruitMark.draw_render(self, _render, Rect2(spot[0] * zoom - Vector2(side, side) * 0.5, Vector2(side, side)))
+		if size.x <= 0.0 or _render == null: return
+		var parts := layout(size.x / FRAME_WIDTH, _render.get_size())
+		# Stalks first, so they grow out from under the bough and the Fruits.
+		for stalk: Array in parts.stalks: draw_line(stalk[0], stalk[1], stalk[3], stalk[2], true)
+		for curve: Array in parts.curves: draw_polyline(curve[0], BRANCH, curve[1], true)
+		for leaf: Array in parts.leaves: LeafArt.draw(self, leaf[0], leaf[1], leaf[2], LEAF_LIGHT if leaf[3] else LEAF_DARK)
+		for box: Rect2 in parts.fruits: FruitMark.draw_render(self, _render, box)
+
+	## The branch at `zoom` (panel pixels per frame unit), the Fruit's render
+	## being `picture_size`: curves [points, width], stalks [from, to, width,
+	## colour] (from on a curve), leaves [centre, side, degrees, light] for
+	## LeafArt.draw, and the Fruits' draw_render boxes.
+	static func layout(zoom: float, picture_size: Vector2) -> Dictionary:
+		var parts := {"curves": [], "stalks": [], "leaves": [], "fruits": []}
+		for curve: Array in CURVES: parts.curves.append([_bezier(curve[0], zoom), curve[1] * zoom])
+		for fruit: Array in HUNG:
+			var from := _point(CURVES[fruit[0]][0], fruit[1]) * zoom
+			var stem: Vector2 = from + fruit[2] * zoom
+			var side: float = fruit[3] * zoom
+			parts.stalks.append([from, stem + (fruit[2] as Vector2).normalized() * side * TUCK, FRUIT_STALK * zoom, FruitMark.GREEN])
+			parts.fruits.append(FruitMark.hung_box(picture_size, stem, side))
+		for leaf: Array in LEAVES:
+			var from := _point(CURVES[leaf[0]][0], leaf[1]) * zoom
+			var way := Vector2.from_angle(deg_to_rad(leaf[3]))
+			var base: Vector2 = from + way * leaf[2] * zoom
+			var side: float = leaf[4] * zoom
+			# LeafArt's base is its unit frame's (-0.7, 0.7) corner and it points
+			# along (1, -1): turned 45 degrees past the way it points.
+			var degrees: float = leaf[3] + 45.0
+			parts.stalks.append([from, base + way * side * LEAF_TUCK, LEAF_STALK * zoom, LEAF_LIGHT if leaf[5] else LEAF_DARK])
+			parts.leaves.append([base - Vector2(-0.35, 0.35).rotated(deg_to_rad(degrees)) * side, side, degrees, leaf[5]])
+		return parts
+
+	static func _point(curve: Array, t: float) -> Vector2:
+		var u := 1.0 - t
+		return curve[0] * u * u * u + curve[1] * 3.0 * u * u * t + curve[2] * 3.0 * u * t * t + curve[3] * t * t * t
 
 	static func _bezier(curve: Array, zoom: float) -> PackedVector2Array:
 		var points := PackedVector2Array()
-		for step in range(25):
-			var t := step / 24.0
-			var u := 1.0 - t
-			points.append((curve[0] * u * u * u + curve[1] * 3.0 * u * u * t + curve[2] * 3.0 * u * t * t + curve[3] * t * t * t) * zoom)
+		for step in range(25): points.append(_point(curve, step / 24.0) * zoom)
 		return points
