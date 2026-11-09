@@ -42,10 +42,13 @@ export async function pairKey(a: string, b: string): Promise<string> {
  * assistance, and whether every turn ran the same simulation version. Null
  * when the chain is broken or a turn's ticks are not whole. The board ranks a
  * whole unassisted run (runTicks); a duel times an unassisted run, finished
- * or not (duels/ticks.ts).
+ * or not (duels/ticks.ts), and `turns` (each turn's ticks in play order) gives
+ * its time after any number of turns.
  */
-export function walkRun(checkpoint: CheckpointV2): { ticks: number; assisted: boolean; simulation_version: number; mixed: boolean } | null {
+export function walkRun(checkpoint: CheckpointV2): { ticks: number; assisted: boolean; simulation_version: number; mixed: boolean; turns: number[] } | null {
   let current: CheckpointV2 = checkpoint, ticks = 0, simulation = -1, assisted = false, mixed = false;
+  // Walked from the last stage back: each stage's two turns go in front, so `turns` ends in play order.
+  const turns: number[] = [];
   if (!Number.isSafeInteger(checkpoint.stage_index) || checkpoint.stage_index < 0) return null;
   for (let index = checkpoint.stage_index; index > 0; index--) {
     const proof = nestedProof(current);
@@ -57,9 +60,10 @@ export function walkRun(checkpoint: CheckpointV2): { ticks: number; assisted: bo
       if (turn.simulation_version !== simulation) mixed = true;
       ticks += turn.duration_ticks;
     }
+    turns.unshift(proof.a.duration_ticks, proof.b.duration_ticks);
     current = proof.previous;
   }
-  return current.stage_index === 0 && Number.isSafeInteger(ticks) ? { ticks, assisted, simulation_version: simulation, mixed } : null;
+  return current.stage_index === 0 && Number.isSafeInteger(ticks) ? { ticks, assisted, simulation_version: simulation, mixed, turns } : null;
 }
 
 /** Ticks of every turn on the finishing branch, or null when the chain is not a whole, unassisted run. */

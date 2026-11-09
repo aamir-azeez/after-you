@@ -170,6 +170,16 @@ func _names() -> void:
 	var waiting := DuelsClient.valid_view(_public_view(true))
 	waiting.sides[0].turn = 1
 	_check(not DuelModel.your_turn(waiting, ME) and DuelModel.turn_line(waiting, 0, name_of) == PlayerCopy.PUBLIC_WAITING_PARTNER, "The next turn belongs to a partner who hasn't joined")
+	_check(DuelModel.action(waiting, ME) == "open", "so the tile opens the duel, with no Play")
+	# A stranger takes the open seat after your first turn (the server points the turn at their seat, backend public.ts publicWaitingSlot).
+	var taken := DuelsClient.valid_view(_public_view())
+	taken.sides[0].turn = 1
+	_check(not DuelModel.your_turn(taken, ME) and DuelModel.turn_line(taken, 0, name_of) == PlayerCopy.DUEL_THEIR_TURN % PlayerCopy.DUEL_PARTNER, "Their turn once a stranger sits beside you: %s" % DuelModel.turn_line(taken, 0, name_of))
+	var theirs := DuelsClient.valid_view(_public_view())
+	theirs.sides[0].members = [null, MAYA]
+	theirs.sides[0].seats = [{"open": false, "you": false, "label": "Kite"}, {"open": false, "you": true, "label": ""}]
+	theirs.sides[0].turn = 1
+	_check(DuelModel.your_turn(theirs, MAYA) and DuelModel.action(theirs, MAYA) == "play" and DuelModel.turn_line(theirs, 0, func(id: Variant) -> String: return "You" if id == MAYA else "") == PlayerCopy.DUEL_YOUR_TURN, "and the stranger who took it plays next")
 	_check(DuelModel.looks(view, 1)[0] == {"hat": "daisy"} and DuelModel.looks(view, 1)[1] == {}, "A stranger wears their look; an open seat wears nothing")
 	_check(not DuelModel.seat_stranger(view, 0, 0) and DuelModel.seat_stranger(view, 0, 1) and DuelModel.seat_stranger(view, 1, 0), "You are no stranger; the other seats are")
 	var ended := DuelsClient.valid_view(_public_view())

@@ -217,6 +217,21 @@ export function stallForfeits(duel: Duel): number[] {
   return duel.sides.flatMap((side, index) => side && !side.left && side.finished_ms === null && side.turn !== null ? [index * 2 + side.members.indexOf(side.turn)] : []);
 }
 
+/**
+ * The slot a public side waits on when its room's host played the first turn before anyone else was in the room:
+ * the room has no guest to name, so its note leaves the turn empty, yet the next move is the other seat's. A view
+ * points at that seat, open ("Waiting for a partner") or held by someone who has not entered yet (their turn). Only
+ * views read it: the stored turn stays empty, so the seat is never marked entered (enterSeat), a player who never
+ * entered still gives the seat back when they leave, and stallForfeits, openSeats and the list read the duel as
+ * before. -1 when the side's turn is anything else.
+ */
+export function publicWaitingSlot(duel: Duel, side: Side): number {
+  const host = side.room?.host ?? null;
+  if (!duel.public || duel.status !== "running" || side.turn !== null || side.steps === 0 || side.finished_ms !== null || side.left || host === null) return -1;
+  const slot = side.members.indexOf(host);
+  return slot < 0 ? -1 : 1 - slot;
+}
+
 /** What this seat's held extra came to: paid, or why not. */
 export type HeldState = { paid: boolean; reason?: "left" | "stopped" | "nobody_joined" | "erased" | "withdrawn" };
 export function heldState(duel: Duel, seat: number): HeldState {

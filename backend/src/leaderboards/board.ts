@@ -14,6 +14,7 @@ import type { PayoutShown } from "../duels/payout-receipt";
 import { announceDuelNews } from "../duels/news";
 import { sendListings } from "../duels/directory";
 import { duelRunChecksOn } from "../duels/turn-hook";
+import { replaySplits } from "../duels/ticks";
 /** Run copy rooms one board hands the sweep at a time (duels/their-run-sweep.ts). */
 const MAX_COPY_SWEEP = 32;
 import { BoardProofs, LEGACY_PROOF_TABLE, PROOF_TABLE, encodeProof, sentProof } from "./proofs";
@@ -251,8 +252,14 @@ export class LeaderboardBoard extends DurableObject<Env> {
     return { ranked, view: this.view(board), ...this.rewardsAsked(rewardLimit), ...(duels.length ? { duels } : {}) };
   }
 
-  /** A new duel or ghost race on this chapter version (duels/store.ts create); null while the board is full of open ones. */
-  duelCreate(duel: Duel): Duel | null { return this.duels.create(duel, Date.now()); }
+  /**
+   * A new duel or ghost race on this chapter version (duels/store.ts create); null while the board is full of open ones.
+   * A race against a run on this board gets the run's time after each turn from its kept replay here (Ghost.splits).
+   */
+  async duelCreate(duel: Duel): Promise<Duel | null> {
+    const splits = await this.ghostSplits(duel);
+    return this.duels.create(splits ? { ...duel, ghost: { ...duel.ghost!, splits } } : duel, Date.now());
+  }
   /** The duels named, settled to now. Unknown ids are left out. `reader`: whose read it is, left out of the news. */
   duelRead(ids: string[], reader?: string): Duel[] { return this.duels.read(ids, Date.now(), reader ?? null); }
   /** A player's accept, Not now, leave or room claim on one duel. */
@@ -437,6 +444,15 @@ export class LeaderboardBoard extends DurableObject<Env> {
   }
   private keepReplay(entryId: string, replay: KeptReplay): void {
     this.ctx.storage.sql.exec("INSERT OR REPLACE INTO lb_replays VALUES (?,?,?,?)", entryId, replay.proof_hash, replay.byte_length, replay.body);
+  }
+  /** A board ghost's time after each turn, read from the replay this board keeps for it, or null (none kept, or another run's). */
+  private async ghostSplits(duel: Duel): Promise<number[] | null> {
+    const ghost = duel.ghost;
+    if (duel.kind !== "ghost" || ghost?.source !== "board" || !ghost.entry_id || !ghost.replay_hash || ghost.splits || this.duels.holds(duel.duel_id)) return null;
+    let kept: { proof_hash: string; byte_length: number; body: ArrayBuffer } | undefined;
+    try { kept = this.ctx.storage.sql.exec<{ proof_hash: string; byte_length: number; body: ArrayBuffer }>("SELECT proof_hash,byte_length,body FROM lb_replays WHERE entry_id=?", ghost.entry_id).toArray()[0]; }
+    catch { return null; }
+    return kept && kept.proof_hash === ghost.replay_hash ? replaySplits(new Uint8Array(kept.body), kept.byte_length, duel.steps, ghost.ticks) : null;
   }
   /** Proof hash of each listed run that has a kept replay. */
   private replayHashes(ids: string[]): Map<string, string> {

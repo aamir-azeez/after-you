@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
 import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "../src/duels/rules";
 import { applyParty, blankParty, noteLook } from "../src/duels/party";
-import { runProgress } from "../src/duels/ticks";
+import { replaySplits, runProgress, validSplits } from "../src/duels/ticks";
+import { claimSeats, newPublicDuel, publicWaitingSlot } from "../src/duels/public";
+import { encodeBlob } from "../src/blob-codec";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -354,6 +356,90 @@ describe("duel state machine", () => {
   });
 });
 
+describe("duel splits", () => {
+  it("keep each side's time after every step from its newest note, and drop splits that do not fit the note", () => {
+    const duel = running();
+    progress(duel, { ...note("ra", 2, 30, false, 1), splits: [30] }, T0 + 10_000);
+    expect(duel.sides[0].splits).toEqual([30]);
+    progress(duel, { ...note("ra", 3, 75, false, 2), splits: [30, 75] }, T0 + 11_000);
+    expect(duel.sides[0].splits).toEqual([30, 75]);
+    // An older note changes nothing; a note whose splits do not end at its time, or one with none (an older Worker), leaves none.
+    progress(duel, { ...note("ra", 1, 30, false, 1), splits: [30] }, T0 + 12_000);
+    expect(duel.sides[0].splits).toEqual([30, 75]);
+    progress(duel, { ...note("ra", 4, 99, false, 3), splits: [30, 75, 98] }, T0 + 13_000);
+    expect(duel.sides[0]).not.toHaveProperty("splits");
+    progress(duel, { ...note("ra", 5, 120, false, 3), splits: [30, 75, 120] }, T0 + 14_000);
+    expect(duel.sides[0].splits).toEqual([30, 75, 120]);
+    progress(duel, note("ra", 6, 130, false, 3), T0 + 15_000);
+    expect(duel.sides[0]).not.toHaveProperty("splits");
+  });
+
+  it("serve none that no longer fit the side's steps and time", () => {
+    const duel = running();
+    progress(duel, { ...note("ra", 2, 30, false, 1), splits: [30] }, T0 + 10_000);
+    Object.assign(duel.sides[0], { steps: 2, ticks: 75 });
+    expect(viewFor(duel, A1)!.sides[0]).not.toHaveProperty("splits");
+  });
+
+  it("serve a side's splits to both pairs and a ghost's with the race, and none where none were kept", () => {
+    const duel = running();
+    progress(duel, { ...note("ra", 2, 30, false, 1), splits: [30] }, T0 + 10_000);
+    for (const viewer of [A1, B1]) {
+      const view = viewFor(duel, viewer)!;
+      expect(view.sides[0].splits).toEqual([30]);
+      expect(view.sides[1]).not.toHaveProperty("splits");
+    }
+    const race = ghost(1000);
+    race.ghost!.splits = [100, 400, 700, 1000];
+    expect(viewFor(race, A1)!.ghost?.splits).toEqual([100, 400, 700, 1000]);
+    expect(viewFor(ghost(1000), A1)!.ghost).not.toHaveProperty("splits");
+  });
+});
+
+describe("public waiting seat", () => {
+  const post = (players: string[]) => newPublicDuel({ duel_id: "p".repeat(32), board: "relay-isles@2", chapter: CHAPTER, steps: 4, players, labels: players.map(() => null), known: [] }, T0);
+  /** `host` opens their side's room and plays its first turn before anyone else is in it: the room names no turn. */
+  const firstTurn = (duel: Duel, host: string, room: string, at = T0 + 10) => {
+    expect(claimRoom(duel, host, { room_id: room, invite_code: "i" + room }, at).ok).toBe(true);
+    expect(progress(duel, { room_id: room, revision: 2, steps: 1, ticks: 30, turn: null, complete: false, at_ms: at + 1, entry_id: null, splits: [30] }, at + 1).ok).toBe(true);
+  };
+  const lone = (seat: number, player: string) => ({ players: [player], as: "alone" as const, seat, labels: [null], avoid: [], known: [] });
+
+  it("point at the seat beside the room's host, in either slot and on either side, never storing or entering it", () => {
+    const duel = post([A1]);
+    firstTurn(duel, A1, "r0");
+    expect([publicWaitingSlot(duel, duel.sides[0]), viewFor(duel, A1)!.sides[0].turn, duel.sides[0].turn, duel.public!.seats[1].entered]).toEqual([1, 1, null, undefined]);
+    // A joiner on side 1 takes seat 3 (slot 1), opens that side's room and plays first: side 1 waits on slot 0.
+    expect(claimSeats(duel, lone(3, B2), T0 + 20)).toMatchObject({ ok: true, value: { seat: 3 } });
+    firstTurn(duel, B2, "r1", T0 + 30);
+    expect([viewFor(duel, A1)!.sides[1]!.turn, viewFor(duel, B2)!.sides[1]!.turn, duel.public!.seats[2].entered]).toEqual([0, 0, undefined]);
+    // A party that posted together, the partner hosting: the poster plays next, named to both.
+    const party = post([A1, A2]);
+    firstTurn(party, A2, "r2");
+    expect([viewFor(party, A1)!.sides[0].turn, viewFor(party, A2)!.sides[0].turn, party.public!.seats[0].entered]).toEqual([0, 0, undefined]);
+  });
+
+  it("point nowhere before a first turn, once the room names a turn, for a finished, left or hostless side, after the end, or in a friend duel", () => {
+    const fresh = post([A1, A2]);
+    expect(claimRoom(fresh, A1, { room_id: "r0", invite_code: "i0" }, T0 + 10).ok).toBe(true);
+    expect(publicWaitingSlot(fresh, fresh.sides[0])).toBe(-1);
+    const named = post([A1, A2]);
+    firstTurn(named, A1, "r0");
+    expect(progress(named, { room_id: "r0", revision: 3, steps: 2, ticks: 60, turn: A1, complete: false, at_ms: T0 + 40, entry_id: null }, T0 + 40).ok).toBe(true);
+    expect([publicWaitingSlot(named, named.sides[0]), viewFor(named, A2)!.sides[0].turn]).toEqual([-1, 0]);
+    for (const change of [(duel: Duel) => { duel.sides[0].finished_ms = T0 + 50; }, (duel: Duel) => { duel.sides[0].left = true; }, (duel: Duel) => { duel.sides[0].room!.host = null; },
+      (duel: Duel) => { duel.status = "unfinished"; }]) {
+      const duel = post([A1, A2]);
+      firstTurn(duel, A1, "r0");
+      change(duel);
+      expect(publicWaitingSlot(duel, duel.sides[0])).toBe(-1);
+    }
+    const duel = running();
+    progress(duel, { ...note("ra", 2, 30, false, 1), turn: null }, T0 + 10_000);
+    expect([publicWaitingSlot(duel, duel.sides[0]), viewFor(duel, A2)!.sides[0].turn]).toEqual([-1, null]);
+  });
+});
+
 describe("duel time", () => {
   const stages = 2;
   // The fixtures were recorded with forgiving catches on; a duel's room takes only unassisted turns, so the time reads them with it off.
@@ -368,10 +454,28 @@ describe("duel time", () => {
 
   it("counts every turn on the branch, with the pending first turn of the stage under way", () => {
     const whole = runProgress(unassisted(final), stages)!;
-    const total = [firstA, firstB, secondA, secondB].reduce((sum, turn) => sum + turn.duration_ticks, 0);
-    expect(whole).toEqual({ steps: 4, ticks: total, complete: true });
+    const [a1, b1, a2, b2] = [firstA, firstB, secondA, secondB].map(turn => turn.duration_ticks);
+    expect(whole).toEqual({ steps: 4, ticks: a1 + b1 + a2 + b2, complete: true, splits: [a1, a1 + b1, a1 + b1 + a2, a1 + b1 + a2 + b2] });
     const half = runProgress(unassisted(middle), stages, plainA)!;
-    expect(half).toEqual({ steps: 3, ticks: firstA.duration_ticks + firstB.duration_ticks + secondA.duration_ticks, complete: false });
+    expect(half).toEqual({ steps: 3, ticks: a1 + b1 + a2, complete: false, splits: [a1, a1 + b1, a1 + b1 + a2] });
+    expect(runProgress(unassisted(middle), stages)).toEqual({ steps: 2, ticks: a1 + b1, complete: false, splits: [a1, a1 + b1] });
+  });
+
+  it("checks splits as one rising whole total per step that ends at the time", () => {
+    expect(validSplits([10, 25, 40], 3, 40)).toBe(true);
+    expect(validSplits([], 0, 0)).toBe(true);
+    for (const bad of [[10, 25], [10, 25, 39], [10, 10, 40], [0, 25, 40], [10.5, 25, 40], "10,25,40", null]) expect(validSplits(bad, 3, 40)).toBe(false);
+  });
+
+  it("reads a kept replay's splits only for the ghost's own whole run", async () => {
+    const run = unassisted(final), bytes = new TextEncoder().encode(JSON.stringify(run)), body = await encodeBlob(bytes);
+    const splits = runProgress(run, stages)!.splits;
+    expect(await replaySplits(body, bytes.byteLength, 4, splits[3])).toEqual(splits);
+    expect(await replaySplits(body, bytes.byteLength, 4, splits[3] + 1)).toBeNull();
+    expect(await replaySplits(body, bytes.byteLength, 6, splits[3])).toBeNull();
+    expect(await replaySplits(body, bytes.byteLength + 1, 4, splits[3])).toBeNull();
+    const assisted = new TextEncoder().encode(JSON.stringify(final));
+    expect(await replaySplits(await encodeBlob(assisted), assisted.byteLength, 4, splits[3])).toBeNull();
   });
 
   it("reads no duel time from a run with an assisted turn, as the board refuses it too", () => {

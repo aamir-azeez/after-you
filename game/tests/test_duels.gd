@@ -66,6 +66,7 @@ func _run() -> void:
 	_clear(SAVE_PATH)
 	_model()
 	_hint_reads()
+	await _compared()
 	await _client()
 	await _their_run()
 	await _pages()
@@ -100,7 +101,7 @@ func _model() -> void:
 	_check(quiet.total == 1071 and quiet.lines.size() == 2, "where Full Journey is not named, the boost folds into the turns line")
 	_check(DuelModel.pay_lines({}, {"amount": 0, "counted": false, "reason": "same_pair"}).lines[0][0] == PlayerCopy.DUEL_PAY_WIN_SAME, "a win that did not count says why")
 	var ghost := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0], null]}))
-	_check(not ghost.is_empty() and DuelModel.pair_title(ghost, 1, _name_of) == PlayerCopy.DUEL_GHOST_PAIR and DuelModel.ticks(ghost, 1) == 3000 and DuelModel.steps(ghost, 1) == Vector2i(12, 12), "a ghost race shows the recorded run's whole time")
+	_check(not ghost.is_empty() and DuelModel.pair_title(ghost, 1, _name_of) == PlayerCopy.DUEL_GHOST_PAIR and DuelModel.lane(ghost, 1).ticks == 3000 and DuelModel.lane(ghost, 1).played == 12, "a ghost race with no splits shows the recorded run's whole time")
 	var ghost_checking := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), null]}))
 	_check(DuelModel.result_title(ghost_checking, _name_of) == PlayerCopy.DUEL_CHECKING_RUN_TITLE and DuelModel.checking_line(ghost_checking) == PlayerCopy.DUEL_CHECKING_RUN_LINE and DuelModel.result_line(ghost_checking) == PlayerCopy.DUEL_CHECKING_RUN_LINE, "a run faster than Our run waits for its own check")
 	var ghost_done := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0].merged({"finished": true, "check": "none"}, true), null]}))
@@ -128,6 +129,62 @@ func _model() -> void:
 	# Answers this build cannot read are refused whole.
 	_check(Client.valid_view(_wire("bogus")).is_empty() and Client.valid_view(_wire("running", {"duel_id": "x"})).is_empty() and Client.valid_view(_wire("running", {"sides": []})).is_empty(), "malformed duels are refused")
 	_check(Client.valid_lobby({"schema_version": 1, "party": {"partner": "short", "intact": true, "invites_in": [], "invite_out": null}, "duels": []}).is_empty(), "a malformed party is refused")
+
+## Like for like (owner, 2026-11-08): while one pair is ahead, its lane shows its time after as many turns as the
+## pair behind, from the splits the server sends, on the lobby tile and the duel page; without them, or once the
+## duel is over, whole times as before. Dots fill bright for the turns the time covers, soft for the rest played.
+func _compared() -> void:
+	var ahead_wire := _wire("running", {"sides": [_wire().sides[0].merged({"splits": [600, 1500, 3240]}, true), _wire().sides[1].merged({"splits": [1200, 2760]}, true)]})
+	var ahead := Client.valid_view(ahead_wire)
+	_check(DuelModel.lane(ahead, 0) == {"ticks": 1500, "counted": 2, "played": 3, "total": 12, "compared": true}, "the pair ahead shows its time after the other pair's 2 steps: %s" % DuelModel.lane(ahead, 0))
+	_check(DuelModel.lane(ahead, 1) == {"ticks": 2760, "counted": 2, "played": 2, "total": 12, "compared": false}, "the pair behind shows its whole time: %s" % DuelModel.lane(ahead, 1))
+	var plain := Client.valid_view(_wire())
+	_check(not DuelModel.lane(plain, 0).compared and DuelModel.lane(plain, 0).ticks == 3240 and DuelModel.lane(plain, 0).counted == 3, "without splits (an older server) a lane shows its whole time, as before")
+	for wrong: Variant in [[600, 1500, 3000], [1500, 600, 3240], [600, 3240], [600, 600, 3240], [0, 1500, 3240], [600, 1500.5, 3240], "600,1500,3240", {}]:
+		var read := Client.valid_view(_wire("running", {"sides": [_wire().sides[0].merged({"splits": wrong}, true), _wire().sides[1]]}))
+		_check(not read.is_empty() and read.sides[0].splits.is_empty() and not DuelModel.lane(read, 0).compared, "splits that do not fit are dropped and the duel still reads: %s" % [wrong])
+	var over := Client.valid_view(_wire("unfinished", {"sides": ahead_wire.sides, "result": {"outcome": "none", "reason": "stalled", "margin_ticks": null}}))
+	_check(not DuelModel.lane(over, 0).compared and DuelModel.lane(over, 0).ticks == 3240, "an ended duel shows whole times")
+	var left := Client.valid_view(_wire("running", {"sides": [ahead_wire.sides[0], ahead_wire.sides[1].merged({"left": true, "turn": null}, true)]}))
+	_check(not DuelModel.lane(left, 0).compared and DuelModel.lane(left, 0).ticks == 3240, "a pair still playing after the other pair left shows its whole time")
+	var ours := {"source": "developer", "ticks": 3000, "rank": null, "names": null, "splits": [27, 100, 300, 450, 700, 900, 1200, 1500, 1800, 2200, 2600, 3000]}
+	var race := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": ours, "sides": [_wire().sides[0], null]}))
+	_check(DuelModel.lane(race, 1) == {"ticks": 300, "counted": 3, "played": 12, "total": 12, "compared": true}, "a race sets the recorded run's time after 3 turns beside yours: %s" % DuelModel.lane(race, 1))
+	_check(not DuelModel.lane(race, 0).compared and DuelModel.lane(race, 0).ticks == 3240, "and your own whole time so far")
+	var first_turn := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": ours, "sides": [_wire().sides[0].merged({"steps": 1, "ticks": 27, "splits": [27]}, true), null]}))
+	_check(DuelModel.lane(first_turn, 1).ticks == 27 and DuelModel.lane(first_turn, 1).counted == 1, "after your first turn the recorded run's first turn sits beside it")
+	var unplayed := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": ours, "sides": [_wire().sides[0].merged({"steps": 0, "ticks": 0, "turn": -1}, true), null]}))
+	_check(not DuelModel.lane(unplayed, 1).compared and DuelModel.lane(unplayed, 1).ticks == 3000, "before your first turn the recorded run shows its whole time")
+	var old_race := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": ours.merged({"splits": null}, true), "sides": [_wire().sides[0], null]}))
+	_check(not old_race.is_empty() and not DuelModel.lane(old_race, 1).compared and DuelModel.lane(old_race, 1).ticks == 3000, "a race made before splits shows the whole recorded time")
+	# The duel page says what each time covers; its step count still says how far each pair has played.
+	var page := DuelPage.new()
+	page.me = ME
+	page.name_of = _name_of
+	page.view = ahead
+	root.add_child(page)
+	await process_frame
+	_check(page.find_child("DuelTime0", true, false).text == DuelModel.time_text(1500) and page.find_child("DuelTimeLabel0", true, false).text == PlayerCopy.DUEL_TIME_AFTER % 2, "the pair ahead: its time after 2 steps, said so")
+	_check(page.find_child("DuelTime1", true, false).text == DuelModel.time_text(2760) and page.find_child("DuelTimeLabel1", true, false).text == PlayerCopy.DUEL_TIME_SO_FAR, "the pair behind: time so far")
+	_check(_has_text(page, PlayerCopy.DUEL_STEPS % [3, 12]), "the pair ahead's step count is its own")
+	var dots: Array = page.find_child("DuelSide0", true, false).find_children("*", "", true, false).filter(func(node: Node) -> bool: return "counted" in node)
+	_check(dots.size() == 1 and dots[0].counted == 2 and dots[0].done == 3, "its dots: 2 bright for the time, the third soft")
+	page.show_duel(first_turn)
+	await process_frame
+	_check(page.find_child("DuelTime1", true, false).text == DuelModel.time_text(27) and page.find_child("DuelTimeLabel1", true, false).text == PlayerCopy.DUEL_TIME_AFTER_ONE, "a race's recorded run after 1 step, said so")
+	page.queue_free()
+	# The lobby tile shows the same.
+	var lobby := Lobby.new()
+	lobby.me = ME
+	lobby.name_of = _name_of
+	root.add_child(lobby)
+	await process_frame
+	lobby.show_lobby(Client.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [ahead_wire]}))
+	await process_frame
+	var tile: Node = lobby.find_child("DuelsTiles", true, false).get_child(0)
+	_check(tile.find_child("TileTime0", true, false).text == DuelModel.time_text(1500) and tile.find_child("TileTime1", true, false).text == DuelModel.time_text(2760), "the lobby tile sets both pairs side by side after 2 steps")
+	lobby.queue_free()
+	await process_frame
 
 ## The other pair's run: when it can be watched, the answer read and kept on this phone, acknowledged
 ## once kept and only until the server took it, played from the phone's own copy after that.

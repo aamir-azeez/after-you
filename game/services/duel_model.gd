@@ -166,12 +166,42 @@ static func looks(view: Dictionary, index: int) -> Array:
 		shown.append({} if seat_now.get("open", false) else stranger_look(kept[slot]) if seat_stranger(view, index, slot) else kept[slot])
 	return shown
 
-## The steps a side has played and the whole run's, for its dots.
+## What a side's lane shows, the one path every duel surface takes for its time and dots (tests/test_shared_paths.gd):
+## {ticks, counted, played, total, compared}. While the duel runs and one side has played more turns than the other,
+## which has played some, the side ahead shows its time after the same number of turns as the side behind (owner,
+## 2026-11-08), from the splits the server sends (services/duels_client.gd `splits`): `counted` is how many turns that
+## time covers, `played` how many the side has played, `total` the run's. Without splits (an older server, a race made
+## before them), and once the duel is over, each side shows its whole time so far, as before.
+static func lane(view: Dictionary, index: int) -> Dictionary:
+	var own := steps(view, index)
+	var shown := {"ticks": ticks(view, index), "counted": own.x, "played": own.x, "total": own.y, "compared": false}
+	var level := compared_steps(view)
+	if level <= 0 or level >= own.x: return shown
+	var held: Variant = view.ghost if index == 1 and view.kind == "ghost" else view.sides[index]
+	var splits: Variant = held.get("splits") if held is Dictionary else null
+	if not splits is Array or splits.size() != own.x: return shown
+	shown.ticks = int(splits[level - 1])
+	shown.counted = level
+	shown.compared = true
+	return shown
+
+## The turns both sides have played while the duel runs and one is ahead, or 0: nothing to set side by side
+## (level, over, a side that has not played yet, whose whole time 0:00.0 says nothing, or a pair that left,
+## which plays no further, so the pair still playing keeps its whole time).
+static func compared_steps(view: Dictionary) -> int:
+	if view.status != "running" or view.sides.size() < 2 or (view.sides[1] == null and view.kind != "ghost"): return 0
+	for side: Variant in view.sides:
+		if side is Dictionary and side.left: return 0
+	var a := steps(view, 0).x
+	var b := steps(view, 1).x
+	return 0 if a == b else mini(a, b)
+
+## The steps a side has played and the whole run's (lane() shows them).
 static func steps(view: Dictionary, index: int) -> Vector2i:
 	if index == 1 and view.kind == "ghost": return Vector2i(view.steps, view.steps)
 	return Vector2i(view.sides[index].steps, view.steps)
 
-## A side's time so far (the ghost's whole time).
+## A side's time so far (the ghost's whole time); lane() shows it.
 static func ticks(view: Dictionary, index: int) -> int:
 	if index == 1 and view.kind == "ghost": return int(view.ghost.ticks)
 	return int(view.sides[index].ticks)

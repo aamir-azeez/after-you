@@ -1,10 +1,11 @@
 import { fail, ok, type Outcome } from "../protocol";
 import type { ChapterKey } from "../v2/chapter-types";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "./rules";
-import { enterSeat, openSeats, publicForget, publicKnown, publicLeave, publicSeatsView, publicSettle, publicView, stallForfeits, type PublicState } from "./public";
+import { enterSeat, openSeats, publicForget, publicKnown, publicLeave, publicSeatsView, publicSettle, publicView, publicWaitingSlot, stallForfeits, type PublicState } from "./public";
 import { keptLook, servedLook } from "../leaderboards/run-looks";
 import type { Look } from "../pollen/catalog";
 import type { PayoutReceipt } from "./payout-receipt";
+import { validSplits } from "./ticks";
 
 /**
  * The duel state machine. Pure: every function takes the duel and the clock,
@@ -67,6 +68,8 @@ export type Side = {
   room: SideRoom | null;
   /** The room revision the progress below came from; older notes are ignored. */
   revision: number; steps: number; ticks: number;
+  /** The time after each of those steps (duels/ticks.ts RunProgress); absent on a note from before it was sent. */
+  splits?: number[];
   /** Whose turn it is in the side's room, or null. */
   turn: string | null;
   finished_ms: number | null;
@@ -87,7 +90,8 @@ export type Side = {
 };
 /** `looks`: a board run's pair looks as its row showed them when the race began (leaderboards/run-looks.ts). */
 /** `replay_hash`: a board run's replay as its row named it when the race began (absent on races made before it was kept, and on the developers' run). */
-export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null; replay_hash?: string; looks?: Look[] };
+/** `splits`: the run's time after each turn, from its kept replay or the developers' table (absent on races made before it, or when the replay was gone). */
+export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null; replay_hash?: string; looks?: Look[]; splits?: number[] };
 export type ResultReason = "faster" | "draw" | "left" | "failed_check" | "unchecked" | "stalled" | "erased" | "nobody_joined";
 /**
  * `winner`: the side index that won (1 is the ghost in a ghost race), or null for a draw or no result.
@@ -128,7 +132,8 @@ export type Duel = {
   public?: PublicState;
 };
 /** `looks`: the room's members' looks by player id, while looks are on (v2/room.ts commit `duel_looks`). */
-export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null; looks?: Record<string, Look> };
+/** `splits`: the time after each step (duels/ticks.ts); a note without them (an older Worker) leaves the side without any. */
+export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null; looks?: Record<string, Look>; splits?: number[] };
 
 /** `looks`: what the members wear, in `members` order, when known (while looks are on). */
 export function blankSide(members: [string, string], pairKey: string, looks?: readonly (Look | undefined)[], accountKey?: string): Side {
@@ -333,6 +338,7 @@ export function progress(duel: Duel, note: ProgressNote, now: number, checks: bo
   // A pair that left hands the duel over: its room's later turns change nothing here.
   if (duel.status !== "running" || side.left || side.finished_ms !== null || note.revision <= side.revision) return ok({ finished: false });
   Object.assign(side, { revision: note.revision, steps: Math.min(note.steps, duel.steps), ticks: note.ticks, turn: note.complete ? null : note.turn, last_ms: note.at_ms });
+  if (validSplits(note.splits, side.steps, side.ticks)) side.splits = [...note.splits]; else delete side.splits;
   // A public seat whose player the room names is in the room, whatever became of the room's own word (public.ts).
   if (duel.public && side.turn !== null) enterSeat(duel, index as 0 | 1, side.turn, now);
   // The pair's looks as their room holds them at this turn; a member the note leaves out keeps theirs.
@@ -463,6 +469,8 @@ export type SideView = {
   looks?: Look[];
   /** Public duels only: each seat open or taken, the viewer's or not, and its label (duels/public.ts). */
   seats?: SeatView[];
+  /** The time after each step played, when the side's notes brought them (Side.splits). */
+  splits?: number[];
 };
 export type SeatView = { open: boolean; you: boolean; label: string | null };
 export type DuelView = {
@@ -483,11 +491,13 @@ export function viewFor(duel: Duel, viewer: string, looks = false): DuelView | n
     const own = index === mine;
     // A public duel shows an id only to its own player and to a player who already knows it (duels/public.ts publicKnown).
     const members = side.members.map(id => id !== null && (duel.public ? publicKnown(duel, viewer, id) : own || known.has(knownKey(viewer, id))) ? id : null);
-    const turn = side.turn === null ? -1 : side.members.indexOf(side.turn);
+    const turn = side.turn === null ? publicWaitingSlot(duel, side) : side.members.indexOf(side.turn);
     // A run that counted without its check (waived) shows none, so no phone says it waits for one.
     return { members, you: own, steps: side.steps, ticks: side.ticks, turn: turn < 0 ? null : turn, finished: side.finished_ms !== null, left: side.left, check: side.waived ? "none" : side.check,
       ...(own ? { room_id: side.room?.room_id ?? null, invite_code: side.room?.invite_code ?? null, hosting: side.room?.host === viewer } : {}),
-      ...(looks ? { looks: pairShown(side.looks) } : {}), ...(duel.public ? { seats: publicSeatsView(duel, index, viewer) } : {}) };
+      ...(looks ? { looks: pairShown(side.looks) } : {}), ...(duel.public ? { seats: publicSeatsView(duel, index, viewer) } : {}),
+      // Only splits that still fit the side's steps and time (a side last noted by older code may hold stale ones).
+      ...(validSplits(side.splits, side.steps, side.ticks) ? { splits: [...side.splits] } : {}) };
   };
   const result = duel.result;
   const outcome = !result ? null : result.winner === null ? (result.reason === "draw" ? "draw" : "none") : result.winner === mine ? "won" : "lost";

@@ -8,7 +8,7 @@ import { canonicalJson, digest } from "../src/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { boardKeys } from "../src/leaderboards/boards";
-import { developerGhost } from "../src/duels/developer-ghosts";
+import { developerGhost, developerGhostSplits } from "../src/duels/developer-ghosts";
 import { deriveJobToken } from "../src/leaderboards/job-token";
 import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
@@ -185,7 +185,7 @@ async function seedDuels(members: [Account, Account], count: number, boards: str
     const duel = newFriendDuel({ duel_id, board, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: ids[0], a: blankSide(ids, key), b: blankSide(others, `other${index}`), known: [] }, now);
     Object.assign(duel, { status: "running", accepted_ms: now });
     if (end !== "running") Object.assign(duel, { status: "decided", result: { winner: end === "won" ? 0 : 1, reason: "faster", decided_ms: now, margin_ticks: 30 } });
-    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(board), async (target: LeaderboardBoard) => { target.duelCreate(duel); });
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(board), async (target: LeaderboardBoard) => { await target.duelCreate(duel); });
     refs.push({ duel_id, board, at: now });
   }
   for (const id of ids) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs }, now);
@@ -511,13 +511,44 @@ describe("ghost races", () => {
     expect(first.room).toMatchObject({ guest_id: null, active_role: "b", active_player_id: null });
     const side = (await lobby(a1)).duels[0].sides[0];
     // One turn, its own time, and the partner who has not joined yet to play next: never "Not started".
-    expect(side).toMatchObject({ steps: 1, ticks: firstTurn.duration_ticks, turn: side.members.indexOf(a1.player_id) });
+    expect(side).toMatchObject({ steps: 1, ticks: firstTurn.duration_ticks, turn: side.members.indexOf(a1.player_id), splits: [firstTurn.duration_ticks] });
     expect((await lobby(a2)).duels[0].sides[0].turn).toBe(side.members.indexOf(a1.player_id));
     const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a1, { invite_code: room.invite_code }));
     const [, secondTurn, checkpoint] = run.turns[1];
     await ok(call(`/v2/rooms/${room.room_id}/turns`, "POST", a1, turn(joined, secondTurn, checkpoint)));
-    expect((await lobby(a2)).duels[0].sides[0]).toMatchObject({ steps: 2, ticks: (firstTurn.duration_ticks as number) + (secondTurn.duration_ticks as number) });
+    const both = (firstTurn.duration_ticks as number) + (secondTurn.duration_ticks as number);
+    expect((await lobby(a2)).duels[0].sides[0]).toMatchObject({ steps: 2, ticks: both, splits: [firstTurn.duration_ticks, both] });
   });
+
+  it("give the recorded run's time after each turn: Our run's from its table, a board run's from its kept replay, and none for a race made before", async () => {
+    const { a1, a2 } = await pairs();
+    const ours = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
+    expect(ours.ghost!.splits).toEqual(developerGhostSplits(RELAY));
+    expect(ours.ghost!.splits).toHaveLength(ours.steps);
+    // A finished run ranks on the board, and a race against it times the run turn by turn.
+    const run = await relayRun(0);
+    const room = await ok<RoomSnapshotV2>(openRoom(a2, ours));
+    await play(await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a1, { invite_code: room.invite_code })), [a2, a1], run);
+    await verdicts((await job()).entries, () => true);
+    await forgetViews(boardKeys());
+    const top = (await ok<{ boards: { board: string; top: { entry_id: string; ticks: number }[] }[] }>(call("/v1/duels/ghosts", "GET", a1))).boards.find(item => item.board === RELAY)!.top;
+    const raced = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "board", entry_id: top[0].entry_id }))).duel;
+    let sum = 0;
+    expect(raced.ghost!.splits).toEqual(run.turns.map(([, recording]) => sum += recording.duration_ticks as number));
+    expect(raced.ghost!.splits!.at(-1)).toBe(top[0].ticks);
+    expect((await detail(a1, raced)).duel.ghost!.splits).toEqual(raced.ghost!.splits);
+    // A race kept from before splits, or whose run's replay is gone, reads as it always did.
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (_, ctx) => {
+      const row = ctx.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE duel_id=?", raced.duel_id).one();
+      const duel = JSON.parse(row.data) as { ghost: { splits?: number[] } };
+      delete duel.ghost.splits;
+      ctx.storage.sql.exec("UPDATE duels SET data=? WHERE duel_id=?", JSON.stringify(duel), raced.duel_id);
+      ctx.storage.sql.exec("DELETE FROM lb_replays");
+    });
+    expect((await detail(a1, raced)).duel.ghost).not.toHaveProperty("splits");
+    const later = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "board", entry_id: top[0].entry_id }))).duel;
+    expect(later.ghost).not.toHaveProperty("splits");
+  }, 60_000);
 });
 
 describe("the first win over Our run", () => {
@@ -597,7 +628,7 @@ describe("the first win over Our run", () => {
     const now = Date.now(), duelId = "b".repeat(32);
     const boardRace = newGhostRace({ duel_id: duelId, board: RELAY, chapter: RELAY_KEY, steps: 4, starter: a1.player_id, a: blankSide([a1.player_id, a2.player_id], "pair"),
       ghost: { source: "board", entry_id: "e".repeat(32), rank: 1, ticks: OURS * 4, names: null } }, now);
-    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (board: LeaderboardBoard) => { board.duelCreate(boardRace); });
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (board: LeaderboardBoard) => { await board.duelCreate(boardRace); });
     for (const id of [a1.player_id, a2.player_id]) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs: [{ duel_id: duelId, board: RELAY, at: now }] }, now);
     const seen = (await lobby(a1)).duels.find(duel => duel.duel_id === duelId)!;
     const beat = await detail(a1, await played(a1, a2, -5, seen));
@@ -621,7 +652,7 @@ describe("the first win over Our run", () => {
     // A fast finish whose checkpoint never arrived: the check cannot run, so the race ends unchecked.
     const lost = newGhostRace({ duel_id: "f".repeat(32), board: RELAY, chapter: RELAY_KEY, steps: 4, starter: a1.player_id, a: blankSide(members, "pair"), ghost: ours }, now);
     const boards = env.LEADERBOARD_BOARDS.getByName(RELAY);
-    for (const duel of [old, lost]) await runInDurableObject(boards, async (board: LeaderboardBoard) => { board.duelCreate(duel); });
+    for (const duel of [old, lost]) await runInDurableObject(boards, async (board: LeaderboardBoard) => { await board.duelCreate(duel); });
     for (const id of members) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs: [old, lost].map(duel => ({ duel_id: duel.duel_id, board: RELAY, at: now })) }, now);
     await boards.duelAct(lost.duel_id, { kind: "claim", player: a1.player_id, room_id: "r".repeat(22), invite_code: "i".repeat(20), room_absent: false });
     const noted = await boards.duelProgress(lost.duel_id, { room_id: "r".repeat(22), revision: 4, steps: 4, ticks: OURS - 5, turn: null, complete: true, at_ms: now, entry_id: "e".repeat(32) });
@@ -1275,7 +1306,7 @@ describe("pair keys by platform account in duels (PAIR-KEYS.md)", () => {
       const duel = newFriendDuel({ duel_id, board: RELAY, chapter: { ...RELAY_KEY }, steps: CHAPTERS[0].adapter.stages.length * 2, starter: ids[0], a: blankSide(ids, key),
         b: blankSide(others, pair.repeat(64), undefined, account?.repeat(64)), known: [] }, now);
       Object.assign(duel, { status: "decided", accepted_ms: now, result: { winner: 0, reason: "faster", decided_ms: now, margin_ticks: 30 } });
-      await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (target: LeaderboardBoard) => { target.duelCreate(duel); });
+      await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (target: LeaderboardBoard) => { await target.duelCreate(duel); });
       refs.push({ duel_id, board: RELAY, at: now });
     }
     for (const id of ids) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs }, now);

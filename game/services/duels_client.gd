@@ -479,7 +479,8 @@ static func valid_view(value: Variant) -> Dictionary:
 		# A board run's entry_id and replay_hash (backend model.ts Ghost) let the race ghost play it; a server before them sends none.
 		var hash: Variant = ghost.get("replay_hash")
 		kept_ghost = {"source": ghost.source, "ticks": int(ghost.ticks), "rank": int(ghost.rank) if Typed.whole_number(ghost.get("rank")) else 0, "names": ghost.get("names") if ghost.get("names") is Array else null, "looks": _looks(ghost.get("looks")),
-			"entry_id": ghost.entry_id if _entry(ghost.get("entry_id")) else null, "replay_hash": hash if hash is String and hash.length() == 64 and hash.is_valid_hex_number() and hash == hash.to_lower() else null}
+			"entry_id": ghost.entry_id if _entry(ghost.get("entry_id")) else null, "replay_hash": hash if hash is String and hash.length() == 64 and hash.is_valid_hex_number() and hash == hash.to_lower() else null,
+			"splits": _splits(ghost.get("splits"), int(value.steps), int(ghost.ticks))}
 	var result: Variant = value.get("result")
 	var kept_result: Variant = null
 	if result != null:
@@ -503,7 +504,8 @@ static func _side(value: Variant) -> Dictionary:
 	if not Typed.whole_number(value.get("steps")) or not Typed.whole_number(value.get("ticks")) or not value.get("finished") is bool or not value.get("left") is bool or not value.get("check") in CHECKS: return {}
 	var turn: Variant = value.get("turn")
 	var side := {"members": value.members.duplicate(), "you": value.you, "steps": int(value.steps), "ticks": int(value.ticks),
-		"turn": int(turn) if Typed.whole_number(turn) and int(turn) < 2 else -1, "finished": value.finished, "left": value.left, "check": value.check, "looks": _looks(value.get("looks"))}
+		"turn": int(turn) if Typed.whole_number(turn) and int(turn) < 2 else -1, "finished": value.finished, "left": value.left, "check": value.check, "looks": _looks(value.get("looks")),
+		"splits": _splits(value.get("splits"), int(value.steps), int(value.ticks))}
 	# A public duel's seats: open, this player's own, and a stranger's label ("" when they show no name).
 	if value.has("seats"):
 		var seats: Variant = value.seats
@@ -522,6 +524,16 @@ static func _side(value: Variant) -> Dictionary:
 		side["invite_code"] = invite if invite is String else ""
 		side["hosting"] = value.get("hosting") == true
 	return side
+
+## A run's time after each turn (backend duels/ticks.ts): one whole, rising total per turn of `steps`, the last
+## `ticks`. [] for anything else, or none sent (an older server or race), and the pages then show whole times.
+static func _splits(value: Variant, steps: int, ticks: int) -> Array:
+	if not value is Array or value.size() != steps or steps == 0: return []
+	var kept: Array = []
+	for total: Variant in value:
+		if not Typed.whole_number(total) or int(total) < 1 or (not kept.is_empty() and int(total) <= int(kept[-1])): return []
+		kept.append(int(total))
+	return kept if int(kept[-1]) == ticks else []
 
 ## Two looks in member order, as sent; {} for each one missing or not a Dictionary.
 static func _looks(value: Variant) -> Array:

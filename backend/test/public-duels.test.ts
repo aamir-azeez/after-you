@@ -277,6 +277,61 @@ describe("public duels", () => {
     expect((await errorOf(join(lone, posted))).code).toBe("spot_taken");
   });
 
+  it("wait on the other seat after a host played the first turn alone, open or taken, never entering it, in any order", async () => {
+    const [poster, lone, other] = await Promise.all([player(), player(), player()]);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    const room = await ok<RoomSnapshotV2>(openRoom(poster, posted));
+    const [a1, b1, mid] = await firstStage();
+    await ok(call(`/v2/rooms/${room.room_id}/turns`, "POST", poster, turn(room, a1)));
+    // The seat beside the poster is open: the side waits on it ("Waiting for a partner"), never on the poster.
+    let side = (await detail(poster, posted)).duel.sides[0];
+    expect(side).toMatchObject({ steps: 1, turn: 1, splits: [a1.duration_ticks] });
+    expect(side.seats![1].open).toBe(true);
+    expect((await boardDuel(posted.duel_id)).sides[0].turn).toBeNull();
+    // A stranger takes it: their turn as both see it, and the seat is still not entered.
+    await ok(join(lone, posted));
+    side = (await detail(lone, posted)).duel.sides[0];
+    expect([side.turn, side.members[1]]).toEqual([1, lone.player_id]);
+    expect((await detail(poster, posted)).duel.sides[0]).toMatchObject({ turn: 1, members: [poster.player_id, null] });
+    let stored = await boardDuel(posted.duel_id);
+    expect([stored.sides[0].turn, stored.public!.seats[1].entered]).toEqual([null, undefined]);
+    // They leave before entering: the seat goes back on the list, and the side waits on the open seat again.
+    expect(await ok<Any>(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", lone, { schema_version: 1 }))).toEqual({ schema_version: 1, duel: null, left: true });
+    const back = (await detail(poster, posted)).duel;
+    expect([back.public?.seats_open, back.sides[0].turn, back.sides[0].seats![1].open]).toEqual([3, 1, true]);
+    // Another takes it, enters and plays: the room names every turn from then on.
+    const mine = (await ok<{ duel: DuelView }>(join(other, posted))).duel;
+    expect([mine.sides[0].turn, mine.sides[0].members[1]]).toEqual([1, other.player_id]);
+    const entered = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", other, { invite_code: mine.sides[0].invite_code }));
+    await ok(call(`/v2/rooms/${entered.room_id}/turns`, "POST", other, turn(entered, b1, mid)));
+    stored = await boardDuel(posted.duel_id);
+    expect([stored.public!.seats[1].entered, stored.sides[0].steps, stored.sides[0].turn]).toEqual([true, 2, other.player_id]);
+    expect((await detail(poster, posted)).duel.sides[0]).toMatchObject({ turn: 1, splits: [a1.duration_ticks, (a1.duration_ticks as number) + (b1.duration_ticks as number)] });
+  });
+
+  it("end a side waiting on its other seat as nobody_joined while the seat is open, and as stalled once taken but never entered", async () => {
+    const [poster, lone, p1, p2, late] = await Promise.all([player(), player(), player(), player(), player()]);
+    await partner(p1, p2);
+    const [a1] = await firstStage();
+    const firstTurn = async (duel: DuelView) => { const room = await ok<RoomSnapshotV2>(openRoom(poster, duel)); await ok(call(`/v2/rooms/${room.room_id}/turns`, "POST", poster, turn(room, a1))); };
+    const open = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await firstTurn(open);
+    await rewriteDuel(open.duel_id, duel => { duel.public!.open_until_ms = Date.now() - 1; });
+    expect((await errorOf(join(late, open))).code).toBe("spot_taken");
+    const unjoined = (await detail(poster, open)).duel;
+    expect([unjoined.status, unjoined.result?.reason, unjoined.sides[0].turn]).toEqual(["unfinished", "nobody_joined", null]);
+    const taken = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await firstTurn(taken);
+    await ok(join(lone, taken));
+    await ok(join(p1, taken, "party"));
+    expect((await detail(lone, taken)).duel.sides[0].turn).toBe(1);
+    await rewriteDuel(taken.duel_id, duel => { duel.accepted_ms! -= PUBLIC_STALL_MS; for (const side of duel.sides) if (side?.last_ms) side.last_ms -= PUBLIC_STALL_MS; duel.public!.posted_ms -= PUBLIC_STALL_MS; });
+    const stalled = (await detail(poster, taken)).duel;
+    expect([stalled.status, stalled.result?.reason, stalled.sides[0].turn]).toEqual(["unfinished", "stalled", null]);
+    const stored = await boardDuel(taken.duel_id);
+    expect([stored.public!.seats[1].entered, stored.result?.forfeit]).toEqual([undefined, undefined]);
+  });
+
   it("refuse a join after the spots closed, and end the duel as nobody_joined with no win or loss", async () => {
     const [poster, late] = await Promise.all([player(), player()]);
     const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;

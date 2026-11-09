@@ -17,7 +17,7 @@ import { CHALLENGE_TTL_MS, PARTY_ACTIONS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_R
 import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
-import { developerGhost } from "./developer-ghosts";
+import { developerGhost, developerGhostSplits } from "./developer-ghosts";
 import { announceLobby, hintsField } from "./news";
 import { blobBase64 } from "../blob-codec";
 import { looksOn } from "../pollen/features";
@@ -349,7 +349,9 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number, 
   if (body.source === "developer") {
     const ticks = developerGhost(key);
     if (ticks === null || body.entry_id !== null) throw new ApiError(404, "ghost_not_found");
-    ghost = { source: "developer", entry_id: null, rank: null, ticks, names: null };
+    // Its time after each turn, so a phone can set it beside the pair's after the same number of turns.
+    const splits = developerGhostSplits(key);
+    ghost = { source: "developer", entry_id: null, rank: null, ticks, names: null, ...(splits && splits.length === row.adapter.stages.length * 2 ? { splits } : {}) };
   } else {
     if (typeof body.entry_id !== "string" || !/^[a-f0-9]{32}$/.test(body.entry_id)) throw new ApiError(400, "invalid_duel_request");
     let view = await cachedView(key);

@@ -124,8 +124,12 @@ static func picture(key: String, frame_size: Vector2, radius: int = 12) -> Panel
 	return frame
 
 ## Step dots no wider than `width`: a long chapter's dots shrink, down to 8 pixels.
-static func dots_within(done: int, total: int, width: float, largest: float = 24.0) -> Control:
-	return dots(done, total, clampf(width / maxf(1.0, total * 1.45), 8.0, largest))
+static func dots_within(done: int, total: int, width: float, largest: float = 24.0, counted: int = -1) -> Control:
+	return dots(done, total, clampf(width / maxf(1.0, total * 1.45), 8.0, largest), counted)
+
+## A lane's dots (services/duel_model.gd lane): the turns its time covers bright, the rest it played soft.
+static func lane_dots(lane: Dictionary, width: float, largest: float = 24.0) -> Control:
+	return dots_within(int(lane.played), int(lane.total), width, largest, int(lane.counted))
 
 ## A result's stages: a dot per stage on one joined line that ends in the chapter's round badge.
 static func stage_line(done: int, total: int, key: String, width: float, badge: float = 44.0) -> HBoxContainer:
@@ -144,9 +148,9 @@ static func stage_line(done: int, total: int, key: String, width: float, badge: 
 	line.add_child(frame)
 	return line
 
-static func dots(done: int, total: int, dot: float = 16.0) -> Control:
+static func dots(done: int, total: int, dot: float = 16.0, counted: int = -1) -> Control:
 	var row := Dots.new()
-	row.setup(done, total, dot)
+	row.setup(done, total, dot, -1.0, counted)
 	return row
 
 ## Removes children at once, so new ones keep their names.

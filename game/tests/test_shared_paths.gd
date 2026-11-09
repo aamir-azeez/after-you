@@ -21,7 +21,10 @@ extends SceneTree
 ## (k) the recovery code: services/recovery_guard.gd alone copies it and works the screen
 ##     lock and private screen; each screen that reads it is in RECOVERY_SURFACES;
 ## (l) the leaderboard icon: presentation/kit/icons.gd LEADERBOARD alone names the
-##     trophy, and each screen that shows a leaderboard icon is in LEADERBOARD_ICON_SURFACES.
+##     trophy, and each screen that shows a leaderboard icon is in LEADERBOARD_ICON_SURFACES;
+## (m) duel times: services/duel_model.gd lane() alone gives a duel lane its time and dots (the
+##     pair ahead set beside the pair behind after as many turns), and each screen that shows a
+##     duel time is in DUEL_TIME_SURFACES.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -186,6 +189,22 @@ const LEADERBOARD_ICON_SURFACES := {
 	"res://presentation/whats_new_kit.gd": "What's new highlights about the board (icon trophy)",
 }
 
+## (m) The one path to a duel lane's time and dots, and the screens that show one.
+const DUEL_MODEL := "res://services/duel_model.gd"
+const DUEL_TIME_SURFACES := {
+	"res://presentation/duels/duels_screen.gd": "the lobby tile's two lanes",
+	"res://presentation/duels/duel_page.gd": "the duel page's two side cards",
+	"res://presentation/duels/duel_result_page.gd": "the result page's two side cards",
+}
+## Scripts that read a duel view's or list row's steps or ticks for something other than a lane's time and dots.
+const RAW_DUEL_TIME_EXEMPT := {
+	"res://services/duel_model.gd": "the shared path itself (lane, steps, ticks)",
+	"res://presentation/duels/public_sheets.gd": "a public list row's steps, to word the join sheet; list rows carry no times",
+	"res://services/race_ghost.gd": "the developers' run is picked by the race's ghost ticks, never shown as a time",
+}
+## A side's or the ghost's time or steps read straight off a duel view.
+const RAW_DUEL_TIME := "\\.(?:sides\\[[^\\]]+\\]|ghost)\\.(?:ticks|steps)\\b|\\.(?:sides\\[[^\\]]+\\]|ghost)\\.get\\(\"(?:ticks|steps|splits)\""
+
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity"]
 
@@ -211,6 +230,7 @@ func _initialize() -> void:
 	_taps()
 	_recovery()
 	_leaderboard_icon()
+	_duel_times()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -229,6 +249,7 @@ func _self_checks() -> void:
 	_check(_found(SEND, "await _api.request_json(HTTPClient.METHOD_POST, PATH, body)") == 1 and _found(SEND, "await _net(ticket, HTTPClient.METHOD_DELETE, p)") == 1, "Sends are found, with a leading ticket too")
 	_check(_found(SEND, "if method == HTTPClient.METHOD_POST and path in []") == 0 and _found(SEND, "request_json(HTTPClient.METHOD_GET, p)") == 0, "A method test or a read is no send")
 	_check(_found(_capability_read(), "capabilities.get(\"x\")") == 1 and _found(_capability_read(), "if session.capabilities.is_empty(): await session.load_capabilities()") == 0, "A raw capability read is found; an emptiness test is not")
+	_check(_found(RAW_DUEL_TIME, "Kit.text(time_text(view.sides[index].ticks))") == 1 and _found(RAW_DUEL_TIME, "var t := view.ghost.get(\"splits\")") == 1 and _found(RAW_DUEL_TIME, "row.sides[side].seats") == 0, "A duel time read off the view is found; a seat is not")
 	_check(_writers("var c := ConfigFile.new()\nc.save(PATH)\n") == [2] and _writers("var c := ConfigFile.new()\nAtomicFile.write_text(PATH, c.encode_to_text())\n").is_empty(), "A ConfigFile saved by itself is a write; one through AtomicFile is not")
 
 # (a) Pips -------------------------------------------------------------------
@@ -524,6 +545,28 @@ func _leaderboard_icon() -> void:
 	for path: String in LEADERBOARD_ICON_SURFACES:
 		_check(seen.has(path), "LEADERBOARD_ICON_SURFACES names %s, which shows no leaderboard icon through presentation/kit/icons.gd now" % path)
 	_check(str(_sources.get(ICONS, "")).contains("const LEADERBOARD = preload(\"res://assets/ui/social/" + LEADERBOARD_ICON_FILE + "\")"), "presentation/kit/icons.gd LEADERBOARD is the Phosphor trophy")
+
+# (m) Duel times --------------------------------------------------------------
+
+func _duel_times() -> void:
+	var seen := {}
+	var raw := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if _found(RAW_DUEL_TIME, source) > 0:
+			raw[path] = true
+			_check(RAW_DUEL_TIME_EXEMPT.has(path), "%s reads a duel time or steps off a view: show it through DuelModel.lane(), or add it to RAW_DUEL_TIME_EXEMPT with why" % path)
+		if path == DUEL_MODEL: continue
+		var alias := _alias(source, DUEL_MODEL)
+		if alias.is_empty(): continue
+		_check(_found("\\b" + alias + "\\.(?:ticks|steps)\\(", source) == 0, "%s reads a duel side's time or steps itself: show them through DuelModel.lane(), which sets the pair ahead beside the pair behind" % path)
+		if _found("\\b" + alias + "\\.lane\\(", source) == 0: continue
+		seen[path] = true
+		_check(DUEL_TIME_SURFACES.has(path), "%s shows a duel time: add it to DUEL_TIME_SURFACES with where" % path)
+	for path: String in DUEL_TIME_SURFACES:
+		_check(seen.has(path), "DUEL_TIME_SURFACES names %s, which shows no duel time through DuelModel.lane() now: delete it" % path)
+	for path: String in RAW_DUEL_TIME_EXEMPT:
+		_check(raw.has(path), "RAW_DUEL_TIME_EXEMPT names %s, which reads no duel time off a view now: delete it" % path)
 
 # (j) and the guard suites ---------------------------------------------------
 

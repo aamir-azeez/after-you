@@ -153,19 +153,26 @@ func _side_card(index: int) -> Control:
 	Kit.fitted(pill.get_child(0), 0.0, right.custom_minimum_size.x - 28.0)
 	pill.custom_minimum_size.x = 230
 	right.add_child(pill)
-	var steps := DuelModel.steps(view, index)
-	right.add_child(Kit.dots_within(steps.x, steps.y, right.custom_minimum_size.x - 10.0))
-	var count := Kit.text(PlayerCopy.DUEL_STEPS % [steps.x, steps.y], 19, UiTokens.SOFT)
+	# The pair ahead shows its time after as many turns as the pair behind, and says so (DuelModel.lane).
+	var lane := DuelModel.lane(view, index)
+	right.add_child(Kit.lane_dots(lane, right.custom_minimum_size.x - 10.0))
+	var count := Kit.text(PlayerCopy.DUEL_STEPS % [lane.played, lane.total], 19, UiTokens.SOFT)
 	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	right.add_child(count)
-	var label := Kit.text(PlayerCopy.DUEL_TIME_SO_FAR, 18, UiTokens.SOFT)
+	var label := Kit.text(_time_label(lane), 18, UiTokens.SOFT)
+	label.name = "DuelTimeLabel%d" % index
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	right.add_child(label)
-	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 50 if not compact else 42, UiTokens.CREAM, true)
+	var time := Kit.text(DuelModel.time_text(int(lane.ticks)), 50 if not compact else 42, UiTokens.CREAM, true)
 	time.name = "DuelTime%d" % index
 	time.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	right.add_child(time)
 	return card
+
+## "Time so far", or "Time after 1 step" while the lane's time covers fewer turns than it played.
+static func _time_label(lane: Dictionary) -> String:
+	if not lane.compared: return PlayerCopy.DUEL_TIME_SO_FAR
+	return PlayerCopy.DUEL_TIME_AFTER_ONE if int(lane.counted) == 1 else PlayerCopy.DUEL_TIME_AFTER % int(lane.counted)
 
 func _render_card() -> void:
 	Kit.clear(_card)

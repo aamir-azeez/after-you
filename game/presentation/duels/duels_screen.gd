@@ -349,11 +349,13 @@ func _lane(view: Dictionary, index: int) -> Control:
 	var pips: Control = Kit.pips(Vector2(30, 40), DuelModel.members(view, index), me, DuelModel.looks(view, index)) if not DuelModel.is_public(view) else _public_pips(view, index)
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	column.add_child(pips)
-	var steps := DuelModel.steps(view, index)
-	column.add_child(Kit.dots_within(steps.x, steps.y, TILE_WIDTH * 0.5 - 24.0, 10.0))
+	# The pair ahead shows its time after as many turns as the pair behind; its dots say how many (DuelModel.lane).
+	var lane := DuelModel.lane(view, index)
+	column.add_child(Kit.lane_dots(lane, TILE_WIDTH * 0.5 - 24.0, 10.0))
 	# An open pair has no time yet (board 5C).
 	var nobody := DuelModel.open_seats(view, index) == 2
-	var time := Kit.text(PlayerCopy.PUBLIC_NOBODY_YET if nobody else DuelModel.time_text(DuelModel.ticks(view, index)), 16 if nobody else 24, UiTokens.SOFT if nobody else UiTokens.CREAM, not nobody)
+	var time := Kit.text(PlayerCopy.PUBLIC_NOBODY_YET if nobody else DuelModel.time_text(int(lane.ticks)), 16 if nobody else 24, UiTokens.SOFT if nobody else UiTokens.CREAM, not nobody)
+	time.name = "TileTime%d" % index
 	time.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(time)
 	return column

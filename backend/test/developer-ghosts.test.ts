@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
-import { DEVELOPER_GHOSTS, developerGhost } from "../src/duels/developer-ghosts";
+import { DEVELOPER_GHOSTS, DEVELOPER_GHOST_TURNS, developerGhost, developerGhostSplits } from "../src/duels/developer-ghosts";
 import { boardKey, boardKeys } from "../src/leaderboards/boards";
 import { runTicks, walkRun } from "../src/leaderboards/run";
 import { CHAPTERS } from "../src/v2/chapters";
@@ -38,6 +38,12 @@ describe("developers' ghosts", () => {
       expect(walkRun(checkpoint), row.board).toMatchObject({ ticks: row.ticks, assisted: false, mixed: false, simulation_version: newest });
       expect(runTicks(checkpoint, adapter.stages.length), row.board).toEqual({ ticks: row.ticks, simulation_version: newest });
       expect(row.catch_assistance).toBe(false);
+      // Its turns, as a race's view gives them: the run's own, two per stage, adding up to its time.
+      expect(DEVELOPER_GHOST_TURNS[row.board], row.board).toEqual(walkRun(checkpoint)!.turns);
+      expect(DEVELOPER_GHOST_TURNS[row.board]).toHaveLength(adapter.stages.length * 2);
+      expect(developerGhostSplits(row.board)!.at(-1)).toBe(row.ticks);
     }
+    expect(Object.keys(DEVELOPER_GHOST_TURNS).sort()).toEqual([...boardKeys()].sort());
+    expect(developerGhostSplits("no-such-board@1")).toBeNull();
   });
 });

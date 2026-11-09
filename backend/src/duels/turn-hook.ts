@@ -28,7 +28,7 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
   const at = Date.parse(room.updated_at);
   if (!progress || !Number.isFinite(at)) return null;
   const complete = progress.complete && room.active_role === "complete";
-  const note: ProgressNote = { room_id: room.room_id, revision: room.revision, steps: progress.steps, ticks: progress.ticks,
+  const note: ProgressNote = { room_id: room.room_id, revision: room.revision, steps: progress.steps, ticks: progress.ticks, splits: progress.splits,
     turn: complete ? null : nextPlayer(room, link), complete, at_ms: at, entry_id: complete ? await entryId(room.room_id, room.branch) : null,
     ...(looks ? { looks: memberLooks(room, looks) } : {}) };
   // A finish that may wait for the check brings its checkpoint: every friend run, and a ghost race run faster than the
@@ -43,7 +43,8 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
  * Whose move the room waits for. The room names the guest's slot by its guest, and a host may play the
  * first turn before the partner joins, so a friend duel's or ghost race's room with no guest yet waits
  * for the pair's other member, whom the link names. A public room's other seat may still be open or
- * not yet entered (public.ts enterSeat), so it stays as the room says.
+ * not yet entered (public.ts enterSeat), so it stays as the room says, and views point at that seat
+ * (public.ts publicWaitingSlot).
  */
 function nextPlayer(room: RoomSnapshotV2, link: DuelLink): string | null {
   if (room.active_player_id !== null || room.guest_id !== null || link.public || link.members.length !== 2 || !link.members.includes(room.host_id)) return room.active_player_id;

@@ -149,14 +149,15 @@ func _card(index: int, won: bool) -> Control:
 	var pips: Control = Kit.pips(Vector2(84, 100) if not compact else Vector2(70, 84), DuelModel.members(view, index), me, DuelModel.looks(view, index)) if not DuelModel.is_public(view) else _public_pips(index)
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	middle.add_child(pips)
-	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 54 if not compact else 46, UiTokens.CREAM, true)
+	# An ended duel's lanes show whole times (DuelModel.lane compares only while it runs).
+	var lane := DuelModel.lane(view, index)
+	var time := Kit.text(DuelModel.time_text(int(lane.ticks)), 54 if not compact else 46, UiTokens.CREAM, true)
 	time.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	time.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	middle.add_child(time)
 	column.add_child(middle)
 	# Stages, not turns: two turns make a stage, as the board's stage dots count them.
-	var steps := DuelModel.steps(view, index)
-	column.add_child(Kit.stage_line(steps.x / 2, steps.y / 2, _picture_key(), 340.0 if not compact else 290.0))
+	column.add_child(Kit.stage_line(int(lane.played) / 2, int(lane.total) / 2, _picture_key(), 340.0 if not compact else 290.0))
 	return card
 
 ## A public side's pips (public_seats.gd), a stranger's tappable for their card.

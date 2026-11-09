@@ -116,6 +116,9 @@ export class DuelStore {
     }));
   }
 
+  /** Whether the duel is held here already, so a retried create works nothing out again (board.ts duelCreate). */
+  holds(duelId: string): boolean { return this.present() && this.duel(duelId) !== null; }
+
   /** Public duels on the list here now. Read only at posting, at most MAX_BOARD_DUELS rows. */
   private listedCount(now: number): number {
     return this.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE status='running' AND json_extract(data,'$.public.open_until_ms') > ?", now).toArray()
