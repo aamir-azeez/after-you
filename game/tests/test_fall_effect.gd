@@ -138,6 +138,20 @@ func _sync() -> void:
 	for at: int in all:
 		if shader_draws.get(at, []) != mirror_draws.get(at, ["(not drawn)"]): differ.append("%d: shader %s, mirror %s" % [at, shader_draws.get(at), mirror_draws.get(at)])
 	_check(differ.is_empty(), "Each draw takes the same uniforms in the shader and the mirror: %s" % [differ])
+	# Every value the path works out takes the same uniforms on both sides.
+	var shader_steps := _steps(_body(code, "void vertex()"), ";", "^\\s*(?:\\w+\\s+)?(\\w+)\\s*=[^=]", names)
+	var mirror_steps := _steps(_body(mirror, "static func fall_shape(") + "\n" + _body(mirror, "static func fall_place("), "\n", "^\\s*(?:var\\s+)?(\\w+)\\s*(?::\\s*\\w+\\s*)?:?=[^=]", names)
+	var unmatched: Array[String] = []
+	for target: String in shader_steps:
+		if shader_steps[target] != mirror_steps.get(target, []): unmatched.append("%s: shader %s, mirror %s" % [target, shader_steps[target], mirror_steps.get(target, "(none)")])
+	for target: String in mirror_steps:
+		if not shader_steps.has(target) and not (mirror_steps[target] as Array).is_empty(): unmatched.append("%s: mirror only %s" % [target, mirror_steps[target]])
+	_check(unmatched.is_empty() and shader_steps.has("out_to") and shader_steps.has("fade") and shader_steps.has("w"), "Each step of the path takes the same uniforms in the shader and the mirror: %s" % [unmatched])
+	var drawn := _steps(_body(code, "void fragment()"), ";", "^\\s*(\\w+)\\s*=[^=]", names)
+	var lit := {}
+	for target: String in drawn:
+		for name: String in drawn[target]: lit[name] = true
+	_check(lit.keys() == ["glow"], "The fragment takes only the glow, which the path never needs: %s" % [lit.keys()])
 
 ## The text of the function starting at `head` up to the next top-level line.
 func _body(source: String, head: String) -> String:
@@ -150,6 +164,37 @@ func _body(source: String, head: String) -> String:
 		if not line.is_empty() and not line.begins_with("\t") and not line.begins_with(" "): break
 		kept.append(line)
 	return "\n".join(kept)
+
+## Assigned name -> the sorted uniform names its statements read (the
+## mirror's "colors" for the two colour uniforms). A local named after a
+## uniform is the mirror unpacking it, not a step.
+func _steps(body: String, end: String, assign: String, names: Dictionary) -> Dictionary:
+	var steps := {}
+	var target := RegEx.create_from_string(assign)
+	for statement: String in body.split(end):
+		var line := statement.strip_edges()
+		# The first statement follows the function's head.
+		if line.contains("{"): line = line.substr(line.rfind("{") + 1).strip_edges()
+		var found := target.search(line)
+		if found == null or names.has(found.get_string(1)) or found.get_string(1) == "colors": continue
+		var named: Dictionary = {}
+		for name: String in steps.get(found.get_string(1), []): named[name] = true
+		for name: String in _named(line, names): named[name] = true
+		var sorted := named.keys()
+		sorted.sort()
+		steps[found.get_string(1)] = sorted
+	return steps
+
+## The uniform names `text` reads.
+func _named(text: String, names: Dictionary) -> Array:
+	var named := {}
+	for match: RegExMatch in RegEx.create_from_string("[A-Za-z_]\\w*").search_all(text):
+		var token := match.get_string()
+		if token == "colors":
+			named["color_a"] = true
+			named["color_b"] = true
+		elif names.has(token): named[token] = true
+	return named.keys()
 
 ## Draw index -> the sorted uniform names (the mirror's "colors" for the two
 ## colour uniforms) in the statement reading it.
@@ -186,6 +231,8 @@ func _recipes() -> void:
 	_check(FallEffect.DEFAULTS.id == "" and FallEffect.recipe({"id": "test:recipe"}).id == "test:recipe", "and names its own shared mesh and material")
 	var one := FallEffect.mesh(made)
 	_check(one == FallEffect.mesh(FallEffect.recipe({"id": "test:recipe", "shape": &"star", "count": 4})) and FallEffect.material(made) == FallEffect.material(made), "baked once per recipe and shared")
+	var other := FallEffect.recipe({"id": "test:recipe", "shape": &"leaf", "count": 4, "glow": 0.9})
+	_check(FallEffect.mesh(other) != one and FallEffect.material(other) != FallEffect.material(made), "and a recipe copied under the same id with other values gets its own")
 
 ## Each shape: a few triangles round its middle, inside its half sizes, every
 ## index in range; count of them stays within the item budget.

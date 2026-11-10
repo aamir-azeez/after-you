@@ -13,9 +13,9 @@ extends RefCounted
 ##     FallEffect.wear(look, {"id": "orchard_skin", "shape": &"petal", ...})
 ## A recipe is a Dictionary of the fields in DEFAULTS; a field left out takes
 ## its default (the Orchard skin's petal fall). "id" names the recipe: its
-## mesh and material are baked once under it and shared by every pip wearing
-## it (pip_wear_kit.gd cached_mesh and cached_material, released at session
-## end). "shape" is a name in SHAPES, "size" its half sizes (long, thick,
+## mesh and material are baked once under it and its values and shared by
+## every pip wearing it (pip_wear_kit.gd cached_mesh and cached_material,
+## released at session end). "shape" is a name in SHAPES, "size" its half sizes (long, thick,
 ## wide), "colors" the two colours a fall picks between; the rest are the
 ## shader's path values (fall_effect.gdshader, the same names).
 ##
@@ -163,16 +163,21 @@ static func recipe(overrides: Dictionary) -> Dictionary:
 ## The recipe's shared mesh: `count` copies of its shape, UV.x holding each
 ## copy's index (its colour and path are drawn per fall in the shader).
 static func mesh(made: Dictionary) -> Mesh:
-	return Kit.cached_mesh("fall:%s" % made.id, func() -> Mesh: return _bake(made))
+	return Kit.cached_mesh(_key(made), func() -> Mesh: return _bake(made))
 
 ## The recipe's shared material.
 static func material(made: Dictionary) -> Material:
-	return Kit.cached_material("fall:%s" % made.id, func() -> Material:
+	return Kit.cached_material(_key(made), func() -> Material:
 		var shading := ShaderMaterial.new()
 		shading.shader = SHADER
 		var values := uniforms(made)
 		for key: StringName in values: shading.set_shader_parameter(key, values[key])
 		return shading)
+
+## The cache key: the id and the recipe's own values, so two recipes under
+## one id never share a mesh or material.
+static func _key(made: Dictionary) -> String:
+	return "fall:%s:%d" % [made.id, made.hash()]
 
 ## Every uniform the material sets for the recipe, by its shader name.
 static func uniforms(made: Dictionary) -> Dictionary:
@@ -245,19 +250,20 @@ static func fall_place(made: Dictionary, draws: PackedFloat32Array, u: float, ca
 	var start := (0.0 if draws[2] < float(made.front) else PI) + lerpf(-sector, sector, draws[3])
 	var angle := atan2(toward.x, toward.y) + start + lerpf(-drift, drift, draws[4]) * open + lerpf(sway_size.x, sway_size.y, draws[5]) * sin(sway)
 	var d := Vector2(sin(angle), cos(angle))
-	var head := _reach(y, d, head_center(made), head_half(made), Look.HEAD_POWER)
-	var torso := _reach(y, d, Look.TORSO_CENTER, torso_half(made), Look.TORSO_POWER)
-	var out := maxf(made.least_reach, maxf(head, torso))
-	var alpha := 0.0 if waiting else _smooth(0.0, made.fade_in, u) * _smooth(bottom, made.fade_out, y)
+	var head_power := Look.HEAD_POWER
+	var torso_center := Look.TORSO_CENTER
+	var torso_power := Look.TORSO_POWER
+	var out_to := maxf(made.least_reach, maxf(_reach(y, d, head_center(made), head_half(made), head_power), _reach(y, d, torso_center, torso_half(made), torso_power)))
+	var fade := 0.0 if waiting else _smooth(0.0, made.fade_in, u) * _smooth(bottom, made.fade_out, y)
 	var scale: Vector2 = made.scale
-	var size := 0.0 if waiting else lerpf(scale.x, scale.y, draws[11]) * lerpf(made.shrink, 1.0, alpha)
+	var size := 0.0 if waiting else lerpf(scale.x, scale.y, draws[11]) * lerpf(made.shrink, 1.0, fade)
 	var spin: float = made.spin
 	var rock: Vector2 = made.rock
 	var tip: Vector2 = made.tip
 	var turning := lerpf(-spin, spin, draws[8])
 	var pose := _turn_y(angle + turning * TAU * u) * _turn_x(float(made.lean) + lerpf(rock.x, rock.y, draws[9]) * cos(sway)) * _turn_z(lerpf(tip.x, tip.y, draws[10]) * sin(sway + 1.0))
 	var tint: Color = (made.colors[0] as Color).lerp(made.colors[1], draws[13])
-	return {"frame": Transform3D(pose.scaled_local(Vector3.ONE * size), Vector3(d.x * out, y, d.y * out)), "alpha": alpha, "tint": tint}
+	return {"frame": Transform3D(pose.scaled_local(Vector3.ONE * size), Vector3(d.x * out_to, y, d.y * out_to)), "alpha": fade, "tint": tint}
 
 ## The head the path keeps clear of, at rest or sunk, grown by the clearance.
 static func head_center(made: Dictionary) -> Vector3:

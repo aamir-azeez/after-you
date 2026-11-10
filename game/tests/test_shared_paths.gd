@@ -47,7 +47,8 @@ extends SceneTree
 ##     (its cards and the closing "more chapters" line) and is in CHAPTER_PICKER_SURFACES.
 ## (s) falling wear effects: presentation/kit/fall_effect.gd alone names its shader, sets its
 ##     clock and seed and builds a falling mesh; no wear art places its own geometry by a shader
-##     (custom bounds or instance uniforms), no other shader declares the fall's clock or seed, and
+##     (custom bounds or instance uniforms) unless SHADER_PLACED_ALLOWED says why, no other shader
+##     declares the fall's clock or seed, and
 ##     each script that uses the kit is in FALL_EFFECT_SURFACES with what it falls.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
@@ -302,6 +303,9 @@ const FALL_UNIFORMS := "\\b(?:fall_clock|fall_seed)\\b"
 ## Wear art that places geometry by its own shader: custom bounds or instance uniforms.
 const WEAR_ART := "res://presentation/pip_wear/"
 const SHADER_PLACED := "\\bcustom_aabb\\b|\\bset_instance_shader_parameter\\("
+## Wear art allowed to place geometry by its own shader (an effect the fall kit
+## can't express), and why. Empty: every one today is a fall.
+const SHADER_PLACED_ALLOWED := {}
 
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "fall_effect"]
@@ -742,17 +746,22 @@ func _chapter_lists() -> void:
 
 func _falls() -> void:
 	var seen := {}
+	var placed := {}
 	for path: String in _sources:
 		if path == FALL_EFFECT: continue
 		var source: String = _sources[path]
 		_check(not source.contains(FALL_SHADER), "%s names the falling effect's shader: wear it through presentation/kit/fall_effect.gd" % path)
 		_check(_found(FALL_UNIFORMS, source) == 0, "%s sets a falling effect's clock or seed itself: presentation/kit/fall_effect.gd wear() does" % path)
-		if path.begins_with(WEAR_ART): _check(_found(SHADER_PLACED, source) == 0, "%s places its own geometry by a shader: a falling effect is a recipe for presentation/kit/fall_effect.gd" % path)
+		if path.begins_with(WEAR_ART) and _found(SHADER_PLACED, source) > 0:
+			placed[path] = true
+			_check(SHADER_PLACED_ALLOWED.has(path), "%s places its own geometry by a shader: make a falling effect a recipe for presentation/kit/fall_effect.gd, or add another kind to SHADER_PLACED_ALLOWED with why" % path)
 		if _alias(source, FALL_EFFECT).is_empty(): continue
 		seen[path] = true
 		_check(FALL_EFFECT_SURFACES.has(path), "%s uses the falling effect kit: add it to FALL_EFFECT_SURFACES with what it falls" % path)
 	for path: String in FALL_EFFECT_SURFACES:
 		_check(seen.has(path), "FALL_EFFECT_SURFACES names %s, which uses no presentation/kit/fall_effect.gd now: delete it" % path)
+	for path: String in SHADER_PLACED_ALLOWED:
+		_check(placed.has(path), "SHADER_PLACED_ALLOWED names %s, which places nothing by its own shader now: delete it" % path)
 	var shaders := _scripts("res://", ".gdshader")
 	_check(shaders.has("res://presentation/kit/" + FALL_SHADER), "The shader scan finds the kit's shader")
 	for path: String in shaders:
