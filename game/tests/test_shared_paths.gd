@@ -51,13 +51,13 @@ extends SceneTree
 ##     declares the fall's clock or seed, and
 ##     each script that uses the kit is in FALL_EFFECT_SURFACES with what it falls.
 ## (t) level hints: presentation/kit/owner_mark.gd alone draws an ownership mark (the gold
-##     diamond and the teal ring) and presentation/kit/level_hints.gd alone draws the pair
-##     tags (| || |||, crests, symbols) a control and its gate share, each placed with
-##     pair_tags.tag() naming its control; each world that marks or tags through them is in OWNER_MARK_SURFACES
-##     or LEVEL_HINT_SURFACES with what it marks, and any other flat diamond (a thin square
-##     box turned 45 degrees) is in FLAT_DIAMONDS with why it is no ownership mark;
-##     test_owner_marks.gd and test_pair_tags.gd, which must stay in CI, check every built stage's
-##     marks and pair tags.
+##     diamond and the teal ring), and presentation/kit/pair_tags.gd alone draws the pair
+##     tags, working the pairs out from each stage's control-to-gate wiring; a world only
+##     overrides it (pair_tags.skip() or tag()), and each world that does is in
+##     PAIR_TAG_OVERRIDES with why. Each world that places marks is in OWNER_MARK_SURFACES,
+##     and any other flat diamond (a thin square box turned 45 degrees) is in FLAT_DIAMONDS
+##     with why it is no ownership mark; test_owner_marks.gd and test_pair_tags.gd, which
+##     must stay in CI, check every built stage's marks and pair tags.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -300,7 +300,7 @@ const COMING_SOON_COPY := "CHAPTERS_COMING_SOON"
 const PLAYER_COPY := "res://presentation/player_copy.gd"
 ## (t) The ownership mark and gate tag kits, and the scripts that place them with what they mark.
 const OWNER_MARK := "res://presentation/kit/owner_mark.gd"
-const LEVEL_HINTS := "res://presentation/kit/level_hints.gd"
+const PAIR_TAGS := "res://presentation/kit/pair_tags.gd"
 ## The one script that keeps a world's pair tags (pair_tags).
 const PAIR_TAGS_OWNER := "res://presentation/cooperative_world.gd"
 const OWNER_MARK_SURFACES := {
@@ -311,11 +311,9 @@ const OWNER_MARK_SURFACES := {
 	"res://presentation/wishing_well_world.gd": "the bucket, the folding stairs and the rope ladder, clear of the notch",
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
-const LEVEL_HINT_SURFACES := {
-	"res://presentation/cooperative_world.gd": "floor-cable link tags at both ends",
-	"res://presentation/journey_world.gd": "route crests beside a control and at its crossing (Long Way Home's pad crests too)",
-	"res://presentation/tide_world.gd": "crests and the sea key's sign",
-	"res://presentation/house_world.gd": "route symbols",
+const PAIR_TAG_OVERRIDES := {
+	"res://presentation/tide_world.gd": "the tide wheel shows on the gauges and the second spirit's stubs on their mouth marks (skip); the sea key's tile stands on its sign (tag); gate tiles start at a stub's mouth and keep clear of the gauges and mouth marks (hooks)",
+	"res://presentation/journey_world.gd": "a control without a floor of its own stands on the highest island under it (_pair_control_anchor)",
 }
 ## Flat diamonds drawn outside the kit: how many, and why each is no ownership mark.
 const FLAT_DIAMONDS := {
@@ -821,8 +819,8 @@ func _level_hints() -> void:
 	var tags := {}
 	for path: String in _sources:
 		var source: String = _sources[path]
-		if path == OWNER_MARK or path == LEVEL_HINTS: continue
-		_check(_found("\\bfunc\\s+_(?:ownership_mark|link_tag|crest_glyph)\\(", source) == 0, "%s draws ownership marks or gate tags itself: place them through presentation/kit/owner_mark.gd or kit/level_hints.gd" % path)
+		if path == OWNER_MARK or path == PAIR_TAGS: continue
+		_check(_found("\\bfunc\\s+_(?:ownership_mark|link_tag|crest_glyph|route_crest|route_symbol)\\(", source) == 0, "%s draws ownership marks or pair tags itself: marks come from presentation/kit/owner_mark.gd, pair tags from the stage's wiring through presentation/kit/pair_tags.gd" % path)
 		var diamonds := _flat_diamonds(source)
 		var allowed: Array = FLAT_DIAMONDS.get(path, [0, ""])
 		_check(diamonds == int(allowed[0]), "%s draws %d flat diamonds (FLAT_DIAMONDS allows %d): an ownership mark comes from presentation/kit/owner_mark.gd; anything else goes in FLAT_DIAMONDS with why" % [path, diamonds, int(allowed[0])])
@@ -832,22 +830,22 @@ func _level_hints() -> void:
 		if _found("\\bowner_marks\\.(?:mark|route_ends|zone|record)\\(", source) > 0 or (not mark_alias.is_empty() and _found("\\b" + mark_alias + "\\.(?:shape|spot|diamond)\\(", source) > 0):
 			marks[path] = true
 			_check(OWNER_MARK_SURFACES.has(path), "%s places ownership marks: add it to OWNER_MARK_SURFACES with what it marks" % path)
-		var hints_alias := _alias(source, LEVEL_HINTS)
+		var tags_alias := _alias(source, PAIR_TAGS)
 		# A world inherits its parent's alias, so the kit's usual name counts too.
-		_check(_found("\\.tally\\(", source) == 0, "%s draws a pair tag without saying which control it pairs: place it with pair_tags.tag()" % path)
-		_check(path == PAIR_TAGS_OWNER or _found("\\b(?:LevelHints" + ("|" + hints_alias if not hints_alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps pair tags of its own: worlds share cooperative_world's pair_tags, which the sweep checks" % path)
-		if _found("\\bpair_tags\\.tag\\(", source) > 0:
+		_check(_found("\\.tally\\(", source) == 0, "%s draws a tally tag: pair tags come from the stage's wiring through presentation/kit/pair_tags.gd" % path)
+		_check(path == PAIR_TAGS_OWNER or _found("\\b(?:PairTags" + ("|" + tags_alias if not tags_alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps pair tags of its own: worlds share cooperative_world's pair_tags, which the sweep checks" % path)
+		if _found("\\bpair_tags\\.(?:skip|tag)\\(", source) > 0 or (path != PAIR_TAGS_OWNER and _found("\\bfunc\\s+_pair_(?:control_anchor|gate_anchors|keep_clear)\\(", source) > 0):
 			tags[path] = true
-			_check(LEVEL_HINT_SURFACES.has(path), "%s draws pair tags: add it to LEVEL_HINT_SURFACES with what it tags" % path)
+			_check(PAIR_TAG_OVERRIDES.has(path), "%s overrides the pair tags its wiring gives: add it to PAIR_TAG_OVERRIDES with why" % path)
 	for path: String in OWNER_MARK_SURFACES:
 		_check(marks.has(path), "OWNER_MARK_SURFACES names %s, which places no ownership mark through presentation/kit/owner_mark.gd now: delete it" % path)
-	for path: String in LEVEL_HINT_SURFACES:
-		_check(tags.has(path), "LEVEL_HINT_SURFACES names %s, which draws no gate tag through presentation/kit/level_hints.gd now: delete it" % path)
+	for path: String in PAIR_TAG_OVERRIDES:
+		_check(tags.has(path), "PAIR_TAG_OVERRIDES names %s, which overrides no pair tag now: delete it" % path)
 	for path: String in FLAT_DIAMONDS:
 		_check(_flat_diamonds(str(_sources.get(path, ""))) > 0, "FLAT_DIAMONDS names %s, which draws no flat diamond now: delete it" % path)
 	for path: String in MARK_SIZED_RINGS:
 		_check(_found(MARK_RING, str(_sources.get(path, ""))) > 0, "MARK_SIZED_RINGS names %s, which draws no such ring now: delete it" % path)
-	_check(marks.size() >= 5 and tags.size() >= 3, "The scripts that mark owners and tag gates are found: %d, %d" % [marks.size(), tags.size()])
+	_check(marks.size() >= 5 and tags.size() >= 1, "The scripts that mark owners and override pair tags are found: %d, %d" % [marks.size(), tags.size()])
 
 ## A ring the size of the second spirit's mark: a world ring() or a kit ring mesh of 13 cm.
 const MARK_RING := "\\b(?:ring|ring_mesh)\\(\\s*0\\.13\\b"

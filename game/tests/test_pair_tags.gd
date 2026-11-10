@@ -1,44 +1,38 @@
 extends SceneTree
-## Pair tags (presentation/kit/level_hints.gd): the | || ||| strokes, crests
-## and symbols that pair a control (a pad, a lever, a valve) with the gate it
-## works, built in every stage of every chapter whose world draws them:
-## - every tag a control has on a stage shows the same glyph and count, at the
-##   control and at its gate alike, and the control shows it at both ends;
-## - no two controls on a stage show the same tag;
-## - each tag lies within the stage's floors and clear of every other pair's tag.
-## Tags are presentation only; the stage definition is never changed.
+## Pair tags (presentation/kit/pair_tags.gd), worked out from each stage's
+## control-to-gate wiring, in every stage of every chapter that shows them:
+## - every wired control shows its tile beside it and at every gate it works,
+##   unless its world skips it (pair_tags.skip), with one letter per control,
+##   none shared on a stage;
+## - every tile lies on its floor, clear of controls, ownership marks, decks,
+##   the world's own scenery and every other row, and no two rows touch;
+## - one mesh draws them all, and the states follow the snapshot alone:
+##   faint, clear while either spirit is near, glowing while active, the
+##   same whatever came before (a replay shows what play showed).
+## The pure parts are checked on small stages too: no pairs, past ten, a
+## missing gate or control, a gate several controls work. A failure names the
+## chapter, the stage and what clashed.
 const Registry = preload("res://services/chapter_registry.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
-const LevelHints = preload("res://presentation/kit/level_hints.gd")
+const PairTags = preload("res://presentation/kit/pair_tags.gd")
+const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-## How far outside its floors a tag may lie (beside a crossing's end).
-const FLOOR_MARGIN := 0.4
-## Tags closer than this in height share a floor.
-const SAME_FLOOR := 0.1
-## Pairs drawn as they were on main when the kit came in (changing them is a
-## visible change, which waits for the owner): "<chapter key>: <check> <control>"
-## -> why, for every stage of that chapter. An entry no failing check matches fails.
-const KNOWN := {
-	"a-house-for-two@1: mixed stair-weight": "the stair weight's pad shows two route symbol bars and, as its crossing is on another floor, the floor cables' link tags too",
-	"a-house-for-two@1: overlap entry-weight/workshop-lever": "the workshop lever's and the entry weight's tags lie on the same crossing end",
-	"high-and-low@1: shared loft-lever": "the loft lever and the ledge switch open the same crossings and both show the floor cables' two link tags",
-	"high-and-low@1: overlap loft-lever/lower-ledge-switch": "the ledge switch's and the loft lever's link tags lie on the same crossing end",
-	"long-way-home@1: shared porch-shutter": "journey crests are one bar for four named controls and two for every other, so several controls share two bars",
-	"long-way-home@2: shared porch-shutter": "journey crests are one bar for four named controls and two for every other, so several controls share two bars",
-	"long-way-home@2: shared hall-lamp": "journey crests are one bar for four named controls and two for every other, so several controls share two bars",
-	"long-way-home@2: shared walk-gate": "journey crests are one bar for four named controls and two for every other, so several controls share two bars",
-	"long-way-home@2: one-sided garden-window": "the garden pad shows a crest by the pad but none at its window",
-	"turn-of-the-tide@1: overlap bollard-pad/gangway": "the bollard pad's crest at its crossing touches the gangway's crest beside its machine",
-	"turn-of-the-tide@2: overlap bollard-pad/gangway": "the bollard pad's crest at its crossing touches the gangway's crest beside its machine",
-}
+## Colours this far apart (CIE76) never pass for one another.
+const COLOUR_GAP := 20.0
+## Laying out a stage's tiles stays under this (headless, the whole stage).
+const BUILD_BUDGET_USEC := 150000
 var checks := 0
 var failures := 0
-var _known_seen := {}
+var _slowest := [0, ""]
 
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
+	_palette()
+	_pure()
 	var tagged := 0
+	var stages := 0
 	for key: String in Registry.keys():
 		var world: Node3D = Registry.world_script(key).new()
 		if not "pair_tags" in world:
@@ -52,71 +46,176 @@ func _run() -> void:
 		for stage: Dictionary in level.stages:
 			world.show_stage(stage)
 			tagged += _stage(world, key, CooperativeCatalog.stage_definition(level, str(stage.id)))
+			stages += 1
 		_check(Canonical.digest(level) == digest, "%s: tags never change the definition" % key)
 		world.free()
-	_check(tagged > 40, "The sweep sees the chapters' pair tags: %d" % tagged)
-	for id: String in KNOWN: _check(_known_seen.has(id), "KNOWN names '%s', which no check fails now: delete it" % id)
+	_check(stages > 10 and tagged > 40, "The sweep sees the chapters' pair tags: %d tiles on %d stages" % [tagged, stages])
+	print("PAIR TAGS: slowest layout %.1f ms (%s)" % [float(_slowest[0]) / 1000.0, _slowest[1]])
+	_check(PairTags.cached_letters() > 0, "Letters are cached once made")
+	_check(SessionRelease._releases.has(Callable(PairTags, "release_cached")), "The letter cache lets go at session end (SessionRelease)")
+	PairTags.release_cached()
+	_check(PairTags.cached_letters() == 0, "release_cached() lets every letter go")
 	print("PAIR TAGS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-## One stage's checks; returns how many tags it has.
+## Ten colours apart from each other and from the owners' gold and teal.
+func _palette() -> void:
+	var colours: Array = PairTags.PALETTE
+	_check(colours.size() == PairTags.LETTERS.length(), "One colour per letter")
+	for index in range(colours.size()):
+		for owner: Color in [OwnerMark.GOLD, OwnerMark.TEAL]:
+			_check(_delta(colours[index], owner) >= COLOUR_GAP, "Pair colour %s stays apart from the owner colour %s (%.1f)" % [colours[index].to_html(false), owner.to_html(false), _delta(colours[index], owner)])
+		for other in range(index + 1, colours.size()):
+			_check(_delta(colours[index], colours[other]) >= COLOUR_GAP, "Pair colours %s and %s stay apart (%.1f)" % [colours[index].to_html(false), colours[other].to_html(false), _delta(colours[index], colours[other])])
+
+## The wiring, the letters and the bands on small stages.
+func _pure() -> void:
+	_check(PairTags.pairs_of({}).is_empty() and PairTags.pairs_of({"gates": [{"route_id": "nowhere", "lever_id": "a"}]}).is_empty(), "No wiring, or a gate whose crossing is missing, gives no pairs")
+	var many := {"bridges": [], "levers": [], "gates": []}
+	for index in range(25):
+		many.bridges.append({"id": "route-%d" % index, "rect_cm": [0, 0, 10, 10]})
+		many.levers.append({"id": "lever-%d" % index, "position_cm": [0, 0]})
+		many.gates.append({"route_id": "route-%d" % index, "lever_id": "lever-%d" % index})
+	many.gates.append({"route_id": "route-0", "pad_id": "missing-pad"})
+	many.gates.append({"route_id": "route-1", "when": {"all": [{"lever_id": "lever-0"}, {"any": [{"lever_id": "lever-2"}]}]}})
+	var pairs := PairTags.pairs_of(many)
+	_check(pairs.size() == 25, "Twenty-five wired levers make twenty-five pairs; a missing control makes none: %d" % pairs.size())
+	_check(pairs[0].gates.map(func(r: Dictionary) -> String: return r.id) == ["route-0", "route-1"] and pairs[2].gates.size() == 2, "A control that works two gates shows at both; a `when` tree is read through all and any")
+	var seen := {}
+	for index in range(25): seen["%s%d" % [PairTags.letter_of(index), PairTags.band_of(index)]] = true
+	_check(seen.size() == 25 and PairTags.letter_of(10) == "A" and PairTags.band_of(10) == 1 and PairTags.band_of(24) == 2, "Past J the letters start again with a band: every pair keeps its own letter and band")
+	_check(PairTags.pairs_of(many, [["lever-3", ""], ["", "route-4"]]).size() == 23, "A skipped control, and every control of a skipped gate, make no pair")
+	_check(PairTags.references({"route_id": "r", "pad_id": "p", "lever_id": "l", "second_lever_id": "m", "ball_pad_id": "b", "when": {"signal_id": "s"}}) == ["p", "l", "m", "b", "s"], "Every way a gate names a control is read")
+
+## One stage's checks; returns how many tiles it shows.
 func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 	var where := "%s %s" % [key, world.displayed_stage_id]
-	var placed: Array[Dictionary] = world.pair_tags.placed()
-	var by_control: Dictionary = {}
-	for tag: Dictionary in placed:
-		_check(tag.side in [LevelHints.CONTROL, LevelHints.GATE, LevelHints.SIGN], "%s: tag of %s says which end it marks" % [where, tag.control])
-		if not by_control.has(tag.control): by_control[tag.control] = []
-		by_control[tag.control].append(tag)
-	var shown: Dictionary = {}
-	for control: String in by_control:
-		var tags: Array = by_control[control]
-		var look := _look(tags[0])
-		_known_or_check(key, "mixed", control, tags.all(func(t: Dictionary) -> bool: return _look(t) == look), "%s: every tag of %s shows the same %s (%s)" % [where, control, look, tags.map(_look)])
-		var sides: Array = tags.map(func(t: Dictionary) -> StringName: return t.side)
-		_known_or_check(key, "one-sided", control, LevelHints.CONTROL in sides and (LevelHints.GATE in sides or LevelHints.SIGN in sides), "%s: %s shows its tag by the control and at its gate (%s)" % [where, control, sides])
-		if shown.has(look): _known_or_check(key, "shared", control, false, "%s: %s shows %s, the tag of %s too" % [where, control, look, shown[look]])
-		else: shown[look] = control
-	_placement(key, where, view, placed)
+	var tags = world.pair_tags
+	# The first read lays the stage out.
+	var started := Time.get_ticks_usec()
+	var placed: Array[Dictionary] = tags.placed()
+	var spent := Time.get_ticks_usec() - started
+	if spent > int(_slowest[0]): _slowest = [spent, where]
+	_check(spent < BUILD_BUDGET_USEC, "%s: laying out the pair tags takes %.1f ms" % [where, float(spent) / 1000.0])
+	var wired := PairTags.pairs_of(view, tags.skips())
+	_check(wired.size() <= PairTags.MAX_PAIRS, "%s: %d pairs fit the shader's states and three bands (%d)" % [where, wired.size(), PairTags.MAX_PAIRS])
+	# Both ends of every wired pair, one letter per control.
+	var letters := {}
+	for pair: Dictionary in wired:
+		var tiles := placed.filter(func(tile: Dictionary) -> bool: return tile.control == pair.control)
+		_check(tiles.any(func(tile: Dictionary) -> bool: return PairTags.CONTROL in tile.sides), "%s: %s shows its tile beside it" % [where, pair.control])
+		for route: Dictionary in pair.gates:
+			_check(tiles.any(func(tile: Dictionary) -> bool: return str(route.id) in tile.gates), "%s: %s shows its tile at the gate of %s" % [where, pair.control, route.id])
+		var looks := tiles.map(func(tile: Dictionary) -> String: return "%s%d" % [tile.letter, tile.band])
+		_check(not looks.is_empty() and looks.all(func(look: String) -> bool: return look == looks[0]), "%s: every tile of %s shows one letter: %s" % [where, pair.control, looks])
+		if looks.is_empty(): continue
+		_check(not letters.has(looks[0]), "%s: %s and %s share the letter %s" % [where, pair.control, letters.get(looks[0], ""), looks[0]])
+		letters[looks[0]] = pair.control
+	_check(placed.all(func(tile: Dictionary) -> bool: return wired.any(func(pair: Dictionary) -> bool: return pair.control == tile.control)), "%s: every tile belongs to a wired control" % where)
+	# Each tile clear of everything, on its floor; rows apart.
+	for tile: Dictionary in placed:
+		_check((tile.clash as Array).is_empty(), "%s: %s's tile (%s) at %s has a clear place; it runs into %s" % [where, tile.control, tile.letter, tile.at, ", ".join(tile.clash)])
+	var rows: Array = []
+	for tile: Dictionary in placed:
+		if tile.row not in rows: rows.append(tile.row)
+	var heights := {}
+	for tile: Dictionary in placed: heights[tile.row] = (tile.at as Vector3).y
+	for index in range(rows.size()):
+		for other in range(index + 1, rows.size()):
+			if absf(float(heights[rows[index]]) - float(heights[rows[other]])) > 0.3: continue
+			_check(not (rows[index] as Rect2).grow(PairTags.GAP * 0.5 - 0.001).intersects(rows[other]), "%s: two rows of tiles keep apart (%s, %s)" % [where, rows[index], rows[other]])
+	# One mesh draws the stage's tiles.
+	var drawn: Array = world.terrain.find_children("PairTags", "MeshInstance3D", true, false)
+	_check(drawn.size() == (0 if placed.is_empty() else 1), "%s: one mesh draws every tile (%d)" % [where, drawn.size()])
+	# A tile on a sign faces the camera, its letter upright.
+	for sign: MeshInstance3D in world.terrain.find_children("PairTagSign", "MeshInstance3D", true, false):
+		var basis := sign.global_transform.basis.orthonormalized()
+		_check(basis.y.z > 0.9 and (-basis.z).y > 0.9, "%s: the sign's tile faces the camera with its letter upright" % where)
+	_states(world, where, wired)
 	return placed.size()
 
-## A tag's look: its family, glyph and count.
-static func _look(tag: Dictionary) -> String:
-	return "%s %s %d" % [tag.style, tag.shape[0], tag.shape[1]]
+## Faint, near (either spirit), lit, and the same states whatever came before.
+func _states(world: Node3D, where: String, wired: Array[Dictionary]) -> void:
+	var tags = world.pair_tags
+	if wired.is_empty(): return
+	var far := {"players": {"p0": {"x": 99999, "z": 99999, "height": 0}, "p1": {"x": -99999, "z": -99999, "height": 0}}, "levers": {}, "hold_pads": {}, "bridges": {}}
+	tags.present(far)
+	_check(tags.states().values().all(func(s: Dictionary) -> bool: return not s.clear and not s.lit), "%s: with no spirit near and nothing active every tile is faint" % where)
+	var pair: Dictionary = wired[0]
+	var at: Vector3 = world._pair_control_anchor(pair.entity)
+	for slot: String in ["p0", "p1"]:
+		var near := far.duplicate(true)
+		near.players[slot] = {"x": at.x * 100.0 + 30.0, "z": at.z * 100.0, "height": at.y * 100.0}
+		tags.present(near)
+		var shown: Dictionary = tags.states()
+		_check(shown[pair.control].clear and not shown[pair.control].lit, "%s: %s shows clearly while %s stands near it" % [where, pair.control, slot])
+		_check(shown.keys().filter(func(id: String) -> bool: return id != pair.control and shown[id].clear).all(func(id: String) -> bool: return _near(world, wired, id, near)), "%s: only pairs a spirit is near show clearly" % where)
+	# Each pair glows while active, by the one thing that makes its kind active.
+	var active := far.duplicate(true)
+	for each: Dictionary in wired:
+		var alone := far.duplicate(true)
+		_activate(alone, each)
+		tags.present(alone)
+		var shown: Dictionary = tags.states()
+		_check(shown[each.control].lit and shown[each.control].clear, "%s: %s (a %s) glows at both ends while active" % [where, each.control, each.kind])
+		_check(not shown.keys().any(func(id: String) -> bool: return id != each.control and shown[id].lit and not _lit_by(wired, id, alone)), "%s: activating %s lights no other pair" % [where, each.control])
+	_activate(active, pair)
+	# Out of order: the same snapshot gives the same states after any other.
+	tags.present(far)
+	var before: Dictionary = tags.states()
+	tags.present(active)
+	tags.present(far)
+	_check(tags.states() == before, "%s: a snapshot shows the same states whatever came before" % where)
 
-## Within the floors and clear of every other pair's tags.
-func _placement(key: String, where: String, view: Dictionary, placed: Array[Dictionary]) -> void:
-	var floors: Array[Rect2] = []
-	for entity: Dictionary in view.get("islands", []) + view.get("bridges", []) + view.get("stairs", []): floors.append(_rect(entity.rect_cm))
-	var flat: Array[Dictionary] = placed.filter(func(t: Dictionary) -> bool: return t.side != LevelHints.SIGN)
-	for index in range(flat.size()):
-		var tag: Dictionary = flat[index]
-		var at: Vector3 = tag.at
-		_known_or_check(key, "floors", tag.control, floors.any(func(r: Rect2) -> bool: return r.grow(FLOOR_MARGIN).has_point(Vector2(at.x, at.z))), "%s: %s's %s tag lies within the stage's floors at %s" % [where, tag.control, tag.side, Vector2(at.x, at.z)])
-		for other in range(index + 1, flat.size()):
-			var them: Dictionary = flat[other]
-			if them.control == tag.control or absf((them.at as Vector3).y - at.y) > SAME_FLOOR: continue
-			var both := [str(tag.control), str(them.control)]
-			both.sort()
-			_known_or_check(key, "overlap", "/".join(both), not _footprint(tag).intersects(_footprint(them)), "%s: %s's %s tag lies clear of %s's %s tag" % [where, tag.control, tag.side, them.control, them.side])
+## Makes `pair` active in `state` the way its kind is read.
+static func _activate(state: Dictionary, pair: Dictionary) -> void:
+	match pair.kind:
+		&"lever": state.levers[pair.control] = true
+		&"pad": state.hold_pads[pair.control] = true
+		_:
+			var route: Dictionary = pair.gates[0]
+			state.bridges[str(route.id)] = true
+			var asked: Array = pair.values.get(str(route.id), [])
+			if not asked.is_empty():
+				if not state.has("controls"): state["controls"] = {}
+				state.controls[pair.control] = asked[0]
 
-## A tag's footprint across the floor, where it lies (the kit's own layout).
-static func _footprint(tag: Dictionary) -> Rect2:
-	var local := LevelHints.footprint(tag.style, tag.shape)
-	var at: Vector3 = tag.at
-	return Rect2(local.position + Vector2(at.x, at.z), local.size)
+## Whether pair `id` is active in `state` on its own account (an open gate it shares).
+static func _lit_by(wired: Array[Dictionary], id: String, state: Dictionary) -> bool:
+	for pair: Dictionary in wired:
+		if pair.control != id: continue
+		match pair.kind:
+			&"lever": return bool(state.levers.get(id, false))
+			&"pad": return bool(state.hold_pads.get(id, false))
+		for route: Dictionary in pair.gates:
+			var asked: Array = pair.values.get(str(route.id), [])
+			if bool(state.bridges.get(str(route.id), false)) and (asked.is_empty() or str(state.get("controls", {}).get(id, "")) in asked): return true
+	return false
 
-static func _rect(r: Array) -> Rect2:
-	return Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
+func _near(world: Node3D, wired: Array[Dictionary], id: String, state: Dictionary) -> bool:
+	for pair: Dictionary in wired:
+		if pair.control != id: continue
+		var at: Vector3 = world._pair_control_anchor(pair.entity)
+		for player: Dictionary in state.players.values():
+			if Vector2(float(player.x) - at.x * 100.0, float(player.z) - at.z * 100.0).length() <= PairTags.NEAR_CM: return true
+	return false
 
-## A check that may fail as KNOWN says: "<key>: <check> <control>" (for an
-## overlap, both controls sorted and joined by "/").
-func _known_or_check(key: String, check: String, control: String, ok: bool, message: String) -> void:
-	var id := "%s: %s %s" % [key, check, control]
-	if not ok and KNOWN.has(id):
-		_known_seen[id] = true
-		return
-	_check(ok, message)
+## CIE76 distance between two colours.
+static func _delta(a: Color, b: Color) -> float:
+	var x := _lab(a)
+	var y := _lab(b)
+	return x.distance_to(y)
+
+static func _lab(colour: Color) -> Vector3:
+	var linear := colour.srgb_to_linear()
+	var x := (0.4124 * linear.r + 0.3576 * linear.g + 0.1805 * linear.b) / 0.95047
+	var y := 0.2126 * linear.r + 0.7152 * linear.g + 0.0722 * linear.b
+	var z := (0.0193 * linear.r + 0.1192 * linear.g + 0.9505 * linear.b) / 1.08883
+	var f := func(t: float) -> float: return pow(t, 1.0 / 3.0) if t > 0.008856 else 7.787 * t + 16.0 / 116.0
+	var fx: float = f.call(x)
+	var fy: float = f.call(y)
+	var fz: float = f.call(z)
+	return Vector3(116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
 
 func _check(condition: bool, message: String) -> void:
 	checks += 1

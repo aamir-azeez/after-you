@@ -103,17 +103,6 @@ const SCENERY_COVER := 0.10
 const WHEEL_WATER := {"tide": Color("6fb3c2"), "basin": Color("4f8fb5"), "chamber": Color("7cc4b0")}
 ## The first spirit's machines; everything else belongs to the second.
 const P0_MECHANISMS := ["tide", "chamber", "winch", "sluice", "line", "punt-line", "boom-pin", "sea-key", "wheel-step-pad", "quay-step-pad", "bollard-pad"]
-## Crest glyph per mechanism: [shape, count]. Within each stage every machine
-## that opens a route has its own glyph (shape and count), so a crossing's
-## crests say which machines it waits on without relying on colour. The lock
-## keeps its glyph in both stages; the tide is read from gauges instead.
-const CRESTS := {
-	"winch": ["bar", 1], "sluice": ["bar", 2], "line": ["bar", 3],
-	"lock": ["dot", 1], "gangway": ["dot", 2], "bollard-pad": ["cross", 3],
-	"chamber": ["cross", 1], "gate-bar": ["cross", 2], "basin": ["dot", 3],
-	"boom-chain": ["chevron", 1], "sea-bar": ["chevron", 2], "punt-chain": ["chevron", 3],
-	"punt-line": ["ring", 1], "boom-pin": ["pin", 1], "sea-key": ["key", 1],
-}
 ## Which mouth crossing each sea value serves.
 const MOUTHS := {"half": "boom-jetty", "low": "sea-gate-out", "high": "punt-ferry"}
 ## How each crossing is built.
@@ -1025,14 +1014,15 @@ func _build_bell(goal: Dictionary) -> void:
 
 func _build_gate_links(view: Dictionary) -> void:
 	var entities: Array = view.get("controls", []) + view.get("levers", []) + view.get("pressure_pads", [])
-	var crested: Array[String] = []
+	# The tide's own wheel shows on every crossing's gauge, never as a pair tag.
+	pair_tags.skip("tide")
 	for gate: Dictionary in view.get("gates", []):
 		var route: Dictionary = {}
 		for candidate: Dictionary in view.bridges + view.get("stairs", []):
 			if candidate.id == gate.route_id: route = candidate
 		if route.is_empty(): continue
 		var when: Dictionary = gate.get("when", {})
-		var references := _predicate_references(when)
+		var references := PairTags.predicate_references(when)
 		# Eleven routes read the tide in the first stage alone: each gets a gauge
 		# post with its bands rather than a crest or cable back to the wheel.
 		var marks := _tide_marks(when)
@@ -1049,6 +1039,7 @@ func _build_gate_links(view: Dictionary) -> void:
 				if not sea.is_empty(): _build_post_mark(route, sea)
 			elif str(route.id) not in _catwalks and "basin" in references and "tide" not in references:
 				_build_dry_mark(route)
+			pair_tags.skip("", str(route.id))
 			continue
 		var others: Array = references.filter(func(id: String) -> bool: return id != "tide")
 		var end := _route_anchor(route)
@@ -1061,10 +1052,6 @@ func _build_gate_links(view: Dictionary) -> void:
 			var start := _at(entity) + Vector3(0, 0.025, 0)
 			var spot := end + Vector3(0, 0, (float(index) - float(others.size() - 1) * 0.5) * 0.26)
 			var color := _route_color(id)
-			# One crest beside each machine, however many routes it opens.
-			if id not in crested: _route_crest(id, _crest_beside(entity, start), color, terrain, LevelHints.CONTROL)
-			crested.append(id)
-			_route_crest(id, spot, color, terrain, LevelHints.GATE)
 			if _shares_floor(start, spot):
 				var elbow := Vector3(spot.x, start.y, start.z)
 				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.016, color.darkened(0.25), terrain)
@@ -1084,26 +1071,19 @@ func _key_sign(route: Dictionary) -> void:
 	box(Vector3(0.54, 0.46, 0.02), GOLD.darkened(0.2), Vector3(0, 1.20, -0.012), sign)
 	var glyph := Node3D.new()
 	glyph.position = Vector3(0, 1.20, 0.025)
-	glyph.rotation.x = -PI / 2.0
-	glyph.scale = Vector3.ONE * 2.2
+	# Turned up to face the camera: the tile's face toward it, the letter upright.
+	glyph.rotation.x = PI / 2.0
+	glyph.scale = Vector3.ONE * 1.4
 	sign.add_child(glyph)
-	pair_tags.tag(&"tide_crest", CRESTS["sea-key"], GOLD, "sea-key", LevelHints.SIGN, Vector3.ZERO, glyph)
-	sign.set_meta("crest", "sea-key")
-
-## Beside a machine: to its east on an island, or toward the far end of the
-## narrow stub it stands on, so the crest never lands in a gap or on a neighbour.
-func _crest_beside(entity: Dictionary, start: Vector3) -> Vector3:
-	for route: Dictionary in chapter_definition.get("bridges", []):
-		if route.id != entity.get("surface_id", "") or not _is_stub(route): continue
-		return start + Vector3(0, 0.01, -0.22 if _route_anchor(route).z > float(route.rect_cm[3]) / 100.0 else 0.22)
-	return start + Vector3(0.33, 0.01, 0)
+	# The key's pair tag, standing on the sign.
+	pair_tags.tag("sea-key", PairTags.SIGN, Vector3.ZERO, glyph)
 
 ## Tide values a gate needs outright (through "all" only), low to high.
 func _tide_marks(predicate: Dictionary) -> Array:
 	return _control_marks(predicate, "tide")
 
-## Where a route's crests sit: a stub's mouth on its own floor, or just before a
-## crossing's west end, at the route's own height.
+## Where a route's marks and pair tags sit: a stub's mouth on its own floor,
+## or just before a crossing's west end, at the route's own height.
 func _route_anchor(route: Dictionary) -> Vector3:
 	var r: Array = route.rect_cm
 	var height := float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + 0.025
@@ -1115,16 +1095,24 @@ func _route_anchor(route: Dictionary) -> Vector3:
 			if int(r[1]) >= int(floor[3]): return point([(r[0] + r[2]) * 0.5, r[1] - 16]) + Vector3(0, height, 0)
 	return point([r[0] - 18, (r[1] + r[3]) * 0.5]) + Vector3(0, height, 0)
 
+## A gate's pair tags start at its route's anchor, on the floor (a stub's
+## mouth, else before its west end), else by its far end.
+func _pair_gate_anchors(route: Dictionary) -> Array:
+	var ends := super._pair_gate_anchors(route)
+	return [_route_anchor(route) - Vector3(0, 0.025, 0), ends[1]]
+
+## Pair tags keep clear of the gauges and mouth marks built at the routes.
+func _pair_keep_clear() -> Array:
+	var found: Array = []
+	for gauge: Dictionary in _gauges.values(): found.append({"centre": Vector2(gauge.post.position.x, gauge.post.position.z), "radius": 0.12, "what": "gauge " + str(gauge.post.name)})
+	var marks: Array = _slack_marks.duplicate()
+	for entry: Dictionary in _post_marks.values(): marks.append_array(entry.bands)
+	for planks: Array in _dry_marks.values(): marks.append_array(planks)
+	for mark: Node3D in marks: found.append({"centre": Vector2(mark.position.x, mark.position.z), "radius": 0.16, "y": mark.position.y, "what": str(mark.name)})
+	return found
+
 func _route_color(id: String) -> Color:
 	return GOLD if id in P0_MECHANISMS else TEAL
-
-func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D, side: StringName) -> void:
-	var crest := Node3D.new()
-	crest.name = "Crest_" + id
-	crest.set_meta("crest", id)
-	crest.position = at + Vector3(0, 0.02, 0)
-	parent.add_child(crest)
-	pair_tags.tag(&"tide_crest", CRESTS.get(id, ["bar", 1]), color, id, side, Vector3.ZERO, crest)
 
 func _carries_pad(view: Dictionary, surface_id: String) -> bool:
 	for pad: Dictionary in view.get("pressure_pads", []):

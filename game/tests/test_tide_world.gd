@@ -11,6 +11,7 @@ const Simulation = preload("res://core/journey/simulation.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const World = preload("res://presentation/tide_world.gd")
+const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const Lint = preload("res://tests/test_dressing_lint.gd")
@@ -37,7 +38,6 @@ func _run() -> void:
 	_memory_camera(level)
 	await _second_stage(level)
 	await _plain_pads(level)
-	_crest_glyphs(level)
 	_dressing(level)
 	_keepsakes()
 	_sound(level)
@@ -79,7 +79,7 @@ func _first_stage(level: Dictionary) -> void:
 		for child: Dictionary in gate.when.get("all", []):
 			if child.get("control_id", "") == "tide": value = child.value
 		_check(world._gauges[id].bands.size() == ["low", "half", "high"].find(value) + 1, "A gauge's bands count its tide: " + id)
-	_check(_crests(world, "").size() > 0 and _crests(world, "tide").is_empty(), "Crests mark the other machines but never the tide")
+	_check(_crests(world, "").size() > 0 and _crests(world, "tide").is_empty(), "Pair tags mark the other machines but never the tide")
 	# Wheels: the tide wheel shows three values; the winch and lock stay two-way.
 	_check(world._wheels.keys() == ["tide"], "Only the three-way tide wheel gets a hand wheel in the first stage")
 	_bubbles(world, level.stages[0])
@@ -274,13 +274,14 @@ func _second_stage(level: Dictionary) -> void:
 	_check(world._post_marks.size() == 3 and world._post_marks["boom-post"].bands.size() == 2 and world._post_marks["gate-post"].bands.size() == 1 and world._post_marks["punt-post"].bands.size() == 3, "Each post's mouth shows the sea it rises at")
 	for id: String in world._dry_marks:
 		_check(world._dry_marks[id][0].get_meta("lit"), "A shut sea leaves every mooring catwalk dry: " + id)
-	_check(_crests(world, "basin").size() == 4, "Sea crests mark the wheel once and the three mouth crossings, not the stubs")
-	for crest: Node3D in _crests(world, "boom-chain") + _crests(world, "punt-line"):
+	var basin: Array = _crests(world, "basin")
+	_check(basin.size() == 4 and basin.filter(func(tag: Dictionary) -> bool: return PairTags.CONTROL in tag.sides).size() == 1, "The sea's pair tags mark the wheel once and the three mouth crossings, not the stubs: %s" % [basin.map(func(tag: Dictionary) -> Array: return tag.gates)])
+	for tag: Dictionary in _crests(world, "boom-chain") + _crests(world, "punt-line"):
 		var on_floor := false
 		for route: Dictionary in level.bridges + level.islands:
 			var r: Array = route.rect_cm
-			if crest.position.x * 100.0 > r[0] and crest.position.x * 100.0 < r[2] and crest.position.z * 100.0 > r[1] and crest.position.z * 100.0 < r[3]: on_floor = true
-		_check(on_floor, "A crest sits on a floor, never over a gap: " + str(crest.get_meta("crest")))
+			if tag.at.x * 100.0 > r[0] and tag.at.x * 100.0 < r[2] and tag.at.z * 100.0 > r[1] and tag.at.z * 100.0 < r[3]: on_floor = true
+		_check(on_floor, "A pair tag sits on a floor, never over a gap: " + str(tag.control))
 	# Kept crossings from the first stage show at their own heights.
 	var markers: Array = world._remembered.get_children()
 	_check(markers.size() == 2 * checkpoint.mechanisms.latched_bridges.filter(func(id: String) -> bool: return not id in STAIRS).size(), "Every kept crossing has its marker")
@@ -520,30 +521,6 @@ func _open_under_water(level: Dictionary, index: int, initial: Dictionary) -> Ar
 			if open:
 				found.append(id)
 				break
-	return found
-
-## Within each stage every machine that opens a route has its own crest glyph.
-func _crest_glyphs(level: Dictionary) -> void:
-	for stage: Dictionary in level.stages:
-		var seen: Dictionary = {}
-		for gate: Dictionary in stage.gates:
-			for id: String in _references(gate.get("when", {})):
-				if id == "tide" or seen.has(id): continue
-				_check(World.CRESTS.has(id), "%s: %s has its own crest" % [stage.id, id])
-				seen[id] = "%s%d" % World.CRESTS.get(id, ["?", 0])
-		var glyphs: Array = seen.values()
-		var unique: Array = []
-		for glyph: String in glyphs:
-			if glyph not in unique: unique.append(glyph)
-		_check(unique.size() == glyphs.size(), "%s: every machine's crest glyph is unique in its stage (%s)" % [stage.id, str(seen)])
-
-func _references(predicate: Dictionary) -> Array:
-	var found: Array = []
-	for key: String in ["control_id", "lever_id", "pad_id"]:
-		if predicate.has(key): found.append(str(predicate[key]))
-	for child: Dictionary in predicate.get("all", []) + predicate.get("any", []):
-		for id: String in _references(child):
-			if id not in found: found.append(id)
 	return found
 
 ## Every selector of a stage: one shared speech bubble naming its values,
@@ -872,8 +849,9 @@ func _textures(world: Node3D) -> bool:
 		if (node as Label3D).font == null: return false
 	return true
 
+## The stage's pair tag tiles of control `id` (every tile when "").
 func _crests(world: Node3D, id: String) -> Array:
-	return world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("crest") and (id.is_empty() or node.get_meta("crest") == id))
+	return world.pair_tags.placed().filter(func(tag: Dictionary) -> bool: return id.is_empty() or tag.control == id)
 
 func _check(value: bool, label: String) -> void:
 	checks += 1

@@ -15,7 +15,6 @@ extends SceneTree
 const Registry = preload("res://services/chapter_registry.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
-const LevelHints = preload("res://presentation/kit/level_hints.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -86,12 +85,6 @@ func _table() -> void:
 	_check(is_equal_approx(OwnerMark.REACH, OwnerMark.SIDE * 0.7072), "A diamond reaches its side times 0.7072")
 	var ends := OwnerMark.route_end_points([100, -50, 300, 50])
 	_check(ends[0].is_equal_approx(Vector3(0.82, 0, 0)) and ends[1].is_equal_approx(Vector3(3.18, 0, 0)), "A crossing's end marks lie its reach past each end: %s" % [ends])
-	# The floor-cable tag's top lies midway between the crossing mark's top and the cable's.
-	var tag_top := LevelHints.LINK_LIFT + LevelHints.LINK_TAG_THICKNESS * 0.5
-	_check(is_equal_approx(tag_top - (OwnerMark.ROUTE_LIFT + OwnerMark.THICKNESS * 0.5), LevelHints.LINK_LIFT + LevelHints.LINK_WIDTH * 0.5 - tag_top), "A link tag's top sits midway between the mark's and the cable's")
-	for style: StringName in LevelHints.STYLES:
-		var spec: Dictionary = LevelHints.STYLES[style]
-		_check(spec.bar is Vector3 and float(spec.spacing) > (spec.bar as Vector3).x, "Hint style %s keeps its bars apart" % style)
 
 ## One stage's checks; returns how many marks it has.
 func _stage(world: Node3D, key: String, view: Dictionary) -> int:

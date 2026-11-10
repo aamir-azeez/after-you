@@ -34,26 +34,6 @@ func _gate_link_color(mechanism: Dictionary) -> Color:
 		"sunroom-weight": return Color("8cc59a")
 	return CREAM
 
-func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
-	super._build_physical_pad(pad,heavy)
-	_route_symbol(str(pad.id),_at(pad)+Vector3(0,0.035,0.54),terrain,LevelHints.CONTROL)
-
-func _build_gate_links(view: Dictionary) -> void:
-	super._build_gate_links(view)
-	for gate: Dictionary in view.get("gates",[]):
-		var pad := str(gate.get("ball_pad_id",""))
-		if pad.is_empty(): continue
-		for route: Dictionary in view.bridges+view.get("stairs",[]):
-			if route.id != gate.route_id: continue
-			var r: Array = route.rect_cm
-			_route_symbol(pad,point([r[0]-24,(r[1]+r[3])*0.5])+Vector3(0,0.035,0),terrain,LevelHints.GATE)
-
-## Pad `id`'s symbol on its `side` of the pair (LevelHints.CONTROL, GATE or MEMORY).
-func _route_symbol(id: String, at: Vector3, parent: Node3D, side: StringName) -> void:
-	var count := 1 if id == "entry-weight" else 2 if id == "stair-weight" else 3
-	var color := _gate_link_color({"id":id})
-	pair_tags.tag(&"route_symbol",["bar",count],color,id,side,at,parent)
-
 func present_history(checkpoint: Dictionary) -> void:
 	super.present_history(checkpoint)
 	if is_instance_valid(_house_memories):
@@ -69,7 +49,6 @@ func present_history(checkpoint: Dictionary) -> void:
 		for pad: Dictionary in chapter_definition.stages[index].get("ball_pads",[]):
 			var at := _at(pad)
 			ring(float(pad.radius_cm)/100.0,Color("8f8a72"),at+Vector3(0,0.025,0),_house_memories)
-			_route_symbol(str(pad.id),at+Vector3(0,0.035,0.54),_house_memories,LevelHints.MEMORY)
 	for route: Dictionary in chapter_definition.bridges+chapter_definition.get("stairs",[]):
 		if route.id not in _latched_bridge_ids: continue
 		var r: Array = route.rect_cm

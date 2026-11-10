@@ -130,6 +130,10 @@ func _configure_shared_view(view: Dictionary) -> void:
 func _beam_height() -> float: return 2.4
 func _uses_lower_cutaway() -> bool: return true
 
+## A control without a floor of its own stands on the highest island under it.
+func _pair_control_anchor(entity: Dictionary) -> Vector3:
+	return point(entity.position_cm)+Vector3(0,_control_base_height(entity),0)
+
 func _control_base_height(entity: Dictionary) -> float:
 	if entity.has("surface_id"): return _surface_height(str(entity.surface_id))
 	var position: Array = entity.position_cm
@@ -438,29 +442,24 @@ func _find_spirits() -> void:
 		_spirit_count += 1
 
 func _build_gate_links(view: Dictionary) -> void:
-	# Only draw a cable where a mechanism and its route share a real floor.
-	# Distant relationships use matching crests, never a false path over void.
+	# Only draw a cable where a mechanism and its route share a real floor;
+	# every pair also wears its pair tags (pair_tags), never a path over void.
 	for gate: Dictionary in view.get("gates",[]):
 		var route: Dictionary = {}
 		for candidate: Dictionary in view.bridges+view.get("stairs",[]):
 			if candidate.id == gate.route_id: route = candidate
 		if route.is_empty(): continue
-		var references := _predicate_references(gate.get("when",{}))
+		var references := PairTags.predicate_references(gate.get("when",{}))
 		var r: Array = route.rect_cm
 		# On the crossing's near end mark (kit/owner_mark.gd), owned or not.
 		var end := OwnerMark.route_end_points(r)[0]+Vector3(0,float(route.get("from_height_cm",0))/100.0+OwnerMark.ROUTE_LIFT,0)
 		for id: String in references:
-			# Each reference keeps its own crest beside the route's end, so two
-			# crests never lie on one another.
-			var crest_end := end + Vector3(0, 0, (float(references.find(id)) - float(references.size() - 1) * 0.5) * 0.22)
 			var entity: Dictionary = {}
 			for item: Dictionary in view.get("controls",[])+view.get("levers",[])+view.get("pressure_pads",[])+view.optics.receivers:
 				if item.id == id: entity = item
 			if entity.is_empty(): continue
 			var start := point(entity.position_cm)+Vector3(0,_control_base_height(entity)+0.025,0)
 			var color := _route_color(id)
-			_route_crest(id,start+Vector3(0.33,0.01,0),color,terrain,LevelHints.CONTROL)
-			_route_crest(id,crest_end,color,terrain,LevelHints.GATE)
 			if _shares_floor(start,end):
 				var elbow := Vector3(end.x,start.y,start.z)
 				var last := elbow if elbow.distance_to(end)>0.01 else start
@@ -472,24 +471,8 @@ func _build_gate_links(view: Dictionary) -> void:
 				if start.distance_to(elbow)>0.01: _bar_between(start,elbow,0.016,color.darkened(0.25),terrain)
 				if elbow.distance_to(stop)>0.01: _bar_between(elbow,stop,0.016,color.darkened(0.25),terrain)
 
-func _predicate_references(predicate: Dictionary) -> Array[String]:
-	var result: Array[String] = []
-	for key: String in ["control_id","signal_id","pad_id","lever_id"]:
-		if predicate.has(key): result.append(str(predicate[key]))
-	for key: String in ["all","any"]:
-		for child: Dictionary in predicate.get(key,[]):
-			for id: String in _predicate_references(child):
-				if id not in result: result.append(id)
-	return result
-
 func _route_color(id: String) -> Color:
 	return GOLD if id in ["path-selector","high-light","crossing-light","near-window"] else TEAL
-
-## Control `id`'s crest on its `side` of the pair (LevelHints.CONTROL or GATE).
-func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D, side: StringName) -> void:
-	var count := 1 if id in ["path-selector","high-light","crossing-light","near-window"] else 2
-	# A few millimetres above the gate cable that meets it.
-	pair_tags.tag(&"crest",["bar",count],color,id,side,at,parent)
 
 func _shares_floor(a: Vector3, b: Vector3) -> bool:
 	if absf(a.y-b.y)>0.05: return false

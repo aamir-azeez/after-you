@@ -7,7 +7,7 @@ const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
 const StandSpot = preload("res://presentation/kit/stand_spot.gd")
 ## Matching gate tags come from the world kit (ownership marks: OwnerMark).
-const LevelHints = preload("res://presentation/kit/level_hints.gd")
+const PairTags = preload("res://presentation/kit/pair_tags.gd")
 ## A lever's look (a winch, a bolt) where the descriptor's "lever_looks" names one.
 const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
@@ -43,8 +43,8 @@ var _glance_target := Vector3.ZERO
 var descriptor_override: Dictionary = {}
 ## The shown stage's ownership marks (kit/owner_mark.gd).
 var owner_marks := OwnerMark.new(self)
-## The shown stage's pair tags (kit/level_hints.gd): a control's and its gate's.
-var pair_tags := LevelHints.new(self)
+## The shown stage's pair tags (kit/pair_tags.gd), from its control-to-gate wiring.
+var pair_tags := PairTags.new(self)
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -148,6 +148,11 @@ func show_stage(stage: Dictionary) -> void:
 		for index in range(3): sphere(0.035, CREAM, center + Vector3(0, height * float(index + 1) / 4.0, 0), terrain)
 	_build_gate_links(view)
 	_build_goal_beacon(view)
+	# The tags lay themselves out when first shown, after every world's own
+	# building is done, clear of all of it (the ball's cradle included).
+	var tag_view := view.duplicate()
+	tag_view["goal"] = goal
+	pair_tags.prepare(tag_view)
 	await _build_step()
 	if _has_completion_garden(stage_id):
 		garden = Node3D.new()
@@ -452,9 +457,9 @@ func _build_lever(lever: Dictionary) -> void:
 	_physical_levers[lever.id] = pivot
 	owner_marks.mark(str(lever.owner_slot), &"lever", str(lever.id), at, terrain)
 
-## Gate links: cables this wide, their centres this high (kit/level_hints.gd).
-const LINK_WIDTH := LevelHints.LINK_WIDTH
-const LINK_LIFT := LevelHints.LINK_LIFT
+## Gate links: cables this wide, their centres this high.
+const LINK_WIDTH := 0.025
+const LINK_LIFT := 0.03
 
 func _build_gate_links(view: Dictionary) -> void:
 	if str(dressing.get("cables", "")) == "floor":
@@ -468,7 +473,7 @@ func _build_gate_links(view: Dictionary) -> void:
 		var rect: Array = route.rect_cm
 		var end := point([rect[0], (rect[1] + rect[3]) * 0.5]) + Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + 0.03, 0)
 		for mechanism: Dictionary in view.get("pressure_pads", []) + view.get("ball_pads", []) + view.get("levers", []):
-			if mechanism.id not in [gate.get("pad_id", ""), gate.get("lever_id", ""), gate.get("second_lever_id", ""), gate.get("ball_pad_id", "")]: continue
+			if str(mechanism.id) not in PairTags.references(gate): continue
 			var link_color := _gate_link_color(mechanism)
 			var start := _at(mechanism) + Vector3(0, 0.03, 0)
 			var elbow := Vector3(end.x - 0.18, start.y, start.z)
@@ -487,16 +492,14 @@ func _build_floor_links(view: Dictionary) -> void:
 		# The cable ends on the crossing's near end mark.
 		var end := OwnerMark.route_end_points(rect)[0] + Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + LINK_LIFT, 0)
 		for mechanism: Dictionary in view.get("pressure_pads", []) + view.get("ball_pads", []) + view.get("levers", []):
-			if mechanism.id not in [gate.get("pad_id", ""), gate.get("lever_id", ""), gate.get("second_lever_id", ""), gate.get("ball_pad_id", "")]: continue
+			if str(mechanism.id) not in PairTags.references(gate): continue
 			var link_color := _gate_link_color(mechanism)
 			var start := _at(mechanism) + Vector3(0, LINK_LIFT, 0)
 			var elbow := Vector3(end.x, start.y, start.z)
+			# Across a gap the pair tags (pair_tags) tie the two ends instead.
 			if _shares_floor(start, elbow) and _shares_floor(elbow, end):
 				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, LINK_WIDTH, link_color, terrain)
 				if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, LINK_WIDTH, link_color, terrain)
-			else:
-				pair_tags.tag(&"link_tag", ["bar", 2], link_color, str(mechanism.id), LevelHints.CONTROL, start + Vector3(0.36, 0, 0), terrain)
-				pair_tags.tag(&"link_tag", ["bar", 2], link_color, str(mechanism.id), LevelHints.GATE, end, terrain)
 
 ## Both points lie on one walkable island at the same height.
 func _shares_floor(a: Vector3, b: Vector3) -> bool:
@@ -518,6 +521,28 @@ func _surface_height(id: String) -> float:
 func _at(value: Dictionary) -> Vector3:
 	return point(value.position_cm) + Vector3(0, _surface_height(str(value.get("surface_id", ""))), 0)
 
+## The floor point a pair tag's control stands on (kit/pair_tags.gd).
+func _pair_control_anchor(entity: Dictionary) -> Vector3:
+	return _at(entity)
+
+## Scenery of the world's own that pair tags keep clear of (kit/pair_tags.gd).
+func _pair_keep_clear() -> Array:
+	return []
+
+## The floor points a gate's pair tags go by, nearest first: before a
+## crossing's west end (its end mark's place) then past its east end; a
+## stair's foot then its head.
+func _pair_gate_anchors(route: Dictionary) -> Array:
+	var r: Array = route.rect_cm
+	if route.has("axis"):
+		var along_x: bool = str(route.get("axis", "x")) == "x"
+		var foot := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(-0.24 if along_x else 0.0, float(route.from_height_cm) / 100.0, 0.0 if along_x else -0.24)
+		var head := point([r[2], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[3]]) + Vector3(0.24 if along_x else 0.0, float(route.get("to_height_cm", route.from_height_cm)) / 100.0, 0.0 if along_x else 0.24)
+		return [foot, head]
+	var height := Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0, 0)
+	var ends := OwnerMark.route_end_points(r)
+	return [ends[0] + height, ends[1] + height]
+
 func present_history(checkpoint: Dictionary) -> void:
 	_latched_bridge_ids = checkpoint.get("mechanisms", {}).get("latched_bridges", []).duplicate()
 
@@ -535,6 +560,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	var visual := state.duplicate()
 	visual.merge({"mirror_orientation": "slash", "emitter_powered": false, "objective_done": bool(state.get("complete", false)), "optics": {"segments": [], "signals": {}}, "bridges": {}, "mirrors": {}, "selectors": {}, "props": {}}, false)
 	super.present(visual, immediate)
+	pair_tags.present(state)
 	for actor: SpiritVisual in actors.values(): actor.set_celebration(_completion_view, immediate, reduced_motion)
 	if is_instance_valid(garden): _present_garden(false, bool(state.get("complete", false)), immediate)
 	for id: String in _physical_balls:

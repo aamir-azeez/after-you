@@ -37,6 +37,7 @@ const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
+const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const HeldPresses = preload("res://services/held_presses.gd")
 
 const IDLE_SECONDS := 1.0
@@ -71,15 +72,15 @@ const MATERIALS: Array[Dictionary] = [
 const CHAPTERS := {
 	"first-steps@1": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 4], "l": [2]},
 	"relay-isles@2": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 4], "l": [2]},
-	"high-and-low@1": {"m": [0, 1, 2, 6, 8], "s": [0], "l": [2]},
-	"rolling-home@1": {"m": [0, 1, 2, 6, 8], "s": [0], "l": [2]},
-	"a-house-for-two@1": {"m": [0, 1, 2, 3, 6], "s": [0], "l": [2]},
-	"conservatory@1": {"m": [0, 1, 2, 3, 6, 8, 9], "s": [0], "l": [2]},
-	"the-wishing-well@1": {"m": [0, 1, 2, 6, 8], "s": [0], "l": [2]},
-	"long-way-home@1": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 1], "l": [0, 2]},
-	"long-way-home@2": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 1], "l": [0, 2]},
-	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7], "s": [0, 1, 7], "l": [0, 1, 2]},
-	"turn-of-the-tide@2": {"m": [0, 1, 2, 3, 4, 5, 6, 7], "s": [0, 1, 7], "l": [0, 1, 2]},
+	"high-and-low@1": {"m": [0, 1, 2, 6, 8], "s": [0, 12], "l": [2]},
+	"rolling-home@1": {"m": [0, 1, 2, 6, 8], "s": [0, 12], "l": [2]},
+	"a-house-for-two@1": {"m": [0, 1, 2, 3, 6], "s": [0, 12], "l": [2]},
+	"conservatory@1": {"m": [0, 1, 2, 3, 6, 8, 9], "s": [0, 12], "l": [2]},
+	"the-wishing-well@1": {"m": [0, 1, 2, 6, 8], "s": [0, 12], "l": [2]},
+	"long-way-home@1": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 1, 12], "l": [0, 2]},
+	"long-way-home@2": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 1, 12], "l": [0, 2]},
+	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7], "s": [0, 1, 7, 12], "l": [0, 1, 2]},
+	"turn-of-the-tide@2": {"m": [0, 1, 2, 3, 4, 5, 6, 7], "s": [0, 1, 7, 12], "l": [0, 1, 2]},
 	"sleeping-lighthouse@1": {"m": [0, 1, 2, 3, 6, 8], "s": [0], "l": [2]},
 	"sleeping-lighthouse@2": {"m": [0, 1, 2, 3, 6, 8], "s": [0], "l": [2]},
 }
@@ -210,7 +211,7 @@ static func order(first: String) -> Array:
 
 ## Every ShaderMaterial shader the worlds draw (then worn cosmetics and the race ghost's face).
 static func shaders() -> Array[Shader]:
-	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST, FallEffect.SHADER]
+	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST, FallEffect.SHADER, PairTags.SHADER]
 
 ## A material with exactly that key (a small white texture for each texture).
 static func material_for(key: Dictionary) -> StandardMaterial3D:
