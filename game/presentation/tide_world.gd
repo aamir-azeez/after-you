@@ -1062,9 +1062,9 @@ func _build_gate_links(view: Dictionary) -> void:
 			var spot := end + Vector3(0, 0, (float(index) - float(others.size() - 1) * 0.5) * 0.26)
 			var color := _route_color(id)
 			# One crest beside each machine, however many routes it opens.
-			if id not in crested: _route_crest(id, _crest_beside(entity, start), color, terrain)
+			if id not in crested: _route_crest(id, _crest_beside(entity, start), color, terrain, LevelHints.CONTROL)
 			crested.append(id)
-			_route_crest(id, spot, color, terrain)
+			_route_crest(id, spot, color, terrain, LevelHints.GATE)
 			if _shares_floor(start, spot):
 				var elbow := Vector3(spot.x, start.y, start.z)
 				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.016, color.darkened(0.25), terrain)
@@ -1087,7 +1087,7 @@ func _key_sign(route: Dictionary) -> void:
 	glyph.rotation.x = -PI / 2.0
 	glyph.scale = Vector3.ONE * 2.2
 	sign.add_child(glyph)
-	LevelHints.tally(&"tide_crest", CRESTS["sea-key"], GOLD, Vector3.ZERO, glyph)
+	pair_tags.tag(&"tide_crest", CRESTS["sea-key"], GOLD, "sea-key", LevelHints.SIGN, Vector3.ZERO, glyph)
 	sign.set_meta("crest", "sea-key")
 
 ## Beside a machine: to its east on an island, or toward the far end of the
@@ -1118,13 +1118,13 @@ func _route_anchor(route: Dictionary) -> Vector3:
 func _route_color(id: String) -> Color:
 	return GOLD if id in P0_MECHANISMS else TEAL
 
-func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D) -> void:
+func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D, side: StringName) -> void:
 	var crest := Node3D.new()
 	crest.name = "Crest_" + id
 	crest.set_meta("crest", id)
 	crest.position = at + Vector3(0, 0.02, 0)
 	parent.add_child(crest)
-	LevelHints.tally(&"tide_crest", CRESTS.get(id, ["bar", 1]), color, Vector3.ZERO, crest)
+	pair_tags.tag(&"tide_crest", CRESTS.get(id, ["bar", 1]), color, id, side, Vector3.ZERO, crest)
 
 func _carries_pad(view: Dictionary, surface_id: String) -> bool:
 	for pad: Dictionary in view.get("pressure_pads", []):

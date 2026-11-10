@@ -51,11 +51,13 @@ extends SceneTree
 ##     declares the fall's clock or seed, and
 ##     each script that uses the kit is in FALL_EFFECT_SURFACES with what it falls.
 ## (t) level hints: presentation/kit/owner_mark.gd alone draws an ownership mark (the gold
-##     diamond and the teal ring) and presentation/kit/level_hints.gd alone draws a gate's
-##     matching tags; each world that marks or tags through them is in OWNER_MARK_SURFACES
+##     diamond and the teal ring) and presentation/kit/level_hints.gd alone draws the pair
+##     tags (| || |||, crests, symbols) a control and its gate share, each placed with
+##     pair_tags.tag() naming its control; each world that marks or tags through them is in OWNER_MARK_SURFACES
 ##     or LEVEL_HINT_SURFACES with what it marks, and any other flat diamond (a thin square
 ##     box turned 45 degrees) is in FLAT_DIAMONDS with why it is no ownership mark;
-##     test_owner_marks.gd, which must stay in CI, checks every built stage's marks came from the kit.
+##     test_owner_marks.gd and test_pair_tags.gd, which must stay in CI, check every built stage's
+##     marks and pair tags.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -308,8 +310,8 @@ const OWNER_MARK_SURFACES := {
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
 const LEVEL_HINT_SURFACES := {
-	"res://presentation/cooperative_world.gd": "floor-cable link tags",
-	"res://presentation/journey_world.gd": "route crests",
+	"res://presentation/cooperative_world.gd": "floor-cable link tags at both ends",
+	"res://presentation/journey_world.gd": "route crests beside a control and at its crossing (Long Way Home's pad crests too)",
 	"res://presentation/tide_world.gd": "crests and the sea key's sign",
 	"res://presentation/house_world.gd": "route symbols",
 }
@@ -345,7 +347,7 @@ const SHADER_PLACED := "\\bcustom_aabb\\b|\\bset_instance_shader_parameter\\("
 const SHADER_PLACED_ALLOWED := {}
 
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "fall_effect"]
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect"]
 
 var checks := 0
 var failures := 0
@@ -829,10 +831,11 @@ func _level_hints() -> void:
 			marks[path] = true
 			_check(OWNER_MARK_SURFACES.has(path), "%s places ownership marks: add it to OWNER_MARK_SURFACES with what it marks" % path)
 		var hints_alias := _alias(source, LEVEL_HINTS)
-		# A world inherits its parent's alias, so a tally call counts by the kit's usual name too.
-		if _found("\\b(?:LevelHints" + ("|" + hints_alias if not hints_alias.is_empty() else "") + ")\\.tally\\(", source) > 0:
+		# A world inherits its parent's alias, so the kit's usual name counts too.
+		_check(_found("\\b(?:LevelHints" + ("|" + hints_alias if not hints_alias.is_empty() else "") + ")\\.tally\\(", source) == 0, "%s draws a pair tag without saying which control it pairs: place it with pair_tags.tag()" % path)
+		if _found("\\bpair_tags\\.tag\\(", source) > 0:
 			tags[path] = true
-			_check(LEVEL_HINT_SURFACES.has(path), "%s draws gate tags: add it to LEVEL_HINT_SURFACES with what it tags" % path)
+			_check(LEVEL_HINT_SURFACES.has(path), "%s draws pair tags: add it to LEVEL_HINT_SURFACES with what it tags" % path)
 	for path: String in OWNER_MARK_SURFACES:
 		_check(marks.has(path), "OWNER_MARK_SURFACES names %s, which places no ownership mark through presentation/kit/owner_mark.gd now: delete it" % path)
 	for path: String in LEVEL_HINT_SURFACES:

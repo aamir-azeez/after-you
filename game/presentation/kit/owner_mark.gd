@@ -137,7 +137,7 @@ func zone(slot: String, id: String, rect_cm: Array, floor_y: float, parent: Node
 
 ## Records a mark another kit piece drew itself (a stand spot's), for placed().
 func record(slot: String, kind: StringName, id: String, at: Vector3, parent: Node3D) -> void:
-	_placed.append({"slot": slot, "kind": kind, "id": id, "at": _on_floor(at, parent)})
+	_placed.append({"slot": slot, "kind": kind, "id": id, "at": on_floor(_world, at, parent)})
 
 ## What this stage marked: {slot, kind, id, at (terrain space)} per mark.
 func placed() -> Array[Dictionary]:
@@ -180,9 +180,9 @@ static func spot(slot: String, room: float, side: float, ring_outer: float, ring
 	node.scale.y = thickness / ring_tube
 	return node
 
-## `at` in `parent`'s space, in the space of the terrain it stands on.
-func _on_floor(at: Vector3, parent: Node3D) -> Vector3:
-	var terrain: Variant = _world.get("terrain") if _world != null else null
+## `at` in `parent`'s space, in the space of `world`'s terrain it stands on.
+static func on_floor(world: Node3D, at: Vector3, parent: Node3D) -> Vector3:
+	var terrain: Variant = world.get("terrain") if world != null else null
 	var node: Node3D = parent
 	var point := at
 	while node != null and node != terrain:

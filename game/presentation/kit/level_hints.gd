@@ -4,14 +4,20 @@ extends RefCounted
 ## dot, a key...) lies flat beside the machine and again at the crossing's
 ## end, in the machine's colour, so a player matches them by shape and count.
 ##
-## A world says which family of tags it draws (STYLES: their bar's size and
-## spacing) and what each tag shows: tally(style, [glyph, count], colour, at,
-## parent). Ownership marks are kit/owner_mark.gd.
+## A world keeps one of these (cooperative_world's pair_tags), starts it over
+## with each stage and places each tag with tag(): which family of tags it
+## draws (STYLES: their bar's size and spacing), what the tag shows ([glyph,
+## count]), the control it pairs (a pad, a lever, a valve) and which end it
+## marks: the control's own, or the gate's (the crossing or thing it works).
+## placed() lists every tag as plain data, so tests check that a control and
+## its gate show the same tag and that no two pairs on a stage share one.
+## Ownership marks are kit/owner_mark.gd.
 ##
 ## Presentation only: built from the hashed stage; nothing here feeds the
 ## simulation, a recording or a checkpoint. Cost: plain leaves with kit-cached
 ## meshes and looks (Primitives), folded by the world's static fold into the
-## batch of their colour; nothing runs per frame.
+## batch of their colour; nothing runs per frame, and this object never holds
+## a node.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 ## Gate cables (cooperative_world floor cables): this wide, their centres this
@@ -33,6 +39,35 @@ const STYLES := {
 	## house_world's route symbols: one, two or three wider bars.
 	&"route_symbol": {"bar": Vector3(0.09, 0.025, 0.20), "spacing": 0.14, "lift": 0.0, "name": ""},
 }
+## Which end of a pair a tag marks: the control's, the gate's, or a gate's
+## upright sign; MEMORY is a remembered control of an earlier stage.
+const CONTROL := &"control"
+const GATE := &"gate"
+const SIGN := &"sign"
+const MEMORY := &"memory"
+
+## The world whose terrain the recorded places are in.
+var _world: Node3D
+var _placed: Array[Dictionary] = []
+
+func _init(world: Node3D = null) -> void:
+	_world = world
+
+## A new stage: what was tagged before goes (its nodes went with the terrain).
+func clear() -> void:
+	_placed.clear()
+
+## A tag of `style` showing `shape` for the pair of control `control_id`, on
+## its `side` (CONTROL, GATE, SIGN or MEMORY), at `at` in `parent`.
+func tag(style: StringName, shape: Array, tint: Color, control_id: String, side: StringName, at: Vector3, parent: Node3D) -> void:
+	tally(style, shape, tint, at, parent)
+	# A memory is redrawn with each remembered turn; only this stage's own pairs are listed.
+	if side != MEMORY: _placed.append({"style": style, "shape": [str(shape[0]), int(shape[1])], "control": control_id, "side": side, "at": OwnerMark.on_floor(_world, at, parent)})
+
+## What this stage tagged: {style, shape, control, side, at (terrain space)} per tag.
+func placed() -> Array[Dictionary]:
+	return _placed.duplicate()
+
 ## `shape` ([glyph, count]: bar, cross, dot, chevron, ring, pin or key, and how many) of `style` lying flat
 ## and centred on `at` in `parent`, in `tint`.
 static func tally(style: StringName, shape: Array, tint: Color, at: Vector3, parent: Node3D) -> void:

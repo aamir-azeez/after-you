@@ -459,8 +459,8 @@ func _build_gate_links(view: Dictionary) -> void:
 			if entity.is_empty(): continue
 			var start := point(entity.position_cm)+Vector3(0,_control_base_height(entity)+0.025,0)
 			var color := _route_color(id)
-			_route_crest(id,start+Vector3(0.33,0.01,0),color,terrain)
-			_route_crest(id,crest_end,color,terrain)
+			_route_crest(id,start+Vector3(0.33,0.01,0),color,terrain,LevelHints.CONTROL)
+			_route_crest(id,crest_end,color,terrain,LevelHints.GATE)
 			if _shares_floor(start,end):
 				var elbow := Vector3(end.x,start.y,start.z)
 				var last := elbow if elbow.distance_to(end)>0.01 else start
@@ -485,10 +485,11 @@ func _predicate_references(predicate: Dictionary) -> Array[String]:
 func _route_color(id: String) -> Color:
 	return GOLD if id in ["path-selector","high-light","crossing-light","near-window"] else TEAL
 
-func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D) -> void:
+## Control `id`'s crest on its `side` of the pair (LevelHints.CONTROL or GATE).
+func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D, side: StringName) -> void:
 	var count := 1 if id in ["path-selector","high-light","crossing-light","near-window"] else 2
 	# A few millimetres above the gate cable that meets it.
-	LevelHints.tally(&"crest",["bar",count],color,at,parent)
+	pair_tags.tag(&"crest",["bar",count],color,id,side,at,parent)
 
 func _shares_floor(a: Vector3, b: Vector3) -> bool:
 	if absf(a.y-b.y)>0.05: return false

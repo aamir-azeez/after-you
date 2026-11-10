@@ -43,6 +43,8 @@ var _glance_target := Vector3.ZERO
 var descriptor_override: Dictionary = {}
 ## The shown stage's ownership marks (kit/owner_mark.gd).
 var owner_marks := OwnerMark.new(self)
+## The shown stage's pair tags (kit/level_hints.gd): a control's and its gate's.
+var pair_tags := LevelHints.new(self)
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -71,6 +73,7 @@ func show_stage(stage: Dictionary) -> void:
 	_hatches.clear()
 	_upper_islands.clear()
 	owner_marks.clear()
+	pair_tags.clear()
 	# These are presentation defaults for the shared Lighthouse builder.
 	_configure_shared_view(view)
 	var physical_props: Array = view.get("props", []).duplicate(true)
@@ -492,8 +495,8 @@ func _build_floor_links(view: Dictionary) -> void:
 				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, LINK_WIDTH, link_color, terrain)
 				if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, LINK_WIDTH, link_color, terrain)
 			else:
-				LevelHints.tally(&"link_tag", ["bar", 2], link_color, start + Vector3(0.36, 0, 0), terrain)
-				LevelHints.tally(&"link_tag", ["bar", 2], link_color, end, terrain)
+				pair_tags.tag(&"link_tag", ["bar", 2], link_color, str(mechanism.id), LevelHints.CONTROL, start + Vector3(0.36, 0, 0), terrain)
+				pair_tags.tag(&"link_tag", ["bar", 2], link_color, str(mechanism.id), LevelHints.GATE, end, terrain)
 
 ## Both points lie on one walkable island at the same height.
 func _shares_floor(a: Vector3, b: Vector3) -> bool:

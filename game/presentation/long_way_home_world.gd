@@ -121,7 +121,7 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	super._build_physical_pad(pad,heavy)
 	if pad.id not in ["near-window","garden-window"]: return
 	var at := _at(pad)
-	_route_crest(str(pad.id),at+Vector3(0.50,0.025,0),_route_color(str(pad.id)),terrain)
+	_route_crest(str(pad.id),at+Vector3(0.50,0.025,0),_route_color(str(pad.id)),terrain,LevelHints.CONTROL)
 	_world_label("PORCH" if pad.id == "near-window" else "GARDEN",at+PAD_TOP,terrain)
 	# Both pads visibly feed the same first window. They select a route, not
 	# extra windows or another completion objective.
