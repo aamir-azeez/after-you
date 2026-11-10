@@ -5,7 +5,7 @@ extends SceneTree
 ##   with the rest, and folds into Base while Fruits are hidden; a line's first
 ##   showing marks its goal shown, so no toast says it again;
 ## - the Sunshine card on the Pollen page: a dot per turn (the ones left golden),
-##   "21 of 24 turns left", the price button only while a new one is offered,
+##   "21 of 48 turns left", the price button only while a new one is offered,
 ##   and no card while Fruits are hidden; the history's "Sunshine ×2" tag;
 ## - Turn Fruits into Pollen: one step to start, steps of the server's size up to
 ##   the most the balance covers, the sums before confirming, the button's words,
@@ -137,7 +137,7 @@ static func _goals() -> Array:
 	return rows
 
 static func _part(balance: int, left: int = 21, goals: Array = _goals()) -> Dictionary:
-	return {"schema_version": 1.0, "balance": float(balance), "earned": 120.0, "sunshine": {"left": float(left), "turns": 24.0, "price": 20.0},
+	return {"schema_version": 1.0, "balance": float(balance), "earned": 120.0, "sunshine": {"left": float(left), "turns": 48.0, "price": 20.0},
 		"convert": {"pollen_per_fruit": 300.0, "step": 10.0}, "first_pack_gift": true, "first_pack_percent": 100.0, "achievements": goals}
 
 ## A Fruit store for the test player, Fruits on (packs too while `packs`), read once with `part`.
@@ -255,14 +255,14 @@ func _result_line() -> void:
 	FruitWallet.use_shared(null)
 
 func _sunshine_card() -> void:
-	var card: Control = SunshineCard.make({"left": 21, "turns": 24, "price": 20}, false)
+	var card: Control = SunshineCard.make({"left": 21, "turns": 48, "price": 20}, false)
 	root.add_child(card)
 	await process_frame
-	_check(card.dots.golden() == 21 and card.dots.turns == 24, "A dot per turn, 21 of them golden")
-	_check((card.find_child("SunshineLeft", true, false) as Label).text == "21 of 24 turns left", "It says the turns left")
+	_check(card.dots.golden() == 21 and card.dots.turns == 48, "A dot per turn, 21 of them golden")
+	_check((card.find_child("SunshineLeft", true, false) as Label).text == "21 of 48 turns left", "It says the turns left")
 	_check(card.buy_button != null and card.buy_button.disabled, "While turns are left the price button shows greyed, as board 7 draws it")
 	card.free()
-	var offered: Control = SunshineCard.make({"left": 0, "turns": 24, "price": 20}, true)
+	var offered: Control = SunshineCard.make({"left": 0, "turns": 48, "price": 20}, true)
 	root.add_child(offered)
 	await process_frame
 	var pressed := []
@@ -277,7 +277,7 @@ func _sunshine_card() -> void:
 		root.add_child(page)
 		page.render({"history": {"turns": [{"amount": 222, "at": 0, "level_id": "relay-isles", "stage_id": "relay", "role": "a", "bonuses": ["first_try"], "bloom": 1, "reason": "", "sunshine": 111}], "first_clears": [], "bank": {},
 			"exchanges": [{"kind": "convert", "amount": 6000, "at": 5000}, {"kind": "reclaim", "amount": -3000, "at": 0}]},
-			"fruits": fruits_on, "sunshine": {"left": 21, "turns": 24, "price": 20}, "sunshine_buyable": false})
+			"fruits": fruits_on, "sunshine": {"left": 21, "turns": 48, "price": 20}, "sunshine_buyable": false})
 		await process_frame
 		var foot: Node = page.find_child("PollenTurnsCardFoot", true, false)
 		_check((foot != null and foot.find_child("SunshineCard", true, false) != null) == fruits_on, "The Sunshine card shows at the Turns card's foot only while Fruits show (%s)" % fruits_on)
@@ -346,13 +346,13 @@ func _spends(online: Online) -> void:
 	flow.sunshine(parent)
 	var card: Control = flow.sheet()
 	_check(card != null and card.name == "WardrobeConfirm" and card.find_child("SunshineConfirmArt", true, false) != null and card.find_child("WardrobeConfirmPip", true, false) == null, "Covered, the Fruit confirm card opens with the sun in the pip's place")
-	server.answer = {"ok": true, "status": 200, "data": {"schema_version": 1.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 81.0, "sunshine_left": 24.0}}
+	server.answer = {"ok": true, "status": 200, "data": {"schema_version": 1.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 81.0, "sunshine_left": 48.0}}
 	var buy: Button = card.find_child("WardrobeConfirmBuy", true, false) if card != null else null
 	if buy != null: buy.pressed.emit()
 	for i in range(6): await process_frame
 	_check(server.sent.size() == 1 and server.sent[0][2].kind == "sunshine" and int(server.sent[0][2].expected_cost) == 20, "Buy sends Sunshine at the price shown: %s" % [server.sent])
-	_check(fruits.sunshine(SERVER, ME).left == 24 and fruits.balance(SERVER, ME) == 81, "The receipt is kept: 24 turns, 81 Fruits")
-	_check(host.said.back() == "Sunshine is on for your next 24 bank turns.", "and it says so: %s" % [host.said.back()])
+	_check(fruits.sunshine(SERVER, ME).left == 48 and fruits.balance(SERVER, ME) == 81, "The receipt is kept: 48 turns, 81 Fruits")
+	_check(host.said.back() == "Sunshine is on for your next 48 bank turns.", "and it says so: %s" % [host.said.back()])
 	# Converting: refusals read plainly; offline nothing is sent.
 	server.sent.clear()
 	server.answer = {"ok": false, "status": 409, "code": "pollen_price_changed"}
@@ -385,7 +385,7 @@ func _page() -> void:
 	var host := Host.new()
 	var history := History.new()
 	history.answer = PollenHistory.checked({"schema_version": 1.0, "entries": [], "fruit_entries": [
-		{"kind": "grant", "amount": 35.0, "at": 1800000300000.0, "step": 3.0},
+		{"kind": "grant", "amount": 12.0, "at": 1800000300000.0, "step": 3.0},
 		{"kind": "ach", "amount": 10.0, "at": 1800000200000.0, "id": "hard_first", "level_id": "relay-isles"},
 		{"kind": "bundle", "amount": 25.0, "at": 1800000100000.0, "bundle": "handful"},
 		{"kind": "convert", "amount": -20.0, "at": 1800000000000.0}]})
@@ -426,7 +426,7 @@ func _page() -> void:
 	var lines: Array = page.find_children("FruitLine*", "HBoxContainer", true, false).map(func(row: Node) -> String: return (row.get_child(0).get_child(0) as Label).text)
 	_check(lines == ["Full Journey, month 3", "First Hard clear together", "Handful", "Turned into Pollen"], "The newest Fruit lines, named: %s" % [lines])
 	var amounts: Array = page.find_children("FruitLineAmount", "Label", true, false).map(func(label: Label) -> String: return label.text)
-	_check(amounts == ["+35", "+10", "+25", "−20"], "with their Fruits: %s" % [amounts])
+	_check(amounts == ["+12", "+10", "+25", "−20"], "with their Fruits: %s" % [amounts])
 	_check((page.find_child("FruitWalletAmount", true, false) as Label).text == "101", "The big balance")
 	var buttons: Array = page.find_child("FruitWalletButtons", true, false).get_children().map(func(button: Node) -> String: return button.name)
 	_check(buttons == ["FruitsPage_get", "FruitsPage_orchard", "FruitsPage_sunshine", "FruitsPage_convert"], "The board's four buttons: %s" % [buttons])

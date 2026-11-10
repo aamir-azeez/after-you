@@ -53,7 +53,7 @@ static func fill(head: VBoxContainer, lines: VBoxContainer, buttons: GridContain
 		button.pressed.connect(func() -> void: pressed.call(which, button))
 		buttons.add_child(button)
 
-## One Fruit line: what it was, its place and date, and its Fruits ("+35", "−20").
+## One Fruit line: what it was, its place and date, and its Fruits ("+12", "−20").
 static func line(entry: Dictionary, index: int = 0) -> Control:
 	var row := HBoxContainer.new()
 	row.name = "FruitLine%d" % index

@@ -1,7 +1,7 @@
 extends PanelContainer
 ## The Sunshine card at the foot of the Turns with friends card on the Pollen
 ## page (Fruits board 7): the warm sun, its title and what it does, a dot for
-## each of its turns (the used ones pale, the ones left golden), "21 of 24
+## each of its turns (the used ones pale, the ones left golden), "45 of 48
 ## turns left", and the price button (the Fruit mark and the price), greyed
 ## while a new one cannot be bought (turns still left, or Fruit spending
 ## blocked), as the board draws it.
@@ -101,6 +101,7 @@ func _build(sunshine: Dictionary, buyable: bool, title_font: Font, say: Callable
 	foot.add_child(buy_button)
 
 ## The turns as two rows of dots: the used ones first, pale, then the ones left, golden.
+## More than two rows of PER_ROW turns keep the two rows' width with smaller dots.
 class Dots extends Control:
 	const SIDE := 24.0
 	const GAP := 7.0
@@ -112,14 +113,20 @@ class Dots extends Control:
 	const PALE_EDGE := Color("e2c389")
 	var turns := 0
 	var left := 0
+	var per_row := PER_ROW
+	var side := SIDE
+	var gap := GAP
 
 	func _init(count: int, remaining: int) -> void:
 		name = "SunshineDots"
 		turns = maxi(count, 0)
 		left = clampi(remaining, 0, turns)
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var rows := ceili(turns / float(PER_ROW))
-		custom_minimum_size = Vector2(mini(turns, PER_ROW) * (SIDE + GAP) - GAP, rows * (SIDE + GAP) - GAP) if turns > 0 else Vector2.ZERO
+		per_row = maxi(PER_ROW, ceili(turns / 2.0))
+		side = SIDE * PER_ROW / per_row
+		gap = GAP * PER_ROW / per_row
+		var rows := ceili(turns / float(per_row))
+		custom_minimum_size = Vector2(mini(turns, per_row) * (side + gap) - gap, rows * (side + gap) - gap) if turns > 0 else Vector2.ZERO
 		resized.connect(queue_redraw)
 
 	## How many dots show a turn left (tests).
@@ -129,8 +136,8 @@ class Dots extends Control:
 	func _draw() -> void:
 		var used := turns - left
 		for index in range(turns):
-			var centre := Vector2((index % PER_ROW) * (SIDE + GAP), floori(index / float(PER_ROW)) * (SIDE + GAP)) + Vector2.ONE * SIDE * 0.5
-			var radius := SIDE * 0.5
+			var centre := Vector2((index % per_row) * (side + gap), floori(index / float(per_row)) * (side + gap)) + Vector2.ONE * side * 0.5
+			var radius := side * 0.5
 			if index < used:
 				draw_circle(centre, radius, PALE, true, -1.0, true)
 				draw_arc(centre, radius - 1.0, 0.0, TAU, 24, PALE_EDGE, 1.5, true)

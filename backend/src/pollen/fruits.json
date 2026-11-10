@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "grant": { "first": 30, "step": 5, "every": 2, "top": 60, "welcome": 50 },
+  "grant": { "first": 10, "step": 1, "every": 1, "top": 24, "welcome": 10 },
   "convert": { "pollen_per_fruit": 300, "step": 10 },
-  "sunshine": { "price": 20, "turns": 24 },
+  "sunshine": { "price": 20, "turns": 48 },
   "achievements": [
     { "id": "together_first", "fruits": 10, "track": "together_clears", "goal": 1 },
     { "id": "together_five", "fruits": 10, "track": "together_clears", "goal": 5 },

@@ -76,7 +76,7 @@ static func pollen_tile(ladder: Dictionary = {}) -> Dictionary:
 	return {"name": "FullJourneyGrant", "icon": "pollen", "icon_size": TILE_ICON, "title": PlayerCopy.FULL_JOURNEY_POLLEN_TILE % PollenMoney.grouped(first),
 		"body": PlayerCopy.FULL_JOURNEY_POLLEN_TILE_NOTE % [PollenMoney.grouped(GRANT_STEP), PollenMoney.grouped(top)]}
 
-## The Fruit tile (board 5a): "30 Fruits a month", the step it grows to and,
+## The Fruit tile (board 5a): "10 Fruits a month", the step it grows to and,
 ## until the player was paid it, the welcome basket: in month 1, or with the
 ## next month for a player the ladder already counted months for (`months`).
 ## `grant` is the server's Fruit grant for this player ({} for one without);

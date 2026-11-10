@@ -51,9 +51,9 @@ function facts(extra: Partial<TurnFacts> = {}, at = MONDAY): TurnFacts {
 afterEach(async () => { await reset(); });
 
 describe("the Fruit rules", () => {
-  it("pays the ladder: 30 a month, 5 more every 2 months, 60 from month 13, and a 50 welcome basket", () => {
-    expect([1, 2, 3, 4, 5, 6, 11, 12, 13, 24, 60].map(n => fruitInstalment(n))).toEqual([30, 30, 35, 35, 40, 40, 55, 55, 60, 60, 60]);
-    expect(FRUIT_RULES.grant.welcome).toBe(50);
+  it("pays the ladder: 10 a month, 1 more each month, 24 from month 15, and a 10 welcome basket", () => {
+    expect([1, 2, 3, 4, 5, 6, 11, 12, 14, 15, 60].map(n => fruitInstalment(n))).toEqual([10, 11, 12, 13, 14, 15, 20, 21, 23, 24, 24]);
+    expect(FRUIT_RULES.grant.welcome).toBe(10);
     // One ladder function prices both currencies: the Pollen grant's own ladder has every 1.
     expect([1, 2, 31].map(n => ladderAmount(n, { ...RATES.grant, every: 1 }))).toEqual([4500, 4750, 12000]);
   });
@@ -237,41 +237,41 @@ describe("Sunshine", () => {
       expect(buySunshine(storage, 20)).toMatchObject({ ok: false, code: "fruits_short" });
       fund(storage, 35);
       expect(buySunshine(storage, 25)).toMatchObject({ ok: false, code: "pollen_price_changed" });
-      expect(value(buySunshine(storage, 20))).toEqual({ fruit_balance: 15, sunshine_left: 24 });
+      expect(value(buySunshine(storage, 20))).toEqual({ fruit_balance: 15, sunshine_left: 48 });
       expect(buySunshine(storage, 20)).toMatchObject({ ok: false, status: 409, code: "sunshine_active" });
     });
   });
-  it("pays a bank turn's plain amount again for 24 bank turns, never after the bank, on a retry or on the boost", async () => {
+  it("pays a bank turn's plain amount again for 48 bank turns, never after the bank, on a retry or on the boost", async () => {
     await inPlayer(async storage => {
       fund(storage, 20); value(buySunshine(storage, 20));
       const turn = facts({ ...slots[0], tries: 1, subscriber: true, boost_percent: 10 });
       const paid = value(await credit(storage, turn));
       expect(paid.turn).toMatchObject({ kind: "bank", amount: 111, sunshine: 111, boost: 11 });
       expect(paid.turn!.total).toBe(paid.turn!.amount + paid.turn!.bloom_extra + paid.turn!.boost + 111);
-      expect(paid.sunshine_left).toBe(23);
+      expect(paid.sunshine_left).toBe(47);
       // A retry answers its receipt and spends nothing.
-      expect(value(await credit(storage, turn))).toMatchObject({ turn: { sunshine: 111 }, sunshine_left: 23 });
-      expect(purse(storage, "sunshine").balance).toBe(23);
+      expect(value(await credit(storage, turn))).toMatchObject({ turn: { sunshine: 111 }, sunshine_left: 47 });
+      expect(purse(storage, "sunshine").balance).toBe(47);
       // A repeat of the slot is after the bank: no Sunshine.
       expect(value(await credit(storage, facts({ ...slots[0] })))).not.toHaveProperty("sunshine_left");
       for (const place of slots.slice(1, 12)) value(await credit(storage, facts(place)));
-      expect(purse(storage, "sunshine").balance).toBe(12);
+      expect(purse(storage, "sunshine").balance).toBe(36);
       // Bank empty: nothing more spent this week.
       const emptyBank = value(await credit(storage, facts(slots[12])));
       expect(emptyBank.turn!.sunshine).toBeUndefined();
-      expect(purse(storage, "sunshine").balance).toBe(12);
+      expect(purse(storage, "sunshine").balance).toBe(36);
       // Without the Fruit hooks (FRUITS off) nothing is spent or paid.
       const later = facts({ ...slots[13] }, MONDAY + 7 * DAY);
       expect(value(await credit(storage, later, null)).turn!.sunshine).toBeUndefined();
-      expect(purse(storage, "sunshine").balance).toBe(12);
+      expect(purse(storage, "sunshine").balance).toBe(36);
       expect(historyView(storage, MONDAY).entries.filter(entry => entry.sunshine).length).toBe(12);
     });
   });
-  it("runs out after 24 bank turns", async () => {
+  it("runs out after 48 bank turns", async () => {
     await inPlayer(async storage => {
       fund(storage, 20); value(buySunshine(storage, 20));
-      for (let week = 0; week < 3; week++) for (const place of slots.slice(0, 12)) value(await credit(storage, facts(place, MONDAY + week * 7 * DAY)));
-      expect(purse(storage, "sunshine")).toEqual({ balance: 0, earned: 24 });
+      for (let week = 0; week < 5; week++) for (const place of slots.slice(0, 12)) value(await credit(storage, facts(place, MONDAY + week * 7 * DAY)));
+      expect(purse(storage, "sunshine")).toEqual({ balance: 0, earned: 48 });
     });
   });
 });
@@ -331,23 +331,23 @@ describe("the grant's Fruits", () => {
   const paid = (id: string, from: number, to: number): GrantSub => ({ id, status: "paid", started_at: from, period_start: from, period_end: to, ends_at: to, renews: true, access_until: to });
   const ended = (id: string, from: number, to: number, endsAt: number): GrantSub => ({ id, status: "ended", started_at: from, period_start: from, period_end: to, ends_at: endsAt, renews: false, access_until: 0 });
   const self = async (keys: string[]) => Object.fromEntries(keys.map(key => [key, { self: true, since: DUE }]));
-  it("pays 30 Fruits and the welcome basket with the first month, 30 the next, and nothing while Fruits are off", async () => {
+  it("pays 10 Fruits and the welcome basket with the first month, 11 the next, and nothing while Fruits are off", async () => {
     await inPlayer(async storage => {
       noteFullJourney(storage, DUE + 20 * DAY, DUE);
       const start = DUE - HOUR, next = anniversary(start, 1);
       const told: { key: string; amount: number }[][] = [];
       const deps = (subs: GrantSub[], fruits = true): GrantDeps => ({ read: async () => ({ ok: true, subs, lifetime: null }), claim: self, fruits, paid: lines => told.push([...lines]) });
       expect(await settleGrant(storage, DUE, () => true, deps([paid("sub_f", start, next)]))).toBe("settled");
-      expect([walletView(storage, DUE).balance, fruitBalance(storage)]).toEqual([4500, 80]);
-      expect(fruitsView(storage, DUE).grant).toMatchObject({ next: 30, welcome_paid: true, latest: { amount: 30, welcome: 50 } });
+      expect([walletView(storage, DUE).balance, fruitBalance(storage)]).toEqual([4500, 20]);
+      expect(fruitsView(storage, DUE).grant).toMatchObject({ next: 11, welcome_paid: true, latest: { amount: 10, welcome: 10 } });
       // The push and `latest` stay Pollen only.
       expect(told).toEqual([[{ key: `grant:${start}:1`, amount: 4500 }]]);
       noteFullJourney(storage, next + 20 * DAY, next);
       expect(await settleGrant(storage, next + HOUR, () => true, deps([paid("sub_f", next, anniversary(start, 2))]))).toBe("settled");
-      expect(fruitBalance(storage)).toBe(110);
+      expect(fruitBalance(storage)).toBe(31);
       noteFullJourney(storage, anniversary(start, 2) + 20 * DAY, anniversary(start, 2));
       expect(await settleGrant(storage, anniversary(start, 2) + HOUR, () => true, deps([paid("sub_f", anniversary(start, 2), anniversary(start, 3))], false))).toBe("settled");
-      expect([walletView(storage, anniversary(start, 2) + HOUR).balance, fruitBalance(storage)]).toEqual([4500 + 4750 + 5000, 110]);
+      expect([walletView(storage, anniversary(start, 2) + HOUR).balance, fruitBalance(storage)]).toEqual([4500 + 4750 + 5000, 31]);
     });
   });
   it("pays no Fruits in a trial, the basket with an existing subscriber's next month, and no Fruits for months due before the catch-up window", async () => {
@@ -365,8 +365,8 @@ describe("the grant's Fruits", () => {
       expect(await settleGrant(storage, DUE, () => true, { read: async () => ({ ok: true, subs: [paid("sub_e", start, next)], lifetime: null }), claim: self, fruits: false })).toBe("settled");
       noteFullJourney(storage, next + 20 * DAY, next);
       expect(await settleGrant(storage, next + HOUR, () => true, { read: async () => ({ ok: true, subs: [paid("sub_e", next, anniversary(start, 2))], lifetime: null }), claim: self, fruits: true })).toBe("settled");
-      // Month 2 at its step (30) and the welcome basket with it.
-      expect(fruitBalance(storage)).toBe(80);
+      // Month 2 at its step (11) and the welcome basket with it.
+      expect(fruitBalance(storage)).toBe(21);
     });
     await inPlayer(async storage => {
       // Three months caught up at once, long after: only the month due within the window pays Fruits.
@@ -382,12 +382,12 @@ describe("the grant's Fruits", () => {
       noteFullJourney(storage, DUE + 20 * DAY, DUE);
       const start = DUE - HOUR, next = anniversary(start, 1);
       expect(await settleGrant(storage, DUE, () => true, { read: async () => ({ ok: true, subs: [paid("sub_r", start, next)], lifetime: null }), claim: self, fruits: true })).toBe("settled");
-      expect(fruitBalance(storage)).toBe(80);
+      expect(fruitBalance(storage)).toBe(20);
       // Refunded the day it was bought: the read at the next due date takes the month back.
       expect(await settleGrant(storage, next + HOUR, () => true, { read: async () => ({ ok: true, subs: [ended("sub_r", start, next, DUE + HOUR)], lifetime: null }), claim: self, fruits: true })).toBe("settled");
       expect([walletView(storage, next + HOUR).balance, fruitBalance(storage)]).toEqual([0, 0]);
       expect(ledgerLines(storage, "fruit:", 16).map(line => [line.key.replace(/:\d+:/, ":A:"), line.amount]).sort())
-        .toEqual([["fruit:grant:A:1", 30], ["fruit:grantrefund:A:1", -30], ["fruit:welcome", 50], ["fruit:welcomerefund", -50]]);
+        .toEqual([["fruit:grant:A:1", 10], ["fruit:grantrefund:A:1", -10], ["fruit:welcome", 10], ["fruit:welcomerefund", -10]]);
     });
   });
 });
@@ -437,10 +437,10 @@ describe("the Fruit routes", () => {
     expect(caps).toMatchObject({ pollen_fruits_version: 1, pollen_offered_tag: FRUITS_OFFERED_TAG });
     expect(caps).not.toHaveProperty("pollen_fruit_packs_version");
     const first = await (await call("/v1/pollen", "GET", account)).json<Read>();
-    expect(first.fruits).toMatchObject({ balance: 0, sunshine: { left: 0, turns: 24, price: 20 }, convert: { pollen_per_fruit: 300, step: 10 }, first_pack_gift: true, first_pack_percent: 100 });
+    expect(first.fruits).toMatchObject({ balance: 0, sunshine: { left: 0, turns: 48, price: 20 }, convert: { pollen_per_fruit: 300, step: 10 }, first_pack_gift: true, first_pack_percent: 100 });
     expect(first.fruits!.achievements.length).toBe(15);
     expect(first.wardrobe).toMatchObject({ fruit_prices: { apple_hood: 100, sprig_sun: 20, orchard_skin: 200 }, fruit_sets: { orchard: ["apple_hood", "orchard_skin", "apple_leaf"] }, fruit_set_costs: { orchard: 295 } });
-    expect((first.fruits as Record<string, unknown>).ladder).toEqual({ first: 30, step: 5, every: 2, top: 60, welcome: 50 });
+    expect((first.fruits as Record<string, unknown>).ladder).toEqual({ first: 10, step: 1, every: 1, top: 24, welcome: 10 });
     expect(Object.keys(first.wardrobe!.prices as object)).not.toContain("apple_hood");
     await inAccount(account, storage => { fund(storage, 200); });
     const cap = spendBody("item", "apple_hood", 100);
@@ -451,7 +451,7 @@ describe("the Fruit routes", () => {
     const convert = await (await call("/v1/pollen/spend", "POST", account, spendBody("convert", "20", 20))).json<Record<string, unknown>>();
     expect(convert).toMatchObject({ kind: "convert", currency: "fruits", cost: 20, pollen: 6000, balance: 6000, fruit_balance: 80 });
     const sunshine = await (await call("/v1/pollen/spend", "POST", account, spendBody("sunshine", "sunshine", 20))).json<Record<string, unknown>>();
-    expect(sunshine).toMatchObject({ kind: "sunshine", cost: 20, fruit_balance: 60, sunshine_left: 24 });
+    expect(sunshine).toMatchObject({ kind: "sunshine", cost: 20, fruit_balance: 60, sunshine_left: 48 });
     const short = await call("/v1/pollen/spend", "POST", account, spendBody("item", "orchard_skin", 200));
     expect([short.status, (await short.json<{ error: { code: string } }>()).error.code]).toEqual([402, "fruits_short"]);
     const history = await (await call("/v1/pollen/history", "GET", account)).json<{ entries: { kind: string }[]; fruit_entries: { kind: string; amount: number }[] }>();

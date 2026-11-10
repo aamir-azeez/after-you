@@ -232,7 +232,7 @@ func _fruit_tiles(app: Node, fruits: RefCounted, scope: Dictionary, viewport: Su
 	fruits.set_enabled(server, owner, true)
 	var seen := await _open_card(app)
 	_check(seen.panels == ["FullJourneyBoost", "FullJourneyGrant"], "Fruits on but no read with the Fruit ladder yet: today's Pollen panel, no Fruit numbers of the app's own")
-	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "achievements": [], "ladder": {"first": 30.0, "step": 5.0, "every": 2.0, "top": 60.0, "welcome": 50.0}}})
+	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "achievements": [], "ladder": {"first": 10.0, "step": 1.0, "every": 1.0, "top": 24.0, "welcome": 10.0}}})
 	seen = await _open_card(app)
 	_check(seen.panels == ["FullJourneyBoost", "FullJourneyGifts"] and seen.after_intro and seen.on_screen and seen.subscribe == 2, "Fruits on: the chapters, the room boost, then the monthly gifts row, all on screen: %s %s" % [seen.panels, seen.rect])
 	# Duel energy on (board-10-energy-full-journey): the perk leads the panels and the
@@ -257,19 +257,19 @@ func _fruit_tiles(app: Node, fruits: RefCounted, scope: Dictionary, viewport: Su
 	var fruit: Control = app.overlay.find_child("FullJourneyFruits", true, false)
 	_check(pollen != null and fruit != null and pollen.get_parent() == fruit.get_parent() and pollen.get_global_rect().end.x <= fruit.get_global_rect().position.x and absf(pollen.get_global_rect().position.y - fruit.get_global_rect().position.y) <= 0.5, "The Pollen tile and then the Fruit tile, side by side")
 	_check(_words(pollen) == ["6,000 Pollen a month", "Grows by 250 every month you stay, up to 12,000."] and pollen.find_child("PollenMark", true, false) != null, "The Pollen tile as drawn, at this player's step: " + str(_words(pollen)))
-	_check(_words(fruit) == ["30 Fruits a month", "Grows to 60 as you stay, plus a 50 Fruit welcome basket with your next month."] and fruit.find_child("FruitMark", true, false) != null, "Before the server sent a Fruit grant: month 1's Fruits, and for this player already on the ladder the basket with the next month: " + str(_words(fruit)))
-	var fruit_ladder := {"first": 30, "step": 5, "every": 2, "top": 60, "welcome": 50}
-	_check(Benefits.fruit_tile({}, fruit_ladder).body == "Grows to 60 as you stay, plus a [b]50 Fruit welcome basket[/b] in month 1.", "A player who never subscribed gets the basket in month 1, as drawn")
+	_check(_words(fruit) == ["10 Fruits a month", "Grows to 24 as you stay, plus a 10 Fruit welcome basket with your next month."] and fruit.find_child("FruitMark", true, false) != null, "Before the server sent a Fruit grant: month 1's Fruits, and for this player already on the ladder the basket with the next month: " + str(_words(fruit)))
+	var fruit_ladder := {"first": 10, "step": 1, "every": 1, "top": 24, "welcome": 10}
+	_check(Benefits.fruit_tile({}, fruit_ladder).body == "Grows to 24 as you stay, plus a [b]10 Fruit welcome basket[/b] in month 1.", "A player who never subscribed gets the basket in month 1, as drawn")
 	_check(Benefits.fruit_tile({}, {}).is_empty(), "No Fruit tile without the server's ladder")
 	var takes_input: Array = []
 	for control: Control in fruit.find_children("*", "Control", true, false) + [fruit]:
 		if control.mouse_filter == Control.MOUSE_FILTER_STOP: takes_input.append(str(control.name))
 	_check(takes_input.is_empty(), "The Fruit tile takes no input either: %s" % [takes_input])
-	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 80.0, "earned": 80.0, "achievements": [], "ladder": {"first": 30.0, "step": 5.0, "every": 2.0, "top": 60.0, "welcome": 50.0}, "grant": {"next": 35.0, "top": 60.0, "welcome": 50.0, "welcome_paid": true}}})
+	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 20.0, "earned": 20.0, "achievements": [], "ladder": {"first": 10.0, "step": 1.0, "every": 1.0, "top": 24.0, "welcome": 10.0}, "grant": {"next": 12.0, "top": 24.0, "welcome": 10.0, "welcome_paid": true}}})
 	await _open_card(app)
 	fruit = app.overlay.find_child("FullJourneyFruits", true, false)
-	_check(_words(fruit) == ["35 Fruits a month", "Grows to 60 as you stay."], "The server's numbers win, and a paid welcome basket is no longer named: " + str(_words(fruit)))
-	_check(Benefits.fruit_tile({"next": 60, "top": 60, "welcome": 50, "welcome_paid": true}, fruit_ladder).title == "60 Fruits a month, the top step", "At the top step the tile stops saying it grows")
+	_check(_words(fruit) == ["12 Fruits a month", "Grows to 24 as you stay."], "The server's numbers win, and a paid welcome basket is no longer named: " + str(_words(fruit)))
+	_check(Benefits.fruit_tile({"next": 24, "top": 24, "welcome": 10, "welcome_paid": true}, fruit_ladder).title == "24 Fruits a month, the top step", "At the top step the tile stops saying it grows")
 	viewport.size = Vector2i(1600, 720)
 	await process_frame
 	await _open_card(app)
@@ -293,7 +293,7 @@ func _fruit_grant_card(app: Node, kept_grant: RefCounted, fruits: RefCounted, sc
 	var at := _now()
 	grant.note_view(server, owner, {"grant": {"months": 3.0, "next": 5250.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:3", "amount": 5000.0, "at": float(at)}}})
 	fruits.set_enabled(server, owner, true)
-	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 145.0, "earned": 145.0, "achievements": [], "grant": {"next": 35.0, "top": 60.0, "welcome": 50.0, "welcome_paid": true, "latest": {"amount": 35.0, "welcome": 0.0, "at": float(at)}}}})
+	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 43.0, "earned": 43.0, "achievements": [], "grant": {"next": 13.0, "top": 24.0, "welcome": 10.0, "welcome_paid": true, "latest": {"amount": 12.0, "welcome": 0.0, "at": float(at)}}}})
 	app._show_home()
 	for i in range(4): await process_frame
 	app.grant_card_check = true
@@ -301,7 +301,7 @@ func _fruit_grant_card(app: Node, kept_grant: RefCounted, fruits: RefCounted, sc
 	await process_frame
 	var card: Control = app.ui.find_child("PollenGrantCard", false, false)
 	var texts: Array = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
-	_check(card != null and PlayerCopy.FRUIT_GRANT_TITLE in texts and "+5,000" in texts and "+35" in texts and "From Full Journey, month 3 of your ladder.\nNext month: 5,250 Pollen and 35 Fruits." in texts, "Your monthly gifts arrived, both amounts and next month's two: " + str(texts))
+	_check(card != null and PlayerCopy.FRUIT_GRANT_TITLE in texts and "+5,000" in texts and "+12" in texts and "From Full Journey, month 3 of your ladder.\nNext month: 5,250 Pollen and 13 Fruits." in texts, "Your monthly gifts arrived, both amounts and next month's two: " + str(texts))
 	if card != null:
 		var tile: Control = card.find_child("PollenGrantFruits", true, false)
 		var pollen: Control = card.find_child("PollenGrantFigure", true, false)
@@ -310,13 +310,13 @@ func _fruit_grant_card(app: Node, kept_grant: RefCounted, fruits: RefCounted, sc
 		_check(tile != null and pollen.get_global_rect().end.x < tile.get_global_rect().position.x and panel.get_global_rect().encloses(tile.get_global_rect()), "The tile sits right of the Pollen, inside the card")
 		await _tap(viewport, card.find_child("PollenGrantDone", true, false))
 	# A first month with the welcome basket names the Fruits with the basket.
-	var welcome: Control = GrantCard.open(app.ui, {"key": "grant:1790000000000:1", "amount": 4500, "next": 4750, "top": 12000, "months": 1}, [], Callable(), null, {"amount": 30, "welcome": 50, "next": 30, "top": 60})
+	var welcome: Control = GrantCard.open(app.ui, {"key": "grant:1790000000000:1", "amount": 4500, "next": 4750, "top": 12000, "months": 1}, [], Callable(), null, {"amount": 10, "welcome": 10, "next": 11, "top": 24})
 	var welcome_texts: Array = welcome.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
-	_check("+80" in welcome_texts and "From Full Journey, month 1 of your ladder.\nNext month: 4,750 Pollen and 30 Fruits." in welcome_texts, "Month 1 names its Fruits with the welcome basket: " + str(welcome_texts))
+	_check("+20" in welcome_texts and "From Full Journey, month 1 of your ladder.\nNext month: 4,750 Pollen and 11 Fruits." in welcome_texts, "Month 1 names its Fruits with the welcome basket: " + str(welcome_texts))
 	welcome.close(false)
 	for i in range(3): await process_frame
-	_check(GrantCard.fruit_total({"amount": 35, "welcome": 0, "top": 60}) == 35 and GrantCard.fruit_total({"amount": 30, "welcome": 50}) == 80, "The card names what the server paid with the newest instalment and its welcome basket, never a guess for months paid together")
-	_check(Benefits.fruit_tile({}, {"first": 30, "step": 5, "every": 2, "top": 60, "welcome": 50}, 6).body == "Grows to 60 as you stay, plus a [b]50 Fruit welcome basket[/b] with your next month.", "A subscriber already on the ladder gets the basket with their next month")
+	_check(GrantCard.fruit_total({"amount": 12, "welcome": 0, "top": 24}) == 12 and GrantCard.fruit_total({"amount": 10, "welcome": 10}) == 20, "The card names what the server paid with the newest instalment and its welcome basket, never a guess for months paid together")
+	_check(Benefits.fruit_tile({}, {"first": 10, "step": 1, "every": 1, "top": 24, "welcome": 10}, 6).body == "Grows to 24 as you stay, plus a [b]10 Fruit welcome basket[/b] with your next month.", "A subscriber already on the ladder gets the basket with their next month")
 	# An instalment that brought no Fruits (paid before Fruits were on) keeps today's card.
 	grant.note_view(server, owner, {"grant": {"months": 4.0, "next": 5500.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:4", "amount": 5250.0, "at": float(at + 1000)}}})
 	app.grant_card_check = true
@@ -328,7 +328,7 @@ func _fruit_grant_card(app: Node, kept_grant: RefCounted, fruits: RefCounted, sc
 	if card != null: app._close_top_modal()
 	await process_frame
 	# Fruits off: today's card, unchanged.
-	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 185.0, "earned": 185.0, "achievements": [], "grant": {"next": 40.0, "top": 60.0, "welcome": 50.0, "welcome_paid": true, "latest": {"amount": 40.0, "welcome": 0.0, "at": float(at + 2000)}}}})
+	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 70.0, "earned": 70.0, "achievements": [], "grant": {"next": 15.0, "top": 24.0, "welcome": 10.0, "welcome_paid": true, "latest": {"amount": 14.0, "welcome": 0.0, "at": float(at + 2000)}}}})
 	fruits.set_enabled(server, owner, false)
 	grant.note_view(server, owner, {"grant": {"months": 5.0, "next": 5750.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:5", "amount": 5500.0, "at": float(at + 2000)}}})
 	app.grant_card_check = true
@@ -336,7 +336,7 @@ func _fruit_grant_card(app: Node, kept_grant: RefCounted, fruits: RefCounted, sc
 	await process_frame
 	card = app.ui.find_child("PollenGrantCard", false, false)
 	texts = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
-	_check(card != null and PlayerCopy.POLLEN_GRANT_TITLE in texts and not "+40" in texts and card.find_child("FruitMark", true, false) == null, "Fruits off: today's Pollen card: " + str(texts))
+	_check(card != null and PlayerCopy.POLLEN_GRANT_TITLE in texts and not "+14" in texts and card.find_child("FruitMark", true, false) == null, "Fruits off: today's Pollen card: " + str(texts))
 	if card != null: app._close_top_modal()
 	await process_frame
 	PollenGrant.use_shared(kept_grant)
