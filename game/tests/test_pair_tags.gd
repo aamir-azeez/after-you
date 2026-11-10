@@ -20,18 +20,16 @@ const SAME_FLOOR := 0.1
 ## -> why, for every stage of that chapter. An entry no failing check matches fails.
 const KNOWN := {
 	"a-house-for-two@1: mixed stair-weight": "the stair weight's pad shows two route symbol bars and, as its crossing is on another floor, the floor cables' link tags too",
-	"a-house-for-two@1: overlap workshop-lever": "the workshop lever's and the entry weight's tags lie on the same crossing end",
+	"a-house-for-two@1: overlap entry-weight/workshop-lever": "the workshop lever's and the entry weight's tags lie on the same crossing end",
 	"high-and-low@1: shared loft-lever": "the loft lever and the ledge switch open the same crossings and both show the floor cables' two link tags",
-	"high-and-low@1: overlap lower-ledge-switch": "the ledge switch's and the loft lever's link tags lie on the same crossing end",
+	"high-and-low@1: overlap loft-lever/lower-ledge-switch": "the ledge switch's and the loft lever's link tags lie on the same crossing end",
 	"long-way-home@1: shared porch-shutter": "journey crests are one bar for four named controls and two for every other, so several controls share two bars",
 	"long-way-home@2: shared porch-shutter": "journey crests are one bar for four named controls and two for every other, so several controls share two bars",
 	"long-way-home@2: shared hall-lamp": "journey crests are one bar for four named controls and two for every other, so several controls share two bars",
 	"long-way-home@2: shared walk-gate": "journey crests are one bar for four named controls and two for every other, so several controls share two bars",
-	"long-way-home@1: overlap near-window": "the near window's crest at its crossing touches the porch shutter's crest",
-	"long-way-home@2: overlap near-window": "the near window's crest at its crossing touches the porch shutter's crest",
 	"long-way-home@2: one-sided garden-window": "the garden pad shows a crest by the pad but none at its window",
-	"turn-of-the-tide@1: overlap bollard-pad": "the bollard pad's crest at its crossing touches the gangway's crest beside its machine",
-	"turn-of-the-tide@2: overlap bollard-pad": "the bollard pad's crest at its crossing touches the gangway's crest beside its machine",
+	"turn-of-the-tide@1: overlap bollard-pad/gangway": "the bollard pad's crest at its crossing touches the gangway's crest beside its machine",
+	"turn-of-the-tide@2: overlap bollard-pad/gangway": "the bollard pad's crest at its crossing touches the gangway's crest beside its machine",
 }
 var checks := 0
 var failures := 0
@@ -98,27 +96,26 @@ func _placement(key: String, where: String, view: Dictionary, placed: Array[Dict
 		for other in range(index + 1, flat.size()):
 			var them: Dictionary = flat[other]
 			if them.control == tag.control or absf((them.at as Vector3).y - at.y) > SAME_FLOOR: continue
-			_known_or_check(key, "overlap", tag.control, not _footprint(tag).intersects(_footprint(them)), "%s: %s's %s tag lies clear of %s's %s tag" % [where, tag.control, tag.side, them.control, them.side])
+			var both := [str(tag.control), str(them.control)]
+			both.sort()
+			_known_or_check(key, "overlap", "/".join(both), not _footprint(tag).intersects(_footprint(them)), "%s: %s's %s tag lies clear of %s's %s tag" % [where, tag.control, tag.side, them.control, them.side])
 
-## A tag's footprint across the floor: its glyphs side by side.
+## A tag's footprint across the floor, where it lies (the kit's own layout).
 static func _footprint(tag: Dictionary) -> Rect2:
-	var spec: Dictionary = LevelHints.STYLES[tag.style]
-	var bar: Vector3 = spec.bar
-	var half := Vector2((float(int(tag.shape[1]) - 1) * float(spec.spacing) + maxf(bar.x, bar.z)) * 0.5, maxf(bar.x, bar.z) * 0.5)
+	var local := LevelHints.footprint(tag.style, tag.shape)
 	var at: Vector3 = tag.at
-	return Rect2(Vector2(at.x, at.z) - half, half * 2.0)
+	return Rect2(local.position + Vector2(at.x, at.z), local.size)
 
 static func _rect(r: Array) -> Rect2:
 	return Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
 
-## A check that may fail as KNOWN says ("<key>: <check>" for a whole chapter,
-## or "<key>: <check> <control>" for one control).
+## A check that may fail as KNOWN says: "<key>: <check> <control>" (for an
+## overlap, both controls sorted and joined by "/").
 func _known_or_check(key: String, check: String, control: String, ok: bool, message: String) -> void:
-	if not ok:
-		for id: String in ["%s: %s %s" % [key, check, control], "%s: %s" % [key, check]]:
-			if KNOWN.has(id):
-				_known_seen[id] = true
-				return
+	var id := "%s: %s %s" % [key, check, control]
+	if not ok and KNOWN.has(id):
+		_known_seen[id] = true
+		return
 	_check(ok, message)
 
 func _check(condition: bool, message: String) -> void:

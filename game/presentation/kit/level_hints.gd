@@ -16,8 +16,8 @@ extends RefCounted
 ## Presentation only: built from the hashed stage; nothing here feeds the
 ## simulation, a recording or a checkpoint. Cost: plain leaves with kit-cached
 ## meshes and looks (Primitives), folded by the world's static fold into the
-## batch of their colour; nothing runs per frame, and this object never holds
-## a node.
+## batch of their colour; nothing runs per frame, and this object holds none
+## of the nodes it draws.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 ## Gate cables (cooperative_world floor cables): this wide, their centres this
@@ -95,6 +95,21 @@ static func tally(style: StringName, shape: Array, tint: Color, at: Vector3, par
 				_box(Vector3(0.05, bar.y, 0.025), look, at + Vector3(x + 0.03, lift, 0.08), parent)
 				_box(Vector3(0.04, bar.y, 0.025), look, at + Vector3(x + 0.025, lift, 0.04), parent)
 			_: push_error("LevelHints: no glyph '%s'" % shape[0])
+
+## The floor a tag of `style` showing `shape` covers around its centre (x
+## and z), as tally() lays it out.
+static func footprint(style: StringName, shape: Array) -> Rect2:
+	var spec: Dictionary = STYLES[style]
+	var bar: Vector3 = spec.bar
+	var row := float(int(shape[1]) - 1) * float(spec.spacing) * 0.5
+	match str(shape[0]):
+		"cross": return Rect2(-bar.z * 0.5, -row - bar.x * 0.5, bar.z, row * 2.0 + bar.x)
+		"dot": return Rect2(-row - 0.05, -0.05, row * 2.0 + 0.1, 0.1)
+		"chevron": return Rect2(-row - 0.082, -0.066, row * 2.0 + 0.164, 0.132)
+		"ring": return Rect2(-row - 0.08, -0.08, row * 2.0 + 0.16, 0.16)
+		"pin": return Rect2(-row - 0.065, -0.145, row * 2.0 + 0.13, 0.245)
+		"key": return Rect2(-row - 0.07, -0.14, row * 2.0 + 0.14, 0.24)
+	return Rect2(-row - bar.x * 0.5, -bar.z * 0.5, row * 2.0 + bar.x, bar.z)
 
 static func _box(size: Vector3, look: Material, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	return Primitives.mesh_node(Primitives.cached_box(size), look, at, parent)

@@ -301,6 +301,8 @@ const PLAYER_COPY := "res://presentation/player_copy.gd"
 ## (t) The ownership mark and gate tag kits, and the scripts that place them with what they mark.
 const OWNER_MARK := "res://presentation/kit/owner_mark.gd"
 const LEVEL_HINTS := "res://presentation/kit/level_hints.gd"
+## The one script that keeps a world's pair tags (pair_tags).
+const PAIR_TAGS_OWNER := "res://presentation/cooperative_world.gd"
 const OWNER_MARK_SURFACES := {
 	"res://presentation/cooperative_world.gd": "levers, stairs, pads, stand spots, owned crossings' ends, zones and the handoff",
 	"res://presentation/journey_world.gd": "mirror hand wheels and the source's waiting region",
@@ -832,7 +834,8 @@ func _level_hints() -> void:
 			_check(OWNER_MARK_SURFACES.has(path), "%s places ownership marks: add it to OWNER_MARK_SURFACES with what it marks" % path)
 		var hints_alias := _alias(source, LEVEL_HINTS)
 		# A world inherits its parent's alias, so the kit's usual name counts too.
-		_check(_found("\\b(?:LevelHints" + ("|" + hints_alias if not hints_alias.is_empty() else "") + ")\\.tally\\(", source) == 0, "%s draws a pair tag without saying which control it pairs: place it with pair_tags.tag()" % path)
+		_check(_found("\\.tally\\(", source) == 0, "%s draws a pair tag without saying which control it pairs: place it with pair_tags.tag()" % path)
+		_check(path == PAIR_TAGS_OWNER or _found("\\b(?:LevelHints" + ("|" + hints_alias if not hints_alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps pair tags of its own: worlds share cooperative_world's pair_tags, which the sweep checks" % path)
 		if _found("\\bpair_tags\\.tag\\(", source) > 0:
 			tags[path] = true
 			_check(LEVEL_HINT_SURFACES.has(path), "%s draws pair tags: add it to LEVEL_HINT_SURFACES with what it tags" % path)
