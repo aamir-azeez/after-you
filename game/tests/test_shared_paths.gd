@@ -54,7 +54,8 @@ extends SceneTree
 ##     diamond and the teal ring) and presentation/kit/level_hints.gd alone draws a gate's
 ##     matching tags; each world that marks or tags through them is in OWNER_MARK_SURFACES
 ##     or LEVEL_HINT_SURFACES with what it marks, and any other flat diamond (a thin square
-##     box turned 45 degrees) is in FLAT_DIAMONDS with why it is no ownership mark.
+##     box turned 45 degrees) is in FLAT_DIAMONDS with why it is no ownership mark;
+##     test_owner_marks.gd, which must stay in CI, checks every built stage's marks came from the kit.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -344,7 +345,7 @@ const SHADER_PLACED := "\\bcustom_aabb\\b|\\bset_instance_shader_parameter\\("
 const SHADER_PLACED_ALLOWED := {}
 
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "fall_effect"]
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "fall_effect"]
 
 var checks := 0
 var failures := 0
