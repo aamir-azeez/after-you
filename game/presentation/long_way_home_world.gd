@@ -112,7 +112,7 @@ func _build_window_goal(goal: Dictionary) -> void:
 	_court_light.omni_range = 4.0
 	_court_light.position = cradle.position+Vector3(0,1.0,-0.20)
 	terrain.add_child(_court_light)
-	_ownership_mark(str(goal.owner_slot),cradle.position+Vector3(0,0.025,0.42),terrain)
+	owner_marks.mark(str(goal.owner_slot),&"goal",str(goal.get("id","goal")),cradle.position,terrain)
 
 ## The tail of a pad's name bubble lands on the pad's centre.
 const PAD_TOP := Vector3(0,0.06,0)

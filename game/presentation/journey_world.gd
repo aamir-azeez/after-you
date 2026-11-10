@@ -113,7 +113,7 @@ func show_stage(stage: Dictionary) -> void:
 		var at := _at(endpoint)
 		_waiting_ring = ring(float(endpoint.radius_cm)/100.0,CREAM,at+Vector3(0,0.018,0),terrain)
 		_waiting_ring.name = "SourceWaitingRegion"
-		_ownership_mark(str(endpoint.owner_slot),at+Vector3(0,0.025,0),terrain)
+		owner_marks.mark(str(endpoint.owner_slot),&"endpoint",str(endpoint.get("id","endpoint")),at,terrain)
 
 ## Lowest on screen first: see _lift_bubbles.
 func _sort_bubbles() -> void:
@@ -153,7 +153,7 @@ func _build_mirror(control: Dictionary) -> void:
 	wheel.rotation.x = PI/2.0
 	box(Vector3(0.035,0.26,0.035),CREAM,Vector3.ZERO,hand)
 	_journey_handles[control.id] = hand
-	_ownership_mark(str(control.owner_slot),at+Vector3(0,0.025,0.35),terrain)
+	owner_marks.mark(str(control.owner_slot),&"mirror",str(control.id),at,terrain)
 
 ## One speech bubble per selector, over the lever and pointing down at it,
 ## with one pill per value under its name from the descriptor's
@@ -447,7 +447,8 @@ func _build_gate_links(view: Dictionary) -> void:
 		if route.is_empty(): continue
 		var references := _predicate_references(gate.get("when",{}))
 		var r: Array = route.rect_cm
-		var end := point([r[0]-18,(r[1]+r[3])*0.5])+Vector3(0,float(route.get("from_height_cm",0))/100.0+0.025,0)
+		# On the crossing's near end mark (kit/owner_mark.gd), owned or not.
+		var end := OwnerMark.route_end_points(r)[0]+Vector3(0,float(route.get("from_height_cm",0))/100.0+OwnerMark.ROUTE_LIFT,0)
 		for id: String in references:
 			# Each reference keeps its own crest beside the route's end, so two
 			# crests never lie on one another.
@@ -466,7 +467,7 @@ func _build_gate_links(view: Dictionary) -> void:
 				# An owned route's end has its ownership mark at the cable's
 				# height: the cable stops at the mark's edge, never under it.
 				var stop := end
-				if not str(route.get("owner_slot","")).is_empty(): stop = end-(end-last).normalized()*clampf(last.distance_to(end)-0.01,0.0,MARK_REACH+0.01)
+				if not str(route.get("owner_slot","")).is_empty(): stop = end-(end-last).normalized()*clampf(last.distance_to(end)-0.01,0.0,OwnerMark.REACH+0.01)
 				if elbow.distance_to(end)<=0.01: elbow = stop
 				if start.distance_to(elbow)>0.01: _bar_between(start,elbow,0.016,color.darkened(0.25),terrain)
 				if elbow.distance_to(stop)>0.01: _bar_between(elbow,stop,0.016,color.darkened(0.25),terrain)
@@ -486,9 +487,8 @@ func _route_color(id: String) -> Color:
 
 func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D) -> void:
 	var count := 1 if id in ["path-selector","high-light","crossing-light","near-window"] else 2
-	for index in range(count):
-		# A few millimetres above the gate cable that meets it.
-		box(Vector3(0.07,0.014,0.18),color,at+Vector3((float(index)-float(count-1)*0.5)*0.12,0.006,0),parent)
+	# A few millimetres above the gate cable that meets it.
+	LevelHints.tally(&"crest",["bar",count],color,at,parent)
 
 func _shares_floor(a: Vector3, b: Vector3) -> bool:
 	if absf(a.y-b.y)>0.05: return false

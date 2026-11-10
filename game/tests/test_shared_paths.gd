@@ -50,6 +50,11 @@ extends SceneTree
 ##     (custom bounds or instance uniforms) unless SHADER_PLACED_ALLOWED says why, no other shader
 ##     declares the fall's clock or seed, and
 ##     each script that uses the kit is in FALL_EFFECT_SURFACES with what it falls.
+## (t) level hints: presentation/kit/owner_mark.gd alone draws an ownership mark (the gold
+##     diamond and the teal ring) and presentation/kit/level_hints.gd alone draws a gate's
+##     matching tags; each world that marks or tags through them is in OWNER_MARK_SURFACES
+##     or LEVEL_HINT_SURFACES with what it marks, and any other flat diamond (a thin square
+##     box turned 45 degrees) is in FLAT_DIAMONDS with why it is no ownership mark.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -290,6 +295,37 @@ const CHAPTER_PICKER_SURFACES := {
 ## The closing line only the picker shows, and where it is written.
 const COMING_SOON_COPY := "CHAPTERS_COMING_SOON"
 const PLAYER_COPY := "res://presentation/player_copy.gd"
+## (t) The ownership mark and gate tag kits, and the scripts that place them with what they mark.
+const OWNER_MARK := "res://presentation/kit/owner_mark.gd"
+const LEVEL_HINTS := "res://presentation/kit/level_hints.gd"
+const OWNER_MARK_SURFACES := {
+	"res://presentation/cooperative_world.gd": "levers, stairs, pads, stand spots, owned crossings' ends, zones and the handoff",
+	"res://presentation/journey_world.gd": "mirror hand wheels and the source's waiting region",
+	"res://presentation/long_way_home_world.gd": "the window goal's cradle",
+	"res://presentation/tide_world.gd": "the harbour lantern's cradle",
+	"res://presentation/wishing_well_world.gd": "the bucket, the folding stairs and the rope ladder, clear of the notch",
+	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
+}
+const LEVEL_HINT_SURFACES := {
+	"res://presentation/cooperative_world.gd": "floor-cable link tags",
+	"res://presentation/journey_world.gd": "route crests",
+	"res://presentation/tide_world.gd": "crests and the sea key's sign",
+	"res://presentation/house_world.gd": "route symbols",
+}
+## Flat diamonds drawn outside the kit: how many, and why each is no ownership mark.
+const FLAT_DIAMONDS := {
+	"res://presentation/island_world.gd": [1, "the first island's plate glyph: a plate either spirit presses"],
+	"res://presentation/relay_world.gd": [1, "Relay Isles' plate glyphs: plates either spirit presses"],
+	"res://presentation/first_steps_world.gd": [1, "First Steps' control glyphs: controls either spirit uses"],
+	"res://presentation/lighthouse_world.gd": [2, "the emitter pad's glyph and the path selector's pointer"],
+	"res://presentation/kit/lever_looks.gd": [1, "a valve wheel's pointer head"],
+	"res://presentation/conservatory_world.gd": [1, "the garden light crest's small gold lamp on the goal (the world's _bell)"],
+}
+## Rings the size of the second spirit's mark drawn outside the kit: how many, and why.
+const MARK_SIZED_RINGS := {
+	"res://presentation/cooperative_world.gd": [1, "the pulley's gold wheel over a missing crossing"],
+	"res://presentation/keepsake_visual.gd": [1, "a keepsake's standing hoop"],
+}
 
 ## (s) The one falling effect kit, its shader, and each script that uses it with what for.
 const FALL_EFFECT := "res://presentation/kit/fall_effect.gd"
@@ -339,6 +375,7 @@ func _initialize() -> void:
 	_energy()
 	_chapter_lists()
 	_falls()
+	_level_hints()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -358,6 +395,10 @@ func _self_checks() -> void:
 	_check(_found(SEND, "if method == HTTPClient.METHOD_POST and path in []") == 0 and _found(SEND, "request_json(HTTPClient.METHOD_GET, p)") == 0, "A method test or a read is no send")
 	_check(_found(_capability_read(), "capabilities.get(\"x\")") == 1 and _found(_capability_read(), "if session.capabilities.is_empty(): await session.load_capabilities()") == 0, "A raw capability read is found; an emptiness test is not")
 	_check(_found(RAW_DUEL_TIME, "Kit.text(time_text(view.sides[index].ticks))") == 1 and _found(RAW_DUEL_TIME, "var t := view.ghost.get(\"splits\")") == 1 and _found(RAW_DUEL_TIME, "row.sides[side].seats") == 0, "A duel time read off the view is found; a seat is not")
+	_check(_flat_diamonds("box(Vector3(0.2, 0.02, 0.2), C, p, t).rotation.y = PI / 4\n") == 1 and _flat_diamonds("var g := box(Vector3(0.18, 0.025, 0.18), GOLD, at, t)\n\tg.rotation.y = PI / 4\n") == 1 and _flat_diamonds("var g := box(Vector3(0.1, 0.4, 0.1), C, p, t)\ng.rotation.y = PI / 4\n") == 0, "A flat diamond is found on one line or two; a post is not")
+	_check(_flat_diamonds("\tvar d: MeshInstance3D = box(Vector3(SIDE, THICK, SIDE), GOLD, at, p)\n\td.rotate_y(PI / 4.0)\n") == 1 and _flat_diamonds("\tm = mesh_node(Primitives.cached_box(Vector3(0.17, 0.018, 0.17)), look, at, p)\n\tm.rotation = Vector3(0, PI / 4, 0)\n") == 1, "A named or cached flat diamond is found, turned any way")
+	_check(_flat_diamonds("func a() -> void:\n\tvar g := box(Vector3(0.2, 0.02, 0.2), C, p, t)\nfunc b() -> void:\n\tg.rotation.y = PI / 4\n") == 0, "A turn in another function is no diamond")
+	_check(_found(MARK_RING, "ring(0.13, TEAL, at, terrain)\nPrimitives.ring_mesh(0.13)\nring(0.135, C, a, b)\n") == 2, "A ring the size of the second spirit's mark is found")
 	_check(_writers("var c := ConfigFile.new()\nc.save(PATH)\n") == [2] and _writers("var c := ConfigFile.new()\nAtomicFile.write_text(PATH, c.encode_to_text())\n").is_empty(), "A ConfigFile saved by itself is a write; one through AtomicFile is not")
 
 # (a) Pips -------------------------------------------------------------------
@@ -767,6 +808,68 @@ func _falls() -> void:
 	for path: String in shaders:
 		if path.get_file() == FALL_SHADER: continue
 		_check(_found(FALL_UNIFORMS, FileAccess.get_file_as_string(path)) == 0, "%s declares a falling effect's clock or seed: build the fall as a recipe for presentation/kit/fall_effect.gd" % path)
+
+# (t) Level hints --------------------------------------------------------------
+
+func _level_hints() -> void:
+	var marks := {}
+	var tags := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path == OWNER_MARK or path == LEVEL_HINTS: continue
+		_check(_found("\\bfunc\\s+_(?:ownership_mark|link_tag|crest_glyph)\\(", source) == 0, "%s draws ownership marks or gate tags itself: place them through presentation/kit/owner_mark.gd or kit/level_hints.gd" % path)
+		var diamonds := _flat_diamonds(source)
+		var allowed: Array = FLAT_DIAMONDS.get(path, [0, ""])
+		_check(diamonds == int(allowed[0]), "%s draws %d flat diamonds (FLAT_DIAMONDS allows %d): an ownership mark comes from presentation/kit/owner_mark.gd; anything else goes in FLAT_DIAMONDS with why" % [path, diamonds, int(allowed[0])])
+		var rings := _found(MARK_RING, source)
+		_check(rings == int(MARK_SIZED_RINGS.get(path, [0, ""])[0]), "%s draws %d rings the size of the second spirit's mark (MARK_SIZED_RINGS allows %d): an ownership mark comes from presentation/kit/owner_mark.gd; anything else goes in MARK_SIZED_RINGS with why" % [path, rings, int(MARK_SIZED_RINGS.get(path, [0, ""])[0])])
+		var mark_alias := _alias(source, OWNER_MARK)
+		if _found("\\bowner_marks\\.(?:mark|route_ends|zone|record)\\(", source) > 0 or (not mark_alias.is_empty() and _found("\\b" + mark_alias + "\\.(?:shape|spot|diamond)\\(", source) > 0):
+			marks[path] = true
+			_check(OWNER_MARK_SURFACES.has(path), "%s places ownership marks: add it to OWNER_MARK_SURFACES with what it marks" % path)
+		var hints_alias := _alias(source, LEVEL_HINTS)
+		# A world inherits its parent's alias, so a tally call counts by the kit's usual name too.
+		if _found("\\b(?:LevelHints" + ("|" + hints_alias if not hints_alias.is_empty() else "") + ")\\.tally\\(", source) > 0:
+			tags[path] = true
+			_check(LEVEL_HINT_SURFACES.has(path), "%s draws gate tags: add it to LEVEL_HINT_SURFACES with what it tags" % path)
+	for path: String in OWNER_MARK_SURFACES:
+		_check(marks.has(path), "OWNER_MARK_SURFACES names %s, which places no ownership mark through presentation/kit/owner_mark.gd now: delete it" % path)
+	for path: String in LEVEL_HINT_SURFACES:
+		_check(tags.has(path), "LEVEL_HINT_SURFACES names %s, which draws no gate tag through presentation/kit/level_hints.gd now: delete it" % path)
+	for path: String in FLAT_DIAMONDS:
+		_check(_flat_diamonds(str(_sources.get(path, ""))) > 0, "FLAT_DIAMONDS names %s, which draws no flat diamond now: delete it" % path)
+	for path: String in MARK_SIZED_RINGS:
+		_check(_found(MARK_RING, str(_sources.get(path, ""))) > 0, "MARK_SIZED_RINGS names %s, which draws no such ring now: delete it" % path)
+	_check(marks.size() >= 5 and tags.size() >= 3, "The scripts that mark owners and tag gates are found: %d, %d" % [marks.size(), tags.size()])
+
+## A ring the size of the second spirit's mark: a world ring() or a kit ring mesh of 13 cm.
+const MARK_RING := "\\b(?:ring|ring_mesh)\\(\\s*0\\.13\\b"
+
+## Thin square boxes turned 45 degrees in `source`: built and turned in one
+## statement, or built into a variable that the same function turns later
+## (rotation.y, rotate_y or a rotation vector). Sizes may be numbers or names.
+static func _flat_diamonds(source: String) -> int:
+	var count := 0
+	var token := "([A-Za-z_][\\w.]*|-?[0-9.]+)"
+	var size := "(?:_?box|box_mesh|cached_box)\\(\\s*Vector3\\(\\s*" + token + "\\s*,\\s*" + token + "\\s*,\\s*" + token + "\\s*\\)"
+	var turned := "(?:\\.rotation\\.y\\s*=\\s*-?PI\\s*/\\s*4|\\.rotate_y\\(\\s*-?PI\\s*/\\s*4|\\.rotation\\s*=\\s*Vector3\\(\\s*0(?:\\.0)?\\s*,\\s*-?PI\\s*/\\s*4)"
+	for found: RegExMatch in RegEx.create_from_string(size + "[^\\n]*\\)" + turned).search_all(source):
+		if _flat(found, 0): count += 1
+	for found: RegExMatch in RegEx.create_from_string("(?m)^\\s*(?:var\\s+)?(\\w+)(?:\\s*:\\s*\\w+)?\\s*:?=\\s*[^\\n]*?" + size).search_all(source):
+		if not _flat(found, 1): continue
+		var rest := source.substr(found.get_end())
+		var next := RegEx.create_from_string("\\n(?:static\\s+)?func\\s").search(rest)
+		if next != null: rest = rest.substr(0, next.get_start())
+		if _found("\\b" + found.get_string(1) + turned, rest) > 0: count += 1
+	return count
+
+## Whether a matched box size is square across and thin (a named thickness counts as thin).
+static func _flat(found: RegExMatch, first: int) -> bool:
+	var across := found.get_string(first + 1)
+	var deep := found.get_string(first + 3)
+	var high := found.get_string(first + 2)
+	var square := across == deep or (across.is_valid_float() and deep.is_valid_float() and is_equal_approx(float(across), float(deep)))
+	return square and (not high.is_valid_float() or float(high) <= 0.05)
 
 # (j) and the guard suites ---------------------------------------------------
 

@@ -18,6 +18,8 @@ const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 const SeedVisual = preload("res://presentation/seed_visual.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+## The spirits' ownership marks (kit/owner_mark.gd), whose colours are the worlds' spirit colours.
+const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
 const Props = preload("res://presentation/kit/props.gd")
@@ -93,8 +95,8 @@ var _garden_bed_bounds := Rect2()
 var _garden_has_bounds := false
 
 const CREAM := Color("e9edd6")
-const TEAL := Color("91d6c6")
-const GOLD := Color("f4c38d")
+const TEAL := OwnerMark.TEAL
+const GOLD := OwnerMark.GOLD
 
 # Thin wrappers over the world kit. Keepsake art and every world call these.
 # material() is a new material of the node's own, for a caller that changes

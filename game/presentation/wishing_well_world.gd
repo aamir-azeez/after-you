@@ -56,6 +56,11 @@ var _ladder_shown := 0.0
 var _ladder_open := false
 var _rope_rails: Dictionary = {}
 
+## The lip zone's marks step off the notch rim and its hatch, which lie at
+## their height (they would z-fight), to the nearer side of the notch.
+func _init() -> void:
+	owner_marks.keep_clear(Rect2(Vector2(NOTCH[0], NOTCH[1]) / 100.0, Vector2(NOTCH[2] - NOTCH[0], NOTCH[3] - NOTCH[1]) / 100.0))
+
 func _ready() -> void:
 	super._ready()
 	# Dusk instead of the Lighthouse night: warmer sky, ambient and sun.
@@ -231,7 +236,7 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	cylinder(BUCKET_RADIUS, 0.05, TIMBER.darkened(0.15), Vector3(0, 0.025, 0), bucket)
 	var outline := ring(BUCKET_RADIUS - 0.07, GOLD, Vector3(0, 0.06, 0), bucket)
 	_physical_pads[pad.id] = outline
-	_ownership_mark(str(pad.owner_slot), Vector3(0, 0.058, 0), bucket)
+	owner_marks.mark(str(pad.owner_slot), &"bucket", str(pad.id), Vector3.ZERO, bucket)
 	# Staves round the back and sides; the front stays open toward the camera.
 	var count := 18
 	for index in range(count):
@@ -316,6 +321,7 @@ func _build_bridge(definition: Dictionary) -> void:
 	var lift := float(definition.get("height_cm", 0)) / 100.0
 	for index in range(before, terrain.get_child_count()):
 		terrain.get_child(index).position.y += lift
+	owner_marks.lifted(str(definition.id), lift)
 	if _weights.has(definition.id): _weights[definition.id].set_meta("rest_y", _weights[definition.id].position.y)
 	var r: Array = definition.rect_cm
 	var deck: Node3D = _decks.get(definition.id)
@@ -353,8 +359,7 @@ func _build_stair(stair: Dictionary) -> void:
 	# Folded, it leans just off the face rather than through it.
 	_folds[stair.id] = {"pivot": pivot, "open": 0.0, "target": 0.0, "fold": atan2(run, top_y) - 0.07}
 	pivot.rotation.x = _folds[stair.id].fold
-	var foot := Vector3(pivot.position.x, 0.0, foot_z + 0.24)
-	_ownership_mark(str(stair.owner_slot), foot + Vector3(0, 0.03, 0), terrain)
+	owner_marks.mark(str(stair.owner_slot), &"stair", str(stair.id), Vector3(pivot.position.x, 0.0, foot_z), terrain)
 
 ## The well ladder is a rope ladder that unrolls from the winch drum down into
 ## the pit. Its rungs follow the exact ramp the simulation walks.
@@ -384,15 +389,7 @@ func _build_ladder(stair: Dictionary) -> void:
 	terrain.add_child(_ladder_roll)
 	var roll := cylinder(0.1, width + 0.04, TIMBER.lightened(0.1), Vector3.ZERO, _ladder_roll)
 	roll.rotation.x = PI / 2.0
-	_ownership_mark(str(stair.owner_slot), low + Vector3(-0.36, 0.03, 0), terrain)
-
-## The lip zone's marks step off the notch rim and its hatch, which lie at
-## their height (they would z-fight), to the nearer side of the notch.
-func _ownership_mark(slot: String, at: Vector3, parent: Node3D) -> void:
-	var rim := Rect2(Vector2(NOTCH[0], NOTCH[1]) / 100.0, Vector2(NOTCH[2] - NOTCH[0], NOTCH[3] - NOTCH[1]) / 100.0).grow(0.02 + MARK_REACH + 0.01)
-	if parent == terrain and rim.has_point(Vector2(at.x, at.z)):
-		at.x = rim.position.x if at.x < rim.get_center().x else rim.end.x
-	super._ownership_mark(slot, at, parent)
+	owner_marks.mark(str(stair.owner_slot), &"ladder", str(stair.id), low, terrain, Vector3.LEFT)
 
 func _build_gate_links(view: Dictionary) -> void:
 	var cliff := _surface_height("cliff")

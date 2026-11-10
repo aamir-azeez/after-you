@@ -17,6 +17,7 @@ extends Node3D
 ## of them through SessionRelease); set_held() swaps between two cached looks
 ## and moves this node, and only when the held state changes.
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 ## The disc's top and the mark's top stack between a crossing's remembered
 ## footsteps (tops 0.0135 above its deck, lighthouse_world) and a spirit's
 ## ground shadow (SpiritVisual.SHADOW_TOP, 0.02425), each at least 3 mm
@@ -76,21 +77,8 @@ func build(at: Vector3, radius_m: float, slot: String, color: Color, light: Colo
 	disc.name = "StandDisc"
 	rim = Primitives.mesh_node(Primitives.cached_shape(rim_mesh(radius_m)), ink, Vector3(0, RIM_LIFT, 0), self)
 	rim.name = "StandRim"
-	var room := radius_m - RIM_WIDTH - MARK_CLEAR
-	if slot == "p0":
-		# A diamond reaches its side times 0.7072 from its centre.
-		var side := minf(MARK_SIDE, room / 0.7072)
-		mark = Primitives.mesh_node(Primitives.cached_shape(Primitives.box_mesh(Vector3(side, MARK_THICKNESS, side))), ink, Vector3(0, MARK_TOP - MARK_THICKNESS * 0.5, 0), self)
-		mark.rotation.y = PI / 4.0
-	else:
-		var ring := TorusMesh.new()
-		ring.outer_radius = minf(MARK_RING, room)
-		ring.inner_radius = ring.outer_radius - MARK_RING_TUBE
-		ring.rings = 24
-		ring.ring_segments = 8
-		mark = Primitives.mesh_node(Primitives.cached_shape(ring), ink, Vector3(0, MARK_TOP - MARK_THICKNESS * 0.5, 0), self)
-		# A flat ring: the torus's tube is as tall as it is wide.
-		mark.scale.y = MARK_THICKNESS / MARK_RING_TUBE
+	# The owner's mark comes from the ownership mark kit, sized to the disc.
+	mark = OwnerMark.spot(slot, radius_m - RIM_WIDTH - MARK_CLEAR, MARK_SIDE, MARK_RING, MARK_RING_TUBE, MARK_THICKNESS, MARK_TOP, ink, self)
 	mark.name = "StandMark"
 
 ## The rim's and mark's colour for an owner's `color`.

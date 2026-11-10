@@ -735,6 +735,7 @@ func _build_bridge(definition: Dictionary) -> void:
 	for index in range(before, terrain.get_child_count()): built.append(terrain.get_child(index))
 	# The shared deck builder places every deck at the ground; lift all it made.
 	for node: Node in built: (node as Node3D).position.y += float(definition.get("height_cm", 0)) / 100.0
+	owner_marks.lifted(id, float(definition.get("height_cm", 0)) / 100.0)
 	if _weights.has(id): _weights[id].set_meta("rest_y", _weights[id].position.y)
 	_restyle_deck(definition)
 	_kept_pennant(definition)
@@ -1018,7 +1019,7 @@ func _build_bell(goal: Dictionary) -> void:
 	_court_light.omni_range = 4.5
 	_court_light.position = cradle.position + head + Vector3(0, 0, 0.2)
 	terrain.add_child(_court_light)
-	_ownership_mark(str(goal.owner_slot), cradle.position + Vector3(0, 0.025, 0.42), terrain)
+	owner_marks.mark(str(goal.owner_slot), &"goal", str(goal.get("id", "goal")), cradle.position, terrain)
 
 # --- Gate links: tide gauges, crests and the catwalks' slack marks ---
 
@@ -1086,7 +1087,7 @@ func _key_sign(route: Dictionary) -> void:
 	glyph.rotation.x = -PI / 2.0
 	glyph.scale = Vector3.ONE * 2.2
 	sign.add_child(glyph)
-	_crest_glyph(CRESTS["sea-key"], GOLD, glyph)
+	LevelHints.tally(&"tide_crest", CRESTS["sea-key"], GOLD, Vector3.ZERO, glyph)
 	sign.set_meta("crest", "sea-key")
 
 ## Beside a machine: to its east on an island, or toward the far end of the
@@ -1123,30 +1124,7 @@ func _route_crest(id: String, at: Vector3, color: Color, parent: Node3D) -> void
 	crest.set_meta("crest", id)
 	crest.position = at + Vector3(0, 0.02, 0)
 	parent.add_child(crest)
-	_crest_glyph(CRESTS.get(id, ["bar", 1]), color, crest)
-
-## One glyph lying flat: `count` bars across the view, bars along it, dots,
-## chevrons or rings, or a pin or a key.
-func _crest_glyph(shape: Array, color: Color, parent: Node3D) -> void:
-	var count := int(shape[1])
-	for index in range(count):
-		var x := (float(index) - float(count - 1) * 0.5) * 0.13
-		match str(shape[0]):
-			"bar": box(Vector3(0.07, 0.014, 0.18), color, Vector3(x, 0, 0), parent)
-			"cross": box(Vector3(0.18, 0.014, 0.07), color, Vector3(0, 0, x), parent)
-			"dot": cylinder(0.05, 0.016, color, Vector3(x, 0, 0), parent)
-			"chevron":
-				for side in [-1, 1]:
-					box(Vector3(0.04, 0.014, 0.13), color, Vector3(x + float(side) * 0.03, 0, 0), parent).rotation.y = float(side) * 0.55
-			"ring": ring(0.055, color, Vector3(x, 0, 0), parent)
-			"pin":
-				box(Vector3(0.035, 0.014, 0.16), color, Vector3(x, 0, 0.02), parent)
-				ring(0.04, color, Vector3(x, 0, -0.08), parent)
-			"key":
-				ring(0.045, color, Vector3(x, 0, -0.07), parent)
-				box(Vector3(0.03, 0.014, 0.14), color, Vector3(x, 0, 0.03), parent)
-				box(Vector3(0.05, 0.014, 0.025), color, Vector3(x + 0.03, 0, 0.08), parent)
-				box(Vector3(0.04, 0.014, 0.025), color, Vector3(x + 0.025, 0, 0.04), parent)
+	LevelHints.tally(&"tide_crest", CRESTS.get(id, ["bar", 1]), color, Vector3.ZERO, crest)
 
 func _carries_pad(view: Dictionary, surface_id: String) -> bool:
 	for pad: Dictionary in view.get("pressure_pads", []):

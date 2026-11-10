@@ -51,8 +51,7 @@ func _build_gate_links(view: Dictionary) -> void:
 func _route_symbol(id: String, at: Vector3, parent: Node3D) -> void:
 	var count := 1 if id == "entry-weight" else 2 if id == "stair-weight" else 3
 	var color := _gate_link_color({"id":id})
-	for index in range(count):
-		box(Vector3(0.09,0.025,0.20),color,at+Vector3((index-(count-1)*0.5)*0.14,0,0),parent)
+	LevelHints.tally(&"route_symbol",["bar",count],color,at,parent)
 
 func present_history(checkpoint: Dictionary) -> void:
 	super.present_history(checkpoint)

@@ -217,6 +217,7 @@ online_staged_open 3
 online_unlocks 3
 optional_photo_capture 1
 outfit 3
+owner_marks 1
 paid_level_thumbnails 3
 paid_replay_after_background 3
 part_verify_worker 2
