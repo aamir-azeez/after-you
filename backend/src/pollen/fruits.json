@@ -1,23 +1,23 @@
 {
   "schema_version": 1,
   "grant": { "first": 30, "step": 5, "every": 2, "top": 60, "welcome": 50 },
-  "convert": { "pollen_per_fruit": 400, "step": 10 },
-  "sunshine": { "price": 25, "turns": 24 },
+  "convert": { "pollen_per_fruit": 300, "step": 10 },
+  "sunshine": { "price": 20, "turns": 24 },
   "achievements": [
-    { "id": "together_first", "fruits": 5, "track": "together_clears", "goal": 1 },
+    { "id": "together_first", "fruits": 10, "track": "together_clears", "goal": 1 },
     { "id": "together_five", "fruits": 10, "track": "together_clears", "goal": 5 },
     { "id": "together_all", "fruits": 20, "track": "together_clears", "goal": 0 },
-    { "id": "hard_first", "fruits": 5, "track": "hard_clears", "goal": 1 },
+    { "id": "hard_first", "fruits": 10, "track": "hard_clears", "goal": 1 },
     { "id": "hard_five", "fruits": 10, "track": "hard_clears", "goal": 5 },
     { "id": "hard_all", "fruits": 40, "track": "every_hard", "goal": 1 },
-    { "id": "duel_win_first", "fruits": 5, "track": "duel_wins", "goal": 1 },
+    { "id": "duel_win_first", "fruits": 10, "track": "duel_wins", "goal": 1 },
     { "id": "duel_win_ten", "fruits": 10, "track": "duel_wins", "goal": 10 },
-    { "id": "ghost_first", "fruits": 5, "track": "ghost_wins", "goal": 1 },
+    { "id": "ghost_first", "fruits": 10, "track": "ghost_wins", "goal": 1 },
     { "id": "ghost_five", "fruits": 10, "track": "ghost_wins", "goal": 5 },
-    { "id": "public_duel_first", "fruits": 5, "track": "public_duels", "goal": 1 },
+    { "id": "public_duel_first", "fruits": 10, "track": "public_duels", "goal": 1 },
     { "id": "top_ten", "fruits": 50, "track": "top_ten_ribbon", "goal": 1 },
     { "id": "gold_leaf", "fruits": 100, "track": "gold_leaf", "goal": 1 },
-    { "id": "keepsake_first", "fruits": 5, "track": "keepsakes", "goal": 1 },
+    { "id": "keepsake_first", "fruits": 10, "track": "keepsakes", "goal": 1 },
     { "id": "keepsake_all", "fruits": 30, "track": "keepsakes_best", "goal": 1 }
   ]
 }

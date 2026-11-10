@@ -46,7 +46,7 @@ const NO_BUNDLE_TIERS := []
 
 ## The confirm card for item `id` (or a set, worn as `outfit`); `buy` runs on
 ## its Buy button. `currency` "fruits" shows the Fruit on each row and a plum
-## "Buy for [Fruit] 50" (board 4b); Pollen keeps board 5b. Returns the modal.
+## "Buy for [Fruit] 100" (board 4b); Pollen keeps board 5b. Returns the modal.
 ## `art`, when given, stands where the pip would (Sunshine's sun) and no pip is made; `note` is the line under the title.
 static func confirm(parent: Control, id: String, item_name: String, cost: int, balance: int, buy: Callable, opener: Control = null, currency: String = "", outfit: Dictionary = {}, art: Control = null, note: String = PlayerCopy.WARDROBE_CONFIRM_NOTE) -> Control:
 	return confirm_of(parent, {"id": id, "item_name": item_name, "cost": cost, "balance": balance, "buy": buy, "opener": opener, "currency": currency, "outfit": outfit, "art": art, "note": note})
@@ -99,7 +99,7 @@ static func confirm_of(parent: Control, spec: Dictionary) -> Control:
 	_line(table, PlayerCopy.WARDROBE_LEFT, ShopKit.amount(balance - cost, 18, CREAM, "", "", currency))
 	var button: Button = modal.add_actions(PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(cost), buy, PlayerCopy.DISPLAY_NAME_CANCEL)
 	if currency == FRUITS:
-		# Buy for [Fruit] 50 on plum (or peach), the words and the mark inside the one button.
+		# Buy for [Fruit] 100 on plum (or peach), the words and the mark inside the one button.
 		var action := str(spec.get("action", PlayerCopy.WARDROBE_BUY_FOR))
 		var peach := bool(spec.get("peach", false))
 		button.text = ""

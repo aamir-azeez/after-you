@@ -441,7 +441,7 @@ const ORCHARD_TITLE := "The Orchard"
 const ORCHARD_TIERS := {"fruit_hat": "Hat", "fruit_body": "Body", "fruit_small": "Small", "sprig": "Sprig"}
 ## Under the big pip while an Orchard item is picked ("Orchard hat · drag to turn your pip").
 const ORCHARD_HINT := "Orchard %s · drag to turn your pip"
-## The sprig row's title, and the price they share ("· 10 each").
+## The sprig row's title, and the price they share ("· 20 each").
 const ORCHARD_SPRIGS := "Sprigs"
 const ORCHARD_EACH := "· %s each"
 ## An Orchard set's name (WARDROBE_SET "%s set") and its pieces ("Apple hood, Apple leaf and Orchard skin together").
@@ -472,11 +472,11 @@ const FRUITS_PAGE_BACK := "Back"
 const FRUITS_PAGE_LOADING := "Loading your Fruits…"
 const FRUITS_PAGE_OFFLINE := "Your Fruits did not load. Try again in a moment."
 const FRUITS_PAGE_RETRY := "Try again"
-## The goals card: its title, and the link that opens every goal ("All 15 goals, 310 Fruits in all") or closes them again.
+## The goals card: its title, and the link that opens every goal ("All 15 goals, 340 Fruits in all") or closes them again.
 const FRUIT_GOALS_TITLE := "Fruits for playing together"
 const FRUIT_GOALS_ALL := "All %d goals, %s Fruits in all"
 const FRUIT_GOALS_FEWER := "Fewer goals"
-## A paid goal's Fruits ("+5").
+## A paid goal's Fruits ("+10").
 const FRUIT_GOAL_PAID := "+%s"
 ## Each goal by its server id (backend fruits.json), in plain game words.
 const FRUIT_GOALS := {

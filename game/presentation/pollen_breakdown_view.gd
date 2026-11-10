@@ -71,7 +71,7 @@ static func _row(row: Dictionary, ink: Color, pip: Callable, flower: Callable) -
 	return _line(_text(str(row.label), size, UiTokens.CREAM if size == TOTAL_SIZE else ink), str(row.value), size, bool(row.grain), bool(row.get("plus", false)))
 
 ## Fruits board 6b's plum line: the achievement's name on the left, then
-## "+ [Fruit] 5 Fruits" in bold peach on the right.
+## "+ [Fruit] 10 Fruits" in bold peach on the right.
 static func fruit_line(row: Dictionary) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.name = "FruitResultLine"

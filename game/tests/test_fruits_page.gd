@@ -13,8 +13,8 @@ extends SceneTree
 ##   misses a step or Sunshine's price, the confirm card when it covers it, and
 ##   each refusal read as a plain line;
 ## - the Fruits page: goals in the server's order (paid with their place and
-##   "+5", the rest with their amount and steps, the keepsake goals greyed),
-##   the first few until the link opens all ("All 15 goals, 310 Fruits in all"),
+##   "+10", the rest with their amount and steps, the keepsake goals greyed),
+##   the first few until the link opens all ("All 15 goals, 340 Fruits in all"),
 ##   the newest Fruit lines named, the buttons that show (Get Fruits only while
 ##   packs sell), the page closed while Fruits are hidden, and every card inside
 ##   the screen at 1561x720 (the 1600x738 phone) and 1600x720 (800x360);
@@ -48,7 +48,7 @@ const HASH := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 const SIZES := [Vector2i(1561, 720), Vector2i(1600, 720)]
 const IDS := ["together_first", "together_five", "together_all", "hard_first", "hard_five", "hard_all", "duel_win_first", "duel_win_ten",
 	"ghost_first", "ghost_five", "public_duel_first", "top_ten", "gold_leaf", "keepsake_first", "keepsake_all"]
-const PAYS := [5, 10, 20, 5, 10, 40, 5, 10, 5, 10, 5, 50, 100, 5, 30]
+const PAYS := [10, 10, 20, 10, 10, 40, 10, 10, 10, 10, 10, 50, 100, 10, 30]
 
 var checks := 0
 var failures := 0
@@ -137,8 +137,8 @@ static func _goals() -> Array:
 	return rows
 
 static func _part(balance: int, left: int = 21, goals: Array = _goals()) -> Dictionary:
-	return {"schema_version": 1.0, "balance": float(balance), "earned": 120.0, "sunshine": {"left": float(left), "turns": 24.0, "price": 25.0},
-		"convert": {"pollen_per_fruit": 400.0, "step": 10.0}, "first_pack_gift": true, "first_pack_percent": 100.0, "achievements": goals}
+	return {"schema_version": 1.0, "balance": float(balance), "earned": 120.0, "sunshine": {"left": float(left), "turns": 24.0, "price": 20.0},
+		"convert": {"pollen_per_fruit": 300.0, "step": 10.0}, "first_pack_gift": true, "first_pack_percent": 100.0, "achievements": goals}
 
 ## A Fruit store for the test player, Fruits on (packs too while `packs`), read once with `part`.
 func _fruits(name: String, part: Dictionary, packs: bool = true) -> RefCounted:
@@ -255,14 +255,14 @@ func _result_line() -> void:
 	FruitWallet.use_shared(null)
 
 func _sunshine_card() -> void:
-	var card: Control = SunshineCard.make({"left": 21, "turns": 24, "price": 25}, false)
+	var card: Control = SunshineCard.make({"left": 21, "turns": 24, "price": 20}, false)
 	root.add_child(card)
 	await process_frame
 	_check(card.dots.golden() == 21 and card.dots.turns == 24, "A dot per turn, 21 of them golden")
 	_check((card.find_child("SunshineLeft", true, false) as Label).text == "21 of 24 turns left", "It says the turns left")
 	_check(card.buy_button != null and card.buy_button.disabled, "While turns are left the price button shows greyed, as board 7 draws it")
 	card.free()
-	var offered: Control = SunshineCard.make({"left": 0, "turns": 24, "price": 25}, true)
+	var offered: Control = SunshineCard.make({"left": 0, "turns": 24, "price": 20}, true)
 	root.add_child(offered)
 	await process_frame
 	var pressed := []
@@ -276,8 +276,8 @@ func _sunshine_card() -> void:
 		var page := PlayPage.new()
 		root.add_child(page)
 		page.render({"history": {"turns": [{"amount": 222, "at": 0, "level_id": "relay-isles", "stage_id": "relay", "role": "a", "bonuses": ["first_try"], "bloom": 1, "reason": "", "sunshine": 111}], "first_clears": [], "bank": {},
-			"exchanges": [{"kind": "convert", "amount": 8000, "at": 5000}, {"kind": "reclaim", "amount": -4000, "at": 0}]},
-			"fruits": fruits_on, "sunshine": {"left": 21, "turns": 24, "price": 25}, "sunshine_buyable": false})
+			"exchanges": [{"kind": "convert", "amount": 6000, "at": 5000}, {"kind": "reclaim", "amount": -3000, "at": 0}]},
+			"fruits": fruits_on, "sunshine": {"left": 21, "turns": 24, "price": 20}, "sunshine_buyable": false})
 		await process_frame
 		var foot: Node = page.find_child("PollenTurnsCardFoot", true, false)
 		_check((foot != null and foot.find_child("SunshineCard", true, false) != null) == fruits_on, "The Sunshine card shows at the Turns card's foot only while Fruits show (%s)" % fruits_on)
@@ -295,14 +295,14 @@ func _convert_sheet(online: Online) -> void:
 	parent.size = Vector2(1561, 720)
 	root.add_child(parent)
 	var sent := []
-	var sheet: RefCounted = ConvertSheet.open(parent, {"pollen_per_fruit": 400, "step": 10}, 101, 24000, func(count: int) -> void: sent.append(count))
+	var sheet: RefCounted = ConvertSheet.open(parent, {"pollen_per_fruit": 300, "step": 10}, 101, 24000, func(count: int) -> void: sent.append(count))
 	await process_frame
 	var texts := func() -> Dictionary:
 		return {"count": sheet._count_label.text, "made": sheet._made_label.text, "fruits": sheet._fruits_after.text, "pollen": sheet._pollen_after.text, "button": sheet.confirm.text}
-	_check(texts.call() == {"count": "10", "made": "4,000", "fruits": "91", "pollen": "28,000", "button": "Turn 10 Fruits into Pollen"}, "It opens at one step with the sums: %s" % [texts.call()])
+	_check(texts.call() == {"count": "10", "made": "3,000", "fruits": "91", "pollen": "27,000", "button": "Turn 10 Fruits into Pollen"}, "It opens at one step with the sums: %s" % [texts.call()])
 	_check(sheet.less.disabled and not sheet.more.disabled, "Minus is greyed at one step")
 	sheet.more.pressed.emit()
-	_check(texts.call() == {"count": "20", "made": "8,000", "fruits": "81", "pollen": "32,000", "button": "Turn 20 Fruits into Pollen"}, "Plus adds one step, as board 8 draws it: %s" % [texts.call()])
+	_check(texts.call() == {"count": "20", "made": "6,000", "fruits": "81", "pollen": "30,000", "button": "Turn 20 Fruits into Pollen"}, "Plus adds one step, as board 8 draws it: %s" % [texts.call()])
 	for i in range(20): sheet.more.pressed.emit()
 	_check(sheet.count == 100 and sheet.more.disabled and not sheet.less.disabled, "Plus stops at the most whole steps the balance covers: %d" % sheet.count)
 	sheet.confirm.pressed.emit()
@@ -333,7 +333,7 @@ func _spends(online: Online) -> void:
 	_check(flow.visible() and not flow.sunshine_offered(), "No Sunshine is offered while turns are left")
 	flow.sunshine(parent)
 	_check(host.said.back() == "Your Sunshine still has turns left." and flow.sheet() == null, "Asked anyway, it says why and opens nothing")
-	# None left and 5 Fruits: offered, and the short card opens for the 5 missing.
+	# None left and 5 Fruits: offered, and the short card opens for the 15 missing.
 	fruits = _fruits("spend_short", _part(5, 0))
 	flow.client = _client("spend_short", fruits, server)
 	_check(flow.sunshine_offered(), "With none left Sunshine is offered, whatever the balance")
@@ -346,12 +346,12 @@ func _spends(online: Online) -> void:
 	flow.sunshine(parent)
 	var card: Control = flow.sheet()
 	_check(card != null and card.name == "WardrobeConfirm" and card.find_child("SunshineConfirmArt", true, false) != null and card.find_child("WardrobeConfirmPip", true, false) == null, "Covered, the Fruit confirm card opens with the sun in the pip's place")
-	server.answer = {"ok": true, "status": 200, "data": {"schema_version": 1.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 76.0, "sunshine_left": 24.0}}
+	server.answer = {"ok": true, "status": 200, "data": {"schema_version": 1.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 81.0, "sunshine_left": 24.0}}
 	var buy: Button = card.find_child("WardrobeConfirmBuy", true, false) if card != null else null
 	if buy != null: buy.pressed.emit()
 	for i in range(6): await process_frame
-	_check(server.sent.size() == 1 and server.sent[0][2].kind == "sunshine" and int(server.sent[0][2].expected_cost) == 25, "Buy sends Sunshine at the price shown: %s" % [server.sent])
-	_check(fruits.sunshine(SERVER, ME).left == 24 and fruits.balance(SERVER, ME) == 76, "The receipt is kept: 24 turns, 76 Fruits")
+	_check(server.sent.size() == 1 and server.sent[0][2].kind == "sunshine" and int(server.sent[0][2].expected_cost) == 20, "Buy sends Sunshine at the price shown: %s" % [server.sent])
+	_check(fruits.sunshine(SERVER, ME).left == 24 and fruits.balance(SERVER, ME) == 81, "The receipt is kept: 24 turns, 81 Fruits")
 	_check(host.said.back() == "Sunshine is on for your next 24 bank turns.", "and it says so: %s" % [host.said.back()])
 	# Converting: refusals read plainly; offline nothing is sent.
 	server.sent.clear()
@@ -386,7 +386,7 @@ func _page() -> void:
 	var history := History.new()
 	history.answer = PollenHistory.checked({"schema_version": 1.0, "entries": [], "fruit_entries": [
 		{"kind": "grant", "amount": 35.0, "at": 1800000300000.0, "step": 3.0},
-		{"kind": "ach", "amount": 5.0, "at": 1800000200000.0, "id": "hard_first", "level_id": "relay-isles"},
+		{"kind": "ach", "amount": 10.0, "at": 1800000200000.0, "id": "hard_first", "level_id": "relay-isles"},
 		{"kind": "bundle", "amount": 25.0, "at": 1800000100000.0, "bundle": "handful"},
 		{"kind": "convert", "amount": -20.0, "at": 1800000000000.0}]})
 	host.pollen_client = history
@@ -411,12 +411,12 @@ func _page() -> void:
 	var first: Node = page.find_child("FruitGoal_together_first", true, false)
 	_check(first.find_child("FruitGoalPaid", true, false) != null and (first.find_child("FruitGoalPlace", true, false) as Label).text == "The Relay Isles", "A paid goal has the plum badge and its place")
 	var paid_texts: Array = first.find_child("FruitGoalPaidAmount", true, false).find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
-	_check(paid_texts == ["+5"], "and its Fruits: %s" % [paid_texts])
+	_check(paid_texts == ["+10"], "and its Fruits: %s" % [paid_texts])
 	var five: Node = page.find_child("FruitGoal_together_five", true, false)
 	_check(five.find_child("FruitGoalAmount", true, false) != null and five.find_child("FruitGoalSteps", true, false).filled() == 3 and five.find_child("FruitGoalSteps", true, false).goal == 5, "A goal to reach shows its amount and 3 of 5 steps")
 	_check(page.find_child("FruitGoal_hard_first", true, false).find_child("FruitGoalSteps", true, false) == null, "A paid goal shows no steps")
 	var link: Button = page.find_child("FruitGoalsAll", true, false)
-	_check(link != null and link.accessibility_name == "All 15 goals, 310 Fruits in all", "The link names the server's count and sum: %s" % [link.accessibility_name if link != null else ""])
+	_check(link != null and link.accessibility_name == "All 15 goals, 340 Fruits in all", "The link names the server's count and sum: %s" % [link.accessibility_name if link != null else ""])
 	link.pressed.emit()
 	await process_frame
 	page = host.overlay.find_child("FruitsPage", true, false)
@@ -426,7 +426,7 @@ func _page() -> void:
 	var lines: Array = page.find_children("FruitLine*", "HBoxContainer", true, false).map(func(row: Node) -> String: return (row.get_child(0).get_child(0) as Label).text)
 	_check(lines == ["Full Journey, month 3", "First Hard clear together", "Handful", "Turned into Pollen"], "The newest Fruit lines, named: %s" % [lines])
 	var amounts: Array = page.find_children("FruitLineAmount", "Label", true, false).map(func(label: Label) -> String: return label.text)
-	_check(amounts == ["+35", "+5", "+25", "−20"], "with their Fruits: %s" % [amounts])
+	_check(amounts == ["+35", "+10", "+25", "−20"], "with their Fruits: %s" % [amounts])
 	_check((page.find_child("FruitWalletAmount", true, false) as Label).text == "101", "The big balance")
 	var buttons: Array = page.find_child("FruitWalletButtons", true, false).get_children().map(func(button: Node) -> String: return button.name)
 	_check(buttons == ["FruitsPage_get", "FruitsPage_orchard", "FruitsPage_sunshine", "FruitsPage_convert"], "The board's four buttons: %s" % [buttons])
@@ -482,7 +482,7 @@ func _toasts() -> void:
 	var host := Host.new()
 	root.add_child(host)
 	var fruits := _fruits("toasts", _part(101))
-	fruits.note_receipt(SERVER, ME, {"fruits": {"balance": 156, "paid": [{"id": "ghost_first", "amount": 5}, {"id": "top_ten", "amount": 50}]}})
+	fruits.note_receipt(SERVER, ME, {"fruits": {"balance": 161, "paid": [{"id": "ghost_first", "amount": 10}, {"id": "top_ten", "amount": 50}]}})
 	var toasts: Node = Toasts.new(host)
 	toasts.fruits = fruits
 	var opened := []
@@ -495,7 +495,7 @@ func _toasts() -> void:
 	_check(toasts.service() == "", "nor while a room is open")
 	host.relay_child.free()
 	host.relay_child = null
-	_check(toasts.service() == "First time beating Our run: +5 Fruits", "The oldest goal first")
+	_check(toasts.service() == "First time beating Our run: +10 Fruits", "The oldest goal first")
 	_check(toasts.service() == "", "One at a time: nothing while its line shows")
 	host.toast.up = false
 	_check(toasts.service() == "First Top 10 ribbon: +50 Fruits", "then the next")
@@ -504,7 +504,7 @@ func _toasts() -> void:
 	host.toast.action.call()
 	_check(opened == ["home"], "View opens the Fruits page")
 	toasts.surfaces = PollenSurfaces.new(false)
-	fruits.note_receipt(SERVER, ME, {"fruits": {"balance": 256, "paid": [{"id": "gold_leaf", "amount": 100}]}})
+	fruits.note_receipt(SERVER, ME, {"fruits": {"balance": 261, "paid": [{"id": "gold_leaf", "amount": 100}]}})
 	_check(toasts.service() == "", "Nothing while Fruits are hidden")
 	_check(not toasts._waiting, "and it stops looking until the Fruits change, so a phone without Fruits does no work each frame")
 	toasts.surfaces = PollenSurfaces.new(true, true)

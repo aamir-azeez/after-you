@@ -57,11 +57,11 @@ describe("the Fruit rules", () => {
     // One ladder function prices both currencies: the Pollen grant's own ladder has every 1.
     expect([1, 2, 31].map(n => ladderAmount(n, { ...RATES.grant, every: 1 }))).toEqual([4500, 4750, 12000]);
   });
-  it("lists 15 achievements worth 310 Fruits, the keepsake two dormant, and every chapter as the together goal", () => {
+  it("lists 15 achievements worth 340 Fruits, the keepsake two dormant, and every chapter as the together goal", () => {
     expect(FRUIT_RULES.achievements.length).toBe(15);
-    expect(FRUIT_RULES.achievements.reduce((sum, item) => sum + item.fruits, 0)).toBe(310);
+    expect(FRUIT_RULES.achievements.reduce((sum, item) => sum + item.fruits, 0)).toBe(340);
     expect(goalOf(FRUIT_RULES.achievements.find(item => item.id === "together_all")!)).toBe(Object.keys(RATES.chapters).length);
-    expect(FRUIT_RULES.achievements.every(item => item.fruits >= 5)).toBe(true);
+    expect(FRUIT_RULES.achievements.every(item => item.fruits >= 10)).toBe(true);
   });
   it("refuses a rules file outside its shape", () => {
     const copy = () => JSON.parse(JSON.stringify(fruitsJson));
@@ -176,13 +176,13 @@ describe("Fruit packs", () => {
 });
 
 describe("turning Fruits into Pollen", () => {
-  it("pays 400 Pollen a Fruit, 10 at a time, and refuses while either balance is below zero", async () => {
+  it("pays 300 Pollen a Fruit, 10 at a time, and refuses while either balance is below zero", async () => {
     await inPlayer(storage => {
       fund(storage, 35);
       expect(convertFruits(storage, "key-a", 15, 15, MONDAY)).toMatchObject({ ok: false, code: "invalid_pollen_spend" });
       expect(convertFruits(storage, "key-a", 20, 10, MONDAY)).toMatchObject({ ok: false, code: "pollen_price_changed" });
       expect(convertFruits(storage, "key-a", 40, 40, MONDAY)).toMatchObject({ ok: false, status: 402, code: "fruits_short" });
-      expect(value(convertFruits(storage, "key-a", 20, 20, MONDAY))).toEqual({ fruits: 20, pollen: 8000, fruit_balance: 15, balance: 8000 });
+      expect(value(convertFruits(storage, "key-a", 20, 20, MONDAY))).toEqual({ fruits: 20, pollen: 6000, fruit_balance: 15, balance: 6000 });
       expect(purse(storage, "converted").balance).toBe(20);
       applyLedger(storage, [{ key: "bundlerefund:x", kind: "bundlerefund", amount: -9000, detail: {} }], MONDAY);
       expect(convertFruits(storage, "key-b", 10, 10, MONDAY)).toMatchObject({ ok: false, status: 403, code: "fruits_blocked" });
@@ -193,7 +193,7 @@ describe("turning Fruits into Pollen", () => {
       fund(storage, 40);
       value(convertFruits(storage, "same-key", 10, 10, MONDAY));
       expect(convertFruits(storage, "same-key", 10, 10, MONDAY)).toMatchObject({ ok: false, status: 409, code: "idempotency_key_reused" });
-      expect([fruitBalance(storage), walletView(storage, MONDAY).balance, purse(storage, "converted").balance]).toEqual([30, 4000, 10]);
+      expect([fruitBalance(storage), walletView(storage, MONDAY).balance, purse(storage, "converted").balance]).toEqual([30, 3000, 10]);
     });
   });
   it("takes back several Fruit refunds in one settle in order, Pollen only for what was converted", async () => {
@@ -202,7 +202,7 @@ describe("turning Fruits into Pollen", () => {
       value(convertFruits(storage, "convert-m", 50, 50, MONDAY));
       const back = withReclaim(storage, [{ key: "fruit:bundlerefund:GPA.m1", kind: "fruitbundlerefund", amount: -30, detail: {} }, { key: "fruit:bundlerefund:GPA.m2", kind: "fruitbundlerefund", amount: -30, detail: {} }]);
       applyLedger(storage, back.entries, MONDAY);
-      expect([back.pollen.get("fruit:bundlerefund:GPA.m1"), back.pollen.get("fruit:bundlerefund:GPA.m2")]).toEqual([8000, 12000]);
+      expect([back.pollen.get("fruit:bundlerefund:GPA.m1"), back.pollen.get("fruit:bundlerefund:GPA.m2")]).toEqual([6000, 9000]);
       expect([fruitBalance(storage), walletView(storage, MONDAY).balance, purse(storage, "converted").balance]).toEqual([0, 0, 0]);
     });
   });
@@ -210,12 +210,12 @@ describe("turning Fruits into Pollen", () => {
     await inPlayer(storage => {
       applyLedger(storage, [{ key: "fruit:bundle:GPA.r1", kind: "fruitbundle", amount: 50, detail: {} }], MONDAY);
       value(convertFruits(storage, "convert-1", 40, 40, MONDAY));
-      expect([fruitBalance(storage), walletView(storage, MONDAY).balance]).toEqual([10, 16000]);
+      expect([fruitBalance(storage), walletView(storage, MONDAY).balance]).toEqual([10, 12000]);
       const back = withReclaim(storage, [{ key: "fruit:bundlerefund:GPA.r1", kind: "fruitbundlerefund", amount: -50, detail: {} }]);
       applyLedger(storage, back.entries, MONDAY);
       expect([fruitBalance(storage), walletView(storage, MONDAY).balance, purse(storage, "converted").balance]).toEqual([0, 0, 0]);
-      expect(back.pollen.get("fruit:bundlerefund:GPA.r1")).toBe(16000);
-      expect(historyView(storage, MONDAY).entries.map(entry => [entry.kind, entry.amount]).sort()).toEqual([["convert", 16000], ["reclaim", -16000]]);
+      expect(back.pollen.get("fruit:bundlerefund:GPA.r1")).toBe(12000);
+      expect(historyView(storage, MONDAY).entries.map(entry => [entry.kind, entry.amount]).sort()).toEqual([["convert", 12000], ["reclaim", -12000]]);
     });
   });
   it("takes back only the converted part as Pollen: Fruits spent on items stay below zero as Fruits", async () => {
@@ -232,18 +232,18 @@ describe("turning Fruits into Pollen", () => {
 describe("Sunshine", () => {
   const credit = (storage: DurableObjectStorage, turn: TurnFacts, hooks: FruitHooks | null = HOOKS) => creditTurn(storage, { POLLEN_SECRET: SECRET }, OWNER, turn, turn.accepted_at, () => true, RATES, undefined, hooks ?? undefined);
   const slots = Array.from({ length: 40 }, (_, index) => ({ stage_id: "stage-" + Math.floor(index / 2), role: (index % 2 ? "b" : "a") as "a" | "b" }));
-  it("is bought for 25 Fruits only when none is left", async () => {
+  it("is bought for 20 Fruits only when none is left", async () => {
     await inPlayer(storage => {
-      expect(buySunshine(storage, 25)).toMatchObject({ ok: false, code: "fruits_short" });
-      fund(storage, 40);
-      expect(buySunshine(storage, 10)).toMatchObject({ ok: false, code: "pollen_price_changed" });
-      expect(value(buySunshine(storage, 25))).toEqual({ fruit_balance: 15, sunshine_left: 24 });
-      expect(buySunshine(storage, 25)).toMatchObject({ ok: false, status: 409, code: "sunshine_active" });
+      expect(buySunshine(storage, 20)).toMatchObject({ ok: false, code: "fruits_short" });
+      fund(storage, 35);
+      expect(buySunshine(storage, 25)).toMatchObject({ ok: false, code: "pollen_price_changed" });
+      expect(value(buySunshine(storage, 20))).toEqual({ fruit_balance: 15, sunshine_left: 24 });
+      expect(buySunshine(storage, 20)).toMatchObject({ ok: false, status: 409, code: "sunshine_active" });
     });
   });
   it("pays a bank turn's plain amount again for 24 bank turns, never after the bank, on a retry or on the boost", async () => {
     await inPlayer(async storage => {
-      fund(storage, 25); value(buySunshine(storage, 25));
+      fund(storage, 20); value(buySunshine(storage, 20));
       const turn = facts({ ...slots[0], tries: 1, subscriber: true, boost_percent: 10 });
       const paid = value(await credit(storage, turn));
       expect(paid.turn).toMatchObject({ kind: "bank", amount: 111, sunshine: 111, boost: 11 });
@@ -269,7 +269,7 @@ describe("Sunshine", () => {
   });
   it("runs out after 24 bank turns", async () => {
     await inPlayer(async storage => {
-      fund(storage, 25); value(buySunshine(storage, 25));
+      fund(storage, 20); value(buySunshine(storage, 20));
       for (let week = 0; week < 3; week++) for (const place of slots.slice(0, 12)) value(await credit(storage, facts(place, MONDAY + week * 7 * DAY)));
       expect(purse(storage, "sunshine")).toEqual({ balance: 0, earned: 24 });
     });
@@ -282,11 +282,11 @@ describe("achievements", () => {
       // A clear before Fruits: the sweep counts it.
       value(creditClear(storage, { level_id: "relay-isles", hard: false, boost_percent: 0 }, MONDAY, () => true));
       const swept = settleAchievements(storage, MONDAY);
-      expect(swept).toEqual({ balance: 5, paid: [{ id: "together_first", amount: 5 }] });
+      expect(swept).toEqual({ balance: 10, paid: [{ id: "together_first", amount: 10 }] });
       expect(settleAchievements(storage, MONDAY)).toBeNull();
       // A Hard clear together: hard_first, once.
       const hard = value(creditClear(storage, { level_id: "first-steps", hard: true, boost_percent: 0, room_id: ROOM, together: true }, MONDAY, () => true, RATES, HOOKS));
-      expect(hard.fruits).toEqual({ balance: 10, paid: [{ id: "hard_first", amount: 5 }] });
+      expect(hard.fruits).toEqual({ balance: 20, paid: [{ id: "hard_first", amount: 10 }] });
       expect(value(creditClear(storage, { level_id: "first-steps", hard: true, boost_percent: 0, room_id: ROOM, together: true }, MONDAY, () => true, RATES, HOOKS)).fruits).toBeUndefined();
       const view = achievementsView(storage);
       expect(view.find(item => item.id === "together_five")).toMatchObject({ goal: 5, progress: 2, live: true });
@@ -312,7 +312,7 @@ describe("achievements", () => {
       // A repeat of a win is not a new one.
       creditDuelWin(storage, { duel_id: "week-0", opponent: "pair-0", decided_ms: MONDAY }, MONDAY, () => true, RATES, fresh(MONDAY));
       expect(purse(storage, "count:duel_wins").balance).toBe(10);
-      expect(ledgerLines(storage, "fruit:ach:duel_win", 8).map(line => [line.key, line.amount])).toEqual([["fruit:ach:duel_win_first", 5], ["fruit:ach:duel_win_ten", 10]]);
+      expect(ledgerLines(storage, "fruit:ach:duel_win", 8).map(line => [line.key, line.amount])).toEqual([["fruit:ach:duel_win_first", 10], ["fruit:ach:duel_win_ten", 10]]);
     });
   });
   it("mark a chapter finished together on a turn, so a clear made solo before still counts once it is played together", async () => {
@@ -320,7 +320,7 @@ describe("achievements", () => {
       settleAchievements(storage, MONDAY);
       const turn = facts({ complete: true, level_id: "high-and-low", stage_id: "s", role: "a" });
       const paid = value(await creditTurn(storage, { POLLEN_SECRET: SECRET }, OWNER, turn, MONDAY, () => true, RATES, undefined, HOOKS));
-      expect(paid.fruits).toEqual({ balance: 5, paid: [{ id: "together_first", amount: 5 }] });
+      expect(paid.fruits).toEqual({ balance: 10, paid: [{ id: "together_first", amount: 10 }] });
       expect(ledgerLines(storage, "fruit:together:", 16).map(line => line.key)).toEqual(["fruit:together:high-and-low"]);
     });
   });
@@ -424,7 +424,7 @@ describe("the Fruit routes", () => {
     expect(read).not.toHaveProperty("fruits");
     expect(read.wardrobe).not.toHaveProperty("fruit_prices");
     expect(read.wardrobe!.offered).not.toContain("apple_hood");
-    for (const body of [spendBody("convert", "10", 10), spendBody("sunshine", "sunshine", 25)]) {
+    for (const body of [spendBody("convert", "10", 10), spendBody("sunshine", "sunshine", 20)]) {
       const refused = await call("/v1/pollen/spend", "POST", account, body, SHOP);
       expect(refused.status).toBe(503);
     }
@@ -437,7 +437,7 @@ describe("the Fruit routes", () => {
     expect(caps).toMatchObject({ pollen_fruits_version: 1, pollen_offered_tag: FRUITS_OFFERED_TAG });
     expect(caps).not.toHaveProperty("pollen_fruit_packs_version");
     const first = await (await call("/v1/pollen", "GET", account)).json<Read>();
-    expect(first.fruits).toMatchObject({ balance: 0, sunshine: { left: 0, turns: 24, price: 25 }, convert: { pollen_per_fruit: 400, step: 10 }, first_pack_gift: true, first_pack_percent: 100 });
+    expect(first.fruits).toMatchObject({ balance: 0, sunshine: { left: 0, turns: 24, price: 20 }, convert: { pollen_per_fruit: 300, step: 10 }, first_pack_gift: true, first_pack_percent: 100 });
     expect(first.fruits!.achievements.length).toBe(15);
     expect(first.wardrobe).toMatchObject({ fruit_prices: { apple_hood: 100, sprig_sun: 20, orchard_skin: 200 }, fruit_sets: { orchard: ["apple_hood", "orchard_skin", "apple_leaf"] }, fruit_set_costs: { orchard: 295 } });
     expect((first.fruits as Record<string, unknown>).ladder).toEqual({ first: 30, step: 5, every: 2, top: 60, welcome: 50 });
@@ -449,9 +449,9 @@ describe("the Fruit routes", () => {
     expect(await (await call("/v1/pollen/spend", "POST", account, cap)).json()).toEqual(bought);
     expect((await call("/v1/pollen/spend", "POST", account, { ...cap, id: "sprig_sun", expected_cost: 10 })).status).toBe(409);
     const convert = await (await call("/v1/pollen/spend", "POST", account, spendBody("convert", "20", 20))).json<Record<string, unknown>>();
-    expect(convert).toMatchObject({ kind: "convert", currency: "fruits", cost: 20, pollen: 8000, balance: 8000, fruit_balance: 80 });
-    const sunshine = await (await call("/v1/pollen/spend", "POST", account, spendBody("sunshine", "sunshine", 25))).json<Record<string, unknown>>();
-    expect(sunshine).toMatchObject({ kind: "sunshine", cost: 25, fruit_balance: 55, sunshine_left: 24 });
+    expect(convert).toMatchObject({ kind: "convert", currency: "fruits", cost: 20, pollen: 6000, balance: 6000, fruit_balance: 80 });
+    const sunshine = await (await call("/v1/pollen/spend", "POST", account, spendBody("sunshine", "sunshine", 20))).json<Record<string, unknown>>();
+    expect(sunshine).toMatchObject({ kind: "sunshine", cost: 20, fruit_balance: 60, sunshine_left: 24 });
     const short = await call("/v1/pollen/spend", "POST", account, spendBody("item", "orchard_skin", 200));
     expect([short.status, (await short.json<{ error: { code: string } }>()).error.code]).toEqual([402, "fruits_short"]);
     const history = await (await call("/v1/pollen/history", "GET", account)).json<{ entries: { kind: string }[]; fruit_entries: { kind: string; amount: number }[] }>();
@@ -468,7 +468,7 @@ describe("the Fruit routes", () => {
     const read = await meterRows(stubs, () => call("/v1/pollen", "GET", account));
     const item = await meterRows(stubs, () => call("/v1/pollen/spend", "POST", account, spendBody("item", "sprig_sky", 20)));
     const convert = await meterRows(stubs, () => call("/v1/pollen/spend", "POST", account, spendBody("convert", "10", 10)));
-    const sunshine = await meterRows(stubs, () => call("/v1/pollen/spend", "POST", account, spendBody("sunshine", "sunshine", 25)));
+    const sunshine = await meterRows(stubs, () => call("/v1/pollen/spend", "POST", account, spendBody("sunshine", "sunshine", 20)));
     const measured = { read: read.rows.player.written, item: item.rows.player.written, convert: convert.rows.player.written, sunshine: sunshine.rows.player.written };
     console.log("fruit rows written", JSON.stringify(measured));
     expect(measured.read).toBe(0);
@@ -478,7 +478,7 @@ describe("the Fruit routes", () => {
   it("measure a Sunshine turn: one row more than the same turn without it", async () => {
     const rowsOf = async (hooks: boolean) => {
       const stub = env.PLAYERS.getByName("fruits-meter-" + ++serial);
-      await runInDurableObject(stub, async (_, state) => { fund(state.storage, 25); value(buySunshine(state.storage, 25)); value(await creditTurn(state.storage, { POLLEN_SECRET: SECRET }, OWNER, facts(), MONDAY, () => true)); });
+      await runInDurableObject(stub, async (_, state) => { fund(state.storage, 20); value(buySunshine(state.storage, 20)); value(await creditTurn(state.storage, { POLLEN_SECRET: SECRET }, OWNER, facts(), MONDAY, () => true)); });
       const metered = await meterRows({ stub }, () => runInDurableObject(stub, async (_, state) =>
         value(await creditTurn(state.storage, { POLLEN_SECRET: SECRET }, OWNER, facts({ stage_id: "second" }), MONDAY, () => true, RATES, undefined, hooks ? HOOKS : undefined))));
       return metered.rows.stub.written;

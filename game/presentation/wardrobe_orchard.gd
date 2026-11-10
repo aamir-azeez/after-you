@@ -6,7 +6,7 @@ extends PanelContainer
 ## beside the slot chips (Hat, Body, Leaf) with the Orchard chip picked; the
 ## Orchard items on cream plinths, each on a still pip wearing it
 ## (kit/pip_avatar.gd), with its name, its tier's tag and its Fruit price (or
-## Yours and Wearing); the sprigs as leaf tiles under "Sprigs · 10 each"; and
+## Yours and Wearing); the sprigs as leaf tiles under "Sprigs · 20 each"; and
 ## each Orchard set's card with its pieces, the full price struck and the set
 ## price. The picked card or tile has the ripe ring.
 ##
@@ -206,7 +206,7 @@ func render(model: Dictionary, line: String) -> void:
 		(_sprigs.get_parent() as Control).visible = not sprigs.is_empty()
 	_restyle()
 
-## "· 10 each" while every sprig sells at one price, else nothing.
+## "· 20 each" while every sprig sells at one price, else nothing.
 static func _each_line(sprigs: Array) -> String:
 	var prices := {}
 	for entry: Dictionary in sprigs:

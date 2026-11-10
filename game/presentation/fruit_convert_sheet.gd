@@ -2,7 +2,7 @@ extends RefCounted
 ## Turn Fruits into Pollen (Fruits board 8), on the shared in-game modal: a
 ## plum box with the Fruits to turn (the Fruit, the count, minus and plus in
 ## the server's steps), an arrow, a cream box with the Pollen they make, then
-## "Your Fruits 101 to 81" and "Your Pollen 24,000 to 32,000", the one way
+## "Your Fruits 101 to 81" and "Your Pollen 24,000 to 30,000", the one way
 ## line, Cancel and "Turn 20 Fruits into Pollen". It starts at one step and
 ## goes up to the most whole steps the balance covers. Every number is the
 ## server's rule (services/fruit_wallet.gd convert_rules) worked out before the
