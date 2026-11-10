@@ -79,6 +79,7 @@ empty_state 3
 end_reactions 3
 explore_room 1
 face_packs 2
+fall_effect 1
 featured_shelf 1
 final_scene 2
 finished_last_room 2

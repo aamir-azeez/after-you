@@ -115,7 +115,7 @@ func _process(delta: float) -> void:
 ## see-through variant (spirit_face_ghost.gdshader, so its eyes still move) and
 ## every other part with a see-through copy of its material. A part whose own
 ## shader places it names the instance uniform that fades it (meta
-## VEIL_UNIFORM: the Orchard skin's falling petals) and keeps its shader at
+## VEIL_UNIFORM: a falling wear effect, kit/fall_effect.gd) and keeps its shader at
 ## VEIL strength. A part a body cosmetic draws with its own shader (the Tide
 ## torso) shows as the plain body, and the face loses that cosmetic's pattern: the ghost shows the outfit's
 ## shape, never a second solid pip. Its ground shadow and ring would read as

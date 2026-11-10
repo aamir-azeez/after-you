@@ -1,21 +1,22 @@
 shader_type spatial;
-// The Orchard skin's falling petals (pip_wear/orchard_skin.gd): every petal of
-// the one mesh fades in above the head, flutters down round the pip and fades
-// out by the feet, waits a moment and falls again. Each fall draws its own
-// look from an integer hash of the petal, the fall's number and the pip's
-// seed; the fall's number wraps every `loop` seconds, so the whole fall loops
-// perfectly. The motion is all here, driven by the pip's own clock
-// (fall_clock, set at the idle card rate), never the engine's running time,
-// so a calm screen still draws only on change. Each vertex is a petal's own
-// point (UV.x is the petal's index). The numbers come from orchard_skin.gd,
-// which also holds the same path and hash in GDScript (fall_petal) for its
-// tests: change both together.
+// A pip's falling effect (kit/fall_effect.gd): every shape of the one mesh
+// fades in above the head, flutters down round the pip and fades out by the
+// feet, waits a moment and falls again. Each fall draws its own look from an
+// integer hash of the shape, the fall's number and the pip's seed; the fall's
+// number wraps every `loop` seconds, so the whole fall loops perfectly. The
+// motion is all here, driven by the pip's own clock (fall_clock, set at the
+// idle card rate), never the engine's running time, so a calm screen still
+// draws only on change. Each vertex is a shape's own point (UV.x is the
+// shape's index). The values come from a recipe (fall_effect.gd DEFAULTS and
+// uniforms()); fall_effect.gd also holds this path and hash in GDScript
+// (fall_place, _mix) for the tests, and test_fall_effect.gd parses this file
+// to check the two agree: change both together.
 render_mode blend_mix, cull_disabled, depth_draw_opaque;
 
 uniform float loop = 30.0;
-// Turns per loop for even and odd petals, how many petals, a fall's seconds.
+// Turns per loop for even and odd shapes, how many shapes, a fall's seconds.
 uniform vec2 slots = vec2(5.0, 6.0);
-uniform float petals = 10.0;
+uniform float count = 10.0;
 uniform vec2 fall_time = vec2(3.4, 4.6);
 // Share of falls starting in front of the head, a start's turn from straight
 // toward or away from the camera, the drift round the body; then the ranges
@@ -40,12 +41,12 @@ uniform float open_to = 0.15;
 uniform float bob = 0.01;
 uniform float lean = 1.1;
 uniform float shrink = 0.3;
-// How much of its own colour it shows unlit, so a small petal stays bright.
+// How much of its own colour it shows unlit, so a small shape stays bright.
 uniform float glow = 0.4;
-// The two pinks a fall picks between (raw, like the resting petals' vertex colours).
-uniform vec3 pink;
-uniform vec3 pink_deep;
-// The head (at rest or sunk) and the torso, grown by the petal's clearance
+// The two colours a fall picks between (raw, like baked vertex colours).
+uniform vec3 color_a = vec3(0.960784, 0.721569, 0.788235);
+uniform vec3 color_b = vec3(0.933333, 0.623529, 0.713725);
+// The head (at rest or sunk) and the torso, grown by the shape's clearance
 // (upper body space).
 uniform vec3 head_center;
 uniform vec3 head_half;
@@ -62,7 +63,7 @@ instance uniform float veil = 1.0;
 varying float fade;
 varying vec3 tint;
 
-// lowbias32: orchard_skin.gd _mix.
+// lowbias32: fall_effect.gd _mix.
 uint mix_word(uint x) {
 	x ^= x >> 16u;
 	x *= 2146121005u;
@@ -92,7 +93,7 @@ void vertex() {
 	int index = int(UV.x + 0.5);
 	float turns = index % 2 == 0 ? slots.x : slots.y;
 	float turn_time = loop / turns;
-	float at = mod(fall_clock + turn_time * float(index) / petals, loop);
+	float at = mod(fall_clock + turn_time * float(index) / count, loop);
 	int fall = min(int(floor(at / turn_time)), int(turns) - 1);
 	uint key = mix_word((uint(index) * 2654435769u + uint(fall) * 2246822507u) ^ uint(fall_seed));
 	float time = mix(fall_time.x, min(fall_time.y, turn_time), draw(key, 1));
@@ -113,7 +114,7 @@ void vertex() {
 	float size = waiting ? 0.0 : mix(scale.x, scale.y, draw(key, 11)) * mix(shrink, 1.0, fade);
 	float turning = mix(-spin, spin, draw(key, 8));
 	mat3 pose = turn_y(angle + turning * TAU * u) * turn_x(lean + mix(rock.x, rock.y, draw(key, 9)) * cos(sway)) * turn_z(mix(tip.x, tip.y, draw(key, 10)) * sin(sway + 1.0));
-	tint = mix(pink, pink_deep, draw(key, 13));
+	tint = mix(color_a, color_b, draw(key, 13));
 	VERTEX = vec3(d.x * out_to, y, d.y * out_to) + pose * (VERTEX * size);
 	NORMAL = pose * NORMAL;
 }

@@ -34,8 +34,9 @@ const IslandWorld = preload("res://presentation/island_world.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const Stage = preload("res://presentation/kit/pip_stage.gd")
 const Preview = preload("res://presentation/kit/spirit_preview.gd")
+const FallEffect = preload("res://presentation/kit/fall_effect.gd")
+const FallChecks = preload("res://tests/fixtures/fall_checks.gd")
 const Orchard = preload("res://presentation/pip_wear/orchard_skin.gd")
-const RaceGhost = preload("res://presentation/race_ghost_view.gd")
 const PLACEHOLDER_BODY = preload("res://tests/fixtures/pip_wear_placeholder_body.gd")
 
 ## The board's budget per item.
@@ -57,15 +58,10 @@ const HOOD = preload("res://presentation/pip_wear/fruit_hood.gd")
 const STALK_TUCK := 0.045
 ## The pip views' control sizes (Settings, the name page, the Friends chip).
 const VIEWS := [Vector2(72, 100), Vector2(180, 236), Vector2(42, 56)]
-## Parts drawn on top that are not solid (a glow, a beam, sparkles), and the
-## Orchard skin's falling petals, which the shader places (checked through
-## Orchard.fall_petal instead).
-const NOT_SOLID := ["Halo", "Beam", "Stars", Orchard.FALL_NAME]
-## Facings the falling petals are checked from: the shop's rest turn, front,
-## both sides, back and between.
-const FALL_YAWS := [Preview.REST_YAW, 0.0, PI * 0.5, -PI * 0.5, PI, 1.0, -1.0, 2.4]
-## A falling petal fainter than this is not drawn as anything.
-const FALL_SHOWN := 0.02
+## Parts drawn on top that are not solid (a glow, a beam, sparkles), and a
+## falling effect, which its shader places (checked through
+## tests/fixtures/fall_checks.gd instead).
+const NOT_SOLID := ["Halo", "Beam", "Stars", FallEffect.NODE_NAME]
 
 var checks := 0
 var failures := 0
@@ -339,114 +335,17 @@ func _petals_clear() -> void:
 	_check(in_head == 0 and in_body == 0, "The Orchard skin's petals stay on the head and body, never in them: %d in the head, %d in the body" % [in_head, in_body])
 	spirit.free()
 
-## The Orchard skin's falling petals, every fall of every petal for two pip
-## seeds plus falls drawn at the ends of every range, from top to bottom,
-## from every facing while the pip idles (and in the narrowest view again
-## while it dozes, its head sunk on its body), placed by Orchard.fall_place as
-## the shader places them: every point of a shown petal inside each pip view,
-## and of every petal outside the head, the torso and the feet and clear of a
-## carried seed (the usual one and the Lighthouse's lens). Petals may cross
-## the face. Then: the loop is seamless, the hash is the shader's, and falls
-## differ.
+## The Orchard skin's falling petals take the shared falling checks
+## (tests/fixtures/fall_checks.gd) at full density: every fall of every petal
+## for two pip seeds plus falls drawn at the ends of every range, inside each
+## pip view from every facing, idle and dozing, never inside the pip, clear
+## of a carried seed, inside its bounds, and seamless at the loop.
 func _fall_path() -> void:
-	var shape: PackedVector3Array = _fall_shapes()[0]
-	var falls: Array[PackedFloat32Array] = []
-	for key: int in [Orchard.pip_seed(1), Orchard.pip_seed(2)]:
-		for index in range(Orchard.FALL_PETALS):
-			for fall in range(Orchard.FALL_SLOTS.x if index % 2 == 0 else Orchard.FALL_SLOTS.y): falls.append(Orchard.fall_draws(index, fall, key))
-	var noise := RandomNumberGenerator.new()
-	noise.seed = 77
-	for corner in range(16):
-		var draws := PackedFloat32Array()
-		for at in range(Orchard.FALL_DRAWS): draws.append(0.0 if noise.randf() < 0.5 else 0.99999)
-		falls.append(draws)
-	var heights := 61
-	for size: Vector2 in VIEWS:
-		var narrowest: bool = size == VIEWS[0]
-		var steps := heights * (2 if narrowest else 1)
-		var outside := 0
-		var in_head := 0
-		var in_body := 0
-		var in_feet := 0
-		var in_seed := 0
-		var shown := 0
-		for yaw: float in (FALL_YAWS if narrowest else FALL_YAWS.slice(0, 4)):
-			var view := SubViewport.new()
-			view.size = Vector2i(size * 2.0)
-			view.own_world_3d = true
-			root.add_child(view)
-			var outfit := Outfit.of("orchard_skin", true)
-			var pip := Stage.pip(Look.PEACH, outfit)
-			pip.facing_target = yaw
-			pip.facing.rotation.y = yaw
-			var camera := Stage.build(view, pip, outfit)
-			pip.carrying_seed = true
-			pip.advance_motion(Vector3.ZERO, 0.001, false)
-			var fall: MeshInstance3D = pip.find_child(Orchard.FALL_NAME, true, false)
-			for step in range(steps):
-				var u := float(step % heights) / (heights - 1) * 0.9999
-				var dozing := step >= heights
-				if step == heights: pip.set_pose(Idle.DOZE, {"toward": Vector3(1.6, 0, 0.4)})
-				for frame in range(5): pip.advance_motion(Vector3.ZERO, DT, false)
-				var from_fall := fall.global_transform
-				var to_head := pip.head.global_transform.affine_inverse()
-				var to_torso := pip.torso.global_transform.affine_inverse()
-				var feet: Array[Transform3D] = []
-				for foot: Node3D in pip.feet: feet.append(foot.global_transform.affine_inverse())
-				var seeing := from_fall.affine_inverse() * camera.global_position
-				var seeds: Array[Vector3] = []
-				for radius: float in [0.13, 0.25]:
-					pip.carried_radius = radius
-					seeds.append(pip.global_transform * pip.carry_anchor_position())
-				pip.carried_radius = 0.13
-				for draws: PackedFloat32Array in falls:
-					var placed: Dictionary = Orchard.fall_place(draws, u, seeing)
-					var alpha := float(placed.alpha)
-					if alpha > FALL_SHOWN: shown += 1
-					for vertex: Vector3 in shape:
-						var point: Vector3 = from_fall * ((placed.frame as Transform3D) * vertex)
-						if narrowest:
-							if _inside_head(to_head * point) < 1.0: in_head += 1
-							var body: Vector3 = to_torso * point
-							if pow(absf(body.x / Look.TORSO_HALF.x), Look.TORSO_POWER) + pow(absf(body.y / Look.TORSO_HALF.y), Look.TORSO_POWER) + pow(absf(body.z / Look.TORSO_HALF.z), Look.TORSO_POWER) < 1.0: in_body += 1
-							for foot: Transform3D in feet:
-								if ((foot * point) / Look.FOOT_HALF).length() < 1.0: in_feet += 1
-							if point.distance_to(seeds[0]) < 0.13 or point.distance_to(seeds[1]) < 0.25: in_seed += 1
-						if alpha > FALL_SHOWN and not dozing and not camera.is_position_in_frustum(point): outside += 1
-			view.free()
-		_check(shown > 0, "The Orchard skin's falling petals show in the %dx%d view" % [size.x, size.y])
-		_check(outside == 0, "and stay inside it through every fall, from every side: %d points outside" % outside)
-		if narrowest:
-			_check(in_head == 0 and in_body == 0 and in_feet == 0, "never passing through the pip: %d points in the head, %d in the body, %d in the feet" % [in_head, in_body, in_feet])
-			_check(in_seed == 0, "and clear of a carried seed: %d points" % in_seed)
-	var seam := 0
-	var camera := Vector3(0.6, 0.7, 2.3)
-	for key: int in [Orchard.pip_seed(1), Orchard.pip_seed(5)]:
-		for index in range(Orchard.FALL_PETALS):
-			for at: float in [0.0, 0.37, 4.99, 5.01, 11.3, 17.9, 29.95]:
-				var now: Dictionary = Orchard.fall_petal(index, at, key, camera)
-				var later: Dictionary = Orchard.fall_petal(index, at + Orchard.FALL_LOOP, key, camera)
-				if not (now.frame as Transform3D).is_equal_approx(later.frame) or absf(float(now.alpha) - float(later.alpha)) > 0.001: seam += 1
-	_check(seam == 0, "The fall loops perfectly: a loop later every petal is where it was (%d differ)" % seam)
-	_check(Orchard._mix(1) == 1753845952 and Orchard._mix(123456789) == 2834422664 and Orchard._mix(0xFFFFFFFF) == 1734902346, "Its hash is lowbias32 on 32 bit words, as the shader's uint computes it")
-	var first := Orchard.fall_draws(3, 0, Orchard.pip_seed(1))
-	var inside := true
-	for value: float in first: inside = inside and value >= 0.0 and value < 1.0
-	_check(inside and first != Orchard.fall_draws(3, 1, Orchard.pip_seed(1)) and first != Orchard.fall_draws(4, 0, Orchard.pip_seed(1)) and first != Orchard.fall_draws(3, 0, Orchard.pip_seed(2)), "Each fall draws its own look, another petal or another pip's another")
-
-## Each falling petal's own points, by its index (UV.x), as the mesh holds them.
-func _fall_shapes() -> Array:
-	var spirit := _spirit()
-	spirit.wear(Outfit.of("orchard_skin", true))
-	var fall: MeshInstance3D = spirit.find_child(Orchard.FALL_NAME, true, false)
-	var arrays := fall.mesh.surface_get_arrays(0)
-	var shapes := []
-	for index in range(Orchard.FALL_PETALS): shapes.append(PackedVector3Array())
-	var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
-	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	for at in range(vertices.size()): shapes[roundi(uvs[at].x)].append(vertices[at])
-	spirit.free()
-	return shapes
+	var outfit := Outfit.of("orchard_skin", true)
+	var pip := Stage.pip(Look.PEACH, outfit)
+	var made: Dictionary = FallChecks.falls(pip)[0].get_meta(FallEffect.RECIPE_META)
+	pip.free()
+	FallChecks.path(self, _check, "The Orchard skin", made, func(color: Color) -> Node3D: return Stage.pip(color, outfit), outfit, true)
 
 ## Solid parts only (no glow sprite, beam or sparkles), in head space: the
 ## outfit's, and with `leaf` the pip's own leaf (an item may lift or swap it).
@@ -638,43 +537,18 @@ func _animation() -> void:
 	_check(tide.face_art.material.get_shader_parameter("body_color") == Look.MINT and tide.face_art.material.get_shader_parameter("eye_xy") == tide.face_art._eye_xy, "with the pip's own colour and its eyes where they were")
 	var orchard := _spirit()
 	orchard.wear(Outfit.of("orchard_skin", true))
-	var fall: MeshInstance3D = orchard.find_child(Orchard.FALL_NAME, true, false)
-	_check(fall != null and orchard.upper_body.is_ancestor_of(fall), "The Orchard skin's petals fall round the body")
-	if fall != null:
-		_check(fall.mesh.get_surface_count() == 1 and fall.material_override is ShaderMaterial and fall.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "as one draw call with its shader, casting no shadow")
-		_check(fall.custom_aabb.size.y >= Orchard.FALL_TOP.y and fall.custom_aabb.has_point(Vector3(0, Orchard.FALL_BOTTOM, 0)), "and bounds covering the whole fall, so they are never culled mid-fall")
-		var material: ShaderMaterial = fall.material_override
-		_check(is_equal_approx(float(material.get_shader_parameter(&"loop")), Orchard.FALL_LOOP) and material.get_shader_parameter(&"slots") == Vector2(Orchard.FALL_SLOTS) and material.get_shader_parameter(&"top") == Orchard.FALL_TOP and material.shader.code.contains("2146121005u"), "and the shader takes its path and hash from the skin's own numbers")
-		_check(not fall.visible, "A still pip shows the resting petals alone")
+	var falls := FallChecks.falls(orchard)
+	if _check(falls.size() == 1, "The Orchard skin's petals fall round the body"):
+		var made: Dictionary = falls[0].get_meta(FallEffect.RECIPE_META)
+		_check(made.shape == &"petal" and made.colors == [Orchard.PETAL, Orchard.PETAL_DEEP], "as petals in the resting petals' two pinks")
+		FallChecks.node(_check, "The Orchard skin", made, func() -> Node3D:
+			var spirit := _spirit()
+			spirit.wear(Outfit.of("orchard_skin", true))
+			return spirit)
 		for frame in range(12): orchard.advance_motion(Vector3.ZERO, DT, false)
-		_check(fall.visible, "and a moving one shows them falling")
-		var moved := 0
-		var posed := fall.transform
-		for frame in range(60):
-			orchard.advance_motion(Vector3.ZERO, DT, false)
-			if fall.transform != posed: moved += 1
-		_check(moved == 0, "moved by the shader alone: the node never moves")
-		_check(not material.shader.code.contains("TIME"), "on the pip's own clock, never TIME, so a calm screen still draws only on change")
-		var ticks := 0
-		var clock: Variant = fall.get_instance_shader_parameter(&"fall_clock")
-		for frame in range(60):
-			orchard.advance_motion(Vector3.ZERO, DT, false)
-			if fall.get_instance_shader_parameter(&"fall_clock") != clock: ticks += 1
-			clock = fall.get_instance_shader_parameter(&"fall_clock")
-		_check(ticks >= 10 and ticks <= 12, "which steps at the idle rate: %d steps in 1 s" % ticks)
+		var falling: bool = falls[0].visible
 		for frame in range(30): orchard.advance_motion(Vector3.ZERO, DT, true)
-		_check(not fall.visible and orchard.torso.find_children("*", "MeshInstance3D", true, false).size() > 0, "Under Reduce motion only the resting petals show")
-		for frame in range(30): orchard.advance_motion(Vector3.ZERO, DT, false)
-		_check(fall.visible, "and they fall again when it is off")
-		var second := _spirit()
-		second.wear(Outfit.of("orchard_skin", true))
-		var second_fall: MeshInstance3D = second.find_child(Orchard.FALL_NAME, true, false)
-		_check(second_fall.material_override == fall.material_override and second_fall.mesh == fall.mesh, "Two pips share the falling petals' mesh and material")
-		_check(Orchard.VEIL_META == RaceGhost.VEIL_UNIFORM and fall.get_meta(Orchard.VEIL_META) == &"veil" and material.shader.code.contains("instance uniform float veil"), "and the race ghost fades them through their own shader")
-		RaceGhost._veil(second, Look.PEACH)
-		_check(second_fall.material_override == fall.material_override and is_equal_approx(float(second_fall.get_instance_shader_parameter(&"veil")), RaceGhost.VEIL), "so a ghost wearing the skin keeps its petals falling, see-through")
-		_check(not is_equal_approx(float(second_fall.get_instance_shader_parameter(&"fall_seed")), float(fall.get_instance_shader_parameter(&"fall_seed"))), "and each falls with its own seed")
-		second.free()
+		_check(falling and not falls[0].visible and orchard.torso.find_children("*", "MeshInstance3D", true, false).size() > 0, "Under Reduce motion only the resting petals show")
 	lamp.free()
 	other.free()
 	tide.free()

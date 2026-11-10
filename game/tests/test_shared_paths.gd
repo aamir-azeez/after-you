@@ -45,6 +45,10 @@ extends SceneTree
 ##     (presentation/duels/energy_meter.gd) in ENERGY_METER_SURFACES, with where.
 ## (r) chapter lists: each screen listing the chapters to play builds presentation/chapter_picker.gd
 ##     (its cards and the closing "more chapters" line) and is in CHAPTER_PICKER_SURFACES.
+## (s) falling wear effects: presentation/kit/fall_effect.gd alone names its shader, sets its
+##     clock and seed and builds a falling mesh; no wear art places its own geometry by a shader
+##     (custom bounds or instance uniforms), no other shader declares the fall's clock or seed, and
+##     each script that uses the kit is in FALL_EFFECT_SURFACES with what it falls.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -286,8 +290,21 @@ const CHAPTER_PICKER_SURFACES := {
 const COMING_SOON_COPY := "CHAPTERS_COMING_SOON"
 const PLAYER_COPY := "res://presentation/player_copy.gd"
 
+## (s) The one falling effect kit, its shader, and each script that uses it with what for.
+const FALL_EFFECT := "res://presentation/kit/fall_effect.gd"
+const FALL_SHADER := "fall_effect.gdshader"
+const FALL_EFFECT_SURFACES := {
+	"res://presentation/pip_wear/orchard_skin.gd": "the Orchard skin's falling petals",
+	"res://services/gl_warmup.gd": "warms the kit's shader (FallEffect.SHADER) with the others",
+}
+## The kit's instance uniforms, which only the kit sets and only its shader declares.
+const FALL_UNIFORMS := "\\b(?:fall_clock|fall_seed)\\b"
+## Wear art that places geometry by its own shader: custom bounds or instance uniforms.
+const WEAR_ART := "res://presentation/pip_wear/"
+const SHADER_PLACED := "\\bcustom_aabb\\b|\\bset_instance_shader_parameter\\("
+
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity"]
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "fall_effect"]
 
 var checks := 0
 var failures := 0
@@ -317,6 +334,7 @@ func _initialize() -> void:
 	_currency_marks()
 	_energy()
 	_chapter_lists()
+	_falls()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -720,6 +738,27 @@ func _chapter_lists() -> void:
 		_check(seen.has(path), "CHAPTER_PICKER_SURFACES names %s, which builds no chapter picker now: delete it" % path)
 	_check(_found("\\bPlayerCopy\\." + COMING_SOON_COPY + "\\b", str(_sources.get(CHAPTER_PICKER, ""))) == 1, "presentation/chapter_picker.gd closes its list with PlayerCopy." + COMING_SOON_COPY)
 
+# (s) Falling wear effects ---------------------------------------------------
+
+func _falls() -> void:
+	var seen := {}
+	for path: String in _sources:
+		if path == FALL_EFFECT: continue
+		var source: String = _sources[path]
+		_check(not source.contains(FALL_SHADER), "%s names the falling effect's shader: wear it through presentation/kit/fall_effect.gd" % path)
+		_check(_found(FALL_UNIFORMS, source) == 0, "%s sets a falling effect's clock or seed itself: presentation/kit/fall_effect.gd wear() does" % path)
+		if path.begins_with(WEAR_ART): _check(_found(SHADER_PLACED, source) == 0, "%s places its own geometry by a shader: a falling effect is a recipe for presentation/kit/fall_effect.gd" % path)
+		if _alias(source, FALL_EFFECT).is_empty(): continue
+		seen[path] = true
+		_check(FALL_EFFECT_SURFACES.has(path), "%s uses the falling effect kit: add it to FALL_EFFECT_SURFACES with what it falls" % path)
+	for path: String in FALL_EFFECT_SURFACES:
+		_check(seen.has(path), "FALL_EFFECT_SURFACES names %s, which uses no presentation/kit/fall_effect.gd now: delete it" % path)
+	var shaders := _scripts("res://", ".gdshader")
+	_check(shaders.has("res://presentation/kit/" + FALL_SHADER), "The shader scan finds the kit's shader")
+	for path: String in shaders:
+		if path.get_file() == FALL_SHADER: continue
+		_check(_found(FALL_UNIFORMS, FileAccess.get_file_as_string(path)) == 0, "%s declares a falling effect's clock or seed: build the fall as a recipe for presentation/kit/fall_effect.gd" % path)
+
 # (j) and the guard suites ---------------------------------------------------
 
 # (p) Currency marks ---------------------------------------------------------
@@ -794,15 +833,15 @@ static func _alias(source: String, script: String) -> String:
 static func _found(pattern: String, source: String) -> int:
 	return RegEx.create_from_string(pattern).search_all(source).size()
 
-static func _scripts(directory: String) -> Array[String]:
+static func _scripts(directory: String, ending: String = ".gd") -> Array[String]:
 	var found: Array[String] = []
 	var dir := DirAccess.open(directory)
 	if dir == null: return found
 	for name: String in dir.get_directories():
 		if name.begins_with(".") or (directory == "res://" and name in ["addons", "tests"]): continue
-		found.append_array(_scripts(directory.path_join(name)))
+		found.append_array(_scripts(directory.path_join(name), ending))
 	for name: String in dir.get_files():
-		if name.ends_with(".gd"): found.append(directory.path_join(name))
+		if name.ends_with(ending): found.append(directory.path_join(name))
 	return found
 
 func _check(condition: bool, message: String) -> void:
