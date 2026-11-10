@@ -265,7 +265,7 @@ func _fruit_tiles(app: Node, fruits: RefCounted, scope: Dictionary, viewport: Su
 	for control: Control in fruit.find_children("*", "Control", true, false) + [fruit]:
 		if control.mouse_filter == Control.MOUSE_FILTER_STOP: takes_input.append(str(control.name))
 	_check(takes_input.is_empty(), "The Fruit tile takes no input either: %s" % [takes_input])
-	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 20.0, "earned": 20.0, "achievements": [], "ladder": {"first": 10.0, "step": 1.0, "every": 1.0, "top": 24.0, "welcome": 10.0}, "grant": {"next": 12.0, "top": 24.0, "welcome": 10.0, "welcome_paid": true}}})
+	fruits.note_view(server, owner, {"fruits": {"schema_version": 1.0, "balance": 31.0, "earned": 31.0, "achievements": [], "ladder": {"first": 10.0, "step": 1.0, "every": 1.0, "top": 24.0, "welcome": 10.0}, "grant": {"next": 12.0, "top": 24.0, "welcome": 10.0, "welcome_paid": true}}})
 	await _open_card(app)
 	fruit = app.overlay.find_child("FullJourneyFruits", true, false)
 	_check(_words(fruit) == ["12 Fruits a month", "Grows to 24 as you stay."], "The server's numbers win, and a paid welcome basket is no longer named: " + str(_words(fruit)))
