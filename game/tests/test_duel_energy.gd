@@ -135,7 +135,7 @@ func _frames(count: int) -> void:
 	for index in range(count): await process_frame
 
 static func part(energy: int, top: int = 5, full_at: int = FULL_AT, now: int = T0) -> Dictionary:
-	return {"schema_version": 1.0, "energy": float(energy), "max": float(top), "full_at": float(full_at), "step_ms": float(STEP), "now": float(now), "refill_fruits": 10.0,
+	return {"schema_version": 1.0, "energy": float(energy), "max": float(top), "full_at": float(full_at), "step_ms": float(STEP), "now": float(now), "refill_fruits": 20.0,
 		"base_max": 5.0, "full_journey_max": 7.0}
 
 ## A store for the test player, energy on, its clock `clock`, read once with `kept` unless it is {}.
@@ -307,10 +307,10 @@ func _refill_spend() -> void:
 	var fruits := _fruits("spend", 101)
 	var server := Server.new()
 	var client := _wardrobe_client("spend", fruits, energy, server)
-	server.answer = {"ok": true, "status": 200, "data": {"schema_version": 1.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 91.0, "energy": part(5, 5, T0 + 100, T0 + 100)}}
+	server.answer = {"ok": true, "status": 200, "data": {"schema_version": 1.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 81.0, "energy": part(5, 5, T0 + 100, T0 + 100)}}
 	var answer: Dictionary = await client.refill_energy()
-	_check(answer.ok and server.sent.size() == 1 and server.sent[0][2].kind == "energy" and server.sent[0][2].id == "energy" and int(server.sent[0][2].expected_cost) == 10, "Refill sends the energy spend at the price shown: %s" % [server.sent])
-	_check(fruits.balance(SERVER, ME) == 91 and energy.meter(SERVER, ME).energy == 5, "The receipt is kept: 91 Fruits and a full meter")
+	_check(answer.ok and server.sent.size() == 1 and server.sent[0][2].kind == "energy" and server.sent[0][2].id == "energy" and int(server.sent[0][2].expected_cost) == 20, "Refill sends the energy spend at the price shown: %s" % [server.sent])
+	_check(fruits.balance(SERVER, ME) == 81 and energy.meter(SERVER, ME).energy == 5, "The receipt is kept: 81 Fruits and a full meter")
 	server.answer = {"ok": false, "status": 409, "code": "energy_full"}
 	answer = await client.refill_energy()
 	_check(answer.code == "energy_full" and server.sent.back()[0] == HTTPClient.METHOD_GET, "Refused at full: the meter is read again with the wallet")
@@ -534,13 +534,13 @@ func _refill_card(online: Online) -> void:
 	var to: Control = energy_line.find_child("EnergyFull", true, false)
 	_check(from != null and to != null and from.lit == 1 and from.count == 5 and to.lit == 5, "From the meter now to full")
 	var confirm: Button = card.find_child("EnergyRefillConfirm", true, false)
-	_check(confirm != null and confirm.find_child("WardrobeBuyContent", true, false) != null, "A peach Refill for the Fruit and 10")
-	server.answer = {"ok": true, "status": 200, "data": {"schema_version": 1.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 91.0, "energy": part(5, 5, T0 + 10, T0 + 10)}}
+	_check(confirm != null and confirm.find_child("WardrobeBuyContent", true, false) != null, "A peach Refill for the Fruit and 20")
+	server.answer = {"ok": true, "status": 200, "data": {"schema_version": 1.0, "currency": "fruits", "balance": 24000.0, "fruit_balance": 81.0, "energy": part(5, 5, T0 + 10, T0 + 10)}}
 	confirm.pressed.emit()
 	await _frames(6)
 	_check(server.sent.size() == 1 and server.sent[0][2].kind == "energy" and energy.meter(SERVER, ME).energy == 5, "Refill fills the meter from the receipt")
 	_check(spend.refill_energy(parent) == null, "At the max no refill is offered")
-	# Short of 10 Fruits: the shared short card.
+	# Short of 20 Fruits: the shared short card.
 	energy.note_view(SERVER, ME, {"energy": part(1, 5, T0 + 4 * STEP, T0 + 20)})
 	spend.client = _wardrobe_client("card_short", _fruits("card_short", 5), energy, server)
 	card = spend.refill_energy(parent)

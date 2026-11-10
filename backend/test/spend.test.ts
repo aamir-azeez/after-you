@@ -36,7 +36,7 @@ describe("the shop catalogue", () => {
     }
   });
   it("keeps the 1:5:20:50:100 ramp and sells no earned item", () => {
-    expect(CATALOG.tier_prices).toEqual({ common: 1000, uncommon: 5000, rare: 20000, epic: 50000, special: 100000, earned: 0, sprig: 10, fruit_small: 25, fruit_hat: 50, fruit_body: 100 });
+    expect(CATALOG.tier_prices).toEqual({ common: 1000, uncommon: 5000, rare: 20000, epic: 50000, special: 100000, earned: 0, sprig: 20, fruit_small: 50, fruit_hat: 100, fruit_body: 200 });
     expect(CATALOG.tier_currency).toEqual(manifest.tier_currency);
     for (const id of ["gold_leaf", "every_hard", "top_ten_ribbon"]) expect(quote({ kind: "item", id }, holding()), id).toMatchObject({ ok: false, code: "not_for_sale" });
   });

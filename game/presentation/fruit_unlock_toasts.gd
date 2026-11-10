@@ -1,6 +1,6 @@
 extends Node
 ## Says each newly paid Fruit goal once, through the app's one pop-up
-## (presentation/toast.gd): "First friend duel win: +10 Fruits" with View,
+## (presentation/toast.gd): "First friend duel win: +5 Fruits" with View,
 ## which opens the Fruits page. The goals wait in services/fruit_wallet.gd
 ## unlocks (from a turn's receipt or a wallet read) until one is shown, and each
 ## is marked shown as it posts, so it never says one twice, on this launch or

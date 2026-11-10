@@ -3,7 +3,7 @@ extends RefCounted
 ## own sheet, so Back closes it before the page: "Out of energy", the meter
 ## (presentation/duels/energy_meter.gd card: the empty sprouts and "Your next
 ## energy comes in 6 min."), a plain Wait that always shows, and beside it the
-## peach "Refill for [Fruit] 10" only when the caller offers a refill (Fruits
+## peach "Refill for [Fruit] 20" only when the caller offers a refill (Fruits
 ## show and the meter is below its max: presentation/duels/duel_energy_flow.gd
 ## decides, so this card reads no Fruits). Wait only closes the card: waiting
 ## is free. Its Refill closes the card and calls `refill`; it needs the server,

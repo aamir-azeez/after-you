@@ -3,7 +3,7 @@ import { RATES } from "./rates";
 import raw from "./fruits.json";
 
 /**
- * Fruits' numbers (claude PLAN v2 with the owner's answers of 2026-11-09), as data: fruits.json, checked once at module
+ * Fruits' numbers (claude PLAN v2 with the owner's answers of 2026-11-09 and its rebalance of 2026-11-10), as data: fruits.json, checked once at module
  * load, so a bad edit fails every test and every deploy check. Pack sizes and prices are in bundles.json, Orchard prices
  * in catalog.json; everything else Fruit is here. The phone reads these numbers from the wallet read, never its own copy.
  *

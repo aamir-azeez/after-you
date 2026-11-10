@@ -62,10 +62,10 @@ const TIER_PRICES := {
 	"special": 100000,
 	"earned": 0,
 	# The Orchard, bought with Fruits (backend catalog.json tier_currency).
-	"sprig": 10,
-	"fruit_small": 25,
-	"fruit_hat": 50,
-	"fruit_body": 100,
+	"sprig": 20,
+	"fruit_small": 50,
+	"fruit_hat": 100,
+	"fruit_body": 200,
 }
 ## The currency each tier is sold in, for the tiers not sold with Pollen: a
 ## tier left out of this list is "pollen". The server's catalogue names the

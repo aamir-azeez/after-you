@@ -17,7 +17,7 @@ import { applyLedger, dropLedgerLine, fullJourneyUntil, inLedger } from "./walle
  *   so the meter never goes above it.
  * Every function runs inside the caller's transaction (a Player method's own).
  */
-export const ENERGY_RULES = Object.freeze({ max: 5, full_journey_max: 7, step_ms: 10 * 60_000, refill_fruits: 10 });
+export const ENERGY_RULES = Object.freeze({ max: 5, full_journey_max: 7, step_ms: 10 * 60_000, refill_fruits: 20 });
 /** `base_max` and `full_journey_max`: both tops, so the Full Journey card can show the perk to a player without it. */
 export type EnergyView = { schema_version: 1; energy: number; max: number; full_at: number; step_ms: number; now: number; refill_fruits: number; base_max: number; full_journey_max: number };
 export const energyKey = (duelId: string) => `energy:${duelId}`;

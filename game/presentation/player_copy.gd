@@ -472,11 +472,11 @@ const FRUITS_PAGE_BACK := "Back"
 const FRUITS_PAGE_LOADING := "Loading your Fruits…"
 const FRUITS_PAGE_OFFLINE := "Your Fruits did not load. Try again in a moment."
 const FRUITS_PAGE_RETRY := "Try again"
-## The goals card: its title, and the link that opens every goal ("All 15 goals, 260 Fruits in all") or closes them again.
+## The goals card: its title, and the link that opens every goal ("All 15 goals, 310 Fruits in all") or closes them again.
 const FRUIT_GOALS_TITLE := "Fruits for playing together"
 const FRUIT_GOALS_ALL := "All %d goals, %s Fruits in all"
 const FRUIT_GOALS_FEWER := "Fewer goals"
-## A paid goal's Fruits ("+10").
+## A paid goal's Fruits ("+5").
 const FRUIT_GOAL_PAID := "+%s"
 ## Each goal by its server id (backend fruits.json), in plain game words.
 const FRUIT_GOALS := {

@@ -23,7 +23,7 @@
 		"apple_hood": {
 			"currency": "fruits",
 			"id": "apple_hood",
-			"price": 50,
+			"price": 100,
 			"released": false,
 			"set": "orchard",
 			"slot": "hat",
@@ -34,7 +34,7 @@
 		"apple_leaf": {
 			"currency": "fruits",
 			"id": "apple_leaf",
-			"price": 25,
+			"price": 50,
 			"released": false,
 			"set": "orchard",
 			"slot": "leaf",
@@ -45,7 +45,7 @@
 		"blossom_crown": {
 			"currency": "fruits",
 			"id": "blossom_crown",
-			"price": 50,
+			"price": 100,
 			"released": false,
 			"set": "",
 			"slot": "hat",
@@ -56,7 +56,7 @@
 		"blueberry_hood": {
 			"currency": "fruits",
 			"id": "blueberry_hood",
-			"price": 50,
+			"price": 100,
 			"released": false,
 			"set": "",
 			"slot": "hat",
@@ -122,7 +122,7 @@
 		"orchard_skin": {
 			"currency": "fruits",
 			"id": "orchard_skin",
-			"price": 100,
+			"price": 200,
 			"released": false,
 			"set": "orchard",
 			"slot": "body",
@@ -144,7 +144,7 @@
 		"sprig_coral": {
 			"currency": "fruits",
 			"id": "sprig_coral",
-			"price": 10,
+			"price": 20,
 			"released": false,
 			"set": "",
 			"slot": "leaf",
@@ -155,7 +155,7 @@
 		"sprig_plum": {
 			"currency": "fruits",
 			"id": "sprig_plum",
-			"price": 10,
+			"price": 20,
 			"released": false,
 			"set": "",
 			"slot": "leaf",
@@ -166,7 +166,7 @@
 		"sprig_sky": {
 			"currency": "fruits",
 			"id": "sprig_sky",
-			"price": 10,
+			"price": 20,
 			"released": false,
 			"set": "",
 			"slot": "leaf",
@@ -177,7 +177,7 @@
 		"sprig_sun": {
 			"currency": "fruits",
 			"id": "sprig_sun",
-			"price": 10,
+			"price": 20,
 			"released": false,
 			"set": "",
 			"slot": "leaf",
@@ -234,12 +234,12 @@
 		"common": 1000,
 		"earned": 0,
 		"epic": 50000,
-		"fruit_body": 100,
-		"fruit_hat": 50,
-		"fruit_small": 25,
+		"fruit_body": 200,
+		"fruit_hat": 100,
+		"fruit_small": 50,
 		"rare": 20000,
 		"special": 100000,
-		"sprig": 10,
+		"sprig": 20,
 		"uncommon": 5000
 	}
 }

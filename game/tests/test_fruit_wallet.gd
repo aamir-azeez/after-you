@@ -115,12 +115,12 @@ func _path(stem: String) -> String:
 static func part(balance: float = 40.0, paid: Array = [], extra: Dictionary = {}) -> Dictionary:
 	var rows: Array = []
 	for id: String in ["together_first", "together_five", "duel_win_first", "keepsake_first"]:
-		var row := {"id": id, "fruits": 10.0 if id != "together_five" else 15.0, "goal": 1.0 if id != "together_five" else 5.0, "progress": 0.0, "live": id != "keepsake_first"}
+		var row := {"id": id, "fruits": 5.0 if id != "together_five" else 10.0, "goal": 1.0 if id != "together_five" else 5.0, "progress": 0.0, "live": id != "keepsake_first"}
 		if id in paid: row.paid_at = 1.8e12
 		rows.append(row)
-	var value := {"schema_version": 1.0, "balance": balance, "earned": 60.0, "sunshine": {"left": 0.0, "turns": 24.0, "price": 10.0},
+	var value := {"schema_version": 1.0, "balance": balance, "earned": 60.0, "sunshine": {"left": 0.0, "turns": 24.0, "price": 25.0},
 		"convert": {"pollen_per_fruit": 400.0, "step": 10.0}, "first_pack_gift": true, "first_pack_percent": 100.0, "achievements": rows,
-		"grant": {"next": 15.0, "top": 30.0, "welcome": 25.0, "welcome_paid": true, "latest": {"amount": 15.0, "welcome": 25.0, "at": 1.8e12}}}
+		"grant": {"next": 30.0, "top": 60.0, "welcome": 50.0, "welcome_paid": true, "latest": {"amount": 30.0, "welcome": 50.0, "at": 1.8e12}}}
 	value.merge(extra, true)
 	return value
 
@@ -128,7 +128,7 @@ static func part(balance: float = 40.0, paid: Array = [], extra: Dictionary = {}
 static func answer(fruits: Variant = part(), balance: float = 9000.0) -> Dictionary:
 	var value := {"schema_version": 1.0, "balance": balance, "earned": balance, "bank": 12.0, "name_price": 0.0,
 		"wardrobe": {"items": [], "packs": [], "look": {}, "look_revision": 1.0, "offered": ["daisy"], "offered_packs": [], "sets": {}, "unlocked": [],
-			"prices": {"daisy": 1000.0}, "fruit_prices": {"apple_hood": 50.0, "apple_leaf": 25.0, "orchard_skin": 100.0, "sprig_sun": 10.0}, "fruit_sets": {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]}}}
+			"prices": {"daisy": 1000.0}, "fruit_prices": {"apple_hood": 100.0, "apple_leaf": 50.0, "orchard_skin": 200.0, "sprig_sun": 20.0}, "fruit_sets": {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]}}}
 	if fruits != null: value.fruits = fruits
 	return value
 
@@ -198,22 +198,22 @@ func _names() -> void:
 
 func _parts() -> void:
 	var kept := FruitWallet.checked_part(part(40.0, ["together_first"]))
-	_check(kept.balance == 40 and kept.earned == 60 and kept.sunshine == {"left": 0, "turns": 24, "price": 10} and kept.convert == {"pollen_per_fruit": 400, "step": 10} and kept.first_pack_gift and kept.first_pack_percent == 100, "The Fruits part is kept with whole numbers: %s" % [kept])
+	_check(kept.balance == 40 and kept.earned == 60 and kept.sunshine == {"left": 0, "turns": 24, "price": 25} and kept.convert == {"pollen_per_fruit": 400, "step": 10} and kept.first_pack_gift and kept.first_pack_percent == 100, "The Fruits part is kept with whole numbers: %s" % [kept])
 	_check(kept.achievements.size() == 4 and kept.achievements[0].paid and kept.achievements[0].paid_at == 1800000000000 and not kept.achievements[1].paid and not kept.achievements[3].live, "Achievements keep their order, paid and live")
-	_check(kept.grant == {"next": 15, "top": 30, "welcome": 25, "welcome_paid": true, "latest": {"amount": 15, "welcome": 25, "at": 1800000000000}}, "The Full Journey Fruits are kept")
+	_check(kept.grant == {"next": 30, "top": 60, "welcome": 50, "welcome_paid": true, "latest": {"amount": 30, "welcome": 50, "at": 1800000000000}}, "The Full Journey Fruits are kept")
 	_check(FruitWallet.checked_part(part(-30.0)).balance == -30, "A balance below 0 after a refund is kept")
 	for broken: Variant in [null, "x", part(40.5), part(40.0, [], {"earned": -1.0}), part(40.0, [], {"schema_version": 2.0}), part(40.0, [], {"balance": "40"})]:
 		_check(FruitWallet.checked_part(broken).is_empty(), "A part without a whole balance and earned is refused: %s" % [broken])
-	var laddered := FruitWallet.checked_part(part(40.0, [], {"ladder": {"first": 15.0, "step": 1.0, "every": 2.0, "top": 30.0, "welcome": 25.0}}))
-	_check(laddered.ladder == {"first": 15, "step": 1, "every": 2, "top": 30, "welcome": 25}, "The Fruit ladder everyone is shown is kept: %s" % [laddered])
-	for broken_ladder: Variant in [{"first": 15.0, "step": 1.0, "every": 0.0, "top": 30.0, "welcome": 25.0}, {"first": 15.0, "step": 1.0, "every": 2.0, "top": 10.0, "welcome": 25.0}, {"first": 15.0, "step": 1.0, "every": 2.0, "top": 30.0}, "15"]:
+	var laddered := FruitWallet.checked_part(part(40.0, [], {"ladder": {"first": 30.0, "step": 5.0, "every": 2.0, "top": 60.0, "welcome": 50.0}}))
+	_check(laddered.ladder == {"first": 30, "step": 5, "every": 2, "top": 60, "welcome": 50}, "The Fruit ladder everyone is shown is kept: %s" % [laddered])
+	for broken_ladder: Variant in [{"first": 30.0, "step": 5.0, "every": 0.0, "top": 60.0, "welcome": 50.0}, {"first": 30.0, "step": 5.0, "every": 2.0, "top": 10.0, "welcome": 50.0}, {"first": 30.0, "step": 5.0, "every": 2.0, "top": 60.0}, "30"]:
 		_check(not FruitWallet.checked_part(part(40.0, [], {"ladder": broken_ladder})).has("ladder") and FruitWallet.checked_part(part(40.0, [], {"ladder": broken_ladder})).balance == 40, "A ladder off the contract is left out by itself: %s" % [broken_ladder])
 	var ladder_store: RefCounted = FruitWallet.new(_path("ladder"))
 	ladder_store.set_enabled(SERVER, ME, true)
 	_check(ladder_store.ladder(SERVER, ME).is_empty(), "No ladder before a read")
-	ladder_store.note_view(SERVER, ME, {"fruits": part(40.0, [], {"ladder": {"first": 15.0, "step": 1.0, "every": 2.0, "top": 30.0, "welcome": 25.0}})})
-	_check(ladder_store.ladder(SERVER, ME).top == 30 and FruitWallet.new(ladder_store.path).ladder(SERVER, ME).first == 15, "A read's ladder is kept, a restart included")
-	var sub := FruitWallet.checked_part(part(40.0, [], {"sunshine": {"left": 30.0, "turns": 24.0, "price": 10.0}, "convert": {"pollen_per_fruit": 0.0, "step": 10.0}, "first_pack_gift": "yes", "grant": {"next": 15.0}}))
+	ladder_store.note_view(SERVER, ME, {"fruits": part(40.0, [], {"ladder": {"first": 30.0, "step": 5.0, "every": 2.0, "top": 60.0, "welcome": 50.0}})})
+	_check(ladder_store.ladder(SERVER, ME).top == 60 and FruitWallet.new(ladder_store.path).ladder(SERVER, ME).first == 30, "A read's ladder is kept, a restart included")
+	var sub := FruitWallet.checked_part(part(40.0, [], {"sunshine": {"left": 30.0, "turns": 24.0, "price": 25.0}, "convert": {"pollen_per_fruit": 0.0, "step": 10.0}, "first_pack_gift": "yes", "grant": {"next": 30.0}}))
 	_check(sub.balance == 40 and not sub.has("sunshine") and not sub.has("convert") and not sub.has("grant") and not sub.first_pack_gift and sub.achievements.size() == 4, "A broken sub part is left out by itself: %s" % [sub])
 	var rows := part()
 	rows.achievements = [{"id": "Bad Id", "fruits": 10.0, "goal": 1.0, "progress": 0.0, "live": true}, {"id": "ok_one", "fruits": 10.0, "goal": 1.0, "progress": 0.0, "live": "yes"},
@@ -239,7 +239,7 @@ func _file() -> void:
 	_check(again.part(SERVER, OTHER).is_empty() and again.part("https://other.example.test", ME).is_empty(), "Each server and player keeps its own")
 	_check(again.offer(SERVER, ME) == {"first_gift": true, "first_gift_percent": 100} and Bundles.adds("bowl", again.offer(SERVER, ME)) == 110, "The first pack gift reads as an offer for the packs")
 	_check(again.convert_valid(SERVER, ME, 20) and not again.convert_valid(SERVER, ME, 15) and not again.convert_valid(SERVER, ME, 0) and again.convert_pollen(SERVER, ME, 20) == 8000, "Convert: whole steps only, 400 Pollen a Fruit")
-	_check(again.sunshine_buyable(SERVER, ME) and again.grant_paid(SERVER, ME, 1800000000000) == {"amount": 15, "welcome": 25} and again.grant_paid(SERVER, ME, 5).is_empty(), "Sunshine buyable at 0 left; the grant's Fruits by its instalment")
+	_check(again.sunshine_buyable(SERVER, ME) and again.grant_paid(SERVER, ME, 1800000000000) == {"amount": 30, "welcome": 50} and again.grant_paid(SERVER, ME, 5).is_empty(), "Sunshine buyable at 0 left; the grant's Fruits by its instalment")
 	store.set_enabled(SERVER, OTHER, true)
 	_check(not store.note_view(SERVER, OTHER, answer(null)) and not store.needs_read(SERVER, OTHER), "A read with no Fruits part this build can keep asks no more this launch")
 	_check(FruitWallet.new(path).needs_read(SERVER, OTHER), "and asks again after a restart")
@@ -266,10 +266,10 @@ func _unlocks() -> void:
 	store.note_view(SERVER, ME, answer(part(40.0, ["together_first", "duel_win_first"])))
 	_check(store.unlocks(SERVER, ME).is_empty() and heard.count == 0, "The first read learns what was paid before: no toasts on a new install")
 	store.note_view(SERVER, ME, answer(part(50.0, ["together_first", "duel_win_first", "together_five"])))
-	_check(store.unlocks(SERVER, ME) == [{"id": "together_five", "fruits": 15}] and heard.count == 1, "A newly paid achievement toasts: %s" % [store.unlocks(SERVER, ME)])
+	_check(store.unlocks(SERVER, ME) == [{"id": "together_five", "fruits": 10}] and heard.count == 1, "A newly paid achievement toasts: %s" % [store.unlocks(SERVER, ME)])
 	store.note_view(SERVER, ME, answer(part(50.0, ["together_first", "duel_win_first", "together_five"])))
 	_check(store.unlocks(SERVER, ME).size() == 1 and heard.count == 1, "The same read again adds nothing")
-	_check(FruitWallet.new(path).unlocks(SERVER, ME) == [{"id": "together_five", "fruits": 15}], "A toast not shown yet survives a restart")
+	_check(FruitWallet.new(path).unlocks(SERVER, ME) == [{"id": "together_five", "fruits": 10}], "A toast not shown yet survives a restart")
 	store.mark_unlock_shown(SERVER, ME, "together_five")
 	_check(store.unlocks(SERVER, ME).is_empty() and FruitWallet.new(path).unlocks(SERVER, ME).is_empty(), "Once shown it never shows again, after a restart too")
 	store.note_view(SERVER, ME, answer(part(50.0, ["together_first"])))
@@ -280,13 +280,13 @@ func _unlocks() -> void:
 
 func _receipt_unlocks() -> void:
 	var store := _fruit_store()
-	var receipt := PollenWallet.checked_receipt(_receipt({"fruits": {"balance": 10.0, "paid": [{"id": "together_first", "amount": 10.0}]}}))
-	_check(store.note_receipt(SERVER, ME, receipt) and store.unlocks(SERVER, ME) == [{"id": "together_first", "fruits": 10}], "A receipt's paid achievement toasts, before any read")
+	var receipt := PollenWallet.checked_receipt(_receipt({"fruits": {"balance": 5.0, "paid": [{"id": "together_first", "amount": 5.0}]}}))
+	_check(store.note_receipt(SERVER, ME, receipt) and store.unlocks(SERVER, ME) == [{"id": "together_first", "fruits": 5}], "A receipt's paid achievement toasts, before any read")
 	store.note_view(SERVER, ME, answer(part(40.0, ["together_first", "duel_win_first"])))
-	_check(store.unlocks(SERVER, ME) == [{"id": "together_first", "fruits": 10}] and store.balance(SERVER, ME) == 40, "The first read after it adds no toast of its own and keeps the one waiting")
+	_check(store.unlocks(SERVER, ME) == [{"id": "together_first", "fruits": 5}] and store.balance(SERVER, ME) == 40, "The first read after it adds no toast of its own and keeps the one waiting")
 	store.note_receipt(SERVER, ME, receipt)
 	_check(store.unlocks(SERVER, ME).size() == 1, "The same receipt again (a retried reply) toasts nothing more")
-	var later := PollenWallet.checked_receipt(_receipt({"fruits": {"balance": 55.0, "paid": [{"id": "together_five", "amount": 15.0}]}, "sunshine_left": 7.0}))
+	var later := PollenWallet.checked_receipt(_receipt({"fruits": {"balance": 55.0, "paid": [{"id": "together_five", "amount": 10.0}]}, "sunshine_left": 7.0}))
 	store.note_receipt(SERVER, ME, later)
 	_check(store.unlocks(SERVER, ME).size() == 2 and store.balance(SERVER, ME) == 55 and store.sunshine(SERVER, ME).left == 7, "A receipt keeps its Fruit balance and Sunshine turns left")
 	store.note_view(SERVER, ME, answer(part(55.0, ["together_first", "duel_win_first", "together_five"])))
@@ -405,20 +405,20 @@ static func _hash(n: int) -> String:
 	return ("%x" % n).lpad(64, "0")
 
 func _turn_receipts() -> void:
-	var kept := PollenWallet.checked_receipt(_receipt({"sunshine_left": 23.0, "fruits": {"balance": 50.0, "paid": [{"id": "duel_win_first", "amount": 10.0}]}}, {"sunshine": 98.0}))
-	_check(kept.turn.sunshine == 98 and kept.sunshine_left == 23 and kept.fruits == {"balance": 50, "paid": [{"id": "duel_win_first", "amount": 10}]}, "A receipt keeps Sunshine's Pollen, the turns left and the Fruits paid: %s" % [kept])
+	var kept := PollenWallet.checked_receipt(_receipt({"sunshine_left": 23.0, "fruits": {"balance": 50.0, "paid": [{"id": "duel_win_first", "amount": 5.0}]}}, {"sunshine": 98.0}))
+	_check(kept.turn.sunshine == 98 and kept.sunshine_left == 23 and kept.fruits == {"balance": 50, "paid": [{"id": "duel_win_first", "amount": 5}]}, "A receipt keeps Sunshine's Pollen, the turns left and the Fruits paid: %s" % [kept])
 	var broken := PollenWallet.checked_receipt(_receipt({"sunshine_left": -1.0, "fruits": {"balance": "x", "paid": []}}, {"sunshine": 1.5}))
 	_check(not broken.is_empty() and broken.earned == 196 and not broken.turn.has("sunshine") and not broken.has("sunshine_left") and not broken.has("fruits"), "Broken Fruit parts are left out and the Pollen line still shows")
 	var lines := PollenWallet.checked_receipt(_receipt({"fruits": {"balance": 5.0, "paid": [{"id": "Bad", "amount": 1.0}, {"id": "top_ten", "amount": 15.0}, {"id": "top_ten", "amount": 15.0}]}}))
 	_check(lines.fruits.paid == [{"id": "top_ten", "amount": 15}], "A broken or repeated paid line is left out by itself")
 	_check(not PollenWallet.checked_receipt(_receipt({}, {"kind": "after_bank", "sunshine": 9.0})).turn.has("sunshine"), "Sunshine pays only on a bank turn")
 	var fruits := _fruit_store()
-	fruits.note_view(SERVER, ME, answer(part(40.0, [], {"sunshine": {"left": 24.0, "turns": 24.0, "price": 10.0}})))
+	fruits.note_view(SERVER, ME, answer(part(40.0, [], {"sunshine": {"left": 24.0, "turns": 24.0, "price": 25.0}})))
 	var wallet: RefCounted = PollenWallet.new(_path("turn-wallet"))
 	wallet.fruits = fruits
 	wallet.set_enabled(SERVER, ME, true)
-	_check(wallet.note_receipt(SERVER, ME, ROOM, _hash(1), _receipt({"sunshine_left": 23.0, "fruits": {"balance": 50.0, "paid": [{"id": "duel_win_first", "amount": 10.0}]}}, {"sunshine": 98.0})), "The turn's receipt is kept")
-	_check(fruits.balance(SERVER, ME) == 50 and fruits.sunshine(SERVER, ME).left == 23 and fruits.unlocks(SERVER, ME) == [{"id": "duel_win_first", "fruits": 10}], "The turn's Fruits, its toast and Sunshine's turns reach the Fruit store")
+	_check(wallet.note_receipt(SERVER, ME, ROOM, _hash(1), _receipt({"sunshine_left": 23.0, "fruits": {"balance": 50.0, "paid": [{"id": "duel_win_first", "amount": 5.0}]}}, {"sunshine": 98.0})), "The turn's receipt is kept")
+	_check(fruits.balance(SERVER, ME) == 50 and fruits.sunshine(SERVER, ME).left == 23 and fruits.unlocks(SERVER, ME) == [{"id": "duel_win_first", "fruits": 5}], "The turn's Fruits, its toast and Sunshine's turns reach the Fruit store")
 	var again: RefCounted = PollenWallet.new(wallet.path)
 	_check(again.result_for(SERVER, ME, ROOM, _hash(1)).turn.sunshine == 98 and again.result_for(SERVER, ME, ROOM, _hash(1)).fruits.paid.size() == 1, "The kept result keeps its Sunshine and Fruit lines after a restart")
 	wallet.settle_claim(SERVER, ME, ROOM, _hash(2), {"status": "credited", "receipt": _receipt({"sunshine_left": 22.0})})
@@ -431,9 +431,9 @@ func _clear_receipts() -> void:
 	wallet.set_enabled(SERVER, ME, true)
 	wallet.queue_clear(SERVER, ME, "room:" + ROOM)
 	var receipt := {"schema_version": 1.0, "earned": 500.0, "balance": 9500.0, "clears": [{"kind": "clear", "total": 500.0, "boost_percent": 0.0, "level_id": "relay-isles"}],
-		"fruits": {"balance": 10.0, "paid": [{"id": "together_first", "amount": 10.0}]}}
+		"fruits": {"balance": 5.0, "paid": [{"id": "together_first", "amount": 5.0}]}}
 	wallet.settle_clear(SERVER, ME, "room:" + ROOM, {"status": "credited", "receipt": receipt})
-	_check(fruits.unlocks(SERVER, ME) == [{"id": "together_first", "fruits": 10}], "A first clear's achievement reaches the Fruit store")
+	_check(fruits.unlocks(SERVER, ME) == [{"id": "together_first", "fruits": 5}], "A first clear's achievement reaches the Fruit store")
 	_check(wallet.result_for(SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR).get("fruits", {}).get("paid", []).size() == 1, "and the room's end card keeps its Fruit line")
 
 # --- Spends --------------------------------------------------------------------
@@ -468,11 +468,11 @@ func _spends() -> void:
 	_check(fake.sent[0].path == WardrobeClient.SPEND_PATH and body.kind == "convert" and body.id == "10" and body.expected_cost == 10 and int(body.schema_version) == 1 and _key(body.idempotency_key), "Convert sends kind convert, the count as digits and its cost in Fruits: %s" % [body])
 	_check(t.fruits.balance(SERVER, ME) == 30 and t.wallet.wallet(SERVER, ME).balance == 13000, "The receipt's Fruit and Pollen balances are both kept")
 	fake.sent.clear()
-	fake.replies = [_ok({"kind": "sunshine", "currency": "fruits", "balance": 13000.0, "fruit_balance": 20.0, "sunshine_left": 24.0})]
+	fake.replies = [_ok({"kind": "sunshine", "currency": "fruits", "balance": 13000.0, "fruit_balance": 5.0, "sunshine_left": 24.0})]
 	var answer_sun: Dictionary = await t.client.buy_sunshine()
 	var sun: Dictionary = fake.sent[0].body
-	_check(answer_sun.ok and sun.kind == "sunshine" and sun.id == "sunshine" and sun.expected_cost == 10 and _key(sun.idempotency_key) and sun.idempotency_key != body.idempotency_key, "Sunshine sends its own key and the server's price: %s" % [sun])
-	_check(t.fruits.balance(SERVER, ME) == 20 and t.fruits.sunshine(SERVER, ME).left == 24 and not t.fruits.sunshine_buyable(SERVER, ME), "Sunshine's turns are kept and it is not buyable again while they last")
+	_check(answer_sun.ok and sun.kind == "sunshine" and sun.id == "sunshine" and sun.expected_cost == 25 and _key(sun.idempotency_key) and sun.idempotency_key != body.idempotency_key, "Sunshine sends its own key and the server's price: %s" % [sun])
+	_check(t.fruits.balance(SERVER, ME) == 5 and t.fruits.sunshine(SERVER, ME).left == 24 and not t.fruits.sunshine_buyable(SERVER, ME), "Sunshine's turns are kept and it is not buyable again while they last")
 	fake.sent.clear()
 	fake.replies = [_ok({"kind": "item", "id": "apple_hood", "pieces": ["apple_hood"], "currency": "fruits", "balance": 13000.0, "fruit_balance": -30.0})]
 	var answer_item: Dictionary = await t.client.buy("item", "apple_hood", 50)
@@ -550,7 +550,7 @@ func _history() -> void:
 	var value := {"schema_version": 1.0, "entries": [
 		{"kind": "turn", "amount": 196.0, "at": 3.0, "level_id": "relay-isles", "stage_id": "garden", "role": "a", "sunshine": 98.0},
 		{"kind": "convert", "amount": 4000.0, "at": 2.0}, {"kind": "reclaim", "amount": -400.0, "at": 1.0}, {"kind": "convert", "amount": -5.0, "at": 1.0}],
-		"fruit_entries": [{"kind": "ach", "amount": 10.0, "at": 5.0, "id": "together_first", "level_id": "relay-isles"}, {"kind": "grant", "amount": 15.0, "at": 4.0, "step": 3.0},
+		"fruit_entries": [{"kind": "ach", "amount": 5.0, "at": 5.0, "id": "together_first", "level_id": "relay-isles"}, {"kind": "grant", "amount": 35.0, "at": 4.0, "step": 3.0},
 			{"kind": "bundle", "amount": 110.0, "at": 3.0, "bundle": "bowl", "order": "GPA.1", "store": "app_store", "usd_cents": 599.0}, {"kind": "convert", "amount": -10.0, "at": 2.0},
 			{"kind": "bundle", "amount": 5.0, "at": 1.0, "bundle": "pinch"}, {"kind": "ach", "amount": -10.0, "at": 1.0}, {"kind": "gift", "amount": 1.0, "at": 1.0}, {"kind": "grant", "amount": 1.0, "at": 1.0, "store": "play"}]}
 	var kept := PollenHistory.checked(value)
@@ -564,14 +564,14 @@ func _history() -> void:
 
 func _wardrobe_prices() -> void:
 	var view := Wardrobe.checked_view(answer())
-	_check(view.fruit_prices == {"apple_hood": 50, "apple_leaf": 25, "orchard_skin": 100, "sprig_sun": 10} and view.fruit_sets == {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]} and view.prices == {"daisy": 1000}, "The view keeps the Orchard's prices and sets apart from Pollen's")
+	_check(view.fruit_prices == {"apple_hood": 100, "apple_leaf": 50, "orchard_skin": 200, "sprig_sun": 20} and view.fruit_sets == {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]} and view.prices == {"daisy": 1000}, "The view keeps the Orchard's prices and sets apart from Pollen's")
 	_check(Wardrobe.spend_currency(view, "apple_hood") == "fruits" and Wardrobe.spend_currency(view, "orchard") == "fruits" and Wardrobe.spend_currency(view, "daisy") == "pollen", "Each spend names its currency")
-	_check(Wardrobe.spend_price(view, "apple_hood") == 50 and Wardrobe.spend_price(view, "daisy") == 1000 and Wardrobe.set_pieces(view, "orchard").size() == 3, "and its price in that currency")
+	_check(Wardrobe.spend_price(view, "apple_hood") == 100 and Wardrobe.spend_price(view, "daisy") == 1000 and Wardrobe.set_pieces(view, "orchard").size() == 3, "and its price in that currency")
 	var broken := answer()
-	broken.wardrobe.fruit_prices = {"apple_hood": -5.0, "Bad": 5.0, "sprig_sun": 10.0}
+	broken.wardrobe.fruit_prices = {"apple_hood": -5.0, "Bad": 5.0, "sprig_sun": 20.0}
 	broken.wardrobe.fruit_sets = "x"
 	var kept := Wardrobe.checked_view(broken)
-	_check(not kept.is_empty() and kept.fruit_prices == {"sprig_sun": 10} and kept.fruit_sets.is_empty(), "Broken Orchard prices or sets are left out; the wardrobe still reads")
+	_check(not kept.is_empty() and kept.fruit_prices == {"sprig_sun": 20} and kept.fruit_sets.is_empty(), "Broken Orchard prices or sets are left out; the wardrobe still reads")
 	var store: RefCounted = Wardrobe.new(_path("orchard"))
 	store.set_enabled(SERVER, ME, true, true)
 	store.note_view(SERVER, ME, answer())

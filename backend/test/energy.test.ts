@@ -54,14 +54,14 @@ describe("the energy meter", () => {
       expect(spendEnergy(storage, "fj-7", T0)).toMatchObject({ code: "energy_empty" });
     });
   });
-  it("refills to the top for 10 Fruits, only below it", async () => {
+  it("refills to the top for 20 Fruits, only below it", async () => {
     await inPlayer(storage => {
       applyLedger(storage, [{ key: "fruit:bundle:GPA.e1", kind: "fruitbundle", amount: 25, detail: {} }], T0);
-      expect(refillEnergy(storage, 10, T0)).toMatchObject({ ok: false, status: 409, code: "energy_full" });
+      expect(refillEnergy(storage, 20, T0)).toMatchObject({ ok: false, status: 409, code: "energy_full" });
       value(spendEnergy(storage, "r-1", T0)); value(spendEnergy(storage, "r-2", T0));
-      expect(refillEnergy(storage, 9, T0)).toMatchObject({ code: "pollen_price_changed" });
-      expect(value(refillEnergy(storage, 10, T0))).toMatchObject({ fruit_balance: 15, energy: { energy: 5 } });
-      expect(purse(storage, "fruits").balance).toBe(15);
+      expect(refillEnergy(storage, 10, T0)).toMatchObject({ code: "pollen_price_changed" });
+      expect(value(refillEnergy(storage, 20, T0))).toMatchObject({ fruit_balance: 5, energy: { energy: 5 } });
+      expect(purse(storage, "fruits").balance).toBe(5);
     });
   });
 });
@@ -108,7 +108,7 @@ describe("the reads", () => {
   it("carry the meter on the wallet read only while ENERGY is on, writing no row", async () => {
     const account = await create();
     const on = await (await call("/v1/pollen", account, ON)).json<Record<string, unknown>>();
-    expect(on.energy).toMatchObject({ energy: 5, max: 5, step_ms: STEP, refill_fruits: 10 });
+    expect(on.energy).toMatchObject({ energy: 5, max: 5, step_ms: STEP, refill_fruits: 20 });
     expect(await (await call("/v1/pollen", account, OFF)).json()).not.toHaveProperty("energy");
     const metered = await meterRows({ player: env.PLAYERS.getByName(account.player_id) }, () => call("/v1/pollen", account, ON));
     expect(metered.rows.player.written).toBe(0);

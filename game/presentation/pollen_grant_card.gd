@@ -12,7 +12,7 @@ extends RefCounted
 ##
 ## While Fruits show and the instalment brought Fruits (Fruits board 5b) it is
 ## "Your monthly gifts arrived": next month names both ("Next month: 5,250
-## Pollen and 16 Fruits."), and the Fruits stand beside the Pollen on their own
+## Pollen and 35 Fruits."), and the Fruits stand beside the Pollen on their own
 ## plum tile (kit/orchard_surface.gd), the Fruit mark from kit/currency_mark.gd.
 ## Without Fruits it is today's card, unchanged.
 ##
@@ -53,7 +53,7 @@ const CATCH_UP := 48
 
 ## The line under the title: "From Full Journey, month 1 of your ladder.\nNext month: 4,750.",
 ## or for several months paid at once "From Full Journey, 2 months of your ladder.\nNext month: 5,250."
-## With `fruits` ({amount, next}, see open) next month names both: "Next month: 5,250 Pollen and 16 Fruits."
+## With `fruits` ({amount, next}, see open) next month names both: "Next month: 5,250 Pollen and 35 Fruits."
 static func month_line(card: Dictionary, fruits: Dictionary = {}) -> String:
 	if str(card.get("key", "")) == LIFETIME_KEY: return PlayerCopy.POLLEN_GRANT_LIFETIME
 	var next := int(card.get("next", 0))

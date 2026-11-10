@@ -94,7 +94,7 @@ static func rows(receipt: Dictionary, full_journey: bool = true, fruits: bool = 
 	return out
 
 ## A fruit row for each achievement the receipt paid (`fruits.paid`, oldest
-## first as the server lists them): its name and "10 Fruits". [] for none, or
+## first as the server lists them): its name and "5 Fruits". [] for none, or
 ## for an id this build has no name for.
 static func fruit_rows(receipt: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []

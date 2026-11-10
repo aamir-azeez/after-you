@@ -43,7 +43,7 @@ extends Control
 ## chips end with the Orchard chip (the Fruit and "Orchard"), which asks for the
 ## "orchard" tab; on it the right panel is the plum Orchard
 ## (presentation/wardrobe_orchard.gd) in place of the cream shop, and a picked
-## Orchard item's button is plum: "Buy for [Fruit] 50". Each item has its
+## Orchard item's button is plum: "Buy for [Fruit] 100". Each item has its
 ## `currency`; in_tab() says which tab lists it (All items is Pollen only), and
 ## `sets` holds the Orchard's sets, picked like an item. `fruits_blocked`: the
 ## Fruit balance is below 0, so a Fruit Buy greys and says why.
@@ -476,7 +476,7 @@ func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false, fr
 		_cream(action_button)
 		return
 	if not action_button.visible: return
-	# Buy for [grain] 20,000 (or [Fruit] 50 on plum), all inside the one button.
+	# Buy for [grain] 20,000 (or [Fruit] 100 on plum), all inside the one button.
 	var price := int(entry.price)
 	ShopKit.set_button_content(action_button, Sheets.buy_words(price, 22, OrchardSurface.TEXT if fruit else INK, str(entry.get("currency", ""))))
 	action_button.accessibility_name = PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(price)

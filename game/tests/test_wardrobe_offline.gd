@@ -476,10 +476,10 @@ func _page_orchard() -> void:
 	t.flow.client.connectivity = state
 	var data := wallet(["daisy"], {}, 5)
 	data.wardrobe.offered = SOLD + orchard
-	data.wardrobe.fruit_prices = {"apple_hood": 50, "blueberry_hood": 50, "blossom_crown": 50, "orchard_skin": 100, "apple_leaf": 25, "sprig_coral": 10, "sprig_plum": 10, "sprig_sun": 10, "sprig_sky": 10}
+	data.wardrobe.fruit_prices = {"apple_hood": 100, "blueberry_hood": 100, "blossom_crown": 100, "orchard_skin": 200, "apple_leaf": 50, "sprig_coral": 20, "sprig_plum": 20, "sprig_sun": 20, "sprig_sky": 20}
 	data.wardrobe.fruit_sets = {"orchard": ["apple_hood", "orchard_skin", "apple_leaf"]}
-	data.wardrobe.fruit_set_costs = {"orchard": 145.0}
-	data.fruits = {"schema_version": 1.0, "balance": 101.0, "earned": 101.0, "first_pack_gift": false, "first_pack_percent": 100.0, "achievements": []}
+	data.wardrobe.fruit_set_costs = {"orchard": 295.0}
+	data.fruits = {"schema_version": 1.0, "balance": 151.0, "earned": 151.0, "first_pack_gift": false, "first_pack_percent": 100.0, "achievements": []}
 	t.fake.replies = [{"ok": true, "status": 200, "data": data}]
 	t.flow.show_wardrobe()
 	await _frames()
@@ -497,7 +497,7 @@ func _page_orchard() -> void:
 	var sends: int = t.fake.sent.size()
 	await t.flow.act("apple_hood")
 	_check(t.fake.sent.size() == sends and t.host.ui.get_child_count() == 0 and t.host.toasts.has(PlayerCopy.OFFLINE_NEEDS_CONNECTION), "Its action offline opens no card, sends nothing and says why")
-	await t.flow.confirm_buy("orchard", 145, "set")
+	await t.flow.confirm_buy("orchard", 295, "set")
 	_check(t.fake.sent.size() == sends, "A set confirm that lands offline sends nothing")
 	t.host.queue_free()
 	Catalog.set_offered(SOLD)

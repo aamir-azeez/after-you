@@ -1,12 +1,12 @@
 extends RefCounted
 ## The Fruits for playing together card on the Fruits page (Fruits board 6a):
 ## each goal in the server's order. A paid one has the round plum badge with
-## the Fruit, its place (the chapter it was paid on) and "✓ +10"; one still to
+## the Fruit, its place (the chapter it was paid on) and "✓ +5"; one still to
 ## reach has its Fruits in a dashed circle and, when its goal is above 1, a dot
 ## per step with the steps done filled. A goal the server does not count yet
 ## (`live` false: the two keepsake goals) shows greyed, with no dots. The card
 ## lists the first FEW until the player opens them all with the link under it
-## ("All 15 goals, 260 Fruits in all", the server's count and sum), which then
+## ("All 15 goals, 310 Fruits in all", the server's count and sum), which then
 ## closes them again.
 ## Pure drawing: presentation/fruits_page.gd gives it the card's column (already
 ## empty) and the data; it keeps nothing. Its only input is the link.
@@ -138,7 +138,7 @@ static func _paid_amount(fruits: int) -> Control:
 	paid.add_child(ShopKit.text(PlayerCopy.FRUIT_GOAL_PAID % PollenMoney.grouped(fruits), 16, PLUM_INK, ShopKit.bold_font()))
 	return paid
 
-## "All 15 goals, 260 Fruits in all ›", or "Fewer goals" while all show.
+## "All 15 goals, 310 Fruits in all ›", or "Fewer goals" while all show.
 static func _link(goals: Array, every: bool, toggle: Callable) -> Button:
 	var total := 0
 	for goal: Dictionary in goals: total += int(goal.fruits)

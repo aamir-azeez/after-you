@@ -64,7 +64,7 @@ func _descriptors() -> void:
 	_check(Index.SLOTS == ["hat", "body", "leaf"], "The slots are the hat, the body and the leaf")
 
 func _prices() -> void:
-	_check(Index.TIER_PRICES == {"common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 10, "fruit_small": 25, "fruit_hat": 50, "fruit_body": 100}, "Tier prices follow the ramp, earned costs nothing because it is never sold, and the Orchard tiers are priced in Fruits")
+	_check(Index.TIER_PRICES == {"common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 20, "fruit_small": 50, "fruit_hat": 100, "fruit_body": 200}, "Tier prices follow the ramp, earned costs nothing because it is never sold, and the Orchard tiers are priced in Fruits")
 	_check(Index.TIER_CURRENCY == {"sprig": "fruits", "fruit_small": "fruits", "fruit_hat": "fruits", "fruit_body": "fruits"}, "Only the Orchard tiers are sold in Fruits; every other tier is Pollen")
 	for tier: String in Index.TIER_CURRENCY: _check(Index.TIER_PRICES.has(tier), "The Fruit tier %s has a price" % tier)
 	for id: String in Catalog.ids():
