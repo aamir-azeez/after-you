@@ -15,6 +15,7 @@ backup_plan 2
 ball_ownership 1
 beam_field 1
 big_screens 3
+block_defaults 3
 board_feedback 2
 borrowed_light 1
 bubble_placement 1
@@ -243,6 +244,7 @@ platform_games_service 3
 platform_name_choice 3
 player_copy 1
 player_copy_render 1
+playtest_report 3
 pollen_breakdown 1
 pollen_chip 1
 pollen_client 1

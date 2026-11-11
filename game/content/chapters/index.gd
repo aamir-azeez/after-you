@@ -105,7 +105,14 @@ const OPTIONAL := {
 	## true lists the chapter first among its kind (free or Full Journey) in
 	## every chapter picker. The registry order above is published, so it stays.
 	"leads_picker": false,
+	## [catalog script, static method]: the definition written with puzzle
+	## blocks (core/blocks/stage_blocks.gd) before it is expanded. Its blocks'
+	## default stage copy, lever looks and water levels fill whichever of
+	## those this descriptor leaves out (content/blocks/defaults.gd).
+	"block_source": [],
 }
+## Fills a block-built chapter's default words, looks and water levels.
+const BlockDefaults = preload("res://content/blocks/defaults.gd")
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
 
 const CHAPTERS := [
@@ -155,6 +162,7 @@ static func _by_key() -> Dictionary:
 	for file: Script in CHAPTERS:
 		var data: Dictionary = OPTIONAL.duplicate(true)
 		data.merge(file.DATA, true)
+		BlockDefaults.fill(data)
 		assert(not result.has(data.get("key")), "Two chapter descriptors share the key %s" % data.get("key"))
 		data.make_read_only()
 		result[str(data.get("key", ""))] = data
