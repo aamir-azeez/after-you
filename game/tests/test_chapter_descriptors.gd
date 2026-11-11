@@ -99,7 +99,7 @@ func _families() -> void:
 func _chapter(key: String, data: Dictionary) -> void:
 	var family := Families.row(str(data.get("family")))
 	if not _check(not family.is_empty(), "Descriptor names a known family: " + key): return
-	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail] + ([data.dressing] if data.dressing != "" else []):
+	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail] + ([data.dressing] if data.dressing != "" else []) + ([data.water] if data.water != "" else []):
 		_check(ResourceLoader.exists(path), "%s names a resource that exists: %s" % [key, path])
 	var level := Registry.definition(key)
 	_same("%s@%d" % [level.get("id"), int(level.get("version", 0))], key, "The descriptor's definition call gives its own chapter")

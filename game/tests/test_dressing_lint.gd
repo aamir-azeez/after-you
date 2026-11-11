@@ -255,8 +255,7 @@ func _check_coplanar_worlds() -> void:
 				for finding: String in remembered:
 					var line := "with earlier stages remembered (mirrors %s), %s" % [orientation, finding]
 					if finding not in found and line not in found: found.append(line)
-			if "_water" in world: _check(world.has_method("water_levels"), "A world with moving water lists its water levels for the sweep: " + key)
-			if world.has_method("water_levels"): found.append_array(water_pairs(world, gap))
+			if world.get("waters") != null: found.append_array(water_pairs(world, gap))
 			for finding: String in found:
 				# Scenery shared by several stages is reported once.
 				if reported.has(finding): continue
@@ -305,17 +304,17 @@ static func water_pairs(world: Node3D, gap: float = COPLANAR) -> Array[String]:
 	for route: Dictionary in world.chapter_definition.get("bridges", []): latched.append(str(route.id))
 	world.present_history({"mechanisms": {"latched_bridges": latched}})
 	var found := coplanar_pairs(world, null, gap)
-	var levels: Dictionary = world.water_levels()
+	var levels: Dictionary = world.waters.water_levels()
 	for body: String in levels:
-		var water: Node3D = world._water.get(body)
+		var water: Node3D = world.waters.bodies.get(body)
 		if not is_instance_valid(water): continue
 		var resting := float(water.get_meta("shown"))
 		for value: String in levels[body]:
-			world._set_water(body, float(levels[body][value]), true)
+			world.waters.set_level(body, float(levels[body][value]), true)
 			for finding: String in coplanar_pairs(world, water, gap):
 				var line := "%s water at %s: %s" % [body, value, finding]
 				if line not in found: found.append(line)
-		world._set_water(body, resting, true)
+		world.waters.set_level(body, resting, true)
 	return found
 
 ## Every z-fighting pair among a world's static scenery (spirits excluded).

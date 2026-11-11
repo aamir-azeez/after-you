@@ -29,7 +29,7 @@ func _run() -> void:
 	for key: String in Registry.keys():
 		var level := Registry.definition(key)
 		var world: Node3D = Registry.world_script(key).new()
-		if not world.has_method("_water_plan"):
+		if world.get("waters") == null:
 			world.free()
 			continue
 		root.add_child(world)
@@ -41,8 +41,8 @@ func _run() -> void:
 		for stage: Dictionary in level.stages:
 			await world.show_stage(stage)
 			var fell_back: bool = not WaterLocks._unbaked.is_empty()
-			var built: Array = world._locks.runs if is_instance_valid(world._locks) else []
-			var plan: Dictionary = world._water_plan()
+			var built: Array = world.waters.locks.runs if is_instance_valid(world.waters.locks) else []
+			var plan: Dictionary = world.waters.plan()
 			var path := WaterLocks.bake_path(key, str(stage.id))
 			# Worked out afresh, never from a cache or the bake itself.
 			WaterLocks._found.clear()

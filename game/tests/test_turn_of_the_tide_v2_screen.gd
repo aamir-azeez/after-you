@@ -75,16 +75,16 @@ func _run() -> void:
 			var edges: Array = screen.world._decks["sand-1"].get_children().filter(func(edge: Node) -> bool: return edge.has_meta("edge"))
 			_check(edges.size() == 2 and edges.all(func(edge: Node) -> bool: return edge.has_meta("warned")), "A closing crossing's edges flash")
 			# The rising harbour is slowed to reach the sand bar's deck as it shuts.
-			var water: Node3D = screen.world._water.harbour
-			_check(water.has_meta("rate") and float(water.get_meta("rate")) < World.WATER_RATE, "The water rising over the closing bar slows to meet its deck as it shuts")
+			var water: Node3D = screen.world.waters.bodies.harbour
+			_check(water.has_meta("rate") and float(water.get_meta("rate")) < float(screen.world.waters.water.rate), "The water rising over the closing bar slows to meet its deck as it shuts")
 	_check(warned, "The sand bar closes while the spirit stands on it")
 	_check(screen.mode == "drowning" and not screen.running, "A drowning ends the turn on the drown beat, not straight on a card")
-	var harbour: Node3D = screen.world._water.harbour
+	var harbour: Node3D = screen.world.waters.bodies.harbour
 	_check(screen.world.actor_targets["p1"].y < float(harbour.get_meta("shown")) - 0.4 and is_instance_valid(screen.world._drown_ring), "The drowned spirit heads under the water and a ring spreads")
 	# Bubbles rise from where it went under, the same ones every time, and the
 	# face is the knocked-out one.
 	var bubbles: Array = screen.world._drown_bubbles
-	var harbour_level := float(screen.world._water.harbour.get_meta("shown"))
+	var harbour_level := float(screen.world.waters.bodies.harbour.get_meta("shown"))
 	_check(bubbles.size() == World.DROWN_BUBBLES.size() and bubbles.all(func(bubble: MeshInstance3D) -> bool: return bubble.visible and bubble.position.y > harbour_level), "Bubbles rise from the water where the spirit went under")
 	var heights: Array = bubbles.map(func(bubble: MeshInstance3D) -> float: return bubble.position.y)
 	screen.world._process(1.0 / 30.0)

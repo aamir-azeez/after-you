@@ -11,6 +11,11 @@ const Simulation = preload("res://core/journey/simulation.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const World = preload("res://presentation/tide_world.gd")
+## Turn of the Tide's water block (kit/water_bodies.gd) and its levels.
+const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
+const WaterData = preload("res://content/water/turn_of_the_tide.gd")
+var HARBOUR_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "harbour")[0].levels
+var SEA_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "sea")[0].levels
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
@@ -114,13 +119,13 @@ func _first_stage(level: Dictionary) -> void:
 		_check(Canonical.digest(current) == frozen, "Presenting leaves the snapshot unchanged at " + value)
 		angles.append(world._wheels.tide.wheel.rotation.y)
 		_check(world._wheels.tide.wheel.get_meta("value") == value, "The tide wheel's pointer shows " + value)
-		levels[value] = world._water.harbour.position.y
-		_check(is_equal_approx(world._water.harbour.position.y, World.HARBOUR_LEVELS[value]), "Harbour water stands at the " + value + " level")
+		levels[value] = world.waters.bodies.harbour.position.y
+		_check(is_equal_approx(world.waters.bodies.harbour.position.y, HARBOUR_LEVELS[value]), "Harbour water stands at the " + value + " level")
 		for id: String in world._gauges:
 			_check(world._gauges[id].post.get_meta("lit") == (value in world._gauges[id].values), "Gauge lights only for its own tide: %s at %s" % [id, value])
 	_check(levels.low < 0.0 and levels.half > 0.0 and levels.half < 0.48 and levels.high > 0.48 and levels.high < 0.96, "Low is below the beaches, half below the terraces, high below the quays")
 	_check(angles[0] > angles[1] and angles[1] > angles[2], "The pointer swings one way from low through half to high")
-	_check(is_equal_approx(world._water.sea.position.y, World.SEA_LEVELS.shut) and is_equal_approx(world._water.chamber.position.y, World.HARBOUR_LEVELS.half), "The outer sea rests shut and the chamber at half in the first stage")
+	_check(is_equal_approx(world.waters.bodies.sea.position.y, SEA_LEVELS.shut) and is_equal_approx(world.waters.bodies.chamber.position.y, HARBOUR_LEVELS.half), "The outer sea rests shut and the chamber at half in the first stage")
 	# A real press at the wheel turns it; the water eases over without touching the turn.
 	world.reduced_motion = false
 	sim._mechanisms.controls.tide = "low"
@@ -131,12 +136,12 @@ func _first_stage(level: Dictionary) -> void:
 	_check(pressed.controls.tide == "half" and "selector:tide" in pressed.events, "A press at the wheel turns the tide to half")
 	var hash_after := sim.state_hash()
 	world.present(pressed)
-	var harbour: Node3D = world._water.harbour
-	_check(is_equal_approx(harbour.position.y, World.HARBOUR_LEVELS.low) and is_equal_approx(harbour.get_meta("target"), World.HARBOUR_LEVELS.half), "The water starts from where it was")
+	var harbour: Node3D = world.waters.bodies.harbour
+	_check(is_equal_approx(harbour.position.y, HARBOUR_LEVELS.low) and is_equal_approx(harbour.get_meta("target"), HARBOUR_LEVELS.half), "The water starts from where it was")
 	world._advance_camera(0.1)
-	_check(harbour.position.y > World.HARBOUR_LEVELS.low and harbour.position.y < World.HARBOUR_LEVELS.half, "The water rises over a short moment")
+	_check(harbour.position.y > HARBOUR_LEVELS.low and harbour.position.y < HARBOUR_LEVELS.half, "The water rises over a short moment")
 	for frame in range(20): world._advance_camera(0.05)
-	_check(is_equal_approx(harbour.position.y, World.HARBOUR_LEVELS.half) and is_equal_approx(harbour.scale.y, World.HARBOUR_LEVELS.half - World.SEABED), "The water settles at half, reaching down to the harbour floor")
+	_check(is_equal_approx(harbour.position.y, HARBOUR_LEVELS.half) and is_equal_approx(harbour.scale.y, HARBOUR_LEVELS.half - WaterData.DATA.seabed), "The water settles at half, reaching down to the harbour floor")
 	_check(sim.state_hash() == hash_after, "Water easing never changes the simulation")
 	world.reduced_motion = true
 	_check(_dry_decks(world, level), "No water strip covers an island deck")
@@ -144,7 +149,7 @@ func _first_stage(level: Dictionary) -> void:
 	# The first stage can keep only the low crossings it latches; nothing else
 	# is walled for keeping (the sea never moves here, so its crossings stay
 	# dry), and stepping stones stand in the channel unwalled.
-	var kept: Array = world._kept_walled.duplicate()
+	var kept: Array = world.waters.kept_walled.duplicate()
 	kept.sort()
 	_check(kept == ["sand-1", "slipway"], "Stage one walls exactly the crossings it can keep under water: %s" % [kept])
 	# Shut crossings stay in view as outlines; open ones show their deck.
@@ -190,7 +195,7 @@ func _first_stage(level: Dictionary) -> void:
 	# Boats ride the harbour.
 	_check(world._boats.size() == 3, "Three rowboats moor in the channels")
 	for boat: Node3D in world._boats:
-		_check(absf(boat.position.y - (World.HARBOUR_LEVELS.half - 0.02)) < 0.03, "A moored boat rides the harbour at half water")
+		_check(absf(boat.position.y - (HARBOUR_LEVELS.half - 0.02)) < 0.03, "A moored boat rides the harbour at half water")
 	# The spout and the sluice lamp follow the lever.
 	_check(not world._spout.visible and not world._lever_lamps.sluice.lamp.get_meta("lit"), "The spout is dry while the sluice is off")
 	sim._mechanisms.levers["sluice"] = true
@@ -202,12 +207,12 @@ func _first_stage(level: Dictionary) -> void:
 	_check(world._should_cutaway(span, _players(state, "p0", 624, 288, 0)), "The aqueduct fades over a spirit landing from the spout")
 	_check(not world._should_cutaway(span, _players(state, "p0", 900, 420, 0)) and not world._should_cutaway(span, _players(state, "p0", 624, 288, 48)), "The aqueduct stays solid when nobody is under it")
 	_check(not world._should_cutaway(quay, _players(state, "p0", 100, 300, 0)), "A quay never fades for a spirit on the beach in front of it")
-	var water_alpha: float = (world._water.harbour.get_child(0).material_override as StandardMaterial3D).albedo_color.a
+	var water_alpha: float = (world.waters.bodies.harbour.get_child(0).material_override as StandardMaterial3D).albedo_color.a
 	sim._players.p0 = {"x": 624, "z": 288, "height": 0, "surface_id": "e-beach"}
 	world.present(sim.snapshot(), true)
 	var faded: MeshInstance3D = span.find_child("aq-spanFloor", true, false)
 	_check(faded != null and faded.material_override.albedo_color.a < 0.5, "The spout landing shows through the faded aqueduct")
-	_check(is_equal_approx((world._water.harbour.get_child(0).material_override as StandardMaterial3D).albedo_color.a, water_alpha), "Water never fades with a floor")
+	_check(is_equal_approx((world.waters.bodies.harbour.get_child(0).material_override as StandardMaterial3D).albedo_color.a, water_alpha), "Water never fades with a floor")
 	# Camera: follows anywhere in the harbour, clamped to its full extent.
 	for case: Array in [[-1400, 0, -9.6, 0.0], [2200, 0, 17.28, 0.0], [300, -900, 3.0, -5.44], [300, 900, 3.0, 5.44], [-500, -160, -5.0, -1.6]]:
 		world.actors["p0"].position = Vector3(float(case[0]) / 100.0, 0, float(case[1]) / 100.0)
@@ -264,7 +269,7 @@ func _second_stage(level: Dictionary) -> void:
 	_check(world._wheels.size() == 3 and world._wheels.has("tide") and world._wheels.has("chamber") and world._wheels.has("basin"), "Tide, chamber and sea get hand wheels; the lock stays two-way")
 	for id: String in world._journey_switches:
 		for label: Label3D in world._journey_switches[id].labels:
-			_check(label.position.y > World.HARBOUR_LEVELS.high + 0.05 and label.position.y > World.CHAMBER_WALL_TOP, "A wheel label rides above high water and the chamber walls: " + id)
+			_check(label.position.y > HARBOUR_LEVELS.high + 0.05 and label.position.y > World.CHAMBER_WALL_TOP, "A wheel label rides above high water and the chamber walls: " + id)
 	_check(world._journey_switches["basin"].labels.map(func(label: Label3D) -> String: return label.text) == ["SHUT", "LOW", "HALF", "HIGH"], "The sea wheel's bubble names all four values")
 	_bubbles(world, level.stages[1])
 	_highlights(world, sim, level.stages[1])
@@ -301,7 +306,7 @@ func _second_stage(level: Dictionary) -> void:
 		var risen := state.duplicate(true)
 		risen.controls.tide = tide
 		world.present(risen, true)
-		var level_y: float = World.HARBOUR_LEVELS[tide]
+		var level_y: float = HARBOUR_LEVELS[tide]
 		var post: Node3D = sand.find_child("KeptPost", true, false)
 		var top := post.global_position.y + 0.25 * post.scale.y
 		_check(pennant.global_position.y - 0.11 > level_y and top >= level_y + World.MAST_CLEARANCE - 0.01, "At %s tide the sand crossing's pennant stays above the water (%.2f over %.2f)" % [tide, pennant.global_position.y, level_y])
@@ -309,24 +314,24 @@ func _second_stage(level: Dictionary) -> void:
 	world.present(state, true)
 	_walls(world, level, 1)
 	for id: String in ["towpath", "punt-ferry", "sea-gate-in", "w-steps-low", "mill-steps", "mole-slip"]:
-		_check(id in world._walled, "Stage two walls %s against the water it can stand open under" % id)
+		_check(id in world.waters.walled, "Stage two walls %s against the water it can stand open under" % id)
 	# Open only while dry, but they can be kept (entered in this stage or the
 	# first) and walked later under water: walled too, so a kept one can show
 	# dry. The quay-high ones never flood.
-	var kept: Array = world._kept_walled.duplicate()
+	var kept: Array = world.waters.kept_walled.duplicate()
 	kept.sort()
 	_check(kept == ["race-stage", "sand-1", "sea-gate-out", "slipway"], "Stage two walls exactly the crossings it can keep under water: %s" % [kept])
 	for id: String in ["jetty-1", "boom-jetty"]:
-		_check(id not in world._walled, "Stage two leaves %s in the water: no water reaches its deck" % id)
+		_check(id not in world.waters.walled, "Stage two leaves %s in the water: no water reaches its deck" % id)
 	# Stepping stones, and the stubs open only over dry water or standing above
 	# every water, stand in the open water, never walled.
 	for id: String in ["stones-1", "stones-2", "stones-3", "beach-catwalk", "quay-catwalk"]:
-		_check(id not in world._walled, "Stage two leaves %s in the open water, unwalled" % id)
+		_check(id not in world.waters.walled, "Stage two leaves %s in the open water, unwalled" % id)
 	# The posts and the gate and bar catwalks have gates that tie them to no
 	# tide value: open at high tide over terrace-high decks, so walled dry like
 	# any crossing.
 	for id: String in ["boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk"]:
-		_check(id in world._walled, "Stage two walls %s, open whatever the tide" % id)
+		_check(id in world.waters.walled, "Stage two walls %s, open whatever the tide" % id)
 	# A spirit on a walled post sees past the walls in front of it: they fade
 	# while it stands there (from the snapshot, so a replay agrees) and come
 	# back once it leaves.
@@ -334,12 +339,12 @@ func _second_stage(level: Dictionary) -> void:
 	# mouth does, so only its east wall stands in front.
 	world.present(_players(state, "p1", -268, 160, 48), true)
 	var faded := _faded_walls(world)
-	_check(world._wall_fade.faded_spots() == 1 and faded.size() == 2 and faded.all(func(wall: Node3D) -> bool: return str(wall.name).begins_with("CrossingWall_boom-post") and (wall.position.z > 1.92 or wall.position.x > -2.40)), "A spirit on the boom post fades exactly its south and east walls: %s" % [faded])
+	_check(world.waters.fade.faded_spots() == 1 and faded.size() == 2 and faded.all(func(wall: Node3D) -> bool: return str(wall.name).begins_with("CrossingWall_boom-post") and (wall.position.z > 1.92 or wall.position.x > -2.40)), "A spirit on the boom post fades exactly its south and east walls: %s" % [faded])
 	world.present(_players(state, "p1", -268, -160, 48), true)
 	faded = _faded_walls(world)
 	_check(faded.size() == 1 and str(faded[0].name).begins_with("CrossingWall_gate-post") and faded[0].position.x > -2.40, "A spirit on the gate post, mouth toward the camera, fades only its east wall: %s" % [faded])
 	world.present(_players(state, "p1", -268, -40, 48), true)
-	_check(world._wall_fade.faded_spots() == 0 and _faded_walls(world).is_empty() and world._wall_fade.meshes().all(func(mesh: MeshInstance3D) -> bool: return mesh.material_override.albedo_color.a == 1.0), "They come back once it steps off")
+	_check(world.waters.fade.faded_spots() == 0 and _faded_walls(world).is_empty() and world.waters.fade.meshes().all(func(mesh: MeshInstance3D) -> bool: return mesh.material_override.albedo_color.a == 1.0), "They come back once it steps off")
 	world.present(state, true)
 	_check(not world._decks["punt-ferry"].visible and world._ghosts["punt-ferry"].visible, "The shut punt shows its outline in its dry pit")
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
@@ -371,12 +376,12 @@ func _second_stage(level: Dictionary) -> void:
 	var chip: Label3D = world._journey_switches["basin"].labels[0]
 	_check(not chip.no_depth_test and not (chip.get_meta("backing").material_override as StandardMaterial3D).no_depth_test, "Bubbles stand in the scene like every chapter's, not drawn over it")
 	# The outer sea, its gates and the mouth lamps follow the basin.
-	_check(not world._sea_gates[0].get_meta("open") and is_equal_approx(world._water.sea.position.y, World.SEA_LEVELS.shut), "The sea gate is shut at a neutral level")
+	_check(not world._sea_gates[0].get_meta("open") and is_equal_approx(world.waters.bodies.sea.position.y, SEA_LEVELS.shut), "The sea gate is shut at a neutral level")
 	for value: String in ["low", "half", "high"]:
 		sim._mechanisms.controls.basin = value
 		sim._refresh_routes()
 		world.present(sim.snapshot(), true)
-		_check(is_equal_approx(world._water.sea.position.y, World.SEA_LEVELS[value]) and world._sea_gates[0].get_meta("open"), "The outer sea opens and stands at " + value)
+		_check(is_equal_approx(world.waters.bodies.sea.position.y, SEA_LEVELS[value]) and world._sea_gates[0].get_meta("open"), "The outer sea opens and stands at " + value)
 		for other: String in world._mouth_lamps:
 			_check(world._mouth_lamps[other].get_meta("lit") == (other == value), "Only the %s mouth lamp lights for a %s sea" % [other, value])
 		_check(world._wheels.basin.wheel.get_meta("value") == value, "The sea wheel shows " + value)
@@ -399,10 +404,10 @@ func _second_stage(level: Dictionary) -> void:
 	sim._mechanisms.controls.chamber = "half"
 	sim._refresh_routes()
 	world.present(sim.snapshot(), true)
-	_check(world._chamber_lamps.size() == 2 and world._chamber_lamps[0].get_meta("lit") and is_equal_approx(world._water.chamber.position.y, World.HARBOUR_LEVELS.half), "The chamber lamps light while chamber and harbour match")
+	_check(world._chamber_lamps.size() == 2 and world._chamber_lamps[0].get_meta("lit") and is_equal_approx(world.waters.bodies.chamber.position.y, HARBOUR_LEVELS.half), "The chamber lamps light while chamber and harbour match")
 	sim._mechanisms.controls.chamber = "high"
 	world.present(sim.snapshot(), true)
-	_check(not world._chamber_lamps[0].get_meta("lit") and is_equal_approx(world._water.chamber.position.y, World.HARBOUR_LEVELS.high), "The chamber fills and its lamps go out off the harbour level")
+	_check(not world._chamber_lamps[0].get_meta("lit") and is_equal_approx(world.waters.bodies.chamber.position.y, HARBOUR_LEVELS.high), "The chamber fills and its lamps go out off the harbour level")
 	var lantern: MeshInstance3D = world.terrain.find_child("HarbourLantern", true, false)
 	_check(lantern != null and absf(lantern.get_parent().position.y - 0.48) < 0.01, "The goal is the harbour lantern on the mole terrace")
 	# Framing the stubs, and the lantern from the mole.
@@ -426,14 +431,14 @@ func _walls(world: Node3D, level: Dictionary, index: int) -> void:
 	for wall: Node in parapets.filter(func(node: Node) -> bool: return node is MeshInstance3D and not str(node.name).contains("Coping")):
 		var mesh := wall as MeshInstance3D
 		var top := mesh.global_position.y + (mesh.mesh as BoxMesh).size.y * 0.5
-		if absf(top - World.PARAPET_TOP) > 0.005:
+		if absf(top - WaterData.DATA.wall_top) > 0.005:
 			_check(false, "A parapet stands to just above high water: %s at %.3f" % [wall.name, top])
 			return
 	_check(world.terrain.find_children("SeaWall*", "", true, false).size() > 4, "The harbour's channel ends and the sea's reaches end in sea walls")
 	_check(world.terrain.find_children("WaterMark_*", "", true, false).size() > 30, "Walls carry bands at the water marks")
-	for body: Node3D in world._water.values():
+	for body: Node3D in world.waters.bodies.values():
 		for rect: Rect2 in _water_rects(body):
-			for id: String in world._walled:
+			for id: String in world.waters.walled:
 				var r: Array = world._route(id).rect_cm
 				if rect.grow(-0.01).intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)):
 					_check(false, "Stage %d: no water strip covers walled %s" % [index + 1, id])
@@ -462,14 +467,14 @@ func _open_crossings_dry() -> void:
 				for id: String in ["boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk"]:
 					_check(id in under, "%s: the rules can hold %s open under the high tide" % [key, id])
 			var world := _world(level, index, checkpoint)
-			if str(stage.id) == "set-the-tide": _check(world._wall_fade._spots.is_empty(), "%s: no walls fade in the first stage, which walls no post or catwalk" % key)
+			if str(stage.id) == "set-the-tide": _check(world.waters.fade._spots.is_empty(), "%s: no walls fade in the first stage, which walls no post or catwalk" % key)
 			if key == "turn-of-the-tide@2" and str(stage.id) == "slack-water":
 				# The live row: the punt post, east end, fades its own south and east walls.
-				world._wall_fade.occupy(PackedVector2Array([Vector2(-268, 160)]), true)
+				world.waters.fade.occupy(PackedVector2Array([Vector2(-268, 160)]), true)
 				var faded := _faded_walls(world)
 				_check(faded.size() == 2 and faded.all(func(wall: Node3D) -> bool: return str(wall.name).begins_with("CrossingWall_punt-post") and (wall.position.z > 1.92 or wall.position.x > -2.40)), "@2: a spirit on the punt post fades exactly its south and east walls: %s" % [faded])
 			var rects: Array[Rect2] = []
-			for body: Node3D in world._water.values(): rects.append_array(_water_rects(body))
+			for body: Node3D in world.waters.bodies.values(): rects.append_array(_water_rects(body))
 			for id: String in under:
 				var r: Array = world._route(id).rect_cm
 				var deck := Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0).grow(-0.01)
@@ -478,7 +483,7 @@ func _open_crossings_dry() -> void:
 
 ## The crossing walls the wall fade shows faded now.
 func _faded_walls(world: Node3D) -> Array:
-	return world._wall_fade.meshes().filter(func(mesh: MeshInstance3D) -> bool: return str(mesh.name).begins_with("CrossingWall_") and mesh.material_override.albedo_color.a < 1.0)
+	return world.waters.fade.meshes().filter(func(mesh: MeshInstance3D) -> bool: return str(mesh.name).begins_with("CrossingWall_") and mesh.material_override.albedo_color.a < 1.0)
 
 ## The gated crossings of stage `index` that some state of the wheels and
 ## levers of it and the stages before it, and of its pads, holds open while
@@ -508,11 +513,11 @@ func _open_under_water(level: Dictionary, index: int, initial: Dictionary) -> Ar
 	var found: Array[String] = []
 	for gate: Dictionary in stage.gates:
 		var id := str(gate.route_id)
-		var body := World._body_of(routes[id].rect_cm)
+		var body := WaterBodies.body_at(WaterData.DATA, routes[id].rect_cm)
 		if id in found or body.is_empty(): continue
-		var deck := float(World._low_cm(routes[id])) / 100.0
+		var deck := float(WaterBodies.low_cm(routes[id])) / 100.0
 		for controls: Dictionary in combos:
-			var water: float = World.HARBOUR_LEVELS[controls.tide] if body == "harbour" else World.SEA_LEVELS[controls.get("basin", "shut")]
+			var water: float = HARBOUR_LEVELS[controls.tide] if body == "harbour" else SEA_LEVELS[controls.get("basin", "shut")]
 			if water <= deck: continue
 			var open := false
 			for a: Dictionary in spots.p0:
@@ -806,7 +811,7 @@ func _on_screen(world: Node3D, at: Vector3) -> bool:
 	return Rect2(Vector2.ZERO, Vector2(root.size)).grow(-24).has_point(camera.unproject_position(at))
 
 func _dry_decks(world: Node3D, level: Dictionary) -> bool:
-	for body: Node3D in world._water.values():
+	for body: Node3D in world.waters.bodies.values():
 		for rect: Rect2 in _water_rects(body):
 			for island: Dictionary in level.islands:
 				var r: Array = island.rect_cm
