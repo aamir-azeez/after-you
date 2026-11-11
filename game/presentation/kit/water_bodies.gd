@@ -398,9 +398,17 @@ static func _wet(x: float, z: float, regions: Array, holes: Array) -> bool:
 
 ## Calls `follow` with a body's level whenever its shown level changes: a
 ## boat that rides the water, a mast that keeps clear of it. Riders last until
-## the next start().
-func ride(body: String, follow: Callable) -> void:
-	_riders.append([body, follow])
+## the next start(). A rider that `sways` (a boat bobbing) is also called by
+## bob() each frame the world animates.
+func ride(body: String, follow: Callable, sways: bool = false) -> void:
+	_riders.append([body, follow, sways])
+
+## Calls every swaying rider with its body's shown level.
+func bob() -> void:
+	for rider: Array in _riders:
+		if not rider[2]: continue
+		var root: Node3D = bodies.get(rider[0])
+		if is_instance_valid(root): (rider[1] as Callable).call(float(root.get_meta("shown")))
 
 ## Where each body heads from a snapshot's controls: the level of its
 ## control's value, or where it rests while no control names one.

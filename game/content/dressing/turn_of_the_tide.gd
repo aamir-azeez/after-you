@@ -14,6 +14,14 @@ const DATA := {
 		"sea-chamber": "timber", "lock-chamber": "timber"},
 	"stairs": "timber",
 	"bridges": "timber",
+	# How each crossing is built (tide_world._restyle_deck); "stones" stand in
+	# the channel as they are, under the water when it rises over them.
+	"decks": {"sand-1": "sand", "slipway": "sand", "stones-1": "stones", "stones-2": "stones", "stones-3": "stones",
+		"jetty-1": "jetty", "jetty-2": "jetty", "boom-jetty": "jetty", "jetty-3": "gangway", "towpath": "towpath", "punt-ferry": "punt"},
+	# Rowboats moored in the harbour channels, clear of every crossing, riding
+	# the named water: heading in radians.
+	"moored_boats": [{"at": [-64, 176], "heading": 0.12, "water": "harbour"}, {"at": [480, 168], "heading": -0.18, "water": "harbour"},
+		{"at": [1248, -176], "heading": 0.10, "water": "harbour"}],
 	"fireflies": 12,
 	"props": {"*": [
 		# Behind the mole: the harbour light on its bank.
@@ -23,7 +31,7 @@ const DATA := {
 		# Behind the west quay, west of the quay catwalk: a tree, a lamp and a bench.
 		{"kind": "bank", "rect": [-512, -650, -224, -490], "surface": "w-quay", "height": 12},
 		{"kind": "tree", "at": [-450, -575], "surface": "w-quay", "y": 12, "size": 0.85},
-		{"kind": "lamp_post", "at": [-370, -530], "surface": "w-quay", "y": 12},
+		{"kind": "lamp_post", "at": [-370, -530], "surface": "w-quay", "y": 12, "bunting": [-232, -640]},
 		{"kind": "bench", "at": [-290, -540], "surface": "w-quay", "y": 12},
 		# Behind the mill quay's waiting steps, kept clear of the steps.
 		{"kind": "bank", "rect": [0, -690, 384, -560], "surface": "m-quay", "height": 12},
@@ -34,12 +42,12 @@ const DATA := {
 		{"kind": "bank", "rect": [576, -700, 1152, -490], "surface": "e-quay", "height": 12},
 		{"kind": "crate", "at": [650, -535], "surface": "e-quay", "y": 12, "stack": true},
 		{"kind": "cottage", "at": [810, -605], "surface": "e-quay", "y": 12, "width": 170, "depth": 100, "size": 0.85},
-		{"kind": "lamp_post", "at": [965, -530], "surface": "e-quay", "y": 12},
+		{"kind": "lamp_post", "at": [965, -530], "surface": "e-quay", "y": 12, "bunting": [1140, -655]},
 		{"kind": "boat", "at": [1070, -590], "surface": "e-quay", "y": 12, "rot": 12},
 		# Behind the rock quay: trees and a lamp above the bell.
 		{"kind": "bank", "rect": [1344, -670, 1728, -490], "surface": "r-quay", "height": 12},
 		{"kind": "tree", "at": [1420, -585], "surface": "r-quay", "y": 12, "size": 0.85, "variant": 1},
-		{"kind": "lamp_post", "at": [1540, -530], "surface": "r-quay", "y": 12},
+		{"kind": "lamp_post", "at": [1540, -530], "surface": "r-quay", "y": 12, "bunting": [1700, -640]},
 		{"kind": "tree", "at": [1650, -595], "surface": "r-quay", "y": 12, "size": 0.8},
 		# The beach fronts: low banks of flowers that never hide a spirit.
 		{"kind": "bank", "rect": [-960, 484, -704, 514], "surface": "mole-beach", "height": 6},

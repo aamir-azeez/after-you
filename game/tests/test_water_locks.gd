@@ -471,7 +471,7 @@ func _in_open_water(world: Node3D, stage: Dictionary) -> void:
 	for route: Dictionary in world.chapter_definition.bridges:
 		var id := str(route.id)
 		var r: Array = route.rect_cm
-		if not (world._is_stub(route) or world.DECK_KINDS.get(id, "") == "stones") or id in expected or WaterBodies.gate_for_stage(stage, id).is_empty() or world.waters.body_of(r).is_empty(): continue
+		if not (world._is_stub(route) or world._decks_data().get(id, "") == "stones") or id in expected or WaterBodies.gate_for_stage(stage, id).is_empty() or world.waters.body_of(r).is_empty(): continue
 		var area: Array[Rect2] = [Rect2(float(r[0]) / 100.0, float(r[1]) / 100.0, float(r[2] - r[0]) / 100.0, float(r[3] - r[1]) / 100.0).grow(-0.01)]
 		_check(id not in world.waters.walled and _water_over(world, area) > 0, "%s stands unwalled in the open water: %s" % [id, stage.id])
 

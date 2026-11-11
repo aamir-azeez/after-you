@@ -248,6 +248,9 @@ func _second_stage(level: Dictionary) -> void:
 	world.present(state, true)
 	# The winch is no control here; the LOW history left it on slip.
 	_check(state.controls.winch == "slip" and world._ramps.slipway.rotation.z == 0.0, "In Slack Water the ramp lies where the first stage left the winch")
+	# Read off the gates: the one crossing that needs a water value and the winch.
+	_check(world._ramp_on == {"slipway": ["winch", "slip"]}, "Only the slipway is a ramp, lowered by the winch at slip: %s" % [world._ramp_on])
+	_check(world._route_color("sea-key") == world.GOLD and world._route_color("lock") == world.TEAL and world._route_color("basin") == world.TEAL, "Gate links take their owner's colour from the definition")
 	for lever: Dictionary in level.stages[1].levers:
 		var lift: float = world._lever_looks[lever.id].anchor_lift() if world._lever_looks.has(lever.id) else 0.20
 		_check(absf(world._physical_levers[lever.id].global_position.y - float(lever.height_cm) / 100.0 - lift) < 0.01, "A chain, bar, line, pin or key stands at its own stub's height: " + str(lever.id))

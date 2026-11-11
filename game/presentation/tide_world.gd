@@ -9,11 +9,6 @@ extends "res://presentation/journey_world.gd"
 ## from the chapter's water block (content/water/turn_of_the_tide.gd).
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
-## A winch's ramp: crossing id -> [selector id, the value that lowers it]. The
-## ramp is hinged at the crossing's west end and lies flat in it when lowered,
-## at any water; raised, it stands up out of the water. It follows the
-## snapshot's selector value, so it moves the moment the winch is turned.
-const RAMPS := {"slipway": ["winch", "slip"]}
 ## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
 const RAMP_RAISED := 0.95
 const RAMP_RATE := 1.6
@@ -70,18 +65,8 @@ const BUBBLE_SHIFTS := {"tide": -4.0, "chamber": -4.0, "basin": 0.1}
 const SCENERY_COVER := 0.10
 ## Each water wheel's tint, for its rim, dial and water sign.
 const WHEEL_WATER := {"tide": Color("6fb3c2"), "basin": Color("4f8fb5"), "chamber": Color("7cc4b0")}
-## The first spirit's machines; everything else belongs to the second.
-const P0_MECHANISMS := ["tide", "chamber", "winch", "sluice", "line", "punt-line", "boom-pin", "sea-key", "wheel-step-pad", "quay-step-pad", "bollard-pad"]
 ## Which mouth crossing each sea value serves.
 const MOUTHS := {"half": "boom-jetty", "low": "sea-gate-out", "high": "punt-ferry"}
-## How each crossing is built.
-const DECK_KINDS := {"sand-1": "sand", "slipway": "sand", "stones-1": "stones", "stones-2": "stones", "stones-3": "stones",
-	"jetty-1": "jetty", "jetty-2": "jetty", "boom-jetty": "jetty", "jetty-3": "gangway", "towpath": "towpath", "punt-ferry": "punt"}
-## Moored rowboats in the harbour channels, clear of every crossing: [x, z, heading].
-const BOATS := [[-64, 176, 0.12], [480, 168, -0.18], [1248, -176, 0.10]]
-## Lamps on the banks behind the quays, each with a light pool and bunting
-## strung to a point further along its bank: [lamp x, z, bunting end x, z].
-const LAMPS := [[-370, -530, -232, -640], [965, -530, 1140, -655], [1540, -530, 1700, -640]]
 
 ## The water kit for the shown stage (kit/water_bodies.gd).
 var waters := WaterBodies.new(self)
@@ -105,8 +90,12 @@ var _spirits := PackedVector2Array()
 ## Shut crossings stay in view as faint outlines: id -> ghost node.
 var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
-## RAMPS built for the shown stage: crossing id -> its hinge (Node3D, meta "target").
+## Ramps built for the shown stage: crossing id -> its hinge (Node3D, meta
+## "target"), and what lowers each: crossing id -> [selector id, value].
 var _ramps: Dictionary = {}
+var _ramp_on: Dictionary = {}
+## Each control, lever and pad of the chapter by id -> its owner slot.
+var _owners: Dictionary = {}
 ## Tide rules: the ring spreading where a spirit drowned and its bubbles,
 ## built once on the first drowning and reused; the slot drowned now ("" none);
 ## the water surface it went under; how long the bubbles have risen.
@@ -169,13 +158,16 @@ func show_stage(stage: Dictionary) -> void:
 	_ghosts.clear()
 	_boats.clear()
 	_ramps.clear()
+	_ramp_on.clear()
+	_owners = _mechanism_owners()
 	# Actors outlive a stage: a drowned face goes back before the new one.
 	if not _drowned_slot.is_empty(): _clear_drowned()
 	_drown_ring = null
 	_drown_bubbles.clear()
 	_kept_masts.clear()
 	_bubbles_placed = false
-	waters.start(stage, _water_block(), DECK_KINDS.keys().filter(func(id: String) -> bool: return DECK_KINDS[id] == "stones"))
+	var decks: Dictionary = _decks_data()
+	waters.start(stage, _water_block(), decks.keys().filter(func(id: String) -> bool: return decks[id] == "stones"))
 	await super.show_stage(stage)
 	terrain.name = "TurnOfTheTide"
 	await waters.build_bodies()
@@ -201,6 +193,19 @@ func show_stage(stage: Dictionary) -> void:
 func _water_block() -> Dictionary:
 	var path := str(_descriptor().get("water", ""))
 	return {} if path.is_empty() else load(path).DATA
+
+## How each crossing is built: the dressing's "decks" (route id -> kind).
+## Read from the catalog, as a stage's own dressing loads after its floors.
+func _decks_data() -> Dictionary:
+	return DressingCatalog.for_key(_chapter_key()).get("decks", {})
+
+## Every control, lever and pad of every stage: id -> its owner slot.
+func _mechanism_owners() -> Dictionary:
+	var found := {}
+	for stage: Dictionary in chapter_definition.get("stages", []):
+		for entity: Dictionary in stage.get("controls", []) + stage.get("levers", []) + stage.get("pressure_pads", []):
+			found[str(entity.id)] = str(entity.get("owner_slot", ""))
+	return found
 
 # --- Floors: solid decks with walls down to the water ---
 
@@ -332,7 +337,7 @@ func _restyle_deck(route: Dictionary) -> void:
 	var across_x := width >= depth
 	var length := width if across_x else depth
 	var lane := depth if across_x else width
-	var kind: String = DECK_KINDS.get(id, "timber")
+	var kind := str(_decks_data().get(id, "timber"))
 	match kind:
 		"sand":
 			box(Vector3(width, 0.10, depth), SAND, Vector3(0, -0.05, 0), deck)
@@ -678,7 +683,7 @@ func _pair_keep_clear() -> Array:
 	return found
 
 func _route_color(id: String) -> Color:
-	return GOLD if id in P0_MECHANISMS else TEAL
+	return GOLD if _owners.get(id, "") == "p0" else TEAL
 
 func _carries_pad(view: Dictionary, surface_id: String) -> bool:
 	for pad: Dictionary in view.get("pressure_pads", []):
@@ -772,8 +777,7 @@ func _advance_water(delta: float) -> void:
 		_rise_bubbles()
 	waters.advance_fade(delta)
 	if not reduced_motion:
-		var harbour: Node3D = waters.bodies.get("harbour")
-		if is_instance_valid(harbour): _float_boats(float(harbour.get_meta("shown")))
+		waters.bob()
 		# Pale streaks run down the falling water.
 		if is_instance_valid(_spout) and _spout.visible:
 			for streak: MeshInstance3D in _spout_streaks:
@@ -920,31 +924,54 @@ func _build_foreshore() -> void:
 		var x := -9.2 + float(index) * 1.49
 		cylinder(0.035, 0.01, Color("f1e4d0") if index % 3 else Color("e7c0b0"), Vector3(x, -0.295, 5.05 + 0.18 * float(index % 4)), root)
 
-## Rowboats moored in the channels ride the harbour level (and bob unless
-## motion is reduced): a second cue for the tide.
+## Rowboats moored in the channels (the dressing's "moored_boats") ride their
+## water's level (and bob unless motion is reduced): a second cue for the tide.
 func _build_boats() -> void:
-	for spec: Array in BOATS:
+	for spec: Dictionary in dressing.get("moored_boats", []):
 		var boat := Node3D.new()
 		boat.name = "MooredBoat"
-		boat.position = point([spec[0], spec[1]])
-		boat.rotation.y = float(spec[2])
-		boat.set_meta("phase", float(spec[0]) * 0.013)
+		boat.position = point(spec.at)
+		boat.rotation.y = float(spec.heading)
+		boat.set_meta("phase", float(spec.at[0]) * 0.013)
 		terrain.add_child(boat)
 		box(Vector3(0.40, 0.14, 0.92), TIMBER.lightened(0.10), Vector3(0, 0.05, 0), boat)
 		box(Vector3(0.32, 0.06, 0.82), TIMBER.darkened(0.25), Vector3(0, 0.10, 0), boat)
 		box(Vector3(0.24, 0.10, 0.20), TIMBER.lightened(0.10), Vector3(0, 0.06, 0.48), boat)
 		for z: float in [-0.18, 0.18]: box(Vector3(0.38, 0.03, 0.08), TIMBER.lightened(0.20), Vector3(0, 0.13, z), boat)
-		cylinder(0.035, waters.wall_top() + 0.12 - waters.seabed(), PILE, Vector3(float(spec[0]) / 100.0 + 0.32, (waters.wall_top() + 0.12 + waters.seabed()) * 0.5, float(spec[1]) / 100.0 - 0.36), terrain).name = "MooringPile"
+		cylinder(0.035, waters.wall_top() + 0.12 - waters.seabed(), PILE, Vector3(float(spec.at[0]) / 100.0 + 0.32, (waters.wall_top() + 0.12 + waters.seabed()) * 0.5, float(spec.at[1]) / 100.0 - 0.36), terrain).name = "MooringPile"
 		_boats.append(boat)
-	waters.ride("harbour", _float_boats)
+		waters.ride(str(spec.water), _float_boat.bind(boat), true)
 
-## Each RAMPS crossing of the definition gets a timber ramp on a hinge at its
+## A winch's ramp: a crossing (never a stub or a stair) whose gate, in any
+## stage, needs a water value and another selector's value lies flat in it as
+## a ramp at that value, at any water; raised, it stands up out of the water.
+## It follows the snapshot's selector value, so it moves the moment the winch
+## is turned. Crossing id -> [selector id, value].
+func _ramp_selectors() -> Dictionary:
+	var water_selectors: Array = waters.water.get("bodies", []).map(func(body: Dictionary) -> String: return str(body.selector))
+	var found := {}
+	for stage: Dictionary in chapter_definition.get("stages", []):
+		for gate: Dictionary in stage.get("gates", []):
+			var route := _route(str(gate.route_id))
+			if route.is_empty() or route.has("axis") or _is_stub(route) or found.has(str(route.id)): continue
+			var when: Dictionary = gate.get("when", {})
+			var wet := false
+			var other: Array = []
+			for term: Dictionary in [when] + when.get("all", []):
+				var control := str(term.get("control_id", ""))
+				if control.is_empty(): continue
+				if control in water_selectors: wet = true
+				elif other.is_empty(): other = [control, str(term.get("value", ""))]
+			if wet and not other.is_empty(): found[str(route.id)] = other
+	return found
+
+## Each ramp crossing (_ramp_selectors) gets a timber ramp on a hinge at its
 ## west end, with a winch drum on two posts beside the hinge. It starts raised;
 ## present() sets where it heads.
 func _build_ramps() -> void:
-	for id: String in RAMPS:
+	_ramp_on = _ramp_selectors()
+	for id: String in _ramp_on:
 		var route := _route(id)
-		if route.is_empty(): continue
 		var r: Array = route.rect_cm
 		var length := float(r[2] - r[0]) / 100.0
 		var lane := float(r[3] - r[1]) / 100.0
@@ -969,7 +996,7 @@ func _build_ramps() -> void:
 func _aim_ramps(controls: Dictionary, immediate: bool) -> void:
 	for id: String in _ramps:
 		var hinge: Node3D = _ramps[id]
-		var lowered := str(controls.get(str(RAMPS[id][0]), "")) == str(RAMPS[id][1])
+		var lowered := str(controls.get(str(_ramp_on[id][0]), "")) == str(_ramp_on[id][1])
 		hinge.set_meta("target", 0.0 if lowered else RAMP_RAISED)
 		if immediate or reduced_motion: hinge.rotation.z = float(hinge.get_meta("target"))
 
@@ -1063,24 +1090,26 @@ func _clear_drowned() -> void:
 	if is_instance_valid(_drown_ring): _drown_ring.visible = false
 	for bubble: MeshInstance3D in _drown_bubbles: bubble.visible = false
 
-func _float_boats(level: float) -> void:
-	for boat: Node3D in _boats:
-		if not is_instance_valid(boat): continue
-		var bob := 0.0 if reduced_motion else sin(_clock * 1.4 + float(boat.get_meta("phase"))) * 0.018
-		boat.position.y = level - 0.02 + bob
+func _float_boat(level: float, boat: Node3D) -> void:
+	if not is_instance_valid(boat): return
+	var bob := 0.0 if reduced_motion else sin(_clock * 1.4 + float(boat.get_meta("phase"))) * 0.018
+	boat.position.y = level - 0.02 + bob
 
-## Warm pools of light under the bank lamps, and bunting strung along the banks.
+## Warm pools of light under the bank lamps that name "bunting" in the
+## dressing, and bunting strung from each to that point along its bank.
 func _build_lamplight() -> void:
 	var bunting := [Color("e9a3a0"), Color("f1c27d"), Color("91d6c6"), Color("f4ecd0")]
-	for spec: Array in LAMPS:
-		var foot := point([spec[0], spec[1]]) + Vector3(0, 1.09, 0)
+	for spec: Dictionary in DressingCatalog.stage_props(dressing, displayed_stage_id):
+		if str(spec.get("kind", "")) != "lamp_post" or not spec.has("bunting"): continue
+		var ground := _surface_height(str(spec.get("surface", ""))) + float(spec.get("y", 0)) / 100.0 + 0.01
+		var foot := point(spec.at) + Vector3(0, ground, 0)
 		var pool := cylinder(0.62, 0.006, Color(1.0, 0.82, 0.5, 0.30), foot + Vector3(0, 0.005, 0), terrain)
 		pool.name = "LampPool"
 		Primitives.own_material(pool).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var from := foot + Vector3(0, 1.30, 0)
-		var to := point([spec[2], spec[3]]) + Vector3(0, 1.09 + 0.95, 0)
-		cylinder(0.025, 0.95, TIMBER.darkened(0.2), point([spec[2], spec[3]]) + Vector3(0, 1.09 + 0.475, 0), terrain)
+		var to := point(spec.bunting) + Vector3(0, ground + 0.95, 0)
+		cylinder(0.025, 0.95, TIMBER.darkened(0.2), point(spec.bunting) + Vector3(0, ground + 0.475, 0), terrain)
 		_bar_between(from, to, 0.012, ROPE, terrain)
 		for index in range(1, 8):
 			var t := float(index) / 8.0

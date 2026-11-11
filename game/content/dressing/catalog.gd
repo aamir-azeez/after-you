@@ -9,7 +9,13 @@ extends RefCounted
 ##   "stairs": "timber" for wooden steps, "bridges": "timber" for plank decks
 ##   "obstacles": "flowerbed" for timber flower beds on obstacle rectangles
 ##   "cables": "floor" to draw gate links only along a shared floor
-##   "props":  {"*" or stage_id: [kit/props.gd specs]}
+##   "props":  {"*" or stage_id: [kit/props.gd specs]}; a "lamp_post" may
+##             name "bunting": [x, z], where a light pool under it and bunting
+##             strung from it end (tide_world)
+##   "decks":  {route id: deck kind} for a world that builds its own decks
+##             (tide_world: sand, stones, jetty, gangway, towpath, punt)
+##   "moored_boats": [{"at": [x, z], "heading": radians, "water": body id}]:
+##             rowboats riding a body of water (kit/water_bodies.gd)
 ##   "fireflies": count of drifting lights near the props (dusk looks)
 ## tests/test_dressing_lint.gd checks every prop against every route, pad,
 ## lever, goal, start and drop, including the camera's view of them.
