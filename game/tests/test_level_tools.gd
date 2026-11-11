@@ -185,6 +185,7 @@ func _live() -> void:
 	_check(live.applied.size() == 2, "It applied the layout and the dressing: %s" % [live.applied])
 	# Put the bundled dressing back for the rest of the run.
 	Dressing.FILES = Dressing._files()
+	Dressing.RESOLVED = Dressing._resolve_files()
 	live.queue_free()
 	screen.queue_free()
 	await process_frame

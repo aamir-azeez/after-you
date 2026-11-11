@@ -100,7 +100,8 @@ func _compile_level(source: Array) -> Dictionary:
 	return level
 
 ## The dressing file compiled afresh and put in place of the bundled one for
-## this chapter (dressing is presentation only: no engine reads it).
+## this chapter, resolved as the catalog resolves its own (dressing is
+## presentation only: no engine reads it).
 func _swap_dressing(key: String, path: String) -> bool:
 	var script := _compile(path)
 	if script == null or not script.get_script_constant_map().has("DATA"): return false
@@ -108,6 +109,14 @@ func _swap_dressing(key: String, path: String) -> bool:
 	files[key] = script
 	files.make_read_only()
 	Dressing.FILES = files
+	# Readers take the resolved dressing (theme, picks and slot props applied),
+	# locked like the catalog's own: resolve the edited data the same way.
+	var data: Dictionary = Dressing.resolve(script.get_script_constant_map().DATA)
+	if not data.is_read_only(): data.make_read_only()
+	var resolved: Dictionary = Dressing.RESOLVED.duplicate()
+	resolved[key] = data
+	resolved.make_read_only()
+	Dressing.RESOLVED = resolved
 	applied.append("dressing %s" % path)
 	return true
 
