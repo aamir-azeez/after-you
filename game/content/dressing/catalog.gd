@@ -46,7 +46,11 @@ static func _files() -> Dictionary:
 
 static func _resolve_files() -> Dictionary:
 	var result: Dictionary = {}
-	for key: String in FILES: result[key] = resolve(FILES[key].DATA)
+	for key: String in FILES:
+		var data: Dictionary = resolve(FILES[key].DATA)
+		# A mixed dressing is new data: locked like the const files it stands for.
+		if not data.is_read_only(): data.make_read_only()
+		result[key] = data
 	result.make_read_only()
 	return result
 

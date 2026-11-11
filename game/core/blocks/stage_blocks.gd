@@ -97,7 +97,9 @@ static func problems(source: Dictionary) -> Array[String]:
 	for stage: Dictionary in level.stages:
 		var placed: Array = []
 		for field: String in ["pressure_pads", "levers", "controls", "ball_pads"]:
-			for item: Dictionary in stage.get(field, []): placed.append(str(item.id))
+			for item: Dictionary in stage.get(field, []):
+				if str(item.id) in placed: found.append("%s: %s is placed twice" % [stage.id, item.id])
+				placed.append(str(item.id))
 		for gate: Dictionary in stage.get("gates", []):
 			if str(gate.route_id) not in routes: found.append("%s: gate on a route the level lacks: %s" % [stage.id, gate.route_id])
 			for id: String in _wired(gate, family):
@@ -108,7 +110,8 @@ static func problems(source: Dictionary) -> Array[String]:
 			found.append("Drop %s waits on lever %s, which no stage places" % [drop.id, lever])
 	return found
 
-## What a block lacks for this family, as messages.
+## What a block lacks for this family, as messages: anything expand() would
+## otherwise trip on or write wrongly.
 static func _missing(block: Dictionary, family: String) -> Array[String]:
 	var kind := str(block.get("block", ""))
 	var found: Array[String] = []
@@ -118,12 +121,32 @@ static func _missing(block: Dictionary, family: String) -> Array[String]:
 	var needs: Array = NEEDS[kind]
 	for field: String in needs:
 		if not block.has(field): found.append("block %s needs %s" % [kind, field])
-	for field: String in ["pad", "lever", "selector", "second_lever"]:
+	if not found.is_empty(): return found
+	for field: String in ["pad", "lever", "second_lever"]:
 		var given: Variant = block.get(field)
-		if given is Dictionary:
-			for part: String in ["id", "at", "surface", "owner"]:
-				if not given.has(part): found.append("block %s's inline %s needs %s" % [kind, field, part])
+		if given is Dictionary: _need(found, kind, field, given, ["id", "at", "surface", "owner"])
+	for field: String in ["selector", "matches"]:
+		var given: Variant = block.get(field)
+		if given is Dictionary: _need(found, kind, field, given, ["id", "at", "surface", "owner", "values", "initial"])
+	if kind == "selector": _need(found, kind, "selector", block, ["values"])
+	if kind == "selector_gate":
+		if not block.routes is Dictionary: found.append("block selector_gate's routes must map each route to its value")
+	elif block.has("routes") and not block.routes is Array: found.append("block %s's routes must be a list" % kind)
+	if kind == "match_selectors" and not block.values is Array: found.append("block match_selectors's values must be a list")
+	if block.get("lip") != null: _need(found, kind, "lip", block.lip, ["id", "rect", "owner"])
+	if kind == "hold_door" and block.has("finish") and family != COOPERATIVE: found.append("block hold_door's finish is the cooperative hold rule")
+	if kind == "raw":
+		for field: String in block:
+			if field != "block" and not block[field] is Array: found.append("block raw's %s must be a list" % field)
 	return found
+
+static func _need(found: Array[String], kind: String, field: String, given: Variant, parts: Array) -> void:
+	if not given is Dictionary:
+		found.append("block %s's %s must be a dictionary" % [kind, field])
+		return
+	for part: String in parts:
+		if not given.has(part): found.append("block %s's %s needs %s" % [kind, field, part])
+	if given.has("values") and not given.values is Array: found.append("block %s's %s values must be a list" % [kind, field])
 
 static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, family: String) -> void:
 	match str(block.block):

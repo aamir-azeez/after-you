@@ -33,11 +33,16 @@ func _run() -> void:
 	var input := _root.path_join("input")
 	DirAccess.make_dir_recursive_absolute(input.path_join("history"))
 	var hashes := _write_input(input)
-	var before := _listing(input)
 	_check_refusals()
+	var before := _listing(input)
 	var made := Report.report(input)
 	_check(_listing(input) == before, "The report leaves its folder exactly as it found it")
 	_check_rows(made, hashes)
+	_save(input.path_join("turn-tries.json.tmp"), "{ damaged")
+	_save(input.path_join("turn-tries.json"), "{ damaged")
+	var damaged := _listing(input)
+	Report.report(input)
+	_check(_listing(input) == damaged, "A damaged try count is skipped and nothing is written beside it")
 	var shown := Report.text(made)
 	print(shown)
 	_check(shown.contains("turn-of-the-tide@2 / set-the-tide") and shown.contains("drowned 1") and shown.contains("stood still longest"), "The printed report names the stage, the drowning and the still spot")
@@ -84,6 +89,15 @@ func _check_refusals() -> void:
 	DirAccess.make_dir_recursive_absolute(saves)
 	_check(not Report.refusal(saves).is_empty(), "A folder that is the game's save folder is refused")
 	_check(Report.refusal(_root.path_join("input")).is_empty(), "A folder of copies is read")
+	_check(not Report.refusal(OS.get_user_data_dir().get_base_dir()).is_empty(), "A folder holding this game's save folder is refused")
+	_check(not Report.output_refusal(_root.path_join("input/report.json"), _root.path_join("input")).is_empty(), "The report is never written into the folder it reads")
+	_check(not Report.output_refusal(OS.get_user_data_dir().path_join("report.json"), _root.path_join("input")).is_empty(), "The report is never written into the save folder")
+	_check(Report.output_refusal(_root.path_join("report.json"), _root.path_join("input")).is_empty(), "The report may be written beside its folder")
+	# A save folder met while walking a parent folder is stepped over.
+	_save(saves.path_join("kept.json"), FileAccess.get_file_as_string(FIXTURES + "journey/slack-water-a.json"))
+	var outer := Report.collect(_root)
+	var inner := Report.collect(_root.path_join("input"))
+	_check(outer.recordings.size() == inner.recordings.size(), "Walking a parent folder never reads inside a save folder (%d, %d)" % [outer.recordings.size(), inner.recordings.size()])
 
 func _check_rows(made: Dictionary, hashes: Dictionary) -> void:
 	var stages: Dictionary = made.stages

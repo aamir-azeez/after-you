@@ -81,6 +81,19 @@ func _check_rules() -> void:
 	var dangling := {"schema_version": 7, "bridges": [{"id": "r"}], "stages": [{"id": "s", "blocks": [{"block": "relay_lever", "lever": "nowhere", "routes": ["r", "gone"]}]}]}
 	var found := Blocks.problems(dangling)
 	_check(found.size() == 3 and found.any(func(line: String) -> bool: return line.contains("nowhere")) and found.any(func(line: String) -> bool: return line.contains("gone")), "A gate on a missing route or wired to nothing placed is named: %s" % [found])
+	var broken := {"schema_version": 7, "bridges": [{"id": "r"}], "stages": [{"id": "s", "blocks": [
+		{"block": "raw", "source_policy": {"kind": "ring"}},
+		{"block": "selector_gate", "selector": {"id": "x", "at": [0, 0], "surface": "a", "owner": "p0"}, "routes": ["r"]},
+		{"block": "match_selectors", "selector": "x", "matches": {"id": "y", "at": [0, 0], "surface": "a", "owner": "p0", "values": ["a"]}, "values": ["a"], "routes": ["r"]},
+		{"block": "one_way_drop", "id": "d", "rect": [0, 0, 1, 1], "from": "a", "to": "b", "lip": {"id": "l"}},
+		{"block": "hold_door", "pad": "p", "routes": ["r"], "finish": 15}]}]}
+	var named := Blocks.problems(broken)
+	for part: String in ["raw's source_policy", "selector_gate's routes", "selector needs values", "matches needs initial", "lip needs rect", "finish is the cooperative"]:
+		_check(named.any(func(line: String) -> bool: return line.contains(part)), "A malformed block is named, not crashed on (%s): %s" % [part, named])
+	_check(Blocks.expand(broken).stages[0].keys() == ["id"], "Malformed blocks are all left out")
+	var twice := {"schema_version": 7, "bridges": [{"id": "r"}], "stages": [{"id": "s", "blocks": [
+		{"block": "pad", "id": "p", "at": [0, 0], "surface": "a", "owner": "p0"}, {"block": "hold_door", "pad": {"id": "p", "at": [5, 0], "surface": "a", "owner": "p0"}, "routes": ["r"]}]}]}
+	_check(Blocks.problems(twice).any(func(line: String) -> bool: return line.contains("placed twice")), "One id placed twice is named")
 	_check(Blocks.family_of({"schema_version": 4}).is_empty() and not Blocks.problems({"schema_version": 4, "stages": []}).is_empty(), "Blocks refuse rules they do not know")
 
 ## The published stage without what the blocks write, with the blocks added.

@@ -26,7 +26,8 @@ const BLOCKS := {
 	"relay_lever": {"cues": ["lever_pulled", "bridge_opened"], "hint_a": PlayerCopy.BLOCK_RELAY_LEVER_HINT_A, "hint_b": PlayerCopy.WISHING_WELL_AHEAD_HINT_B},
 	"selector_gate": {"cues": ["switch_set", "bridge_opened"], "hint_a": PlayerCopy.BLOCK_SELECTOR_GATE_HINT_A, "hint_b": PlayerCopy.WISHING_WELL_AHEAD_HINT_B},
 	"match_selectors": {"cues": ["switch_set", "bridge_opened"], "hint_b": PlayerCopy.BLOCK_MATCH_SELECTORS_HINT_B},
-	"weight_pad": {"cues": ["bridge_opened"], "hint_a": PlayerCopy.BLOCK_WEIGHT_PAD_HINT_A, "hint_b": PlayerCopy.WISHING_WELL_AHEAD_HINT_B},
+	# Cooperative only, and cooperative hints are the hashed definition's: no words.
+	"weight_pad": {"cues": ["bridge_opened"]},
 	"one_way_drop": {"cues": ["seed_landed"], "hint_b": PlayerCopy.BLOCK_ONE_WAY_DROP_HINT_B},
 	"ring_bell": {"cues": ["bell_rung"], "hint_b": PlayerCopy.BLOCK_RING_BELL_HINT_B},
 	"pad": {"cues": []},
@@ -48,10 +49,13 @@ static func fill(data: Dictionary) -> void:
 	data.lever_looks = _over(looks(source), data.lever_looks)
 	data.water_levels = _over(water_levels(source), data.water_levels)
 
-## The block source a descriptor names, or {}.
+## The block source a descriptor names, or {}. It must be a method of the
+## chapter's own definition catalog, so the index only ever loads a script
+## the registry loads anyway.
 static func source_of(data: Dictionary) -> Dictionary:
 	var named: Array = data.get("block_source", [])
-	if named.size() < 2: return {}
+	var catalog: Array = data.get("definition", [])
+	if named.size() < 2 or catalog.is_empty() or str(named[0]) != str(catalog[0]): return {}
 	var made: Variant = load(str(named[0])).callv(str(named[1]), named.slice(2))
 	return made if made is Dictionary else {}
 
@@ -68,6 +72,15 @@ static func stage_copy(source: Dictionary) -> Dictionary:
 		if stage.has("title") and not hint_a.is_empty() and not hint_b.is_empty():
 			result[str(stage.id)] = {"title": str(stage.title), "hint_a": hint_a, "hint_b": hint_b}
 	return result
+
+## Stage ids the defaults give no stage copy, because their blocks offer no
+## first or no second turn hint: the descriptor must write those itself.
+static func missing_copy(source: Dictionary) -> Array:
+	var copied := stage_copy(source)
+	var missing: Array = []
+	for stage: Dictionary in source.get("stages", []):
+		if not copied.has(str(stage.id)): missing.append(str(stage.id))
+	return missing
 
 ## {control id: look} from lever and selector blocks that name one.
 static func looks(source: Dictionary) -> Dictionary:

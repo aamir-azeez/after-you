@@ -6,6 +6,10 @@ extends SceneTree
 ##
 ##   godot --headless --path game --script res://tests/playtest_report.gd -- --input=<folder> [--json=<file>]
 ##
+## Godot writes its own logs under user://, so run it with APPDATA and
+## LOCALAPPDATA (XDG_DATA_HOME elsewhere) pointed at a scratch folder, as the
+## private isolated suite runner does; never with the real ones.
+##
 ## The folder holds copies, never the game's own save folder (refused): any
 ## JSON with recordings in it (loose turns, solo journey saves, their archived
 ## attempts, checkpoints and their proofs), room history folders (index.json
@@ -36,6 +40,7 @@ func _initialize() -> void:
 		if argument.begins_with("--input="): input = argument.trim_prefix("--input=")
 		if argument.begins_with("--json="): json_out = argument.trim_prefix("--json=")
 	var refused := refusal(input)
+	if refused.is_empty() and not json_out.is_empty(): refused = output_refusal(json_out, input)
 	if not refused.is_empty():
 		printerr("PLAYTEST REPORT refused: " + refused)
 		quit(2)
@@ -53,10 +58,25 @@ static func refusal(input: String) -> String:
 	if not DirAccess.dir_exists_absolute(input): return "no such folder: " + input
 	var path := ProjectSettings.globalize_path(input).replace("\\", "/").to_lower()
 	var own := ProjectSettings.globalize_path("user://").replace("\\", "/").to_lower().trim_suffix("/")
-	if path.begins_with(own): return "that is this game's own save folder; copy what you need elsewhere first"
-	for mark: String in SAVE_FOLDER_MARKS:
-		if path.contains(mark): return "that is the game's save folder; copy what you need elsewhere first"
+	if (path + "/").begins_with(own + "/"): return "that is this game's own save folder; copy what you need elsewhere first"
+	if (own + "/").begins_with(path.trim_suffix("/") + "/"): return "that folder holds this game's own save folder"
+	if _save_folder(path): return "that is the game's save folder; copy what you need elsewhere first"
 	return ""
+
+## Why the --json file may not be written there, or "".
+static func output_refusal(output: String, input: String) -> String:
+	var path := ProjectSettings.globalize_path(output).replace("\\", "/").to_lower()
+	var own := ProjectSettings.globalize_path("user://").replace("\\", "/").to_lower().trim_suffix("/")
+	if (path + "/").begins_with(own + "/") or _save_folder(path): return "the report is never written into the game's save folder"
+	if path.begins_with(ProjectSettings.globalize_path(input).replace("\\", "/").to_lower().trim_suffix("/") + "/"): return "the report is never written into the folder it reads"
+	return ""
+
+## True for a path in or under one of the game's save folders.
+static func _save_folder(path: String) -> bool:
+	var plain := path.replace("\\", "/").to_lower() + "/"
+	for mark: String in SAVE_FOLDER_MARKS:
+		if plain.contains(mark + "/"): return true
+	return false
 
 ## {"stages": {"<key> / <stage>": {"a": role, "b": role}}, "turns": n,
 ## "replayed": n, "notes": [...]}; a role is {"turns", "seconds", "tries",
@@ -78,7 +98,7 @@ static func report(input: String) -> Dictionary:
 		var row: Dictionary = stages[name][role]
 		row.turns += 1
 		row.seconds.append(snappedf(float(recording.duration_ticks) / TICK_RATE, 0.1))
-		var tries: int = found.tries.tries(hash) if found.tries != null else 0
+		var tries := int(found.tries.get(hash, 0))
 		if tries > 0:
 			row.tries += tries
 			row.tries_known += 1
@@ -96,7 +116,7 @@ static func report(input: String) -> Dictionary:
 
 ## Every recording and checkpoint in the folder, by hash, and its try counts.
 static func collect(input: String) -> Dictionary:
-	var found := {"recordings": {}, "checkpoints": {}, "tries": null, "files": 0, "blobs": 0, "notes": []}
+	var found := {"recordings": {}, "checkpoints": {}, "tries": {}, "files": 0, "blobs": 0, "notes": []}
 	for path: String in _files(input):
 		if not path.ends_with(".json"): continue
 		var length := FileAccess.open(path, FileAccess.READ).get_length() if FileAccess.file_exists(path) else 0
@@ -107,7 +127,9 @@ static func collect(input: String) -> Dictionary:
 		if value == null: continue
 		found.files += 1
 		if path.get_file() == TurnTries.FILE_PATH.get_file():
-			found.tries = TurnTries.new(path)
+			# Its own check, read only: TurnTries' loader keeps a copy of a damaged file beside it.
+			var parsed: Variant = TurnTries._parse_kept(value)
+			if parsed != null: found.tries = parsed.kept
 		elif path.get_file() == "index.json" and value is Dictionary and value.get("attempts") is Array:
 			_read_history(path.get_base_dir(), value, found)
 		else: _walk(value, found)
@@ -144,10 +166,16 @@ static func _is_recording(value: Dictionary) -> bool:
 static func _is_checkpoint(value: Dictionary) -> bool:
 	return value.get("checkpoint_hash") is String and value.has("next_stage_id") and value.get("players") is Dictionary and value.get("level_id") is String
 
+## Every file under the folder, never stepping into a save folder.
 static func _files(folder: String) -> Array[String]:
 	var result: Array[String] = []
+	var own := ProjectSettings.globalize_path("user://").replace("\\", "/").to_lower().trim_suffix("/")
 	for file: String in DirAccess.get_files_at(folder): result.append(folder.path_join(file))
-	for child: String in DirAccess.get_directories_at(folder): result.append_array(_files(folder.path_join(child)))
+	for child: String in DirAccess.get_directories_at(folder):
+		var path := folder.path_join(child)
+		var plain := ProjectSettings.globalize_path(path).replace("\\", "/").to_lower()
+		if plain == own or _save_folder(plain): continue
+		result.append_array(_files(path))
 	return result
 
 ## One turn played again through its engine: {"drowned", "closing",

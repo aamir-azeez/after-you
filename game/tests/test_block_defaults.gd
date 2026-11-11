@@ -21,6 +21,7 @@ const Journey = preload("res://core/journey/stage_catalog.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const Sample = preload("res://tests/block_level_sample.gd")
 const SAMPLE := ["res://tests/block_level_sample.gd", "source"]
+const SAMPLE_DEFINITION := ["res://tests/block_level_sample.gd", "definition"]
 
 var checks := 0
 var failures := 0
@@ -79,18 +80,24 @@ func _check_hints() -> void:
 			for dash: String in ["—", "–", " - "]: _check(not hint.contains(dash), "Block %s's %s has no dash" % [block, field])
 
 func _check_fill() -> void:
-	var journey := {"family": "journey", "block_source": SAMPLE, "stage_copy": {}, "lever_looks": {}, "water_levels": {}}
+	var journey := {"family": "journey", "definition": SAMPLE_DEFINITION, "block_source": SAMPLE, "stage_copy": {}, "lever_looks": {}, "water_levels": {}}
 	Defaults.fill(journey)
 	var copy: Dictionary = journey.stage_copy.get("the-yard", {})
 	_check(copy == {"title": "The Yard", "hint_a": Defaults.BLOCKS.hold_door.hint_a, "hint_b": Defaults.BLOCKS.ring_bell.hint_b}, "A journey stage gets its title and its first and last blocks' hints: %s" % copy)
 	_check(journey.lever_looks == {"sluice": "valve", "gate-chain": "winch"}, "Lever and selector looks come from the blocks: %s" % journey.lever_looks)
 	_check(journey.water_levels == {"sluice": ["low", "high"]}, "A water switch's values become its water levels")
-	var given := {"family": "journey", "block_source": SAMPLE, "stage_copy": {"the-yard": {"title": "Mine", "hint_a": "A.", "hint_b": "B."}}, "lever_looks": {"gate-chain": "bolt"}, "water_levels": {}}
+	var given := {"family": "journey", "definition": SAMPLE_DEFINITION, "block_source": SAMPLE, "stage_copy": {"the-yard": {"title": "Mine", "hint_a": "A.", "hint_b": "B."}}, "lever_looks": {"gate-chain": "bolt"}, "water_levels": {}}
 	Defaults.fill(given)
 	_check(given.stage_copy["the-yard"].title == "Mine" and given.lever_looks == {"sluice": "valve", "gate-chain": "bolt"}, "A descriptor's own fields win over the defaults")
-	var cooperative := {"family": "cooperative", "block_source": SAMPLE, "stage_copy": {}, "lever_looks": {}, "water_levels": {}}
+	var cooperative := {"family": "cooperative", "definition": SAMPLE_DEFINITION, "block_source": SAMPLE, "stage_copy": {}, "lever_looks": {}, "water_levels": {}}
 	Defaults.fill(cooperative)
 	_check(cooperative.stage_copy.is_empty(), "A cooperative chapter shows its hashed hints, so it gets no stage copy")
+	var elsewhere := {"family": "journey", "definition": ["res://core/journey/stage_catalog.gd", "definition"], "block_source": SAMPLE, "stage_copy": {}, "lever_looks": {}, "water_levels": {}}
+	Defaults.fill(elsewhere)
+	_check(elsewhere.stage_copy.is_empty() and elsewhere.lever_looks.is_empty(), "A block source outside the chapter's own catalog is ignored")
+	_check(Defaults.missing_copy(Sample.source()).is_empty(), "Every sample stage gets default copy")
+	var bell_only := {"stages": [{"id": "s", "title": "S", "blocks": [{"block": "ring_bell"}]}]}
+	_check(Defaults.missing_copy(bell_only) == ["s"], "A stage whose blocks offer no first turn hint is named for hand-written copy")
 	var none := {"family": "journey", "stage_copy": {}, "lever_looks": {}, "water_levels": {}}
 	var before := none.duplicate(true)
 	Defaults.fill(none)
@@ -129,3 +136,6 @@ func _check_registered() -> void:
 		if data.block_source.is_empty(): continue
 		_check(Canonical.same(Blocks.expand(Defaults.source_of(data)), Registry.definition(key)), "%s is its block source expanded" % key)
 		_check(Blocks.problems(Defaults.source_of(data)).is_empty(), "%s's blocks have no problems" % key)
+		if Registry.stage_hud(key) == "stage_copy":
+			for stage: Dictionary in Registry.definition(key).stages:
+				_check(data.stage_copy.has(stage.id), "%s/%s has stage copy, default or its own" % [key, stage.id])

@@ -1473,8 +1473,7 @@ const BLOCK_HOLD_DOOR_HINT_A := "Stand on the step and hold the way open for you
 const BLOCK_RELAY_LEVER_HINT_A := "Pull the lever to open the way for your friend."
 const BLOCK_SELECTOR_GATE_HINT_A := "Turn the switch to open a way for your friend."
 const BLOCK_MATCH_SELECTORS_HINT_B := "Turn your switch to match the other one."
-const BLOCK_WEIGHT_PAD_HINT_A := "Roll the ball onto the plate to open the way."
-const BLOCK_ONE_WAY_DROP_HINT_B := "Hop down through the hatch."
+const BLOCK_ONE_WAY_DROP_HINT_B := "Hop down to the floor below."
 const BLOCK_RING_BELL_HINT_B := "Reach the bell and ring it."
 
 # Lighthouse chapter — begin journal load
