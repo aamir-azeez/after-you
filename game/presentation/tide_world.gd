@@ -289,7 +289,6 @@ func _build_bridge(definition: Dictionary) -> void:
 	for node: Node in built: (node as Node3D).position.y += float(definition.get("height_cm", 0)) / 100.0
 	owner_marks.lifted(id, float(definition.get("height_cm", 0)) / 100.0)
 	if _weights.has(id): _weights[id].set_meta("rest_y", _weights[id].position.y)
-	_restyle_deck(definition)
 	_kept_pennant(definition)
 	if id.begins_with("jetty") or id == "boom-jetty": _piles(definition)
 	if _is_stub(definition): _stub_frame(definition)
@@ -319,22 +318,12 @@ func _gate_for(route_id: String) -> Dictionary:
 		if gate.route_id == route_id: return gate
 	return {}
 
-## Tide lays every deck itself (_restyle_deck), after its footprints marker.
-func _lay_deck(_definition: Dictionary, _deck_node: Node3D, _width: float, _depth: float, _across_x: bool, _low: float, _high: float) -> void:
-	pass
-
-## Each crossing in its own build: a rippled sand hump, round stepping stones,
-## piled timber, a rope-railed gangway, flagged towpath stones or a punt. The
-## long edges glow while the crossing is open, in gold where the tide opens it.
-func _restyle_deck(route: Dictionary) -> void:
+## Each crossing in its own build, by the dressing's "decks": a rippled sand
+## hump, round stepping stones, piled timber, a rope-railed gangway, flagged
+## towpath stones or a punt, over the whole crossing. The long edges glow while
+## the crossing is open, in gold where the tide opens it.
+func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, _low: float, _high: float) -> void:
 	var id := str(route.id)
-	var deck: Node3D = _decks.get(id)
-	if deck == null: return
-	# The deck holds only its footprints marker here (_lay_deck lays nothing).
-	var r: Array = route.rect_cm
-	var width := float(r[2] - r[0]) / 100.0
-	var depth := float(r[3] - r[1]) / 100.0
-	var across_x := width >= depth
 	var length := width if across_x else depth
 	var lane := depth if across_x else width
 	var kind := str(_decks_data().get(id, "timber"))
