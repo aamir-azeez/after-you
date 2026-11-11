@@ -3112,7 +3112,7 @@ func _choose_local_checkpoint() -> void:
 	mode = "choose_checkpoint"
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_F87CE3CA6999, PlayerCopy.LIGHTHOUSE_PREVIEW_8C7F45D78BE8)
 	for index in range(journey.pairs().size()):
-		card.add_child(_button("%s · %d / %d" % [definition.title, index + 1, definition.stages.size()], func(): _confirm_local_checkpoint(index)))
+		card.add_child(_button("%s · %d / %d" % [Registry.descriptor(chapter_key).title, index + 1, definition.stages.size()], func(): _confirm_local_checkpoint(index)))
 	card.add_child(_action_button("back", _show_ready))
 
 func _confirm_local_checkpoint(index: int) -> void:

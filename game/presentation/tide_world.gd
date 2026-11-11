@@ -5,27 +5,10 @@ extends "res://presentation/journey_world.gd"
 ## gauges and kept-crossing marks only read the snapshot; nothing here feeds
 ## back into the simulation, a recording or a checkpoint.
 
-## Doors, spillways and walls at every water opening.
+## The water: its bodies, the walls that hold it, its floods and its locks,
+## from the chapter's water block (content/water/turn_of_the_tide.gd).
+const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
-## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
-## which both stages share, and each water surface only on its rectangles:
-## worked out once per definition, then reused (kit/definition_geometry.gd).
-const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.gd")
-## Walls that fade while a spirit stands behind them.
-const WallFade = preload("res://presentation/kit/wall_fade.gd")
-## Display heights (metres) for each water value. Low sits below the beaches,
-## half between beach and terrace, high between terrace and quay.
-const HARBOUR_LEVELS := {"low": -0.22, "half": 0.24, "high": 0.70}
-## The outer sea rests a little below the beaches while the sea gate is shut.
-const SEA_LEVELS := {"shut": -0.06, "low": -0.22, "half": 0.24, "high": 0.70}
-const SEABED := -0.70
-## Water moves at this many metres a second; one tide step takes about half a second.
-const WATER_RATE := 1.1
-## A winch's ramp: crossing id -> [selector id, the value that lowers it]. The
-## ramp is hinged at the crossing's west end and lies flat in it when lowered,
-## at any water; raised, it stands up out of the water. It follows the
-## snapshot's selector value, so it moves the moment the winch is turned.
-const RAMPS := {"slipway": ["winch", "slip"]}
 ## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
 const RAMP_RAISED := 0.95
 const RAMP_RATE := 1.6
@@ -42,21 +25,11 @@ const SpiritLook = preload("res://presentation/spirit_look.gd")
 const DROWN_BUBBLES := [[0.10, 0.04, 0.0, 0.045], [-0.09, -0.03, 0.35, 0.035], [0.02, -0.08, 0.7, 0.03], [-0.13, 0.06, 0.15, 0.025]]
 const BUBBLE_RISE := 0.55
 const BUBBLE_SPEED := 0.45
-const HARBOUR_REGION := [-512, -480, 1728, 480]
-## The outer sea: wide past the mole, through the harbour mouth, and a short
-## reach past each end of the mouth where the sea gates stand. Breakwaters hold
-## it where it ends in view.
-const SEA_REGIONS := [[-2400, -640, -960, 640], [-960, -480, -704, 480], [-704, -560, -512, 560]]
+## The sea gates' leaves stand across both ends of the harbour mouth.
 const MOUTH_X := [-704, -512]
 const SEA_GATE_Z := 5.20
-const CHAMBER_PIT := [-640, -128, -576, 128]
+## The sea chamber (the water block's "chamber" body) stands in walls to here.
 const CHAMBER_WALL_TOP := 0.74
-## Water stops this many cm short of what holds it on the sides the camera sees.
-const WATER_INSET := 3
-const AQUEDUCT := ["aq-feeder", "aq-span"]
-const WATER := Color(0.25, 0.42, 0.47, 0.84)
-const SEA := Color(0.21, 0.37, 0.44, 0.88)
-const CHAMBER_WATER := Color(0.28, 0.46, 0.50, 0.84)
 const SPOUT := Color(0.80, 0.93, 0.95, 0.86)
 const STONE := Color("a8947a")
 const STONE_DARK := Color("7d6d58")
@@ -65,20 +38,11 @@ const PILE := Color("5f4a38")
 const SAND := Color("e3cf9f")
 const BRASS := Color("b8914f")
 const COPING := Color("dccaa4")
-## One masonry for every wall that holds water back, so walls that meet at a
-## corner read as one wall.
-const PARAPET_STONE := Color("b8a283")
-const FENDER := Color("6b4f37")
 const ROPE := Color("d1b98c")
 ## Walls under each tier, by deck height in cm: pale sand, terracotta, honey.
 const WALLS := {0: Color("bca681"), 48: Color("a3705a"), 96: Color("8e6d48")}
 ## Ground when the dressing names none, by deck height in cm.
 const DEFAULT_GROUND := {0: "sand", 48: "terracotta", 96: "honey_cobble"}
-## Water never stands higher than high; walls that hold it back stand to here.
-const PARAPET_TOP := 0.77
-## Weed and wet bands on every wall at the three water marks.
-const MARK_BANDS := {"low": Color("4d5b40"), "half": Color("655e4c"), "high": Color("7a6f5d")}
-const TIDE_VALUES := ["low", "half", "high"]
 const CAMERA_X := Vector2(-9.6, 17.28)
 const CAMERA_Z := Vector2(-5.44, 5.44)
 ## Dark sign plates: the water signs, the key sign and the gauge waves' outline.
@@ -101,20 +65,11 @@ const BUBBLE_SHIFTS := {"tide": -4.0, "chamber": -4.0, "basin": 0.1}
 const SCENERY_COVER := 0.10
 ## Each water wheel's tint, for its rim, dial and water sign.
 const WHEEL_WATER := {"tide": Color("6fb3c2"), "basin": Color("4f8fb5"), "chamber": Color("7cc4b0")}
-## The first spirit's machines; everything else belongs to the second.
-const P0_MECHANISMS := ["tide", "chamber", "winch", "sluice", "line", "punt-line", "boom-pin", "sea-key", "wheel-step-pad", "quay-step-pad", "bollard-pad"]
 ## Which mouth crossing each sea value serves.
 const MOUTHS := {"half": "boom-jetty", "low": "sea-gate-out", "high": "punt-ferry"}
-## How each crossing is built.
-const DECK_KINDS := {"sand-1": "sand", "slipway": "sand", "stones-1": "stones", "stones-2": "stones", "stones-3": "stones",
-	"jetty-1": "jetty", "jetty-2": "jetty", "boom-jetty": "jetty", "jetty-3": "gangway", "towpath": "towpath", "punt-ferry": "punt"}
-## Moored rowboats in the harbour channels, clear of every crossing: [x, z, heading].
-const BOATS := [[-64, 176, 0.12], [480, 168, -0.18], [1248, -176, 0.10]]
-## Lamps on the banks behind the quays, each with a light pool and bunting
-## strung to a point further along its bank: [lamp x, z, bunting end x, z].
-const LAMPS := [[-370, -530, -232, -640], [965, -530, 1140, -655], [1540, -530, 1700, -640]]
 
-var _water: Dictionary = {}
+## The water kit for the shown stage (kit/water_bodies.gd).
+var waters := WaterBodies.new(self)
 var _wheels: Dictionary = {}
 var _gauges: Dictionary = {}
 var _mouth_lamps: Dictionary = {}
@@ -129,36 +84,18 @@ var _chamber_lamps: Array[MeshInstance3D] = []
 var _spout: Node3D
 var _spout_streaks: Array[MeshInstance3D] = []
 var _history_tide := ""
-## Crossings that may be open while their water stands above the deck: walled
-## and kept out of the water body, a sealed pit that stays dry (a walled stub
-## floods while shut, _floods).
-var _walled: Array[String] = []
-## Of those, the crossings walled only because they can be kept (entered while
-## open, so walked later even when the tide covers them); kept apart so the
-## tests can pin which crossings latching walls.
-var _kept_walled: Array[String] = []
 ## Where the spirits stand (plan cm), refilled each snapshot for the locks
 ## and the wall fade.
 var _spirits := PackedVector2Array()
-## What holds the water at each opening in the shown stage, the walls built
-## to hold water (terrain space) for its plan, and the levels it reads (where
-## the water is going, where it stands this frame), refilled in place.
-var _locks: WaterLocks
-var _water_walls: Array[AABB] = []
-var _lock_targets: Dictionary = {}
-var _lock_shown: Dictionary = {}
 ## Shut crossings stay in view as faint outlines: id -> ghost node.
 var _ghosts: Dictionary = {}
-## Walled stubs read covered while shut: id -> {"node" (its flood: a unit box
-## of the water it sits in, stretched from the seabed to that water's level),
-## "body" (that water's root), "water" (its name in _water), "key" (its pit's
-## area id in the locks' plan)}.
-var _floods: Dictionary = {}
-## Clears the walls in front of a spirit on a walled stub (_build_route_walls).
-var _wall_fade: WallFade
 var _boats: Array[Node3D] = []
-## RAMPS built for the shown stage: crossing id -> its hinge (Node3D, meta "target").
+## Ramps built for the shown stage: crossing id -> its hinge (Node3D, meta
+## "target"), and what lowers each: crossing id -> [selector id, value].
 var _ramps: Dictionary = {}
+var _ramp_on: Dictionary = {}
+## Each control, lever and pad of the chapter by id -> its owner slot.
+var _owners: Dictionary = {}
 ## Tide rules: the ring spreading where a spirit drowned and its bubbles,
 ## built once on the first drowning and reused; the slot drowned now ("" none);
 ## the water surface it went under; how long the bubbles have risen.
@@ -183,10 +120,6 @@ var _scenery_mark_count := 0
 ## The most _clear_scenery had to climb any bubble this frame (metres): the
 ## shared placement already clears the scenery, so normally 0.
 var scenery_backstop := 0.0
-## Wall layout samples (4 cm apart) worked out between two build steps.
-const WALL_SAMPLES_PER_STEP := 48
-## Water grid lines worked out between two build steps.
-const WATER_LINES_PER_STEP := 8
 
 ## Builds only the stage shown first. Controllers call show_stage straight
 ## after load_level, so opening on the second stage no longer builds the first
@@ -209,7 +142,6 @@ func _show_first_stage() -> void:
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
-	_water.clear()
 	_wheels.clear()
 	_gauges.clear()
 	_mouth_lamps.clear()
@@ -223,43 +155,28 @@ func show_stage(stage: Dictionary) -> void:
 	_spout = null
 	_spout_streaks.clear()
 	_history_tide = ""
-	_locks = null
-	_water_walls.clear()
 	_ghosts.clear()
-	_floods.clear()
-	_wall_fade = WallFade.new()
 	_boats.clear()
 	_ramps.clear()
+	_ramp_on.clear()
+	_owners = _mechanism_owners()
 	# Actors outlive a stage: a drowned face goes back before the new one.
 	if not _drowned_slot.is_empty(): _clear_drowned()
 	_drown_ring = null
 	_drown_bubbles.clear()
 	_kept_masts.clear()
 	_bubbles_placed = false
-	_walled = _walled_routes(stage)
-	_kept_walled = _keepable_routes(stage, _walled)
-	_walled.append_array(_kept_walled)
+	var decks: Dictionary = _decks_data()
+	waters.start(stage, _water_block(), decks.keys().filter(func(id: String) -> bool: return decks[id] == "stones"))
 	await super.show_stage(stage)
 	terrain.name = "TurnOfTheTide"
-	var islands: Array = chapter_definition.get("islands", [])
-	var cut: Array = [CHAMBER_PIT]
-	for id: String in _walled: cut.append(_route(id).rect_cm)
-	_water["harbour"] = await _water_body("HarbourWater", [HARBOUR_REGION], islands, cut, WATER, HARBOUR_LEVELS.low)
-	await _build_step()
-	_water["sea"] = await _water_body("OuterSea", SEA_REGIONS, islands, cut, SEA, SEA_LEVELS.shut)
-	await _build_step()
-	_water["chamber"] = await _water_body("ChamberWater", [CHAMBER_PIT], islands, [], CHAMBER_WATER, HARBOUR_LEVELS.half)
-	await _build_step()
-	await _build_parapets()
-	await _build_step()
-	await _build_sea_walls()
-	await _build_step()
-	await _build_route_walls()
+	await waters.build_bodies()
+	await waters.build_walls()
 	await _build_step()
 	_build_chamber()
 	await _build_step()
 	_build_sea_gates()
-	await _build_locks()
+	await waters.build_locks(WaterLocks.bake_path(_chapter_key(), displayed_stage_id))
 	await _build_step()
 	_build_mouth_lamps()
 	await _build_step()
@@ -271,6 +188,24 @@ func show_stage(stage: Dictionary) -> void:
 	_build_ramps()
 	await _build_step()
 	_build_lamplight()
+
+## The chapter's water block: the descriptor's "water" file, or {} for none.
+func _water_block() -> Dictionary:
+	var path := str(_descriptor().get("water", ""))
+	return {} if path.is_empty() else load(path).DATA
+
+## How each crossing is built: the dressing's "decks" (route id -> kind).
+## Read from the catalog, as a stage's own dressing loads after its floors.
+func _decks_data() -> Dictionary:
+	return DressingCatalog.for_key(_chapter_key()).get("decks", {})
+
+## Every control, lever and pad of every stage: id -> its owner slot.
+func _mechanism_owners() -> Dictionary:
+	var found := {}
+	for stage: Dictionary in chapter_definition.get("stages", []):
+		for entity: Dictionary in stage.get("controls", []) + stage.get("levers", []) + stage.get("pressure_pads", []):
+			found[str(entity.id)] = str(entity.get("owner_slot", ""))
+	return found
 
 # --- Floors: solid decks with walls down to the water ---
 
@@ -290,7 +225,7 @@ func _shore(island: Dictionary, _color: Color) -> void:
 	# The spout keeps a real opening in the aqueduct floor; no decal covers it.
 	for piece: Array in Primitives.rect_minus_hole(island.rect_cm, hole.get("rect_cm", [])):
 		Surfaces.build({"id": island.id, "rect_cm": piece}, style, raised, false)
-	if str(island.id) in AQUEDUCT:
+	if str(island.id) in waters.water.get("piers", []):
 		# The aqueduct stands on piers, so the spout lands on open beach below it.
 		raised.set_meta("tide_occluder", true)
 		_upper_islands.append(raised)
@@ -302,7 +237,7 @@ func _shore(island: Dictionary, _color: Color) -> void:
 func _deck_walls(island: Dictionary, raised: Node3D) -> void:
 	var r: Array = island.rect_cm
 	var height := raised.position.y
-	var bottom := SEABED - height
+	var bottom := waters.seabed() - height
 	var color: Color = WALLS.get(int(island.get("height_cm", 0)), STONE)
 	var size := Vector3(float(r[2] - r[0]) / 100.0 - 0.02, -0.20 - bottom, float(r[3] - r[1]) / 100.0 - 0.02)
 	var wall := box(size, color, Vector3(float(r[0] + r[2]) / 200.0, (bottom - 0.20) * 0.5, float(r[1] + r[3]) / 200.0), raised)
@@ -313,27 +248,14 @@ func _deck_walls(island: Dictionary, raised: Node3D) -> void:
 	var y := -0.62
 	while y > bottom + 0.08:
 		var clear := true
-		for level: float in HARBOUR_LEVELS.values(): clear = clear and absf(height + y - level) > 0.06
+		for level: float in waters.mark_levels().values(): clear = clear and absf(height + y - level) > 0.06
 		if clear: box(Vector3(size.x + 0.016, 0.012, size.z + 0.016), color.darkened(0.10), Vector3(wall.position.x, y, wall.position.z), raised).name = "WallCourse"
 		y -= 0.28
-	_mark_bands(Vector3(wall.position.x, 0, wall.position.z) + Vector3(0, height, 0), Vector2(size.x, size.z), SEABED, height - 0.20, raised, height)
-
-## Bands at every water mark between `bottom` and `top` (world heights) around a
-## wall block of `footprint` (metres) centred at `center` (world), under
-## `parent` whose origin is `origin_y` above the ground. A wall run along x (or
-## z) keeps its bands a little short of its own ends, clear of the walls it meets.
-func _mark_bands(center: Vector3, footprint: Vector2, bottom: float, top: float, parent: Node3D, origin_y: float = 0.0, run_along: int = -1) -> void:
-	var grow := Vector2(-0.008 if run_along == 0 else 0.05, -0.008 if run_along == 1 else 0.05)
-	for value: String in TIDE_VALUES:
-		var level: float = HARBOUR_LEVELS[value]
-		if level <= bottom + 0.03 or level >= top - 0.03: continue
-		var band := box(Vector3(footprint.x + grow.x, 0.036, footprint.y + grow.y), MARK_BANDS[value], Vector3(center.x, level - 0.012 - origin_y, center.z), parent)
-		band.name = "WaterMark_" + value
-		band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	waters.mark_bands(Vector3(wall.position.x, 0, wall.position.z) + Vector3(0, height, 0), Vector2(size.x, size.z), waters.seabed(), height - 0.20, raised, height)
 
 func _aqueduct_piers(island: Dictionary, raised: Node3D) -> void:
 	var r: Array = island.rect_cm
-	var bottom := SEABED - raised.position.y
+	var bottom := waters.seabed() - raised.position.y
 	var piers: Array = []
 	if island.id == "aq-span": piers = [[300, 288], [470, 288], [560, 288]]
 	else: piers = [[320, 200]]
@@ -350,369 +272,10 @@ func _surface_height(id: String) -> float:
 		if route.id == id: return float(route.get("height_cm", 0)) / 100.0
 	return 0.0
 
-# --- Parapets: water stands against stone, never against a dry deck ---
-
-## The body of water a rectangle's centre lies in: "harbour", "sea" or "".
-static func _body_of(rect: Array) -> String:
-	var x := float(rect[0] + rect[2]) * 0.5
-	var z := float(rect[1] + rect[3]) * 0.5
-	if _inside([x, z], HARBOUR_REGION): return "harbour"
-	for region: Array in SEA_REGIONS:
-		if _inside([x, z], region): return "sea"
-	return ""
-
-static func _inside(at: Array, rect: Array) -> bool:
-	return float(at[0]) > float(rect[0]) and float(at[0]) < float(rect[2]) and float(at[1]) > float(rect[1]) and float(at[1]) < float(rect[3])
-
 func _route(id: String) -> Dictionary:
 	for route: Dictionary in chapter_definition.get("bridges", []) + chapter_definition.get("stairs", []):
 		if route.id == id: return route
 	return {}
-
-static func _low_cm(route: Dictionary) -> int:
-	if route.has("axis"): return mini(int(route.from_height_cm), int(route.to_height_cm))
-	return int(route.get("height_cm", 0))
-
-## Crossings in this stage that can stand open while their water rises above
-## the deck: every always-open low crossing (stairs, the towpath, the mole
-## slip), and every gated one whose gate does not tie it to a water value that
-## leaves its deck dry (the lock gates, punt and sea gates, and the posts and
-## catwalks whose gates tie them to no tide value). Never stepping stones
-## (_stands_in_water).
-func _walled_routes(stage: Dictionary) -> Array[String]:
-	var result: Array[String] = []
-	for route: Dictionary in chapter_definition.get("bridges", []) + chapter_definition.get("stairs", []):
-		if _stands_in_water(route): continue
-		var low := _low_cm(route)
-		var body := _body_of(route.rect_cm)
-		if low >= 70 or body.is_empty(): continue
-		var gate := _gate_for_stage(stage, str(route.id))
-		if gate.is_empty(): continue
-		var levels: Dictionary = HARBOUR_LEVELS if body == "harbour" else SEA_LEVELS
-		var marks := _control_marks(gate.get("when", {}), "tide" if body == "harbour" else "basin")
-		var dry := not marks.is_empty()
-		for value: String in marks:
-			if float(levels[value]) >= float(low) / 100.0: dry = false
-		if not dry: result.append(str(route.id))
-	return result
-
-## Crossings that can be kept (entered while open in this stage or an earlier
-## one, so walked later even when the water covers them) whose deck this
-## stage's water can stand over, not already walled: walled too, so a kept one
-## walked under the water's level stays dry behind its walls.
-func _keepable_routes(stage: Dictionary, walled: Array[String]) -> Array[String]:
-	var latched: Array = []
-	for earlier: Dictionary in chapter_definition.get("stages", []):
-		latched.append_array(earlier.get("entry_latch_routes", []))
-		if str(earlier.get("id", "")) == str(stage.get("id", "")): break
-	# The water this stage can show: a body moves only if its wheel is here.
-	var wheels: Array = []
-	for control: Dictionary in stage.get("controls", []): wheels.append(str(control.id))
-	var harbour := HARBOUR_LEVELS.values() if "tide" in wheels else [HARBOUR_LEVELS.low]
-	var sea := SEA_LEVELS.values() if "basin" in wheels else [SEA_LEVELS.shut]
-	var result: Array[String] = []
-	for route: Dictionary in chapter_definition.get("bridges", []):
-		var id := str(route.id)
-		if id in walled or id not in latched or _stands_in_water(route): continue
-		var body := _body_of(route.rect_cm)
-		var gate := _gate_for_stage(stage, id)
-		if body.is_empty() or (not gate.is_empty() and gate.get("when", {}).is_empty()): continue
-		var highest := -INF
-		for level: float in (harbour if body == "harbour" else sea): highest = maxf(highest, level)
-		if highest > float(_low_cm(route)) / 100.0: result.append(id)
-	return result
-
-## A crossing never walled: stepping stones stand in the channel as plain
-## stones, under water when it rises over them. A stub (a lever pad, post or
-## catwalk) stands in the open water too, its mouth held by the locks' door,
-## while its gate opens it only over dry water; one a stage can hold open under
-## its water is walled like any crossing (_walled_routes), so a spirit the
-## rules keep safe on it never stands in the water.
-func _stands_in_water(route: Dictionary) -> bool:
-	return DECK_KINDS.get(str(route.id), "") == "stones"
-
-static func _gate_for_stage(stage: Dictionary, id: String) -> Dictionary:
-	for item: Dictionary in stage.get("gates", []):
-		if item.route_id == id: return item
-	return {}
-
-## Values a predicate needs outright (through "all" only) of one control.
-static func _control_marks(predicate: Dictionary, control: String) -> Array:
-	var found: Array = []
-	if str(predicate.get("control_id", "")) == control: found.append(str(predicate.get("value", "")))
-	for child: Dictionary in predicate.get("all", []):
-		for value: String in _control_marks(child, control):
-			if value not in found: found.append(value)
-	return found
-
-## Every beach and terrace edge that faces water gets a parapet to just above
-## high water, with a coping stone; crossing mouths stay open, so a flooded
-## crossing shows as water in the gap. Quays stand above every tide and get a
-## timber fender instead.
-func _build_parapets() -> void:
-	var root := Node3D.new()
-	root.name = "Parapets"
-	terrain.add_child(root)
-	for wall: Array in (await _wall_layout()).parapets:
-		var run: Array = wall[0]
-		var edge: float = wall[1]
-		var outward: float = wall[2]
-		var along_x: bool = wall[3]
-		var height: float = wall[4]
-		if height >= 0.70: _fender(run, edge, outward, along_x, height, root)
-		else: _parapet(run, edge, outward, along_x, height, root)
-		await _build_step()
-
-## Every parapet and sea-wall run, in build order: {"parapets": [[run, edge,
-## outward, along_x, height]], "sea_walls": [[run, edge, outward, along_x]]}.
-## Worked out once per definition, an island at a time (a staged build gives
-## the frame back between islands: it took a few hundred milliseconds in one
-## frame the first time Turn of the Tide opened). Await it.
-func _wall_layout() -> Dictionary:
-	var islands: Array = chapter_definition.get("islands", [])
-	var routes: Array = chapter_definition.get("bridges", []) + chapter_definition.get("stairs", [])
-	var key := [&"tide_wall_layout", islands, routes]
-	if DefinitionGeometry.has(key): return DefinitionGeometry.kept(key)
-	var holes := _parapet_holes(islands)
-	var walls: Array = []
-	for island: Dictionary in islands:
-		walls.append_array(await _island_parapet_runs(island, holes, routes))
-		await _build_step()
-	var sea_walls: Array = await _sea_wall_runs(islands)
-	await _build_step()
-	return DefinitionGeometry.keep(key, {"parapets": walls, "sea_walls": sea_walls})
-
-func _parapet_holes(islands: Array) -> Array:
-	var holes: Array = [CHAMBER_PIT]
-	for island: Dictionary in islands: holes.append(island.rect_cm)
-	return holes
-
-## One island's parapet runs, in _wall_layout order, a side at a time. Await it.
-func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Array:
-	var walls: Array = []
-	var id := str(island.id)
-	if id in AQUEDUCT or id == "sea-chamber": return walls
-	var height := float(island.get("height_cm", 0)) / 100.0
-	var r: Array = island.rect_cm
-	for side in range(4):
-		var along_x := side < 2
-		var edge := float(r[1] if side == 0 else r[3] if side == 1 else r[0] if side == 2 else r[2])
-		var outward := -1.0 if side == 0 or side == 2 else 1.0
-		var start := float(r[0] if along_x else r[1]) - 8.0
-		var finish := float(r[2] if along_x else r[3]) + 8.0
-		# Every sample lies on one line beside the edge: only the rectangles
-		# that line crosses can hold a sample, so only their spans along it
-		# are tested (the same strict test as _inside).
-		var line := edge + outward * 6.0
-		var route_rects: Array = []
-		for route: Dictionary in routes: route_rects.append(route.rect_cm)
-		var mouths := _spans_on_line(route_rects, along_x, line)
-		var waters := _spans_on_line([HARBOUR_REGION] + SEA_REGIONS, along_x, line)
-		var dry := _spans_on_line(holes, along_x, line)
-		var runs: Array = []
-		var t := start + 2.0
-		while t <= finish - 2.0:
-			var kind := "dry"
-			if _in_spans(t, mouths): kind = "mouth"
-			elif _in_spans(t, waters) and not _in_spans(t, dry): kind = "wall"
-			if runs.is_empty() or runs[-1][2] != kind: runs.append([t - 2.0, t + 2.0, kind])
-			else: runs[-1][1] = t + 2.0
-			t += 4.0
-		for run: Array in runs:
-			if run[2] == "wall": walls.append([run, edge, outward, along_x, height])
-		await _build_step()
-	return walls
-
-## The spans, along a line of constant z (along_x) or x at `line` cm, of the
-## rectangles [x0, z0, x1, z1] that line passes strictly inside, as [from, to]
-## along it: a point t on the line is inside such a rectangle exactly when
-## from < t < to (as _inside).
-static func _spans_on_line(rects: Array, along_x: bool, line: float) -> Array:
-	var spans: Array = []
-	for rect: Array in rects:
-		if along_x and line > float(rect[1]) and line < float(rect[3]): spans.append([float(rect[0]), float(rect[2])])
-		elif not along_x and line > float(rect[0]) and line < float(rect[2]): spans.append([float(rect[1]), float(rect[3])])
-	return spans
-
-static func _in_spans(t: float, spans: Array) -> bool:
-	for span: Array in spans:
-		if t > span[0] and t < span[1]: return true
-	return false
-
-## Where a body of water ends in view against open air or the other water (the
-## harbour's channel ends, the sea gates' reaches, the mouth beside the west
-## islands), a sea wall to above high water holds it: no water ever shows a
-## bare face.
-func _build_sea_walls() -> void:
-	var root := Node3D.new()
-	root.name = "SeaWalls"
-	terrain.add_child(root)
-	for wall: Array in (await _wall_layout()).sea_walls:
-		var run: Array = wall[0]
-		var edge: float = wall[1]
-		var outward: float = wall[2]
-		var along_x: bool = wall[3]
-		var out := Vector3(0, 0, outward * 0.015) if along_x else Vector3(outward * 0.015, 0, 0)
-		var piece := _edge_box(run, edge, outward, along_x, 0.12, SEABED, PARAPET_TOP, PARAPET_STONE, root, 0.6)
-		piece.position += out
-		piece.name = "SeaWall"
-		var coping := _edge_box(run, edge, outward, along_x, 0.17, PARAPET_TOP, PARAPET_TOP + 0.05, COPING, root, 0.6)
-		coping.position += out + (Vector3(0, 0, -outward * 0.025) if along_x else Vector3(-outward * 0.025, 0, 0))
-		_holds_water(piece)
-		_holds_water(coping)
-		var size := (piece.mesh as BoxMesh).size
-		_mark_bands(piece.position, Vector2(size.x, size.z), SEABED, PARAPET_TOP, root, 0.0, 0 if along_x else 1)
-		await _build_step()
-
-## Every sea-wall run, in _wall_layout order, giving a staged build the frame
-## back every WALL_SAMPLES_PER_STEP samples. Await it.
-func _sea_wall_runs(islands: Array) -> Array:
-	var holes: Array = [CHAMBER_PIT]
-	for island: Dictionary in islands: holes.append(island.rect_cm)
-	var walls: Array = []
-	var sampled := 0
-	for body: Array in [[HARBOUR_REGION], SEA_REGIONS]:
-		for region: Array in body:
-			for side in range(4):
-				var along_x := side < 2
-				var edge := float(region[1] if side == 0 else region[3] if side == 1 else region[0] if side == 2 else region[2])
-				var outward := -1.0 if side == 0 or side == 2 else 1.0
-				var start := float(region[0] if along_x else region[1])
-				var finish := float(region[2] if along_x else region[3])
-				var runs: Array = []
-				# Inside and outside samples each lie on one line beside the edge
-				# (see _spans_on_line): the same tests on the rectangles it crosses.
-				var inner := edge - outward * 2.0
-				var outer := edge + outward * 2.0
-				var wet_in := _spans_on_line(body, along_x, inner)
-				var dry_in := _spans_on_line(holes, along_x, inner)
-				var blocked: Array = _spans_on_line(body, along_x, outer) + _spans_on_line(holes, along_x, outer)
-				# The harbour side builds the wall between the two waters.
-				if body != [HARBOUR_REGION]: blocked += _spans_on_line([HARBOUR_REGION], along_x, outer)
-				var t := start + 2.0
-				while t <= finish - 2.0:
-					var wall := _in_spans(t, wet_in) and not _in_spans(t, dry_in) and not _in_spans(t, blocked)
-					var view: Array = [t, edge] if along_x else [edge, t]
-					if absf(float(view[0]) - 384.0) > 1500.0 or absf(float(view[1])) > 700.0: wall = false
-					if wall and not runs.is_empty() and float(runs[-1][1]) >= t - 2.0: runs[-1][1] = t + 2.0
-					elif wall: runs.append([t - 2.0, t + 2.0])
-					t += 4.0
-					sampled += 1
-					if sampled % WALL_SAMPLES_PER_STEP == 0: await _build_step()
-				for run: Array in runs: walls.append([run, edge, outward, along_x])
-	return walls
-
-## A wall piece along one edge: [from, to] in cm along the edge, short of
-## each end by `trim` cm so it never shares a face with what it meets.
-func _edge_box(run: Array, edge: float, outward: float, along_x: bool, thickness: float, bottom: float, top: float, color: Color, parent: Node3D, trim: float = 0.0) -> MeshInstance3D:
-	var length := float(run[1] - run[0] - 2.0 * trim) / 100.0
-	var middle := float(run[0] + run[1]) / 200.0
-	var off := edge / 100.0 + outward * thickness * 0.5
-	var size := Vector3(length, top - bottom, thickness) if along_x else Vector3(thickness, top - bottom, length)
-	var at := Vector3(middle, (top + bottom) * 0.5, off) if along_x else Vector3(off, (top + bottom) * 0.5, middle)
-	return box(size, color, at, parent)
-
-func _parapet(run: Array, edge: float, outward: float, along_x: bool, height: float, parent: Node3D) -> void:
-	var wall := _edge_box(run, edge, outward, along_x, 0.09, height - 0.20, PARAPET_TOP, PARAPET_STONE, parent, 0.6)
-	wall.name = "Parapet"
-	var coping := _edge_box(run, edge, outward, along_x, 0.14, PARAPET_TOP, PARAPET_TOP + 0.05, COPING, parent, 0.6)
-	coping.position += (Vector3(0, 0, -outward * 0.025) if along_x else Vector3(-outward * 0.025, 0, 0))
-	coping.name = "ParapetCoping"
-	_holds_water(wall)
-	_holds_water(coping)
-	var size := (wall.mesh as BoxMesh).size
-	_mark_bands(wall.position, Vector2(size.x, size.z), height - 0.20, PARAPET_TOP, parent, 0.0, 0 if along_x else 1)
-
-func _fender(run: Array, edge: float, outward: float, along_x: bool, height: float, parent: Node3D) -> void:
-	_edge_box(run, edge, outward, along_x, 0.10, height - 0.16, height - 0.03, FENDER, parent, 0.6).name = "QuayFender"
-
-## Walled crossings: masonry along the sides that do not meet their floors, a
-## floor in the pit and a plinth under each stair. The pit is sealed (walls,
-## and floors at its mouths), so the water round it never stands in it; only a
-## walled stub fills, with its own flood while shut (_build_flood). Await it.
-func _build_route_walls() -> void:
-	var root := Node3D.new()
-	root.name = "WalledCrossings"
-	terrain.add_child(root)
-	for id: String in _walled:
-		await _build_step()
-		var route := _route(id)
-		var r: Array = route.rect_cm
-		var floors: Array = []
-		var front: Array = []
-		for surface: Variant in [route.get("from_surface", ""), route.get("to_surface", "")]:
-			if str(surface) == id: continue
-			for item: Dictionary in chapter_definition.get("islands", []) + chapter_definition.get("bridges", []):
-				if item.id == surface: floors.append(item.rect_cm)
-		var color := PARAPET_STONE
-		for side in range(4):
-			var along_x := side < 2
-			var edge := float(r[1] if side == 0 else r[3] if side == 1 else r[0] if side == 2 else r[2])
-			var outward := -1.0 if side == 0 or side == 2 else 1.0
-			var mouth := false
-			for floor: Array in floors:
-				var touches := absf(float(floor[3] if outward < 0 else floor[1]) - edge) <= 2.0 if along_x else absf(float(floor[2] if outward < 0 else floor[0]) - edge) <= 2.0
-				var overlaps := float(floor[0]) < float(r[2]) and float(floor[2]) > float(r[0]) if along_x else float(floor[1]) < float(r[3]) and float(floor[3]) > float(r[1])
-				if touches and overlaps: mouth = true
-			if mouth: continue
-			var run: Array = [float(r[0]) - 9.0, float(r[2]) + 9.0] if along_x else [float(r[1]) - 9.0, float(r[3]) + 9.0]
-			var wall := _edge_box(run, edge, outward, along_x, 0.09, SEABED, PARAPET_TOP, color, root)
-			wall.name = "CrossingWall_" + id
-			var coping := _edge_box(run, edge, outward, along_x, 0.14, PARAPET_TOP, PARAPET_TOP + 0.05, COPING, root)
-			coping.position += (Vector3(0, 0, -outward * 0.025) if along_x else Vector3(-outward * 0.025, 0, 0))
-			coping.name = "CrossingCoping"
-			_holds_water(wall)
-			_holds_water(coping)
-			var size := (wall.mesh as BoxMesh).size
-			var before := root.get_child_count()
-			_mark_bands(wall.position, Vector2(size.x, size.z), SEABED, PARAPET_TOP, root, 0.0, 0 if along_x else 1)
-			# The sides toward the camera (east and south) stand in front of a
-			# spirit on a walled stub: those fade while one stands there.
-			if outward > 0.0 and _is_stub(route):
-				var nodes: Array = [wall, coping]
-				for index in range(before, root.get_child_count()): nodes.append(root.get_child(index))
-				front.append_array(nodes)
-		var center := point([(r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5])
-		var width := float(r[2] - r[0]) / 100.0
-		var depth := float(r[3] - r[1]) / 100.0
-		box(Vector3(width, 0.04, depth), STONE_DARK.darkened(0.2), center + Vector3(0, SEABED + 0.02, 0), root).name = "PitFloor"
-		if _is_stub(route):
-			_build_flood(id, route, center, width, depth)
-			# A spirit on it stands below its coping: the walls toward the camera
-			# fade while one stands there. A wall across the gap to a neighbour
-			# never hides it from the follow camera's height.
-			_wall_fade.add(r, front)
-		if route.has("axis"):
-			var top := float(_low_cm(route)) / 100.0 - 0.12
-			var plinth := box(Vector3(width - 0.04, top - SEABED, depth - 0.04), WALLS.get(48, STONE).darkened(0.08), center + Vector3(0, (top + SEABED) * 0.5, 0), root)
-			plinth.name = "StairPlinth"
-			_holds_water(plinth)
-
-## A walled stub (a post or catwalk) still reads covered while its gate is
-## shut, as it did standing in the open water: its pit fills to the level of
-## the water round it, and empties while it is open (present). The locks' plan
-## gives its pit that water while flooded, so a door at its mouth holds the
-## flood off the floor beside it, as one held the open water there before.
-func _build_flood(id: String, route: Dictionary, center: Vector3, width: float, depth: float) -> void:
-	var body: Node3D = _water.get(_body_of(route.rect_cm))
-	if not is_instance_valid(body): return
-	var water := body.get_node_or_null("Water") as MeshInstance3D
-	var flood := Node3D.new()
-	flood.name = "FloodedStub_" + id
-	flood.position = Vector3(center.x, 0, center.z)
-	flood.visible = false
-	terrain.add_child(flood)
-	# Its sides toward the camera stand 3 cm inside the pit, clear of the faces
-	# of its frame and pit floor.
-	var fill := Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.03, 1.0, depth - 0.03)), water.material_override if water != null else material(WATER), Vector3(-0.015, -0.5, -0.015), flood)
-	fill.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_floods[id] = {"node": flood, "body": body, "water": _body_of(route.rect_cm), "key": "crossing:" + id}
-	_fill(_floods[id], float(body.get_meta("shown")))
-
-## Stretches a flood from the seabed to its water's `level`, as _show_water does a body.
-static func _fill(flood: Dictionary, level: float) -> void:
-	(flood.node as Node3D).position.y = level
-	(flood.node as Node3D).scale.y = maxf(level - SEABED, 0.02)
 
 # --- Crossings: decks at their own height ---
 
@@ -725,7 +288,6 @@ func _build_bridge(definition: Dictionary) -> void:
 	# The shared deck builder places every deck at the ground; lift all it made.
 	for node: Node in built: (node as Node3D).position.y += float(definition.get("height_cm", 0)) / 100.0
 	if _weights.has(id): _weights[id].set_meta("rest_y", _weights[id].position.y)
-	_restyle_deck(definition)
 	_kept_pennant(definition)
 	if id.begins_with("jetty") or id == "boom-jetty": _piles(definition)
 	if _is_stub(definition): _stub_frame(definition)
@@ -748,32 +310,22 @@ func _quiet_route(route: Dictionary) -> bool:
 	return gate.is_empty() or gate.get("when", {}).is_empty() or not _tide_marks(gate.when).is_empty()
 
 func _is_stub(route: Dictionary) -> bool:
-	return str(route.get("to_surface", "")) == str(route.id)
+	return WaterBodies.is_stub(route)
 
 func _gate_for(route_id: String) -> Dictionary:
 	for gate: Dictionary in current_level.get("gates", []):
 		if gate.route_id == route_id: return gate
 	return {}
 
-## Tide lays every deck itself (_restyle_deck), after its footprints marker.
-func _lay_deck(_definition: Dictionary, _deck_node: Node3D, _width: float, _depth: float, _across_x: bool, _low: float, _high: float) -> void:
-	pass
-
-## Each crossing in its own build: a rippled sand hump, round stepping stones,
-## piled timber, a rope-railed gangway, flagged towpath stones or a punt. The
-## long edges glow while the crossing is open, in gold where the tide opens it.
-func _restyle_deck(route: Dictionary) -> void:
+## Each crossing in its own build, by the dressing's "decks": a rippled sand
+## hump, round stepping stones, piled timber, a rope-railed gangway, flagged
+## towpath stones or a punt, over the whole crossing. The long edges glow while
+## the crossing is open, in gold where the tide opens it.
+func _lay_deck(route: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, _low: float, _high: float) -> void:
 	var id := str(route.id)
-	var deck: Node3D = _decks.get(id)
-	if deck == null: return
-	# The deck holds only its footprints marker here (_lay_deck lays nothing).
-	var r: Array = route.rect_cm
-	var width := float(r[2] - r[0]) / 100.0
-	var depth := float(r[3] - r[1]) / 100.0
-	var across_x := width >= depth
 	var length := width if across_x else depth
 	var lane := depth if across_x else width
-	var kind: String = DECK_KINDS.get(id, "timber")
+	var kind := str(_decks_data().get(id, "timber"))
 	match kind:
 		"sand":
 			box(Vector3(width, 0.10, depth), SAND, Vector3(0, -0.05, 0), deck)
@@ -788,7 +340,7 @@ func _restyle_deck(route: Dictionary) -> void:
 			var radius := minf(0.26, minf(lane * 0.5 - 0.02, length / float(count) * 0.5 - 0.01))
 			# Each stone is a column standing on the seabed (a centimetre above it),
 			# so it stands in the channel's water at any level.
-			var column := float(_low_cm(route)) / 100.0 - SEABED - 0.01
+			var column := float(WaterBodies.low_cm(route)) / 100.0 - waters.seabed() - 0.01
 			for index in range(count):
 				var along := (float(index) + 0.5) / float(count) * length - length * 0.5
 				var at := Vector3(along, -column * 0.5, 0) if across_x else Vector3(0, -column * 0.5, along)
@@ -871,9 +423,12 @@ func _kept_pennant(route: Dictionary) -> void:
 	var flag := box(Vector3(0.36, 0.22, 0.015), GOLD, at + Vector3(0.19, 0.38, 0), memories)
 	flag.name = "KeptPennant"
 	_glow(flag, GOLD, 1.0)
-	var middle := Vector2(float(r[0] + r[2]), float(r[1] + r[3])) / 2.0
-	var body := "chamber" if _covered(middle.x, middle.y, [CHAMBER_PIT]) else "sea" if _covered(middle.x, middle.y, SEA_REGIONS) else "harbour"
-	_kept_masts.append({"deck": float(route.get("height_cm", 0)) / 100.0, "body": body, "post": post, "knob": knob, "flag": flag})
+	# The mast rides the water over its crossing (the first body's off the water).
+	var body := waters.body_of(r)
+	if body.is_empty(): body = waters.first_body()
+	var mast := {"deck": float(route.get("height_cm", 0)) / 100.0, "post": post, "knob": knob, "flag": flag}
+	_kept_masts.append(mast)
+	waters.ride(body, _raise_mast.bind(mast))
 	var across_x := width >= depth
 	for side in [-1, 1]:
 		var edge := box(Vector3(width - 0.05, 0.02, 0.08) if across_x else Vector3(0.08, 0.02, depth - 0.05), GOLD, Vector3(0, 0.035, side * (depth / 2.0 - 0.075)) if across_x else Vector3(side * (width / 2.0 - 0.075), 0.035, 0), memories)
@@ -897,14 +452,14 @@ func _stub_frame(route: Dictionary) -> void:
 	var tip := z0 + 0.03 if _route_anchor(route).z > z1 else z1 - 0.03
 	box(Vector3(x1 - x0 - 0.014, 0.08, 0.05), PILE, Vector3((x0 + x1) * 0.5, y, tip), frame)
 	for x: float in [x0 + 0.03, x1 - 0.03]:
-		cylinder(0.035, y - SEABED, PILE, Vector3(x, (y + SEABED) * 0.5, tip), frame)
+		cylinder(0.035, y - waters.seabed(), PILE, Vector3(x, (y + waters.seabed()) * 0.5, tip), frame)
 
 func _piles(route: Dictionary) -> void:
 	var r: Array = route.rect_cm
 	var top := float(route.height_cm) / 100.0 - 0.10
 	for x: int in [r[0] + 10, r[2] - 10]:
 		for z: int in [r[1] + 8, r[3] - 8]:
-			cylinder(0.05, top - SEABED, PILE, Vector3(float(x) / 100.0, (top + SEABED) * 0.5, float(z) / 100.0), terrain).name = "JettyPile"
+			cylinder(0.05, top - waters.seabed(), PILE, Vector3(float(x) / 100.0, (top + waters.seabed()) * 0.5, float(z) / 100.0), terrain).name = "JettyPile"
 
 # --- Wheels and levers ---
 
@@ -928,7 +483,7 @@ func _register_valve(control: Dictionary) -> void:
 ## A valve's dial: one band for low, two for half, three for high, a bar for
 ## a shut sea (the tide gauges' bands).
 func _look_marks(control: Dictionary) -> Array:
-	return control.get("values", []).map(func(value: Variant) -> int: return TIDE_VALUES.find(str(value)) + 1)
+	return control.get("values", []).map(func(value: Variant) -> int: return _water_mark(str(value)))
 
 func _selector_bubble_shift(control: Dictionary) -> float:
 	return float(BUBBLE_SHIFTS.get(control.id, 0.0))
@@ -1078,7 +633,12 @@ func _key_sign(route: Dictionary) -> void:
 
 ## Tide values a gate needs outright (through "all" only), low to high.
 func _tide_marks(predicate: Dictionary) -> Array:
-	return _control_marks(predicate, "tide")
+	return WaterBodies.control_marks(predicate, "tide")
+
+## How many bands mark a water value: 1 for low, 2 for half, 3 for high, none
+## for any other (a shut sea).
+func _water_mark(value: String) -> int:
+	return waters.mark_levels().keys().find(value) + 1
 
 ## Where a route's marks and pair tags sit: a stub's mouth on its own floor,
 ## or just before a crossing's west end, at the route's own height.
@@ -1114,7 +674,7 @@ func _pair_keep_clear() -> Array:
 	return found
 
 func _route_color(id: String) -> Color:
-	return GOLD if id in P0_MECHANISMS else TEAL
+	return GOLD if _owners.get(id, "") == "p0" else TEAL
 
 func _carries_pad(view: Dictionary, surface_id: String) -> bool:
 	for pad: Dictionary in view.get("pressure_pads", []):
@@ -1123,14 +683,14 @@ func _carries_pad(view: Dictionary, surface_id: String) -> bool:
 
 ## The sea value a gate needs outright, or "" when it needs none.
 func _sea_value(predicate: Dictionary) -> String:
-	var marks := _control_marks(predicate, "basin")
+	var marks := WaterBodies.control_marks(predicate, "basin")
 	return "" if marks.is_empty() else str(marks[0])
 
 ## A post's mouth shows the sea value it rises at: 1, 2 or 3 teal bands.
 func _build_post_mark(route: Dictionary, value: String) -> void:
 	var at := _route_anchor(route)
 	var bands: Array[MeshInstance3D] = []
-	var count := TIDE_VALUES.find(value) + 1
+	var count := _water_mark(value)
 	for index in range(count):
 		var band := box(Vector3(0.05, 0.014, 0.20), TEAL.darkened(0.2), at + Vector3((float(index) - float(count - 1) * 0.5) * 0.10, 0.002, 0), terrain)
 		band.name = "PostMark_" + str(route.id)
@@ -1142,7 +702,7 @@ func _build_post_mark(route: Dictionary, value: String) -> void:
 ## A crossing over water stands its post in the channel; a stub on its floor.
 func _build_gauge(route: Dictionary, values: Array) -> void:
 	var r: Array = route.rect_cm
-	var base := SEABED
+	var base := waters.seabed()
 	var at := point([r[0] + 16, r[3] + 12])
 	var top := float(route.get("height_cm", 0)) / 100.0 + 0.92
 	if route.has("axis"):
@@ -1150,7 +710,7 @@ func _build_gauge(route: Dictionary, values: Array) -> void:
 		top = maxf(float(route.from_height_cm), float(route.to_height_cm)) / 100.0 + 0.90
 	elif _is_stub(route):
 		# Past the coping's corner when the stub is walled, else beside its deck.
-		var out := 17 if str(route.id) in _walled else 10
+		var out := 17 if str(route.id) in waters.walled else 10
 		at = point([r[2] + out, r[3] + 10]) if _route_anchor(route).z > float(r[3]) / 100.0 else point([r[2] + out, r[1] - 10])
 		base = float(route.height_cm) / 100.0
 		top = base + 0.85
@@ -1161,7 +721,7 @@ func _build_gauge(route: Dictionary, values: Array) -> void:
 	cylinder(0.045, top - base, CREAM.darkened(0.15), Vector3(0, (top + base) * 0.5, 0), post)
 	var bands: Array[MeshInstance3D] = []
 	var count := 0
-	for value: String in values: count = maxi(count, TIDE_VALUES.find(value) + 1)
+	for value: String in values: count = maxi(count, _water_mark(value))
 	for index in range(count):
 		var band := cylinder(0.10, 0.09, GOLD, Vector3(0, top - 0.10 - float(index) * 0.15, 0), post)
 		band.name = "GaugeBand"
@@ -1187,152 +747,8 @@ func _build_slack_mark(route: Dictionary) -> void:
 
 # --- Water, chamber, sea gates, mouth lamps and spout ---
 
-## One body of water: the region minus every island and excluded rectangle, as
-## one mesh of its surface and the outer faces of its sides. No face stands
-## inside the water, where it would show through the surface as a band. Its
-## root moves and stretches with the level, so the water always reaches down
-## to the harbour floor.
-## The sides that face the camera (east and south) stop WATER_INSET short of
-## each island and walled crossing, and of the end of the body: inside the
-## wall that holds the water back, or behind the sea wall past it, and never
-## on a wall's inner face, where the two would fight over the same pixels.
-## Await it.
-func _water_body(name: String, regions: Array, islands: Array, excluded: Array, color: Color, level: float) -> Node3D:
-	var holes: Array = []
-	for rect: Array in excluded + islands.map(func(island: Dictionary) -> Array: return island.rect_cm):
-		holes.append([int(rect[0]) - WATER_INSET, int(rect[1]) - WATER_INSET, rect[2], rect[3]])
-	var key := [&"tide_water_surface", regions, holes]
-	if not DefinitionGeometry.has(key): DefinitionGeometry.keep(key, await _water_surface(regions, holes))
-	var mesh: Mesh = DefinitionGeometry.kept(key)
-	var root := Node3D.new()
-	root.name = name
-	terrain.add_child(root)
-	if mesh != null:
-		var surface := Primitives.fresh_material(color, 0.35)
-		# Labels, faded floors and the spout draw over the water, never under it.
-		surface.render_priority = -2
-		var water := Primitives.mesh_node(mesh, surface, Vector3.ZERO, root)
-		water.name = "Water"
-		water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_water_entry(root, level)
-	return root
-
-## The mesh of a water body's surface and outer sides (see _water_body), or
-## null when it has no face: the same for the same rectangles, so it is kept
-## per definition. A staged build gets the frame back between grid lines. Await it.
-func _water_surface(regions: Array, holes: Array) -> Mesh:
-	var xs: Array = []
-	var zs: Array = []
-	for rect: Array in regions + holes:
-		for x: int in [rect[0], rect[2]]:
-			if x not in xs: xs.append(x)
-		for z: int in [rect[1], rect[3]]:
-			if z not in zs: zs.append(z)
-	for region: Array in regions:
-		if int(region[2]) - WATER_INSET not in xs: xs.append(int(region[2]) - WATER_INSET)
-		if int(region[3]) - WATER_INSET not in zs: zs.append(int(region[3]) - WATER_INSET)
-	xs.sort()
-	zs.sort()
-	# wet[zi][xi]: whether the cell between those grid lines holds water. A cell
-	# within WATER_INSET of where the body ends to its east or south stays dry.
-	var wet: Array = []
-	for zi in range(zs.size() - 1):
-		if zi % WATER_LINES_PER_STEP == 0: await _build_step()
-		var row: Array[bool] = []
-		for xi in range(xs.size() - 1):
-			var east := float(xs[xi + 1] + WATER_INSET)
-			var south := float(zs[zi + 1] + WATER_INSET)
-			var x := float(xs[xi] + xs[xi + 1]) * 0.5
-			var z := float(zs[zi] + zs[zi + 1]) * 0.5
-			row.append(_wet(x, z, regions, holes) and _covered(east, z, regions) and _covered(x, south, regions) and _covered(east, south, regions))
-		wet.append(row)
-	var shape := SurfaceTool.new()
-	shape.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var faces := 0
-	# The surface, one quad per run of wet cells along each row.
-	for zi in range(wet.size()):
-		if zi % WATER_LINES_PER_STEP == 0: await _build_step()
-		var start := -1
-		for xi in range(xs.size()):
-			var here: bool = xi < xs.size() - 1 and wet[zi][xi]
-			if here and start < 0: start = xi
-			if not here and start >= 0:
-				var x0 := float(xs[start]) / 100.0
-				var x1 := float(xs[xi]) / 100.0
-				var z0 := float(zs[zi]) / 100.0
-				var z1 := float(zs[zi + 1]) / 100.0
-				_water_quad(shape, [Vector3(x0, 0, z0), Vector3(x1, 0, z0), Vector3(x1, 0, z1), Vector3(x0, 0, z1)], Vector3.UP)
-				faces += 1
-				start = -1
-	# Sides only where water meets something else, merged along each grid line.
-	for along_x: bool in [true, false]:
-		var lines: Array = zs if along_x else xs
-		var cells: Array = xs if along_x else zs
-		for line in range(lines.size()):
-			if line % WATER_LINES_PER_STEP == 0: await _build_step()
-			var start := 0
-			var facing := 0
-			for cell in range(cells.size()):
-				var side := 0
-				if cell < cells.size() - 1:
-					var before: bool = line > 0 and (wet[line - 1][cell] if along_x else wet[cell][line - 1])
-					var after: bool = line < lines.size() - 1 and (wet[line][cell] if along_x else wet[cell][line])
-					side = 1 if before and not after else -1 if after and not before else 0
-				if side == facing: continue
-				if facing != 0:
-					var at := float(lines[line]) / 100.0
-					var a := float(cells[start]) / 100.0
-					var b := float(cells[cell]) / 100.0
-					if along_x: _water_quad(shape, [Vector3(a, -1, at), Vector3(b, -1, at), Vector3(b, 0, at), Vector3(a, 0, at)], Vector3(0, 0, facing))
-					else: _water_quad(shape, [Vector3(at, -1, a), Vector3(at, -1, b), Vector3(at, 0, b), Vector3(at, 0, a)], Vector3(facing, 0, 0))
-					faces += 1
-				start = cell
-				facing = side
-	return shape.commit() if faces > 0 else null
-
-## One flat quad of water, its corners in order round it, wound to face along
-## `normal` (Godot draws a triangle a, b, c whose (a - c) x (a - b) faces the eye).
-static func _water_quad(shape: SurfaceTool, corners: Array, normal: Vector3) -> void:
-	var a: Vector3 = corners[0]
-	var b: Vector3 = corners[1]
-	var c: Vector3 = corners[2]
-	if (a - c).cross(a - b).dot(normal) < 0.0: corners.reverse()
-	for index: int in [0, 1, 2, 0, 2, 3]:
-		shape.set_normal(normal)
-		shape.add_vertex(corners[index])
-
-## Whether a point lies in one of `regions`, edges included.
-static func _covered(x: float, z: float, regions: Array) -> bool:
-	for region: Array in regions:
-		if x >= region[0] and x <= region[2] and z >= region[1] and z <= region[3]: return true
-	return false
-
-static func _wet(x: float, z: float, regions: Array, holes: Array) -> bool:
-	var inside := false
-	for region: Array in regions:
-		if x > region[0] and x < region[2] and z > region[1] and z < region[3]: inside = true
-	if not inside: return false
-	for hole: Array in holes:
-		if x > hole[0] and x < hole[2] and z > hole[1] and z < hole[3]: return false
-	return true
-
-func _water_entry(root: Node3D, level: float) -> void:
-	root.set_meta("target", level)
-	root.set_meta("shown", level)
-	_show_water(root, level)
-
-func _show_water(root: Node3D, level: float) -> void:
-	root.set_meta("shown", level)
-	root.position.y = level
-	root.scale.y = maxf(level - SEABED, 0.02)
-	if root == _water.get("harbour"): _float_boats(level)
-	for id: String in _floods:
-		if _floods[id].body == root: _fill(_floods[id], level)
-	for mast: Dictionary in _kept_masts:
-		if root == _water.get(mast.body): _raise_mast(mast, level)
-
 ## Keeps a kept crossing's pennant MAST_CLEARANCE above the water at `level`.
-func _raise_mast(mast: Dictionary, level: float) -> void:
+func _raise_mast(level: float, mast: Dictionary) -> void:
 	if not is_instance_valid(mast.post): return
 	var lift := maxf(0.0, level + MAST_CLEARANCE - (float(mast.deck) + 0.50))
 	var post: MeshInstance3D = mast.post
@@ -1341,47 +757,18 @@ func _raise_mast(mast: Dictionary, level: float) -> void:
 	(mast.knob as Node3D).position.y = 0.52 + lift
 	(mast.flag as Node3D).position.y = 0.38 + lift
 
-## Every height each body of water can stand at in the shown stage: each value
-## of the wheel that moves it, or where it rests while no wheel does. The
-## scenery lint sweeps them all.
-func water_levels() -> Dictionary:
-	var levels := {"harbour": {"low": HARBOUR_LEVELS.low}, "sea": {"shut": SEA_LEVELS.shut}, "chamber": {"half": HARBOUR_LEVELS.half}}
-	for control: Dictionary in current_level.get("controls", []):
-		match str(control.get("id", "")):
-			"tide": levels.harbour = HARBOUR_LEVELS
-			"basin": levels.sea = SEA_LEVELS
-			"chamber": levels.chamber = HARBOUR_LEVELS
-	return levels
-
-func _set_water(name: String, level: float, immediate: bool) -> void:
-	var root: Node3D = _water.get(name)
-	if not is_instance_valid(root): return
-	root.set_meta("target", level)
-	if immediate or reduced_motion: _show_water(root, level)
-
 func _advance_water(delta: float) -> void:
 	_clock += maxf(delta, 0.0)
-	var flowing := false
-	for root: Node3D in _water.values():
-		if not is_instance_valid(root): continue
-		var target := float(root.get_meta("target"))
-		var shown := float(root.get_meta("shown"))
-		if not is_equal_approx(shown, target):
-			_show_water(root, move_toward(shown, target, float(root.get_meta("rate", WATER_RATE)) * maxf(delta, 0.0)))
-			flowing = true
-		elif root.has_meta("rate"): root.remove_meta("rate")
+	waters.advance(delta)
 	_swing_ramps(delta)
 	if not _drowned_slot.is_empty() and not reduced_motion:
 		var grown := minf(_drown_ring.scale.x + delta * 1.6, 3.0)
 		_drown_ring.scale = Vector3(grown, 1.0, grown)
 		_bubble_age += maxf(delta, 0.0)
 		_rise_bubbles()
-	# The doors move after the water, against the water shown this frame.
-	if is_instance_valid(_locks) and (flowing or _locks.moving()): _locks.advance(delta, _lock_levels("shown"))
-	if _wall_fade != null and _wall_fade.moving(): _wall_fade.advance(delta)
+	waters.advance_fade(delta)
 	if not reduced_motion:
-		var harbour: Node3D = _water.get("harbour")
-		if is_instance_valid(harbour): _float_boats(float(harbour.get_meta("shown")))
+		waters.bob()
 		# Pale streaks run down the falling water.
 		if is_instance_valid(_spout) and _spout.visible:
 			for streak: MeshInstance3D in _spout_streaks:
@@ -1389,80 +776,23 @@ func _advance_water(delta: float) -> void:
 				var phase := fmod(_clock * 0.9 + float(streak.get_meta("phase")), 1.0)
 				streak.position.y = float(streak.get_meta("top")) - phase * span
 
-# --- Locks: what holds the water at each opening ---
-
-## A wall that holds water back, for the locks' plan. Every wall's parent sits
-## at the terrain's origin, so its own transform places it.
-func _holds_water(wall: MeshInstance3D) -> void:
-	_water_walls.append(wall.transform * wall.get_aabb())
-
-## Places the doors, spillways and walls from this stage's water, over three
-## build steps: the plan, the runs (from the stage's bake), then the pieces.
-func _build_locks() -> void:
-	var plan := _water_plan()
-	await _build_step()
-	WaterLocks.load_runs(plan, WaterLocks.bake_path(_chapter_key(), displayed_stage_id))
-	await _build_step()
-	_locks = WaterLocks.new()
-	_locks.build(plan, terrain)
-
-## This stage's water for the locks kit: every floor, sunken crossing (a pit
-## sealed by its walls, dry in every state but a walled stub's, flooded with
-## its water in a copy of each) and body of water, the walkways,
-## the walls built to hold water, and every set of levels the wheels can show.
-func _water_plan() -> Dictionary:
-	var areas: Array = []
-	for island: Dictionary in chapter_definition.get("islands", []):
-		areas.append({"id": "island:" + str(island.id), "kind": "floor", "rects": [island.rect_cm], "height": float(island.get("height_cm", 0)) / 100.0})
-	for id: String in _walled: areas.append({"id": "crossing:" + id, "kind": "pit", "rects": [_route(id).rect_cm]})
-	areas.append({"id": "chamber", "kind": "water", "rects": [CHAMBER_PIT]})
-	areas.append({"id": "harbour", "kind": "water", "rects": [HARBOUR_REGION]})
-	areas.append({"id": "sea", "kind": "water", "rects": SEA_REGIONS})
-	var mouths: Array = []
-	for route: Dictionary in chapter_definition.get("bridges", []) + chapter_definition.get("stairs", []):
-		mouths.append({"id": str(route.id), "rect": route.rect_cm})
-	var states: Array = []
-	var levels := water_levels()
-	for tide: float in (levels.harbour as Dictionary).values():
-		for sea: float in (levels.sea as Dictionary).values():
-			for chamber: float in (levels.chamber as Dictionary).values():
-				var dry := {"harbour": tide, "sea": sea, "chamber": chamber}
-				states.append(dry)
-				# The same levels with every walled stub shut and flooded.
-				if _floods.is_empty(): continue
-				var flooded := dry.duplicate()
-				for id: String in _floods: flooded[_floods[id].key] = dry[_floods[id].water]
-				states.append(flooded)
-	return {"areas": areas, "bounds": [-1116, -700, 1884, 700], "mouths": mouths, "walls": _water_walls.duplicate(), "states": states, "seabed": SEABED, "wall_top": PARAPET_TOP}
-
-## The levels for the locks, from each body's "target" (where it is going) or
-## "shown" (where it stands this frame) meta; a flooded walled stub stands at
-## its water's, a dry one at the seabed (dry to the locks), every other walled
-## crossing stays dry. Refills one dictionary per meta with the same keys in
-## the same order, so it allocates nothing and equal levels hash the same.
-func _lock_levels(meta: String) -> Dictionary:
-	var levels: Dictionary = _lock_targets if meta == "target" else _lock_shown
-	for body: String in _water: levels[body] = float(_water[body].get_meta(meta))
-	for id: String in _floods:
-		levels[_floods[id].key] = levels[_floods[id].water] if (_floods[id].node as Node3D).visible else SEABED
-	return levels
-
 func _build_chamber() -> void:
-	var pit := CHAMBER_PIT
+	var pit: Array = waters.body_data("chamber").rects[0]
 	var west := float(pit[0]) / 100.0
 	var east := float(pit[2]) / 100.0
-	var height := CHAMBER_WALL_TOP - SEABED
+	var seabed := waters.seabed()
+	var height := CHAMBER_WALL_TOP - seabed
 	for z_side: Array in [[pit[1], -96], [96, pit[3]]]:
 		var middle := float(z_side[0] + z_side[1]) / 200.0
 		var depth := float(z_side[1] - z_side[0]) / 100.0
 		for x: float in [west, east]:
-			var side := box(Vector3(0.06, height, depth), STONE_DARK, Vector3(x, SEABED + height * 0.5, middle), terrain)
+			var side := box(Vector3(0.06, height, depth), STONE_DARK, Vector3(x, seabed + height * 0.5, middle), terrain)
 			side.name = "ChamberWall"
-			_holds_water(side)
+			waters.holds_water(side)
 	for z: float in [float(pit[1]) / 100.0, float(pit[3]) / 100.0]:
-		var end := box(Vector3(east - west + 0.06, height, 0.06), STONE_DARK, Vector3((west + east) * 0.5, SEABED + height * 0.5, z), terrain)
+		var end := box(Vector3(east - west + 0.06, height, 0.06), STONE_DARK, Vector3((west + east) * 0.5, seabed + height * 0.5, z), terrain)
 		end.name = "ChamberWall"
-		_holds_water(end)
+		waters.holds_water(end)
 		# A lamp on each inner corner glows while the chamber matches the harbour.
 		var lamp := sphere(0.07, Color("4a4038"), Vector3(east, CHAMBER_WALL_TOP + 0.10, z), terrain)
 		lamp.name = "ChamberMatched"
@@ -1480,7 +810,7 @@ func _build_sea_gates() -> void:
 			hinge.position = Vector3(west if side < 0 else east, 0, z)
 			terrain.add_child(hinge)
 			# The leaf stops 2 cm under high water, inside its cap.
-			box(Vector3(span - 0.02, 1.28, 0.08), TIMBER, Vector3(-side * (span * 0.5), SEABED + 0.74, 0), hinge)
+			box(Vector3(span - 0.02, 1.28, 0.08), TIMBER, Vector3(-side * (span * 0.5), waters.seabed() + 0.74, 0), hinge)
 			box(Vector3(span - 0.034, 0.05, 0.10), TIMBER.darkened(0.2), Vector3(-side * (span * 0.5), 0.70, 0), hinge)
 			hinge.set_meta("side", side)
 			hinge.set_meta("outward", 1.0 if z > 0 else -1.0)
@@ -1496,8 +826,8 @@ func _build_mouth_lamps() -> void:
 		var r: Array = route.rect_cm
 		var at := point([r[0] + 40, r[3] + 12])
 		var top := 1.20
-		cylinder(0.035, top - SEABED, TIMBER.darkened(0.1), at + Vector3(0, (top + SEABED) * 0.5, 0), terrain)
-		for band in range(TIDE_VALUES.find(value) + 1):
+		cylinder(0.035, top - waters.seabed(), TIMBER.darkened(0.1), at + Vector3(0, (top + waters.seabed()) * 0.5, 0), terrain)
+		for band in range(_water_mark(value)):
 			cylinder(0.05, 0.03, TEAL, at + Vector3(0, top - 0.24 - float(band) * 0.07, 0), terrain)
 		var lamp := sphere(0.08, Color("4a4038"), at + Vector3(0, top + 0.06, 0), terrain)
 		lamp.name = "MouthLamp_" + value
@@ -1547,7 +877,7 @@ func _build_spout() -> void:
 		var rill := Primitives.fresh_material(Color(SPOUT, 0.85), 0.2)
 		rill.render_priority = 1
 		for island: Dictionary in chapter_definition.get("islands", []):
-			if str(island.id) not in AQUEDUCT: continue
+			if str(island.id) not in waters.water.get("piers", []): continue
 			var a: Array = island.rect_cm
 			var along_x: bool = int(a[2] - a[0]) >= int(a[3] - a[1])
 			var from := Vector3(float(a[0]) / 100.0 + 0.04, top + 0.008, float(a[1] + a[3]) / 200.0) if along_x else Vector3(float(a[0] + a[2]) / 200.0, top + 0.008, float(a[1]) / 100.0 + 0.04)
@@ -1585,30 +915,54 @@ func _build_foreshore() -> void:
 		var x := -9.2 + float(index) * 1.49
 		cylinder(0.035, 0.01, Color("f1e4d0") if index % 3 else Color("e7c0b0"), Vector3(x, -0.295, 5.05 + 0.18 * float(index % 4)), root)
 
-## Rowboats moored in the channels ride the harbour level (and bob unless
-## motion is reduced): a second cue for the tide.
+## Rowboats moored in the channels (the dressing's "moored_boats") ride their
+## water's level (and bob unless motion is reduced): a second cue for the tide.
 func _build_boats() -> void:
-	for spec: Array in BOATS:
+	for spec: Dictionary in dressing.get("moored_boats", []):
 		var boat := Node3D.new()
 		boat.name = "MooredBoat"
-		boat.position = point([spec[0], spec[1]])
-		boat.rotation.y = float(spec[2])
-		boat.set_meta("phase", float(spec[0]) * 0.013)
+		boat.position = point(spec.at)
+		boat.rotation.y = float(spec.heading)
+		boat.set_meta("phase", float(spec.at[0]) * 0.013)
 		terrain.add_child(boat)
 		box(Vector3(0.40, 0.14, 0.92), TIMBER.lightened(0.10), Vector3(0, 0.05, 0), boat)
 		box(Vector3(0.32, 0.06, 0.82), TIMBER.darkened(0.25), Vector3(0, 0.10, 0), boat)
 		box(Vector3(0.24, 0.10, 0.20), TIMBER.lightened(0.10), Vector3(0, 0.06, 0.48), boat)
 		for z: float in [-0.18, 0.18]: box(Vector3(0.38, 0.03, 0.08), TIMBER.lightened(0.20), Vector3(0, 0.13, z), boat)
-		cylinder(0.035, PARAPET_TOP + 0.12 - SEABED, PILE, Vector3(float(spec[0]) / 100.0 + 0.32, (PARAPET_TOP + 0.12 + SEABED) * 0.5, float(spec[1]) / 100.0 - 0.36), terrain).name = "MooringPile"
+		cylinder(0.035, waters.wall_top() + 0.12 - waters.seabed(), PILE, Vector3(float(spec.at[0]) / 100.0 + 0.32, (waters.wall_top() + 0.12 + waters.seabed()) * 0.5, float(spec.at[1]) / 100.0 - 0.36), terrain).name = "MooringPile"
 		_boats.append(boat)
+		waters.ride(str(spec.water), _float_boat.bind(boat), true)
 
-## Each RAMPS crossing of the definition gets a timber ramp on a hinge at its
+## A winch's ramp: a crossing (never a stub or a stair) whose gate, in any
+## stage, needs a water value and another selector's value lies flat in it as
+## a ramp at that value, at any water; raised, it stands up out of the water.
+## It follows the snapshot's selector value, so it moves the moment the winch
+## is turned. Crossing id -> [selector id, value].
+func _ramp_selectors() -> Dictionary:
+	var water_selectors: Array = waters.water.get("bodies", []).map(func(body: Dictionary) -> String: return str(body.selector))
+	var found := {}
+	for stage: Dictionary in chapter_definition.get("stages", []):
+		for gate: Dictionary in stage.get("gates", []):
+			var route := _route(str(gate.route_id))
+			if route.is_empty() or route.has("axis") or _is_stub(route) or found.has(str(route.id)): continue
+			var when: Dictionary = gate.get("when", {})
+			var wet := false
+			var other: Array = []
+			for term: Dictionary in [when] + when.get("all", []):
+				var control := str(term.get("control_id", ""))
+				if control.is_empty(): continue
+				if control in water_selectors: wet = true
+				elif other.is_empty(): other = [control, str(term.get("value", ""))]
+			if wet and not other.is_empty(): found[str(route.id)] = other
+	return found
+
+## Each ramp crossing (_ramp_selectors) gets a timber ramp on a hinge at its
 ## west end, with a winch drum on two posts beside the hinge. It starts raised;
 ## present() sets where it heads.
 func _build_ramps() -> void:
-	for id: String in RAMPS:
+	_ramp_on = _ramp_selectors()
+	for id: String in _ramp_on:
 		var route := _route(id)
-		if route.is_empty(): continue
 		var r: Array = route.rect_cm
 		var length := float(r[2] - r[0]) / 100.0
 		var lane := float(r[3] - r[1]) / 100.0
@@ -1633,7 +987,7 @@ func _build_ramps() -> void:
 func _aim_ramps(controls: Dictionary, immediate: bool) -> void:
 	for id: String in _ramps:
 		var hinge: Node3D = _ramps[id]
-		var lowered := str(controls.get(str(RAMPS[id][0]), "")) == str(RAMPS[id][1])
+		var lowered := str(controls.get(str(_ramp_on[id][0]), "")) == str(_ramp_on[id][1])
 		hinge.set_meta("target", 0.0 if lowered else RAMP_RAISED)
 		if immediate or reduced_motion: hinge.rotation.z = float(hinge.get_meta("target"))
 
@@ -1667,17 +1021,8 @@ func _show_closing(closing: Dictionary) -> void:
 				var edge: Array = trim.get_meta("edge")
 				_glow(trim, edge[0], float(edge[1]))
 	# Water rising past a closing crossing's deck reaches it as the crossing
-	# shuts, then goes on at its usual rate; nothing closing, the usual rate.
-	for root: Node3D in _water.values():
-		if not is_instance_valid(root): continue
-		var shown := float(root.get_meta("shown"))
-		var target := float(root.get_meta("target"))
-		var rate := INF
-		for id: String in closing:
-			var deck := float(_route(id).get("height_cm", 0)) / 100.0
-			if shown < deck and deck <= target: rate = minf(rate, (deck - shown) / (maxf(float(closing[id]), 1.0) / 30.0))
-		if rate < INF: root.set_meta("rate", maxf(rate, 0.01))
-		elif root.has_meta("rate"): root.remove_meta("rate")
+	# shuts, then goes on at its usual rate.
+	waters.pace_closing(closing)
 
 ## Tide rules: a drowned spirit (snapshot "drowned": {slot, route}) heads under
 ## the water over its crossing with its knocked-out face, a ring spreads and
@@ -1692,8 +1037,8 @@ func _show_drowned(drowned: Dictionary) -> void:
 	var slot := str(drowned.slot)
 	camera_focus = slot
 	# The water over the crossing it drowned on: the harbour's or the outer sea's.
-	var body: Node3D = _water.get(_body_of(_route(str(drowned.get("route", ""))).get("rect_cm", [0, 0, 0, 0])))
-	if not is_instance_valid(body): body = _water.get("harbour")
+	var body: Node3D = waters.bodies.get(waters.body_of(_route(str(drowned.get("route", ""))).get("rect_cm", [0, 0, 0, 0])))
+	if not is_instance_valid(body): body = waters.bodies.get(waters.first_body())
 	var surface: float = float(body.get_meta("shown")) if is_instance_valid(body) else float(actor_targets[slot].y)
 	var target: Vector3 = actor_targets[slot]
 	target.y = minf(target.y, surface) - DROWN_DEPTH
@@ -1736,24 +1081,26 @@ func _clear_drowned() -> void:
 	if is_instance_valid(_drown_ring): _drown_ring.visible = false
 	for bubble: MeshInstance3D in _drown_bubbles: bubble.visible = false
 
-func _float_boats(level: float) -> void:
-	for boat: Node3D in _boats:
-		if not is_instance_valid(boat): continue
-		var bob := 0.0 if reduced_motion else sin(_clock * 1.4 + float(boat.get_meta("phase"))) * 0.018
-		boat.position.y = level - 0.02 + bob
+func _float_boat(level: float, boat: Node3D) -> void:
+	if not is_instance_valid(boat): return
+	var bob := 0.0 if reduced_motion else sin(_clock * 1.4 + float(boat.get_meta("phase"))) * 0.018
+	boat.position.y = level - 0.02 + bob
 
-## Warm pools of light under the bank lamps, and bunting strung along the banks.
+## Warm pools of light under the bank lamps that name "bunting" in the
+## dressing, and bunting strung from each to that point along its bank.
 func _build_lamplight() -> void:
 	var bunting := [Color("e9a3a0"), Color("f1c27d"), Color("91d6c6"), Color("f4ecd0")]
-	for spec: Array in LAMPS:
-		var foot := point([spec[0], spec[1]]) + Vector3(0, 1.09, 0)
+	for spec: Dictionary in DressingCatalog.stage_props(dressing, displayed_stage_id):
+		if str(spec.get("kind", "")) != "lamp_post" or not spec.has("bunting"): continue
+		var ground := _surface_height(str(spec.get("surface", ""))) + float(spec.get("y", 0)) / 100.0 + 0.01
+		var foot := point(spec.at) + Vector3(0, ground, 0)
 		var pool := cylinder(0.62, 0.006, Color(1.0, 0.82, 0.5, 0.30), foot + Vector3(0, 0.005, 0), terrain)
 		pool.name = "LampPool"
 		Primitives.own_material(pool).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var from := foot + Vector3(0, 1.30, 0)
-		var to := point([spec[2], spec[3]]) + Vector3(0, 1.09 + 0.95, 0)
-		cylinder(0.025, 0.95, TIMBER.darkened(0.2), point([spec[2], spec[3]]) + Vector3(0, 1.09 + 0.475, 0), terrain)
+		var to := point(spec.bunting) + Vector3(0, ground + 0.95, 0)
+		cylinder(0.025, 0.95, TIMBER.darkened(0.2), point(spec.bunting) + Vector3(0, ground + 0.475, 0), terrain)
 		_bar_between(from, to, 0.012, ROPE, terrain)
 		for index in range(1, 8):
 			var t := float(index) / 8.0
@@ -1798,9 +1145,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		wheel.wheel.set_meta("value", str(controls.get(id, "")))
 	_follow_knobs()
 	_aim_ramps(controls, immediate)
-	_set_water("harbour", float(HARBOUR_LEVELS.get(tide, HARBOUR_LEVELS.low)), immediate)
-	_set_water("sea", float(SEA_LEVELS.get(basin, SEA_LEVELS.shut)), immediate)
-	_set_water("chamber", float(HARBOUR_LEVELS.get(str(controls.get("chamber", "half")), HARBOUR_LEVELS.half)), immediate)
+	waters.present_controls(controls, immediate)
 	for id: String in _gauges:
 		var gauge: Dictionary = _gauges[id]
 		var lit: bool = tide in gauge.values
@@ -1843,8 +1188,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		for band: MeshInstance3D in _post_marks[id].bands: _glow(band, TEAL, 0.9 if at_value else 0.0)
 	for id: String in _ghosts:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
-	for id: String in _floods:
-		_floods[id].node.visible = not (_decks.has(id) and _decks[id].visible)
+	waters.show_floods(_decks)
 	_show_closing(state.get("route_progress", {}).get("closing", {}))
 	_show_drowned(state.get("drowned", {}))
 	# Where the spirits stand, from the snapshot's positions, so live play, the
@@ -1856,12 +1200,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for slot: String in players:
 		_spirits[index] = Vector2(float(players[slot].x), float(players[slot].z))
 		index += 1
-	if _wall_fade != null: _wall_fade.occupy(_spirits, immediate or reduced_motion)
-	if is_instance_valid(_locks):
-		_locks.present(_lock_levels("target"), immediate or reduced_motion)
-		_locks.occupy(_spirits, routes, immediate or reduced_motion)
-		# A door that must rise stands clear of the water shown now at once.
-		if _locks.moving(): _locks.advance(0.0, _lock_levels("shown"))
+	waters.occupy(_spirits, routes, immediate or reduced_motion)
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
 
 func _lamp(lamp: MeshInstance3D, color: Color, lit: bool) -> void:
@@ -1898,9 +1237,8 @@ func _folds_static_scenery() -> bool:
 
 func _static_keep() -> Array:
 	var keep := super._static_keep()
-	for group: Dictionary in [_decks, _memory_markers, _ghosts, _water]: keep.append_array(group.values())
-	for flood: Dictionary in _floods.values(): keep.append(flood.node)
-	if _wall_fade != null: keep.append_array(_wall_fade.meshes())
+	for group: Dictionary in [_decks, _memory_markers, _ghosts]: keep.append_array(group.values())
+	keep.append_array(waters.moving_nodes())
 	for mast: Dictionary in _kept_masts: keep.append_array([mast.post, mast.knob, mast.flag])
 	for wheel: Dictionary in _wheels.values(): keep.append(wheel.wheel)
 	for gauge: Dictionary in _gauges.values(): keep.append_array([gauge.post, gauge.icon] + gauge.bands)

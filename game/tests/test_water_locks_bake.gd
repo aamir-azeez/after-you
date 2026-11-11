@@ -8,9 +8,11 @@ extends SceneTree
 ## To rewrite the bakes after an intended change, set AFTER_YOU_WRITE_BAKE to
 ## the absolute path of game/content/water_locks (or to 1 for res://) and run
 ## this suite; a write run compares nothing and prints each file it wrote.
+## AFTER_YOU_BAKE_KEY limits a run to one chapter (scripts/chapter_fixtures.py).
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const WRITE_ENV := "AFTER_YOU_WRITE_BAKE"
+const KEY_ENV := "AFTER_YOU_BAKE_KEY"
 var checks := 0
 var failures := 0
 
@@ -26,10 +28,12 @@ func _check(ok: bool, message: String) -> void:
 func _run() -> void:
 	var target := OS.get_environment(WRITE_ENV)
 	var baked := 0
+	var only := OS.get_environment(KEY_ENV)
 	for key: String in Registry.keys():
+		if not only.is_empty() and key != only: continue
 		var level := Registry.definition(key)
 		var world: Node3D = Registry.world_script(key).new()
-		if not world.has_method("_water_plan"):
+		if world.get("waters") == null:
 			world.free()
 			continue
 		root.add_child(world)
@@ -41,8 +45,10 @@ func _run() -> void:
 		for stage: Dictionary in level.stages:
 			await world.show_stage(stage)
 			var fell_back: bool = not WaterLocks._unbaked.is_empty()
-			var built: Array = world._locks.runs if is_instance_valid(world._locks) else []
-			var plan: Dictionary = world._water_plan()
+			var built: Array = world.waters.locks.runs if is_instance_valid(world.waters.locks) else []
+			var plan: Dictionary = world.waters.plan()
+			# A world that holds the water kit for a chapter without water has no locks.
+			if plan.is_empty(): continue
 			var path := WaterLocks.bake_path(key, str(stage.id))
 			# Worked out afresh, never from a cache or the bake itself.
 			WaterLocks._found.clear()
@@ -66,6 +72,6 @@ func _run() -> void:
 			WaterLocks._found.clear()
 			WaterLocks._unbaked.clear()
 		world.free()
-	_check(baked > 0, "At least one chapter places water locks")
+	_check(baked > 0 or not only.is_empty(), "At least one chapter places water locks")
 	print("WATER LOCKS BAKE: %d checks, %d failures, %d stages" % [checks, failures, baked])
 	quit(1 if failures else 0)
