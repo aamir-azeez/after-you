@@ -165,6 +165,9 @@ leaderboard_screen 3
 leaderboard_watch 3
 legacy_cumulative_holds 1
 legacy_redo_navigation 3
+level_checker 2
+level_tools 2
+level_view 2
 license_catalog 1
 licenses 2
 lifecycle 2
