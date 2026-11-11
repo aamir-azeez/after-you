@@ -134,6 +134,8 @@ static func _missing(block: Dictionary, family: String) -> Array[String]:
 	elif block.has("routes") and not block.routes is Array: found.append("block %s's routes must be a list" % kind)
 	if kind == "match_selectors" and not block.values is Array: found.append("block match_selectors's values must be a list")
 	if block.get("lip") != null: _need(found, kind, "lip", block.lip, ["id", "rect", "owner"])
+	for field: String in ["at", "rect"]:
+		if block.has(field) and not block[field] is Array: found.append("block %s's %s must be a list" % [kind, field])
 	if kind == "hold_door" and block.has("finish") and family != COOPERATIVE: found.append("block hold_door's finish is the cooperative hold rule")
 	if kind == "raw":
 		for field: String in block:
@@ -146,6 +148,8 @@ static func _need(found: Array[String], kind: String, field: String, given: Vari
 		return
 	for part: String in parts:
 		if not given.has(part): found.append("block %s's %s needs %s" % [kind, field, part])
+	for part: String in ["at", "rect"]:
+		if given.has(part) and not given[part] is Array: found.append("block %s's %s %s must be a list" % [kind, field, part])
 	if given.has("values") and not given.values is Array: found.append("block %s's %s values must be a list" % [kind, field])
 
 static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, family: String) -> void:

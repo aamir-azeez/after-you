@@ -86,9 +86,10 @@ func _check_rules() -> void:
 		{"block": "selector_gate", "selector": {"id": "x", "at": [0, 0], "surface": "a", "owner": "p0"}, "routes": ["r"]},
 		{"block": "match_selectors", "selector": "x", "matches": {"id": "y", "at": [0, 0], "surface": "a", "owner": "p0", "values": ["a"]}, "values": ["a"], "routes": ["r"]},
 		{"block": "one_way_drop", "id": "d", "rect": [0, 0, 1, 1], "from": "a", "to": "b", "lip": {"id": "l"}},
-		{"block": "hold_door", "pad": "p", "routes": ["r"], "finish": 15}]}]}
+		{"block": "hold_door", "pad": "p", "routes": ["r"], "finish": 15},
+		{"block": "lever", "id": "l", "at": "here", "surface": "a", "owner": "p0"}]}]}
 	var named := Blocks.problems(broken)
-	for part: String in ["raw's source_policy", "selector_gate's routes", "selector needs values", "matches needs initial", "lip needs rect", "finish is the cooperative"]:
+	for part: String in ["raw's source_policy", "selector_gate's routes", "selector needs values", "matches needs initial", "lip needs rect", "finish is the cooperative", "lever's at must be a list"]:
 		_check(named.any(func(line: String) -> bool: return line.contains(part)), "A malformed block is named, not crashed on (%s): %s" % [part, named])
 	_check(Blocks.expand(broken).stages[0].keys() == ["id"], "Malformed blocks are all left out")
 	var twice := {"schema_version": 7, "bridges": [{"id": "r"}], "stages": [{"id": "s", "blocks": [
