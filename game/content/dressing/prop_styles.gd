@@ -90,13 +90,24 @@ const SLOTS := {
 		"frame": {"kind": "frame", "wall": true},
 		"basket": {"kind": "basket", "wall": true},
 	},
+	# Not a prop: the frame of the level's pair tags (presentation/kit/pair_tags.gd
+	# FRAMES). The letter and its colour are the same in every style.
+	"tag": {
+		"painted_tile": {"frame": "painted_tile"},
+		"wooden_plaque": {"frame": "wooden_plaque"},
+		"stone_tile": {"frame": "stone_tile"},
+	},
 }
+
+## Slots that pick a kit piece's look rather than a prop to stand: the resolved
+## dressing carries the pick as a field of the same name ("tag": "stone_tile").
+const LOOK_SLOTS := ["tag"]
 
 ## The pick for a slot that neither the theme nor the level names.
 const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
-	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf",
+	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line
