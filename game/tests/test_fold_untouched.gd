@@ -156,7 +156,8 @@ func _run() -> void:
 			# Water locks (kit/water_locks.gd): their stone walls fold with the
 			# scenery; the doors that rise and fall, their posts and the water
 			# sheets, all under the locks' own node, never fold.
-			var locks: Variant = world.get("_locks")
+			var waters: Variant = world.get("waters")
+			var locks: Variant = waters.locks if waters != null else null
 			if locks is Node3D and is_instance_valid(locks):
 				var stone := terrain.find_child("WaterLockStone", false, false)
 				# A stage whose water meets only walkways has doors and no stone.

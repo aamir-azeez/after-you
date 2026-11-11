@@ -10,7 +10,11 @@ extends SceneTree
 ##
 ## A released chapter fails here when it is not in GOLDEN_KEYS, when it shows
 ## the placeholder thumbnail or "TODO copy" text that scripts/new_chapter.py
-## writes, and when an earlier version of it names no superseded_by.
+## writes, when it still has the development turn limits, and when an earlier
+## version of it names no superseded_by.
+##
+## A chapter whose family shows stage_copy keeps its player words out of its
+## hashed definition (HASHED_WORDS), unless HASHED_WORDS_KEPT names it.
 ##
 ## The menu, Home, look and sound tables also hold entries that are not
 ## registered chapters (the Sleeping Lighthouse @1, the earlier islands, Home,
@@ -34,6 +38,21 @@ const LEGACY_LIGHTHOUSE := "sleeping-lighthouse@1"
 ## (scripts/chapter_templates/placeholder-thumbnail.png) and its placeholder text.
 const PLACEHOLDER_THUMBNAIL_SHA256 := "95cdc9db8d5a28b39303e4fc0533f6f97f9a05e1472c967577703b9b704adb67"
 const PLACEHOLDER_COPY := "TODO copy"
+## Player words a stage_copy family shows from the descriptor (copy, stage_copy)
+## and so never needs in the hashed definition, at the definition's top level
+## and on each stage. Words there are pinned by the definition hash: changing
+## one re-pins every fixture and golden, or needs a new version.
+const HASHED_WORDS := ["title", "subtitle", "hint_a", "hint_b"]
+## Published chapters whose hashed definitions carried words before that rule.
+## A published definition never changes, so they keep them. Only released
+## chapters may be here, and only while their definitions still carry words.
+const HASHED_WORDS_KEPT := {
+	"conservatory@1": "published before the rule; its definition hash is pinned by saves, rooms and replays",
+	"long-way-home@1": "published before the rule; its definition hash is pinned by saves, rooms and replays",
+	"long-way-home@2": "published before the rule; its definition hash is pinned by saves, rooms and replays",
+	"turn-of-the-tide@1": "published before the rule; its definition hash is pinned by saves, rooms and replays",
+	"turn-of-the-tide@2": "published before the rule, with @1's words; its definition hash is pinned by saves, rooms and replays",
+}
 const EARLIER_STAGES := ["first-light", "long-way-home", "patient-garden", "rising-together", "across-the-blue", "lantern-crossing", "two-beats", "after-you"]
 const LIGHTHOUSE_STAGES := ["borrowed-light", "missing-piece", "two-promises", "after-the-first-bell", "what-carried-you", "a-welcome-left-on"]
 const LEGACY_THUMBNAILS := ["legacy-first-light", "legacy-long-way-home", "legacy-patient-garden", "sleeping-lighthouse",
@@ -63,6 +82,8 @@ func _run() -> void:
 		seen[key] = true
 		_fields(key, file.DATA)
 	_families()
+	for key: String in HASHED_WORDS_KEPT:
+		_check(key in Index.keys(), "HASHED_WORDS_KEPT names %s, which is not a registered chapter" % key)
 	for key: String in Index.keys():
 		_chapter(key, Index.data(key))
 	_own_words()
@@ -96,13 +117,46 @@ func _families() -> void:
 			_check(field in ["checkpoint_title", "checkpoint_text"], "Family %s's copy is checkpoint copy only" % name)
 	_same(Families.ROWS["lighthouse-room"].rules, [load("res://core/lighthouse/room_catalog.gd").RULES], "The Lighthouse room family plays its catalog's rules")
 
+## A water file (presentation/kit/water_bodies.gd) builds from data alone, so
+## a typo here would fail deep in a build or leave water still: every field is
+## present and well formed, each body's control is a selector of the chapter
+## whose values the descriptor's "water_levels" lists in the same order, its
+## rest value is one of its levels, the marks name the first body's levels and
+## every pier is an island.
+func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dictionary) -> void:
+	for field: String in ["seabed", "rate", "wall_top", "inset", "bounds", "bodies", "marks", "stone", "coping", "pit_floor", "plinth", "fender", "piers"]:
+		_check(block.has(field), "Water block of %s has %s" % [key, field])
+	_check(block.get("bounds", []).size() == 4 and float(block.get("rate", 0.0)) > 0.0 and float(block.get("wall_top", 0.0)) > float(block.get("seabed", 0.0)), "Water block of %s has a window, a rate and walls above its seabed" % key)
+	var selectors := {}
+	for stage: Dictionary in level.get("stages", []):
+		for control: Dictionary in stage.get("controls", []):
+			if str(control.get("kind", "")) == "selector": selectors[str(control.id)] = control.get("values", [])
+	var ids: Array = []
+	for body: Dictionary in block.get("bodies", []):
+		var id := str(body.get("id", ""))
+		_check(not id.is_empty() and id not in ids and not str(body.get("node", "")).is_empty(), "Water body of %s has its own id and node name: %s" % [key, id])
+		ids.append(id)
+		var levels: Dictionary = body.get("levels", {})
+		var selector := str(body.get("selector", ""))
+		_check(not levels.is_empty() and levels.has(str(body.get("rest", ""))) and body.get("color") is Color and not body.get("rects", []).is_empty(), "Water body %s of %s has levels, a rest among them, a colour and rectangles" % [id, key])
+		for rect: Variant in body.get("rects", []): _check(rect is Array and rect.size() == 4 and rect[0] < rect[2] and rect[1] < rect[3], "Water body %s of %s has whole rectangles" % [id, key])
+		_check(selectors.has(selector), "Water body %s of %s follows a selector of the chapter: %s" % [id, key, selector])
+		_same(data.water_levels.get(selector, []), levels.keys(), "%s's water_levels lists water body %s's values in its order" % [key, id])
+	var all: Array = block.get("bodies", [])
+	_check(not all.is_empty(), "Water block of %s has at least one body" % key)
+	var first: Dictionary = all[0] if not all.is_empty() else {}
+	for value: String in block.get("marks", {}): _check(first.get("levels", {}).has(value), "Water marks of %s name the first body's levels: %s" % [key, value])
+	var islands: Array = level.get("islands", []).map(func(island: Dictionary) -> String: return str(island.id))
+	for pier: String in block.get("piers", []): _check(pier in islands, "Water piers of %s are islands: %s" % [key, pier])
+
 func _chapter(key: String, data: Dictionary) -> void:
 	var family := Families.row(str(data.get("family")))
 	if not _check(not family.is_empty(), "Descriptor names a known family: " + key): return
-	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail] + ([data.dressing] if data.dressing != "" else []):
+	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail] + ([data.dressing] if data.dressing != "" else []) + ([data.water] if data.water != "" else []):
 		_check(ResourceLoader.exists(path), "%s names a resource that exists: %s" % [key, path])
 	var level := Registry.definition(key)
 	_same("%s@%d" % [level.get("id"), int(level.get("version", 0))], key, "The descriptor's definition call gives its own chapter")
+	if data.water != "" and ResourceLoader.exists(data.water): _water_block(key, data, load(data.water).DATA, level)
 	# Proofs check a definition with the family catalog's own known() and its
 	# KEYS (core/<family>/stage_catalog.gd), not the descriptor: a chapter that
 	# is not registered there too shows in the menus but fails every proof.
@@ -132,6 +186,25 @@ func _chapter(key: String, data: Dictionary) -> void:
 	_check(data.version_of == "" or data.keepsakes.is_empty(), "A version earns its earlier version's places, not its own: " + key)
 	_sounds(key, data, level)
 	_wait_hints(key, data, level)
+	_hashed_words(key, data, family, level)
+
+## A stage_copy chapter's words live in its descriptor: none in the hashed
+## definition (HASHED_WORDS), unless it is a published chapter that kept them.
+func _hashed_words(key: String, data: Dictionary, family: Dictionary, level: Dictionary) -> void:
+	if family.stage_hud != "stage_copy":
+		_check(not HASHED_WORDS_KEPT.has(key), "HASHED_WORDS_KEPT names %s, whose family does not show stage_copy" % key)
+		return
+	var found: Array[String] = []
+	for field: String in HASHED_WORDS:
+		if level.has(field): found.append(field)
+		for stage: Dictionary in level.stages:
+			if stage.has(field): found.append("%s.%s" % [stage.id, field])
+	if HASHED_WORDS_KEPT.has(key):
+		_check(key in Golden.GOLDEN_KEYS, "Only a released chapter keeps player words in its hashed definition; %s is not released (remove it from HASHED_WORDS_KEPT)" % key)
+		_check(not found.is_empty(), "%s's hashed definition carries no player words; remove it from HASHED_WORDS_KEPT" % key)
+		return
+	_check(found.is_empty(), "%s's hashed definition carries player words (%s): a %s chapter's words go in its descriptor's copy and stage_copy" % [key, ", ".join(found), data.family])
+	_check(str(data.copy.get("title", "")) != "", "%s names its title in its descriptor's copy, since its definition has none" % key)
 
 ## The chapter's own cues and beds are sounds of services/sound_cues.gd, and each
 ## water control is a selector of every stage that has it, with the levels as
@@ -250,12 +323,14 @@ func _offering() -> void:
 	_check(load("res://services/chapter_registry.gd").UNRELEASED is Array, "The registry's UNRELEASED is readable through load()")
 
 ## Fails a released chapter that shows the placeholder thumbnail, has "TODO
-## copy" anywhere in its descriptor or hashed definition, or has an earlier
-## version still offered (no superseded_by).
+## copy" anywhere in its descriptor or hashed definition, still has the
+## development turn limits, or has an earlier version still offered (no
+## superseded_by).
 func _finished(key: String, data: Dictionary) -> void:
 	_check(FileAccess.get_sha256(data.thumbnail) != PLACEHOLDER_THUMBNAIL_SHA256, "Released chapter %s still shows the placeholder thumbnail %s" % [key, data.thumbnail])
 	var words := JSON.stringify(data) + JSON.stringify(Registry.definition(key))
 	_check(PLACEHOLDER_COPY not in words, "Released chapter %s still has \"%s\" placeholder text" % [key, PLACEHOLDER_COPY])
+	_check(Registry.definition(key).get("turn_limits") != Index.DEVELOPMENT_TURN_LIMITS, "Released chapter %s still has the development turn limits %s: set its turns from play (scripts/chapter_turn_limits.py)" % [key, JSON.stringify(Index.DEVELOPMENT_TURN_LIMITS)])
 	for earlier: String in Index.keys():
 		if earlier.get_slice("@", 0) == key.get_slice("@", 0) and int(earlier.get_slice("@", 1)) < int(key.get_slice("@", 1)):
 			_check(Index.data(earlier).superseded_by != "", "Released chapter %s is offered in place of %s, which names no superseded_by" % [key, earlier])

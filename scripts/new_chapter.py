@@ -185,6 +185,15 @@ def check_stage_free(root: Path, stage: str, folder: Path) -> None:
             raise Refused(f"{(folder / (stage + suffix)).relative_to(root).as_posix()} already exists")
 
 
+def development_turn_limits(root: Path) -> str:
+    """content/chapters/index.gd DEVELOPMENT_TURN_LIMITS, as a definition literal."""
+    found = re.search(r'^const DEVELOPMENT_TURN_LIMITS := \{"a_ticks": (\d+), "b_ticks": (\d+)\}$',
+                      (root / "game/content/chapters/index.gd").read_text(encoding="utf-8"), re.M)
+    if not found:
+        raise Refused("game/content/chapters/index.gd has no DEVELOPMENT_TURN_LIMITS line")
+    return f'{{"a_ticks":{found.group(1)},"b_ticks":{found.group(2)}}}'
+
+
 def check_free(plan: Plan, relative: str, needle: str, what: str) -> None:
     if plan.text(relative).contains(needle):
         raise Refused(f"{relative} already has {what}")
@@ -414,6 +423,7 @@ def scaffold(args: argparse.Namespace, root: Path) -> Plan:
         "WORLD_RES": f"res://presentation/{stem}_world.gd", "THUMBNAIL_RES": f"res://assets/chapter_thumbnails/{level_id}.png",
         "LOCAL_PATH": local_path, "WITNESS_FILE": f"{stem}_witness.gd", "WORLD_BASE": config["world_base"],
         "KEEPSAKE_RES": f"res://presentation/keepsakes/{stem}.gd",
+        "DEV_TURN_LIMITS": development_turn_limits(root),
     }
     families = (root / "game/services/chapter_families.gd").read_text(encoding="utf-8")
     row = re.search(r'^\t"' + re.escape(family) + r'": \{(.*?)\n(?=\t[^\t]|\})', families, re.M | re.S)
@@ -452,12 +462,12 @@ def scaffold(args: argparse.Namespace, root: Path) -> Plan:
         for stage in stages:
             check_stage_free(root, stage, folder)
         values.update({"STAGE_1": stages[0], "STAGE_2": stages[1]})
-        values["ROUTES"] = (TEMPLATES / family / "routes.gd.tmpl").read_text(encoding="utf-8").strip()
         plan.create(f"game/content/chapters/{stem}.gd", descriptor(values, stage_copy))
         plan.create(f"game/core/{family}/{stem}_catalog.gd", template(f"{family}/catalog.gd.tmpl", values))
         plan.create(f"game/presentation/{stem}_world.gd", template("world.gd.tmpl", values))
         plan.create(f"game/assets/chapter_thumbnails/{level_id}.png", (TEMPLATES / "placeholder-thumbnail.png").read_bytes())
         plan.create(f"game/tests/{stem}_witness.gd", template("witness.gd.tmpl", values))
+        plan.create(f"game/tests/routes/{key}.json", template(f"{family}/routes.json.tmpl", values))
         plan.create(f"game/presentation/keepsakes/{stem}.gd", template("keepsake.gd.tmpl", values))
     plan.create(f"game/{stem}.tscn", template("scene.tscn.tmpl", values))
     plan.create(f"game/tests/test_{stem}.gd", template("test_chapter.gd.tmpl", values))
