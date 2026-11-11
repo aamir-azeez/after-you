@@ -84,6 +84,19 @@ class HeldApi extends Node:
 		if method == HTTPClient.METHOD_GET and path == "/v2/rooms": return {"ok": true, "status": 200, "data": {"rooms": []}}
 		return {"ok": false, "status": 404, "code": "not_found", "error": "Synthetic missing feature."}
 
+## The app's real request queue with replies the test holds: a slow server
+## wake on the first Friends load after launch.
+class QueuedApi extends "res://services/rooms_api.gd":
+	signal release
+	var held: Array[String] = []
+	var sent: Array[String] = []
+	func _send(_method: int, path: String, _headers: PackedStringArray, _body: String) -> Array:
+		sent.append(path)
+		while path in held: await release
+		if path == "/v2/capabilities": return [HTTPRequest.RESULT_SUCCESS, 200, PackedStringArray(), JSON.stringify({"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "validation": "structural_client_replay_required", "chapters": []}).to_utf8_buffer()]
+		var code := "room_not_found" if path.begins_with("/v2/rooms/") else "not_found"
+		return [HTTPRequest.RESULT_SUCCESS, 404, PackedStringArray(), JSON.stringify({"error": {"code": code}}).to_utf8_buffer()]
+
 class SessionStore extends RefCounted:
 	var values: Dictionary = {}
 	func load_scope(scope: String) -> Dictionary: return {"ok": true, "found": values.has(scope), "value": values.get(scope, {}).duplicate(true)}
@@ -121,6 +134,9 @@ func _run() -> void:
 	await _focus_elsewhere()
 	await _home()
 	await _home_after_replays()
+	await _home_after_friends("/v1/friends")
+	await _home_after_friends("/v2/capabilities")
+	await _gate_run_bounded()
 	Input.emulate_touch_from_mouse = original_touch
 	print("AFTER YOU TAP RELIABILITY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
@@ -645,6 +661,138 @@ func _home_after_replays() -> void:
 		await create_timer(0.15).timeout
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
+
+
+## The first Friends load after launch, on a slow server wake: Home > Friends,
+## Back before it loads, then Play with your friend. Friends' first
+## capabilities read waited in the request queue behind its uncached list read
+## and held the room session busy after Friends was gone, so Play's tap ran
+## out and said "A room request is already in progress." until the backlog
+## drained. Leaving Friends releases that read; Play opens once the slow reply
+## it really waits for lands, and a later tap always works. `slow` is the reply
+## held: the list (the capabilities read still waits) or the capabilities read
+## itself, already out when Friends closes (Play waits for it, any caller's).
+func _home_after_friends(slow: String) -> void:
+	var path := "user://tap-friends-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
+	var storage := Storage.new(path)
+	storage.data.settings.sound = false
+	storage.data.settings.haptics = false
+	_check(storage.flush(), "Prepare an isolated muted save")
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 720)
+	viewport.handle_input_locally = true
+	root.add_child(viewport)
+	var app := Main.new()
+	app.saves = storage
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	app.api.queue_free()
+	var api := QueuedApi.new()
+	api.base_url = "https://tap-friends.invalid"
+	api.player_id = "FFFFFFFFFFFFFFFFFFFFFF"
+	api.device_token = "synthetic-device-token"
+	app.add_child(api)
+	app.api = api
+	app.identity_read_state = Main.IdentityReadState.LOADED
+	app.identity_data = {"player_id": api.player_id, "device_token": api.device_token}
+	app.identity_loading = false
+	# An existing account: the last room is checked before the hub opens.
+	var store := SessionStore.new()
+	var last_room := "LLLLLLLLLLLLLLLLLLLLLL"
+	store.values["relay-lobby-v2:" + api.player_id] = {"schema_version": 1, "owner_player_id": api.player_id, "room_ids": [last_room], "last_room": last_room, "pending": {}}
+	app.relay_session = Session.new(api, app._relay_identity, store)
+	await _settle()
+	app._show_home()
+	await _settle()
+	api.held = [slow]
+	await app._show_friends()
+	await _settle()
+	_check(app.friends_flow.is_open() and "/v1/friends" in api.sent, "Friends opens and its list read is out (%s): %s" % [slow, api.sent])
+	app.friends_flow.screen.close()
+	await _settle()
+	_check(app.mode == "home", "Back from Friends mid-load goes Home: " + app.mode)
+	if slow == "/v1/friends": _check(not app.relay_session.busy(), "Leaving Friends releases its waiting capabilities read, so the room session is free")
+	else: _check("/v2/capabilities" in api.sent and app.relay_session.reading_capabilities_only(), "The capabilities read already out goes on, and is all the session is doing: %s" % [api.sent])
+	app.room_hub_flow._gate = BusyTapGate.new(app.overlay)
+	app.room_hub_flow._gate.wait_ms = 300
+	app.room_hub_flow._gate.bounded_run = true
+	app.toast.visible = false
+	var play := _home_button(app, "Play with your friend")
+	_check(play != null, "Home shows Play with your friend")
+	if play != null:
+		await _tap(viewport, play.get_global_rect().get_center(), WOBBLES[2])
+		await create_timer(0.6).timeout
+		_check(not (app.toast.visible and app.toast.text == PlayerCopy.ROOMS_API_DA75E6F7A674), "Play after leaving Friends mid-load does not run out (%s): %s" % [slow, app.toast.text])
+		_check(app.mode == "home" and play.text == PlayerCopy.HUB_OPENING, "Play reads Opening… while it waits for the slow reply (%s): %s / %s" % [slow, play.text, app.mode])
+	api.held = []
+	api.release.emit()
+	for _frame: int in range(12): await process_frame
+	_check(app.mode == "rooms" and app.room_hub_flow.is_open(), "The hub opens once the slow reply lands, with no second tap (%s): %s" % [slow, app.mode])
+	for attempt: int in range(2):
+		app.room_hub_flow.release()
+		app._show_home()
+		await _settle()
+		play = _home_button(app, "Play with your friend")
+		if play != null: await _tap(viewport, play.get_global_rect().get_center(), WOBBLES[1])
+		for _frame: int in range(8): await process_frame
+		_check(app.mode == "rooms" and app.room_hub_flow.is_open(), "A later tap on Play opens the hub (%s, %d): %s" % [slow, attempt + 1, app.mode])
+	app.room_hub_flow.drop()
+	viewport.queue_free()
+	await _settle()
+	await create_timer(0.15).timeout
+	for suffix: String in ["", ".tmp", ".backup"]:
+		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
+
+
+## Home's Play: a tap whose run outlasts the wait (a room check stuck behind a
+## slow server) never leaves the button dead. Within the wait, a tap on a
+## redrawn button takes the label; after it, a tap starts over. A gate for taps
+## that change things never runs two at once, and a live button keeps its text.
+func _gate_run_bounded() -> void:
+	var area := Control.new()
+	root.add_child(area)
+	var first := Button.new()
+	first.text = "Play"
+	var second := Button.new()
+	second.text = "Play"
+	area.add_child(first)
+	area.add_child(second)
+	var hang := [true]
+	var runs := [0]
+	var hung := func() -> void:
+		runs[0] += 1
+		while hang[0]: await process_frame
+	var plain := BusyTapGate.new(area)
+	plain.wait_ms = 100
+	plain.tap(first, "Opening", Callable(), hung)
+	await create_timer(0.2).timeout
+	plain.tap(second, "Opening", Callable(), func() -> void: runs[0] += 10)
+	await _settle()
+	_check(runs[0] == 1 and plain.running and first.text == "Opening" and second.text == "Play", "A plain gate ignores a tap on another live button while it runs: %d / %s / %s" % [runs[0], first.text, second.text])
+	hang[0] = false
+	await _settle()
+	hang[0] = true
+	runs[0] = 0
+	var gate := BusyTapGate.new(area)
+	gate.wait_ms = 200
+	gate.bounded_run = true
+	gate.tap(first, "Opening", Callable(), hung)
+	await _settle()
+	_check(gate.running and first.text == "Opening", "A tap runs and labels its control")
+	first.free()
+	gate.tap(second, "Opening", Callable(), func() -> void: runs[0] += 10)
+	await _settle()
+	_check(runs[0] == 1 and second.text == "Opening", "A tap within the wait on a redrawn button takes the label: %s" % second.text)
+	await create_timer(0.3).timeout
+	gate.tap(second, "Opening", Callable(), func() -> void: runs[0] += 10)
+	await _settle()
+	_check(runs[0] == 11 and second.text == "Play" and not gate.running, "A tap after a run outlasts the wait runs and gives the control back: %d / %s" % [runs[0], second.text])
+	hang[0] = false
+	await _settle()
+	_check(not gate.running and second.text == "Play", "The stale run ends without taking the gate or a label")
+	area.queue_free()
+	await _settle()
 
 
 func _home_button(app: Node, label: String) -> Button:

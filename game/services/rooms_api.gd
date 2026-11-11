@@ -68,6 +68,10 @@ func request_raw(method: int, path: String, body: PackedByteArray = PackedByteAr
 	return await _queue.run(func() -> Dictionary: return _raw_result(method,path,await _send_raw(method,path,headers,body)),
 		_refused.bind(method,path),_same_identity(still),_read_key(method,path,headers,"raw"))
 
+## A screen that closed releases its waiting requests (RequestQueue.drop_unwanted).
+func drop_unwanted_requests() -> void:
+	_queue.drop_unwanted()
+
 ## Credentials are read when the request is asked for, never when its turn comes.
 func _append_credentials(headers: PackedStringArray) -> void:
 	if not device_token.is_empty():

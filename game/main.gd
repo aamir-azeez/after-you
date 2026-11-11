@@ -859,6 +859,8 @@ func _show_home() -> void:
 	menu.journey_offer.visible = _full_journey_offered()
 	if _whats_new_unseen: menu.mark_whats_new_unseen(Changelog.current_version())
 	home_stage.set_header_actions(menu.header_actions())
+	# Reads the screen just left no longer wants stop waiting (RequestQueue.drop_unwanted).
+	if api != null and api.has_method("drop_unwanted_requests"): api.drop_unwanted_requests()
 
 ## Home's Wardrobe row and the monthly Pollen card: the Wardrobe, whose Back returns to Home.
 func _open_wardrobe_from_home() -> void:
@@ -3179,6 +3181,12 @@ func _prepare_ordinary_navigation(report: Callable = Callable()) -> bool:
 		_report(report,PlayerCopy.MAIN_21155817127A)
 		return false
 	var session: RefCounted = relay_session
+	# A capabilities read still out, even from a screen already left, is a read:
+	# navigation waits for it rather than refusing.
+	if session.has_method("until_capabilities_read"):
+		var asked := [store_view_generation, lifecycle_generation, mode]
+		await session.until_capabilities_read()
+		if relay_session != session or application_backgrounded or asked != [store_view_generation, lifecycle_generation, mode]: return false
 	# The session refuses while busy (a replay save can outlive its screen) and has no reason of its own to give.
 	if session.busy():
 		_report(report,PlayerCopy.ROOMS_API_DA75E6F7A674)

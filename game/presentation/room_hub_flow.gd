@@ -156,14 +156,23 @@ func show_rooms() -> void:
 ## check the last room until it ends. The tap waits for it in the busy-tap gate,
 ## the button reading "Opening…", then opens the hub; a wait that runs out says why.
 func open_from_home(source: Control) -> void:
-	if _gate == null or _gate.area() != host.overlay: _gate = BusyTapGate.new(host.overlay)
+	if _gate == null or _gate.area() != host.overlay:
+		_gate = BusyTapGate.new(host.overlay)
+		# Opening the hub is safe to start again, so a check stuck behind a slow server never leaves Play dead.
+		_gate.bounded_run = true
 	await _gate.tap(source, PlayerCopy.HUB_OPENING,
-		func() -> bool: return host.relay_session == null or not host.relay_session.busy(),
+		_session_settled,
 		show_rooms,
 		func() -> bool: return host.mode == "home",
 		func() -> void: host._toast(PlayerCopy.ROOMS_API_DA75E6F7A674))
 	# The first time with names on, the name prompt opens over the room list.
 	if is_instance_valid(screen): host.display_name_flow.maybe_ask(screen.page_root(), true)
+
+## What Play waits for: the session free, or out only for a capabilities read,
+## which show_rooms then waits for (Main._prepare_ordinary_navigation).
+func _session_settled() -> bool:
+	var session: RefCounted = host.relay_session
+	return session == null or not session.busy() or (session.has_method("reading_capabilities_only") and session.reading_capabilities_only())
 
 ## True while a tap on Play waits for the busy session or runs.
 func tap_pending() -> bool:

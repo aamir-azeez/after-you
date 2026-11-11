@@ -79,6 +79,9 @@ var _busy := false
 var _generation := 0
 var _room_selection_generation := 0
 var _opening := false
+## A screen's capabilities read is out or waiting (load_capabilities with `still`):
+## a read, not work, so navigation waits for it.
+var _reading_capabilities := false
 var _retiring_selection := false
 var _auxiliary_factory: RefCounted
 var photo_store: RefCounted = PhotoStore.new()
@@ -137,10 +140,27 @@ func invalidate_identity() -> void:
 	_room_summaries.clear()
 	_busy = false
 	_opening = false
+	_reading_capabilities = false
 	_retiring_selection = false
 
 func busy() -> bool:
-	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
+	return _busy or _working()
+
+## True while the only thing out is a screen's capabilities read. Home's Play
+## then waits for it (until_capabilities_read) instead of running out, even
+## when that screen was already left. A read with no screen (a replay save's
+## first step) is work, and Play waits for the whole save as before.
+func reading_capabilities_only() -> bool:
+	return _reading_capabilities and not _working()
+
+## Returns once no capabilities read is out. Bounded by the read's own timeout;
+## an identity change ends it at once.
+func until_capabilities_read() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	while _reading_capabilities and tree != null: await tree.process_frame
+
+func _working() -> bool:
+	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
 
 func redo_client() -> RefCounted:
 	_ready()
@@ -419,12 +439,20 @@ static func verified_invitation(room: Dictionary, owner: String) -> String:
 		return ""
 	return code
 
-func load_capabilities() -> bool:
+## `still`, when given, is the caller's check of its screen: a read still
+## waiting when it fails is dropped and changes nothing here, and one already
+## out is only a read (reading_capabilities_only), so a screen that closed
+## never holds the session busy (Friends' first read after launch).
+func load_capabilities(still: Callable = Callable()) -> bool:
 	if not _ready():
 		return false
 	_room_chapters.clear()
 	_room_summaries.clear()
-	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities")
+	var generation := _generation
+	_reading_capabilities = still.is_valid() and not _busy
+	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities", {}, PackedStringArray(), still)
+	if generation == _generation: _reading_capabilities = false
+	if response.get("cancelled", false): return false
 	if not response.get("ok", false):
 		capabilities = {}
 		_supported_chapters.clear()
@@ -1109,7 +1137,7 @@ func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-" + role, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
 	return result
 
-func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
+func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray(), caller_still: Callable = Callable()) -> Dictionary:
 	if not _ready() or _busy or _api.player_id != _owner or str(_api.device_token).is_empty():
 		return {"ok": false, "status": 0, "code": "request_busy"}
 	var generation := _generation
@@ -1118,7 +1146,7 @@ func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStri
 	_busy = true
 	# request_json captures these verified headers synchronously before await.
 	var response: Dictionary
-	var still := func() -> bool: return generation == _generation
+	var still := func() -> bool: return generation == _generation and (caller_still.is_null() or (caller_still.is_valid() and caller_still.call()))
 	# A room poll's known-room header; an API without extra headers just reads the full room.
 	if not headers.is_empty() and _api.has_method("request_json_with_headers"): response = await _api.request_json_with_headers(method,path,body,headers,still)
 	else: response = await _api.request_json(method,path,body,still)

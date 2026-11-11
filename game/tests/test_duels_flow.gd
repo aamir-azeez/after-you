@@ -55,7 +55,7 @@ class FakeSession extends RefCounted:
 	func public_duels_supported() -> bool: return public_on
 	func safety_client() -> RefCounted: return safety
 	func pollen_supported() -> bool: return true
-	func load_capabilities() -> void: pass
+	func load_capabilities(_still: Callable = Callable()) -> void: pass
 	func pending_lobby() -> Dictionary: return pending.duplicate(true)
 
 ## The room steps as relay_lobby_flow.gd takes them: a refusal sets the

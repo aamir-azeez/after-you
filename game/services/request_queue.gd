@@ -5,7 +5,8 @@ extends RefCounted
 ##
 ## - Each entry may carry `still`, the caller's own check of its screen or
 ##   state. When the entry reaches the front and `still` no longer holds, it
-##   is skipped and its caller gets a "request_cancelled" result.
+##   is skipped and its caller gets a "request_cancelled" result, or at once
+##   when its screen closes and calls drop_unwanted.
 ## - A read (`coalesce` key, given by RoomsApi to GETs) that matches one still
 ##   waiting joins it: both callers get the one reply, so a slow network never
 ##   builds a backlog of polls. It is skipped only when every caller's check fails.
@@ -65,6 +66,15 @@ func run(work: Callable, refused: Callable, still: Callable = Callable(), coales
 	_waiting.append(entry)
 	_pump()
 	return await _result_of(entry)
+
+## Skips at once every waiting entry no caller still wants, such as the reads of
+## a screen that just closed, so their callers stop waiting behind the request
+## that is out. The request that is out goes on.
+func drop_unwanted() -> void:
+	for entry: Entry in _waiting.duplicate():
+		if entry.wanted(): continue
+		_waiting.erase(entry)
+		entry.finish(entry.refused.call(CANCELLED))
 
 ## True while a request is out or waiting. For tests and diagnostics only.
 func busy() -> bool:
