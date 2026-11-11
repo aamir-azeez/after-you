@@ -14,7 +14,7 @@ const DATA := {
 		"sea-chamber": "timber", "lock-chamber": "timber"},
 	"stairs": "timber",
 	"bridges": "timber",
-	# How each crossing is built (tide_world._restyle_deck); "stones" stand in
+	# How each crossing is built (tide_world._lay_deck); "stones" stand in
 	# the channel as they are, under the water when it rises over them.
 	"decks": {"sand-1": "sand", "slipway": "sand", "stones-1": "stones", "stones-2": "stones", "stones-3": "stones",
 		"jetty-1": "jetty", "jetty-2": "jetty", "boom-jetty": "jetty", "jetty-3": "gangway", "towpath": "towpath", "punt-ferry": "punt"},

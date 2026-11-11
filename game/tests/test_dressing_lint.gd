@@ -20,6 +20,7 @@ const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+const ChapterIndex = preload("res://content/chapters/index.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 const SPIRIT := 1.0
 ## About a spirit's body radius beyond the rectangle its centre walks in.
@@ -80,11 +81,22 @@ func _run() -> void:
 			_check(stage == "*" or stage in _stage_ids(key), "Dressing stage exists in %s: %s" % [key, stage])
 		for stage_id: String in _stage_ids(key):
 			_lint(key, stage_id, _stage_view(key, stage_id), data)
+		if key != LIGHTHOUSE: _check_water_dressing(key, data)
 	_check_built_worlds()
 	_check_coplanar_worlds()
 	_check_world_text_kit()
 	print("DRESSING LINT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## Dressing that names crossings or water: every "decks" key is a crossing of
+## the chapter, and every moored boat rides a body of its water file.
+func _check_water_dressing(key: String, data: Dictionary) -> void:
+	var level := Registry.definition(key)
+	var routes: Array = (level.get("bridges", []) + level.get("stairs", [])).map(func(route: Dictionary) -> String: return str(route.id))
+	for id: String in data.get("decks", {}): _check(id in routes, "Dressing decks of %s name a crossing: %s" % [key, id])
+	var path := str(ChapterIndex.data(key).get("water", ""))
+	var bodies: Array = [] if path.is_empty() else load(path).DATA.bodies.map(func(body: Dictionary) -> String: return str(body.id))
+	for boat: Dictionary in data.get("moored_boats", []): _check(str(boat.get("water", "")) in bodies and boat.get("at", []).size() == 2, "A moored boat of %s rides a body of the chapter's water: %s" % [key, boat])
 
 func _stage_ids(key: String) -> Array:
 	if key == LIGHTHOUSE: return LightCatalog.STAGE_IDS.duplicate()

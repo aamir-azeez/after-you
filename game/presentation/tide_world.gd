@@ -426,7 +426,7 @@ func _kept_pennant(route: Dictionary) -> void:
 	_glow(flag, GOLD, 1.0)
 	# The mast rides the water over its crossing (the first body's off the water).
 	var body := waters.body_of(r)
-	if body.is_empty(): body = str(waters.water.bodies[0].id)
+	if body.is_empty(): body = waters.first_body()
 	var mast := {"deck": float(route.get("height_cm", 0)) / 100.0, "post": post, "knob": knob, "flag": flag}
 	_kept_masts.append(mast)
 	waters.ride(body, _raise_mast.bind(mast))
@@ -1036,7 +1036,7 @@ func _show_drowned(drowned: Dictionary) -> void:
 	camera_focus = slot
 	# The water over the crossing it drowned on: the harbour's or the outer sea's.
 	var body: Node3D = waters.bodies.get(waters.body_of(_route(str(drowned.get("route", ""))).get("rect_cm", [0, 0, 0, 0])))
-	if not is_instance_valid(body): body = waters.bodies.get("harbour")
+	if not is_instance_valid(body): body = waters.bodies.get(waters.first_body())
 	var surface: float = float(body.get_meta("shown")) if is_instance_valid(body) else float(actor_targets[slot].y)
 	var target: Vector3 = actor_targets[slot]
 	target.y = minf(target.y, surface) - DROWN_DEPTH

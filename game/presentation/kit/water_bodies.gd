@@ -21,7 +21,8 @@ extends RefCounted
 ##   start(stage, block, standing)  before the shared stage build (crossings read walled)
 ##   await build_bodies()       after the floors
 ##   await build_walls()        parapets, sea walls, walled crossings and floods
-##   holds_water(node)          any wall of the world's own that holds water back
+##   holds_water(node)          any wall of the world's own that holds water back:
+##                              a basin's walls are the world's to build, before the locks
 ##   await build_locks(path)    last: the doors, spillways and walls at openings
 ##   present_controls(...)      each snapshot: where each body is going
 ##   show_floods(decks)         each snapshot, once the decks show or hide
@@ -92,6 +93,8 @@ func start(stage: Dictionary, block: Dictionary, standing: Array = []) -> void:
 	_riders.clear()
 	locks = null
 	fade = WallFade.new()
+	_lock_targets.clear()
+	_lock_shown.clear()
 	walled.clear()
 	kept_walled.clear()
 	if water.is_empty(): return
@@ -138,6 +141,11 @@ func basin_rects() -> Array:
 	for body: Dictionary in water.get("bodies", []):
 		if bool(body.get("basin", false)): found.append_array(body.rects)
 	return found
+
+## The first body's id: the water a thing off every body's rectangles rides.
+func first_body() -> String:
+	var all: Array = water.get("bodies", [])
+	return "" if all.is_empty() else str(all[0].id)
 
 ## The bodies that are not basins, in block order.
 func open_bodies() -> Array:
@@ -440,8 +448,8 @@ func _fill(flood: Dictionary, level: float) -> void:
 	(flood.node as Node3D).position.y = level
 	(flood.node as Node3D).scale.y = maxf(level - seabed(), 0.02)
 
-## Tide rules: while a crossing closes (route id -> ticks left before it shuts,
-## from the snapshot), the water still moving slows to reach its new level as
+## While a crossing closes under the journey's closing rules (route id ->
+## ticks left before it shuts, from the snapshot), the water still moving slows to reach its new level as
 ## the crossing shuts, so the warning is the water rising over it; nothing
 ## closing, it moves at the block's rate.
 func pace_closing(closing: Dictionary) -> void:
@@ -457,8 +465,8 @@ func pace_closing(closing: Dictionary) -> void:
 		elif root.has_meta("rate"): root.remove_meta("rate")
 
 ## Moves every body toward its target, then the doors against the water shown
-## this frame, then the fading walls. Returns whether any water flowed. Only
-## work that moves: a resting harbour does none.
+## this frame. Returns whether any water flowed. Only work that moves: water
+## at rest with its doors still does none.
 func advance(delta: float) -> bool:
 	var flowing := false
 	for root: Node3D in bodies.values():
@@ -482,6 +490,7 @@ func advance_fade(delta: float) -> void:
 ## Parapets on every floor edge that faces water, sea walls where water ends in
 ## view, then the walls round every walled crossing. Await it.
 func build_walls() -> void:
+	if water.is_empty(): return
 	await _build_parapets()
 	await host._build_step()
 	await _build_sea_walls()
@@ -788,6 +797,7 @@ func show_floods(decks: Dictionary) -> void:
 ## build steps: the plan, the runs (from the stage's bake at `bake_path`),
 ## then the pieces. Await it.
 func build_locks(bake_path: String) -> void:
+	if water.is_empty(): return
 	var stage_plan := plan()
 	await host._build_step()
 	WaterLocks.load_runs(stage_plan, bake_path)
@@ -801,6 +811,7 @@ func build_locks(bake_path: String) -> void:
 ## matching area wins), the walkways, the walls built to hold water, and every
 ## set of levels the controls can show.
 func plan() -> Dictionary:
+	if water.is_empty(): return {}
 	var definition: Dictionary = host.chapter_definition
 	var areas: Array = []
 	for island: Dictionary in definition.get("islands", []):
