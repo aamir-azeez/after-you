@@ -79,6 +79,9 @@ var _busy := false
 var _generation := 0
 var _room_selection_generation := 0
 var _opening := false
+## A screen's capabilities read is out or waiting (load_capabilities with `still`):
+## a read, not work, so navigation waits for it.
+var _reading_capabilities := false
 var _retiring_selection := false
 var _auxiliary_factory: RefCounted
 var photo_store: RefCounted = PhotoStore.new()
@@ -137,10 +140,27 @@ func invalidate_identity() -> void:
 	_room_summaries.clear()
 	_busy = false
 	_opening = false
+	_reading_capabilities = false
 	_retiring_selection = false
 
 func busy() -> bool:
-	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
+	return _busy or _working()
+
+## True while the only thing out is a screen's capabilities read. Home's Play
+## then waits for it (until_capabilities_read) instead of running out, even
+## when that screen was already left. A read with no screen (a replay save's
+## first step) is work, and Play waits for the whole save as before.
+func reading_capabilities_only() -> bool:
+	return _reading_capabilities and not _working()
+
+## Returns once no capabilities read is out. Bounded by the read's own timeout;
+## an identity change ends it at once.
+func until_capabilities_read() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	while _reading_capabilities and tree != null: await tree.process_frame
+
+func _working() -> bool:
+	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
 
 func redo_client() -> RefCounted:
 	_ready()
@@ -420,14 +440,18 @@ static func verified_invitation(room: Dictionary, owner: String) -> String:
 	return code
 
 ## `still`, when given, is the caller's check of its screen: a read still
-## waiting when it fails is dropped and changes nothing here, so a screen that
-## closed never holds the session busy (Friends' first read after launch).
+## waiting when it fails is dropped and changes nothing here, and one already
+## out is only a read (reading_capabilities_only), so a screen that closed
+## never holds the session busy (Friends' first read after launch).
 func load_capabilities(still: Callable = Callable()) -> bool:
 	if not _ready():
 		return false
 	_room_chapters.clear()
 	_room_summaries.clear()
+	var generation := _generation
+	_reading_capabilities = still.is_valid() and not _busy
 	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities", {}, PackedStringArray(), still)
+	if generation == _generation: _reading_capabilities = false
 	if response.get("cancelled", false): return false
 	if not response.get("ok", false):
 		capabilities = {}

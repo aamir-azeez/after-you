@@ -1682,7 +1682,7 @@ func _sync_shared_archive() -> void:
 	_shared_archive_sync = true
 	_draw_shared_room_status(context, host.shared_replays.listed(key), "Saving replays…")
 	var result := {"ok": false}
-	if await session.load_capabilities() and _shared_room_current(context):
+	if await session.load_capabilities(func() -> bool: return _shared_room_current(context)) and _shared_room_current(context):
 		result = await session.sync_complete_replay(key.substr(8))
 	_shared_archive_sync = false
 	await _redraw_shared_room(context,"Saved offline" if result.get("ok", false) else "Could not save replays")

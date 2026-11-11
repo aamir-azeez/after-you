@@ -134,7 +134,8 @@ func _run() -> void:
 	await _focus_elsewhere()
 	await _home()
 	await _home_after_replays()
-	await _home_after_friends()
+	await _home_after_friends("/v1/friends")
+	await _home_after_friends("/v2/capabilities")
 	await _gate_run_bounded()
 	Input.emulate_touch_from_mouse = original_touch
 	print("AFTER YOU TAP RELIABILITY: %d checks, %d failures" % [checks, failures])
@@ -668,8 +669,10 @@ func _home_after_replays() -> void:
 ## and held the room session busy after Friends was gone, so Play's tap ran
 ## out and said "A room request is already in progress." until the backlog
 ## drained. Leaving Friends releases that read; Play opens once the slow reply
-## it really waits for lands, and a later tap always works.
-func _home_after_friends() -> void:
+## it really waits for lands, and a later tap always works. `slow` is the reply
+## held: the list (the capabilities read still waits) or the capabilities read
+## itself, already out when Friends closes (Play waits for it, any caller's).
+func _home_after_friends(slow: String) -> void:
 	var path := "user://tap-friends-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
 	var storage := Storage.new(path)
 	storage.data.settings.sound = false
@@ -702,14 +705,15 @@ func _home_after_friends() -> void:
 	await _settle()
 	app._show_home()
 	await _settle()
-	api.held = ["/v1/friends"]
+	api.held = [slow]
 	await app._show_friends()
 	await _settle()
-	_check(app.friends_flow.is_open() and "/v1/friends" in api.sent, "Friends opens and its list read is out: %s" % [api.sent])
+	_check(app.friends_flow.is_open() and "/v1/friends" in api.sent, "Friends opens and its list read is out (%s): %s" % [slow, api.sent])
 	app.friends_flow.screen.close()
 	await _settle()
 	_check(app.mode == "home", "Back from Friends mid-load goes Home: " + app.mode)
-	_check(not app.relay_session.busy(), "Leaving Friends releases its capabilities read, so the room session is free")
+	if slow == "/v1/friends": _check(not app.relay_session.busy(), "Leaving Friends releases its waiting capabilities read, so the room session is free")
+	else: _check("/v2/capabilities" in api.sent and app.relay_session.reading_capabilities_only(), "The capabilities read already out goes on, and is all the session is doing: %s" % [api.sent])
 	app.room_hub_flow._gate = BusyTapGate.new(app.overlay)
 	app.room_hub_flow._gate.wait_ms = 300
 	app.room_hub_flow._gate.bounded_run = true
@@ -719,12 +723,12 @@ func _home_after_friends() -> void:
 	if play != null:
 		await _tap(viewport, play.get_global_rect().get_center(), WOBBLES[2])
 		await create_timer(0.6).timeout
-		_check(not (app.toast.visible and app.toast.text == PlayerCopy.ROOMS_API_DA75E6F7A674), "Play after leaving Friends mid-load does not run out: " + app.toast.text)
-		_check(app.mode == "home" and play.text == PlayerCopy.HUB_OPENING, "Play reads Opening… while its room check waits behind the slow list read: %s / %s" % [play.text, app.mode])
+		_check(not (app.toast.visible and app.toast.text == PlayerCopy.ROOMS_API_DA75E6F7A674), "Play after leaving Friends mid-load does not run out (%s): %s" % [slow, app.toast.text])
+		_check(app.mode == "home" and play.text == PlayerCopy.HUB_OPENING, "Play reads Opening… while it waits for the slow reply (%s): %s / %s" % [slow, play.text, app.mode])
 	api.held = []
 	api.release.emit()
 	for _frame: int in range(12): await process_frame
-	_check(app.mode == "rooms" and app.room_hub_flow.is_open(), "The hub opens once the slow reply lands, with no second tap: " + app.mode)
+	_check(app.mode == "rooms" and app.room_hub_flow.is_open(), "The hub opens once the slow reply lands, with no second tap (%s): %s" % [slow, app.mode])
 	for attempt: int in range(2):
 		app.room_hub_flow.release()
 		app._show_home()
@@ -732,7 +736,7 @@ func _home_after_friends() -> void:
 		play = _home_button(app, "Play with your friend")
 		if play != null: await _tap(viewport, play.get_global_rect().get_center(), WOBBLES[1])
 		for _frame: int in range(8): await process_frame
-		_check(app.mode == "rooms" and app.room_hub_flow.is_open(), "A later tap on Play opens the hub (%d): %s" % [attempt + 1, app.mode])
+		_check(app.mode == "rooms" and app.room_hub_flow.is_open(), "A later tap on Play opens the hub (%s, %d): %s" % [slow, attempt + 1, app.mode])
 	app.room_hub_flow.drop()
 	viewport.queue_free()
 	await _settle()
