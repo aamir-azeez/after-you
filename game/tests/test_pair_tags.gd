@@ -14,6 +14,7 @@ extends SceneTree
 ## chapter, the stage and what clashed.
 const Registry = preload("res://services/chapter_registry.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+const Styles = preload("res://content/dressing/prop_styles.gd")
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
@@ -60,6 +61,9 @@ func _run() -> void:
 			world.show_stage(stage)
 			tagged += _stage(world, key, CooperativeCatalog.stage_definition(level, str(stage.id)))
 			stages += 1
+		# The frame follows the level's tag style: the harbour's plaque on the tide.
+		var style := str(world.dressing.get("tag", PairTags.DEFAULT_FRAME))
+		_check(world.pair_tags._frame == StringName(style) and (style == "wooden_plaque") == key.begins_with("turn-of-the-tide"), "%s: tags wear its %s frame (%s)" % [key, style, world.pair_tags._frame])
 		_check(Canonical.digest(level) == digest, "%s: tags never change the definition" % key)
 		world.free()
 	_check(stages > 10 and tagged > 40, "The sweep sees the chapters' pair tags: %d tiles on %d stages" % [tagged, stages])
@@ -110,11 +114,13 @@ func _state_gaps() -> void:
 	_check(PairTags.GLOW.g - PairTags.GLOW.b >= 0.2 and PairTags.HALO >= 3.0 and PairTags.GLOW_ALPHA >= 0.5, "A lit tile sits in a wide pool of warm light")
 	print("PAIR TAGS: state gaps faint-near %.1f, near-lit %.1f, letter %.1f" % [worst.near, worst.lit, worst.letter])
 
-## Each letter, drawn in software at 64 by 64 over a tile, fills a fair share
-## of it and most of its height, so it can never shrink to specks again; and
-## the bands past J (one at each edge) stay off the letter.
+## Each letter, drawn in software at 64 by 64 over the token's face, stands
+## about LETTER_SHARE of it tall (never shrinking to specks, never filling the
+## box), keeps a clear margin inside the face, leaves room for the bands past
+## J at each edge, and every frame style is a real FRAMES entry.
 func _letter_size() -> void:
 	const GRID := 64
+	var face := PairTags.TAG * PairTags.FACE
 	for letter: String in PairTags.LETTERS:
 		var shape: Array = PairTags._letter(letter)
 		var positions: PackedVector3Array = shape[0]
@@ -125,21 +131,24 @@ func _letter_size() -> void:
 		var wide := 0.0
 		for row in range(GRID):
 			for column in range(GRID):
-				var at := Vector2((float(column) + 0.5) / GRID - 0.5, (float(row) + 0.5) / GRID - 0.5) * PairTags.TAG
+				var at := Vector2((float(column) + 0.5) / GRID - 0.5, (float(row) + 0.5) / GRID - 0.5) * face - Vector2(0, PairTags.FACE_UP)
 				for corner in range(0, triangles.size(), 3):
 					var a := Vector2(positions[triangles[corner]].x, positions[triangles[corner]].z)
 					var b := Vector2(positions[triangles[corner + 1]].x, positions[triangles[corner + 1]].z)
 					var c := Vector2(positions[triangles[corner + 2]].x, positions[triangles[corner + 2]].z)
 					if Geometry2D.point_is_inside_triangle(at, a, b, c):
 						covered += 1
-						low = minf(low, at.y)
-						high = maxf(high, at.y)
+						low = minf(low, at.y + PairTags.FACE_UP)
+						high = maxf(high, at.y + PairTags.FACE_UP)
 						wide = maxf(wide, absf(at.x))
 						break
 		var share := float(covered) / float(GRID * GRID)
-		_check(share >= 0.12 and (high - low) >= 0.7 * PairTags.TAG, "The letter %s fills its tile: %.0f%% of it, %.0f%% of its height" % [letter, share * 100.0, (high - low) / PairTags.TAG * 100.0])
-		_check(maxf(absf(low), absf(high)) <= PairTags.TAG * 0.5 - PairTags.RIM_WIDTH, "The letter %s stays inside the tile's face" % letter)
-		_check(wide <= PairTags.TAG * 0.5 - PairTags.RIM_WIDTH - PairTags.BAND * 2.0, "The letter %s leaves room for a band at each edge of the tile" % letter)
+		var tall := (high - low) / face
+		_check(share >= 0.025 and tall >= 0.52 and tall <= 0.64, "The letter %s stands about %.0f%% of its face tall: %.0f%% tall, %.0f%% of the face" % [letter, PairTags.LETTER_SHARE * 100.0, tall * 100.0, share * 100.0])
+		_check(maxf(absf(low), absf(high)) <= face * 0.42, "The letter %s keeps a margin inside the face" % letter)
+		_check(wide <= face * 0.5 - PairTags.BAND * 2.0, "The letter %s leaves room for a band at each edge of the face" % letter)
+	for style: String in Styles.SLOTS.tag:
+		_check(PairTags.FRAMES.has(StringName(str(Styles.SLOTS.tag[style].frame))), "The tag style %s has a frame" % style)
 
 ## The wiring, the letters and the bands on small stages.
 func _pure() -> void:

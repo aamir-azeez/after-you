@@ -25,6 +25,12 @@ extends RefCounted
 ## Past ten pairs the letters start again with a band down the tile's edge
 ## (the left for K to T, both edges for the next ten), the colours repeating.
 ##
+## Look: a rounded letter (the game's Fredoka) on the pair's colour, set in a
+## small token whose frame follows the level's "tag" prop slot (a dressing's
+## "tag", content/dressing/prop_styles.gd): a painted tile with a raised cream
+## border, a little wooden plaque or a stone tile. Only the frame changes; the
+## letter and the colour are the same in every style.
+##
 ## Presentation only: built from the hashed stage and fed the snapshot;
 ## nothing here feeds the simulation, a recording or a checkpoint, so a replay
 ## shows what play showed. Cost: one mesh and one material per stage (a sign
@@ -38,7 +44,6 @@ const SHADER := preload("res://presentation/kit/pair_tags.gdshader")
 ## A tile is TAG across; tiles keep GAP from each other and from what they avoid.
 const TAG := 0.28
 const GAP := 0.05
-const RIM_WIDTH := 0.012
 ## Tags whose places are closer than this (same floor) join one row.
 const CLUSTER := 0.34
 ## Every layer (rim, face, bands, letter) lies this far over the floor: 3 mm or
@@ -46,24 +51,28 @@ const CLUSTER := 0.34
 ## remembered footsteps (13.5 mm), under a spirit's ground shadow. The layers
 ## write no depth and draw in order, so they share the height.
 const LIFT := 0.0095
-## The letter: this tall on the tile (three quarters of it), drawn as heavy
-## strokes this wide, from LETTER_STROKES on a 4 by 6 grid.
-const LETTER_HEIGHT := 0.21
-const STROKE := 0.034
-## Block letters as straight strokes ([from, to] on a 4 wide, 6 tall grid, y
-## up): built as flat mesh strokes, so they stay sharp at any size.
-const LETTER_STROKES := {
-	"A": [[Vector2(0, 0), Vector2(2, 6)], [Vector2(2, 6), Vector2(4, 0)], [Vector2(0.9, 2.4), Vector2(3.1, 2.4)]],
-	"B": [[Vector2(0, 0), Vector2(0, 6)], [Vector2(0, 6), Vector2(3, 6)], [Vector2(3, 6), Vector2(4, 5)], [Vector2(4, 5), Vector2(4, 4)], [Vector2(4, 4), Vector2(3, 3)], [Vector2(0, 3), Vector2(3, 3)], [Vector2(3, 3), Vector2(4, 2)], [Vector2(4, 2), Vector2(4, 1)], [Vector2(4, 1), Vector2(3, 0)], [Vector2(3, 0), Vector2(0, 0)]],
-	"C": [[Vector2(4, 6), Vector2(1, 6)], [Vector2(1, 6), Vector2(0, 5)], [Vector2(0, 5), Vector2(0, 1)], [Vector2(0, 1), Vector2(1, 0)], [Vector2(1, 0), Vector2(4, 0)]],
-	"D": [[Vector2(0, 0), Vector2(0, 6)], [Vector2(0, 6), Vector2(2.5, 6)], [Vector2(2.5, 6), Vector2(4, 4.5)], [Vector2(4, 4.5), Vector2(4, 1.5)], [Vector2(4, 1.5), Vector2(2.5, 0)], [Vector2(2.5, 0), Vector2(0, 0)]],
-	"E": [[Vector2(0, 0), Vector2(0, 6)], [Vector2(0, 6), Vector2(4, 6)], [Vector2(0, 3), Vector2(3, 3)], [Vector2(0, 0), Vector2(4, 0)]],
-	"F": [[Vector2(0, 0), Vector2(0, 6)], [Vector2(0, 6), Vector2(4, 6)], [Vector2(0, 3), Vector2(3, 3)]],
-	"G": [[Vector2(4, 5), Vector2(3, 6)], [Vector2(3, 6), Vector2(1, 6)], [Vector2(1, 6), Vector2(0, 5)], [Vector2(0, 5), Vector2(0, 1)], [Vector2(0, 1), Vector2(1, 0)], [Vector2(1, 0), Vector2(3, 0)], [Vector2(3, 0), Vector2(4, 1)], [Vector2(4, 1), Vector2(4, 3)], [Vector2(4, 3), Vector2(2.2, 3)]],
-	"H": [[Vector2(0, 0), Vector2(0, 6)], [Vector2(4, 0), Vector2(4, 6)], [Vector2(0, 3), Vector2(4, 3)]],
-	"I": [[Vector2(2, 0), Vector2(2, 6)], [Vector2(0.8, 6), Vector2(3.2, 6)], [Vector2(0.8, 0), Vector2(3.2, 0)]],
-	"J": [[Vector2(1.5, 6), Vector2(4, 6)], [Vector2(4, 6), Vector2(4, 1)], [Vector2(4, 1), Vector2(3, 0)], [Vector2(3, 0), Vector2(1, 0)], [Vector2(1, 0), Vector2(0, 1)]],
+## The token: its coloured face is FACE of the tile across, a rounded square
+## set a little up in its frame, whose darker edge shows EDGE below it so the
+## frame looks raised. The letter is LETTER_SHARE of the face tall.
+const FACE := 0.72
+const FACE_ROUND := 0.16
+const FACE_UP := 0.006
+const EDGE := 0.007
+const LETTER_SHARE := 0.58
+const LETTER_HEIGHT := TAG * FACE * LETTER_SHARE
+## The game's rounded UI letter, made flat once per letter.
+const FONT := preload("res://assets/fonts/fredoka.ttf")
+## Frames by the tag slot's style (prop_styles.gd SLOTS.tag): its colour and
+## outline (a rounded square of `round` of the tile, or the chipped stone);
+## the plaque adds two plank lines and two nail heads.
+const FRAMES := {
+	&"painted_tile": {"colour": Color("f6efd8"), "round": 0.24},
+	&"wooden_plaque": {"colour": Color("b0845c"), "round": 0.075, "planks": true},
+	&"stone_tile": {"colour": Color("c4beb2"), "chipped": true},
 }
+const DEFAULT_FRAME := &"painted_tile"
+## A chipped stone outline, as shares of the tile from its centre, clockwise from above.
+const CHIPPED := [Vector2(-0.442, -0.467), Vector2(0.392, -0.475), Vector2(0.475, -0.392), Vector2(0.467, 0.408), Vector2(0.375, 0.475), Vector2(-0.408, 0.467), Vector2(-0.475, 0.375), Vector2(-0.467, -0.408)]
 const BAND := 0.012
 const LETTERS := "ABCDEFGHIJ"
 ## Ten muted colours, each at least 20 (CIE76) from the others and from the
@@ -124,6 +133,8 @@ var _states := PackedVector2Array()
 var _next := PackedVector2Array()
 ## The stage waiting to be laid out (prepare()), until it is first shown or read.
 var _view: Dictionary = {}
+## This level's frame (FRAMES), from its dressing's tag style.
+var _frame: StringName = DEFAULT_FRAME
 
 func _init(world: Node3D = null) -> void:
 	_world = world
@@ -229,6 +240,9 @@ func build(view: Dictionary) -> void:
 	_pairs = pairs_of(view, _skips)
 	if _pairs.size() > MAX_PAIRS: push_warning("PairTags: %d pairs on one stage; past %d their tiles share a state and their bands crowd the letter" % [_pairs.size(), MAX_PAIRS])
 	_rows = _layout(view)
+	var dressing: Variant = _world.get("dressing") if _world != null else null
+	_frame = StringName(str(dressing.get("tag", DEFAULT_FRAME))) if dressing is Dictionary else DEFAULT_FRAME
+	if not FRAMES.has(_frame): _frame = DEFAULT_FRAME
 	_states.resize(MAX_STATES)
 	_states.fill(Vector2.ZERO)
 	_material = ShaderMaterial.new()
@@ -563,19 +577,61 @@ func _bake(rows: Array, glows: bool = true) -> ArrayMesh:
 		for slot in range(count):
 			var index: int = row.pairs[slot]
 			var at: Vector3 = row.at + Vector3((float(slot) - float(count - 1) * 0.5) * (TAG + GAP), 0, 0)
-			var colour := colour_of(index)
-			_quad(tool, at + Vector3(0, LIFT, 0), Vector2(TAG, TAG), colour.darkened(0.35), index, 0.0)
-			_quad(tool, at + Vector3(0, LIFT, 0), Vector2(TAG - RIM_WIDTH * 2.0, TAG - RIM_WIDTH * 2.0), colour, index, 1.0)
-			# Past J: upright bands down the tile's edges, left then right, clear of the letter.
+			var floor_at := at + Vector3(0, LIFT, 0)
+			_token(tool, floor_at, _frame, index)
+			# Past J: upright bands down the face's edges, left then right, clear of the letter.
+			var face := TAG * FACE
 			for band in range(band_of(index)):
-				var x := (TAG * 0.5 - RIM_WIDTH - BAND * 1.5) * (-1.0 if band % 2 == 0 else 1.0)
-				_quad(tool, at + Vector3(x, LIFT, 0), Vector2(BAND, TAG - RIM_WIDTH * 4.0), INK, index, 2.0)
+				var x := (face * 0.5 - BAND * 1.5) * (-1.0 if band % 2 == 0 else 1.0)
+				_quad(tool, floor_at + Vector3(x, 0, -FACE_UP), Vector2(BAND, face * 0.7), INK, index, 2.0)
 			var letter: Array = _letter(letter_of(index))
 			var positions: PackedVector3Array = letter[0]
 			tool.set_color(INK)
 			tool.set_uv2(Vector2(float(mini(index, MAX_STATES - 1)), 2.0))
 			for vertex: int in letter[1]: tool.add_vertex(at + Vector3(0, LIFT, 0) + positions[vertex])
 	return tool.commit()
+
+## A tile's frame (its raised edge, outline and details) and its coloured face.
+static func _token(tool: SurfaceTool, at: Vector3, frame: StringName, index: int) -> void:
+	var look: Dictionary = FRAMES[frame]
+	var colour: Color = look.colour
+	var outline := _chipped() if look.has("chipped") else _rounded(Vector2(TAG, TAG), TAG * float(look["round"]))
+	_fan(tool, at + Vector3(0, 0, EDGE), outline, colour.darkened(0.3), index, 0.0)
+	_fan(tool, at, outline, colour, index, 0.0)
+	if look.has("planks"):
+		for z: float in [-0.14, 0.16]:
+			_quad(tool, at + Vector3(0, 0, z * TAG), Vector2(TAG * 0.92, 0.006), colour.darkened(0.18), index, 0.0)
+		for x: float in [-0.41, 0.41]:
+			_fan(tool, at + Vector3(x * TAG, 0, -FACE_UP), _rounded(Vector2(0.018, 0.018), 0.009), colour.darkened(0.45), index, 0.0)
+	var face := TAG * FACE
+	_fan(tool, at + Vector3(0, 0, -FACE_UP), _rounded(Vector2(face, face), face * FACE_ROUND), colour_of(index), index, 1.0)
+
+## A rounded rectangle `size` across with corners of `radius`, clockwise from above.
+static func _rounded(size: Vector2, radius: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var half := size * 0.5 - Vector2(radius, radius)
+	for corner: Array in [[Vector2(-half.x, -half.y), PI], [Vector2(half.x, -half.y), PI * 1.5], [Vector2(half.x, half.y), 0.0], [Vector2(-half.x, half.y), PI * 0.5]]:
+		for step in range(6):
+			var angle: float = corner[1] + PI * 0.5 * float(step) / 5.0
+			points.append(corner[0] + Vector2(cos(angle), sin(angle)) * radius)
+	return points
+
+static func _chipped() -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for point: Vector2 in CHIPPED: points.append(point * TAG)
+	return points
+
+## A convex `outline` (x, z around `centre`) as one fan, its pair and layer on every vertex.
+static func _fan(tool: SurfaceTool, centre: Vector3, outline: PackedVector2Array, colour: Color, index: int, layer: float) -> void:
+	tool.set_color(colour)
+	tool.set_uv2(Vector2(float(mini(index, MAX_STATES - 1)), layer))
+	tool.set_uv(Vector2(0.5, 0.5))
+	for i in range(outline.size()):
+		var a := outline[i]
+		var b := outline[(i + 1) % outline.size()]
+		tool.add_vertex(centre)
+		tool.add_vertex(centre + Vector3(a.x, 0, a.y))
+		tool.add_vertex(centre + Vector3(b.x, 0, b.y))
 
 static func _quad(tool: SurfaceTool, centre: Vector3, size: Vector2, colour: Color, index: int, layer: float) -> void:
 	tool.set_color(colour)
@@ -587,23 +643,36 @@ static func _quad(tool: SurfaceTool, centre: Vector3, size: Vector2, colour: Col
 		tool.set_uv(uvs[vertex])
 		tool.add_vertex(corners[vertex])
 
-## A letter lying flat, LETTER_HEIGHT tall and centred: [positions, triangle
-## indices], one quad per stroke, square-capped so strokes meet without gaps.
+## A letter lying flat, LETTER_HEIGHT tall and centred on the face (a little
+## up, with it): [positions, triangle indices], the game's rounded Fredoka
+## letter made flat once (TextMesh) and laid on the floor, its top away from
+## the camera.
 static func _letter(letter: String) -> Array:
 	if _letters.has(letter): return _letters[letter]
 	SessionRelease.on_exit(release_cached)
-	var unit := LETTER_HEIGHT / 6.0
+	var font := FontVariation.new()
+	font.base_font = FONT
+	font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 600}
+	var text := TextMesh.new()
+	text.font = font
+	text.font_size = 64
+	text.depth = 0.0
+	text.text = letter
+	var arrays := text.get_mesh_arrays()
+	var source: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var low := Vector2(INF, INF)
+	var high := Vector2(-INF, -INF)
+	for vertex: Vector3 in source:
+		low = low.min(Vector2(vertex.x, vertex.y))
+		high = high.max(Vector2(vertex.x, vertex.y))
+	var scale := LETTER_HEIGHT / maxf(high.y - low.y, 0.0001)
+	var middle := (low + high) * 0.5
 	var positions := PackedVector3Array()
+	for vertex: Vector3 in source: positions.append(Vector3((vertex.x - middle.x) * scale, 0, -(vertex.y - middle.y) * scale - FACE_UP))
 	var triangles := PackedInt32Array()
-	for stroke: Array in LETTER_STROKES.get(letter, []):
-		# The grid's centre (2, 3) at the tile's centre; its top away from the camera.
-		var a := Vector3((stroke[0].x - 2.0) * unit, 0, -(stroke[0].y - 3.0) * unit)
-		var b := Vector3((stroke[1].x - 2.0) * unit, 0, -(stroke[1].y - 3.0) * unit)
-		var along := (b - a).normalized() * STROKE * 0.5
-		var side := Vector3(-along.z, 0, along.x)
-		var first := positions.size()
-		positions.append_array([a - along - side, b + along - side, b + along + side, a - along + side])
-		triangles.append_array([first, first + 1, first + 2, first, first + 2, first + 3])
+	if arrays[Mesh.ARRAY_INDEX] is PackedInt32Array and not (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).is_empty(): triangles = arrays[Mesh.ARRAY_INDEX]
+	else:
+		for i in range(positions.size()): triangles.append(i)
 	_letters[letter] = [positions, triangles]
 	return _letters[letter]
 

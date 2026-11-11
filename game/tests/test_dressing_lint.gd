@@ -50,7 +50,9 @@ const MIN_SIDE_OVERLAP := 0.01
 ## LabelBubble.create) for levers, switches and places, and the kit's badge
 ## (kit/badges.gd, Badges.make) over spirits. No other presentation file
 ## builds its own Label3D, TextMesh or text plate.
-const WORLD_TEXT_KIT := ["res://presentation/kit/label_bubble.gd", "res://presentation/kit/badges.gd"]
+## The kit pieces that make in-world text; pair_tags.gd only bakes its letters
+## flat into its one tile mesh (TextMesh arrays, never a TextMesh node).
+const WORLD_TEXT_KIT := ["res://presentation/kit/label_bubble.gd", "res://presentation/kit/badges.gd", "res://presentation/kit/pair_tags.gd"]
 ## Worlds still moving their own in-world text onto the kit: none left.
 const WORLD_TEXT_PENDING := []
 ## Quads that carry no text, each with its reason. A label plate never belongs here.

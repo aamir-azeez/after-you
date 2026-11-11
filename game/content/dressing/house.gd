@@ -5,6 +5,7 @@ extends RefCounted
 
 const DATA := {
 	"look": "golden",
+	"tag": "painted_tile",
 	"stairs": "timber",
 	"bridges": "timber",
 	"cables": "floor",
