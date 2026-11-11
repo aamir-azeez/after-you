@@ -73,7 +73,6 @@ func _expect(ok: bool, id: String, message: String) -> void:
 
 func _chapter(viewport: SubViewport, key: String) -> void:
 	var level := Registry.definition(key)
-	var journey := Registry.is_journey(key)
 	var world: Node3D = Registry.world_script(key).new()
 	viewport.add_child(world)
 	world.set_process(false)
@@ -85,18 +84,26 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 		if item.checkpoint.is_empty(): continue
 		await world.show_stage(item.stage)
 		world.present_history(item.checkpoint)
-		var base := Shots.opening(key, level, str(view.stage_id), item.checkpoint)
+		var shots := Shots.new(key, level, str(view.stage_id), item.checkpoint)
+		var base := shots.snapshot()
 		_check(not base.is_empty(), "%s: the engine opens the stage" % where)
 		if base.is_empty(): continue
-		world.present(base, true)
-		for spot: Dictionary in Shots.spots(view):
+		_present(world, base)
+		for spot: Dictionary in shots.spots():
 			if not _inside(world, spot.entity): _off_view += 1
-		for spot: Dictionary in Shots.spots(view):
-			world.present(Shots.beside(base, view, journey, spot.entity, spot.slot), true)
+		for spot: Dictionary in shots.spots():
+			_present(world, shots.snapshot(shots.beside({}, spot.entity, spot.slot)))
 			_look(world, where, spot)
 			_spots += 1
 	world.queue_free()
 	await process_frame
+
+## Shows `state` as the game's next frame would: an immediate present, then
+## the placement pass it leaves due (what the world sets after it, its own
+## levers and wheels, is read by the next pass).
+static func _present(world: Node3D, state: Dictionary) -> void:
+	world.present(state, true)
+	world._frame_camera()
 
 ## Where the entity's floor point lands on the view (px).
 static func _shown(world: Node3D, entity: Dictionary) -> Vector2:

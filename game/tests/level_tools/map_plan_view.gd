@@ -17,8 +17,11 @@ const CREAM := Color("f6f1dc")
 const WATER := Color("b4d3d1")
 const WATER_LINE := Color("a2c6c4")
 const PAPER := Color("eef3ee")
-## Floors from lowest to highest: sand to pale stone.
-const FLOOR_RAMP := [Color("d9c79b"), Color("c4d3a0"), Color("dccfb2"), Color("ece4d1"), Color("f6f1e4")]
+## Floors from lowest to highest, one step per height: sand, green, stone,
+## pale stone, chalk.
+const FLOOR_RAMP := [Color("d6bc82"), Color("b4ca8c"), Color("d9ccb0"), Color("efe7d4"), Color("fbf8f0")]
+## Past this many pairs a stage's lines are drawn fainter; the letters carry it.
+const BUSY_PAIRS := 6
 const TIMBER := Props.TIMBER_LIGHT
 const STONE := Props.STONE
 ## Pixels per metre, kept between these, and the largest map area wanted.
@@ -65,7 +68,8 @@ func _draw() -> void:
 	_crossings()
 	for drop: Dictionary in plan.drops: _drop(drop)
 	var layout := _layout()
-	for line: Array in layout.lines: draw_line(line[0], line[1], line[2], 2.0, true)
+	var busy: bool = plan.pairs.size() > BUSY_PAIRS
+	for line: Array in layout.lines: draw_line(line[0], line[1], Color(line[2], 0.45) if busy else line[2], 1.5 if busy else 2.0, true)
 	_controls()
 	_goal()
 	_starts()
@@ -78,7 +82,7 @@ func _draw() -> void:
 
 func _floor_colour(height: int) -> Color:
 	var heights := _heights()
-	if heights.size() <= 1: return FLOOR_RAMP[1]
+	if heights.size() <= FLOOR_RAMP.size(): return FLOOR_RAMP[heights.find(height)]
 	return FLOOR_RAMP[roundi(float(heights.find(height)) / float(heights.size() - 1) * float(FLOOR_RAMP.size() - 1))]
 
 func _heights() -> Array:
@@ -129,14 +133,14 @@ func _planks(rect: Rect2, colour: Color) -> void:
 ## stage left it open, hatched when nothing opens it this stage.
 func _crossing_edge(rect: Rect2, state: String) -> void:
 	match state:
-		"gated": _dashed_rect(rect, INK, 2.0)
+		"gated": _dashed_rect(rect.grow(1.0), INK, 3.0)
 		"shut": _hatched(rect, Color(INK, 0.35))
 		"kept":
 			draw_rect(rect, Color(INK, 0.55), false, 1.5)
 			var corner := rect.position + Vector2(4, 4)
 			draw_rect(Rect2(corner, Vector2(10, 7)), CREAM)
 			draw_rect(Rect2(corner + Vector2(3, -1), Vector2(4, 9)), OwnerMark.GOLD.darkened(0.2))
-		_: draw_rect(rect, Color(INK, 0.55), false, 1.5)
+		_: draw_rect(rect, Color(INK, 0.3), false, 1.0)
 
 ## Treads across the stair's axis and an arrow up toward its higher end.
 func _treads(rect: Rect2, item: Dictionary) -> void:

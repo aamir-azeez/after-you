@@ -9,7 +9,7 @@ extends SceneTree
 ##    control opens what its gates say;
 ##  - live reload redraws a world from an edited catalog and dressing read from
 ##    a folder outside the game, leaves the registry's definition, user:// and
-##    the engine alone, keeps the world on a file that does not compile, and
+##    the engine alone, keeps the world on a catalog with no stages, and
 ##    ships nowhere (every export leaves tests/ out; nothing outside tests/
 ##    names it).
 const Registry = preload("res://services/chapter_registry.gd")
@@ -115,16 +115,22 @@ func _shots() -> void:
 	var key := "turn-of-the-tide@1"
 	var level := Registry.definition(key)
 	var item: Dictionary = Stages.stages(key, level)[0]
-	var base := Shots.opening(key, level, str(item.view.stage_id), item.checkpoint)
+	var shots := Shots.new(key, level, str(item.stage.id), item.checkpoint)
+	var base: Dictionary = shots.snapshot()
 	_check(not base.is_empty() and base.has("players"), "The engine opens a stage for the shots")
-	var spot: Dictionary = Shots.spots(item.view).filter(func(s: Dictionary) -> bool: return s.id == "tide")[0]
-	var near := Shots.beside(base, item.view, true, spot.entity, spot.slot)
-	var pip: Dictionary = near.players[spot.slot]
-	_check(near.active_slot == spot.slot and pip.surface_id == spot.entity.surface_id and Vector2(pip.x, pip.z).distance_to(Vector2(spot.entity.position_cm[0], spot.entity.position_cm[1])) <= PairTags.NEAR_CM, "A pip beside a selector is live, on its floor, near enough to show its pair")
-	var half := Shots.worked(near, item.view, true, spot, "half")
-	var high := Shots.worked(near, item.view, true, spot, "high")
-	_check(half.controls.tide == "half" and bool(half.bridges.get("stones-1", false)) and not bool(half.bridges.get("jetty-1", false)), "Turning the tide to half opens the half crossing only")
-	_check(bool(high.bridges.get("jetty-1", false)) and not bool(high.bridges.get("stones-1", false)), "Turning it to high opens the high crossing only")
+	var spot: Dictionary = shots.spots().filter(func(s: Dictionary) -> bool: return s.id == "tide")[0]
+	var near: Dictionary = shots.beside({}, spot.entity, spot.slot)
+	var state: Dictionary = shots.snapshot(near)
+	var pip: Dictionary = state.players[spot.slot]
+	_check(state.active_slot == spot.slot and pip.surface_id == spot.entity.surface_id and Vector2(pip.x, pip.z).distance_to(Vector2(spot.entity.position_cm[0], spot.entity.position_cm[1])) <= PairTags.NEAR_CM, "A pip beside a selector is live, on its floor, near enough to show its pair")
+	var half: Dictionary = shots.snapshot(shots.worked(near, spot, "half"))
+	var high: Dictionary = shots.snapshot(shots.worked(near, spot, "high"))
+	_check(half.controls.tide == "half" and bool(half.bridges.get("stones-1", false)) and not bool(half.bridges.get("jetty-1", false)), "The engine opens the half crossing only when the tide is turned to half")
+	_check(bool(high.bridges.get("jetty-1", false)) and not bool(high.bridges.get("stones-1", false)), "And the high crossing only at high")
+	# A ball pad's crossing stays shut until the ball is there; a beam's until the light lands.
+	var rolling := Shots.new("rolling-home@1", Registry.definition("rolling-home@1"), "weight-of-a-friend", Registry.initial_checkpoint("rolling-home@1"))
+	_check(not bool(rolling.snapshot().bridges.get("shore-middle", true)), "A ball pad's crossing stays shut while the ball is away")
+	_check(Shots.goal_slot({"first_player_slot": "p1"}) == "p0", "The goal belongs to the pip who plays second")
 
 # --- Live reload ------------------------------------------------------------------
 
@@ -133,8 +139,8 @@ func _live() -> void:
 	var data: Dictionary = preload("res://content/chapters/index.gd").data(key)
 	var catalog := str(data.definition[0])
 	var dressing := str(data.dressing)
-	var folder := OS.get_environment("TEMP").path_join("ay-live-reload-test-%d" % OS.get_process_id())
-	_check(not folder.begins_with(OS.get_user_data_dir()), "The edits live outside user://")
+	var folder := OS.get_temp_dir().path_join("ay-live-reload-test-%d" % OS.get_process_id())
+	_check(folder.is_absolute_path() and not folder.begins_with(OS.get_user_data_dir()), "The edits live in the system's temp folder, outside user://: %s" % folder)
 	for path: String in [catalog, dressing]:
 		DirAccess.make_dir_recursive_absolute(folder.path_join(path.trim_prefix("res://").get_base_dir()))
 		_write(folder.path_join(path.trim_prefix("res://")), FileAccess.get_file_as_string(path))
@@ -163,12 +169,17 @@ func _live() -> void:
 	_check(redrew and not garden.is_empty() and garden[0].rect_cm[0] == 776, "An edited layout redraws the world at once")
 	_check(Canonical.digest(Registry.definition(key)) == bundled, "The registry keeps the bundled definition")
 	var dressing_text := FileAccess.get_file_as_string(folder.path_join(dressing.trim_prefix("res://")))
-	var marked := dressing_text.replace('"props": {"*"', '"props": {"__live": [], "*"')
+	var props := RegEx.create_from_string(r'"props"\s*:\s*\{')
+	var found := props.search(dressing_text)
+	var marked := dressing_text if found == null else dressing_text.substr(0, found.get_end()) + "\"__live\": [], " + dressing_text.substr(found.get_end())
 	_check(marked != dressing_text, "The test's edit applies to the dressing")
 	await _later(folder.path_join(dressing.trim_prefix("res://")), marked)
 	_check(await live.poll() and Dressing.for_key(key).get("props", {}).has("__live"), "An edited dressing redraws the world with it")
-	await _later(folder.path_join(catalog.trim_prefix("res://")), "extends RefCounted\nstatic func definition() -> Dictionary:\n\treturn {\n")
-	_check(not await live.poll() and world.chapter_definition.islands.filter(func(i: Dictionary) -> bool: return i.id == "garden")[0].rect_cm[0] == 776, "A catalog that does not compile leaves the world as it was")
+	# A half-made catalog (here one with no stages) changes nothing. One that
+	# does not compile takes the same path, but its parse error would read as
+	# a script error to the suite runners, so it is not written here.
+	await _later(folder.path_join(catalog.trim_prefix("res://")), "extends RefCounted\nstatic func definition(_key: String = \"\") -> Dictionary:\n\treturn {}\n")
+	_check(not await live.poll() and world.chapter_definition.islands.filter(func(i: Dictionary) -> bool: return i.id == "garden")[0].rect_cm[0] == 776, "A catalog that gives no stages leaves the world as it was")
 	var user_after := _listing(OS.get_user_data_dir())
 	_check(user_after == user_before, "Live reload writes nothing under user://: %s" % [user_after.filter(func(entry: String) -> bool: return entry not in user_before)])
 	_check(live.applied.size() == 2, "It applied the layout and the dressing: %s" % [live.applied])
@@ -189,12 +200,15 @@ func _live() -> void:
 class _Screen extends Node:
 	var world: Node3D
 
-## Writes `text` so its modified time moves on (file times count in seconds).
+## Writes `text` so its modified time moves on (file times count in
+## seconds), giving up after about five seconds.
 func _later(path: String, text: String) -> void:
 	var before := FileAccess.get_modified_time(path)
-	while FileAccess.get_modified_time(path) == before:
+	for _try in range(20):
 		await create_timer(0.25).timeout
 		_write(path, text)
+		if FileAccess.get_modified_time(path) != before: return
+	_check(false, "The test could not move %s's modified time" % path)
 
 func _write(path: String, text: String) -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)

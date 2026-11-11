@@ -17,7 +17,6 @@ const Stages = preload("res://tests/level_tools/level_stages.gd")
 const Shots = preload("res://tests/level_tools/stage_shots.gd")
 const Sheet = preload("res://tests/level_tools/contact_sheet.gd")
 const Registry = preload("res://services/chapter_registry.gd")
-const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const SIZE := Vector2i(800, 360)
 ## Frames a moment settles for before it is taken (water, tags, bubbles).
 const SETTLE_FRAMES := 8
@@ -55,12 +54,14 @@ func _run() -> void:
 		if checkpoint.is_empty():
 			print("NOTE %s: no checkpoint to open from (write the chapter's fixtures)" % stage.id)
 			continue
-		var frames := await _stage(world, key, level, stage, checkpoint, layout.journey, str(options.out).path_join(str(stage.id)))
+		var frames := await _stage(world, Shots.new(key, level, str(stage.id), checkpoint), stage, str(options.out).path_join(str(stage.id)))
 		if frames.is_empty(): continue
 		var sheet: Control = Sheet.new()
 		sheet.title = "%s, stage %d: %s" % [level.get("title", layout.name), index + 1, stage.get("title", stage.id)]
 		sheet.note = "Rendered by the game at 800x360. Gold and teal are the two pips; letters are the pair tags."
 		sheet.groups = frames
+		sheet.columns = 3
+		sheet.frame_width = 532.0
 		Kit.save(await Kit.render(self, sheet, sheet.canvas_size()), str(options.out), "%s-%s-sheet.png" % [layout.name, stage.id])
 	world.queue_free()
 	print("SHOTS %d" % _count)
@@ -74,11 +75,10 @@ static func _family_world(journey: bool) -> String:
 	return ""
 
 ## Every moment of one stage; returns the sheet's groups.
-func _stage(world: Node3D, key: String, level: Dictionary, stage: Dictionary, checkpoint: Dictionary, journey: bool, folder: String) -> Array:
-	var view := CooperativeCatalog.stage_definition(level, str(stage.id))
+func _stage(world: Node3D, shots: RefCounted, stage: Dictionary, folder: String) -> Array:
 	await world.show_stage(stage)
-	world.present_history(checkpoint)
-	var base := Shots.opening(key, level, str(stage.id), checkpoint)
+	world.present_history(shots.checkpoint)
+	var base: Dictionary = shots.snapshot()
 	if base.is_empty():
 		print("NOTE %s: the engine has no such stage" % stage.id)
 		return []
@@ -89,30 +89,29 @@ func _stage(world: Node3D, key: String, level: Dictionary, stage: Dictionary, ch
 		guard += 1
 	var groups: Array = []
 	if "start" in _only:
-		var shots: Array = []
+		var frames: Array = []
 		for slot: String in ["p0", "p1"]:
-			var state := base.duplicate(true)
-			state.active_slot = slot
-			shots.append(await _take(world, state, folder, "start-%s" % _pip(slot), "%s pip's start%s" % [_pip(slot).capitalize(), ", plays first" if slot == str(stage.first_player_slot) else ""]))
-		groups.append({"heading": "Starting views", "frames": shots})
+			frames.append(await _take(world, shots.snapshot({"live": slot}), folder, "start-%s" % _pip(slot), "%s pip's start%s" % [_pip(slot).capitalize(), ", plays first" if slot == str(stage.first_player_slot) else ""]))
+		groups.append({"heading": "Starting views", "frames": frames})
 	if "faint" in _only and "pair_tags" in world:
-		groups.append({"heading": "Pair tags, no pip near", "frames": [await _faint(world, base, folder)]})
-	var spots := Shots.spots(view)
+		groups.append({"heading": "Pair tags, no pip near", "frames": [await _faint(world, shots.snapshot(shots.away({}, AWAY)), folder)]})
+	var spots: Array = shots.spots()
 	for kind: Array in [["selector", "Selectors at each value"], ["lever", "Levers: a pip near, then pulled"], ["pad", "Pads: a pip near, then held"], ["goal", "The goal"]]:
 		if kind[0] not in _only: continue
-		var shots: Array = []
+		var frames: Array = []
 		for spot: Dictionary in spots.filter(func(s: Dictionary) -> bool: return s.kind == kind[0]):
-			var near := Shots.beside(base, view, journey, spot.entity, spot.slot)
+			var near: Dictionary = shots.beside({}, spot.entity, spot.slot)
 			match str(kind[0]):
 				"selector":
 					for value: Variant in spot.entity.get("values", []):
-						shots.append(await _take(world, Shots.worked(near, view, journey, spot, str(value)), folder, "%s-%s" % [spot.id, value], "%s at %s" % [spot.id, str(value).to_upper()]))
+						frames.append(await _take(world, shots.snapshot(shots.worked(near, spot, str(value))), folder, "%s-%s" % [spot.id, value], "%s at %s" % [spot.id, str(value).to_upper()]))
 				"lever", "pad":
-					shots.append(await _take(world, near, folder, "%s-near" % spot.id, "%s, a pip near" % spot.id))
-					shots.append(await _take(world, Shots.worked(near, view, journey, spot), folder, "%s-%s" % [spot.id, "pulled" if kind[0] == "lever" else "held"], "%s, %s" % [spot.id, "pulled" if kind[0] == "lever" else "held"]))
+					var done := "pulled" if kind[0] == "lever" else "held"
+					frames.append(await _take(world, shots.snapshot(near), folder, "%s-near" % spot.id, "%s, a pip near" % spot.id))
+					frames.append(await _take(world, shots.snapshot(shots.worked(near, spot)), folder, "%s-%s" % [spot.id, done], "%s, %s" % [spot.id, done]))
 				"goal":
-					shots.append(await _take(world, near, folder, "goal-%s" % spot.id, "%s, its pip beside it" % spot.id))
-		if not shots.is_empty(): groups.append({"heading": kind[1], "frames": shots})
+					frames.append(await _take(world, shots.snapshot(near), folder, "goal-%s" % spot.id, "%s, its pip beside it" % spot.id))
+		if not frames.is_empty(): groups.append({"heading": kind[1], "frames": frames})
 	return groups
 
 ## One moment: presented, settled, saved. Returns its sheet frame.
@@ -126,12 +125,9 @@ func _take(world: Node3D, state: Dictionary, folder: String, slug: String, capti
 	Kit.save(image, folder, "%02d-%s.png" % [_count, slug])
 	return {"image": image, "caption": caption}
 
-## Every tag faint: both pips far away, the camera held over the tags' middle.
-func _faint(world: Node3D, base: Dictionary, folder: String) -> Dictionary:
-	var state := base.duplicate(true)
-	for slot: String in state.players:
-		state.players[slot].x = int(state.players[slot].x) + AWAY
-		state.players[slot].z = int(state.players[slot].z) + AWAY
+## Every tag faint: `state` has both pips far away; the camera is then held
+## over the tags' middle.
+func _faint(world: Node3D, state: Dictionary, folder: String) -> Dictionary:
 	world.process_mode = Node.PROCESS_MODE_INHERIT
 	world.present(state, true)
 	for _frame in range(SETTLE_FRAMES): await process_frame

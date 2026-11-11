@@ -20,6 +20,7 @@ const Families = preload("res://services/chapter_families.gd")
 const Index = preload("res://content/chapters/index.gd")
 const LevelGraph = preload("res://tests/level_graph.gd")
 const Stages = preload("res://tests/level_tools/level_stages.gd")
+const Shots = preload("res://tests/level_tools/stage_shots.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
 ## Two props stand in each other when their footprints share more than this
@@ -95,30 +96,30 @@ func _reach(key: String) -> void:
 			for id: String in found.floors[slot]: seen[id] = true
 		for kind: String in ["controls", "levers", "pressure_pads"]:
 			for entity: Dictionary in stage.get(kind, []):
-				_stand(graph, found, entity, where, kind)
+				_stand(graph, found, entity, str(entity.get("owner_slot", "")), where, kind, journey)
 		var goal: Dictionary = stage.get("goal", {})
 		if not goal.is_empty():
 			if str(stage.get("goal_policy", {}).get("kind", "ring")) == "ring":
-				_stand(graph, found, goal, where, "goal")
+				_stand(graph, found, goal, Shots.goal_slot(stage), where, "goal", journey)
 			else:
 				var surface := str(goal.get("surface_id", ""))
 				_expect(found.floors.p0.has(surface) or found.floors.p1.has(surface), "%s goal %s" % [where, goal.id], "%s: neither pip reaches the goal %s's floor %s at %s" % [where, goal.id, surface, _cm(goal.position_cm)])
 	for island: Dictionary in level.islands:
 		_expect(seen.has(str(island.id)), "%s floor %s" % [key, island.id], "%s: no stage lets either pip reach the floor %s (%s)" % [key, island.id, _rect(island.rect_cm)])
 
-## The entity's owner reaches its floor and can stand within its radius.
-func _stand(graph: RefCounted, found: Dictionary, entity: Dictionary, where: String, kind: String) -> void:
-	var slot := str(entity.get("owner_slot", ""))
+## The pip that works the entity (its owner; a goal's ringer) reaches its
+## floor and can stand within its radius. The engines let only the owner work
+## a control, lever or pad, so one with no owner fails.
+func _stand(graph: RefCounted, found: Dictionary, entity: Dictionary, slot: String, where: String, kind: String, journey: bool) -> void:
 	var surface := str(entity.get("surface_id", ""))
 	var label := "%s %s" % [_kind_name(kind), entity.id]
 	var id := "%s %s" % [where, label]
 	if slot.is_empty():
-		var either: bool = found.floors.p0.has(surface) or found.floors.p1.has(surface)
-		_expect(either, id, "%s: neither pip reaches the %s on %s at %s" % [where, label, surface, _cm(entity.position_cm)])
+		_expect(false, id, "%s: the %s has no owner, so no pip can work it" % [where, label])
 		return
 	var reached: bool = found.floors.get(slot, {}).has(surface)
 	_expect(reached, id, "%s: %s never reaches the %s on %s at %s" % [where, slot, label, surface, _cm(entity.position_cm)])
-	if reached: _expect(graph.can_stand_at(entity, slot, found.open), id + " stand", "%s: %s cannot stand within reach of the %s at %s on %s" % [where, slot, label, _cm(entity.position_cm), surface])
+	if reached: _expect(graph.can_stand_at(entity, slot, found.open, journey), id + " stand", "%s: %s cannot stand within reach of the %s at %s on %s (at its height)" % [where, slot, label, _cm(entity.position_cm), surface])
 
 static func _kind_name(kind: String) -> String:
 	match kind:

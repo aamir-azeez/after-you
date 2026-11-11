@@ -246,30 +246,6 @@ func _settable(stage: Dictionary, mechanisms: Dictionary, floors: Dictionary) ->
 		if bool(start_levers[lever]): result[str(lever)] = true
 	return result
 
-## Whether `gate` holds now, by the engine's rule for the family: a journey
-## gate's `when` tree (Seven.predicate), a cooperative gate's lever, pad and
-## ball keys all at once (a ball pad counts as held here; the level tools
-## never move the ball).
-static func gate_holds(gate: Dictionary, stage: Dictionary, players: Dictionary, mechanisms: Dictionary, journey: bool) -> bool:
-	if journey: return Seven.predicate(gate.get("when", {}), stage, players, mechanisms)
-	for key: String in ["lever_id", "second_lever_id"]:
-		var id := str(gate.get(key, ""))
-		if not id.is_empty() and not bool(mechanisms.get("levers", {}).get(id, false)): return false
-	var pad_id := str(gate.get("pad_id", ""))
-	if not pad_id.is_empty():
-		for pad: Dictionary in stage.get("pressure_pads", []):
-			if pad.id == pad_id: return pad_held(pad, players, false)
-		return false
-	return true
-
-## Whether `pad`'s owner stands on it: the journey engine also matches the
-## pad's height (Seven.near); the cooperative one only its floor and reach.
-static func pad_held(pad: Dictionary, players: Dictionary, journey: bool) -> bool:
-	var player: Dictionary = players.get(str(pad.get("owner_slot", "")), {})
-	if player.is_empty(): return false
-	if journey: return Seven.near(player, pad)
-	return str(player.get("surface_id", "")) == str(pad.surface_id) and Vector2i(int(player.x), int(player.z)).distance_squared_to(Vector2i(int(pad.position_cm[0]), int(pad.position_cm[1]))) <= int(pad.radius_cm) ** 2
-
 ## Whether `gate` could hold with what is settable, by the family's rule.
 func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, mechanisms: Dictionary, journey: bool) -> bool:
 	if not journey:
@@ -328,8 +304,10 @@ func _pad_placings(stage: Dictionary, pads: Array) -> Array:
 
 ## Whether `slot` can stand within `entity`'s radius on its surface with
 ## `open` routes: the engine's own walker test at the centre and at points
-## round the circle (a control's floor may be a narrow catwalk end).
-func can_stand_at(entity: Dictionary, slot: String, open: Dictionary) -> bool:
+## round the circle (a control's floor may be a narrow catwalk end). A journey
+## control also needs the pip at its height (Seven.near), so one whose
+## height_cm is not its floor's can never be worked.
+func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: bool = false) -> bool:
 	var surface := str(entity.get("surface_id", ""))
 	if not index.has(surface): return false
 	var radius := maxi(0, int(entity.get("radius_cm", 28)) - 2)
@@ -341,5 +319,6 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary) -> bool:
 	for spot: Vector2i in spots:
 		var height := height_at(int(index[surface]), spot.x, spot.y)
 		var found := Navigation.at(level, open, {}, {"height": height, "surface_id": surface}, spot.x, spot.y, slot, RADIUS, false)
-		if not found.is_empty() and str(found.surface_id) == surface: return true
+		if found.is_empty() or str(found.surface_id) != surface: continue
+		if not journey or Seven.near({"x": spot.x, "z": spot.y, "height": int(found.height), "surface_id": surface}, entity): return true
 	return false
