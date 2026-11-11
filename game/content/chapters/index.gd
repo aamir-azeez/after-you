@@ -50,6 +50,9 @@ const OPTIONAL := {
 	"home_keepsake": {},
 	## The scenery file under content/dressing/.
 	"dressing": "",
+	## The water file under content/water/: the bodies of water a world with
+	## moving water builds through presentation/kit/water_bodies.gd.
+	"water": "",
 	## Fold the world's static scenery into a few batches.
 	"fold_static": true,
 	## Build the world once, unseen, while the player is idle at Home, so its

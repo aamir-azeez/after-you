@@ -13,6 +13,11 @@ extends SceneTree
 ## reduced motion (and never for a walkway nobody may walk), and the definition
 ## unchanged. Every other chapter builds no locks.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
+## Turn of the Tide's water block (kit/water_bodies.gd) and its levels.
+const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
+const WaterData = preload("res://content/water/turn_of_the_tide.gd")
+var HARBOUR_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "harbour")[0].levels
+var SEA_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "sea")[0].levels
 const Registry = preload("res://services/chapter_registry.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -218,8 +223,8 @@ func _doors_follow(world: Node3D, locks: WaterLocks, tide: String, label: String
 		"half":
 			for id: String in ["stones-1", "stones-2", "stones-3"]:
 				_check(_states_at(locks, id) == ["open", "open"], "Stepping stones above the water have their doors down: %s %s" % [label, id])
-	for id: String in world._walled:
-		if id in world._floods: _check(_states_at(locks, id).size() == 1, "A walled stub has one door, at its mouth: %s %s" % [label, id])
+	for id: String in world.waters.walled:
+		if id in world.waters.floods: _check(_states_at(locks, id).size() == 1, "A walled stub has one door, at its mouth: %s %s" % [label, id])
 		else: _check(_states_at(locks, id).is_empty(), "A walled crossing is sealed and has no door: %s %s" % [label, id])
 
 ## The door states of the openings onto one walkway, in build order.
@@ -247,7 +252,7 @@ func _no_water_in_doors(world: Node3D, locks: WaterLocks, label: String) -> void
 ## seen from above).
 func _water_over(world: Node3D, areas: Array[Rect2]) -> int:
 	var count := 0
-	for body: Node3D in world._water.values():
+	for body: Node3D in world.waters.bodies.values():
 		var water := body.get_node_or_null("Water") as MeshInstance3D
 		if water == null: continue
 		var vertices: PackedVector3Array = water.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
@@ -364,7 +369,7 @@ func _mouth_floor(world: Node3D, run: Dictionary) -> float:
 ## The least height by which any door's top clears the water on its wet side
 ## this frame, among doors holding water above the other side; INF if none.
 func _clearance(world: Node3D, locks: WaterLocks) -> float:
-	var shown: Dictionary = world._lock_levels("shown")
+	var shown: Dictionary = world.waters.lock_levels("shown")
 	var nodes := locks.door_nodes()
 	var least := INF
 	var index := 0
@@ -383,14 +388,14 @@ func _floor_or_water(world: Node3D, id: String, shown: Dictionary) -> float:
 	if shown.has(id): return float(shown[id])
 	for island: Dictionary in world.chapter_definition.islands:
 		if "island:" + str(island.id) == id: return float(island.height_cm) / 100.0
-	return world.SEABED
+	return WaterData.DATA.seabed
 
 ## The sweep: every water edge that any single set of levels (every tide, sea
 ## and chamber) leaves standing over the other side with nothing holding it
 ## lies inside a piece built for it. A floor skipped, a run lost as a sliver or
 ## a misread mouth fails here.
 func _every_edge_covered(world: Node3D, locks: WaterLocks, label: String) -> void:
-	var plan: Dictionary = world._water_plan()
+	var plan: Dictionary = world.waters.plan()
 	var missing: Array[String] = []
 	for state: Dictionary in plan.states:
 		var single := plan.duplicate()
@@ -417,17 +422,17 @@ func _every_edge_covered(world: Node3D, locks: WaterLocks, label: String) -> voi
 ## catwalk shown by the remembered tide) never shows its flood.
 func _sealed_pits(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dictionary) -> void:
 	var pits: Array[Rect2] = []
-	for id: String in world._walled:
+	for id: String in world.waters.walled:
 		_check(_walled_sides(world, id), "A walled crossing is walled along each open side: %s %s" % [stage.id, id])
 		var r: Array = world._route(id).rect_cm
 		pits.append(Rect2(float(r[0]) / 100.0, float(r[1]) / 100.0, float(r[2] - r[0]) / 100.0, float(r[3] - r[1]) / 100.0).grow(-0.01))
-	var plan: Dictionary = world._water_plan()
+	var plan: Dictionary = world.waters.plan()
 	var named := 0
 	for state: Dictionary in plan.states:
 		for key: String in state:
-			if key.begins_with("crossing:") and key.trim_prefix("crossing:") not in world._floods: named += 1
+			if key.begins_with("crossing:") and key.trim_prefix("crossing:") not in world.waters.floods: named += 1
 	_check(named == 0, "No state gives a sealed pit water of its own: " + str(stage.id))
-	var sealed := func(area: String) -> bool: return area.begins_with("crossing:") and area.trim_prefix("crossing:") not in world._floods
+	var sealed := func(area: String) -> bool: return area.begins_with("crossing:") and area.trim_prefix("crossing:") not in world.waters.floods
 	var touching := locks.runs.filter(func(run: Dictionary) -> bool: return sealed.call(str(run.a)) or sealed.call(str(run.b)))
 	_check(touching.is_empty(), "No lock piece stands at a sealed pit: %s %d" % [stage.id, touching.size()])
 	var wet := 0
@@ -438,16 +443,16 @@ func _sealed_pits(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dict
 			sim._refresh_routes()
 			for open: bool in [true, false]:
 				var state: Dictionary = sim.snapshot()
-				for id: String in world._walled: state.bridges[id] = open
+				for id: String in world.waters.walled: state.bridges[id] = open
 				world.present(state, false)
 				for _frame in range(30):
 					world._advance_water(1.0 / 60.0)
 					wet += _water_over(world, pits)
-					for body: Node3D in world._water.values():
+					for body: Node3D in world.waters.bodies.values():
 						wet += body.get_children().filter(func(child: Node) -> bool: return child.name != "Water" and child is MeshInstance3D and (child as MeshInstance3D).visible).size()
 					if open:
-						for id: String in world._floods:
-							if id not in world._catwalks and world._floods[id].node.visible: wet += 1
+						for id: String in world.waters.floods:
+							if id not in world._catwalks and world.waters.floods[id].node.visible: wet += 1
 	_check(wet == 0, "No water ever stands in a sealed pit: %s (%d)" % [stage.id, wet])
 	_reset(world, sim, stage)
 
@@ -459,16 +464,16 @@ func _sealed_pits(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dict
 ## terrace-high decks, and the race stage can be kept (entered at low tide) and
 ## walked at high: those are walled dry like any crossing.
 func _in_open_water(world: Node3D, stage: Dictionary) -> void:
-	var walled_stubs: Array = world._walled.filter(func(id: String) -> bool: return world._is_stub(world._route(id)))
+	var walled_stubs: Array = world.waters.walled.filter(func(id: String) -> bool: return world._is_stub(world._route(id)))
 	walled_stubs.sort()
 	var expected: Array = ["bar-catwalk", "boom-post", "gate-catwalk", "gate-post", "punt-post", "race-stage"] if str(stage.id) == "slack-water" else []
 	_check(walled_stubs == expected, "Only the stubs open under their water are walled: %s %s" % [stage.id, walled_stubs])
 	for route: Dictionary in world.chapter_definition.bridges:
 		var id := str(route.id)
 		var r: Array = route.rect_cm
-		if not (world._is_stub(route) or world.DECK_KINDS.get(id, "") == "stones") or id in expected or world._gate_for_stage(stage, id).is_empty() or world._body_of(r).is_empty(): continue
+		if not (world._is_stub(route) or world._decks_data().get(id, "") == "stones") or id in expected or WaterBodies.gate_for_stage(stage, id).is_empty() or world.waters.body_of(r).is_empty(): continue
 		var area: Array[Rect2] = [Rect2(float(r[0]) / 100.0, float(r[1]) / 100.0, float(r[2] - r[0]) / 100.0, float(r[3] - r[1]) / 100.0).grow(-0.01)]
-		_check(id not in world._walled and _water_over(world, area) > 0, "%s stands unwalled in the open water: %s" % [id, stage.id])
+		_check(id not in world.waters.walled and _water_over(world, area) > 0, "%s stands unwalled in the open water: %s" % [id, stage.id])
 
 ## At high water kept stepping stones stand under it, their raised doors
 ## holding it off the terraces; a spirit in one of their mouths dips that door
@@ -551,8 +556,8 @@ func _walled_sides(world: Node3D, route: String) -> bool:
 			if not along_x and (is_equal_approx(float(q[0]), line) or is_equal_approx(float(q[2]), line)) and float(q[1]) < float(r[3]) and float(q[3]) > float(r[1]): floor_met = true
 		if floor_met: continue
 		var held := false
-		for wall: AABB in world._water_walls:
-			if wall.end.y < world.PARAPET_TOP - 0.01: continue
+		for wall: AABB in world.waters.walls:
+			if wall.end.y < WaterData.DATA.wall_top - 0.01: continue
 			var near: bool = absf((wall.get_center().z if along_x else wall.get_center().x) - line / 100.0) < 0.15
 			var spans: bool = (wall.position.x < float(r[2]) / 100.0 and wall.end.x > float(r[0]) / 100.0) if along_x else (wall.position.z < float(r[3]) / 100.0 and wall.end.z > float(r[1]) / 100.0)
 			if near and spans: held = true
@@ -573,10 +578,10 @@ func _covered_stubs(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Di
 		sim._refresh_routes()
 		var state: Dictionary = sim.snapshot()
 		world.present(state, true)
-		var level: float = world.HARBOUR_LEVELS[tide]
-		_check(bool(state.bridges["gate-post"]) and not world._floods["gate-post"].node.visible and _states_at(locks, "gate-post") == ["open"], "The open post stands dry, its door down: " + tide)
+		var level: float = HARBOUR_LEVELS[tide]
+		_check(bool(state.bridges["gate-post"]) and not world.waters.floods["gate-post"].node.visible and _states_at(locks, "gate-post") == ["open"], "The open post stands dry, its door down: " + tide)
 		for id: String in ["boom-post", "punt-post"]:
-			var flood: Node3D = world._floods[id].node
+			var flood: Node3D = world.waters.floods[id].node
 			_check(not bool(state.bridges[id]) and flood.visible and is_equal_approx(flood.position.y, level), "A shut post is flooded to the water's level: %s %s" % [id, tide])
 			_check(_states_at(locks, id) == (["shut"] if tide == "high" else ["open"]), "A shut post's door holds its flood off the terrace only above it: %s %s %s" % [id, tide, _states_at(locks, id)])
 	for lever: String in ["gate-bar", "sea-bar", "boom-chain", "punt-chain"]: sim._mechanisms.levers.erase(lever)
