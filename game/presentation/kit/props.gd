@@ -37,6 +37,18 @@ const ROPE := Color("d1b98c")
 
 ## Kinds lower than this (metres) never hide a spirit or a control.
 const LOW := 0.16
+## A cobble wall's full height and depth (metres), nudged stones included.
+const STONE_WALL_HEIGHT := 0.34
+const STONE_WALL_DEPTH := 0.32
+## A cobble wall's rows, bottom up: [centre height, least radius, radius
+## spread, offset along the wall in stones, how far its stones wander].
+const COBBLE_ROWS := [[0.075, 0.09, 0.02, 0.5, 0.7], [0.165, 0.088, 0.02, 0.0, 0.7], [0.255, 0.078, 0.016, 0.5, 1.0]]
+## Warm stones that sit with terracotta and dusk light.
+const STONES := [Color("d6b68a"), Color("a67f57"), Color("e3cca5"), Color("8f6f50"), Color("c49a6c")]
+## The dark core behind the stones: the gaps between them read as shadow.
+const STONE_CORE := Color("4f4034")
+## Shell colours: cream, coral and pink.
+const SHELLS := [Color("fbf4e4"), Color("f6a88e"), Color("f9c9d4"), Color("fde6cf")]
 
 ## Footprint (metres, world xz), height above its base and the base offset.
 ## "flat" props may lie on walkable floor; every other prop must stay off it.
@@ -76,12 +88,13 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"lobster_pot": half = Vector2(0.20, 0.14) * s; height = 0.18 * s
 		"shelf": half = Vector2(0.45, 0.1) * s; height = 0.5 * s
 		"frame": half = Vector2(0.22, 0.03) * s; height = 0.3 * s
-		"fence", "hedge", "wall":
+		"shells": radius = 0.15 * s; height = 0.02
+		"fence", "hedge", "wall", "stone_wall":
 			var from := _point(spec.from)
 			var to := _point(spec.to)
-			var width := 0.06 if kind == "fence" else 0.36 * s if kind == "hedge" else float(spec.get("thickness", 12)) / 100.0
+			var width := 0.06 if kind == "fence" else 0.36 * s if kind == "hedge" else STONE_WALL_DEPTH if kind == "stone_wall" else float(spec.get("thickness", 12)) / 100.0
 			var rect := Rect2(from.min(to), Vector2.ZERO).expand(from.max(to)).grow(width * 0.5)
-			var tall := 0.38 * s if kind == "fence" else 0.5 * s if kind == "hedge" else float(spec.get("height", 120)) / 100.0
+			var tall := 0.38 * s if kind == "fence" else 0.5 * s if kind == "hedge" else STONE_WALL_HEIGHT if kind == "stone_wall" else float(spec.get("height", 120)) / 100.0
 			return {"rect": rect, "height": tall, "base": float(spec.get("y", 0)) / 100.0, "flat": false}
 	if bool(spec.get("wall", false)): radius = minf(radius, 0.12)
 	var at := _point(spec.get("at", [0, 0]))
@@ -163,6 +176,8 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		"fence": _fence(root, _point(spec.from), _point(spec.to), s)
 		"hedge": _hedge(root, _point(spec.from), _point(spec.to), s)
 		"bank": _bank(root, spec)
+		"stone_wall": _stone_wall(root, _point(spec.from), _point(spec.to))
+		"shells": _shells(root, s, int(absf(float(spec.at[0]) * 7.0 + float(spec.at[1]) * 3.0)))
 		"wall": _wall(root, _point(spec.from), _point(spec.to), float(spec.get("height", 120)) / 100.0, float(spec.get("thickness", 12)) / 100.0, spec.get("color", "efe2c4"))
 		_:
 			root.free()
@@ -423,3 +438,107 @@ static func _wall(root: Node3D, from: Vector2, to: Vector2, height: float, thick
 	var middle := (from + to) * 0.5
 	var bar := _box(Vector3(from.distance_to(to), height, thickness), Color(str(color)), Vector3(middle.x, height * 0.5, middle.y), root)
 	bar.rotation.y = -atan2(to.y - from.y, to.x - from.x)
+
+## 0..1 from an index and a salt, the same every build.
+static func _jitter(index: int, salt: float) -> float:
+	var value := sin(float(index) * 12.9898 + salt * 78.233) * 43758.5453
+	return value - floor(value)
+
+## A low eight-sided pebble of this radius and height, about a fifth of a kit
+## sphere's triangles. Its mesh is cached by those two sizes and the node
+## keeps an even scale, so the static fold batches it.
+static func _pebble(radius: float, height: float, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
+	var shape := SphereMesh.new()
+	shape.radius = radius
+	shape.height = height
+	shape.radial_segments = 8
+	shape.rings = 4
+	return Primitives.mesh_node(Primitives.cached_shape(shape), _m(color), at, parent)
+
+## A cone or drum of few sides and no rings: shells are tiny, so a sixth of
+## a kit cone's triangles reads the same.
+static func _low_drum(radius: float, height: float, top: float, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
+	var shape := CylinderMesh.new()
+	shape.bottom_radius = radius
+	shape.top_radius = top
+	shape.height = height
+	shape.radial_segments = 8
+	shape.rings = 0
+	return Primitives.mesh_node(Primitives.cached_shape(shape), _m(color), at, parent)
+
+## A low cobble wall along from..to: three rows of rounded stones in mixed
+## warm tones over a dark core, so every gap between them reads as shadow.
+## Each row is staggered against the one below, and every stone gets its own
+## fixed nudge along and across the wall and its own size, from a hash of its
+## place, so the wall reads hand laid and builds the same every time. The
+## chapter cameras look down on it, so the wandering top row carries the look.
+static func _stone_wall(root: Node3D, from: Vector2, to: Vector2) -> void:
+	var length := from.distance_to(to)
+	var pivot := Node3D.new()
+	pivot.name = "StoneWall"
+	root.add_child(pivot)
+	pivot.position = Vector3(from.x, 0, from.y)
+	pivot.rotation.y = -atan2(to.y - from.y, to.x - from.x)
+	var salt := from.x * 3.1 + from.y * 1.7
+	_box(Vector3(maxf(length - 0.04, 0.02), 0.2, STONE_WALL_DEPTH - 0.12), STONE_CORE, Vector3(length * 0.5, 0.1, 0), pivot)
+	var count := maxi(2, int(length / 0.2))
+	var step := length / float(count)
+	for row in range(COBBLE_ROWS.size()):
+		var spec: Array = COBBLE_ROWS[row]
+		for index in range(count):
+			var key := index * 7 + row * 131
+			var r: float = spec[1] + spec[2] * _jitter(key, salt)
+			# Up to a fifth of a stone along the wall and a quarter across it.
+			var along := (float(index) + float(spec[3])) * step + 0.4 * r * (_jitter(key + 1, salt) - 0.5)
+			var across := 0.5 * r * (_jitter(key + 2, salt) - 0.5) * 2.0 * float(spec[4])
+			var lift := 0.016 * (_jitter(key + 3, salt) - 0.5) * float(spec[4])
+			var color: Color = STONES[int(_jitter(key + 4, salt) * STONES.size())]
+			# One cached unit pebble for every stone, scaled evenly: sizes vary
+			# without a mesh per stone, and the fold still batches them.
+			var stone := _pebble(1.0, 1.6, color, Vector3(clampf(along, 0.08, maxf(length - 0.08, 0.08)), float(spec[0]) + lift, across), pivot)
+			stone.scale = Vector3.ONE * r
+			stone.rotation.y = TAU * _jitter(key + 5, salt)
+
+## A loose cluster of small shells lying on the sand, all about 2 cm high: two
+## scallops, a spiral whelk and two little clams.
+const SHELL_KINDS := ["scallop", "whelk", "clam", "scallop", "clam"]
+
+static func _shells(root: Node3D, s: float, salt: int) -> void:
+	for index in range(SHELL_KINDS.size()):
+		var angle := float(index) * 2.39996 + float(salt % 7)
+		var reach := (0.03 + 0.08 * _jitter(index, float(salt))) * s
+		var holder := Node3D.new()
+		root.add_child(holder)
+		holder.position = Vector3(sin(angle) * reach, 0.0, cos(angle) * reach)
+		holder.rotation.y = angle * 1.7
+		var color: Color = SHELLS[(index + salt) % SHELLS.size()]
+		match str(SHELL_KINDS[index]):
+			"scallop": _scallop(holder, s, color)
+			"whelk": _whelk(holder, s, color)
+			_: _clam(holder, s, color)
+
+## Shell pieces grow with the cluster's size across the sand but never in
+## height: every one stays about 2 cm high, and every node keeps scale 1 so
+## the static fold batches it.
+
+## A fan of five ribs from the hinge, every other one a shade darker.
+static func _scallop(holder: Node3D, s: float, color: Color) -> void:
+	for rib in range(5):
+		var a := (float(rib) - 2.0) * 0.36
+		var shade := color if rib % 2 == 0 else color.darkened(0.14)
+		var piece := _box(Vector3(0.016 * s, 0.01, 0.046 * s), shade, Vector3(sin(a) * 0.02 * s, 0.008 + 0.002 * float(rib % 2), cos(a) * 0.02 * s), holder)
+		piece.rotation.y = a
+	_box(Vector3(0.024 * s, 0.008, 0.01 * s), color.darkened(0.2), Vector3(0, 0.007, -0.004 * s), holder)
+
+static func _whelk(holder: Node3D, s: float, color: Color) -> void:
+	var spire := _low_drum(0.015, 0.06 * s, 0.0, color, Vector3(0, 0.005, 0), holder)
+	spire.rotation.z = PI * 0.5
+	for band in range(3):
+		var radius := 0.0145 - band * 0.0035
+		var ring := _low_drum(radius, 0.005 * s, radius, color.darkened(0.22), Vector3((0.01 - band * 0.012) * s, 0.005, 0), holder)
+		ring.rotation.z = PI * 0.5
+	_pebble(0.009 * s, 0.016, SHELLS[2].darkened(0.08), Vector3(0.03 * s, 0.005, 0), holder)
+
+static func _clam(holder: Node3D, s: float, color: Color) -> void:
+	_pebble(0.032 * s, 0.026, color, Vector3(0, 0.002, 0), holder)
+	_box(Vector3(0.046 * s, 0.004, 0.006 * s), color.darkened(0.18), Vector3(0, 0.0135, 0.004 * s), holder)

@@ -1466,6 +1466,16 @@ const TURN_OF_THE_TIDE_WAIT_SEA := "Hmm, the sea's not at the right level here�
 const TURN_OF_THE_TIDE_WAIT_NOT_YET := "Not quite yet…"
 const TURN_OF_THE_TIDE_WAIT_STAYS_SHUT := "Looks like this {crossing} stays shut this turn…"
 
+# Default hints a level built from puzzle blocks shows until its own words are
+# written (content/blocks/defaults.gd): the first turn's from its first block
+# that has one, the second turn's from its last. Waiting for the owner's text pass.
+const BLOCK_HOLD_DOOR_HINT_A := "Stand on the step and hold the way open for your friend."
+const BLOCK_RELAY_LEVER_HINT_A := "Pull the lever to open the way for your friend."
+const BLOCK_SELECTOR_GATE_HINT_A := "Turn the switch to open a way for your friend."
+const BLOCK_MATCH_SELECTORS_HINT_B := "Turn your switch to match the other one."
+const BLOCK_ONE_WAY_DROP_HINT_B := "Hop down to the floor below."
+const BLOCK_RING_BELL_HINT_B := "Reach the bell and ring it."
+
 # Lighthouse chapter — begin journal load
 const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
 # Lighthouse chapter — begin journal load

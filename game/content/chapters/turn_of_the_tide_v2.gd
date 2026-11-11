@@ -30,6 +30,7 @@ const DATA := {
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/turn-of-the-tide.png",
 	"dressing": "res://content/dressing/turn_of_the_tide.gd",
+	"water": "res://content/water/turn_of_the_tide.gd",
 	# Each turn's end spots (the steps, posts, bell and lantern) carry a beacon.
 	"goal_beacon": true,
 	# The waiting steps and posts are wider than their pads: each pad shows
