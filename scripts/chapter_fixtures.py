@@ -128,8 +128,11 @@ def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None) -
 
     # The backend's copies are the fixtures as just written.
     definition_name, initial_name = chapter.backend_files()
+    written_fixture = {fixture: changes.get(f"game/tests/fixtures/{fixture}") or (root / "game/tests/fixtures" / fixture).read_bytes()
+                       for fixture in (row["definition_fixture"], row["initial_fixture"])}
+    definition = written_fixture[row["definition_fixture"]]
     for fixture, name in ((row["definition_fixture"], definition_name), (row["initial_fixture"], initial_name)):
-        data = changes.get(f"game/tests/fixtures/{fixture}") or (root / "game/tests/fixtures" / fixture).read_bytes()
+        data = written_fixture[fixture]
         target = f"backend/src/v2/{name}"
         if not (root / target).is_file() or not same_text((root / target).read_bytes(), data):
             changes[target] = data
@@ -148,7 +151,9 @@ def plan(game: Game, chapter: Chapter, staged: dict[str, bytes] | None = None) -
             notes.append("backend tests that still name the old hash (update them by hand): " + ", ".join(pinned))
     if not hash_constant(root, new_hash) and not held:
         notes.append(f"NEXT: no backend constant holds {key}'s hash yet. Add its adapter (ADDING-A-CHAPTER, On the server): "
-                     f'import ./{definition_name} and ./{initial_name}, with export const <NAME>_HASH = "{new_hash}"')
+                     f'import ./{definition_name} and ./{initial_name}, with export const <NAME>_HASH = "{new_hash}"'
+                     + (", and pass its descriptor's max_branches as adapter()'s fourth argument: a definition with turn_limits"
+                        " makes checkTurnBounds refuse to load without it" if "turn_limits" in json.loads(definition) else ""))
     return changes, notes
 
 
