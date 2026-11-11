@@ -117,7 +117,7 @@ func _block_friend(row: Dictionary) -> String:
 func _offer_leaderboards(page: CanvasLayer) -> void:
 	host.ensure_relay_session()
 	var session: RefCounted = host.relay_session
-	if session.capabilities.is_empty(): await session.load_capabilities()
+	if session.capabilities.is_empty(): await session.load_capabilities(func() -> bool: return is_instance_valid(page) and page == screen)
 	if not is_instance_valid(page) or page != screen: return
 	page.show_leaderboards(session.leaderboards_supported())
 	# The name choice as the server keeps it, so Settings shows it right after a reinstall.
@@ -239,6 +239,9 @@ func _return_to_room() -> void:
 
 func _leave() -> void:
 	screen = null
+	# Reads this page asked for and no longer needs stop waiting, so none holds
+	# the room session busy after it (Home's Play with your friend waits for it).
+	if host.api != null and host.api.has_method("drop_unwanted_requests"): host.api.drop_unwanted_requests()
 	if host.mode == MODE_FRIENDS:
 		host.ui.visible = true
 		if _return_home: home_requested.emit()

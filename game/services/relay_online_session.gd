@@ -419,12 +419,16 @@ static func verified_invitation(room: Dictionary, owner: String) -> String:
 		return ""
 	return code
 
-func load_capabilities() -> bool:
+## `still`, when given, is the caller's check of its screen: a read still
+## waiting when it fails is dropped and changes nothing here, so a screen that
+## closed never holds the session busy (Friends' first read after launch).
+func load_capabilities(still: Callable = Callable()) -> bool:
 	if not _ready():
 		return false
 	_room_chapters.clear()
 	_room_summaries.clear()
-	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities")
+	var response := await _call(HTTPClient.METHOD_GET, "/v2/capabilities", {}, PackedStringArray(), still)
+	if response.get("cancelled", false): return false
 	if not response.get("ok", false):
 		capabilities = {}
 		_supported_chapters.clear()
@@ -1109,7 +1113,7 @@ func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-" + role, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
 	return result
 
-func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
+func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray(), caller_still: Callable = Callable()) -> Dictionary:
 	if not _ready() or _busy or _api.player_id != _owner or str(_api.device_token).is_empty():
 		return {"ok": false, "status": 0, "code": "request_busy"}
 	var generation := _generation
@@ -1118,7 +1122,7 @@ func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStri
 	_busy = true
 	# request_json captures these verified headers synchronously before await.
 	var response: Dictionary
-	var still := func() -> bool: return generation == _generation
+	var still := func() -> bool: return generation == _generation and (caller_still.is_null() or (caller_still.is_valid() and caller_still.call()))
 	# A room poll's known-room header; an API without extra headers just reads the full room.
 	if not headers.is_empty() and _api.has_method("request_json_with_headers"): response = await _api.request_json_with_headers(method,path,body,headers,still)
 	else: response = await _api.request_json(method,path,body,still)
