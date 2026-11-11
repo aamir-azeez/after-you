@@ -12,6 +12,10 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
 const Themes = preload("res://content/dressing/themes.gd")
 const Samples = preload("res://tests/dressing_mix_samples.gd")
+## Kinds drawn for a style whose built props must stay inside their kit
+## extent: the lint judges a prop by its extent, so one that grew past it
+## could hide a pip unseen.
+const BUILT_WITHIN := ["stone_wall", "shells"]
 ## The largest size a level lays a trim row at, on a bank's front lip this
 ## high (metres): every trim style stays under Props.LOW there.
 const TRIM_SIZE := 0.6
@@ -53,6 +57,11 @@ func _check_styles() -> void:
 			elif spec.kind == "bank": spec["rect"] = [0, 0, 100, 40]
 			else: spec["at"] = [0, 0]
 			_check(_known(spec), "Style %s/%s builds a kit prop" % [slot, style])
+			if str(spec.kind) in BUILT_WITHIN:
+				var built := _built_bounds(spec)
+				var extent := Props.extent(spec)
+				var rect: Rect2 = extent.rect
+				_check(built.end.y <= float(extent.base) + float(extent.height) + 0.002 and rect.grow(0.01).encloses(Rect2(built.position.x, built.position.z, built.size.x, built.size.z)), "Style %s/%s stays inside the extent the lint checks (%s, %s)" % [slot, style, built, extent])
 			if slot == "trim":
 				spec["size"] = TRIM_SIZE
 				_check(float(Props.extent(spec).height) + TRIM_LIP <= Props.LOW, "Trim style %s stays low enough never to hide a spirit" % style)
@@ -93,7 +102,8 @@ func _check_mixes_lint() -> void:
 	var harbour := Catalog.resolve(mixes.harbour)
 	_check(harbour.look == "dusk" and harbour.ground == {"*": "terracotta", "loft": "timber"} and harbour.fireflies == 12, "A theme fills the level's fields and the level's ground wins island by island")
 	var kinds: Array = Props.expand(Catalog.stage_props(harbour, Samples.STAGE)).map(func(spec: Dictionary) -> String: return str(spec.kind))
-	_check("lamp_post" in kinds and "lantern" not in kinds and "wall" in kinds, "The harbour mix stands its own lamps and railing")
+	_check("lamp_post" in kinds and "lantern" not in kinds and "wall" in kinds and "stone_wall" in kinds, "The harbour mix stands its own lamps, stone walls and railing")
+	_check(kinds.count("shells") == 3, "Shells lay half the clusters their line asks for, its ends kept (%d of 6)" % kinds.count("shells"))
 	var mixed := Catalog.resolve(mixes.garden_mixed)
 	var mixed_kinds: Array = Props.expand(Catalog.stage_props(mixed, Samples.STAGE)).map(func(spec: Dictionary) -> String: return str(spec.kind))
 	_check("pine" in mixed_kinds and "tree" not in mixed_kinds and mixed.look == "golden" and mixed.stairs == "timber", "A level overrides its theme slot by slot")
@@ -110,9 +120,29 @@ func _check_resolve_rules() -> void:
 	_check(made[1].kind == "lantern", "A prop's own style beats the pick")
 	_check(made[2] == {"kind": "row", "of": {"kind": "lamp_post"}, "from": [0, 0], "to": [300, 0], "count": 3, "y": 4}, "A point style along a line is a row")
 	_check(made[3].of == {"kind": "flowers", "size": 0.5}, "A row's slot prop resolves inside it")
+	var shells: Array = Catalog.resolve({"props": {"*": [{"kind": "row", "of": {"slot": "scatter", "style": "shells"}, "from": [0, 0], "to": [500, 0], "count": 6},
+		{"slot": "scatter", "style": "shells", "from": [0, 0], "to": [500, 0], "count": 6}]}}).props["*"]
+	_check(shells.all(func(row: Dictionary) -> bool: return row.count == 3 and not row.of.has("row_every")), "A thinned style lays half its line either way it is written: %s" % [shells])
 	var broken := {"props": {"*": [{"slot": "lamp", "style": "torch", "at": [0, 0]}, {"slot": "fence", "at": [0, 0]}, {"slot": "nothing", "at": [0, 0]}]}}
 	_check(Catalog.resolve(broken).props["*"].is_empty() and Catalog.problems(broken).size() == 3, "Unknown styles, slots and a line style without a line are left out and named")
 	_check(not Catalog.problems({"theme": "castle"}).is_empty(), "An unknown theme is named")
+
+## The world box of every vertex one prop draws, built at the origin.
+func _built_bounds(spec: Dictionary) -> AABB:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	Props.build(spec, holder, 0.0, true)
+	var bounds := AABB()
+	var first := true
+	# Every drawn vertex, not each mesh's box: a turned box overstates a pebble.
+	for mesh: MeshInstance3D in holder.find_children("*", "MeshInstance3D", true, false):
+		for vertex: Vector3 in mesh.mesh.get_faces():
+			var point: Vector3 = mesh.global_transform * vertex
+			if first: bounds = AABB(point, Vector3.ZERO)
+			else: bounds = bounds.expand(point)
+			first = false
+	holder.free()
+	return bounds
 
 ## {data, slotted, total}: the published dressing under `theme`, each prop
 ## whose fields hold one of the theme's picked styles written as that slot.

@@ -37,10 +37,12 @@ const SLOTS := {
 		"flowers": {"kind": "flowers"},
 		"bollards": {"kind": "bollard"},
 	},
-	# Flat bits that may lie on walkable ground.
+	# Low bits that may lie on walkable ground. Lay them along a floor's edges,
+	# off the walking lines. Shells lay about half as many clusters as a line
+	# asks for ("row_every"), always at its two ends, the floor's corners.
 	"scatter": {
 		"tufts": {"kind": "tuft", "detail": true},
-		"shells": {"kind": "rug", "width": 8, "depth": 6, "color": "efe0cc"},
+		"shells": {"kind": "shells", "size": 2.6, "row_every": 2},
 	},
 	# The low planted bank edge props stand on.
 	"bank": {
@@ -52,7 +54,7 @@ const SLOTS := {
 	"fence": {
 		"hedge": {"kind": "hedge"},
 		"picket": {"kind": "fence"},
-		"stone": {"kind": "wall", "height": 40, "thickness": 14, "color": "c9b79a"},
+		"stone": {"kind": "stone_wall"},
 	},
 	# A line along the back of a raised floor.
 	"railing": {
@@ -99,9 +101,13 @@ const DEFAULT_PICKS := {
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line
 ## repeats along it as a row.
-const LINE_KINDS := ["fence", "hedge", "wall"]
+const LINE_KINDS := ["fence", "hedge", "wall", "stone_wall"]
 ## The fields of a row itself; every other field of a slot line belongs to each prop in it.
 const ROW_FIELDS := ["from", "to", "count", "surface", "y", "vary"]
+## Style fields read only when a style is laid along a line: "row_every" N
+## lays a line's count divided by N (rounded up, at least its two ends),
+## spread evenly from end to end.
+const LINE_FIELDS := ["row_every"]
 
 static func has_style(slot: String, style: String) -> bool:
 	return SLOTS.has(slot) and SLOTS[slot].has(style)

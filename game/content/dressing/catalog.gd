@@ -123,19 +123,29 @@ static func _resolve_spec(spec: Dictionary, picks: Dictionary) -> Dictionary:
 	if spec.get("of") is Dictionary and spec.of.has("slot"):
 		var row: Dictionary = spec.duplicate()
 		row.of = _styled(spec.of, picks)
-		return {} if row.of.is_empty() else row
+		return {} if row.of.is_empty() else _thinned(row)
 	if not spec.has("slot"): return spec
 	var styled := _styled(spec, picks)
 	if styled.is_empty(): return {}
 	var line := spec.has("from") and spec.has("to")
 	var line_kind := str(styled.kind) in Styles.LINE_KINDS
 	if line_kind and not line: return {}
-	if line_kind or not line: return styled
+	if line_kind or not line:
+		for field: String in Styles.LINE_FIELDS: styled.erase(field)
+		return styled
 	# A point style laid along a line: a kit row of it.
 	var row := {"kind": "row", "of": {}}
 	for field: String in styled:
 		if field in Styles.ROW_FIELDS: row[field] = styled[field]
 		else: row.of[field] = styled[field]
+	return _thinned(row)
+
+## A row with its style's line fields applied and taken off each prop:
+## "row_every" N lays the count divided by N, rounded up, at least two.
+static func _thinned(row: Dictionary) -> Dictionary:
+	var every := int(row.of.get("row_every", 1))
+	for field: String in Styles.LINE_FIELDS: row.of.erase(field)
+	if every > 1: row["count"] = maxi(2, ceili(float(int(row.get("count", 2))) / float(every)))
 	return row
 
 ## The style's fields under the spec's own; {} for an unknown slot or style.
