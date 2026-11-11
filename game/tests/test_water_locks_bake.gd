@@ -43,6 +43,8 @@ func _run() -> void:
 			var fell_back: bool = not WaterLocks._unbaked.is_empty()
 			var built: Array = world.waters.locks.runs if is_instance_valid(world.waters.locks) else []
 			var plan: Dictionary = world.waters.plan()
+			# A world that holds the water kit for a chapter without water has no locks.
+			if plan.is_empty(): continue
 			var path := WaterLocks.bake_path(key, str(stage.id))
 			# Worked out afresh, never from a cache or the bake itself.
 			WaterLocks._found.clear()

@@ -121,7 +121,9 @@ func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dicti
 		for rect: Variant in body.get("rects", []): _check(rect is Array and rect.size() == 4 and rect[0] < rect[2] and rect[1] < rect[3], "Water body %s of %s has whole rectangles" % [id, key])
 		_check(selectors.has(selector), "Water body %s of %s follows a selector of the chapter: %s" % [id, key, selector])
 		_same(data.water_levels.get(selector, []), levels.keys(), "%s's water_levels lists water body %s's values in its order" % [key, id])
-	var first: Dictionary = block.get("bodies", [{}])[0]
+	var all: Array = block.get("bodies", [])
+	_check(not all.is_empty(), "Water block of %s has at least one body" % key)
+	var first: Dictionary = all[0] if not all.is_empty() else {}
 	for value: String in block.get("marks", {}): _check(first.get("levels", {}).has(value), "Water marks of %s name the first body's levels: %s" % [key, value])
 	var islands: Array = level.get("islands", []).map(func(island: Dictionary) -> String: return str(island.id))
 	for pier: String in block.get("piers", []): _check(pier in islands, "Water piers of %s are islands: %s" % [key, pier])
