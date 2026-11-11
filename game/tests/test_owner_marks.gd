@@ -93,8 +93,10 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 	var by_id: Dictionary = {}
 	for mark: Dictionary in placed:
 		var id := str(mark.id)
-		if not by_id.has(id): by_id[id] = []
-		by_id[id].append(mark)
+		# A merged mark stands for every id it took in.
+		for each: String in [id] + Array(mark.get("also", [])).map(func(other: Variant) -> String: return str(other)):
+			if not by_id.has(each): by_id[each] = []
+			by_id[each].append(mark)
 		if mark.kind == &"handoff":
 			_check(view.has("handoff"), "%s: a handoff mark on a stage with a handoff" % where)
 			continue
@@ -105,12 +107,9 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		var marks: Array = by_id.get(id, [])
 		match owned.what:
 			"route":
-				# Two crossings of one owner meeting on a small rock share the mark
-				# there: one end mark, and the other crossing's at its own end.
 				var expected := 2 if world._marks_route_owner(owned.entity) else 0
-				var theirs := placed.filter(func(m: Dictionary) -> bool: return m.kind == &"route_end" and m.id != id and m.slot == owned.slot)
-				_check((marks.size() == expected or (expected == 2 and marks.size() == 1 and not theirs.is_empty())) and marks.all(func(m: Dictionary) -> bool: return m.kind == &"route_end"), "%s: crossing %s has %d end marks (%d)" % [where, id, expected, marks.size()])
-				if expected == 2: _route_ends(where, view, owned.entity, marks if marks.size() == 2 else marks + theirs)
+				_check(marks.size() == expected and marks.all(func(m: Dictionary) -> bool: return m.kind == &"route_end" or m.get("also", []).has(id)), "%s: crossing %s has %d end marks (%d)" % [where, id, expected, marks.size()])
+				if expected == 2: _route_ends(where, view, owned.entity, marks)
 			"zone":
 				var r: Array = owned.entity.rect_cm
 				var expected := range(int(r[0]) + OwnerMark.ZONE_FIRST_CM, int(r[2]), OwnerMark.ZONE_STEP_CM).size()
@@ -208,11 +207,15 @@ func _room(world: Node3D, where: String, view: Dictionary, placed: Array[Diction
 	for mark: Dictionary in placed:
 		if mark.kind in OwnerMark.ON_ITS_OWN: continue
 		var at := Vector2(mark.at.x, mark.at.z)
+		# One owner's marks never lie closer than MERGE on one floor: they merge.
+		for them: Dictionary in placed:
+			if them == mark or them.slot != mark.slot or absf((them.at as Vector3).y - (mark.at as Vector3).y) >= 0.1: continue
+			_check(at.distance_to(Vector2(them.at.x, them.at.z)) >= OwnerMark.MERGE, "%s: the %s mark of %s and the %s mark of %s, one owner's, lie %.2f m apart, under %.2f: they merge" % [where, mark.kind, mark.id, them.kind, them.id, at.distance_to(Vector2(them.at.x, them.at.z)), OwnerMark.MERGE])
 		var reach := _reach(str(mark.slot))
 		var mine := float(OwnerMark.KINDS[mark.kind].reach)
 		var entity: Dictionary = owners.get(str(mark.id), {}).get("entity", {})
 		if mark.kind == &"handoff": entity = handoff
-		if mark.kind in [&"lever", &"mirror", &"goal", &"handoff"] and not entity.is_empty():
+		if mark.kind in [&"lever", &"mirror", &"goal", &"handoff"] and not entity.is_empty() and not mark.has("also"):
 			var anchor: Vector3 = world._pair_control_anchor(entity)
 			_check(at.distance_to(Vector2(anchor.x, anchor.z)) >= mine - 0.01, "%s: the %s mark of %s keeps its place beside it (%.2f m from it, at least %.2f)" % [where, mark.kind, mark.id, at.distance_to(Vector2(anchor.x, anchor.z)), mine])
 		if goal.has("position_cm") and mark.kind != &"goal":

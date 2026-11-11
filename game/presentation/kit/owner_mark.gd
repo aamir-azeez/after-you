@@ -89,6 +89,10 @@ const ZONE_EDGE_LIFT := 0.012
 const CLEAR := 0.02
 const MOVE_STEP := 0.06
 const MOVE_RINGS := 14
+## Two marks of one owner on one floor closer than this (about a mark's
+## width and a gap) become one mark at their middle: one mark for the spot.
+## Marks of different owners never merge; they keep apart.
+const MERGE := 0.36
 ## Kinds a mark that sits on its own control or region: never moved.
 const ON_ITS_OWN := [&"pad", &"bucket", &"endpoint", &"zone", &"spot"]
 
@@ -96,6 +100,8 @@ const ON_ITS_OWN := [&"pad", &"bucket", &"endpoint", &"zone", &"spot"]
 var _world: Node3D
 var _keep_clear: Array[Rect2] = []
 var _placed: Array[Dictionary] = []
+## Each placed mark's node when the kit drew it under the terrain (else null).
+var _nodes: Array = []
 
 func _init(world: Node3D = null) -> void:
 	_world = world
@@ -103,6 +109,7 @@ func _init(world: Node3D = null) -> void:
 ## A new stage: what was marked before goes (its nodes went with the terrain).
 func clear() -> void:
 	_placed.clear()
+	_nodes.clear()
 
 ## Marks keep `edge` clear of `rect` (terrain space, x and z): scenery at a
 ## mark's height.
@@ -174,9 +181,6 @@ func build(view: Dictionary) -> void:
 		if want.size() > 5 and want[5] is Vector3: ends.append(want[5])
 		elif reach > 0.0 and kind != &"handoff": ends.append(anchor - (want[4] as Vector3) * reach)
 		var clash: Array = []
-		# Two crossings of one owner that meet on a small rock share the end mark
-		# there: the rock has no room for two apart.
-		if kind == &"route_end" and _placed.any(func(mark: Dictionary) -> bool: return mark.kind == &"route_end" and mark.slot == slot and FloorSpots.flat(mark.at).distance_to(FloorSpots.flat(place)) < reach_of(slot) * 2.0 and absf((mark.at as Vector3).y - place.y - float(spec.lift)) < 0.1): continue
 		if kind not in ON_ITS_OWN:
 			var size := Vector2.ONE * reach_of(slot) * 2.0
 			# Its own control, goal or handoff only as close as the kind's place
@@ -188,7 +192,38 @@ func build(view: Dictionary) -> void:
 			var spot := FloorSpots.find({"size": size, "ends": ends, "on_crossing": true, "gap": CLEAR, "step": MOVE_STEP, "rings": MOVE_RINGS}, floors, own, discs())
 			place = spot.at
 			clash = spot.clash
+			var other := _merge_with(slot, ends[0], place, float(spec.lift))
+			if other >= 0:
+				_merge(other, id, ends[0], size, floors, own, float(spec.lift))
+				continue
 		_put(slot, kind, id, place + Vector3(0, float(spec.lift), 0), terrain, clash)
+
+## The placed mark of `slot` on this floor within MERGE of where a new mark
+## wants to be (`wanted`) or was found room (`found`); -1 when none.
+func _merge_with(slot: String, wanted: Vector3, found: Vector3, lift: float) -> int:
+	for index in range(_placed.size()):
+		var mark: Dictionary = _placed[index]
+		var at: Vector3 = mark.at
+		if mark.slot != slot or absf(at.y - found.y - lift) >= 0.1: continue
+		if FloorSpots.flat(at).distance_to(FloorSpots.flat(wanted)) < MERGE or FloorSpots.flat(at).distance_to(FloorSpots.flat(found)) < MERGE: return index
+	return -1
+
+## Mark `index` takes in `id` too: a mark that sits on its own control stays
+## where it is; any other moves to the clear spot nearest the middle of where
+## it is and where `id`'s mark wanted to be.
+func _merge(index: int, id: String, wanted: Vector3, size: Vector2, floors: Array, things: Array, lift: float) -> void:
+	var mark: Dictionary = _placed[index]
+	mark["also"] = (mark.get("also", []) as Array) + [id]
+	var node: Variant = _nodes[index]
+	if mark.kind in ON_ITS_OWN or not node is Node3D: return
+	var at: Vector3 = mark.at
+	var middle := Vector3((at.x + wanted.x) * 0.5, at.y - lift, (at.z + wanted.z) * 0.5)
+	var others := discs()
+	others.remove_at(index)
+	var spot := FloorSpots.find({"size": size, "ends": [middle], "on_crossing": true, "gap": CLEAR, "step": MOVE_STEP, "rings": MOVE_RINGS}, floors, things.filter(func(thing: Dictionary) -> bool: return str(thing.get("owner", "")) != str(mark.id)), others)
+	mark.at = (spot.at as Vector3) + Vector3(0, lift, 0)
+	mark.clash = spot.clash
+	(node as Node3D).position = mark.at
 
 ## How far a slot's mark reaches from its centre: the diamond's corner, the ring's rim.
 static func reach_of(slot: String) -> float:
@@ -261,15 +296,18 @@ func _zone(slot: String, id: String, rect_cm: Array, floor_y: float, parent: Nod
 ## build() then leaves `id` be.
 func record(slot: String, kind: StringName, id: String, at: Vector3, parent: Node3D, clash: Array = []) -> void:
 	_placed.append({"slot": slot, "kind": kind, "id": id, "at": on_floor(_world, at, parent), "clash": clash})
+	_nodes.append(null)
 
 ## What this stage marked: {slot, kind, id, at (terrain space), clash (what a
-## mark could not keep clear of; empty when clear)} per mark.
+## mark could not keep clear of; empty when clear), also (ids a merged mark
+## stands for too)} per mark.
 func placed() -> Array[Dictionary]:
 	return _placed.duplicate()
 
 func _put(slot: String, kind: StringName, id: String, at: Vector3, parent: Node3D, clash: Array) -> void:
-	shape(slot, at, parent)
+	var node := shape(slot, at, parent)
 	record(slot, kind, id, at, parent, clash)
+	if _world != null and parent == _world.get("terrain"): _nodes[-1] = node
 
 ## A mark of `slot` at `at` in `parent`: the diamond or the ring.
 static func shape(slot: String, at: Vector3, parent: Node3D) -> MeshInstance3D:
