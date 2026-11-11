@@ -156,7 +156,10 @@ func show_rooms() -> void:
 ## check the last room until it ends. The tap waits for it in the busy-tap gate,
 ## the button reading "Opening…", then opens the hub; a wait that runs out says why.
 func open_from_home(source: Control) -> void:
-	if _gate == null or _gate.area() != host.overlay: _gate = BusyTapGate.new(host.overlay)
+	if _gate == null or _gate.area() != host.overlay:
+		_gate = BusyTapGate.new(host.overlay)
+		# Opening the hub is safe to start again, so a check stuck behind a slow server never leaves Play dead.
+		_gate.bounded_run = true
 	await _gate.tap(source, PlayerCopy.HUB_OPENING,
 		func() -> bool: return host.relay_session == null or not host.relay_session.busy(),
 		show_rooms,

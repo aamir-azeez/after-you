@@ -12,16 +12,19 @@ extends RefCounted
 ##   `still` (the owner's re-check of its screen) holds then;
 ## - gives the control back and calls `expired` when wait_ms passes first,
 ##   after any finger on `area` lifts.
-## While a tap runs, a further tap only moves the label to the control it
-## landed on (Home may have redrawn). A run still going after wait_ms no longer
-## holds the gate: the next tap starts over, so a run stuck behind a slow
-## server never leaves the button dead. The stale run ends quietly.
+## While a tap runs, further taps on this gate do nothing, except that one on a
+## redrawn copy of the screen takes the label when the tapped control is gone.
+## With `bounded_run` (navigation that is safe to start again), a run still
+## going after wait_ms no longer holds the gate: the next tap starts over, so a
+## run stuck behind a slow server never leaves the button dead.
 
 const TouchInput = preload("res://presentation/touch_input.gd")
 const WAIT_MS := 10000
 
 ## The limit for this gate; tests may shorten it.
 var wait_ms := WAIT_MS
+## Off for taps that change things (Begin, Host, Join), which never run twice at once.
+var bounded_run := false
 var _area: Node
 var _serial := 0
 var _waiting: Dictionary = {}
@@ -45,7 +48,7 @@ func waiting() -> bool:
 ## `ready` and `still` may be empty Callables, which always hold.
 func tap(control: Control, label: String, ready: Callable, run: Callable, still: Callable = Callable(), expired: Callable = Callable()) -> void:
 	if running:
-		if Time.get_ticks_msec() < _run_deadline:
+		if not bounded_run or Time.get_ticks_msec() < _run_deadline:
 			_carry(control, label)
 			return
 		_drop_run()
@@ -104,11 +107,11 @@ func cancel() -> void:
 	_serial += 1
 	_give_back()
 
-## A tap while a run holds the gate: the run's label moves to the control it
-## landed on, and the control before gets its own text back.
+## A tap while a run holds the gate, on a redrawn copy of the screen: the label
+## moves to it once the tapped control is gone. A live control keeps it.
 func _carry(control: Control, label: String) -> void:
-	if not is_instance_valid(control) or control == _running_hold.get("control"): return
-	_restore(_running_hold)
+	var held: Variant = _running_hold.get("control")
+	if not is_instance_valid(control) or (is_instance_valid(held) and held.is_inside_tree()): return
 	_running_hold = _label(control, label)
 
 ## Gives up a run that outlasted the wait; its label goes back with the next tap's _give_back.

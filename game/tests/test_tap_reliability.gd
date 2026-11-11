@@ -712,6 +712,7 @@ func _home_after_friends() -> void:
 	_check(not app.relay_session.busy(), "Leaving Friends releases its capabilities read, so the room session is free")
 	app.room_hub_flow._gate = BusyTapGate.new(app.overlay)
 	app.room_hub_flow._gate.wait_ms = 300
+	app.room_hub_flow._gate.bounded_run = true
 	app.toast.visible = false
 	var play := _home_button(app, "Play with your friend")
 	_check(play != null, "Home shows Play with your friend")
@@ -740,9 +741,10 @@ func _home_after_friends() -> void:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 
 
-## A tap whose run outlasts the wait (a room check stuck behind a slow server)
-## never leaves the button dead: a tap within the wait carries the label to the
-## control it landed on, and one after it starts over.
+## Home's Play: a tap whose run outlasts the wait (a room check stuck behind a
+## slow server) never leaves the button dead. Within the wait, a tap on a
+## redrawn button takes the label; after it, a tap starts over. A gate for taps
+## that change things never runs two at once, and a live button keeps its text.
 func _gate_run_bounded() -> void:
 	var area := Control.new()
 	root.add_child(area)
@@ -752,26 +754,39 @@ func _gate_run_bounded() -> void:
 	second.text = "Play"
 	area.add_child(first)
 	area.add_child(second)
-	var gate := BusyTapGate.new(area)
-	gate.wait_ms = 200
 	var hang := [true]
 	var runs := [0]
 	var hung := func() -> void:
 		runs[0] += 1
 		while hang[0]: await process_frame
+	var plain := BusyTapGate.new(area)
+	plain.wait_ms = 100
+	plain.tap(first, "Opening", Callable(), hung)
+	await create_timer(0.2).timeout
+	plain.tap(second, "Opening", Callable(), func() -> void: runs[0] += 10)
+	await _settle()
+	_check(runs[0] == 1 and plain.running and first.text == "Opening" and second.text == "Play", "A plain gate ignores a tap on another live button while it runs: %d / %s / %s" % [runs[0], first.text, second.text])
+	hang[0] = false
+	await _settle()
+	hang[0] = true
+	runs[0] = 0
+	var gate := BusyTapGate.new(area)
+	gate.wait_ms = 200
+	gate.bounded_run = true
 	gate.tap(first, "Opening", Callable(), hung)
 	await _settle()
 	_check(gate.running and first.text == "Opening", "A tap runs and labels its control")
+	first.free()
 	gate.tap(second, "Opening", Callable(), func() -> void: runs[0] += 10)
 	await _settle()
-	_check(runs[0] == 1 and first.text == "Play" and second.text == "Opening", "A tap within the wait carries the label to its own control: %s / %s" % [first.text, second.text])
+	_check(runs[0] == 1 and second.text == "Opening", "A tap within the wait on a redrawn button takes the label: %s" % second.text)
 	await create_timer(0.3).timeout
 	gate.tap(second, "Opening", Callable(), func() -> void: runs[0] += 10)
 	await _settle()
 	_check(runs[0] == 11 and second.text == "Play" and not gate.running, "A tap after a run outlasts the wait runs and gives the control back: %d / %s" % [runs[0], second.text])
 	hang[0] = false
 	await _settle()
-	_check(not gate.running and first.text == "Play" and second.text == "Play", "The stale run ends without taking the gate or a label")
+	_check(not gate.running and second.text == "Play", "The stale run ends without taking the gate or a label")
 	area.queue_free()
 	await _settle()
 
