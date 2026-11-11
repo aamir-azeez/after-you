@@ -173,7 +173,9 @@ func _drop(drop: Dictionary) -> void:
 func _layout() -> Dictionary:
 	_taken.clear()
 	var result := {"tiles": [], "captions": [], "lines": []}
-	for item: Dictionary in plan.controls: _taken.append(Rect2(at(item.at) - Vector2(20, 20), Vector2(36, 34)))
+	for item: Dictionary in plan.controls:
+		var reach := maxf(20.0, item.radius / 100.0 * _scale + 2.0) if str(item.kind).ends_with("pad") else 20.0
+		_taken.append(Rect2(at(item.at) - Vector2.ONE * reach, Vector2.ONE * reach * 2.0))
 	if not plan.goal.is_empty(): _taken.append(Rect2(at(plan.goal.at) - Vector2(16, 16), Vector2(32, 52)))
 	for start: Dictionary in plan.starts: _taken.append(Rect2(at(start.at) - Vector2(11, 11), Vector2(22, 22)))
 	for item: Dictionary in plan.floors:

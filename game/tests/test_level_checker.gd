@@ -28,7 +28,10 @@ const Props = preload("res://presentation/kit/props.gd")
 const PROP_SHARE := 0.3
 ## Known failures: {failure id: why it is left}. Published worlds never change
 ## to clear one; a new chapter fixes its own.
-const KNOWN := {}
+const KNOWN := {
+	"high-and-low@1 upper-path props hedge at (-690, -200) cm and signpost at (-700, 230) cm": "the shore's signpost stands at the hedge's front end on purpose, its post beside the leaves and its boards above them (seen in the 800x360 preview)",
+	"high-and-low@1 down-and-around props hedge at (-690, -200) cm and signpost at (-700, 230) cm": "the same signpost and hedge on the second stage",
+}
 var checks := 0
 var failures := 0
 var _found: Dictionary = {}
@@ -36,6 +39,7 @@ var _found: Dictionary = {}
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
+	_share_rule()
 	var covered := 0
 	var skipped: Array[String] = []
 	for key: String in Registry.keys():
@@ -147,6 +151,15 @@ func _props(key: String) -> void:
 				var share := _share(one, two)
 				var id := "%s props %s and %s" % [where, _prop(one.spec), _prop(two.spec)]
 				_expect(share <= PROP_SHARE, id, "%s: the %s and the %s stand in each other (%d%% of the smaller)" % [where, _prop(one.spec), _prop(two.spec), roundi(share * 100.0)])
+
+## The prop rule on small cases, so it can fail at all.
+func _share_rule() -> void:
+	var crate := {"rect": Rect2(-0.2, -0.2, 0.4, 0.4), "round": true}
+	var inside := {"rect": Rect2(-0.1, -0.1, 0.2, 0.4), "round": false}
+	var beside := {"rect": Rect2(0.15, -0.2, 0.4, 0.4), "round": true}
+	var apart := {"rect": Rect2(1.0, 1.0, 0.4, 0.4), "round": true}
+	_check(_share(crate, crate) > 0.99 and _share(crate, inside) > PROP_SHARE, "Two props in one place, or one inside another, stand in each other")
+	_check(_share(crate, beside) <= PROP_SHARE and _share(crate, apart) == 0.0, "Props that only touch, or stand apart, pass")
 
 ## Round kinds keep a circle footprint; boxes and lines keep their rectangle.
 static func _round(spec: Dictionary) -> bool:
