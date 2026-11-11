@@ -96,13 +96,46 @@ func _families() -> void:
 			_check(field in ["checkpoint_title", "checkpoint_text"], "Family %s's copy is checkpoint copy only" % name)
 	_same(Families.ROWS["lighthouse-room"].rules, [load("res://core/lighthouse/room_catalog.gd").RULES], "The Lighthouse room family plays its catalog's rules")
 
+## A water file (presentation/kit/water_bodies.gd) builds from data alone, so
+## a typo here would fail deep in a build or leave water still: every field is
+## present and well formed, each body's control is a selector of the chapter
+## whose values the descriptor's "water_levels" lists in the same order, its
+## rest value is one of its levels, the marks name the first body's levels and
+## every pier is an island.
+func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dictionary) -> void:
+	for field: String in ["seabed", "rate", "wall_top", "inset", "bounds", "bodies", "marks", "stone", "coping", "pit_floor", "plinth", "fender", "piers"]:
+		_check(block.has(field), "Water block of %s has %s" % [key, field])
+	_check(block.get("bounds", []).size() == 4 and float(block.get("rate", 0.0)) > 0.0 and float(block.get("wall_top", 0.0)) > float(block.get("seabed", 0.0)), "Water block of %s has a window, a rate and walls above its seabed" % key)
+	var selectors := {}
+	for stage: Dictionary in level.get("stages", []):
+		for control: Dictionary in stage.get("controls", []):
+			if str(control.get("kind", "")) == "selector": selectors[str(control.id)] = control.get("values", [])
+	var ids: Array = []
+	for body: Dictionary in block.get("bodies", []):
+		var id := str(body.get("id", ""))
+		_check(not id.is_empty() and id not in ids and not str(body.get("node", "")).is_empty(), "Water body of %s has its own id and node name: %s" % [key, id])
+		ids.append(id)
+		var levels: Dictionary = body.get("levels", {})
+		var selector := str(body.get("selector", ""))
+		_check(not levels.is_empty() and levels.has(str(body.get("rest", ""))) and body.get("color") is Color and not body.get("rects", []).is_empty(), "Water body %s of %s has levels, a rest among them, a colour and rectangles" % [id, key])
+		for rect: Variant in body.get("rects", []): _check(rect is Array and rect.size() == 4 and rect[0] < rect[2] and rect[1] < rect[3], "Water body %s of %s has whole rectangles" % [id, key])
+		_check(selectors.has(selector), "Water body %s of %s follows a selector of the chapter: %s" % [id, key, selector])
+		_same(data.water_levels.get(selector, []), levels.keys(), "%s's water_levels lists water body %s's values in its order" % [key, id])
+	var all: Array = block.get("bodies", [])
+	_check(not all.is_empty(), "Water block of %s has at least one body" % key)
+	var first: Dictionary = all[0] if not all.is_empty() else {}
+	for value: String in block.get("marks", {}): _check(first.get("levels", {}).has(value), "Water marks of %s name the first body's levels: %s" % [key, value])
+	var islands: Array = level.get("islands", []).map(func(island: Dictionary) -> String: return str(island.id))
+	for pier: String in block.get("piers", []): _check(pier in islands, "Water piers of %s are islands: %s" % [key, pier])
+
 func _chapter(key: String, data: Dictionary) -> void:
 	var family := Families.row(str(data.get("family")))
 	if not _check(not family.is_empty(), "Descriptor names a known family: " + key): return
-	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail] + ([data.dressing] if data.dressing != "" else []):
+	for path: String in [data.definition[0], data.world, data.scene, data.thumbnail] + ([data.dressing] if data.dressing != "" else []) + ([data.water] if data.water != "" else []):
 		_check(ResourceLoader.exists(path), "%s names a resource that exists: %s" % [key, path])
 	var level := Registry.definition(key)
 	_same("%s@%d" % [level.get("id"), int(level.get("version", 0))], key, "The descriptor's definition call gives its own chapter")
+	if data.water != "" and ResourceLoader.exists(data.water): _water_block(key, data, load(data.water).DATA, level)
 	# Proofs check a definition with the family catalog's own known() and its
 	# KEYS (core/<family>/stage_catalog.gd), not the descriptor: a chapter that
 	# is not registered there too shows in the menus but fails every proof.

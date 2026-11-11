@@ -33,6 +33,7 @@ const DATA := {
 		{"stage_id": "slack-water", "title": "Slack Water"},
 	],
 	"dressing": "res://content/dressing/turn_of_the_tide.gd",
+	"water": "res://content/water/turn_of_the_tide.gd",
 	# Each turn's end spots (the steps, posts, bell and lantern) carry a beacon.
 	"goal_beacon": true,
 	# The waiting steps and posts are wider than their pads: each pad shows
