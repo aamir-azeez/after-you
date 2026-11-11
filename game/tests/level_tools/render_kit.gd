@@ -21,7 +21,8 @@ static func args() -> Dictionary:
 
 ## The layout to draw: a registered chapter (--key), or a bare definition no
 ## chapter registers yet (--catalog=res://path.gd [--method=definition]
-## [--family=journey|cooperative]). {} with an "error" when neither loads.
+## [--family=journey|cooperative]; else the family is read from the catalog's
+## core/<family>/ folder). {} with an "error" when neither loads.
 static func layout(options: Dictionary) -> Dictionary:
 	var key := str(options.get("key", ""))
 	if not key.is_empty():
@@ -34,7 +35,8 @@ static func layout(options: Dictionary) -> Dictionary:
 	if not script is Script or not (script as Script).has_method(method): return {"error": "No static %s() in %s" % [method, path]}
 	var level: Variant = (script as Script).call(method)
 	if not level is Dictionary or (level as Dictionary).get("stages", []).is_empty(): return {"error": "%s.%s() gives no stages" % [path, method]}
-	var journey := str(options.get("family", "journey" if (level as Dictionary).get("stages", [])[0].has("controls") else "cooperative")) == "journey"
+	# The family's folder names it (the scaffold writes core/<family>/); --family overrides.
+	var journey := str(options.get("family", "journey" if path.begins_with("res://core/journey/") else "cooperative")) == "journey"
 	return {"key": "", "name": "%s-v%d" % [level.get("id", path.get_file().get_basename()), int(level.get("version", 1))], "level": level, "journey": journey, "registered": false}
 
 ## The stages asked for (--stages=a,b; all by default), as authored.

@@ -31,6 +31,9 @@ var _bubbles_seen := 0
 ## Spots off the view while the pip stands at its start: proof the framing
 ## check can fail at all.
 var _off_view := 0
+## Selector bubbles cut by the view's edge while the pips stand at their
+## starts: proof the bubble check can fail at all.
+var _cut_from_start := 0
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -45,6 +48,8 @@ func _run() -> void:
 		print("LEVEL VIEW: %s in %d ms" % [key, Time.get_ticks_msec() - started])
 	_check(_spots > 80 and _bubbles_seen > 100, "The view checks stand a pip at every spot (%d), with bubbles in view (%d)" % [_spots, _bubbles_seen])
 	_check(_off_view > 0, "From the starts, some spots lie off the view, so the framing check can fail (%d)" % _off_view)
+	_check(_cut_from_start > 0, "From the starts, some selector bubbles are cut by the view's edge, so the bubble check can fail (%d)" % _cut_from_start)
+	_check(_meets(Rect2(0, 0, 60, 30), Rect2(50, 10, 60, 30)) and not _meets(Rect2(0, 0, 60, 30), Rect2(61, 0, 60, 30)), "Bubbles that share a corner overlap; bubbles side by side do not")
 	for prefix: String in KNOWN:
 		_check(_found.has(prefix), "Known failure still fails, or comes off the list: %s (%s)" % [prefix, KNOWN[prefix]])
 	print("LEVEL VIEW: %d checks, %d failures" % [checks, failures])
@@ -91,6 +96,9 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 		_present(world, base)
 		for spot: Dictionary in shots.spots():
 			if not _inside(world, spot.entity): _off_view += 1
+			if spot.kind == "selector" and "_journey_switches" in world and world._journey_switches.has(spot.id):
+				var own: Rect2 = (world._journey_switches[spot.id].bubble as LabelBubble).screen_rect(world.camera)
+				if not Rect2(Vector2.ZERO, Vector2(VIEW)).encloses(own): _cut_from_start += 1
 		for spot: Dictionary in shots.spots():
 			_present(world, shots.snapshot(shots.beside({}, spot.entity, spot.slot)))
 			_look(world, where, spot)
@@ -127,11 +135,15 @@ func _look(world: Node3D, where: String, spot: Dictionary) -> void:
 	if spot.kind == "selector" and world._journey_switches.has(spot.id):
 		var own: LabelBubble = world._journey_switches[spot.id].bubble
 		var box := own.screen_rect(camera)
-		_expect(screen.encloses(box), "%s %s bubble cut" % [where, label], "%s: with its pip at the %s, its bubble is cut off by the view's edge at %s" % [where, label, _px(box)])
+		_expect(box.has_area() and screen.encloses(box), "%s %s bubble cut" % [where, label], "%s: with its pip at the %s, its bubble is cut off by the view's edge at %s" % [where, label, _px(box)])
 	for a in range(boxes.size()):
 		for b in range(a + 1, boxes.size()):
 			var meet: Rect2 = (boxes[a][1] as Rect2).intersection(boxes[b][1])
-			_expect(meet.get_area() < OVERLAP_PX2, "%s %s bubbles overlap" % [where, label], "%s: with a pip at the %s, the bubbles of %s and %s overlap (%s)" % [where, label, _name(world, boxes[a][0]), _name(world, boxes[b][0]), _px(meet)])
+			_expect(not _meets(boxes[a][1], boxes[b][1]), "%s %s bubbles overlap" % [where, label], "%s: with a pip at the %s, the bubbles of %s and %s overlap (%s)" % [where, label, _name(world, boxes[a][0]), _name(world, boxes[b][0]), _px(meet)])
+
+## Whether two bubble boxes overlap by more than a touch.
+static func _meets(a: Rect2, b: Rect2) -> bool:
+	return a.intersection(b).get_area() >= OVERLAP_PX2
 
 ## A bubble's name for a message: its selector, else what it says.
 static func _name(world: Node3D, bubble: LabelBubble) -> String:
