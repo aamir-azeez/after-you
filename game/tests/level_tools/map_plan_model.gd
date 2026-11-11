@@ -67,6 +67,13 @@ static func build(level: Dictionary, view: Dictionary, checkpoint: Dictionary, j
 		for route: Dictionary in pair.gates:
 			gates.append({"route": str(route.id), "at": (routes[str(route.id)].rect as Rect2).get_center(), "values": pair.values.get(str(route.id), [])})
 		plan.pairs.append({"index": index, "control": str(pair.control), "letter": PairTags.letter_of(index), "band": PairTags.band_of(index), "colour": PairTags.colour_of(index), "at": _point(pair.entity.position_cm), "gates": gates})
+	# A control the world shows its own way (no tile) is named at its gates
+	# instead: "tide half" by a crossing the half tide opens.
+	for pair: Dictionary in PairTags.pairs_of(view):
+		if pair_of.has(str(pair.control)): continue
+		for route: Dictionary in pair.gates:
+			var asked: Array = pair.values.get(str(route.id), [])
+			routes[str(route.id)].get_or_add("unlettered", []).append(str(pair.control) + ("" if asked.is_empty() else " " + "/".join(asked)))
 	var goal: Dictionary = view.get("goal", {})
 	if not goal.is_empty():
 		plan.goal = {"id": str(goal.id), "at": _point(goal.position_cm), "radius": float(goal.get("radius_cm", 28)), "owner": str(goal.get("owner_slot", "")), "kind": str(view.get("goal_policy", {}).get("kind", "ring"))}

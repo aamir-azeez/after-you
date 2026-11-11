@@ -55,7 +55,7 @@ func box(rect: Rect2) -> Rect2:
 func _draw() -> void:
 	var size := Vector2(canvas_size())
 	draw_rect(Rect2(Vector2.ZERO, size), PAPER)
-	var sea := box((plan.bounds as Rect2).grow(60.0))
+	var sea := box(plan.bounds).grow(22.0)
 	draw_rect(sea, WATER)
 	for y in range(int(sea.position.y) + 14, int(sea.end.y), 28):
 		draw_line(Vector2(sea.position.x, y), Vector2(sea.end.x, y), WATER_LINE, 1.0)
@@ -88,12 +88,19 @@ func _heights() -> Array:
 	heights.sort()
 	return heights
 
+## Lowest first, so a floor above another covers it as seen from above; every
+## edge is drawn again on top, so a floor under another still shows its shape.
 func _floors() -> void:
-	for item: Dictionary in plan.floors:
+	var floors: Array = plan.floors.duplicate()
+	floors.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.height) < int(b.height))
+	for item: Dictionary in floors:
 		var rect := box(item.rect)
 		var colour := _floor_colour(int(item.height))
 		draw_rect(rect.grow(2.0), colour.darkened(0.28))
 		draw_rect(rect, colour if item.reached else colour.lerp(WATER, 0.55))
+	for item: Dictionary in floors:
+		var rect := box(item.rect)
+		draw_rect(rect, Color(_floor_colour(int(item.height)).darkened(0.35), 0.8), false, 1.0)
 		if not item.reached: _dashed_rect(rect.grow(-3.0), SOFT_INK, 1.5)
 
 func _crossings() -> void:
@@ -173,9 +180,8 @@ func _layout() -> Dictionary:
 		var rect := box(item.rect)
 		var text := "%s  %d cm" % [item.id, int(item.height)]
 		if _text_width(text, 13) > rect.size.x - 8.0: text = "%d cm" % int(item.height)
-		var words := Rect2(rect.position + Vector2(5, 3), Vector2(_text_width(text, 13) + 2, 16))
+		var words := _free(Rect2(rect.position + Vector2(5, 3), Vector2(_text_width(text, 13) + 2, 16)))
 		result.captions.append([[[text, SOFT_INK if item.reached else SOFT_INK.lerp(WATER, 0.4), BODY, 13]], words])
-		_taken.append(words)
 	# Each gate's row, by its crossing.
 	var at_gate: Dictionary = {}
 	for pair: Dictionary in plan.pairs:
@@ -198,6 +204,12 @@ func _layout() -> Dictionary:
 			gate_tiles[row[index][0].index].append(centre)
 		for index in range(notes.size()):
 			result.captions.append([[[notes[index][1], INK, BODY, 11]], Rect2(spot.position + Vector2(0, TILE + 2 + index * 14.0), Vector2(block.x, 13))])
+	# What opens a crossing whose control shows no tile, in words by it.
+	for item: Dictionary in plan.crossings:
+		if item.get("unlettered", []).is_empty(): continue
+		var lines: Array = item.unlettered.map(func(words: String) -> Array: return [words, INK, BODY, 11])
+		var rect := box(item.rect)
+		result.captions.append([lines, _free(_lines_rect(lines, rect.get_center() - Vector2(_lines_width(lines) * 0.5, 7.5 * lines.size())))])
 	# Each control's own tile with a line to every gate tile, then its words.
 	for pair: Dictionary in plan.pairs:
 		var centre := _free(Rect2(at(pair.at) + Vector2(18, 0), Vector2.ONE * TILE)).get_center()
