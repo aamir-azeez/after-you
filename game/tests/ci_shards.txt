@@ -263,6 +263,7 @@ purchase_store_boundary 3
 race_ghost 2
 reaction_photos 2
 recent_rooms 1
+recorded_routes 3
 recovery_copy 1
 recovery_details 1
 recovery_discard 1
