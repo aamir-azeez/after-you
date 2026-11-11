@@ -7,6 +7,8 @@ extends "res://presentation/journey_world.gd"
 
 ## Doors, spillways and walls at every water opening.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
+## Each body of water's mesh and root.
+const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 ## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
 ## which both stages share, and each water surface only on its rectangles:
 ## worked out once per definition, then reused (kit/definition_geometry.gd).
@@ -51,8 +53,6 @@ const MOUTH_X := [-704, -512]
 const SEA_GATE_Z := 5.20
 const CHAMBER_PIT := [-640, -128, -576, 128]
 const CHAMBER_WALL_TOP := 0.74
-## Water stops this many cm short of what holds it on the sides the camera sees.
-const WATER_INSET := 3
 const AQUEDUCT := ["aq-feeder", "aq-span"]
 const WATER := Color(0.25, 0.42, 0.47, 0.84)
 const SEA := Color(0.21, 0.37, 0.44, 0.88)
@@ -115,6 +115,7 @@ const BOATS := [[-64, 176, 0.12], [480, 168, -0.18], [1248, -176, 0.10]]
 const LAMPS := [[-370, -530, -232, -640], [965, -530, 1140, -655], [1540, -530, 1700, -640]]
 
 var _water: Dictionary = {}
+var _waters := WaterBodies.new(self)
 var _wheels: Dictionary = {}
 var _gauges: Dictionary = {}
 var _mouth_lamps: Dictionary = {}
@@ -185,8 +186,6 @@ var _scenery_mark_count := 0
 var scenery_backstop := 0.0
 ## Wall layout samples (4 cm apart) worked out between two build steps.
 const WALL_SAMPLES_PER_STEP := 48
-## Water grid lines worked out between two build steps.
-const WATER_LINES_PER_STEP := 8
 
 ## Builds only the stage shown first. Controllers call show_stage straight
 ## after load_level, so opening on the second stage no longer builds the first
@@ -873,7 +872,7 @@ func _kept_pennant(route: Dictionary) -> void:
 	flag.name = "KeptPennant"
 	_glow(flag, GOLD, 1.0)
 	var middle := Vector2(float(r[0] + r[2]), float(r[1] + r[3])) / 2.0
-	var body := "chamber" if _covered(middle.x, middle.y, [CHAMBER_PIT]) else "sea" if _covered(middle.x, middle.y, SEA_REGIONS) else "harbour"
+	var body := "chamber" if WaterBodies.covered(middle.x, middle.y, [CHAMBER_PIT]) else "sea" if WaterBodies.covered(middle.x, middle.y, SEA_REGIONS) else "harbour"
 	_kept_masts.append({"deck": float(route.get("height_cm", 0)) / 100.0, "body": body, "post": post, "knob": knob, "flag": flag})
 	var across_x := width >= depth
 	for side in [-1, 1]:
@@ -1185,134 +1184,12 @@ func _build_slack_mark(route: Dictionary) -> void:
 
 # --- Water, chamber, sea gates, mouth lamps and spout ---
 
-## One body of water: the region minus every island and excluded rectangle, as
-## one mesh of its surface and the outer faces of its sides. No face stands
-## inside the water, where it would show through the surface as a band. Its
-## root moves and stretches with the level, so the water always reaches down
-## to the harbour floor.
-## The sides that face the camera (east and south) stop WATER_INSET short of
-## each island and walled crossing, and of the end of the body: inside the
-## wall that holds the water back, or behind the sea wall past it, and never
-## on a wall's inner face, where the two would fight over the same pixels.
-## Await it.
+## One body of water (kit/water_bodies.gd): the regions minus every island and
+## excluded rectangle. Await it.
 func _water_body(name: String, regions: Array, islands: Array, excluded: Array, color: Color, level: float) -> Node3D:
-	var holes: Array = []
-	for rect: Array in excluded + islands.map(func(island: Dictionary) -> Array: return island.rect_cm):
-		holes.append([int(rect[0]) - WATER_INSET, int(rect[1]) - WATER_INSET, rect[2], rect[3]])
-	var key := [&"tide_water_surface", regions, holes]
-	if not DefinitionGeometry.has(key): DefinitionGeometry.keep(key, await _water_surface(regions, holes))
-	var mesh: Mesh = DefinitionGeometry.kept(key)
-	var root := Node3D.new()
-	root.name = name
-	terrain.add_child(root)
-	if mesh != null:
-		var surface := Primitives.fresh_material(color, 0.35)
-		# Labels, faded floors and the spout draw over the water, never under it.
-		surface.render_priority = -2
-		var water := Primitives.mesh_node(mesh, surface, Vector3.ZERO, root)
-		water.name = "Water"
-		water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var root := await _waters.build_body(name, regions, excluded + islands.map(func(island: Dictionary) -> Array: return island.rect_cm), color)
 	_water_entry(root, level)
 	return root
-
-## The mesh of a water body's surface and outer sides (see _water_body), or
-## null when it has no face: the same for the same rectangles, so it is kept
-## per definition. A staged build gets the frame back between grid lines. Await it.
-func _water_surface(regions: Array, holes: Array) -> Mesh:
-	var xs: Array = []
-	var zs: Array = []
-	for rect: Array in regions + holes:
-		for x: int in [rect[0], rect[2]]:
-			if x not in xs: xs.append(x)
-		for z: int in [rect[1], rect[3]]:
-			if z not in zs: zs.append(z)
-	for region: Array in regions:
-		if int(region[2]) - WATER_INSET not in xs: xs.append(int(region[2]) - WATER_INSET)
-		if int(region[3]) - WATER_INSET not in zs: zs.append(int(region[3]) - WATER_INSET)
-	xs.sort()
-	zs.sort()
-	# wet[zi][xi]: whether the cell between those grid lines holds water. A cell
-	# within WATER_INSET of where the body ends to its east or south stays dry.
-	var wet: Array = []
-	for zi in range(zs.size() - 1):
-		if zi % WATER_LINES_PER_STEP == 0: await _build_step()
-		var row: Array[bool] = []
-		for xi in range(xs.size() - 1):
-			var east := float(xs[xi + 1] + WATER_INSET)
-			var south := float(zs[zi + 1] + WATER_INSET)
-			var x := float(xs[xi] + xs[xi + 1]) * 0.5
-			var z := float(zs[zi] + zs[zi + 1]) * 0.5
-			row.append(_wet(x, z, regions, holes) and _covered(east, z, regions) and _covered(x, south, regions) and _covered(east, south, regions))
-		wet.append(row)
-	var shape := SurfaceTool.new()
-	shape.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var faces := 0
-	# The surface, one quad per run of wet cells along each row.
-	for zi in range(wet.size()):
-		if zi % WATER_LINES_PER_STEP == 0: await _build_step()
-		var start := -1
-		for xi in range(xs.size()):
-			var here: bool = xi < xs.size() - 1 and wet[zi][xi]
-			if here and start < 0: start = xi
-			if not here and start >= 0:
-				var x0 := float(xs[start]) / 100.0
-				var x1 := float(xs[xi]) / 100.0
-				var z0 := float(zs[zi]) / 100.0
-				var z1 := float(zs[zi + 1]) / 100.0
-				_water_quad(shape, [Vector3(x0, 0, z0), Vector3(x1, 0, z0), Vector3(x1, 0, z1), Vector3(x0, 0, z1)], Vector3.UP)
-				faces += 1
-				start = -1
-	# Sides only where water meets something else, merged along each grid line.
-	for along_x: bool in [true, false]:
-		var lines: Array = zs if along_x else xs
-		var cells: Array = xs if along_x else zs
-		for line in range(lines.size()):
-			if line % WATER_LINES_PER_STEP == 0: await _build_step()
-			var start := 0
-			var facing := 0
-			for cell in range(cells.size()):
-				var side := 0
-				if cell < cells.size() - 1:
-					var before: bool = line > 0 and (wet[line - 1][cell] if along_x else wet[cell][line - 1])
-					var after: bool = line < lines.size() - 1 and (wet[line][cell] if along_x else wet[cell][line])
-					side = 1 if before and not after else -1 if after and not before else 0
-				if side == facing: continue
-				if facing != 0:
-					var at := float(lines[line]) / 100.0
-					var a := float(cells[start]) / 100.0
-					var b := float(cells[cell]) / 100.0
-					if along_x: _water_quad(shape, [Vector3(a, -1, at), Vector3(b, -1, at), Vector3(b, 0, at), Vector3(a, 0, at)], Vector3(0, 0, facing))
-					else: _water_quad(shape, [Vector3(at, -1, a), Vector3(at, -1, b), Vector3(at, 0, b), Vector3(at, 0, a)], Vector3(facing, 0, 0))
-					faces += 1
-				start = cell
-				facing = side
-	return shape.commit() if faces > 0 else null
-
-## One flat quad of water, its corners in order round it, wound to face along
-## `normal` (Godot draws a triangle a, b, c whose (a - c) x (a - b) faces the eye).
-static func _water_quad(shape: SurfaceTool, corners: Array, normal: Vector3) -> void:
-	var a: Vector3 = corners[0]
-	var b: Vector3 = corners[1]
-	var c: Vector3 = corners[2]
-	if (a - c).cross(a - b).dot(normal) < 0.0: corners.reverse()
-	for index: int in [0, 1, 2, 0, 2, 3]:
-		shape.set_normal(normal)
-		shape.add_vertex(corners[index])
-
-## Whether a point lies in one of `regions`, edges included.
-static func _covered(x: float, z: float, regions: Array) -> bool:
-	for region: Array in regions:
-		if x >= region[0] and x <= region[2] and z >= region[1] and z <= region[3]: return true
-	return false
-
-static func _wet(x: float, z: float, regions: Array, holes: Array) -> bool:
-	var inside := false
-	for region: Array in regions:
-		if x > region[0] and x < region[2] and z > region[1] and z < region[3]: inside = true
-	if not inside: return false
-	for hole: Array in holes:
-		if x > hole[0] and x < hole[2] and z > hole[1] and z < hole[3]: return false
-	return true
 
 func _water_entry(root: Node3D, level: float) -> void:
 	root.set_meta("target", level)
