@@ -20,6 +20,17 @@ const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 ## Colours this far apart (CIE76) never pass for one another.
 const COLOUR_GAP := 20.0
+## The three states stay this far apart (CIE76) for every pair colour on every
+## floor colour: a tile's face from faint to near and from near to lit, and
+## its ink letter against a near and a lit face. A guard on the kit's numbers;
+## the captures (private tools) measure the rendered pixels.
+const FAINT_TO_NEAR := 10.0
+const NEAR_TO_LIT := 25.0
+const LETTER_ON_FACE := 30.0
+## The floors tiles lie on: cream stone, timber, grass, terracotta tile, grey stone.
+const FLOORS := [Color("e9dcc0"), Color("6b5240"), Color("9cb86a"), Color("f2a07a"), Color("b4c5bd")]
+## The light a floor tile meets, about, in the chapters' sun.
+const LIGHT := 0.9
 ## Laying out a stage's tiles stays under this (headless, the whole stage).
 const BUILD_BUDGET_USEC := 150000
 var checks := 0
@@ -30,6 +41,8 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	_palette()
+	_state_gaps()
+	_letter_size()
 	_pure()
 	var tagged := 0
 	var stages := 0
@@ -67,6 +80,66 @@ func _palette() -> void:
 			_check(_delta(colours[index], owner) >= COLOUR_GAP, "Pair colour %s stays apart from the owner colour %s (%.1f)" % [colours[index].to_html(false), owner.to_html(false), _delta(colours[index], owner)])
 		for other in range(index + 1, colours.size()):
 			_check(_delta(colours[index], colours[other]) >= COLOUR_GAP, "Pair colours %s and %s stay apart (%.1f)" % [colours[index].to_html(false), colours[other].to_html(false), _delta(colours[index], colours[other])])
+
+## The shader's three looks (pair_tags.gdshader with the kit's LOOK numbers),
+## worked out as displayed colours, stay apart: so no change flattens them.
+func _state_gaps() -> void:
+	# The shader takes exactly the kit's numbers (LOOK), one uniform each.
+	var declared: Array = []
+	for found: RegExMatch in RegEx.create_from_string("(?m)^uniform\\s+\\w+\\s+(\\w+)").search_all(PairTags.SHADER.code): declared.append(found.get_string(1))
+	declared.erase("states")
+	var wanted: Array = PairTags.LOOK.keys().map(func(name: StringName) -> String: return str(name))
+	declared.sort()
+	wanted.sort()
+	_check(declared == wanted, "The shader's look uniforms are the kit's LOOK: %s against %s" % [declared, wanted])
+	var worst := {"near": INF, "lit": INF, "letter": INF}
+	var ink := PairTags.INK * LIGHT
+	for colour: Color in PairTags.PALETTE:
+		var near := colour.lerp(PairTags.PALE, PairTags.NEAR_LIGHTEN) * LIGHT
+		var fill := colour.lerp(PairTags.WARM, PairTags.LIT_LIGHTEN)
+		var lit := (fill * LIGHT + fill * PairTags.LIT_GLOW).clamp()
+		for floor_colour: Color in FLOORS:
+			var faint := (floor_colour * LIGHT).lerp(colour * LIGHT, PairTags.FAINT_ALPHA.y)
+			worst.near = minf(worst.near, _delta(faint, near))
+			_check(_delta(faint, near) >= FAINT_TO_NEAR, "A near tile stands off a faint one: %s on %s (%.1f)" % [colour.to_html(false), floor_colour.to_html(false), _delta(faint, near)])
+		worst.lit = minf(worst.lit, _delta(near, lit))
+		worst.letter = minf(worst.letter, minf(_delta(ink, near), _delta(ink, lit)))
+		_check(_delta(near, lit) >= NEAR_TO_LIT, "A lit tile stands off a near one: %s (%.1f)" % [colour.to_html(false), _delta(near, lit)])
+		_check(_delta(ink, near) >= LETTER_ON_FACE and _delta(ink, lit) >= LETTER_ON_FACE, "The letter reads on a near and a lit face: %s (%.1f, %.1f)" % [colour.to_html(false), _delta(ink, near), _delta(ink, lit)])
+	# The glow is warm light: more green than blue, a wide pool, strong at its centre.
+	_check(PairTags.GLOW.g - PairTags.GLOW.b >= 0.2 and PairTags.HALO >= 3.0 and PairTags.GLOW_ALPHA >= 0.5, "A lit tile sits in a wide pool of warm light")
+	print("PAIR TAGS: state gaps faint-near %.1f, near-lit %.1f, letter %.1f" % [worst.near, worst.lit, worst.letter])
+
+## Each letter, drawn in software at 64 by 64 over a tile, fills a fair share
+## of it and most of its height, so it can never shrink to specks again; and
+## the bands past J (one at each edge) stay off the letter.
+func _letter_size() -> void:
+	const GRID := 64
+	for letter: String in PairTags.LETTERS:
+		var shape: Array = PairTags._letter(letter)
+		var positions: PackedVector3Array = shape[0]
+		var triangles: PackedInt32Array = shape[1]
+		var covered := 0
+		var low := INF
+		var high := -INF
+		var wide := 0.0
+		for row in range(GRID):
+			for column in range(GRID):
+				var at := Vector2((float(column) + 0.5) / GRID - 0.5, (float(row) + 0.5) / GRID - 0.5) * PairTags.TAG
+				for corner in range(0, triangles.size(), 3):
+					var a := Vector2(positions[triangles[corner]].x, positions[triangles[corner]].z)
+					var b := Vector2(positions[triangles[corner + 1]].x, positions[triangles[corner + 1]].z)
+					var c := Vector2(positions[triangles[corner + 2]].x, positions[triangles[corner + 2]].z)
+					if Geometry2D.point_is_inside_triangle(at, a, b, c):
+						covered += 1
+						low = minf(low, at.y)
+						high = maxf(high, at.y)
+						wide = maxf(wide, absf(at.x))
+						break
+		var share := float(covered) / float(GRID * GRID)
+		_check(share >= 0.12 and (high - low) >= 0.7 * PairTags.TAG, "The letter %s fills its tile: %.0f%% of it, %.0f%% of its height" % [letter, share * 100.0, (high - low) / PairTags.TAG * 100.0])
+		_check(maxf(absf(low), absf(high)) <= PairTags.TAG * 0.5 - PairTags.RIM_WIDTH, "The letter %s stays inside the tile's face" % letter)
+		_check(wide <= PairTags.TAG * 0.5 - PairTags.RIM_WIDTH - PairTags.BAND * 2.0, "The letter %s leaves room for a band at each edge of the tile" % letter)
 
 ## The wiring, the letters and the bands on small stages.
 func _pure() -> void:
