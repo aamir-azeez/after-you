@@ -49,7 +49,7 @@ const HIGH_AND_LOW := {
 ## slot dressing above with these fields over it.
 const MIX_FIELDS := {
 	"garden": {},
-	"harbour": {"theme": "harbour", "ground": {"loft": "timber"}},
+	"harbour": {"theme": "harbour", "ground": {"loft": "timber"}, "picks": {"scatter": "shells"}},
 	"garden_mixed": {"look": "golden", "fireflies": 10,
 		"picks": {"tree": "pine", "lamp": "lamp_post", "fence": "picket", "bank": "moss", "trim": "bollards", "bench": "crates"}},
 }

@@ -114,6 +114,13 @@ const OPTIONAL := {
 	## those this descriptor leaves out (content/blocks/defaults.gd).
 	"block_source": [],
 }
+## The turn lengths a chapter has while it is built (scripts/new_chapter.py
+## writes them into a new journey definition): the longest whole-second turns
+## the rules and the server's room row bound both accept
+## (scripts/chapter_tools/turn_limits.py works them out). Play sets the real
+## ones (scripts/chapter_turn_limits.py), and test_chapter_descriptors fails a
+## released chapter still on these.
+const DEVELOPMENT_TURN_LIMITS := {"a_ticks": 3870, "b_ticks": 5160}
 ## Fills a block-built chapter's default words, looks and water levels.
 const BlockDefaults = preload("res://content/blocks/defaults.gd")
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
