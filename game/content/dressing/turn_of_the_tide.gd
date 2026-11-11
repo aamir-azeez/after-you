@@ -8,6 +8,7 @@ extends RefCounted
 
 const DATA := {
 	"look": "dusk",
+	"tag": "wooden_plaque",
 	"ground": {"*": "terracotta",
 		"mole-beach": "sand", "w-beach": "sand", "m-beach": "sand", "e-beach": "sand", "r-beach": "sand",
 		"mole-quay": "honey_cobble", "w-quay": "honey_cobble", "m-quay": "honey_cobble", "e-quay": "honey_cobble", "r-quay": "honey_cobble",

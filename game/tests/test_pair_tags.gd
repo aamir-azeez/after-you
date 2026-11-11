@@ -14,12 +14,24 @@ extends SceneTree
 ## chapter, the stage and what clashed.
 const Registry = preload("res://services/chapter_registry.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+const Styles = preload("res://content/dressing/prop_styles.gd")
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 ## Colours this far apart (CIE76) never pass for one another.
 const COLOUR_GAP := 20.0
+## The three states stay this far apart (CIE76) for every pair colour on every
+## floor colour: a tile's face from faint to near and from near to lit, and
+## its ink letter against a near and a lit face. A guard on the kit's numbers;
+## the captures (private tools) measure the rendered pixels.
+const FAINT_TO_NEAR := 10.0
+const NEAR_TO_LIT := 25.0
+const LETTER_ON_FACE := 30.0
+## The floors tiles lie on: cream stone, timber, grass, terracotta tile, grey stone.
+const FLOORS := [Color("e9dcc0"), Color("6b5240"), Color("9cb86a"), Color("f2a07a"), Color("b4c5bd")]
+## The light a floor tile meets, about, in the chapters' sun.
+const LIGHT := 0.9
 ## Laying out a stage's tiles stays under this (headless, the whole stage).
 const BUILD_BUDGET_USEC := 150000
 var checks := 0
@@ -30,6 +42,8 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	_palette()
+	_state_gaps()
+	_letter_size()
 	_pure()
 	var tagged := 0
 	var stages := 0
@@ -47,6 +61,9 @@ func _run() -> void:
 			world.show_stage(stage)
 			tagged += _stage(world, key, CooperativeCatalog.stage_definition(level, str(stage.id)))
 			stages += 1
+		# The frame follows the level's tag style: the harbour's plaque on the tide.
+		var style := str(world.dressing.get("tag", PairTags.DEFAULT_FRAME))
+		_check(world.pair_tags._frame == StringName(style) and (style == "wooden_plaque") == key.begins_with("turn-of-the-tide"), "%s: tags wear its %s frame (%s)" % [key, style, world.pair_tags._frame])
 		_check(Canonical.digest(level) == digest, "%s: tags never change the definition" % key)
 		world.free()
 	_check(stages > 10 and tagged > 40, "The sweep sees the chapters' pair tags: %d tiles on %d stages" % [tagged, stages])
@@ -67,6 +84,71 @@ func _palette() -> void:
 			_check(_delta(colours[index], owner) >= COLOUR_GAP, "Pair colour %s stays apart from the owner colour %s (%.1f)" % [colours[index].to_html(false), owner.to_html(false), _delta(colours[index], owner)])
 		for other in range(index + 1, colours.size()):
 			_check(_delta(colours[index], colours[other]) >= COLOUR_GAP, "Pair colours %s and %s stay apart (%.1f)" % [colours[index].to_html(false), colours[other].to_html(false), _delta(colours[index], colours[other])])
+
+## The shader's three looks (pair_tags.gdshader with the kit's LOOK numbers),
+## worked out as displayed colours, stay apart: so no change flattens them.
+func _state_gaps() -> void:
+	# The shader takes exactly the kit's numbers (LOOK), one uniform each.
+	var declared: Array = []
+	for found: RegExMatch in RegEx.create_from_string("(?m)^uniform\\s+\\w+\\s+(\\w+)").search_all(PairTags.SHADER.code): declared.append(found.get_string(1))
+	declared.erase("states")
+	var wanted: Array = PairTags.LOOK.keys().map(func(name: StringName) -> String: return str(name))
+	declared.sort()
+	wanted.sort()
+	_check(declared == wanted, "The shader's look uniforms are the kit's LOOK: %s against %s" % [declared, wanted])
+	var worst := {"near": INF, "lit": INF, "letter": INF}
+	var ink := PairTags.INK * LIGHT
+	for colour: Color in PairTags.PALETTE:
+		var near := colour.lerp(PairTags.PALE, PairTags.NEAR_LIGHTEN) * LIGHT
+		var fill := colour.lerp(PairTags.WARM, PairTags.LIT_LIGHTEN)
+		var lit := (fill * LIGHT + fill * PairTags.LIT_GLOW).clamp()
+		for floor_colour: Color in FLOORS:
+			var faint := (floor_colour * LIGHT).lerp(colour * LIGHT, PairTags.FAINT_ALPHA.y)
+			worst.near = minf(worst.near, _delta(faint, near))
+			_check(_delta(faint, near) >= FAINT_TO_NEAR, "A near tile stands off a faint one: %s on %s (%.1f)" % [colour.to_html(false), floor_colour.to_html(false), _delta(faint, near)])
+		worst.lit = minf(worst.lit, _delta(near, lit))
+		worst.letter = minf(worst.letter, minf(_delta(ink, near), _delta(ink, lit)))
+		_check(_delta(near, lit) >= NEAR_TO_LIT, "A lit tile stands off a near one: %s (%.1f)" % [colour.to_html(false), _delta(near, lit)])
+		_check(_delta(ink, near) >= LETTER_ON_FACE and _delta(ink, lit) >= LETTER_ON_FACE, "The letter reads on a near and a lit face: %s (%.1f, %.1f)" % [colour.to_html(false), _delta(ink, near), _delta(ink, lit)])
+	# The glow is warm light: more green than blue, a wide pool, strong at its centre.
+	_check(PairTags.GLOW.g - PairTags.GLOW.b >= 0.2 and PairTags.HALO >= 3.0 and PairTags.GLOW_ALPHA >= 0.5, "A lit tile sits in a wide pool of warm light")
+	print("PAIR TAGS: state gaps faint-near %.1f, near-lit %.1f, letter %.1f" % [worst.near, worst.lit, worst.letter])
+
+## Each letter, drawn in software at 64 by 64 over the token's face, stands
+## about LETTER_SHARE of it tall (never shrinking to specks, never filling the
+## box), keeps a clear margin inside the face, leaves room for the bands past
+## J at each edge, and every frame style is a real FRAMES entry.
+func _letter_size() -> void:
+	const GRID := 64
+	var face := PairTags.TAG * PairTags.FACE
+	for letter: String in PairTags.LETTERS:
+		var shape: Array = PairTags._letter(letter)
+		var positions: PackedVector3Array = shape[0]
+		var triangles: PackedInt32Array = shape[1]
+		var covered := 0
+		var low := INF
+		var high := -INF
+		var wide := 0.0
+		for row in range(GRID):
+			for column in range(GRID):
+				var at := Vector2((float(column) + 0.5) / GRID - 0.5, (float(row) + 0.5) / GRID - 0.5) * face - Vector2(0, PairTags.FACE_UP)
+				for corner in range(0, triangles.size(), 3):
+					var a := Vector2(positions[triangles[corner]].x, positions[triangles[corner]].z)
+					var b := Vector2(positions[triangles[corner + 1]].x, positions[triangles[corner + 1]].z)
+					var c := Vector2(positions[triangles[corner + 2]].x, positions[triangles[corner + 2]].z)
+					if Geometry2D.point_is_inside_triangle(at, a, b, c):
+						covered += 1
+						low = minf(low, at.y + PairTags.FACE_UP)
+						high = maxf(high, at.y + PairTags.FACE_UP)
+						wide = maxf(wide, absf(at.x))
+						break
+		var share := float(covered) / float(GRID * GRID)
+		var tall := (high - low) / face
+		_check(share >= 0.025 and tall >= 0.52 and tall <= 0.64, "The letter %s stands about %.0f%% of its face tall: %.0f%% tall, %.0f%% of the face" % [letter, PairTags.LETTER_SHARE * 100.0, tall * 100.0, share * 100.0])
+		_check(maxf(absf(low), absf(high)) <= face * 0.42, "The letter %s keeps a margin inside the face" % letter)
+		_check(wide <= face * 0.5 - PairTags.BAND * 2.0, "The letter %s leaves room for a band at each edge of the face" % letter)
+	for style: String in Styles.SLOTS.tag:
+		_check(PairTags.FRAMES.has(StringName(str(Styles.SLOTS.tag[style].frame))), "The tag style %s has a frame" % style)
 
 ## The wiring, the letters and the bands on small stages.
 func _pure() -> void:

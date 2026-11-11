@@ -87,6 +87,9 @@ static func resolve(data: Dictionary) -> Dictionary:
 	var picks: Dictionary = Styles.DEFAULT_PICKS.duplicate()
 	picks.merge(theme.get("picks", {}), true)
 	picks.merge(data.get("picks", {}), true)
+	# A look slot's pick rides along as its own field, unless the dressing gives it.
+	for slot: String in Styles.LOOK_SLOTS:
+		if not result.has(slot): result[slot] = picks[slot]
 	var props: Dictionary = {}
 	for stage: String in data.get("props", {}):
 		var specs: Array = []
@@ -120,6 +123,9 @@ static func problems(data: Dictionary) -> Array[String]:
 			var inner: Dictionary = spec.of if spec.get("of") is Dictionary else spec
 			if not inner.has("slot"): continue
 			if inner.has("kind"): found.append("A slot prop names a kind too: %s" % inner)
+			if str(inner.slot) in Styles.LOOK_SLOTS:
+				found.append("%s picks a look, not a prop: %s" % [inner.slot, inner])
+				continue
 			var name := str(inner.get("style", picks.get(str(inner.slot), "")))
 			if not Styles.has_style(str(inner.slot), name): found.append("No style %s for slot %s" % [name, inner.slot])
 			elif _resolve_spec(spec, picks).is_empty(): found.append("A %s line needs from and to: %s" % [inner.slot, spec])
@@ -131,6 +137,8 @@ static func _resolve_spec(spec: Dictionary, picks: Dictionary) -> Dictionary:
 		row.of = _styled(spec.of, picks)
 		return {} if row.of.is_empty() else _thinned(row)
 	if not spec.has("slot"): return spec
+	# A look slot (the pair tags' frame) is never a prop.
+	if str(spec.slot) in Styles.LOOK_SLOTS: return {}
 	var styled := _styled(spec, picks)
 	if styled.is_empty(): return {}
 	var line := spec.has("from") and spec.has("to")

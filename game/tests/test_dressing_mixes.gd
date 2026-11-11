@@ -47,6 +47,7 @@ func _check_published() -> void:
 func _check_styles() -> void:
 	for slot: String in Styles.SLOTS:
 		_check(Styles.DEFAULT_PICKS.has(slot) and Styles.has_style(slot, str(Styles.DEFAULT_PICKS.get(slot, ""))), "Slot %s has a default style" % slot)
+		if slot in Styles.LOOK_SLOTS: continue
 		for style: String in Styles.SLOTS[slot]:
 			var spec: Dictionary = Styles.style(slot, style).duplicate()
 			_check(not spec.has("slot") and spec.has("kind"), "Style %s/%s names a kit kind" % [slot, style])
@@ -180,6 +181,7 @@ func _slot_spec(spec: Dictionary, picks: Dictionary) -> Dictionary:
 	var inner: Dictionary = spec.of if row else spec
 	if row and not spec.keys().all(func(field: String) -> bool: return field in ["kind", "of"] or field in Styles.ROW_FIELDS): return spec
 	for slot: String in Styles.SLOTS:
+		if slot in Styles.LOOK_SLOTS: continue
 		var style := Styles.style(slot, str(picks.get(slot, "")))
 		if style.is_empty() or not style.keys().all(func(field: String) -> bool: return inner.has(field) and inner[field] == style[field]): continue
 		var line := str(style.kind) in Styles.LINE_KINDS
