@@ -18,6 +18,12 @@ const rows = Object.values(manifest.chapters) as Row[];
 const bundled = import.meta.glob<{ default: unknown }>("../src/v2/*.json", { eager: true });
 const fixtures = import.meta.glob<{ default: unknown }>(["../../game/tests/fixtures/*/*definition.json", "../../game/tests/fixtures/*/*initial-checkpoint.json"], { eager: true });
 const fixture = (path: string) => fixtures["../../game/tests/fixtures/" + path]?.default;
+/** The same files as text: the backend's copies are byte copies of the game's
+ * fixtures (scripts/chapter_fixtures.py writes them), line ends aside, since a
+ * Windows checkout may hold either. */
+const bundledText = import.meta.glob<string>("../src/v2/*.json", { query: "?raw", import: "default", eager: true });
+const fixtureText = import.meta.glob<string>(["../../game/tests/fixtures/*/*definition.json", "../../game/tests/fixtures/*/*initial-checkpoint.json"], { query: "?raw", import: "default", eager: true });
+const lf = (text: string | undefined) => (text ?? "").replace(/\r\n/g, "\n");
 /** Every server chapter's flag on, so a chapter only the server lists is advertised and caught. */
 const ALL_FLAGS_ON = (): Env => withConfig({ ...env, features: CHAPTERS.map(row => row.flag).filter(Boolean) }) as Env;
 /** A published chapter's flag is retired (always creatable); the game's descriptor still names it, which the server ignores. */
@@ -51,6 +57,15 @@ describe("chapter manifest shared with the game", () => {
     expect({ level_id: initial.level_id, level_version: initial.level_version, definition_hash: initial.definition_hash })
       .toEqual({ level_id: row.level_id, level_version: row.level_version, definition_hash: row.definition_hash });
     if (row.initial_fixture) expect(initial).toEqual(fixture(row.initial_fixture));
+  });
+  it("bundles each chapter's definition and initial checkpoint as exact copies of its game fixtures, and no other JSON", () => {
+    const named = rows.flatMap(row => [row.definition_fixture, row.initial_fixture].map(path => ({ key: row.key, path, text: lf(fixtureText["../../game/tests/fixtures/" + path]) })));
+    for (const { key, path, text } of named) {
+      expect(text, `${key}: game fixture ${path} is readable`).not.toBe("");
+      expect(Object.keys(bundledText).filter(file => lf(bundledText[file]) === text), `${key}: exactly one backend/src/v2 file is a copy of ${path} (scripts/chapter_fixtures.py --key ${key} copies it byte for byte)`).toHaveLength(1);
+    }
+    const texts = new Set(named.map(entry => entry.text));
+    for (const [file, text] of Object.entries(bundledText)) expect(texts.has(lf(text)), `${file} is a copy of a manifest chapter's fixture`).toBe(true);
   });
   it("gates on the server only a chapter whose manifest flag has not retired", () => {
     for (const row of CHAPTERS) {

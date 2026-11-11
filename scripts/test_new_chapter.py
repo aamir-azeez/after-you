@@ -7,14 +7,19 @@ what it leaves there:
 - every file that existed before only gains lines (a family catalog's KEYS
   line gains its key), and only the shared files that list chapters change;
 - ci_shards.txt stays sorted;
-- the placeholder thumbnail is the one test_chapter_descriptors.gd recognises.
+- the placeholder thumbnail is the one test_chapter_descriptors.gd recognises;
+- content/chapters/index.gd's development turn limits are the longest the
+  rules and the server accept (scripts/chapter_tools/turn_limits.py).
 With a Godot binary (--godot, or the GODOT environment variable) it then
-imports the copy, writes the new chapters' fixtures with their own suites,
-writes the chapter manifest golden, checks that only that golden changed and
-only by the new chapters' rows, and runs the new suites with the descriptor,
-registry, manifest, thumbnail, Home, shard, scrolling camera, fold and
-Lighthouse release suites, which each read every registered chapter. Each
-Godot process runs headless with its own user data folders.
+imports the copy, writes the new chapters' fixtures, manifest rows and backend
+copies with scripts/chapter_fixtures.py, checks that only the manifest golden
+changed and only by the new chapters' rows, and runs the new suites with the
+descriptor, registry, manifest, thumbnail, Home, shard, scrolling camera, fold
+and Lighthouse release suites, which each read every registered chapter. Then
+the journey chapter's own run becomes its routes (scripts/chapter_recording.py)
+with every fixture unchanged, replays (scripts/chapter_recheck.py), and gets
+turn limits of its own (scripts/chapter_turn_limits.py). Each Godot process
+runs headless with its own user data folders.
 
 The copy's game folder comes from --game (default: this repository's game/),
 always with its service settings blanked; CI passes its imported offline copy.
@@ -36,8 +41,13 @@ import subprocess
 import sys
 import tempfile
 
+from chapter_tools.godot import copy_game as copy_offline_game, run as run_godot
+from chapter_tools.turn_limits import Rules
+
 ROOT = Path(__file__).resolve().parent.parent
-SCAFFOLD = Path(__file__).resolve().parent / "new_chapter.py"
+SCRIPTS = Path(__file__).resolve().parent
+SCAFFOLD = SCRIPTS / "new_chapter.py"
+JOURNEY = "scaffold-test-journey@1"
 RUNS = [
     ("scaffold-test-coop@1", ["--key", "scaffold-test-coop@1", "--family", "cooperative", "--title", "Scaffold Test Coop", "--shard", "1"]),
     ("scaffold-test-journey@1", ["--key", "scaffold-test-journey@1", "--family", "journey", "--title", "Scaffold Test Journey", "--shard", "2", "--premium"]),
@@ -60,10 +70,7 @@ EXISTING_SUITES = ["chapter_descriptors", "chapter_manifest", "chapter_registry"
 # The chapter unlock chain reads every offered chapter and its keepsake, so a
 # new chapter must keep the chain whole (services/chapter_unlocks.gd).
 EXISTING_SUITES += ["chapter_unlocks"]
-FAILURE_TEXT = re.compile(r"SCRIPT ERROR|Parse Error|Compilation failed|being destroyed without its completion")
 IGNORED = shutil.ignore_patterns("android", "node_modules", ".wrangler", "__pycache__")
-# The service settings CI blanks before any suite runs (verify.yml).
-OFFLINE_CONFIG = {"api_base_url": "", "revenuecat_public_key": ""}
 
 failures: list[str] = []
 
@@ -137,25 +144,24 @@ def check_scaffold(repo: Path, before: dict[str, bytes]) -> list[str]:
         check(('"home_keepsake": {' in text) == new and (f"game/presentation/keepsakes/{stem}.gd" in after) == new,
               f"{key}: {'its own Home keepsake and builder' if new else 'no Home keepsake of its own'}")
     descriptors = (ROOT / "game/tests/test_chapter_descriptors.gd").read_text(encoding="utf-8")
+    rules = Rules(ROOT)
+    index = (ROOT / "game/content/chapters/index.gd").read_text(encoding="utf-8")
+    check(f'const DEVELOPMENT_TURN_LIMITS := {{"a_ticks": {rules.cap_a}, "b_ticks": {rules.cap_b}}}' in index,
+          f"index.gd's development turn limits are the longest the rules and the server accept: A {rules.cap_a}, B {rules.cap_b} ticks")
     placeholder = hashlib.sha256((Path(__file__).resolve().parent / "chapter_templates/placeholder-thumbnail.png").read_bytes()).hexdigest()
     check(f'PLACEHOLDER_THUMBNAIL_SHA256 := "{placeholder}"' in descriptors, "test_chapter_descriptors.gd knows the placeholder thumbnail")
     return suites
 
 
 def godot(binary: str, game: Path, state: Path, args: list[str], timeout: int = 400) -> tuple[bool, str]:
-    environment = dict(os.environ)
-    for name in ("APPDATA", "LOCALAPPDATA", "XDG_DATA_HOME"):
-        folder = state / name
-        folder.mkdir(parents=True, exist_ok=True)
-        environment[name] = str(folder)
-    environment["GODOT_SILENCE_ROOT_WARNING"] = "1"
-    try:
-        result = subprocess.run([binary, "--headless", "--path", str(game), *args], capture_output=True, text=True,
-                                encoding="utf-8", errors="replace", timeout=timeout, env=environment)
-    except subprocess.TimeoutExpired:
-        return False, "timed out"
-    log = result.stdout + result.stderr
-    return result.returncode == 0 and not FAILURE_TEXT.search(log), log
+    return run_godot(binary, game, state, args, timeout)
+
+
+def tool(binary: str, repo: Path, script: str, args: list[str]) -> tuple[bool, str]:
+    """Runs one of the chapter scripts on the copy, in its imported game/."""
+    result = subprocess.run([sys.executable, str(SCRIPTS / script), "--root", str(repo), "--in-place", "--godot", binary, *args],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=1200)
+    return result.returncode == 0, result.stdout + result.stderr
 
 
 def check_godot(binary: str, repo: Path, before: dict[str, bytes], suites: list[str]) -> None:
@@ -163,13 +169,9 @@ def check_godot(binary: str, repo: Path, before: dict[str, bytes], suites: list[
     ok, log = godot(binary, game, state / "import", ["--editor", "--import", "--quit"], timeout=600)
     if not check(ok, "The copy imports: " + log[-2000:]):
         return
-    for suite in suites:
-        if suite.endswith("_world"):
-            continue
-        ok, log = godot(binary, game, state / ("fixtures-" + suite), ["--script", f"res://tests/test_{suite}.gd", "--", "--write-fixtures"])
-        check(ok and "FIXTURE WRITTEN" in log, f"{suite} writes its fixtures: " + log[-2000:])
-    ok, log = godot(binary, game, state / "manifest-golden", ["--script", "res://tests/test_chapter_manifest.gd", "--", "--write-golden"])
-    check(ok, "The chapter manifest golden is written: " + log[-2000:])
+    for key, _ in RUNS:
+        ok, log = tool(binary, repo, "chapter_fixtures.py", ["--key", key])
+        check(ok and "created game/tests/fixtures/" in log and "created backend/src/v2/" in log, f"{key}: chapter_fixtures.py writes its fixtures and backend copies: " + log[-2000:])
     after = snapshot(repo)
     golden = "game/tests/fixtures/golden/"
     changed = sorted(path for path in set(before) | set(after) if path.startswith(golden) and before.get(path) != after.get(path))
@@ -191,22 +193,39 @@ def check_godot(binary: str, repo: Path, before: dict[str, bytes], suites: list[
         summary = [line for line in log.splitlines() if re.search(r"checks|failures", line)]
         print(f"SUITE {name}: {'ok' if ok else 'FAILED'} {summary[-1] if summary else ''}")
         check(ok, f"Suite {name} passes with the new chapters: " + "\n".join(line for line in log.splitlines() if "ERROR" in line or "FAIL" in line)[:3000])
+    check_recordings(binary, repo)
+
+
+def check_recordings(binary: str, repo: Path) -> None:
+    """The journey chapter's own run (its final checkpoint holds every stage's
+    pair) becomes its routes and writes the same fixtures; the routes replay;
+    turn limits are refused past the server's bound and written within it."""
+    final = repo / "game/tests/fixtures/journey/scaffold-test-journey-final-checkpoint.json"
+    fixtures = {path: data for path, data in snapshot(repo).items() if path.startswith("game/tests/fixtures/")}
+    ok, log = tool(binary, repo, "chapter_recording.py", ["--key", JOURNEY, "--recording", str(final)])
+    print("CHAPTER RECORDING: " + log.strip().replace("\n", "\n  "))
+    rules = Rules(ROOT)
+    # Each turn is shown against the development limit it was played under.
+    check(ok and f"updated game/tests/routes/{JOURNEY}.json" in log and "suggested turn_limits" in log and f" of {rules.seconds(rules.cap_a)} (" in log,
+          f"chapter_recording.py takes {JOURNEY}'s run: " + log[-2000:])
+    routes = json.loads((repo / f"game/tests/routes/{JOURNEY}.json").read_text(encoding="utf-8"))
+    check(all(step[0] == "input" for stage in routes.values() for role in ("a", "b") for step in stage[role]), "The recorded routes are input runs")
+    now = {path: data for path, data in snapshot(repo).items() if path.startswith("game/tests/fixtures/")}
+    check(now == fixtures, "Routes from the chapter's own run write the same fixtures: " + ", ".join(sorted(p for p in set(now) | set(fixtures) if now.get(p) != fixtures.get(p))))
+    ok, log = tool(binary, repo, "chapter_recheck.py", ["--key", JOURNEY])
+    check(ok and "2 of 2 stages finish" in log, "chapter_recheck.py replays the recorded routes: " + log[-1500:])
+    ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "200", "--b-seconds", "250"])
+    check(not ok and "server cannot store" in log, "chapter_turn_limits.py refuses turns past the server's bound: " + log[-1500:])
+    ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "60", "--b-seconds", "90"])
+    definition = json.loads((repo / "game/tests/fixtures/journey/scaffold-test-journey-definition.json").read_text(encoding="utf-8"))
+    check(ok and definition.get("turn_limits") == {"a_ticks": 1800, "b_ticks": 2700} and "updated backend/src/v2/scaffold-test-journey.json" in log,
+          "chapter_turn_limits.py writes the limits and rewrites the fixtures and backend copies: " + log[-2000:])
 
 
 def copy_game(source: Path, target: Path) -> None:
     """Copies a game folder with its service settings blanked. Its import cache
     comes along only from a copy that was imported for the suites (--game)."""
-    def ignored(folder: str, names: list[str]) -> set[str]:
-        skip = set(IGNORED(folder, names))
-        if Path(folder) == source:
-            skip.add("app_config.json")
-            if source == ROOT / "game":
-                skip.add(".godot")
-        return skip
-    shutil.copytree(source, target, ignore=ignored)
-    config = json.loads((source / "app_config.json").read_text(encoding="utf-8"))
-    config.update(OFFLINE_CONFIG)
-    (target / "app_config.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    copy_offline_game(source, target, keep_import=source != ROOT / "game")
 
 
 def main(argv: list[str]) -> int:
