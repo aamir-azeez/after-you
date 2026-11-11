@@ -20,6 +20,8 @@ var _physical_pads: Dictionary = {}
 ## Pressure pad id -> its StandSpot, in a chapter whose descriptor has
 ## "stand_spots"; _physical_pads holds the spot's rim.
 var _stand_spots: Dictionary = {}
+## Cables and ropes laid on the floors this stage (_floor_cable).
+var _floor_cables: Array = []
 var _physical_levers: Dictionary = {}
 ## Levers and selectors built with a look: id -> its LeverLooks. Their
 ## _physical_levers entry is the look's anchor, which never tilts.
@@ -63,6 +65,7 @@ func show_stage(stage: Dictionary) -> void:
 	_glance_left = 0.0
 	_physical_pads.clear()
 	_stand_spots.clear()
+	_floor_cables.clear()
 	_physical_levers.clear()
 	_lever_looks.clear()
 	_physical_balls.clear()
@@ -98,8 +101,6 @@ func show_stage(stage: Dictionary) -> void:
 	for lever: Dictionary in view.get("levers", []):
 		_build_lever(lever)
 		await _build_step()
-	for zone: Dictionary in view.get("access_zones", []):
-		owner_marks.zone(str(zone.owner_slot), str(zone.get("id", "")), zone.rect_cm, _surface_height(str(zone.surface_id)), terrain)
 	for obstacle: Dictionary in view.get("obstacles", []):
 		_build_obstacle(obstacle)
 	await _build_step()
@@ -121,7 +122,6 @@ func show_stage(stage: Dictionary) -> void:
 	if view.has("handoff"):
 		var mark: Dictionary = view.handoff
 		ring(0.42, CREAM, _at(mark) + Vector3(0, 0.03, 0), terrain)
-		for side in [-1, 1]: owner_marks.mark("p0" if side == -1 else "p1", &"handoff", "handoff", _at(mark), terrain, Vector3(side, 0, 0))
 	if view.goal_policy.kind == "ball_home":
 		var at := _at(goal)
 		cylinder(0.4, 0.07, Color("6b8984"), at + Vector3(0, 0.035, 0), terrain)
@@ -152,6 +152,8 @@ func show_stage(stage: Dictionary) -> void:
 	# building is done, clear of all of it (the ball's cradle included).
 	var tag_view := view.duplicate()
 	tag_view["goal"] = goal
+	# Every owned thing's mark, placed clear of the stage and of each other.
+	owner_marks.build(tag_view)
 	pair_tags.prepare(tag_view)
 	await _build_step()
 	if _has_completion_garden(stage_id):
@@ -335,9 +337,7 @@ func _flowerbed(r: Array, at: Vector3) -> void:
 func _build_bridge(definition: Dictionary) -> void:
 	super._build_bridge(definition)
 	var rect: Array = definition.rect_cm
-	var owner := str(definition.get("owner_slot", ""))
 	var at := point([rect[0], (rect[1] + rect[3]) * 0.5])
-	if not owner.is_empty() and _marks_route_owner(definition): owner_marks.route_ends(owner, str(definition.id), rect, terrain)
 	if not _hangs_pulley(definition): return
 	# A fixed pulley and suspended weight show where a missing crossing goes.
 	var post := at + Vector3(0.05, 0, float(rect[3] - rect[1]) / 200.0 + 0.15)
@@ -378,7 +378,6 @@ func _build_stair(stair: Dictionary) -> void:
 		box(Vector3(0.025 if along_x else width, 0.014, depth if along_x else 0.025), Props.TIMBER_DARK if timber else TEAL, at + Vector3(0, 0.065, 0), terrain)
 	if str(dressing.get("stairs", "")) == "timber": _stair_frame(r, from_height, rise, along_x)
 	var entrance := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(0, from_height, 0)
-	owner_marks.mark(str(stair.owner_slot), &"stair", str(stair.id), entrance, terrain, Vector3.LEFT if along_x else Vector3.FORWARD)
 	# The gate is a centimetre wider than the stair, so its faces stand proud
 	# of the treads' instead of sharing them.
 	_stair_gates[stair.id] = box(Vector3(0.08, 0.4, depth + 0.01) if along_x else Vector3(width + 0.01, 0.4, 0.08), TEAL, entrance + Vector3(0, 0.2, 0), terrain)
@@ -419,9 +418,7 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	cylinder(float(pad.radius_cm) / 100.0, 0.055, color.darkened(0.25), at + Vector3(0, 0.025, 0), terrain)
 	var outline := ring(float(pad.radius_cm) / 100.0, color, at + Vector3(0, 0.065, 0), terrain)
 	_physical_pads[pad.id] = outline
-	if heavy:
-		ring(0.16, CREAM, at + Vector3(0, 0.06, 0), terrain)
-	else: owner_marks.mark(str(pad.owner_slot), &"pad", str(pad.id), at, terrain)
+	if heavy: ring(0.16, CREAM, at + Vector3(0, 0.06, 0), terrain)
 
 ## A pressure pad drawn as a stand spot (kit/stand_spot.gd): exactly the pad's
 ## radius, with the owner's mark on its disc.
@@ -446,7 +443,6 @@ func _build_lever(lever: Dictionary) -> void:
 		var look := LeverLooks.build(look_kind, at, GOLD if lever.owner_slot == "p0" else TEAL, terrain, _look_marks(lever))
 		_lever_looks[lever.id] = look
 		_physical_levers[lever.id] = look.anchor
-		owner_marks.mark(str(lever.owner_slot), &"lever", str(lever.id), at, terrain)
 		return
 	cylinder(0.18, 0.2, Color("728788"), at + Vector3(0, 0.1, 0), terrain)
 	var pivot := Node3D.new()
@@ -455,7 +451,6 @@ func _build_lever(lever: Dictionary) -> void:
 	box(Vector3(0.055, 0.40, 0.055), CREAM, Vector3(0, 0.2, 0), pivot)
 	sphere(0.09, GOLD if lever.owner_slot == "p0" else TEAL, Vector3(0, 0.4, 0), pivot)
 	_physical_levers[lever.id] = pivot
-	owner_marks.mark(str(lever.owner_slot), &"lever", str(lever.id), at, terrain)
 
 ## Gate links: cables this wide, their centres this high.
 const LINK_WIDTH := 0.025
@@ -477,8 +472,8 @@ func _build_gate_links(view: Dictionary) -> void:
 			var link_color := _gate_link_color(mechanism)
 			var start := _at(mechanism) + Vector3(0, 0.03, 0)
 			var elbow := Vector3(end.x - 0.18, start.y, start.z)
-			if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.025, link_color, terrain)
-			if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, 0.025, link_color, terrain)
+			if start.distance_to(elbow) > 0.01: _floor_cable(start, elbow, 0.025, link_color)
+			if elbow.distance_to(end) > 0.01: _floor_cable(elbow, end, 0.025, link_color)
 
 ## Gate links that never cross the void: a cable runs along a floor the
 ## mechanism and its route share; otherwise matching tags mark both ends.
@@ -490,7 +485,7 @@ func _build_floor_links(view: Dictionary) -> void:
 		if route.is_empty(): continue
 		var rect: Array = route.rect_cm
 		# The cable ends on the crossing's near end mark.
-		var end := OwnerMark.route_end_points(rect)[0] + Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + LINK_LIFT, 0)
+		var end := OwnerMark.route_ends_of(route, chapter_definition.get("islands", []))[0] + Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0 + LINK_LIFT, 0)
 		for mechanism: Dictionary in view.get("pressure_pads", []) + view.get("ball_pads", []) + view.get("levers", []):
 			if str(mechanism.id) not in PairTags.references(gate): continue
 			var link_color := _gate_link_color(mechanism)
@@ -498,8 +493,8 @@ func _build_floor_links(view: Dictionary) -> void:
 			var elbow := Vector3(end.x, start.y, start.z)
 			# Across a gap the pair tags (pair_tags) tie the two ends instead.
 			if _shares_floor(start, elbow) and _shares_floor(elbow, end):
-				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, LINK_WIDTH, link_color, terrain)
-				if elbow.distance_to(end) > 0.01: _bar_between(elbow, end, LINK_WIDTH, link_color, terrain)
+				if start.distance_to(elbow) > 0.01: _floor_cable(start, elbow, LINK_WIDTH, link_color)
+				if elbow.distance_to(end) > 0.01: _floor_cable(elbow, end, LINK_WIDTH, link_color)
 
 ## Both points lie on one walkable island at the same height.
 func _shares_floor(a: Vector3, b: Vector3) -> bool:
@@ -525,9 +520,37 @@ func _at(value: Dictionary) -> Vector3:
 func _pair_control_anchor(entity: Dictionary) -> Vector3:
 	return _at(entity)
 
+## Where an owned stair's mark wants to sit (kit/owner_mark.gd): before its
+## foot, stepping away from it, or past its head when the foot has no room.
+func _mark_stair(stair: Dictionary) -> Dictionary:
+	var r: Array = stair.rect_cm
+	var along_x: bool = stair.axis == "x"
+	var entrance := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(0, float(stair.from_height_cm) / 100.0, 0)
+	var top := point([r[2], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[3]]) + Vector3(0, float(stair.get("to_height_cm", stair.from_height_cm)) / 100.0, 0)
+	var reach := float(OwnerMark.KINDS[&"stair"].reach)
+	return {"anchor": entrance, "away": Vector3.LEFT if along_x else Vector3.FORWARD, "kind": &"stair", "head": top + (Vector3.RIGHT if along_x else Vector3.BACK) * reach}
+
+## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd).
+func _marks_goal(_goal: Dictionary) -> bool:
+	return false
+
 ## Scenery of the world's own that pair tags keep clear of (kit/pair_tags.gd).
 func _pair_keep_clear() -> Array:
 	return []
+
+## The cables and ropes this stage lays on its floors: {rect, y, what} each
+## (_floor_cable). Ownership marks keep off them.
+func floor_cables() -> Array:
+	return _floor_cables
+
+## A cable or rope lying along a floor from `from` to `to` (terrain space),
+## kept in floor_cables() when it runs level.
+func _floor_cable(from: Vector3, to: Vector3, width: float, color: Color) -> MeshInstance3D:
+	if absf(from.y - to.y) < 0.05:
+		var low := Vector2(minf(from.x, to.x), minf(from.z, to.z))
+		var high := Vector2(maxf(from.x, to.x), maxf(from.z, to.z))
+		_floor_cables.append({"rect": Rect2(low, high - low).grow(width * 0.5), "y": minf(from.y, to.y), "what": "a cable"})
+	return _bar_between(from, to, width, color, terrain)
 
 ## The floor points a gate's pair tags go by, nearest first: before a
 ## crossing's west end (its end mark's place) then past its east end; a
@@ -540,7 +563,7 @@ func _pair_gate_anchors(route: Dictionary) -> Array:
 		var head := point([r[2], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[3]]) + Vector3(0.24 if along_x else 0.0, float(route.get("to_height_cm", route.from_height_cm)) / 100.0, 0.0 if along_x else 0.24)
 		return [foot, head]
 	var height := Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0, 0)
-	var ends := OwnerMark.route_end_points(r)
+	var ends := OwnerMark.route_ends_of(route, chapter_definition.get("islands", []))
 	return [ends[0] + height, ends[1] + height]
 
 func present_history(checkpoint: Dictionary) -> void:

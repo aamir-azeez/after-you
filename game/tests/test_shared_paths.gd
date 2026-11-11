@@ -54,7 +54,8 @@ extends SceneTree
 ##     diamond and the teal ring), and presentation/kit/pair_tags.gd alone draws the pair
 ##     tags, working the pairs out from each stage's control-to-gate wiring; a world only
 ##     overrides it (pair_tags.skip() or tag()), and each world that does is in
-##     PAIR_TAG_OVERRIDES with why. Each world that places marks is in OWNER_MARK_SURFACES,
+##     PAIR_TAG_OVERRIDES with why. Ownership marks come from each stage's owner_slots the
+##     same way; each script that overrides them is in OWNER_MARK_OVERRIDES with why,
 ##     and any other flat diamond (a thin square box turned 45 degrees) is in FLAT_DIAMONDS
 ##     with why it is no ownership mark; test_owner_marks.gd and test_pair_tags.gd, which
 ##     must stay in CI, check every built stage's marks and pair tags.
@@ -303,12 +304,14 @@ const OWNER_MARK := "res://presentation/kit/owner_mark.gd"
 const PAIR_TAGS := "res://presentation/kit/pair_tags.gd"
 ## The one script that keeps a world's pair tags (pair_tags).
 const PAIR_TAGS_OWNER := "res://presentation/cooperative_world.gd"
-const OWNER_MARK_SURFACES := {
-	"res://presentation/cooperative_world.gd": "levers, stairs, pads, stand spots, owned crossings' ends, zones and the handoff",
-	"res://presentation/journey_world.gd": "mirror hand wheels and the source's waiting region",
-	"res://presentation/long_way_home_world.gd": "the window goal's cradle",
-	"res://presentation/tide_world.gd": "the harbour lantern's cradle",
-	"res://presentation/wishing_well_world.gd": "the bucket, the folding stairs and the rope ladder, clear of the notch",
+## Ownership marks come from each stage's owner_slots (owner_marks.build); the
+## scripts that override them, with why: a mark drawn by hand (mark, record,
+## keep_clear) or a world hook (_mark_stair, _marks_goal).
+const OWNER_MARK_OVERRIDES := {
+	"res://presentation/cooperative_world.gd": "builds the marks (build), records a stand spot's own mark (record), and holds the default hooks",
+	"res://presentation/long_way_home_world.gd": "every window goal's cradle carries its owner's mark (_marks_goal)",
+	"res://presentation/tide_world.gd": "only the harbour lantern's cradle carries its owner's mark (_marks_goal)",
+	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); marks keep off the notch (keep_clear)",
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
 const PAIR_TAG_OVERRIDES := {
@@ -322,7 +325,6 @@ const FLAT_DIAMONDS := {
 	"res://presentation/first_steps_world.gd": [1, "First Steps' control glyphs: controls either spirit uses"],
 	"res://presentation/lighthouse_world.gd": [2, "the emitter pad's glyph and the path selector's pointer"],
 	"res://presentation/kit/lever_looks.gd": [1, "a valve wheel's pointer head"],
-	"res://presentation/conservatory_world.gd": [1, "the garden light crest's small gold lamp on the goal (the world's _bell)"],
 }
 ## Rings the size of the second spirit's mark drawn outside the kit: how many, and why.
 const MARK_SIZED_RINGS := {
@@ -827,9 +829,9 @@ func _level_hints() -> void:
 		var rings := _found(MARK_RING, source)
 		_check(rings == int(MARK_SIZED_RINGS.get(path, [0, ""])[0]), "%s draws %d rings the size of the second spirit's mark (MARK_SIZED_RINGS allows %d): an ownership mark comes from presentation/kit/owner_mark.gd; anything else goes in MARK_SIZED_RINGS with why" % [path, rings, int(MARK_SIZED_RINGS.get(path, [0, ""])[0])])
 		var mark_alias := _alias(source, OWNER_MARK)
-		if _found("\\bowner_marks\\.(?:mark|route_ends|zone|record)\\(", source) > 0 or (not mark_alias.is_empty() and _found("\\b" + mark_alias + "\\.(?:shape|spot|diamond)\\(", source) > 0):
+		if _found("\\bowner_marks\\.(?:mark|record|keep_clear|build)\\(", source) > 0 or _found("\\bfunc\\s+_(?:mark_stair|marks_goal)\\(", source) > 0 or (not mark_alias.is_empty() and _found("\\b" + mark_alias + "\\.(?:shape|spot|diamond)\\(", source) > 0):
 			marks[path] = true
-			_check(OWNER_MARK_SURFACES.has(path), "%s places ownership marks: add it to OWNER_MARK_SURFACES with what it marks" % path)
+			_check(OWNER_MARK_OVERRIDES.has(path), "%s overrides the ownership marks its stage's owner_slots give: add it to OWNER_MARK_OVERRIDES with why" % path)
 		var tags_alias := _alias(source, PAIR_TAGS)
 		# A world inherits its parent's alias, so the kit's usual name counts too.
 		_check(_found("\\.tally\\(", source) == 0, "%s draws a tally tag: pair tags come from the stage's wiring through presentation/kit/pair_tags.gd" % path)
@@ -837,8 +839,8 @@ func _level_hints() -> void:
 		if _found("\\bpair_tags\\.(?:skip|tag)\\(", source) > 0 or (path != PAIR_TAGS_OWNER and _found("\\bfunc\\s+_pair_(?:control_anchor|gate_anchors|keep_clear)\\(", source) > 0):
 			tags[path] = true
 			_check(PAIR_TAG_OVERRIDES.has(path), "%s overrides the pair tags its wiring gives: add it to PAIR_TAG_OVERRIDES with why" % path)
-	for path: String in OWNER_MARK_SURFACES:
-		_check(marks.has(path), "OWNER_MARK_SURFACES names %s, which places no ownership mark through presentation/kit/owner_mark.gd now: delete it" % path)
+	for path: String in OWNER_MARK_OVERRIDES:
+		_check(marks.has(path), "OWNER_MARK_OVERRIDES names %s, which overrides no ownership mark now: delete it" % path)
 	for path: String in PAIR_TAG_OVERRIDES:
 		_check(tags.has(path), "PAIR_TAG_OVERRIDES names %s, which overrides no pair tag now: delete it" % path)
 	for path: String in FLAT_DIAMONDS:

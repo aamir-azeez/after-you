@@ -95,8 +95,9 @@ func _build_bell(goal: Dictionary) -> void:
 	# Low enough to stay clear of the completion bed's discs around it.
 	cylinder(float(goal.radius_cm)/100.0,0.044,Color("6b8984"),Vector3(0,0.022,0),cradle)
 	_bell_ring = ring(float(goal.radius_cm)/100.0,CREAM,Vector3(0,0.06,0),cradle)
-	_bell = box(Vector3(0.14,0.022,0.14),GOLD,Vector3(0,0.07,0),cradle)
-	_bell.rotation.y = PI/4.0
+	# A round lamp: a gold diamond here read as the first spirit's mark, and
+	# the garden belongs to both.
+	_bell = cylinder(0.075,0.022,LIGHT_COLOR,Vector3(0,0.07,0),cradle)
 	_court_light = OmniLight3D.new()
 	_court_light.light_color = GOLD
 	_court_light.light_energy = 0.0

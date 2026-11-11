@@ -33,6 +33,8 @@ extends RefCounted
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
+## Finding a clear spot on the floor, shared with the ownership marks.
+const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
 const SHADER := preload("res://presentation/kit/pair_tags.gdshader")
 ## The game's rounded bold heading font.
 const FONT := preload("res://assets/fonts/fredoka.ttf")
@@ -63,8 +65,6 @@ const MAX_PAIRS := 30
 ## terrace's step) shows its pair.
 const NEAR_CM := 120
 const NEAR_HEIGHT_CM := 40
-## A floor's edge trims and strips run this far in from its rectangle.
-const FLOOR_INSET := 0.045
 ## Where a row may go from its place, nearest first: its place, then steps of
 ## STEP in eight directions, out to RINGS steps.
 const STEP := 0.12
@@ -313,10 +313,6 @@ static func _kind(view: Dictionary, id: String) -> StringName:
 		if str(pad.get("id", "")) == id: return &"pad"
 	return &"other"
 
-static func _is_receiver(view: Dictionary, id: String) -> bool:
-	var receivers: Array = view.get("optics", {}).get("receivers", view.get("optical_field", {}).get("receivers", []))
-	return receivers.any(func(receiver: Dictionary) -> bool: return str(receiver.get("id", "")) == id)
-
 static func _entities(view: Dictionary) -> Dictionary:
 	var found: Dictionary = {}
 	var receivers: Array = view.get("optics", {}).get("receivers", view.get("optical_field", {}).get("receivers", []))
@@ -331,7 +327,7 @@ static func _entities(view: Dictionary) -> Dictionary:
 func _layout(view: Dictionary) -> Array[Dictionary]:
 	# Each place a tile belongs: beside its control, and at each gate it works.
 	var places: Array[Dictionary] = []
-	var floors := _floors(view)
+	var floors := FloorSpots.floors_of(view)
 	for pair: Dictionary in _pairs:
 		var anchor: Vector3 = _world.call(&"_pair_control_anchor", pair.entity)
 		pair["anchor"] = anchor
@@ -387,112 +383,23 @@ func _join(place: Dictionary, index: int, side: StringName, gate: String) -> voi
 	if not gate.is_empty() and gate not in place.gates[index]: place.gates[index].append(gate)
 
 ## Puts `row` at the nearest spot to its place that lies on its floor and keeps
-## GAP from everything in `avoid` and from the rows already placed.
+## GAP from everything in `avoid` and from the rows already placed
+## (kit/floor_spots.gd).
 func _place(row: Dictionary, floors: Array, avoid: Array, done: Array[Dictionary]) -> void:
-	var width := _width(row.pairs.size())
-	var best := {"cost": INF}
-	var ends: Array = row.get("ends", [row.at])
-	for end in range(ends.size()):
-		var at: Vector3 = ends[end]
-		# Only what lies within reach of this place can meet a row placed from it.
-		var reach := width * 0.5 + TAG + STEP * float(RINGS) + 0.6
-		var close := avoid.filter(func(thing: Dictionary) -> bool: return _near_place(thing, _flat(at), reach))
-		var close_rows := done.filter(func(other: Dictionary) -> bool: return (other.rect as Rect2).grow(reach).has_point(_flat(at)))
-		# Islands at its height, and a crossing only when its place is on it (a
-		# stub its control stands on): a tile never lies on a crossing that may
-		# not be there.
-		var home := floors.filter(func(f: Dictionary) -> bool: return absf(float(f.y) - at.y) < 0.06 and (f.rect as Rect2).grow(reach).has_point(_flat(at)) and (not f.crossing or (row.kind == CONTROL and (f.rect as Rect2).grow(0.05).has_point(_flat(at)))))
-		# A gate's row may also lie on either floor its crossing joins, at that floor's height.
-		for id: String in row.surfaces:
-			for f: Dictionary in floors:
-				if f.id == id and not f.crossing and f not in home: home.append(f)
-		for offset: Vector2 in _offsets():
-			var centre := _flat(at) + offset
-			var rect := Rect2(centre - Vector2(width, TAG) * 0.5, Vector2(width, TAG))
-			var y := at.y
-			for f: Dictionary in home:
-				if (f.rect as Rect2).has_point(centre): y = float(f.y)
-			var standing := home.filter(func(f: Dictionary) -> bool: return absf(float(f.y) - y) < 0.06)
-			var clash := _clash(rect, y, standing, close, close_rows)
-			var cost := float(clash.size()) * 100.0 + offset.length() + float(end) * 10.0
-			if cost < float(best.cost): best = {"cost": cost, "centre": centre, "rect": rect, "clash": clash, "y": y}
-			if clash.is_empty(): break
-		if (best.clash as Array).is_empty(): break
-	row.at = Vector3(best.centre.x, best.y, best.centre.y)
-	row.rect = best.rect
-	row.clash = best.clash
-	row.squeezed = not (best.clash as Array).is_empty()
-
-## What `rect` at height `y` runs into: its floor's edge, something to avoid
-## (its own control too: a tile never covers its control), an earlier row.
-func _clash(rect: Rect2, y: float, home: Array, avoid: Array, done: Array) -> Array:
-	var found: Array = []
-	var inside := not home.is_empty()
-	for corner: Vector2 in [rect.position, rect.position + Vector2(rect.size.x, 0), rect.end, rect.position + Vector2(0, rect.size.y)]:
-		if not home.any(func(f: Dictionary) -> bool: return (f.rect as Rect2).grow(-FLOOR_INSET).has_point(corner)): inside = false
-	if not inside: found.append("off its floor" if not home.is_empty() else "off its floor (no floor at %.2f m here)" % y)
-	var wide := rect.grow(GAP)
-	for thing: Dictionary in avoid:
-		if thing.has("y") and absf(float(thing.y) - y) > 0.3: continue
-		var hit := false
-		if thing.has("rect"): hit = wide.intersects(thing.rect)
-		else: hit = _disc_hits(wide, thing.centre, float(thing.radius))
-		if hit: found.append(str(thing.what))
-	for other: Dictionary in done:
-		if absf((other.at as Vector3).y - y) < 0.3 and wide.intersects(other.rect): found.append("tags of " + ", ".join((other.pairs as Array).map(func(i: int) -> String: return str(_pairs[i].control))))
-	return found
-
-static func _near_place(thing: Dictionary, at: Vector2, reach: float) -> bool:
-	if thing.has("rect"): return (thing.rect as Rect2).grow(reach).has_point(at)
-	return (thing.centre as Vector2).distance_to(at) <= reach + float(thing.radius)
-
-static func _disc_hits(rect: Rect2, centre: Vector2, radius: float) -> bool:
-	var nearest := Vector2(clampf(centre.x, rect.position.x, rect.end.x), clampf(centre.y, rect.position.y, rect.end.y))
-	return nearest.distance_to(centre) < radius
-
-## The floors a tile may lie on: islands and crossings, at their heights.
-static func _floors(view: Dictionary) -> Array:
-	var found: Array = []
-	for island: Dictionary in view.get("islands", []): found.append({"rect": _rect(island.rect_cm), "y": float(island.get("height_cm", 0)) / 100.0, "id": str(island.id), "crossing": false})
-	for route: Dictionary in view.get("bridges", []): found.append({"rect": _rect(route.rect_cm), "y": float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0, "id": str(route.id), "crossing": true})
-	return found
+	var taken: Array = done.map(func(other: Dictionary) -> Dictionary: return {"rect": other.rect, "y": (other.at as Vector3).y, "what": "tags of " + ", ".join((other.pairs as Array).map(func(i: int) -> String: return str(_pairs[i].control)))})
+	var spec := {"size": Vector2(_width(row.pairs.size()), TAG), "ends": row.get("ends", [row.at]), "surfaces": row.surfaces, "on_crossing": row.kind == CONTROL, "gap": GAP, "step": STEP, "rings": RINGS}
+	var spot := FloorSpots.find(spec, floors, avoid, taken)
+	row.at = spot.at
+	row.rect = spot.rect
+	row.clash = spot.clash
+	row.squeezed = not (spot.clash as Array).is_empty()
 
 ## What a tile keeps clear of: stairs, obstacles, drops, every control's
 ## disc, the goal, the handoff and every ownership mark.
 func _avoid(view: Dictionary) -> Array:
-	var found: Array = []
-	var heights: Dictionary = {}
-	for island: Dictionary in view.get("islands", []): heights[str(island.id)] = float(island.get("height_cm", 0)) / 100.0
-	for stair: Dictionary in view.get("stairs", []): found.append({"rect": _rect(stair.rect_cm), "what": "stair " + str(stair.id)})
-	for key: String in ["obstacles", "drops"]:
-		for thing: Dictionary in view.get(key, []):
-			var entry := {"rect": _rect(thing.rect_cm), "what": "%s %s" % [key.trim_suffix("s"), thing.get("id", "")]}
-			if heights.has(str(thing.get("surface_id", ""))): entry["y"] = heights[str(thing.surface_id)]
-			found.append(entry)
-	for entity: Dictionary in _entities(view).values():
-		var at: Vector3 = _world.call(&"_pair_control_anchor", entity)
-		# A pad is its disc; a lever, selector or receiver its post.
-		# A pad is its disc; a receiver its lamp and rosette; a lever or selector its post.
-		var radius := 0.2
-		match _kind(view, str(entity.id)):
-			&"pad": radius = float(entity.get("radius_cm", 20)) / 100.0
-			&"other": radius = 0.3 if _is_receiver(view, str(entity.id)) else 0.2
-		found.append({"centre": _flat(at), "radius": radius, "y": at.y, "what": "control " + str(entity.id)})
-	var goal: Dictionary = view.get("goal", {})
-	if goal.has("position_cm"): found.append({"centre": Vector2(float(goal.position_cm[0]), float(goal.position_cm[1])) / 100.0, "radius": float(goal.get("radius_cm", 40)) / 100.0, "what": "the goal"})
-	if view.get("handoff") is Dictionary and view.handoff.has("position_cm"): found.append({"centre": Vector2(float(view.handoff.position_cm[0]), float(view.handoff.position_cm[1])) / 100.0, "radius": 0.6 + OwnerMark.RING_RADIUS + 0.025, "what": "the handoff"})
-	found.append_array(_world.call(&"_pair_keep_clear"))
+	var found := FloorSpots.scenery(view, _world, OwnerMark.reach_of("p1"))
 	var marks: Variant = _world.get("owner_marks")
-	if marks != null:
-		for mark: Dictionary in marks.placed():
-			found.append({"centre": _flat(mark.at), "radius": OwnerMark.REACH if mark.slot == "p0" else OwnerMark.RING_RADIUS + 0.025, "y": (mark.at as Vector3).y, "what": "%s mark %s" % [mark.kind, mark.id]})
-	return found
-
-static func _offsets() -> Array[Vector2]:
-	var found: Array[Vector2] = [Vector2.ZERO]
-	for ring in range(1, RINGS + 1):
-		for direction: Vector2 in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN, Vector2(1, -1), Vector2(-1, -1), Vector2(1, 1), Vector2(-1, 1)]:
-			found.append(direction * STEP * float(ring))
+	if marks != null: found.append_array(marks.discs())
 	return found
 
 static func _width(count: int) -> float:
@@ -503,10 +410,7 @@ static func _slot_at(row: Dictionary, slot: int) -> Vector3:
 	return row.at + Vector3((float(slot) - float(count - 1) * 0.5) * (TAG + GAP), 0, 0)
 
 static func _flat(at: Vector3) -> Vector2:
-	return Vector2(at.x, at.z)
-
-static func _rect(r: Array) -> Rect2:
-	return Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
+	return FloorSpots.flat(at)
 
 # --- Drawing ------------------------------------------------------------------------
 

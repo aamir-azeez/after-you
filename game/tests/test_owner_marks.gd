@@ -7,7 +7,10 @@ extends SceneTree
 ##   per step along a zone, one for a source's waiting region and for the goal
 ##   cradle of a world that marks it; every mark names an owned thing of its slot;
 ## - each mark lies within the stage's floors, a crossing's end marks on its
-##   deck's height, clear of every other mark and off every other crossing's deck;
+##   deck's height and one on each island it joins, clear of every other mark,
+##   off every other crossing's deck, off stairs, clear of the pair tags;
+## - a mark the kit moves never comes closer to what it marks than its kind's
+##   own place beside it, and keeps off the goal and the handoff ring;
 ## - every diamond and ring on the stage came from the kit (a hand-drawn mark
 ##   fails here), and once the world's static fold has run none is left as a
 ##   draw call of its own: marks share their colour's batch.
@@ -15,6 +18,7 @@ extends SceneTree
 const Registry = preload("res://services/chapter_registry.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
+const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -29,19 +33,10 @@ const FLOOR_MARGIN := 0.3
 const SAME_FLOOR := 0.05
 ## The ring's reach: Primitives.ring_mesh's outer radius.
 const RING_REACH := OwnerMark.RING_RADIUS + 0.025
-## Marks drawn as they were on main when the kit came in (changing them is a
-## visible change, which waits for the owner): "<chapter key>: <check> <kind>
-## <id>" -> why, for every stage of that chapter. An entry that no failing
-## check matches fails, so the list shrinks as each is settled.
-const UNOWNED_TIDE_STAIRS := ["w-steps-low", "w-steps-high", "rock-steps-low", "rock-steps-high", "mole-steps", "mole-slip", "mill-steps", "east-steps"]
-const UNOWNED_STAIR := "a stair nobody owns wears the second spirit's ring: cooperative_world marks every stair (for the owner)"
+## Marks that cannot be other than they are, by chapter: "<chapter key>:
+## <check> <kind> <id>" -> why. An entry that no failing check matches fails.
 const KNOWN := {
-	"turn-of-the-tide@1: deck lever sluice": "the sluice's mark reaches onto the top tread of the boathouse steps in front of it",
-	"turn-of-the-tide@2: deck lever sluice": "the sluice's mark reaches onto the top tread of the boathouse steps in front of it",
-	"the-wishing-well@1: apart ladder well-ladder": "the rope ladder's mark and the resting bucket's lie 17 cm apart",
-	"the-wishing-well@1: apart route_end rope-walk-west": "the two rope walks' facing end marks lie 12 cm apart",
 	"the-wishing-well@1: fold bucket": "the bucket's mark rides the moving bucket: one draw call",
-	"conservatory@1: fold mirror": "conservatory_world keeps everything a mirror build adds (_remember_fixtures), its mark too: one draw call each",
 }
 var checks := 0
 var failures := 0
@@ -52,8 +47,6 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	_known = KNOWN.duplicate()
-	for key: String in ["turn-of-the-tide@1", "turn-of-the-tide@2"]:
-		for id: String in UNOWNED_TIDE_STAIRS: _known["%s: owner stair %s" % [key, id]] = UNOWNED_STAIR
 	_table()
 	var marked := 0
 	for key: String in Registry.keys():
@@ -85,6 +78,12 @@ func _table() -> void:
 	_check(is_equal_approx(OwnerMark.REACH, OwnerMark.SIDE * 0.7072), "A diamond reaches its side times 0.7072")
 	var ends := OwnerMark.route_end_points([100, -50, 300, 50])
 	_check(ends[0].is_equal_approx(Vector3(0.82, 0, 0)) and ends[1].is_equal_approx(Vector3(3.18, 0, 0)), "A crossing's end marks lie its reach past each end: %s" % [ends])
+	# The islands a crossing joins say which way it runs, not its shape.
+	var islands := [{"id": "north", "rect_cm": [0, -300, 200, -40]}, {"id": "south", "rect_cm": [0, 40, 200, 300]}, {"id": "west", "rect_cm": [-300, -100, 100, 100]}, {"id": "east", "rect_cm": [300, -100, 600, 100]}]
+	var down := OwnerMark.route_ends_of({"rect_cm": [0, -40, 200, 40], "from_surface": "north", "to_surface": "south"}, islands)
+	_check(down[0].is_equal_approx(Vector3(1.0, 0, -0.58)) and down[1].is_equal_approx(Vector3(1.0, 0, 0.58)), "A wide crossing joining a north and a south island has its end marks north and south: %s" % [down])
+	var across := OwnerMark.route_ends_of({"rect_cm": [100, -50, 300, 50], "from_surface": "west", "to_surface": "east"}, islands)
+	_check(across == ends, "A crossing joining a west and an east island has its end marks west and east: %s" % [across])
 
 ## One stage's checks; returns how many marks it has.
 func _stage(world: Node3D, key: String, view: Dictionary) -> int:
@@ -106,8 +105,12 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		var marks: Array = by_id.get(id, [])
 		match owned.what:
 			"route":
+				# Two crossings of one owner meeting on a small rock share the mark
+				# there: one end mark, and the other crossing's at its own end.
 				var expected := 2 if world._marks_route_owner(owned.entity) else 0
-				_check(marks.size() == expected and marks.all(func(m: Dictionary) -> bool: return m.kind == &"route_end"), "%s: crossing %s has %d end marks (%d)" % [where, id, expected, marks.size()])
+				var theirs := placed.filter(func(m: Dictionary) -> bool: return m.kind == &"route_end" and m.id != id and m.slot == owned.slot)
+				_check((marks.size() == expected or (expected == 2 and marks.size() == 1 and not theirs.is_empty())) and marks.all(func(m: Dictionary) -> bool: return m.kind == &"route_end"), "%s: crossing %s has %d end marks (%d)" % [where, id, expected, marks.size()])
+				if expected == 2: _route_ends(where, view, owned.entity, marks if marks.size() == 2 else marks + theirs)
 			"zone":
 				var r: Array = owned.entity.rect_cm
 				var expected := range(int(r[0]) + OwnerMark.ZONE_FIRST_CM, int(r[2]), OwnerMark.ZONE_STEP_CM).size()
@@ -125,6 +128,12 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		slots.sort()
 		_check(slots == ["p0", "p1"], "%s: the handoff has one mark per spirit" % where)
 	_placement(key, where, view, placed, owners)
+	_room(world, where, view, placed, owners)
+	# Clear of every pair tag on the stage.
+	for tile: Dictionary in world.pair_tags.placed():
+		for mark: Dictionary in placed:
+			if mark.kind == &"spot" or absf((mark.at as Vector3).y - (tile.at as Vector3).y) > 0.3: continue
+			_check(not FloorSpots.hits(tile.row, {"centre": Vector2(mark.at.x, mark.at.z), "radius": _reach(str(mark.slot))}), "%s: the %s mark of %s lies clear of %s's pair tag" % [where, mark.kind, mark.id, tile.control])
 	_drawn(world, key, where, placed)
 	return placed.size()
 
@@ -162,17 +171,58 @@ func _placement(key: String, where: String, view: Dictionary, placed: Array[Dict
 		if mark.kind == &"route_end" and not owned.is_empty():
 			var deck := float(owned.entity.get("height_cm", 0)) / 100.0
 			_known_or_check(key, where, "height " + tag, is_equal_approx(at.y - OwnerMark.ROUTE_LIFT, deck), "lies on its crossing's height %.2f (%.3f)" % [deck, at.y])
+		_check((mark.get("clash", []) as Array).is_empty(), "%s: the %s mark of %s has a clear place; it runs into %s" % [where, mark.kind, mark.id, ", ".join(mark.get("clash", []))])
+		# Never on a stair or its steps.
+		var footprint := Rect2(flat - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)
+		for stair: Dictionary in view.get("stairs", []):
+			_check(not _rect(stair.rect_cm).intersects(footprint), "%s: the %s mark of %s lies off the stair %s" % [where, mark.kind, mark.id, stair.id])
 		var stands_on := str(owned.get("entity", {}).get("surface_id", ""))
 		for entry: Array in floors:
 			# A mark may lie on the deck its own machine stands on, and a stair's on its stair.
 			if entry[2] != "deck" or entry[3] == stands_on or entry[3] == str(mark.id) or absf(at.y - float(entry[1])) >= 0.1: continue
-			var footprint := Rect2(flat - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)
 			_known_or_check(key, where, "deck " + tag, not (entry[0] as Rect2).intersects(footprint), "lies off the deck of %s" % entry[3])
 		for other in range(index + 1, placed.size()):
 			var them: Dictionary = placed[other]
 			if them.kind == &"spot" or absf((them.at as Vector3).y - at.y) > SAME_FLOOR: continue
 			var apart := flat.distance_to(Vector2((them.at as Vector3).x, (them.at as Vector3).z))
 			_known_or_check(key, where, "apart " + tag, apart >= reach + _reach(str(them.slot)), "lies clear of %s mark %s (%.3f m)" % [them.kind, them.id, apart])
+
+## A crossing's two end marks: one on each island it joins, near the crossing.
+func _route_ends(where: String, view: Dictionary, route: Dictionary, marks: Array) -> void:
+	var near := _rect(route.rect_cm).grow(0.8)
+	for side: String in ["from_surface", "to_surface"]:
+		var island: Dictionary = {}
+		for candidate: Dictionary in view.get("islands", []):
+			if str(candidate.id) == str(route.get(side, "")): island = candidate
+		if island.is_empty(): continue
+		var floor := _rect(island.rect_cm).grow(0.02)
+		var found := marks.any(func(m: Dictionary) -> bool: return floor.has_point(Vector2(m.at.x, m.at.z)) and near.has_point(Vector2(m.at.x, m.at.z)))
+		_check(found, "%s: crossing %s has an end mark on %s, the island it joins at that end" % [where, route.id, island.id])
+
+## Each mark the kit moves (not a pad's, a zone's, a source's or a stand
+## spot's): no closer to what it marks than its kind's own place beside it,
+## and clear of the goal and the handoff ring.
+func _room(world: Node3D, where: String, view: Dictionary, placed: Array[Dictionary], owners: Dictionary) -> void:
+	var goal: Dictionary = view.get("goal", {})
+	var handoff: Variant = view.get("handoff")
+	for mark: Dictionary in placed:
+		if mark.kind in OwnerMark.ON_ITS_OWN: continue
+		var at := Vector2(mark.at.x, mark.at.z)
+		var reach := _reach(str(mark.slot))
+		var mine := float(OwnerMark.KINDS[mark.kind].reach)
+		var entity: Dictionary = owners.get(str(mark.id), {}).get("entity", {})
+		if mark.kind == &"handoff": entity = handoff
+		if mark.kind in [&"lever", &"mirror", &"goal", &"handoff"] and not entity.is_empty():
+			var anchor: Vector3 = world._pair_control_anchor(entity)
+			_check(at.distance_to(Vector2(anchor.x, anchor.z)) >= mine - 0.01, "%s: the %s mark of %s keeps its place beside it (%.2f m from it, at least %.2f)" % [where, mark.kind, mark.id, at.distance_to(Vector2(anchor.x, anchor.z)), mine])
+		if goal.has("position_cm") and mark.kind != &"goal":
+			var lamp: Vector3 = world._pair_control_anchor(goal)
+			if absf(lamp.y - (mark.at as Vector3).y) < 0.3:
+				var room := float(goal.get("radius_cm", 40)) / 100.0 + reach
+				_check(at.distance_to(Vector2(lamp.x, lamp.z)) >= room, "%s: the %s mark of %s keeps off the goal %s" % [where, mark.kind, mark.id, goal.get("id", "goal")])
+		if handoff is Dictionary and handoff.has("position_cm") and mark.kind != &"handoff":
+			var ring := Vector2(float(handoff.position_cm[0]), float(handoff.position_cm[1])) / 100.0
+			_check(at.distance_to(ring) >= FloorSpots.HANDOFF_RADIUS + reach, "%s: the %s mark of %s keeps off the handoff ring" % [where, mark.kind, mark.id])
 
 ## Every diamond and ring of the stage is one of the kit's marks, and the
 ## static fold leaves none drawing on its own.

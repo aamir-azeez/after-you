@@ -8,14 +8,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 652,
+						"MeshInstance3D": 647,
 						"Node": 1,
 						"Node3D": 188,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "81ec4dcd536e59da5c18cad52471b9c6b5d45ebd94d8bee4a0adef068b36c7d3",
-					"nodes": 848,
+					"hash": "f32ff9ea1a4eac2728dc72e0dbe206ebe5bb16e0ef9c85364f757fc787e0d77e",
+					"nodes": 843,
 					"story_camera": {
 						"_follow_center": [
 							-3200,
@@ -68,7 +68,7 @@
 						"@MeshInstance3D#9": "73096fce06c9b79c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "c53ffca53594848a"
+						"ConservatoryRooms": "ef53dfcf420eeccb"
 					}
 				},
 				"s0.b.below": {
@@ -77,14 +77,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 652,
+						"MeshInstance3D": 647,
 						"Node": 1,
 						"Node3D": 188,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "6c2154180f75a2d95a9563de5c25a0572b770e7046dab100da52ded3d7cb4a55",
-					"nodes": 848,
+					"hash": "cfe945f13e41f03f96908bc8150df4ae60ba6a66ea4ad73ad9d630afa9d7255d",
+					"nodes": 843,
 					"story_camera": {
 						"_follow_center": [
 							-1696,
@@ -137,7 +137,7 @@
 						"@MeshInstance3D#9": "784c9362f94f9101",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "64280e77281aac5f"
+						"ConservatoryRooms": "d13aff45993303c2"
 					},
 					"tick": 80
 				},
@@ -147,14 +147,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 652,
+						"MeshInstance3D": 647,
 						"Node": 1,
 						"Node3D": 188,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "1a8d9bb4d34b3409e3aad05b3e9a2125267f322cf91f2ce4a0927ecd746b9438",
-					"nodes": 848,
+					"hash": "798aa77ac46a10087bbc5ef1d83e786b128f70e950ac4bb679532e69773e256b",
+					"nodes": 843,
 					"story_camera": {
 						"_follow_center": [
 							1970,
@@ -207,7 +207,7 @@
 						"@MeshInstance3D#9": "4e91b5ffb0d32b1e",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "bd0ee07253c08754"
+						"ConservatoryRooms": "e942e11c793cc59c"
 					}
 				},
 				"s0.b.mid": {
@@ -216,14 +216,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 652,
+						"MeshInstance3D": 647,
 						"Node": 1,
 						"Node3D": 188,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "82a8bbb97ba1e1850584b3988f5d9bc0ef502e22362623cadb2e7ded787d46cb",
-					"nodes": 848,
+					"hash": "56c0e963044b692949d69d811c702c7cd1c13faf05a0ce7acc58e8c166204714",
+					"nodes": 843,
 					"story_camera": {
 						"_follow_center": [
 							1920,
@@ -276,7 +276,7 @@
 						"@MeshInstance3D#9": "4e91b5ffb0d32b1e",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "97c9a39555f868ba"
+						"ConservatoryRooms": "a71ed38650f1c1ee"
 					},
 					"tick": 131
 				},
@@ -286,14 +286,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 644,
+						"MeshInstance3D": 639,
 						"Node": 1,
 						"Node3D": 186,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "cb3d02c8947c803524f40bc42092b269e129debaeb0a8d5f3c2f54f3bc2d82df",
-					"nodes": 838,
+					"hash": "814e6fe776d5d2e9ccd3973fc629cbd2c7fffd393eaaba2a8c4977b07f21a6c8",
+					"nodes": 833,
 					"story_camera": {
 						"_follow_center": [
 							-3200,
@@ -346,7 +346,7 @@
 						"@MeshInstance3D#9": "801980f5edf6b73a",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "de5ed1e9e317a663"
+						"ConservatoryRooms": "0d377ff272522a62"
 					}
 				},
 				"s1.a.end": {
@@ -355,14 +355,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "c73d84f57b439e2dc339e370a4f629e921aa1135da16256725eb0b49b6b686b2",
-					"nodes": 818,
+					"hash": "53cc830877663a3537e32cdfbfddf0f47f360f3820fa67fa110796a879e3ba6c",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							6561,
@@ -415,7 +415,7 @@
 						"@MeshInstance3D#9": "2f40cacbf463c25e",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "f92b5c0c4885330f"
+						"ConservatoryRooms": "98871c971ec57a94"
 					}
 				},
 				"s1.b.below": {
@@ -424,14 +424,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "8d97ec79ded5a09ab071314b6864c8b2a240748422139b1734043327a6ae4221",
-					"nodes": 818,
+					"hash": "3c5cf847187e15e69440923f13e2a4cffdfe89041d35459e543b36e9ec0ef588",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							-1923,
@@ -484,7 +484,7 @@
 						"@MeshInstance3D#9": "6d94b270333c399c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "0e1cab3b33cd273f"
+						"ConservatoryRooms": "2d834396edb52ec8"
 					},
 					"tick": 101
 				},
@@ -494,14 +494,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "1e9284f02a5b6c73537f6162ebb6c607a80158510d7cd5d6d687b4fdc15f0451",
-					"nodes": 818,
+					"hash": "e4a0dcfccd5af8bee1fb6a53c5fee0b1587c92156d46b2f5e9cbd63e3dc3a1d4",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							7330,
@@ -554,7 +554,7 @@
 						"@MeshInstance3D#9": "2f40cacbf463c25e",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "bc91bd606c34b33d"
+						"ConservatoryRooms": "b007ff88d9ce2ccc"
 					}
 				},
 				"s1.b.mid": {
@@ -563,14 +563,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "7722ed7c01a03686e6db877df85d1fdfb574612f537ec3e4c96881ef8de570d7",
-					"nodes": 818,
+					"hash": "1869597e3d6c3f536958af015a7b8a15442b762f966e566daa916d608b149d95",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							2845,
@@ -623,7 +623,7 @@
 						"@MeshInstance3D#9": "4ab63910742dcb6d",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "d4ba69228b3cf91c"
+						"ConservatoryRooms": "18d5f12d4f40adb4"
 					},
 					"tick": 182
 				},
@@ -633,14 +633,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "7f2451f070813485e66826cda9b8a40e2fe11cadb975bb11a560af45e4a3bb70",
-					"nodes": 818,
+					"hash": "a122574b427cd52f0f2db571cbf0526f0fd02e68a6764569bc19ae480ae70e90",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							7520,
@@ -693,7 +693,7 @@
 						"@MeshInstance3D#9": "2f40cacbf463c25e",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "cfb04b2c763cc850"
+						"ConservatoryRooms": "e6175b1df27b770e"
 					}
 				}
 			},
@@ -704,14 +704,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 652,
+						"MeshInstance3D": 647,
 						"Node": 1,
 						"Node3D": 188,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "a4b629b87db8c11c83204fd53c91210644e2b4567b9071155993f3b4ad98bbe8",
-					"nodes": 848,
+					"hash": "997fef136b5ab8b1745465c80d37ef97efa33549779c6c204a4e6debf37620c8",
+					"nodes": 843,
 					"story_camera": {
 						"_follow_center": [
 							-3200,
@@ -764,7 +764,7 @@
 						"@MeshInstance3D#9": "2881e13b6d831230",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "fc8529a8f6bcef0b"
+						"ConservatoryRooms": "1691816c31b65cd0"
 					}
 				},
 				"s0.b.below": {
@@ -773,14 +773,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 652,
+						"MeshInstance3D": 647,
 						"Node": 1,
 						"Node3D": 188,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "b7a4a5c99bd0a32fef8d7805835a5f7f266530e95554773a049e6d216bca4670",
-					"nodes": 848,
+					"hash": "b0824edbfca341647d9faea2e964fc8f06f01bd466ced96983266756f7cbfa60",
+					"nodes": 843,
 					"story_camera": {
 						"_follow_center": [
 							-1642,
@@ -833,7 +833,7 @@
 						"@MeshInstance3D#9": "59f8e6ad800af277",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "29d2398fe71cc748"
+						"ConservatoryRooms": "926c8219a1add720"
 					},
 					"tick": 80
 				},
@@ -843,14 +843,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 652,
+						"MeshInstance3D": 647,
 						"Node": 1,
 						"Node3D": 188,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "2f99aa04b2f674ddc241862dd1f274071a69082144a8728a936a8fc3435cfa0f",
-					"nodes": 848,
+					"hash": "5927aa823d00d71ab8a49c9682839a2982fc542cd067749cd66dc3ce987aaef4",
+					"nodes": 843,
 					"story_camera": {
 						"_follow_center": [
 							1970,
@@ -903,7 +903,7 @@
 						"@MeshInstance3D#9": "4e91b5ffb0d32b1e",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "4a1ecba5447b4a07"
+						"ConservatoryRooms": "46dcdc02c67dcdca"
 					}
 				},
 				"s0.b.mid": {
@@ -912,14 +912,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 652,
+						"MeshInstance3D": 647,
 						"Node": 1,
 						"Node3D": 188,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "ae9ed41211a8c7dafbdac2970f1a3deaa0eeb783a7eccff6ffffd55c8bfa4828",
-					"nodes": 848,
+					"hash": "f761caebed751693d6f03a8fd438eb1fd166d614525d965e40be5258b021db7a",
+					"nodes": 843,
 					"story_camera": {
 						"_follow_center": [
 							2420,
@@ -972,7 +972,7 @@
 						"@MeshInstance3D#9": "4e91b5ffb0d32b1e",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "9d81a5bbfb28fd7a"
+						"ConservatoryRooms": "799dcb5263a0398c"
 					},
 					"tick": 131
 				},
@@ -982,14 +982,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 644,
+						"MeshInstance3D": 639,
 						"Node": 1,
 						"Node3D": 186,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "bd03e571ee59d63b4a112c93c9ec0590f846e17d625d1c19691c1cc462268e90",
-					"nodes": 838,
+					"hash": "0b0f3c8762a39f881c791717b6e37c916725ffc93b9947bb410de8ae861f1b32",
+					"nodes": 833,
 					"story_camera": {
 						"_follow_center": [
 							-3200,
@@ -1042,7 +1042,7 @@
 						"@MeshInstance3D#9": "2881e13b6d831230",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "ca79ac2a27300d39"
+						"ConservatoryRooms": "c4ee1a4db3561911"
 					}
 				},
 				"s1.a.end": {
@@ -1051,14 +1051,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "3cf96dfd4cf1597794f3a2525117ca46af62428206deb96e3c804637e3222618",
-					"nodes": 818,
+					"hash": "eb8c10e90f7456211cef2ca8845653d118a777d5c3fe7626b0b0ccb7f4a57c3b",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							6560,
@@ -1111,7 +1111,7 @@
 						"@MeshInstance3D#9": "2881e13b6d831230",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "2a9a4a2160b3fd85"
+						"ConservatoryRooms": "baff9d5744c239d3"
 					}
 				},
 				"s1.b.below": {
@@ -1120,14 +1120,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "60ac48e9d6503e4cfb0afa4f058cce66934efac69a764ecb4732dfcd9f525df9",
-					"nodes": 818,
+					"hash": "86a3db8049ae5dfe5df6b325d49b6fd0305b432a3a1c1ff508515e0b115b1f53",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							-1692,
@@ -1180,7 +1180,7 @@
 						"@MeshInstance3D#9": "59f8e6ad800af277",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "da79dd3f16ece77c"
+						"ConservatoryRooms": "42d58421342f2d8a"
 					},
 					"tick": 101
 				},
@@ -1190,14 +1190,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "87b871d4c3f62591e8621b9cfea7761042098d7048a486b044bc4172dd65742c",
-					"nodes": 818,
+					"hash": "1e757ed2664f7ee13e25e44864aa2ac4f3d69b9b07d4a0a55ef2e7572e2ca121",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							7330,
@@ -1250,7 +1250,7 @@
 						"@MeshInstance3D#9": "2881e13b6d831230",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "de9668b77bf2b9aa"
+						"ConservatoryRooms": "6ca7030751ca2f26"
 					}
 				},
 				"s1.b.mid": {
@@ -1259,14 +1259,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "63e3dce6db02346354fffd770b317008914d99de77b8a4ea31b8c388542e812d",
-					"nodes": 818,
+					"hash": "4de1a756baf934c6d087c4ce4e44ea597b7bc7d3e74e447906014c2f75c524d4",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							3494,
@@ -1319,7 +1319,7 @@
 						"@MeshInstance3D#9": "4e91b5ffb0d32b1e",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "89e0cf3da7dc5627"
+						"ConservatoryRooms": "abea5b780f2fa5d8"
 					},
 					"tick": 182
 				},
@@ -1329,14 +1329,14 @@
 						"Camera3D": 1,
 						"DirectionalLight3D": 2,
 						"Label3D": 2,
-						"MeshInstance3D": 627,
+						"MeshInstance3D": 624,
 						"Node": 1,
 						"Node3D": 183,
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "b49535a270848c2cd344cfb5403048475512d39b8c526c51e74cc85b1b995678",
-					"nodes": 818,
+					"hash": "56fcadb416afbce695bb364a6bbdb1286caee0a562b44240f6278c9849e5a285",
+					"nodes": 815,
 					"story_camera": {
 						"_follow_center": [
 							7520,
@@ -1389,7 +1389,7 @@
 						"@MeshInstance3D#9": "2881e13b6d831230",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "322b18563fddaf4c",
-						"ConservatoryRooms": "ec42fb697a5e8db9"
+						"ConservatoryRooms": "f0ba00447cc0eff2"
 					}
 				}
 			}
@@ -1408,7 +1408,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "97a3265608eb4d6d1dc20b7dbc0382d93d50b9622fcc600ac530e9d7ba21db2b",
+					"hash": "9cfa295030bd2693851a952cc62ba223f654c3c578e094008cec916c84769ff4",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -1462,7 +1462,7 @@
 						"@MeshInstance3D#9": "3528db891f70ec61",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "6a61b658a298f789"
+						"LongWayHome": "77a915ac781fa93a"
 					}
 				},
 				"s0.b.below": {
@@ -1477,7 +1477,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "395bb464ee649a1f0eb959873ffc52ebeab274f9665d1247fa3af4d225c2740e",
+					"hash": "66416eb25d930a6f1a571ea00d58ec31f5aca5a6828764e5c8e6d3d04593e9ce",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -1531,7 +1531,7 @@
 						"@MeshInstance3D#9": "3c263e1a5e893936",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "803ae3e0338b6755"
+						"LongWayHome": "82d46139ac804568"
 					},
 					"tick": 92
 				},
@@ -1547,7 +1547,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "7574817fc6a0bdbf99072087e40be8685f7f1ec41f7ccab05eb3be622bf7e28d",
+					"hash": "86e0ba69c6061099085e32d19a930ab2d89bae51eabad04f8238f972918336fa",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -1601,7 +1601,7 @@
 						"@MeshInstance3D#9": "3528db891f70ec61",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "3650fb8e3f7ac5f3"
+						"LongWayHome": "2974e7b9f3ccb95c"
 					}
 				},
 				"s0.b.mid": {
@@ -1616,7 +1616,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "9f442c10397862e003193ac9a8a640284415a849778c80b0db7c5e69b5be8fcc",
+					"hash": "a5959f94039e3721adfa067bece8e9fb0e3d5a37b49abbfdf81e118b74db1278",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -1670,7 +1670,7 @@
 						"@MeshInstance3D#9": "41c2f5d52330bcca",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "d9f91550589f0db4"
+						"LongWayHome": "f685420aeb3a5588"
 					},
 					"tick": 166
 				},
@@ -1686,7 +1686,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "a7dd45664872ae7d91d6e0088c1b0ef1525bb2af5e4406932d74d5a3a6d51c30",
+					"hash": "828e882bf9888884c71e0c47d0fe964052ca07f16d2b4baac4c2ae8756389f9a",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -1740,7 +1740,7 @@
 						"@MeshInstance3D#9": "29c6040a785845d0",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "9f5516412a437614"
+						"LongWayHome": "c7c2c928eb3bcba2"
 					}
 				},
 				"s1.a.end": {
@@ -1755,7 +1755,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "1cb830d76b66a84810d9ab37d49d9f77fd9b084cc7dff0a41c90cdb3eb7c7f88",
+					"hash": "952925fbab5f821b34d79f8f542bf578f9436d9c697ef64ff0c48b9b6210d093",
 					"nodes": 738,
 					"story_camera": {
 						"_follow_center": [
@@ -1809,7 +1809,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "73e592d81db439c1"
+						"LongWayHome": "6b955f7371728359"
 					}
 				},
 				"s1.b.below": {
@@ -1824,7 +1824,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "db08975b194ef1712369da557ad678872266aeef544ffd9adb792a88e2c713af",
+					"hash": "930f2b74eb19f4d03b8f7c3e1fcb751a5276a6fac089215f4c9d76291a6501c6",
 					"nodes": 744,
 					"story_camera": {
 						"_follow_center": [
@@ -1878,7 +1878,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "5944f494c9a2cf44"
+						"LongWayHome": "ee427eba5fc3d035"
 					},
 					"tick": 1
 				},
@@ -1894,7 +1894,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "b285ef70d74c1493064de507b178273e7a08e9504021e185cc14641e06bb56eb",
+					"hash": "cfc46def4712a187e5b4e24f75a0a2ebd107fb5e6c61f914b3b450ebfa1a3ad1",
 					"nodes": 744,
 					"story_camera": {
 						"_follow_center": [
@@ -1948,7 +1948,7 @@
 						"@MeshInstance3D#9": "3ecb54a7676bf911",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "bc945f35fdd009e8"
+						"LongWayHome": "756222be8cf08e02"
 					}
 				},
 				"s1.b.mid": {
@@ -1963,7 +1963,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "c38b003cc059ee8dc87b16c9e0b2fe0de6c036544e8cb270386a3ee5da7806f6",
+					"hash": "6b54698a866d35e785d402b2f42f14111e590e7e44c703431bec2e28b3dee171",
 					"nodes": 744,
 					"story_camera": {
 						"_follow_center": [
@@ -2017,7 +2017,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "a1256fd53f5793a3"
+						"LongWayHome": "37ec93e6453144ec"
 					},
 					"tick": 101
 				},
@@ -2033,7 +2033,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "8bad92880a49684e488627e6de8a6767d7e031b36cdb48d498cc44a3f9b748c6",
+					"hash": "329c87ee721d46379644cc01621240b718039ff01e0b55da9c38860fa78500fd",
 					"nodes": 738,
 					"story_camera": {
 						"_follow_center": [
@@ -2087,7 +2087,7 @@
 						"@MeshInstance3D#9": "42977c99efb37a7c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "5bd76855f34382c7"
+						"LongWayHome": "6259afc8515ee8a3"
 					}
 				}
 			},
@@ -2104,7 +2104,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "330a97335dc7593e02ff0320cd4f85b81b2e975e0ac3ab8101bacca30e752362",
+					"hash": "15d5e662199d704ddb7f3d5338930df9eb112c25db5c85d6e0998b95d8e2529e",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -2158,7 +2158,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "bd0e50c611e343a8"
+						"LongWayHome": "ee0f3f5dc4f532b7"
 					}
 				},
 				"s0.b.below": {
@@ -2173,7 +2173,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "9a5655d7a5fd37a92dd2645c69e8ec9d9a82957b17cbd12c61a77efb91cc8821",
+					"hash": "58539fe563d84f1ad52d596a03bc5062220a0cc19f735644e3534b62a8fca42c",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -2227,7 +2227,7 @@
 						"@MeshInstance3D#9": "29c6040a785845d0",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "ecc764cae7184c90"
+						"LongWayHome": "aa4d4d222b5af15d"
 					},
 					"tick": 92
 				},
@@ -2243,7 +2243,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "b55e67989189a48b08ad5c669fb411182caea59337a7aae685a01bab145d1137",
+					"hash": "1e8da461e48ec84bca5438c6f76d144461994e8a098ef0686b36e3ae8de9bf65",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -2297,7 +2297,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "1d1558b1a18f45e5"
+						"LongWayHome": "71a44d22be3d844e"
 					}
 				},
 				"s0.b.mid": {
@@ -2312,7 +2312,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "bae25f834bcc6de93646bf640266a4f076bfc358d77a458902d341acf6438f3e",
+					"hash": "d0dd2a01d1e20831a79b92f374c726399e41f1ac328174dc40c719fc7cc5d0cb",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -2366,7 +2366,7 @@
 						"@MeshInstance3D#9": "29c6040a785845d0",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "7ef63ac7888807e8"
+						"LongWayHome": "aaf5094500d44b8f"
 					},
 					"tick": 166
 				},
@@ -2382,7 +2382,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "cffd1a6ed1e6c5d571af34398cef75ed6f2a64c1817d1bed849e06ed2d022051",
+					"hash": "756257251b3cce08fd1fd8a43a80fd06a4d706e3ff82c61cc41da94a3e8a1cb4",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -2436,7 +2436,7 @@
 						"@MeshInstance3D#9": "238b79ddde1e2501",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "55db68a412f558c0"
+						"LongWayHome": "f35633eb83f12706"
 					}
 				},
 				"s1.a.end": {
@@ -2451,7 +2451,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "756caa060fbbcdd58d237b59b4f665a866b7624f6dc1f0510f257d8fc36d9cb9",
+					"hash": "3008716e23d157541686e5b65e654d1b5f41b34bbd50192cb478c02f8484e486",
 					"nodes": 738,
 					"story_camera": {
 						"_follow_center": [
@@ -2505,7 +2505,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "32b20e0c2a84f9bf"
+						"LongWayHome": "5cdc5520b4295693"
 					}
 				},
 				"s1.b.below": {
@@ -2520,7 +2520,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "fa9e78fbf43aa8c8b29bca188c87ea404a24dced2d5f5ac0b35dfa64293dd13e",
+					"hash": "2ec075cc68e99bd0d14b52d341836fa56b428dd7f5f39b42a3e7be79642a5919",
 					"nodes": 744,
 					"story_camera": {
 						"_follow_center": [
@@ -2574,7 +2574,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "f3d1f60cc8290056"
+						"LongWayHome": "931c0dda08504d18"
 					},
 					"tick": 1
 				},
@@ -2590,7 +2590,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "538a235fe4127999d7d1619baa5a14b2d81f0ccd89a49fa04b585c286a5337f4",
+					"hash": "5c97bebbe93b9ae1def9a54c56db4534f52da138d763451930708145834f87ee",
 					"nodes": 744,
 					"story_camera": {
 						"_follow_center": [
@@ -2644,7 +2644,7 @@
 						"@MeshInstance3D#9": "5fb1a31a555a8168",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "d9a483c97f8d0940"
+						"LongWayHome": "f2d5ba90da0ca219"
 					}
 				},
 				"s1.b.mid": {
@@ -2659,7 +2659,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "6c56268553223834ec199e4241c41f600b03103030a9c7af66361a4dd1dc7485",
+					"hash": "b7e37f52872cc7962039a6f58f7c76aa9eab2ee046aa5972390d331ee0bea280",
 					"nodes": 744,
 					"story_camera": {
 						"_follow_center": [
@@ -2713,7 +2713,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "113a163090174d18"
+						"LongWayHome": "da32c802d744819f"
 					},
 					"tick": 101
 				},
@@ -2729,7 +2729,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "1a2c9dbc0bc1006131c207c87eb04c6c93fd9e859f116f9555b696f70886f569",
+					"hash": "1e6bfadb3e9cf5c2135b3885fd5e685a40d0848436090b2efd130000144faef0",
 					"nodes": 738,
 					"story_camera": {
 						"_follow_center": [
@@ -2783,7 +2783,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "b43a720498a9a17e"
+						"LongWayHome": "ca3ca057a802e5a9"
 					}
 				}
 			}
@@ -2802,7 +2802,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "97a3265608eb4d6d1dc20b7dbc0382d93d50b9622fcc600ac530e9d7ba21db2b",
+					"hash": "9cfa295030bd2693851a952cc62ba223f654c3c578e094008cec916c84769ff4",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -2856,7 +2856,7 @@
 						"@MeshInstance3D#9": "3528db891f70ec61",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "6a61b658a298f789"
+						"LongWayHome": "77a915ac781fa93a"
 					}
 				},
 				"s0.b.below": {
@@ -2871,7 +2871,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "395bb464ee649a1f0eb959873ffc52ebeab274f9665d1247fa3af4d225c2740e",
+					"hash": "66416eb25d930a6f1a571ea00d58ec31f5aca5a6828764e5c8e6d3d04593e9ce",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -2925,7 +2925,7 @@
 						"@MeshInstance3D#9": "3c263e1a5e893936",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "803ae3e0338b6755"
+						"LongWayHome": "82d46139ac804568"
 					},
 					"tick": 92
 				},
@@ -2941,7 +2941,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "7574817fc6a0bdbf99072087e40be8685f7f1ec41f7ccab05eb3be622bf7e28d",
+					"hash": "86e0ba69c6061099085e32d19a930ab2d89bae51eabad04f8238f972918336fa",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -2995,7 +2995,7 @@
 						"@MeshInstance3D#9": "3528db891f70ec61",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "3650fb8e3f7ac5f3"
+						"LongWayHome": "2974e7b9f3ccb95c"
 					}
 				},
 				"s0.b.mid": {
@@ -3010,7 +3010,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "9f442c10397862e003193ac9a8a640284415a849778c80b0db7c5e69b5be8fcc",
+					"hash": "a5959f94039e3721adfa067bece8e9fb0e3d5a37b49abbfdf81e118b74db1278",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -3064,7 +3064,7 @@
 						"@MeshInstance3D#9": "41c2f5d52330bcca",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "d9f91550589f0db4"
+						"LongWayHome": "f685420aeb3a5588"
 					},
 					"tick": 166
 				},
@@ -3080,7 +3080,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "a7dd45664872ae7d91d6e0088c1b0ef1525bb2af5e4406932d74d5a3a6d51c30",
+					"hash": "828e882bf9888884c71e0c47d0fe964052ca07f16d2b4baac4c2ae8756389f9a",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -3134,7 +3134,7 @@
 						"@MeshInstance3D#9": "29c6040a785845d0",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "9f5516412a437614"
+						"LongWayHome": "c7c2c928eb3bcba2"
 					}
 				},
 				"s1.a.end": {
@@ -3149,7 +3149,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "c3ac82415b1f77dab560d67c6bed2354a38945523ac07853bc2c4283b891dcff",
+					"hash": "0eae66b675f71c23da514e1796f8db34911d15f1aab564280ff88f3ebfb8e22f",
 					"nodes": 773,
 					"story_camera": {
 						"_follow_center": [
@@ -3203,7 +3203,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "1edd10da28c96f70"
+						"LongWayHome": "ef6c02154329bb95"
 					}
 				},
 				"s1.b.below": {
@@ -3218,7 +3218,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "d043c03be71905d40dcb7f4c1aab4d587491b92ff7fe281915a5ca32424037ff",
+					"hash": "a63c2531f1d95ac96041672818511cbc3681ca49747f34b86347d4dc5dcf1164",
 					"nodes": 779,
 					"story_camera": {
 						"_follow_center": [
@@ -3272,7 +3272,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "3ca52149a6ecadba"
+						"LongWayHome": "9fdd88439676d23e"
 					},
 					"tick": 1
 				},
@@ -3288,7 +3288,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "e6ee81ee7c62a63ec44764d9a7f95bba2eba2aa6139eef7784ab7cc337aa4bfe",
+					"hash": "9d0eb3a99f63563c7feb51a9a82dd91be10a4e46436553f094a6f76c0b4d5b27",
 					"nodes": 779,
 					"story_camera": {
 						"_follow_center": [
@@ -3342,7 +3342,7 @@
 						"@MeshInstance3D#9": "3ecb54a7676bf911",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "556a6ae289722985"
+						"LongWayHome": "e41df94907e2e96b"
 					}
 				},
 				"s1.b.mid": {
@@ -3357,7 +3357,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "5b2af174d895361139391670c32a8fadbb747a61db77055cfec4d138500ceaa4",
+					"hash": "a11f804ed32e458ef328423b78f0e5e5f82f8c87d01b73c2c9c349e9b6006ceb",
 					"nodes": 779,
 					"story_camera": {
 						"_follow_center": [
@@ -3411,7 +3411,7 @@
 						"@MeshInstance3D#9": "44c4aa856d3f985d",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "8179f9bf300efdb8"
+						"LongWayHome": "bd5c3bdf61535360"
 					},
 					"tick": 109
 				},
@@ -3427,7 +3427,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "c3bc99677422ca0e422169378b4a671a5640410e945f20cf82d5f28a2780d98c",
+					"hash": "a3539a04c5039ad17005c2f66ee58013fb31434d56b8c422a95d781d4970bdfe",
 					"nodes": 773,
 					"story_camera": {
 						"_follow_center": [
@@ -3481,7 +3481,7 @@
 						"@MeshInstance3D#9": "42977c99efb37a7c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "2686692dddea05f8"
+						"LongWayHome": "bb210ec041b5c578"
 					}
 				}
 			},
@@ -3498,7 +3498,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "330a97335dc7593e02ff0320cd4f85b81b2e975e0ac3ab8101bacca30e752362",
+					"hash": "15d5e662199d704ddb7f3d5338930df9eb112c25db5c85d6e0998b95d8e2529e",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -3552,7 +3552,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "bd0e50c611e343a8"
+						"LongWayHome": "ee0f3f5dc4f532b7"
 					}
 				},
 				"s0.b.below": {
@@ -3567,7 +3567,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "9a5655d7a5fd37a92dd2645c69e8ec9d9a82957b17cbd12c61a77efb91cc8821",
+					"hash": "58539fe563d84f1ad52d596a03bc5062220a0cc19f735644e3534b62a8fca42c",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -3621,7 +3621,7 @@
 						"@MeshInstance3D#9": "29c6040a785845d0",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "ecc764cae7184c90"
+						"LongWayHome": "aa4d4d222b5af15d"
 					},
 					"tick": 92
 				},
@@ -3637,7 +3637,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "b55e67989189a48b08ad5c669fb411182caea59337a7aae685a01bab145d1137",
+					"hash": "1e8da461e48ec84bca5438c6f76d144461994e8a098ef0686b36e3ae8de9bf65",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -3691,7 +3691,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "1d1558b1a18f45e5"
+						"LongWayHome": "71a44d22be3d844e"
 					}
 				},
 				"s0.b.mid": {
@@ -3706,7 +3706,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "bae25f834bcc6de93646bf640266a4f076bfc358d77a458902d341acf6438f3e",
+					"hash": "d0dd2a01d1e20831a79b92f374c726399e41f1ac328174dc40c719fc7cc5d0cb",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -3760,7 +3760,7 @@
 						"@MeshInstance3D#9": "29c6040a785845d0",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "7ef63ac7888807e8"
+						"LongWayHome": "aaf5094500d44b8f"
 					},
 					"tick": 166
 				},
@@ -3776,7 +3776,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "cffd1a6ed1e6c5d571af34398cef75ed6f2a64c1817d1bed849e06ed2d022051",
+					"hash": "756257251b3cce08fd1fd8a43a80fd06a4d706e3ff82c61cc41da94a3e8a1cb4",
 					"nodes": 419,
 					"story_camera": {
 						"_follow_center": [
@@ -3830,7 +3830,7 @@
 						"@MeshInstance3D#9": "238b79ddde1e2501",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "55db68a412f558c0"
+						"LongWayHome": "f35633eb83f12706"
 					}
 				},
 				"s1.a.end": {
@@ -3845,7 +3845,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "7b75524e56f16c7da3b4699398d843e6a405f1399a292b5e6be226dbdaa43456",
+					"hash": "7cb10a32f92a66fe693ca9ce59bbabd906fd0f5461aeb7cf940174486718f8e8",
 					"nodes": 773,
 					"story_camera": {
 						"_follow_center": [
@@ -3899,7 +3899,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "20d3c24695a66fcc"
+						"LongWayHome": "fedbb9c102e9b190"
 					}
 				},
 				"s1.b.below": {
@@ -3914,7 +3914,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "2ff91de635e6f4ffde4d32d5c094f12b289865836cdae6d07318c663a4704436",
+					"hash": "b7582f991ede827f63d52e88f63716cb1d905f2892c08af5ec7966807cd4a853",
 					"nodes": 779,
 					"story_camera": {
 						"_follow_center": [
@@ -3968,7 +3968,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "35233ab840c32a3d"
+						"LongWayHome": "a55c067111fed191"
 					},
 					"tick": 1
 				},
@@ -3984,7 +3984,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "a8135db838f410ab05fbb9fcc28de3f4d16b356fc3e6c4d1cb25ee4edf977c4a",
+					"hash": "bf1580687ddb81630675b0a77552fe4a84bb9d37f27a050473f9d2dfd88bae73",
 					"nodes": 779,
 					"story_camera": {
 						"_follow_center": [
@@ -4038,7 +4038,7 @@
 						"@MeshInstance3D#9": "5fb1a31a555a8168",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "4fdc24bf22f5eacb"
+						"LongWayHome": "b0a98a48f5c84f4f"
 					}
 				},
 				"s1.b.mid": {
@@ -4053,7 +4053,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "b184956937233504deee468648139438bf1072208f08c934a03a0710bd48c90a",
+					"hash": "aae04d1b8beb00dd750c42377778a94bba6f8d3de93f35f868800af1d4297614",
 					"nodes": 779,
 					"story_camera": {
 						"_follow_center": [
@@ -4107,7 +4107,7 @@
 						"@MeshInstance3D#9": "5eec2822cff38e95",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "5d80f14a17847391"
+						"LongWayHome": "854b0ec2d24acdb9"
 					},
 					"tick": 109
 				},
@@ -4123,7 +4123,7 @@
 						"OmniLight3D": 2,
 						"WorldEnvironment": 1
 					},
-					"hash": "d4520d1bf94b98de1e00681f80bb613c9fc4333e0024547dce9221115045ab60",
+					"hash": "4192a7aef3d4bef9b2323260eeb82415ead195a01f80228fdfe0440b4d6a614e",
 					"nodes": 773,
 					"story_camera": {
 						"_follow_center": [
@@ -4177,7 +4177,7 @@
 						"@MeshInstance3D#9": "3e542f054d61722c",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "d9cec291d440cbd3",
-						"LongWayHome": "4224d687f39ca063"
+						"LongWayHome": "e7dc3fe9ad465836"
 					}
 				}
 			}
@@ -4186,80 +4186,80 @@
 	"child_order": {
 		"conservatory@1": {
 			"normal": {
-				"s0.a.end": "945c63bca608f5d0e0066e54714b701b3a62caa8532299c0cb1d5fe9b4204703",
-				"s0.b.below": "b031001d03498ba62ddd32a152615c6ac02a6e0e99e2d536d5842a5c056b4402",
-				"s0.b.end": "ed89e66994d92fabb3c1a45e9f12068f0708a3d9231369d572b9585bb7a65080",
-				"s0.b.mid": "1d0c9433edab6c255ae9fff97cfa5bdb5b47165d225912a6be75d9372bfa7bc3",
-				"s0.start": "6b36a0850cdfa7bc9aec6ca44a9edfc102372c36c866276c6e662506d6eb6010",
-				"s1.a.end": "100f1d3e5e2a19a44fd15d2f8a653dd416add05b3b6f5a3879aba8be23d75019",
-				"s1.b.below": "4d4787844195a571dde3eee8f52a9d086887604b70037bdd31e4577a8001858c",
-				"s1.b.end": "e10fad92357470831e2d28bc988b4b317388def91c8d4f8a0ff437edb55884a3",
-				"s1.b.mid": "165e0998228b6fb7b24986ae480131a44f4e252b46c203b6f93436d4f9962171",
-				"s1.start": "f00b0d97ad5ef2998222ad2bed7661fd5ed433e8dccdf3b59afa62a69c09d76a"
+				"s0.a.end": "0d85ac6908a4f7bc6004515073b6406f4bfdc882815b2bf38de3a3156532e9cd",
+				"s0.b.below": "b1680ce3418d6535d43b591a06e8da08c7af0711dc38221ea58f4b679443bbe1",
+				"s0.b.end": "9248cd08475f0ac345bacb4260313cf7d5370283277b7618198c51aeb293e8ef",
+				"s0.b.mid": "e0fe6e7edfed2f4a8a0742723925d81b1c086f16a62e5292ce7a8e7f5e83916e",
+				"s0.start": "c5fb4f22d8162ff8fc5c986debcd61332fb3746089ead235f741c6f2dd10798f",
+				"s1.a.end": "564e477e12da51ffe158aeab6cd86abffdb4a8a7f8d6a042bd7f20cf4234dc22",
+				"s1.b.below": "4873684fe053339c88540e11a2021c8cbea9f60cbf682c77d867f948956dc886",
+				"s1.b.end": "cadad73d779cbc6c421bb9f8da8ccbe2cc4d21a178ae708097a46dbf0b7d4b83",
+				"s1.b.mid": "3b93023e6b4e1062040672fb0389d24915bb9bab56846f0e0eb6ab205c9d9065",
+				"s1.start": "0b8036498d0894d9a6f75440567f8bd244730ae984fb94eefb1ad7a9be2f533e"
 			},
 			"reduced": {
-				"s0.a.end": "e273b4c6665d02b7fedda91f4ddd8aafe63e321a035f14f9e20e64f6e1cb5db5",
-				"s0.b.below": "5de362846d4af8f133564f815ae31b90486cb54617d86a21f5d371751c7acee6",
-				"s0.b.end": "fe42e7e0216e56f3f6d3aec0bc7ae7cd9ccd2629d8980982b3e501f14a2a0a22",
-				"s0.b.mid": "ca7e370868cc2ad9f2931e661a50dfb5ef2374a25340ce374b53a977ba7b178c",
-				"s0.start": "aa9d5c74cce2471d44a799e36bdd6647ea43ad3110a4e13f22636f7456720e26",
-				"s1.a.end": "988ab4e3d10f14f67738039e465766db5ce7fc6ed7f0371f4747b84ce2fec04e",
-				"s1.b.below": "063f40a717b3f1b4897fd2dfaa996b6ced4fd893b9eb1d16eef7370875d1d424",
-				"s1.b.end": "ad0308d206dfedf4234bfde8f8e4ff2fa58cad793a6404eb33f4fe940e6c83e1",
-				"s1.b.mid": "e5b9d9f4c8e94ab92fc0aaabb15eeef70bf6c36a1a2af31b37ac25456ff8e82b",
-				"s1.start": "d9c60ec7abd56c5985ff7f8e4599f1b3eab3bb226b9d57ddbdb08a93d92e9ace"
+				"s0.a.end": "ed96d154a8c8edbf4b20f358f00844f130452c36b09c846f88b93294a425d1fc",
+				"s0.b.below": "beadb8c11e619a14e90ffc836fe13c78f32ad42cf1b3980e736a7092b66ceb49",
+				"s0.b.end": "87c1066e79abaebdab71b0ee9f2ea92a98c20d446834dcb6526ff1fc186d882d",
+				"s0.b.mid": "d3fe9337eae95c38fe64e77b60541092fc0ce2ac6de946694775999d05fae7ca",
+				"s0.start": "0b5e7225fe2f04a89aa942d0ff8330ca1afe4dba20b9d571e40da901b32b32a1",
+				"s1.a.end": "4120750d3b7c140c05a25b51777b0ee219da0ace7360ad58a6d62b9375449be6",
+				"s1.b.below": "cfaeecc32a22cf05032b66583879b3cc00092ade0056a31e6589c7e565059d7f",
+				"s1.b.end": "e63903ac6aa10d392b9aadeca6b22ccf7b5fe09748e83038605ff4531b69619c",
+				"s1.b.mid": "a1ef441f27ac2c3a14f3354215b09d6cc22eb5eda37e58d33283f907824864e6",
+				"s1.start": "26f6c43e81420f3405514f9ebd09c6ee23bd096a840ab5c3c62fef7143d81262"
 			}
 		},
 		"long-way-home@1": {
 			"normal": {
-				"s0.a.end": "754293c0c96e5983e4dd449403e97f83994cfc9c030cd42fcc9709965c0662cd",
-				"s0.b.below": "6a9fe453f8abce3a7ca63c246c8c1504f6737c1064964192716dc2237fa0ab0c",
-				"s0.b.end": "7548c16fe79d9c9832308bf6fb2fb3b8ebad8b4d5271d5e9f0c106b359a70e78",
-				"s0.b.mid": "fcb93e4153176b4b8db37f7b67f0207725b898a9f923bb07dca00d52d603f15b",
-				"s0.start": "ba7ae20ddd01696b613bc7ffcefad1abc40a238765cadd3aaab9ab3a0e589f12",
-				"s1.a.end": "0e173502a0fe40c2885020df1117eb47983c1da37218b73750ac3d9e9293a290",
-				"s1.b.below": "335584f66df4975ac201e5fa95138b7df6a88eb511a83a21ac97bd9d3b693363",
-				"s1.b.end": "72c90d611f0bb167f44e68867d756eb108db08adda62d2ea8490a2c4b8157b01",
-				"s1.b.mid": "e65422b352950991567d4e9521a17ef6b262b253c929d18b196a79689b7f973d",
-				"s1.start": "076ef8bd129d132e7dd1e9a25de68e46640bffc0add314dfdb5756b5c1b64667"
+				"s0.a.end": "b9f6f188d3191d3efd9335ec73513e8ef15c80c585b955189d48129c19324051",
+				"s0.b.below": "83394c6513733e13bf5bceed2a99b1b8cdb36de3ec90382e95f60826c66e06dd",
+				"s0.b.end": "f74a5e2903ed94afc16ed3b4b455ac352d95af5dcfb7b075f7a7262bd86cef7a",
+				"s0.b.mid": "54dc013bc7e6b8c24de672906da675aacc9ebb9d7cee2d2706cd8d7303d3fdd3",
+				"s0.start": "4df5c5f22908aae48641835b1d268a6a3796f3781261d7516ea6aa9fc9d265d1",
+				"s1.a.end": "9199c6a450679dd01759bc49658e2f57ed47a76770d8fbb0ec0fe6b1b4856879",
+				"s1.b.below": "719e714e8e8a6f7ad9b885e46245bd88345682e7aa91c6d2d300a62ebaf8eb27",
+				"s1.b.end": "6554060a4eb1bc84a8ba1bdd68852e24730124187df4ade587d1f3a6048dec64",
+				"s1.b.mid": "d6475ab565a25d7ca9e5b26ab889727a754ae87c91b6a79200d8ab3768caf0df",
+				"s1.start": "d8e0a84c5eb5e0b09841aa0de3fb04fd947b551f1b597a5cfc3c3d4cf0a0c9d8"
 			},
 			"reduced": {
-				"s0.a.end": "4d1ca805146cfde5d19a397a362aaf3039cc5e21708c17511d07f14be8f32584",
-				"s0.b.below": "90fe7eea7d800f7353096d897a7bfda1caee3e8cbca40db808ce401e7a6a8bc6",
-				"s0.b.end": "88c38adc1dd661d423093fe3d4b004cca6575f8b7ece3babbaec51b9f0d2428f",
-				"s0.b.mid": "a06572de3f6505dbe33180281a399c9aa2facdf3d19f985f1f3b2c5131c63347",
-				"s0.start": "854f4ba9554354df65182e20bf02b65590cc69e7dbf713dfdb93f01ebba7ea9f",
-				"s1.a.end": "6dd24086d0706fb08746725a3587cddc32ee199c5e2673adcb71e0b511cb6566",
-				"s1.b.below": "a4b6351650c4ffa56123e88a7070aac3c98d07d1b5d1944296fdfada59901392",
-				"s1.b.end": "167adf36222d9f581974039ad44026df79bb2e6d6bb719b5538ec5b7da53e7fc",
-				"s1.b.mid": "76d543337c5fda7ea248114cc138c9cf58f80302615482d2558c9d6865937296",
-				"s1.start": "01aeffe7ad0b5724a95346e668fc52118284c1b0f98b6d853fbe0fd0ac9948bc"
+				"s0.a.end": "65575e7b0ada419d45f2c42f35bcb9bf4359e0663fcd2d68bdad90eb1748746d",
+				"s0.b.below": "3035a70055f51857cb88e98e2a2d04420139cb6cf0c367ca865c704af901bcbd",
+				"s0.b.end": "b2237fb4397664a132d57e627f3a1d45b40861772e13a8e2ee4bcc1dfe284294",
+				"s0.b.mid": "4fd0e4a62b05a45f4515ae92d63c289546fa20fbd852317f1a77531d3ece2637",
+				"s0.start": "53b29ee79caca8428bd98af10d9699508d8bc2f7457bd2e37c3501bb31504540",
+				"s1.a.end": "907d16f9f118fa85490b0b410ef41e0cff81e0478c1ae7fb9dbb41cc42ced083",
+				"s1.b.below": "6e8ab7961ce55071d6b30917c11494bd3ad99c3032fc75a462d911a18d71964c",
+				"s1.b.end": "1b18be97730d57adad5745220629f7ed3962a622b7af4ff57f3624669934968a",
+				"s1.b.mid": "3e3d988e57dee176818b4b2fb31b27265725af6dfacf428fd3dead783b925665",
+				"s1.start": "16491bd0e434d299760ae83e73ebd02390c51dbf2a7543f7c60050dcc0d7ed16"
 			}
 		},
 		"long-way-home@2": {
 			"normal": {
-				"s0.a.end": "754293c0c96e5983e4dd449403e97f83994cfc9c030cd42fcc9709965c0662cd",
-				"s0.b.below": "6a9fe453f8abce3a7ca63c246c8c1504f6737c1064964192716dc2237fa0ab0c",
-				"s0.b.end": "7548c16fe79d9c9832308bf6fb2fb3b8ebad8b4d5271d5e9f0c106b359a70e78",
-				"s0.b.mid": "fcb93e4153176b4b8db37f7b67f0207725b898a9f923bb07dca00d52d603f15b",
-				"s0.start": "ba7ae20ddd01696b613bc7ffcefad1abc40a238765cadd3aaab9ab3a0e589f12",
-				"s1.a.end": "61d0452cb647e56c512a8b4cf761c0746f698a7c732f6f1404aafa5d916639da",
-				"s1.b.below": "94d8adf7a201d2ca38b827ec96bd32873077e05d2b80ece70d11534a3027c9de",
-				"s1.b.end": "5f546e50da6683d3150f35e9c7eab9f6415d0b449b0c373b5bdb493f8b89e4fc",
-				"s1.b.mid": "9ab7edcc1415147e63b516daeff302c50d5bcfd5c7d4d8c6d596b1b28bfba47b",
-				"s1.start": "237cb113310a330ae2589f57fd2a4c5b1e951e89d5149e1324eb71f4fd6fff90"
+				"s0.a.end": "b9f6f188d3191d3efd9335ec73513e8ef15c80c585b955189d48129c19324051",
+				"s0.b.below": "83394c6513733e13bf5bceed2a99b1b8cdb36de3ec90382e95f60826c66e06dd",
+				"s0.b.end": "f74a5e2903ed94afc16ed3b4b455ac352d95af5dcfb7b075f7a7262bd86cef7a",
+				"s0.b.mid": "54dc013bc7e6b8c24de672906da675aacc9ebb9d7cee2d2706cd8d7303d3fdd3",
+				"s0.start": "4df5c5f22908aae48641835b1d268a6a3796f3781261d7516ea6aa9fc9d265d1",
+				"s1.a.end": "f8a90604d4dd4a8900d655bda5cccc197bdc0b2425a8402afe390af6e80bf794",
+				"s1.b.below": "b140c2881b944044254ec52a2b40ea58a53103c70f11bcd79e388463425d76d5",
+				"s1.b.end": "70e3fc015da2a08bab955c944d90189db939653583a3504fcdd30a00bff1ee8c",
+				"s1.b.mid": "497ad8afc2609dd58a3a7a1332fa98d51a47390d64118a3e82d02bbd5ebbb362",
+				"s1.start": "c89285889be344e4c241ccf55959a46293659dbade4e3fe6ec0573130dd2011b"
 			},
 			"reduced": {
-				"s0.a.end": "4d1ca805146cfde5d19a397a362aaf3039cc5e21708c17511d07f14be8f32584",
-				"s0.b.below": "90fe7eea7d800f7353096d897a7bfda1caee3e8cbca40db808ce401e7a6a8bc6",
-				"s0.b.end": "88c38adc1dd661d423093fe3d4b004cca6575f8b7ece3babbaec51b9f0d2428f",
-				"s0.b.mid": "a06572de3f6505dbe33180281a399c9aa2facdf3d19f985f1f3b2c5131c63347",
-				"s0.start": "854f4ba9554354df65182e20bf02b65590cc69e7dbf713dfdb93f01ebba7ea9f",
-				"s1.a.end": "5420e591b29d305a18c8f6bc590cf6b3d90ad79586576256fe4d945a032ab1f7",
-				"s1.b.below": "7541cb88a5ace533c26e704fad03dcd86fb4c65ddbc6a77cd235d47c6d58b188",
-				"s1.b.end": "21320473ee909a8f0bb64ea0f193e20a6a0005211bcb690eebc6bd17d8225f1c",
-				"s1.b.mid": "2cd00e0319de682c6af95272d12f63fb0098acf5f681fb34f390b8b73819eaeb",
-				"s1.start": "0df1ce6dd3c9b2b8cc3b20af8c2900a4ba663a467dc0df338229c9b3cde30373"
+				"s0.a.end": "65575e7b0ada419d45f2c42f35bcb9bf4359e0663fcd2d68bdad90eb1748746d",
+				"s0.b.below": "3035a70055f51857cb88e98e2a2d04420139cb6cf0c367ca865c704af901bcbd",
+				"s0.b.end": "b2237fb4397664a132d57e627f3a1d45b40861772e13a8e2ee4bcc1dfe284294",
+				"s0.b.mid": "4fd0e4a62b05a45f4515ae92d63c289546fa20fbd852317f1a77531d3ece2637",
+				"s0.start": "53b29ee79caca8428bd98af10d9699508d8bc2f7457bd2e37c3501bb31504540",
+				"s1.a.end": "ef2aab3aa3e5bb54cf78475b7f2bd51ea04a358e55f4211ccb4ac00d9fc1e6d7",
+				"s1.b.below": "32cbf684f0a0219f59d699db4da9c9f39fc57e0810507aa10e0c53dacfe3bb66",
+				"s1.b.end": "12f9df5e50e6f59a11fba1252acdc4225a1210f5a1efd7e0c35d26b67d27f060",
+				"s1.b.mid": "1c436f3052be84fd564dbb0a36eb7469da3115a52374b0ca1b19117996548d54",
+				"s1.start": "37ff8f024cb38e0ea40e60b645b9cd33ff5c2c1562a0b2e48f58d85d49c6335d"
 			}
 		}
 	}

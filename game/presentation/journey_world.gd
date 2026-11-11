@@ -113,7 +113,6 @@ func show_stage(stage: Dictionary) -> void:
 		var at := _at(endpoint)
 		_waiting_ring = ring(float(endpoint.radius_cm)/100.0,CREAM,at+Vector3(0,0.018,0),terrain)
 		_waiting_ring.name = "SourceWaitingRegion"
-		owner_marks.mark(str(endpoint.owner_slot),&"endpoint",str(endpoint.get("id","endpoint")),at,terrain)
 
 ## Lowest on screen first: see _lift_bubbles.
 func _sort_bubbles() -> void:
@@ -157,7 +156,6 @@ func _build_mirror(control: Dictionary) -> void:
 	wheel.rotation.x = PI/2.0
 	box(Vector3(0.035,0.26,0.035),CREAM,Vector3.ZERO,hand)
 	_journey_handles[control.id] = hand
-	owner_marks.mark(str(control.owner_slot),&"mirror",str(control.id),at,terrain)
 
 ## One speech bubble per selector, over the lever and pointing down at it,
 ## with one pill per value under its name from the descriptor's
@@ -451,7 +449,8 @@ func _build_gate_links(view: Dictionary) -> void:
 		if route.is_empty(): continue
 		var references := PairTags.predicate_references(gate.get("when",{}))
 		var r: Array = route.rect_cm
-		# On the crossing's near end mark (kit/owner_mark.gd), owned or not.
+		# At the crossing's west end (its near end mark for a crossing that runs west
+		# to east; kit/owner_mark.gd route_ends_of), owned or not.
 		var end := OwnerMark.route_end_points(r)[0]+Vector3(0,float(route.get("from_height_cm",0))/100.0+OwnerMark.ROUTE_LIFT,0)
 		for id: String in references:
 			var entity: Dictionary = {}

@@ -724,7 +724,6 @@ func _build_bridge(definition: Dictionary) -> void:
 	for index in range(before, terrain.get_child_count()): built.append(terrain.get_child(index))
 	# The shared deck builder places every deck at the ground; lift all it made.
 	for node: Node in built: (node as Node3D).position.y += float(definition.get("height_cm", 0)) / 100.0
-	owner_marks.lifted(id, float(definition.get("height_cm", 0)) / 100.0)
 	if _weights.has(id): _weights[id].set_meta("rest_y", _weights[id].position.y)
 	_restyle_deck(definition)
 	_kept_pennant(definition)
@@ -1008,7 +1007,6 @@ func _build_bell(goal: Dictionary) -> void:
 	_court_light.omni_range = 4.5
 	_court_light.position = cradle.position + head + Vector3(0, 0, 0.2)
 	terrain.add_child(_court_light)
-	owner_marks.mark(str(goal.owner_slot), &"goal", str(goal.get("id", "goal")), cradle.position, terrain)
 
 # --- Gate links: tide gauges, crests and the catwalks' slack marks ---
 
@@ -1054,8 +1052,8 @@ func _build_gate_links(view: Dictionary) -> void:
 			var color := _route_color(id)
 			if _shares_floor(start, spot):
 				var elbow := Vector3(spot.x, start.y, start.z)
-				if start.distance_to(elbow) > 0.01: _bar_between(start, elbow, 0.016, color.darkened(0.25), terrain)
-				if elbow.distance_to(spot) > 0.01: _bar_between(elbow, spot, 0.016, color.darkened(0.25), terrain)
+				if start.distance_to(elbow) > 0.01: _floor_cable(start, elbow, 0.016, color.darkened(0.25))
+				if elbow.distance_to(spot) > 0.01: _floor_cable(elbow, spot, 0.016, color.darkened(0.25))
 		# The sea gate out waits on the key from the mill: a large key sign over
 		# the gate, facing the chamber and the gate in.
 		if str(route.id) == "sea-gate-out" and "sea-key" in references: _key_sign(route)
@@ -1094,6 +1092,10 @@ func _route_anchor(route: Dictionary) -> Vector3:
 			if int(r[3]) <= int(floor[1]): return point([(r[0] + r[2]) * 0.5, r[3] + 16]) + Vector3(0, height, 0)
 			if int(r[1]) >= int(floor[3]): return point([(r[0] + r[2]) * 0.5, r[1] - 16]) + Vector3(0, height, 0)
 	return point([r[0] - 18, (r[1] + r[3]) * 0.5]) + Vector3(0, height, 0)
+
+## Only the harbour lantern's cradle carries its owner's mark.
+func _marks_goal(goal: Dictionary) -> bool:
+	return str(goal.get("id", "")) == "harbour-lantern"
 
 ## A gate's pair tags start at its route's anchor, on the floor (a stub's
 ## mouth, else before its west end), else by its far end.

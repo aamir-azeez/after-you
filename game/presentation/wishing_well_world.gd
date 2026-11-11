@@ -55,9 +55,14 @@ var _ladder_roll: Node3D
 var _ladder_shown := 0.0
 var _ladder_open := false
 var _rope_rails: Dictionary = {}
+## Where each folding stair's and the rope ladder's mark wants to sit, by stair id.
+var _stair_marks: Dictionary = {}
 
-## The lip zone's marks step off the notch rim and its hatch, which lie at
-## their height (they would z-fight), to the nearer side of the notch.
+## A folding stair's mark sits before its foot; the rope ladder's past its roll.
+func _mark_stair(stair: Dictionary) -> Dictionary:
+	return _stair_marks.get(stair.id, super._mark_stair(stair))
+
+## Marks keep clear of the notch rim and its hatch, which lie at their height.
 func _init() -> void:
 	owner_marks.keep_clear(Rect2(Vector2(NOTCH[0], NOTCH[1]) / 100.0, Vector2(NOTCH[2] - NOTCH[0], NOTCH[3] - NOTCH[1]) / 100.0))
 
@@ -75,6 +80,7 @@ func apply_graphics_quality(quality: String) -> void:
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
 	_folds.clear()
+	_stair_marks.clear()
 	_rope_rails.clear()
 	_ladder = null
 	_ladder_rungs.clear()
@@ -321,7 +327,6 @@ func _build_bridge(definition: Dictionary) -> void:
 	var lift := float(definition.get("height_cm", 0)) / 100.0
 	for index in range(before, terrain.get_child_count()):
 		terrain.get_child(index).position.y += lift
-	owner_marks.lifted(str(definition.id), lift)
 	if _weights.has(definition.id): _weights[definition.id].set_meta("rest_y", _weights[definition.id].position.y)
 	var r: Array = definition.rect_cm
 	var deck: Node3D = _decks.get(definition.id)
@@ -359,7 +364,7 @@ func _build_stair(stair: Dictionary) -> void:
 	# Folded, it leans just off the face rather than through it.
 	_folds[stair.id] = {"pivot": pivot, "open": 0.0, "target": 0.0, "fold": atan2(run, top_y) - 0.07}
 	pivot.rotation.x = _folds[stair.id].fold
-	owner_marks.mark(str(stair.owner_slot), &"stair", str(stair.id), Vector3(pivot.position.x, 0.0, foot_z), terrain)
+	_stair_marks[stair.id] = {"anchor": Vector3(pivot.position.x, 0.0, foot_z), "away": Vector3.BACK, "kind": &"stair"}
 
 ## The well ladder is a rope ladder that unrolls from the winch drum down into
 ## the pit. Its rungs follow the exact ramp the simulation walks.
@@ -389,7 +394,7 @@ func _build_ladder(stair: Dictionary) -> void:
 	terrain.add_child(_ladder_roll)
 	var roll := cylinder(0.1, width + 0.04, TIMBER.lightened(0.1), Vector3.ZERO, _ladder_roll)
 	roll.rotation.x = PI / 2.0
-	owner_marks.mark(str(stair.owner_slot), &"ladder", str(stair.id), low, terrain, Vector3.LEFT)
+	_stair_marks[stair.id] = {"anchor": low, "away": Vector3.LEFT, "kind": &"ladder", "head": high + Vector3(0.18, 0, -0.36)}
 
 func _build_gate_links(view: Dictionary) -> void:
 	var cliff := _surface_height("cliff")
@@ -413,7 +418,7 @@ func _build_gate_links(view: Dictionary) -> void:
 
 func _rope_path(points: Array) -> void:
 	for index in range(points.size() - 1):
-		_bar_between(points[index], points[index + 1], 0.022, ROPE, terrain)
+		_floor_cable(points[index], points[index + 1], 0.022, ROPE)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	super.present(state, immediate)
