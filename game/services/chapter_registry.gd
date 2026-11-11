@@ -131,7 +131,7 @@ static func _descriptor(key: String) -> Dictionary:
 	if level.is_empty(): return {}
 	var words := _words(key)
 	return {"key": key, "level_id": level.id, "level_version": level.version,
-		"definition_hash": Canonical.digest(level), "title": words.get("title", level.title), "premium": level.get("premium", false),
+		"definition_hash": Canonical.digest(level), "title": words.get("title", level.get("title", "")), "premium": level.get("premium", false),
 		"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
 		"stage_count": level.stages.size(), "local_path": _chapter(key).local_path,
 		"summary": words.get("summary", ""),
