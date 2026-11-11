@@ -189,7 +189,7 @@ func build(view: Dictionary) -> void:
 			var own_room := maxf(reach - reach_of(slot) - CLEAR - 0.005, 0.0)
 			var own := things.map(func(thing: Dictionary) -> Dictionary: return _within(thing, own_room) if str(thing.get("owner", "")) == id else thing)
 			if kind != &"route_end": own.append_array(cables)
-			var spot := FloorSpots.find({"size": size, "ends": ends, "on_crossing": true, "gap": CLEAR, "step": MOVE_STEP, "rings": MOVE_RINGS}, floors, own, discs())
+			var spot := FloorSpots.find({"size": size, "ends": ends, "on_crossing": true, "gap": CLEAR, "step": MOVE_STEP, "rings": MOVE_RINGS, "fine": true}, floors, own, discs())
 			place = spot.at
 			clash = spot.clash
 			var other := _merge_with(slot, ends[0], place, float(spec.lift))
@@ -220,7 +220,7 @@ func _merge(index: int, id: String, wanted: Vector3, size: Vector2, floors: Arra
 	var middle := Vector3((at.x + wanted.x) * 0.5, at.y - lift, (at.z + wanted.z) * 0.5)
 	var others := discs()
 	others.remove_at(index)
-	var spot := FloorSpots.find({"size": size, "ends": [middle], "on_crossing": true, "gap": CLEAR, "step": MOVE_STEP, "rings": MOVE_RINGS}, floors, things.filter(func(thing: Dictionary) -> bool: return str(thing.get("owner", "")) != str(mark.id)), others)
+	var spot := FloorSpots.find({"size": size, "ends": [middle], "on_crossing": true, "gap": CLEAR, "step": MOVE_STEP, "rings": MOVE_RINGS, "fine": true}, floors, things.filter(func(thing: Dictionary) -> bool: return str(thing.get("owner", "")) != str(mark.id)), others)
 	mark.at = (spot.at as Vector3) + Vector3(0, lift, 0)
 	mark.clash = spot.clash
 	(node as Node3D).position = mark.at

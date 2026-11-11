@@ -311,7 +311,7 @@ const OWNER_MARK_OVERRIDES := {
 	"res://presentation/cooperative_world.gd": "builds the marks (build), records a stand spot's own mark (record), and holds the default hooks",
 	"res://presentation/long_way_home_world.gd": "every window goal's cradle carries its owner's mark (_marks_goal)",
 	"res://presentation/tide_world.gd": "only the harbour lantern's cradle carries its owner's mark (_marks_goal)",
-	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); marks keep off the notch (keep_clear)",
+	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); the ladder top's mark steps east of a bell frame that hides it (_mark_stair); marks keep off the notch (keep_clear)",
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
 const PAIR_TAG_OVERRIDES := {

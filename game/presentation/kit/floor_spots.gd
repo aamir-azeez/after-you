@@ -80,7 +80,7 @@ static func scenery(view: Dictionary, world: Object, handoff_reach: float) -> Ar
 ## The nearest clear spot `size` across (x and z) to the first of
 ## `spec.ends` that has one. spec: {size: Vector2, ends: Array of Vector3,
 ## surfaces: Array of floor ids also allowed, on_crossing: bool (the crossing
-## under a place may hold it), gap, step, rings}. Returns {at (floor point of
+## under a place may hold it), gap, step, rings, fine (sixteen directions, not eight)}. Returns {at (floor point of
 ## its centre), rect, clash (Array of what it runs into; empty when clear)}.
 static func find(spec: Dictionary, floors: Array, things: Array, taken: Array) -> Dictionary:
 	var size: Vector2 = spec.size
@@ -102,7 +102,7 @@ static func find(spec: Dictionary, floors: Array, things: Array, taken: Array) -
 		for id: String in surfaces:
 			for f: Dictionary in floors:
 				if f.id == id and not f.crossing and f not in home: home.append(f)
-		for offset: Vector2 in offsets(step, rings):
+		for offset: Vector2 in offsets(step, rings, bool(spec.get("fine", false))):
 			var centre := flat(at) + offset
 			var rect := Rect2(centre - size * 0.5, size)
 			var y := at.y
@@ -143,12 +143,23 @@ static func near(thing: Dictionary, at: Vector2, reach: float) -> bool:
 	return (thing.centre as Vector2).distance_to(at) <= reach + float(thing.radius)
 
 ## Its place, then rings of `step` in eight directions, nearest first.
-static func offsets(step: float, rings: int) -> Array[Vector2]:
+## With `fine`, eight more directions between those, a ring's own distance
+## out, and every offset in order of its true distance.
+static func offsets(step: float, rings: int, fine: bool = false) -> Array[Vector2]:
 	var found: Array[Vector2] = [Vector2.ZERO]
 	for ring in range(1, rings + 1):
 		for direction: Vector2 in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN, Vector2(1, -1), Vector2(-1, -1), Vector2(1, 1), Vector2(-1, 1)]:
 			found.append(direction * step * float(ring))
-	return found
+		if fine:
+			for direction: Vector2 in [Vector2(2, 1), Vector2(-2, 1), Vector2(2, -1), Vector2(-2, -1), Vector2(1, 2), Vector2(-1, 2), Vector2(1, -2), Vector2(-1, -2)]:
+				found.append(direction.normalized() * step * float(ring))
+	if not fine: return found
+	# Truly nearest first (a diagonal lies farther out than its ring), ties in list order.
+	var order := range(found.size())
+	order.sort_custom(func(a: int, b: int) -> bool: return found[a].length() < found[b].length() - 0.000001 or (absf(found[a].length() - found[b].length()) <= 0.000001 and a < b))
+	var sorted: Array[Vector2] = []
+	for index: int in order: sorted.append(found[index])
+	return sorted
 
 static func flat(at: Vector3) -> Vector2:
 	return Vector2(at.x, at.z)

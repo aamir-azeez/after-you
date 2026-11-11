@@ -62,6 +62,12 @@ var _stair_marks: Dictionary = {}
 func _mark_stair(stair: Dictionary) -> Dictionary:
 	return _stair_marks.get(stair.id, super._mark_stair(stair))
 
+## A stage's bell, around its centre: its base, its frame and the floor its
+## frame and bell hide from the camera behind them.
+const BELL_SHADE := Rect2(-0.53, -1.6, 1.06, 1.94)
+## The shown stage's goal (its bell).
+var _shown_goal: Dictionary = {}
+
 ## Marks keep clear of the notch rim and its hatch, which lie at their height.
 func _init() -> void:
 	owner_marks.keep_clear(Rect2(Vector2(NOTCH[0], NOTCH[1]) / 100.0, Vector2(NOTCH[2] - NOTCH[0], NOTCH[3] - NOTCH[1]) / 100.0))
@@ -79,6 +85,7 @@ func apply_graphics_quality(quality: String) -> void:
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
+	_shown_goal = stage.get("goal", {})
 	_folds.clear()
 	_stair_marks.clear()
 	_rope_rails.clear()
@@ -394,7 +401,13 @@ func _build_ladder(stair: Dictionary) -> void:
 	terrain.add_child(_ladder_roll)
 	var roll := cylinder(0.1, width + 0.04, TIMBER.lightened(0.1), Vector3.ZERO, _ladder_roll)
 	roll.rotation.x = PI / 2.0
-	_stair_marks[stair.id] = {"anchor": low, "away": Vector3.LEFT, "kind": &"ladder", "head": high + Vector3(0.18, 0, -0.36)}
+	# Its top: beside the roll, or just east of the bell frame when the
+	# stage's bell stands over the ladder's top and hides the floor there.
+	var head := high + Vector3(0.18, 0, -0.36)
+	if _shown_goal.has("position_cm"):
+		var shade := Rect2(BELL_SHADE.position + Vector2(float(_shown_goal.position_cm[0]), float(_shown_goal.position_cm[1])) / 100.0, BELL_SHADE.size)
+		if shade.grow(OwnerMark.REACH).has_point(Vector2(head.x, head.z)): head.x = shade.end.x + OwnerMark.REACH + OwnerMark.CLEAR
+	_stair_marks[stair.id] = {"anchor": low, "away": Vector3.LEFT, "kind": &"ladder", "head": head}
 
 func _build_gate_links(view: Dictionary) -> void:
 	var cliff := _surface_height("cliff")
