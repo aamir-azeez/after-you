@@ -22,7 +22,8 @@ extends RefCounted
 ##   floor letters, stand spots and tags stay on top of it.
 ## - Reduce motion: no trail at all.
 ## - The same walk makes the same marks: a mark is dropped each time the pip
-##   has walked one spacing (the recipe's interval at SPACING_SPEED), at the
+##   has walked one spacing (LIVE_MARKS live behind a pip walking at
+##   WALK_SPEED over a mark's life), at the
 ##   exact point along its recorded path (SpiritVisual.travel_target, the
 ##   world's tick positions, not the eased drawing), whatever the frame rate, and
 ##   its look (side, turn, drift, colour) comes from an integer hash of its
@@ -63,10 +64,10 @@ const CLOCK := &"trail_clock"
 const PIP_WIDTH := Look.HEAD_HALF.x * 2.0
 const MAX_MARKS := 6
 const OPACITY := 0.6
-## The speed that turns a recipe's interval into a spacing: the board's
-## walking row, about four marks live behind a pip walking at WALK_SPEED, a
-## short dotted line (never more than MAX_MARKS).
-const SPACING_SPEED := 1.15
+## How many marks show behind a pip walking at WALK_SPEED: the board's
+## walking row, a short dotted line (never more than MAX_MARKS). A trail's
+## spacing comes from its life, so every trail keeps this many.
+const LIVE_MARKS := 4
 ## Metres above the floor the pip stands on: over the floor's lines (6 mm),
 ## under the pair tags (9.5 mm), stand spots and pads.
 const LIFT := 0.0085
@@ -104,8 +105,7 @@ const DEFAULTS := {
 	"width": 0.24,
 	## The two colours a mark picks between.
 	"colors": [Color("af895a"), Color("d3a66c")],
-	## Seconds between marks at walking speed, and a mark's life (seconds).
-	"interval": 0.4,
+	## A mark's life (seconds).
 	"life": 0.8,
 	## How far a mark drifts over the floor (pip widths a second) and turns
 	## (degrees a second).
@@ -200,6 +200,14 @@ static func mesh(made: Dictionary) -> Mesh:
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = one.vertices
 		arrays[Mesh.ARRAY_NORMAL] = one.normals
+		# Each vertex's shade (kit/flat_shapes.gd): a darker edge, so a pale
+		# mark still reads on a pale floor.
+		var colors := PackedColorArray()
+		var shades: PackedFloat32Array = one.get("shades", PackedFloat32Array())
+		for index in range((one.vertices as PackedVector3Array).size()):
+			var shade := shades[index] if index < shades.size() else 1.0
+			colors.append(Color(shade, shade, shade))
+		arrays[Mesh.ARRAY_COLOR] = colors
 		arrays[Mesh.ARRAY_INDEX] = one.indices
 		var made_mesh := ArrayMesh.new()
 		made_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
@@ -270,7 +278,7 @@ class Walk:
 		node.visible = true
 
 	static func _spacing(wanted: Dictionary) -> float:
-		return maxf(0.05, float(wanted.interval) * SPACING_SPEED)
+		return maxf(0.05, WALK_SPEED * float(wanted.life) / LIVE_MARKS)
 
 	static func mark_look(wanted: Dictionary, count: int, pip_seed: int) -> Dictionary:
 		var draws := FallEffect.fall_draws(count, 0, pip_seed)
