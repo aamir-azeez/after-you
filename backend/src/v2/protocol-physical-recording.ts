@@ -128,7 +128,7 @@ export function checkLongTurnBounds(shape: Readonly<LongTurnShape>, maxBranches:
   if (!Number.isSafeInteger(maxBranches) || (maxBranches as number) < 1) throw new Error("turn_limits need max_branches");
   // Every branch held, played to its end, beside the room row (the last checkpoint) and, in the snapshot, a photo on every turn.
   const history = (maxBranches as number) * rows.branch + rows.checkpoint + ROW_ENVELOPE_BYTES;
-  const snapshot = (maxBranches as number) * escaped.branch + escaped.checkpoint + ROW_ENVELOPE_BYTES;
+  const snapshot = (maxBranches as number) * escaped.branch + escaped.checkpoint + ESCAPED_REST * ROW_ENVELOPE_BYTES;
   const photos = Math.min(archives.max_photos, (maxBranches as number) * 2 * shape.stages) * archives.photo_row_bytes;
   if (history > archives.replay_archive_bytes || snapshot + photos + ARCHIVE_SMALL_TABLES_BYTES > archives.room_archive_bytes) throw new Error("max_branches outgrow the room archive bounds");
 }

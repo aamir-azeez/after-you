@@ -124,7 +124,9 @@ class Rules:
                          "pair: keys + a + b + checkpoint(shape.stages), branch };",
                          "if (rows.pair + ROW_ENVELOPE_BYTES > MAX_ROW_BYTES)",
                          "const history = (maxBranches as number) * rows.branch + rows.checkpoint + ROW_ENVELOPE_BYTES;",
-                         "const snapshot = (maxBranches as number) * escaped.branch + escaped.checkpoint + ROW_ENVELOPE_BYTES;",
+                         "const snapshot = (maxBranches as number) * escaped.branch + escaped.checkpoint + ESCAPED_REST * ROW_ENVELOPE_BYTES;",
+                         "return widestRecordingBytes(rules, ticks, idBytes) + maxActionEntries(rules, ticks) * ESCAPED_ENTRY_BYTES + (Math.floor(ticks / 30) + 1) * ESCAPED_CHECK_BYTES +",
+                         "const record = escaped ? escapedRecordingBytes : widestRecordingBytes, rest = escaped ? ESCAPED_REST : 1;",
                          "const photos = Math.min(archives.max_photos, (maxBranches as number) * 2 * shape.stages) * archives.photo_row_bytes;",
                          "if (history > archives.replay_archive_bytes || snapshot + photos + ARCHIVE_SMALL_TABLES_BYTES > archives.room_archive_bytes)",
                          "const ESCAPED_ENTRY_BYTES = 8, ESCAPED_CHECK_BYTES = 6, ESCAPED_REST = 2;",
@@ -179,7 +181,7 @@ class Rules:
         best = 0
         for count in range(1, 33):
             history = count * rows["branch"] + rows["checkpoint"] + self.envelope_bytes
-            snapshot = count * escaped["branch"] + escaped["checkpoint"] + self.envelope_bytes
+            snapshot = count * escaped["branch"] + escaped["checkpoint"] + 2 * self.envelope_bytes
             photos = min(self.max_photos, count * 2 * shape.stages) * self.photo_row_bytes
             if history > self.replay_archive_bytes or snapshot + photos + self.small_tables > self.room_archive_bytes:
                 break
