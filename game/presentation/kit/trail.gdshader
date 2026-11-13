@@ -2,7 +2,7 @@ shader_type spatial;
 // A pip's trail marks (kit/trail_kit.gd): one MultiMesh per pip, a mark per
 // instance, all drawn with this one shared material. Each mark lies flat on
 // the floor where the pip passed (in a picture of a pip it stands up beside
-// it), turns and drifts a little and fades out over its life. Placed by the
+// it), turns and drifts a little, holds and then fades out by the end of its life. Placed by the
 // instance's transform; the instance's custom data holds its birth (seconds
 // of the pip's own trail clock), its first turn, its drift's heading and
 // which of the two colours it takes. The clock is an instance uniform written
@@ -24,6 +24,7 @@ instance uniform vec3 trail_color_a = vec3(1.0);
 instance uniform vec3 trail_color_b = vec3(1.0);
 instance uniform float veil = 1.0;
 
+const float HOLD = 0.4;
 varying float fade;
 varying vec3 tint;
 
@@ -31,7 +32,9 @@ void vertex() {
 	float age = trail_clock - INSTANCE_CUSTOM.x;
 	float alive = age >= 0.0 && age <= trail_life ? 1.0 : 0.0;
 	age = max(age, 0.0);
-	fade = alive * (1.0 - clamp(age / trail_life, 0.0, 1.0));
+	// Full strength for the first HOLD of its life, then fading to nothing,
+	// so a short row of marks reads behind a walking pip.
+	fade = alive * (1.0 - smoothstep(HOLD, 1.0, age / trail_life));
 	// Half the marks turn one way, half the other (from the drift's heading).
 	float turn_way = sin(INSTANCE_CUSTOM.z * 7.0) < 0.0 ? -1.0 : 1.0;
 	float a = INSTANCE_CUSTOM.y + turn_way * trail_spin * age;
