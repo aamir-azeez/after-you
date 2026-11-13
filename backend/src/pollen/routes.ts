@@ -2,7 +2,7 @@ import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, c
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
 import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
-import { FRUITS_OFFERED_TAG, ITEM_ID_PATTERN, OFFERED_TAG } from "./catalog";
+import { ITEM_ID_PATTERN, featuredCodeFor, offeredTagFor } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
@@ -121,15 +121,24 @@ export function pollenWanted(request: Request): boolean { return request.headers
 /** Earning works only with the flag on and a usable POLLEN_SECRET (no turn is paid without its bloom roll). */
 export function pollenEarning(env: ServerVars): boolean { return earningOn(env); }
 /** The capability field for GET /v2/capabilities: empty unless the client asked while earning works. */
-export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_offered_tag?: string; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number; pollen_bundles_version?: number; pollen_app_store_bundles_version?: number;
+export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_offered_tag?: string; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_featured_code?: number; pollen_grant_version?: number; pollen_bundles_version?: number; pollen_app_store_bundles_version?: number;
   pollen_fruits_version?: number; pollen_fruit_packs_version?: number; pollen_app_store_fruit_packs_version?: number } {
   if (!pollenWanted(request) || !pollenEarning(env)) return {};
   const shop = pollenShopClient(request), fruits = shop && fruitsOn(env);
-  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION, pollen_offered_tag: fruits ? FRUITS_OFFERED_TAG : OFFERED_TAG } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
+  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION, pollen_offered_tag: offeredTagFor(env, fruits) } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION, ...featuredCapability(env) } : {}),
     ...(shop && itemBloomsOn(env) ? { pollen_item_blooms_version: ITEM_BLOOMS_VERSION } : {}), ...(grantOn(env) ? { pollen_grant_version: GRANT_VERSION } : {}),
     ...(shop && bundlesOn(env) ? { pollen_bundles_version: BUNDLES_VERSION } : {}), ...(shop && appStoreBundlesOn(env) ? { pollen_app_store_bundles_version: APP_STORE_BUNDLES_VERSION } : {}),
     ...(fruits ? { pollen_fruits_version: FRUITS_VERSION } : {}), ...(shop && fruitPacksOn(env) ? { pollen_fruit_packs_version: FRUIT_PACKS_VERSION } : {}),
     ...(shop && appStoreFruitPacksOn(env) ? { pollen_app_store_fruit_packs_version: FRUIT_PACKS_VERSION } : {}) };
+}
+/**
+ * The shop's featured item (CONFIG `cosmetics_featured`, pollen/catalog.ts featuredItem) by its code, beside the shop's
+ * capability: no field when CONFIG names none or an item not sold for Pollen now, and the phone keeps its own weekly
+ * pick. Read from CONFIG with the capabilities the phone reads anyway, so changing it costs no request.
+ */
+function featuredCapability(env: ServerVars): { pollen_featured_code?: number } {
+  const code = featuredCodeFor(env);
+  return code === undefined ? {} : { pollen_featured_code: code };
 }
 /** Whether this request's wallet read carries duel energy (features.ts energyOn): any app that asks for Pollen; older apps ignore it. */
 export function energyFor(env: ServerVars): boolean { return energyOn(env); }

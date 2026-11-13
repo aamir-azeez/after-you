@@ -37,7 +37,7 @@ function bytes(roll: number, pick = 0): Uint8Array {
 }
 /** Rates where every free-chapter bank roll drops `tier`. */
 const always = (tier: string): Rates => checkedRates({ ...rawRates, item_blooms: { modulus: 1_000_000, tiers: [{ tier, below: 1_000_000 }] } });
-const DROPS: ItemDrops = { owned: ownedItemIds, give: addDroppedItem };
+const DROPS: ItemDrops = { owned: ownedItemIds, give: addDroppedItem, catalog: CATALOG };
 const stub = () => env.PLAYERS.getByName("item-blooms-" + serial);
 const items = (storage: DurableObjectStorage) => storage.sql.exec<{ item_id: string; source: string }>("SELECT item_id, source FROM pollen_items ORDER BY item_id").toArray();
 
@@ -114,7 +114,7 @@ describe("what an item bloom gives", () => {
   });
   it("never drops an earned-only item, an item not released or a reaction pack", () => {
     const wide = catalogWith(items => {
-      items.unreleased_daisy = { slot: "hat", tier: "common", unlock: "", set: "", released: false };
+      items.unreleased_daisy = { code: 201, slot: "hat", tier: "common", unlock: "", set: "", released: false };
     });
     expect(droppable("common", wide)).toEqual(["daisy", "seashell"]);
     expect(droppable("earned", wide)).toEqual([]);
@@ -124,7 +124,7 @@ describe("what an item bloom gives", () => {
     for (const pack of Object.keys(wide.packs)) expect(all).not.toContain(pack);
   });
 });
-function catalogWith(change: (items: Record<string, { slot: string; tier: string; unlock: string; set: string; released: boolean }>, catalog: Record<string, unknown>) => void): Catalog {
+function catalogWith(change: (items: Record<string, { code: number; slot: string; tier: string; unlock: string; set: string; released: boolean }>, catalog: Record<string, unknown>) => void): Catalog {
   const copy = JSON.parse(JSON.stringify(CATALOG));
   change(copy.items, copy);
   return checkedCatalog(copy);

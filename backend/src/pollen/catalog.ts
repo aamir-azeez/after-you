@@ -2,16 +2,21 @@ import { isObject } from "../protocol";
 import raw from "./catalog.json";
 import { PACK_FACES } from "../v2/end-reactions";
 import { CURRENCIES, type Currency } from "./currency";
+import { COSMETIC_CODE_MAX, serverConfig, type ServerConfig } from "../config";
+import type { ServerVars } from "../flags";
 
 /**
  * The wardrobe catalogue the server sells from (POLLEN-RULES.md "Prices"), as data: catalog.json
  * holds every item, this file checks it once at module load. A tier sets an item's price; no item
- * stores its own. `released` here, not the game's own copy, decides what can be bought, so the
- * owner offers an item by changing this file and turning POLLEN_SHOP on.
- * test/spend.test.ts pins every item's facts except `released` to the game's
- * game/tests/fixtures/golden/cosmetic_manifest.json.
+ * stores its own. The server, not the game's own copy, decides what is released and so what can be bought:
+ * an item is released when this file says `released: true` (every item built before the release list) or when
+ * CONFIG's `cosmetics_released` lists its code (catalogFor below), so the owner releases an item built into the
+ * app with a one-line CONFIG edit. test/spend.test.ts pins every item's facts except `released` to the game's
+ * game/tests/fixtures/golden/cosmetic_manifest.json, and every code to game/tests/fixtures/cosmetic_codes.json.
  *
  * - items: the pip cosmetics, keyed by id; each worn in one slot. An "earned" tier is never sold.
+ * - code: the item's permanent number (1 to COSMETIC_CODE_MAX, one per item). It never changes and is never
+ *   given to another item, even once an item is retired; CONFIG names items by it.
  * - tier_currency: the tiers priced in Fruits (the Orchard: sprig, fruit_small, fruit_hat, fruit_body); every other
  *   tier is Pollen. An Orchard item is sold, offered and drawn only while Fruits are on (the `fruits` argument below),
  *   and never drops from an item bloom (item-blooms.ts takes Pollen tiers only).
@@ -21,7 +26,7 @@ import { CURRENCIES, type Currency } from "./currency";
  *   (v2/end-reactions.ts PACK_FACES) belongs to exactly one pack, and a pack holds nothing else, so the
  *   face a turn may carry and the pack that owns it can never drift apart.
  */
-export type CatalogItem = { slot: string; tier: string; unlock: string; set: string; released: boolean };
+export type CatalogItem = { code: number; slot: string; tier: string; unlock: string; set: string; released: boolean };
 export type CatalogPack = { released: boolean; faces: readonly string[] };
 export type Catalog = {
   schema_version: 1; slots: readonly string[]; tier_prices: Readonly<Record<string, number>>; tier_currency: Readonly<Record<string, "fruits">>;
@@ -50,10 +55,12 @@ export function checkedCatalog(value: unknown): Catalog {
   if (!count(v.set_discount_percent, 0, 99) || !isObject(rounding) || !exact(rounding, CURRENCIES) || !CURRENCIES.every(currency => count(rounding[currency], 1)) || !count(v.set_min_missing, 2) || !count(v.pack_price, 1)) bad("set or pack rules");
   if (!isObject(v.items) || !isObject(v.packs)) bad("items");
   const slots = v.slots as string[], prices = v.tier_prices as Record<string, number>, currencies = v.tier_currency as Record<string, string>;
-  const setCurrency = new Map<string, string>();
+  const setCurrency = new Map<string, string>(), codes = new Set<number>();
   for (const [id, item] of Object.entries(v.items as Record<string, unknown>)) {
-    if (!ITEM_ID_PATTERN.test(id) || !isObject(item) || !exact(item, ["slot", "tier", "unlock", "set", "released"])) bad(id);
+    if (!ITEM_ID_PATTERN.test(id) || !isObject(item) || !exact(item, ["code", "slot", "tier", "unlock", "set", "released"])) bad(id);
     const entry = item as Record<string, unknown>;
+    if (!count(entry.code, 1, COSMETIC_CODE_MAX) || codes.has(entry.code)) bad(`${id} code`);
+    codes.add(entry.code as number);
     if (!slots.includes(entry.slot as string) || typeof entry.tier !== "string" || !Object.hasOwn(prices, entry.tier) || typeof entry.released !== "boolean") bad(id);
     if (entry.unlock !== "" && !(typeof entry.unlock === "string" && LEVEL_PATTERN.test(entry.unlock))) bad(id);
     if (entry.set !== "" && !(typeof entry.set === "string" && ITEM_ID_PATTERN.test(entry.set))) bad(id);
@@ -136,6 +143,54 @@ export function offeredTag(catalog: Catalog = CATALOG, fruits = false): string {
 export const OFFERED_TAG = offeredTag();
 /** The tag while Fruits are on. */
 export const FRUITS_OFFERED_TAG = offeredTag(CATALOG, true);
+
+/**
+ * The catalogue as released now: `base` with every item whose code CONFIG's `cosmetics_released` lists marked released.
+ * Codes `base` lacks are ignored (the deploy runners refuse them). With nothing new released the answer is `base`
+ * itself, so prices, offers and the offered tag stay exactly as built. Pure; the Worker and the Player each work it out
+ * from their own env (catalogFor), never passing it between them.
+ */
+export function releasedCatalog(released: ReadonlySet<number>, base: Catalog = CATALOG): Catalog {
+  const ids = Object.keys(base.items).filter(id => !base.items[id].released && released.has(base.items[id].code));
+  if (!ids.length) return base;
+  const items = { ...base.items };
+  for (const id of ids) items[id] = Object.freeze({ ...items[id], released: true });
+  return Object.freeze({ ...base, items: Object.freeze(items) });
+}
+/** One answer per parsed CONFIG (config.ts parses CONFIG once per isolate and value), so a request does no work twice. */
+type Released = { catalog: Catalog; tags: [string, string]; featured: number | undefined };
+const released = new WeakMap<ServerConfig, Released>();
+function releasedFor(env: ServerVars): Released {
+  const config = serverConfig(env);
+  let found = released.get(config);
+  if (!found) {
+    const catalog = releasedCatalog(config.cosmetics_released), featured = featuredItem(env, catalog);
+    found = { catalog, tags: catalog === CATALOG ? [OFFERED_TAG, FRUITS_OFFERED_TAG] : [offeredTag(catalog), offeredTag(catalog, true)],
+      featured: featured === undefined ? undefined : catalog.items[featured].code };
+    released.set(config, found);
+  }
+  return found;
+}
+/** The catalogue this request sells, offers and drops from: catalog.json with CONFIG's released codes. */
+export function catalogFor(env: ServerVars): Catalog { return releasedFor(env).catalog; }
+/** offeredTag of catalogFor(env), worked out once per CONFIG. */
+export function offeredTagFor(env: ServerVars, fruits: boolean): string { return releasedFor(env).tags[fruits ? 1 : 0]; }
+/** The code of featuredItem(env), worked out once per CONFIG, or undefined. */
+export function featuredCodeFor(env: ServerVars): number | undefined { return releasedFor(env).featured; }
+/** The item with this code, or undefined. */
+export function itemOfCode(code: number, catalog: Catalog = CATALOG): string | undefined {
+  return Object.keys(catalog.items).find(id => catalog.items[id].code === code);
+}
+/**
+ * The id of the item CONFIG's `cosmetics_featured` names, for the shop's featured place, or undefined when it names
+ * none, an unknown code, or an item that is not released or not sold for Pollen now (the shelf of the week is Pollen
+ * only). The phone then shows its built-in pick (game/services/featured_shelf.gd).
+ */
+export function featuredItem(env: ServerVars, catalog: Catalog = catalogFor(env)): string | undefined {
+  const code = serverConfig(env).cosmetics_featured;
+  const id = code === null ? undefined : itemOfCode(code, catalog);
+  return id !== undefined && sold(id, catalog) && itemCurrency(id, catalog) === "pollen" ? id : undefined;
+}
 export function offeredPacks(catalog: Catalog = CATALOG): string[] {
   return Object.keys(catalog.packs).filter(id => catalog.packs[id].released);
 }

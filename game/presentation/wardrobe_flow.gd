@@ -147,6 +147,8 @@ func _client() -> RefCounted:
 	# Main's one client, shared with the Fruit spends so one request at a time holds across them.
 	if client == null: client = host.wardrobe_client() if host.has_method("wardrobe_client") else WardrobeClient.new(host.api, host._names_scope)
 	if not client.changed.is_connected(_redraw): client.changed.connect(_redraw)
+	# The server's featured item comes with the capabilities read, which can land while the page is open.
+	if client.store != null and client.store.has_signal("featured_changed") and not client.store.featured_changed.is_connected(_redraw): client.store.featured_changed.connect(_redraw)
 	# The Orchard and the chip's Fruit half follow the Fruits its client keeps (a pack bought, Fruits turned into Pollen).
 	if client.fruits != null and not client.fruits.changed.is_connected(_fruits_changed): client.fruits.changed.connect(_fruits_changed)
 	return client
@@ -513,7 +515,8 @@ func model() -> Dictionary:
 		items.append(entry)
 		# The shelf of the week is Pollen only.
 		if sold and not fruit: (by_tier.get_or_add(entry.tier, []) as Array).append(id)
-	var featured: Array = FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier).map(func(slot: Dictionary) -> String: return slot.id) if selling else []
+	var offline: bool = not _client().online()
+	var featured: Array = FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier, "" if offline else _server_featured()).map(func(slot: Dictionary) -> String: return slot.id) if selling else []
 	var sets: Array = _orchard_sets(view, owned, offered, look) if fruits_on else []
 	# All items shows with the shop, and without it while an earned item is listed and not owned.
 	var all_items: bool = selling or items.any(func(entry: Dictionary) -> bool: return entry.tier == Catalog.EARNED and not bool(entry.owned))
@@ -537,7 +540,6 @@ func model() -> Dictionary:
 	elif not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
 	# Owned ends with Get more on every slot while the shop has anything the player does not own (show_more picks where it leads).
 	var more := selling and tab == "owned" and not _buyable_slots(items).is_empty()
-	var offline: bool = not _client().online()
 	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "fruits": PollenChip.fruits_for(_client().scope(), _surfaces(), _client().fruits), "status": _status, "retry": _retry, "shop": selling, "all_items": all_items, "bundles": bundles() and not offline, "tab": tab, "kind": kind, "kinds": kinds,
 		"buy_offline": selling and offline, "note": PlayerCopy.WARDROBE_OFFLINE_NOTE if offline and not view.is_empty() else "",
 		"orchard": fruits_on, "sets": sets, "fruits_blocked": fruits_on and _fruit_balance() < 0,
@@ -584,6 +586,13 @@ func _fruits_changed(_server: String, _owner: String) -> void:
 	(func() -> void:
 		_fruits_redraw_queued = false
 		_redraw()).call_deferred()
+
+## The id of the item the server features this launch (services/wardrobe.gd
+## featured_code), or "" for none or a code this build has no item for. The
+## shelf takes it only when it sells it (services/featured_shelf.gd).
+func _server_featured() -> String:
+	var scope: Dictionary = _client().scope()
+	return "" if scope.is_empty() else Catalog.of_code(_client().store.featured_code(str(scope.server), str(scope.owner)))
 
 func _view() -> Dictionary:
 	var scope: Dictionary = _client().scope()

@@ -2,14 +2,26 @@ extends SceneTree
 ## The pip cosmetic catalog (content/cosmetics/, services/cosmetic_catalog.gd):
 ## every descriptor is valid data, prices come only from tiers, earned items
 ## are never sold, a Special names a real chapter to clear, the Orchard is
-## sold in Fruits with the server's slots, tiers and set, and in this phase
-## nothing is released, so only the default look shows.
+## sold in Fruits with the server's slots, tiers and set, every item keeps the
+## permanent code pinned in tests/fixtures/cosmetic_codes.json, and an item
+## built unreleased shows only while the server offers it, so with no server
+## answer only the default look shows.
 const Index = preload("res://content/cosmetics/index.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const OwnLook = preload("res://services/own_look.gd")
 const Outfit = preload("res://services/outfit.gd")
+const Typed = preload("res://services/typed_values.gd")
+const CODES := "res://tests/fixtures/cosmetic_codes.json"
+## Codes that have shipped, block by block, copied here when a block first
+## ships and never edited after: the pinned file can't change one of them
+## without this list changing too. The first catalogue is 1 to 18 in shop
+## order; the hats (200s) and skins (300s) add their blocks when they ship.
+const SHIPPED := {
+	"daisy": 1, "seashell": 2, "straw_hat": 3, "tide": 4, "lantern": 5, "lighthouse_lamp": 6, "gold_leaf": 7, "every_hard": 8, "top_ten_ribbon": 9,
+	"apple_hood": 10, "blueberry_hood": 11, "blossom_crown": 12, "orchard_skin": 13, "apple_leaf": 14, "sprig_coral": 15, "sprig_plum": 16, "sprig_sun": 17, "sprig_sky": 18,
+}
 
 var checks := 0
 var failures := 0
@@ -29,6 +41,8 @@ func _run() -> void:
 	_prices()
 	_rules()
 	_phase_one()
+	_codes()
+	_server_release()
 	print("COSMETIC CATALOG: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -106,3 +120,44 @@ func _phase_one() -> void:
 	_check(OwnLook.outfit().is_empty() and OwnLook.color() == Color("f4c38d"), "The player's own pip is the default peach look")
 	for id: String in Catalog.ids():
 		_check(Outfit.of(id).is_empty(), "%s is not worn by a player's pip while unreleased" % id)
+
+## Every item's code is a whole number in range, given once, and the one pinned
+## for it. The pinned list only grows: a code is never changed, removed or
+## given to another item (backend/test/cosmetic-release.test.ts reads the same file).
+func _codes() -> void:
+	var pinned: Variant = JSON.parse_string(FileAccess.get_file_as_string(CODES))
+	if not _check(pinned is Dictionary and pinned.get("codes") is Dictionary, "The pinned codes file reads"): return
+	var pins: Dictionary = pinned.codes
+	var owners := {}
+	for id: Variant in pins:
+		var code: Variant = pins[id]
+		_check(id is String and Catalog.valid_code(code), "The pinned code of %s is a whole number from 1 to %d" % [id, Index.CODE_MAX])
+		_check(not owners.has(int(code)), "Code %s is pinned once, not for %s and %s" % [code, owners.get(int(code), ""), id])
+		owners[int(code)] = id
+	var seen := {}
+	for file: Script in Index.ITEMS:
+		var id := str(file.DATA.get("id", ""))
+		var code: Variant = file.DATA.get("code")
+		_check(code is int and Catalog.valid_code(code), "%s has a whole number code from 1 to %d" % [id, Index.CODE_MAX])
+		_check(not seen.has(code), "%s and %s share the code %s" % [seen.get(code, ""), id, code])
+		seen[code] = id
+		_check(pins.has(id), "%s's code is pinned in %s: add its line there" % [id, CODES])
+		_check(Typed.equal(pins.get(id), code), "%s keeps its pinned code %s (a code never changes)" % [id, pins.get(id)])
+		_check(Catalog.code(id) == code and Catalog.of_code(code) == id, "%s and its code %s find each other" % [id, code])
+	for id: String in SHIPPED: _check(Typed.equal(pins.get(id), SHIPPED[id]), "A shipped code stays pinned as it shipped: %s is %d" % [id, SHIPPED[id]])
+	_check(Catalog.code("nothing") == 0 and Catalog.of_code(0) == "" and Catalog.of_code(998) == "", "An unknown item has no code and an unused code no item")
+	for bad: Variant in [0, -1, 1000, 1.5, "3", null, INF, NAN]: _check(not Catalog.valid_code(bad), "%s is not an item code" % [bad])
+	for good: Variant in [1, 18, 200, 299.0, 300, 399, 999]: _check(Catalog.valid_code(good), "%s is an item code (the hats take 200 to 299, the skins 300 to 399)" % [good])
+
+## An item built unreleased stays off every pip and list until the server
+## offers it, and goes again when the server stops; this build shows no item
+## on its own (no descriptor says released: true).
+func _server_release() -> void:
+	for file: Script in Index.ITEMS: _check(not file.DATA.get("released", false), "%s is built unreleased: the server releases it" % file.DATA.id)
+	Catalog.set_offered(["tide", "nothing", 7])
+	_check(Catalog.released("tide") and not Outfit.of("tide").is_empty(), "An item the server offers is released and can be worn")
+	_check(not Catalog.released("daisy") and Outfit.of("daisy").is_empty(), "An item the server does not offer stays hidden")
+	_check(Catalog.released_ids() == ["tide"], "Only offered items this build knows are released: %s" % [Catalog.released_ids()])
+	Catalog.set_offered([])
+	_check(Catalog.released_ids().is_empty() and Outfit.of("tide").is_empty(), "With no server list, only items built as released show (none)")
+

@@ -36,6 +36,7 @@
 	],
 	"items": {
 		"apple_hood": {
+			"code": 10,
 			"currency": "fruits",
 			"id": "apple_hood",
 			"price": 100,
@@ -47,6 +48,7 @@
 			"unlock": ""
 		},
 		"apple_leaf": {
+			"code": 14,
 			"currency": "fruits",
 			"id": "apple_leaf",
 			"price": 50,
@@ -69,6 +71,7 @@
 			"unlock": ""
 		},
 		"blossom_crown": {
+			"code": 12,
 			"currency": "fruits",
 			"id": "blossom_crown",
 			"price": 100,
@@ -91,6 +94,7 @@
 			"unlock": ""
 		},
 		"blueberry_hood": {
+			"code": 11,
 			"currency": "fruits",
 			"id": "blueberry_hood",
 			"price": 100,
@@ -102,6 +106,7 @@
 			"unlock": ""
 		},
 		"daisy": {
+			"code": 1,
 			"currency": "pollen",
 			"id": "daisy",
 			"price": 1000,
@@ -113,6 +118,7 @@
 			"unlock": ""
 		},
 		"every_hard": {
+			"code": 8,
 			"currency": "pollen",
 			"id": "every_hard",
 			"price": 0,
@@ -124,6 +130,7 @@
 			"unlock": ""
 		},
 		"gold_leaf": {
+			"code": 7,
 			"currency": "pollen",
 			"id": "gold_leaf",
 			"price": 0,
@@ -146,6 +153,7 @@
 			"unlock": ""
 		},
 		"lantern": {
+			"code": 5,
 			"currency": "pollen",
 			"id": "lantern",
 			"price": 50000,
@@ -168,6 +176,7 @@
 			"unlock": ""
 		},
 		"lighthouse_lamp": {
+			"code": 6,
 			"currency": "pollen",
 			"id": "lighthouse_lamp",
 			"price": 100000,
@@ -201,6 +210,7 @@
 			"unlock": ""
 		},
 		"orchard_skin": {
+			"code": 13,
 			"currency": "fruits",
 			"id": "orchard_skin",
 			"price": 200,
@@ -256,6 +266,7 @@
 			"unlock": ""
 		},
 		"seashell": {
+			"code": 2,
 			"currency": "pollen",
 			"id": "seashell",
 			"price": 1000,
@@ -311,6 +322,7 @@
 			"unlock": ""
 		},
 		"sprig_coral": {
+			"code": 15,
 			"currency": "fruits",
 			"id": "sprig_coral",
 			"price": 20,
@@ -322,6 +334,7 @@
 			"unlock": ""
 		},
 		"sprig_plum": {
+			"code": 16,
 			"currency": "fruits",
 			"id": "sprig_plum",
 			"price": 20,
@@ -333,6 +346,7 @@
 			"unlock": ""
 		},
 		"sprig_sky": {
+			"code": 18,
 			"currency": "fruits",
 			"id": "sprig_sky",
 			"price": 20,
@@ -344,6 +358,7 @@
 			"unlock": ""
 		},
 		"sprig_sun": {
+			"code": 17,
 			"currency": "fruits",
 			"id": "sprig_sun",
 			"price": 20,
@@ -355,6 +370,7 @@
 			"unlock": ""
 		},
 		"straw_hat": {
+			"code": 3,
 			"currency": "pollen",
 			"id": "straw_hat",
 			"price": 5000,
@@ -366,6 +382,7 @@
 			"unlock": ""
 		},
 		"tide": {
+			"code": 4,
 			"currency": "pollen",
 			"id": "tide",
 			"price": 20000,
@@ -377,6 +394,7 @@
 			"unlock": ""
 		},
 		"top_ten_ribbon": {
+			"code": 9,
 			"currency": "pollen",
 			"id": "top_ten_ribbon",
 			"price": 0,
