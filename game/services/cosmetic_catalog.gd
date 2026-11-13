@@ -22,6 +22,20 @@ static func has(id: String) -> bool:
 static func item(id: String) -> Dictionary:
 	return Index.data(id)
 
+## The item's permanent code (content/cosmetics/index.gd "code"), or 0 for an unknown item.
+static func code(id: String) -> int:
+	var value: Variant = Index.data(id).get("code", 0)
+	return value if value is int else 0
+
+## Whether a value (a server reply's number among them, which may come as a
+## float) is a whole item code from 1 to content/cosmetics/index.gd CODE_MAX.
+static func valid_code(value: Variant) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value)) and float(value) >= 1.0 and float(value) <= float(Index.CODE_MAX)
+
+## The id of the item with this code, or "" for a code this build has no item for.
+static func of_code(value: int) -> String:
+	return Index.id_of_code(value)
+
 ## The slot the item is worn in, or "" for none (unknown or not placed yet).
 static func slot(id: String) -> String:
 	var value := str(Index.data(id).get("slot", ""))
@@ -106,10 +120,6 @@ static func leaf_mode(id: String) -> String:
 ## The largest leaf size class a hat takes its way.
 static func leaf_max(id: String) -> String:
 	return str(Index.data(id).get("leaf_max", "tall"))
-
-## The item's permanent number, or 0 while it has none.
-static func code(id: String) -> int:
-	return int(Index.data(id).get("code", 0))
 
 ## The presentation/pip_wear/ script that dresses a pip in it, or "".
 static func art(id: String) -> String:

@@ -6,7 +6,9 @@ extends SceneTree
 ## - with the planned catalogue each Common and Uncommon shows every 4 weeks,
 ##   each Rare and Epic every 12 and each Special every 24;
 ## - a tier's order is fixed, a short tier shows each item once and an empty
-##   tier leaves its slot empty.
+##   tier leaves its slot empty;
+## - the server's featured item takes the top slot when the shelf sells it,
+##   without showing twice; anything else leaves the built-in shelf exactly.
 const Shelf = preload("res://services/featured_shelf.gd")
 
 var checks := 0
@@ -59,5 +61,20 @@ func _run() -> void:
 	_check(small.map(func(slot: Dictionary) -> String: return slot.id).size() == 4 and small[3].id == "lighthouse_lamp", "A short tier shows each of its items once, and week 3's top slot holds the Special")
 	_check(Shelf.shelf(1, {"common": ["daisy"]}).size() == 1, "An empty tier leaves its slots empty")
 	_check(Shelf.shelf(0, {}).is_empty(), "No items, no shelf")
+	_server_pick(catalogue)
 	print("AFTER YOU FEATURED SHELF: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
+
+func _server_pick(catalogue: Dictionary) -> void:
+	for week in range(12):
+		var built_in := Shelf.shelf(week, catalogue)
+		for missing: String in ["", "nothing", "fruit_hood"]: _check(Shelf.shelf(week, catalogue, missing) == built_in, "Week %d: a featured id the shelf does not sell (%s) leaves the built-in shelf" % [week, missing])
+		var pick := Shelf.shelf(week, catalogue, "u_05")
+		var ids: Array = pick.map(func(slot: Dictionary) -> String: return slot.id)
+		_check(pick.size() == 6 and pick[5] == {"id": "u_05", "tier": "uncommon", "top": true} and ids.count("u_05") == 1, "Week %d: the featured Uncommon takes the top slot, once: %s" % [week, ids])
+		_check(pick.slice(0, 3) == built_in.slice(0, 3) and pick.slice(3, 5).all(func(slot: Dictionary) -> bool: return slot.tier == "uncommon" and slot.id != "u_05"), "Week %d: the Commons stay and two other Uncommons fill their slots" % week)
+		var top := Shelf.shelf(week, catalogue, str(built_in[5].id))
+		_check(top == built_in, "Week %d: featuring this week's own top item changes nothing" % week)
+	var tiny := Shelf.shelf(0, {"common": ["daisy"]}, "daisy")
+	_check(tiny == [{"id": "daisy", "tier": "common", "top": true}], "A featured item that was the shelf's only Common stands alone in the top slot")
+

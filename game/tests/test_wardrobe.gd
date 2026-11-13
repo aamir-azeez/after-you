@@ -374,6 +374,18 @@ func _offered_tag_wiring() -> void:
 	api.capabilities = base.merged({"pollen_version": 1, "pollen_offered_tag": "0badf00d"})
 	_check(await session.load_capabilities(), "Capabilities load without the wardrobe")
 	_check(not store.needs_read(SERVER, ME), "With the wardrobe off nothing is read")
+	# The shop's featured item comes by code beside the shop's capability, and goes with it.
+	var heard := [0]
+	store.featured_changed.connect(func() -> void: heard[0] += 1)
+	api.capabilities = base.merged({"pollen_version": 1, "pollen_wardrobe_version": 1, "pollen_shop_version": 1, "pollen_offered_tag": "0badf00d", "pollen_featured_code": 4.0})
+	_check(await session.load_capabilities() and store.featured_code(SERVER, ME) == 4 and heard[0] == 1, "The capabilities read hands the featured code to the wardrobe, once")
+	_check(await session.load_capabilities() and heard[0] == 1, "The same code again changes nothing")
+	api.capabilities = base.merged({"pollen_version": 1, "pollen_wardrobe_version": 1, "pollen_featured_code": 4.0})
+	_check(await session.load_capabilities() and store.featured_code(SERVER, ME) == 0 and heard[0] == 2, "Without the shop there is no featured item")
+	for bad: Variant in [0.0, 1000.0, 4.5, "4", [4]]:
+		store.note_featured(SERVER, ME, bad)
+		_check(store.featured_code(SERVER, ME) == 0, "A featured code off the contract is none: %s" % [bad])
+	_check(Wardrobe.new(_path("tag-wiring")).featured_code(SERVER, ME) == 0, "The featured code is not kept past this launch")
 	Wardrobe.use_shared(null)
 	api.queue_free()
 	await process_frame

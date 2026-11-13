@@ -31,6 +31,7 @@ func _run() -> void:
 		var data := Index.data(id)
 		items[id] = {
 			"id": id,
+			"code": Catalog.code(id),
 			"slot": Catalog.slot(id),
 			"tier": str(data.tier),
 			"price": Catalog.price(id),

@@ -5,7 +5,9 @@ import manifest from "../../game/tests/fixtures/golden/cosmetic_manifest.json";
 
 // The wardrobe's prices (POLLEN-RULES.md "Prices"): tiers, sets, owned pieces, the Special unlock and
 // a negative balance. A fixture catalogue stands in for items nobody has released yet.
-const item = (slot: string, tier: string, extra: Partial<{ unlock: string; set: string; released: boolean }> = {}) => ({ slot, tier, unlock: "", set: "", released: true, ...extra });
+// Each fixture item takes the next free code (codes are unique within a catalogue).
+let nextCode = 900;
+const item = (slot: string, tier: string, extra: Partial<{ unlock: string; set: string; released: boolean }> = {}) => ({ code: nextCode++, slot, tier, unlock: "", set: "", released: true, ...extra });
 const FIXTURE: Catalog = checkedCatalog({
   ...JSON.parse(JSON.stringify(CATALOG)),
   items: {

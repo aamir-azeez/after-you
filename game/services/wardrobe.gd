@@ -46,6 +46,11 @@ extends RefCounted
 ##   the other phone's change never replaces it. A pending look with an item
 ##   the server says is no longer owned goes too.
 ##
+## Beside the file, in memory only: the server's offered tag and featured item
+## code from its last capabilities read (featured_code; services/featured_shelf.gd
+## shows it), so a phone that has not reached the server this launch shows
+## the built-in shelf.
+##
 ## Every value read from the file or a server reply is checked; anything that
 ## fails is dropped. A file that cannot be read reads as empty, and the client
 ## asks the server again (services/wardrobe_client.gd, services/pollen_client.gd).
@@ -76,11 +81,15 @@ var _scopes: Dictionary = {}
 var _active := ""
 ## Scope key -> the server's offered tag from its last capabilities read (memory only).
 var _offered_tags: Dictionary = {}
+## Scope key -> the code of the shop's featured item from the last capabilities read (memory only).
+var _featured: Dictionary = {}
 ## () -> {server, owner} of the signed-in player, or {} (Main's _names_scope).
 var scope_source: Callable
 
 ## Emitted when the active scope's wardrobe changes (a new look, an item, a refresh).
 signal changed
+## Emitted when a scope's featured item code changes (an open Wardrobe redraws its shelf).
+signal featured_changed
 
 static func shared() -> RefCounted:
 	if _shared == null: _shared = load("res://services/wardrobe.gd").new()
@@ -277,6 +286,20 @@ func note_offered_tag(server: String, owner: String, value: Variant) -> void:
 	var key := scope_key(server, owner)
 	if valid_tag(value): _offered_tags[key] = value
 	else: _offered_tags.erase(key)
+
+## The server's featured item (capabilities `pollen_featured_code`): a whole
+## number from 1 to the highest item code; anything else, or none, is none.
+func note_featured(server: String, owner: String, value: Variant) -> void:
+	var key := scope_key(server, owner)
+	var code := int(value) if Catalog.valid_code(value) else 0
+	if code == int(_featured.get(key, 0)): return
+	if code: _featured[key] = code
+	else: _featured.erase(key)
+	featured_changed.emit()
+
+## The featured item's code from the server this launch, or 0 for none.
+func featured_code(server: String, owner: String) -> int:
+	return int(_featured.get(scope_key(server, owner), 0))
 
 static func valid_tag(value: Variant) -> bool:
 	return value is String and _tag.search(value) != null
