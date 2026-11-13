@@ -1,10 +1,10 @@
 // The release list end to end, through the Worker and the Player: this file's catalogue has one item built unreleased
-// (reed_cap, code 201), as the hats batch will ship, so the routes the phone uses can be seen refusing it and then
+// (reed_cap, code 298), as the hats batch will ship, so the routes the phone uses can be seen refusing it and then
 // selling it once CONFIG lists its code.
 vi.mock("../src/pollen/catalog.json", async importOriginal => {
   const real = (await importOriginal()) as { default: { items: Record<string, unknown> } };
   const data = structuredClone(real.default);
-  data.items.reed_cap = { code: 201, slot: "hat", tier: "common", unlock: "", set: "", released: false };
+  data.items.reed_cap = { code: 298, slot: "hat", tier: "common", unlock: "", set: "", released: false };
   return { default: data };
 });
 
@@ -22,7 +22,7 @@ type Account = { player_id: string; device_token: string };
 type WardrobePart = { offered: string[]; prices: Record<string, number>; items: string[] };
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
 const SHOP = { POLLEN_SECRET: SECRET, features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"] };
-const RELEASED = { ...SHOP, cosmetics_released: [201] };
+const RELEASED = { ...SHOP, cosmetics_released: [298] };
 const DAY = 86_400_000;
 let address = 0;
 const shared = env as unknown as Record<string, unknown>;
@@ -77,13 +77,13 @@ describe("an item built unreleased", () => {
     expect(refused.status).toBe(409);
     expect((await refused.json<{ error: { code: string } }>()).error.code).toBe("not_for_sale");
     // Featuring it while it is unreleased features nothing.
-    expect(await caps(player, { ...SHOP, cosmetics_featured: 201 })).not.toHaveProperty("pollen_featured_code");
+    expect(await caps(player, { ...SHOP, cosmetics_featured: 298 })).not.toHaveProperty("pollen_featured_code");
 
     // Released by CONFIG: a new tag sends phones to read once, and the read offers and prices it.
-    const released = await caps(player, { ...RELEASED, cosmetics_featured: 201 });
+    const released = await caps(player, { ...RELEASED, cosmetics_featured: 298 });
     expect(released.pollen_offered_tag).toMatch(/^[a-f0-9]{8}$/);
     expect(released.pollen_offered_tag).not.toBe(OFFERED_TAG);
-    expect(released.pollen_featured_code).toBe(201);
+    expect(released.pollen_featured_code).toBe(298);
     await playerConfig(player, RELEASED);
     const after = await wardrobe(player, RELEASED);
     expect(after.offered).toContain("reed_cap");
@@ -104,7 +104,7 @@ describe("an item built unreleased", () => {
       return { calls: meter.calls, written: rows.written };
     };
     await measure(SHOP);
-    const without = await measure(SHOP), with_ = await measure({ ...RELEASED, cosmetics_featured: 201 });
+    const without = await measure(SHOP), with_ = await measure({ ...RELEASED, cosmetics_featured: 298 });
     expect(with_.calls).toEqual(without.calls);
     expect(with_.written).toBe(without.written);
   });

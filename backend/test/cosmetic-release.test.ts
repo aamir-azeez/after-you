@@ -21,7 +21,7 @@ const holding = (owned: string[] = []): Holdings => ({ owned: new Set(owned), cl
 const BUILT: Catalog = checkedCatalog({
   ...structuredClone(CATALOG),
   items: { ...structuredClone(CATALOG.items),
-    reed_cap: { code: 201, slot: "hat", tier: "common", unlock: "", set: "", released: false },
+    reed_cap: { code: 298, slot: "hat", tier: "common", unlock: "", set: "", released: false },
     dune_skin: { code: 301, slot: "body", tier: "rare", unlock: "", set: "dunes", released: false },
     dune_leaf: { code: 302, slot: "leaf", tier: "uncommon", unlock: "", set: "dunes", released: false },
     pear_hood: { code: 299, slot: "hat", tier: "fruit_hat", unlock: "", set: "", released: false } }
@@ -34,8 +34,9 @@ describe("item codes", () => {
     for (const [id, item] of Object.entries(CATALOG.items)) expect(item.code, id).toBe(PINS[id]);
     expect(new Set(Object.values(PINS)).size).toBe(Object.keys(PINS).length);
     for (const code of Object.values(PINS)) expect(Number.isSafeInteger(code) && code >= 1 && code <= COSMETIC_CODE_MAX, String(code)).toBe(true);
-    // The first catalogue keeps 1 to 18 in shop order.
-    expect(manifest.ids.map(id => CATALOG.items[id].code)).toEqual(manifest.ids.map((_, index) => index + 1));
+    // The first catalogue keeps 1 to 18 in shop order (later blocks start at their hundreds).
+    const first = manifest.ids.filter(id => CATALOG.items[id].code < 100);
+    expect(first.map(id => CATALOG.items[id].code)).toEqual(first.map((_, index) => index + 1));
   });
   it("agrees with the game's manifest", () => {
     const rows = manifest.items as Record<string, { code: number }>;
@@ -49,7 +50,7 @@ describe("item codes", () => {
     expect(() => checkedCatalog({ ...base, items: { ...base.items, daisy: noCode } })).toThrow();
     expect(() => checkedCatalog(withDaisy(2))).toThrow();
     // The batches' blocks are accepted.
-    expect(BUILT.items.reed_cap.code).toBe(201);
+    expect(BUILT.items.reed_cap.code).toBe(298);
     expect(itemOfCode(301, BUILT)).toBe("dune_skin");
     expect(itemOfCode(4)).toBe("tide");
     expect(itemOfCode(998)).toBeUndefined();
@@ -64,15 +65,15 @@ describe("the CONFIG keys", () => {
     expect(none.problems).toEqual([]);
     expect(none.config.cosmetics_released.size).toBe(0);
     expect(none.config.cosmetics_featured).toBeNull();
-    const set = config({ cosmetics_released: [201, 301, 1], cosmetics_featured: 4 });
+    const set = config({ cosmetics_released: [298, 301, 1], cosmetics_featured: 4 });
     expect(set.problems).toEqual([]);
     expect(set.unknown).toEqual([]);
-    expect([...set.config.cosmetics_released]).toEqual([201, 301, 1]);
+    expect([...set.config.cosmetics_released]).toEqual([298, 301, 1]);
     expect(set.config.cosmetics_featured).toBe(4);
   });
   it("refuses a malformed list whole and a malformed featured code, failing safe to the built-in catalogue", () => {
     const tooMany = Array.from({ length: MAX_RELEASED_COSMETICS + 1 }, (_, index) => index + 1);
-    for (const list of [201, "201", [201, 201], [0], [COSMETIC_CODE_MAX + 1], [2.5], ["201"], [null], tooMany, {}]) {
+    for (const list of [298, "298", [298, 298], [0], [COSMETIC_CODE_MAX + 1], [2.5], ["298"], [null], tooMany, {}]) {
       const check = config({ cosmetics_released: list });
       expect(check.problems.length, JSON.stringify(list).slice(0, 40)).toBe(1);
       expect(check.config.cosmetics_released.size).toBe(0);
@@ -92,7 +93,7 @@ describe("the CONFIG keys", () => {
 describe("releasing by code", () => {
   it("changes nothing while no list releases anything new", () => {
     expect(releasedCatalog(new Set())).toBe(CATALOG);
-    expect(releasedCatalog(new Set(Object.values(PINS)))).toBe(CATALOG);
+    expect(releasedCatalog(new Set(Object.entries(PINS).filter(([id]) => CATALOG.items[id]?.released).map(([, code]) => code)))).toBe(CATALOG);
     expect(releasedCatalog(new Set([998, 999]))).toBe(CATALOG);
     expect(catalogFor(withConfig({}))).toBe(CATALOG);
     expect(catalogFor({})).toBe(CATALOG);
@@ -110,7 +111,7 @@ describe("releasing by code", () => {
     }
     expect(quote({ kind: "set", id: "dunes" }, holding(), BUILT)).toMatchObject({ ok: false, status: 404, code: "unknown_item" });
     expect(droppable("common", BUILT)).not.toContain("reed_cap");
-    const released = releasedCatalog(new Set([201, 301, 998]), BUILT);
+    const released = releasedCatalog(new Set([298, 301, 998]), BUILT);
     expect(released).not.toBe(BUILT);
     expect(quote({ kind: "item", id: "reed_cap" }, holding(), released)).toEqual({ ok: true, value: { kind: "item", id: "reed_cap", pieces: ["reed_cap"], full: 1000, cost: 1000, currency: "pollen" } });
     expect(offeredItems(released)).toContain("dune_skin");
@@ -123,7 +124,7 @@ describe("releasing by code", () => {
     expect(sold("pear_hood", pear)).toBe(false);
     expect(sold("pear_hood", pear, true)).toBe(true);
     // Every item built as released stays released.
-    expect(offeredItems(released, true)).toEqual(expect.arrayContaining(Object.keys(CATALOG.items)));
+    expect(offeredItems(released, true)).toEqual(expect.arrayContaining(Object.keys(CATALOG.items).filter(id => CATALOG.items[id].released)));
     expect(Object.isFrozen(released.items.reed_cap) && Object.isFrozen(released.items)).toBe(true);
   });
 });
@@ -137,9 +138,9 @@ describe("the featured item", () => {
     expect(featured(10)).toBeUndefined(); // Apple hood: Fruits, not on the Pollen shelf
     expect(featured(998)).toBeUndefined(); // no such item
     expect(featuredItem(withConfig({}))).toBeUndefined();
-    const env201 = withConfig({ cosmetics_featured: 201 });
-    expect(featuredItem(env201, BUILT)).toBeUndefined(); // built unreleased
-    expect(featuredItem(env201, releasedCatalog(new Set([201]), BUILT))).toBe("reed_cap");
+    const env298 = withConfig({ cosmetics_featured: 298 });
+    expect(featuredItem(env298, BUILT)).toBeUndefined(); // built unreleased
+    expect(featuredItem(env298, releasedCatalog(new Set([298]), BUILT))).toBe("reed_cap");
   });
 });
 
@@ -148,7 +149,7 @@ describe("the routes", () => {
   const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
   const SHOP = { POLLEN_SECRET: SECRET, features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"] };
   const WARDROBE = { POLLEN_SECRET: SECRET, features: ["POLLEN_EARN", "POLLEN_WARDROBE"] };
-  const LISTS = { cosmetics_released: [1, 2, 3, 201, 301], cosmetics_featured: 4 };
+  const LISTS = { cosmetics_released: [1, 2, 3, 298, 301], cosmetics_featured: 4 };
   let address = 0;
   const shared = env as unknown as Record<string, unknown>;
   beforeEach(() => { shared.POLLEN_SECRET = SECRET; });
