@@ -21,7 +21,7 @@ const RECIPE := {
 			{"shape": "leaf", "at": Vector2(0.77, 0.84), "width": 0.26, "turn": 0.25, "color": BROWN},
 			# Two more on the crown, for the chapters' high cameras.
 			{"shape": "leaf", "at": Vector2(0.32, -0.55), "width": 0.3, "turn": -0.3, "color": GOLD},
-			{"shape": "leaf", "at": Vector2(0.72, -1.0), "width": 0.26, "turn": 0.8, "color": BROWN},
+			{"shape": "leaf", "at": Vector2(0.72, -1.0), "width": 0.26, "turn": 0.8, "color": GOLD},
 		],
 	},
 	"body": {"base": RUST},

@@ -10,10 +10,15 @@ extends RefCounted
 ## mark, a three lobed fluff puff and a pair of joined notes.
 const Look = preload("res://presentation/spirit_look.gd")
 
+## A shape's edge shade (see shape()).
+const RIM_SHADE := 0.68
 const NAMES: Array[StringName] = [&"petal", &"leaf", &"snowflake", &"star", &"raindrop", &"seed_fluff", &"sparkle", &"snow_mark", &"puff", &"notes"]
 
 ## One shape within `size` (x to size.x, z to size.z, y to size.y): {"vertices",
-## "normals", "indices"}. An unknown name is a petal.
+## "normals", "indices"}, and "shades" for the shapes built from fans, discs
+## and bars: each vertex's shade, 1 in the middle and RIM_SHADE round the
+## edge, so a mark that uses them reads against a floor of its own colour. An
+## unknown name is a petal.
 static func shape(name: StringName, size: Vector3) -> Dictionary:
 	match name:
 		&"leaf": return _leaf(size)
@@ -32,12 +37,14 @@ static func shape(name: StringName, size: Vector3) -> Dictionary:
 static func _fan(lift: float, rim: PackedVector3Array, outward: PackedVector2Array) -> Dictionary:
 	var vertices := PackedVector3Array([Vector3(0, lift, 0)])
 	var normals := PackedVector3Array([Vector3.UP])
+	var shades := PackedFloat32Array([1.0])
 	var indices := PackedInt32Array()
 	for point in range(rim.size()):
 		vertices.append(rim[point])
 		normals.append(Vector3(outward[point].x * 0.2, 1.0, outward[point].y * 0.2).normalized())
+		shades.append(RIM_SHADE)
 		indices.append_array(PackedInt32Array([0, 1 + point, 1 + (point + 1) % rim.size()]))
-	return {"vertices": vertices, "normals": normals, "indices": indices}
+	return {"vertices": vertices, "normals": normals, "indices": indices, "shades": shades}
 
 ## A blossom petal: flat and a little cupped, narrowing to its tip.
 static func _petal(size: Vector3) -> Dictionary:
@@ -155,6 +162,7 @@ static func _notes(size: Vector3) -> Dictionary:
 class _Parts:
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
+	var shades := PackedFloat32Array()
 	var indices := PackedInt32Array()
 
 	## An oval of `radii` round `centre`, as a fan of `sides` triangles.
@@ -162,10 +170,12 @@ class _Parts:
 		var first := vertices.size()
 		vertices.append(centre + Vector3(0, lift, 0))
 		normals.append(Vector3.UP)
+		shades.append(1.0)
 		for side in range(sides):
 			var angle := TAU * side / sides
 			vertices.append(centre + Vector3(cos(angle) * radii.x, 0, sin(angle) * radii.y))
 			normals.append(Vector3.UP)
+			shades.append(RIM_SHADE)
 		for side in range(sides):
 			indices.append_array(PackedInt32Array([first, first + 1 + side, first + 1 + (side + 1) % sides]))
 
@@ -175,7 +185,8 @@ class _Parts:
 		for corner: Vector3 in [a, b, c, d]:
 			vertices.append(corner + Vector3(0, lift * 0.5, 0))
 			normals.append(Vector3.UP)
+			shades.append(lerpf(RIM_SHADE, 1.0, 0.4))
 		indices.append_array(PackedInt32Array([first, first + 1, first + 2, first, first + 2, first + 3]))
 
 	func done() -> Dictionary:
-		return {"vertices": vertices, "normals": normals, "indices": indices}
+		return {"vertices": vertices, "normals": normals, "indices": indices, "shades": shades}

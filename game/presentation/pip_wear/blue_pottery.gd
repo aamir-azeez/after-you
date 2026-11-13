@@ -17,7 +17,9 @@ const RECIPE := {
 		"bands": [
 			{"from": 0.69, "to": 0.98, "kind": "wave", "period": 0.36, "amplitude": 0.08, "color": BLUE, "edge": 0.04, "edge_color": PALE},
 			# A rim across the crown, as Tide's top line, so the chapters' high cameras see it.
-			{"from": -0.5, "to": -0.24, "kind": "wave", "period": 0.36, "amplitude": 0.06, "color": BLUE, "edge": 0.04, "edge_color": PALE},
+			{"from": -0.78, "to": -0.5, "kind": "wave", "period": 0.36, "amplitude": 0.06, "color": BLUE, "edge": 0.04, "edge_color": PALE},
+			# And low round the back, as the front's.
+			{"from": -2.38, "to": -2.1, "kind": "wave", "period": 0.36, "amplitude": 0.08, "color": BLUE, "edge": 0.04, "edge_color": PALE},
 		],
 	},
 	"body": {"base": CREAM},

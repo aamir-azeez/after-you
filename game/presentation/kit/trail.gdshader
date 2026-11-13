@@ -24,7 +24,7 @@ instance uniform vec3 trail_color_a = vec3(1.0);
 instance uniform vec3 trail_color_b = vec3(1.0);
 instance uniform float veil = 1.0;
 
-const float HOLD = 0.4;
+const float HOLD = 0.55;
 varying float fade;
 varying vec3 tint;
 
@@ -41,7 +41,8 @@ void vertex() {
 	vec2 turned = mat2(vec2(cos(a), sin(a)), vec2(-sin(a), cos(a))) * VERTEX.xz;
 	vec2 drift = vec2(cos(INSTANCE_CUSTOM.z), sin(INSTANCE_CUSTOM.z)) * trail_drift * age;
 	VERTEX = vec3(turned.x + drift.x, VERTEX.y, turned.y + drift.y) * alive;
-	tint = INSTANCE_CUSTOM.w < 0.5 ? trail_color_a : trail_color_b;
+	// The shape's own shade (its darker edge, kit/flat_shapes.gd) on the colour.
+	tint = (INSTANCE_CUSTOM.w < 0.5 ? trail_color_a : trail_color_b) * COLOR.r;
 }
 
 void fragment() {
