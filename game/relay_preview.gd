@@ -113,6 +113,8 @@ var definition: Dictionary = Catalog.relay_isles()
 var sim: RefCounted = Simulation.new()
 var world: Node3D
 var soundscape: Node
+## The chapter finished on this visit (_begin_completion), played or watched.
+var _completion_live := false
 ## The worn Bell sound has played on this screen (_ring_bell_sound), and
 ## how long after the end card it rings (seconds).
 var _bell_rung := false
@@ -2337,6 +2339,8 @@ func _finish() -> void:
 		_after_visible_wait(_show_review)
 
 func _begin_completion(from_replay: bool) -> void:
+	# The chapter finishes on this visit, played or watched as a memory: its end card rings the Bell sound.
+	_completion_live = true
 	running = false
 	mode = "bloom"
 	_update_run_pill(Journey.tick_of(sim))
@@ -3016,8 +3020,9 @@ func _show_completed() -> void:
 	# the verified recording chain before presenting the completion card.
 	var pairs: Array = _pairs()
 	if not pairs.is_empty(): _dress([pairs[-1].get("a"), pairs[-1].get("b")], true)
-	# Only a chapter finished just now rings the worn Bell sound, not one reopened later.
-	var finished_now := false
+	# Only a chapter finished on this visit (played, or its last turn watched as a
+	# memory) rings the worn Bell sound, not one reopened later.
+	var finished_now := _completion_live
 	if not pairs.is_empty() and _holds_final_turn(pairs[-1], sim) and _started_final_turn(pairs[-1]):
 		finished_now = true
 		# Right after Save turn the screen's simulation already stands at the end

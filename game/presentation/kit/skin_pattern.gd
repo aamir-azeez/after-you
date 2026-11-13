@@ -46,9 +46,14 @@ const MAX_FIELD_POINTS := 16
 const MAX_BANDS := 3
 const MAX_STAMPS := 5
 ## The head's mapping: half width, the height of v 0, the height (metres,
-## head space). The torso's visible part runs from y -0.15 to about 0.04 (its
-## top is inside the head).
-const HEAD_MAP := Vector3(Look.HEAD_HALF.x, Look.HEAD_HALF.y, Look.HEAD_HALF.y * 2.0)
+## head space). The board's u, v name the visible front, so 0 to 1 spans
+## FRONT_WIDTH of the head's width and FRONT_HEIGHT of its height: the rounded
+## sides beyond (u below 0 or above 1) turn away and are not stretched over.
+## The torso's visible part runs from y -0.15 to about 0.04 (its top is
+## inside the head).
+const FRONT_WIDTH := 0.85
+const FRONT_HEIGHT := 0.9
+const HEAD_MAP := Vector3(Look.HEAD_HALF.x * FRONT_WIDTH, Look.HEAD_HALF.y * FRONT_HEIGHT, Look.HEAD_HALF.y * 2.0 * FRONT_HEIGHT)
 const BODY_MAP := Vector3(Look.TORSO_HALF.x, 0.04, 0.19)
 ## The eyes' safety ovals in face space: each open eye at rest, widened by
 ## the gaze's reach and a margin of 0.025 of the head's width (the board's

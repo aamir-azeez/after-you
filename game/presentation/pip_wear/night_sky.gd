@@ -16,7 +16,7 @@ const RECIPE := {
 	"head": {
 		"base": NIGHT,
 		"stamps": [
-			{"shape": "star", "at": Vector2(0.11, 0.25), "width": 0.20, "turn": -0.25, "color": STAR},
+			{"shape": "star", "at": Vector2(0.06, 0.24), "width": 0.20, "turn": -0.25, "color": STAR},
 			{"shape": "star", "at": Vector2(0.59, 0.13), "width": 0.18, "turn": 0.15, "color": STAR},
 			{"shape": "star", "at": Vector2(0.72, 0.81), "width": 0.19, "turn": 0.35, "color": STAR},
 			{"shape": "star", "at": Vector2(0.38, 0.30), "width": 0.12, "turn": 0.1, "color": DUSK, "back": true},

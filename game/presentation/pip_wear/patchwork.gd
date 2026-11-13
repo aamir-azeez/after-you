@@ -15,17 +15,17 @@ const RECIPE := {
 	"head": {
 		"base": CLAY,
 		"fields": [
-			{"points": [Vector2(0.42, -0.05), Vector2(0.65, 0.34), Vector2(1.05, 0.45), Vector2(1.05, -0.05)], "color": CREAM, "wander": 0.02},
-			{"points": [Vector2(-0.05, 0.43), Vector2(0.22, 0.48), Vector2(0.49, 0.77), Vector2(0.48, 1.05), Vector2(-0.05, 1.05)], "color": MINT, "wander": 0.02},
-			{"points": [Vector2(0.59, 0.64), Vector2(1.05, 0.42), Vector2(1.05, 1.05), Vector2(0.47, 1.05)], "color": PLUM, "wander": 0.02},
+			{"points": [Vector2(0.42, -0.4), Vector2(0.65, 0.34), Vector2(1.4, 0.45), Vector2(1.4, -0.4)], "color": CREAM, "wander": 0.02},
+			{"points": [Vector2(-0.4, 0.43), Vector2(0.22, 0.48), Vector2(0.49, 0.77), Vector2(0.48, 1.4), Vector2(-0.4, 1.4)], "color": MINT, "wander": 0.02},
+			{"points": [Vector2(0.59, 0.64), Vector2(1.4, 0.42), Vector2(1.4, 1.4), Vector2(0.47, 1.4)], "color": PLUM, "wander": 0.02},
 		],
 	},
 	"body": {
 		"base": CLAY,
 		"fields": [
-			{"points": [Vector2(-0.05, -0.05), Vector2(0.5, -0.05), Vector2(0.53, 1.05), Vector2(-0.05, 1.05)], "color": MINT, "wander": 0.02},
-			{"points": [Vector2(0.5, -0.05), Vector2(1.05, -0.05), Vector2(1.05, 1.05), Vector2(0.53, 1.05)], "color": PLUM, "wander": 0.02},
-			{"points": [Vector2(0.32, -0.05), Vector2(0.7, -0.05), Vector2(0.62, 0.3), Vector2(0.4, 0.34)], "color": CREAM, "wander": 0.015},
+			{"points": [Vector2(-0.4, -0.4), Vector2(0.5, -0.4), Vector2(0.53, 1.4), Vector2(-0.4, 1.4)], "color": MINT, "wander": 0.02},
+			{"points": [Vector2(0.5, -0.4), Vector2(1.4, -0.4), Vector2(1.4, 1.4), Vector2(0.53, 1.4)], "color": PLUM, "wander": 0.02},
+			{"points": [Vector2(0.32, -0.4), Vector2(0.7, -0.4), Vector2(0.62, 0.3), Vector2(0.4, 0.34)], "color": CREAM, "wander": 0.015},
 		],
 	},
 	"feet": [MINT, PLUM],

@@ -17,7 +17,7 @@ const RECIPE := {
 		"base": RUST,
 		"stamps": [
 			{"shape": "leaf", "at": Vector2(0.60, 0.14), "width": 0.27, "turn": 0.45, "color": GOLD},
-			{"shape": "leaf", "at": Vector2(0.08, 0.46), "width": 0.30, "turn": -0.6, "color": BROWN},
+			{"shape": "leaf", "at": Vector2(0.06, 0.46), "width": 0.30, "turn": -0.6, "color": BROWN},
 			{"shape": "leaf", "at": Vector2(0.77, 0.84), "width": 0.26, "turn": 0.25, "color": BROWN},
 		],
 	},

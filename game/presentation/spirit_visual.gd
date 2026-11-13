@@ -90,7 +90,9 @@ var motion_blend := 0.0
 var facing_target := 0.0
 ## Where the world's recorded movement has the spirit now, in its parent's
 ## space (a world sets it each frame, from the simulation's tick positions,
-## before advance_motion), or INF when nothing sets it. Worn items that follow
+## before advance_motion; it holds for that frame only), or INF when nothing
+## sets it. A frame rate under the 30 Hz tick rate skips ticks, so corners
+## cut there differ slightly. Worn items that follow
 ## the walk (a trail) follow this, not the eased drawing, so a turn draws the
 ## same at any frame rate.
 var travel_target := Vector3.INF
@@ -429,6 +431,8 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	if _wearing!=null:
 		_wearing.advance(delta,reduced_motion)
 		if _wearing.follows_travel(): _wearing.travel_to(_travel_point(),delta,reduced_motion)
+	# One frame's: a frame no world sets it (Home moving the spirit itself) follows the drawing.
+	travel_target=Vector3.INF
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)

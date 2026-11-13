@@ -14,7 +14,7 @@ const RECIPE := {
 	"id": "sea_glass",
 	"head": {
 		"base": MINT,
-		"fields": [{"points": [Vector2(-0.05, -0.05), Vector2(0.66, -0.05), Vector2(0.48, 0.18), Vector2(0.22, 0.27), Vector2(-0.05, 0.3)], "color": PALE, "wander": 0.02}],
+		"fields": [{"points": [Vector2(-0.4, -0.4), Vector2(0.66, -0.4), Vector2(0.48, 0.18), Vector2(0.22, 0.27), Vector2(-0.4, 0.3)], "color": PALE, "wander": 0.02}],
 		"bands": [{"from": 0.30, "to": 0.65, "kind": "wave", "period": 0.90, "amplitude": 0.08, "color": CURRENT}],
 	},
 	"body": {"base": MINT},

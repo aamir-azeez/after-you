@@ -80,11 +80,12 @@ float pattern_star(vec2 p, float r) {
 	return length(p - ba * h) * sign(p.y * ba.x - p.x * ba.y) - round_by;
 }
 
-// A broad five lobed leaf, a lobe up and its short stem down, radius r.
+// A five lobed maple leaf, a pointed lobe up and its short stem down, radius r.
 float pattern_leaf(vec2 p, float r) {
 	float a = atan(p.x, p.y + 1e-6);
-	float reach = 0.6 + 0.4 * pow(abs(cos(a * 2.5)), 0.6);
-	reach *= mix(1.0, 0.8, smoothstep(0.5, 1.0, -cos(a)));
+	// Five pointed lobes with deep notches between them, as a maple leaf.
+	float reach = 0.42 + 0.58 * pow(abs(cos(a * 2.5)), 2.2);
+	reach *= mix(1.0, 0.75, smoothstep(0.5, 1.0, -cos(a)));
 	float d = (length(p) - r * reach) * 0.75;
 	vec2 s = p - vec2(0.0, -r * 0.5);
 	float stem = length(vec2(s.x, s.y - clamp(s.y, -r * 0.55, 0.0))) - r * 0.07;

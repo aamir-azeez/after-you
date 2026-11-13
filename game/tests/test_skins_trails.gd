@@ -276,6 +276,15 @@ func _trail_rules() -> void:
 	var material := trail.material_override as ShaderMaterial
 	_check(TrailKit.OPACITY <= 0.38 and material.render_priority < -1, "Marks are at most 0.38 strong and drawn before the pair tags")
 	_check(TrailKit.LIFT > 0.006 and TrailKit.LIFT < 0.0095, "Marks lie over the floor's lines and under the pair tags")
+	# A world's recorded target holds for its frame only: a screen that then
+	# moves the spirit itself (Home taking the pair over) still leaves marks.
+	var home := _spirit()
+	home.wear(Outfit.of("leaves", true))
+	home.travel_target = home.position
+	home.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+	_walk(home, 2.0, 1.0 / 60.0)
+	_check(not _marks(_trail(home)).is_empty() and home.travel_target == Vector3.INF, "A walk with no recorded target follows the drawn pip (Home)")
+	home.free()
 	var other := _spirit()
 	other.wear(Outfit.of("leaves", true))
 	_check(_trail(other).material_override == material, "Every trail draws with one shared material")
