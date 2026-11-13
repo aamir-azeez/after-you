@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "slots": ["hat", "body", "leaf"],
+  "slots": ["hat", "body", "leaf", "trail", "carry", "foot_ring", "bell_sound"],
   "tier_prices": { "common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 20, "fruit_small": 50, "fruit_hat": 100, "fruit_body": 200 },
   "tier_currency": { "sprig": "fruits", "fruit_small": "fruits", "fruit_hat": "fruits", "fruit_body": "fruits" },
   "set_discount_percent": 15,
@@ -39,7 +39,22 @@
     "maple": { "code": 210, "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false },
     "twin_sprout": { "code": 211, "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false },
     "warm_tip": { "code": 212, "slot": "leaf", "tier": "common", "unlock": "", "set": "", "released": false },
-    "pond_bud": { "code": 213, "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false }
+    "pond_bud": { "code": 213, "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "knit": { "code": 300, "slot": "body", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "night_sky": { "code": 301, "slot": "body", "tier": "epic", "unlock": "", "set": "", "released": false },
+    "patchwork": { "code": 302, "slot": "body", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "blue_pottery": { "code": 303, "slot": "body", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "autumn": { "code": 304, "slot": "body", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "sea_glass": { "code": 305, "slot": "body", "tier": "epic", "unlock": "", "set": "", "released": false },
+    "leaves": { "code": 310, "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "seed_fluff": { "code": 311, "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "rain_drops": { "code": 312, "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "soft_stars": { "code": 313, "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "snow_steps": { "code": 314, "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "little_tune": { "code": 315, "slot": "trail", "tier": "epic", "unlock": "", "set": "", "released": false },
+    "pocket_pebble": { "code": 320, "slot": "carry", "tier": "common", "unlock": "", "set": "", "released": false },
+    "soft_ring": { "code": 321, "slot": "foot_ring", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "wood_chime": { "code": 322, "slot": "bell_sound", "tier": "uncommon", "unlock": "", "set": "", "released": false }
   },
   "packs": {
     "garden_faces": { "released": true, "faces": ["heart_eyes", "proud", "wink"] },

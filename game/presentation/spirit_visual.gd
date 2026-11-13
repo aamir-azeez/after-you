@@ -94,6 +94,14 @@ var stride_phase := 0.0
 var step_phase := 0.0
 var motion_blend := 0.0
 var facing_target := 0.0
+## Where the world's recorded movement has the spirit now, in its parent's
+## space (a world sets it each frame, from the simulation's tick positions,
+## before advance_motion; it holds for that frame only), or INF when nothing
+## sets it. A frame rate under the 30 Hz tick rate skips ticks, so corners
+## cut there differ slightly. Worn items that follow
+## the walk (a trail) follow this, not the eased drawing, so a turn draws the
+## same at any frame rate.
+var travel_target := Vector3.INF
 var carrying_seed := false
 var carried_radius := 0.13
 var throw_age := THROW_DURATION
@@ -135,6 +143,9 @@ var _placing := false
 ## What the spirit wears (presentation/pip_outfit.gd), or null for the default
 ## look, which adds nothing at all.
 var _wearing: RefCounted = null
+## Where it is drawn (pip_outfit.gd PLACES): a world it walks in unless a
+## screen says otherwise (set_place). Some worn items show only in some places.
+var place: StringName = PipOutfit.WORLD
 ## How much higher the leaf sits while a hat raises it (pip_outfit.gd, read
 ## every pose: a hat put away for a carried seed lets it down).
 var _leaf_lift := Vector3.ZERO
@@ -214,6 +225,25 @@ func wear(outfit: Dictionary) -> void:
 	_wearing.set_carrying(carrying_seed, carried_radius)
 	_leaf_lift = Vector3(0, _wearing.leaf_lift, 0)
 
+## Where a trail follows the walk from (global): the recorded target when a
+## world gives one, else where the spirit is drawn.
+func _travel_point() -> Vector3:
+	if travel_target.is_finite():
+		var parent := get_parent() as Node3D
+		return parent.global_transform*travel_target if parent!=null and is_inside_tree() else travel_target
+	return global_position if is_inside_tree() else position
+
+## Draws the spirit as a pip in `where` (pip_outfit.gd PLACES), dressing it
+## again if that changes what it wears shows.
+func set_place(where: StringName) -> void:
+	if where==place or not where in PipOutfit.PLACES: return
+	place=where
+	if _wearing==null: return
+	var worn: Dictionary=_wearing.outfit.duplicate()
+	_wearing.undress()
+	_wearing=null
+	wear(worn)
+
 ## What the spirit wears ({} for the default look).
 func outfit() -> Dictionary:
 	return _wearing.outfit.duplicate() if _wearing != null else {}
@@ -242,6 +272,7 @@ func reset_motion() -> void:
 	_clear_reaction()
 	_expression_time=0.0
 	_idle_blend=0.0
+	if _wearing!=null: _wearing.reset()
 	_look=Vector2.ZERO
 	_lean_direction=Vector2.ZERO
 	_partner_available=false
@@ -398,7 +429,11 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	_reduced_motion=reduced_motion
 	_reaction_age=minf(_reaction_duration,_reaction_age+delta)
 	face_art.advance(delta)
-	if _wearing!=null: _wearing.advance(delta,reduced_motion)
+	if _wearing!=null:
+		_wearing.advance(delta,reduced_motion)
+		if _wearing.follows_travel(): _wearing.travel_to(_travel_point(),delta,reduced_motion)
+	# One frame's: a frame no world sets it (Home moving the spirit itself) follows the drawing.
+	travel_target=Vector3.INF
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)

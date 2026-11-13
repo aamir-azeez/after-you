@@ -57,6 +57,23 @@ const COSMETIC_TWIN_SPROUT := "Twin sprout"
 const COSMETIC_WARM_TIP := "Warm tip"
 const COSMETIC_POND_BUD := "Pond bud"
 # End of Pollen hats and leaves.
+# Pollen skins, trails and little extras (content/cosmetics/): each item's name.
+const COSMETIC_KNIT := "Knit"
+const COSMETIC_NIGHT_SKY := "Night sky"
+const COSMETIC_PATCHWORK := "Patchwork"
+const COSMETIC_BLUE_POTTERY := "Blue pottery"
+const COSMETIC_AUTUMN := "Autumn"
+const COSMETIC_SEA_GLASS := "Sea glass"
+const COSMETIC_LEAVES := "Leaves"
+const COSMETIC_SEED_FLUFF := "Seed fluff"
+const COSMETIC_RAIN_DROPS := "Raindrops"
+const COSMETIC_SOFT_STARS := "Soft stars"
+const COSMETIC_SNOW_STEPS := "Snow steps"
+const COSMETIC_LITTLE_TUNE := "Little tune"
+const COSMETIC_POCKET_PEBBLE := "Pocket pebble"
+const COSMETIC_SOFT_RING := "Soft ring"
+const COSMETIC_WOOD_CHIME := "Wood chime"
+# End of skins, trails and extras.
 
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
@@ -280,7 +297,8 @@ const WARDROBE_OWNED := "Owned"
 ## The Owned tab's last card while the shop has more for that slot: it opens All items there.
 const WARDROBE_GET_MORE := "Get more"
 const WARDROBE_TIERS := {"common": "Common", "uncommon": "Uncommon", "rare": "Rare", "epic": "Epic", "special": "Special", "earned": "Earned"}
-const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf"}
+## The Wardrobe's chips: a slot, or a group of slots (content/cosmetics/index.gd SLOT_CHIPS).
+const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf", "trail": "Trails", "extras": "Extras"}
 const WARDROBE_PRICE := "%s Pollen"
 const WARDROBE_BUY := "Buy for %s"
 const WARDROBE_WEAR := "Wear"

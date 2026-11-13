@@ -31,6 +31,21 @@
 		"maple": 210,
 		"twin_sprout": 211,
 		"warm_tip": 212,
-		"pond_bud": 213
+		"pond_bud": 213,
+		"knit": 300,
+		"night_sky": 301,
+		"patchwork": 302,
+		"blue_pottery": 303,
+		"autumn": 304,
+		"sea_glass": 305,
+		"leaves": 310,
+		"seed_fluff": 311,
+		"rain_drops": 312,
+		"soft_stars": 313,
+		"snow_steps": 314,
+		"little_tune": 315,
+		"pocket_pebble": 320,
+		"soft_ring": 321,
+		"wood_chime": 322
 	}
 }

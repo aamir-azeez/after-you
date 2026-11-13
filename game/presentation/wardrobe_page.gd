@@ -56,12 +56,14 @@ const SafeArea = preload("res://presentation/safe_area.gd")
 const PageMargin = preload("res://presentation/kit/page_margin.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 const TierFrame = preload("res://presentation/kit/tier_frame.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const EmptyArt = preload("res://presentation/empty_state_art.gd")
 const Outfit = preload("res://services/outfit.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Orchard = preload("res://presentation/wardrobe_orchard.gd")
@@ -87,7 +89,14 @@ const CARD_PICTURE := 72
 const SHELF_CARD_SIZE := Vector2(150, 150)
 const CARD_PIP := Vector2(56, 70)
 const SHELF_PIP := Vector2(50, 62)
+## A trail's card shows its pip in a wider picture, so the still sample row
+## of marks beside it (kit/trail_kit.gd SAMPLE) fits, as the trails board draws it.
+const TRAIL_PIP_WIDTH := 2.6
 const BIG_PIP := Vector2(230, 270)
+## The big pip's view: as tall, and as wide as the panel, so a trail's still
+## row of marks (kit/trail_kit.gd SAMPLE) shows beside the pip; the pip draws
+## the same size.
+const BIG_VIEW := Vector2(300, 270)
 
 signal back_pressed
 signal tab_chosen(tab: String)
@@ -257,7 +266,8 @@ func _make_preview(color: Color) -> void:
 	if is_instance_valid(preview):
 		_pip_box.remove_child(preview)
 		preview.queue_free()
-	preview = PipAvatar.new(_reduced, color, BIG_PIP)
+	preview = PipAvatar.new(_reduced, color, BIG_VIEW)
+	preview.place = PipOutfit.WARDROBE
 	preview.name = "WardrobePip"
 	_pip_box.add_child(preview)
 
@@ -375,7 +385,7 @@ func render(model: Dictionary) -> void:
 	if orchard: _orchard.render(_model, line)
 	var featured: Array = (model.get("featured", []) as Array).filter(func(id: String) -> bool: return by_id.has(id)).map(func(id: String) -> Dictionary: return by_id[id])
 	var kind := str(model.get("kind", ""))
-	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return in_tab(entry, tab) and (kind.is_empty() or entry.slot == kind))
+	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return in_tab(entry, tab) and (kind.is_empty() or Catalog.chip(entry.slot) == kind))
 	# An empty list shows the drawing (empty_state.gd) with its case's line:
 	# nothing owned, nothing in the shop, or no shop. Never while the status
 	# line says loading or offline.
@@ -570,7 +580,10 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
 	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
 	column.add_child(picture)
-	var pip := PipAvatar.new(_reduced, SpiritLook.PEACH, SHELF_PIP if small else CARD_PIP, true)
+	var pip_size: Vector2 = SHELF_PIP if small else CARD_PIP
+	if str(entry.slot) == "trail": pip_size.x *= TRAIL_PIP_WIDTH
+	var pip := PipAvatar.new(_reduced, SpiritLook.PEACH, pip_size, true)
+	pip.place = PipOutfit.WARDROBE
 	pip.outfit = Outfit.of(str(entry.id))
 	pip.animate_moving = true
 	pip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

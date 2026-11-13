@@ -108,6 +108,7 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	if not is_instance_valid(spirit): return
 	var previous := spirit.position
+	spirit.travel_target = _target
 	spirit.position = previous.lerp(_target, minf(delta * 14.0, 1.0))
 	spirit.advance_motion(spirit.position - previous, delta, _reduced)
 
@@ -134,6 +135,9 @@ static func _veil(node: Node, body: Color) -> void:
 			continue
 		if material is ShaderMaterial: material = Primitives.shared_material(body, 0.9)
 		if material is BaseMaterial3D: mesh_part.material_override = _veiled(material)
+	# A worn trail's marks (kit/trail_kit.gd) fade with the ghost too.
+	for part: Node in node.find_children("*", "MultiMeshInstance3D", true, false):
+		if part.has_meta(VEIL_UNIFORM): (part as GeometryInstance3D).set_instance_shader_parameter(part.get_meta(VEIL_UNIFORM), VEIL)
 	var shadow: Variant = node.get("ground_shadow")
 	if shadow is Node3D: (shadow as Node3D).visible = false
 	var ring: Variant = node.get("ground_ring")

@@ -79,8 +79,8 @@ func still_size() -> Vector2i:
 	return Vector2i(custom_minimum_size * RENDER_SCALE)
 
 func _show_still() -> void:
-	_wanted = Snapshots.key(_color, outfit, still_size(), rest_yaw)
-	var cached := Snapshots.request(_color, outfit, still_size(), rest_yaw, _on_still)
+	_wanted = Snapshots.key(_color, outfit, still_size(), rest_yaw, place)
+	var cached := Snapshots.request(_color, outfit, still_size(), rest_yaw, _on_still, place)
 	if cached != null: texture = cached
 
 func _on_still(key: String, drawn_texture: Texture2D) -> void:

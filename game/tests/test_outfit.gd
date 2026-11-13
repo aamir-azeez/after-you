@@ -45,7 +45,7 @@ func _digest() -> void:
 	var a := Outfit.from({"hat": "daisy", "body": "tide", "leaf": "gold_leaf"}, true)
 	var b := Outfit.from({"leaf": "gold_leaf", "body": "tide", "hat": "daisy"}, true)
 	_check(Outfit.digest(a) == Outfit.digest(b), "Entry order never changes the digest")
-	_check(Outfit.digest({}) == "hat=;body=;leaf=", "The digest names every slot, empty ones too: " + Outfit.digest({}))
+	_check(Outfit.digest({}) == "hat=;body=;leaf=;trail=;carry=;foot_ring=;bell_sound=", "The digest names every slot, empty ones too: " + Outfit.digest({}))
 	_check(Outfit.digest({"hat": "tide"}) != Outfit.digest({"body": "tide"}), "The same id in two slots gives two digests")
 	_check(Outfit.items(a) == ["daisy", "tide", "gold_leaf"], "Items come in slot order")
 

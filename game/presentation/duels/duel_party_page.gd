@@ -101,7 +101,7 @@ func _render_top() -> void:
 func _slot(label: String, color: Color, own: bool, filled: bool, look: Dictionary = {}) -> Control:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 2)
-	var pip := Kit.pip(Vector2(84, 98), color, own, look)
+	var pip := Kit.pip(Vector2(84, 98), color, own, look, Kit.PipOutfit.STAGE)
 	if not filled: pip.modulate = Color(1, 1, 1, 0.3)
 	column.add_child(pip)
 	var name_label := Kit.text(label, 20, UiTokens.CREAM if filled else UiTokens.MUTED)

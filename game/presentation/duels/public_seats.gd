@@ -56,7 +56,7 @@ static func seat(held: Dictionary, slot: int, edge: float, lit: bool = false, ta
 		ring.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		column.add_child(ring)
 	else:
-		column.add_child(Kit.pip(Vector2(edge * 0.86, edge), Kit.FIRST_PIP if slot % 2 == 0 else Kit.SECOND_PIP, held.get("you", false), held.get("look", {})))
+		column.add_child(Kit.pip(Vector2(edge * 0.86, edge), Kit.FIRST_PIP if slot % 2 == 0 else Kit.SECOND_PIP, held.get("you", false), held.get("look", {}), Kit.PipOutfit.STAGE))
 	if named:
 		var words := Kit.text(str(held.get("name", "")), font_size, UiTokens.CREAM if not held.get("open", false) else UiTokens.SOFT)
 		words.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
