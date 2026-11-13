@@ -15,7 +15,7 @@ const MINT := Color("9acbc8")
 const CREAM := Color("eee9d4")
 ## Each wave: where it stands (a direction from the head's centre) and its
 ## curl's radius.
-const WAVES := [[Vector3(0.26, 1.0, -0.06), 0.06], [Vector3(0.6, 1.0, -0.06), 0.07], [Vector3(1.0, 1.0, -0.06), 0.078]]
+const WAVES := [[Vector3(0.28, 1.0, -0.04), 0.07], [Vector3(0.64, 1.0, -0.04), 0.082], [Vector3(1.05, 1.0, -0.04), 0.092]]
 ## The curl in the wave's own plane (x along the row, y up): its middle line
 ## starts at the wave's foot behind it (START, radians round the curl's
 ## centre), rolls over the top and ends curled under (END), its radius

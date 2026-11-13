@@ -12,6 +12,8 @@ const DATA := {
 	"released": false,
 	## It stands above the head.
 	"tall": true,
+	## Its raised end hangs out past the head on the side the views turn away.
+	"wide": true,
 	## The leaf grows clear beside it.
 	"leaf_mode": "pokes_through",
 	"leaf_max": "medium",

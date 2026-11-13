@@ -36,11 +36,11 @@ const Look = preload("res://presentation/spirit_look.gd")
 const CAPS := {
 	"rain_cap": {"rise": 0.125, "edge_gap": 0.012, "edge": 1.06, "round": 2.2, "crown": Color("93c5d3"), "under": Color("547f91"), "trim": Color("e8e9d7"),
 		"brim": [0.085, 0.045], "bands": [], "rim": "band", "spots": [], "notch": WearFit.SMALL},
-	"wool_cap": {"rise": 0.15, "edge_gap": 0.016, "edge": 1.2, "round": 2.3, "crown": Color("82728e"), "under": Color("82728e"), "trim": Color("c5aeb8"),
+	"wool_cap": {"rise": 0.16, "edge_gap": 0.016, "edge": 1.2, "round": 2.0, "crown": Color("82728e"), "under": Color("82728e"), "trim": Color("c5aeb8"),
 		"brim": [], "bands": [Color("6f607b"), [2, 4]], "rim": "roll", "spots": [], "notch": WearFit.SMALL},
-	"mushroom": {"rise": 0.14, "edge_gap": 0.03, "edge": 1.06, "round": 2.6, "crown": Color("728d5d"), "under": Color("eee9d4"), "trim": Color("a5b777"),
+	"mushroom": {"rise": 0.155, "edge_gap": 0.03, "edge": 1.06, "round": 3.0, "crown": Color("728d5d"), "under": Color("eee9d4"), "trim": Color("a5b777"),
 		"brim": [0.05, 0.035], "bands": [], "rim": "", "notch": WearFit.SMALL,
-		"spots": [[Vector3(0.12, 1.0, 0.2), 0.058], [Vector3(0.6, 0.8, 0.3), 0.048], [Vector3(0.02, 0.7, 0.75), 0.04]]},
+		"spots": [[Vector3(0.22, 0.85, 0.6), 0.07], [Vector3(0.75, 0.6, 0.4), 0.055], [Vector3(-0.2, 0.6, 0.85), 0.05]]},
 }
 ## Where each row of the crown lies from its top (0) to its edge (1); the
 ## last row is thin (a cuff or a rim). And the columns round it.
@@ -51,13 +51,16 @@ const BRIM_THICK := 0.012
 ## The lip beside the leaf, a little under the limit, and how far round the
 ## stalk the shell comes down to it, from LEAF_SECTOR out to this many times it.
 const LIP := WearFit.LIP_LIMIT * 0.7
-const DIP_OUT := 1.7
+const DIP_OUT := 1.3
 ## The cream spots: flat discs of SPOT_SIDES sides standing off the crown by
 ## SPOT_LIFT.
-const SPOT_LIFT := 0.006
+const SPOT_LIFT := 0.01
 const SPOT_SIDES := 7
 ## How much the cuff rolls out past the crown.
 const CUFF_ROLL := 0.012
+## How far from the notch the crown rises from the lip back to its full
+## height (metres).
+const NOTCH_RISE := 0.16
 
 static func wear(look: RefCounted) -> void:
 	var id := str(look.outfit.get("hat", ""))
@@ -67,30 +70,52 @@ static func wear(look: RefCounted) -> void:
 static func _build(id: String) -> Mesh:
 	var cap: Dictionary = CAPS[id]
 	var largest: String = cap.notch
-	# The crown's points, row by row from the top.
-	var rows: Array[PackedVector3Array] = []
+	# The crown's grid, row by row from the top: where each point is on the
+	# head, whether a leaf could swing through it even at the lip's height
+	# (cut).
+	var surfaces: Array = []
+	var cut: Array[PackedByteArray] = []
 	for along: float in ROW_AT:
-		var points := PackedVector3Array()
+		var on_row: Array = []
+		var cut_row := PackedByteArray()
 		var phi := float(cap.edge) * along
 		for column in range(COLUMNS):
 			var beta := TAU * float(column) / float(COLUMNS)
 			var on: Array[Vector3] = Meshes.head_surface(Vector3(sin(phi) * sin(beta), cos(phi), sin(phi) * cos(beta)))
-			points.append(on[0] + on[1] * _height(cap, phi, on[0]))
+			on_row.append([on[0], on[1], _height(cap, phi, on[0])])
+			cut_row.append(1 if WearFit.leaf_in_the_way(on[0] + on[1] * LIP, largest) else 0)
+		surfaces.append(on_row)
+		cut.append(cut_row)
+	var notch := PackedVector3Array()
+	for row in range(ROW_AT.size()):
+		for column in range(COLUMNS):
+			if cut[row][column] == 1: notch.append(surfaces[row][column][0])
+	# Round the notch the crown comes down to the lip and rises back to its
+	# full height NOTCH_RISE metres away, so the notch's edge is low and clean.
+	var rows: Array[PackedVector3Array] = []
+	for row in range(ROW_AT.size()):
+		var points := PackedVector3Array()
+		for column in range(COLUMNS):
+			var here: Array = surfaces[row][column]
+			var point := _lowered(here[0], here[1], float(here[2]), notch)
+			# Risen into a leaf's way after all: back down to the lip.
+			if cut[row][column] == 0 and WearFit.leaf_in_the_way(point, largest): point = here[0] + here[1] * LIP
+			points.append(point)
 		rows.append(points)
 	var last := ROW_AT.size() - 1
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var top := Meshes.head_surface(Vector3.UP)
-	var pole: Vector3 = top[0] + top[1] * _height(cap, 0.0, top[0])
+	var pole := _lowered(top[0], top[1], _height(cap, 0.0, top[0]), notch)
 	for column in range(COLUMNS):
 		var next := (column + 1) % COLUMNS
 		var corners := [pole, rows[0][column], rows[0][next]]
-		if not _cut(corners, largest): _triangle(surface, corners, _colour(cap, 0), _middle(corners))
+		if cut[0][column] == 0 and cut[0][next] == 0: _triangle(surface, corners, _colour(cap, 0), _middle(corners))
 	for row in range(last):
 		for column in range(COLUMNS):
 			var next := (column + 1) % COLUMNS
 			var quad := [rows[row][column], rows[row][next], rows[row + 1][next], rows[row + 1][column]]
-			if _cut(quad, largest): continue
+			if cut[row][column] + cut[row][next] + cut[row + 1][column] + cut[row + 1][next] > 0 or _cut(quad, largest): continue
 			var colour := _colour(cap, row + 1)
 			_triangle(surface, [quad[0], quad[1], quad[2]], colour, _middle(quad))
 			_triangle(surface, [quad[0], quad[2], quad[3]], colour, _middle(quad))
@@ -100,17 +125,23 @@ static func _build(id: String) -> Mesh:
 	var parts := Kit.Parts.new()
 	parts.add_painted(surface.commit(), Transform3D.IDENTITY)
 	for spot: Array in cap.spots:
-		var on: Array[Vector3] = Meshes.head_surface(spot[0])
-		var at: Vector3 = on[0] + on[1] * (_height(cap, (spot[0] as Vector3).normalized().angle_to(Vector3.UP), on[0]) + SPOT_LIFT)
+		# Laid on the shell itself (its own slope, from points either side).
+		var direction := (spot[0] as Vector3).normalized()
+		var at := _shell_at(cap, direction, notch)
+		var side := direction.cross(Vector3.UP if absf(direction.y) < 0.95 else Vector3.RIGHT).normalized()
+		var rise := side.cross(direction).normalized()
+		var normal := (_shell_at(cap, (direction + side * 0.02).normalized(), notch) - _shell_at(cap, (direction - side * 0.02).normalized(), notch)).cross(_shell_at(cap, (direction + rise * 0.02).normalized(), notch) - _shell_at(cap, (direction - rise * 0.02).normalized(), notch)).normalized()
+		if normal.dot(direction) < 0.0: normal = -normal
+		at += normal * SPOT_LIFT
 		var size := float(spot[1])
-		var across := on[1].cross(Vector3.FORWARD).normalized()
-		var along := across.cross(on[1]).normalized()
+		var across := normal.cross(Vector3.UP if absf(normal.y) < 0.9 else Vector3.RIGHT).normalized()
+		var along := across.cross(normal).normalized()
 		var disc := PackedVector3Array()
 		for corner in range(SPOT_SIDES):
 			var angle := TAU * float(corner) / float(SPOT_SIDES)
 			var next := TAU * float(corner + 1) / float(SPOT_SIDES)
 			disc.append_array(PackedVector3Array([at, at + (across * cos(angle) + along * sin(angle)) * size, at + (across * cos(next) + along * sin(next)) * size]))
-		parts.facets(cap.under, disc, at - on[1])
+		parts.facets(cap.under, disc, at - normal)
 	return parts.commit()
 
 ## How far the shell stands off the head at angle `phi` from straight up,
@@ -123,6 +154,18 @@ static func _height(cap: Dictionary, phi: float, at: Vector3) -> float:
 	var stalk := Vector2(at.x - Look.LEAF_PIVOT.x, at.z - Look.LEAF_PIVOT.z)
 	var near := smoothstep(WearFit.LEAF_SECTOR, WearFit.LEAF_SECTOR * DIP_OUT, stalk.length())
 	return minf(full, lerpf(LIP, full, near))
+
+## The shell's point in `direction` from the head's centre.
+static func _shell_at(cap: Dictionary, direction: Vector3, notch: PackedVector3Array) -> Vector3:
+	var on: Array[Vector3] = Meshes.head_surface(direction)
+	return _lowered(on[0], on[1], _height(cap, direction.angle_to(Vector3.UP), on[0]), notch)
+
+## The crown's point over head point `at` (outward `normal`) of full height
+## `full`, brought down toward the lip as it nears the notch's points.
+static func _lowered(at: Vector3, normal: Vector3, full: float, notch: PackedVector3Array) -> Vector3:
+	var nearest := INF
+	for point: Vector3 in notch: nearest = minf(nearest, at.distance_to(point))
+	return at + normal * lerpf(LIP, full, smoothstep(0.0, NOTCH_RISE, nearest))
 
 ## Row `row`'s colour (0 the top): its rim, a Wool cap's knit ridges in
 ## bands of colour, the crown's colour otherwise.

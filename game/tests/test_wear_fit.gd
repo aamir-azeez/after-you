@@ -33,6 +33,8 @@ const ROLLS := 16
 const CELL := 0.05
 ## The whole hat by leaf check must finish within this many milliseconds.
 const PAIR_BUDGET_MS := 30000
+## The first carry's sums must take under this (milliseconds, a desktop run).
+const FIRST_CARRY_MS := 60
 ## Leaves the fit must class as these.
 const EXPECTED := {"": WearFit.SMALL, "sprig_coral": WearFit.SMALL, "gold_leaf": WearFit.SMALL, "every_hard": WearFit.SMALL, "apple_leaf": WearFit.TALL}
 
@@ -62,8 +64,10 @@ func _run() -> void:
 	_roll_range()
 	_pairs()
 	_lips()
+	_preview()
 	_carrying()
 	_leaves_carrying()
+	_first_carry_time()
 	_released()
 	for child: Node in root.get_children():
 		if child is Spirit: child.free()
@@ -173,11 +177,21 @@ class Shape:
 			least = minf(least, point.distance_to(WearFit.closest_on_triangle(point, corners[index], corners[index + 1], corners[index + 2])))
 		return least
 
+	## Every cell the segment's box touches is searched, so a long edge
+	## through a face far from its middle is still found.
 	func crosses(from: Vector3, to: Vector3, cell: float) -> bool:
-		var found: Variant = grid.get(Vector3i((from.lerp(to, 0.5) / cell).floor()))
-		if found == null: return false
-		for index: int in found:
-			if Geometry3D.segment_intersects_triangle(from, to, corners[index], corners[index + 1], corners[index + 2]) != null: return true
+		var low := Vector3i((from.min(to) / cell).floor())
+		var high := Vector3i((from.max(to) / cell).floor())
+		var tried: Dictionary = {}
+		for x in range(low.x, high.x + 1):
+			for y in range(low.y, high.y + 1):
+				for z in range(low.z, high.z + 1):
+					var found: Variant = grid.get(Vector3i(x, y, z))
+					if found == null: continue
+					for index: int in found:
+						if tried.has(index): continue
+						tried[index] = true
+						if Geometry3D.segment_intersects_triangle(from, to, corners[index], corners[index + 1], corners[index + 2]) != null: return true
 		return false
 
 ## A part's solid triangles moved into a space by `place`, dropping any
@@ -280,7 +294,7 @@ func _gap(hat: Shape, leaf_triangles: PackedVector3Array, sweep: Vector2, lift: 
 				for side in range(3):
 					var a := edges.corners[index + side]
 					var b := edges.corners[index + (side + 1) % 3]
-					if (pair[1] as Shape).bounds.has_point(a.lerp(b, 0.5)) and (pair[1] as Shape).crosses(a, b, CELL): least = 0.0
+					if (pair[1] as Shape).bounds.intersects(AABB(a, Vector3.ZERO).expand(b)) and (pair[1] as Shape).crosses(a, b, CELL): least = 0.0
 	return least
 
 ## The leaf's triangles that show: not wholly in the head, and not wholly in
@@ -294,6 +308,14 @@ func _visible(triangles: PackedVector3Array, stalk: Vector3, tuck: float) -> Pac
 			if not _in_head(point) and point.distance_to(stalk) > tuck: hidden = false
 		if not hidden: out.append_array(PackedVector3Array([triangles[index], triangles[index + 1], triangles[index + 2]]))
 	return out
+
+## The Wardrobe's preview shows a leaf being looked at: a hat that would hide
+## it comes off the preview; otherwise the outfit shows as worn.
+func _preview() -> void:
+	_check(WearFit.class_for("apple_leaf") == WearFit.TALL and WearFit.class_for("") == WearFit.SMALL, "A leaf's class is known without a pip at hand")
+	_check(WearFit.shown_with({"hat": "rain_cap", "leaf": "apple_leaf"}) == {"leaf": "apple_leaf"}, "A hat that hides the leaf comes off its preview")
+	_check(WearFit.shown_with({"hat": "straw_hat", "leaf": "gold_leaf"}) == {"hat": "straw_hat", "leaf": "gold_leaf"}, "A hat that shows the leaf stays on")
+	_check(WearFit.shown_with({"hat": "rain_cap"}) == {"hat": "rain_cap"}, "A hat with the plain leaf stays on")
 
 # --- The lip beside the leaf ------------------------------------------------
 
@@ -427,6 +449,19 @@ func _leaf_carry_gap(spirit: Node3D, radius: float) -> float:
 		for index in range(0, raw.size() - 2, 3):
 			least = minf(least, WearFit.closest_on_triangle(centre, to * raw[index], to * raw[index + 1], to * raw[index + 2]).distance_to(centre) - radius)
 	return least
+
+## The first carry after dressing does its clearance sums once, quickly
+## enough not to hitch the pick up.
+func _first_carry_time() -> void:
+	WearFit.release_cached()
+	var spirit := _spirit(Outfit.from({"hat": "glass_house", "leaf": "bud"}, true))
+	var started := Time.get_ticks_usec()
+	spirit.carrying_seed = true
+	spirit.advance_motion(Vector3.ZERO, DT, false)
+	var took := (Time.get_ticks_usec() - started) / 1000.0
+	print("FIRST CARRY: %.1f ms" % took)
+	_check(took < FIRST_CARRY_MS, "The first carry's sums take %.1f ms (budget %d)" % [took, FIRST_CARRY_MS])
+	spirit.free()
 
 func _released() -> void:
 	_check(SessionRelease._releases.has(Callable(load(WearFit.SCRIPT_PATH), "release_cached")), "The fit's kept measurements are released at shutdown")

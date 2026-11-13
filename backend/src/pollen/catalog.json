@@ -39,7 +39,7 @@
     "maple": { "code": 210, "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false },
     "twin_sprout": { "code": 211, "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false },
     "warm_tip": { "code": 212, "slot": "leaf", "tier": "common", "unlock": "", "set": "", "released": false },
-    "pond_bud": { "code": 213, "slot": "leaf", "tier": "rare", "unlock": "", "set": "", "released": false }
+    "pond_bud": { "code": 213, "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false }
   },
   "packs": {
     "garden_faces": { "released": true, "faces": ["heart_eyes", "proud", "wink"] },

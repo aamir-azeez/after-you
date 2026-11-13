@@ -89,7 +89,8 @@ static func dress(target: Node3D, worn: Dictionary) -> RefCounted:
 	made._slot = ""
 	var hat := str(worn.get("hat", ""))
 	if not hat.is_empty(): made.fit = WearFit.decide(hat, WearFit.leaf_class(str(worn.get("leaf", "")), target.sprout))
-	made._fit_leaf()
+	# An outfit that wears nothing (the celebration's gilding) leaves the leaf as the pip's own fit has it.
+	if not worn.is_empty(): made._fit_leaf()
 	made._pose(0.0)
 	return made
 

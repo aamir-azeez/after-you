@@ -12,7 +12,7 @@ const DATA := {
 	"tall": true,
 	## A worn leaf item stands on a short stem out of the hood's top, raised
 	## clear of it (the plain leaf hides).
-	"leaf_lift": 0.095,
+	"leaf_lift": 0.12,
 	"leaf_mode": "sits_on_top",
-	"leaf_max": "small",
+	"leaf_max": "tall",
 }

@@ -26,14 +26,14 @@ const PAD := "pad"
 ## width (a blob's half sizes).
 const LEAVES := {
 	"bud": {"stand": -0.22, "tip_back": 0.2, "scale": 1.24, "parts": [
-		["stem", Color("7d9e5e"), Vector3(0.0, 0.0, 0.0), 0.19, 0.0, 0.011],
-		["blade", Color("7d9e5e"), Vector3(0.0, 0.05, 0.004), Vector2(0.12, 0.052), 0.95, OVAL],
-		["blob", Color("e6a6ad"), Vector3(0.006, 0.205, 0.0), Vector3(0.042, 0.05, 0.04), 0.0],
-		["blob", Color("dc9097"), Vector3(0.0, 0.18, 0.004), Vector3(0.05, 0.03, 0.046), 0.0]]},
+		["stem", Color("7d9e5e"), Vector3(0.0, 0.0, 0.0), 0.15, 0.0, 0.011],
+		["blade", Color("7d9e5e"), Vector3(0.0, 0.04, 0.004), Vector2(0.12, 0.058), 0.95, OVAL],
+		["blob", Color("e6a6ad"), Vector3(0.006, 0.168, 0.0), Vector3(0.046, 0.054, 0.044), 0.0],
+		["blob", Color("dc9097"), Vector3(0.0, 0.143, 0.004), Vector3(0.054, 0.032, 0.05), 0.0]]},
 	"feather": {"stand": -0.22, "tip_back": 0.22, "scale": 1.12, "parts": [
 		["stem", Color("648f9e"), Vector3(0.0, 0.0, 0.0), 0.06, 0.0, 0.009],
-		["blade", Color("9ec8d6"), Vector3(0.0, 0.04, 0.0), Vector2(0.25, 0.085), -0.04, FEATHER],
-		["stem", Color("648f9e"), Vector3(0.0, 0.05, 0.007), 0.22, -0.04, 0.0055]]},
+		["blade", Color("9ec8d6"), Vector3(0.0, 0.04, 0.0), Vector2(0.25, 0.088), -0.04, FEATHER],
+		["stem", Color("648f9e"), Vector3(0.0, 0.05, 0.007), 0.17, -0.04, 0.0055]]},
 	"maple": {"stand": -0.2, "tip_back": 0.22, "scale": 1.2, "parts": [
 		["stem", Color("a8703f"), Vector3(0.0, 0.0, 0.0), 0.075, 0.0, 0.009],
 		["maple", Color("c88855"), Vector3(0.0, 0.142, 0.0), Vector2(0.1, 0.098), 0.0, Color("e1ae68")]]},

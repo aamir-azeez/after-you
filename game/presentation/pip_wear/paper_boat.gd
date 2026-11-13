@@ -12,20 +12,20 @@ const FOLD := Color("cb8967")
 const INK := Color("193d39")
 ## Where the keel's middle sits on the head and the boat's turn (head space):
 ## its right end raised, turned a little to show its side, and its size.
-const AT := Vector3(0.225, 0.255, -0.015)
+const AT := Vector3(0.24, 0.255, -0.015)
 const TURN := Vector3(0.0, -0.22, 0.24)
 const SCALE := 1.2
 ## The boat's own space: x along it, y up, z across. The keel's half length,
 ## the rim's tips (half length, height), the rim's sides (half length,
 ## height, half width), and where the terracotta fold starts up the side.
 const KEEL := 0.12
-const TIP := Vector2(0.255, 0.1)
-const SIDE := Vector3(0.115, 0.074, 0.105)
+const TIP := Vector2(0.255, 0.115)
+const SIDE := Vector3(0.115, 0.085, 0.105)
 const FOLD_FROM := 0.62
 ## The sail: its base's half length and half width, its peak, and how far its
 ## middle fold stands out.
 const SAIL_BASE := Vector2(0.115, 0.048)
-const SAIL_PEAK := Vector3(0.012, 0.215, 0.0)
+const SAIL_PEAK := Vector3(0.012, 0.24, 0.0)
 const SAIL_FOLD := 0.018
 
 static func wear(look: RefCounted) -> void:

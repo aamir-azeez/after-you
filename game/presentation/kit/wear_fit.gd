@@ -107,6 +107,30 @@ static func leaf_class(key: String, leaf: MeshInstance3D) -> String:
 	_keep()
 	return made
 
+## The size class of leaf item `id` ("" the plain leaf) without a pip at hand
+## (the Wardrobe's preview): measured once on a pip dressed in it alone, then
+## kept with the classes measured on real pips.
+static func class_for(id: String) -> String:
+	var found: Variant = _leaf_classes.get(id)
+	if found != null: return found
+	var pip: Node3D = load(SPIRIT_PATH).new()
+	if not id.is_empty(): pip.wear({"leaf": id})
+	# A leaf the pip may not wear (not released) is not kept under its id.
+	var worn: bool = id.is_empty() or pip.outfit().get("leaf") == id
+	var made := leaf_class(id, pip.sprout) if worn else class_of(measure(pip.sprout))
+	pip.free()
+	return made
+
+## `outfit` as a preview shows it: without its hat when that hat would hide
+## the worn leaf, so a leaf being looked at always shows (the Wardrobe).
+static func shown_with(outfit: Dictionary) -> Dictionary:
+	var hat := str(outfit.get("hat", ""))
+	if hat.is_empty() or not outfit.has("leaf"): return outfit
+	if bool(decide(hat, class_for(str(outfit.leaf))).show): return outfit
+	var shown := outfit.duplicate()
+	shown.erase("hat")
+	return shown
+
 ## The leaf's half width (x), its height over the stalk (y) and its depth to
 ## front or back (z), in pip widths, from every solid vertex under it in its
 ## own space.
@@ -211,7 +235,6 @@ static func carry_clashes(hat_id: String, body: Node3D, parts: Array, radius: fl
 ## A part on the head is taken at the head's rest place, then tilted about
 ## its centre; a part on the body stays put.
 static func carry_gap(body: Node3D, parts: Array, radius: float) -> float:
-	var centre := carry_centre(radius)
 	var gap := INF
 	for part: MeshInstance3D in parts:
 		var head := _head_of(body, part)
@@ -219,9 +242,7 @@ static func carry_gap(body: Node3D, parts: Array, radius: float) -> float:
 		for tilt: float in ([-CARRY_TILT, 0.0, CARRY_TILT] if head != null else [0.0]):
 			var place := relative(body, part)
 			if head != null: place = Transform3D(Basis(Vector3.BACK, tilt), Look.HEAD_CENTER) * relative(head, part)
-			for index in range(0, points.size() - 2, 3):
-				var near := closest_on_triangle(centre, place * points[index], place * points[index + 1], place * points[index + 2])
-				gap = minf(gap, near.distance_to(centre) - radius - CARRY_WOBBLE)
+			gap = minf(gap, _gap_to(points, place, radius, gap))
 	return gap
 
 ## Whether the leaf dressed as `key` (`leaf`, the pip's leaf), raised `lift`,
@@ -264,7 +285,6 @@ static func leaf_points(leaf: MeshInstance3D) -> PackedVector3Array:
 ## carried thing of `radius`, through the leaf's roll and the head's tilt,
 ## the leaf raised `lift` (metres).
 static func leaf_carry_gap(points: PackedVector3Array, lift: float, radius: float) -> float:
-	var centre := carry_centre(radius)
 	var roll := leaf_roll()
 	var gap := INF
 	for tilt: float in [-CARRY_TILT, 0.0, CARRY_TILT]:
@@ -272,9 +292,27 @@ static func leaf_carry_gap(points: PackedVector3Array, lift: float, radius: floa
 		for step in range(CARRY_ROLLS + 1):
 			var turn := Look.LEAF_LEAN + lerpf(roll.x, roll.y, float(step) / float(CARRY_ROLLS))
 			var place := head * Transform3D(Basis(Vector3.BACK, turn), Look.LEAF_PIVOT - Look.HEAD_CENTER + Vector3(0.0, lift, 0.0))
-			for index in range(0, points.size() - 2, 3):
-				var near := closest_on_triangle(centre, place * points[index], place * points[index + 1], place * points[index + 2])
-				gap = minf(gap, near.distance_to(centre) - radius - CARRY_WOBBLE)
+			gap = minf(gap, _gap_to(points, place, radius, gap))
+	return gap
+
+## The least gap from triangles `points` placed by `place` to a
+## carried thing of `radius`, less its wobble: worked in the triangles' own
+## space, and skipped (INF) when their box is already farther than `beaten`.
+static func _gap_to(points: PackedVector3Array, place: Transform3D, radius: float, beaten: float) -> float:
+	if points.is_empty(): return INF
+	if not place.basis.get_scale().is_equal_approx(Vector3.ONE):
+		# A scaled part is measured where it is drawn.
+		var placed := PackedVector3Array()
+		for point: Vector3 in points: placed.append(place * point)
+		return _gap_to(placed, Transform3D.IDENTITY, radius, beaten)
+	var centre := place.affine_inverse() * carry_centre(radius)
+	var box := AABB(points[0], Vector3.ZERO)
+	for point: Vector3 in points: box = box.expand(point)
+	var outside := (centre - centre.clamp(box.position, box.end)).length()
+	if outside - radius - CARRY_WOBBLE >= beaten: return INF
+	var gap := INF
+	for index in range(0, points.size() - 2, 3):
+		gap = minf(gap, closest_on_triangle(centre, points[index], points[index + 1], points[index + 2]).distance_to(centre) - radius - CARRY_WOBBLE)
 	return gap
 
 ## The head `part` hangs from, or null for a part on the body.

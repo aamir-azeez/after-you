@@ -4,7 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DATA := {
 	"id": "pond_bud",
 	"slot": "leaf",
-	"tier": "rare",
+	"tier": "uncommon",
 	"name": PlayerCopy.COSMETIC_POND_BUD,
 	"art": "res://presentation/pip_wear/garden_leaf.gd",
 	"code": 213,

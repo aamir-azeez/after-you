@@ -11,7 +11,7 @@ const DATA := {
 	## The leaf stands up on the ring of blossoms, raised clear of them, so
 	## the views pull back for it.
 	"tall": true,
-	"leaf_lift": 0.1,
+	"leaf_lift": 0.12,
 	"leaf_mode": "sits_on_top",
-	"leaf_max": "small",
+	"leaf_max": "tall",
 }

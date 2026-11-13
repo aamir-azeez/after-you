@@ -242,12 +242,12 @@
 			"code": 213,
 			"currency": "pollen",
 			"id": "pond_bud",
-			"price": 20000,
+			"price": 5000,
 			"released": false,
 			"set": "",
 			"slot": "leaf",
 			"sold": true,
-			"tier": "rare",
+			"tier": "uncommon",
 			"unlock": ""
 		},
 		"rain_cap": {

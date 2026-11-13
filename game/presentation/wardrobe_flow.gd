@@ -85,6 +85,7 @@ const Catalog = preload("res://services/cosmetic_catalog.gd")
 ## Its confirmations sound on the host's soundscape (play_on).
 const Soundscape = preload("res://services/soundscape.gd")
 const Outfit = preload("res://services/outfit.gd")
+const WearFit = preload("res://presentation/kit/wear_fit.gd")
 const FeaturedShelf = preload("res://services/featured_shelf.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -538,13 +539,18 @@ func model() -> Dictionary:
 	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "fruits": PollenChip.fruits_for(_client().scope(), _surfaces(), _client().fruits), "status": _status, "retry": _retry, "shop": selling, "all_items": all_items, "bundles": bundles() and not offline, "tab": tab, "kind": kind, "kinds": kinds,
 		"buy_offline": selling and offline, "note": PlayerCopy.WARDROBE_OFFLINE_NOTE if offline and not view.is_empty() else "",
 		"orchard": fruits_on, "sets": sets, "fruits_blocked": fruits_on and _fruit_balance() < 0,
-		"more": more, "selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}
+		"more": more, "selected": selected, "view": _view_mode, "preview": _preview(Outfit.from(preview), picked), "featured": featured, "items": items}
 
 ## The Orchard's sets as the page lists them: each set the server sells for
 ## Fruits whose pieces it offers and that has a piece the player lacks, at the
 ## server's cost for it (services/wardrobe.gd set_cost; no cost, no card): {id,
 ## set, name, pieces (names, in name order), outfit (every piece worn), price,
 ## full, currency, owned, sold, worn, locked, tier, slot}.
+## The preview's outfit: a leaf being looked at shows, so a hat that would
+## hide it comes off the preview (kit/wear_fit.gd shown_with).
+static func _preview(outfit: Dictionary, picked: Dictionary) -> Dictionary:
+	return WearFit.shown_with(outfit) if str(picked.get("slot", "")) == "leaf" else outfit
+
 func _orchard_sets(view: Dictionary, owned: Array, offered: Array, look: Dictionary) -> Array:
 	var sets: Array = []
 	for set_id: String in (view.get("fruit_sets", {}) as Dictionary):
