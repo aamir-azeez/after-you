@@ -15,9 +15,11 @@ const RECIPE := {
 	"head": {
 		"base": CLAY,
 		"fields": [
-			{"points": [Vector2(0.42, -0.4), Vector2(0.65, 0.34), Vector2(1.4, 0.45), Vector2(1.4, -0.4)], "color": CREAM, "wander": 0.02},
+			{"points": [Vector2(0.42, -1.4), Vector2(0.42, -0.1), Vector2(0.65, 0.34), Vector2(1.4, 0.45), Vector2(1.4, -1.4)], "color": CREAM, "wander": 0.02},
 			{"points": [Vector2(-0.4, 0.43), Vector2(0.22, 0.48), Vector2(0.49, 0.77), Vector2(0.48, 1.4), Vector2(-0.4, 1.4)], "color": MINT, "wander": 0.02},
 			{"points": [Vector2(0.59, 0.64), Vector2(1.4, 0.42), Vector2(1.4, 1.4), Vector2(0.47, 1.4)], "color": PLUM, "wander": 0.02},
+			# The crown's back left, so the top reads as patchwork from the chapters' high cameras.
+			{"points": [Vector2(-0.4, -1.4), Vector2(0.44, -1.4), Vector2(0.4, -0.72), Vector2(-0.4, -0.55)], "color": PLUM, "wander": 0.02},
 		],
 	},
 	"body": {

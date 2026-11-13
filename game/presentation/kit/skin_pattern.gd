@@ -42,7 +42,7 @@ const BODY_SHADER = preload("res://presentation/spirit_body_pattern.gdshader")
 
 ## How many marks each shader takes (skin_pattern.gdshaderinc).
 const MAX_FIELDS := 4
-const MAX_FIELD_POINTS := 16
+const MAX_FIELD_POINTS := 24
 const MAX_BANDS := 3
 const MAX_STAMPS := 5
 ## The head's mapping: half width, the height of v 0, the height (metres,
@@ -51,9 +51,18 @@ const MAX_STAMPS := 5
 ## sides beyond (u below 0 or above 1) turn away and are not stretched over.
 ## The torso's visible part runs from y -0.15 to about 0.04 (its top is
 ## inside the head).
+## The crown's unrolling (skin_pattern.gdshaderinc crown_wrap): the front
+## face's depth, and the heights the wrap fades in between, so the front face
+## keeps the board's mapping and the top carries on from its upper edge. A
+## recipe's v runs from 0 at the front's top edge to CROWN_BACK at the back of
+## the top.
+const CROWN_WRAP := Vector3(Look.HEAD_HALF.z, Look.HEAD_HALF.y * 0.4, Look.HEAD_HALF.y * 0.85)
 const FRONT_WIDTH := 0.85
 const FRONT_HEIGHT := 0.9
 const HEAD_MAP := Vector3(Look.HEAD_HALF.x * FRONT_WIDTH, Look.HEAD_HALF.y * FRONT_HEIGHT, Look.HEAD_HALF.y * 2.0 * FRONT_HEIGHT)
+## Where v ends at the back of the crown (the front face's depth twice over,
+## in the head's mapping).
+const CROWN_BACK := -(Look.HEAD_HALF.y * (1.0 - FRONT_HEIGHT) + Look.HEAD_HALF.z * 2.0) / (Look.HEAD_HALF.y * 2.0 * FRONT_HEIGHT)
 const BODY_MAP := Vector3(Look.TORSO_HALF.x, 0.04, 0.19)
 ## The eyes' safety ovals in face space: each open eye at rest, widened by
 ## the gaze's reach and a margin of 0.025 of the head's width (the board's
@@ -131,7 +140,7 @@ static func body_material(made: Dictionary) -> Material:
 ## A surface's shader uniforms, by name (skin_pattern.gdshaderinc). `eyes`:
 ## the head, whose stamps keep out of the eyes' safety ovals.
 static func uniforms(surface: Dictionary, map: Vector3, eyes: bool) -> Dictionary:
-	var values := {&"surface_map": map, &"pattern_base": _raw(surface.base), &"safe_eyes": SAFE_EYES if eyes else Vector4.ZERO, &"skin_drift": 0.0}
+	var values := {&"surface_map": map, &"pattern_base": _raw(surface.base), &"safe_eyes": SAFE_EYES if eyes else Vector4.ZERO, &"skin_drift": 0.0, &"crown_wrap": CROWN_WRAP if eyes else Vector3.ZERO}
 	var points := PackedVector2Array()
 	var info := PackedVector4Array()
 	var field_colors := PackedVector3Array()

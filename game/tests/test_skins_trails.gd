@@ -112,7 +112,7 @@ func _skins() -> void:
 		var made := SkinPattern.recipe(art.RECIPE)
 		for stamp: Dictionary in made.head.stamps:
 			var spot: Vector2 = stamp.at
-			_check(spot.x >= 0.0 and spot.x <= 1.0 and spot.y >= 0.0 and spot.y <= 1.0, "%s's stamps sit on the head" % id)
+			_check(spot.x >= 0.0 and spot.x <= 1.0 and spot.y >= SkinPattern.CROWN_BACK and spot.y <= 1.0, "%s's stamps sit on the head, its front or its crown" % id)
 		_check(a.torso.material_override == b.torso.material_override, "%s's torso material is shared by every pip wearing it" % id)
 		var feet: Array = made.feet
 		_check((a.feet[0].get_child(0) as MeshInstance3D).material_override.albedo_color.is_equal_approx((feet[0] as Color).darkened(Look.FOOT_SHADE)), "%s's left foot takes its colour" % id)
@@ -124,6 +124,16 @@ func _skins() -> void:
 		if DRIFTS.has(id): _check(is_equal_approx(drift, DRIFTS[id]), "%s drifts out to the board's reach after 2 s: %f" % [id, drift])
 		else: _check(is_zero_approx(drift), "%s never moves" % id)
 	_check(is_zero_approx(SkinPattern.drift(0.01, 8.0, 0.0)) and is_equal_approx(SkinPattern.drift(0.01, 8.0, 2.0), 0.01) and is_zero_approx(SkinPattern.drift(0.01, 8.0, 4.0)) and is_equal_approx(SkinPattern.drift(0.01, 8.0, 6.0), -0.01) and is_zero_approx(SkinPattern.drift(0.01, 8.0, 8.0)), "The drift is a triangle over 8 s from 0 out and back")
+	# Every skin draws on the crown too, where the chapters' high cameras look.
+	for id: String in SKINS:
+		var marks: Dictionary = SkinPattern.recipe((load(Catalog.art(id)) as Script).RECIPE).head
+		var on_top := false
+		for band: Dictionary in marks.bands: on_top = on_top or float(band.to) < 0.0
+		for stamp: Dictionary in marks.stamps: on_top = on_top or (stamp.at as Vector2).y < 0.0
+		for field: Dictionary in marks.fields:
+			for corner: Vector2 in field.points: on_top = on_top or corner.y < -0.5
+		_check(on_top, "%s has marks on the crown" % id)
+	_check(SkinPattern.CROWN_BACK < -1.0, "The crown runs to v %.2f at the back of the top" % SkinPattern.CROWN_BACK)
 	a.wear({})
 	_check(a.face_art.material.shader != SkinPattern.FACE_SHADER, "Taking a skin off gives the plain face back")
 	a.free()
@@ -274,7 +284,7 @@ func _trail_rules() -> void:
 	_walk(spirit, 70.0, 1.0 / 30.0)
 	_check(walk.clock <= TrailKit.REBASE_AFTER + 0.1 and not _marks(trail).is_empty(), "and is moved back on a long walk: %.2f" % walk.clock)
 	var material := trail.material_override as ShaderMaterial
-	_check(TrailKit.OPACITY <= 0.38 and material.render_priority < -1, "Marks are at most 0.38 strong and drawn before the pair tags")
+	_check(TrailKit.OPACITY <= 0.6 and material.render_priority < -1, "Marks are at most 0.6 strong and drawn before the pair tags")
 	_check(TrailKit.LIFT > 0.006 and TrailKit.LIFT < 0.0095, "Marks lie over the floor's lines and under the pair tags")
 	# A world's recorded target holds for its frame only: a screen that then
 	# moves the spirit itself (Home taking the pair over) still leaves marks.

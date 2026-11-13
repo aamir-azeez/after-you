@@ -5,7 +5,11 @@ extends RefCounted
 ##     TrailKit.wear(look, {"id": "leaves", "shape": &"leaf", ...})
 ## A recipe is a Dictionary of DEFAULTS' fields; "shape" is a name in
 ## kit/flat_shapes.gd (the falling effect's shape library), sizes and drift are
-## in pip widths (the head's width) as the board gives them.
+## in pip widths (the head's width). Sizes, strength and spacing follow the
+## board's walking row as it reads at phone size (about four marks a quarter
+## pip wide behind a walking pip), over the notes' table: at the chapters'
+## cameras the table's 0.1 pip widths, 0.38 strength and rate left nothing
+## to see (owner review, 2026-11-13).
 ##
 ## The rules the board sets, all here:
 ## - Marks come only while the pip moves and stop the moment it stands; each
@@ -18,8 +22,7 @@ extends RefCounted
 ##   floor letters, stand spots and tags stay on top of it.
 ## - Reduce motion: no trail at all.
 ## - The same walk makes the same marks: a mark is dropped each time the pip
-##   has walked one spacing (the recipe's interval at the game's walking
-##   speed: the board's table rate at a full walk), at the
+##   has walked one spacing (the recipe's interval at SPACING_SPEED), at the
 ##   exact point along its recorded path (SpiritVisual.travel_target, the
 ##   world's tick positions, not the eased drawing), whatever the frame rate, and
 ##   its look (side, turn, drift, colour) comes from an integer hash of its
@@ -59,7 +62,11 @@ const CLOCK := &"trail_clock"
 ## A pip width (the head's width), metres: the board's unit.
 const PIP_WIDTH := Look.HEAD_HALF.x * 2.0
 const MAX_MARKS := 6
-const OPACITY := 0.38
+const OPACITY := 0.6
+## The speed that turns a recipe's interval into a spacing: the board's
+## walking row, about four marks live behind a pip walking at WALK_SPEED, a
+## short dotted line (never more than MAX_MARKS).
+const SPACING_SPEED := 1.15
 ## Metres above the floor the pip stands on: over the floor's lines (6 mm),
 ## under the pair tags (9.5 mm), stand spots and pads.
 const LIFT := 0.0085
@@ -94,7 +101,7 @@ const DEFAULTS := {
 	"id": "",
 	## A name in kit/flat_shapes.gd NAMES, and its width (pip widths).
 	"shape": &"leaf",
-	"width": 0.1,
+	"width": 0.24,
 	## The two colours a mark picks between.
 	"colors": [Color("af895a"), Color("d3a66c")],
 	## Seconds between marks at walking speed, and a mark's life (seconds).
@@ -120,9 +127,9 @@ const SAMPLE := [
 	[Vector3(-0.87, 0.13, -0.01), 0.55, -0.2],
 	[Vector3(-1.04, 0.05, -0.03), 0.4, 0.4],
 ]
-## Sample marks are drawn this much bigger than walking ones, so a card's
-## small pip shows them as the board does.
-const SAMPLE_SCALE := 1.5
+## Sample marks are drawn this size against walking ones, so the row beside
+## a card's small pip reads as the board's.
+const SAMPLE_SCALE := 0.8
 ## A sample is a picture of the trail, not marks on a floor: drawn this strong
 ## so it reads on the Wardrobe's dark and pale panels, as the board's cards do.
 const SAMPLE_OPACITY := 0.8
@@ -263,7 +270,7 @@ class Walk:
 		node.visible = true
 
 	static func _spacing(wanted: Dictionary) -> float:
-		return maxf(0.05, float(wanted.interval) * WALK_SPEED)
+		return maxf(0.05, float(wanted.interval) * SPACING_SPEED)
 
 	static func mark_look(wanted: Dictionary, count: int, pip_seed: int) -> Dictionary:
 		var draws := FallEffect.fall_draws(count, 0, pip_seed)
