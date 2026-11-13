@@ -17,6 +17,9 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const BlobCodec = preload("res://services/blob_codec.gd")
+const LeaderboardReplay = preload("res://services/leaderboard_replay.gd")
+## The table backend turn-limits.test.ts and long-turns.test.ts also read.
+const CASES := "res://tests/fixtures/journey/turn-limits-cases.json"
 const KEY := "turn-of-the-tide@2"
 const STAGE := "set-the-tide"
 const RULES := 10
@@ -37,6 +40,7 @@ func _run() -> void:
 	rules = Runtime.input_rules(level, RULES)
 	_check(Simulation.rules_allowed(level, RULES) and rules == Runtime.INPUT_RULES[1], "The capped definition plays rules 10 with INPUT_RULES 1")
 	_check(Runtime.turn_ticks(level, RULES, "a") == 26700 and Runtime.turn_ticks(level, RULES, "b") == 27000, "The development turns are 14:50 and 15:00")
+	_shared_table()
 	_published()
 	_holds()
 	_presses()
@@ -44,6 +48,21 @@ func _run() -> void:
 	_fifteen_minutes()
 	print("LONG TURN INPUT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## The rules, the turn cap, the entry bound and the replay cap agree with the server's, through one shared table.
+func _shared_table() -> void:
+	var table: Variant = JSON.parse_string(FileAccess.get_file_as_string(CASES))
+	var capped: Dictionary = table.get("capped", {}) if table is Dictionary else {}
+	_check(not capped.is_empty(), "The shared table has the capped input section")
+	var declared: Dictionary = capped.get("input_rules", {})
+	_check(declared.size() == Runtime.INPUT_RULES.size(), "The shared table lists every INPUT_RULES entry")
+	for key: String in declared:
+		var mine: Dictionary = Runtime.INPUT_RULES.get(int(key), {})
+		_check(mine.size() == declared[key].size() and mine.keys().all(func(field: String) -> bool: return int(declared[key].get(field, -1)) == int(mine[field])), "INPUT_RULES %s matches the server's" % key)
+	_check(int(capped.get("long_turn_ticks", 0)) == Runtime.LONG_TURN_TICKS, "LONG_TURN_TICKS matches the server's")
+	_check(int(capped.get("max_replay_bytes", 0)) == LeaderboardReplay.MAX_BODY_BYTES, "The leaderboard replay cap matches the server's MAX_REPLAY_BYTES")
+	for pair: Array in capped.get("max_action_entries", []):
+		_check(Runtime.max_action_entries(Runtime.INPUT_RULES[1], int(pair[0])) == int(pair[1]), "max_action_entries(%d) is %d, as maxActionEntries" % [int(pair[0]), int(pair[1])])
 
 ## No published definition declares input_rules: every published turn plays uncapped, as before.
 func _published() -> void:
@@ -66,9 +85,9 @@ func _holds() -> void:
 	var most := Runtime.max_action_entries(rules, ticks)
 	var count: int = record.actions.size()
 	_check(count <= most and count >= most - int(rules.reserve) - 2, "A change every tick records %d entries, within the bound %d less the reserve" % [count, most])
-	var tail: Array = record.actions.slice(count - 50)
+	# The last entry may still be growing.
+	var tail: Array = record.actions.slice(count - 50, count - 1)
 	_check(tail.all(func(entry: Dictionary) -> bool: return int(entry.ticks) == int(rules.change_ticks)), "Past the allowance each input is held change_ticks ticks")
-	_check(Runtime.max_action_entries(rules, 27000) == 3501 and Runtime.max_action_entries(rules, 500) == 500, "The bound matches the server's maxActionEntries")
 	_check(Runtime.max_action_entries({}, 27000) == -1, "Uncapped input has no bound")
 
 ## The button may spend the reserve the stick leaves, and a press held back lands on the next tick that may change.

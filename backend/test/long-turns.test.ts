@@ -19,6 +19,8 @@ import slackA from "../../game/tests/fixtures/journey/turn-of-the-tide-v2-slack-
 import slackB from "../../game/tests/fixtures/journey/turn-of-the-tide-v2-slack-water-b.json";
 import slackCheckpoint from "../../game/tests/fixtures/journey/turn-of-the-tide-v2-slack-water-checkpoint.json";
 import tideA from "../../game/tests/fixtures/journey/set-the-tide-a.json";
+import cases from "../../game/tests/fixtures/journey/turn-limits-cases.json";
+import { MAX_REPLAY_BYTES } from "../src/leaderboards/rules";
 
 // A new two-stage chapter with capped input and 15 minute turns (index.gd
 // DEVELOPMENT_TURN_LIMITS): Turn of the Tide @2's stages under input_rules 1.
@@ -64,6 +66,11 @@ describe("capped input and 15 minute turns", () => {
     // The first entry, the allowance of 800 and one change every 10 ticks: three a second.
     expect(maxActionEntries(RULES, 27_000)).toBe(3_501);
     expect(maxActionEntries(RULES, 500)).toBe(500);
+    // The table test_long_turn_input.gd also reads, so the game's copies match these.
+    expect(cases.capped.input_rules).toEqual(INPUT_RULES);
+    expect(cases.capped.long_turn_ticks).toBe(LONG_TURN_TICKS);
+    expect(cases.capped.max_replay_bytes).toBe(MAX_REPLAY_BYTES);
+    for (const [ticks, entries] of cases.capped.max_action_entries) expect(maxActionEntries(RULES, ticks)).toBe(entries);
   });
 
   it("fit a frantic 15 minute pair, every allowed change at its widest, in a room row", async () => {

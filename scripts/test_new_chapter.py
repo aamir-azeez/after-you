@@ -42,7 +42,8 @@ import sys
 import tempfile
 
 from chapter_tools.godot import copy_game as copy_offline_game, run as run_godot
-from chapter_tools.turn_limits import Rules
+from chapter_tools.chapters import Chapter
+from chapter_tools.turn_limits import Rules, chapter_shape
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = Path(__file__).resolve().parent
@@ -148,6 +149,10 @@ def check_scaffold(repo: Path, before: dict[str, bytes]) -> list[str]:
     index = (ROOT / "game/content/chapters/index.gd").read_text(encoding="utf-8")
     check(f'const DEVELOPMENT_TURN_LIMITS := {{"a_ticks": {rules.cap_a}, "b_ticks": {rules.cap_b}}}' in index,
           f"index.gd's development turn limits are the longest the rules and the server accept: A {rules.cap_a}, B {rules.cap_b} ticks")
+    for key in ("scaffold-test-journey@1", "conservatory@2"):
+        shape = chapter_shape(Chapter(repo, key))
+        check(shape.capped and shape.max_branches == rules.dev_max_branches,
+              f"{key}: scaffolded with capped input and the {rules.dev_max_branches} branches the room archives hold (got {shape})")
     placeholder = hashlib.sha256((Path(__file__).resolve().parent / "chapter_templates/placeholder-thumbnail.png").read_bytes()).hexdigest()
     check(f'PLACEHOLDER_THUMBNAIL_SHA256 := "{placeholder}"' in descriptors, "test_chapter_descriptors.gd knows the placeholder thumbnail")
     return suites

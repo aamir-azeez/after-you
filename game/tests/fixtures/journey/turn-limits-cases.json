@@ -1,5 +1,7 @@
 {
 	"about": "Declared turn_limits read by both runtime.gd turn_ticks and backend turnLimits. valid false: the definition is refused. a and b: ticks for each role when valid. input_rules (runtime.gd INPUT_RULES, backend inputRules) caps input changes and lets turns run to 27,000 ticks.",
+	"capped": {"input_rules": {"1": {"change_ticks": 10, "burst": 800, "reserve": 30}}, "long_turn_ticks": 27000, "max_replay_bytes": 1572864,
+		"max_action_entries": [[1, 1], [500, 500], [801, 801], [2000, 1001], [26700, 3471], [27000, 3501]]},
 	"cases": [
 		{"label": "absent", "simulation_version": 9, "valid": true, "a": 900, "b": 1200},
 		{"label": "tide", "simulation_version": 9, "turn_limits": {"a_ticks": 2700, "b_ticks": 3000}, "valid": true, "a": 2700, "b": 3000},

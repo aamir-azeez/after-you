@@ -70,6 +70,9 @@ const RECORDING_FIXED_BYTES = 1_024;
 const entryBytes = (ticks: number) => 44 + String(ticks).length;
 /** The widest stored replay check, {"state_hash":"<64 hex>","tick":N}, with its comma. */
 const checkBytes = (ticks: number) => 90 + String(ticks).length;
+/** A room snapshot (snapshot.ts) measures each row with its data as a JSON string, every quote escaped:
+ * eight more bytes an entry, six a check, and at most twice the rest. */
+const ESCAPED_ENTRY_BYTES = 8, ESCAPED_CHECK_BYTES = 6, ESCAPED_REST = 2;
 /** Past the records they nest, a checkpoint holds positions and mechanisms about as wide as the initial one, plus its hashes and keys. */
 const CHECKPOINT_FIXED_BYTES = 1_024;
 /** A pair row's own keys, and a turn row's, around the records they hold. */
@@ -79,6 +82,11 @@ const PAIR_KEYS_BYTES = 256;
 export function widestRecordingBytes(rules: Readonly<InputRules>, ticks: number, idBytes: number): number {
   return RECORDING_FIXED_BYTES + idBytes + maxActionEntries(rules, ticks) * entryBytes(ticks) + (Math.floor(ticks / 30) + 1) * checkBytes(ticks);
 }
+/** The same record inside a room snapshot row, its quotes escaped. */
+function escapedRecordingBytes(rules: Readonly<InputRules>, ticks: number, idBytes: number): number {
+  return widestRecordingBytes(rules, ticks, idBytes) + maxActionEntries(rules, ticks) * ESCAPED_ENTRY_BYTES + (Math.floor(ticks / 30) + 1) * ESCAPED_CHECK_BYTES +
+    (ESCAPED_REST - 1) * (RECORDING_FIXED_BYTES + idBytes);
+}
 /** The same turn's values as boundedValue counts them: the record and its leaves, five per entry, three per check. */
 export function widestRecordingValues(rules: Readonly<InputRules>, ticks: number): number {
   return 32 + 5 * maxActionEntries(rules, ticks) + 3 * (Math.floor(ticks / 30) + 1);
@@ -87,20 +95,23 @@ export type LongTurnShape = { turns: Readonly<TurnLimits>; rules: Readonly<Input
 /** The widest row each stored thing of a capped chapter can be, honestly played: a stage-k checkpoint nests
  * every earlier stage's checkpoint and both records, and a pair row holds both records beside the checkpoint
  * that holds them again, so the last stage's pair row is the widest row. */
-export function longTurnRows(shape: Readonly<LongTurnShape>): { recording: number; checkpoint: number; pair: number; branch: number } {
-  const a = widestRecordingBytes(shape.rules, shape.turns.a_ticks, shape.id_bytes), b = widestRecordingBytes(shape.rules, shape.turns.b_ticks, shape.id_bytes);
-  const checkpoint = (stage: number) => shape.initial_bytes + stage * (shape.initial_bytes + CHECKPOINT_FIXED_BYTES + a + b);
+export function longTurnRows(shape: Readonly<LongTurnShape>, escaped = false): { recording: number; checkpoint: number; pair: number; branch: number } {
+  const record = escaped ? escapedRecordingBytes : widestRecordingBytes, rest = escaped ? ESCAPED_REST : 1;
+  const a = record(shape.rules, shape.turns.a_ticks, shape.id_bytes), b = record(shape.rules, shape.turns.b_ticks, shape.id_bytes);
+  const initial = rest * shape.initial_bytes, fixed = rest * CHECKPOINT_FIXED_BYTES, keys = rest * PAIR_KEYS_BYTES;
+  const checkpoint = (stage: number) => initial + stage * (initial + fixed + a + b);
   let branch = 0;
-  for (let stage = 1; stage <= shape.stages; stage++) branch += PAIR_KEYS_BYTES + a + b + checkpoint(stage) + 2 * PAIR_KEYS_BYTES + a + b;
-  return { recording: Math.max(a, b), checkpoint: checkpoint(shape.stages), pair: PAIR_KEYS_BYTES + a + b + checkpoint(shape.stages), branch };
+  for (let stage = 1; stage <= shape.stages; stage++) branch += keys + a + b + checkpoint(stage) + 2 * keys + a + b;
+  return { recording: Math.max(a, b), checkpoint: checkpoint(shape.stages), pair: keys + a + b + checkpoint(shape.stages), branch };
 }
 /** Bounds for a capped chapter. Its records are bounded by what the cap lets them hold; a checkpoint
  * or a receiver's turn only by the room row, and the room checks each row's real size before it
  * writes it (room.ts commitTurn), so an oversized turn is refused there with turn_too_large. */
 export function longTurnLimits(shape: Readonly<LongTurnShape>): ChapterLimits {
   const longest = Math.max(shape.turns.a_ticks, shape.turns.b_ticks), rows = longTurnRows(shape);
-  // A row's values: at least about 8 bytes of JSON each, the record's widest entries being 9.
-  const values = Math.ceil(MAX_ROW_BYTES / 8);
+  // A row's values: a record's entries take about 7.2 bytes a value at their narrowest, so a row holds
+  // fewer than one a 7 bytes; the byte bounds, not this, limit how many entries a record has.
+  const values = Math.ceil(MAX_ROW_BYTES / 7);
   return { recording_bytes: rows.recording, recording_values: widestRecordingValues(shape.rules, longest),
     checkpoint_bytes: MAX_ROW_BYTES, checkpoint_values: values, turn_body_bytes: MAX_ROW_BYTES, turn_body_values: values };
 }
@@ -112,13 +123,14 @@ export const ARCHIVE_BOUNDS: Readonly<ArchiveBounds> = Object.freeze({ replay_ar
 /** Refuses, at module load, a capped chapter whose honestly played widest pair outgrows a room row,
  * or whose branches could outgrow the room's archives. turn_limits.py mirrors this. */
 export function checkLongTurnBounds(shape: Readonly<LongTurnShape>, maxBranches: number | undefined, archives: Readonly<ArchiveBounds> = ARCHIVE_BOUNDS): void {
-  const rows = longTurnRows(shape);
+  const rows = longTurnRows(shape), escaped = longTurnRows(shape, true);
   if (rows.pair + ROW_ENVELOPE_BYTES > MAX_ROW_BYTES) throw new Error("turn_limits outgrow the room row bound");
   if (!Number.isSafeInteger(maxBranches) || (maxBranches as number) < 1) throw new Error("turn_limits need max_branches");
   // Every branch held, played to its end, beside the room row (the last checkpoint) and, in the snapshot, a photo on every turn.
   const history = (maxBranches as number) * rows.branch + rows.checkpoint + ROW_ENVELOPE_BYTES;
+  const snapshot = (maxBranches as number) * escaped.branch + escaped.checkpoint + ROW_ENVELOPE_BYTES;
   const photos = Math.min(archives.max_photos, (maxBranches as number) * 2 * shape.stages) * archives.photo_row_bytes;
-  if (history > archives.replay_archive_bytes || history + photos + ARCHIVE_SMALL_TABLES_BYTES > archives.room_archive_bytes) throw new Error("max_branches outgrow the room archive bounds");
+  if (history > archives.replay_archive_bytes || snapshot + photos + ARCHIVE_SMALL_TABLES_BYTES > archives.room_archive_bytes) throw new Error("max_branches outgrow the room archive bounds");
 }
 /** Receipts, reactions and deliveries a room snapshot may also hold (tide-room-limits.test.ts counts them at about 0.3 MB). */
 const ARCHIVE_SMALL_TABLES_BYTES = 1024 * 1024;

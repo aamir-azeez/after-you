@@ -412,10 +412,10 @@ export class RoomV2 extends DurableObject<Env> {
       ...(wanted.tracks ? { run_reactions: partnerTrack(this.ctx.storage, partner, packs) } : {}),
       ...(wanted.looks ? { partner_look: memberLook(this.ctx.storage, partner), turn_looks: turnLooks(this.ctx.storage, partner) } : {}) };
   }
-  /** `bounded`: a turn's write, refused with turn_too_large past MAX_ROW_BYTES (the transaction then writes nothing). */
-  private write(state: RoomStateV2, bounded = false): void {
-    state.updated_at = new Date().toISOString();
-    this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", bounded ? rowText(state) : JSON.stringify(state));
+  /** `text`: the row as already written out (and measured) by the caller, its updated_at already set. */
+  private write(state: RoomStateV2, text?: string): void {
+    if (text === undefined) state.updated_at = new Date().toISOString();
+    this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", text ?? JSON.stringify(state));
   }
   /**
    * `name`: the host's display name while names are on (display-names.ts recordMemberName); undefined writes nothing.
@@ -592,8 +592,8 @@ export class RoomV2 extends DurableObject<Env> {
     const row = this.ctx.storage.sql.exec<{ request_hash: string; receipt: string }>("SELECT request_hash,receipt FROM operations WHERE request_key=?", player + ":" + key).toArray()[0];
     return !row ? null : equalHash(row.request_hash, hash) ? ok({ receipt: JSON.parse(row.receipt) as ReceiptV2, room: this.view(state, player) }) : fail(409, "idempotency_key_reused");
   }
-  private saveReceipt(state: RoomStateV2, player: string, receipt: ReceiptV2, bounded = false): MutationV2 {
-    this.write(state, bounded);
+  private saveReceipt(state: RoomStateV2, player: string, receipt: ReceiptV2, text?: string): MutationV2 {
+    this.write(state, text);
     this.ctx.storage.sql.exec("INSERT INTO operations VALUES (?,?,?)", player + ":" + receipt.idempotency_key, receipt.request_hash, JSON.stringify(receipt));
     return { receipt, room: this.view(state, player) };
   }
@@ -852,20 +852,22 @@ export class RoomV2 extends DurableObject<Env> {
         }
         const stage_index = state.stage_index, stage_id = current.stage_id, turn_id = `t${branch}-${stage_index}-${recording.role}`;
         const pair_id = recording.role === "b" ? `p${branch}-${stage_index}` : null;
+        // Every row this turn writes is written out and measured before anything is written: one past
+        // MAX_ROW_BYTES throws turn_too_large, the transaction writes nothing and no cache sees a write.
+        const pair: PairV2 | null = recording.role === "b" ? { pair_id: pair_id!, branch, stage_index, a: this.turn(state.a_turn_id!), b: recording, checkpoint: checkpoint! } : null;
+        const recordingText = rowText(recording), pairText = pair && rowText(pair);
         state.revision++;
-        // Each row this turn writes is measured as written: one past MAX_ROW_BYTES throws, and the transaction writes nothing.
-        this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", turn_id, player, state.revision, rowText(recording));
+        if (pair) { state.completed_pair_ids.push(pair_id!); state.checkpoint = checkpoint!; state.stage_index++; state.a_turn_id = null; }
+        else state.a_turn_id = turn_id;
+        state.updated_at = new Date().toISOString();
+        const roomText = rowText(state);
+        this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", turn_id, player, state.revision, recordingText);
         if (context === undefined) recordTries(this.ctx.storage, turn_id, recording.recording_hash, tries);
         if (context === undefined) recordEndReaction(this.ctx.storage, turn_id, recording.recording_hash, player, face);
         if (context === undefined) recordRunReactions(this.ctx.storage, turn_id, recording.recording_hash, player, track);
         if (context === undefined) recordMemberName(this.ctx.storage, player, name);
         if (context === undefined) { recordMemberLook(this.ctx.storage, player, look); recordTurnLook(this.ctx.storage, recording.recording_hash, player, look); }
-        if (recording.role === "a") state.a_turn_id = turn_id;
-        else {
-          const pair: PairV2 = { pair_id: pair_id!, branch, stage_index, a: this.turn(state.a_turn_id!), b: recording, checkpoint: checkpoint! };
-          this.ctx.storage.sql.exec("INSERT INTO pairs VALUES (?,?)", pair_id, rowText(pair));
-          state.completed_pair_ids.push(pair_id!); state.checkpoint = checkpoint!; state.stage_index++; state.a_turn_id = null;
-        }
+        if (pairText !== null) this.ctx.storage.sql.exec("INSERT INTO pairs VALUES (?,?)", pair_id, pairText);
         if (context === undefined && pollen !== undefined) {
           recordMember(this.ctx.storage, player, pollen);
           recordTurnFacts(this.ctx.storage, { room_id: state.room_id, recording_hash: recording.recording_hash, turn_id, player, partner: this.partnerOf(state, player),
@@ -880,7 +882,7 @@ export class RoomV2 extends DurableObject<Env> {
         }
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
-        const saved = this.saveReceipt(state, player, receipt, true);
+        const saved = this.saveReceipt(state, player, receipt, roomText);
         recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
         if (this.notificationsAvailable()) {
           queueTurnHint(this.ctx.storage, this.env, "relay", state, player);

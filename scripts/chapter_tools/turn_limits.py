@@ -66,7 +66,9 @@ def chapter_shape(chapter) -> Shape:
     """The Shape of a chapter_tools.chapters.Chapter: its backend definition and
     initial checkpoint when they exist, else the development shape; capped when
     its catalog declares input_rules."""
-    capped = chapter.catalog is not None and chapter.catalog.is_file() and '"input_rules"' in chapter.catalog.read_text(encoding="utf-8")
+    # A catalog declares it as a literal ("input_rules":1) or, for a later version, by assignment (level.input_rules = 1).
+    catalog = chapter.catalog.read_text(encoding="utf-8") if chapter.catalog is not None and chapter.catalog.is_file() else ""
+    capped = re.search(r'"input_rules"\s*:|\.input_rules\s*=', catalog) is not None
     branches = re.search(r'"max_branches": (\d+)', chapter.descriptor.read_text(encoding="utf-8"))
     definition_name, initial_name = chapter.backend_files()
     v2 = chapter.root / "backend/src/v2"
@@ -74,7 +76,7 @@ def chapter_shape(chapter) -> Shape:
     if (v2 / definition_name).is_file() and (v2 / initial_name).is_file():
         definition = json.loads((v2 / definition_name).read_text(encoding="utf-8"))
         initial = json.loads((v2 / initial_name).read_text(encoding="utf-8"))
-        shape = Shape(capped=capped, stages=len(definition["stages"]), max_branches=shape.max_branches,
+        shape = Shape(capped=capped or "input_rules" in definition, stages=len(definition["stages"]), max_branches=shape.max_branches,
                       initial_bytes=len(json.dumps(initial, separators=(",", ":"), ensure_ascii=False).encode("utf-8")),
                       id_bytes=len(definition["id"]) + max(len(stage["id"]) for stage in definition["stages"]))
     return shape
@@ -97,6 +99,7 @@ class Rules:
         self.checkpoint_bytes = _constant(v2 / "protocol-relay.ts", r"^export const MAX_CHECKPOINT_BYTES = ([\d_]+);$", "MAX_CHECKPOINT_BYTES")
         self.row_bytes = _constant(bounds, r"^export const MAX_ROW_BYTES = ([\d_ *]+);$", "MAX_ROW_BYTES")
         self.replay_archive_bytes = _constant(bounds, r"^export const MAX_REPLAY_ARCHIVE_BYTES = ([\d_ *]+);$", "MAX_REPLAY_ARCHIVE_BYTES")
+        # Both as ARCHIVE_BOUNDS in protocol-physical-recording.ts derives them (checked below).
         self.room_archive_bytes = _constant(bounds, r"^export const MAX_ROOM_V2_ARCHIVE_BYTES = ([\d_ *]+);$", "MAX_ROOM_V2_ARCHIVE_BYTES") - 4096
         self.max_photos = _constant(bounds, r"^export const MAX_PHOTOS = (\d+);$", "MAX_PHOTOS")
         self.photo_row_bytes = math.ceil(_constant(v2 / "photo-image.ts", r"^export const MAX_PHOTO_BYTES = ([\d_ *]+);$", "MAX_PHOTO_BYTES") / 3) * 4 + 1024
@@ -116,13 +119,19 @@ class Rules:
                          "const entryBytes = (ticks: number) => 44 + String(ticks).length;",
                          "const checkBytes = (ticks: number) => 90 + String(ticks).length;",
                          "return RECORDING_FIXED_BYTES + idBytes + maxActionEntries(rules, ticks) * entryBytes(ticks) + (Math.floor(ticks / 30) + 1) * checkBytes(ticks);",
-                         "const checkpoint = (stage: number) => shape.initial_bytes + stage * (shape.initial_bytes + CHECKPOINT_FIXED_BYTES + a + b);",
-                         "branch += PAIR_KEYS_BYTES + a + b + checkpoint(stage) + 2 * PAIR_KEYS_BYTES + a + b;",
-                         "pair: PAIR_KEYS_BYTES + a + b + checkpoint(shape.stages), branch };",
+                         "const checkpoint = (stage: number) => initial + stage * (initial + fixed + a + b);",
+                         "branch += keys + a + b + checkpoint(stage) + 2 * keys + a + b;",
+                         "pair: keys + a + b + checkpoint(shape.stages), branch };",
                          "if (rows.pair + ROW_ENVELOPE_BYTES > MAX_ROW_BYTES)",
                          "const history = (maxBranches as number) * rows.branch + rows.checkpoint + ROW_ENVELOPE_BYTES;",
+                         "const snapshot = (maxBranches as number) * escaped.branch + escaped.checkpoint + ROW_ENVELOPE_BYTES;",
                          "const photos = Math.min(archives.max_photos, (maxBranches as number) * 2 * shape.stages) * archives.photo_row_bytes;",
-                         "if (history > archives.replay_archive_bytes || history + photos + ARCHIVE_SMALL_TABLES_BYTES > archives.room_archive_bytes)"):
+                         "if (history > archives.replay_archive_bytes || snapshot + photos + ARCHIVE_SMALL_TABLES_BYTES > archives.room_archive_bytes)",
+                         "const ESCAPED_ENTRY_BYTES = 8, ESCAPED_CHECK_BYTES = 6, ESCAPED_REST = 2;",
+                         "(ESCAPED_REST - 1) * (RECORDING_FIXED_BYTES + idBytes);",
+                         "const initial = rest * shape.initial_bytes, fixed = rest * CHECKPOINT_FIXED_BYTES, keys = rest * PAIR_KEYS_BYTES;",
+                         "room_archive_bytes: MAX_ROOM_V2_ARCHIVE_BYTES - 4096,",
+                         "photo_row_bytes: Math.ceil(MAX_PHOTO_BYTES / 3) * 4 + 1024, max_photos: MAX_PHOTOS });"):
             if expected not in source:
                 raise ToolError(f"{recording.as_posix()} changed how it bounds longer turns ({expected}); update scripts/chapter_tools/turn_limits.py")
         self.published_b = 1200
@@ -146,24 +155,33 @@ class Rules:
         digits = len(str(ticks))
         return self.recording_fixed + shape.id_bytes + entries * (44 + digits) + (ticks // 30 + 1) * (90 + digits)
 
-    def capped_rows(self, a: int, b: int, shape: Shape) -> dict[str, int]:
-        """protocol-physical-recording.ts longTurnRows."""
-        wa, wb = self._recording(a, shape), self._recording(b, shape)
-        checkpoint = lambda stage: shape.initial_bytes + stage * (shape.initial_bytes + self.checkpoint_fixed + wa + wb)  # noqa: E731
-        branch = sum(self.pair_keys + wa + wb + checkpoint(stage) + 2 * self.pair_keys + wa + wb for stage in range(1, shape.stages + 1))
-        return {"checkpoint": checkpoint(shape.stages), "pair": self.pair_keys + wa + wb + checkpoint(shape.stages), "branch": branch}
+    def capped_rows(self, a: int, b: int, shape: Shape, escaped: bool = False) -> dict[str, int]:
+        """protocol-physical-recording.ts longTurnRows; `escaped`: as a room snapshot measures them."""
+        rest = 2 if escaped else 1
+
+        def record(ticks: int) -> int:
+            if not escaped:
+                return self._recording(ticks, shape)
+            entries = min(ticks, 1 + self.burst + ticks // self.change_ticks)
+            return self._recording(ticks, shape) + entries * 8 + (ticks // 30 + 1) * 6 + (rest - 1) * (self.recording_fixed + shape.id_bytes)
+        wa, wb = record(a), record(b)
+        initial, fixed, keys = rest * shape.initial_bytes, rest * self.checkpoint_fixed, rest * self.pair_keys
+        checkpoint = lambda stage: initial + stage * (initial + fixed + wa + wb)  # noqa: E731
+        branch = sum(keys + wa + wb + checkpoint(stage) + 2 * keys + wa + wb for stage in range(1, shape.stages + 1))
+        return {"checkpoint": checkpoint(shape.stages), "pair": keys + wa + wb + checkpoint(shape.stages), "branch": branch}
 
     def capped_fits(self, a: int, b: int, shape: Shape) -> bool:
         return self.capped_rows(a, b, shape)["pair"] + self.envelope_bytes <= self.row_bytes
 
     def max_branches(self, a: int, b: int, shape: Shape) -> int:
         """The most branches checkLongTurnBounds lets a capped chapter with these turns hold (0: none fit)."""
-        rows = self.capped_rows(a, b, shape)
+        rows, escaped = self.capped_rows(a, b, shape), self.capped_rows(a, b, shape, escaped=True)
         best = 0
         for count in range(1, 33):
             history = count * rows["branch"] + rows["checkpoint"] + self.envelope_bytes
+            snapshot = count * escaped["branch"] + escaped["checkpoint"] + self.envelope_bytes
             photos = min(self.max_photos, count * 2 * shape.stages) * self.photo_row_bytes
-            if history > self.replay_archive_bytes or history + photos + self.small_tables > self.room_archive_bytes:
+            if history > self.replay_archive_bytes or snapshot + photos + self.small_tables > self.room_archive_bytes:
                 break
             best = count
         return best
