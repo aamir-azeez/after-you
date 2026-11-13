@@ -12,7 +12,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
 ## The server keeps no encoded replay above this (backend rules.ts MAX_REPLAY_BYTES).
-const MAX_BODY_BYTES := 360 * 1024
+const MAX_BODY_BYTES := 1536 * 1024
 ## Canonical checkpoint bytes accepted (the history store's own limit).
 const MAX_CANONICAL_BYTES := 4 * 1024 * 1024
 const ANSWER_KEYS := ["schema_version", "board", "entry_id", "rank", "ticks", "finished_on", "names", "gold_leaf", "digest", "byte_length", "body"]

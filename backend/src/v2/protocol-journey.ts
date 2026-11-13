@@ -1,6 +1,6 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
-import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
+import { checkLongTurnBounds, checkTurnBounds, inputRules, longTurnLimits, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type LongTurnShape, type TurnLimits } from "./protocol-physical-recording";
 import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "./chapter-types";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
@@ -25,7 +25,7 @@ type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
-type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
+type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits; input_rules?: number };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
 function need(value: unknown, code: string): asserts value { if (!value) throw new ApiError(422, code); }
 function near(player: Record<string, unknown>, marker: Marker): boolean {
@@ -43,7 +43,8 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
     "second-light": controls["final-mirror"] === "slash" };
 }
 
-function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
+/** A journey chapter's adapter from its pinned definition (exported for the bounds tests). */
+export function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
@@ -51,10 +52,14 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // Tide rules (10 and later) latch no route: a player may end a stage on a
   // stub only while one of this stage's gates for it holds on the end state.
   const tideRules = definition.simulation_version >= 10;
-  // Longer turns, when the definition declares them, carry bounds grown to fit.
-  const turns = turnLimits(definition), limits = turns ? scaledLimits(turns) : undefined;
-  if (limits) checkTurnBounds(limits, maxBranches);
-  const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits);
+  // Longer turns, when the definition declares them, carry bounds grown to fit. A definition with capped
+  // input (input_rules) instead has bounds from what its records can hold, and the room checks real sizes.
+  const turns = turnLimits(definition), input = inputRules(definition);
+  const shape: LongTurnShape | undefined = input && { turns: turns ?? { a_ticks: 900, b_ticks: 1200 }, rules: input, stages: definition.stages.length,
+    initial_bytes: new TextEncoder().encode(JSON.stringify(initial)).byteLength, id_bytes: definition.id.length + Math.max(...definition.stages.map(stage => stage.id.length)) };
+  const limits = shape ? longTurnLimits(shape) : turns ? scaledLimits(turns) : undefined;
+  if (shape) checkLongTurnBounds(shape, maxBranches); else if (limits) checkTurnBounds(limits, maxBranches);
+  const recording = physicalRecording(definition, key, 7, supported, undefined, turns ?? shape?.turns, limits, input);
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
     const c = object(value); exact(c, CHECKPOINT_KEYS);

@@ -26,7 +26,7 @@ from chapter_recording import suggestion_lines
 from chapter_tools import recordings
 from chapter_tools.chapters import Chapter, turn_limits_edit
 from chapter_tools.godot import Game, ToolError, binary
-from chapter_tools.turn_limits import Rules
+from chapter_tools.turn_limits import Rules, chapter_shape
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,7 +54,7 @@ def main(argv: list[str]) -> int:
             chapter.refuse_released("changing its turn limits")
         if args.a_seconds is not None:
             a, b = args.a_seconds * rules.tick_rate, args.b_seconds * rules.tick_rate
-            problems = rules.problems(a, b)
+            problems = rules.problems(a, b, chapter_shape(chapter))
             if problems:
                 raise ToolError(f"{args.key}: A {args.a_seconds} s, B {args.b_seconds} s refused: " + "; ".join(problems))
         with Game(binary(args.godot), root / "game", args.in_place, args.keep) as game:

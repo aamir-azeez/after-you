@@ -14,6 +14,8 @@ import { eligible, playerStanding, type Standing } from "../src/leaderboards/sta
 import { VIEW_TTL_MS, cachedView, forgetViews, storeView } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
 import { bytesDigest, decodeBlob, ENCODING_DEFLATE } from "../src/blob-codec";
+import { MAX_PROOF_CHARS } from "../src/leaderboards/board";
+import { MAX_ROW_BYTES } from "../src/v2/row-bound";
 import { emptyView, type BoardView } from "../src/leaderboards/view";
 import { countingEnv, meterAllRows, meterRows } from "./meter";
 import { PLATFORM_LINKS_OBJECT } from "../src/platform-links";
@@ -734,14 +736,36 @@ describe("kept replays", () => {
     await board().strike(RELAY_BOARD, fake.entry_id);
     expect(await kept()).toEqual([newer.entry_id]);
   });
-  it("keeps no replay above MAX_REPLAY_BYTES, and the run still ranks", async () => {
+  /** `length` random printable characters but the quote and backslash: deflate keeps about 82% of them. */
+  function printableNoise(length: number): string {
+    const chars: string[] = [];
+    for (let at = 0; at < length; at += 65_536) for (const byte of crypto.getRandomValues(new Uint8Array(Math.min(65_536, length - at)))) {
+      const code = 35 + byte % 89; chars.push(String.fromCharCode(code >= 92 ? code + 1 : code));
+    }
+    return chars.join("");
+  }
+  it("keeps a replay of the widest final checkpoint a board stores, near MAX_REPLAY_BYTES once encoded", async () => {
+    expect(MAX_REPLAY_BYTES).toBe(1536 * 1024);
     const big = await run(100, 1000);
-    const noise = Array.from({ length: 7 }, () => [...crypto.getRandomValues(new Uint8Array(60_000))].map(byte => byte.toString(16).padStart(2, "0")).join("")).join("");
-    (big.checkpoint as unknown as Record<string, unknown>).noise = noise;
+    (big.checkpoint as unknown as Record<string, unknown>).noise = printableNoise(MAX_PROOF_CHARS - 40_000);
     await rankDirect(big);
-    expect((await board().view(RELAY_BOARD)).top).toMatchObject([{ entry_id: big.entry_id, replay_hash: null }]);
+    expect(await kept()).toEqual([big.entry_id]);
+    const row = await runInDurableObject(board(), async (_, ctx) => ctx.storage.sql.exec<{ byte_length: number; body: ArrayBuffer }>("SELECT byte_length,body FROM lb_replays WHERE entry_id=?", big.entry_id).one());
+    expect(row.byte_length).toBeLessThanOrEqual(MAX_PROOF_CHARS);
+    expect(row.body.byteLength).toBeGreaterThan(MAX_ROW_BYTES * 0.9);
+    expect(row.body.byteLength).toBeLessThanOrEqual(MAX_REPLAY_BYTES);
+    expect(JSON.parse(new TextDecoder().decode((await decodeBlob(new Uint8Array(row.body), row.byte_length))!))).toEqual(big.checkpoint);
+  });
+  it("keeps no replay above MAX_REPLAY_BYTES, and the run still ranks", async () => {
+    const big = await run(100, 1000), stub = board();
+    await stub.submit(RELAY_BOARD, big);
+    await stub.standings(RELAY_BOARD, [{ entry_id: big.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
+    const mine = (await stub.pendingWork()).replay.find(item => item.entry_id === big.entry_id)!;
+    // No placeable checkpoint deflates past the cap, so the stored body is widened in place.
+    await runInDurableObject(stub, async (_, ctx) => { ctx.storage.sql.exec("UPDATE lb_proof_blobs SET body=? WHERE entry_id=?", new Uint8Array(MAX_REPLAY_BYTES + 1), big.entry_id); });
+    await stub.verdicts(RELAY_BOARD, [{ entry_id: big.entry_id, proof_hash: mine.proof_hash, valid: true, measured_ticks: big.ticks, reason: "" }], 1);
+    expect((await stub.view(RELAY_BOARD)).top).toMatchObject([{ entry_id: big.entry_id, replay_hash: null }]);
     expect(await kept()).toEqual([]);
-    expect(MAX_REPLAY_BYTES).toBe(360 * 1024);
   });
   it("serves a top 10 replay to anyone with no ids, for one board request and then none", async () => {
     const { host, guest, room } = await rankedPair();

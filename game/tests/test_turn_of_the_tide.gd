@@ -219,6 +219,7 @@ func _declared_limit_cases() -> void:
 			var version := int(case.simulation_version)
 			definition.simulation_version = version
 			if case.has("turn_limits"): definition.turn_limits = _ints(case.turn_limits) if whole else case.turn_limits
+			if case.has("input_rules"): definition.input_rules = case.input_rules
 			var label := "%s%s" % [case.label, " (ints)" if whole else ""]
 			var valid: bool = case.valid
 			_check(Runtime.turn_limits_valid(definition, version) == valid, "turn_limits %s: %s" % [label, "accepted" if valid else "refused"])

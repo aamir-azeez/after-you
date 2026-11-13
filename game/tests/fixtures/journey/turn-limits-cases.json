@@ -1,5 +1,5 @@
 {
-	"about": "Declared turn_limits read by both runtime.gd turn_ticks and backend turnLimits. valid false: the definition is refused. a and b: ticks for each role when valid.",
+	"about": "Declared turn_limits read by both runtime.gd turn_ticks and backend turnLimits. valid false: the definition is refused. a and b: ticks for each role when valid. input_rules (runtime.gd INPUT_RULES, backend inputRules) caps input changes and lets turns run to 27,000 ticks.",
 	"cases": [
 		{"label": "absent", "simulation_version": 9, "valid": true, "a": 900, "b": 1200},
 		{"label": "tide", "simulation_version": 9, "turn_limits": {"a_ticks": 2700, "b_ticks": 3000}, "valid": true, "a": 2700, "b": 3000},
@@ -20,6 +20,14 @@
 		{"label": "text", "simulation_version": 9, "turn_limits": {"a_ticks": "2700", "b_ticks": 3000}, "valid": false},
 		{"label": "fraction", "simulation_version": 9, "turn_limits": {"a_ticks": 2700.5, "b_ticks": 3000}, "valid": false},
 		{"label": "list", "simulation_version": 9, "turn_limits": [2700, 3000], "valid": false},
-		{"label": "flag", "simulation_version": 9, "turn_limits": true, "valid": false}
+		{"label": "flag", "simulation_version": 9, "turn_limits": true, "valid": false},
+		{"label": "capped input, 15 minutes", "simulation_version": 9, "input_rules": 1, "turn_limits": {"a_ticks": 26700, "b_ticks": 27000}, "valid": true, "a": 26700, "b": 27000},
+		{"label": "capped input, decimal point", "simulation_version": 9, "input_rules": 1.0, "turn_limits": {"a_ticks": 26700, "b_ticks": 27000}, "valid": true, "a": 26700, "b": 27000},
+		{"label": "capped input, published lengths", "simulation_version": 9, "input_rules": 1, "valid": true, "a": 900, "b": 1200},
+		{"label": "capped input, past 15 minutes", "simulation_version": 9, "input_rules": 1, "turn_limits": {"a_ticks": 26700, "b_ticks": 27001}, "valid": false},
+		{"label": "uncapped, past 5 minutes", "simulation_version": 9, "turn_limits": {"a_ticks": 8999, "b_ticks": 27000}, "valid": false},
+		{"label": "unknown input rules", "simulation_version": 9, "input_rules": 2, "turn_limits": {"a_ticks": 2700, "b_ticks": 3000}, "valid": false},
+		{"label": "input rules as text", "simulation_version": 9, "input_rules": "1", "valid": false},
+		{"label": "input rules ignored before rules 9", "simulation_version": 8, "input_rules": 7, "turn_limits": {"a_ticks": 0, "b_ticks": 27001}, "valid": true, "a": 900, "b": 1200}
 	]
 }
