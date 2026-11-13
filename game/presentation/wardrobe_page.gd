@@ -89,6 +89,9 @@ const CARD_PICTURE := 72
 const SHELF_CARD_SIZE := Vector2(150, 150)
 const CARD_PIP := Vector2(56, 70)
 const SHELF_PIP := Vector2(50, 62)
+## A trail's card shows its pip in a wider picture, so the still sample row
+## of marks beside it (kit/trail_kit.gd SAMPLE) fits, as the trails board draws it.
+const TRAIL_PIP_WIDTH := 2.6
 const BIG_PIP := Vector2(230, 270)
 
 signal back_pressed
@@ -573,7 +576,9 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
 	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
 	column.add_child(picture)
-	var pip := PipAvatar.new(_reduced, SpiritLook.PEACH, SHELF_PIP if small else CARD_PIP, true)
+	var pip_size: Vector2 = SHELF_PIP if small else CARD_PIP
+	if str(entry.slot) == "trail": pip_size.x *= TRAIL_PIP_WIDTH
+	var pip := PipAvatar.new(_reduced, SpiritLook.PEACH, pip_size, true)
 	pip.place = PipOutfit.WARDROBE
 	pip.outfit = Outfit.of(str(entry.id))
 	pip.animate_moving = true

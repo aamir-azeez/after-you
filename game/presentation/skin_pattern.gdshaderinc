@@ -10,7 +10,7 @@
 
 // The surface: its half width (x), the height of v 0 (y) and its height (z), metres.
 uniform vec3 surface_map = vec3(0.345, 0.28, 0.56);
-// Colours are linear (kit/skin_pattern.gd converts the palette once).
+// Colours are the palette's values as they are (kit/skin_pattern.gd).
 uniform vec3 pattern_base = vec3(0.8);
 // Colour fields, each a polygon in uv: its first point, its point count (0:
 // none) and how far its edges wander (uv), so they curve softly.

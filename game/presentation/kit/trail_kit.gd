@@ -100,14 +100,19 @@ const DEFAULTS := {
 }
 
 ## Still marks beside a pictured pip (its own space, metres): where, how
-## faded (1 full), and its first turn. Low on both sides, more behind its walk.
+## faded (1 full), and its first turn. A row behind it on the view's left at
+## foot height, fading as it goes, as the board's cards draw it; a narrow
+## view shows the nearest few, a wide card the whole row.
 const SAMPLE := [
-	[Vector3(-0.47, 0.30, -0.05), 0.55, 0.3],
-	[Vector3(-0.40, 0.12, 0.05), 0.95, -0.4],
-	[Vector3(-0.58, 0.07, -0.1), 0.4, 0.8],
-	[Vector3(0.44, 0.24, 0.0), 0.8, -0.2],
-	[Vector3(0.40, 0.06, 0.08), 0.6, 0.5],
+	[Vector3(-0.36, 0.05, 0.05), 1.0, 0.3],
+	[Vector3(-0.53, 0.13, 0.03), 0.85, -0.4],
+	[Vector3(-0.70, 0.05, 0.01), 0.7, 0.6],
+	[Vector3(-0.87, 0.13, -0.01), 0.55, -0.2],
+	[Vector3(-1.04, 0.05, -0.03), 0.4, 0.4],
 ]
+## Sample marks are drawn this much bigger than walking ones, so a card's
+## small pip shows them as the board does.
+const SAMPLE_SCALE := 1.5
 
 ## Puts the trail `overrides` names (a recipe) on the pip `look` dresses.
 ## Returns its node.
@@ -129,8 +134,8 @@ static func wear(look: RefCounted, overrides: Dictionary) -> MultiMeshInstance3D
 	node.set_instance_shader_parameter(&"trail_life", float(made.life))
 	node.set_instance_shader_parameter(&"trail_drift", float(made.drift) * PIP_WIDTH)
 	node.set_instance_shader_parameter(&"trail_spin", deg_to_rad(float(made.spin)))
-	node.set_instance_shader_parameter(&"trail_color_a", _linear(colors[0]))
-	node.set_instance_shader_parameter(&"trail_color_b", _linear(colors[1]))
+	node.set_instance_shader_parameter(&"trail_color_a", _raw(colors[0]))
+	node.set_instance_shader_parameter(&"trail_color_b", _raw(colors[1]))
 	look.attach(look.root(), node)
 	if look.place() != PipOutfit.WORLD:
 		_sample(node, made)
@@ -195,7 +200,7 @@ static func mark_look(made: Dictionary, number: int, pip_seed: int) -> Dictionar
 static func _sample(node: MultiMeshInstance3D, made: Dictionary) -> void:
 	var marks := node.multimesh
 	marks.visible_instance_count = SAMPLE.size()
-	var upright := Basis(Vector3.RIGHT, PI * 0.5)
+	var upright := Basis(Vector3.RIGHT, PI * 0.5).scaled(Vector3.ONE * SAMPLE_SCALE)
 	var life := float(made.life)
 	for index in range(SAMPLE.size()):
 		var spot: Array = SAMPLE[index]
@@ -204,9 +209,9 @@ static func _sample(node: MultiMeshInstance3D, made: Dictionary) -> void:
 		marks.set_instance_custom_data(index, Color(-(1.0 - float(spot[1])) * life, float(spot[2]), TAU * index / SAMPLE.size(), float(index % 2)))
 	node.set_instance_shader_parameter(&"trail_drift", 0.0)
 
-static func _linear(color: Color) -> Vector3:
-	var linear := color.srgb_to_linear()
-	return Vector3(linear.r, linear.g, linear.b)
+## A palette colour as the shader takes it (as baked vertex colours are).
+static func _raw(color: Color) -> Vector3:
+	return Vector3(color.r, color.g, color.b)
 
 
 ## One pip's walking trail: where it last was, how far it has walked since its

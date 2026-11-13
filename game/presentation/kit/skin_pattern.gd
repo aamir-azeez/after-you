@@ -126,7 +126,7 @@ static func body_material(made: Dictionary) -> Material:
 ## A surface's shader uniforms, by name (skin_pattern.gdshaderinc). `eyes`:
 ## the head, whose stamps keep out of the eyes' safety ovals.
 static func uniforms(surface: Dictionary, map: Vector3, eyes: bool) -> Dictionary:
-	var values := {&"surface_map": map, &"pattern_base": _linear(surface.base), &"safe_eyes": SAFE_EYES if eyes else Vector4.ZERO, &"skin_drift": 0.0}
+	var values := {&"surface_map": map, &"pattern_base": _raw(surface.base), &"safe_eyes": SAFE_EYES if eyes else Vector4.ZERO, &"skin_drift": 0.0}
 	var points := PackedVector2Array()
 	var info := PackedVector4Array()
 	var field_colors := PackedVector3Array()
@@ -137,7 +137,7 @@ static func uniforms(surface: Dictionary, map: Vector3, eyes: bool) -> Dictionar
 			continue
 		info.append(Vector4(points.size(), corners.size(), float(field.get("wander", 0.0)), 0))
 		for corner: Vector2 in corners: points.append(corner)
-		field_colors.append(_linear(field.color))
+		field_colors.append(_raw(field.color))
 	values[&"field_points"] = _padded2(points, MAX_FIELD_POINTS)
 	values[&"field_info"] = _padded4(info, MAX_FIELDS)
 	values[&"field_color"] = _padded3(field_colors, MAX_FIELDS)
@@ -151,8 +151,8 @@ static func uniforms(surface: Dictionary, map: Vector3, eyes: bool) -> Dictionar
 			break
 		rows.append(Vector4(band.from, band.to, band.get("period", 1.0), band.get("amplitude", 0.0)))
 		styles.append(Vector4(KINDS.get(str(band.get("kind", "wave")), 2.0), band.get("edge", 0.0), 0, 0))
-		band_colors.append(_linear(band.color))
-		edge_colors.append(_linear(band.get("edge_color", band.color)))
+		band_colors.append(_raw(band.color))
+		edge_colors.append(_raw(band.get("edge_color", band.color)))
 	values[&"band_rows"] = _padded4(rows, MAX_BANDS)
 	values[&"band_style"] = _padded4(styles, MAX_BANDS)
 	values[&"band_color"] = _padded3(band_colors, MAX_BANDS)
@@ -167,19 +167,20 @@ static func uniforms(surface: Dictionary, map: Vector3, eyes: bool) -> Dictionar
 		var spot: Vector2 = stamp.at
 		at.append(Vector4((spot.x - 0.5) * 2.0 * map.x, map.y - spot.y * map.z, float(stamp.width) * map.x, float(stamp.get("turn", 0.0))))
 		stamp_styles.append(Vector4(SHAPES.get(str(stamp.shape), 1.0), -1.0 if stamp.get("back", false) else 1.0, 0, 0))
-		stamp_colors.append(_linear(stamp.color))
+		stamp_colors.append(_raw(stamp.color))
 	values[&"stamp_at"] = _padded4(at, MAX_STAMPS)
 	values[&"stamp_style"] = _padded4(stamp_styles, MAX_STAMPS)
 	values[&"stamp_color"] = _padded3(stamp_colors, MAX_STAMPS)
 	var seam: Dictionary = surface.seam
 	values[&"seam_half"] = float(seam.get("width", 0.0)) * map.x if not seam.is_empty() else 0.0
-	values[&"seam_color"] = _linear(seam.get("color", surface.base))
+	values[&"seam_color"] = _raw(seam.get("color", surface.base))
 	return values
 
-## The shaders take linear colours (the palette is sRGB).
-static func _linear(color: Color) -> Vector3:
-	var linear := color.srgb_to_linear()
-	return Vector3(linear.r, linear.g, linear.b)
+## A palette colour as the shaders take it: its values as they are, like
+## baked vertex colours (kit/fall_effect.gd's colours too); converting it to
+## linear first draws it a whole gamma too dark.
+static func _raw(color: Color) -> Vector3:
+	return Vector3(color.r, color.g, color.b)
 
 static func _padded2(values: PackedVector2Array, size: int) -> PackedVector2Array:
 	var out := values.duplicate()

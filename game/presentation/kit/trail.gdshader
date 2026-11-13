@@ -17,7 +17,7 @@ instance uniform float trail_clock = 0.0;
 instance uniform float trail_life = 0.8;
 instance uniform float trail_drift = 0.04;
 instance uniform float trail_spin = 0.35;
-// The two colours (linear), and the race ghost's strength.
+// The two colours (the palette's values), and the race ghost's strength.
 instance uniform vec3 trail_color_a = vec3(1.0);
 instance uniform vec3 trail_color_b = vec3(1.0);
 instance uniform float veil = 1.0;
