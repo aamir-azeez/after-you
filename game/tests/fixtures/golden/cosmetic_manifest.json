@@ -60,6 +60,7 @@
 			"unlock": ""
 		},
 		"autumn": {
+			"code": 304,
 			"currency": "pollen",
 			"id": "autumn",
 			"price": 20000,
@@ -83,6 +84,7 @@
 			"unlock": ""
 		},
 		"blue_pottery": {
+			"code": 303,
 			"currency": "pollen",
 			"id": "blue_pottery",
 			"price": 20000,
@@ -142,6 +144,7 @@
 			"unlock": ""
 		},
 		"knit": {
+			"code": 300,
 			"currency": "pollen",
 			"id": "knit",
 			"price": 5000,
@@ -165,6 +168,7 @@
 			"unlock": ""
 		},
 		"leaves": {
+			"code": 310,
 			"currency": "pollen",
 			"id": "leaves",
 			"price": 20000,
@@ -188,6 +192,7 @@
 			"unlock": "sleeping-lighthouse"
 		},
 		"little_tune": {
+			"code": 315,
 			"currency": "pollen",
 			"id": "little_tune",
 			"price": 50000,
@@ -199,6 +204,7 @@
 			"unlock": ""
 		},
 		"night_sky": {
+			"code": 301,
 			"currency": "pollen",
 			"id": "night_sky",
 			"price": 50000,
@@ -222,6 +228,7 @@
 			"unlock": ""
 		},
 		"patchwork": {
+			"code": 302,
 			"currency": "pollen",
 			"id": "patchwork",
 			"price": 5000,
@@ -233,6 +240,7 @@
 			"unlock": ""
 		},
 		"pocket_pebble": {
+			"code": 320,
 			"currency": "pollen",
 			"id": "pocket_pebble",
 			"price": 1000,
@@ -244,6 +252,7 @@
 			"unlock": ""
 		},
 		"rain_drops": {
+			"code": 312,
 			"currency": "pollen",
 			"id": "rain_drops",
 			"price": 20000,
@@ -255,6 +264,7 @@
 			"unlock": ""
 		},
 		"sea_glass": {
+			"code": 305,
 			"currency": "pollen",
 			"id": "sea_glass",
 			"price": 50000,
@@ -278,6 +288,7 @@
 			"unlock": ""
 		},
 		"seed_fluff": {
+			"code": 311,
 			"currency": "pollen",
 			"id": "seed_fluff",
 			"price": 20000,
@@ -289,6 +300,7 @@
 			"unlock": ""
 		},
 		"snow_steps": {
+			"code": 314,
 			"currency": "pollen",
 			"id": "snow_steps",
 			"price": 20000,
@@ -300,6 +312,7 @@
 			"unlock": ""
 		},
 		"soft_ring": {
+			"code": 321,
 			"currency": "pollen",
 			"id": "soft_ring",
 			"price": 5000,
@@ -311,6 +324,7 @@
 			"unlock": ""
 		},
 		"soft_stars": {
+			"code": 313,
 			"currency": "pollen",
 			"id": "soft_stars",
 			"price": 20000,
@@ -406,6 +420,7 @@
 			"unlock": ""
 		},
 		"wood_chime": {
+			"code": 322,
 			"currency": "pollen",
 			"id": "wood_chime",
 			"price": 5000,

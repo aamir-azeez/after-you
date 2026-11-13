@@ -109,6 +109,10 @@ static func moving(id: String) -> bool:
 static func wide(id: String) -> bool:
 	return bool(Index.data(id).get("wide", false))
 
+## Whether it lies round the feet (the pip views pull back and look lower).
+static func low(id: String) -> bool:
+	return bool(Index.data(id).get("low", false))
+
 ## Metres the leaf sits higher while it is worn.
 static func leaf_lift(id: String) -> float:
 	return float(Index.data(id).get("leaf_lift", 0.0))

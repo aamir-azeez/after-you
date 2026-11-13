@@ -11,4 +11,6 @@ const DATA := {
 	## Room and result pages and the Wardrobe only: never in a chapter, where
 	## it could be taken for a pad or a target.
 	"places": ["stage", "wardrobe"],
+	## It lies round the feet: the pip views pull back to show it.
+	"low": true,
 }

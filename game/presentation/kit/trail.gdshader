@@ -11,7 +11,9 @@ shader_type spatial;
 // letters and pair tags drawn after it stay on top.
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
-uniform float opacity = 0.38;
+// How strong a fresh mark is: at most 0.38 on the floor (kit/trail_kit.gd
+// OPACITY); a pictured pip's still sample is drawn stronger.
+instance uniform float trail_opacity = 0.38;
 instance uniform float trail_clock = 0.0;
 // Seconds a mark lives, metres a second it drifts, radians a second it turns.
 instance uniform float trail_life = 0.8;
@@ -41,5 +43,5 @@ void vertex() {
 
 void fragment() {
 	ALBEDO = tint;
-	ALPHA = fade * opacity * veil;
+	ALPHA = fade * trail_opacity * veil;
 }

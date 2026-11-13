@@ -63,6 +63,9 @@ const OPTIONAL := {
 	## it under a picked earned item the player does not own. "" for an item
 	## that is sold.
 	"earn": "",
+	## true: it lies on the floor round the feet (a foot ring), so the pip views
+	## pull back and look a little lower to keep it in frame (kit/pip_stage.gd).
+	"low": false,
 	## The places its art shows in (presentation/pip_outfit.gd PLACES: "world",
 	## "studio", "stage", "wardrobe"), or [] for everywhere: a foot ring only on
 	## room and result pages and in the Wardrobe.

@@ -10,11 +10,15 @@ const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const WOOD := Color("b58c63")
 const PALE := Color("e8dabc")
-## Where it hangs: beside the head on the viewer's right, a little forward.
-const AT := Vector3(0.4, 0.0, 0.12)
+## Where it hangs: beside the head on the viewer's right, a little forward,
+## drawn SIZE times its model's size about its middle (PIVOT), as big beside
+## the head as the board draws it.
+const AT := Vector3(0.42, 0.0, 0.12)
+const SIZE := 1.5
+const PIVOT := Vector3(0, 0.78, 0)
 
 static func wear(look: RefCounted) -> void:
-	look.mesh(look.root(), Kit.cached_mesh("wood_chime", _chime), Kit.vertex_material(), Transform3D(Basis.IDENTITY, AT))
+	look.mesh(look.root(), Kit.cached_mesh("wood_chime", _chime), Kit.vertex_material(), Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * SIZE), AT + PIVOT - PIVOT * SIZE))
 
 static func _chime() -> Mesh:
 	var parts := Kit.Parts.new()

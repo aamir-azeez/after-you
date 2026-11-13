@@ -274,7 +274,7 @@ func _trail_rules() -> void:
 	_walk(spirit, 70.0, 1.0 / 30.0)
 	_check(walk.clock <= TrailKit.REBASE_AFTER + 0.1 and not _marks(trail).is_empty(), "and is moved back on a long walk: %.2f" % walk.clock)
 	var material := trail.material_override as ShaderMaterial
-	_check(float(material.get_shader_parameter(&"opacity")) <= 0.38 and material.render_priority < -1, "Marks are at most 0.38 strong and drawn before the pair tags")
+	_check(TrailKit.OPACITY <= 0.38 and material.render_priority < -1, "Marks are at most 0.38 strong and drawn before the pair tags")
 	_check(TrailKit.LIFT > 0.006 and TrailKit.LIFT < 0.0095, "Marks lie over the floor's lines and under the pair tags")
 	var other := _spirit()
 	other.wear(Outfit.of("leaves", true))

@@ -10,10 +10,11 @@ const Meshes = preload("res://presentation/spirit_meshes.gd")
 
 const PEBBLE := Color("e8dabc")
 const SPOT := Color("b9ad94")
-## Where it rests: toward the viewer's right and a little forward, low on the
-## torso; its half sizes (long, thick, wide): 0.2 by 0.16 pip widths.
-const REST := Vector3(0.85, -0.35, 0.45)
-const SIZE := Vector3(0.069, 0.04, 0.055)
+## Where it rests: against the side of the body on the viewer's right, a
+## little forward, at the hip, as the board draws it; its half sizes (long,
+## thick, wide): 0.2 by 0.16 pip widths.
+const REST := Vector3(1.0, -0.1, 0.45)
+const SIZE := Vector3(0.069, 0.05, 0.055)
 
 static func wear(look: RefCounted) -> void:
 	var node: MeshInstance3D = look.mesh(look.torso(), Kit.cached_mesh("pocket_pebble", _pebble), Kit.vertex_material())
@@ -21,7 +22,7 @@ static func wear(look: RefCounted) -> void:
 
 static func _pebble() -> Mesh:
 	var parts := Kit.Parts.new()
-	var frame := Kit.lie_on(Meshes.torso_surface(REST), Vector3(0.3, 1.0, 0.2), SIZE, -0.012)
+	var frame := Kit.lie_on(Meshes.torso_surface(REST), Vector3(0.3, 1.0, 0.2), SIZE, -0.004)
 	parts.blob_at(PEBBLE, frame, 7, 3)
 	parts.push(frame)
 	parts.blob(SPOT, Vector3(0.35, 0.72, 0.15), Vector3(0.32, 0.3, 0.3), Vector3.ZERO, 4, 2)

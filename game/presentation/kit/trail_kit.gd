@@ -130,6 +130,9 @@ const SAMPLE := [
 ## Sample marks are drawn this much bigger than walking ones, so a card's
 ## small pip shows them as the board does.
 const SAMPLE_SCALE := 1.5
+## A sample is a picture of the trail, not marks on a floor: drawn this strong
+## so it reads on the Wardrobe's dark and pale panels, as the board's cards do.
+const SAMPLE_OPACITY := 0.8
 
 ## Puts the trail `overrides` names (a recipe) on the pip `look` dresses.
 ## Returns its node.
@@ -148,6 +151,7 @@ static func wear(look: RefCounted, overrides: Dictionary) -> MultiMeshInstance3D
 	node.set_meta(RECIPE_META, made)
 	node.set_meta(VEIL_META, VEIL)
 	var colors: Array = made.colors
+	node.set_instance_shader_parameter(&"trail_opacity", OPACITY)
 	node.set_instance_shader_parameter(&"trail_life", float(made.life))
 	node.set_instance_shader_parameter(&"trail_drift", float(made.drift) * PIP_WIDTH)
 	node.set_instance_shader_parameter(&"trail_spin", deg_to_rad(float(made.spin)))
@@ -206,7 +210,6 @@ static func material() -> Material:
 	return Kit.cached_material("trail", func() -> Material:
 		var shading := ShaderMaterial.new()
 		shading.shader = SHADER
-		shading.set_shader_parameter(&"opacity", OPACITY)
 		shading.render_priority = RENDER_PRIORITY
 		return shading)
 
@@ -229,6 +232,7 @@ static func _sample(node: MultiMeshInstance3D, made: Dictionary) -> void:
 		# Its birth puts it `faded` of the way through its fade at clock 0.
 		marks.set_instance_custom_data(index, Color(-(1.0 - float(spot[1])) * life, float(spot[2]), TAU * index / SAMPLE.size(), float(index % 2)))
 	node.set_instance_shader_parameter(&"trail_drift", 0.0)
+	node.set_instance_shader_parameter(&"trail_opacity", SAMPLE_OPACITY)
 
 ## A palette colour as the shader takes it (as baked vertex colours are).
 static func _raw(color: Color) -> Vector3:

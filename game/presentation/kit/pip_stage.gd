@@ -21,6 +21,10 @@ const TALL_LIFT := 0.04
 ## toward the item's side (+x: the view turns the pip's right side away).
 const WIDE_PULL := 1.25
 const WIDE_PAN := 0.05
+## With a low item (a foot ring): how much farther the camera stands, and how
+## much lower it looks, so the ring round the feet stays in frame.
+const LOW_PULL := 1.35
+const LOW_DROP := 0.12
 
 ## Lights `view` and adds `pip` and a camera framed for `outfit`; returns the
 ## camera.
@@ -63,8 +67,14 @@ static func pip(color: Color, outfit: Dictionary, place: StringName = PipOutfit.
 static func frame(camera: Camera3D, outfit: Dictionary) -> void:
 	var worn := Outfit.from(outfit)
 	var wide := Outfit.wide(worn)
-	if not wide and not Outfit.tall(worn):
+	var tall := Outfit.tall(worn)
+	var low := Outfit.low(worn)
+	if not wide and not tall and not low:
 		camera.look_at_from_position(CAMERA_AT, LOOK_AT)
 		return
-	var target := LOOK_AT + Vector3(WIDE_PAN if wide else 0.0, TALL_LIFT, 0)
-	camera.look_at_from_position(target + (CAMERA_AT - LOOK_AT) * (WIDE_PULL if wide else TALL_PULL), target)
+	var target := LOOK_AT + Vector3(WIDE_PAN if wide else 0.0, TALL_LIFT if wide or tall else 0.0, 0)
+	var pull := WIDE_PULL if wide else (TALL_PULL if tall else 1.0)
+	if low:
+		target.y -= LOW_DROP
+		pull = maxf(pull, LOW_PULL)
+	camera.look_at_from_position(target + (CAMERA_AT - LOOK_AT) * pull, target)
