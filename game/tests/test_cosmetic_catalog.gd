@@ -61,7 +61,7 @@ func _descriptors() -> void:
 		else: _check(str(data.earn).is_empty() and Catalog.earn(id).is_empty(), "%s (sold) has no earn line" % id)
 		_check(data.is_read_only(), "%s's descriptor is read only" % id)
 	_check(Index.data("nothing").is_empty() and not Catalog.has("nothing"), "An unknown id has no descriptor")
-	_check(Index.SLOTS == ["hat", "body", "leaf"], "The slots are the hat, the body and the leaf")
+	_check(Index.SLOTS == ["hat", "body", "leaf", "trail", "carry", "foot_ring", "bell_sound"], "The slots are the hat, the body, the leaf, the trail and the three little extras")
 
 func _prices() -> void:
 	_check(Index.TIER_PRICES == {"common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 20, "fruit_small": 50, "fruit_hat": 100, "fruit_body": 200}, "Tier prices follow the ramp, earned costs nothing because it is never sold, and the Orchard tiers are priced in Fruits")
@@ -82,6 +82,10 @@ func _rules() -> void:
 		# The Orchard, as the server's catalogue sells it (FRUITS contract).
 		"apple_hood": ["hat", "fruit_hat"], "blueberry_hood": ["hat", "fruit_hat"], "blossom_crown": ["hat", "fruit_hat"], "orchard_skin": ["body", "fruit_body"], "apple_leaf": ["leaf", "fruit_small"],
 		"sprig_coral": ["leaf", "sprig"], "sprig_plum": ["leaf", "sprig"], "sprig_sun": ["leaf", "sprig"], "sprig_sky": ["leaf", "sprig"],
+		# Pollen skins, trails and little extras (board 2026-11-12), graded by what each does.
+		"knit": ["body", "uncommon"], "night_sky": ["body", "epic"], "patchwork": ["body", "uncommon"], "blue_pottery": ["body", "rare"], "autumn": ["body", "rare"], "sea_glass": ["body", "epic"],
+		"leaves": ["trail", "rare"], "seed_fluff": ["trail", "rare"], "rain_drops": ["trail", "rare"], "soft_stars": ["trail", "rare"], "snow_steps": ["trail", "rare"], "little_tune": ["trail", "epic"],
+		"pocket_pebble": ["carry", "common"], "soft_ring": ["foot_ring", "uncommon"], "wood_chime": ["bell_sound", "uncommon"],
 	}
 	_check(Array(Catalog.ids()) == expect.keys(), "The approved items, in shop order: %s" % [Catalog.ids()])
 	for id: String in expect:

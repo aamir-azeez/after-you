@@ -72,6 +72,11 @@ static func wide(outfit: Dictionary) -> bool:
 		if Catalog.wide(id): return true
 	return false
 
+## The fixed cue of the worn Bell sound item (services/sound_cues.gd), or ""
+## for none: what the player's result screen plays once.
+static func bell_sound(outfit: Dictionary) -> String:
+	return Catalog.sound(str(outfit.get("bell_sound", "")))
+
 ## The highest leaf lift of the worn items, in metres.
 static func leaf_lift(outfit: Dictionary) -> float:
 	var lift := 0.0

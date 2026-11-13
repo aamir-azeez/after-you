@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "slots": ["hat", "body", "leaf"],
+  "slots": ["hat", "body", "leaf", "trail", "carry", "foot_ring", "bell_sound"],
   "tier_prices": { "common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 20, "fruit_small": 50, "fruit_hat": 100, "fruit_body": 200 },
   "tier_currency": { "sprig": "fruits", "fruit_small": "fruits", "fruit_hat": "fruits", "fruit_body": "fruits" },
   "set_discount_percent": 15,
@@ -25,7 +25,22 @@
     "sprig_coral": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
     "sprig_plum": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
     "sprig_sun": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
-    "sprig_sky": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true }
+    "sprig_sky": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
+    "knit": { "slot": "body", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "night_sky": { "slot": "body", "tier": "epic", "unlock": "", "set": "", "released": false },
+    "patchwork": { "slot": "body", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "blue_pottery": { "slot": "body", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "autumn": { "slot": "body", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "sea_glass": { "slot": "body", "tier": "epic", "unlock": "", "set": "", "released": false },
+    "leaves": { "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "seed_fluff": { "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "rain_drops": { "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "soft_stars": { "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "snow_steps": { "slot": "trail", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "little_tune": { "slot": "trail", "tier": "epic", "unlock": "", "set": "", "released": false },
+    "pocket_pebble": { "slot": "carry", "tier": "common", "unlock": "", "set": "", "released": false },
+    "soft_ring": { "slot": "foot_ring", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "wood_chime": { "slot": "bell_sound", "tier": "uncommon", "unlock": "", "set": "", "released": false }
   },
   "packs": {
     "garden_faces": { "released": true, "faces": ["heart_eyes", "proud", "wink"] },

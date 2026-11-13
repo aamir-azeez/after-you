@@ -17,7 +17,22 @@
 		"sprig_coral",
 		"sprig_plum",
 		"sprig_sun",
-		"sprig_sky"
+		"sprig_sky",
+		"knit",
+		"night_sky",
+		"patchwork",
+		"blue_pottery",
+		"autumn",
+		"sea_glass",
+		"leaves",
+		"seed_fluff",
+		"rain_drops",
+		"soft_stars",
+		"snow_steps",
+		"little_tune",
+		"pocket_pebble",
+		"soft_ring",
+		"wood_chime"
 	],
 	"items": {
 		"apple_hood": {
@@ -42,6 +57,17 @@
 			"tier": "fruit_small",
 			"unlock": ""
 		},
+		"autumn": {
+			"currency": "pollen",
+			"id": "autumn",
+			"price": 20000,
+			"released": false,
+			"set": "",
+			"slot": "body",
+			"sold": true,
+			"tier": "rare",
+			"unlock": ""
+		},
 		"blossom_crown": {
 			"currency": "fruits",
 			"id": "blossom_crown",
@@ -51,6 +77,17 @@
 			"slot": "hat",
 			"sold": true,
 			"tier": "fruit_hat",
+			"unlock": ""
+		},
+		"blue_pottery": {
+			"currency": "pollen",
+			"id": "blue_pottery",
+			"price": 20000,
+			"released": false,
+			"set": "",
+			"slot": "body",
+			"sold": true,
+			"tier": "rare",
 			"unlock": ""
 		},
 		"blueberry_hood": {
@@ -97,6 +134,17 @@
 			"tier": "earned",
 			"unlock": ""
 		},
+		"knit": {
+			"currency": "pollen",
+			"id": "knit",
+			"price": 5000,
+			"released": false,
+			"set": "",
+			"slot": "body",
+			"sold": true,
+			"tier": "uncommon",
+			"unlock": ""
+		},
 		"lantern": {
 			"currency": "pollen",
 			"id": "lantern",
@@ -106,6 +154,17 @@
 			"slot": "hat",
 			"sold": true,
 			"tier": "epic",
+			"unlock": ""
+		},
+		"leaves": {
+			"currency": "pollen",
+			"id": "leaves",
+			"price": 20000,
+			"released": false,
+			"set": "",
+			"slot": "trail",
+			"sold": true,
+			"tier": "rare",
 			"unlock": ""
 		},
 		"lighthouse_lamp": {
@@ -119,6 +178,28 @@
 			"tier": "special",
 			"unlock": "sleeping-lighthouse"
 		},
+		"little_tune": {
+			"currency": "pollen",
+			"id": "little_tune",
+			"price": 50000,
+			"released": false,
+			"set": "",
+			"slot": "trail",
+			"sold": true,
+			"tier": "epic",
+			"unlock": ""
+		},
+		"night_sky": {
+			"currency": "pollen",
+			"id": "night_sky",
+			"price": 50000,
+			"released": false,
+			"set": "",
+			"slot": "body",
+			"sold": true,
+			"tier": "epic",
+			"unlock": ""
+		},
 		"orchard_skin": {
 			"currency": "fruits",
 			"id": "orchard_skin",
@@ -130,6 +211,50 @@
 			"tier": "fruit_body",
 			"unlock": ""
 		},
+		"patchwork": {
+			"currency": "pollen",
+			"id": "patchwork",
+			"price": 5000,
+			"released": false,
+			"set": "",
+			"slot": "body",
+			"sold": true,
+			"tier": "uncommon",
+			"unlock": ""
+		},
+		"pocket_pebble": {
+			"currency": "pollen",
+			"id": "pocket_pebble",
+			"price": 1000,
+			"released": false,
+			"set": "",
+			"slot": "carry",
+			"sold": true,
+			"tier": "common",
+			"unlock": ""
+		},
+		"rain_drops": {
+			"currency": "pollen",
+			"id": "rain_drops",
+			"price": 20000,
+			"released": false,
+			"set": "",
+			"slot": "trail",
+			"sold": true,
+			"tier": "rare",
+			"unlock": ""
+		},
+		"sea_glass": {
+			"currency": "pollen",
+			"id": "sea_glass",
+			"price": 50000,
+			"released": false,
+			"set": "",
+			"slot": "body",
+			"sold": true,
+			"tier": "epic",
+			"unlock": ""
+		},
 		"seashell": {
 			"currency": "pollen",
 			"id": "seashell",
@@ -139,6 +264,50 @@
 			"slot": "hat",
 			"sold": true,
 			"tier": "common",
+			"unlock": ""
+		},
+		"seed_fluff": {
+			"currency": "pollen",
+			"id": "seed_fluff",
+			"price": 20000,
+			"released": false,
+			"set": "",
+			"slot": "trail",
+			"sold": true,
+			"tier": "rare",
+			"unlock": ""
+		},
+		"snow_steps": {
+			"currency": "pollen",
+			"id": "snow_steps",
+			"price": 20000,
+			"released": false,
+			"set": "",
+			"slot": "trail",
+			"sold": true,
+			"tier": "rare",
+			"unlock": ""
+		},
+		"soft_ring": {
+			"currency": "pollen",
+			"id": "soft_ring",
+			"price": 5000,
+			"released": false,
+			"set": "",
+			"slot": "foot_ring",
+			"sold": true,
+			"tier": "uncommon",
+			"unlock": ""
+		},
+		"soft_stars": {
+			"currency": "pollen",
+			"id": "soft_stars",
+			"price": 20000,
+			"released": false,
+			"set": "",
+			"slot": "trail",
+			"sold": true,
+			"tier": "rare",
 			"unlock": ""
 		},
 		"sprig_coral": {
@@ -217,12 +386,27 @@
 			"sold": false,
 			"tier": "earned",
 			"unlock": ""
+		},
+		"wood_chime": {
+			"currency": "pollen",
+			"id": "wood_chime",
+			"price": 5000,
+			"released": false,
+			"set": "",
+			"slot": "bell_sound",
+			"sold": true,
+			"tier": "uncommon",
+			"unlock": ""
 		}
 	},
 	"slots": [
 		"hat",
 		"body",
-		"leaf"
+		"leaf",
+		"trail",
+		"carry",
+		"foot_ring",
+		"bell_sound"
 	],
 	"tier_currency": {
 		"fruit_body": "fruits",

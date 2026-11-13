@@ -99,6 +99,26 @@ static func wide(id: String) -> bool:
 static func leaf_lift(id: String) -> float:
 	return float(Index.data(id).get("leaf_lift", 0.0))
 
+## The Wardrobe chip a slot is listed under (content/cosmetics/index.gd
+## SLOT_CHIPS): the slot itself unless it is grouped.
+static func chip(slot_id: String) -> String:
+	return str(Index.SLOT_CHIPS.get(slot_id, slot_id))
+
+## The Wardrobe chips in slot order, each once.
+static func chips() -> Array[String]:
+	var result: Array[String] = []
+	for slot_id: String in Index.SLOTS:
+		if not chip(slot_id) in result: result.append(chip(slot_id))
+	return result
+
+## A Bell sound item's fixed cue (services/sound_cues.gd), or "".
+static func sound(id: String) -> String:
+	return str(Index.data(id).get("sound", ""))
+
+## The item's permanent number, or 0.
+static func code(id: String) -> int:
+	return int(Index.data(id).get("code", 0))
+
 ## The presentation/pip_wear/ script that dresses a pip in it, or "".
 static func art(id: String) -> String:
 	return str(Index.data(id).get("art", ""))

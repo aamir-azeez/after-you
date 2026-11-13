@@ -25,6 +25,16 @@ extends RefCounted
 ##   the item is worn (a tall cap), plus the leaf's lift with `with_leaf` (a
 ##   big leaf that rises with it); the largest ask wins. The seed's place is
 ##   presentation only, as everything here is.
+## - travel(step): step(look, at, delta, reduced) on every frame of the pip's
+##   motion, `at` its feet's global position (a trail drops marks along it);
+##   on_reset(step): step(look) when the pip is placed (a replay seek, a
+##   reset), not walked. A step returns at once when it has nothing to do.
+## - hide_while_carrying(node): the node hides while the pip carries a real
+##   object (a seed, the Lighthouse lens), so a little extra never looks like
+##   one or crowds it.
+## - place(): where the pip is drawn (WORLD, STUDIO, STAGE, WARDROBE), for an
+##   item that shows only in some places; root(): the pip's own node, which
+##   moves but never turns (a ring under its feet).
 ## - animate(step): step(look, seconds) poses the item's moving parts (look is
 ##   this object, passed in so a step never holds it). It runs at the
 ##   idle card rate (ANIMATION_HZ) of the pip's own clock, so a replay, a still
@@ -39,6 +49,15 @@ const Look = preload("res://presentation/spirit_look.gd")
 
 ## The idle card rate (island_world.gd IDLE_CARD_HZ; test_pip_outfit pins it).
 const ANIMATION_HZ := 12.0
+
+## Where a pip is drawn (SpiritVisual.place): a world it walks in (chapters,
+## Home: the default), a picture of a pip (lists, chips, Settings), a room or
+## result page's pip (STAGE) and the Wardrobe's pips.
+const WORLD := &"world"
+const STUDIO := &"studio"
+const STAGE := &"stage"
+const WARDROBE := &"wardrobe"
+const PLACES: Array[StringName] = [WORLD, STUDIO, STAGE, WARDROBE]
 
 ## The pip being dressed (a SpiritVisual).
 var spirit: Node3D
@@ -55,6 +74,10 @@ var _seed_follows_leaf := false
 var _nodes: Array[Node] = []
 var _undo: Array[Callable] = []
 var _steps: Array[Callable] = []
+var _travels: Array[Callable] = []
+var _resets: Array[Callable] = []
+var _carry_hidden: Array[Node3D] = []
+var _carrying := false
 var _clock := 0.0
 var _tick := -1
 
@@ -67,6 +90,8 @@ static func dress(target: Node3D, worn: Dictionary) -> RefCounted:
 		made.apply_art(load(path))
 	made.leaf_lift = Outfit.leaf_lift(worn)
 	made.seed_lift = maxf(made._seed_own, made._seed_with_leaf + made.leaf_lift if made._seed_follows_leaf else 0.0)
+	made._carrying = not bool(target.get("carrying_seed"))
+	made.carrying(bool(target.get("carrying_seed")))
 	made._pose(0.0)
 	return made
 
@@ -102,6 +127,19 @@ func foot_mesh(foot: Node3D) -> MeshInstance3D:
 
 func leaf() -> MeshInstance3D:
 	return spirit.sprout
+
+## The pip's own node: it moves but never turns or bobs.
+func root() -> Node3D:
+	return spirit
+
+## Where the pip is drawn (WORLD, STUDIO, STAGE, WARDROBE).
+func place() -> StringName:
+	return spirit.place
+
+## 0 for the first player's pip ("a", "p0"), 1 for the other's: a seed both
+## phones agree on.
+func slot_seed() -> int:
+	return 0 if str(spirit.get("_expression_role")) in ["", "a", "p0"] else 1
 
 ## The leaf's resting place in the upper body's space, for kit follow().
 func leaf_rest() -> Transform3D:
@@ -165,6 +203,16 @@ func lift_seed(metres: float, with_leaf: bool = false) -> void:
 func animate(step: Callable) -> void:
 	_steps.append(step)
 
+func travel(step: Callable) -> void:
+	_travels.append(step)
+
+func on_reset(step: Callable) -> void:
+	_resets.append(step)
+
+func hide_while_carrying(node: Node3D) -> void:
+	_carry_hidden.append(node)
+	node.visible = not _carrying
+
 func _may_change(part: GeometryInstance3D) -> bool:
 	if part == spirit.head:
 		push_error("A cosmetic never replaces the head: its material draws the face.")
@@ -181,6 +229,26 @@ func advance(delta: float, reduced: bool) -> void:
 		return
 	_clock += maxf(delta, 0.0)
 	_pose(_clock)
+
+## Whether any worn item follows the pip's travel (SpiritVisual asks before
+## working out where its feet are).
+func follows_travel() -> bool:
+	return not _travels.is_empty()
+
+## One frame of the pip's motion, its feet at `at` (global).
+func travel_to(at: Vector3, delta: float, reduced: bool) -> void:
+	for step: Callable in _travels: step.call(self, at, delta, reduced)
+
+## The pip was placed, not walked.
+func reset() -> void:
+	for step: Callable in _resets: step.call(self)
+
+## Whether the pip carries a real object now; acts only on a change.
+func carrying(held: bool) -> void:
+	if held == _carrying: return
+	_carrying = held
+	for node: Node3D in _carry_hidden:
+		if is_instance_valid(node): node.visible = not held
 
 func _pose(seconds: float) -> void:
 	# A hair over, so a clock summed from many small steps lands on its tick.
@@ -206,3 +274,6 @@ func undress() -> void:
 	for index in range(_undo.size() - 1, -1, -1): _undo[index].call()
 	_undo.clear()
 	_steps.clear()
+	_travels.clear()
+	_resets.clear()
+	_carry_hidden.clear()

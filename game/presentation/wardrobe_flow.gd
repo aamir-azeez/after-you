@@ -9,7 +9,8 @@ extends Node
 ## - services: api, _names_scope, saves (reduced motion)
 ## - screen: mode, running, overlay (the page's parent), ui (the cards' parent),
 ##   _clear_overlay, _toast, and _mark_screen_back when Main has it (Android Back)
-## - soundscape when Main has it (play_fixed_cue): worn, taken off and bought.
+## - soundscape when Main has it (play_fixed_cue): worn, taken off and bought,
+##   and a picked Bell sound item's own sound.
 ##   wear_item() stays quiet: its caller (a room's Wear it) sounds it on its own.
 ## - pollen_store_flow when Main has it: its `purchase` engine, through which
 ##   the short card buys the bundle it suggests.
@@ -277,22 +278,23 @@ func show_more(kind: String) -> void:
 	_tab = "all"
 	_shop_tab = ""
 	_kind = kind if kind in buyable or buyable.is_empty() else str(buyable[0])
-	if not _kind in Catalog.slots(): _kind = ""
+	if not _kind in Catalog.chips(): _kind = ""
 	_redraw()
 
-## The slots, in shop order, with something on sale for Pollen the player does
-## not own (All items' list: the Orchard has its own chip).
+## The slot chips (cosmetic_catalog.gd chips: a slot, or the little extras
+## together), in shop order, with something on sale for Pollen the player
+## does not own (All items' list: the Orchard has its own chip).
 static func _buyable_slots(items: Array) -> Array:
-	return Catalog.slots().filter(func(slot: String) -> bool: return items.any(func(entry: Dictionary) -> bool: return bool(entry.sold) and not bool(entry.owned) and entry.slot == slot and entry.currency != FRUITS))
+	return Catalog.chips().filter(func(chip: String) -> bool: return items.any(func(entry: Dictionary) -> bool: return bool(entry.sold) and not bool(entry.owned) and Catalog.chip(entry.slot) == chip and entry.currency != FRUITS))
 
-## A slot chip: Hat, Body or Leaf. From the Orchard it goes back to the tab the
+## A slot chip: Hat, Body, Leaf, Trails or Extras. From the Orchard it goes back to the tab the
 ## player came from (All items unless they came from Owned).
 func set_kind(kind: String) -> void:
 	var shown := model()
 	_keep_tab(shown)
 	if _tab == "orchard":
 		_tab = _allowed_tab(_shop_tab if not _shop_tab.is_empty() else "all", bool(shown.all_items), false)
-	_kind = kind if kind in Catalog.slots() else ""
+	_kind = kind if kind in Catalog.chips() else ""
 	_redraw()
 
 ## The pip switch: "you", or "friend" (your pip in a friend's room: mint).
@@ -328,6 +330,8 @@ func select(id: String) -> void:
 	var shown := model()
 	_keep_tab(shown)
 	_selected = id if Catalog.has(id) or not _entry_in(shown.sets, id).is_empty() else ""
+	# A Bell sound item is heard, not seen: picking it plays it once.
+	if not Catalog.sound(_selected).is_empty(): Soundscape.play_on(host, Catalog.sound(_selected))
 	_redraw()
 
 ## The picked item's (or Orchard set's) button: buy it, or wear it or take it
@@ -518,15 +522,16 @@ func model() -> Dictionary:
 	# The slot chips list only slots with something in this tab (in the Orchard, the tab they go back to); a chip with nothing left falls back to the first.
 	var chips_tab := tab if tab != "orchard" else _allowed_tab(_shop_tab if not _shop_tab.is_empty() else "all", all_items)
 	var kinds: Array = []
-	for slot: String in Catalog.slots():
-		if items.any(func(entry: Dictionary) -> bool: return entry.slot == slot and Page.in_tab(entry, chips_tab)): kinds.append(slot)
+	for chip: String in Catalog.chips():
+		if items.any(func(entry: Dictionary) -> bool: return Catalog.chip(entry.slot) == chip and Page.in_tab(entry, chips_tab)): kinds.append(chip)
 	var listed: Array = items.filter(func(entry: Dictionary) -> bool: return Page.in_tab(entry, tab))
 	var picks: Array = listed + sets if tab == "orchard" else listed
 	var selected := _selected if not _entry_in(picks, _selected).is_empty() else _default_pick(listed, look, featured if tab == "all" else [])
 	var picked := _entry_in(items + sets, selected)
 	# With no chip picked, the chip of the picked item's slot, so its card is on screen; none in the Orchard.
 	var kind: String = ""
-	if tab != "orchard": kind = _kind if _kind in kinds else (str(picked.slot) if not picked.is_empty() and picked.slot in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
+	var picked_chip := Catalog.chip(str(picked.get("slot", "")))
+	if tab != "orchard": kind = _kind if _kind in kinds else (picked_chip if not picked.is_empty() and picked_chip in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
 	var preview := Outfit.from(look)
 	if not picked.is_empty() and bool(picked.get("set", false)): preview.merge(picked.outfit, true)
 	elif not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)

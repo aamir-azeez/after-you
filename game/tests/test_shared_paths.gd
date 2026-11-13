@@ -338,6 +338,7 @@ const FALL_SHADER := "fall_effect.gdshader"
 const FALL_EFFECT_SURFACES := {
 	"res://presentation/pip_wear/orchard_skin.gd": "the Orchard skin's falling petals",
 	"res://services/gl_warmup.gd": "warms the kit's shader (FallEffect.SHADER) with the others",
+	"res://presentation/kit/trail_kit.gd": "falls nothing: a trail mark takes its look from the kit's integer hash (fall_draws), so a turn's marks match in every replay",
 }
 ## The kit's instance uniforms, which only the kit sets and only its shader declares.
 const FALL_UNIFORMS := "\\b(?:fall_clock|fall_seed)\\b"

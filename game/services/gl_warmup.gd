@@ -29,6 +29,9 @@ const SpiritFace = preload("res://presentation/spirit_face.gd")
 ## A pip's face and torso with the Tide body cosmetic (presentation/pip_wear/tide.gd).
 const SPIRIT_FACE_TIDE = preload("res://presentation/spirit_face_tide.gdshader")
 const SPIRIT_BODY_TIDE = preload("res://presentation/spirit_body_tide.gdshader")
+const SPIRIT_FACE_PATTERN = preload("res://presentation/spirit_face_pattern.gdshader")
+const SPIRIT_BODY_PATTERN = preload("res://presentation/spirit_body_pattern.gdshader")
+const TRAIL = preload("res://presentation/kit/trail.gdshader")
 ## The race ghost's see-through face (presentation/race_ghost_view.gd).
 const SPIRIT_FACE_GHOST = preload("res://presentation/spirit_face_ghost.gdshader")
 ## Falling wear effects, the Orchard skin's petals among them (presentation/kit/fall_effect.gd).
@@ -211,7 +214,7 @@ static func order(first: String) -> Array:
 
 ## Every ShaderMaterial shader the worlds draw (then worn cosmetics and the race ghost's face).
 static func shaders() -> Array[Shader]:
-	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST, FallEffect.SHADER, PairTags.SHADER]
+	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST, FallEffect.SHADER, PairTags.SHADER, SPIRIT_FACE_PATTERN, SPIRIT_BODY_PATTERN, TRAIL]
 
 ## A material with exactly that key (a small white texture for each texture).
 static func material_for(key: Dictionary) -> StandardMaterial3D:

@@ -88,7 +88,12 @@ var stride_phase := 0.0
 var step_phase := 0.0
 var motion_blend := 0.0
 var facing_target := 0.0
-var carrying_seed := false
+## A real object (a seed, the Lighthouse lens) rides above the head: worn
+## extras that hide while it does are told (pip_outfit.gd hide_while_carrying).
+var carrying_seed := false:
+	set(held):
+		carrying_seed=held
+		if _wearing!=null: _wearing.carrying(held)
 var carried_radius := 0.13
 var throw_age := THROW_DURATION
 var release_age := RELEASE_SETTLE_DURATION
@@ -129,6 +134,9 @@ var _placing := false
 ## What the spirit wears (presentation/pip_outfit.gd), or null for the default
 ## look, which adds nothing at all.
 var _wearing: RefCounted = null
+## Where it is drawn (pip_outfit.gd PLACES): a world it walks in unless a
+## screen says otherwise (set_place). Some worn items show only in some places.
+var place: StringName = PipOutfit.WORLD
 ## How much higher the leaf sits while an item lifts it.
 var _leaf_lift := Vector3.ZERO
 ## How much higher a carried seed sits while an item lifts it (pip_outfit.gd lift_seed).
@@ -210,6 +218,17 @@ func wear(outfit: Dictionary) -> void:
 	_leaf_lift = Vector3(0, _wearing.leaf_lift, 0)
 	_seed_lift = _wearing.seed_lift
 
+## Draws the spirit as a pip in `where` (pip_outfit.gd PLACES), dressing it
+## again if that changes what it wears shows.
+func set_place(where: StringName) -> void:
+	if where==place or not where in PipOutfit.PLACES: return
+	place=where
+	if _wearing==null: return
+	var worn: Dictionary=_wearing.outfit.duplicate()
+	_wearing.undress()
+	_wearing=null
+	wear(worn)
+
 ## What the spirit wears ({} for the default look).
 func outfit() -> Dictionary:
 	return _wearing.outfit.duplicate() if _wearing != null else {}
@@ -236,6 +255,7 @@ func reset_motion() -> void:
 	_clear_reaction()
 	_expression_time=0.0
 	_idle_blend=0.0
+	if _wearing!=null: _wearing.reset()
 	_look=Vector2.ZERO
 	_lean_direction=Vector2.ZERO
 	_partner_available=false
@@ -392,7 +412,9 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	_reduced_motion=reduced_motion
 	_reaction_age=minf(_reaction_duration,_reaction_age+delta)
 	face_art.advance(delta)
-	if _wearing!=null: _wearing.advance(delta,reduced_motion)
+	if _wearing!=null:
+		_wearing.advance(delta,reduced_motion)
+		if _wearing.follows_travel(): _wearing.travel_to(global_position if is_inside_tree() else position,delta,reduced_motion)
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)

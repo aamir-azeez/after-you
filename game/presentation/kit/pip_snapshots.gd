@@ -18,6 +18,7 @@ extends Node
 ##   so every caller still gets an answer.
 const Stage = preload("res://presentation/kit/pip_stage.gd")
 const Outfit = preload("res://services/outfit.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const SCRIPT_PATH := "res://presentation/kit/pip_snapshots.gd"
 const NODE_NAME := "PipSnapshots"
@@ -51,14 +52,16 @@ var _idle := 0.0
 var _headless := DisplayServer.get_name() == "headless"
 
 ## The cache key for a pip: colour, outfit as the pip wears it (cleaned, so
-## an item it can't wear never makes a second picture), pixel size and facing.
-static func key(color: Color, outfit: Dictionary, size: Vector2i, yaw: float) -> String:
-	return "%s|%s|%dx%d|%.4f" % [color.to_html(), Outfit.digest(Outfit.from(outfit)), size.x, size.y, yaw]
+## an item it can't wear never makes a second picture), pixel size, facing and
+## the place it is drawn for (pip_outfit.gd PLACES: some items show only in
+## some places).
+static func key(color: Color, outfit: Dictionary, size: Vector2i, yaw: float, place: StringName = PipOutfit.STUDIO) -> String:
+	return "%s|%s|%dx%d|%.4f|%s" % [color.to_html(), Outfit.digest(Outfit.from(outfit)), size.x, size.y, yaw, place]
 
 ## The pip's texture now if it is drawn, else null, and `done(key, texture)`
 ## is called once it is.
-static func request(color: Color, outfit: Dictionary, size: Vector2i, yaw: float, done: Callable) -> Texture2D:
-	var id := key(color, outfit, size, yaw)
+static func request(color: Color, outfit: Dictionary, size: Vector2i, yaw: float, done: Callable, place: StringName = PipOutfit.STUDIO) -> Texture2D:
+	var id := key(color, outfit, size, yaw, place)
 	var found: Texture2D = _cache.get(id)
 	if found != null:
 		# Most recently used goes last.
@@ -67,7 +70,7 @@ static func request(color: Color, outfit: Dictionary, size: Vector2i, yaw: float
 		return found
 	if not _waiters.has(id):
 		_waiters[id] = []
-		_specs[id] = {"key": id, "color": color, "outfit": Outfit.from(outfit), "size": size, "yaw": yaw}
+		_specs[id] = {"key": id, "color": color, "outfit": Outfit.from(outfit), "size": size, "yaw": yaw, "place": place}
 		_queue.append(id)
 	_waiters[id].append(done)
 	_renderer()
@@ -143,7 +146,7 @@ func _start(spec: Dictionary) -> void:
 	var size: Vector2i = spec.size
 	_view.size = size
 	if is_instance_valid(_pip): _pip.free()
-	_pip = Stage.pip(spec.color, spec.outfit)
+	_pip = Stage.pip(spec.color, spec.outfit, spec.get("place", PipOutfit.STUDIO))
 	_pip.facing_target = spec.yaw
 	_pip.facing.rotation.y = spec.yaw
 	_view.add_child(_pip)

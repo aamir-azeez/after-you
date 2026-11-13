@@ -56,12 +56,14 @@ const SafeArea = preload("res://presentation/safe_area.gd")
 const PageMargin = preload("res://presentation/kit/page_margin.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 const TierFrame = preload("res://presentation/kit/tier_frame.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const EmptyArt = preload("res://presentation/empty_state_art.gd")
 const Outfit = preload("res://services/outfit.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Orchard = preload("res://presentation/wardrobe_orchard.gd")
@@ -258,6 +260,7 @@ func _make_preview(color: Color) -> void:
 		_pip_box.remove_child(preview)
 		preview.queue_free()
 	preview = PipAvatar.new(_reduced, color, BIG_PIP)
+	preview.place = PipOutfit.WARDROBE
 	preview.name = "WardrobePip"
 	_pip_box.add_child(preview)
 
@@ -375,7 +378,7 @@ func render(model: Dictionary) -> void:
 	if orchard: _orchard.render(_model, line)
 	var featured: Array = (model.get("featured", []) as Array).filter(func(id: String) -> bool: return by_id.has(id)).map(func(id: String) -> Dictionary: return by_id[id])
 	var kind := str(model.get("kind", ""))
-	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return in_tab(entry, tab) and (kind.is_empty() or entry.slot == kind))
+	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return in_tab(entry, tab) and (kind.is_empty() or Catalog.chip(entry.slot) == kind))
 	# An empty list shows the drawing (empty_state.gd) with its case's line:
 	# nothing owned, nothing in the shop, or no shop. Never while the status
 	# line says loading or offline.
@@ -571,6 +574,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
 	column.add_child(picture)
 	var pip := PipAvatar.new(_reduced, SpiritLook.PEACH, SHELF_PIP if small else CARD_PIP, true)
+	pip.place = PipOutfit.WARDROBE
 	pip.outfit = Outfit.of(str(entry.id))
 	pip.animate_moving = true
 	pip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

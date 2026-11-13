@@ -19,6 +19,7 @@ extends TextureRect
 ## drawn so the change reads.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Stage = preload("res://presentation/kit/pip_stage.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const DragTurn = preload("res://presentation/kit/drag_turn.gd")
 const Look = preload("res://presentation/spirit_look.gd")
@@ -41,6 +42,9 @@ var rest_yaw := REST_YAW
 ## What the pip wears (services/outfit.gd); set before it enters the tree, or
 ## change it with wear().
 var outfit: Dictionary = {}
+## Where it is drawn (pip_outfit.gd PLACES): a picture of a pip, a room or
+## result page's pip (STAGE) or the Wardrobe's; set before it enters the tree.
+var place: StringName = PipOutfit.STUDIO
 var _view: SubViewport
 var _spirit: SpiritVisual
 var _camera: Camera3D
@@ -74,7 +78,7 @@ func _ready() -> void:
 	_view.msaa_3d = Viewport.MSAA_4X
 	_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(_view)
-	_spirit = Stage.pip(_color, outfit)
+	_spirit = Stage.pip(_color, outfit, place)
 	if _rest_face != Look.NORMAL: _spirit.set_expression(_rest_face, true)
 	_face()
 	_camera = Stage.build(_view, _spirit, outfit)

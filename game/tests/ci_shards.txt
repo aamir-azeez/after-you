@@ -349,6 +349,7 @@ shared_replays 1
 shared_room_followups 2
 simulation 2
 simulation_v2 3
+skins_trails 2
 solo_draft_writer 2
 solo_redo 3
 solo_redo_ui 3

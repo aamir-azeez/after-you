@@ -8,6 +8,7 @@ extends RefCounted
 ## pulls it back further and moves it toward the side the item hangs on.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Outfit = preload("res://services/outfit.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 
 const CAMERA_AT := Vector3(0.0, 0.66, 2.45)
 const LOOK_AT := Vector3(0.0, 0.53, 0.0)
@@ -45,12 +46,15 @@ static func build(view: SubViewport, pip: Node3D, outfit: Dictionary) -> Camera3
 	camera.current = true
 	return camera
 
-## A pip for the studio, in `color`, wearing `outfit`.
-static func pip(color: Color, outfit: Dictionary) -> SpiritVisual:
+## A pip for the studio, in `color`, wearing `outfit`, drawn for `place`
+## (pip_outfit.gd PLACES: a picture of a pip unless a room, result or
+## Wardrobe page says otherwise).
+static func pip(color: Color, outfit: Dictionary, place: StringName = PipOutfit.STUDIO) -> SpiritVisual:
 	var made := SpiritVisual.new(color)
 	made.ground_ring.visible = false
 	made.ground_shadow.visible = false
 	made.set_expression_role("a")
+	made.set_place(place)
 	made.wear(outfit)
 	return made
 

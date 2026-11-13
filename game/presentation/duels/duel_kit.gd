@@ -13,6 +13,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -108,6 +109,8 @@ static func pips(pip_size: Vector2, members: Array = [null, null], me: String = 
 ## A single still pip: the player's own when `own`, otherwise wearing `look`.
 static func pip(pip_size: Vector2, color: Color, own: bool = false, look: Variant = {}) -> Control:
 	var made := PipAvatar.new(true, color, pip_size, true, own)
+	# Duel pages are rooms and results: a worn foot ring shows here.
+	made.place = PipOutfit.STAGE
 	made.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if not own: made.wear(Outfit.from(look))
 	return made
