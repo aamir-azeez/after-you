@@ -5,7 +5,8 @@
  *   the web page or every email already shows them, so they are code, not config.
  * - CONFIG: one plain var holding a JSON object (ServerConfig, parsed by parseConfig) for everything that is not
  *   secret but must change without a code deploy, or must never reach Git: the server flags, the minimum app
- *   versions, the owner's friend aliases, the RevenueCat identifiers and the testers' code hashes. It lives only in
+ *   versions, the owner's friend aliases, the RevenueCat identifiers, the testers' code hashes and the cosmetics
+ *   release list and featured item (by item code, pollen/catalog.json). It lives only in
  *   Cloudflare and in the deploy runners' pinned copy, never in wrangler.jsonc.
  * - Secrets: keys and tokens, each its own `wrangler secret`, so a rotation touches nothing else. Never here.
  *
@@ -104,6 +105,11 @@ export type RevenueCatSettings = {
 export const TEST_CODE_ACTIONS = Object.freeze(["grant_keepsakes", "reset_keepsakes", "toggle_full_journey"] as const);
 export type TestCodeAction = typeof TEST_CODE_ACTIONS[number];
 const CODE_HASH = /^[0-9a-f]{64}$/;
+/** The highest cosmetic item code (pollen/catalog.json `code`); codes run from 1. */
+export const COSMETIC_CODE_MAX = 999;
+/** The most codes `cosmetics_released` may list. */
+export const MAX_RELEASED_COSMETICS = 256;
+const cosmeticCode = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= COSMETIC_CODE_MAX;
 export type ServerConfig = {
   /** The FLAG_VARS names that are on (flags.ts reads only names it knows). */
   readonly features: ReadonlySet<string>;
@@ -113,12 +119,20 @@ export type ServerConfig = {
   readonly revenuecat: RevenueCatSettings;
   /** Each configured test code action and its hash; empty when unset or malformed. */
   readonly test_codes: ReadonlyMap<TestCodeAction, string>;
+  /**
+   * Item codes released on top of the catalogue's own `released` items (pollen/catalog.ts catalogFor): built into the
+   * app, hidden until listed here. Empty when unset or malformed, so only the items built as released show and sell.
+   * A code no item has is ignored.
+   */
+  readonly cosmetics_released: ReadonlySet<number>;
+  /** The item code the shop features (pollen/catalog.ts featuredItem), or null for the phone's own weekly pick. */
+  readonly cosmetics_featured: number | null;
 };
 /**
  * `problems`: values that are malformed. Each malformed value fails safe where it is read: the whole object when it
  * is not a JSON object within MAX_CONFIG_LENGTH (EMPTY_CONFIG: every flag off, no minimum, no alias, RevenueCat
  * unconfigured), otherwise only its own key (features off, that minimum absent, every alias off, that RevenueCat
- * check held). `unknown`: keys and flag names this code does not know. The Worker ignores them, so a rollback to older
+ * check held, no code released beyond the catalogue's own, no featured item). `unknown`: keys and flag names this code does not know. The Worker ignores them, so a rollback to older
  * code keeps working under a newer CONFIG; the deploy runners refuse both lists.
  */
 export type ConfigCheck = { config: ServerConfig; problems: string[]; unknown: string[] };
@@ -128,8 +142,10 @@ const MALFORMED = "(malformed)";
 const NO_ALIASES: FriendAliases = Object.freeze({ byAlias: new Map<string, string>(), byId: new Map<string, string>() });
 const NO_REVENUECAT: RevenueCatSettings = Object.freeze({ play_subscription_product_ids: [], app_store_subscription_product_ids: [], reviewer_ids: [], tester_ids: [] });
 const NO_TEST_CODES: ReadonlyMap<TestCodeAction, string> = new Map();
-export const EMPTY_CONFIG: ServerConfig = Object.freeze({ features: new Set<string>(), min_client_version: Object.freeze({}), friend_aliases: NO_ALIASES, revenuecat: NO_REVENUECAT, test_codes: NO_TEST_CODES });
-const TOP_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat", "test_codes"];
+const NO_COSMETICS: ReadonlySet<number> = new Set<number>();
+export const EMPTY_CONFIG: ServerConfig = Object.freeze({ features: new Set<string>(), min_client_version: Object.freeze({}), friend_aliases: NO_ALIASES, revenuecat: NO_REVENUECAT, test_codes: NO_TEST_CODES,
+  cosmetics_released: NO_COSMETICS, cosmetics_featured: null });
+const TOP_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat", "test_codes", "cosmetics_released", "cosmetics_featured"];
 const STRING_IDS = { project_id: PROJECT_PATTERN, play_entitlement_lookup_id: LOOKUP_PATTERN, play_product_id: PRODUCT_PATTERN, app_store_entitlement_lookup_id: LOOKUP_PATTERN } as const;
 const PRODUCT_LISTS = ["play_subscription_product_ids", "app_store_subscription_product_ids"] as const;
 const PLAYER_LISTS = ["reviewer_ids", "tester_ids"] as const;
@@ -258,7 +274,21 @@ export function parseConfig(raw: unknown, knownFlags?: ReadonlySet<string>): Con
     if (parsed) testCodes = parsed;
     else problems.push("test_codes must map test code actions to distinct lowercase SHA-256 hashes");
   }
-  const config: ServerConfig = Object.freeze({ features, min_client_version: Object.freeze(minimums), friend_aliases: aliases, revenuecat, test_codes: testCodes });
+  // The release list: all valid or none (fail closed), so a bad edit never releases a code nobody meant.
+  let released = NO_COSMETICS;
+  if (value.cosmetics_released !== undefined) {
+    const list = value.cosmetics_released;
+    if (!Array.isArray(list) || list.length > MAX_RELEASED_COSMETICS || !list.every(cosmeticCode) || new Set(list).size !== list.length)
+      problems.push(`cosmetics_released must list at most ${MAX_RELEASED_COSMETICS} distinct item codes from 1 to ${COSMETIC_CODE_MAX}`);
+    else released = new Set(list as number[]);
+  }
+  let featured: number | null = null;
+  if (value.cosmetics_featured !== undefined) {
+    if (cosmeticCode(value.cosmetics_featured)) featured = value.cosmetics_featured;
+    else problems.push(`cosmetics_featured must be an item code from 1 to ${COSMETIC_CODE_MAX}`);
+  }
+  const config: ServerConfig = Object.freeze({ features, min_client_version: Object.freeze(minimums), friend_aliases: aliases, revenuecat, test_codes: testCodes,
+    cosmetics_released: released, cosmetics_featured: featured });
   return { config, problems, unknown };
 }
 

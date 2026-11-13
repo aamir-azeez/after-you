@@ -68,9 +68,10 @@ export function resolveItemBloom(roll: ItemBloomRoll, owned: ReadonlySet<string>
  * Given to the credit while item blooms are on, so the wallet never reaches into the wardrobe
  * itself: the wardrobe's own read and write (wardrobe.ts ownedItemIds, addDroppedItem), both run
  * inside the credit's transaction. The credit rolls (itemBloomRoll) beside the lucky bloom, before it.
+ * `catalog` is the one the Player sells from (catalog.ts catalogFor), so an item drops only once it is released.
  */
 export type ItemDrops = {
   owned: (storage: DurableObjectStorage) => ReadonlySet<string>;
   give: (storage: DurableObjectStorage, itemId: string, now: number) => void;
-  catalog?: Catalog;
+  catalog: Catalog;
 };

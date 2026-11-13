@@ -14,6 +14,11 @@ extends RefCounted
 ##   more than it must.
 ## - A tier with fewer items than slots shows each item once; an empty tier
 ##   leaves its slots empty.
+## - The server may name a featured item (CONFIG `cosmetics_featured`, sent as
+##   capabilities `pollen_featured_code`, kept by services/wardrobe.gd). When
+##   it is on sale here it takes the top slot and leaves its own tier's slots
+##   for the others; anything else (none named, an item this build or this
+##   shelf does not sell, offline) leaves the built-in shelf exactly as above.
 ## Weeks are counted as the server counts them (backend/src/pollen/week.ts).
 const COMMON_SLOTS := 3
 const UNCOMMON_SLOTS := 2
@@ -49,7 +54,26 @@ static func top_turns_before(week: int, tier: String) -> int:
 
 ## The shelf for `week`: up to 6 entries {id, tier, top}, Commons first, then
 ## Uncommons, then the top slot. `by_tier`: tier name -> item ids on sale.
-static func shelf(week: int, by_tier: Dictionary) -> Array:
+## `featured`: the server's pick for the top slot, used only when `by_tier`
+## sells it ("" for the built-in pick).
+static func shelf(week: int, by_tier: Dictionary, featured: String = "") -> Array:
+	var tier := _tier_of(featured, by_tier)
+	if tier.is_empty(): return _built_in(week, by_tier)
+	var others := by_tier.duplicate()
+	others[tier] = (by_tier[tier] as Array).filter(func(id: Variant) -> bool: return id != featured)
+	var result := _built_in(week, others)
+	if not result.is_empty() and bool(result.back().top): result.pop_back()
+	result.append({"id": featured, "tier": tier, "top": true})
+	return result
+
+## The tier whose list in `by_tier` holds `id`, or "".
+static func _tier_of(id: String, by_tier: Dictionary) -> String:
+	if id.is_empty(): return ""
+	for tier: Variant in by_tier:
+		if tier is String and by_tier[tier] is Array and id in by_tier[tier]: return tier
+	return ""
+
+static func _built_in(week: int, by_tier: Dictionary) -> Array:
 	var result: Array = []
 	var at := maxi(0, week)
 	for row: Array in [["common", COMMON_SLOTS], ["uncommon", UNCOMMON_SLOTS]]:

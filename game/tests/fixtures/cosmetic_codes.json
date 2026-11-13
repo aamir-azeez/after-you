@@ -1,0 +1,22 @@
+{
+	"codes": {
+		"daisy": 1,
+		"seashell": 2,
+		"straw_hat": 3,
+		"tide": 4,
+		"lantern": 5,
+		"lighthouse_lamp": 6,
+		"gold_leaf": 7,
+		"every_hard": 8,
+		"top_ten_ribbon": 9,
+		"apple_hood": 10,
+		"blueberry_hood": 11,
+		"blossom_crown": 12,
+		"orchard_skin": 13,
+		"apple_leaf": 14,
+		"sprig_coral": 15,
+		"sprig_plum": 16,
+		"sprig_sun": 17,
+		"sprig_sky": 18
+	}
+}

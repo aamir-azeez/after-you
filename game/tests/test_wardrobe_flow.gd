@@ -35,6 +35,10 @@ extends SceneTree
 ##   while the shop has anything not owned; it opens All items on its slot, or
 ##   on a slot with something to buy; never on All items, with nothing owned,
 ##   or without the shop.
+## - the server's featured item (capabilities pollen_featured_code, by item
+##   code) takes the shelf's top slot and is the default pick, drawn as soon as
+##   it arrives; no code, an unknown one, an item the shelf does not sell (not
+##   offered, earned, an Orchard item) or being offline keep the built-in shelf.
 ## - the Orchard (Fruits boards 4a and 4b): no Orchard item ever lists, prices
 ##   or buys in Pollen, and none shows while Fruits are off or the server gives
 ##   no Fruit price; with Fruits on the Orchard chip opens the plum Orchard with
@@ -59,6 +63,7 @@ const Catalog = preload("res://services/cosmetic_catalog.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
 const FruitMark = preload("res://presentation/kit/fruit_mark.gd")
 const Orchard = preload("res://presentation/wardrobe_orchard.gd")
+const Connectivity = preload("res://services/connectivity.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -184,6 +189,7 @@ func _setup(on: bool = true, bundles: bool = false) -> Dictionary:
 func _run() -> void:
 	await _gates()
 	await _buying()
+	await _server_featured()
 	await _first_tap_waits()
 	await _short_card()
 	await _gets_fit()
@@ -269,6 +275,46 @@ func _buying() -> void:
 	t.flow.show_wardrobe("home")
 	_check(t.flow.return_to == "home", "Opened from Home, Back goes to Home")
 	t.host.queue_free()
+	await _frames(2)
+
+## The shop's featured item from the server: the top slot and the default pick, or the built-in shelf.
+func _server_featured() -> void:
+	var t := _setup()
+	t.fake.replies = [_answer([], {}, 24000)]
+	t.flow.show_wardrobe()
+	await _frames()
+	var built_in: Array = t.flow.model().featured
+	_check(built_in == ["seashell", "daisy", "straw_hat", "lighthouse_lamp"] and t.store.featured_code(SERVER, ME) == 0, "With no featured item from the server, the built-in shelf of week 3 shows: " + str(built_in))
+	# Codes arrive as JSON numbers: 4 is the Tide (content/cosmetics/tide.gd).
+	t.store.note_featured(SERVER, ME, 4.0)
+	var model: Dictionary = t.flow.model()
+	_check(model.featured == ["seashell", "daisy", "straw_hat", "tide"] and model.selected == "tide", "The server's pick takes the top slot and is the default pick: " + str(model.featured))
+	_check(t.host.overlay.find_child("WardrobeShelfCard_tide", true, false) != null, "An open Wardrobe draws the new pick as soon as it arrives")
+	t.store.note_featured(SERVER, ME, 1.0)
+	model = t.flow.model()
+	_check(model.featured.back() == "daisy" and model.featured.count("daisy") == 1 and model.featured.has("seashell"), "A Common featured moves to the top slot and is not shown twice: " + str(model.featured))
+	# Unknown, earned (Gold leaf, 7), Orchard (Apple hood, 10, Fruits only) and malformed codes keep the built-in shelf.
+	for code: Variant in [998.0, 7.0, 10.0, "4", -1.0, 4.5, null]:
+		t.store.note_featured(SERVER, ME, code)
+		_check(t.flow.model().featured == built_in, "A featured code of %s keeps the built-in shelf" % [code])
+	t.store.note_featured(SERVER, ME, 4.0)
+	var offline: RefCounted = Connectivity.new()
+	while offline.online(): offline.note_unreached()
+	t.flow.client.connectivity = offline
+	_check(t.flow.model().featured == built_in, "Offline, the built-in shelf shows")
+	t.host.queue_free()
+	await _frames(2)
+	# An item the server does not offer (not released) is never featured.
+	var hidden := _setup()
+	var answer := _answer([], {}, 24000)
+	answer.data.wardrobe.offered = (answer.data.wardrobe.offered as Array).filter(func(id: String) -> bool: return id != "tide")
+	hidden.fake.replies = [answer]
+	hidden.store.note_featured(SERVER, ME, 4.0)
+	hidden.flow.show_wardrobe()
+	await _frames()
+	var shown: Dictionary = hidden.flow.model()
+	_check(shown.featured == built_in and not shown.items.any(func(entry: Dictionary) -> bool: return entry.id == "tide"), "An unreleased item is neither listed nor featured: " + str(shown.featured))
+	hidden.host.queue_free()
 	await _frames(2)
 
 ## A Buy tapped while the first read is still out waits for it, then opens the card: the first tap registers.

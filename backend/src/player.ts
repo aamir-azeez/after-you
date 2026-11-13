@@ -49,7 +49,7 @@ import { bundleCheckDue, bundlesView, dropBundles, pacedClaim, settleBundles, ty
 import { SANDBOX, lookupBundles, readBundles, sandboxBundles, type BundleAsk } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
-import { CATALOG, type Look } from "./pollen/catalog";
+import { catalogFor, type Look } from "./pollen/catalog";
 import type { SpendRequest } from "./pollen/spend";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
 
@@ -270,7 +270,7 @@ export class Player extends DurableObject<Env> {
     // Duel energy rides the wallet read while ENERGY is on (pollen/energy.ts): reads only, no row.
     const read = { ...wallet, ...(ladder ? { grant: ladder } : {}), ...(withEnergy ? { energy: energyView(this.ctx.storage, now) } : {}) };
     if (mode === "off") return { authorized: true, linked: true, pollen: read };
-    const wardrobe = wardrobeView(this.ctx.storage, mode === "shop", CATALOG, fruits);
+    const wardrobe = wardrobeView(this.ctx.storage, mode === "shop", catalogFor(this.env), fruits);
     // The Fruits part reads in one transaction: its first read may pay what the player's records already earned (achievements.ts).
     const fruitPart = fruits ? this.fruitsPart(now) : undefined;
     return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), name_price_next: nextNamePriceAfter(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}),
@@ -408,7 +408,7 @@ export class Player extends DurableObject<Env> {
   pollenSpend(owner: string, deviceHash: string, op: OpKey, request: SpendRequest, expected: number, fruits = false): Outcome<SpendReceipt> {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
-    return spend(this.ctx.storage, op, request, expected, Date.now(), this.pollenActive(owner), CATALOG, fruits);
+    return spend(this.ctx.storage, op, request, expected, Date.now(), this.pollenActive(owner), catalogFor(this.env), fruits);
   }
   /** Binding only: spends 1 duel energy for a start or join (pollen/energy.ts), once per duel (duels/energy-charge.ts). */
   spendEnergy(owner: string, duelId: string): Outcome<EnergySpend> {
@@ -454,7 +454,7 @@ export class Player extends DurableObject<Env> {
   creditTurn(owner: string, facts: unknown, drops = false): Promise<Outcome<PollenReceipt>> {
     if (!this.pollenActive(owner)()) return Promise.resolve(fail(404, "identity_absent"));
     return creditTurn(this.ctx.storage, this.env, owner, facts, Date.now(), this.pollenActive(owner), RATES,
-      itemDropsOn(this.env, drops) ? { owned: ownedItemIds, give: addDroppedItem } : undefined, this.fruitHooks());
+      itemDropsOn(this.env, drops) ? { owned: ownedItemIds, give: addDroppedItem, catalog: catalogFor(this.env) } : undefined, this.fruitHooks());
   }
   /**
    * Binding only: a first clear made together, from the facts of the turn that finished the chapter.

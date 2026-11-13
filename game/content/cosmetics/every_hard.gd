@@ -3,6 +3,7 @@ extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DATA := {
 	"id": "every_hard",
+	"code": 8,
 	"slot": "leaf",
 	"tier": "earned",
 	"name": PlayerCopy.COSMETIC_EVERY_HARD,

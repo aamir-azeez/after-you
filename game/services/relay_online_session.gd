@@ -479,6 +479,8 @@ func load_capabilities(still: Callable = Callable()) -> bool:
 	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), wardrobe_supported(), shop_supported(), bundles_supported())
 	# Before the flush below, so a wardrobe read under an older offered tag is read again.
 	if not scope.is_empty(): Wardrobe.shared().note_offered_tag(str(scope.server), str(scope.owner), capabilities.get("pollen_offered_tag") if wardrobe_supported() else null)
+	# The shop's featured item (services/featured_shelf.gd); none without the shop, so the built-in shelf shows.
+	if not scope.is_empty(): Wardrobe.shared().note_featured(str(scope.server), str(scope.owner), capabilities.get("pollen_featured_code") if shop_supported() else null)
 	if not scope.is_empty(): PollenWallet.shared().set_item_blooms(str(scope.server), str(scope.owner), item_blooms_supported())
 	if not scope.is_empty(): PollenGrant.shared().set_enabled(str(scope.server), str(scope.owner), grant_supported())
 	# Before the flush below, so a phone with Fruits on and none kept reads the wallet in it.

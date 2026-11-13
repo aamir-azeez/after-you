@@ -11,6 +11,17 @@ extends RefCounted
 ## Required fields:
 ##   "id":    the item's id, lower case letters, digits and "_"; never changes
 ##            once released, because wardrobes and rooms will store it
+##   "code":  the item's permanent number, a whole number from 1 to CODE_MAX,
+##            one per item. The server's CONFIG names items by it (the release
+##            list and the featured item, backend/src/pollen/catalog.ts), so it
+##            never changes and is never given to another item, even one that
+##            was retired. tests/fixtures/cosmetic_codes.json pins every code
+##            ever given (test_cosmetic_catalog and the backend's tests check
+##            it): a new item adds its line there, and no line is changed or
+##            removed. Blocks so far: 1 to 99 the first catalogue (1 to 18,
+##            in ITEMS order), 200 to 299 the hats batch, 300 to 399 the
+##            skins batch. The server's catalog.json gives each item the same
+##            code.
 ##   "slot":  a row of SLOTS, or "" while the owner has not placed it (it can
 ##            not be worn then)
 ##   "tier":  a row of TIER_PRICES
@@ -19,8 +30,10 @@ extends RefCounted
 ##            while its art is not made (it draws nothing then)
 ## Optional fields, with the value a descriptor gets when it leaves one out:
 const OPTIONAL := {
-	## false keeps the item out of every pip and every list: only the default
-	## look shows until the item is offered.
+	## true: built as released, drawn on pips whatever the server says. false
+	## (every item so far) keeps the item out of every pip and every list until
+	## the server offers it (the wallet read's `offered`, which follows the
+	## server's catalog.json and its CONFIG release list by code).
 	"released": false,
 	## The level id (any version) a player must clear before a Special can be
 	## bought, or "".
@@ -48,7 +61,9 @@ const OPTIONAL := {
 	## that is sold.
 	"earn": "",
 }
-const REQUIRED := ["id", "slot", "tier", "name", "art"]
+const REQUIRED := ["id", "code", "slot", "tier", "name", "art"]
+## The highest item code (backend/src/config.ts COSMETIC_CODE_MAX).
+const CODE_MAX := 999
 
 ## The places on a pip, one item each, in the order they are listed and dressed.
 const SLOTS: Array[String] = ["hat", "body", "leaf"]
@@ -97,6 +112,7 @@ const ITEMS := [
 ## Worked out once when this file loads, then only read.
 static var _ids: Array[String] = _ordered_ids()
 static var _data: Dictionary = _by_id()
+static var _codes: Dictionary = _by_code()
 
 ## Every item id in order. A copy: callers may change it.
 static func ids() -> Array[String]:
@@ -106,6 +122,10 @@ static func ids() -> Array[String]:
 ## is no such item. Read-only.
 static func data(id: String) -> Dictionary:
 	return _data.get(id, {})
+
+## The id of the item with this code, or "" when no item has it.
+static func id_of_code(code: int) -> String:
+	return _codes.get(code, "")
 
 static func _ordered_ids() -> Array[String]:
 	var result: Array[String] = []
@@ -121,5 +141,15 @@ static func _by_id() -> Dictionary:
 		assert(not result.has(data.get("id")), "Two cosmetic descriptors share the id %s" % data.get("id"))
 		data.make_read_only()
 		result[str(data.get("id", ""))] = data
+	result.make_read_only()
+	return result
+
+static func _by_code() -> Dictionary:
+	var result: Dictionary = {}
+	for file: Script in ITEMS:
+		var code: Variant = file.DATA.get("code")
+		if not code is int: continue
+		assert(not result.has(code), "Two cosmetic descriptors share the code %d" % code)
+		result[code] = str(file.DATA.get("id", ""))
 	result.make_read_only()
 	return result
