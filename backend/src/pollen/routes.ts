@@ -2,7 +2,7 @@ import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, c
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
 import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
-import { ITEM_ID_PATTERN, catalogFor, featuredItem, offeredTagFor } from "./catalog";
+import { ITEM_ID_PATTERN, featuredCodeFor, offeredTagFor } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
@@ -137,8 +137,8 @@ export function pollenCapability(request: Request, env: ServerVars): { pollen_ve
  * pick. Read from CONFIG with the capabilities the phone reads anyway, so changing it costs no request.
  */
 function featuredCapability(env: ServerVars): { pollen_featured_code?: number } {
-  const catalog = catalogFor(env), id = featuredItem(env, catalog);
-  return id === undefined ? {} : { pollen_featured_code: catalog.items[id].code };
+  const code = featuredCodeFor(env);
+  return code === undefined ? {} : { pollen_featured_code: code };
 }
 /** Whether this request's wallet read carries duel energy (features.ts energyOn): any app that asks for Pollen; older apps ignore it. */
 export function energyFor(env: ServerVars): boolean { return energyOn(env); }

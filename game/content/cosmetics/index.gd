@@ -18,10 +18,13 @@ extends RefCounted
 ##            was retired. tests/fixtures/cosmetic_codes.json pins every code
 ##            ever given (test_cosmetic_catalog and the backend's tests check
 ##            it): a new item adds its line there, and no line is changed or
-##            removed. Blocks so far: 1 to 99 the first catalogue (1 to 18,
+##            removed. When a block first ships, its codes are also copied into
+##            SHIPPED in tests/test_cosmetic_catalog.gd, whose lines never
+##            change. Blocks so far: 1 to 99 the first catalogue (1 to 18,
 ##            in ITEMS order), 200 to 299 the hats batch, 300 to 399 the
-##            skins batch. The server's catalog.json gives each item the same
-##            code.
+##            skins batch. A new item ships "released": false here and in the
+##            server's catalog.json, which gives it the same code, and the
+##            server releases it by listing the code in CONFIG.
 ##   "slot":  a row of SLOTS, or "" while the owner has not placed it (it can
 ##            not be worn then)
 ##   "tier":  a row of TIER_PRICES

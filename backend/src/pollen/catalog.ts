@@ -158,13 +158,15 @@ export function releasedCatalog(released: ReadonlySet<number>, base: Catalog = C
   return Object.freeze({ ...base, items: Object.freeze(items) });
 }
 /** One answer per parsed CONFIG (config.ts parses CONFIG once per isolate and value), so a request does no work twice. */
-const released = new WeakMap<ServerConfig, { catalog: Catalog; tags: [string, string] }>();
-function releasedFor(env: ServerVars): { catalog: Catalog; tags: [string, string] } {
+type Released = { catalog: Catalog; tags: [string, string]; featured: number | undefined };
+const released = new WeakMap<ServerConfig, Released>();
+function releasedFor(env: ServerVars): Released {
   const config = serverConfig(env);
   let found = released.get(config);
   if (!found) {
-    const catalog = releasedCatalog(config.cosmetics_released);
-    found = { catalog, tags: catalog === CATALOG ? [OFFERED_TAG, FRUITS_OFFERED_TAG] : [offeredTag(catalog), offeredTag(catalog, true)] };
+    const catalog = releasedCatalog(config.cosmetics_released), featured = featuredItem(env, catalog);
+    found = { catalog, tags: catalog === CATALOG ? [OFFERED_TAG, FRUITS_OFFERED_TAG] : [offeredTag(catalog), offeredTag(catalog, true)],
+      featured: featured === undefined ? undefined : catalog.items[featured].code };
     released.set(config, found);
   }
   return found;
@@ -173,6 +175,8 @@ function releasedFor(env: ServerVars): { catalog: Catalog; tags: [string, string
 export function catalogFor(env: ServerVars): Catalog { return releasedFor(env).catalog; }
 /** offeredTag of catalogFor(env), worked out once per CONFIG. */
 export function offeredTagFor(env: ServerVars, fruits: boolean): string { return releasedFor(env).tags[fruits ? 1 : 0]; }
+/** The code of featuredItem(env), worked out once per CONFIG, or undefined. */
+export function featuredCodeFor(env: ServerVars): number | undefined { return releasedFor(env).featured; }
 /** The item with this code, or undefined. */
 export function itemOfCode(code: number, catalog: Catalog = CATALOG): string | undefined {
   return Object.keys(catalog.items).find(id => catalog.items[id].code === code);

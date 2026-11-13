@@ -14,6 +14,14 @@ const OwnLook = preload("res://services/own_look.gd")
 const Outfit = preload("res://services/outfit.gd")
 const Typed = preload("res://services/typed_values.gd")
 const CODES := "res://tests/fixtures/cosmetic_codes.json"
+## Codes that have shipped, block by block, copied here when a block first
+## ships and never edited after: the pinned file can't change one of them
+## without this list changing too. The first catalogue is 1 to 18 in shop
+## order; the hats (200s) and skins (300s) add their blocks when they ship.
+const SHIPPED := {
+	"daisy": 1, "seashell": 2, "straw_hat": 3, "tide": 4, "lantern": 5, "lighthouse_lamp": 6, "gold_leaf": 7, "every_hard": 8, "top_ten_ribbon": 9,
+	"apple_hood": 10, "blueberry_hood": 11, "blossom_crown": 12, "orchard_skin": 13, "apple_leaf": 14, "sprig_coral": 15, "sprig_plum": 16, "sprig_sun": 17, "sprig_sky": 18,
+}
 
 var checks := 0
 var failures := 0
@@ -132,9 +140,7 @@ func _codes() -> void:
 		_check(pins.has(id), "%s's code is pinned in %s: add its line there" % [id, CODES])
 		_check(Typed.equal(pins.get(id), code), "%s keeps its pinned code %s (a code never changes)" % [id, pins.get(id)])
 		_check(Catalog.code(id) == code and Catalog.of_code(code) == id, "%s and its code %s find each other" % [id, code])
-	var first := ["daisy", "seashell", "straw_hat", "tide", "lantern", "lighthouse_lamp", "gold_leaf", "every_hard", "top_ten_ribbon",
-		"apple_hood", "blueberry_hood", "blossom_crown", "orchard_skin", "apple_leaf", "sprig_coral", "sprig_plum", "sprig_sun", "sprig_sky"]
-	for index in first.size(): _check(Typed.equal(pins.get(first[index]), index + 1), "The first catalogue keeps codes 1 to 18 in shop order: %s is %d" % [first[index], index + 1])
+	for id: String in SHIPPED: _check(Typed.equal(pins.get(id), SHIPPED[id]), "A shipped code stays pinned as it shipped: %s is %d" % [id, SHIPPED[id]])
 	_check(Catalog.code("nothing") == 0 and Catalog.of_code(0) == "" and Catalog.of_code(998) == "", "An unknown item has no code and an unused code no item")
 	for bad: Variant in [0, -1, 1000, 1.5, "3", null, INF, NAN]: _check(not Catalog.valid_code(bad), "%s is not an item code" % [bad])
 	for good: Variant in [1, 18, 200, 299.0, 300, 399, 999]: _check(Catalog.valid_code(good), "%s is an item code (the hats take 200 to 299, the skins 300 to 399)" % [good])

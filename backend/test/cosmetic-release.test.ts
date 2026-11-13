@@ -8,14 +8,13 @@ import { CATALOG, FRUITS_OFFERED_TAG, OFFERED_TAG, catalogFor, checkedCatalog, f
 import { quote, type Holdings } from "../src/pollen/spend";
 import { droppable } from "../src/pollen/item-blooms";
 import { POLLEN_HEADER } from "../src/pollen/routes";
-import { countingEnv, meterAllRows } from "./meter";
 import { POLLEN_CLIENT, PRE_SHOP_CLIENT, withConfig } from "./config";
 import pinned from "../../game/tests/fixtures/cosmetic_codes.json";
 import manifest from "../../game/tests/fixtures/golden/cosmetic_manifest.json";
 
 // The cosmetics release list and featured item (CONFIG cosmetics_released and cosmetics_featured, by item code):
-// permanent codes, refusing to sell an item not released, the CONFIG shape, the featured capability, and that none of
-// it adds a Durable Object request or row. Synthetic identities only.
+// permanent codes, refusing to sell an item not released, the CONFIG shape and the featured capability. The routes with
+// an item built unreleased, and the Durable Object count, are in cosmetic-release-routes.test.ts. Synthetic identities only.
 const PINS = pinned.codes as Record<string, number>;
 const holding = (owned: string[] = []): Holdings => ({ owned: new Set(owned), cleared: () => false });
 /** The real catalogue plus items built unreleased, as the hats (200s) and skins (300s) batches will ship. */
@@ -171,24 +170,5 @@ describe("the routes", () => {
     expect(await caps({ ...SHOP, ...LISTS }, PRE_SHOP_CLIENT)).not.toHaveProperty("pollen_featured_code");
     expect(await caps({ ...SHOP, cosmetics_featured: 7 })).not.toHaveProperty("pollen_featured_code");
     expect(await caps({ ...SHOP, cosmetics_featured: 998 })).not.toHaveProperty("pollen_featured_code");
-  });
-
-  it("adds no Durable Object request and no row to a launch, a wallet read or a refused spend", async () => {
-    const player = await create();
-    const measure = async (vars: Record<string, unknown>) => {
-      const meter = countingEnv(env);
-      const { rows } = await meterAllRows(async () => {
-        for (const [path, method] of [["/v2/capabilities", "GET"], ["/v1/pollen", "GET"]] as const) expect((await call(path, method, player, vars, POLLEN_CLIENT, meter.env)).status, path).toBe(200);
-      });
-      return { calls: meter.calls, written: rows.written };
-    };
-    // Warm both paths once, so neither side pays for first-time setup.
-    await measure(SHOP);
-    const without = await measure(SHOP), with_ = await measure({ ...SHOP, ...LISTS });
-    expect(with_.calls).toEqual(without.calls);
-    expect(with_.written).toBe(without.written);
-    // The wallet read under the lists offers exactly what it offered before (no code above is built unreleased in this build).
-    const read = async (vars: Record<string, unknown>) => (await (await call("/v1/pollen", "GET", player, vars)).json<{ wardrobe: { offered: string[]; prices: Record<string, number> } }>()).wardrobe;
-    expect(await read({ ...SHOP, ...LISTS })).toEqual(await read(SHOP));
   });
 });
