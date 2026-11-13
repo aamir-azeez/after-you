@@ -35,7 +35,7 @@ const Look = preload("res://presentation/spirit_look.gd")
 ##   notch: the leaf class its notch is cut around.
 const CAPS := {
 	"rain_cap": {"rise": 0.125, "edge_gap": 0.012, "edge": 1.06, "round": 2.2, "crown": Color("93c5d3"), "under": Color("547f91"), "trim": Color("e8e9d7"),
-		"brim": [0.085, 0.045], "bands": [], "rim": "band", "spots": [], "notch": WearFit.SMALL},
+		"brim": [0.072, 0.04], "bands": [], "rim": "band", "spots": [], "notch": WearFit.SMALL},
 	"wool_cap": {"rise": 0.16, "edge_gap": 0.016, "edge": 1.2, "round": 2.0, "crown": Color("82728e"), "under": Color("82728e"), "trim": Color("c5aeb8"),
 		"brim": [], "bands": [Color("6f607b"), [2, 4]], "rim": "roll", "spots": [], "notch": WearFit.SMALL},
 	"mushroom": {"rise": 0.155, "edge_gap": 0.03, "edge": 1.06, "round": 3.0, "crown": Color("728d5d"), "under": Color("eee9d4"), "trim": Color("a5b777"),
