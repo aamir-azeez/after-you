@@ -41,6 +41,23 @@ const COSMETIC_SPRIG_SUN := "Sun sprig"
 const COSMETIC_SPRIG_SKY := "Sky sprig"
 # End of Orchard items.
 
+# Pollen hats and leaves (content/cosmetics/): each item's name.
+const COSMETIC_PAPER_BOAT := "Paper boat"
+const COSMETIC_RAIN_CAP := "Rain cap"
+const COSMETIC_FLOWER_POT := "Flower pot"
+const COSMETIC_WOOL_CAP := "Wool cap"
+const COSMETIC_MUSHROOM := "Mushroom"
+const COSMETIC_TEA_CUP := "Tea cup"
+const COSMETIC_WAVE_CAP := "Wave cap"
+const COSMETIC_GLASS_HOUSE := "Glass house"
+const COSMETIC_BUD := "Bud"
+const COSMETIC_FEATHER := "Feather"
+const COSMETIC_MAPLE := "Maple"
+const COSMETIC_TWIN_SPROUT := "Twin sprout"
+const COSMETIC_WARM_TIP := "Warm tip"
+const COSMETIC_POND_BUD := "Pond bud"
+# End of Pollen hats and leaves.
+
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
 const DISPLAY_NAME_ASK_NOTE := "Friends and room partners see it on rooms and replays."

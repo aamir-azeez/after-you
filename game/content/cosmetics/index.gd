@@ -47,6 +47,17 @@ const OPTIONAL := {
 	## it under a picked earned item the player does not own. "" for an item
 	## that is sold.
 	"earn": "",
+	## The item's permanent number (a stored or sent look may name it by
+	## this). Never reused or changed once given; 0 while none is given.
+	"code": 0,
+	## A hat's way with the leaf (presentation/kit/wear_fit.gd): "covers" (the
+	## leaf hides), "pokes_through" (it grows through a notch or hole) or
+	## "sits_on_top" (it is raised onto the hat by "leaf_lift"). Every hat
+	## names one; "" for an item in another slot.
+	"leaf_mode": "",
+	## The largest leaf size class ("small", "medium", "tall") the hat takes
+	## that way; a bigger leaf is raised onto it or hidden (wear_fit.gd).
+	"leaf_max": "tall",
 }
 const REQUIRED := ["id", "slot", "tier", "name", "art"]
 
@@ -92,6 +103,21 @@ const ITEMS := [
 	preload("res://content/cosmetics/sprig_plum.gd"),
 	preload("res://content/cosmetics/sprig_sun.gd"),
 	preload("res://content/cosmetics/sprig_sky.gd"),
+	# The Pollen hats and leaves (codes 200 on).
+	preload("res://content/cosmetics/paper_boat.gd"),
+	preload("res://content/cosmetics/rain_cap.gd"),
+	preload("res://content/cosmetics/flower_pot.gd"),
+	preload("res://content/cosmetics/wool_cap.gd"),
+	preload("res://content/cosmetics/mushroom.gd"),
+	preload("res://content/cosmetics/tea_cup.gd"),
+	preload("res://content/cosmetics/wave_cap.gd"),
+	preload("res://content/cosmetics/glass_house.gd"),
+	preload("res://content/cosmetics/bud.gd"),
+	preload("res://content/cosmetics/feather.gd"),
+	preload("res://content/cosmetics/maple.gd"),
+	preload("res://content/cosmetics/twin_sprout.gd"),
+	preload("res://content/cosmetics/warm_tip.gd"),
+	preload("res://content/cosmetics/pond_bud.gd"),
 ]
 
 ## Worked out once when this file loads, then only read.

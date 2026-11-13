@@ -71,9 +71,3 @@ static func wide(outfit: Dictionary) -> bool:
 	for id: String in items(outfit):
 		if Catalog.wide(id): return true
 	return false
-
-## The highest leaf lift of the worn items, in metres.
-static func leaf_lift(outfit: Dictionary) -> float:
-	var lift := 0.0
-	for id: String in items(outfit): lift = maxf(lift, Catalog.leaf_lift(id))
-	return lift

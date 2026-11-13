@@ -7,7 +7,10 @@ const DATA := {
 	"tier": "uncommon",
 	"name": PlayerCopy.COSMETIC_STRAW_HAT,
 	"art": "res://presentation/pip_wear/straw_hat.gd",
-	## The leaf pokes up through the brim.
-	"leaf_lift": 0.075,
+	## The leaf pokes up through the brim on a short stem, raised clear of
+	## the crown.
+	"leaf_lift": 0.1,
 	"tall": true,
+	"leaf_mode": "sits_on_top",
+	"leaf_max": "small",
 }

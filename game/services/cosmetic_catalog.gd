@@ -99,6 +99,18 @@ static func wide(id: String) -> bool:
 static func leaf_lift(id: String) -> float:
 	return float(Index.data(id).get("leaf_lift", 0.0))
 
+## How a hat meets the leaf ("covers", "pokes_through", "sits_on_top"), or "".
+static func leaf_mode(id: String) -> String:
+	return str(Index.data(id).get("leaf_mode", ""))
+
+## The largest leaf size class a hat takes its way.
+static func leaf_max(id: String) -> String:
+	return str(Index.data(id).get("leaf_max", "tall"))
+
+## The item's permanent number, or 0 while it has none.
+static func code(id: String) -> int:
+	return int(Index.data(id).get("code", 0))
+
 ## The presentation/pip_wear/ script that dresses a pip in it, or "".
 static func art(id: String) -> String:
 	return str(Index.data(id).get("art", ""))

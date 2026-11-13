@@ -7,4 +7,7 @@ const DATA := {
 	"tier": "common",
 	"name": PlayerCopy.COSMETIC_DAISY,
 	"art": "res://presentation/pip_wear/daisy.gd",
+	## The leaf grows clear beside it.
+	"leaf_mode": "pokes_through",
+	"leaf_max": "tall",
 }

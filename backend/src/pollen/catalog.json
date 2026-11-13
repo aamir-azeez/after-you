@@ -25,7 +25,21 @@
     "sprig_coral": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
     "sprig_plum": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
     "sprig_sun": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
-    "sprig_sky": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true }
+    "sprig_sky": { "slot": "leaf", "tier": "sprig", "unlock": "", "set": "", "released": true },
+    "paper_boat": { "slot": "hat", "tier": "common", "unlock": "", "set": "", "released": false },
+    "rain_cap": { "slot": "hat", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "flower_pot": { "slot": "hat", "tier": "common", "unlock": "", "set": "", "released": false },
+    "wool_cap": { "slot": "hat", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "mushroom": { "slot": "hat", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "tea_cup": { "slot": "hat", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "wave_cap": { "slot": "hat", "tier": "rare", "unlock": "", "set": "", "released": false },
+    "glass_house": { "slot": "hat", "tier": "special", "unlock": "conservatory", "set": "", "released": false },
+    "bud": { "slot": "leaf", "tier": "common", "unlock": "", "set": "", "released": false },
+    "feather": { "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "maple": { "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "twin_sprout": { "slot": "leaf", "tier": "uncommon", "unlock": "", "set": "", "released": false },
+    "warm_tip": { "slot": "leaf", "tier": "common", "unlock": "", "set": "", "released": false },
+    "pond_bud": { "slot": "leaf", "tier": "rare", "unlock": "", "set": "", "released": false }
   },
   "packs": {
     "garden_faces": { "released": true, "faces": ["heart_eyes", "proud", "wink"] },

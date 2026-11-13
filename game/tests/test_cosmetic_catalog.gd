@@ -55,6 +55,7 @@ func _descriptors() -> void:
 		_check(art.is_empty() or (art.begins_with("res://presentation/pip_wear/") and ResourceLoader.exists(art)), "%s's art is a pip_wear script that exists" % id)
 		if not art.is_empty(): _check(load(art).has_method("wear"), "%s's art has wear()" % id)
 		_check(data.released is bool and data.tall is bool and data.wide is bool and data.unlock is String and (data.leaf_lift is float or data.leaf_lift is int), "%s's optional fields have their types" % id)
+		_check(data.code is int and data.leaf_mode is String and data.leaf_max is String, "%s's code and leaf fit fields have their types" % id)
 		_check(data.unlock == "" or data.unlock in level_ids, "%s unlocks after a registered level: %s" % [id, data.unlock])
 		if data.tier == Catalog.EARNED:
 			_check(data.earn is String and not str(data.earn).is_empty() and data.earn in names and not str(data.earn).contains("-") and not str(data.earn).contains("—") and Catalog.earn(id) == data.earn, "%s (earned) says how it is earned, a PlayerCopy line with no dashes" % id)
@@ -82,13 +83,18 @@ func _rules() -> void:
 		# The Orchard, as the server's catalogue sells it (FRUITS contract).
 		"apple_hood": ["hat", "fruit_hat"], "blueberry_hood": ["hat", "fruit_hat"], "blossom_crown": ["hat", "fruit_hat"], "orchard_skin": ["body", "fruit_body"], "apple_leaf": ["leaf", "fruit_small"],
 		"sprig_coral": ["leaf", "sprig"], "sprig_plum": ["leaf", "sprig"], "sprig_sun": ["leaf", "sprig"], "sprig_sky": ["leaf", "sprig"],
+		# The Pollen hats and leaves board, graded by how they look.
+		"paper_boat": ["hat", "common"], "rain_cap": ["hat", "uncommon"], "flower_pot": ["hat", "common"], "wool_cap": ["hat", "uncommon"],
+		"mushroom": ["hat", "uncommon"], "tea_cup": ["hat", "uncommon"], "wave_cap": ["hat", "rare"], "glass_house": ["hat", "special"],
+		"bud": ["leaf", "common"], "feather": ["leaf", "uncommon"], "maple": ["leaf", "uncommon"], "twin_sprout": ["leaf", "uncommon"],
+		"warm_tip": ["leaf", "common"], "pond_bud": ["leaf", "rare"],
 	}
 	_check(Array(Catalog.ids()) == expect.keys(), "The approved items, in shop order: %s" % [Catalog.ids()])
 	for id: String in expect:
 		_check(Catalog.slot(id) == expect[id][0] and str(Catalog.item(id).tier) == expect[id][1], "%s is a %s %s" % [id, expect[id][1], expect[id][0]])
 	_check(Catalog.item("lighthouse_lamp").unlock == "sleeping-lighthouse" and Catalog.tall("lighthouse_lamp"), "The Lighthouse lamp opens after Sleeping Lighthouse and pulls the view back")
 	_check(Catalog.wide("lantern") and not Catalog.wide("daisy") and not Catalog.wide("nothing"), "Only the Lantern, hanging on the far side, pulls the view back further")
-	_check(is_equal_approx(Catalog.leaf_lift("straw_hat"), 0.075), "The Straw hat lifts the leaf 7.5 cm through its brim")
+	_check(is_equal_approx(Catalog.leaf_lift("straw_hat"), 0.1), "The Straw hat lifts the leaf 10 cm onto its brim, clear of its crown")
 	for id: String in Catalog.ids(): _check(not Catalog.art(id).is_empty() and not Catalog.slot(id).is_empty(), "%s has its art and its slot" % id)
 	var orchard: Array[String] = []
 	for id: String in Catalog.ids():

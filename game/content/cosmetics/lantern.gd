@@ -11,4 +11,7 @@ const DATA := {
 	"tall": true,
 	## It hangs beside the head on the side the pip views turn away.
 	"wide": true,
+	## The leaf grows clear beside it.
+	"leaf_mode": "pokes_through",
+	"leaf_max": "tall",
 }

@@ -5,8 +5,9 @@ extends SceneTree
 ## - each item stays within the board's budget (draw calls, triangles) and
 ##   comes off exactly, alone and in every combination of the three slots;
 ## - leaf items hang from the leaf; the Straw hat lifts it; each fruit hood
-##   hides the plain leaf, and a worn leaf item grows out of its top without
-##   cutting into it at any sway;
+##   hides the plain leaf, and a worn leaf item it takes grows out of its top
+##   without cutting into it at any sway (tests/test_wear_fit.gd checks every
+##   hat against every leaf with a gap to spare);
 ## - placement: no item covers the eyes or reaches into a carried seed, the
 ##   daisy sits outside the head, and a glow sprite sits outside it too; the
 ##   Orchard skin's resting petals sink into neither the head nor the body,
@@ -15,8 +16,8 @@ extends SceneTree
 ##   seed and inside every pip view, and loop perfectly;
 ## - a body item may swap the torso and feet meshes and add pieces, never the
 ##   head, and every gameplay value stays identical;
-## - a tall cap lifts a carried seed, a big leaf lifts it with the leaf's
-##   own lift, and off again the seed sits where it did;
+## - no item ever moves a carried seed or lens: a hat that would meet it is
+##   put away while the pip carries (tests/test_wear_fit.gd);
 ## - moving parts step at the idle card rate of the pip's own clock and hold
 ##   still under Reduce motion; the Orchard skin's falling petals are one draw
 ##   call placed by their shader from the pip's clock, shown only while it
@@ -39,9 +40,14 @@ const FallChecks = preload("res://tests/fixtures/fall_checks.gd")
 const Orchard = preload("res://presentation/pip_wear/orchard_skin.gd")
 const PLACEHOLDER_BODY = preload("res://tests/fixtures/pip_wear_placeholder_body.gd")
 
-## The board's budget per item.
+## The board's budget per item, and the Pollen hats and leaves board's own
+## (its build notes: 300 added triangles a hat, 150 a leaf item).
 const MAX_DRAWS := 4
 const MAX_TRIANGLES := 640
+const HAT_TRIANGLES := 300
+const LEAF_TRIANGLES := 150
+## The items that board made, held to its budgets.
+const POLLEN_BOARD := ["paper_boat", "rain_cap", "flower_pot", "wool_cap", "mushroom", "tea_cup", "wave_cap", "glass_house", "bud", "feather", "maple", "twin_sprout", "warm_tip", "pond_bud"]
 ## Nothing solid comes nearer the eyes' anchors than this (the open eye's outer
 ## radius is up to about 0.10).
 const EYE_CLEAR := 0.11
@@ -91,7 +97,7 @@ func _run() -> void:
 	_in_frame()
 	_body_shape()
 	_animation()
-	_seed_lift()
+	_carried_still()
 	_released()
 	for child: Node in root.get_children():
 		if child is Spirit: child.free()
@@ -176,6 +182,12 @@ func _each_item() -> void:
 		for mesh: MeshInstance3D in meshes: triangles += _triangles(mesh.mesh)
 		_check(meshes.size() <= MAX_DRAWS, "%s adds at most %d draw calls: %d" % [id, MAX_DRAWS, meshes.size()])
 		_check(triangles <= MAX_TRIANGLES, "%s stays within about 600 triangles: %d" % [id, triangles])
+		if id in POLLEN_BOARD:
+			# A leaf item drawn in the leaf's place adds what its mesh has over the plain leaf's.
+			var added := triangles
+			if Catalog.slot(id) == "leaf": added = _triangles(spirit.sprout.mesh) if spirit.sprout.mesh != load("res://presentation/spirit_meshes.gd").leaf() else triangles
+			var budget := HAT_TRIANGLES if Catalog.slot(id) == "hat" else LEAF_TRIANGLES
+			_check(added <= budget, "%s stays within its board's %d triangles: %d" % [id, budget, added])
 		print("ITEM %s: %d draws, %d triangles" % [id, meshes.size(), triangles])
 		for node: Node in spirit._wearing.nodes():
 			_check(not node is CollisionObject3D and node.find_children("*", "CollisionObject3D", true, false).is_empty() and node.find_children("*", "CollisionShape3D", true, false).is_empty(), "%s adds nothing physical" % id)
@@ -194,6 +206,7 @@ func _combinations() -> void:
 	var worn := 0
 	var all_worn := true
 	var leaf_ok := true
+	var Fit = load("res://presentation/kit/wear_fit.gd")
 	for hat: String in by_slot.hat:
 		for body: String in by_slot.body:
 			for leaf: String in by_slot.leaf:
@@ -205,10 +218,11 @@ func _combinations() -> void:
 				spirit.advance_motion(Vector3.ZERO, DT, false)
 				all_worn = all_worn and spirit.outfit() == Outfit.from(raw, true)
 				if spirit._wearing != null and not leaf.is_empty():
-					leaf_ok = leaf_ok and spirit.sprout.visible
+					var fit: Dictionary = Fit.decide(hat, Fit.leaf_class(leaf, spirit.sprout))
+					leaf_ok = leaf_ok and spirit.sprout.visible == bool(fit.show)
 				worn += 1
 	_check(worn >= 36 and all_worn, "Every combination of the slots is worn: %d" % worn)
-	_check(leaf_ok, "The leaf shows with every hat and leaf item")
+	_check(leaf_ok, "With every hat and leaf item the leaf shows or hides as the hat's fit says")
 	spirit.wear({})
 	spirit.reset_motion()
 	var fresh := _spirit()
@@ -236,7 +250,7 @@ func _leaf() -> void:
 	straw.wear(Outfit.from({"hat": "straw_hat", "leaf": "gold_leaf"}, true))
 	for spirit_each: Node3D in [straw, plain]:
 		for frame in range(30): spirit_each.advance_motion(Vector3.ZERO, DT, false)
-	_check(is_equal_approx(straw.sprout.position.y - plain.sprout.position.y, 0.075), "The Straw hat lifts the leaf 7.5 cm, gold or not: %.4f" % (straw.sprout.position.y - plain.sprout.position.y))
+	_check(is_equal_approx(straw.sprout.position.y - plain.sprout.position.y, Catalog.leaf_lift("straw_hat")), "The Straw hat lifts the leaf onto its brim, gold or not: %.4f" % (straw.sprout.position.y - plain.sprout.position.y))
 	straw.wear({})
 	straw.advance_motion(Vector3.ZERO, DT, false)
 	plain.advance_motion(Vector3.ZERO, DT, false)
@@ -263,12 +277,14 @@ func _hood_leaf() -> void:
 		spirit.wear(Outfit.of(hood, true))
 		_check(not spirit.sprout.visible, "and the %s worn again hides it again" % hood)
 		spirit.free()
+		var Fit = load("res://presentation/kit/wear_fit.gd")
 		for leaf: String in Catalog.ids():
 			if Catalog.slot(leaf) != "leaf": continue
 			var capped := _spirit()
 			capped.wear(Outfit.from({"hat": hood, "leaf": leaf}, true))
-			_check(capped.sprout.visible, "With %s the leaf shows under the %s" % [leaf, hood])
-			_leaf_clears_hood(capped, "%s under the %s" % [leaf, hood])
+			var fits: bool = Fit.decide(hood, Fit.leaf_class(leaf, capped.sprout)).show
+			_check(capped.sprout.visible == fits, "With %s the leaf shows under the %s exactly when the hood takes its size" % [leaf, hood])
+			if fits: _leaf_clears_hood(capped, "%s under the %s" % [leaf, hood])
 			capped.free()
 
 func _leaf_clears_hood(capped: Node3D, label: String) -> void:
@@ -280,7 +296,10 @@ func _leaf_clears_hood(capped: Node3D, label: String) -> void:
 		if frame % 6 != 0: continue
 		var to_head: Transform3D = capped.head.global_transform.affine_inverse()
 		var stalk: Vector3 = to_head * capped.sprout.global_position
-		tucked = tucked and stalk.y < HOOD.top_height(stalk)
+		# The raised leaf stands on its stem, which grows from under the hood.
+		var stem: Node3D = capped.head.find_child("LeafStem", false, false)
+		var foot: Vector3 = stem.transform * Vector3(0.0, -0.5, 0.0) if stem != null and stem.visible else stalk
+		tucked = tucked and foot.y < HOOD.top_height(foot)
 		var leaf_parts: Array[MeshInstance3D] = [capped.sprout]
 		for node: Node in capped.sprout.find_children("*", "MeshInstance3D", true, false):
 			if not node.name in NOT_SOLID: leaf_parts.append(node as MeshInstance3D)
@@ -289,7 +308,7 @@ func _leaf_clears_hood(capped: Node3D, label: String) -> void:
 			if point.distance_to(stalk) > STALK_TUCK and point.y < top:
 				under += 1
 				lowest = minf(lowest, point.y - top)
-	_check(tucked, "%s: its stalk starts under the hood" % label)
+	_check(tucked, "%s: its stem starts under the hood" % label)
 	_check(under == 0, "%s grows out of the hood and never cuts into it: %d points (deepest %.3f)" % [label, under, lowest])
 
 ## Each fruit hood reaches round under to the jaw: idle, walking or dozing, it
@@ -348,9 +367,11 @@ func _fall_path() -> void:
 	FallChecks.path(self, _check, "The Orchard skin", made, func(color: Color) -> Node3D: return Stage.pip(color, outfit), outfit, true)
 
 ## Solid parts only (no glow sprite, beam or sparkles), in head space: the
-## outfit's, and with `leaf` the pip's own leaf (an item may lift or swap it).
+## outfit's shown parts (a hat put away for a carried seed shows none), and
+## with `leaf` the pip's own leaf (an item may lift or swap it) and the stem a
+## raised leaf stands on.
 func _solid_points(spirit: Node3D, leaf: bool = false) -> PackedVector3Array:
-	var meshes := _meshes(spirit._wearing.nodes())
+	var meshes := _meshes(spirit._wearing.nodes()).filter(func(mesh: MeshInstance3D) -> bool: return mesh.is_visible_in_tree() and (leaf or mesh.name != "LeafStem"))
 	if leaf and spirit.sprout.visible: meshes.append(spirit.sprout)
 	return _points_in_head(spirit, meshes.filter(func(mesh: MeshInstance3D) -> bool: return not mesh.name in NOT_SOLID))
 
@@ -381,7 +402,6 @@ func _placement() -> void:
 	for outfit: Dictionary in _placed_outfits():
 		var label := Outfit.digest(outfit)
 		var spirit := _spirit()
-		spirit.carrying_seed = true
 		spirit.wear(outfit)
 		spirit.advance_motion(Vector3.ZERO, 0.001, true)
 		var points := _solid_points(spirit)
@@ -391,11 +411,14 @@ func _placement() -> void:
 				if point.z > 0.0 and Vector2(point.x - side * Look.EYE_X, point.y - Look.EYE_Y).length() < EYE_CLEAR: near_eye += 1
 		_check(not points.is_empty() or not outfit.has("hat"), "%s has solid parts to check" % label)
 		_check(near_eye == 0, "%s never covers the eyes: %d points" % [label, near_eye])
-		# The usual seed and the Lighthouse's wider lens (lighthouse_world.gd).
-		var to_global: Transform3D = spirit.head.global_transform
-		var with_leaf := _solid_points(spirit, true)
+		# The usual seed and the Lighthouse's wider lens (lighthouse_world.gd):
+		# carrying, whatever still shows stays clear of it.
 		for radius: float in [0.13, 0.25]:
+			spirit.carrying_seed = true
 			spirit.carried_radius = radius
+			spirit.advance_motion(Vector3.ZERO, 0.001, true)
+			var to_global: Transform3D = spirit.head.global_transform
+			var with_leaf := _solid_points(spirit, true)
 			var seed: Vector3 = spirit.carry_anchor_position()
 			var in_seed := 0
 			for point: Vector3 in with_leaf:
@@ -554,28 +577,32 @@ func _animation() -> void:
 	tide.free()
 	orchard.free()
 
-func _seed_lift() -> void:
+## No item moves a carried seed or lens: walking and letting go, every pip
+## dressed in each item carries it exactly where a plain pip does.
+func _carried_still() -> void:
 	var plain := _spirit()
-	var capped := _spirit()
-	var leafy := _spirit()
-	var straw_leafy := _spirit()
-	capped.wear(Outfit.of("apple_hood", true))
-	leafy.wear(Outfit.of("apple_leaf", true))
-	straw_leafy.wear(Outfit.from({"hat": "straw_hat", "leaf": "apple_leaf"}, true))
-	var spirits: Array[Node3D] = [plain, capped, leafy, straw_leafy]
-	for each: Node3D in spirits:
-		each.carrying_seed = true
-		each.advance_motion(Vector3.ZERO, 0.001, true)
-	var base: float = plain.carry_anchor_position().y
-	_check(is_equal_approx(capped.carry_anchor_position().y - base, float(HOOD.LOOKS.apple_hood.seed_lift)), "The Apple hood lifts a carried seed clear of its stem: %.3f" % (capped.carry_anchor_position().y - base))
-	_check(is_equal_approx(leafy.carry_anchor_position().y, base), "The Apple leaf alone leaves the seed where it was")
-	_check(is_equal_approx(straw_leafy.carry_anchor_position().y - base, 0.075), "and lifts it with the leaf through the Straw hat's brim: %.3f" % (straw_leafy.carry_anchor_position().y - base))
-	capped.wear({})
-	capped.advance_motion(Vector3.ZERO, 0.001, true)
-	_check(is_equal_approx(capped.carry_anchor_position().y, base), "Off again, the seed sits where it did")
-	var leaf_triangles := _triangles(leafy.sprout.mesh)
-	_check(leaf_triangles <= MAX_TRIANGLES, "The Apple leaf stays within about 600 triangles: %d" % leaf_triangles)
-	for each: Node3D in spirits: each.free()
+	var dressed := _spirit()
+	var same := true
+	for id: String in Catalog.ids():
+		dressed.wear(Outfit.of(id, true))
+		for radius: float in [0.13, 0.25]:
+			for each: Node3D in [plain, dressed]:
+				each.reset_motion()
+				each.carried_radius = radius
+				each.carrying_seed = true
+			for frame in range(60):
+				if frame == 40:
+					plain.play_carry_release()
+					dressed.play_carry_release()
+				var step := Vector3(0.03, 0, 0) if frame < 40 else Vector3.ZERO
+				plain.advance_motion(step, DT, false)
+				dressed.advance_motion(step, DT, false)
+				if not dressed.carry_anchor_position().is_equal_approx(plain.carry_anchor_position()):
+					same = false
+					push_error("%s moves a carried thing of radius %.2f" % [id, radius])
+	_check(same, "No item ever moves a carried seed or lens")
+	plain.free()
+	dressed.free()
 
 func _released() -> void:
 	var spirit := _spirit()

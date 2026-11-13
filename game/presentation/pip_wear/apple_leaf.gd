@@ -4,8 +4,8 @@ extends RefCounted
 ## fresh apple green, gently folded along a darker rib, on a short stalk.
 ## It grows from the leaf's own stalk and leans out the way the leaf does, so
 ## it sways, turns and hides with it, rises through a hat's brim with it, and
-## stays clear of a carried seed (which rises with the leaf, pip_outfit.gd
-## lift_seed). One baked mesh drawn in the leaf's place: no extra draw call.
+## leans clear of a carried seed. One baked mesh drawn in the leaf's place: no
+## extra draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const GREEN := Color("a2cf72")
@@ -31,7 +31,6 @@ static func wear(look: RefCounted) -> void:
 	var leaf: MeshInstance3D = look.leaf()
 	look.swap_mesh(leaf, Kit.cached_mesh("apple_leaf", _build))
 	look.set_material(leaf, Kit.vertex_material())
-	look.lift_seed(0.0, true)
 
 static func _build() -> Mesh:
 	var parts := Kit.Parts.new()

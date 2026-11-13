@@ -420,6 +420,7 @@ wardrobe_offline 2
 watch_all_parts 3
 water_locks 3
 water_locks_bake 1
+wear_fit 1
 welcome_light 2
 whats_new 3
 when_label 2
