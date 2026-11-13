@@ -18,7 +18,8 @@ extends RefCounted
 ##   floor letters, stand spots and tags stay on top of it.
 ## - Reduce motion: no trail at all.
 ## - The same walk makes the same marks: a mark is dropped each time the pip
-##   has walked one spacing (the recipe's interval at SPACING_SPEED), at the
+##   has walked one spacing (the recipe's interval at the game's walking
+##   speed: the board's table rate at a full walk), at the
 ##   exact point along its recorded path (SpiritVisual.travel_target, the
 ##   world's tick positions, not the eased drawing), whatever the frame rate, and
 ##   its look (side, turn, drift, colour) comes from an integer hash of its
@@ -67,14 +68,6 @@ const RENDER_PRIORITY := -2
 ## The game's walking speed, metres a second (core/simulation.gd: centimetres
 ## a tick at its tick rate).
 const WALK_SPEED := Simulation.MOVE_PER_TICK * Simulation.TICK_RATE / 100.0
-## The speed that turns a recipe's interval into a spacing. The board's
-## walking row shows about four marks behind a walking pip; the table's rates
-## at the game's 2.4 m/s walk would leave one or two marks a metre apart, too
-## few to read as a trail. So marks come at the table's intervals as if the
-## pip walked this fast: the same ratios between trails, about 2.2 times the
-## table's rate at a full walk, never more than MAX_MARKS live (an owner call
-## to confirm).
-const SPACING_SPEED := 1.1
 ## A mark shows this long after the pip's recorded path crosses its spot, so
 ## it appears under or behind the drawn pip, which eases after that path.
 const FOLLOW := 0.08
@@ -270,7 +263,7 @@ class Walk:
 		node.visible = true
 
 	static func _spacing(wanted: Dictionary) -> float:
-		return maxf(0.05, float(wanted.interval) * SPACING_SPEED)
+		return maxf(0.05, float(wanted.interval) * WALK_SPEED)
 
 	static func mark_look(wanted: Dictionary, count: int, pip_seed: int) -> Dictionary:
 		var draws := FallEffect.fall_draws(count, 0, pip_seed)

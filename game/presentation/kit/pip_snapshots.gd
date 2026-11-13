@@ -152,7 +152,7 @@ func _start(spec: Dictionary) -> void:
 	_pip.facing_target = spec.yaw
 	_pip.facing.rotation.y = spec.yaw
 	_view.add_child(_pip)
-	Stage.frame(_camera, spec.outfit)
+	Stage.frame(_camera, spec.outfit, spec.get("place", PipOutfit.STUDIO))
 	_pip.advance_motion(Vector3.ZERO, 0.001, false)
 	_waited = 0
 	_drawn = false

@@ -241,7 +241,7 @@ func _trail_recorded_path() -> void:
 		var walk: RefCounted = _trail(spirit).get_meta(TrailKit.WALK_META)
 		runs.append([walk.number, walk.spots.duplicate(), walk.customs.duplicate()])
 		spirit.free()
-	var same: bool = runs[0][0] > 4 and runs[1][0] == runs[0][0] and runs[2][0] == runs[0][0]
+	var same: bool = runs[0][0] > 3 and runs[1][0] == runs[0][0] and runs[2][0] == runs[0][0]
 	var apart := 0.0
 	for run: Array in runs.slice(1):
 		for index in range((run[1] as PackedVector3Array).size()):
@@ -328,6 +328,17 @@ func _extras() -> void:
 	_check(spirit._wearing.nodes().size() == 2 and spirit.outfit() == {"foot_ring": "soft_ring", "bell_sound": "wood_chime"}, "The Wardrobe shows the ring and the chime, still wearing the same")
 	spirit.set_place(PipOutfit.STUDIO)
 	_check(spirit._wearing.nodes().is_empty(), "Other pictures show neither")
+	var plain := Camera3D.new()
+	var ringed := Camera3D.new()
+	root.add_child(plain)
+	root.add_child(ringed)
+	Stage.frame(plain, {})
+	Stage.frame(ringed, {"foot_ring": "soft_ring"})
+	_check(plain.transform.is_equal_approx(ringed.transform), "A ring wearer's picture elsewhere (no ring drawn) is framed as the default look")
+	Stage.frame(ringed, {"foot_ring": "soft_ring"}, PipOutfit.WARDROBE)
+	_check(not plain.transform.is_equal_approx(ringed.transform), "and the Wardrobe pulls back to show the ring")
+	plain.free()
+	ringed.free()
 	var image := preload("res://presentation/pip_wear/soft_ring.gd").ring_image(64)
 	_check(image.get_pixel(32, 32).a == 0.0 and image.get_pixel(32, 2).a > 0.0, "The ring is a ring: clear in the middle, drawn round the edge")
 	var ring := {"foot_ring": "soft_ring"}

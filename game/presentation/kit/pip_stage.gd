@@ -46,7 +46,8 @@ static func build(view: SubViewport, pip: Node3D, outfit: Dictionary) -> Camera3
 	var camera := Camera3D.new()
 	camera.fov = FOV
 	view.add_child(camera)
-	frame(camera, outfit)
+	var place: Variant = pip.get("place")
+	frame(camera, outfit, place if place is StringName else PipOutfit.STUDIO)
 	camera.current = true
 	return camera
 
@@ -62,13 +63,14 @@ static func pip(color: Color, outfit: Dictionary, place: StringName = PipOutfit.
 	made.wear(outfit)
 	return made
 
-## Points the camera at the pip, pulled back for a tall or wide outfit (as the
+## Points the camera at the pip, pulled back for a tall or wide outfit, or one
+## with a low item drawn in `place` (as the
 ## pip wears it: cleaned, so an item it can't wear never moves the camera).
-static func frame(camera: Camera3D, outfit: Dictionary) -> void:
+static func frame(camera: Camera3D, outfit: Dictionary, place: StringName = PipOutfit.STUDIO) -> void:
 	var worn := Outfit.from(outfit)
 	var wide := Outfit.wide(worn)
 	var tall := Outfit.tall(worn)
-	var low := Outfit.low(worn)
+	var low := Outfit.low(worn, place)
 	if not wide and not tall and not low:
 		camera.look_at_from_position(CAMERA_AT, LOOK_AT)
 		return

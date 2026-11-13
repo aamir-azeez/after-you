@@ -66,10 +66,11 @@ static func moving(outfit: Dictionary) -> bool:
 		if Catalog.moving(id): return true
 	return false
 
-## Whether any worn item lies round the feet (the pip views pull back to it).
-static func low(outfit: Dictionary) -> bool:
+## Whether any worn item lies round the feet where the pip is drawn
+## (`place`, presentation/pip_outfit.gd PLACES): the pip views pull back to it.
+static func low(outfit: Dictionary, place: StringName = &"studio") -> bool:
 	for id: String in items(outfit):
-		if Catalog.low(id): return true
+		if Catalog.low(id) and Catalog.shows_in(id, place): return true
 	return false
 
 ## Whether any worn item hangs out past the head's far side in the pip views.

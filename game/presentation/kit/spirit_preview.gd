@@ -90,7 +90,7 @@ func wear(worn: Dictionary) -> void:
 	outfit = worn.duplicate()
 	if _spirit == null: return
 	_spirit.wear(outfit)
-	Stage.frame(_camera, outfit)
+	Stage.frame(_camera, outfit, place)
 	_step(0.0)
 
 func set_reduced(reduced: bool) -> void:
