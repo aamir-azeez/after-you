@@ -1208,6 +1208,7 @@ func _process(delta: float) -> void:
 		if home_view:
 			actor.visible=true
 		var target: Vector3=actor_targets[role]
+		actor.travel_target=target
 		var previous := actor.position
 		actor.position=actor.position.lerp(target,weight)
 		actor.advance_motion(actor.position-previous,delta,reduced_motion)

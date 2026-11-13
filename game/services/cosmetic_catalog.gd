@@ -111,6 +111,16 @@ static func chips() -> Array[String]:
 		if not chip(slot_id) in result: result.append(chip(slot_id))
 	return result
 
+## The places (presentation/pip_outfit.gd PLACES) the item's art shows in,
+## or [] for everywhere.
+static func places(id: String) -> Array:
+	return Index.data(id).get("places", [])
+
+## Whether its art shows on a pip drawn in `place`.
+static func shows_in(id: String, place: StringName) -> bool:
+	var only := places(id)
+	return only.is_empty() or str(place) in only
+
 ## A Bell sound item's fixed cue (services/sound_cues.gd), or "".
 static func sound(id: String) -> String:
 	return str(Index.data(id).get("sound", ""))

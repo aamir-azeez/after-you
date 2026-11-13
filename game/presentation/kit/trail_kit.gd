@@ -18,8 +18,9 @@ extends RefCounted
 ##   floor letters, stand spots and tags stay on top of it.
 ## - Reduce motion: no trail at all.
 ## - The same walk makes the same marks: a mark is dropped each time the pip
-##   has walked one spacing (the recipe's interval at the game's walking
-##   speed), at the exact point along its path, whatever the frame rate, and
+##   has walked one spacing (the recipe's interval at SPACING_SPEED), at the
+##   exact point along its recorded path (SpiritVisual.travel_target, the
+##   world's tick positions, not the eased drawing), whatever the frame rate, and
 ##   its look (side, turn, drift, colour) comes from an integer hash of its
 ##   number and the pip's slot. So the friend's memory and every replay of a
 ##   turn draw the trail the turn drew. A placement (a replay seek, a reset)
@@ -64,17 +65,33 @@ const LIFT := 0.0085
 ## Drawn before the pair tags (render priority -1).
 const RENDER_PRIORITY := -2
 ## The game's walking speed, metres a second (core/simulation.gd: centimetres
-## a tick at its tick rate), which turns a recipe's interval into a spacing.
+## a tick at its tick rate).
 const WALK_SPEED := Simulation.MOVE_PER_TICK * Simulation.TICK_RATE / 100.0
+## The speed that turns a recipe's interval into a spacing. The board's
+## walking row shows about four marks behind a walking pip; the table's rates
+## at the game's 2.4 m/s walk would leave one or two marks a metre apart, too
+## few to read as a trail. So marks come at the table's intervals as if the
+## pip walked this fast: the same ratios between trails, about 2.2 times the
+## table's rate at a full walk, never more than MAX_MARKS live (an owner call
+## to confirm).
+const SPACING_SPEED := 1.1
+## A mark shows this long after the pip's recorded path crosses its spot, so
+## it appears under or behind the drawn pip, which eases after that path.
+const FOLLOW := 0.08
+## The trail clock starts again from 0 once no mark is left, and is moved
+## back once it passes this many seconds while marks live, so a mark's birth
+## (kept at half precision by GL Compatibility) stays exact.
+const REBASE_AFTER := 60.0
 ## Each mark sits this far to one side of the path, alternating (half the
 ## feet's spread, spirit_look.gd FOOT_SPREAD).
 const SIDE := Look.FOOT_SPREAD * 0.5
 ## After a placement, the first mark comes once the pip has walked this share
 ## of a spacing.
 const FIRST_AT := 0.25
-## A step longer than this (metres) is a placement, not a walk: no marks
-## along it.
+## A step longer than this (metres), or than JUMP_FRAMES frames of walking
+## at the step's own length, is a placement, not a walk: no marks along it.
 const JUMP := 1.2
+const JUMP_FRAMES := 3.0
 ## A margin round the live marks for culling (metres).
 const MARGIN := 0.2
 
@@ -142,7 +159,11 @@ static func wear(look: RefCounted, overrides: Dictionary) -> MultiMeshInstance3D
 		return node
 	node.top_level = true
 	node.global_transform = Transform3D.IDENTITY
-	node.visible = false
+	# Drawn (every mark dead, so nothing shows) for its first frames, with
+	# bounds no camera culls, so GL compiles the instanced program while the
+	# stage loads rather than at the first mark mid walk (Walk.WARM_STEPS).
+	node.visible = true
+	node.custom_aabb = AABB(-Vector3.ONE * 10000.0, Vector3.ONE * 20000.0)
 	var walk := Walk.new(node, made)
 	node.set_meta(WALK_META, walk)
 	look.travel(func(worn: RefCounted, at: Vector3, delta: float, reduced: bool) -> void: walk.step(at, delta, reduced, worn.slot_seed()))
@@ -164,7 +185,7 @@ static func recipe(overrides: Dictionary) -> Dictionary:
 
 ## Metres the pip walks between marks.
 static func spacing(made: Dictionary) -> float:
-	return float(made.interval) * WALK_SPEED
+	return Walk._spacing(made)
 
 ## The recipe's shared mesh: one mark, its width across.
 static func mesh(made: Dictionary) -> Mesh:
@@ -227,6 +248,9 @@ class Walk:
 	var walked := 0.0
 	var clock := 0.0
 	var number := 0
+	## Steps left before the warm-up draw (TrailKit.wear) hides the node.
+	const WARM_STEPS := 3
+	var warm := WARM_STEPS
 	## When the last mark fades, by the clock; marks live while clock < this.
 	var live_until := -1.0
 	## What each instance was last given (its place and custom data), kept
@@ -237,8 +261,12 @@ class Walk:
 	func _init(trail: MultiMeshInstance3D, wanted: Dictionary) -> void:
 		node = trail
 		made = wanted
-		gap = maxf(0.05, float(wanted.interval) * WALK_SPEED)
+		gap = _spacing(wanted)
 		clear()
+		node.visible = true
+
+	static func _spacing(wanted: Dictionary) -> float:
+		return maxf(0.05, float(wanted.interval) * SPACING_SPEED)
 
 	static func mark_look(wanted: Dictionary, count: int, pip_seed: int) -> Dictionary:
 		var draws := FallEffect.fall_draws(count, 0, pip_seed)
@@ -266,6 +294,9 @@ class Walk:
 	## `pip_seed` its slot's (PipOutfit slot_seed).
 	func step(at: Vector3, delta: float, reduced: bool, pip_seed: int = 0) -> void:
 		pip_key = pip_seed
+		if warm > 0:
+			warm -= 1
+			if warm == 0 and not live(): node.visible = false
 		if reduced:
 			if placed or live(): clear()
 			return
@@ -276,9 +307,13 @@ class Walk:
 			return
 		var moved := Vector2(at.x - last.x, at.z - last.z)
 		var distance := moved.length()
-		if distance == 0.0 and not live(): return
+		if distance == 0.0 and not live():
+			# Standing with every mark gone: the clock starts again from 0.
+			if clock != 0.0: _rebase(clock)
+			return
+		if clock > REBASE_AFTER: _rebase(clock)
 		clock += maxf(delta, 0.0)
-		if distance > JUMP:
+		if distance > maxf(JUMP, WALK_SPEED * maxf(delta, 0.0) * JUMP_FRAMES):
 			last = at
 			walked = gap * (1.0 - FIRST_AT)
 		elif distance > 0.0:
@@ -289,11 +324,19 @@ class Walk:
 				done += gap - walked
 				walked = 0.0
 				var t := done / distance
-				_drop(from.lerp(at, t), heading, clock - delta * (1.0 - t))
+				_drop(from.lerp(at, t), heading, clock - delta * (1.0 - t) + FOLLOW)
 			walked += distance - done
 			last = at
 		if live(): node.set_instance_shader_parameter(CLOCK, clock)
 		elif node.visible: node.visible = false
+
+	## Moves the clock back by `shift` seconds, every mark's birth with it.
+	func _rebase(shift: float) -> void:
+		clock -= shift
+		live_until -= shift
+		for index in range(customs.size()):
+			customs[index].r -= shift
+			node.multimesh.set_instance_custom_data(index, customs[index])
 
 	## A placement: every mark goes and the count starts again.
 	func clear() -> void:
@@ -304,7 +347,7 @@ class Walk:
 		spots.clear()
 		customs.clear()
 		for index in range(MAX_MARKS): node.multimesh.set_instance_custom_data(index, Color(-1000.0, 0, 0, 0))
-		node.visible = false
+		node.visible = warm > 0
 
 	func _drop(point: Vector3, heading: Vector2, birth: float) -> void:
 		var look := mark_look(made, number, pip_key)

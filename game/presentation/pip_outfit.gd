@@ -86,7 +86,7 @@ static func dress(target: Node3D, worn: Dictionary) -> RefCounted:
 	var made: RefCounted = load("res://presentation/pip_outfit.gd").new(target, worn)
 	for id: String in Outfit.items(worn):
 		var path := Catalog.art(id)
-		if path.is_empty() or not ResourceLoader.exists(path): continue
+		if path.is_empty() or not ResourceLoader.exists(path) or not Catalog.shows_in(id, target.place): continue
 		made.apply_art(load(path))
 	made.leaf_lift = Outfit.leaf_lift(worn)
 	made.seed_lift = maxf(made._seed_own, made._seed_with_leaf + made.leaf_lift if made._seed_follows_leaf else 0.0)

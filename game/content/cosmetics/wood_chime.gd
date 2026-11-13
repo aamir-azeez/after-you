@@ -8,5 +8,7 @@ const DATA := {
 	"tier": "uncommon",
 	"name": PlayerCopy.COSMETIC_WOOD_CHIME,
 	"art": "res://presentation/pip_wear/wood_chime.gd",
+	## Its chime is drawn only in the Wardrobe, standing for the sound.
+	"places": ["wardrobe"],
 	"sound": "bell_wood_chime",
 }

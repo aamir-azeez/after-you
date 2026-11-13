@@ -108,6 +108,7 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	if not is_instance_valid(spirit): return
 	var previous := spirit.position
+	spirit.travel_target = _target
 	spirit.position = previous.lerp(_target, minf(delta * 14.0, 1.0))
 	spirit.advance_motion(spirit.position - previous, delta, _reduced)
 

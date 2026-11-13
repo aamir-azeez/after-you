@@ -93,6 +93,10 @@ const SHELF_PIP := Vector2(50, 62)
 ## of marks beside it (kit/trail_kit.gd SAMPLE) fits, as the trails board draws it.
 const TRAIL_PIP_WIDTH := 2.6
 const BIG_PIP := Vector2(230, 270)
+## The big pip's view: as tall, and as wide as the panel, so a trail's still
+## row of marks (kit/trail_kit.gd SAMPLE) shows beside the pip; the pip draws
+## the same size.
+const BIG_VIEW := Vector2(300, 270)
 
 signal back_pressed
 signal tab_chosen(tab: String)
@@ -262,7 +266,7 @@ func _make_preview(color: Color) -> void:
 	if is_instance_valid(preview):
 		_pip_box.remove_child(preview)
 		preview.queue_free()
-	preview = PipAvatar.new(_reduced, color, BIG_PIP)
+	preview = PipAvatar.new(_reduced, color, BIG_VIEW)
 	preview.place = PipOutfit.WARDROBE
 	preview.name = "WardrobePip"
 	_pip_box.add_child(preview)

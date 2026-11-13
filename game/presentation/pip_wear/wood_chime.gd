@@ -1,12 +1,12 @@
 extends RefCounted
 ## Wood chime (bell sound): what it sounds like is the item (its descriptor's
 ## "sound", played once on the player's result screen). Nothing is worn: the
-## little wooden chime beside the head shows only in the Wardrobe, where it
-## stands for the sound (pip_outfit.gd WARDROBE), as the board's card draws it.
+## little wooden chime beside the head shows only in the Wardrobe (its
+## descriptor's "places"), where it stands for the sound, as the board's card
+## draws it.
 ## One baked mesh with the kit's vertex colour material, on the pip's own
 ## node, which never turns.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
-const PipOutfit = preload("res://presentation/pip_outfit.gd")
 
 const WOOD := Color("b58c63")
 const PALE := Color("e8dabc")
@@ -14,7 +14,6 @@ const PALE := Color("e8dabc")
 const AT := Vector3(0.4, 0.0, 0.12)
 
 static func wear(look: RefCounted) -> void:
-	if look.place() != PipOutfit.WARDROBE: return
 	look.mesh(look.root(), Kit.cached_mesh("wood_chime", _chime), Kit.vertex_material(), Transform3D(Basis.IDENTITY, AT))
 
 static func _chime() -> Mesh:

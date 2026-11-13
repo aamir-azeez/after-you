@@ -72,6 +72,13 @@ static func wide(outfit: Dictionary) -> bool:
 		if Catalog.wide(id): return true
 	return false
 
+## Whether any worn item shows only in some places (a still picture of it
+## depends on where it is drawn).
+static func place_bound(outfit: Dictionary) -> bool:
+	for id: String in items(outfit):
+		if not Catalog.places(id).is_empty(): return true
+	return false
+
 ## The fixed cue of the worn Bell sound item (services/sound_cues.gd), or ""
 ## for none: what the player's result screen plays once.
 static func bell_sound(outfit: Dictionary) -> String:

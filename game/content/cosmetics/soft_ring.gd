@@ -8,4 +8,7 @@ const DATA := {
 	"tier": "uncommon",
 	"name": PlayerCopy.COSMETIC_SOFT_RING,
 	"art": "res://presentation/pip_wear/soft_ring.gd",
+	## Room and result pages and the Wardrobe only: never in a chapter, where
+	## it could be taken for a pad or a target.
+	"places": ["stage", "wardrobe"],
 }

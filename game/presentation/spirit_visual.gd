@@ -88,6 +88,12 @@ var stride_phase := 0.0
 var step_phase := 0.0
 var motion_blend := 0.0
 var facing_target := 0.0
+## Where the world's recorded movement has the spirit now, in its parent's
+## space (a world sets it each frame, from the simulation's tick positions,
+## before advance_motion), or INF when nothing sets it. Worn items that follow
+## the walk (a trail) follow this, not the eased drawing, so a turn draws the
+## same at any frame rate.
+var travel_target := Vector3.INF
 ## A real object (a seed, the Lighthouse lens) rides above the head: worn
 ## extras that hide while it does are told (pip_outfit.gd hide_while_carrying).
 var carrying_seed := false:
@@ -217,6 +223,14 @@ func wear(outfit: Dictionary) -> void:
 	_wearing = PipOutfit.dress(self, clean)
 	_leaf_lift = Vector3(0, _wearing.leaf_lift, 0)
 	_seed_lift = _wearing.seed_lift
+
+## Where a trail follows the walk from (global): the recorded target when a
+## world gives one, else where the spirit is drawn.
+func _travel_point() -> Vector3:
+	if travel_target.is_finite():
+		var parent := get_parent() as Node3D
+		return parent.global_transform*travel_target if parent!=null and is_inside_tree() else travel_target
+	return global_position if is_inside_tree() else position
 
 ## Draws the spirit as a pip in `where` (pip_outfit.gd PLACES), dressing it
 ## again if that changes what it wears shows.
@@ -414,7 +428,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	face_art.advance(delta)
 	if _wearing!=null:
 		_wearing.advance(delta,reduced_motion)
-		if _wearing.follows_travel(): _wearing.travel_to(global_position if is_inside_tree() else position,delta,reduced_motion)
+		if _wearing.follows_travel(): _wearing.travel_to(_travel_point(),delta,reduced_motion)
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)

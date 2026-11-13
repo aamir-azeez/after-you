@@ -1,13 +1,12 @@
 extends RefCounted
 ## Soft ring (foot ring): a quiet dashed mint ring on the floor round the
-## pip's feet, 1.1 pip widths across (the board's little extras). It shows
-## only on room and result pages and in the Wardrobe (pip_outfit.gd STAGE and
-## WARDROBE), never in a chapter or on Home, so it can't be taken for a pad or
-## a target. Flat and still: no pulse, no light. One quad with a drawn ring
-## texture (made once), on the pip's own node, which never turns.
+## pip's feet, 1.1 pip widths across (the board's little extras). Its
+## descriptor's "places" keep it to room and result pages and the Wardrobe,
+## never a chapter or Home, so it can't be taken for a pad or a target. Flat
+## and still: no pulse, no light. One quad with a drawn ring texture (made
+## once, small), on the pip's own node, which never turns.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Look = preload("res://presentation/spirit_look.gd")
-const PipOutfit = preload("res://presentation/pip_outfit.gd")
 
 const DASH := Color("b2d6c2")
 const GLOW := Color("dce9d4")
@@ -18,11 +17,9 @@ const LINE := 0.045
 const DASHES := 18
 ## Just above the floor, under the pip's feet.
 const LIFT := 0.004
-const TEXTURE_SIZE := 192
-const PLACES: Array[StringName] = [PipOutfit.STAGE, PipOutfit.WARDROBE]
+const TEXTURE_SIZE := 128
 
 static func wear(look: RefCounted) -> void:
-	if not look.place() in PLACES: return
 	var node: MeshInstance3D = look.mesh(look.root(), Kit.cached_mesh("soft_ring", _quad), Kit.cached_material("soft_ring", _material), Transform3D(Basis.IDENTITY, Vector3(0, LIFT, 0)))
 	node.name = "SoftRing"
 

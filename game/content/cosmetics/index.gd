@@ -50,6 +50,10 @@ const OPTIONAL := {
 	## The item's permanent number (see backend catalog.json "code"): never
 	## changes and is never given to another item. 0 while it has none.
 	"code": 0,
+	## The places its art shows in (presentation/pip_outfit.gd PLACES: "world",
+	## "studio", "stage", "wardrobe"), or [] for everywhere: a foot ring only on
+	## room and result pages and in the Wardrobe.
+	"places": [],
 	## A Bell sound item: the fixed cue (services/sound_cues.gd CUES) the
 	## player's result screen plays once, or "".
 	"sound": "",

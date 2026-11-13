@@ -58,6 +58,7 @@ func _run() -> void:
 	_shapes()
 	_trail_walk()
 	_trail_frame_rates()
+	_trail_recorded_path()
 	_trail_rules()
 	_trail_pictures()
 	_extras()
@@ -162,9 +163,9 @@ func _trail_walk() -> void:
 		spirit.wear(Outfit.of(id, true))
 		var trail := _trail(spirit)
 		var made: Dictionary = trail.get_meta(TrailKit.RECIPE_META)
-		_check(trail != null and trail.top_level and not trail.visible, "%s waits, hidden, while the pip stands" % id)
+		_check(trail != null and trail.top_level and trail.visible and _marks(trail).is_empty(), "%s draws its first frames with no mark, to warm its program" % id)
 		_stand(spirit, 1.0, 1.0 / 60.0)
-		_check(not trail.visible and _marks(trail).is_empty(), "%s leaves nothing while the pip stands" % id)
+		_check(not trail.visible and _marks(trail).is_empty(), "%s then hides and leaves nothing while the pip stands" % id)
 		_walk(spirit, 3.0, 1.0 / 60.0)
 		var marks := _marks(trail)
 		_check(trail.visible and not marks.is_empty() and marks.size() <= TrailKit.MAX_MARKS, "%s shows at most %d marks while walking: %d" % [id, TrailKit.MAX_MARKS, marks.size()])
@@ -176,7 +177,7 @@ func _trail_walk() -> void:
 		_check(even, "%s drops a mark each %.2f m along the path, under alternate feet" % [id, spacing])
 		_check(absf((marks[-1][0] as Vector3).y - TrailKit.LIFT) < 0.0001, "%s's marks lie just above the floor" % id)
 		var behind := spirit.position.x - (marks[-1][0] as Vector3).x
-		_check(behind >= 0.0 and behind <= spacing + 0.01, "%s's newest mark is behind the pip" % id)
+		_check(behind >= 0.0 and behind <= spacing + TrailKit.WALK_SPEED * TrailKit.FOLLOW + 0.01, "%s's newest mark is behind the pip" % id)
 		_stand(spirit, 0.2, 1.0 / 60.0)
 		var count := _marks(trail).size()
 		_stand(spirit, float(made.life) + 0.1, 1.0 / 60.0)
@@ -214,6 +215,40 @@ func _trail_frame_rates() -> void:
 	_check(not mine.is_empty() and (mine[0][1] as Color).g != (runs[0][0][1] as Color).g, "The other player's pip draws its marks its own way")
 	other.free()
 
+## A turning walk, the world's way: the recorded target moves a tick at a
+## time (30 a second) and the drawn pip eases after it, which differs with
+## the frame rate on every corner; the trail follows the target, so the marks
+## do not.
+func _trail_recorded_path() -> void:
+	var runs: Array = []
+	for dt: float in [1.0 / 60.0, 1.0 / 30.0, 1.0 / 45.0]:
+		var spirit := _spirit()
+		spirit.wear(Outfit.of("little_tune", true))
+		spirit.travel_target = spirit.position
+		spirit.advance_motion(Vector3.ZERO, dt, false)
+		var time := 0.0
+		for step in range(roundi(3.0 / dt)):
+			time += dt
+			var tick := floori(time * 30.0 + 0.0001)
+			var walked := tick * TrailKit.WALK_SPEED / 30.0
+			# East, then north after 1.5 m, then west after 3 m.
+			var target := Vector3(minf(walked, 1.5), 0, -clampf(walked - 1.5, 0.0, 1.5))
+			if walked > 3.0: target = Vector3(1.5 - (walked - 3.0), 0, -1.5)
+			spirit.travel_target = target
+			var previous: Vector3 = spirit.position
+			spirit.position = previous.lerp(target, minf(dt * 14.0, 1.0))
+			spirit.advance_motion(spirit.position - previous, dt, false)
+		var walk: RefCounted = _trail(spirit).get_meta(TrailKit.WALK_META)
+		runs.append([walk.number, walk.spots.duplicate(), walk.customs.duplicate()])
+		spirit.free()
+	var same: bool = runs[0][0] > 4 and runs[1][0] == runs[0][0] and runs[2][0] == runs[0][0]
+	var apart := 0.0
+	for run: Array in runs.slice(1):
+		for index in range((run[1] as PackedVector3Array).size()):
+			apart = maxf(apart, (run[1][index] as Vector3).distance_to(runs[0][1][index]))
+			same = same and is_equal_approx((run[2][index] as Color).g, (runs[0][2][index] as Color).g)
+	_check(same and apart < 0.001, "A turning walk drops the same marks at 60, 30 and 45 frames a second, following the recorded path: %s, %.4f m apart at most" % [runs.map(func(run: Array) -> int: return run[0]), apart])
+
 func _trail_rules() -> void:
 	var spirit := _spirit()
 	spirit.wear(Outfit.of("snow_steps", true))
@@ -229,6 +264,15 @@ func _trail_rules() -> void:
 	_check(_marks(trail).is_empty(), "A jump leaves no marks along it")
 	_walk(spirit, 2.0, 1.0 / 60.0, true)
 	_check(not trail.visible and _marks(trail).is_empty(), "Reduce motion shows no trail")
+	var walk: RefCounted = trail.get_meta(TrailKit.WALK_META)
+	spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+	for lap in range(3):
+		_walk(spirit, 20.0, 1.0 / 30.0)
+		_stand(spirit, 1.0, 1.0 / 30.0)
+	_walk(spirit, 0.5, 1.0 / 30.0)
+	_check(walk.clock < 1.0 and not _marks(trail).is_empty(), "The trail clock starts again after the marks fade, so births stay small: %.2f" % walk.clock)
+	_walk(spirit, 70.0, 1.0 / 30.0)
+	_check(walk.clock <= TrailKit.REBASE_AFTER + 0.1 and not _marks(trail).is_empty(), "and is moved back on a long walk: %.2f" % walk.clock)
 	var material := trail.material_override as ShaderMaterial
 	_check(float(material.get_shader_parameter(&"opacity")) <= 0.38 and material.render_priority < -1, "Marks are at most 0.38 strong and drawn before the pair tags")
 	_check(TrailKit.LIFT > 0.006 and TrailKit.LIFT < 0.0095, "Marks lie over the floor's lines and under the pair tags")
@@ -277,5 +321,7 @@ func _extras() -> void:
 	_check(spirit._wearing.nodes().is_empty(), "Other pictures show neither")
 	var image := preload("res://presentation/pip_wear/soft_ring.gd").ring_image(64)
 	_check(image.get_pixel(32, 32).a == 0.0 and image.get_pixel(32, 2).a > 0.0, "The ring is a ring: clear in the middle, drawn round the edge")
-	_check(Snapshots.key(Look.PEACH, {}, Vector2i(10, 10), 0.0, PipOutfit.STAGE) != Snapshots.key(Look.PEACH, {}, Vector2i(10, 10), 0.0), "Still pictures are kept apart by place")
+	var ring := {"foot_ring": "soft_ring"}
+	_check(Snapshots.key(Look.PEACH, ring, Vector2i(10, 10), 0.0, PipOutfit.STAGE) != Snapshots.key(Look.PEACH, ring, Vector2i(10, 10), 0.0), "Still pictures of an item shown only in some places are kept apart by place")
+	_check(Snapshots.key(Look.PEACH, {"trail": "leaves"}, Vector2i(10, 10), 0.0, PipOutfit.STAGE) == Snapshots.key(Look.PEACH, {"trail": "leaves"}, Vector2i(10, 10), 0.0), "and any other outfit is drawn once for every place")
 	spirit.free()

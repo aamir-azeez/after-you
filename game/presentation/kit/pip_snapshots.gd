@@ -56,7 +56,9 @@ var _headless := DisplayServer.get_name() == "headless"
 ## the place it is drawn for (pip_outfit.gd PLACES: some items show only in
 ## some places).
 static func key(color: Color, outfit: Dictionary, size: Vector2i, yaw: float, place: StringName = PipOutfit.STUDIO) -> String:
-	return "%s|%s|%dx%d|%.4f|%s" % [color.to_html(), Outfit.digest(Outfit.from(outfit)), size.x, size.y, yaw, place]
+	var worn := Outfit.from(outfit)
+	# Only an item that shows in some places makes the place matter (one picture otherwise).
+	return "%s|%s|%dx%d|%.4f|%s" % [color.to_html(), Outfit.digest(worn), size.x, size.y, yaw, place if Outfit.place_bound(worn) else PipOutfit.STUDIO]
 
 ## The pip's texture now if it is drawn, else null, and `done(key, texture)`
 ## is called once it is.
