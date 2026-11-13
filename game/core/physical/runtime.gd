@@ -15,6 +15,19 @@ const RECEIVER_GRACE_TICKS := 300
 ## it, so a packet cannot change it. Without it the published caps apply.
 const FIRST_TURN_LIMITS_VERSION := 9
 const MAX_DECLARED_TURN_TICKS := 9000
+## From the same rules a definition may also declare "input_rules": a key of
+## INPUT_RULES. Its turns then record at most one input change every
+## change_ticks ticks on average, after a starting allowance of burst changes:
+## a change past that holds the previous input one more tick. A recording then
+## grows with its length at a bounded rate, so such a definition may declare
+## turns up to LONG_TURN_TICKS (15 minutes). The definition hash covers the
+## field, and published chapters never declare it, so they play as before.
+## reserve: changes kept back for the action button. The stick spends only
+## above it, so a press still registers after the stick used its allowance; a
+## press held back anyway lands on the next tick that may change.
+## Mirrored by backend protocol-physical-recording.ts INPUT_RULES.
+const INPUT_RULES := {1: {"change_ticks": 10, "burst": 800, "reserve": 30}}
+const LONG_TURN_TICKS := 27000
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -47,6 +60,12 @@ var _offer_tick := -1
 var _claimed := false
 var _objective := false
 var _comfort_entries: Dictionary = {}
+## The definition's INPUT_RULES entry, or {} when its input is not capped.
+var _input_rules: Dictionary = {}
+## Ticks of change allowance left (one change costs change_ticks).
+var _input_credit := 0
+## A press the cap held back, kept for the next tick that may change.
+var _pending_press := false
 ## The digest of `level`, worked out on first use after a reset (level is set
 ## only by a reset, to its own deep copy, and never changed after): the state
 ## hash, the recording and the navigation index read it instead of digesting
@@ -98,6 +117,9 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_claimed = false
 	_objective = false
 	_comfort_entries = {}
+	_input_rules = input_rules(level, simulation_version)
+	_input_credit = int(_input_rules.get("burst", 0)) * int(_input_rules.get("change_ticks", 0))
+	_pending_press = false
 	tick = 0
 	finished = false
 	complete = false
@@ -120,6 +142,7 @@ func step(input: Dictionary = {}) -> Dictionary:
 	_events = []
 	var previous_routes := _routes.duplicate()
 	var frame := quantize_input(input)
+	if not _input_rules.is_empty(): frame = _capped(frame)
 	_append_frame(frame)
 	if role == "b": _advance_source()
 	_refresh_routes()
@@ -334,23 +357,66 @@ func duration_limit() -> int:
 ## Published: 900 ticks, and 1,200 for a comfort receiver. A definition that
 ## declares turn_limits badly is refused by rules_allowed and the proof; its
 ## turns keep the published lengths here.
+## The frame this tick records under the definition's input cap: `frame`, or
+## the previous entry's input when the allowance cannot pay for a change. A
+## recorded frame always replays unchanged, as the allowance moves the same way.
+func _capped(frame: Dictionary) -> Dictionary:
+	var cost := int(_input_rules.change_ticks)
+	_input_credit = mini(_input_credit + 1, int(_input_rules.burst) * cost)
+	if _pending_press: frame.action = true
+	if _actions.is_empty(): return _pressed(frame)
+	var last: Dictionary = _actions[-1]
+	if last.x == frame.x and last.z == frame.z and last.action == frame.action: return _pressed(frame)
+	# The stick spends only above the reserve; a change of the button may use it.
+	var needed := cost * (1 + (0 if last.action != frame.action else int(_input_rules.reserve)))
+	if _input_credit >= needed:
+		_input_credit -= cost
+		return _pressed(frame)
+	if bool(frame.action) and not bool(last.action): _pending_press = true
+	return {"x": last.x, "z": last.z, "action": last.action}
+
+func _pressed(frame: Dictionary) -> Dictionary:
+	if bool(frame.action): _pending_press = false
+	return frame
+
+## The INPUT_RULES entry `definition` declares under rules `version`, or {}.
+static func input_rules(definition: Dictionary, version: int) -> Dictionary:
+	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("input_rules"): return {}
+	var key: Variant = definition.input_rules
+	if not _whole_ticks(key) or not INPUT_RULES.has(int(key)): return {}
+	return INPUT_RULES[int(key)]
+
+## The most action entries a turn of `ticks` ticks can record under `rules`
+## (an INPUT_RULES entry): the first entry, the starting allowance and one
+## change every change_ticks ticks. -1 when uncapped.
+static func max_action_entries(rules: Dictionary, ticks: int) -> int:
+	if rules.is_empty(): return -1
+	return mini(ticks, 1 + int(rules.burst) + ticks / int(rules.change_ticks))
+
 static func turn_ticks(definition: Dictionary, version: int, turn_role: String) -> int:
 	var published := MAX_TICKS + RECEIVER_GRACE_TICKS if version >= COMFORT_SIMULATION_VERSION and turn_role == "b" else MAX_TICKS
 	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return published
-	return int(_declared_turns(definition.turn_limits).get(turn_role if turn_role == "b" else "a", published))
+	return int(_declared_turns(definition.turn_limits, _turn_cap(definition)).get(turn_role if turn_role == "b" else "a", published))
 
-## False only when rules `version` read a turn_limits field that breaks the
-## backend's turnLimits rules: a_ticks and b_ticks both whole numbers with
-## 1 <= a < b <= 9,000 (the receiver waits out the first turn).
+## False only when rules `version` read a turn_limits or input_rules field that
+## breaks the backend's turnLimits rules: input_rules a key of INPUT_RULES, and
+## a_ticks and b_ticks whole numbers with 1 <= a < b <= 9,000, or 27,000 with
+## input_rules (the receiver waits out the first turn).
 static func turn_limits_valid(definition: Dictionary, version: int) -> bool:
-	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return true
-	return not _declared_turns(definition.turn_limits).is_empty()
+	if version < FIRST_TURN_LIMITS_VERSION: return true
+	if definition.has("input_rules") and input_rules(definition, version).is_empty(): return false
+	if not definition.has("turn_limits"): return true
+	return not _declared_turns(definition.turn_limits, _turn_cap(definition)).is_empty()
 
-static func _declared_turns(limits: Variant) -> Dictionary:
+## The longest turn a definition may declare: 15 minutes with capped input.
+static func _turn_cap(definition: Dictionary) -> int:
+	return LONG_TURN_TICKS if definition.has("input_rules") else MAX_DECLARED_TURN_TICKS
+
+static func _declared_turns(limits: Variant, cap: int) -> Dictionary:
 	if not limits is Dictionary: return {}
 	var a: Variant = limits.get("a_ticks")
 	var b: Variant = limits.get("b_ticks")
-	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b <= a or b > MAX_DECLARED_TURN_TICKS: return {}
+	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b <= a or b > cap: return {}
 	return {"a": int(a), "b": int(b)}
 
 static func _whole_ticks(value: Variant) -> bool:

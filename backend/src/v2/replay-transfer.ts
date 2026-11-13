@@ -3,7 +3,8 @@ import { chapter, exact, type RecordingV2 } from "./protocol";
 import type { PairV2, RoomStateV2 } from "./room";
 import { initializeReplayTransfer } from "./storage-schema";
 
-export const MAX_REPLAY_ARCHIVE_BYTES = 16 * 1024 * 1024;
+import { MAX_REPLAY_ARCHIVE_BYTES } from "./row-bound";
+export { MAX_REPLAY_ARCHIVE_BYTES };
 const MAX_REPLAY_ARCHIVE_NODES = 2_000_000;
 const MAX_REPLAY_ARCHIVE_DEPTH = 20;
 type RoomFacts = Omit<RoomStateV2, "checkpoint" | "invite_code"> & { checkpoint_hash: string };

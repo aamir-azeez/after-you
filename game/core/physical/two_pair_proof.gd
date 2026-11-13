@@ -79,7 +79,9 @@ func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dic
 	for key: String in OUTCOME_KEYS:
 		if not record.outcome[key] is bool: return "Invalid recording outcome."
 	if not record.source_recording_hash is String or not _hash(record.final_state_hash) or not _hash(record.recording_hash) or (record.role == "b" and not _hash(record.source_recording_hash)): return "Invalid recording hashes."
-	if not record.actions is Array or record.actions.is_empty() or record.actions.size() > limit: return "Invalid action list."
+	# Capped input (Runtime INPUT_RULES) bounds the entries too; such a list could never replay exactly anyway.
+	var most := Runtime.max_action_entries(Runtime.input_rules(definition, _version), int(record.duration_ticks))
+	if not record.actions is Array or record.actions.is_empty() or record.actions.size() > limit or (most >= 0 and record.actions.size() > most): return "Invalid action list."
 	var total := 0
 	for item: Variant in record.actions:
 		if not item is Dictionary or not _exact_keys(item, ["ticks", "x", "z", "action"]): return "Unknown action fields."

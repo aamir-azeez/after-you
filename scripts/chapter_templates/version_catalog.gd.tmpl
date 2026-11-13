@@ -4,7 +4,8 @@ extends RefCounted
 ## record with an earlier version. Its words are the descriptor's copy and
 ## stage_copy, never the definition's, and its turn limits are the development
 ## ones (content/chapters/index.gd DEVELOPMENT_TURN_LIMITS) until play sets them
-## (scripts/chapter_turn_limits.py).
+## (scripts/chapter_turn_limits.py). input_rules 1 caps input changes
+## (core/physical/runtime.gd INPUT_RULES), which lets turns run up to 15 minutes.
 const Earlier = preload("{{EARLIER_SCRIPT}}")
 const WORDS := ["title", "subtitle", "hint_a", "hint_b"]
 
@@ -13,6 +14,7 @@ static func definition() -> Dictionary:
 	level.version = {{VERSION}}
 	level.simulation_version = 9
 	level.turn_limits = {{DEV_TURN_LIMITS}}
+	level.input_rules = 1
 	for field: String in WORDS:
 		level.erase(field)
 		for stage: Dictionary in level.stages: stage.erase(field)

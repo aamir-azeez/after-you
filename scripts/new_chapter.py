@@ -36,6 +36,8 @@ from pathlib import Path
 import re
 import sys
 
+from chapter_tools.turn_limits import Rules
+
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = Path(__file__).resolve().parent / "chapter_templates"
 KEY_PATTERN = re.compile(r"^([a-z][a-z0-9]*(?:-[a-z0-9]+)*)@([1-9][0-9]*)$")
@@ -318,7 +320,7 @@ def descriptor(values: dict[str, str], stage_copy: bool) -> str:
         lines.append(f'\t\t{{"stage_id": "{stage}", "title": PlayerCopy.{v["CONST"]}_STAGE_{number}_TITLE}},')
     lines.append("\t],")
     lines += home_keepsake(v)
-    lines += [f'\t"server": {{"flag": "{v["FLAG"]}", "max_branches": 32}},', "}", ""]
+    lines += [f'\t"server": {{"flag": "{v["FLAG"]}", "max_branches": {v["MAX_BRANCHES"]}}},', "}", ""]
     return "\n".join(lines)
 
 
@@ -373,7 +375,7 @@ def version_descriptor(earlier: Path, values: dict[str, str]) -> str:
         if name in replaced:
             lines = [replaced[name]]
         if name == "server":
-            lines = [re.sub(r'"flag": "[^"]*"', f'"flag": "{values["FLAG"]}"', line) for line in lines]
+            lines = [re.sub(r'"max_branches": \d+', f'"max_branches": {values["MAX_BRANCHES"]}', re.sub(r'"flag": "[^"]*"', f'"flag": "{values["FLAG"]}"', line)) for line in lines]
         out += lines
         if name == "local_path":
             out += [f'\t"version_of": "{values["PLACES_OF"]}",', '\t"released": false,']
@@ -424,6 +426,8 @@ def scaffold(args: argparse.Namespace, root: Path) -> Plan:
         "LOCAL_PATH": local_path, "WITNESS_FILE": f"{stem}_witness.gd", "WORLD_BASE": config["world_base"],
         "KEEPSAKE_RES": f"res://presentation/keepsakes/{stem}.gd",
         "DEV_TURN_LIMITS": development_turn_limits(root),
+        # A journey chapter plays capped input with long turns, so the room archives hold fewer branches of it.
+        "MAX_BRANCHES": str(Rules(root).dev_max_branches if family == "journey" else 32),
     }
     families = (root / "game/services/chapter_families.gd").read_text(encoding="utf-8")
     row = re.search(r'^\t"' + re.escape(family) + r'": \{(.*?)\n(?=\t[^\t]|\})', families, re.M | re.S)

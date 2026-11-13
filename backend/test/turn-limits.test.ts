@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { canonicalJson, digest } from "../src/protocol";
 import { MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
-import { checkTurnBounds, physicalRecording, ROW_ENVELOPE_BYTES, scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
-import { conservatory, longWayHome, longWayHomeV2, turnOfTheTide } from "../src/v2/protocol-journey";
+import { checkTurnBounds, inputRules, physicalRecording, ROW_ENVELOPE_BYTES, scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
+import { conservatory, longWayHome, longWayHomeV2, turnOfTheTide, turnOfTheTideV2 } from "../src/v2/protocol-journey";
 import { MAX_ROW_BYTES } from "../src/v2/snapshot";
 import cases from "../../game/tests/fixtures/journey/turn-limits-cases.json";
 import { wishingWell } from "../src/v2/protocol-cooperative";
@@ -29,9 +29,10 @@ describe("declared turn limits", () => {
 
   it("follow the table test_turn_of_the_tide.gd also reads", () => {
     expect(cases.cases.length).toBeGreaterThanOrEqual(20);
-    for (const item of cases.cases as { label: string; simulation_version: number; turn_limits?: unknown; valid: boolean; a?: number; b?: number }[]) {
-      const definition = { simulation_version: item.simulation_version, ...("turn_limits" in item ? { turn_limits: item.turn_limits } : {}) };
-      if (!item.valid) { expect(() => turnLimits(definition), item.label).toThrow("invalid turn_limits"); continue; }
+    for (const item of cases.cases as { label: string; simulation_version: number; turn_limits?: unknown; input_rules?: unknown; valid: boolean; a?: number; b?: number }[]) {
+      const definition = { simulation_version: item.simulation_version, ...("turn_limits" in item ? { turn_limits: item.turn_limits } : {}), ...("input_rules" in item ? { input_rules: item.input_rules } : {}) };
+      if (!item.valid) { expect(() => { inputRules(definition); turnLimits(definition); }, item.label).toThrow(/invalid (turn_limits|input_rules)/); continue; }
+      inputRules(definition);
       const turns = turnLimits(definition);
       expect([turns?.a_ticks ?? 900, turns?.b_ticks ?? 1200], item.label).toEqual([item.a, item.b]);
     }
@@ -60,6 +61,8 @@ describe("declared turn limits", () => {
 
   it("leave the published adapters alone", () => {
     for (const adapter of [conservatory, longWayHome, longWayHomeV2, wishingWell]) expect(adapter.limits).toBeUndefined();
+    // Both Tides keep the scaled bounds they shipped with: capped input is new chapters' only.
+    for (const adapter of [turnOfTheTide, turnOfTheTideV2]) expect(adapter.limits).toEqual(scaledLimits({ a_ticks: 2700, b_ticks: 3000 }));
   });
 
   it("set the turn cap for each role, still lowered by maxTicks, and allow one replay check a second", async () => {

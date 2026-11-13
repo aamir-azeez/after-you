@@ -18,12 +18,15 @@ export const KEPT_RANKED = TOP_PLACES + 3;
  * a person keeps it until their answer. So the server holds about 120 replays
  * (10 on each of 12 boards), plus one for each run waiting for a person: at
  * most MAX_REVIEW (48) a board, usually none. A final checkpoint is typically
- * 12 to 35 KB of JSON and deflates to about a quarter of that; an encoded
- * replay above this many bytes is not kept (its run still ranks, with no
- * Watch). Worst case 12 x (10 + 48) x 360 KB, about 250 MB; typical well
+ * 12 to 35 KB of JSON and deflates to about a quarter of that. A chapter with
+ * 15 minute turns can reach a room row (MAX_ROW_BYTES) of JSON, deflating to
+ * well under it, so this matches that row: any final checkpoint a room could
+ * store fits once encoded. An encoded replay above it is not kept (its run
+ * still ranks, with no Watch). lb_replays keeps it as a BLOB, inside SQLite's
+ * 2 MB value. Worst case 12 x (10 + 48) x 1.5 MB, about 1 GB; typical well
  * under 1 MB in all.
  */
-export const MAX_REPLAY_BYTES = 360 * 1024;
+export const MAX_REPLAY_BYTES = 1536 * 1024;
 /**
  * Runs waiting, per board, in three pools so one kind can never crowd out another:
  * - unchecked: posted, account check not run yet. A full pool never evicts; the

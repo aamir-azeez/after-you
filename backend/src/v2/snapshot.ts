@@ -22,14 +22,13 @@ import { clearHard, isHardTable } from "./hard-mode";
 import { clearReplayExpiry, isReplayExpiryTable } from "./replay-expiry";
 import { clearMemberNames, isMemberNamesTable } from "../display-names";
 
-import { MAX_ROW_BYTES } from "./row-bound";
+import { MAX_ROOM_V2_ARCHIVE_BYTES, MAX_ROW_BYTES } from "./row-bound";
 import { nestedProof } from "./checkpoint-chain";
 import { MAX_ATTEMPT_BYTES, ZERO_LINK, attemptLink, blobBytes, blobFromRows } from "./history-blob";
 import { bytesDigest } from "../blob-codec";
 import type { AttemptRecord } from "./history";
 
-export { MAX_ROW_BYTES };
-export const MAX_ROOM_V2_ARCHIVE_BYTES = 24 * 1024 * 1024;
+export { MAX_ROOM_V2_ARCHIVE_BYTES, MAX_ROW_BYTES };
 type Row = Record<string, string | number>;
 type Table = { name: string; schema: string; columns: string[]; rows: Row[] };
 type Summary = { state: "empty" | "deleted" | "active" | "transferred"; revision: number | null; branch: number | null };
