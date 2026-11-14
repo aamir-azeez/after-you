@@ -3,9 +3,9 @@ extends Node
 ## from the balance on any Pollen chip (Home, the Wardrobe, the Pollen store),
 ## from Settings or from the Pollen store's "Earn Pollen free by playing", and
 ## reads its data once each time it opens (services/pollen_client.gd history),
-## never on a timer. Back returns to where it opened: `return_to` names it
-## ("home", "settings", "wardrobe" or "store"); the host
-## reads it. It also makes the chips (kit/pollen_chip.gd) for Home and
+## never on a timer. Back goes through Main's back history (menu_opened, when
+## Main has it: presentation/menu_back.gd), told which screen it opened over
+## ("home", "settings", "wardrobe", "store" or "fruits"). It also makes the chips (kit/pollen_chip.gd) for Home and
 ## the page, and remembers for the app's run the balance a chip last showed the
 ## player, so a chip shows the gain just after earning: increases only, never
 ## after a spend, and none on the first chip after a launch.
@@ -21,9 +21,9 @@ extends Node
 ## the Pollen store (presentation/pollen_store_flow.gd available, show_store);
 ## left unset, no plus shows. While Fruits show, its Fruit half opens the Fruits
 ## page through `fruits_route` (Main sets it to the Fruits page's opener; left
-## unset, the Fruit half still shows and its tap does nothing). A tap that would
-## open the screen Back already leads to goes Back instead, so the two screens
-## never stack into a loop.
+## unset, the Fruit half still shows and its tap does nothing). A screen already
+## under this one in the history opens in its own place there, so screens never
+## stack into a loop.
 const Page = preload("res://presentation/pollen_play_page.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -31,6 +31,8 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const MODE := "pollen_play"
+## Its name in Main's back history (presentation/menu_back.gd).
+const MENU_SCREEN := "pollen"
 ## Where Back goes when the Fruits page's Sunshine opened this page.
 const FROM_FRUITS := "fruits"
 
@@ -45,11 +47,6 @@ var store_route: Callable
 var store_sells: Callable
 ## (from: String) -> void: opens the Fruits page, its Back going to `from` ("home" or "pollen").
 var fruits_route: Callable
-## (to: String) -> void: where the Fruits page's own chip sends its Pollen half
-## ("pollen") and its plus ("store"); Main sets it to the Fruits page's routes,
-## which keep Back from looping. Unset, they open this page or the store with
-## Back to the Fruits page.
-var fruits_page_route: Callable
 ## The Fruits kept on this phone (services/fruit_wallet.gd); tests set their own.
 var fruits: RefCounted
 ## The Fruit spends (presentation/fruit_spend_flow.gd): the Sunshine card's
@@ -63,7 +60,6 @@ var _page: Page
 var _page_chip: Control
 var _history: Dictionary = {}
 var _status := ""
-var return_to := "home"
 var _reads := 0
 
 func _init(main: Node = null) -> void:
@@ -130,19 +126,14 @@ static func forget_shown() -> void:
 func _amount_pressed(where: String = "") -> void:
 	if where != FROM_FRUITS:
 		if not is_open(): open_from_home()
-	elif fruits_page_route.is_valid(): fruits_page_route.call("pollen")
 	else: open_from_fruits()
 
-## The plus: the Pollen store, whose Back comes to where the chip was. On this
-## page opened from the store, the store is where Back leads, so it goes Back.
+## The plus: the Pollen store, whose Back comes to where the chip was.
 func _plus_pressed(where: String = "") -> void:
 	if not store_open(): return
-	if where == FROM_FRUITS:
-		if fruits_page_route.is_valid(): fruits_page_route.call("store")
-		else: store_route.call(FROM_FRUITS)
+	if where == FROM_FRUITS: store_route.call(FROM_FRUITS)
 	elif not is_open(): store_route.call("home")
-	elif return_to == "store": back_requested.emit()
-	else: store_route.call("pollen")
+	else: store_route.call(MENU_SCREEN)
 
 ## The Fruit half: the Fruits page, whose Back comes to where the chip was
 ## (nothing on the Fruits page itself).
@@ -155,9 +146,9 @@ func open_from_home() -> void:
 func open_from_wardrobe() -> void:
 	_open("wardrobe")
 
-## Opens the page again with the Back it had (when the Pollen store it opened goes Back).
+## Opens the page again (Back from a screen it opened).
 func reopen() -> void:
-	_open(return_to)
+	_open("")
 
 func open_from_settings() -> void:
 	_open("settings")
@@ -174,7 +165,6 @@ func is_open() -> bool:
 
 func _open(from: String) -> void:
 	if not available(): return
-	return_to = from
 	host.running = false
 	host.mode = MODE
 	host._clear_overlay()
@@ -184,6 +174,7 @@ func _open(from: String) -> void:
 	_page.sunshine_buy_pressed.connect(_sunshine_pressed)
 	host.overlay.add_child(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
+	if host.has_method("menu_opened"): host.menu_opened(MENU_SCREEN, from, _page.back_button)
 	# The Sunshine card follows the kept Fruits (a purchase, a turn that used one).
 	if fruit_spends != null and not fruit_spends.fruits().changed.is_connected(_on_fruits_changed): fruit_spends.fruits().changed.connect(_on_fruits_changed)
 	_history = {}

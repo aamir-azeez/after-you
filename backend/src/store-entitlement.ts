@@ -26,9 +26,9 @@ function appStoreEnvironments(raw: string | undefined): string[] | null {
   if (raw === undefined || raw === "both") return ENVIRONMENTS;
   return ENVIRONMENTS.includes(raw) ? [raw] : null;
 }
-/** A tester's App Store environments: sandbox after the configured ones. A malformed setting still holds. */
-function testerEnvironments(environments: string[] | null, tester: boolean): string[] | null {
-  return tester && environments !== null && !environments.includes(SANDBOX) ? [...environments, SANDBOX] : environments;
+/** The App Store environments read: sandbox always counts too (TestFlight and App Review), after the configured ones. A malformed setting still holds. */
+function withSandbox(environments: string[] | null): string[] | null {
+  return environments !== null && !environments.includes(SANDBOX) ? [...environments, SANDBOX] : environments;
 }
 type ProviderList = { ok: true; items: unknown[]; incomplete: boolean } | { ok: false; reason: string };
 /** A 404 is an absent customer, so an empty and complete list. */
@@ -75,9 +75,8 @@ export async function storeEntitlement(playerId: string, env: ServerVars, onGran
   const playSubscriptions = config.play_subscription_product_ids;
   const playReady = PRODUCT_PATTERN.test(config.play_product_id ?? "") && playSubscriptions !== null;
   const appLookup = appStoreLookup(config);
-  // A tester (CONFIG revenuecat.tester_ids) is admitted by a sandbox subscription in either store, as by a real one.
-  const tester = config.tester_ids.includes(playerId);
-  const appEnvironments = testerEnvironments(appStoreEnvironments(config.app_store_environment), tester);
+  // A sandbox subscription in either store admits any player, as a real one (only the developer makes sandbox buyers).
+  const appEnvironments = withSandbox(appStoreEnvironments(config.app_store_environment));
   const appSubscriptions = config.app_store_subscription_product_ids;
   // The flag is on, so an unset App Store list is a missing setting, not "no App Store products".
   const appReady = appStoreSettings(config);
@@ -113,6 +112,8 @@ export async function storeEntitlement(playerId: string, env: ServerVars, onGran
   };
 
   const outcomes: StoreOutcome[] = [];
+  /** Play production refused with its subscription list set: its sandbox is checked last (below), whether production lists were partial. */
+  let playSandbox: { incomplete: boolean } | null = null;
   // Play first, so a Play host makes the same provider reads as under playEntitlement.
   if (playGrant !== "active") outcomes.push(playGrant);
   else if (!playReady) outcomes.push({ held: "unconfigured" });
@@ -131,14 +132,7 @@ export async function storeEntitlement(playerId: string, env: ServerVars, onGran
         const plans = await subscriptionsIn(playEnvironment);
         if (!plans.ok) outcomes.push({ held: "unavailable", reason: plans.reason });
         else if (subscribed(plans.items, "play_store", playSubscriptions!, playEnvironment)) return admitted({ access_source: "play_subscription", entitlement: "full_journey_play" }, playerId);
-        else if (!tester) outcomes.push(purchases.incomplete || plans.incomplete ? { held: "unavailable", reason: "provider_incomplete_list" } : { refused: true });
-        else {
-          // A tester's Play sandbox subscription (a license tester's) counts as a real one: one more read, for testers only, once production refused.
-          const test = await subscriptionsIn(SANDBOX);
-          if (!test.ok) outcomes.push({ held: "unavailable", reason: test.reason });
-          else if (subscribed(test.items, "play_store", playSubscriptions!, SANDBOX)) return admitted({ access_source: "play_subscription", entitlement: "full_journey_play" }, playerId);
-          else outcomes.push(purchases.incomplete || plans.incomplete || test.incomplete ? { held: "unavailable", reason: "provider_incomplete_list" } : { refused: true });
-        }
+        else playSandbox = { incomplete: purchases.incomplete || plans.incomplete };
       }
     }
   }
@@ -156,6 +150,14 @@ export async function storeEntitlement(playerId: string, env: ServerVars, onGran
       if (plans.incomplete) held ??= { held: "unavailable", reason: "provider_incomplete_list" };
     }
     outcomes.push(held ?? { refused: true });
+  }
+  if (playSandbox) {
+    // A Play sandbox subscription (a license tester's) counts as a real one: read after every production check, so an App
+    // Store subscriber costs no extra read, and shared with the App Store's sandbox read when that was made.
+    const test = await subscriptionsIn(SANDBOX);
+    if (!test.ok) outcomes.push({ held: "unavailable", reason: test.reason });
+    else if (subscribed(test.items, "play_store", playSubscriptions!, SANDBOX)) return admitted({ access_source: "play_subscription", entitlement: "full_journey_play" }, playerId);
+    else outcomes.push(playSandbox.incomplete || test.incomplete ? { held: "unavailable", reason: "provider_incomplete_list" } : { refused: true });
   }
   return combine(outcomes, playerId);
 }

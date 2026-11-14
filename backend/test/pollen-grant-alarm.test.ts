@@ -113,7 +113,8 @@ beforeEach(() => {
     if (url === "https://oauth2.googleapis.com/token") return Response.json({ access_token: "synthetic-oauth-access-token", expires_in: 3600 });
     if (url.startsWith("https://fcm.googleapis.com/")) { pushes.push(JSON.parse(String(init?.body)).message); return Response.json({ name: "projects/afteryou-synthetic/messages/synthetic" }); }
     if (!url.startsWith("https://api.revenuecat.com/")) throw new Error("unexpected fetch");
-    providerCalls++;
+    // A read is the production and sandbox lists made at once (grant-provider.ts readGrant): counted once, by its production list.
+    if (!url.includes("environment=sandbox")) providerCalls++;
     if (gate) await gate;
     if (items === null) return new Response(null, { status: 503 });
     return url.includes("/subscriptions?") ? Response.json({ object: "list", items, next_page: null }) : new Response(null, { status: 404 });
