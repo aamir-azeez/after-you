@@ -450,6 +450,11 @@ func _shared_slots() -> void:
 	_check(pill_grid.get_child_count() == 5 and pill.faces_card.cells.has("aww"), "The in-run pill's card shows the same slots")
 	pill.queue_free()
 	await process_frame
+	# The public duel stranger card's grid (board 6.3) shows the same slots too.
+	var sheet: Control = load("res://presentation/duels/public_sheets.gd")._faces("peach", null)
+	var buttons: Array = sheet.find_children("Face_*", "Button", true, false).map(func(node: Node) -> String: return str(node.name).trim_prefix("Face_"))
+	_check(buttons == ["aww", "happy", "surprised", "sad", "squeeze"], "The stranger card's grid shows the same slots: %s" % [buttons])
+	sheet.free()
 	Wardrobe.use_shared(null)
 
 func _headers() -> void:

@@ -215,8 +215,9 @@ static func report(root: Control, name: String, confirm: Callable) -> Control:
 	modal.refresh_focus_order()
 	return modal
 
-## The Reactions grid inside the card (board 6.3): the preset faces in your colour. A tap marks
-## the face and makes it your next turn's default face (FaceStore.use_last); it sends nothing.
+## The Reactions grid inside the card (board 6.3): your reaction slots in your colour, as every
+## faces card shows them (EndReactions.offered_slots, empty places kept), else the preset faces.
+## A tap marks the face and makes it your next turn's default face (FaceStore.use_last); it sends nothing.
 static func _faces(color: String, on_pick: Variant) -> PanelContainer:
 	var box := PanelContainer.new()
 	box.name = "PublicStrangerFaces"
@@ -227,14 +228,25 @@ static func _faces(color: String, on_pick: Variant) -> PanelContainer:
 	stack.add_theme_constant_override("separation", 6)
 	box.add_child(stack)
 	stack.add_child(Kit.text(PlayerCopy.END_REACTIONS_TITLE, 22, UiTokens.INK, true))
+	var slots: Array = EndReactions.offered_slots({})
 	var grid := GridContainer.new()
-	grid.columns = 4
+	grid.columns = 4 if slots.is_empty() else EndReactions.slot_columns(slots.size())
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	stack.add_child(grid)
 	var chosen := FaceStore.last_known()
-	for face: String in FaceStore.FACES:
+	var faces: Array = slots if not slots.is_empty() else FaceStore.FACES
+	for index: int in faces.size():
+		var face: String = faces[index]
 		if face == FaceStore.HEART: continue
+		if face.is_empty():
+			var place := Panel.new()
+			place.name = "EmptySlot_%d" % index
+			place.custom_minimum_size = FACE_CELL
+			place.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			place.add_theme_stylebox_override("panel", ThemeRules.rounded(Color(UiTokens.INK, 0.03), 12))
+			grid.add_child(place)
+			continue
 		var cell := Button.new()
 		cell.name = "Face_" + face
 		cell.custom_minimum_size = FACE_CELL
@@ -257,7 +269,7 @@ static func _faces(color: String, on_pick: Variant) -> PanelContainer:
 		column.add_child(label)
 		cell.add_child(column)
 		cell.pressed.connect(func() -> void:
-			for other: Node in grid.get_children(): (other as Button).set_pressed_no_signal(other == cell)
+			for other: Node in grid.get_children().filter(func(node: Node) -> bool: return node is Button): (other as Button).set_pressed_no_signal(other == cell)
 			FaceStore.use_last(face)
 			if on_pick is Callable and (on_pick as Callable).is_valid(): (on_pick as Callable).call(face))
 		grid.add_child(cell)
