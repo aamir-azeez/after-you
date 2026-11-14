@@ -146,7 +146,9 @@ describe("open turns: rules and bounds", () => {
     const broken = [turns[0], turns[2], turns[1], turns[3]];
     await expect(validate(await closing(setEnd as Rec, start, broken), start, broken)).rejects.toMatchObject({ code: "checkpoint_source_mismatch" });
     // The published shape is refused on open rules.
-    await expect(checkpointV2(setEnd, start as ChapterCheckpoint, turns[0] as ChapterRecording, turns.at(-1) as ChapterRecording)).rejects.toMatchObject({ status: 400 });
+    const { turn_hashes: _hashes, ...published } = structuredClone(two.checkpoint); void _hashes;
+    const twoTurns = await sealed({ ...published, schema_version: 7, a_recording_hash: two.turns[0].recording_hash, b_recording_hash: two.turns[1].recording_hash, proof: { checkpoint: start, a: two.turns[0], b: two.turns[1] } });
+    await expect(checkpointV2(twoTurns, start as ChapterCheckpoint, two.turns[0] as ChapterRecording, two.turns[1] as ChapterRecording)).rejects.toMatchObject({ status: 400 });
     // Past the stage's cap.
     const capped = await chain(0, start, adapter.open_turns!.caps[0] - 1);
     await expect(validate(capped.checkpoint, start, capped.turns)).rejects.toMatchObject({ code: "checkpoint_recording_mismatch" });

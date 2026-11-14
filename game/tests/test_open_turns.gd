@@ -12,6 +12,7 @@ extends SceneTree
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const Canonical = preload("res://core/v2/canonical.gd")
 const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
 var checks := 0
@@ -97,7 +98,7 @@ func _published() -> void:
 	var derived := Simulation.derive_checkpoint(level, Registry.initial_checkpoint(key), a, b)
 	_check(derived.valid and derived.checkpoint.has("a_recording_hash") and not derived.checkpoint.has("turn_hashes") and derived.checkpoint.proof.has("a"), "A published stage keeps its two turn checkpoint")
 	var ending: Dictionary = _fixture("turn-of-the-tide-v2-set-the-tide-checkpoint.json")
-	_check(derived.valid and derived.checkpoint == ending, "byte for byte as its fixture")
+	_check(derived.valid and Canonical.same(derived.checkpoint, ending), "byte for byte as its fixture")
 
 func _fixture(name: String) -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/journey/" + name))
