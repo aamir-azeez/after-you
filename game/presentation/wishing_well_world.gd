@@ -62,6 +62,15 @@ var _stair_marks: Dictionary = {}
 func _mark_stair(stair: Dictionary) -> Dictionary:
 	return _stair_marks.get(stair.id, super._mark_stair(stair))
 
+## Folding stairs hang against the cliff and the ladder stays rolled while
+## closed: they show it themselves. Their owners' gates stay.
+func _skip_route_barriers(view: Dictionary) -> void:
+	for stair: Dictionary in view.get("stairs", []): route_barriers.skip(str(stair.id), "a folding stair hangs folded, and the ladder stays rolled, while closed")
+
+## The well's lip is edged with a low rail.
+func _zone_edge_look() -> StringName:
+	return &"rail"
+
 ## A stage's bell, around its centre: its base, its frame and the floor its
 ## frame and bell hide from the camera behind them.
 const BELL_SHADE := Rect2(-0.53, -1.6, 1.06, 1.94)

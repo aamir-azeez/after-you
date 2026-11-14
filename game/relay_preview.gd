@@ -24,6 +24,8 @@ const Frames = preload("res://services/frame_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const LeaderboardCelebration = preload("res://presentation/leaderboard_celebration.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
+## Where a tick's input meets a barrier, or a control its pip may not work.
+const BarrierRefusals = preload("res://presentation/barrier_refusals.gd")
 const LighthouseHud = preload("res://presentation/lighthouse_hud.gd")
 const JournalLoader = preload("res://services/lighthouse_loader.gd")
 const WorldPrewarm = preload("res://services/world_prewarm.gd")
@@ -281,6 +283,9 @@ func building() -> bool:
 var _loading_label: Label
 ## The bridges at the previous tick, for cues that name the bridge that opened.
 var _sound_seen: Dictionary = {}
+## This turn's refusal finder: its pushes and locked controls ride each tick's
+## snapshot into the tick's sounds and the world (_turn_sounds).
+var _refusals := BarrierRefusals.new()
 ## The Lighthouse's last stage ends on its lit beacon, held until the player moves on.
 var _moment_replay := false
 var title_font: Font
@@ -2035,7 +2040,7 @@ func advance_input(input: Dictionary) -> void:
 	if mode == "play" and _try_due:
 		_try_due = false
 		_live_tries = turn_tries.start(_try_slot)
-	_wait().step(state, _turn_sounds(state), mode == "play")
+	_wait().step(state, _turn_sounds(state, input), mode == "play")
 	_run_player().step(int(state.tick))
 	_update_hud(state)
 	if mode == "play" and (int(state.tick) % 30 == 0 or hard_flow.saves_tick(int(state.tick))) and not state.finished and not _persist_draft("play", true):
@@ -2149,8 +2154,11 @@ func _continue_final_moment() -> void:
 	else: _finish()
 
 
-## Maps one tick's simulation events to sound cues and who caused each one.
-func _turn_sounds(state: Dictionary) -> Dictionary:
+## Maps one tick's simulation events to sound cues and who caused each one,
+## after marking where `input` (the tick's own; a still one when skipped)
+## pushed into a barrier (presentation/barrier_refusals.gd).
+func _turn_sounds(state: Dictionary, input: Dictionary = MemoryWait.STILL_INPUT) -> Dictionary:
+	_refusals.annotate(state, input, world.get("route_barriers") if is_instance_valid(world) else null)
 	return ChapterSoundMap.cues(chapter_key, state, _sound_seen)
 
 ## The simulation is back at tick zero: its cues restart their identities.
@@ -2163,7 +2171,7 @@ func _begin_sound_turn() -> void:
 func _fast_forward(draft: Dictionary) -> void:
 	for input: Dictionary in _simulation.expand_recording_inputs(draft):
 		var state: Dictionary = sim.step(input)
-		_wait().step_silently(state, _turn_sounds(state))
+		_wait().step_silently(state, _turn_sounds(state, input))
 
 ## The wait, pointed at this screen's current world and soundscape.
 func _wait() -> RefCounted:
@@ -2178,6 +2186,7 @@ func _wait() -> RefCounted:
 ## follow WaitHints.wanted (a second turn played beside a memory, online or
 ## solo, never a replay); they know when the memory ends.
 func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool = false) -> void:
+	_refusals.begin(chapter_key, definition, sim.snapshot(), prior_recording)
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
 	memory_wait.auto_skip = MemoryWait.skip_waits(settings)
 	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))

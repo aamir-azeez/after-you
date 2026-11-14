@@ -8,6 +8,13 @@ extends SceneTree
 ##    on, and a ring goal its pip cannot reach. The graph over-approximates
 ##    (a gate counts as open once anything reachable could make it hold), so
 ##    each failure here is a spot no real play reaches.
+##  - Ownership (one-pip access): a crossing, zone or control that only one pip
+##    may use, which the other pip can still reach on that stage (an end of the
+##    crossing, the zone's floor, the control's floor). One-pip access comes
+##    from geography (the pip's own side of a real gap), a control only that
+##    pip reaches, or a carried item; never an owner_slot on floor the other
+##    pip walks. Published spots are KNOWN_OWNERSHIP: the route barriers
+##    (presentation/kit/route_barriers.gd) show their cause instead.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
 ##    each other on a stage. Props against routes, pads, levers, goals and
 ##    starts, and the camera's view of them, are tests/test_dressing_lint.gd's.
@@ -33,9 +40,191 @@ const KNOWN := {
 	"high-and-low@1 upper-path props hedge at (-690, -200) cm and signpost at (-700, 230) cm": "the shore's signpost stands at the hedge's front end on purpose, its post beside the leaves and its boards above them (seen in the 800x360 preview)",
 	"high-and-low@1 down-and-around props hedge at (-690, -200) cm and signpost at (-700, 230) cm": "the same signpost and hedge on the second stage",
 }
+## Published one-pip spots the other pip can reach, each shown by the route
+## barriers (a gate, a stair's chain, a zone's rope or a lock) rather than
+## rebuilt. A new level fixes its own; an entry that stops failing fails the suite.
+const OWNERSHIP_WHY := "published before the ownership rule; the 2026-11-13 block audit found it and the route barriers show its cause"
+const KNOWN_OWNERSHIP := [
+	"high-and-low@1 upper-path crossing lower-causeway p1",
+	"high-and-low@1 upper-path crossing blue-stair p0",
+	"high-and-low@1 upper-path lever shore-lever p1",
+	"high-and-low@1 upper-path pad lower-switch p1",
+	"high-and-low@1 down-and-around crossing lower-causeway p1",
+	"high-and-low@1 down-and-around crossing red-passage p1",
+	"high-and-low@1 down-and-around crossing blue-stair p0",
+	"high-and-low@1 down-and-around pad lower-ledge-switch p0",
+	"rolling-home@1 weight-of-a-friend zone upper-lane p0",
+	"rolling-home@1 weight-of-a-friend zone lower-lane p1",
+	"rolling-home@1 weight-of-a-friend lever middle-lever p0",
+	"rolling-home@1 bring-it-home zone upper-lane p0",
+	"rolling-home@1 bring-it-home zone lower-lane p1",
+	"rolling-home@1 bring-it-home lever home-lever p0",
+	"rolling-home@1 bring-it-home lever route-lever p1",
+	"a-house-for-two@1 open-the-house crossing workshop-entry p1",
+	"a-house-for-two@1 open-the-house crossing loft-stairs p0",
+	"a-house-for-two@1 open-the-house lever workshop-lever p1",
+	"a-house-for-two@1 the-room-below crossing workshop-entry p1",
+	"a-house-for-two@1 the-room-below crossing loft-stairs p0",
+	"conservatory@1 a-light-above crossing lower-crossing p1",
+	"conservatory@1 a-light-above crossing court-return p1",
+	"conservatory@1 a-light-above crossing room-return p1",
+	"conservatory@1 a-light-above crossing high-stair p0",
+	"conservatory@1 a-light-above selector court-fork p1",
+	"conservatory@1 a-light-above selector high-return p1",
+	"conservatory@1 a-light-above selector preserved-turn p1",
+	"conservatory@1 the-way-light-returns crossing lower-crossing p1",
+	"conservatory@1 the-way-light-returns crossing court-return p1",
+	"conservatory@1 the-way-light-returns crossing room-return p1",
+	"conservatory@1 the-way-light-returns crossing high-stair p0",
+	"conservatory@1 the-way-light-returns crossing recovery-stair p0",
+	"conservatory@1 the-way-light-returns selector lower-fork p0",
+	"conservatory@1 the-way-light-returns selector crossing-return p0",
+	"conservatory@1 the-way-light-returns lever return-shutter p1",
+	"long-way-home@1 the-path-you-leave crossing court-landing p1",
+	"long-way-home@1 the-path-you-leave crossing friend-crossing p0",
+	"long-way-home@1 the-path-you-leave crossing drop-garden p1",
+	"long-way-home@1 the-path-you-leave crossing near-crossing p1",
+	"long-way-home@1 the-path-you-leave crossing garden-arch p1",
+	"long-way-home@1 the-path-you-leave crossing recovery-stair p1",
+	"long-way-home@1 the-path-you-leave crossing service-up p0",
+	"long-way-home@1 the-path-you-leave selector path-selector p1",
+	"long-way-home@1 the-path-you-leave selector return-selector p0",
+	"long-way-home@1 a-place-beside-you crossing court-landing p1",
+	"long-way-home@1 a-place-beside-you crossing friend-crossing p0",
+	"long-way-home@1 a-place-beside-you crossing drop-garden p1",
+	"long-way-home@1 a-place-beside-you crossing near-crossing p1",
+	"long-way-home@1 a-place-beside-you crossing porch-door p1",
+	"long-way-home@1 a-place-beside-you crossing garden-arch p1",
+	"long-way-home@1 a-place-beside-you crossing garden-door p1",
+	"long-way-home@1 a-place-beside-you crossing recovery-stair p1",
+	"long-way-home@1 a-place-beside-you crossing service-up p0",
+	"long-way-home@1 a-place-beside-you crossing service-down p0",
+	"long-way-home@1 a-place-beside-you pad near-window p0",
+	"long-way-home@1 a-place-beside-you pad garden-window p0",
+	"the-wishing-well@1 go-on-ahead crossing rope-walk-west p0",
+	"the-wishing-well@1 go-on-ahead crossing cliff-steps p1",
+	"the-wishing-well@1 go-on-ahead crossing long-stair p0",
+	"the-wishing-well@1 go-on-ahead zone well-lip p1",
+	"the-wishing-well@1 go-on-ahead lever garden-gate p1",
+	"the-wishing-well@1 back-for-you crossing rope-walk-east p0",
+	"the-wishing-well@1 back-for-you crossing cliff-steps p1",
+	"the-wishing-well@1 back-for-you crossing well-ladder p1",
+	"the-wishing-well@1 back-for-you zone well-lip p1",
+	"the-wishing-well@1 back-for-you lever winch-lever p0",
+	"the-wishing-well@1 back-for-you pad tower-step p0",
+	"long-way-home@2 the-path-you-leave crossing court-landing p1",
+	"long-way-home@2 the-path-you-leave crossing friend-crossing p0",
+	"long-way-home@2 the-path-you-leave crossing drop-garden p1",
+	"long-way-home@2 the-path-you-leave crossing near-crossing p1",
+	"long-way-home@2 the-path-you-leave crossing garden-arch p1",
+	"long-way-home@2 the-path-you-leave crossing recovery-stair p1",
+	"long-way-home@2 the-path-you-leave crossing service-up p0",
+	"long-way-home@2 the-path-you-leave selector path-selector p1",
+	"long-way-home@2 the-path-you-leave selector return-selector p0",
+	"long-way-home@2 a-place-beside-you crossing court-landing p1",
+	"long-way-home@2 a-place-beside-you crossing friend-crossing p0",
+	"long-way-home@2 a-place-beside-you crossing drop-garden p1",
+	"long-way-home@2 a-place-beside-you crossing near-crossing p1",
+	"long-way-home@2 a-place-beside-you crossing porch-door p1",
+	"long-way-home@2 a-place-beside-you crossing garden-arch p1",
+	"long-way-home@2 a-place-beside-you crossing garden-door p1",
+	"long-way-home@2 a-place-beside-you crossing recovery-stair p1",
+	"long-way-home@2 a-place-beside-you crossing service-up p0",
+	"long-way-home@2 a-place-beside-you crossing service-down p0",
+	"long-way-home@2 a-place-beside-you pad near-window p0",
+	"long-way-home@2 a-place-beside-you pad garden-window p0",
+	"turn-of-the-tide@1 set-the-tide crossing quay-step p1",
+	"turn-of-the-tide@1 set-the-tide crossing wheel-step p1",
+	"turn-of-the-tide@1 set-the-tide crossing bollard-step p1",
+	"turn-of-the-tide@1 set-the-tide crossing boom-jetty p1",
+	"turn-of-the-tide@1 set-the-tide crossing sea-gate-in p1",
+	"turn-of-the-tide@1 set-the-tide crossing punt-ferry p1",
+	"turn-of-the-tide@1 set-the-tide crossing race-stage p1",
+	"turn-of-the-tide@1 set-the-tide crossing bar-catwalk p0",
+	"turn-of-the-tide@1 set-the-tide crossing punt-post p0",
+	"turn-of-the-tide@1 set-the-tide crossing gate-catwalk p0",
+	"turn-of-the-tide@1 set-the-tide crossing gate-post p0",
+	"turn-of-the-tide@1 set-the-tide crossing boom-post p0",
+	"turn-of-the-tide@1 set-the-tide crossing beach-catwalk p0",
+	"turn-of-the-tide@1 set-the-tide crossing quay-catwalk p0",
+	"turn-of-the-tide@1 set-the-tide crossing mill-ladder p1",
+	"turn-of-the-tide@1 set-the-tide crossing boathouse-steps p0",
+	"turn-of-the-tide@1 set-the-tide zone spout-lip p0",
+	"turn-of-the-tide@1 set-the-tide selector tide p1",
+	"turn-of-the-tide@1 set-the-tide selector winch p1",
+	"turn-of-the-tide@1 set-the-tide selector lock p0",
+	"turn-of-the-tide@1 set-the-tide lever sluice p1",
+	"turn-of-the-tide@1 set-the-tide lever line p1",
+	"turn-of-the-tide@1 set-the-tide lever gangway p0",
+	"turn-of-the-tide@1 slack-water crossing quay-step p1",
+	"turn-of-the-tide@1 slack-water crossing wheel-step p1",
+	"turn-of-the-tide@1 slack-water crossing bollard-step p1",
+	"turn-of-the-tide@1 slack-water crossing boom-jetty p1",
+	"turn-of-the-tide@1 slack-water crossing sea-gate-in p1",
+	"turn-of-the-tide@1 slack-water crossing punt-ferry p1",
+	"turn-of-the-tide@1 slack-water crossing race-stage p1",
+	"turn-of-the-tide@1 slack-water crossing bar-catwalk p0",
+	"turn-of-the-tide@1 slack-water crossing punt-post p0",
+	"turn-of-the-tide@1 slack-water crossing gate-catwalk p0",
+	"turn-of-the-tide@1 slack-water crossing gate-post p0",
+	"turn-of-the-tide@1 slack-water crossing boom-post p0",
+	"turn-of-the-tide@1 slack-water crossing beach-catwalk p0",
+	"turn-of-the-tide@1 slack-water crossing quay-catwalk p0",
+	"turn-of-the-tide@1 slack-water crossing mill-ladder p1",
+	"turn-of-the-tide@1 slack-water crossing boathouse-steps p0",
+	"turn-of-the-tide@1 slack-water zone spout-lip p0",
+	"turn-of-the-tide@1 slack-water selector tide p1",
+	"turn-of-the-tide@1 slack-water selector lock p0",
+	"turn-of-the-tide@1 slack-water selector basin p0",
+	"turn-of-the-tide@2 set-the-tide crossing quay-step p1",
+	"turn-of-the-tide@2 set-the-tide crossing wheel-step p1",
+	"turn-of-the-tide@2 set-the-tide crossing bollard-step p1",
+	"turn-of-the-tide@2 set-the-tide crossing boom-jetty p1",
+	"turn-of-the-tide@2 set-the-tide crossing sea-gate-in p1",
+	"turn-of-the-tide@2 set-the-tide crossing punt-ferry p1",
+	"turn-of-the-tide@2 set-the-tide crossing race-stage p1",
+	"turn-of-the-tide@2 set-the-tide crossing bar-catwalk p0",
+	"turn-of-the-tide@2 set-the-tide crossing punt-post p0",
+	"turn-of-the-tide@2 set-the-tide crossing gate-catwalk p0",
+	"turn-of-the-tide@2 set-the-tide crossing gate-post p0",
+	"turn-of-the-tide@2 set-the-tide crossing boom-post p0",
+	"turn-of-the-tide@2 set-the-tide crossing beach-catwalk p0",
+	"turn-of-the-tide@2 set-the-tide crossing quay-catwalk p0",
+	"turn-of-the-tide@2 set-the-tide crossing mill-ladder p1",
+	"turn-of-the-tide@2 set-the-tide crossing boathouse-steps p0",
+	"turn-of-the-tide@2 set-the-tide zone spout-lip p0",
+	"turn-of-the-tide@2 set-the-tide selector tide p1",
+	"turn-of-the-tide@2 set-the-tide selector winch p1",
+	"turn-of-the-tide@2 set-the-tide selector lock p0",
+	"turn-of-the-tide@2 set-the-tide lever sluice p1",
+	"turn-of-the-tide@2 set-the-tide lever line p1",
+	"turn-of-the-tide@2 set-the-tide lever gangway p0",
+	"turn-of-the-tide@2 slack-water crossing quay-step p1",
+	"turn-of-the-tide@2 slack-water crossing wheel-step p1",
+	"turn-of-the-tide@2 slack-water crossing bollard-step p1",
+	"turn-of-the-tide@2 slack-water crossing boom-jetty p1",
+	"turn-of-the-tide@2 slack-water crossing sea-gate-in p1",
+	"turn-of-the-tide@2 slack-water crossing punt-ferry p1",
+	"turn-of-the-tide@2 slack-water crossing race-stage p1",
+	"turn-of-the-tide@2 slack-water crossing bar-catwalk p0",
+	"turn-of-the-tide@2 slack-water crossing punt-post p0",
+	"turn-of-the-tide@2 slack-water crossing gate-catwalk p0",
+	"turn-of-the-tide@2 slack-water crossing gate-post p0",
+	"turn-of-the-tide@2 slack-water crossing boom-post p0",
+	"turn-of-the-tide@2 slack-water crossing beach-catwalk p0",
+	"turn-of-the-tide@2 slack-water crossing quay-catwalk p0",
+	"turn-of-the-tide@2 slack-water crossing mill-ladder p1",
+	"turn-of-the-tide@2 slack-water crossing boathouse-steps p0",
+	"turn-of-the-tide@2 slack-water zone spout-lip p0",
+	"turn-of-the-tide@2 slack-water selector tide p1",
+	"turn-of-the-tide@2 slack-water selector lock p0",
+	"turn-of-the-tide@2 slack-water selector basin p0",
+]
 var checks := 0
 var failures := 0
 var _found: Dictionary = {}
+## Ownership spots the other pip reaches, known or not: proof the rule can fail.
+var _owned_seen := 0
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -50,6 +239,7 @@ func _run() -> void:
 			continue
 		var started := Time.get_ticks_msec()
 		_reach(key)
+		_ownership(key)
 		_props(key)
 		covered += 1
 		print("LEVEL CHECKER: %s in %d ms" % [key, Time.get_ticks_msec() - started])
@@ -58,6 +248,9 @@ func _run() -> void:
 		_check(Families.row(family).get("cooperative", true) == false, "%s is listed as having no floors, and is no floor family" % family)
 	for id: String in KNOWN:
 		_check(_found.has(id), "Known failure still fails, or comes off the list: %s (%s)" % [id, KNOWN[id]])
+	for id: String in KNOWN_OWNERSHIP:
+		_check(_found.has(id), "Known failure still fails, or comes off the list: %s (%s)" % [id, OWNERSHIP_WHY])
+	_check(_owned_seen > 50, "The ownership rule meets the published one-pip spots, so it can fail (%d)" % _owned_seen)
 	print("LEVEL CHECKER: %d chapters, skipped %s" % [covered, skipped])
 	print("LEVEL CHECKER: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -69,14 +262,73 @@ func _check(ok: bool, message: String) -> void:
 		push_error(message)
 		print("FAIL: " + message)
 
-## A spot that must hold: it fails unless KNOWN lists its id.
+## A spot that must hold: it fails unless KNOWN (or KNOWN_OWNERSHIP) lists its id.
 func _expect(ok: bool, id: String, message: String) -> void:
 	if not ok:
 		_found[id] = true
-		if KNOWN.has(id):
-			print("KNOWN: %s (%s)" % [message, KNOWN[id]])
+		if KNOWN.has(id) or KNOWN_OWNERSHIP.has(id):
+			print("KNOWN: %s (%s)" % [message, KNOWN.get(id, OWNERSHIP_WHY)])
 			ok = true
+		else: print("FAILURE ID: %s" % id)
 	_check(ok, message)
+
+# --- Ownership ------------------------------------------------------------------
+
+## Fails each owned crossing, zone and control the other pip can reach on its
+## stage: an end of the crossing, the zone's floor, the control's floor.
+func _ownership(key: String) -> void:
+	var level := Registry.definition(key)
+	var journey := Registry.is_journey(key)
+	var graph: RefCounted = LevelGraph.new(level)
+	# The floors each crossing joins, with no owners: the edges a pip could
+	# step if ownership were no rule at all.
+	var bare := level.duplicate(true)
+	for kind: String in ["bridges", "stairs"]:
+		for route: Dictionary in bare.get(kind, []): route.erase("owner_slot")
+	var physical: RefCounted = LevelGraph.new(bare)
+	var ends: Dictionary = {}
+	for pair: String in physical.build("p0"):
+		var sides := pair.split(">")
+		for index in range(2):
+			if physical.route_bit.has(sides[index]): (ends.get_or_add(sides[index], {}) as Dictionary)[sides[1 - index]] = true
+	for item: Dictionary in Stages.stages(key, level):
+		if item.checkpoint.is_empty(): continue
+		var stage: Dictionary = item.view
+		var where := "%s %s" % [key, stage.stage_id]
+		var found: Dictionary = graph.reach(stage, item.checkpoint, journey)
+		for kind: String in ["bridges", "stairs"]:
+			for route: Dictionary in stage.get(kind, []):
+				var owner := str(route.get("owner_slot", ""))
+				if owner.is_empty(): continue
+				var other := "p1" if owner == "p0" else "p0"
+				var reached: Array = (ends.get(str(route.id), {}) as Dictionary).keys().filter(func(surface: String) -> bool: return found.floors[other].has(surface))
+				_owned(reached.is_empty(), "%s crossing %s %s" % [where, route.id, other], "%s: %s reaches %s, an end of the %s %s that only %s may use; give one-pip access by geography, a control only that pip reaches or a carried item" % [where, other, ", ".join(reached), kind.trim_suffix("s"), route.id, owner])
+		for zone: Dictionary in stage.get("access_zones", []):
+			var owner := str(zone.get("owner_slot", ""))
+			if owner.is_empty(): continue
+			var other := "p1" if owner == "p0" else "p0"
+			_owned(not found.floors[other].has(str(zone.surface_id)), "%s zone %s %s" % [where, zone.id, other], "%s: %s reaches %s, the floor of the zone %s that only %s may enter" % [where, other, zone.surface_id, zone.id, owner])
+		for kind: String in ["controls", "levers", "pressure_pads"]:
+			for entity: Dictionary in stage.get(kind, []):
+				var owner := str(entity.get("owner_slot", ""))
+				var surface := _control_floor(stage, entity)
+				if owner.is_empty() or surface.is_empty(): continue
+				var other := "p1" if owner == "p0" else "p0"
+				_owned(not found.floors[other].has(surface), "%s %s %s %s" % [where, _kind_name(kind), entity.id, other], "%s: %s reaches %s, the floor of the %s %s that only %s may work; put it where only its pip goes" % [where, other, surface, _kind_name(kind), entity.id, owner])
+
+## The floor a control stands on: its own, else the island under it at its height.
+static func _control_floor(stage: Dictionary, entity: Dictionary) -> String:
+	if entity.has("surface_id"): return str(entity.surface_id)
+	var at: Array = entity.get("position_cm", [])
+	if at.size() < 2: return ""
+	for island: Dictionary in stage.get("islands", []):
+		var r: Array = island.rect_cm
+		if int(island.get("height_cm", 0)) == int(entity.get("height_cm", 0)) and int(at[0]) >= int(r[0]) and int(at[0]) <= int(r[2]) and int(at[1]) >= int(r[1]) and int(at[1]) <= int(r[3]): return str(island.id)
+	return ""
+
+func _owned(ok: bool, id: String, message: String) -> void:
+	if not ok: _owned_seen += 1
+	_expect(ok, id, message)
 
 # --- Reach ----------------------------------------------------------------------
 

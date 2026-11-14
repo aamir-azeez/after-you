@@ -59,6 +59,15 @@ extends SceneTree
 ##     and any other flat diamond (a thin square box turned 45 degrees) is in FLAT_DIAMONDS
 ##     with why it is no ownership mark; test_owner_marks.gd and test_pair_tags.gd, which
 ##     must stay in CI, check every built stage's marks and pair tags.
+## (t) route barriers: presentation/kit/route_barriers.gd alone draws the gates, stair
+##     chains, zone ropes and locks, from each stage's owned crossings, stairs, zones and
+##     controls, kept by cooperative_world alone; a world only leaves a closed stair's
+##     chain out where it draws the stair closed itself (route_barriers.skip()) or picks
+##     a zone edge's look (_zone_edge_look), and each world that does is in
+##     ROUTE_BARRIER_OVERRIDES with why. Every script that works out a chapter turn's
+##     sounds (ChapterSoundMap.cues) first runs the tick through its refusal finder
+##     (presentation/barrier_refusals.gd, annotate()), so a push rattles alike live,
+##     as the memory and in replays.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -318,6 +327,18 @@ const PAIR_TAG_OVERRIDES := {
 	"res://presentation/tide_world.gd": "the tide wheel shows on the gauges and the second spirit's stubs on their mouth marks (skip); the sea key's tile stands on its sign (tag); gate tiles start at a stub's mouth and keep clear of the gauges and mouth marks (hooks)",
 	"res://presentation/journey_world.gd": "a control without a floor of its own stands on the highest island under it (_pair_control_anchor)",
 }
+## (t) The route barriers kit and the one world script that keeps it.
+const ROUTE_BARRIERS := "res://presentation/kit/route_barriers.gd"
+const ROUTE_BARRIERS_OWNER := "res://presentation/cooperative_world.gd"
+## Worlds that leave a closed stair's chain out (route_barriers.skip()) or pick
+## a zone edge's look (_zone_edge_look), with why.
+const ROUTE_BARRIER_OVERRIDES := {
+	"res://presentation/wishing_well_world.gd": "its folding stairs hang against the cliff and the well ladder stays rolled while closed (skip); the well's lip is edged with a low rail (_zone_edge_look)",
+	"res://presentation/tide_world.gd": "every harbour stair goes down into its water, which with its walls shows it closed (skip)",
+}
+## Scripts that work out a chapter turn's sounds, which run each tick through
+## the refusal finder first.
+const TURN_SOUND_SCREENS := ["res://relay_preview.gd", "res://presentation/shared_replay_view.gd"]
 ## Flat diamonds drawn outside the kit: how many, and why each is no ownership mark.
 const FLAT_DIAMONDS := {
 	"res://presentation/island_world.gd": [1, "the first island's plate glyph: a plate either spirit presses"],
@@ -381,6 +402,7 @@ func _initialize() -> void:
 	_chapter_lists()
 	_falls()
 	_level_hints()
+	_route_barriers()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -815,6 +837,29 @@ func _falls() -> void:
 		_check(_found(FALL_UNIFORMS, FileAccess.get_file_as_string(path)) == 0, "%s declares a falling effect's clock or seed: build the fall as a recipe for presentation/kit/fall_effect.gd" % path)
 
 # (t) Level hints --------------------------------------------------------------
+
+## (t) Route barriers: one kit, one keeper, overrides listed, and every turn's
+## sounds go through the refusal finder.
+func _route_barriers() -> void:
+	var overrides := {}
+	var screens := {}
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path == ROUTE_BARRIERS: continue
+		var alias := _alias(source, ROUTE_BARRIERS)
+		_check(path == ROUTE_BARRIERS_OWNER or _found("\\b(?:RouteBarriers" + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps route barriers of its own: worlds share cooperative_world's route_barriers" % path)
+		if _found("\\broute_barriers\\.skip\\(", source) > 0 or (path != ROUTE_BARRIERS_OWNER and _found("\\bfunc\\s+_zone_edge_look\\(", source) > 0):
+			overrides[path] = true
+			_check(ROUTE_BARRIER_OVERRIDES.has(path), "%s overrides the route barriers its stage gives: add it to ROUTE_BARRIER_OVERRIDES with why" % path)
+		if path.begins_with("res://tests/") or path.begins_with("res://services/"): continue
+		if _found("\\bChapterSoundMap\\.cues\\(", source) > 0:
+			screens[path] = true
+			_check(_found("\\.annotate\\(", source) > 0 and _found("BarrierRefusals\\.new\\(", source) > 0, "%s works out a chapter turn's sounds without its refusal finder: run each tick through presentation/barrier_refusals.gd's annotate() first" % path)
+	for path: String in ROUTE_BARRIER_OVERRIDES:
+		_check(overrides.has(path), "ROUTE_BARRIER_OVERRIDES names %s, which overrides no route barrier now: delete it" % path)
+	for path: String in TURN_SOUND_SCREENS:
+		_check(screens.has(path), "TURN_SOUND_SCREENS names %s, which works out no chapter turn's sounds now" % path)
+	_check(screens.size() == TURN_SOUND_SCREENS.size(), "Every script that works out a chapter turn's sounds is a known screen: %s" % [screens.keys()])
 
 func _level_hints() -> void:
 	var marks := {}

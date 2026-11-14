@@ -18,6 +18,8 @@ const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const Safety = preload("res://services/safety_client.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
+## Where a tick's input meets a barrier, or a control its pip may not work.
+const BarrierRefusals = preload("res://presentation/barrier_refusals.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const LoadProgress = preload("res://services/replay_load_progress.gd")
 const LoadingBar = preload("res://presentation/replay_loading_bar.gd")
@@ -72,6 +74,8 @@ var completion_remaining := 0.0
 var _paused_completion := false
 ## The bridges at the previous tick, for cues that name the bridge that opened.
 var _sound_seen: Dictionary = {}
+## The watched turn's refusal finder, as the chapter screen keeps one (_cues).
+var _refusals := BarrierRefusals.new()
 
 class ReadSession extends Session:
 	var photo_targets: Array = []
@@ -298,6 +302,7 @@ func _start_part() -> void:
 		# The same identities as the original turn, so its sounds match.
 		soundscape.begin_turn(str(entry.room.chapter_key), str(pair.b.stage_id))
 		_sound_seen = ChapterSoundMap.remember(sim.snapshot())
+		_refusals.begin(str(entry.room.chapter_key), definition, sim.snapshot(), pair.a)
 	else:
 		sim = LegacySimulation.new()
 		if not sim.reset(Levels.get_level(pair.level_id), pair.a, "b"):
@@ -341,16 +346,20 @@ func _physics_process(delta: float) -> void:
 	while _tick_time >= 1.0 / 30.0 and running:
 		_tick_time -= 1.0 / 30.0
 		if cursor >= _frames.size(): _finished(); break
-		var snapshot: Dictionary = sim.step(_frames[cursor])
+		var input: Dictionary = _frames[cursor]
+		var snapshot: Dictionary = sim.step(input)
 		cursor += 1
-		memory_wait.step(snapshot, _cues(snapshot), false)
+		memory_wait.step(snapshot, _cues(snapshot, input), false)
 		run_player.step(int(snapshot.get("tick", cursor)))
 		_update_hud(snapshot)
 		if cursor >= _frames.size(): _finished()
 
 ## The watched turn's cues, as its chapter screen plays them; never haptics.
-func _cues(snapshot: Dictionary) -> Dictionary:
-	if entry.room.family == "chapter": return ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
+## `input` is the tick's recorded input, for its pushes into barriers.
+func _cues(snapshot: Dictionary, input: Dictionary = MemoryWait.STILL_INPUT) -> Dictionary:
+	if entry.room.family == "chapter":
+		_refusals.annotate(snapshot, input, world.get("route_barriers") if is_instance_valid(world) else null)
+		return ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
 	var sources: Array = []
 	for event: String in snapshot.get("events", []): sources.append(Soundscape.event_source(event, "b"))
 	return {"cues": snapshot.get("events", []), "sources": sources}

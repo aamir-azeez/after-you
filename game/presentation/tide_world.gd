@@ -298,6 +298,11 @@ func _build_bridge(definition: Dictionary) -> void:
 func _marks_route_owner(route: Dictionary) -> bool:
 	return not (_is_stub(route) or _gate_for(str(route.id)).is_empty())
 
+## Every harbour stair goes down into its water: the water over its treads,
+## and the walls round it, show it closed. Its owner's gates stay.
+func _skip_route_barriers(view: Dictionary) -> void:
+	for stair: Dictionary in view.get("stairs", []): route_barriers.skip(str(stair.id), "the harbour's water and walls show its stairs closed")
+
 ## Tide crossings carry a gauge and stubs their own marks instead of a pulley.
 func _hangs_pulley(route: Dictionary) -> bool:
 	return not _quiet_route(route)
@@ -663,9 +668,10 @@ func _pair_gate_anchors(route: Dictionary) -> Array:
 	var ends := super._pair_gate_anchors(route)
 	return [_route_anchor(route) - Vector3(0, 0.025, 0), ends[1]]
 
-## Pair tags keep clear of the gauges and mouth marks built at the routes.
+## Pair tags keep clear of the gauges and mouth marks built at the routes,
+## and of the route barriers.
 func _pair_keep_clear() -> Array:
-	var found: Array = []
+	var found: Array = super._pair_keep_clear()
 	for gauge: Dictionary in _gauges.values(): found.append({"centre": Vector2(gauge.post.position.x, gauge.post.position.z), "radius": 0.12, "what": "gauge " + str(gauge.post.name)})
 	var marks: Array = _slack_marks.duplicate()
 	for entry: Dictionary in _post_marks.values(): marks.append_array(entry.bands)

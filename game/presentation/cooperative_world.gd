@@ -10,6 +10,8 @@ const StandSpot = preload("res://presentation/kit/stand_spot.gd")
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 ## A lever's look (a winch, a bolt) where the descriptor's "lever_looks" names one.
 const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
+## Gates, stair chains, zone ropes and locks: why a pip is refused.
+const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
 ## looking, then this long easing back to the spirit.
 const GLANCE_TO := 1.6
@@ -29,7 +31,6 @@ var _lever_looks: Dictionary = {}
 var _physical_balls: Dictionary = {}
 var _ball_trails: Dictionary = {}
 var _ball_materials: Dictionary = {}
-var _stair_gates: Dictionary = {}
 var _weights: Dictionary = {}
 var _hatches: Dictionary = {}
 var _upper_islands: Array[Node3D] = []
@@ -47,6 +48,9 @@ var descriptor_override: Dictionary = {}
 var owner_marks := OwnerMark.new(self)
 ## The shown stage's pair tags (kit/pair_tags.gd), from its control-to-gate wiring.
 var pair_tags := PairTags.new(self)
+## The shown stage's route barriers (kit/route_barriers.gd), from its owned
+## crossings, stairs, zones and controls.
+var route_barriers := RouteBarriers.new(self)
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -71,12 +75,12 @@ func show_stage(stage: Dictionary) -> void:
 	_physical_balls.clear()
 	_ball_trails.clear()
 	_ball_materials.clear()
-	_stair_gates.clear()
 	_weights.clear()
 	_hatches.clear()
 	_upper_islands.clear()
 	owner_marks.clear()
 	pair_tags.clear()
+	route_barriers.clear()
 	# These are presentation defaults for the shared Lighthouse builder.
 	_configure_shared_view(view)
 	var physical_props: Array = view.get("props", []).duplicate(true)
@@ -148,6 +152,14 @@ func show_stage(stage: Dictionary) -> void:
 		for index in range(3): sphere(0.035, CREAM, center + Vector3(0, height * float(index + 1) / 4.0, 0), terrain)
 	_build_gate_links(view)
 	_build_goal_beacon(view)
+	# Gates, chains, zone edges and locks, before the marks, which keep clear
+	# of them (_pair_keep_clear). A world that draws a closed stair itself
+	# leaves its chain out first.
+	_skip_route_barriers(view)
+	route_barriers.build(view)
+	var radii: Dictionary = {}
+	for prop: Dictionary in physical_props: radii[str(prop.id)] = float(prop.radius_cm) / 100.0
+	route_barriers.build_rings(_physical_balls, radii, terrain)
 	# The tags lay themselves out when first shown, after every world's own
 	# building is done, clear of all of it (the ball's cradle included).
 	var tag_view := view.duplicate()
@@ -227,6 +239,8 @@ func _static_keep() -> Array:
 	if is_instance_valid(_goal_beacon): keep.append(_goal_beacon)
 	# The parts of a look a pull moves stay whole; its frame folds.
 	for look: RefCounted in _lever_looks.values(): keep.append_array(look.moving_parts())
+	# The barriers' mesh shows and wiggles piece by piece; the ball rings follow the balls.
+	keep.append_array(route_barriers.moving_nodes())
 	return keep
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -377,10 +391,8 @@ func _build_stair(stair: Dictionary) -> void:
 		box(Vector3(width / 10.0 if along_x else width, 0.12, depth if along_x else depth / 10.0), tread, at, terrain)
 		box(Vector3(0.025 if along_x else width, 0.014, depth if along_x else 0.025), Props.TIMBER_DARK if timber else TEAL, at + Vector3(0, 0.065, 0), terrain)
 	if str(dressing.get("stairs", "")) == "timber": _stair_frame(r, from_height, rise, along_x)
-	var entrance := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(0, from_height, 0)
-	# The gate is a centimetre wider than the stair, so its faces stand proud
-	# of the treads' instead of sharing them.
-	_stair_gates[stair.id] = box(Vector3(0.08, 0.4, depth + 0.01) if along_x else Vector3(width + 0.01, 0.4, 0.08), TEAL, entrance + Vector3(0, 0.2, 0), terrain)
+	# A closed stair's gate (posts, bar and chain at its foot and head) is the
+	# route barriers' (kit/route_barriers.gd).
 
 ## Wooden stringers under both sides and a handrail along the far side; the
 ## walkable treads stay exactly the authored rectangle.
@@ -534,9 +546,20 @@ func _mark_stair(stair: Dictionary) -> Dictionary:
 func _marks_goal(_goal: Dictionary) -> bool:
 	return false
 
-## Scenery of the world's own that pair tags keep clear of (kit/pair_tags.gd).
+## Scenery of the world's own that pair tags and ownership marks keep clear
+## of (kit/pair_tags.gd, kit/owner_mark.gd): the route barriers by default.
+## A world that adds its own appends to this.
 func _pair_keep_clear() -> Array:
-	return []
+	return route_barriers.discs()
+
+## Crossings whose closed state this world draws itself: it calls
+## route_barriers.skip(route id, why) for each, before the barriers build.
+func _skip_route_barriers(_view: Dictionary) -> void:
+	pass
+
+## How a zone's edge looks (kit/route_barriers.gd): &"rope", or &"rail".
+func _zone_edge_look() -> StringName:
+	return &"rope"
 
 ## The cables and ropes this stage lays on its floors: {rect, y, what} each
 ## (_floor_cable). Ownership marks keep off them.
@@ -611,7 +634,11 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		var pressed: bool = state.get("hold_pads", {}).get(id, false)
 		_glow(_physical_pads[id], LIGHT_COLOR, 1.0 if pressed else 0.0)
 		if _stand_spots.has(id): _stand_spots[id].set_held(pressed)
-	for id: String in _stair_gates: _stair_gates[id].visible = not state.get("bridges", {}).get(id, false)
+	route_barriers.set_reduced_motion(reduced_motion)
+	# A new push into a barrier (the snapshot's "refused") bumps the spirit back.
+	for event: Variant in route_barriers.present(state):
+		var slot := str(event.get("slot", "")) if event is Dictionary else ""
+		if actors.has(slot): actors[slot].play_bump(reduced_motion)
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)
 	if is_instance_valid(_goal_beacon): _goal_beacon.present(state)
@@ -645,6 +672,7 @@ func _camera_center() -> Vector3:
 func _advance_camera(delta: float) -> void:
 	for id: String in _lever_looks:
 		if _lever_looks[id].moving(): _lever_looks[id].advance(delta)
+	if route_barriers.moving(): route_barriers.advance(delta)
 	if _uses_scrolling_camera():
 		# Authored framing advances once per rendered frame. Snapshot delivery
 		# and pinch zoom must never feed back into the follow state.

@@ -27,6 +27,8 @@
 		"bolt_shot",
 		"bolt_drawn",
 		"valve_turned",
+		"barrier_rattle",
+		"control_locked",
 		"drip",
 		"slosh",
 		"ui_tap",
