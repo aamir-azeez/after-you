@@ -331,6 +331,9 @@ func _shop_panel() -> Control:
 	scroll.name = "WardrobeScroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# The bar's room is always kept, so a list that grows past the view or
+	# shrinks back never changes the grid's width under it.
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
 	ThemeRules.touch_scroll(scroll)
 	column.add_child(scroll)
 	_list = VBoxContainer.new()
