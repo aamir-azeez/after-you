@@ -43,6 +43,7 @@ import { postFinishedRun } from "../leaderboards/submit";
 import { claimDuelRoom, duelsCapability, parseDuelAsk, prepareDuelRoom } from "../duels/routes";
 import { duelsOn, noteDuelTurn } from "../duels/turn-hook";
 import { sendTurnHints } from "../duels/news";
+import { runExportCapability } from "../run-export";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -140,6 +141,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...leaderboardsCapability(request, env),
     ...duelsCapability(request, env),
     ...await testerSwitchCapability(playerId, env),
+    ...runExportCapability(request, playerId, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
