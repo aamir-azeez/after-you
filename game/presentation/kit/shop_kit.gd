@@ -23,7 +23,8 @@ const TILE_TEXT := 1.2
 ## A tile size (a Vector2 or a length) at the tiles' scale, in whole units, so
 ## the grids lay out the same every pass.
 static func tile(size: Variant) -> Variant:
-	return (size * TILE_SCALE).round()
+	if size is Vector2: return ((size as Vector2) * TILE_SCALE).round()
+	return roundf(float(size) * TILE_SCALE)
 
 ## A font size inside a shop tile.
 static func tile_text(size: int) -> int:
