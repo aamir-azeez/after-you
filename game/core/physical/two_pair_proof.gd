@@ -68,7 +68,9 @@ func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Diction
 	var simulation: RefCounted = _factory.new()
 	simulation.simulation_version = _version
 	simulation.catch_assistance = record.catch_assistance
-	simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role, chain)
+	# Only open turns pass a chain: other facades (the Lighthouse room's) keep five arguments.
+	if chain.is_empty(): simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role)
+	else: simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role, chain)
 	for input: Dictionary in expand_recording_inputs(record):
 		if simulation.finished: return _invalid("The recording continues after the turn ended.")
 		simulation.step(input)
