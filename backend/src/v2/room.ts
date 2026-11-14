@@ -6,7 +6,7 @@ import { friendRoomInvite } from "../friends";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleGameplayNotifications, scheduleNotifications, turnHintEligible } from "../notification-storage";
 import type { RoomHint } from "../notifications";
 import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
-import { RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
+import { MAX_V2_BODY_BYTES, RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
 import { isStub } from "./history-blob";
@@ -14,6 +14,12 @@ import { clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, t
 import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
+import { compressRows, parseRoom, parseRow, storedRoom, storedRow, type RowData } from "./row-codec";
+import { decodeTurnBody, encodeReply, type RoomReply, type TurnBody } from "./turn-wire";
+import { requireOwnedFaces } from "./face-packs";
+import { isTester } from "../test-codes";
+import { finishedRun, type LeaderboardRun } from "../leaderboards/run";
+import { roomNote, type DuelNote } from "../duels/turn-hook";
 import { clearTurnTries, parseTries, recordTries, triesField, turnTriesView, type TurnTriesView } from "./turn-tries";
 import { clearEndReactions, endReactionField, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView } from "./end-reactions";
 import { clearRunReactions, eraseRunReactionsOf, parseRunReactions, partnerTrack, recordRunReactions, runReactionField, runReactionsView, withinTurn, type RunReactionsView } from "./run-reactions";
@@ -38,7 +44,7 @@ import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomAc
 import { relayInboxProjection } from "../room-inbox";
 import { memberStateOf, type MemberRoomState } from "../room-leave";
 import { anyDeparture, clearDepartures, departed, isMember, recordDeparture } from "../room-departure";
-import { HostAccessMemo } from "./host-access";
+import { HostAccessMemo, HOST_ACCESS_FRESH_MS } from "./host-access";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import { UnblockedPairMemo } from "./block-memo";
 import { partnerLease, type PartnerLease, type RoomPair } from "../presence";
@@ -120,7 +126,29 @@ export type RoomUnchangedV2 = { schema_version: 1; unchanged: true; revision: nu
 /** A conditional poll's reply; `redo` only for a client that asked for it (X-AfterYou-Poll-Redo). */
 export type PolledRoomV2 = (RoomSnapshotV2 | RoomUnchangedV2) & { redo?: RedoState };
 export type PairV2 = { pair_id: string; branch: number; stage_index: number; a: RecordingV2; b: RecordingV2; checkpoint: CheckpointV2 };
-type StoredTurn = { data: string; player_id: string; accepted_revision: number };
+/**
+ * What a standalone turn needs beside its body (turnRequest), all from the route: the caller's safety token, history
+ * support and Beside; `name`, `pollen`, `look` and `face_packs` as commit and requireOwnedFaces take them; the digest of the
+ * caller's bearer token, for the device check a premium turn admitted from the room's memory makes; and whether the
+ * phone reads compressed replies. `access_checked`: the route has checked the host's access and the caller's device.
+ * `post_run` and `note_duel`: the route's leaderboards and duels switches, so the room makes only the hooks the route will send.
+ */
+export type TurnAsk = {
+  safety_token?: string; history?: HistorySupport; beside: Beside; name?: string | null; pollen?: PollenMember; look?: Look; face_packs?: string[];
+  device_hash: string; compressed: boolean; access_checked?: boolean; post_run: boolean; note_duel: boolean;
+};
+/**
+ * After a turn, what the route still does, in small facts: credit the frozen Pollen facts (pollen/routes.ts creditTurn)
+ * to the members, post the finished run to its board (leaderboards/submit.ts postPreparedRun), note the duel
+ * (duels/turn-hook.ts sendDuelNote) and pass the partner's hint (duels/news.ts sendTurnHints).
+ */
+export type TurnHooks = {
+  members: { host_id: string; guest_id: string | null }; pollen_facts?: TurnFacts; run?: LeaderboardRun;
+  duel?: { link: DuelLink; room_id: string; made: DuelNote | null }; duel_partner_hint?: PartnerHint;
+};
+/** A turn's reply, already written, with its hooks; or, for a premium turn the room could not admit, the host the route must check (`age`: the room's memory of it). */
+export type TurnAnswer = { reply: RoomReply; hooks: TurnHooks } | { access: { host_id: string; age: number | null } };
+type StoredTurn = { data: RowData; player_id: string; accepted_revision: number };
 const MAX_TURNS = 128, MAX_PAIRS = 64, MAX_BRANCHES = 32, MAX_OPERATIONS = 256;
 
 /** A separate SQLite namespace. This coordinator does not execute game physics. */
@@ -317,7 +345,7 @@ export class RoomV2 extends DurableObject<Env> {
   private read(): RoomStateV2 | null {
     const raw = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").toArray()[0];
     if (!raw) return null;
-    const value = JSON.parse(raw.data);
+    const value = parseRoom(raw.data);
     return value.deleted || value.replay_transfer_version === 1 || value.replay_transfer_version === 2 ? null : value as RoomStateV2;
   }
   private member(state: Pick<RoomStateV2, "host_id" | "guest_id">, player: string): boolean { return isMember(this.ctx.storage, state, player); }
@@ -381,8 +409,10 @@ export class RoomV2 extends DurableObject<Env> {
     try { chapter(state); return null; } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   private turn(id: string): RecordingV2 {
-    return JSON.parse(this.ctx.storage.sql.exec<StoredTurn>("SELECT data,player_id,accepted_revision FROM turns WHERE turn_id=?", id).one().data) as RecordingV2;
+    return parseRow<RecordingV2>(this.ctx.storage.sql.exec<StoredTurn>("SELECT data,player_id,accepted_revision FROM turns WHERE turn_id=?", id).one().data);
   }
+  /** Whether this room writes its rows deflated now (row-codec.ts). */
+  private compress(): boolean { return compressRows(this.env, this.ctx.storage); }
   private view(state: RoomStateV2, player: string): RoomSnapshotV2 {
     const { invite_code, ...safe } = state;
     const stage = chapter(state).stages[state.stage_index];
@@ -413,7 +443,7 @@ export class RoomV2 extends DurableObject<Env> {
   }
   private write(state: RoomStateV2): void {
     state.updated_at = new Date().toISOString();
-    this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(state));
+    this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", storedRoom(state, this.compress()));
   }
   /**
    * `name`: the host's display name while names are on (display-names.ts recordMemberName); undefined writes nothing.
@@ -444,7 +474,7 @@ export class RoomV2 extends DurableObject<Env> {
       checkpoint: selected.initial(), a_turn_id: null, completed_pair_ids: [], invite_code: invite,
       invite_expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), created_at: now, updated_at: now };
     this.ctx.storage.transactionSync(() => {
-      this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
+      this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", storedRoom(state, this.compress()));
       if (mode === "hard") initializeHard(this.ctx.storage, this.hard);
       if (duel) recordDuelLink(this.ctx.storage, duel);
       recordMemberName(this.ctx.storage, host, name);
@@ -671,7 +701,7 @@ export class RoomV2 extends DurableObject<Env> {
           return fail(409, "stale_replay_restore");
         }
         if (transfer.manifest.epoch !== key.epoch) return fail(409, "stale_replay_restore");
-        return ok({ restored: true, transfer: restoreReplay(this.ctx.storage, current as TransferredRoom, transfer, archive) });
+        return ok({ restored: true, transfer: restoreReplay(this.ctx.storage, current as TransferredRoom, transfer, archive, this.compress()) });
       }));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
@@ -743,7 +773,7 @@ export class RoomV2 extends DurableObject<Env> {
       const blob = await checkedUpload(records, position, body, room);
       return this.indexed(this.ctx.storage.transactionSync(() => {
         const current = this.historyCurrent(player, record);
-        restoreAttempt(this.ctx.storage, current.room, current.record, blob, player);
+        restoreAttempt(this.ctx.storage, current.room, current.record, blob, player, this.compress());
         return ok(historyView(this.ctx.storage, this.stored()!, storedAttempts(this.ctx.storage), player));
       }));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -787,6 +817,76 @@ export class RoomV2 extends DurableObject<Env> {
     if (!(beside.faces || beside.names || beside.tracks || beside.looks)) return Object.keys(extra).length ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
     const state = this.stored();
     return state ? ok<CommittedV2>({ ...outcome.value, ...this.beside(state, player, beside), ...extra }) : outcome;
+  }
+  /**
+   * A standalone turn as the phone sent it (turn-wire.ts), handled here so the Worker never reads it: the
+   * route's checks in the route's order (the pair gate, the body's size against this chapter's bound and its
+   * JSON, pack faces, the member read), then for a premium chapter a stored receipt answers before any access
+   * check, and the host's access this room remembers (host-access.ts) admits the turn after the caller's device
+   * is checked again, as the route's reauthorize did. Otherwise the route checks the host and asks once more with
+   * `access_checked`. The reply comes back written, with the facts the route still passes on.
+   */
+  async turnRequest(player: string, body: TurnBody, ask: TurnAsk): Promise<Outcome<TurnAnswer>> {
+    try {
+      const gate = await this.pairGate(player, undefined, ask.safety_token); if (!gate.ok) return gate;
+      const stored = this.read();
+      let limits; try { limits = stored ? chapter(stored).limits : undefined; } catch { limits = undefined; }
+      const input = await decodeTurnBody(body, limits?.turn_body_bytes ?? MAX_V2_BODY_BYTES);
+      requireOwnedFaces(input, ask.face_packs);
+      const snapshot = await this.snapshot(player, undefined, ask.history);
+      if (!snapshot.ok) return snapshot;
+      if (chapter(snapshot.value).premium && !ask.access_checked) {
+        boundedTurnValue(input, chapter(snapshot.value).limits);
+        const value = object(input);
+        exact(value, ["base_revision", "idempotency_key", "branch", "recording", ...(object(value.recording).role === "b" ? ["checkpoint"] : []), ...triesField(value), ...endReactionField(value), ...runReactionField(value)]);
+        const previous = await this.operation(player, text(value.idempotency_key, IDEMPOTENCY_PATTERN));
+        if (previous.ok) {
+          if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation: "turns", ...value }))) return fail(409, "idempotency_key_reused");
+          // As before: the stored receipt and room, posted again to the board and the duel, with no credit.
+          return ok({ reply: await encodeReply(previous.value, player, ask.compressed), hooks: await this.turnHooks(ask, previous.value, previous.value.room.duel ? duelLink(this.ctx.storage) : null) });
+        }
+        if (previous.code !== "operation_not_found") return previous;
+        const host = snapshot.value.host_id, age = isTester(this.env, host) ? null : this.hostAccess.age(host);
+        if (age === null || age >= HOST_ACCESS_FRESH_MS) return ok({ access: { host_id: host, age } });
+        if (!await this.env.PLAYERS.getByName(player).authorize(ask.device_hash, false, undefined)) return fail(401, "identity_unavailable");
+      }
+      const committed = await this.commit(player, input, undefined, ask.beside, ask.name, ask.pollen, ask.look);
+      if (!committed.ok) return committed;
+      const { pollen_facts, board_looks, duel_link, duel_looks, duel_partner_hint, ...reply } = committed.value;
+      const hooks = await this.turnHooks(ask, reply, duel_link ?? null, board_looks, duel_looks);
+      return ok({ reply: await encodeReply(reply, player, ask.compressed),
+        hooks: { ...hooks, ...(pollen_facts ? { pollen_facts } : {}), ...(duel_partner_hint ? { duel_partner_hint } : {}) } });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  /** What the route passes on after a turn: the finished run for its board and the duel's note, each with its checkpoint already encoded, never thrown. */
+  private async turnHooks(ask: TurnAsk, mutation: MutationV2, link: DuelLink | null, boardLooks?: PairLooks, duelLooks?: PairLooks): Promise<TurnHooks> {
+    const members = { host_id: mutation.room.host_id, guest_id: mutation.room.guest_id };
+    let run: LeaderboardRun | null = null, duel: TurnHooks["duel"];
+    if (ask.post_run) {
+      try { run = await finishedRun(mutation, undefined, boardLooks); } catch (error) { logWarning("leaderboard_post_failed", { code: logCode(error) }); }
+    }
+    if (link && ask.note_duel) {
+      try { duel = { link, room_id: mutation.room.room_id, made: await roomNote(mutation.room, link, duelLooks) }; } catch (error) { logWarning("duel_note_failed", { code: logCode(error) }); }
+    }
+    return { members, ...(run ? { run } : {}), ...(duel ? { duel } : {}) };
+  }
+  /** A room read (snapshot, or snapshotIfChanged with `known`) written here (turn-wire.ts), deflated for a phone that asks, after the route's pair gate. */
+  async snapshotReply(player: string, known: KnownRoom | undefined, history: HistorySupport | undefined, withRedo: boolean, beside: Beside, compressed: boolean, safetyToken?: string): Promise<Outcome<RoomReply>> {
+    const gate = await this.pairGate(player, undefined, safetyToken); if (!gate.ok) return gate;
+    const read: Outcome<PolledRoomV2> = known ? await this.snapshotIfChanged(player, known, history, withRedo, beside) : await this.snapshot(player, undefined, history, beside);
+    return read.ok ? ok(await encodeReply(read.value, player, compressed)) : read;
+  }
+  /** operation(), written here for a standalone member. */
+  async operationReply(player: string, key: string, compressed: boolean, safetyToken?: string): Promise<Outcome<RoomReply>> {
+    const gate = await this.pairGate(player, undefined, safetyToken); if (!gate.ok) return gate;
+    const read = await this.operation(player, key);
+    return read.ok ? ok(await encodeReply(read.value, player, compressed)) : read;
+  }
+  /** pairRecording(), written here for a standalone member. */
+  async pairReply(player: string, id: string, compressed: boolean, safetyToken?: string): Promise<Outcome<RoomReply>> {
+    const gate = await this.pairGate(player, undefined, safetyToken); if (!gate.ok) return gate;
+    const read = await this.pairRecording(player, id);
+    return read.ok ? ok(await encodeReply(read.value, player, compressed)) : read;
   }
   private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext, name?: string | null, pollen?: PollenMember, look?: Look, hold?: (held: PartnerHint) => void): Promise<Outcome<MutationV2>> {
     try {
@@ -851,7 +951,9 @@ export class RoomV2 extends DurableObject<Env> {
         const stage_index = state.stage_index, stage_id = current.stage_id, turn_id = `t${branch}-${stage_index}-${recording.role}`;
         const pair_id = recording.role === "b" ? `p${branch}-${stage_index}` : null;
         state.revision++;
-        this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", turn_id, player, state.revision, JSON.stringify(recording));
+        // Each row is written in its stored form and measured; one past MAX_ROW_BYTES throws turn_too_large and the transaction keeps nothing.
+        const compress = this.compress();
+        this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", turn_id, player, state.revision, storedRow(recording, compress));
         if (context === undefined) recordTries(this.ctx.storage, turn_id, recording.recording_hash, tries);
         if (context === undefined) recordEndReaction(this.ctx.storage, turn_id, recording.recording_hash, player, face);
         if (context === undefined) recordRunReactions(this.ctx.storage, turn_id, recording.recording_hash, player, track);
@@ -860,7 +962,7 @@ export class RoomV2 extends DurableObject<Env> {
         if (recording.role === "a") state.a_turn_id = turn_id;
         else {
           const pair: PairV2 = { pair_id: pair_id!, branch, stage_index, a: this.turn(state.a_turn_id!), b: recording, checkpoint: checkpoint! };
-          this.ctx.storage.sql.exec("INSERT INTO pairs VALUES (?,?)", pair_id, JSON.stringify(pair));
+          this.ctx.storage.sql.exec("INSERT INTO pairs VALUES (?,?)", pair_id, storedRow(pair, compress));
           state.completed_pair_ids.push(pair_id!); state.checkpoint = checkpoint!; state.stage_index++; state.a_turn_id = null;
         }
         if (context === undefined && pollen !== undefined) {
@@ -1041,9 +1143,17 @@ export class RoomV2 extends DurableObject<Env> {
     return this.project(player, context, () => {
       const state = this.read();
       if (!state || !this.member(state, player)) return this.unavailable(player);
-      const pairs = this.ctx.storage.sql.exec<{ pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }>(
-        "SELECT pair_id,json_extract(data,'$.branch') AS branch,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.a.recording_hash') AS a_hash,json_extract(data,'$.b.recording_hash') AS b_hash,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash FROM pairs ORDER BY rowid"
-      ).toArray();
+      // A text row (stubs, and rows from before COMPRESSED_ROOMS) is read in SQL; a deflated one is read here, one row at a time.
+      type Facts = { pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string };
+      const pairs: Facts[] = [];
+      for (const row of this.ctx.storage.sql.exec<Facts & { packed: ArrayBuffer | null }>(
+        "SELECT pair_id,CASE WHEN typeof(data)='blob' THEN data END AS packed,CASE WHEN typeof(data)='text' THEN json_extract(data,'$.branch') END AS branch,CASE WHEN typeof(data)='text' THEN json_extract(data,'$.stage_index') END AS stage_index,CASE WHEN typeof(data)='text' THEN json_extract(data,'$.a.recording_hash') END AS a_hash,CASE WHEN typeof(data)='text' THEN json_extract(data,'$.b.recording_hash') END AS b_hash,CASE WHEN typeof(data)='text' THEN json_extract(data,'$.checkpoint.checkpoint_hash') END AS checkpoint_hash FROM pairs ORDER BY rowid"
+      )) {
+        const { packed, ...facts } = row;
+        if (packed === null) { pairs.push(facts); continue; }
+        const pair = parseRow<PairV2>(packed);
+        pairs.push({ pair_id: row.pair_id, branch: pair.branch, stage_index: pair.stage_index, a_hash: pair.a.recording_hash, b_hash: pair.b.recording_hash, checkpoint_hash: pair.checkpoint.checkpoint_hash });
+      }
       return ok({ pairs, active_pair_ids: state.completed_pair_ids });
     });
   }
@@ -1063,10 +1173,10 @@ export class RoomV2 extends DurableObject<Env> {
     return this.project(player, context, () => {
       const state = this.read();
       if (!state || !this.member(state, player)) return this.unavailable(player);
-      const row = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM pairs WHERE pair_id=?", id).toArray()[0];
+      const row = this.ctx.storage.sql.exec<{ data: RowData }>("SELECT data FROM pairs WHERE pair_id=?", id).toArray()[0];
       if (!row) return fail(404, "pair_not_found");
       if (isStub(row.data)) return fail(410, "history_offloaded");
-      return ok(JSON.parse(row.data) as PairV2);
+      return ok(parseRow<PairV2>(row.data));
     });
   }
   reactions(player: string, pairId: string, context?: CampaignRoomContext) { return this.project(player, context, () => getPairReactions(this.ctx.storage, this.memberView(player), player, pairId)); }
@@ -1094,9 +1204,9 @@ export class RoomV2 extends DurableObject<Env> {
       if (!observed) return fail(404, "room_not_found");
       text(turnId, PHOTO_TURN_PATTERN, "invalid_photo_turn");
       const hash = text(object(value).recording_hash, /^[a-f0-9]{64}$/);
-      const accepted = this.ctx.storage.sql.exec<{ player_id: string; data: string }>("SELECT player_id,data FROM turns WHERE turn_id=?", turnId).toArray()[0];
+      const accepted = this.ctx.storage.sql.exec<{ player_id: string; data: RowData }>("SELECT player_id,data FROM turns WHERE turn_id=?", turnId).toArray()[0];
       if (!accepted || accepted.player_id !== player) return fail(404, "turn_not_found");
-      if (JSON.parse(accepted.data).recording_hash !== hash) return fail(409, "photo_recording_mismatch");
+      if (parseRow<RecordingV2>(accepted.data).recording_hash !== hash) return fail(409, "photo_recording_mismatch");
       const input = await parsePhotoMutation(turnId, value, remove);
       if (!remove) {
         if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");

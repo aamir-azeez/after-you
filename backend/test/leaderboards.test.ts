@@ -1,3 +1,5 @@
+import { encodeProof } from "../src/leaderboards/proofs";
+import type { CheckpointV2 } from "../src/v2/protocol";
 import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -120,9 +122,10 @@ async function pass(entries: { board: string; entry_id: string; ticks: number; p
 
 /** A synthetic run for the board's own ordering rules. */
 let serial = 0;
-async function run(ticks: number, finished_ms: number, members: [string, string] = [`a${++serial}`.padEnd(22, "a"), `b${serial}`.padEnd(22, "b")]): Promise<LeaderboardRun> {
+async function run(ticks: number, finished_ms: number, members: [string, string] = [`a${++serial}`.padEnd(22, "a"), `b${serial}`.padEnd(22, "b")]): Promise<LeaderboardRun & { checkpoint: CheckpointV2 }> {
+  const checkpoint = { stage_index: 2, marker: serial } as never as CheckpointV2;
   return { schema_version: 1, board: RELAY_BOARD, entry_id: await entryId(`room${++serial}`.padEnd(22, "z"), 0), pair_key: await pairKey(...members), members, ticks,
-    finished_at: new Date(finished_ms).toISOString(), finished_ms, chapter: { ...CHAPTERS[0].adapter.key }, simulation_version: 8, checkpoint: { stage_index: 2, marker: serial } as never };
+    finished_at: new Date(finished_ms).toISOString(), finished_ms, chapter: { ...CHAPTERS[0].adapter.key }, simulation_version: 8, checkpoint, proof: await encodeProof(checkpoint) };
 }
 async function rankDirect(entry: LeaderboardRun, best: number | null = 1) {
   const stub = board();
@@ -738,6 +741,7 @@ describe("kept replays", () => {
     const big = await run(100, 1000);
     const noise = Array.from({ length: 7 }, () => [...crypto.getRandomValues(new Uint8Array(60_000))].map(byte => byte.toString(16).padStart(2, "0")).join("")).join("");
     (big.checkpoint as unknown as Record<string, unknown>).noise = noise;
+    big.proof = await encodeProof(big.checkpoint);
     await rankDirect(big);
     expect((await board().view(RELAY_BOARD)).top).toMatchObject([{ entry_id: big.entry_id, replay_hash: null }]);
     expect(await kept()).toEqual([]);

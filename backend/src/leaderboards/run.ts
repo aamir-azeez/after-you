@@ -3,6 +3,7 @@ import { chapter } from "../v2/chapters";
 import { nestedProof } from "../v2/checkpoint-chain";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
+import { encodeProof, type EncodedProof } from "./proofs";
 import type { MutationV2, RoomSnapshotV2 } from "../v2/room";
 import { boardKey } from "./boards";
 import { boardLooksOf, type PairLooks } from "./run-looks";
@@ -11,8 +12,8 @@ import { boardLooksOf, type PairLooks } from "./run-looks";
 export type LeaderboardRun = {
   schema_version: 1; board: string; entry_id: string; pair_key: string; members: [string, string];
   ticks: number; finished_at: string; finished_ms: number; chapter: ChapterKey; simulation_version: number;
-  /** The room's final checkpoint. Its proof nests every pair of the finishing branch, so it alone replays the run. */
-  checkpoint: CheckpointV2;
+  /** The room's final checkpoint, already encoded (proofs.ts) where the room was read, so whoever passes the run on never holds it. Its proof nests every pair of the finishing branch, so it alone replays the run. */
+  proof: EncodedProof;
   /** What each member wore when it finished, in `members` order, when the room handed it over while looks are on (run-looks.ts). */
   looks?: PairLooks;
   /** The pair's two platform accounts as one key, set by submit.ts postRun while the platform rule is on (pair-accounts.ts). */
@@ -106,6 +107,6 @@ export async function roomRun(room: RoomSnapshotV2, handed?: unknown): Promise<L
     schema_version: 1, board: boardKey(room), entry_id: await entryId(room.room_id, room.branch), pair_key: await pairKey(host, guest),
     members: [host, guest], ticks: timed.ticks, finished_at: room.updated_at, finished_ms,
     chapter: { level_id: room.level_id, level_version: room.level_version, definition_hash: room.definition_hash },
-    simulation_version: timed.simulation_version, checkpoint: room.checkpoint, ...(looks ? { looks } : {})
+    simulation_version: timed.simulation_version, proof: await encodeProof(room.checkpoint), ...(looks ? { looks } : {})
   };
 }

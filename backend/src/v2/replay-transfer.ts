@@ -2,6 +2,7 @@ import { ApiError, canonicalJson, digest, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_
 import { chapter, exact, type RecordingV2 } from "./protocol";
 import type { PairV2, RoomStateV2 } from "./room";
 import { initializeReplayTransfer } from "./storage-schema";
+import { parseRow, storedRoom, storedRow, type RowData } from "./row-codec";
 
 export const MAX_REPLAY_ARCHIVE_BYTES = 16 * 1024 * 1024;
 const MAX_REPLAY_ARCHIVE_NODES = 2_000_000;
@@ -39,11 +40,11 @@ function writeTransfer(storage: DurableObjectStorage, value: ReplayTransfer): vo
 export function captureReplay(storage: DurableObjectStorage, room: RoomStateV2): ReplayArchive {
   need(room.stage_index === chapter(room).stages.length && room.guest_id !== null && room.a_turn_id === null, "replay_not_complete");
   const { invite_code: _invite, ...safe } = room; void _invite;
-  const turns = storage.sql.exec<{ turn_id: string; player_id: string; accepted_revision: number; data: string }>("SELECT turn_id,player_id,accepted_revision,data FROM turns ORDER BY rowid LIMIT 129").toArray();
-  const pairs = storage.sql.exec<{ data: string }>("SELECT data FROM pairs ORDER BY rowid LIMIT 65").toArray();
+  const turns = storage.sql.exec<{ turn_id: string; player_id: string; accepted_revision: number; data: RowData }>("SELECT turn_id,player_id,accepted_revision,data FROM turns ORDER BY rowid LIMIT 129").toArray();
+  const pairs = storage.sql.exec<{ data: RowData }>("SELECT data FROM pairs ORDER BY rowid LIMIT 65").toArray();
   need(turns.length <= 128 && pairs.length <= 64);
   const value: ReplayArchive = { schema_version: 1, room: safe,
-    turns: turns.map(({ data, ...facts }) => ({ ...facts, recording: JSON.parse(data) as RecordingV2 })), pairs: pairs.map(row => JSON.parse(row.data) as PairV2) };
+    turns: turns.map(({ data, ...facts }) => ({ ...facts, recording: parseRow<RecordingV2>(data) })), pairs: pairs.map(row => parseRow<PairV2>(row.data)) };
   need(new TextEncoder().encode(canonicalJson(value)).byteLength <= MAX_REPLAY_ARCHIVE_BYTES, "replay_archive_too_large");
   return value;
 }
@@ -120,14 +121,14 @@ export async function checkedRestore(input: unknown): Promise<{ key: ReturnType<
   need(await digest(serialized) === key.archive_hash, "replay_archive_mismatch");
   return { key, archive: value.archive as ReplayArchive };
 }
-/** Exact server-retained content hash authorizes restoration, never arbitrary imported SQL. */
-export function restoreReplay(storage: DurableObjectStorage, tombstone: TransferredRoom, transfer: ReplayTransfer, archive: ReplayArchive): ReplayTransfer {
+/** Exact server-retained content hash authorizes restoration, never arbitrary imported SQL. `compress`: rows go back deflated (row-codec.ts). */
+export function restoreReplay(storage: DurableObjectStorage, tombstone: TransferredRoom, transfer: ReplayTransfer, archive: ReplayArchive, compress: boolean): ReplayTransfer {
   need(transfer.transferred && same(factsForArchive(archive, transfer.manifest.epoch, transfer.manifest.archive_hash), transfer.manifest), "replay_archive_mismatch");
   // A restore cannot roll back photo uploads/deletions, reactions, or any retry receipt.
   const { replay_transfer_version: _version, checkpoint_hash: _hash, ...metadata } = tombstone; void _version; void _hash;
-  storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify({ ...metadata, checkpoint: archive.room.checkpoint }));
-  for (const turn of archive.turns) storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", JSON.stringify(turn.recording), turn.turn_id);
-  for (const pair of archive.pairs) storage.sql.exec("UPDATE pairs SET data=? WHERE pair_id=?", JSON.stringify(pair), pair.pair_id);
+  storage.sql.exec("UPDATE room SET data=? WHERE id=1", storedRoom({ ...metadata, checkpoint: archive.room.checkpoint }, compress));
+  for (const turn of archive.turns) storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", storedRow(turn.recording, compress), turn.turn_id);
+  for (const pair of archive.pairs) storage.sql.exec("UPDATE pairs SET data=? WHERE pair_id=?", storedRow(pair, compress), pair.pair_id);
   const next: ReplayTransfer = { ...transfer, manifest: { ...transfer.manifest, epoch: transfer.manifest.epoch + 1 }, acked_player_ids: [], transferred: false };
   writeTransfer(storage, next);
   return next;

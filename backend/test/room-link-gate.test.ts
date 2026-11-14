@@ -71,7 +71,7 @@ describe("room link gate", () => {
     });
     const reached = await counted(`/v2/rooms/${id}`, "GET", who);
     expect(reached.answer).toBe("404 room_not_found");
-    expect(reached.calls).toContain("ROOMS_V2.interactionAllowed");
+    expect(reached.calls).toContain("ROOMS_V2.snapshotReply");
   });
 
   it("refuses a member who left a finished room before opening it, while the partner keeps it", async () => {

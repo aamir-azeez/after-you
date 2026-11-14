@@ -40,7 +40,8 @@ const everyone = async (pairs: [Account, RoomSnapshotV2][]) => Promise.all(pairs
 describe("unblocked pair memo", () => {
   it("lets a warm poll skip both block lookups", async () => {
     const { guest, room } = await relayPair(), hasBlocked = vi.spyOn(SafetyProfile.prototype, "hasBlocked");
-    const calls = ["PLAYERS.authorizeRoom", "ROOMS_V2.interactionAllowed", "ROOMS_V2.snapshotIfChanged"];
+    // The room runs the pair gate inside its own read (turn-wire.ts), so the Worker makes one room request.
+    const calls = ["PLAYERS.authorizeRoom", "ROOMS_V2.snapshotReply"];
     expect(await countedPoll(guest, room)).toEqual(calls);
     expect(hasBlocked).toHaveBeenCalledTimes(2);
     hasBlocked.mockClear();

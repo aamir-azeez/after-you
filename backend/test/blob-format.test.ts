@@ -31,6 +31,7 @@ const RAW_ALLOWED: Record<string, [number, string]> = {
   "v2/room.ts": [6, "the live room tables (room, turns, pairs) a turn writes; room history offloads finished attempts as blobs later (history-room.ts)"],
   "v2/history-room.ts": [6, "restoring an offloaded attempt's rows from its decoded blob, and stubbing them when it is offloaded"],
   "v2/replay-transfer.ts": [7, "the replay transfer's own archive and the room rows it stubs and restores"],
+  "v2/row-codec.ts": [2, "the stored row codec itself: the JSON it packs into the shared blob format, and the plain text it gives operator snapshots"],
   "v2/campaign-root.ts": [2, "a campaign root's room state"],
   "v2/campaign-target.ts": [1, "a campaign chapter room's first state"],
   "v2/campaign-deletion.ts": [1, "a deleted campaign room's marker"],

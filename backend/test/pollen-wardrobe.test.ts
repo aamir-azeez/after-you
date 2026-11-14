@@ -1,3 +1,4 @@
+import { encodeProof } from "../src/leaderboards/proofs";
 import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -223,7 +224,7 @@ describe("board rewards reaching a player", () => {
   let serial = 0;
   async function rank(members: [string, string], ticks: number, finished_ms = 1000 + ++serial): Promise<LeaderboardRun> {
     const run: LeaderboardRun = { schema_version: 1, board: RELAY_BOARD, entry_id: await entryId(`room${++serial}`.padEnd(22, "z"), 0), pair_key: await pairKey(...members), members, ticks,
-      finished_at: new Date(finished_ms).toISOString(), finished_ms, chapter: { ...CHAPTERS[0].adapter.key }, simulation_version: 8, checkpoint: { stage_index: 2, marker: serial } as never };
+      finished_at: new Date(finished_ms).toISOString(), finished_ms, chapter: { ...CHAPTERS[0].adapter.key }, simulation_version: 8, proof: await encodeProof({ stage_index: 2, marker: serial } as never) };
     await board().submit(RELAY_BOARD, run);
     await board().standings(RELAY_BOARD, [{ entry_id: run.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
     const work = await board().pendingWork();
@@ -294,7 +295,7 @@ describe("board rewards reaching a player", () => {
     async function checked(key: string, chapter: typeof firstSteps, members: Account[], ticks: number) {
       const stub = env.LEADERBOARD_BOARDS.getByName(key);
       const run: LeaderboardRun = { schema_version: 1, board: key, entry_id: await entryId(`room${++serial}`.padEnd(22, "z"), 0), pair_key: await pairKey(members[0].player_id, members[1].player_id),
-        members: [members[0].player_id, members[1].player_id], ticks, finished_at: new Date(1000).toISOString(), finished_ms: 1000, chapter: { ...chapter }, simulation_version: 8, checkpoint: { stage_index: 2, marker: serial } as never };
+        members: [members[0].player_id, members[1].player_id], ticks, finished_at: new Date(1000).toISOString(), finished_ms: 1000, chapter: { ...chapter }, simulation_version: 8, proof: await encodeProof({ stage_index: 2, marker: serial } as never) };
       await stub.submit(key, run);
       await stub.standings(key, [{ entry_id: run.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
       const proof = (await stub.pendingWork()).replay.find(item => item.entry_id === run.entry_id)!;
