@@ -203,6 +203,13 @@ func _run() -> void:
 	var terms := {"schema_version": 1, "terms_version": Client.TERMS_VERSION, "accepted": true, "accepted_at": "2026-09-16T00:00:00.000Z"}
 	var receipt := {"schema_version": 1, "received": true, "report_id": "a".repeat(64), "request_hash": "b".repeat(64)}
 	check(Client.valid_config(config) and Client.valid_terms(terms) and Store.valid_receipt(receipt), "exact safety replies are accepted")
+	# Newer rules not accepted yet, for a player who accepted only the photo rules: the server sends no time beside
+	# accepted false (backend safety.ts terms), and a reply that still carries the old acceptance's time stays refused.
+	var newer := {"schema_version": 1, "terms_version": "2026-11-03", "accepted": false, "accepted_at": null}
+	check(Client.valid_terms(newer, "2026-11-03"), "newer rules not accepted yet read as not accepted")
+	var stale := newer.duplicate()
+	stale.accepted_at = "2026-09-16T00:00:00.000Z"
+	check(not Client.valid_terms(stale, "2026-11-03"), "a time beside rules not accepted is refused")
 	for variant: Dictionary in WrongTypes.variants(config):
 		check(not Client.valid_config(variant.value), "safety config with a wrongly typed field is refused: " + variant.path)
 	for variant: Dictionary in WrongTypes.variants(terms):

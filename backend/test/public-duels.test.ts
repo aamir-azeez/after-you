@@ -158,6 +158,26 @@ describe("public duels", () => {
     expect(await ok<Any>(call("/v1/safety/blocks", "GET", a, undefined, ON, { [PUBLIC_DUELS_HEADER]: "1" }))).toMatchObject({ duel_blocks: [] });
   });
 
+  it("send no acceptance time beside rules not accepted, so a phone that accepted only the photo rules can read the public ones and accept them", async () => {
+    // game/services/safety_client.gd valid_terms: exactly four keys, a time only beside accepted true, null otherwise.
+    const phoneTakes = (v: Any, version: string) => Object.keys(v).length === 4 && v.schema_version === 1 && v.terms_version === version && typeof v.accepted === "boolean" &&
+      (v.accepted ? typeof v.accepted_at === "string" && v.accepted_at.length >= 20 && v.accepted_at.length <= 40 : v.accepted_at === null);
+    const knows = { [PUBLIC_DUELS_HEADER]: "1" };
+    const b = await create();
+    const photo = await ok<Any>(call("/v1/safety/terms", "POST", b, { schema_version: 1, terms_version: TERMS_VERSION }));
+    expect(phoneTakes(photo, TERMS_VERSION)).toBe(true);
+    expect(await ok<Any>(call("/v1/safety/terms", "GET", b))).toEqual(photo);
+    const config = await ok<Any>(call("/v1/safety/config", "GET", b, undefined, ON, knows));
+    const unaccepted = await ok<Any>(call("/v1/safety/terms", "GET", b, undefined, ON, knows));
+    expect(unaccepted).toEqual({ schema_version: 1, terms_version: PUBLIC_TERMS_VERSION, accepted: false, accepted_at: null });
+    expect(phoneTakes(unaccepted, String(config.terms_version))).toBe(true);
+    const accepted = await ok<Any>(call("/v1/safety/terms", "POST", b, { schema_version: 1, terms_version: config.terms_version }, ON, knows));
+    expect(phoneTakes(accepted, PUBLIC_TERMS_VERSION) && accepted.accepted).toBe(true);
+    expect(accepted.accepted_at).not.toBe(photo.accepted_at);
+    expect(await ok<Any>(call("/v1/safety/terms", "GET", b, undefined, ON, knows))).toEqual(accepted);
+    await ok(call("/v1/duels/public/me", "PUT", b, { schema_version: 1, on: true }, ON, knows));
+  });
+
   it("serve the rules and privacy pages that say public duels are on unless turned off only while public duels are on", async () => {
     const page = async (path: string, vars: Record<string, unknown>) => (await call(path, "GET", undefined, undefined, vars)).text();
     for (const path of ["/privacy", "/community-rules"]) expect(await page(path, OFF), path).not.toMatch(/public duel/i);
