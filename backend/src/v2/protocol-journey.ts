@@ -1,7 +1,8 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
-import { openControls, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
+import { openTurns, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
+import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openBodyLimits, openTurnLimits, recordingBytes, turnSlot } from "./open-turns";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -31,11 +32,17 @@ type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?:
 type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
 type Control = Marker & { values: string[]; initial: string };
-type Stage = { id: string; version: number; first_player_slot: string; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
+type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
 type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
+/** Open turns (open-turns.ts): every turn of the stage, in order, in place of the a and b hashes. */
+const OPEN_CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash", "proof"];
+/** Open turns on a definition with no turn_limits: the published comfort recording bounds. */
+const COMFORT_RECORDING: Readonly<ChapterLimits> = { recording_bytes: 65_536, recording_values: 24_000, checkpoint_bytes: MAX_CHECKPOINT_BYTES, checkpoint_values: 24_000, turn_body_bytes: 0, turn_body_values: 0 };
+/** Open turns chapters keep seven branches, so their widest replay archive fits (open-turns.ts openTurnLimits). */
+const OPEN_TURNS_BRANCHES = 7;
 function need(value: unknown, code: string): asserts value { if (!value) throw new ApiError(422, code); }
 function near(player: Record<string, unknown>, marker: Marker): boolean {
   return player.surface_id === marker.surface_id && player.height === marker.height_cm &&
@@ -60,24 +67,47 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // Tide rules (10 and 13) latch no route: a player may end a stage on a
   // stub only while one of this stage's gates for it holds on the end state.
   const tideRules = tideRulesVersion(definition.simulation_version);
-  // Open controls (12 and 13): a pad holds for either player.
-  const open = openControls(definition.simulation_version);
+  // Open controls (12 and 13): a pad holds for either player. They play open turns too (open-turns.ts).
+  const open = openTurns(definition.simulation_version);
+  if (open && maxBranches === undefined) maxBranches = OPEN_TURNS_BRANCHES;
   // Longer turns, when the definition declares them, carry bounds grown to fit.
-  const turns = turnLimits(definition), limits = turns ? scaledLimits(turns) : undefined;
+  const turns = turnLimits(definition);
+  let limits = turns ? scaledLimits(turns) : undefined;
+  // Open turns: a stage's turns stay under its budget, and the checkpoint and turn body bounds grow to hold every stage of them.
+  const openLimits = open ? openTurnLimits(definition.stages, (limits ?? COMFORT_RECORDING).recording_bytes!, maxBranches!) : undefined;
+  if (openLimits) { const base = limits ?? COMFORT_RECORDING; limits = { ...base, ...openBodyLimits(openLimits, definition.stages.length, base.recording_values!) }; maxBranches = openLimits.branches; }
   if (limits) checkTurnBounds(limits, maxBranches);
-  const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits);
-  async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
+  const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
+  const isAccepted = open ? (r: ChapterRecording) => openAccepted(r, accepted) : accepted;
+  async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
-    const c = object(value); exact(c, CHECKPOINT_KEYS);
+    const c = object(value); exact(c, open ? OPEN_CHECKPOINT_KEYS : CHECKPOINT_KEYS);
     need(c.level_id === key.level_id && c.level_version === key.level_version && c.definition_hash === key.definition_hash, "unsupported_chapter");
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
-    need(c.schema_version === 7 && c.stage_index === index && stage && index <= definition.stages.length && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
-    need(supported.includes(a.simulation_version) && b.simulation_version === a.simulation_version && a.role === "a" && b.role === "b" && accepted(a) && accepted(b), "checkpoint_recording_mismatch");
-    if (previous.stage_index > 0) need(object(object(object(previous).proof).a).simulation_version === a.simulation_version, "checkpoint_recording_mismatch");
-    need(c.previous_checkpoint_hash === previous.checkpoint_hash && c.a_recording_hash === a.recording_hash && c.b_recording_hash === b.recording_hash &&
-      a.checkpoint_hash === previous.checkpoint_hash && b.checkpoint_hash === previous.checkpoint_hash && b.source_recording_hash === a.recording_hash && a.stage_id === stage.id && b.stage_id === stage.id, "checkpoint_source_mismatch");
-    const proof = object(c.proof); exact(proof, ["checkpoint", "a", "b"]);
-    need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.a) === canonicalJson(a) && canonicalJson(proof.b) === canonicalJson(b), "checkpoint_proof_mismatch");
+    need(c.schema_version === (open ? OPEN_CHECKPOINT_SCHEMA : 7) && c.stage_index === index && stage && index <= definition.stages.length && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
+    // The first turn, any passes in order, then the closing turn: each over the one before it, from this stage's start.
+    const all = [a, ...passes, b];
+    need(supported.includes(a.simulation_version) && all.every(turn => turn.simulation_version === a.simulation_version) && a.role === "a" && all.slice(1).every(turn => turn.role === "b") &&
+      all.every((turn, i) => isAccepted(turn) && (i === 0 || turn.completed === (i === all.length - 1))) && (open || passes.length === 0), "checkpoint_recording_mismatch");
+    if (previous.stage_index > 0) {
+      const prior = object(object(previous).proof);
+      need(object(open ? (prior.turns as unknown[] | undefined)?.[0] : prior.a).simulation_version === a.simulation_version, "checkpoint_recording_mismatch");
+    }
+    need(c.previous_checkpoint_hash === previous.checkpoint_hash && all.every((turn, i) => turn.checkpoint_hash === previous.checkpoint_hash && turn.stage_id === stage.id &&
+      (i === 0 || turn.source_recording_hash === all[i - 1].recording_hash)), "checkpoint_source_mismatch");
+    const proof = object(c.proof);
+    if (openLimits) {
+      // Open turns: the next pip each turn, never shorter than its memory, within the stage's cap and budget.
+      need(all.length <= openLimits.caps[index - 1] && all.every((turn, i) => turn.player_slot === turnSlot(stage.first_player_slot, i + 1) && (i === 0 || turn.duration_ticks >= all[i - 1].duration_ticks)) &&
+        all.reduce((sum, turn) => sum + recordingBytes(turn), 0) <= openLimits.stage_bytes, "checkpoint_recording_mismatch");
+      need(canonicalJson(c.turn_hashes) === canonicalJson(all.map(turn => turn.recording_hash)), "checkpoint_source_mismatch");
+      exact(proof, ["checkpoint", "turns"]);
+      need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.turns) === canonicalJson(all), "checkpoint_proof_mismatch");
+    } else {
+      need(c.a_recording_hash === a.recording_hash && c.b_recording_hash === b.recording_hash, "checkpoint_source_mismatch");
+      exact(proof, ["checkpoint", "a", "b"]);
+      need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.a) === canonicalJson(a) && canonicalJson(proof.b) === canonicalJson(b), "checkpoint_proof_mismatch");
+    }
     const mechanisms = object(c.mechanisms), prior = object(object(previous).mechanisms);
     exact(mechanisms, ["latched_bridges", "props", "levers", "controls"]); exact(object(mechanisms.props), []);
     // Controls by id: a control repeated in both stages (the same entry) is
@@ -138,7 +168,8 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     return c as ChapterCheckpoint;
   }
   return { key, recording_version: 7, simulation_version: pinned || 7, supported_simulation_versions: supported, premium: definition.premium, require_supported_simulation_on_join: true,
-    stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted, ...(limits ? { limits } : {}), ...(maxBranches === undefined ? {} : { max_branches: maxBranches }) };
+    stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted: isAccepted, ...(limits ? { limits } : {}), ...(maxBranches === undefined ? {} : { max_branches: maxBranches }),
+    ...(openLimits ? { open_turns: openLimits } : {}) };
 }
 export const conservatory = adapter(conservatoryDefinition, conservatoryInitial, CONSERVATORY_HASH);
 export const longWayHome = adapter(homeDefinition, homeInitial, LONG_WAY_HOME_HASH);

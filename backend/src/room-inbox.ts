@@ -88,8 +88,8 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
 export function relayInboxProjection(storage: DurableObjectStorage, player: string, names = false): Outcome<RoomInboxProjection> {
   const row = storage.sql.exec<{
     room_id: string; revision: number; stage_index: number; branch: number; level_id: string; level_version: number;
-    definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; checkpoint_hash: string | null; updated_at: string;
-  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
+    definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; checkpoint_hash: string | null; updated_at: string; passes: number | null;
+  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash,json_extract(data,'$.updated_at') AS updated_at,json_array_length(data,'$.open_stage.passes') AS passes FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
   if (!row && closedRoom(storage)) return fail(410, "room_closed");
   if (!row || !isMember(storage, row, player)) return fail(404, "room_not_found");
   let active: string | null = null;
@@ -99,7 +99,8 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     if (stage) {
       const first = stage.first_player_slot === "p0" ? row.host_id : row.guest_id;
       const second = stage.first_player_slot === "p0" ? row.guest_id : row.host_id;
-      active = row.a_turn_id ? second : first;
+      // Open turns (v2/open-turns.ts): each pass hands the next turn back across, so an odd count of passes is the first player's.
+      active = row.a_turn_id && (row.passes ?? 0) % 2 === 0 ? second : first;
     }
   } catch { return fail(409, "unsupported_chapter"); }
   const activity = remoteRoomActivity(storage, player);

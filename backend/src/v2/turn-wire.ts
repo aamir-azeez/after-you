@@ -103,6 +103,8 @@ function asciiJson(value: unknown): string {
 }
 /** A turn body's exact fields, the one list the route (Story turns), the room's premium check and its commit share. */
 export function exactTurnFields(value: Record<string, unknown>): void {
-  exact(value, ["base_revision", "idempotency_key", "branch", "recording", ...(object(value.recording).role === "b" ? ["checkpoint"] : []), ...triesField(value), ...endReactionField(value), ...runReactionField(value),
+  // An open turns pass (open-turns.ts) is a later turn sent unfinished and without a checkpoint; the room refuses one in a published chapter.
+  const recording = object(value.recording), pass = recording.role === "b" && recording.completed === false && value.checkpoint === undefined;
+  exact(value, ["base_revision", "idempotency_key", "branch", "recording", ...(recording.role === "b" && !pass ? ["checkpoint"] : []), ...triesField(value), ...endReactionField(value), ...runReactionField(value),
     ...(value.replaces === undefined ? [] : ["replaces"])]);
 }

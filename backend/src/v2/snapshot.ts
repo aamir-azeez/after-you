@@ -181,6 +181,8 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
   need(state.schema_version === 2);
   let selected;
   try { selected = chapter(state); } catch { throw new SnapshotError("unsupported_snapshot_chapter"); }
+  // Open turns rooms (open-turns.ts) are not restored by this tool yet: its checks read two turns a stage.
+  if (selected.open_turns) throw new SnapshotError("unsupported_snapshot_open_turns");
   const simulationVersion = state.simulation_version ?? selected.simulation_version;
   need(typeof simulationVersion === "number" && Number.isInteger(simulationVersion) && (selected.supported_simulation_versions ?? [selected.simulation_version]).includes(simulationVersion), "unsupported_snapshot_simulation");
   need(text(state.room_id, ID_PATTERN) && text(state.host_id, ID_PATTERN) && (state.guest_id === null || text(state.guest_id, ID_PATTERN)) && state.host_id !== state.guest_id);
