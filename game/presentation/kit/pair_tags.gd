@@ -146,6 +146,12 @@ const PROMPTED := ["levers", "controls", "pressure_pads"]
 ## least): CHIP across, the letter LETTER_SHARE of its face tall, so on a
 ## 2400 by 1080 phone it is about 72 px with a letter about 30 px tall.
 const CHIP := 48.0
+## A lit chip: its face CHIP_LIT_LIGHTEN toward WARM and CHIP_LIT_BRIGHT
+## brighter, keeping the pair's hue, inside a ring of amber light CHIP_GLOW
+## (deeper than the floor's glow, to show on the cream button).
+const CHIP_LIT_LIGHTEN := 0.3
+const CHIP_LIT_BRIGHT := 1.18
+const CHIP_GLOW := Color("f2b13c")
 
 ## Letter geometry ([positions, triangle indices] lying flat, LETTER_HEIGHT tall, centred), by letter.
 static var _letters: Dictionary = {}
@@ -754,7 +760,7 @@ static func release_cached() -> void:
 ## brighter (a screen has no light to glow in).
 static func chip_face(colour: Color, lit: bool) -> Color:
 	if not lit: return colour.lerp(PALE, NEAR_LIGHTEN)
-	return (colour.lerp(WARM, LIT_LIGHTEN) * (1.0 + LIT_GLOW * 0.5)).clamp()
+	return (colour.lerp(WARM, CHIP_LIT_LIGHTEN) * CHIP_LIT_BRIGHT).clamp()
 
 ## Draws `chip` (badge()) on `canvas` filling the square `rect`, as its floor
 ## tile looks scaled up: the frame by its style (its darker edge below it and
@@ -768,12 +774,16 @@ static func draw_chip(canvas: CanvasItem, rect: Rect2, chip: Dictionary) -> void
 	var lit := bool(chip.get("lit", false))
 	var frame := StringName(str(chip.get("frame", DEFAULT_FRAME)))
 	var look: Dictionary = FRAMES.get(frame, FRAMES[DEFAULT_FRAME])
-	if lit:
-		for ring in range(5):
-			canvas.draw_circle(centre, rect.size.x * (0.95 - 0.1 * float(ring)), Color(GLOW, GLOW_ALPHA * 0.16))
 	var colour: Color = look.colour
 	if lit: colour = colour.lerp(WARM, LIT_LIGHTEN)
 	var outline := _chipped() if look.has("chipped") else _rounded(Vector2(TAG, TAG), TAG * float(look["round"]))
+	if lit:
+		# Rings of light round the frame, fading outward.
+		for ring in range(3):
+			var grow := 1.3 - 0.1 * float(ring)
+			var halo := PackedVector2Array()
+			for point: Vector2 in outline: halo.append(point * grow)
+			_chip_fill(canvas, halo, centre, unit, Color(CHIP_GLOW, 0.3 + 0.2 * float(ring)))
 	var edge := maxf(EDGE * unit, 2.0)
 	_chip_fill(canvas, outline, centre + Vector2(0, edge), unit, colour.darkened(0.3))
 	_chip_fill(canvas, outline, centre, unit, colour, colour.darkened(0.45))
