@@ -886,31 +886,51 @@ func _show_home() -> void:
 ## (_wardrobe_offered): a tap waits for that read, then opens it or says the
 ## phone is offline.
 func _open_wardrobe_from_home() -> void:
-	if mode != "home" or application_backgrounded or _top_modal() != null or _wardrobe_waiting: return
-	if not wardrobe_flow.available():
-		if not _wardrobe_offered(): return
-		_wardrobe_waiting = true
-		await capabilities_refresh.until_read()
-		_wardrobe_waiting = false
-		if mode != "home" or application_backgrounded or _top_modal() != null: return
-		if not wardrobe_flow.available():
-			_refresh_home_pollen()
-			if not capabilities_refresh.known(): _toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
-			return
-	wardrobe_flow.show_wardrobe("home")
+	if mode != "home" or application_backgrounded or _top_modal() != null: return
+	open_when_answered(func() -> bool:
+		if not wardrobe_flow.available() or _top_modal() != null: return false
+		wardrobe_flow.show_wardrobe("home")
+		return true)
 
-## A Wardrobe tap waiting for the first capabilities answer: later taps wait with it.
-var _wardrobe_waiting := false
+## A tap on something on Home that needs the server's answer (the Wardrobe row,
+## the chips' halves): `open` (true once it opened) runs now; when it cannot
+## yet, before this run's first capabilities answer, it waits for that read
+## (CapabilitiesRefresh.until_read, briefly) and tries once more, or says the
+## phone is offline. Taps while one waits wait with it.
+func open_when_answered(open: Callable) -> void:
+	if open.call() == true or _answer_waiting: return
+	if capabilities_refresh == null or not capabilities_refresh.pending(): return
+	_answer_waiting = true
+	var screen := mode
+	await capabilities_refresh.until_read()
+	_answer_waiting = false
+	if mode != screen or application_backgrounded: return
+	if open.call() == true: return
+	_refresh_home_pollen()
+	if not capabilities_refresh.known(): _toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
 
-## Home's Wardrobe row: while the server has it on, or, before this run's first
-## capabilities answer and with no answer kept for this player, wherever this
-## build shows the Wardrobe (everything starts as if it works; the answer hides
-## it if the server has it off).
+## A tap waiting for the first capabilities answer (open_when_answered).
+var _answer_waiting := false
+
+## Whether the server's first answer of this run is still to come for the
+## player's part of `store` (Wardrobe, PollenWallet or FruitWallet): before it,
+## and with no answer kept for this player, Home's server buttons show as if
+## they work (the one rule for the Wardrobe row and the chips).
+func awaiting_answer(store: RefCounted) -> bool:
+	if capabilities_refresh == null or not capabilities_refresh.pending() or store == null: return false
+	var scope := _names_scope()
+	return not scope.is_empty() and not store.told(str(scope.server), str(scope.owner))
+
+## Home's Wardrobe row: while the server has it on (offline too, greyed while
+## there is nothing kept to show, never gone), or, while its first answer is to
+## come (awaiting_answer), wherever this build shows the Wardrobe; only the
+## server saying off hides it.
 func _wardrobe_offered() -> bool:
 	if wardrobe_flow.available(): return true
-	if capabilities_refresh == null or not capabilities_refresh.pending() or not wardrobe_flow.build_shows(): return false
+	if not wardrobe_flow.build_shows(): return false
 	var scope := _names_scope()
-	return not scope.is_empty() and not Wardrobe.shared().told(str(scope.server), str(scope.owner))
+	if not scope.is_empty() and Wardrobe.shared().enabled(str(scope.server), str(scope.owner)): return true
+	return awaiting_answer(Wardrobe.shared())
 
 ## The launch and resume capabilities read (services/capabilities_refresh.gd):
 ## true answered, false failed, null not now (no player yet, or the room
