@@ -5,7 +5,8 @@ extends RefCounted
 ## sun, a narrow camera on a three-quarter view, and the real SpiritVisual
 ## without its ground ring or shadow. A tall item (its descriptor's "tall")
 ## pulls the camera back a little so it stays in frame; a wide one ("wide")
-## pulls it back further and moves it toward the side the item hangs on.
+## pulls it back further and moves it toward the side the item hangs on; a hat
+## that raises the leaf pulls it back by how far it raises it.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Outfit = preload("res://services/outfit.gd")
 const PipOutfit = preload("res://presentation/pip_outfit.gd")
@@ -25,6 +26,11 @@ const WIDE_PAN := 0.05
 ## much lower it looks, so the ring round the feet stays in frame.
 const LOW_PULL := 1.35
 const LOW_DROP := 0.12
+## With a hat that raises the leaf (Outfit.leaf_rise, metres): the camera
+## stands this much farther per metre raised and looks up half of it, so the
+## raised leaf's top stays in frame and the feet stay where they were.
+const RISE_PULL := 1.05
+const RISE_LIFT := 0.5
 
 ## Lights `view` and adds `pip` and a camera framed for `outfit`; returns the
 ## camera.
@@ -71,11 +77,14 @@ static func frame(camera: Camera3D, outfit: Dictionary, place: StringName = PipO
 	var wide := Outfit.wide(worn)
 	var tall := Outfit.tall(worn)
 	var low := Outfit.low(worn, place)
-	if not wide and not tall and not low:
+	var rise := Outfit.leaf_rise(worn)
+	if not wide and not tall and not low and rise <= 0.0:
 		camera.look_at_from_position(CAMERA_AT, LOOK_AT)
 		return
 	var target := LOOK_AT + Vector3(WIDE_PAN if wide else 0.0, TALL_LIFT if wide or tall else 0.0, 0)
 	var pull := WIDE_PULL if wide else (TALL_PULL if tall else 1.0)
+	target.y += rise * RISE_LIFT
+	pull += rise * RISE_PULL
 	if low:
 		target.y -= LOW_DROP
 		pull = maxf(pull, LOW_PULL)

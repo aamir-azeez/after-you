@@ -60,6 +60,11 @@ static func tall(outfit: Dictionary) -> bool:
 		if Catalog.tall(id): return true
 	return false
 
+## Metres the worn hat may raise the leaf (its "leaf_lift"; kit/wear_fit.gd
+## decides whether a given leaf is raised), 0 with no hat.
+static func leaf_rise(outfit: Dictionary) -> float:
+	return Catalog.leaf_lift(str(outfit.get("hat", ""))) if outfit.has("hat") else 0.0
+
 ## Whether any worn item's look moves on its own.
 static func moving(outfit: Dictionary) -> bool:
 	for id: String in items(outfit):

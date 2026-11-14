@@ -14,6 +14,6 @@ const DATA := {
 	"tall": true,
 	## The cap is whole: the leaf comes out of its top on a short stem.
 	"leaf_mode": "sits_on_top",
-	"leaf_lift": 0.185,
+	"leaf_lift": 0.205,
 	"leaf_max": "tall",
 }

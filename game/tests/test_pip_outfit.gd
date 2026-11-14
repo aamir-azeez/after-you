@@ -440,8 +440,15 @@ func _placement() -> void:
 ## Every item's solid parts and sparkles stay inside every pip view, pulled
 ## back or not (kit/pip_stage.gd). A glow sprite and a beam may run out.
 func _in_frame() -> void:
-	for id: String in Catalog.ids():
-		var outfit := Outfit.of(id, true)
+	var outfits: Array[Dictionary] = []
+	for id: String in Catalog.ids(): outfits.append(Outfit.of(id, true))
+	# Every leaf raised by every hat that raises it: the raised leaf stays in frame too.
+	for hat: String in Catalog.ids():
+		if Catalog.slot(hat) != "hat" or Catalog.leaf_lift(hat) <= 0.0: continue
+		for leaf: String in Catalog.ids():
+			if Catalog.slot(leaf) == "leaf": outfits.append(Outfit.from({"hat": hat, "leaf": leaf}, true))
+	for outfit: Dictionary in outfits:
+		var id := Outfit.digest(outfit)
 		for size: Vector2 in VIEWS:
 			var view := SubViewport.new()
 			view.size = Vector2i(size * 2.0)

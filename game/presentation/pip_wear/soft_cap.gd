@@ -32,9 +32,9 @@ const Meshes = preload("res://presentation/spirit_meshes.gd")
 const CAPS := {
 	"rain_cap": {"rise": 0.13, "edge_gap": 0.012, "edge": 1.06, "round": 2.6, "crown": Color("93c5d3"), "under": Color("547f91"), "trim": Color("e8e9d7"),
 		"brim": [0.072, 0.04], "bands": [], "rim": "band", "spots": []},
-	"wool_cap": {"rise": 0.14, "edge_gap": 0.016, "edge": 1.2, "round": 2.0, "crown": Color("82728e"), "under": Color("82728e"), "trim": Color("c5aeb8"),
+	"wool_cap": {"rise": 0.16, "edge_gap": 0.016, "edge": 1.2, "round": 2.0, "crown": Color("82728e"), "under": Color("82728e"), "trim": Color("c5aeb8"),
 		"brim": [], "bands": [Color("6f607b"), [2, 4]], "rim": "roll", "spots": []},
-	"mushroom": {"rise": 0.14, "edge_gap": 0.03, "edge": 1.06, "round": 2.2, "crown": Color("728d5d"), "under": Color("eee9d4"), "trim": Color("a5b777"),
+	"mushroom": {"rise": 0.155, "edge_gap": 0.03, "edge": 1.06, "round": 2.6, "crown": Color("728d5d"), "under": Color("eee9d4"), "trim": Color("a5b777"),
 		"brim": [0.05, 0.035], "bands": [], "rim": "",
 		"spots": [[Vector3(0.22, 0.85, 0.6), 0.07], [Vector3(0.75, 0.6, 0.4), 0.055], [Vector3(-0.2, 0.6, 0.85), 0.05]]},
 }

@@ -35,20 +35,20 @@ const CELL := 0.05
 const PAIR_BUDGET_MS := 30000
 ## The first carry's sums must take under this (milliseconds, a desktop run).
 const FIRST_CARRY_MS := 60
-## The hats that sit beside the leaf, so it grows where it always does, each
-## with why (drawn that way on its board); every other hat raises the leaf out
-## of its top.
+## The hats that sit to one side of the leaf's root, so it grows where it
+## always does, each with where it sits; a hat over the leaf's root (a cap,
+## the Straw hat, a hood) is whole and raises the leaf out of its top.
 const BESIDE := {
 	"daisy": "a flower on the head's far front corner",
 	"seashell": "a shell on the head's front side, under the leaf",
 	"lantern": "hangs on the far side",
 	"lighthouse_lamp": "on the head's far corner",
 	"top_ten_ribbon": "a rosette on the far front corner",
-	"paper_boat": "the hats board draws it beside the leaf, its end raised away",
-	"flower_pot": "the hats board draws it beside the leaf, leaning away",
-	"tea_cup": "the hats board draws it beside the leaf",
-	"wave_cap": "the hats board draws the waves beside the sprout",
-	"glass_house": "the hats board draws it beside the leaf",
+	"paper_boat": "on the head's far side, its end raised away from the leaf",
+	"flower_pot": "on the head's far side, leaning away from the leaf",
+	"tea_cup": "on the head's far side",
+	"wave_cap": "the waves run across the far side of the head",
+	"glass_house": "on the head's far side",
 }
 ## Leaves the fit must class as these.
 const EXPECTED := {"": WearFit.SMALL, "sprig_coral": WearFit.SMALL, "gold_leaf": WearFit.SMALL, "every_hard": WearFit.SMALL, "apple_leaf": WearFit.TALL}

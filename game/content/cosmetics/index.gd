@@ -64,7 +64,7 @@ const OPTIONAL := {
 	## that is sold.
 	"earn": "",
 	## A hat's way with the leaf (presentation/kit/wear_fit.gd): "covers" (the
-	## leaf hides), "pokes_through" (it grows through a notch or hole) or
+	## leaf hides), "pokes_through" (it grows where it is, beside the hat) or
 	## "sits_on_top" (it is raised onto the hat by "leaf_lift"). Every hat
 	## names one; "" for an item in another slot.
 	"leaf_mode": "",
