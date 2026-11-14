@@ -496,14 +496,14 @@ export class RoomV2 extends DurableObject<Env> {
    * members, the member names and looks, and the Pollen facts of turns already paid (pollen/turn-facts.ts), so a turn
    * played again never pays twice. The caller then rewinds to the first stage and saves the fork's receipt.
    */
-  private wipeRun(): void {
+  private wipeRun(runFrom: number): void {
     const storage = this.ctx.storage;
     storage.sql.exec("DELETE FROM turns"); storage.sql.exec("DELETE FROM pairs"); storage.sql.exec("DELETE FROM operations");
     storage.sql.exec("DELETE FROM photos"); storage.sql.exec("DELETE FROM photo_operations"); clearDelivery(storage);
     clearPairReactions(storage);
     clearAttempts(storage);
     clearTurnTries(storage); clearEndReactions(storage); clearRunReactions(storage);
-    clearRedoRequests(storage);
+    clearRedoRequests(storage, runFrom);
   }
   /** Goes back to `stageIndex` on a new branch, keeping every earlier attempt; the caller moves the revision. */
   private rewind(state: RoomStateV2, stageIndex: number): void {
@@ -1175,7 +1175,7 @@ export class RoomV2 extends DurableObject<Env> {
         // A chapter's branch limit counts only attempts the server holds in full; offloaded ones are hashes. A start over
         // holds nothing after it, so only the branch number's own limit applies.
         if (over ? state.branch + 1 >= MAX_BRANCHES : !this.branchRoom(state)) return fail(409, "room_history_full");
-        if (over) this.wipeRun();
+        if (over) this.wipeRun(state.branch + 1);
         this.rewind(state, stageIndex); state.revision++;
         if (redoRequestId !== undefined) acceptedRedo(this.ctx.storage);
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "fork",

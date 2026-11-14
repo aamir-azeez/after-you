@@ -355,8 +355,7 @@ func agree_start_over(control: Control = null) -> void:
 		if not can_answer_start_over(): return
 		var room: Dictionary = host.journey.snapshot()
 		var agreed: bool = await client().accept_start_over()
-		# The old run goes from this phone as it went from the server.
-		if agreed: host.online_session.forget_room_run(str(room.get("room_id", "")))
+		# The room read that follows names the new run: its old copies go (redo_client.gd take_run_reset).
 		if not _same_room(room): return
 		if agreed: await host._online_refresh()
 		else: _redraw())

@@ -11,6 +11,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const PhotoController = preload("res://services/turn_photo_controller.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
+const RoomRunReset = preload("res://services/room_run_reset.gd")
 const Safety = preload("res://services/safety_client.gd")
 const AuxiliaryContext = preload("res://services/auxiliary_room_context.gd")
 const RedoClient = preload("res://services/redo_client.gd")
@@ -807,13 +808,17 @@ func take_polled_redo(room: Dictionary) -> Dictionary:
 	if polled.is_empty() or not Typed.equal(capabilities.get("poll_redo_version"), 1.0) or polled.room_id != str(room.get("room_id", "")) or polled.revision != int(room.get("revision", -1)) or polled.branch != int(room.get("branch", -1)) or not polled.redo is Dictionary: return {}
 	return polled.redo
 
-## Start over, agreed: the old run of `room_id` goes from this phone too, its journal's
-## kept turns and draft (relay_room_coordinator.gd forget_run) and its kept attempts
-## (history_store.gd). True when nothing was left behind.
+## Start over, agreed (services/room_run_reset.gd): the old run of `room_id` goes from this
+## phone too: its journal's kept turns and draft (relay_room_coordinator.gd forget_run), its
+## kept attempts (history_store.gd) and turn photos (turn_photo_library.gd), and then every
+## other store of the room's run hears it (shared_replay_collection.gd). True when nothing
+## was left behind.
 func forget_room_run(room_id: String) -> bool:
 	var ok := true
 	if coordinator != null and _bound_room == room_id: ok = coordinator.forget_run() and ok
 	if history_store != null and not _server_key().is_empty(): ok = history_store.erase_room(_server_key(), _owner, room_id) and ok
+	if photo_library != null: ok = bool(photo_library.erase_room(_owner, room_id).get("ok", false)) and ok
+	RoomRunReset.shared().announce(_owner, room_id)
 	return ok
 
 ## The server reads start over requests and Play my turn again (X-AfterYou-Redo-Extras).

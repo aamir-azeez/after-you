@@ -6,6 +6,7 @@ const Client = preload("res://services/redo_client.gd")
 const Recent = preload("res://tests/test_recent_rooms.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const RoomRunReset = preload("res://services/room_run_reset.gd")
 const HOST := Recent.HOST
 const GUEST := Recent.GUEST
 const ROOM := Recent.ROOM
@@ -18,6 +19,7 @@ class Api:
 	var rooms: Dictionary = {}
 	var replace_open := true
 	var start_over: Variant = null
+	var run_from := 0
 	var seen := false
 	var calls: Array = []
 	var receipts: Dictionary = {}
@@ -32,7 +34,7 @@ class Api:
 		if path.get_file() in rooms: return _ok(room)
 		if path.ends_with("/redo") and method == HTTPClient.METHOD_GET:
 			var source := Client.source_for("relay", room)
-			return _ok({"schema_version": 2, "source": null if source.is_empty() else source, "request": null, "start_over": start_over, "replace_open": replace_open})
+			return _ok({"schema_version": 2, "source": null if source.is_empty() else source, "request": null, "start_over": start_over, "replace_open": replace_open, "run_from": run_from})
 		if path.ends_with("/turns"):
 			if seen: return {"ok": false, "status": 409, "code": "turn_already_seen"}
 			if body.get("replaces") != room.recording_a.recording_hash or int(body.base_revision) != int(room.revision): return {"ok": false, "status": 409, "code": "redo_source_changed"}
@@ -50,6 +52,7 @@ class Api:
 			room.a_turn_id = null
 			room.recording_a = null
 			start_over = null
+			run_from = int(room.branch)
 			return _ok(_receipt(room, body, "fork", null, null))
 		return {"ok": false, "status": 404, "code": "not_found"}
 	func _receipt(room: Dictionary, body: Dictionary, operation: String, turn_id: Variant, recording_hash: Variant) -> Dictionary:
@@ -116,12 +119,18 @@ func _run() -> void:
 	api.replace_open = false
 	_check(await coordinator.refresh() and client.bind_room("relay", coordinator.snapshot()) and await client.refresh(), "The room and its redo state read again")
 	_check(client.can_answer_start_over() and client.start_over_role() == "friend" and not client.can_ask_start_over(), "The friend's start over waits for this player's answer")
-	_check(not Client.valid_view({"schema_version": 2, "source": Client.source_for("relay", api.rooms[ROOM]), "request": null, "start_over": {"request_id": Canonical.digest(asked), "source": asked.merged({"revision": 99}, true), "status": "pending"}, "replace_open": false}, Client.source_for("relay", api.rooms[ROOM]), api.rooms[ROOM]), "A start over for another room position is refused")
+	_check(not Client.valid_view({"schema_version": 2, "source": Client.source_for("relay", api.rooms[ROOM]), "request": null, "start_over": {"request_id": Canonical.digest(asked), "source": asked.merged({"revision": 99}, true), "status": "pending"}, "replace_open": false, "run_from": 0}, Client.source_for("relay", api.rooms[ROOM]), api.rooms[ROOM]), "A start over for another room position is refused")
 	_check(await client.accept_start_over() and client.accepted and client.pending().is_empty(), "Agreeing forks the room back")
 	var fork: Dictionary = api.calls.filter(func(call: Dictionary) -> bool: return call.path.ends_with("/fork")).back().body
 	_check(int(fork.stage_index) == 0 and fork.redo_request_id == Canonical.digest(asked), "The fork goes to the first stage with the request's id")
 	_check(not coordinator.held_drafts().is_empty(), "The refused turn was kept aside before the start over")
-	_check(session.forget_room_run(ROOM) and coordinator.held_drafts().is_empty() and coordinator.last_receipt().is_empty(), "The old run's copies on this phone go with it")
+	_check(client.take_run_reset().is_empty(), "Nothing has been reset before the room is read again")
+	_check(await coordinator.refresh() and client.bind_room("relay", coordinator.snapshot()) and await client.refresh() and client.take_run_reset() == ROOM and client.take_run_reset().is_empty(), "The next read names the new run once, as it would for a phone closed when the friend agreed")
+	var heard: Array = []
+	var listener := func(owner: String, room_id: String) -> void: heard.append(owner + ":" + room_id)
+	RoomRunReset.shared().room_reset.connect(listener)
+	_check(session.forget_room_run(ROOM) and coordinator.held_drafts().is_empty() and coordinator.last_receipt().is_empty() and heard == [HOST + ":" + ROOM], "The old run's copies on this phone go with it, and every store of the room hears it")
+	RoomRunReset.shared().room_reset.disconnect(listener)
 	api.queue_free()
 	print("self redo: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)

@@ -65,7 +65,7 @@ afterEach(async () => { await reset(); });
 describe("play my turn again", () => {
   it("replaces the saved first turn in one save until the friend's phone has it", async () => {
     const { host, guest, room, path } = await played();
-    expect((await redoV2(path, host)).replace_open).toBe(true);
+    expect(await redoV2(path, host)).toMatchObject({ replace_open: true, run_from: 0 });
     expect((await redoV2(path, guest)).replace_open).toBe(false);
     // Version 1 phones read the redo state exactly as before.
     expect(Object.keys(await json<RedoState>(call(path + "/redo", "GET", host))).sort()).toEqual(["request", "schema_version", "source"]);
@@ -181,7 +181,7 @@ describe("start over", () => {
     await turn(room, host, a, {}, 409);
     const again = await turn(agreed.room, host, a);
     expect(again.room).toMatchObject({ stage_index: 0, active_role: "b" });
-    expect((await redoV2(path, guest)).start_over).toBeNull();
+    expect(await redoV2(path, guest)).toMatchObject({ start_over: null, run_from: agreed.room.branch });
     expect(await inboxRedo(host, room.room_id, "2")).toBeUndefined();
   });
 

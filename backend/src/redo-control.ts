@@ -21,10 +21,18 @@ function validRequest(value: unknown): value is RedoRequest {
 }
 export function initializeRedo(storage: DurableObjectStorage): void { storage.sql.exec(REDO_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")); }
 /** For the full room erase and a snapshot restore: the request and the seen first turn. */
-/** Start over (v2/room.ts wipeRun): the request and the seen note go; the seen table stays for the next turn. */
-export function clearRedoRequests(storage: DurableObjectStorage): void {
+/**
+ * Start over (v2/room.ts wipeRun): the request and the seen note go, and the row records the branch the run begins
+ * again on (run_from), which phones compare with the last one they saw to drop their copies of the old run.
+ */
+export function clearRedoRequests(storage: DurableObjectStorage, runFrom: number): void {
   storage.sql.exec("DELETE FROM redo_control");
-  if (seenPresent(storage)) storage.sql.exec("DELETE FROM redo_seen");
+  ensureSeen(storage);
+  storage.sql.exec("INSERT INTO redo_seen VALUES (1,'','',?) ON CONFLICT(id) DO UPDATE SET turn_id='',a_hash='',run_from=excluded.run_from", runFrom);
+}
+/** The branch the room's run last began again on (start over), 0 for a room never started over. */
+export function runFrom(storage: DurableObjectStorage): number {
+  return seenPresent(storage) ? storage.sql.exec<{ run_from: number }>("SELECT run_from FROM redo_seen WHERE id=1").toArray()[0]?.run_from ?? 0 : 0;
 }
 export function resetRedo(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM redo_control"); storage.sql.exec("DROP TABLE IF EXISTS redo_seen"); seenTables.delete(storage); }
 function stored(storage: DurableObjectStorage): RedoRequest | null {
@@ -124,7 +132,12 @@ export function startOverConsent(storage: DurableObjectStorage, room: RoomPositi
  * replacement is refused once the row names the live first turn. Operator snapshots leave the table out, and the
  * full erase and a snapshot restore drop it (resetRedo).
  */
-export const REDO_SEEN_TABLE = { name: "redo_seen", schema: "CREATE TABLE redo_seen (id INTEGER PRIMARY KEY CHECK(id=1), turn_id TEXT NOT NULL, a_hash TEXT NOT NULL)" } as const;
+export const REDO_SEEN_TABLE = { name: "redo_seen", schema: "CREATE TABLE redo_seen (id INTEGER PRIMARY KEY CHECK(id=1), turn_id TEXT NOT NULL, a_hash TEXT NOT NULL, run_from INTEGER NOT NULL DEFAULT 0)" } as const;
+function ensureSeen(storage: DurableObjectStorage): void {
+  if (seenPresent(storage)) return;
+  storage.sql.exec(REDO_SEEN_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+  seenTables.delete(storage);
+}
 /** Whether the table exists, looked up once per room instance (every waiting poll asks); only this module makes or drops it. */
 const seenTables = new WeakMap<DurableObjectStorage, boolean>();
 function seenPresent(storage: DurableObjectStorage): boolean {
@@ -142,9 +155,8 @@ export function turnSeen(storage: DurableObjectStorage, turnId: string, aHash: s
 /** Notes that the second player was handed this first turn; writes only the first time. */
 export function noteTurnSeen(storage: DurableObjectStorage, turnId: string, aHash: string): void {
   if (turnSeen(storage, turnId, aHash)) return;
-  storage.sql.exec(REDO_SEEN_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
-  seenTables.delete(storage);
-  storage.sql.exec("INSERT OR REPLACE INTO redo_seen VALUES (1,?,?)", turnId, aHash);
+  ensureSeen(storage);
+  storage.sql.exec("INSERT INTO redo_seen VALUES (1,?,?,0) ON CONFLICT(id) DO UPDATE SET turn_id=excluded.turn_id,a_hash=excluded.a_hash", turnId, aHash);
 }
 /** The table as sqlite_master lists it, so snapshot schema checks can let it pass. */
 export function isRedoSeenTable(row: { name: string; sql: string }): boolean {
@@ -156,8 +168,8 @@ export function isRedoSeenTable(row: { name: string; sql: string }): boolean {
  * before, the room's start over request, and whether this member may play their saved turn again now. Version 1
  * phones get RedoState exactly as before, which never shows a start over.
  */
-export type RedoStateV2 = { schema_version: 2; source: RedoSource | null; request: RedoRequest | null; start_over: RedoRequest | null; replace_open: boolean };
+export type RedoStateV2 = { schema_version: 2; source: RedoSource | null; request: RedoRequest | null; start_over: RedoRequest | null; replace_open: boolean; run_from: number };
 export function redoStateV2(storage: DurableObjectStorage, source: RedoSource | null, room: RoomPosition | null, replaceOpen: boolean): RedoStateV2 {
   const state = redoState(storage, source);
-  return { schema_version: 2, source: state.source, request: state.request, start_over: room ? startOverRequest(storage, room) : null, replace_open: replaceOpen };
+  return { schema_version: 2, source: state.source, request: state.request, start_over: room ? startOverRequest(storage, room) : null, replace_open: replaceOpen, run_from: runFrom(storage) };
 }

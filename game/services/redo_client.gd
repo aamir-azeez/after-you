@@ -43,8 +43,8 @@ var _storage_ready := false
 ## first send needs no receipt check, since nothing can hold it yet. A key read
 ## back from disk is checked first, as before.
 var _fresh_key := ""
-## A room this player asked to start over, seen started over since (take_started_over).
-var _started_over := ""
+## A room whose run started over since this phone last read it (take_run_reset).
+var _run_reset := ""
 
 func _init(api: Node, identity: Callable, store: RefCounted = null) -> void:
 	_api = api
@@ -74,10 +74,6 @@ func bind_room(family: String, room: Dictionary) -> bool:
 	var preserve_view: bool = _storage_ready and context == _binding and _family == family and Typed.equal(_room.get("room_id"), room.get("room_id")) and Typed.same(_source,source_for(family,room))
 	var previous_view := _view.duplicate(true)
 	var previous_state := _state.duplicate(true)
-	# This player's start over was pending, and the room is now on the next branch: the friend agreed.
-	var asked: Variant = previous_view.get("start_over")
-	if asked is Dictionary and asked.get("status") == "pending" and asked.get("source") is Dictionary and Typed.equal(asked.source.get("second_player_id"), context.player_id) and Typed.equal(asked.source.get("room_id"), room.get("room_id")) and Typed.as_int(room.get("branch"), -1) == int(asked.source.branch) + 1:
-		_started_over = str(room.room_id)
 	if context != _binding:
 		invalidate()
 		_binding = context
@@ -99,11 +95,27 @@ func bind_room(family: String, room: Dictionary) -> bool:
 	return true
 
 func pending() -> Dictionary: return _state.get("pending",{}).duplicate(true)
-## The room the friend agreed to start over since this phone asked, once, or "".
-func take_started_over() -> String:
-	var room_id := _started_over
-	_started_over = ""
+## The room whose run started over since this phone last read it, once, or "".
+func take_run_reset() -> String:
+	var room_id := _run_reset
+	_run_reset = ""
 	return room_id
+
+## A version 2 read names the branch the room's run last began again on (run_from). A
+## larger one than this phone kept means the friend agreed to start over since: the
+## old run's copies go (services/room_run_reset.gd). The first read only keeps it, as
+## a phone that never saw the room's run has nothing of an older one to drop.
+func _note_run(view: Dictionary) -> void:
+	if not view.has("run_from") or _binding.is_empty() or _room.is_empty(): return
+	var scope := "relay-run-v1:" + str(_binding.player_id) + ":" + str(_room.room_id)
+	var loaded: Dictionary = _store.read(scope)
+	if not loaded.get("ok", false): return
+	var kept: Variant = loaded.get("value", {})
+	var now := int(view.run_from)
+	var before := Typed.as_int(kept.get("run_from"), -1) if kept is Dictionary else -1
+	if before == now: return
+	if not _store.write(scope, {"schema_version": 1, "run_from": now}): return
+	if before >= 0 and now > before: _run_reset = str(_room.room_id)
 func bound_room(family: String) -> Dictionary:
 	return _room.duplicate(true) if family == _family and _storage_ready and _same(_generation) else {}
 func bound_room_id(family: String) -> String:
@@ -155,6 +167,7 @@ func refresh() -> bool:
 	if not response.get("ok",false): return _fail(str(response.get("code","redo_unavailable")))
 	if not _valid_view(response.get("data")): return _fail("redo_source_changed")
 	_view = response.data.duplicate(true)
+	_note_run(_view)
 	last_code = ""
 	last_error = ""
 	return true
@@ -164,6 +177,7 @@ func refresh() -> bool:
 func observe(value: Variant) -> bool:
 	if busy or not _storage_ready or not _same(_generation) or _room.is_empty() or not _valid_view(value): return false
 	_view = value.duplicate(true)
+	_note_run(_view)
 	return true
 
 func request_redo() -> bool: return await _prepare("request") if can_request() else _fail("redo_unavailable")
@@ -278,9 +292,10 @@ func _valid_view(value: Variant) -> bool:
 
 ## A redo state: version 1 ({schema_version 1, source, request}), or version 2 (a poll or read
 ## with X-AfterYou-Poll-Redo: 2), which adds the room's start over request (start_over, checked
-## against `room`) and whether Play my turn again is open (replace_open).
+## against `room`), whether Play my turn again is open (replace_open) and the branch the
+## room's run last began again on (run_from).
 static func valid_view(value: Variant, source: Dictionary, room: Dictionary = {}) -> bool:
-	if value is Dictionary and value.size() == 5 and Typed.equal(value.get("schema_version"), 2) and value.get("replace_open") is bool and value.has("start_over"):
+	if value is Dictionary and value.size() == 6 and Typed.equal(value.get("schema_version"), 2) and value.get("replace_open") is bool and value.has("start_over") and Typed.whole_number(value.get("run_from")) and int(value.run_from) >= 0 and int(value.run_from) < 32:
 		var over: Variant = value.start_over
 		if over != null and not (over is Dictionary and _valid_request(over, over.get("source")) and _valid_source(over.source) and Typed.same(over.source, start_over_source(room, str(over.source.get("second_player_id", ""))))): return false
 		return valid_view({"schema_version": 1, "source": value.get("source"), "request": value.get("request")}, source)

@@ -1793,12 +1793,13 @@ func _refresh_redo() -> bool:
 	var room: Dictionary = journey.snapshot()
 	if redo_flow.replacing(): return false
 	# A version 2 server also holds start over requests, at any stage of a room in play.
-	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty() and not (online_session.redo_extras_supported() and not RedoClient.start_over_source(room, str(room.get("host_id") if room.get("player_slot") == "p0" else room.get("guest_id"))).is_empty()): return false
+	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty() and not (online_session.redo_extras_supported() and room.get("guest_id") != null and room.get("active_role") in ["a", "b"]): return false
 	if not client.bind_room("relay",room): return false
 	# The poll that just ran carried the redo state (X-AfterYou-Poll-Redo): no second read.
-	var started_over: String = client.take_started_over()
-	if not started_over.is_empty(): online_session.forget_room_run(started_over)
 	if not client.observe(online_session.take_polled_redo(room)): await client.refresh()
+	# The friend agreed to start over since this phone last read the room: the old run goes from it too.
+	var reset: String = client.take_run_reset()
+	if not reset.is_empty(): online_session.forget_room_run(reset)
 	return before != client.view()
 
 ## The narrow card's line saying whether the friend has joined.

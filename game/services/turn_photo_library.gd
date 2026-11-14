@@ -176,6 +176,35 @@ func import_entry(owner: String, value: Dictionary) -> Dictionary:
 	# This flag is local to the imported exact version; its bytes remain exportable.
 	return _mark_import_hidden(owner, saved.entry_id)
 
+## Start over (services/room_run_reset.gd): every photo of one room's turns goes, entries
+## and their tombstones, and each picture no other entry still uses.
+func erase_room(owner: String, room_id: String) -> Dictionary:
+	if not _owner(owner) or not _id(room_id): return _error("invalid_owner")
+	var folder := _folder(owner)
+	if not DirAccess.dir_exists_absolute(folder.path_join("entries")): return {"ok": true}
+	var kept_pixels: Dictionary = {}
+	var gone_pixels: Dictionary = {}
+	var clean := true
+	for name: String in DirAccess.get_files_at(folder.path_join("entries")):
+		if not name.ends_with(".json"): continue
+		var doc := _read_doc(folder.path_join("entries").path_join(name))
+		if not doc.get("ok", false) or not doc.get("found", false) or not doc.value is Dictionary: continue
+		var pixels := str(doc.value.get("photo", {}).get("sha256", ""))
+		if str(doc.value.get("room_id", "")) != room_id:
+			kept_pixels[pixels] = true
+			continue
+		gone_pixels[pixels] = true
+		clean = DirAccess.remove_absolute(folder.path_join("entries").path_join(name)) == OK and clean
+		var photo: Variant = doc.value.get("photo")
+		if photo is Dictionary and photo.has("turn_id") and photo.has("recording_hash"):
+			var tomb := _tomb_path(owner, room_id, photo)
+			if FileAccess.file_exists(tomb): clean = DirAccess.remove_absolute(tomb) == OK and clean
+	if DirAccess.dir_exists_absolute(folder.path_join("objects")):
+		for name: String in DirAccess.get_files_at(folder.path_join("objects")):
+			var pixels := name.get_slice(".", 0)
+			if gone_pixels.has(pixels) and not kept_pixels.has(pixels): clean = DirAccess.remove_absolute(folder.path_join("objects").path_join(name)) == OK and clean
+	return {"ok": clean}
+
 func erase_owner(owner: String) -> Dictionary:
 	if not _id(owner):
 		return _error("invalid_owner")
