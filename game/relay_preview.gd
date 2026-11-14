@@ -2468,6 +2468,8 @@ func _finish() -> void:
 	if mode == "moment":
 		_continue_final_moment()
 		return
+	# Open turns: a later turn the stage has not closed ends as a pass, once its memory is over.
+	if not sim.snapshot().get("complete", false) and sim.has_method("can_pass") and sim.can_pass(): sim.pass_turn()
 	_take_review()
 	if review.is_empty():
 		_show_ready()
@@ -2604,7 +2606,9 @@ func _show_review() -> void:
 	if not ending.is_empty():
 		_show_ending_card(ending)
 		return
-	var can_save := bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
+	# Open turns: a pass is saved too, when its check says it may be the friend's memory.
+	var passing: bool = review.get("role") == "b" and review.get("completed") == false and bool(verified.get("ready", false))
+	var can_save := bool(verified.get("valid", false)) and (bool(verified.get("snapshot", {}).get("can_commit", false)) or passing)
 	if can_save: _start_prefetch()
 	var explanation: String = hard_flow.review_body(PlayerCopy.RELAY_PREVIEW_B9074234FC11)
 	if not can_save:

@@ -647,13 +647,13 @@ func commit(recording: Dictionary, tries: int = 0, face: String = "", track: Arr
 	if checked.is_empty(): checked = _verify_recording(recording, _room_now())
 	# Open turns: a pass is saved unfinished, once its memory is over, unless this turn must finish the stage.
 	var open: Variant = _room_now().get("open_turns")
-	var pass: bool = recording.get("role") == "b" and recording.get("completed") == false and open is Dictionary
-	if pass and (bool(open.get("must_finish", false)) or JSON.stringify(recording).to_utf8_buffer().size() > int(open.get("pass_bytes", 0))):
+	var passing: bool = recording.get("role") == "b" and recording.get("completed") == false and open is Dictionary
+	if passing and (bool(open.get("must_finish", false)) or JSON.stringify(recording).to_utf8_buffer().size() > int(open.get("pass_bytes", 0))):
 		return _error("incomplete_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_D74CA6BA0A5A)
-	if not checked.valid or not (checked.get("snapshot", {}).get("can_commit", false) or (pass and checked.get("ready", false))):
+	if not checked.valid or not (checked.get("snapshot", {}).get("can_commit", false) or (passing and checked.get("ready", false))):
 		return _error("incomplete_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_D74CA6BA0A5A)
 	var body := {"base_revision": _room_now().revision, "idempotency_key": _new_key(), "branch": _room_now().branch, "recording": recording.duplicate(true)}
-	if recording.role == "b" and not pass:
+	if recording.role == "b" and not passing:
 		var derived: Dictionary = _derived_checkpoint(_room_now(), recording)
 		if not derived.valid:
 			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
@@ -1260,11 +1260,11 @@ func _valid_snapshot(value: Variant) -> bool:
 	var verified: Dictionary = _checked_turn(chapter, value.checkpoint, {}, value.recording_a)
 	if not Typed.equal(value.recording_a.get("role"), "a") or not verified.valid or not verified.get("snapshot", {}).get("can_commit", false): return false
 	var turns: Array = [value.recording_a]
-	for pass: Variant in passes:
-		if not pass is Dictionary or not Typed.equal(pass.get("role"), "b"): return false
-		var checked: Dictionary = _checked_turn(chapter, value.checkpoint, turns[-1], pass, turns.slice(0, turns.size() - 1))
+	for later: Variant in passes:
+		if not later is Dictionary or not Typed.equal(later.get("role"), "b"): return false
+		var checked: Dictionary = _checked_turn(chapter, value.checkpoint, turns[-1], later, turns.slice(0, turns.size() - 1))
 		if not checked.valid or not checked.get("ready", false): return false
-		turns.append(pass)
+		turns.append(later)
 	return true
 
 
