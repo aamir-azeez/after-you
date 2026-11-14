@@ -1,18 +1,21 @@
 extends RefCounted
-## Paper boat (hat): a folded paper boat on the head's top, tilted up away from
-## the leaf, as the hats board draws it: a cream hull with pointed ends and a
-## terracotta fold along its front edge, a cream sail folded down its middle,
-## and the dark inside of the hull between them. Every face is flat, so the
-## folds read as paper. It sits clear beside the leaf ("pokes_through"). One
-## baked mesh, one draw call.
+## Paper boat (hat): a folded paper boat on the head's top, as the hats board
+## draws it: a cream hull with pointed ends and a terracotta fold along its
+## front edge, a cream sail folded down its middle, and the dark inside of the
+## hull between them. Every face is flat, so the folds read as paper. It sits
+## under the leaf, which comes out of the hull just beside the sail, seated
+## on the boat's top like the Straw hat's ("sits_on_top",
+## kit/wear_fit.gd). One baked mesh, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const PAPER := Color("eee9d4")
 const FOLD := Color("cb8967")
 const INK := Color("193d39")
 ## Where the keel's middle sits on the head and the boat's turn (head space):
-## its right end raised, turned a little to show its side, and its size.
-const AT := Vector3(0.24, 0.255, -0.015)
+## over the leaf's root, so the leaf rises out of the hull just beside the
+## sail, its far end raised away from the leaf, turned a little to show its
+## side, and its size.
+const AT := Vector3(-0.022, 0.297, 0.013)
 const TURN := Vector3(0.0, -0.22, 0.24)
 const SCALE := 1.2
 ## The boat's own space: x along it, y up, z across. The keel's half length,
@@ -30,7 +33,7 @@ const SAIL_FOLD := 0.018
 
 ## Metres a carried seed or lens sits higher while it is worn, just clear of
 ## the hat itself (a leaf may touch it; pip_outfit.gd lift_seed).
-const SEED_LIFT := 0.075
+const SEED_LIFT := 0.25
 
 static func wear(look: RefCounted) -> void:
 	look.mesh(look.head(), Kit.cached_mesh("paper_boat", _build), Kit.vertex_material())

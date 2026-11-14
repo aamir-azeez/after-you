@@ -4,7 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DATA := {
 	"id": "mushroom",
 	"slot": "hat",
-	"tier": "uncommon",
+	"tier": "common",
 	"name": PlayerCopy.COSMETIC_MUSHROOM,
 	"art": "res://presentation/pip_wear/soft_cap.gd",
 	"code": 204,
@@ -12,8 +12,7 @@ const DATA := {
 	"released": false,
 	## Its cap stands above the head.
 	"tall": true,
-	## The cap is whole: the leaf comes out of its top on a short stem.
+	## The cap is whole: the leaf sits right on its top (kit/wear_fit.gd top anchor).
 	"leaf_mode": "sits_on_top",
-	"leaf_lift": 0.205,
 	"leaf_max": "tall",
 }

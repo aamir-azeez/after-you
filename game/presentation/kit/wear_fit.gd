@@ -17,8 +17,13 @@ extends RefCounted
 ##   the head's far side, such as the Paper boat). A bigger leaf sits on the
 ##   hat instead, raised by the hat's "leaf_lift", or hides when the hat has no
 ##   lift. No hat is cut open for the leaf.
-## - sits_on_top: the hat is whole and the leaf comes out of its top, raised
-##   by "leaf_lift" on a short stem (the caps). A bigger leaf hides.
+## - sits_on_top: the hat is whole and the leaf comes out of its top, seated
+##   right on it as on the Straw hat, never on a long stalk (the caps, the
+##   Paper boat). A bigger leaf hides.
+## How high a raised leaf sits is one shared rule, the hat's own top anchor
+## (seat_lift): the highest point of the hat's solid shape over the leaf's
+## root, measured from its geometry, where the leaf's stalk stands. Only the
+## hats players owned before the fit still name a "leaf_lift".
 ## decide() is that table; nothing else picks. The hats players owned before
 ## the fit (Straw hat, fruit hoods, Blossom crown) keep the leaf as it was,
 ## by the owner's choice (tests/test_wear_fit.gd OWNER_KEPT).
@@ -61,12 +66,19 @@ const MODES: Array[String] = [COVERS, POKES_THROUGH, SITS_ON_TOP]
 ## effect (kit/fall_effect.gd). They neither size a leaf nor meet a hat.
 const NOT_SOLID: Array[String] = ["Halo", "Beam", "Stars", "Fall"]
 
+## The hat's top anchor: the leaf's root column and the points round it
+## (SEAT_REACH out, SEAT_RAYS of them) the hat's top is read over.
+const SEAT_REACH := 0.035
+const SEAT_RAYS := 8
+
 static var _leaf_classes: Dictionary = {}
+static var _seats: Dictionary = {}
 static var _roll := Vector2.ZERO
 
 ## Lets go of the kept measurements (at shutdown).
 static func release_cached() -> void:
 	_leaf_classes.clear()
+	_seats.clear()
 
 static func _keep() -> void:
 	SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
@@ -135,7 +147,54 @@ static func rank(name: String) -> int:
 ## hat): {"show": bool, "lift": metres}.
 static func decide(hat_id: String, leaf: String) -> Dictionary:
 	if hat_id.is_empty(): return {"show": true, "lift": 0.0}
-	return rule(Catalog.leaf_mode(hat_id), Catalog.leaf_max(hat_id), Catalog.leaf_lift(hat_id), leaf)
+	return rule(Catalog.leaf_mode(hat_id), Catalog.leaf_max(hat_id), lift_for(hat_id), leaf)
+
+## Metres the hat raises a leaf it takes on top: the "leaf_lift" it names (the
+## hats players owned before the fit), else for a hat the leaf sits on top of,
+## its top anchor (seat_lift), else 0.
+static func lift_for(hat_id: String) -> float:
+	var named := Catalog.leaf_lift(hat_id)
+	if named > 0.0 or Catalog.leaf_mode(hat_id) != SITS_ON_TOP: return named
+	var found: Variant = _seats.get(hat_id)
+	if found != null: return found
+	# Measured on a pip wearing the hat alone: dressing it seats the hat (seat_hat) before it asks here.
+	var pip: Node3D = load(SPIRIT_PATH).new()
+	pip.wear({"hat": hat_id})
+	pip.free()
+	return float(_seats.get(hat_id, 0.0))
+
+## Measures and keeps hat `hat_id`'s top anchor from `nodes`, the parts its art
+## added to `body`'s pip (pip_outfit.gd dress, before the fit asks lift_for).
+static func seat_hat(hat_id: String, body: Node3D, nodes: Array) -> void:
+	if _seats.has(hat_id) or Catalog.leaf_mode(hat_id) != SITS_ON_TOP or Catalog.leaf_lift(hat_id) > 0.0: return
+	var corners := PackedVector3Array()
+	for node: Node in nodes:
+		for part: MeshInstance3D in solid_meshes(node):
+			var head := _head_of(body, part)
+			if head == null: continue
+			var place := relative(head, part)
+			for point: Vector3 in vertices(part.mesh): corners.append(place * point)
+	_seats[hat_id] = seat_lift(corners)
+	_keep()
+
+## The lift that seats the leaf on a hat whose solid triangles (head space,
+## three corners each) are `corners`: the hat's highest point over the leaf's
+## root and round it, over where the leaf grows. 0 when no part of the hat is
+## over the root.
+static func seat_lift(corners: PackedVector3Array) -> float:
+	var root := Look.LEAF_PIVOT - Look.HEAD_CENTER
+	var top := -INF
+	for ray in range(SEAT_RAYS + 1):
+		var at := root
+		if ray > 0:
+			var angle := TAU * float(ray) / float(SEAT_RAYS)
+			at += Vector3(cos(angle), 0.0, sin(angle)) * SEAT_REACH
+		var from := Vector3(at.x, 2.0, at.z)
+		for index in range(0, corners.size() - 2, 3):
+			var hit: Variant = Geometry3D.segment_intersects_triangle(from, Vector3(at.x, -1.0, at.z), corners[index], corners[index + 1], corners[index + 2])
+			if hit != null: top = maxf(top, (hit as Vector3).y)
+	if top == -INF: return 0.0
+	return maxf(0.0, top - root.y)
 
 ## The table itself, for a hat that takes the leaf in `mode`, up to class
 ## `largest`, raising it `lift` metres when it sits on the hat.

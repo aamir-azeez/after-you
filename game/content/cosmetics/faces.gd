@@ -31,11 +31,13 @@ const ROWS := [
 	{"id": "gasp", "code": 410, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_GASP, "art": "", "moving": true},
 	{"id": "peekaboo", "code": 411, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_PEEKABOO, "art": "", "moving": true},
 	{"id": "yay", "code": 412, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_YAY, "art": "", "moving": true},
-	{"id": "smitten", "code": 413, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_SMITTEN, "art": "", "moving": true},
+	# Retired 2026-11-14 (not fit for the game): its code stays reserved.
+	{"id": "smitten", "code": 413, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_SMITTEN, "art": "", "moving": true, "retired": true},
 	{"id": "starry", "code": 414, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_STARRY, "art": "", "moving": true},
 	{"id": "flower", "code": 415, "slot": "reaction", "tier": "face_epic", "name": PlayerCopy.FACE_FLOWER, "art": "", "moving": true},
 	# The pack faces, sold one at a time; a pack's owner owns its three already.
-	{"id": "heart_eyes", "code": 416, "slot": "reaction", "tier": "face_uncommon", "name": PlayerCopy.FACE_HEART_EYES, "art": ""},
+	# Retired 2026-11-14 (not fit for the game): its code stays reserved.
+	{"id": "heart_eyes", "code": 416, "slot": "reaction", "tier": "face_uncommon", "name": PlayerCopy.FACE_HEART_EYES, "art": "", "retired": true},
 	{"id": "proud", "code": 417, "slot": "reaction", "tier": "face_common", "name": PlayerCopy.FACE_PROUD, "art": ""},
 	{"id": "wink", "code": 418, "slot": "reaction", "tier": "face_common", "name": PlayerCopy.FACE_WINK, "art": ""},
 	{"id": "wow", "code": 419, "slot": "reaction", "tier": "face_uncommon", "name": PlayerCopy.FACE_WOW, "art": ""},

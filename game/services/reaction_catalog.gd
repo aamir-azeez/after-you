@@ -11,7 +11,9 @@ extends RefCounted
 ## faces (SINGLE_FACES, content/cosmetics/faces.gd) sell one at a time only.
 ## services/face_packs.gd says which this player may send now. Any phone draws
 ## a friend's face. A well-formed id this build does not know (a face added
-## later) draws as FALLBACK_FACE and is never sent.
+## later) draws as FALLBACK_FACE and is never sent. A retired face
+## (content/cosmetics/faces.gd "retired") is no face here: never listed,
+## picked or sent, and a friend's (from an older app) draws as the heart.
 const Look = preload("res://presentation/spirit_look.gd")
 const FaceTable = preload("res://content/cosmetics/faces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -26,9 +28,11 @@ const PACKS := {"garden_faces": ["heart_eyes", "proud", "wink"], "big_feelings":
 ## Every pack face, in PACKS order.
 const PACK_FACES: Array[String] = ["heart_eyes", "proud", "wink", "wow", "crying", "dizzy"]
 ## The faces sold one at a time only, in shop order: the "reaction" rows of
-## content/cosmetics/faces.gd that are not pack faces. Each draws the spirit
-## expression of the same id.
+## content/cosmetics/faces.gd that are not pack faces or retired. Each draws
+## the spirit expression of the same id.
 static var SINGLE_FACES: Array[String] = _singles()
+## The retired faces (content/cosmetics/faces.gd "retired"), pack or single.
+static var RETIRED: Array[String] = _retired()
 ## What a well-formed face id this build does not know draws as.
 const FALLBACK_FACE := "happy"
 const ID_PATTERN := "^[a-z0-9_]{1,40}$"
@@ -45,10 +49,10 @@ static var _id := RegEx.create_from_string(ID_PATTERN)
 
 ## A face this build knows: an everyday face, a pack face or a single face.
 static func is_face(value: Variant) -> bool:
-	return value is String and (value in FACES or value in PACK_FACES or value in SINGLE_FACES)
+	return value is String and (value in FACES or is_pack_face(value) or value in SINGLE_FACES)
 
 static func is_pack_face(value: Variant) -> bool:
-	return value is String and value in PACK_FACES
+	return value is String and value in PACK_FACES and not value in RETIRED
 
 static func is_single_face(value: Variant) -> bool:
 	return value is String and value in SINGLE_FACES
@@ -63,13 +67,23 @@ static func collection() -> Array[String]:
 	var result: Array[String] = []
 	for face: String in FACES: if face != HEART: result.append(face)
 	result.append_array(SINGLE_FACES)
-	result.append_array(PACK_FACES)
+	for face: String in PACK_FACES: if is_pack_face(face): result.append(face)
 	return result
+
+## A pack's faces, in picker order, without the retired ones.
+static func pack_faces(pack: String) -> Array:
+	return (PACKS.get(pack, []) as Array).filter(func(face: String) -> bool: return is_pack_face(face))
 
 static func _singles() -> Array[String]:
 	var result: Array[String] = []
 	for row: Dictionary in FaceTable.ROWS:
-		if row.slot == "reaction" and not str(row.id) in PACK_FACES: result.append(str(row.id))
+		if row.slot == "reaction" and not str(row.id) in PACK_FACES and not bool(row.get("retired", false)): result.append(str(row.id))
+	return result
+
+static func _retired() -> Array[String]:
+	var result: Array[String] = []
+	for row: Dictionary in FaceTable.ROWS:
+		if row.slot == "reaction" and bool(row.get("retired", false)): result.append(str(row.id))
 	return result
 
 ## The pack a face belongs to, or "" for an everyday face.
@@ -79,10 +93,11 @@ static func pack_of(face: String) -> String:
 	return ""
 
 ## A face that came from elsewhere (a friend's turn, a newer server) as this
-## build draws it: a known face as it is, any other well-formed id as
-## FALLBACK_FACE, anything else "".
+## build draws it: a known face as it is, a retired face as the heart, any
+## other well-formed id as FALLBACK_FACE, anything else "".
 static func shown_face(value: Variant) -> String:
 	if is_face(value): return value
+	if value is String and value in RETIRED: return HEART
 	return FALLBACK_FACE if value is String and _id.search(value) != null else ""
 
 ## The expression a face draws, or &"" for the heart.

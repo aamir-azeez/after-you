@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CATALOG, checkedCatalog, offeredItems, offeredSets, validLook, type Catalog } from "../src/pollen/catalog";
+import { CATALOG, checkedCatalog, isRetired, offeredItems, offeredSets, validLook, type Catalog } from "../src/pollen/catalog";
 import { charge, quote, setCost, type Holdings } from "../src/pollen/spend";
 import manifest from "../../game/tests/fixtures/golden/cosmetic_manifest.json";
 
@@ -20,7 +20,8 @@ const FIXTURE: Catalog = checkedCatalog({
     ribbon: item("hat", "earned"),
     hidden: item("hat", "common", { released: false })
   },
-  packs: { garden_faces: { released: true, faces: ["heart_eyes", "proud", "wink"] }, big_feelings: { released: false, faces: ["wow", "crying", "dizzy"] } }
+  packs: { garden_faces: { released: true, faces: ["heart_eyes", "proud", "wink"] }, big_feelings: { released: false, faces: ["wow", "crying", "dizzy"] } },
+  retired: []
 });
 const holding = (owned: string[] = [], cleared: string[] = []): Holdings => ({ owned: new Set(owned), cleared: level => cleared.includes(level) });
 
@@ -35,7 +36,7 @@ describe("the shop catalogue", () => {
       const server = CATALOG.items[id];
       expect({ slot: server.slot, tier: server.tier, unlock: server.unlock, set: server.set }, id).toEqual({ slot: row.slot, tier: row.tier, unlock: row.unlock, set: row.set });
       expect(CATALOG.tier_prices[server.tier], id).toBe(row.price);
-      expect(server.tier !== "earned" && row.price > 0, id).toBe(row.sold);
+      expect(server.tier !== "earned" && row.price > 0 && !isRetired(id), id).toBe(row.sold);
     }
   });
   it("keeps the 1:5:20:50:100 ramp and sells no earned item", () => {
@@ -47,6 +48,9 @@ describe("the shop catalogue", () => {
   it("refuses a catalogue that breaks its own rules", () => {
     const base = JSON.parse(JSON.stringify(CATALOG));
     expect(() => checkedCatalog({ ...base, items: { ...base.items, daisy: { ...base.items.daisy, slot: "shoe" } } })).toThrow();
+    expect(() => checkedCatalog({ ...base, retired: ["no_such_item"] })).toThrow();
+    expect(() => checkedCatalog({ ...base, retired: ["daisy"] })).toThrow();
+    expect(() => checkedCatalog({ ...base, retired: ["smitten", "smitten"] })).toThrow();
     expect(() => checkedCatalog({ ...base, items: { ...base.items, gold_leaf: { ...base.items.gold_leaf, set: "meadow" } } })).toThrow();
     expect(() => checkedCatalog({ ...base, tier_prices: { ...base.tier_prices, earned: 5 } })).toThrow();
     expect(() => checkedCatalog({ ...base, packs: { daisy: { released: true } } })).toThrow();

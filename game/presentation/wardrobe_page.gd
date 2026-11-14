@@ -616,12 +616,13 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
 	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
 	column.add_child(picture)
-	if entry.slot == "rest_face" and not small:
+	if entry.slot == "rest_face":
 		# A resting face: the head front on, as faces board 4 crops it, so Button, Bean and Round read apart.
+		# Drawn flat on a shelf card too: no still pip to wait for, so it never sits blank.
 		var head := RestFace.new()
 		head.color = "mint" if _view == "friend" else "peach"
 		head.expression = "normal" if bool(entry.get("classic", false)) else str(entry.id)
-		head.custom_minimum_size = Vector2(CARD_PICTURE, CARD_PICTURE)
+		head.custom_minimum_size = Vector2.ONE * (64.0 if small else float(CARD_PICTURE))
 		head.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		picture.add_child(head)
 	else:

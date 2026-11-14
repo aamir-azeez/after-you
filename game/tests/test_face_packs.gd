@@ -78,7 +78,7 @@ func _catalog() -> void:
 	for pack: String in ReactionCatalog.PACKS: packed.append_array(ReactionCatalog.PACKS[pack])
 	_check(packed == NEW and ReactionCatalog.PACKS.keys() == ["garden_faces", "big_feelings"], "Garden faces then Big feelings, three faces each, every pack face in one pack")
 	for face: String in NEW:
-		_check(ReactionCatalog.is_face(face) and ReactionCatalog.is_pack_face(face), "%s is a known pack face" % face)
+		_check((ReactionCatalog.is_face(face) and ReactionCatalog.is_pack_face(face)) == not face in ReactionCatalog.RETIRED, "%s is a known pack face, unless retired" % face)
 		_check(ReactionCatalog.pack_of(face) in ReactionCatalog.PACKS and face in ReactionCatalog.PACKS[ReactionCatalog.pack_of(face)], "%s names its pack" % face)
 		_check(Look.has(ReactionCatalog.expression(face)) and ReactionCatalog.spirit_expression(face) == ReactionCatalog.expression(face), "%s draws its own expression" % face)
 		_check(not ReactionCatalog.face_name(face).is_empty() and ReactionCatalog.face_name(face) == PlayerCopy.END_REACTION_NAMES[face], "%s has a name for screen readers and its cell" % face)
@@ -105,7 +105,7 @@ func _contours() -> void:
 	_check(crying.get("streams", []).size() == 1 and _area(crying.streams) > 0.0 and crying.strokes.size() == 1, "Crying: squeezed shut with a tear stream under each eye")
 	var left: PackedVector2Array = Look.eye_contours(Look.DIZZY, 0).strokes[0]
 	var right: PackedVector2Array = Look.eye_contours(Look.DIZZY, 1).strokes[0]
-	_check(left.size() > 40 and is_equal_approx(left[-1].x, -right[-1].x) and is_equal_approx(left[-1].y, right[-1].y), "Dizzy: a spiral in each eye, turning opposite ways")
+	_check(left.size() > 40 and left[-1].is_equal_approx(right[-1]) and left[20].is_equal_approx(right[20]), "Dizzy: a spiral in each eye, both turning the same way")
 	for face: String in ["proud", "wink", "crying", "dizzy"]: _check(not Look.is_open(ReactionCatalog.expression(face)), "%s never blinks" % face)
 	for face: String in ["heart_eyes", "wow"]: _check(Look.is_open(ReactionCatalog.expression(face)), "%s blinks like an open eye" % face)
 
@@ -154,9 +154,9 @@ func _pickable() -> void:
 	FacePacks.source = func() -> Dictionary: return {"server": false, "view": {"packs": ["garden_faces"]}}
 	PollenSurfaces.set_shared_for_tests(true)
 	_check(FacePacks.pickable_packs(false).is_empty() and FacePacks.pickable_packs(true) == ["garden_faces"], "A solo pick may use an owned pack whatever the server takes")
-	_check(FacePacks.can_pick("heart_eyes", true) and not FacePacks.can_pick("wow", true) and FacePacks.can_pick("happy") and FacePacks.can_pick("heart"), "Everyday faces always, pack faces from owned packs")
+	_check(FacePacks.can_pick("proud", true) and not FacePacks.can_pick("heart_eyes", true) and not FacePacks.can_pick("wow", true) and FacePacks.can_pick("happy") and FacePacks.can_pick("heart"), "Everyday faces always, pack faces from owned packs, never a retired one")
 	PollenSurfaces.set_shared_for_tests(false)
-	_check(not FacePacks.can_pick("heart_eyes", true), "Never on an iPhone build without the shop")
+	_check(not FacePacks.can_pick("proud", true), "Never on an iPhone build without the shop")
 	PollenSurfaces.set_shared_for_tests(null)
 	FacePacks.source = Callable()
 
@@ -164,7 +164,7 @@ func _wardrobe_rows() -> void:
 	var view := {"packs": ["garden_faces"], "offered_packs": ["garden_faces", "big_feelings", "later_pack"], "pack_price": 5000}
 	var rows := FacePacks.pack_rows(view)
 	_check(rows.size() == 2 and rows[0].id == "garden_faces" and rows[0].owned and rows[1].id == "big_feelings" and not rows[1].owned and rows[1].offered and rows[1].price == 5000, "The Faces tab lists each pack sold or owned, with the server's price")
-	_check(rows[0].faces == ["heart_eyes", "proud", "wink"] and rows[0].name == PlayerCopy.FACE_PACK_NAMES.garden_faces, "Each row names its pack and its faces")
+	_check(rows[0].faces == ["proud", "wink"] and rows[0].name == PlayerCopy.FACE_PACK_NAMES.garden_faces, "Each row names its pack and its faces, the retired Heart eyes left out")
 	_check(FacePacks.faces_tab_visible(view, PollenSurfaces.new(true)), "The Faces tab shows once a pack exists")
 	_check(not FacePacks.faces_tab_visible(view, PollenSurfaces.new(false)), "Never on an iPhone build without the shop")
 	_check(not FacePacks.faces_tab_visible({"packs": [], "offered_packs": []}, PollenSurfaces.new(true)) and not FacePacks.faces_tab_visible({}, PollenSurfaces.new(true)), "No pack, no Faces tab")
@@ -323,12 +323,15 @@ func _refused_turn() -> void:
 ## The single faces: known faces, sold one at a time, each drawing its own
 ## expression; picked only while owned and the server serves version 2.
 func _single_faces() -> void:
-	_check(ReactionCatalog.SINGLE_FACES.size() == 16 and ReactionCatalog.SINGLE_FACES[0] == "aww" and ReactionCatalog.SINGLE_FACES.back() == "flower", "The sixteen single faces, in shop order")
+	_check(ReactionCatalog.SINGLE_FACES.size() == 15 and ReactionCatalog.SINGLE_FACES[0] == "aww" and ReactionCatalog.SINGLE_FACES.back() == "flower" and not "smitten" in ReactionCatalog.SINGLE_FACES, "The fifteen single faces, in shop order, Smitten retired")
+	for face: String in ["smitten", "heart_eyes"]:
+		_check(not ReactionCatalog.is_face(face) and not ReactionCatalog.is_paid_face(face) and not face in ReactionCatalog.collection() and not Cosmetics.sold(face) and Cosmetics.retired(face), "%s is retired: no face to list, pick or sell" % face)
+		_check(ReactionCatalog.shown_face(face) == Store.HEART and Cosmetics.code(face) > 0, "and a friend's %s draws as the heart, its code kept" % face)
 	for face: String in ReactionCatalog.SINGLE_FACES:
 		_check(ReactionCatalog.is_face(face) and ReactionCatalog.is_paid_face(face) and not ReactionCatalog.is_pack_face(face), "%s is a paid single face" % face)
 		_check(Look.has(ReactionCatalog.expression(face)) and Cosmetics.slot(face) == "" and Cosmetics.code(face) >= 400 and not ReactionCatalog.face_name(face).is_empty(), "%s draws, is never worn, has a 400s code and a name" % face)
 	for face: String in NEW: _check(Cosmetics.tier(face).begins_with("face_"), "%s also sells alone, on the face ladder" % face)
-	_check(ReactionCatalog.collection().size() == 8 + 16 + 6 and not Store.HEART in ReactionCatalog.collection(), "The collection lists every face but the heart")
+	_check(ReactionCatalog.collection().size() == 8 + 15 + 5 and not Store.HEART in ReactionCatalog.collection(), "The collection lists every face but the heart")
 	var view := {"faces": ["yay", "wink"], "packs": [], "reactions": ["happy", "", "", "", "", ""], "reaction_slots": 4}
 	FacePacks.source = func() -> Dictionary: return {"version": 2, "view": view, "slots": ["yay", "happy", "aww", "", "", ""]}
 	_check(FacePacks.can_pick("yay") and FacePacks.can_pick("wink") and not FacePacks.can_pick("aww") and not FacePacks.can_pick("heart_eyes"), "Version 2: owned faces only, a pack face owned alone too")

@@ -64,6 +64,11 @@ static func faces(view: Dictionary, slots: Array, selling: bool) -> Array:
 		result.append({"id": face, "name": ReactionCatalog.face_name(face), "tier": FREE_TIER if free else Catalog.tier(face), "slot": "reaction",
 			"price": int(sale.get("price", 0)), "currency": "pollen", "owned": mine, "sold": sold, "worn": false, "locked": false, "unlock_name": "", "earn": "",
 			"in_slot": slots.find(face), "moving": Catalog.moving(face), "face": true})
+	# Shop order: the everyday faces, then up the face tiers, collection order within a tier.
+	var listed := result.map(func(entry: Dictionary) -> String: return entry.id)
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var ranks := [Catalog.tier_rank(a.tier), Catalog.tier_rank(b.tier)]
+		return ranks[0] < ranks[1] if ranks[0] != ranks[1] else listed.find(a.id) < listed.find(b.id))
 	return result
 
 ## The next reaction slot as a Wardrobe entry (bought like an item), or {} when

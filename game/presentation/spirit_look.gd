@@ -344,13 +344,14 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.tear_stream = Vector4(top.x, top.y, 0.022, 0)
 			e.tear_stream_end = Vector4(bottom.x, bottom.y, 0.042, 0)
 		DIZZY:
-			# A spiral in each eye, turning opposite ways.
+			# A spiral in each eye, both turning the same way.
 			e.mode = 1
-			e.stroke = Vector4(0, 0, 0.078, 1.6 * side)
+			e.stroke = Vector4(0, 0, 0.078, 1.6)
 			e.stroke_end = Vector4(0, 0, 0.0145, 4)
 		AWW:
 			# Soft lids sloping down toward the face's edge, big pupils looking
-			# up a little, and Joy's pink cheeks.
+			# up a little, and broad pink cheeks reaching in to where a mouth's
+			# corner would end.
 			var slope := 0.42
 			var length := sqrt(slope * slope + 1.0)
 			e.outer = Vector4(0.090, 0.098, 0, -0.004)
@@ -359,8 +360,8 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.pupil = Vector4(0.070, 0.078, p.x, p.y)
 			e.pupil_wave = Vector4(0.02, 0.015, 0, 0)
 			e.pupil_phase = calm_phase
-			var cheek: Vector2 = at.call(0.052, -0.090)
-			e.blush = Vector4(0.054, 0.034, cheek.x, cheek.y)
+			var cheek: Vector2 = at.call(0.022, -0.092)
+			e.blush = Vector4(0.09, 0.042, cheek.x, cheek.y)
 		SHY:
 			# Lids a little low, both pupils down and toward the viewer's
 			# left, and big pink cheeks.

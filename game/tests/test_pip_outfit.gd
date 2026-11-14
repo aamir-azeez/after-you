@@ -28,6 +28,7 @@ const Spirit = preload("res://presentation/spirit_visual.gd")
 const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
 const Outfit = preload("res://services/outfit.gd")
+const WearFit = preload("res://presentation/kit/wear_fit.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Look = preload("res://presentation/spirit_look.gd")
@@ -449,7 +450,7 @@ func _in_frame() -> void:
 	for id: String in Catalog.ids(): outfits.append(Outfit.of(id, true))
 	# Every leaf raised by every hat that raises it: the raised leaf stays in frame too.
 	for hat: String in Catalog.ids():
-		if Catalog.slot(hat) != "hat" or Catalog.leaf_lift(hat) <= 0.0: continue
+		if Catalog.slot(hat) != "hat" or WearFit.lift_for(hat) <= 0.0: continue
 		for leaf: String in Catalog.ids():
 			if Catalog.slot(leaf) == "leaf": outfits.append(Outfit.from({"hat": hat, "leaf": leaf}, true))
 	for outfit: Dictionary in outfits:

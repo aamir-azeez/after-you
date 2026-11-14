@@ -86,6 +86,11 @@ const OPTIONAL := {
 	## A Bell sound item: the fixed cue (services/sound_cues.gd CUES) the
 	## player's result screen plays once, or "".
 	"sound": "",
+	## true: taken out of the game for good (a face not fit for the game). It is
+	## never sold, listed, picked or drawn; its code stays reserved, and the
+	## server keeps it owned for older apps and pays its price back once
+	## (backend catalog.json "retired", pollen/retired.ts).
+	"retired": false,
 }
 const REQUIRED := ["id", "code", "slot", "tier", "name", "art"]
 ## The highest item code (backend/src/config.ts COSMETIC_CODE_MAX).

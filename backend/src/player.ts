@@ -31,6 +31,7 @@ import { switchApplies } from "./test-codes";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_EXTEND_WITHIN_MS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceChangeBudget, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type FruitHooks, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
+import { refundRetired } from "./pollen/retired";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedFaceIds, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
 import { anyBundlesOn, faceSinglesOn, fruitsOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
@@ -267,6 +268,8 @@ export class Player extends DurableObject<Env> {
       await this.checkBundles(identity.player_id);
       if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
     }
+    // A retired item the player owns is paid back once, before the balance is read (pollen/retired.ts).
+    this.refundRetired();
     const now = Date.now(), wallet = walletView(this.ctx.storage, now), ladder = grant ? grantView(this.ctx.storage) : undefined;
     // Duel energy rides the wallet read while ENERGY is on (pollen/energy.ts): reads only, no row.
     const read = { ...wallet, ...(ladder ? { grant: ladder } : {}), ...(withEnergy ? { energy: energyView(this.ctx.storage, now) } : {}) };
@@ -276,6 +279,11 @@ export class Player extends DurableObject<Env> {
     const fruitPart = fruits ? this.fruitsPart(now) : undefined;
     return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), name_price_next: nextNamePriceAfter(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}),
       ...(fruitPart ? { fruits: fruitPart } : {}) } : { ...read, wardrobe } };
+  }
+  /** Pays back each retired item the player owns, once; a failure never stops the read it rides on (the next read tries again). */
+  private refundRetired(): void {
+    try { this.ctx.storage.transactionSync(() => refundRetired(this.ctx.storage, Date.now())); }
+    catch (error) { logWarning("retired_refund_failed", { reason: errorCode(error) }); }
   }
   /** The wallet read's Fruits part; a failure never stops the read it rides on (the phone keeps its last copy). */
   private fruitsPart(now: number): FruitsView | undefined {

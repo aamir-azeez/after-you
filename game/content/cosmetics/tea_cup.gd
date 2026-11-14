@@ -4,7 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DATA := {
 	"id": "tea_cup",
 	"slot": "hat",
-	"tier": "uncommon",
+	"tier": "rare",
 	"name": PlayerCopy.COSMETIC_TEA_CUP,
 	"art": "res://presentation/pip_wear/vessel_hat.gd",
 	"code": 205,

@@ -10,6 +10,7 @@ extends RefCounted
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Outfit = preload("res://services/outfit.gd")
 const PipOutfit = preload("res://presentation/pip_outfit.gd")
+const WearFit = preload("res://presentation/kit/wear_fit.gd")
 
 const CAMERA_AT := Vector3(0.0, 0.66, 2.45)
 const LOOK_AT := Vector3(0.0, 0.53, 0.0)
@@ -26,7 +27,7 @@ const WIDE_PAN := 0.05
 ## much lower it looks, so the ring round the feet stays in frame.
 const LOW_PULL := 1.35
 const LOW_DROP := 0.12
-## With a hat that raises the leaf (Outfit.leaf_rise, metres): the camera
+## With a hat that raises the leaf (kit/wear_fit.gd lift_for, metres): the camera
 ## stands this much farther per metre raised and looks up half of it, so the
 ## raised leaf's top stays in frame and the feet stay where they were.
 const RISE_PULL := 1.05
@@ -77,7 +78,7 @@ static func frame(camera: Camera3D, outfit: Dictionary, place: StringName = PipO
 	var wide := Outfit.wide(worn)
 	var tall := Outfit.tall(worn)
 	var low := Outfit.low(worn, place)
-	var rise := Outfit.leaf_rise(worn)
+	var rise := WearFit.lift_for(str(worn.hat)) if worn.has("hat") else 0.0
 	if not wide and not tall and not low and rise <= 0.0:
 		camera.look_at_from_position(CAMERA_AT, LOOK_AT)
 		return

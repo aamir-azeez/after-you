@@ -58,7 +58,7 @@ static func owned_faces(view: Variant) -> Array:
 	var packs: Variant = view.get("packs")
 	if packs is Array:
 		for pack: String in Catalog.PACKS:
-			if pack in packs: faces.append_array(Catalog.PACKS[pack])
+			if pack in packs: faces.append_array(Catalog.pack_faces(pack))
 	return faces
 
 ## The React card's faces in slot order ("" for an empty place), each face the
@@ -109,6 +109,6 @@ static func pack_rows(view: Variant) -> Array:
 		var mine: bool = owned is Array and pack in owned
 		var sold: bool = offered is Array and pack in offered
 		if not mine and not sold: continue
-		rows.append({"id": pack, "name": Catalog.pack_name(pack), "faces": (Catalog.PACKS[pack] as Array).duplicate(),
+		rows.append({"id": pack, "name": Catalog.pack_name(pack), "faces": Catalog.pack_faces(pack),
 			"owned": mine, "offered": sold, "price": Typed.as_int(view.get("pack_price"), 0)})
 	return rows

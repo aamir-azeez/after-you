@@ -85,7 +85,7 @@ func _prices() -> void:
 	for id: String in Catalog.ids():
 		var tier := str(Catalog.item(id).tier)
 		_check(Catalog.price(id) == int(Index.TIER_PRICES[tier]), "%s costs its tier's price" % id)
-		_check(Catalog.sold(id) == (tier != "earned"), "%s is sold exactly when it is not earned" % id)
+		_check(Catalog.sold(id) == (tier != "earned" and not Catalog.retired(id)), "%s is sold exactly when it is neither earned nor retired" % id)
 		if tier == "special": _check(not str(Catalog.item(id).unlock).is_empty(), "%s (Special) opens only after a chapter is cleared" % id)
 	_check(Catalog.price("nothing") == 0 and not Catalog.sold("nothing"), "An unknown id costs nothing and is not sold")
 
@@ -97,9 +97,9 @@ func _rules() -> void:
 		# The Orchard, as the server's catalogue sells it (FRUITS contract).
 		"apple_hood": ["hat", "fruit_hat"], "blueberry_hood": ["hat", "fruit_hat"], "blossom_crown": ["hat", "fruit_hat"], "orchard_skin": ["body", "fruit_body"], "apple_leaf": ["leaf", "fruit_small"],
 		"sprig_coral": ["leaf", "sprig"], "sprig_plum": ["leaf", "sprig"], "sprig_sun": ["leaf", "sprig"], "sprig_sky": ["leaf", "sprig"],
-		# The Pollen hats and leaves board, graded by how they look.
-		"paper_boat": ["hat", "common"], "rain_cap": ["hat", "uncommon"], "flower_pot": ["hat", "common"], "wool_cap": ["hat", "uncommon"],
-		"mushroom": ["hat", "uncommon"], "tea_cup": ["hat", "uncommon"], "wave_cap": ["hat", "rare"], "glass_house": ["hat", "special"],
+		# The Pollen hats and leaves board, graded by how they look (the owner's regrade, 2026-11-14).
+		"paper_boat": ["hat", "uncommon"], "rain_cap": ["hat", "common"], "flower_pot": ["hat", "uncommon"], "wool_cap": ["hat", "uncommon"],
+		"mushroom": ["hat", "common"], "tea_cup": ["hat", "rare"], "wave_cap": ["hat", "uncommon"], "glass_house": ["hat", "special"],
 		"bud": ["leaf", "common"], "feather": ["leaf", "uncommon"], "maple": ["leaf", "uncommon"], "twin_sprout": ["leaf", "uncommon"],
 		"warm_tip": ["leaf", "common"], "pond_bud": ["leaf", "uncommon"],
 		# Pollen skins, trails and little extras (board 2026-11-12), graded by what each does.

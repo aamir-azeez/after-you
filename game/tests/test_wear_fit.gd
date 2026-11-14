@@ -7,7 +7,8 @@ extends SceneTree
 ## - the leaf's roll against the head never leaves the range the fit sweeps;
 ## - every hat against every leaf, by geometry: a shown leaf keeps CLEARANCE
 ##   from the hat through its whole roll (a raised leaf's stalk may tuck into
-##   the hat); every failing pair is named. Checked point to triangle both
+##   the hat), or, seated on the hat's top, dips at most SEATED_DIP into it;
+##   every failing pair is named. Checked point to triangle both
 ##   ways and edge through triangle both ways, through a grid, so it stays
 ##   fast as items are added;
 ## - beside the leaf a hat that lets it poke through stays under LIP_LIMIT;
@@ -24,6 +25,11 @@ const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const DT := 1.0 / 60.0
 ## A raised leaf's stalk may stand in the hat this far from its pivot.
 const STALK_TUCK := 0.045
+## A leaf seated on its hat's top (kit/wear_fit.gd top anchor) rests on the
+## hat, as on the Straw hat the owner chose: through its roll it may dip into
+## the hat at most this far (metres), never further. The Straw hat's own leaves
+## dip up to 3.5 cm.
+const SEATED_DIP := 0.035
 ## Steps through the leaf's roll for the pair check.
 const ROLLS := 16
 ## The grid's cell for the pair check (metres).
@@ -39,7 +45,6 @@ const BESIDE := {
 	"lantern": "hangs on the far side",
 	"lighthouse_lamp": "on the head's far corner",
 	"top_ten_ribbon": "a rosette on the far front corner",
-	"paper_boat": "on the head's far side, its end raised away from the leaf",
 	"flower_pot": "on the head's far side, leaning away from the leaf",
 	"tea_cup": "on the head's far side",
 	"wave_cap": "the waves run across the far side of the head",
@@ -105,7 +110,7 @@ func _declarations() -> void:
 		if Catalog.slot(id) == "hat":
 			_check(mode in WearFit.MODES, "%s (hat) declares its way with the leaf: %s" % [id, mode])
 			_check(Catalog.leaf_max(id) in WearFit.CLASSES, "%s takes leaves up to a known class: %s" % [id, Catalog.leaf_max(id)])
-			if mode == WearFit.SITS_ON_TOP: _check(Catalog.leaf_lift(id) > 0.0, "%s raises the leaf it sits on top" % id)
+			if mode == WearFit.SITS_ON_TOP: _check(WearFit.lift_for(id) > 0.0, "%s raises the leaf it sits on top" % id)
 		else: _check(mode.is_empty(), "%s is not a hat and declares no leaf way" % id)
 	for file: Script in Index.ITEMS:
 		_check(not (file.DATA as Dictionary).has("leaf_class"), "%s sets no leaf class by hand" % file.DATA.id)
@@ -289,12 +294,19 @@ func _pairs() -> void:
 				continue
 			shown += 1
 			if OWNER_KEPT.has(hat): continue
+			if _seated(hat):
+				if _gap(hats[hat], leaves[leaf], sweep, lift + SEATED_DIP) <= 0.0: failing.append("%s + %s (dips over %.3f into it)" % [hat, _name(leaf), SEATED_DIP])
+				continue
 			var gap := _gap(hats[hat], leaves[leaf], sweep, lift)
 			if gap < WearFit.CLEARANCE: failing.append("%s + %s (gap %.4f)" % [hat, _name(leaf), gap])
 	var took := Time.get_ticks_msec() - started
 	print("PAIRS: %d hats x %d leaves, %d shown, %d hidden, %d ms" % [_hats.size(), _leaves.size(), shown, hidden, took])
-	_check(failing.is_empty(), "Every shown leaf keeps %.4f clear of its hat through its roll; failing: %s" % [WearFit.CLEARANCE, ", ".join(failing)])
+	_check(failing.is_empty(), "Every shown leaf keeps %.4f clear of its hat through its roll, or rests on the hat it is seated on; failing: %s" % [WearFit.CLEARANCE, ", ".join(failing)])
 	_check(took < PAIR_BUDGET_MS, "The hat by leaf check stays fast: %d ms" % took)
+
+## A hat the leaf sits on top of, seated by its top anchor (no "leaf_lift" of its own).
+func _seated(hat: String) -> bool:
+	return Catalog.leaf_mode(hat) == WearFit.SITS_ON_TOP and Catalog.leaf_lift(hat) <= 0.0
 
 ## The least gap between the hat and the leaf, through the leaf's roll,
 ## raised `lift`: each leaf point to the hat's triangles, each hat point to the

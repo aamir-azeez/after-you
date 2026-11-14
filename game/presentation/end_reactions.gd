@@ -733,7 +733,7 @@ class FacesCard extends CanvasLayer:
 			cells.erase(str(child.name).trim_prefix("Face_"))
 			grid.remove_child(child)
 			child.queue_free()
-		var faces: Array = slot_faces if not slot_faces.is_empty() else Store.Catalog.PACKS.get(id, Store.FACES)
+		var faces: Array = slot_faces if not slot_faces.is_empty() else (Store.Catalog.pack_faces(id) if Store.Catalog.PACKS.has(id) else Store.FACES)
 		for face: String in faces:
 			if face == Store.HEART: continue
 			grid.add_child(_cell(face, CELL_SIZE, true))
