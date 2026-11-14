@@ -34,10 +34,10 @@ extends Node
 ##   Fruits page and its convert card): the chip's Fruit half, "Fruits for
 ##   playing together" and "Turn Fruits into Pollen", each shown only while
 ##   Main can open it
-## It asks Main to leave through back_requested and to open the Wardrobe
-## through wardrobe_requested. `return_to` names where Back goes ("wardrobe";
-## "home" from Home's chip; "pollen" from the Pollen page's chip; "fruits" from
-## the Fruits page); Main reads it.
+## - menu_opened(screen, from, back) when Main has it: the one back history the
+##   menu screens share (presentation/menu_back.gd), told the store opened over `from`
+## It asks Main to leave through back_requested (Main's back history says where
+## Back goes) and to open the Wardrobe through wardrobe_requested.
 ##
 ## The Fruits tab lists a Fruit pack only while the server sells them in this
 ## phone's store (fruit_packs_visible) and RevenueCat's "fruits" offering priced
@@ -67,6 +67,8 @@ const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
 
 const MODE_POLLEN_STORE := "pollen_store"
+## Its name in Main's back history (presentation/menu_back.gd).
+const MENU_SCREEN := "store"
 
 signal back_requested
 signal wardrobe_requested
@@ -94,8 +96,6 @@ var _status := ""
 var _retry := false
 ## The Previous purchases sheet's history reads; only the newest one draws.
 var _purchase_reads := 0
-## Where Back returns: "wardrobe" (Main goes to the Wardrobe, or Home), "home" or "pollen".
-var return_to := "wardrobe"
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -143,12 +143,11 @@ func available() -> bool:
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
-## Opens the store on `tab_name` ("pollen", or "fruits" while Fruits show), its Back going to `from`.
+## Opens the store on `tab_name` ("pollen", or "fruits" while Fruits show) over the screen `from` (Main's back history).
 ## Offline it says why and asks the server once instead: prices and buying need it.
 func show_store(from: String = "wardrobe", tab_name: String = Bundles.POLLEN) -> void:
 	if not available(): return
 	if OfflineHold.refuse(): return
-	return_to = from
 	tab = Bundles.FRUITS if tab_name == Bundles.FRUITS and fruits_shown() else Bundles.POLLEN
 	host.running = false
 	host.mode = MODE_POLLEN_STORE
@@ -168,6 +167,7 @@ func show_store(from: String = "wardrobe", tab_name: String = Bundles.POLLEN) ->
 	if not _fruits().changed.is_connected(_on_fruits_changed): _fruits().changed.connect(_on_fruits_changed)
 	host.overlay.add_child(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
+	if host.has_method("menu_opened"): host.menu_opened(MENU_SCREEN, from, _page.back_button)
 	_gate = BusyTapGate.new(_page)
 	_status = PlayerCopy.POLLEN_STORE_LOADING
 	_retry = false
@@ -177,9 +177,9 @@ func show_store(from: String = "wardrobe", tab_name: String = Bundles.POLLEN) ->
 	_show_unseen()
 	load_store()
 
-## Opens the store again with the Back and tab it had (when a page it opened goes Back).
+## Opens the store again on the tab it had (Back from a page it opened).
 func reopen() -> void:
-	show_store(return_to, tab)
+	show_store("", tab)
 
 ## A tab: the Pollen bundles, or the Fruit packs while Fruits show.
 func set_tab(tab_name: String) -> void:
@@ -191,13 +191,12 @@ func set_tab(tab_name: String) -> void:
 	_redraw()
 
 ## The chip's Fruit half and "Fruits for playing together": the Fruits page,
-## whose Back comes here. When the Fruits page opened this store, it is where
-## Back leads, so it goes Back.
+## whose Back comes here (or, when the Fruits page opened this store, the
+## history goes back to it).
 func show_fruits() -> void:
 	if not is_open(): return
 	_close_sheet()
-	if return_to == "fruits": back_requested.emit()
-	elif host.has_method("open_fruits_page"): host.open_fruits_page("store")
+	if host.has_method("open_fruits_page"): host.open_fruits_page(MENU_SCREEN)
 
 ## "Turn Fruits into Pollen": the convert card over the store.
 func show_convert() -> void:
@@ -285,14 +284,13 @@ func _show_unseen(bought: Dictionary = {}) -> void:
 	_redraw()
 
 ## "Earn Pollen free by playing" and the balance on the page's chip: the Pollen
-## page, whose Back returns here. When the Pollen page opened this store, that
-## page is where Back leads, so it goes Back. A page that cannot open (Pollen
-## not known on this phone yet) says so.
+## page, whose Back returns here (or, when the Pollen page opened this store,
+## the history goes back to it). A page that cannot open (Pollen not known on
+## this phone yet) says so.
 func show_earning() -> void:
 	if not is_open() or not host.has_method("show_pollen_from_play"): return
 	_close_sheet()
-	if return_to == "pollen": back_requested.emit()
-	elif not host.show_pollen_from_play(): _toast(PlayerCopy.POLLEN_PLAY_OFFLINE)
+	if not host.show_pollen_from_play(): _toast(PlayerCopy.POLLEN_PLAY_OFFLINE)
 
 ## Previous purchases: the receipts list on its sheet, from one history read.
 ## Money shows only while the store sells in US dollars (services/store_currency.gd),
