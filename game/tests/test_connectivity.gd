@@ -3,7 +3,7 @@ extends SceneTree
 ## (Main's RoomsApi, the live socket, the probe in services/connectivity_probe.gd)
 ## and the controls it greys (presentation/offline_hold.gd):
 ## - unknown at launch reads as online, so a first tap registers;
-## - going offline takes two failures in a row with no answer between them
+## - going offline takes three failures in a row with no answer between them
 ##   (one dropped request, or failures between answers, never grey anything);
 ## - any answer, of any status, or the live socket opening reads as online at once;
 ## - only real transport failures count: a request that could not start, a
@@ -359,7 +359,7 @@ func _home() -> void:
 	_check(app.home_menu_view.wardrobe_button.visible, "The Wardrobe row shows while the Wardrobe has something to show")
 	stub.on = false
 	state.force(false)
-	_check(stub.told == [false] and not app.home_menu_view.wardrobe_button.visible, "Offline the Wardrobe hears it and the row follows (hidden with nothing saved)")
+	_check(stub.told == [false] and not app.home_menu_view.wardrobe_button.visible, "Offline the Wardrobe hears it and the row follows (hidden while the server never said it is on)")
 	stub.on = true
 	state.note_reached()
 	_check(stub.told == [false, true] and app.home_menu_view.wardrobe_button.visible, "Online again the Wardrobe hears it and the row comes back")

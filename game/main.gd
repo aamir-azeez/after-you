@@ -922,11 +922,16 @@ func awaiting_answer(store: RefCounted) -> bool:
 	var scope := _names_scope()
 	return not scope.is_empty() and not store.told(str(scope.server), str(scope.owner))
 
-## Home's Wardrobe row: while the server has it on, or, while its first answer
-## is to come (awaiting_answer), wherever this build shows the Wardrobe; the
-## answer hides it if the server has it off.
+## Home's Wardrobe row: while the server has it on (offline too, greyed while
+## there is nothing kept to show, never gone), or, while its first answer is to
+## come (awaiting_answer), wherever this build shows the Wardrobe; only the
+## server saying off hides it.
 func _wardrobe_offered() -> bool:
-	return wardrobe_flow.available() or (wardrobe_flow.build_shows() and awaiting_answer(Wardrobe.shared()))
+	if wardrobe_flow.available(): return true
+	if not wardrobe_flow.build_shows(): return false
+	var scope := _names_scope()
+	if not scope.is_empty() and Wardrobe.shared().enabled(str(scope.server), str(scope.owner)): return true
+	return awaiting_answer(Wardrobe.shared())
 
 ## The launch and resume capabilities read (services/capabilities_refresh.gd):
 ## true answered, false failed, null not now (no player yet, or the room
