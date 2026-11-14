@@ -1,4 +1,6 @@
 import { withEnergy } from "./energy-charge";
+import { clientReach } from "../app-status";
+import type { Reach } from "../flags";
 import { energyOn } from "../pollen/features";
 import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, digest, isObject, ok, randomToken, unwrap, type Outcome } from "../protocol";
 import { pooled } from "../room-inbox";
@@ -65,7 +67,7 @@ const GHOSTS_SHOWN = 3;
 export function duelsCapability(request: Request, env: Env): { duels_version?: number; race_ghost_version?: number; public_duels_version?: number } {
   if (!duelsOn(env) || request.headers.get(DUELS_HEADER) !== "1") return {};
   // Public duels ride the same header (public-routes.ts publicDuelsCapability).
-  return { duels_version: 1, ...(flags.raceGhost(env) ? { race_ghost_version: 1 } : {}), ...publicDuelsCapability(request, env, DUELS_HEADER), ...(energyOn(env) ? { duels_energy_version: 1 } : {}) };
+  return { duels_version: 1, ...(flags.raceGhost(env) ? { race_ghost_version: 1 } : {}), ...publicDuelsCapability(request, env, DUELS_HEADER), ...(energyOn(env, clientReach(request)) ? { duels_energy_version: 1 } : {}) };
 }
 
 export function fields(input: unknown, keys: string[]): Record<string, unknown> {
@@ -298,7 +300,7 @@ async function knownAcross(env: Env, a: readonly string[], b: readonly string[])
   return found.filter((key): key is string => key !== null);
 }
 
-async function challenge(env: Env, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
+async function challenge(env: Env, reach: Reach, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
   const shownLooks = looksOn(env);
   const body = fields(input, ["idempotency_key", "friend", "board"]);
   if (typeof body.idempotency_key !== "string" || !IDEMPOTENCY_PATTERN.test(body.idempotency_key)) throw new ApiError(400, "invalid_duel_request");
@@ -328,7 +330,7 @@ async function challenge(env: Env, player: string, input: unknown, now: number, 
   // Each side starts in the looks its members' party rows keep (read above); turns bring their room's looks.
   // Each of the starting pair pays 1 energy while ENERGY is on, given back if the board refuses (energy-charge.ts). The board
   // is asked only inside, after the charge: an RPC starts when it is called, so it must not be called before.
-  const { value: made, energy } = await withEnergy(env, player, a, duelId, async () => {
+  const { value: made, energy } = await withEnergy(env, reach, player, a, duelId, async () => {
     const made = await duelsAt(env, key).create(newFriendDuel({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
       a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), b: blankSide(b, bKeys.pair_key, shownLooks ? theirs.looks : undefined, bKeys.account_key), known }, now));
     if (!made) throw new ApiError(503, "duels_busy");
@@ -340,7 +342,7 @@ async function challenge(env: Env, player: string, input: unknown, now: number, 
   return { schema_version: 1, duel: viewFor(made, player, shownLooks), ...(energy ? { energy } : {}) };
 }
 
-async function ghostRace(env: Env, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
+async function ghostRace(env: Env, reach: Reach, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
   const shownLooks = looksOn(env);
   const body = fields(input, ["idempotency_key", "board", "source", "entry_id"]);
   if (typeof body.idempotency_key !== "string" || !IDEMPOTENCY_PATTERN.test(body.idempotency_key) || (body.source !== "board" && body.source !== "developer")) throw new ApiError(400, "invalid_duel_request");
@@ -373,7 +375,7 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number, 
   const a = [player, mine.partner] as [string, string], [aKeys] = await duelPairKeys(env, [a]);
   const { duels } = await duelsOf(env, mine.state.duels, player);
   if (openFor(duels, aKeys, "ghost") >= MAX_GHOST_RACES_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
-  const { value: made, energy } = await withEnergy(env, player, a, duelId, async () => {
+  const { value: made, energy } = await withEnergy(env, reach, player, a, duelId, async () => {
     const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
       a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), ghost }, now));
     if (!made) throw new ApiError(503, "duels_busy");
@@ -384,7 +386,7 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number, 
   return { schema_version: 1, duel: viewFor(made, player, shownLooks), ...(energy ? { energy } : {}) };
 }
 
-async function duelAction(env: Env, player: string, key: string, duelId: string, action: string | undefined, input: unknown, now: number): Promise<unknown> {
+async function duelAction(env: Env, reach: Reach, player: string, key: string, duelId: string, action: string | undefined, input: unknown, now: number): Promise<unknown> {
   const shownLooks = looksOn(env);
   const [duel] = await duelsAt(env, key).read([duelId], player);
   const mine = duel ? sideOf(duel, player) : -1;
@@ -404,7 +406,7 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
     }
     // The accepting pair pays 1 energy each; a refused accept gives it back (energy-charge.ts).
     const payers = duel.status === "challenged" ? duel.sides[1]!.members.filter((id): id is string => typeof id === "string") : [];
-    const { value: answer, energy } = payers.length ? await withEnergy(env, player, payers, duelId, async () => unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact })))
+    const { value: answer, energy } = payers.length ? await withEnergy(env, reach, player, payers, duelId, async () => unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact })))
       : { value: unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact })), energy: null };
     return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks), ...(energy ? { energy } : {}) };
   }
@@ -472,7 +474,7 @@ export async function routeDuels(request: Request, path: string, player: string,
     if (path === DUELS_PREFIX + "/ghosts") return ghosts(env);
     if (path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) { const answer = await routePublicDuels(request, path, player, env, now, null, look, safetyToken); if (answer !== null) return answer; }
     const match = DUEL_PATH.exec(path);
-    if (match && !match[3]) return duelAction(env, player, boardOf(match[1]), match[2], undefined, null, now);
+    if (match && !match[3]) return duelAction(env, clientReach(request), player, boardOf(match[1]), match[2], undefined, null, now);
     if (match?.[3] === "their-run") return theirRun(env, player, boardOf(match[1]), match[2], now);
     throw new ApiError(404, "not_found");
   }
@@ -482,11 +484,11 @@ export async function routeDuels(request: Request, path: string, player: string,
   if (path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) { const answer = await routePublicDuels(request, path, player, env, now, input, look); if (answer !== null) return answer; }
   const partyMatch = PARTY_PATH.exec(path);
   if (partyMatch) return partyRoute(env, partyMatch[1], player, input, now, look);
-  if (path === DUELS_PREFIX + "/challenge") return challenge(env, player, input, now, look);
-  if (path === DUELS_PREFIX + "/ghost") return ghostRace(env, player, input, now, look);
+  if (path === DUELS_PREFIX + "/challenge") return challenge(env, clientReach(request), player, input, now, look);
+  if (path === DUELS_PREFIX + "/ghost") return ghostRace(env, clientReach(request), player, input, now, look);
   const match = DUEL_PATH.exec(path);
   if (match?.[3] === "their-run/ack") return acknowledgeRun(env, player, boardOf(match[1]), match[2], input);
-  if (match?.[3] && match[3] !== "their-run") return duelAction(env, player, boardOf(match[1]), match[2], match[3], input, now);
+  if (match?.[3] && match[3] !== "their-run") return duelAction(env, clientReach(request), player, boardOf(match[1]), match[2], match[3], input, now);
   throw new ApiError(404, "not_found");
 }
 

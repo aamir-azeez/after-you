@@ -6,7 +6,7 @@
  * - CONFIG: one plain var holding a JSON object (ServerConfig, parsed by parseConfig) for everything that is not
  *   secret but must change without a code deploy, or must never reach Git: the server flags, the minimum app
  *   versions, the owner's friend aliases, the RevenueCat identifiers, the testers' code hashes and the cosmetics
- *   release list and featured item (by item code, pollen/catalog.json). It lives only in
+ *   release list and featured item (by item code, pollen/catalog.json), and the version gates. It lives only in
  *   Cloudflare and in the deploy runners' pinned copy, never in wrangler.jsonc.
  * - Secrets: keys and tokens, each its own `wrangler secret`, so a rotation touches nothing else. Never here.
  *
@@ -71,6 +71,28 @@ export function parseVersion(value: unknown): Version | null {
   if (pre.some(part => /^[0-9]+$/.test(part) && (part.length > 1 && part.startsWith("0") || part.length > 6))) return null;
   return { core: [Number(found[1]), Number(found[2]), Number(found[3])], pre };
 }
+/** Semantic version precedence: negative when a is older, 0 when equal, positive when newer. */
+export function compareVersions(a: Version, b: Version): number {
+  for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] < b.core[i] ? -1 : 1;
+  if (a.pre.length === 0 || b.pre.length === 0) return a.pre.length === b.pre.length ? 0 : a.pre.length === 0 ? 1 : -1;
+  for (let i = 0; i < Math.min(a.pre.length, b.pre.length); i++) {
+    const x = a.pre[i], y = b.pre[i];
+    if (x === y) continue;
+    const xn = /^[0-9]+$/.test(x), yn = /^[0-9]+$/.test(y);
+    if (xn && yn) return Number(x) < Number(y) ? -1 : 1;
+    if (xn !== yn) return xn ? -1 : 1;
+    return x < y ? -1 : 1;
+  }
+  return a.pre.length === b.pre.length ? 0 : a.pre.length < b.pre.length ? -1 : 1;
+}
+
+/**
+ * What CONFIG's `feature_min_version` may gate to apps at a version or newer (flags.ts gatedOn): the three flags whose
+ * every reader asks per request, and the cosmetics release list. One version for every channel: a build carries the same
+ * code on each. A gate is the only switch of its part: listing a gated flag in `features` too is a problem, and the gate wins.
+ */
+export const GATED_KEYS = Object.freeze(["FRUITS", "ENERGY", "FACE_SINGLES", "cosmetics_released"] as const);
+export type GatedKey = typeof GATED_KEYS[number];
 
 export type FriendAliases = { readonly byAlias: ReadonlyMap<string, string>; readonly byId: ReadonlyMap<string, string> };
 /**
@@ -127,6 +149,11 @@ export type ServerConfig = {
   readonly cosmetics_released: ReadonlySet<number>;
   /** The item code the shop features (pollen/catalog.ts featuredItem), or null for the phone's own weekly pick. */
   readonly cosmetics_featured: number | null;
+  /**
+   * Each gated part (GATED_KEYS) and the oldest app it is on for. null is a malformed gate: that part is off for every
+   * app (fail closed), never on for all. A whole malformed object closes every gated part.
+   */
+  readonly feature_min_version: ReadonlyMap<GatedKey, Version | null>;
 };
 /**
  * `problems`: values that are malformed. Each malformed value fails safe where it is read: the whole object when it
@@ -143,9 +170,10 @@ const NO_ALIASES: FriendAliases = Object.freeze({ byAlias: new Map<string, strin
 const NO_REVENUECAT: RevenueCatSettings = Object.freeze({ play_subscription_product_ids: [], app_store_subscription_product_ids: [], reviewer_ids: [], tester_ids: [] });
 const NO_TEST_CODES: ReadonlyMap<TestCodeAction, string> = new Map();
 const NO_COSMETICS: ReadonlySet<number> = new Set<number>();
+const NO_GATES: ReadonlyMap<GatedKey, Version | null> = new Map();
 export const EMPTY_CONFIG: ServerConfig = Object.freeze({ features: new Set<string>(), min_client_version: Object.freeze({}), friend_aliases: NO_ALIASES, revenuecat: NO_REVENUECAT, test_codes: NO_TEST_CODES,
-  cosmetics_released: NO_COSMETICS, cosmetics_featured: null });
-const TOP_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat", "test_codes", "cosmetics_released", "cosmetics_featured"];
+  cosmetics_released: NO_COSMETICS, cosmetics_featured: null, feature_min_version: NO_GATES });
+const TOP_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat", "test_codes", "cosmetics_released", "cosmetics_featured", "feature_min_version"];
 const STRING_IDS = { project_id: PROJECT_PATTERN, play_entitlement_lookup_id: LOOKUP_PATTERN, play_product_id: PRODUCT_PATTERN, app_store_entitlement_lookup_id: LOOKUP_PATTERN } as const;
 const PRODUCT_LISTS = ["play_subscription_product_ids", "app_store_subscription_product_ids"] as const;
 const PLAYER_LISTS = ["reviewer_ids", "tester_ids"] as const;
@@ -287,8 +315,22 @@ export function parseConfig(raw: unknown, knownFlags?: ReadonlySet<string>): Con
     if (cosmeticCode(value.cosmetics_featured)) featured = value.cosmetics_featured;
     else problems.push(`cosmetics_featured must be an item code from 1 to ${COSMETIC_CODE_MAX}`);
   }
+  // Gates fail closed: a malformed one keeps its part off for every app, a malformed object every part.
+  let gates = NO_GATES;
+  if (value.feature_min_version !== undefined) {
+    const given = value.feature_min_version, out = new Map<GatedKey, Version | null>();
+    if (!plainObject(given)) { problems.push("feature_min_version must be an object"); for (const key of GATED_KEYS) out.set(key, null); }
+    else for (const [key, version] of Object.entries(given)) {
+      if (!(GATED_KEYS as readonly string[]).includes(key)) { unknown.push(`feature_min_version.${key}`); continue; }
+      const parsed = parseVersion(version);
+      if (parsed === null) problems.push(`feature_min_version.${key} must be a version like 0.8.1`);
+      if (features.has(key)) problems.push(`${key} is both in features and gated in feature_min_version: the gate decides`);
+      out.set(key as GatedKey, parsed);
+    }
+    gates = out;
+  }
   const config: ServerConfig = Object.freeze({ features, min_client_version: Object.freeze(minimums), friend_aliases: aliases, revenuecat, test_codes: testCodes,
-    cosmetics_released: released, cosmetics_featured: featured });
+    cosmetics_released: released, cosmetics_featured: featured, feature_min_version: gates });
   return { config, problems, unknown };
 }
 

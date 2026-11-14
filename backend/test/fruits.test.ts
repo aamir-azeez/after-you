@@ -102,13 +102,13 @@ describe("the Fruit rules", () => {
   });
   it("turns on only with the shop, and sells packs only where that store's bundles sell and its Fruit products are set up", () => {
     const vars = (features: string[]) => withConfig({ POLLEN_SECRET: SECRET, features });
-    expect(fruitsOn(vars(["FRUITS"]))).toBe(false);
-    expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"]))).toBe(false);
-    expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "FRUITS"]))).toBe(true);
+    expect(fruitsOn(vars(["FRUITS"]), null)).toBe(false);
+    expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"]), null)).toBe(false);
+    expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "FRUITS"]), null)).toBe(true);
     // Set up in RevenueCat: Play sells Fruit packs once Fruits and Play's bundles are both on.
-    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES", "FRUITS"]))).toBe(true);
-    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES"]))).toBe(false);
-    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "FRUITS"]))).toBe(false);
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES", "FRUITS"]), null)).toBe(true);
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES"]), null)).toBe(false);
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "FRUITS"]), null)).toBe(false);
   });
 });
 

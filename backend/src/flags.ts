@@ -1,4 +1,4 @@
-import { serverConfig } from "./config";
+import { compareVersions, serverConfig, type GatedKey, type Version } from "./config";
 
 /**
  * The server flags: one accessor per flag, all read from CONFIG's `features` list (config.ts).
@@ -60,11 +60,11 @@ export const FLAG_VARS = Object.freeze({
   pollenBundlesAppStore: "POLLEN_BUNDLES_APP_STORE",
   /** App Store sandbox Pollen bundles for any player (pollen/bundle-settle.ts), so App Review sees a sandbox purchase pay: read only by a claim that finds nothing new in production. Needs POLLEN_BUNDLES_APP_STORE. Set only through FEATURES. */
   pollenSandboxAppStore: "POLLEN_SANDBOX_APP_STORE",
-  /** Fruits, the rarer second currency (pollen/fruits.ts): the wallet read's Fruits part, Orchard prices, turning Fruits into Pollen, Sunshine, achievements, the grant's Fruits and its capability. Fruit packs also need that store's bundle flag. Needs POLLEN_SHOP. Off, nothing Fruit is written or shown. */
+  /** Fruits, the rarer second currency (pollen/fruits.ts): the wallet read's Fruits part, Orchard prices, turning Fruits into Pollen, Sunshine, achievements, the grant's Fruits and its capability. Fruit packs also need that store's bundle flag. Needs POLLEN_SHOP. Off, nothing Fruit is written or shown. Gated, older apps see none of it (features.ts). */
   fruits: "FRUITS",
-  /** Duel energy (pollen/energy.ts): 1 energy to start or join a duel, the meter on the wallet read and the start and join replies, the Fruit refill and the duels capability field. Needs DUELS. Turn it on with a minimum app version that shows the meter, in the same CONFIG edit. */
+  /** Duel energy (pollen/energy.ts): 1 energy to start or join a duel, the meter on the wallet read and the start and join replies, the Fruit refill and the duels capability field. Needs DUELS. Gate it (config.ts feature_min_version) to the first app that shows the meter, or raise every minimum to it in the same CONFIG edit. */
   energy: "ENERGY",
-  /** Face cosmetics (pollen/reaction-loadout.ts, v2/face-packs.ts): single reaction faces, resting faces and the reaction slots shown and sold, the loadout on the wardrobe read and equip, and face_packs_version 2 for phones that ask. Needs POLLEN_WARDROBE. Off, nothing face is written or shown and every reply is as before. */
+  /** Face cosmetics (pollen/reaction-loadout.ts, v2/face-packs.ts): single reaction faces, resting faces and the reaction slots shown and sold, the loadout on the wardrobe read and equip, and face_packs_version 2 for phones that ask. Needs POLLEN_WARDROBE. Off, nothing face is written or shown and every reply is as before. Gated, older apps get the replies of off. */
   faceSingles: "FACE_SINGLES",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
@@ -130,6 +130,29 @@ export type ServerVars = {
 
 /** The one flag rule: CONFIG lists the flag. */
 export function flagOn(env: ServerVars, name: FlagVar): boolean { return serverConfig(env).features.has(name); }
+
+/**
+ * Who a gated part (config.ts GATED_KEYS) is worked out for: a request's app by its version (app-status.ts clientReach),
+ * null for a request naming none, or LEDGER for the server's own bookkeeping where no app sees the answer (the grant
+ * alarm, refund checks, board rewards, duel results, a partner's clear), which follows the part wherever it is on for any app.
+ */
+export const LEDGER = "ledger";
+export type Reach = Version | null | typeof LEDGER;
+
+/**
+ * The one gate rule. A part CONFIG's `feature_min_version` names is on for apps at that version or newer and for
+ * LEDGER, and off for older apps, requests naming no app and a malformed gate. A gated flag is read only here, never
+ * through `flags`; a part not gated is on as `features` says (the release list: always on).
+ */
+export function gatedOn(env: ServerVars, key: GatedKey, reach: Reach): boolean {
+  const config = serverConfig(env), gates = config.feature_min_version;
+  if (!gates.has(key)) return key === "cosmetics_released" || config.features.has(key);
+  const minimum = gates.get(key) ?? null;
+  if (minimum === null) return false;
+  return reach === LEDGER || (reach !== null && compareVersions(reach, minimum) >= 0);
+}
+/** Whether a gated part has a gate (it is on for some apps only). */
+export function gated(env: ServerVars, key: GatedKey): boolean { return serverConfig(env).feature_min_version.has(key); }
 
 /** One accessor per flag: `flags.notifications(env)`. */
 export const flags: { readonly [K in FlagName]: (env: ServerVars) => boolean } = Object.freeze(Object.fromEntries(

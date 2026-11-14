@@ -1,5 +1,5 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
-import type { ServerVars } from "../flags";
+import type { Reach, ServerVars } from "../flags";
 import { bearerDigest } from "../http";
 import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
 import { ITEM_ID_PATTERN, featuredCodeFor, offeredTagFor, type Look } from "./catalog";
@@ -12,7 +12,7 @@ import type { Entitlement } from "../entitlement";
 import type { PollenMember, TurnFacts } from "./turn-facts";
 import type { HistoryView, PollenReceipt, WalletView } from "./wallet";
 import type { GrantHint } from "./grant";
-import { clientHeader, compareVersions } from "../app-status";
+import { clientHeader, clientReach, compareVersions } from "../app-status";
 import { parseVersion, type Version } from "../config";
 
 /**
@@ -127,26 +127,33 @@ export function pollenEarning(env: ServerVars): boolean { return earningOn(env);
 export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_offered_tag?: string; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_featured_code?: number; pollen_grant_version?: number; pollen_bundles_version?: number; pollen_app_store_bundles_version?: number;
   pollen_fruits_version?: number; pollen_fruit_packs_version?: number; pollen_app_store_fruit_packs_version?: number } {
   if (!pollenWanted(request) || !pollenEarning(env)) return {};
-  const shop = pollenShopClient(request), fruits = shop && fruitsOn(env);
-  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION, pollen_offered_tag: offeredTagFor(env, fruits) } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION, ...featuredCapability(env) } : {}),
+  const reach = clientReach(request), shop = pollenShopClient(request), fruits = shop && fruitsOn(env, reach);
+  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION, pollen_offered_tag: offeredTagFor(env, fruits, reach) } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION, ...featuredCapability(env, reach) } : {}),
     ...(shop && itemBloomsOn(env) ? { pollen_item_blooms_version: ITEM_BLOOMS_VERSION } : {}), ...(grantOn(env) ? { pollen_grant_version: GRANT_VERSION } : {}),
     ...(shop && bundlesOn(env) ? { pollen_bundles_version: BUNDLES_VERSION } : {}), ...(shop && appStoreBundlesOn(env) ? { pollen_app_store_bundles_version: APP_STORE_BUNDLES_VERSION } : {}),
-    ...(fruits ? { pollen_fruits_version: FRUITS_VERSION } : {}), ...(shop && fruitPacksOn(env) ? { pollen_fruit_packs_version: FRUIT_PACKS_VERSION } : {}),
-    ...(shop && appStoreFruitPacksOn(env) ? { pollen_app_store_fruit_packs_version: FRUIT_PACKS_VERSION } : {}) };
+    ...(fruits ? { pollen_fruits_version: FRUITS_VERSION } : {}), ...(shop && fruitPacksOn(env, reach) ? { pollen_fruit_packs_version: FRUIT_PACKS_VERSION } : {}),
+    ...(shop && appStoreFruitPacksOn(env, reach) ? { pollen_app_store_fruit_packs_version: FRUIT_PACKS_VERSION } : {}) };
 }
 /**
  * The shop's featured item (CONFIG `cosmetics_featured`, pollen/catalog.ts featuredItem) by its code, beside the shop's
  * capability: no field when CONFIG names none or an item not sold for Pollen now, and the phone keeps its own weekly
  * pick. Read from CONFIG with the capabilities the phone reads anyway, so changing it costs no request.
  */
-function featuredCapability(env: ServerVars): { pollen_featured_code?: number } {
-  const code = featuredCodeFor(env);
+function featuredCapability(env: ServerVars, reach: Reach): { pollen_featured_code?: number } {
+  const code = featuredCodeFor(env, reach);
   return code === undefined ? {} : { pollen_featured_code: code };
 }
-/** Whether this request's wallet read carries duel energy (features.ts energyOn): any app that asks for Pollen; older apps ignore it. */
-export function energyFor(env: ServerVars): boolean { return energyOn(env); }
+/** Whether this request's wallet read carries duel energy (features.ts energyOn): any app that asks for Pollen while ENERGY is on for it; older apps ignore it. */
+export function energyFor(request: Request, env: ServerVars): boolean { return energyOn(env, clientReach(request)); }
 /** Whether this request gets Fruits (features.ts fruitsOn), for an app offered the shop. */
-export function fruitsFor(request: Request, env: ServerVars): boolean { return pollenShopClient(request) && fruitsOn(env); }
+export function fruitsFor(request: Request, env: ServerVars): boolean { return pollenShopClient(request) && fruitsOn(env, clientReach(request)); }
+/**
+ * A credit's receipt for the app that asked: an app Fruits are off for gets no `fruits` part (achievements are paid as
+ * bookkeeping whatever app sent the turn, player.ts fruitHooks), so its reply is the one it got with FRUITS off.
+ */
+export function receiptFor<T extends object>(request: Request, env: ServerVars, receipt: T): T {
+  return "fruits" in receipt && !fruitsFor(request, env) ? (({ fruits: _, ...rest }) => rest as T)(receipt as T & { fruits?: unknown }) : receipt;
+}
 
 const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;
 /** A standalone turn POST while the flag is on: auth() then reads the player's Full Journey end with the room check. */
@@ -211,11 +218,11 @@ export async function creditTurn(request: Request, env: Env, playerId: string, f
   if (!facts) return undefined;
   const partner = facts.complete && facts.together ? (facts.host ? members.guest_id : members.host_id) : null;
   const [own] = await Promise.all([
-    settle(() => env.PLAYERS.getByName(playerId).creditTurn(playerId, facts, pollenShopClient(request))),
+    settle(() => env.PLAYERS.getByName(playerId).creditTurn(playerId, facts, pollenShopClient(request), clientReach(request))),
     partner ? settle(() => env.PLAYERS.getByName(partner).creditTogetherClear(partner, facts.level_id, facts.hard, facts.boost_percent, facts.room_id)) : null
   ]);
   if (!pollenWanted(request)) return undefined;
-  return own?.ok ? own.value : { schema_version: 1, pending: true };
+  return own?.ok ? receiptFor(request, env, own.value) : { schema_version: 1, pending: true };
 }
 
 /** A credit's outcome, or null when the call itself failed. */
@@ -274,7 +281,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
       const room_id = claim.room_id as string, recording_hash = claim.recording_hash as string;
       const facts = await settle(() => env.ROOMS_V2.getByName(room_id).pollenTurnFacts(playerId, recording_hash));
       const result = facts === null ? { status: "retry" as const } : !facts.ok ? { status: "refused" as const, code: facts.code }
-        : claimResult(await settle(() => player.creditTurn(playerId, facts.value as TurnFacts, pollenShopClient(request))));
+        : claimResult(await settle(() => player.creditTurn(playerId, facts.value as TurnFacts, pollenShopClient(request), clientReach(request))));
       results.push({ room_id, recording_hash, ...result });
     }
   } else {
@@ -293,7 +300,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
       results.push({ room_id, ...result });
     }
   }
-  return { schema_version: 1, results: pollenReplyClient(request) ? results : results.map(result => { const { receipt: _, ...rest } = result as Record<string, unknown>; return rest; }) };
+  return { schema_version: 1, results: pollenReplyClient(request) ? results.map(result => result.status === "credited" ? { ...result, receipt: receiptFor(request, env, result.receipt) } : result) : results.map(result => { const { receipt: _, ...rest } = result as Record<string, unknown>; return rest; }) };
 }
 
 /** "convert" (id: the Fruit count) and "sunshine" (id "sunshine") are Fruit spends (pollen/fruit-ops.ts), refused while Fruits are off. */
@@ -320,14 +327,15 @@ async function routeWardrobe(request: Request, path: string, playerId: string, e
     if (!SPEND_KINDS.includes(input.kind as typeof SPEND_KINDS[number]) || typeof input.id !== "string" || !ITEM_ID_PATTERN.test(input.id) ||
       typeof input.expected_cost !== "number" || !Number.isSafeInteger(input.expected_cost) || input.expected_cost < 0) throw new ApiError(400, code);
     const kind = input.kind as typeof SPEND_KINDS[number];
-    if ((kind === "convert" || kind === "sunshine" || kind === "energy") && !fruitsOn(env)) throw new ApiError(503, "fruits_disabled");
-    if (kind === "energy" && !energyOn(env)) throw new ApiError(503, "energy_disabled");
-    return unwrap(await player.pollenSpend(playerId, device, op, { kind, id: input.id }, input.expected_cost, fruitsOn(env)));
+    const reach = clientReach(request), fruits = fruitsOn(env, reach);
+    if ((kind === "convert" || kind === "sunshine" || kind === "energy") && !fruits) throw new ApiError(503, "fruits_disabled");
+    if (kind === "energy" && !energyOn(env, reach)) throw new ApiError(503, "energy_disabled");
+    return unwrap(await player.pollenSpend(playerId, device, op, { kind, id: input.id }, input.expected_cost, fruits, reach));
   }
   if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1 || !isObject(input.look)) throw new ApiError(400, code);
   const faces = servedFaceVersion(request, env) >= FACE_SINGLES_VERSION;
   if (input.reactions !== undefined && !faces) throw new ApiError(400, code);
-  const receipt = unwrap(await player.pollenEquip(playerId, device, op, input.look, input.revision, input.reactions));
+  const receipt = unwrap(await player.pollenEquip(playerId, device, op, input.look, input.revision, input.reactions, clientReach(request)));
   return faces ? receipt : withoutFaces(receipt);
 }
 
