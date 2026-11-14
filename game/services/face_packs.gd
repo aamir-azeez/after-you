@@ -43,7 +43,8 @@ static var source: Callable
 static var _versions: Dictionary = {}
 
 ## The face version the server serves this phone (0, 1 or 2), from its
-## capabilities read; forgotten for a scope whose read failed.
+## capabilities read. Only the older pack rule reads it; the slots and single
+## faces follow the wardrobe's own answer.
 static func note_version(server: String, owner: String, version: int) -> void:
 	_versions[Wardrobe.scope_key(server, owner)] = clampi(version, 0, 2)
 
