@@ -101,6 +101,11 @@ const CUES := {
 	"bolt_shot": {"clip": BOLT, "range": Vector2(-1.0, 1.5), "priority": 2},
 	"bolt_drawn": {"clip": BOLT, "range": Vector2(-4.0, -2.0), "priority": 2},
 	"valve_turned": {"clip": VALVE, "range": Vector2(-1.5, 1.5), "db": -1.0, "priority": 2},
+	# A pip pushing into a barrier it may not pass (presentation/barrier_refusals.gd):
+	# the gate's soft rattle, the winch's pawl high and quiet; and a control it
+	# may not work: a dull clunk, the bolt low and muffled.
+	"barrier_rattle": {"clip": WINCH, "range": Vector2(3.0, 6.0), "db": -9.0},
+	"control_locked": {"clip": BOLT, "range": Vector2(-8.0, -6.0), "db": -5.0},
 	# Fixed cues (soundscape play_fixed_cue): one pitch from the cue's name and
 	# a variant, never an engine event's, so a keepsake or a screen sounds the
 	# same every time and no turn's pitches move. No engine event has these names.

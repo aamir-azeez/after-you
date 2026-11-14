@@ -7,6 +7,7 @@ const DATA := {
 	"definition": ["res://core/cooperative/wishing_well_catalog.gd", "definition"],
 	"world": "res://presentation/wishing_well_world.gd",
 	"scene": "res://the_wishing_well.tscn",
+	"stair_gates": false,
 	"local_path": "user://the-wishing-well-journey-v1.json",
 	"copy": {
 		"title": PlayerCopy.WISHING_WELL_TITLE,

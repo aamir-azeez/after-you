@@ -326,6 +326,7 @@ room_reactions 2
 room_refresh_noop 3
 room_removal 1
 rooms_api_limits 3
+route_barriers 1
 rules_thread_safety 1
 run_export 3
 run_reactions 3

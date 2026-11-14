@@ -165,6 +165,11 @@ var _ride_face := false
 ## Where a ride last carried the spirit, to turn it the way it is carried.
 var _carried_from := Vector3.ZERO
 var _carried := false
+## A bump against a barrier it may not pass (play_bump): seconds since, and
+## how long the jolt back and the startled face last.
+const BUMP_DURATION := 0.28
+const BUMP_FACE := 0.5
+var _bump_age := BUMP_DURATION
 
 func _init(color: Color=Look.PEACH) -> void:
 	facing.name="Facing"
@@ -444,6 +449,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	reunion_sparkle_age=minf(REUNION_SPARKLE_DURATION,reunion_sparkle_age+delta)
 	celebration_age=minf(CELEBRATION_DURATION,celebration_age+delta)
 	_wake_age=minf(SpiritIdle.WAKE_DURATION,_wake_age+delta)
+	_bump_age=minf(BUMP_DURATION,_bump_age+delta)
 	var landed := false
 	if _hop_age<_hop_duration:
 		_hop_age=minf(_hop_duration,_hop_age+delta)
@@ -567,6 +573,12 @@ func _apply_pose(amount: float) -> void:
 		squash+=_ride_sit*0.08
 		upper_body.position.y-=_ride_sit*0.12
 		upper_body.rotation+=_ride_lean
+	if _bump_age<BUMP_DURATION and not _reduced_motion:
+		# A bump: the body jolts back from what it walked into, squashed.
+		var jolt := sin(_bump_age/BUMP_DURATION*PI)
+		upper_body.position.z-=jolt*0.04
+		upper_body.rotation.x-=jolt*0.3
+		squash+=jolt*0.1
 	upper_body.scale=Vector3(1.0+squash*0.45,1.0-squash,1.0+squash*0.45)
 	var settle := 0.0
 	if release_age>=0.0 and release_age<RELEASE_SETTLE_DURATION and not _reduced_motion:
@@ -703,6 +715,14 @@ func play_hop(duration: float, contact: float = 0.8) -> void:
 	_hop_contact=clampf(contact,0.3,0.95)
 	_hop_age=0.0
 	_hop_landed=false
+
+## A small bump against a barrier it may not pass (a shut gate, a rope, a
+## stair's chain): the body jolts back and squashes, and the face starts.
+## Called for a refusal found from recorded input, so a replay bumps alike.
+## Reduce motion keeps only the face.
+func play_bump(reduced: bool) -> void:
+	show_expression(Look.SURPRISED, BUMP_FACE)
+	if not reduced: _bump_age = 0.0
 
 ## A ride's seated tuck (`sit` 0 to 1: the body drops and the feet come
 ## forward) and its lean (radians, in the facing pivot: +x leans forward).

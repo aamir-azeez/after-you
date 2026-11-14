@@ -7,6 +7,7 @@ extends RefCounted
 const DATA := {
 	"look": "meadow",
 	"tag": "painted_tile",
+	"barrier": "rope",
 	"ground": {"*": "grass", "loft": "deck"},
 	"stairs": "timber",
 	"cables": "floor",

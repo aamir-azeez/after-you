@@ -97,6 +97,11 @@ const OPTIONAL := {
 	## at the screen's edge while they are all off screen, and a glance at the
 	## nearest when a turn's first try starts with it off screen.
 	"goal_beacon": false,
+	## false when the world draws every closed stair itself (folding, or under
+	## water), so no stair gets the route barriers' chain and a push into a
+	## closed stair never rattles (presentation/kit/route_barriers.gd). Owner
+	## gates stay.
+	"stair_gates": true,
 	## [script, static method]: the scene a Solo card opens instead of "scene"
 	## while an earlier version's journey still continues in its own screen,
 	## or "" when none does (the Lighthouse @1: services/lighthouse_migration.gd).

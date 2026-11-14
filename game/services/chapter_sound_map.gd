@@ -84,7 +84,11 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	var closed: Array = _bridge_changes(seen, state)[1]
 	var ghost_drop := _ghost_dropped(seen, state) if cooperative else false
 	var events: Array = state.get("events", [])
-	if events.is_empty() and levers.is_empty() and controls.is_empty() and props.is_empty() and closed.is_empty() and not ghost_drop: return NO_CUES
+	# Pushes into a barrier and controls a pip may not work, as the screen's
+	# refusal finder (presentation/barrier_refusals.gd) put them in the snapshot.
+	var refused: Array = state.get("refused", NONE)
+	var locked: Array = state.get("locked", NONE)
+	if events.is_empty() and levers.is_empty() and controls.is_empty() and props.is_empty() and closed.is_empty() and not ghost_drop and refused.is_empty() and locked.is_empty(): return NO_CUES
 	var chapter := Index.data(chapter_key)
 	var overrides: Dictionary = chapter.get("sound_cues", NO_TABLE)
 	var dressing := DressingCatalog.for_key(chapter_key)
@@ -123,6 +127,13 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 		if status == "offered" and not events.has("handoff_offer"): _add(out, "handoff_offered", "a|handoff_offer")
 		elif status == "fitted" and overrides.has("prop_fitted"): _add(out, overrides.prop_fitted, "b|prop_fitted")
 	if ghost_drop: _add(out, overrides.get("drop", PHYSICAL.drop), "a|drop")
+	# Named by the barrier or control and by the turn of the pip that pushed
+	# (a or b), so the memory's pushes keep the pitches of its own turn.
+	var first := str(state.get("first_player_slot", ""))
+	for event: Variant in refused:
+		if event is Dictionary: _add(out, "barrier_rattle", "rattle:%s:%s|rattle" % [str(event.get("id", "")), "a" if str(event.get("slot", "")) == first else "b"])
+	for event: Variant in locked:
+		if event is Dictionary: _add(out, "control_locked", "locked:%s:%s|locked" % [str(event.get("id", "")), "a" if str(event.get("slot", "")) == first else "b"])
 	# Crossings the water just covered go under with the water's own sound.
 	if not water_moved:
 		for id: String in closed: _add(out, "bridge_closed", "bridge_opened:%s|bridge_closed" % id)

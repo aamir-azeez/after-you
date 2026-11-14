@@ -97,6 +97,12 @@ const SLOTS := {
 		"wooden_plaque": {"frame": "wooden_plaque"},
 		"stone_tile": {"frame": "stone_tile"},
 	},
+	# Not a prop: how the route barriers (presentation/kit/route_barriers.gd
+	# EDGE_LOOKS) edge a zone that one pip may not enter.
+	"barrier": {
+		"rope": {"edge": "rope"},
+		"rail": {"edge": "rail"},
+	},
 	# Not props: the puzzle pieces' looks (content/dressing/piece_styles.gd),
 	# each built by its kit under presentation/kit/pieces/. A piece behaves the
 	# same in every style; only its look changes.
@@ -108,13 +114,13 @@ const SLOTS := {
 
 ## Slots that pick a kit piece's look rather than a prop to stand: the resolved
 ## dressing carries the pick as a field of the same name ("tag": "stone_tile").
-const LOOK_SLOTS := ["tag", "lever", "selector", "pad", "goal"]
+const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal"]
 
 ## The pick for a slot that neither the theme nor the level names.
 const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
-	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile",
+	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
 	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell",
 }
 

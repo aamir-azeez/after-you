@@ -621,9 +621,10 @@ func _pair_gate_anchors(route: Dictionary) -> Array:
 	var ends := super._pair_gate_anchors(route)
 	return [_route_anchor(route) - Vector3(0, 0.025, 0), ends[1]]
 
-## Pair tags keep clear of the gauges and mouth marks built at the routes.
+## Pair tags keep clear of the gauges and mouth marks built at the routes,
+## and of the route barriers.
 func _pair_keep_clear() -> Array:
-	var found: Array = []
+	var found: Array = super._pair_keep_clear()
 	for gauge: Dictionary in _gauges.values(): found.append({"centre": Vector2(gauge.post.position.x, gauge.post.position.z), "radius": 0.12, "what": "gauge " + str(gauge.post.name)})
 	var marks: Array = _slack_marks.duplicate()
 	for entry: Dictionary in _post_marks.values(): marks.append_array(entry.bands)
