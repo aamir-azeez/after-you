@@ -38,6 +38,7 @@ const Props = preload("res://presentation/kit/props.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const PropStyles = preload("res://content/dressing/prop_styles.gd")
 const SHADER := preload("res://presentation/kit/route_barriers.gdshader")
+const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 
 ## What a refusal or a barrier is about.
 const OWNER := &"owner"
@@ -150,6 +151,8 @@ var _wiggles: Dictionary = {}
 var _clock := 0.0
 ## The last tick whose refusals were acted on.
 var _event_tick := -1
+## Each slot's standing pieces' bounds while a stage is baked (build): slot and layer -> AABB.
+static var _part_bounds: Dictionary = {}
 const NO_EVENTS := []
 var _reduced_motion := false
 ## The ball lock rings: prop id -> node, and each ball's radius (m).
@@ -414,6 +417,7 @@ func build(view: Dictionary) -> void:
 	_states.resize(MAX_SLOTS)
 	_states.fill(Vector4.ZERO)
 	if slots == 0: return
+	_part_bounds.clear()
 	var tool := SurfaceTool.new()
 	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var look := _edge_look()
@@ -430,6 +434,11 @@ func build(view: Dictionary) -> void:
 	_node = MeshInstance3D.new()
 	_node.name = "RouteBarriers"
 	_node.mesh = tool.commit()
+	# Measured piece by piece, like a folded batch: code that looks for scenery
+	# (journey_world's bubble placement) sees each gate and rope, never one box
+	# the size of the stage. Open halves and padlocks come and go with play.
+	_node.set_meta(StaticBatch.PARTS_META, _part_bounds.values().map(func(box: AABB) -> Array: return [Transform3D.IDENTITY, box]))
+	_part_bounds.clear()
 	_node.material_override = _material
 	_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_world.get("terrain").add_child(_node)
@@ -603,6 +612,11 @@ static func _cuboid(tool: SurfaceTool, shape: Transform3D, size: Vector3, colour
 	var half := size * 0.5
 	tool.set_color(colour)
 	tool.set_uv2(Vector2(float(mini(slot, MAX_SLOTS - 1)), float(layer)))
+	if not layer & (OPEN | PADLOCK):
+		var box := AABB(shape * (-size * 0.5), Vector3.ZERO)
+		for corner in range(8): box = box.expand(shape * (Vector3(size.x * (0.5 if corner & 1 else -0.5), size.y * (0.5 if corner & 2 else -0.5), size.z * (0.5 if corner & 4 else -0.5))))
+		var key := slot * 64 + layer
+		_part_bounds[key] = (_part_bounds[key] as AABB).merge(box) if _part_bounds.has(key) else box
 	for axis in range(3):
 		for sign: float in [-1.0, 1.0]:
 			var normal := Vector3.ZERO
