@@ -20,6 +20,7 @@ const MemoryWaitBar = preload("res://presentation/memory_wait_bar.gd")
 const FastForwardBadge = preload("res://presentation/fast_forward_badge.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
 const ButtonTicks = preload("res://presentation/button_ticks.gd")
+const PairChip = preload("res://presentation/kit/pair_chip.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -31,6 +32,10 @@ var hud: Control
 var overlay: Control
 var stick: Control
 var action_button: Button
+## The action pop-up's pair letter (kit/pair_chip.gd), at the button's left end.
+var pair_chip: PairChip
+## Keeps room for the chip on the button's left (an icon that draws nothing).
+var _chip_room := PlaceholderTexture2D.new()
 var finish_button: Button
 var pause_button: Button
 var timer_label: Label
@@ -109,6 +114,21 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	finish_button.visible = interactive and not _memory_wait
 	fast_forward_button.visible = interactive and _memory_wait
 	skip_wait_button.visible = interactive and _memory_wait
+	_show_pair_chip(state, interactive)
+
+## The letter of the input the live pip is at, asked of the shown world's pair
+## tags (kit/pair_tags.gd prompt()): inside the action button's left end, or
+## alone in that spot at a pad, which has no button. None while the memory's
+## wait holds that spot, or out of play.
+func _show_pair_chip(state: Dictionary, interactive: bool) -> void:
+	var chip: Dictionary = {}
+	if interactive and not _memory_wait and is_instance_valid(_view_world) and "pair_tags" in _view_world: chip = _view_world.pair_tags.prompt(state)
+	pair_chip.show_chip(chip)
+	var room: Texture2D = _chip_room if pair_chip.visible and action_button.visible else null
+	if action_button.icon != room: action_button.icon = room
+	if not pair_chip.visible: return
+	var left := action_button.get_theme_stylebox("normal").get_margin(SIDE_LEFT)
+	pair_chip.position = action_button.position + Vector2(left - 6.0, (action_button.size.y - pair_chip.size.y) * 0.5)
 
 ## The live spirit is waiting for its friend's memory: `text` names the friend
 ## and `ratio` is how much of the memory is left (1 to 0); `skipping` is true
@@ -305,6 +325,10 @@ func _build_ui() -> void:
 	# The controls a run is played with make its own cues: no tick over them.
 	ButtonTicks.quiet(action_button)
 	hud.add_child(action_button)
+	_chip_room.size = Vector2(PairChip.PairTags.CHIP - 10.0, 1.0)
+	action_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	pair_chip = PairChip.new()
+	hud.add_child(pair_chip)
 	finish_button = button_for("finish", func(): finish_requested.emit())
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	finish_button.position = Vector2(-240, -100)

@@ -284,7 +284,7 @@ func _second_stage(level: Dictionary) -> void:
 	for id: String in world._dry_marks:
 		_check(world._dry_marks[id][0].get_meta("lit"), "A shut sea leaves every mooring catwalk dry: " + id)
 	var basin: Array = _crests(world, "basin")
-	_check(basin.size() == 4 and basin.filter(func(tag: Dictionary) -> bool: return PairTags.CONTROL in tag.sides).size() == 1, "The sea's pair tags mark the wheel once and the three mouth crossings, not the stubs: %s" % [basin.map(func(tag: Dictionary) -> Array: return tag.gates)])
+	_check(basin.size() == 3 and basin.all(func(tag: Dictionary) -> bool: return PairTags.CONTROL not in tag.sides), "The sea's pair tags mark the three mouth crossings, not the stubs, and not the wheel (its letter is in the action pop-up): %s" % [basin.map(func(tag: Dictionary) -> Array: return tag.gates)])
 	for tag: Dictionary in _crests(world, "boom-chain") + _crests(world, "punt-line"):
 		var on_floor := false
 		for route: Dictionary in level.bridges + level.islands:

@@ -1,8 +1,8 @@
 // World kit: the pair tags' look (presentation/kit/pair_tags.gd). One mesh
-// holds every tag of a stage; each vertex carries its pair (UV2.x) and its
+// holds every tag of a stage; each vertex carries its tile's slot (UV2.x) and its
 // layer (UV2.y: 0 rim, 1 face, 2 letter and bands, 3 the glow under a tile),
-// its colour in COLOR. states[pair] is (clear, lit): faint while both are 0,
-// clear while a pip is near, lit while its control is active. Every number
+// its colour in COLOR. states[slot] is (clear, lit): faint while both are 0,
+// clear while a pip is near, lit as the kit says (per tile). Every number
 // of the look comes from the kit, which sets each uniform; tests check the
 // three states stay apart. Nothing here reads TIME: a tag changes only when
 // the world sets new states.
@@ -11,7 +11,7 @@ shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
 
 // MAX_STATES in pair_tags.gd.
-uniform vec2 states[32];
+uniform vec2 states[64];
 // Colours come as the kit writes them, like the vertex colours, so every mix
 // stays in one space.
 // Faint alpha per layer (rim, face, letter).
@@ -32,7 +32,7 @@ varying float lit;
 varying float layer;
 
 void vertex() {
-	int pair = clamp(int(UV2.x + 0.5), 0, 31);
+	int pair = clamp(int(UV2.x + 0.5), 0, 63);
 	clear = states[pair].x;
 	lit = states[pair].y;
 	layer = UV2.y;
