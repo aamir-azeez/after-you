@@ -23,6 +23,7 @@ func _initialize() -> void: _run.call_deferred()
 func _run() -> void:
 	_rules()
 	_chain()
+	_ten_turns()
 	_published()
 	print("OPEN TURNS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -88,6 +89,33 @@ func _chain() -> void:
 	var shuffled: Dictionary = checkpoint.duplicate(true)
 	shuffled.proof.turns = [a, pass_three, pass_two, closing]
 	_check(not Simulation.verify_checkpoint(level, shuffled).valid, "Turns out of order are refused")
+
+## Ten turns of passes, each pip's own route again: every one replays and
+## may be a memory, and one check of the latest covers the chain. Prints how
+## long that check takes, nested memories and all.
+func _ten_turns() -> void:
+	var level := Registry.definition(TIDE)
+	var start := Registry.initial_checkpoint(TIDE)
+	var a := _fixture("turn-of-the-tide-v3-set-the-tide-a.json")
+	var routes := [Simulation.expand_recording_inputs(a), Simulation.expand_recording_inputs(_fixture("turn-of-the-tide-v3-set-the-tide-b.json"))]
+	var turns: Array = [a]
+	for n in range(2, 11):
+		var sim := Simulation.new()
+		if not sim.reset(level, STAGE, start, turns[-1], "b", 0, turns.slice(0, turns.size() - 1)):
+			_check(false, "Turn %d starts (%s)" % [n, sim.error])
+			return
+		var frames: Array = routes[1 if n % 2 == 0 else 0]
+		while int(sim.tick) < int(a.duration_ticks) and not sim.finished: sim.step(frames[sim.tick] if int(sim.tick) < frames.size() else {})
+		if not sim.can_pass():
+			_check(false, "Turn %d may pass (%s)" % [n, sim.commit_reason()])
+			return
+		sim.pass_turn()
+		turns.append(_json(sim.export_recording()))
+	var started := Time.get_ticks_msec()
+	var checked := Simulation.verify_recording(level, turns[-1], start, turns[-2], turns.slice(0, turns.size() - 2))
+	var elapsed := Time.get_ticks_msec() - started
+	print("OPEN TURNS: turn 10's check over its nine memories took %d ms (%d ticks a turn)" % [elapsed, int(a.duration_ticks)])
+	_check(checked.valid and checked.get("ready", false), "Turn 10's pass checks over nine nested memories (%s)" % str(checked.get("error", "")))
 
 ## A published tide stage (rules 10) still nests a and b.
 func _published() -> void:

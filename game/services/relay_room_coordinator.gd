@@ -1259,13 +1259,13 @@ func _valid_snapshot(value: Variant) -> bool:
 	if not Typed.equal(value.recording_a.get("simulation_version"), value.get("simulation_version", level.simulation_version)): return false
 	var verified: Dictionary = _checked_turn(chapter, value.checkpoint, {}, value.recording_a)
 	if not Typed.equal(value.recording_a.get("role"), "a") or not verified.valid or not verified.get("snapshot", {}).get("can_commit", false): return false
-	var turns: Array = [value.recording_a]
+	if passes.is_empty(): return true
+	# The latest pass's check replays every earlier pass as its memory, each required ready, so one check covers them all.
 	for later: Variant in passes:
 		if not later is Dictionary or not Typed.equal(later.get("role"), "b"): return false
-		var checked: Dictionary = _checked_turn(chapter, value.checkpoint, turns[-1], later, turns.slice(0, turns.size() - 1))
-		if not checked.valid or not checked.get("ready", false): return false
-		turns.append(later)
-	return true
+	var turns: Array = [value.recording_a] + passes
+	var checked: Dictionary = _checked_turn(chapter, value.checkpoint, turns[-2], turns[-1], turns.slice(0, turns.size() - 2))
+	return checked.get("valid", false) and checked.get("ready", false)
 
 
 func _valid_draft(value: Variant) -> bool:
