@@ -37,6 +37,8 @@ var _read_for := ""
 ## A friend's request answered with Play my turn again: the turn starts as soon as the room shows it.
 var _play_after_accept := false
 var _nudge: Control
+## The redo alerts question waits for the turn to stop playing (offer_owed_alerts).
+var _alerts_owed := false
 ## Home's Play my turn again opened this room (accept_on_open), until this time.
 var _accept_room := ""
 var _accept_until := 0
@@ -100,7 +102,7 @@ func _same_room(room: Dictionary) -> bool:
 
 ## The chip beside the try count: Ask while it may, then what became of it.
 func update_hud() -> void:
-	if not is_instance_valid(host.controls): return
+	if not is_instance_valid(host.controls) or not host.controls.has_method("show_redo_chip"): return
 	if host.mode != "play" or not available():
 		host.controls.show_redo_chip("")
 		return
@@ -248,7 +250,16 @@ func noticed_request() -> void:
 	if available() and client().can_accept(): _offer_alerts()
 
 func _offer_alerts() -> void:
+	# Never over a turn that is playing: it waits for the next card.
+	if host.running:
+		_alerts_owed = true
+		return
+	_alerts_owed = false
 	if host.offer_redo_alerts.is_valid(): host.offer_redo_alerts.call(host.controls.ui)
+
+## A question owed from a request sent during play, once the turn stops.
+func offer_owed_alerts() -> void:
+	if _alerts_owed and is_instance_valid(host) and not host.running and host.is_inside_tree(): _offer_alerts()
 
 ## One tap path for every redo button: it waits for a read or write still out
 ## (the room poll, an earlier redo tap), then runs on the same room.

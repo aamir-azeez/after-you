@@ -784,6 +784,7 @@ func _show_ready() -> void:
 	if online_session != null:
 		redo_flow.start_if_accepted.call_deferred()
 		redo_flow.ensure_read.call_deferred()
+	redo_flow.offer_owed_alerts.call_deferred()
 
 func _set_room_state(state: String) -> void:
 	_room_state = state

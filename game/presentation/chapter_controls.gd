@@ -237,9 +237,9 @@ func _build_ui() -> void:
 	redo_chip = Button.new()
 	redo_chip.name = "RedoChip"
 	redo_chip.visible = false
-	redo_chip.custom_minimum_size.y = 40
-	redo_chip.add_theme_font_size_override("font_size", 16)
-	redo_chip.add_theme_constant_override("icon_max_width", 20)
+	redo_chip.custom_minimum_size.y = 46
+	redo_chip.add_theme_font_size_override("font_size", 19)
+	redo_chip.add_theme_constant_override("icon_max_width", 24)
 	ControlTheme.secondary(redo_chip)
 	redo_chip.pressed.connect(func() -> void: redo_chip_pressed.emit())
 	hud.add_child(redo_chip)

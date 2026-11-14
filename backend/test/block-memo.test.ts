@@ -68,6 +68,15 @@ describe("unblocked pair memo", () => {
     expect(await everyone(shared)).toEqual(["200 ok", "200 ok", "200 ok"]);
   });
 
+  it("refuses a redo read and request right after a block, though the redo call keeps the memo warm", async () => {
+    const { host, guest, room } = await relayPair(), path = `/v2/rooms/${room.room_id}/redo`;
+    expect(await code(await call(path, "GET", guest))).toBe("200 ok");
+    expect(await code(await call(path, "GET", guest))).toBe("200 ok");
+    expect(await code(await block(host, room))).toBe("200 ok");
+    expect(await code(await call(path, "GET", guest))).toBe("403 player_blocked");
+    expect(await code(await call(path, "POST", guest, { action: "request", source: null }))).toBe("403 player_blocked");
+  });
+
   it("answers a block even when a room the pair shares is broken", async () => {
     const { host, guest, room } = await relayPair(), other = await secondRoom(host, guest);
     expect(await everyone([[guest, room], [guest, other]])).toEqual(["200 ok", "200 ok"]);

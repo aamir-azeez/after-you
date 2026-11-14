@@ -355,10 +355,15 @@ export class RoomV2 extends DurableObject<Env> {
   redo(player: string, value?: unknown, deviceHash?: string, safetyToken?: string): Promise<Outcome<RedoState>> { return this.redoInternal(player, value, deviceHash, undefined, undefined, safetyToken); }
   private async redoInternal(player: string, value?: unknown, deviceHash?: string, context?: CampaignRoomContext, binding?: CampaignRedoBinding, safetyToken?: string): Promise<Outcome<RedoState>> {
     try {
-      if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
+      if (!binding) {
+        // The router's pair gate, in this one call: a Story room answers as it did there (campaign_client_required),
+        // then membership, then blocks remembered under the caller's safety token.
+        const gate = await this.pairGate(player, undefined, safetyToken); if (!gate.ok) return gate;
+        const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
+      }
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return this.unavailable(player);
-      if (await this.pairBlocked(player, observed.host_id, observed.guest_id, binding ? undefined : safetyToken)) return fail(403, "player_blocked");
+      if (binding && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       // A public duel's phone names its partner by a stand-in (duels/public-mask.ts); the redo source holds the ids.
       const shown = value === undefined || binding ? value : unmaskRedo(value, duelMasks(duelLink(this.ctx.storage), observed).duel_masks ?? null);
       const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(shown);

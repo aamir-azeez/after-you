@@ -7,15 +7,16 @@ extends RefCounted
 ## It reads the room list (services/room_inbox_client.gd, the hub's own
 ## client), whose rooms in play carry their current request (redo, sent to
 ## clients that send X-AfterYou-Room-Redo). Home shows the list it already
-## holds at once and reads it again only when something may have changed: the
-## first Home of a session, a live room hint while Home shows, and the app
-## coming back, never closer than READ_GAP_MS. Not now puts that request's card
+## holds at once and reads it again only on the first Home of a session and
+## when the app comes back, never closer than READ_GAP_MS (Home holds no live
+## socket). Together rooms only: the earlier islands' requests lead their room
+## page. Not now puts that request's card
 ## away on this phone (services/redo_prompts.gd); the request still leads the
 ## room page. Play my turn again opens the room, which plays the turn again at
 ## once (presentation/redo_flow.gd accept_on_open).
 ##
 ## Host contract (main.gd): mode, ui, application_backgrounded, room_hub_flow,
-## relay_lobby_flow, legacy_room_flow, relay_child, notification_flow,
+## relay_lobby_flow, relay_child, notification_flow,
 ## _relay_identity(), _top_modal(), _friend_display_name().
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
@@ -66,7 +67,7 @@ func _request() -> Dictionary:
 	var client: RefCounted = host.room_hub_flow.rooms_client()
 	for room: Dictionary in client.view().get("rooms", []):
 		var redo: Variant = room.get("redo")
-		if redo is Dictionary and redo.get("state") == "asked_you" and int(room.get("api_version", 0)) in [1, 2] and not RedoPrompts.shared().dismissed(_key(room)): return room
+		if redo is Dictionary and redo.get("state") == "asked_you" and int(room.get("api_version", 0)) == 2 and not RedoPrompts.shared().dismissed(_key(room)): return room
 	return {}
 
 static func _key(room: Dictionary) -> String:
@@ -125,7 +126,13 @@ func open_card(room: Dictionary) -> void:
 	OfflineHold.hold(play)
 	card.refresh_focus_order()
 	_side(card)
+	# The card goes with Home: any other page (a push opened, a menu tap) closes it.
+	if not host.get_tree().process_frame.is_connected(_watch): host.get_tree().process_frame.connect(_watch)
 
+func _watch() -> void:
+	if is_instance_valid(card) and _on_home() and not _opening: return
+	if host.get_tree().process_frame.is_connected(_watch): host.get_tree().process_frame.disconnect(_watch)
+	if not _opening: _close()
 ## "The Relay Isles · 1 / 2 · Your first turn".
 func _line(room: Dictionary) -> String:
 	var parts: PackedStringArray = [str(room.get("chapter_title", ""))]
@@ -140,10 +147,15 @@ func _friend(room: Dictionary) -> String:
 	return ""
 
 ## No dim, and on a wide Home the card sits over the island, beside the menu.
+## Only the card takes taps: Home's own buttons answer around it.
 func _side(modal: Control) -> void:
+	modal.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for child: Node in modal.get_children():
-		if child is ColorRect: (child as ColorRect).color.a = 0.0
+		if child is ColorRect:
+			(child as ColorRect).color.a = 0.0
+			(child as ColorRect).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var centre := modal.find_child("ModalCenter", false, false) as Control
+	if centre != null: centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var width: float = modal.get_viewport_rect().size.x
 	if centre != null and width >= SIDE_MIN_WIDTH:
 		var middle := width - 28.0 - 260.0
@@ -155,11 +167,8 @@ func _play(room: Dictionary) -> void:
 	_opening = true
 	_close()
 	var room_id := str(room.get("room_id", ""))
-	if int(room.get("api_version", 0)) == 2:
-		await host.relay_lobby_flow.lobby_action("open", room_id)
-		if is_instance_valid(host.relay_child) and host.relay_child.has_method("accept_redo_on_open"): host.relay_child.accept_redo_on_open(room_id)
-	else:
-		await host.legacy_room_flow.open_room(room_id)
+	await host.relay_lobby_flow.lobby_action("open", room_id)
+	if is_instance_valid(host.relay_child) and host.relay_child.has_method("accept_redo_on_open"): host.relay_child.accept_redo_on_open(room_id)
 	_opening = false
 
 func _close() -> void:

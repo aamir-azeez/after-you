@@ -723,12 +723,12 @@ func _close_top_modal() -> bool:
 	modal.go_back()
 	return true
 
-## The topmost card open over the screen (InGameModal, or a leaderboard
-## celebration), or null.
 ## The redo alerts question, once (notification_flow.gd), over the page shown now.
 func offer_redo_alerts_here() -> void:
 	notification_flow.offer_redo_alerts(ui)
 
+## The topmost card open over the screen (InGameModal, or a leaderboard
+## celebration), or null.
 func _top_modal() -> Node:
 	for index in range(ui.get_child_count()-1,-1,-1):
 		var child := ui.get_child(index)

@@ -137,8 +137,8 @@ describe("redo state in the conditional poll", () => {
     const after = await meterRows({ room: stub }, async () => [await counted(path, host, { ...known(moved), ...POLL_REDO })]);
     const total = (list: string[][]) => list.reduce((sum, calls) => sum + calls.length, 0);
     expect({ requests: before.value.length, routerRpcs: total(before.value), roomRows: before.rows.room.read })
-      .toEqual({ requests: 2, routerRpcs: 6, roomRows: 41 });
-    // GET /redo also makes its own 2 block checks inside the room: 8 Durable Object requests before (13 on main), 3 after.
+      .toEqual({ requests: 2, routerRpcs: 5, roomRows: 41 });
+    // GET /redo runs the pair gate inside its one room call, with the block memo: 5 Durable Object requests before, 3 after.
     expect(before.value[1].at(-1)).toBe("ROOMS_V2.redo");
     expect({ requests: after.value.length, routerRpcs: total(after.value), roomRows: after.rows.room.read })
       .toEqual({ requests: 1, routerRpcs: 3, roomRows: 30 });

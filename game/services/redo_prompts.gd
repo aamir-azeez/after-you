@@ -42,9 +42,10 @@ func _init(storage_path: String = PATH) -> void:
 static func turn_key(slot: String) -> String:
 	return slot.sha256_text().substr(0, 24)
 
-## A request's key on Home: the room and the exact turn it names.
-static func request_key(room_id: String, revision: int, branch: int) -> String:
-	return "%s:%d:%d" % [room_id, revision, branch]
+## A request's key on Home: the room and the exact turn it names (the
+## revision moves with every turn; the stage is kept for reading).
+static func request_key(room_id: String, revision: int, stage_index: int) -> String:
+	return "%s:%d:%d" % [room_id, revision, stage_index]
 
 ## Notes a start of the turn `key` at `now_s` (unix seconds) and answers
 ## whether its nudge is due: NUDGE_TRIES tries, or NUDGE_SECONDS since this
