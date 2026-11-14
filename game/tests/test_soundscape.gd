@@ -665,14 +665,17 @@ func _check_loops() -> void:
 		world.mechanism_moving.emit("fold" if id.contains("-") else id, id, 0)
 	_check(_loop_voice(probe, "reel") == null, "A mechanism that stops lets its loop go")
 	# A world that keeps reporting a move it never finishes goes quiet after
-	# the move's time; a turn starts the time again; running water never does.
+	# the move's time, turning or not, until it stops; running water never does.
 	world.mechanism_moving.emit("drawbridge", "drawbridge", -1)
 	_check(_loop_voice(probe, "reel") != null, "A lowering drawbridge turns the reel")
 	probe._motions.drawbridge.since -= int(SoundCues.MOTION_MAX_SECONDS * 1000.0) + 1
 	probe._sync_loops()
 	_check(_loop_voice(probe, "reel") == null and probe._motions.has("drawbridge"), "A move still reported after its time lets its reel go")
 	world.mechanism_moving.emit("drawbridge", "drawbridge", 1)
-	_check(_loop_voice(probe, "reel") != null, "Turning the other way sounds again")
+	_check(_loop_voice(probe, "reel") == null, "Turning back and forth does not start the time again")
+	world.mechanism_moving.emit("drawbridge", "drawbridge", 0)
+	world.mechanism_moving.emit("drawbridge", "drawbridge", 1)
+	_check(_loop_voice(probe, "reel") != null, "A new move after stopping sounds again")
 	world.mechanism_moving.emit("drawbridge", "drawbridge", 0)
 	_check(not Soundscape.motion_spent({"kind": "spout", "since": 0}, 3600000) and Soundscape.motion_spent({"kind": "lift", "since": 0}, int(SoundCues.MOTION_MAX_SECONDS * 1000.0) + 1), "Running water pours as long as it runs; a winch's move is bounded")
 	world.mechanism_moving.emit("bucket", "bucket", -1)

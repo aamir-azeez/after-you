@@ -586,10 +586,13 @@ func _update_ambience() -> void:
 # --- Loops: moving mechanisms and place beds ---------------------------------
 
 ## The world's mechanism started (1 up or out, -1 down or in) or stopped (0).
-## A start or a turn begins the move's time (SoundCues.MOTION max_seconds).
+## A start from still begins the move's time (SoundCues.MOTION max_seconds);
+## a turn keeps it, so a move that flips back and forth is bounded too.
 func _on_mechanism_moving(kind: String, id: String, direction: int) -> void:
 	if direction == 0: _motions.erase(id)
-	elif SoundCues.MOTION.has(kind): _motions[id] = {"kind": kind, "direction": direction, "since": Time.get_ticks_msec()}
+	elif SoundCues.MOTION.has(kind):
+		var since: int = _motions[id].since if _motions.has(id) else Time.get_ticks_msec()
+		_motions[id] = {"kind": kind, "direction": direction, "since": since}
 	_sync_loops()
 
 ## True once a move has sounded longer than its kind allows: a world that
