@@ -27,6 +27,7 @@ campaign_presence_context 1
 campaign_replay_context 2
 campaign_safety_context 3
 campaign_store 2
+capabilities_refresh 1
 carried_light 2
 changelog 1
 chapter_access 2
@@ -201,6 +202,7 @@ long_way_home_v2_limits 2
 long_way_home_v2_world 1
 long_way_home_versions 1
 memory_wait 2
+menu_back 2
 missing_piece 1
 name_filter 3
 navigation_index 1

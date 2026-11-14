@@ -366,10 +366,10 @@ describe("the grant's own RevenueCat status filter", () => {
     expect(await readGrant("P".repeat(22), config, false, async () => ({ ok: false, reason: "provider_http_500" }))).toEqual({ ok: false, reason: "provider_http_500" });
     expect(await readGrant("P".repeat(22), config, false, async () => ({ ok: true, status: 404, value: null }))).toEqual({ ok: true, subs: [], lifetime: null });
   });
-  it("reads a tester's sandbox subscriptions too, with one more list read for testers only", async () => {
-    const tester = "T".repeat(22), other = "P".repeat(22);
+  it("reads every player's sandbox subscriptions too, with one more list read made at once", async () => {
+    const tester = "T".repeat(22);
     const config = (features: string[] = []) => ({ REVENUECAT_SECRET_KEY: "synthetic-test-key", CONFIG: configJson({ features, revenuecat: { project_id: "proj1234", play_subscription_product_ids: ["prodMonthly"],
-      app_store_subscription_product_ids: ["prodIosMonthly"], tester_ids: [tester] } }) });
+      app_store_subscription_product_ids: ["prodIosMonthly"] } }) });
     const lists: Record<string, unknown[]> = { production: [item()], sandbox: [item({ id: "sub_test", environment: "sandbox" }), item({ id: "sub_ios", environment: "sandbox", store: "app_store", product_id: "prodIosMonthly" })] };
     const request = vi.fn(async (url: string) => ({ ok: true as const, status: 200, value: { object: "list", items: lists[new URL(url).searchParams.get("environment")!], next_page: null } }));
     const environments = () => request.mock.calls.map(([url]) => new URL(url).searchParams.get("environment"));
@@ -379,10 +379,6 @@ describe("the grant's own RevenueCat status filter", () => {
     request.mockClear();
     expect((await readGrant(tester, config(["APP_STORE_ENTITLEMENTS_ENABLED"]), false, request) as { subs: GrantSub[] }).subs.map(sub => sub.id)).toEqual(["sub_1", "sub_test", "sub_ios"]);
     expect(environments()).toEqual(["production", "sandbox"]);
-    // Anyone else: production only, one read, as before.
-    request.mockClear();
-    expect(await readGrant(other, config(["APP_STORE_ENTITLEMENTS_ENABLED"]), false, request)).toMatchObject({ ok: true, subs: [{ id: "sub_1" }] });
-    expect(environments()).toEqual(["production"]);
     // A failed sandbox read pays nothing.
     expect(await readGrant(tester, config(), false, async url => new URL(url).searchParams.get("environment") === "sandbox" ? { ok: false, reason: "provider_http_500" } : request(url))).toEqual({ ok: false, reason: "provider_http_500" });
   });
@@ -650,7 +646,8 @@ describe("the grant through the wallet read", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
       const url = String(input instanceof Request ? input.url : input);
       if (!url.startsWith("https://api.revenuecat.com/")) throw new Error("unexpected fetch");
-      providerCalls++;
+      // A read is the production and sandbox lists made at once (grant-provider.ts readGrant): counted once, by its production list.
+      if (!url.includes("environment=sandbox")) providerCalls++;
       return url.includes("/subscriptions?") ? Response.json({ object: "list", items, next_page: null }) : new Response(null, { status: 404 });
     });
   });
