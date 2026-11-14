@@ -775,7 +775,8 @@ class FacesCard extends CanvasLayer:
 		box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		box.add_theme_constant_override("separation", 2)
 		cell.add_child(box)
-		var icon := FaceIcon.new(face, row._color(), 48.0 if named else 34.0)
+		# The slots' faces fill more of their cell, as the React card board draws them.
+		var icon := FaceIcon.new(face, row._color(), (58.0 if not slot_faces.is_empty() else 48.0) if named else 34.0)
 		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		box.add_child(icon)
 		if named:

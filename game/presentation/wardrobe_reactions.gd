@@ -25,9 +25,11 @@ const LIFTED := Color("dcefe6")
 const LIFTED_EDGE := Color("4f9d89")
 const SLOT_FILL := Color("efe8d4")
 const HEART_FILL := Color("fbe1dc")
-const SLOT_SIZE := Vector2(76, 76)
+const SLOT_SIZE := Vector2(96, 96)
 const CARD_SIZE := Vector2(112, 132)
 const FACE := 56.0
+## A face in a reaction slot.
+const SLOT_FACE := 76.0
 ## The other cards while a face is being put in a slot.
 const STEPPED_BACK := 0.45
 
@@ -75,9 +77,10 @@ func render(state: Dictionary) -> void:
 	var color := str(state.get("color", "peach"))
 	for index: int in slots.size():
 		_row.add_child(_slot(index, str(slots[index]), index < int(state.get("open", 4)), swapping, state.get("unlock", {}), bool(state.get("shop", false)), color))
-	var gap := Control.new()
-	gap.custom_minimum_size.x = 8
-	_row.add_child(gap)
+	# A thin line keeps the heart apart from the slots (board 4).
+	var line := VSeparator.new()
+	line.add_theme_constant_override("separation", 16)
+	_row.add_child(line)
 	_row.add_child(_heart())
 	var picked := str(state.get("selected", ""))
 	for entry: Dictionary in state.get("faces", []):
@@ -97,7 +100,7 @@ func _slot(index: int, face: String, open: bool, swapping: bool, unlock: Diction
 	button.pressed.connect(func() -> void: slot_chosen.emit(index))
 	if swapping and open: button.add_child(Dashes.new())
 	if open and not face.is_empty():
-		var icon := EndReactions.FaceIcon.new(face, color, FACE)
+		var icon := EndReactions.FaceIcon.new(face, color, SLOT_FACE)
 		icon.position = (SLOT_SIZE - icon.size) * 0.5
 		button.add_child(icon)
 	elif not open:
@@ -124,7 +127,7 @@ func _heart() -> Control:
 	chip.name = "ReactionSlotHeart"
 	chip.custom_minimum_size = SLOT_SIZE
 	chip.add_theme_stylebox_override("panel", ThemeRules.rounded(HEART_FILL, 14, Color("efc3bb")))
-	var icon := EndReactions.FaceIcon.new("heart", "peach", FACE)
+	var icon := EndReactions.FaceIcon.new("heart", "peach", SLOT_FACE * 0.8)
 	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	chip.add_child(icon)

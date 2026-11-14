@@ -207,6 +207,9 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	# get each one's everyday stand-in). A turn's own check then also reads the
 	# packs the player owns, so a pack face it carries can be accepted.
 	if end_reaction_path(method, path) or run_reaction_path(method, path): headers.append(FACE_PACKS_HEADER)
+	# The wardrobe's read and equip too: only then does the server send the face
+	# fields and a worn resting face (an older app's Wardrobe never sees one).
+	if (method == HTTPClient.METHOD_GET and path == "/v1/pollen") or (method == HTTPClient.METHOD_POST and path == "/v1/pollen/equip"): headers.append(FACE_PACKS_HEADER)
 	# This build shows leaderboards (presentation/leaderboard_screen.gd), so the server may say they are open.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Leaderboards: 1")
 	# This build plays duels (presentation/duels/), so the server may say they are open.

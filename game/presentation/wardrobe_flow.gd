@@ -57,8 +57,9 @@ extends Node
 ## face (presentation/wardrobe_reactions.gd). Picking a face shows it on the
 ## big pip; an owned one goes in a slot with Put in a slot, then a tap on a
 ## place (a swap when it sat in another); a locked place picks the next
-## reaction slot to buy. The slots changed here are kept on the page and sent
-## once, with the look, when the Wardrobe closes (_save_slots).
+## reaction slot to buy. A change is kept at once as the pending look (it
+## survives the app closing) and sent once, when the Wardrobe closes
+## (_save_slots), or by the next sync after that.
 ##
 ## Offline (services/connectivity.gd) the Wardrobe still opens once this
 ## player has a wardrobe saved from an earlier read: what they own, what they
@@ -142,8 +143,6 @@ var _reopen_tab := ""
 var _reopen_pick := ""
 var _selected := ""
 var _kind := ""
-## The reaction slots as changed on this visit, or null while unchanged (sent on close).
-var _slots_draft: Variant = null
 ## A face is being put in a slot: the next place tapped takes it.
 var _swapping := false
 var _view_mode := "you"
@@ -218,7 +217,6 @@ func show_wardrobe(from: String = "settings") -> void:
 	_reopen_tab = ""
 	_selected = ""
 	_kind = ""
-	_slots_draft = null
 	_swapping = false
 	_view_mode = "you"
 	_status = PlayerCopy.WARDROBE_LOADING if _view().is_empty() else ""
@@ -370,24 +368,25 @@ func choose_slot(index: int) -> void:
 		_selected = ReactionSlots.next_unlock(view)
 		_swapping = false
 	elif _swapping and ReactionCatalog.is_face(_selected):
-		_slots_draft = ReactionSlots.placed(_slots(), _selected, index)
+		var scope: Dictionary = _client().scope()
+		var slots := ReactionSlots.placed(_slots(), _selected, index)
+		# Kept now as the pending look (saved, not sent): the close sends it once.
+		if not scope.is_empty() and slots != _slots(): _client().store.put_on(str(scope.server), str(scope.owner), _look(), int(Time.get_unix_time_from_system() * 1000.0), slots)
 		_swapping = false
 	_redraw()
 
-## The reaction slots shown: as changed on this visit, else as kept.
+## The reaction slots shown: a change waiting to be sent, else as kept.
 func _slots() -> Array:
-	if _slots_draft is Array: return (_slots_draft as Array).duplicate()
 	var scope: Dictionary = _client().scope()
 	return [] if scope.is_empty() else _client().store.effective_slots(str(scope.server), str(scope.owner))
 
-## Sends the slots changed on this visit, once, with the look (services/
-## wardrobe_client.gd wear): offline it waits like any look.
+## Sends a change of slots made here, once, with the look (services/
+## wardrobe_client.gd sync): offline it waits like any look.
 func _save_slots() -> void:
-	var draft: Variant = _slots_draft
-	_slots_draft = null
 	_swapping = false
-	if not draft is Array or draft == _slots() or _client().scope().is_empty(): return
-	_after_sync(await _client().wear(_look(), draft))
+	var scope: Dictionary = _client().scope()
+	if scope.is_empty() or _client().store.pending(str(scope.server), str(scope.owner)).is_empty(): return
+	_after_sync(await _client().sync())
 
 ## The picked item's (or Orchard set's) button: buy it, or wear it or take it
 ## off when owned. A Fruit price reads the Fruit balance, is blocked while that
@@ -397,7 +396,7 @@ func act(id: String) -> void:
 	if entry.is_empty() or _client().busy(): return
 	if bool(entry.get("face", false)) and bool(entry.owned):
 		# Put in a slot, or Cancel while the row waits for a place.
-		_swapping = not _swapping and int(entry.get("in_slot", -1)) < 0
+		_swapping = not _swapping
 		_redraw()
 		return
 	if bool(entry.owned):

@@ -1,8 +1,11 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
-import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, faceSinglesOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
-import { ITEM_ID_PATTERN, featuredCodeFor, offeredTagFor } from "./catalog";
+import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
+import { ITEM_ID_PATTERN, featuredCodeFor, offeredTagFor, type Look } from "./catalog";
+import { withoutFaces } from "./reaction-loadout";
+import { servedFaceVersion } from "../v2/face-packs";
+import { FACE_SINGLES_VERSION } from "../v2/end-reactions";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
@@ -250,7 +253,9 @@ export async function routePollen(request: Request, path: string, playerId: stri
   if (path === POLLEN_PATH || path === POLLEN_HISTORY_PATH) {
     if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (!view) throw new ApiError(503, "pollen_unavailable");
-    return view;
+    // Only a phone that draws every face, while FACE_SINGLES is on, reads the face fields and a worn resting face.
+    return servedFaceVersion(request, env) >= FACE_SINGLES_VERSION || !isObject((view as { wardrobe?: unknown }).wardrobe) ? view
+      : { ...view, wardrobe: withoutFaces((view as unknown as { wardrobe: { look: Look } }).wardrobe) };
   }
   if (path === SPEND_PATH || path === EQUIP_PATH) return routeWardrobe(request, path, playerId, env);
   if (path === BUNDLE_CLAIMS_PATH) return routeBundles(request, playerId, env);
@@ -315,8 +320,10 @@ async function routeWardrobe(request: Request, path: string, playerId: string, e
     return unwrap(await player.pollenSpend(playerId, device, op, { kind, id: input.id }, input.expected_cost, fruitsOn(env)));
   }
   if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1 || !isObject(input.look)) throw new ApiError(400, code);
-  if (input.reactions !== undefined && !faceSinglesOn(env)) throw new ApiError(400, code);
-  return unwrap(await player.pollenEquip(playerId, device, op, input.look, input.revision, input.reactions));
+  const faces = servedFaceVersion(request, env) >= FACE_SINGLES_VERSION;
+  if (input.reactions !== undefined && !faces) throw new ApiError(400, code);
+  const receipt = unwrap(await player.pollenEquip(playerId, device, op, input.look, input.revision, input.reactions));
+  return faces ? receipt : withoutFaces(receipt);
 }
 
 /**

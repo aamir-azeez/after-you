@@ -351,6 +351,11 @@ const SHADER_PLACED_ALLOWED := {}
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect"]
 
+## Scripts that name the wallet read only to add request headers, never reading its reply:
+## rooms_api.gd adds the face version header (backend v2/face-packs.ts), so a wardrobe read
+## carries the resting face and the reaction slots.
+const WALLET_PATH_HEADERS_ONLY := ["res://services/rooms_api.gd"]
+
 var checks := 0
 var failures := 0
 var known := 0
@@ -526,7 +531,7 @@ func _wallet() -> void:
 					var stores_named: bool = args.size() == wanted and args.back() != "null" and (wanted == 4 or args[wanted - 2] != "null")
 					_check(stores_named, "%s calls %s without the Fruit store and the energy meter (services/fruit_wallet.gd, services/duel_energy.gd) as its last arguments: %s" % [path, call, args])
 					at = _call_at(source, call, at + call.length())
-		if not source.contains("\"/v1/pollen\""): continue
+		if not source.contains("\"/v1/pollen\"") or path in WALLET_PATH_HEADERS_ONLY: continue
 		readers += 1
 		_check(not alias.is_empty() and source.contains(alias + ".note("), "%s reads the wallet (GET /v1/pollen) without services/wallet_reply.gd note()" % path)
 	_check(readers >= 2, "The wallet readers are found: %d" % readers)

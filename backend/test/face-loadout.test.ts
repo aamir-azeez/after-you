@@ -7,6 +7,9 @@ import { noteFullJourney } from "../src/pollen/wallet";
 import { CATALOG, ownedFaces } from "../src/pollen/catalog";
 import { DEFAULT_SLOTS, FREE_SLOTS, SLOT_COUNT, slotsAllowed, validSlots } from "../src/pollen/reaction-loadout";
 import { POLLEN_CLIENT, withConfig } from "./config";
+import { FACE_PACKS_HEADER } from "../src/v2/end-reactions";
+import { droppable } from "../src/pollen/item-blooms";
+import { releasedCatalog } from "../src/pollen/catalog";
 
 // Face cosmetics on the wardrobe (FACE_SINGLES): the reaction slots kept beside the look, the resting face slot, the
 // reaction slot items, and a face owned through a pack never sold again. Synthetic identities only.
@@ -28,10 +31,10 @@ async function playerConfig(account: Account, vars: Record<string, unknown>): Pr
     target.CONFIG = withConfig(vars).CONFIG;
   });
 }
-async function call(path: string, method: string, account: Account | undefined, body: unknown, vars: Record<string, unknown>): Promise<Response> {
+async function call(path: string, method: string, account: Account | undefined, body: unknown, vars: Record<string, unknown>, older = false): Promise<Response> {
   if (account) await playerConfig(account, vars);
   return worker.fetch(new Request("https://faces.test" + path, { method,
-    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.94." + (++address % 250), [POLLEN_HEADER]: "1", ...POLLEN_CLIENT,
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.94." + (++address % 250), [POLLEN_HEADER]: "1", ...POLLEN_CLIENT, ...(older ? {} : { [FACE_PACKS_HEADER]: "2" }),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body) }), withConfig(Object.assign(withoutConfig(), vars)) as unknown as Env);
 }
@@ -126,6 +129,12 @@ describe("the reaction slots", () => {
     await fund(other, 10_000);
     expect(await errorOf(await buy(other, "pack", "garden_faces", 5000, vars))).toBe("not_for_sale");
     expect((await buy(other, "pack", "big_feelings", 5000, vars)).status).toBe(200);
+    // A pack whose every face was bought alone is never sold for nothing.
+    const third = await create();
+    await fund(third, 20_000);
+    const all = FACES_ON("heart_eyes", "proud", "wink");
+    for (const face of ["heart_eyes", "proud", "wink"]) expect((await buy(third, "item", face, CATALOG.tier_prices[CATALOG.items[face].tier], all)).status).toBe(200);
+    expect(await errorOf(await buy(third, "pack", "garden_faces", 5000, SHOP))).toBe("already_owned");
   });
 });
 
@@ -144,6 +153,15 @@ describe("the resting face", () => {
     // A current app takes it off by sending its slots with a look that leaves it out.
     expect((await equip(player, { hat: "daisy" }, vars, [...DEFAULT_SLOTS])).status).toBe(200);
     expect((await wardrobe(player, vars)).look).toEqual({ hat: "daisy" });
+    // An app older than the faces reads the look without it, and its equip receipt too, so its Wardrobe keeps working.
+    expect((await equip(player, { hat: "daisy", rest_face: "rest_bean" }, vars, [...DEFAULT_SLOTS])).status).toBe(200);
+    const older = await (await call("/v1/pollen", "GET", player, undefined, vars, true)).json<{ wardrobe: Wardrobe }>();
+    expect(older.wardrobe.look).toEqual({ hat: "daisy" }); expect(older.wardrobe).not.toHaveProperty("reactions");
+    const olderEquip = await call("/v1/pollen/equip", "POST", player, { schema_version: 1, idempotency_key: crypto.randomUUID(), revision: ++revision, look: { hat: "daisy" } }, vars, true);
+    expect((await olderEquip.json<{ look: Record<string, string> }>()).look).toEqual({ hat: "daisy" });
+    expect((await wardrobe(player, vars)).look).toEqual({ hat: "daisy", rest_face: "rest_bean" });
+    // Resting faces never drop from item blooms.
+    expect(droppable("common", releasedCatalog(new Set([CATALOG.items.rest_bean.code])))).not.toContain("rest_bean");
     // A resting face not owned is refused like any item.
     expect(await errorOf(await equip(player, { rest_face: "rest_round" }, vars, [...DEFAULT_SLOTS]))).toBe("not_owned");
   });

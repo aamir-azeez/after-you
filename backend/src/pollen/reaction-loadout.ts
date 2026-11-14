@@ -1,4 +1,5 @@
 import { isBaseFace, isPackFace, isSingleFace } from "../v2/end-reactions";
+import type { Look } from "./catalog";
 
 /**
  * A player's reaction slots: the faces the React card and the in-run card offer, in the order the player set them.
@@ -34,6 +35,18 @@ export function validSlots(value: unknown): value is string[] {
 export function slotsAllowed(slots: readonly string[], faces: ReadonlySet<string>, unlocks: number): boolean {
   const open = openSlots(unlocks);
   return slots.every((face, index) => face === "" || (index < open && (isBaseFace(face) || faces.has(face))));
+}
+
+/**
+ * A wardrobe part or equip receipt as an app older than the face items reads it: no `rest_face` in the look and no
+ * face fields. Such an app refuses a whole wallet read or receipt whose look has a slot it does not know, so a player
+ * who wears a resting face from a newer phone keeps a working Wardrobe on the older one (Classic shows there).
+ */
+export function withoutFaces<T extends { look: Look }>(part: T): T {
+  const { rest_face: _rest, ...look } = part.look; void _rest;
+  const { faces: _faces, reactions: _reactions, reaction_slots: _slots, ...rest } = part as T & { faces?: unknown; reactions?: unknown; reaction_slots?: unknown };
+  void _faces; void _reactions; void _slots;
+  return { ...rest, look } as T;
 }
 
 /** How many places are open for a player with `unlocks` reaction slots. */

@@ -55,7 +55,8 @@ export function quote(request: SpendRequest, holdings: Holdings, catalog: Catalo
   const pack = catalog.packs[request.id];
   if (!pack || !Object.hasOwn(catalog.packs, request.id)) return fail(404, "unknown_item");
   if (!offeredPacks(catalog).includes(request.id)) return fail(409, "not_for_sale");
-  if (holdings.owned.has(request.id)) return fail(409, "already_owned");
+  // A pack whose every face is owned (bought alone) is owned too: it is never sold for nothing.
+  if (holdings.owned.has(request.id) || pack.faces.every(face => holdings.owned.has(face))) return fail(409, "already_owned");
   return ok({ kind: "pack", id: request.id, pieces: [request.id], full: catalog.pack_price, cost: catalog.pack_price, currency: "pollen" });
 }
 

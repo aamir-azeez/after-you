@@ -1,5 +1,5 @@
 import { RATES, type Rates } from "./rates";
-import { CATALOG, sold, tierCurrency, type Catalog } from "./catalog";
+import { CATALOG, isFaceItem, sold, tierCurrency, type Catalog } from "./catalog";
 import { KEY_LABELS, derivedKey, hmac } from "./keys";
 import type { BloomSlot } from "./blooms";
 import type { ServerVars } from "../flags";
@@ -53,7 +53,8 @@ export async function itemBloomRoll(env: ServerVars, slot: BloomSlot, rates: Rat
 
 /** Every item a drop of `tier` may give, owned or not: the tier's sold items, sorted by id. */
 export function droppable(tier: string, catalog: Catalog = CATALOG): string[] {
-  return Object.keys(catalog.items).filter(id => catalog.items[id].tier === tier && sold(id, catalog)).sort();
+  // Face items (resting faces on the hat tiers among them) never drop, so the drop pools stay the hats, bodies and leaves.
+  return Object.keys(catalog.items).filter(id => catalog.items[id].tier === tier && sold(id, catalog) && !isFaceItem(id, catalog)).sort();
 }
 
 /** What a roll gives a player who owns `owned`, or null when it drops nothing. */

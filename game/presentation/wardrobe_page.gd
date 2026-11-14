@@ -472,11 +472,8 @@ func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false, fr
 	ButtonTicks.quiet(action_button, bool(entry.owned))
 	var label := ""
 	if bool(entry.get("face", false)) and bool(entry.owned):
-		# A face: Put in a slot, Cancel while the row waits, nothing once it sits in one.
+		# A face: Put in a slot (a slotted one moves to another place), Cancel while the row waits.
 		var swapping := bool((_model.get("reactions", {}) as Dictionary).get("swapping", false))
-		if int(entry.get("in_slot", -1)) >= 0 and not swapping:
-			action_button.visible = false
-			return
 		var words := PlayerCopy.WARDROBE_CANCEL_SLOT if swapping else PlayerCopy.WARDROBE_PUT_IN_SLOT
 		ShopKit.set_button_content(action_button, ShopKit.text(words, 22, CREAM if swapping else INK, ShopKit.bold_font()))
 		action_button.accessibility_name = words
@@ -609,11 +606,19 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
 	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
 	column.add_child(picture)
-	var pip := PipAvatar.new(_reduced, SpiritLook.PEACH, SHELF_PIP if small else CARD_PIP, true)
-	pip.outfit = Outfit.of(str(entry.id))
-	pip.animate_moving = true
-	pip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	picture.add_child(pip)
+	if entry.slot == "rest_face" and not small:
+		# A resting face: the head front on, as faces board 4 crops it, so Button, Bean and Round read apart.
+		var head := RestFace.new()
+		head.expression = "normal" if bool(entry.get("classic", false)) else str(entry.id)
+		head.custom_minimum_size = Vector2(CARD_PICTURE, CARD_PICTURE)
+		head.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		picture.add_child(head)
+	else:
+		var pip := PipAvatar.new(_reduced, SpiritLook.PEACH, SHELF_PIP if small else CARD_PIP, true)
+		pip.outfit = Outfit.of(str(entry.id))
+		pip.animate_moving = true
+		pip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		picture.add_child(pip)
 	var title_row := HBoxContainer.new()
 	title_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(title_row)
@@ -713,6 +718,16 @@ func _outlined(button: Button) -> void:
 		var box := ThemeRules.rounded(Color(1, 1, 1, 0.08) if state in ["hover", "pressed", "hover_pressed"] else Color.TRANSPARENT, 16, CREAM)
 		box.set_border_width_all(2)
 		button.add_theme_stylebox_override(state, box)
+
+## A resting face on a card: the pip's head drawn flat with the game's own
+## shapes (empty_state_art.gd spirit, SpiritLook.eye_contours), once.
+class RestFace extends Control:
+	var expression := "normal"
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var scale := minf(size.x, size.y) * 0.5 / (EmptyArt.Look.HEAD_HALF.x * EmptyArt.UNIT * 1.05)
+		EmptyArt.spirit(self, Transform2D(0.0, Vector2(scale, scale), 0.0, size * 0.5 + Vector2(0, size.y * 0.06)), {"color": "peach", "eyes": expression}, true)
 
 ## The flat oval under the big pip's feet.
 class Floor extends Control:

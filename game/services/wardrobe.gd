@@ -365,6 +365,11 @@ func note_spend(server: String, owner: String, receipt: Variant) -> bool:
 	for id: String in pieces:
 		if not id in scope.view[list]: scope.view[list].append(id)
 	scope.view[list].sort()
+	# A face or reaction slot bought: owned and open at once, as the next read will say.
+	if scope.view.has("reactions"):
+		for id: String in pieces:
+			if Catalog.item(id).get("slot") == "reaction" and not id in scope.view.faces: scope.view.faces.append(id)
+			if Catalog.item(id).get("slot") == "reaction_slot": scope.view.reaction_slots = mini(int(scope.view.reaction_slots) + 1, REACTION_SLOT_COUNT)
 	# A set the purchase took a piece of costs something else now: its cost goes until the next read says it.
 	var costs: Dictionary = scope.view.get("fruit_set_costs", {})
 	for set_id: String in costs.keys():
