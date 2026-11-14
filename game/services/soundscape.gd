@@ -586,10 +586,17 @@ func _update_ambience() -> void:
 # --- Loops: moving mechanisms and place beds ---------------------------------
 
 ## The world's mechanism started (1 up or out, -1 down or in) or stopped (0).
+## A start or a turn begins the move's time (SoundCues.MOTION max_seconds).
 func _on_mechanism_moving(kind: String, id: String, direction: int) -> void:
 	if direction == 0: _motions.erase(id)
-	elif SoundCues.MOTION.has(kind): _motions[id] = {"kind": kind, "direction": direction}
+	elif SoundCues.MOTION.has(kind): _motions[id] = {"kind": kind, "direction": direction, "since": Time.get_ticks_msec()}
 	_sync_loops()
+
+## True once a move has sounded longer than its kind allows: a world that
+## keeps reporting it (it stopped advancing, or never settles) goes quiet.
+static func motion_spent(motion: Dictionary, now_msec: int) -> bool:
+	var limit := float(SoundCues.MOTION[motion.kind].get("max_seconds", SoundCues.MOTION_MAX_SECONDS))
+	return limit > 0.0 and now_msec - int(motion.since) > int(limit * 1000.0)
 
 ## The bed of the place on screen: the turn's chapter, else the idle place.
 func place() -> String:
@@ -600,7 +607,8 @@ func place() -> String:
 func _sync_loops() -> void:
 	if loop_voices.is_empty(): return
 	var audible := sound_enabled and not _hushed() and not _quiet() and is_instance_valid(_world) and _world.is_visible_in_tree()
-	var moving := audible and _world.is_processing()
+	# A world whose frames do not run (paused or disabled) moves nothing.
+	var moving := audible and _world.is_processing() and _world.can_process()
 	var wanted := {}
 	var calls := ""
 	if audible:
@@ -608,7 +616,9 @@ func _sync_loops() -> void:
 			if SoundCues.CALLS.has(bed): calls = bed
 			else: wanted["bed:" + bed] = {"loop": bed, "pitch": 0.0, "bed": true}
 	if moving:
+		var now := Time.get_ticks_msec()
 		for id: String in _motions:
+			if motion_spent(_motions[id], now): continue
 			var motion: Dictionary = SoundCues.MOTION[_motions[id].kind]
 			wanted[id] = {"loop": motion.loop, "pitch": float(motion.pitch) + (float(motion.rise) if int(_motions[id].direction) > 0 else 0.0), "bed": false}
 	var instant := not sound_enabled or _hushed()

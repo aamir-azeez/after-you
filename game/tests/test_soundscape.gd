@@ -664,6 +664,23 @@ func _check_loops() -> void:
 	for id: String in ["bucket", "ladder", "cliff-steps", "long-stair"]:
 		world.mechanism_moving.emit("fold" if id.contains("-") else id, id, 0)
 	_check(_loop_voice(probe, "reel") == null, "A mechanism that stops lets its loop go")
+	# A world that keeps reporting a move it never finishes goes quiet after
+	# the move's time; a turn starts the time again; running water never does.
+	world.mechanism_moving.emit("drawbridge", "drawbridge", -1)
+	_check(_loop_voice(probe, "reel") != null, "A lowering drawbridge turns the reel")
+	probe._motions.drawbridge.since -= int(SoundCues.MOTION_MAX_SECONDS * 1000.0) + 1
+	probe._sync_loops()
+	_check(_loop_voice(probe, "reel") == null and probe._motions.has("drawbridge"), "A move still reported after its time lets its reel go")
+	world.mechanism_moving.emit("drawbridge", "drawbridge", 1)
+	_check(_loop_voice(probe, "reel") != null, "Turning the other way sounds again")
+	world.mechanism_moving.emit("drawbridge", "drawbridge", 0)
+	_check(not Soundscape.motion_spent({"kind": "spout", "since": 0}, 3600000) and Soundscape.motion_spent({"kind": "lift", "since": 0}, int(SoundCues.MOTION_MAX_SECONDS * 1000.0) + 1), "Running water pours as long as it runs; a winch's move is bounded")
+	world.mechanism_moving.emit("bucket", "bucket", -1)
+	world.process_mode = Node.PROCESS_MODE_DISABLED
+	probe._sync_loops()
+	_check(_loop_voice(probe, "reel") == null, "A world whose frames do not run moves nothing")
+	world.process_mode = Node.PROCESS_MODE_INHERIT
+	world.mechanism_moving.emit("bucket", "bucket", 0)
 	world.mechanism_moving.emit("spout", "spout", 1)
 	world.set_process(false)
 	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
@@ -1026,6 +1043,28 @@ func _check_reduced_motion() -> void:
 	_check(heard == [["spout", "spout", 1]], "Reduce motion silences moving mechanisms but not running water")
 	world.free()
 
+## A new level, as Home builds at launch, starts with its bridge at rest: it
+## reports no moving drawbridge (whose reel sounded through the splash), and
+## an immediate present with the bridge open raises it at once, silently.
+func _check_bridge_at_rest() -> void:
+	var world: Node3D = preload("res://presentation/island_world.gd").new()
+	var heard: Array = []
+	world.mechanism_moving.connect(func(kind: String, id: String, direction: int): heard.append([kind, id, direction]))
+	root.add_child(world)
+	var level: Dictionary = preload("res://core/levels.gd").all_levels()[0]
+	world.load_level(level)
+	var sim: RefCounted = preload("res://core/simulation.gd").new()
+	sim.reset(level)
+	world.present(sim.snapshot(), true)
+	for i in range(4): await process_frame
+	_check(heard.is_empty(), "A new level reports no moving bridge: %s" % [heard])
+	var open: Dictionary = sim.snapshot()
+	open.bridge_open = true
+	world.present(open, true)
+	for i in range(3): await process_frame
+	_check(heard.is_empty() and world.bridge_parts.all(func(plank: Node3D) -> bool: return is_equal_approx(plank.position.y, world.BRIDGE_RAISED_Y)), "An immediate open bridge is raised at once, with no reel: %s" % [heard])
+	world.queue_free()
+
 func _check(condition: bool, message: String) -> void:
 	checks+=1
 	if not condition:
@@ -1104,6 +1143,7 @@ func _run() -> void:
 	await _check_calls()
 	await _check_loops()
 	_check_reduced_motion()
+	await _check_bridge_at_rest()
 	await _check_fixed_cues()
 	await _check_button_ticks()
 	await _check_covered()
