@@ -58,6 +58,11 @@ const TurnTries = preload("res://services/turn_tries.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
+const RunExport = preload("res://services/run_export.gd")
+const FileShare = preload("res://services/file_share.gd")
+const TesterSwitches = preload("res://services/tester_switches.gd")
+const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
+const OPTIONS_ICON = preload("res://assets/ui/room/dots.svg")
 const SLOT_COLORS: Dictionary = preload("res://presentation/spirit_look.gd").SLOT_COLOR_NAMES
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -83,6 +88,9 @@ const SOLO_COLLECTION_REDRAW_MS := 400
 const SHARED_IDENTITY_WAIT_MS := 10000
 ## Most friend turn photos one Together photo fetch asks the server for.
 const SHARED_PHOTO_FETCH_LIMIT := 16
+## Export this run: after a tap opens the share sheet, the button waits this
+## long, so a second tap never opens another.
+const EXPORT_SETTLE_MS := 1500
 
 signal home_requested
 signal account_requested
@@ -145,6 +153,14 @@ var _shared_archive_attempts: Dictionary = {}
 var _shared_photo_checked: Dictionary = {}
 ## Together rooms whose parts this session already asked the server about.
 var _shared_parts_checked: Dictionary = {}
+## Export this run, the owner's phone only (TesterSwitches run_export, noted by
+## every capabilities read). Tests set their own.
+var run_export_allowed: Callable = func() -> bool: return TesterSwitches.shared().run_export()
+## (bytes, file_name) -> bool: hands the exported run to the share sheet
+## (services/file_share.gd). Tests set their own.
+var share_file: Callable = func(bytes: PackedByteArray, file_name: String) -> bool: return FileShare.share_file(bytes, file_name)
+## Until when (ticks ms) an Export this run tap opens nothing more.
+var _export_settle_until := 0
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -429,7 +445,7 @@ func _solo_collection_entries() -> Array:
 		var chapter_key := str(rows[0].chapter_key)
 		attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
 		var checking: bool=rows.any(func(row: Dictionary) -> bool: return row.get("checking",false))
-		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows,"playback_rows":item.playback_rows,"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size(),"checking":checking})
+		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows,"playback_rows":item.playback_rows,"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"attempt":int(attempt_numbers[chapter_key]),"chapter_key":chapter_key,"parts":rows.size(),"checking":checking})
 	return entries
 
 func _select_solo_entry(entries: Array) -> void:
@@ -810,9 +826,9 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 		var watch_all := _solo_watch_button("Watch all parts",entry,parts-1,false,false,true)
 		watch_all.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		secondary.add_child(watch_all)
-	var options: Button = host._button("Options",_open_solo_options,false)
-	options.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	secondary.add_child(options)
+	var export := _solo_export_button(entry)
+	if export != null: secondary.add_child(export)
+	secondary.add_child(_options_button(_open_solo_options,export != null))
 	if entry.get("family")=="legacy":
 		secondary.add_child(_collection_delete_button(func(): _confirm_delete_collection_replay(int(entry.get("level_index",-1)),entry.get("attempt",{})),str(entry.get("title",""))))
 	else:
@@ -982,6 +998,8 @@ func _show_solo_replay_attempt() -> void:
 			part_box.add_child(inset)
 			list.add_child(part_box)
 		if rows.is_empty(): list.add_child(host._paragraph("This replay can't be found anymore.",600))
+		var export := _solo_export_button(_selected_solo_attempt)
+		if export != null: list.add_child(export)
 	card.add_child(host._back_button("Back to Solo replays",show_collection,false))
 
 static func _solo_replay_context_from_rows(chapter_key: String, rows: Array, selected: Dictionary) -> Dictionary:
@@ -1476,9 +1494,9 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 		var watch_all: Button = host._button("Watch all parts",func(): _play_shared_entries(sequence),false)
 		watch_all.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		secondary.add_child(watch_all)
-	var options: Button = host._button("Options",_open_shared_options,false)
-	options.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-	secondary.add_child(options)
+	var export := _shared_export_button(_current_shared_room(),current)
+	if export != null: secondary.add_child(export)
+	secondary.add_child(_options_button(_open_shared_options,export != null))
 	if current.get("cached",false):
 		var remove := _collection_delete_button(func(): _confirm_delete_shared_memory(key,current),str(current.get("title","")))
 		remove.disabled=not _can_delete_shared_memory(key)
@@ -1492,6 +1510,77 @@ func _shared_watch_button(text: String, key: String, row: Dictionary, primary: b
 	var launch := func(): await _open_shared_memory(key,row)
 	if not row.get("cached",false): return _replay_launch_button(text,launch,primary,list_row)
 	return host._list_button(text,launch,primary) if list_row else host._button(text,launch,primary)
+
+## Export this run: the whole attempt as one file (services/run_export.gd),
+## offered to the share sheet. Shown beside Watch all parts for the owner only.
+## `bytes` reads the file when tapped, so drawing the row reads nothing.
+func _export_button(bytes: Callable, file_name: String) -> Button:
+	var button: Button = host._button(PlayerCopy.EXPORT_RUN,Callable(),false)
+	button.name="ExportRun"
+	button.icon=SHARE_ICON
+	button.add_theme_constant_override("icon_max_width",24)
+	for state: String in ["normal","focus"]: button.add_theme_color_override("icon_%s_color" % state,CREAM)
+	button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	button.set_meta("export_file_name",file_name)
+	button.pressed.connect(_export_run.bind(button,bytes,file_name))
+	ControlTheme.center_icon_label(button)
+	return button
+
+## A solo chapter attempt's export, every part (removed ones too) in stage
+## order; null unless the owner may export and the attempt is checked.
+func _solo_export_button(entry: Dictionary) -> Button:
+	if entry.get("family")!="chapter" or entry.get("checking",false) or not run_export_allowed.call(): return null
+	var chapter_key := str(entry.get("chapter_key",""))
+	var rows: Array=entry.get("playback_rows",entry.get("rows",[])).duplicate()
+	return _export_button(func() -> PackedByteArray: return RunExport.solo_blob(chapter_key,rows),RunExport.file_name(chapter_key,int(entry.get("attempt",1))))
+
+## A Together chapter attempt's export: the room attempt this phone keeps for
+## the selected part's branch, byte for byte. null unless the owner may export.
+func _shared_export_button(room: Dictionary, row: Dictionary) -> Button:
+	if room.get("family")!="chapter" or not run_export_allowed.call(): return null
+	var found := RegEx.create_from_string("^p([0-9]{1,2})-[0-9]$").search(str(row.get("id","")))
+	if found == null: return null
+	var room_id := str(room.get("room_id",""))
+	var position := int(found.get_string(1))
+	return _export_button(func() -> PackedByteArray: return _kept_attempt(room_id,position),RunExport.file_name(str(room.get("chapter_key","")),position+1))
+
+func _kept_attempt(room_id: String, position: int) -> PackedByteArray:
+	host.ensure_relay_session()
+	return host.relay_session.history_attempt(room_id,position) if host.relay_session != null else PackedByteArray()
+
+## One share sheet per tap: a second tap while it opens does nothing, and a run
+## with no file (or no sheet on this device) says so instead.
+func _export_run(button: Button, bytes: Callable, file_name: String) -> void:
+	var now := Time.get_ticks_msec()
+	if now<_export_settle_until or host.application_backgrounded: return
+	_export_settle_until=now+EXPORT_SETTLE_MS
+	var file: PackedByteArray=bytes.call()
+	if file.is_empty() or share_file.call(file,file_name) != true:
+		_export_settle_until=0
+		host._toast(PlayerCopy.EXPORT_RUN_FAILED)
+		return
+	button.disabled=true
+	host.get_tree().create_timer(EXPORT_SETTLE_MS/1000.0).timeout.connect(_export_settled.bind(button))
+
+func _export_settled(button: Variant) -> void:
+	if is_instance_valid(button): button.disabled=false
+
+## The preview's Options control. Beside Export this run it is the "…" icon,
+## as drawn, so the row keeps its width; otherwise its label as before.
+func _options_button(callback: Callable, compact: bool) -> Button:
+	var options: Button = host._button("Options",callback,false)
+	if not compact:
+		options.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		return options
+	options.text=""
+	options.icon=OPTIONS_ICON
+	options.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	options.add_theme_constant_override("icon_max_width",24)
+	options.custom_minimum_size=Vector2(64,54)
+	host._fit_icon_button(options)
+	options.tooltip_text="Options"
+	options.accessibility_name="Options"
+	return options
 
 func _open_shared_options() -> void:
 	if host.shared_replays==null: return

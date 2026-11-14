@@ -55,7 +55,7 @@ func _clear_runs() -> void:
 		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 
 func _rules() -> void:
-	for id: String in ["retry", "try_again", "restart", "checkpoints", "solo_redo", "redo", "redo_answer"]:
+	for id: String in ["retry", "try_again", "restart", "checkpoints", "solo_redo", "redo", "redo_play", "redo_keep"]:
 		_check(not HardMode.offers(id), "A hard run never offers " + id)
 	for id: String in ["resume", "record", "save", "preview", "back", "continue", "pause", "leave_draft"]:
 		_check(HardMode.offers(id), "A hard run still offers " + id)
@@ -326,8 +326,8 @@ func _room_actions() -> void:
 				"draft": return draft
 				"redo_accept": return accept
 			return true
-	for id: String in ["restart", "checkpoints", "solo_redo", "redo", "redo_answer"]:
-		var accept := id == "redo_answer"
+	for id: String in ["restart", "checkpoints", "solo_redo", "redo", "redo_play", "redo_keep"]:
+		var accept := id in ["redo_play", "redo_keep"]
 		_check(RoomActions.applies(id, facts.call(false, false, accept)) and not RoomActions.applies(id, facts.call(true, false, accept)), id + " is offered in normal play only")
 	_check(RoomActions.applies("record", facts.call(true, false)) and not RoomActions.applies("record", facts.call(true, true)) and RoomActions.applies("record", facts.call(false, true)), "With a hard draft saved, only Resume goes on")
 	_check(RoomActions.applies("hard_again", facts.call(true, false)) and not RoomActions.applies("hard_again", facts.call(false, false)), "Play Hard again shows only for a hard run")

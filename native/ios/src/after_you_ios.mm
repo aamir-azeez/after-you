@@ -180,6 +180,7 @@ void AfterYouIOS::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("secure_remove", "name", "request_id"), &AfterYouIOS::secure_remove);
 	ClassDB::bind_method(D_METHOD("secure_copy_recovery", "player_id", "recovery_code", "request_id"), &AfterYouIOS::secure_copy_recovery);
 	ClassDB::bind_method(D_METHOD("share_text", "text"), &AfterYouIOS::share_text);
+	ClassDB::bind_method(D_METHOD("share_file", "bytes", "file_name", "mime_type"), &AfterYouIOS::share_file);
 	ClassDB::bind_method(D_METHOD("invite_link_take"), &AfterYouIOS::invite_link_take);
 	ClassDB::bind_method(D_METHOD("configure", "public_key", "player_id", "mode", "request_id"), &AfterYouIOS::configure);
 	ClassDB::bind_method(D_METHOD("get_offerings", "request_id"), &AfterYouIOS::get_offerings);
@@ -342,6 +343,42 @@ void AfterYouIOS::share_text(const String &p_text) {
 		sheet.popoverPresentationController.permittedArrowDirections = 0;
 		[host presentViewController:sheet animated:YES completion:nil];
 	});
+}
+
+// Export this run: the bytes become the only file in a temporary export folder, offered by the
+// share sheet as a file URL (Save to Files, Messages, Mail, AirDrop). Android's limit and names.
+static const int64_t AY_EXPORT_MAX_BYTES = 8 * 1024 * 1024;
+
+bool AfterYouIOS::share_file(const PackedByteArray &p_bytes, const String &p_file_name, const String &p_mime_type) {
+	(void)p_mime_type; // The sheet reads the type from the file itself.
+	NSString *name = [AYPolicy exportFileName:ay_ns(p_file_name)];
+	if (name == nil || p_bytes.size() < 1 || p_bytes.size() > AY_EXPORT_MAX_BYTES) {
+		return false;
+	}
+	NSFileManager *files = [NSFileManager defaultManager];
+	NSString *folder = [NSTemporaryDirectory() stringByAppendingPathComponent:@"after-you-exports"];
+	[files removeItemAtPath:folder error:nil];
+	if (![files createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil]) {
+		return false;
+	}
+	NSURL *file = [NSURL fileURLWithPath:[folder stringByAppendingPathComponent:name]];
+	NSData *data = [NSData dataWithBytes:p_bytes.ptr() length:(NSUInteger)p_bytes.size()];
+	if (![data writeToURL:file options:NSDataWritingAtomic error:nil]) {
+		return false;
+	}
+	dispatch_async(dispatch_get_main_queue(), ^{
+		UIViewController *host = ay_top_controller();
+		if (host == nil) {
+			return;
+		}
+		UIActivityViewController *sheet = [[UIActivityViewController alloc] initWithActivityItems:@[ file ] applicationActivities:nil];
+		// The same iPad popover anchor as share_text.
+		sheet.popoverPresentationController.sourceView = host.view;
+		sheet.popoverPresentationController.sourceRect = CGRectMake(CGRectGetMidX(host.view.bounds), CGRectGetMidY(host.view.bounds), 1, 1);
+		sheet.popoverPresentationController.permittedArrowDirections = 0;
+		[host presentViewController:sheet animated:YES completion:nil];
+	});
+	return true;
 }
 
 String AfterYouIOS::invite_link_take() {

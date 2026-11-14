@@ -2,6 +2,7 @@ extends CanvasLayer
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const BACK_ICON = preload("res://assets/ui/back.svg")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal closed
 var client: RefCounted
 var accepted := false
@@ -103,13 +104,14 @@ func _render() -> void:
 	var view: Dictionary = client.view()
 	var request: Variant = view.get("request")
 	if request is Dictionary:
-		var labels := {"pending":"Redo requested","declined":"Request declined","cancelled":"Request cancelled","accepted":"Redo accepted"}
+		var pending_line: String = PlayerCopy.REDO_ASKED_FOR % "Your friend" if client.can_accept() else PlayerCopy.REDO_ASKED % "your friend"
+		var labels := {"pending":pending_line,"declined":"Request declined","cancelled":"Request cancelled","accepted":"Redo accepted"}
 		_label(labels.get(request.status,"Request pending"))
 	if client.can_accept():
-		_button("Redo my turn",func(): _act("accept"))
-		_button("Keep this turn",func(): _act("decline"))
+		_button(PlayerCopy.REDO_PLAY_AGAIN,func(): _act("accept"))
+		_button(PlayerCopy.REDO_KEEP,func(): _act("decline"))
 	elif client.can_cancel(): _button("Cancel request",func(): _act("cancel"))
-	elif client.can_request(): _button(client.request_label() if client.has_method("request_label") else "Ask for redo",func(): _act("request"))
+	elif client.can_request(): _button(client.request_label() if client.has_method("request_label") else PlayerCopy.REDO_ASK,func(): _act("request"))
 	elif request == null and not _busy: _label("No redo request")
 	_button("Refresh",_refresh)
 

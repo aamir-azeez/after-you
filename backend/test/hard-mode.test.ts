@@ -251,8 +251,8 @@ describe("hard rooms", () => {
     const first = (await turn.json<MutationV2>()).room;
     const reset = await call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", guest, resetBody(first), ON, {}, counted.env);
     expect(reset.status).toBe(200);
-    // The same calls as an ordinary turn: authorize, interaction, the room's own write.
-    expect(turnCalls.filter(name => name.startsWith("ROOMS_V2."))).toEqual(["ROOMS_V2.interactionAllowed", "ROOMS_V2.snapshot", "ROOMS_V2.commit"]);
+    // An ordinary turn is one room request (turnRequest runs the gate, the read and the write); a slip keeps its two.
+    expect(turnCalls.filter(name => name.startsWith("ROOMS_V2."))).toEqual(["ROOMS_V2.turnRequest"]);
     expect(counted.calls.filter(name => name.startsWith("ROOMS_V2."))).toEqual(["ROOMS_V2.interactionAllowed", "ROOMS_V2.hardReset"]);
   });
 

@@ -1,6 +1,7 @@
 """Generate After You's synthesised world cues: bell, well plunk, reel, water, bird calls,
 the hand-worked controls (winch, bolt, valve), drips, sloshes, shore washes and the
-quiet UI confirmations (a toggle's tick, Pollen's sparkle).
+quiet UI confirmations (a toggle's tick, Pollen's sparkle) and the Wood chime
+result sound a pip may wear.
 
 Run with Python 3.11+, standard library only. No recordings, samples or network:
     python scripts/generate_cues.py            # rebuild every cue, refuse any drift
@@ -399,6 +400,19 @@ def tick() -> list[float]:
     return one_shot(mellow(out, 5000.0), 2.0)
 
 
+def wood_chime() -> list[float]:
+    """The Wood chime result sound (a Bell sound item): two quiet hollow
+    wooden taps 0.06 s apart, the second a little higher and softer, 0.2 s in
+    all with 15 ms edge fades. Hollow: a low knock with a ringing body partial
+    a fifth up, well clear of the puzzle's bells and reed cues."""
+    out = silence(0.2)
+    for n, (f, gain) in enumerate(((560.0, 1.0), (690.0, 0.72))):
+        overlay(out, thunk(f, 0.12, 0.022), 0.015 + n * 0.06, gain)
+        body = Biquad("bp", f * 1.5, 9.0)
+        overlay(out, [body(x) * math.exp(-i / RATE / 0.03) for i, x in enumerate(noise(0.12, 211 + n))], 0.015 + n * 0.06, 0.35 * gain)
+    return one_shot(mellow(out, 4200.0), 15.0)
+
+
 def sparkle() -> list[float]:
     """Pollen arriving: three soft glints rising through C, E and G, each a
     little bell partial over its fundamental, quiet and quick."""
@@ -477,6 +491,7 @@ CUES = {
     "shore-wash": shore_wash,
     "tick": tick,
     "sparkle": sparkle,
+    "wood-chime": wood_chime,
 }
 # Files that loop; scripts/test_cues.py checks their seams.
 LOOPS = ("reel", "water-lap", "spout")
@@ -501,6 +516,7 @@ APPROVED = {
     "shore-wash": "ee845a89d4464ff905b09f816cbad44fca07dd3d7070ee189392188aab44835d",
     "tick": "349de2096de8ce965ac139effddc5e90430af17e51e017bc7b0fcb8686d7ffa1",
     "sparkle": "b87bbf727ea49ea4b309b1f7ca0f01d8aff2edc2c52d4a8b5628c48d765b9b01",
+    "wood-chime": "736c38a9150a0b1cc2d22f658fb767fe96c5b807ed331f52faabc6985e2aa193",
 }
 
 

@@ -2,6 +2,7 @@ import { canonicalJson, digest, equalHash, fail, HASH_PATTERN, IDEMPOTENCY_PATTE
 import { exact } from "./protocol";
 import { duelLink } from "../duels/room-link";
 import { checkPhoto, type CheckedPhoto } from "./photo-image";
+import { parseRow, type RowData } from "./row-codec";
 
 export const MAX_PHOTOS = 32, MAX_PHOTO_OPERATIONS = 256;
 export const PHOTO_TURN_PATTERN = /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/;
@@ -52,9 +53,9 @@ export function mutatePhoto(storage: DurableObjectStorage, room: Room | null, pl
   if (!member(room)) return fail(404, "room_not_found");
   // Players in a public duel may not know each other: its rooms take no photos (duels/public.ts).
   if (duelLink(storage)?.public) return fail(403, "public_duel_photos_off");
-  const turn = storage.sql.exec<{ player_id: string; data: string }>("SELECT player_id,data FROM turns WHERE turn_id=?", input.turn_id).toArray()[0];
+  const turn = storage.sql.exec<{ player_id: string; data: RowData }>("SELECT player_id,data FROM turns WHERE turn_id=?", input.turn_id).toArray()[0];
   if (!turn || turn.player_id !== player) return fail(404, "turn_not_found");
-  if (JSON.parse(turn.data).recording_hash !== input.recording_hash) return fail(409, "photo_recording_mismatch");
+  if (parseRow<{ recording_hash: string }>(turn.data).recording_hash !== input.recording_hash) return fail(409, "photo_recording_mismatch");
   const prior = getPhotoOperation(storage, room, player, input.key);
   if (prior.ok) return equalHash(prior.value.receipt.request_hash, input.request_hash) ? prior : fail(409, "idempotency_key_reused");
   const previous = readPhoto(storage, input.turn_id);

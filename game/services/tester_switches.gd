@@ -19,6 +19,9 @@ extends RefCounted
 ## Full Journey: while the server has this player's switch on (the code's answer, then every
 ## capabilities read: full_journey_off), Main treats them as without Full Journey. Their store
 ## purchase and tester grant are untouched.
+##
+## Export this run: while the last capabilities read said this player may export runs
+## (run_export_version, the owner only), Replays offers it. Kept so a launch knows it at once.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
@@ -46,7 +49,7 @@ var scope_source: Callable
 var _last_key := ""
 ## Moves on with every change, so a view built from these switches knows to build again.
 var generation := 0
-## scope -> {"keepsakes": "" | ALL | FRESH, "earned": {place: {solo, friend}}, "hard": {key: {solo, together}}, "full_journey_off": bool}
+## scope -> {"keepsakes": "" | ALL | FRESH, "earned": {place: {solo, friend}}, "hard": {key: {solo, together}}, "full_journey_off": bool, "run_export": bool}
 var _scopes: Dictionary = {}
 
 static func shared() -> RefCounted:
@@ -83,6 +86,10 @@ func keepsakes() -> String:
 ## Whether the signed-in player is to be treated as without Full Journey.
 func full_journey_off() -> bool:
 	return _entry(_current_key()).get("full_journey_off", false) == true
+
+## Whether the signed-in player may export a run from Replays (services/run_export.gd).
+func run_export() -> bool:
+	return _entry(_current_key()).get("run_export", false) == true
 
 ## Keepsake places as Home reads them: `real` is HomeKeepsakes.earned_descriptors().
 func earned(real: Array[Dictionary]) -> Array[Dictionary]:
@@ -151,6 +158,16 @@ func note_full_journey(server: String, owner: String, off: bool) -> void:
 	if (entry.get("full_journey_off", false) == true) == off: return
 	if off: entry.full_journey_off = true
 	else: entry.erase("full_journey_off")
+	_put(key, entry)
+
+## A capabilities read for a scope: whether the server lets this player export runs.
+func note_run_export(server: String, owner: String, allowed: bool) -> void:
+	if owner.is_empty() or server.strip_edges().is_empty(): return
+	var key := scope_key(server, owner)
+	var entry := _entry(key).duplicate(true)
+	if (entry.get("run_export", false) == true) == allowed: return
+	if allowed: entry.run_export = true
+	else: entry.erase("run_export")
 	_put(key, entry)
 
 ## A keepsake award this phone just recorded (HomeKeepsakes.award_observer): kept only while the
@@ -225,9 +242,10 @@ func _load() -> void:
 ## Anything unexpected drops the whole entry: the player then sees their real progress.
 static func _valid_entry(entry: Dictionary) -> bool:
 	for name: Variant in entry:
-		if not name in ["keepsakes", "earned", "hard", "full_journey_off"]: return false
+		if not name in ["keepsakes", "earned", "hard", "full_journey_off", "run_export"]: return false
 	if entry.has("keepsakes") and not (entry.keepsakes is String and entry.keepsakes in MODES): return false
 	if entry.has("full_journey_off") and not Typed.equal(entry.full_journey_off, true): return false
+	if entry.has("run_export") and not Typed.equal(entry.run_export, true): return false
 	for name: String in ["earned", "hard"]:
 		if not entry.has(name): continue
 		if not Typed.equal(entry.get("keepsakes"), FRESH) or not entry[name] is Dictionary or entry[name].size() > Catalog.ROWS.size(): return false

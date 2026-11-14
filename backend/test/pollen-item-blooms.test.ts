@@ -114,7 +114,7 @@ describe("what an item bloom gives", () => {
   });
   it("never drops an earned-only item, an item not released or a reaction pack", () => {
     const wide = catalogWith(items => {
-      items.unreleased_daisy = { code: 201, slot: "hat", tier: "common", unlock: "", set: "", released: false };
+      items.unreleased_daisy = { code: 905, slot: "hat", tier: "common", unlock: "", set: "", released: false };
     });
     expect(droppable("common", wide)).toEqual(["daisy", "seashell"]);
     expect(droppable("earned", wide)).toEqual([]);

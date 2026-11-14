@@ -6,6 +6,7 @@ const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
+const BlobCodec = preload("res://services/blob_codec.gd")
 ## One bounded request at a time, in the order asked (services/request_queue.gd).
 ## Callers retain draft/idempotency state.
 const MAX_RESPONSE_BYTES := 4194304
@@ -25,6 +26,19 @@ const RUN_REACTIONS_HEADER := "X-AfterYou-Run-Reactions: 1"
 const FACE_PACKS_HEADER := "X-AfterYou-Face-Packs: 1"
 ## This build draws each player's look (backend src/pollen/looks-routes.ts).
 const LOOKS_HEADER := "X-AfterYou-Looks: 1"
+## Compressed rooms (backend src/v2/turn-wire.ts): once the capabilities say
+## compressed_rooms_version 1, turns go as the deflated blob of their JSON
+## (blob_codec.gd) with its length and SHA-256, and room reads, turn replies,
+## operation reads and pair reads come back the same way. Errors stay JSON. A
+## server that refuses the blob (415 json_required, an older server) gets the
+## very same turn again as JSON, and this build sends JSON from then on.
+const COMPRESSED_HEADER := "X-AfterYou-Compressed: 1"
+const BODY_LENGTH_HEADER := "x-afteryou-body-length"
+const BODY_DIGEST_HEADER := "x-afteryou-body-digest"
+const POLLEN_HEADER := "x-afteryou-pollen"
+## The most JSON one compressed reply may hold once inflated.
+const MAX_COMPRESSED_REPLY_BYTES := 32 * 1024 * 1024
+static var compressed_supported := false
 var base_url := ""
 var player_id := ""
 var device_token := ""
@@ -54,8 +68,26 @@ func _request_json(method: int, path: String, body: Dictionary, extra: PackedStr
 	headers.append_array(extra)
 	_append_credentials(headers)
 	var payload := "" if method==HTTPClient.METHOD_GET else JSON.stringify(body)
+	if compressed_supported and compressed_turn_path(method,path):
+		return await _queue.run(func() -> Dictionary: return await _compressed_turn(path,headers,payload),
+			_refused.bind(method,path),_same_identity(still),"")
 	return await _queue.run(func() -> Dictionary: return _result(await _send(method,path,headers,payload),method,path),
 		_refused.bind(method,path),_same_identity(still),_read_key(method,path,headers))
+
+## A turn sent as the blob of its JSON. The idempotency key's request hash
+## covers the JSON, so a resend as JSON is the same request.
+func _compressed_turn(path: String, headers: PackedStringArray, payload: String) -> Dictionary:
+	var bytes := payload.to_utf8_buffer()
+	var blob_headers := headers.duplicate()
+	blob_headers[0] = "Content-Type: application/octet-stream"
+	blob_headers.append("X-AfterYou-Body-Length: %d" % bytes.size())
+	blob_headers.append("X-AfterYou-Body-Digest: " + BlobCodec.digest(bytes))
+	var result := _result(await _send_raw(HTTPClient.METHOD_POST,path,blob_headers,BlobCodec.encode(bytes)),HTTPClient.METHOD_POST,path)
+	if int(result.get("status",0)) != 415 or result.get("code") != "json_required": return result
+	compressed_supported = false
+	var plain := headers.duplicate()
+	plain.erase(COMPRESSED_HEADER)
+	return _result(await _send(HTTPClient.METHOD_POST,path,plain,payload),HTTPClient.METHOD_POST,path)
 
 ## One request whose body and reply are bytes (room attempts), never parsed as JSON
 ## when they succeed. Same headers, queue and error shape as the JSON path.
@@ -108,9 +140,13 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	if response.is_empty():
 		return {"ok":false,"status":0,"error":for_route(PlayerCopy.ROOMS_API_7795AD99E31E,method,path)}
 	var parser := JSON.new()
-	var parsed: Variant=parser.data if parser.parse(response[3].get_string_from_utf8())==OK else null
+	var parsed: Variant=parser.data if parser.parse(_reply_text(response))==OK else null
 	var payload: Dictionary=parsed if parsed is Dictionary else {}
 	var status := int(response[1])
+	var pollen_line := header_value(response[2],POLLEN_HEADER)
+	if not pollen_line.is_empty() and parsed is Dictionary and not payload.has("pollen"):
+		var pollen: Variant = JSON.parse_string(pollen_line)
+		if pollen is Dictionary: payload["pollen"] = pollen
 	var server_error: Variant=payload.get("error",{})
 	var code := str(server_error.get("code","connection_interrupted")) if server_error is Dictionary else "connection_interrupted"
 	# A route refusing this build as too old: the app asks /v1/app-status again.
@@ -142,7 +178,35 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	if payload.has("turn_looks"):
 		if result.ok: TurnLooks.shared().note_turns(payload["turn_looks"])
 		payload.erase("turn_looks")
+	# So does a poll's redo state (X-AfterYou-Poll-Redo); redo_client.gd checks it.
+	if payload.has("redo") and payload.has("revision"):
+		result["redo"] = payload["redo"]
+		payload.erase("redo")
 	return result
+
+## A reply's JSON text: the body as it came, or, for a compressed reply, the
+## JSON its blob holds when its length and SHA-256 match (else empty, which
+## reads as a broken reply).
+static func _reply_text(response: Array) -> String:
+	var length := header_value(response[2],BODY_LENGTH_HEADER)
+	if length.is_empty(): return response[3].get_string_from_utf8()
+	if not length.is_valid_int(): return ""
+	return BlobCodec.verified(response[3],int(length),header_value(response[2],BODY_DIGEST_HEADER),MAX_COMPRESSED_REPLY_BYTES).get_string_from_utf8()
+
+static func header_value(headers: PackedStringArray, name: String) -> String:
+	for header: String in headers:
+		if header.get_slice(":",0).strip_edges().to_lower()==name: return header.substr(header.find(":")+1).strip_edges()
+	return ""
+
+## The turn post that goes compressed.
+static func compressed_turn_path(method: int, path: String) -> bool:
+	return method == HTTPClient.METHOD_POST and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/turns$").search(path) != null
+
+## The requests whose replies may come compressed: a room's read, its turns,
+## and its operation and pair reads.
+static func compressed_path(method: int, path: String) -> bool:
+	if compressed_turn_path(method, path): return true
+	return method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}(/operations/[A-Za-z0-9_-]{1,80}|/pairs/p[0-9]{1,2}-[0-9])?$").search(path) != null
 
 ## One HTTP exchange: [result, status, headers, body] as HTTPRequest reports
 ## it, or [] when the request could not start. Test transports override this.
@@ -209,6 +273,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Leaderboards: 1")
 	# This build plays duels (presentation/duels/), so the server may say they are open.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Duels: 1")
+	# This build can export a run (services/run_export.gd), so the server may say the owner may.
+	if path == "/v2/capabilities": headers.append("X-AfterYou-Run-Export: 1")
 	# This build knows public duels' safety (services/safety_client.gd): their rules version and
 	# `duel_blocks`. An older phone, which never sends it, keeps the old rules and the old blocks reply.
 	if path.begins_with("/v1/safety/"): headers.append(PUBLIC_DUELS_SAFETY_HEADER)
@@ -225,6 +291,11 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# A finished room the other member left then says so (partner_left), for Leave room's confirm step.
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Leave: 1")
+	# A room in play with a current redo request then says so (redo), for Home's request card.
+	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Redo: 1")
+	# A room poll that names its known revision also carries the redo state (redo), so the
+	# room page needs no separate GET /redo; the capabilities read then says poll_redo_version 1.
+	if method == HTTPClient.METHOD_GET and (path == "/v2/capabilities" or (path.begins_with("/v2/rooms/") and path.count("/") == 3)): headers.append("X-AfterYou-Poll-Redo: 1")
 	# The friends list may then include the player's short name (friend_alias).
 	if method == HTTPClient.METHOD_GET and path == "/v1/friends": headers.append("X-AfterYou-Friends: 2")
 	# A finished room whose replay moved to the phones reads as finished here.
@@ -236,6 +307,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path in ["/v1/social/inbox","/v1/notifications/registration"]: headers.append("X-AfterYou-Friend-Events: 2")
 	# This phone keeps room attempts durably, so a finished attempt may leave the server.
 	if history_supported and path.begins_with("/v2/"): headers.append("X-AfterYou-History: 1")
+	# This build reads compressed rooms; the server says whether it serves them.
+	if path == "/v2/capabilities" or (compressed_supported and compressed_path(method, path)): headers.append(COMPRESSED_HEADER)
 	# This build's version and channel, so the server can ask an old build to update.
 	var client := ClientIdentity.header_line()
 	if not client.is_empty(): headers.append(client)

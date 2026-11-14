@@ -60,10 +60,22 @@ static func tall(outfit: Dictionary) -> bool:
 		if Catalog.tall(id): return true
 	return false
 
+## Metres the worn hat may raise the leaf (its "leaf_lift"; kit/wear_fit.gd
+## decides whether a given leaf is raised), 0 with no hat.
+static func leaf_rise(outfit: Dictionary) -> float:
+	return Catalog.leaf_lift(str(outfit.get("hat", ""))) if outfit.has("hat") else 0.0
+
 ## Whether any worn item's look moves on its own.
 static func moving(outfit: Dictionary) -> bool:
 	for id: String in items(outfit):
 		if Catalog.moving(id): return true
+	return false
+
+## Whether any worn item lies round the feet where the pip is drawn
+## (`place`, presentation/pip_outfit.gd PLACES): the pip views pull back to it.
+static func low(outfit: Dictionary, place: StringName = &"studio") -> bool:
+	for id: String in items(outfit):
+		if Catalog.low(id) and Catalog.shows_in(id, place): return true
 	return false
 
 ## Whether any worn item hangs out past the head's far side in the pip views.
@@ -72,8 +84,15 @@ static func wide(outfit: Dictionary) -> bool:
 		if Catalog.wide(id): return true
 	return false
 
-## The highest leaf lift of the worn items, in metres.
-static func leaf_lift(outfit: Dictionary) -> float:
-	var lift := 0.0
-	for id: String in items(outfit): lift = maxf(lift, Catalog.leaf_lift(id))
-	return lift
+## Whether any worn item shows only in some places (a still picture of it
+## depends on where it is drawn).
+static func place_bound(outfit: Dictionary) -> bool:
+	for id: String in items(outfit):
+		if not Catalog.places(id).is_empty(): return true
+	return false
+
+## The fixed cue of the worn Bell sound item (services/sound_cues.gd), or ""
+## for none: what the player's result screen plays once.
+static func bell_sound(outfit: Dictionary) -> String:
+	return Catalog.sound(str(outfit.get("bell_sound", "")))
+

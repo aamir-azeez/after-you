@@ -54,9 +54,17 @@ export function maskPublicRooms(value: unknown, viewer: string): unknown {
   return out;
 }
 
+/** One room reply as `viewer`'s phone may see it, for the room to write itself (v2/turn-wire.ts); one without masks is returned as it is, unwalked. */
+export function maskedReply(value: Record<string, unknown>, viewer: string): Record<string, unknown> {
+  return masksOf(value) ? maskPublicRooms(value, viewer) as Record<string, unknown> : value;
+}
+/** Replies the room already masked and wrote (v2/turn-wire.ts replyResponse): maskedResponse passes them on unread. */
+const prepared = new WeakSet<Response>();
+export function preparedReply(response: Response): Response { prepared.add(response); return response; }
+
 /** A JSON reply as `viewer`'s phone may see it; any other reply, or one with no public room in it, unchanged. */
 export async function maskedResponse(response: Response, viewer: string): Promise<Response> {
-  if (!(response.headers.get("Content-Type") ?? "").includes("application/json")) return response;
+  if (prepared.has(response) || !(response.headers.get("Content-Type") ?? "").includes("application/json")) return response;
   const text = await response.text();
   const body = text.includes(MARK) ? JSON.stringify(maskPublicRooms(JSON.parse(text), viewer)) : text;
   return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });

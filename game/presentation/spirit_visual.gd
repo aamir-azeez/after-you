@@ -34,6 +34,12 @@ const TORSO_SCALE := Vector3.ONE
 ## The leaf's stalk on the head, and its resting lean (roll, radians).
 const SPROUT_REST := Look.LEAF_PIVOT
 const SPROUT_LEAN := Look.LEAF_LEAN
+## The leaf's extra roll on each walking step (times the walk), and its share
+## of the release settle's swing (SETTLE_SWING radians at its first peak).
+## kit/wear_fit.gd sweeps the leaf's whole roll from these.
+const LEAF_STEP_ROLL := 0.05
+const LEAF_SETTLE := 0.45
+const SETTLE_SWING := 0.065
 ## Where the eye markers rest in face space, before gaze.
 const EYE_REST: Array[Vector3] = [Vector3(-Look.EYE_X,Look.EYE_Y,0.3), Vector3(Look.EYE_X,Look.EYE_Y,0.3)]
 ## How fast a new pose (set_pose) eases in: about half a second.
@@ -88,6 +94,14 @@ var stride_phase := 0.0
 var step_phase := 0.0
 var motion_blend := 0.0
 var facing_target := 0.0
+## Where the world's recorded movement has the spirit now, in its parent's
+## space (a world sets it each frame, from the simulation's tick positions,
+## before advance_motion; it holds for that frame only), or INF when nothing
+## sets it. A frame rate under the 30 Hz tick rate skips ticks, so corners
+## cut there differ slightly. Worn items that follow
+## the walk (a trail) follow this, not the eased drawing, so a turn draws the
+## same at any frame rate.
+var travel_target := Vector3.INF
 var carrying_seed := false
 var carried_radius := 0.13
 var throw_age := THROW_DURATION
@@ -129,7 +143,11 @@ var _placing := false
 ## What the spirit wears (presentation/pip_outfit.gd), or null for the default
 ## look, which adds nothing at all.
 var _wearing: RefCounted = null
-## How much higher the leaf sits while an item lifts it.
+## Where it is drawn (pip_outfit.gd PLACES): a world it walks in unless a
+## screen says otherwise (set_place). Some worn items show only in some places.
+var place: StringName = PipOutfit.WORLD
+## How much higher the leaf sits while a hat raises it (pip_outfit.gd, read
+## every pose: a hat put away for a carried seed lets it down).
 var _leaf_lift := Vector3.ZERO
 ## How much higher a carried seed sits while an item lifts it (pip_outfit.gd lift_seed).
 var _seed_lift := 0.0
@@ -212,19 +230,41 @@ func wear(outfit: Dictionary) -> void:
 	_seed_lift = 0.0
 	if clean.is_empty(): return
 	_wearing = PipOutfit.dress(self, clean)
+	_wearing.set_carrying(carrying_seed, carried_radius)
 	_leaf_lift = Vector3(0, _wearing.leaf_lift, 0)
 	_seed_lift = _wearing.seed_lift
+
+## Where a trail follows the walk from (global): the recorded target when a
+## world gives one, else where the spirit is drawn.
+func _travel_point() -> Vector3:
+	if travel_target.is_finite():
+		var parent := get_parent() as Node3D
+		return parent.global_transform*travel_target if parent!=null and is_inside_tree() else travel_target
+	return global_position if is_inside_tree() else position
+
+## Draws the spirit as a pip in `where` (pip_outfit.gd PLACES), dressing it
+## again if that changes what it wears shows.
+func set_place(where: StringName) -> void:
+	if where==place or not where in PipOutfit.PLACES: return
+	place=where
+	if _wearing==null: return
+	var worn: Dictionary=_wearing.outfit.duplicate()
+	_wearing.undress()
+	_wearing=null
+	wear(worn)
 
 ## What the spirit wears ({} for the default look).
 func outfit() -> Dictionary:
 	return _wearing.outfit.duplicate() if _wearing != null else {}
 
 ## Shows the pip's own leaf under an item that hides it (the Apple hood brings
-## its own stem and leaf), as a worn leaf item would show: the item's
-## "leaf_lift" already stands it clear of the cap. The leaderboard celebration
-## gilds it this way. Wearing another outfit decides again.
+## its own stem and leaf), as a worn leaf item would show: the hat's fit
+## (kit/wear_fit.gd) raises it clear of the cap, and keeps hidden a leaf the
+## hat covers. The leaderboard celebration gilds it this way. Wearing another
+## outfit decides again.
 func show_leaf() -> void:
-	sprout.visible = true
+	if _wearing != null: _wearing.show_leaf()
+	else: sprout.visible = true
 
 func reset_motion() -> void:
 	# A replay seek or level reset is a placement, not a giant walking step.
@@ -241,6 +281,7 @@ func reset_motion() -> void:
 	_clear_reaction()
 	_expression_time=0.0
 	_idle_blend=0.0
+	if _wearing!=null: _wearing.reset()
 	_look=Vector2.ZERO
 	_lean_direction=Vector2.ZERO
 	_partner_available=false
@@ -397,7 +438,11 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	_reduced_motion=reduced_motion
 	_reaction_age=minf(_reaction_duration,_reaction_age+delta)
 	face_art.advance(delta)
-	if _wearing!=null: _wearing.advance(delta,reduced_motion)
+	if _wearing!=null:
+		_wearing.advance(delta,reduced_motion)
+		if _wearing.follows_travel(): _wearing.travel_to(_travel_point(),delta,reduced_motion)
+	# One frame's: a frame no world sets it (Home moving the spirit itself) follows the drawing.
+	travel_target=Vector3.INF
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
@@ -538,7 +583,7 @@ func _apply_pose(amount: float) -> void:
 	var settle := 0.0
 	if release_age>=0.0 and release_age<RELEASE_SETTLE_DURATION and not _reduced_motion:
 		var phase := release_age/RELEASE_SETTLE_DURATION
-		settle=sin(phase*TAU*1.5)*0.065*pow(1.0-phase,2.0)
+		settle=sin(phase*TAU*1.5)*SETTLE_SWING*pow(1.0-phase,2.0)
 	var tilt := (_look.x*0.06+sin(_expression_time*0.91+expression_phase)*0.018*idle)*(1.0-amount*0.65)+settle-sway*0.08
 	if _reduced_motion: tilt=0.0
 	var rest := _sample_pose(idle)
@@ -551,12 +596,16 @@ func _apply_pose(amount: float) -> void:
 	torso.scale=TORSO_SCALE*rest.torso_scale
 	# Face and sprout are the head's siblings: they lift and turn with it.
 	var rise := Vector3(0,rest.head_lift,0)
+	# A hat makes way for a carried seed or lens; the leaf follows the hat's fit.
+	if _wearing!=null:
+		_wearing.set_carrying(carrying_seed,carried_radius)
+		_leaf_lift.y=_wearing.leaf_lift
 	head.position=HEAD_CENTER+rise
 	face.position=HEAD_CENTER+rise
 	head.rotation=Vector3(0,rest.head_yaw,tilt)
 	face.rotation=Vector3(0,rest.head_yaw,tilt)
 	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.BACK,tilt)*(SPROUT_REST+_leaf_lift-HEAD_CENTER)
-	sprout.rotation=Vector3(0,rest.head_yaw,SPROUT_LEAN+tilt+step*0.05*amount+settle*0.45+rest.sprout_roll)
+	sprout.rotation=Vector3(0,rest.head_yaw,SPROUT_LEAN+tilt+step*LEAF_STEP_ROLL*amount+settle*LEAF_SETTLE+rest.sprout_roll)
 	# A glance adds to the eyes' attention, up to the reach that attention has:
 	# glancing toward a partner off to one side turns the head, not the eyes.
 	var look := (_look+rest.look).clamp(-Vector2.ONE,Vector2.ONE)
@@ -717,9 +766,13 @@ func carry_anchor_position() -> Vector3:
 	var wobble := Vector3.ZERO
 	if carrying_seed and not _reduced_motion:
 		wobble=Vector3(sin(stride_phase+expression_phase)*0.022*motion_blend+sin(_expression_time*1.8+expression_phase)*0.004*_idle_blend,0,cos(stride_phase+expression_phase)*0.012*motion_blend)
-	# The wider Lighthouse lens also clears the sprout beside the head.
-	var carry_height := 0.925+carried_radius+maxf(0.0,carried_radius-0.13)*0.5+_seed_lift
-	return facing.transform*(upper_body.transform*(Vector3(0,carry_height,0)+wobble))+Vector3(0,seed_hop,0)
+	return facing.transform*(upper_body.transform*(Vector3(0,carry_height(carried_radius)+_seed_lift,0)+wobble))+Vector3(0,seed_hop,0)
+
+## How high a carried seed or lens of `radius` sits over the upper body's
+## origin. The wider Lighthouse lens also clears the sprout beside the head.
+## A cap may lift it (pip_outfit.gd lift_seed).
+static func carry_height(radius: float) -> float:
+	return 0.925+radius+maxf(0.0,radius-0.13)*0.5
 
 func photo_anchor_height() -> float:
 	# Clear the sprout, carried seed and the highest point of the throw hop.

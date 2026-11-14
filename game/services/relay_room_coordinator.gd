@@ -68,6 +68,9 @@ var pollen_finished_sink: Callable
 ## (partner_id: String, look: Variant) -> void: the room partner's look that came beside an
 ## accepted read or turn reply (rooms_api.gd keeps turns' own looks itself).
 var partner_look_sink: Callable
+## (room_id: String, revision: int, branch: int, redo: Variant) -> void: the redo state a poll
+## carried beside the room it held or read (X-AfterYou-Poll-Redo), unchecked.
+var redo_sink: Callable
 ## (recording_hash: String) -> void: this player's own turn was accepted, to keep the look it was played in.
 var own_turn_look_sink: Callable
 var restore_replay_transfer: Callable
@@ -436,7 +439,9 @@ func refresh() -> bool:
 	var known := _known_room_headers()
 	var response := await _request(HTTPClient.METHOD_GET, _room_path(), {}, known)
 	if not known.is_empty() and response.get("ok", false) and response.get("data") is Dictionary and response.data.has("unchanged"):
-		if _unchanged_reply(response.data): return _confirm_unchanged(response)
+		if _unchanged_reply(response.data):
+			_note_redo(response)
+			return _confirm_unchanged(response)
 		# A small reply that does not match what this phone holds: read the whole room once.
 		response = await _request(HTTPClient.METHOD_GET, _room_path())
 	if response.get("ignored", false):
@@ -458,6 +463,7 @@ func refresh() -> bool:
 		return _network_error(response)
 	var accepted := _accept_snapshot(response.get("data"))
 	if accepted:
+		_note_redo(response)
 		_note_end_reactions(response)
 		_note_partner_name(response)
 		_note_partner_look(response)
@@ -472,6 +478,12 @@ func refresh() -> bool:
 func _note_end_reactions(response: Dictionary) -> void:
 	if response.get("end_reactions") is Dictionary: EndReactionStore.new().note_room(_room, response.end_reactions)
 	if response.get("run_reactions") is Dictionary: RunReactionStore.new().note(response.run_reactions)
+
+
+## The redo state a poll carried, for the room as this phone now holds it.
+func _note_redo(response: Dictionary) -> void:
+	if not response.has("redo") or not redo_sink.is_valid() or _state.is_empty() or _state.snapshot.is_empty(): return
+	redo_sink.call(str(_state.snapshot.get("room_id", "")), int(_state.snapshot.revision), int(_state.snapshot.branch), response.redo)
 
 
 ## The room partner's display name that came beside an accepted reply

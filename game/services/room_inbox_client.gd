@@ -326,7 +326,12 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 		"remote_activity_sequence":int(value.get("remote_activity_sequence",0)),
 		"activity_at":timestamp,
 		"family":str(value.get("family","unknown")),
-	}.merged({"partner_left":true} if value.get("partner_left") == true else {}).merged(_partner_reaction(value))
+	}.merged({"partner_left":true} if value.get("partner_left") == true else {}).merged(_partner_reaction(value)).merged({"redo":value.redo.duplicate()} if valid_redo(value.get("redo")) else {})
+
+## A room's current redo request on Home (to clients that send X-AfterYou-Room-Redo):
+## {state: asked_you | you_asked | kept, stage_index}. Never any ids.
+static func valid_redo(value: Variant) -> bool:
+	return value is Dictionary and value.size() == 2 and value.get("state") in ["asked_you","you_asked","kept"] and _nonnegative_integer(value.get("stage_index")) and value.stage_index < 64
 
 ## The friend's end-of-run face on their latest turn (presentation only), with
 ## their spirit's colour (the host's slot is p0, the guest's p1). A face this
@@ -348,7 +353,7 @@ func _note_partner_name(value: Dictionary, membership: Dictionary) -> void:
 ## send X-AfterYou-End-Reactions while the server shows them) and partner_name
 ## (to clients that send X-AfterYou-Display-Names while the server shows them).
 static func _optional_keys(value: Dictionary) -> int:
-	return int(value.has("partner_left")) + int(value.has("partner_reaction")) + int(value.has("partner_name"))
+	return int(value.has("partner_left")) + int(value.has("partner_reaction")) + int(value.has("partner_name")) + int(value.has("redo"))
 
 static func room_key(api_version: int, room_id: String) -> String:
 	return str(api_version) + ":" + room_id
@@ -385,6 +390,7 @@ static func valid_server_room(value: Variant) -> bool:
 	# partner_left (true only) and partner_reaction (a short face id) are optional.
 	if not value is Dictionary or value.size() != 9 + _optional_keys(value) or not Typed.equal(value.get("partner_left",true), true): return false
 	if value.has("partner_reaction") and (not value.partner_reaction is String or value.partner_reaction.length() > 24): return false
+	if value.has("redo") and not valid_redo(value.redo): return false
 	# A name is only checked for shape; one that breaks the name rules is ignored later.
 	if value.has("partner_name") and value.partner_name != null and (not value.partner_name is String or value.partner_name.length() > 64): return false
 	if not value.get("room_id") is String or not Presence.valid_id(value.room_id): return false
@@ -414,6 +420,7 @@ static func valid_room(value: Variant) -> bool:
 	if value.has("partner_reaction"):
 		var reaction: Variant = value.partner_reaction
 		if not reaction is Dictionary or reaction.size() != 2 or not EndReactionStore.is_face(reaction.get("face")) or reaction.get("color") not in ["peach","mint"]: return false
+	if value.has("redo") and not valid_redo(value.redo): return false
 	if not value.get("api_version") is int and not value.get("api_version") is float: return false
 	if value.api_version not in [1,2] or not Presence.valid_id(value.get("room_id")): return false
 	if not value.get("chapter_key") is String or value.chapter_key.is_empty() or value.chapter_key.length() > 80: return false

@@ -41,6 +41,7 @@ const SLOSH := preload("res://assets/audio/slosh.wav")
 const SHORE_WASH := preload("res://assets/audio/shore-wash.wav")
 const TICK := preload("res://assets/audio/tick.wav")
 const SPARKLE := preload("res://assets/audio/sparkle.wav")
+const WOOD_CHIME := preload("res://assets/audio/wood-chime.wav")
 
 ## The level every cue plays at (dB), and how far its gain wanders unless its
 ## entry sets "gain".
@@ -124,6 +125,9 @@ const CUES := {
 	"ui_third": {"clip": CATCH, "range": Vector2(0.0, 0.0), "db": -4.0, "fixed": true},
 	"ui_second": {"clip": BLOOM, "range": Vector2(2.0, 2.0), "db": -4.0, "fixed": true},
 	"ui_first": {"clip": BELL, "range": Vector2(0.0, 0.0), "db": -3.0, "voice": "long", "fixed": true},
+	# Bell sound items (content/cosmetics/ "sound"): the player's result screen
+	# plays the worn one once, quietly, at one pitch.
+	"bell_wood_chime": {"clip": WOOD_CHIME, "range": Vector2(0.0, 0.0), "db": -9.0, "fixed": true},
 }
 
 ## A lever or selector drawn as a presentation/kit/lever_looks.gd kind (a

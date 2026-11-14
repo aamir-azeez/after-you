@@ -13,6 +13,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -95,19 +96,24 @@ static func pill(value: String, lit: bool, font_size: int = 17) -> PanelContaine
 ## A pair's two still pips in slot order (services/duel_model.gd members and
 ## looks): the member who is `me` is this player's own pip in their own look,
 ## wherever they sit; every other wears `looks` at its slot.
-static func pips(pip_size: Vector2, members: Array = [null, null], me: String = "", looks: Array = [], separation: int = 4) -> HBoxContainer:
+## `place`: pip_outfit.gd PLACES (STAGE on a duel's own page and its result).
+static func pips(pip_size: Vector2, members: Array = [null, null], me: String = "", looks: Array = [], separation: int = 4, place: StringName = PipOutfit.STUDIO) -> HBoxContainer:
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", separation)
 	pair.alignment = BoxContainer.ALIGNMENT_CENTER
 	pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for index in range(2):
 		var member: Variant = members[index] if index < members.size() else null
-		pair.add_child(pip(pip_size, FIRST_PIP if index == 0 else SECOND_PIP, member != null and not me.is_empty() and member == me, looks[index] if index < looks.size() else {}))
+		pair.add_child(pip(pip_size, FIRST_PIP if index == 0 else SECOND_PIP, member != null and not me.is_empty() and member == me, looks[index] if index < looks.size() else {}, place))
 	return pair
 
-## A single still pip: the player's own when `own`, otherwise wearing `look`.
-static func pip(pip_size: Vector2, color: Color, own: bool = false, look: Variant = {}) -> Control:
+## A single still pip: the player's own when `own`, otherwise wearing `look`,
+## drawn for `place` (pip_outfit.gd PLACES: STAGE on a duel's own page and its
+## result, which are a room and a result, so a worn foot ring shows there; a
+## picture in a list or picker otherwise).
+static func pip(pip_size: Vector2, color: Color, own: bool = false, look: Variant = {}, place: StringName = PipOutfit.STUDIO) -> Control:
 	var made := PipAvatar.new(true, color, pip_size, true, own)
+	made.place = place
 	made.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if not own: made.wear(Outfit.from(look))
 	return made

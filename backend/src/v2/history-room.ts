@@ -10,6 +10,7 @@ import type { RecordingV2 } from "./protocol";
 import { historyPresent, initializeHistory } from "./storage-schema";
 import { duelLink, duelMasks } from "../duels/room-link";
 import { anyDeparture } from "../room-departure";
+import { parseRow, storedRoom, storedRow, type RowData } from "./row-codec";
 
 /** A live room, or a finished one whose replays left the server. */
 export type HistoryRoom = RoomStateV2 | TransferredRoom;
@@ -96,31 +97,31 @@ export async function checkedUpload(records: AttemptRecord[], position: number, 
   return blob as AttemptBlob;
 }
 
-/** Puts back every stubbed row the blob proves; rows already full must already equal it. */
-export function rebuildRows(storage: DurableObjectStorage, blob: AttemptBlob): void {
+/** Puts back every stubbed row the blob proves; rows already full must already equal it. `compress`: rows go back deflated (row-codec.ts). */
+export function rebuildRows(storage: DurableObjectStorage, blob: AttemptBlob, compress: boolean): void {
   const { pairs, turns } = attemptRows(blob);
-  rebuildFrom(storage, pairs, turns);
+  rebuildFrom(storage, pairs, turns, compress);
 }
-function rebuildFrom(storage: DurableObjectStorage, pairs: Map<string, PairV2>, turns: Map<string, RecordingV2>): void {
+function rebuildFrom(storage: DurableObjectStorage, pairs: Map<string, PairV2>, turns: Map<string, RecordingV2>, compress: boolean): void {
   for (const [id, recording] of turns) {
-    const row = storage.sql.exec<{ data: string }>("SELECT data FROM turns WHERE turn_id=?", id).toArray()[0];
-    need(row && JSON.parse(row.data).recording_hash === recording.recording_hash, 409, "history_rows_inconsistent");
-    if (isStub(row.data)) storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", JSON.stringify(recording), id);
+    const row = storage.sql.exec<{ data: RowData }>("SELECT data FROM turns WHERE turn_id=?", id).toArray()[0];
+    need(row && parseRow<RecordingV2>(row.data).recording_hash === recording.recording_hash, 409, "history_rows_inconsistent");
+    if (isStub(row.data)) storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", storedRow(recording, compress), id);
   }
   for (const [id, pair] of pairs) {
-    const row = storage.sql.exec<{ data: string }>("SELECT data FROM pairs WHERE pair_id=?", id).toArray()[0];
-    need(row && JSON.parse(row.data).checkpoint.checkpoint_hash === pair.checkpoint.checkpoint_hash, 409, "history_rows_inconsistent");
-    if (isStub(row.data)) storage.sql.exec("UPDATE pairs SET data=? WHERE pair_id=?", JSON.stringify(pair), id);
+    const row = storage.sql.exec<{ data: RowData }>("SELECT data FROM pairs WHERE pair_id=?", id).toArray()[0];
+    need(row && parseRow<PairV2>(row.data).checkpoint.checkpoint_hash === pair.checkpoint.checkpoint_hash, 409, "history_rows_inconsistent");
+    if (isStub(row.data)) storage.sql.exec("UPDATE pairs SET data=? WHERE pair_id=?", storedRow(pair, compress), id);
   }
 }
 
 /** Rows the restored lineage reads come out of its final checkpoint, which nests every stage once. */
-function rebuildLineage(storage: DurableObjectStorage, room: RoomStateV2): void {
+function rebuildLineage(storage: DurableObjectStorage, room: RoomStateV2, compress: boolean): void {
   for (const [stage, id] of room.completed_pair_ids.entries()) {
     const checkpoint = checkpointAt(room.checkpoint, stage + 1), proof = nestedProof(checkpoint), branch = Number(id.slice(1).split("-")[0]);
     need(proof, 409, "history_rows_inconsistent");
     rebuildFrom(storage, new Map([[id, { pair_id: id, branch, stage_index: stage, a: proof.a, b: proof.b, checkpoint }]]),
-      new Map([[`t${branch}-${stage}-a`, proof.a], [`t${branch}-${stage}-b`, proof.b]]));
+      new Map([[`t${branch}-${stage}-a`, proof.a], [`t${branch}-${stage}-b`, proof.b]]), compress);
   }
 }
 /**
@@ -128,17 +129,17 @@ function rebuildLineage(storage: DurableObjectStorage, room: RoomStateV2): void 
  * a held one is unchanged. A finished room's last attempt also brings the room back
  * to life, with every row its lineage reads, so it can be forked as before.
  */
-export function restoreAttempt(storage: DurableObjectStorage, room: HistoryRoom, record: AttemptRecord, blob: AttemptBlob, player: string): AttemptRecord {
+export function restoreAttempt(storage: DurableObjectStorage, room: HistoryRoom, record: AttemptRecord, blob: AttemptBlob, player: string, compress: boolean): AttemptRecord {
   need(canonicalJson(blob.rows.pairs.map(pair => pair.pair_id)) === canonicalJson(record.pair_ids), 409, "history_rows_inconsistent");
   if (record.state === "held") return record;
   if (archived(room) && room.replay_transfer_version === 2 && record.position === room.branch) {
     need(blob.checkpoint?.checkpoint_hash === room.checkpoint_hash, 409, "history_rows_inconsistent");
     const { replay_transfer_version: _version, checkpoint_hash: _hash, ...metadata } = room; void _version; void _hash;
     const live: RoomStateV2 = { ...metadata, checkpoint: blob.checkpoint };
-    rebuildLineage(storage, live);
-    storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(live));
+    rebuildLineage(storage, live, compress);
+    storage.sql.exec("UPDATE room SET data=? WHERE id=1", storedRoom(live, compress));
   }
-  rebuildRows(storage, blob);
+  rebuildRows(storage, blob, compress);
   const next: AttemptRecord = { ...record, state: "held", acked: [player], wanted: [] };
   writeAttempt(storage, next);
   return next;
@@ -197,13 +198,13 @@ export function stubReleased(storage: DurableObjectStorage, room: HistoryRoom): 
   const live = liveReferences(room);
   for (const record of storedAttempts(storage)) {
     if (record.state !== "offloaded") continue;
-    for (const row of storage.sql.exec<{ turn_id: string; data: string }>("SELECT turn_id,data FROM turns WHERE turn_id LIKE ?", `t${record.branch}-%`).toArray()) {
+    for (const row of storage.sql.exec<{ turn_id: string; data: RowData }>("SELECT turn_id,data FROM turns WHERE turn_id LIKE ?", `t${record.branch}-%`).toArray()) {
       if (live.has(row.turn_id) || isStub(row.data)) continue;
-      storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", JSON.stringify({ recording_hash: JSON.parse(row.data).recording_hash }), row.turn_id);
+      storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", JSON.stringify({ recording_hash: parseRow<RecordingV2>(row.data).recording_hash }), row.turn_id);
     }
-    for (const row of storage.sql.exec<{ pair_id: string; data: string }>("SELECT pair_id,data FROM pairs WHERE pair_id LIKE ?", `p${record.branch}-%`).toArray()) {
+    for (const row of storage.sql.exec<{ pair_id: string; data: RowData }>("SELECT pair_id,data FROM pairs WHERE pair_id LIKE ?", `p${record.branch}-%`).toArray()) {
       if (live.has(row.pair_id) || isStub(row.data)) continue;
-      const pair = JSON.parse(row.data) as PairV2;
+      const pair = parseRow<PairV2>(row.data);
       storage.sql.exec("UPDATE pairs SET data=? WHERE pair_id=?", JSON.stringify(compactPair({ pair_id: pair.pair_id, branch: pair.branch, stage_index: pair.stage_index,
         a_hash: pair.a.recording_hash, b_hash: pair.b.recording_hash, checkpoint_hash: pair.checkpoint.checkpoint_hash })), row.pair_id);
     }

@@ -2,6 +2,7 @@ extends SceneTree
 
 const Purchases = preload("res://services/purchases.gd")
 const Secrets = preload("res://services/secure_store.gd")
+const FileShare = preload("res://services/file_share.gd")
 var failures: Array[String] = []
 var purchase_errors: Array = []
 var secret_errors: Array = []
@@ -106,6 +107,11 @@ func _run() -> void:
 	secrets.set_private_screen(true)
 	secrets.clear_recovery_clip("r".repeat(43))
 	check(guard_native.calls.slice(1) == [["private", true], ["clear", "r".repeat(43)]], "The private screen and clipboard calls reach the plugin unchanged.")
+	# Export this run: without a plugin there is no file sheet, and nothing is written.
+	if not Engine.has_singleton("AfterYouAndroid") and not Engine.has_singleton("AfterYouIOS"):
+		check(not FileShare.share_file(PackedByteArray([1, 2, 3]), "relay-isles-attempt-1.afteryou"), "An unavailable share sheet must report that no file was offered.")
+	check(not FileShare.share_file(PackedByteArray(), "relay-isles-attempt-1.afteryou"), "An empty file must never reach the plugin.")
+	check(not FileShare.share_file(PackedByteArray([1]), "../outside.afteryou"), "A file name the plugin would change must never reach it.")
 	if failures.is_empty():
 		print("PASS: native wrapper unavailable/error/schema/revocation checks")
 	else:

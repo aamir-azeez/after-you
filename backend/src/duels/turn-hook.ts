@@ -6,6 +6,8 @@ import type { RoomSnapshotV2 } from "../v2/room";
 import type { Duel, ProgressNote } from "./model";
 import type { DuelLink } from "./room-link";
 import type { FinishProof } from "./store";
+import type { EncodedProof } from "../leaderboards/proofs";
+import type { CheckpointV2 } from "../v2/protocol";
 import { runProgress } from "./ticks";
 import { developerGhost } from "./developer-ghosts";
 import type { PairLooks } from "../leaderboards/run-looks";
@@ -21,7 +23,9 @@ export function duelRunChecksOn(env: ServerVars): boolean { return duelsOn(env) 
  * its board entry id and, for a run that may need the replay check, its final
  * checkpoint for the replay job. Null when the room's chain cannot be read.
  */
-export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: PairLooks): Promise<{ note: ProgressNote; proof?: FinishProof } | null> {
+export type DuelNote = { note: ProgressNote; proof?: FinishProof };
+/** `encode`: the room's own encoder (v2/room.ts turnHooks), so the proof goes encoded; without it, raw. */
+export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: PairLooks, encode?: (checkpoint: CheckpointV2) => Promise<EncodedProof>): Promise<DuelNote | null> {
   let adapter;
   try { adapter = chapter(room); } catch { return null; }
   const progress = runProgress(room.checkpoint, adapter.stages.length, room.active_role === "b" ? room.recording_a : null);
@@ -35,7 +39,7 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
   // developers' ghost. The board decides (model.ts awaitsCheck, which reads DUEL_RUN_CHECKS in the board's own CONFIG),
   // and with checks off it neither encodes nor keeps it; this only spares the rest the payload.
   const checked = link.kind === "friend" || progress.ticks < (developerGhost(link.board) ?? 0);
-  const proof = complete && checked ? { checkpoint: room.checkpoint, simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
+  const proof = complete && checked ? { ...(encode ? { proof: await encode(room.checkpoint) } : { checkpoint: room.checkpoint }), simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
   return { note, ...(proof ? { proof } : {}) };
 }
 
@@ -62,13 +66,19 @@ function nextPlayer(room: RoomSnapshotV2, link: DuelLink): string | null {
  */
 export async function noteDuelTurn(env: Env, room: RoomSnapshotV2, link: DuelLink | null | undefined, actor?: string, looks?: PairLooks, covered?: string): Promise<{ duel_id: string; updated_ms: number } | null> {
   if (!link || !duelsOn(env)) return null;
+  let made: DuelNote | null;
+  try { made = await roomNote(room, link, looks); } catch (error) { logWarning("duel_note_failed", { code: errorCode(error) }); return null; }
+  return sendDuelNote(env, room.room_id, link, made, actor, covered);
+}
+/** noteDuelTurn's request, for a note the room already made (v2/room.ts turnRequest), so the Worker never holds the room. */
+export async function sendDuelNote(env: Env, roomId: string, link: DuelLink, made: DuelNote | null, actor?: string, covered?: string): Promise<{ duel_id: string; updated_ms: number } | null> {
+  if (!duelsOn(env)) return null;
   try {
-    const made = await roomNote(room, link, looks);
     const noted = made ? await env.LEADERBOARD_BOARDS.getByName(link.board).duelProgress(link.duel_id, made.note, made.proof, actor, covered) : null;
     // A public duel's finished run: the room learns who on the other pair may watch it, which it could not know when made.
     if (made?.note.complete && link.public && noted?.ok) {
       const duel = noted.value as unknown as Duel, others = duel.sides[1 - link.side]?.members.filter((id): id is string => id !== null) ?? [];
-      if (others.length) await env.ROOMS_V2.getByName(room.room_id).duelTheirRunViewers(others);
+      if (others.length) await env.ROOMS_V2.getByName(roomId).duelTheirRunViewers(others);
     }
     return noted?.ok ? { duel_id: noted.value.duel_id, updated_ms: noted.value.updated_ms } : null;
   } catch (error) {
