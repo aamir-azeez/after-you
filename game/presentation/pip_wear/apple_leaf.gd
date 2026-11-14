@@ -5,7 +5,8 @@ extends RefCounted
 ## It grows from the leaf's own stalk and leans out the way the leaf does, so
 ## it sways, turns and hides with it, rises through a hat's brim with it, and
 ## stays clear of a carried seed (which rises with the leaf, pip_outfit.gd
-## lift_seed). One baked mesh drawn in the leaf's place: no extra draw call.
+## lift_seed). One baked mesh drawn in the leaf's place: no
+## extra draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const GREEN := Color("a2cf72")

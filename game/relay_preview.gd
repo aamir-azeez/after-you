@@ -10,6 +10,8 @@ const ForgivingCatches = preload("res://services/forgiving_catches.gd")
 const SlotLooks = preload("res://presentation/slot_looks.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
+const Outfit = preload("res://services/outfit.gd")
+const OwnLook = preload("res://services/own_look.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const World = preload("res://presentation/relay_world.gd")
@@ -111,6 +113,12 @@ var definition: Dictionary = Catalog.relay_isles()
 var sim: RefCounted = Simulation.new()
 var world: Node3D
 var soundscape: Node
+## The chapter finished on this visit (_begin_completion), played or watched.
+var _completion_live := false
+## The worn Bell sound has played on this screen (_ring_bell_sound), and
+## how long after the end card it rings (seconds).
+var _bell_rung := false
+const BELL_AFTER := 0.4
 var controls: CanvasLayer
 ## The wait for the friend's memory at the end of a second turn.
 var memory_wait := MemoryWait.new()
@@ -2385,6 +2393,8 @@ func _finish() -> void:
 		_after_visible_wait(_show_review)
 
 func _begin_completion(from_replay: bool) -> void:
+	# The chapter finishes on this visit, played or watched as a memory: its end card rings the Bell sound.
+	_completion_live = true
 	running = false
 	mode = "bloom"
 	_update_run_pill(Journey.tick_of(sim))
@@ -3064,7 +3074,11 @@ func _show_completed() -> void:
 	# the verified recording chain before presenting the completion card.
 	var pairs: Array = _pairs()
 	if not pairs.is_empty(): _dress([pairs[-1].get("a"), pairs[-1].get("b")], true)
+	# Only a chapter finished on this visit (played, or its last turn watched as a
+	# memory) rings the worn Bell sound, not one reopened later.
+	var finished_now := _completion_live
 	if not pairs.is_empty() and _holds_final_turn(pairs[-1], sim) and _started_final_turn(pairs[-1]):
+		finished_now = true
 		# Right after Save turn the screen's simulation already stands at the end
 		# of the accepted last turn, and the journey (or the room) holds its proven checkpoint.
 		_scene_built = {}
@@ -3096,6 +3110,7 @@ func _show_completed() -> void:
 		_present_stage_history(definition.stages[-1],start)
 		world.present(sim.snapshot(), true)
 	mode = "complete"
+	if finished_now: _ring_bell_sound()
 	if hard_flow.complete(): return
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
 	# The turn that finished the chapter earned here, with its first clear.
@@ -3106,6 +3121,19 @@ func _show_completed() -> void:
 	_set_room_state("complete")
 	EndReactionScreen.attach_completed(_end_reaction_context(), card)
 	_add_room_actions(card, "complete", "turn", _room_facts())
+
+## The player's worn Bell sound (services/outfit.gd bell_sound), once per
+## visit to this screen, BELL_AFTER seconds after the end card of a chapter
+## finished just now comes up (Hard's too), so it follows the turn's own
+## cues instead of crowding them. Fixed cues obey the sound setting and volume
+## like every other cue.
+func _ring_bell_sound() -> void:
+	if _bell_rung or not is_inside_tree(): return
+	var cue := Outfit.bell_sound(Outfit.from(OwnLook.outfit()))
+	if cue.is_empty(): return
+	_bell_rung = true
+	get_tree().create_timer(BELL_AFTER).timeout.connect(func() -> void:
+		if is_instance_valid(soundscape) and mode == "complete": soundscape.play_fixed_cue(cue))
 
 ## True when this screen's simulation finished exactly the accepted turn, so
 ## its state is the one a rebuild from the chain would reach.

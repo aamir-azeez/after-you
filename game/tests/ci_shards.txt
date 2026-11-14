@@ -351,6 +351,7 @@ shared_replays 1
 shared_room_followups 2
 simulation 2
 simulation_v2 3
+skins_trails 2
 solo_draft_writer 2
 solo_redo 3
 solo_redo_ui 3
@@ -422,6 +423,7 @@ wardrobe_offline 2
 watch_all_parts 3
 water_locks 3
 water_locks_bake 1
+wear_fit 1
 welcome_light 2
 whats_new 3
 when_label 2

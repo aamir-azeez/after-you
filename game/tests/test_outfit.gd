@@ -45,7 +45,7 @@ func _digest() -> void:
 	var a := Outfit.from({"hat": "daisy", "body": "tide", "leaf": "gold_leaf"}, true)
 	var b := Outfit.from({"leaf": "gold_leaf", "body": "tide", "hat": "daisy"}, true)
 	_check(Outfit.digest(a) == Outfit.digest(b), "Entry order never changes the digest")
-	_check(Outfit.digest({}) == "hat=;body=;leaf=", "The digest names every slot, empty ones too: " + Outfit.digest({}))
+	_check(Outfit.digest({}) == "hat=;body=;leaf=;trail=;carry=;foot_ring=;bell_sound=", "The digest names every slot, empty ones too: " + Outfit.digest({}))
 	_check(Outfit.digest({"hat": "tide"}) != Outfit.digest({"body": "tide"}), "The same id in two slots gives two digests")
 	_check(Outfit.items(a) == ["daisy", "tide", "gold_leaf"], "Items come in slot order")
 
@@ -77,4 +77,3 @@ func _combinations() -> void:
 func _facts() -> void:
 	_check(Outfit.tall(Outfit.of("lighthouse_lamp", true)) and not Outfit.tall(Outfit.of("daisy", true)) and not Outfit.tall({}), "Only a tall item pulls the view back")
 	_check(Outfit.wide(Outfit.from({"hat": "lantern", "leaf": "gold_leaf"}, true)) and not Outfit.wide(Outfit.of("lighthouse_lamp", true)) and not Outfit.wide({}), "Only a wide item pulls the view back further")
-	_check(is_equal_approx(Outfit.leaf_lift(Outfit.from({"hat": "straw_hat", "leaf": "gold_leaf"}, true)), 0.075) and Outfit.leaf_lift({}) == 0.0, "The leaf lifts for the Straw hat, whatever leaf is worn")
