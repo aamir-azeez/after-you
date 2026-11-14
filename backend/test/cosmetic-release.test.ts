@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
 import { COSMETIC_CODE_MAX, EMPTY_CONFIG, MAX_RELEASED_COSMETICS, parseConfig } from "../src/config";
 import { FLAG_NAMES } from "../src/flags";
-import { CATALOG, FRUITS_OFFERED_TAG, OFFERED_TAG, catalogFor, checkedCatalog, featuredItem, itemOfCode, offeredItems, offeredTagFor, releasedCatalog, setPieces, sold, type Catalog } from "../src/pollen/catalog";
+import { CATALOG, FRUITS_OFFERED_TAG, OFFERED_TAG, catalogFor, checkedCatalog, featuredItem, itemOfCode, offeredItems, offeredTagFor, releasedCatalog, setPieces, sold, type Catalog, isRetired } from "../src/pollen/catalog";
 import { quote, type Holdings } from "../src/pollen/spend";
 import { droppable } from "../src/pollen/item-blooms";
 import { POLLEN_HEADER } from "../src/pollen/routes";
@@ -40,7 +40,8 @@ describe("item codes", () => {
   });
   it("agrees with the game's manifest", () => {
     const rows = manifest.items as Record<string, { code: number }>;
-    for (const [id, item] of Object.entries(CATALOG.items)) expect(item.code, id).toBe(rows[id].code);
+    // A retired item has no game row; its code stays pinned in cosmetic_codes.json (below).
+    for (const [id, item] of Object.entries(CATALOG.items)) if (!isRetired(id)) expect(item.code, id).toBe(rows[id].code);
   });
   it("refuses an item without a whole code in range, or two items sharing one", () => {
     const base = structuredClone(CATALOG) as unknown as { items: Record<string, Record<string, unknown>> };
