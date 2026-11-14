@@ -35,6 +35,7 @@ func _run() -> void:
 	_memory_toggle_ticks()
 	_same_tick()
 	_owner_rules_unchanged()
+	_levers()
 	_live_toggle_drowns_memory()
 	print("OPEN CONTROLS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -144,6 +145,38 @@ func _owner_rules_unchanged() -> void:
 	var selector := _entity(b.stage.controls, "path-selector")
 	b._players.p1 = {"x": int(selector.position_cm[0]), "z": int(selector.position_cm[1]), "height": int(selector.height_cm), "surface_id": str(selector.surface_id)}
 	_check(b.context_action().id != "selector", "Owner rules: the memory's selector is not the second pip's to turn")
+
+## Levers follow the same rule as selectors (runtime.gd): in Set the Tide the
+## memory pulls a lever; a live value held opposite stays until that tick, then
+## the memory's lands; and the live pip may pull the memory's lever.
+func _levers() -> void:
+	var level := Registry.definition(TIDE)
+	var first := _fixture("turn-of-the-tide-v3-set-the-tide-a.json")
+	var idle := Simulation.new()
+	idle.reset(level, "set-the-tide", Registry.initial_checkpoint(TIDE), first, "b")
+	var pulled_at := -1
+	var lever_id := ""
+	while not idle.finished and int(idle.tick) < int(first.duration_ticks):
+		idle.step({})
+		if not idle._source_toggles.levers.is_empty():
+			pulled_at = int(idle.tick) - 1
+			lever_id = str(idle._source_toggles.levers.keys()[0])
+			break
+	_check(pulled_at >= 0, "The memory pulls a lever in Set the Tide")
+	if pulled_at < 0: return
+	var pulled: bool = bool(idle._mechanisms.levers[lever_id])
+	var b := Simulation.new()
+	b.reset(level, "set-the-tide", Registry.initial_checkpoint(TIDE), first, "b")
+	b._mechanisms.levers[lever_id] = not pulled
+	for tick in range(pulled_at): b.step({})
+	_check(bool(b._mechanisms.levers[lever_id]) == (not pulled), "Before the memory's pull the live lever stays (%s)" % lever_id)
+	b._mechanisms.levers[lever_id] = not pulled
+	b.step({})
+	_check(bool(b._mechanisms.levers[lever_id]) == pulled, "On the memory's pull its value lands (tick %d)" % pulled_at)
+	var lever := _entity(b.stage.levers, lever_id)
+	b._players.p1 = {"x": int(lever.position_cm[0]), "z": int(lever.position_cm[1]), "height": int(lever.get("height_cm", b._players.p1.height)), "surface_id": str(lever.surface_id)}
+	var action: Dictionary = b.context_action()
+	_check(action.id == "lever" and action.target_id == lever_id, "The live pip may pull the memory's lever (%s)" % str(action))
 
 ## Slack Water on the open tide rules: the memory ends its turn on the gate
 ## post, which holds while the basin stands at low. The live pip turns the
