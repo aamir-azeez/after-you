@@ -93,6 +93,7 @@ static var CARD_SIZE: Vector2 = ShopKit.tile(Vector2(206, 158))
 ## An item card's inner margin and picture height.
 const CARD_PAD := 10
 static var CARD_PICTURE: float = ShopKit.tile(72.0)
+## (MoreArt, an inner class, works it out the same way: inner classes see constants, not static vars.)
 static var SHELF_CARD_SIZE: Vector2 = ShopKit.tile(Vector2(150, 150))
 static var CARD_PIP: Vector2 = ShopKit.tile(Vector2(56, 70))
 static var SHELF_PIP: Vector2 = ShopKit.tile(Vector2(50, 62))
@@ -766,7 +767,7 @@ class MoreArt extends Control:
 
 	func _draw() -> void:
 		var spec: Dictionary = EmptyArt.CARDS.wardrobe
-		var picture := Rect2(CARD_PAD, CARD_PAD, size.x - CARD_PAD * 2, CARD_PICTURE)
+		var picture := Rect2(CARD_PAD, CARD_PAD, size.x - CARD_PAD * 2, ShopKit.tile(72.0))
 		EmptyArt.ghost_outline(self, Rect2(Vector2.ONE, size - Vector2(2, 2)), spec.radius, picture, spec.slot_radius, spec.ink)
 		EmptyArt.scene(self, "wardrobe", picture)
 
