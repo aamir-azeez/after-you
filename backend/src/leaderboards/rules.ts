@@ -19,7 +19,7 @@ export const KEPT_RANKED = TOP_PLACES + 3;
  * (10 on each of 12 boards), plus one for each run waiting for a person: at
  * most MAX_REVIEW (48) a board, usually none. A final checkpoint is typically
  * 12 to 35 KB of JSON and deflates to about a quarter of that. A chapter with
- * 15 minute turns can reach a room row (MAX_ROW_BYTES) of JSON, deflating to
+ * long turns (input_rules) can reach a room row (MAX_ROW_BYTES) of JSON, deflating to
  * well under it, so this matches that row: any final checkpoint a room could
  * store fits once encoded. An encoded replay above it is not kept (its run
  * still ranks, with no Watch). lb_replays keeps it as a BLOB, inside SQLite's

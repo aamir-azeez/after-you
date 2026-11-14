@@ -219,8 +219,8 @@ def check_recordings(binary: str, repo: Path) -> None:
     check(now == fixtures, "Routes from the chapter's own run write the same fixtures: " + ", ".join(sorted(p for p in set(now) | set(fixtures) if now.get(p) != fixtures.get(p))))
     ok, log = tool(binary, repo, "chapter_recheck.py", ["--key", JOURNEY])
     check(ok and "2 of 2 stages finish" in log, "chapter_recheck.py replays the recorded routes: " + log[-1500:])
-    ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "900", "--b-seconds", "910"])
-    check(not ok and "may last at most 900 s" in log, "chapter_turn_limits.py refuses turns past the rules' 15 minutes: " + log[-1500:])
+    ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "400", "--b-seconds", "410"])
+    check(not ok and "may last at most 405 s" in log, "chapter_turn_limits.py refuses turns past the rules' longest: " + log[-1500:])
     ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "60", "--b-seconds", "90"])
     definition = json.loads((repo / "game/tests/fixtures/journey/scaffold-test-journey-definition.json").read_text(encoding="utf-8"))
     check(ok and definition.get("turn_limits") == {"a_ticks": 1800, "b_ticks": 2700} and "updated backend/src/v2/scaffold-test-journey.json" in log,

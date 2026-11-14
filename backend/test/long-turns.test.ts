@@ -22,10 +22,10 @@ import tideA from "../../game/tests/fixtures/journey/set-the-tide-a.json";
 import cases from "../../game/tests/fixtures/journey/turn-limits-cases.json";
 import { MAX_REPLAY_BYTES } from "../src/leaderboards/rules";
 
-// A new two-stage chapter with capped input and 15 minute turns (index.gd
+// A new two-stage chapter with capped input and its longest turns, 6:35 and 6:45 (index.gd
 // DEVELOPMENT_TURN_LIMITS): Turn of the Tide @2's stages under input_rules 1.
 type Json = Record<string, any>;
-const TURNS = { a_ticks: 26_700, b_ticks: 27_000 };
+const TURNS = { a_ticks: 11_850, b_ticks: 12_150 };
 const LONG = { ...tideV2Definition, input_rules: 1, turn_limits: TURNS };
 const HASH = "e".repeat(64);
 const RULES = INPUT_RULES[1];
@@ -54,17 +54,17 @@ async function franticChain(): Promise<Chain> {
   return { a1, b1, cp1, a2, b2, cp2: await proven(slackCheckpoint, cp1, a2, b2) };
 }
 
-describe("capped input and 15 minute turns", () => {
+describe("capped input and long turns", () => {
   it("are read only from a definition that declares input_rules, the same table runtime.gd plays", () => {
-    expect(LONG_TURN_TICKS).toBe(27_000);
-    expect(RULES).toEqual({ change_ticks: 10, burst: 800, reserve: 30 });
+    expect(LONG_TURN_TICKS).toBe(12_150);
+    expect(RULES).toEqual({ change_ticks: 3, burst: 800, reserve: 30 });
     expect(inputRules(LONG)).toBe(RULES);
     expect(turnLimits(LONG)).toEqual(TURNS);
     expect(inputRules(tideV2Definition)).toBeUndefined();
     expect(() => turnLimits({ ...tideV2Definition, turn_limits: TURNS })).toThrow("invalid turn_limits");
     expect(() => inputRules({ ...LONG, input_rules: 2 })).toThrow("invalid input_rules");
-    // The first entry, the allowance of 800 and one change every 10 ticks: three a second.
-    expect(maxActionEntries(RULES, 27_000)).toBe(3_501);
+    // The first entry, the allowance of 800 and one change every 3 ticks: ten a second.
+    expect(maxActionEntries(RULES, 12_150)).toBe(4_851);
     expect(maxActionEntries(RULES, 500)).toBe(500);
     // The table test_long_turn_input.gd also reads, so the game's copies match these.
     expect(cases.capped.input_rules).toEqual(INPUT_RULES);
@@ -73,7 +73,7 @@ describe("capped input and 15 minute turns", () => {
     for (const [ticks, entries] of cases.capped.max_action_entries) expect(maxActionEntries(RULES, ticks)).toBe(entries);
   });
 
-  it("fit a frantic 15 minute pair, every allowed change at its widest, in a room row", async () => {
+  it("fit a frantic pair of the longest turns, every allowed change at its widest, in a room row", async () => {
     const long = journeyAdapter(LONG as never, initial as ChapterCheckpoint, HASH, 4);
     const chain = await franticChain();
     for (const record of [chain.a1, chain.b1, chain.a2, chain.b2]) expect(await long.recording(record)).toEqual(record);
@@ -96,12 +96,12 @@ describe("capped input and 15 minute turns", () => {
     const long = journeyAdapter(LONG as never, initial as ChapterCheckpoint, HASH, 4);
     const over = await frantic(setA, TURNS.a_ticks, initial.checkpoint_hash, "", maxActionEntries(RULES, TURNS.a_ticks) + 1);
     await expect(long.recording(over)).rejects.toMatchObject({ code: "invalid_actions" });
-    // Four branches of 15 minute pairs fit the replay archive and the room snapshot; a fifth does not.
+    // Four branches of the longest pairs fit the replay archive and the room snapshot; a fifth does not.
     expect(() => checkLongTurnBounds(shape, 4)).not.toThrow();
     expect(() => checkLongTurnBounds(shape, 5)).toThrow("max_branches outgrow the room archive bounds");
     expect(() => checkLongTurnBounds(shape, undefined)).toThrow("turn_limits need max_branches");
     expect(4 * rows().branch).toBeLessThanOrEqual(ARCHIVE_BOUNDS.replay_archive_bytes);
-    // Three stages of 15 minute turns outgrow a row; the tooling offers shorter turns instead.
+    // Three stages of the longest turns outgrow a row; the tooling offers shorter turns instead.
     expect(() => checkLongTurnBounds({ ...shape, stages: 3 }, 1)).toThrow("turn_limits outgrow the room row bound");
     expect(() => journeyAdapter(LONG as never, initial as ChapterCheckpoint, HASH, 5)).toThrow("max_branches outgrow the room archive bounds");
     function rows() { return longTurnRows(shape); }

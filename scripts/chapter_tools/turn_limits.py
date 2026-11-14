@@ -82,6 +82,15 @@ def chapter_shape(chapter) -> Shape:
     return shape
 
 
+def entries_bytes(entries: int, ticks: int) -> int:
+    """protocol-physical-recording.ts entriesBytes: the widest JSON of `entries` action entries over `ticks` ticks."""
+    digits, power = entries, 10
+    while power <= ticks:
+        digits += ticks // power
+        power *= 10
+    return entries * 44 + min(digits, entries * len(str(ticks)))
+
+
 class Rules:
     """The rule and server bounds, read from the repository at `root`."""
 
@@ -116,9 +125,10 @@ class Rules:
                          "recording_bytes: scale(65_536)", "checkpoint_bytes: scale(MAX_CHECKPOINT_BYTES)",
                          "const pair = limits.checkpoint_bytes + 2 * (limits.recording_bytes ?? 65_536) + ROW_ENVELOPE_BYTES;",
                          "return Math.min(ticks, 1 + rules.burst + Math.floor(ticks / rules.change_ticks));",
-                         "const entryBytes = (ticks: number) => 44 + String(ticks).length;",
+                         "for (let power = 10; power <= ticks; power *= 10) digits += Math.floor(ticks / power);",
+                         "return entries * 44 + Math.min(digits, entries * String(ticks).length);",
                          "const checkBytes = (ticks: number) => 90 + String(ticks).length;",
-                         "return RECORDING_FIXED_BYTES + idBytes + maxActionEntries(rules, ticks) * entryBytes(ticks) + (Math.floor(ticks / 30) + 1) * checkBytes(ticks);",
+                         "return RECORDING_FIXED_BYTES + idBytes + entriesBytes(maxActionEntries(rules, ticks), ticks) + (Math.floor(ticks / 30) + 1) * checkBytes(ticks);",
                          "const checkpoint = (stage: number) => initial + stage * (initial + fixed + a + b);",
                          "branch += keys + a + b + checkpoint(stage) + 2 * keys + a + b;",
                          "pair: keys + a + b + checkpoint(shape.stages), branch };",
@@ -154,8 +164,7 @@ class Rules:
 
     def _recording(self, ticks: int, shape: Shape) -> int:
         entries = min(ticks, 1 + self.burst + ticks // self.change_ticks)
-        digits = len(str(ticks))
-        return self.recording_fixed + shape.id_bytes + entries * (44 + digits) + (ticks // 30 + 1) * (90 + digits)
+        return self.recording_fixed + shape.id_bytes + entries_bytes(entries, ticks) + (ticks // 30 + 1) * (90 + len(str(ticks)))
 
     def capped_rows(self, a: int, b: int, shape: Shape, escaped: bool = False) -> dict[str, int]:
         """protocol-physical-recording.ts longTurnRows; `escaped`: as a room snapshot measures them."""

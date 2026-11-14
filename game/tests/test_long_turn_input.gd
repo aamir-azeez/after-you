@@ -1,11 +1,11 @@
 extends SceneTree
 ## Capped input (core/physical/runtime.gd INPUT_RULES), the rules that let a new
-## chapter's turns run up to 15 minutes, on Turn of the Tide @2's stages with
+## chapter's turns run up to 6:45, on Turn of the Tide @2's stages with
 ## input_rules 1 and the development turn limits (content/chapters/index.gd):
 ## - a change past the allowance holds the previous input one tick, and the
 ##   live turn, its replay and the partner's memory of it record the same;
 ## - the action button keeps a reserve, and a press held back lands later;
-## - a frantic 15 minute turn stays inside the server's widest record
+## - a frantic turn of the longest length stays inside the server's widest record
 ##   (backend protocol-physical-recording.ts widestRecordingBytes);
 ## - no published definition declares it, so published turns play as before
 ##   (their goldens are the other suites').
@@ -39,13 +39,13 @@ func _run() -> void:
 	level.turn_limits = Index.DEVELOPMENT_TURN_LIMITS.duplicate()
 	rules = Runtime.input_rules(level, RULES)
 	_check(Simulation.rules_allowed(level, RULES) and rules == Runtime.INPUT_RULES[1], "The capped definition plays rules 10 with INPUT_RULES 1")
-	_check(Runtime.turn_ticks(level, RULES, "a") == 26700 and Runtime.turn_ticks(level, RULES, "b") == 27000, "The development turns are 14:50 and 15:00")
+	_check(Runtime.turn_ticks(level, RULES, "a") == 11850 and Runtime.turn_ticks(level, RULES, "b") == 12150 and Runtime.LONG_TURN_TICKS == 12150, "The development turns are 6:35 and 6:45, the longest")
 	_shared_table()
 	_published()
 	_holds()
 	_presses()
 	_replays()
-	_fifteen_minutes()
+	_longest_turn()
 	print("LONG TURN INPUT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -88,7 +88,7 @@ func _holds() -> void:
 	# The last entry may still be growing.
 	var tail: Array = record.actions.slice(count - 50, count - 1)
 	_check(tail.all(func(entry: Dictionary) -> bool: return int(entry.ticks) == int(rules.change_ticks)), "Past the allowance each input is held change_ticks ticks")
-	_check(Runtime.max_action_entries({}, 27000) == -1, "Uncapped input has no bound")
+	_check(Runtime.max_action_entries({}, 12150) == -1, "Uncapped input has no bound")
 
 ## The button may spend the reserve the stick leaves, and a press held back lands on the next tick that may change.
 func _presses() -> void:
@@ -136,8 +136,8 @@ func _replays() -> void:
 	over.recording_hash = Simulation.recording_hash(over)
 	_check(split.size() > Runtime.max_action_entries(rules, int(over.duration_ticks)) and proof.recording_error(level, over, initial) == "Invalid action list.", "A recording with more entries than the cap allows is refused before any replay")
 
-## A whole frantic 15 minute first turn (14:50): inside the server's widest record. Prints its sizes.
-func _fifteen_minutes() -> void:
+## A whole frantic first turn of the development length (6:35): inside the server's widest record. Prints its sizes.
+func _longest_turn() -> void:
 	var started := Time.get_ticks_msec()
 	var sim := _sim()
 	var ticks := Runtime.turn_ticks(level, RULES, "a")
@@ -147,15 +147,23 @@ func _fifteen_minutes() -> void:
 	_check(sim.finished and int(record.duration_ticks) == ticks, "The first turn runs its whole %d ticks" % ticks)
 	var bytes := JSON.stringify(Canonical.normalized(record)).to_utf8_buffer()
 	var ids := str(level.id).length() + str(STAGE).length()
-	var digits := str(ticks).length()
-	var widest := 1024 + ids + Runtime.max_action_entries(rules, ticks) * (44 + digits) + (ticks / 30 + 1) * (90 + digits)
-	_check(record.actions.size() <= Runtime.max_action_entries(rules, ticks) and bytes.size() <= widest, "A frantic 15 minute turn fits the server's widest record: %d bytes of %d" % [bytes.size(), widest])
+	var widest := 1024 + ids + _entries_bytes(Runtime.max_action_entries(rules, ticks), ticks) + (ticks / 30 + 1) * (90 + str(ticks).length())
+	_check(record.actions.size() <= Runtime.max_action_entries(rules, ticks) and bytes.size() <= widest, "A frantic turn of the longest length fits the server's widest record: %d bytes of %d" % [bytes.size(), widest])
 	started = Time.get_ticks_msec()
 	var proof: RefCounted = Simulation._proof(RULES)
-	_check(proof._verify_raw(level, record, initial, {}).valid, "The proof replays the whole 15 minute turn")
+	_check(proof._verify_raw(level, record, initial, {}).valid, "The proof replays the whole turn")
 	var verified := Time.get_ticks_msec() - started
 	print("LONG TURN bytes ticks=%d actions=%d checks=%d canonical=%d deflated=%d widest=%d play_ms=%d verify_ms=%d" % [ticks, record.actions.size(), record.replay_checks.size(),
 		bytes.size(), BlobCodec.encode(bytes).size(), widest, played, verified])
+
+## backend entriesBytes: entries at 44 bytes and their ticks' digits, at most ticks / 10 of them with two digits, and so on.
+func _entries_bytes(entries: int, ticks: int) -> int:
+	var digits := entries
+	var power := 10
+	while power <= ticks:
+		digits += ticks / power
+		power *= 10
+	return entries * 44 + mini(digits, entries * str(ticks).length())
 
 func _sim(prior: Dictionary = {}, role: String = "a", definition: Dictionary = {}) -> RefCounted:
 	var sim := Simulation.new()

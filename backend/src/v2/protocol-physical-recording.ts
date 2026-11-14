@@ -29,10 +29,12 @@ export function turnLimits(definition: Declaring): TurnLimits | undefined {
  * records at most one input change every change_ticks ticks on average, after
  * a starting allowance of burst changes (reserve only orders the stick and the
  * button inside that allowance). A definition declaring input_rules may
- * declare turns up to LONG_TURN_TICKS (15 minutes); no published one does. */
+ * declare turns up to LONG_TURN_TICKS; no published one does. */
 export type InputRules = { change_ticks: number; burst: number; reserve: number };
-export const INPUT_RULES: Readonly<Record<number, Readonly<InputRules>>> = Object.freeze({ 1: Object.freeze({ change_ticks: 10, burst: 800, reserve: 30 }) });
-export const LONG_TURN_TICKS = 27_000;
+export const INPUT_RULES: Readonly<Record<number, Readonly<InputRules>>> = Object.freeze({ 1: Object.freeze({ change_ticks: 3, burst: 800, reserve: 30 }) });
+/** The longest turn a capped definition may declare: 6:45, the longest second turn two stages of capped
+ * records fit in a room row (turn_limits.py works it out; more stages fit shorter turns). */
+export const LONG_TURN_TICKS = 12_150;
 export function inputRules(definition: Declaring): Readonly<InputRules> | undefined {
   if (definition.input_rules === undefined || !declares(definition)) return undefined;
   const rules = Number.isSafeInteger(definition.input_rules) ? INPUT_RULES[definition.input_rules as number] : undefined;
@@ -66,8 +68,14 @@ export function checkTurnBounds(limits: Readonly<ChapterLimits>, maxBranches: nu
 /** Everything in a stored recording but its action entries and replay checks
  * (four hashes, the ids, flags and keys), past its two ids: about 650 bytes measured. */
 const RECORDING_FIXED_BYTES = 1_024;
-/** The widest stored action entry, {"action":false,"ticks":N,"x":-100,"z":-100}, with its comma. */
-const entryBytes = (ticks: number) => 44 + String(ticks).length;
+/** The widest JSON of `entries` stored action entries over `ticks` ticks: each {"action":false,"ticks":N,"x":-100,"z":-100}
+ * with its comma is 44 bytes and N's digits. They share the ticks, so at most ticks / 10 entries have a second digit,
+ * ticks / 100 a third, and so on. */
+export function entriesBytes(entries: number, ticks: number): number {
+  let digits = entries;
+  for (let power = 10; power <= ticks; power *= 10) digits += Math.floor(ticks / power);
+  return entries * 44 + Math.min(digits, entries * String(ticks).length);
+}
 /** The widest stored replay check, {"state_hash":"<64 hex>","tick":N}, with its comma. */
 const checkBytes = (ticks: number) => 90 + String(ticks).length;
 /** A room snapshot (snapshot.ts) measures each row with its data as a JSON string, every quote escaped:
@@ -80,7 +88,7 @@ const PAIR_KEYS_BYTES = 256;
 
 /** The widest JSON a capped turn of `ticks` can store: every allowed change, every replay check, all at their widest. */
 export function widestRecordingBytes(rules: Readonly<InputRules>, ticks: number, idBytes: number): number {
-  return RECORDING_FIXED_BYTES + idBytes + maxActionEntries(rules, ticks) * entryBytes(ticks) + (Math.floor(ticks / 30) + 1) * checkBytes(ticks);
+  return RECORDING_FIXED_BYTES + idBytes + entriesBytes(maxActionEntries(rules, ticks), ticks) + (Math.floor(ticks / 30) + 1) * checkBytes(ticks);
 }
 /** The same record inside a room snapshot row, its quotes escaped. */
 function escapedRecordingBytes(rules: Readonly<InputRules>, ticks: number, idBytes: number): number {

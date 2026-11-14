@@ -117,11 +117,11 @@ const OPTIONAL := {
 ## The turn lengths a chapter has while it is built (scripts/new_chapter.py
 ## writes them into a new journey definition, with capped input): the longest
 ## whole-second receiver turn the rules and the server's room row bound both
-## accept for two stages, 15 minutes, and the first turn the receiver's grace
-## shorter (scripts/chapter_tools/turn_limits.py works them out). Play sets the
+## accept for two stages, 6:45 (runtime.gd LONG_TURN_TICKS), and the first
+## turn the receiver's grace shorter (scripts/chapter_tools/turn_limits.py works them out). Play sets the
 ## real ones (scripts/chapter_turn_limits.py), and test_chapter_descriptors
 ## fails a released chapter still on these.
-const DEVELOPMENT_TURN_LIMITS := {"a_ticks": 26700, "b_ticks": 27000}
+const DEVELOPMENT_TURN_LIMITS := {"a_ticks": 11850, "b_ticks": 12150}
 ## Fills a block-built chapter's default words, looks and water levels.
 const BlockDefaults = preload("res://content/blocks/defaults.gd")
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]

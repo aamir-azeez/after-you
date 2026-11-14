@@ -17,17 +17,18 @@ const FIRST_TURN_LIMITS_VERSION := 9
 const MAX_DECLARED_TURN_TICKS := 9000
 ## From the same rules a definition may also declare "input_rules": a key of
 ## INPUT_RULES. Its turns then record at most one input change every
-## change_ticks ticks on average, after a starting allowance of burst changes:
-## a change past that holds the previous input one more tick. A recording then
-## grows with its length at a bounded rate, so such a definition may declare
-## turns up to LONG_TURN_TICKS (15 minutes). The definition hash covers the
-## field, and published chapters never declare it, so they play as before.
+## change_ticks ticks (10 a second) on average, after a starting allowance of
+## burst changes: a change past that holds the previous input one more tick. A
+## recording then grows with its length at a bounded rate, so such a definition
+## may declare turns up to LONG_TURN_TICKS (6:45, the longest second turn two
+## stages fit in a server room row). The definition hash covers the field, and
+## published chapters never declare it, so they play as before.
 ## reserve: changes kept back for the action button. The stick spends only
 ## above it, so a press still registers after the stick used its allowance; a
 ## press held back anyway lands on the next tick that may change.
 ## Mirrored by backend protocol-physical-recording.ts INPUT_RULES.
-const INPUT_RULES := {1: {"change_ticks": 10, "burst": 800, "reserve": 30}}
-const LONG_TURN_TICKS := 27000
+const INPUT_RULES := {1: {"change_ticks": 3, "burst": 800, "reserve": 30}}
+const LONG_TURN_TICKS := 12150
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -400,7 +401,7 @@ static func turn_ticks(definition: Dictionary, version: int, turn_role: String) 
 
 ## False only when rules `version` read a turn_limits or input_rules field that
 ## breaks the backend's turnLimits rules: input_rules a key of INPUT_RULES, and
-## a_ticks and b_ticks whole numbers with 1 <= a < b <= 9,000, or 27,000 with
+## a_ticks and b_ticks whole numbers with 1 <= a < b <= 9,000, or 12,150 with
 ## input_rules (the receiver waits out the first turn).
 static func turn_limits_valid(definition: Dictionary, version: int) -> bool:
 	if version < FIRST_TURN_LIMITS_VERSION: return true
@@ -408,7 +409,7 @@ static func turn_limits_valid(definition: Dictionary, version: int) -> bool:
 	if not definition.has("turn_limits"): return true
 	return not _declared_turns(definition.turn_limits, _turn_cap(definition)).is_empty()
 
-## The longest turn a definition may declare: 15 minutes with capped input.
+## The longest turn a definition may declare: 6:45 with capped input.
 static func _turn_cap(definition: Dictionary) -> int:
 	return LONG_TURN_TICKS if definition.has("input_rules") else MAX_DECLARED_TURN_TICKS
 
