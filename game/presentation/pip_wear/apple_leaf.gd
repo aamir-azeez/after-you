@@ -13,7 +13,7 @@ const GREEN := Color("a2cf72")
 const RIB := Color("6f9a48")
 ## The blade: its length, its widest half width, how far its middle stands
 ## forward of its edges (the fold), and its rings along the length.
-const LENGTH := 0.32
+const LENGTH := 0.28
 const HALF_WIDTH := 0.075
 const FOLD := 0.012
 const RINGS := 10

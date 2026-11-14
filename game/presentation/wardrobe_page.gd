@@ -89,13 +89,13 @@ const SHELF := Color("e4eee0")
 const PICTURE := Color("efe8d4")
 const CHIP := Color("e6e0cc")
 const MINT := Color("a6d9c4")
-const CARD_SIZE := Vector2(206, 158)
+const CARD_SIZE := Vector2(206, 158) * ShopKit.TILE_SCALE
 ## An item card's inner margin and picture height.
 const CARD_PAD := 10
-const CARD_PICTURE := 72
-const SHELF_CARD_SIZE := Vector2(150, 150)
-const CARD_PIP := Vector2(56, 70)
-const SHELF_PIP := Vector2(50, 62)
+const CARD_PICTURE := 72.0 * ShopKit.TILE_SCALE
+const SHELF_CARD_SIZE := Vector2(150, 150) * ShopKit.TILE_SCALE
+const CARD_PIP := Vector2(56, 70) * ShopKit.TILE_SCALE
+const SHELF_PIP := Vector2(50, 62) * ShopKit.TILE_SCALE
 ## A trail's card shows its pip in a wider picture, so the still sample row
 ## of marks beside it (kit/trail_kit.gd SAMPLE) fits, as the trails board draws it.
 const TRAIL_PIP_WIDTH := 2.6
@@ -614,7 +614,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	var picture := PanelContainer.new()
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
-	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
+	picture.custom_minimum_size.y = 64.0 * ShopKit.TILE_SCALE if small else CARD_PICTURE
 	column.add_child(picture)
 	if entry.slot == "rest_face":
 		# A resting face: the head front on, as faces board 4 crops it, so Button, Bean and Round read apart.
@@ -622,7 +622,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 		var head := RestFace.new()
 		head.color = "mint" if _view == "friend" else "peach"
 		head.expression = "normal" if bool(entry.get("classic", false)) else str(entry.id)
-		head.custom_minimum_size = Vector2.ONE * (64.0 if small else float(CARD_PICTURE))
+		head.custom_minimum_size = Vector2.ONE * (64.0 * ShopKit.TILE_SCALE if small else CARD_PICTURE)
 		head.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		picture.add_child(head)
 	else:
@@ -637,14 +637,14 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	var title_row := HBoxContainer.new()
 	title_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(title_row)
-	var title := ShopKit.text(str(entry.name), 13 if small else 15, INK, ShopKit.bold_font())
+	var title := ShopKit.text(str(entry.name), ShopKit.tile_text(13 if small else 15), INK, ShopKit.bold_font())
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.clip_text = true
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title_row.add_child(title)
 	# An Orchard item (in Owned) has its Orchard word; the Pollen tiers their mark and word.
-	if not small and entry.get("currency", "") == "fruits": title_row.add_child(ShopKit.text(Orchard.tier_word(tier).to_upper(), 11, INK_SOFT, ShopKit.bold_font()))
-	elif not small: title_row.add_child(TierFrame.label(tier, 11, ShopKit.bold_font()))
+	if not small and entry.get("currency", "") == "fruits": title_row.add_child(ShopKit.text(Orchard.tier_word(tier).to_upper(), ShopKit.tile_text(11), INK_SOFT, ShopKit.bold_font()))
+	elif not small: title_row.add_child(TierFrame.label(tier, ShopKit.tile_text(11), ShopKit.bold_font()))
 	var bottom := HBoxContainer.new()
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bottom.add_theme_constant_override("separation", 6)
@@ -657,7 +657,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 		if tier == "earned" and shop and not small: bottom.add_child(spacer)
 		bottom.add_child(_tag(PlayerCopy.WARDROBE_WEARING if bool(entry.worn) else PlayerCopy.WARDROBE_OWNED_TAG))
 	elif bool(entry.sold) and shop:
-		bottom.add_child(ShopKit.amount(int(entry.price), 13 if small else 15, INK, "", "", str(entry.get("currency", ""))))
+		bottom.add_child(ShopKit.amount(int(entry.price), ShopKit.tile_text(13 if small else 15), INK, "", "", str(entry.get("currency", ""))))
 	return card
 
 ## The Owned tab's Get more card for slot `kind`: an item card's size, the

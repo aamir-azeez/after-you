@@ -10,8 +10,6 @@ const DATA := {
 	"code": 202,
 	## Held back until the server's release list names it.
 	"released": false,
-	## It stands above the head.
-	"tall": true,
 	## The leaf grows clear beside it.
 	"leaf_mode": "pokes_through",
 	"leaf_max": "medium",

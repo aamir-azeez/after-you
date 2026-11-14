@@ -1162,10 +1162,11 @@ func _orchard_scrolls() -> void:
 	t.host.ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var page: Control = t.host.overlay
 	t.flow.set_tab("orchard")
-	page.size = Vector2(1600, 720)
+	screen.size = Vector2i(2200, 990)
+	page.size = Vector2(2200, 990)
 	await _frames(4)
 	var orchard: Control = page.find_child("WardrobeOrchard", true, false)
-	_check(not orchard.cards_scroll(), "At 1600 every Orchard card fits and nothing scrolls")
+	_check(not orchard.cards_scroll(), "On a big screen every Orchard card fits and nothing scrolls")
 	screen.size = Vector2i(1280, 720)
 	page.size = Vector2(1280, 720)
 	await _frames(4)

@@ -28,7 +28,8 @@ const holding = (owned: string[] = [], cleared: string[] = []): Holdings => ({ o
 describe("the shop catalogue", () => {
   it("matches the game's cosmetic manifest in everything but release", () => {
     const items = manifest.items as Record<string, { id: string; slot: string; tier: string; price: number; sold: boolean; unlock: string; set: string }>;
-    expect(Object.keys(CATALOG.items).sort()).toEqual([...manifest.ids].sort());
+    // The retired faces stay in the server's catalogue for their refunds (retired.ts); the game has no item for them.
+    expect(Object.keys(CATALOG.items).filter(id => !isRetired(id)).sort()).toEqual([...manifest.ids].sort());
     expect([...CATALOG.slots]).toEqual(manifest.slots);
     expect([...CATALOG.unworn_slots]).toEqual(manifest.unworn_slots);
     expect(CATALOG.tier_prices).toEqual(manifest.tier_prices);

@@ -107,12 +107,7 @@ static var _tier_currency: Dictionary = {}
 
 ## Whether it can ever be bought with Pollen (earned items never can).
 static func sold(id: String) -> bool:
-	return has(id) and not retired(id) and str(Index.data(id).get("tier", "")) != EARNED and price(id) > 0
-
-## Whether the item is taken out of the game for good (index.gd "retired"):
-## never sold, listed, picked or drawn.
-static func retired(id: String) -> bool:
-	return bool(Index.data(id).get("retired", false))
+	return has(id) and str(Index.data(id).get("tier", "")) != EARNED and price(id) > 0
 
 ## How an earned item is earned (its PlayerCopy line), or "" for one that is sold.
 static func earn(id: String) -> String:
@@ -125,9 +120,6 @@ static func released_ids() -> Array[String]:
 		if released(id): result.append(id)
 	return result
 
-## Whether wearing it pulls the pip views back.
-static func tall(id: String) -> bool:
-	return bool(Index.data(id).get("tall", false))
 
 ## Whether its look moves on its own (a Wardrobe card shows it live).
 static func moving(id: String) -> bool:
@@ -145,18 +137,13 @@ static func low(id: String) -> bool:
 static func leaf_lift(id: String) -> float:
 	return float(Index.data(id).get("leaf_lift", 0.0))
 
-## Where a hat roots the leaf (head space), or Vector3.ZERO for the shared top anchor.
-static func leaf_at(id: String) -> Vector3:
-	var at: Variant = Index.data(id).get("leaf_at", Vector3.ZERO)
-	return at if at is Vector3 else Vector3.ZERO
-
 ## How a hat meets the leaf ("covers", "pokes_through", "sits_on_top"), or "".
 static func leaf_mode(id: String) -> String:
 	return str(Index.data(id).get("leaf_mode", ""))
 
 ## The largest leaf size class a hat takes its way.
 static func leaf_max(id: String) -> String:
-	return str(Index.data(id).get("leaf_max", "tall"))
+	return str(Index.data(id).get("leaf_max", "medium"))
 ## The Wardrobe chip a slot is listed under (content/cosmetics/index.gd
 ## SLOT_CHIPS): the slot itself unless it is grouped.
 static func chip(slot_id: String) -> String:

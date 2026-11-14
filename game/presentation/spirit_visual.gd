@@ -233,7 +233,7 @@ func wear(outfit: Dictionary) -> void:
 	if clean.is_empty(): return
 	_wearing = PipOutfit.dress(self, clean)
 	_wearing.set_carrying(carrying_seed, carried_radius)
-	_leaf_lift = _wearing.leaf_shift + Vector3(0, _wearing.leaf_lift, 0)
+	_leaf_lift = Vector3(0, _wearing.leaf_lift, 0)
 	_seed_lift = _wearing.seed_lift
 
 ## Where a trail follows the walk from (global): the recorded target when a
@@ -601,7 +601,7 @@ func _apply_pose(amount: float) -> void:
 	# A hat makes way for a carried seed or lens; the leaf follows the hat's fit.
 	if _wearing!=null:
 		_wearing.set_carrying(carrying_seed,carried_radius)
-		_leaf_lift=_wearing.leaf_shift+Vector3(0,_wearing.leaf_lift,0)
+		_leaf_lift.y=_wearing.leaf_lift
 	head.position=HEAD_CENTER+rise
 	face.position=HEAD_CENTER+rise
 	head.rotation=Vector3(0,rest.head_yaw,tilt)

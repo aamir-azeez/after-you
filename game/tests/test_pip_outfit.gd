@@ -16,7 +16,7 @@ extends SceneTree
 ##   seed and inside every pip view, and loop perfectly;
 ## - a body item may swap the torso and feet meshes and add pieces, never the
 ##   head, and every gameplay value stays identical;
-## - a tall cap lifts a carried seed just clear of the hat itself (a leaf may
+## - a high cap lifts a carried seed just clear of the hat itself (a leaf may
 ##   touch it), a big leaf lifts it with the leaf's own lift, and off again the
 ##   seed sits where it did;
 ## - moving parts step at the idle card rate of the pip's own clock and hold

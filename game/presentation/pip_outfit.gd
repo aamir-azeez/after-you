@@ -76,9 +76,6 @@ var spirit: Node3D
 var outfit: Dictionary
 ## Metres the leaf sits higher now (SpiritVisual reads it every pose).
 var leaf_lift := 0.0
-## How far across the head the raised leaf moves now (x and z), to a hat's own
-## leaf point (kit/wear_fit.gd shift_for).
-var leaf_shift := Vector3.ZERO
 ## The fit of the worn leaf under the worn hat (WearFit.decide).
 var fit := {"show": true, "lift": 0.0}
 ## Metres a carried seed sits higher (SpiritVisual reads it), worked out in
@@ -277,7 +274,6 @@ func show_leaf() -> void:
 func _fit_leaf() -> void:
 	spirit.sprout.visible = bool(fit.show) and _leaf_hidden_by.is_empty()
 	leaf_lift = float(fit.lift)
-	leaf_shift = WearFit.shift_for(str(outfit.get("hat", ""))) if leaf_lift > 0.0 else Vector3.ZERO
 	_fit_stem()
 
 ## The raised leaf's stem, on the head from where the leaf grows up to its
@@ -306,7 +302,7 @@ func _fit_stem() -> void:
 		_stem.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		attach(spirit.head, _stem)
 	var length := leaf_lift + STEM_TUCK * 2.0
-	_stem.transform = Transform3D(Basis().scaled(Vector3(1.0, length, 1.0)), Look.LEAF_PIVOT - Look.HEAD_CENTER + leaf_shift + Vector3(0.0, leaf_lift * 0.5, 0.0))
+	_stem.transform = Transform3D(Basis().scaled(Vector3(1.0, length, 1.0)), Look.LEAF_PIVOT - Look.HEAD_CENTER + Vector3(0.0, leaf_lift * 0.5, 0.0))
 	_stem.visible = true
 
 ## Advances the item's moving parts with the pip's clock.
@@ -359,7 +355,6 @@ func undress() -> void:
 	_steps.clear()
 	if is_instance_valid(spirit.sprout): spirit.sprout.visible = _leaf_was_visible
 	leaf_lift = 0.0
-	leaf_shift = Vector3.ZERO
 	_travels.clear()
 	_resets.clear()
 	_carry_hidden.clear()

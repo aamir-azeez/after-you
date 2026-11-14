@@ -569,7 +569,7 @@ func model() -> Dictionary:
 		var sold: bool = not sale.is_empty() and Catalog.sold(id) and id in offered
 		var earned: bool = Catalog.tier(id) == Catalog.EARNED and id in offered
 		if not mine and not sold and not earned: continue
-		if Catalog.slot(id).is_empty() or Catalog.retired(id): continue
+		if Catalog.slot(id).is_empty(): continue
 		var unlock := Catalog.unlock(id)
 		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": int(sale.get("price", 0)), "currency": FRUITS if fruit else POLLEN,
 			"owned": mine, "worn": look.get(Catalog.slot(id)) == id, "sold": sold, "locked": not mine and not unlock.is_empty() and not id in unlocked,

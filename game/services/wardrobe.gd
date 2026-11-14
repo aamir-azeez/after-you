@@ -61,6 +61,7 @@ extends RefCounted
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
+const ReactionCatalog = preload("res://services/reaction_catalog.gd")
 
 const PATH := "user://wardrobe.json"
 const VERSION := 1
@@ -430,8 +431,8 @@ func effective_slots(server: String, owner: String) -> Array:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not (scope.view as Dictionary).has("reactions"): return []
 	var slots: Array = scope.pending.reactions if scope.has("pending") and scope.pending.has("reactions") else scope.view.reactions
-	# A retired face (content/cosmetics/faces.gd) leaves its place empty.
-	return slots.map(func(face: Variant) -> Variant: return "" if face is String and Catalog.retired(face) else face)
+	# A face this build does not know (one taken out of the game) leaves its place empty.
+	return slots.map(func(face: Variant) -> Variant: return face if face is String and (face.is_empty() or ReactionCatalog.is_face(face)) else "")
 
 ## What the player wears on this phone: the pending look, else the confirmed one.
 func effective_look(server: String, owner: String) -> Dictionary:

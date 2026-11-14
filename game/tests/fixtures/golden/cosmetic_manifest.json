@@ -60,10 +60,8 @@
 		"gasp",
 		"peekaboo",
 		"yay",
-		"smitten",
 		"starry",
 		"flower",
-		"heart_eyes",
 		"proud",
 		"wink",
 		"wow",
@@ -328,18 +326,6 @@
 			"slot": "leaf",
 			"sold": false,
 			"tier": "earned",
-			"unlock": ""
-		},
-		"heart_eyes": {
-			"code": 416,
-			"currency": "pollen",
-			"id": "heart_eyes",
-			"price": 1500,
-			"released": false,
-			"set": "",
-			"slot": "reaction",
-			"sold": false,
-			"tier": "face_uncommon",
 			"unlock": ""
 		},
 		"huh": {
@@ -724,18 +710,6 @@
 			"slot": "reaction",
 			"sold": true,
 			"tier": "face_common",
-			"unlock": ""
-		},
-		"smitten": {
-			"code": 413,
-			"currency": "pollen",
-			"id": "smitten",
-			"price": 3000,
-			"released": false,
-			"set": "",
-			"slot": "reaction",
-			"sold": false,
-			"tier": "face_rare",
 			"unlock": ""
 		},
 		"snow_steps": {

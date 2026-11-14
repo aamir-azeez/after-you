@@ -22,7 +22,10 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ReactionSlots = preload("res://services/reaction_slots.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Cosmetics = preload("res://services/cosmetic_catalog.gd")
-const NEW: Array[String] = ["heart_eyes", "proud", "wink", "wow", "crying", "dizzy"]
+const Index = preload("res://content/cosmetics/index.gd")
+const NEW: Array[String] = ["proud", "wink", "wow", "crying", "dizzy"]
+## Faces taken out of the game (content/cosmetics/index.gd RETIRED_CODES).
+const GONE: Array[String] = ["heart_eyes", "smitten"]
 const HASH_A := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const HASH_B := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
@@ -73,18 +76,17 @@ func _area(polygons: Array) -> float:
 
 func _catalog() -> void:
 	_check(ReactionCatalog.FACES.size() == 9 and not ReactionCatalog.FACES.any(func(face: String) -> bool: return face in NEW), "The picker's everyday faces are as before")
-	_check(ReactionCatalog.PACK_FACES == NEW, "Six pack faces")
+	_check(ReactionCatalog.PACK_FACES == NEW, "Five pack faces (Heart eyes taken out of the game)")
 	var packed: Array = []
 	for pack: String in ReactionCatalog.PACKS: packed.append_array(ReactionCatalog.PACKS[pack])
-	_check(packed == NEW and ReactionCatalog.PACKS.keys() == ["garden_faces", "big_feelings"], "Garden faces then Big feelings, three faces each, every pack face in one pack")
+	_check(packed == NEW and ReactionCatalog.PACKS.keys() == ["garden_faces", "big_feelings"], "Garden faces then Big feelings, every pack face in one pack")
 	for face: String in NEW:
-		_check((ReactionCatalog.is_face(face) and ReactionCatalog.is_pack_face(face)) == not face in ReactionCatalog.RETIRED, "%s is a known pack face, unless retired" % face)
+		_check(ReactionCatalog.is_face(face) and ReactionCatalog.is_pack_face(face), "%s is a known pack face" % face)
 		_check(ReactionCatalog.pack_of(face) in ReactionCatalog.PACKS and face in ReactionCatalog.PACKS[ReactionCatalog.pack_of(face)], "%s names its pack" % face)
 		_check(Look.has(ReactionCatalog.expression(face)) and ReactionCatalog.spirit_expression(face) == ReactionCatalog.expression(face), "%s draws its own expression" % face)
 		_check(not ReactionCatalog.face_name(face).is_empty() and ReactionCatalog.face_name(face) == PlayerCopy.END_REACTION_NAMES[face], "%s has a name for screen readers and its cell" % face)
 	for face: String in ReactionCatalog.FACES: _check(ReactionCatalog.pack_of(face).is_empty() and not ReactionCatalog.is_pack_face(face), "%s belongs to no pack" % face)
 	for pack: String in ReactionCatalog.PACKS: _check(not ReactionCatalog.pack_name(pack).is_empty(), "%s has a name" % pack)
-	_check(ReactionCatalog.face_name("heart_eyes") != ReactionCatalog.face_name("heart"), "Heart eyes is not named Love, the heart's name")
 
 func _contours() -> void:
 	for face: String in NEW:
@@ -92,8 +94,6 @@ func _contours() -> void:
 		for index: int in range(2):
 			var shape: Dictionary = Look.eye_contours(expression, index)
 			_check(_area(shape.outer) + _area(shape.pupil) > 0.0 or not shape.strokes.is_empty(), "%s eye %d draws flat" % [face, index])
-	var heart: Dictionary = Look.eye_contours(Look.HEART_EYES, 0)
-	_check(heart.get("pupil_color") == Look.HEART_RED and _area(heart.pupil) > 0.0 and _area(heart.pupil) < _area(heart.outer), "Heart eyes: a red heart inside a cream heart")
 	var wow: Dictionary = Look.eye_contours(Look.WOW, 1)
 	_check(not wow.has("pupil_color") and wow.pupil.size() == 1 and (wow.pupil[0] as PackedVector2Array).size() >= 10 and _area(wow.pupil) < _area(wow.outer) * 0.6, "Wow: a dark star in a cream eye")
 	var proud: Dictionary = Look.eye_contours(Look.PROUD, 0)
@@ -107,7 +107,7 @@ func _contours() -> void:
 	var right: PackedVector2Array = Look.eye_contours(Look.DIZZY, 1).strokes[0]
 	_check(left.size() > 40 and left[-1].is_equal_approx(right[-1]) and left[20].is_equal_approx(right[20]), "Dizzy: a spiral in each eye, both turning the same way")
 	for face: String in ["proud", "wink", "crying", "dizzy"]: _check(not Look.is_open(ReactionCatalog.expression(face)), "%s never blinks" % face)
-	for face: String in ["heart_eyes", "wow"]: _check(Look.is_open(ReactionCatalog.expression(face)), "%s blinks like an open eye" % face)
+	_check(Look.is_open(ReactionCatalog.expression("wow")), "wow blinks like an open eye")
 
 func _shader_and_pip() -> void:
 	for face: String in NEW:
@@ -119,7 +119,7 @@ func _shader_and_pip() -> void:
 		pip.set_expression(expression, true)
 		_check(pip.expression() == expression and pip.face_art.material.get_shader_parameter(&"eye_shape") == shape.eye_shape, "The pip wears %s" % face)
 		pip.free()
-	_check(SpiritFace._shape(Look.HEART_EYES).eye_shape[0] == Vector4(Look.SHAPE_HEART, Look.SHAPE_HEART, 0, 0) and SpiritFace._shape(Look.WOW).eye_shape[1] == Vector4(Look.SHAPE_STAR, Look.SHAPE_OVAL, 0, 0), "Heart and star outlines reach the shader")
+	_check(SpiritFace._shape(Look.WOW).eye_shape[1] == Vector4(Look.SHAPE_STAR, Look.SHAPE_OVAL, 0, 0), "Star outlines reach the shader")
 	_check(SpiritFace._shape(Look.HAPPY).eye_shape[0] == Vector4.ZERO and SpiritFace._shape(Look.HAPPY).tear_stream[0] == Vector4.ZERO, "Every other face draws as before")
 	var face := SpiritFace.new(Look.MINT)
 	_check(face.material.get_shader_parameter(&"heart_color") == Look.HEART_RED and is_equal_approx(face.material.get_shader_parameter(&"heart_middle"), Look.HEART_MIDDLE) and is_equal_approx(face.material.get_shader_parameter(&"star_round"), Look.STAR_ROUND), "The shader takes the heart and star sizes from spirit_look")
@@ -164,7 +164,7 @@ func _wardrobe_rows() -> void:
 	var view := {"packs": ["garden_faces"], "offered_packs": ["garden_faces", "big_feelings", "later_pack"], "pack_price": 5000}
 	var rows := FacePacks.pack_rows(view)
 	_check(rows.size() == 2 and rows[0].id == "garden_faces" and rows[0].owned and rows[1].id == "big_feelings" and not rows[1].owned and rows[1].offered and rows[1].price == 5000, "The Faces tab lists each pack sold or owned, with the server's price")
-	_check(rows[0].faces == ["proud", "wink"] and rows[0].name == PlayerCopy.FACE_PACK_NAMES.garden_faces, "Each row names its pack and its faces, the retired Heart eyes left out")
+	_check(rows[0].faces == ["proud", "wink"] and rows[0].name == PlayerCopy.FACE_PACK_NAMES.garden_faces, "Each row names its pack and its faces")
 	_check(FacePacks.faces_tab_visible(view, PollenSurfaces.new(true)), "The Faces tab shows once a pack exists")
 	_check(not FacePacks.faces_tab_visible(view, PollenSurfaces.new(false)), "Never on an iPhone build without the shop")
 	_check(not FacePacks.faces_tab_visible({"packs": [], "offered_packs": []}, PollenSurfaces.new(true)) and not FacePacks.faces_tab_visible({}, PollenSurfaces.new(true)), "No pack, no Faces tab")
@@ -323,10 +323,11 @@ func _refused_turn() -> void:
 ## The single faces: known faces, sold one at a time, each drawing its own
 ## expression; picked only while owned and the server serves version 2.
 func _single_faces() -> void:
-	_check(ReactionCatalog.SINGLE_FACES.size() == 15 and ReactionCatalog.SINGLE_FACES[0] == "aww" and ReactionCatalog.SINGLE_FACES.back() == "flower" and not "smitten" in ReactionCatalog.SINGLE_FACES, "The fifteen single faces, in shop order, Smitten retired")
-	for face: String in ["smitten", "heart_eyes"]:
-		_check(not ReactionCatalog.is_face(face) and not ReactionCatalog.is_paid_face(face) and not face in ReactionCatalog.collection() and not Cosmetics.sold(face) and Cosmetics.retired(face), "%s is retired: no face to list, pick or sell" % face)
-		_check(ReactionCatalog.shown_face(face) == Store.HEART and Cosmetics.code(face) > 0, "and a friend's %s draws as the heart, its code kept" % face)
+	_check(ReactionCatalog.SINGLE_FACES.size() == 15 and ReactionCatalog.SINGLE_FACES[0] == "aww" and ReactionCatalog.SINGLE_FACES.back() == "flower", "The fifteen single faces, in shop order")
+	for face: String in GONE:
+		_check(not ReactionCatalog.is_face(face) and not Cosmetics.has(face) and not Look.has(StringName(face)) and PlayerCopy.END_REACTION_NAMES.get(face, "") == "", "%s is out of the game: no item, face, drawing or name" % face)
+		_check(ReactionCatalog.shown_face(face) == ReactionCatalog.FALLBACK_FACE, "and one arriving from an older app draws as any unknown face: %s" % ReactionCatalog.shown_face(face))
+		_check(face in Index.RETIRED_CODES.values() and Cosmetics.of_code(Index.RETIRED_CODES.find_key(face)) == "", "and its code stays reserved, for no item")
 	for face: String in ReactionCatalog.SINGLE_FACES:
 		_check(ReactionCatalog.is_face(face) and ReactionCatalog.is_paid_face(face) and not ReactionCatalog.is_pack_face(face), "%s is a paid single face" % face)
 		_check(Look.has(ReactionCatalog.expression(face)) and Cosmetics.slot(face) == "" and Cosmetics.code(face) >= 400 and not ReactionCatalog.face_name(face).is_empty(), "%s draws, is never worn, has a 400s code and a name" % face)

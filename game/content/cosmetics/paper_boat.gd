@@ -10,15 +10,11 @@ const DATA := {
 	"code": 200,
 	## Held back until the server's release list names it.
 	"released": false,
-	## It stands above the head.
-	"tall": true,
-	## Its raised end hangs out past the head on the side the views turn away.
-	"wide": true,
-	## The leaf comes out of the boat itself: it rises from inside the hull up
-	## through the sail's middle and pokes out of the top, its root at this
-	## point (head space) while the boat is worn (kit/wear_fit.gd). Where it
-	## passes through the paper it may clip.
+	## The boat sits over the leaf's sprout and the leaf comes out of it: from
+	## inside the hull up through the sail's middle and out of its top, raised
+	## this far (its own leaf point, not the shared top anchor; it may clip
+	## the paper it passes through).
 	"leaf_mode": "sits_on_top",
-	"leaf_at": Vector3(0.194, 0.478, -0.025),
-	"leaf_max": "tall",
+	"leaf_lift": 0.135,
+	"leaf_max": "medium",
 }

@@ -23,9 +23,8 @@ extends RefCounted
 ## How high a raised leaf sits is one shared rule, the hat's own top anchor
 ## (seat_lift): the highest point of the hat's solid shape over the leaf's
 ## root, measured from its geometry, where the leaf's stalk stands. Only the
-## hats players owned before the fit still name a "leaf_lift", and a hat
-## whose leaf grows out of a point of its own names it ("leaf_at": the Paper
-## boat's leaf comes up through its sail), which moves the leaf there.
+## hats players owned before the fit, and the Paper boat (its leaf comes up
+## through its sail), still name a "leaf_lift".
 ## decide() is that table; nothing else picks. The hats players owned before
 ## the fit (Straw hat, fruit hoods, Blossom crown) keep the leaf as it was,
 ## by the owner's choice (tests/test_wear_fit.gd OWNER_KEPT).
@@ -34,8 +33,10 @@ extends RefCounted
 ## resources, but released with the other wear caches through
 ## kit/session_release.gd so a long session starts clean).
 const Look = preload("res://presentation/spirit_look.gd")
+const Meshes = preload("res://presentation/spirit_meshes.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
+const Outfit = preload("res://services/outfit.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const SCRIPT_PATH := "res://presentation/kit/wear_fit.gd"
 const SPIRIT_PATH := "res://presentation/spirit_visual.gd"
@@ -53,10 +54,10 @@ const LEAF_SECTOR := 0.2 * PIP_WIDTH
 
 const SMALL := "small"
 const MEDIUM := "medium"
-const TALL := "tall"
-const CLASSES: Array[String] = [SMALL, MEDIUM, TALL]
+const CLASSES: Array[String] = [SMALL, MEDIUM]
 ## Each class's largest half width (x), height over the stalk (y) and depth
-## to front or back (z), in pip widths. A leaf past MEDIUM's is TALL.
+## to front or back (z), in pip widths. Every leaf is a leaf on top of the
+## head: none is bigger than MEDIUM's (tests/test_wear_fit.gd checks).
 const CLASS_LIMITS := {SMALL: Vector3(0.11, 0.30, 0.14), MEDIUM: Vector3(0.24, 0.46, 0.26)}
 
 const COVERS := "covers"
@@ -75,12 +76,14 @@ const SEAT_RAYS := 8
 
 static var _leaf_classes: Dictionary = {}
 static var _seats: Dictionary = {}
+static var _reaches: Dictionary = {}
 static var _roll := Vector2.ZERO
 
 ## Lets go of the kept measurements (at shutdown).
 static func release_cached() -> void:
 	_leaf_classes.clear()
 	_seats.clear()
+	_reaches.clear()
 
 static func _keep() -> void:
 	SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
@@ -133,15 +136,82 @@ static func measure(leaf: MeshInstance3D) -> Vector3:
 			reach = Vector3(maxf(reach.x, absf(point.x)), maxf(reach.y, point.y), maxf(reach.z, absf(point.z)))
 	return reach / PIP_WIDTH
 
-## The first class whose limits hold `size` (pip widths).
+## SMALL when its limits hold `size` (pip widths), else MEDIUM.
 static func class_of(size: Vector3) -> String:
-	for name: String in [SMALL, MEDIUM]:
-		var limit: Vector3 = CLASS_LIMITS[name]
-		if size.x <= limit.x and size.y <= limit.y and size.z <= limit.z: return name
-	return TALL
+	var limit: Vector3 = CLASS_LIMITS[SMALL]
+	return SMALL if size.x <= limit.x and size.y <= limit.y and size.z <= limit.z else MEDIUM
+
+## Whether a leaf of `size` (pip widths) is within MEDIUM's limits.
+static func within_medium(size: Vector3) -> bool:
+	var limit: Vector3 = CLASS_LIMITS[MEDIUM]
+	return size.x <= limit.x and size.y <= limit.y and size.z <= limit.z
 
 static func rank(name: String) -> int:
 	return CLASSES.find(name)
+
+# --- Framing -------------------------------------------------------------------
+
+## How far (metres) item `id` reaches past the plain pip's head and body, up,
+## out to either side or toward the front or back, as it is worn (a leaf
+## item with its leaf; a hat with the leaf it raises): measured from its
+## geometry once, so the pip views can pull back to keep it in frame
+## (kit/pip_stage.gd). 0 for an item that stays inside them.
+static func reach(id: String) -> float:
+	var found: Variant = _reaches.get(id)
+	if found != null: return found
+	var base := _outline("", false)
+	var worn := _outline(id, Catalog.slot(id) == "leaf")
+	var lift := lift_for(id) if Catalog.slot(id) == "hat" and bool(decide(id, SMALL).show) else 0.0
+	if lift > 0.0: worn.y = maxf(worn.y, _outline("", true).y + lift)
+	var made := maxf(0.0, maxf(worn.y - base.y, maxf(worn.x - base.x, worn.z - base.z)))
+	# A part on the head stands out from its curved surface (a rosette on its corner).
+	made = maxf(made, _off_head(id))
+	_reaches[id] = made
+	_keep()
+	return made
+
+## How far (metres, about) item `id`'s parts on the head stand out from the
+## head's curved surface, at most.
+static func _off_head(id: String) -> float:
+	var pip: Node3D = load(SPIRIT_PATH).new()
+	pip.wear(Outfit.of(id, true))
+	var wearing: RefCounted = pip.get("_wearing")
+	var level := 1.0
+	if wearing != null:
+		for node: Node in (wearing.get("_slot_nodes") as Dictionary).get(Catalog.slot(id), []):
+			for part: MeshInstance3D in solid_meshes(node):
+				var head := _head_of(pip.upper_body, part)
+				if head == null or not part.visible: continue
+				var place := relative(head, part)
+				for vertex: Vector3 in vertices(part.mesh): level = maxf(level, Meshes.head_level(place * vertex))
+	pip.free()
+	return (pow(level, 1.0 / Look.HEAD_POWER) - 1.0) * Look.HEAD_HALF.y
+
+## The solid parts of a pip wearing `id` alone at rest ("" the plain pip's
+## head and body), with its leaf when `with_leaf`: their half width (x), top
+## (y) and half depth (z), in the pip's own space.
+static func _outline(id: String, with_leaf: bool) -> Vector3:
+	var pip: Node3D = load(SPIRIT_PATH).new()
+	var parts: Array[MeshInstance3D] = []
+	if id.is_empty():
+		for part: MeshInstance3D in solid_meshes(pip):
+			if with_leaf == (part == pip.sprout or pip.sprout.is_ancestor_of(part)): parts.append(part)
+	else:
+		# As it is worn, whether this phone's offer lists it yet.
+		pip.wear(Outfit.of(id, true))
+		var wearing: RefCounted = pip.get("_wearing")
+		if wearing != null:
+			for node: Node in (wearing.get("_slot_nodes") as Dictionary).get(Catalog.slot(id), []): parts.append_array(solid_meshes(node))
+		if with_leaf: parts.append_array(solid_meshes(pip.sprout))
+	var extent := Vector3.ZERO
+	for part: MeshInstance3D in parts:
+		if not part.visible: continue
+		var place := relative(pip, part)
+		for vertex: Vector3 in vertices(part.mesh):
+			var point := place * vertex
+			extent = Vector3(maxf(extent.x, absf(point.x)), maxf(extent.y, point.y), maxf(extent.z, absf(point.z)))
+	pip.free()
+	return extent
 
 # --- Hat and leaf ------------------------------------------------------------
 
@@ -155,8 +225,6 @@ static func decide(hat_id: String, leaf: String) -> Dictionary:
 ## hats players owned before the fit), else for a hat the leaf sits on top of,
 ## its top anchor (seat_lift), else 0.
 static func lift_for(hat_id: String) -> float:
-	var at := Catalog.leaf_at(hat_id)
-	if at != Vector3.ZERO: return at.y - (Look.LEAF_PIVOT - Look.HEAD_CENTER).y
 	var named := Catalog.leaf_lift(hat_id)
 	if named > 0.0 or Catalog.leaf_mode(hat_id) != SITS_ON_TOP: return named
 	var found: Variant = _seats.get(hat_id)
@@ -167,18 +235,10 @@ static func lift_for(hat_id: String) -> float:
 	pip.free()
 	return float(_seats.get(hat_id, 0.0))
 
-## How far across the head (x and z, metres) a raised leaf moves to the hat's
-## own leaf point ("leaf_at"), or Vector3.ZERO.
-static func shift_for(hat_id: String) -> Vector3:
-	var at := Catalog.leaf_at(hat_id)
-	if at == Vector3.ZERO: return Vector3.ZERO
-	var root := Look.LEAF_PIVOT - Look.HEAD_CENTER
-	return Vector3(at.x - root.x, 0.0, at.z - root.z)
-
 ## Measures and keeps hat `hat_id`'s top anchor from `nodes`, the parts its art
 ## added to `body`'s pip (pip_outfit.gd dress, before the fit asks lift_for).
 static func seat_hat(hat_id: String, body: Node3D, nodes: Array) -> void:
-	if _seats.has(hat_id) or Catalog.leaf_mode(hat_id) != SITS_ON_TOP or Catalog.leaf_lift(hat_id) > 0.0 or Catalog.leaf_at(hat_id) != Vector3.ZERO: return
+	if _seats.has(hat_id) or Catalog.leaf_mode(hat_id) != SITS_ON_TOP or Catalog.leaf_lift(hat_id) > 0.0: return
 	var corners := PackedVector3Array()
 	for node: Node in nodes:
 		for part: MeshInstance3D in solid_meshes(node):

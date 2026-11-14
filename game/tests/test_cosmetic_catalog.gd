@@ -67,7 +67,7 @@ func _descriptors() -> void:
 		var art := str(data.art)
 		_check(art.is_empty() or (art.begins_with("res://presentation/pip_wear/") and ResourceLoader.exists(art)), "%s's art is a pip_wear script that exists" % id)
 		if not art.is_empty(): _check(load(art).has_method("wear"), "%s's art has wear()" % id)
-		_check(data.released is bool and data.tall is bool and data.wide is bool and data.unlock is String and (data.leaf_lift is float or data.leaf_lift is int), "%s's optional fields have their types" % id)
+		_check(data.released is bool and data.wide is bool and not data.has("tall") and data.unlock is String and (data.leaf_lift is float or data.leaf_lift is int), "%s's optional fields have their types" % id)
 		_check(data.code is int and data.leaf_mode is String and data.leaf_max is String, "%s's code and leaf fit fields have their types" % id)
 		_check(data.unlock == "" or data.unlock in level_ids, "%s unlocks after a registered level: %s" % [id, data.unlock])
 		if data.tier == Catalog.EARNED:
@@ -85,7 +85,7 @@ func _prices() -> void:
 	for id: String in Catalog.ids():
 		var tier := str(Catalog.item(id).tier)
 		_check(Catalog.price(id) == int(Index.TIER_PRICES[tier]), "%s costs its tier's price" % id)
-		_check(Catalog.sold(id) == (tier != "earned" and not Catalog.retired(id)), "%s is sold exactly when it is neither earned nor retired" % id)
+		_check(Catalog.sold(id) == (tier != "earned"), "%s is sold exactly when it is not earned" % id)
 		if tier == "special": _check(not str(Catalog.item(id).unlock).is_empty(), "%s (Special) opens only after a chapter is cleared" % id)
 	_check(Catalog.price("nothing") == 0 and not Catalog.sold("nothing"), "An unknown id costs nothing and is not sold")
 
@@ -110,8 +110,8 @@ func _rules() -> void:
 		"aww": ["reaction", "face_common"], "shy": ["reaction", "face_common"], "huh": ["reaction", "face_common"], "please": ["reaction", "face_uncommon"],
 		"touched": ["reaction", "face_uncommon"], "lucky": ["reaction", "face_uncommon"], "giggle": ["reaction", "face_rare"], "curious": ["reaction", "face_rare"],
 		"nervous": ["reaction", "face_rare"], "drowsy": ["reaction", "face_rare"], "gasp": ["reaction", "face_rare"], "peekaboo": ["reaction", "face_rare"],
-		"yay": ["reaction", "face_rare"], "smitten": ["reaction", "face_rare"], "starry": ["reaction", "face_rare"], "flower": ["reaction", "face_epic"],
-		"heart_eyes": ["reaction", "face_uncommon"], "proud": ["reaction", "face_common"], "wink": ["reaction", "face_common"], "wow": ["reaction", "face_uncommon"],
+		"yay": ["reaction", "face_rare"], "starry": ["reaction", "face_rare"], "flower": ["reaction", "face_epic"],
+		"proud": ["reaction", "face_common"], "wink": ["reaction", "face_common"], "wow": ["reaction", "face_uncommon"],
 		"crying": ["reaction", "face_uncommon"], "dizzy": ["reaction", "face_uncommon"],
 		"rest_button": ["rest_face", "common"], "rest_bean": ["rest_face", "common"], "rest_round": ["rest_face", "uncommon"], "rest_wide": ["rest_face", "uncommon"], "rest_sprout": ["rest_face", "uncommon"],
 		"reaction_slot_5": ["reaction_slot", "reaction_slot"], "reaction_slot_6": ["reaction_slot", "reaction_slot"],
@@ -119,7 +119,7 @@ func _rules() -> void:
 	_check(Array(Catalog.ids()) == expect.keys(), "The approved items, in shop order: %s" % [Catalog.ids()])
 	for id: String in expect:
 		_check(str(Catalog.item(id).slot) == expect[id][0] and str(Catalog.item(id).tier) == expect[id][1], "%s is a %s %s" % [id, expect[id][1], expect[id][0]])
-	_check(Catalog.item("lighthouse_lamp").unlock == "sleeping-lighthouse" and Catalog.tall("lighthouse_lamp"), "The Lighthouse lamp opens after Sleeping Lighthouse and pulls the view back")
+	_check(Catalog.item("lighthouse_lamp").unlock == "sleeping-lighthouse", "The Lighthouse lamp opens after Sleeping Lighthouse")
 	_check(Catalog.wide("lantern") and not Catalog.wide("daisy") and not Catalog.wide("nothing"), "Only the Lantern, hanging on the far side, pulls the view back further")
 	_check(is_equal_approx(Catalog.leaf_lift("straw_hat"), 0.075), "The Straw hat lifts the leaf 7.5 cm through its brim")
 	for id: String in Catalog.ids():
@@ -153,6 +153,9 @@ func _codes() -> void:
 		_check(id is String and Catalog.valid_code(code), "The pinned code of %s is a whole number from 1 to %d" % [id, Index.CODE_MAX])
 		_check(not owners.has(int(code)), "Code %s is pinned once, not for %s and %s" % [code, owners.get(int(code), ""), id])
 		owners[int(code)] = id
+	# A retired code stays pinned and reserved: no item has it.
+	for code: int in Index.RETIRED_CODES:
+		_check(Typed.equal(pins.get(Index.RETIRED_CODES[code]), code) and Catalog.of_code(code) == "" and not Catalog.has(Index.RETIRED_CODES[code]), "Retired code %d stays pinned to %s and no item takes it" % [code, Index.RETIRED_CODES[code]])
 	var seen := {}
 	for raw: Dictionary in Index.descriptors():
 		var id := str(raw.get("id", ""))

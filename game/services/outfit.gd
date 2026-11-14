@@ -54,12 +54,6 @@ static func digest(outfit: Dictionary) -> String:
 		parts.append("%s=%s" % [slot, str(outfit.get(slot, ""))])
 	return ";".join(parts)
 
-## Whether any worn item pulls the pip views back.
-static func tall(outfit: Dictionary) -> bool:
-	for id: String in items(outfit):
-		if Catalog.tall(id): return true
-	return false
-
 ## Whether any worn item's look moves on its own.
 static func moving(outfit: Dictionary) -> bool:
 	for id: String in items(outfit):

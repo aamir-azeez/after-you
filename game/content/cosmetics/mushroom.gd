@@ -10,9 +10,7 @@ const DATA := {
 	"code": 204,
 	## Held back until the server's release list names it.
 	"released": false,
-	## Its cap stands above the head.
-	"tall": true,
 	## The cap is whole: the leaf sits right on its top (kit/wear_fit.gd top anchor).
 	"leaf_mode": "sits_on_top",
-	"leaf_max": "tall",
+	"leaf_max": "medium",
 }

@@ -12,6 +12,18 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const FREDOKA = preload("res://assets/fonts/fredoka.ttf")
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
 
+## The Wardrobe shop's item tiles, in every section (wardrobe_page.gd cards
+## and the featured shelf, wardrobe_reactions.gd faces, wardrobe_orchard.gd
+## cards and sprig tiles): one scale over their designed sizes, the pip or face
+## inside included, so they read at phone size; rows hold fewer and the grid
+## scrolls. The text inside a tile grows by TILE_TEXT (tile_text).
+const TILE_SCALE := 1.3
+const TILE_TEXT := 1.2
+
+## A font size inside a shop tile.
+static func tile_text(size: int) -> int:
+	return roundi(float(size) * TILE_TEXT)
+
 const CREAM := UiTokens.CREAM
 const MUTED := Color("afc6be")
 const INK := Color("1d3230")
