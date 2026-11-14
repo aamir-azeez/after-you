@@ -7,6 +7,8 @@ extends RefCounted
 ##   "look":   kit/look.gd preset name
 ##   "ground": {island_id or "*": kit/surfaces.gd style}
 ##   "stairs": "timber" for wooden steps, "bridges": "timber" for plank decks
+##   "stair_rail": "open" puts a timber stair's handrail on its open side when
+##             a raised floor stands against its far side (cooperative_world)
 ##   "obstacles": "flowerbed" for timber flower beds on obstacle rectangles
 ##   "cables": "floor" to draw gate links only along a shared floor
 ##   "props":  {"*" or stage_id: [kit/props.gd specs]}; a "lamp_post" may

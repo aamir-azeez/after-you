@@ -399,20 +399,34 @@ func _build_stair(stair: Dictionary) -> void:
 	# A closed stair's gate (posts, bar and chain at its foot and head) is the
 	# route barriers' (kit/route_barriers.gd).
 
-## Wooden stringers under both sides and a handrail along the far side; the
-## walkable treads stay exactly the authored rectangle.
+## Wooden stringers under both sides and a handrail along the far side, or,
+## when the dressing asks for "stair_rail": "open", along the near side where
+## a raised floor stands against the far one (its side is the wall there;
+## the rail goes on the open drop); the walkable
+## treads stay exactly the authored rectangle.
 func _stair_frame(r: Array, from_height: float, rise: float, along_x: bool) -> void:
 	for side: float in ([float(r[1]) / 100.0 - 0.03, float(r[3]) / 100.0 + 0.03] if along_x else [float(r[0]) / 100.0 - 0.03, float(r[2]) / 100.0 + 0.03]):
 		var start := Vector3(float(r[0]) / 100.0, from_height - 0.10, side) if along_x else Vector3(side, from_height - 0.10, float(r[1]) / 100.0)
 		var finish := Vector3(float(r[2]) / 100.0, from_height + rise - 0.10, side) if along_x else Vector3(side, from_height + rise - 0.10, float(r[3]) / 100.0)
 		Primitives.bar_between(start, finish, 0.07, Primitives.shared_material(Props.TIMBER), terrain)
-	var rail := float(r[1]) / 100.0 - 0.04 if along_x else float(r[0]) / 100.0 - 0.04
+	var walled := str(dressing.get("stair_rail", "")) == "open" and _floor_against_far_side(r, maxf(from_height, from_height + rise), along_x)
+	var rail := (float(r[3]) / 100.0 + 0.04 if walled else float(r[1]) / 100.0 - 0.04) if along_x else (float(r[2]) / 100.0 + 0.04 if walled else float(r[0]) / 100.0 - 0.04)
 	var foot := Vector3(float(r[0]) / 100.0, from_height + 0.62, rail) if along_x else Vector3(rail, from_height + 0.62, float(r[1]) / 100.0)
 	var head := Vector3(float(r[2]) / 100.0, from_height + rise + 0.62, rail) if along_x else Vector3(rail, from_height + rise + 0.62, float(r[3]) / 100.0)
 	Primitives.bar_between(foot, head, 0.04, Primitives.shared_material(Props.TIMBER_DARK), terrain)
 	for t: float in [0.0, 0.5, 1.0]:
 		var top := foot.lerp(head, t)
 		Primitives.mesh_node(Primitives.shared_mesh("box", 0.035, 0.62, 0.035), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
+
+## Whether a floor at the stair's top height runs along its far side (north
+## of an x stair, west of a z one) within 40 cm, overlapping its length.
+func _floor_against_far_side(r: Array, top: float, along_x: bool) -> bool:
+	for island: Dictionary in current_level.get("islands", []):
+		var o: Array = island.rect_cm
+		if float(island.get("height_cm", 0)) / 100.0 < top - 0.1 or top < 0.5: continue
+		if along_x and o[0] < r[2] and o[2] > r[0] and o[3] <= r[1] and o[3] >= r[1] - 40: return true
+		if not along_x and o[1] < r[3] and o[3] > r[1] and o[2] <= r[0] and o[2] >= r[0] - 40: return true
+	return false
 
 ## Whether `entity` is one of the stage's pressure pads drawn as a stand spot.
 func _wears_stand_spot(view: Dictionary, entity: Dictionary) -> bool:
