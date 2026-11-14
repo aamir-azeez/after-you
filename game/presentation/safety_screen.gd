@@ -208,7 +208,9 @@ func _render_card() -> void:
 		_card.refresh_focus_order()
 		return
 	var line: String = PlayerCopy.SAFETY_SCREEN_BF2F0442C98C if _busy else _message if not _message.is_empty() else PlayerCopy.SAFETY_SCREEN_CEE9D4103053 if _owner_context.is_empty() else PlayerCopy.SAFETY_SCREEN_14484BCCA0FD
-	_content.add_child(RulesCard.note(line))
+	var note := RulesCard.note(line)
+	_content.add_child(note)
+	RulesCard.keep_room(note)
 	if _owner_context.is_empty():
 		_content.add_child(RulesCard.actions([["Back to your photo", close, true, "RulesBack"]]))
 	else:

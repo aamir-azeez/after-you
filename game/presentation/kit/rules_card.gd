@@ -62,11 +62,15 @@ static func links(open: Callable) -> HBoxContainer:
 		box.add_child(made)
 	return box
 
-## A quiet line under the rules (what accepting means, the check, a refusal).
+## A quiet line under the rules (what accepting means, the check, a refusal). It keeps two lines' room once in
+## the card (keep_room), so the card stays put when the line changes while it checks.
 static func note(words: String) -> Label:
 	var label := Kit.wrapped(words, 20, UiTokens.SOFT)
 	label.name = "RulesNote"
 	return label
+
+static func keep_room(label: Label) -> void:
+	label.custom_minimum_size.y = label.get_line_height() * 2 + label.get_theme_constant("line_spacing")
 
 ## Rules accepted: the line with its mark.
 static func accepted(words: String) -> HBoxContainer:
@@ -94,6 +98,5 @@ static func hold(box: Control, busy: bool, busy_name: String, idle_text: String)
 		OfflineHold.set_enabled(made, not busy)
 		if made.name != busy_name: continue
 		made.text = PlayerCopy.RULES_CHECKING if busy else idle_text
-		# A held button shows no focus ring (board A); focus comes back to it with the card.
+		# A held button shows no focus ring (board A).
 		if busy and made.has_focus(): made.release_focus()
-		elif not busy and made.is_inside_tree() and made.is_visible_in_tree(): made.grab_focus()

@@ -139,7 +139,6 @@ static func rules_entry(root: Control, look: Variant, read: Callable, accept: Ca
 	var go := modal.find_child("PublicRulesAccept", true, false) as Button
 	OfflineHold.hold(go)
 	modal.refresh_focus_order()
-	go.grab_focus()
 	return modal
 
 ## Holds the entry card while Accept and join checks: both buttons greyed, Checking… on Accept and join.
