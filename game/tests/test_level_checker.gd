@@ -32,7 +32,7 @@ extends SceneTree
 ##    at its start every turn). Each turn starts from the stage's checkpoint and
 ##    the graph's reach is a fixed point over everything one pip could do, so
 ##    one probe per pip covers every number of turns. Only the goal's own pip
-##    lights it (OpenTurns.ringers). Each cap is a whole number from 2 to 20;
+##    lights it (OpenTurns.ringers). Each cap is an even number from 2 to 20;
 ##    the chapter suite checks its witness finishes within it.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
 ##    each other on a stage. Props against routes, pads, levers, goals and
@@ -455,7 +455,7 @@ func _needs_both(key: String) -> void:
 		var stage: Dictionary = item.view
 		var where := "%s %s" % [key, stage.stage_id]
 		if turns:
-			_expect(OpenTurns.cap_valid(item.stage), "%s turn cap" % where, "%s: its turn_cap (%s) is not a whole number of turns from %d to %d" % [where, item.stage.get("turn_cap", OpenTurns.DEFAULT_CAP), OpenTurns.MIN_CAP, OpenTurns.MAX_CAP])
+			_expect(OpenTurns.cap_valid(item.stage), "%s turn cap" % where, "%s: its turn_cap (%s) is not an even number of turns from %d to %d, so its last turn may not be the goal's own pip's" % [where, item.stage.get("turn_cap", OpenTurns.DEFAULT_CAP), OpenTurns.MIN_CAP, OpenTurns.MAX_CAP])
 			for slot: String in ["p0", "p1"]:
 				var other := "p1" if slot == "p0" else "p0"
 				_expect(not solo_finish(graph, stage, item.checkpoint, journey, slot), "%s alone %s" % [where, slot], "%s: with %s doing nothing on every turn, %s still lights the goal on one of its own turns; give %s a part only it can play" % [where, other, slot, other])
@@ -521,6 +521,7 @@ func _needs_both_rule() -> void:
 	mine.stages[0].goal.owner_slot = first
 	var moved: Dictionary = Stages.stages("long-way-home@3", mine)[0]
 	_check(solo_finish(LevelGraph.new(mine), moved.view, moved.checkpoint, true, first), "With the window the first pip's, it finishes Long Way Home@3's first stage alone on a later turn, so the open turns probe can fail")
+	_check(OpenTurns.cap_valid({"turn_cap": 10}) and not OpenTurns.cap_valid({"turn_cap": 11}) and not OpenTurns.cap_valid({"turn_cap": 22}) and not OpenTurns.cap_valid({"turn_cap": 1}) and OpenTurns.cap_valid({}), "A cap is even, from 2 to 20, so its last turn is the goal's own pip's; a stage with none gets 10")
 
 # --- Props ----------------------------------------------------------------------
 

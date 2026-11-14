@@ -52,7 +52,8 @@ static func ringers(stage: Dictionary) -> Array:
 	var owner := str(stage.get("goal", {}).get("owner_slot", ""))
 	return [owner] if owner in ["p0", "p1"] else ["p0", "p1"]
 
-## Whether `stage`'s cap is one a level may set.
+## Whether `stage`'s cap is one a level may set: even, so the last turn is
+## the goal's own pip's and can still finish the stage.
 static func cap_valid(stage: Dictionary) -> bool:
 	var declared: Variant = stage.get("turn_cap", DEFAULT_CAP)
-	return (declared is int or (declared is float and declared == floor(declared))) and int(declared) >= MIN_CAP and int(declared) <= MAX_CAP
+	return (declared is int or (declared is float and declared == floor(declared))) and int(declared) >= MIN_CAP and int(declared) <= MAX_CAP and int(declared) % 2 == 0
