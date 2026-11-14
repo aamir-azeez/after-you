@@ -87,6 +87,7 @@ const RoomSharing = preload("res://services/room_sharing.gd")
 const LiveConnection = preload("res://services/live_connection.gd")
 const Connectivity = preload("res://services/connectivity.gd")
 const ConnectivityProbe = preload("res://services/connectivity_probe.gd")
+const CapabilitiesRefresh = preload("res://services/capabilities_refresh.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -320,6 +321,8 @@ var partner_friends: RefCounted = PartnerFriends.new(_names_scope, _friends_clie
 ## Sends Pollen claims that wait and reads the wallet when this phone has none
 ## (services/pollen_client.gd): when the server's capabilities are read, and on resume.
 var pollen_client: RefCounted
+## The launch and resume capabilities read Home's server-backed rows hang on (services/capabilities_refresh.gd).
+var capabilities_refresh: CapabilitiesRefresh
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -413,6 +416,12 @@ func _ready() -> void:
 	probe.base_url=api.base_url
 	probe.configured=api.configured()
 	add_child(probe,false,Node.INTERNAL_MODE_BACK)
+	capabilities_refresh=CapabilitiesRefresh.new()
+	capabilities_refresh.read=_read_capabilities_now
+	capabilities_refresh.may_read=_capabilities_read_allowed
+	add_child(capabilities_refresh,false,Node.INTERNAL_MODE_BACK)
+	# Each answer, or a run of failures, redraws Home's rows that wait on it.
+	capabilities_refresh.changed.connect(_refresh_home_pollen)
 	pollen_client=PollenClient.new(api,_names_scope)
 	# The player's own look follows the signed-in player (services/own_look.gd).
 	Wardrobe.shared().scope_source=_names_scope
@@ -874,9 +883,50 @@ func _show_home() -> void:
 	redo_home_card.home_shown()
 
 ## Home's Wardrobe row and the monthly Pollen card: the Wardrobe, whose Back returns to Home.
+## Before this run's first capabilities answer the row shows as if it works
+## (_wardrobe_offered): a tap waits for that read, then opens it or says the
+## phone is offline.
 func _open_wardrobe_from_home() -> void:
-	if mode != "home" or application_backgrounded or _top_modal() != null or not wardrobe_flow.available(): return
+	if mode != "home" or application_backgrounded or _top_modal() != null or _wardrobe_waiting: return
+	if not wardrobe_flow.available():
+		if not _wardrobe_offered(): return
+		_wardrobe_waiting = true
+		await capabilities_refresh.until_read()
+		_wardrobe_waiting = false
+		if mode != "home" or application_backgrounded or _top_modal() != null: return
+		if not wardrobe_flow.available():
+			_refresh_home_pollen()
+			if not capabilities_refresh.known(): _toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
+			return
 	wardrobe_flow.show_wardrobe("home")
+
+## A Wardrobe tap waiting for the first capabilities answer: later taps wait with it.
+var _wardrobe_waiting := false
+
+## Home's Wardrobe row: while the server has it on, or, before this run's first
+## capabilities answer and with no answer kept for this player, wherever this
+## build shows the Wardrobe (everything starts as if it works; the answer hides
+## it if the server has it off).
+func _wardrobe_offered() -> bool:
+	if wardrobe_flow.available(): return true
+	if capabilities_refresh == null or not capabilities_refresh.pending() or not wardrobe_flow.build_shows(): return false
+	var scope := _names_scope()
+	return not scope.is_empty() and not Wardrobe.shared().told(str(scope.server), str(scope.owner))
+
+## The launch and resume capabilities read (services/capabilities_refresh.gd):
+## true answered, false failed, null not now (no player yet, or the room
+## session busy with something else). Its caller always wants it, so Home's
+## Play waits for it instead of running out (until_capabilities_read).
+func _read_capabilities_now() -> Variant:
+	if _names_scope().is_empty(): return null
+	ensure_relay_session()
+	if relay_session.busy(): return null
+	return await relay_session.load_capabilities(func() -> bool: return true)
+
+## A background capabilities read runs only over Home, Settings and the menu
+## screens, never under a game, a room or a replay.
+func _capabilities_read_allowed() -> bool:
+	return not running and not is_instance_valid(relay_child) and mode in ["home", SettingsFlow.MODE_SETTINGS, WardrobeFlow.MODE_WARDROBE, PollenStoreFlow.MODE_POLLEN_STORE, FruitsPageFlow.MODE, PollenPlayFlow.MODE]
 
 ## A tap on the player's own pip on the island: the Wardrobe, only while Home
 ## is free for a card (nothing over it, no turn, no held finger). False leaves
@@ -898,7 +948,7 @@ func _open_wardrobe_from_pip() -> bool:
 ## failed read changes nothing kept, so only the server saying off hides them.
 func _refresh_home_pollen() -> void:
 	if mode != "home" or not is_instance_valid(home_menu_view): return
-	home_menu_view.show_wardrobe(wardrobe_flow.available())
+	home_menu_view.show_wardrobe(_wardrobe_offered())
 	_refresh_pollen_chip()
 
 ## A public switch changed (services/server_switches.gd): Home's Duels row follows at once.
@@ -915,6 +965,8 @@ func _refresh_home_wardrobe() -> void:
 ## The identity was read or made: the wardrobe follows the signed-in player
 ## (their look, and what the catalogue releases), then Home's row and chip.
 func _follow_identity() -> void:
+	var scope := _names_scope()
+	if not scope.is_empty() and capabilities_refresh != null: capabilities_refresh.identity_ready(Wardrobe.scope_key(str(scope.server), str(scope.owner)))
 	Wardrobe.shared().follow()
 	_refresh_home_pollen()
 	wardrobe_flow.sync_pending()

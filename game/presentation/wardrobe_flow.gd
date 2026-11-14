@@ -187,6 +187,10 @@ func available() -> bool:
 	if _client().scope().is_empty(): return false
 	return _client().online() or not _view().is_empty()
 
+## Whether this build shows the Wardrobe at all (Home offers it before the server's first answer).
+func build_shows() -> bool:
+	return _surfaces().wardrobe_visible()
+
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 

@@ -13,7 +13,7 @@ extends RefCounted
 ## States: unknown (the launch, before any answer), online and offline. Unknown
 ## reads as online, so the first tap after launch always registers. Going
 ## offline is debounced: it takes OFFLINE_AFTER failures in a row with no
-## answer between them, so one dropped request never greys anything. Coming back
+## answer between them, so a dropped request or two never greys anything. Coming back
 ## is immediate: the first answer of any kind, or the live socket opening.
 ## `changed` fires only when online() flips.
 ##
@@ -23,7 +23,7 @@ signal changed(online: bool)
 enum State { UNKNOWN, ONLINE, OFFLINE }
 
 ## Failures in a row before the phone reads as offline.
-const OFFLINE_AFTER := 2
+const OFFLINE_AFTER := 3
 ## Engine results that mean the server was never reached (HTTPRequest.Result).
 const UNREACHED := [HTTPRequest.RESULT_CANT_CONNECT, HTTPRequest.RESULT_CANT_RESOLVE, HTTPRequest.RESULT_CONNECTION_ERROR,
 	HTTPRequest.RESULT_TLS_HANDSHAKE_ERROR, HTTPRequest.RESULT_TIMEOUT]

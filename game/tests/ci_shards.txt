@@ -27,6 +27,7 @@ campaign_presence_context 1
 campaign_replay_context 2
 campaign_safety_context 3
 campaign_store 2
+capabilities_refresh 1
 carried_light 2
 changelog 1
 chapter_access 2
