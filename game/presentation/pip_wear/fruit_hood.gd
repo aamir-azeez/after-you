@@ -15,20 +15,20 @@ extends RefCounted
 ## each one smooth ring. At both ends the edge rolls in to just off the head,
 ## so no gap shows. Every point takes the shell's own smooth normal.
 ##
-## The fruit's top stands where a carried seed rests, so the hood is put away
-## while the pip carries (kit/wear_fit.gd); the seed never moves. It stands in
+## The fruit's top stands where a carried seed rests, so the hood lifts the
+## seed (pip_outfit.gd lift_seed). It stands in
 ## for the pip's own leaf, which hides while it is worn. A worn leaf item the
 ## hood takes still shows, raised by the descriptor's "leaf_lift" (its
-## "sits_on_top" fit) on a short stem from under the hood's top, its blade
-## clear of it. One baked mesh per hood, one draw call.
+## "sits_on_top" fit) so its stalk starts under the hood's top. One baked mesh per hood, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 
 ## Each hood's look by item id: the shell's colour, a soft dusty bloom mixed
-## in toward its top (none for the apple), and its top ("apple" or "blueberry").
+## in toward its top (none for the apple), its top ("apple" or "blueberry"),
+## and the metres a carried seed sits higher to clear that top.
 const LOOKS := {
-	"apple_hood": {"shell": Color("d9483f"), "bloom": Color("e8735f"), "bloom_amount": 0.25, "top": "apple"},
-	"blueberry_hood": {"shell": Color("3c4795"), "bloom": Color("98a2cf"), "bloom_amount": 0.42, "top": "blueberry"},
+	"apple_hood": {"shell": Color("d9483f"), "bloom": Color("e8735f"), "bloom_amount": 0.25, "top": "apple", "seed_lift": 0.14},
+	"blueberry_hood": {"shell": Color("3c4795"), "bloom": Color("98a2cf"), "bloom_amount": 0.42, "top": "blueberry", "seed_lift": 0.1},
 }
 ## The shell, in head space: a round, slightly boxy ball (POWER) of these half
 ## sizes about CENTER.
@@ -94,6 +94,7 @@ static func wear(look: RefCounted) -> void:
 	if not LOOKS.has(id): return
 	look.mesh(look.head(), Kit.cached_mesh(id, _build.bind(id)), Kit.vertex_material())
 	if not look.outfit.has("leaf"): look.hide_leaf()
+	look.lift_seed(float(LOOKS[id].seed_lift))
 
 static func _build(id: String) -> Mesh:
 	var made: Dictionary = LOOKS[id]

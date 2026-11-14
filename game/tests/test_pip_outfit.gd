@@ -16,8 +16,8 @@ extends SceneTree
 ##   seed and inside every pip view, and loop perfectly;
 ## - a body item may swap the torso and feet meshes and add pieces, never the
 ##   head, and every gameplay value stays identical;
-## - no item ever moves a carried seed or lens: a hat that would meet it is
-##   put away while the pip carries (tests/test_wear_fit.gd);
+## - a tall cap lifts a carried seed, a big leaf lifts it with the leaf's
+##   own lift, and off again the seed sits where it did;
 ## - moving parts step at the idle card rate of the pip's own clock and hold
 ##   still under Reduce motion; the Orchard skin's falling petals are one draw
 ##   call placed by their shader from the pip's clock, shown only while it
@@ -97,7 +97,7 @@ func _run() -> void:
 	_in_frame()
 	_body_shape()
 	_animation()
-	_carried_still()
+	_seed_lift()
 	_released()
 	for child: Node in root.get_children():
 		if child is Spirit: child.free()
@@ -586,32 +586,28 @@ func _animation() -> void:
 	tide.free()
 	orchard.free()
 
-## No item moves a carried seed or lens: walking and letting go, every pip
-## dressed in each item carries it exactly where a plain pip does.
-func _carried_still() -> void:
+func _seed_lift() -> void:
 	var plain := _spirit()
-	var dressed := _spirit()
-	var same := true
-	for id: String in Catalog.ids():
-		dressed.wear(Outfit.of(id, true))
-		for radius: float in [0.13, 0.25]:
-			for each: Node3D in [plain, dressed]:
-				each.reset_motion()
-				each.carried_radius = radius
-				each.carrying_seed = true
-			for frame in range(60):
-				if frame == 40:
-					plain.play_carry_release()
-					dressed.play_carry_release()
-				var step := Vector3(0.03, 0, 0) if frame < 40 else Vector3.ZERO
-				plain.advance_motion(step, DT, false)
-				dressed.advance_motion(step, DT, false)
-				if not dressed.carry_anchor_position().is_equal_approx(plain.carry_anchor_position()):
-					same = false
-					push_error("%s moves a carried thing of radius %.2f" % [id, radius])
-	_check(same, "No item ever moves a carried seed or lens")
-	plain.free()
-	dressed.free()
+	var capped := _spirit()
+	var leafy := _spirit()
+	var straw_leafy := _spirit()
+	capped.wear(Outfit.of("apple_hood", true))
+	leafy.wear(Outfit.of("apple_leaf", true))
+	straw_leafy.wear(Outfit.from({"hat": "straw_hat", "leaf": "apple_leaf"}, true))
+	var spirits: Array[Node3D] = [plain, capped, leafy, straw_leafy]
+	for each: Node3D in spirits:
+		each.carrying_seed = true
+		each.advance_motion(Vector3.ZERO, 0.001, true)
+	var base: float = plain.carry_anchor_position().y
+	_check(is_equal_approx(capped.carry_anchor_position().y - base, float(HOOD.LOOKS.apple_hood.seed_lift)), "The Apple hood lifts a carried seed clear of its stem: %.3f" % (capped.carry_anchor_position().y - base))
+	_check(is_equal_approx(leafy.carry_anchor_position().y, base), "The Apple leaf alone leaves the seed where it was")
+	_check(is_equal_approx(straw_leafy.carry_anchor_position().y - base, 0.075), "and lifts it with the leaf through the Straw hat's brim: %.3f" % (straw_leafy.carry_anchor_position().y - base))
+	capped.wear({})
+	capped.advance_motion(Vector3.ZERO, 0.001, true)
+	_check(is_equal_approx(capped.carry_anchor_position().y, base), "Off again, the seed sits where it did")
+	var leaf_triangles := _triangles(leafy.sprout.mesh)
+	_check(leaf_triangles <= MAX_TRIANGLES, "The Apple leaf stays within about 600 triangles: %d" % leaf_triangles)
+	for each: Node3D in spirits: each.free()
 
 func _released() -> void:
 	var spirit := _spirit()

@@ -28,15 +28,17 @@ const Meshes = preload("res://presentation/spirit_meshes.gd")
 ##   bands: the ridges' colour and the rows they colour (Wool cap), or [];
 ##   rim: the last, thin row: "band" in the trim colour (a seam), "roll" a
 ##     rolled cuff in the trim colour, or "" the crown's colour;
-##   spots: [direction from the head's centre, half size] for each spot.
+##   spots: [direction from the head's centre, half size] for each spot;
+##   seed_lift: metres a carried seed sits higher, clear of the cap and the
+##     leaf it raises (pip_outfit.gd lift_seed).
 const CAPS := {
 	"rain_cap": {"rise": 0.13, "edge_gap": 0.012, "edge": 1.06, "round": 2.6, "crown": Color("93c5d3"), "under": Color("547f91"), "trim": Color("e8e9d7"),
-		"brim": [0.072, 0.04], "bands": [], "rim": "band", "spots": []},
+		"brim": [0.072, 0.04], "bands": [], "rim": "band", "spots": [], "seed_lift": 0.295},
 	"wool_cap": {"rise": 0.16, "edge_gap": 0.016, "edge": 1.2, "round": 2.0, "crown": Color("82728e"), "under": Color("82728e"), "trim": Color("c5aeb8"),
-		"brim": [], "bands": [Color("6f607b"), [2, 4]], "rim": "roll", "spots": []},
+		"brim": [], "bands": [Color("6f607b"), [2, 4]], "rim": "roll", "spots": [], "seed_lift": 0.315},
 	"mushroom": {"rise": 0.155, "edge_gap": 0.03, "edge": 1.06, "round": 2.6, "crown": Color("728d5d"), "under": Color("eee9d4"), "trim": Color("a5b777"),
 		"brim": [0.05, 0.035], "bands": [], "rim": "",
-		"spots": [[Vector3(0.22, 0.85, 0.6), 0.07], [Vector3(0.75, 0.6, 0.4), 0.055], [Vector3(-0.2, 0.6, 0.85), 0.05]]},
+		"seed_lift": 0.315, "spots": [[Vector3(0.22, 0.85, 0.6), 0.07], [Vector3(0.75, 0.6, 0.4), 0.055], [Vector3(-0.2, 0.6, 0.85), 0.05]]},
 }
 ## Where each row of the crown lies from its top (0) to its edge (1); the
 ## last row is thin (a cuff or a rim). And the columns round it.
@@ -55,6 +57,7 @@ static func wear(look: RefCounted) -> void:
 	var id := str(look.outfit.get("hat", ""))
 	if not CAPS.has(id): return
 	look.mesh(look.head(), Kit.cached_mesh(id, _build.bind(id)), Kit.vertex_material())
+	look.lift_seed(float(CAPS[id].seed_lift))
 
 static func _build(id: String) -> Mesh:
 	var cap: Dictionary = CAPS[id]

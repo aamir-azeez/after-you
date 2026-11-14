@@ -11,10 +11,7 @@ extends SceneTree
 ##   ways and edge through triangle both ways, through a grid, so it stays
 ##   fast as items are added;
 ## - beside the leaf a hat that lets it poke through stays under LIP_LIMIT;
-## - carrying a seed or lens: the carried thing sits exactly where it does on
-##   a plain pip, a hat or a leaf that would come too near is put away, what
-##   still shows keeps CLEARANCE through walking, turning and the release
-##   settle, and it all comes back after.
+## - carrying a seed or lens: every hat and its leaf stay on.
 const Spirit = preload("res://presentation/spirit_visual.gd")
 const Outfit = preload("res://services/outfit.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
@@ -33,8 +30,6 @@ const ROLLS := 16
 const CELL := 0.05
 ## The whole hat by leaf check must finish within this many milliseconds.
 const PAIR_BUDGET_MS := 30000
-## The first carry's sums must take under this (milliseconds, a desktop run).
-const FIRST_CARRY_MS := 60
 ## The hats that sit to one side of the leaf's root, so it grows where it
 ## always does, each with where it sits; a hat over the leaf's root (a cap,
 ## the Straw hat, a hood) is whole and raises the leaf out of its top.
@@ -49,6 +44,16 @@ const BESIDE := {
 	"tea_cup": "on the head's far side",
 	"wave_cap": "the waves run across the far side of the head",
 	"glass_house": "on the head's far side",
+}
+## The hats players owned before the fit, kept exactly as main draws them
+## (the leaf where it was, no stem, through doze and wake): the owner looked at
+## the raised leaves on 2026-11-13 and said these looked better as they were.
+## The gap check skips them; the rest of the fit still applies.
+const OWNER_KEPT := {
+	"straw_hat": "owner kept main's look: the leaf on the brim, 7.5 cm up",
+	"apple_hood": "owner kept main's look: a leaf item 5 cm up out of the hood",
+	"blueberry_hood": "owner kept main's look: a leaf item 5 cm up out of the hood",
+	"blossom_crown": "owner kept main's look: the leaf where it grows",
 }
 ## Leaves the fit must class as these.
 const EXPECTED := {"": WearFit.SMALL, "sprig_coral": WearFit.SMALL, "gold_leaf": WearFit.SMALL, "every_hard": WearFit.SMALL, "apple_leaf": WearFit.TALL}
@@ -80,9 +85,7 @@ func _run() -> void:
 	_pairs()
 	_lips()
 	_preview()
-	_carrying()
-	_leaves_carrying()
-	_first_carry_time()
+	_hats_stay_on()
 	_released()
 	for child: Node in root.get_children():
 		if child is Spirit: child.free()
@@ -109,7 +112,8 @@ func _declarations() -> void:
 	# No hat is cut open for the leaf: a hat over the leaf's place raises it out
 	# of its top; only hats that sit beside the leaf leave it where it grows.
 	for id: String in _hats:
-		if Catalog.leaf_mode(id) == WearFit.POKES_THROUGH: _check(BESIDE.has(id), "%s leaves the leaf where it grows, so it must sit beside it (BESIDE)" % id)
+		if Catalog.leaf_mode(id) == WearFit.POKES_THROUGH: _check(BESIDE.has(id) or OWNER_KEPT.has(id), "%s leaves the leaf where it grows, so it must sit beside it (BESIDE)" % id)
+		if OWNER_KEPT.has(id) and Catalog.leaf_lift(id) > 0.0: _check(not Catalog.leaf_stem(id), "%s keeps the leaf with no stem, as players own it" % id)
 	for id: String in BESIDE: _check(Catalog.leaf_mode(id) == WearFit.POKES_THROUGH, "%s, beside the leaf, leaves it where it grows" % id)
 
 ## The one table, for every way and class.
@@ -284,6 +288,7 @@ func _pairs() -> void:
 				hidden += 1
 				continue
 			shown += 1
+			if OWNER_KEPT.has(hat): continue
 			var gap := _gap(hats[hat], leaves[leaf], sweep, lift)
 			if gap < WearFit.CLEARANCE: failing.append("%s + %s (gap %.4f)" % [hat, _name(leaf), gap])
 	var took := Time.get_ticks_msec() - started
@@ -344,7 +349,7 @@ func _preview() -> void:
 func _lips() -> void:
 	var stalk := Vector2(Look.LEAF_PIVOT.x, Look.LEAF_PIVOT.z)
 	for hat: String in _hats:
-		if Catalog.leaf_mode(hat) != WearFit.POKES_THROUGH: continue
+		if Catalog.leaf_mode(hat) != WearFit.POKES_THROUGH or OWNER_KEPT.has(hat): continue
 		var shape := _hat_shape(hat)
 		var highest := -INF
 		for index in range(0, shape.corners.size(), 3):
@@ -361,127 +366,23 @@ func _head_top(point: Vector3) -> float:
 
 # --- Carrying -----------------------------------------------------------------
 
-## A seed and the Lighthouse's lens: the carried thing never moves for a
-## hat; a hat too near it is put away while carried (the leaf back as it grows)
-## and back after; a shown hat keeps clear of it.
-func _carrying() -> void:
-	var plain := _spirit()
-	var away_count := 0
+## Hats stay on while the pip carries a seed or the Lighthouse lens (the
+## owner's choice), and the leaf stays as it was: carrying hides nothing a hat
+## or leaf draws.
+func _hats_stay_on() -> void:
+	var kept := true
 	for hat: String in _hats:
-		var spirit := _spirit(Outfit.of(hat, true))
+		var spirit := _spirit(Outfit.from({"hat": hat, "leaf": "bud"}, true))
+		var leaf_before: bool = spirit.sprout.visible
 		for radius: float in [0.13, 0.25]:
-			plain.reset_motion()
-			spirit.reset_motion()
-			for each: Node3D in [plain, spirit]:
-				each.carried_radius = radius
-				each.carrying_seed = true
-			var same := true
-			var least := INF
-			var away_seen := false
-			for frame in range(200):
-				var step := Vector3(0.04, 0, 0) if frame < 80 else Vector3.ZERO
-				if frame == 80:
-					plain.play_carry_release()
-					spirit.play_carry_release()
-				plain.advance_motion(step, DT, false)
-				spirit.advance_motion(step, DT, false)
-				same = same and spirit.carry_anchor_position().is_equal_approx(plain.carry_anchor_position())
-				away_seen = away_seen or spirit._wearing.hat_away
-				if not spirit._wearing.hat_away: least = minf(least, _carry_gap(spirit, radius))
-			_check(same, "%s never moves a carried thing of radius %.2f" % [hat, radius])
-			_check(least >= WearFit.CLEARANCE, "%s shown while carrying (radius %.2f) keeps clear of it: %.4f" % [hat, radius, least])
-			if away_seen:
-				away_count += 1
-				_check(spirit.sprout.visible and is_zero_approx(spirit._wearing.leaf_lift), "%s put away shows the leaf where it grows" % hat)
-				var hat_nodes: Array = spirit._wearing._slot_nodes.get("hat", [])
-				var hidden := true
-				for node: Node in hat_nodes: hidden = hidden and not (node as Node3D).visible
-				_check(hidden, "%s is hidden while carrying" % hat)
-			spirit.carrying_seed = false
-			spirit.advance_motion(Vector3.ZERO, DT, false)
-			_check(not spirit._wearing.hat_away, "%s comes back when the pip lets go" % hat)
-			print("CARRY %s radius %.2f: %s" % [hat, radius, "put away" if away_seen else "shown, gap %.3f" % least])
+			spirit.carried_radius = radius
+			spirit.carrying_seed = true
+			spirit.advance_motion(Vector3(0.04, 0, 0), DT, false)
+			for node: Node in spirit._wearing._slot_nodes.get("hat", []): kept = kept and (node as Node3D).visible
+			kept = kept and spirit.sprout.visible == leaf_before
+			if not kept: push_error("%s or its leaf hides while carrying a thing of radius %.2f" % [hat, radius])
 		spirit.free()
-	plain.free()
-	_check(away_count > 0, "Some hat is put away for a carried thing")
-
-## The least gap between the pip's shown hat and its carried thing (global).
-func _carry_gap(spirit: Node3D, radius: float) -> float:
-	var centre: Vector3 = spirit.carry_anchor_position() + spirit.global_position
-	var least := INF
-	for node: Node in spirit._wearing._slot_nodes.get("hat", []):
-		for part: MeshInstance3D in WearFit.solid_meshes(node):
-			var to := part.global_transform
-			var raw := WearFit.vertices(part.mesh)
-			for index in range(0, raw.size() - 2, 3):
-				var near := WearFit.closest_on_triangle(centre, to * raw[index], to * raw[index + 1], to * raw[index + 2])
-				least = minf(least, near.distance_to(centre) - radius)
-	return least
-
-## Each leaf, alone and raised by the hats that raise it: put away when it
-## would come a CLEARANCE nearer the carried thing than the plain leaf does
-## (WearFit.carry_allowance), and a shown leaf never touches it through
-## walking and letting go; the carried thing still. The plain leaf and a
-## sprig, its own shape, are never put away.
-func _leaves_carrying() -> void:
-	var plain := _spirit()
-	var outfits: Array[Dictionary] = []
-	for leaf: String in _leaves:
-		if leaf.is_empty(): continue
-		outfits.append({"leaf": leaf})
-		for hat: String in _hats:
-			if Catalog.leaf_lift(hat) > 0.0: outfits.append({"hat": hat, "leaf": leaf})
-	var away := 0
-	for outfit: Dictionary in outfits:
-		var spirit := _spirit(Outfit.from(outfit, true))
-		for radius: float in [0.13, 0.25]:
-			plain.reset_motion()
-			spirit.reset_motion()
-			for each: Node3D in [plain, spirit]:
-				each.carried_radius = radius
-				each.carrying_seed = true
-			var same := true
-			var least := INF
-			for frame in range(160):
-				var step := Vector3(0.04, 0, 0) if frame < 80 else Vector3.ZERO
-				plain.advance_motion(step, DT, false)
-				spirit.advance_motion(step, DT, false)
-				same = same and spirit.carry_anchor_position().is_equal_approx(plain.carry_anchor_position())
-				if spirit.sprout.visible: least = minf(least, _leaf_carry_gap(spirit, radius))
-			if spirit._wearing.leaf_away: away += 1
-			if outfit.leaf.begins_with("sprig_") and not outfit.has("hat"): _check(not spirit._wearing.leaf_away, "%s, the plain leaf's shape, is never put away" % outfit.leaf)
-			_check(same, "%s never moves a carried thing of radius %.2f" % [Outfit.digest(outfit), radius])
-			_check(least > 0.0, "%s's leaf shown while carrying (radius %.2f) never touches it: %.4f" % [Outfit.digest(outfit), radius, least])
-			spirit.carrying_seed = false
-			spirit.advance_motion(Vector3.ZERO, DT, false)
-			_check(not spirit._wearing.leaf_away, "%s's leaf comes back when the pip lets go" % Outfit.digest(outfit))
-		spirit.free()
-	plain.free()
-	print("LEAVES CARRYING: %d of %d put away for a carried thing" % [away, outfits.size() * 2])
-
-## The least gap between the pip's shown leaf and its carried thing (global).
-func _leaf_carry_gap(spirit: Node3D, radius: float) -> float:
-	var centre: Vector3 = spirit.carry_anchor_position() + spirit.global_position
-	var least := INF
-	for part: MeshInstance3D in WearFit.solid_meshes(spirit.sprout):
-		var to := part.global_transform
-		var raw := WearFit.vertices(part.mesh)
-		for index in range(0, raw.size() - 2, 3):
-			least = minf(least, WearFit.closest_on_triangle(centre, to * raw[index], to * raw[index + 1], to * raw[index + 2]).distance_to(centre) - radius)
-	return least
-
-## The first carry after dressing does its clearance sums once, quickly
-## enough not to hitch the pick up.
-func _first_carry_time() -> void:
-	WearFit.release_cached()
-	var spirit := _spirit(Outfit.from({"hat": "glass_house", "leaf": "bud"}, true))
-	var started := Time.get_ticks_usec()
-	spirit.carrying_seed = true
-	spirit.advance_motion(Vector3.ZERO, DT, false)
-	var took := (Time.get_ticks_usec() - started) / 1000.0
-	print("FIRST CARRY: %.1f ms" % took)
-	_check(took < FIRST_CARRY_MS, "The first carry's sums take %.1f ms (budget %d)" % [took, FIRST_CARRY_MS])
-	spirit.free()
+	_check(kept, "Every hat and its leaf stay on while the pip carries a seed or the lens")
 
 func _released() -> void:
 	_check(SessionRelease._releases.has(Callable(load(WearFit.SCRIPT_PATH), "release_cached")), "The fit's kept measurements are released at shutdown")

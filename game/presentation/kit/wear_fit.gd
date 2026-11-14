@@ -18,17 +18,12 @@ extends RefCounted
 ##   hat instead, raised by the hat's "leaf_lift", or hides when the hat has no
 ##   lift. No hat is cut open for the leaf.
 ## - sits_on_top: the hat is whole and the leaf comes out of its top, raised
-##   by "leaf_lift" on a short stem (the Straw hat, the caps). A bigger leaf
-##   hides.
-## decide() is that table; nothing else picks.
+##   by "leaf_lift" on a short stem (the caps). A bigger leaf hides.
+## decide() is that table; nothing else picks. The hats players owned before
+## the fit (Straw hat, fruit hoods, Blossom crown) keep the leaf as it was,
+## by the owner's choice (tests/test_wear_fit.gd OWNER_KEPT).
 ##
-## Carrying: a hat whose geometry would come within CLEARANCE of the carried
-## seed or lens, anywhere the head and the carried thing move, is put away
-## while the pip carries (carry_clashes); so is a leaf that would, anywhere in
-## its roll (leaf_carry_clashes). The carried thing never moves for a
-## cosmetic.
-##
-## Measurements are cached per leaf and per hat for the session (no GPU
+## Measurements are cached per leaf for the session (no GPU
 ## resources, but released with the other wear caches through
 ## kit/session_release.gd so a long session starts clean).
 const Look = preload("res://presentation/spirit_look.gd")
@@ -42,7 +37,7 @@ const SPIRIT_PATH := "res://presentation/spirit_visual.gd"
 ## concept notes give every size and gap in pip widths.
 const PIP_WIDTH := Look.HEAD_HALF.x * 2.0
 ## The least gap kept between a hat and a leaf through the leaf's whole
-## motion, and between a shown hat and a carried seed or lens.
+## motion.
 const CLEARANCE := 0.04 * PIP_WIDTH
 ## Beside the leaf a hat's brim or lip stands at most this high over the head.
 const LIP_LIMIT := 0.06 * PIP_WIDTH
@@ -66,26 +61,12 @@ const MODES: Array[String] = [COVERS, POKES_THROUGH, SITS_ON_TOP]
 ## effect (kit/fall_effect.gd). They neither size a leaf nor meet a hat.
 const NOT_SOLID: Array[String] = ["Halo", "Beam", "Stars", "Fall"]
 
-## How far the head and a carried thing move apart while carried: the head's
-## largest tilt (radians; a glance, the idle sway and the release settle,
-## spirit_visual.gd _apply_pose) and the carried thing's wobble and the head's
-## lift (metres, carry_anchor_position, spirit_idle.gd BREATH_HEAD_LIFT).
-const CARRY_TILT := 0.06 + 0.018 + 0.065
-const CARRY_WOBBLE := 0.022 + 0.004 + 0.004
-
-## How finely a leaf is turned through its roll against a carried thing.
-const CARRY_ROLLS := 12
-
 static var _leaf_classes: Dictionary = {}
 static var _roll := Vector2.ZERO
-static var _carry: Dictionary = {}
-static var _leaf_carry: Dictionary = {}
 
 ## Lets go of the kept measurements (at shutdown).
 static func release_cached() -> void:
 	_leaf_classes.clear()
-	_carry.clear()
-	_leaf_carry.clear()
 
 static func _keep() -> void:
 	SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
@@ -187,109 +168,7 @@ static func leaf_roll() -> Vector2:
 	_roll = Vector2(-SpiritIdle.LEAF_SWAY + SpiritIdle.WAKE_LEAF * jolt.x - walk, maxf(SpiritIdle.LEAF_SWAY, SpiritIdle.DOZE_LEAF_DROOP) + SpiritIdle.WAKE_LEAF * jolt.y + walk)
 	return _roll
 
-# --- Carrying ------------------------------------------------------------------
-
-## Where the carried seed or lens of `radius` sits in the upper body's space
-## (spirit_visual.gd carry_anchor_position, before its wobble and hop).
-static func carry_centre(radius: float) -> Vector3:
-	return Vector3(0.0, float(load(SPIRIT_PATH).carry_height(radius)), 0.0)
-
-## Whether the hat `hat_id`, whose solid parts are `parts` (MeshInstance3D
-## under `body`, the pip's upper body), comes too near a carried thing of
-## `radius` as the head tilts and the thing wobbles. Kept per hat and radius.
-static func carry_clashes(hat_id: String, body: Node3D, parts: Array, radius: float) -> bool:
-	var key := "%s:%.3f" % [hat_id, radius]
-	var found: Variant = _carry.get(key)
-	if found != null: return found
-	var made := carry_gap(body, parts, radius) < CLEARANCE
-	_carry[key] = made
-	_keep()
-	return made
-
-## The least gap between `parts` and a carried thing of `radius`, through the
-## head's tilt either way and the thing's wobble (metres; INF with no parts).
-## A part on the head is taken at the head's rest place, then tilted about
-## its centre; a part on the body stays put.
-static func carry_gap(body: Node3D, parts: Array, radius: float) -> float:
-	var gap := INF
-	for part: MeshInstance3D in parts:
-		var head := _head_of(body, part)
-		var points := vertices(part.mesh)
-		for tilt: float in ([-CARRY_TILT, 0.0, CARRY_TILT] if head != null else [0.0]):
-			var place := relative(body, part)
-			if head != null: place = Transform3D(Basis(Vector3.BACK, tilt), Look.HEAD_CENTER) * relative(head, part)
-			gap = minf(gap, _gap_to(points, place, radius, gap))
-	return gap
-
-## Whether the leaf dressed as `key` (`leaf`, the pip's leaf), raised `lift`,
-## comes too near a carried thing of `radius` anywhere in its roll as the head
-## tilts and the thing wobbles (all at their worst at once): nearer than
-## CLEARANCE, and more than CLEARANCE nearer than the pip's own plain leaf
-## comes where it grows, the game's own look and so the baseline (a sprig, the
-## same shape, never clashes). Kept per leaf, lift and radius.
-static func leaf_carry_clashes(key: String, leaf: MeshInstance3D, lift: float, radius: float) -> bool:
-	var cache := "%s:%.3f:%.3f" % [key, lift, radius]
-	var found: Variant = _leaf_carry.get(cache)
-	if found != null: return found
-	var made := leaf_carry_gap(leaf_points(leaf), lift, radius) < carry_allowance(radius)
-	_leaf_carry[cache] = made
-	_keep()
-	return made
-
-## The least gap a leaf must keep from a carried thing of `radius`, measured
-## at the worst: CLEARANCE, or a CLEARANCE inside the plain leaf's own gap
-## where it grows when that is less.
-static func carry_allowance(radius: float) -> float:
-	var key := "plain:%.3f" % radius
-	var found: Variant = _leaf_carry.get(key)
-	if found == null:
-		const Meshes = preload("res://presentation/spirit_meshes.gd")
-		found = minf(CLEARANCE, leaf_carry_gap(vertices(Meshes.leaf()), 0.0, radius) - CLEARANCE)
-		_leaf_carry[key] = found
-		_keep()
-	return found
-
-## Every solid triangle's corners under `leaf`, in the leaf's own space.
-static func leaf_points(leaf: MeshInstance3D) -> PackedVector3Array:
-	var points := PackedVector3Array()
-	for part: MeshInstance3D in solid_meshes(leaf):
-		var place := relative(leaf, part)
-		for point: Vector3 in vertices(part.mesh): points.append(place * point)
-	return points
-
-## The least gap between a leaf's triangles (`points`, leaf space) and a
-## carried thing of `radius`, through the leaf's roll and the head's tilt,
-## the leaf raised `lift` (metres).
-static func leaf_carry_gap(points: PackedVector3Array, lift: float, radius: float) -> float:
-	var roll := leaf_roll()
-	var gap := INF
-	for tilt: float in [-CARRY_TILT, 0.0, CARRY_TILT]:
-		var head := Transform3D(Basis(Vector3.BACK, tilt), Look.HEAD_CENTER)
-		for step in range(CARRY_ROLLS + 1):
-			var turn := Look.LEAF_LEAN + lerpf(roll.x, roll.y, float(step) / float(CARRY_ROLLS))
-			var place := head * Transform3D(Basis(Vector3.BACK, turn), Look.LEAF_PIVOT - Look.HEAD_CENTER + Vector3(0.0, lift, 0.0))
-			gap = minf(gap, _gap_to(points, place, radius, gap))
-	return gap
-
-## The least gap from triangles `points` placed by `place` to a
-## carried thing of `radius`, less its wobble: worked in the triangles' own
-## space, and skipped (INF) when their box is already farther than `beaten`.
-static func _gap_to(points: PackedVector3Array, place: Transform3D, radius: float, beaten: float) -> float:
-	if points.is_empty(): return INF
-	if not place.basis.get_scale().is_equal_approx(Vector3.ONE):
-		# A scaled part is measured where it is drawn.
-		var placed := PackedVector3Array()
-		for point: Vector3 in points: placed.append(place * point)
-		return _gap_to(placed, Transform3D.IDENTITY, radius, beaten)
-	var centre := place.affine_inverse() * carry_centre(radius)
-	var box := AABB(points[0], Vector3.ZERO)
-	for point: Vector3 in points: box = box.expand(point)
-	var outside := (centre - centre.clamp(box.position, box.end)).length()
-	if outside - radius - CARRY_WOBBLE >= beaten: return INF
-	var gap := INF
-	for index in range(0, points.size() - 2, 3):
-		gap = minf(gap, closest_on_triangle(centre, points[index], points[index + 1], points[index + 2]).distance_to(centre) - radius - CARRY_WOBBLE)
-	return gap
+# --- Parts ---------------------------------------------------------------------
 
 ## The head `part` hangs from, or null for a part on the body.
 static func _head_of(body: Node3D, part: Node) -> Node3D:

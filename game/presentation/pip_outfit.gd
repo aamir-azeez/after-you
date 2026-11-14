@@ -39,11 +39,10 @@ extends RefCounted
 ## After every item's art has run, the hat and the leaf are fitted
 ## (kit/wear_fit.gd): the leaf's size class is measured, and the hat's way
 ## with the leaf shows it, raises it or hides it. While the pip carries a seed
-## or lens, a hat that would come too near it is put away (set_carrying), and
-## the leaf grows as it would with no hat while the hat is away; a leaf that
-## would come too near it is put away too. A carried
-## thing never moves for a cosmetic. A raised leaf stands on a short stem from
-## where it grows, so it pokes up through the hat instead of floating.
+## or lens, only what an item asked to put away (hide_while_carrying) hides;
+## hats and leaves stay on. A raised leaf stands on a short stem from where it
+## grows (unless its hat says "leaf_stem": false), so it pokes up through the
+## hat instead of floating.
 ## Everything is presentation only: no collision shape, simulation value,
 ## recording or hash ever reads it.
 const Catalog = preload("res://services/cosmetic_catalog.gd")
@@ -79,9 +78,12 @@ var outfit: Dictionary
 var leaf_lift := 0.0
 ## The fit of the worn leaf under the worn hat (WearFit.decide).
 var fit := {"show": true, "lift": 0.0}
-## Whether the hat, and the leaf, are put away for a carried seed or lens.
-var hat_away := false
-var leaf_away := false
+## Metres a carried seed sits higher (SpiritVisual reads it), worked out in
+## dress() from the art scripts' lift_seed() asks.
+var seed_lift := 0.0
+var _seed_own := 0.0
+var _seed_with_leaf := 0.0
+var _seed_follows_leaf := false
 var _carrying := false
 var _radius := -1.0
 var _nodes: Array[Node] = []
@@ -113,6 +115,7 @@ static func dress(target: Node3D, worn: Dictionary) -> RefCounted:
 	if not hat.is_empty(): made.fit = WearFit.decide(hat, WearFit.leaf_class(str(worn.get("leaf", "")), target.sprout))
 	# An outfit that wears nothing (the celebration's gilding) leaves the leaf as the pip's own fit has it.
 	if not worn.is_empty(): made._fit_leaf()
+	made.seed_lift = maxf(made._seed_own, made._seed_with_leaf + made.leaf_lift if made._seed_follows_leaf else 0.0)
 	made._pose(0.0)
 	return made
 
@@ -211,6 +214,14 @@ func set_face(shader: Shader, extra: Dictionary = {}) -> void:
 func set_face_parameter(key: StringName, value: Variant) -> void:
 	spirit.face_art.material.set_shader_parameter(key, value)
 
+## Asks for a carried seed to sit `metres` higher, plus the leaf's lift with
+## `with_leaf` (a big leaf that rises with it); the largest ask wins.
+func lift_seed(metres: float, with_leaf: bool = false) -> void:
+	if with_leaf:
+		_seed_follows_leaf = true
+		_seed_with_leaf = maxf(_seed_with_leaf, metres)
+	else: _seed_own = maxf(_seed_own, metres)
+
 ## Hides the pip's leaf (and what hangs from it) while the item is worn and
 ## shown.
 func hide_leaf() -> void:
@@ -238,10 +249,9 @@ func _may_change(part: GeometryInstance3D) -> bool:
 
 # --- For SpiritVisual ----------------------------------------------------
 
-## The pip carries a seed or lens of `radius` (or nothing): a hat that would
-## come too near it, or raise the leaf too near it, and a leaf item that would
-## come nearer than the plain leaf does, are put away (WearFit.carry_clashes,
-## leaf_carry_clashes), and come back after.
+## The pip carries a seed or lens of `radius` (or nothing): what an item asked
+## to put away while carrying hides, and comes back after. Hats and leaves
+## stay on (the owner's choice); a cap may lift the seed (lift_seed).
 func set_carrying(carrying: bool, radius: float) -> void:
 	# Asked every pose: work only when what is carried changes.
 	if carrying == _carrying and radius == _radius: return
@@ -250,17 +260,6 @@ func set_carrying(carrying: bool, radius: float) -> void:
 	# What an item asked to put away whenever anything is carried (hide_while_carrying).
 	for node: Node3D in _carry_hidden:
 		if is_instance_valid(node): node.visible = not carrying
-	var key := str(outfit.get("leaf", ""))
-	# A hat that raises the leaf into the carried thing makes way too.
-	var away := carrying and (_hat_clashes(radius) or (float(fit.lift) > 0.0 and WearFit.leaf_carry_clashes(key, spirit.sprout, float(fit.lift), radius)))
-	var lift: float = 0.0 if away else float(fit.lift)
-	var leaf := carrying and WearFit.leaf_carry_clashes(key, spirit.sprout, lift, radius)
-	if away == hat_away and leaf == leaf_away: return
-	hat_away = away
-	leaf_away = leaf
-	for node: Node in _slot_nodes.get("hat", []):
-		if is_instance_valid(node): (node as Node3D).visible = not away
-	_fit_leaf()
 
 ## Shows the leaf an item hid on purpose (the leaderboard's gilded leaf
 ## counts as a worn leaf item). The fit still decides: a leaf a hat covers,
@@ -269,29 +268,17 @@ func show_leaf() -> void:
 	_leaf_hidden_by.clear()
 	_fit_leaf()
 
-func _hat_clashes(radius: float) -> bool:
-	var parts: Array = []
-	for node: Node in _slot_nodes.get("hat", []):
-		if is_instance_valid(node): parts.append_array(WearFit.solid_meshes(node))
-	if parts.is_empty(): return false
-	return WearFit.carry_clashes(str(outfit.get("hat", "")), spirit.upper_body, parts, radius)
-
-## Shows, raises or hides the leaf for the hat as it is now: fitted under a
-## shown hat, as it grows with no hat while the hat is away.
+## Shows, raises or hides the leaf for the worn hat.
 func _fit_leaf() -> void:
-	var hidden := false
-	for slot: String in _leaf_hidden_by:
-		if not (slot == "hat" and hat_away): hidden = true
-	var fitted: Dictionary = fit if not hat_away else {"show": true, "lift": 0.0}
-	spirit.sprout.visible = bool(fitted.show) and not hidden and not leaf_away
-	leaf_lift = float(fitted.lift)
+	spirit.sprout.visible = bool(fit.show) and _leaf_hidden_by.is_empty()
+	leaf_lift = float(fit.lift)
 	_fit_stem()
 
 ## The raised leaf's stem, on the head from where the leaf grows up to its
 ## raised stalk (it turns with the head as the leaf's stalk does). Made the
 ## first time a leaf is raised; one shared mesh and material.
 func _fit_stem() -> void:
-	var shown: bool = spirit.sprout.visible and leaf_lift > 0.0
+	var shown: bool = spirit.sprout.visible and leaf_lift > 0.0 and Catalog.leaf_stem(str(outfit.get("hat", "")))
 	if not shown:
 		if _stem != null: _stem.visible = false
 		return

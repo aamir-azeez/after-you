@@ -12,7 +12,9 @@ const DATA := {
 	"tall": true,
 	## A worn leaf item stands on a short stem out of the hood's top, raised
 	## clear of it (the plain leaf hides).
-	"leaf_lift": 0.12,
+	"leaf_lift": 0.05,
 	"leaf_mode": "sits_on_top",
+	## Kept as players own it: no stem.
+	"leaf_stem": false,
 	"leaf_max": "tall",
 }

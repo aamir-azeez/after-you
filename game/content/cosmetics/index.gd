@@ -71,6 +71,9 @@ const OPTIONAL := {
 	## The largest leaf size class ("small", "medium", "tall") the hat takes
 	## that way; a bigger leaf is raised onto it or hidden (wear_fit.gd).
 	"leaf_max": "tall",
+	## false: a raised leaf stands with no stem under it (the hats players
+	## owned before the fit, kept as they were by the owner's choice).
+	"leaf_stem": true,
 	## true: it lies on the floor round the feet (a foot ring), so the pip views
 	## pull back and look a little lower to keep it in frame (kit/pip_stage.gd).
 	"low": false,

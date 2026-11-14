@@ -8,10 +8,7 @@ const DATA := {
 	"tier": "fruit_hat",
 	"name": PlayerCopy.COSMETIC_BLOSSOM_CROWN,
 	"art": "res://presentation/pip_wear/blossom_crown.gd",
-	## The leaf stands up on the ring of blossoms, raised clear of them, so
-	## the views pull back for it.
-	"tall": true,
-	"leaf_lift": 0.12,
-	"leaf_mode": "sits_on_top",
+	## Kept as players own it: the leaf grows where it always does.
+	"leaf_mode": "pokes_through",
 	"leaf_max": "tall",
 }

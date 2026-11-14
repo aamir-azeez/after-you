@@ -150,6 +150,10 @@ static func shows_in(id: String, place: StringName) -> bool:
 static func sound(id: String) -> String:
 	return str(Index.data(id).get("sound", ""))
 
+## Whether a leaf this hat raises stands on a stem.
+static func leaf_stem(id: String) -> bool:
+	return bool(Index.data(id).get("leaf_stem", true))
+
 ## The presentation/pip_wear/ script that dresses a pip in it, or "".
 static func art(id: String) -> String:
 	return str(Index.data(id).get("art", ""))

@@ -149,6 +149,8 @@ var place: StringName = PipOutfit.WORLD
 ## How much higher the leaf sits while a hat raises it (pip_outfit.gd, read
 ## every pose: a hat put away for a carried seed lets it down).
 var _leaf_lift := Vector3.ZERO
+## How much higher a carried seed sits while an item lifts it (pip_outfit.gd lift_seed).
+var _seed_lift := 0.0
 ## A Home keepsake ride carrying the spirit (presentation/keepsakes/): a hop's
 ## crouch, stretch and landing squash, a seated tuck and a lean, laid over the
 ## pose. The ride moves the spirit itself; these only shape the body.
@@ -220,10 +222,12 @@ func wear(outfit: Dictionary) -> void:
 		_wearing.undress()
 		_wearing = null
 	_leaf_lift = Vector3.ZERO
+	_seed_lift = 0.0
 	if clean.is_empty(): return
 	_wearing = PipOutfit.dress(self, clean)
 	_wearing.set_carrying(carrying_seed, carried_radius)
 	_leaf_lift = Vector3(0, _wearing.leaf_lift, 0)
+	_seed_lift = _wearing.seed_lift
 
 ## Where a trail follows the walk from (global): the recorded target when a
 ## world gives one, else where the spirit is drawn.
@@ -742,11 +746,11 @@ func carry_anchor_position() -> Vector3:
 	var wobble := Vector3.ZERO
 	if carrying_seed and not _reduced_motion:
 		wobble=Vector3(sin(stride_phase+expression_phase)*0.022*motion_blend+sin(_expression_time*1.8+expression_phase)*0.004*_idle_blend,0,cos(stride_phase+expression_phase)*0.012*motion_blend)
-	return facing.transform*(upper_body.transform*(Vector3(0,carry_height(carried_radius),0)+wobble))+Vector3(0,seed_hop,0)
+	return facing.transform*(upper_body.transform*(Vector3(0,carry_height(carried_radius)+_seed_lift,0)+wobble))+Vector3(0,seed_hop,0)
 
 ## How high a carried seed or lens of `radius` sits over the upper body's
 ## origin. The wider Lighthouse lens also clears the sprout beside the head.
-## No cosmetic changes it (kit/wear_fit.gd puts a hat away instead).
+## A cap may lift it (pip_outfit.gd lift_seed).
 static func carry_height(radius: float) -> float:
 	return 0.925+radius+maxf(0.0,radius-0.13)*0.5
 
