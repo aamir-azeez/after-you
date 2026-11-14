@@ -50,11 +50,11 @@ func _check_resolver() -> void:
 		_check(slot in Styles.LOOK_SLOTS and Styles.has_style(slot, str(Styles.DEFAULT_PICKS[slot])), "Piece slot %s is a look slot with a default style" % slot)
 		for theme: String in Themes.THEMES: _check(Styles.has_style(slot, str(Themes.THEMES[theme].picks.get(slot, ""))), "Theme %s picks a %s style" % [theme, slot])
 	var pinned := {PieceStyles.PINS: {"chain": "winch", "wheel": "winch"}}
-	var dressed := {"lever": "bolt", "picks": {"lever": "brass"}, "theme": "harbour"}
+	var dressed := DressingCatalog.resolve({"lever": "bolt", "picks": {"lever": "brass"}, "theme": "harbour"})
 	_check(PieceStyles.style("lever", "chain", pinned, dressed) == "winch", "A pin wins")
 	_check(PieceStyles.style("lever", "other", pinned, dressed) == "bolt", "The dressing's own field comes next")
-	_check(PieceStyles.style("lever", "other", {}, {"picks": {"lever": "winch"}, "theme": "harbour"}) == "winch", "Then the dressing's picks")
-	_check(PieceStyles.style("pad", "step", {}, {"theme": "harbour"}) == str(Themes.THEMES.harbour.picks.pad), "Then the theme's picks")
+	_check(PieceStyles.style("lever", "other", {}, DressingCatalog.resolve({"picks": {"lever": "winch"}, "theme": "harbour"})) == "winch", "Then the dressing's picks")
+	_check(PieceStyles.style("pad", "step", {}, DressingCatalog.resolve({"theme": "harbour"})) == str(Themes.THEMES.harbour.picks.pad), "Then the theme's picks")
 	_check(PieceStyles.style("goal", "bell", {}, {}) == "bell" and PieceStyles.style("lever", "x", {}, {}) == "plain", "Then the plain default")
 	_check(PieceStyles.style("selector", "wheel", pinned, {}) == "plain", "A pin the slot does not offer falls through")
 	_check(PieceStyles.control_slot({"kind": "selector"}) == "selector" and PieceStyles.control_slot({}) == "lever", "A control fills the selector or the lever slot")

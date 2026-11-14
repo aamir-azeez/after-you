@@ -2,10 +2,10 @@ extends "res://presentation/journey_world.gd"
 ## A visible return route ending in an open-front house. Choice pads prepare
 ## one greeting window; the partner lights the complementary second window.
 const WindowVisual = preload("res://presentation/house_window.gd")
-const HOME_TIMBER := Color("ad8c67")
-const HOME_FRAME := Color("80664e")
-const HOME_PLASTER := Color("e2d6b6")
-const POST := Color("7a5c40")
+const HOME_TIMBER := Parts.HOME_TIMBER
+const HOME_FRAME := Parts.HOME_FRAME
+const HOME_PLASTER := Parts.HOME_PLASTER
+const POST := Parts.POST
 var _greeting_window: Dictionary = {}
 var _greeting_light: OmniLight3D
 
@@ -49,7 +49,7 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	var peak := Vector3(middle.x,2.05,float(r[1])/100)
 	_bar_between(Vector3(float(r[0])/100,1.32,float(r[1])/100),peak,0.065,HOME_FRAME,surface)
 	_bar_between(peak,Vector3(float(r[2])/100,1.32,float(r[1])/100),0.065,HOME_FRAME,surface)
-	_greeting_window = WindowVisual.build(surface,Vector3(12.00,0,-0.64),0.88,HOME_FRAME,Color("729b95"),CREAM)
+	_greeting_window = WindowVisual.build(surface,Vector3(12.00,0,-0.64),0.88,HOME_FRAME,Parts.GLASS,CREAM)
 	_greeting_window.pane.name = "GreetingWindow"
 	_greeting_light = OmniLight3D.new()
 	_greeting_light.position = Vector3(12.00,0.82,-0.30)
@@ -77,10 +77,6 @@ func _front_planter() -> void:
 	box(Vector3(2.62,0.36,1.02),Color("6b5134"),at+Vector3(0,-0.18,0),terrain)
 	for z: float in [-0.48,0.48]: box(Vector3(2.62,0.10,0.07),POST,at+Vector3(0,0.05,z),terrain)
 	for x: float in [-1.28,1.28]: box(Vector3(0.07,0.10,1.02),POST,at+Vector3(x,0.05,0),terrain)
-
-## Every window goal carries its owner's mark before its cradle.
-func _marks_goal(_goal: Dictionary) -> bool:
-	return true
 
 ## The tail of a pad's name bubble lands on the pad's centre.
 const PAD_TOP := Vector3(0,0.06,0)

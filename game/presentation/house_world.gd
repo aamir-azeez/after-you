@@ -1,10 +1,10 @@
 extends "res://presentation/cooperative_world.gd"
 ## A cutaway house built on the shared physical world and snapshot presentation.
 ## The walls, windows and furniture never participate in movement or recording.
-const TIMBER := Color("ad8c67")
-const PLASTER := Color("e2d6b6")
-const FRAME := Color("80664e")
-const GLASS := Color("729b95")
+const TIMBER := Parts.HOME_TIMBER
+const PLASTER := Parts.HOME_PLASTER
+const FRAME := Parts.HOME_FRAME
+const GLASS := Parts.GLASS
 const WindowVisual = preload("res://presentation/house_window.gd")
 var _house_windows: Dictionary = {}
 var _house_memories: Node3D

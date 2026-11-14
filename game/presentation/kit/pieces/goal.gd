@@ -24,14 +24,13 @@ const Look = preload("res://presentation/kit/look.gd")
 ## A lit goal's light, before the look's lamp scale (kit/look.gd lamp_energy).
 const LIGHT_ENERGY := 1.2
 const STYLES := ["bell", "harbour_lantern", "crest", "window", "walled_window"]
+## Styles whose cradle carries its owner's mark (kit/owner_mark.gd): the ones a
+## spirit lights from in front, where the mark stands clear of the ornament.
+const MARKED := ["harbour_lantern", "window", "walled_window"]
 ## Root node names, one per style.
 const NAMES := {"bell": "CourtBell", "harbour_lantern": "HarbourLanternGoal", "crest": "GardenLightCrest", "window": "ArrivalWindowGoal", "walled_window": "ArrivalWindowGoal"}
 const BELL_LIGHT := Color("ffd9a2")
 const SLATE := Color("6b8984")
-## A house's timber frame, plaster and window glass.
-const HOME_FRAME := Color("80664e")
-const HOME_PLASTER := Color("e2d6b6")
-const GLASS := Color("729b95")
 ## The plaster wall's plane, just behind the window's frame.
 const WALL_Z := -0.49
 
@@ -129,14 +128,14 @@ func _make_crest(radius_m: float) -> void:
 func _make_window(radius_m: float) -> void:
 	Parts.cylinder(radius_m, 0.045, Color("748e87"), Vector3(0, 0.025, 0), root)
 	ring = Parts.ring(radius_m, Parts.CREAM, Vector3(0, 0.06, 0), root)
-	window = WindowVisual.build(root, Vector3(0, 0, -0.44), 0.80, HOME_FRAME, GLASS, Parts.CREAM)
+	window = WindowVisual.build(root, Vector3(0, 0, -0.44), 0.80, Parts.HOME_FRAME, Parts.GLASS, Parts.CREAM)
 	bell = window.pane
 	bell.name = "SecondWindow"
-	for side: int in [-1, 1]: Parts.box(Vector3(0.08, 0.42, 0.08), HOME_FRAME, Vector3(float(side) * 0.42, 0.21, -0.44), root)
+	for side: int in [-1, 1]: Parts.box(Vector3(0.08, 0.42, 0.08), Parts.HOME_FRAME, Vector3(float(side) * 0.42, 0.21, -0.44), root)
 	if style == "walled_window":
-		for side: int in [-1, 1]: Parts.box(Vector3(0.46, 1.36, 0.07), HOME_PLASTER, Vector3(float(side) * 0.68, 0.68, WALL_Z), root)
+		for side: int in [-1, 1]: Parts.box(Vector3(0.46, 1.36, 0.07), Parts.HOME_PLASTER, Vector3(float(side) * 0.68, 0.68, WALL_Z), root)
 		# Just under the sill and the posts, never level with either.
-		Parts.box(Vector3(0.90, 0.415, 0.07), HOME_PLASTER, Vector3(0, 0.2075, WALL_Z), root)
-		Parts.box(Vector3(0.90, 0.18, 0.07), HOME_PLASTER, Vector3(0, 1.27, WALL_Z), root)
-		Parts.box(Vector3(1.86, 0.07, 0.12), HOME_FRAME, Vector3(0, 1.39, WALL_Z), root)
+		Parts.box(Vector3(0.90, 0.415, 0.07), Parts.HOME_PLASTER, Vector3(0, 0.2075, WALL_Z), root)
+		Parts.box(Vector3(0.90, 0.18, 0.07), Parts.HOME_PLASTER, Vector3(0, 1.27, WALL_Z), root)
+		Parts.box(Vector3(1.86, 0.07, 0.12), Parts.HOME_FRAME, Vector3(0, 1.39, WALL_Z), root)
 	_light(Parts.GOLD, 4.0, Vector3(0, 1.0, -0.20))

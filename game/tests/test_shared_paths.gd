@@ -328,8 +328,6 @@ const PAIR_TAGS_OWNER := "res://presentation/cooperative_world.gd"
 ## keep_clear) or a world hook (_mark_stair, _marks_goal).
 const OWNER_MARK_OVERRIDES := {
 	"res://presentation/cooperative_world.gd": "builds the marks (build), records a stand spot's own mark (record), and holds the default hooks",
-	"res://presentation/long_way_home_world.gd": "every window goal's cradle carries its owner's mark (_marks_goal)",
-	"res://presentation/tide_world.gd": "only the harbour lantern's cradle carries its owner's mark (_marks_goal)",
 	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); the ladder top's mark steps east of a bell frame that hides it (_mark_stair); marks keep off the notch (keep_clear)",
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
@@ -383,7 +381,6 @@ const SHADER_PLACED_ALLOWED := {}
 ## (u) The piece style resolver, the piece kits, and who uses them.
 const PIECE_STYLES := "res://content/dressing/piece_styles.gd"
 const PIECE_KITS := "res://presentation/kit/pieces/"
-const PIECE_KIT_SCRIPTS := ["lever.gd", "selector.gd", "pad.gd", "goal.gd"]
 ## Scripts that preload a piece kit, with why.
 const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
@@ -881,8 +878,8 @@ func _piece_styles() -> void:
 	for path: String in _sources:
 		if path.begins_with("res://tests/") or path.begins_with(PIECE_KITS) or path == PIECE_STYLES: continue
 		var source: String = _sources[path]
-		_check(_found("\"(?:lever_looks|stand_spots)\"|kit/lever_looks\\.gd", source) == 0, "%s keeps a per-world piece switch: pin or pick a piece style (content/dressing/piece_styles.gd)" % path)
-		if PIECE_KIT_SCRIPTS.any(func(kit: String) -> bool: return not _alias(source, PIECE_KITS + kit).is_empty()):
+		_check(_found("\"(?:lever_looks|stand_spots)\"|\\.(?:lever_looks|stand_spots)\\b|kit/lever_looks\\.gd", source) == 0, "%s keeps a per-world piece switch: pin or pick a piece style (content/dressing/piece_styles.gd)" % path)
+		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal)\\.gd\"", source) > 0:
 			builders[path] = true
 			_check(PIECE_BUILDERS.has(path), "%s builds a piece itself: worlds build pieces through cooperative_world and lighthouse_world, or add it to PIECE_BUILDERS with why" % path)
 		if _found("\\.get\\(\\s*\"piece_styles\"|\\[\"piece_styles\"\\]|\\.piece_styles\\b|\\bPieceStyles\\.PINS\\b", source) > 0:
@@ -954,7 +951,7 @@ func _level_hints() -> void:
 		_check(_flat_diamonds(str(_sources.get(path, ""))) > 0, "FLAT_DIAMONDS names %s, which draws no flat diamond now: delete it" % path)
 	for path: String in MARK_SIZED_RINGS:
 		_check(_found(MARK_RING, str(_sources.get(path, ""))) > 0, "MARK_SIZED_RINGS names %s, which draws no such ring now: delete it" % path)
-	_check(marks.size() >= 5 and tags.size() >= 1, "The scripts that mark owners and override pair tags are found: %d, %d" % [marks.size(), tags.size()])
+	_check(marks.size() >= 3 and tags.size() >= 1, "The scripts that mark owners and override pair tags are found: %d, %d" % [marks.size(), tags.size()])
 
 ## A ring the size of the second spirit's mark: a world ring() or a kit ring mesh of 13 cm.
 const MARK_RING := "\\b(?:ring|ring_mesh)\\(\\s*0\\.13\\b"

@@ -22,6 +22,14 @@ const BRASS := Color("b8914f")
 const STONE := Color("a8947a")
 ## A machine's painted marks (a valve's dial ticks, its arrow).
 const MARK := Color("f3e6c8")
+## A house's timber floor, frame, plaster, window glass and painted shutter
+## boards, and the dark timber of its garden posts.
+const HOME_TIMBER := Color("ad8c67")
+const HOME_FRAME := Color("80664e")
+const HOME_PLASTER := Color("e2d6b6")
+const GLASS := Color("729b95")
+const BOARD := Color("628c7a")
+const POST := Color("7a5c40")
 
 ## The colour of an owner slot ("p0" gold, else teal).
 static func owner_color(slot: String) -> Color:

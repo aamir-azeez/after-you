@@ -525,9 +525,10 @@ func _mark_stair(stair: Dictionary) -> Dictionary:
 	var reach := float(OwnerMark.KINDS[&"stair"].reach)
 	return {"anchor": entrance, "away": Vector3.LEFT if along_x else Vector3.FORWARD, "kind": &"stair", "head": top + (Vector3.RIGHT if along_x else Vector3.BACK) * reach}
 
-## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd).
-func _marks_goal(_goal: Dictionary) -> bool:
-	return false
+## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd):
+## its style says (kit/pieces/goal.gd MARKED).
+func _marks_goal(goal: Dictionary) -> bool:
+	return _piece_style("goal", str(goal.get("id", ""))) in GoalPiece.MARKED
 
 ## Scenery of the world's own that pair tags and ownership marks keep clear
 ## of (kit/pair_tags.gd, kit/owner_mark.gd): the route barriers by default.
@@ -606,8 +607,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		var trail: Node3D = _ball_trails[id]
 		trail.tint = material.albedo_color
 		trail.set_motion_allowed(str(prop.get("status", "")) == "free" and str(prop.get("socket_id", "")).is_empty(), immediate)
-	for id: String in _lever_pieces:
-		if _lever_pieces[id] is LeverPiece: _lever_pieces[id].set_pulled(bool(state.get("levers", {}).get(id, false)), immediate or reduced_motion)
+	for id: String in _lever_pieces: _lever_pieces[id].set_pulled(bool(state.get("levers", {}).get(id, false)), immediate or reduced_motion)
 	for id: String in _hatches: _hatches[id].visible = not state.get("levers", {}).get(id, false)
 	for id: String in _physical_pads:
 		var pressed: bool = state.get("hold_pads", {}).get(id, false)
@@ -649,8 +649,8 @@ func _camera_center() -> Vector3:
 	return target
 
 func _advance_camera(delta: float) -> void:
-	for piece: RefCounted in _lever_pieces.values():
-		if piece.moving(): piece.advance(delta)
+	for id: String in _lever_pieces:
+		if _lever_pieces[id].moving(): _lever_pieces[id].advance(delta)
 	if route_barriers.moving(): route_barriers.advance(delta)
 	if _uses_scrolling_camera():
 		# Authored framing advances once per rendered frame. Snapshot delivery

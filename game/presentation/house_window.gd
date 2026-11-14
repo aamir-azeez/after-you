@@ -18,7 +18,7 @@ static func build(parent: Node3D, rear: Vector3, width: float, frame: Color, gla
 		shutter.position = rear+Vector3(side*width*0.5,0.80,0.10)
 		shutter.set_meta("side",side)
 		parent.add_child(shutter)
-		Parts.box(Vector3(width*0.46,0.64,0.065),Color("628c7a"),Vector3(-side*width*0.23,0,0),shutter)
+		Parts.box(Vector3(width*0.46,0.64,0.065),Parts.BOARD,Vector3(-side*width*0.23,0,0),shutter)
 		for y: float in [-0.18,0.18]:
 			Parts.box(Vector3(width*0.40,0.045,0.028),cream,Vector3(-side*width*0.23,y,0.04),shutter)
 		shutters.append(shutter)

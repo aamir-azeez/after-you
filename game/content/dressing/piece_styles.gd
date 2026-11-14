@@ -8,10 +8,10 @@ extends RefCounted
 ##   1. a pin: the chapter descriptor's "piece_styles" {piece id: style}
 ##      (content/chapters/index.gd), filled from blocks that name a "style"
 ##      (content/blocks/defaults.gd)
-##   2. the dressing's own field for the slot ("goal": "crest")
-##   3. the dressing's "picks"
-##   4. its theme's picks (content/dressing/themes.gd)
-##   5. DEFAULT_PICKS (content/dressing/prop_styles.gd): the plain look
+##   2. the dressing's pick for the slot: its own field ("goal": "crest"),
+##      else its "picks", else its theme's picks, which content/dressing/
+##      catalog.gd resolve() writes into that field like every look slot's
+##   3. DEFAULT_PICKS (content/dressing/prop_styles.gd): the plain look
 ## A name the slot does not offer (prop_styles.gd SLOTS) is passed over, so a
 ## lever pinned "valve" falls back to the next step instead of breaking.
 ##
@@ -21,22 +21,18 @@ extends RefCounted
 ## the same style. Each style is built by one kit under presentation/kit/pieces/.
 
 const Styles = preload("res://content/dressing/prop_styles.gd")
-const Themes = preload("res://content/dressing/themes.gd")
 ## The descriptor field holding the pins.
 const PINS := "piece_styles"
 ## The piece slots, each a LOOK_SLOTS entry of prop_styles.gd.
 const SLOTS := ["lever", "selector", "pad", "goal"]
 
 ## The style of piece `id` in slot `slot` for a chapter `descriptor` (or {})
-## and its `dressing` (resolved or as written, or {}).
+## and its resolved `dressing` (DressingCatalog.for_key, or {}).
 static func style(slot: String, id: String, descriptor: Dictionary, dressing: Dictionary) -> String:
-	for name: String in [
-		str(descriptor.get(PINS, {}).get(id, "")),
-		str(dressing.get(slot, "")),
-		str(dressing.get("picks", {}).get(slot, "")),
-		str(Themes.THEMES.get(str(dressing.get("theme", "")), {}).get("picks", {}).get(slot, "")),
-	]:
-		if Styles.has_style(slot, name): return name
+	var pin := str(descriptor.get(PINS, {}).get(id, ""))
+	if Styles.has_style(slot, pin): return pin
+	var pick := str(dressing.get(slot, ""))
+	if Styles.has_style(slot, pick): return pick
 	return str(Styles.DEFAULT_PICKS[slot])
 
 ## The slot a placed control fills: a selector's, else a lever's.

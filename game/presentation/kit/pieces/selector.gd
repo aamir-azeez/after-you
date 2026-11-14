@@ -35,13 +35,11 @@ const VALVE_SWEEP := 0.95
 const VALVE_RATE := 3.0
 const SIGN_AT := Vector3(0.10, 1.16, -0.19)
 ## A lamp's glass for each value it shows; any other value is dark ("off").
-const LAMP_COLORS := {"off": Color("4a4038"), "shut": Color("4a4038"), "rose": Color("e8607e"), "moss": Color("6fae3c")}
+const LAMP_DARK := Color("4a4038")
+const LAMP_COLORS := {"off": LAMP_DARK, "shut": LAMP_DARK, "rose": Color("e8607e"), "moss": Color("6fae3c")}
 const LAMP_GLOW := 0.9
-## The timber of the lamp post, the arch and the shutter frame, the arch's
-## climbing green and the shutter board.
-const POST := Color("7a5c40")
+## The arch's climbing green.
 const LEAF := Color("8fb57a")
-const BOARD := Color("628c7a")
 ## Lamp post: its foot east and north of the spot, and its height.
 const LAMP_BASE := Vector3(0.42, 0, -0.14)
 const LAMP_HEIGHT := 1.05
@@ -162,18 +160,18 @@ func _make(selector_style: String, at: Vector3, parent: Node3D, options: Diction
 ## A post with a glass globe.
 func _make_lamp_post(id: String) -> void:
 	var base := LAMP_BASE
-	Parts.cylinder(0.11, 0.06, POST, base + Vector3(0, 0.03, 0), root)
-	Parts.cylinder(0.035, LAMP_HEIGHT, POST, base + Vector3(0, LAMP_HEIGHT * 0.5, 0), root)
-	Parts.box(Vector3(0.26, 0.04, 0.26), POST, base + Vector3(0, LAMP_HEIGHT + 0.02, 0), root)
+	Parts.cylinder(0.11, 0.06, Parts.POST, base + Vector3(0, 0.03, 0), root)
+	Parts.cylinder(0.035, LAMP_HEIGHT, Parts.POST, base + Vector3(0, LAMP_HEIGHT * 0.5, 0), root)
+	Parts.box(Vector3(0.26, 0.04, 0.26), Parts.POST, base + Vector3(0, LAMP_HEIGHT + 0.02, 0), root)
 	_lamp = Parts.sphere(0.20, LAMP_COLORS.off, base + Vector3(0, LAMP_HEIGHT + 0.24, 0), root)
 	_lamp.name = "Lamp_" + id
-	Parts.box(Vector3(0.22, 0.035, 0.22), POST, base + Vector3(0, LAMP_HEIGHT + 0.46, 0), root)
+	Parts.box(Vector3(0.22, 0.035, 0.22), Parts.POST, base + Vector3(0, LAMP_HEIGHT + 0.46, 0), root)
 
 ## An open timber arch over the walk; its lantern hangs under the beam.
 func _make_gate_arch(id: String) -> void:
 	var middle := (float(ARCH_POSTS[0]) + float(ARCH_POSTS[1])) * 0.5
-	for z: float in ARCH_POSTS: Parts.box(Vector3(0.09, 1.30, 0.09), POST, Vector3(ARCH_X, 0.65, z), root)
-	Parts.box(Vector3(0.12, 0.08, 1.06), POST, Vector3(ARCH_X, 1.32, middle), root)
+	for z: float in ARCH_POSTS: Parts.box(Vector3(0.09, 1.30, 0.09), Parts.POST, Vector3(ARCH_X, 0.65, z), root)
+	Parts.box(Vector3(0.12, 0.08, 1.06), Parts.POST, Vector3(ARCH_X, 1.32, middle), root)
 	for side: int in [-1, 1]:
 		var arc := Parts.box(Vector3(0.08, 0.06, 0.30), LEAF, Vector3(ARCH_X, 1.40, middle + float(side) * 0.34), root)
 		arc.rotation.x = -0.35 * float(side)
@@ -182,13 +180,13 @@ func _make_gate_arch(id: String) -> void:
 
 ## A shutter board between two posts under a head rail.
 func _make_shutter() -> void:
-	for side: int in [-1, 1]: Parts.box(Vector3(0.06, 1.10, 0.06), POST, SHUTTER_AT + Vector3(float(side) * 0.22, 0.55, 0), root)
-	Parts.box(Vector3(0.50, 0.05, 0.08), POST, SHUTTER_AT + Vector3(0, 1.12, 0), root)
+	for side: int in [-1, 1]: Parts.box(Vector3(0.06, 1.10, 0.06), Parts.POST, SHUTTER_AT + Vector3(float(side) * 0.22, 0.55, 0), root)
+	Parts.box(Vector3(0.50, 0.05, 0.08), Parts.POST, SHUTTER_AT + Vector3(0, 1.12, 0), root)
 	_shutter = Node3D.new()
 	_shutter.name = "PorchShutterBoard"
 	_shutter.position = SHUTTER_AT + Vector3(0, SHUTTER_UP, 0)
 	root.add_child(_shutter)
-	Parts.box(Vector3(0.38, 0.40, 0.04), BOARD, Vector3.ZERO, _shutter)
+	Parts.box(Vector3(0.38, 0.40, 0.04), Parts.BOARD, Vector3.ZERO, _shutter)
 	for y: float in [-0.10, 0.10]: Parts.box(Vector3(0.32, 0.035, 0.02), Parts.CREAM, Vector3(0, y, 0.025), _shutter)
 
 ## A tall cast-iron pedestal on a round foot, brass at its foot and its neck,

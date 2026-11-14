@@ -8,6 +8,7 @@ extends RefCounted
 ##   piece.set_pulled(on, immediate)      # a lever, each snapshot
 ##   piece.set_value(index, immediate)    # a selector, each snapshot
 ##   piece.set_held(on)                   # a pad, each snapshot
+##   piece.set_lit(on)                    # a goal, each snapshot
 ##   if piece.moving(): piece.advance(delta)   # each frame
 ##   piece.moving_parts()                 # kept whole by the static fold
 ##
@@ -33,6 +34,13 @@ func set_value(_index: int, _immediate: bool = false) -> void:
 
 func set_held(_on: bool) -> void:
 	pass
+
+func set_lit(_on: bool) -> void:
+	pass
+
+## How high the anchor stands over the spot (a handle's pivot by default).
+func anchor_lift() -> float:
+	return 0.2
 
 func moving() -> bool:
 	return false

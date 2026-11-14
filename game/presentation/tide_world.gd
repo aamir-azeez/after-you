@@ -31,12 +31,12 @@ const SEA_GATE_Z := 5.20
 ## The sea chamber (the water block's "chamber" body) stands in walls to here.
 const CHAMBER_WALL_TOP := 0.74
 const SPOUT := Color(0.80, 0.93, 0.95, 0.86)
-const STONE := Color("a8947a")
+const STONE := Parts.STONE
 const STONE_DARK := Color("7d6d58")
-const TIMBER := Color("7a5d45")
-const PILE := Color("5f4a38")
+const TIMBER := Parts.TIMBER
+const PILE := Parts.TIMBER_DARK
 const SAND := Color("e3cf9f")
-const BRASS := Color("b8914f")
+const BRASS := Parts.BRASS
 const COPING := Color("dccaa4")
 const ROPE := Color("d1b98c")
 ## Walls under each tier, by deck height in cm: pale sand, terracotta, honey.
@@ -610,10 +610,6 @@ func _route_anchor(route: Dictionary) -> Vector3:
 			if int(r[3]) <= int(floor[1]): return point([(r[0] + r[2]) * 0.5, r[3] + 16]) + Vector3(0, height, 0)
 			if int(r[1]) >= int(floor[3]): return point([(r[0] + r[2]) * 0.5, r[1] - 16]) + Vector3(0, height, 0)
 	return point([r[0] - 18, (r[1] + r[3]) * 0.5]) + Vector3(0, height, 0)
-
-## Only the harbour lantern's cradle carries its owner's mark.
-func _marks_goal(goal: Dictionary) -> bool:
-	return str(goal.get("id", "")) == "harbour-lantern"
 
 ## A gate's pair tags start at its route's anchor, on the floor (a stub's
 ## mouth, else before its west end), else by its far end.

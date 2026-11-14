@@ -26,7 +26,7 @@ func _garden_arch() -> void:
 		box(Vector3(0.08,1.34,0.08),POST,Vector3(x,0.67,middle.z),terrain)
 	box(Vector3(0.70,0.08,0.12),POST,Vector3(middle.x,1.36,middle.z),terrain)
 	box(Vector3(0.02,0.16,0.02),POST,Vector3(middle.x,1.24,middle.z),terrain)
-	_arch_lantern = sphere(0.15,SelectorPiece.LAMP_COLORS.off,Vector3(middle.x,1.06,middle.z),terrain)
+	_arch_lantern = sphere(0.15,SelectorPiece.LAMP_DARK,Vector3(middle.x,1.06,middle.z),terrain)
 	_arch_lantern.name = "ArchLantern"
 
 func present(state: Dictionary, immediate: bool = false) -> void:
