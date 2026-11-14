@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.6.3",
+      "date": "2026-10-16",
+      "highlights": [{"icon": "bell", "text": "New sounds for water, the well and moving parts"}, {"icon": "picture", "text": "Turn photos get a polaroid and survive the app closing"}, {"icon": "leaf", "text": "Chapters open faster"}, {"icon": "spark", "text": "Spirits breathe and glance around while they wait"}]
+    },
+    {
       "version": "0.6.2",
       "date": "2026-10-14",
       "highlights": [{"icon": "leaf", "text": "Easier on your phone, so it stays cooler"}, {"icon": "tap", "text": "Taps in lists work the first time"}, {"icon": "link", "text": "Rooms with a friend recover when something fails"}, {"icon": "sun", "text": "The spirit's shadow stops flickering"}]
