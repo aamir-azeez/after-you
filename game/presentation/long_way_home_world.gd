@@ -2,18 +2,16 @@ extends "res://presentation/journey_world.gd"
 ## A visible return route ending in an open-front house. Choice pads prepare
 ## one greeting window; the partner lights the complementary second window.
 const WindowVisual = preload("res://presentation/house_window.gd")
-const HOME_TIMBER := Color("ad8c67")
-const HOME_FRAME := Color("80664e")
-const HOME_PLASTER := Color("e2d6b6")
-const POST := Color("7a5c40")
+const HOME_TIMBER := Parts.HOME_TIMBER
+const HOME_FRAME := Parts.HOME_FRAME
+const HOME_PLASTER := Parts.HOME_PLASTER
+const POST := Parts.POST
 var _greeting_window: Dictionary = {}
-var _arrival_window: Dictionary = {}
 var _greeting_light: OmniLight3D
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id","")) == displayed_stage_id: return
 	_greeting_window.clear()
-	_arrival_window.clear()
 	await super.show_stage(stage)
 	terrain.name = "LongWayHome"
 	if stage.id == "a-place-beside-you" and is_instance_valid(keepsake_landmark):
@@ -51,7 +49,7 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	var peak := Vector3(middle.x,2.05,float(r[1])/100)
 	_bar_between(Vector3(float(r[0])/100,1.32,float(r[1])/100),peak,0.065,HOME_FRAME,surface)
 	_bar_between(peak,Vector3(float(r[2])/100,1.32,float(r[1])/100),0.065,HOME_FRAME,surface)
-	_greeting_window = WindowVisual.build(self,surface,Vector3(12.00,0,-0.64),0.88,HOME_FRAME,Color("729b95"),CREAM)
+	_greeting_window = WindowVisual.build(surface,Vector3(12.00,0,-0.64),0.88,HOME_FRAME,Parts.GLASS,CREAM)
 	_greeting_window.pane.name = "GreetingWindow"
 	_greeting_light = OmniLight3D.new()
 	_greeting_light.position = Vector3(12.00,0.82,-0.30)
@@ -80,43 +78,6 @@ func _front_planter() -> void:
 	for z: float in [-0.48,0.48]: box(Vector3(2.62,0.10,0.07),POST,at+Vector3(0,0.05,z),terrain)
 	for x: float in [-1.28,1.28]: box(Vector3(0.07,0.10,1.02),POST,at+Vector3(x,0.05,0),terrain)
 
-func _build_bell(goal: Dictionary) -> void:
-	_build_window_goal(goal)
-	if str(goal.get("surface_id","")) != "home-room": return
-	# A short plaster wall holds the second window, so it never stands free.
-	var cradle := _bell.get_parent() as Node3D
-	var z := -0.49
-	for side: int in [-1,1]:
-		box(Vector3(0.46,1.36,0.07),HOME_PLASTER,Vector3(side*0.68,0.68,z),cradle)
-	# Just under the sill and the posts, never level with either.
-	box(Vector3(0.90,0.415,0.07),HOME_PLASTER,Vector3(0,0.2075,z),cradle)
-	box(Vector3(0.90,0.18,0.07),HOME_PLASTER,Vector3(0,1.27,z),cradle)
-	box(Vector3(1.86,0.07,0.12),HOME_FRAME,Vector3(0,1.39,z),cradle)
-
-func _build_window_goal(goal: Dictionary) -> void:
-	# Keep the exact native goal centre/radius; only the ornament above the
-	# same action marker changes from a bell to an openable window.
-	var cradle := Node3D.new()
-	cradle.name = "ArrivalWindowGoal"
-	cradle.position = point(goal.position_cm)
-	terrain.add_child(cradle)
-	cylinder(float(goal.radius_cm)/100.0,0.045,Color("748e87"),Vector3(0,0.025,0),cradle)
-	_bell_ring = ring(float(goal.radius_cm)/100.0,CREAM,Vector3(0,0.06,0),cradle)
-	_arrival_window = WindowVisual.build(self,cradle,Vector3(0,0,-0.44),0.80,HOME_FRAME,Color("729b95"),CREAM)
-	_bell = _arrival_window.pane
-	_bell.name = "SecondWindow"
-	for side: int in [-1,1]: box(Vector3(0.08,0.42,0.08),HOME_FRAME,Vector3(side*0.42,0.21,-0.44),cradle)
-	_court_light = OmniLight3D.new()
-	_court_light.light_color = GOLD
-	_court_light.light_energy = 0.0
-	_court_light.omni_range = 4.0
-	_court_light.position = cradle.position+Vector3(0,1.0,-0.20)
-	terrain.add_child(_court_light)
-
-## Every window goal carries its owner's mark before its cradle.
-func _marks_goal(_goal: Dictionary) -> bool:
-	return true
-
 ## The tail of a pad's name bubble lands on the pad's centre.
 const PAD_TOP := Vector3(0,0.06,0)
 
@@ -135,10 +96,8 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	super.present(state,immediate)
-	if not _arrival_window.is_empty(): WindowVisual.present(self,_arrival_window,bool(state.get("objective_done",false)),GOLD)
 	if _greeting_window.is_empty(): return
 	var lit: bool = bool(state.get("hold_pads",{}).get("near-window",false)) or bool(state.get("hold_pads",{}).get("garden-window",false))
-	WindowVisual.present(self,_greeting_window,lit,GOLD)
+	WindowVisual.present(_greeting_window,lit,GOLD)
 	_greeting_light.light_energy = Look.lamp_energy(0.65) if lit else 0.0
 	_greeting_window.pane.set_meta("lit",lit)
-	_arrival_window.pane.set_meta("lit",bool(state.get("objective_done",false)))

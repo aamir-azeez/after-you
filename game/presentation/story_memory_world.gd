@@ -83,8 +83,8 @@ func _build_memory() -> void:
 			_island_shell(0,0,5.8,3.4,Color("779983"))
 			box(Vector3(3.8,0.14,2.0),Color("ad8c67"),Vector3(0,0.08,-0.3),terrain)
 			box(Vector3(3.8,1.85,0.12),Color("e2d6b6"),Vector3(0,0.95,-1.25),terrain)
-			var window := WindowVisual.build(self,terrain,Vector3(0,0.2,-1.15),1.3,Color("80664e"),Color("729b95"),CREAM)
-			WindowVisual.present(self,window,true,Color("ffe4a5"))
+			var window := WindowVisual.build(terrain,Vector3(0,0.2,-1.15),1.3,Color("80664e"),Color("729b95"),CREAM)
+			WindowVisual.present(window,true,Color("ffe4a5"))
 			_keepsake("after-you",Vector3(0,0.16,-0.15),1.4)
 			_pair(Vector3(-0.5,0.18,0.5),true)
 		"conservatory@1":

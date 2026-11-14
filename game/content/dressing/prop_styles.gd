@@ -103,17 +103,25 @@ const SLOTS := {
 		"rope": {"edge": "rope"},
 		"rail": {"edge": "rail"},
 	},
+	# Not props: the puzzle pieces' looks (content/dressing/piece_styles.gd),
+	# each built by its kit under presentation/kit/pieces/. A piece behaves the
+	# same in every style; only its look changes.
+	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}},
+	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}},
+	"pad": {"plain": {}, "stand_spot": {}},
+	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}},
 }
 
 ## Slots that pick a kit piece's look rather than a prop to stand: the resolved
 ## dressing carries the pick as a field of the same name ("tag": "stone_tile").
-const LOOK_SLOTS := ["tag", "barrier"]
+const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal"]
 
 ## The pick for a slot that neither the theme nor the level names.
 const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
 	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
+	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line

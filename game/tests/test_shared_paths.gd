@@ -69,6 +69,14 @@ extends SceneTree
 ##     sounds (ChapterSoundMap.cues) first runs the tick through its refusal finder
 ##     (presentation/barrier_refusals.gd, annotate()), so a push rattles alike live,
 ##     as the memory and in replays.
+## (u) piece styles: a pad, lever, selector or goal looks the way
+##     content/dressing/piece_styles.gd resolves it (a pin, the dressing, its
+##     theme, the default) and is built by its kit under presentation/kit/pieces/.
+##     Only the scripts in PIECE_BUILDERS preload a piece kit, only those in
+##     PIN_READERS read the descriptor's pins, a world that extends a piece
+##     builder is in PIECE_OVERRIDES with what it adds, and no script keeps the
+##     old per-world switches ("lever_looks", "stand_spots"). test_piece_styles.gd,
+##     which must stay in CI, builds every style once.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -320,8 +328,6 @@ const PAIR_TAGS_OWNER := "res://presentation/cooperative_world.gd"
 ## keep_clear) or a world hook (_mark_stair, _marks_goal).
 const OWNER_MARK_OVERRIDES := {
 	"res://presentation/cooperative_world.gd": "builds the marks (build), records a stand spot's own mark (record), and holds the default hooks",
-	"res://presentation/long_way_home_world.gd": "every window goal's cradle carries its owner's mark (_marks_goal)",
-	"res://presentation/tide_world.gd": "only the harbour lantern's cradle carries its owner's mark (_marks_goal)",
 	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); the ladder top's mark steps east of a bell frame that hides it (_mark_stair); marks keep off the notch (keep_clear)",
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
@@ -347,7 +353,7 @@ const FLAT_DIAMONDS := {
 	"res://presentation/relay_world.gd": [1, "Relay Isles' plate glyphs: plates either spirit presses"],
 	"res://presentation/first_steps_world.gd": [1, "First Steps' control glyphs: controls either spirit uses"],
 	"res://presentation/lighthouse_world.gd": [2, "the emitter pad's glyph and the path selector's pointer"],
-	"res://presentation/kit/lever_looks.gd": [1, "a valve wheel's pointer head"],
+	"res://presentation/kit/pieces/selector.gd": [1, "a valve wheel's pointer head"],
 }
 ## Rings the size of the second spirit's mark drawn outside the kit: how many, and why.
 const MARK_SIZED_RINGS := {
@@ -372,8 +378,31 @@ const SHADER_PLACED := "\\bcustom_aabb\\b|\\bset_instance_shader_parameter\\("
 ## can't express), and why. Empty: every one today is a fall.
 const SHADER_PLACED_ALLOWED := {}
 
+## (u) The piece style resolver, the piece kits, and who uses them.
+const PIECE_STYLES := "res://content/dressing/piece_styles.gd"
+const PIECE_KITS := "res://presentation/kit/pieces/"
+## Scripts that preload a piece kit, with why.
+const PIECE_BUILDERS := {
+	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
+	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
+}
+## Scripts that read a descriptor's pins themselves, with why.
+const PIN_READERS := {
+	"res://content/blocks/defaults.gd": "fills the pins from the styles a chapter's blocks name",
+}
+## Worlds that extend a piece builder, with what they add, or why they still
+## draw one piece themselves.
+const PIECE_OVERRIDES := {
+	"res://presentation/wishing_well_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad): it moves with the well's rig, so it stays with it; every other pad comes from the kit",
+	"res://presentation/journey_world.gd": "a selector's value bubble over its lever (_build_selector)",
+	"res://presentation/tide_world.gd": "a valve's water sign (_build_selector) and every lever's on lamp (_build_lever)",
+	"res://presentation/long_way_home_world.gd": "the porch and garden pads' word labels and the cables to the greeting window (_build_physical_pad)",
+}
+## The base builders the overrides extend.
+const PIECE_BASES := ["res://presentation/lighthouse_world.gd", "res://presentation/cooperative_world.gd"]
+
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect"]
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles"]
 
 ## Scripts that name the wallet read only to add request headers, never reading its reply:
 ## rooms_api.gd adds the face version header (backend v2/face-packs.ts), so a wardrobe read
@@ -411,6 +440,7 @@ func _initialize() -> void:
 	_falls()
 	_level_hints()
 	_route_barriers()
+	_piece_styles()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -844,6 +874,32 @@ func _falls() -> void:
 		if path.get_file() == FALL_SHADER: continue
 		_check(_found(FALL_UNIFORMS, FileAccess.get_file_as_string(path)) == 0, "%s declares a falling effect's clock or seed: build the fall as a recipe for presentation/kit/fall_effect.gd" % path)
 
+# (u) Piece styles -------------------------------------------------------------
+
+func _piece_styles() -> void:
+	var builders := {}
+	var readers := {}
+	var overrides := {}
+	for path: String in _sources:
+		if path.begins_with("res://tests/") or path.begins_with(PIECE_KITS) or path == PIECE_STYLES: continue
+		var source: String = _sources[path]
+		_check(_found("\"(?:lever_looks|stand_spots)\"|\\.(?:lever_looks|stand_spots)\\b|kit/lever_looks\\.gd", source) == 0, "%s keeps a per-world piece switch: pin or pick a piece style (content/dressing/piece_styles.gd)" % path)
+		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal)\\.gd\"", source) > 0:
+			builders[path] = true
+			_check(PIECE_BUILDERS.has(path), "%s builds a piece itself: worlds build pieces through cooperative_world and lighthouse_world, or add it to PIECE_BUILDERS with why" % path)
+		if _found("\\.get\\(\\s*\"piece_styles\"|\\[\"piece_styles\"\\]|\\.piece_styles\\b|\\bPieceStyles\\.PINS\\b", source) > 0:
+			readers[path] = true
+			_check(PIN_READERS.has(path), "%s reads piece pins itself: ask content/dressing/piece_styles.gd style(), or add it to PIN_READERS with why" % path)
+		if path not in PIECE_BASES and _found("\\bfunc\\s+_(?:build_bell|build_lever|build_selector|build_physical_pad)\\(", source) > 0:
+			overrides[path] = true
+			_check(PIECE_OVERRIDES.has(path), "%s extends a piece builder: style the piece through content/dressing/piece_styles.gd, or add it to PIECE_OVERRIDES with what it adds" % path)
+	for path: String in PIECE_BUILDERS:
+		_check(builders.has(path), "PIECE_BUILDERS names %s, which preloads no piece kit now: delete it" % path)
+	for path: String in PIN_READERS:
+		_check(readers.has(path), "PIN_READERS names %s, which reads no pins now: delete it" % path)
+	for path: String in PIECE_OVERRIDES:
+		_check(overrides.has(path), "PIECE_OVERRIDES names %s, which extends no piece builder now: delete it" % path)
+
 # (t) Level hints --------------------------------------------------------------
 
 ## (t) Route barriers: one kit, one keeper, overrides listed, and every turn's
@@ -900,7 +956,7 @@ func _level_hints() -> void:
 		_check(_flat_diamonds(str(_sources.get(path, ""))) > 0, "FLAT_DIAMONDS names %s, which draws no flat diamond now: delete it" % path)
 	for path: String in MARK_SIZED_RINGS:
 		_check(_found(MARK_RING, str(_sources.get(path, ""))) > 0, "MARK_SIZED_RINGS names %s, which draws no such ring now: delete it" % path)
-	_check(marks.size() >= 5 and tags.size() >= 1, "The scripts that mark owners and override pair tags are found: %d, %d" % [marks.size(), tags.size()])
+	_check(marks.size() >= 3 and tags.size() >= 1, "The scripts that mark owners and override pair tags are found: %d, %d" % [marks.size(), tags.size()])
 
 ## A ring the size of the second spirit's mark: a world ring() or a kit ring mesh of 13 cm.
 const MARK_RING := "\\b(?:ring|ring_mesh)\\(\\s*0\\.13\\b"

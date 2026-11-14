@@ -5,11 +5,12 @@ const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
-const StandSpot = preload("res://presentation/kit/stand_spot.gd")
 ## Matching gate tags come from the world kit (ownership marks: OwnerMark).
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
-## A lever's look (a winch, a bolt) where the descriptor's "lever_looks" names one.
-const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
+## Pads, levers and selectors in their styles (content/dressing/piece_styles.gd).
+const PadPiece = preload("res://presentation/kit/pieces/pad.gd")
+const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
+const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
 ## Gates, stair chains, zone ropes and locks: why a pip is refused.
 const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
@@ -19,15 +20,14 @@ const GLANCE_BACK := 0.6
 var chapter_definition: Dictionary = {}
 var displayed_stage_id := ""
 var _physical_pads: Dictionary = {}
-## Pressure pad id -> its StandSpot, in a chapter whose descriptor has
-## "stand_spots"; _physical_pads holds the spot's rim.
-var _stand_spots: Dictionary = {}
+## Pad id -> its piece (kit/pieces/pad.gd); _physical_pads holds its rim.
+var _pad_pieces: Dictionary = {}
 ## Cables and ropes laid on the floors this stage (_floor_cable).
 var _floor_cables: Array = []
 var _physical_levers: Dictionary = {}
-## Levers and selectors built with a look: id -> its LeverLooks. Their
-## _physical_levers entry is the look's anchor, which never tilts.
-var _lever_looks: Dictionary = {}
+## Lever and selector id -> its piece (kit/pieces/lever.gd, selector.gd);
+## _physical_levers holds its anchor.
+var _lever_pieces: Dictionary = {}
 var _physical_balls: Dictionary = {}
 var _ball_trails: Dictionary = {}
 var _ball_materials: Dictionary = {}
@@ -68,10 +68,10 @@ func show_stage(stage: Dictionary) -> void:
 	_goal_beacon = null
 	_glance_left = 0.0
 	_physical_pads.clear()
-	_stand_spots.clear()
+	_pad_pieces.clear()
 	_floor_cables.clear()
 	_physical_levers.clear()
-	_lever_looks.clear()
+	_lever_pieces.clear()
 	_physical_balls.clear()
 	_ball_trails.clear()
 	_ball_materials.clear()
@@ -187,6 +187,10 @@ func show_stage(stage: Dictionary) -> void:
 func _descriptor() -> Dictionary:
 	return descriptor_override if not descriptor_override.is_empty() else ChapterIndex.data(_chapter_key())
 
+## A piece's style, its descriptor's pin first (content/dressing/piece_styles.gd).
+func _piece_style(slot: String, id: String) -> String:
+	return PieceStyles.style(slot, id, _descriptor(), dressing)
+
 ## The descriptor's "goal_beacon" marks where each turn of the stage ends
 ## (kit/goal_beacon.gd), built hidden: the screen shows it in live play.
 func _build_goal_beacon(view: Dictionary) -> void:
@@ -238,8 +242,8 @@ func _focus_point() -> Vector3:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	if is_instance_valid(_goal_beacon): keep.append(_goal_beacon)
-	# The parts of a look a pull moves stay whole; its frame folds.
-	for look: RefCounted in _lever_looks.values(): keep.append_array(look.moving_parts())
+	# The parts of a piece that move, light or change stay whole; the rest folds.
+	for piece: RefCounted in _lever_pieces.values() + _pad_pieces.values(): keep.append_array(piece.moving_parts())
 	# The barriers' mesh shows and wiggles piece by piece; the ball rings follow the balls.
 	keep.append_array(route_barriers.moving_nodes())
 	return keep
@@ -410,60 +414,38 @@ func _stair_frame(r: Array, from_height: float, rise: float, along_x: bool) -> v
 		var top := foot.lerp(head, t)
 		Primitives.mesh_node(Primitives.shared_mesh("box", 0.035, 0.62, 0.035), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
 
-## Whether `entity` is one of the stage's pressure pads and the chapter
-## marks them with stand spots (descriptor "stand_spots").
+## Whether `entity` is one of the stage's pressure pads drawn as a stand spot.
 func _wears_stand_spot(view: Dictionary, entity: Dictionary) -> bool:
-	if not bool(_descriptor().get("stand_spots", false)): return false
 	for pad: Dictionary in view.get("pressure_pads", []):
-		if pad.id == entity.get("id"): return true
+		if pad.id == entity.get("id"): return _piece_style("pad", str(pad.id)) == "stand_spot"
 	return false
 
 ## Whether a seat prop stands on pad `pad_id` (journey_world's "seats").
 func _seated(_pad_id: String) -> bool:
 	return false
 
+## A pressure pad or a ball pad (heavy, always plain) in its style
+## (kit/pieces/pad.gd); a stand spot records its owner's mark.
 func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
-	var at := _at(pad)
-	var color := GOLD if heavy or pad.get("owner_slot", "") == "p0" else TEAL
-	if not heavy and bool(_descriptor().get("stand_spots", false)):
-		_build_stand_spot(pad, at, color)
-		return
-	cylinder(float(pad.radius_cm) / 100.0, 0.055, color.darkened(0.25), at + Vector3(0, 0.025, 0), terrain)
-	var outline := ring(float(pad.radius_cm) / 100.0, color, at + Vector3(0, 0.065, 0), terrain)
-	_physical_pads[pad.id] = outline
-	if heavy: ring(0.16, CREAM, at + Vector3(0, 0.06, 0), terrain)
+	var style := "plain" if heavy else _piece_style("pad", str(pad.id))
+	var piece: RefCounted = PadPiece.build(style, _at(pad), float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "heavy": heavy, "id": str(pad.id)})
+	_pad_pieces[pad.id] = piece
+	_physical_pads[pad.id] = piece.rim
+	if piece.spot != null: owner_marks.record(str(pad.owner_slot), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
 
-## A pressure pad drawn as a stand spot (kit/stand_spot.gd): exactly the pad's
-## radius, with the owner's mark on its disc.
-func _build_stand_spot(pad: Dictionary, at: Vector3, color: Color) -> void:
-	var spot := StandSpot.new()
-	terrain.add_child(spot)
-	spot.build(at, float(pad.radius_cm) / 100.0, str(pad.owner_slot), color, LIGHT_COLOR)
-	spot.name = "StandSpot_" + str(pad.id)
-	_physical_pads[pad.id] = spot.rim
-	_stand_spots[pad.id] = spot
-	owner_marks.record(str(pad.owner_slot), &"spot", str(pad.id), spot.mark.position, spot)
-
-## A valve look's dial marks for a selector (kit/lever_looks.gd): per value,
+## A valve's dial marks for a selector (kit/pieces/selector.gd): per value,
 ## how many bands; one each by default.
 func _look_marks(control: Dictionary) -> Array:
 	return Array(control.get("values", [])).map(func(_value: Variant) -> int: return 1)
 
+## A lever or a selector in its style (kit/pieces/lever.gd, selector.gd).
 func _build_lever(lever: Dictionary) -> void:
-	var at := _at(lever)
-	var look_kind := str(_descriptor().get("lever_looks", {}).get(str(lever.id), ""))
-	if look_kind in (LeverLooks.SELECTOR_KINDS if str(lever.get("kind", "")) == "selector" else LeverLooks.LEVER_KINDS):
-		var look := LeverLooks.build(look_kind, at, GOLD if lever.owner_slot == "p0" else TEAL, terrain, _look_marks(lever))
-		_lever_looks[lever.id] = look
-		_physical_levers[lever.id] = look.anchor
-		return
-	cylinder(0.18, 0.2, Color("728788"), at + Vector3(0, 0.1, 0), terrain)
-	var pivot := Node3D.new()
-	pivot.position = at + Vector3(0, 0.2, 0)
-	terrain.add_child(pivot)
-	box(Vector3(0.055, 0.40, 0.055), CREAM, Vector3(0, 0.2, 0), pivot)
-	sphere(0.09, GOLD if lever.owner_slot == "p0" else TEAL, Vector3(0, 0.4, 0), pivot)
-	_physical_levers[lever.id] = pivot
+	var slot := PieceStyles.control_slot(lever)
+	var options := {"owner": str(lever.owner_slot), "id": str(lever.id), "values": Array(lever.get("values", [])), "marks": _look_marks(lever)}
+	var kit: Script = SelectorPiece if slot == "selector" else LeverPiece
+	var piece: RefCounted = kit.build(_piece_style(slot, str(lever.id)), _at(lever), terrain, options)
+	_lever_pieces[lever.id] = piece
+	_physical_levers[lever.id] = piece.anchor
 
 ## Gate links: cables this wide, their centres this high.
 const LINK_WIDTH := 0.025
@@ -543,9 +525,10 @@ func _mark_stair(stair: Dictionary) -> Dictionary:
 	var reach := float(OwnerMark.KINDS[&"stair"].reach)
 	return {"anchor": entrance, "away": Vector3.LEFT if along_x else Vector3.FORWARD, "kind": &"stair", "head": top + (Vector3.RIGHT if along_x else Vector3.BACK) * reach}
 
-## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd).
-func _marks_goal(_goal: Dictionary) -> bool:
-	return false
+## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd):
+## its style says (kit/pieces/goal.gd MARKED).
+func _marks_goal(goal: Dictionary) -> bool:
+	return _piece_style("goal", str(goal.get("id", ""))) in GoalPiece.MARKED
 
 ## Scenery of the world's own that pair tags and ownership marks keep clear
 ## of (kit/pair_tags.gd, kit/owner_mark.gd): the route barriers by default.
@@ -624,14 +607,12 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		var trail: Node3D = _ball_trails[id]
 		trail.tint = material.albedo_color
 		trail.set_motion_allowed(str(prop.get("status", "")) == "free" and str(prop.get("socket_id", "")).is_empty(), immediate)
-	for id: String in _physical_levers:
-		if _lever_looks.has(id): _lever_looks[id].set_pulled(bool(state.get("levers", {}).get(id, false)), immediate or reduced_motion)
-		else: _physical_levers[id].rotation.z = -0.6 if state.get("levers", {}).get(id, false) else 0.6
+	for id: String in _lever_pieces: _lever_pieces[id].set_pulled(bool(state.get("levers", {}).get(id, false)), immediate or reduced_motion)
 	for id: String in _hatches: _hatches[id].visible = not state.get("levers", {}).get(id, false)
 	for id: String in _physical_pads:
 		var pressed: bool = state.get("hold_pads", {}).get(id, false)
 		_glow(_physical_pads[id], LIGHT_COLOR, 1.0 if pressed else 0.0)
-		if _stand_spots.has(id): _stand_spots[id].set_held(pressed)
+		if _pad_pieces.has(id): _pad_pieces[id].set_held(pressed)
 	route_barriers.set_reduced_motion(reduced_motion)
 	# A new push into a barrier (the snapshot's "refused") bumps the spirit back.
 	for event: Variant in route_barriers.present(state):
@@ -668,8 +649,8 @@ func _camera_center() -> Vector3:
 	return target
 
 func _advance_camera(delta: float) -> void:
-	for id: String in _lever_looks:
-		if _lever_looks[id].moving(): _lever_looks[id].advance(delta)
+	for id: String in _lever_pieces:
+		if _lever_pieces[id].moving(): _lever_pieces[id].advance(delta)
 	if route_barriers.moving(): route_barriers.advance(delta)
 	if _uses_scrolling_camera():
 		# Authored framing advances once per rendered frame. Snapshot delivery

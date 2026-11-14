@@ -10,8 +10,10 @@ extends RefCounted
 ##   stage_copy    for a family whose stage HUD reads it (journey): each stage's
 ##                 title from its definition, the first turn's hint from the
 ##                 first block that has one and the second turn's from the last
-##   lever_looks   a lever or selector block's "look" (kit/lever_looks.gd), whose
-##                 sounds follow (services/sound_cues.gd LOOK_CUES)
+##   piece_styles  the "style" a pad, lever, selector or bell names, pinned to
+##                 that piece (content/dressing/piece_styles.gd); a piece that
+##                 names none takes the dressing's or theme's pick. A lever's or
+##                 selector's sounds follow its style (services/sound_cues.gd LOOK_CUES)
 ##   water_levels  a selector block with "water": true, its values in order
 ## A cooperative chapter's hints are its hashed definition's, so it gets none.
 
@@ -35,8 +37,9 @@ const BLOCKS := {
 	"selector": {"cues": ["switch_set"]},
 	"raw": {"cues": []},
 }
-## Fields a block may give a lever or selector, read here only.
-const LOOK_FIELDS := ["look", "water"]
+## Fields a block may give a piece, read here only: never part of the
+## expanded definition, so a style never changes a hash.
+const LOOK_FIELDS := ["style", "water"]
 
 ## Fills the descriptor `data` in place from its block source; does nothing
 ## without one. Only fields still at their empty default are filled.
@@ -46,7 +49,7 @@ static func fill(data: Dictionary) -> void:
 	var copy := stage_copy(source)
 	if Families.row(str(data.get("family", ""))).get("stage_hud", "") == "stage_copy":
 		data.stage_copy = _over(copy, data.stage_copy)
-	data.lever_looks = _over(looks(source), data.lever_looks)
+	data.piece_styles = _over(styles(source), data.piece_styles)
 	data.water_levels = _over(water_levels(source), data.water_levels)
 
 ## The block source a descriptor names, or {}. It must be a method of the
@@ -82,11 +85,12 @@ static func missing_copy(source: Dictionary) -> Array:
 		if not copied.has(str(stage.id)): missing.append(str(stage.id))
 	return missing
 
-## {control id: look} from lever and selector blocks that name one.
-static func looks(source: Dictionary) -> Dictionary:
+## {piece id: style} from every pad, lever, selector and bell a block places
+## that names a "style".
+static func styles(source: Dictionary) -> Dictionary:
 	var result: Dictionary = {}
-	for spec: Dictionary in _controls(source):
-		if spec.has("look"): result[str(spec.id)] = str(spec.look)
+	for spec: Dictionary in _pieces(source):
+		if spec.has("style"): result[str(spec.id)] = str(spec.style)
 	return result
 
 ## {selector id: its values in order} for selector blocks marked as water.
@@ -98,11 +102,19 @@ static func water_levels(source: Dictionary) -> Dictionary:
 
 ## Every lever and selector placed by a block, standalone or inline.
 static func _controls(source: Dictionary) -> Array:
+	return _placed(source, ["lever", "selector"], ["lever", "second_lever", "selector", "matches"])
+
+## Every pad, lever, selector and bell placed by a block, standalone or inline.
+static func _pieces(source: Dictionary) -> Array:
+	return _placed(source, ["pad", "lever", "selector", "ring_bell"], ["pad", "lever", "second_lever", "selector", "matches"])
+
+## Blocks named `blocks` themselves, and the inline pieces in `fields` of any block.
+static func _placed(source: Dictionary, blocks: Array, fields: Array) -> Array:
 	var found: Array = []
 	for stage: Dictionary in source.get("stages", []):
 		for block: Dictionary in stage.get("blocks", []):
-			if str(block.get("block", "")) in ["lever", "selector"]: found.append(block)
-			for field: String in ["lever", "second_lever", "selector", "matches"]:
+			if str(block.get("block", "")) in blocks: found.append(block)
+			for field: String in fields:
 				if block.get(field) is Dictionary: found.append(block[field])
 	return found
 

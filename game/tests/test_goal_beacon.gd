@@ -193,7 +193,9 @@ func _opt_in() -> void:
 	for look: String in ["plain", "stand", "seated"]:
 		var stand := look != "plain"
 		descriptor = ChapterIndex.data(key).duplicate(true)
-		descriptor.stand_spots = stand
+		if not stand:
+			for stage: Dictionary in level.stages:
+				for pad: Dictionary in stage.get("pressure_pads", []): descriptor.piece_styles[pad.id] = "plain"
 		if look == "seated": descriptor.seats = {"bollard-pad": {"kind": "bollard", "size": 1.6}}
 		world = Registry.world_script(key).new()
 		world.descriptor_override = descriptor

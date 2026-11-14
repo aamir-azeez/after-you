@@ -9,6 +9,8 @@ const DATA := {
 	"stairs": "timber",
 	"bridges": "timber",
 	"fireflies": 14,
+	# Every goal is a window of the house (content/dressing/piece_styles.gd).
+	"goal": "window",
 	"props": {"*": [
 		# Source court: trees and a lamp behind, a hedge to the west.
 		{"kind": "bank", "rect": [-660, -440, -256, -352], "surface": "source-court", "height": 12},

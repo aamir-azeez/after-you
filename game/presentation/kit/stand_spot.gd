@@ -1,7 +1,7 @@
 extends Node3D
-## World kit: where a spirit stands to hold a pressure pad. A chapter turns it
-## on with its descriptor's "stand_spots" (content/chapters/index.gd), and
-## cooperative_world builds one on each of the stage's pressure pads.
+## World kit: where a spirit stands to hold a pressure pad: the pad kit's
+## "stand_spot" style (kit/pieces/pad.gd), which a level picks like any piece
+## style (content/dressing/piece_styles.gd).
 ##
 ## A bright filled disc exactly the pad's radius_cm across under a stronger
 ## rim whose outer edge is that same radius, with the owner's mark at its

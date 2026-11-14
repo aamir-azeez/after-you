@@ -233,10 +233,10 @@ func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> 
 			world.present(turned, true)
 			_frames(world, 2)
 			var top: Vector3
-			if world._lever_looks.has(id):
+			if world._lever_pieces[id].style == "valve":
 				# A valve: the tail lands on its arrow's top, on the wheel's axis,
 				# and the arrow points at the value.
-				var look: RefCounted = world._lever_looks[id]
+				var look: RefCounted = world._lever_pieces[id]
 				var pointer: MeshInstance3D = look.wheel().find_child("WheelPointer", false, false)
 				var tip: AABB = pointer.global_transform * pointer.get_aabb()
 				var axis: Vector3 = world.terrain.to_local(look.wheel().global_position)
@@ -247,7 +247,7 @@ func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> 
 				var knob := _knob(world._physical_levers[id])
 				if not _check(knob != null, "%s: the %s lever has a knob" % [label, id]): continue
 				top = world.terrain.to_local(knob.global_position) + Vector3(0, (knob.mesh as SphereMesh).radius * knob.global_basis.y.length(), 0)
-			_check(bubble.anchor.distance_to(top) < (0.005 if world._lever_looks.has(id) else 0.001), "%s: the %s tail lands on the top of its lever's knob at %s (anchor %s, knob top %s)" % [label, id, value, bubble.anchor, top])
+			_check(bubble.anchor.distance_to(top) < (0.005 if world._lever_pieces[id].style == "valve" else 0.001), "%s: the %s tail lands on the top of its lever's knob at %s (anchor %s, knob top %s)" % [label, id, value, bubble.anchor, top])
 			_tips(bubbles, "%s, %s at %s" % [label, id, value])
 	world.present(state, true)
 	_frames(world, 2)

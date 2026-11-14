@@ -81,10 +81,11 @@ const OPTIONAL := {
 	## value, shown upper-cased, where it differs from the catalog's own value.
 	## Names are PlayerCopy constants; the catalog value never changes.
 	"selector_names": {},
-	## {lever or selector id: a presentation/kit/lever_looks.gd kind ("winch",
-	## "bolt" for a lever, "valve" for a selector)}: the control drawn as that
-	## machine instead of the plain handle. Visual only.
-	"lever_looks": {},
+	## {piece id: style}: pins one pad, lever, selector or goal to a style
+	## (content/dressing/prop_styles.gd SLOTS "pad", "lever", "selector",
+	## "goal"), over the dressing's and theme's pick for its slot
+	## (content/dressing/piece_styles.gd). Visual only.
+	"piece_styles": {},
 	## {lever id: the action button's words at that lever}, where they differ
 	## from the simulation's own ("Pull lever"). PlayerCopy constants.
 	"lever_actions": {},
@@ -96,11 +97,6 @@ const OPTIONAL := {
 	## at the screen's edge while they are all off screen, and a glance at the
 	## nearest when a turn's first try starts with it off screen.
 	"goal_beacon": false,
-	## true draws each pressure pad as a stand spot
-	## (presentation/kit/stand_spot.gd): a bright disc exactly the pad's
-	## radius_cm with a firm rim, lit and pressed while the pad is held, so a
-	## step or post wider than its pad shows exactly where a spirit counts.
-	"stand_spots": false,
 	## false when the world draws every closed stair itself (folding, or under
 	## water), so no stair gets the route barriers' chain and a push into a
 	## closed stair never rattles (presentation/kit/route_barriers.gd). Owner
@@ -115,7 +111,7 @@ const OPTIONAL := {
 	"leads_picker": false,
 	## [catalog script, static method]: the definition written with puzzle
 	## blocks (core/blocks/stage_blocks.gd) before it is expanded. Its blocks'
-	## default stage copy, lever looks and water levels fill whichever of
+	## default stage copy, piece styles and water levels fill whichever of
 	## those this descriptor leaves out (content/blocks/defaults.gd).
 	"block_source": [],
 }

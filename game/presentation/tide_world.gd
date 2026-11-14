@@ -31,12 +31,12 @@ const SEA_GATE_Z := 5.20
 ## The sea chamber (the water block's "chamber" body) stands in walls to here.
 const CHAMBER_WALL_TOP := 0.74
 const SPOUT := Color(0.80, 0.93, 0.95, 0.86)
-const STONE := Color("a8947a")
+const STONE := Parts.STONE
 const STONE_DARK := Color("7d6d58")
-const TIMBER := Color("7a5d45")
-const PILE := Color("5f4a38")
+const TIMBER := Parts.TIMBER
+const PILE := Parts.TIMBER_DARK
 const SAND := Color("e3cf9f")
-const BRASS := Color("b8914f")
+const BRASS := Parts.BRASS
 const COPING := Color("dccaa4")
 const ROPE := Color("d1b98c")
 ## Walls under each tier, by deck height in cm: pale sand, terracotta, honey.
@@ -464,17 +464,17 @@ func _piles(route: Dictionary) -> void:
 # --- Wheels and levers ---
 
 ## Every selector names its values in the shared speech bubble over its lever
-## (journey_world). The three- and four-way water wheels are valves
-## (descriptor "lever_looks"), the control itself.
+## (journey_world). The three- and four-way water wheels are valves (pinned
+## in the descriptor's "piece_styles"), the control itself.
 func _build_selector(control: Dictionary) -> void:
 	super._build_selector(control)
-	if control.values.size() >= 3 and _lever_looks.has(control.id): _register_valve(control)
+	if control.values.size() >= 3 and _lever_pieces[control.id].style == "valve": _register_valve(control)
 
-## A water wheel drawn as a valve (descriptor "lever_looks"): the valve is the
-## control, on its own spot, and turns itself; it carries the water's sign on
-## the post behind it, small enough to stay clear of a spirit at the wheel.
+## A water wheel drawn as a valve: the valve is the control, on its own spot,
+## and turns itself; it carries the water's sign on the post behind it, small
+## enough to stay clear of a spirit at the wheel.
 func _register_valve(control: Dictionary) -> void:
-	var look: RefCounted = _lever_looks[control.id]
+	var look: RefCounted = _lever_pieces[control.id]
 	_wheels[control.id] = {"wheel": look.wheel(), "values": control.values.duplicate()}
 	if WHEEL_WATER.has(control.id):
 		var sign := _water_icon(str(control.id), look.sign_point(), WHEEL_WATER[control.id])
@@ -509,59 +509,17 @@ func _water_icon(id: String, at: Vector3, tint: Color) -> Node3D:
 			box(Vector3(0.17, 0.07, 0.02), tint.lightened(0.2), Vector3(0, -0.05, 0.005), icon)
 	return icon
 
+## Every lever and selector takes its style (the dressing's brass, or a pinned
+## machine); a lever also carries a lamp that says whether it is on, whatever
+## its style.
 func _build_lever(lever: Dictionary) -> void:
-	var before := terrain.get_child_count()
 	super._build_lever(lever)
-	# The housing is warm brass under a timber collar, not grey stone; a lever
-	# with a look (a winch, a bolt) stands on its own base.
-	if terrain.get_child_count() > before and not _lever_looks.has(lever.id):
-		var housing := terrain.get_child(before) as MeshInstance3D
-		if housing != null: housing.material_override = Primitives.shared_material(BRASS)
-		cylinder(0.19, 0.04, TIMBER, _at(lever) + Vector3(0, 0.19, 0), terrain)
 	if lever.get("kind", "") == "selector": return
 	# Levers toggle, so a lamp beside the handle says plainly whether it is on.
 	var lamp := sphere(0.07, Color("4a4038"), _at(lever) + Vector3(0.24, 0.22, 0.0), terrain)
 	lamp.name = "LeverLamp_" + str(lever.id)
 	box(Vector3(0.03, 0.18, 0.03), TIMBER, _at(lever) + Vector3(0.24, 0.09, 0.0), terrain)
 	_lever_lamps[lever.id] = {"lamp": lamp, "color": GOLD if lever.owner_slot == "p0" else TEAL}
-
-# --- Goal: the bell, or the harbour lantern on the mole ---
-
-func _build_bell(goal: Dictionary) -> void:
-	if str(goal.get("id", "")) != "harbour-lantern":
-		super._build_bell(goal)
-		return
-	var cradle := Node3D.new()
-	cradle.name = "HarbourLanternGoal"
-	cradle.position = point(goal.position_cm)
-	terrain.add_child(cradle)
-	cylinder(float(goal.radius_cm) / 100.0, 0.05, Color("6b8984"), Vector3(0, 0.025, 0), cradle)
-	_bell_ring = ring(float(goal.radius_cm) / 100.0, CREAM, Vector3(0, 0.06, 0), cradle)
-	# A tall harbour lantern on a mole stone well north of the standing point,
-	# so a spirit lighting it never covers its head from the follow camera.
-	var base := Vector3(0, 0, -0.85)
-	box(Vector3(0.50, 0.22, 0.40), STONE, base + Vector3(0, 0.11, 0), cradle)
-	cylinder(0.05, 1.40, TIMBER.darkened(0.2), base + Vector3(0, 0.92, 0), cradle)
-	var head := base + Vector3(0, 1.78, 0)
-	box(Vector3(0.40, 0.05, 0.40), TIMBER.darkened(0.25), head + Vector3(0, -0.24, 0), cradle)
-	for corner: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-		box(Vector3(0.035, 0.46, 0.035), TIMBER.darkened(0.25), head + Vector3(corner.x * 0.16, 0, corner.y * 0.16), cradle)
-	for side: Vector3 in [Vector3(0, 0, 0.16), Vector3(0, 0, -0.16), Vector3(0.16, 0, 0), Vector3(-0.16, 0, 0)]:
-		var pane := box(Vector3(0.012 if side.x != 0.0 else 0.30, 0.40, 0.012 if side.z != 0.0 else 0.30), Color(1.0, 0.92, 0.72, 0.42), head + side, cradle)
-		pane.name = "LanternPane"
-		pane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_bell = sphere(0.10, Color("e6c98a"), head, cradle)
-	_bell.name = "HarbourLantern"
-	_glow(_bell, LIGHT_COLOR, 0.0)
-	box(Vector3(0.46, 0.06, 0.46), TIMBER.darkened(0.25), head + Vector3(0, 0.25, 0), cradle)
-	box(Vector3(0.28, 0.08, 0.28), TIMBER.darkened(0.25), head + Vector3(0, 0.31, 0), cradle)
-	sphere(0.05, BRASS, head + Vector3(0, 0.38, 0), cradle)
-	_court_light = OmniLight3D.new()
-	_court_light.light_color = LIGHT_COLOR
-	_court_light.light_energy = 0.0
-	_court_light.omni_range = 4.5
-	_court_light.position = cradle.position + head + Vector3(0, 0, 0.2)
-	terrain.add_child(_court_light)
 
 # --- Gate links: tide gauges, crests and the catwalks' slack marks ---
 
@@ -652,10 +610,6 @@ func _route_anchor(route: Dictionary) -> Vector3:
 			if int(r[3]) <= int(floor[1]): return point([(r[0] + r[2]) * 0.5, r[3] + 16]) + Vector3(0, height, 0)
 			if int(r[1]) >= int(floor[3]): return point([(r[0] + r[2]) * 0.5, r[1] - 16]) + Vector3(0, height, 0)
 	return point([r[0] - 18, (r[1] + r[3]) * 0.5]) + Vector3(0, height, 0)
-
-## Only the harbour lantern's cradle carries its owner's mark.
-func _marks_goal(goal: Dictionary) -> bool:
-	return str(goal.get("id", "")) == "harbour-lantern"
 
 ## A gate's pair tags start at its route's anchor, on the floor (a stub's
 ## mouth, else before its west end), else by its far end.
@@ -1347,7 +1301,7 @@ func _mark_scenery() -> void:
 		var pad := _physical_pads[id] as MeshInstance3D
 		var radius: float = (pad.mesh as TorusMesh).outer_radius if pad.mesh is TorusMesh else 0.2
 		# A stand spot sinks while held; its pad marks where it stands free.
-		var at := LabelBubble.plane_point(_stand_spots[id].rest_rim() if _stand_spots.has(id) else pad.global_position)
+		var at := LabelBubble.plane_point(_pad_pieces[id].spot.rest_rim() if _pad_pieces.has(id) and _pad_pieces[id].spot != null else pad.global_position)
 		_add_mark(Rect2(at - Vector2(radius, radius * 0.8), Vector2(radius * 2.0, radius * 1.6)), "")
 
 func _add_mark(mark: Rect2, owner: String) -> void:

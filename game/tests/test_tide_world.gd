@@ -170,8 +170,8 @@ func _first_stage(level: Dictionary) -> void:
 	# wave sign on the post behind it, and no water blue on the first spirit's
 	# (orange) valve but that sign.
 	var hand: Node3D = world._wheels.tide.wheel
-	var valve: RefCounted = world._lever_looks.tide
-	_check(valve.kind == "valve" and absf(hand.global_position.x - 1.92) < 0.001 and absf(hand.global_position.z + 3.52) < 0.001, "The tide valve turns on the control's own spot")
+	var valve: RefCounted = world._lever_pieces.tide
+	_check(valve.style == "valve" and absf(hand.global_position.x - 1.92) < 0.001 and absf(hand.global_position.z + 3.52) < 0.001, "The tide valve turns on the control's own spot")
 	_check(world.terrain.find_child("HandWheel_tide", false, false) == null and world.terrain.find_child("WheelDial_tide", false, false) == null and world._physical_levers.tide.get_child_count() == 0, "No lever handle and no hand wheel beside it")
 	_check(hand.find_child("WheelPointer", false, false) is MeshInstance3D and (hand.find_child("WheelPointer", false, false).mesh as BoxMesh).size.z >= 0.15, "The valve's arrow is a long bar")
 	var sign: Node3D = world.terrain.find_child("WaterIcon_tide", false, false)
@@ -183,7 +183,7 @@ func _first_stage(level: Dictionary) -> void:
 	var reach: float = valve.REACH
 	_check(absf(sign_box.position.x - 1.92) <= reach and absf(sign_box.end.x - 1.92) <= reach and absf(sign_box.position.z + 3.52) <= reach and absf(sign_box.end.z + 3.52) <= reach, "The valve's sign stays inside the control's reach")
 	var spoke: MeshInstance3D = valve.wheel().find_child("ValveSpoke", false, false)
-	_check(spoke != null and (spoke.material_override as StandardMaterial3D).albedo_color.get_luminance() - valve.IRON.get_luminance() > 0.3, "The valve's spokes stand out light against its dark dial")
+	_check(spoke != null and (spoke.material_override as StandardMaterial3D).albedo_color.get_luminance() - valve.Parts.IRON.get_luminance() > 0.3, "The valve's spokes stand out light against its dark dial")
 	var blue: Array = []
 	for node: Node in valve.root.find_children("*", "MeshInstance3D", true, false):
 		var colour: Color = ((node as MeshInstance3D).material_override as StandardMaterial3D).albedo_color
@@ -252,20 +252,21 @@ func _second_stage(level: Dictionary) -> void:
 	_check(world._ramp_on == {"slipway": ["winch", "slip"]}, "Only the slipway is a ramp, lowered by the winch at slip: %s" % [world._ramp_on])
 	_check(world._route_color("sea-key") == world.GOLD and world._route_color("lock") == world.TEAL and world._route_color("basin") == world.TEAL, "Gate links take their owner's colour from the definition")
 	for lever: Dictionary in level.stages[1].levers:
-		var lift: float = world._lever_looks[lever.id].anchor_lift() if world._lever_looks.has(lever.id) else 0.20
+		var lift: float = world._lever_pieces[lever.id].anchor_lift()
 		_check(absf(world._physical_levers[lever.id].global_position.y - float(lever.height_cm) / 100.0 - lift) < 0.01, "A chain, bar, line, pin or key stands at its own stub's height: " + str(lever.id))
-	# The chains are hand winches and the bars sliding bolts (descriptor
-	# "lever_looks"); every other lever keeps its handle. A look shows the
-	# snapshot's lever, pulled or not.
+	# The chains are hand winches and the bars sliding bolts (pinned in the
+	# descriptor's "piece_styles"); every other lever keeps the dressing's
+	# brass handle. A machine shows the snapshot's lever, pulled or not.
 	var looks := {}
-	for id: String in world._lever_looks: looks[id] = world._lever_looks[id].kind
+	for id: String in world._lever_pieces:
+		if world._lever_pieces[id].style != "brass": looks[id] = world._lever_pieces[id].style
 	_check(looks == {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve"}, "The chains wind on winches, the bars slide as bolts and the water wheels are valves: %s" % [looks])
 	var pulled := state.duplicate(true)
 	pulled.levers = {"boom-chain": true, "gate-bar": true}
 	world.present(pulled, true)
-	_check(world._lever_looks["boom-chain"].shown() == 1.0 and world._lever_looks["gate-bar"].shown() == 1.0 and world._lever_looks["punt-chain"].shown() == 0.0 and world._lever_looks["sea-bar"].shown() == 0.0, "Each look shows its own lever's state")
+	_check(world._lever_pieces["boom-chain"].shown() == 1.0 and world._lever_pieces["gate-bar"].shown() == 1.0 and world._lever_pieces["punt-chain"].shown() == 0.0 and world._lever_pieces["sea-bar"].shown() == 0.0, "Each look shows its own lever's state")
 	world.present(state, true)
-	_check(world._lever_looks["boom-chain"].shown() == 0.0, "Let go in the snapshot, a look is let go")
+	_check(world._lever_pieces["boom-chain"].shown() == 0.0, "Let go in the snapshot, a look is let go")
 	for id: String in ["boom-post-pad", "gate-post-pad", "punt-post-pad"]:
 		_check(absf(world._physical_pads[id].global_position.y - 0.48 - StandSpot.RIM_LIFT) < 0.01, "A post pad sits on its raised post: " + id)
 	for problem: String in SpotChecks.shapes(world, level.stages[1]) + SpotChecks.beacon_rings(world, level.stages[1]) + SpotChecks.held(world, level.stages[1], state): _check(false, problem)
@@ -741,23 +742,23 @@ func _memory_camera(level: Dictionary) -> void:
 	_check(is_equal_approx(world._camera_center().x, -3.0), "After the wait the camera follows the live spirit again")
 	world.free()
 
-## Without the descriptor's "stand_spots" a pad keeps the shared plain look
-## (a dark disc and a ring centred on its radius): the spots are this
-## chapter's own.
+## A pad pinned "plain" keeps the shared plain look (a dark disc and a ring
+## centred on its radius): the spots are this chapter's dressing's pick, and
+## a pin wins over it.
 func _plain_pads(level: Dictionary) -> void:
 	var world: Node3D = World.new()
 	var descriptor: Dictionary = ChapterIndex.data(KEY).duplicate(true)
-	descriptor.stand_spots = false
+	for pad: Dictionary in level.stages[0].pressure_pads: descriptor.piece_styles[pad.id] = "plain"
 	world.descriptor_override = descriptor
 	root.add_child(world)
 	world.reduced_motion = true
 	world.set_process(false)
 	world.load_level(level)
 	world.show_stage(level.stages[0])
-	_check(world._stand_spots.is_empty() and world.terrain.find_children("StandSpot*", "", true, false).is_empty(), "Without stand_spots no pad wears a stand spot")
+	_check(world._pad_pieces.values().all(func(piece: RefCounted) -> bool: return piece.spot == null) and world.terrain.find_children("StandSpot*", "", true, false).is_empty(), "Pinned plain, no pad wears a stand spot")
 	for pad: Dictionary in level.stages[0].pressure_pads:
 		var ring := (world._physical_pads[pad.id] as MeshInstance3D).mesh as TorusMesh
-		_check(ring != null and is_equal_approx(ring.outer_radius, float(pad.radius_cm) / 100.0 + 0.025), "Without stand_spots a pad keeps its plain ring: " + str(pad.id))
+		_check(ring != null and is_equal_approx(ring.outer_radius, float(pad.radius_cm) / 100.0 + 0.025), "Pinned plain, a pad keeps its plain ring: " + str(pad.id))
 	world.queue_free()
 	await process_frame
 
