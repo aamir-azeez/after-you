@@ -4,14 +4,16 @@ import { DEVELOPER_BESTS } from "./developer-bests";
 
 /**
  * One board per chapter version: `<level_id>@<level_version>`. A new chapter
- * version is a new key, so it opens fresh boards. Only chapters this server
- * knows have a board, so no request can open a Durable Object by an arbitrary name.
+ * version is a new key, so it opens fresh boards. Only released chapters this
+ * server knows have a board (an unreleased one, still behind its own flag, gets
+ * its board when it ships), so no request can open a Durable Object by an
+ * arbitrary name.
  */
 export function boardKey(key: Pick<ChapterKey, "level_id" | "level_version">): string {
   return `${key.level_id}@${key.level_version}`;
 }
 
-const KEYS: readonly string[] = Object.freeze([...new Set(CHAPTERS.map(row => boardKey(row.adapter.key)))]);
+const KEYS: readonly string[] = Object.freeze([...new Set(CHAPTERS.filter(row => row.flag === "").map(row => boardKey(row.adapter.key)))]);
 
 /** Every board this server can hold, in chapter order. */
 export function boardKeys(): readonly string[] { return KEYS; }

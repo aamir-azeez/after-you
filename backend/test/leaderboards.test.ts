@@ -154,7 +154,7 @@ describe("leaderboard rules", () => {
   it("has one board per chapter version and a developers' best slot for each", () => {
     expect(new Set(boardKeys()).size).toBe(boardKeys().length);
     expect(Object.keys(DEVELOPER_BESTS).sort()).toEqual([...boardKeys()].sort());
-    for (const row of CHAPTERS) expect(boardKeys()).toContain(boardKey(row.adapter.key));
+    for (const row of CHAPTERS) expect(boardKeys().includes(boardKey(row.adapter.key)), boardKey(row.adapter.key)).toBe(row.flag === "");
     for (const key of boardKeys()) expect(developerBest(key)).toBe(bests.real[key]);
     bests.live[RELAY_BOARD] = null;
     expect(developerBest(RELAY_BOARD)).toBeNull();

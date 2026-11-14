@@ -40,6 +40,7 @@ const Shots = preload("res://tests/level_tools/stage_shots.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
+const Seven = preload("res://core/journey/seven_mechanisms.gd")
 ## Two props stand in each other when their footprints share more than this
 ## much of the smaller one's (and their heights meet): touching leaves and a
 ## lamp beside a crate are fine, one crate inside another is not.
@@ -440,6 +441,11 @@ func _needs_both(key: String) -> void:
 		var stage: Dictionary = item.view
 		var where := "%s %s" % [key, stage.stage_id]
 		_expect(not solo_finish(graph, stage, item.checkpoint, journey), "%s alone" % where, "%s: with the first pip standing still, the second still reaches the goal with it lit; give the first pip a part only it can play" % where)
+		# The first turn sees the second pip standing still at its start; on a
+		# pad there it would hold it for the first turn.
+		var second: Dictionary = item.checkpoint.get("players", {}).get(Shots.goal_slot(stage), {})
+		for pad: Dictionary in stage.get("pressure_pads", []):
+			_expect(second.is_empty() or not Seven.near(second, pad), "%s pad %s under the second pip" % [where, pad.id], "%s: the second pip starts on the pad %s, so it holds it through the first turn" % [where, pad.id])
 
 ## Whether the second pip could finish `stage` alone, the first standing still.
 static func solo_finish(graph: RefCounted, stage: Dictionary, checkpoint: Dictionary, journey: bool) -> bool:

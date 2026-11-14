@@ -76,7 +76,8 @@ func _live_turns_a_memory_control() -> void:
 	var b := _receiver(HOME)
 	if b == null: return
 	var frames: Array = Simulation.expand_recording_inputs(_fixture("long-way-home-v3-%s-b.json" % PATH))
-	for tick in range(148): b.step(_input(frames[tick]))
+	# Its own press (return selector to garden) is frame 148.
+	for tick in range(149): b.step(_input(frames[tick]))
 	_check(str(b._mechanisms.controls["path-selector"]) == "friend", "The memory turned the path selector to friend")
 	_walk(b, [64, 64])
 	var action: Dictionary = b.context_action()
@@ -86,6 +87,13 @@ func _live_turns_a_memory_control() -> void:
 	var turned_at := int(b.tick)
 	for tick in range(60): b.step({})
 	_check(str(b._mechanisms.controls["path-selector"]) == "home", "The live turn holds: the memory does not take it back (turned at tick %d)" % turned_at)
+	# The first turn's part is undone, so the stage may not complete, even
+	# with the window lit: the server's checkpoint needs the path at friend.
+	_check(not b._source_holds() and not b._may_complete(), "With the memory's path undone the stage cannot complete")
+	_walk(b, [640, 224])
+	if b.context_action().id == "ring": b.step({"interact": true})
+	for tick in range(400): b.step({})
+	_check(b._objective and not b.complete, "Played out with the window lit, the stage still does not complete")
 	var record: Dictionary = b.export_recording()
 	var initial := Registry.initial_checkpoint(HOME)
 	var first := _fixture("long-way-home-v3-%s-a.json" % PATH)

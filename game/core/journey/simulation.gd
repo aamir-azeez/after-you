@@ -160,7 +160,19 @@ func _on_closing() -> bool:
 	return _tide_rules() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
 
 func _may_complete() -> bool:
-	return not _on_closing()
+	return not _on_closing() and _source_holds()
+
+## Open controls: the live pip may undo the first turn's part (a selector its
+## readiness needs, the pad its choice stands on), so a stage completes only
+## while that part still holds on the live state, as the server's checkpoint
+## asks. Owner rules copy the memory's controls, so it always holds there.
+func _source_holds() -> bool:
+	if not _open_controls(): return true
+	var policy: Dictionary = stage.source_policy
+	if policy.kind == "choice_pad": return not Seven.choice(stage, _players, true).is_empty()
+	if policy.kind in ["route_endpoint", "signal_route"]:
+		return Seven.predicate(policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, true) and (not policy.has("endpoint") or Seven.near(_players[first_player_slot], policy.endpoint))
+	return true
 
 ## Whether this turn may be kept anywhere: a draft, a replay or an upload. A
 ## drowned turn is not (tide rules); the screen still holds it for Preview.

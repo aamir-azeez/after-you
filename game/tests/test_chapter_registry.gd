@@ -58,8 +58,12 @@ func _caps() -> Dictionary:
 		chapters.append({"level_id":d.level_id,"level_version":d.level_version,"definition_hash":d.definition_hash,
 			"premium":d.premium,"recording_version":d.recording_version,"simulation_version":4 if key == Registry.FIRST_STEPS else d.simulation_version})
 		if key == Registry.FIRST_STEPS: chapters[-1]["supported_simulation_versions"] = [4, 5]
-	return {"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,
+	var caps := {"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":true,
 		"validation":"structural_client_replay_required","chapters":chapters}
+	# A room-level-1 answer holds at most 16 chapters; more (unreleased ones
+	# included) come only from a room-level-2 server.
+	if chapters.size() > 16: caps.merge({"room_level":2,"max_join_versions":16,"max_stages":8})
+	return caps
 
 func _run() -> void:
 	_resolution_compatibility()
