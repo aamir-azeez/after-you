@@ -15,6 +15,6 @@ const DATA := {
 	## this far (its own leaf point, not the shared top anchor; it may clip
 	## the paper it passes through).
 	"leaf_mode": "sits_on_top",
-	"leaf_lift": 0.135,
+	"leaf_lift": 0.18,
 	"leaf_max": "medium",
 }
