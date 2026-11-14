@@ -9,6 +9,8 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Track = preload("res://services/race_ghost_track.gd")
 const TheirRun = preload("res://services/duel_their_run.gd")
+const BlobCodec = preload("res://services/blob_codec.gd")
+const Coordinator = preload("res://services/relay_room_coordinator.gd")
 
 var checks := 0
 var failures := 0
@@ -75,25 +77,34 @@ func _runs_again(row: Dictionary) -> bool:
 	var engine: Script = Registry.simulation_script(key)
 	var before := 0
 	var after := 0
+	# The packed run's own chain: each stage starts from the checkpoint its packed turns made.
+	var chained := Registry.previous_checkpoint(key, parts[0].pair.checkpoint)
 	for part: Dictionary in parts:
 		var pair: Dictionary = part.pair
 		var where := "%s stage %d" % [key, int(pair.stage_index)]
 		var start := Registry.previous_checkpoint(key, pair.checkpoint)
 		_check(Canonical.same(_play(key, level, pair.a, start, {}, false), pair.a), "%s: the JSON turn a plays back exactly" % where)
-		var a := _play(key, level, pair.a, start, {}, true)
-		var b := _play(key, level, pair.b, start, a, true)
-		_check(Codec.is_packed(a) and Codec.is_packed(b) and not a.has("actions") and not b.has("replay_checks"), "%s: both turns export packed" % where)
-		_check(Canonical.same(_play(key, level, pair.a, start, {}, true), a), "%s: a packed export is the same every time" % where)
-		_check(Canonical.same(Codec.actions(a), pair.a.actions) and Canonical.same(Codec.actions(b), pair.b.actions), "%s: the same runs" % where)
-		_check(a.final_state_hash == pair.a.final_state_hash, "%s: turn a ends on the same state" % where)
+		# From the same set-up the state hashes are the JSON run's own (they name the set-up's checkpoint).
+		var same_start := _play(key, level, pair.a, start, {}, true)
+		_check(Canonical.same(_play(key, level, pair.a, start, {}, true), same_start), "%s: a packed export is the same every time" % where)
+		_check(same_start.final_state_hash == pair.a.final_state_hash, "%s: turn a ends on the same state" % where)
 		var full: Dictionary = {}
 		for check: Dictionary in pair.a.replay_checks: full[int(check.tick)] = str(check.state_hash)
 		var prefixes := true
-		for check: Dictionary in Codec.checks(a): prefixes = prefixes and Codec.check_matches(check.state_hash, str(full.get(int(check.tick), "")))
+		for check: Dictionary in Codec.checks(same_start): prefixes = prefixes and Codec.check_matches(check.state_hash, str(full.get(int(check.tick), "")))
 		_check(prefixes, "%s: turn a's checks are the first bytes of the same state hashes" % where)
+		var a := _play(key, level, pair.a, chained, {}, true)
+		var b := _play(key, level, pair.b, chained, a, true)
+		var derived: Dictionary = engine.derive_checkpoint(level, chained, a, b)
+		_check(derived.get("valid", false), "%s: the packed turns make the stage's checkpoint" % where)
+		if not derived.get("valid", false): return true
+		start = chained
+		chained = derived.checkpoint
+		_check(Codec.is_packed(a) and Codec.is_packed(b) and not a.has("actions") and not b.has("replay_checks"), "%s: both turns export packed" % where)
+		_check(Canonical.same(Codec.actions(a), pair.a.actions) and Canonical.same(Codec.actions(b), pair.b.actions), "%s: the same runs" % where)
 		_check(engine.verify_recording(level, a, start).valid, "%s: packed turn a verifies" % where)
 		_check(engine.verify_recording(level, b, start, a).valid, "%s: packed turn b verifies after it" % where)
-		var packed_pair := {"stage_index": pair.stage_index, "a": a, "b": b, "checkpoint": pair.checkpoint}
+		var packed_pair := {"stage_index": pair.stage_index, "a": a, "b": b, "checkpoint": chained}
 		for role: String in ["a", "b"]:
 			var track := Track.build(key, packed_pair, role)
 			var plain_track := Track.build(key, pair, role)
@@ -106,7 +117,17 @@ func _runs_again(row: Dictionary) -> bool:
 			_check(Track.build(key, off, "a").is_empty(), "%s: a check that does not match gives no ghost" % where)
 		for record: Dictionary in [pair.a, pair.b]: before += _deflated(record)
 		for record: Dictionary in [a, b]: after += _deflated(record)
-	print("%s: %d turns, deflated %d bytes as JSON, %d packed" % [key, parts.size() * 2, before, after])
+	# The whole packed run as a board replay, a duel's run or a race ghost reads it: the blob, its parts, its proofs and the room bound.
+	var run_bytes := JSON.stringify(Canonical.normalized(chained)).to_utf8_buffer()
+	var kept := {"digest": BlobCodec.digest(run_bytes), "byte_length": run_bytes.size(), "body": Marshalls.raw_to_base64(BlobCodec.encode(run_bytes))}
+	var read := TheirRun.parts(kept, key)
+	_check(read.size() == parts.size() and Registry.simulation_script(key).verify_checkpoint(level, chained).valid and Coordinator._bounded(chained), "%s: the packed run reads back whole from its blob" % key)
+	for index in range(mini(read.size(), parts.size())):
+		for role: String in ["a", "b"]:
+			_check(Track.build(key, read[index].pair, role).points == Track.build(key, parts[index].pair, role).points, "%s stage %d turn %s: the packed run's ghost walks the same" % [key, index, role])
+	var json_bytes := JSON.stringify(Canonical.normalized(parts[-1].pair.checkpoint)).to_utf8_buffer()
+	print("%s: %d turns, deflated %d bytes as JSON, %d packed; whole run %d raw / %d deflated as JSON, %d / %d packed" % [key, parts.size() * 2, before, after,
+		json_bytes.size(), json_bytes.compress(FileAccess.COMPRESSION_DEFLATE).size(), run_bytes.size(), run_bytes.compress(FileAccess.COMPRESSION_DEFLATE).size()])
 	return true
 
 func _play(key: String, level: Dictionary, record: Dictionary, start: Dictionary, prior: Dictionary, packed: bool) -> Dictionary:
