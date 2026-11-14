@@ -4,6 +4,7 @@ const Screen = preload("res://presentation/safety_screen.gd")
 const Client = preload("res://services/safety_client.gd")
 const Store = preload("res://services/safety_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 var checks := 0
 var failures := 0
 
@@ -105,7 +106,22 @@ func _run() -> void:
 	await frames()
 	check(button(screen, "Report this player") == null and button(screen, "Back to your photo") != null, "photo terms view has no implicit report/block action")
 	check((button(screen,"Back to your photo").get_theme_stylebox("normal") as StyleBoxFlat).bg_color == Color("eceddb") and button(screen,"Back to your photo").icon == null,"returning to the photo uses the primary action rather than a cancel arrow")
-	var title := screen._content.get_child(0) as Label
+	# The rules card over the photo (rules page board A): after Accept only a cream Back to your photo; before it, a
+	# teal Back to your photo beside the cream accept; while it checks the same card, both held. Never red.
+	var actions := func() -> Array: return screen.find_children("*", "Button", true, false).filter(func(item: Button) -> bool: return item.get_parent().name == "RulesActions")
+	var red := func() -> bool: return screen.find_children("*", "Button", true, false).any(func(item: Button) -> bool: return item.get_theme_stylebox("normal") is StyleBoxFlat and (item.get_theme_stylebox("normal") as StyleBoxFlat).bg_color == Color("e9b3aa"))
+	check(service.terms_accepted and actions.call().size() == 1 and actions.call()[0].text == "Back to your photo" and (actions.call()[0].get_theme_stylebox("normal") as StyleBoxFlat).bg_color == Color("eceddb") and not red.call(), "after Accept the rules card has one cream Back to your photo")
+	service.terms_accepted = false
+	screen._render()
+	var shown: Array = actions.call().map(func(item: Button) -> String: return item.text)
+	check(shown == ["Back to your photo", "I accept the community rules"] and (button(screen, "Back to your photo").get_theme_stylebox("normal") as StyleBoxFlat).bg_color != Color("eceddb") and not red.call(), "before Accept: a teal Back to your photo beside the cream accept, nothing red")
+	screen._busy = true
+	screen._render()
+	check(actions.call().size() == 2 and actions.call().all(func(item: Button) -> bool: return item.disabled) and button(screen, PlayerCopy.RULES_CHECKING) != null and not red.call(), "while it checks the card stays, both buttons held (Checking…), nothing red")
+	screen._busy = false
+	service.terms_accepted = true
+	screen._render()
+	var title := screen._card.title_label as Label
 	var heading := title.get_theme_font("font") as FontVariation if title != null else null
 	var body := screen._root.theme.default_font as FontVariation
 	check(title != null and title.text == "Community & privacy" and heading != null and heading.base_font.resource_path.ends_with("fredoka.ttf"),"the photo rules title uses the Fredoka heading font")

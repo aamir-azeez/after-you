@@ -367,15 +367,23 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 		go.pressed.emit()
 		await _settle()
 	_check(confirmed[0] == 3, "%s: Join and play runs after the card closes" % name)
-	# The rules card: Read the rules shows inside the safe area and runs the rules ask after the card closes.
-	var rules_card := Sheets.rules_again(page.root, func() -> void: confirmed[0] += 1)
+	# The rules card before a public post or join (rules page board A): the rules inline, both buttons inside the safe
+	# area, held while it checks, and no red anywhere.
+	var rules_asked := [0, 0]
+	var rules_card := Sheets.rules_entry(page.root, {}, func() -> void: rules_asked[0] += 1, func() -> void: rules_asked[1] += 1)
 	page.hold_modal(rules_card)
 	await _settle()
 	var read := rules_card.find_child("PublicRulesRead", true, false) as Button
-	_check(read != null and read.text == PlayerCopy.PUBLIC_RULES_READ and _inside(read, safe), "%s: the rules card's Read the rules shows" % name)
+	var go := rules_card.find_child("PublicRulesAccept", true, false) as Button
+	_check(read != null and go != null and read.text == PlayerCopy.PUBLIC_RULES_READ and go.text == PlayerCopy.PUBLIC_ACCEPT_JOIN and _inside(read, safe) and _inside(go, safe), "%s: the rules card's Read the rules and Accept and join show" % name)
+	_check(rules_card.title_label.text == PlayerCopy.PUBLIC_RULES_FIRST and _texts(rules_card).has(PlayerCopy.RULES_SHARE) and _texts(rules_card).has(PlayerCopy.RULES_NOT_ALLOWED), "%s: the rules card reads the rules inline" % name)
 	read.pressed.emit()
+	go.pressed.emit()
+	Sheets.rules_entry_hold(rules_card, true)
+	_check(rules_asked == [1, 1] and is_instance_valid(rules_card) and read.disabled and go.disabled and go.text == PlayerCopy.RULES_CHECKING, "%s: the card stays while it checks, both buttons greyed" % name)
+	_check(not _red(rules_card), "%s: nothing on the rules card is red" % name)
+	rules_card.close()
 	await _settle()
-	_check(confirmed[0] == 4 and (not is_instance_valid(rules_card) or not rules_card.is_visible_in_tree()), "%s: Read the rules closes the card and asks for the rules" % name)
 	page.close()
 	await _settle()
 	# Start a duel's Anyone (board 5A).
@@ -471,6 +479,12 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 func _fits(page: CanvasLayer, page_name: String) -> bool:
 	var scroll := page.root.find_child(page_name + "Scroll", true, false) as ScrollContainer
 	return scroll != null and scroll.get_v_scroll_bar().max_value <= scroll.size.y + 0.5
+
+## Whether any button under `node` wears the danger (coral) style.
+static func _red(node: Node) -> bool:
+	return node.find_children("*", "Button", true, false).any(func(button: Button) -> bool:
+		var style := button.get_theme_stylebox("normal") as StyleBoxFlat
+		return style != null and style.bg_color == Color("e9b3aa"))
 
 static func _inside(control: Control, safe: Rect2) -> bool:
 	return control != null and safe.grow(0.5).encloses(control.get_global_rect())

@@ -23,6 +23,7 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
+const RulesCard = preload("res://presentation/kit/rules_card.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
 const FaceStore = preload("res://services/end_reaction_store.gd")
 ## The Reactions grid's paper and ink, as the faces card draws them (presentation/end_reactions.gd).
@@ -126,18 +127,24 @@ static func first_time(root: Control, show_name: bool, confirm: Callable, action
 	go.grab_focus()
 	return modal
 
-## A post or join the community rules stopped: Read the rules runs confirm() after the card closes.
-static func rules_again(root: Control, confirm: Callable) -> Control:
-	var modal := Modal.open(root, "PublicRulesAgain", PlayerCopy.PUBLIC_RULES_AGAIN_TITLE)
-	modal.widen(WIDE)
-	modal.label(PlayerCopy.PUBLIC_RULES_AGAIN_LINE, 18).add_theme_color_override("font_color", UiTokens.SOFT)
-	var go: Button = modal.add_actions(PlayerCopy.PUBLIC_RULES_READ, func() -> void:
-		modal.close(false)
-		confirm.call(), PlayerCopy.DUELS_NOT_NOW)
-	go.name = "PublicRulesRead"
+## The community rules before a public post or join (rules page board A): the rules inline, Read the rules opens the
+## full page (read(), the card stays), Accept and join runs accept() with the card held (rules_entry_hold) until the
+## flow closes it. `look`: the partner's look on the second pip ({} when alone). Close is Not now.
+static func rules_entry(root: Control, look: Variant, read: Callable, accept: Callable) -> Control:
+	var modal := Modal.open(root, "PublicRulesEntry", PlayerCopy.PUBLIC_RULES_FIRST)
+	modal.widen(RulesCard.WIDTH)
+	RulesCard.pips(modal.header, look)
+	RulesCard.rules(modal.content)
+	modal.content.add_child(RulesCard.actions([[PlayerCopy.PUBLIC_RULES_READ, read, false, "PublicRulesRead"], [PlayerCopy.PUBLIC_ACCEPT_JOIN, accept, true, "PublicRulesAccept"]]))
+	var go := modal.find_child("PublicRulesAccept", true, false) as Button
 	OfflineHold.hold(go)
+	modal.refresh_focus_order()
 	go.grab_focus()
 	return modal
+
+## Holds the entry card while Accept and join checks: both buttons greyed, Checking… on Accept and join.
+static func rules_entry_hold(modal: Control, busy: bool) -> void:
+	if is_instance_valid(modal): RulesCard.hold(modal, busy, "PublicRulesAccept", PlayerCopy.PUBLIC_ACCEPT_JOIN)
 
 ## A stranger's card (board 6.3). `who`: {name, partner (your own partner), color
 ## ("peach" or "mint"), look, over (the duel ended), friend_sent}. `actions`:

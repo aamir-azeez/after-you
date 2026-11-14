@@ -43,7 +43,6 @@ const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
-const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
@@ -159,13 +158,13 @@ func _first_time(then: Callable) -> void:
 	var name_on: bool = LeaderboardClient.shared(host().api, str(host().api.player_id)).show_name()
 	var continuing := switched_on()
 	page.hold_modal(Sheets.first_time(page.root, name_on, func(show_name: bool) -> void:
-		if await turn_on(show_name, not continuing, then) and flow.is_open(): then.call(), PlayerCopy.PUBLIC_FIRST_CONTINUE if continuing else PlayerCopy.PUBLIC_TURN_ON))
+		if await turn_on(show_name, not continuing) and flow.is_open(): then.call(), PlayerCopy.PUBLIC_FIRST_CONTINUE if continuing else PlayerCopy.PUBLIC_TURN_ON))
 
 ## A post or join the server refused for the rules (terms_acceptance_required): the first-time card and the
-## rules, then `again`; a second refusal gets the rules card (_rules_card). False for any other answer.
+## rules, then `again`; a second refusal goes straight to the rules card. False for any other answer.
 func _rules_first(answer: Dictionary, retried: bool, again: Callable) -> bool:
 	if rules_refusal(answer, retried): _first_time(again)
-	elif not answer.get("ok", false) and rules_stop(str(answer.get("code", ""))): _rules_card(again)
+	elif not answer.get("ok", false) and rules_stop(str(answer.get("code", ""))): _rules_retry(again)
 	else: return false
 	return true
 
@@ -174,45 +173,84 @@ func _rules_first(answer: Dictionary, retried: bool, again: Callable) -> bool:
 static func rules_stop(code: String) -> bool:
 	return code in ["terms_acceptance_required", "unsupported_safety_response"]
 
-## The rules card: Read the rules asks for the config and the rules afresh, shows the rules screen when they are
-## not accepted, then runs `again`. `show_name` and `set_switch` are the first-time card's choices, kept for the
-## second try. A second failure there is said in a toast, so the card never loops by itself.
-func _rules_card(again: Callable, show_name: Variant = null, set_switch := false) -> void:
-	var page: CanvasLayer = flow.screen.overlay() if flow.screen.overlay() != null else flow.screen
-	page.hold_modal(Sheets.rules_again(page.root, func() -> void:
-		if await turn_on(show_name, set_switch) and flow.is_open(): again.call()))
+## The rules card again for a second refusal, then `again` once accepted. Each try takes a tap, so it never loops.
+func _rules_retry(again: Callable) -> void:
+	var safety := _safety()
+	if safety == null or _turning_on: return
+	_turning_on = true
+	var accepted := await _rules_entry(safety)
+	_turning_on = false
+	if accepted and flow.is_open(): again.call()
+
+## The community rules card (rules page board A) over the page in front, or over Settings: Read the rules opens
+## the full rules; Accept and join asks for them afresh and accepts in one tap. True once accepted, false when
+## the card closed without (Not now, or the page under it went).
+func _rules_entry(safety: RefCounted) -> bool:
+	var layer: CanvasLayer = null
+	var page: CanvasLayer = null
+	var parent: Control
+	if flow.is_open():
+		page = flow.screen.overlay() if flow.screen.overlay() != null else flow.screen
+		parent = page.root
+	else:
+		# Settings' switch: its own layer over Settings, gone with the card.
+		layer = CanvasLayer.new()
+		layer.layer = 90
+		host().add_child(layer)
+		parent = Control.new()
+		parent.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		layer.add_child(parent)
+	var accepted := [false]
+	var held: Array = []
+	var card := Sheets.rules_entry(parent, _partner().get("look", {}) if page != null else {}, func() -> void: _read_rules(safety),
+		func() -> void: await _accept_rules(held, safety, accepted))
+	held.append(card)
+	if page != null: page.hold_modal(card)
+	await card.tree_exited
+	if layer != null: layer.queue_free()
+	return accepted[0]
+
+func _read_rules(safety: RefCounted) -> void:
+	if not safety.open_public("/community-rules"): _say(PlayerCopy.SAFETY_SCREEN_99C248C9E5D3)
+
+## Accept and join: the config and the rules asked afresh, then the acceptance (sent again when the server already
+## holds it, which writes the lobby's copy), with the card held (Checking…) meanwhile. A refusal is a toast, and
+## the card stays for another try.
+func _accept_rules(held: Array, safety: RefCounted, accepted: Array) -> void:
+	var card: Control = held[0]
+	if OfflineHold.refuse(host()._toast): return
+	Sheets.rules_entry_hold(card, true)
+	var ok: bool = await safety.check_terms()
+	if ok: ok = await safety.accept_rules()
+	if not is_instance_valid(card): return
+	if not ok:
+		Sheets.rules_entry_hold(card, false)
+		_say(safety.last_error if not str(safety.last_error).is_empty() else PlayerCopy.DUELS_ACTION_FAILED)
+		return
+	accepted[0] = true
+	card.close()
 
 ## Whether a post or join answer asks for the rules first: the refusal, the first time only.
 static func rules_refusal(answer: Dictionary, retried: bool) -> bool:
 	return not retried and not answer.get("ok", false) and str(answer.get("code", "")) == "terms_acceptance_required"
 
-## Turns the switch on: the community rules first when not accepted, then the name choice and
-## the switch (`set_switch` false: the rules and the name only). False when it did not go through (said in a toast,
-## or, with `then`, a rules stop shows the rules card, whose Read the rules runs `then` once accepted).
-func turn_on(show_name: Variant = null, set_switch := true, then := Callable()) -> bool:
+## Turns the switch on: the community rules first when not accepted (the rules card), then the name choice and
+## the switch (`set_switch` false: the rules and the name only). False when it did not go through (said in a toast).
+func turn_on(show_name: Variant = null, set_switch := true) -> bool:
 	if _turning_on or OfflineHold.refuse(host()._toast): return false
 	_turning_on = true
-	var done := await _turn_on(show_name, set_switch, then)
+	var done := await _turn_on(show_name, set_switch)
 	_turning_on = false
 	return done
 
-func _turn_on(show_name: Variant, set_switch: bool, then: Callable) -> bool:
+func _turn_on(show_name: Variant, set_switch: bool) -> bool:
 	var safety := _safety()
 	if safety == null: return _say(PlayerCopy.DUELS_ACTION_FAILED)
-	if not await safety.check_terms():
-		if then.is_valid() and rules_stop(str(safety.last_code)):
-			_rules_card(then, show_name, set_switch)
-			return false
-		return _say(safety.last_error if not str(safety.last_error).is_empty() else PlayerCopy.DUELS_ACTION_FAILED)
-	if not safety.terms_accepted:
-		# The rules screen every photo share shows; Accept there sets terms_accepted.
-		var rules := SafetyScreen.new(safety, {}, Callable(), Callable(), true)
-		host().add_child(rules)
-		# Over the duel pages, whose layers start at 61; it takes Back itself, so Duels waits for it.
-		rules.layer = 90
-		if flow.is_open(): flow.screen.hold_back(rules)
-		await rules.tree_exited
-		if not safety.terms_accepted: return false
+	var checked: bool = await safety.check_terms()
+	if not checked and not rules_stop(str(safety.last_code)): return _say(safety.last_error if not str(safety.last_error).is_empty() else PlayerCopy.DUELS_ACTION_FAILED)
+	# Not accepted, or a safety reply this phone could not read: the rules card, whose Accept and join asks afresh.
+	if not checked or not safety.terms_accepted:
+		if not await _rules_entry(safety): return false
 	if show_name is bool:
 		var names: RefCounted = LeaderboardClient.shared(host().api, str(host().api.player_id))
 		if names.show_name() != show_name: names.set_show_name(show_name)

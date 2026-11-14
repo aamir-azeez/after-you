@@ -5,6 +5,8 @@ const Client = preload("res://services/safety_client.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const BACK_ICON = preload("res://assets/ui/back.svg")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const Modal = preload("res://presentation/in_game_modal.gd")
+const RulesCard = preload("res://presentation/kit/rules_card.gd")
 const REASONS := [["Sexual content", "sexual_content"], ["Child safety", "child_safety"], ["Threats or harassment", "harassment"], ["Hateful content", "hate"], ["Someone's private information", "privacy"], ["Other inappropriate content", "other"]]
 var client: RefCounted
 var context: Dictionary = {}
@@ -21,6 +23,9 @@ var _message := ""
 var _page := "home"
 var _photo: Variant = null
 var _heading_font: FontVariation
+## Rules only (the photo flow): the rules as a card over the photo (rules_card.gd), never a full page.
+var _card: Control
+var _just_accepted := false
 
 func _init(service: RefCounted = null, room: Dictionary = {}, on_closed: Callable = Callable(), on_blocked: Callable = Callable(), rules_only: bool = false) -> void:
 	client = service
@@ -47,6 +52,18 @@ func _ready() -> void:
 	_root.theme.set_color("font_color", "Label", Color("eceddb"))
 	ThemeRules.install_buttons(_root.theme)
 	add_child(_root)
+	if terms_only:
+		_card = Modal.open(_root, "RulesCard", "Community & privacy")
+		_card.widen(RulesCard.WIDTH)
+		RulesCard.pips(_card.header)
+		_card.header.find_child("ModalClose", true, false).visible = false
+		_card.back_step = func() -> bool:
+			close()
+			return true
+		_content = _card.content
+		_render()
+		if not _owner_context.is_empty(): await _load()
+		return
 	var background := ColorRect.new()
 	background.color = Color("123936")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -105,6 +122,9 @@ func _button(text: String, action: Callable, enabled: bool = true, emphasis: Str
 
 func _render() -> void:
 	if not is_instance_valid(_content): return
+	if terms_only:
+		_render_card()
+		return
 	for child: Node in _content.get_children():
 		_content.remove_child(child)
 		child.queue_free()
@@ -172,6 +192,33 @@ func _render() -> void:
 	if not _owner_context.is_empty(): _button("Check again", _load,true,"secondary")
 	_button("Back to your photo" if terms_only else "Back",close,true,"primary" if terms_only else "")
 
+## The rules card: before Accept, Back to your photo and I accept; while it checks, the same card with both held
+## (Checking…), never a red Back; after Accept, only a cream Back to your photo.
+func _render_card() -> void:
+	for child: Node in _content.get_children():
+		if child == _card.header: continue
+		_content.remove_child(child)
+		child.queue_free()
+	RulesCard.rules(_content)
+	_content.add_child(RulesCard.links(_open_link))
+	var known: bool = not _owner_context.is_empty() and not client.config.is_empty()
+	if not _busy and known and client.terms_accepted:
+		_content.add_child(RulesCard.accepted(PlayerCopy.SAFETY_SCREEN_98CB7DC115E5 if _just_accepted else PlayerCopy.SAFETY_SCREEN_BC57296AFA63))
+		_content.add_child(RulesCard.actions([["Back to your photo", close, true, "RulesBack"]]))
+		_card.refresh_focus_order()
+		return
+	var line: String = PlayerCopy.SAFETY_SCREEN_BF2F0442C98C if _busy else _message if not _message.is_empty() else PlayerCopy.SAFETY_SCREEN_CEE9D4103053 if _owner_context.is_empty() else PlayerCopy.SAFETY_SCREEN_14484BCCA0FD
+	_content.add_child(RulesCard.note(line))
+	if _owner_context.is_empty():
+		_content.add_child(RulesCard.actions([["Back to your photo", close, true, "RulesBack"]]))
+	else:
+		# A check that could not finish leaves nothing to accept yet: Check again asks afresh.
+		var go: Array = ["I accept the community rules", _accept, true, "RulesAccept"] if known or _busy else ["Check again", _load, true, "RulesAccept"]
+		var row := RulesCard.actions([["Back to your photo", close, false, "RulesBack"], go])
+		_content.add_child(row)
+		RulesCard.hold(row, _busy, "RulesAccept", go[0])
+	_card.refresh_focus_order()
+
 func _load() -> void:
 	if _busy or not _current(): return
 	_busy = true
@@ -191,6 +238,7 @@ func _accept() -> void:
 	var ok: bool = await client.accept_rules()
 	if not _current(): return
 	_busy = false
+	_just_accepted = ok
 	_message = PlayerCopy.SAFETY_SCREEN_98CB7DC115E5 if ok else client.last_error
 	_render()
 
