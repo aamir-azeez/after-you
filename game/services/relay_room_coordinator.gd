@@ -281,6 +281,18 @@ func begin_replace() -> bool:
 	_replace = {"origin": room.duplicate(true), "room": before}
 	return true
 
+## Start over, agreed (presentation/redo_flow.gd): this phone's copies of the old run in this
+## room go as the server's did: its unsent draft, the turns it kept aside and the last receipt.
+func forget_run() -> bool:
+	if not finish_live_draft_save() or not _guard() or read_only or _busy != 0 or not _state.pending.is_empty(): return false
+	var next := _state.duplicate(true)
+	next.draft = {}
+	next.held_drafts = []
+	next.last_receipt = {}
+	_replace = {}
+	_retire_live()
+	return _persist(next)
+
 func end_replace() -> void:
 	if _replace.is_empty(): return
 	_retire_live()

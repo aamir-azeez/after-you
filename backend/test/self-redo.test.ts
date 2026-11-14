@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { type Outcome } from "../src/protocol";
 import { chapter, RELAY_KEY } from "../src/v2/protocol";
@@ -24,7 +24,7 @@ async function json<T>(response: Promise<Response>, status = 200): Promise<T> {
 }
 const account = () => json<Account>(call("/v1/identity", "POST", undefined, {}), 201);
 const key = () => crypto.randomUUID();
-const V2 = { "X-AfterYou-Poll-Redo": "2" };
+const V2 = { "X-AfterYou-Poll-Redo": "1", "X-AfterYou-Redo-Extras": "1" };
 function unwrap<T>(value: Outcome<T>): T { if (!value.ok) throw new Error(value.code); return value.value; }
 async function made(host: Account) {
   const version = chapter(RELAY_KEY).simulation_version;
@@ -47,7 +47,19 @@ const startOver = (room: RoomSnapshotV2, asker: Account, friend: Account): RedoS
   a_hash: room.checkpoint.checkpoint_hash, first_player_id: friend.player_id, second_player_id: asker.player_id });
 type Inbox = { rooms: { room_id: string; redo?: { state: string } }[] };
 const inboxRedo = async (who: Account, roomId: string, version: string) =>
-  (await json<Inbox>(call("/v1/room-inbox", "GET", who, undefined, { "X-AfterYou-Room-Redo": version }))).rooms.find(entry => entry.room_id === roomId)?.redo?.state;
+  (await json<Inbox>(call("/v1/room-inbox", "GET", who, undefined, { "X-AfterYou-Room-Redo": "1", ...(version === "2" ? { "X-AfterYou-Redo-Extras": "1" } : {}) }))).rooms.find(entry => entry.room_id === roomId)?.redo?.state;
+/** Rows the room reads and writes from now on (every SQL statement it runs). */
+async function meter(roomId: string) {
+  const cursors: { rowsRead: number; rowsWritten: number }[] = [];
+  await runInDurableObject(env.ROOMS_V2.getByName(roomId), (_, ctx) => {
+    const original = ctx.storage.sql.exec.bind(ctx.storage.sql);
+    vi.spyOn(ctx.storage.sql, "exec").mockImplementation(((query: string, ...bindings: unknown[]) => { const cursor = original(query, ...bindings); cursors.push(cursor); return cursor; }) as typeof ctx.storage.sql.exec);
+  });
+  return async <T>(run: () => Promise<T>) => {
+    const from = cursors.length; await run();
+    return cursors.slice(from).reduce((sum, cursor) => ({ read: sum.read + cursor.rowsRead, written: sum.written + cursor.rowsWritten }), { read: 0, written: 0 });
+  };
+}
 afterEach(async () => { await reset(); });
 
 describe("play my turn again", () => {
@@ -108,6 +120,35 @@ describe("play my turn again", () => {
   });
 });
 
+describe("cost on the Free plan", () => {
+  it("meters the rows each new step reads and writes in the room", async () => {
+    const { host, guest, room, path } = await played();
+    const rows = await meter(room.room_id);
+    const known = { "X-AfterYou-Known-Room": `${room.revision}.${room.branch}` };
+    const pollV1 = await rows(() => json(call(path, "GET", host, undefined, { "X-AfterYou-Poll-Redo": "1", ...known })));
+    const pollV2 = await rows(() => json(call(path, "GET", host, undefined, { ...V2, ...known })));
+    const replace = await rows(() => turn(room, host, a, { replaces: a.recording_hash }));
+    const replaced = await json<RoomSnapshotV2>(call(path, "GET", host));
+    const firstRead = await rows(() => json(call(path, "GET", guest)));
+    const secondRead = await rows(() => json(call(path, "GET", guest)));
+    const source = startOver(replaced, guest, host);
+    const ask = await rows(() => json(call(path + "/redo", "POST", guest, { action: "request", source })));
+    const over = (await redoV2(path, host)).start_over!;
+    const agree = await rows(() => json(call(path + "/fork", "POST", host, { base_revision: replaced.revision, branch: replaced.branch, stage_index: 0, idempotency_key: key(), redo_request_id: over.request_id })));
+    // A plain first turn on the new branch, for comparison with the replacement.
+    const fresh = await json<RoomSnapshotV2>(call(path, "GET", host));
+    const plain = await rows(() => turn(fresh, host, a));
+    // The friend's read of a later first turn, once the table exists: one row.
+    const laterRead = await rows(() => json(call(path, "GET", guest)));
+    console.log("ROWS", JSON.stringify({ pollV1, pollV2, firstRead, secondRead, laterRead, replace, plain, ask, agree }));
+    expect(pollV2.written).toBe(0);
+    expect(secondRead.written).toBe(0);
+    expect(laterRead.written).toBe(1);
+    expect(firstRead.written).toBeLessThanOrEqual(3);
+    expect(replace.written - plain.written).toBeLessThanOrEqual(1);
+  });
+});
+
 describe("start over", () => {
   it("asks, shows only to version 2 phones, and the friend's agreement takes the room back to the first stage", async () => {
     const { host, guest, room, path } = await played();
@@ -129,6 +170,17 @@ describe("start over", () => {
     const agreed = await json<MutationV2>(call(path + "/fork", "POST", host, body));
     expect(agreed.room).toMatchObject({ branch: room.branch + 1, stage_index: 0, active_role: "a", a_turn_id: null, host_id: host.player_id, guest_id: guest.player_id });
     expect(await json(call(path + "/fork", "POST", host, body))).toEqual(agreed);
+    // The old run is gone: only the agreement's own receipt stays, and the room still exports and restores.
+    await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), async (_instance, ctx) => {
+      const count = (table: string) => ctx.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one().n;
+      expect({ turns: count("turns"), pairs: count("pairs"), operations: count("operations"), redo: count("redo_control") }).toEqual({ turns: 0, pairs: 0, operations: 1, redo: 0 });
+    });
+    const archive = unwrap(await env.ROOMS_V2.getByName(room.room_id).exportSnapshot("d".repeat(40)));
+    unwrap(await env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId()).restoreSnapshot(archive, room.room_id));
+    // Both phones play on from the first stage; a turn sent against the old run is refused.
+    await turn(room, host, a, {}, 409);
+    const again = await turn(agreed.room, host, a);
+    expect(again.room).toMatchObject({ stage_index: 0, active_role: "b" });
     expect((await redoV2(path, guest)).start_over).toBeNull();
     expect(await inboxRedo(host, room.room_id, "2")).toBeUndefined();
   });

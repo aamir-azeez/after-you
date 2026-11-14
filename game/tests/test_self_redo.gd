@@ -26,7 +26,7 @@ class Api:
 		var room: Dictionary = rooms.get(ROOM, {})
 		if path == "/v2/capabilities":
 			var chapter := Registry.descriptor(Registry.RELAY)
-			return _ok({"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "poll_redo_version": 2, "validation": "structural_client_replay_required",
+			return _ok({"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "poll_redo_version": 1, "redo_extras_version": 1, "validation": "structural_client_replay_required",
 				"chapters": [{"level_id": chapter.level_id, "level_version": chapter.level_version, "definition_hash": chapter.definition_hash, "premium": false}]})
 		if path == "/v2/rooms": return _ok({"rooms": rooms.values()})
 		if path.get_file() in rooms: return _ok(room)
@@ -120,6 +120,8 @@ func _run() -> void:
 	_check(await client.accept_start_over() and client.accepted and client.pending().is_empty(), "Agreeing forks the room back")
 	var fork: Dictionary = api.calls.filter(func(call: Dictionary) -> bool: return call.path.ends_with("/fork")).back().body
 	_check(int(fork.stage_index) == 0 and fork.redo_request_id == Canonical.digest(asked), "The fork goes to the first stage with the request's id")
+	_check(not coordinator.held_drafts().is_empty(), "The refused turn was kept aside before the start over")
+	_check(session.forget_room_run(ROOM) and coordinator.held_drafts().is_empty() and coordinator.last_receipt().is_empty(), "The old run's copies on this phone go with it")
 	api.queue_free()
 	print("self redo: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)

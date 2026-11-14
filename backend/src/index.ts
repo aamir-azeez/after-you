@@ -159,7 +159,7 @@ export default {
         const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
         // The face on the friend's latest turn, only for clients that show it.
         const showReactions = endReactionsWanted(request), showNames = displayNamesShown(request, env);
-        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, servedFaceVersion(request, env), redoInboxVersion(request.headers.get(ROOM_INBOX_REDO_HEADER)));
+        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, servedFaceVersion(request, env), redoInboxVersion(request.headers.get(ROOM_INBOX_REDO_HEADER), request.headers.get("X-AfterYou-Redo-Extras")));
         return await maskedResponse(withNext(json(page.body), page.next), playerId);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));

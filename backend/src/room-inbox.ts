@@ -14,14 +14,14 @@ export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_
 export const ROOM_INBOX_CLOSED_HEADER = "X-AfterYou-Room-Inbox";
 /** Clients that offer Leave room send this ("1"); a room the other member left then carries partner_left. */
 export const ROOM_INBOX_LEAVE_HEADER = "X-AfterYou-Room-Leave";
-/** Clients that show redo requests on Home send this ("1"); or "2" to see start over requests too; a room in play with a current request then carries `redo`. */
+/** Clients that show redo requests on Home send this ("1"); with X-AfterYou-Redo-Extras: 1 start over requests too; a room in play with a current request then carries `redo`. */
 export const ROOM_INBOX_REDO_HEADER = "X-AfterYou-Room-Redo";
-/** The header's version: 0 (none), 1 or 2. */
-export function redoInboxVersion(header: string | null): number { return header === "2" ? 2 : header === "1" ? 1 : 0; }
+/** 0 (no redo), 1, or 2 with X-AfterYou-Redo-Extras: 1 (start over requests too). */
+export function redoInboxVersion(header: string | null, extras: string | null): number { return header !== "1" ? 0 : extras === "1" ? 2 : 1; }
 /**
  * A current redo request as the member sees it, never its ids: the partner asked this member to play their turn
  * again (asked_you), this member asked and waits (you_asked), or the partner kept their turn (kept). A start over
- * request (redo-control.ts startOverSource) reads the same with a start_over_ prefix, only to clients that send "2".
+ * request (redo-control.ts startOverSource) reads the same with a start_over_ prefix, only to clients that send X-AfterYou-Redo-Extras.
  */
 export type InboxRedo = { state: "asked_you" | "you_asked" | "kept" | "start_over_asked_you" | "start_over_you_asked" | "start_over_kept"; stage_index: number };
 export type RoomInboxEntry = {

@@ -121,6 +121,8 @@ func open_card(room: Dictionary) -> void:
 	play.name = "StartOverAgree" if over else "RedoPlayAgain"
 	play.text = PlayerCopy.START_OVER_AGREE if over else PlayerCopy.REDO_PLAY_AGAIN
 	play.icon = RETRY if over else PLAY
+	# Start over removes the run: the coral button, and the room asks once more before it goes.
+	if over: ControlTheme.danger(play, RETRY)
 	play.custom_minimum_size.y = 54
 	play.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	play.add_theme_constant_override("icon_max_width", 24)

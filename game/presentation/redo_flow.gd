@@ -259,7 +259,7 @@ func start_over_drawn(button: Button) -> void:
 	var room_id := str(host.journey.snapshot().get("room_id", "")) if available() else ""
 	if not _accept_room.is_empty() and _accept_room == room_id and Time.get_ticks_msec() < _accept_until and _accept_kind == "start_over":
 		_accept_room = ""
-		await agree_start_over(button)
+		confirm_start_over(button, true)
 		return
 	if can_answer_start_over(): _offer_alerts()
 
@@ -284,7 +284,7 @@ func offer_owed_alerts() -> void:
 ## The server says the friend's phone has not fetched this player's saved first turn
 ## (version 2 redo reads): it can be played again, and the new one replaces it when saved.
 func can_replace() -> bool:
-	return available() and host.online_session.redo_extras_supported() and host.online_session.mutations_enabled() and not replacing() and host.journey.pending().is_empty() and not host.journey.my_turn() and client().replace_open()
+	return available() and not host._duel_room() and host.online_session.redo_extras_supported() and host.online_session.mutations_enabled() and not replacing() and host.journey.pending().is_empty() and not host.journey.my_turn() and client().replace_open()
 
 ## This player is playing their saved turn again (relay_room_coordinator.gd begin_replace).
 func replacing() -> bool:
@@ -307,13 +307,30 @@ func keep_saved(control: Control = null) -> void:
 
 # --- start over ---------------------------------------------------------------------
 
+## Every Start over tap asks first: the room goes back to the first stage for both and the run
+## is removed. One card at a time (a second tap while it shows does nothing); Cancel sends nothing.
+var _over_card: Control
+func confirm_start_over(control: Control, agree: bool) -> void:
+	if is_instance_valid(_over_card) or not (can_answer_start_over() if agree else can_ask_start_over()): return
+	var card := InGameModal.open(host.controls.ui, "StartOverConfirm", PlayerCopy.START_OVER_CONFIRM_TITLE, "", control)
+	_over_card = card
+	card.widen(500.0)
+	card.label(PlayerCopy.START_OVER_CONFIRM_BODY)
+	card.add_actions(PlayerCopy.START_OVER_CONFIRM, func() -> void:
+		if _over_card != card or not is_instance_valid(card): return
+		_over_card = null
+		card.close(false)
+		if agree: await agree_start_over(control)
+		else: await ask_start_over(control), PlayerCopy.START_OVER_CANCEL, true)
+	card.closed.connect(func() -> void: if _over_card == card: _over_card = null)
+
 ## Either player may ask to take the room back to its first stage, once per room position.
 func can_ask_start_over() -> bool:
-	return available() and host.online_session.redo_extras_supported() and host.online_session.mutations_enabled() and not replacing() and host.journey.pending().is_empty() and client().can_ask_start_over()
+	return available() and not host._duel_room() and host.online_session.redo_extras_supported() and host.online_session.mutations_enabled() and not replacing() and host.journey.pending().is_empty() and client().can_ask_start_over()
 
 ## The friend asked this player to start over.
 func can_answer_start_over() -> bool:
-	return available() and host.online_session.redo_extras_supported() and not replacing() and host.journey.pending().is_empty() and client().can_answer_start_over()
+	return available() and not host._duel_room() and host.online_session.redo_extras_supported() and not replacing() and host.journey.pending().is_empty() and client().can_answer_start_over()
 
 ## What became of this player's own request: "Asked Sam" or "Sam wants to keep playing".
 func start_over_line() -> String:
@@ -338,6 +355,8 @@ func agree_start_over(control: Control = null) -> void:
 		if not can_answer_start_over(): return
 		var room: Dictionary = host.journey.snapshot()
 		var agreed: bool = await client().accept_start_over()
+		# The old run goes from this phone as it went from the server.
+		if agreed: host.online_session.forget_room_run(str(room.get("room_id", "")))
 		if not _same_room(room): return
 		if agreed: await host._online_refresh()
 		else: _redraw())

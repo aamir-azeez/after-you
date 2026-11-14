@@ -804,12 +804,21 @@ func _note_polled_redo(room_id: String, revision: int, branch: int, redo: Varian
 func take_polled_redo(room: Dictionary) -> Dictionary:
 	var polled := _polled_redo
 	_polled_redo = {}
-	if polled.is_empty() or not (Typed.equal(capabilities.get("poll_redo_version"), 1.0) or redo_extras_supported()) or polled.room_id != str(room.get("room_id", "")) or polled.revision != int(room.get("revision", -1)) or polled.branch != int(room.get("branch", -1)) or not polled.redo is Dictionary: return {}
+	if polled.is_empty() or not Typed.equal(capabilities.get("poll_redo_version"), 1.0) or polled.room_id != str(room.get("room_id", "")) or polled.revision != int(room.get("revision", -1)) or polled.branch != int(room.get("branch", -1)) or not polled.redo is Dictionary: return {}
 	return polled.redo
 
-## The server reads start over requests and Play my turn again (poll redo version 2).
+## Start over, agreed: the old run of `room_id` goes from this phone too, its journal's
+## kept turns and draft (relay_room_coordinator.gd forget_run) and its kept attempts
+## (history_store.gd). True when nothing was left behind.
+func forget_room_run(room_id: String) -> bool:
+	var ok := true
+	if coordinator != null and _bound_room == room_id: ok = coordinator.forget_run() and ok
+	if history_store != null and not _server_key().is_empty(): ok = history_store.erase_room(_server_key(), _owner, room_id) and ok
+	return ok
+
+## The server reads start over requests and Play my turn again (X-AfterYou-Redo-Extras).
 func redo_extras_supported() -> bool:
-	return Typed.equal(capabilities.get("poll_redo_version"), 2.0)
+	return Typed.equal(capabilities.get("redo_extras_version"), 1.0)
 
 func _ordinary_coordinator() -> RefCounted:
 	var background_writer: Callable = _store.save_scope if _store.get_script() == Store else Callable()

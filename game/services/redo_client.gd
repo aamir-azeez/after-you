@@ -43,6 +43,8 @@ var _storage_ready := false
 ## first send needs no receipt check, since nothing can hold it yet. A key read
 ## back from disk is checked first, as before.
 var _fresh_key := ""
+## A room this player asked to start over, seen started over since (take_started_over).
+var _started_over := ""
 
 func _init(api: Node, identity: Callable, store: RefCounted = null) -> void:
 	_api = api
@@ -72,6 +74,10 @@ func bind_room(family: String, room: Dictionary) -> bool:
 	var preserve_view: bool = _storage_ready and context == _binding and _family == family and Typed.equal(_room.get("room_id"), room.get("room_id")) and Typed.same(_source,source_for(family,room))
 	var previous_view := _view.duplicate(true)
 	var previous_state := _state.duplicate(true)
+	# This player's start over was pending, and the room is now on the next branch: the friend agreed.
+	var asked: Variant = previous_view.get("start_over")
+	if asked is Dictionary and asked.get("status") == "pending" and asked.get("source") is Dictionary and Typed.equal(asked.source.get("second_player_id"), context.player_id) and Typed.equal(asked.source.get("room_id"), room.get("room_id")) and Typed.as_int(room.get("branch"), -1) == int(asked.source.branch) + 1:
+		_started_over = str(room.room_id)
 	if context != _binding:
 		invalidate()
 		_binding = context
@@ -93,6 +99,11 @@ func bind_room(family: String, room: Dictionary) -> bool:
 	return true
 
 func pending() -> Dictionary: return _state.get("pending",{}).duplicate(true)
+## The room the friend agreed to start over since this phone asked, once, or "".
+func take_started_over() -> String:
+	var room_id := _started_over
+	_started_over = ""
+	return room_id
 func bound_room(family: String) -> Dictionary:
 	return _room.duplicate(true) if family == _family and _storage_ready and _same(_generation) else {}
 func bound_room_id(family: String) -> String:
@@ -104,7 +115,7 @@ func observe_room_failure(room_id: String, code: String) -> bool:
 	_failed_reply({"code":code})
 	return pending().is_empty()
 func view() -> Dictionary: return _view.duplicate(true) if _same(_generation) else {}
-func can_request() -> bool: return _can("second_player_id") and _view.get("request") == null
+func can_request() -> bool: return _can("second_player_id") and _view.get("request") == null and not (_view.get("start_over") is Dictionary and _view.start_over.get("status") == "pending")
 func can_accept() -> bool: return _can("first_player_id") and _view.get("request") is Dictionary and _view.request.status == "pending"
 func can_cancel() -> bool: return _can("second_player_id") and _view.get("request") is Dictionary and _view.request.status == "pending"
 ## Play my turn again (version 2 reads): the server says this player may record their saved

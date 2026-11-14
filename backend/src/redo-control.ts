@@ -21,7 +21,12 @@ function validRequest(value: unknown): value is RedoRequest {
 }
 export function initializeRedo(storage: DurableObjectStorage): void { storage.sql.exec(REDO_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")); }
 /** For the full room erase and a snapshot restore: the request and the seen first turn. */
-export function resetRedo(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM redo_control"); storage.sql.exec("DROP TABLE IF EXISTS redo_seen"); }
+/** Start over (v2/room.ts wipeRun): the request and the seen note go; the seen table stays for the next turn. */
+export function clearRedoRequests(storage: DurableObjectStorage): void {
+  storage.sql.exec("DELETE FROM redo_control");
+  if (seenPresent(storage)) storage.sql.exec("DELETE FROM redo_seen");
+}
+export function resetRedo(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM redo_control"); storage.sql.exec("DROP TABLE IF EXISTS redo_seen"); seenTables.delete(storage); }
 function stored(storage: DurableObjectStorage): RedoRequest | null {
   const rows = storage.sql.exec<{ id: number; data: string }>("SELECT id,data FROM redo_control LIMIT 2").toArray();
   if (!rows.length) return null;
@@ -46,9 +51,10 @@ export function mutateRedo(storage: DurableObjectStorage, source: RedoSource | n
   if (player !== (input.action === "decline" ? source.first_player_id : source.second_player_id)) return fail(403, "wrong_redo_player");
   const previous = redoState(storage, source).request;
   if (input.action !== "request" && !previous) return fail(409, "redo_request_missing");
-  // One open request per room position: a redo and a start over never replace each other's row.
+  // One open request per room position: a redo and a start over never replace each other's row. The refusal is a code
+  // 0.8.1 settles (it drops its pending request), as for a moved room.
   const other = previous ? null : stored(storage);
-  if (input.action === "request" && other?.status === "pending" && samePosition(other.source, source)) return fail(409, "redo_request_pending");
+  if (input.action === "request" && other?.status === "pending" && samePosition(other.source, source)) return fail(409, "redo_source_changed");
   // One request per accepted A turn. Retries and cancelled/declined requests do
   // not create more work or repeatedly interrupt the partner.
   if (previous && (input.action === "request" || previous.status !== "pending")) return ok(redoState(storage, source));
@@ -119,8 +125,15 @@ export function startOverConsent(storage: DurableObjectStorage, room: RoomPositi
  * full erase and a snapshot restore drop it (resetRedo).
  */
 export const REDO_SEEN_TABLE = { name: "redo_seen", schema: "CREATE TABLE redo_seen (id INTEGER PRIMARY KEY CHECK(id=1), turn_id TEXT NOT NULL, a_hash TEXT NOT NULL)" } as const;
+/** Whether the table exists, looked up once per room instance (every waiting poll asks); only this module makes or drops it. */
+const seenTables = new WeakMap<DurableObjectStorage, boolean>();
 function seenPresent(storage: DurableObjectStorage): boolean {
-  return storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name=?", REDO_SEEN_TABLE.name).toArray().length > 0;
+  let known = seenTables.get(storage);
+  if (known === undefined) {
+    known = storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name=?", REDO_SEEN_TABLE.name).toArray().length > 0;
+    seenTables.set(storage, known);
+  }
+  return known;
 }
 /** Whether the second player's phone has fetched this first turn. */
 export function turnSeen(storage: DurableObjectStorage, turnId: string, aHash: string): boolean {
@@ -130,6 +143,7 @@ export function turnSeen(storage: DurableObjectStorage, turnId: string, aHash: s
 export function noteTurnSeen(storage: DurableObjectStorage, turnId: string, aHash: string): void {
   if (turnSeen(storage, turnId, aHash)) return;
   storage.sql.exec(REDO_SEEN_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+  seenTables.delete(storage);
   storage.sql.exec("INSERT OR REPLACE INTO redo_seen VALUES (1,?,?)", turnId, aHash);
 }
 /** The table as sqlite_master lists it, so snapshot schema checks can let it pass. */

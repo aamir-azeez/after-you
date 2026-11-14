@@ -10,7 +10,7 @@ import { MAX_V2_BODY_BYTES, RELAY_KEY, acceptedRecording, chapter, boundedTurnVa
 import { sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
 import { isStub } from "./history-blob";
-import { clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, type HistorySupport } from "./history";
+import { clearAttempts, clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, type HistorySupport } from "./history";
 import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
@@ -38,7 +38,7 @@ import { eraseCampaignChildWithDefinition, eraseCampaignRoot, readCampaignRootTe
 import { absentCensus, campaignRoomCensus } from "./campaign-drain";
 import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance, campaignBindingRedo, campaignHostAccess } from "./campaign-bindings";
 import { campaignRedoAccess, campaignRedoFork, campaignRedoInput, campaignRedoMutations, campaignRedoReceipt, sameRedoValue, type CampaignRedoAccept, type CampaignRedoBinding, type CampaignRedoEnvelope, type CampaignRedoMode } from "./campaign-redo";
-import { acceptedRedo, consentToRedo, initializeRedo, isStartOver, mutateRedo, noteTurnSeen, parseRedoMutation, redoState, redoStateV2, resetRedo, startOverConsent, startOverRequest, startOverSource, turnSeen, type RedoSource, type RedoState, type RedoStateV2, type RoomPosition } from "../redo-control";
+import { acceptedRedo, clearRedoRequests, consentToRedo, initializeRedo, isStartOver, mutateRedo, noteTurnSeen, parseRedoMutation, redoState, redoStateV2, resetRedo, startOverConsent, startOverRequest, startOverSource, turnSeen, type RedoSource, type RedoState, type RedoStateV2, type RoomPosition } from "../redo-control";
 import { campaignProductionEnabled } from "./campaign-production";
 import { acknowledgeReplay, captureReplay, checkedRestore, clearReplayTransfer, factsForArchive, matchingTransfer, parseTransferKey, prepareReplayTransfer, readReplayTransfer, restoreReplay, transferredRoom, type ReplayArchive, type ReplayTransfer, type TransferredRoom } from "./replay-transfer";
 import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "../room-inbox-storage";
@@ -474,10 +474,36 @@ export class RoomV2 extends DurableObject<Env> {
   private position(state: RoomStateV2): RoomPosition {
     return { room_id: state.room_id, revision: state.revision, branch: state.branch, stage_index: state.stage_index, checkpoint_hash: state.checkpoint.checkpoint_hash, host_id: state.host_id, guest_id: state.guest_id };
   }
-  /** Room for one more branch: the fork's own limit (MAX_BRANCHES, the chapter's max_branches, offloaded attempts not counted). */
-  private branchRoom(state: RoomStateV2): boolean {
-    const held = state.branch + 2 - offloadedCount(this.ctx.storage);
-    return this.capacity() && state.branch + 1 < MAX_BRANCHES && held <= Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES);
+  /**
+   * Room for one more branch: the fork's own limit (MAX_BRANCHES, the chapter's max_branches, offloaded attempts not
+   * counted). `quick` (a poll's answer) reads no rows: the branch numbers only, and the save checks the rest.
+   */
+  private branchRoom(state: RoomStateV2, quick = false): boolean {
+    const limit = Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES);
+    if (state.branch + 1 >= MAX_BRANCHES) return false;
+    if (quick) return state.branch + 2 <= limit || state.branch + 2 - this.firstHeldBranch(state) <= limit;
+    return this.capacity() && state.branch + 2 - offloadedCount(this.ctx.storage) - this.firstHeldBranch(state) <= limit;
+  }
+  /** The oldest branch with a turn: 0 in any room never started over (wipeRun), else the branch the run began again on. */
+  private firstHeldBranch(state: RoomStateV2): number {
+    const first = this.ctx.storage.sql.exec<{ b: number | null }>("SELECT MIN(CAST(substr(turn_id,2,instr(turn_id,'-')-2) AS INTEGER)) AS b FROM turns").one().b;
+    return first ?? state.branch;
+  }
+  /**
+   * Start over, agreed: everything of the run goes, inside the fork's one transaction, so a crash or a retry finds the old
+   * run or a clean room, never a mix. Gone: every turn, pair, branch's attempt record, receipt, photo, photo delivery,
+   * pair reaction, try count, face and run reaction, and the redo and start over requests. Kept: the room and its two
+   * members, the member names and looks, and the Pollen facts of turns already paid (pollen/turn-facts.ts), so a turn
+   * played again never pays twice. The caller then rewinds to the first stage and saves the fork's receipt.
+   */
+  private wipeRun(): void {
+    const storage = this.ctx.storage;
+    storage.sql.exec("DELETE FROM turns"); storage.sql.exec("DELETE FROM pairs"); storage.sql.exec("DELETE FROM operations");
+    storage.sql.exec("DELETE FROM photos"); storage.sql.exec("DELETE FROM photo_operations"); clearDelivery(storage);
+    clearPairReactions(storage);
+    clearAttempts(storage);
+    clearTurnTries(storage); clearEndReactions(storage); clearRunReactions(storage);
+    clearRedoRequests(storage);
   }
   /** Goes back to `stageIndex` on a new branch, keeping every earlier attempt; the caller moves the revision. */
   private rewind(state: RoomStateV2, stageIndex: number): void {
@@ -487,13 +513,13 @@ export class RoomV2 extends DurableObject<Env> {
     state.stage_index = stageIndex; state.branch++;
   }
   /**
-   * Whether `player` may play their saved first turn again now: a standalone room in play (not hard, not a duel), they
+   * Whether `player` may play their saved first turn again now (read by every waiting poll, so its cheapest checks go
+   * first; a Story room is refused at the save): a standalone room in play (not hard, not a duel), they
    * played its first turn, the friend's phone has not fetched it, nobody left, and the room has a branch to spare.
    */
   private replaceOpen(state: RoomStateV2, player: string, source: RedoSource | null): boolean {
-    return source !== null && source.first_player_id === player && !this.hard.run(this.ctx.storage) && !duelLink(this.ctx.storage) &&
-      !turnSeen(this.ctx.storage, state.a_turn_id!, source.a_hash) && !anyDeparture(this.ctx.storage) && this.branchRoom(state) &&
-      !campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable");
+    return source !== null && source.first_player_id === player && !turnSeen(this.ctx.storage, state.a_turn_id!, source.a_hash) && !this.hard.run(this.ctx.storage) &&
+      !duelLink(this.ctx.storage) && !anyDeparture(this.ctx.storage) && this.branchRoom(state, true);
   }
   /**
    * Play my turn again, at its save (commitTurn with `replaces`): the room goes back to the start of this stage on a
@@ -502,7 +528,7 @@ export class RoomV2 extends DurableObject<Env> {
    */
   private replaceFirstTurn(state: RoomStateV2, player: string, replaces: string): Outcome<never> | null {
     if (this.hard.run(this.ctx.storage)) return fail(409, "hard_run_no_redo");
-    if (duelLink(this.ctx.storage)) return fail(409, "self_redo_unavailable");
+    if (duelLink(this.ctx.storage) || campaignBoundaryGuard(this.ctx.storage, "self_redo_unavailable")) return fail(409, "self_redo_unavailable");
     if (anyDeparture(this.ctx.storage)) return fail(409, "room_member_left");
     const source = this.redoSource(state);
     if (!source || source.first_player_id !== player || source.a_hash !== replaces) return fail(409, "redo_source_changed");
@@ -1135,9 +1161,10 @@ export class RoomV2 extends DurableObject<Env> {
         if (anyDeparture(this.ctx.storage)) return fail(409, "room_member_left");
         // A hard room goes back only through its own reset.
         if (this.hard.run(this.ctx.storage)) return fail(409, "hard_run_no_redo");
+        // A start over's friend agrees by forking to the first stage (redo-control.ts startOverConsent); the run goes (wipeRun).
+        const over = redoRequestId !== undefined && !campaignRedo && startOverConsent(this.ctx.storage, this.position(state), player, redoRequestId);
         if (redoRequestId !== undefined) {
-          // A start over's friend agrees by forking to the first stage (redo-control.ts startOverConsent).
-          if (!campaignRedo && startOverConsent(this.ctx.storage, this.position(state), player, redoRequestId)) {
+          if (over) {
             if (stageIndex !== 0 || duelLink(this.ctx.storage)) return fail(409, "redo_source_changed");
           } else {
             if (stageIndex !== state.stage_index) return fail(409, "redo_source_changed");
@@ -1145,8 +1172,10 @@ export class RoomV2 extends DurableObject<Env> {
           }
         }
         if (stageIndex > state.stage_index || (stageIndex === state.stage_index && !state.a_turn_id)) return fail(409, "nothing_to_fork");
-        // A chapter's branch limit counts only attempts the server holds in full; offloaded ones are hashes.
-        if (!this.branchRoom(state)) return fail(409, "room_history_full");
+        // A chapter's branch limit counts only attempts the server holds in full; offloaded ones are hashes. A start over
+        // holds nothing after it, so only the branch number's own limit applies.
+        if (over ? state.branch + 1 >= MAX_BRANCHES : !this.branchRoom(state)) return fail(409, "room_history_full");
+        if (over) this.wipeRun();
         this.rewind(state, stageIndex); state.revision++;
         if (redoRequestId !== undefined) acceptedRedo(this.ctx.storage);
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "fork",

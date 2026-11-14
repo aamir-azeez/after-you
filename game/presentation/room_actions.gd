@@ -38,6 +38,7 @@ const RETRY_ICON := preload("res://assets/ui/retry.svg")
 ##   with_receipt: the handler also takes the turn receipt the row was drawn for.
 ##   line: a line under the row where its slot's look shows lines.
 ##   alert: on the panel, a coral edge while the row waits for an answer.
+##   danger: the coral button of an action that removes things (ControlTheme.danger).
 ##   heading: where its slot's look shows headings, its label heads it, above
 ##   a divider.
 ##   when: facts the screen must report true, in order ("!" negates).
@@ -71,9 +72,9 @@ const ACTIONS := {
 	"redo_self_keep": {"text": KEEP_TURN, "when": ["replacing"]},
 	# Start over (redo_flow.gd): either player asks; then the row says what became of it
 	# (start_over_status), and the friend asked agrees or keeps playing.
-	"start_over": {"text": PlayerCopy.START_OVER_ASK, "icon": RETRY_ICON, "when": ["!hard", "start_over_ask"]},
+	"start_over": {"text": PlayerCopy.START_OVER_ASK, "icon": RETRY_ICON, "danger": true, "when": ["!hard", "start_over_ask"]},
 	"start_over_status": {"text": PlayerCopy.START_OVER_ASK, "when": ["!hard", "start_over_answered"]},
-	"start_over_agree": {"text": PlayerCopy.START_OVER_AGREE, "primary": true, "icon": RETRY_ICON, "when": ["!hard", "start_over_answer"]},
+	"start_over_agree": {"text": PlayerCopy.START_OVER_AGREE, "primary": true, "icon": RETRY_ICON, "danger": true, "when": ["!hard", "start_over_answer"]},
 	"start_over_keep": {"text": PlayerCopy.START_OVER_KEEP, "when": ["!hard", "start_over_answer"]},
 	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "with_receipt": true, "when": ["photo"]},
 	"checkpoints": {"button": "retry", "when": ["!hard", "solo"]},

@@ -330,7 +330,7 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 
 ## A room's current redo request on Home (to clients that send X-AfterYou-Room-Redo):
 ## {state: asked_you | you_asked | kept, stage_index}, or a start over request the same way with a
-## start_over_ prefix (the header's version 2). Never any ids.
+## start_over_ prefix (to clients that send X-AfterYou-Redo-Extras). Never any ids.
 static func valid_redo(value: Variant) -> bool:
 	return value is Dictionary and value.size() == 2 and value.get("state") in ["asked_you","you_asked","kept","start_over_asked_you","start_over_you_asked","start_over_kept"] and _nonnegative_integer(value.get("stage_index")) and value.stage_index < 64
 

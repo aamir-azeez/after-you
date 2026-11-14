@@ -982,6 +982,7 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 	if look.get("icon_only", false): RoomPageBuilder.icon_button(button, row.icon, button.text, true)
 	elif look.get("icon", false): RoomPageBuilder.panel_row_look(button, RoomActions.icon(id), look.get("cream", false) or row.get("primary", false))
 	if look.get("icon", false) and row.get("alert", false): RoomPageBuilder.alert_outline(button)
+	if row.get("danger", false): ControlTheme.danger(button, RoomActions.icon(id))
 	if look.has("height"): button.custom_minimum_size.y = look.height
 	if look.get("fill", false): button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if hooks.has("drawn"): hooks.drawn.call(button)
@@ -1589,10 +1590,10 @@ func _redo_self_keep() -> void:
 	await redo_flow.keep_saved(_redo_buttons.get("redo_self_keep"))
 
 func _start_over_ask() -> void:
-	await redo_flow.ask_start_over(_redo_buttons.get("start_over"))
+	redo_flow.confirm_start_over(_redo_buttons.get("start_over"), false)
 
 func _start_over_agree() -> void:
-	await redo_flow.agree_start_over(_redo_buttons.get("start_over_agree"))
+	redo_flow.confirm_start_over(_redo_buttons.get("start_over_agree"), true)
 
 func _start_over_keep() -> void:
 	await redo_flow.keep_playing(_redo_buttons.get("start_over_keep"))
@@ -1795,6 +1796,8 @@ func _refresh_redo() -> bool:
 	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty() and not (online_session.redo_extras_supported() and not RedoClient.start_over_source(room, str(room.get("host_id") if room.get("player_slot") == "p0" else room.get("guest_id"))).is_empty()): return false
 	if not client.bind_room("relay",room): return false
 	# The poll that just ran carried the redo state (X-AfterYou-Poll-Redo): no second read.
+	var started_over: String = client.take_started_over()
+	if not started_over.is_empty(): online_session.forget_room_run(started_over)
 	if not client.observe(online_session.take_polled_redo(room)): await client.refresh()
 	return before != client.view()
 
