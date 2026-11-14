@@ -218,6 +218,11 @@ func face_packs_supported() -> bool:
 func hard_mode_supported() -> bool:
 	return Typed.equal(capabilities.get("hard_mode_version"), 1.0)
 
+## The server lets this player export a whole run (backend src/run-export.ts):
+## only the owner's phone, asked with rooms_api's X-AfterYou-Run-Export.
+func run_export_allowed() -> bool:
+	return Typed.equal(capabilities.get("run_export_version"), 1.0)
+
 ## A hard room's reset and failures reads (services/hard_room_client.gd).
 func hard_client() -> RefCounted:
 	_ready()
@@ -269,6 +274,13 @@ func sync_room_history(room_id: String) -> Dictionary:
 	return _finish_transfer(generation, result)
 
 ## One part of a finished attempt this phone keeps, or {}.
+## The room attempt this phone keeps at `position`, exactly the bytes the server
+## sent (services/history_store.gd, checked against its index), or empty.
+func history_attempt(room_id: String, position: int) -> PackedByteArray:
+	if not _ready() or _server_key().is_empty(): return PackedByteArray()
+	var loaded: Dictionary = history_client().store.read_attempt(_server_key(), _owner, room_id, position)
+	return loaded.tagged if loaded.get("ok", false) else PackedByteArray()
+
 func history_pair(room_id: String, chapter_key: String, pair_id: String) -> Dictionary:
 	if not _ready() or _server_key().is_empty(): return {}
 	return history_client().local_pair(_server_key(), _owner, room_id, chapter_key, pair_id)
@@ -476,6 +488,8 @@ func load_capabilities(still: Callable = Callable()) -> bool:
 	if not scope.is_empty(): PollenWallet.shared().set_enabled(str(scope.server), str(scope.owner), pollen_supported())
 	# A listed tester's Full Journey switch, as the server keeps it (services/tester_switches.gd).
 	if not scope.is_empty(): TesterSwitches.shared().note_full_journey(str(scope.server), str(scope.owner), capabilities.get("full_journey_off") == true)
+	# Export this run, the owner's own phone only: kept the same way, so Replays knows it before any read.
+	if not scope.is_empty(): TesterSwitches.shared().note_run_export(str(scope.server), str(scope.owner), run_export_allowed())
 	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), wardrobe_supported(), shop_supported(), bundles_supported())
 	# Before the flush below, so a wardrobe read under an older offered tag is read again.
 	if not scope.is_empty(): Wardrobe.shared().note_offered_tag(str(scope.server), str(scope.owner), capabilities.get("pollen_offered_tag") if wardrobe_supported() else null)

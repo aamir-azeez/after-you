@@ -324,6 +324,7 @@ room_refresh_noop 3
 room_removal 1
 rooms_api_limits 3
 rules_thread_safety 1
+run_export 3
 run_reactions 3
 safe_area 3
 safety_client 2

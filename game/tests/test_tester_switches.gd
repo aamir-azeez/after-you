@@ -32,6 +32,7 @@ func _run() -> void:
 	_keepsake_codes()
 	_fresh_view_hears_play()
 	_full_journey_switch()
+	_run_export_switch()
 	_kept_and_scoped()
 	_damaged_file()
 	_observers()
@@ -125,6 +126,24 @@ func _full_journey_switch() -> void:
 	store.note_full_journey(SERVER, OTHER, true)
 	check(not store.full_journey_off(), "Another player's read changes nothing for this one")
 
+## Export this run follows each capabilities read for its own player, beside the other switches.
+func _run_export_switch() -> void:
+	var store := _store("export")
+	check(not store.run_export(), "Nobody may export runs by default")
+	store.note_run_export(SERVER, OWNER, true)
+	check(store.run_export() and _store("export").run_export(), "A read that allows it is kept across a restart")
+	var generation: int = store.generation
+	store.note_run_export(SERVER, OWNER, true)
+	check(store.generation == generation, "An unchanged read writes nothing")
+	store.note_full_journey(SERVER, OWNER, true)
+	check(store.run_export() and store.full_journey_off(), "It sits beside the Full Journey switch")
+	store.note_run_export(SERVER, OTHER, true)
+	signed_in = OTHER
+	check(store.run_export() and not store.full_journey_off(), "Each player has their own")
+	signed_in = OWNER
+	store.note_run_export(SERVER, OWNER, false)
+	check(not store.run_export() and store.full_journey_off(), "A read without it takes only it away")
+
 func _kept_and_scoped() -> void:
 	var store := _store("kept")
 	store.apply("grant_keepsakes")
@@ -140,12 +159,12 @@ func _kept_and_scoped() -> void:
 func _damaged_file() -> void:
 	var path := directory.path_join("damaged.json")
 	for bad: Variant in ["{not json", {"schema_version": 2, "scopes": {}}, {"schema_version": 1, "scopes": {SERVER + "|" + OWNER: {"keepsakes": "everything"}}},
-			{"schema_version": 1, "scopes": {SERVER + "|" + OWNER: {"keepsakes": "all", "earned": {}}}}, {"schema_version": 1, "scopes": {SERVER + "|" + OWNER: {"full_journey_off": "yes"}}}]:
+			{"schema_version": 1, "scopes": {SERVER + "|" + OWNER: {"keepsakes": "all", "earned": {}}}}, {"schema_version": 1, "scopes": {SERVER + "|" + OWNER: {"full_journey_off": "yes"}}}, {"schema_version": 1, "scopes": {SERVER + "|" + OWNER: {"run_export": "yes"}}}]:
 		var file := FileAccess.open(path, FileAccess.WRITE)
 		file.store_string(bad if bad is String else JSON.stringify(bad))
 		file.close()
 		var store := _store("damaged")
-		check(store.keepsakes().is_empty() and not store.full_journey_off(), "A damaged or unexpected file shows the real marks: %s" % [bad])
+		check(store.keepsakes().is_empty() and not store.full_journey_off() and not store.run_export(), "A damaged or unexpected file shows the real marks: %s" % [bad])
 		AtomicFile.remove(path)
 		AtomicFile.remove_unreadable(path)
 

@@ -657,6 +657,9 @@ const HARD_RESTART_STUCK := "Couldn't clear this run yet. Tap Start again to try
 const HARD_RESET_SENDING := "Letting your friend know…"
 const HARD_RESET_WAITING := "Couldn't reach your friend just now. Tap Start again once you're back online."
 const HARD_READ_FAILED := "Couldn't fetch your friend's slip, so it won't be in Replays this time."
+## Export this run in Replays (the owner only: services/run_export.gd), and its note when no file could be offered.
+const EXPORT_RUN := "Export this run"
+const EXPORT_RUN_FAILED := "Couldn't export this run."
 # A hard room with no room left for another run: the host, then the friend.
 const HARD_ROOM_FULL_TITLE := "This room is full of slips"
 const HARD_ROOM_FULL_BODY := "There's no space here for another hard run. Start a new room for your next try. Your last few slips stay in Replays."

@@ -11,6 +11,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const InviteShare = preload("res://services/invite_share.gd")
+const FileShare = preload("res://services/file_share.gd")
 const InviteLinkBridge = preload("res://services/invite_link_bridge.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
@@ -48,6 +49,9 @@ class FakeIOS extends Object:
 	func secure_put(name: String, value: String, request_id: String) -> void: calls.append(["secure_put", name, value, request_id])
 	func secure_get(name: String, request_id: String) -> void: calls.append(["secure_get", name, request_id])
 	func share_text(text: String) -> void: calls.append(["share_text", text])
+	func share_file(bytes: PackedByteArray, file_name: String, mime_type: String) -> bool:
+		calls.append(["share_file", bytes, file_name, mime_type])
+		return true
 	func invite_link_take() -> String:
 		var value := pending_link
 		pending_link = ""
@@ -213,6 +217,11 @@ func _native_services() -> void:
 
 	var message := InviteShare.message("P".repeat(22))
 	_check(InviteShare.native_share(message) and fake.calls.back() == ["share_text", message], "Share invite opens the iOS share sheet with the link and code")
+	var run := PackedByteArray([1, 120, 156, 3, 0])
+	_check(FileShare.share_file(run, "relay-isles-attempt-1.afteryou") and fake.calls.back() == ["share_file", run, "relay-isles-attempt-1.afteryou", FileShare.MIME_TYPE], "Export this run opens the iOS share sheet with the file's bytes and name")
+	var before: int = fake.calls.size()
+	_check(not FileShare.share_file(run, "../Relay Isles.afteryou") and not FileShare.share_file(PackedByteArray(), "relay-isles-attempt-1.afteryou") and fake.calls.size() == before, "A name the plugin would change, or no bytes, never reaches it")
+	_check(not NativeBridge.has_method_on(RefCounted.new(), "share_file"), "An iOS build older than the method has no file sheet")
 
 	var links := InviteLinkBridge.new()
 	var received: Array = []
