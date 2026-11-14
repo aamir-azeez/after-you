@@ -301,6 +301,9 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	# A room poll that names its known revision also carries the redo state (redo), so the
 	# room page needs no separate GET /redo; the capabilities read then says poll_redo_version 1.
 	if method == HTTPClient.METHOD_GET and (path == "/v2/capabilities" or (path.begins_with("/v2/rooms/") and path.count("/") == 3)): headers.append("X-AfterYou-Poll-Redo: 1")
+	# Redo version 2: start over requests (Home and the room) and Play my turn again (replace_open).
+	# A server that reads it says redo_extras_version 1; an older one leaves every reply as before.
+	if path == "/v1/room-inbox" or (method == HTTPClient.METHOD_GET and (path == "/v2/capabilities" or (path.begins_with("/v2/rooms/") and (path.count("/") == 3 or (path.count("/") == 4 and path.ends_with("/redo")))))): headers.append("X-AfterYou-Redo-Extras: 1")
 	# The friends list may then include the player's short name (friend_alias).
 	if method == HTTPClient.METHOD_GET and path == "/v1/friends": headers.append("X-AfterYou-Friends: 2")
 	# A finished room whose replay moved to the phones reads as finished here.

@@ -84,10 +84,16 @@ export function knownRoom(request: Request): KnownRoom | undefined {
 /**
  * Sent with X-AfterYou-Known-Room by a client that reads the redo state from its poll instead of
  * a separate GET /redo. Its capabilities then say poll_redo_version 1, and both poll replies end
- * with `redo`. Without it every byte is as before.
+ * with `redo`. Without it every byte is as before. With REDO_EXTRAS_HEADER too, `redo` (and GET /redo) is
+ * RedoStateV2 (redo-control.ts), with the room's start over request and whether Play my turn again is open.
  */
 export const POLL_REDO_HEADER = "X-AfterYou-Poll-Redo";
-function pollRedo(request: Request): boolean { return request.headers.get(POLL_REDO_HEADER) === "1"; }
+/** Sent beside it (and on GET /redo and the inbox) by a client that reads redo version 2; its capabilities then say redo_extras_version 1. */
+export const REDO_EXTRAS_HEADER = "X-AfterYou-Redo-Extras";
+const redoExtras = (request: Request): boolean => request.headers.get(REDO_EXTRAS_HEADER) === "1";
+/** The redo state a read carries: 0 none, 1 RedoState, 2 RedoStateV2. */
+function redoVersion(request: Request): number { return redoExtras(request) ? 2 : 1; }
+function pollRedo(request: Request): number { return request.headers.get(POLL_REDO_HEADER) === "1" ? redoVersion(request) : 0; }
 /** What a standalone room read or turn reply carries beside the room: each part the client asked for (names and looks while their flags are on). A Story request gets none. */
 function besideWanted(request: Request, env: Env, context: unknown): Beside {
   if (context !== undefined) return {};
@@ -128,6 +134,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     // Only clients that keep attempts ask; everyone else gets the same bytes as before.
     ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: true } : {}),
     ...(pollRedo(request) ? { poll_redo_version: 1 } : {}),
+    ...(redoExtras(request) ? { redo_extras_version: 1 } : {}),
     // Each version below goes only to clients that ask for it; everyone else gets the same bytes as before.
     ...(triesWanted(request) ? { turn_tries_version: 1 } : {}),
     ...(endReactionsWanted(request) ? { end_reactions_version: 1 } : {}),
@@ -305,7 +312,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // caller's safety token), so it skips the separate router check. A read: auth() has just checked the device;
   // requests re-check it.
   if (operation === "redo" && !item && context === undefined) {
-    if (request.method === "GET") return json(unwrap(await room.redoGated(playerId, undefined, undefined, safetyToken)));
+    if (request.method === "GET") return json(unwrap(await room.redoGated(playerId, undefined, undefined, safetyToken, redoVersion(request))));
     if (request.method === "POST") return json(unwrap(await room.redoGated(playerId, await boundedJson(request, 4096), await bearerDigest(request), safetyToken)));
     throw new ApiError(405, "method_not_allowed");
   }

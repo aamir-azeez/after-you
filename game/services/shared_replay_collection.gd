@@ -4,6 +4,7 @@ const Reaper = preload("res://services/worker_reaper.gd")
 ## Participant-bound replay cache. All remote work is GET-only. The active room,
 ## lobby, pending request and rehearsal stores are never changed by this service.
 const Store = preload("res://services/shared_replay_store.gd")
+const RoomRunReset = preload("res://services/room_run_reset.gd")
 const OnlineStore = preload("res://services/relay_online_store.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -85,6 +86,7 @@ func _init(api: Node, identity: Callable, storage: RefCounted = null, online_sto
 	_online = OnlineStore.new() if online_storage == null else online_storage
 	_context_factory = context_factory
 	_context_required = context_factory != null
+	RoomRunReset.shared().room_reset.connect(_forget_room_run)
 
 func configure_context_factory(factory: RefCounted) -> void:
 	if _context_required and _context_factory == factory: return
@@ -961,6 +963,14 @@ func _context_hold() -> Dictionary:
 	return {"ok": false, "ignored": true, "status": 0, "code": "campaign_context_changed"}
 
 func _scope(key: String) -> String: return "shared-replays:" + _owner + ":" + key
+
+## A room whose run started over (services/room_run_reset.gd): its cached replays go, on disk
+## and here; the room itself stays listed.
+func _forget_room_run(owner: String, room_id: String) -> void:
+	if owner != _owner or room_id.is_empty(): return
+	var key := "chapter:" + room_id
+	if _store.has_method("remove_scope"): _store.remove_scope(_scope(key))
+	for cache: Dictionary in [_memories, _remote_rows, _local_verified]: cache.erase(key)
 func _error(message: String) -> bool: last_error = message; return false
 func _hold(message: String) -> bool: _cache_hold = true; return _error(message)
 func _reject_game_save(_scope_value: String, _value: Dictionary) -> Dictionary: return {"ok": false}

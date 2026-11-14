@@ -147,6 +147,13 @@ func erase_owner(owner: String) -> bool:
 		if DirAccess.dir_exists_absolute(path): ok = _remove_tree(path) and ok
 	return ok
 
+## Start over (presentation/redo_flow.gd): every attempt this phone keeps for one room goes,
+## as the server's records of them went in the same agreement.
+func erase_room(server_key: String, owner: String, room_id: String) -> bool:
+	var path := room_directory(server_key, owner, room_id)
+	if path.is_empty(): return false
+	return not DirAccess.dir_exists_absolute(path) or _remove_tree(path)
+
 func _remove_tree(path: String) -> bool:
 	var directory := DirAccess.open(path)
 	if directory == null: return false

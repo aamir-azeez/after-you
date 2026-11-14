@@ -12,10 +12,15 @@ extends RefCounted
 ## from GET /redo. Taps wait for any read or write still out on this screen
 ## (BusyTapGate) and then run, so a first tap always registers.
 ##
+## The same rows also play a saved first turn again while the friend has not
+## fetched it (replace), and ask, agree to or decline starting the room over
+## from its first stage (start over); both need version 2 redo reads.
+##
 ## Host contract (relay_preview.gd): online_session, journey, controls, mode,
 ## running, backgrounded, _leaving, _room_context_lost; calls _hard_on(),
 ## _ordinary_redo_available(), _waiting_partner_name(), _partner_id(),
-## _show_ready(), _online_refresh(), _begin() and offer_redo_alerts.
+## _show_ready(), _show_online_waiting(), _online_refresh(), _begin() and
+## offer_redo_alerts.
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoPrompts = preload("res://services/redo_prompts.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -39,8 +44,10 @@ var _play_after_accept := false
 var _nudge: Control
 ## The redo alerts question waits for the turn to stop playing (offer_owed_alerts).
 var _alerts_owed := false
-## Home's Play my turn again opened this room (accept_on_open), until this time.
+## Home's Play my turn again or Start over opened this room (accept_on_open), until this time.
 var _accept_room := ""
+## Which request Home's tap answers: "redo" or "start_over".
+var _accept_kind := "redo"
 var _accept_until := 0
 ## How long Home's tap waits for the room to show its request.
 const ACCEPT_ON_OPEN_MS := 30000
@@ -230,20 +237,31 @@ func _show_note() -> void:
 	panel.position = Vector2((host.controls.hud.size.x - panel.size.x) * 0.5, 104.0)
 	host.get_tree().create_timer(NOTE_SECONDS).timeout.connect(func() -> void: if is_instance_valid(panel): panel.queue_free())
 
-## Home's Play my turn again opened `room_id`: once its request shows, it plays.
-func accept_on_open(room_id: String) -> void:
+## Home's Play my turn again (or Start over, `kind` "start_over") opened `room_id`: once its
+## request shows, it is answered.
+func accept_on_open(room_id: String, kind: String = "redo") -> void:
 	_accept_room = room_id
+	_accept_kind = kind
 	_accept_until = Time.get_ticks_msec() + ACCEPT_ON_OPEN_MS
 
 ## The request's Play my turn again was drawn: Home's tap plays it now, or the
 ## player sees the request in the app (the redo alerts question, once).
 func request_drawn(button: Button) -> void:
 	var room_id := str(host.journey.snapshot().get("room_id", "")) if available() else ""
-	if not _accept_room.is_empty() and _accept_room == room_id and Time.get_ticks_msec() < _accept_until:
+	if not _accept_room.is_empty() and _accept_room == room_id and Time.get_ticks_msec() < _accept_until and _accept_kind == "redo":
 		_accept_room = ""
 		await play_again(button)
 		return
 	noticed_request()
+
+## The friend's start over request's Start over was drawn: Home's tap agrees now.
+func start_over_drawn(button: Button) -> void:
+	var room_id := str(host.journey.snapshot().get("room_id", "")) if available() else ""
+	if not _accept_room.is_empty() and _accept_room == room_id and Time.get_ticks_msec() < _accept_until and _accept_kind == "start_over":
+		_accept_room = ""
+		confirm_start_over(button, true)
+		return
+	if can_answer_start_over(): _offer_alerts()
 
 ## Seeing a friend's request in the app for the first time asks about redo alerts once.
 func noticed_request() -> void:
@@ -260,6 +278,99 @@ func _offer_alerts() -> void:
 ## A question owed from a request sent during play, once the turn stops.
 func offer_owed_alerts() -> void:
 	if _alerts_owed and is_instance_valid(host) and not host.running and host.is_inside_tree(): _offer_alerts()
+
+# --- Play my turn again, before the friend has the turn ---------------------------------
+
+## The server says the friend's phone has not fetched this player's saved first turn
+## (version 2 redo reads): it can be played again, and the new one replaces it when saved.
+func can_replace() -> bool:
+	return available() and not host._duel_room() and host.online_session.redo_extras_supported() and host.online_session.mutations_enabled() and not replacing() and host.journey.pending().is_empty() and not host.journey.my_turn() and client().replace_open()
+
+## This player is playing their saved turn again (relay_room_coordinator.gd begin_replace).
+func replacing() -> bool:
+	return is_instance_valid(host) and host.online_session != null and host.journey != null and host.journey.has_method("replacing") and host.journey.replacing()
+
+## Play my turn again: the turn starts at once from the same start, with "Your turn again".
+## Leaving it unsaved keeps the saved turn.
+func replace(control: Control = null) -> void:
+	await _tap(control, func() -> void:
+		if not can_replace() or not host.journey.begin_replace(): return
+		_play_after_accept = true
+		host._show_ready())
+
+## Keep it as it is: back to the saved turn and the waiting page.
+func keep_saved(control: Control = null) -> void:
+	await _tap(control, func() -> void:
+		if not replacing(): return
+		host.journey.end_replace()
+		host._show_ready())
+
+# --- start over ---------------------------------------------------------------------
+
+## Every Start over tap asks first: the room goes back to the first stage for both and the run
+## is removed. One card at a time (a second tap while it shows does nothing); Cancel sends nothing.
+var _over_card: Control
+func confirm_start_over(control: Control, agree: bool) -> void:
+	if is_instance_valid(_over_card) or not (can_answer_start_over() if agree else can_ask_start_over()): return
+	var card := InGameModal.open(host.controls.ui, "StartOverConfirm", PlayerCopy.START_OVER_CONFIRM_TITLE, "", control)
+	_over_card = card
+	card.widen(500.0)
+	card.label(PlayerCopy.START_OVER_CONFIRM_BODY)
+	card.add_actions(PlayerCopy.START_OVER_CONFIRM, func() -> void:
+		if _over_card != card or not is_instance_valid(card): return
+		_over_card = null
+		card.close(false)
+		if agree: await agree_start_over(control)
+		else: await ask_start_over(control), PlayerCopy.START_OVER_CANCEL, true)
+	card.closed.connect(func() -> void: if _over_card == card: _over_card = null)
+
+## Either player may ask to take the room back to its first stage, once per room position.
+func can_ask_start_over() -> bool:
+	return available() and not host._duel_room() and host.online_session.redo_extras_supported() and host.online_session.mutations_enabled() and not replacing() and host.journey.pending().is_empty() and client().can_ask_start_over()
+
+## The friend asked this player to start over.
+func can_answer_start_over() -> bool:
+	return available() and not host._duel_room() and host.online_session.redo_extras_supported() and not replacing() and host.journey.pending().is_empty() and client().can_answer_start_over()
+
+## What became of this player's own request: "Asked Sam" or "Sam wants to keep playing".
+func start_over_line() -> String:
+	if not available() or replacing() or client().start_over_role() != "asker": return ""
+	match str(client().start_over().get("status", "")):
+		"pending": return PlayerCopy.REDO_ASKED % partner()
+		"declined": return PlayerCopy.START_OVER_KEPT % partner()
+	return ""
+
+func ask_start_over(control: Control = null) -> void:
+	await _tap(control, func() -> void:
+		if not can_ask_start_over(): return
+		var room: Dictionary = host.journey.snapshot()
+		var asked: bool = await client().request_start_over()
+		if not _same_room(room): return
+		_redraw()
+		if asked: _offer_alerts())
+
+## Start over: the friend's agreement is the fork back to the first stage; the room is read again.
+func agree_start_over(control: Control = null) -> void:
+	await _tap(control, func() -> void:
+		if not can_answer_start_over(): return
+		var room: Dictionary = host.journey.snapshot()
+		var agreed: bool = await client().accept_start_over()
+		# The room read that follows names the new run: its old copies go (redo_client.gd take_run_reset).
+		if not _same_room(room): return
+		if agreed: await host._online_refresh()
+		else: _redraw())
+
+## Keep playing: decline; the friend sees "Sam wants to keep playing".
+func keep_playing(control: Control = null) -> void:
+	await _tap(control, func() -> void:
+		if not can_answer_start_over(): return
+		var room: Dictionary = host.journey.snapshot()
+		await client().decline_start_over()
+		if _same_room(room): _redraw())
+
+func _redraw() -> void:
+	if host.mode == "ready": host._show_ready()
+	elif host.mode == "online_waiting": host._show_online_waiting()
 
 ## One tap path for every redo button: it waits for a read or write still out
 ## (the room poll, an earlier redo tap), then runs on the same room.

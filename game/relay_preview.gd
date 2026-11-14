@@ -747,10 +747,10 @@ func _show_ready() -> void:
 	if online_session != null and not journey.pending().is_empty():
 		_show_online_waiting()
 		return
-	if _ordinary_redo_available():
+	if _ordinary_redo_available() and not redo_flow.replacing():
 		var redo: RefCounted = online_session.redo_client()
 		if not redo.busy: redo.bind_room("relay",journey.snapshot())
-		if redo.pending().get("action") == "accept":
+		if redo.accept_pending():
 			_show_online_waiting()
 			return
 	if hard_flow.holds(): return
@@ -778,8 +778,11 @@ func _show_ready() -> void:
 	var title: String = hard_flow.heading(_turn_title(int(checkpoint.stage_index), role))
 	var compact: bool = online_session != null and _room_panel_fits()
 	var facts := _room_facts()
+	# A friend's start over request leads the page (redo_flow.gd): its rows follow.
+	var start_over_asked: bool = online_session != null and _room_fact("start_over_answer", "", {})
+	if start_over_asked: title = PlayerCopy.START_OVER_ASKED_FOR % FriendNicknames.sentence_start(_waiting_partner_name(journey.snapshot()))
 	if compact:
-		var hint := PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]), online_session == null)
+		var hint := PlayerCopy.START_OVER_LINE if start_over_asked else PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]), online_session == null)
 		var panel := _ordinary_room_card(title,hint)
 		_set_room_state(RoomActions.panel_state("ready", facts))
 		_add_friend_strip(panel, joined)
@@ -846,6 +849,12 @@ func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 		"redo_ask": return redo_flow.can_ask()
 		"redo_answered": return not redo_flow.answer().is_empty()
 		"redo_unsettled": return redo_flow.unsettled()
+		# Play my turn again before the friend has it, and start over (redo_flow.gd).
+		"redo_self": return _bound_redo() and redo_flow.can_replace()
+		"replacing": return redo_flow.replacing()
+		"start_over_ask": return _bound_redo() and redo_flow.can_ask_start_over()
+		"start_over_answer": return _bound_redo() and redo_flow.can_answer_start_over()
+		"start_over_answered": return _bound_redo() and not redo_flow.start_over_line().is_empty()
 		"my_turn": return journey.my_turn()
 		"solo_redo": return not _solo_redo_plan().is_empty()
 		"photo": return not _recent_photo_receipt().is_empty()
@@ -888,6 +897,12 @@ func _room_action_hooks() -> Dictionary:
 		"redo": {"run": _redo_ask, "drawn": _track_redo_ask},
 		"redo_status": {"widget": _add_redo_status},
 		"redo_retry": {"run": _open_redo},
+		"redo_self": {"run": _redo_self, "drawn": _track_redo_self},
+		"redo_self_keep": {"run": _redo_self_keep, "drawn": _track_redo_self_keep},
+		"start_over": {"run": _start_over_ask, "drawn": _track_start_over_ask},
+		"start_over_status": {"widget": _add_start_over_status},
+		"start_over_agree": {"run": _start_over_agree, "drawn": _track_start_over_agree},
+		"start_over_keep": {"run": _start_over_keep, "drawn": _track_start_over_keep},
 		"solo_redo": {"run": _confirm_solo_redo},
 		"photo": {"run": _offer_recent_photo},
 		"checkpoints": {"run": _choose_local_checkpoint},
@@ -967,6 +982,7 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 	if look.get("icon_only", false): RoomPageBuilder.icon_button(button, row.icon, button.text, true)
 	elif look.get("icon", false): RoomPageBuilder.panel_row_look(button, RoomActions.icon(id), look.get("cream", false) or row.get("primary", false))
 	if look.get("icon", false) and row.get("alert", false): RoomPageBuilder.alert_outline(button)
+	if row.get("danger", false): ControlTheme.danger(button, RoomActions.icon(id))
 	if look.has("height"): button.custom_minimum_size.y = look.height
 	if look.get("fill", false): button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if hooks.has("drawn"): hooks.drawn.call(button)
@@ -1335,6 +1351,9 @@ func _show_online_waiting() -> void:
 	if pending.is_empty() and redo_flow.available() and online_session.redo_client().can_accept():
 		heading = PlayerCopy.REDO_ASKED_FOR % FriendNicknames.sentence_start(partner)
 		subline = PlayerCopy.REDO_FIRST_TURN
+	elif pending.is_empty() and redo_flow.can_answer_start_over():
+		heading = PlayerCopy.START_OVER_ASKED_FOR % FriendNicknames.sentence_start(partner)
+		subline = PlayerCopy.START_OVER_LINE
 	notification_hint = null
 	notification_offer = null
 	_waiting_notify_section = false
@@ -1518,7 +1537,7 @@ func _add_redo_actions_to(parent: Container) -> void:
 ## Whether this online room offers a redo button now. Reading it binds the
 ## room's redo client.
 func _redo_offered() -> bool:
-	if not _ordinary_redo_available() or not journey.pending().is_empty(): return false
+	if not _ordinary_redo_available() or not journey.pending().is_empty() or redo_flow.replacing(): return false
 	var client: RefCounted = online_session.redo_client()
 	if not client.busy: client.bind_room("relay",journey.snapshot())
 	if not online_session.mutations_enabled() and client.pending().is_empty(): return false
@@ -1551,9 +1570,59 @@ func _track_redo_play(button: Button) -> void:
 	RedoFlow.hold(button)
 	redo_flow.request_drawn.call_deferred(button)
 
-## Home's Play my turn again opened this room: the request's own button plays it once drawn.
-func accept_redo_on_open(room_id: String) -> void:
-	redo_flow.accept_on_open(room_id)
+## Home's Play my turn again (or Start over, `kind` "start_over") opened this room: the
+## request's own button answers it once drawn.
+func accept_redo_on_open(room_id: String, kind: String = "redo") -> void:
+	redo_flow.accept_on_open(room_id, kind)
+
+## The room's redo client bound to the room as it shows (never while a saved turn is played
+## again: that room is this phone's own). True when it is bound.
+func _bound_redo() -> bool:
+	if not _ordinary_redo_available() or redo_flow.replacing() or not journey.pending().is_empty(): return false
+	var client: RefCounted = online_session.redo_client()
+	return client.busy or client.bind_room("relay", journey.snapshot())
+
+## Play my turn again, Keep it as it is, and the start over rows (presentation/redo_flow.gd).
+func _redo_self() -> void:
+	await redo_flow.replace(_redo_buttons.get("redo_self"))
+
+func _redo_self_keep() -> void:
+	await redo_flow.keep_saved(_redo_buttons.get("redo_self_keep"))
+
+func _start_over_ask() -> void:
+	redo_flow.confirm_start_over(_redo_buttons.get("start_over"), false)
+
+func _start_over_agree() -> void:
+	redo_flow.confirm_start_over(_redo_buttons.get("start_over_agree"), true)
+
+func _start_over_keep() -> void:
+	await redo_flow.keep_playing(_redo_buttons.get("start_over_keep"))
+
+func _track_redo_self(button: Button) -> void:
+	_track_redo_button(button, "redo_self")
+
+func _track_redo_self_keep(button: Button) -> void:
+	_redo_buttons["redo_self_keep"] = button
+
+func _track_start_over_ask(button: Button) -> void:
+	_track_redo_button(button, "start_over")
+
+func _track_start_over_keep(button: Button) -> void:
+	_track_redo_button(button, "start_over_keep")
+
+## The friend's start over was drawn: Home's Start over agrees once it shows.
+func _track_start_over_agree(button: Button) -> void:
+	_track_redo_button(button, "start_over_agree")
+	redo_flow.start_over_drawn.call_deferred(button)
+
+## "Asked Sam" or "Sam wants to keep playing" in place of Start over.
+func _add_start_over_status(parent: Container, _id: String, _facts: Callable, _look: Dictionary) -> Button:
+	var line := _label(redo_flow.start_over_line(), 18)
+	line.name = "StartOverAnswerLine"
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	line.add_theme_color_override("font_color", MUTED)
+	parent.add_child(line)
+	return null
 
 ## "Asked Sam" or "Sam kept their turn" in place of Ask for a redo.
 func _add_redo_status(parent: Container, _id: String, _facts: Callable, _look: Dictionary) -> Button:
@@ -1594,7 +1663,7 @@ func _open_redo() -> void:
 		elif previous_mode == "paused":
 			_restore_paused_draft()
 		elif previous_mode == "review":
-			if client.pending().get("action") == "accept":
+			if client.accept_pending():
 				# A redo accepted from review: the room is read again soon.
 				refresh_schedule.note_activity(Time.get_ticks_msec())
 				_show_online_waiting()
@@ -1722,10 +1791,15 @@ func _refresh_redo() -> bool:
 	if client.busy: return false
 	var before: Dictionary = client.view()
 	var room: Dictionary = journey.snapshot()
-	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty(): return false
+	if redo_flow.replacing(): return false
+	# A version 2 server also holds start over requests, at any stage of a room in play.
+	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty() and not (online_session.redo_extras_supported() and room.get("guest_id") != null and room.get("active_role") in ["a", "b"]): return false
 	if not client.bind_room("relay",room): return false
 	# The poll that just ran carried the redo state (X-AfterYou-Poll-Redo): no second read.
 	if not client.observe(online_session.take_polled_redo(room)): await client.refresh()
+	# The friend agreed to start over since this phone last read the room: the old run goes from it too.
+	var reset: String = client.take_run_reset()
+	if not reset.is_empty(): online_session.forget_room_run(reset)
 	return before != client.view()
 
 ## The narrow card's line saying whether the friend has joined.
@@ -1937,7 +2011,7 @@ func _turn_key() -> String:
 	return "%s:%s:%s" % [str(room.get("branch", "")), str(room.get("stage_index", "")), str(room.get("active_role", ""))]
 
 func _reset_live(resume_draft: bool = false) -> bool:
-	if _ordinary_redo_available() and online_session.redo_client().pending().get("action") == "accept":
+	if _ordinary_redo_available() and online_session.redo_client().accept_pending():
 		_show_online_waiting()
 		return false
 	var reuse: bool = not resume_draft and _fresh_live_unchanged()
@@ -3388,6 +3462,8 @@ func _leave(allow_unsaved: bool = false) -> void:
 	# Back on the save-error card keeps it, solo or online: Leave unsaved and
 	# Retry save are the only ways on from an unsaved turn.
 	if not allow_unsaved and mode == "save_error": return
+	# Leaving while a saved turn is played again keeps the saved one.
+	if redo_flow.replacing(): journey.end_replace()
 	if online_session != null and journey != null:
 		var durable: bool = journey.finish_live_draft_save()
 		if not allow_unsaved and not durable:
