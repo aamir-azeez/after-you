@@ -2,7 +2,7 @@ import { creditDuelExtra, creditDuelWin, creditGhostWin, duelRoomPay, type Credi
 import { DurableObject } from "cloudflare:workers";
 import { playerStanding, type Standing } from "./leaderboards/standing";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
-import { flags } from "./flags";
+import { FLAG_VARS, LEDGER, flags, gated, type Reach } from "./flags";
 import { ApiError, ID_PATTERN, equalHash, fail, isObject, ok, randomToken, type Outcome } from "./protocol";
 import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
@@ -33,10 +33,9 @@ import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type Displ
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type FruitHooks, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedFaceIds, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { LEDGER, type Reach } from "./flags";
 import { anyBundlesOn, faceSinglesOn, fruitsOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
 import { fruitHistoryView, fruitsView, type FruitsView } from "./pollen/fruits-view";
-import { settleAchievements, type Moment } from "./pollen/achievements";
+import { settleAchievements, settleStartedAchievements, type Moment } from "./pollen/achievements";
 import { spendSunshineTurn } from "./pollen/fruit-ops";
 import { energyView, refundEnergy, spendEnergy, type EnergySpend, type EnergyView } from "./pollen/energy";
 import { knownBoard } from "./leaderboards/boards";
@@ -285,17 +284,27 @@ export class Player extends DurableObject<Env> {
   }
   /**
    * What a credit gets while Fruits are on (pollen/wallet.ts FruitHooks): Sunshine on bank turns, only for an app Fruits are
-   * on for (`reach`, the app that sent the turn; a bought turn is spent where it shows), and achievements at their moments,
-   * which are bookkeeping (LEDGER), so a moment is never lost; pollen/routes.ts keeps their receipt from an older app.
+   * on for (`reach`, the app that sent the turn; a bought turn is spent where it shows), and achievements at their moments.
+   * A moment no Fruits app asked for is bookkeeping (ledgerAchievements); pollen/routes.ts keeps its receipt from an older app.
    */
   private fruitHooks(reach: Reach): FruitHooks | undefined {
     if (!fruitsOn(this.env, LEDGER)) return undefined;
-    return { sunshine: fruitsOn(this.env, reach) ? spendSunshineTurn : () => null, achievements: (storage, now, moment) => settleAchievements(storage, now, moment) };
+    const shown = fruitsOn(this.env, reach);
+    return { sunshine: shown ? spendSunshineTurn : () => null, achievements: shown ? (storage, now, moment) => settleAchievements(storage, now, moment) : this.ledgerAchievements() };
+  }
+  /**
+   * Achievements no Fruits app asked for (a partner's clear, duel results, board rewards, an older app's turn): while FRUITS
+   * is gated, only for a player whose first Fruits read swept already (achievements.ts settleStartedAchievements), so a
+   * player who has only used older apps writes nothing; that sweep later counts what their records hold. Not gated, as before.
+   */
+  private ledgerAchievements(): (storage: DurableObjectStorage, now: number, moment?: Moment) => ReturnType<typeof settleAchievements> {
+    return gated(this.env, FLAG_VARS.fruits) ? settleStartedAchievements : (storage, now, moment) => settleAchievements(storage, now, moment);
   }
   /** The duel credits' achievement moment, while Fruits are on for any app (bookkeeping: no app sees it). */
   private fruitMoment(moment: Moment): CreditOptions {
     // A friend duel win counts only when it paid (never past the weekly limits or against the same pair again).
-    return fruitsOn(this.env, LEDGER) ? { fresh: (storage, paid) => { settleAchievements(storage, Date.now(), moment.duel_win && !paid ? { ...moment, duel_win: false } : moment); } } : {};
+    const settle = this.ledgerAchievements();
+    return fruitsOn(this.env, LEDGER) ? { fresh: (storage, paid) => { settle(storage, Date.now(), moment.duel_win && !paid ? { ...moment, duel_win: false } : moment); } } : {};
   }
   /** The daily bundle refund check (pollen/bundle-settle.ts); a failure never stops the wallet read it rides on. */
   private async checkBundles(owner: string): Promise<void> {
@@ -445,7 +454,7 @@ export class Player extends DurableObject<Env> {
     const noted = noteBoardRewards(this.ctx.storage, board, items, seq, Date.now(), this.pollenActive(owner));
     // A Top 10 ribbon or Gold leaf may complete an achievement.
     if (noted.ok && noted.value.changed && fruitsOn(this.env, LEDGER)) {
-      try { this.ctx.storage.transactionSync(() => settleAchievements(this.ctx.storage, Date.now())); }
+      try { const settle = this.ledgerAchievements(); this.ctx.storage.transactionSync(() => settle(this.ctx.storage, Date.now())); }
       catch (error) { logWarning("fruits_achievements_failed", { reason: errorCode(error) }); }
     }
     return noted;
@@ -468,8 +477,8 @@ export class Player extends DurableObject<Env> {
    * The room's boost is the same for both members, so the partner's clear uses the frozen percent.
    * `roomId`: that room, so the partner's later clear claim from it answers what it paid (`paid_clears`).
    */
-  creditTogetherClear(owner: string, levelId: string, hard: boolean, boost: number, roomId?: string): Outcome<PollenReceipt> {
-    return creditClear(this.ctx.storage, { level_id: levelId, hard, boost_percent: boost, ...(roomId ? { room_id: roomId } : {}), together: true }, Date.now(), this.pollenActive(owner), RATES, this.fruitHooks(LEDGER));
+  creditTogetherClear(owner: string, levelId: string, hard: boolean, boost: number, roomId?: string, reach: Reach = null): Outcome<PollenReceipt> {
+    return creditClear(this.ctx.storage, { level_id: levelId, hard, boost_percent: boost, ...(roomId ? { room_id: roomId } : {}), together: true }, Date.now(), this.pollenActive(owner), RATES, this.fruitHooks(reach));
   }
   /**
    * Binding only: a solo first clear the app claims. A paid chapter needs Full Journey (the stored

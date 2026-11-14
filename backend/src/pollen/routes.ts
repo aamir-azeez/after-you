@@ -296,7 +296,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
       const room_id = claim.room_id as string;
       const facts = await settle(() => env.ROOMS_V2.getByName(room_id).pollenClearFacts(playerId));
       const result = facts === null ? { status: "retry" as const } : !facts.ok ? { status: "refused" as const, code: facts.code }
-        : claimResult(await settle(() => player.creditTogetherClear(playerId, facts.value.level_id, facts.value.hard && facts.value.together, facts.value.boost_percent, room_id)));
+        : claimResult(await settle(() => player.creditTogetherClear(playerId, facts.value.level_id, facts.value.hard && facts.value.together, facts.value.boost_percent, room_id, clientReach(request))));
       results.push({ room_id, ...result });
     }
   }

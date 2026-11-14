@@ -16,6 +16,8 @@ import { withEnergy } from "../src/duels/energy-charge";
 import { DUELS_HEADER } from "../src/duels/routes";
 import { FACE_PACKS_HEADER } from "../src/v2/end-reactions";
 import { ledgerLines } from "../src/pollen/wallet";
+import { isoWeek } from "../src/pollen/week";
+import type { TurnFacts } from "../src/pollen/turn-facts";
 import { countingEnv, meterAllRows } from "./meter";
 import { withConfig } from "./config";
 
@@ -176,6 +178,33 @@ describe("through the Worker", () => {
     for (const client of [...OLD, NEW]) await measure(GATED, client);
     for (const client of OLD) expect(await measure(GATED, client), client).toEqual(await measure(OFF, client));
     expect(await measure(GATED, NEW)).toEqual(await measure(ALL_ON, NEW));
+  });
+});
+
+describe("turn credits", () => {
+  const facts = (owner: string): TurnFacts => ({ schema_version: 1, room_id: "R".repeat(22), recording_hash: "a".repeat(64), turn_id: "t0-0-a", player_id: owner, accepted_at: Date.now(),
+    week: isoWeek(Date.now()), level_id: "first-steps", stage_id: "first-path", role: "a", ticks: 900, tries: null, premium: false, hard: false, host: true, together: true,
+    complete: true, subscriber: false, partner_subscriber: false, boost_percent: 0 });
+  const credit = async (vars: Record<string, unknown>, reach: Version | null) => {
+    const player = await create();
+    await playerConfig(player, vars);
+    const stub = env.PLAYERS.getByName(player.player_id);
+    const { value, rows } = await meterAllRows(async () => JSON.parse(JSON.stringify(await stub.creditTurn(player.player_id, facts(player.player_id), true, reach))) as { ok: boolean; value: Record<string, unknown> });
+    const partner = await create();
+    await playerConfig(partner, vars);
+    const clear = await meterAllRows(async () => { await env.PLAYERS.getByName(partner.player_id).creditTogetherClear(partner.player_id, "first-steps", false, 0, "R".repeat(22)); });
+    return { value, written: rows.written, partner: clear.rows.written };
+  };
+  it("writes no Fruit row for a chapter an older app finishes, nor for its partner who never read Fruits", async () => {
+    const off = await credit(OFF, version("0.7.9"));
+    for (const client of OLD) {
+      const gated = await credit(GATED, version(client.split(" ")[0]));
+      expect(gated.value.ok && !("fruits" in gated.value.value), client).toBe(true);
+      expect([gated.written, gated.partner], client).toEqual([off.written, off.partner]);
+    }
+    // 0.8.1 finishing the same chapter is paid its achievement there and then.
+    const shown = await credit(GATED, version("0.8.1"));
+    expect(shown.value.ok && "fruits" in shown.value.value).toBe(true);
   });
 });
 
