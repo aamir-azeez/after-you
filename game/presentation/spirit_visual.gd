@@ -195,10 +195,12 @@ func _init(color: Color=Look.PEACH) -> void:
 
 ## Dresses the spirit in `outfit` (services/outfit.gd; unknown and unreleased
 ## ids are dropped), taking off what it wore. The default look, {}, adds no node.
-## Presentation only: no recording, simulation or hash reads it. It shows from
-## the next advance_motion.
+## A resting face ("rest_face", its id the expression's) goes on the face, no
+## node either. Presentation only: no recording, simulation or hash reads it.
+## It shows from the next advance_motion.
 func wear(outfit: Dictionary) -> void:
 	var clean := Outfit.from(outfit)
+	face_art.set_rest(StringName(str(clean.get("rest_face", ""))))
 	if _wearing != null:
 		if Outfit.digest(clean) == Outfit.digest(_wearing.outfit): return
 		_wearing.undress()
@@ -391,7 +393,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		return
 	_reduced_motion=reduced_motion
 	_reaction_age=minf(_reaction_duration,_reaction_age+delta)
-	face_art.advance(delta)
+	face_art.advance(delta,reduced_motion)
 	if _wearing!=null: _wearing.advance(delta,reduced_motion)
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
@@ -548,17 +550,16 @@ func _apply_pose(amount: float) -> void:
 	# A glance adds to the eyes' attention, up to the reach that attention has:
 	# glancing toward a partner off to one side turns the head, not the eyes.
 	var look := (_look+rest.look).clamp(-Vector2.ONE,Vector2.ONE)
-	var blink := 1.0
+	# Each eye's blink: the resting face's own way while it rests, else today's.
+	var blink := Vector2.ONE
 	if not _reduced_motion and _expression_time>0.0 and Look.is_open(face_art.shown):
-		var blink_time := fposmod(_expression_time+expression_phase,4.3+expression_phase*0.25)
-		if blink_time>3.8 and blink_time<3.98:
-			blink=1.0-sin((blink_time-3.8)/0.18*PI)*0.94
+		blink=Look.blink(face_art.drawn() if face_art.shown==Look.NORMAL else Look.NORMAL,_expression_time,expression_phase)
 	# An expression change closes and reopens the eyes (face_art); a wake
 	# widens them for a moment.
-	var open := blink*face_art.openness()*(1.0+rest.eyes_wide)
+	var open := face_art.openness()*(1.0+rest.eyes_wide)
 	for index in range(eyes.size()):
 		eyes[index].position=EYE_REST[index]+Vector3(look.x*0.018,look.y*0.009,0)
-		eyes[index].scale.y=open
+		eyes[index].scale.y=open*blink[index]
 	face_art.place_eyes(eyes,look)
 	for index in range(2):
 		var side := -1.0 if index==0 else 1.0

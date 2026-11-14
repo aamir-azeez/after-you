@@ -208,11 +208,15 @@ func end_reactions_supported() -> bool:
 func run_reactions_supported() -> bool:
 	return Typed.equal(capabilities.get("run_reactions_version"), 1.0)
 
-## The server takes and sends reaction pack faces (services/face_packs.gd).
-## Without it no pack face is offered: an older server refuses a turn whose
-## face it does not know.
+## The faces the server takes and sends (services/face_packs.gd): 0 everyday
+## faces only, 1 the pack faces too, 2 every face (the single faces and the
+## reaction slots). An older server refuses a turn whose face it does not know.
+func face_version() -> int:
+	var version: Variant = capabilities.get("face_packs_version")
+	return 2 if Typed.equal(version, 2.0) else 1 if Typed.equal(version, 1.0) else 0
+
 func face_packs_supported() -> bool:
-	return Typed.equal(capabilities.get("face_packs_version"), 1.0)
+	return face_version() >= 1
 
 ## The server hosts hard rooms (services/hard_mode.gd).
 func hard_mode_supported() -> bool:

@@ -372,6 +372,9 @@ func _inside_head(point: Vector3) -> float:
 func _placed_outfits() -> Array[Dictionary]:
 	var outfits: Array[Dictionary] = []
 	for id: String in Catalog.ids():
+		# Face items draw nothing on the pip's body: reaction faces and slots
+		# are never worn, and a resting face only changes the face.
+		if Catalog.slot(id) in ["", "rest_face"]: continue
 		outfits.append(Outfit.of(id, true))
 		if Catalog.slot(id) == "leaf":
 			for hat: String in ["straw_hat", "apple_hood", "blueberry_hood"]: outfits.append(Outfit.from({"hat": hat, "leaf": id}, true))

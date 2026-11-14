@@ -28,6 +28,9 @@ extends HBoxContainer
 ##              (services/face_packs.gd)
 ##   packs      the packs whose faces the card offers (tests); otherwise
 ##              FacePacks.pickable_packs()
+##   slots      the reaction slots the card offers (tests); otherwise
+##              FacePacks.slots(): while the server keeps slots the card
+##              shows the slotted faces in their order and no pack tabs
 ## A free bubble over the world (a rewatched turn's end) is pop().
 ##
 ## Nothing runs per frame: faces are drawn once, a bubble's pop tween belongs to
@@ -313,8 +316,18 @@ func _quick_default() -> String:
 ## A quick half's face (this row's pill, and the in-run pill): the last pick,
 ## or the default face while the last was a pack face that cannot be picked now.
 static func quick_face(last: String, context: Dictionary) -> String:
-	if not Store.Catalog.is_pack_face(last): return last
-	return last if Store.Catalog.pack_of(last) in offered_packs(context) else Store.DEFAULT_FACE
+	if not Store.Catalog.is_paid_face(last): return last
+	if Store.Catalog.is_pack_face(last) and Store.Catalog.pack_of(last) in offered_packs(context): return last
+	if context.get("slots") is Array: return last if last in context.slots else Store.DEFAULT_FACE
+	return last if FacePacks.can_pick(last, bool(context.get("local", false))) else Store.DEFAULT_FACE
+
+## The faces a card offers in slot order, empty places left out: the context's
+## "slots" (tests), else the player's reaction slots (FacePacks.slots); [] while
+## the server keeps none, so the card shows the free faces and pack tabs.
+static func offered_slots(context: Dictionary) -> Array:
+	var given: Variant = context.get("slots")
+	var slots: Array = given if given is Array else FacePacks.slots(bool(context.get("local", false)))
+	return slots.filter(func(face: Variant) -> bool: return face is String and Store.Catalog.is_face(face) and face != Store.HEART)
 
 ## The packs whose faces a card offers for `context` (a row's, or any faces card
 ## owner's): its "packs" (tests), else those the player may pick now, with
@@ -605,6 +618,8 @@ class FacesCard extends CanvasLayer:
 	var panel: PanelContainer
 	var pointer: Polygon2D
 	var cells: Dictionary = {}
+	## The reaction slots' faces while the card shows them, in place of tabs.
+	var slot_faces: Array = []
 	var closing := false
 	var modal := true
 	var away := false
@@ -658,11 +673,13 @@ class FacesCard extends CanvasLayer:
 		close_button.add_child(Cross.new())
 		close_button.pressed.connect(close)
 		header.add_child(close_button)
-		var packs: Array = load(SCRIPT_PATH).offered_packs(row.context)
+		slot_faces = load(SCRIPT_PATH).offered_slots(row.context)
+		var packs: Array = load(SCRIPT_PATH).offered_packs(row.context) if slot_faces.is_empty() else []
 		if not packs.is_empty(): stack.add_child(_tab_strip(packs))
 		grid = GridContainer.new()
 		grid.name = "ReactionGrid"
-		grid.columns = 4
+		# The slots draw 3 x 2 (Wardrobe board, the React card); the free faces 4 x 2.
+		grid.columns = 4 if slot_faces.is_empty() else 3
 		grid.add_theme_constant_override("h_separation", 8)
 		grid.add_theme_constant_override("v_separation", 8)
 		stack.add_child(grid)
@@ -716,7 +733,7 @@ class FacesCard extends CanvasLayer:
 			cells.erase(str(child.name).trim_prefix("Face_"))
 			grid.remove_child(child)
 			child.queue_free()
-		var faces: Array = Store.Catalog.PACKS.get(id, Store.FACES)
+		var faces: Array = slot_faces if not slot_faces.is_empty() else Store.Catalog.PACKS.get(id, Store.FACES)
 		for face: String in faces:
 			if face == Store.HEART: continue
 			grid.add_child(_cell(face, CELL_SIZE, true))

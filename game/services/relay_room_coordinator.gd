@@ -752,8 +752,8 @@ func _accept_sent(response: Dictionary) -> bool:
 func _pending_pack_faces() -> bool:
 	if not _guard() or _state.pending.is_empty() or _state.pending.operation != "turns" or not _state.pending.body is Dictionary: return false
 	var body: Dictionary = _state.pending.body
-	if ReactionCatalog.is_pack_face(body.get("end_reaction")): return true
-	return body.get("run_reactions") is Array and (body.run_reactions as Array).any(func(entry: Variant) -> bool: return entry is Dictionary and ReactionCatalog.is_pack_face(entry.get("id")))
+	if ReactionCatalog.is_paid_face(body.get("end_reaction")): return true
+	return body.get("run_reactions") is Array and (body.run_reactions as Array).any(func(entry: Variant) -> bool: return entry is Dictionary and ReactionCatalog.is_paid_face(entry.get("id")))
 
 ## The server refused the turn for a pack face (FACE_PACK_REFUSALS: not owned,
 ## or a server that does not know it). Nothing was kept, so the same turn goes
@@ -763,9 +763,9 @@ func _pending_pack_faces() -> bool:
 func _resend_without_pack_faces(refusal: Dictionary) -> bool:
 	var rejected: Dictionary = _state.pending.duplicate(true)
 	var body: Dictionary = rejected.body.duplicate(true)
-	if ReactionCatalog.is_pack_face(body.get("end_reaction")): body.erase("end_reaction")
+	if ReactionCatalog.is_paid_face(body.get("end_reaction")): body.erase("end_reaction")
 	if body.get("run_reactions") is Array:
-		var kept: Array = (body.run_reactions as Array).filter(func(entry: Variant) -> bool: return not (entry is Dictionary and ReactionCatalog.is_pack_face(entry.get("id"))))
+		var kept: Array = (body.run_reactions as Array).filter(func(entry: Variant) -> bool: return not (entry is Dictionary and ReactionCatalog.is_paid_face(entry.get("id"))))
 		if kept.is_empty(): body.erase("run_reactions")
 		else: body.run_reactions = kept
 	body.idempotency_key = _new_key()

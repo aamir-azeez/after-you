@@ -47,6 +47,12 @@ extends Control
 ## `currency`; in_tab() says which tab lists it (All items is Pollen only), and
 ## `sets` holds the Orchard's sets, picked like an item. `fruits_blocked`: the
 ## Fruit balance is below 0, so a Fruit Buy greys and says why.
+## Faces (faces board 4): the Face chip lists the resting faces as item cards,
+## Classic first; the Reactions chip shows presentation/wardrobe_reactions.gd
+## (the slot row and every face) in the cards' place, from the model's
+## `reactions` and `reaction_entries`, and the big pip makes the picked face
+## (`preview_face`). A picked face's button is Buy, Put in a slot, or Cancel
+## while the row waits for a place.
 ## Cards draw still pips (kit/pip_avatar.gd still mode), so a long list shares
 ## the one offscreen renderer; only the big pip is live, and it is made again
 ## only when the switch changes its colour.
@@ -68,6 +74,7 @@ const Orchard = preload("res://presentation/wardrobe_orchard.gd")
 const Sheets = preload("res://presentation/wardrobe_sheets.gd")
 const OrchardSurface = preload("res://presentation/kit/orchard_surface.gd")
 const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
+const Reactions = preload("res://presentation/wardrobe_reactions.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 
 const CREAM := ShopKit.CREAM
@@ -97,6 +104,8 @@ signal item_chosen(id: String)
 ## The Owned tab's Get more card: All items on slot `kind` ("" for every slot).
 signal more_chosen(kind: String)
 signal action_pressed(id: String)
+## A place in the reaction slot row (Reactions chip).
+signal slot_chosen(index: int)
 signal retry_pressed
 signal plus_pressed
 ## The balance on the chip: the Pollen page.
@@ -124,6 +133,8 @@ var _kinds: HBoxContainer
 var _shelf: PanelContainer
 var _featured: HBoxContainer
 var _grid: HFlowContainer
+## The Reactions chip's slot row and faces, shown in the cards' place.
+var _reactions: Reactions
 ## The scroll's list, and the empty list's drawing in it while there is one.
 var _list: VBoxContainer
 ## The cream shop panel, and the Orchard shown in its place on the Orchard tab.
@@ -322,6 +333,11 @@ func _shop_panel() -> Control:
 	_grid.add_theme_constant_override("h_separation", 12)
 	_grid.add_theme_constant_override("v_separation", 12)
 	_list.add_child(_grid)
+	_reactions = Reactions.new()
+	_reactions.visible = false
+	_reactions.face_chosen.connect(func(id: String) -> void: item_chosen.emit(id))
+	_reactions.slot_chosen.connect(func(index: int) -> void: slot_chosen.emit(index))
+	_list.add_child(_reactions)
 	return panel
 
 ## "Featured this week" in its own tinted panel: the title, then the six cards.
@@ -368,19 +384,20 @@ func render(model: Dictionary) -> void:
 		_make_preview(SpiritLook.MINT if view == "friend" else SpiritLook.PEACH)
 	for key: String in _views: _switch_style(_views[key], key == view)
 	var by_id := {}
-	for entry: Dictionary in model.get("items", []) + model.get("sets", []): by_id[entry.id] = entry
+	for entry: Dictionary in model.get("items", []) + model.get("sets", []) + model.get("reaction_entries", []): by_id[entry.id] = entry
 	var orchard := tab == "orchard"
 	_shop.visible = not orchard
 	_orchard.visible = orchard
 	if orchard: _orchard.render(_model, line)
 	var featured: Array = (model.get("featured", []) as Array).filter(func(id: String) -> bool: return by_id.has(id)).map(func(id: String) -> Dictionary: return by_id[id])
 	var kind := str(model.get("kind", ""))
+	var reacting := kind == "reactions" and not orchard
 	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return in_tab(entry, tab) and (kind.is_empty() or entry.slot == kind))
 	# An empty list shows the drawing (empty_state.gd) with its case's line:
 	# nothing owned, nothing in the shop, or no shop. Never while the status
 	# line says loading or offline.
 	var empty := ""
-	if shown.is_empty() and status.is_empty():
+	if shown.is_empty() and status.is_empty() and not reacting:
 		empty = PlayerCopy.WARDROBE_NOTHING_EARNED if not shop else (PlayerCopy.WARDROBE_NOTHING_IN_SHOP if tab == "all" else PlayerCopy.WARDROBE_NOTHING_OWNED)
 	# Owned ends with Get more when the flow says so (model.more), after at least one owned card.
 	var more := bool(model.get("more", false)) and not shown.is_empty()
@@ -395,9 +412,14 @@ func render(model: Dictionary) -> void:
 	else:
 		_restyle(_featured)
 		_restyle(_grid)
+	_reactions.visible = reacting
+	if reacting:
+		_grid.visible = false
+		_reactions.render(model.get("reactions", {}))
 	_shelf.visible = shop and tab == "all" and not featured.is_empty()
 	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop, bool(model.get("buy_offline", false)), bool(model.get("fruits_blocked", false)))
 	if preview.has_method("wear"): preview.wear(model.get("preview", {}))
+	if preview.has_method("show_face"): preview.show_face(model.get("preview_face", SpiritLook.NORMAL))
 
 ## Whether `entry` lists in `tab`: the Orchard lists what is sold for Fruits,
 ## Owned what is owned (either currency), All items the rest (Pollen and earned).
@@ -448,6 +470,22 @@ func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false, fr
 	# Wear and Take off sound their own chime; a press toward Buy ticks.
 	ButtonTicks.quiet(action_button, bool(entry.owned))
 	var label := ""
+	if bool(entry.get("face", false)) and bool(entry.owned):
+		# A face: Put in a slot, Cancel while the row waits, nothing once it sits in one.
+		var swapping := bool((_model.get("reactions", {}) as Dictionary).get("swapping", false))
+		if int(entry.get("in_slot", -1)) >= 0 and not swapping:
+			action_button.visible = false
+			return
+		var words := PlayerCopy.WARDROBE_CANCEL_SLOT if swapping else PlayerCopy.WARDROBE_PUT_IN_SLOT
+		ShopKit.set_button_content(action_button, ShopKit.text(words, 22, CREAM if swapping else INK, ShopKit.bold_font()))
+		action_button.accessibility_name = words
+		if swapping: _outlined(action_button)
+		else: _cream(action_button)
+		return
+	if bool(entry.get("classic", false)) and bool(entry.worn):
+		# Classic is taken off by wearing another resting face.
+		action_button.visible = false
+		return
 	if bool(entry.owned) and bool(entry.get("set", false)):
 		# A set is worn piece by piece.
 		action_button.visible = false
@@ -667,6 +705,13 @@ func _cream(button: Button) -> void:
 		if state in ["pressed", "hover_pressed"]: fill = Color("e4e0cd")
 		if state == "disabled": fill = Color("8f9f97")
 		button.add_theme_stylebox_override(state, ThemeRules.rounded(fill, 16))
+
+## The main button outlined in cream on the dark panel (Cancel while a face waits for a slot).
+func _outlined(button: Button) -> void:
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+		var box := ThemeRules.rounded(Color(1, 1, 1, 0.08) if state in ["hover", "pressed", "hover_pressed"] else Color.TRANSPARENT, 16, CREAM)
+		box.set_border_width_all(2)
+		button.add_theme_stylebox_override(state, box)
 
 ## The flat oval under the big pip's feet.
 class Floor extends Control:

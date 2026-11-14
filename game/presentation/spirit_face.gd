@@ -5,6 +5,17 @@ extends RefCounted
 ## a placement or Reduce motion swaps at once. The face keeps its own small
 ## clock, advanced only by the spirit, so a replay shows the same face at the
 ## same moment.
+##
+## A moving face (spirit_look.gd ANIMATED) runs on face_time, which starts at 0
+## each time the face is put on and moves only with the spirit's own steps, so
+## live play, the memory and a replay show the same frame at the same moment.
+## Under Reduce motion it holds its first frame. While it moves, a step writes
+## only the uniforms that face changes (spirit_look.gd MOTION_KEYS) and only
+## when they changed; a still face writes nothing per step.
+##
+## A resting face (spirit_look.gd REST_FACES, worn in the "rest_face" slot)
+## stands in for NORMAL: `shown` and `target` stay NORMAL, so every caller
+## that asks for the everyday face gets it, and drawn() names what is painted.
 
 const Look = preload("res://presentation/spirit_look.gd")
 const SHADER = preload("res://presentation/spirit_face.gdshader")
@@ -12,7 +23,7 @@ const SWAP_CLOSE := 0.07
 const SWAP_OPEN := 0.11
 const SWAP_DONE := SWAP_CLOSE + SWAP_OPEN
 ## The shader parameters each expression sets (spirit_look.gd eye()).
-const SHAPE_KEYS: Array[String] = ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end", "blush", "eye_shape", "tear_stream", "tear_stream_end"]
+const SHAPE_KEYS: Array[String] = ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end", "blush", "eye_shape", "tear_stream", "tear_stream_end", "shine", "shine_size", "mark", "mark_spin"]
 
 ## Shader parameters per expression, both eyes, built on first use.
 static var _shapes: Dictionary = {}
@@ -25,6 +36,15 @@ var _swap_age := SWAP_DONE
 var _eye_xy := Vector4.ZERO
 var _eye_squash := Vector2.ONE
 var _look_shift := Vector2.ZERO
+## The resting face painted for NORMAL (NORMAL itself is Classic).
+var rest: StringName = Look.NORMAL
+## Seconds the moving face has shown, on the spirit's clock (0 for a still face).
+var face_time := 0.0
+## Whether the face painted now moves, and the motion uniforms last written.
+var _moving := false
+var _written: Dictionary = {}
+## How many motion uniforms the moving faces have written (tests read it).
+var motion_writes := 0
 
 ## The body colour the face is drawn in.
 var body: Color
@@ -57,7 +77,27 @@ func _upload_all() -> void:
 	material.set_shader_parameter(&"look_shift", _look_shift)
 	material.set_shader_parameter(&"pupil_rim", Look.RIM)
 	material.set_shader_parameter(&"tear_neck_root", Look.TEAR_NECK_ROOT)
-	_upload(shown)
+	material.set_shader_parameter(&"leaf_color", Look.LEAF)
+	material.set_shader_parameter(&"spark_color", Look.SPARK)
+	# A new shader keeps the moving face where its clock is.
+	_upload(shown, false)
+
+## Wears `expression` as the resting face (spirit_look.gd REST_FACES); any
+## other value, "" among them, is Classic (NORMAL). Shown at once if the pip
+## rests now.
+func set_rest(expression: StringName) -> void:
+	var face := expression if Look.is_rest_face(expression) else Look.NORMAL
+	if face == rest: return
+	rest = face
+	if shown == Look.NORMAL: _upload(shown)
+
+## The expression painted now: `shown`, with the resting face for NORMAL.
+func drawn() -> StringName:
+	return rest if shown == Look.NORMAL else shown
+
+## Whether the face painted now moves on its own clock.
+func moving() -> bool:
+	return _moving
 
 ## Asks for `expression`. With `immediate` it is drawn at once; otherwise the
 ## eyes close, swap and reopen. Asking again for the target does nothing.
@@ -77,13 +117,21 @@ func request(expression: StringName, immediate: bool) -> void:
 		# Reopening: close again from as far open as the eyes are now.
 		_swap_age = SWAP_CLOSE * (1.0 - openness())
 
-func advance(delta: float) -> void:
-	if _swap_age >= SWAP_DONE: return
-	_swap_age = minf(SWAP_DONE, _swap_age + maxf(delta, 0.0))
-	# Shut (or past it) with the wrong shape: swap now.
-	if _swap_age >= SWAP_CLOSE and shown != target:
-		shown = target
-		_upload(shown)
+## One step of the spirit's clock: the swap, then a moving face's frame.
+## `reduced` (Reduce motion) holds a moving face on its first frame.
+func advance(delta: float, reduced: bool = false) -> void:
+	if _swap_age < SWAP_DONE:
+		_swap_age = minf(SWAP_DONE, _swap_age + maxf(delta, 0.0))
+		# Shut (or past it) with the wrong shape: swap now.
+		if _swap_age >= SWAP_CLOSE and shown != target:
+			shown = target
+			_upload(shown)
+	if not _moving: return
+	if reduced:
+		if face_time == 0.0: return
+		face_time = 0.0
+	else: face_time += maxf(delta, 0.0)
+	_animate()
 
 func swapping() -> bool:
 	return _swap_age < SWAP_DONE
@@ -112,14 +160,38 @@ func place_eyes(eyes: Array[Node3D], look: Vector2) -> void:
 		_look_shift = shift
 		material.set_shader_parameter(&"look_shift", _look_shift)
 
-func _upload(expression: StringName) -> void:
-	var shape: Dictionary = _shape(expression)
+## Paints `expression` (the resting face for NORMAL). `restart` starts a
+## moving face's clock again; a shader change keeps it.
+func _upload(expression: StringName, restart: bool = true) -> void:
+	var face := rest if expression == Look.NORMAL else expression
+	var shape: Dictionary = _shape(face)
 	for key: String in SHAPE_KEYS: material.set_shader_parameter(key, shape[key])
+	_moving = Look.is_animated(face)
+	_written.clear()
+	if restart or not _moving: face_time = 0.0
+	if not _moving: return
+	for key: String in Look.MOTION_KEYS[face]: _written[key] = shape[key]
+	if face_time > 0.0: _animate()
 
+## Writes the moving face's frame at face_time: only its motion uniforms, and
+## only those that changed.
+func _animate() -> void:
+	var face := drawn()
+	var left := Look.eye_at(face, 0, face_time)
+	var right := Look.eye_at(face, 1, face_time)
+	for key: String in Look.MOTION_KEYS[face]:
+		var value := PackedVector4Array([left[key], right[key]])
+		if value == _written.get(key): continue
+		_written[key] = value
+		material.set_shader_parameter(key, value)
+		motion_writes += 1
+
+## Both eyes' uniforms for an expression at rest (a moving face's first
+## frame), worked out once.
 static func _shape(expression: StringName) -> Dictionary:
 	if not _shapes.has(expression):
-		var left := Look.eye(expression, 0)
-		var right := Look.eye(expression, 1)
+		var left := Look.still(expression, 0)
+		var right := Look.still(expression, 1)
 		var shape := {}
 		for key: String in SHAPE_KEYS: shape[key] = PackedVector4Array([left[key], right[key]])
 		_shapes[expression] = shape

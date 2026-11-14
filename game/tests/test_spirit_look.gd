@@ -10,6 +10,9 @@ const Idle = preload("res://presentation/spirit_idle.gd")
 const Art = preload("res://presentation/empty_state_art.gd")
 const Faces = preload("res://services/reaction_catalog.gd")
 const Icon = preload("res://presentation/friend_play_icon.gd")
+const SpiritFaceScript = preload("res://presentation/spirit_face.gd")
+## The single faces drawn with Joy's pink cheeks (content/cosmetics/faces.gd).
+const CHEEKED: Array[StringName] = [Look.AWW, Look.SHY, Look.TOUCHED, Look.SMITTEN]
 ## The flat outlines of the nine looks the icons draw (eye_contours()), as on
 ## origin/main 1ee75731 before Joy: picker cells, the Play with your friend
 ## icon, empty states and badges must keep exactly these faces.
@@ -60,16 +63,16 @@ func _anchor(index: int) -> Vector2:
 	return Vector2(-Look.EYE_X if index == 0 else Look.EYE_X, Look.EYE_Y)
 
 func _test_table() -> void:
-	_check(Look.EXPRESSIONS.size() == 16 and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE) and Look.EXPRESSIONS.has(Look.KNOCKED_OUT) and Look.KNOCKED_OUT == &"knocked_out" and Look.EXPRESSIONS.has(Look.JOY) and Look.JOY == &"joy", "Ten expressions and the six pack faces, knocked_out and joy among them")
+	_check(Look.EXPRESSIONS.size() == 16 + Look.REACTION_FACES.size() + Look.REST_FACES.size() and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE) and Look.EXPRESSIONS.has(Look.KNOCKED_OUT) and Look.KNOCKED_OUT == &"knocked_out" and Look.EXPRESSIONS.has(Look.JOY) and Look.JOY == &"joy", "Ten expressions, the six pack faces, the single faces and the resting faces, knocked_out and joy among them")
 	var complete := true
 	for expression: StringName in Look.EXPRESSIONS:
 		for index in range(2):
 			var eye := Look.eye(expression, index)
-			for key: String in ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end", "blush", "eye_shape", "tear_stream", "tear_stream_end"]:
+			for key: String in SpiritFaceScript.SHAPE_KEYS:
 				complete = complete and eye.get(key) is Vector4
 			# The shader reads the mode from stroke_end.w.
-			# Wink alone mixes an open eye with a shut one, and never blinks.
-			complete = complete and (eye.stroke_end.w > 0.5) == (eye.mode == 1) and (expression == Look.WINK or (eye.mode == 1) == (not Look.is_open(expression)))
+			# Wink and Smitten alone mix an open eye with a shut one, and never blink.
+			complete = complete and (eye.stroke_end.w > 0.5) == (eye.mode == 1) and (expression in [Look.WINK, Look.SMITTEN] or (eye.mode == 1) == (not Look.is_open(expression)))
 	_check(complete, "Every expression gives both eyes every shader parameter, with the mode in step")
 
 func _test_open_eyes() -> void:
@@ -270,9 +273,9 @@ func _test_joy() -> void:
 	_check(Look.BLUSH.r > Look.BLUSH.g + 0.15 and Look.BLUSH.r > Look.BLUSH.b + 0.15 and Look.BLUSH.get_luminance() > 0.55 and Look.BLUSH_STRENGTH > 0.5 and Look.BLUSH_SOFT > 0.0, "The cheeks are a soft light pink")
 	var only_joy := true
 	for expression: StringName in Look.EXPRESSIONS:
-		if expression in [Look.JOY, Look.PROUD]: continue
+		if expression in [Look.JOY, Look.PROUD] or expression in CHEEKED: continue
 		for index in range(2): only_joy = only_joy and Look.eye(expression, index).blush == Vector4.ZERO and not Look.eye_contours(expression, index).has("blush")
-	_check(only_joy, "Only Joy and Proud have cheeks")
+	_check(only_joy, "Only Joy, Proud and the single faces drawn with cheeks have cheeks")
 	var code: String = load("res://presentation/spirit_face.gdshaderinc").code
 	_check(code.contains("stroke_end[i].w > 2.5") and code.contains("blush[i].x > 0.0"), "The face shader draws the arc kind and the cheeks as the look describes them")
 	# On a spirit: Joy uploads its arcs and cheeks, and a change of face clears

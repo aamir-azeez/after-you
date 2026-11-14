@@ -19,6 +19,9 @@ const RunReactionTrack = preload("res://services/run_reaction_track.gd")
 const InboxClient = preload("res://services/room_inbox_client.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const ReactionSlots = preload("res://services/reaction_slots.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const Cosmetics = preload("res://services/cosmetic_catalog.gd")
 const NEW: Array[String] = ["heart_eyes", "proud", "wink", "wow", "crying", "dizzy"]
 const HASH_A := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const HASH_B := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -39,6 +42,10 @@ func _run() -> void:
 	await _run_pill()
 	await _refused_turn()
 	_headers()
+	_single_faces()
+	_slot_rules()
+	_kept_slots()
+	await _slots_card()
 	FacePacks.source = Callable()
 	PollenSurfaces.set_shared_for_tests(null)
 	_clear_default_store()
@@ -312,6 +319,73 @@ func _refused_turn() -> void:
 	_check(not await coordinator.commit(fixtures["relay-a"], 0, "happy"), "Without a pack face the refusal is not retried")
 	_check(boundary.requests.filter(func(request: Dictionary) -> bool: return request.method == HTTPClient.METHOD_POST).size() == 1 and coordinator.pending().held, "It waits, held, as any refusal")
 	_clear_default_store()
+
+## The single faces: known faces, sold one at a time, each drawing its own
+## expression; picked only while owned and the server serves version 2.
+func _single_faces() -> void:
+	_check(ReactionCatalog.SINGLE_FACES.size() == 16 and ReactionCatalog.SINGLE_FACES[0] == "aww" and ReactionCatalog.SINGLE_FACES.back() == "flower", "The sixteen single faces, in shop order")
+	for face: String in ReactionCatalog.SINGLE_FACES:
+		_check(ReactionCatalog.is_face(face) and ReactionCatalog.is_paid_face(face) and not ReactionCatalog.is_pack_face(face), "%s is a paid single face" % face)
+		_check(Look.has(ReactionCatalog.expression(face)) and Cosmetics.slot(face) == "" and Cosmetics.code(face) >= 400 and not ReactionCatalog.face_name(face).is_empty(), "%s draws, is never worn, has a 400s code and a name" % face)
+	for face: String in NEW: _check(Cosmetics.tier(face).begins_with("face_"), "%s also sells alone, on the face ladder" % face)
+	_check(ReactionCatalog.collection().size() == 8 + 16 + 6 and not Store.HEART in ReactionCatalog.collection(), "The collection lists every face but the heart")
+	var view := {"faces": ["yay", "wink"], "packs": [], "reactions": ["happy", "", "", "", "", ""], "reaction_slots": 4}
+	FacePacks.source = func() -> Dictionary: return {"version": 2, "view": view, "slots": ["yay", "happy", "aww", "", "", ""]}
+	_check(FacePacks.can_pick("yay") and FacePacks.can_pick("wink") and not FacePacks.can_pick("aww") and not FacePacks.can_pick("heart_eyes"), "Version 2: owned faces only, a pack face owned alone too")
+	_check(FacePacks.slots() == ["yay", "happy", "", "", "", ""], "The card's slots keep their order and leave out a face not owned: %s" % [FacePacks.slots()])
+	FacePacks.source = func() -> Dictionary: return {"version": 1, "view": view, "slots": ["yay", "happy", "", "", "", ""]}
+	_check(not FacePacks.can_pick("yay") and FacePacks.slots().is_empty(), "Version 1: no single face and no slots, the card as before")
+	_check(FacePacks.can_pick("yay", true) and FacePacks.slots(true) == ["yay", "happy", "", "", "", ""], "A pick kept on this phone takes owned faces and the slots whatever the server")
+	FacePacks.source = Callable()
+
+## The slot rules: open places, the next slot to buy, a swap, and the faces listed.
+func _slot_rules() -> void:
+	var view := {"items": ["reaction_slot_5"], "faces": ["aww"], "reactions": ["happy", "surprised", "sad", "squeeze", "", ""], "reaction_slots": 5,
+		"offered": ["aww", "yay", "reaction_slot_6"], "prices": {"aww": 1000, "yay": 3000, "reaction_slot_6": 2500}}
+	_check(ReactionSlots.kept(view) and not ReactionSlots.kept({}), "Slots show only while the server keeps them")
+	_check(ReactionSlots.open_count(view) == 5 and ReactionSlots.next_unlock(view) == "reaction_slot_6", "One slot bought: five places, the sixth next")
+	_check(ReactionSlots.placed(view.reactions, "aww", 4) == ["happy", "surprised", "sad", "squeeze", "aww", ""], "A face goes in an empty place")
+	_check(ReactionSlots.placed(view.reactions, "sad", 0) == ["sad", "surprised", "happy", "squeeze", "", ""], "A face from another place swaps with the one there")
+	var faces := ReactionSlots.faces(view, view.reactions, true)
+	var ids: Array = faces.map(func(entry: Dictionary) -> String: return entry.id)
+	_check(ids.slice(0, 8) == ["happy", "squeeze", "surprised", "sad", "annoyed", "angry", "sleepy", "knocked_out"] and ids.slice(8) == ["aww", "yay"], "Everyday faces, then owned and sold ones: %s" % [ids])
+	var yay: Dictionary = faces[9]
+	_check(not bool(yay.owned) and bool(yay.sold) and int(yay.price) == 3000 and bool(yay.moving) and int(faces[0].in_slot) == 0 and faces[0].tier == ReactionSlots.FREE_TIER, "A face for sale has its price and play mark; a slotted face its place")
+	_check(ReactionSlots.faces(view, view.reactions, false).map(func(entry: Dictionary) -> String: return entry.id).size() == 9, "Without the shop only what is owned lists")
+	var unlock := ReactionSlots.unlock_entry(view, true)
+	_check(unlock.id == "reaction_slot_6" and bool(unlock.sold) and int(unlock.price) == 2500, "The next slot sells at its price")
+
+## The kept wardrobe keeps the slots the server sends, and a look put on carries them.
+func _kept_slots() -> void:
+	var answer := {"wardrobe": {"items": [], "packs": [], "offered": [], "look": {}, "look_revision": 0, "faces": ["yay"], "reactions": ["happy", "", "", "", "", ""], "reaction_slots": 4}}
+	var view := Wardrobe.checked_view(answer)
+	_check(view.get("reactions") == ["happy", "", "", "", "", ""] and view.get("faces") == ["yay"] and int(view.get("reaction_slots")) == 4, "The wardrobe keeps faces, slots and open places")
+	for bad: Variant in [["happy"], ["happy", "happy", "", "", "", ""], ["Bad face", "", "", "", "", ""], "happy"]:
+		answer.wardrobe.reactions = bad
+		_check(not Wardrobe.checked_view(answer).has("reactions"), "Slots off the contract read as none: %s" % [bad])
+	answer.wardrobe.erase("faces")
+	answer.wardrobe.erase("reactions")
+	_check(not Wardrobe.checked_view(answer).has("reactions"), "An older server's wardrobe has no slots")
+	_check(not Wardrobe.checked_pending({"look": {}, "revision": 3, "key": "a".repeat(32), "reactions": ["x", "x", "", "", "", ""]}).size() > 0, "A saved look with bad slots is dropped")
+
+## The React card shows the slotted faces 3 x 2 and no pack tabs.
+func _slots_card() -> void:
+	root.size = Vector2i(1280, 720)
+	var store := Store.new(_path("slots-card"))
+	var host := _host()
+	var row := EndReactions.attach(host, {"run": HASH_B, "pick": true, "store": store, "packs": ["garden_faces"], "slots": ["happy", "yay", "", "sad", "", ""], "settings": {"reduced_motion": true}})
+	await process_frame
+	row.opener.pressed.emit()
+	await process_frame
+	var card: CanvasLayer = row.faces_card
+	var grid: GridContainer = card.find_child("ReactionGrid", true, false)
+	var cells: Array = []
+	for cell: Node in grid.get_children(): cells.append(_labels(cell))
+	_check(card.find_child("ReactionTabs", true, false) == null and grid.columns == 3 and cells == [["Happy"], ["Yay"], ["Sad"]] and card.cells.has(Store.HEART), "The card shows the slots in order, 3 a row, with the heart and no tabs: %s" % [cells])
+	_check(EndReactions.quick_face("yay", {"slots": ["yay"]}) == "yay" and EndReactions.quick_face("yay", {"slots": ["happy"], "packs": []}) == Store.DEFAULT_FACE, "The quick half offers a single face only while it is in the slots")
+	card.close()
+	host.queue_free()
+	await process_frame
 
 func _headers() -> void:
 	for case: Array in [[HTTPClient.METHOD_GET, "/v2/capabilities", true], [HTTPClient.METHOD_GET, "/v1/room-inbox", true], [HTTPClient.METHOD_GET, "/v2/rooms/" + ROOM, true],

@@ -22,7 +22,9 @@ static var history_supported := false
 const END_REACTIONS_HEADER := "X-AfterYou-End-Reactions: 1"
 const PUBLIC_DUELS_SAFETY_HEADER := "X-AfterYou-Public-Duels: 1"
 const RUN_REACTIONS_HEADER := "X-AfterYou-Run-Reactions: 1"
-const FACE_PACKS_HEADER := "X-AfterYou-Face-Packs: 1"
+## Version 2: this build draws every face, the single faces too (backend
+## src/v2/end-reactions.ts); a server answers the version it serves.
+const FACE_PACKS_HEADER := "X-AfterYou-Face-Packs: 2"
 ## This build draws each player's look (backend src/pollen/looks-routes.ts).
 const LOOKS_HEADER := "X-AfterYou-Looks: 1"
 var base_url := ""
@@ -200,8 +202,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	# the capability, the friend's track beside a room's reads and turn replies,
 	# and every track beside the end reactions list.
 	if run_reaction_path(method, path): headers.append(RUN_REACTIONS_HEADER)
-	# This build draws the reaction packs' faces (services/face_packs.gd): the
-	# capability, and pack faces as sent wherever faces come back (older builds
+	# This build draws every face, pack and single (services/face_packs.gd): the
+	# capability, and faces as sent wherever faces come back (older builds
 	# get each one's everyday stand-in). A turn's own check then also reads the
 	# packs the player owns, so a pack face it carries can be accepted.
 	if end_reaction_path(method, path) or run_reaction_path(method, path): headers.append(FACE_PACKS_HEADER)

@@ -1668,12 +1668,13 @@ func _host_earlier_islands_flow() -> EarlierIslandsFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
 
-## What services/face_packs.gd reads: whether the signed-in player's server
-## takes pack faces, and their wardrobe as it last said; {} while signed out.
+## What services/face_packs.gd reads: the faces the signed-in player's server
+## takes (RelayOnlineSession.face_version), their wardrobe as it last said and
+## the reaction slots shown on this phone; {} while signed out.
 func _face_packs_state() -> Dictionary:
 	var scope:=_names_scope()
 	if scope.is_empty(): return {}
-	return {"server": relay_session!=null and relay_session.face_packs_supported(), "view": Wardrobe.shared().view(scope.server,scope.owner)}
+	return {"version": relay_session.face_version() if relay_session!=null else 0, "view": Wardrobe.shared().view(scope.server,scope.owner), "slots": Wardrobe.shared().effective_slots(scope.server,scope.owner)}
 
 ## The server and player that key the names and friends this phone keeps, or {}.
 func _names_scope() -> Dictionary:

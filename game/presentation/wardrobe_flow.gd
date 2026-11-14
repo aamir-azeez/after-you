@@ -50,6 +50,16 @@ extends Node
 ## build (its hooks are services/face_packs.gd faces_tab_visible and pack_rows),
 ## and no set exists yet.
 ##
+## Faces (faces board 4): the resting faces list under the Face chip like any
+## item, with Classic first (CLASSIC: the face every pip has, worn by wearing
+## no resting face). While the server keeps reaction slots (services/
+## reaction_slots.gd kept) the chips end with Reactions: the slot row and every
+## face (presentation/wardrobe_reactions.gd). Picking a face shows it on the
+## big pip; an owned one goes in a slot with Put in a slot, then a tap on a
+## place (a swap when it sat in another); a locked place picks the next
+## reaction slot to buy. The slots changed here are kept on the page and sent
+## once, with the look, when the Wardrobe closes (_save_slots).
+##
 ## Offline (services/connectivity.gd) the Wardrobe still opens once this
 ## player has a wardrobe saved from an earlier read: what they own, what they
 ## wear and the catalogue as last saved. Wear and Take off work at once
@@ -94,8 +104,15 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
+const ReactionSlots = preload("res://services/reaction_slots.gd")
+const ReactionCatalog = preload("res://services/reaction_catalog.gd")
+const SpiritLook = preload("res://presentation/spirit_look.gd")
 
 const MODE_WARDROBE := "wardrobe"
+## The Face chip's Classic card: no resting face worn.
+const CLASSIC := "rest_classic"
+## The chip of the reaction slots and faces.
+const REACTIONS := "reactions"
 const FRUITS := "fruits"
 const POLLEN := "pollen"
 
@@ -125,6 +142,10 @@ var _reopen_tab := ""
 var _reopen_pick := ""
 var _selected := ""
 var _kind := ""
+## The reaction slots as changed on this visit, or null while unchanged (sent on close).
+var _slots_draft: Variant = null
+## A face is being put in a slot: the next place tapped takes it.
+var _swapping := false
 var _view_mode := "you"
 var _gate: BusyTapGate
 ## Where Back returns: "settings" (the default), "home", or where show_orchard was asked from.
@@ -182,6 +203,9 @@ func show_wardrobe(from: String = "settings") -> void:
 	_page.item_chosen.connect(select)
 	_page.more_chosen.connect(show_more)
 	_page.action_pressed.connect(tap_action)
+	_page.slot_chosen.connect(choose_slot)
+	# However the page goes (Back, the store, a mode change), changed slots go once.
+	_page.tree_exiting.connect(_save_slots)
 	_page.retry_pressed.connect(refresh)
 	_page.plus_pressed.connect(func() -> void: if bundles(): store_requested.emit())
 	_page.pollen_pressed.connect(func() -> void: pollen_requested.emit())
@@ -194,6 +218,8 @@ func show_wardrobe(from: String = "settings") -> void:
 	_reopen_tab = ""
 	_selected = ""
 	_kind = ""
+	_slots_draft = null
+	_swapping = false
 	_view_mode = "you"
 	_status = PlayerCopy.WARDROBE_LOADING if _view().is_empty() else ""
 	_retry = false
@@ -294,7 +320,8 @@ func set_kind(kind: String) -> void:
 	_keep_tab(shown)
 	if _tab == "orchard":
 		_tab = _allowed_tab(_shop_tab if not _shop_tab.is_empty() else "all", bool(shown.all_items), false)
-	_kind = kind if kind in Catalog.slots() else ""
+	_kind = kind if kind in Catalog.slots() or kind == REACTIONS else ""
+	_swapping = false
 	_redraw()
 
 ## The pip switch: "you", or "friend" (your pip in a friend's room: mint).
@@ -329,8 +356,38 @@ static func _start_tab(selling: bool, owns_any: bool) -> String:
 func select(id: String) -> void:
 	var shown := model()
 	_keep_tab(shown)
-	_selected = id if Catalog.has(id) or not _entry_in(shown.sets, id).is_empty() else ""
+	_selected = id if Catalog.has(id) or id == CLASSIC or ReactionCatalog.is_face(id) or not _entry_in(shown.sets, id).is_empty() else ""
+	_swapping = false
 	_redraw()
+
+## A tap on reaction slot `index`: while a face is being put in, the open place
+## takes it (a swap when it sat in another); a locked place picks the next
+## reaction slot to buy.
+func choose_slot(index: int) -> void:
+	var view := _view()
+	if not ReactionSlots.kept(view): return
+	if index >= ReactionSlots.open_count(view):
+		_selected = ReactionSlots.next_unlock(view)
+		_swapping = false
+	elif _swapping and ReactionCatalog.is_face(_selected):
+		_slots_draft = ReactionSlots.placed(_slots(), _selected, index)
+		_swapping = false
+	_redraw()
+
+## The reaction slots shown: as changed on this visit, else as kept.
+func _slots() -> Array:
+	if _slots_draft is Array: return (_slots_draft as Array).duplicate()
+	var scope: Dictionary = _client().scope()
+	return [] if scope.is_empty() else _client().store.effective_slots(str(scope.server), str(scope.owner))
+
+## Sends the slots changed on this visit, once, with the look (services/
+## wardrobe_client.gd wear): offline it waits like any look.
+func _save_slots() -> void:
+	var draft: Variant = _slots_draft
+	_slots_draft = null
+	_swapping = false
+	if not draft is Array or draft == _slots() or _client().scope().is_empty(): return
+	_after_sync(await _client().wear(_look(), draft))
 
 ## The picked item's (or Orchard set's) button: buy it, or wear it or take it
 ## off when owned. A Fruit price reads the Fruit balance, is blocked while that
@@ -338,6 +395,11 @@ func select(id: String) -> void:
 func act(id: String) -> void:
 	var entry := _entry(id)
 	if entry.is_empty() or _client().busy(): return
+	if bool(entry.get("face", false)) and bool(entry.owned):
+		# Put in a slot, or Cancel while the row waits for a place.
+		_swapping = not _swapping and int(entry.get("in_slot", -1)) < 0
+		_redraw()
+		return
 	if bool(entry.owned):
 		if not bool(entry.get("set", false)): await _wear(entry)
 		return
@@ -443,7 +505,7 @@ func confirm_buy(id: String, cost: int, kind: String = "item") -> void:
 
 func _wear(entry: Dictionary) -> void:
 	var look := _look()
-	if bool(entry.worn): look.erase(str(entry.slot))
+	if bool(entry.worn) or entry.id == CLASSIC: look.erase(str(entry.slot))
 	else: look[str(entry.slot)] = str(entry.id)
 	var answer: Dictionary = await _client().wear(look)
 	if not answer.get("ok", false): _toast(_error_line(str(answer.get("code", ""))))
@@ -508,6 +570,10 @@ func model() -> Dictionary:
 		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": int(sale.get("price", 0)), "currency": FRUITS if fruit else POLLEN,
 			"owned": mine, "worn": look.get(Catalog.slot(id)) == id, "sold": sold, "locked": not mine and not unlock.is_empty() and not id in unlocked,
 			"unlock_name": _chapter_name(unlock), "earn": Catalog.earn(id)}
+		# Classic heads the resting faces: everyone's, worn while none is.
+		if entry.slot == "rest_face" and _entry_in(items, CLASSIC).is_empty():
+			items.append({"id": CLASSIC, "name": PlayerCopy.REST_FACE_CLASSIC, "tier": ReactionSlots.FREE_TIER, "slot": "rest_face", "price": 0, "currency": POLLEN,
+				"owned": true, "worn": not look.has("rest_face"), "sold": false, "locked": false, "unlock_name": "", "earn": "", "classic": true})
 		items.append(entry)
 		# The shelf of the week is Pollen only.
 		if sold and not fruit: (by_tier.get_or_add(entry.tier, []) as Array).append(id)
@@ -523,22 +589,38 @@ func model() -> Dictionary:
 	var kinds: Array = []
 	for slot: String in Catalog.slots():
 		if items.any(func(entry: Dictionary) -> bool: return entry.slot == slot and Page.in_tab(entry, chips_tab)): kinds.append(slot)
+	# The reaction slots and faces, while the server keeps slots.
+	var reacting_on := ReactionSlots.kept(view)
+	if reacting_on: kinds.append(REACTIONS)
+	var slots := _slots() if reacting_on else []
+	var faces: Array = ReactionSlots.faces(view, slots, selling) if reacting_on else []
+	var unlock: Dictionary = ReactionSlots.unlock_entry(view, selling) if reacting_on else {}
+	var reaction_entries: Array = faces + ([unlock] if not unlock.is_empty() else [])
 	var listed: Array = items.filter(func(entry: Dictionary) -> bool: return Page.in_tab(entry, tab))
-	var picks: Array = listed + sets if tab == "orchard" else listed
-	var selected := _selected if not _entry_in(picks, _selected).is_empty() else _default_pick(listed, look, featured if tab == "all" else [])
-	var picked := _entry_in(items + sets, selected)
+	var reacting: bool = tab != "orchard" and _kind == REACTIONS and reacting_on
+	var picks: Array = listed + sets if tab == "orchard" else (reaction_entries if reacting else listed)
+	var first_slotted := ""
+	for face: Variant in slots: if first_slotted.is_empty() and str(face) != "": first_slotted = str(face)
+	var selected := _selected if not _entry_in(picks, _selected).is_empty() else (first_slotted if reacting else _default_pick(listed, look, featured if tab == "all" else []))
+	var picked := _entry_in(items + sets + reaction_entries, selected)
 	# With no chip picked, the chip of the picked item's slot, so its card is on screen; none in the Orchard.
 	var kind: String = ""
-	if tab != "orchard": kind = _kind if _kind in kinds else (str(picked.slot) if not picked.is_empty() and picked.slot in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
+	if reacting: kind = REACTIONS
+	elif tab != "orchard": kind = _kind if _kind in kinds and _kind != REACTIONS else (str(picked.slot) if not picked.is_empty() and picked.slot in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
 	var preview := Outfit.from(look)
 	if not picked.is_empty() and bool(picked.get("set", false)): preview.merge(picked.outfit, true)
-	elif not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
+	elif not picked.is_empty() and picked.get("classic", false): preview.erase("rest_face")
+	elif not picked.is_empty() and not bool(picked.worn) and picked.slot in Catalog.slots(): preview[str(picked.slot)] = str(picked.id)
+	# The big pip makes the picked face (moving on its own face clock), else its resting face.
+	var face: StringName = ReactionCatalog.spirit_expression(selected) if reacting and ReactionCatalog.is_face(selected) else SpiritLook.NORMAL
 	# Owned ends with Get more on every slot while the shop has anything the player does not own (show_more picks where it leads).
 	var more := selling and tab == "owned" and not _buyable_slots(items).is_empty()
 	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "fruits": PollenChip.fruits_for(_client().scope(), _surfaces(), _client().fruits), "status": _status, "retry": _retry, "shop": selling, "all_items": all_items, "bundles": bundles() and not offline, "tab": tab, "kind": kind, "kinds": kinds,
 		"buy_offline": selling and offline, "note": PlayerCopy.WARDROBE_OFFLINE_NOTE if offline and not view.is_empty() else "",
 		"orchard": fruits_on, "sets": sets, "fruits_blocked": fruits_on and _fruit_balance() < 0,
-		"more": more, "selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}
+		"more": more, "selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "preview_face": face, "featured": featured, "items": items,
+		"reaction_entries": reaction_entries, "reactions": {"slots": slots, "open": ReactionSlots.open_count(view), "unlock": unlock, "faces": faces, "selected": selected,
+			"swapping": _swapping and reacting, "shop": selling, "color": "mint" if _view_mode == "friend" else "peach"} if reacting_on else {}}
 
 ## The Orchard's sets as the page lists them: each set the server sells for
 ## Fruits whose pieces it offers and that has a piece the player lacks, at the
@@ -615,7 +697,7 @@ func _balance_known() -> bool:
 
 func _entry(id: String) -> Dictionary:
 	var shown := model()
-	return _entry_in(shown.items + shown.sets, id)
+	return _entry_in(shown.items + shown.sets + shown.reaction_entries, id)
 
 ## Whether the server has said the balance a purchase is in: the Fruit one (`fruit`) or the Pollen one.
 func _known(fruit: bool) -> bool:

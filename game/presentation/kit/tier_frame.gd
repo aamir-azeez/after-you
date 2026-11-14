@@ -21,21 +21,30 @@ const GLOW := {"rare": 10, "epic": 12, "special": 14}
 const CARD := Color("fbf7ea")
 const CARD_SELECTED := Color("f4f8ee")
 
+## Tiers drawn as another's frame, mark and word: the reaction faces' own
+## price ladder (content/cosmetics/index.gd) wears the shop's tiers, and a
+## reaction slot the uncommon frame.
+const SHOWN_AS := {"face_common": "common", "face_uncommon": "uncommon", "face_rare": "rare", "face_epic": "epic", "reaction_slot": "uncommon"}
+
+## The tier a frame, mark and word are drawn for.
+static func shown(tier: String) -> String:
+	return str(SHOWN_AS.get(tier, tier))
+
 static func known(tier: String) -> bool:
-	return tier in TIERS
+	return shown(tier) in TIERS
 
 static func frame(tier: String) -> Color:
-	return FRAME.get(tier, FRAME.common)
+	return FRAME.get(shown(tier), FRAME.common)
 
 static func ink(tier: String) -> Color:
-	return INK.get(tier, INK.common)
+	return INK.get(shown(tier), INK.common)
 
 static func glows(tier: String) -> bool:
-	return GLOW.has(tier)
+	return GLOW.has(shown(tier))
 
 ## The tier word in capitals ("RARE"), from PlayerCopy.
 static func word(tier: String) -> String:
-	return str(PlayerCopy.WARDROBE_TIERS.get(tier, "")).to_upper()
+	return str(PlayerCopy.WARDROBE_TIERS.get(shown(tier), "")).to_upper()
 
 ## A card's frame: cream, a 2 px edge in the tier's colour (4 px when picked),
 ## and the tier's soft glow.
@@ -48,13 +57,13 @@ static func style(tier: String, radius: int = 16, picked: bool = false, fill: Co
 	box.anti_aliasing = true
 	if glows(tier):
 		box.shadow_color = Color(frame(tier), 0.55)
-		box.shadow_size = int(GLOW[tier])
+		box.shadow_size = int(GLOW[shown(tier)])
 	return box
 
 ## The tier's mark, `side` pixels square. Takes no input.
 static func mark(tier: String, side: float = 14.0) -> Control:
 	var glyph := Mark.new()
-	glyph.tier = tier
+	glyph.tier = shown(tier)
 	glyph.ink = ink(tier)
 	glyph.name = "TierMark"
 	glyph.custom_minimum_size = Vector2(side, side)

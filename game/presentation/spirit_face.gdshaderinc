@@ -43,6 +43,19 @@ uniform vec4 eye_shape[2];
 uniform vec4 tear_stream[2];
 uniform vec4 tear_stream_end[2];
 uniform vec3 heart_color : source_color = vec3(0.886, 0.384, 0.420);
+// The single faces' parts (spirit_look.gd eye()): eye_shape.x 3 a clover
+// pupil; eye_shape.z the pupil's colour (0 navy, 1 heart_color, 2
+// leaf_color); shine (x, y, radius, kind) cream lights inside the pupil: kind
+// 1 two dots, 2 three sparkles (sizes shine_size.xyz, turned shine_size.w), 3
+// a middle dot, 4 one dot; mark (x, y, size, kind) beside the eye: kind 1 a
+// navy sparkle, 2 a heart in heart_color, 3 a sparkle in spark_color, turned
+// mark_spin.x.
+uniform vec4 shine[2];
+uniform vec4 shine_size[2];
+uniform vec4 mark[2];
+uniform vec4 mark_spin[2];
+uniform vec3 leaf_color : source_color = vec3(0.369, 0.620, 0.271);
+uniform vec3 spark_color : source_color = vec3(0.918, 0.596, 0.110);
 // Where a heart's middle sits in its unit outline, and how round a star's corners are (spirit_look.gd HEART_MIDDLE, STAR_ROUND).
 uniform float heart_middle = 0.55;
 uniform float star_round = 0.008;
@@ -131,6 +144,22 @@ float spiral(vec2 q, vec2 centre, float reach, float turns) {
 	return min(best, r);
 }
 
+// A four leaf clover, leaves on the diagonals, reach r, and a round middle.
+float clover(vec2 p, float r) {
+	float k = r * 0.36, o = r * 0.40;
+	float d = min(min(length(p - vec2(o, o)) - k, length(p - vec2(-o, o)) - k), min(length(p - vec2(o, -o)) - k, length(p - vec2(-o, -o)) - k));
+	return min(d, length(p) - r * 0.30);
+}
+
+// A four point sparkle around the origin, reach r, turned `turn`: a concave
+// astroid, |x / r|^0.62 + |y / r|^0.62 = 1 (an approximate distance).
+float sparkle(vec2 p, float r, float turn) {
+	float c = cos(turn), s = sin(turn);
+	p = vec2(c * p.x - s * p.y, s * p.x + c * p.y);
+	vec2 a = abs(p) / max(r, 1e-5);
+	return (pow(a.x, 0.62) + pow(a.y, 0.62) - 1.0) * r * 0.55;
+}
+
 float coverage(float d) {
 	float w = max(fwidth(d), 1e-5);
 	return clamp(0.5 - d / w, 0.0, 1.0);
@@ -155,6 +184,15 @@ void fragment() {
 			float d_blush = oval(q, blush[i], vec4(0.0), vec4(0.0));
 			float soft = max(blush_soft, fwidth(d_blush));
 			color = mix(color, blush_color, clamp(0.5 - d_blush / soft, 0.0, 1.0) * blush_strength * clamp(squash, 0.0, 1.0) * front);
+		}
+		if (mark[i].w > 0.5) {
+			// A small mark beside the eye, steady while the eyes close.
+			if (mark[i].w > 1.5 && mark[i].w < 2.5) {
+				color = mix(color, heart_color, coverage(heart(q, mark[i].xy, mark[i].z)) * front);
+			} else {
+				float d_mark = sparkle(q - mark[i].xy, mark[i].z, mark_spin[i].x);
+				color = mix(color, mark[i].w > 2.5 ? spark_color : pupil_color, coverage(d_mark) * front);
+			}
 		}
 		if (tear_stream[i].z > 0.0) {
 			// The cream tear stream, an uneven capsule, still while the
@@ -190,7 +228,8 @@ void fragment() {
 		} else {
 			float d_outer = eye_shape[i].y > 0.5 ? heart(q, outer[i].zw, outer[i].x) : oval(q, outer[i], outer_wave[i], outer_phase[i]);
 			float d_pupil;
-			if (eye_shape[i].x > 1.5) d_pupil = star5(q - look_shift, pupil[i].zw, pupil[i].x, pupil[i].y);
+			if (eye_shape[i].x > 2.5) d_pupil = clover(q - look_shift - pupil[i].zw, pupil[i].x);
+			else if (eye_shape[i].x > 1.5) d_pupil = star5(q - look_shift, pupil[i].zw, pupil[i].x, pupil[i].y);
 			else if (eye_shape[i].x > 0.5) d_pupil = heart(q - look_shift, pupil[i].zw, pupil[i].x);
 			else d_pupil = oval(q - look_shift, pupil[i], pupil_wave[i], pupil_phase[i]);
 			if (tear[i].z > 0.0) {
@@ -204,7 +243,28 @@ void fragment() {
 			d_outer = max(d_outer, d_cut);
 			d_pupil = max(d_pupil, d_cut + cut[i].w);
 			color = mix(color, cream_color, coverage(d_outer) * front);
-			color = mix(color, eye_shape[i].x > 0.5 && eye_shape[i].x < 1.5 ? heart_color : pupil_color, coverage(d_pupil) * front);
+			vec3 ink = eye_shape[i].x > 0.5 && eye_shape[i].x < 1.5 ? heart_color : pupil_color;
+			if (eye_shape[i].z > 1.5) ink = leaf_color;
+			else if (eye_shape[i].z > 0.5) ink = heart_color;
+			float in_pupil = coverage(d_pupil);
+			color = mix(color, ink, in_pupil * front);
+			if (shine[i].w > 0.5) {
+				// Cream lights inside the pupil, moving with the gaze.
+				vec2 c = q - look_shift - pupil[i].zw;
+				float r = shine[i].z;
+				float d_shine;
+				if (shine[i].w > 3.5) d_shine = length(c - shine[i].xy) - r;
+				else if (shine[i].w > 2.5) d_shine = length(c) - r;
+				else if (shine[i].w > 1.5) {
+					float R = pupil[i].x;
+					d_shine = min(min(sparkle(c - vec2(0.30, 0.34) * R, r * shine_size[i].x, shine_size[i].w),
+						sparkle(c - vec2(-0.36, -0.06) * R, r * 0.8 * shine_size[i].y, -shine_size[i].w)),
+						sparkle(c - vec2(0.14, -0.42) * R, r * 0.62 * shine_size[i].z, shine_size[i].w * 0.7));
+				} else {
+					d_shine = min(length(c - shine[i].xy) - r, length(c + shine[i].xy * vec2(0.55, 0.62)) - r * 0.45);
+				}
+				color = mix(color, cream_color, coverage(d_shine) * in_pupil * front);
+			}
 		}
 	}
 	ALBEDO = color;

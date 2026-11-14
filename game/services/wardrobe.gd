@@ -124,6 +124,17 @@ static func checked_look(value: Variant) -> Dictionary:
 		kept[slot] = value[slot]
 	return kept
 
+## The reaction slots as kept (backend src/pollen/reaction-loadout.ts): six
+## places, each "" or a face id, no face twice; null when off the contract.
+const REACTION_SLOT_COUNT := 6
+static func checked_slots(value: Variant) -> Variant:
+	if not value is Array or (value as Array).size() != REACTION_SLOT_COUNT: return null
+	var kept: Array[String] = []
+	for face: Variant in value:
+		if not face is String or (not (face as String).is_empty() and (not valid_id(face) or face in kept)): return null
+		kept.append(face)
+	return kept
+
 ## The wardrobe part of a wallet answer (GET /v1/pollen while the wardrobe is
 ## on) as kept, or {} when it is missing or any part is not the contract's.
 ## The shop's parts and the name price come only while the shop is on: when
@@ -152,9 +163,14 @@ static func checked_view(value: Variant) -> Dictionary:
 	var fruit_sets := _checked_sets(part.get("fruit_sets", {}))
 	# What each Orchard set with a missing piece costs this player now (set_cost).
 	var fruit_set_costs := _checked_prices(part.get("fruit_set_costs", {}))
-	return {"fruit_prices": fruit_prices, "fruit_sets": fruit_sets, "fruit_set_costs": fruit_set_costs, "items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
+	# The face items while FACE_SINGLES is on: owned faces, the slots and how many places are open.
+	var faces := {}
+	var slots: Variant = checked_slots(part.get("reactions"))
+	if part.get("faces") is Array and slots != null and Typed.whole_number(part.get("reaction_slots")):
+		faces = {"faces": _ids(part.faces), "reactions": slots, "reaction_slots": clampi(Typed.as_int(part.reaction_slots), 4, REACTION_SLOT_COUNT)}
+	return faces.merged({"fruit_prices": fruit_prices, "fruit_sets": fruit_sets, "fruit_set_costs": fruit_set_costs, "items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
 		"offered": _ids(part.offered), "prices": prices, "offered_packs": _ids(part.get("offered_packs", [])), "pack_price": Typed.as_int(part.get("pack_price"), 0), "sets": sets, "unlocked": _ids(part.get("unlocked", [])),
-		"name_price": Typed.as_int(price) if price != null else -1, "name_price_next": price_next, "bundles": checked_bundles(value.get("bundles"))}
+		"name_price": Typed.as_int(price) if price != null else -1, "name_price_next": price_next, "bundles": checked_bundles(value.get("bundles"))})
 
 ## {id: price} for well formed ids and prices above 0; anything else is left out.
 static func _checked_prices(sent: Variant) -> Dictionary:
@@ -384,6 +400,8 @@ func note_look(server: String, owner: String, receipt: Variant) -> bool:
 	if Typed.as_int(receipt.revision) < int(scope.view.look_revision): return false
 	scope.view.look = look
 	scope.view.look_revision = Typed.as_int(receipt.revision)
+	var slots: Variant = checked_slots(receipt.get("reactions"))
+	if slots != null and scope.view.has("reactions"): scope.view.reactions = slots
 	_settle_pending(scope)
 	_save()
 	_announce(server, owner)
@@ -396,6 +414,14 @@ func pending(server: String, owner: String) -> Dictionary:
 	var scope := _scope(server, owner)
 	return (scope.get("pending", {}) as Dictionary).duplicate(true) if not scope.is_empty() else {}
 
+## The reaction slots on this phone: the pending ones, else the confirmed
+## ones; [] while the server keeps no slots (FACE_SINGLES off or an older server).
+func effective_slots(server: String, owner: String) -> Array:
+	var scope := _scope(server, owner)
+	if scope.is_empty() or not (scope.view as Dictionary).has("reactions"): return []
+	if scope.has("pending") and scope.pending.has("reactions"): return (scope.pending.reactions as Array).duplicate()
+	return (scope.view.reactions as Array).duplicate()
+
 ## What the player wears on this phone: the pending look, else the confirmed one.
 func effective_look(server: String, owner: String) -> Dictionary:
 	var scope := _scope(server, owner)
@@ -406,14 +432,21 @@ func effective_look(server: String, owner: String) -> Dictionary:
 ## Puts `look` on now (worn here at once) as the newest intent: a revision past
 ## the confirmed and any earlier pending one, and its own key. Only over a
 ## wardrobe the server has said, with owned items only. The new pending look, or {}.
-func put_on(server: String, owner: String, look: Dictionary, now_ms: int) -> Dictionary:
+## While the server keeps reaction slots, every look carries them (`reactions`,
+## else the slots shown now), so the server never reads it as an older app's.
+func put_on(server: String, owner: String, look: Dictionary, now_ms: int, reactions: Variant = null) -> Dictionary:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not bool(scope.get("enabled", false)) or (scope.view as Dictionary).is_empty(): return {}
 	var kept := checked_look(look)
 	if kept.size() != look.size() or not _owned(scope.view, kept): return {}
+	var slots: Variant = null
+	if (scope.view as Dictionary).has("reactions"):
+		slots = checked_slots(reactions) if reactions != null else effective_slots(server, owner)
+		if slots == null: return {}
 	var least := int(scope.view.look_revision)
 	if scope.has("pending"): least = maxi(least, int(scope.pending.revision))
 	scope.pending = {"look": kept, "revision": maxi(now_ms, least + 1), "key": Crypto.new().generate_random_bytes(16).hex_encode()}
+	if slots != null: scope.pending.reactions = slots
 	_save()
 	_announce(server, owner)
 	return (scope.pending as Dictionary).duplicate(true)
@@ -459,7 +492,12 @@ static func checked_pending(value: Variant) -> Dictionary:
 	if not value.get("key") is String or _key.search(value.key) == null: return {}
 	var look := checked_look(value.look)
 	if look.size() != (value.look as Dictionary).size(): return {}
-	return {"look": look, "revision": Typed.as_int(value.revision), "key": value.key}
+	var kept := {"look": look, "revision": Typed.as_int(value.revision), "key": value.key}
+	if value.has("reactions"):
+		var slots: Variant = checked_slots(value.reactions)
+		if slots == null: return {}
+		kept.reactions = slots
+	return kept
 
 ## What the next name change costs, or -1 while the server has not said or the shop is off.
 func name_price(server: String, owner: String) -> int:

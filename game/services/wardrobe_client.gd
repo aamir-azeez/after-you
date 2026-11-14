@@ -177,10 +177,12 @@ func _spend(kind: String, id: String, cost: int, fruit_only: bool) -> Dictionary
 ## Wears `look` ({slot: id}; {} for the default look): on this phone at once,
 ## offline too, then sent (sync). {ok, code, receipt, pending}: ok once it is
 ## worn here; `pending` while the server has not confirmed it yet.
-func wear(look: Dictionary) -> Dictionary:
+## `reactions`: the reaction slots to keep beside it (services/wardrobe.gd
+## put_on), else the slots shown now.
+func wear(look: Dictionary, reactions: Variant = null) -> Dictionary:
 	var context := scope()
 	if context.is_empty(): return {"ok": false, "code": "pollen_wardrobe_disabled"}
-	var put: Dictionary = store.put_on(str(context.server), str(context.owner), look, int(Time.get_unix_time_from_system() * 1000.0))
+	var put: Dictionary = store.put_on(str(context.server), str(context.owner), look, int(Time.get_unix_time_from_system() * 1000.0), reactions)
 	if put.is_empty(): return {"ok": false, "code": "not_owned"}
 	changed.emit()
 	return await sync()
@@ -203,6 +205,7 @@ func sync() -> Dictionary:
 		var put: Dictionary = store.pending(server, owner)
 		if put.is_empty() or scope() != context or not online(): break
 		var body := {"schema_version": 1, "idempotency_key": put.key, "revision": put.revision, "look": (put.look as Dictionary).duplicate()}
+		if put.has("reactions"): body.reactions = (put.reactions as Array).duplicate()
 		var response := await _send(EQUIP_PATH, body)
 		if scope() != context: break
 		answer = _answer(response)

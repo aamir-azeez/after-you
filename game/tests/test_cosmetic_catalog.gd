@@ -60,7 +60,7 @@ func _descriptors() -> void:
 		_check(not raw.has("price"), "%s stores no price: its tier does" % id)
 		_check(id_shape.search(id) != null, "%s is a lower case id" % id)
 		var data := Index.data(id)
-		_check(data.slot == "" or data.slot in Index.SLOTS, "%s is worn in a known slot or none yet" % id)
+		_check(data.slot == "" or data.slot in Index.SLOTS or data.slot in Index.UNWORN_SLOTS, "%s is worn in a known slot, owned unworn, or none yet" % id)
 		_check(Index.TIER_PRICES.has(data.tier), "%s has a known tier" % id)
 		_check(data.name is String and not str(data.name).is_empty() and data.name in names, "%s's name is a PlayerCopy constant" % id)
 		_check(not str(data.name).contains("-") and not str(data.name).contains("—"), "%s's name has no dashes" % id)
@@ -74,10 +74,11 @@ func _descriptors() -> void:
 		else: _check(str(data.earn).is_empty() and Catalog.earn(id).is_empty(), "%s (sold) has no earn line" % id)
 		_check(data.is_read_only(), "%s's descriptor is read only" % id)
 	_check(Index.data("nothing").is_empty() and not Catalog.has("nothing"), "An unknown id has no descriptor")
-	_check(Index.SLOTS == ["hat", "body", "leaf"], "The slots are the hat, the body and the leaf")
+	_check(Index.SLOTS == ["hat", "body", "leaf", "rest_face"] and Index.UNWORN_SLOTS == ["reaction", "reaction_slot"], "The slots are the hat, the body, the leaf and the resting face; reaction faces and slots are owned, never worn")
 
 func _prices() -> void:
-	_check(Index.TIER_PRICES == {"common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 20, "fruit_small": 50, "fruit_hat": 100, "fruit_body": 200}, "Tier prices follow the ramp, earned costs nothing because it is never sold, and the Orchard tiers are priced in Fruits")
+	_check(Index.TIER_PRICES == {"common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0, "sprig": 20, "fruit_small": 50, "fruit_hat": 100, "fruit_body": 200,
+		"face_common": 1000, "face_uncommon": 1500, "face_rare": 3000, "face_epic": 6000, "reaction_slot": 2500}, "Tier prices follow the ramp, the faces have their own ladder, earned costs nothing because it is never sold, and the Orchard tiers are priced in Fruits")
 	_check(Index.TIER_CURRENCY == {"sprig": "fruits", "fruit_small": "fruits", "fruit_hat": "fruits", "fruit_body": "fruits"}, "Only the Orchard tiers are sold in Fruits; every other tier is Pollen")
 	for tier: String in Index.TIER_CURRENCY: _check(Index.TIER_PRICES.has(tier), "The Fruit tier %s has a price" % tier)
 	for id: String in Catalog.ids():
@@ -95,14 +96,27 @@ func _rules() -> void:
 		# The Orchard, as the server's catalogue sells it (FRUITS contract).
 		"apple_hood": ["hat", "fruit_hat"], "blueberry_hood": ["hat", "fruit_hat"], "blossom_crown": ["hat", "fruit_hat"], "orchard_skin": ["body", "fruit_body"], "apple_leaf": ["leaf", "fruit_small"],
 		"sprig_coral": ["leaf", "sprig"], "sprig_plum": ["leaf", "sprig"], "sprig_sun": ["leaf", "sprig"], "sprig_sky": ["leaf", "sprig"],
+		# The faces (owner, 2026-11-13): reaction faces on the face ladder, resting faces on the hat tiers, two reaction slots.
+		"aww": ["reaction", "face_common"], "shy": ["reaction", "face_common"], "huh": ["reaction", "face_common"], "please": ["reaction", "face_uncommon"],
+		"touched": ["reaction", "face_uncommon"], "lucky": ["reaction", "face_uncommon"], "giggle": ["reaction", "face_rare"], "curious": ["reaction", "face_rare"],
+		"nervous": ["reaction", "face_rare"], "drowsy": ["reaction", "face_rare"], "gasp": ["reaction", "face_rare"], "peekaboo": ["reaction", "face_rare"],
+		"yay": ["reaction", "face_rare"], "smitten": ["reaction", "face_rare"], "starry": ["reaction", "face_rare"], "flower": ["reaction", "face_epic"],
+		"heart_eyes": ["reaction", "face_uncommon"], "proud": ["reaction", "face_common"], "wink": ["reaction", "face_common"], "wow": ["reaction", "face_uncommon"],
+		"crying": ["reaction", "face_uncommon"], "dizzy": ["reaction", "face_uncommon"],
+		"rest_button": ["rest_face", "common"], "rest_bean": ["rest_face", "common"], "rest_round": ["rest_face", "uncommon"], "rest_wide": ["rest_face", "uncommon"], "rest_sprout": ["rest_face", "uncommon"],
+		"reaction_slot_5": ["reaction_slot", "reaction_slot"], "reaction_slot_6": ["reaction_slot", "reaction_slot"],
 	}
 	_check(Array(Catalog.ids()) == expect.keys(), "The approved items, in shop order: %s" % [Catalog.ids()])
 	for id: String in expect:
-		_check(Catalog.slot(id) == expect[id][0] and str(Catalog.item(id).tier) == expect[id][1], "%s is a %s %s" % [id, expect[id][1], expect[id][0]])
+		_check(str(Catalog.item(id).slot) == expect[id][0] and str(Catalog.item(id).tier) == expect[id][1], "%s is a %s %s" % [id, expect[id][1], expect[id][0]])
 	_check(Catalog.item("lighthouse_lamp").unlock == "sleeping-lighthouse" and Catalog.tall("lighthouse_lamp"), "The Lighthouse lamp opens after Sleeping Lighthouse and pulls the view back")
 	_check(Catalog.wide("lantern") and not Catalog.wide("daisy") and not Catalog.wide("nothing"), "Only the Lantern, hanging on the far side, pulls the view back further")
 	_check(is_equal_approx(Catalog.leaf_lift("straw_hat"), 0.075), "The Straw hat lifts the leaf 7.5 cm through its brim")
-	for id: String in Catalog.ids(): _check(not Catalog.art(id).is_empty() and not Catalog.slot(id).is_empty(), "%s has its art and its slot" % id)
+	for id: String in Catalog.ids():
+		# A face item draws from the face shader's recipe (content/cosmetics/faces.gd), not an art script.
+		var face_item: bool = Catalog.item(id).slot in Index.UNWORN_SLOTS or Catalog.slot(id) == "rest_face"
+		if face_item: _check(Catalog.art(id).is_empty(), "%s is drawn by the face shader, with no art script" % id)
+		else: _check(not Catalog.art(id).is_empty() and not Catalog.slot(id).is_empty(), "%s has its art and its slot" % id)
 	var orchard: Array[String] = []
 	for id: String in Catalog.ids():
 		if str(Catalog.item(id).set) == "orchard": orchard.append(id)

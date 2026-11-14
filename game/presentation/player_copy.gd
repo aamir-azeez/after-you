@@ -262,8 +262,17 @@ const WARDROBE_ALL := "All items"
 const WARDROBE_OWNED := "Owned"
 ## The Owned tab's last card while the shop has more for that slot: it opens All items there.
 const WARDROBE_GET_MORE := "Get more"
-const WARDROBE_TIERS := {"common": "Common", "uncommon": "Uncommon", "rare": "Rare", "epic": "Epic", "special": "Special", "earned": "Earned"}
-const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf"}
+const WARDROBE_TIERS := {"common": "Common", "uncommon": "Uncommon", "rare": "Rare", "epic": "Epic", "special": "Special", "earned": "Earned", "free": "Free"}
+const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf", "rest_face": "Face", "reactions": "Reactions"}
+## The Reactions chip (presentation/wardrobe_reactions.gd): the slot row, a
+## face's tag, and the main button while a face goes in a slot.
+const WARDROBE_YOUR_REACTIONS := "Your reactions"
+const WARDROBE_IN_SLOT := "In a slot"
+const WARDROBE_PUT_IN_SLOT := "Put in a slot"
+const WARDROBE_CANCEL_SLOT := "Cancel"
+## Screen reader names: an empty place and a locked one.
+const WARDROBE_EMPTY_SLOT := "Empty reaction slot"
+const WARDROBE_LOCKED_SLOT := "Locked reaction slot"
 const WARDROBE_PRICE := "%s Pollen"
 const WARDROBE_BUY := "Buy for %s"
 const WARDROBE_WEAR := "Wear"
@@ -577,10 +586,47 @@ const END_REACTIONS_TITLE := "Reactions"
 const END_REACTIONS_CHOOSE := "Choose a reaction"
 const END_REACTIONS_QUICK := "React with %s"
 const END_REACTIONS_CLOSE := "Close reactions"
+## The single reaction faces (content/cosmetics/faces.gd), waiting for the text pass.
+const FACE_AWW := "Aww"
+const FACE_SHY := "Shy"
+const FACE_HUH := "Huh"
+const FACE_PLEASE := "Please"
+const FACE_TOUCHED := "Touched"
+const FACE_LUCKY := "Lucky"
+const FACE_GIGGLE := "Giggle"
+const FACE_CURIOUS := "Curious"
+const FACE_NERVOUS := "Nervous"
+const FACE_DROWSY := "Drowsy"
+const FACE_GASP := "Gasp"
+const FACE_PEEKABOO := "Peekaboo"
+const FACE_YAY := "Yay"
+const FACE_SMITTEN := "Smitten"
+const FACE_STARRY := "Starry"
+const FACE_FLOWER := "Flower"
+## The six pack faces sold one at a time (content/cosmetics/faces.gd).
+const FACE_HEART_EYES := "Heart eyes"
+const FACE_PROUD := "Proud"
+const FACE_WINK := "Wink"
+const FACE_WOW := "Wow"
+const FACE_CRYING := "Crying"
+const FACE_DIZZY := "Dizzy"
+## The resting faces (content/cosmetics/faces.gd), a pip's everyday face. Classic is wearing none.
+const REST_FACE_CLASSIC := "Classic"
+const REST_FACE_BUTTON := "Button"
+const REST_FACE_BEAN := "Bean"
+const REST_FACE_ROUND := "Round"
+const REST_FACE_WIDE := "Wide"
+const REST_FACE_SPROUT := "Sprout"
+## The two extra reaction slots, each bought on its own.
+const REACTION_SLOT_FIFTH := "Fifth reaction slot"
+const REACTION_SLOT_SIXTH := "Sixth reaction slot"
 ## The faces, by id (services/reaction_catalog.gd). The heart is icon only; its name is for screen readers.
 const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
 	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love",
-	"heart_eyes": "Heart eyes", "proud": "Proud", "wink": "Wink", "wow": "Wow", "crying": "Crying", "dizzy": "Dizzy"}
+	"heart_eyes": FACE_HEART_EYES, "proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
+	"aww": FACE_AWW, "shy": FACE_SHY, "huh": FACE_HUH, "please": FACE_PLEASE, "touched": FACE_TOUCHED, "lucky": FACE_LUCKY,
+	"giggle": FACE_GIGGLE, "curious": FACE_CURIOUS, "nervous": FACE_NERVOUS, "drowsy": FACE_DROWSY, "gasp": FACE_GASP,
+	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "smitten": FACE_SMITTEN, "starry": FACE_STARRY, "flower": FACE_FLOWER}
 ## The reaction packs (services/reaction_catalog.gd PACKS), and the faces card's
 ## tab for the everyday faces beside a tab per owned pack.
 const FACE_PACK_NAMES := {"garden_faces": "Garden faces", "big_feelings": "Big feelings"}
