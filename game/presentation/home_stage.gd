@@ -196,15 +196,15 @@ func set_keepsakes(items: Array[Dictionary]) -> void:
 	_update_keepsake_labels()
 	_layout()
 
-## Where the top bar's pills must end (this stage's x): just before the first
-## header action right of `lead` on the same band, else the screen's edge.
-func _top_bar_end(lead: Control) -> float:
+## Where a row of the top bar's pills must end (this stage's x): just before the
+## first header action right of the row's start on the same band, else the screen's edge.
+func _top_bar_end(row: Rect2) -> float:
 	var end := size.x - 24.0
-	var band := Rect2(global_position + lead.position, Vector2(size.x, lead.size.y))
+	var band := Rect2(global_position + row.position, Vector2(size.x, row.size.y))
 	for action: Control in _header_actions:
 		if not is_instance_valid(action) or not action.is_visible_in_tree(): continue
 		var header := action.get_global_rect()
-		if header.position.x > band.position.x + lead.size.x and header.position.y < band.end.y and header.end.y > band.position.y:
+		if header.position.x > band.position.x and header.position.y < band.end.y and header.end.y > band.position.y:
 			end = minf(end, header.position.x - global_position.x - 12.0)
 	return end
 
@@ -359,12 +359,11 @@ func _layout() -> void:
 		# along the top bar up to the header's actions (the Pollen and Fruits chips,
 		# Full Journey); a pill that would reach them starts a row under Explore.
 		if is_instance_valid(_react): _react.size = RunReactions.SIZE
-		var limit := _top_bar_end(lead)
 		var cursor := lead.position.x + lead.size.x + PILL_GAP
 		var row := Rect2(lead.position, lead.size)
 		for pill: Control in [_react, _reset]:
 			if not is_instance_valid(pill): continue
-			if cursor + pill.size.x > limit and cursor > lead.position.x:
+			if cursor + pill.size.x > _top_bar_end(row) and cursor > lead.position.x:
 				row = Rect2(Vector2(lead.position.x, row.end.y + PILL_GAP), pill.size)
 				cursor = lead.position.x
 			pill.position = Vector2(cursor, row.position.y + (row.size.y - pill.size.y) * 0.5)
