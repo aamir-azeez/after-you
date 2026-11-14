@@ -545,6 +545,24 @@ func active_look() -> Dictionary:
 	if scope.has("pending"): return (scope.pending.look as Dictionary).duplicate()
 	return ((scope.view as Dictionary).get("look", {}) as Dictionary).duplicate()
 
+## The signed-in player's last confirmed wardrobe ({} while the wardrobe is
+## off), and their reaction slots as shown on this phone (effective_slots).
+## The active scope outlives Main (follow keeps it as Main leaves), so every
+## faces card reads these, on Home and in a solo chapter alike (services/face_packs.gd).
+func active_view() -> Dictionary:
+	follow()
+	var scope: Dictionary = _scopes.get(_active, {})
+	return (scope.view as Dictionary).duplicate(true) if not scope.is_empty() and bool(scope.get("enabled", false)) else {}
+
+func active_slots() -> Array:
+	follow()
+	return effective_slots(_active.get_slice("|", 0), _active.get_slice("|", 1)) if _active.contains("|") else []
+
+## The active scope's key ("" while signed out).
+func active_key() -> String:
+	follow()
+	return _active
+
 func _announce(server: String, owner: String) -> void:
 	follow()
 	if scope_key(server, owner) != _active: return

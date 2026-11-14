@@ -28,6 +28,12 @@ const HASH_B := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 var _paths: Array[String] = []
 
+## Stands in for Main: the wardrobe follows its scope while it lives.
+class FakeMain extends Node:
+	const SERVER := "https://synthetic.invalid"
+	const OWNER := "synthetic-owner"
+	func scope() -> Dictionary: return {"server": SERVER, "owner": OWNER}
+
 func _run() -> void:
 	for name: String in ["relay-a", "relay-b", "garden-a", "garden-b", "initial-checkpoint", "relay-checkpoint", "final-checkpoint"]:
 		fixtures[name] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))
@@ -46,6 +52,7 @@ func _run() -> void:
 	_slot_rules()
 	_kept_slots()
 	await _slots_card()
+	await _shared_slots()
 	FacePacks.source = Callable()
 	PollenSurfaces.set_shared_for_tests(null)
 	_clear_default_store()
@@ -330,12 +337,18 @@ func _single_faces() -> void:
 	for face: String in NEW: _check(Cosmetics.tier(face).begins_with("face_"), "%s also sells alone, on the face ladder" % face)
 	_check(ReactionCatalog.collection().size() == 8 + 16 + 6 and not Store.HEART in ReactionCatalog.collection(), "The collection lists every face but the heart")
 	var view := {"faces": ["yay", "wink"], "packs": [], "reactions": ["happy", "", "", "", "", ""], "reaction_slots": 4}
-	FacePacks.source = func() -> Dictionary: return {"version": 2, "view": view, "slots": ["yay", "happy", "aww", "", "", ""]}
+	FacePacks.source = func() -> Dictionary: return {"version": 2, "view": view, "slots": ["yay", "happy", "aww", "", "sad", ""]}
 	_check(FacePacks.can_pick("yay") and FacePacks.can_pick("wink") and not FacePacks.can_pick("aww") and not FacePacks.can_pick("heart_eyes"), "Version 2: owned faces only, a pack face owned alone too")
-	_check(FacePacks.slots() == ["yay", "happy", "", "", "", ""], "The card's slots keep their order and leave out a face not owned: %s" % [FacePacks.slots()])
+	_check(FacePacks.slots() == ["yay", "happy", "", ""], "The card's places are the four open slots in order, a face not owned left empty: %s" % [FacePacks.slots()])
+	# A capabilities read older than the wardrobe (version 1, read before the
+	# flag went on) never hides the slots the wardrobe itself keeps.
 	FacePacks.source = func() -> Dictionary: return {"version": 1, "view": view, "slots": ["yay", "happy", "", "", "", ""]}
-	_check(not FacePacks.can_pick("yay") and FacePacks.slots().is_empty(), "Version 1: no single face and no slots, the card as before")
-	_check(FacePacks.can_pick("yay", true) and FacePacks.slots(true) == ["yay", "happy", "", "", "", ""], "A pick kept on this phone takes owned faces and the slots whatever the server")
+	_check(FacePacks.can_pick("yay") and FacePacks.slots() == ["yay", "happy", "", ""], "The wardrobe's own slots decide, whatever an older capabilities read said")
+	view.reaction_slots = 6
+	_check(FacePacks.slots().size() == 6, "Both slots bought: six places")
+	var older := {"packs": [], "items": []}
+	FacePacks.source = func() -> Dictionary: return {"version": 1, "view": older, "slots": []}
+	_check(not FacePacks.can_pick("yay") and FacePacks.slots().is_empty(), "A wardrobe without slots (an older server): no single face and no slots, the card as before")
 	FacePacks.source = Callable()
 
 ## The slot rules: open places, the next slot to buy, a swap, and the faces listed.
@@ -381,11 +394,63 @@ func _slots_card() -> void:
 	var grid: GridContainer = card.find_child("ReactionGrid", true, false)
 	var cells: Array = []
 	for cell: Node in grid.get_children(): cells.append(_labels(cell))
-	_check(card.find_child("ReactionTabs", true, false) == null and grid.columns == 3 and cells == [["Happy"], ["Yay"], ["Sad"]] and card.cells.has(Store.HEART), "The card shows the slots in order, 3 a row, with the heart and no tabs: %s" % [cells])
+	_check(card.find_child("ReactionTabs", true, false) == null and grid.columns == 3 and cells == [["Happy"], ["Yay"], [], ["Sad"], [], []] and card.cells.has(Store.HEART), "The card shows six slots in order, 3 a row, empty places kept, with the heart and no tabs: %s" % [cells])
+	_check(grid.get_children().filter(func(cell: Node) -> bool: return cell is Button).size() == 3, "Only a place with a face can be tapped")
 	_check(EndReactions.quick_face("yay", {"slots": ["yay"]}) == "yay" and EndReactions.quick_face("yay", {"slots": ["happy"], "packs": []}) == Store.DEFAULT_FACE, "The quick half offers a single face only while it is in the slots")
 	card.close()
 	host.queue_free()
 	await process_frame
+	host = _host()
+	row = EndReactions.attach(host, {"run": HASH_A, "pick": true, "store": store, "slots": ["aww", "happy", "surprised", "sad"], "settings": {"reduced_motion": true}})
+	await process_frame
+	row.opener.pressed.emit()
+	await process_frame
+	grid = row.faces_card.find_child("ReactionGrid", true, false)
+	_check(grid.columns == 2 and grid.get_child_count() == 4, "Four open slots draw 2 x 2")
+	row.close_faces()
+	host.queue_free()
+	await process_frame
+
+## Every faces card reads the signed-in player's slots from the shared
+## wardrobe, so a solo chapter (Main gone, the scene changed) and a room
+## (whatever its capabilities read said) show the same slots as the Wardrobe,
+## and a bought face in them is sent with the turn.
+func _shared_slots() -> void:
+	FacePacks.source = Callable()
+	var store := Wardrobe.new(_path("shared-wardrobe"))
+	Wardrobe.use_shared(store)
+	var main := FakeMain.new()
+	root.add_child(main)
+	store.scope_source = main.scope
+	store.set_enabled(FakeMain.SERVER, FakeMain.OWNER, true, true)
+	store.note_view(FakeMain.SERVER, FakeMain.OWNER, {"wardrobe": {"items": ["reaction_slot_5"], "packs": [], "offered": [], "look": {}, "look_revision": 1,
+		"faces": ["aww"], "reactions": ["aww", "happy", "surprised", "sad", "squeeze", ""], "reaction_slots": 5}})
+	store.follow()
+	_check(FacePacks.slots() == ["aww", "happy", "surprised", "sad", "squeeze"] and FacePacks.can_pick("aww"), "With Main there: the five open slots, the bought face in them and sendable")
+	# Main leaves (a solo chapter changes the scene): its scope source is gone, the slots stay.
+	main.free()
+	_check(FacePacks.slots(true) == ["aww", "happy", "surprised", "sad", "squeeze"] and FacePacks.slots() == FacePacks.slots(true), "After Main is gone: the same five slots, solo or not")
+	var host := _host()
+	var row := EndReactions.attach(host, {"run": "solo-shared", "pick": true, "store": Store.new(_path("shared-card")), "local": true, "settings": {"reduced_motion": true}})
+	await process_frame
+	row.opener.pressed.emit()
+	await process_frame
+	var grid: GridContainer = row.faces_card.find_child("ReactionGrid", true, false)
+	_check(grid.get_child_count() == ReactionSlots.open_count(store.active_view()) and row.faces_card.cells.has("aww") and not row.faces_card.cells.has("angry"), "The card shows exactly the open slots, never the old eight faces")
+	row.close_faces()
+	host.queue_free()
+	await process_frame
+	var pill := RunReactions.new()
+	pill.store_path = _path("shared-pill")
+	root.add_child(pill)
+	await process_frame
+	pill.toggle_faces()
+	await process_frame
+	var pill_grid: GridContainer = pill.faces_card.find_child("ReactionGrid", true, false)
+	_check(pill_grid.get_child_count() == 5 and pill.faces_card.cells.has("aww"), "The in-run pill's card shows the same slots")
+	pill.queue_free()
+	await process_frame
+	Wardrobe.use_shared(null)
 
 func _headers() -> void:
 	for case: Array in [[HTTPClient.METHOD_GET, "/v2/capabilities", true], [HTTPClient.METHOD_GET, "/v1/room-inbox", true], [HTTPClient.METHOD_GET, "/v2/rooms/" + ROOM, true],

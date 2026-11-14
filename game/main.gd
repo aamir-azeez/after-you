@@ -51,7 +51,6 @@ const PollenPlayFlow = preload("res://presentation/pollen_play_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenStoreFlow = preload("res://presentation/pollen_store_flow.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
-const FacePacks = preload("res://services/face_packs.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
@@ -425,8 +424,6 @@ func _ready() -> void:
 	# Bundle purchases whose claim got no answer go again with each flush (services/bundle_claims.gd).
 	BundleClaims.shared().connect_to(api,_names_scope)
 	pollen_client.bundle_claims=BundleClaims.shared()
-	# The reaction packs the player may pick faces from (services/face_packs.gd).
-	FacePacks.source=_face_packs_state
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
 	# Only a phone with Full Journey reads the wallet for the monthly grant (any wallet read may bring a card: _service_grant_card).
 	pollen_client.subscribed=_full_journey_access
@@ -847,6 +844,8 @@ func _show_home() -> void:
 	_set_home_hard(home_stage)
 	home_stage.play_cue = soundscape.play_fixed_cue
 	home_stage.play_haptic = soundscape.tap_haptic
+	# A face picked on Home pops like a picked end reaction, one pitch per face.
+	home_stage.play_reaction = func(face: String) -> void: soundscape.play_reaction(["home", face])
 	overlay.add_child(home_stage)
 	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
 	var menu := HomeMenu.new()
@@ -1675,14 +1674,6 @@ func _host_earlier_islands_flow() -> EarlierIslandsFlow:
 	var flow := EarlierIslandsFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
-
-## What services/face_packs.gd reads: the faces the signed-in player's server
-## takes (RelayOnlineSession.face_version), their wardrobe as it last said and
-## the reaction slots shown on this phone; {} while signed out.
-func _face_packs_state() -> Dictionary:
-	var scope:=_names_scope()
-	if scope.is_empty(): return {}
-	return {"version": relay_session.face_version() if relay_session!=null else 0, "view": Wardrobe.shared().view(scope.server,scope.owner), "slots": Wardrobe.shared().effective_slots(scope.server,scope.owner)}
 
 ## The server and player that key the names and friends this phone keeps, or {}.
 func _names_scope() -> Dictionary:

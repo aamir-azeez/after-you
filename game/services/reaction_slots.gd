@@ -8,7 +8,6 @@ extends RefCounted
 ## place at most; the heart stays outside the slots. The slots exist only while
 ## the server keeps them (the view's "reactions": FACE_SINGLES on).
 const ReactionCatalog = preload("res://services/reaction_catalog.gd")
-const FacePacks = preload("res://services/face_packs.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 
@@ -26,6 +25,25 @@ static func kept(view: Dictionary) -> bool:
 ## How many places are open (FREE_SLOTS to SLOT_COUNT).
 static func open_count(view: Dictionary) -> int:
 	return clampi(int(view.get("reaction_slots", FREE_SLOTS)), FREE_SLOTS, SLOT_COUNT)
+
+## The open places of `slots` in order ("" for an empty one): what every faces
+## card offers (services/face_packs.gd slots), the same places the Wardrobe's
+## slot row shows open; [] while the server keeps no slots.
+static func open_places(view: Dictionary, slots: Array) -> Array:
+	if not kept(view) or slots.size() != SLOT_COUNT: return []
+	return slots.slice(0, open_count(view))
+
+## The reaction faces the player owns: the wardrobe's `faces` while the server
+## sends them, else the faces of each owned pack.
+static func owned_faces(view: Variant) -> Array:
+	if not view is Dictionary: return []
+	if view.get("faces") is Array: return (view.faces as Array).duplicate()
+	var faces: Array = []
+	var packs: Variant = view.get("packs")
+	if packs is Array:
+		for pack: String in ReactionCatalog.PACKS:
+			if pack in packs: faces.append_array(ReactionCatalog.PACKS[pack])
+	return faces
 
 ## The next reaction slot item to buy, or "" once every place is open.
 static func next_unlock(view: Dictionary) -> String:
@@ -52,7 +70,7 @@ static func placed(slots: Array, face: String, index: int) -> Array:
 ## (false), in_slot (its place in `slots`, or -1), moving, face (true)}.
 ## `selling`: the shop shows, so prices do.
 static func faces(view: Dictionary, slots: Array, selling: bool) -> Array:
-	var owned := FacePacks.owned_faces(view)
+	var owned := owned_faces(view)
 	var offered: Array = view.get("offered", [])
 	var result: Array = []
 	for face: String in ReactionCatalog.collection():
