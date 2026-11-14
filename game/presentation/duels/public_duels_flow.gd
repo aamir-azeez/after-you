@@ -175,11 +175,12 @@ static func rules_stop(code: String) -> bool:
 	return code in ["terms_acceptance_required", "unsupported_safety_response"]
 
 ## The rules card: Read the rules asks for the config and the rules afresh, shows the rules screen when they are
-## not accepted, then runs `again`. A second failure there is said in a toast, so the card never loops by itself.
-func _rules_card(again: Callable) -> void:
+## not accepted, then runs `again`. `show_name` and `set_switch` are the first-time card's choices, kept for the
+## second try. A second failure there is said in a toast, so the card never loops by itself.
+func _rules_card(again: Callable, show_name: Variant = null, set_switch := false) -> void:
 	var page: CanvasLayer = flow.screen.overlay() if flow.screen.overlay() != null else flow.screen
 	page.hold_modal(Sheets.rules_again(page.root, func() -> void:
-		if await turn_on(null, false) and flow.is_open(): again.call()))
+		if await turn_on(show_name, set_switch) and flow.is_open(): again.call()))
 
 ## Whether a post or join answer asks for the rules first: the refusal, the first time only.
 static func rules_refusal(answer: Dictionary, retried: bool) -> bool:
@@ -200,7 +201,7 @@ func _turn_on(show_name: Variant, set_switch: bool, then: Callable) -> bool:
 	if safety == null: return _say(PlayerCopy.DUELS_ACTION_FAILED)
 	if not await safety.check_terms():
 		if then.is_valid() and rules_stop(str(safety.last_code)):
-			_rules_card(then)
+			_rules_card(then, show_name, set_switch)
 			return false
 		return _say(safety.last_error if not str(safety.last_error).is_empty() else PlayerCopy.DUELS_ACTION_FAILED)
 	if not safety.terms_accepted:
