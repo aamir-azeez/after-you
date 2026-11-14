@@ -85,7 +85,7 @@ func _catalogue() -> void:
 	for id: String in SKINS: _check(Catalog.slot(id) == "body", "%s is a body skin" % id)
 	for id: String in TRAILS: _check(Catalog.slot(id) == "trail", "%s is a trail" % id)
 	for id: String in EXTRAS: _check(Catalog.slot(id) == EXTRAS[id], "%s goes in its own slot %s" % [id, EXTRAS[id]])
-	_check(Catalog.chips() == ["hat", "body", "leaf", "trail", "extras"], "The Wardrobe's chips: the three extras share one: %s" % [Catalog.chips()])
+	_check(Catalog.chips() == ["hat", "body", "leaf", "trail", "extras", "rest_face"], "The Wardrobe's chips: the three extras share one, and the resting face has its own: %s" % [Catalog.chips()])
 	_check(Catalog.chip("carry") == "extras" and Catalog.chip("bell_sound") == "extras" and Catalog.chip("trail") == "trail", "Each slot names its chip")
 	for chip: String in Catalog.chips(): _check(PlayerCopy.WARDROBE_SLOTS.has(chip), "The chip %s has its words" % chip)
 	var cue := Catalog.sound("wood_chime")
