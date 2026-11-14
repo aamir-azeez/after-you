@@ -8,8 +8,8 @@ extends Node
 ##
 ## open(from) is its one opener: the chip's Fruit half (Home, the Pollen page,
 ## the Wardrobe, the store), the store's "Fruits for playing together" and a
-## goal's toast. Back returns to `from` (`return_to`; the host reads it); reopen()
-## opens it again with that Back, after a screen it opened goes Back. Its
+## goal's toast, `from` naming the screen it opened over for Main's back history
+## (menu_opened); reopen() opens it again when Back comes to it. Its
 ## buttons go through routes Main sets, so the page never reaches into another
 ## screen: Get Fruits (`store_route`, the store on its Fruits tab), Open the
 ## Orchard (`orchard_route`), Sunshine (`pollen_route`, the Pollen page with its
@@ -18,13 +18,15 @@ extends Node
 ##
 ## Main hosts it as a child and reads Main only through: pollen_client,
 ## title_font, mode, running, overlay, _clear_overlay, and _mark_screen_back
-## when Main has it (Android Back).
+## (Android Back) and menu_opened (the back history) when Main has them.
 const Page = preload("res://presentation/fruits_page.gd")
 const WalletView = preload("res://presentation/fruit_wallet_view.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 
 const MODE := "fruits_page"
+## Its name in Main's back history (presentation/menu_back.gd).
+const MENU_SCREEN := "fruits"
 ## Fruit lines the page lists (the history keeps up to 50).
 const LINES := 20
 
@@ -48,7 +50,6 @@ var pollen_route: Callable
 ## () -> bool: whether the Wardrobe and the Pollen page can open now; their buttons show only then.
 var orchard_ready: Callable
 var pollen_ready: Callable
-var return_to := "home"
 var _page: Page
 var _chip: Control
 var _history: Dictionary = {}
@@ -72,10 +73,9 @@ func available() -> bool:
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
-## Opens the page, its Back going to `from`; nothing while it is open already or Fruits do not show.
+## Opens the page over the screen `from`; nothing while it is open already or Fruits do not show.
 func open(from: String = "home") -> void:
 	if is_open() or not available(): return
-	return_to = from
 	host.running = false
 	host.mode = MODE
 	host._clear_overlay()
@@ -86,6 +86,7 @@ func open(from: String = "home") -> void:
 	_page.button_pressed.connect(_pressed)
 	host.overlay.add_child(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
+	if host.has_method("menu_opened"): host.menu_opened(MENU_SCREEN, from, _page.back_button)
 	var store: RefCounted = spend.fruits()
 	if not store.changed.is_connected(_on_fruits_changed): store.changed.connect(_on_fruits_changed)
 	_history = {}
@@ -97,9 +98,9 @@ func open(from: String = "home") -> void:
 	_redraw()
 	refresh()
 
-## Opens the page again with the Back it had.
+## Opens the page again (Back from a screen it opened).
 func reopen() -> void:
-	open(return_to)
+	open("")
 
 ## Reads the history, and the wallet first when no Fruits part is kept; the page draws with the answers.
 func refresh() -> void:
@@ -172,12 +173,12 @@ func _redraw() -> void:
 	shown["chip"] = _chip
 	_page.render(shown)
 
-## A button: its screen, opened from here ("fruits"; Main keeps the opener's own
-## Back when that screen opened this page, so two screens never loop).
+## A button: its screen, opened from here ("fruits"; Main's back history goes
+## back to that screen when it is already under this page).
 func _pressed(which: String, button: Button) -> void:
 	var routes := {WalletView.GET: store_route, WalletView.ORCHARD: orchard_route, WalletView.SUNSHINE: pollen_route}
 	if which == WalletView.CONVERT:
 		spend.convert(_page, button)
 		return
 	var route: Callable = routes.get(which, Callable())
-	if route.is_valid(): route.call("fruits")
+	if route.is_valid(): route.call(MENU_SCREEN)

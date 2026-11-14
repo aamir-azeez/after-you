@@ -287,6 +287,8 @@ const POLLEN_ODDS_PAID := "Paid chapters never bloom, and Full Journey never cha
 const WARDROBE_OPEN := "Wardrobe"
 const WARDROBE_TITLE := "Wardrobe"
 const WARDROBE_BACK := "Back"
+## The Home square beside Back on the menu screens (presentation/kit/home_square.gd).
+const MENU_HOME := "Home"
 ## Under the picked item's name: its slot and tier ("Hat, Common").
 const WARDROBE_FACTS := "%s, %s"
 const WARDROBE_NOTE := "Customize your little pip!"

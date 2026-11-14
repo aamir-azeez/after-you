@@ -63,6 +63,8 @@ class Host:
 	var running := false
 	var overlay := Control.new()
 	var title_font: Font = null
+	## The screens the page said it opened over (Main's back history, menu_opened).
+	var opened: Array = []
 	func _init() -> void:
 		overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		add_child(overlay)
@@ -70,6 +72,8 @@ class Host:
 		for child: Node in overlay.get_children():
 			overlay.remove_child(child)
 			child.queue_free()
+	func menu_opened(_screen: String, from: String, _back: Button) -> void:
+		opened.append(from)
 
 var checks := 0
 var failures := 0
@@ -225,7 +229,7 @@ func _flow() -> void:
 	host.pollen_client.answer = _history()
 	Flow.forget_shown()
 	var back: Array = []
-	flow.back_requested.connect(func() -> void: back.append(flow.return_to))
+	flow.back_requested.connect(func() -> void: back.append(host.opened.back()))
 	flow.open_from_home()
 	_check(host.mode == Flow.MODE and _texts(host.overlay).has(PlayerCopy.POLLEN_PLAY_LOADING), "Opening shows the page at once, loading")
 	await _settle()
@@ -243,7 +247,7 @@ func _flow() -> void:
 	_check(back == ["home", "settings", "store", "wardrobe"] and host.pollen_client.reads == 4, "Back goes where it opened from; each opening reads once: " + str(back))
 	flow.reopen()
 	await _settle()
-	_check(flow.is_open() and flow.return_to == "wardrobe" and host.pollen_client.reads == 5, "Opening again keeps the Back it had")
+	_check(flow.is_open() and host.opened.back() == "" and host.pollen_client.reads == 5, "Opening again tells the back history it came back")
 	host.pollen_client.answer = {}
 	flow.open_from_home()
 	await _settle()
@@ -349,7 +353,7 @@ func _chip_routes(flow: Node, host: Node, back: Array) -> void:
 	home_chip.plus_pressed.emit()
 	_check(routes == ["home"] and host.mode == "home", "Home's plus opens the store with Back to Home")
 	home_chip.amount_pressed.emit()
-	_check(flow.is_open() and flow.return_to == "home", "Home's balance opens the Pollen page")
+	_check(flow.is_open() and host.opened.back() == "home", "Home's balance opens the Pollen page")
 	await _settle()
 	var page_chip: Control = host.overlay.find_child("PollenChip", true, false)
 	page_chip.plus_pressed.emit()
@@ -357,15 +361,15 @@ func _chip_routes(flow: Node, host: Node, back: Array) -> void:
 	var reads: int = host.pollen_client.reads
 	page_chip.amount_pressed.emit()
 	await _settle()
-	_check(flow.is_open() and flow.return_to == "home" and host.pollen_client.reads == reads, "The page's own balance does nothing")
+	_check(flow.is_open() and host.opened.back() == "home" and host.pollen_client.reads == reads, "The page's own balance does nothing")
 	back.clear()
 	flow.open_from_store()
 	await _settle()
 	(host.overlay.find_child("PollenChip", true, false) as Control).plus_pressed.emit()
-	_check(routes == ["home", "pollen"] and back == ["store"], "On a page the store opened, the plus goes Back to it instead of stacking another store")
+	_check(routes == ["home", "pollen", "pollen"] and back.is_empty(), "On a page the store opened, the plus opens the store over it (the back history goes back to it)")
 	sells.on = false
 	home_chip.plus_pressed.emit()
-	_check(routes == ["home", "pollen"], "A plus left on screen does nothing once the store stops selling")
+	_check(routes == ["home", "pollen", "pollen"], "A plus left on screen does nothing once the store stops selling")
 	home_chip.free()
 	# Fruits (board 2): the Fruit half only while Fruits show, and each chip's halves go where that chip is.
 	sells.on = true
@@ -388,13 +392,7 @@ func _chip_routes(flow: Node, host: Node, back: Array) -> void:
 	_check(fruit_routes == ["pollen"] and routes.back() == Flow.FROM_FRUITS, "The Pollen page's Fruit half opens the Fruits page with Back to it; on the Fruits page the Fruit half does nothing and the plus opens the store with Back there: %s %s" % [fruit_routes, routes])
 	fruits_page_chip.amount_pressed.emit()
 	await _settle()
-	_check(flow.is_open() and flow.return_to == Flow.FROM_FRUITS, "The Fruits page's Pollen half opens this page with Back to the Fruits page")
-	var page_routes: Array = []
-	flow.fruits_page_route = func(to: String) -> void: page_routes.append(to)
-	fruits_page_chip.amount_pressed.emit()
-	fruits_page_chip.plus_pressed.emit()
-	_check(page_routes == ["pollen", "store"], "With Main's Fruits page routes set, its chip goes through them, which keep Back from looping: %s" % [page_routes])
-	flow.fruits_page_route = Callable()
+	_check(flow.is_open() and host.opened.back() == Flow.FROM_FRUITS, "The Fruits page's Pollen half opens this page over the Fruits page")
 	page_chip_fruits.free()
 	fruits_page_chip.free()
 	flow.fruits = null

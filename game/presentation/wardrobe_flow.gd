@@ -89,7 +89,8 @@ extends Node
 ## The main button goes through a BusyTapGate (presentation/busy_tap_gate.gd):
 ## a tap while the wardrobe is still being read waits for that read instead of
 ## being dropped, so the first tap always registers.
-## `return_to` names where Back goes ("settings" or "home"); the host reads it.
+## Back goes through Main's back history (menu_opened, when Main has it:
+## presentation/menu_back.gd), told which screen the Wardrobe opened over.
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -112,6 +113,8 @@ const ReactionCatalog = preload("res://services/reaction_catalog.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 
 const MODE_WARDROBE := "wardrobe"
+## Its name in Main's back history (presentation/menu_back.gd).
+const MENU_SCREEN := "wardrobe"
 ## The Face chip's Classic card: no resting face worn.
 const CLASSIC := "rest_classic"
 ## The chip of the reaction slots and faces.
@@ -149,8 +152,6 @@ var _kind := ""
 var _swapping := false
 var _view_mode := "you"
 var _gate: BusyTapGate
-## Where Back returns: "settings" (the default), "home", or where show_orchard was asked from.
-var return_to := "settings"
 var _status := ""
 ## A look whose send got no answer while online goes again after these
 ## (RefreshSchedule's failure pace); tests set shorter ones.
@@ -189,9 +190,10 @@ func available() -> bool:
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
+## Opens the Wardrobe over the screen `from` ("settings", "home", or where
+## show_orchard was asked from; "" when Back comes to it).
 func show_wardrobe(from: String = "settings") -> void:
 	if not available(): return
-	return_to = from
 	host.running = false
 	host.mode = MODE_WARDROBE
 	host._clear_overlay()
@@ -214,6 +216,7 @@ func show_wardrobe(from: String = "settings") -> void:
 	host.overlay.add_child(_page)
 	_gate = BusyTapGate.new(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
+	if host.has_method("menu_opened"): host.menu_opened(MENU_SCREEN, from, _page.back_button)
 	_tab = ""
 	_shop_tab = ""
 	_reopen_tab = ""
@@ -228,8 +231,8 @@ func show_wardrobe(from: String = "settings") -> void:
 	if _client().online(): refresh()
 
 ## The one way in to the Orchard (the Fruits page's "Open the Orchard"): the
-## Wardrobe opened on its Orchard tab, Back returning to `from` (the host routes
-## it). While Fruits do not show it opens as show_wardrobe does, and the Orchard
+## Wardrobe opened on its Orchard tab over the screen `from` (Main's back
+## history). While Fruits do not show it opens as show_wardrobe does, and the Orchard
 ## shows once the server says Fruits are on (its first read).
 func show_orchard(from: String = "fruits") -> void:
 	show_wardrobe(from)
@@ -237,16 +240,16 @@ func show_orchard(from: String = "fruits") -> void:
 	_tab = "orchard"
 	_redraw()
 
-## Opens the Wardrobe again with the Back it had (the host, when the store it
-## opened goes Back): on the Orchard when the player left it for Get Fruits.
-func reopen() -> void:
+## Opens the Wardrobe again (Back from the store it opened, or the store's
+## receipt, `from` "store"): on the Orchard when the player left it for Get Fruits.
+func reopen(from: String = "") -> void:
 	var tab := _reopen_tab
 	var pick := _reopen_pick
 	_reopen_pick = ""
 	if tab != "orchard":
-		show_wardrobe(return_to)
+		show_wardrobe(from)
 		return
-	show_orchard(return_to)
+	show_orchard(from)
 	if is_open() and not pick.is_empty(): select(pick)
 
 ## The phone went offline or came back (Main follows services/connectivity.gd):

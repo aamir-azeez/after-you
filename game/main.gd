@@ -50,6 +50,7 @@ const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
 const PollenPlayFlow = preload("res://presentation/pollen_play_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenStoreFlow = preload("res://presentation/pollen_store_flow.gd")
+const MenuBack = preload("res://presentation/menu_back.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
 const FacePacks = preload("res://services/face_packs.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
@@ -296,6 +297,8 @@ var board_feedback: RefCounted = BoardFeedbackFlow.new(self)
 var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
 ## Display names: the first-run prompt, the prompt from Friends and the Friends header chip.
 var display_name_flow: DisplayNameFlow = _host_display_name_flow()
+## The menu screens' one back history (_make_menu_back), made before the flows that use it.
+var menu_back: MenuBack = _make_menu_back()
 ## The Wardrobe: buying and wearing pip cosmetics with Pollen, opened from Settings.
 var wardrobe_flow: WardrobeFlow = _host_wardrobe_flow()
 ## Pollen from play and Home's Pollen chip (presentation/pollen_play_flow.gd).
@@ -1461,15 +1464,11 @@ func _host_display_name_flow() -> DisplayNameFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
 
-## An internal child, like StoreFlow. Its Back returns where it opened: Settings or Home.
+## An internal child, like StoreFlow. Its Back goes through the menu back history (menu_back).
 func _host_wardrobe_flow() -> WardrobeFlow:
-	var flow := WardrobeFlow.new(self)
+	var flow := _new_wardrobe_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(func():
-		if flow.return_to == "home": _show_home()
-		# Fruits page and play: the Orchard opened from the Fruits page goes back to it.
-		elif flow.return_to == "fruits": reopen_fruits_page()
-		else: settings_flow.show_settings())
+	flow.back_requested.connect(menu_back.back.bind(MenuBack.WARDROBE))
 	flow.store_requested.connect(func(): pollen_store_flow.show_store("wardrobe"))
 	flow.pollen_requested.connect(func(): pollen_play_flow.open_from_wardrobe())
 	flow.fruits_requested.connect(func(): open_fruits_page("wardrobe"))
@@ -1477,40 +1476,24 @@ func _host_wardrobe_flow() -> WardrobeFlow:
 	flow.fruits_store_requested.connect(func(): pollen_store_flow.show_store("wardrobe", "fruits"))
 	return flow
 
-## An internal child, like StoreFlow. The Pollen store opens from the Wardrobe
-## and goes back to it (or Home, when the Wardrobe is off), and from the plus
-## on Home's chip or the Pollen page's and goes back there; its receipt's Open the
-## Wardrobe opens the Wardrobe.
+## An internal child, like StoreFlow. Its Back goes through the menu back
+## history (menu_back); its receipt's Open the Wardrobe opens the Wardrobe (on
+## the Orchard after its Get Fruits), or Home while the Wardrobe is off.
 func _host_pollen_store_flow() -> PollenStoreFlow:
-	var flow := PollenStoreFlow.new(self)
+	var flow := _new_pollen_store_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(_pollen_store_back.bind(flow))
-	flow.wardrobe_requested.connect(_back_to_wardrobe)
+	flow.back_requested.connect(menu_back.back.bind(MenuBack.STORE))
+	flow.wardrobe_requested.connect(func():
+		if wardrobe_flow.available(): wardrobe_flow.reopen(MenuBack.STORE)
+		if not wardrobe_flow.is_open(): menu_back.home())
 	return flow
 
-## The Pollen store's Back, to where it opened (its return_to).
-func _pollen_store_back(store: PollenStoreFlow) -> void:
-	match store.return_to:
-		"home": _show_home()
-		"pollen":
-			pollen_play_flow.reopen()
-			if not pollen_play_flow.is_open(): _show_home()
-		# The Fruits page opened it ("Get Fruits"): back to that page, with the Back it had.
-		"fruits": reopen_fruits_page()
-		_: _back_to_wardrobe()
-
-## The Wardrobe, with the Back it opened with (on the Orchard after its Get Fruits), or Home while the Wardrobe is off.
-func _back_to_wardrobe() -> void:
-	if wardrobe_flow.available(): wardrobe_flow.reopen()
-	else: _show_home()
-
-## An internal child, like StoreFlow. Back returns where it opened: Home,
-## Settings, the Wardrobe, or the Pollen store (the store's own Back when it
-## cannot open now). The plus on its chips opens the Pollen store while it sells.
+## An internal child, like StoreFlow. Its Back goes through the menu back
+## history (menu_back). The plus on its chips opens the Pollen store while it sells.
 func _host_pollen_play_flow() -> PollenPlayFlow:
-	var flow := PollenPlayFlow.new(self)
+	var flow := _new_pollen_play_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(_pollen_page_back.bind(flow))
+	flow.back_requested.connect(menu_back.back.bind(MenuBack.POLLEN))
 	# Read at call time: the Pollen store is made after this flow.
 	flow.store_route = func(from: String): pollen_store_flow.show_store(from, "fruits" if from == PollenPlayFlow.FROM_FRUITS else "pollen")
 	flow.store_sells = func() -> bool: return is_instance_valid(pollen_store_flow) and pollen_store_flow.available()
@@ -1518,7 +1501,7 @@ func _host_pollen_play_flow() -> PollenPlayFlow:
 	return flow
 
 ## The Fruits page (presentation/fruits_page_flow.gd, show_fruits_page) from a
-## chip's Fruit half or the store, its Back going to `from` ("home", "pollen",
+## chip's Fruit half or the store, over the screen `from` ("home", "pollen",
 ## "wardrobe" or "store"): the one route every Fruit half and store button
 ## takes. True once the Fruits page is open.
 func open_fruits_page(from: String) -> bool:
@@ -1530,18 +1513,43 @@ func open_fruit_convert() -> bool:
 	show_fruit_convert()
 	return true
 
-## The Pollen page's Back, to where it opened (its return_to).
-func _pollen_page_back(page: PollenPlayFlow) -> void:
-	match page.return_to:
-		"settings": settings_flow.show_settings()
-		"wardrobe": _back_to_wardrobe()
-		"store":
-			# A store that cannot open now: where its own Back goes (never "pollen" here, see PollenStoreFlow.show_earning).
-			if pollen_store_flow.available(): pollen_store_flow.reopen()
-			else: _pollen_store_back(pollen_store_flow)
-		# Fruits page and play: opened by the Fruits page's Sunshine.
-		PollenPlayFlow.FROM_FRUITS: reopen_fruits_page()
-		_: _show_home()
+## The menu screens' one back history (presentation/menu_back.gd): Home,
+## Settings, the Wardrobe and its Orchard, the store, the Fruits page and the
+## Pollen page. Each flow says when it opened (menu_opened); Back and the Home
+## square go through it. Its routes open a screen again, read at call time.
+func _make_menu_back() -> MenuBack:
+	var history := MenuBack.new()
+	history.routes = {
+		MenuBack.HOME: func() -> bool:
+			_show_home()
+			return true,
+		MenuBack.SETTINGS: func() -> bool:
+			settings_flow.show_settings()
+			return true,
+		MenuBack.WARDROBE: func() -> bool:
+			if wardrobe_flow.available(): wardrobe_flow.reopen()
+			return wardrobe_flow.is_open(),
+		MenuBack.STORE: func() -> bool:
+			pollen_store_flow.reopen()
+			return pollen_store_flow.is_open(),
+		MenuBack.FRUITS: func() -> bool:
+			fruits_page_flow.reopen()
+			return fruits_page_flow.is_open(),
+		MenuBack.POLLEN: func() -> bool:
+			pollen_play_flow.reopen()
+			return pollen_play_flow.is_open(),
+	}
+	return history
+
+## The menu flows Main hosts; a test harness may return its own (test_menu_back.gd).
+func _new_wardrobe_flow() -> WardrobeFlow: return WardrobeFlow.new(self)
+func _new_pollen_store_flow() -> PollenStoreFlow: return PollenStoreFlow.new(self)
+func _new_pollen_play_flow() -> PollenPlayFlow: return PollenPlayFlow.new(self)
+func _new_fruits_page_flow() -> FruitsPageFlow: return FruitsPageFlow.new(self)
+
+## A menu screen opened over `from` (presentation/menu_back.gd opened), its Back beside the Home square.
+func menu_opened(screen: String, from: String, back: Button) -> void:
+	menu_back.opened(screen, from, back)
 
 # Fruits page and play ------------------------------------------------------
 
@@ -1561,45 +1569,24 @@ func _host_fruit_spend_flow() -> FruitSpendFlow:
 	# Read at call time: the short card's Get Fruits opens the store on its Fruits tab, Back
 	# coming to the screen it was on. Over the store's own Fruits tab the packs are already
 	# there: the card just closes.
-	flow.get_fruits = func() -> void: if not pollen_store_flow.is_open(): _fruit_store(_fruit_screen())
+	flow.get_fruits = func() -> void: if not pollen_store_flow.is_open(): pollen_store_flow.show_store(_fruit_screen(), "fruits")
 	pollen_play_flow.fruit_spends = flow
 	return flow
 
-## An internal child, like StoreFlow. Back returns where it opened (_fruits_page_back).
+## An internal child, like StoreFlow. Its Back goes through the menu back history (menu_back).
 func _host_fruits_page_flow() -> FruitsPageFlow:
-	var flow := FruitsPageFlow.new(self)
+	var flow := _new_fruits_page_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.spend = fruit_spend_flow
-	flow.back_requested.connect(_fruits_page_back.bind(flow))
+	flow.back_requested.connect(menu_back.back.bind(MenuBack.FRUITS))
 	flow.chip_source = func() -> Control: return pollen_play_flow.chip(PollenPlayFlow.FROM_FRUITS)
 	flow.chip_state = pollen_play_flow.chip_state
-	flow.store_route = _fruit_store
-	flow.orchard_route = func(from: String) -> void:
-		# Back to a Wardrobe that opened the page keeps the Wardrobe's own Back.
-		wardrobe_flow.show_orchard(wardrobe_flow.return_to if _back_leads_to(from, "wardrobe") else from)
+	flow.store_route = func(from: String) -> void: pollen_store_flow.show_store(from, "fruits")
+	flow.orchard_route = func(from: String) -> void: wardrobe_flow.show_orchard(from)
 	flow.orchard_ready = func() -> bool: return wardrobe_flow.available()
-	flow.pollen_route = func(from: String) -> void:
-		if _back_leads_to(from, "pollen"): pollen_play_flow.reopen()
-		else: pollen_play_flow.open_from_fruits()
+	flow.pollen_route = func(_from: String) -> void: pollen_play_flow.open_from_fruits()
 	flow.pollen_ready = func() -> bool: return pollen_play_flow.available()
-	# The chip on the Fruits page sends its Pollen half and plus through the same routes as the page's own buttons.
-	pollen_play_flow.fruits_page_route = func(to: String) -> void:
-		if to == "store": _fruit_store("fruits")
-		else: flow.pollen_route.call("fruits")
 	return flow
-
-## The store on its Fruits tab over the screen `from`. When `from` was opened by
-## the store (its Back leads there), the store opens with its own Back kept, so
-## the two screens never send each other Back in a loop.
-func _fruit_store(from: String) -> void:
-	pollen_store_flow.show_store(pollen_store_flow.return_to if _back_leads_to(from, "store") else from, "fruits")
-
-## Whether the Fruit screen `from` ("fruits" or "pollen") goes Back to `screen`.
-func _back_leads_to(from: String, screen: String) -> bool:
-	match from:
-		"fruits": return fruits_page_flow.return_to == screen
-		"pollen": return pollen_play_flow.return_to == screen
-	return false
 
 ## An internal child: each Fruit goal paid away from its result card, said once (service in _process).
 func _host_fruit_unlock_toasts() -> FruitUnlockToasts:
@@ -1608,45 +1595,24 @@ func _host_fruit_unlock_toasts() -> FruitUnlockToasts:
 	flow.open_page = func(_from: String) -> void: show_fruits_page(_fruit_screen())
 	return flow
 
-## The screen up now, as the Fruit screens name where Back goes: the Fruits page,
-## the Pollen page, the Wardrobe, the store, or Home.
+## The screen up now, as the back history names it: the Fruits page, the
+## Pollen page, the Wardrobe, the store, Settings, or Home.
 func _fruit_screen() -> String:
-	if fruits_page_flow.is_open(): return "fruits"
-	if pollen_play_flow.is_open(): return "pollen"
-	if wardrobe_flow.is_open(): return "wardrobe"
-	if pollen_store_flow.is_open(): return "store"
-	return "home"
+	if fruits_page_flow.is_open(): return MenuBack.FRUITS
+	if pollen_play_flow.is_open(): return MenuBack.POLLEN
+	if wardrobe_flow.is_open(): return MenuBack.WARDROBE
+	if pollen_store_flow.is_open(): return MenuBack.STORE
+	if mode == SettingsFlow.MODE_SETTINGS: return MenuBack.SETTINGS
+	return MenuBack.HOME
 
-## The Fruits page, its Back going to `from` ("home", "pollen", "wardrobe" or
-## "store"). From a screen the Fruits page itself opened, it goes
-## Back there instead, so the two never send each other Back in a loop.
+## The Fruits page over the screen `from` ("home", "pollen", "wardrobe" or
+## "store"); the back history keeps Back from looping.
 func show_fruits_page(from: String) -> void:
-	var opener := {"pollen": pollen_play_flow.return_to, "wardrobe": wardrobe_flow.return_to, "store": pollen_store_flow.return_to}
-	if str(opener.get(from, "")) == "fruits":
-		reopen_fruits_page()
-		return
 	fruits_page_flow.open(from)
-
-## The Fruits page again with the Back it had (a screen it opened went Back), or Home while it cannot open.
-func reopen_fruits_page() -> void:
-	fruits_page_flow.reopen()
-	if not fruits_page_flow.is_open(): _show_home()
 
 ## Turn Fruits into Pollen over the screen up now (the store's Fruits tab).
 func show_fruit_convert() -> void:
 	fruit_spend_flow.convert(overlay)
-
-## The Fruits page's Back, to where it opened (its return_to).
-func _fruits_page_back(page: FruitsPageFlow) -> void:
-	match page.return_to:
-		"wardrobe": _back_to_wardrobe()
-		"pollen":
-			pollen_play_flow.reopen()
-			if not pollen_play_flow.is_open(): _show_home()
-		"store":
-			if pollen_store_flow.available(): pollen_store_flow.reopen()
-			else: _pollen_store_back(pollen_store_flow)
-		_: _show_home()
 
 # End of Fruits page and play -----------------------------------------------
 
