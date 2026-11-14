@@ -10,11 +10,10 @@ const DATA := {
 	"code": 200,
 	## Held back until the server's release list names it.
 	"released": false,
-	## The boat sits over the leaf's sprout and the leaf comes out of it: from
-	## inside the hull up through the sail's middle and out of its top, raised
-	## this far (its own leaf point, not the shared top anchor; it may clip
-	## the paper it passes through).
+	## The leaf comes out of the boat's hull just left of the stripe, raised
+	## this far to the hull's rim there (its own leaf point, not the shared top
+	## anchor; it may clip the paper it passes).
 	"leaf_mode": "sits_on_top",
-	"leaf_lift": 0.18,
+	"leaf_lift": 0.045,
 	"leaf_max": "medium",
 }

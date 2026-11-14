@@ -3,9 +3,9 @@ extends RefCounted
 ## the leaf, as the hats board draws it: a cream hull with pointed ends and a
 ## terracotta fold along its front edge, a cream sail folded down its middle,
 ## and the dark inside of the hull between them. Every face is flat, so the
-## folds read as paper. It sits over the leaf's sprout, slightly into the
-## head, its outer end raised, and the leaf comes out of it: up from inside the
-## hull through the sail's middle and out of its top (the descriptor's
+## folds read as paper. It sits as the board drew it, moved across the head
+## so the hull's left part, just left of where the stripe starts, is over the
+## leaf's sprout: the leaf comes out of the boat there (the descriptor's
 ## "leaf_lift"). One baked mesh, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
@@ -13,10 +13,12 @@ const PAPER := Color("eee9d4")
 const FOLD := Color("cb8967")
 const INK := Color("193d39")
 ## Where the keel's middle sits on the head and the boat's turn (head space):
-## over the leaf's sprout, its inner end into the head as deep as the board's
-## boat sat, its outer end raised, turned a little to show its side, and its size.
-const AT := Vector3(-0.17, 0.258, -0.02)
-const TURN := Vector3(0.0, -0.22, -0.24)
+## the board's boat (its right end raised, turned a little to show its side,
+## its size) moved only, so the hull point a little left of the stripe's start
+## (boat x -0.13) is over the leaf's sprout and its keel sits as deep in the
+## head as the board's did.
+const AT := Vector3(-0.022, 0.248, 0.013)
+const TURN := Vector3(0.0, -0.22, 0.24)
 const SCALE := 1.2
 ## The boat's own space: x along it, y up, z across. The keel's half length,
 ## the rim's tips (half length, height), the rim's sides (half length,
