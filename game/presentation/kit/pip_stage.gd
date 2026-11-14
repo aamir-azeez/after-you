@@ -5,9 +5,11 @@ extends RefCounted
 ## sun, a narrow camera on a three-quarter view, and the real SpiritVisual
 ## without its ground ring or shadow. A tall item (its descriptor's "tall")
 ## pulls the camera back a little so it stays in frame; a wide one ("wide")
-## pulls it back further and moves it toward the side the item hangs on.
+## pulls it back further and moves it toward the side the item hangs on; a hat
+## that raises the leaf pulls it back by how far it raises it.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Outfit = preload("res://services/outfit.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 
 const CAMERA_AT := Vector3(0.0, 0.66, 2.45)
 const LOOK_AT := Vector3(0.0, 0.53, 0.0)
@@ -20,6 +22,15 @@ const TALL_LIFT := 0.04
 ## toward the item's side (+x: the view turns the pip's right side away).
 const WIDE_PULL := 1.25
 const WIDE_PAN := 0.05
+## With a low item (a foot ring): how much farther the camera stands, and how
+## much lower it looks, so the ring round the feet stays in frame.
+const LOW_PULL := 1.35
+const LOW_DROP := 0.12
+## With a hat that raises the leaf (Outfit.leaf_rise, metres): the camera
+## stands this much farther per metre raised and looks up half of it, so the
+## raised leaf's top stays in frame and the feet stay where they were.
+const RISE_PULL := 1.05
+const RISE_LIFT := 0.5
 
 ## Lights `view` and adds `pip` and a camera framed for `outfit`; returns the
 ## camera.
@@ -41,26 +52,40 @@ static func build(view: SubViewport, pip: Node3D, outfit: Dictionary) -> Camera3
 	var camera := Camera3D.new()
 	camera.fov = FOV
 	view.add_child(camera)
-	frame(camera, outfit)
+	var place: Variant = pip.get("place")
+	frame(camera, outfit, place if place is StringName else PipOutfit.STUDIO)
 	camera.current = true
 	return camera
 
-## A pip for the studio, in `color`, wearing `outfit`.
-static func pip(color: Color, outfit: Dictionary) -> SpiritVisual:
+## A pip for the studio, in `color`, wearing `outfit`, drawn for `place`
+## (pip_outfit.gd PLACES: a picture of a pip unless a room, result or
+## Wardrobe page says otherwise).
+static func pip(color: Color, outfit: Dictionary, place: StringName = PipOutfit.STUDIO) -> SpiritVisual:
 	var made := SpiritVisual.new(color)
 	made.ground_ring.visible = false
 	made.ground_shadow.visible = false
 	made.set_expression_role("a")
+	made.set_place(place)
 	made.wear(outfit)
 	return made
 
-## Points the camera at the pip, pulled back for a tall or wide outfit (as the
+## Points the camera at the pip, pulled back for a tall or wide outfit, or one
+## with a low item drawn in `place` (as the
 ## pip wears it: cleaned, so an item it can't wear never moves the camera).
-static func frame(camera: Camera3D, outfit: Dictionary) -> void:
+static func frame(camera: Camera3D, outfit: Dictionary, place: StringName = PipOutfit.STUDIO) -> void:
 	var worn := Outfit.from(outfit)
 	var wide := Outfit.wide(worn)
-	if not wide and not Outfit.tall(worn):
+	var tall := Outfit.tall(worn)
+	var low := Outfit.low(worn, place)
+	var rise := Outfit.leaf_rise(worn)
+	if not wide and not tall and not low and rise <= 0.0:
 		camera.look_at_from_position(CAMERA_AT, LOOK_AT)
 		return
-	var target := LOOK_AT + Vector3(WIDE_PAN if wide else 0.0, TALL_LIFT, 0)
-	camera.look_at_from_position(target + (CAMERA_AT - LOOK_AT) * (WIDE_PULL if wide else TALL_PULL), target)
+	var target := LOOK_AT + Vector3(WIDE_PAN if wide else 0.0, TALL_LIFT if wide or tall else 0.0, 0)
+	var pull := WIDE_PULL if wide else (TALL_PULL if tall else 1.0)
+	target.y += rise * RISE_LIFT
+	pull += rise * RISE_PULL
+	if low:
+		target.y -= LOW_DROP
+		pull = maxf(pull, LOW_PULL)
+	camera.look_at_from_position(target + (CAMERA_AT - LOOK_AT) * pull, target)

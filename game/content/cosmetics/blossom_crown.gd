@@ -8,4 +8,7 @@ const DATA := {
 	"tier": "fruit_hat",
 	"name": PlayerCopy.COSMETIC_BLOSSOM_CROWN,
 	"art": "res://presentation/pip_wear/blossom_crown.gd",
+	## Kept as players own it: the leaf grows where it always does.
+	"leaf_mode": "pokes_through",
+	"leaf_max": "tall",
 }

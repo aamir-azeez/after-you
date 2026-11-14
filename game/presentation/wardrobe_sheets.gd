@@ -23,6 +23,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const BundleArt = preload("res://presentation/kit/bundle_art.gd")
 const ShortCardBuy = preload("res://presentation/short_card_buy.gd")
 const Bundles = preload("res://services/pollen_bundles.gd")
@@ -80,6 +81,7 @@ static func confirm_of(parent: Control, spec: Dictionary) -> Control:
 		row.add_child(art)
 	elif not bool(spec.get("bare", false)):
 		var pip := PipAvatar.new(true, SpiritLook.PEACH, Vector2(96, 118), true)
+		pip.place = PipOutfit.WARDROBE
 		pip.name = "WardrobeConfirmPip"
 		var outfit: Dictionary = spec.get("outfit", {})
 		pip.outfit = outfit if not outfit.is_empty() else Outfit.of(str(spec.get("id", "")))

@@ -295,12 +295,84 @@ class Parts:
 		shape.cap_bottom = false
 		add(shape, color, Transform3D(basis, (from + to) * 0.5))
 
+	## Flat triangles (every three corners one), each turned to face away from
+	## `inside` (a paper fold, a frame's panel), with its own flat normal. With
+	## `both`, each is drawn from its back too (a thin sheet).
+	func facets(color: Color, corners: PackedVector3Array, inside: Vector3, both: bool = false) -> void:
+		var placed: Transform3D = _frames.back()
+		for index in range(0, corners.size() - 2, 3):
+			var a := placed * corners[index]
+			var b := placed * corners[index + 1]
+			var c := placed * corners[index + 2]
+			var facing := (b - a).cross(c - a)
+			var out := (a + b + c) / 3.0 - placed * inside
+			# Godot's front faces wind clockwise: the cross product points in.
+			if facing.dot(out) > 0.0:
+				var swap := b
+				b = c
+				c = swap
+				facing = -facing
+			var normal := -facing.normalized()
+			for side in range(2 if both else 1):
+				var order := [a, b, c] if side == 0 else [a, c, b]
+				for corner: Vector3 in order:
+					_tool.set_color(color)
+					_tool.set_normal(normal if side == 0 else -normal)
+					_tool.add_vertex(corner)
+		_empty = false
+
+	## A shape turned about its y axis (a pot, a cup): `profile` is its outline
+	## from one end to the other, each point [radius, height, colour], and each
+	## stretch between two points is a band of `segments` faces in the first
+	## point's colour, shaded round smoothly and creased along the outline.
+	func lathe(profile: Array, segments: int, frame: Transform3D = Transform3D.IDENTITY) -> void:
+		var placed: Transform3D = _frames.back() * frame
+		var turn := placed.basis.inverse().transposed()
+		for index in range(profile.size() - 1):
+			var a: Array = profile[index]
+			var b: Array = profile[index + 1]
+			var from := Vector2(float(a[0]), float(a[1]))
+			var to := Vector2(float(b[0]), float(b[1]))
+			if from.is_equal_approx(to): continue
+			# The outline's outward normal, as (radial, up).
+			var along := (to - from).normalized()
+			var normal := Vector2(along.y, -along.x)
+			var color: Color = a[2]
+			for step in range(segments):
+				var angles := [TAU * float(step) / float(segments), TAU * float(step + 1) / float(segments)]
+				var corners: Array[Vector3] = []
+				var normals: Array[Vector3] = []
+				for point: Vector2 in [from, to]:
+					for angle: float in angles:
+						corners.append(placed * Vector3(sin(angle) * point.x, point.y, cos(angle) * point.x))
+						normals.append((turn * Vector3(sin(angle) * normal.x, normal.y, cos(angle) * normal.x)).normalized())
+				# corners: 0 from/first, 1 from/second, 2 to/first, 3 to/second.
+				for triangle: Array in [[0, 2, 1], [1, 2, 3]]:
+					var order: Array = triangle
+					var facing := (corners[order[1]] - corners[order[0]]).cross(corners[order[2]] - corners[order[0]])
+					if facing.length_squared() < 1e-12: continue
+					if facing.dot(normals[order[0]] + normals[order[1]] + normals[order[2]]) > 0.0: order = [order[0], order[2], order[1]]
+					for corner: int in order:
+						_tool.set_color(color)
+						_tool.set_normal(normals[corner])
+						_tool.add_vertex(corners[corner])
+		_empty = false
+
+	## A mesh that carries its own vertex colours (a leaf shaded from base to
+	## tip), placed by `frame` in the current frame.
+	func add_painted(shape: Mesh, frame: Transform3D) -> void:
+		var arrays: Array = shape.surface_get_arrays(0)
+		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR] if arrays[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+		_add_arrays(arrays, colors, Color.WHITE, frame)
+
 	## Any primitive's triangles, placed by `frame` in the current frame.
 	func add(shape: Mesh, color: Color, frame: Transform3D) -> void:
-		var arrays: Array = shape.surface_get_arrays(0)
+		_add_arrays(shape.surface_get_arrays(0), PackedColorArray(), color, frame)
+
+	func _add_arrays(arrays: Array, colors: PackedColorArray, color: Color, frame: Transform3D) -> void:
 		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
-		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX] if arrays[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
 		var placed: Transform3D = _frames.back() * frame
 		var turn := placed.basis.inverse().transposed()
 		var flip := placed.basis.determinant() < 0.0
@@ -312,7 +384,7 @@ class Parts:
 			if index % 3 != 2: continue
 			var order := [triangle[0], triangle[2], triangle[1]] if flip else triangle
 			for corner: int in order:
-				_tool.set_color(color)
+				_tool.set_color(colors[corner] if not colors.is_empty() else color)
 				_tool.set_normal((turn * normals[corner]).normalized())
 				_tool.add_vertex(placed * vertices[corner])
 		_empty = false
