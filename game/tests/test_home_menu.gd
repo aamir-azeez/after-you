@@ -4,8 +4,7 @@ extends SceneTree
 ## with the What's new tip, the Play button's icon slot, and nothing per frame;
 ## and the Wardrobe row, shown only while the server has the wardrobe on, with
 ## the player's own pip as a still picture for its icon, beside the Pollen chip;
-## and Main's Pollen routes: Pollen from play opened from the Pollen store goes
-## back to the store, or where the store's own Back goes when it cannot open;
+## and Main's Pollen routes: the chip's plus reaches the store while it sells;
 ## and Home built again (each return from a chapter builds a new Main) wires
 ## the shared stores once and logs no error.
 const FriendPlayIcon = preload("res://presentation/friend_play_icon.gd")
@@ -46,7 +45,7 @@ class StoreStub:
 	func show_store(from: String = "wardrobe", _tab_name: String = "pollen") -> void:
 		opened += 1
 		froms.append(from)
-	func reopen() -> void: show_store(return_to)
+	func reopen() -> void: show_store("")
 
 ## 1560x720 is a 2340x1080 phone (and a 1560x720 one); 1600x720 is what an
 ## 800x360 window gets from the canvas_items/expand stretch; 1280x960 a 4:3
@@ -357,75 +356,23 @@ func _test_wardrobe_row(app: Node) -> void:
 	app._show_home()
 	await _frames()
 
-## Main's Pollen routes (main.gd _host_pollen_play_flow, _host_pollen_store_flow,
-## _back_to_wardrobe): Back from the Pollen page opened from the Pollen store
-## goes back to the store; when the store cannot open now, where the store's
-## Back goes (the Wardrobe as it opened, or Home while the Wardrobe is off).
-## From the Wardrobe it goes back there. The chip's plus reaches the store
-## only while it sells, and the store's Back returns Home or to the Pollen page.
+## Main's Pollen routes (main.gd _host_pollen_play_flow): the store learns
+## whether Pollen from play opened, and the chip's plus reaches the store only
+## while it sells. Where Back goes is test_menu_back.gd's.
 func _test_pollen_routes(app: Node) -> void:
 	var real_store: Node = app.pollen_store_flow
-	var real_wardrobe: Node = app.wardrobe_flow
 	var store := StoreStub.new(app)
-	var wardrobe := WardrobeStub.new(app)
 	app.pollen_store_flow = store
-	app.wardrobe_flow = wardrobe
 	var play: Node = app.pollen_play_flow
-	play.return_to = "store"
-	play.back_requested.emit()
-	_check(store.opened == 1 and wardrobe.opened.is_empty(), "Back from Pollen from play opened from the store goes back to the store")
-	store.on = false
-	wardrobe.on = true
-	wardrobe.return_to = "home"
-	play.back_requested.emit()
-	_check(store.opened == 1 and wardrobe.opened == ["home"], "With the store shut now, Back goes to the Wardrobe as it opened: " + str(wardrobe.opened))
-	wardrobe.on = false
-	play.back_requested.emit()
-	await _frames()
-	_check(app.mode == "home" and _menu(app) != null, "And Home while the Wardrobe is off too")
 	_check(app.show_pollen_from_play() == play.is_open(), "The store learns whether Pollen from play opened")
-	wardrobe.on = true
-	wardrobe.opened.clear()
-	play.return_to = "wardrobe"
-	play.back_requested.emit()
-	_check(wardrobe.opened == ["home"], "Back from the Pollen page opened from the Wardrobe goes back to it: " + str(wardrobe.opened))
-	wardrobe.on = false
-	# The chip's plus: the store while it sells, through Main's route.
 	store.on = true
 	_check(play.store_open(), "Main wires the chip's plus to the Pollen store while it sells")
 	play.store_route.call("home")
-	_check(store.froms.back() == "home", "The plus opens the store with Back to Home: " + str(store.froms))
+	_check(store.froms.back() == "home", "The plus opens the store over Home: " + str(store.froms))
 	store.on = false
 	_check(not play.store_open(), "No plus while the store cannot sell")
-	# The real store's Back: Home, or the Pollen page it was opened from (keeping the page's own Back).
-	real_store.return_to = "home"
-	real_store.back_requested.emit()
-	await _frames()
-	_check(app.mode == "home", "Back from a store opened by Home's plus goes Home")
-	play.return_to = "settings"
-	real_store.return_to = "pollen"
-	real_store.back_requested.emit()
-	await _frames()
-	if play.available(): _check(play.is_open() and play.return_to == "settings", "Back from a store opened by the Pollen page's plus reopens the page with its own Back")
-	else: _check(app.mode == "home", "Back from a store opened by the Pollen page's plus goes Home when the page cannot open")
-	# The page opened from a store that cannot open now: the store's own Back (Home here), never the Wardrobe it never saw.
-	store.on = false
-	app.pollen_store_flow = store
-	store.return_to = "home"
-	wardrobe.on = true
-	wardrobe.opened.clear()
-	play.return_to = "store"
-	play.back_requested.emit()
-	await _frames()
-	_check(wardrobe.opened.is_empty() and app.mode == "home", "Back from the page to a shut store opened from Home goes Home: " + str(wardrobe.opened))
-	wardrobe.on = false
 	app.pollen_store_flow = real_store
-	real_store.return_to = "wardrobe"
-	play.return_to = "home"
-	app.pollen_store_flow = real_store
-	app.wardrobe_flow = real_wardrobe
 	store.free()
-	wardrobe.free()
 	app._show_home()
 	await _frames()
 
