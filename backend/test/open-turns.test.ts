@@ -244,6 +244,25 @@ describe("open turns: a friend room", () => {
     expect(wiped.room).toMatchObject({ stage_index: 0, a_turn_id: null });
     expect(wiped.room.open_turns!.passes).toEqual([]);
   });
+  it("writes as few rows for a pass as for a first turn, and reads what it writes", async () => {
+    const { room: joined, first, second } = await room();
+    const { turns, checkpoint } = await chain(0, initial(), 1);
+    const cursors: { rowsRead: number; rowsWritten: number }[] = [];
+    await runInDurableObject(env.ROOMS_V2.getByName(joined.room_id), (_, ctx) => {
+      const original = ctx.storage.sql.exec.bind(ctx.storage.sql);
+      vi.spyOn(ctx.storage.sql, "exec").mockImplementation(((query: string, ...bindings: unknown[]) => { const cursor = original(query, ...bindings); cursors.push(cursor); return cursor; }) as typeof ctx.storage.sql.exec);
+    });
+    const metered = async <T>(run: () => Promise<T>) => { const from = cursors.length; const value = await run(); const rows = cursors.slice(from).reduce((sum, cursor) => ({ read: sum.read + cursor.rowsRead, written: sum.written + cursor.rowsWritten }), { read: 0, written: 0 }); return { value, rows }; };
+    const one = await metered(() => send(joined, first, turns[0]));
+    const pass = await metered(() => send(one.value.room, second, turns[1]));
+    const poll = await metered(() => read(pass.value.room, first));
+    const close = await metered(() => send(poll.value, first, turns[2], checkpoint));
+    // A pass writes its turn row, the room, its receipt and the turn's side rows, about as a first turn does (measured 7, 10, 9).
+    expect(pass.rows.written).toBeLessThanOrEqual(one.rows.written + 4);
+    expect(close.rows.written).toBeLessThanOrEqual(one.rows.written + 4);
+    // The partner's poll that picks the pass up writes only its seen note.
+    expect(poll.rows.written).toBeLessThanOrEqual(1);
+  });
   it("is refused to old apps, hard runs and duels", async () => {
     const host = await account(), oldGuest = await account();
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }));
