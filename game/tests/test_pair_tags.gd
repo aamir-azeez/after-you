@@ -333,7 +333,8 @@ func _states(world: Node3D, where: String, wired: Array[Dictionary]) -> void:
 		var shown: Dictionary = tags.states()
 		_check(shown[each.control].lit and shown[each.control].clear, "%s: %s (a %s) glows at both ends while active" % [where, each.control, each.kind])
 		_check(not shown.keys().any(func(id: String) -> bool: return id != each.control and shown[id].lit and not _lit_by(wired, id, alone)), "%s: activating %s lights no other pair" % [where, each.control])
-		_check(tags.badge(each.control, alone).lit and not tags.badge(each.control, far).lit, "%s: %s's pop-up chip lights while it is on, as its tiles do" % [where, each.control])
+		var toggles: bool = each.kind != &"other" or each.group == "receivers"
+		_check(tags.badge(each.control, alone).lit == toggles and not tags.badge(each.control, far).lit, "%s: %s's pop-up chip lights while it is on (a selector's never: it has no off)" % [where, each.control])
 		_per_gate(tags, where, each, far)
 	_activate(active, pair)
 	# Out of order: the same snapshot gives the same states after any other.
@@ -401,7 +402,12 @@ func _prompts(world: Node3D, where: String, wired: Array[Dictionary]) -> void:
 			var lit := near.duplicate(true)
 			_activate(lit, pair)
 			var on: Dictionary = tags.prompt(lit)
-			_check(tags.prompt(near) == chip and not bool(chip.get("lit", true)) and bool(on.get("lit", false)), "%s: %s's chip at %s follows the snapshot alone, lit while on" % [where, pair.control, input.id])
+			var toggles: bool = pair.kind != &"other" or pair.group == "receivers"
+			_check(tags.prompt(near) == chip and not bool(chip.get("lit", true)) and bool(on.get("lit", false)) == toggles, "%s: %s's chip at %s follows the snapshot alone, lit while on (a selector's never)" % [where, pair.control, input.id])
+			if input.group == "pressure_pads":
+				var bell := near.duplicate(true)
+				bell["context_action"] = {"id": "ring", "label": "Ring bell", "enabled": true, "target_id": "goal"}
+				_check(tags.prompt(bell).is_empty(), "%s: on %s with another button up, that button carries no pad letter" % [where, input.id])
 	var nothing := {"active_slot": "p0", "players": {}, "context_action": {"label": "Ring bell", "target_id": "no-such-control"}}
 	_check(tags.prompt(nothing).is_empty(), "%s: an action at an input with no pair shows no chip" % where)
 

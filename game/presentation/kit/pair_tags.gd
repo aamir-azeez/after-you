@@ -445,18 +445,21 @@ static func _across(input: Dictionary, player: Variant) -> float:
 	return Vector2(float(player.x) - at.x * 100.0, float(player.z) - at.z * 100.0).length()
 
 ## The action pop-up's chip for the live pip in snapshot `state`: the input
-## its action names (a lever, a selector), else the nearest pressure pad of
-## its own within NEAR_CM. badge() of that input, or {} (nothing near, or an
+## its action names (a lever, a selector, a mirror), else, with no button up,
+## the nearest pressure pad of its own within NEAR_CM. badge() of that input, or {} (nothing near, or an
 ## input with no pair). From the snapshot alone, like the tiles, so it never
 ## lags the world's present().
 func prompt(state: Dictionary) -> Dictionary:
 	_ensure_built()
 	var action: Variant = state.get("context_action", {})
+	# A button that is up names its own input or none: a pad's letter never
+	# rides on a bell, a ball or an unwired lever.
 	if action is Dictionary and not str(action.get("label", "")).is_empty():
 		var target := str(action.get("target_id", ""))
 		for pair: Dictionary in _pairs:
 			for input: Dictionary in pair.inputs:
 				if input.id == target and input.group in PROMPTED: return _badge(pair, state, input)
+		return {}
 	var slot := str(state.get("active_slot", ""))
 	var player: Variant = state.get("players", {}).get(slot)
 	var best: Array = []
@@ -473,8 +476,10 @@ func prompt(state: Dictionary) -> Dictionary:
 ## Control `id`'s chip in snapshot `state`: {control, letter, band, colour,
 ## frame, lit}; {} for a control with no pair. The same letter, band and
 ## colour its tiles show; lit by the same rule that lights them.
-## A mirror's chip (an input of a receiver's pair) lights while the light
-## reaches the receiver now (the snapshot's optics signals).
+## A lever's or pad's chip lights while it is on or held; a mirror's (an
+## input of a receiver's pair) while the light reaches the receiver now (the
+## snapshot's optics signals); a selector's never, as it has no off: its
+## bubble shows the value and its gate tiles what that value opens.
 func badge(id: String, state: Dictionary) -> Dictionary:
 	_ensure_built()
 	var pair := _pair(id)
@@ -482,7 +487,9 @@ func badge(id: String, state: Dictionary) -> Dictionary:
 
 func _badge(pair: Dictionary, state: Dictionary, input: Dictionary) -> Dictionary:
 	var index: int = pair.index
-	var lit := bool(state.get("optics", {}).get("signals", {}).get(str(pair.control), false)) if pair.group == "receivers" else _active(pair, state)
+	var lit := false
+	if pair.group == "receivers": lit = bool(state.get("optics", {}).get("signals", {}).get(str(pair.control), false))
+	elif pair.kind != &"other": lit = _active(pair, state)
 	return {"control": str(pair.control), "input": str(input.get("id", pair.control)), "letter": letter_of(index), "band": band_of(index), "colour": colour_of(index), "frame": _frame, "lit": lit}
 
 func _active(pair: Dictionary, state: Dictionary) -> bool:
