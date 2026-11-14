@@ -37,7 +37,7 @@ signal face_chosen(id: String)
 signal slot_chosen(index: int)
 
 var _row_panel: PanelContainer
-var _row: HBoxContainer
+var _row: HFlowContainer
 var _grid: HFlowContainer
 var _key := ""
 
@@ -51,8 +51,10 @@ func _init() -> void:
 	column.add_theme_constant_override("separation", 8)
 	_row_panel.add_child(column)
 	column.add_child(ShopKit.text(PlayerCopy.WARDROBE_YOUR_REACTIONS, 17, INK, ShopKit.bold_font()))
-	_row = HBoxContainer.new()
-	_row.add_theme_constant_override("separation", 10)
+	# Flows onto a second row where the panel is narrow.
+	_row = HFlowContainer.new()
+	_row.add_theme_constant_override("h_separation", 10)
+	_row.add_theme_constant_override("v_separation", 10)
 	column.add_child(_row)
 	_grid = HFlowContainer.new()
 	_grid.name = "ReactionFaces"

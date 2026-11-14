@@ -90,8 +90,11 @@ func _init() -> void:
 	# Tight, so the bigger shop tiles (ShopKit.TILE_SCALE) still fit a phone's height.
 	column.add_theme_constant_override("separation", 8)
 	margin.add_child(column)
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 12)
+	# The title, then the chips beside it, or under it where the panel is too
+	# narrow for both, so the page is never wider than the screen.
+	var header := HFlowContainer.new()
+	header.add_theme_constant_override("h_separation", 12)
+	header.add_theme_constant_override("v_separation", 8)
 	column.add_child(header)
 	var titles := VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL

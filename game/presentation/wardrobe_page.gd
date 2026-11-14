@@ -139,9 +139,11 @@ var _tabs := {}
 var _tab_row: HBoxContainer
 var _stays: Label
 var _views := {}
-var _kinds: HBoxContainer
+## The slot chips and the shelf's cards flow onto more rows where the panel is
+## narrow, so the page is never wider than the screen.
+var _kinds: HFlowContainer
 var _shelf: PanelContainer
-var _featured: HBoxContainer
+var _featured: HFlowContainer
 var _grid: HFlowContainer
 ## The Reactions chip's slot row and faces, shown in the cards' place.
 var _reactions: Reactions
@@ -342,9 +344,10 @@ func _shop_panel() -> Control:
 	_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(_list)
 	_list.add_child(_shelf_panel())
-	_kinds = HBoxContainer.new()
+	_kinds = HFlowContainer.new()
 	_kinds.name = "WardrobeKinds"
-	_kinds.add_theme_constant_override("separation", 8)
+	_kinds.add_theme_constant_override("h_separation", 8)
+	_kinds.add_theme_constant_override("v_separation", 8)
 	_list.add_child(_kinds)
 	_grid = HFlowContainer.new()
 	_grid.name = "WardrobeItems"
@@ -374,9 +377,10 @@ func _shelf_panel() -> Control:
 	title.add_child(spark)
 	title.add_child(ShopKit.text(PlayerCopy.WARDROBE_FEATURED, 17, INK, ShopKit.bold_font()))
 	column.add_child(title)
-	_featured = HBoxContainer.new()
+	_featured = HFlowContainer.new()
 	_featured.name = "WardrobeFeatured"
-	_featured.add_theme_constant_override("separation", 10)
+	_featured.add_theme_constant_override("h_separation", 10)
+	_featured.add_theme_constant_override("v_separation", 10)
 	column.add_child(_featured)
 	return _shelf
 
