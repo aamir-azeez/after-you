@@ -33,9 +33,9 @@ const EDGE_STEPS := 1
 ## How far a wave's foot sinks into the head, so it never floats.
 const SINK := 0.014
 
-## Metres a carried seed or lens sits higher while it is worn, so the hat
-## (and a leaf it raises) stays on and clear of it (pip_outfit.gd lift_seed).
-const SEED_LIFT := 0.11
+## Metres a carried seed or lens sits higher while it is worn, just clear of
+## the hat itself (a leaf may touch it; pip_outfit.gd lift_seed).
+const SEED_LIFT := 0.07
 
 static func wear(look: RefCounted) -> void:
 	look.mesh(look.head(), Kit.cached_mesh("wave_cap", _build), Kit.vertex_material())

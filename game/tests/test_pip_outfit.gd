@@ -16,8 +16,9 @@ extends SceneTree
 ##   seed and inside every pip view, and loop perfectly;
 ## - a body item may swap the torso and feet meshes and add pieces, never the
 ##   head, and every gameplay value stays identical;
-## - a tall cap lifts a carried seed, a big leaf lifts it with the leaf's
-##   own lift, and off again the seed sits where it did;
+## - a tall cap lifts a carried seed just clear of the hat itself (a leaf may
+##   touch it), a big leaf lifts it with the leaf's own lift, and off again the
+##   seed sits where it did;
 ## - moving parts step at the idle card rate of the pip's own clock and hold
 ##   still under Reduce motion; the Orchard skin's falling petals are one draw
 ##   call placed by their shader from the pip's clock, shown only while it
@@ -420,12 +421,13 @@ func _placement() -> void:
 			spirit.carried_radius = radius
 			spirit.advance_motion(Vector3.ZERO, 0.001, true)
 			var to_global: Transform3D = spirit.head.global_transform
-			var with_leaf := _solid_points(spirit, true)
+			# The carried thing clears the hat itself; the leaf may touch it (the owner's choice).
+			var worn := _meshes(spirit._wearing.nodes()).filter(func(mesh: MeshInstance3D) -> bool: return mesh.is_visible_in_tree() and mesh.name != "LeafStem" and not mesh.name in NOT_SOLID and not spirit.sprout.is_ancestor_of(mesh))
 			var seed: Vector3 = spirit.carry_anchor_position()
 			var in_seed := 0
-			for point: Vector3 in with_leaf:
+			for point: Vector3 in _points_in_head(spirit, worn):
 				if (to_global * point - spirit.global_position).distance_to(seed) < radius: in_seed += 1
-			_check(in_seed == 0, "%s and the leaf stay under a carried seed of radius %.2f: %d points" % [label, radius, in_seed])
+			_check(in_seed == 0, "%s: a carried thing of radius %.2f clears the hat (leaf clipping allowed): %d points" % [label, radius, in_seed])
 		if outfit.get("hat") in SEATED:
 			var inside := 0
 			for point: Vector3 in points: if _inside_head(point) < 1.0: inside += 1

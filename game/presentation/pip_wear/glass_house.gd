@@ -25,9 +25,9 @@ const BASE := 0.022
 const PETALS := [[Vector2(-0.055, 0.105), 0.05, 0.03, 0.35], [Vector2(0.045, 0.095), 0.045, 0.027, -0.45]]
 const PETAL_SIDES := 8
 
-## Metres a carried seed or lens sits higher while it is worn, so the hat
-## (and a leaf it raises) stays on and clear of it (pip_outfit.gd lift_seed).
-const SEED_LIFT := 0.24
+## Metres a carried seed or lens sits higher while it is worn, just clear of
+## the hat itself (a leaf may touch it; pip_outfit.gd lift_seed).
+const SEED_LIFT := 0.225
 
 static func wear(look: RefCounted) -> void:
 	look.mesh(look.head(), Kit.cached_mesh("glass_house", _build), Kit.vertex_material())

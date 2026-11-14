@@ -14,9 +14,7 @@ extends RefCounted
 ## leaf's rig: it sways, turns, hides and is raised with the leaf, with no
 ## motion of its own. Each leaf stands up from the plain leaf's lean by its
 ## "stand", tips back by its "tip_back" (radians) and is drawn at "scale", as
-## the board draws it. A carried seed sits "seed_lift" metres higher, plus
-## whatever the hat raises the leaf, so the leaf stays clear of it
-## (pip_outfit.gd lift_seed).
+## the board draws it.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const OVAL := "oval"
@@ -27,26 +25,26 @@ const PAD := "pad"
 ## away from the head's middle like the leaf), "size" its length and half
 ## width (a blob's half sizes).
 const LEAVES := {
-	"bud": {"seed_lift": 0.055, "stand": -0.22, "tip_back": 0.2, "scale": 1.24, "parts": [
+	"bud": {"stand": -0.22, "tip_back": 0.2, "scale": 1.24, "parts": [
 		["stem", Color("7d9e5e"), Vector3(0.0, 0.0, 0.0), 0.15, 0.0, 0.011],
 		["blade", Color("7d9e5e"), Vector3(0.0, 0.04, 0.004), Vector2(0.12, 0.058), 0.95, OVAL],
 		["blob", Color("e6a6ad"), Vector3(0.006, 0.168, 0.0), Vector3(0.046, 0.054, 0.044), 0.0],
 		["blob", Color("dc9097"), Vector3(0.0, 0.143, 0.004), Vector3(0.054, 0.032, 0.05), 0.0]]},
-	"feather": {"seed_lift": 0.065, "stand": -0.22, "tip_back": 0.22, "scale": 1.12, "parts": [
+	"feather": {"stand": -0.22, "tip_back": 0.22, "scale": 1.12, "parts": [
 		["stem", Color("648f9e"), Vector3(0.0, 0.0, 0.0), 0.06, 0.0, 0.009],
 		["blade", Color("9ec8d6"), Vector3(0.0, 0.04, 0.0), Vector2(0.25, 0.088), -0.04, FEATHER],
 		["stem", Color("648f9e"), Vector3(0.0, 0.05, 0.007), 0.17, -0.04, 0.0055]]},
-	"maple": {"seed_lift": 0.09, "stand": -0.2, "tip_back": 0.22, "scale": 1.2, "parts": [
+	"maple": {"stand": -0.2, "tip_back": 0.22, "scale": 1.2, "parts": [
 		["stem", Color("a8703f"), Vector3(0.0, 0.0, 0.0), 0.075, 0.0, 0.009],
 		["maple", Color("c88855"), Vector3(0.0, 0.142, 0.0), Vector2(0.1, 0.098), 0.0, Color("e1ae68")]]},
-	"twin_sprout": {"seed_lift": 0.076, "stand": -0.1, "tip_back": 0.2, "scale": 1.3, "parts": [
+	"twin_sprout": {"stand": -0.1, "tip_back": 0.2, "scale": 1.3, "parts": [
 		["stem", Color("7e9d60"), Vector3(0.0, 0.0, 0.0), 0.085, 0.0, 0.011],
 		["blade", Color("7e9d60"), Vector3(-0.004, 0.08, 0.0), Vector2(0.11, 0.046), 0.95, OVAL, Color("b4c888")],
 		["blade", Color("7e9d60"), Vector3(0.004, 0.08, 0.0), Vector2(0.11, 0.046), -0.95, OVAL, Color("b4c888")]]},
-	"warm_tip": {"seed_lift": 0.04, "stand": -0.3, "tip_back": 0.2, "scale": 1.2, "parts": [
+	"warm_tip": {"stand": -0.3, "tip_back": 0.2, "scale": 1.2, "parts": [
 		["stem", Color("c98d4f"), Vector3(0.0, 0.0, 0.0), 0.04, 0.0, 0.01],
 		["drop", Color("e9ac69"), Vector3(0.0, 0.02, 0.0), Vector2(0.21, 0.062), 0.0, Color("f0cf8b")]]},
-	"pond_bud": {"seed_lift": 0.056, "stand": -0.3, "tip_back": 0.0, "scale": 1.2, "parts": [
+	"pond_bud": {"stand": -0.3, "tip_back": 0.0, "scale": 1.2, "parts": [
 		["stem", Color("7a9a66"), Vector3(0.0, 0.0, 0.0), 0.07, 0.0, 0.01],
 		["blade", Color("8cae77"), Vector3(0.0, 0.05, -0.02), Vector2(0.148, 0.088), 0.3, PAD],
 		["blob", Color("eee9d4"), Vector3(0.0, 0.12, 0.035), Vector3(0.042, 0.052, 0.04), 0.0],
@@ -67,7 +65,6 @@ static func wear(look: RefCounted) -> void:
 	var leaf: MeshInstance3D = look.leaf()
 	look.swap_mesh(leaf, Kit.cached_mesh(id, _build.bind(id)))
 	look.set_material(leaf, Kit.vertex_material())
-	look.lift_seed(float(LEAVES[id].seed_lift), true)
 
 static func _build(id: String) -> Mesh:
 	var made: Dictionary = LEAVES[id]

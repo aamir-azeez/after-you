@@ -23,14 +23,15 @@ const MINT := Color("95c0b7")
 ## colour], kit Parts.lathe), how many sides it turns with, where its bottom
 ## sits on the head, its turn (head space) and size, and its handle ([centre,
 ## radius, thickness] in the vessel's own space) or [], and the metres a
-## carried seed sits higher while it is worn (pip_outfit.gd lift_seed).
+## carried seed sits higher while it is worn, just clear of the vessel
+## (pip_outfit.gd lift_seed).
 const VESSELS := {
 	"flower_pot": {
 		"profile": [[0.0, 0.004, INK], [0.135, 0.0, POT_RIM], [0.176, 0.0, POT_RIM], [0.18, 0.052, POT_RIM], [0.152, 0.056, POT], [0.118, 0.215, POT], [0.0, 0.222, POT]],
-		"sides": 10, "at": Vector3(0.15, 0.228, -0.02), "turn": Vector3(0.0, 0.25, -0.3), "scale": 1.15, "handle": [], "seed_lift": 0.15},
+		"sides": 10, "at": Vector3(0.15, 0.228, -0.02), "turn": Vector3(0.0, 0.25, -0.3), "scale": 1.15, "handle": [], "seed_lift": 0.135},
 	"tea_cup": {
 		"profile": [[0.0, 0.0, CUP], [0.075, 0.0, CUP], [0.08, 0.022, CUP], [0.088, 0.03, CUP], [0.122, 0.098, MINT], [0.128, 0.12, CUP], [0.142, 0.165, CLAY], [0.146, 0.176, CLAY], [0.13, 0.176, CUP_INSIDE], [0.1, 0.085, CUP_INSIDE], [0.0, 0.08, CUP_INSIDE]],
-		"sides": 10, "at": Vector3(0.13, 0.262, -0.01), "turn": Vector3(0.12, 0.0, -0.2), "scale": 1.12, "handle": [Vector3(0.152, 0.095, 0.0), 0.045, 0.014], "seed_lift": 0.17},
+		"sides": 10, "at": Vector3(0.13, 0.262, -0.01), "turn": Vector3(0.12, 0.0, -0.2), "scale": 1.12, "handle": [Vector3(0.152, 0.095, 0.0), 0.045, 0.014], "seed_lift": 0.16},
 }
 
 static func wear(look: RefCounted) -> void:

@@ -28,9 +28,9 @@ const SAIL_BASE := Vector2(0.115, 0.048)
 const SAIL_PEAK := Vector3(0.012, 0.24, 0.0)
 const SAIL_FOLD := 0.018
 
-## Metres a carried seed or lens sits higher while it is worn, so the hat
-## (and a leaf it raises) stays on and clear of it (pip_outfit.gd lift_seed).
-const SEED_LIFT := 0.11
+## Metres a carried seed or lens sits higher while it is worn, just clear of
+## the hat itself (a leaf may touch it; pip_outfit.gd lift_seed).
+const SEED_LIFT := 0.075
 
 static func wear(look: RefCounted) -> void:
 	look.mesh(look.head(), Kit.cached_mesh("paper_boat", _build), Kit.vertex_material())
