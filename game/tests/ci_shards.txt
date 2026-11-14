@@ -238,6 +238,7 @@ photo_resume_after_restart 2
 photo_transfer_client 1
 photo_transfer_screen 2
 physical_runtime 1
+piece_styles 3
 pip_avatar 1
 pip_outfit 3
 plant_animation 2

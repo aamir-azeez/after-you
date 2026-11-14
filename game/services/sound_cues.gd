@@ -125,8 +125,9 @@ const CUES := {
 	"bell_wood_chime": {"clip": WOOD_CHIME, "range": Vector2(0.0, 0.0), "db": -9.0, "fixed": true},
 }
 
-## A lever or selector drawn as a presentation/kit/lever_looks.gd kind (a
-## chapter descriptor's "lever_looks") -> its cues: [pulled or set, let go].
+## A lever or selector style that is a machine (presentation/kit/pieces/
+## lever.gd, selector.gd; content/dressing/piece_styles.gd picks it) -> its
+## cues: [pulled or set, let go]. Any other style plays the shared cue.
 ## Any control with that look sounds like it; a control with no look keeps the
 ## shared lever and switch cues.
 const LOOK_CUES := {

@@ -3,11 +3,14 @@ extends "res://presentation/island_world.gd"
 ## the simulation; no collider, interaction or chapter progression lives here.
 
 const BEAM_HEIGHT := 1.12
-const LIGHT_COLOR := Color("ffe4a5")
+const LIGHT_COLOR := Parts.LIGHT
 const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
 const Surfaces = preload("res://presentation/kit/surfaces.gd")
+## A piece's style (content/dressing/piece_styles.gd) and the goal kit.
+const PieceStyles = preload("res://content/dressing/piece_styles.gd")
+const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
 const FIREFLY := Color("ffe9a8")
 ## Two lights, two receivers or two mirrors this close (cm) overlap: their
 ## widest tops reach 22 cm from their centres at the same heights, so they
@@ -24,6 +27,8 @@ var _mirror_pivot: Node3D
 var _source_lens: MeshInstance3D
 var _receiver_lens: MeshInstance3D
 var _pad_ring: MeshInstance3D
+## The stage's goal (kit/pieces/goal.gd) and the handles a world moves.
+var _goal_piece: GoalPiece
 var _bell: MeshInstance3D
 var _bell_ring: MeshInstance3D
 var _court_light: OmniLight3D
@@ -112,6 +117,7 @@ func load_level(definition: Dictionary) -> void:
 	_beacon.clear()
 	plate = null
 	_pad_ring = null
+	_goal_piece = null
 	_bell = null
 	_bell_ring = null
 	_court_light = null
@@ -565,32 +571,17 @@ func _build_selector(control: Dictionary) -> void:
 	pointer.rotation.y = PI / 4.0
 	_selector_nodes[control.id] = {"root": dial, "dots": dots, "pointer": pointer, "states": control.states.duplicate()}
 
+## The goal in its style (kit/pieces/goal.gd), at its exact centre and radius.
 func _build_bell(goal: Dictionary) -> void:
-	var at := point(goal.position_cm)
-	var cradle := Node3D.new()
-	cradle.name = "CourtBell"
-	cradle.position = at
-	terrain.add_child(cradle)
-	cylinder(0.34, 0.065, Color("697b8e"), Vector3(0, 0.033, 0), cradle)
-	_bell_ring = ring(float(goal.radius_cm) / 100.0, Color("a2b3c0"), Vector3(0, 0.07, 0), cradle)
-	for side in [-1, 1]:
-		box(Vector3(0.10, 1.52, 0.13), Color("9e9180"), Vector3(side * 0.43, 0.76, -0.12), cradle)
-	box(Vector3(0.98, 0.12, 0.18), Color("b4a381"), Vector3(0, 1.52, -0.12), cradle)
-	var shape := CylinderMesh.new()
-	shape.top_radius = 0.11
-	shape.bottom_radius = 0.27
-	shape.height = 0.42
-	shape.radial_segments = 20
-	_bell = mesh_node(shape, Color("b29868"), Vector3(0, 1.18, 0), cradle)
-	_glow(_bell, LIGHT_COLOR, 0.0)
-	ring(0.27, Color("c4ad7a"), Vector3(0, 0.97, 0), cradle)
-	sphere(0.055, Color("dfc58c"), Vector3(0, 0.97, 0), cradle)
-	_court_light = OmniLight3D.new()
-	_court_light.light_color = Color("ffd9a2")
-	_court_light.light_energy = 0.0
-	_court_light.omni_range = 4.0
-	_court_light.position = at + Vector3(0, 1.6, 0)
-	terrain.add_child(_court_light)
+	_goal_piece = GoalPiece.build(_piece_style("goal", str(goal.get("id", ""))), point(goal.position_cm), float(goal.radius_cm) / 100.0, terrain)
+	_bell = _goal_piece.bell
+	_bell_ring = _goal_piece.ring
+	_court_light = _goal_piece.light
+
+## A piece's style (content/dressing/piece_styles.gd): the dressing's pick here;
+## a chapter world pins pieces from its descriptor too.
+func _piece_style(slot: String, id: String) -> String:
+	return PieceStyles.style(slot, id, {}, dressing)
 
 func _build_receiver_cable(receiver: Dictionary, bridges: Array) -> void:
 	var route: Array[Vector3] = []
@@ -819,10 +810,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_follow_slot = str(state.get("active_slot", _follow_slot))
 	if immediate and _follows_view(): _follow_point = _follow_target()
 	_present_celebration(immediate)
-	if is_instance_valid(_bell):
-		_glow(_bell_ring, LIGHT_COLOR, 1.0 if _wake else 0.0)
-		_glow(_bell, LIGHT_COLOR, 0.65 if _wake else 0.0)
-		_court_light.light_energy = Look.lamp_energy(1.2) if _wake else 0.0
+	if _goal_piece != null and is_instance_valid(_bell): _goal_piece.set_lit(_wake)
 	_present_beams(state.optics.segments)
 
 ## A solved stage makes both spirits jump, sparkle and smile, as in the other
@@ -875,21 +863,7 @@ func _bar_between(from: Vector3, to: Vector3, width: float, color: Color, parent
 	return Primitives.bar_between(from, to, width, Primitives.shared_material(color), parent)
 
 func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
-	var mat := node.material_override as StandardMaterial3D
-	# Unlit already: nothing to change, whatever colour the glow was.
-	if energy <= 0.0 and not mat.emission_enabled: return
-	if mat.emission_enabled == (energy > 0.0) and mat.emission == color and is_equal_approx(mat.emission_energy_multiplier,energy): return
-	# An unlit kit look lights as the kit's glowing look of the same colour,
-	# which holds exactly the values a lit copy would: meshes that glow alike
-	# share one material instead of a copy each.
-	if energy > 0.0 and not mat.emission_enabled and Primitives.is_cached(mat):
-		node.material_override = Primitives.shared_material(mat.albedo_color, mat.roughness, color, energy)
-		return
-	# A kit material is shared by every mesh of its look: change a copy.
-	mat = Primitives.own_material(node)
-	mat.emission_enabled = energy > 0.0
-	mat.emission = color
-	mat.emission_energy_multiplier = energy
+	Parts.glow(node, color, energy)
 
 func _follows_stage(stage_id: String) -> bool:
 	return StageCatalog.STAGE_IDS.find(stage_id) >= FOLLOW_FROM_STAGE
@@ -960,6 +934,8 @@ func _fold_key() -> String:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	keep.append_array(_beam_roots)
+	# The goal's parts that light or swing (a window's shutters) stay whole.
+	if _goal_piece != null: keep.append_array(_goal_piece.moving_parts())
 	return keep
 
 func _process(delta: float) -> void:

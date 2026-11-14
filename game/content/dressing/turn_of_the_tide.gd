@@ -15,6 +15,14 @@ const DATA := {
 		"sea-chamber": "timber", "lock-chamber": "timber"},
 	"stairs": "timber",
 	"bridges": "timber",
+	# Pieces (content/dressing/piece_styles.gd): brass levers and selectors, a
+	# bell for a goal (the mole's lantern is pinned), and a stand spot on each
+	# pad, since the waiting steps and posts are wider than their pads and each
+	# pad shows exactly where it counts.
+	"lever": "brass",
+	"selector": "brass",
+	"pad": "stand_spot",
+	"goal": "bell",
 	# How each crossing is built (tide_world._lay_deck); "stones" stand in
 	# the channel as they are, under the water when it rises over them.
 	"decks": {"sand-1": "sand", "slipway": "sand", "stones-1": "stones", "stones-2": "stones", "stones-3": "stones",

@@ -1,6 +1,6 @@
 extends RefCounted
-## Shared checks for a world whose descriptor has "stand_spots"
-## (presentation/kit/stand_spot.gd): every pressure pad of the stage on show is
+## Shared checks for a world whose pads wear the "stand_spot" style
+## (presentation/kit/pieces/pad.gd, kit/stand_spot.gd): every pressure pad of the stage on show is
 ## a stand spot drawn exactly at the pad's radius_cm, its mark and the goal
 ## beacon's ring stay inside it, and it shows held exactly when the snapshot's
 ## hold_pads says the pad counts. Each returns failure messages ([] passes).
@@ -14,7 +14,7 @@ static func shapes(world: Node3D, stage: Dictionary) -> Array[String]:
 	for pad: Dictionary in stage.get("pressure_pads", []):
 		var id := str(pad.id)
 		var radius := float(pad.radius_cm) / 100.0
-		var spot: StandSpot = world._stand_spots.get(id)
+		var spot: StandSpot = world._pad_pieces[id].spot if world._pad_pieces.has(id) else null
 		if spot == null:
 			found.append("Pad %s has a stand spot" % id)
 			continue
@@ -74,7 +74,7 @@ static func held(world: Node3D, stage: Dictionary, state: Dictionary) -> Array[S
 	var found: Array[String] = []
 	for pad: Dictionary in stage.get("pressure_pads", []):
 		var id := str(pad.id)
-		var spot: StandSpot = world._stand_spots.get(id)
+		var spot: StandSpot = world._pad_pieces[id].spot if world._pad_pieces.has(id) else null
 		if spot == null: continue
 		var counts := bool(state.get("hold_pads", {}).get(id, false))
 		var look := spot.disc.material_override as StandardMaterial3D

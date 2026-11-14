@@ -10,6 +10,11 @@ const DATA := {
 	"ground": {"*": "grass", "loft": "deck"},
 	"stairs": "timber",
 	"cables": "floor",
+	# Plain pieces (content/dressing/piece_styles.gd).
+	"lever": "plain",
+	"selector": "plain",
+	"pad": "plain",
+	"goal": "bell",
 	"bridges": "timber",
 	"props": {"*": [
 		# Shore: a planted bank behind and to the left, flowers along the front.

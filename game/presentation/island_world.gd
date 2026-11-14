@@ -22,6 +22,8 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
+## The piece kits' palette, shapes and glow (kit/pieces/parts.gd).
+const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 ## Every world camera writes its size through this (tall screens keep the authored width).
@@ -94,7 +96,7 @@ var _garden_cover: Array[Node3D] = []
 var _garden_bed_bounds := Rect2()
 var _garden_has_bounds := false
 
-const CREAM := Color("e9edd6")
+const CREAM := Parts.CREAM
 const TEAL := OwnerMark.TEAL
 const GOLD := OwnerMark.GOLD
 

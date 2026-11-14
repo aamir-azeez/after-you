@@ -90,7 +90,7 @@ func _shore(island: Dictionary, _color: Color) -> void:
 	for side: int in [-1,1]:
 		box(Vector3(pier,1.28,0.12),PLASTER,rear+Vector3(side*(window_width+pier)*0.5,0.64,0),room)
 	box(Vector3(window_width,0.14,0.12),PLASTER,rear+Vector3(0,1.21,0),room)
-	_house_windows[island.id] = WindowVisual.build(self,room,rear,window_width,FRAME,GLASS,CREAM)
+	_house_windows[island.id] = WindowVisual.build(room,rear,window_width,FRAME,GLASS,CREAM)
 	# Open roof rafters supply a house silhouette without covering the puzzle.
 	var peak := rear+Vector3(0,1.95,-0.03)
 	_bar_between(rear+Vector3(-width*0.52,1.28,-0.03),peak,0.065,FRAME,room)
@@ -132,4 +132,4 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 func _update_house_windows() -> void:
 	for id: String in _house_windows:
 		var warm := id == "foyer" or (id in ["workshop","loft"] and (displayed_stage_id == "the-room-below" or _completion_view)) or (id == "sunroom" and displayed_stage_id == "the-room-below" and _completion_view)
-		WindowVisual.present(self,_house_windows[id],warm,GOLD)
+		WindowVisual.present(_house_windows[id],warm,GOLD)

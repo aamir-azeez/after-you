@@ -233,7 +233,7 @@ func _drawn(world: Node3D, key: String, where: String, placed: Array[Dictionary]
 	var drawn := _mark_nodes(world)
 	var expected := placed.filter(func(mark: Dictionary) -> bool: return mark.kind != &"spot")
 	_check(drawn.size() == expected.size(), "%s: every mark on the stage came from the kit (%d drawn, %d placed)" % [where, drawn.size(), expected.size()])
-	_check(placed.filter(func(mark: Dictionary) -> bool: return mark.kind == &"spot").size() == world._stand_spots.size(), "%s: each stand spot's mark is recorded" % where)
+	_check(placed.filter(func(mark: Dictionary) -> bool: return mark.kind == &"spot").size() == world._pad_pieces.values().filter(func(piece: RefCounted) -> bool: return piece.spot != null).size(), "%s: each stand spot's mark is recorded" % where)
 	StaticBatch.fold(world.terrain, [world], world._fold_options())
 	for node: MeshInstance3D in _mark_nodes(world):
 		# By where it stands across the floor: a bucket may have risen since.

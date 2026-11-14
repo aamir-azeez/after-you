@@ -9,8 +9,6 @@ const Look = preload("res://presentation/kit/look.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const WallFade = preload("res://presentation/kit/wall_fade.gd")
-const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
-const JourneyWorld = preload("res://presentation/journey_world.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 var checks := 0
@@ -34,7 +32,6 @@ func _run() -> void:
 	_check_follow_angle()
 	_check_view_fit()
 	_check_wall_fade()
-	_check_lever_looks()
 	print("WORLD KIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -66,84 +63,6 @@ func _check_wall_fade() -> void:
 	fade.occupy(PackedVector2Array([Vector2(80, 25)]), true)
 	_check(material.albedo_color.a == 1.0 and is_equal_approx(side.material_override.albedo_color.a, WallFade.FADED_ALPHA), "Only the walls of the occupied spot fade")
 	holder.free()
-
-## Each lever look stands inside its lever's reach, east no further than the
-## plain housing; its anchor's knob point sits on its top; a pull eases over
-## PULL_SECONDS to the same pose a snapped pull shows (so a replay agrees),
-## and a release comes back to the same pose it was built in.
-func _check_lever_looks() -> void:
-	var holder := Node3D.new()
-	root.add_child(holder)
-	for kind: String in LeverLooks.LEVER_KINDS:
-		var look: RefCounted = LeverLooks.build(kind, Vector3(1, 0.5, 2), Color.RED, holder)
-		var built := _look_pose(look)
-		var top := _look_top(look)
-		_check(_look_inside(look), "The %s look stays inside its lever's reach" % kind)
-		# journey_world._knob_top: the anchor's knob centre plus KNOB_RADIUS.
-		var tail: float = look.anchor.position.y + 0.4 + 0.09 - look.root.position.y
-		_check(absf(tail - top) < 0.03, "The %s look's anchor puts a bubble's tail on its top (%.3f, %.3f)" % [kind, tail, top])
-		look.set_pulled(true)
-		_check(look.moving() and look.shown() == 0.0, "A pull eases from where the %s look stands" % kind)
-		for frame in range(int(ceil(LeverLooks.PULL_SECONDS * 60.0)) + 1): look.advance(1.0 / 60.0)
-		var eased := _look_pose(look)
-		_check(not look.moving() and look.shown() == 1.0 and eased != built, "The %s look's pull plays out and rests pulled" % kind)
-		var snapped: RefCounted = LeverLooks.build(kind, Vector3(1, 0.5, 2), Color.RED, holder)
-		snapped.set_pulled(true, true)
-		_check(_look_pose(snapped) == eased, "An eased and a snapped %s pull end in the same pose" % kind)
-		_check(_look_inside(snapped), "Pulled, the %s look still stays inside its lever's reach" % kind)
-		look.set_pulled(false, true)
-		_check(_look_pose(look) == built, "Let go, the %s look is back as it was built" % kind)
-	# A valve: one dial mark per value, its arrow eased or snapped to the same
-	# turn for a value, a pull ignored, its sign spot up behind it.
-	var valve: RefCounted = LeverLooks.build("valve", Vector3(1, 0.5, 2), Color.RED, holder, [0, 1, 2, 3])
-	_check(_look_inside(valve, LeverLooks.REACH), "The valve stays inside its selector's reach")
-	# The tail lands on the wheel's axis: the top of its arrow and hub there.
-	var pointer: MeshInstance3D = valve.wheel().find_child("WheelPointer", false, false)
-	var wheel_top: float = (valve.root.global_transform.affine_inverse() * pointer.global_transform * pointer.get_aabb()).end.y
-	_check(is_equal_approx(LeverLooks.KNOB_REACH, JourneyWorld.KNOB.y + JourneyWorld.KNOB_RADIUS), "A look's tail point is journey_world's knob point")
-	_check(absf(valve.anchor.position.y + 0.49 - valve.root.position.y - wheel_top) < 0.03, "The valve's anchor puts a bubble's tail on its wheel (%.3f, %.3f)" % [valve.anchor.position.y + 0.49 - valve.root.position.y, wheel_top])
-	var ticks: Array = valve.root.find_children("*", "MeshInstance3D", false, false).filter(func(node: Node) -> bool: return ((node as MeshInstance3D).material_override as StandardMaterial3D).albedo_color == LeverLooks.CREAM)
-	_check(ticks.size() == 0 + 1 + 2 + 3 + 1, "The dial marks a bar for the first value and one, two, three bands for the rest (%d)" % ticks.size())
-	valve.set_value(1)
-	_check(not valve.moving() and is_equal_approx(valve.wheel().rotation.y, LeverLooks.value_angle(1, 4)), "A valve's first value snaps, never sweeping in")
-	valve.set_value(3)
-	_check(valve.moving(), "A later value eases")
-	for frame in range(60): valve.advance(1.0 / 60.0)
-	var eased := _look_pose(valve)
-	var snapped: RefCounted = LeverLooks.build("valve", Vector3(1, 0.5, 2), Color.RED, holder, [0, 1, 2, 3])
-	snapped.set_value(0)
-	snapped.set_value(3, true)
-	_check(not valve.moving() and is_equal_approx(valve.wheel().rotation.y, -LeverLooks.VALVE_SWEEP) and _look_pose(snapped) == eased, "The valve's arrow turns to the last value, eased or snapped alike")
-	valve.set_pulled(true, true)
-	_check(_look_pose(valve) == eased, "A pull leaves a valve as it is")
-	var sign: Vector3 = valve.sign_point() - valve.root.position
-	_check(sign.y > wheel_top and sign.z < -0.1, "The valve's sign stands up behind it, over its wheel")
-	holder.free()
-
-## Every mesh of a look inside REACH of its spot, east no further than
-## EAST_SIDE, and nothing below its floor.
-func _look_inside(look: RefCounted, east: float = LeverLooks.EAST_SIDE) -> bool:
-	for node: Node in look.root.find_children("*", "MeshInstance3D", true, false):
-		var mesh := node as MeshInstance3D
-		var box: AABB = look.root.global_transform.affine_inverse() * mesh.global_transform * mesh.get_aabb()
-		if box.position.x < -LeverLooks.REACH - 0.001 or box.end.x > east + 0.001 or absf(box.position.z) > LeverLooks.REACH or absf(box.end.z) > LeverLooks.REACH or box.position.y < -0.001: return false
-	return true
-
-## The top of a look's meshes above its spot.
-func _look_top(look: RefCounted) -> float:
-	var top := -INF
-	for node: Node in look.root.find_children("*", "MeshInstance3D", true, false):
-		var mesh := node as MeshInstance3D
-		top = maxf(top, (look.root.global_transform.affine_inverse() * mesh.global_transform * mesh.get_aabb()).end.y)
-	return top
-
-## Every mesh's transform under a look, rounded to 0.1 mm.
-func _look_pose(look: RefCounted) -> Array:
-	var pose: Array = []
-	for node: Node in look.root.find_children("*", "MeshInstance3D", true, false):
-		var t: Transform3D = (node as MeshInstance3D).global_transform
-		for v: Vector3 in [t.basis.x, t.basis.y, t.basis.z, t.origin]: pose.append(Vector3i((v * 10000.0).round()))
-	return pose
 
 func _check_materials() -> void:
 	var first := Primitives.shared_material(Color("8a6b4e"))

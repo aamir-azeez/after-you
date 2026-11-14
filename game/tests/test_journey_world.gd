@@ -98,7 +98,7 @@ func _play(definition: Dictionary, stage: Dictionary, previous: Dictionary, role
 	_check(Canonical.digest(definition) == before and Canonical.digest(view.world.chapter_definition) == before,"Presentation does not mutate native authored state")
 	await _capture(view,sim,stage,stage.id+"-"+role+suffix+"-finished")
 	if role == "b" and stage.id == "a-place-beside-you":
-		_check(view.world._greeting_window.pane.get_meta("lit",false) and view.world._arrival_window.pane.get_meta("lit",false),"Both complementary house windows are lit in each accepted ending")
+		_check(view.world._greeting_window.pane.get_meta("lit",false) and view.world._bell.get_meta("lit",false),"Both complementary house windows are lit in each accepted ending")
 		_check(sim.snapshot().players.p0.surface_id == "home-room" and sim.snapshot().players.p1.surface_id == "home-room","The visual reunion uses both real carried home poses")
 		_check(view.world.garden_state == "completed","Immediate/reduced motion shows the lasting full garden")
 	if definition.id == "conservatory":

@@ -32,5 +32,7 @@ const DATA := {
 		{"stage_id": "a-place-beside-you", "title": "A Place Beside You"},
 	],
 	"dressing": "res://content/dressing/long_way_home.gd",
+	# The window inside the house stands in a short plaster wall.
+	"piece_styles": {"second-window": "walled_window"},
 	"server": {"flag": "JOURNEY_CHAPTERS_ENABLED", "max_branches": 32},
 }

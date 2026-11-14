@@ -28,6 +28,10 @@ const DATA := {
 	},
 	"thumbnail": "res://assets/paid_levels/long-way-home.png",
 	"dressing": "res://content/dressing/long_way_home_v2.gd",
+	# The window inside the house stands in a short plaster wall; the finale's
+	# selectors are the hall lamp's post, the walk's gate arch and the porch
+	# shutter beside their levers.
+	"piece_styles": {"second-window": "walled_window", "hall-lamp": "lamp_post", "walk-gate": "gate_arch", "porch-shutter": "shutter"},
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/crossroads.gd",

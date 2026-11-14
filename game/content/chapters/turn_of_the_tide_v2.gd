@@ -33,9 +33,6 @@ const DATA := {
 	"water": "res://content/water/turn_of_the_tide.gd",
 	# Each turn's end spots (the steps, posts, bell and lantern) carry a beacon.
 	"goal_beacon": true,
-	# The waiting steps and posts are wider than their pads: each pad shows
-	# exactly where it counts.
-	"stand_spots": true,
 	"water_levels": {"tide": ["low", "half", "high"], "basin": ["shut", "low", "half", "high"], "chamber": ["low", "half", "high"]},
 	"beds": ["water_near", "shore"],
 	# Only what a crossing here can wait on (test_chapter_descriptors checks):
@@ -64,7 +61,10 @@ const DATA := {
 	# Slack Water's chains wind onto hand winches and its bars are sliding
 	# bolts; the button says what the pip pulls. The three water wheels are
 	# valves the pip turns.
-	"lever_looks": {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve"},
+	# The chains, bars and water wheels are machines, and the mole's goal is its
+	# harbour lantern; every other piece takes the dressing's pick.
+	"piece_styles": {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve",
+		"harbour-lantern": "harbour_lantern"},
 	"lever_actions": {"boom-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "punt-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "gate-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR, "sea-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR},
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {

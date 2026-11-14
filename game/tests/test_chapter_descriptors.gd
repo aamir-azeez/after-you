@@ -280,17 +280,21 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 		for lever: Dictionary in stage.get("levers", []): levers[str(lever.id)] = true
 		for control: Dictionary in stage.get("controls", []):
 			if control.get("kind") == "selector": selectors[str(control.id)] = true
-	var looks := preload("res://presentation/kit/lever_looks.gd")
-	for id: String in data.lever_looks:
-		var look := str(data.lever_looks[id])
-		_check((levers.has(id) and look in looks.LEVER_KINDS) or (selectors.has(id) and look in looks.SELECTOR_KINDS), "Look %s of %s suits its lever or selector: %s" % [id, key, look])
+	var goals: Dictionary = {}
+	for stage: Dictionary in level.stages:
+		if stage.get("goal") is Dictionary: goals[str(stage.goal.get("id", ""))] = true
+	var styles := preload("res://content/dressing/prop_styles.gd")
+	for id: String in data.piece_styles:
+		var style := str(data.piece_styles[id])
+		var suits := (levers.has(id) and styles.has_style("lever", style)) or (selectors.has(id) and styles.has_style("selector", style)) or (pads.has(id) and styles.has_style("pad", style)) or (goals.has(id) and styles.has_style("goal", style))
+		_check(suits, "Piece style %s of %s suits its piece: %s" % [id, key, style])
 	# Turn of the Tide's water wheels are valves: no three- or four-way
 	# selector there is left with a plain lever.
 	if str(data.world).ends_with("tide_world.gd"):
 		for stage: Dictionary in level.stages:
 			for control: Dictionary in stage.get("controls", []):
 				if control.get("kind") == "selector" and control.get("values", []).size() >= 3:
-					_check(str(data.lever_looks.get(control.id, "")) == "valve", "The %s wheel of %s is a valve" % [control.id, key])
+					_check(str(data.piece_styles.get(control.id, "")) == "valve", "The %s wheel of %s is a valve" % [control.id, key])
 	for id: String in data.lever_actions:
 		_check(levers.has(id) and data.lever_actions[id] is String and not str(data.lever_actions[id]).is_empty(), "Lever action %s of %s names a lever with words" % [id, key])
 	for id: String in data.seats:

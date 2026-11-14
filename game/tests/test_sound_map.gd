@@ -17,7 +17,7 @@ const ReplayGolden = preload("res://tests/test_replay_golden.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
 const Index = preload("res://content/chapters/index.gd")
-const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
+const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
 const GOLDEN := "sound_map.json"
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## Every event name the engines under game/core append, with probes for the
@@ -123,23 +123,24 @@ func _check_known_fields() -> void:
 	var sounds := ChapterSoundMap.cues("high-and-low@1", {"role": "a", "controls": {"probe": "down"}, "events": ["selector:probe"]}, seen)
 	_check(sounds.cues == ["switch_set"] and sounds.sources == ["selector:probe|selector:probe"], "A switch in a chapter that does not diff controls still sounds: " + str(sounds))
 
-## A control drawn as a machine (descriptor "lever_looks") plays its look's
+## A control drawn as a machine (a piece style pinned in "piece_styles") plays its style's
 ## cue in every chapter that names one, from the change (a selector from its
 ## event too), under the control's own identity; one with no look keeps the
 ## shared lever and switch cues.
 func _check_look_cues() -> void:
-	var kinds: Array = LeverLooks.LEVER_KINDS + LeverLooks.SELECTOR_KINDS
+	var kinds: Array = LeverPiece.MACHINES + ["valve"]
 	_check(kinds.size() == SoundCues.LOOK_CUES.size() and kinds.all(func(kind): return SoundCues.LOOK_CUES.has(kind)), "Every lever look has its own cues and no cue names a look that does not exist")
 	var looked := 0
 	for key: String in Golden.GOLDEN_KEYS:
 		var chapter := Index.data(key)
-		var looks: Dictionary = chapter.get("lever_looks", {})
+		var looks: Dictionary = chapter.get("piece_styles", {})
 		if looks.is_empty() or not Registry.is_cooperative(key): continue
 		for id: String in looks:
 			var kind := str(looks[id])
+			if not SoundCues.LOOK_CUES.has(kind): continue
 			var pair: Array = SoundCues.LOOK_CUES[kind]
 			looked += 1
-			if kind in LeverLooks.LEVER_KINDS:
+			if kind in LeverPiece.MACHINES:
 				var seen := ChapterSoundMap.remember({"role": "a", "levers": {id: false}, "events": []})
 				var pulled := ChapterSoundMap.cues(key, {"role": "a", "levers": {id: true}, "events": ["lever"]}, seen)
 				var let_go := ChapterSoundMap.cues(key, {"role": "b", "levers": {id: false}, "events": []}, seen)

@@ -38,14 +38,14 @@ func _play(level: Dictionary, start: Dictionary, way: String) -> void:
 		var state := sim.snapshot()
 		world.present(state, true)
 		var controls: Dictionary = state.controls
-		matched = matched and world._lamps["hall-lamp"].get_meta("value") == controls["hall-lamp"] and world._arch_lantern.get_meta("value") == controls["hall-lamp"]
-		matched = matched and world._lamps["walk-gate"].get_meta("value") == controls["walk-gate"] and world._shutter.get_meta("down") == (controls["porch-shutter"] == "down")
+		matched = matched and world._lever_pieces["hall-lamp"].lamp().get_meta("value") == controls["hall-lamp"] and world._arch_lantern.get_meta("value") == controls["hall-lamp"]
+		matched = matched and world._lever_pieces["walk-gate"].lamp().get_meta("value") == controls["walk-gate"] and world.terrain.find_child("PorchShutterBoard", true, false).get_meta("down") == (controls["porch-shutter"] == "down")
 	_check(matched, "Lamp, arch lantern, gate lantern and shutter follow every frame: " + way)
 	var final := sim.snapshot()
-	_check(sim.complete and world._greeting_window.pane.get_meta("lit", false) and world._arrival_window.pane.get_meta("lit", false), "Both house windows are lit at the end: " + way)
+	_check(sim.complete and world._greeting_window.pane.get_meta("lit", false) and world._bell.get_meta("lit", false), "Both house windows are lit at the end: " + way)
 	if final.controls["hall-lamp"] in ["rose", "moss"]:
 		var plate: MeshInstance3D = world._journey_switches["hall-lamp"].labels[world._journey_switches["hall-lamp"].values.find(final.controls["hall-lamp"])].get_meta("backing")
-		_check((plate.material_override as StandardMaterial3D).albedo_color == HomeV2World.LAMP_COLORS[final.controls["hall-lamp"]], "The lamp's chosen plate shows its colour: " + way)
+		_check((plate.material_override as StandardMaterial3D).albedo_color == HomeV2World.SelectorPiece.LAMP_COLORS[final.controls["hall-lamp"]], "The lamp's chosen plate shows its colour: " + way)
 	var home: Array = level.islands.filter(func(island: Dictionary) -> bool: return island.id == "home-room")[0].rect_cm
 	_check(world.garden.position.z * 100.0 > float(home[3]) and world.garden_state == "completed", "The garden grows outside the house: " + way)
 	_check(Canonical.digest(level) == before and Canonical.digest(world.chapter_definition) == before, "Presentation does not change the definition: " + way)
@@ -65,7 +65,7 @@ func _versions(level: Dictionary, start: Dictionary) -> void:
 	old_world.queue_free()
 	new_world.queue_free()
 	var opening := _world(HomeV2World, level, Catalog.initial_checkpoint(level), 0)
-	_check(opening.find_child("ArchLantern", true, false) == null and opening._lamps.is_empty(), "Stage one of @2 has no finale props")
+	_check(opening.find_child("ArchLantern", true, false) == null and opening.terrain.find_child("Lamp_*", true, false) == null, "Stage one of @2 has no finale props")
 	opening.queue_free()
 	await process_frame
 

@@ -8,6 +8,8 @@ const DATA := {
 	"ground": {"*": "tile", "garden": "grass"},
 	"stairs": "timber",
 	"bridges": "timber",
+	# A low garden crest, never a tall bell where the completion garden grows.
+	"goal": "crest",
 	"props": {"*": [
 		# Court: ferns in a trough behind the glass, baskets hung inside it.
 		{"kind": "bank", "rect": [-650, -540, -150, -448], "surface": "court", "height": 14, "side": "b97b5a", "top": "6b5240"},

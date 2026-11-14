@@ -11,4 +11,4 @@ func _turn_played(screen: Node, stage: Dictionary, role: String) -> void:
 	var state: Dictionary = screen.sim.snapshot()
 	world.present(state)
 	for problem: String in SpotChecks.shapes(world, stage) + SpotChecks.beacon_rings(world, stage) + SpotChecks.held(world, stage, state): _check(false, "%s/%s: %s" % [stage.id, role, problem])
-	if role == "a": _check(state.hold_pads.values().has(true) and world._stand_spots.values().any(func(spot: Node3D) -> bool: return spot.held), "%s: the first turn ends on a pad that counts, and its spot shows held" % stage.id)
+	if role == "a": _check(state.hold_pads.values().has(true) and world._pad_pieces.values().any(func(piece: RefCounted) -> bool: return piece.spot != null and piece.spot.held), "%s: the first turn ends on a pad that counts, and its spot shows held" % stage.id)
