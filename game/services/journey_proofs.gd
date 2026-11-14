@@ -29,12 +29,19 @@ const Typed = preload("res://services/typed_values.gd")
 
 ## One small file per chapter, never a journal.
 const DIRECTORY := "user://journey-proofs"
-const SCHEMA := 1
+## 1: the entries as they are. 2 (written since capped long turns): the same
+## entries deflated, with their length, as a long chapter's final checkpoints
+## run to megabytes in this binary form. Both are read.
+const SCHEMA := 2
+const RAW_SCHEMA := 1
 ## Bump when the meaning of a proven solo save changes.
 const PROOF_VERSION := 1
 ## The current save, its backup and a write in progress, with room to spare.
 const ENTRIES_PER_CHAPTER := 4
 const MAX_FILE_BYTES := 2097152
+## The entries once inflated: four of the widest capped final checkpoints are
+## about 8.2 MB (test_long_turn_client_limits); inflating stops at this length.
+const MAX_ENTRIES_BYTES := 16777216
 
 static var directory := DIRECTORY
 static var _mutex := Mutex.new()
@@ -358,8 +365,9 @@ static func _entries(chapter: String) -> Array:
 	var data: Variant = bytes_to_var(file.get_buffer(file.get_length()))
 	file.close()
 	# Anything unexpected is ignored as a whole; the next proof rewrites it.
-	if not data is Dictionary or data.size() != 3 or not Typed.equal(data.get("schema_version"), SCHEMA) or not Typed.equal(data.get("chapter"), chapter) or not data.get("entries") is Array: return entries
-	for entry: Variant in data.entries:
+	var listed: Variant = _listed(data, chapter)
+	if not listed is Array: return entries
+	for entry: Variant in listed:
 		if not entry is Array or entry.size() != 3 or not entry[0] is String or not entry[1] is String or not entry[2] is Dictionary:
 			entries.clear()
 			return entries
@@ -368,12 +376,30 @@ static func _entries(chapter: String) -> Array:
 	return entries
 
 
+## The entries a read cache file lists for `chapter`, or null when it is not one.
+static func _listed(data: Variant, chapter: String) -> Variant:
+	if not data is Dictionary or not Typed.equal(data.get("chapter"), chapter): return null
+	if data.size() == 3 and Typed.equal(data.get("schema_version"), RAW_SCHEMA): return data.get("entries") if data.get("entries") is Array else null
+	if data.size() != 4 or not Typed.equal(data.get("schema_version"), SCHEMA) or not data.get("entries") is PackedByteArray or not Typed.whole_number(data.get("size")): return null
+	var size := int(data.get("size"))
+	if size < 1 or size > MAX_ENTRIES_BYTES: return null
+	var deflated: PackedByteArray = data.get("entries")
+	var inflated := deflated.decompress(size, FileAccess.COMPRESSION_DEFLATE)
+	if inflated.size() != size: return null
+	var listed: Variant = bytes_to_var(inflated)
+	return listed if listed is Array else null
+
+static func _encoded(chapter: String, entries: Array) -> PackedByteArray:
+	var raw := var_to_bytes(entries)
+	if raw.size() > MAX_ENTRIES_BYTES: return PackedByteArray()
+	return var_to_bytes({"schema_version": SCHEMA, "chapter": chapter, "size": raw.size(), "entries": raw.compress(FileAccess.COMPRESSION_DEFLATE)})
+
 static func _write(chapter: String, entries: Array) -> void:
-	var bytes := var_to_bytes({"schema_version": SCHEMA, "chapter": chapter, "entries": entries})
-	if bytes.size() > MAX_FILE_BYTES:
+	var bytes := _encoded(chapter, entries)
+	if bytes.is_empty() or bytes.size() > MAX_FILE_BYTES:
 		# Keep only the newest entry rather than nothing.
 		while entries.size() > 1: entries.remove_at(0)
-		bytes = var_to_bytes({"schema_version": SCHEMA, "chapter": chapter, "entries": entries})
-		if bytes.size() > MAX_FILE_BYTES: return
+		bytes = _encoded(chapter, entries)
+		if bytes.is_empty() or bytes.size() > MAX_FILE_BYTES: return
 	DirAccess.make_dir_recursive_absolute(directory)
 	AtomicFile.write_bytes(_path(chapter), bytes)

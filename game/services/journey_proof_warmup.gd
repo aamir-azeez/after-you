@@ -17,7 +17,8 @@ const Journey = preload("res://services/relay_journey.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const IDLE_SECONDS := 2.0
-const MAX_SAVE_BYTES := 1048576
+## The solo save's own bound.
+const MAX_SAVE_BYTES := Journey.MAX_SAVE_BYTES
 
 ## Shared with the worker: a stop request, and what it has done.
 class Run extends "res://services/stop_request.gd":

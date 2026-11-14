@@ -3,8 +3,8 @@ extends RefCounted
 const Save = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
 ## Room journals and lobbies; files keep 1 MiB over the value for the save envelope.
-const VALUE_BYTES := 8388608
-const MAX_BYTES := 9437184
+const VALUE_BYTES := 12582912
+const MAX_BYTES := 13631488
 const CAMPAIGN_MAX_BYTES := 65536
 const CAMPAIGN_VALUE_BYTES := 49152
 const TERMINAL_ADMISSION_MAX_BYTES := 262144

@@ -32,10 +32,13 @@ const FacePacks = preload("res://services/face_packs.gd")
 ## turn goes again without its pack faces (_resend_without_pack_faces).
 const FACE_PACK_REFUSALS := {403: ["face_pack_not_owned"], 400: ["invalid_end_reaction", "invalid_run_reactions"]}
 const HardRoomClient = preload("res://services/hard_room_client.gd")
-## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
-const MAX_BYTES := 8388608
+## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES. The widest
+## journal of a capped long-turn chapter is about 8.8 MB and 783k values (a room,
+## a draft, four held drafts and a waiting receiver turn at stage 2;
+## test_long_turn_client_limits).
+const MAX_BYTES := 12582912
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
-const COMFORT_JOURNAL_NODES := 720000
+const COMFORT_JOURNAL_NODES := 1100000
 ## Journal values for any other chapter, per two of its stages: a journal holds
 ## up to seven copies of the chapter's proof chain, and a chain grows by one
 ## nested pair per stage. Two-stage chapters keep exactly the old 140k.
@@ -43,6 +46,10 @@ const JOURNAL_NODES_PER_TWO_STAGES := 140000
 ## One fetched or remembered pair is a single server pairs row (MAX_ROW_BYTES,
 ## 1.5 MiB). The widest Turn of the Tide pair is about 823 KB and 87.5k values.
 const MAX_PAIR_BYTES := 2097152
+## A room snapshot or a turn reply carries the room's checkpoint, which nests
+## every record of the run: the widest capped long-turn room is about 1.13 MB
+## as the phone prints it (test_long_turn_client_limits). Its values stay under 140k.
+const MAX_ROOM_BYTES := 2097152
 const MAX_PAIR_NODES := 220000
 ## Highest room rules number this build understands (9 = comfort alias,
 ## 11 = sleeping-lighthouse@2). A room is still held to its chapter's own rules.
@@ -1398,7 +1405,7 @@ static func _request_hash(operation: String, body: Dictionary) -> String:
 	return Canonical.digest(value)
 
 
-static func _bounded(value: Variant, bytes: int = 1048576) -> bool:
+static func _bounded(value: Variant, bytes: int = MAX_ROOM_BYTES) -> bool:
 	return _bounded_nodes(value, bytes, 140000)
 
 

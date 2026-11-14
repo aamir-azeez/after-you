@@ -15,7 +15,9 @@ const Keepsakes = preload("res://services/home_keepsakes.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const PATH := "user://relay-journey-v2.json"
-const MAX_SAVE_BYTES := 1048576
+## A chapter's save holds at most four records of a two-stage run, and a capped
+## long-turn chapter's records fill a room row together (test_long_turn_client_limits).
+const MAX_SAVE_BYTES := 2097152
 const MAX_ARCHIVED_ATTEMPTS := 32
 const STATE_KEYS := ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "pairs", "a", "draft"]
 const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "completed", "replays", "room", "relay"]
