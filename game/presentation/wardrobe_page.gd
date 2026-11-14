@@ -89,13 +89,13 @@ const SHELF := Color("e4eee0")
 const PICTURE := Color("efe8d4")
 const CHIP := Color("e6e0cc")
 const MINT := Color("a6d9c4")
-const CARD_SIZE := Vector2(206, 158) * ShopKit.TILE_SCALE
+static var CARD_SIZE: Vector2 = ShopKit.tile(Vector2(206, 158))
 ## An item card's inner margin and picture height.
 const CARD_PAD := 10
-const CARD_PICTURE := 72.0 * ShopKit.TILE_SCALE
-const SHELF_CARD_SIZE := Vector2(150, 150) * ShopKit.TILE_SCALE
-const CARD_PIP := Vector2(56, 70) * ShopKit.TILE_SCALE
-const SHELF_PIP := Vector2(50, 62) * ShopKit.TILE_SCALE
+static var CARD_PICTURE: float = ShopKit.tile(72.0)
+static var SHELF_CARD_SIZE: Vector2 = ShopKit.tile(Vector2(150, 150))
+static var CARD_PIP: Vector2 = ShopKit.tile(Vector2(56, 70))
+static var SHELF_PIP: Vector2 = ShopKit.tile(Vector2(50, 62))
 ## A trail's card shows its pip in a wider picture, so the still sample row
 ## of marks beside it (kit/trail_kit.gd SAMPLE) fits, as the trails board draws it.
 const TRAIL_PIP_WIDTH := 2.6
@@ -614,7 +614,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	var picture := PanelContainer.new()
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
-	picture.custom_minimum_size.y = 64.0 * ShopKit.TILE_SCALE if small else CARD_PICTURE
+	picture.custom_minimum_size.y = ShopKit.tile(64.0) if small else CARD_PICTURE
 	column.add_child(picture)
 	if entry.slot == "rest_face":
 		# A resting face: the head front on, as faces board 4 crops it, so Button, Bean and Round read apart.
@@ -622,7 +622,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 		var head := RestFace.new()
 		head.color = "mint" if _view == "friend" else "peach"
 		head.expression = "normal" if bool(entry.get("classic", false)) else str(entry.id)
-		head.custom_minimum_size = Vector2.ONE * (64.0 * ShopKit.TILE_SCALE if small else CARD_PICTURE)
+		head.custom_minimum_size = Vector2.ONE * (ShopKit.tile(64.0) if small else CARD_PICTURE)
 		head.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		picture.add_child(head)
 	else:

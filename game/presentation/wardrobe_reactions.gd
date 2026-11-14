@@ -26,8 +26,8 @@ const LIFTED_EDGE := Color("4f9d89")
 const SLOT_FILL := Color("efe8d4")
 const HEART_FILL := Color("fbe1dc")
 const SLOT_SIZE := Vector2(96, 96)
-const CARD_SIZE := Vector2(112, 132) * ShopKit.TILE_SCALE
-const FACE := 60.0 * ShopKit.TILE_SCALE
+static var CARD_SIZE: Vector2 = ShopKit.tile(Vector2(112, 132))
+static var FACE: float = ShopKit.tile(60.0)
 ## A face in a reaction slot.
 const SLOT_FACE := 76.0
 ## The other cards while a face is being put in a slot.
@@ -157,7 +157,7 @@ func _card(entry: Dictionary, picked: bool, shop: bool, color: String) -> Button
 	var picture := PanelContainer.new()
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(SLOT_FILL, 10))
-	picture.custom_minimum_size.y = 68.0 * ShopKit.TILE_SCALE
+	picture.custom_minimum_size.y = ShopKit.tile(68.0)
 	column.add_child(picture)
 	var icon := EndReactions.FaceIcon.new(str(entry.id), color, FACE)
 	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

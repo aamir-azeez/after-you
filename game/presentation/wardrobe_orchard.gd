@@ -37,12 +37,12 @@ const LEAF_LIGHT := Color("93b874")
 ## The selector's and the set card's dark glass on plum, and the set card's rim.
 const GLASS := Color(0.078, 0.031, 0.086, 0.45)
 const SET_RIM := Color(0.949, 0.718, 0.612, 0.35)
-const CARD_SIZE := Vector2(240, 175) * ShopKit.TILE_SCALE
+static var CARD_SIZE: Vector2 = ShopKit.tile(Vector2(240, 175))
 ## The narrowest an item card and the set card get on a 16:9 phone (a safe
 ## area 1280 units wide); wider screens give them up to CARD_SIZE and SET_SIZE.
 ## An item card is never narrower than its full name and tag need (CARD_NAME_GAP
 ## between them); where the cards don't all fit, their row scrolls sideways.
-const CARD_NARROW := 168.0 * ShopKit.TILE_SCALE
+static var CARD_NARROW: float = ShopKit.tile(168.0)
 const CARD_NAME_GAP := 10.0
 ## Where the row scrolls, the cards widen (up to CARD_SIZE.x) so whole cards
 ## fill the view with this much of the next one peeking in at its edge.
@@ -52,7 +52,7 @@ const CARD_PEEK := 0.45
 const RING_ROOM := 8
 const SET_SIZE := Vector2(515, 103)
 const SET_NARROW := 400.0
-const CARD_PIP := Vector2(140, 168) * ShopKit.TILE_SCALE
+static var CARD_PIP: Vector2 = ShopKit.tile(Vector2(140, 168))
 const TILE := 77.0
 const RADIUS := 22
 
