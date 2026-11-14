@@ -57,3 +57,40 @@ static func ringers(stage: Dictionary) -> Array:
 static func cap_valid(stage: Dictionary) -> bool:
 	var declared: Variant = stage.get("turn_cap", DEFAULT_CAP)
 	return (declared is int or (declared is float and declared == floor(declared))) and int(declared) >= MIN_CAP and int(declared) <= MAX_CAP and int(declared) % 2 == 0
+
+## How a stage's turns play and nest (the server's mirror is
+## backend/src/v2/open-turns.ts). Turn 1 is a first turn as before (role "a");
+## every later turn (role "b") plays from the stage's checkpoint with the other
+## pip's latest turn as its memory, which nests the turns before it by
+## source_recording_hash. Odd turns are the stage's first pip's, even turns the
+## other's. A later turn whose goal holds once its memory has played out
+## closes the stage; the pip may instead pass once the memory is over. Every
+## turn has the second turn's time limit. Turn ids keep a letter for the
+## turn's number: t<branch>-<stage>-a, -b, -c ...
+const LETTERS := "abcdefghijklmnopqrst"
+## Checkpoints of open turns nest every turn of their stage, in place of a and b.
+const CHECKPOINT_SCHEMA := 8
+const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash", "proof"]
+
+## Whether rules `version` play open turns.
+static func rules(version: int) -> bool:
+	return version in RULES
+
+## The slot that plays turn `turn` (1 based) of a stage whose first pip is `first`.
+static func slot(first: String, turn: int) -> String:
+	return first if turn % 2 == 1 else ("p1" if first == "p0" else "p0")
+
+## Turn `turn`'s id on `branch` and stage `stage_index`.
+static func turn_id(branch: int, stage_index: int, turn: int) -> String:
+	return "t%d-%d-%s" % [branch, stage_index, LETTERS[turn - 1]]
+
+## The memory a turn on `room` (a room snapshot) replays, and the stage's turns
+## before it, oldest first: turn 1 (recording_a), then the passes the room
+## holds (open_turns.passes). Before open turns: recording_a alone, or nothing.
+static func memory(room: Dictionary) -> Dictionary:
+	var first: Variant = room.get("recording_a")
+	if not first is Dictionary: return {"prior": {}, "chain": []}
+	var turns: Array = [first]
+	var open: Variant = room.get("open_turns")
+	if open is Dictionary and open.get("passes") is Array: turns.append_array(open.passes)
+	return {"prior": turns[-1], "chain": turns.slice(0, turns.size() - 1)}

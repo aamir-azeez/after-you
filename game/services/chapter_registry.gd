@@ -162,10 +162,11 @@ static func resolve(value: Variant) -> String:
 static func simulation_script(key: String) -> Script:
 	return _scripts.get(_family(key).get("simulation", ""))
 
-static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
+## `chain`: open turns only (core/physical/open_turns.gd), the stage's turns before `prior`.
+static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}, chain: Array = []) -> bool:
 	if not _chapter(key).is_empty(): # Every family's engine takes the rules to play by.
 		var rules := Typed.as_int(recording.get("simulation_version", prior.get("simulation_version", preferred_rules(key))), -1)
-		return simulation.reset(level, stage_id, checkpoint, prior, role, rules)
+		return simulation.reset(level, stage_id, checkpoint, prior, role, rules, chain) if not chain.is_empty() else simulation.reset(level, stage_id, checkpoint, prior, role, rules)
 	return simulation.reset(level, stage_id, checkpoint, prior, role)
 
 static func supported_rules(key: String) -> Array:

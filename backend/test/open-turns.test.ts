@@ -22,14 +22,14 @@ import tideV2Definition from "../src/v2/turn-of-the-tide-v2.json";
 import { withConfig } from "./config";
 
 /**
- * Open turns (v2/open-turns.ts) on Turn of the Tide@3 (rules 13, free). The server never simulates, so the chains
+ * Open turns (v2/open-turns.ts) on Turn of the Tide@3 (rules 15, free). The server never simulates, so the chains
  * here are built from the native two-turn fixtures: a pass is the fixture's second turn not finished, a later turn
  * swaps the pip and chains its source, and every record and checkpoint is hashed again.
  */
 type Account = { player_id: string; device_token: string };
 type Rec = Record<string, any>;
 const FLAGS = { TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED: "true", NOTIFICATIONS_ENABLED: "false" };
-const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 const adapter = turnOfTheTideV3;
 const key = () => crypto.randomUUID();
 let address = 0;
@@ -246,7 +246,7 @@ describe("open turns: a friend room", () => {
   it("is refused to old apps, hard runs and duels", async () => {
     const host = await account(), oldGuest = await account();
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }));
-    await failure(call("/v2/rooms/join", "POST", oldGuest, { invite_code: made.invite_code, supported_simulation_versions: [2, 4, 5, 6, 7, 8, 9, 10, 11] }), 422, "unsupported_simulation_version");
+    await failure(call("/v2/rooms/join", "POST", oldGuest, { invite_code: made.invite_code, supported_simulation_versions: [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] }), 422, "unsupported_simulation_version");
     const stub = env.ROOMS_V2.getByName("open-turns-hard");
     expect(await stub.initialize("open-turns-hard", host.player_id, "A".repeat(20), adapter.key, undefined, "hard")).toMatchObject({ ok: false, code: "open_turns_friend_rooms_only" });
   });

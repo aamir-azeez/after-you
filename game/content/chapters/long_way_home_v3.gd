@@ -33,5 +33,5 @@ const DATA := {
 	# selectors are the hall lamp's post, the walk's gate arch and the porch
 	# shutter beside their levers.
 	"piece_styles": {"second-window": "walled_window", "hall-lamp": "lamp_post", "walk-gate": "gate_arch", "porch-shutter": "shutter"},
-	"server": {"flag": "LONG_WAY_HOME_V3_CHAPTER_ENABLED", "max_branches": 32},
+	"server": {"flag": "LONG_WAY_HOME_V3_CHAPTER_ENABLED", "max_branches": 7},
 }

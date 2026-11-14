@@ -67,7 +67,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // Tide rules (10 and 13) latch no route: a player may end a stage on a
   // stub only while one of this stage's gates for it holds on the end state.
   const tideRules = tideRulesVersion(definition.simulation_version);
-  // Open controls (12 and 13): a pad holds for either player. They play open turns too (open-turns.ts).
+  // Open turns (14 and 15, open-turns.ts): a stage takes turns until its goal holds.
   const open = openTurns(definition.simulation_version);
   if (open && maxBranches === undefined) maxBranches = OPEN_TURNS_BRANCHES;
   // Longer turns, when the definition declares them, carry bounds grown to fit.

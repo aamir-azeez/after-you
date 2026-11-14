@@ -29,5 +29,5 @@ const DATA := {
 	},
 	"thumbnail": "res://assets/paid_levels/conservatory.png",
 	"dressing": "res://content/dressing/conservatory_v2.gd",
-	"server": {"flag": "CONSERVATORY_V2_CHAPTER_ENABLED", "max_branches": 32},
+	"server": {"flag": "CONSERVATORY_V2_CHAPTER_ENABLED", "max_branches": 7},
 }

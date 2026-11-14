@@ -3,7 +3,7 @@ import type { ChapterRecording, Slot } from "./chapter-types";
 import { MAX_REPLAY_ARCHIVE_BYTES, MAX_ROW_BYTES } from "./row-bound";
 
 /**
- * Open turns: the open controls rules (12 and 13, chapter-types.ts OPEN_CONTROLS_RULES) play a stage in as many
+ * Open turns: the open turns rules (14 and 15, chapter-types.ts OPEN_TURNS_RULES, open controls with open turns) play a stage in as many
  * turns as it takes. Turn 1 is a first turn as before (role "a"); every later turn (role "b") plays from the stage's
  * checkpoint with the other pip's latest turn as its memory, which nests the turns before it by
  * `source_recording_hash`. Odd turns are the stage's first player's, even turns the other's. A turn whose goal holds

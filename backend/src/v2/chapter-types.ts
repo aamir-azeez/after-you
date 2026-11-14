@@ -54,5 +54,3 @@ export const OPEN_CONTROLS_RULES: readonly number[] = [12, 13, 14, 15];
 export const OPEN_TURNS_RULES: readonly number[] = [14, 15];
 export function openTurns(version: unknown): boolean { return typeof version === "number" && OPEN_TURNS_RULES.includes(version); }
 export function openControls(version: unknown): boolean { return typeof version === "number" && OPEN_CONTROLS_RULES.includes(version); }
-/** Open turns (open-turns.ts) come with open controls: a stage takes turns until its goal holds. */
-export const openTurns = openControls;

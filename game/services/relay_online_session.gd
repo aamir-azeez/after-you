@@ -43,8 +43,9 @@ const JOIN_SIMULATION_VERSIONS := [2, 4, 5, 6, 7, 8, 9, 10]
 ## Rules sent only to a server that answered room level 2 and accepts the
 ## longer list: 11 = sleeping-lighthouse@2, and chapters with more than two
 ## stages; 12 and 13 = open controls (comfort and tide rules with controls for
-## either pip, core/journey/simulation.gd).
-const ROOM_LEVEL_JOIN_VERSIONS := [11, 12, 13]
+## either pip, core/journey/simulation.gd); 14 and 15 = open controls with open
+## turns (core/physical/open_turns.gd).
+const ROOM_LEVEL_JOIN_VERSIONS := [11, 12, 13, 14, 15]
 
 class RedoStorage:
 	extends RefCounted

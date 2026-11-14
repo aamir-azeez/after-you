@@ -41,14 +41,14 @@ var _optics: Dictionary = {"segments":[],"signals":{}}
 func _init() -> void:
 	simulation_version = CURRENT_SIMULATION_VERSION
 
-func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0) -> bool:
+func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0, chain: Array = []) -> bool:
 	if rules_version == 0:
 		rules_version = _record_version(prior_a) if current_role == "b" else _checkpoint_version(checkpoint, definition)
 	if not rules_allowed(definition, rules_version) or (current_role == "b" and prior_a.get("simulation_version") != rules_version):
 		error = "Unsupported recording version."
 		return false
 	simulation_version = rules_version
-	return super.reset(definition, stage_id, checkpoint, prior_a, current_role)
+	return super.reset(definition, stage_id, checkpoint, prior_a, current_role, rules_version, chain)
 
 func _schema_version() -> int:
 	return CURRENT_SIMULATION_VERSION
@@ -86,6 +86,8 @@ static func _record_version(record: Dictionary) -> int:
 static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary = {}) -> int:
 	var proof: Variant = checkpoint.get("proof", {})
 	if proof is Dictionary and proof.get("a", {}) is Dictionary and not proof.get("a", {}).is_empty(): return _record_version(proof.a)
+	# Open turns nest a stage's turns as a list (open_turns.gd).
+	if proof is Dictionary and proof.get("turns") is Array and not proof.turns.is_empty() and proof.turns[0] is Dictionary: return _record_version(proof.turns[0])
 	var pinned := pinned_rules(definition)
 	return pinned if pinned > 0 else CURRENT_SIMULATION_VERSION
 
@@ -163,6 +165,14 @@ func _on_closing() -> bool:
 
 func _may_complete() -> bool:
 	return not _on_closing() and _source_holds()
+
+## Open turns: a turn never passes with a spirit on a closing crossing or drowned.
+func _may_pass() -> bool:
+	return not _on_closing() and _drowned.is_empty()
+
+## Open turns: a memory rings only where the goal's light holds for it.
+func _ring_allowed(slot: String) -> bool:
+	return super._ring_allowed(slot) and Seven.predicate(stage.goal_policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, _open_controls())
 
 ## Open controls: the live pip may undo the first turn's part (a selector its
 ## readiness needs, the pad its choice stands on), so a stage completes only
@@ -247,6 +257,7 @@ func _interact() -> void:
 	var values: Array = control.values
 	var index := values.find(_mechanisms.controls[control.id])
 	_mechanisms.controls[control.id] = values[(index+1)%values.size()]
+	_own_toggles.controls[control.id] = true
 	_events.append("selector:"+control.id)
 
 func _update_source_readiness() -> void:
@@ -316,8 +327,9 @@ func _sorted_latches() -> Array:
 	result.sort()
 	return result
 
-static func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary = {}) -> Dictionary:
-	return _proof(_record_version(record)).verify_recording(definition,record,checkpoint,prior_a)
+## `chain`: open turns only, the stage's turns before `prior_a`, oldest first.
+static func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary = {}, chain: Array = []) -> Dictionary:
+	return _proof(_record_version(record)).verify_recording(definition,record,checkpoint,prior_a,chain)
 
 static func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dictionary) -> String:
 	return _proof(_record_version(record)).recording_error(definition,record,checkpoint)
@@ -325,5 +337,6 @@ static func recording_error(definition: Dictionary, record: Dictionary, checkpoi
 static func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictionary:
 	return _proof(_checkpoint_version(checkpoint,definition)).verify_checkpoint(definition,checkpoint)
 
-static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
-	return _proof(_record_version(first)).derive_checkpoint(definition,previous,first,second)
+## `passes`: open turns only, the stage's turns between `first` and `second`.
+static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, passes: Array = []) -> Dictionary:
+	return _proof(_record_version(first)).derive_checkpoint(definition,previous,first,second,passes)
