@@ -2,6 +2,7 @@
 
 #include <godot_cpp/classes/object.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 /// The iOS counterpart of the AfterYouAndroid singleton: the same method names, arguments
@@ -23,6 +24,7 @@ public:
 	void secure_copy_recovery(const godot::String &p_player_id, const godot::String &p_recovery_code, const godot::String &p_request_id);
 
 	void share_text(const godot::String &p_text);
+	bool share_file(const godot::PackedByteArray &p_bytes, const godot::String &p_file_name, const godot::String &p_mime_type);
 	godot::String invite_link_take();
 
 	void configure(const godot::String &p_public_key, const godot::String &p_player_id, const godot::String &p_mode, const godot::String &p_request_id);

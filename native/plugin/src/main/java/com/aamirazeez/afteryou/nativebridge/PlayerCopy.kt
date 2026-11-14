@@ -16,6 +16,8 @@ internal object PlayerCopy {
     const val DEVICE_LOCK_TITLE = "Show your recovery details"
     // devicelock.description
     const val DEVICE_LOCK_DESCRIPTION = "Use your screen lock to see or copy your recovery code."
+    // afteryouandroid.share_file: the share sheet's title for Export this run.
+    const val EXPORT_RUN_TITLE = "Export this run"
     // afteryouandroid.214e3ef36387
     const val AFTERYOUANDROID_214E3EF36387 = "Restart the app before changing purchase identity or store."
     // afteryouandroid.a32dd7a64c03
