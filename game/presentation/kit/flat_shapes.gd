@@ -10,15 +10,58 @@ extends RefCounted
 ## mark, a three lobed fluff puff and a pair of joined notes.
 const Look = preload("res://presentation/spirit_look.gd")
 
-## A shape's edge shade (see shape()).
-const RIM_SHADE := 0.68
+## A shape's edge shade, a bar's shade, and how far out (share of the way
+## from the middle to the edge) with_edge()'s band starts.
+const RIM_SHADE := 0.62
+const BAR_SHADE := 0.81
+const EDGE_FROM := 0.72
 const NAMES: Array[StringName] = [&"petal", &"leaf", &"snowflake", &"star", &"raindrop", &"seed_fluff", &"sparkle", &"snow_mark", &"puff", &"notes"]
 
 ## One shape within `size` (x to size.x, z to size.z, y to size.y): {"vertices",
 ## "normals", "indices"}, and "shades" for the shapes built from fans, discs
 ## and bars: each vertex's shade, 1 in the middle and RIM_SHADE round the
-## edge, so a mark that uses them reads against a floor of its own colour. An
-## unknown name is a petal.
+## edge (bars a flat BAR_SHADE). with_edge() keeps the middle at full colour
+## and darkens only a thin outer band, so a mark reads against a floor of its
+## own colour. An unknown name is a petal.
+## `one` (a shape) with a darker outer band: each triangle from a middle
+## (shade 1) to two edge points is split at EDGE_FROM into a full colour
+## middle and a band shaded down to the edge. Other triangles stay as they are.
+static func with_edge(one: Dictionary) -> Dictionary:
+	var shades: PackedFloat32Array = one.get("shades", PackedFloat32Array())
+	var vertices: PackedVector3Array = (one.vertices as PackedVector3Array).duplicate()
+	var normals: PackedVector3Array = (one.normals as PackedVector3Array).duplicate()
+	if shades.size() != vertices.size(): return one
+	var out_shades := shades.duplicate()
+	var indices := PackedInt32Array()
+	var inner := {}
+	var source: PackedInt32Array = one.indices
+	for at in range(0, source.size(), 3):
+		var corners := [source[at], source[at + 1], source[at + 2]]
+		var middle := -1
+		for k in range(3):
+			if shades[corners[k]] >= 1.0 and shades[corners[(k + 1) % 3]] < 1.0 and shades[corners[(k + 2) % 3]] < 1.0: middle = k
+		if middle < 0:
+			indices.append_array(PackedInt32Array(corners))
+			continue
+		var c: int = corners[middle]
+		var a: int = corners[(middle + 1) % 3]
+		var b: int = corners[(middle + 2) % 3]
+		var ia := _inner(inner, c, a, vertices, normals, out_shades)
+		var ib := _inner(inner, c, b, vertices, normals, out_shades)
+		indices.append_array(PackedInt32Array([c, ia, ib, ia, a, b, ia, b, ib]))
+	return {"vertices": vertices, "normals": normals, "indices": indices, "shades": out_shades}
+
+## The full colour point EDGE_FROM of the way from middle `c` to edge point
+## `e`, made once per pair.
+static func _inner(made: Dictionary, c: int, e: int, vertices: PackedVector3Array, normals: PackedVector3Array, shades: PackedFloat32Array) -> int:
+	var key := Vector2i(c, e)
+	if made.has(key): return made[key]
+	vertices.append(vertices[c].lerp(vertices[e], EDGE_FROM))
+	normals.append(normals[e])
+	shades.append(1.0)
+	made[key] = vertices.size() - 1
+	return made[key]
+
 static func shape(name: StringName, size: Vector3) -> Dictionary:
 	match name:
 		&"leaf": return _leaf(size)
@@ -185,7 +228,7 @@ class _Parts:
 		for corner: Vector3 in [a, b, c, d]:
 			vertices.append(corner + Vector3(0, lift * 0.5, 0))
 			normals.append(Vector3.UP)
-			shades.append(lerpf(RIM_SHADE, 1.0, 0.4))
+			shades.append(BAR_SHADE)
 		indices.append_array(PackedInt32Array([first, first + 1, first + 2, first, first + 2, first + 3]))
 
 	func done() -> Dictionary:
