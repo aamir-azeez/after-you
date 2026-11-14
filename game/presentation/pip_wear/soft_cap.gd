@@ -56,6 +56,9 @@ const CUFF_ROLL := 0.012
 ## An ear flap's rows (top to bottom) and columns (across).
 const FLAP_ROWS := 5
 const FLAP_COLUMNS := 4
+## How far forward of the head's sides the flaps hang (radians), so they show
+## from the front, clear of the eyes.
+const FLAP_FORWARD := 0.4
 
 static func wear(look: RefCounted) -> void:
 	var id := str(look.outfit.get("hat", ""))
@@ -177,7 +180,7 @@ static func _flaps(surface: SurfaceTool, cap: Dictionary) -> void:
 			var width := half * lerpf(1.0, narrow, down * down)
 			var points := PackedVector3Array()
 			for column in range(FLAP_COLUMNS + 1):
-				var beta := PI * 0.5 * side + width * lerpf(-1.0, 1.0, float(column) / float(FLAP_COLUMNS))
+				var beta := (PI * 0.5 - FLAP_FORWARD) * side + width * lerpf(-1.0, 1.0, float(column) / float(FLAP_COLUMNS))
 				var on: Array[Vector3] = Meshes.head_surface(Vector3(sin(phi) * sin(beta), cos(phi), sin(phi) * cos(beta)))
 				points.append(on[0] + on[1] * lift)
 			grid.append(points)

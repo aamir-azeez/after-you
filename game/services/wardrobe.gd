@@ -429,8 +429,9 @@ func pending(server: String, owner: String) -> Dictionary:
 func effective_slots(server: String, owner: String) -> Array:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not (scope.view as Dictionary).has("reactions"): return []
-	if scope.has("pending") and scope.pending.has("reactions"): return (scope.pending.reactions as Array).duplicate()
-	return (scope.view.reactions as Array).duplicate()
+	var slots: Array = scope.pending.reactions if scope.has("pending") and scope.pending.has("reactions") else scope.view.reactions
+	# A retired face (content/cosmetics/faces.gd) leaves its place empty.
+	return slots.map(func(face: Variant) -> Variant: return "" if face is String and Catalog.retired(face) else face)
 
 ## What the player wears on this phone: the pending look, else the confirmed one.
 func effective_look(server: String, owner: String) -> Dictionary:

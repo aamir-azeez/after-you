@@ -360,8 +360,8 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.pupil = Vector4(0.070, 0.078, p.x, p.y)
 			e.pupil_wave = Vector4(0.02, 0.015, 0, 0)
 			e.pupil_phase = calm_phase
-			var cheek: Vector2 = at.call(0.022, -0.092)
-			e.blush = Vector4(0.09, 0.042, cheek.x, cheek.y)
+			var cheek: Vector2 = at.call(0.018, -0.104)
+			e.blush = Vector4(0.1, 0.05, cheek.x, cheek.y)
 		SHY:
 			# Lids a little low, both pupils down and toward the viewer's
 			# left, and big pink cheeks.

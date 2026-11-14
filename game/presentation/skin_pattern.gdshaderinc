@@ -93,10 +93,10 @@ float pattern_star(vec2 p, float r) {
 // its short stem down between the low lobes.
 float pattern_leaf(vec2 p, float r) {
 	float a = abs(atan(p.x, p.y + 1e-6));
-	float reach = 0.3;
-	reach = max(reach, 1.0 - a / 0.6);
-	reach = max(reach, 0.9 * (1.0 - abs(a - 1.2) / 0.55));
-	reach = max(reach, 0.58 * (1.0 - abs(a - 2.1) / 0.45));
+	float reach = 0.42;
+	reach = max(reach, 1.0 - a / 0.78);
+	reach = max(reach, 0.92 * (1.0 - abs(a - 1.22) / 0.68));
+	reach = max(reach, 0.62 * (1.0 - abs(a - 2.12) / 0.55));
 	float d = (length(p) - r * reach) * 0.6;
 	vec2 s = p - vec2(0.0, -r * 0.3);
 	float stem = length(vec2(s.x, s.y - clamp(s.y, -r * 0.6, 0.0))) - r * 0.06;
