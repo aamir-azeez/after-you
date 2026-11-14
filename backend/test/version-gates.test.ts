@@ -70,6 +70,9 @@ const read = async (path: string, account: Account, vars: Record<string, unknown
 };
 
 describe("the gate rule", () => {
+  it("gates only real flags and the release list", () => {
+    expect(GATED_KEYS.filter(key => key !== "cosmetics_released" && !FLAG_NAMES.has(key))).toEqual([]);
+  });
   it("parses one version per gated part, closes a malformed gate, and refuses keys it cannot gate", () => {
     const parse = (value: unknown, features: string[] = []) => parseConfig(JSON.stringify({ features, feature_min_version: value }), FLAG_NAMES);
     const good = parse({ FRUITS: "0.8.1", ENERGY: "0.8.1", FACE_SINGLES: "0.8.1", cosmetics_released: "0.8.1" });
