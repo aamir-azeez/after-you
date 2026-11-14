@@ -16,11 +16,11 @@ import { project } from "./bundle-provider";
  * Tester and review grants are not subscriptions, so they never appear here.
  *
  * Environments: Play reads APP.playEnvironment (production), as the hosting check.
- * The App Store reads production, or sandbox only when CONFIG's revenuecat.app_store_environment is exactly
- * "sandbox": its "both" lets App Review host, but the grant never pays a sandbox purchase there.
- * A player in CONFIG's revenuecat.tester_ids (the owner's test identity) also has each store's sandbox subscriptions
- * read and paid as real ones. Their periods are minutes long and renew fast, but instalments fall due on monthly
- * anniversaries of the anchor (grant.ts), so a tester is paid at most one instalment a calendar month, as anyone.
+ * The App Store reads production, or sandbox only when CONFIG's revenuecat.app_store_environment is exactly "sandbox".
+ * Every player also has each store's sandbox subscriptions read and paid as real ones (owner, 2026-11-14: only the
+ * developer makes sandbox buyers: Play license testers, TestFlight, App Review). Both lists are read at once. Their periods
+ * are minutes long and renew fast, but instalments fall due on monthly anniversaries of the anchor (grant.ts), so a
+ * sandbox subscriber is paid at most one instalment a calendar month, as anyone.
  *
  * Any failed, unconfigured or partial read answers { ok: false }: nothing is paid or taken back on it.
  * The subscription `id` is RevenueCat's own, kept through renewals (a renewal is not a new subscription),
@@ -32,7 +32,7 @@ export type ProviderFetch = (url: string, key: string) => Promise<ProviderResult
 type Store = { store: "play_store" | "app_store"; products: readonly string[]; environment: string };
 const SANDBOX = "sandbox";
 
-function stores(playerId: string, env: ServerVars): Store[] | null {
+function stores(env: ServerVars): Store[] | null {
   const config = serverConfig(env).revenuecat, play = config.play_subscription_product_ids;
   if (play === null) return null;
   const out: Store[] = play.length ? [{ store: "play_store", products: play, environment: APP.playEnvironment }] : [];
@@ -41,9 +41,8 @@ function stores(playerId: string, env: ServerVars): Store[] | null {
     if (app === null) return null;
     if (app.length) out.push({ store: "app_store", products: app, environment: config.app_store_environment === "sandbox" ? SANDBOX : "production" });
   }
-  // A tester's sandbox subscriptions pay as real ones, in each store above: one more list read, for testers only.
-  if (config.tester_ids.includes(playerId))
-    for (const each of [...out]) if (!out.some(other => other.store === each.store && other.environment === SANDBOX)) out.push({ ...each, environment: SANDBOX });
+  // Sandbox subscriptions pay as real ones, in each store above, for every player: one more list read.
+  for (const each of [...out]) if (!out.some(other => other.store === each.store && other.environment === SANDBOX)) out.push({ ...each, environment: SANDBOX });
   return out;
 }
 
@@ -76,14 +75,15 @@ function list(result: ProviderResult): unknown[] | string {
  * (one more read, made only for a player whose noted Full Journey has no end).
  */
 export async function readGrant(playerId: string, env: ServerVars, lifetime: boolean, request: ProviderFetch = revenuecatRequest): Promise<GrantRead> {
-  const configured = stores(playerId, env);
+  const configured = stores(env);
   const project = serverConfig(env).revenuecat.project_id ?? "";
   if (!env.REVENUECAT_SECRET_KEY || !PROJECT_PATTERN.test(project) || configured === null) return { ok: false, reason: "unconfigured" };
   const key = env.REVENUECAT_SECRET_KEY;
   const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(project)}/customers/${encodeURIComponent(playerId)}`;
-  const subs: GrantSub[] = [];
-  for (const environment of [...new Set(configured.map(store => store.environment))]) {
-    const items = list(await request(`${base}/subscriptions?environment=${environment}&limit=100`, key));
+  const subs: GrantSub[] = [], environments = [...new Set(configured.map(store => store.environment))];
+  const lists = await Promise.all(environments.map(async environment => list(await request(`${base}/subscriptions?environment=${environment}&limit=100`, key))));
+  for (const [index, environment] of environments.entries()) {
+    const items = lists[index];
     if (typeof items === "string") return { ok: false, reason: items };
     for (const store of configured.filter(each => each.environment === environment))
       for (const item of items) { const sub = grantSub(item, store); if (sub) subs.push(sub); }
@@ -109,11 +109,11 @@ export type GrantLookup = { ok: true; found: MovedSub[] } | { ok: false; reason:
  * An ended one also reads its holder's own list (customer_id), so a plan switch there is told from a refund: one more
  * request, only for an ended one. All in one round, so a slow provider costs one request timeout. Counted by the same
  * filter as this identity's own read (grantSub, its stores); one that filter does not count, or a 404, is gone. One
- * still held by this player (its list only lost it to a config change: products, flags, testers, environment) is `held`.
+ * still held by this player (its list only lost it to a config change: products, flags, environment) is `held`.
  * Any failed or partial request answers { ok: false }: nothing is taken back on it.
  */
 export async function lookupGrantSubs(ids: readonly string[], playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<GrantLookup> {
-  const configured = stores(playerId, env), at = project(env);
+  const configured = stores(env), at = project(env);
   if (configured === null || at === null) return { ok: false, reason: "unconfigured" };
   const counted = (item: unknown): GrantSub | null => configured.map(store => grantSub(item, store)).find(sub => sub !== null) ?? null;
   const found = await Promise.all(ids.map(async (id): Promise<MovedSub | string> => {

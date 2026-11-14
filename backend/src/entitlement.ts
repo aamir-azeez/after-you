@@ -20,7 +20,7 @@ export type Entitlement = { full_journey: boolean; status: "verified" | "unconfi
 /** `beforeProvider`: runs only when the check is about to ask RevenueCat (GET /v1/entitlement spends its costly bucket there). */
 export async function entitlement(playerId: string, env: ServerVars & { PLAYERS?: Env["PLAYERS"] }, onGrant?: (until: number) => void, beforeProvider?: () => Promise<void>): Promise<Entitlement> {
   const base = { full_journey: false, environment: APP.environment, checked_at: new Date().toISOString() };
-  // A tester is checked every time, so their switch and Play sandbox subscription hold at once.
+  // A tester is checked every time, so their switch holds at once.
   const memoized = env.PLAYERS !== undefined && !isTester(env, playerId);
   if (env.PLAYERS) {
     const { grant, full_journey_off, memo } = await env.PLAYERS.getByName(playerId).storedAccess(playerId);

@@ -58,8 +58,6 @@ export const FLAG_VARS = Object.freeze({
   pollenBundles: "POLLEN_BUNDLES",
   /** Pollen bundles on the App Store (pollen/bundle-settle.ts): the same claim route, wallet read part and its own capability for iPhone, once the App Store's four products are in bundles.json. Needs POLLEN_REFUNDS, not POLLEN_BUNDLES, so each store switches on and off by itself. Set only through FEATURES. */
   pollenBundlesAppStore: "POLLEN_BUNDLES_APP_STORE",
-  /** App Store sandbox Pollen bundles for any player (pollen/bundle-settle.ts), so App Review sees a sandbox purchase pay: read only by a claim that finds nothing new in production. Needs POLLEN_BUNDLES_APP_STORE. Set only through FEATURES. */
-  pollenSandboxAppStore: "POLLEN_SANDBOX_APP_STORE",
   /** Fruits, the rarer second currency (pollen/fruits.ts): the wallet read's Fruits part, Orchard prices, turning Fruits into Pollen, Sunshine, achievements, the grant's Fruits and its capability. Fruit packs also need that store's bundle flag. Needs POLLEN_SHOP. Off, nothing Fruit is written or shown. Gated, older apps see none of it (features.ts). */
   fruits: "FRUITS",
   /** Duel energy (pollen/energy.ts): 1 energy to start or join a duel, the meter on the wallet read and the start and join replies, the Fruit refill and the duels capability field. Needs DUELS. Gate it (config.ts feature_min_version) to the first app that shows the meter, or raise every minimum to it in the same CONFIG edit. */

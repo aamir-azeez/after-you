@@ -2,7 +2,7 @@ import { POLLEN_BUNDLE_TABLES } from "../storage-schema";
 import { DAY_MS, RATES, type Rates } from "./rates";
 import { BUNDLES, BUNDLE_KEYS, firstGift, type BundleKey, type Bundles } from "./bundles";
 import { applyLedger, ledgerLines, purchaseLines, walletBalance, type LedgerEntry } from "./wallet";
-import { byPurchaseTime, type BundleAsk, type BundleLookup, type BundlePurchase, type BundleRead } from "./bundle-provider";
+import { type BundleAsk, type BundleLookup, type BundlePurchase, type BundleRead } from "./bundle-provider";
 import { refId, refStore } from "./claims";
 import { CURRENCIES, currencyOfKey, keyIn, purse, type Currency } from "./currency";
 import { withReclaim } from "./fruit-ops";
@@ -13,8 +13,8 @@ import { withReclaim } from "./fruit-ops";
  *
  * Run by the claim route (POST /v1/pollen/bundle-claims, after a purchase) and, at most once a day, by the
  * wallet read of a player who has bought a bundle before (the refund check):
- * 1. One RevenueCat read from inside this call (an outbound subrequest, not a DO request), and on the claim route,
- *    while POLLEN_SANDBOX_APP_STORE is on and that read has nothing new to pay, one more for the App Store sandbox list.
+ * 1. One RevenueCat read from inside this call (bundle-provider.ts readBundles: the production and sandbox lists at
+ *    once, two outbound subrequests, no DO request). Sandbox purchases pay like real ones, for every player, every time.
  * 2. For purchases new to this player, one PollenClaims request (claims.ts claimBundles): the first identity
  *    to claim a purchase's reference (its Google Play order, or "appstore:" and its App Store transaction id,
  *    claims.ts bundleRef) keeps it, so a restore that moves it to another App User ID, or gives it a new
@@ -55,11 +55,6 @@ export type BundleDeps = {
   claim: (purchases: BundlePurchase[]) => Promise<Record<string, boolean> | null>;
   /** The daily check only: which paid bundles missing from the list are refunded now (bundle-provider.ts lookupBundles). */
   lookup?: (asks: BundleAsk[]) => Promise<BundleLookup>;
-  /**
-   * The claim route only, while POLLEN_SANDBOX_APP_STORE is on: the player's App Store sandbox purchases, read only when
-   * the production list has nothing new to pay (one more RevenueCat request, no DO request), so App Review's sandbox buy pays.
-   */
-  sandbox?: () => Promise<BundleRead>;
   /** Fruits are on (features.ts fruitsOn): Fruit packs are paid. Off, they wait. */
   fruits?: boolean;
 };
@@ -215,8 +210,6 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (order: 
   const plan: BundlePlan = { entries: [], credited: [], refunds: [], fruitCredited: [], fruitRefunds: [] };
   const paid = paidIndex(lines), back = new Set(refunded), gone = refundedOrders(purchases);
   const open = { ...giftOpen };
-  // An App Store sandbox Fruit pack pays once per identity (the owner's call, 2026-11-09): sandbox purchases cost nothing.
-  let sandboxFruit = lines.some(line => currencyOfLine(line) === "fruits" && line.detail.environment === "sandbox");
   for (const purchase of purchases) {
     const prior = paidLine(purchase, paid), currency = bundles.bundles[purchase.bundle].currency;
     if (purchase.refunded) {
@@ -230,7 +223,6 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (order: 
       continue;
     }
     if (prior || !purchase.order || gone.has(purchase.order) || !held(purchase.order)) continue;
-    if (currency === "fruits" && purchase.sandbox) { if (sandboxFruit) continue; sandboxFruit = true; }
     const amount = bundles.bundles[purchase.bundle].amount * purchase.quantity, gift = open[currency] ? firstGift(purchase.bundle, bundles) : 0;
     // Only the first pack a player ever buys in a currency can carry its gift, whatever the percent was then.
     open[currency] = false;
@@ -255,15 +247,7 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
   if (!read.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: read.reason }; }
   // While Fruits are off a Fruit pack waits unpaid (as a Pollen bundle waits for a store that sells), so nothing Fruit is
   // written; a refund of one already paid is still taken back.
-  let listed = deps.fruits ? read.purchases : read.purchases.filter(purchase => purchase.refunded || bundles.bundles[purchase.bundle].currency !== "fruits");
-  if (deps.sandbox) {
-    const paid = paidIndex(bundleLines(storage)), gone = refundedOrders(listed);
-    if (!listed.some(purchase => !purchase.refunded && purchase.order !== "" && !gone.has(purchase.order) && !paidLine(purchase, paid))) {
-      const extra = await deps.sandbox();
-      if (!extra.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: extra.reason }; }
-      listed = [...listed, ...extra.purchases].sort(byPurchaseTime);
-    }
-  }
+  const listed = deps.fruits ? read.purchases : read.purchases.filter(purchase => purchase.refunded || bundles.bundles[purchase.bundle].currency !== "fruits");
   const asks = missingBundles(storage, listed, now);
   let moved: BundlePurchase[] = [], lookupFailed: string | null = null;
   if (asks.length && deps.lookup) {

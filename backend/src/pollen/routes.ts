@@ -33,8 +33,8 @@ import { parseVersion, type Version } from "../config";
  * that reads RevenueCat itself (a subrequest), and one PollenClaims request only when RevenueCat lists a
  * purchase new to the player. The daily refund check (POLLEN_REFUNDS, which bundles need and which stays on
  * after they stop selling) is a subrequest inside the wallet read's own Player call, only for a player who
- * bought a bundle, plus that PollenClaims request when a new purchase shows up. While POLLEN_SANDBOX_APP_STORE is on,
- * a claim whose production list has nothing new makes one more subrequest (the sandbox list); the wallet read never does.
+ * bought a bundle, plus that PollenClaims request when a new purchase shows up. Each RevenueCat read is two subrequests made
+ * at once, the production and sandbox lists (bundle-provider.ts readBundles).
  */
 export const POLLEN_HEADER = "X-AfterYou-Pollen";
 export const POLLEN_VERSION = 1;
@@ -350,5 +350,5 @@ async function routeBundles(request: Request, playerId: string, env: Env): Promi
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const input = await boundedJson(request, 256);
   if (!isObject(input) || !only(input, ["schema_version"]) || input.schema_version !== 1) throw new ApiError(400, "invalid_pollen_bundle_claim");
-  return unwrap(await env.PLAYERS.getByName(playerId).pollenBundleClaim(playerId, await bearerDigest(request), clientHeader(request)?.channel === "app_store"));
+  return unwrap(await env.PLAYERS.getByName(playerId).pollenBundleClaim(playerId, await bearerDigest(request)));
 }

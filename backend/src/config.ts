@@ -112,11 +112,11 @@ export type RevenueCatSettings = {
   readonly app_store_environment?: string;
   /** Unset reuses the Play lookup id. */
   readonly app_store_entitlement_lookup_id?: string;
-  /** Player ids whose real Full Journey entitlement counts as a review grant, and whose App Store sandbox Pollen bundles pay (pollen/bundle-provider.ts): the App Review identity. */
+  /** Player ids whose real Full Journey entitlement counts as a review grant (the hosting check): the App Review identity. Purchases no longer read it: sandbox pays for everyone. */
   readonly reviewer_ids: readonly string[];
   /**
-   * Player ids whose sandbox purchases (Play license testers, TestFlight) count as real ones in both stores: Pollen bundles,
-   * Full Journey hosting from a subscription, and the monthly grant. The owner's own test identity; [] when unset.
+   * The owner's test identities, who may type test codes (test-codes.ts) and skip the entitlement memo; [] when unset.
+   * Purchases no longer read it: every player's sandbox purchases count as real ones (bundles, hosting, the grant).
    */
   readonly tester_ids: readonly string[];
 };

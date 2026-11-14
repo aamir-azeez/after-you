@@ -33,7 +33,7 @@ import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type Displ
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type FruitHooks, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedFaceIds, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { anyBundlesOn, faceSinglesOn, fruitsOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
+import { anyBundlesOn, faceSinglesOn, fruitsOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, type WardrobeMode } from "./pollen/features";
 import { fruitHistoryView, fruitsView, type FruitsView } from "./pollen/fruits-view";
 import { settleAchievements, settleStartedAchievements, type Moment } from "./pollen/achievements";
 import { spendSunshineTurn } from "./pollen/fruit-ops";
@@ -46,7 +46,7 @@ import { grantDue, type GrantHint } from "./pollen/grant";
 import { lookupGrantSubs, readGrant } from "./pollen/grant-provider";
 import { claimBundlesFor, claimFor } from "./pollen/claims";
 import { bundleCheckDue, bundlesView, dropBundles, pacedClaim, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
-import { SANDBOX, lookupBundles, readBundles, sandboxBundles, type BundleAsk } from "./pollen/bundle-provider";
+import { lookupBundles, readBundles, type BundleAsk } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
 import { catalogFor, type Look } from "./pollen/catalog";
@@ -314,31 +314,24 @@ export class Player extends DurableObject<Env> {
       else if (outcome.status === "settled" && outcome.lookup_failed) logWarning("pollen_bundle_lookup_failed", { reason: outcome.lookup_failed });
     } catch (error) { logWarning("pollen_bundle_check_failed", { reason: errorCode(error) }); }
   }
-  /**
-   * `daily`: the refund check, which also looks up paid bundles a restore moved off this player's list. While
-   * POLLEN_SANDBOX_APP_STORE is on, a claim from an App Store build (`appStore`) with nothing new in production also reads
-   * the App Store sandbox list (the review identity and a tester always read it, a tester for Play too). A sandbox line keeps
-   * that mark, so the refund check looks it up in sandbox and takes it back when refunded, whatever the flag or the lists say by then.
-   */
-  private settleBundles(owner: string, daily = false, appStore = false) {
-    const now = Date.now(), listed = sandboxBundles(owner, this.env), anyone = sandboxAppStoreOn(this.env) && appStore;
+  /** `daily`: the refund check, which also looks up paid bundles a restore moved off this player's list. */
+  private settleBundles(owner: string, daily = false) {
+    const now = Date.now();
     return settleBundles(this.ctx.storage, now, this.pollenActive(owner), {
       read: () => readBundles(owner, this.env),
       claim: purchases => claimBundlesFor(this.env, owner, purchases, now),
       fruits: fruitsOn(this.env, LEDGER),
-      ...(!daily && anyone && !listed ? { sandbox: () => readBundles(owner, this.env, undefined, SANDBOX) } : {}),
       ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env) } : {})
     });
   }
   /**
    * Binding only: credits the player's Play and App Store bundle purchases that RevenueCat lists, and takes back refunded
-   * ones (POST /v1/pollen/bundle-claims, pollen/bundle-settle.ts). The device is checked again here. `appStore`: the
-   * claim came from an App Store build. Paced per player (bundle-settle.ts pacedClaim): a claim too soon answers 429.
+   * ones (POST /v1/pollen/bundle-claims, pollen/bundle-settle.ts). The device is checked again here. Paced per player (bundle-settle.ts pacedClaim): a claim too soon answers 429.
    */
-  async pollenBundleClaim(owner: string, deviceHash: string, appStore = false): Promise<Outcome<BundleReply>> {
+  async pollenBundleClaim(owner: string, deviceHash: string): Promise<Outcome<BundleReply>> {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
-    const outcome = await pacedClaim(this.ctx.storage, Date.now(), () => this.settleBundles(owner, false, appStore));
+    const outcome = await pacedClaim(this.ctx.storage, Date.now(), () => this.settleBundles(owner));
     if (outcome === "busy") return fail(429, "rate_limited");
     if (outcome.status === "unavailable") return fail(503, "pollen_bundles_unavailable");
     if (outcome.status === "absent" || !this.authorized(deviceHash)) return fail(401, "invalid_auth");
