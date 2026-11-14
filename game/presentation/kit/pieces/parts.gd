@@ -32,7 +32,10 @@ const BOARD := Color("628c7a")
 const POST := Color("7a5c40")
 
 ## The colour of an owner slot ("p0" gold, else teal).
+## A control's colour: its owner's, or cream for one either pip works (open
+## controls, core/physical/runtime.gd OPEN_RULES_VERSION).
 static func owner_color(slot: String) -> Color:
+	if slot.is_empty(): return CREAM
 	return GOLD if slot == "p0" else TEAL
 
 static func box(size: Vector3, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:

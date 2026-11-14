@@ -55,6 +55,8 @@ comfort_social_integration 1
 completion_moment 2
 compressed_rooms_client 1
 connectivity 2
+conservatory_v2 3
+conservatory_v2_world 3
 cooperative 1
 cooperative_admission 3
 cooperative_integration 1
@@ -199,6 +201,8 @@ long_way_home_v2 2
 long_way_home_v2_latest 1
 long_way_home_v2_limits 2
 long_way_home_v2_world 1
+long_way_home_v3 3
+long_way_home_v3_world 3
 long_way_home_versions 1
 memory_wait 2
 missing_piece 1
@@ -222,6 +226,7 @@ online_scenarios_edges 1
 online_scenarios_more 3
 online_staged_open 3
 online_unlocks 3
+open_controls 3
 optional_photo_capture 1
 outfit 3
 owner_marks 1
@@ -406,6 +411,8 @@ turn_of_the_tide_v2_cells_low 1
 turn_of_the_tide_v2_rules 2
 turn_of_the_tide_v2_screen 3
 turn_of_the_tide_v2_world 2
+turn_of_the_tide_v3 3
+turn_of_the_tide_v3_world 3
 turn_of_the_tide_variants_half 3
 turn_of_the_tide_variants_high 3
 turn_of_the_tide_variants_low 2

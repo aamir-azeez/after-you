@@ -1,0 +1,688 @@
+{
+	"a_recording_hash": "844d5ccf73aeeaa1cc7a2cbcd2f3a3b2cc5a4e8717c5cb7f02e7954de8fddf3d",
+	"b_recording_hash": "64b97e003e0494556a67eeb7b18f3dca27e4508e9c6cd534ec48045522ae14e0",
+	"checkpoint_hash": "78bedba4f5732d456c8b0f65f176ec9d2a6ef374f0a2d074d9ff91a5bec7118a",
+	"completed_stage_id": "the-way-light-returns",
+	"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+	"level_id": "conservatory",
+	"level_version": 2,
+	"mechanisms": {
+		"controls": {
+			"court-fork": "slash",
+			"crossing-return": "slash",
+			"final-mirror": "slash",
+			"gallery-fork": "backslash",
+			"garden-return": "slash",
+			"high-return": "slash",
+			"lower-fork": "backslash",
+			"preserved-turn": "backslash"
+		},
+		"latched_bridges": [
+			"court-return",
+			"garden-door",
+			"high-stair",
+			"lower-crossing",
+			"recovery-stair",
+			"room-return"
+		],
+		"levers": {
+			"return-shutter": true
+		},
+		"props": {}
+	},
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 0,
+			"surface_id": "garden",
+			"x": 752,
+			"z": 64
+		},
+		"p1": {
+			"height": 0,
+			"surface_id": "garden",
+			"x": 656,
+			"z": 0
+		}
+	},
+	"previous_checkpoint_hash": "5f25d907b3956ea08defc8a45030a42f8d28f465c965b78467caf582c29d6317",
+	"proof": {
+		"a": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 20.0,
+					"x": -100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 28.0,
+					"x": 0.0,
+					"z": -100.0
+				},
+				{
+					"action": false,
+					"ticks": 1.0,
+					"x": 0.0,
+					"z": 0.0
+				},
+				{
+					"action": true,
+					"ticks": 1.0,
+					"x": 0.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 8.0,
+					"x": 100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 8.0,
+					"x": 0.0,
+					"z": 100.0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "5f25d907b3956ea08defc8a45030a42f8d28f465c965b78467caf582c29d6317",
+			"completed": false,
+			"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+			"duration_ticks": 66.0,
+			"final_state_hash": "1854ec86872777cb02cb6db45069e8fe6aff42333ba3864f7e90ca0b5f46369e",
+			"level_id": "conservatory",
+			"level_version": 2.0,
+			"outcome": {
+				"objective_complete": false,
+				"source_ready": true
+			},
+			"player_slot": "p1",
+			"recording_hash": "844d5ccf73aeeaa1cc7a2cbcd2f3a3b2cc5a4e8717c5cb7f02e7954de8fddf3d",
+			"replay_checks": [
+				{
+					"state_hash": "84f2e976937668705f39386509bb718d227be74dde9a4fc2ffd7716a63f00e0d",
+					"tick": 30.0
+				},
+				{
+					"state_hash": "59d30d84033fc653dd11a8423f3d4eccb3677ffae0fd385e13df2d6aa1980a85",
+					"tick": 60.0
+				},
+				{
+					"state_hash": "1854ec86872777cb02cb6db45069e8fe6aff42333ba3864f7e90ca0b5f46369e",
+					"tick": 66.0
+				}
+			],
+			"role": "a",
+			"schema_version": 7.0,
+			"simulation_version": 12.0,
+			"source_recording_hash": "",
+			"stage_id": "the-way-light-returns",
+			"stage_version": 1.0,
+			"tick_rate": 30.0
+		},
+		"b": {
+			"actions": [
+				{
+					"action": false,
+					"ticks": 10.0,
+					"x": -100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 14.0,
+					"x": 100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 70.0,
+					"x": 0.0,
+					"z": 100.0
+				},
+				{
+					"action": false,
+					"ticks": 86.0,
+					"x": 100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 4.0,
+					"x": -100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 18.0,
+					"x": 0.0,
+					"z": -100.0
+				},
+				{
+					"action": false,
+					"ticks": 1.0,
+					"x": 0.0,
+					"z": 0.0
+				},
+				{
+					"action": true,
+					"ticks": 1.0,
+					"x": 0.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 44.0,
+					"x": -100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 8.0,
+					"x": 0.0,
+					"z": -100.0
+				},
+				{
+					"action": false,
+					"ticks": 1.0,
+					"x": 0.0,
+					"z": 0.0
+				},
+				{
+					"action": true,
+					"ticks": 1.0,
+					"x": 0.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 8.0,
+					"x": 0.0,
+					"z": 100.0
+				},
+				{
+					"action": false,
+					"ticks": 48.0,
+					"x": 100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 6.0,
+					"x": 0.0,
+					"z": -100.0
+				},
+				{
+					"action": false,
+					"ticks": 46.0,
+					"x": 100.0,
+					"z": 0.0
+				},
+				{
+					"action": false,
+					"ticks": 6.0,
+					"x": 0.0,
+					"z": 100.0
+				},
+				{
+					"action": false,
+					"ticks": 1.0,
+					"x": 0.0,
+					"z": 0.0
+				},
+				{
+					"action": true,
+					"ticks": 1.0,
+					"x": 0.0,
+					"z": 0.0
+				}
+			],
+			"catch_assistance": true,
+			"checkpoint_hash": "5f25d907b3956ea08defc8a45030a42f8d28f465c965b78467caf582c29d6317",
+			"completed": true,
+			"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+			"duration_ticks": 374.0,
+			"final_state_hash": "d8c15067b796fc46ad1348f32eb32571ed0eb97e4782119c78b82bdd5007678d",
+			"level_id": "conservatory",
+			"level_version": 2.0,
+			"outcome": {
+				"objective_complete": true,
+				"source_ready": true
+			},
+			"player_slot": "p0",
+			"recording_hash": "64b97e003e0494556a67eeb7b18f3dca27e4508e9c6cd534ec48045522ae14e0",
+			"replay_checks": [
+				{
+					"state_hash": "044c7c2aff0a4528920da03e057fdfc26f46f01efffee91aa25e4ce260a4d535",
+					"tick": 30.0
+				},
+				{
+					"state_hash": "e2d862bdf534630631b7f87ef749ddbb9537369a35fbb1a23a934ff99a455e1d",
+					"tick": 60.0
+				},
+				{
+					"state_hash": "b9795f81ca65d8b353bf30f1ee9e99236f4b419fb99b2dd8a52702310c3360a7",
+					"tick": 90.0
+				},
+				{
+					"state_hash": "83fc2682ca3d1b2e05078c3e918654aecdb1abd107a8143c3f771711b5a3c3ea",
+					"tick": 120.0
+				},
+				{
+					"state_hash": "fef259218d2c126119b74fdcd11928a1b573e3fa61ab8583fe3f8e562554d6df",
+					"tick": 150.0
+				},
+				{
+					"state_hash": "3d1f06c0a4293f24de33d290408c5d39e1f71632c0bc66c01f5410016f6003b6",
+					"tick": 180.0
+				},
+				{
+					"state_hash": "177aed303d2f31cad117fd32c0d80b88c4793bffdb7c0f8745e2db5a26e542a2",
+					"tick": 210.0
+				},
+				{
+					"state_hash": "ff23d509ca82aaed680baba4c1f7285084c8111093c74b8f370d2e3d0ec411df",
+					"tick": 240.0
+				},
+				{
+					"state_hash": "e6acb8440a2bd0100e776d8234654b761d77ad579868b2dc03a727b27c90094b",
+					"tick": 270.0
+				},
+				{
+					"state_hash": "01ab7e240e9b1efe84aabcb22c66e9cfbc32da80558a3a0b6f25188ed23aca9f",
+					"tick": 300.0
+				},
+				{
+					"state_hash": "ef699130e2e9035835eecf80f479846d0f965d19a34d8d45b14a3c663170273a",
+					"tick": 330.0
+				},
+				{
+					"state_hash": "8b1500486e25419368a79121b6cfe1a9ab21a59f991591ec382d23cc959386a4",
+					"tick": 360.0
+				},
+				{
+					"state_hash": "d8c15067b796fc46ad1348f32eb32571ed0eb97e4782119c78b82bdd5007678d",
+					"tick": 374.0
+				}
+			],
+			"role": "b",
+			"schema_version": 7.0,
+			"simulation_version": 12.0,
+			"source_recording_hash": "844d5ccf73aeeaa1cc7a2cbcd2f3a3b2cc5a4e8717c5cb7f02e7954de8fddf3d",
+			"stage_id": "the-way-light-returns",
+			"stage_version": 1.0,
+			"tick_rate": 30.0
+		},
+		"checkpoint": {
+			"a_recording_hash": "a7887e42bd316851bb9062b509ac7a2f7069951cdd6c67cd12efdd64bdb2bf1f",
+			"b_recording_hash": "c77f9632121ed2388ebf7d0b1edd508a3303bb921eb1bfd09c879c01b20b47fe",
+			"checkpoint_hash": "5f25d907b3956ea08defc8a45030a42f8d28f465c965b78467caf582c29d6317",
+			"completed_stage_id": "a-light-above",
+			"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+			"level_id": "conservatory",
+			"level_version": 2.0,
+			"mechanisms": {
+				"controls": {
+					"court-fork": "slash",
+					"crossing-return": "backslash",
+					"final-mirror": "backslash",
+					"gallery-fork": "backslash",
+					"garden-return": "slash",
+					"high-return": "slash",
+					"lower-fork": "backslash",
+					"preserved-turn": "backslash"
+				},
+				"latched_bridges": [
+					"garden-door",
+					"high-stair",
+					"recovery-stair"
+				],
+				"levers": {},
+				"props": {}
+			},
+			"next_stage_id": "the-way-light-returns",
+			"players": {
+				"p0": {
+					"height": 0.0,
+					"surface_id": "court",
+					"x": -336.0,
+					"z": -352.0
+				},
+				"p1": {
+					"height": 0.0,
+					"surface_id": "garden",
+					"x": 752.0,
+					"z": 160.0
+				}
+			},
+			"previous_checkpoint_hash": "3c54a4404c259fb728daecec68256bcc5ab62686dc9e9089a9e07da317f86074",
+			"proof": {
+				"a": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 44.0,
+							"x": 0.0,
+							"z": 100.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": true,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 60.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": true,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 8.0,
+							"x": -100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": -50.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 44.0,
+							"x": 0.0,
+							"z": 100.0
+						},
+						{
+							"action": false,
+							"ticks": 18.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 50.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 44.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 10.0,
+							"x": 0.0,
+							"z": 0.0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "3c54a4404c259fb728daecec68256bcc5ab62686dc9e9089a9e07da317f86074",
+					"completed": false,
+					"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+					"duration_ticks": 234.0,
+					"final_state_hash": "b6f0251d451d428e5209e7b826475e8c52ad597d41d884a29ff47a4fff8c95a6",
+					"level_id": "conservatory",
+					"level_version": 2.0,
+					"outcome": {
+						"objective_complete": false,
+						"source_ready": true
+					},
+					"player_slot": "p0",
+					"recording_hash": "a7887e42bd316851bb9062b509ac7a2f7069951cdd6c67cd12efdd64bdb2bf1f",
+					"replay_checks": [
+						{
+							"state_hash": "19edf30dc612982e4f625aae75e1e23c9a098011858849a40197d3267461fd48",
+							"tick": 30.0
+						},
+						{
+							"state_hash": "e66e1a634355f48c25f47e966f4493432e73b46f0525b39df8d662953a82c79c",
+							"tick": 60.0
+						},
+						{
+							"state_hash": "b9dc8df2413113c6ff3bda86fcd33b219004c864aae34d0d465e1225e48f9290",
+							"tick": 90.0
+						},
+						{
+							"state_hash": "092569127d4f57def54c633b7614f1d6bc09bc658fef85d9ab12982a3b64d35a",
+							"tick": 120.0
+						},
+						{
+							"state_hash": "ed8780c8eac19a49e848ab0a40cd4d1609b5f0cc73b988f21545b56a4b81736a",
+							"tick": 150.0
+						},
+						{
+							"state_hash": "c76569f65283759860a3a56070cd4d910e8a6cba82167b5cae3a4277fb0c6e1f",
+							"tick": 180.0
+						},
+						{
+							"state_hash": "28c35cea9090b6780bcdfc68c36e7c8a946c7e7936ca64b5dae65962298b74c2",
+							"tick": 210.0
+						},
+						{
+							"state_hash": "b6f0251d451d428e5209e7b826475e8c52ad597d41d884a29ff47a4fff8c95a6",
+							"tick": 234.0
+						}
+					],
+					"role": "a",
+					"schema_version": 7.0,
+					"simulation_version": 12.0,
+					"source_recording_hash": "",
+					"stage_id": "a-light-above",
+					"stage_version": 1.0,
+					"tick_rate": 30.0
+				},
+				"b": {
+					"actions": [
+						{
+							"action": false,
+							"ticks": 176.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 50.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 8.0,
+							"x": 0.0,
+							"z": 100.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": true,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 4.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 6.0,
+							"x": 0.0,
+							"z": -100.0
+						},
+						{
+							"action": false,
+							"ticks": 32.0,
+							"x": 0.0,
+							"z": 100.0
+						},
+						{
+							"action": false,
+							"ticks": 42.0,
+							"x": 100.0,
+							"z": 0.0
+						},
+						{
+							"action": false,
+							"ticks": 18.0,
+							"x": 0.0,
+							"z": 100.0
+						},
+						{
+							"action": false,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						},
+						{
+							"action": true,
+							"ticks": 1.0,
+							"x": 0.0,
+							"z": 0.0
+						}
+					],
+					"catch_assistance": true,
+					"checkpoint_hash": "3c54a4404c259fb728daecec68256bcc5ab62686dc9e9089a9e07da317f86074",
+					"completed": true,
+					"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+					"duration_ticks": 291.0,
+					"final_state_hash": "f2e89d82d3129a2b7d8abedea3a41a678dd57a132f19b6d38d7e9ff612868f84",
+					"level_id": "conservatory",
+					"level_version": 2.0,
+					"outcome": {
+						"objective_complete": true,
+						"source_ready": true
+					},
+					"player_slot": "p1",
+					"recording_hash": "c77f9632121ed2388ebf7d0b1edd508a3303bb921eb1bfd09c879c01b20b47fe",
+					"replay_checks": [
+						{
+							"state_hash": "da69b4b46130a9f70900fffc54daae862e024677ca03c8d60800ad7d545925de",
+							"tick": 30.0
+						},
+						{
+							"state_hash": "c667041b8805340d22fd114085110e61cada7c65f1db25ae1f7e3f0e6b15da68",
+							"tick": 60.0
+						},
+						{
+							"state_hash": "5faae62d184e5cb413184e077193f1975e10186516f43d36a2905021a2c14fb8",
+							"tick": 90.0
+						},
+						{
+							"state_hash": "09f5981417ec0483029277b0975949e4bc203f4868cb2608c695b84e1a3dbf43",
+							"tick": 120.0
+						},
+						{
+							"state_hash": "bddca98b58788f9ef803818c9c67960bc0a9238443d075a0ddafa5991ca1dcb2",
+							"tick": 150.0
+						},
+						{
+							"state_hash": "26576e50128ccf22c4080d390c0efc90c73361a1e1ec29d9a52af2e087c6c9ba",
+							"tick": 180.0
+						},
+						{
+							"state_hash": "fa797690aa1c0db753b1b45a20dbeb2111bbff6af3fd9e359a59537ea8a89898",
+							"tick": 210.0
+						},
+						{
+							"state_hash": "42fe9effd14aae10c246275eb26aec4d01fd8436e08c413de69b2e3b3b3bce47",
+							"tick": 240.0
+						},
+						{
+							"state_hash": "d49866fe13768d5308ed32d6d479fdcc4b913e359af253efd777021f196e1e06",
+							"tick": 270.0
+						},
+						{
+							"state_hash": "f2e89d82d3129a2b7d8abedea3a41a678dd57a132f19b6d38d7e9ff612868f84",
+							"tick": 291.0
+						}
+					],
+					"role": "b",
+					"schema_version": 7.0,
+					"simulation_version": 12.0,
+					"source_recording_hash": "a7887e42bd316851bb9062b509ac7a2f7069951cdd6c67cd12efdd64bdb2bf1f",
+					"stage_id": "a-light-above",
+					"stage_version": 1.0,
+					"tick_rate": 30.0
+				},
+				"checkpoint": {
+					"a_recording_hash": "",
+					"b_recording_hash": "",
+					"checkpoint_hash": "3c54a4404c259fb728daecec68256bcc5ab62686dc9e9089a9e07da317f86074",
+					"completed_stage_id": "",
+					"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+					"level_id": "conservatory",
+					"level_version": 2.0,
+					"mechanisms": {
+						"controls": {
+							"court-fork": "backslash",
+							"crossing-return": "backslash",
+							"final-mirror": "backslash",
+							"gallery-fork": "backslash",
+							"garden-return": "backslash",
+							"high-return": "backslash",
+							"lower-fork": "backslash",
+							"preserved-turn": "backslash"
+						},
+						"latched_bridges": [],
+						"levers": {},
+						"props": {}
+					},
+					"next_stage_id": "a-light-above",
+					"players": {
+						"p0": {
+							"height": 160.0,
+							"surface_id": "fork-balcony",
+							"x": -416.0,
+							"z": -224.0
+						},
+						"p1": {
+							"height": 0.0,
+							"surface_id": "court",
+							"x": -208.0,
+							"z": -256.0
+						}
+					},
+					"previous_checkpoint_hash": "",
+					"proof": {},
+					"schema_version": 7.0,
+					"stage_index": 0.0
+				}
+			},
+			"schema_version": 7.0,
+			"stage_index": 1.0
+		}
+	},
+	"schema_version": 7,
+	"stage_index": 2
+}

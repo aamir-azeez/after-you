@@ -78,10 +78,14 @@ describe("retired flags", () => {
     expect(LIVE_KEPT).toEqual(["TESTER_ACCESS_ENABLED", "NOTIFICATIONS_ENABLED", "FRIEND_ROOM_EVENTS_ENABLED", "RELAY_PHOTOS_ENABLED", "PHOTO_TRANSFER_ENABLED",
       "LIVE_CONNECTION_ENABLED", "PLAY_GAMES_ENABLED", "IOS_WAITLIST_ENABLED", "DISPLAY_NAMES_ENABLED", "POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_LOOKS", "LEADERBOARDS"]);
     expect(NAMES.filter(name => !LIVE_FEATURES.includes(name))).toEqual(["IOS_PUSH_ENABLED", "CAMPAIGN_CREATION_ENABLED", "CAMPAIGN_MUTATIONS_ENABLED",
-      "STORY_DRAIN_ENABLED", "APP_STORE_ENTITLEMENTS_ENABLED", "GAME_CENTER_ENABLED", "POLLEN_SHOP", "POLLEN_ITEM_BLOOMS", "POLLEN_GRANT", "POLLEN_GRANT_ALARM", "POLLEN_REFUNDS", "POLLEN_BUNDLES", "POLLEN_BUNDLES_APP_STORE", "POLLEN_SANDBOX_APP_STORE", "FRUITS", "ENERGY", "FACE_SINGLES", "LEADERBOARD_REQUIRE_PLATFORM", "DUELS", "DUEL_RUN_CHECKS", "PLATFORM_BOARDS", "RACE_GHOST", "PUBLIC_DUELS", "COMPRESSED_ROOMS", "REPLAY_EXPIRY_PAUSED"]);
+      "STORY_DRAIN_ENABLED", "APP_STORE_ENTITLEMENTS_ENABLED", "GAME_CENTER_ENABLED", "POLLEN_SHOP", "POLLEN_ITEM_BLOOMS", "POLLEN_GRANT", "POLLEN_GRANT_ALARM", "POLLEN_REFUNDS", "POLLEN_BUNDLES", "POLLEN_BUNDLES_APP_STORE", "POLLEN_SANDBOX_APP_STORE", "FRUITS", "ENERGY", "FACE_SINGLES", "LEADERBOARD_REQUIRE_PLATFORM", "DUELS", "DUEL_RUN_CHECKS", "PLATFORM_BOARDS", "RACE_GHOST", "PUBLIC_DUELS", "COMPRESSED_ROOMS", "REPLAY_EXPIRY_PAUSED",
+      "LONG_WAY_HOME_V3_CHAPTER_ENABLED", "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", "CONSERVATORY_V2_CHAPTER_ENABLED"]);
   });
   it("leaves every published chapter creatable with no flag", () => {
-    for (const row of CHAPTERS) expect(row.flag, row.adapter.key.level_id).toBe("");
+    // The unreleased open-controls versions (test/open-controls.test.ts) keep their own flags until they ship.
+    const UNRELEASED = ["LONG_WAY_HOME_V3_CHAPTER_ENABLED", "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", "CONSERVATORY_V2_CHAPTER_ENABLED"];
+    expect(CHAPTERS.filter(row => row.flag !== "").map(row => row.flag)).toEqual(UNRELEASED);
+    for (const row of CHAPTERS) if (!UNRELEASED.includes(row.flag)) expect(row.flag, row.adapter.key.level_id).toBe("");
   });
 });
 
@@ -160,7 +164,7 @@ describe("live answers", () => {
   it("answers /v2/capabilities, /health and /v1/app-status byte for byte as live did before the flags retired", async () => {
     const vars = LIVE_ENV();
     expect(await liveAnswers(vars)).toEqual(LIVE_ANSWERS);
-    // Every chapter is advertised, as live's flags had it.
-    expect(advertisedChapters(vars, 2).length).toBe(CHAPTERS.length);
+    // Every published chapter is advertised, as live's flags had it; the unreleased ones are not.
+    expect(advertisedChapters(vars, 2).length).toBe(CHAPTERS.filter(row => row.flag === "").length);
   });
 });

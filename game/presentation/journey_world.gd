@@ -152,7 +152,8 @@ func _build_mirror(control: Dictionary) -> void:
 	hand.name = "MirrorHandControl_"+str(control.id)
 	hand.position = at+Vector3(0,0.54,0.10)
 	terrain.add_child(hand)
-	var wheel := ring(0.14,GOLD if control.owner_slot == "p0" else TEAL,Vector3.ZERO,hand)
+	var owner := str(control.get("owner_slot", ""))
+	var wheel := ring(0.14,CREAM if owner.is_empty() else GOLD if owner == "p0" else TEAL,Vector3.ZERO,hand)
 	wheel.rotation.x = PI/2.0
 	box(Vector3(0.035,0.26,0.035),CREAM,Vector3.ZERO,hand)
 	_journey_handles[control.id] = hand
@@ -683,14 +684,16 @@ func _build_seats(stage: Dictionary) -> void:
 func _present_seats(state: Dictionary, immediate: bool) -> void:
 	if _seats.is_empty() or not state.has("players"): return
 	for seat: Dictionary in _seats:
-		var slot := str(seat.pad.owner_slot)
-		if not actors.has(slot) or not state.players.has(slot): continue
-		var player: Dictionary = state.players[slot]
-		var here := Vector3i(int(player.x), int(player.height), int(player.z))
-		var still: bool = immediate or _seat_last.get(slot) == here
-		_seat_last[slot] = here
-		var actor: SpiritVisual = actors[slot]
-		var pose := actor.pose()
-		if still and Seven.near(player, seat.pad):
-			if pose != SpiritVisual.SpiritIdle.DOZE: actor.set_pose(SpiritVisual.SpiritIdle.SIT, seat.params, immediate)
-		elif pose == SpiritVisual.SpiritIdle.SIT: actor.set_pose(SpiritVisual.SpiritIdle.REST, {}, true)
+		# A pad either pip holds (open controls) seats either.
+		var owner := str(seat.pad.get("owner_slot", ""))
+		for slot: String in ([owner] if not owner.is_empty() else ["p0", "p1"]):
+			if not actors.has(slot) or not state.players.has(slot): continue
+			var player: Dictionary = state.players[slot]
+			var here := Vector3i(int(player.x), int(player.height), int(player.z))
+			var still: bool = immediate or _seat_last.get(slot) == here
+			_seat_last[slot] = here
+			var actor: SpiritVisual = actors[slot]
+			var pose := actor.pose()
+			if still and Seven.near(player, seat.pad):
+				if pose != SpiritVisual.SpiritIdle.DOZE: actor.set_pose(SpiritVisual.SpiritIdle.SIT, seat.params, immediate)
+			elif pose == SpiritVisual.SpiritIdle.SIT: actor.set_pose(SpiritVisual.SpiritIdle.REST, {}, true)

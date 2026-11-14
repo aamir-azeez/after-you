@@ -133,7 +133,7 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		for mark: Dictionary in placed:
 			if mark.kind == &"spot" or absf((mark.at as Vector3).y - (tile.at as Vector3).y) > 0.3: continue
 			_check(not FloorSpots.hits(tile.row, {"centre": Vector2(mark.at.x, mark.at.z), "radius": _reach(str(mark.slot))}), "%s: the %s mark of %s lies clear of %s's pair tag" % [where, mark.kind, mark.id, tile.control])
-	_drawn(world, key, where, placed)
+	_drawn(world, key, where, placed, owners)
 	return placed.size()
 
 ## Owned things of the stage: id -> {slot, what, entity}.
@@ -229,11 +229,13 @@ func _room(world: Node3D, where: String, view: Dictionary, placed: Array[Diction
 
 ## Every diamond and ring of the stage is one of the kit's marks, and the
 ## static fold leaves none drawing on its own.
-func _drawn(world: Node3D, key: String, where: String, placed: Array[Dictionary]) -> void:
+func _drawn(world: Node3D, key: String, where: String, placed: Array[Dictionary], owners: Dictionary) -> void:
 	var drawn := _mark_nodes(world)
 	var expected := placed.filter(func(mark: Dictionary) -> bool: return mark.kind != &"spot")
 	_check(drawn.size() == expected.size(), "%s: every mark on the stage came from the kit (%d drawn, %d placed)" % [where, drawn.size(), expected.size()])
-	_check(placed.filter(func(mark: Dictionary) -> bool: return mark.kind == &"spot").size() == world._pad_pieces.values().filter(func(piece: RefCounted) -> bool: return piece.spot != null).size(), "%s: each stand spot's mark is recorded" % where)
+	# A pad either pip holds (open controls) has no owner, so no mark.
+	var owned_spots: Array = world._pad_pieces.keys().filter(func(id: Variant) -> bool: return world._pad_pieces[id].spot != null and owners.has(str(id)))
+	_check(placed.filter(func(mark: Dictionary) -> bool: return mark.kind == &"spot").size() == owned_spots.size(), "%s: each owned stand spot's mark is recorded" % where)
 	StaticBatch.fold(world.terrain, [world], world._fold_options())
 	for node: MeshInstance3D in _mark_nodes(world):
 		# By where it stands across the floor: a bucket may have risen since.

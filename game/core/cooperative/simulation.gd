@@ -11,6 +11,19 @@ const COMFORT_VERSION := 8
 ## earlier chapter accepts them. Older clients never advertised 9, so the server
 ## refuses them before they take a seat in such a room.
 const COMFORT_ALIAS_VERSION := 9
+## Open controls (runtime.gd OPEN_RULES_VERSION, 12): the comfort rules with a
+## pad held by either pip and every lever worked by either. Only a definition
+## that pins 12 plays them. A stage then completes only with every one of its
+## levers on, as the server's checkpoint asks of every cooperative stage.
+
+func _open_controls() -> bool:
+	return simulation_version == OPEN_RULES_VERSION
+
+func _may_complete() -> bool:
+	if not _open_controls(): return true
+	for lever: Dictionary in stage.get("levers", []):
+		if not bool(_mechanisms.levers.get(lever.id, false)): return false
+	return true
 
 func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0) -> bool:
 	if rules_version == 0:
@@ -48,6 +61,7 @@ static func _record_version(record: Dictionary) -> int:
 	if declared is int or declared is float:
 		if declared == COMFORT_VERSION: return COMFORT_VERSION
 		if declared == COMFORT_ALIAS_VERSION: return COMFORT_ALIAS_VERSION
+		if declared == OPEN_RULES_VERSION: return OPEN_RULES_VERSION
 	return CURRENT_SIMULATION_VERSION
 
 static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary = {}) -> int:

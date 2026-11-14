@@ -45,8 +45,9 @@ const JOURNAL_NODES_PER_TWO_STAGES := 140000
 const MAX_PAIR_BYTES := 2097152
 const MAX_PAIR_NODES := 220000
 ## Highest room rules number this build understands (9 = comfort alias,
-## 11 = sleeping-lighthouse@2). A room is still held to its chapter's own rules.
-const MAX_SIMULATION_VERSION := 11
+## 11 = sleeping-lighthouse@2, 12 and 13 = open controls). A room is still held
+## to its chapter's own rules.
+const MAX_SIMULATION_VERSION := 13
 const MAX_HELD := 4
 const STATE_KEYS := ["schema_version", "api_version", "owner_player_id", "room_id", "snapshot", "draft", "held_drafts", "pending", "last_receipt", "auth_required"]
 const SNAPSHOT_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at", "api_version", "active_role", "first_player_id", "active_player_id", "player_slot", "stage_id", "recording_a", "validation"]

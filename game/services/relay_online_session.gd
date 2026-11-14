@@ -40,8 +40,10 @@ const DuelsClient = preload("res://services/duels_client.gd")
 ## stays listed in _valid_index.
 const JOIN_SIMULATION_VERSIONS := [2, 4, 5, 6, 7, 8, 9, 10]
 ## Rules sent only to a server that answered room level 2 and accepts the
-## longer list: 11 = sleeping-lighthouse@2, and chapters with more than two stages.
-const ROOM_LEVEL_JOIN_VERSIONS := [11]
+## longer list: 11 = sleeping-lighthouse@2, and chapters with more than two
+## stages; 12 and 13 = open controls (comfort and tide rules with controls for
+## either pip, core/journey/simulation.gd).
+const ROOM_LEVEL_JOIN_VERSIONS := [11, 12, 13]
 
 class RedoStorage:
 	extends RefCounted
@@ -1335,7 +1337,7 @@ func _valid_index(value: Dictionary) -> bool:
 		if duel_room and (hard_room or not DuelsClient.valid_room_ask(body.duel)): return false
 		return body.size() == (5 if optional_pin else 4) + int(hard_room) + int(duel_room) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Typed.whole_number(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
-	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Typed.same(body.supported_simulation_versions, [2, 4, 5]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9, 11]) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Typed.same(body.supported_simulation_versions, [2, 4, 5]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9, 11]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9, 10, 11]) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
 	if fallback.is_empty() and response.get("code") == "host_unlock_required":

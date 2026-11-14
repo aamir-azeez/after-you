@@ -20,8 +20,19 @@ extends RefCounted
 ## a journey gate's `when` tree through Seven.predicate, a cooperative gate's
 ## lever, pad and ball keys all at once (an empty gate always holds). So a
 ## floor this finds no way to is a floor no real play can reach.
+## On open controls (core/physical/runtime.gd OPEN_RULES_VERSION) a control,
+## lever or pad has no owner: it is settable once either pip reaches its
+## floor, and a pad may be held by either pip.
+##
+## A frozen pip (reach's `frozen`): the memory doing nothing. It stays where
+## it starts, works no control or lever, and holds only a pad it starts on.
+## The probe also lights beams exactly: each settable mirror at each of its
+## values through the engine's own BeamField, where reach otherwise counts a
+## beam signal as always lit.
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
+const OpenControls = preload("res://core/physical/open_controls.gd")
+const BeamField = preload("res://core/beam_field.gd")
 const RADIUS := 12
 const WALK := 28
 const LATERAL_STEP := 8
@@ -33,9 +44,12 @@ var route_bit: Dictionary = {}    # route id -> bit
 var edges: Dictionary = {}        # slot -> Array (per surface) of [to, required bits, lever id]
 var pairs: Dictionary = {}        # slot -> {"a>b": [bits, lever]}
 var reverse: Dictionary = {}      # slot -> Array (per surface) of [from, required bits, lever]
+var open_controls := false        # the definition pins open controls
+var _frozen: Dictionary = {}      # reach's frozen pip: {"slot", "at": player} or {}
 
 func _init(definition: Dictionary) -> void:
 	level = definition
+	open_controls = OpenControls.pinned(definition)
 	for island: Dictionary in level.islands: _add(island, "island")
 	for bridge: Dictionary in level.get("bridges", []): _add(bridge, "bridge")
 	for stair: Dictionary in level.get("stairs", []): _add(stair, "stair")
@@ -180,10 +194,11 @@ func _probe_drop(drop: Dictionary, from: int, to: int, slot: String, routes: Dic
 ## engine's gate rule. Returns {"floors": {slot: {surface id: true}}, "open":
 ## {route id: true}, "settable": {id: [values] or true}}: the fixed point
 ## described at the top. Builds the slots' edges on first use.
-func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool) -> Dictionary:
+func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool, frozen: String = "") -> Dictionary:
 	for slot: String in ["p0", "p1"]:
 		if not edges.has(slot): build(slot)
 	var mechanisms: Dictionary = checkpoint.get("mechanisms", {})
+	_frozen = {} if frozen.is_empty() else {"slot": frozen, "at": checkpoint.get("players", {}).get(frozen, {})}
 	var open: Dictionary = {}
 	for id: Variant in mechanisms.get("latched_bridges", []): open[str(id)] = true
 	var floors: Dictionary = {"p0": {}, "p1": {}}
@@ -193,13 +208,14 @@ func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool) -> Dictiona
 		var size := open.size()
 		for slot: String in ["p0", "p1"]:
 			var player: Dictionary = checkpoint.get("players", {}).get(slot, {})
-			floors[slot] = _walkable_from(slot, str(player.get("surface_id", "")), open, settable)
+			var start := str(player.get("surface_id", ""))
+			floors[slot] = {start: true} if slot == frozen else _walkable_from(slot, start, open, settable)
 		var before := JSON.stringify(settable)
 		settable = _settable(stage, mechanisms, floors)
 		for gate: Dictionary in stage.get("gates", []):
 			var route := str(gate.get("route_id", ""))
 			if open.has(route) or not route_bit.has(route): continue
-			if gate_can_hold(gate, stage, settable, mechanisms, journey): open[route] = true
+			if gate_can_hold(gate, stage, settable, mechanisms, journey, floors): open[route] = true
 		if open.size() == size and JSON.stringify(settable) == before: break
 	return {"floors": floors, "open": open, "settable": settable}
 
@@ -235,19 +251,31 @@ func _settable(stage: Dictionary, mechanisms: Dictionary, floors: Dictionary) ->
 	var start_controls: Dictionary = mechanisms.get("controls", {})
 	for id: Variant in start_controls: result[str(id)] = [str(start_controls[id])]
 	for control: Dictionary in stage.get("controls", []):
-		var reached: bool = floors.get(str(control.get("owner_slot", "")), {}).has(str(control.get("surface_id", "")))
+		var reached := _reached(control, floors)
 		if reached and control.has("values"): result[control.id] = control.values.duplicate()
 		else: result[control.id] = [str(mechanisms.get("controls", {}).get(control.id, control.get("initial", "")))]
 	for kind: String in ["levers", "pressure_pads"]:
 		for item: Dictionary in stage.get(kind, []):
-			if floors.get(str(item.get("owner_slot", "")), {}).has(str(item.get("surface_id", ""))): result[item.id] = true
+			if _reached(item, floors): result[item.id] = true
 	var start_levers: Dictionary = mechanisms.get("levers", {})
 	for lever: Variant in start_levers:
 		if bool(start_levers[lever]): result[str(lever)] = true
 	return result
 
+## Whether the pip that may work `item` reaches its floor: its owner, or on
+## open controls either pip.
+func _reached(item: Dictionary, floors: Dictionary) -> bool:
+	var surface := str(item.get("surface_id", ""))
+	if not _frozen.is_empty():
+		floors = floors.duplicate()
+		floors[_frozen.slot] = {}
+	if not open_controls: return floors.get(str(item.get("owner_slot", "")), {}).has(surface)
+	return floors.get("p0", {}).has(surface) or floors.get("p1", {}).has(surface)
+
 ## Whether `gate` could hold with what is settable, by the family's rule.
-func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, mechanisms: Dictionary, journey: bool) -> bool:
+## `floors` places pads by who reaches them (open controls); {} lets each
+## settable pad be held by its owner, as before.
+func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, mechanisms: Dictionary, journey: bool, floors: Dictionary = {}) -> bool:
 	if not journey:
 		for key: String in ["lever_id", "second_lever_id", "pad_id"]:
 			var id := str(gate.get(key, ""))
@@ -264,11 +292,16 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 	var signals: Dictionary = {}
 	for id: String in references.signals: signals[id] = true
 	var choices: Array = []
+	# The frozen probe lights beams exactly, so every settable mirror is a choice.
+	var exact: bool = not _frozen.is_empty() and stage.has("optical_field") and not references.signals.is_empty()
+	if exact:
+		for control: Dictionary in stage.get("controls", []):
+			if str(control.get("kind", "")) == "mirror" and not references.controls.has(str(control.id)): references.controls[str(control.id)] = true
 	for id: String in references.controls:
 		var values: Variant = settable.get(id, [""])
 		choices.append([id, values if values is Array else [""]])
 	var pads: Array = references.pads.keys().filter(func(id: String) -> bool: return settable.has(id))
-	return _any_assignment(when, stage, choices, 0, {}, levers, signals, _pad_placings(stage, pads))
+	return _any_assignment(when, stage, choices, 0, {}, levers, signals, _pad_placings(stage, pads, floors))
 
 func _references(value: Dictionary, found: Dictionary) -> void:
 	for key: String in ["all", "any"]:
@@ -286,17 +319,32 @@ func _any_assignment(when: Dictionary, stage: Dictionary, choices: Array, at: in
 			if _any_assignment(when, stage, choices, at + 1, controls, levers, signals, placings): return true
 		return false
 	var mechanisms := {"controls": controls, "levers": levers}
+	if not _frozen.is_empty() and stage.has("optical_field") and not signals.is_empty():
+		var overrides: Dictionary = {}
+		for control: Dictionary in stage.get("controls", []):
+			if str(control.get("kind", "")) == "mirror": overrides[control.id] = {"orientation": str(controls.get(str(control.id), control.get("initial", "")))}
+		var lit: Dictionary = BeamField.evaluate(stage.optical_field, overrides).get("signals", {})
+		signals = {}
+		for id: Variant in lit: signals[id] = bool(lit[id])
 	for placing: Dictionary in placings:
-		if Seven.predicate(when, stage, placing, mechanisms, signals): return true
+		if Seven.predicate(when, stage, placing, mechanisms, signals, open_controls): return true
 	return false
 
-## Each way of standing the pips on the settable pads (at most one pad each).
-func _pad_placings(stage: Dictionary, pads: Array) -> Array:
+## Each way of standing the pips on the settable pads (at most one pad each):
+## its owner's, or on open controls any pip that reaches its floor.
+func _pad_placings(stage: Dictionary, pads: Array, floors: Dictionary = {}) -> Array:
 	var away := {"x": 1000000, "z": 1000000, "height": -100000, "surface_id": ""}
 	var by_slot: Dictionary = {"p0": [away], "p1": [away]}
 	for pad: Dictionary in stage.get("pressure_pads", []):
-		if pad.id in pads and by_slot.has(str(pad.owner_slot)):
-			by_slot[str(pad.owner_slot)].append({"x": pad.position_cm[0], "z": pad.position_cm[1], "height": int(pad.get("height_cm", 0)), "surface_id": pad.surface_id})
+		if pad.id not in pads: continue
+		var spot := {"x": pad.position_cm[0], "z": pad.position_cm[1], "height": int(pad.get("height_cm", 0)), "surface_id": pad.surface_id}
+		if not open_controls:
+			if by_slot.has(str(pad.owner_slot)): by_slot[str(pad.owner_slot)].append(spot)
+			continue
+		for slot: String in by_slot:
+			if not _frozen.is_empty() and slot == _frozen.slot: continue
+			if floors.is_empty() or floors.get(slot, {}).has(str(pad.surface_id)): by_slot[slot].append(spot)
+	if not _frozen.is_empty(): by_slot[_frozen.slot] = [_frozen.at]
 	var result: Array = []
 	for p0: Dictionary in by_slot.p0:
 		for p1: Dictionary in by_slot.p1: result.append({"p0": p0, "p1": p1})

@@ -1,0 +1,75 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 20,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 28,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 0,
+			"z": 100
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "5f25d907b3956ea08defc8a45030a42f8d28f465c965b78467caf582c29d6317",
+	"completed": false,
+	"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+	"duration_ticks": 66,
+	"final_state_hash": "1854ec86872777cb02cb6db45069e8fe6aff42333ba3864f7e90ca0b5f46369e",
+	"level_id": "conservatory",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p1",
+	"recording_hash": "844d5ccf73aeeaa1cc7a2cbcd2f3a3b2cc5a4e8717c5cb7f02e7954de8fddf3d",
+	"replay_checks": [
+		{
+			"state_hash": "84f2e976937668705f39386509bb718d227be74dde9a4fc2ffd7716a63f00e0d",
+			"tick": 30
+		},
+		{
+			"state_hash": "59d30d84033fc653dd11a8423f3d4eccb3677ffae0fd385e13df2d6aa1980a85",
+			"tick": 60
+		},
+		{
+			"state_hash": "1854ec86872777cb02cb6db45069e8fe6aff42333ba3864f7e90ca0b5f46369e",
+			"tick": 66
+		}
+	],
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 12,
+	"source_recording_hash": "",
+	"stage_id": "the-way-light-returns",
+	"stage_version": 1,
+	"tick_rate": 30
+}

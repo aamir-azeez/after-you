@@ -1,0 +1,54 @@
+{
+	"a-light-above": {
+		"a": [
+			["walk", [-416, 128]],
+			["tap"],
+			["walk", [-416, -352]],
+			["tap"],
+			["walk", [-484, 0]],
+			["walk", [-336, -352]],
+			["wait", 10]
+		],
+		"b": [
+			["walk", [384, -256]],
+			["walk", [384, -192]],
+			["tap"],
+			["walk", [416, -240]],
+			["walk", [416, 16]],
+			["walk", [752, 16]],
+			["walk", [752, 160]],
+			["tap"]
+		]
+	},
+	"the-way-light-returns": {
+		"a": [
+			["input", 20, -100, 0, false],
+			["input", 28, 0, -100, false],
+			["input", 1, 0, 0, false],
+			["input", 1, 0, 0, true],
+			["input", 8, 100, 0, false],
+			["input", 8, 0, 100, false]
+		],
+		"b": [
+			["walk", [-416, -352]],
+			["input", 14, 100, 0, false],
+			["input", 70, 0, 100, false],
+			["input", 86, 100, 0, false],
+			["input", 4, -100, 0, false],
+			["input", 18, 0, -100, false],
+			["input", 1, 0, 0, false],
+			["input", 1, 0, 0, true],
+			["input", 44, -100, 0, false],
+			["input", 8, 0, -100, false],
+			["input", 1, 0, 0, false],
+			["input", 1, 0, 0, true],
+			["input", 8, 0, 100, false],
+			["input", 48, 100, 0, false],
+			["input", 6, 0, -100, false],
+			["input", 46, 100, 0, false],
+			["input", 6, 0, 100, false],
+			["input", 1, 0, 0, false],
+			["input", 1, 0, 0, true]
+		]
+	}
+}

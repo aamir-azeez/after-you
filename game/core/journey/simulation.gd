@@ -17,6 +17,13 @@ const COMFORT_ALIAS_VERSION := 9
 ## crossing then drowns and the turn ends there. A completed stage keeps no
 ## routes for the next one. Only a definition that pins 10 plays them.
 const TIDE_RULES_VERSION := 10
+## Open controls (core/physical/open_controls.gd): the comfort rules (9) with
+## open controls are 12, the tide rules (10) with open controls 13. Only a
+## definition that pins one plays it; every other number keeps owner rules
+## exactly as published.
+const OPEN_TIDE_RULES_VERSION := OpenControls.OPEN_TIDE_RULES_VERSION
+const TIDE_RULES := OpenControls.TIDE_RULES
+const OPEN_RULES := OpenControls.OPEN_RULES
 ## What a drowned turn says (snapshot text; PlayerCopy shows the editable
 ## lines): the player's own spirit, or the memory's.
 const DROWNED_YOU := "Oh no, you drowned! Try again?"
@@ -70,6 +77,8 @@ static func _record_version(record: Dictionary) -> int:
 		if declared == COMFORT_VERSION: return COMFORT_VERSION
 		if declared == COMFORT_ALIAS_VERSION: return COMFORT_ALIAS_VERSION
 		if declared == TIDE_RULES_VERSION: return TIDE_RULES_VERSION
+		if declared == OPEN_RULES_VERSION: return OPEN_RULES_VERSION
+		if declared == OPEN_TIDE_RULES_VERSION: return OPEN_TIDE_RULES_VERSION
 	return CURRENT_SIMULATION_VERSION
 
 static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary = {}) -> int:
@@ -89,8 +98,12 @@ func _advance_source() -> void:
 	super._advance_source()
 	# A evolves independently. Copy only its declared controls, never B's local
 	# selector, shutter, entry latches, or future changed source ownership.
+	# Open controls: copy a control only on a tick the memory turned it.
+	var open := _open_controls()
 	for control: Dictionary in stage.get("controls", []):
-		if control.owner_slot == first_player_slot:
+		if open:
+			if _source_toggles.controls.has(control.id): _mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
+		elif control.owner_slot == first_player_slot:
 			_mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
 	_ready_branch = _source._ready_branch
 
@@ -100,11 +113,14 @@ func _refresh_routes() -> void:
 	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_entry_latches.get(route.id, false))
 	for gate: Dictionary in stage.get("gates", []):
-		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or Seven.predicate(gate.get("when", {}), stage, _players, _mechanisms, _optics.signals)
+		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or Seven.predicate(gate.get("when", {}), stage, _players, _mechanisms, _optics.signals, _open_controls())
 	if _tide_rules(): _close_slowly(was)
 
 func _tide_rules() -> bool:
-	return simulation_version >= TIDE_RULES_VERSION
+	return simulation_version in TIDE_RULES
+
+func _open_controls() -> bool:
+	return simulation_version in OPEN_RULES
 
 ## Tide rules: a crossing that was open and whose gate no longer holds keeps
 ## its floor until `closing_ticks` after the tick it started closing, then
@@ -180,14 +196,14 @@ func _after_move() -> void:
 func context_action() -> Dictionary:
 	if level.is_empty(): return _action("", "", false, "")
 	for control: Dictionary in stage.get("controls", []):
-		if control.owner_slot == active_slot and Seven.near(_players[active_slot],control):
+		if (_open_controls() or control.owner_slot == active_slot) and Seven.near(_players[active_slot],control):
 			return _action("selector", "Turn mirror" if control.kind=="mirror" else "Turn switch", true, control.id)
 	var inherited := super.context_action()
 	if inherited.id == "ring" and level.id == "long-way-home": inherited.label = "Light window"
 	if inherited.id == "ring" and level.id == "conservatory": inherited.label = "Light garden"
 	# Stage one of the harbour keeps its bell; only the second stage is a lantern.
 	if inherited.id == "ring" and level.id == "turn-of-the-tide" and stage.id == "slack-water": inherited.label = "Light lantern"
-	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_players,_mechanisms,_optics.signals):
+	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_players,_mechanisms,_optics.signals,_open_controls()):
 		inherited.enabled = false
 	return inherited
 
@@ -224,9 +240,9 @@ func _update_source_readiness() -> void:
 	var branch := ""
 	if policy.kind in ["route_endpoint","signal_route"]:
 		var endpoint_ok:=not policy.has("endpoint") or Seven.near(_players[first_player_slot],policy.endpoint)
-		if Seven.predicate(policy.when,stage,_players,_mechanisms,_optics.signals) and endpoint_ok: branch="endpoint"
+		if Seven.predicate(policy.when,stage,_players,_mechanisms,_optics.signals,_open_controls()) and endpoint_ok: branch="endpoint"
 	elif policy.kind == "choice_pad":
-		var selected := Seven.choice(stage,_players)
+		var selected := Seven.choice(stage,_players,_open_controls())
 		if not selected.is_empty(): branch=str(selected.id)
 	if branch.is_empty():
 		_hold_start=-1
@@ -242,7 +258,7 @@ func source_budget_ticks() -> int:
 	if level.is_empty(): return MAX_TICKS
 	var selected: Dictionary=stage
 	if stage.source_policy.kind=="choice_pad":
-		selected=Seven.choice(stage,_players)
+		selected=Seven.choice(stage,_players,_open_controls())
 		if selected.is_empty(): return MAX_TICKS
 	var point:=Vector2i(_checkpoint.players[_other(first_player_slot)].x,_checkpoint.players[_other(first_player_slot)].z)
 	var budget:=int(selected.get("receiver_action_ticks",0))+40+(90 if _comfort_rules() else 0)

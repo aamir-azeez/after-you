@@ -9,7 +9,8 @@ test_chapter_descriptors refuses for a released chapter.
     python scripts/new_chapter.py --version-of conservatory@1 --shard 2
 
 --version-of makes the next version of a registered chapter. Its catalog reads
-the earlier definition and gives it the new version on rules 9; the world, the
+the earlier definition and gives it the new version on the open controls
+(core/physical/open_controls.gd, owners off its controls); the world, the
 thumbnail, the copy, the Home places and the Home keepsake stay the earlier
 version's, and the earlier version's descriptor is left as it is. A chapter
 has exactly one Home keepsake, on the version nothing supersedes: releasing
@@ -262,7 +263,7 @@ def add_flag(plan: Plan, flag: str, accessor: str, title: str, key: str) -> None
         raise Refused(f"{flags.relative} has no FLAG_VARS block")
     indent = re.match(r"^\s*", flags.lines[end - 1]).group(0)
     plan.insert(flags.relative, end, [
-        f"{indent}/** Creating {title} rooms ({key}), read through the CHAPTERS table in v2/chapters.ts. */",
+        f"{indent}/** Creating {title + ' ' if title else ''}rooms ({key}), read through the CHAPTERS table in v2/chapters.ts. */",
         f'{indent}{accessor}: "{flag}",'])
 
 

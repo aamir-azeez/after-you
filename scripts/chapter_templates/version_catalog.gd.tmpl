@@ -1,17 +1,19 @@
 extends RefCounted
-## {{KEY}}: {{EARLIER}}'s definition as version {{VERSION}}, pinned to rules 9 (the
-## comfort rules under a number 0.5.x never advertised), so it never shares a
-## record with an earlier version. Its words are the descriptor's copy and
+## {{KEY}}: {{EARLIER}}'s definition as version {{VERSION}}, pinned to the open
+## controls (core/physical/open_controls.gd: 13 after the tide rules, else 12),
+## so it never shares a record with an earlier version, and its controls carry
+## no owner. Its words are the descriptor's copy and
 ## stage_copy, never the definition's, and its turn limits are the development
 ## ones (content/chapters/index.gd DEVELOPMENT_TURN_LIMITS) until play sets them
 ## (scripts/chapter_turn_limits.py).
 const Earlier = preload("{{EARLIER_SCRIPT}}")
+const OpenControls = preload("res://core/physical/open_controls.gd")
 const WORDS := ["title", "subtitle", "hint_a", "hint_b"]
 
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.{{EARLIER_CALL}}.duplicate(true)
 	level.version = {{VERSION}}
-	level.simulation_version = 9
+	OpenControls.pin(level)
 	level.turn_limits = {{DEV_TURN_LIMITS}}
 	for field: String in WORDS:
 		level.erase(field)

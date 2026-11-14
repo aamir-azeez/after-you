@@ -118,10 +118,12 @@ func _join_lists() -> void:
 	var versions: Array = old.get("supported_simulation_versions", [])
 	_check(Canonical.same(versions, [2, 4, 5, 6, 7, 8, 9, 10]) and versions.size() <= 8 and 11 not in versions, "An old server gets today's join list, at most 8 rules, with the tide rules (10) and no 11")
 	var level_two: Dictionary = await _join_body(_caps(2))
-	_check(Canonical.same(level_two.get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10, 11]), "A room-level-2 server gets the list with rules 10 and 11")
+	_check(Canonical.same(level_two.get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]), "A room-level-2 server gets the list with rules 10, 11 and the open controls (12, 13)")
 	var tight := _caps(2)
-	tight.max_join_versions = 9
-	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10, 11]), "Nine allowed entries fit the longer list")
+	tight.max_join_versions = 11
+	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]), "Eleven allowed entries fit the longer list")
+	tight.max_join_versions = 10
+	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10]), "Ten allowed entries keep the short list")
 	tight.max_join_versions = 8
 	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10]), "Eight allowed entries keep the short list")
 	var made := _session({})

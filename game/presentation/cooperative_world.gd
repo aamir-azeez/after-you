@@ -431,7 +431,8 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	var piece: RefCounted = PadPiece.build(style, _at(pad), float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "heavy": heavy, "id": str(pad.id)})
 	_pad_pieces[pad.id] = piece
 	_physical_pads[pad.id] = piece.rim
-	if piece.spot != null: owner_marks.record(str(pad.owner_slot), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
+	# A pad either pip holds (open controls) has no owner to mark.
+	if piece.spot != null and pad.has("owner_slot"): owner_marks.record(str(pad.owner_slot), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
 
 ## A valve's dial marks for a selector (kit/pieces/selector.gd): per value,
 ## how many bands; one each by default.
@@ -441,7 +442,7 @@ func _look_marks(control: Dictionary) -> Array:
 ## A lever or a selector in its style (kit/pieces/lever.gd, selector.gd).
 func _build_lever(lever: Dictionary) -> void:
 	var slot := PieceStyles.control_slot(lever)
-	var options := {"owner": str(lever.owner_slot), "id": str(lever.id), "values": Array(lever.get("values", [])), "marks": _look_marks(lever)}
+	var options := {"owner": str(lever.get("owner_slot", "")), "id": str(lever.id), "values": Array(lever.get("values", [])), "marks": _look_marks(lever)}
 	var kit: Script = SelectorPiece if slot == "selector" else LeverPiece
 	var piece: RefCounted = kit.build(_piece_style(slot, str(lever.id)), _at(lever), terrain, options)
 	_lever_pieces[lever.id] = piece

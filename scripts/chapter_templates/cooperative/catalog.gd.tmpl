@@ -1,9 +1,14 @@
 extends RefCounted
-## {{TITLE}}: two placeholder stages on the cooperative rules, pinned to rules 9
-## (the comfort rules under a number 0.5.x never advertised). The layout is High
-## and Low's: a shore, a raised loft, a lower ledge and a garden, in integer cm.
+## {{TITLE}}: two placeholder stages on the cooperative rules, pinned to the
+## open controls (core/physical/open_controls.gd, 12: the comfort rules with
+## every pad and lever worked by either pip). The layout is High and Low's: a
+## shore, a raised loft, a lower ledge and a garden, in integer cm.
+const OpenControls = preload("res://core/physical/open_controls.gd")
 
 static func definition() -> Dictionary:
+	return OpenControls.pin(_level())
+
+static func _level() -> Dictionary:
 	return {"schema_version":6,"simulation_version":9,"id":"{{ID}}","version":1,"title":"{{TITLE}}","premium":{{PREMIUM}},
 		"starts":{"p0":[-528,-128],"p1":[-288,0]},"props":[],
 		"islands":[_island("shore",[-640,-240,-240,240],0),_island("loft",[-80,-240,320,240],160),_island("lower-ledge",[128,-96,576,192],0),_island("garden",[736,-176,1088,176],0)],

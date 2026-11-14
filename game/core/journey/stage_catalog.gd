@@ -5,7 +5,10 @@ const Home = preload("res://core/journey/long_way_home_catalog.gd")
 const Conservatory = preload("res://core/journey/conservatory_catalog.gd")
 const Tide = preload("res://core/journey/turn_of_the_tide_catalog.gd")
 const TurnOfTheTideV2Catalog = preload("res://core/journey/turn_of_the_tide_v2_catalog.gd")
-const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2"]
+const LongWayHomeV3Catalog = preload("res://core/journey/long_way_home_v3_catalog.gd")
+const TurnOfTheTideV3Catalog = preload("res://core/journey/turn_of_the_tide_v3_catalog.gd")
+const ConservatoryV2Catalog = preload("res://core/journey/conservatory_v2_catalog.gd")
+const KEYS := ["conservatory@1","long-way-home@1","long-way-home@2","turn-of-the-tide@1","turn-of-the-tide@2","long-way-home@3","turn-of-the-tide@3","conservatory@2"]
 
 static func definition(key: String = "long-way-home") -> Dictionary:
 	if key in ["long-way-home", "long-way-home@1"]: return Home.definition()
@@ -13,6 +16,9 @@ static func definition(key: String = "long-way-home") -> Dictionary:
 	if key in ["conservatory", "conservatory@1"]: return Conservatory.definition()
 	if key in ["turn-of-the-tide", "turn-of-the-tide@1"]: return Tide.definition()
 	if key == "turn-of-the-tide@2": return TurnOfTheTideV2Catalog.definition()
+	if key == "long-way-home@3": return LongWayHomeV3Catalog.definition()
+	if key == "turn-of-the-tide@3": return TurnOfTheTideV3Catalog.definition()
+	if key == "conservatory@2": return ConservatoryV2Catalog.definition()
 	return {}
 
 ## Bare ids keep naming the first version; a definition is checked against its own id@version.

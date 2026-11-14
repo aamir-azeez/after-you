@@ -84,6 +84,12 @@ export const FLAG_VARS = Object.freeze({
   compressedRooms: "COMPRESSED_ROOMS",
   /** Pauses the replay time limit on finished rooms (v2/replay-expiry.ts), which is on unless CONFIG lists this: replays no phone saved go REPLAY_KEEP_MS (a year) after the room finished. */
   replayExpiryPaused: "REPLAY_EXPIRY_PAUSED",
+  /** Creating Long Way Home@3 rooms (long-way-home@3, open controls), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  longWayHomeV3Chapter: "LONG_WAY_HOME_V3_CHAPTER_ENABLED",
+  /** Creating Turn of the Tide@3 rooms (turn-of-the-tide@3, open controls), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  turnOfTheTideV3Chapter: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED",
+  /** Creating Conservatory@2 rooms (conservatory@2, open controls), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  conservatoryV2Chapter: "CONSERVATORY_V2_CHAPTER_ENABLED",
 } as const);
 
 /**

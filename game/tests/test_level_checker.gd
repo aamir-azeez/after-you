@@ -15,6 +15,15 @@ extends SceneTree
 ##    pip reaches, or a carried item; never an owner_slot on floor the other
 ##    pip walks. Published spots are KNOWN_OWNERSHIP: the route barriers
 ##    (presentation/kit/route_barriers.gd) show their cause instead.
+##  - Open controls (core/physical/open_controls.gd, the rules a new level
+##    pins): a control, lever or pad may carry no owner_slot at all, and either
+##    pip reaching it is enough. Each stage must still need both pips: with the
+##    first pip standing still at its start (a memory that does nothing), the
+##    second must not be able to reach its goal with the goal's light or
+##    switches holding. The graph over-approximates, so a pass is a proof.
+##    A later version keeps the crossings and zones an earlier version lists
+##    in KNOWN_OWNERSHIP (same stage, same spot): the open rules change
+##    controls only, and the route barriers still show those causes.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
 ##    each other on a stage. Props against routes, pads, levers, goals and
 ##    starts, and the camera's view of them, are tests/test_dressing_lint.gd's.
@@ -30,6 +39,7 @@ const Stages = preload("res://tests/level_tools/level_stages.gd")
 const Shots = preload("res://tests/level_tools/stage_shots.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
+const OpenControls = preload("res://core/physical/open_controls.gd")
 ## Two props stand in each other when their footprints share more than this
 ## much of the smaller one's (and their heights meet): touching leaves and a
 ## lamp beside a crate are fine, one crate inside another is not.
@@ -240,6 +250,7 @@ func _run() -> void:
 		var started := Time.get_ticks_msec()
 		_reach(key)
 		_ownership(key)
+		_needs_both(key)
 		_props(key)
 		covered += 1
 		print("LEVEL CHECKER: %s in %d ms" % [key, Time.get_ticks_msec() - started])
@@ -251,6 +262,7 @@ func _run() -> void:
 	for id: String in KNOWN_OWNERSHIP:
 		_check(_found.has(id), "Known failure still fails, or comes off the list: %s (%s)" % [id, OWNERSHIP_WHY])
 	_check(_owned_seen > 50, "The ownership rule meets the published one-pip spots, so it can fail (%d)" % _owned_seen)
+	_needs_both_rule()
 	print("LEVEL CHECKER: %d chapters, skipped %s" % [covered, skipped])
 	print("LEVEL CHECKER: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -266,13 +278,27 @@ func _check(ok: bool, message: String) -> void:
 func _expect(ok: bool, id: String, message: String) -> void:
 	if not ok:
 		_found[id] = true
-		if KNOWN.has(id) or KNOWN_OWNERSHIP.has(id):
-			print("KNOWN: %s (%s)" % [message, KNOWN.get(id, OWNERSHIP_WHY)])
+		var carried := _carried_ownership(id)
+		if KNOWN.has(id) or KNOWN_OWNERSHIP.has(id) or not carried.is_empty():
+			print("KNOWN: %s (%s)" % [message, KNOWN.get(id, OWNERSHIP_WHY if carried.is_empty() else "as %s" % carried)])
 			ok = true
 		else: print("FAILURE ID: %s" % id)
 	_check(ok, message)
 
 # --- Ownership ------------------------------------------------------------------
+
+## The earlier version's KNOWN_OWNERSHIP entry a later version's crossing or
+## zone spot carries ("" if none): same stage, same spot, same pip.
+static func _carried_ownership(id: String) -> String:
+	var parts := id.split(" ", false)
+	if parts.size() < 4 or parts[2] not in ["crossing", "zone"] or not parts[0].contains("@"): return ""
+	var at := parts[0].rfind("@")
+	var version := parts[0].substr(at + 1).to_int()
+	var rest := " ".join(parts.slice(1))
+	for earlier in range(version - 1, 0, -1):
+		var known := "%s@%d %s" % [parts[0].substr(0, at), earlier, rest]
+		if KNOWN_OWNERSHIP.has(known): return known
+	return ""
 
 ## Fails each owned crossing, zone and control the other pip can reach on its
 ## stage: an end of the crossing, the zone's floor, the control's floor.
@@ -308,10 +334,15 @@ func _ownership(key: String) -> void:
 			if owner.is_empty(): continue
 			var other := "p1" if owner == "p0" else "p0"
 			_owned(not found.floors[other].has(str(zone.surface_id)), "%s zone %s %s" % [where, zone.id, other], "%s: %s reaches %s, the floor of the zone %s that only %s may enter" % [where, other, zone.surface_id, zone.id, owner])
+		var open := OpenControls.pinned(level)
 		for kind: String in ["controls", "levers", "pressure_pads"]:
 			for entity: Dictionary in stage.get(kind, []):
 				var owner := str(entity.get("owner_slot", ""))
 				var surface := _control_floor(stage, entity)
+				# Open controls: either pip works it, so an owner would be a lie.
+				if open:
+					_expect(not entity.has("owner_slot"), "%s %s %s owned" % [where, _kind_name(kind), entity.id], "%s: the %s %s names an owner (%s), but the chapter plays open controls, where either pip works it; put it where only one pip goes instead" % [where, _kind_name(kind), entity.id, owner])
+					continue
 				if owner.is_empty(): continue
 				# A control the checker cannot place on a floor would pass unseen: say so.
 				_expect(not surface.is_empty(), "%s %s %s floor" % [where, _kind_name(kind), entity.id], "%s: the %s %s has no surface_id and no island at its height under it, so no one can tell who reaches it" % [where, _kind_name(kind), entity.id])
@@ -349,9 +380,11 @@ func _reach(key: String) -> void:
 		var found: Dictionary = graph.reach(stage, item.checkpoint, journey)
 		for slot: String in found.floors:
 			for id: String in found.floors[slot]: seen[id] = true
+		var open := OpenControls.pinned(level)
 		for kind: String in ["controls", "levers", "pressure_pads"]:
 			for entity: Dictionary in stage.get(kind, []):
-				_stand(graph, found, entity, str(entity.get("owner_slot", "")), where, kind, journey)
+				if open: _stand_either(graph, found, entity, where, kind, journey)
+				else: _stand(graph, found, entity, str(entity.get("owner_slot", "")), where, kind, journey)
 		var goal: Dictionary = stage.get("goal", {})
 		if not goal.is_empty():
 			if str(stage.get("goal_policy", {}).get("kind", "ring")) == "ring":
@@ -376,12 +409,58 @@ func _stand(graph: RefCounted, found: Dictionary, entity: Dictionary, slot: Stri
 	_expect(reached, id, "%s: %s never reaches the %s on %s at %s" % [where, slot, label, surface, _cm(entity.position_cm)])
 	if reached: _expect(graph.can_stand_at(entity, slot, found.open, journey), id + " stand", "%s: %s cannot stand within reach of the %s at %s on %s (at its height)" % [where, slot, label, _cm(entity.position_cm), surface])
 
+## Open controls: some pip reaches the entity's floor and can stand within reach.
+func _stand_either(graph: RefCounted, found: Dictionary, entity: Dictionary, where: String, kind: String, journey: bool) -> void:
+	var surface := str(entity.get("surface_id", ""))
+	var label := "%s %s" % [_kind_name(kind), entity.id]
+	var id := "%s %s" % [where, label]
+	var reached: Array = ["p0", "p1"].filter(func(slot: String) -> bool: return found.floors.get(slot, {}).has(surface))
+	_expect(not reached.is_empty(), id, "%s: no pip ever reaches the %s on %s at %s" % [where, label, surface, _cm(entity.position_cm)])
+	if reached.is_empty(): return
+	var stands := reached.any(func(slot: String) -> bool: return graph.can_stand_at(entity, slot, found.open, journey))
+	_expect(stands, id + " stand", "%s: no pip can stand within reach of the %s at %s on %s (at its height)" % [where, label, _cm(entity.position_cm), surface])
+
 static func _kind_name(kind: String) -> String:
 	match kind:
 		"controls": return "selector"
 		"levers": return "lever"
 		"pressure_pads": return "pad"
 	return kind
+
+# --- Both pips (open controls) ---------------------------------------------------
+
+## On open controls, every stage needs both pips (header).
+func _needs_both(key: String) -> void:
+	var level := Registry.definition(key)
+	if not OpenControls.pinned(level): return
+	var journey := Registry.is_journey(key)
+	var graph: RefCounted = LevelGraph.new(level)
+	for item: Dictionary in Stages.stages(key, level):
+		if item.checkpoint.is_empty(): continue
+		var stage: Dictionary = item.view
+		var where := "%s %s" % [key, stage.stage_id]
+		_expect(not solo_finish(graph, stage, item.checkpoint, journey), "%s alone" % where, "%s: with the first pip standing still, the second still reaches the goal with it lit; give the first pip a part only it can play" % where)
+
+## Whether the second pip could finish `stage` alone, the first standing still.
+static func solo_finish(graph: RefCounted, stage: Dictionary, checkpoint: Dictionary, journey: bool) -> bool:
+	var first := str(stage.get("first_player_slot", "p0"))
+	var second := Shots.goal_slot(stage)
+	var found: Dictionary = graph.reach(stage, checkpoint, journey, first)
+	var goal: Dictionary = stage.get("goal", {})
+	if goal.is_empty() or not found.floors[second].has(str(goal.get("surface_id", "")) ): return false
+	if str(stage.get("goal_policy", {}).get("kind", "ring")) == "ring" and not graph.can_stand_at(goal, second, found.open, journey): return false
+	var when: Dictionary = stage.get("goal_policy", {}).get("when", {})
+	return when.is_empty() or graph.gate_can_hold({"when": when}, stage, found.settable, checkpoint.get("mechanisms", {}), journey, found.floors)
+
+## The probe can fail: Conservatory@1's first stage on open controls, its forks
+## on the court both pips share, lets the second pip finish alone; @2's
+## balcony does not.
+func _needs_both_rule() -> void:
+	var opened: Dictionary = OpenControls.pin(Registry.definition("conservatory@1").duplicate(true))
+	var stage: Dictionary = Stages.stages("conservatory@1", opened)[0]
+	_check(solo_finish(LevelGraph.new(opened), stage.view, Stages.starts_checkpoint(opened), true), "On open controls Conservatory@1's first stage can be finished by the second pip alone, so the probe can fail")
+	var balcony := Registry.definition("conservatory@2")
+	_check(not solo_finish(LevelGraph.new(balcony), Stages.stages("conservatory@2", balcony)[0].view, Stages.starts_checkpoint(balcony), true), "Conservatory@2's balcony keeps the forks the first pip's, so its first stage needs both")
 
 # --- Props ----------------------------------------------------------------------
 

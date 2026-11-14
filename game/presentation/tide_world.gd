@@ -519,7 +519,8 @@ func _build_lever(lever: Dictionary) -> void:
 	var lamp := sphere(0.07, Color("4a4038"), _at(lever) + Vector3(0.24, 0.22, 0.0), terrain)
 	lamp.name = "LeverLamp_" + str(lever.id)
 	box(Vector3(0.03, 0.18, 0.03), TIMBER, _at(lever) + Vector3(0.24, 0.09, 0.0), terrain)
-	_lever_lamps[lever.id] = {"lamp": lamp, "color": GOLD if lever.owner_slot == "p0" else TEAL}
+	var owner := str(lever.get("owner_slot", ""))
+	_lever_lamps[lever.id] = {"lamp": lamp, "color": CREAM if owner.is_empty() else GOLD if owner == "p0" else TEAL}
 
 # --- Gate links: tide gauges, crests and the catwalks' slack marks ---
 

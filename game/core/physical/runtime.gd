@@ -4,6 +4,7 @@ extends RefCounted
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Controls = preload("res://core/first_steps/simulation.gd")
+const OpenControls = preload("res://core/physical/open_controls.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const MOVE_PER_TICK := 8
@@ -15,6 +16,14 @@ const RECEIVER_GRACE_TICKS := 300
 ## it, so a packet cannot change it. Without it the published caps apply.
 const FIRST_TURN_LIMITS_VERSION := 9
 const MAX_DECLARED_TURN_TICKS := 9000
+## Open controls (a facade's _open_controls()): a pad holds for either pip, and
+## either pip works any lever, switch or selector, so the controls carry no
+## owner_slot. In the second turn the memory's toggles replay as toggles: a
+## control takes the memory's value only on a tick where the memory changed it,
+## and keeps the live pip's otherwise. On a tick where both change it, the
+## memory's lands first and the live pip's press then turns it from there.
+## The numbers live in open_controls.gd; this one both facades share.
+const OPEN_RULES_VERSION := OpenControls.OPEN_RULES_VERSION
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -47,6 +56,9 @@ var _offer_tick := -1
 var _claimed := false
 var _objective := false
 var _comfort_entries: Dictionary = {}
+## Open controls, second turn: the lever and control ids the memory changed this
+## tick ({"levers": {id: true}, "controls": {id: true}}).
+var _source_toggles: Dictionary = {"levers": {}, "controls": {}}
 ## The digest of `level`, worked out on first use after a reset (level is set
 ## only by a reset, to its own deep copy, and never changed after): the state
 ## hash, the recording and the navigation index read it instead of digesting
@@ -98,6 +110,7 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_claimed = false
 	_objective = false
 	_comfort_entries = {}
+	_source_toggles = {"levers": {}, "controls": {}}
 	tick = 0
 	finished = false
 	complete = false
@@ -151,16 +164,34 @@ func step(input: Dictionary = {}) -> Dictionary:
 	return snapshot()
 
 func _advance_source() -> void:
+	var open := _open_controls()
+	var before: Dictionary = _source_values() if open else {}
 	if tick < _prior_frames.size(): _source.step(_prior_frames[tick])
 	_players[first_player_slot] = _source._players[first_player_slot].duplicate(true)
+	if open: _source_toggles = _changed_since(before)
 	for lever: Dictionary in stage.get("levers", []):
-		if lever.owner_slot == first_player_slot and _source._mechanisms.levers.has(lever.id):
+		if open:
+			if _source_toggles.levers.has(lever.id): _mechanisms.levers[lever.id] = _source._mechanisms.levers[lever.id]
+		elif lever.owner_slot == first_player_slot and _source._mechanisms.levers.has(lever.id):
 			_mechanisms.levers[lever.id] = _source._mechanisms.levers[lever.id]
 	if not _claimed:
 		_mechanisms.props = _source._mechanisms.props.duplicate(true)
 	_offer_tick = _source._offer_tick
 	_hold_ticks = _source._hold_ticks
 	_hold_start = _source._hold_start
+
+## Open controls: the memory's lever and control values before its tick.
+func _source_values() -> Dictionary:
+	return {"levers": _source._mechanisms.get("levers", {}).duplicate(), "controls": _source._mechanisms.get("controls", {}).duplicate()}
+
+## Open controls: the ids whose value the memory changed since `before`.
+func _changed_since(before: Dictionary) -> Dictionary:
+	var changed: Dictionary = {"levers": {}, "controls": {}}
+	for kind: String in changed:
+		var now: Dictionary = _source._mechanisms.get(kind, {})
+		for id: Variant in now:
+			if not before[kind].has(id) or before[kind][id] != now[id]: changed[kind][id] = true
+	return changed
 
 func _move(frame: Dictionary) -> void:
 	var direction := Vector2(float(frame.x), float(frame.z)).limit_length(100.0)
@@ -223,7 +254,9 @@ func _refresh_routes() -> void:
 		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or enabled
 
 func _pad_active(pad: Dictionary) -> bool:
-	return not pad.is_empty() and _near_entity(_players[pad.owner_slot], pad)
+	if pad.is_empty(): return false
+	if _open_controls(): return _near_entity(_players.p0, pad) or _near_entity(_players.p1, pad)
+	return _near_entity(_players[pad.owner_slot], pad)
 
 func _ball_at(target: Dictionary, prop_id: String) -> bool:
 	if target.is_empty() or not _mechanisms.props.has(prop_id): return false
@@ -276,7 +309,7 @@ func context_action() -> Dictionary:
 	if level.is_empty(): return _action("", "", false, "")
 	var player: Dictionary = _players[active_slot]
 	for lever: Dictionary in stage.get("levers", []):
-		if lever.owner_slot == active_slot and _near_entity(player, lever):
+		if (_open_controls() or lever.owner_slot == active_slot) and _near_entity(player, lever):
 			return _action("lever", "Pull lever", true, lever.id)
 	if role == "b" and stage.goal_policy.kind == "ring" and _near_entity(player, stage.goal):
 		return _action("ring", "Ring bell", true, stage.goal.id)
@@ -523,6 +556,11 @@ func _reset_mechanics() -> void:
 ## `finished` here. Published rules have none.
 func _check_hazards() -> void:
 	pass
+
+## Whether this facade plays open controls (OPEN_RULES_VERSION). Published
+## rules never do.
+func _open_controls() -> bool:
+	return false
 
 ## Whether the stage may complete this tick. Published rules always may.
 func _may_complete() -> bool:

@@ -1,0 +1,193 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 10,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 14,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 70,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 86,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 4,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 18,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 44,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 48,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 46,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 6,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "5f25d907b3956ea08defc8a45030a42f8d28f465c965b78467caf582c29d6317",
+	"completed": true,
+	"definition_hash": "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082",
+	"duration_ticks": 374,
+	"final_state_hash": "d8c15067b796fc46ad1348f32eb32571ed0eb97e4782119c78b82bdd5007678d",
+	"level_id": "conservatory",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "64b97e003e0494556a67eeb7b18f3dca27e4508e9c6cd534ec48045522ae14e0",
+	"replay_checks": [
+		{
+			"state_hash": "044c7c2aff0a4528920da03e057fdfc26f46f01efffee91aa25e4ce260a4d535",
+			"tick": 30
+		},
+		{
+			"state_hash": "e2d862bdf534630631b7f87ef749ddbb9537369a35fbb1a23a934ff99a455e1d",
+			"tick": 60
+		},
+		{
+			"state_hash": "b9795f81ca65d8b353bf30f1ee9e99236f4b419fb99b2dd8a52702310c3360a7",
+			"tick": 90
+		},
+		{
+			"state_hash": "83fc2682ca3d1b2e05078c3e918654aecdb1abd107a8143c3f771711b5a3c3ea",
+			"tick": 120
+		},
+		{
+			"state_hash": "fef259218d2c126119b74fdcd11928a1b573e3fa61ab8583fe3f8e562554d6df",
+			"tick": 150
+		},
+		{
+			"state_hash": "3d1f06c0a4293f24de33d290408c5d39e1f71632c0bc66c01f5410016f6003b6",
+			"tick": 180
+		},
+		{
+			"state_hash": "177aed303d2f31cad117fd32c0d80b88c4793bffdb7c0f8745e2db5a26e542a2",
+			"tick": 210
+		},
+		{
+			"state_hash": "ff23d509ca82aaed680baba4c1f7285084c8111093c74b8f370d2e3d0ec411df",
+			"tick": 240
+		},
+		{
+			"state_hash": "e6acb8440a2bd0100e776d8234654b761d77ad579868b2dc03a727b27c90094b",
+			"tick": 270
+		},
+		{
+			"state_hash": "01ab7e240e9b1efe84aabcb22c66e9cfbc32da80558a3a0b6f25188ed23aca9f",
+			"tick": 300
+		},
+		{
+			"state_hash": "ef699130e2e9035835eecf80f479846d0f965d19a34d8d45b14a3c663170273a",
+			"tick": 330
+		},
+		{
+			"state_hash": "8b1500486e25419368a79121b6cfe1a9ab21a59f991591ec382d23cc959386a4",
+			"tick": 360
+		},
+		{
+			"state_hash": "d8c15067b796fc46ad1348f32eb32571ed0eb97e4782119c78b82bdd5007678d",
+			"tick": 374
+		}
+	],
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 12,
+	"source_recording_hash": "844d5ccf73aeeaa1cc7a2cbcd2f3a3b2cc5a4e8717c5cb7f02e7954de8fddf3d",
+	"stage_id": "the-way-light-returns",
+	"stage_version": 1,
+	"tick_rate": 30
+}

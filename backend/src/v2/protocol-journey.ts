@@ -1,7 +1,7 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
-import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "./chapter-types";
+import { openControls, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -12,14 +12,23 @@ import tideDefinition from "./turn-of-the-tide.json";
 import tideInitial from "./turn-of-the-tide-initial.json";
 import tideV2Definition from "./turn-of-the-tide-v2.json";
 import tideV2Initial from "./turn-of-the-tide-v2-initial.json";
+import homeV3Definition from "./long-way-home-v3.json";
+import homeV3Initial from "./long-way-home-v3-initial.json";
+import tideV3Definition from "./turn-of-the-tide-v3.json";
+import tideV3Initial from "./turn-of-the-tide-v3-initial.json";
+import conservatoryV2Definition from "./conservatory-v2.json";
+import conservatoryV2Initial from "./conservatory-v2-initial.json";
 
 export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
 export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
 export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
 export const TURN_OF_THE_TIDE_HASH = "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a";
 export const TURN_OF_THE_TIDE_V2_HASH = "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43";
+export const LONG_WAY_HOME_V3_HASH = "e002866770266df70430a68118fe95b032cc1d080fc9da086fcf00a2cbd9d392";
+export const TURN_OF_THE_TIDE_V3_HASH = "6a60b9661ec6d832f1ac2370ff299d57106a5b1c8cb39db05073f7550ed5c1da";
+export const CONSERVATORY_V2_HASH = "e9318b808149dfafa156d8c320a18edd9150131e8e58d7acf22d8428a1cb2082";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
-type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot: string };
+type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
 type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
@@ -48,9 +57,11 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [7, 8];
-  // Tide rules (10 and later) latch no route: a player may end a stage on a
+  // Tide rules (10 and 13) latch no route: a player may end a stage on a
   // stub only while one of this stage's gates for it holds on the end state.
-  const tideRules = definition.simulation_version >= 10;
+  const tideRules = tideRulesVersion(definition.simulation_version);
+  // Open controls (12 and 13): a pad holds for either player.
+  const open = openControls(definition.simulation_version);
   // Longer turns, when the definition declares them, carry bounds grown to fit.
   const turns = turnLimits(definition), limits = turns ? scaledLimits(turns) : undefined;
   if (limits) checkTurnBounds(limits, maxBranches);
@@ -107,7 +118,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       if (value.control_id) return controls[value.control_id] === value.value;
       if (value.lever_id) return levers[value.lever_id] === true;
       if (value.signal_id) return light[value.signal_id] === true;
-      if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && near(object(players[pad.owner_slot]), pad); }
+      if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
       return true;
     }
     for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
@@ -140,3 +151,11 @@ export const turnOfTheTide: ChapterAdapter = adapter(tideDefinition, tideInitial
  * No route latches: a stub a player ends on must be open on the end state.
  * Seven branches, as @1, keep its widest replay archive and room snapshot under their caps. */
 export const turnOfTheTideV2: ChapterAdapter = adapter(tideV2Definition, tideV2Initial, TURN_OF_THE_TIDE_V2_HASH, 7);
+/** Open controls (12): Long Way Home@2 with every pad, lever and selector worked by either player. Unreleased. */
+export const longWayHomeV3 = adapter(homeV3Definition, homeV3Initial, LONG_WAY_HOME_V3_HASH);
+/** Open controls on the tide rules (13): Turn of the Tide@2 with every control worked by either player.
+ * Seven branches, as @1 and @2. Unreleased. */
+export const turnOfTheTideV3: ChapterAdapter = adapter(tideV3Definition, tideV3Initial, TURN_OF_THE_TIDE_V3_HASH, 7);
+/** Open controls (12): Conservatory@1 with the court's two forks on a balcony only the first player reaches,
+ * and the first turn ending at the court-wait spot on the court. Unreleased. */
+export const conservatoryV2 = adapter(conservatoryV2Definition, conservatoryV2Initial, CONSERVATORY_V2_HASH);

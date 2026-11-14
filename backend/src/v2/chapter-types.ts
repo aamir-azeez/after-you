@@ -31,6 +31,15 @@ export type ChapterAdapter = {
 };
 /** Comfort rules (8) and their later aliases. 9 plays exactly as 8 and exists so a
  * chapter pinned to it can refuse 0.5.x guests, which never advertised 9. 10 (tide
- * rules) builds on them: same records and bounds, only the journey envelope differs. */
-export const COMFORT_RULES: readonly number[] = [8, 9, 10];
+ * rules), 12 and 13 (open controls) build on them: same records and bounds, only
+ * the checkpoint envelope differs. 11 is the Lighthouse room's own. */
+export const COMFORT_RULES: readonly number[] = [8, 9, 10, 12, 13];
 export function comfortRules(version: unknown): boolean { return typeof version === "number" && COMFORT_RULES.includes(version); }
+/** Tide rules: 10, and 13 (tide rules with open controls). No route latches. */
+export const TIDE_RULES: readonly number[] = [10, 13];
+export function tideRules(version: unknown): boolean { return typeof version === "number" && TIDE_RULES.includes(version); }
+/** Open controls: 12 (comfort rules) and 13 (tide rules) with every pad held by
+ * either player and every lever, switch or selector worked by either. Older
+ * clients never advertised 12 or 13, so a chapter pinned to one refuses them on join. */
+export const OPEN_CONTROLS_RULES: readonly number[] = [12, 13];
+export function openControls(version: unknown): boolean { return typeof version === "number" && OPEN_CONTROLS_RULES.includes(version); }
