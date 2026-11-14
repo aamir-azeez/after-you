@@ -74,14 +74,12 @@ export async function playEntitlement(playerId: string, env: ServerVars, onGrant
   const subscribed = plans.items.some(item => accessFrom(item, subscriptionProducts, environment));
   if (subscribed) return { full_journey: true, status: "verified", access_source: "play_subscription", entitlement: "full_journey_play", player_id: playerId };
   let incomplete = Boolean(records.next_page || plans.next_page);
-  // A tester's (CONFIG revenuecat.tester_ids) Play sandbox subscription counts as a real one: one more read, for testers only.
-  if (config.tester_ids.includes(playerId)) {
-    const test = await revenuecatRequest(`${base}/subscriptions?environment=sandbox&limit=100`, key);
-    if (!test.ok) return { full_journey: false, status: "unavailable", reason: test.reason };
-    const sandbox = test.status === 404 ? { object: "list", items: [] } : test.value;
-    if (!isObject(sandbox) || sandbox.object !== "list" || !Array.isArray(sandbox.items) || sandbox.items.length > 100) return { full_journey: false, status: "unavailable", reason: "provider_invalid_list" };
-    if (sandbox.items.some(item => accessFrom(item, subscriptionProducts, "sandbox"))) return { full_journey: true, status: "verified", access_source: "play_subscription", entitlement: "full_journey_play", player_id: playerId };
-    incomplete ||= Boolean(sandbox.next_page);
-  }
+  // A Play sandbox subscription (a license tester's) counts as a real one, for every player: one more read, only once production refused.
+  const test = await revenuecatRequest(`${base}/subscriptions?environment=sandbox&limit=100`, key);
+  if (!test.ok) return { full_journey: false, status: "unavailable", reason: test.reason };
+  const sandbox = test.status === 404 ? { object: "list", items: [] } : test.value;
+  if (!isObject(sandbox) || sandbox.object !== "list" || !Array.isArray(sandbox.items) || sandbox.items.length > 100) return { full_journey: false, status: "unavailable", reason: "provider_invalid_list" };
+  if (sandbox.items.some(item => accessFrom(item, subscriptionProducts, "sandbox"))) return { full_journey: true, status: "verified", access_source: "play_subscription", entitlement: "full_journey_play", player_id: playerId };
+  incomplete ||= Boolean(sandbox.next_page);
   return { full_journey: false, status: incomplete ? "unavailable" : "verified", ...(incomplete ? { reason: "provider_incomplete_list" } : {}) };
 }

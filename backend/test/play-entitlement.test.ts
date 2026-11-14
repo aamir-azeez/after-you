@@ -40,7 +40,7 @@ describe("server-selected Play subscription policy", () => {
     expect(await playEntitlement(owner, subscriptionConfig)).toEqual({ full_journey: true, status: "verified", access_source: "play_subscription", entitlement: "full_journey_play", player_id: owner });
     expect(requests).toHaveBeenCalledTimes(3); expect(String(requests.mock.calls[2][0])).toContain(`/customers/${owner}/subscriptions?environment=production&limit=100`);
   });
-  it.each([{ status: "expired", gives_access: false }, { status: "in_billing_retry", gives_access: false }, { status: "paused" }, { gives_access: false }, { store: "test_store" }, { store: "promotional" }, { environment: "sandbox" }, { product_id: "prodOther" }, { product_id: null }, { ownership: "family_shared" }, { object: "purchase" }])("rejects an expired, foreign or mismatched subscription %j", async change => {
+  it.each([{ status: "expired", gives_access: false }, { status: "in_billing_retry", gives_access: false }, { status: "paused" }, { gives_access: false }, { store: "test_store" }, { store: "promotional" }, { environment: "staging" }, { product_id: "prodOther" }, { product_id: null }, { ownership: "family_shared" }, { object: "purchase" }])("rejects an expired, foreign or mismatched subscription %j", async change => {
     subscriptionProvider([subscription(change)]);
     expect(await playEntitlement(owner, subscriptionConfig)).toEqual({ full_journey: false, status: "verified" });
   });
