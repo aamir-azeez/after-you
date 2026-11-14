@@ -1,10 +1,12 @@
 package com.aamirazeez.afteryou.nativebridge
 
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.app.Activity
 import android.view.View
+import androidx.core.content.FileProvider
 import com.revenuecat.purchases.CacheFetchPolicy
 import com.revenuecat.purchases.CustomerInfo
 import com.revenuecat.purchases.LogHandler
@@ -103,6 +105,36 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                 current.startActivity(Intent.createChooser(send, "Share friend code"))
             } catch (_: Exception) { }
         }
+    }
+
+    /**
+     * Opens Android's system chooser for one file (Export this run). The bytes are written under
+     * the cache's export folder (ExportFiles) and handed over by the photo FileProvider with a read
+     * grant, so no permission is needed. False when nothing could be offered.
+     */
+    @UsedByGodot
+    fun share_file(bytes: ByteArray, fileName: String, mimeType: String): Boolean {
+        val current = activity ?: return false
+        val file = ExportFiles.write(current.cacheDir, fileName, bytes) ?: return false
+        val uri = try {
+            FileProvider.getUriForFile(current, current.packageName + ".afteryou.photos", file)
+        } catch (_: Exception) {
+            return false
+        }
+        val type = ExportFiles.mimeType(mimeType)
+        current.runOnUiThread {
+            try {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    setType(type)
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = ClipData.newRawUri(file.name, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(send, PlayerCopy.EXPORT_RUN_TITLE).apply { addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                current.startActivity(chooser)
+            } catch (_: Exception) { }
+        }
+        return true
     }
 
     override fun onMainCreate(activity: Activity?): View? {

@@ -26,6 +26,14 @@ NSString *const AYPollenKind = @"pollen_monthly";
 	return grouped;
 }
 
++ (NSString *)exportFileName:(NSString *)name {
+	NSString *lower = [[name stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] lowercaseString];
+	NSString *cleaned = [[NSRegularExpression regularExpressionWithPattern:@"[^a-z0-9._-]+" options:0 error:nil] stringByReplacingMatchesInString:lower options:0 range:NSMakeRange(0, lower.length) withTemplate:@"-"];
+	cleaned = [[NSRegularExpression regularExpressionWithPattern:@"-{2,}" options:0 error:nil] stringByReplacingMatchesInString:cleaned options:0 range:NSMakeRange(0, cleaned.length) withTemplate:@"-"];
+	cleaned = [cleaned stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"-."]];
+	return cleaned.length == 0 || cleaned.length > 96 ? nil : cleaned;
+}
+
 + (BOOL)validStorageName:(NSString *)name {
 	return AYMatches(@"[a-z][a-z0-9_.-]{0,63}", name);
 }
