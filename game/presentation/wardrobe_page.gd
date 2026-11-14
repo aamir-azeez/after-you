@@ -147,6 +147,9 @@ var _grid: HFlowContainer
 var _reactions: Reactions
 ## The scroll's list, and the empty list's drawing in it while there is one.
 var _list: VBoxContainer
+var _scroll: ScrollContainer
+## The chip the list shows; another chip starts the list at its top.
+var _shown_kind := ""
 ## The cream shop panel, and the Orchard shown in its place on the Orchard tab.
 var _shop: Control
 var _orchard: Orchard
@@ -324,6 +327,7 @@ func _shop_panel() -> Control:
 	_retry.pressed.connect(func() -> void: retry_pressed.emit())
 	column.add_child(_retry)
 	var scroll := ScrollContainer.new()
+	_scroll = scroll
 	scroll.name = "WardrobeScroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -413,6 +417,9 @@ func render(model: Dictionary) -> void:
 	# Owned ends with Get more when the flow says so (model.more), after at least one owned card.
 	var more := bool(model.get("more", false)) and not shown.is_empty()
 	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty, more, model.get("orchard", false), view])
+	if kind != _shown_kind:
+		_shown_kind = kind
+		_scroll.scroll_vertical = 0
 	if key != _cards_key and not orchard:
 		_cards_key = key
 		_fill(_featured, featured, true)
