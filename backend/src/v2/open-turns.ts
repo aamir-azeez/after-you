@@ -42,10 +42,10 @@ export type OpenTurns = {
   readonly branches: number;
 };
 
-/** A stage's turn cap, as its definition declares it. Throws at module load on a bad value. */
+/** A stage's turn cap, as its definition declares it: even, so the last turn is the goal pip's (open_turns.gd cap_valid). Throws at module load on a bad value. */
 export function stageTurnCap(stage: { turn_cap?: unknown }): number {
   if (stage.turn_cap === undefined) return DEFAULT_TURN_CAP;
-  if (!Number.isSafeInteger(stage.turn_cap) || (stage.turn_cap as number) < MIN_TURN_CAP || (stage.turn_cap as number) > MAX_TURN_CAP) throw new Error("invalid turn_cap");
+  if (!Number.isSafeInteger(stage.turn_cap) || (stage.turn_cap as number) < MIN_TURN_CAP || (stage.turn_cap as number) > MAX_TURN_CAP || (stage.turn_cap as number) % 2 !== 0) throw new Error("invalid turn_cap");
   return stage.turn_cap as number;
 }
 

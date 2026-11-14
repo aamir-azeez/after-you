@@ -108,6 +108,7 @@ describe("open turns: rules and bounds", () => {
     expect(turnOfTheTideV2.limits).toEqual(scaledLimits(turnLimits(tideV2Definition)!));
     expect(() => openTurnLimits([{ turn_cap: 1 }], 65_536, 7)).toThrow("invalid turn_cap");
     expect(() => openTurnLimits([{ turn_cap: 21 }], 65_536, 7)).toThrow("invalid turn_cap");
+    expect(() => openTurnLimits([{ turn_cap: 9 }], 65_536, 7)).toThrow("invalid turn_cap");
   });
   it("names turns by letter, a and b first, and gives odd turns to the stage's first pip", () => {
     expect([1, 2, 3, 20].map(n => turnId(3, 1, n))).toEqual(["t3-1-a", "t3-1-b", "t3-1-c", "t3-1-t"]);
