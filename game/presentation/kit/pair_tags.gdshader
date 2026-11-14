@@ -44,8 +44,9 @@ void fragment() {
 	ROUGHNESS = 0.85;
 	float shown = max(clear, lit);
 	if (layer > 2.5) {
-		// A pool of warm light, strongest under the tile, gone at its rim.
-		float edge = smoothstep(0.5, 0.12, distance(UV, vec2(0.5)));
+		// A pool of warm light, strongest under the tile, gone at its rim: each
+		// quarter's UV runs from the tile's centre (0) to its reach (1).
+		float edge = smoothstep(1.0, 0.24, length(UV));
 		ALBEDO = vec3(0.0);
 		EMISSION = glow * lit;
 		ALPHA = glow_alpha * edge * lit;

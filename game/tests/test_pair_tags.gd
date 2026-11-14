@@ -13,7 +13,8 @@ extends SceneTree
 ## - one mesh draws them all, and the states follow the snapshot alone:
 ##   faint, clear while either spirit is near one of the pair's inputs,
 ##   glowing while active, the same whatever came before (a replay shows what
-##   play showed); a selector's tile at a gate glows only at a value that gate
+##   play showed), a lit tile's pool of light never under another tile;
+##   a selector's tile at a gate glows only at a value that gate
 ##   asks, and a receiver's own tile only while one of its gates is open;
 ## - a receiver lit through turnable mirrors has those mirrors as its inputs.
 ## The pure parts are checked on small stages too: no pairs, past ten, a
@@ -294,6 +295,17 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		for other in range(index + 1, rows.size()):
 			if absf(float(heights[rows[index]]) - float(heights[rows[other]])) > 0.3: continue
 			_check(not (rows[index] as Rect2).grow(PairTags.GAP * 0.5 - 0.001).intersects(rows[other]), "%s: two rows of tiles keep apart (%s, %s)" % [where, rows[index], rows[other]])
+	# A lit tile's pool of light never lies under another tile on its floor,
+	# so an unlit tile beside a lit one keeps its unlit look.
+	var trimmed := 0
+	for tile: Dictionary in placed:
+		var glow: Rect2 = tile.glow
+		if glow.size.x < PairTags.TAG * PairTags.HALO - 0.001 or glow.size.y < PairTags.TAG * PairTags.HALO - 0.001: trimmed += 1
+		for other: Dictionary in placed:
+			if other == tile or absf((other.at as Vector3).y - (tile.at as Vector3).y) > PairTags.GLOW_FLOOR: continue
+			var square := Rect2((other.at as Vector3).x - PairTags.TAG * 0.5, (other.at as Vector3).z - PairTags.TAG * 0.5, PairTags.TAG, PairTags.TAG)
+			_check(not glow.intersects(square), "%s: the glow of %s's tile (%s) stays off %s's tile (%s)" % [where, tile.control, tile.letter, other.control, other.letter])
+	if trimmed > 0: print("PAIR TAGS: %s: %d of %d tiles' pools stop short of a neighbour" % [where, trimmed, placed.size()])
 	# One mesh draws the stage's tiles.
 	var drawn: Array = world.terrain.find_children("PairTags", "MeshInstance3D", true, false)
 	_check(drawn.size() == (0 if placed.is_empty() else 1), "%s: one mesh draws every tile (%d)" % [where, drawn.size()])

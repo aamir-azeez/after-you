@@ -100,7 +100,9 @@ const INK := Color("2f3534")
 ## face, letter). Near: the tile at full strength, its face NEAR_LIGHTEN toward
 ## PALE, its letter solid ink. Lit: the fill LIT_LIGHTEN toward WARM and
 ## glowing at LIT_GLOW, the letter still ink, and a pool of GLOW light HALO
-## times the tile across under it, GLOW_ALPHA strong at its centre.
+## times the tile across under it, GLOW_ALPHA strong at its centre. The pool
+## stops half way to any other tile on its floor (glow_reach), so a glow never
+## lies under a neighbour and an unlit tile beside a lit one stays unlit.
 const FAINT_ALPHA := Vector3(0.18, 0.2, 0.14)
 const NEAR_LIGHTEN := 0.1
 const PALE := Color("fff8e0")
@@ -110,6 +112,8 @@ const WARM := Color("ffdc94")
 const GLOW := Color("ffe696")
 const HALO := 3.6
 const GLOW_ALPHA := 0.9
+## Tiles this near in height share a floor for the pool's reach.
+const GLOW_FLOOR := 0.3
 ## The shader's uniforms, by name (pair_tags.gdshader).
 const LOOK := {&"faint_alpha": FAINT_ALPHA, &"near_lighten": NEAR_LIGHTEN, &"pale": PALE, &"lit_lighten": LIT_LIGHTEN, &"lit_glow": LIT_GLOW, &"warm": WARM, &"glow": GLOW, &"glow_alpha": GLOW_ALPHA}
 ## The shader keeps a state for this many tiles (a pair's tile in a row, or on
@@ -316,11 +320,22 @@ func build(view: Dictionary) -> void:
 	_rows = _layout(view)
 	# One state slot per tile, so each lights for its own gates.
 	_tiles.clear()
+	var centres: Array = []
 	for row: Dictionary in _rows:
 		row["slots"] = {}
-		for index: int in row.pairs:
+		for slot in range(row.pairs.size()):
+			var index: int = row.pairs[slot]
 			row.slots[index] = _tiles.size()
 			_tiles.append({"pair": index, "gates": row.gates[index]})
+			centres.append(_slot_at(row, slot))
+	# Each tile's pool of light, kept off every other tile.
+	var reaches := glow_reach(centres)
+	var next := 0
+	for row: Dictionary in _rows:
+		row["reach"] = {}
+		for index: int in row.pairs:
+			row.reach[index] = reaches[next]
+			next += 1
 	var dressing: Variant = _world.get("dressing") if _world != null else null
 	_frame = StringName(str(dressing.get("tag", DEFAULT_FRAME))) if dressing is Dictionary else DEFAULT_FRAME
 	if not FRAMES.has(_frame): _frame = DEFAULT_FRAME
@@ -358,7 +373,8 @@ func build(view: Dictionary) -> void:
 
 ## Every tile the stage shows: {control, letter, band, index, sides (CONTROL
 ## and or GATE), gates (route ids), at (terrain space, the floor under its
-## centre), row (its row's rect across the floor), squeezed (no clear place)}.
+## centre), row (its row's rect across the floor), squeezed (no clear place),
+## glow (the floor its pool of light may cover while lit, glow_reach)}.
 func placed() -> Array[Dictionary]:
 	_ensure_built()
 	var found: Array[Dictionary] = []
@@ -366,7 +382,7 @@ func placed() -> Array[Dictionary]:
 		for slot in range(row.pairs.size()):
 			var index: int = row.pairs[slot]
 			var pair: Dictionary = _pairs[index]
-			found.append({"control": pair.control, "letter": letter_of(index), "band": band_of(index), "index": index, "sides": row.sides[index], "gates": row.gates[index], "at": _slot_at(row, slot), "row": row.rect, "squeezed": row.squeezed, "clash": row.clash})
+			found.append({"control": pair.control, "letter": letter_of(index), "band": band_of(index), "index": index, "sides": row.sides[index], "gates": row.gates[index], "at": _slot_at(row, slot), "row": row.rect, "squeezed": row.squeezed, "clash": row.clash, "glow": _glow_rect(_slot_at(row, slot), row.reach[index])})
 	return found
 
 ## The overrides the world declared this stage: [control, gate] per skip().
@@ -384,6 +400,37 @@ func states() -> Dictionary:
 		shown.clear = shown.clear or state.clear
 		shown.lit = shown.lit or state.lit
 	return found
+
+## How far each tile's pool of light reaches from `centres` (tile centres,
+## terrain space), each way: Vector4(-x, +x, -z, +z). HALO's whole pool where
+## the floor is open; toward another tile on its floor (GLOW_FLOOR) only half
+## way to it, so no glow lies under a neighbour and two lit neighbours keep a
+## dark seam between their pools.
+static func glow_reach(centres: Array) -> Array[Vector4]:
+	var full := TAG * HALO * 0.5
+	var found: Array[Vector4] = []
+	for index in range(centres.size()):
+		var at: Vector3 = centres[index]
+		var reach := Vector4(full, full, full, full)
+		for other in range(centres.size()):
+			var d: Vector3 = centres[other] - at
+			if other == index or absf(d.y) > GLOW_FLOOR: continue
+			if not _glow_rect(at, reach).intersects(Rect2(d.x + at.x - TAG * 0.5, d.z + at.z - TAG * 0.5, TAG, TAG)): continue
+			# Trimmed on the side the other tile lies most toward.
+			if absf(d.x) >= absf(d.z):
+				var half := maxf(absf(d.x) * 0.5, TAG * 0.5)
+				if d.x > 0.0: reach.y = minf(reach.y, half)
+				else: reach.x = minf(reach.x, half)
+			else:
+				var half := maxf(absf(d.z) * 0.5, TAG * 0.5)
+				if d.z > 0.0: reach.w = minf(reach.w, half)
+				else: reach.z = minf(reach.z, half)
+		found.append(reach)
+	return found
+
+## The floor (x, z) a pool reaching `reach` (glow_reach) round `at` covers.
+static func _glow_rect(at: Vector3, reach: Vector4) -> Rect2:
+	return Rect2(at.x - reach.x, at.z - reach.z, reach.x + reach.y, reach.z + reach.w)
 
 ## Every tile's state now, in slot order: {control, gates, clear, lit}.
 func tile_states() -> Array[Dictionary]:
@@ -636,8 +683,8 @@ static func _flat(at: Vector3) -> Vector2:
 
 # --- Drawing ------------------------------------------------------------------------
 
-## One mesh for `rows`: first every tile's glow (so no glow lies over a
-## neighbour; without `glows`, none), then per tile its rim, face, bands and
+## One mesh for `rows`: first every tile's glow (its pool, row.reach, under
+## every tile; without `glows`, none), then per tile its rim, face, bands and
 ## letter, each vertex carrying its tile's state slot (UV2.x, row.slots) and
 ## layer (UV2.y), drawn in that order.
 func _bake(rows: Array, glows: bool = true) -> ArrayMesh:
@@ -647,8 +694,8 @@ func _bake(rows: Array, glows: bool = true) -> ArrayMesh:
 	for row: Dictionary in rows if glows else []:
 		var count: int = row.pairs.size()
 		for slot in range(count):
-			var at: Vector3 = row.at + Vector3((float(slot) - float(count - 1) * 0.5) * (TAG + GAP), 0, 0)
-			_quad(tool, at + Vector3(0, LIFT, 0), Vector2(TAG, TAG) * HALO, GLOW, int(row.slots[row.pairs[slot]]), 3.0)
+			var index: int = row.pairs[slot]
+			_glow(tool, _slot_at(row, slot) + Vector3(0, LIFT, 0), row.reach[index], int(row.slots[index]))
 	for row: Dictionary in rows:
 		var count: int = row.pairs.size()
 		for slot in range(count):
@@ -711,6 +758,20 @@ static func _fan(tool: SurfaceTool, centre: Vector3, outline: PackedVector2Array
 		tool.add_vertex(centre)
 		tool.add_vertex(centre + Vector3(a.x, 0, a.y))
 		tool.add_vertex(centre + Vector3(b.x, 0, b.y))
+
+## A tile's pool of light round `at`: four quarters, each reaching its own
+## way (glow_reach), its UV running 0 at the centre to 1 at that quarter's
+## edges, so the shader's falloff ends exactly there.
+static func _glow(tool: SurfaceTool, at: Vector3, reach: Vector4, slot: int) -> void:
+	tool.set_color(GLOW)
+	tool.set_uv2(Vector2(float(mini(slot, MAX_STATES - 1)), 3.0))
+	for x: float in [-reach.x, reach.y]:
+		for z: float in [-reach.z, reach.w]:
+			var corners := [at, at + Vector3(x, 0, 0), at + Vector3(x, 0, z), at + Vector3(0, 0, z)]
+			var uvs := [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)]
+			for vertex: int in [0, 1, 2, 0, 2, 3]:
+				tool.set_uv(uvs[vertex])
+				tool.add_vertex(corners[vertex])
 
 static func _quad(tool: SurfaceTool, centre: Vector3, size: Vector2, colour: Color, slot: int, layer: float) -> void:
 	tool.set_color(colour)
