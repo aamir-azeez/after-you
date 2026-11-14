@@ -94,6 +94,6 @@ static func wrapped(value: String, size: int, color: Color) -> Label:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return label
 
-static func heading(column: VBoxContainer, title: String, note: String, title_font: Font) -> void:
+static func heading(column: VBoxContainer, title: String, title_font: Font, note: String = "") -> void:
 	column.add_child(ShopKit.text(title, 23, INK, title_type(title_font)))
-	column.add_child(wrapped(note, 15, SOFT_INK))
+	if not note.is_empty(): column.add_child(wrapped(note, 15, SOFT_INK))

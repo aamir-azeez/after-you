@@ -3,7 +3,7 @@ import raw from "./catalog.json";
 import { PACK_FACES, SINGLE_FACES } from "../v2/end-reactions";
 import { CURRENCIES, type Currency } from "./currency";
 import { COSMETIC_CODE_MAX, serverConfig, type ServerConfig } from "../config";
-import type { ServerVars } from "../flags";
+import { gatedOn, type Reach, type ServerVars } from "../flags";
 import { faceSinglesOn } from "./features";
 
 /**
@@ -175,26 +175,32 @@ export function releasedCatalog(released: ReadonlySet<number>, base: Catalog = C
   for (const id of ids) items[id] = Object.freeze({ ...items[id], released: true });
   return Object.freeze({ ...base, items: Object.freeze(items) });
 }
-/** One answer per parsed CONFIG (config.ts parses CONFIG once per isolate and value), so a request does no work twice. */
+/**
+ * One answer per parsed CONFIG (config.ts parses CONFIG once per isolate and value) and per kind of app, so a request does
+ * no work twice. An app below the release list's gate (config.ts feature_min_version) gets the catalogue as built, and
+ * face items only while FACE_SINGLES is on for it: at most four answers per CONFIG, each worked out on first use.
+ */
 type Released = { catalog: Catalog; tags: [string, string]; featured: number | undefined };
-const released = new WeakMap<ServerConfig, Released>();
-function releasedFor(env: ServerVars): Released {
-  const config = serverConfig(env);
-  let found = released.get(config);
+const NONE_RELEASED: ReadonlySet<number> = new Set<number>();
+const released = new WeakMap<ServerConfig, (Released | undefined)[]>();
+function releasedFor(env: ServerVars, reach: Reach): Released {
+  const config = serverConfig(env), listed = gatedOn(env, "cosmetics_released", reach), faces = faceSinglesOn(env, reach);
+  const kinds = released.get(config) ?? [], kind = (listed ? 2 : 0) + (faces ? 1 : 0);
+  let found = kinds[kind];
   if (!found) {
-    const catalog = releasedCatalog(config.cosmetics_released, CATALOG, faceSinglesOn(env)), featured = featuredItem(env, catalog);
+    const catalog = releasedCatalog(listed ? config.cosmetics_released : NONE_RELEASED, CATALOG, faces), featured = featuredItem(env, catalog);
     found = { catalog, tags: catalog === CATALOG ? [OFFERED_TAG, FRUITS_OFFERED_TAG] : [offeredTag(catalog), offeredTag(catalog, true)],
       featured: featured === undefined ? undefined : catalog.items[featured].code };
-    released.set(config, found);
+    kinds[kind] = found; released.set(config, kinds);
   }
   return found;
 }
-/** The catalogue this request sells, offers and drops from: catalog.json with CONFIG's released codes. */
-export function catalogFor(env: ServerVars): Catalog { return releasedFor(env).catalog; }
-/** offeredTag of catalogFor(env), worked out once per CONFIG. */
-export function offeredTagFor(env: ServerVars, fruits: boolean): string { return releasedFor(env).tags[fruits ? 1 : 0]; }
-/** The code of featuredItem(env), worked out once per CONFIG, or undefined. */
-export function featuredCodeFor(env: ServerVars): number | undefined { return releasedFor(env).featured; }
+/** The catalogue this request sells, offers and drops from: catalog.json with CONFIG's released codes, for the app `reach` names. */
+export function catalogFor(env: ServerVars, reach: Reach): Catalog { return releasedFor(env, reach).catalog; }
+/** offeredTag of catalogFor(env, reach), worked out once per CONFIG and kind of app. */
+export function offeredTagFor(env: ServerVars, fruits: boolean, reach: Reach): string { return releasedFor(env, reach).tags[fruits ? 1 : 0]; }
+/** The code of featuredItem in catalogFor(env, reach), or undefined. */
+export function featuredCodeFor(env: ServerVars, reach: Reach): number | undefined { return releasedFor(env, reach).featured; }
 /** The item with this code, or undefined. */
 export function itemOfCode(code: number, catalog: Catalog = CATALOG): string | undefined {
   return Object.keys(catalog.items).find(id => catalog.items[id].code === code);
@@ -204,7 +210,7 @@ export function itemOfCode(code: number, catalog: Catalog = CATALOG): string | u
  * none, an unknown code, or an item that is not released or not sold for Pollen now (the shelf of the week is Pollen
  * only). The phone then shows its built-in pick (game/services/featured_shelf.gd).
  */
-export function featuredItem(env: ServerVars, catalog: Catalog = catalogFor(env)): string | undefined {
+export function featuredItem(env: ServerVars, catalog: Catalog): string | undefined {
   const code = serverConfig(env).cosmetics_featured;
   const id = code === null ? undefined : itemOfCode(code, catalog);
   return id !== undefined && sold(id, catalog) && itemCurrency(id, catalog) === "pollen" && catalog.slots.includes(catalog.items[id].slot) ? id : undefined;

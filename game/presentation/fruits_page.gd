@@ -35,7 +35,7 @@ func _init(heading_font: Font = null) -> void:
 	title_font = heading_font
 	name = "FruitsPage"
 	var frame := Frame.build(self, {"back_name": "FruitsPageBack", "back_words": PlayerCopy.FRUITS_PAGE_BACK, "title": PlayerCopy.FRUITS_PAGE_TITLE,
-		"title_name": "FruitsPageTitle", "subtitle": PlayerCopy.FRUITS_PAGE_SUBTITLE}, title_font, func() -> void: back_pressed.emit())
+		"title_name": "FruitsPageTitle"}, title_font, func() -> void: back_pressed.emit())
 	back_button = frame.back
 	_chip_slot = frame.chip_slot
 	var goals := Frame.cream_card(frame.body, "FruitGoalsCard")

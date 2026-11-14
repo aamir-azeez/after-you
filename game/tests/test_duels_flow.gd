@@ -100,10 +100,21 @@ class FakeSafety extends RefCounted:
 	var checks := 0
 	var accepts := 0
 	var last_error := ""
+	var last_code := ""
+	## A reply this phone could not read (unsupported_safety_response) while true.
+	var unreadable := false
+	var opened: Array = []
 	func check_terms() -> bool:
 		checks += 1
 		await Engine.get_main_loop().process_frame
+		if unreadable:
+			terms_accepted = false
+			last_code = "unsupported_safety_response"
+			return false
 		terms_accepted = server_accepts
+		return true
+	func open_public(path: String) -> bool:
+		opened.append(path)
 		return true
 	func accept_rules() -> bool:
 		accepts += 1
@@ -1134,6 +1145,30 @@ func _rules_card(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	_check(start.partner_name == "" and not start._posting_party(), "a partner who left takes With partner off Start a duel")
 	if start != null: start.close()
 	await _frames(2)
+	flow.close()
+	await _frames(2)
+	# The rules card (rules page board A), never the photo rules screen: a reply this phone could not read still
+	# shows it; Read the rules opens the full page; Accept and join asks afresh and accepts in one tap, held meanwhile.
+	flow.open()
+	await _frames(6)
+	safety.unreadable = true
+	safety.server_accepts = false
+	var before := [safety.checks, safety.accepts]
+	var turned := [null]
+	var asking := func() -> void: turned[0] = await flow.public().turn_on(null, false)
+	asking.call()
+	await _frames(4)
+	var entry: Control = flow.screen.find_child("PublicRulesEntry", true, false) if flow.is_open() else null
+	_check(entry != null and main.find_children("*", "CanvasLayer", true, false).all(func(layer: Node) -> bool: return not layer.has_method("_render_card")), "a safety reply that could not be read opens the rules card, not the photo rules screen")
+	(entry.find_child("PublicRulesRead", true, false) as Button).pressed.emit()
+	_check(safety.opened == ["/community-rules"] and is_instance_valid(entry), "Read the rules opens the full rules and keeps the card")
+	safety.unreadable = false
+	var go := entry.find_child("PublicRulesAccept", true, false) as Button
+	go.pressed.emit()
+	await _frames(0)
+	_check(go.disabled and go.text == PlayerCopy.RULES_CHECKING and (entry.find_child("PublicRulesRead", true, false) as Button).disabled, "Accept and join holds the card, both greyed, while it checks")
+	await _frames(6)
+	_check(not is_instance_valid(entry) and turned[0] == true and safety.checks == before[0] + 2 and safety.accepts == before[1] + 1, "one tap asks the rules afresh, accepts them and goes on")
 	flow.close()
 	await _frames(2)
 	main.relay_session.public_on = false

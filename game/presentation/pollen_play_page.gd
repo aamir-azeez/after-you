@@ -44,7 +44,7 @@ func _init(heading_font: Font = null) -> void:
 	title_font = heading_font
 	name = "PollenPlayPage"
 	var frame := Frame.build(self, {"back_name": "PollenPlayBack", "back_words": PlayerCopy.POLLEN_PLAY_BACK, "title": PlayerCopy.POLLEN_PLAY_TITLE,
-		"title_name": "PollenPlayTitle", "subtitle": PlayerCopy.POLLEN_PLAY_SUBTITLE}, title_font, func() -> void: back_pressed.emit())
+		"title_name": "PollenPlayTitle"}, title_font, func() -> void: back_pressed.emit())
 	back_button = frame.back
 	_chip_slot = frame.chip_slot
 	_title_label = frame.title
@@ -68,8 +68,8 @@ func render(model: Dictionary) -> void:
 	var status := str(model.get("status", ""))
 	var history: Dictionary = model.get("history", {})
 	if not status.is_empty():
-		Parts.heading(_turns, PlayerCopy.POLLEN_TURNS_TITLE, PlayerCopy.POLLEN_TURNS_NOTE, title_font)
-		Parts.heading(_clears, PlayerCopy.POLLEN_CLEARS_TITLE, PlayerCopy.POLLEN_CLEARS_NOTE, title_font)
+		Parts.heading(_turns, PlayerCopy.POLLEN_TURNS_TITLE, title_font)
+		Parts.heading(_clears, PlayerCopy.POLLEN_CLEARS_TITLE, title_font)
 		Frame.status(_turns, status, Parts.SOFT_INK, "PollenPlay", PlayerCopy.POLLEN_PLAY_RETRY, (func() -> void: retry_pressed.emit()) if bool(model.get("retry", false)) else Callable())
 		return
 	var fruits := bool(model.get("fruits", false))

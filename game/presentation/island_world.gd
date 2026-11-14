@@ -78,6 +78,10 @@ var bridge_ready := false
 var home_bridge_raised := false
 ## Plank height of a raised bridge; a lowered bridge sags well below it.
 const BRIDGE_RAISED_Y := -0.10
+
+## Plank `i`'s resting height, raised or lowered.
+static func bridge_plank_y(i: int, raised: bool) -> float:
+	return BRIDGE_RAISED_Y if raised else -0.85 - absf(i - 4) * 0.12
 ## A mechanism within this many metres (or of its travel) of its goal is still.
 const MOTION_SETTLED := 0.02
 var home_view := true
@@ -393,7 +397,10 @@ func load_level(level: Dictionary) -> void:
 	var bridge_width := float(bridge.get("width",180))/100.0
 	for i in range(9):
 		var x := lerpf(left_edge,right_edge,float(i+0.5)/9.0)
-		var plank := box(Vector3((right_edge-left_edge)/9.0-0.025,0.12,bridge_width),Color("c4b090"),Vector3(x,-0.13,bridge_z),terrain)
+		# Built where it rests (load_level leaves the bridge down), so a new
+		# level never starts by lowering it: that reported a moving drawbridge
+		# on the first frame, and its reel sounded through the launch splash.
+		var plank := box(Vector3((right_edge-left_edge)/9.0-0.025,0.12,bridge_width),Color("c4b090"),Vector3(x,bridge_plank_y(i,false),bridge_z),terrain)
 		bridge_parts.append(plank)
 		# The handrail posts travel with their plank when the bridge lowers.
 		for side in [-1,1]:
@@ -916,6 +923,7 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 		actors[role].visible=not (role=="b" and snapshot.role=="a")
 	_present_seed(snapshot.seed,immediate)
 	bridge_ready=bool(snapshot.bridge_open)
+	if immediate: _settle_bridge()
 	Primitives.own_material(plate).albedo_color=Color("f5d990") if snapshot.plate_active else Color("b5a06e")
 	if is_instance_valid(gate_plate):
 		Primitives.own_material(gate_plate).albedo_color=Color("d5c5fa") if snapshot.get("gate_open",false) else Color("907ea8")
@@ -1221,19 +1229,33 @@ func _process(delta: float) -> void:
 	_apply_seed_pose()
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
-	var raised := bridge_ready or (home_bridge_raised and home_view and home_presentation_owner!=0)
-	var bridge_travel := 0.0
-	for i in range(bridge_parts.size()):
-		var desired: float = BRIDGE_RAISED_Y if raised else -0.85-abs(i-4)*0.12
-		bridge_travel = maxf(bridge_travel, absf(desired - bridge_parts[i].position.y))
-		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)
-	note_motion("drawbridge", "drawbridge", (1 if raised else -1) if bridge_travel > MOTION_SETTLED else 0)
+	_move_bridge(weight)
 	_advance_garden_bloom(delta)
 	if not reduced_motion:
 		for i in range(motes.size()):
 			if motes[i].visible:
 				motes[i].position.y+=sin(time*0.4+i)*delta*0.07
 	_advance_camera(delta)
+
+## Moves the planks `weight` of the way to their pose and reports the
+## drawbridge moving while any is still away from it.
+func _move_bridge(weight: float) -> void:
+	var raised := _bridge_raised()
+	var bridge_travel := 0.0
+	for i in range(bridge_parts.size()):
+		var desired := bridge_plank_y(i, raised)
+		bridge_travel = maxf(bridge_travel, absf(desired - bridge_parts[i].position.y))
+		bridge_parts[i].position.y=lerpf(bridge_parts[i].position.y,desired,weight)
+	note_motion("drawbridge", "drawbridge", (1 if raised else -1) if bridge_travel > MOTION_SETTLED else 0)
+
+## An immediate present puts the bridge in its pose at once: it never moves.
+func _settle_bridge() -> void:
+	var raised := _bridge_raised()
+	for i in range(bridge_parts.size()): bridge_parts[i].position.y = bridge_plank_y(i, raised)
+	note_motion("drawbridge", "drawbridge", 0)
+
+func _bridge_raised() -> bool:
+	return bridge_ready or (home_bridge_raised and home_view and home_presentation_owner!=0)
 
 ## On a card over a held world (a chapter's ready and waiting screens) only
 ## the spirits keep breathing: nothing else in the world moves, and the pose
