@@ -41,7 +41,7 @@ func chapter() -> Dictionary:
 
 ## Plays `stage_routes` ({stage id: {"a", "b"}}) through every stage of the
 ## chapter, each from the checkpoint the stage before derived. "stages" has one
-## row per stage: {"id", "ok", "error", "a_ticks", "b_ticks", "msec"}; after a
+## row per stage: {"id", "ok", "error", "turns", "a_ticks", "b_ticks", "msec"}; after a
 ## stage fails, the later ones are "not reached". "error" is the first failure,
 ## naming the chapter and stage.
 static func play(chapter_key: String, stage_routes: Dictionary) -> Dictionary:
@@ -54,11 +54,12 @@ static func play(chapter_key: String, stage_routes: Dictionary) -> Dictionary:
 	for stage: Dictionary in level.stages:
 		var stage_id: String = stage.id
 		if not result.error.is_empty():
-			result.stages.append({"id": stage_id, "ok": false, "error": "not reached", "a_ticks": 0, "b_ticks": 0, "msec": 0})
+			result.stages.append({"id": stage_id, "ok": false, "error": "not reached", "turns": 0, "a_ticks": 0, "b_ticks": 0, "msec": 0})
 			continue
 		var started := Time.get_ticks_msec()
 		var played := _stage(chapter_key, level, stage_id, checkpoint, stage_routes.get(stage_id))
-		var row := {"id": stage_id, "ok": played.error.is_empty(), "error": played.error, "a_ticks": played.a_ticks, "b_ticks": played.b_ticks, "msec": Time.get_ticks_msec() - started}
+		# A stage's routes play two turns, the first and the one that finishes it.
+		var row := {"id": stage_id, "ok": played.error.is_empty(), "error": played.error, "turns": 2, "a_ticks": played.a_ticks, "b_ticks": played.b_ticks, "msec": Time.get_ticks_msec() - started}
 		result.stages.append(row)
 		if not played.error.is_empty():
 			result.error = "%s/%s: %s" % [chapter_key, stage_id, played.error]

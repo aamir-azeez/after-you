@@ -1,8 +1,8 @@
 extends RefCounted
-## conservatory@2: conservatory@1's definition as version 2, pinned to the open
-## controls (core/physical/open_controls.gd: 13 after the tide rules, else 12),
-## so it never shares a record with an earlier version, and its controls carry
-## no owner. Its words are the descriptor's copy and stage_copy, never the
+## conservatory@2: conservatory@1's definition as version 2, pinned to open
+## controls and open turns (core/physical/open_turns.gd: 14), so it never
+## shares a record with an earlier version, its controls carry no owner, and a
+## stage passes back and forth until its garden is lit, up to its cap. Its words are the descriptor's copy and stage_copy, never the
 ## definition's. It keeps conservatory@1's turn limits: the open rules need no more.
 ##
 ## A Light Above: with open controls the second spirit could turn the court's
@@ -17,6 +17,7 @@ extends RefCounted
 ## stage is @1's.
 const Earlier = preload("res://core/journey/conservatory_catalog.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const WORDS := ["title", "subtitle", "hint_a", "hint_b"]
 const BALCONY := "fork-balcony"
 const BALCONY_HEIGHT := 160
@@ -26,8 +27,10 @@ const FORKS := ["court-fork", "high-return"]
 const START := [-416, -224]
 const HATCH := {"id": "balcony-hatch", "rect_cm": [-504, -24, -464, 24], "surface_id": BALCONY, "destination_surface": "court", "height_cm": 0}
 ## The one crossing kept owned: open, the high stair would let the second pip
-## climb to the gallery and finish The Way Light Returns alone.
+## climb to the gallery and finish The Way Light Returns alone, on any of its turns.
 const OWNED := ["high-stair"]
+## Turns a stage may take: A Light Above, ten; the ending's two lights, twenty.
+const CAPS := {"a-light-above": 10, "the-way-light-returns": 20}
 ## The balcony's timber posts, solid (Navigation obstacles on the court), 12 cm
 ## square: a pip walks round them, never through. Just inside its corners and
 ## halfway along, clear of the court's floor seams.
@@ -38,7 +41,7 @@ const WAIT := {"id": "court-wait", "position_cm": [-336, -352], "surface_id": "c
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition().duplicate(true)
 	level.version = 2
-	OpenControls.pin(level)
+	OpenTurns.pin(level, CAPS)
 	OpenControls.open_crossings(level, OWNED)
 	for field: String in WORDS:
 		level.erase(field)

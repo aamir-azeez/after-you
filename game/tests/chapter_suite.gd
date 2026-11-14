@@ -2,6 +2,8 @@ extends SceneTree
 ## One chapter's own rules suite: the definition is the key's own and its family
 ## catalog knows it, it plays only the rules its definition pins (9 or later), every stage plays through with real
 ## inputs (its witness), and every recording and checkpoint verifies on its own.
+## On open turns (core/physical/open_turns.gd) each stage's witness finishes
+## within the stage's turn cap.
 ## With --write-fixtures it also writes the definition, the checkpoints and the
 ## recorded pairs where its family keeps them (golden_support.gd
 ## fixture_prefixes), which the manifest and integration suites read.
@@ -12,6 +14,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
 const Golden = preload("res://tests/golden_support.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 var checks := 0
 var failures := 0
 
@@ -47,6 +50,12 @@ func _verify(key: String, level: Dictionary, evidence: Dictionary) -> void:
 			var verdict: Dictionary = simulation.verify_recording(level, _json(pair[role]), _json(previous), _json(prior))
 			_check(verdict.valid and int(pair[role].simulation_version) == int(level.simulation_version), "Recording verifies on rules %d: %s/%s %s" % [int(level.simulation_version), level.stages[index].id, role, verdict.get("error", "")])
 		_check(simulation.verify_checkpoint(level, _json(evidence.checkpoints[index + 1])).valid, "Checkpoint verifies: " + str(level.stages[index].id))
+	if not OpenTurns.pinned(level): return
+	for index in range(level.stages.size()):
+		var stage: Dictionary = level.stages[index]
+		var rows: Array = evidence.get("stages", [])
+		var turns := int(rows[index].get("turns", 2)) if index < rows.size() else 2
+		_check(turns >= 2 and turns <= OpenTurns.cap(stage), "%s: its witness finishes in %d turns, within its cap of %d" % [stage.id, turns, OpenTurns.cap(stage)])
 
 func _write_fixtures(key: String, level: Dictionary, evidence: Dictionary) -> void:
 	var names := Golden.fixture_prefixes(key)

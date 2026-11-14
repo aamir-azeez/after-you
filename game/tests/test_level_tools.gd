@@ -4,7 +4,8 @@ extends SceneTree
 ##    its own gate, by each family's rule, so the checker can fail;
 ##  - the flat map plan's data, from definitions alone: every control, the
 ##    pair tags' own letters and colours, gates on real crossings, for every
-##    stage of every floor chapter and for a layout no chapter registers;
+##    stage of every floor chapter and for a layout no chapter registers, and
+##    an open turns stage's cap in its title;
 ##  - the stage shots: a pip beside a control stands on its floor, a worked
 ##    control opens what its gates say;
 ##  - live reload redraws a world from an edited catalog and dressing read from
@@ -22,6 +23,7 @@ const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 var checks := 0
 var failures := 0
 
@@ -80,6 +82,7 @@ func _graph() -> void:
 
 func _maps() -> void:
 	var stages := 0
+	var open_stages := 0
 	for key: String in Registry.keys():
 		if not Stages.floor_chapter(key): continue
 		var level := Registry.definition(key)
@@ -100,9 +103,12 @@ func _maps() -> void:
 				_check(pair.control == pairs[index].control and pair.letter == PairTags.letter_of(index) and pair.colour == PairTags.colour_of(index), "%s: %s keeps the game's letter and colour" % [where, pair.control])
 				_check(pair.gates.all(func(g: Dictionary) -> bool: return g.route in routes), "%s: %s's gates are crossings on the plan" % [where, pair.control])
 			_check(plan.floors.any(func(f: Dictionary) -> bool: return f.reached) and plan.starts.size() == 2, "%s: the plan marks reach and both starts" % where)
+			_check(plan.turns == ("up to %d turns" % OpenTurns.cap(item.stage) if OpenTurns.pinned(level) else ""), "%s: the plan says how many turns an open turns stage may take, and nothing on two turns" % where)
+			if OpenTurns.pinned(level): open_stages += 1
 			stages += 1
 		_check(Canonical.digest(level) == digest, "%s: drawing plans never changes the definition" % key)
 	_check(stages >= 18, "Plans for every floor chapter's stages (%d)" % stages)
+	_check(open_stages >= 6 and Stages.with_turns("Stage 2: Slack Water", Registry.definition("turn-of-the-tide@3"), Registry.definition("turn-of-the-tide@3").stages[1]) == "Stage 2: Slack Water, up to 20 turns" and Stages.with_turns("Stage 2", Registry.definition("turn-of-the-tide@2"), Registry.definition("turn-of-the-tide@2").stages[1]) == "Stage 2", "Captions add an open turns stage's cap, and leave a two turn stage as it was (%d open turns stages)" % open_stages)
 	var bare := _small(true)
 	var plan := Model.build(bare, CooperativeCatalog.stage_definition(bare, "only"), Stages.starts_checkpoint(bare), true)
 	var reached: Dictionary = {}

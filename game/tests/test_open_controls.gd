@@ -2,7 +2,8 @@ extends SceneTree
 ## Open controls (core/physical/open_controls.gd): the rules numbers, the
 ## versions pinned to them, and the rules themselves, played with real inputs
 ## where a real run can reach the spot:
-## - 12 and 13 are their own rules; every published chapter keeps its own, and
+## - 12 and 13 are their own rules (14 and 15 add open turns, which the three
+##   open versions pin); every published chapter keeps its own, and
 ##   its controls keep their owners;
 ## - a pad holds for either pip, and either pip works a lever or selector;
 ## - in the second turn a control takes the memory's value only on the tick the
@@ -43,7 +44,8 @@ func _run() -> void:
 func _numbers() -> void:
 	_check(OpenControls.OPEN_RULES == [12, 13, 14, 15] and OpenControls.TIDE_RULES == [10, 13, 15] and OpenControls.OPEN_TURNS_RULES == [14, 15] and 11 not in OpenControls.OPEN_RULES, "Open controls are 12 and 13, and 14 and 15 with open turns; 11 stays the Lighthouse room's")
 	_check(OpenControls.rules_for(9) == 12 and OpenControls.rules_for(7) == 12 and OpenControls.rules_for(10) == 13 and OpenControls.rules_for(15) == 15, "The open rules keep the earlier rules: tide (10) becomes 13, the rest 12, and open turns stay")
-	_check(Registry.supported_rules(HOME) == [12] and Registry.supported_rules(TIDE) == [13] and Registry.supported_rules("conservatory@2") == [12], "Each new version plays only its open rules")
+	_check(Registry.supported_rules(HOME) == [14] and Registry.supported_rules(TIDE) == [15] and Registry.supported_rules("conservatory@2") == [14], "Each new version plays only its open rules, with open turns")
+	_check(Simulation._record_version({"simulation_version": 14.0}) == 14 and Simulation._record_version({"simulation_version": 15}) == 15, "A record names its open turns rules, JSON floats included")
 	_check(Registry.supported_rules(HOME_PUBLISHED) == [9] and Registry.supported_rules("turn-of-the-tide@2") == [10] and Registry.supported_rules("conservatory@1") == [7, 8], "Published versions keep their rules")
 	_check(not Simulation.rules_allowed(Registry.definition(HOME), 9) and not Simulation.rules_allowed(Registry.definition(HOME_PUBLISHED), 12) and not Cooperative.rules_allowed(Registry.definition("the-wishing-well@1"), 12), "No published chapter plays the open rules, and no open chapter plays the old ones")
 	_check(Simulation._record_version({"simulation_version": 12.0}) == 12 and Simulation._record_version({"simulation_version": 13}) == 13 and Cooperative._record_version({"simulation_version": 12.0}) == 12, "A record names its open rules, JSON floats included")

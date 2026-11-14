@@ -38,11 +38,11 @@
 		}
 	],
 	"catch_assistance": true,
-	"checkpoint_hash": "d954181b58ee5f7d9be6e0f537f8ff432494eb4ddeb7b4358a40afacac02399c",
+	"checkpoint_hash": "f7a7f0987fffbddd2cf763b2dfc0fc8a1f3ffbc1001cb1caf7b5d6537ba41159",
 	"completed": false,
-	"definition_hash": "ffb3a33cdc65317f18af38f951bcdd57cd5bea75bad7490ec0fee2fab8a37e7c",
+	"definition_hash": "caaa39e301453b4082b447d5c7e5569ec952ad9b3011ee581badd265e976c50d",
 	"duration_ticks": 66,
-	"final_state_hash": "e0806c3dfb319c736ea6cf72a395e18e4f2051a69ce37ef5a26faaf45fb80912",
+	"final_state_hash": "68be817125478236e9daa83a2e3c1f29e782cf88ee36546d929cee31cbbf6da7",
 	"level_id": "conservatory",
 	"level_version": 2,
 	"outcome": {
@@ -50,24 +50,24 @@
 		"source_ready": true
 	},
 	"player_slot": "p1",
-	"recording_hash": "32f429209f41f01a17a90b178e1eb78ccce1ff0c1b730488854af604d100ac5b",
+	"recording_hash": "2b1bc15c7c74f44917c66bc31baab73820ee6dfab2ca8172a5c950fec16a5e54",
 	"replay_checks": [
 		{
-			"state_hash": "a9491a4691bdf335645333d0b26f1ae5084973750d804c9a5c8c7321e2d6ec39",
+			"state_hash": "9f55635015dbcfa1f3a54767954d1288c96c8c54515eeaa40c9bc1d4bad7a884",
 			"tick": 30
 		},
 		{
-			"state_hash": "303d1570ec4228236e09eee832a77746b77fe0960789d7b2675ea3f9a4e36453",
+			"state_hash": "ca897b290a323589d133e933860d966974d2ce0421380c1fddf19a7034a22075",
 			"tick": 60
 		},
 		{
-			"state_hash": "e0806c3dfb319c736ea6cf72a395e18e4f2051a69ce37ef5a26faaf45fb80912",
+			"state_hash": "68be817125478236e9daa83a2e3c1f29e782cf88ee36546d929cee31cbbf6da7",
 			"tick": 66
 		}
 	],
 	"role": "a",
 	"schema_version": 7,
-	"simulation_version": 12,
+	"simulation_version": 14,
 	"source_recording_hash": "",
 	"stage_id": "the-way-light-returns",
 	"stage_version": 1,

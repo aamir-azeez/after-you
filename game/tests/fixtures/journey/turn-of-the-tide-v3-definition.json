@@ -550,7 +550,7 @@
 	"premium": false,
 	"props": [],
 	"schema_version": 7,
-	"simulation_version": 13,
+	"simulation_version": 15,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -923,6 +923,7 @@
 				],
 				"kind": "choice_pad"
 			},
+			"turn_cap": 10,
 			"version": 1
 		},
 		{
@@ -1703,6 +1704,7 @@
 				],
 				"kind": "choice_pad"
 			},
+			"turn_cap": 20,
 			"version": 1
 		}
 	],

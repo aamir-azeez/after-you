@@ -44,6 +44,14 @@ static func cap(stage: Dictionary) -> int:
 	var declared: Variant = stage.get("turn_cap", DEFAULT_CAP)
 	return int(declared) if declared is int or declared is float else DEFAULT_CAP
 
+## The pips that may light `stage`'s goal on a turn after the first: the
+## goal's own pip (its owner_slot), the one who plays second. The first pip
+## plays turns 1, 3, 5 and so on, so with the goal open to it the first pip
+## could finish a stage alone while the other passed.
+static func ringers(stage: Dictionary) -> Array:
+	var owner := str(stage.get("goal", {}).get("owner_slot", ""))
+	return [owner] if owner in ["p0", "p1"] else ["p0", "p1"]
+
 ## Whether `stage`'s cap is one a level may set.
 static func cap_valid(stage: Dictionary) -> bool:
 	var declared: Variant = stage.get("turn_cap", DEFAULT_CAP)

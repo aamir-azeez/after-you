@@ -5,6 +5,7 @@ const Navigation = preload("res://core/cooperative/navigation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Controls = preload("res://core/first_steps/simulation.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const MOVE_PER_TICK := 8
@@ -311,7 +312,8 @@ func context_action() -> Dictionary:
 	for lever: Dictionary in stage.get("levers", []):
 		if (_open_controls() or lever.owner_slot == active_slot) and _near_entity(player, lever):
 			return _action("lever", "Pull lever", true, lever.id)
-	if role == "b" and stage.goal_policy.kind == "ring" and _near_entity(player, stage.goal):
+	# Open turns: only the goal's own pip lights it (OpenTurns.ringers).
+	if role == "b" and stage.goal_policy.kind == "ring" and _near_entity(player, stage.goal) and (simulation_version not in OpenTurns.RULES or active_slot in OpenTurns.ringers(stage)):
 		return _action("ring", "Ring bell", true, stage.goal.id)
 	if stage.source_policy.kind == "offer_ball":
 		var ball: Dictionary = _mechanisms.props[stage.source_policy.prop_id]

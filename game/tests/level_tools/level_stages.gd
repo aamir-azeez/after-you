@@ -9,6 +9,7 @@ extends RefCounted
 const Registry = preload("res://services/chapter_registry.gd")
 const Golden = preload("res://tests/golden_support.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 
 ## Chapters laid out as floors and crossings (the cooperative and journey
 ## families): every level tool reads these. The others are listed in
@@ -42,6 +43,17 @@ static func checkpoint_before(key: String, level: Dictionary, index: int) -> Dic
 	var prefixes := Golden.fixture_prefixes(key)
 	if prefixes.is_empty(): return {}
 	return Golden.fixture("%s%s-checkpoint.json" % [prefixes.stages, level.stages[index - 1].id])
+
+## How many turns `stage` (as authored) may take on open turns, in words
+## ("up to 10 turns"), or "" on the two-turn rules. The map, the preview and
+## the playtest report all say it this way.
+static func turns_label(level: Dictionary, stage: Dictionary) -> String:
+	return "up to %d turns" % OpenTurns.cap(stage) if OpenTurns.pinned(level) else ""
+
+## `text` with `stage`'s turns after it, when it has open turns.
+static func with_turns(text: String, level: Dictionary, stage: Dictionary) -> String:
+	var turns := turns_label(level, stage)
+	return text if turns.is_empty() else "%s, %s" % [text, turns]
 
 ## A stand-in first checkpoint from the definition's own starts, for a layout
 ## no chapter has registered yet (players on their start floors, nothing kept).

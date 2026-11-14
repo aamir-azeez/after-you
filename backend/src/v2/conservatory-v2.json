@@ -213,7 +213,7 @@
 	"premium": true,
 	"props": [],
 	"schema_version": 7,
-	"simulation_version": 12,
+	"simulation_version": 14,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -512,6 +512,7 @@
 					"signal_id": "high-light"
 				}
 			},
+			"turn_cap": 10,
 			"version": 1
 		},
 		{
@@ -782,6 +783,7 @@
 					"signal_id": "crossing-light"
 				}
 			},
+			"turn_cap": 20,
 			"version": 1
 		}
 	],

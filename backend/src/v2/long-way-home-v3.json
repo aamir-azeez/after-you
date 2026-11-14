@@ -227,7 +227,7 @@
 	"premium": true,
 	"props": [],
 	"schema_version": 7,
-	"simulation_version": 12,
+	"simulation_version": 14,
 	"stages": [
 		{
 			"ball_pads": [],
@@ -381,6 +381,7 @@
 					"value": "friend"
 				}
 			},
+			"turn_cap": 10,
 			"version": 1
 		},
 		{
@@ -664,6 +665,7 @@
 					]
 				}
 			},
+			"turn_cap": 20,
 			"version": 1
 		}
 	],
