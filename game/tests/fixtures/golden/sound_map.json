@@ -27,6 +27,8 @@
 		"bolt_shot",
 		"bolt_drawn",
 		"valve_turned",
+		"barrier_rattle",
+		"control_locked",
 		"drip",
 		"slosh",
 		"ui_tap",
@@ -37,7 +39,8 @@
 		"ui_top_ten",
 		"ui_third",
 		"ui_second",
-		"ui_first"
+		"ui_first",
+		"bell_wood_chime"
 	],
 	"chapters": {
 		"a-house-for-two@1": {

@@ -4,6 +4,7 @@ import { checkpointAt, nestedProof } from "./checkpoint-chain";
 import type { CheckpointV2, RecordingV2 } from "./protocol";
 import type { PairFacts, TurnFacts } from "./replay-transfer";
 import type { PairV2 } from "./room";
+import { parseRow, type RowData } from "./row-codec";
 
 /**
  * One finished attempt (branch) of a room as a single canonical blob. Its last
@@ -21,7 +22,9 @@ export const LINK_SCHEMA = "after-you.history.v1";
 export const MAX_ATTEMPT_BYTES = 4 * 1024 * 1024;
 
 const utf8 = (value: string) => new TextEncoder().encode(value);
-export function isStub(data: string): boolean {
+/** Stubs are always text (row-codec.ts); a deflated row is a full one. */
+export function isStub(data: RowData): boolean {
+  if (typeof data !== "string") return false;
   const value = JSON.parse(data) as Record<string, unknown>;
   return Object.keys(value).length === 1 && "recording_hash" in value || "checkpoint" in value && Object.keys(value.checkpoint as object).length === 1;
 }
@@ -33,14 +36,14 @@ export function attemptBlob(storage: DurableObjectStorage, room: AttemptRoom, br
     storage.sql.exec<TurnRow>("SELECT turn_id,player_id,accepted_revision,data FROM turns WHERE turn_id LIKE ? ORDER BY rowid", `t${branch}-%`).toArray(),
     storage.sql.exec<PairRow>("SELECT pair_id,data FROM pairs WHERE pair_id LIKE ? ORDER BY rowid", `p${branch}-%`).toArray());
 }
-type TurnRow = { turn_id: string; player_id: string; accepted_revision: number; data: string };
-type PairRow = { pair_id: string; data: string };
+type TurnRow = { turn_id: string; player_id: string; accepted_revision: number; data: RowData };
+type PairRow = { pair_id: string; data: RowData };
 /** The same blob from rows in rowid order (an operator snapshot holds them as plain rows). */
 export function blobFromRows(room: AttemptRoom, branch: number, allTurns: TurnRow[], allPairs: PairRow[]): AttemptBlob | null {
   const turnRows = allTurns.filter(row => row.turn_id.startsWith(`t${branch}-`)), pairRows = allPairs.filter(row => row.pair_id.startsWith(`p${branch}-`));
   if (turnRows.some(row => isStub(row.data)) || pairRows.some(row => isStub(row.data))) return null;
-  const pairs = pairRows.map(row => JSON.parse(row.data) as PairV2).sort((a, b) => a.stage_index - b.stage_index);
-  const recordings = new Map(turnRows.map(row => [row.turn_id, JSON.parse(row.data) as RecordingV2]));
+  const pairs = pairRows.map(row => parseRow<PairV2>(row.data)).sort((a, b) => a.stage_index - b.stage_index);
+  const recordings = new Map(turnRows.map(row => [row.turn_id, parseRow<RecordingV2>(row.data)]));
   const checkpoint = pairs.at(-1)?.checkpoint ?? null;
   pairs.forEach((pair, index) => {
     const a = recordings.get(`t${branch}-${pair.stage_index}-a`), b = recordings.get(`t${branch}-${pair.stage_index}-b`);

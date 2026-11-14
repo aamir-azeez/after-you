@@ -16,10 +16,10 @@ extends RefCounted
 ## so no gap shows. Every point takes the shell's own smooth normal.
 ##
 ## The fruit's top stands where a carried seed rests, so the hood lifts the
-## seed (pip_outfit.gd lift_seed). It stands in for the pip's own leaf, which
-## hides while it is worn. A worn leaf item still shows, raised by the
-## descriptor's "leaf_lift" so its stalk starts under the hood's top and its
-## blade grows out clear of it. One baked mesh per hood, one draw call.
+## seed (pip_outfit.gd lift_seed). It stands in
+## for the pip's own leaf, which hides while it is worn. A worn leaf item the
+## hood takes still shows, raised by the descriptor's "leaf_lift" (its
+## "sits_on_top" fit) so its stalk starts under the hood's top. One baked mesh per hood, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 

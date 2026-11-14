@@ -8,7 +8,13 @@ extends SceneTree
 ##  - the spot itself lies outside the view (or within EDGE_PX of its edge);
 ##  - a selector's own bubble is cut off by the view's edge while its pip
 ##    stands at it;
-##  - two bubbles on the view overlap.
+##  - two bubbles on the view overlap;
+##  - a refusal with no cause shown: an end of an owned crossing with no owner
+##    gate, a stair that can be closed with neither its chain nor the world's
+##    own drawing of it (a folding stair, water: the world's skip(), with why),
+##    or a stretch of an owned zone's edge with no rope
+##    (presentation/kit/route_barriers.gd). A gap, a folded piece and water
+##    are the world's own; everything else is a barrier.
 ## KNOWN lists what fails on purpose, by the start of its message, with why;
 ## an entry that stops failing fails the suite. The definitions-only half is
 ## tests/test_level_checker.gd.
@@ -16,6 +22,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Stages = preload("res://tests/level_tools/level_stages.gd")
 const Shots = preload("res://tests/level_tools/stage_shots.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
+const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
+const LevelGraph = preload("res://tests/level_graph.gd")
 const VIEW := Vector2i(800, 360)
 ## A spot this close to the view's edge (px) counts as outside it.
 const EDGE_PX := 16.0
@@ -34,6 +42,10 @@ var _off_view := 0
 ## Selector bubbles cut by the view's edge while the pips stand at their
 ## starts: proof the bubble check can fail at all.
 var _cut_from_start := 0
+## Refusals a world with no barriers would leave unexplained: proof the
+## barrier check can fail at all.
+var _unshown := 0
+var _refusals_seen := 0
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -50,6 +62,7 @@ func _run() -> void:
 	_check(_off_view > 0, "From the starts, some spots lie off the view, so the framing check can fail (%d)" % _off_view)
 	_check(_cut_from_start > 0, "From the starts, some selector bubbles are cut by the view's edge, so the bubble check can fail (%d)" % _cut_from_start)
 	_check(_meets(Rect2(0, 0, 60, 30), Rect2(50, 10, 60, 30)) and not _meets(Rect2(0, 0, 60, 30), Rect2(61, 0, 60, 30)), "Bubbles that share a corner overlap; bubbles side by side do not")
+	_check(_refusals_seen > 50 and _unshown > 50, "Every refusal is checked for a shown cause (%d), and a world with no barriers leaves many unexplained, so the check can fail (%d)" % [_refusals_seen, _unshown])
 	for prefix: String in KNOWN:
 		_check(_found.has(prefix), "Known failure still fails, or comes off the list: %s (%s)" % [prefix, KNOWN[prefix]])
 	print("LEVEL VIEW: %d checks, %d failures" % [checks, failures])
@@ -83,12 +96,14 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 	world.set_process(false)
 	world.configure_camera_exploration(func() -> bool: return false, func(_point: Vector2) -> bool: return false)
 	await world.load_level(level)
+	var ends := _route_ends(level)
 	for item: Dictionary in Stages.stages(key, level):
 		var view: Dictionary = item.view
 		var where := "%s %s" % [key, view.stage_id]
 		if item.checkpoint.is_empty(): continue
 		await world.show_stage(item.stage)
 		world.present_history(item.checkpoint)
+		_barriers(world, where, view, item.checkpoint, ends)
 		var shots := Shots.new(key, level, str(view.stage_id), item.checkpoint)
 		var base := shots.snapshot()
 		_check(not base.is_empty(), "%s: the engine opens the stage" % where)
@@ -140,6 +155,72 @@ func _look(world: Node3D, where: String, spot: Dictionary) -> void:
 		for b in range(a + 1, boxes.size()):
 			var meet: Rect2 = (boxes[a][1] as Rect2).intersection(boxes[b][1])
 			_expect(not _meets(boxes[a][1], boxes[b][1]), "%s %s bubbles overlap" % [where, label], "%s: with a pip at the %s, the bubbles of %s and %s overlap (%s)" % [where, label, _name(world, boxes[a][0]), _name(world, boxes[b][0]), _px(meet)])
+
+## Every refusal of the stage shows its cause in the built world (its route
+## barriers' layout and the stairs it draws itself), and the same check finds
+## them unexplained in a world that builds no barriers.
+func _barriers(world: Node3D, where: String, view: Dictionary, checkpoint: Dictionary, ends: Dictionary) -> void:
+	var kit: Variant = world.get("route_barriers")
+	_check(kit != null, "%s: the world keeps route barriers" % where)
+	if kit == null: return
+	var kept: Array = checkpoint.get("mechanisms", {}).get("latched_bridges", [])
+	_refusals_seen += _unexplained(where, view, kit.placed(), kit.skips(), kept, ends, true)
+	for mouth: Dictionary in kit.placed().get("mouths", []):
+		var clash: Array = mouth.get("clash", [])
+		_expect(clash.is_empty(), "%s crossing %s posts" % [where, mouth.route], "%s: a post of the gate at the %s end of %s stands in %s" % [where, "%s" % mouth.get("floor", ""), mouth.route, ", ".join(clash)])
+	_unshown += _unexplained(where, view, {"mouths": [], "spans": []}, {}, kept, ends, false)
+
+## How many refusals of `view` show no cause with `placed` barriers and the
+## world's `skips`; with `report`, each is a failure naming the chapter, the
+## stage, the crossing or zone, and the pip refused.
+func _unexplained(where: String, view: Dictionary, placed: Dictionary, skips: Dictionary, kept: Array, ends: Dictionary, report: bool) -> int:
+	var floors := RouteBarriers.floors_of(view)
+	var count := 0
+	var seen := 0
+	for kind: String in ["bridges", "stairs"]:
+		for route: Dictionary in view.get(kind, []):
+			var id := str(route.id)
+			var owner := str(route.get("owner_slot", ""))
+			var closes: bool = kind == "stairs" and id not in kept
+			# The floors the engine lets a pip step to from this crossing, were
+			# owners no rule (tests/level_graph.gd): each needs its cause shown.
+			for end: String in ends.get(id, {}):
+				var built: Array = placed.get("mouths", []).filter(func(found: Dictionary) -> bool: return found.route == id and str(found.get("floor", "")) == end)
+				if not owner.is_empty():
+					seen += 1
+					var other := "p1" if owner == "p0" else "p0"
+					var shown := built.any(func(found: Dictionary) -> bool: return found.owner == owner)
+					if not shown: count += 1
+					if report: _expect(shown, "%s crossing %s %s gate" % [where, id, end], "%s: the %s %s refuses %s at its end on %s and nothing there shows why (no owner gate)" % [where, kind.trim_suffix("s"), id, other, end])
+				if closes:
+					seen += 1
+					var shown := skips.has(id) or built.any(func(found: Dictionary) -> bool: return bool(found.stair_gate))
+					if not shown: count += 1
+					if report: _expect(shown, "%s crossing %s %s chain" % [where, id, end], "%s: the stair %s, closed, refuses both pips at its end on %s and nothing there shows why (no chain, and the world draws nothing of its own)" % [where, id, end])
+	for zone: Dictionary in view.get("access_zones", []):
+		var owner := str(zone.get("owner_slot", ""))
+		if owner.is_empty(): continue
+		var other := "p1" if owner == "p0" else "p0"
+		var wanted := RouteBarriers.zone_edges(zone, view, floors).size()
+		var built: int = placed.get("spans", []).filter(func(found: Dictionary) -> bool: return found.zone == str(zone.get("id", ""))).size()
+		seen += wanted
+		if built < wanted: count += wanted - built
+		if report: _expect(built >= wanted, "%s zone %s rope" % [where, zone.get("id", "")], "%s: the zone %s refuses %s along %d stretches of its edge and only %d show a rope" % [where, zone.get("id", ""), other, wanted, built])
+	return seen if report else count
+
+## Each crossing's ends as the engine walks them: route id -> {floor id: true},
+## the floors a pip can step to from it once no crossing has an owner.
+static func _route_ends(level: Dictionary) -> Dictionary:
+	var bare := level.duplicate(true)
+	for kind: String in ["bridges", "stairs"]:
+		for route: Dictionary in bare.get(kind, []): route.erase("owner_slot")
+	var graph: RefCounted = LevelGraph.new(bare)
+	var ends: Dictionary = {}
+	for pair: String in graph.build("p0"):
+		var sides := pair.split(">")
+		for index in range(2):
+			if graph.route_bit.has(sides[index]): (ends.get_or_add(sides[index], {}) as Dictionary)[sides[1 - index]] = true
+	return ends
 
 ## Whether two bubble boxes overlap by more than a touch.
 static func _meets(a: Rect2, b: Rect2) -> bool:

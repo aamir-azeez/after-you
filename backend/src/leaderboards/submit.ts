@@ -25,12 +25,14 @@ import { mightPlace } from "./view";
  */
 export async function postFinishedRun(env: Env, mutation: MutationV2, context: unknown, looks?: PairLooks): Promise<void> {
   if (!flags.leaderboards(env)) return;
-  try {
-    const run = await finishedRun(mutation, context, looks);
-    if (run) await postRun(env, run);
-  } catch (error) {
-    logWarning("leaderboard_post_failed", { code: errorCode(error) });
-  }
+  let run: LeaderboardRun | null;
+  try { run = await finishedRun(mutation, context, looks); } catch (error) { logWarning("leaderboard_post_failed", { code: errorCode(error) }); return; }
+  await postPreparedRun(env, run);
+}
+/** postFinishedRun's post, for a run the room already worked out (v2/room.ts turnRequest), so the Worker never holds the room. */
+export async function postPreparedRun(env: Env, run: LeaderboardRun | null | undefined): Promise<void> {
+  if (!run || !flags.leaderboards(env)) return;
+  try { await postRun(env, run); } catch (error) { logWarning("leaderboard_post_failed", { code: errorCode(error) }); }
 }
 
 /**

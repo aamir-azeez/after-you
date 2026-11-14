@@ -203,14 +203,19 @@ export function paidUntil(access: Entitlement, until: number | undefined): numbe
  */
 export async function creditCommitted(request: Request, env: Env, playerId: string, committed: CommittedV2): Promise<MutationV2 & { pollen?: PollenReply }> {
   const { pollen_facts: facts, ...reply } = committed;
-  if (!facts) return reply;
-  const partner = facts.complete && facts.together ? (facts.host ? reply.room.guest_id : reply.room.host_id) : null;
+  const pollen = await creditTurn(request, env, playerId, facts, reply.room);
+  return pollen === undefined ? reply : { ...reply, pollen };
+}
+/** creditCommitted's credit from the frozen facts and the room's members alone (v2/routes.ts takes both from the room's turn hooks): the `pollen` field, or undefined with no facts or for a phone that did not ask. */
+export async function creditTurn(request: Request, env: Env, playerId: string, facts: TurnFacts | undefined, members: { host_id: string; guest_id: string | null }): Promise<PollenReply | undefined> {
+  if (!facts) return undefined;
+  const partner = facts.complete && facts.together ? (facts.host ? members.guest_id : members.host_id) : null;
   const [own] = await Promise.all([
     settle(() => env.PLAYERS.getByName(playerId).creditTurn(playerId, facts, pollenShopClient(request))),
     partner ? settle(() => env.PLAYERS.getByName(partner).creditTogetherClear(partner, facts.level_id, facts.hard, facts.boost_percent, facts.room_id)) : null
   ]);
-  if (!pollenWanted(request)) return reply;
-  return { ...reply, pollen: own?.ok ? own.value : { schema_version: 1, pending: true } };
+  if (!pollenWanted(request)) return undefined;
+  return own?.ok ? own.value : { schema_version: 1, pending: true };
 }
 
 /** A credit's outcome, or null when the call itself failed. */

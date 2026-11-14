@@ -30,6 +30,10 @@ var _state: Dictionary = {}
 var _view: Dictionary = {}
 var _generation := 0
 var _storage_ready := false
+## The idempotency key of an accept made in this session and not sent yet: its
+## first send needs no receipt check, since nothing can hold it yet. A key read
+## back from disk is checked first, as before.
+var _fresh_key := ""
 
 func _init(api: Node, identity: Callable, store: RefCounted = null) -> void:
 	_api = api
@@ -112,6 +116,13 @@ func refresh() -> bool:
 	last_error = ""
 	return true
 
+## The redo state a room poll carried (relay_online_session.gd take_polled_redo), in place of
+## refresh()'s own read. False, and nothing kept, unless it is valid for this exact source.
+func observe(value: Variant) -> bool:
+	if busy or not _storage_ready or not _same(_generation) or _room.is_empty() or not _valid_view(value): return false
+	_view = value.duplicate(true)
+	return true
+
 func request_redo() -> bool: return await _prepare("request") if can_request() else _fail("redo_unavailable")
 func decline() -> bool: return await _prepare("decline") if can_accept() else _fail("redo_unavailable")
 func cancel() -> bool: return await _prepare("cancel") if can_cancel() else _fail("redo_unavailable")
@@ -125,6 +136,7 @@ func _prepare(action: String) -> bool:
 	var next := _state.duplicate(true)
 	next.pending = {"action":action,"body":body,"source":_source.duplicate(true),"checkpoint_hash":str(_room.get("checkpoint",{}).get("checkpoint_hash","")),"stage_id":str(_room.get("stage_id",""))}
 	if not _persist(next): return false
+	_fresh_key = str(body.get("idempotency_key", "")) if action == "accept" else ""
 	return await retry()
 
 func retry(allow_mutations: bool = true) -> bool:
@@ -134,7 +146,9 @@ func retry(allow_mutations: bool = true) -> bool:
 	busy = true
 	accepted = false
 	var response: Dictionary = {}
-	if operation.action == "accept" and _family == "relay":
+	var fresh: bool = operation.action == "accept" and not _fresh_key.is_empty() and str(operation.body.get("idempotency_key", "")) == _fresh_key
+	_fresh_key = ""
+	if operation.action == "accept" and _family == "relay" and not fresh:
 		response = await _net(HTTPClient.METHOD_GET, _path()+"/operations/"+str(operation.body.idempotency_key), {}, generation)
 		if response.get("status") == 410 and response.get("code") == "replay_transferred" and recover_replay_operation.is_valid():
 			response = await recover_replay_operation.call(str(_room.room_id), str(operation.body.idempotency_key), _transfer_receipt_valid.bind(operation))

@@ -111,6 +111,11 @@ int main(void) {
 		for (NSString *digits in grouping) {
 			check([[AYPolicy groupedAmount:digits] isEqualToString:grouping[digits]], [@"Pollen amounts are grouped with commas: " stringByAppendingString:digits]);
 		}
+		NSDictionary *exportNames = @{ @"relay-isles-attempt-1.afteryou" : @"relay-isles-attempt-1.afteryou", @" Relay Isles  attempt 1.afteryou " : @"relay-isles-attempt-1.afteryou", @"../../etc/passwd" : @"etc-passwd" };
+		for (NSString *name in exportNames) {
+			check([[AYPolicy exportFileName:name] isEqualToString:exportNames[name]], [@"An export file name is cleaned like Android's: " stringByAppendingString:name]);
+		}
+		check([AYPolicy exportFileName:@"..."] == nil && [AYPolicy exportFileName:@""] == nil && [AYPolicy exportFileName:repeat(@"a", 97)] == nil, @"An empty or overlong export name is refused");
 
 		NSDictionary *firebase = @{ @"GOOGLE_APP_ID" : @"1:123456789:ios:0123456789abcdef", @"API_KEY" : [@"AIza" stringByAppendingString:repeat(@"x", 35)], @"GCM_SENDER_ID" : @"123456789", @"PROJECT_ID" : @"after-you-game", @"BUNDLE_ID" : @"com.aamirazeez.afteryou" };
 		check([AYPolicy validFirebaseOptions:firebase bundleId:@"com.aamirazeez.afteryou"], @"A complete iOS Firebase configuration is accepted");

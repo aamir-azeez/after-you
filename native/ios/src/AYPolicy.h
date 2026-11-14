@@ -30,6 +30,9 @@ extern NSString *const AYPollenKind;
 + (nullable NSDictionary<NSString *, NSString *> *)notificationFromPayload:(NSDictionary *)payload;
 /// A validated decimal amount with its thousands always grouped by commas ("4500" -> "4,500"), whatever the locale.
 + (NSString *)groupedAmount:(NSString *)digits;
+/// A shared file's name as Android's ExportFiles.safeName makes it: lowercase letters, digits,
+/// dot, dash and underscore, at most 96 characters, or nil.
++ (nullable NSString *)exportFileName:(NSString *)name;
 
 /// Public Firebase configuration from GoogleService-Info.plist, checked like Android's.
 + (BOOL)validFirebaseOptions:(NSDictionary *)options bundleId:(NSString *)bundleId;

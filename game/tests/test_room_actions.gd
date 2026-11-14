@@ -10,7 +10,6 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
-const RedoNotice = preload("res://presentation/redo_request_notice.gd")
 const SETTINGS := {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
 
 ## The owner's mapping for the wide panel (one state per column), and the
@@ -19,9 +18,9 @@ const GOLDEN := {
 	"ready_panel": {
 		"header": ["refresh"],
 		"primary": ["resume", "record"],
-		"turn": ["redo_answer"],
+		"turn": ["redo", "redo_status", "redo_retry"],
 		"pair": ["room_options"],
-		"options": ["share", "redo_answer", "redo", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
+		"options": ["share", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"ready_panel_invite": {
 		"header": ["refresh"],
@@ -33,10 +32,10 @@ const GOLDEN := {
 	"waiting_panel": {
 		"header": ["refresh"],
 		"status": ["alerts"],
-		"primary": ["notify"],
-		"turn": ["redo_answer"],
+		"primary": ["redo_play", "notify"],
+		"turn": ["redo_keep", "redo_retry"],
 		"pair": ["room_options", "your_rooms"],
-		"options": ["share", "notify", "redo_answer", "redo", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
+		"options": ["share", "notify", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"waiting_panel_invite": {
 		"header": ["refresh"],
@@ -55,15 +54,15 @@ const GOLDEN := {
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
-		"turn": ["resume", "record", "refresh", "local_replays", "restart", "redo_answer", "redo", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["resume", "record", "redo", "redo_status", "redo_retry", "refresh", "local_replays", "restart", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"waiting_card": {
 		"invite": ["copy_code"],
-		"turn": ["check_saved", "keep_held", "alerts", "notify", "redo_answer", "redo", "refresh", "share"],
+		"turn": ["check_saved", "keep_held", "redo_play", "redo_keep", "redo_retry", "alerts", "notify", "refresh", "share"],
 		"more": ["replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"complete": {
-		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "redo_answer", "redo", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 }
 const PANEL_SLOTS := ["header", "status", "invite", "primary", "turn", "pair", "options"]
@@ -82,7 +81,6 @@ func _run() -> void:
 	_layout()
 	_facts()
 	_labels()
-	await _redo_notice()
 	await _solo_cards()
 	for path: String in paths:
 		if FileAccess.file_exists(path): DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
@@ -134,7 +132,7 @@ func _layout() -> void:
 	_check(RoomActions.SECTIONS.partner.title == "Room partner" and RoomActions.ACTIONS.add_friend.section == "partner" and RoomActions.ACTIONS.friend_requested.section == "partner", "Add friend and Request sent sit under Room partner")
 	_check([RoomActions.SECTIONS.invite.title, RoomActions.SECTIONS.turns.title, RoomActions.SECTIONS.chapter.title, RoomActions.SECTIONS.safety.title] == ["Invite", "Turns", "Chapter", "Safety"], "The owner's section headings")
 	_check(RoomActions.SECTIONS.safety.get("danger", false) and RoomActions.SECTIONS.values().filter(func(section: Dictionary): return section.get("danger", false)).size() == 1, "Only Safety is drawn in the warning colour")
-	_check(RoomActions.REDO_ACTIONS == ["redo_answer", "redo", "solo_redo"], "Pause and review cards add the three redo rows")
+	_check(RoomActions.REDO_ACTIONS == ["redo", "redo_status", "redo_retry", "solo_redo"], "Pause and review cards add the redo rows")
 	# The looks that were screen code: the taller cream Record, the icon rows,
 	# the invitation field and Share's line, and the Notifications heading.
 	var record := RoomActions.look("ready_panel", "primary", false)
@@ -172,19 +170,19 @@ func _facts() -> void:
 	var guest := _facts_from({"online": true, "joined": true, "redo": true, "my_turn": true, "watchable": true, "photo": true, "about": true, "safety": true, "options": true})
 	_check(RoomActions.panel_state("ready", guest) == "ready_panel", "A guest's turn is the my turn column")
 	_check(RoomActions.shown("ready_panel", "primary", guest) == ["record"] and RoomActions.shown("ready_panel", "turn", guest).is_empty() and RoomActions.shown("ready_panel", "pair", guest) == ["room_options"], "My turn shows only Record and Room options")
-	_check(RoomActions.shown("ready_panel", "options", guest) == ["redo", "replays", "photo", "about", "safety"], "My turn's Room options: Ask for redo, Replays, Photo, About, Report")
+	_check(RoomActions.shown("ready_panel", "options", guest) == ["replays", "photo", "about", "safety"], "My turn's Room options: Replays, Photo, About, Report (Ask for a redo is on the turn card)")
 	var waiting := _facts_from({"online": true, "joined": true, "notifications": true, "share": true, "redo": true, "watchable": true, "photo": true, "about": true, "safety": true, "options": true})
 	_check(RoomActions.panel_state("waiting", waiting) == "waiting_panel", "A host waiting with a friend is the waiting column")
 	_check(RoomActions.shown("waiting_panel", "primary", waiting) == ["notify"] and RoomActions.shown("waiting_panel", "pair", waiting) == ["room_options", "your_rooms"], "Waiting with a friend: Notify, then Room options beside Your rooms")
-	_check(RoomActions.shown("waiting_panel", "options", waiting) == ["share", "notify", "redo", "replays", "photo", "about", "safety"], "Waiting Room options: Share, Notify, Turn requests, Replays, Photo, About, Report")
+	_check(RoomActions.shown("waiting_panel", "options", waiting) == ["share", "notify", "replays", "photo", "about", "safety"], "Waiting Room options: Share, Notify, Replays, Photo, About, Report")
 	var columns := RoomActions.option_columns("waiting_panel", waiting)
-	_check(columns == [[{"section": "invite", "ids": ["share"]}, {"section": "chapter", "ids": ["about"]}], [{"section": "turns", "ids": ["notify", "redo", "replays", "photo"]}, {"section": "safety", "ids": ["safety"]}]], "Room options puts Invite and Chapter on the left, Turns and Safety on the right: " + str(columns))
-	_check(RoomActions.shown("waiting_card", "turn", waiting) == ["notify", "redo", "refresh", "share"], "The narrow waiting card keeps redo and Refresh in its list")
+	_check(columns == [[{"section": "invite", "ids": ["share"]}, {"section": "chapter", "ids": ["about"]}], [{"section": "turns", "ids": ["notify", "replays", "photo"]}, {"section": "safety", "ids": ["safety"]}]], "Room options puts Invite and Chapter on the left, Turns and Safety on the right: " + str(columns))
+	_check(RoomActions.shown("waiting_card", "turn", waiting) == ["notify", "refresh", "share"], "The narrow waiting card keeps Refresh in its list, and a friend's request only when there is one")
 	_check(RoomActions.shown("waiting_card", "more", waiting) == ["replays", "safety", "photo", "back"], "The narrow waiting card ends with Replays, Report, Photo and Back")
 	# A partner who is not a friend: Add friend under Room partner, on the left;
 	# once sent, Request sent in its place. Never in solo play.
 	var addable := _facts_from({"online": true, "joined": true, "notifications": true, "share": true, "redo": true, "watchable": true, "photo": true, "about": true, "safety": true, "options": true, "partner_addable": true})
-	_check(RoomActions.shown("waiting_panel", "options", addable) == ["share", "notify", "redo", "replays", "photo", "add_friend", "about", "safety"], "A partner who is not a friend: Room options offers Add friend")
+	_check(RoomActions.shown("waiting_panel", "options", addable) == ["share", "notify", "replays", "photo", "add_friend", "about", "safety"], "A partner who is not a friend: Room options offers Add friend")
 	_check(RoomActions.option_columns("waiting_panel", addable)[0] == [{"section": "invite", "ids": ["share"]}, {"section": "partner", "ids": ["add_friend"]}, {"section": "chapter", "ids": ["about"]}], "Add friend sits under Room partner in the left column")
 	var requested := _facts_from({"online": true, "joined": true, "my_turn": true, "about": true, "safety": true, "options": true, "partner_requested": true})
 	_check(RoomActions.shown("ready_panel", "options", requested) == ["friend_requested", "about", "safety"], "Once sent, Request sent takes its place")
@@ -195,9 +193,15 @@ func _facts() -> void:
 	_check(RoomActions.panel_state("waiting", before_join) == "waiting_panel_invite", "A host waiting before the friend joins is the waiting invite column")
 	_check(RoomActions.shown("waiting_panel_invite", "invite", before_join) == ["copy_code"] and RoomActions.shown("waiting_panel_invite", "primary", before_join) == ["share"], "Before the friend joins, the code and a cream Share")
 	_check(RoomActions.shown("waiting_panel_invite", "options", before_join) == ["copy_code", "share", "notify", "photo", "about"], "Notify waits in Room options until the friend joins")
-	var answer := _facts_from({"online": true, "joined": true, "redo": true, "redo_accept": true, "about": true, "options": true})
-	_check(RoomActions.shown("waiting_panel", "turn", answer) == ["redo_answer"] and RoomActions.shown("ready_panel", "turn", answer) == ["redo_answer"], "A friend's redo request stays on the panel while it needs an answer")
-	_check(RoomActions.shown("waiting_panel", "options", answer) == ["redo_answer", "about"], "Room options lists the request too, and not Ask for redo")
+	var answer := _facts_from({"online": true, "joined": true, "redo": true, "redo_accept": true, "alerts": true, "notifications": true, "about": true, "options": true})
+	_check(RoomActions.shown("waiting_panel", "primary", answer) == ["redo_play"] and RoomActions.shown("waiting_panel", "turn", answer) == ["redo_keep"], "A friend's redo request leads the waiting panel: Play my turn again, then Keep it as it is")
+	_check(RoomActions.shown("waiting_panel", "status", answer).is_empty() and RoomActions.shown("waiting_panel", "options", answer) == ["about"], "The request replaces the alerts lines, and Room options no longer lists it")
+	var ask := _facts_from({"online": true, "joined": true, "redo": true, "redo_ask": true, "my_turn": true})
+	_check(RoomActions.shown("ready_panel", "turn", ask) == ["redo"] and RoomActions.shown("ready_card", "turn", ask).has("redo"), "The second player asks from the turn card")
+	var asked := _facts_from({"online": true, "joined": true, "redo": true, "redo_answered": true, "my_turn": true})
+	_check(RoomActions.shown("ready_panel", "turn", asked) == ["redo_status"], "Asked or kept takes the button's place")
+	_check(RoomActions.shown("ready_panel", "turn", _facts_from({"online": true, "hard": true, "redo": true, "redo_ask": true})).is_empty(), "Never in a hard run")
+	_check(RoomActions.shown("waiting_panel", "turn", _facts_from({"online": true, "redo_unsettled": true})) == ["redo_retry"], "A request whose reply was lost keeps Retry request")
 	var pending_before_join := _facts_from({"online": true, "invited": true, "share": true, "pending": true, "about": true, "options": true})
 	_check(RoomActions.shown("waiting_panel_pending", "invite", pending_before_join) == ["copy_code"] and RoomActions.shown("waiting_panel_pending", "options", pending_before_join) == ["copy_code", "share", "about"], "A pending turn before the friend joins keeps the code inline and lists it and Share in Room options")
 	var pending := _facts_from({"online": true, "joined": true, "pending": true, "held": true, "watchable": true, "about": true, "safety": true, "options": true})
@@ -219,55 +223,10 @@ func _labels() -> void:
 	_check(RoomActions.label("record") == "Record" and RoomActions.label("refresh") == "Refresh" and RoomActions.label("checkpoints") == "Retry", "Shared buttons keep their own labels")
 	_check(RoomActions.label("share") == "Share current room" and RoomActions.SHARE_SCOPE == "All friends", "Share keeps its labels")
 	_check(RoomActions.label("solo_redo") == PlayerCopy.SOLO_REDO_ACTION, "Solo redo keeps its label")
-	_check(RoomActions.label("redo", _facts_from({"my_turn": true})) == "Ask for redo" and RoomActions.label("redo", _facts_from({})) == "Turn requests", "Redo reads Ask for redo on this player's turn, else Turn requests")
-	_check(RoomActions.label("redo_answer") == "Redo requested", "An answerable request reads Redo requested")
-	_check(RoomActions.redo_label(true, true) == "Redo requested" and RoomActions.redo_label(false, true) == "Ask for redo" and RoomActions.redo_label(false, false) == "Turn requests", "The shared redo label")
+	_check(RoomActions.label("redo") == "Ask for a redo" and RoomActions.label("redo_play") == "Play my turn again" and RoomActions.label("redo_keep") == "Keep it as it is" and RoomActions.label("redo_retry") == "Retry request", "The redo rows' labels")
 	for path: String in ["res://presentation/friends_screen.gd", "res://presentation/legacy_room_flow.gd"]:
 		var text := FileAccess.get_file_as_string(path)
-		_check(not text.contains("\"Share current room\"") and not text.contains("\"All friends\"") and not text.contains("\"Ask for redo\""), "Uses the table's Share and redo labels: " + path)
-
-class RedoClientStub:
-	extends RefCounted
-	var request: Variant = {"request_id": "first", "status": "pending"}
-	func can_accept() -> bool: return request is Dictionary
-	func view() -> Dictionary: return {"request": request}
-
-## A friend's redo request pops up once per request, from either room screen.
-func _redo_notice() -> void:
-	var parent := Control.new()
-	root.add_child(parent)
-	var notice = RedoNotice.new()
-	var client := RedoClientStub.new()
-	var reviews := [0]
-	var review := func(): reviews[0] += 1
-	notice.announce(parent, client, "room", review)
-	_check(is_instance_valid(notice.modal) and notice.modal.name == "RedoRequestModal" and parent.get_child_count() == 1, "A new request opens the shared pop-up")
-	notice.announce(parent, client, "room", review)
-	_check(parent.get_child_count() == 1, "An open pop-up is not opened twice")
-	var open: Button = notice.modal.find_child("ModalConfirm", true, false)
-	_check(open != null and open.text == "Review request" and notice.modal.find_child("ModalCancel", true, false).text == "Not now", "The pop-up offers Review request and Not now")
-	open.pressed.emit()
-	await process_frame
-	_check(reviews[0] == 1 and notice.modal == null and parent.get_child_count() == 0, "Review request closes the pop-up and opens the request")
-	notice.announce(parent, client, "room", review)
-	_check(notice.modal == null, "A request shown once is not shown again")
-	notice.announce(parent, client, "other-room", review)
-	_check(is_instance_valid(notice.modal), "The same request id in another room is a new request")
-	notice.modal.close(false)
-	await process_frame
-	client.request = {"request_id": "second", "status": "pending"}
-	notice.announce(parent, client, "room", review)
-	_check(is_instance_valid(notice.modal), "A newer request pops up again")
-	notice.modal.close(false)
-	await process_frame
-	client.request = null
-	notice.announce(parent, client, "room", review)
-	_check(not is_instance_valid(notice.modal), "Nothing pops up when no request can be answered")
-	for path: String in ["res://relay_preview.gd", "res://presentation/legacy_room_flow.gd"]:
-		var text := FileAccess.get_file_as_string(path)
-		_check(text.contains("redo_notice.announce(") and not text.contains("InGameModal.open(ui,\"RedoRequestModal\"") and not text.contains("\"Review request\""), "Both room screens use the shared redo request pop-up: " + path)
-	parent.queue_free()
-	await process_frame
+		_check(not text.contains("\"Share current room\"") and not text.contains("\"All friends\"") and not text.contains("\"Ask for a redo\"") and not text.contains("\"Play my turn again\""), "Uses the table's Share and redo labels: " + path)
 
 ## The solo relay chapter's cards draw the table's rows, in order.
 func _solo_cards() -> void:

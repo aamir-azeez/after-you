@@ -65,14 +65,41 @@ const OPTIONAL := {
 	## it under a picked earned item the player does not own. "" for an item
 	## that is sold.
 	"earn": "",
+	## A hat's way with the leaf (presentation/kit/wear_fit.gd): "covers" (the
+	## leaf hides), "pokes_through" (it grows where it is, beside the hat) or
+	## "sits_on_top" (it is raised onto the hat by "leaf_lift"). Every hat
+	## names one; "" for an item in another slot.
+	"leaf_mode": "",
+	## The largest leaf size class ("small", "medium", "tall") the hat takes
+	## that way; a bigger leaf is raised onto it or hidden (wear_fit.gd).
+	"leaf_max": "tall",
+	## false: a raised leaf stands with no stem under it (the hats players
+	## owned before the fit, kept as they were by the owner's choice).
+	"leaf_stem": true,
+	## true: it lies on the floor round the feet (a foot ring), so the pip views
+	## pull back and look a little lower to keep it in frame (kit/pip_stage.gd).
+	"low": false,
+	## The places its art shows in (presentation/pip_outfit.gd PLACES: "world",
+	## "studio", "stage", "wardrobe"), or [] for everywhere: a foot ring only on
+	## room and result pages and in the Wardrobe.
+	"places": [],
+	## A Bell sound item: the fixed cue (services/sound_cues.gd CUES) the
+	## player's result screen plays once, or "".
+	"sound": "",
 }
 const REQUIRED := ["id", "code", "slot", "tier", "name", "art"]
 ## The highest item code (backend/src/config.ts COSMETIC_CODE_MAX).
 const CODE_MAX := 999
 
 ## The places on a pip, one item each, in the order they are listed and dressed.
-## "rest_face": the face the pip wears at rest (content/cosmetics/faces.gd).
-const SLOTS: Array[String] = ["hat", "body", "leaf", "rest_face"]
+## "trail": marks left on the floor while walking (presentation/kit/trail_kit.gd).
+## The little extras: "carry" (a small thing held at the side), "foot_ring" (a
+## ring under the feet on room and result screens) and "bell_sound" (a result
+## screen sound). "rest_face": the face the pip wears at rest (content/cosmetics/faces.gd).
+const SLOTS: Array[String] = ["hat", "body", "leaf", "trail", "carry", "foot_ring", "bell_sound", "rest_face"]
+## Slots the Wardrobe lists under one chip: slot -> chip. A slot left out is
+## its own chip.
+const SLOT_CHIPS := {"carry": "extras", "foot_ring": "extras", "bell_sound": "extras"}
 ## The kinds of item that are owned but never worn on a pip: the reaction faces
 ## and the reaction slots (content/cosmetics/faces.gd). The server's
 ## catalog.json lists the same ("unworn_slots").
@@ -123,6 +150,37 @@ const ITEMS := [
 	preload("res://content/cosmetics/sprig_plum.gd"),
 	preload("res://content/cosmetics/sprig_sun.gd"),
 	preload("res://content/cosmetics/sprig_sky.gd"),
+	# The Pollen hats and leaves (codes 200 on).
+	preload("res://content/cosmetics/paper_boat.gd"),
+	preload("res://content/cosmetics/rain_cap.gd"),
+	preload("res://content/cosmetics/flower_pot.gd"),
+	preload("res://content/cosmetics/wool_cap.gd"),
+	preload("res://content/cosmetics/mushroom.gd"),
+	preload("res://content/cosmetics/tea_cup.gd"),
+	preload("res://content/cosmetics/wave_cap.gd"),
+	preload("res://content/cosmetics/glass_house.gd"),
+	preload("res://content/cosmetics/bud.gd"),
+	preload("res://content/cosmetics/feather.gd"),
+	preload("res://content/cosmetics/maple.gd"),
+	preload("res://content/cosmetics/twin_sprout.gd"),
+	preload("res://content/cosmetics/warm_tip.gd"),
+	preload("res://content/cosmetics/pond_bud.gd"),
+	# Pollen skins, trails and little extras (board 2026-11-12).
+	preload("res://content/cosmetics/knit.gd"),
+	preload("res://content/cosmetics/night_sky.gd"),
+	preload("res://content/cosmetics/patchwork.gd"),
+	preload("res://content/cosmetics/blue_pottery.gd"),
+	preload("res://content/cosmetics/autumn.gd"),
+	preload("res://content/cosmetics/sea_glass.gd"),
+	preload("res://content/cosmetics/leaves.gd"),
+	preload("res://content/cosmetics/seed_fluff.gd"),
+	preload("res://content/cosmetics/rain_drops.gd"),
+	preload("res://content/cosmetics/soft_stars.gd"),
+	preload("res://content/cosmetics/snow_steps.gd"),
+	preload("res://content/cosmetics/little_tune.gd"),
+	preload("res://content/cosmetics/pocket_pebble.gd"),
+	preload("res://content/cosmetics/soft_ring.gd"),
+	preload("res://content/cosmetics/wood_chime.gd"),
 ]
 ## Tables of items after ITEMS, each a script with `const ROWS := [descriptor, ...]`.
 const TABLES := [

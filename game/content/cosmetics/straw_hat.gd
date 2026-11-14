@@ -11,4 +11,8 @@ const DATA := {
 	## The leaf pokes up through the brim.
 	"leaf_lift": 0.075,
 	"tall": true,
+	"leaf_mode": "sits_on_top",
+	## Kept as players own it: the leaf on the brim, no stem.
+	"leaf_stem": false,
+	"leaf_max": "tall",
 }

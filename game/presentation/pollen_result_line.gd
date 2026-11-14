@@ -23,6 +23,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const Outfit = preload("res://services/outfit.gd")
 const OwnLook = preload("res://services/own_look.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
@@ -82,6 +83,8 @@ static func dropped_item(scope: Dictionary, receipt: Dictionary, store: RefCount
 static func dropped_pip(item_id: String) -> Control:
 	var pip := PipAvatar.new(true, OwnLook.color(), PIP_SIZE, true)
 	pip.name = "PollenItemBloomPip"
+	# A result page's pip: a worn foot ring shows here.
+	pip.place = PipOutfit.STAGE
 	pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	pip.wear(Outfit.of(item_id, true))
 	return pip

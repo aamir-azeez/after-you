@@ -41,6 +41,40 @@ const COSMETIC_SPRIG_SUN := "Sun sprig"
 const COSMETIC_SPRIG_SKY := "Sky sprig"
 # End of Orchard items.
 
+# Pollen hats and leaves (content/cosmetics/): each item's name.
+const COSMETIC_PAPER_BOAT := "Paper boat"
+const COSMETIC_RAIN_CAP := "Rain cap"
+const COSMETIC_FLOWER_POT := "Flower pot"
+const COSMETIC_WOOL_CAP := "Wool cap"
+const COSMETIC_MUSHROOM := "Mushroom"
+const COSMETIC_TEA_CUP := "Tea cup"
+const COSMETIC_WAVE_CAP := "Wave cap"
+const COSMETIC_GLASS_HOUSE := "Glass house"
+const COSMETIC_BUD := "Bud"
+const COSMETIC_FEATHER := "Feather"
+const COSMETIC_MAPLE := "Maple"
+const COSMETIC_TWIN_SPROUT := "Twin sprout"
+const COSMETIC_WARM_TIP := "Warm tip"
+const COSMETIC_POND_BUD := "Pond bud"
+# End of Pollen hats and leaves.
+# Pollen skins, trails and little extras (content/cosmetics/): each item's name.
+const COSMETIC_KNIT := "Knit"
+const COSMETIC_NIGHT_SKY := "Night sky"
+const COSMETIC_PATCHWORK := "Patchwork"
+const COSMETIC_BLUE_POTTERY := "Blue pottery"
+const COSMETIC_AUTUMN := "Autumn"
+const COSMETIC_SEA_GLASS := "Sea glass"
+const COSMETIC_LEAVES := "Leaves"
+const COSMETIC_SEED_FLUFF := "Seed fluff"
+const COSMETIC_RAIN_DROPS := "Raindrops"
+const COSMETIC_SOFT_STARS := "Soft stars"
+const COSMETIC_SNOW_STEPS := "Snow steps"
+const COSMETIC_LITTLE_TUNE := "Little tune"
+const COSMETIC_POCKET_PEBBLE := "Pocket pebble"
+const COSMETIC_SOFT_RING := "Soft ring"
+const COSMETIC_WOOD_CHIME := "Wood chime"
+# End of skins, trails and extras.
+
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
 const DISPLAY_NAME_ASK_NOTE := "Friends and room partners see it on rooms and replays."
@@ -263,7 +297,8 @@ const WARDROBE_OWNED := "Owned"
 ## The Owned tab's last card while the shop has more for that slot: it opens All items there.
 const WARDROBE_GET_MORE := "Get more"
 const WARDROBE_TIERS := {"common": "Common", "uncommon": "Uncommon", "rare": "Rare", "epic": "Epic", "special": "Special", "earned": "Earned", "free": "Free"}
-const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf", "rest_face": "Face", "reactions": "Reactions"}
+## The Wardrobe's chips: a slot, or a group of slots (content/cosmetics/index.gd SLOT_CHIPS).
+const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf", "trail": "Trails", "extras": "Extras", "rest_face": "Face", "reactions": "Reactions"}
 ## The Reactions chip (presentation/wardrobe_reactions.gd): the slot row, a
 ## face's tag, and the main button while a face goes in a slot.
 const WARDROBE_YOUR_REACTIONS := "Your reactions"
@@ -703,6 +738,9 @@ const HARD_RESTART_STUCK := "Couldn't clear this run yet. Tap Start again to try
 const HARD_RESET_SENDING := "Letting your friend know…"
 const HARD_RESET_WAITING := "Couldn't reach your friend just now. Tap Start again once you're back online."
 const HARD_READ_FAILED := "Couldn't fetch your friend's slip, so it won't be in Replays this time."
+## Export this run in Replays (the owner only: services/run_export.gd), and its note when no file could be offered.
+const EXPORT_RUN := "Export this run"
+const EXPORT_RUN_FAILED := "Couldn't export this run."
 # A hard room with no room left for another run: the host, then the friend.
 const HARD_ROOM_FULL_TITLE := "This room is full of slips"
 const HARD_ROOM_FULL_BODY := "There's no space here for another hard run. Start a new room for your next try. Your last few slips stay in Replays."
@@ -1418,6 +1456,25 @@ const ROOM_OPTIONS_TURNS := "Turns"
 const ROOM_OPTIONS_CHAPTER := "Chapter"
 const ROOM_OPTIONS_SAFETY := "Safety"
 const ROOM_OPTIONS_PARTNER := "Room partner"
+# A friend's redo request in Together rooms (presentation/redo_flow.gd,
+# presentation/redo_home_card.gd). %s is the friend's name.
+const REDO_ASK := "Ask for a redo"
+const REDO_ASKED := "Asked %s"
+const REDO_KEPT := "%s kept their turn"
+const REDO_NUDGE_TITLE := "Tricky turn?"
+const REDO_NUDGE_TRIES := "%d tries"
+const REDO_NUDGE_MINUTES := "5 minutes"
+const REDO_NUDGE_LINE := "%s can play their turn again."
+const REDO_KEEP_TRYING := "Keep trying"
+const REDO_ASKED_FOR := "%s asked for a redo"
+const REDO_FIRST_TURN := "Your first turn"
+const REDO_NOT_NOW := "Not now"
+const REDO_PLAY_AGAIN := "Play my turn again"
+const REDO_KEEP := "Keep it as it is"
+const REDO_RETRY := "Retry request"
+const REDO_AGAIN_NOTE := "Your turn again"
+const REDO_ALERTS_TITLE := "Tell you when a friend asks for a redo?"
+const REDO_ALERTS_YES := "Yes, tell me"
 # Solo chapters: take back the last saved turn, one turn per tap.
 const SOLO_REDO_ACTION := "Redo my previous turn"
 const SOLO_REDO_FIRST_TURN_TITLE := "Record your path again?"

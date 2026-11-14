@@ -7,12 +7,20 @@ import { chapter } from "./v2/chapters";
 import { partnerFace, shownFace, type Face, type FaceVersion } from "./v2/end-reactions";
 import { partnerNameField, shownName } from "./display-names";
 import { duelLink, duelMasks } from "./duels/room-link";
+import { inboxRedo } from "./redo-control";
 
 export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_their_turn" | "completed" | "unavailable" | "closed";
 /** Clients from 0.5.2 send this header and understand the "closed" status; older clients validate the status list exactly. */
 export const ROOM_INBOX_CLOSED_HEADER = "X-AfterYou-Room-Inbox";
 /** Clients that offer Leave room send this ("1"); a room the other member left then carries partner_left. */
 export const ROOM_INBOX_LEAVE_HEADER = "X-AfterYou-Room-Leave";
+/** Clients that show redo requests on Home send this ("1"); a room in play with a current redo request then carries `redo`. */
+export const ROOM_INBOX_REDO_HEADER = "X-AfterYou-Room-Redo";
+/**
+ * A current redo request as the member sees it, never its ids: the partner asked this member to play their turn
+ * again (asked_you), this member asked and waits (you_asked), or the partner kept their turn (kept).
+ */
+export type InboxRedo = { state: "asked_you" | "you_asked" | "kept"; stage_index: number };
 export type RoomInboxEntry = {
   room_id: string; family: "legacy" | "relay" | "story" | "unknown"; api_version: number;
   chapter: { id: string | null; version: number | null };
@@ -27,6 +35,8 @@ export type RoomInboxEntry = {
    * entry: the other member's name as the room holds it, or null (no name, a legacy or Story room, a failed read).
    */
   partner_name?: string | null;
+  /** Only for clients that send ROOM_INBOX_REDO_HEADER: the room's current redo request (InboxRedo). */
+  redo?: InboxRedo;
 };
 export type RoomInboxProjection = Omit<RoomInboxEntry, "family" | "api_version">;
 
@@ -74,9 +84,9 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
 /** `names` (the display names flag): the projection also carries the other member's stored name, when there is one (display-names.ts). */
 export function relayInboxProjection(storage: DurableObjectStorage, player: string, names = false): Outcome<RoomInboxProjection> {
   const row = storage.sql.exec<{
-    room_id: string; revision: number; stage_index: number; level_id: string; level_version: number;
+    room_id: string; revision: number; stage_index: number; branch: number; level_id: string; level_version: number;
     definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; updated_at: string;
-  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
+  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
   if (!row && closedRoom(storage)) return fail(410, "room_closed");
   if (!row || !isMember(storage, row, player)) return fail(404, "room_not_found");
   let active: string | null = null;
@@ -96,6 +106,8 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     status: turnStatus(player, row.guest_id, active), revision: row.revision,
     remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at, ...partnerLeft(storage, row, player), ...partnerReaction(storage, row, player),
     ...(names ? partnerNameField(storage, player === row.host_id ? row.guest_id : row.host_id) : {}),
+    // Only while the second turn is unplayed: the stored request must name this exact revision.
+    ...(row.a_turn_id && row.guest_id ? inboxRedo(storage, player, row) : {}),
     // A public duel's room: the Worker shows the partner's stand-in, never their id (duels/public-mask.ts).
     ...duelMasks(duelLink(storage), row)
   });
@@ -138,9 +150,9 @@ export type InboxSource = () => Promise<Outcome<RoomInboxProjection> | null> | O
  * whose pair is blocked in either direction is left out (null). partner_left
  * is kept only with showLeft, partner_reaction only with showReactions (a pack face as its everyday
  * stand-in unless facePacks: v2/end-reactions.ts shownFace), and with showNames every
- * entry carries partner_name, checked again against the name rules (an index row may be a day old).
+ * entry carries partner_name, checked again against the name rules (an index row may be a day old). `redo` is kept only with showRedo.
  */
-export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false, facePacks: FaceVersion = 0): Promise<RoomInboxEntry | null> {
+export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false, facePacks: FaceVersion = 0, showRedo = false): Promise<RoomInboxEntry | null> {
   const version = roomLinkVersion(link);
   const named = (entry: RoomInboxEntry, name: unknown = null): RoomInboxEntry => showNames ? { ...entry, partner_name: shownName(name) } : entry;
   if (version !== 1 && version !== 2) return named(fallback(link));
@@ -148,10 +160,11 @@ export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed
     const result = await source();
     if (!result) return named(fallback(link));
     if (!result.ok) return named(fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable"));
-    const { partner_left, partner_reaction, partner_name, ...value } = result.value;
+    const { partner_left, partner_reaction, partner_name, redo, ...value } = result.value;
     if (await blocked(value.membership.host_id!, value.membership.guest_id)) return null;
     return named({ ...value, family: version === 1 ? "legacy" : "relay", api_version: version, ...(showLeft && partner_left ? { partner_left } : {}),
-      ...(showReactions && partner_reaction !== undefined ? { partner_reaction: shownFace(partner_reaction, facePacks) } : {}) }, partner_name);
+      ...(showReactions && partner_reaction !== undefined ? { partner_reaction: shownFace(partner_reaction, facePacks) } : {}),
+      ...(showRedo && redo !== undefined ? { redo } : {}) }, partner_name);
   } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return named(fallback(link)); }
 }
 

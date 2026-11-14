@@ -41,6 +41,7 @@ const SLOSH := preload("res://assets/audio/slosh.wav")
 const SHORE_WASH := preload("res://assets/audio/shore-wash.wav")
 const TICK := preload("res://assets/audio/tick.wav")
 const SPARKLE := preload("res://assets/audio/sparkle.wav")
+const WOOD_CHIME := preload("res://assets/audio/wood-chime.wav")
 
 ## The level every cue plays at (dB), and how far its gain wanders unless its
 ## entry sets "gain".
@@ -100,6 +101,11 @@ const CUES := {
 	"bolt_shot": {"clip": BOLT, "range": Vector2(-1.0, 1.5), "priority": 2},
 	"bolt_drawn": {"clip": BOLT, "range": Vector2(-4.0, -2.0), "priority": 2},
 	"valve_turned": {"clip": VALVE, "range": Vector2(-1.5, 1.5), "db": -1.0, "priority": 2},
+	# A pip pushing into a barrier it may not pass (presentation/barrier_refusals.gd):
+	# the gate's soft rattle, the winch's pawl high and quiet; and a control it
+	# may not work: a dull clunk, the bolt low and muffled.
+	"barrier_rattle": {"clip": WINCH, "range": Vector2(3.0, 6.0), "db": -9.0},
+	"control_locked": {"clip": BOLT, "range": Vector2(-8.0, -6.0), "db": -5.0},
 	# Fixed cues (soundscape play_fixed_cue): one pitch from the cue's name and
 	# a variant, never an engine event's, so a keepsake or a screen sounds the
 	# same every time and no turn's pitches move. No engine event has these names.
@@ -119,6 +125,9 @@ const CUES := {
 	"ui_third": {"clip": CATCH, "range": Vector2(0.0, 0.0), "db": -4.0, "fixed": true},
 	"ui_second": {"clip": BLOOM, "range": Vector2(2.0, 2.0), "db": -4.0, "fixed": true},
 	"ui_first": {"clip": BELL, "range": Vector2(0.0, 0.0), "db": -3.0, "voice": "long", "fixed": true},
+	# Bell sound items (content/cosmetics/ "sound"): the player's result screen
+	# plays the worn one once, quietly, at one pitch.
+	"bell_wood_chime": {"clip": WOOD_CHIME, "range": Vector2(0.0, 0.0), "db": -9.0, "fixed": true},
 }
 
 ## A lever or selector drawn as a presentation/kit/lever_looks.gd kind (a

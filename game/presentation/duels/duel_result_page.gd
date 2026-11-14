@@ -146,7 +146,7 @@ func _card(index: int, won: bool) -> Control:
 	column.add_child(head)
 	var middle := HBoxContainer.new()
 	middle.add_theme_constant_override("separation", 14)
-	var pips: Control = Kit.pips(Vector2(84, 100) if not compact else Vector2(70, 84), DuelModel.members(view, index), me, DuelModel.looks(view, index)) if not DuelModel.is_public(view) else _public_pips(index)
+	var pips: Control = Kit.pips(Vector2(84, 100) if not compact else Vector2(70, 84), DuelModel.members(view, index), me, DuelModel.looks(view, index), 4, Kit.PipOutfit.STAGE) if not DuelModel.is_public(view) else _public_pips(index)
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	middle.add_child(pips)
 	# An ended duel's lanes show whole times (DuelModel.lane compares only while it runs).

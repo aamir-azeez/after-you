@@ -112,8 +112,9 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * poster only after this board answered "crowded" (submit.ts).
    */
   async submit(board: string, run: LeaderboardRun, checked?: StandingResult): Promise<{ status: SubmitStatus; view: BoardView }> {
-    // Encoded before the transaction: compression is async.
-    const proof = await encodeProof(run.checkpoint);
+    // Encoded where the room was read when it came from a turn (run.ts roomRun); a run posted again brings it raw.
+    // Compression is async, so outside the transaction.
+    const proof = run.proof ?? await encodeProof(run.checkpoint!);
     const status = this.ctx.storage.transactionSync((): SubmitStatus => {
       if (this.outcome(run.entry_id) || this.entry(run.entry_id)) return "known";
       if (proof.byte_length > MAX_PROOF_CHARS) return "not_placed";

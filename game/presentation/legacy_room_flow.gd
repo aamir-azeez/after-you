@@ -40,7 +40,7 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
-const RedoRequestNotice = preload("res://presentation/redo_request_notice.gd")
+const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const Simulation = preload("res://core/simulation.gd")
@@ -59,7 +59,8 @@ var legacy_redo: RefCounted
 var legacy_redo_restore_scope := ""
 var legacy_redo_restore_ok := true
 var redo_screen: CanvasLayer
-var redo_notice := RedoRequestNotice.new()
+## A redo tap still running on this page; another waits for it to finish.
+var _redo_tap_busy := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -292,17 +293,59 @@ func navigation_ready(target_room: String = "", reveal_recovery: bool = true) ->
 		host._toast(PlayerCopy.MAIN_8184DEB41266)
 	return false
 
+## The earlier islands' room page carries the same request item as Together
+## rooms (presentation/redo_flow.gd): a friend's request leads with Play my
+## turn again and Keep it as it is; the second player asks, then sees what
+## became of it; a reply that never came keeps Retry request.
 func _add_redo_action(card: VBoxContainer) -> void:
 	var client: RefCounted = redo_client()
 	var source := RedoClient.source_for("legacy",host.active_room)
 	if source.is_empty() and client.pending().is_empty(): return
-	var label := RoomActions.redo_label(client.can_accept(),TurnState.my_turn(host.active_room,host.api.player_id))
-	if not client.pending().is_empty(): label = "Retry request"
-	card.add_child(host._list_button(label,open_redo,false))
-	if client.can_accept(): _announce_redo_request.call_deferred(client,str(host.active_room.get("room_id","")))
+	if not client.pending().is_empty():
+		card.add_child(host._list_button(RoomActions.RETRY_REQUEST,open_redo,false))
+		return
+	var friend := FriendNicknames.sentence_start(_partner_name())
+	if client.can_accept():
+		card.add_child(host._label(PlayerCopy.REDO_ASKED_FOR % friend,24,CREAM,true))
+		card.add_child(host._list_button(RoomActions.PLAY_AGAIN,_redo_tap.bind("accept")))
+		card.add_child(host._list_button(RoomActions.KEEP_TURN,_redo_tap.bind("decline"),false))
+		if host.has_method("offer_redo_alerts_here"): host.offer_redo_alerts_here.call_deferred()
+		return
+	if client.can_request() and TurnState.my_turn(host.active_room,host.api.player_id):
+		card.add_child(host._list_button(RoomActions.ASK_FOR_REDO,_redo_tap.bind("request"),false))
+		return
+	var request: Variant = client.view().get("request")
+	if request is Dictionary and request.get("status") in ["pending","declined"] and TurnState.my_turn(host.active_room,host.api.player_id):
+		card.add_child(host._paragraph(PlayerCopy.REDO_ASKED % friend if request.status == "pending" else PlayerCopy.REDO_KEPT % friend))
 
-func _announce_redo_request(client: RefCounted, room_id: String) -> void:
-	if host.is_inside_tree() and not host.running: redo_notice.announce(host.ui, client, room_id, open_redo)
+func _partner_name() -> String:
+	var room: Dictionary = host.active_room
+	var partner: Variant = room.get("guest_id") if room.get("host_id") == host.api.player_id else room.get("host_id")
+	return host._friend_display_name(str(partner)) if partner is String else FriendNicknames.FALLBACK
+
+## One redo tap: it waits for a read still out, then asks, answers or plays the turn again at once.
+func _redo_tap(action: String) -> void:
+	if _redo_tap_busy or not host._relay_available() or host.application_backgrounded or host.running: return
+	_redo_tap_busy = true
+	var client := redo_client()
+	var room_id := str(host.active_room.get("room_id",""))
+	var deadline := Time.get_ticks_msec() + 10000
+	while client.busy and Time.get_ticks_msec() < deadline: await host.get_tree().process_frame
+	var done := false
+	if not client.busy and str(host.active_room.get("room_id","")) == room_id and client.bind_room("legacy",host.active_room):
+		match action:
+			"request": done = await client.request_redo()
+			"accept": done = await client.accept()
+			"decline": done = await client.decline()
+	_redo_tap_busy = false
+	if host.mode != MODE_ROOM or str(host.active_room.get("room_id","")) != room_id: return
+	if not done and not client.last_error.is_empty(): host._toast(client.last_error)
+	if action == "request" and done and host.has_method("offer_redo_alerts_here"): host.offer_redo_alerts_here()
+	if action == "accept" and done:
+		await refresh_room()
+		if host.mode == MODE_ROOM and str(host.active_room.get("room_id","")) == room_id: play_turn()
+		return
+	show_room()
 
 func open_redo() -> void:
 	if not host._relay_available() or host.application_backgrounded or host.running or is_instance_valid(redo_screen): return

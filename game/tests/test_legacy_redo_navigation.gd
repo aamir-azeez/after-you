@@ -37,13 +37,13 @@ func _run() -> void:
 	var app := _make_app(viewport,path,api,store)
 	app.legacy_room_flow.accept_room({"ok":true,"data":api.room})
 	await _settle()
-	_check(_button(app.overlay,"Redo requested") != null,"Fetched partner request survives Main's same-room menu rebuild")
+	_check(_button(app.overlay,"Play my turn again") != null,"Fetched partner request survives Main's same-room menu rebuild")
 	app.legacy_room_flow.open_redo()
 	await _settle()
 	var screen: CanvasLayer = app.legacy_room_flow.redo_screen
-	_check(is_instance_valid(screen) and _button(screen,"Redo my turn") != null,"Actual Main panel offers first-player consent")
+	_check(is_instance_valid(screen) and _button(screen,"Play my turn again") != null,"Actual Main panel offers first-player consent")
 	api.drop_next = true
-	await _tap(viewport,_button(screen,"Redo my turn"))
+	await _tap(viewport,_button(screen,"Play my turn again"))
 	var pending: Dictionary = app.legacy_room_flow.legacy_redo.pending()
 	_check(api.room.attempt == 1 and pending.get("action") == "accept","Lost consent reply retains its exact legacy fork operation")
 	screen.close()
@@ -134,7 +134,7 @@ func _run() -> void:
 	await _settle()
 	screen = app.legacy_room_flow.redo_screen
 	api.drop_next = true
-	await _tap(viewport,_button(screen,"Ask for redo"))
+	await _tap(viewport,_button(screen,"Ask for a redo"))
 	_check(app.legacy_room_flow.legacy_redo.pending().get("action") == "request","B's uncertain advisory request is retained")
 	screen.close()
 	await _settle()

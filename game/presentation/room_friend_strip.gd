@@ -3,19 +3,20 @@ extends RefCounted
 ## the wide room panel and, with the stage line, is Room options' card. Before
 ## a friend joins it shows a quiet placeholder avatar and the caller's title.
 const ControlTheme = preload("res://presentation/control_theme.gd")
-const PlayerAvatar = preload("res://presentation/player_avatar.gd")
+const FriendPip = preload("res://presentation/kit/friend_pip.gd")
 const USERS_ICON = preload("res://assets/ui/social/users.svg")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 
-## friend_id: the joined friend's player id, or "" before anyone joins.
+## friend_id: the joined friend's player id, or "" before anyone joins; their
+## pip (kit/friend_pip.gd) in the host's colour when `friend_hosts`.
 ## status: the line under the title (a presence badge or a plain label), or null.
-static func build(friend_id: String, title: String, status: Label, heading_font: Font, avatar_size: float) -> HBoxContainer:
+static func build(friend_id: String, title: String, status: Label, heading_font: Font, avatar_size: float, friend_hosts: bool = false) -> HBoxContainer:
 	var strip := HBoxContainer.new()
 	strip.name = "RoomFriendStrip"
 	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	strip.add_theme_constant_override("separation", 14)
-	strip.add_child(_avatar(friend_id, avatar_size))
+	strip.add_child(_avatar(friend_id, avatar_size, friend_hosts))
 	var text := VBoxContainer.new()
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -59,12 +60,10 @@ static func card(strip: HBoxContainer, stage_line: String) -> PanelContainer:
 	panel.add_child(strip)
 	return panel
 
-static func _avatar(friend_id: String, size: float) -> Control:
+static func _avatar(friend_id: String, size: float, friend_hosts: bool) -> Control:
 	if not friend_id.is_empty():
-		var avatar := TextureRect.new()
+		var avatar := FriendPip.make(friend_id, friend_hosts, size)
 		avatar.name = "FriendAvatar"
-		avatar.texture = PlayerAvatar.texture_for(friend_id)
-		_fit(avatar, size)
 		return avatar
 	var placeholder := PanelContainer.new()
 	placeholder.name = "FriendAvatarPlaceholder"

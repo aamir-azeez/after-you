@@ -20,6 +20,7 @@ const OrchardSurface = preload("res://presentation/kit/orchard_surface.gd")
 const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
 const FruitMark = preload("res://presentation/kit/fruit_mark.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Outfit = preload("res://services/outfit.gd")
@@ -293,6 +294,7 @@ func _card(entry: Dictionary) -> Control:
 	var plinth := _plinth(Vector2(0, CARD_SIZE.y), 17)
 	column.add_child(plinth)
 	var pip := PipAvatar.new(reduced, SpiritLook.PEACH, CARD_PIP, true)
+	pip.place = PipOutfit.WARDROBE
 	pip.outfit = Outfit.of(str(entry.id))
 	pip.animate_moving = true
 	pip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER

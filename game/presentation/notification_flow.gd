@@ -45,6 +45,8 @@ const Levels = preload("res://core/levels.gd")
 const Typed = preload("res://services/typed_values.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
+const RedoPrompts = preload("res://services/redo_prompts.gd")
+const InGameModal = preload("res://presentation/in_game_modal.gd")
 var host: Node
 ## A tapped alert that could not open waits until this time before another try.
 var route_retry_ms := 0
@@ -139,6 +141,21 @@ func set_turn_requests(value: bool) -> bool:
 
 func turn_off() -> void:
 	set_turn_notifications(false)
+
+## Asked once, when a redo request first matters to this player (asking for
+## one, or seeing a friend's in the app): whether to hear about redo requests.
+## Skipped while they are already on, or once the question was answered (any
+## close counts as Not now). Yes turns them on through the usual permission
+## flow (turn notifications first when they are off).
+func offer_redo_alerts(parent: Control) -> void:
+	var prompts: RefCounted = RedoPrompts.shared()
+	if not is_instance_valid(parent) or not is_instance_valid(host.turn_notifications) or prompts.alerts_asked() or turn_requests_on() and turn_notifications_on(): return
+	prompts.note_alerts_asked()
+	var modal: Control = InGameModal.open(parent, "RedoAlertsPrompt", PlayerCopy.REDO_ALERTS_TITLE)
+	modal.add_actions(PlayerCopy.REDO_ALERTS_YES, func() -> void:
+		if is_instance_valid(modal): modal.close(false)
+		if not turn_notifications_on(): set_turn_notifications(true)
+		set_turn_requests(true), PlayerCopy.REDO_NOT_NOW)
 
 ## The service's own line about where notifications stand.
 func status_line() -> String:

@@ -35,7 +35,7 @@ const LOCKED := "locked"
 const OPEN := "open"
 const DONE := "done"
 ## Every way to play a turn or a stage again, or take one back.
-const WITHHELD := ["retry", "try_again", "restart", "checkpoints", "solo_redo", "redo", "redo_answer"]
+const WITHHELD := ["retry", "try_again", "restart", "checkpoints", "solo_redo", "redo", "redo_play", "redo_keep", "redo_status", "redo_retry"]
 ## How a run ended early: a second start of a turn, a turn that could not be
 ## kept, a turn the water took.
 const REASONS := ["retry", "failed_turn", "drowned"]

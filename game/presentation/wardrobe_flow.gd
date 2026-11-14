@@ -9,7 +9,8 @@ extends Node
 ## - services: api, _names_scope, saves (reduced motion)
 ## - screen: mode, running, overlay (the page's parent), ui (the cards' parent),
 ##   _clear_overlay, _toast, and _mark_screen_back when Main has it (Android Back)
-## - soundscape when Main has it (play_fixed_cue): worn, taken off and bought.
+## - soundscape when Main has it (play_fixed_cue): worn, taken off and bought,
+##   and a picked Bell sound item's own sound.
 ##   wear_item() stays quiet: its caller (a room's Wear it) sounds it on its own.
 ## - pollen_store_flow when Main has it: its `purchase` engine, through which
 ##   the short card buys the bundle it suggests.
@@ -96,6 +97,7 @@ const Catalog = preload("res://services/cosmetic_catalog.gd")
 ## Its confirmations sound on the host's soundscape (play_on).
 const Soundscape = preload("res://services/soundscape.gd")
 const Outfit = preload("res://services/outfit.gd")
+const WearFit = preload("res://presentation/kit/wear_fit.gd")
 const FeaturedShelf = preload("res://services/featured_shelf.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -303,22 +305,23 @@ func show_more(kind: String) -> void:
 	_tab = "all"
 	_shop_tab = ""
 	_kind = kind if kind in buyable or buyable.is_empty() else str(buyable[0])
-	if not _kind in Catalog.slots(): _kind = ""
+	if not _kind in Catalog.chips(): _kind = ""
 	_redraw()
 
-## The slots, in shop order, with something on sale for Pollen the player does
-## not own (All items' list: the Orchard has its own chip).
+## The slot chips (cosmetic_catalog.gd chips: a slot, or the little extras
+## together), in shop order, with something on sale for Pollen the player
+## does not own (All items' list: the Orchard has its own chip).
 static func _buyable_slots(items: Array) -> Array:
-	return Catalog.slots().filter(func(slot: String) -> bool: return items.any(func(entry: Dictionary) -> bool: return bool(entry.sold) and not bool(entry.owned) and entry.slot == slot and entry.currency != FRUITS))
+	return Catalog.chips().filter(func(chip: String) -> bool: return items.any(func(entry: Dictionary) -> bool: return bool(entry.sold) and not bool(entry.owned) and Catalog.chip(entry.slot) == chip and entry.currency != FRUITS))
 
-## A slot chip: Hat, Body or Leaf. From the Orchard it goes back to the tab the
+## A slot chip: Hat, Body, Leaf, Trails or Extras. From the Orchard it goes back to the tab the
 ## player came from (All items unless they came from Owned).
 func set_kind(kind: String) -> void:
 	var shown := model()
 	_keep_tab(shown)
 	if _tab == "orchard":
 		_tab = _allowed_tab(_shop_tab if not _shop_tab.is_empty() else "all", bool(shown.all_items), false)
-	_kind = kind if kind in Catalog.slots() or kind == REACTIONS else ""
+	_kind = kind if kind in Catalog.chips() or kind == REACTIONS else ""
 	_swapping = false
 	_redraw()
 
@@ -356,6 +359,8 @@ func select(id: String) -> void:
 	_keep_tab(shown)
 	_selected = id if Catalog.has(id) or id == CLASSIC or ReactionCatalog.is_face(id) or not _entry_in(shown.sets, id).is_empty() else ""
 	_swapping = false
+	# A Bell sound item is heard, not seen: picking it plays it once.
+	if not Catalog.sound(_selected).is_empty(): Soundscape.play_on(host, Catalog.sound(_selected))
 	_redraw()
 
 ## A tap on reaction slot `index`: while a face is being put in, the open place
@@ -586,8 +591,8 @@ func model() -> Dictionary:
 	# The slot chips list only slots with something in this tab (in the Orchard, the tab they go back to); a chip with nothing left falls back to the first.
 	var chips_tab := tab if tab != "orchard" else _allowed_tab(_shop_tab if not _shop_tab.is_empty() else "all", all_items)
 	var kinds: Array = []
-	for slot: String in Catalog.slots():
-		if items.any(func(entry: Dictionary) -> bool: return entry.slot == slot and Page.in_tab(entry, chips_tab)): kinds.append(slot)
+	for chip: String in Catalog.chips():
+		if items.any(func(entry: Dictionary) -> bool: return Catalog.chip(entry.slot) == chip and Page.in_tab(entry, chips_tab)): kinds.append(chip)
 	# The reaction slots and faces, while the server keeps slots.
 	var reacting_on := ReactionSlots.kept(view)
 	if reacting_on: kinds.append(REACTIONS)
@@ -604,8 +609,9 @@ func model() -> Dictionary:
 	var picked := _entry_in(items + sets + reaction_entries, selected)
 	# With no chip picked, the chip of the picked item's slot, so its card is on screen; none in the Orchard.
 	var kind: String = ""
+	var picked_chip := Catalog.chip(str(picked.get("slot", "")))
 	if reacting: kind = REACTIONS
-	elif tab != "orchard": kind = _kind if _kind in kinds and _kind != REACTIONS else (str(picked.slot) if not picked.is_empty() and picked.slot in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
+	elif tab != "orchard": kind = _kind if _kind in kinds and _kind != REACTIONS else (picked_chip if not picked.is_empty() and picked_chip in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
 	var preview := Outfit.from(look)
 	if not picked.is_empty() and bool(picked.get("set", false)): preview.merge(picked.outfit, true)
 	elif not picked.is_empty() and picked.get("classic", false): preview.erase("rest_face")
@@ -617,7 +623,7 @@ func model() -> Dictionary:
 	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "fruits": PollenChip.fruits_for(_client().scope(), _surfaces(), _client().fruits), "status": _status, "retry": _retry, "shop": selling, "all_items": all_items, "bundles": bundles() and not offline, "tab": tab, "kind": kind, "kinds": kinds,
 		"buy_offline": selling and offline, "note": PlayerCopy.WARDROBE_OFFLINE_NOTE if offline and not view.is_empty() else "",
 		"orchard": fruits_on, "sets": sets, "fruits_blocked": fruits_on and _fruit_balance() < 0,
-		"more": more, "selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "preview_face": face, "featured": featured, "items": items,
+		"more": more, "selected": selected, "view": _view_mode, "preview": _preview(Outfit.from(preview), picked), "preview_face": face, "featured": featured, "items": items,
 		"reaction_entries": reaction_entries, "reactions": {"slots": slots, "open": ReactionSlots.open_count(view), "unlock": unlock, "faces": faces, "selected": selected,
 			"swapping": _swapping and reacting, "shop": selling, "color": "mint" if _view_mode == "friend" else "peach"} if reacting_on else {}}
 
@@ -626,6 +632,11 @@ func model() -> Dictionary:
 ## server's cost for it (services/wardrobe.gd set_cost; no cost, no card): {id,
 ## set, name, pieces (names, in name order), outfit (every piece worn), price,
 ## full, currency, owned, sold, worn, locked, tier, slot}.
+## The preview's outfit: a leaf being looked at shows, so a hat that would
+## hide it comes off the preview (kit/wear_fit.gd shown_with).
+static func _preview(outfit: Dictionary, picked: Dictionary) -> Dictionary:
+	return WearFit.shown_with(outfit) if str(picked.get("slot", "")) == "leaf" else outfit
+
 func _orchard_sets(view: Dictionary, owned: Array, offered: Array, look: Dictionary) -> Array:
 	var sets: Array = []
 	for set_id: String in (view.get("fruit_sets", {}) as Dictionary):

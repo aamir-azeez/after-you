@@ -97,17 +97,23 @@ const SLOTS := {
 		"wooden_plaque": {"frame": "wooden_plaque"},
 		"stone_tile": {"frame": "stone_tile"},
 	},
+	# Not a prop: how the route barriers (presentation/kit/route_barriers.gd
+	# EDGE_LOOKS) edge a zone that one pip may not enter.
+	"barrier": {
+		"rope": {"edge": "rope"},
+		"rail": {"edge": "rail"},
+	},
 }
 
 ## Slots that pick a kit piece's look rather than a prop to stand: the resolved
 ## dressing carries the pick as a field of the same name ("tag": "stone_tile").
-const LOOK_SLOTS := ["tag"]
+const LOOK_SLOTS := ["tag", "barrier"]
 
 ## The pick for a slot that neither the theme nor the level names.
 const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
-	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile",
+	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line

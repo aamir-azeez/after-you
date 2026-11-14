@@ -1,3 +1,4 @@
+import type { InboxRedo } from "./room-inbox";
 import { ApiError, HASH_PATTERN, ID_PATTERN, canonicalJson, digest, fail, isObject, object, ok, type Outcome } from "./protocol";
 
 // Advisory state only. Accepted re-recording remains an ordinary archived fork.
@@ -59,4 +60,17 @@ export function consentToRedo(storage: DurableObjectStorage, source: RedoSource 
 export function acceptedRedo(storage: DurableObjectStorage): void {
   const request = stored(storage);
   if (request) storage.sql.exec("UPDATE redo_control SET data=? WHERE id=1", JSON.stringify({ ...request, status: "accepted" }));
+}
+/**
+ * The inbox's view of the stored request (room-inbox.ts), from the scalars its projection already selected: a request
+ * is current only on the same revision, branch and stage, since the revision moves with every turn. Reads one small
+ * row and never the turn; a damaged row only drops the field.
+ */
+export function inboxRedo(storage: DurableObjectStorage, player: string, room: { revision: number; branch: number; stage_index: number }): { redo?: InboxRedo } {
+  let request: RedoRequest | null;
+  try { request = stored(storage); } catch { return {}; }
+  if (!request || request.source.revision !== room.revision || request.source.branch !== room.branch || request.source.stage_index !== room.stage_index) return {};
+  const shown = (state: InboxRedo["state"]) => ({ redo: { state, stage_index: room.stage_index } });
+  if (request.status === "pending") return player === request.source.first_player_id ? shown("asked_you") : player === request.source.second_player_id ? shown("you_asked") : {};
+  return request.status === "declined" && player === request.source.second_player_id ? shown("kept") : {};
 }

@@ -40,7 +40,8 @@ const everyone = async (pairs: [Account, RoomSnapshotV2][]) => Promise.all(pairs
 describe("unblocked pair memo", () => {
   it("lets a warm poll skip both block lookups", async () => {
     const { guest, room } = await relayPair(), hasBlocked = vi.spyOn(SafetyProfile.prototype, "hasBlocked");
-    const calls = ["PLAYERS.authorizeRoom", "ROOMS_V2.interactionAllowed", "ROOMS_V2.snapshotIfChanged"];
+    // The room runs the pair gate inside its own read (turn-wire.ts), so the Worker makes one room request.
+    const calls = ["PLAYERS.authorizeRoom", "ROOMS_V2.snapshotReply"];
     expect(await countedPoll(guest, room)).toEqual(calls);
     expect(hasBlocked).toHaveBeenCalledTimes(2);
     hasBlocked.mockClear();
@@ -66,6 +67,15 @@ describe("unblocked pair memo", () => {
     expect(await code(await poll(outsider.guest, outsider.room))).toBe("200 ok");
     expect(await code(await call(`/v1/safety/blocks/${guest.player_id}`, "DELETE", host))).toBe("200 ok");
     expect(await everyone(shared)).toEqual(["200 ok", "200 ok", "200 ok"]);
+  });
+
+  it("refuses a redo read and request right after a block, though the redo call keeps the memo warm", async () => {
+    const { host, guest, room } = await relayPair(), path = `/v2/rooms/${room.room_id}/redo`;
+    expect(await code(await call(path, "GET", guest))).toBe("200 ok");
+    expect(await code(await call(path, "GET", guest))).toBe("200 ok");
+    expect(await code(await block(host, room))).toBe("200 ok");
+    expect(await code(await call(path, "GET", guest))).toBe("403 player_blocked");
+    expect(await code(await call(path, "POST", guest, { action: "request", source: null }))).toBe("403 player_blocked");
   });
 
   it("answers a block even when a room the pair shares is broken", async () => {

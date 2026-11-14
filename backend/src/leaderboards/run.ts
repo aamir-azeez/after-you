@@ -3,6 +3,7 @@ import { chapter } from "../v2/chapters";
 import { nestedProof } from "../v2/checkpoint-chain";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
+import type { EncodedProof } from "./proofs";
 import type { MutationV2, RoomSnapshotV2 } from "../v2/room";
 import { boardKey } from "./boards";
 import { boardLooksOf, type PairLooks } from "./run-looks";
@@ -11,8 +12,11 @@ import { boardLooksOf, type PairLooks } from "./run-looks";
 export type LeaderboardRun = {
   schema_version: 1; board: string; entry_id: string; pair_key: string; members: [string, string];
   ticks: number; finished_at: string; finished_ms: number; chapter: ChapterKey; simulation_version: number;
-  /** The room's final checkpoint. Its proof nests every pair of the finishing branch, so it alone replays the run. */
-  checkpoint: CheckpointV2;
+  /**
+   * The room's final checkpoint: encoded (proofs.ts) when the room worked out the run (v2/room.ts turnRequest), so the
+   * Worker never holds it, or raw, which the board encodes. Its proof nests every pair of the finishing branch, so it alone replays the run.
+   */
+  proof?: EncodedProof; checkpoint?: CheckpointV2;
   /** What each member wore when it finished, in `members` order, when the room handed it over while looks are on (run-looks.ts). */
   looks?: PairLooks;
   /** The pair's two platform accounts as one key, set by submit.ts postRun while the platform rule is on (pair-accounts.ts). */
@@ -80,11 +84,12 @@ export function runTicks(checkpoint: CheckpointV2, stages: number): { ticks: num
  * that has moved on since says nothing about when this run finished.
  * `handed`: the pair's looks from the finishing commit; kept only when it is a whole pair.
  */
-export async function finishedRun(mutation: MutationV2, context: unknown, handed?: unknown): Promise<LeaderboardRun | null> {
+/** `encode`: the room's own encoder (v2/room.ts turnHooks), so the run carries `proof`; without it the run carries `checkpoint`. */
+export async function finishedRun(mutation: MutationV2, context: unknown, handed?: unknown, encode?: (checkpoint: CheckpointV2) => Promise<EncodedProof>): Promise<LeaderboardRun | null> {
   const { receipt, room } = mutation;
   if (context !== undefined || receipt.operation !== "turns") return null;
   if (receipt.accepted_revision !== room.revision || receipt.branch !== room.branch) return null;
-  return roomRun(room, handed);
+  return roomRun(room, handed, encode);
 }
 
 /**
@@ -92,7 +97,7 @@ export async function finishedRun(mutation: MutationV2, context: unknown, handed
  * turn, a fork or a join (v2/room.ts write), so while it is still complete its `updated_at` is when its final turn
  * was accepted. Used by finishedRun and by a member posting the room's run again (routes.ts POST_PATH).
  */
-export async function roomRun(room: RoomSnapshotV2, handed?: unknown): Promise<LeaderboardRun | null> {
+export async function roomRun(room: RoomSnapshotV2, handed?: unknown, encode?: (checkpoint: CheckpointV2) => Promise<EncodedProof>): Promise<LeaderboardRun | null> {
   if (room.active_role !== "complete") return null;
   const host = room.host_id, guest = room.guest_id;
   if (!guest || guest === host) return null;
@@ -106,6 +111,6 @@ export async function roomRun(room: RoomSnapshotV2, handed?: unknown): Promise<L
     schema_version: 1, board: boardKey(room), entry_id: await entryId(room.room_id, room.branch), pair_key: await pairKey(host, guest),
     members: [host, guest], ticks: timed.ticks, finished_at: room.updated_at, finished_ms,
     chapter: { level_id: room.level_id, level_version: room.level_version, definition_hash: room.definition_hash },
-    simulation_version: timed.simulation_version, checkpoint: room.checkpoint, ...(looks ? { looks } : {})
+    simulation_version: timed.simulation_version, ...(encode ? { proof: await encode(room.checkpoint) } : { checkpoint: room.checkpoint }), ...(looks ? { looks } : {})
   };
 }

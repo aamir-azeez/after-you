@@ -62,6 +62,12 @@ var _stair_marks: Dictionary = {}
 func _mark_stair(stair: Dictionary) -> Dictionary:
 	return _stair_marks.get(stair.id, super._mark_stair(stair))
 
+## The well's lip is edged with a low rail: the "barrier" look slot's rail
+## style. The Well has no dressing file to pick it in (one would switch its
+## plain look to the warm one), so the world picks it.
+func _barrier_style() -> String:
+	return "rail"
+
 ## A stage's bell, around its centre: its base, its frame and the floor its
 ## frame and bell hide from the camera behind them.
 const BELL_SHADE := Rect2(-0.53, -1.6, 1.06, 1.94)

@@ -80,6 +80,8 @@ export const FLAG_VARS = Object.freeze({
   raceGhost: "RACE_GHOST",
   /** Public duels (duels/public.ts): the list across chapters, posting and joining open spots with players you don't know, their safety routes, the held duel extra in their rooms, the community rules version they need, and their capability. Needs DUELS. */
   publicDuels: "PUBLIC_DUELS",
+  /** Compressed rooms (v2/row-codec.ts, v2/turn-wire.ts): standalone rooms write their room, turn and pair rows deflated, and phones that ask are told they may send deflated turns and read deflated room replies. Rooms read both row forms whatever this says, so before its first flip the Worker may roll back as before; the first flip is a rollback floor, since older code cannot read a deflated row. */
+  compressedRooms: "COMPRESSED_ROOMS",
   /** Pauses the replay time limit on finished rooms (v2/replay-expiry.ts), which is on unless CONFIG lists this: replays no phone saved go REPLAY_KEEP_MS (a year) after the room finished. */
   replayExpiryPaused: "REPLAY_EXPIRY_PAUSED",
 } as const);

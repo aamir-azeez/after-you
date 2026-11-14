@@ -49,7 +49,7 @@ func _run() -> void:
 	preview.refresh_schedule.bind(preview._online_refresh_context(),Time.get_ticks_msec())
 	preview.refresh_schedule.request_now(Time.get_ticks_msec())
 	await preview._service_online_refresh()
-	_check(_find_button(preview.overlay,"Redo requested")!=null,"The friend's redo request shows")
+	_check(_find_button(preview.overlay,"Play my turn again")!=null,"The friend's redo request shows")
 	# The server asks for a two-minute pause before the next room read.
 	api.responder=func(request: Dictionary) -> Dictionary:
 		if request.method==HTTPClient.METHOD_GET and request.path=="/v2/rooms/"+ROOM: return {"ok":false,"status":429,"code":"rate_limited","retry_after_ms":120000}
@@ -61,7 +61,7 @@ func _run() -> void:
 	preview._open_redo()
 	await _settle()
 	var screen: CanvasLayer=preview._redo_screen
-	_check(is_instance_valid(screen) and _find_button(screen,"Redo my turn")!=null,"The redo request can be answered")
+	_check(is_instance_valid(screen) and _find_button(screen,"Play my turn again")!=null,"The redo request can be answered")
 	await screen._act("accept")
 	await _settle()
 	_check(screen.accepted and server_branch==1,"The redo is accepted and the room starts again on a new branch")
