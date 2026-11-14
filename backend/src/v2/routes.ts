@@ -84,10 +84,11 @@ export function knownRoom(request: Request): KnownRoom | undefined {
 /**
  * Sent with X-AfterYou-Known-Room by a client that reads the redo state from its poll instead of
  * a separate GET /redo. Its capabilities then say poll_redo_version 1, and both poll replies end
- * with `redo`. Without it every byte is as before.
+ * with `redo`. Without it every byte is as before. "2" asks for version 2: `redo` (and GET /redo) is then
+ * RedoStateV2 (redo-control.ts), with the room's start over request and whether Play my turn again is open.
  */
 export const POLL_REDO_HEADER = "X-AfterYou-Poll-Redo";
-function pollRedo(request: Request): boolean { return request.headers.get(POLL_REDO_HEADER) === "1"; }
+function pollRedo(request: Request): number { const value = request.headers.get(POLL_REDO_HEADER); return value === "2" ? 2 : value === "1" ? 1 : 0; }
 /** What a standalone room read or turn reply carries beside the room: each part the client asked for (names and looks while their flags are on). A Story request gets none. */
 function besideWanted(request: Request, env: Env, context: unknown): Beside {
   if (context !== undefined) return {};
@@ -127,7 +128,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(roomLevel(request) >= 2 ? { room_level: 2, max_join_versions: MAX_JOIN_VERSIONS, max_stages: MAX_ROOM_STAGES } : {}),
     // Only clients that keep attempts ask; everyone else gets the same bytes as before.
     ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: true } : {}),
-    ...(pollRedo(request) ? { poll_redo_version: 1 } : {}),
+    ...(pollRedo(request) ? { poll_redo_version: pollRedo(request) } : {}),
     // Each version below goes only to clients that ask for it; everyone else gets the same bytes as before.
     ...(triesWanted(request) ? { turn_tries_version: 1 } : {}),
     ...(endReactionsWanted(request) ? { end_reactions_version: 1 } : {}),
@@ -305,7 +306,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // caller's safety token), so it skips the separate router check. A read: auth() has just checked the device;
   // requests re-check it.
   if (operation === "redo" && !item && context === undefined) {
-    if (request.method === "GET") return json(unwrap(await room.redoGated(playerId, undefined, undefined, safetyToken)));
+    if (request.method === "GET") return json(unwrap(await room.redoGated(playerId, undefined, undefined, safetyToken, pollRedo(request))));
     if (request.method === "POST") return json(unwrap(await room.redoGated(playerId, await boundedJson(request, 4096), await bearerDigest(request), safetyToken)));
     throw new ApiError(405, "method_not_allowed");
   }

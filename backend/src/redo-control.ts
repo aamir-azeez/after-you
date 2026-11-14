@@ -20,7 +20,8 @@ function validRequest(value: unknown): value is RedoRequest {
     validRedoSource(value.source) && ["pending", "declined", "cancelled", "accepted"].includes(String(value.status));
 }
 export function initializeRedo(storage: DurableObjectStorage): void { storage.sql.exec(REDO_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")); }
-export function resetRedo(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM redo_control"); }
+/** For the full room erase and a snapshot restore: the request and the seen first turn. */
+export function resetRedo(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM redo_control"); storage.sql.exec("DROP TABLE IF EXISTS redo_seen"); }
 function stored(storage: DurableObjectStorage): RedoRequest | null {
   const rows = storage.sql.exec<{ id: number; data: string }>("SELECT id,data FROM redo_control LIMIT 2").toArray();
   if (!rows.length) return null;
@@ -45,6 +46,9 @@ export function mutateRedo(storage: DurableObjectStorage, source: RedoSource | n
   if (player !== (input.action === "decline" ? source.first_player_id : source.second_player_id)) return fail(403, "wrong_redo_player");
   const previous = redoState(storage, source).request;
   if (input.action !== "request" && !previous) return fail(409, "redo_request_missing");
+  // One open request per room position: a redo and a start over never replace each other's row.
+  const other = previous ? null : stored(storage);
+  if (input.action === "request" && other?.status === "pending" && samePosition(other.source, source)) return fail(409, "redo_request_pending");
   // One request per accepted A turn. Retries and cancelled/declined requests do
   // not create more work or repeatedly interrupt the partner.
   if (previous && (input.action === "request" || previous.status !== "pending")) return ok(redoState(storage, source));
@@ -66,11 +70,80 @@ export function acceptedRedo(storage: DurableObjectStorage): void {
  * is current only on the same revision, branch and stage, since the revision moves with every turn. Reads one small
  * row and never the turn; a damaged row only drops the field.
  */
-export function inboxRedo(storage: DurableObjectStorage, player: string, room: { revision: number; branch: number; stage_index: number }): { redo?: InboxRedo } {
+export function inboxRedo(storage: DurableObjectStorage, player: string, room: { revision: number; branch: number; stage_index: number; a_turn_id: string | null; checkpoint_hash: string | null }): { redo?: InboxRedo } {
   let request: RedoRequest | null;
   try { request = stored(storage); } catch { return {}; }
   if (!request || request.source.revision !== room.revision || request.source.branch !== room.branch || request.source.stage_index !== room.stage_index) return {};
-  const shown = (state: InboxRedo["state"]) => ({ redo: { state, stage_index: room.stage_index } });
+  // A redo only while the second turn is unplayed; a start over (isStartOver) at any stage, shown as start_over_*.
+  const over = room.checkpoint_hash !== null && request.source.a_hash === room.checkpoint_hash;
+  if (!over && !room.a_turn_id) return {};
+  const shown = (state: "asked_you" | "you_asked" | "kept"): { redo: InboxRedo } => ({ redo: { state: over ? `start_over_${state}` as const : state, stage_index: room.stage_index } });
   if (request.status === "pending") return player === request.source.first_player_id ? shown("asked_you") : player === request.source.second_player_id ? shown("you_asked") : {};
   return request.status === "declined" && player === request.source.second_player_id ? shown("kept") : {};
+}
+
+const samePosition = (a: RedoSource, b: Pick<RedoSource, "room_id" | "revision" | "branch" | "stage_index">): boolean =>
+  a.room_id === b.room_id && a.revision === b.revision && a.branch === b.branch && a.stage_index === b.stage_index;
+
+/**
+ * Start over: either member asks to take the room back to its first stage, the other agrees (a fork to stage 0
+ * carrying the request's id) or declines. It is the same one-row request as a redo, told apart by its source:
+ * a start over names the room's live checkpoint where a redo names the first turn's recording, so the asker is the
+ * source's second player and the friend who answers is its first. Older Workers read the row as an ordinary request
+ * for a source that is never their redo source, so it shows nowhere there and nothing accepts it.
+ */
+export type RoomPosition = { room_id: string; revision: number; branch: number; stage_index: number; checkpoint_hash: string; host_id: string; guest_id: string | null };
+export function startOverSource(room: RoomPosition, asker: string): RedoSource | null {
+  if (!room.guest_id || ![room.host_id, room.guest_id].includes(asker)) return null;
+  return { room_id: room.room_id, revision: room.revision, branch: room.branch, stage_index: room.stage_index, a_hash: room.checkpoint_hash,
+    first_player_id: asker === room.host_id ? room.guest_id : room.host_id, second_player_id: asker };
+}
+/** Whether a request's source is a start over of this room position. */
+export function isStartOver(source: RedoSource, room: Pick<RoomPosition, "checkpoint_hash">): boolean { return source.a_hash === room.checkpoint_hash; }
+/** The start over request on this room position, whatever its status, or null. */
+export function startOverRequest(storage: DurableObjectStorage, room: RoomPosition): RedoRequest | null {
+  const current = stored(storage);
+  return current && samePosition(current.source, room) && isStartOver(current.source, room) ? current : null;
+}
+/** A fork carrying `requestId` answers this pending start over: only its first player (the friend asked) may. */
+export function startOverConsent(storage: DurableObjectStorage, room: RoomPosition, player: string, requestId: string): boolean {
+  const request = startOverRequest(storage, room);
+  return request !== null && request.status === "pending" && request.request_id === requestId && request.source.first_player_id === player;
+}
+
+/**
+ * Play my turn again (self redo): the first player may record their saved turn again until the friend's phone has
+ * fetched it. The room notes the first time a room read hands the first turn to the second player (v2/room.ts
+ * view), one row a turn, in a table made by the first such read so other rooms' storage is unchanged; a
+ * replacement is refused once the row names the live first turn. Operator snapshots leave the table out, and the
+ * full erase and a snapshot restore drop it (resetRedo).
+ */
+export const REDO_SEEN_TABLE = { name: "redo_seen", schema: "CREATE TABLE redo_seen (id INTEGER PRIMARY KEY CHECK(id=1), turn_id TEXT NOT NULL, a_hash TEXT NOT NULL)" } as const;
+function seenPresent(storage: DurableObjectStorage): boolean {
+  return storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name=?", REDO_SEEN_TABLE.name).toArray().length > 0;
+}
+/** Whether the second player's phone has fetched this first turn. */
+export function turnSeen(storage: DurableObjectStorage, turnId: string, aHash: string): boolean {
+  return seenPresent(storage) && storage.sql.exec("SELECT 1 AS seen FROM redo_seen WHERE id=1 AND turn_id=? AND a_hash=?", turnId, aHash).toArray().length > 0;
+}
+/** Notes that the second player was handed this first turn; writes only the first time. */
+export function noteTurnSeen(storage: DurableObjectStorage, turnId: string, aHash: string): void {
+  if (turnSeen(storage, turnId, aHash)) return;
+  storage.sql.exec(REDO_SEEN_TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+  storage.sql.exec("INSERT OR REPLACE INTO redo_seen VALUES (1,?,?)", turnId, aHash);
+}
+/** The table as sqlite_master lists it, so snapshot schema checks can let it pass. */
+export function isRedoSeenTable(row: { name: string; sql: string }): boolean {
+  return row.name === REDO_SEEN_TABLE.name && row.sql === REDO_SEEN_TABLE.schema;
+}
+
+/**
+ * The redo state for a phone that sent poll redo version 2 (v2/routes.ts POLL_REDO_HEADER): the redo state as
+ * before, the room's start over request, and whether this member may play their saved turn again now. Version 1
+ * phones get RedoState exactly as before, which never shows a start over.
+ */
+export type RedoStateV2 = { schema_version: 2; source: RedoSource | null; request: RedoRequest | null; start_over: RedoRequest | null; replace_open: boolean };
+export function redoStateV2(storage: DurableObjectStorage, source: RedoSource | null, room: RoomPosition | null, replaceOpen: boolean): RedoStateV2 {
+  const state = redoState(storage, source);
+  return { schema_version: 2, source: state.source, request: state.request, start_over: room ? startOverRequest(storage, room) : null, replace_open: replaceOpen };
 }

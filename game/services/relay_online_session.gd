@@ -804,8 +804,12 @@ func _note_polled_redo(room_id: String, revision: int, branch: int, redo: Varian
 func take_polled_redo(room: Dictionary) -> Dictionary:
 	var polled := _polled_redo
 	_polled_redo = {}
-	if polled.is_empty() or not Typed.equal(capabilities.get("poll_redo_version"), 1.0) or polled.room_id != str(room.get("room_id", "")) or polled.revision != int(room.get("revision", -1)) or polled.branch != int(room.get("branch", -1)) or not polled.redo is Dictionary: return {}
+	if polled.is_empty() or not (Typed.equal(capabilities.get("poll_redo_version"), 1.0) or redo_extras_supported()) or polled.room_id != str(room.get("room_id", "")) or polled.revision != int(room.get("revision", -1)) or polled.branch != int(room.get("branch", -1)) or not polled.redo is Dictionary: return {}
 	return polled.redo
+
+## The server reads start over requests and Play my turn again (poll redo version 2).
+func redo_extras_supported() -> bool:
+	return Typed.equal(capabilities.get("poll_redo_version"), 2.0)
 
 func _ordinary_coordinator() -> RefCounted:
 	var background_writer: Callable = _store.save_scope if _store.get_script() == Store else Callable()

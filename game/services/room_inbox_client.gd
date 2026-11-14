@@ -329,9 +329,10 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 	}.merged({"partner_left":true} if value.get("partner_left") == true else {}).merged(_partner_reaction(value)).merged({"redo":value.redo.duplicate()} if valid_redo(value.get("redo")) else {})
 
 ## A room's current redo request on Home (to clients that send X-AfterYou-Room-Redo):
-## {state: asked_you | you_asked | kept, stage_index}. Never any ids.
+## {state: asked_you | you_asked | kept, stage_index}, or a start over request the same way with a
+## start_over_ prefix (the header's version 2). Never any ids.
 static func valid_redo(value: Variant) -> bool:
-	return value is Dictionary and value.size() == 2 and value.get("state") in ["asked_you","you_asked","kept"] and _nonnegative_integer(value.get("stage_index")) and value.stage_index < 64
+	return value is Dictionary and value.size() == 2 and value.get("state") in ["asked_you","you_asked","kept","start_over_asked_you","start_over_you_asked","start_over_kept"] and _nonnegative_integer(value.get("stage_index")) and value.stage_index < 64
 
 ## The friend's end-of-run face on their latest turn (presentation only), with
 ## their spirit's colour (the host's slot is p0, the guest's p1). A face this

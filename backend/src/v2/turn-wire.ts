@@ -103,5 +103,6 @@ function asciiJson(value: unknown): string {
 }
 /** A turn body's exact fields, the one list the route (Story turns), the room's premium check and its commit share. */
 export function exactTurnFields(value: Record<string, unknown>): void {
-  exact(value, ["base_revision", "idempotency_key", "branch", "recording", ...(object(value.recording).role === "b" ? ["checkpoint"] : []), ...triesField(value), ...endReactionField(value), ...runReactionField(value)]);
+  exact(value, ["base_revision", "idempotency_key", "branch", "recording", ...(object(value.recording).role === "b" ? ["checkpoint"] : []), ...triesField(value), ...endReactionField(value), ...runReactionField(value),
+    ...(value.replaces === undefined ? [] : ["replaces"])]);
 }

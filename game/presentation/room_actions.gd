@@ -26,6 +26,7 @@ const ASK_FOR_REDO := PlayerCopy.REDO_ASK
 const PLAY_AGAIN := PlayerCopy.REDO_PLAY_AGAIN
 const KEEP_TURN := PlayerCopy.REDO_KEEP
 const RETRY_REQUEST := PlayerCopy.REDO_RETRY
+const RETRY_ICON := preload("res://assets/ui/retry.svg")
 
 ## id: the action.
 ##   button: an action_buttons.gd id (its label, icon and look), or
@@ -64,6 +65,16 @@ const ACTIONS := {
 	# A request or answer whose reply was lost: its recovery screen (redo_screen.gd).
 	"redo_retry": {"text": RETRY_REQUEST, "icon": preload("res://assets/ui/retry.svg"), "alert": true, "when": ["redo_unsettled"]},
 	"solo_redo": {"text": PlayerCopy.SOLO_REDO_ACTION, "when": ["!hard", "solo_redo"]},
+	# Play my turn again while the friend has not fetched it (redo_flow.gd replace); while it
+	# plays, Keep it as it is goes back to the saved turn.
+	"redo_self": {"text": PLAY_AGAIN, "primary": true, "icon": preload("res://assets/ui/play.svg"), "when": ["!hard", "redo_self"]},
+	"redo_self_keep": {"text": KEEP_TURN, "when": ["replacing"]},
+	# Start over (redo_flow.gd): either player asks; then the row says what became of it
+	# (start_over_status), and the friend asked agrees or keeps playing.
+	"start_over": {"text": PlayerCopy.START_OVER_ASK, "icon": RETRY_ICON, "when": ["!hard", "start_over_ask"]},
+	"start_over_status": {"text": PlayerCopy.START_OVER_ASK, "when": ["!hard", "start_over_answered"]},
+	"start_over_agree": {"text": PlayerCopy.START_OVER_AGREE, "primary": true, "icon": RETRY_ICON, "when": ["!hard", "start_over_answer"]},
+	"start_over_keep": {"text": PlayerCopy.START_OVER_KEEP, "when": ["!hard", "start_over_answer"]},
 	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "with_receipt": true, "when": ["photo"]},
 	"checkpoints": {"button": "retry", "when": ["!hard", "solo"]},
 	# A finished solo hard run starts again from its first stage (services/hard_mode.gd).
@@ -122,8 +133,8 @@ const LOOKS := {
 const LAYOUT := {
 	"ready_panel": {
 		"header": ["refresh"],
-		"primary": ["resume", "record"],
-		"turn": ["redo", "redo_status", "redo_retry"],
+		"primary": ["start_over_agree", "resume", "record"],
+		"turn": ["start_over_keep", "redo_self_keep", "redo", "redo_status", "start_over", "start_over_status", "redo_retry"],
 		"pair": ["room_options"],
 		"options": ["share", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
@@ -137,8 +148,8 @@ const LAYOUT := {
 	"waiting_panel": {
 		"header": ["refresh"],
 		"status": ["alerts"],
-		"primary": ["redo_play", "notify"],
-		"turn": ["redo_keep", "redo_retry"],
+		"primary": ["redo_play", "start_over_agree", "redo_self", "notify"],
+		"turn": ["redo_keep", "start_over_keep", "start_over", "start_over_status", "redo_retry"],
 		"pair": ["room_options", "your_rooms"],
 		"options": ["share", "notify", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
@@ -159,11 +170,11 @@ const LAYOUT := {
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
-		"turn": ["resume", "record", "redo", "redo_status", "redo_retry", "refresh", "local_replays", "restart", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["start_over_agree", "start_over_keep", "redo_self_keep", "resume", "record", "redo", "redo_status", "start_over", "start_over_status", "redo_retry", "refresh", "local_replays", "restart", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"waiting_card": {
 		"invite": ["copy_code"],
-		"turn": ["check_saved", "keep_held", "redo_play", "redo_keep", "redo_retry", "alerts", "notify", "refresh", "share"],
+		"turn": ["check_saved", "keep_held", "redo_play", "redo_keep", "start_over_agree", "start_over_keep", "redo_self", "start_over", "start_over_status", "redo_retry", "alerts", "notify", "refresh", "share"],
 		"more": ["replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"complete": {
