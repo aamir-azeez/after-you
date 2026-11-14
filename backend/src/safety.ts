@@ -109,9 +109,13 @@ export class SafetyProfile extends DurableObject<Env> {
   private write(state: Profile): void { this.ctx.storage.sql.exec("INSERT OR REPLACE INTO safety_profile VALUES (1,?)", JSON.stringify(state)); }
   /**
    * `current`: the rules asked about (public-policy.ts termsVersionFor; photos need only TERMS_VERSION, public duels
-   * termsVersion). An acceptance of older rules than those reads as not accepted.
+   * termsVersion). An acceptance of older rules than those reads as not accepted, with no time: phones take a time
+   * only beside `accepted: true` (game/services/safety_client.gd valid_terms).
    */
-  terms(owner: string, current: string = TERMS_VERSION) { const p = this.read(owner); return { schema_version: 1, terms_version: current, accepted: termsCovered(p.terms_version, current), accepted_at: p.accepted_at }; }
+  terms(owner: string, current: string = TERMS_VERSION) {
+    const p = this.read(owner), accepted = termsCovered(p.terms_version, current);
+    return { schema_version: 1, terms_version: current, accepted, accepted_at: accepted ? p.accepted_at : null };
+  }
   blocks(owner: string) { return { schema_version: 1, blocked_players: [...this.read(owner).blocks] }; }
   /** What a public duel post or join checks of a player, in one request: the rules `current` accepted, and their blocks. */
   publicGate(owner: string, current: string): { accepted: boolean; blocked_players: string[] } {

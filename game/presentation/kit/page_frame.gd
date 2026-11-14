@@ -58,7 +58,7 @@ static func build(page: Control, parts: Dictionary, title_font: Font, back: Call
 	title.name = str(parts.title_name)
 	if title_font != null: title.add_theme_font_override("font", title_font)
 	titles.add_child(title)
-	titles.add_child(ShopKit.text(str(parts.subtitle), 17, UiTokens.MUTED))
+	if not str(parts.get("subtitle", "")).is_empty(): titles.add_child(ShopKit.text(str(parts.subtitle), 17, UiTokens.MUTED))
 	var chip_slot := HBoxContainer.new()
 	chip_slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	header.add_child(chip_slot)

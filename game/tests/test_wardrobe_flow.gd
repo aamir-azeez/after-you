@@ -109,6 +109,9 @@ class Host extends Node:
 	var ui: Control
 	var toasts: Array = []
 	var scope := {}
+	## The screens the Wardrobe said it opened over (Main's back history, menu_opened).
+	var opened: Array = []
+	func menu_opened(_screen: String, from: String, _back: Button) -> void: opened.append(from)
 	func _names_scope() -> Dictionary: return scope
 	func _clear_overlay() -> void:
 		for child: Node in overlay.get_children(): child.queue_free()
@@ -236,7 +239,7 @@ func _buying() -> void:
 	var t := _setup()
 	t.fake.replies = [_answer([], {}, 24000)]
 	t.flow.show_wardrobe()
-	_check(t.host.mode == Flow.MODE_WARDROBE and t.flow.is_open() and t.flow.return_to == "settings", "The page opens, from Settings by default")
+	_check(t.host.mode == Flow.MODE_WARDROBE and t.flow.is_open() and t.host.opened.back() == "settings", "The page opens, from Settings by default")
 	await _frames()
 	var model: Dictionary = t.flow.model()
 	_check(model.balance == 24000 and model.items.size() == 9 and model.items.filter(func(entry: Dictionary) -> bool: return entry.sold).size() == 6 and t.fake.sent.size() == 1 and t.fake.sent[0].path == "/v1/pollen", "It reads the wardrobe and lists the six items the server sells, and the three earned ones")
@@ -273,7 +276,7 @@ func _buying() -> void:
 	(t.host.overlay.find_child("WardrobeBack", true, false) as Button).pressed.emit()
 	_check(back.asked, "Back asks the host to leave")
 	t.flow.show_wardrobe("home")
-	_check(t.flow.return_to == "home", "Opened from Home, Back goes to Home")
+	_check(t.host.opened.back() == "home", "Opened from Home, the back history hears it opened over Home")
 	t.host.queue_free()
 	await _frames(2)
 
@@ -1215,7 +1218,7 @@ func _orchard_confirm() -> void:
 	var t := await _orchard_setup([], 151)
 	t.flow.show_orchard("fruits")
 	await _frames()
-	_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.flow.return_to == "fruits", "show_orchard opens the Wardrobe on the Orchard, Back going where it was asked from")
+	_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.host.opened.back() == "fruits", "show_orchard opens the Wardrobe on the Orchard over the screen it was asked from")
 	await t.flow.act("apple_hood")
 	var sheet: Node = t.host.ui.find_child("WardrobeConfirm", true, false)
 	var words := _texts(sheet)
@@ -1260,7 +1263,7 @@ func _orchard_short() -> void:
 			_check(asked.store == 1 and t.host.ui.find_child("WardrobeShort", true, false) == null, "Get Fruits asks for the store and the card closes")
 			t.flow.reopen()
 			await _frames(2)
-			_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.flow.return_to == "settings" and t.flow.model().selected == "blossom_crown", "Back from the store reopens the Orchard with the Back it had, on the item picked")
+			_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.host.opened.back() == "" and t.flow.model().selected == "blossom_crown", "Back from the store reopens the Orchard on the item picked")
 			t.flow.reopen()
 			await _frames(2)
 			_check(t.flow.model().tab == "all", "Only once: the next reopen is the Wardrobe as it opens")
