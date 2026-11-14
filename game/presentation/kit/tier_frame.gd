@@ -77,7 +77,8 @@ static func label(tier: String, font_size: int = 12, font: Font = null) -> HBoxC
 	row.name = "TierLabel"
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 5)
-	row.add_child(mark(tier, font_size + 5.0))
+	# Free (Classic, the everyday faces) is the word alone: no tier, no mark.
+	if shown(tier) in TIERS: row.add_child(mark(tier, font_size + 5.0))
 	var text := Label.new()
 	text.text = word(tier)
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE

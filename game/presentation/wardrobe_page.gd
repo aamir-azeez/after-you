@@ -416,7 +416,8 @@ func render(model: Dictionary) -> void:
 	if reacting:
 		_grid.visible = false
 		_reactions.render(model.get("reactions", {}))
-	_shelf.visible = shop and tab == "all" and not featured.is_empty()
+	# The faces chips leave the shelf out (faces board 4).
+	_shelf.visible = shop and tab == "all" and not featured.is_empty() and not kind in ["rest_face", "reactions"]
 	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop, bool(model.get("buy_offline", false)), bool(model.get("fruits_blocked", false)))
 	if preview.has_method("wear"): preview.wear(model.get("preview", {}))
 	if preview.has_method("show_face"): preview.show_face(model.get("preview_face", SpiritLook.NORMAL))
