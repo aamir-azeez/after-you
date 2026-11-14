@@ -4,8 +4,9 @@ extends SceneTree
 ## - every wired control shows its tile at every gate it works (the outputs),
 ##   unless its world skips it (pair_tags.skip), with one letter per control,
 ##   none shared on a stage; an input the action pop-up names (a lever, a
-##   selector, a pressure pad) has no floor tile, and one it cannot (a ball
-##   pad, a receiver) keeps its tile beside it;
+##   selector, a pressure pad) has no floor tile, a ball pad keeps its tile
+##   beside it, and a light receiver shows its letter on a plaque on its own
+##   lamp post, facing the camera, its faint letter still readable;
 ## - the pop-up's chip (prompt, badge) carries the pair's own letter, band and
 ##   colour, lit by the same rule as its tiles, from the snapshot alone;
 ## - every tile lies on its floor, clear of controls, ownership marks, decks,
@@ -15,7 +16,7 @@ extends SceneTree
 ##   glowing while active, the same whatever came before (a replay shows what
 ##   play showed), a lit tile's pool of light never under another tile;
 ##   a selector's tile at a gate glows only at a value that gate
-##   asks, and a receiver's own tile only while one of its gates is open;
+##   asks, and a receiver's plaque only while one of its gates is open;
 ## - a receiver lit through turnable mirrors has those mirrors as its inputs.
 ## The pure parts are checked on small stages too: no pairs, past ten, a
 ## missing gate or control, a gate several controls work. A failure names the
@@ -37,6 +38,9 @@ const COLOUR_GAP := 20.0
 const FAINT_TO_NEAR := 10.0
 const NEAR_TO_LIT := 25.0
 const LETTER_ON_FACE := 30.0
+## A faint plaque's letter stands this far off its faint face, so it reads (a
+## floor tile's faint letter is a whisper, about 3).
+const PLAQUE_FAINT_LETTER := 12.0
 ## The floors tiles lie on: cream stone, timber, grass, terracotta tile, grey stone.
 const FLOORS := [Color("e9dcc0"), Color("6b5240"), Color("9cb86a"), Color("f2a07a"), Color("b4c5bd")]
 ## The light a floor tile meets, about, in the chapters' sun.
@@ -161,7 +165,7 @@ func _state_gaps() -> void:
 	declared.sort()
 	wanted.sort()
 	_check(declared == wanted, "The shader's look uniforms are the kit's LOOK: %s against %s" % [declared, wanted])
-	var worst := {"near": INF, "lit": INF, "letter": INF}
+	var worst := {"near": INF, "lit": INF, "letter": INF, "plaque": INF}
 	var ink := PairTags.INK * LIGHT
 	for colour: Color in PairTags.PALETTE:
 		var near := colour.lerp(PairTags.PALE, PairTags.NEAR_LIGHTEN) * LIGHT
@@ -171,13 +175,26 @@ func _state_gaps() -> void:
 			var faint := (floor_colour * LIGHT).lerp(colour * LIGHT, PairTags.FAINT_ALPHA.y)
 			worst.near = minf(worst.near, _delta(faint, near))
 			_check(_delta(faint, near) >= FAINT_TO_NEAR, "A near tile stands off a faint one: %s on %s (%.1f)" % [colour.to_html(false), floor_colour.to_html(false), _delta(faint, near)])
+		# On a plaque's metal, faint shows more: its letter reads on its face.
+		var metal := PairTags.PLAQUE_METAL * LIGHT
+		var plaque_face := metal.lerp(colour * LIGHT, PairTags.PLAQUE_FAINT_ALPHA.y)
+		var plaque_letter := plaque_face.lerp(ink, PairTags.PLAQUE_FAINT_ALPHA.z)
+		_check(_delta(plaque_letter, plaque_face) >= PLAQUE_FAINT_LETTER, "A faint plaque's letter reads on its face: %s (%.1f)" % [colour.to_html(false), _delta(plaque_letter, plaque_face)])
+		worst.plaque = minf(worst.plaque, _delta(plaque_letter, plaque_face))
 		worst.lit = minf(worst.lit, _delta(near, lit))
 		worst.letter = minf(worst.letter, minf(_delta(ink, near), _delta(ink, lit)))
 		_check(_delta(near, lit) >= NEAR_TO_LIT, "A lit tile stands off a near one: %s (%.1f)" % [colour.to_html(false), _delta(near, lit)])
 		_check(_delta(ink, near) >= LETTER_ON_FACE and _delta(ink, lit) >= LETTER_ON_FACE, "The letter reads on a near and a lit face: %s (%.1f, %.1f)" % [colour.to_html(false), _delta(ink, near), _delta(ink, lit)])
 	# The glow is warm light: more green than blue, a wide pool, strong at its centre.
 	_check(PairTags.GLOW.g - PairTags.GLOW.b >= 0.2 and PairTags.HALO >= 3.0 and PairTags.GLOW_ALPHA >= 0.5, "A lit tile sits in a wide pool of warm light")
-	print("PAIR TAGS: state gaps faint-near %.1f, near-lit %.1f, letter %.1f" % [worst.near, worst.lit, worst.letter])
+	# A faint plaque is still clearly faint: its frame, see-through on the metal,
+	# stands off a near one's solid frame in every style.
+	for frame: StringName in PairTags.FRAMES:
+		var solid: Color = PairTags.FRAMES[frame].colour * LIGHT
+		var see_through := (PairTags.PLAQUE_METAL * LIGHT).lerp(solid, PairTags.PLAQUE_FAINT_ALPHA.x)
+		_check(_delta(see_through, solid) >= FAINT_TO_NEAR, "A faint plaque's %s frame stands off a near one (%.1f)" % [frame, _delta(see_through, solid)])
+	_check(PairTags.PLAQUE_FAINT_ALPHA.x <= 0.6 and PairTags.PLAQUE_FAINT_ALPHA.y <= 0.6 and PairTags.PLAQUE_FAINT_ALPHA.z <= 0.6, "A faint plaque stays see-through, clearly faint")
+	print("PAIR TAGS: state gaps faint-near %.1f, near-lit %.1f, letter %.1f, faint plaque letter %.1f" % [worst.near, worst.lit, worst.letter, worst.plaque])
 
 ## Each letter, drawn in software at 64 by 64 over the token's face, stands
 ## about LETTER_SHARE of it tall (never shrinking to specks, never filling the
@@ -244,7 +261,7 @@ func _pure() -> void:
 	_check(pairs.all(func(pair: Dictionary) -> bool: return pair.group == "levers" and pair.prompted), "A lever's letter is in the action pop-up")
 	var kinds := PairTags.pairs_of({"bridges": [{"id": "r"}], "pressure_pads": [{"id": "p", "position_cm": [0, 0]}], "ball_pads": [{"id": "b", "position_cm": [0, 0]}], "controls": [{"id": "s", "position_cm": [0, 0]}], "optical_field": {"receivers": [{"id": "e", "position_cm": [0, 0]}]}, "gates": [{"route_id": "r", "pad_id": "p", "ball_pad_id": "b", "when": {"all": [{"control_id": "s", "value": "x"}, {"signal_id": "e"}]}}]})
 	var read := kinds.map(func(pair: Dictionary) -> Array: return [pair.control, pair.group, pair.prompted])
-	_check(read == [["p", "pressure_pads", true], ["b", "ball_pads", false], ["s", "controls", true], ["e", "receivers", false]], "Pads and selectors are named in the pop-up; ball pads and receivers keep a floor tile: %s" % [read])
+	_check(read == [["p", "pressure_pads", true], ["b", "ball_pads", false], ["s", "controls", true], ["e", "receivers", false]], "Pads and selectors are named in the pop-up; ball pads keep a floor tile and receivers a plaque: %s" % [read])
 	_check(pairs.size() == 25, "Twenty-five wired levers make twenty-five pairs; a missing control makes none: %d" % pairs.size())
 	_check(pairs[0].gates.map(func(r: Dictionary) -> String: return r.id) == ["route-0", "route-1"] and pairs[2].gates.size() == 2, "A control that works two gates shows at both; a `when` tree is read through all and any")
 	var seen := {}
@@ -270,7 +287,7 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 	for pair: Dictionary in wired:
 		var tiles := placed.filter(func(tile: Dictionary) -> bool: return tile.control == pair.control)
 		var beside := tiles.any(func(tile: Dictionary) -> bool: return PairTags.CONTROL in tile.sides)
-		if pair.prompted: _check(not beside, "%s: %s (in the action pop-up) has no floor tile" % [where, pair.control])
+		if pair.prompted or pair.group == PairTags.PLAQUED: _check(not beside, "%s: %s (in the action pop-up or on its plaque) has no floor tile" % [where, pair.control])
 		else: _check(beside, "%s: %s (no pop-up names it) shows its tile beside it" % [where, pair.control])
 		for route: Dictionary in pair.gates:
 			_check(tiles.any(func(tile: Dictionary) -> bool: return str(route.id) in tile.gates), "%s: %s shows its tile at the gate of %s" % [where, pair.control, route.id])
@@ -313,6 +330,25 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 	for sign: MeshInstance3D in world.terrain.find_children("PairTagSign", "MeshInstance3D", true, false):
 		var basis := sign.global_transform.basis.orthonormalized()
 		_check(basis.y.z > 0.9 and (-basis.z).y > 0.9, "%s: the sign's tile faces the camera with its letter upright" % where)
+	# Each receiver's letter on one plaque on its own post, facing the camera,
+	# its letter upright, lit for every gate the receiver works.
+	var facing := PairTags.ViewFit.CAMERA_FROM.normalized()
+	for pair: Dictionary in wired:
+		if pair.group != PairTags.PLAQUED: continue
+		var plaques: Array = world.terrain.find_children("PairTagPlaque_" + str(pair.control), "Node3D", false, false)
+		_check(plaques.size() == 1, "%s: the receiver %s has one plaque (%d)" % [where, pair.control, plaques.size()])
+		if plaques.size() != 1: continue
+		var mount: Node3D = plaques[0]
+		var foot: Vector3 = world._pair_control_anchor(pair.entity)
+		var post: Dictionary = world._pair_receiver_post(pair.entity)
+		_check(Vector2(mount.position.x - foot.x, mount.position.z - foot.z).length() < 0.001 and mount.position.y >= foot.y + PairTags.PLAQUE_LOW - 0.001 and mount.position.y < float(post.top), "%s: %s's plaque is clamped to its own post, under its lamp head" % [where, pair.control])
+		var tiles: Array = mount.find_children("PairTagPlaqueTile", "MeshInstance3D", true, false)
+		_check(tiles.size() == 1, "%s: %s's plaque carries its tile" % [where, pair.control])
+		if tiles.size() != 1: continue
+		var basis := (tiles[0] as Node3D).global_transform.basis.orthonormalized()
+		_check(basis.y.dot(facing) > 0.999 and (-basis.z).y > 0.5 and absf(basis.x.y) < 0.001, "%s: %s's plaque faces the camera with its letter upright" % [where, pair.control])
+		var gates: Array = pair.gates.map(func(route: Dictionary) -> String: return str(route.id))
+		_check(tags.tile_states().any(func(tile: Dictionary) -> bool: return tile.control == pair.control and tile.gates == gates), "%s: %s's plaque lights for every gate it works" % [where, pair.control])
 	var turnable: Array = view.get("controls", []).filter(func(control: Dictionary) -> bool: return str(control.get("kind", "")) == "mirror")
 	for pair: Dictionary in wired:
 		if pair.group == "receivers" and not turnable.is_empty():
@@ -358,7 +394,7 @@ func _states(world: Node3D, where: String, wired: Array[Dictionary]) -> void:
 	_prompts(world, where, wired)
 
 ## A selector's tile at a gate glows only at a value that gate asks, even with
-## every gate open; a receiver's own tile only while one of its gates is open,
+## every gate open; a receiver's plaque only while one of its gates is open,
 ## never for the light alone.
 func _per_gate(tags, where: String, pair: Dictionary, far: Dictionary) -> void:
 	if pair.kind != &"other": return
