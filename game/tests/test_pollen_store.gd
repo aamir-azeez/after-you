@@ -83,6 +83,9 @@ class Host extends Node:
 	var earning_opens := true
 	var pollen_client: RefCounted = null
 	var pollen_store_flow: Node = null
+	## The screens the store said it opened over (Main's back history, menu_opened).
+	var opened: Array = []
+	func menu_opened(_screen: String, from: String, _back: Button) -> void: opened.append(from)
 	func show_pollen_from_play() -> bool:
 		earning_opened += 1
 		return earning_opens
@@ -323,9 +326,9 @@ func _gates() -> void:
 func _cards() -> void:
 	var t := _setup()
 	t.flow.show_store("home")
-	_check(t.flow.return_to == "home", "Opened from Home's chip, Back goes Home")
+	_check(t.host.opened.back() == "home", "Opened from Home's chip, the back history hears it opened over Home")
 	t.flow.show_store()
-	_check(t.flow.return_to == "wardrobe", "and from the Wardrobe, back there")
+	_check(t.host.opened.back() == "wardrobe", "and over the Wardrobe by default")
 	_check(t.host.mode == Flow.MODE_POLLEN_STORE and t.flow.is_open() and PlayerCopy.POLLEN_STORE_LOADING in _texts(t.host.overlay), "The store opens and says it is loading")
 	await _frames()
 	var page: Node = t.host.overlay
@@ -766,8 +769,8 @@ func _cover() -> void:
 	_check(Bundles.cover(50000, {"first_gift": false, "first_gift_percent": 20}) == "basket", "A used gift counts for nothing")
 	_check(Bundles.cover(500000) == "basket", "A gap no bundle covers points to the largest")
 
-## The store's chip has no plus and its balance opens the Pollen page, or goes
-## Back to it when the Pollen page opened the store.
+## The store's chip has no plus and its balance and Earn open the Pollen page
+## (Main's back history goes back to it when the Pollen page opened the store).
 func _suggested_and_routes() -> void:
 	var t := _setup()
 	t.flow.show_store("wardrobe")
@@ -783,10 +786,11 @@ func _suggested_and_routes() -> void:
 	t.flow.back_requested.connect(func() -> void: back.count += 1)
 	(page.find_child("PollenChip", true, false) as Control).amount_pressed.emit()
 	(page.find_child("PollenStoreEarn", true, false) as Button).pressed.emit()
-	_check(back.count == 2 and t.host.earning_opened == 1, "Opened from the Pollen page, its balance and Earn go Back to it instead of stacking another")
+	_check(back.count == 0 and t.host.earning_opened == 3, "Opened from the Pollen page, its balance and Earn open it through the same route, never Back")
 	t.flow.show_store("home")
+	var kept_tab: String = t.flow.tab
 	t.flow.reopen()
-	_check(t.flow.return_to == "home", "Opening again keeps its Back")
+	_check(t.host.opened.back() == "" and t.flow.tab == kept_tab, "Opening again keeps its tab and tells the back history it came back")
 	t.host.queue_free()
 	await _frames(2)
 

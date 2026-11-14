@@ -31,7 +31,7 @@ const SUNSHINE_INK := Color("b06a12")
 ## Fills `column` from {history (services/pollen_history.gd), fruits (Fruits
 ## show: the Sunshine tags and the lines Fruits moved)}.
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
-	Parts.heading(column, PlayerCopy.POLLEN_TURNS_TITLE, PlayerCopy.POLLEN_TURNS_NOTE, title_font)
+	Parts.heading(column, PlayerCopy.POLLEN_TURNS_TITLE, title_font)
 	var history: Dictionary = model.get("history", {})
 	_bank(column, history.get("bank", {}), title_font)
 	var turns: Array = history.get("turns", [])
