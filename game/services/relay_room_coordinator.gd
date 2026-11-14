@@ -49,6 +49,7 @@ const MAX_PAIR_BYTES := 2097152
 ## A room snapshot or a turn reply carries the room's checkpoint, which nests
 ## every record of the run: the widest capped long-turn room is about 1.13 MB
 ## as the phone prints it (test_long_turn_client_limits). Its values stay under 140k.
+## The default bound of _bounded, so it holds every value read from the server alone.
 const MAX_ROOM_BYTES := 2097152
 const MAX_PAIR_NODES := 220000
 ## Highest room rules number this build understands (9 = comfort alias,

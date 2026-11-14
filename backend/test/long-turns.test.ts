@@ -3,7 +3,7 @@ import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { ApiError, canonicalJson, digest, type Outcome } from "../src/protocol";
 import { boundedTurnValue } from "../src/v2/protocol-relay";
-import { ARCHIVE_BOUNDS, checkLongTurnBounds, INPUT_RULES, inputRules, LONG_TURN_TICKS, longTurnRows, maxActionEntries, ROW_ENVELOPE_BYTES, scaledLimits, turnLimits, type LongTurnShape } from "../src/v2/protocol-physical-recording";
+import { ARCHIVE_BOUNDS, checkLongTurnBounds, INPUT_RULES, inputRules, LONG_TURN_TICKS, longTurnRows, maxActionEntries, ROW_ENVELOPE_BYTES, scaledLimits, turnLimits, widestRecordingBytes, type LongTurnShape } from "../src/v2/protocol-physical-recording";
 import { adapter as journeyAdapter, turnOfTheTide } from "../src/v2/protocol-journey";
 import { LIGHTHOUSE_LIMITS, LIGHTHOUSE_MAX_BRANCHES } from "../src/v2/protocol-lighthouse";
 import { CHAPTERS } from "../src/v2/chapters";
@@ -90,6 +90,21 @@ describe("capped input and long turns", () => {
     expect(Math.max(bytes(chain.a2), bytes(chain.b2))).toBeLessThanOrEqual(rows.recording);
     // The receiver's turn body passes the route's and the room's preflight.
     expect(() => boundedTurnValue({ base_revision: 9, idempotency_key: "k".repeat(64), branch: 3, recording: chain.b2, checkpoint: chain.cp2 }, long.limits)).not.toThrow();
+  });
+
+  it("bound the byte-widest record: every allowed entry, as many of them with long tick counts as the turn allows", async () => {
+    const long = journeyAdapter(LONG as never, initial as ChapterCheckpoint, HASH, 4);
+    for (const [template, ticks, source] of [[setA, TURNS.a_ticks, ""], [setB, TURNS.b_ticks, "f".repeat(64)]] as const) {
+      const entries = maxActionEntries(RULES, ticks), wide = Math.floor((ticks - entries) / 9);
+      // `wide` entries of 10 ticks, the rest of 1, the last taking what is left: the most two-digit tick counts the turn has room for.
+      const record = await frantic(template, ticks, initial.checkpoint_hash, source, entries);
+      record.actions = record.actions.map((entry: Json, index: number) => ({ ...entry, ticks: index < wide ? 10 : 1 }));
+      record.actions.at(-1).ticks += ticks - record.actions.reduce((sum: number, entry: Json) => sum + entry.ticks, 0);
+      delete record.recording_hash; record.recording_hash = await digest(canonicalJson(record));
+      expect(await long.recording(record)).toEqual(record);
+      expect(bytes(record)).toBeLessThanOrEqual(widestRecordingBytes(RULES, ticks, shape.id_bytes));
+      expect(widestRecordingBytes(RULES, ticks, shape.id_bytes) - bytes(record)).toBeLessThan(4096);
+    }
   });
 
   it("refuse a turn past the cap and a chapter whose turns or branches outgrow the room", async () => {
