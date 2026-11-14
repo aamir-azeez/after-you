@@ -151,7 +151,7 @@ func _shapes() -> void:
 		var shades: PackedFloat32Array = edged.get("shades", PackedFloat32Array())
 		var banded := shades.size() == (edged.vertices as PackedVector3Array).size()
 		for shade: float in shades: banded = banded and shade >= FlatShapes.RIM_SHADE and shade <= 1.0
-		if one.has("shades"): _check(banded and (edged.indices as PackedInt32Array).size() >= (one.indices as PackedInt32Array).size() and shades.has(1.0), "The %s mark keeps a full colour middle and a darker edge" % name)
+		if one.has("shades"): _check(banded and (edged.indices as PackedInt32Array).size() >= (one.indices as PackedInt32Array).size() and shades.has(1.0) == (one.shades as PackedFloat32Array).has(1.0), "The %s mark keeps a full colour middle (bars a flat shade) and a darker edge" % name)
 
 ## Walks a pip `seconds` along +x at walking speed in steps of `dt`.
 func _walk(spirit: Node3D, seconds: float, dt: float, reduced: bool = false) -> void:
