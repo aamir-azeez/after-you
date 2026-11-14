@@ -139,7 +139,7 @@ describe("redo state in the conditional poll", () => {
     expect({ requests: before.value.length, routerRpcs: total(before.value), roomRows: before.rows.room.read })
       .toEqual({ requests: 2, routerRpcs: 4, roomRows: 41 });
     // Each read is auth plus one room call (the pair gate inside it, with the block memo): 4 before, 2 after.
-    expect(before.value[1].at(-1)).toBe("ROOMS_V2.redo");
+    expect(before.value[1].at(-1)).toBe("ROOMS_V2.redoGated");
     expect({ requests: after.value.length, routerRpcs: total(after.value), roomRows: after.rows.room.read })
       .toEqual({ requests: 1, routerRpcs: 2, roomRows: 30 });
   });

@@ -879,8 +879,8 @@ func _room_action_hooks() -> Dictionary:
 		"replays": {"run": _play_replays},
 		"local_replays": {"run": _show_local_replays},
 		"redo_play": {"run": _redo_play, "drawn": _track_redo_play},
-		"redo_keep": {"run": _redo_keep, "drawn": _track_redo_button.bind("redo_keep")},
-		"redo": {"run": _redo_ask, "drawn": _track_redo_button.bind("redo")},
+		"redo_keep": {"run": _redo_keep, "drawn": _track_redo_keep},
+		"redo": {"run": _redo_ask, "drawn": _track_redo_ask},
 		"redo_status": {"widget": _add_redo_status},
 		"redo_retry": {"run": _open_redo},
 		"solo_redo": {"run": _confirm_solo_redo},
@@ -1528,6 +1528,12 @@ func _redo_play() -> void:
 
 func _redo_keep() -> void:
 	await redo_flow.keep(_redo_buttons.get("redo_keep"))
+
+func _track_redo_ask(button: Button) -> void:
+	_track_redo_button(button, "redo")
+
+func _track_redo_keep(button: Button) -> void:
+	_track_redo_button(button, "redo_keep")
 
 func _track_redo_button(button: Button, id: String) -> void:
 	_redo_buttons[id] = button

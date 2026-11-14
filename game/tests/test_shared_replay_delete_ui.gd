@@ -111,7 +111,8 @@ func _run() -> void:
 	await _drain_local(app.shared_replays)
 	app.replays_flow._open_default_shared_room()
 	_check(app.shared_replays.rooms().size() == 2 and app.replays_flow._listed_shared_rooms().is_empty(),"Reopening honors both removals despite the retained completed room and preserves all room metadata")
-	_check(api.calls.is_empty(),"Local deletion and its confirmation send no network request")
+	# Home's own room list read (redo_home_card.gd, once a session) is not the deletion's.
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path != "/v1/room-inbox").is_empty(),"Local deletion and its confirmation send no network request: " + str(api.calls.map(func(call: Dictionary) -> String: return str(call.path))))
 	viewport.queue_free()
 	await process_frame
 	print("REPLAY DELETE UI: %d checks, %d failures" % [checks,failures])

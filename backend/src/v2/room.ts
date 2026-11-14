@@ -380,19 +380,19 @@ export class RoomV2 extends DurableObject<Env> {
       first_player_id: stage.first_player_slot === "p0" ? state.host_id : state.guest_id,
       second_player_id: stage.first_player_slot === "p0" ? state.guest_id : state.host_id };
   }
-  /** `safetyToken`: the caller's, so the room's pair gate (pairBlocked) stands in for the router's own check. */
-  redo(player: string, value?: unknown, deviceHash?: string, safetyToken?: string): Promise<Outcome<RedoState>> { return this.redoInternal(player, value, deviceHash, undefined, undefined, safetyToken); }
-  private async redoInternal(player: string, value?: unknown, deviceHash?: string, context?: CampaignRoomContext, binding?: CampaignRedoBinding, safetyToken?: string): Promise<Outcome<RedoState>> {
+  redo(player: string, value?: unknown, deviceHash?: string): Promise<Outcome<RedoState>> { return this.redoInternal(player, value, deviceHash); }
+  /**
+   * GET and POST /v2/rooms/<id>/redo for a standalone request: the router's pair gate runs here, in this one
+   * call (a Story room answers campaign_client_required as it did there), with the caller's safety token.
+   */
+  redoGated(player: string, value: unknown, deviceHash: string | undefined, safetyToken: string | undefined): Promise<Outcome<RedoState>> { return this.redoInternal(player, value, deviceHash, undefined, undefined, { token: safetyToken }); }
+  private async redoInternal(player: string, value?: unknown, deviceHash?: string, context?: CampaignRoomContext, binding?: CampaignRedoBinding, gated?: { token?: string }): Promise<Outcome<RedoState>> {
     try {
-      if (!binding) {
-        // The router's pair gate, in this one call: a Story room answers as it did there (campaign_client_required),
-        // then membership, then blocks remembered under the caller's safety token.
-        const gate = await this.pairGate(player, undefined, safetyToken); if (!gate.ok) return gate;
-        const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary;
-      }
+      if (gated) { const gate = await this.pairGate(player, undefined, gated.token); if (!gate.ok) return gate; }
+      if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return this.unavailable(player);
-      if (binding && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      if (!gated && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       // A public duel's phone names its partner by a stand-in (duels/public-mask.ts); the redo source holds the ids.
       const shown = value === undefined || binding ? value : unmaskRedo(value, duelMasks(duelLink(this.ctx.storage), observed).duel_masks ?? null);
       const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(shown);
@@ -1366,7 +1366,7 @@ answerWhileBlank(RoomV2, {
   safetyMembers: async () => roomNotFound(), snapshot: async () => roomNotFound(), snapshotIfChanged: async () => roomNotFound(), lobbySnapshot: async () => roomNotFound(),
   operation: async () => roomNotFound(), collection: async () => roomNotFound(), pairRecording: async () => roomNotFound(), reactions: async () => roomNotFound(),
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
-  redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(), partnerPresence: async () => roomNotFound(),
+  redo: async () => roomNotFound(), redoGated: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(), partnerPresence: async () => roomNotFound(),
   hardReset: async () => roomNotFound(), hardFailures: async () => roomNotFound(), clearMemberName: () => false, duelLinkOf: () => null,
   // As a room with no duel answers them (duels/their-run.ts), without making tables first.
   theirRun: async () => fail(410, "their_run_gone"), acknowledgeTheirRun: () => fail(404, "their_run_not_found"), dropTheirRun: () => false,

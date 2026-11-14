@@ -305,8 +305,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // caller's safety token), so it skips the separate router check. A read: auth() has just checked the device;
   // requests re-check it.
   if (operation === "redo" && !item && context === undefined) {
-    if (request.method === "GET") return json(unwrap(await room.redo(playerId, undefined, undefined, safetyToken)));
-    if (request.method === "POST") return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await bearerDigest(request), safetyToken)));
+    if (request.method === "GET") return json(unwrap(await room.redoGated(playerId, undefined, undefined, safetyToken)));
+    if (request.method === "POST") return json(unwrap(await room.redoGated(playerId, await boundedJson(request, 4096), await bearerDigest(request), safetyToken)));
     throw new ApiError(405, "method_not_allowed");
   }
   if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id, context, safetyToken);
