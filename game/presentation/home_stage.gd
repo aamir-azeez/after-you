@@ -196,6 +196,18 @@ func set_keepsakes(items: Array[Dictionary]) -> void:
 	_update_keepsake_labels()
 	_layout()
 
+## Where the top bar's pills must end (this stage's x): just before the first
+## header action right of `lead` on the same band, else the screen's edge.
+func _top_bar_end(lead: Control) -> float:
+	var end := size.x - 24.0
+	var band := Rect2(global_position + lead.position, Vector2(size.x, lead.size.y))
+	for action: Control in _header_actions:
+		if not is_instance_valid(action) or not action.is_visible_in_tree(): continue
+		var header := action.get_global_rect()
+		if header.position.x > band.position.x + lead.size.x and header.position.y < band.end.y and header.end.y > band.position.y:
+			end = minf(end, header.position.x - global_position.x - 12.0)
+	return end
+
 func set_header_actions(actions: Array[Control]) -> void:
 	_header_actions = actions.duplicate()
 	_layout()
@@ -343,12 +355,20 @@ func _layout() -> void:
 		_fit_pill(_explore_button)
 		var lead: Control = _explore_back if _exploring else _explore_button
 		if not _exploring: _explore_button.position = top_left
-		# React follows Explore (Back while exploring), and Reset view follows React.
-		if is_instance_valid(_react):
-			_react.size = RunReactions.SIZE
-			_react.position = Vector2(lead.position.x + lead.size.x + PILL_GAP, lead.position.y + (lead.size.y - _react.size.y) * 0.5)
-			lead = _react
-		_reset.position = Vector2(lead.position.x + lead.size.x + PILL_GAP, lead.position.y + (lead.size.y - PILL_HEIGHT) * 0.5)
+		# React follows Explore (Back while exploring), and Reset view follows React,
+		# along the top bar up to the header's actions (the Pollen and Fruits chips,
+		# Full Journey); a pill that would reach them starts a row under Explore.
+		if is_instance_valid(_react): _react.size = RunReactions.SIZE
+		var limit := _top_bar_end(lead)
+		var cursor := lead.position.x + lead.size.x + PILL_GAP
+		var row := Rect2(lead.position, lead.size)
+		for pill: Control in [_react, _reset]:
+			if not is_instance_valid(pill): continue
+			if cursor + pill.size.x > limit and cursor > lead.position.x:
+				row = Rect2(Vector2(lead.position.x, row.end.y + PILL_GAP), pill.size)
+				cursor = lead.position.x
+			pill.position = Vector2(cursor, row.position.y + (row.size.y - pill.size.y) * 0.5)
+			cursor += pill.size.x + PILL_GAP
 	for action: Control in _header_actions:
 		if not is_instance_valid(action) or not action.is_visible_in_tree(): continue
 		var header := action.get_global_rect()
