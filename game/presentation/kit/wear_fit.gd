@@ -23,7 +23,9 @@ extends RefCounted
 ## How high a raised leaf sits is one shared rule, the hat's own top anchor
 ## (seat_lift): the highest point of the hat's solid shape over the leaf's
 ## root, measured from its geometry, where the leaf's stalk stands. Only the
-## hats players owned before the fit still name a "leaf_lift".
+## hats players owned before the fit still name a "leaf_lift", and a hat
+## whose leaf grows out of a point of its own names it ("leaf_at": the Paper
+## boat's leaf comes up through its sail), which moves the leaf there.
 ## decide() is that table; nothing else picks. The hats players owned before
 ## the fit (Straw hat, fruit hoods, Blossom crown) keep the leaf as it was,
 ## by the owner's choice (tests/test_wear_fit.gd OWNER_KEPT).
@@ -153,6 +155,8 @@ static func decide(hat_id: String, leaf: String) -> Dictionary:
 ## hats players owned before the fit), else for a hat the leaf sits on top of,
 ## its top anchor (seat_lift), else 0.
 static func lift_for(hat_id: String) -> float:
+	var at := Catalog.leaf_at(hat_id)
+	if at != Vector3.ZERO: return at.y - (Look.LEAF_PIVOT - Look.HEAD_CENTER).y
 	var named := Catalog.leaf_lift(hat_id)
 	if named > 0.0 or Catalog.leaf_mode(hat_id) != SITS_ON_TOP: return named
 	var found: Variant = _seats.get(hat_id)
@@ -163,10 +167,18 @@ static func lift_for(hat_id: String) -> float:
 	pip.free()
 	return float(_seats.get(hat_id, 0.0))
 
+## How far across the head (x and z, metres) a raised leaf moves to the hat's
+## own leaf point ("leaf_at"), or Vector3.ZERO.
+static func shift_for(hat_id: String) -> Vector3:
+	var at := Catalog.leaf_at(hat_id)
+	if at == Vector3.ZERO: return Vector3.ZERO
+	var root := Look.LEAF_PIVOT - Look.HEAD_CENTER
+	return Vector3(at.x - root.x, 0.0, at.z - root.z)
+
 ## Measures and keeps hat `hat_id`'s top anchor from `nodes`, the parts its art
 ## added to `body`'s pip (pip_outfit.gd dress, before the fit asks lift_for).
 static func seat_hat(hat_id: String, body: Node3D, nodes: Array) -> void:
-	if _seats.has(hat_id) or Catalog.leaf_mode(hat_id) != SITS_ON_TOP or Catalog.leaf_lift(hat_id) > 0.0: return
+	if _seats.has(hat_id) or Catalog.leaf_mode(hat_id) != SITS_ON_TOP or Catalog.leaf_lift(hat_id) > 0.0 or Catalog.leaf_at(hat_id) != Vector3.ZERO: return
 	var corners := PackedVector3Array()
 	for node: Node in nodes:
 		for part: MeshInstance3D in solid_meshes(node):

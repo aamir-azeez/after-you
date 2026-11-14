@@ -36,6 +36,10 @@ const ROLLS := 16
 const CELL := 0.05
 ## The whole hat by leaf check must finish within this many milliseconds.
 const PAIR_BUDGET_MS := 30000
+## Hats whose leaf grows out of a point of their own ("leaf_at"), through the
+## hat itself: the owner accepts the leaf clipping the paper, so the gap check
+## skips them.
+const OWN_LEAF_POINT := {"paper_boat": "the leaf comes up through the sail and out of its top"}
 ## The hats that sit to one side of the leaf's root, so it grows where it
 ## always does, each with where it sits; a hat over the leaf's root (a cap,
 ## the Straw hat, a hood) is whole and raises the leaf out of its top.
@@ -293,7 +297,7 @@ func _pairs() -> void:
 				hidden += 1
 				continue
 			shown += 1
-			if OWNER_KEPT.has(hat): continue
+			if OWNER_KEPT.has(hat) or OWN_LEAF_POINT.has(hat): continue
 			if _seated(hat):
 				if _gap(hats[hat], leaves[leaf], sweep, lift + SEATED_DIP) <= 0.0: failing.append("%s + %s (dips over %.3f into it)" % [hat, _name(leaf), SEATED_DIP])
 				continue
@@ -306,7 +310,7 @@ func _pairs() -> void:
 
 ## A hat the leaf sits on top of, seated by its top anchor (no "leaf_lift" of its own).
 func _seated(hat: String) -> bool:
-	return Catalog.leaf_mode(hat) == WearFit.SITS_ON_TOP and Catalog.leaf_lift(hat) <= 0.0
+	return Catalog.leaf_mode(hat) == WearFit.SITS_ON_TOP and Catalog.leaf_lift(hat) <= 0.0 and Catalog.leaf_at(hat) == Vector3.ZERO
 
 ## The least gap between the hat and the leaf, through the leaf's roll,
 ## raised `lift`: each leaf point to the hat's triangles, each hat point to the
@@ -350,7 +354,8 @@ func _visible(triangles: PackedVector3Array, stalk: Vector3, tuck: float) -> Pac
 ## it comes off the preview; otherwise the outfit shows as worn.
 func _preview() -> void:
 	_check(WearFit.class_for("apple_leaf") == WearFit.TALL and WearFit.class_for("") == WearFit.SMALL, "A leaf's class is known without a pip at hand")
-	_check(WearFit.shown_with({"hat": "paper_boat", "leaf": "apple_leaf"}) == {"leaf": "apple_leaf"}, "A hat that hides the leaf comes off its preview")
+	_check(WearFit.shown_with({"hat": "glass_house", "leaf": "apple_leaf"}) == {"leaf": "apple_leaf"}, "A hat that hides the leaf comes off its preview")
+	_check(WearFit.shown_with({"hat": "paper_boat", "leaf": "apple_leaf"}) == {"hat": "paper_boat", "leaf": "apple_leaf"}, "Every leaf pokes out of the Paper boat, so it stays on")
 	_check(WearFit.shown_with({"hat": "straw_hat", "leaf": "gold_leaf"}) == {"hat": "straw_hat", "leaf": "gold_leaf"}, "A hat that shows the leaf stays on")
 	_check(WearFit.shown_with({"hat": "rain_cap"}) == {"hat": "rain_cap"}, "A hat with the plain leaf stays on")
 

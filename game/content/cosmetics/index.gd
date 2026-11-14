@@ -53,6 +53,11 @@ const OPTIONAL := {
 	## Metres the leaf sits higher while the item is worn (it pokes up through
 	## a hat's brim).
 	"leaf_lift": 0.0,
+	## A hat whose leaf grows out of a point of its own: where the leaf's root
+	## sits while it is worn (head space, metres; the Paper boat's leaf comes up
+	## through its sail), or Vector3.ZERO for the shared top anchor
+	## (kit/wear_fit.gd).
+	"leaf_at": Vector3.ZERO,
 	## true: its look moves on its own (the Orchard skin's falling petals), so
 	## a Wardrobe item card showing it draws a live pip at the idle card rate
 	## instead of a still picture (kit/pip_avatar.gd animate_moving).

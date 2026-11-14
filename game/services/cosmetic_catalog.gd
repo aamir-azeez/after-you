@@ -145,6 +145,11 @@ static func low(id: String) -> bool:
 static func leaf_lift(id: String) -> float:
 	return float(Index.data(id).get("leaf_lift", 0.0))
 
+## Where a hat roots the leaf (head space), or Vector3.ZERO for the shared top anchor.
+static func leaf_at(id: String) -> Vector3:
+	var at: Variant = Index.data(id).get("leaf_at", Vector3.ZERO)
+	return at if at is Vector3 else Vector3.ZERO
+
 ## How a hat meets the leaf ("covers", "pokes_through", "sits_on_top"), or "".
 static func leaf_mode(id: String) -> String:
 	return str(Index.data(id).get("leaf_mode", ""))

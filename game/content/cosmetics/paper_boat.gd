@@ -12,9 +12,13 @@ const DATA := {
 	"released": false,
 	## It stands above the head.
 	"tall": true,
-	## The boat sits under the leaf and the leaf comes out of its top (kit/wear_fit.gd top anchor).
-	## Only a small leaf fits in the hull; a bigger one would lie through the
-	## boat as it sways, so it hides while the boat is worn.
+	## Its raised end hangs out past the head on the side the views turn away.
+	"wide": true,
+	## The leaf comes out of the boat itself: it rises from inside the hull up
+	## through the sail's middle and pokes out of the top, its root at this
+	## point (head space) while the boat is worn (kit/wear_fit.gd). Where it
+	## passes through the paper it may clip.
 	"leaf_mode": "sits_on_top",
-	"leaf_max": "small",
+	"leaf_at": Vector3(0.194, 0.478, -0.025),
+	"leaf_max": "tall",
 }
