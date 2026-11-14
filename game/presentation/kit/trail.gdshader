@@ -41,8 +41,8 @@ void vertex() {
 	vec2 turned = mat2(vec2(cos(a), sin(a)), vec2(-sin(a), cos(a))) * VERTEX.xz;
 	vec2 drift = vec2(cos(INSTANCE_CUSTOM.z), sin(INSTANCE_CUSTOM.z)) * trail_drift * age;
 	VERTEX = vec3(turned.x + drift.x, VERTEX.y, turned.y + drift.y) * alive;
-	// The shape's own shade (its darker edge, kit/flat_shapes.gd) on the colour.
-	tint = (INSTANCE_CUSTOM.w < 0.5 ? trail_color_a : trail_color_b) * COLOR.r;
+	// The shape's own shade (its darker outer band, kit/flat_shapes.gd, in UV.x) on the colour.
+	tint = (INSTANCE_CUSTOM.w < 0.5 ? trail_color_a : trail_color_b) * UV.x;
 }
 
 void fragment() {

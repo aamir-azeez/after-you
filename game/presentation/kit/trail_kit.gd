@@ -195,19 +195,19 @@ static func spacing(made: Dictionary) -> float:
 static func mesh(made: Dictionary) -> Mesh:
 	return Kit.cached_mesh("trail:%s:%d" % [made.id, made.hash()], func() -> Mesh:
 		var half := float(made.width) * PIP_WIDTH * 0.5
-		var one := FlatShapes.shape(made.shape, Vector3(half, 0.0, half))
+		var one := FlatShapes.with_edge(FlatShapes.shape(made.shape, Vector3(half, 0.0, half)))
 		var arrays := []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = one.vertices
 		arrays[Mesh.ARRAY_NORMAL] = one.normals
-		# Each vertex's shade (kit/flat_shapes.gd): a darker edge, so a pale
-		# mark still reads on a pale floor.
-		var colors := PackedColorArray()
+		# Each vertex's shade (kit/flat_shapes.gd with_edge: a darker outer
+		# band, so a pale mark still reads on a pale floor) in UV.x: a
+		# MultiMesh under GL Compatibility does not keep vertex colours.
+		var uvs := PackedVector2Array()
 		var shades: PackedFloat32Array = one.get("shades", PackedFloat32Array())
 		for index in range((one.vertices as PackedVector3Array).size()):
-			var shade := shades[index] if index < shades.size() else 1.0
-			colors.append(Color(shade, shade, shade))
-		arrays[Mesh.ARRAY_COLOR] = colors
+			uvs.append(Vector2(shades[index] if index < shades.size() else 1.0, 0.0))
+		arrays[Mesh.ARRAY_TEX_UV] = uvs
 		arrays[Mesh.ARRAY_INDEX] = one.indices
 		var made_mesh := ArrayMesh.new()
 		made_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
