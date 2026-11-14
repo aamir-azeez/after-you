@@ -29,8 +29,9 @@ extends RefCounted
 ##           "amplitude" (v), "color", "edge": accent strip height (v) on the
 ##           top edge, "edge_color"}]
 ##   stamps  [{"shape" ("star" or "leaf"), "at": Vector2 uv, "width" (share of
-##           the surface's width), "turn" (radians), "color"}]; on the head
-##           they never draw inside the eyes' safety ovals (SAFE_EYES)
+##           the surface's width), "turn" (radians), "color", "back": true
+##           for the back below the top}]; on the head they never draw
+##           inside the eyes' safety ovals (SAFE_EYES)
 ##   seam    {"color", "width" (share of the surface's width)}: a thin line
 ##           down the back
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
@@ -50,20 +51,17 @@ const MAX_STAMPS := 5
 ## sides beyond (u below 0 or above 1) turn away and are not stretched over.
 ## The torso's visible part runs from y -0.15 to about 0.04 (its top is
 ## inside the head).
-## The head's unrolling like a box (skin_pattern.gdshaderinc crown_wrap):
-## its half height and depth, and the heights the top takes over between, so
-## the front face keeps the board's mapping. A recipe's v runs from 0 at the
-## front's top edge to CROWN_BACK at the back of the top, then on down the
-## back to BACK_BOTTOM.
-const CROWN_WRAP := Vector4(Look.HEAD_HALF.y, Look.HEAD_HALF.z, Look.HEAD_HALF.y * 0.4, Look.HEAD_HALF.y * 0.85)
+## The head's top unrolling (skin_pattern.gdshaderinc crown_wrap): its half
+## sizes and roundness, so the top takes over only where the surface faces
+## up and the front keeps the board's mapping. A recipe's v runs from 0 at
+## the front's top edge to CROWN_BACK at the back of the top.
+const CROWN_WRAP := Vector4(Look.HEAD_HALF.x, Look.HEAD_HALF.y, Look.HEAD_HALF.z, Look.HEAD_POWER)
 const FRONT_WIDTH := 0.85
 const FRONT_HEIGHT := 0.9
 const HEAD_MAP := Vector3(Look.HEAD_HALF.x * FRONT_WIDTH, Look.HEAD_HALF.y * FRONT_HEIGHT, Look.HEAD_HALF.y * 2.0 * FRONT_HEIGHT)
 ## Where v ends at the back of the crown (the front face's depth twice over,
 ## in the head's mapping).
 const CROWN_BACK := -(Look.HEAD_HALF.y * (1.0 - FRONT_HEIGHT) + Look.HEAD_HALF.z * 2.0) / (Look.HEAD_HALF.y * 2.0 * FRONT_HEIGHT)
-## Where v ends at the bottom of the back of the head.
-const BACK_BOTTOM := CROWN_BACK - 1.0 / FRONT_HEIGHT
 const BODY_MAP := Vector3(Look.TORSO_HALF.x, 0.04, 0.19)
 ## The eyes' safety ovals in face space: each open eye at rest, widened by
 ## the gaze's reach and a margin of 0.025 of the head's width (the board's
@@ -181,7 +179,7 @@ static func uniforms(surface: Dictionary, map: Vector3, eyes: bool) -> Dictionar
 			break
 		var spot: Vector2 = stamp.at
 		at.append(Vector4((spot.x - 0.5) * 2.0 * map.x, map.y - spot.y * map.z, float(stamp.width) * map.x, float(stamp.get("turn", 0.0))))
-		stamp_styles.append(Vector4(SHAPES.get(str(stamp.shape), 1.0), 0, 0, 0))
+		stamp_styles.append(Vector4(SHAPES.get(str(stamp.shape), 1.0), -1.0 if stamp.get("back", false) else 1.0, 0, 0))
 		stamp_colors.append(_raw(stamp.color))
 	values[&"stamp_at"] = _padded4(at, MAX_STAMPS)
 	values[&"stamp_style"] = _padded4(stamp_styles, MAX_STAMPS)

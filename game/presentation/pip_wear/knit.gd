@@ -19,8 +19,6 @@ const RECIPE := {
 			{"from": 0.82, "to": 0.98, "kind": "zigzag", "period": 0.40, "amplitude": 0.06, "color": ROSE},
 			# Over the crown, for the chapters' high cameras.
 			{"from": -0.92, "to": -0.62, "kind": "zigzag", "period": 0.40, "amplitude": 0.06, "color": ROSE},
-			# And one down the back.
-			{"from": -2.0, "to": -1.7, "kind": "zigzag", "period": 0.40, "amplitude": 0.06, "color": ROSE},
 		],
 		"seam": {"color": SEAM, "width": 0.025},
 	},
