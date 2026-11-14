@@ -367,13 +367,7 @@ func build(view: Dictionary) -> void:
 	_states.fill(Vector2.ZERO)
 	var plaqued := _pairs.filter(func(pair: Dictionary) -> bool: return pair.group == PLAQUED)
 	if _rows.reduce(func(sum: int, row: Dictionary) -> int: return sum + row.pairs.size(), 0) + _signs.size() + plaqued.size() > MAX_STATES: push_warning("PairTags: more tiles than the shader's %d states; the last ones share one" % MAX_STATES)
-	_material = ShaderMaterial.new()
-	_material.shader = SHADER
-	# Under the spirits' ground shadows, which are see-through too.
-	_material.render_priority = -1
-	for uniform: StringName in LOOK:
-		_material.set_shader_parameter(uniform, LOOK[uniform])
-	_material.set_shader_parameter(&"states", _states)
+	_material = _look(FAINT_ALPHA)
 	if not _rows.is_empty():
 		_node = MeshInstance3D.new()
 		_node.name = "PairTags"
@@ -395,10 +389,21 @@ func build(view: Dictionary) -> void:
 		node.material_override = _material
 		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		(sign.parent as Node3D).add_child(node)
-	if not plaqued.is_empty():
-		_plaque_material = _material.duplicate() as ShaderMaterial
-		_plaque_material.set_shader_parameter(&"faint_alpha", PLAQUE_FAINT_ALPHA)
+	if not plaqued.is_empty(): _plaque_material = _look(PLAQUE_FAINT_ALPHA)
 	for pair: Dictionary in plaqued: _plaque(pair)
+
+## The tiles' material: the kit's LOOK, faint at `faint` (alphas per layer),
+## reading the stage's states.
+func _look(faint: Vector3) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = SHADER
+	# Under the spirits' ground shadows, which are see-through too.
+	material.render_priority = -1
+	for uniform: StringName in LOOK:
+		material.set_shader_parameter(uniform, LOOK[uniform])
+	material.set_shader_parameter(&"faint_alpha", faint)
+	material.set_shader_parameter(&"states", _states)
+	return material
 
 ## Receiver `pair`'s plaque on its lamp post (PLAQUE_UP), facing the camera:
 ## an arm out from a clamp round the post, a plate with a darker rim leaning

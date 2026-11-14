@@ -347,6 +347,9 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		if tiles.size() != 1: continue
 		var basis := (tiles[0] as Node3D).global_transform.basis.orthonormalized()
 		_check(basis.y.dot(facing) > 0.999 and (-basis.z).y > 0.5 and absf(basis.x.y) < 0.001, "%s: %s's plaque faces the camera with its letter upright" % [where, pair.control])
+		# The plaque's look is the tiles' own but for its stronger faint.
+		var look: ShaderMaterial = (tiles[0] as MeshInstance3D).material_override
+		_check(PairTags.LOOK.keys().all(func(uniform: StringName) -> bool: return look.get_shader_parameter(uniform) == (PairTags.PLAQUE_FAINT_ALPHA if uniform == &"faint_alpha" else PairTags.LOOK[uniform])), "%s: %s's plaque lights with the tiles' look, faint at PLAQUE_FAINT_ALPHA" % [where, pair.control])
 		var gates: Array = pair.gates.map(func(route: Dictionary) -> String: return str(route.id))
 		_check(tags.tile_states().any(func(tile: Dictionary) -> bool: return tile.control == pair.control and tile.gates == gates), "%s: %s's plaque lights for every gate it works" % [where, pair.control])
 	var turnable: Array = view.get("controls", []).filter(func(control: Dictionary) -> bool: return str(control.get("kind", "")) == "mirror")
