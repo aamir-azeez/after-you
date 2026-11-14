@@ -13,15 +13,21 @@ extends RefCounted
 ## The numbers: 12 is the comfort rules (8, 9) with open controls, in either
 ## family; 13 the journey's tide rules (10) with open controls. 11 is the
 ## Lighthouse room's, which 0.8.1 already offers on join, so it is skipped.
+## 14 and 15 are 12 and 13 with open turns (core/physical/open_turns.gd): they
+## keep open controls, and 15 keeps the tide.
 const OPEN_RULES_VERSION := 12
 const OPEN_TIDE_RULES_VERSION := 13
-const TIDE_RULES := [10, OPEN_TIDE_RULES_VERSION]
-const OPEN_RULES := [OPEN_RULES_VERSION, OPEN_TIDE_RULES_VERSION]
+const OPEN_TURNS_RULES_VERSION := 14
+const OPEN_TURNS_TIDE_RULES_VERSION := 15
+const TIDE_RULES := [10, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION]
+const OPEN_RULES := [OPEN_RULES_VERSION, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION]
+const OPEN_TURNS_RULES := [OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION]
 const KINDS := ["controls", "levers", "pressure_pads"]
 
 ## The open rules that keep `earlier`'s other rules: the tide rules (10) as
 ## 13, anything else as the comfort rules with open controls (12).
 static func rules_for(earlier: int) -> int:
+	if earlier in OPEN_TURNS_RULES: return earlier
 	return OPEN_TIDE_RULES_VERSION if earlier in TIDE_RULES else OPEN_RULES_VERSION
 
 ## `level` pinned to the open rules for its earlier rules, with no owner on

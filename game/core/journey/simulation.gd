@@ -79,6 +79,8 @@ static func _record_version(record: Dictionary) -> int:
 		if declared == TIDE_RULES_VERSION: return TIDE_RULES_VERSION
 		if declared == OPEN_RULES_VERSION: return OPEN_RULES_VERSION
 		if declared == OPEN_TIDE_RULES_VERSION: return OPEN_TIDE_RULES_VERSION
+		if declared == OpenControls.OPEN_TURNS_RULES_VERSION: return OpenControls.OPEN_TURNS_RULES_VERSION
+		if declared == OpenControls.OPEN_TURNS_TIDE_RULES_VERSION: return OpenControls.OPEN_TURNS_TIDE_RULES_VERSION
 	return CURRENT_SIMULATION_VERSION
 
 static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary = {}) -> int:
