@@ -218,6 +218,8 @@ func _switch_kept() -> void:
 	var rules := {"ok": false, "status": 403, "code": "terms_acceptance_required"}
 	_check(PublicFlow.rules_refusal(rules, false) and not PublicFlow.rules_refusal(rules, true), "A post or join refused for the rules asks for them, once")
 	_check(not PublicFlow.rules_refusal({"ok": false, "code": "public_duels_off"}, false) and not PublicFlow.rules_refusal({"ok": true}, false), "Any other answer is said as usual")
+	# A rules refusal again, or a safety reply the phone could not read, gets the rules card rather than only a toast.
+	_check(PublicFlow.rules_stop("terms_acceptance_required") and PublicFlow.rules_stop("unsupported_safety_response") and not PublicFlow.rules_stop("public_duels_off"), "Only the rules stops get the rules card")
 
 # Receipts -----------------------------------------------------------------------
 
@@ -365,6 +367,15 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 		go.pressed.emit()
 		await _settle()
 	_check(confirmed[0] == 3, "%s: Join and play runs after the card closes" % name)
+	# The rules card: Read the rules shows inside the safe area and runs the rules ask after the card closes.
+	var rules_card := Sheets.rules_again(page.root, func() -> void: confirmed[0] += 1)
+	page.hold_modal(rules_card)
+	await _settle()
+	var read := rules_card.find_child("PublicRulesRead", true, false) as Button
+	_check(read != null and read.text == PlayerCopy.PUBLIC_RULES_READ and _inside(read, safe), "%s: the rules card's Read the rules shows" % name)
+	read.pressed.emit()
+	await _settle()
+	_check(confirmed[0] == 4 and (not is_instance_valid(rules_card) or not rules_card.is_visible_in_tree()), "%s: Read the rules closes the card and asks for the rules" % name)
 	page.close()
 	await _settle()
 	# Start a duel's Anyone (board 5A).

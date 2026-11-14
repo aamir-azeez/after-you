@@ -159,32 +159,50 @@ func _first_time(then: Callable) -> void:
 	var name_on: bool = LeaderboardClient.shared(host().api, str(host().api.player_id)).show_name()
 	var continuing := switched_on()
 	page.hold_modal(Sheets.first_time(page.root, name_on, func(show_name: bool) -> void:
-		if await turn_on(show_name, not continuing) and flow.is_open(): then.call(), PlayerCopy.PUBLIC_FIRST_CONTINUE if continuing else PlayerCopy.PUBLIC_TURN_ON))
+		if await turn_on(show_name, not continuing, then) and flow.is_open(): then.call(), PlayerCopy.PUBLIC_FIRST_CONTINUE if continuing else PlayerCopy.PUBLIC_TURN_ON))
 
 ## A post or join the server refused for the rules (terms_acceptance_required): the first-time card and the
-## rules, then `again` once. False for any other answer, or for a second refusal (then said as usual).
+## rules, then `again`; a second refusal gets the rules card (_rules_card). False for any other answer.
 func _rules_first(answer: Dictionary, retried: bool, again: Callable) -> bool:
-	if not rules_refusal(answer, retried): return false
-	_first_time(again)
+	if rules_refusal(answer, retried): _first_time(again)
+	elif not answer.get("ok", false) and rules_stop(str(answer.get("code", ""))): _rules_card(again)
+	else: return false
 	return true
+
+## The safety answers that stop a post or join until the rules are read again: the rules refused, or a safety
+## reply this phone could not read (safety_client.gd). Each gets the rules card rather than only a toast.
+static func rules_stop(code: String) -> bool:
+	return code in ["terms_acceptance_required", "unsupported_safety_response"]
+
+## The rules card: Read the rules asks for the config and the rules afresh, shows the rules screen when they are
+## not accepted, then runs `again`. A second failure there is said in a toast, so the card never loops by itself.
+func _rules_card(again: Callable) -> void:
+	var page: CanvasLayer = flow.screen.overlay() if flow.screen.overlay() != null else flow.screen
+	page.hold_modal(Sheets.rules_again(page.root, func() -> void:
+		if await turn_on(null, false) and flow.is_open(): again.call()))
 
 ## Whether a post or join answer asks for the rules first: the refusal, the first time only.
 static func rules_refusal(answer: Dictionary, retried: bool) -> bool:
 	return not retried and not answer.get("ok", false) and str(answer.get("code", "")) == "terms_acceptance_required"
 
 ## Turns the switch on: the community rules first when not accepted, then the name choice and
-## the switch (`set_switch` false: the rules and the name only). False when it did not go through (said in a toast).
-func turn_on(show_name: Variant = null, set_switch := true) -> bool:
+## the switch (`set_switch` false: the rules and the name only). False when it did not go through (said in a toast,
+## or, with `then`, a rules stop shows the rules card, whose Read the rules runs `then` once accepted).
+func turn_on(show_name: Variant = null, set_switch := true, then := Callable()) -> bool:
 	if _turning_on or OfflineHold.refuse(host()._toast): return false
 	_turning_on = true
-	var done := await _turn_on(show_name, set_switch)
+	var done := await _turn_on(show_name, set_switch, then)
 	_turning_on = false
 	return done
 
-func _turn_on(show_name: Variant, set_switch: bool) -> bool:
+func _turn_on(show_name: Variant, set_switch: bool, then: Callable) -> bool:
 	var safety := _safety()
 	if safety == null: return _say(PlayerCopy.DUELS_ACTION_FAILED)
-	if not await safety.check_terms(): return _say(safety.last_error if not str(safety.last_error).is_empty() else PlayerCopy.DUELS_ACTION_FAILED)
+	if not await safety.check_terms():
+		if then.is_valid() and rules_stop(str(safety.last_code)):
+			_rules_card(then)
+			return false
+		return _say(safety.last_error if not str(safety.last_error).is_empty() else PlayerCopy.DUELS_ACTION_FAILED)
 	if not safety.terms_accepted:
 		# The rules screen every photo share shows; Accept there sets terms_accepted.
 		var rules := SafetyScreen.new(safety, {}, Callable(), Callable(), true)

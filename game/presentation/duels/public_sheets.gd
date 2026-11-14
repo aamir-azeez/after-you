@@ -126,6 +126,19 @@ static func first_time(root: Control, show_name: bool, confirm: Callable, action
 	go.grab_focus()
 	return modal
 
+## A post or join the community rules stopped: Read the rules runs confirm() after the card closes.
+static func rules_again(root: Control, confirm: Callable) -> Control:
+	var modal := Modal.open(root, "PublicRulesAgain", PlayerCopy.PUBLIC_RULES_AGAIN_TITLE)
+	modal.widen(WIDE)
+	modal.label(PlayerCopy.PUBLIC_RULES_AGAIN_LINE, 18).add_theme_color_override("font_color", UiTokens.SOFT)
+	var go: Button = modal.add_actions(PlayerCopy.PUBLIC_RULES_READ, func() -> void:
+		modal.close(false)
+		confirm.call(), PlayerCopy.DUELS_NOT_NOW)
+	go.name = "PublicRulesRead"
+	OfflineHold.hold(go)
+	go.grab_focus()
+	return modal
+
 ## A stranger's card (board 6.3). `who`: {name, partner (your own partner), color
 ## ("peach" or "mint"), look, over (the duel ended), friend_sent}. `actions`:
 ## {report, block, befriend, pick(face)} callables; each runs after the card closes,
