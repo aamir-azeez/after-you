@@ -25,11 +25,11 @@ import { parsePosition } from "./history-room";
 import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { testerSwitchCapability } from "../test-codes";
 import { liveCapability } from "../live";
-import { triesField, triesWanted } from "./turn-tries";
-import { endReactionField, endReactionsWanted, FACE_PACKS_VERSION, facePacksWanted } from "./end-reactions";
+import { triesWanted } from "./turn-tries";
+import { endReactionsWanted, FACE_PACKS_VERSION, facePacksWanted } from "./end-reactions";
 import { requireOwnedFaces } from "./face-packs";
 import { limitRoomTransfer } from "../limits";
-import { runReactionField, runReactionsWanted } from "./run-reactions";
+import { runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { CHAPTER_NOT_OPEN, chapterOpen, openChapters } from "./chapter-unlocks";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
@@ -42,7 +42,7 @@ import { leaderboardsCapability } from "../leaderboards/routes";
 import { postFinishedRun, postPreparedRun } from "../leaderboards/submit";
 import { claimDuelRoom, duelsCapability, parseDuelAsk, prepareDuelRoom } from "../duels/routes";
 import { duelsOn, noteDuelTurn, sendDuelNote } from "../duels/turn-hook";
-import { compressedAsked, compressedCapability, readTurnBody, replyResponse } from "./turn-wire";
+import { compressedAsked, compressedCapability, exactTurnFields, readTurnBody, replyResponse } from "./turn-wire";
 import type { RoomV2, TurnAsk } from "./room";
 import type { LeaderboardRun } from "../leaderboards/run";
 import { sendTurnHints } from "../duels/news";
@@ -358,8 +358,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (chapter(snapshot).premium || storyGuard) {
     boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);
     const body = object(input);
-    exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
-      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : []), ...triesField(body), ...endReactionField(body), ...runReactionField(body)]);
+    if (operation === "fork") exact(body, ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])]);
+    else exactTurnFields(body);
     const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key, context);
     if (previous.ok) {
       if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation, ...body }))) throw new ApiError(409, "idempotency_key_reused");

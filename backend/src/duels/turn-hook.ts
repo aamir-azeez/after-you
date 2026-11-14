@@ -6,7 +6,8 @@ import type { RoomSnapshotV2 } from "../v2/room";
 import type { Duel, ProgressNote } from "./model";
 import type { DuelLink } from "./room-link";
 import type { FinishProof } from "./store";
-import { encodeProof } from "../leaderboards/proofs";
+import type { EncodedProof } from "../leaderboards/proofs";
+import type { CheckpointV2 } from "../v2/protocol";
 import { runProgress } from "./ticks";
 import { developerGhost } from "./developer-ghosts";
 import type { PairLooks } from "../leaderboards/run-looks";
@@ -23,7 +24,8 @@ export function duelRunChecksOn(env: ServerVars): boolean { return duelsOn(env) 
  * checkpoint for the replay job. Null when the room's chain cannot be read.
  */
 export type DuelNote = { note: ProgressNote; proof?: FinishProof };
-export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: PairLooks): Promise<DuelNote | null> {
+/** `encode`: the room's own encoder (v2/room.ts turnHooks), so the proof goes encoded; without it, raw. */
+export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: PairLooks, encode?: (checkpoint: CheckpointV2) => Promise<EncodedProof>): Promise<DuelNote | null> {
   let adapter;
   try { adapter = chapter(room); } catch { return null; }
   const progress = runProgress(room.checkpoint, adapter.stages.length, room.active_role === "b" ? room.recording_a : null);
@@ -37,7 +39,7 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
   // developers' ghost. The board decides (model.ts awaitsCheck, which reads DUEL_RUN_CHECKS in the board's own CONFIG),
   // and with checks off it neither encodes nor keeps it; this only spares the rest the payload.
   const checked = link.kind === "friend" || progress.ticks < (developerGhost(link.board) ?? 0);
-  const proof = complete && checked ? { proof: await encodeProof(room.checkpoint), simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
+  const proof = complete && checked ? { ...(encode ? { proof: await encode(room.checkpoint) } : { checkpoint: room.checkpoint }), simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
   return { note, ...(proof ? { proof } : {}) };
 }
 

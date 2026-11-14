@@ -1,5 +1,6 @@
 import { fail, ok, type Outcome } from "../protocol";
-import { sentProof, type EncodedProof } from "../leaderboards/proofs";
+import { encodeProof, sentProof, type EncodedProof } from "../leaderboards/proofs";
+import type { CheckpointV2 } from "../v2/protocol";
 import type { ReplayWork } from "../leaderboards/board";
 import { REVIEW_REASONS } from "../leaderboards/rules";
 import type { ChapterKey } from "../v2/chapter-types";
@@ -74,8 +75,8 @@ export type DuelAction =
   | { kind: "enter"; player: string; side: 0 | 1 };
 /** A public duel's listing as it changed: the listing, or null once off the list; `updated_ms` orders changes (duels/directory.ts). */
 export type ListingChange = { duel_id: string; listing: Listing | null; updated_ms: number };
-/** The finished run's final checkpoint, encoded where the room was read (turn-hook.ts roomNote), sent with the note of the turn that finished it. */
-export type FinishProof = { proof: EncodedProof; simulation_version: number };
+/** The finished run's final checkpoint, sent with the note of the turn that finished it: encoded when the room made the note (v2/room.ts turnHooks), else raw. */
+export type FinishProof = { proof?: EncodedProof; checkpoint?: CheckpointV2; simulation_version: number };
 
 const known = new WeakMap<DurableObjectStorage, boolean>();
 
@@ -192,10 +193,10 @@ export class DuelStore {
   async progress(duelId: string, note: ProgressNote, now: number, proof?: FinishProof, actor: string | null = null, covered: string | null = null): Promise<Outcome<Duel>> {
     if (!this.present()) return fail(404, "duel_not_found");
     const checks = this.checks();
-    // Kept only on the side's first finish of a run the check will want.
+    // Kept only on the side's first finish of a run the check will want; a raw one is encoded before the transaction (compression is async).
     const held = checks && proof && note.complete ? this.duel(duelId) : null;
     const first = held?.sides.find(side => side?.room?.room_id === note.room_id)?.finished_ms === null;
-    const encoded = held && first && awaitsCheck(held, note.ticks, checks) ? proof!.proof : null;
+    const encoded = held && first && awaitsCheck(held, note.ticks, checks) ? proof!.proof ?? await encodeProof(proof!.checkpoint!) : null;
     const kept = encoded && encoded.byte_length <= MAX_DUEL_PROOF_CHARS ? encoded : null;
     return this.tell(actor, () => this.storage.transactionSync(() => {
       const duel = this.duel(duelId);

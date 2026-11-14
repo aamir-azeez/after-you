@@ -17,7 +17,7 @@ import { duelRunChecksOn } from "../duels/turn-hook";
 import { replaySplits } from "../duels/ticks";
 /** Run copy rooms one board hands the sweep at a time (duels/their-run-sweep.ts). */
 const MAX_COPY_SWEEP = 32;
-import { BoardProofs, LEGACY_PROOF_TABLE, PROOF_TABLE, sentProof } from "./proofs";
+import { BoardProofs, LEGACY_PROOF_TABLE, PROOF_TABLE, encodeProof, sentProof } from "./proofs";
 import type { Duel, ProgressNote, SideRoom } from "../duels/model";
 
 /**
@@ -112,8 +112,9 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * poster only after this board answered "crowded" (submit.ts).
    */
   async submit(board: string, run: LeaderboardRun, checked?: StandingResult): Promise<{ status: SubmitStatus; view: BoardView }> {
-    // Encoded where the room was read (run.ts roomRun).
-    const proof = run.proof;
+    // Encoded where the room was read when it came from a turn (run.ts roomRun); a run posted again brings it raw.
+    // Compression is async, so outside the transaction.
+    const proof = run.proof ?? await encodeProof(run.checkpoint!);
     const status = this.ctx.storage.transactionSync((): SubmitStatus => {
       if (this.outcome(run.entry_id) || this.entry(run.entry_id)) return "known";
       if (proof.byte_length > MAX_PROOF_CHARS) return "not_placed";

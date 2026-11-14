@@ -1,10 +1,13 @@
-import { ApiError, readBounded } from "../protocol";
+import { ApiError, object, readBounded } from "../protocol";
 import { bytesDigest, decodeBlob, encodeBlob } from "../blob-codec";
 import { flags, type ServerVars } from "../flags";
 import { JSON_HEADERS } from "../http";
 import { maskedReply, preparedReply } from "../duels/public-mask";
 import { CHAPTERS } from "./chapters";
-import { MAX_V2_BODY_BYTES } from "./protocol";
+import { MAX_V2_BODY_BYTES, exact } from "./protocol";
+import { triesField } from "./turn-tries";
+import { endReactionField } from "./end-reactions";
+import { runReactionField } from "./run-reactions";
 
 /**
  * Turns and room replies as the Worker passes them through, unread (compressed rooms, flags.ts COMPRESSED_ROOMS).
@@ -97,4 +100,8 @@ export function replyResponse(reply: RoomReply, pollen?: unknown): Response {
 /** JSON with every character past ASCII escaped, as a header value must be. */
 function asciiJson(value: unknown): string {
   return JSON.stringify(value).replace(/[\u007f-\uffff]/g, char => "\\u" + char.charCodeAt(0).toString(16).padStart(4, "0"));
+}
+/** A turn body's exact fields, the one list the route (Story turns), the room's premium check and its commit share. */
+export function exactTurnFields(value: Record<string, unknown>): void {
+  exact(value, ["base_revision", "idempotency_key", "branch", "recording", ...(object(value.recording).role === "b" ? ["checkpoint"] : []), ...triesField(value), ...endReactionField(value), ...runReactionField(value)]);
 }

@@ -15,14 +15,15 @@ import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archiv
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { compressRows, parseRoom, parseRow, storedRoom, storedRow, type RowData } from "./row-codec";
-import { decodeTurnBody, encodeReply, type RoomReply, type TurnBody } from "./turn-wire";
+import { decodeTurnBody, encodeReply, exactTurnFields, type RoomReply, type TurnBody } from "./turn-wire";
 import { requireOwnedFaces } from "./face-packs";
 import { isTester } from "../test-codes";
 import { finishedRun, type LeaderboardRun } from "../leaderboards/run";
+import { encodeProof, type EncodedProof } from "../leaderboards/proofs";
 import { roomNote, type DuelNote } from "../duels/turn-hook";
-import { clearTurnTries, parseTries, recordTries, triesField, turnTriesView, type TurnTriesView } from "./turn-tries";
-import { clearEndReactions, endReactionField, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView } from "./end-reactions";
-import { clearRunReactions, eraseRunReactionsOf, parseRunReactions, partnerTrack, recordRunReactions, runReactionField, runReactionsView, withinTurn, type RunReactionsView } from "./run-reactions";
+import { clearTurnTries, parseTries, recordTries, turnTriesView, type TurnTriesView } from "./turn-tries";
+import { clearEndReactions, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView } from "./end-reactions";
+import { clearRunReactions, eraseRunReactionsOf, parseRunReactions, partnerTrack, recordRunReactions, runReactionsView, withinTurn, type RunReactionsView } from "./run-reactions";
 import { HardMemo, clearHard, failuresView, initializeHard, parseReset, priorReset, recordFailure, type Failure, type HardFailures, type HardRun, type Slip } from "./hard-mode";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
 import { snapshotResult } from "../snapshot";
@@ -838,7 +839,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (chapter(snapshot.value).premium && !ask.access_checked) {
         boundedTurnValue(input, chapter(snapshot.value).limits);
         const value = object(input);
-        exact(value, ["base_revision", "idempotency_key", "branch", "recording", ...(object(value.recording).role === "b" ? ["checkpoint"] : []), ...triesField(value), ...endReactionField(value), ...runReactionField(value)]);
+        exactTurnFields(value);
         const previous = await this.operation(player, text(value.idempotency_key, IDEMPOTENCY_PATTERN));
         if (previous.ok) {
           if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation: "turns", ...value }))) return fail(409, "idempotency_key_reused");
@@ -861,12 +862,14 @@ export class RoomV2 extends DurableObject<Env> {
   /** What the route passes on after a turn: the finished run for its board and the duel's note, each with its checkpoint already encoded, never thrown. */
   private async turnHooks(ask: TurnAsk, mutation: MutationV2, link: DuelLink | null, boardLooks?: PairLooks, duelLooks?: PairLooks): Promise<TurnHooks> {
     const members = { host_id: mutation.room.host_id, guest_id: mutation.room.guest_id };
-    let run: LeaderboardRun | null = null, duel: TurnHooks["duel"];
+    let run: LeaderboardRun | null = null, duel: TurnHooks["duel"], encoded: Promise<EncodedProof> | null = null;
+    // The final checkpoint is encoded once, here, for the board and the duel alike.
+    const encode = (checkpoint: CheckpointV2) => encoded ??= encodeProof(checkpoint);
     if (ask.post_run) {
-      try { run = await finishedRun(mutation, undefined, boardLooks); } catch (error) { logWarning("leaderboard_post_failed", { code: logCode(error) }); }
+      try { run = await finishedRun(mutation, undefined, boardLooks, encode); } catch (error) { logWarning("leaderboard_post_failed", { code: logCode(error) }); }
     }
     if (link && ask.note_duel) {
-      try { duel = { link, room_id: mutation.room.room_id, made: await roomNote(mutation.room, link, duelLooks) }; } catch (error) { logWarning("duel_note_failed", { code: logCode(error) }); }
+      try { duel = { link, room_id: mutation.room.room_id, made: await roomNote(mutation.room, link, duelLooks, encode) }; } catch (error) { logWarning("duel_note_failed", { code: logCode(error) }); }
     }
     return { members, ...(run ? { run } : {}), ...(duel ? { duel } : {}) };
   }
@@ -892,7 +895,7 @@ export class RoomV2 extends DurableObject<Env> {
     try {
       const input = object(value);
       const raw = object(input.recording);
-      exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : []), ...triesField(input), ...endReactionField(input), ...runReactionField(input)]);
+      exactTurnFields(input);
       const tries = parseTries(input), face = parseEndReaction(input), track = parseRunReactions(input);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
       const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
