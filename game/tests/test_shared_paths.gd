@@ -61,9 +61,10 @@ extends SceneTree
 ##     must stay in CI, check every built stage's marks and pair tags.
 ## (t) route barriers: presentation/kit/route_barriers.gd alone draws the gates, stair
 ##     chains, zone ropes and locks, from each stage's owned crossings, stairs, zones and
-##     controls, kept by cooperative_world alone; a world only leaves a closed stair's
-##     chain out where it draws the stair closed itself (route_barriers.skip()) or picks
-##     a zone edge's look (_zone_edge_look), and each world that does is in
+##     controls, kept by cooperative_world alone; a chapter whose world draws closed
+##     stairs itself says so in its descriptor ("stair_gates": false), the look is the
+##     dressing's "barrier" slot, and a world that skips a stair itself
+##     (route_barriers.skip()) or picks the look in code (_barrier_style) is in
 ##     ROUTE_BARRIER_OVERRIDES with why. Every script that works out a chapter turn's
 ##     sounds (ChapterSoundMap.cues) first runs the tick through its refusal finder
 ##     (presentation/barrier_refusals.gd, annotate()), so a push rattles alike live,
@@ -330,11 +331,11 @@ const PAIR_TAG_OVERRIDES := {
 ## (t) The route barriers kit and the one world script that keeps it.
 const ROUTE_BARRIERS := "res://presentation/kit/route_barriers.gd"
 const ROUTE_BARRIERS_OWNER := "res://presentation/cooperative_world.gd"
-## Worlds that leave a closed stair's chain out (route_barriers.skip()) or pick
-## a zone edge's look (_zone_edge_look), with why.
+## Worlds that leave a closed stair's chain out themselves (route_barriers.skip();
+## a whole chapter says it in its descriptor's "stair_gates" instead) or pick
+## the "barrier" look in code rather than in their dressing (_barrier_style), with why.
 const ROUTE_BARRIER_OVERRIDES := {
-	"res://presentation/wishing_well_world.gd": "its folding stairs hang against the cliff and the well ladder stays rolled while closed (skip); the well's lip is edged with a low rail (_zone_edge_look)",
-	"res://presentation/tide_world.gd": "every harbour stair goes down into its water, which with its walls shows it closed (skip)",
+	"res://presentation/wishing_well_world.gd": "the well's lip takes the rail style, and the Well has no dressing file to pick it in (one would switch its plain look to the warm one) (_barrier_style)",
 }
 ## Scripts that work out a chapter turn's sounds, which run each tick through
 ## the refusal finder first.
@@ -848,7 +849,7 @@ func _route_barriers() -> void:
 		if path == ROUTE_BARRIERS: continue
 		var alias := _alias(source, ROUTE_BARRIERS)
 		_check(path == ROUTE_BARRIERS_OWNER or _found("\\b(?:RouteBarriers" + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps route barriers of its own: worlds share cooperative_world's route_barriers" % path)
-		if _found("\\broute_barriers\\.skip\\(", source) > 0 or (path != ROUTE_BARRIERS_OWNER and _found("\\bfunc\\s+_zone_edge_look\\(", source) > 0):
+		if path != ROUTE_BARRIERS_OWNER and (_found("\\broute_barriers\\.skip\\(", source) > 0 or _found("\\bfunc\\s+_barrier_style\\(", source) > 0):
 			overrides[path] = true
 			_check(ROUTE_BARRIER_OVERRIDES.has(path), "%s overrides the route barriers its stage gives: add it to ROUTE_BARRIER_OVERRIDES with why" % path)
 		if path.begins_with("res://tests/") or path.begins_with("res://services/"): continue

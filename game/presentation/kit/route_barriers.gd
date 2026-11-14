@@ -10,7 +10,7 @@ extends RefCounted
 ##    a stair, shown while the stair is closed and gone once it opens. A world
 ##    that draws a closed stair itself (a folding stair, steps under water)
 ##    leaves it out with skip().
-##  - zone edges: a low rope (a world may ask for a rail) along every edge of
+##  - zone edges: a low rope (or a rail: the level's "barrier" look) along every edge of
 ##    an access zone that faces floor at the zone's height. Each stretch drops
 ##    while the zone's owner is within OPEN_CM of it, so the owner walks through.
 ##  - locks: a small padlock over an owned lever, switch or pad while the other
@@ -36,6 +36,7 @@ const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const Navigation = preload("res://core/cooperative/navigation.gd")
+const PropStyles = preload("res://content/dressing/prop_styles.gd")
 const SHADER := preload("res://presentation/kit/route_barriers.gdshader")
 
 ## What a refusal or a barrier is about.
@@ -68,6 +69,10 @@ const LANDING_HEIGHT := 0.03
 ## Pieces (metres). Posts stand just outside a crossing's width on its floor.
 const POST := 0.06
 const POST_TALL := 0.42
+## A post in the stage's way steps out this far at a time, at most this often.
+const POST_STEP := 0.03
+const POST_STEPS := 14
+const NO_SHIFT := [0.0, 0.0]
 const CAP := Vector3(0.08, 0.024, 0.08)
 const PICKET := Vector3(0.034, 0.26, 0.026)
 const PICKET_STEP := 0.06
@@ -94,16 +99,19 @@ const CHAIN_TOP := 0.26
 const CHAIN_SAG := 0.11
 const LINK := 0.032
 const CHAIN_LINKS := 11
-## A zone edge: its posts, rope and stretch length.
-const ROPE_POST := Vector3(0.05, 0.25, 0.05)
-const ROPE_WIDTH := 0.032
-const ROPE_HEIGHT := 0.19
+## A zone edge: its stretch length and how finely its edge is sampled.
 const SPAN := 0.6
 const EDGE_STEP := 0.04
-## A rail (a world's _zone_edge_look() &"rail"): dark timber posts, a timber rail
-## and a thin band of the owner's colour on it.
-const RAIL_POST := Vector3(0.06, 0.3, 0.06)
-const RAIL_BEAM := 0.055
+## How a zone edge looks, by the level's "barrier" look slot (content/dressing/
+## prop_styles.gd: each style names one of these). A rope: timber posts and a
+## sagging rope in the owner's colour. A rail: dark posts capped in the owner's
+## colour, a timber beam and a band of the owner's colour on it. A new look
+## is one entry here and one style there.
+const EDGE_LOOKS := {
+	&"rope": {"post": Vector3(0.05, 0.25, 0.05), "post_colour": Props.TIMBER, "capped": false, "beam": 0.0, "rope": 0.032, "rope_height": 0.19, "sag": 0.03},
+	&"rail": {"post": Vector3(0.06, 0.3, 0.06), "post_colour": Props.TIMBER_DARK, "capped": true, "beam": 0.055, "rope": 0.0},
+}
+const DEFAULT_EDGE := &"rope"
 ## A padlock over a control: its height over the control's floor point by
 ## kind, and its parts.
 const LOCK_LIFT := {&"lever": 0.5, &"selector": 0.5, &"pad": 0.5}
@@ -126,6 +134,7 @@ const WIGGLE_RATE := 42.0
 ## The lock ring round a ball: this far out from it, its tube this thick.
 const BALL_RING_OUT := 0.07
 const BALL_RING_COLOUR := Color("6d6a64")
+## How high a ball's centre is drawn over its floor (cooperative_world draws it there too).
 const BALL_LIFT := 0.2
 
 var _world: Node3D
@@ -168,10 +177,6 @@ func clear() -> void:
 ## itself (`why`, for tests). Owner gates stay.
 func skip(route_id: String, why: String = "") -> void:
 	_skips[route_id] = why
-
-## Whether the world draws oute_id's closed state itself (skip()).
-func skipped(route_id: String) -> bool:
-	return _skips.has(route_id)
 
 ## The routes skipped this stage: route id -> why.
 func skips() -> Dictionary:
@@ -234,43 +239,38 @@ static func floors_of(view: Dictionary) -> Array:
 	for stair: Dictionary in view.get("stairs", []): found.append({"rect": FloorSpots.rect_of(stair.rect_cm), "y": float(stair.get("from_height_cm", 0)) / 100.0, "id": str(stair.id), "crossing": true, "stair": stair})
 	return found
 
-## Whether a floor of `floors` other than `except` lies under `point` at height `y` (m).
-static func _floor_at(floors: Array, point: Vector2, y: float, except: String = "") -> bool:
+## The floor of `floors` other than `except` under `point` at height `y` (m), or "".
+static func _floor_at(floors: Array, point: Vector2, y: float, except: String = "") -> String:
 	for f: Dictionary in floors:
 		if f.id == except or not (f.rect as Rect2).has_point(point): continue
 		var height := float(f.y)
 		if not (f.stair as Dictionary).is_empty(): height = float(Navigation.stair_height(f.stair, Vector2i(roundi(point.x * 100.0), roundi(point.y * 100.0)))) / 100.0
-		if absf(height - y) <= LANDING_HEIGHT: return true
-	return false
+		if absf(height - y) <= LANDING_HEIGHT: return str(f.id)
+	return ""
 
-## A crossing's ends that land on a floor of `floors`: {at, along, half, rect,
-## low, high, end (0 the west or north end, a stair's foot; 1 the other)}.
-## A crossing runs along its stair axis, else west to east unless only its
-## north and south ends join (OwnerMark.route_ends_of).
+## A crossing's edges that land on a floor of `floors` (where the engine lets
+## a pip step on or off): {at, along, half, rect, low, high, floor (the id it
+## lands on), end}. A stair is entered only at its foot (end 0) and head (end
+## 1), along its axis; a bridge at any of its four edges, end 0 to 3 for west,
+## east, north and south (a harbour stub opens on its long side).
 static func mouths_of(route: Dictionary, floors: Array) -> Array:
 	var rect := FloorSpots.rect_of(route.rect_cm)
-	var axis := 0
-	if route.has("axis"): axis = 0 if str(route.axis) == "x" else 1
-	else:
-		var islands: Array = []
-		for f: Dictionary in floors:
-			if not f.crossing: islands.append({"id": f.id, "rect_cm": f.rect_cm})
-		var ends := OwnerMark.route_ends_of(route, islands)
-		axis = 0 if absf(ends[0].x - ends[1].x) >= absf(ends[0].z - ends[1].z) else 1
 	var low := float(route.get("from_height_cm", route.get("height_cm", 0)))
 	var high := float(route.get("to_height_cm", route.get("height_cm", low)))
+	var stair := route.has("axis")
+	var edges: Array = [[Vector2(rect.position.x, rect.get_center().y), Vector2.RIGHT, rect.size.y], [Vector2(rect.end.x, rect.get_center().y), Vector2.LEFT, rect.size.y], [Vector2(rect.get_center().x, rect.position.y), Vector2(0, 1), rect.size.x], [Vector2(rect.get_center().x, rect.end.y), Vector2(0, -1), rect.size.x]]
+	if stair: edges = edges.slice(0, 2) if str(route.axis) == "x" else edges.slice(2, 4)
 	var found: Array = []
-	for end in range(2):
-		var height := (low if end == 0 or not route.has("axis") else high) / 100.0
-		var along := Vector2.RIGHT if axis == 0 else Vector2(0, 1)
-		var centre := Vector2(rect.position.x if end == 0 else rect.end.x, rect.get_center().y) if axis == 0 else Vector2(rect.get_center().x, rect.position.y if end == 0 else rect.end.y)
-		if end == 1: along = -along
-		var half := (rect.size.y if axis == 0 else rect.size.x) * 0.5
+	for end in range(edges.size()):
+		var centre: Vector2 = edges[end][0]
+		var along: Vector2 = edges[end][1]
+		var half := float(edges[end][2]) * 0.5
+		var height := (high if stair and end == 1 else low) / 100.0
 		var across := Vector2(along.y, -along.x)
-		var lands := false
+		var lands := ""
 		for share: float in [0.0, -0.6, 0.6]:
-			if _floor_at(floors, centre - along * LANDING_REACH + across * half * share, height, str(route.id)): lands = true
-		if lands: found.append({"at": Vector3(centre.x, height, centre.y), "along": along, "half": half, "rect": rect, "low": minf(low, high), "high": maxf(low, high), "end": end})
+			if lands.is_empty(): lands = _floor_at(floors, centre - along * LANDING_REACH + across * half * share, height, str(route.id))
+		if not lands.is_empty(): found.append({"at": Vector3(centre.x, height, centre.y), "along": along, "half": half, "rect": rect, "low": minf(low, high), "high": maxf(low, high), "end": end, "floor": lands})
 	return found
 
 ## The stretches of a zone's edge that face floor at its height: [[a, b], ...]
@@ -297,7 +297,7 @@ static func zone_edges(zone: Dictionary, view: Dictionary, floors: Array) -> Arr
 			var faces := false
 			if t <= 1.0:
 				var outside := from.lerp(to, t) + out * LANDING_REACH
-				faces = _floor_at(floors, outside, y) and not own.any(func(r: Rect2) -> bool: return r.has_point(outside))
+				faces = not _floor_at(floors, outside, y).is_empty() and not own.any(func(r: Rect2) -> bool: return r.has_point(outside))
 			if faces and run_start < 0.0: run_start = float(index) / float(count)
 			elif not faces and run_start >= 0.0:
 				var run_end := minf(float(index) / float(count), 1.0)
@@ -403,6 +403,9 @@ static func refusal(view: Dictionary, routes: Dictionary, player: Dictionary, sl
 ## terrain. Call after the world's skip()s, before the ownership marks are
 ## placed (they keep clear of the barriers through _pair_keep_clear).
 func build(view: Dictionary) -> void:
+	# The stage's own things a gate's posts may stand in, gathered before the
+	# layout so they hold none of the barriers themselves.
+	var scenery: Array = FloorSpots.stage_things(view) if _world == null else FloorSpots.scenery(view, _world, 0.0)
 	_layout = layout(view, _skips)
 	var slots := int(_layout.slots)
 	if slots > MAX_SLOTS: push_warning("RouteBarriers: %d slots on one stage; past %d they share the last" % [slots, MAX_SLOTS])
@@ -413,10 +416,10 @@ func build(view: Dictionary) -> void:
 	if slots == 0: return
 	var tool := SurfaceTool.new()
 	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rail: bool = _world != null and _world.has_method(&"_zone_edge_look") and _world.call(&"_zone_edge_look") == &"rail"
-	_note_clashes(view)
+	var look := _edge_look()
+	_note_clashes(scenery)
 	for mouth: Dictionary in _layout.mouths: _gate(tool, mouth)
-	for span: Dictionary in _layout.spans: _edge(tool, span, rail)
+	for span: Dictionary in _layout.spans: _edge(tool, span, look)
 	for lock: Dictionary in _layout.locks: _padlock(tool, lock, _anchor(lock.entity))
 	_material = ShaderMaterial.new()
 	_material.shader = SHADER
@@ -436,22 +439,37 @@ func build(view: Dictionary) -> void:
 ## the world's keep-clear), so a level that puts a lever in a gate's way is
 ## named by the tests. Marks and pair tags come later and keep clear of the
 ## gates themselves.
-func _note_clashes(view: Dictionary) -> void:
-	var things: Array = FloorSpots.stage_things(view) if _world == null else FloorSpots.scenery(view, _world, 0.0)
+func _note_clashes(things: Array) -> void:
 	for mouth: Dictionary in _layout.mouths:
 		var at: Vector3 = mouth.at
 		var along := Vector2(mouth.along)
 		var across := Vector2(along.y, -along.x)
 		var clash: Array = []
-		for side: float in [-1.0, 1.0]:
-			var post := Vector2(at.x, at.z) + across * side * (float(mouth.half) + POST * 0.5 + 0.006) - along * (POST * 0.5)
-			var rect := Rect2(post - Vector2.ONE * POST * 0.5, Vector2.ONE * POST)
-			for thing: Dictionary in things:
-				var what := str(thing.get("what", ""))
-				if what == "stair " + str(mouth.route) or what.begins_with("the gate") or what.begins_with("the open gate") or what.begins_with("a post") or what.begins_with("the edge of zone"): continue
-				if thing.has("y") and absf(float(thing.y) - at.y) > FloorSpots.SAME_FLOOR: continue
-				if FloorSpots.hits(rect, thing) and str(thing.what) not in clash: clash.append(str(thing.what))
+		# A post in the stage's way (a gauge, a lever) steps out from the
+		# crossing a little at a time until it stands clear.
+		var shifts: Array = [0.0, 0.0]
+		for index in range(2):
+			var side := -1.0 if index == 0 else 1.0
+			var hits: Array = []
+			for step in range(POST_STEPS + 1):
+				shifts[index] = float(step) * POST_STEP
+				mouth["post_shift"] = shifts
+				hits = _post_clash(mouth, side, things, at.y)
+				if hits.is_empty(): break
+			for what: String in hits:
+				if what not in clash: clash.append(what)
 		mouth["clash"] = clash
+
+## What the post on `side` of `mouth` stands in among `things`.
+static func _post_clash(mouth: Dictionary, side: float, things: Array, y: float) -> Array:
+	var post := post_of(mouth, side)
+	var rect := Rect2(post - Vector2.ONE * POST * 0.5, Vector2.ONE * POST)
+	var found: Array = []
+	for thing: Dictionary in things:
+		if str(thing.get("what", "")) == "stair " + str(mouth.route): continue
+		if thing.has("y") and absf(float(thing.y) - y) > FloorSpots.SAME_FLOOR: continue
+		if FloorSpots.hits(rect, thing): found.append(str(thing.what))
+	return found
 
 ## Where a control's padlock hangs from: the world's floor point of it.
 func _anchor(entity: Dictionary) -> Vector3:
@@ -470,7 +488,8 @@ func _gate(tool: SurfaceTool, mouth: Dictionary) -> void:
 	var colour := OwnerMark.color(str(mouth.owner)) if not str(mouth.owner).is_empty() else CREAM
 	var post_at: Array[Vector3] = []
 	for side: float in [-1.0, 1.0]:
-		var foot := at + across * side * (half + POST * 0.5 + 0.006) - along * (POST * 0.5)
+		var flat := post_of(mouth, side)
+		var foot := Vector3(flat.x, at.y, flat.y)
 		post_at.append(foot)
 		_piece(tool, foot + Vector3(0, POST_TALL * 0.5, 0), Vector3(POST, POST_TALL, POST), along, TIMBER, slot, POSTS, at.y)
 		_piece(tool, foot + Vector3(0, POST_TALL + CAP.y * 0.5, 0), CAP, along, TIMBER_DARK, slot, POSTS, at.y)
@@ -514,28 +533,39 @@ func _leaf(tool: SurfaceTool, hinge: Vector3, run: Vector3, length: float, norma
 	var top := Vector3(0, 0.012 + PICKET.y + LEAF_CAP.y * 0.5, 0) + normal * 0.004
 	_bar(tool, hinge + top, hinge + run * length + top, LEAF_CAP.y, colour.lightened(0.18), slot, layer, floor_y, LEAF_CAP.z)
 
-## A zone edge stretch: a post at each end and the rope (or rail) between.
-func _edge(tool: SurfaceTool, span: Dictionary, rail: bool) -> void:
+## A zone edge stretch in `look` (EDGE_LOOKS): a post at each end and the
+## rope or beam between.
+func _edge(tool: SurfaceTool, span: Dictionary, look: Dictionary) -> void:
 	var a: Vector3 = span.a
 	var b: Vector3 = span.b
 	var slot := int(span.slot)
 	var colour := OwnerMark.color(str(span.owner))
 	var run := (b - a).normalized()
-	var post := RAIL_POST if rail else ROPE_POST
+	var post: Vector3 = look.post
 	for end: Vector3 in [a, b]:
-		_piece(tool, end + Vector3(0, post.y * 0.5, 0), post, run, TIMBER_DARK if rail else TIMBER, slot, POSTS, a.y)
-		# A rail's posts wear the owner's colour on top, to read over pale stone.
-		if rail: _piece(tool, end + Vector3(0, post.y + CAP.y * 0.5, 0), CAP, run, colour, slot, POSTS, a.y)
-	if rail:
-		_bar(tool, a + Vector3(0, post.y - RAIL_BEAM * 0.5, 0), b + Vector3(0, post.y - RAIL_BEAM * 0.5, 0), RAIL_BEAM, TIMBER, slot, ROPE, a.y)
-		_bar(tool, a + Vector3(0, post.y + 0.009, 0), b + Vector3(0, post.y + 0.009, 0), 0.018, colour, slot, ROPE, a.y, RAIL_BEAM * 1.1)
-		return
-	var previous := a + Vector3(0, ROPE_HEIGHT, 0)
+		_piece(tool, end + Vector3(0, post.y * 0.5, 0), post, run, look.post_colour, slot, POSTS, a.y)
+		# Capped posts wear the owner's colour on top, to read over pale stone.
+		if look.capped: _piece(tool, end + Vector3(0, post.y + CAP.y * 0.5, 0), CAP, run, colour, slot, POSTS, a.y)
+	var beam := float(look.beam)
+	if beam > 0.0:
+		_bar(tool, a + Vector3(0, post.y - beam * 0.5, 0), b + Vector3(0, post.y - beam * 0.5, 0), beam, TIMBER, slot, ROPE, a.y)
+		_bar(tool, a + Vector3(0, post.y + 0.009, 0), b + Vector3(0, post.y + 0.009, 0), 0.018, colour, slot, ROPE, a.y, beam * 1.1)
+	var rope := float(look.rope)
+	if rope <= 0.0: return
+	var height := float(look.rope_height)
+	var previous := a + Vector3(0, height, 0)
 	for index in range(1, 5):
 		var t := float(index) / 4.0
-		var point := a.lerp(b, t) + Vector3(0, ROPE_HEIGHT - 0.03 * sin(PI * t), 0)
-		_bar(tool, previous, point, ROPE_WIDTH, colour, slot, ROPE, a.y)
+		var point := a.lerp(b, t) + Vector3(0, height - float(look.sag) * sin(PI * t), 0)
+		_bar(tool, previous, point, rope, colour, slot, ROPE, a.y)
 		previous = point
+
+## The zone edge look the level picks: its world's "barrier" style (the
+## dressing's look slot, content/dressing/prop_styles.gd), as an EDGE_LOOKS entry.
+func _edge_look() -> Dictionary:
+	var style := str(_world.call(&"_barrier_style")) if _world != null and _world.has_method(&"_barrier_style") else ""
+	var edge := StringName(str(PropStyles.SLOTS.barrier.get(style, {}).get("edge", DEFAULT_EDGE)))
+	return EDGE_LOOKS.get(edge, EDGE_LOOKS[DEFAULT_EDGE])
 
 ## A padlock over a control: a brass body and an iron shackle.
 func _padlock(tool: SurfaceTool, lock: Dictionary, anchor: Vector3) -> void:
@@ -717,6 +747,14 @@ func moving_nodes() -> Array:
 		if is_instance_valid(ring): found.append(ring)
 	return found
 
+## Where a gate's post on side (-1 or 1) of its end stands (m, across the
+## floor): just outside the crossing's width, on its floor.
+static func post_of(mouth: Dictionary, side: float) -> Vector2:
+	var along := Vector2(mouth.along)
+	var across := Vector2(along.y, -along.x)
+	var shift := float((mouth.get("post_shift", NO_SHIFT) as Array)[0 if side < 0.0 else 1])
+	return Vector2(mouth.at.x, mouth.at.z) + across * side * (float(mouth.half) + POST * 0.5 + 0.006 + shift) - along * (POST * 0.5)
+
 ## How long an open half of a gate `half` wide at its end is.
 static func open_length(half: float) -> float:
 	return minf(half, OPEN_LEAF)
@@ -733,7 +771,7 @@ func discs() -> Array:
 		var half := float(mouth.half)
 		var end := Vector2(at.x, at.z)
 		for side: float in [-1.0, 1.0]:
-			var post := end + across * side * (half + POST * 0.5 + 0.006) - along * (POST * 0.5)
+			var post := post_of(mouth, side)
 			# A small disc: marks and tags keep their own gap (FloorSpots, 2 to
 			# 5 cm) past it, which already clears the post's corners.
 			found.append({"centre": post, "radius": POST * 0.25, "y": at.y, "what": "a post of the gate at %s" % mouth.route})

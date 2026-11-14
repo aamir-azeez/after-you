@@ -358,7 +358,7 @@ func _physics_process(delta: float) -> void:
 ## `input` is the tick's recorded input, for its pushes into barriers.
 func _cues(snapshot: Dictionary, input: Dictionary = MemoryWait.STILL_INPUT) -> Dictionary:
 	if entry.room.family == "chapter":
-		_refusals.annotate(snapshot, input, world.get("route_barriers") if is_instance_valid(world) else null)
+		_refusals.annotate(snapshot, input)
 		return ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
 	var sources: Array = []
 	for event: String in snapshot.get("events", []): sources.append(Soundscape.event_source(event, "b"))

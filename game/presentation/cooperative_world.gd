@@ -153,9 +153,10 @@ func show_stage(stage: Dictionary) -> void:
 	_build_gate_links(view)
 	_build_goal_beacon(view)
 	# Gates, chains, zone edges and locks, before the marks, which keep clear
-	# of them (_pair_keep_clear). A world that draws a closed stair itself
-	# leaves its chain out first.
-	_skip_route_barriers(view)
+	# of them (_pair_keep_clear). A chapter whose world draws every closed
+	# stair itself says so in its descriptor ("stair_gates": false).
+	if not bool(_descriptor().get("stair_gates", true)):
+		for stair: Dictionary in view.get("stairs", []): route_barriers.skip(str(stair.id), "the descriptor's stair_gates is false")
 	route_barriers.build(view)
 	var radii: Dictionary = {}
 	for prop: Dictionary in physical_props: radii[str(prop.id)] = float(prop.radius_cm) / 100.0
@@ -552,14 +553,11 @@ func _marks_goal(_goal: Dictionary) -> bool:
 func _pair_keep_clear() -> Array:
 	return route_barriers.discs()
 
-## Crossings whose closed state this world draws itself: it calls
-## route_barriers.skip(route id, why) for each, before the barriers build.
-func _skip_route_barriers(_view: Dictionary) -> void:
-	pass
-
-## How a zone's edge looks (kit/route_barriers.gd): &"rope", or &"rail".
-func _zone_edge_look() -> StringName:
-	return &"rope"
+## The level's route barrier look (kit/route_barriers.gd): its dressing's
+## "barrier" look slot pick (content/dressing/prop_styles.gd), or "" for the
+## default.
+func _barrier_style() -> String:
+	return str(dressing.get("barrier", ""))
 
 ## The cables and ropes this stage lays on its floors: {rect, y, what} each
 ## (_floor_cable). Ownership marks keep off them.
@@ -617,7 +615,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		var holder := str(prop.get("controller_slot", ""))
 		var material := _ball_materials[id] as StandardMaterial3D
 		material.albedo_color = GOLD if holder == "p0" else TEAL if holder == "p1" else CREAM
-		var target := Vector3(float(prop.x) / 100.0, float(prop.get("height", 0)) / 100.0 + 0.2, float(prop.z) / 100.0)
+		var target := Vector3(float(prop.x) / 100.0, float(prop.get("height", 0)) / 100.0 + RouteBarriers.BALL_LIFT, float(prop.z) / 100.0)
 		if not immediate:
 			var displacement: Vector3 = target - _physical_balls[id].position
 			_physical_balls[id].rotate_x(displacement.z / 0.2)

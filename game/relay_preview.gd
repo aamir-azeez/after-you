@@ -2158,7 +2158,7 @@ func _continue_final_moment() -> void:
 ## after marking where `input` (the tick's own; a still one when skipped)
 ## pushed into a barrier (presentation/barrier_refusals.gd).
 func _turn_sounds(state: Dictionary, input: Dictionary = MemoryWait.STILL_INPUT) -> Dictionary:
-	_refusals.annotate(state, input, world.get("route_barriers") if is_instance_valid(world) else null)
+	_refusals.annotate(state, input)
 	return ChapterSoundMap.cues(chapter_key, state, _sound_seen)
 
 ## The simulation is back at tick zero: its cues restart their identities.

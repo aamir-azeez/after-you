@@ -312,7 +312,10 @@ func _ownership(key: String) -> void:
 			for entity: Dictionary in stage.get(kind, []):
 				var owner := str(entity.get("owner_slot", ""))
 				var surface := _control_floor(stage, entity)
-				if owner.is_empty() or surface.is_empty(): continue
+				if owner.is_empty(): continue
+				# A control the checker cannot place on a floor would pass unseen: say so.
+				_expect(not surface.is_empty(), "%s %s %s floor" % [where, _kind_name(kind), entity.id], "%s: the %s %s has no surface_id and no island at its height under it, so no one can tell who reaches it" % [where, _kind_name(kind), entity.id])
+				if surface.is_empty(): continue
 				var other := "p1" if owner == "p0" else "p0"
 				_owned(not found.floors[other].has(surface), "%s %s %s %s" % [where, _kind_name(kind), entity.id, other], "%s: %s reaches %s, the floor of the %s %s that only %s may work; put it where only its pip goes" % [where, other, surface, _kind_name(kind), entity.id, owner])
 

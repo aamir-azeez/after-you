@@ -7,6 +7,7 @@ const DATA := {
 	"definition": ["res://core/journey/turn_of_the_tide_catalog.gd", "definition"],
 	"world": "res://presentation/tide_world.gd",
 	"scene": "res://turn_of_the_tide.tscn",
+	"stair_gates": false,
 	"local_path": "user://turn-of-the-tide-journey-v1.json",
 	"superseded_by": "turn-of-the-tide@2",
 	"copy": {

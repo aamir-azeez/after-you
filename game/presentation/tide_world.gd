@@ -298,11 +298,6 @@ func _build_bridge(definition: Dictionary) -> void:
 func _marks_route_owner(route: Dictionary) -> bool:
 	return not (_is_stub(route) or _gate_for(str(route.id)).is_empty())
 
-## Every harbour stair goes down into its water: the water over its treads,
-## and the walls round it, show it closed. Its owner's gates stay.
-func _skip_route_barriers(view: Dictionary) -> void:
-	for stair: Dictionary in view.get("stairs", []): route_barriers.skip(str(stair.id), "the harbour's water and walls show its stairs closed")
-
 ## Tide crossings carry a gauge and stubs their own marks instead of a pulley.
 func _hangs_pulley(route: Dictionary) -> bool:
 	return not _quiet_route(route)

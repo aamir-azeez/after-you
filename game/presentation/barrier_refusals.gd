@@ -17,8 +17,8 @@ extends RefCounted
 ## A memory's push is judged against the second turn's open crossings, which
 ## match its own turn's for owners and zones (their rules never change); a
 ## stair the second pip opened or kept shut can differ, so the tests compare
-## owner and zone pushes only. A closed stair the world draws itself (its
-## barriers' skip()) is no barrier, and a pip whose part is done (the engine
+## owner and zone pushes only. A closed stair is no barrier in a chapter whose
+## descriptor says its world draws closed stairs itself ("stair_gates": false), and a pip whose part is done (the engine
 ## stops moving it) pushes nothing.
 ##
 ## Presentation only. It reads the snapshots, the stage's data and the input
@@ -30,6 +30,7 @@ const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const Index = preload("res://content/chapters/index.gd")
 ## A push held into one barrier rattles it again after this many ticks.
 const REPEAT_TICKS := 30
 const STILL := {"x": 0, "z": 0, "action": false}
@@ -41,6 +42,8 @@ var _layout: Dictionary = {}
 ## The memory's input per tick (quantized), and its slot ("" in a first turn).
 var _memory_frames: Array = []
 var _memory_slot := ""
+## Whether a closed stair counts as a barrier (the descriptor's "stair_gates").
+var _stair_gates := true
 ## Each spirit's position after the last tick: slot -> Vector2i (cm).
 var _last: Dictionary = {}
 ## The barrier each spirit is pushing into: slot -> {id, tick}.
@@ -66,6 +69,7 @@ func begin(chapter_key: String, definition: Dictionary, state: Dictionary, prior
 	_held.clear()
 	if not (Registry.is_cooperative(chapter_key) or Registry.is_journey(chapter_key)) or not state.has("players"): return
 	_definition = definition
+	_stair_gates = bool(Index.data(chapter_key).get("stair_gates", true))
 	_stage(str(state.get("stage_id", "")))
 	if str(state.get("role", "")) == "b" and prior is Dictionary:
 		_memory_slot = str(state.get("first_player_slot", ""))
@@ -82,8 +86,8 @@ func _stage(stage_id: String) -> void:
 
 ## Adds this tick's "refused" and "locked" to `state` (the snapshot the engine
 ## returned for `input`), in place. The caller then works out its sounds and
-## shows it. `barriers` is the shown world's route barriers (for its skips), or null.
-func annotate(state: Dictionary, input: Dictionary = {}, barriers: RefCounted = null) -> void:
+## shows it.
+func annotate(state: Dictionary, input: Dictionary = {}) -> void:
 	if _view.is_empty() or not state.get("players") is Dictionary: return
 	if str(state.get("stage_id", "")) != _stage_id: _stage(str(state.get("stage_id", "")))
 	var tick := int(state.get("tick", 0))
@@ -94,7 +98,7 @@ func annotate(state: Dictionary, input: Dictionary = {}, barriers: RefCounted = 
 	var refused: Array = []
 	for slot: String in frames:
 		var done: bool = slot == str(state.get("active_slot", "")) and bool(state.get("objective_done", false))
-		var event := {} if done else _refused(slot, frames[slot], players.get(slot), state, tick, barriers)
+		var event := {} if done else _refused(slot, frames[slot], players.get(slot), state, tick)
 		if not event.is_empty(): refused.append(event)
 	var locked: Array = []
 	for lock: Dictionary in _layout.get("locks", []):
@@ -111,13 +115,13 @@ func annotate(state: Dictionary, input: Dictionary = {}, barriers: RefCounted = 
 	if not refused.is_empty(): state["refused"] = refused
 	if not locked.is_empty(): state["locked"] = locked
 
-func _refused(slot: String, frame: Dictionary, player: Variant, state: Dictionary, tick: int, barriers: RefCounted) -> Dictionary:
+func _refused(slot: String, frame: Dictionary, player: Variant, state: Dictionary, tick: int) -> Dictionary:
 	var push := Vector2(float(frame.x), float(frame.z))
 	if not player is Dictionary or push.is_zero_approx() or not _last.has(slot) or _last[slot] != Vector2i(int(player.x), int(player.z)):
 		_pushing.erase(slot)
 		return {}
 	var found := RouteBarriers.refusal(_view, state.get("bridges", {}), player, slot, push.normalized(), Runtime.PLAYER_RADIUS, Runtime.MOVE_PER_TICK)
-	if not found.is_empty() and found.kind == RouteBarriers.STAIR and barriers != null and barriers.skipped(str(found.id)): found = {}
+	if not found.is_empty() and found.kind == RouteBarriers.STAIR and not _stair_gates: found = {}
 	if found.is_empty():
 		_pushing.erase(slot)
 		return {}

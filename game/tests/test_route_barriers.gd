@@ -19,6 +19,7 @@ const BarrierRefusals = preload("res://presentation/barrier_refusals.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+const PropStyles = preload("res://content/dressing/prop_styles.gd")
 var checks := 0
 var failures := 0
 
@@ -33,6 +34,8 @@ func _check(ok: bool, message: String) -> void:
 		print("FAIL: " + message)
 
 func _run() -> void:
+	for style: String in PropStyles.SLOTS.barrier:
+		_check(RouteBarriers.EDGE_LOOKS.has(StringName(str(PropStyles.SLOTS.barrier[style].edge))), "The barrier style %s names a zone edge look" % style)
 	_rules()
 	_refusals()
 	_sounds()
@@ -244,7 +247,7 @@ static func _crossing(layout: Dictionary, before: Dictionary, after: Dictionary)
 			var at := Vector2(mouth.at.x, mouth.at.z)
 			var across := Vector2(mouth.along.y, -mouth.along.x) * float(mouth.half)
 			if absf(float(from.get("height", 0)) - mouth.at.y * 100.0) > RouteBarriers.NEAR_HEIGHT_CM: continue
-			if Geometry2D.segment_intersects_segment(a, b, at - across, at + across) != null: return "(%s at the %s gate of %s)" % [slot, ["first", "second"][int(mouth.end)], mouth.route]
+			if Geometry2D.segment_intersects_segment(a, b, at - across, at + across) != null: return "(%s at the %s gate of %s)" % [slot, "%s" % mouth.get("floor", ""), mouth.route]
 		for span: Dictionary in layout.spans:
 			if not masks[span.slot] & RouteBarriers.ROPE: continue
 			if absf(float(from.get("height", 0)) - span.a.y * 100.0) > RouteBarriers.NEAR_HEIGHT_CM: continue
