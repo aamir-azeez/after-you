@@ -12,7 +12,8 @@ const DATA := {
 	"released": false,
 	## Its crown stands above the head.
 	"tall": true,
-	## The leaf pokes through a notch cut on its side.
-	"leaf_mode": "pokes_through",
-	"leaf_max": "medium",
+	## The cap is whole: the leaf comes out of its top on a short stem.
+	"leaf_mode": "sits_on_top",
+	"leaf_lift": 0.185,
+	"leaf_max": "tall",
 }

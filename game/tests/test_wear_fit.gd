@@ -35,6 +35,21 @@ const CELL := 0.05
 const PAIR_BUDGET_MS := 30000
 ## The first carry's sums must take under this (milliseconds, a desktop run).
 const FIRST_CARRY_MS := 60
+## The hats that sit beside the leaf, so it grows where it always does, each
+## with why (drawn that way on its board); every other hat raises the leaf out
+## of its top.
+const BESIDE := {
+	"daisy": "a flower on the head's far front corner",
+	"seashell": "a shell on the head's front side, under the leaf",
+	"lantern": "hangs on the far side",
+	"lighthouse_lamp": "on the head's far corner",
+	"top_ten_ribbon": "a rosette on the far front corner",
+	"paper_boat": "the hats board draws it beside the leaf, its end raised away",
+	"flower_pot": "the hats board draws it beside the leaf, leaning away",
+	"tea_cup": "the hats board draws it beside the leaf",
+	"wave_cap": "the hats board draws the waves beside the sprout",
+	"glass_house": "the hats board draws it beside the leaf",
+}
 ## Leaves the fit must class as these.
 const EXPECTED := {"": WearFit.SMALL, "sprig_coral": WearFit.SMALL, "gold_leaf": WearFit.SMALL, "every_hard": WearFit.SMALL, "apple_leaf": WearFit.TALL}
 
@@ -91,6 +106,11 @@ func _declarations() -> void:
 		else: _check(mode.is_empty(), "%s is not a hat and declares no leaf way" % id)
 	for file: Script in Index.ITEMS:
 		_check(not (file.DATA as Dictionary).has("leaf_class"), "%s sets no leaf class by hand" % file.DATA.id)
+	# No hat is cut open for the leaf: a hat over the leaf's place raises it out
+	# of its top; only hats that sit beside the leaf leave it where it grows.
+	for id: String in _hats:
+		if Catalog.leaf_mode(id) == WearFit.POKES_THROUGH: _check(BESIDE.has(id), "%s leaves the leaf where it grows, so it must sit beside it (BESIDE)" % id)
+	for id: String in BESIDE: _check(Catalog.leaf_mode(id) == WearFit.POKES_THROUGH, "%s, beside the leaf, leaves it where it grows" % id)
 
 ## The one table, for every way and class.
 func _table() -> void:
@@ -99,7 +119,7 @@ func _table() -> void:
 			var fits := WearFit.rank(leaf) <= WearFit.rank(largest)
 			_check(WearFit.rule(WearFit.COVERS, largest, 0.05, leaf) == {"show": false, "lift": 0.0}, "A covering hat hides a %s leaf" % leaf)
 			_check(WearFit.rule(WearFit.SITS_ON_TOP, largest, 0.05, leaf) == {"show": fits, "lift": 0.05}, "A hat up to %s raises a %s leaf onto it, or hides it" % [largest, leaf])
-			_check(WearFit.rule(WearFit.POKES_THROUGH, largest, 0.0, leaf) == {"show": fits, "lift": 0.0}, "A notched hat up to %s shows a %s leaf in its place, or hides it" % [largest, leaf])
+			_check(WearFit.rule(WearFit.POKES_THROUGH, largest, 0.0, leaf) == {"show": fits, "lift": 0.0}, "A hat beside the leaf, taking up to %s, shows a %s leaf in its place, or hides it" % [largest, leaf])
 			_check(WearFit.rule(WearFit.POKES_THROUGH, largest, 0.05, leaf) == ({"show": true, "lift": 0.0} if fits else {"show": true, "lift": 0.05}), "and with a lift raises a bigger one onto it")
 	_check(WearFit.decide("", WearFit.TALL) == {"show": true, "lift": 0.0}, "With no hat every leaf shows where it grows")
 
@@ -313,7 +333,7 @@ func _visible(triangles: PackedVector3Array, stalk: Vector3, tuck: float) -> Pac
 ## it comes off the preview; otherwise the outfit shows as worn.
 func _preview() -> void:
 	_check(WearFit.class_for("apple_leaf") == WearFit.TALL and WearFit.class_for("") == WearFit.SMALL, "A leaf's class is known without a pip at hand")
-	_check(WearFit.shown_with({"hat": "rain_cap", "leaf": "apple_leaf"}) == {"leaf": "apple_leaf"}, "A hat that hides the leaf comes off its preview")
+	_check(WearFit.shown_with({"hat": "paper_boat", "leaf": "apple_leaf"}) == {"leaf": "apple_leaf"}, "A hat that hides the leaf comes off its preview")
 	_check(WearFit.shown_with({"hat": "straw_hat", "leaf": "gold_leaf"}) == {"hat": "straw_hat", "leaf": "gold_leaf"}, "A hat that shows the leaf stays on")
 	_check(WearFit.shown_with({"hat": "rain_cap"}) == {"hat": "rain_cap"}, "A hat with the plain leaf stays on")
 

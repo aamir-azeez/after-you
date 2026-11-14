@@ -184,7 +184,9 @@ func _each_item() -> void:
 		_check(triangles <= MAX_TRIANGLES, "%s stays within about 600 triangles: %d" % [id, triangles])
 		if id in POLLEN_BOARD:
 			# A leaf item drawn in the leaf's place adds what its mesh has over the plain leaf's.
-			var added := triangles
+			# The stem a raised leaf stands on is the leaf's fit, not the hat's.
+			var added := 0
+			for mesh: MeshInstance3D in meshes: if mesh.name != "LeafStem": added += _triangles(mesh.mesh)
 			if Catalog.slot(id) == "leaf": added = _triangles(spirit.sprout.mesh) if spirit.sprout.mesh != load("res://presentation/spirit_meshes.gd").leaf() else triangles
 			var budget := HAT_TRIANGLES if Catalog.slot(id) == "hat" else LEAF_TRIANGLES
 			_check(added <= budget, "%s stays within its board's %d triangles: %d" % [id, budget, added])

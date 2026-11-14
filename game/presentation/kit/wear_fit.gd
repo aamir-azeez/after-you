@@ -13,11 +13,13 @@ extends RefCounted
 ## A hat declares (content/cosmetics/index.gd) how the leaf meets it,
 ## "leaf_mode", and the largest class it takes, "leaf_max":
 ## - covers: the leaf hides under it.
-## - pokes_through: the leaf stays where it grows, through a real notch or
-##   hole. A bigger leaf sits on the hat instead, raised by the hat's
-##   "leaf_lift", or hides when the hat has no lift.
-## - sits_on_top: the leaf is raised by "leaf_lift" onto the hat. A bigger
-##   leaf hides.
+## - pokes_through: the leaf stays where it grows, beside the hat (a hat on
+##   the head's far side, such as the Paper boat). A bigger leaf sits on the
+##   hat instead, raised by the hat's "leaf_lift", or hides when the hat has no
+##   lift. No hat is cut open for the leaf.
+## - sits_on_top: the hat is whole and the leaf comes out of its top, raised
+##   by "leaf_lift" on a short stem (the Straw hat, the caps). A bigger leaf
+##   hides.
 ## decide() is that table; nothing else picks.
 ##
 ## Carrying: a hat whose geometry would come within CLEARANCE of the carried
@@ -52,9 +54,8 @@ const MEDIUM := "medium"
 const TALL := "tall"
 const CLASSES: Array[String] = [SMALL, MEDIUM, TALL]
 ## Each class's largest half width (x), height over the stalk (y) and depth
-## to front or back (z), in pip widths. A leaf past MEDIUM's is TALL; TALL's
-## numbers are only the room a hat cuts for it (leaf_in_the_way).
-const CLASS_LIMITS := {SMALL: Vector3(0.11, 0.30, 0.14), MEDIUM: Vector3(0.24, 0.46, 0.26), TALL: Vector3(0.32, 0.62, 0.3)}
+## to front or back (z), in pip widths. A leaf past MEDIUM's is TALL.
+const CLASS_LIMITS := {SMALL: Vector3(0.11, 0.30, 0.14), MEDIUM: Vector3(0.24, 0.46, 0.26)}
 
 const COVERS := "covers"
 const POKES_THROUGH := "pokes_through"
@@ -72,12 +73,6 @@ const NOT_SOLID: Array[String] = ["Halo", "Beam", "Stars", "Fall"]
 const CARRY_TILT := 0.06 + 0.018 + 0.065
 const CARRY_WOBBLE := 0.022 + 0.004 + 0.004
 
-## How finely leaf_in_the_way turns a leaf through its roll, and how far a
-## stalk reaches into the head under it (spirit_meshes.gd _leaf).
-const ROLL_STEPS := 24
-const STALK_DEPTH := 0.02
-## How square the cut outline is (2 an ellipse, higher nearer a box).
-const KEEP_OUT_POWER := 4.0
 ## How finely a leaf is turned through its roll against a carried thing.
 const CARRY_ROLLS := 12
 
@@ -191,25 +186,6 @@ static func leaf_roll() -> Vector2:
 	var walk := float(spirit.LEAF_STEP_ROLL) + float(spirit.SETTLE_SWING) * float(spirit.LEAF_SETTLE)
 	_roll = Vector2(-SpiritIdle.LEAF_SWAY + SpiritIdle.WAKE_LEAF * jolt.x - walk, maxf(SpiritIdle.LEAF_SWAY, SpiritIdle.DOZE_LEAF_DROOP) + SpiritIdle.WAKE_LEAF * jolt.y + walk)
 	return _roll
-
-## Whether head-space `point` is in the way of a leaf of class `largest`
-## growing in its own place, anywhere in its roll (leaf_roll), with CLEARANCE
-## to spare: inside that class's limits about the stalk, its outline across
-## and up rounded (KEEP_OUT_POWER) the way leaves taper, turned through the
-## roll. A hat builder cuts its notch where this holds; tests/test_wear_fit.gd
-## checks the real leaves against the real notch.
-static func leaf_in_the_way(point: Vector3, largest: String) -> bool:
-	var limit: Vector3 = CLASS_LIMITS[largest] * PIP_WIDTH + Vector3.ONE * CLEARANCE
-	var from := point - (Look.LEAF_PIVOT - Look.HEAD_CENTER)
-	if from.length() > limit.length(): return false
-	var roll := leaf_roll()
-	for step in range(ROLL_STEPS + 1):
-		var turn := Look.LEAF_LEAN + lerpf(roll.x, roll.y, float(step) / float(ROLL_STEPS))
-		var leaf := from.rotated(Vector3.BACK, -turn)
-		if absf(leaf.z) > limit.z or leaf.y < -STALK_DEPTH - CLEARANCE or leaf.y > limit.y: continue
-		var up := (leaf.y + STALK_DEPTH + CLEARANCE) / (limit.y + STALK_DEPTH + CLEARANCE) * 2.0 - 1.0
-		if pow(absf(leaf.x) / limit.x, KEEP_OUT_POWER) + pow(absf(up), KEEP_OUT_POWER) <= 1.0: return true
-	return false
 
 # --- Carrying ------------------------------------------------------------------
 
