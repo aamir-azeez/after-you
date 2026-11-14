@@ -206,13 +206,17 @@ const CALLS := {
 ## A world mechanism that moves (island_world.gd mechanism_moving) -> its
 ## loop and pitch in semitones; `rise` is added while it moves up or out.
 ## One shared reel serves every winch, so a new one is one line here.
+## A move sounds for at most `max_seconds` (default MOTION_MAX_SECONDS, well
+## over any real move); one still reported moving after that is hushed until
+## it stops or turns. 0 is for running water, which sounds while it pours.
+const MOTION_MAX_SECONDS := 4.0
 const MOTION := {
 	"bucket": {"loop": "reel", "pitch": 0.0, "rise": 2.0},
 	"ladder": {"loop": "reel", "pitch": 4.0, "rise": 2.0},
 	"fold": {"loop": "reel", "pitch": 7.0, "rise": 2.0},
 	"lift": {"loop": "reel", "pitch": -3.0, "rise": 0.0},
 	"drawbridge": {"loop": "reel", "pitch": 2.0, "rise": 2.0},
-	"spout": {"loop": "spout", "pitch": 0.0, "rise": 0.0},
+	"spout": {"loop": "spout", "pitch": 0.0, "rise": 0.0, "max_seconds": 0.0},
 }
 
 ## Background layers under the shared ambience (a LOOPS or a CALLS name), per
