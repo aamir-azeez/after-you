@@ -43,6 +43,8 @@ export function slotsAllowed(slots: readonly string[], faces: ReadonlySet<string
  * who wears a resting face from a newer phone keeps a working Wardrobe on the older one (Classic shows there).
  */
 export function withoutFaces<T extends { look: Look }>(part: T): T {
+  // Nothing to take out: the very same object, so every byte stays as before.
+  if (!Object.hasOwn(part.look, "rest_face") && !["faces", "reactions", "reaction_slots"].some(key => Object.hasOwn(part, key))) return part;
   const { rest_face: _rest, ...look } = part.look; void _rest;
   const { faces: _faces, reactions: _reactions, reaction_slots: _slots, ...rest } = part as T & { faces?: unknown; reactions?: unknown; reaction_slots?: unknown };
   void _faces; void _reactions; void _slots;

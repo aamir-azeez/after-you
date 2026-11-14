@@ -86,6 +86,10 @@ describe("the reaction slots", () => {
     const player = await create();
     const plain = await wardrobe(player, SHOP);
     expect(plain).not.toHaveProperty("faces"); expect(plain).not.toHaveProperty("reactions");
+    // An older app's read is the same text as before, key order included.
+    const older = await (await call("/v1/pollen", "GET", player, undefined, SHOP, true)).text();
+    const newer = await (await call("/v1/pollen", "GET", player, undefined, SHOP)).text();
+    expect(older).toBe(newer);
     const refused = await equip(player, {}, SHOP, [...DEFAULT_SLOTS]);
     expect(refused.status).toBe(400); expect(await errorOf(refused)).toBe("invalid_pollen_equip");
     // A released face code is still not sold while the switch is off.
