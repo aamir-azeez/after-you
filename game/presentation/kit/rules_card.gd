@@ -92,4 +92,8 @@ static func hold(box: Control, busy: bool, busy_name: String, idle_text: String)
 		if made.get_parent().name != "RulesActions": continue
 		# A button held while offline stays greyed until the connection is back (offline_hold.gd).
 		OfflineHold.set_enabled(made, not busy)
-		if made.name == busy_name: made.text = PlayerCopy.RULES_CHECKING if busy else idle_text
+		if made.name != busy_name: continue
+		made.text = PlayerCopy.RULES_CHECKING if busy else idle_text
+		# A held button shows no focus ring (board A); focus comes back to it with the card.
+		if busy and made.has_focus(): made.release_focus()
+		elif not busy and made.is_inside_tree() and made.is_visible_in_tree(): made.grab_focus()
