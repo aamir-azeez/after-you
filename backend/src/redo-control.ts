@@ -70,6 +70,7 @@ export function inboxRedo(storage: DurableObjectStorage, player: string, room: {
   let request: RedoRequest | null;
   try { request = stored(storage); } catch { return {}; }
   if (!request || request.source.revision !== room.revision || request.source.branch !== room.branch || request.source.stage_index !== room.stage_index) return {};
-  if (request.status === "pending") return player === request.source.first_player_id ? { redo: "asked_you" } : player === request.source.second_player_id ? { redo: "you_asked" } : {};
-  return request.status === "declined" && player === request.source.second_player_id ? { redo: "kept" } : {};
+  const shown = (state: InboxRedo["state"]) => ({ redo: { state, stage_index: room.stage_index } });
+  if (request.status === "pending") return player === request.source.first_player_id ? shown("asked_you") : player === request.source.second_player_id ? shown("you_asked") : {};
+  return request.status === "declined" && player === request.source.second_player_id ? shown("kept") : {};
 }

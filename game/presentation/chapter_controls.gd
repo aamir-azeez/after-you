@@ -2,6 +2,8 @@ extends CanvasLayer
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Shared chapter controls. Puzzle progression and persistence stay with the owner.
 signal pause_requested
+## The redo chip beside the try pill was tapped (presentation/redo_flow.gd).
+signal redo_chip_pressed
 signal action_requested
 signal finish_requested
 ## Skip to end, while the live spirit waits for its friend's memory.
@@ -49,6 +51,9 @@ var wait_row: HBoxContainer
 var try_pill: TryPill
 ## "Sunshine ×2" under the try pill while the player's Sunshine has turns left (an online turn).
 var sunshine_pill: TryPill
+## Beside the try pill on a friend's second turn: "Ask for a redo", then what
+## became of it (presentation/redo_flow.gd draws its words). Hidden otherwise.
+var redo_chip: Button
 var wait_label: Label
 var wait_bar: MemoryWaitBar
 ## Hold to fast-forward and Skip to end take the action and finish places
@@ -151,6 +156,18 @@ func show_tries(tries: int, text: String = "") -> void:
 	try_pill.show_try(tries, text)
 	_place_wait_row.call_deferred()
 
+## The redo chip: `text` with `icon` (null for none); a chip that only
+## reports (Asked, kept) takes no tap. Empty `text` hides it.
+func show_redo_chip(text: String, icon: Texture2D = null, tappable: bool = true) -> void:
+	if not is_instance_valid(redo_chip): return
+	redo_chip.visible = not text.is_empty()
+	redo_chip.text = text
+	redo_chip.icon = icon
+	redo_chip.tooltip_text = text
+	redo_chip.mouse_filter = Control.MOUSE_FILTER_STOP if tappable else Control.MOUSE_FILTER_IGNORE
+	redo_chip.focus_mode = Control.FOCUS_ALL if tappable else Control.FOCUS_NONE
+	_place_wait_row.call_deferred()
+
 ## The Sunshine pill under the try pill (presentation/try_pill.gd show_sunshine).
 func show_sunshine(on: bool) -> void:
 	if not is_instance_valid(sunshine_pill) or sunshine_pill.visible == on: return
@@ -165,7 +182,15 @@ func _place_wait_row() -> void:
 	if is_instance_valid(try_pill):
 		try_pill.position = Vector2(chapter_label.position.x, below + 2.0)
 		try_pill.size = try_pill.get_combined_minimum_size()
-		if try_pill.visible: below += try_pill.size.y + 8.0
+		# The redo chip shares the try pill's line, after it when it shows.
+		if is_instance_valid(redo_chip) and redo_chip.visible:
+			redo_chip.size = redo_chip.get_combined_minimum_size()
+			var left := try_pill.position.x + (try_pill.size.x + 10.0 if try_pill.visible else 0.0)
+			var line := maxf(try_pill.size.y if try_pill.visible else 0.0, redo_chip.size.y)
+			redo_chip.position = Vector2(left, below + 2.0 + (line - redo_chip.size.y) * 0.5)
+			if try_pill.visible: try_pill.position.y = below + 2.0 + (line - try_pill.size.y) * 0.5
+			below += line + 8.0
+		elif try_pill.visible: below += try_pill.size.y + 8.0
 	if is_instance_valid(sunshine_pill):
 		sunshine_pill.position = Vector2(chapter_label.position.x, below + 2.0)
 		sunshine_pill.size = sunshine_pill.get_combined_minimum_size()
@@ -209,6 +234,15 @@ func _build_ui() -> void:
 	try_pill = TryPill.new(17)
 	try_pill.visible = false
 	hud.add_child(try_pill)
+	redo_chip = Button.new()
+	redo_chip.name = "RedoChip"
+	redo_chip.visible = false
+	redo_chip.custom_minimum_size.y = 40
+	redo_chip.add_theme_font_size_override("font_size", 16)
+	redo_chip.add_theme_constant_override("icon_max_width", 20)
+	ControlTheme.secondary(redo_chip)
+	redo_chip.pressed.connect(func() -> void: redo_chip_pressed.emit())
+	hud.add_child(redo_chip)
 	sunshine_pill = TryPill.new(17)
 	sunshine_pill.name = "SunshinePill"
 	sunshine_pill.visible = false

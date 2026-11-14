@@ -788,6 +788,20 @@ func open_room(room_id: String) -> bool:
 			_clear_terminal_redo(room_id)
 	return success
 
+## The newest redo state a room poll carried (X-AfterYou-Poll-Redo), with the room revision and
+## branch it came with. The room page takes it instead of asking GET /redo (take_polled_redo).
+var _polled_redo: Dictionary = {}
+func _note_polled_redo(room_id: String, revision: int, branch: int, redo: Variant) -> void:
+	_polled_redo = {"room_id": room_id, "revision": revision, "branch": branch, "redo": redo}
+
+## The redo state the last poll of `room` carried, once, or {} when it carried none (an older
+## server, a full read without the known header) or the room moved since.
+func take_polled_redo(room: Dictionary) -> Dictionary:
+	var polled := _polled_redo
+	_polled_redo = {}
+	if polled.is_empty() or not Typed.equal(capabilities.get("poll_redo_version"), 1.0) or polled.room_id != str(room.get("room_id", "")) or polled.revision != int(room.get("revision", -1)) or polled.branch != int(room.get("branch", -1)) or not polled.redo is Dictionary: return {}
+	return polled.redo
+
 func _ordinary_coordinator() -> RefCounted:
 	var background_writer: Callable = _store.save_scope if _store.get_script() == Store else Callable()
 	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity,Callable(),background_writer)
@@ -796,6 +810,7 @@ func _ordinary_coordinator() -> RefCounted:
 	result.partner_name_sink = _note_partner_name
 	result.pollen_sink = _note_pollen
 	result.partner_look_sink = _note_partner_look
+	result.redo_sink = _note_polled_redo
 	result.own_turn_look_sink = _note_own_turn_look
 	result.pollen_finished_sink = _note_finished_room
 	result.restore_replay_transfer = restore_complete_replay

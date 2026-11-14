@@ -104,6 +104,7 @@ const PIP_MAKERS := {
 	"res://presentation/leaderboard_celebration.gd": ["dressed", "OwnLook beside the partner's TurnLooks"],
 	"res://presentation/duels/duel_kit.gd": ["dressed", "both pairs in every duel page"],
 	"res://presentation/race_ghost_view.gd": ["dressed", "the raced player in the look the race kept, on the turn and its timer"],
+	"res://presentation/kit/friend_pip.gd": ["dressed", "a room friend's pip in the look TurnLooks last heard (redo requests, the room's friend strip)"],
 	"res://presentation/wardrobe_page.gd": ["preview", "shows each item on the plain pip"],
 	"res://presentation/wardrobe_sheets.gd": ["preview", "the buy sheet shows the item on the plain pip"],
 	"res://presentation/wardrobe_orchard.gd": ["preview", "Fruits board 4a: each Orchard item on the plain pip"],

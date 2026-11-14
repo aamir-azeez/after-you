@@ -279,6 +279,7 @@ redo_client 3
 redo_cooldown 3
 redo_navigation 2
 redo_probe_guard 1
+redo_prompts 1
 redo_session 1
 refresh_schedule 2
 registry_golden 1

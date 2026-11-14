@@ -36,6 +36,7 @@ const StoreFlow = preload("res://presentation/store_flow.gd")
 const AccountFlow = preload("res://presentation/account_flow.gd")
 const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const NotificationFlow = preload("res://presentation/notification_flow.gd")
+const RedoHomeCard = preload("res://presentation/redo_home_card.gd")
 const RoomHubFlow = preload("res://presentation/room_hub_flow.gd")
 const FriendsFlow = preload("res://presentation/friends_flow.gd")
 const DuelsFlow = preload("res://presentation/duels/duels_flow.gd")
@@ -273,6 +274,8 @@ var account_flow: AccountFlow = _host_account_flow()
 var replays_flow: ReplaysFlow = _host_replays_flow()
 ## Notification settings, alerts while the app is open and opening a tapped alert, with their state.
 var notification_flow: NotificationFlow = _host_notification_flow()
+## Home's card for a friend's redo request (presentation/redo_home_card.gd).
+var redo_home_card := RedoHomeCard.new(self)
 ## Play with a friend: the room hub, its taps and its rooms list, with their state.
 var room_hub_flow: RoomHubFlow = _host_room_hub_flow()
 ## Friends: its screen and its Leave, Host, Return and Join taps.
@@ -722,6 +725,10 @@ func _close_top_modal() -> bool:
 
 ## The topmost card open over the screen (InGameModal, or a leaderboard
 ## celebration), or null.
+## The redo alerts question, once (notification_flow.gd), over the page shown now.
+func offer_redo_alerts_here() -> void:
+	notification_flow.offer_redo_alerts(ui)
+
 func _top_modal() -> Node:
 	for index in range(ui.get_child_count()-1,-1,-1):
 		var child := ui.get_child(index)
@@ -861,6 +868,7 @@ func _show_home() -> void:
 	home_stage.set_header_actions(menu.header_actions())
 	# Reads the screen just left no longer wants stop waiting (RequestQueue.drop_unwanted).
 	if api != null and api.has_method("drop_unwanted_requests"): api.drop_unwanted_requests()
+	redo_home_card.home_shown()
 
 ## Home's Wardrobe row and the monthly Pollen card: the Wardrobe, whose Back returns to Home.
 func _open_wardrobe_from_home() -> void:
@@ -2061,6 +2069,7 @@ func _enter_online_relay() -> void:
 	relay_child.save_photo_prompt_preference = settings_flow.save_photo_prompt_preference
 	relay_child.turn_notification_status = notification_flow.status
 	relay_child.enable_turn_notifications = notification_flow.enable
+	relay_child.offer_redo_alerts = notification_flow.offer_redo_alerts
 	relay_child.share_current_room = room_sharing.share
 	relay_child.room_share_state = room_sharing.view
 	relay_child.partner_friends = partner_friends
@@ -2751,6 +2760,7 @@ func _notification(what: int) -> void:
 		if is_instance_valid(turn_notifications): turn_notifications.queue_reconcile()
 		_resume_application()
 		if is_instance_valid(account_flow): account_flow.application_resumed()
+		redo_home_card.read_soon()
 	elif what==NOTIFICATION_APPLICATION_FOCUS_OUT and running:
 		# A notification shade or another app over a turn pauses it, as in a chapter.
 		earlier_islands_flow.pause()

@@ -58,8 +58,8 @@ afterEach(async () => { await reset(); });
 describe("partner redo requests", () => {
   it("shows a current request on Home only to clients that ask, never across a later turn", async () => {
     const { host, guest, room, path } = await pairV2();
-    type Inbox = { rooms: { room_id: string; redo?: string }[] };
-    const redoOf = async (who: Account, asked = true) => (await json<Inbox>(call("/v1/room-inbox", "GET", who, undefined, asked ? { "X-AfterYou-Room-Redo": "1" } : {}))).rooms.find(entry => entry.room_id === room.room_id)?.redo;
+    type Inbox = { rooms: { room_id: string; redo?: { state: string; stage_index: number } }[] };
+    const redoOf = async (who: Account, asked = true) => (await json<Inbox>(call("/v1/room-inbox", "GET", who, undefined, asked ? { "X-AfterYou-Room-Redo": "1" } : {}))).rooms.find(entry => entry.room_id === room.room_id)?.redo?.state;
     expect(await redoOf(host)).toBeUndefined();
     await request(path, guest);
     expect(await redoOf(host)).toBe("asked_you");

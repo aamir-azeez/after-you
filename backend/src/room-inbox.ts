@@ -20,7 +20,7 @@ export const ROOM_INBOX_REDO_HEADER = "X-AfterYou-Room-Redo";
  * A current redo request as the member sees it, never its ids: the partner asked this member to play their turn
  * again (asked_you), this member asked and waits (you_asked), or the partner kept their turn (kept).
  */
-export type InboxRedo = "asked_you" | "you_asked" | "kept";
+export type InboxRedo = { state: "asked_you" | "you_asked" | "kept"; stage_index: number };
 export type RoomInboxEntry = {
   room_id: string; family: "legacy" | "relay" | "story" | "unknown"; api_version: number;
   chapter: { id: string | null; version: number | null };

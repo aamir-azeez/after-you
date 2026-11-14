@@ -34,7 +34,7 @@ const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const RaceGhostView = preload("res://presentation/race_ghost_view.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
-const RedoRequestNotice = preload("res://presentation/redo_request_notice.gd")
+const RedoFlow = preload("res://presentation/redo_flow.gd")
 const SoloRedoOffer = preload("res://presentation/solo_redo_offer.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
@@ -139,7 +139,12 @@ var _continue_replay_context := false
 var replay_pair_index := -1
 var _replay_collection: Array = []
 var _solo_replay_only := false
-var redo_notice := RedoRequestNotice.new()
+## A friend's redo request on this screen: the chip in play, the nudge, the room page's rows.
+var redo_flow := RedoFlow.new(self)
+## (parent: Control) -> void: asks once whether to hear about redo requests (notification_flow.gd).
+var offer_redo_alerts: Callable
+## The redo rows' buttons as last drawn, so a waiting tap keeps its label.
+var _redo_buttons: Dictionary = {}
 ## Every start of a turn counts a try; the pill shows the live turn's count.
 var turn_tries := TurnTries.new()
 ## The turn a replay plays and its memory, for their reactions at its end.
@@ -586,6 +591,7 @@ func _build_ui() -> void:
 	hint_label=controls.hint_label
 	title_font=controls.title_font
 	controls.pause_requested.connect(_pause)
+	controls.redo_chip_pressed.connect(func() -> void: redo_flow.ask(controls.redo_chip))
 	controls.watch_view(world)
 	controls.action_requested.connect(_request_action)
 	controls.finish_requested.connect(_finish)
@@ -775,6 +781,9 @@ func _show_ready() -> void:
 		_add_room_actions(card, "ready_card", "turn", facts)
 	# A tap still waiting keeps its label on the redrawn button.
 	if _turn_gate != null and _ready_turn_buttons.has(_turn_gate_action): _turn_gate.follow(_ready_turn_buttons[_turn_gate_action])
+	if online_session != null:
+		redo_flow.start_if_accepted.call_deferred()
+		redo_flow.ensure_read.call_deferred()
 
 func _set_room_state(state: String) -> void:
 	_room_state = state
@@ -819,7 +828,10 @@ func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 		"watchable": return mode == "complete" or (not _pairs().is_empty() if online_session != null else not journey.archived_attempts().is_empty())
 		"restart": return _local_restart_available()
 		"redo": return _redo_offered()
-		"redo_accept": return online_session.redo_client().can_accept()
+		"redo_accept": return online_session != null and online_session.redo_client().can_accept()
+		"redo_ask": return redo_flow.can_ask()
+		"redo_answered": return not redo_flow.answer().is_empty()
+		"redo_unsettled": return redo_flow.unsettled()
 		"my_turn": return journey.my_turn()
 		"solo_redo": return not _solo_redo_plan().is_empty()
 		"photo": return not _recent_photo_receipt().is_empty()
@@ -857,8 +869,11 @@ func _room_action_hooks() -> Dictionary:
 		"refresh": {"run": _online_refresh},
 		"replays": {"run": _play_replays},
 		"local_replays": {"run": _show_local_replays},
-		"redo_answer": {"run": _open_redo, "drawn": _announce_pending_redo},
-		"redo": {"run": _open_redo},
+		"redo_play": {"run": _redo_play, "drawn": _track_redo_play},
+		"redo_keep": {"run": _redo_keep, "drawn": _track_redo_button.bind("redo_keep")},
+		"redo": {"run": _redo_ask, "drawn": _track_redo_button.bind("redo")},
+		"redo_status": {"widget": _add_redo_status},
+		"redo_retry": {"run": _open_redo},
 		"solo_redo": {"run": _confirm_solo_redo},
 		"photo": {"run": _offer_recent_photo},
 		"checkpoints": {"run": _choose_local_checkpoint},
@@ -1302,6 +1317,10 @@ func _show_online_waiting() -> void:
 	var whose := WAITING_FOR_PARTNER_TURN % (partner if not partner.is_empty() else "your friend")
 	var heading := WAITING_TURN_SAVED if saved else whose if partner_present else WAITING_FOR_FRIEND
 	var subline := whose if saved and partner_present else "" if room.is_empty() else PlayerCopy.RELAY_PREVIEW_06FE980C1040
+	# A friend's redo request leads the page (redo_flow.gd): its rows follow.
+	if pending.is_empty() and redo_flow.available() and online_session.redo_client().can_accept():
+		heading = PlayerCopy.REDO_ASKED_FOR % FriendNicknames.sentence_start(partner)
+		subline = PlayerCopy.REDO_FIRST_TURN
 	notification_hint = null
 	notification_offer = null
 	_waiting_notify_section = false
@@ -1491,13 +1510,39 @@ func _redo_offered() -> bool:
 	if not online_session.mutations_enabled() and client.pending().is_empty(): return false
 	return not (RedoClient.source_for("relay",journey.snapshot()).is_empty() and client.pending().is_empty())
 
-## Drawn with Redo requested: a friend's request is also announced once.
-func _announce_pending_redo(_button: Button = null) -> void:
-	var client: RefCounted = online_session.redo_client()
-	if client.can_accept(): _announce_redo_request.call_deferred(client,str(journey.snapshot().get("room_id","")))
+## The redo rows (presentation/redo_flow.gd): each tap goes through the flow's one tap path.
+func _redo_ask() -> void:
+	await redo_flow.ask(_redo_buttons.get("redo"))
 
-func _announce_redo_request(client: RefCounted, room_id: String) -> void:
-	if is_inside_tree() and not running: redo_notice.announce(ui, client, room_id, _open_redo)
+func _redo_play() -> void:
+	await redo_flow.play_again(_redo_buttons.get("redo_play"))
+
+func _redo_keep() -> void:
+	await redo_flow.keep(_redo_buttons.get("redo_keep"))
+
+func _track_redo_button(button: Button, id: String) -> void:
+	_redo_buttons[id] = button
+	RedoFlow.hold(button)
+
+## A friend's request leads the page: the first time one shows, the player is
+## asked once about redo alerts.
+func _track_redo_play(button: Button) -> void:
+	_redo_buttons["redo_play"] = button
+	RedoFlow.hold(button)
+	redo_flow.request_drawn.call_deferred(button)
+
+## Home's Play my turn again opened this room: the request's own button plays it once drawn.
+func accept_redo_on_open(room_id: String) -> void:
+	redo_flow.accept_on_open(room_id)
+
+## "Asked Sam" or "Sam kept their turn" in place of Ask for a redo.
+func _add_redo_status(parent: Container, _id: String, _facts: Callable, _look: Dictionary) -> Button:
+	var line := _label(redo_flow.answer_line(), 18)
+	line.name = "RedoAnswerLine"
+	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	line.add_theme_color_override("font_color", MUTED)
+	parent.add_child(line)
+	return null
 
 func _open_redo() -> void:
 	if not _ordinary_redo_available() or online_session.busy() or running or backgrounded or _room_context_lost or is_instance_valid(_redo_screen): return
@@ -1659,7 +1704,8 @@ func _refresh_redo() -> bool:
 	var room: Dictionary = journey.snapshot()
 	if RedoClient.source_for("relay",room).is_empty() and client.pending().is_empty(): return false
 	if not client.bind_room("relay",room): return false
-	await client.refresh()
+	# The poll that just ran carried the redo state (X-AfterYou-Poll-Redo): no second read.
+	if not client.observe(online_session.take_polled_redo(room)): await client.refresh()
 	return before != client.view()
 
 ## The narrow card's line saying whether the friend has joined.
@@ -1680,7 +1726,7 @@ func _friend_strip(joined: bool, waiting_line: String, avatar_size: float) -> HB
 		return RoomFriendStrip.build("", WAITING_FOR_FRIEND, RoomFriendStrip.line(waiting_line) if not waiting_line.is_empty() else null, title_font, avatar_size)
 	var room: Dictionary = journey.snapshot()
 	var status: Label = _presence_badge() if _presence_available() else RoomFriendStrip.line(FRIEND_JOINED)
-	var strip := RoomFriendStrip.build(_partner_id(room), FriendNicknames.sentence_start(_waiting_partner_name(room)), status, title_font, avatar_size)
+	var strip := RoomFriendStrip.build(_partner_id(room), FriendNicknames.sentence_start(_waiting_partner_name(room)), status, title_font, avatar_size, room.get("player_slot") != "p0")
 	EndReactionScreen.attach_friend_latest(_end_reaction_context(), strip)
 	return strip
 
@@ -1778,6 +1824,12 @@ func _begin() -> void:
 	if not _try_due: _live_tries = turn_tries.start(_try_slot)
 	if hard_flow.slipped_on_start(_live_tries): return
 	world.present(sim.snapshot(), true)
+	# The redo nudge opens between tries; the try starts when it closes.
+	var before := mode
+	if redo_flow.nudge_before(_live_tries, _try_slot, func() -> void:
+		if mode == before and not running and not _leaving and not backgrounded:
+			_start_play()
+			_glance_at_goal()): return
 	_start_play()
 	_glance_at_goal()
 
@@ -1915,6 +1967,7 @@ func _start_play() -> void:
 	running = true
 	_update_hud(sim.snapshot())
 	_show_race_ghost()
+	redo_flow.update_hud()
 
 ## The race ghost (presentation/race_ghost_view.gd) while this turn is a ghost
 ## race's, the server has it on and Settings shows it: the raced run's matching

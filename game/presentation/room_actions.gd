@@ -22,9 +22,10 @@ const SHARE := "Share current room"
 const SHARE_SCOPE := "All friends"
 const SHARED := "Shared with friends"
 const STOP_SHARING := "Stop sharing room"
-const REDO_REQUESTED := "Redo requested"
-const ASK_FOR_REDO := "Ask for redo"
-const TURN_REQUESTS := "Turn requests"
+const ASK_FOR_REDO := PlayerCopy.REDO_ASK
+const PLAY_AGAIN := PlayerCopy.REDO_PLAY_AGAIN
+const KEEP_TURN := PlayerCopy.REDO_KEEP
+const RETRY_REQUEST := PlayerCopy.REDO_RETRY
 
 ## id: the action.
 ##   button: an action_buttons.gd id (its label, icon and look), or
@@ -45,15 +46,23 @@ const ACTIONS := {
 	"share": {"text": SHARE, "icon": preload("res://assets/ui/social/share-network.svg"), "line": SHARE_SCOPE, "section": "invite", "when": ["share"]},
 	"check_saved": {"button": "check_saved", "when": ["pending"]},
 	"keep_held": {"text": PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, "when": ["held"]},
-	"alerts": {"text": "Notifications", "heading": true, "when": ["!pending", "alerts"]},
-	"notify": {"text": PlayerCopy.MAIN_C4B947AAAE59, "primary": true, "icon": preload("res://assets/ui/whats_new/bell.svg"), "section": "turns", "when": ["!pending", "notifications"]},
+	"alerts": {"text": "Notifications", "heading": true, "when": ["!pending", "alerts", "!redo_accept"]},
+	"notify": {"text": PlayerCopy.MAIN_C4B947AAAE59, "primary": true, "icon": preload("res://assets/ui/whats_new/bell.svg"), "section": "turns", "when": ["!pending", "notifications", "!redo_accept"]},
 	"resume": {"button": "resume", "bind": ["resume"], "when": ["draft"]},
 	"record": {"button": "record", "bind": ["record"], "when": ["!resume_only"]},
 	"refresh": {"button": "refresh", "icon": preload("res://assets/ui/social/arrows-clockwise.svg"), "when": ["online", "!pending"]},
 	"replays": {"button": "replays", "section": "turns", "when": ["online", "watchable"]},
 	"local_replays": {"button": "replays", "when": ["solo", "watchable"]},
-	"redo_answer": {"text": REDO_REQUESTED, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "alert": true, "when": ["!hard", "redo", "redo_accept"]},
-	"redo": {"text": ASK_FOR_REDO, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "when": ["!hard", "redo", "!redo_accept"]},
+	# A friend's redo request (presentation/redo_flow.gd): one tap plays the
+	# turn again, or the turn is kept. It leads the waiting panel.
+	"redo_play": {"text": PLAY_AGAIN, "primary": true, "icon": preload("res://assets/ui/play.svg"), "when": ["!hard", "redo", "redo_accept"]},
+	"redo_keep": {"text": KEEP_TURN, "when": ["!hard", "redo", "redo_accept"]},
+	# The second player asks; then the row says what became of it (redo_status).
+	"redo": {"text": ASK_FOR_REDO, "icon": preload("res://assets/ui/whats_new/people.svg"), "when": ["!hard", "redo", "redo_ask"]},
+	# Its row (a widget) reads "Asked Sam" or "Sam kept their turn"; the label names the row.
+	"redo_status": {"text": ASK_FOR_REDO, "when": ["!hard", "redo", "redo_answered"]},
+	# A request or answer whose reply was lost: its recovery screen (redo_screen.gd).
+	"redo_retry": {"text": RETRY_REQUEST, "icon": preload("res://assets/ui/retry.svg"), "alert": true, "when": ["redo_unsettled"]},
 	"solo_redo": {"text": PlayerCopy.SOLO_REDO_ACTION, "when": ["!hard", "solo_redo"]},
 	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "with_receipt": true, "when": ["photo"]},
 	"checkpoints": {"button": "retry", "when": ["!hard", "solo"]},
@@ -114,9 +123,9 @@ const LAYOUT := {
 	"ready_panel": {
 		"header": ["refresh"],
 		"primary": ["resume", "record"],
-		"turn": ["redo_answer"],
+		"turn": ["redo", "redo_status", "redo_retry"],
 		"pair": ["room_options"],
-		"options": ["share", "redo_answer", "redo", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
+		"options": ["share", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"ready_panel_invite": {
 		"header": ["refresh"],
@@ -128,10 +137,10 @@ const LAYOUT := {
 	"waiting_panel": {
 		"header": ["refresh"],
 		"status": ["alerts"],
-		"primary": ["notify"],
-		"turn": ["redo_answer"],
+		"primary": ["redo_play", "notify"],
+		"turn": ["redo_keep", "redo_retry"],
 		"pair": ["room_options", "your_rooms"],
-		"options": ["share", "notify", "redo_answer", "redo", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
+		"options": ["share", "notify", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"waiting_panel_invite": {
 		"header": ["refresh"],
@@ -150,20 +159,20 @@ const LAYOUT := {
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
-		"turn": ["resume", "record", "refresh", "local_replays", "restart", "redo_answer", "redo", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["resume", "record", "redo", "redo_status", "redo_retry", "refresh", "local_replays", "restart", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"waiting_card": {
 		"invite": ["copy_code"],
-		"turn": ["check_saved", "keep_held", "alerts", "notify", "redo_answer", "redo", "refresh", "share"],
+		"turn": ["check_saved", "keep_held", "redo_play", "redo_keep", "redo_retry", "alerts", "notify", "refresh", "share"],
 		"more": ["replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"complete": {
-		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "redo_answer", "redo", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 }
 
 ## Cards outside the room panel (pause, review) add these rows when they apply.
-const REDO_ACTIONS := ["redo_answer", "redo", "solo_redo"]
+const REDO_ACTIONS := ["redo", "redo_status", "redo_retry", "solo_redo"]
 
 ## The wide panel's state for a room screen, "ready" or "waiting".
 static func panel_state(screen: String, fact: Callable) -> String:
@@ -209,7 +218,6 @@ static func applies(id: String, fact: Callable, state: String = "") -> bool:
 
 static func label(id: String, fact: Callable = Callable()) -> String:
 	var row: Dictionary = ACTIONS[id]
-	if id == "redo" and fact.is_valid(): return redo_label(false, fact.call("my_turn", ""))
 	return str(ActionButtons.DEFINITIONS[row.button].label) if row.has("button") else str(row.text)
 
 ## A row's icon: its own, or its shared button's.
@@ -217,7 +225,3 @@ static func icon(id: String) -> Texture2D:
 	var row: Dictionary = ACTIONS[id]
 	if row.has("icon"): return row.icon
 	return ActionButtons.ICONS[ActionButtons.DEFINITIONS[row.button].icon] if row.has("button") else null
-
-## A redo request button's label, for the online room and the legacy room page.
-static func redo_label(can_accept: bool, my_turn: bool) -> String:
-	return REDO_REQUESTED if can_accept else ASK_FOR_REDO if my_turn else TURN_REQUESTS

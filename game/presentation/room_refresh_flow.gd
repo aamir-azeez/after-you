@@ -93,6 +93,8 @@ func poll_interval_ms() -> int:
 func on_live_room_changed(room_id: String, seq: int) -> void:
 	if not is_instance_valid(host): return
 	if host.online_session == null or room_id != host.online_session.last_room(): return
+	# Play never polls; a hint then also checks a redo request still waiting (redo_flow.gd).
+	if host.running: host.redo_flow.live_hint()
 	# Reads are ordered inside the room: a hint older than the room this page holds is already shown.
 	var held := int(host.journey.snapshot().get("revision", -1))
 	if held >= 0 and seq < held: return
