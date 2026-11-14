@@ -1,4 +1,4 @@
-import { flags, type ServerVars } from "../flags";
+import { FLAG_VARS, flags, gatedOn, type Reach, type ServerVars } from "../flags";
 import { pollenSecret } from "./keys";
 import { APP_STORE_BUNDLES_READY, APP_STORE_FRUIT_PACKS_READY, PLAY_FRUIT_PACKS_READY } from "./bundles";
 
@@ -18,12 +18,16 @@ import { APP_STORE_BUNDLES_READY, APP_STORE_FRUIT_PACKS_READY, PLAY_FRUIT_PACKS_
  * landed waits until a store sells again (the same for Play). On iPhone the app also shows bundles only while the
  * server admits App Store subscribers (entitlement.ts storeCapability), so POLLEN_BUNDLES_APP_STORE sells there
  * only beside APP_STORE_ENTITLEMENTS_ENABLED.
+ *
+ * Fruits, energy and face cosmetics may be gated to newer apps (config.ts feature_min_version), so each takes a Reach
+ * (flags.ts): the request's app, or LEDGER for bookkeeping no app sees. An older app gets what it got with the flag
+ * off: no capability, no wallet part, no charge, no face field.
  */
 export function earningOn(env: ServerVars): boolean { return flags.pollenEarn(env) && pollenSecret(env) !== null; }
 export function wardrobeOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenWardrobe(env); }
 export function shopOn(env: ServerVars): boolean { return wardrobeOn(env) && flags.pollenShop(env); }
 /** Face cosmetics (FACE_SINGLES): need the wardrobe, which holds what is owned and the loadout beside the look; buying one needs the shop too. */
-export function faceSinglesOn(env: ServerVars): boolean { return wardrobeOn(env) && flags.faceSingles(env); }
+export function faceSinglesOn(env: ServerVars, reach: Reach): boolean { return wardrobeOn(env) && gatedOn(env, FLAG_VARS.faceSingles, reach); }
 export function looksOn(env: ServerVars): boolean { return flags.pollenLooks(env); }
 export function itemBloomsOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenItemBlooms(env); }
 export function grantOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenGrant(env); }
@@ -41,12 +45,12 @@ export function anyBundlesOn(env: ServerVars): boolean { return bundlesOn(env) |
  * Fruits (pollen/fruits.ts) need the shop: Orchard items are sold and worn through it, and Fruits only buy what it sells.
  * Off, nothing Fruit is shown, paid or written; Fruit lines already kept are still taken back by a refund.
  */
-export function fruitsOn(env: ServerVars): boolean { return shopOn(env) && flags.fruits(env); }
+export function fruitsOn(env: ServerVars, reach: Reach): boolean { return shopOn(env) && gatedOn(env, FLAG_VARS.fruits, reach); }
 /** Fruit packs sell in a store while Fruits are on, that store's bundles sell, and its four Fruit products are set up (bundles.ts storeReady). */
-export function fruitPacksOn(env: ServerVars): boolean { return fruitsOn(env) && bundlesOn(env) && PLAY_FRUIT_PACKS_READY; }
+export function fruitPacksOn(env: ServerVars, reach: Reach): boolean { return fruitsOn(env, reach) && bundlesOn(env) && PLAY_FRUIT_PACKS_READY; }
 /** Duel energy (pollen/energy.ts) needs duels, whose starts and joins spend it. Its Fruit refill also needs Fruits. */
-export function energyOn(env: ServerVars): boolean { return flags.energy(env) && flags.duels(env) && flags.leaderboards(env); }
-export function appStoreFruitPacksOn(env: ServerVars): boolean { return fruitsOn(env) && appStoreBundlesOn(env) && APP_STORE_FRUIT_PACKS_READY; }
+export function energyOn(env: ServerVars, reach: Reach): boolean { return gatedOn(env, FLAG_VARS.energy, reach) && flags.duels(env) && flags.leaderboards(env); }
+export function appStoreFruitPacksOn(env: ServerVars, reach: Reach): boolean { return fruitsOn(env, reach) && appStoreBundlesOn(env) && APP_STORE_FRUIT_PACKS_READY; }
 
 /** What the wallet read carries: nothing more, the wardrobe (owned items and the look), or the wardrobe with the shop. */
 export type WardrobeMode = "off" | "wardrobe" | "shop";

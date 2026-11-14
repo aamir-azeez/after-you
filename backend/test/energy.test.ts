@@ -82,23 +82,23 @@ const empty = (account: Account) => runInDurableObject(env.PLAYERS.getByName(acc
 describe("a duel start or join", () => {
   it("charges each of the pair once, answers the starter's meter, and charges nothing while ENERGY is off", async () => {
     const [a, b] = [await create(), await create()];
-    expect(energyOn(ON)).toBe(true);
-    const done = await withEnergy(ON, a.player_id, [a.player_id, b.player_id], "duel-ok", async () => "made");
+    expect(energyOn(ON, null)).toBe(true);
+    const done = await withEnergy(ON, null, a.player_id, [a.player_id, b.player_id], "duel-ok", async () => "made");
     expect(done).toMatchObject({ value: "made", energy: { energy: 4, max: 5 } });
-    await withEnergy(ON, a.player_id, [a.player_id, b.player_id], "duel-ok", async () => "made");
+    await withEnergy(ON, null, a.player_id, [a.player_id, b.player_id], "duel-ok", async () => "made");
     expect([await spends(a), await spends(b)]).toEqual([1, 1]);
-    expect(await withEnergy(OFF, a.player_id, [a.player_id, b.player_id], "duel-off", async () => "made")).toEqual({ value: "made", energy: null });
+    expect(await withEnergy(OFF, null, a.player_id, [a.player_id, b.player_id], "duel-off", async () => "made")).toEqual({ value: "made", energy: null });
     expect([await spends(a), await spends(b)]).toEqual([1, 1]);
   });
   it("gives every spend back when the board refuses, and names a partner who has none", async () => {
     const [a, b] = [await create(), await create()];
-    await expect(withEnergy(ON, a.player_id, [a.player_id, b.player_id], "duel-refused", async () => { throw new ApiError(409, "duel_limit_reached"); })).rejects.toThrow("duel_limit_reached");
+    await expect(withEnergy(ON, null, a.player_id, [a.player_id, b.player_id], "duel-refused", async () => { throw new ApiError(409, "duel_limit_reached"); })).rejects.toThrow("duel_limit_reached");
     expect([await spends(a), await spends(b)]).toEqual([0, 0]);
     await empty(b);
-    await expect(withEnergy(ON, a.player_id, [a.player_id, b.player_id], "duel-partner", async () => "made")).rejects.toMatchObject({ code: "partner_energy_empty" });
+    await expect(withEnergy(ON, null, a.player_id, [a.player_id, b.player_id], "duel-partner", async () => "made")).rejects.toMatchObject({ code: "partner_energy_empty" });
     // The starter's own spend went back; the board was never asked.
     expect(await spends(a)).toBe(0);
-    await expect(withEnergy(ON, b.player_id, [b.player_id], "duel-self", async () => "made")).rejects.toMatchObject({ code: "energy_empty" });
+    await expect(withEnergy(ON, null, b.player_id, [b.player_id], "duel-self", async () => "made")).rejects.toMatchObject({ code: "energy_empty" });
   });
 });
 

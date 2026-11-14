@@ -1,6 +1,7 @@
 import { withEnergy } from "./energy-charge";
+import { clientReach } from "../app-status";
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, isObject, randomToken, unwrap } from "../protocol";
-import { flags, type ServerVars } from "../flags";
+import { flags, type Reach, type ServerVars } from "../flags";
 import { bearerDigest } from "../http";
 import { shownName } from "../display-names";
 import { pairKey } from "../leaderboards/run";
@@ -136,7 +137,7 @@ function idempotency(value: unknown): string {
 }
 
 /** POST /v1/duels/public: a duel on `board` with every other seat open, running at once. A retry answers the duel it made. */
-async function post(env: Env, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
+async function post(env: Env, reach: Reach, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
   const body = fields(input, ["idempotency_key", "board", "as"]);
   const key = idempotency(body.idempotency_key), as = joinAs(body.as), board = boardOf(body.board), row = chapterRow(board);
   if (!creatable(row.adapter, env)) throw new ApiError(503, "chapter_creation_disabled");
@@ -149,7 +150,7 @@ async function post(env: Env, player: string, input: unknown, now: number, look?
   const duel = newPublicDuel({ duel_id: duelId, board, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, players: team.players, labels,
     looks: looksOn(env) ? team.looks : undefined, known: team.players.length === 2 ? [knownKey(team.players[0], team.players[1])] : [] }, now);
   // Each poster pays 1 energy while ENERGY is on, given back if the board refuses (energy-charge.ts).
-  const { value: made, energy } = await withEnergy(env, player, team.players, duelId, async () => { const made = await duelsAt(env, board).create(duel); if (!made) throw new ApiError(503, "public_list_full"); return made; });
+  const { value: made, energy } = await withEnergy(env, reach, player, team.players, duelId, async () => { const made = await duelsAt(env, board).create(duel); if (!made) throw new ApiError(503, "public_list_full"); return made; });
   // Listed before the reply, not only after the board's: a lost update would leave a post nobody can find.
   await sendListings(env, [{ duel_id: duelId, listing: listingOf(made, now), updated_ms: made.updated_ms }]);
   await addPublicRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
@@ -163,7 +164,7 @@ async function post(env: Env, player: string, input: unknown, now: number, look?
  * the joiners are on and not paused, under the limit, and nobody seated blocked them or was blocked by them. A repeat
  * by someone already seated answers the duel; a join that lost the race is 409 spot_taken with the row as it is now.
  */
-async function join(env: Env, player: string, board: string, duelId: string, input: unknown, now: number, look?: Look): Promise<unknown> {
+async function join(env: Env, reach: Reach, player: string, board: string, duelId: string, input: unknown, now: number, look?: Look): Promise<unknown> {
   const body = fields(input, ["idempotency_key", "as", "seat"]);
   idempotency(body.idempotency_key);
   const as = joinAs(body.as);
@@ -181,7 +182,7 @@ async function join(env: Env, player: string, board: string, duelId: string, inp
   await underLimit(env, team.players, team.rows, player);
   const labels = await Promise.all(team.players.map((id, index) => labelOf(env, id, team.rows[index].member)));
   // Each joiner pays 1 energy while ENERGY is on; a join the board refuses (a spot taken first) gives it back (energy-charge.ts).
-  const { value: answer, energy } = await withEnergy(env, player, team.players, duelId, async () => {
+  const { value: answer, energy } = await withEnergy(env, reach, player, team.players, duelId, async () => {
     const answer = await at.act(duelId, { kind: "join", player, claim: { players: team.players, as, seat: body.seat as number | null, labels,
       looks: looksOn(env) ? team.looks : undefined, avoid: [...avoid], known: team.players.length === 2 ? [knownKey(team.players[0], team.players[1])] : [] } });
     if (!answer.ok) throw new RefusedJoin(answer);
@@ -410,12 +411,12 @@ export async function routePublicDuels(request: Request, path: string, player: s
     return setSwitch(env, player, input, now);
   }
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
-  if (path === PUBLIC_PREFIX) return post(env, player, input, now, look);
+  if (path === PUBLIC_PREFIX) return post(env, clientReach(request), player, input, now, look);
   const match = SEAT_PATH.exec(path);
   if (!match) throw new ApiError(404, "not_found");
   const [, board, duelId, action] = match;
   boardOf(board);
-  if (action === "join") return join(env, player, board, duelId, input, now, look);
+  if (action === "join") return join(env, clientReach(request), player, board, duelId, input, now, look);
   if (action === "block") return block(env, request, player, board, duelId, input, now);
   if (action === "report") return report(env, request, player, board, duelId, input, now);
   return friend(env, request, player, board, duelId, input);

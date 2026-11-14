@@ -25,11 +25,12 @@ function withoutComments(text: string): string {
 }
 
 /**
- * Where a flag name may appear outside flags.ts: as a quoted FlagVar a chapter row hands to flagOn. Anything else
- * (env.X, env["X"], a destructured X) would read a var no deploy sets.
+ * Where a flag name may appear outside flags.ts: as a quoted FlagVar a chapter row hands to flagOn, or in config.ts's
+ * GATED_KEYS, the schema of the version gates. Anything else (env.X, env["X"], a destructured X) would read a var no deploy sets.
  */
 function allowed(file: string, code: string, at: number, name: string): boolean {
   const quoted = code[at - 1] === '"' && code[at + name.length] === '"';
+  if (quoted && file.endsWith("/src/config.ts")) { const line = code.lastIndexOf("\n", at) + 1; return code.startsWith("export const GATED_KEYS = ", line); }
   return quoted && file.endsWith("/v2/chapters.ts") && /flag:\s*$/.test(code.slice(Math.max(0, at - 12), at - 1));
 }
 

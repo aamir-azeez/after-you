@@ -29,19 +29,26 @@ export function energyMax(storage: DurableObjectStorage, now: number): number { 
 export function energyAt(fullAt: number, max: number, now: number): number {
   return Math.max(0, Math.min(max, max - Math.ceil(Math.max(0, fullAt - now) / ENERGY_RULES.step_ms)));
 }
-export function energyView(storage: DurableObjectStorage, now: number): EnergyView {
-  const max = energyMax(storage, now), fullAt = Math.max(now, purse(storage, "energy").balance);
+/** `row`: the energy purse row when the caller has read it already. */
+export function energyView(storage: DurableObjectStorage, now: number, row = purse(storage, "energy")): EnergyView {
+  const max = energyMax(storage, now), fullAt = Math.max(now, row.balance);
   return { schema_version: 1, energy: energyAt(fullAt, max, now), max, full_at: fullAt, step_ms: ENERGY_RULES.step_ms, now, refill_fruits: ENERGY_RULES.refill_fruits,
     base_max: ENERGY_RULES.max, full_journey_max: ENERGY_RULES.full_journey_max };
 }
 
 /** `fresh`: this call spent (a repeat for the same duel spends nothing and answers false). */
 export type EnergySpend = { fresh: boolean; view: EnergyView };
-/** Spends 1 for `duelId`, once: a repeat answers the meter as it is. 409 energy_empty when none is left. */
-export function spendEnergy(storage: DurableObjectStorage, duelId: string, now: number): Outcome<EnergySpend> {
+/**
+ * Spends 1 for `duelId`, once: a repeat answers the meter as it is. 409 energy_empty when none is left. `started`: spend
+ * only from a meter already used (a partner's, while ENERGY is gated to newer apps, duels/energy-charge.ts); one never
+ * used is left as it is, spending nothing (fresh false). Its row's full_at is never 0 once written, so this reads no more rows.
+ */
+export function spendEnergy(storage: DurableObjectStorage, duelId: string, now: number, started = false): Outcome<EnergySpend> {
   if (!DUEL_ID.test(duelId)) return fail(400, "invalid_duel_request");
   if (inLedger(storage, energyKey(duelId))) return ok({ fresh: false, view: energyView(storage, now) });
-  const view = energyView(storage, now);
+  const row = purse(storage, "energy");
+  if (started && row.balance === 0) return ok({ fresh: false, view: energyView(storage, now, row) });
+  const view = energyView(storage, now, row);
   if (view.energy < 1) return fail(409, "energy_empty");
   // full_at is never before now (energyView), so a full meter starts counting from the spend.
   setPurse(storage, "energy", { balance: view.full_at + ENERGY_RULES.step_ms, earned: purse(storage, "energy").earned });

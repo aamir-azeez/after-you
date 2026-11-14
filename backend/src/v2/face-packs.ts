@@ -1,6 +1,7 @@
 import { ApiError, isObject } from "../protocol";
 import type { ServerVars } from "../flags";
 import { faceSinglesOn } from "../pollen/features";
+import { clientReach } from "../app-status";
 import { FACE_PACKS_VERSION, FACE_SINGLES_VERSION, facePacksVersion, facePacksWanted, isPackFace, isSingleFace, type FaceVersion } from "./end-reactions";
 
 /**
@@ -21,11 +22,11 @@ export function facePacksTurnRoute(request: Request, path: string): boolean {
 
 /**
  * The face version this server serves `request` (capabilities, room reads, turn replies, the inbox and Replays): what
- * the phone asks for, version 2 only while FACE_SINGLES is on. Version 1 answers exactly as before.
+ * the phone asks for, version 2 only while FACE_SINGLES is on for its app. Version 1 answers exactly as before.
  */
 export function servedFaceVersion(request: Request, env: ServerVars): FaceVersion {
   const asked = facePacksVersion(request);
-  return asked >= FACE_SINGLES_VERSION && !faceSinglesOn(env) ? FACE_PACKS_VERSION : asked;
+  return asked >= FACE_SINGLES_VERSION && !faceSinglesOn(env, clientReach(request)) ? FACE_PACKS_VERSION : asked;
 }
 
 /** The faces a turn body needs owned: its end reaction's and each run reaction's pack and single faces. The room checks every face's shape (an unknown one is 400 there). */

@@ -9,8 +9,8 @@ export const POLLEN_CLIENT = { [CLIENT_HEADER]: POLLEN_SHOP_MIN_VERSION + " play
 export const PRE_SHOP_CLIENT = { [CLIENT_HEADER]: POLLEN_REPLY_MIN_VERSION + " play" };
 
 /** What a test may put in CONFIG: its JSON keys (config.ts ServerConfig), with features as a list. */
-export type ConfigSettings = { features?: string[]; min_client_version?: Record<string, unknown>; friend_aliases?: Record<string, unknown>; revenuecat?: Record<string, unknown>; test_codes?: Record<string, unknown>; cosmetics_released?: unknown; cosmetics_featured?: unknown };
-const CONFIG_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat", "test_codes", "cosmetics_released", "cosmetics_featured"];
+export type ConfigSettings = { features?: string[]; min_client_version?: Record<string, unknown>; friend_aliases?: Record<string, unknown>; revenuecat?: Record<string, unknown>; test_codes?: Record<string, unknown>; cosmetics_released?: unknown; cosmetics_featured?: unknown; feature_min_version?: unknown };
+const CONFIG_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat", "test_codes", "cosmetics_released", "cosmetics_featured", "feature_min_version"];
 /** Vars that moved into CONFIG or APP (config.ts). A test still setting one would test nothing. */
 const MOVED = ["FEATURES", "MIN_CLIENT_VERSION_PLAY", "MIN_CLIENT_VERSION_GITHUB", "MIN_CLIENT_VERSION_APP_STORE", "FRIEND_ALIASES", "RESEND_SEGMENT_ID",
   "REVENUECAT_PROJECT_ID", "REVENUECAT_ENTITLEMENT_LOOKUP_ID", "REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID", "REVENUECAT_PLAY_PRODUCT_ID", "REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS",
@@ -34,7 +34,7 @@ export function configJson(settings: ConfigSettings, options: { raw?: boolean } 
 /**
  * An env for a test, with every setting folded into CONFIG. Tests switch a flag beside the other vars, as
  * `NAME: "true"` (any other value is off), so overrides spread as before: `withConfig({ ...env, ...ON, NAME: "false" })`.
- * CONFIG keys (features, min_client_version, friend_aliases, revenuecat, test_codes, cosmetics_released, cosmetics_featured) are taken as they are.
+ * CONFIG keys (features, min_client_version, friend_aliases, revenuecat, test_codes, cosmetics_released, cosmetics_featured, feature_min_version) are taken as they are.
  * A retired flag name, or a var that moved into CONFIG or APP, is refused, so no test sets something nothing reads.
  */
 export function withConfig<T extends object>(vars: T): T & { CONFIG: string } {

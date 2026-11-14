@@ -1,5 +1,6 @@
 import { ApiError } from "../protocol";
 import { energyOn } from "../pollen/features";
+import { FLAG_VARS, gated, type Reach } from "../flags";
 import type { EnergyView } from "../pollen/energy";
 
 /**
@@ -16,8 +17,11 @@ import type { EnergyView } from "../pollen/energy";
 type Spent = { id: string; fresh: boolean; view: EnergyView };
 
 async function charge(env: Env, player: string, payers: readonly string[], duelId: string): Promise<Spent[]> {
+  // While ENERGY is gated to newer apps, a partner pays only once their own meter has been used (energy.ts spendEnergy
+  // `started`): an app that never showed the meter never spent from it, so a partner still on an older app is never charged.
+  const partnersStarted = gated(env, FLAG_VARS.energy);
   const answers = await Promise.all(payers.map(async id => {
-    try { return { id, outcome: await env.PLAYERS.getByName(id).spendEnergy(id, duelId) }; } catch { return { id, outcome: null }; }
+    try { return { id, outcome: await env.PLAYERS.getByName(id).spendEnergy(id, duelId, partnersStarted && id !== player) }; } catch { return { id, outcome: null }; }
   }));
   const spent = answers.flatMap(each => each.outcome?.ok ? [{ id: each.id, ...each.outcome.value }] : []);
   const refused = answers.find(each => !each.outcome?.ok);
@@ -37,10 +41,11 @@ async function giveBack(env: Env, ids: readonly string[], duelId: string): Promi
 
 /**
  * Runs `start` (the board call that makes or joins the duel) after charging every payer, and gives each fresh spend back
- * when it throws. Answers its value and the requesting player's meter after the spend (null while ENERGY is off).
+ * when it throws. Answers its value and the requesting player's meter after the spend (null while ENERGY is off for the
+ * requesting app, `reach`: then nobody is charged, as with the flag off).
  */
-export async function withEnergy<T>(env: Env, player: string, payers: readonly string[], duelId: string, start: () => Promise<T>): Promise<{ value: T; energy: EnergyView | null }> {
-  if (!energyOn(env)) return { value: await start(), energy: null };
+export async function withEnergy<T>(env: Env, reach: Reach, player: string, payers: readonly string[], duelId: string, start: () => Promise<T>): Promise<{ value: T; energy: EnergyView | null }> {
+  if (!energyOn(env, reach)) return { value: await start(), energy: null };
   const spent = await charge(env, player, payers, duelId);
   try { return { value: await start(), energy: spent.find(each => each.id === player)?.view ?? null }; }
   catch (error) { await giveBack(env, spent.filter(each => each.fresh).map(each => each.id), duelId); throw error; }
