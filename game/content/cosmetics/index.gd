@@ -1,6 +1,7 @@
 extends RefCounted
 ## Every pip cosmetic, in shop order: one descriptor file per item in this
-## folder, the same pattern as content/chapters/index.gd. The rules that read
+## folder, the same pattern as content/chapters/index.gd, then the rows of the
+## tables in TABLES (content/cosmetics/faces.gd: every face item in one table). The rules that read
 ## it are services/cosmetic_catalog.gd (prices, what is offered) and
 ## services/outfit.gd (what a pip may wear).
 ##
@@ -22,11 +23,12 @@ extends RefCounted
 ##            SHIPPED in tests/test_cosmetic_catalog.gd, whose lines never
 ##            change. Blocks so far: 1 to 99 the first catalogue (1 to 18,
 ##            in ITEMS order), 200 to 299 the hats batch, 300 to 399 the
-##            skins batch. A new item ships "released": false here and in the
+##            skins batch, 400 to 499 the faces (content/cosmetics/faces.gd). A new item ships "released": false here and in the
 ##            server's catalog.json, which gives it the same code, and the
 ##            server releases it by listing the code in CONFIG.
-##   "slot":  a row of SLOTS, or "" while the owner has not placed it (it can
-##            not be worn then)
+##   "slot":  a row of SLOTS, a row of UNWORN_SLOTS (owned, never worn on a
+##            pip), or "" while the owner has not placed it (it can not be
+##            worn then)
 ##   "tier":  a row of TIER_PRICES
 ##   "name":  a PlayerCopy constant
 ##   "art":   the presentation/pip_wear/ script that dresses a pip in it, or ""
@@ -69,7 +71,12 @@ const REQUIRED := ["id", "code", "slot", "tier", "name", "art"]
 const CODE_MAX := 999
 
 ## The places on a pip, one item each, in the order they are listed and dressed.
-const SLOTS: Array[String] = ["hat", "body", "leaf"]
+## "rest_face": the face the pip wears at rest (content/cosmetics/faces.gd).
+const SLOTS: Array[String] = ["hat", "body", "leaf", "rest_face"]
+## The kinds of item that are owned but never worn on a pip: the reaction faces
+## and the reaction slots (content/cosmetics/faces.gd). The server's
+## catalog.json lists the same ("unworn_slots").
+const UNWORN_SLOTS: Array[String] = ["reaction", "reaction_slot"]
 ## The price per tier, in the tier's currency (TIER_CURRENCY). 0: earned
 ## only, never sold.
 const TIER_PRICES := {
@@ -84,6 +91,12 @@ const TIER_PRICES := {
 	"fruit_small": 50,
 	"fruit_hat": 100,
 	"fruit_body": 200,
+	# The reaction faces' own ladder, and a reaction slot.
+	"face_common": 1000,
+	"face_uncommon": 1500,
+	"face_rare": 3000,
+	"face_epic": 6000,
+	"reaction_slot": 2500,
 }
 ## The currency each tier is sold in, for the tiers not sold with Pollen: a
 ## tier left out of this list is "pollen". The server's catalogue names the
@@ -111,6 +124,10 @@ const ITEMS := [
 	preload("res://content/cosmetics/sprig_sun.gd"),
 	preload("res://content/cosmetics/sprig_sky.gd"),
 ]
+## Tables of items after ITEMS, each a script with `const ROWS := [descriptor, ...]`.
+const TABLES := [
+	preload("res://content/cosmetics/faces.gd"),
+]
 
 ## Worked out once when this file loads, then only read.
 static var _ids: Array[String] = _ordered_ids()
@@ -130,17 +147,24 @@ static func data(id: String) -> Dictionary:
 static func id_of_code(code: int) -> String:
 	return _codes.get(code, "")
 
+## Every descriptor, in order: each file's DATA, then each table's ROWS.
+static func descriptors() -> Array:
+	var result: Array = []
+	for file: Script in ITEMS: result.append(file.DATA)
+	for table: Script in TABLES: result.append_array(table.ROWS)
+	return result
+
 static func _ordered_ids() -> Array[String]:
 	var result: Array[String] = []
-	for file: Script in ITEMS: result.append(str(file.DATA.get("id", "")))
+	for row: Dictionary in descriptors(): result.append(str(row.get("id", "")))
 	result.make_read_only()
 	return result
 
 static func _by_id() -> Dictionary:
 	var result: Dictionary = {}
-	for file: Script in ITEMS:
+	for row: Dictionary in descriptors():
 		var data: Dictionary = OPTIONAL.duplicate(true)
-		data.merge(file.DATA, true)
+		data.merge(row, true)
 		assert(not result.has(data.get("id")), "Two cosmetic descriptors share the id %s" % data.get("id"))
 		data.make_read_only()
 		result[str(data.get("id", ""))] = data
@@ -149,10 +173,10 @@ static func _by_id() -> Dictionary:
 
 static func _by_code() -> Dictionary:
 	var result: Dictionary = {}
-	for file: Script in ITEMS:
-		var code: Variant = file.DATA.get("code")
+	for row: Dictionary in descriptors():
+		var code: Variant = row.get("code")
 		if not code is int: continue
 		assert(not result.has(code), "Two cosmetic descriptors share the code %d" % code)
-		result[code] = str(file.DATA.get("id", ""))
+		result[code] = str(row.get("id", ""))
 	result.make_read_only()
 	return result

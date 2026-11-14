@@ -15,7 +15,7 @@ import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archiv
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { clearTurnTries, parseTries, recordTries, triesField, turnTriesView, type TurnTriesView } from "./turn-tries";
-import { clearEndReactions, endReactionField, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView } from "./end-reactions";
+import { clearEndReactions, endReactionField, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView, type FaceVersion } from "./end-reactions";
 import { clearRunReactions, eraseRunReactionsOf, parseRunReactions, partnerTrack, recordRunReactions, runReactionField, runReactionsView, withinTurn, type RunReactionsView } from "./run-reactions";
 import { HardMemo, clearHard, failuresView, initializeHard, parseReset, priorReset, recordFailure, type Failure, type HardFailures, type HardRun, type Slip } from "./hard-mode";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
@@ -111,7 +111,7 @@ export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?:
  * `packs`: the member's phone draws pack faces; without it, faces and tracks carry each pack face's
  * everyday stand-in (end-reactions.ts shownFace). It adds no field of its own.
  */
-export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean; looks?: boolean; packs?: boolean };
+export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean; looks?: boolean; packs?: FaceVersion };
 type BesideFields = { end_reactions?: EndReactionsView; partner_name?: string | null; run_reactions?: RunReactionsView; partner_look?: Look; turn_looks?: Record<string, Look> };
 /** The revision and branch a polling member already holds (X-AfterYou-Known-Room). */
 export type KnownRoom = { revision: number; branch: number };
@@ -406,7 +406,7 @@ export class RoomV2 extends DurableObject<Env> {
   /** The optional fields a room read or a turn reply carries beside the room. */
   private beside(state: { host_id: string; guest_id: string | null }, player: string, wanted: Beside): BesideFields {
     const partner = this.partnerOf(state, player);
-    const packs = wanted.packs === true;
+    const packs = wanted.packs ?? 0;
     return { ...(wanted.faces ? { end_reactions: endReactionsView(this.ctx.storage, partner, packs) } : {}), ...(wanted.names ? { partner_name: memberName(this.ctx.storage, partner) } : {}),
       ...(wanted.tracks ? { run_reactions: partnerTrack(this.ctx.storage, partner, packs) } : {}),
       ...(wanted.looks ? { partner_look: memberLook(this.ctx.storage, partner), turn_looks: turnLooks(this.ctx.storage, partner) } : {}) };
@@ -1051,7 +1051,7 @@ export class RoomV2 extends DurableObject<Env> {
    * Standalone rooms: every turn's sent face, live, offloaded or replay-transferred alike, and with `tracks` every turn's run reactions beside them.
    * Without `packs` a pack face reads as its everyday stand-in (end-reactions.ts shownFace).
    */
-  endReactions(player: string, tracks = false, packs = false): Promise<Outcome<EndReactionsList & { run_reactions?: RunReactionsView }>> {
+  endReactions(player: string, tracks = false, packs: FaceVersion = 0): Promise<Outcome<EndReactionsList & { run_reactions?: RunReactionsView }>> {
     return this.project(player, undefined, () => this.memberView(player)
       ? ok({ ...endReactionsList(this.ctx.storage, packs), ...(tracks ? { run_reactions: runReactionsView(this.ctx.storage, packs) } : {}) }) : fail(404, "room_not_found"));
   }

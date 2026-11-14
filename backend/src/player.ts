@@ -31,9 +31,9 @@ import { switchApplies } from "./test-codes";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_EXTEND_WITHIN_MS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceChangeBudget, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type FruitHooks, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
-import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, ownedPackIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
+import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedFaceIds, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { anyBundlesOn, fruitsOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
+import { anyBundlesOn, faceSinglesOn, fruitsOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
 import { fruitHistoryView, fruitsView, type FruitsView } from "./pollen/fruits-view";
 import { settleAchievements, type Moment } from "./pollen/achievements";
 import { spendSunshineTurn } from "./pollen/fruit-ops";
@@ -220,14 +220,14 @@ export class Player extends DurableObject<Env> {
    * it holds a link to it, or has Story rows (see storyHeld).
    * An authorized answer also carries the player's current safety token (see v2/block-memo.ts), and with
    * `pollen` (a turn while Pollen earning is on) the player's Full Journey end. With `packs` (a turn from
-   * a phone that sends pack faces) also the reaction packs the player owns, for v2/face-packs.ts.
+   * a phone that sends faces beyond the everyday ones) also every face the player owns, for v2/face-packs.ts.
    */
-  authorizeRoom(deviceHash: string, roomId: string, pollen = false, looks = false, packs = false): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; look?: Look; face_packs?: string[] } {
+  authorizeRoom(deviceHash: string, roomId: string, pollen = false, looks = false, packs = false): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; look?: Look; owned_faces?: string[] } {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: false };
     const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 || this.storyHeld();
     return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks),
-      ...(packs ? { face_packs: ownedPackIds(this.ctx.storage) } : {}) };
+      ...(packs ? { owned_faces: ownedFaceIds(this.ctx.storage) } : {}) };
   }
   /**
    * authorize() plus the wallet or its history (GET /v1/pollen and /v1/pollen/history), from one call.
@@ -270,7 +270,7 @@ export class Player extends DurableObject<Env> {
     // Duel energy rides the wallet read while ENERGY is on (pollen/energy.ts): reads only, no row.
     const read = { ...wallet, ...(ladder ? { grant: ladder } : {}), ...(withEnergy ? { energy: energyView(this.ctx.storage, now) } : {}) };
     if (mode === "off") return { authorized: true, linked: true, pollen: read };
-    const wardrobe = wardrobeView(this.ctx.storage, mode === "shop", catalogFor(this.env), fruits);
+    const wardrobe = wardrobeView(this.ctx.storage, mode === "shop", catalogFor(this.env), fruits, faceSinglesOn(this.env));
     // The Fruits part reads in one transaction: its first read may pay what the player's records already earned (achievements.ts).
     const fruitPart = fruits ? this.fruitsPart(now) : undefined;
     return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), name_price_next: nextNamePriceAfter(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}),
@@ -423,10 +423,10 @@ export class Player extends DurableObject<Env> {
     return ok(this.ctx.storage.transactionSync(() => refundEnergy(this.ctx.storage, duelId, Date.now())));
   }
   /** Binding only: wears a look (POST /v1/pollen/equip, pollen/wardrobe.ts equip). */
-  pollenEquip(owner: string, deviceHash: string, op: OpKey, look: unknown, revision: number): Outcome<EquipReceipt> {
+  pollenEquip(owner: string, deviceHash: string, op: OpKey, look: unknown, revision: number, reactions?: unknown): Outcome<EquipReceipt> {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
-    return equip(this.ctx.storage, op, look, revision, Date.now(), this.pollenActive(owner));
+    return equip(this.ctx.storage, op, look, revision, Date.now(), this.pollenActive(owner), undefined, reactions, faceSinglesOn(this.env));
   }
   /**
    * Binding only: what one leaderboard gives the player now (pollen/wardrobe.ts noteBoardRewards), from the

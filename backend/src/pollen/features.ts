@@ -22,6 +22,8 @@ import { APP_STORE_BUNDLES_READY, APP_STORE_FRUIT_PACKS_READY, PLAY_FRUIT_PACKS_
 export function earningOn(env: ServerVars): boolean { return flags.pollenEarn(env) && pollenSecret(env) !== null; }
 export function wardrobeOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenWardrobe(env); }
 export function shopOn(env: ServerVars): boolean { return wardrobeOn(env) && flags.pollenShop(env); }
+/** Face cosmetics (FACE_SINGLES): need the wardrobe, which holds what is owned and the loadout beside the look; buying one needs the shop too. */
+export function faceSinglesOn(env: ServerVars): boolean { return wardrobeOn(env) && flags.faceSingles(env); }
 export function looksOn(env: ServerVars): boolean { return flags.pollenLooks(env); }
 export function itemBloomsOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenItemBlooms(env); }
 export function grantOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenGrant(env); }

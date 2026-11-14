@@ -1,6 +1,7 @@
 import { HASH_PATTERN, IDEMPOTENCY_PATTERN, equalHash, fail, isObject, ok, type Outcome } from "../protocol";
 import { POLLEN_SHOP_TABLES, isLazyTable } from "../storage-schema";
-import { CATALOG, isDefaultLook, itemCurrency, itemPrice, offeredItems, offeredPacks, offeredSets, setCurrency, setPieces, sold, validLook, type Catalog, type Look } from "./catalog";
+import { CATALOG, isDefaultLook, itemCurrency, itemPrice, offeredItems, offeredPacks, offeredSets, ownedFaces, ownedUnlocks, setCurrency, setPieces, sold, validLook, type Catalog, type Look } from "./catalog";
+import { DEFAULT_SLOTS, openSlots, slotsAllowed, validSlots } from "./reaction-loadout";
 import { purse } from "./currency";
 import { buySunshine, convertFruits, payFruits } from "./fruit-ops";
 import { refillEnergy, type EnergyView } from "./energy";
@@ -22,8 +23,9 @@ import { boardSource, earnedItems, setEarned } from "./earned";
  *   the request that made each (the Worker's digest of its canonical body, as room operations).
  *   The same key and body answers the stored receipt and changes nothing; the same key with
  *   another body is 409 idempotency_key_reused.
- * - pollen_look: the look worn and the revision it came from (the phone's clock, as display names),
- *   so an older equip that arrives after a newer one answers the current look.
+ * - pollen_look: the look worn, the reaction slots beside it once saved (reaction-loadout.ts) and the
+ *   revision they came from (the phone's clock, as display names), so an older equip that arrives after a
+ *   newer one answers the current look.
  *
  * Every check and write of one spend or equip happens in one synchronous transaction: the caller
  * hashes the body first, and nothing here awaits.
@@ -36,7 +38,7 @@ export type OpKey = { key: string; hash: string };
  */
 export type SpendReceipt = { schema_version: 1; op: "spend"; kind: SpendRequest["kind"]; id: string; pieces: string[]; cost: number; balance: number;
   currency?: "pollen" | "fruits"; fruit_balance?: number; pollen?: number; sunshine_left?: number; energy?: EnergyView };
-export type LookState = { schema_version: 1; look: Look; revision: number };
+export type LookState = { schema_version: 1; look: Look; revision: number; reactions?: string[] };
 export type EquipReceipt = LookState & { op: "equip" };
 /**
  * What GET /v1/pollen adds while the wardrobe is on: what is owned (bought, dropped or earned) and worn,
@@ -45,7 +47,12 @@ export type EquipReceipt = LookState & { op: "equip" };
  * (game services/outfit.gd), so a narrower list hid a friend's Gold leaf or Daisy on an app older than
  * the shop. The game's Wardrobe lists an item the player does not own only while the shop is on.
  */
-export type OwnedView = { items: string[]; packs: string[]; look: Look; look_revision: number; offered: string[] };
+export type OwnedView = { items: string[]; packs: string[]; look: Look; look_revision: number; offered: string[] } & FaceView;
+/**
+ * While FACE_SINGLES is on: the reaction faces owned (bought, or in an owned pack), the slots (the saved ones, else
+ * reaction-loadout.ts DEFAULT_SLOTS) and how many places are open. Older apps read past these fields.
+ */
+export type FaceView = { faces?: string[]; reactions?: string[]; reaction_slots?: number };
 /**
  * What it adds beside that while the shop is on. `prices`, `sets` and `pack_price` come from the server's
  * catalogue, which decides what is sold and for how much, so a phone shows the price the spend checks.
@@ -85,16 +92,16 @@ function owned(storage: DurableObjectStorage): Map<string, string> {
   return result;
 }
 
+/**
+ * The reaction faces the player owns, bought one at a time or in an owned pack, for the turn answers that check
+ * faces (v2/face-packs.ts). Never throws, so it can never stop the turn it rides on; anything unreadable reads as none.
+ */
+export function ownedFaceIds(storage: DurableObjectStorage): string[] {
+  try { return ownedFaces(owned(storage).keys()); } catch { return []; }
+}
 /** The item ids the player owns (not packs): what an item bloom may no longer drop. Read inside the credit's transaction. */
 export function ownedItemIds(storage: DurableObjectStorage): ReadonlySet<string> {
   return new Set([...owned(storage)].filter(([, kind]) => kind === "item").map(([id]) => id));
-}
-/**
- * The reaction packs the player owns, for the turn answers that check pack faces (v2/face-packs.ts).
- * Never throws, so it can never stop the turn it rides on; anything unreadable reads as none.
- */
-export function ownedPackIds(storage: DurableObjectStorage): string[] {
-  try { return [...owned(storage)].filter(([, kind]) => kind === "pack").map(([id]) => id); } catch { return []; }
 }
 /** Owns an item an item bloom dropped, inside the credit's transaction (pollen/item-blooms.ts). Never one already owned. */
 export function addDroppedItem(storage: DurableObjectStorage, itemId: string, now: number): void {
@@ -107,7 +114,11 @@ function storedLook(storage: DurableObjectStorage, catalog: Catalog = CATALOG): 
   if (row) {
     try {
       const value: unknown = JSON.parse(row.data);
-      if (isObject(value) && value.schema_version === 1 && validLook(value.look, catalog) && Number.isSafeInteger(value.revision)) return value as LookState;
+      if (isObject(value) && value.schema_version === 1 && validLook(value.look, catalog) && Number.isSafeInteger(value.revision)) {
+        // Slots that no longer read keep the look and fall back to the default slots.
+        const { reactions, ...state } = value as LookState;
+        return validSlots(reactions) ? { ...state, reactions } : state;
+      }
     } catch { /* an unreadable row reads as the default look */ }
   }
   return { schema_version: 1, look: {}, revision: 0 };
@@ -147,7 +158,8 @@ export function spend(storage: DurableObjectStorage, op: OpKey, request: SpendRe
     const prior = priorOp<SpendReceipt>(storage, op); if (prior) return prior;
     if (request.kind === "convert" || request.kind === "sunshine" || request.kind === "energy") return fruitSpend(storage, op, request, expected, now, fruits);
     const items = owned(storage);
-    const quoted = quote(request, { owned: new Set(items.keys()), cleared: level => chapterCleared(storage, level) }, catalog, fruits);
+    // A face owned in a pack is owned: it is never sold again on its own.
+    const quoted = quote(request, { owned: new Set([...items.keys(), ...ownedFaces(items.keys(), catalog)]), cleared: level => chapterCleared(storage, level) }, catalog, fruits);
     if (!quoted.ok) return quoted;
     const inFruits = quoted.value.currency === "fruits";
     const left = charge(quoted.value, inFruits ? purse(storage, "fruits").balance : walletBalance(storage, now), expected);
@@ -191,12 +203,16 @@ function fruitSpend(storage: DurableObjectStorage, op: OpKey, request: SpendRequ
 }
 
 /**
- * Wears `look`: every item in it must be owned. A revision at or under the stored one answers the
- * current look and writes nothing, so a late or repeated equip never undoes a newer one.
+ * Wears `look`, with `reactions` the reaction slots to keep beside it (reaction-loadout.ts): every item in the look
+ * and every face in the slots must be owned, in open places. A revision at or under the stored one answers the current
+ * look and writes nothing, so a late or repeated equip never undoes a newer one. Without `reactions` (an app older than
+ * the face items) the stored slots stay, and so does a worn resting face the look leaves out, since that app can not
+ * show one. `faces`: FACE_SINGLES is on; off, an equip carrying slots is refused.
  */
-export function equip(storage: DurableObjectStorage, op: OpKey, look: unknown, revision: number, now: number, active: () => boolean, catalog: Catalog = CATALOG): Outcome<EquipReceipt> {
+export function equip(storage: DurableObjectStorage, op: OpKey, look: unknown, revision: number, now: number, active: () => boolean, catalog: Catalog = CATALOG, reactions?: unknown, faces = false): Outcome<EquipReceipt> {
   if (!validOpKey(op)) return fail(400, "invalid_pollen_equip");
   if (!validLook(look, catalog) || !Number.isSafeInteger(revision) || revision < 1 || revision > now + MAX_LOOK_REVISION_AHEAD_MS) return fail(400, "invalid_pollen_equip");
+  if (reactions !== undefined && (!faces || !validSlots(reactions))) return fail(400, "invalid_pollen_equip");
   return storage.transactionSync((): Outcome<EquipReceipt> => {
     if (!active()) return fail(404, "identity_absent");
     const prior = priorOp<EquipReceipt>(storage, op); if (prior) return prior;
@@ -204,10 +220,13 @@ export function equip(storage: DurableObjectStorage, op: OpKey, look: unknown, r
     if (revision <= current.revision) return ok({ ...current, op: "equip" });
     const items = owned(storage);
     if (Object.values(look).some(id => items.get(id) !== "item")) return fail(403, "not_owned");
+    if (reactions !== undefined && !slotsAllowed(reactions, new Set(ownedFaces(items.keys(), catalog)), ownedUnlocks(items.keys(), catalog))) return fail(403, "not_owned");
+    const worn: Look = reactions === undefined && current.look.rest_face !== undefined && look.rest_face === undefined ? { ...look, rest_face: current.look.rest_face } : look;
+    const slots = reactions ?? current.reactions;
     // The default look on a player who never bought anything stores nothing.
-    if (!present(storage) && isDefaultLook(look)) return ok({ schema_version: 1, look: {}, revision, op: "equip" });
+    if (!present(storage) && isDefaultLook(worn) && slots === undefined) return ok({ schema_version: 1, look: {}, revision, op: "equip" });
     ensureTables(storage);
-    const state: LookState = { schema_version: 1, look, revision };
+    const state: LookState = { schema_version: 1, look: worn, revision, ...(slots === undefined ? {} : { reactions: slots }) };
     storage.sql.exec("INSERT OR REPLACE INTO pollen_look VALUES (1,?)", JSON.stringify(state));
     const receipt: EquipReceipt = { ...state, op: "equip" };
     saveOp(storage, op, now, receipt);
@@ -232,10 +251,11 @@ export function noteBoardRewards(storage: DurableObjectStorage, board: string, i
 }
 
 /** GET /v1/pollen's wardrobe part: what is owned and worn, and with `shop` what is sold and for how much. Read only. */
-export function wardrobeView(storage: DurableObjectStorage, shop: boolean, catalog: Catalog = CATALOG, fruits = false): OwnedView | WardrobeView {
+export function wardrobeView(storage: DurableObjectStorage, shop: boolean, catalog: Catalog = CATALOG, fruits = false, faces = false): OwnedView | WardrobeView {
   const items = owned(storage), look = storedLook(storage, catalog);
   const base: OwnedView = { items: [...items].filter(([, kind]) => kind === "item").map(([id]) => id).sort(), packs: [...items].filter(([, kind]) => kind === "pack").map(([id]) => id).sort(),
-    look: look.look, look_revision: look.revision, offered: offeredItems(catalog, fruits) };
+    look: look.look, look_revision: look.revision, offered: offeredItems(catalog, fruits),
+    ...(faces ? { faces: ownedFaces(items.keys(), catalog), reactions: [...look.reactions ?? DEFAULT_SLOTS], reaction_slots: openSlots(ownedUnlocks(items.keys(), catalog)) } : {}) };
   if (!shop) return base;
   // Each currency's prices and sets apart: `prices` and `sets` stay Pollen only, as older apps read them.
   const inPollen = (id: string) => itemCurrency(id, catalog) === "pollen", soldNow = offeredItems(catalog, fruits).filter(id => sold(id, catalog, fruits));

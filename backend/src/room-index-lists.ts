@@ -2,6 +2,7 @@ import { fail, type Outcome, type RoomSnapshot } from "./protocol";
 import { errorCode, logWarning } from "./log";
 import { roomLinkVersion, type RoomLink } from "./room-links";
 import { ROOM_INBOX_CONCURRENCY, inboxBody, inboxEntry, pooled, type RoomInboxEntry, type RoomInboxProjection } from "./room-inbox";
+import type { FaceVersion } from "./v2/end-reactions";
 import { partnerBlocks } from "./safety";
 import { memberStateOf } from "./room-leave";
 import { ROOM_INDEX_READS, ROOM_NEXT_HEADER, ROOM_PAGE_HEADER, type RoomIndexRow, type RoomObservation } from "./room-index";
@@ -49,7 +50,7 @@ function stored(row: RoomIndexRow | null): Outcome<RoomInboxProjection> | null {
  * marks `read` are read live and stored, the rest come from their rows, and
  * every entry is built by inboxEntry, as in roomInbox.
  */
-export async function indexedRoomInbox(playerId: string, env: Env, showClosed: boolean, showLeft: boolean, offset: number, showReactions = false, showNames = false, facePacks = false): Promise<{ body: { schema_version: 1; rooms: RoomInboxEntry[] }; next: number | null }> {
+export async function indexedRoomInbox(playerId: string, env: Env, showClosed: boolean, showLeft: boolean, offset: number, showReactions = false, showNames = false, facePacks: FaceVersion = 0): Promise<{ body: { schema_version: 1; rooms: RoomInboxEntry[] }; next: number | null }> {
   const page = await env.PLAYERS.getByName(playerId).roomIndexPage("inbox", offset);
   const live = await readAndRecord(env, playerId, [...page.rooms.filter(room => room.read).map(room => room.link), ...page.recheck]);
   const blocked = partnerBlocks(env, playerId);

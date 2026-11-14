@@ -26,8 +26,8 @@ import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { testerSwitchCapability } from "../test-codes";
 import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
-import { endReactionField, endReactionsWanted, FACE_PACKS_VERSION, facePacksWanted } from "./end-reactions";
-import { requireOwnedFaces } from "./face-packs";
+import { endReactionField, endReactionsWanted, facePacksWanted } from "./end-reactions";
+import { requireOwnedFaces, servedFaceVersion } from "./face-packs";
 import { limitRoomTransfer } from "../limits";
 import { runReactionField, runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
@@ -87,7 +87,7 @@ function pollRedo(request: Request): boolean { return request.headers.get(POLL_R
 /** What a standalone room read or turn reply carries beside the room: each part the client asked for (names and looks while their flags are on). A Story request gets none. */
 function besideWanted(request: Request, env: Env, context: unknown): Beside {
   if (context !== undefined) return {};
-  return { faces: endReactionsWanted(request), names: displayNamesShown(request, env), tracks: runReactionsWanted(request), looks: looksShown(request, env), packs: facePacksWanted(request) };
+  return { faces: endReactionsWanted(request), names: displayNamesShown(request, env), tracks: runReactionsWanted(request), looks: looksShown(request, env), packs: servedFaceVersion(request, env) };
 }
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
@@ -128,8 +128,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(triesWanted(request) ? { turn_tries_version: 1 } : {}),
     ...(endReactionsWanted(request) ? { end_reactions_version: 1 } : {}),
     ...(runReactionsWanted(request) ? { run_reactions_version: 1 } : {}),
-    // Pack faces (face-packs.ts): only a phone that draws them is told it may send them.
-    ...(facePacksWanted(request) ? { face_packs_version: FACE_PACKS_VERSION } : {}),
+    // Faces beyond the everyday ones (face-packs.ts): only a phone that draws them is told which it may send.
+    ...(facePacksWanted(request) ? { face_packs_version: servedFaceVersion(request, env) } : {}),
     ...(hardWanted(request) ? { hard_mode_version: 1 } : {}),
     ...liveCapability(request, env),
     ...platformCapability(request, env),
@@ -264,7 +264,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (item || request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (context !== undefined) throw new ApiError(409, "end_reactions_standalone_only");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
-    return json(unwrap(await room.endReactions(playerId, runReactionsWanted(request), facePacksWanted(request))));
+    return json(unwrap(await room.endReactions(playerId, runReactionsWanted(request), servedFaceVersion(request, env))));
   }
   // Hard rooms (v2/hard-mode.ts): a slip's reset and the kept slips after the
   // ones a phone has seen (GET .../hard/<seen>).
@@ -337,7 +337,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     try { const probe = await room.snapshot(playerId, context); if (probe.ok) bodyLimit = chapter(probe.value).limits?.turn_body_bytes ?? bodyLimit; } catch { /* keep the published bound */ }
   }
   const input = await boundedJson(request, operation === "fork" ? 4096 : bodyLimit);
-  // A pack face needs its pack, before any room call (face-packs.ts): refused, nothing is kept and the phone sends the turn again without it.
+  // A face beyond the everyday ones needs owning, before any room call (face-packs.ts): refused, nothing is kept and the phone sends the turn again without it.
   if (operation === "turns") requireOwnedFaces(input, facePacks);
   if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
   const snapshot = unwrap(await room.snapshot(playerId, context, context === undefined ? historySupport(request) : undefined));

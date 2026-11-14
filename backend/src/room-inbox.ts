@@ -4,7 +4,7 @@ import { roomLinkVersion, type RoomLink } from "./room-links";
 import { remoteRoomActivity } from "./room-inbox-storage";
 import { departed, isMember } from "./room-departure";
 import { chapter } from "./v2/chapters";
-import { partnerFace, shownFace, type Face } from "./v2/end-reactions";
+import { partnerFace, shownFace, type Face, type FaceVersion } from "./v2/end-reactions";
 import { partnerNameField, shownName } from "./display-names";
 import { duelLink, duelMasks } from "./duels/room-link";
 
@@ -140,7 +140,7 @@ export type InboxSource = () => Promise<Outcome<RoomInboxProjection> | null> | O
  * stand-in unless facePacks: v2/end-reactions.ts shownFace), and with showNames every
  * entry carries partner_name, checked again against the name rules (an index row may be a day old).
  */
-export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false, facePacks = false): Promise<RoomInboxEntry | null> {
+export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false, facePacks: FaceVersion = 0): Promise<RoomInboxEntry | null> {
   const version = roomLinkVersion(link);
   const named = (entry: RoomInboxEntry, name: unknown = null): RoomInboxEntry => showNames ? { ...entry, partner_name: shownName(name) } : entry;
   if (version !== 1 && version !== 2) return named(fallback(link));

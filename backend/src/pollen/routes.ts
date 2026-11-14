@@ -1,7 +1,7 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
-import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
+import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, faceSinglesOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
 import { ITEM_ID_PATTERN, featuredCodeFor, offeredTagFor } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
@@ -293,7 +293,8 @@ const SPEND_KINDS = ["item", "set", "pack", "convert", "sunshine", "energy"] as 
  * operations are, so the Player's spend or equip runs in one synchronous transaction.
  * - spend {schema_version: 1, idempotency_key, kind: "item" | "set" | "pack", id, expected_cost}:
  *   `expected_cost` is what the confirm sheet showed (spend.ts charge).
- * - equip {schema_version: 1, idempotency_key, revision, look}: `look` is the whole look to wear.
+ * - equip {schema_version: 1, idempotency_key, revision, look, reactions?}: `look` is the whole look to wear;
+ *   `reactions`, only while FACE_SINGLES is on, the reaction slots kept beside it (reaction-loadout.ts).
  * Cost: one Player request beside auth()'s own.
  */
 async function routeWardrobe(request: Request, path: string, playerId: string, env: Env): Promise<unknown> {
@@ -301,7 +302,7 @@ async function routeWardrobe(request: Request, path: string, playerId: string, e
   if (spend ? !shopOn(env) || !pollenShopClient(request) : !wardrobeOn(env)) throw new ApiError(503, spend ? "pollen_shop_disabled" : "pollen_wardrobe_disabled");
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const input = await boundedJson(request, 1024), code = spend ? "invalid_pollen_spend" : "invalid_pollen_equip";
-  const fields = spend ? ["schema_version", "idempotency_key", "kind", "id", "expected_cost"] : ["schema_version", "idempotency_key", "revision", "look"];
+  const fields = spend ? ["schema_version", "idempotency_key", "kind", "id", "expected_cost"] : ["schema_version", "idempotency_key", "revision", "look", ...(isObject(input) && input.reactions !== undefined ? ["reactions"] : [])];
   if (!isObject(input) || !only(input, fields) || input.schema_version !== 1 || typeof input.idempotency_key !== "string" || !IDEMPOTENCY_PATTERN.test(input.idempotency_key)) throw new ApiError(400, code);
   const op = { key: input.idempotency_key, hash: await digest(canonicalJson({ operation: spend ? "spend" : "equip", ...input })) };
   const player = env.PLAYERS.getByName(playerId), device = await bearerDigest(request);
@@ -314,7 +315,8 @@ async function routeWardrobe(request: Request, path: string, playerId: string, e
     return unwrap(await player.pollenSpend(playerId, device, op, { kind, id: input.id }, input.expected_cost, fruitsOn(env)));
   }
   if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1 || !isObject(input.look)) throw new ApiError(400, code);
-  return unwrap(await player.pollenEquip(playerId, device, op, input.look, input.revision));
+  if (input.reactions !== undefined && !faceSinglesOn(env)) throw new ApiError(400, code);
+  return unwrap(await player.pollenEquip(playerId, device, op, input.look, input.revision, input.reactions));
 }
 
 /**

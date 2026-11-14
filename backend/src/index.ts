@@ -10,7 +10,7 @@ import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
 import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER } from "./room-inbox";
-import { endReactionsWanted, facePacksWanted } from "./v2/end-reactions";
+import { endReactionsWanted } from "./v2/end-reactions";
 import { DISPLAY_NAME_PATH, displayNamesShown, friendLinkCode, namesRoomRoute, routeDisplayName, routeFriendLinkName } from "./display-names";
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
@@ -19,7 +19,7 @@ import { energyFor, fruitsFor, grantHint, paidUntil, pollenAuthView, pollenEarni
 import type { PollenMember } from "./pollen/turn-facts";
 import type { HistoryView, WalletView } from "./pollen/wallet";
 import { looksDuelRoute, looksMemberRoute, memberLookOf } from "./pollen/looks-routes";
-import { facePacksTurnRoute } from "./v2/face-packs";
+import { facePacksTurnRoute, servedFaceVersion } from "./v2/face-packs";
 import type { Look } from "./pollen/catalog";
 export { FriendRoomEvents } from "./friend-room-events";
 import { friendEventsCapable } from "./friend-room-events";
@@ -68,7 +68,7 @@ const ROOM_ROUTE = /^\/v[12]\/rooms\/([A-Za-z0-9_-]{22})(?:\/(?!leave(?:\/|$))|$
  * While Pollen earning is on, a turn, room creation and joining learn the player's Full Journey end
  * the same way (`pollen`), and the wallet reads get their answer from it (`pollenView`).
  * While looks are on, a turn, room creation and joining learn the look the player wears the same way (`memberLook`), as do the duel routes that keep it (looksDuelRoute).
- * A turn from a phone that sends pack faces learns the reaction packs the player owns the same way (`facePacks`, v2/face-packs.ts).
+ * A turn from a phone that sends faces beyond the everyday ones learns the faces the player owns the same way (`facePacks`, v2/face-packs.ts).
  */
 async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string; memberName?: string | null; pollen?: PollenMember; pollenView?: WalletView | HistoryView; memberLook?: Look; facePacks?: string[] }> {
   const id = request.headers.get("X-Player-Id");
@@ -84,14 +84,14 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   const memberRoute = pollenMemberRoute(request, path, env), view = pollenAuthView(request, path, env), looks = looksMemberRoute(request, path, env) || looksDuelRoute(request, path, env);
   // The public duel list learns the reader's safety token from the same call (safety.ts ownBlocks).
   const listing = publicListRoute(request, path);
-  const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look; face_packs?: string[] } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks, facePacksTurnRoute(request, path))
+  const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look; owned_faces?: string[] } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks, facePacksTurnRoute(request, path))
     : namesRoomRoute(request, path, env) || memberRoute || looks || listing ? await player.authorizeNamed(hash, memberRoute, looks, listing) : view !== null ? await player.authorizeWallet(hash, view, walletMode(request, env), grantHint(request), fruitsFor(request, env), energyFor(env))
     : { authorized: await player.authorize(hash, deleting), linked: true };
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   await limitPlayer(env, id);
   if (!access.linked) throw new ApiError(404, "room_not_found");
   return { playerId: id, safetyToken: access.safety_token, memberName: flags.displayNames(env) ? access.display_name : undefined, pollen: pollenMember(access), pollenView: access.pollen, memberLook: looks ? memberLookOf(access) : undefined,
-    facePacks: Array.isArray(access.face_packs) ? access.face_packs : undefined };
+    facePacks: Array.isArray(access.owned_faces) ? access.owned_faces : undefined };
 }
 async function ensurePremium(snapshot: RoomSnapshot, nextLevel: boolean, env: Env): Promise<void> {
   if (snapshot.level_index + (nextLevel ? 1 : 0) < 3) return;
@@ -159,7 +159,7 @@ export default {
         const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
         // The face on the friend's latest turn, only for clients that show it.
         const showReactions = endReactionsWanted(request), showNames = displayNamesShown(request, env);
-        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, facePacksWanted(request));
+        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, servedFaceVersion(request, env));
         return await maskedResponse(withNext(json(page.body), page.next), playerId);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));

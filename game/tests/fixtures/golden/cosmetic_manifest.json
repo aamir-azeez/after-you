@@ -17,7 +17,36 @@
 		"sprig_coral",
 		"sprig_plum",
 		"sprig_sun",
-		"sprig_sky"
+		"sprig_sky",
+		"aww",
+		"shy",
+		"huh",
+		"please",
+		"touched",
+		"lucky",
+		"giggle",
+		"curious",
+		"nervous",
+		"drowsy",
+		"gasp",
+		"peekaboo",
+		"yay",
+		"smitten",
+		"starry",
+		"flower",
+		"heart_eyes",
+		"proud",
+		"wink",
+		"wow",
+		"crying",
+		"dizzy",
+		"rest_button",
+		"rest_bean",
+		"rest_round",
+		"rest_wide",
+		"rest_sprout",
+		"reaction_slot_5",
+		"reaction_slot_6"
 	],
 	"items": {
 		"apple_hood": {
@@ -44,6 +73,18 @@
 			"tier": "fruit_small",
 			"unlock": ""
 		},
+		"aww": {
+			"code": 400,
+			"currency": "pollen",
+			"id": "aww",
+			"price": 1000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_common",
+			"unlock": ""
+		},
 		"blossom_crown": {
 			"code": 12,
 			"currency": "fruits",
@@ -68,6 +109,30 @@
 			"tier": "fruit_hat",
 			"unlock": ""
 		},
+		"crying": {
+			"code": 420,
+			"currency": "pollen",
+			"id": "crying",
+			"price": 1500,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_uncommon",
+			"unlock": ""
+		},
+		"curious": {
+			"code": 407,
+			"currency": "pollen",
+			"id": "curious",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
+			"unlock": ""
+		},
 		"daisy": {
 			"code": 1,
 			"currency": "pollen",
@@ -78,6 +143,30 @@
 			"slot": "hat",
 			"sold": true,
 			"tier": "common",
+			"unlock": ""
+		},
+		"dizzy": {
+			"code": 421,
+			"currency": "pollen",
+			"id": "dizzy",
+			"price": 1500,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_uncommon",
+			"unlock": ""
+		},
+		"drowsy": {
+			"code": 409,
+			"currency": "pollen",
+			"id": "drowsy",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
 			"unlock": ""
 		},
 		"every_hard": {
@@ -92,6 +181,42 @@
 			"tier": "earned",
 			"unlock": ""
 		},
+		"flower": {
+			"code": 415,
+			"currency": "pollen",
+			"id": "flower",
+			"price": 6000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_epic",
+			"unlock": ""
+		},
+		"gasp": {
+			"code": 410,
+			"currency": "pollen",
+			"id": "gasp",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
+			"unlock": ""
+		},
+		"giggle": {
+			"code": 406,
+			"currency": "pollen",
+			"id": "giggle",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
+			"unlock": ""
+		},
 		"gold_leaf": {
 			"code": 7,
 			"currency": "pollen",
@@ -102,6 +227,30 @@
 			"slot": "leaf",
 			"sold": false,
 			"tier": "earned",
+			"unlock": ""
+		},
+		"heart_eyes": {
+			"code": 416,
+			"currency": "pollen",
+			"id": "heart_eyes",
+			"price": 1500,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_uncommon",
+			"unlock": ""
+		},
+		"huh": {
+			"code": 402,
+			"currency": "pollen",
+			"id": "huh",
+			"price": 1000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_common",
 			"unlock": ""
 		},
 		"lantern": {
@@ -128,6 +277,30 @@
 			"tier": "special",
 			"unlock": "sleeping-lighthouse"
 		},
+		"lucky": {
+			"code": 405,
+			"currency": "pollen",
+			"id": "lucky",
+			"price": 1500,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_uncommon",
+			"unlock": ""
+		},
+		"nervous": {
+			"code": 408,
+			"currency": "pollen",
+			"id": "nervous",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
+			"unlock": ""
+		},
 		"orchard_skin": {
 			"code": 13,
 			"currency": "fruits",
@@ -140,6 +313,126 @@
 			"tier": "fruit_body",
 			"unlock": ""
 		},
+		"peekaboo": {
+			"code": 411,
+			"currency": "pollen",
+			"id": "peekaboo",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
+			"unlock": ""
+		},
+		"please": {
+			"code": 403,
+			"currency": "pollen",
+			"id": "please",
+			"price": 1500,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_uncommon",
+			"unlock": ""
+		},
+		"proud": {
+			"code": 417,
+			"currency": "pollen",
+			"id": "proud",
+			"price": 1000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_common",
+			"unlock": ""
+		},
+		"reaction_slot_5": {
+			"code": 427,
+			"currency": "pollen",
+			"id": "reaction_slot_5",
+			"price": 2500,
+			"released": false,
+			"set": "",
+			"slot": "reaction_slot",
+			"sold": true,
+			"tier": "reaction_slot",
+			"unlock": ""
+		},
+		"reaction_slot_6": {
+			"code": 428,
+			"currency": "pollen",
+			"id": "reaction_slot_6",
+			"price": 2500,
+			"released": false,
+			"set": "",
+			"slot": "reaction_slot",
+			"sold": true,
+			"tier": "reaction_slot",
+			"unlock": ""
+		},
+		"rest_bean": {
+			"code": 423,
+			"currency": "pollen",
+			"id": "rest_bean",
+			"price": 1000,
+			"released": false,
+			"set": "",
+			"slot": "rest_face",
+			"sold": true,
+			"tier": "common",
+			"unlock": ""
+		},
+		"rest_button": {
+			"code": 422,
+			"currency": "pollen",
+			"id": "rest_button",
+			"price": 1000,
+			"released": false,
+			"set": "",
+			"slot": "rest_face",
+			"sold": true,
+			"tier": "common",
+			"unlock": ""
+		},
+		"rest_round": {
+			"code": 424,
+			"currency": "pollen",
+			"id": "rest_round",
+			"price": 5000,
+			"released": false,
+			"set": "",
+			"slot": "rest_face",
+			"sold": true,
+			"tier": "uncommon",
+			"unlock": ""
+		},
+		"rest_sprout": {
+			"code": 426,
+			"currency": "pollen",
+			"id": "rest_sprout",
+			"price": 5000,
+			"released": false,
+			"set": "",
+			"slot": "rest_face",
+			"sold": true,
+			"tier": "uncommon",
+			"unlock": ""
+		},
+		"rest_wide": {
+			"code": 425,
+			"currency": "pollen",
+			"id": "rest_wide",
+			"price": 5000,
+			"released": false,
+			"set": "",
+			"slot": "rest_face",
+			"sold": true,
+			"tier": "uncommon",
+			"unlock": ""
+		},
 		"seashell": {
 			"code": 2,
 			"currency": "pollen",
@@ -150,6 +443,30 @@
 			"slot": "hat",
 			"sold": true,
 			"tier": "common",
+			"unlock": ""
+		},
+		"shy": {
+			"code": 401,
+			"currency": "pollen",
+			"id": "shy",
+			"price": 1000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_common",
+			"unlock": ""
+		},
+		"smitten": {
+			"code": 413,
+			"currency": "pollen",
+			"id": "smitten",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
 			"unlock": ""
 		},
 		"sprig_coral": {
@@ -200,6 +517,18 @@
 			"tier": "sprig",
 			"unlock": ""
 		},
+		"starry": {
+			"code": 414,
+			"currency": "pollen",
+			"id": "starry",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
+			"unlock": ""
+		},
 		"straw_hat": {
 			"code": 3,
 			"currency": "pollen",
@@ -235,12 +564,61 @@
 			"sold": false,
 			"tier": "earned",
 			"unlock": ""
+		},
+		"touched": {
+			"code": 404,
+			"currency": "pollen",
+			"id": "touched",
+			"price": 1500,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_uncommon",
+			"unlock": ""
+		},
+		"wink": {
+			"code": 418,
+			"currency": "pollen",
+			"id": "wink",
+			"price": 1000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_common",
+			"unlock": ""
+		},
+		"wow": {
+			"code": 419,
+			"currency": "pollen",
+			"id": "wow",
+			"price": 1500,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_uncommon",
+			"unlock": ""
+		},
+		"yay": {
+			"code": 412,
+			"currency": "pollen",
+			"id": "yay",
+			"price": 3000,
+			"released": false,
+			"set": "",
+			"slot": "reaction",
+			"sold": true,
+			"tier": "face_rare",
+			"unlock": ""
 		}
 	},
 	"slots": [
 		"hat",
 		"body",
-		"leaf"
+		"leaf",
+		"rest_face"
 	],
 	"tier_currency": {
 		"fruit_body": "fruits",
@@ -252,12 +630,21 @@
 		"common": 1000,
 		"earned": 0,
 		"epic": 50000,
+		"face_common": 1000,
+		"face_epic": 6000,
+		"face_rare": 3000,
+		"face_uncommon": 1500,
 		"fruit_body": 200,
 		"fruit_hat": 100,
 		"fruit_small": 50,
 		"rare": 20000,
+		"reaction_slot": 2500,
 		"special": 100000,
 		"sprig": 20,
 		"uncommon": 5000
-	}
+	},
+	"unworn_slots": [
+		"reaction",
+		"reaction_slot"
+	]
 }

@@ -52,9 +52,8 @@ func _descriptors() -> void:
 	var id_shape := RegEx.create_from_string("^[a-z][a-z0-9_]*$")
 	var level_ids: Array[String] = []
 	for key: String in Registry.keys(): level_ids.append(key.split("@")[0])
-	_check(Index.ids().size() == Index.ITEMS.size() and not Index.ids().is_empty(), "Every descriptor is listed once")
-	for file: Script in Index.ITEMS:
-		var raw: Dictionary = file.DATA
+	_check(Index.ids().size() == Index.descriptors().size() and not Index.ids().is_empty(), "Every descriptor is listed once")
+	for raw: Dictionary in Index.descriptors():
 		var id := str(raw.get("id", ""))
 		for field: String in Index.REQUIRED: _check(raw.has(field), "%s names its %s" % [id, field])
 		for field: String in raw: _check(field in known, "%s has only known fields, not %s" % [id, field])
@@ -131,9 +130,9 @@ func _codes() -> void:
 		_check(not owners.has(int(code)), "Code %s is pinned once, not for %s and %s" % [code, owners.get(int(code), ""), id])
 		owners[int(code)] = id
 	var seen := {}
-	for file: Script in Index.ITEMS:
-		var id := str(file.DATA.get("id", ""))
-		var code: Variant = file.DATA.get("code")
+	for raw: Dictionary in Index.descriptors():
+		var id := str(raw.get("id", ""))
+		var code: Variant = raw.get("code")
 		_check(code is int and Catalog.valid_code(code), "%s has a whole number code from 1 to %d" % [id, Index.CODE_MAX])
 		_check(not seen.has(code), "%s and %s share the code %s" % [seen.get(code, ""), id, code])
 		seen[code] = id
@@ -143,13 +142,13 @@ func _codes() -> void:
 	for id: String in SHIPPED: _check(Typed.equal(pins.get(id), SHIPPED[id]), "A shipped code stays pinned as it shipped: %s is %d" % [id, SHIPPED[id]])
 	_check(Catalog.code("nothing") == 0 and Catalog.of_code(0) == "" and Catalog.of_code(998) == "", "An unknown item has no code and an unused code no item")
 	for bad: Variant in [0, -1, 1000, 1.5, "3", null, INF, NAN]: _check(not Catalog.valid_code(bad), "%s is not an item code" % [bad])
-	for good: Variant in [1, 18, 200, 299.0, 300, 399, 999]: _check(Catalog.valid_code(good), "%s is an item code (the hats take 200 to 299, the skins 300 to 399)" % [good])
+	for good: Variant in [1, 18, 200, 299.0, 300, 399, 400, 499, 999]: _check(Catalog.valid_code(good), "%s is an item code (the hats take 200 to 299, the skins 300 to 399, the faces 400 to 499)" % [good])
 
 ## An item built unreleased stays off every pip and list until the server
 ## offers it, and goes again when the server stops; this build shows no item
 ## on its own (no descriptor says released: true).
 func _server_release() -> void:
-	for file: Script in Index.ITEMS: _check(not file.DATA.get("released", false), "%s is built unreleased: the server releases it" % file.DATA.id)
+	for raw: Dictionary in Index.descriptors(): _check(not raw.get("released", false), "%s is built unreleased: the server releases it" % raw.id)
 	Catalog.set_offered(["tide", "nothing", 7])
 	_check(Catalog.released("tide") and not Outfit.of("tide").is_empty(), "An item the server offers is released and can be worn")
 	_check(not Catalog.released("daisy") and Outfit.of("daisy").is_empty(), "An item the server does not offer stays hidden")

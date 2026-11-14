@@ -32,7 +32,7 @@ func _run() -> void:
 		items[id] = {
 			"id": id,
 			"code": Catalog.code(id),
-			"slot": Catalog.slot(id),
+			"slot": str(data.slot),
 			"tier": str(data.tier),
 			"price": Catalog.price(id),
 			"sold": Catalog.sold(id),
@@ -41,7 +41,7 @@ func _run() -> void:
 			"set": str(data.set),
 			"currency": str(Index.TIER_CURRENCY.get(str(data.tier), "pollen")),
 		}
-	var result := Golden.check(GOLDEN, {"ids": Catalog.ids(), "slots": Catalog.slots(), "tier_prices": Index.TIER_PRICES, "tier_currency": Index.TIER_CURRENCY, "items": items})
+	var result := Golden.check(GOLDEN, {"ids": Catalog.ids(), "slots": Catalog.slots(), "unworn_slots": Index.UNWORN_SLOTS, "tier_prices": Index.TIER_PRICES, "tier_currency": Index.TIER_CURRENCY, "items": items})
 	for message: String in result.messages:
 		push_error(message)
 	_check(result.ok, "Cosmetic manifest matches golden " + GOLDEN)

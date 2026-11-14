@@ -64,6 +64,8 @@ export const FLAG_VARS = Object.freeze({
   fruits: "FRUITS",
   /** Duel energy (pollen/energy.ts): 1 energy to start or join a duel, the meter on the wallet read and the start and join replies, the Fruit refill and the duels capability field. Needs DUELS. Turn it on with a minimum app version that shows the meter, in the same CONFIG edit. */
   energy: "ENERGY",
+  /** Face cosmetics (pollen/reaction-loadout.ts, v2/face-packs.ts): single reaction faces, resting faces and the reaction slots shown and sold, the loadout on the wardrobe read and equip, and face_packs_version 2 for phones that ask. Needs POLLEN_WARDROBE. Off, nothing face is written or shown and every reply is as before. */
+  faceSingles: "FACE_SINGLES",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
   /** Leaderboard posts need platform accounts (leaderboards/platform-rule.ts): a finished together run enters its board only when both players have a Play Games or Game Center link, and phones learn it from the leaderboards capability. Needs LEADERBOARDS. Keep it off while Game Center is off, or iPhone pairs can never post. */

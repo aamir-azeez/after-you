@@ -1,5 +1,5 @@
 import { fail, ok, type Outcome } from "../protocol";
-import { CATALOG, itemCurrency, itemPrice, setCurrency, setPieces, sold, type Catalog } from "./catalog";
+import { CATALOG, itemCurrency, itemPrice, offeredPacks, setCurrency, setPieces, sold, type Catalog } from "./catalog";
 import type { Currency } from "./currency";
 
 /**
@@ -11,7 +11,7 @@ import type { Currency } from "./currency";
  * - A set: its released pieces the player does not own yet. When at least `set_min_missing` are
  *   missing they cost `set_discount_percent` less, rounded down to its currency's `set_round_down`
  *   (Pollen 100, Fruits 5); one missing piece costs its own price. Owned pieces are never charged.
- * - A reaction pack costs `pack_price` Pollen.
+ * - A reaction pack costs `pack_price` Pollen, while it sells (catalog.ts offeredPacks: none of its faces sells alone).
  * - Nothing owned is sold again, so a purchase can never charge twice for one thing.
  * The spend kinds "convert", "sunshine" and "energy" are Fruit operations (fruit-ops.ts, energy.ts), not priced here.
  *
@@ -54,7 +54,7 @@ export function quote(request: SpendRequest, holdings: Holdings, catalog: Catalo
   if (request.kind !== "pack") return fail(400, "invalid_pollen_spend");
   const pack = catalog.packs[request.id];
   if (!pack || !Object.hasOwn(catalog.packs, request.id)) return fail(404, "unknown_item");
-  if (!pack.released) return fail(409, "not_for_sale");
+  if (!offeredPacks(catalog).includes(request.id)) return fail(409, "not_for_sale");
   if (holdings.owned.has(request.id)) return fail(409, "already_owned");
   return ok({ kind: "pack", id: request.id, pieces: [request.id], full: catalog.pack_price, cost: catalog.pack_price, currency: "pollen" });
 }

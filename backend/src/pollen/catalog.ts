@@ -1,9 +1,10 @@
 import { isObject } from "../protocol";
 import raw from "./catalog.json";
-import { PACK_FACES } from "../v2/end-reactions";
+import { PACK_FACES, SINGLE_FACES } from "../v2/end-reactions";
 import { CURRENCIES, type Currency } from "./currency";
 import { COSMETIC_CODE_MAX, serverConfig, type ServerConfig } from "../config";
 import type { ServerVars } from "../flags";
+import { faceSinglesOn } from "./features";
 
 /**
  * The wardrobe catalogue the server sells from (POLLEN-RULES.md "Prices"), as data: catalog.json
@@ -14,7 +15,11 @@ import type { ServerVars } from "../flags";
  * app with a one-line CONFIG edit. test/spend.test.ts pins every item's facts except `released` to the game's
  * game/tests/fixtures/golden/cosmetic_manifest.json, and every code to game/tests/fixtures/cosmetic_codes.json.
  *
- * - items: the pip cosmetics, keyed by id; each worn in one slot. An "earned" tier is never sold.
+ * - items: the pip cosmetics, keyed by id; each worn in one slot of `slots`, or owned and never worn in one of
+ *   `unworn_slots`: the reaction faces ("reaction", exactly end-reactions.ts PACK_FACES and SINGLE_FACES) and the
+ *   reaction slots ("reaction_slot", pollen/reaction-loadout.ts). An "earned" tier is never sold.
+ * - Face items (the resting faces in the "rest_face" slot, the reaction faces and the reaction slots) are shown and
+ *   sold only while FACE_SINGLES is on (catalogFor), whatever CONFIG releases.
  * - code: the item's permanent number (1 to COSMETIC_CODE_MAX, one per item). It never changes and is never
  *   given to another item, even once an item is retired; CONFIG names items by it.
  * - tier_currency: the tiers priced in Fruits (the Orchard: sprig, fruit_small, fruit_hat, fruit_body); every other
@@ -24,12 +29,13 @@ import type { ServerVars } from "../flags";
  *   costs less (spend.ts), rounded down to its currency's `set_round_down`. A set's pieces share one currency.
  * - packs: reaction packs at `pack_price`, each listing its faces. Every pack face of the end reactions
  *   (v2/end-reactions.ts PACK_FACES) belongs to exactly one pack, and a pack holds nothing else, so the
- *   face a turn may carry and the pack that owns it can never drift apart.
+ *   face a turn may carry and the pack that owns it can never drift apart. An owned pack owns its faces
+ *   (ownedFaces). A pack stops selling once any of its faces sells on its own (offeredPacks).
  */
 export type CatalogItem = { code: number; slot: string; tier: string; unlock: string; set: string; released: boolean };
 export type CatalogPack = { released: boolean; faces: readonly string[] };
 export type Catalog = {
-  schema_version: 1; slots: readonly string[]; tier_prices: Readonly<Record<string, number>>; tier_currency: Readonly<Record<string, "fruits">>;
+  schema_version: 1; slots: readonly string[]; unworn_slots: readonly string[]; tier_prices: Readonly<Record<string, number>>; tier_currency: Readonly<Record<string, "fruits">>;
   set_discount_percent: number; set_round_down: Readonly<Record<Currency, number>>; set_min_missing: number; pack_price: number;
   items: Readonly<Record<string, CatalogItem>>; packs: Readonly<Record<string, CatalogPack>>;
 };
@@ -37,6 +43,11 @@ export type Catalog = {
 export type Look = Readonly<Record<string, string>>;
 
 export const EARNED_TIER = "earned";
+/** The unworn slot of the reaction faces, and of the reaction slots (pollen/reaction-loadout.ts). */
+export const REACTION_SLOT = "reaction";
+export const UNLOCK_SLOT = "reaction_slot";
+/** The slots of the face items, shown and sold only while FACE_SINGLES is on. */
+const FACE_ITEM_SLOTS: ReadonlySet<string> = new Set(["rest_face", REACTION_SLOT, UNLOCK_SLOT]);
 export const ITEM_ID_PATTERN = /^[a-z0-9_]{1,40}$/;
 const LEVEL_PATTERN = /^[a-z0-9-]{1,64}$/;
 const count = (value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
@@ -47,15 +58,17 @@ export function checkedCatalog(value: unknown): Catalog {
   const bad = (what: string): never => { throw new Error(`invalid_pollen_catalog: ${what}`); };
   if (!isObject(value) || value.schema_version !== 1) bad("schema_version");
   const v = value as Record<string, unknown>;
-  if (!exact(v, ["schema_version", "slots", "tier_prices", "tier_currency", "set_discount_percent", "set_round_down", "set_min_missing", "pack_price", "items", "packs"])) bad("fields");
+  if (!exact(v, ["schema_version", "slots", "unworn_slots", "tier_prices", "tier_currency", "set_discount_percent", "set_round_down", "set_min_missing", "pack_price", "items", "packs"])) bad("fields");
   if (!Array.isArray(v.slots) || !v.slots.length || !v.slots.every(slot => typeof slot === "string" && ITEM_ID_PATTERN.test(slot)) || new Set(v.slots).size !== v.slots.length) bad("slots");
+  if (!Array.isArray(v.unworn_slots) || !v.unworn_slots.every(slot => typeof slot === "string" && ITEM_ID_PATTERN.test(slot) && !(v.slots as string[]).includes(slot)) ||
+    new Set(v.unworn_slots).size !== v.unworn_slots.length || ![REACTION_SLOT, UNLOCK_SLOT].every(slot => (v.unworn_slots as string[]).includes(slot))) bad("unworn_slots");
   if (!isObject(v.tier_prices) || !Object.values(v.tier_prices).every(price => count(price)) || v.tier_prices[EARNED_TIER] !== 0) bad("tier_prices");
   if (!isObject(v.tier_currency) || !Object.entries(v.tier_currency).every(([tier, currency]) => currency === "fruits" && tier !== EARNED_TIER && Object.hasOwn(v.tier_prices as object, tier))) bad("tier_currency");
   const rounding = v.set_round_down as Record<string, unknown>;
   if (!count(v.set_discount_percent, 0, 99) || !isObject(rounding) || !exact(rounding, CURRENCIES) || !CURRENCIES.every(currency => count(rounding[currency], 1)) || !count(v.set_min_missing, 2) || !count(v.pack_price, 1)) bad("set or pack rules");
   if (!isObject(v.items) || !isObject(v.packs)) bad("items");
-  const slots = v.slots as string[], prices = v.tier_prices as Record<string, number>, currencies = v.tier_currency as Record<string, string>;
-  const setCurrency = new Map<string, string>(), codes = new Set<number>();
+  const slots = [...v.slots as string[], ...v.unworn_slots as string[]], prices = v.tier_prices as Record<string, number>, currencies = v.tier_currency as Record<string, string>;
+  const setCurrency = new Map<string, string>(), codes = new Set<number>(), reactionIds = new Set<string>();
   for (const [id, item] of Object.entries(v.items as Record<string, unknown>)) {
     if (!ITEM_ID_PATTERN.test(id) || !isObject(item) || !exact(item, ["code", "slot", "tier", "unlock", "set", "released"])) bad(id);
     const entry = item as Record<string, unknown>;
@@ -64,6 +77,7 @@ export function checkedCatalog(value: unknown): Catalog {
     if (!slots.includes(entry.slot as string) || typeof entry.tier !== "string" || !Object.hasOwn(prices, entry.tier) || typeof entry.released !== "boolean") bad(id);
     if (entry.unlock !== "" && !(typeof entry.unlock === "string" && LEVEL_PATTERN.test(entry.unlock))) bad(id);
     if (entry.set !== "" && !(typeof entry.set === "string" && ITEM_ID_PATTERN.test(entry.set))) bad(id);
+    if (entry.slot === REACTION_SLOT) reactionIds.add(id);
     // An earned item is never sold, so it never sits in a set or behind an unlock.
     if (entry.tier === EARNED_TIER && (entry.set !== "" || entry.unlock !== "")) bad(id);
     // A set is bought in one currency.
@@ -81,6 +95,10 @@ export function checkedCatalog(value: unknown): Catalog {
     }
   }
   if (packed.size !== PACK_FACES.length) bad("pack faces");
+  // The reaction faces sold are exactly the faces a turn may carry beyond the everyday ones, so the two never drift apart.
+  const faces: readonly string[] = [...PACK_FACES, ...SINGLE_FACES];
+  // A catalogue with no reaction faces (a test fixture) sells none; the real one sells every one (test/face-packs.test.ts).
+  if (reactionIds.size && (reactionIds.size !== faces.length || !faces.every(face => reactionIds.has(face)))) bad("reaction faces");
   return deepFreeze(v) as Catalog;
 }
 
@@ -146,12 +164,12 @@ export const FRUITS_OFFERED_TAG = offeredTag(CATALOG, true);
 
 /**
  * The catalogue as released now: `base` with every item whose code CONFIG's `cosmetics_released` lists marked released.
- * Codes `base` lacks are ignored (the deploy runners refuse them). With nothing new released the answer is `base`
+ * Codes `base` lacks are ignored (the deploy runners refuse them), and so are face items while `faces` (FACE_SINGLES) is off. With nothing new released the answer is `base`
  * itself, so prices, offers and the offered tag stay exactly as built. Pure; the Worker and the Player each work it out
  * from their own env (catalogFor), never passing it between them.
  */
-export function releasedCatalog(released: ReadonlySet<number>, base: Catalog = CATALOG): Catalog {
-  const ids = Object.keys(base.items).filter(id => !base.items[id].released && released.has(base.items[id].code));
+export function releasedCatalog(released: ReadonlySet<number>, base: Catalog = CATALOG, faces = true): Catalog {
+  const ids = Object.keys(base.items).filter(id => !base.items[id].released && released.has(base.items[id].code) && (faces || !isFaceItem(id, base)));
   if (!ids.length) return base;
   const items = { ...base.items };
   for (const id of ids) items[id] = Object.freeze({ ...items[id], released: true });
@@ -164,7 +182,7 @@ function releasedFor(env: ServerVars): Released {
   const config = serverConfig(env);
   let found = released.get(config);
   if (!found) {
-    const catalog = releasedCatalog(config.cosmetics_released), featured = featuredItem(env, catalog);
+    const catalog = releasedCatalog(config.cosmetics_released, CATALOG, faceSinglesOn(env)), featured = featuredItem(env, catalog);
     found = { catalog, tags: catalog === CATALOG ? [OFFERED_TAG, FRUITS_OFFERED_TAG] : [offeredTag(catalog), offeredTag(catalog, true)],
       featured: featured === undefined ? undefined : catalog.items[featured].code };
     released.set(config, found);
@@ -189,10 +207,30 @@ export function itemOfCode(code: number, catalog: Catalog = CATALOG): string | u
 export function featuredItem(env: ServerVars, catalog: Catalog = catalogFor(env)): string | undefined {
   const code = serverConfig(env).cosmetics_featured;
   const id = code === null ? undefined : itemOfCode(code, catalog);
-  return id !== undefined && sold(id, catalog) && itemCurrency(id, catalog) === "pollen" ? id : undefined;
+  return id !== undefined && sold(id, catalog) && itemCurrency(id, catalog) === "pollen" && catalog.slots.includes(catalog.items[id].slot) ? id : undefined;
 }
+/** The packs sold now: released, and none of their faces sold on its own (a face's own sale ends its pack's). */
 export function offeredPacks(catalog: Catalog = CATALOG): string[] {
-  return Object.keys(catalog.packs).filter(id => catalog.packs[id].released);
+  return Object.keys(catalog.packs).filter(id => catalog.packs[id].released && !catalog.packs[id].faces.some(face => sold(face, catalog)));
+}
+/** Whether an item is a face item (a resting face, a reaction face or a reaction slot), shown only while FACE_SINGLES is on. */
+export function isFaceItem(id: string, catalog: Catalog = CATALOG): boolean {
+  return FACE_ITEM_SLOTS.has(catalog.items[id]?.slot ?? "");
+}
+/** The reaction faces `owned` (item and pack ids) holds: each owned face item, and every face of each owned pack. Sorted. */
+export function ownedFaces(owned: Iterable<string>, catalog: Catalog = CATALOG): string[] {
+  const faces = new Set<string>();
+  for (const id of owned) {
+    if (catalog.items[id]?.slot === REACTION_SLOT) faces.add(id);
+    for (const face of catalog.packs[id]?.faces ?? []) faces.add(face);
+  }
+  return [...faces].sort();
+}
+/** How many reaction slots `owned` holds (item ids). */
+export function ownedUnlocks(owned: Iterable<string>, catalog: Catalog = CATALOG): number {
+  let count = 0;
+  for (const id of owned) if (catalog.items[id]?.slot === UNLOCK_SLOT) count++;
+  return count;
 }
 /** The pack a face belongs to, or undefined for an everyday face (one of BASE_FACES). */
 export function packOfFace(face: string, catalog: Catalog = CATALOG): string | undefined {

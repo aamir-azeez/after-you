@@ -35,7 +35,7 @@ describe("item codes", () => {
     expect(new Set(Object.values(PINS)).size).toBe(Object.keys(PINS).length);
     for (const code of Object.values(PINS)) expect(Number.isSafeInteger(code) && code >= 1 && code <= COSMETIC_CODE_MAX, String(code)).toBe(true);
     // The first catalogue keeps 1 to 18 in shop order.
-    expect(manifest.ids.map(id => CATALOG.items[id].code)).toEqual(manifest.ids.map((_, index) => index + 1));
+    expect(manifest.ids.slice(0, 18).map(id => CATALOG.items[id].code)).toEqual(manifest.ids.slice(0, 18).map((_, index) => index + 1));
   });
   it("agrees with the game's manifest", () => {
     const rows = manifest.items as Record<string, { code: number }>;
@@ -92,7 +92,9 @@ describe("the CONFIG keys", () => {
 describe("releasing by code", () => {
   it("changes nothing while no list releases anything new", () => {
     expect(releasedCatalog(new Set())).toBe(CATALOG);
-    expect(releasedCatalog(new Set(Object.values(PINS)))).toBe(CATALOG);
+    expect(releasedCatalog(new Set(Object.values(CATALOG.items).filter(item => item.released).map(item => item.code)))).toBe(CATALOG);
+    // With FACE_SINGLES off, listing the face items too changes nothing.
+    expect(releasedCatalog(new Set(Object.values(CATALOG.items).filter(item => item.released || item.code >= 400 && item.code <= 499).map(item => item.code)), CATALOG, false)).toBe(CATALOG);
     expect(releasedCatalog(new Set([998, 999]))).toBe(CATALOG);
     expect(catalogFor(withConfig({}))).toBe(CATALOG);
     expect(catalogFor({})).toBe(CATALOG);
@@ -123,7 +125,7 @@ describe("releasing by code", () => {
     expect(sold("pear_hood", pear)).toBe(false);
     expect(sold("pear_hood", pear, true)).toBe(true);
     // Every item built as released stays released.
-    expect(offeredItems(released, true)).toEqual(expect.arrayContaining(Object.keys(CATALOG.items)));
+    expect(offeredItems(released, true)).toEqual(expect.arrayContaining(Object.keys(CATALOG.items).filter(id => CATALOG.items[id].released)));
     expect(Object.isFrozen(released.items.reed_cap) && Object.isFrozen(released.items)).toBe(true);
   });
 });

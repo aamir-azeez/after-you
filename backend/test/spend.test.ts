@@ -29,6 +29,7 @@ describe("the shop catalogue", () => {
     const items = manifest.items as Record<string, { id: string; slot: string; tier: string; price: number; sold: boolean; unlock: string; set: string }>;
     expect(Object.keys(CATALOG.items).sort()).toEqual([...manifest.ids].sort());
     expect([...CATALOG.slots]).toEqual(manifest.slots);
+    expect([...CATALOG.unworn_slots]).toEqual(manifest.unworn_slots);
     expect(CATALOG.tier_prices).toEqual(manifest.tier_prices);
     for (const [id, row] of Object.entries(items)) {
       const server = CATALOG.items[id];
@@ -38,7 +39,8 @@ describe("the shop catalogue", () => {
     }
   });
   it("keeps the 1:5:20:50:100 ramp and sells no earned item", () => {
-    expect(CATALOG.tier_prices).toEqual({ common: 1000, uncommon: 5000, rare: 20000, epic: 50000, special: 100000, earned: 0, sprig: 20, fruit_small: 50, fruit_hat: 100, fruit_body: 200 });
+    expect(CATALOG.tier_prices).toEqual({ common: 1000, uncommon: 5000, rare: 20000, epic: 50000, special: 100000, earned: 0, sprig: 20, fruit_small: 50, fruit_hat: 100, fruit_body: 200,
+      face_common: 1000, face_uncommon: 1500, face_rare: 3000, face_epic: 6000, reaction_slot: 2500 });
     expect(CATALOG.tier_currency).toEqual(manifest.tier_currency);
     for (const id of ["gold_leaf", "every_hard", "top_ten_ribbon"]) expect(quote({ kind: "item", id }, holding()), id).toMatchObject({ ok: false, code: "not_for_sale" });
   });
