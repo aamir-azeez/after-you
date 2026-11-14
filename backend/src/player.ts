@@ -979,9 +979,11 @@ export class Player extends DurableObject<Env> {
         if (!current()) return false;
         // Another member may have deleted the room while our OAuth request ran;
         // their partner's stale room link is not sufficient membership authority.
-        const pending = hint.room_family === "legacy" ? await this.env.ROOMS.getByName(hint.room_id).notificationEligible(identity.player_id, hint) : await this.env.ROOMS_V2.getByName(hint.room_id).notificationEligible(identity.player_id, hint);
+        // A Relay room answers in one call: still due, a member, and its pair gate with this player's safety token.
+        if (hint.room_family !== "legacy") return await this.env.ROOMS_V2.getByName(hint.room_id).notificationConfirm(identity.player_id, hint, this.safetyToken) && current();
+        const pending = await this.env.ROOMS.getByName(hint.room_id).notificationEligible(identity.player_id, hint);
         if (!pending || !current()) return false;
-        const members = hint.room_family === "legacy" ? await this.env.ROOMS.getByName(hint.room_id).safetyMembers(identity.player_id) : await this.env.ROOMS_V2.getByName(hint.room_id).safetyMembers(identity.player_id);
+        const members = await this.env.ROOMS.getByName(hint.room_id).safetyMembers(identity.player_id);
         return members.ok && !await interactionBlocked(this.env, members.value.host_id, members.value.guest_id) && current();
       }
     });

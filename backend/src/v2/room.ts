@@ -199,9 +199,20 @@ export class RoomV2 extends DurableObject<Env> {
    */
   private async pairGate(player: string, context: CampaignRoomContext | undefined, safetyToken: string | undefined): Promise<Outcome<RoomPair>> {
     const members = await this.safetyMembers(player, context); if (!members.ok) return members;
-    const { host_id: host, guest_id: guest } = members.value, check = () => interactionBlocked(this.env, host, guest);
-    const blocked = safetyToken === undefined ? await check() : await this.unblocked.blocked(player, safetyToken, host, guest, check);
-    return blocked ? fail(403, "player_blocked") : members;
+    return await this.pairBlocked(player, members.value.host_id, members.value.guest_id, safetyToken) ? fail(403, "player_blocked") : members;
+  }
+  /** Whether the pair blocks either way; with `player`'s safety token, a pair seen unblocked under it is not asked again (UnblockedPairMemo). */
+  private pairBlocked(player: string, host: string, guest: string | null, safetyToken: string | undefined): Promise<boolean> {
+    const check = () => interactionBlocked(this.env, host, guest);
+    return safetyToken === undefined ? check() : this.unblocked.blocked(player, safetyToken, host, guest, check);
+  }
+  /**
+   * Binding only: the push alarm's one room call before a send (Player.deliverTurnNotification): the hint is still
+   * due for this member, and the pair gate passes, remembered under the recipient's own safety token.
+   */
+  async notificationConfirm(player: string, hint: RoomHint, safetyToken?: string): Promise<boolean> {
+    if (!this.notificationEligible(player, hint)) return false;
+    return (await this.pairGate(player, undefined, safetyToken)).ok;
   }
   /** The router's check before a room request (pairGate). */
   async interactionAllowed(player: string, context?: CampaignRoomContext, safetyToken?: string): Promise<Outcome<true>> {
@@ -340,18 +351,21 @@ export class RoomV2 extends DurableObject<Env> {
       first_player_id: stage.first_player_slot === "p0" ? state.host_id : state.guest_id,
       second_player_id: stage.first_player_slot === "p0" ? state.guest_id : state.host_id };
   }
-  redo(player: string, value?: unknown, deviceHash?: string): Promise<Outcome<RedoState>> { return this.redoInternal(player, value, deviceHash); }
-  private async redoInternal(player: string, value?: unknown, deviceHash?: string, context?: CampaignRoomContext, binding?: CampaignRedoBinding): Promise<Outcome<RedoState>> {
+  /** `safetyToken`: the caller's, so the room's pair gate (pairBlocked) stands in for the router's own check. */
+  redo(player: string, value?: unknown, deviceHash?: string, safetyToken?: string): Promise<Outcome<RedoState>> { return this.redoInternal(player, value, deviceHash, undefined, undefined, safetyToken); }
+  private async redoInternal(player: string, value?: unknown, deviceHash?: string, context?: CampaignRoomContext, binding?: CampaignRedoBinding, safetyToken?: string): Promise<Outcome<RedoState>> {
     try {
       if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return this.unavailable(player);
-      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      if (await this.pairBlocked(player, observed.host_id, observed.guest_id, binding ? undefined : safetyToken)) return fail(403, "player_blocked");
       // A public duel's phone names its partner by a stand-in (duels/public-mask.ts); the redo source holds the ids.
       const shown = value === undefined || binding ? value : unmaskRedo(value, duelMasks(duelLink(this.ctx.storage), observed).duel_masks ?? null);
       const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(shown);
       const access = binding ? await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context) : null;
       if (deviceHash !== undefined && !await this.env.PLAYERS.getByName(player).authorize(deviceHash)) return fail(401, "invalid_auth");
+      // Only a change reaches the partner live; a retried or repeated request sends nothing.
+      let changed = false;
       const outcome = await this.ctx.storage.transaction(async () => {
         if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
         else {
@@ -366,14 +380,16 @@ export class RoomV2 extends DurableObject<Env> {
         if (!input) return ok({ ...redoState(this.ctx.storage, source), ...(binding ? {} : duelMasks(duelLink(this.ctx.storage), state)) });
         if (this.hard.run(this.ctx.storage)) return fail(409, "hard_run_no_redo");
         // Only a first request on a standalone room reaches the partner; Story rooms stay excluded.
-        const first = !binding && input.action === "request" && source !== null && redoState(this.ctx.storage, source).request === null;
+        const before = source === null ? null : redoState(this.ctx.storage, source).request;
+        const first = !binding && input.action === "request" && source !== null && before === null;
         const mutated = mutateRedo(this.ctx.storage, source, player, input);
+        changed = mutated.ok && canonicalJson(mutated.value.request) !== canonicalJson(before);
         const result = mutated.ok && !binding ? ok({ ...mutated.value, ...duelMasks(duelLink(this.ctx.storage), state) }) : mutated;
         if (first && result.ok && result.value.request?.status === "pending" && this.notificationsAvailable() &&
           queueRedoHint(this.ctx.storage, this.env, "relay", state, source.first_player_id, result.value.request.request_id)) await scheduleGameplayNotifications(this.ctx.storage);
         return result;
       });
-      if (input && !binding && outcome.ok) this.announce(player);
+      if (input && !binding && outcome.ok && changed) this.announce(player);
       return outcome;
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
@@ -889,10 +905,11 @@ export class RoomV2 extends DurableObject<Env> {
       return outcome;
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  fork(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string): Promise<Outcome<MutationV2>> {
-    return this.forkInternal(player, value, context, redoDeviceHash);
+  /** `safetyToken`: the caller's, so the block check reuses the pair gate's memo (pairBlocked). */
+  fork(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string, safetyToken?: string): Promise<Outcome<MutationV2>> {
+    return this.forkInternal(player, value, context, redoDeviceHash, undefined, safetyToken);
   }
-  private async forkInternal(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string, campaignRedo?: CampaignRedoAccept): Promise<Outcome<MutationV2>> {
+  private async forkInternal(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string, campaignRedo?: CampaignRedoAccept, safetyToken?: string): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value); exact(input, ["base_revision", "idempotency_key", "branch", "stage_index", ...(input.redo_request_id === undefined ? [] : ["redo_request_id"])]);
       const redoRequestId = input.redo_request_id === undefined ? undefined : text(input.redo_request_id, /^[a-f0-9]{64}$/);
@@ -904,7 +921,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const stageIndex = integer(input.stage_index, 0, chapter(observed).stages.length - 1), key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const hash = await digest(canonicalJson({ operation: "fork", ...input }));
-      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      if (await this.pairBlocked(player, observed.host_id, observed.guest_id, context === undefined && !campaignRedo ? safetyToken : undefined)) return fail(403, "player_blocked");
       let access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
       if (campaignRedo) {
         campaignRedoAccess(access, campaignRedo.binding);

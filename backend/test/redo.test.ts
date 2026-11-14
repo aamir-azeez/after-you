@@ -15,11 +15,11 @@ import legacyB from "../../game/tests/fixtures/first-light-b.json";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 let address = 0;
-async function call(path: string, method = "GET", account?: Account, body?: unknown) {
+async function call(path: string, method = "GET", account?: Account, body?: unknown, extra: Record<string, string> = {}) {
   const configured = { ...env };
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: {
     "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + ++address,
-    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {})
+    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...extra
   }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 async function json<T>(response: Promise<Response>, status = 200): Promise<T> { const result = await response; expect(result.status).toBe(status); return result.json<T>(); }
@@ -56,6 +56,24 @@ async function pairLegacy() {
 afterEach(async () => { await reset(); });
 
 describe("partner redo requests", () => {
+  it("shows a current request on Home only to clients that ask, never across a later turn", async () => {
+    const { host, guest, room, path } = await pairV2();
+    type Inbox = { rooms: { room_id: string; redo?: string }[] };
+    const redoOf = async (who: Account, asked = true) => (await json<Inbox>(call("/v1/room-inbox", "GET", who, undefined, asked ? { "X-AfterYou-Room-Redo": "1" } : {}))).rooms.find(entry => entry.room_id === room.room_id)?.redo;
+    expect(await redoOf(host)).toBeUndefined();
+    await request(path, guest);
+    expect(await redoOf(host)).toBe("asked_you");
+    expect(await redoOf(guest)).toBe("you_asked");
+    // Older clients count the keys exactly: without the header the entry is as before.
+    expect(await redoOf(host, false)).toBeUndefined();
+    const state = await json<RedoState>(call(path + "/redo", "GET", host));
+    await json<RedoState>(call(path + "/redo", "POST", host, { action: "decline", source: state.source }));
+    expect(await redoOf(guest)).toBe("kept");
+    expect(await redoOf(host)).toBeUndefined();
+    // The second turn moves the revision, so the old request no longer shows.
+    await turnV2(room, guest, b, middle);
+    expect(await redoOf(guest)).toBeUndefined();
+  });
   it("keeps a request advisory, restores it after eviction, and requires the first player's consent", async () => {
     const { host, guest, room, path } = await pairV2();
     const offered = await json<RedoState>(call(path + "/redo", "GET", guest));

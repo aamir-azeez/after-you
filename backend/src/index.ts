@@ -9,7 +9,7 @@ import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
-import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER } from "./room-inbox";
+import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, ROOM_INBOX_REDO_HEADER } from "./room-inbox";
 import { endReactionsWanted, facePacksWanted } from "./v2/end-reactions";
 import { DISPLAY_NAME_PATH, displayNamesShown, friendLinkCode, namesRoomRoute, routeDisplayName, routeFriendLinkName } from "./display-names";
 import { leaveRoom, requireInPlay } from "./room-leave";
@@ -159,7 +159,7 @@ export default {
         const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
         // The face on the friend's latest turn, only for clients that show it.
         const showReactions = endReactionsWanted(request), showNames = displayNamesShown(request, env);
-        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, facePacksWanted(request));
+        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, facePacksWanted(request), request.headers.get(ROOM_INBOX_REDO_HEADER) === "1");
         return await maskedResponse(withNext(json(page.body), page.next), playerId);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));

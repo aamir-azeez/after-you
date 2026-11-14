@@ -286,9 +286,16 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // DELETE photo bypasses the interaction gate so owners can remove media.
   // It must still negotiate before inspecting recording/photo authority.
   if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
+  // A standalone redo runs the room's own pair gate inside its one room call (membership, then blocks with the
+  // caller's safety token), so it skips the separate router check. A read: auth() has just checked the device;
+  // requests re-check it.
+  if (operation === "redo" && !item && context === undefined) {
+    if (request.method === "GET") return json(unwrap(await room.redo(playerId, undefined, undefined, safetyToken)));
+    if (request.method === "POST") return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await bearerDigest(request), safetyToken)));
+    throw new ApiError(405, "method_not_allowed");
+  }
   if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id, context, safetyToken);
   if (operation === "redo" && !item) {
-    // A read: auth() has just checked the device, and the room checks membership and blocks. Requests re-check it.
     if (request.method === "GET") return json(unwrap(await room.redo(playerId)));
     if (request.method === "POST") { return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await bearerDigest(request)))); }
     throw new ApiError(405, "method_not_allowed");
@@ -367,7 +374,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (until !== undefined) pollen = { fj_until: until };
     await reauthorize(request, playerId, env, until);
   }
-  if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request))));
+  if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request), context === undefined ? safetyToken : undefined)));
   // Story rooms never earn; a standalone turn with `pollen` freezes its facts and is credited once.
   // `board_looks`, `duel_link`, `duel_looks` and `duel_partner_hint` are server only: they go to the board, the duel and the partner, never into the reply.
   const { board_looks, duel_link, duel_looks, duel_partner_hint, ...committed } = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
