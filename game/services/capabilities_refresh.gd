@@ -7,10 +7,12 @@ extends Node
 ## It reads once the signed-in player is known (identity_ready), and again when
 ## the app comes back to the front, at most once every RESUME_GAP_MS while the
 ## last read worked, so a server switch reaches a phone without a restart. A
-## read that fails goes again on RETRY_MS (2, 5, 15, 30 seconds, then every
-## minute), only while the app is in front. While the phone reads as offline
-## (services/connectivity.gd) its own retries wait: the probe asks the server
-## then, and the phone coming back online reads at once.
+## read that fails goes again on RETRY_MS (2, 5, 15, 30 seconds, then a
+## minute), only while the app is in front; after those it waits for the next
+## resume, the phone coming back online or a new player, so a server that
+## answers with errors gets a handful of reads, never a steady stream. While
+## the phone reads as offline (services/connectivity.gd) its own retries wait:
+## the probe asks the server then, and the phone coming back online reads at once.
 ##
 ## Before the first answer of a run everything shows as if it works (pending);
 ## a tap then waits for the read out (until_read, at most TAP_WAIT_MS). The
@@ -23,7 +25,7 @@ const Connectivity = preload("res://services/connectivity.gd")
 
 signal changed
 
-## Waits after a failed read, the last repeating.
+## Waits after each failed read in a row; after the last, no more until something changes.
 const RETRY_MS := [2000, 5000, 15000, 30000, 60000]
 ## A read not wanted now (busy, another screen) is asked for again after this.
 const NOT_NOW_MS := 2000
@@ -104,7 +106,7 @@ func read_now() -> void:
 		_last_ok_ms = _now()
 	else:
 		_failures += 1
-		_ask(_now() + int(RETRY_MS[mini(_failures - 1, RETRY_MS.size() - 1)]))
+		if _failures <= RETRY_MS.size(): _ask(_now() + int(RETRY_MS[_failures - 1]))
 	_update()
 	changed.emit()
 
@@ -114,8 +116,10 @@ func _ask(at_ms: int) -> void:
 	_update()
 
 func _on_connectivity(online: bool) -> void:
-	# Back online: a read that failed, or never ran, goes now.
-	if online and _ready_to_read and not known(): _ask(_now())
+	# Back online: a read that failed, or never ran, goes now, with a fresh set of retries.
+	if online and _ready_to_read and not known():
+		_failures = 0
+		_ask(_now())
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED:
@@ -129,6 +133,7 @@ func _notification(what: int) -> void:
 func resumed() -> void:
 	_foreground = true
 	if not _ready_to_read: return
+	if not known(): _failures = 0
 	if not known() or _now() - _last_ok_ms >= RESUME_GAP_MS: _ask(_now())
 	_update()
 

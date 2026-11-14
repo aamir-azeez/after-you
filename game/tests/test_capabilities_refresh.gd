@@ -2,14 +2,38 @@ extends SceneTree
 ## The launch and resume capabilities read (services/capabilities_refresh.gd):
 ## it reads once the player is known and once per player; before its first
 ## answer buttons show as if they work (pending); a failed read goes again on
-## 2, 5, 15, 30 seconds and then every minute, never while the app is behind or
-## the screen up does not let it, and waits for the probe while the phone reads
-## as offline; the phone coming back online reads at once; coming back to the
+## 2, 5, 15, 30 seconds and a minute, never while the app is behind or the
+## screen up does not let it, then waits for something to change (a resume, the
+## phone coming back online, a new player); while the phone reads as offline it
+## waits for the probe; the phone coming back online reads at once; coming back to the
 ## front reads again only once the last good read is five minutes old; a read
 ## not wanted now (the room session busy) is asked again soon without counting
 ## as a failure; a tap before the first answer waits for it, briefly.
 const Refresh = preload("res://services/capabilities_refresh.gd")
 const Connectivity = preload("res://services/connectivity.gd")
+const Session = preload("res://services/relay_online_session.gd")
+
+## A server whose capabilities answer waits while `hold` is on (a slow network).
+class HeldApi extends Node:
+	signal release
+	var player_id := "CCCCCCCCCCCCCCCCCCCCCC"
+	var device_token := "synthetic-device-token"
+	var base_url := "https://capabilities-refresh.invalid"
+	var hold := false
+	var asked := 0
+	func configured() -> bool: return true
+	func request_json(_method: int, path: String, _body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
+		if path == "/v2/capabilities": asked += 1
+		while hold: await release
+		if path == "/v2/capabilities": return {"ok": true, "status": 200, "data": {"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "validation": "structural_client_replay_required", "chapters": []}}
+		return {"ok": false, "status": 404, "code": "not_found"}
+
+class SessionStore extends RefCounted:
+	var values: Dictionary = {}
+	func load_scope(scope: String) -> Dictionary: return {"ok": true, "found": values.has(scope), "value": values.get(scope, {}).duplicate(true)}
+	func save_scope(scope: String, value: Dictionary) -> Dictionary:
+		values[scope] = value.duplicate(true)
+		return {"ok": true}
 
 var checks := 0
 var failures := 0
@@ -39,6 +63,33 @@ func _at(refresh: Node, at: int) -> void:
 	await process_frame
 	await process_frame
 
+## The launch read out while a screen asks for capabilities (Friends, Duels,
+## Play): the screen waits for that read and takes its answer, never a busy
+## refusal, and Play's wait (until_capabilities_read) lasts until it lands.
+func _shared_read() -> void:
+	var api := HeldApi.new()
+	root.add_child(api)
+	var session: RefCounted = Session.new(api, func() -> Dictionary: return {"ready": true, "player_id": api.player_id, "epoch": 1}, SessionStore.new())
+	api.hold = true
+	var first := {"done": false, "ok": false}
+	var second := {"done": false, "ok": false}
+	var launch := func() -> void:
+		first.ok = await session.load_capabilities(func() -> bool: return true)
+		first.done = true
+	var screen := func() -> void:
+		second.ok = await session.load_capabilities()
+		second.done = true
+	launch.call()
+	await process_frame
+	screen.call()
+	await process_frame
+	_check(not second.done and session.reading_capabilities_only() and api.asked == 1, "A screen asking while the launch read is out waits for it, and Play's wait holds")
+	api.hold = false
+	api.release.emit()
+	for i in range(4): await process_frame
+	_check(first.done and second.done and first.ok and second.ok and api.asked == 1 and not session.capabilities.is_empty(), "Both take the one answer: %s %s, %d asked" % [first, second, api.asked])
+	api.free()
+
 func _run() -> void:
 	var state: RefCounted = Connectivity.new()
 	Connectivity.use_shared(state)
@@ -55,15 +106,19 @@ func _run() -> void:
 	_check(refresh.pending(), "Once the player is known, buttons show as if they work")
 	await _at(refresh, 0)
 	_check(reads == 1 and refresh.failures() == 1 and refresh.pending(), "It reads at once; a failure keeps it pending")
-	var expected := [2000, 5000, 15000, 30000, 60000, 60000]
 	var at := 0
-	for wait: int in expected:
+	for wait: int in Refresh.RETRY_MS:
 		await _at(refresh, at + wait - 1)
 		var before := reads
 		await _at(refresh, at + wait)
 		at += wait
 		_check(reads == before + 1, "The next read waits %d ms (%d reads)" % [wait, reads])
-	_check(refresh.known() and not refresh.pending() and refresh.failures() == 0, "An answer: known, no longer pending")
+	await _at(refresh, at + 3600000)
+	_check(reads == 6 and refresh.pending(), "After those, an hour later, nothing more: a server answering with errors gets six reads")
+	at += 3600000
+	refresh.resumed()
+	await _at(refresh, at)
+	_check(reads == 7 and refresh.known() and not refresh.pending() and refresh.failures() == 0, "The next resume reads again; an answer: known, no longer pending")
 	refresh.identity_ready("server|PLAYER")
 	await _at(refresh, at + 1)
 	_check(reads == 7, "The same player again reads nothing more")
@@ -117,6 +172,7 @@ func _run() -> void:
 	known = await refresh.until_read()
 	_check(not known and refresh.pending() and reads == 15, "One that fails goes on without it")
 	refresh.free()
+	await _shared_read()
 	Connectivity.use_shared(null)
 	print("AFTER YOU CAPABILITIES REFRESH: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)

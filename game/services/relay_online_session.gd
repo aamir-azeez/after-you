@@ -82,6 +82,8 @@ var _opening := false
 ## A screen's capabilities read is out or waiting (load_capabilities with `still`):
 ## a read, not work, so navigation waits for it.
 var _reading_capabilities := false
+## Any capabilities read is out (load_capabilities): a second asker waits for it.
+var _capabilities_out := false
 var _retiring_selection := false
 var _auxiliary_factory: RefCounted
 var photo_store: RefCounted = PhotoStore.new()
@@ -141,6 +143,7 @@ func invalidate_identity() -> void:
 	_busy = false
 	_opening = false
 	_reading_capabilities = false
+	_capabilities_out = false
 	_retiring_selection = false
 
 func busy() -> bool:
@@ -459,9 +462,22 @@ static func verified_invitation(room: Dictionary, owner: String) -> String:
 ## waiting when it fails is dropped and changes nothing here, and one already
 ## out is only a read (reading_capabilities_only), so a screen that closed
 ## never holds the session busy (Friends' first read after launch).
+## A read asked while another is out (the launch read, services/capabilities_refresh.gd)
+## waits for that one and takes its answer, never a busy refusal.
 func load_capabilities(still: Callable = Callable()) -> bool:
 	if not _ready():
 		return false
+	if _capabilities_out:
+		var tree := Engine.get_main_loop() as SceneTree
+		while _capabilities_out and tree != null: await tree.process_frame
+		return not capabilities.is_empty()
+	var generation := _generation
+	_capabilities_out = true
+	var loaded := await _load_capabilities(still)
+	if generation == _generation: _capabilities_out = false
+	return loaded
+
+func _load_capabilities(still: Callable) -> bool:
 	_room_chapters.clear()
 	_room_summaries.clear()
 	var generation := _generation

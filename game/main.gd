@@ -949,6 +949,8 @@ func _open_wardrobe_from_pip() -> bool:
 func _refresh_home_pollen() -> void:
 	if mode != "home" or not is_instance_valid(home_menu_view): return
 	home_menu_view.show_wardrobe(_wardrobe_offered())
+	# A row shown before the server's first answer greys with Play and Duels once reads keep failing.
+	if home_menu_view.wardrobe_button.visible and not wardrobe_flow.available(): OfflineHold.hold(home_menu_view.wardrobe_button)
 	_refresh_pollen_chip()
 
 ## A public switch changed (services/server_switches.gd): Home's Duels row follows at once.
