@@ -381,7 +381,7 @@ func _chip_routes(flow: Node, host: Node, back: Array) -> void:
 	var scope: Dictionary = host.pollen_client.scope()
 	_check(flow.chip_state()[2] == [] and _fruit_half(flow) == false, "Fruits off: no Fruit half on Home's chip, and its state says so")
 	kept_fruits.set_enabled(str(scope.server), str(scope.owner), true)
-	_check(flow.chip_state()[2] == [0] and _fruit_half(flow) == true, "Fruits on: the Fruit half shows 0 before the first Fruits read, and Home's chip state changes with it")
+	_check(flow.chip_state()[2] == [PollenChip.WAITING] and _fruit_half(flow) == true, "Fruits on: the Fruit half shows the placeholder before the first Fruits read, and Home's chip state changes with it")
 	var fruit_routes: Array = []
 	flow.fruits_route = func(from: String) -> void: fruit_routes.append(from)
 	var page_chip_fruits: Control = flow.chip()

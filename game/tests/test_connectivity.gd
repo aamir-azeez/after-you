@@ -379,11 +379,11 @@ func _home() -> void:
 	state.force(false)
 	app._live_health_changed(true)
 	_check(state.online(), "The live socket opening reads as online")
-	# The Pollen chip's plus (the store) greys; its balance stays.
+	# Every half of the Pollen chip needs the server: each greys and comes back.
 	var chip: Control = PollenChip.make(1200, true)
 	viewport.add_child(chip)
 	state.force(false)
-	_check(chip.plus_button.disabled and not chip.amount_button.disabled, "Offline the chip's plus greys and its balance stays")
+	_check(chip.plus_button.disabled and chip.amount_button.disabled, "Offline the chip's plus and balance grey")
 	state.note_reached()
 	_check(not chip.plus_button.disabled, "And the plus comes back")
 	chip.queue_free()

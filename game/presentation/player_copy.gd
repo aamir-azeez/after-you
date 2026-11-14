@@ -379,6 +379,9 @@ const WARDROBE_SHORT_BUNDLE_GETS := " Pollen"
 const WARDROBE_SHORT_BUNDLE_GETS_GIFT := " Pollen with your first bundle gift"
 ## The balance chip's left half, for screen readers.
 const POLLEN_CHIP_BALANCE := "Pollen: %s"
+## A chip's amount before the first balance arrives (presentation/kit/pollen_chip.gd), and what a screen reader says for it.
+const CHIP_WAITING := "···"
+const CHIP_WAITING_SPOKEN := "loading"
 
 # The Pollen store (board 2: presentation/pollen_store_page.gd, pollen_store_flow.gd).
 const POLLEN_STORE_TITLE := "Store"
