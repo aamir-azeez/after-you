@@ -2,8 +2,11 @@ extends RefCounted
 ## Open controls (runtime.gd OPEN_RULES_VERSION): the rules a new level pins
 ## by default. A pad holds for either pip and either pip works any lever,
 ## switch or selector, so a definition on them carries no owner_slot on its
-## controls; one-pip access comes from where a control stands. Crossings and
-## zones keep their own owner_slot field (ADDING-A-CHAPTER, one-pip access).
+## controls; one-pip access comes from where a control stands. Zones keep
+## their own owner_slot field; bridges and stairs open to both pips too
+## (open_crossings), except those the puzzle truly needs owned, which keep
+## their owner and the route barriers' visible gate (ADDING-A-CHAPTER,
+## one-pip access).
 ## Shared by the engines (the numbers), the catalogs and the scaffold's
 ## templates. It preloads nothing, so a catalog may preload it.
 ##
@@ -28,6 +31,15 @@ static func pin(level: Dictionary) -> Dictionary:
 	for stage: Dictionary in level.get("stages", []):
 		for kind: String in KINDS:
 			for item: Dictionary in stage.get(kind, []): item.erase("owner_slot")
+	return level
+
+## `level` with every bridge and stair open to both pips, but those named in
+## `keep`: the ones a stage needs owned, or one pip could finish it alone
+## (tests/test_level_checker.gd, both pips). Changes and returns `level`.
+static func open_crossings(level: Dictionary, keep: Array) -> Dictionary:
+	for kind: String in ["bridges", "stairs"]:
+		for route: Dictionary in level.get(kind, []):
+			if str(route.id) not in keep: route.erase("owner_slot")
 	return level
 
 ## Whether `definition` pins open controls.

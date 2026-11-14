@@ -14,5 +14,7 @@ const DATA := {
 	"bridges": V1.DATA.bridges,
 	"stair_rail": V1.DATA.stair_rail,
 	"goal": V1.DATA.goal,
+	# The balcony's solid posts (the definition's obstacles) drawn as timber.
+	"obstacles": "post",
 	"props": {"*": V1.COURT_BACK + [{"kind": "basket", "at": [-600, -436], "surface": "court", "y": 150, "wall": true}] + V1.REST},
 }

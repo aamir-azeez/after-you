@@ -334,10 +334,29 @@ func _build_obstacle(obstacle: Dictionary) -> void:
 	if str(dressing.get("obstacles", "")) == "flowerbed":
 		_flowerbed(r, at)
 		return
+	if str(dressing.get("obstacles", "")) == "post":
+		_post(r, at)
+		return
 	box(Vector3(float(r[2] - r[0]) / 100.0, 0.35, float(r[3] - r[1]) / 100.0), Color("718b79"), at + Vector3(0, 0.175, 0), terrain)
 	for x in range(int(r[0]) + 18, int(r[2]), 35):
 		var tuft := sphere(0.21, Color("8dad95"), Vector3(float(x) / 100.0, at.y + 0.4, at.z), terrain)
 		tuft.scale = Vector3(0.7, 0.6, 1)
+
+## A timber post exactly on the obstacle's collision rectangle, standing up to
+## the underside of the raised floor over it (its 20 cm deep planks), else
+## 1.2 m: the solid leg of a balcony.
+func _post(r: Array, at: Vector3) -> void:
+	var top := INF
+	for island: Dictionary in current_level.get("islands", []):
+		var o: Array = island.rect_cm
+		var height := float(island.get("height_cm", 0)) / 100.0
+		if height > at.y + 0.5 and o[0] <= r[0] and o[2] >= r[2] and o[1] <= r[1] and o[3] >= r[3]: top = minf(top, height - 0.20)
+	if top == INF: top = at.y + 1.2
+	var size := float(mini(int(r[2] - r[0]), int(r[3] - r[1]))) / 11.0
+	var post := Props.build({"kind": "post", "size": size, "height": int(round((top - at.y) * 100.0))}, terrain, at.y, bool(dressing.get("lit", true)))
+	post.position = Vector3(at.x, at.y, at.z)
+	# An obstacle, not dressing: the dressing lint counts props by this mark.
+	post.remove_meta("dressing_kind")
 
 ## A raised timber flower bed exactly on the obstacle's collision rectangle.
 func _flowerbed(r: Array, at: Vector3) -> void:

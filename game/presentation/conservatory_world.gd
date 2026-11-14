@@ -71,9 +71,10 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 		box(Vector3(0.035,0.16,depth-0.01),CONSERVATORY_FRAME,middle+Vector3(side*(width/2-0.0285),0.08,0),surface)
 
 ## A plank balcony over a lower room (a raised floor in the "deck" style): it
-## stands on timber posts by its corners and halfway along, with a stringer
-## each side. When its back comes within 60 cm of the room's back wall, a
-## ledger on the wall's frame carries it and a fern trough fills the gap;
+## stands on the level's solid posts (its obstacles, drawn as posts by the
+## dressing), with a stringer each side. When its back comes within 60 cm of
+## the room's back wall, a ledger on the wall's frame carries it and a fern
+## trough fills the gap;
 ## otherwise a rail closes it. Rails close its open sides and flower boxes
 ## hang off its outer rail. The frame stands on the room below, so it stays
 ## solid while the cutaway fades the deck for a pip underneath. The world
@@ -92,11 +93,6 @@ func _build_balcony(island: Dictionary, surface: Node3D) -> void:
 	# The deck's planks are 20 cm deep; the frame reaches up to them.
 	var under := int(island.height_cm)-20
 	var mid_z := int(r[1]+r[3])/2
-	var west := _clear_of_seams(int(r[0])+16,int(below.rect_cm[0]),1)
-	var east := _clear_of_seams(int(r[2])-16,int(below.rect_cm[0]),-1)
-	for z: int in [int(r[1])-4,mid_z,int(r[3])-10]:
-		for x: int in [west,east]:
-			_balcony_piece({"kind":"post","at":[x,_clear_of_seams(z,int(below.rect_cm[1]),1 if z<mid_z else -1)],"height":under},room,lit)
 	for x: int in [int(r[0])+4,int(r[2])-4]:
 		_balcony_piece({"kind":"wall","from":[x,r[1]],"to":[x,r[3]],"height":12,"thickness":8,"y":under-22,"color":"7a5c40"},room,lit)
 	var wall_z := int(below.rect_cm[1])
@@ -127,14 +123,6 @@ func _floor_below(island: Dictionary) -> Dictionary:
 		var o: Array = other.rect_cm
 		if other.id != island.id and int(other.get("height_cm",0))<int(island.get("height_cm",0)) and at.x>o[0] and at.x<o[2] and at.y>o[1] and at.y<o[3]: return other
 	return {}
-
-## `value` (cm) moved toward `toward` until 13 cm clear of the room's floor
-## seams (every 64 cm from `origin`), so a post's foot shares no face with one.
-static func _clear_of_seams(value: int, origin: int, toward: int) -> int:
-	var offset := posmod(value-origin,64)
-	if offset<13: return value+(13-offset if toward>0 else -offset-13)
-	if offset>51: return value+(64-offset+13 if toward>0 else -(offset-51))
-	return value
 
 ## The rear edge's [x0, x1] in cm, cut back (with a 6 cm gap for its lip) at
 ## any floor standing at least 50 cm above this one over that edge.

@@ -7,11 +7,15 @@ extends RefCounted
 const Earlier = preload("res://core/journey/long_way_home_catalog.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const WORDS := ["title", "subtitle", "hint_a", "hint_b"]
+## The one crossing kept owned: open, the service stair would let the pip who
+## plays second climb to the service landing and finish A Place Beside You alone.
+const OWNED := ["service-up"]
 
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition_v2().duplicate(true)
 	level.version = 3
 	OpenControls.pin(level)
+	OpenControls.open_crossings(level, OWNED)
 	for field: String in WORDS:
 		level.erase(field)
 		for stage: Dictionary in level.stages: stage.erase(field)

@@ -17,7 +17,6 @@
 			"from_surface": "w-beach",
 			"height_cm": 0,
 			"id": "sand-1",
-			"owner_slot": "",
 			"rect_cm": [
 				-128,
 				288,
@@ -30,7 +29,6 @@
 			"from_surface": "w-terrace",
 			"height_cm": 48,
 			"id": "stones-1",
-			"owner_slot": "",
 			"rect_cm": [
 				-128,
 				-64,
@@ -43,7 +41,6 @@
 			"from_surface": "w-quay",
 			"height_cm": 96,
 			"id": "jetty-1",
-			"owner_slot": "",
 			"rect_cm": [
 				-128,
 				-416,
@@ -56,7 +53,6 @@
 			"from_surface": "m-terrace",
 			"height_cm": 48,
 			"id": "stones-2",
-			"owner_slot": "",
 			"rect_cm": [
 				384,
 				-64,
@@ -69,7 +65,6 @@
 			"from_surface": "m-quay",
 			"height_cm": 96,
 			"id": "jetty-2",
-			"owner_slot": "",
 			"rect_cm": [
 				384,
 				-416,
@@ -82,7 +77,6 @@
 			"from_surface": "e-terrace-west",
 			"height_cm": 48,
 			"id": "lock-west",
-			"owner_slot": "",
 			"rect_cm": [
 				768,
 				-64,
@@ -95,7 +89,6 @@
 			"from_surface": "lock-chamber",
 			"height_cm": 48,
 			"id": "lock-east",
-			"owner_slot": "",
 			"rect_cm": [
 				928,
 				-64,
@@ -108,7 +101,6 @@
 			"from_surface": "e-beach",
 			"height_cm": 0,
 			"id": "slipway",
-			"owner_slot": "",
 			"rect_cm": [
 				1152,
 				288,
@@ -121,7 +113,6 @@
 			"from_surface": "e-terrace-east",
 			"height_cm": 48,
 			"id": "stones-3",
-			"owner_slot": "",
 			"rect_cm": [
 				1152,
 				-64,
@@ -134,7 +125,6 @@
 			"from_surface": "e-quay",
 			"height_cm": 96,
 			"id": "jetty-3",
-			"owner_slot": "",
 			"rect_cm": [
 				1152,
 				-416,
@@ -147,7 +137,6 @@
 			"from_surface": "m-quay",
 			"height_cm": 96,
 			"id": "quay-step",
-			"owner_slot": "p0",
 			"rect_cm": [
 				32,
 				-544,
@@ -160,7 +149,6 @@
 			"from_surface": "m-quay",
 			"height_cm": 96,
 			"id": "wheel-step",
-			"owner_slot": "p0",
 			"rect_cm": [
 				160,
 				-544,
@@ -173,7 +161,6 @@
 			"from_surface": "m-quay",
 			"height_cm": 96,
 			"id": "bollard-step",
-			"owner_slot": "p0",
 			"rect_cm": [
 				288,
 				-544,
@@ -186,7 +173,6 @@
 			"from_surface": "m-beach",
 			"height_cm": 0,
 			"id": "towpath",
-			"owner_slot": "",
 			"rect_cm": [
 				192,
 				368,
@@ -199,7 +185,6 @@
 			"from_surface": "w-quay",
 			"height_cm": 96,
 			"id": "boom-jetty",
-			"owner_slot": "p0",
 			"rect_cm": [
 				-704,
 				-416,
@@ -212,7 +197,6 @@
 			"from_surface": "w-terrace",
 			"height_cm": 48,
 			"id": "sea-gate-in",
-			"owner_slot": "p0",
 			"rect_cm": [
 				-576,
 				-64,
@@ -225,7 +209,6 @@
 			"from_surface": "sea-chamber",
 			"height_cm": 48,
 			"id": "sea-gate-out",
-			"owner_slot": "p0",
 			"rect_cm": [
 				-704,
 				-64,
@@ -238,7 +221,6 @@
 			"from_surface": "w-beach",
 			"height_cm": 0,
 			"id": "punt-ferry",
-			"owner_slot": "p0",
 			"rect_cm": [
 				-704,
 				288,
@@ -251,7 +233,6 @@
 			"from_surface": "m-terrace",
 			"height_cm": 48,
 			"id": "race-stage",
-			"owner_slot": "p0",
 			"rect_cm": [
 				192,
 				-192,
@@ -264,7 +245,6 @@
 			"from_surface": "w-terrace",
 			"height_cm": 48,
 			"id": "bar-catwalk",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-512,
 				-192,
@@ -277,7 +257,6 @@
 			"from_surface": "w-terrace",
 			"height_cm": 48,
 			"id": "punt-post",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-296,
 				128,
@@ -303,7 +282,6 @@
 			"from_surface": "w-terrace",
 			"height_cm": 48,
 			"id": "gate-post",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-440,
 				128,
@@ -316,7 +294,6 @@
 			"from_surface": "w-terrace",
 			"height_cm": 48,
 			"id": "boom-post",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-368,
 				128,
@@ -329,7 +306,6 @@
 			"from_surface": "w-beach",
 			"height_cm": 0,
 			"id": "beach-catwalk",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-200,
 				480,
@@ -1736,7 +1712,6 @@
 			"from_height_cm": 48,
 			"from_surface": "w-terrace",
 			"id": "w-steps-low",
-			"owner_slot": "",
 			"rect_cm": [
 				-224,
 				128,
@@ -1751,7 +1726,6 @@
 			"from_height_cm": 96,
 			"from_surface": "w-quay",
 			"id": "w-steps-high",
-			"owner_slot": "",
 			"rect_cm": [
 				-224,
 				-224,
@@ -1766,7 +1740,6 @@
 			"from_height_cm": 48,
 			"from_surface": "m-terrace",
 			"id": "mill-steps",
-			"owner_slot": "",
 			"rect_cm": [
 				48,
 				128,
@@ -1796,7 +1769,6 @@
 			"from_height_cm": 96,
 			"from_surface": "e-quay",
 			"id": "east-steps",
-			"owner_slot": "",
 			"rect_cm": [
 				672,
 				-224,
@@ -1811,7 +1783,6 @@
 			"from_height_cm": 48,
 			"from_surface": "e-terrace-west",
 			"id": "boathouse-steps",
-			"owner_slot": "p1",
 			"rect_cm": [
 				640,
 				128,
@@ -1826,7 +1797,6 @@
 			"from_height_cm": 48,
 			"from_surface": "r-terrace",
 			"id": "rock-steps-low",
-			"owner_slot": "",
 			"rect_cm": [
 				1392,
 				128,
@@ -1841,7 +1811,6 @@
 			"from_height_cm": 96,
 			"from_surface": "r-quay",
 			"id": "rock-steps-high",
-			"owner_slot": "",
 			"rect_cm": [
 				1392,
 				-224,
@@ -1856,7 +1825,6 @@
 			"from_height_cm": 96,
 			"from_surface": "mole-quay",
 			"id": "mole-steps",
-			"owner_slot": "",
 			"rect_cm": [
 				-912,
 				-224,
@@ -1871,7 +1839,6 @@
 			"from_height_cm": 48,
 			"from_surface": "mole-terrace",
 			"id": "mole-slip",
-			"owner_slot": "",
 			"rect_cm": [
 				-912,
 				128,

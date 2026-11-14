@@ -4,7 +4,6 @@
 			"from_surface": "lower-room",
 			"height_cm": 0,
 			"id": "garden-door",
-			"owner_slot": "",
 			"rect_cm": [
 				448,
 				-32,
@@ -17,7 +16,6 @@
 			"from_surface": "court",
 			"height_cm": 0,
 			"id": "lower-crossing",
-			"owner_slot": "p0",
 			"rect_cm": [
 				-160,
 				160,
@@ -30,7 +28,6 @@
 			"from_surface": "court",
 			"height_cm": 0,
 			"id": "court-return",
-			"owner_slot": "p0",
 			"rect_cm": [
 				-160,
 				16,
@@ -43,7 +40,6 @@
 			"from_surface": "mirror-room",
 			"height_cm": 0,
 			"id": "room-return",
-			"owner_slot": "p0",
 			"rect_cm": [
 				96,
 				16,
@@ -150,6 +146,68 @@
 				-368,
 				176
 			]
+		}
+	],
+	"obstacles": [
+		{
+			"id": "balcony-post-1",
+			"rect_cm": [
+				-502,
+				-410,
+				-490,
+				-398
+			],
+			"surface_id": "court"
+		},
+		{
+			"id": "balcony-post-2",
+			"rect_cm": [
+				-403,
+				-410,
+				-391,
+				-398
+			],
+			"surface_id": "court"
+		},
+		{
+			"id": "balcony-post-3",
+			"rect_cm": [
+				-502,
+				-118,
+				-490,
+				-106
+			],
+			"surface_id": "court"
+		},
+		{
+			"id": "balcony-post-4",
+			"rect_cm": [
+				-403,
+				-118,
+				-391,
+				-106
+			],
+			"surface_id": "court"
+		},
+		{
+			"id": "balcony-post-5",
+			"rect_cm": [
+				-502,
+				160,
+				-490,
+				172
+			],
+			"surface_id": "court"
+		},
+		{
+			"id": "balcony-post-6",
+			"rect_cm": [
+				-403,
+				160,
+				-391,
+				172
+			],
+			"surface_id": "court"
 		}
 	],
 	"premium": true,
@@ -748,7 +806,6 @@
 			"from_height_cm": 160,
 			"from_surface": "recovery-landing",
 			"id": "recovery-stair",
-			"owner_slot": "p1",
 			"rect_cm": [
 				128,
 				-96,

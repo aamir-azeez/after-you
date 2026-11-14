@@ -4,7 +4,6 @@
 			"from_surface": "source-court",
 			"height_cm": 0,
 			"id": "court-landing",
-			"owner_slot": "p0",
 			"rect_cm": [
 				-256,
 				-48,
@@ -17,7 +16,6 @@
 			"from_surface": "partner-bank",
 			"height_cm": 0,
 			"id": "friend-crossing",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-256,
 				224,
@@ -30,7 +28,6 @@
 			"from_surface": "selector-landing",
 			"height_cm": 0,
 			"id": "home-shortcut",
-			"owner_slot": "",
 			"rect_cm": [
 				192,
 				32,
@@ -43,7 +40,6 @@
 			"from_surface": "drop-landing",
 			"height_cm": 0,
 			"id": "drop-garden",
-			"owner_slot": "p0",
 			"rect_cm": [
 				528,
 				-160,
@@ -56,7 +52,6 @@
 			"from_surface": "garden",
 			"height_cm": 0,
 			"id": "near-crossing",
-			"owner_slot": "p0",
 			"rect_cm": [
 				768,
 				176,
@@ -69,7 +64,6 @@
 			"from_surface": "near-porch",
 			"height_cm": 0,
 			"id": "porch-door",
-			"owner_slot": "p0",
 			"rect_cm": [
 				1024,
 				176,
@@ -82,7 +76,6 @@
 			"from_surface": "garden",
 			"height_cm": 0,
 			"id": "garden-arch",
-			"owner_slot": "p0",
 			"rect_cm": [
 				704,
 				320,
@@ -95,7 +88,6 @@
 			"from_surface": "garden-walk",
 			"height_cm": 0,
 			"id": "garden-door",
-			"owner_slot": "p0",
 			"rect_cm": [
 				1120,
 				320,
@@ -681,7 +673,6 @@
 			"from_height_cm": 0,
 			"from_surface": "source-court",
 			"id": "upper-stair",
-			"owner_slot": "p0",
 			"rect_cm": [
 				-256,
 				-288,
@@ -696,7 +687,6 @@
 			"from_height_cm": 160,
 			"from_surface": "upper-lane",
 			"id": "recovery-stair",
-			"owner_slot": "p0",
 			"rect_cm": [
 				288,
 				-160,
@@ -726,7 +716,6 @@
 			"from_height_cm": 96,
 			"from_surface": "service-landing",
 			"id": "service-down",
-			"owner_slot": "p1",
 			"rect_cm": [
 				1024,
 				-64,

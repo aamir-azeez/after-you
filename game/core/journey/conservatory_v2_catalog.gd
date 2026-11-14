@@ -25,17 +25,31 @@ const BALCONY_RECT := [-512, -400, -368, 176]
 const FORKS := ["court-fork", "high-return"]
 const START := [-416, -224]
 const HATCH := {"id": "balcony-hatch", "rect_cm": [-504, -24, -464, 24], "surface_id": BALCONY, "destination_surface": "court", "height_cm": 0}
+## The one crossing kept owned: open, the high stair would let the second pip
+## climb to the gallery and finish The Way Light Returns alone.
+const OWNED := ["high-stair"]
+## The balcony's timber posts, solid (Navigation obstacles on the court), 12 cm
+## square: a pip walks round them, never through. Just inside its corners and
+## halfway along, clear of the court's floor seams.
+const POSTS := [[-496, -404], [-397, -404], [-496, -112], [-397, -112], [-496, 166], [-397, 166]]
+const POST_CM := 12
 const WAIT := {"id": "court-wait", "position_cm": [-336, -352], "surface_id": "court", "height_cm": 0, "owner_slot": "p0", "radius_cm": 40}
 
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition().duplicate(true)
 	level.version = 2
 	OpenControls.pin(level)
+	OpenControls.open_crossings(level, OWNED)
 	for field: String in WORDS:
 		level.erase(field)
 		for stage: Dictionary in level.stages: stage.erase(field)
 	level.islands.append({"id": BALCONY, "rect_cm": BALCONY_RECT.duplicate(), "height_cm": BALCONY_HEIGHT})
 	level.drops.append(HATCH.duplicate(true))
+	var obstacles: Array = level.get_or_add("obstacles", [])
+	for index in range(POSTS.size()):
+		var at: Array = POSTS[index]
+		var half := POST_CM / 2
+		obstacles.append({"id": "balcony-post-%d" % (index + 1), "rect_cm": [at[0] - half, at[1] - half, at[0] + half, at[1] + half], "surface_id": "court"})
 	level.starts.p0 = {"position_cm": START.duplicate(), "height_cm": BALCONY_HEIGHT, "surface_id": BALCONY}
 	var first: Dictionary = level.stages[0]
 	for control: Dictionary in first.controls:
