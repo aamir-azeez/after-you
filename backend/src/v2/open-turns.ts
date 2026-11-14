@@ -112,6 +112,14 @@ export function passRoom(open: OpenTurns, used: number): number {
 export function mustFinish(open: OpenTurns, stage: number, turn: number, used: number): boolean {
   return turn >= 2 && (turn >= open.caps[stage] || passRoom(open, used) <= 0);
 }
+/**
+ * When an open turns stage ends (owner, 2026-11-14): both pips end a turn in the goal area (the live pip and the
+ * memory's final place) and the stage's objective holds. The first turn's own part is not asked again. The one place
+ * this rule lives on the server; core/physical/open_turns.gd holds the phone's.
+ */
+export function openStageEnds(atGoal: (slot: Slot) => boolean, objective: boolean): boolean {
+  return objective && atGoal("p0") && atGoal("p1");
+}
 /** Open turns acceptance: a first turn as before; a later turn either closes the stage or passes without its goal. */
 export function openAccepted(r: ChapterRecording, physical: (r: ChapterRecording) => boolean): boolean {
   if (r.role === "a" || r.completed) return physical(r);

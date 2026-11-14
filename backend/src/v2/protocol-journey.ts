@@ -2,7 +2,7 @@ import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import { openTurns, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
-import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openBodyLimits, openTurnLimits, recordingBytes, turnSlot } from "./open-turns";
+import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, recordingBytes, turnSlot } from "./open-turns";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -152,11 +152,16 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       return true;
     }
     for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
-    need(near(receiver, stage.goal) && predicate(stage.goal_policy.when), "checkpoint_goal_mismatch");
-    const policy = stage.source_policy;
-    need(policy.kind === "choice_pad" ? policy.branches!.some(branch => predicate({ pad_id: branch.pad_id })) :
-      predicate(policy.when) && (!policy.endpoint || near(source, policy.endpoint)), "checkpoint_source_position_mismatch");
-    if (definition.id === "conservatory" && index === 1) need(source.surface_id === "court", "checkpoint_source_position_mismatch");
+    if (openLimits) {
+      // Open turns: the stage ends only with both pips in its goal area and its objective holding (open-turns.ts openStageEnds).
+      need(openStageEnds(slot => near(object(players[slot]), stage.goal), predicate(stage.goal_policy.when)), "checkpoint_goal_mismatch");
+    } else {
+      need(near(receiver, stage.goal) && predicate(stage.goal_policy.when), "checkpoint_goal_mismatch");
+      const policy = stage.source_policy;
+      need(policy.kind === "choice_pad" ? policy.branches!.some(branch => predicate({ pad_id: branch.pad_id })) :
+        predicate(policy.when) && (!policy.endpoint || near(source, policy.endpoint)), "checkpoint_source_position_mismatch");
+      if (definition.id === "conservatory" && index === 1) need(source.surface_id === "court", "checkpoint_source_position_mismatch");
+    }
     if (definition.id === "long-way-home" && index === 1) need(stage.gates.every(gate => routes.includes(gate.route_id)), "checkpoint_mechanism_mismatch");
     if (!tideRules) for (const gate of stage.gates) {
       const open = previousRoutes.includes(gate.route_id) || predicate(gate.when);

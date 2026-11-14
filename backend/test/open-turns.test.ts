@@ -53,9 +53,11 @@ async function later(fixtureB: Rec, first: string, n: number, memory: Rec, close
     replay_checks: extraTicks ? [...fixtureB.replay_checks.slice(0, -1), { tick: fixtureB.duration_ticks + extraTicks, state_hash: fixtureB.final_state_hash }] : fixtureB.replay_checks,
     completed: closes, outcome: { ...fixtureB.outcome, objective_complete: closes } });
 }
-/** The schema 8 checkpoint that closes a stage with `turns`, from the fixture's own end state. */
-async function closing(fixtureEnd: Rec, previous: Rec, turns: Rec[]): Promise<Rec> {
+/** The schema 8 checkpoint that closes a stage with `turns`, from the fixture's own end state with both pips where its goal pip ended. */
+async function closing(fixtureEnd: Rec, previous: Rec, turns: Rec[], together = true): Promise<Rec> {
   const { a_recording_hash: _a, b_recording_hash: _b, ...rest } = structuredClone(fixtureEnd); void _a; void _b;
+  const goalPip = rest.players[other(turns[0].player_slot)];
+  if (together) rest.players = { p0: { ...goalPip }, p1: { ...goalPip } };
   return sealed({ ...rest, schema_version: 8, previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash), proof: { checkpoint: previous, turns } });
 }
 /** A stage's chain: turn 1 and `passes` passes, then the closing turn and its checkpoint. */
@@ -124,6 +126,8 @@ describe("open turns: rules and bounds", () => {
   it("checks a stage's whole chain: order, pips, memories, lengths and its proof", async () => {
     const start = initial(), { turns, checkpoint } = await chain(0, start, 2);
     expect(await validate(checkpoint, start, turns)).toEqual(checkpoint);
+    // The stage ends only with both pips in its goal area.
+    await expect(validate(await closing(setEnd as Rec, start, turns, false), start, turns)).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
     // Two turns are a chain too, in the same shape.
     const two = await chain(0, start, 0);
     expect((await validate(two.checkpoint, start, two.turns)).turn_hashes).toHaveLength(2);
