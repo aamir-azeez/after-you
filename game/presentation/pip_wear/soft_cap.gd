@@ -163,14 +163,14 @@ static func _brim(surface: SurfaceTool, cap: Dictionary, edge: PackedVector3Arra
 		_triangle(surface, [inner_under[column], inner_under[next], under[next]], cap.under, Vector3.DOWN)
 		_triangle(surface, [inner_under[column], under[next], under[column]], cap.under, Vector3.DOWN)
 
-## The ear flaps: a shell down each side of the head from under the cuff,
-## narrowing to a rounded bottom, in the crown's colour with a cuff-coloured
-## last row.
+## The ear flaps: a shell down each side of the head from the cuff's edge,
+## narrowing to a rounded bottom, knit in the crown's ridges with a
+## cuff-coloured last row.
 static func _flaps(surface: SurfaceTool, cap: Dictionary) -> void:
 	var half := float(cap.flaps[0])
 	var low := float(cap.flaps[1])
 	var narrow := float(cap.flaps[2])
-	var top := float(cap.edge) * ROW_AT[ROW_AT.size() - 2]
+	var top := float(cap.edge)
 	var lift := float(cap.edge_gap) + CUFF_ROLL * 0.5
 	for side: float in [-1.0, 1.0]:
 		var grid: Array[PackedVector3Array] = []
@@ -185,7 +185,9 @@ static func _flaps(surface: SurfaceTool, cap: Dictionary) -> void:
 				points.append(on[0] + on[1] * lift)
 			grid.append(points)
 		for row in range(FLAP_ROWS):
-			var colour: Color = cap.trim if row == FLAP_ROWS - 1 else cap.crown
+			# Knit like the crown: ridges in the band colour, the cuff's colour at the bottom.
+			var bands: Array = cap.bands
+			var colour: Color = cap.trim if row == FLAP_ROWS - 1 else (bands[0] if not bands.is_empty() and row % 2 == 1 else cap.crown)
 			for column in range(FLAP_COLUMNS):
 				var quad := [grid[row][column], grid[row][column + 1], grid[row + 1][column + 1], grid[row + 1][column]]
 				_triangle(surface, [quad[0], quad[1], quad[2]], colour, _middle(quad))

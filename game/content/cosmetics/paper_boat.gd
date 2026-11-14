@@ -13,6 +13,8 @@ const DATA := {
 	## It stands above the head.
 	"tall": true,
 	## The boat sits under the leaf and the leaf comes out of its top (kit/wear_fit.gd top anchor).
+	## Only a small leaf fits in the hull; a bigger one would lie through the
+	## boat as it sways, so it hides while the boat is worn.
 	"leaf_mode": "sits_on_top",
-	"leaf_max": "medium",
+	"leaf_max": "small",
 }
