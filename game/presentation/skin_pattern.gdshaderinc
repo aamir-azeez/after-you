@@ -4,13 +4,13 @@
 // (spirit_face_pattern.gdshader, under the eyes) and the torso
 // (spirit_body_pattern.gdshader). Coordinates follow the board's notes: the
 // surface seen straight on, u 0 at its left edge to 1 at its right, v 0 at its
-// top to 1 at its bottom. On the head the surface is unrolled like a box:
-// v goes on below 0 over the crown (to about -1.3 at the back of the top) and
-// further down the back (to about -2.4), so every part has its own v and a
-// recipe draws on the top, which the chapters' high cameras see most, and the
-// back (crown_wrap). The sides keep the front's mapping, so bands run round
-// them. Stamps are placed in metres. No time input: the drift is written
-// from the pip's own clock.
+// top to 1 at its bottom. On the head v goes on below 0 over the top (to
+// about -1.3 at the back of the top: crown_wrap), so a recipe draws on the
+// top, which the chapters' high cameras see most; the top takes over only
+// where the surface faces up, round its rounded edge, so nothing is squeezed
+// on the front, sides or back. The sides and back show the front's fields and
+// bands, so they run round with no seam. Stamps are placed in metres. No time
+// input: the drift is written from the pip's own clock.
 
 // The surface: its half width (x), the height of v 0 (y) and its height (z), metres.
 uniform vec3 surface_map = vec3(0.345, 0.28, 0.56);
@@ -28,9 +28,9 @@ uniform vec4 band_rows[4];
 uniform vec4 band_style[4];
 uniform vec3 band_color[4];
 uniform vec3 band_edge_color[4];
-// Stamps: centre x, y (y unrolled on the head) and half width (metres) and
-// turn (radians); shape (0 none, 1 a five point star, 2 a five lobed leaf).
-// On the torso they are on its front only.
+// Stamps: centre x, y (y unrolled over the head's top) and half width
+// (metres) and turn (radians); shape (0 none, 1 a five point star, 2 a five
+// lobed leaf) and side (1 the front and top, -1 the back below the top).
 uniform vec4 stamp_at[5];
 uniform vec4 stamp_style[5];
 uniform vec3 stamp_color[5];
@@ -42,9 +42,9 @@ uniform vec3 seam_color = vec3(0.5);
 uniform vec4 safe_eyes = vec4(0.0);
 // The slow drift (u), triangle shaped, 0 at rest and under Reduce motion.
 uniform float skin_drift = 0.0;
-// The unrolling (the head only): x the head's half height, y its half depth
-// (metres), z, w the heights over which the top takes over from the front or
-// back. 0: no unrolling (the torso).
+// The top's unrolling (the head only): the head's half width, height and
+// depth (metres) and its roundness, from which the surface's facing is
+// worked out. 0: none (the torso).
 uniform vec4 crown_wrap = vec4(0.0);
 
 float pattern_cover(float d) {
@@ -109,20 +109,19 @@ float pattern_wave(float u, vec4 rows, float kind) {
 // The skin's colour at `p` (the surface's own space, metres, from its centre).
 vec3 pattern_color(vec3 p) {
 	// Over the top, a point further back counts as further up.
-	// How far up the unrolled surface: up the front, then over the top (a
-	// point further back counts as further up), then on down the back.
+	// How far up the unrolled surface: up the front, then over the top, where
+	// a point further back counts as further up. The top takes over where the
+	// rounded box's surface faces up (its normal, from its own equation).
 	float up = p.y;
-	float top = 0.0;
-	float behind = 0.0;
+	float facing_up = 0.0;
 	if (crown_wrap.x > 0.0) {
-		top = smoothstep(crown_wrap.z, crown_wrap.w, p.y);
-		behind = 1.0 - smoothstep(-0.12, -0.02, p.z);
-		float over = p.y + max(0.0, crown_wrap.y - p.z);
-		float down_back = crown_wrap.x * 2.0 + crown_wrap.y * 2.0 - p.y;
-		up = mix(mix(p.y, down_back, behind), over, top);
+		vec3 n = sign(p) * pow(abs(p) / crown_wrap.xyz, vec3(crown_wrap.w - 1.0)) / crown_wrap.xyz;
+		facing_up = p.y > 0.0 ? smoothstep(0.55, 0.85, n.y / max(length(n), 1e-6)) : 0.0;
+		up = mix(p.y, crown_wrap.y + max(0.0, crown_wrap.z - p.z), facing_up);
 	}
-	// The sides' rear half (front mapping, not unrolled) takes no stamp or seam.
-	bool rear_side = p.z < 0.0 && top < 0.5 && behind < 0.5;
+	// Below the top, the back half shows the front's marks, but stamps (front
+	// or back, by side) and the seam keep to their own half.
+	bool behind = p.z < 0.0 && facing_up < 0.5;
 	vec2 uv = vec2(p.x / surface_map.x * 0.5 + 0.5 + skin_drift, (surface_map.y - up) / surface_map.z);
 	vec3 c = pattern_base;
 	for (int i = 0; i < 4; i++) {
@@ -139,8 +138,8 @@ vec3 pattern_color(vec3 p) {
 		c = mix(c, band_color[i], pattern_cover(max(top - uv.y, uv.y - bottom)));
 		if (band_style[i].y > 0.0) c = mix(c, band_edge_color[i], pattern_cover(max(top - band_style[i].y - uv.y, uv.y - top)));
 	}
-	// The seam runs down the back (on the head, below the crown).
-	if (seam_half > 0.0 && p.z < 0.0 && top < 0.5) c = mix(c, seam_color, pattern_cover(abs(p.x) - seam_half));
+	// The seam runs down the back (on the head, below the top).
+	if (seam_half > 0.0 && behind) c = mix(c, seam_color, pattern_cover(abs(p.x) - seam_half));
 	vec2 q = vec2(p.x + skin_drift * 2.0 * surface_map.x, up);
 	float clear = 1.0;
 	if (safe_eyes.z > 0.0 && p.z >= 0.0) {
@@ -148,7 +147,7 @@ vec3 pattern_color(vec3 p) {
 		clear = pattern_cover((1.0 - length(e)) * min(safe_eyes.z, safe_eyes.w));
 	}
 	for (int i = 0; i < 5; i++) {
-		if (stamp_style[i].x < 0.5 || (rear_side && crown_wrap.x > 0.0) || (crown_wrap.x == 0.0 && p.z < 0.0)) continue;
+		if (stamp_style[i].x < 0.5 || (behind ? stamp_style[i].y > 0.0 : stamp_style[i].y < 0.0)) continue;
 		vec2 s = q - stamp_at[i].xy;
 		float t = stamp_at[i].w;
 		s = mat2(vec2(cos(t), -sin(t)), vec2(sin(t), cos(t))) * s;

@@ -112,7 +112,7 @@ func _skins() -> void:
 		var made := SkinPattern.recipe(art.RECIPE)
 		for stamp: Dictionary in made.head.stamps:
 			var spot: Vector2 = stamp.at
-			_check(spot.x >= 0.0 and spot.x <= 1.0 and spot.y >= SkinPattern.BACK_BOTTOM and spot.y <= 1.0, "%s's stamps sit on the head, its front, crown or back" % id)
+			_check(spot.x >= 0.0 and spot.x <= 1.0 and spot.y >= SkinPattern.CROWN_BACK and spot.y <= 1.0, "%s's stamps sit on the head, its front or its top" % id)
 		_check(a.torso.material_override == b.torso.material_override, "%s's torso material is shared by every pip wearing it" % id)
 		var feet: Array = made.feet
 		_check((a.feet[0].get_child(0) as MeshInstance3D).material_override.albedo_color.is_equal_approx((feet[0] as Color).darkened(Look.FOOT_SHADE)), "%s's left foot takes its colour" % id)
