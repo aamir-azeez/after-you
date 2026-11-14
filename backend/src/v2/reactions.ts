@@ -1,6 +1,7 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, integer, object, ok, text, type Outcome } from "../protocol";
 import { exact } from "./protocol";
 import { initializePairReactions } from "./storage-schema";
+import { parseRow, type RowData } from "./row-codec";
 
 export const REACTION_PAIR_PATTERN = /^p(?:[0-9]|[12][0-9]|3[01])-[0-7]$/;
 export const MAX_PAIR_REACTIONS = 128;
@@ -19,9 +20,9 @@ type Input = PairHashes & { pair_id: string; key: string; expected: number; reac
 function member(state: Members | null): state is Members { return state !== null; }
 function installed(storage: DurableObjectStorage): boolean { return [4, 5, 6, 7, 8, 9].includes(storage.sql.exec<{ schema_version: number }>("SELECT schema_version FROM metadata WHERE id=1").one().schema_version); }
 function pairHashes(storage: DurableObjectStorage, pairId: string): PairHashes | null {
-  const row = storage.sql.exec<{ data: string }>("SELECT data FROM pairs WHERE pair_id=?", pairId).toArray()[0];
+  const row = storage.sql.exec<{ data: RowData }>("SELECT data FROM pairs WHERE pair_id=?", pairId).toArray()[0];
   if (!row) return null;
-  const pair = JSON.parse(row.data);
+  const pair = parseRow<{ a: { recording_hash: string }; b: { recording_hash: string } }>(row.data);
   return { a_hash: pair.a.recording_hash, b_hash: pair.b.recording_hash };
 }
 function view(storage: DurableObjectStorage, state: Members, pairId: string, hashes: PairHashes): PairReactions {

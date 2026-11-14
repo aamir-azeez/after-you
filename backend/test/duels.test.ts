@@ -1063,11 +1063,11 @@ describe("duel hints", () => {
       expect(duelHints() - sent).toBe(3);
       expect(counted.calls.filter(name => name === "PLAYERS.liveHint")).toHaveLength(2);
       expect(counted.calls.filter(name => name === "PLAYERS.liveHints")).toHaveLength(1);
-      // A mid-run turn costs 11 requests in all (12 before the partner's two hints became one). Block checks: the room's
+      // A mid-run turn costs 9 requests in all (11 before the room took the gate and the read into its own turn request, 12 before the partner's two hints became one). Block checks: the room's
       // gate asks both lists only on a player's first gated request in this room instance (memo), and the commit asks
       // both again after the body is read and hashed, always: that recheck is real, so it stays.
       expect(counted.calls.filter(name => name === "SAFETY_PROFILES.hasBlocked")).toHaveLength(index < 2 ? 4 : 2);
-      expect(counted.calls).toHaveLength(index < 2 ? 13 : 11);
+      expect(counted.calls).toHaveLength(index < 2 ? 11 : 9);
       const partnerSaw = sockets[partner === a1 ? "a1" : "a2"].messages.slice(-2).map(message => message.type);
       expect(partnerSaw).toEqual(["room_changed", "duels_changed"]);
       expect(told.rows.b1.written + told.rows.b2.written).toBe(0);

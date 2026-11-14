@@ -25,23 +25,26 @@ import { parsePosition } from "./history-room";
 import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { testerSwitchCapability } from "../test-codes";
 import { liveCapability } from "../live";
-import { triesField, triesWanted } from "./turn-tries";
-import { endReactionField, endReactionsWanted, FACE_PACKS_VERSION, facePacksWanted } from "./end-reactions";
+import { triesWanted } from "./turn-tries";
+import { endReactionsWanted, FACE_PACKS_VERSION, facePacksWanted } from "./end-reactions";
 import { requireOwnedFaces } from "./face-packs";
 import { limitRoomTransfer } from "../limits";
-import { runReactionField, runReactionsWanted } from "./run-reactions";
+import { runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { CHAPTER_NOT_OPEN, chapterOpen, openChapters } from "./chapter-unlocks";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
-import { checkedWithEnd, creditCommitted, pollenCapability } from "../pollen/routes";
+import { checkedWithEnd, creditCommitted, creditTurn, pollenCapability } from "../pollen/routes";
 import { storeCapability } from "../entitlement";
 import type { PollenMember } from "../pollen/turn-facts";
 import type { Look } from "../pollen/catalog";
 import { looksCapability, looksShown } from "../pollen/looks-routes";
 import { leaderboardsCapability } from "../leaderboards/routes";
-import { postFinishedRun } from "../leaderboards/submit";
+import { postFinishedRun, postPreparedRun } from "../leaderboards/submit";
 import { claimDuelRoom, duelsCapability, parseDuelAsk, prepareDuelRoom } from "../duels/routes";
-import { duelsOn, noteDuelTurn } from "../duels/turn-hook";
+import { duelsOn, noteDuelTurn, sendDuelNote } from "../duels/turn-hook";
+import { compressedAsked, compressedCapability, exactTurnFields, readTurnBody, replyResponse } from "./turn-wire";
+import type { RoomV2, TurnAsk } from "./room";
+import type { LeaderboardRun } from "../leaderboards/run";
 import { sendTurnHints } from "../duels/news";
 import { runExportCapability } from "../run-export";
 
@@ -140,6 +143,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...looksCapability(request, env),
     ...leaderboardsCapability(request, env),
     ...duelsCapability(request, env),
+    ...compressedCapability(request, env),
     ...await testerSwitchCapability(playerId, env),
     ...runExportCapability(request, playerId, env),
     validation: "structural_client_replay_required" });
@@ -285,6 +289,15 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     return json(unwrap(await room.hardReset(playerId, await boundedJson(request, resetLimit))));
   }
+  // A standalone room's turn and reads go to the room unread; the room runs the interaction gate itself (turn-wire.ts).
+  if (context === undefined && !item && operation === "turns" && request.method === "POST") return standaloneTurn(request, room, playerId, env, safetyToken, memberName, pollen, look, facePacks);
+  if (context === undefined && !operation && request.method === "GET") {
+    const reply = await room.snapshotReply(playerId, knownRoom(request), historySupport(request), pollRedo(request), besideWanted(request, env, context), compressedAsked(request), safetyToken);
+    if (!reply.ok && reply.code === "replay_transferred" && legacyTransferredUnblock(request, context)) throw new ApiError(409, "campaign_client_required");
+    return replyResponse(unwrap(reply));
+  }
+  if (context === undefined && operation === "operations" && item && request.method === "GET") return replyResponse(unwrap(await room.operationReply(playerId, text(item, IDEMPOTENCY_PATTERN), compressedAsked(request), safetyToken)));
+  if (context === undefined && operation === "pairs" && item && request.method === "GET") { const pairId = text(item, /^p\d{1,2}-[0-7]$/); await stageWithin(room, pairId, "invalid_field"); return replyResponse(unwrap(await room.pairReply(playerId, pairId, compressedAsked(request), safetyToken))); }
   // DELETE photo bypasses the interaction gate so owners can remove media.
   // It must still negotiate before inspecting recording/photo authority.
   if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
@@ -354,8 +367,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (chapter(snapshot).premium || storyGuard) {
     boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);
     const body = object(input);
-    exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
-      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : []), ...triesField(body), ...endReactionField(body), ...runReactionField(body)]);
+    if (operation === "fork") exact(body, ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])]);
+    else exactTurnFields(body);
     const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key, context);
     if (previous.ok) {
       if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation, ...body }))) throw new ApiError(409, "idempotency_key_reused");
@@ -387,4 +400,31 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // Its partner hears of it once, now that the duel has it: the room's hint and the duel's in one call, beside the credit.
   const [, reply] = await Promise.all([duel_partner_hint ? sendTurnHints(env, duel_partner_hint, noted) : null, creditCommitted(request, env, playerId, committed)]);
   return json(reply);
+}
+
+/**
+ * A standalone room's turn: the bytes go to the room unread (turn-wire.ts), which checks, commits and writes the
+ * reply (RoomV2.turnRequest). A premium turn the room could not admit from its memory of the host comes back once
+ * for the host's access check and the caller's device check, as before, and goes again with `access_checked`.
+ * Then, as before: the finished run to its board, the duel's note, the partner's hint and the Pollen credit.
+ */
+async function standaloneTurn(request: Request, room: DurableObjectStub<RoomV2>, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember, look?: Look, facePacks?: string[]): Promise<Response> {
+  const body = await readTurnBody(request);
+  const ask: TurnAsk = { safety_token: safetyToken, history: historySupport(request), beside: besideWanted(request, env, undefined), name: memberName, pollen, look, face_packs: facePacks,
+    device_hash: await bearerDigest(request), compressed: compressedAsked(request), post_run: flags.leaderboards(env), note_duel: duelsOn(env) };
+  let answer = unwrap(await room.turnRequest(playerId, body, ask));
+  if ("access" in answer) {
+    const { host_id: host, age } = answer.access;
+    // The room's memory as it just answered, so the check asks the room nothing more unless the provider was asked.
+    const { until } = await checkedWithEnd(onGrant => requireRoomHostAccess({ hostAccessAge: async () => age, rememberHostAccess: (id, verified) => room.rememberHostAccess(id, verified) }, host, env, onGrant), pollen !== undefined && playerId === host);
+    await reauthorize(request, playerId, env, until);
+    answer = unwrap(await room.turnRequest(playerId, body, { ...ask, ...(until !== undefined ? { pollen: { fj_until: until } } : {}), access_checked: true }));
+    if ("access" in answer) throw new ApiError(503, "entitlement_unavailable");
+  }
+  const { reply, hooks } = answer;
+  // RPC loses the members tuple's length; the room built it as a LeaderboardRun.
+  await postPreparedRun(env, hooks.run as LeaderboardRun | undefined);
+  const noted = hooks.duel ? await sendDuelNote(env, hooks.duel.room_id, hooks.duel.link, hooks.duel.made, playerId, hooks.duel_partner_hint?.to) : null;
+  const [, credit] = await Promise.all([hooks.duel_partner_hint ? sendTurnHints(env, hooks.duel_partner_hint, noted) : null, creditTurn(request, env, playerId, hooks.pollen_facts, hooks.members)]);
+  return replyResponse(reply, credit);
 }

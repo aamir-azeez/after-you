@@ -1,3 +1,4 @@
+import { deflateSync, inflateSync } from "node:zlib";
 import { readBounded } from "./protocol";
 
 /**
@@ -9,9 +10,14 @@ import { readBounded } from "./protocol";
  * length (a deflate bomb costs nothing). The game reads it with
  * game/services/blob_codec.gd.
  *
- * Room history (v2/history-blob.ts) and leaderboard replays
- * (leaderboards/board.ts) both use it; test/blob-format.test.ts keeps every
- * other stored or served body going through here.
+ * Room history (v2/history-blob.ts), leaderboard replays
+ * (leaderboards/board.ts), stored room rows (v2/row-codec.ts) and compressed
+ * turns and replies (v2/turn-wire.ts) all use it; test/blob-format.test.ts
+ * keeps every other stored or served body going through here.
+ *
+ * The Sync forms write and read the same body without awaiting (node:zlib,
+ * the same zlib framing), for code inside a storage transaction or on a
+ * synchronous read path.
  */
 export const ENCODING_RAW = 0, ENCODING_DEFLATE = 1;
 
@@ -42,6 +48,26 @@ export async function decodeBlob(body: Uint8Array, expectedLength: number): Prom
   const payload = body.subarray(1);
   const bytes = body[0] === ENCODING_RAW ? (payload.byteLength <= expectedLength ? payload : null)
     : body[0] === ENCODING_DEFLATE ? await drain(through(payload, new DecompressionStream("deflate")), expectedLength) : null;
+  return bytes && bytes.byteLength === expectedLength ? bytes : null;
+}
+
+const INFLATE_SLACK = 128 * 1024;
+/** encodeBlob's tagged deflate body, made without awaiting. */
+export function encodeBlobSync(bytes: Uint8Array): Uint8Array {
+  const payload = deflateSync(bytes);
+  const out = new Uint8Array(payload.byteLength + 1); out[0] = ENCODING_DEFLATE; out.set(payload, 1);
+  return out;
+}
+
+/** decodeBlob without awaiting: the canonical bytes, never more than `expectedLength` of them, or null. */
+export function decodeBlobSync(body: Uint8Array, expectedLength: number): Uint8Array | null {
+  if (body.byteLength < 1 || !Number.isSafeInteger(expectedLength) || expectedLength < 0) return null;
+  const payload = body.subarray(1);
+  let bytes: Uint8Array | null = null;
+  if (body[0] === ENCODING_RAW) bytes = payload.byteLength <= expectedLength ? payload : null;
+  // Inflating stops just past the expected length, so a deflate bomb costs nothing. workerd's zlib checks
+  // maxOutputLength by whole output chunks, so the stop has INFLATE_SLACK to spare; the length must still match exactly.
+  else if (body[0] === ENCODING_DEFLATE) { try { bytes = new Uint8Array(inflateSync(payload, { maxOutputLength: expectedLength + INFLATE_SLACK })); } catch { bytes = null; } }
   return bytes && bytes.byteLength === expectedLength ? bytes : null;
 }
 

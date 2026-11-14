@@ -24,6 +24,7 @@ import { clearMemberNames, isMemberNamesTable } from "../display-names";
 
 import { MAX_ROW_BYTES } from "./row-bound";
 import { nestedProof } from "./checkpoint-chain";
+import { plainRow, type RowData } from "./row-codec";
 import { MAX_ATTEMPT_BYTES, ZERO_LINK, attemptLink, blobBytes, blobFromRows } from "./history-blob";
 import { bytesDigest } from "../blob-codec";
 import type { AttemptRecord } from "./history";
@@ -426,7 +427,9 @@ export async function exportRoomV2(ctx: DurableObjectState, sourceCommit: string
   const captured = ctx.storage.transactionSync(() => {
     const version = schema(ctx.storage);
     need(notificationAlarmOwned(ctx.storage, "RoomV2", alarm), "unsupported_storage_alarm");
-    return { version, copied: tables(definitions(version).map(def => ({ name: def.name, schema: def.schema, columns: def.columns, rows: ctx.storage.sql.exec(def.select).toArray() })), version) };
+    // A deflated row leaves as the plain text it holds (row-codec.ts), so the archive is the same for every version.
+    const plain = (name: string, row: Record<string, SqlStorageValue>) => name === "room" || name === "turns" || name === "pairs" ? { ...row, data: plainRow(name, row.data as RowData) } : row;
+    return { version, copied: tables(definitions(version).map(def => ({ name: def.name, schema: def.schema, columns: def.columns, rows: ctx.storage.sql.exec(def.select).toArray().map(row => plain(def.name, row)) })), version) };
   });
   const { version, copied } = captured;
   // No storage cursor or live mutable state crosses validation/hash awaits.

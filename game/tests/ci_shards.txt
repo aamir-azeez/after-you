@@ -53,6 +53,7 @@ comfort_restart 2
 comfort_rules 3
 comfort_social_integration 1
 completion_moment 2
+compressed_rooms_client 1
 connectivity 2
 cooperative 1
 cooperative_admission 3
