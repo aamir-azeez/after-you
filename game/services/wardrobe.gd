@@ -126,6 +126,8 @@ static func checked_look(value: Variant) -> Dictionary:
 
 ## The reaction slots as kept (backend src/pollen/reaction-loadout.ts): six
 ## places, each "" or a face id, no face twice; null when off the contract.
+## The faces each reaction pack owns (services/reaction_catalog.gd PACKS).
+const PACK_FACES := preload("res://services/reaction_catalog.gd").PACKS
 const REACTION_SLOT_COUNT := 6
 static func checked_slots(value: Variant) -> Variant:
 	if not value is Array or (value as Array).size() != REACTION_SLOT_COUNT: return null
@@ -369,6 +371,9 @@ func note_spend(server: String, owner: String, receipt: Variant) -> bool:
 	if scope.view.has("reactions"):
 		for id: String in pieces:
 			if Catalog.item(id).get("slot") == "reaction" and not id in scope.view.faces: scope.view.faces.append(id)
+			# A pack owns its faces.
+			for face: String in PACK_FACES.get(id, []):
+				if not face in scope.view.faces: scope.view.faces.append(face)
 			if Catalog.item(id).get("slot") == "reaction_slot": scope.view.reaction_slots = mini(int(scope.view.reaction_slots) + 1, REACTION_SLOT_COUNT)
 	# A set the purchase took a piece of costs something else now: its cost goes until the next read says it.
 	var costs: Dictionary = scope.view.get("fruit_set_costs", {})

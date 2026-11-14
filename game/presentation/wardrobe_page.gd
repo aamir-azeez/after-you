@@ -401,7 +401,7 @@ func render(model: Dictionary) -> void:
 		empty = PlayerCopy.WARDROBE_NOTHING_EARNED if not shop else (PlayerCopy.WARDROBE_NOTHING_IN_SHOP if tab == "all" else PlayerCopy.WARDROBE_NOTHING_OWNED)
 	# Owned ends with Get more when the flow says so (model.more), after at least one owned card.
 	var more := bool(model.get("more", false)) and not shown.is_empty()
-	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty, more, model.get("orchard", false)])
+	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty, more, model.get("orchard", false), view])
 	if key != _cards_key and not orchard:
 		_cards_key = key
 		_fill(_featured, featured, true)
@@ -609,6 +609,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	if entry.slot == "rest_face" and not small:
 		# A resting face: the head front on, as faces board 4 crops it, so Button, Bean and Round read apart.
 		var head := RestFace.new()
+		head.color = "mint" if _view == "friend" else "peach"
 		head.expression = "normal" if bool(entry.get("classic", false)) else str(entry.id)
 		head.custom_minimum_size = Vector2(CARD_PICTURE, CARD_PICTURE)
 		head.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -723,11 +724,13 @@ func _outlined(button: Button) -> void:
 ## shapes (empty_state_art.gd spirit, SpiritLook.eye_contours), once.
 class RestFace extends Control:
 	var expression := "normal"
+	## "peach", or "mint" while the page shows your pip as your friend sees it.
+	var color := "peach"
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
 		var scale := minf(size.x, size.y) * 0.5 / (EmptyArt.Look.HEAD_HALF.x * EmptyArt.UNIT * 1.05)
-		EmptyArt.spirit(self, Transform2D(0.0, Vector2(scale, scale), 0.0, size * 0.5 + Vector2(0, size.y * 0.06)), {"color": "peach", "eyes": expression}, true)
+		EmptyArt.spirit(self, Transform2D(0.0, Vector2(scale, scale), 0.0, size * 0.5 + Vector2(0, size.y * 0.06)), {"color": color, "eyes": expression}, true)
 
 ## The flat oval under the big pip's feet.
 class Floor extends Control:
