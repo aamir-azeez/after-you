@@ -28,6 +28,11 @@ const Props = preload("res://presentation/kit/props.gd")
 ## Scenery as data (content/dressing) and the ground styles it names.
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
 const Surfaces = preload("res://presentation/kit/surfaces.gd")
+## A piece's style (content/dressing/piece_styles.gd) and the pad kit.
+const PieceStyles = preload("res://content/dressing/piece_styles.gd")
+const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+## Each family's floors, crossings and spots (services/level_layout.gd).
+const LevelLayout = preload("res://services/level_layout.gd")
 const FIREFLY := Color("ffe9a8")
 ## This chapter's scenery data (content/dressing); empty keeps the plain world.
 var dressing: Dictionary = {}
@@ -1396,6 +1401,88 @@ func _doze_anchor(actor: Node3D) -> Variant:
 			reach = distance
 			best = at
 	return best
+
+# --- The island build: floors, pads and scenery from the definition ---
+
+## The pad pieces by id (_build_pad), for present() to light.
+var pad_pieces: Dictionary = {}
+
+## What every island world builds from its definition and dressing alone: the
+## chapter's dressing, its floors (_build_floors), its pads (_build_pads) and
+## its scenery (_build_dressing). A staged build gets the frame back between
+## pieces. Await it.
+func _build_island_ground(definition: Dictionary) -> void:
+	_load_dressing()
+	await _build_floors(definition.get("islands", []))
+	await _build_pads(_layout_pads())
+	await _build_dressing()
+
+## Each floor in the dressing's ground style (kit/surfaces.gd), else as this
+## world's plain floor (_plain_floor), under its floor root (_floor_root),
+## which is kept as its surface when it is not the terrain itself: dressing
+## props and pieces on that floor go under it.
+func _build_floors(islands: Array) -> void:
+	for index in range(islands.size()):
+		var island: Dictionary = islands[index]
+		var root := _floor_root(island)
+		var shared := terrain
+		terrain = root
+		if not _dressed_ground(island, root): _plain_floor(island, index)
+		terrain = shared
+		if root != terrain: _surface_nodes[str(island.id)] = root
+		await _build_step()
+
+## Builds `island` in the dressing's ground style under `parent`; false, with
+## nothing built, when the dressing gives it none.
+func _dressed_ground(island: Dictionary, parent: Node3D) -> bool:
+	var style := _ground_style(str(island.id))
+	if style.is_empty(): return false
+	Surfaces.build(island, style, parent)
+	return true
+
+## Where a floor is built: a root named for it at its height.
+func _floor_root(island: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	root.name = str(island.id)
+	root.position.y = float(island.get("height_cm", 0)) / 100.0
+	terrain.add_child(root)
+	return root
+
+## A floor with no ground style: the floating island shell and its scenery,
+## each island varied by its place in the list (built in `terrain`, here the
+## floor's root).
+func _plain_floor(island: Dictionary, index: int) -> void:
+	var rect: Array = island.rect_cm
+	_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
+		float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, _plain_floor_colour(), index + 1)
+
+## The grass of a plain floor.
+func _plain_floor_colour() -> Color:
+	return Color("a4c9aa")
+
+## The pads as this world's family lays them out (services/level_layout.gd),
+## each with its floor and the pip whose part it is.
+func _layout_pads() -> Array:
+	var stages := LevelLayout.stage_ids(current_level)
+	if stages.is_empty(): return []
+	return LevelLayout.for_key(_chapter_key(), str(stages[0]), current_level).get("pressure_pads", [])
+
+func _build_pads(pads: Array) -> void:
+	for pad: Dictionary in pads:
+		pad_pieces[str(pad.id)] = _build_pad(pad, _floor_point(pad.position_cm, str(pad.get("surface_id", ""))))
+	await _build_step()
+
+## A pad in its style (piece_styles.gd "pad", kit/pieces/pad.gd) in its pip's colour.
+func _build_pad(pad: Dictionary, at: Vector3) -> Variant:
+	var style := PieceStyles.style("pad", str(pad.id), ChapterIndex.data(_chapter_key()), dressing)
+	return PadKit.build(style, at, float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "id": str(pad.id)})
+
+## A spot on a floor of the level (its walking height), in metres.
+func _floor_point(position_cm: Array, surface: String) -> Vector3:
+	for island: Dictionary in current_level.get("islands", []):
+		if island.id == surface:
+			return Vector3(float(position_cm[0]) / 100.0, float(island.get("height_cm", 0)) / 100.0, float(position_cm[1]) / 100.0)
+	return point(position_cm)
 
 # --- Dressing: one host for every world (content/dressing) ---
 

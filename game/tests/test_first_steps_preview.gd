@@ -42,7 +42,7 @@ func _run() -> void:
 	_check(app.mode == "ready" and app.stage.id == "a-little-lift", "A new preview begins at the first relay stage")
 	var audio_errors := ReunionAudio.chapter(app)
 	_check(audio_errors.is_empty(), "First Steps reunion audio: " + str(audio_errors))
-	_check(app.world.island_visuals.size() == 2 and app.world.actors.size() == 2 and is_equal_approx(app.world.island_visuals.loft.position.y,1.6) and is_equal_approx(app.world.lift.position.y,0.0), "Distinct ground and1.6m loft plus real low lift and stable spirit slots are built")
+	_check(app.world._surface_nodes.size() == 2 and app.world.actors.size() == 2 and is_equal_approx(app.world._surface_nodes.loft.position.y,1.6) and is_equal_approx(app.world.lift.position.y,0.0), "Distinct ground and1.6m loft plus real low lift and stable spirit slots are built")
 	for size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 720)]:
 		viewport.size = size
 		await process_frame

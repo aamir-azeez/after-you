@@ -4,7 +4,6 @@ extends "res://presentation/island_world.gd"
 var bridge_visuals: Dictionary = {}
 var bridge_targets: Dictionary = {}
 var socket_visuals: Dictionary = {}
-var plate_visuals: Dictionary = {}
 var actor_badges: Dictionary = {}
 var active_landing: Vector3 = Vector3.ZERO
 var view_center := Vector3.ZERO
@@ -27,7 +26,7 @@ func load_level(definition: Dictionary) -> void:
 	bridge_visuals.clear()
 	bridge_targets.clear()
 	socket_visuals.clear()
-	plate_visuals.clear()
+	pad_pieces.clear()
 	actor_badges.clear()
 	flowers.clear()
 	garden = null
@@ -37,11 +36,8 @@ func load_level(definition: Dictionary) -> void:
 	garden_state = "closed"
 	bloomed = false
 	home_view = false
-	for island_index in range(definition.islands.size()):
-		var rect: Array = definition.islands[island_index].rect_cm
-		_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
-			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("9fc8b8"), island_index + 1)
-		await _build_step()
+	# Floors, the plates and any scenery the chapter's dressing gives.
+	await _build_island_ground(definition)
 	for bridge: Dictionary in definition.bridges:
 		var rect: Array = bridge.rect_cm
 		var width := float(rect[2] - rect[0]) / 100.0
@@ -58,14 +54,6 @@ func load_level(definition: Dictionary) -> void:
 		bridge_visuals[bridge.id] = root
 		bridge_targets[bridge.id] = false
 		await _build_step()
-	for item: Dictionary in definition.plates:
-		var p := point(item.position_cm)
-		var radius := float(item.radius_cm) / 100.0
-		var disk := cylinder(radius, 0.10, GOLD, p + Vector3(0, 0.055, 0), terrain)
-		ring(radius + 0.025, CREAM, p + Vector3(0, 0.12, 0), terrain)
-		box(Vector3(0.21, 0.022, 0.21), Color("977346"), p + Vector3(0, 0.12, 0), terrain).rotation.y = PI / 4
-		plate_visuals[item.id] = disk
-	await _build_step()
 	for item: Dictionary in definition.sockets:
 		var at := point(item.position_cm)
 		var socket := Node3D.new()
@@ -141,15 +129,35 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		if immediate:
 			bridge_visuals[id].position.y = 0.0 if bridge_targets[id] else -0.65
 	for bridge: Dictionary in current_level.bridges:
-		var disk: MeshInstance3D = plate_visuals[bridge.plate_id]
+		var disk: MeshInstance3D = pad_pieces[bridge.plate_id]
 		Primitives.own_material(disk).albedo_color = Color("f5d990") if bridge_targets[bridge.id] else Color("a18f66")
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 	_present_garden(true, garden_complete, immediate)
 
 
-func _fold_key() -> String:
+func _chapter_key() -> String:
 	return "relay-isles@2"
+
+func _fold_key() -> String:
+	return _chapter_key()
+
+## Relay's islands stand straight in the terrain, each in its own grass.
+func _floor_root(_island: Dictionary) -> Node3D:
+	return terrain
+
+func _plain_floor_colour() -> Color:
+	return Color("9fc8b8")
+
+## Relay's plate keeps its published look: a gold disc under a cream ring and
+## a diamond glyph, lit while its bridge is open (present()). The disc is its
+## piece.
+func _build_pad(pad: Dictionary, at: Vector3) -> Variant:
+	var radius := float(pad.radius_cm) / 100.0
+	var disk := cylinder(radius, 0.10, GOLD, at + Vector3(0, 0.055, 0), terrain)
+	ring(radius + 0.025, CREAM, at + Vector3(0, 0.12, 0), terrain)
+	box(Vector3(0.21, 0.022, 0.21), Color("977346"), at + Vector3(0, 0.12, 0), terrain).rotation.y = PI / 4
+	return disk
 
 ## A planted seed finds its socket by name and reads its cylinders.
 func _static_keep() -> Array:

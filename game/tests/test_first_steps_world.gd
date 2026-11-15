@@ -47,7 +47,7 @@ func _run() -> void:
 	world.show_stage(level.stages[0])
 	world.present(sim.snapshot(),true)
 	_check(not world.landing_marker.visible,"Platform stage does not falsely show a seed-throw target")
-	_check(is_equal_approx(world.island_visuals.shore.position.y,0) and is_equal_approx(world.island_visuals.loft.position.y,1.6),"Floors use exact authored walking heights")
+	_check(is_equal_approx(world._surface_nodes.shore.position.y,0) and is_equal_approx(world._surface_nodes.loft.position.y,1.6),"Floors use exact authored walking heights")
 	_check(world.garden_state=="closed" and world.seed.visible and world.seed.position.y>1.6,"Seed stays on upper pedestal and garden starts closed")
 	await _capture("first-steps-initial")
 	var a := _record(0,"a")
