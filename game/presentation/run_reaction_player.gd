@@ -68,14 +68,18 @@ func show_reaction(slot: String, track: Array, index: int, caption: String = "")
 	var face := str(track[index].get("id", ""))
 	if not Catalog.is_face(face) or not is_instance_valid(world): return
 	var actors: Variant = world.get("actors")
-	var actor: Variant = actors.get(slot) if actors is Dictionary else null
-	if actor is Node3D and is_instance_valid(actor) and actor.has_method("show_expression"):
-		actor.show_expression(Catalog.spirit_expression(face), Track.FACE_SECONDS)
-	var camera: Variant = world.get("camera")
-	if actor is Node3D and camera is Camera3D and is_instance_valid(hud):
+	show_on(actors.get(slot) if actors is Dictionary else null, world.get("camera"), hud, face, str(Look.SLOT_COLOR_NAMES.get(slot, "peach")), settings, caption)
+	if is_instance_valid(soundscape) and soundscape.has_method("play_run_reaction"): soundscape.play_run_reaction(slot, track, index)
+
+## A reaction on one spirit: its face for FACE_SECONDS and the bubble just above
+## its name, following it. Every screen that shows a reaction on a pip calls
+## this (a chapter's turn here, Home's own pip in presentation/home_stage.gd).
+static func show_on(actor: Variant, camera: Variant, hud: Control, face: String, color: String, settings: Dictionary, caption: String = "") -> void:
+	if not Catalog.is_face(face) or not is_instance_valid(actor) or not actor is Node3D: return
+	if actor.has_method("show_expression"): actor.show_expression(Catalog.spirit_expression(face), Track.FACE_SECONDS)
+	if camera is Camera3D and is_instance_valid(camera) and is_instance_valid(hud):
 		var at: Variant = EndReactions.point_above(camera, actor, hud, BUBBLE_HEIGHT)
 		if at is Vector2:
 			var refs := [weakref(camera), weakref(actor), weakref(hud)]
 			var follow := func() -> Variant: return EndReactions.point_above(refs[0], refs[1], refs[2], BUBBLE_HEIGHT)
-			EndReactions.pop(hud, at, face, str(Look.SLOT_COLOR_NAMES.get(slot, "peach")), settings, Track.BUBBLE_SECONDS, follow, caption)
-	if is_instance_valid(soundscape) and soundscape.has_method("play_run_reaction"): soundscape.play_run_reaction(slot, track, index)
+			EndReactions.pop(hud, at, face, color, settings, Track.BUBBLE_SECONDS, follow, caption)

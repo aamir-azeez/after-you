@@ -16,7 +16,7 @@ extends SceneTree
 ##   seed and inside every pip view, and loop perfectly;
 ## - a body item may swap the torso and feet meshes and add pieces, never the
 ##   head, and every gameplay value stays identical;
-## - a tall cap lifts a carried seed just clear of the hat itself (a leaf may
+## - a high cap lifts a carried seed just clear of the hat itself (a leaf may
 ##   touch it), a big leaf lifts it with the leaf's own lift, and off again the
 ##   seed sits where it did;
 ## - moving parts step at the idle card rate of the pip's own clock and hold
@@ -28,6 +28,7 @@ const Spirit = preload("res://presentation/spirit_visual.gd")
 const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
 const Outfit = preload("res://services/outfit.gd")
+const WearFit = preload("res://presentation/kit/wear_fit.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Look = preload("res://presentation/spirit_look.gd")
@@ -449,7 +450,7 @@ func _in_frame() -> void:
 	for id: String in Catalog.ids(): outfits.append(Outfit.of(id, true))
 	# Every leaf raised by every hat that raises it: the raised leaf stays in frame too.
 	for hat: String in Catalog.ids():
-		if Catalog.slot(hat) != "hat" or Catalog.leaf_lift(hat) <= 0.0: continue
+		if Catalog.slot(hat) != "hat" or WearFit.lift_for(hat) <= 0.0: continue
 		for leaf: String in Catalog.ids():
 			if Catalog.slot(leaf) == "leaf": outfits.append(Outfit.from({"hat": hat, "leaf": leaf}, true))
 	for outfit: Dictionary in outfits:

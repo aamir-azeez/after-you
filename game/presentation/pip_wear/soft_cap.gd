@@ -8,14 +8,12 @@ extends RefCounted
 ## down to EDGE_GAP at its edge, EDGE radians from straight up. A Rain cap adds
 ## a broad brim sloping out from that edge (BRIM: its reach and its drop) with
 ## a darker underside and a cream seam; a Wool cap draws its knit ridges as
-## bands of colour and rolls a pale cuff at its edge; a Mushroom adds three
-## big cream spots and a pale green rim.
+## bands of colour, rolls a pale cuff at its edge and hangs an ear flap down
+## each side under it; a Mushroom is red with three big cream spots.
 ##
-## Each cap is whole and closed. The leaf comes out of its top on a short
-## stem, raised by the descriptor's "leaf_lift" ("sits_on_top",
-## kit/wear_fit.gd), as it does from the Straw hat; tests/test_wear_fit.gd
-## checks every leaf clears the crown through its whole sway. One baked mesh
-## per cap, one draw call.
+## Each cap is whole and closed. The leaf sits right on its top, seated by the
+## cap's own top anchor ("sits_on_top", kit/wear_fit.gd), as it does on the
+## Straw hat. One baked mesh per cap, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 
@@ -29,15 +27,18 @@ const Meshes = preload("res://presentation/spirit_meshes.gd")
 ##   rim: the last, thin row: "band" in the trim colour (a seam), "roll" a
 ##     rolled cuff in the trim colour, or "" the crown's colour;
 ##   spots: [direction from the head's centre, half size] for each spot;
+##   flaps: ear flaps down both sides under the edge (Wool cap): [half width
+##     at the top (radians round the head), how low they reach (radians from
+##     straight up), their width at the bottom (a share of the top's)], or [];
 ##   seed_lift: metres a carried seed sits higher, just clear of the cap
 ##     itself; the leaf on top may touch it (pip_outfit.gd lift_seed).
 const CAPS := {
 	"rain_cap": {"rise": 0.13, "edge_gap": 0.012, "edge": 1.06, "round": 2.6, "crown": Color("93c5d3"), "under": Color("547f91"), "trim": Color("e8e9d7"),
-		"brim": [0.072, 0.04], "bands": [], "rim": "band", "spots": [], "seed_lift": 0.085},
+		"brim": [0.072, 0.04], "bands": [], "rim": "band", "spots": [], "flaps": [], "seed_lift": 0.085},
 	"wool_cap": {"rise": 0.16, "edge_gap": 0.016, "edge": 1.2, "round": 2.0, "crown": Color("82728e"), "under": Color("82728e"), "trim": Color("c5aeb8"),
-		"brim": [], "bands": [Color("6f607b"), [2, 4]], "rim": "roll", "spots": [], "seed_lift": 0.115},
-	"mushroom": {"rise": 0.155, "edge_gap": 0.03, "edge": 1.06, "round": 2.6, "crown": Color("728d5d"), "under": Color("eee9d4"), "trim": Color("a5b777"),
-		"brim": [0.05, 0.035], "bands": [], "rim": "",
+		"brim": [], "bands": [Color("6f607b"), [2, 4]], "rim": "roll", "spots": [], "flaps": [0.4, 1.95, 0.55], "seed_lift": 0.115},
+	"mushroom": {"rise": 0.155, "edge_gap": 0.03, "edge": 1.06, "round": 2.6, "crown": Color("cf4b3c"), "under": Color("eee9d4"), "trim": Color("b8402f"),
+		"brim": [0.05, 0.035], "bands": [], "rim": "", "flaps": [],
 		"seed_lift": 0.11, "spots": [[Vector3(0.22, 0.85, 0.6), 0.07], [Vector3(0.75, 0.6, 0.4), 0.055], [Vector3(-0.2, 0.6, 0.85), 0.05]]},
 }
 ## Where each row of the crown lies from its top (0) to its edge (1); the
@@ -52,6 +53,12 @@ const SPOT_LIFT := 0.01
 const SPOT_SIDES := 7
 ## How much the cuff rolls out past the crown.
 const CUFF_ROLL := 0.012
+## An ear flap's rows (top to bottom) and columns (across).
+const FLAP_ROWS := 5
+const FLAP_COLUMNS := 4
+## How far forward of the head's sides the flaps hang (radians), so they show
+## from the front, clear of the eyes.
+const FLAP_FORWARD := 0.4
 
 static func wear(look: RefCounted) -> void:
 	var id := str(look.outfit.get("hat", ""))
@@ -87,6 +94,7 @@ static func _build(id: String) -> Mesh:
 			_triangle(surface, [quad[0], quad[1], quad[2]], colour, _middle(quad))
 			_triangle(surface, [quad[0], quad[2], quad[3]], colour, _middle(quad))
 	if not (cap.brim as Array).is_empty(): _brim(surface, cap, rows[last])
+	if not (cap.flaps as Array).is_empty(): _flaps(surface, cap)
 	surface.index()
 	surface.generate_normals()
 	var parts := Kit.Parts.new()
@@ -154,6 +162,36 @@ static func _brim(surface: SurfaceTool, cap: Dictionary, edge: PackedVector3Arra
 		_triangle(surface, [top[0], top[2], top[3]], top_colour, Vector3.UP)
 		_triangle(surface, [inner_under[column], inner_under[next], under[next]], cap.under, Vector3.DOWN)
 		_triangle(surface, [inner_under[column], under[next], under[column]], cap.under, Vector3.DOWN)
+
+## The ear flaps: a shell down each side of the head from the cuff's edge,
+## narrowing to a rounded bottom, knit in the crown's ridges with a
+## cuff-coloured last row.
+static func _flaps(surface: SurfaceTool, cap: Dictionary) -> void:
+	var half := float(cap.flaps[0])
+	var low := float(cap.flaps[1])
+	var narrow := float(cap.flaps[2])
+	var top := float(cap.edge)
+	var lift := float(cap.edge_gap) + CUFF_ROLL * 0.5
+	for side: float in [-1.0, 1.0]:
+		var grid: Array[PackedVector3Array] = []
+		for row in range(FLAP_ROWS + 1):
+			var down := float(row) / float(FLAP_ROWS)
+			var phi := lerpf(top, low, down)
+			var width := half * lerpf(1.0, narrow, down * down)
+			var points := PackedVector3Array()
+			for column in range(FLAP_COLUMNS + 1):
+				var beta := (PI * 0.5 - FLAP_FORWARD) * side + width * lerpf(-1.0, 1.0, float(column) / float(FLAP_COLUMNS))
+				var on: Array[Vector3] = Meshes.head_surface(Vector3(sin(phi) * sin(beta), cos(phi), sin(phi) * cos(beta)))
+				points.append(on[0] + on[1] * lift)
+			grid.append(points)
+		for row in range(FLAP_ROWS):
+			# Knit like the crown: ridges in the band colour, the cuff's colour at the bottom.
+			var bands: Array = cap.bands
+			var colour: Color = cap.trim if row == FLAP_ROWS - 1 else (bands[0] if not bands.is_empty() and row % 2 == 1 else cap.crown)
+			for column in range(FLAP_COLUMNS):
+				var quad := [grid[row][column], grid[row][column + 1], grid[row + 1][column + 1], grid[row + 1][column]]
+				_triangle(surface, [quad[0], quad[1], quad[2]], colour, _middle(quad))
+				_triangle(surface, [quad[0], quad[2], quad[3]], colour, _middle(quad))
 
 ## A face's middle: from the head's centre it points the way the face looks.
 static func _middle(corners: Array) -> Vector3:

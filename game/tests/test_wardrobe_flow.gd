@@ -926,11 +926,23 @@ static func _orchard_answer(items: Array, look: Dictionary, balance: int, fruits
 	return answer
 
 ## A Wardrobe whose server sells the Orchard; `on`: Fruits on for the player, `packs`: Fruit packs sell too.
-func _orchard_setup(items: Array, fruits: int, on: bool = true, packs: bool = false, look: Dictionary = {}) -> Dictionary:
+## `faces`: the server sells every face item too (the Face and Reactions chips).
+func _orchard_setup(items: Array, fruits: int, on: bool = true, packs: bool = false, look: Dictionary = {}, faces: bool = false) -> Dictionary:
 	var t := _setup(true, packs)
-	preload("res://services/cosmetic_catalog.gd").set_offered(SOLD + ["gold_leaf", "every_hard", "top_ten_ribbon"] + ORCHARD)
+	var face_ids: Array = Catalog.ids().filter(func(id: String) -> bool: return Catalog.slot(id) in ["rest_face", "reaction", "reaction_slot"]) if faces else []
+	preload("res://services/cosmetic_catalog.gd").set_offered(SOLD + ["gold_leaf", "every_hard", "top_ten_ribbon"] + ORCHARD + face_ids)
 	if on: t.fruits.set_enabled(SERVER, ME, true, packs)
-	t.fake.replies = [_orchard_answer(items, look, 24000, fruits)]
+	var answer := _orchard_answer(items, look, 24000, fruits)
+	if faces:
+		var part: Dictionary = answer.data.wardrobe
+		part.offered = (part.offered as Array) + face_ids
+		var prices: Dictionary = part.get("prices", {})
+		for id: String in face_ids: prices[id] = float(Catalog.price(id))
+		part.prices = prices
+		part.faces = ["aww"]
+		part.reactions = ["happy", "aww", "sad", "squeeze", "", ""]
+		part.reaction_slots = 4.0
+	t.fake.replies = [answer]
 	t.flow.show_wardrobe()
 	await _frames()
 	return t
@@ -1113,9 +1125,9 @@ const SCREENS := [Vector2(1280, 720), Vector2(1561, 720), Vector2(1600, 720), Ve
 ## Every tab on every screen: each control that shows is inside the page, and
 ## the header, the pip panel and the shop or Orchard never cover each other.
 func _fits_every_screen() -> void:
-	var t := await _orchard_setup(["daisy", "straw_hat"], 101)
+	var t := await _orchard_setup(["daisy", "straw_hat"], 101, true, false, {}, true)
 	var page: Control = t.host.overlay
-	var views := [["all", "hat"], ["all", "body"], ["all", "leaf"], ["owned", "hat"], ["orchard", ""]]
+	var views := [["all", "hat"], ["all", "body"], ["all", "leaf"], ["all", "rest_face"], ["all", "reactions"], ["owned", "hat"], ["orchard", ""]]
 	for screen: Vector2 in SCREENS:
 		page.size = screen
 		for view: Array in views:
@@ -1165,10 +1177,11 @@ func _orchard_scrolls() -> void:
 	t.host.ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var page: Control = t.host.overlay
 	t.flow.set_tab("orchard")
-	page.size = Vector2(1600, 720)
+	screen.size = Vector2i(2200, 990)
+	page.size = Vector2(2200, 990)
 	await _frames(4)
 	var orchard: Control = page.find_child("WardrobeOrchard", true, false)
-	_check(not orchard.cards_scroll(), "At 1600 every Orchard card fits and nothing scrolls")
+	_check(not orchard.cards_scroll(), "On a big screen every Orchard card fits and nothing scrolls")
 	screen.size = Vector2i(1280, 720)
 	page.size = Vector2(1280, 720)
 	await _frames(4)
