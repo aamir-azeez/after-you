@@ -115,7 +115,7 @@ func _run() -> void:
 	Keepsakes.record_solo_prefix("first-steps@1", 1)
 	_check(retry.earned_descriptors().is_empty() and not retry.last_error.is_empty(), "Cosmetic I/O failure does not claim persisted unlock")
 	store.fail = false
-	_check(retry.advance_backfill() and _mark(retry, "first-steps/a-place-to-grow", "solo"), "Next reconciliation retries failed cosmetic award")
+	_check(retry.advance_backfill() and _mark(retry, "first-steps/a-little-lift", "solo"), "Next reconciliation retries failed cosmetic award")
 	retry.deactivate()
 	var future := Save.defaults()
 	future.home_keepsakes = {"schema_version": 2, "earned": {}}

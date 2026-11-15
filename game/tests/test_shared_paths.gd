@@ -190,7 +190,7 @@ const SAVE_EXEMPT := {
 ## (h) Every script that sends a server write: [how many, why each is safe].
 ## A reason starting "keyed" means the script sends idempotency keys.
 const WRITES := {
-	"res://main.gd": [3, "keyed: room reactions; POST /v1/identity has none (audit: check one lost answer never makes two identities)"],
+	"res://main.gd": [1, "unkeyed: POST /v1/identity (audit: check one lost answer never makes two identities)"],
 	"res://presentation/account_flow.gd": [2, "keyed: identity recovery; DELETE /v1/identity removes one thing"],
 	"res://presentation/room_hub_flow.gd": [5, "unkeyed: close, leave and invite lookups end in the same state when repeated"],
 	"res://services/bundle_claims.gd": [1, "unkeyed: claims every purchase the store reports; each purchase token pays once"],

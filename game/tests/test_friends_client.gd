@@ -91,10 +91,13 @@ func _run() -> void:
 	var offline := client.view().friends[0] as Dictionary
 	offline.online = false
 	offline.expires_after_seconds = 0
-	response = {"ok":true,"data":{"schema_version":1,"api_version":1,"room_id":code.sha256_text().substr(0,22),"invite_code":code}}
+	response = {"ok":true,"data":{"schema_version":1,"api_version":2,"room_id":("v2:"+code).sha256_text().substr(0,22),"invite_code":code}}
 	count = calls.size()
 	check(not (await client.join_friend(offline)).is_empty(),"Check room discovers a newly shared offline room before a list refresh")
 	check(calls.size() == count + 1 and calls.back().path == "/v1/friends/"+PEER+"/join" and not client.refresh_due(),"Check room resolves only the selected friend and never forces a list poll")
+	now += Client.JOIN_COOLDOWN_MS
+	response = {"ok":true,"data":{"schema_version":1,"api_version":1,"room_id":code.sha256_text().substr(0,22),"invite_code":code}}
+	check((await client.join_friend(offline)).is_empty() and client.last_error == "Room unavailable","A friend's room from the earlier islands cannot be joined")
 	now += Client.JOIN_COOLDOWN_MS
 	response = {"ok":true,"data":{"schema_version":1,"api_version":3,"room_id":("v2:"+code).sha256_text().substr(0,22),"invite_code":code,"campaign_key":{}}}
 	check((await client.join_friend(offline)).is_empty(),"Friends cannot admit an archived Story descriptor")

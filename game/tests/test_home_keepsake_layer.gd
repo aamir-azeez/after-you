@@ -399,15 +399,15 @@ func _check_triggers() -> void:
 	# New marks while the pip is inside: the rebuilt house is walked on into, quietly.
 	var heard: Array = []
 	stage.play_cue = func(cue: String, _variant: int) -> void: heard.append(cue)
-	var fewer := _everything()
-	fewer = fewer.filter(func(item: Dictionary) -> bool: return item.family != "sleeping-lighthouse")
-	stage.set_keepsakes(fewer)
+	var fewer := _all_hard()
+	fewer.erase("first-steps@1")
+	stage.set_hard(fewer, true)
 	await _settle(layer)
 	var rebuilt: Dictionary = layer.parts_of("a-house-for-two")
 	var rebuilt_cut: Node3D = rebuilt.cutaway
 	_check(rebuilt_cut != cut and layer.staying() == "a-house-for-two" and rebuilt_cut.find_children("*", "MeshInstance3D", true, false).all(func(mesh: Node) -> bool: return mesh.get_meta("cutaway", false)), "A rebuild while the pip is inside keeps it inside the new house")
 	_check(heard.is_empty(), "and plays no sound again: %s" % [heard])
-	stage.set_keepsakes(_everything())
+	stage.set_hard(_all_hard(), true)
 	await _settle(layer)
 	house = layer.parts_of("a-house-for-two")
 	cut = house.cutaway
@@ -628,14 +628,13 @@ func _check_play() -> void:
 	# A state change during a tap waits for it to end.
 	var builds: int = layer.builds
 	stage.play_keepsake("the-wishing-well")
-	var some: Array[Dictionary] = _cleared("first-steps", true, false)
-	stage.set_keepsakes(some)
+	stage.set_hard({}, true)
 	await create_timer(1.0).timeout
 	_check(layer.builds == builds and stage.keepsake_playing(), "A rebuild waits while a keepsake plays")
 	await _settle(layer)
 	_check(layer.builds == builds + 1 and not stage.keepsake_playing(), "and comes once the tap has ended")
 	# Leaving Home mid tap leaves no Tween behind.
-	stage.set_keepsakes(_everything())
+	stage.set_hard(_all_hard(), true)
 	await _settle(layer)
 	stage.play_keepsake("sleeping-lighthouse")
 	await create_timer(0.3).timeout

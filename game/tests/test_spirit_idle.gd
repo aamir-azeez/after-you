@@ -299,8 +299,8 @@ func _test_card_frames() -> void:
 	root.add_child(other)
 	other.set_process(false)
 	other.home_view = false
-	other.load_level(definition)
-	other.present(simulation.snapshot(), true)
+	other.load_level(HomeLayout.LEVEL)
+	other.present(opening, true)
 	for _frame in range(180):
 		other.update_spirit_attention()
 		for role: String in other.actors: other.actors[role].advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
