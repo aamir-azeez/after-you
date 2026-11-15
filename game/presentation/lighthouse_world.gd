@@ -631,7 +631,12 @@ func _present_beacon(state: Dictionary) -> void:
 
 func _build_prop(definition: Dictionary) -> void:
 	var at := point(definition.position_cm)
-	cylinder(0.23, 0.20, Color("8995a5"), at + Vector3(0, 0.10, 0), terrain).name = "LensPedestal"
+	# A step-on stand where the lens is taken; its lowest notch rests in the cup.
+	var rest := Node3D.new()
+	rest.name = "LensPedestal"
+	rest.position = at
+	terrain.add_child(rest)
+	SocketKit.stand(rest, 0.23, 0.20, Color("8995a5"), Color("8995a5"), Color("8995a5"))
 	var lens := Node3D.new()
 	lens.name = "PortableLens"
 	lens.position = at + Vector3(0, 0.44, 0)

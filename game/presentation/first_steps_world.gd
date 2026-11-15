@@ -109,7 +109,7 @@ func load_level(definition: Dictionary) -> void:
 		if socket.kind == "garden":
 			garden = root
 			goal_ring = SocketKit.garden(root, 0.48, GOLD)
-			_create_garden()
+			_create_garden(SocketKit.PLANTER + 0.02)
 		else:
 			pedestal = root
 			cylinder(0.28, 0.35, Color("bbccb5"), Vector3(0, 0.175, 0), root)

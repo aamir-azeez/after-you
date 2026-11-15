@@ -89,7 +89,7 @@ func load_level(definition: Dictionary) -> void:
 		if item.get("kind", "") == "garden":
 			garden = socket
 			goal_ring = SocketKit.garden(socket, 0.42, TEAL)
-			_create_garden()
+			_create_garden(SocketKit.PLANTER + 0.02)
 			# Relay's garden socket has no gate or lift condition in simulation.
 			_present_garden(true, false, true)
 		else:

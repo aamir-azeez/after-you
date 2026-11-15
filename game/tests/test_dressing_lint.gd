@@ -9,6 +9,8 @@ extends SceneTree
 ##    direction (-3, -10)/13 per metre of height between b - y0 - spirit and
 ##    b + h - y0 (every chapter camera sits at offset (3, 13, 10)),
 ##  - the built dressing has no collision or physics bodies,
+##  - nothing taller than a step stands inside a spot a pip must stand in
+##    (step_on_faults()),
 ##  - and no two faces z-fight, nor any face with a spirit's ground shadow
 ##    wherever a spirit can stand, on each stage as built and again with
 ##    everything earlier stages leave behind remembered (see
@@ -59,6 +61,14 @@ const QUAD_USES := {
 	"res://presentation/kit/pip_wear_kit.gd": "a pip cosmetic's soft glow sprite",
 }## Chapters still being built in another session: reported, never failed.
 const ADVISORY_KEYS := []
+## Published bodies that stand where a pip must stand, by chapter and the body's
+## node under the terrain, each with why it stays. An entry that stops failing
+## fails the lint.
+const STEP_ON_KNOWN := {
+	"first-steps@1": {"seed-pedestal": "solid in first-steps@2"},
+	"relay-isles@2": {"relay-socket": "solid in relay-isles@3"},
+}
+var step_on_seen: Dictionary = {}
 var checks := 0
 var failures := 0
 
@@ -198,6 +208,13 @@ func _check_coplanar_worlds() -> void:
 			var gap := min_gap(world)
 			var found := coplanar_pairs(world, null, gap)
 			found.append_array(shadow_pairs(world, _stage_view(key, stage_id), gap))
+			for fault: Dictionary in step_on_faults(world, _stage_view(key, stage_id)):
+				if STEP_ON_KNOWN.get(key, {}).has(fault.body):
+					step_on_seen[key + " " + fault.body] = true
+					continue
+				if reported.has(fault.line): continue
+				reported[fault.line] = true
+				_check(false, "A body stands where a pip must stand in %s %s: %s" % [key, stage_id, fault.line])
 			# Remembered mirrors are swept turned both ways.
 			for orientation: String in (["slash", "backslash"] if _lighthouse_like(key) and LightCatalog.STAGE_IDS.find(stage_id) > 0 else ["slash"]):
 				if not world.has_method("present_history"): break
@@ -220,6 +237,9 @@ func _check_coplanar_worlds() -> void:
 				else: _check(false, message)
 			_check(world.terrain.find_children("*", "MeshInstance3D", true, false).size() > 20, "The coplanar sweep sees the built scenery: %s %s" % [key, stage_id])
 		world.free()
+	for key: String in STEP_ON_KNOWN:
+		for body: String in STEP_ON_KNOWN[key]:
+			_check(step_on_seen.has(key + " " + body), "A known body where a pip must stand no longer stands there, drop it from STEP_ON_KNOWN: %s %s" % [key, body])
 
 static func _lighthouse_like(key: String) -> bool:
 	return key == LIGHTHOUSE or key == Registry.LIGHTHOUSE_V2
@@ -381,6 +401,39 @@ static func shadow_pairs(world: Node3D, view: Dictionary, gap: float) -> Array[S
 			var overlap := _overlap(face, disc)
 			if overlap < MIN_OVERLAP: continue
 			found.append("spirit shadow at %.4f on %s and %s (%.1f mm apart, needs %.1f, overlap %.0f cm2)" % [shadow, support.name, _path(face.node, world), absf(float(face.at) - shadow) * 1000.0, gap * 1000.0, overlap * 10000.0])
+	return found
+
+## Every built mesh standing where a pip must stand on this stage (the
+## shared rule, kit/prop_rules.gd stands_in()), one line each. The pips, the
+## carried things (the seed, the Lighthouse lens, a ball at its own spot) and
+## the garden's four leaves (a plant that opens as it readies, walked through
+## like grass) are not bodies in the way. Each finding is {body (the node
+## under the terrain it belongs to), line}.
+static func step_on_faults(world: Node3D, view: Dictionary) -> Array[Dictionary]:
+	var skip: Array = world.actors.values() if "actors" in world else []
+	for carried: String in ["seed", "garden_activation"]:
+		if carried in world and is_instance_valid(world.get(carried)): skip.append(world.get(carried))
+	if "_prop_nodes" in world: skip.append_array(world._prop_nodes.values())
+	var spots := PropRules.stand_spots(view)
+	for spot: Dictionary in spots:
+		if spot.kind == "props": skip.append_array(world.terrain.find_children(str(spot.id), "Node3D", true, false))
+	var found: Array[Dictionary] = []
+	var to_local: Transform3D = world.terrain.global_transform.affine_inverse()
+	for node: Node in world.terrain.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if mesh.mesh == null or not mesh.is_visible_in_tree() or _under_any(mesh, skip) or _look(mesh) == "": continue
+		var placed: Transform3D = to_local * mesh.global_transform
+		var box: AABB = placed * mesh.mesh.get_aabb()
+		var corners := PackedVector2Array()
+		for index in range(8):
+			var corner: Vector3 = placed * mesh.mesh.get_aabb().get_endpoint(index)
+			corners.append(Vector2(corner.x, corner.z))
+		var outline := Geometry2D.convex_hull(corners)
+		for spot: Dictionary in spots:
+			if PropRules.stands_in(outline, box.position.y, box.end.y, spot):
+				var body: Node = mesh
+				while body.get_parent() != world.terrain: body = body.get_parent()
+				found.append({"body": str(body.name), "line": "%s %s: %s rises %.2f m over its floor" % [spot.kind, spot.id, _path(mesh, world), box.end.y - float(spot.y)]})
 	return found
 
 ## A node's own name, or "~" for an engine-numbered anonymous one.
