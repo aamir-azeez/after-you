@@ -15,6 +15,10 @@ extends RefCounted
 ## - Reaction slots (slot "reaction_slot"): each one owned opens one more of
 ##   the six slots past the four free ones (services/reaction_slots.gd).
 ## Codes take the 400s block, in this order (tests/fixtures/cosmetic_codes.json).
+## 413 (Smitten) and 416 (Heart eyes) were taken out of the game on
+## 2026-11-14: their codes stay reserved (content/cosmetics/index.gd
+## RETIRED_CODES) and an id of either arriving from elsewhere draws as any
+## unknown face does (services/reaction_catalog.gd shown_face).
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const ROWS := [
@@ -31,11 +35,9 @@ const ROWS := [
 	{"id": "gasp", "code": 410, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_GASP, "art": "", "moving": true},
 	{"id": "peekaboo", "code": 411, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_PEEKABOO, "art": "", "moving": true},
 	{"id": "yay", "code": 412, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_YAY, "art": "", "moving": true},
-	{"id": "smitten", "code": 413, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_SMITTEN, "art": "", "moving": true},
 	{"id": "starry", "code": 414, "slot": "reaction", "tier": "face_rare", "name": PlayerCopy.FACE_STARRY, "art": "", "moving": true},
 	{"id": "flower", "code": 415, "slot": "reaction", "tier": "face_epic", "name": PlayerCopy.FACE_FLOWER, "art": "", "moving": true},
 	# The pack faces, sold one at a time; a pack's owner owns its three already.
-	{"id": "heart_eyes", "code": 416, "slot": "reaction", "tier": "face_uncommon", "name": PlayerCopy.FACE_HEART_EYES, "art": ""},
 	{"id": "proud", "code": 417, "slot": "reaction", "tier": "face_common", "name": PlayerCopy.FACE_PROUD, "art": ""},
 	{"id": "wink", "code": 418, "slot": "reaction", "tier": "face_common", "name": PlayerCopy.FACE_WINK, "art": ""},
 	{"id": "wow", "code": 419, "slot": "reaction", "tier": "face_uncommon", "name": PlayerCopy.FACE_WOW, "art": ""},

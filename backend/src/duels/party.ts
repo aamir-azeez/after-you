@@ -46,8 +46,11 @@ export type PartyOp =
   | { kind: "add_duels"; refs: DuelRef[]; final?: string[] }
   | { kind: "drop_duels"; ids: string[] }
   | { kind: "settle_wins"; ids: string[] };
-/** `previous`: the partner this op replaced or removed, whose own row should be told. */
-export type PartyAnswer = { state: PartyState; previous: string | null };
+/**
+ * `previous`: the partner this op replaced or removed, whose own row should be told.
+ * `withdrawn`: the friend a new invite replaced, whose invite should go from their own row.
+ */
+export type PartyAnswer = { state: PartyState; previous: string | null; withdrawn?: string };
 
 export function blankParty(): PartyState {
   return { schema_version: 1, partner: null, since: 0, invites_in: [], invite_out: null, duels: [], settled: [] };
@@ -64,7 +67,7 @@ export function prune(state: PartyState, now: number): boolean {
 /** Applies one op for `owner`. Every op is safe to repeat. */
 export function applyParty(state: PartyState, owner: string, op: PartyOp, now: number): Outcome<PartyAnswer> {
   prune(state, now);
-  let previous: string | null = null;
+  let previous: string | null = null, withdrawn: string | undefined;
   const setPartner = (partner: string) => {
     if (state.partner !== partner) { previous = state.partner; state.partner = partner; state.since = now; }
     state.invites_in = state.invites_in.filter(invite => invite.from !== partner);
@@ -73,6 +76,7 @@ export function applyParty(state: PartyState, owner: string, op: PartyOp, now: n
   switch (op.kind) {
     case "invite":
       if (op.to === owner) return fail(400, "party_self");
+      if (state.invite_out && state.invite_out.to !== op.to) withdrawn = state.invite_out.to;
       if (state.partner !== op.to) state.invite_out = { to: op.to, at: now };
       break;
     case "invited":
@@ -119,7 +123,7 @@ export function applyParty(state: PartyState, owner: string, op: PartyOp, now: n
       state.settled = [...new Set([...state.settled, ...op.ids])].slice(-MAX_MEMBER_DUELS * 2);
       break;
   }
-  return ok({ state, previous });
+  return ok({ state, previous, ...(withdrawn ? { withdrawn } : {}) });
 }
 
 /** Keeps `look` as the player's current look. Returns whether the row changed; the default removes it. */

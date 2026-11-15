@@ -42,6 +42,7 @@ import { lastingAnswer, receiptOf, type PayoutShown } from "./payout-receipt";
  * - GET  /v1/duels/ghosts: each chapter's recorded times to race, from the
  *   board views (cached, so usually no request) and the developers' ghosts.
  * - POST /v1/duels/party/{invite,accept,dismiss,cancel,leave}
+ * - GET  /v1/room-inbox's first page carries the party invites waiting (inboxDuelInvites), for Home's notice.
  * - POST /v1/duels/challenge, POST /v1/duels/ghost
  * - GET  /v1/duels/<board>/<duel_id>: one duel, with what it paid this player.
  * - POST /v1/duels/<board>/<duel_id>/{accept,decline,leave,sync}
@@ -91,6 +92,21 @@ export function chapterRow(board: string) {
   return row;
 }
 export const party = (env: Env, id: string) => env.LEADERBOARD_MEMBERS.getByName(id);
+
+/** Clients that show a friend's party invite on Home send this ("1"); the room inbox's first page then carries duel_invites. */
+export const DUEL_INVITES_HEADER = "X-AfterYou-Duel-Invites";
+/**
+ * The party invites waiting for `player`, oldest first, as GET /v1/room-inbox's `duel_invites` (Home's invite notice): who asked
+ * and when, as the lobby's party.invites_in has them. Only while duels are on, else nothing. One request, the player's own party
+ * row, read without a write (no look passed); a failed read leaves the field out, so the inbox still answers.
+ */
+export async function inboxDuelInvites(env: Env, player: string, now: number): Promise<{ duel_invites?: { from: string; at: number }[] }> {
+  if (!duelsOn(env)) return {};
+  try {
+    const state = await party(env, player).partyRead(now);
+    return { duel_invites: state.invites_in.map(invite => ({ from: invite.from, at: invite.at })) };
+  } catch { return {}; }
+}
 const board = (env: Env, key: string) => env.LEADERBOARD_BOARDS.getByName(key);
 /**
  * The board's duel calls, typed as the model's own shapes: RPC answers come back as plain
@@ -269,7 +285,9 @@ async function partyRoute(env: Env, action: string, player: string, input: unkno
       if (!await friends(env, player, friend)) throw new ApiError(403, "party_friends_only");
       await apply(friend, { kind: "invited", from: player });
       told.push(friend);
-      await apply(player, { kind: "invite", to: friend });
+      // Asking another friend takes back the invite to the one asked before, so their Home stops showing it.
+      const { withdrawn } = await apply(player, { kind: "invite", to: friend });
+      if (withdrawn) { await party(env, withdrawn).partyApply(withdrawn, { kind: "dismiss", from: player }, now); told.push(withdrawn); }
     } else if (action === "accept") {
       const from = playerId(fields(input, ["from"]).from);
       if (!await friends(env, player, from)) throw new ApiError(403, "party_friends_only");

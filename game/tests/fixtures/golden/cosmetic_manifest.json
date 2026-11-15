@@ -60,10 +60,8 @@
 		"gasp",
 		"peekaboo",
 		"yay",
-		"smitten",
 		"starry",
 		"flower",
-		"heart_eyes",
 		"proud",
 		"wink",
 		"wow",
@@ -274,12 +272,12 @@
 			"code": 202,
 			"currency": "pollen",
 			"id": "flower_pot",
-			"price": 1000,
+			"price": 5000,
 			"released": false,
 			"set": "",
 			"slot": "hat",
 			"sold": true,
-			"tier": "common",
+			"tier": "uncommon",
 			"unlock": ""
 		},
 		"gasp": {
@@ -328,18 +326,6 @@
 			"slot": "leaf",
 			"sold": false,
 			"tier": "earned",
-			"unlock": ""
-		},
-		"heart_eyes": {
-			"code": 416,
-			"currency": "pollen",
-			"id": "heart_eyes",
-			"price": 1500,
-			"released": false,
-			"set": "",
-			"slot": "reaction",
-			"sold": true,
-			"tier": "face_uncommon",
 			"unlock": ""
 		},
 		"huh": {
@@ -442,12 +428,12 @@
 			"code": 204,
 			"currency": "pollen",
 			"id": "mushroom",
-			"price": 5000,
+			"price": 1000,
 			"released": false,
 			"set": "",
 			"slot": "hat",
 			"sold": true,
-			"tier": "uncommon",
+			"tier": "common",
 			"unlock": ""
 		},
 		"nervous": {
@@ -490,12 +476,12 @@
 			"code": 200,
 			"currency": "pollen",
 			"id": "paper_boat",
-			"price": 1000,
+			"price": 5000,
 			"released": false,
 			"set": "",
 			"slot": "hat",
 			"sold": true,
-			"tier": "common",
+			"tier": "uncommon",
 			"unlock": ""
 		},
 		"patchwork": {
@@ -574,12 +560,12 @@
 			"code": 201,
 			"currency": "pollen",
 			"id": "rain_cap",
-			"price": 5000,
+			"price": 1000,
 			"released": false,
 			"set": "",
 			"slot": "hat",
 			"sold": true,
-			"tier": "uncommon",
+			"tier": "common",
 			"unlock": ""
 		},
 		"rain_drops": {
@@ -726,18 +712,6 @@
 			"tier": "face_common",
 			"unlock": ""
 		},
-		"smitten": {
-			"code": 413,
-			"currency": "pollen",
-			"id": "smitten",
-			"price": 3000,
-			"released": false,
-			"set": "",
-			"slot": "reaction",
-			"sold": true,
-			"tier": "face_rare",
-			"unlock": ""
-		},
 		"snow_steps": {
 			"code": 314,
 			"currency": "pollen",
@@ -850,12 +824,12 @@
 			"code": 205,
 			"currency": "pollen",
 			"id": "tea_cup",
-			"price": 5000,
+			"price": 20000,
 			"released": false,
 			"set": "",
 			"slot": "hat",
 			"sold": true,
-			"tier": "uncommon",
+			"tier": "rare",
 			"unlock": ""
 		},
 		"tide": {
@@ -922,12 +896,12 @@
 			"code": 206,
 			"currency": "pollen",
 			"id": "wave_cap",
-			"price": 20000,
+			"price": 5000,
 			"released": false,
 			"set": "",
 			"slot": "hat",
 			"sold": true,
-			"tier": "rare",
+			"tier": "uncommon",
 			"unlock": ""
 		},
 		"wink": {

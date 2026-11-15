@@ -1,6 +1,6 @@
 extends SceneTree
 ## Every game/tests/test_*.gd suite has exactly one line in ci_shards.txt,
-## which .github/workflows/verify.yml reads to pick each shard's suites.
+## which scripts/ci_shards.py reads to pick each CI shard's suites.
 const LIST := "res://tests/ci_shards.txt"
 const SHARDS := ["1", "2", "3"]
 var checks := 0

@@ -27,6 +27,7 @@ extends Node
 const Page = preload("res://presentation/pollen_play_page.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const FruitWallet = preload("res://services/fruit_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 
@@ -91,28 +92,55 @@ func store_open() -> bool:
 func _reduced() -> bool:
 	return bool(host.saves.data.settings.get("reduced_motion", false)) if host.get("saves") != null else false
 
-## What a chip shows now: [balance, whether its plus reaches the store, the
-## Fruit half (kit/pollen_chip.gd fruits_for: [] while Fruits do not show)], or
-## [] while Pollen does not show or no balance is known yet. Home makes a new
-## chip only when this changes, so a refresh never replaces one under a finger.
+## What a chip shows now: [balance (PollenChip.WAITING before it arrives: the placeholder),
+## whether its plus reaches the store, the Fruit half (kit/pollen_chip.gd
+## fruits_for: [] while Fruits do not show)], or [] while Pollen does not show.
+## Before the server's first answer of this run (the host's awaiting_answer)
+## the chip shows as if Pollen and Fruits are on, with placeholders. Home makes
+## a new chip only when this changes, so a refresh never replaces one under a finger.
 func chip_state() -> Array:
-	if not available() or balance() < 0: return []
-	return [balance(), store_open(), PollenChip.fruits_for(_scope(), _surfaces(), fruits)]
+	var on := available()
+	if not on and not _awaiting(PollenWallet.shared() if host == null or host.get("pollen_client") == null else host.pollen_client.wallet): return []
+	return [balance() if on and _balance_known() else PollenChip.WAITING, store_open(), _fruit_half()]
+
+## Whether the server has said the balance (a refund may leave it below zero, even at -1).
+func _balance_known() -> bool:
+	var scope := _scope()
+	return not scope.is_empty() and not host.pollen_client.wallet.wallet(str(scope.server), str(scope.owner)).is_empty()
+
+## The Fruit half's part of chip_state: the kept Fruits once Pollen and Fruits
+## are known, else the placeholder while the server's first answer is to come.
+func _fruit_half() -> Array:
+	var half := PollenChip.fruits_for(_scope(), _surfaces(), fruits)
+	if not half.is_empty() or not _surfaces().shop_visible(): return half
+	return [PollenChip.WAITING] if _awaiting(fruits if fruits != null else FruitWallet.shared()) else []
+
+## Whether the server's first answer of this run is still to come for `store`'s
+## part (the host's one capabilities read); a host without one never waits.
+func _awaiting(store: RefCounted) -> bool:
+	return host != null and host.has_method("awaiting_answer") and bool(host.awaiting_answer(store))
+
+## Opens through `open` (true once open), or, before the server's first answer,
+## after it (the host's open_when_answered: a short wait, then open or offline).
+func _when_answered(open: Callable) -> void:
+	if host != null and host.has_method("open_when_answered"): host.open_when_answered(open)
+	else: open.call()
 
 ## A chip for Home, this page or the Fruits page (`where` "fruits"), or null
-## while Pollen does not show or no balance is known yet. Each half goes where
+## while Pollen does not show (chip_state). Each half goes where
 ## the chip is: on the Fruits page its Fruit half does nothing, and the Pollen
 ## page and the store it opens come back to the Fruits page.
 func chip(where: String = "") -> Control:
 	var state := chip_state()
 	if state.is_empty(): return null
 	var scope := _scope()
-	var key := PollenWallet.scope_key(str(scope.server), str(scope.owner))
 	var now: int = state[0]
 	var made := PollenChip.make(now, state[1], state[2])
-	var before: Variant = _shown.get(key)
-	_shown[key] = now
-	if before is int and now > before: made.show_gain(now - before, _reduced())
+	if not scope.is_empty() and now != PollenChip.WAITING:
+		var key := PollenWallet.scope_key(str(scope.server), str(scope.owner))
+		var before: Variant = _shown.get(key)
+		_shown[key] = now
+		if before is int and now > before: made.show_gain(now - before, _reduced())
 	made.amount_pressed.connect(_amount_pressed.bind(where))
 	made.plus_pressed.connect(_plus_pressed.bind(where))
 	made.fruits_pressed.connect(_fruits_pressed.bind(where))
@@ -125,7 +153,9 @@ static func forget_shown() -> void:
 ## The balance: this page (nothing while it is open).
 func _amount_pressed(where: String = "") -> void:
 	if where != FROM_FRUITS:
-		if not is_open(): open_from_home()
+		if not is_open(): _when_answered(func() -> bool:
+			open_from_home()
+			return is_open())
 	else: open_from_fruits()
 
 ## The plus: the Pollen store, whose Back comes to where the chip was.
@@ -138,7 +168,9 @@ func _plus_pressed(where: String = "") -> void:
 ## The Fruit half: the Fruits page, whose Back comes to where the chip was
 ## (nothing on the Fruits page itself).
 func _fruits_pressed(where: String = "") -> void:
-	if where != FROM_FRUITS and fruits_route.is_valid(): fruits_route.call("pollen" if is_open() else "home")
+	if where == FROM_FRUITS or not fruits_route.is_valid(): return
+	var from := "pollen" if is_open() else "home"
+	_when_answered(func() -> bool: return fruits_route.call(from) == true)
 
 func open_from_home() -> void:
 	_open("home")

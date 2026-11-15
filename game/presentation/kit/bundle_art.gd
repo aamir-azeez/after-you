@@ -43,7 +43,6 @@ func _init(bundle_id: String = "pinch", side: float = 96.0) -> void:
 	custom_minimum_size = Vector2(side, side)
 	expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 

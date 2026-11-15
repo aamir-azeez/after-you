@@ -37,12 +37,12 @@ const LEAF_LIGHT := Color("93b874")
 ## The selector's and the set card's dark glass on plum, and the set card's rim.
 const GLASS := Color(0.078, 0.031, 0.086, 0.45)
 const SET_RIM := Color(0.949, 0.718, 0.612, 0.35)
-const CARD_SIZE := Vector2(240, 175)
+static var CARD_SIZE: Vector2 = ShopKit.tile(Vector2(240, 175))
 ## The narrowest an item card and the set card get on a 16:9 phone (a safe
 ## area 1280 units wide); wider screens give them up to CARD_SIZE and SET_SIZE.
 ## An item card is never narrower than its full name and tag need (CARD_NAME_GAP
 ## between them); where the cards don't all fit, their row scrolls sideways.
-const CARD_NARROW := 168.0
+static var CARD_NARROW: float = ShopKit.tile(168.0)
 const CARD_NAME_GAP := 10.0
 ## Where the row scrolls, the cards widen (up to CARD_SIZE.x) so whole cards
 ## fill the view with this much of the next one peeking in at its edge.
@@ -52,7 +52,7 @@ const CARD_PEEK := 0.45
 const RING_ROOM := 8
 const SET_SIZE := Vector2(515, 103)
 const SET_NARROW := 400.0
-const CARD_PIP := Vector2(140, 168)
+static var CARD_PIP: Vector2 = ShopKit.tile(Vector2(140, 168))
 const TILE := 77.0
 const RADIUS := 22
 
@@ -87,10 +87,14 @@ func _init() -> void:
 	for side: Array in [["left", 30], ["right", 26], ["top", 64], ["bottom", 20]]: margin.add_theme_constant_override("margin_" + side[0], side[1])
 	add_child(margin)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 14)
+	# Tight, so the bigger shop tiles (ShopKit.TILE_SCALE) still fit a phone's height.
+	column.add_theme_constant_override("separation", 8)
 	margin.add_child(column)
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 12)
+	# The title, then the chips beside it, or under it where the panel is too
+	# narrow for both, so the page is never wider than the screen.
+	var header := HFlowContainer.new()
+	header.add_theme_constant_override("h_separation", 12)
+	header.add_theme_constant_override("v_separation", 8)
 	column.add_child(header)
 	var titles := VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -303,16 +307,16 @@ func _card(entry: Dictionary) -> Control:
 	var title := HBoxContainer.new()
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(title)
-	var label := ShopKit.text(str(entry.name), 19, OrchardSurface.TEXT, ShopKit.bold_font())
+	var label := ShopKit.text(str(entry.name), ShopKit.tile_text(19), OrchardSurface.TEXT, ShopKit.bold_font())
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.clip_text = true
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	label.name = "OrchardName"
 	title.add_child(label)
-	var tag := ShopKit.text(tier_word(str(entry.tier)).to_upper(), 13, OrchardSurface.TEXT_SOFT, ShopKit.bold_font())
+	var tag := ShopKit.text(tier_word(str(entry.tier)).to_upper(), ShopKit.tile_text(13), OrchardSurface.TEXT_SOFT, ShopKit.bold_font())
 	tag.name = "OrchardTag"
 	title.add_child(tag)
-	column.add_child(_price(entry, 20))
+	column.add_child(_price(entry, ShopKit.tile_text(20)))
 	card.custom_minimum_size.y = CARD_SIZE.y + 64
 	return card
 

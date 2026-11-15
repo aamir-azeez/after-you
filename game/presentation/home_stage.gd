@@ -9,6 +9,8 @@ const KeepsakeLayer = preload("res://presentation/home_keepsake_layer.gd")
 const KeepsakeCard = preload("res://presentation/keepsakes/keepsake_card.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
 const ReactionCatalog = preload("res://services/reaction_catalog.gd")
+const RunReactions = preload("res://presentation/run_reactions.gd")
+const RunReactionPlayer = preload("res://presentation/run_reaction_player.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const SlotLooks = preload("res://presentation/slot_looks.gd")
 const Joystick = preload("res://presentation/joystick.gd")
@@ -118,8 +120,12 @@ var play_cue: Callable
 ## () -> void: a light tap of the phone, when Settings' Haptics is on (Main:
 ## the soundscape's tap_haptic).
 var play_haptic: Callable
+## (face: String) -> void: a reaction's pop (Main: the soundscape's play_reaction).
+var play_reaction: Callable
 ## Explore's action button: the nearby keepsake's own words.
 var _explore_action: Button
+## The React pill (presentation/run_reactions.gd): the player's own pip reacts.
+var _react: Button
 ## The card's measured status height and count size, per width.
 var _box_fit: Dictionary = {}
 ## Only the free chapters' keepsakes (configure()).
@@ -189,6 +195,18 @@ func set_keepsakes(items: Array[Dictionary]) -> void:
 	else: _keepsake_layer.set_marks(_keepsakes, _hard_marks, _together_hard)
 	_update_keepsake_labels()
 	_layout()
+
+## Where a row of the top bar's pills must end (this stage's x): just before the
+## first header action right of the row's start on the same band, else the screen's edge.
+func _top_bar_end(row: Rect2) -> float:
+	var end := size.x - 24.0
+	var band := Rect2(global_position + row.position, Vector2(size.x, row.size.y))
+	for action: Control in _header_actions:
+		if not is_instance_valid(action) or not action.is_visible_in_tree(): continue
+		var header := action.get_global_rect()
+		if header.position.x > band.position.x and header.position.y < band.end.y and header.end.y > band.position.y:
+			end = minf(end, header.position.x - global_position.x - 12.0)
+	return end
 
 func set_header_actions(actions: Array[Control]) -> void:
 	_header_actions = actions.duplicate()
@@ -267,6 +285,7 @@ func _ready() -> void:
 	add_child(_hint)
 	_create_keepsake_box()
 	_create_explore_controls()
+	_create_reactions()
 	_create_keepsake_display()
 	# The island's static geometry draws as a few batches (kit/static_batch.gd);
 	# everything the world, this stage or Main moves, hides or recolours stays
@@ -334,9 +353,21 @@ func _layout() -> void:
 	_reset.position = top_left
 	if is_instance_valid(_explore_button):
 		_fit_pill(_explore_button)
-		var lead: Button = _explore_back if _exploring else _explore_button
+		var lead: Control = _explore_back if _exploring else _explore_button
 		if not _exploring: _explore_button.position = top_left
-		_reset.position = Vector2(lead.position.x + lead.size.x + PILL_GAP, lead.position.y + (lead.size.y - PILL_HEIGHT) * 0.5)
+		# React follows Explore (Back while exploring), and Reset view follows React,
+		# along the top bar up to the header's actions (the Pollen and Fruits chips,
+		# Full Journey); a pill that would reach them starts a row under Explore.
+		if is_instance_valid(_react): _react.size = RunReactions.SIZE
+		var cursor := lead.position.x + lead.size.x + PILL_GAP
+		var row := Rect2(lead.position, lead.size)
+		for pill: Control in [_react, _reset]:
+			if not is_instance_valid(pill): continue
+			if cursor + pill.size.x > _top_bar_end(row) and cursor > lead.position.x:
+				row = Rect2(Vector2(lead.position.x, row.end.y + PILL_GAP), pill.size)
+				cursor = lead.position.x
+			pill.position = Vector2(cursor, row.position.y + (row.size.y - pill.size.y) * 0.5)
+			cursor += pill.size.x + PILL_GAP
 	for action: Control in _header_actions:
 		if not is_instance_valid(action) or not action.is_visible_in_tree(): continue
 		var header := action.get_global_rect()
@@ -604,8 +635,10 @@ func _allowed(point: Vector2) -> bool:
 	for action: Control in _header_actions:
 		if is_instance_valid(action) and action.is_visible_in_tree() and action.get_global_rect().has_point(point): return false
 	if is_instance_valid(_keepsake_box) and _keepsake_box.visible and _keepsake_box.get_global_rect().has_point(point): return false
-	for control: Control in [_explore_button, _explore_back, _stick, _explore_action]:
+	for control: Control in [_explore_button, _explore_back, _stick, _explore_action, _react]:
 		if is_instance_valid(control) and control.is_visible_in_tree() and control.get_global_rect().has_point(point): return false
+	# The open faces card keeps its taps.
+	if is_instance_valid(_react) and _react.faces_open() and _react.faces_card.panel_rect().has_point(point): return false
 	# The menu panel keeps its own presses; only Explore has the whole screen.
 	if not _exploring and point.x < global_position.x + UiTokens.HOME_PANEL_WIDTH: return false
 	return _stage_rect().has_point(point) and not (is_instance_valid(_reset) and _reset.visible and _reset.get_global_rect().has_point(point))
@@ -893,6 +926,26 @@ func _create_explore_controls() -> void:
 		var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
 		if not item.is_empty(): play_keepsake(str(item.id), _actors.get("a") if _exploring else null))
 	add_child(_explore_action)
+
+## Reactions on Home: the chapters' React pill and faces card with the player's
+## own reaction slots, the same faces and bubble as in a turn
+## (RunReactionPlayer.show_on) on the player's pip. Kept on this phone only:
+## nothing is sent or saved but the last face the pill shows.
+func _create_reactions() -> void:
+	if not _actors.has("a"): return
+	_react = RunReactions.new()
+	_react.name = "HomeReactions"
+	_react.context = {"local": true}
+	_react.settings = {"reduced_motion": _world.reduced_motion}
+	_react.reacted.connect(react)
+	add_child(_react)
+
+## The player's pip on Home makes `face`, with its bubble and pop.
+func react(face: String) -> void:
+	if not is_instance_valid(_world) or not _actors.has("a"): return
+	RunReactionPlayer.show_on(_actors.a, _world.camera, self, face, "peach", {"reduced_motion": _world.reduced_motion})
+	if play_reaction.is_valid(): play_reaction.call(face)
+	if play_haptic.is_valid(): play_haptic.call()
 
 func is_exploring() -> bool:
 	return _exploring

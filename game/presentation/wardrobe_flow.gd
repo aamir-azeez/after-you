@@ -567,7 +567,7 @@ func model() -> Dictionary:
 	var offered: Array = view.get("offered", [])
 	var items: Array = []
 	var by_tier := {}
-	for id: String in Catalog.ids():
+	for id: String in Catalog.shop_order():
 		var mine := id in owned
 		var fruit := Catalog.currency(id) == FRUITS
 		# The server's catalogue decides what shows: what it sells, anything owned, and every earned item it offers.

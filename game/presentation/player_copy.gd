@@ -376,6 +376,9 @@ const WARDROBE_SHORT_BUNDLE_GETS := " Pollen"
 const WARDROBE_SHORT_BUNDLE_GETS_GIFT := " Pollen with your first bundle gift"
 ## The balance chip's left half, for screen readers.
 const POLLEN_CHIP_BALANCE := "Pollen: %s"
+## A chip's amount before the first balance arrives (presentation/kit/pollen_chip.gd), and what a screen reader says for it.
+const CHIP_WAITING := "···"
+const CHIP_WAITING_SPOKEN := "loading"
 
 # The Pollen store (board 2: presentation/pollen_store_page.gd, pollen_store_flow.gd).
 const POLLEN_STORE_TITLE := "Store"
@@ -633,11 +636,9 @@ const FACE_DROWSY := "Drowsy"
 const FACE_GASP := "Gasp"
 const FACE_PEEKABOO := "Peekaboo"
 const FACE_YAY := "Yay"
-const FACE_SMITTEN := "Smitten"
 const FACE_STARRY := "Starry"
 const FACE_FLOWER := "Flower"
 ## The six pack faces sold one at a time (content/cosmetics/faces.gd).
-const FACE_HEART_EYES := "Heart eyes"
 const FACE_PROUD := "Proud"
 const FACE_WINK := "Wink"
 const FACE_WOW := "Wow"
@@ -656,10 +657,10 @@ const REACTION_SLOT_SIXTH := "Sixth reaction slot"
 ## The faces, by id (services/reaction_catalog.gd). The heart is icon only; its name is for screen readers.
 const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
 	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love",
-	"heart_eyes": FACE_HEART_EYES, "proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
+	"proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
 	"aww": FACE_AWW, "shy": FACE_SHY, "huh": FACE_HUH, "please": FACE_PLEASE, "touched": FACE_TOUCHED, "lucky": FACE_LUCKY,
 	"giggle": FACE_GIGGLE, "curious": FACE_CURIOUS, "nervous": FACE_NERVOUS, "drowsy": FACE_DROWSY, "gasp": FACE_GASP,
-	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "smitten": FACE_SMITTEN, "starry": FACE_STARRY, "flower": FACE_FLOWER}
+	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "starry": FACE_STARRY, "flower": FACE_FLOWER}
 ## The reaction packs (services/reaction_catalog.gd PACKS), and the faces card's
 ## tab for the everyday faces beside a tab per owned pack.
 const FACE_PACK_NAMES := {"garden_faces": "Garden faces", "big_feelings": "Big feelings"}
@@ -1115,6 +1116,8 @@ const DUELS_PARTY_FRIENDS_ONLY := "Only your friends can join your party."
 const DUELS_PARTY_ASK := "Ask"
 const DUELS_PARTY_ASKED := "Asked"
 const DUELS_PARTY_SAY_YES := "Say yes"
+## Home's card for a friend's invite (presentation/redo_home_card.gd), whose title is DUELS_PARTY_INVITED without its full stop.
+const DUELS_PARTY_SEE_INVITE := "See invite"
 const DUELS_PARTY_LEAVE := "Leave party"
 const DUELS_PARTY_NO_FRIENDS := "Add a friend first. Friends you add show here."
 ## Starting a duel.
@@ -1459,6 +1462,8 @@ const ROOM_OPTIONS_INVITE := "Invite"
 const ROOM_OPTIONS_TURNS := "Turns"
 const ROOM_OPTIONS_CHAPTER := "Chapter"
 const ROOM_OPTIONS_SAFETY := "Safety"
+## The way to report or block a room partner: the Room options row and the pause cards' flag.
+const REPORT_OR_BLOCK := "Report or block player"
 const ROOM_OPTIONS_PARTNER := "Room partner"
 # A friend's redo request in Together rooms (presentation/redo_flow.gd,
 # presentation/redo_home_card.gd). %s is the friend's name.

@@ -22,9 +22,10 @@ const FACES: Array[String] = ["happy", "squeeze", "surprised", "sad", "annoyed",
 const HEART := "heart"
 ## The reaction packs by id (backend src/pollen/catalog.json packs), in shelf
 ## order, each with its faces in picker order.
-const PACKS := {"garden_faces": ["heart_eyes", "proud", "wink"], "big_feelings": ["wow", "crying", "dizzy"]}
+## (Garden faces also held Heart eyes, taken out of the game: its owners keep the other two.)
+const PACKS := {"garden_faces": ["proud", "wink"], "big_feelings": ["wow", "crying", "dizzy"]}
 ## Every pack face, in PACKS order.
-const PACK_FACES: Array[String] = ["heart_eyes", "proud", "wink", "wow", "crying", "dizzy"]
+const PACK_FACES: Array[String] = ["proud", "wink", "wow", "crying", "dizzy"]
 ## The faces sold one at a time only, in shop order: the "reaction" rows of
 ## content/cosmetics/faces.gd that are not pack faces. Each draws the spirit
 ## expression of the same id.
@@ -36,7 +37,7 @@ const ID_PATTERN := "^[a-z0-9_]{1,40}$"
 ## only, draws none.
 const EXPRESSIONS := {"happy": Look.HAPPY, "squeeze": Look.SQUEEZE, "surprised": Look.SURPRISED, "sad": Look.SAD,
 	"annoyed": Look.ANNOYED, "angry": Look.ANGRY, "sleepy": Look.SLEEPY, "knocked_out": Look.KNOCKED_OUT,
-	"heart_eyes": Look.HEART_EYES, "proud": Look.PROUD, "wink": Look.WINK, "wow": Look.WOW, "crying": Look.CRYING, "dizzy": Look.DIZZY}
+	"proud": Look.PROUD, "wink": Look.WINK, "wow": Look.WOW, "crying": Look.CRYING, "dizzy": Look.DIZZY}
 ## The face a spirit makes for the heart while it shows over it: ^ ^ with
 ## pink cheeks, its own 3D face (the picker and bubbles draw the heart icon).
 const HEART_EXPRESSION := Look.JOY
