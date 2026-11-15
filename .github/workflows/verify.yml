@@ -144,7 +144,7 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
-          echo "Runner: $(nproc) CPUs, $(free -g | awk '/^Mem:/ { print $2 }') GB"
+          echo "Runner: $(nproc) CPUs ($(lscpu | sed -n 's/^Model name: *//p')), $(free -g | awk '/^Mem:/ { print $2 }') GB"
           mkdir -p "$RUNNER_TEMP/suite-logs"
           run_item() {
             local name=$1 started=$SECONDS status=0 log="$RUNNER_TEMP/suite-logs/$1.log"
