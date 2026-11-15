@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { ApiError } from "../protocol";
+import type { ChapterRecording, JsonChapterRecording } from "./chapter-types";
 
 /**
  * Packed recordings: the one codec for a physical turn's inputs and replay checks (the Worker side of
@@ -27,6 +28,11 @@ export type Run = { ticks: number; x: number; z: number; action: boolean };
 export type Check = { tick: number; state_hash: string };
 
 export function isPacked(record: object): boolean { return Object.hasOwn(record, PACKED_KEY); }
+/** A checked record known to be in its JSON form; a packed one throws. */
+export function jsonForm(record: ChapterRecording): JsonChapterRecording {
+  if (isPacked(record) || !Array.isArray(record.actions) || !Array.isArray(record.replay_checks)) throw new ApiError(422, "packed_recording");
+  return record as JsonChapterRecording;
+}
 /** The packed form's keys for a record family's JSON keys. */
 export function packedKeys(keys: readonly string[]): string[] { return [...keys.filter(key => key !== "actions" && key !== "replay_checks"), PACKED_KEY]; }
 

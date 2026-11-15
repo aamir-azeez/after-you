@@ -74,7 +74,7 @@ describe("the packed recording codec", () => {
   });
 
   it("refuses every other encoding of the same turn", () => {
-    const good = Buffer.from(packRecording(runs, checks(241), 241), "base64");
+    const good = new Uint8Array(Buffer.from(packRecording(runs, checks(241), 241), "base64"));
     const bad = (bytes: number[] | Uint8Array) => () => unpackRecording(Buffer.from(Uint8Array.from(bytes)).toString("base64"), 241, final, 3);
     const refused = expect.objectContaining({ status: 422, code: "invalid_packed_recording" });
     expect(bad(good)).not.toThrow();

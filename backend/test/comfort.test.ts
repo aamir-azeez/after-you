@@ -6,7 +6,7 @@ import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { chapter, recordingV2, boundedValue, boundedTurnValue, MAX_V2_BODY_BYTES, MAX_CHECKPOINT_BYTES } from "../src/v2/protocol";
 import { highAndLow, rollingHome } from "../src/v2/protocol-cooperative";
-import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
+import type { ChapterCheckpoint, JsonChapterRecording } from "../src/v2/chapter-types";
 import type { RoomSnapshotV2, MutationV2 } from "../src/v2/room";
 import native from "../../game/tests/fixtures/comfort8/recordings.json";
 import denseNative from "../../game/tests/fixtures/comfort8/dense-physical.json";
@@ -15,7 +15,7 @@ import oldPhysicalA from "../../game/tests/fixtures/cooperative/upper-path-a.jso
 import oldJourneyA from "../../game/tests/fixtures/journey/a-light-above-a.json";
 import { withConfig } from "./config";
 
-type Pair = { a: ChapterRecording; b: ChapterRecording };
+type Pair = { a: JsonChapterRecording; b: JsonChapterRecording };
 type PhysicalProof = { pairs: Pair[]; checkpoints: ChapterCheckpoint[] };
 const proofs = native as unknown as Record<string, PhysicalProof>;
 const dense = denseNative as unknown as PhysicalProof;
