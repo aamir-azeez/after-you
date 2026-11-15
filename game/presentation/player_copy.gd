@@ -2113,44 +2113,6 @@ const BEAM_FIELD_040A3B136A0E := "Active overrides must be a bounded object."
 const BEAM_FIELD_9D3F80045721 := "Overrides must be based on existing optical IDs."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_2BA97C2AA40E := "Unsupported active property of this optical entity."
-# Original island levels — First Light; first-player instructions
-const LEVELS_FCAAB14393CE := "Step on the glowing plate. Tap Throw and stay on the plate for your friend."
-# Original island levels — First Light; second-player instructions
-const LEVELS_F0CF60646202 := "Cross the bridge. Grab the seed close to the landing ring and take it to the garden."
-# Original island levels — Long Way Home; level subtitle
-const LEVELS_AD9C71391AE7 := "A little detour is still a way together."
-# Original island levels — Long Way Home; first-player instructions
-const LEVELS_8458EB83A8E6 := "Find the plate by the upper bridge. Throw from the plate and hold the way open."
-# Original island levels — Long Way Home; second-player instructions
-const LEVELS_FB8A19E4C344 := "Find the upper crossing before running for the landing ring."
-# Original island levels — Patient Garden; first-player instructions
-const LEVELS_D8035F26B3AC := "Your seed has a long, slow arc. Continue to hold the bridge open and observe it as it moves."
-# Original island levels — Patient Garden; second-player instructions
-const LEVELS_DE8B2984E267 := "Cross first and then follow the landing marker down to the garden."
-# Original island levels — Rising Together; first-player instructions
-const LEVELS_C9270C871E7B := "Stay on the plate after throwing the seed. The plate also raises your friend's garden."
-# Original island levels — Rising Together; second-player instructions
-const LEVELS_515718BC4DDC := "Ride the rising garden, catch the seed, and plant it when the lift is at the top."
-# Original island levels — Across the Blue; level subtitle
-const LEVELS_F7B9CD8B295A := "Leave a trail for your friend, then open another door."
-# Original island levels — Across the Blue; first-player instructions
-const LEVELS_D7DA86B17271 := "Throw from the first plate and then walk onto the second plate. You keep the bridge open with your throw."
-# Original island levels — Across the Blue; second-player instructions
-const LEVELS_83E8B2C01C2B := "When your friend's ghost opens the garden with the second plate, catch the seed."
-# Original island levels — Lantern Crossing; level subtitle
-const LEVELS_14E01148A8DC := "A patient light makes a narrow way."
-# Original island levels — Lantern Crossing; first-player instructions
-const LEVELS_3C8421B0B1D9 := "Continue standing on the plate while the lantern is filling. When full, toss the seed. The narrow bridge opens when charged."
-# Original island levels — Lantern Crossing; second-player instructions
-const LEVELS_EB1D58BC28D6 := "Wait for the light to turn on on the bridge, cross near the middle, and then return to the garden with the seed."
-# Original island levels — Two Beats; first-player instructions
-const LEVELS_C52DF6019FEF := "Charge the plate, throw, and then go to the second plate. Both steps are your friend's welcome."
-# Original island levels — Two Beats; second-player instructions
-const LEVELS_34DE370F8E0D := "Cross on the first beat, catch the seed, and wait for the second plate to open the garden."
-# Original island levels — After You; first-player instructions
-const LEVELS_931147CF81E5 := "Charge the bridge and allow the lift to rise. Throw, then open the garden from the second plate."
-# Original island levels — After You; second-player instructions
-const LEVELS_9FFE14D53B34 := "Go over the bridge your friend opened and go on through the garden that is rising. Plant the last seed together."
 # Additional source scan; review surrounding UI flow
 const SIMULATION_88FACE52603B := "Actions are taken after a turn is completed."
 # Shared action buttons — record action; tooltip
@@ -3499,25 +3461,6 @@ const TEXT := {
 	"beam_field.040a3b136a0e": BEAM_FIELD_040A3B136A0E,
 	"beam_field.9d3f80045721": BEAM_FIELD_9D3F80045721,
 	"beam_field.2ba97c2aa40e": BEAM_FIELD_2BA97C2AA40E,
-	"levels.fcaab14393ce": LEVELS_FCAAB14393CE,
-	"levels.f0cf60646202": LEVELS_F0CF60646202,
-	"levels.ad9c71391ae7": LEVELS_AD9C71391AE7,
-	"levels.8458eb83a8e6": LEVELS_8458EB83A8E6,
-	"levels.fb8a19e4c344": LEVELS_FB8A19E4C344,
-	"levels.d8035f26b3ac": LEVELS_D8035F26B3AC,
-	"levels.de8b2984e267": LEVELS_DE8B2984E267,
-	"levels.c9270c871e7b": LEVELS_C9270C871E7B,
-	"levels.515718bc4ddc": LEVELS_515718BC4DDC,
-	"levels.f7b9cd8b295a": LEVELS_F7B9CD8B295A,
-	"levels.d7da86b17271": LEVELS_D7DA86B17271,
-	"levels.83e8b2c01c2b": LEVELS_83E8B2C01C2B,
-	"levels.14e01148a8dc": LEVELS_14E01148A8DC,
-	"levels.3c8421b0b1d9": LEVELS_3C8421B0B1D9,
-	"levels.eb1d58bc28d6": LEVELS_EB1D58BC28D6,
-	"levels.c52df6019fef": LEVELS_C52DF6019FEF,
-	"levels.34de370f8e0d": LEVELS_34DE370F8E0D,
-	"levels.931147cf81e5": LEVELS_931147CF81E5,
-	"levels.9ffe14d53b34": LEVELS_9FFE14D53B34,
 	"simulation.88face52603b": SIMULATION_88FACE52603B,
 	"action_buttons.720ad17c8cc7": ACTION_BUTTONS_720AD17C8CC7,
 	"action_buttons.b35f6908bd12": ACTION_BUTTONS_B35F6908BD12,
@@ -4027,25 +3970,6 @@ const CANONICAL_KEYS := {
 	"Your partner requires additional time in the light.": "snapshot.friend_8",
 	"Throw earlier so your partner has time to catch and deliver the seed.": "snapshot.friend_9",
 	"You were here. I was here. We made this.": "relay_preview.afc92040f3db",
-	"Stand on the glowing plate. Tap Throw, then stay there for your friend.": "levels.fcaab14393ce",
-	"Cross the bridge. Catch the seed near its landing ring, then bring it to the garden.": "levels.f0cf60646202",
-	"A little detour is still a way together.": "levels.ad9c71391ae7",
-	"Find the plate by the upper bridge. Throw from the plate and hold the way open.": "levels.8458eb83a8e6",
-	"Find the upper crossing before running for the landing ring.": "levels.fb8a19e4c344",
-	"Your seed takes a long, gentle arc. Hold the bridge and watch it travel.": "levels.d8035f26b3ac",
-	"Cross first, then follow the landing marker down to the garden.": "levels.de8b2984e267",
-	"Keep the plate held after your throw. It also raises your friend's garden.": "levels.c9270c871e7b",
-	"Ride the rising garden, catch the seed, then plant it when the lift reaches the top.": "levels.515718bc4ddc",
-	"Leave a path, then open another door.": "levels.f7b9cd8b295a",
-	"Throw from the first plate, then walk onto the second plate. Your throw keeps the bridge open.": "levels.d7da86b17271",
-	"Catch the seed while your friend's ghost opens the garden with the second plate.": "levels.83e8b2c01c2b",
-	"A patient light makes a narrow way.": "levels.14e01148a8dc",
-	"Hold the plate until the lantern fills, then throw. The narrow bridge opens when charged.": "levels.3c8421b0b1d9",
-	"Wait for the bridge's light, cross near its center, then carry the seed back to the garden.": "levels.eb1d58bc28d6",
-	"Charge the plate, throw, then move to the second plate. Both steps become your friend's welcome.": "levels.c52df6019fef",
-	"Cross on the first beat, catch the seed, and wait for the second plate to open the garden.": "levels.34de370f8e0d",
-	"Charge the bridge and let the lift rise. Throw, then open the garden from the second plate.": "levels.931147cf81e5",
-	"Follow your friend's path through the bridge and rising garden. Plant your last seed together.": "levels.9ffe14d53b34",
 	"Stand on the power pad. Keep it glowing, then finish your recording.": "stage_catalog.2c27c6d030c4",
 	"Step onto the low lift. Ride up, walk to the bell and ring it.": "stage_catalog.9c41fef5e8f3",
 	"Take the seed upstairs. Throw from the marked edge, then open the garden with the other pad.": "stage_catalog.e2903051e240",

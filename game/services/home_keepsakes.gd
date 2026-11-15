@@ -18,10 +18,6 @@ const MAX_BYTES := 16384
 const MAX_SOURCE_BYTES := 2097152
 const LOAD_ERROR := PlayerCopy.HOME_KEEPSAKES_LOAD_ERROR
 const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "completed", "replays", "room", "home_keepsakes"]
-## Places of the earlier islands, which are no longer in the game: a ledger
-## that earned them keeps them as saved, and they are never shown or counted.
-const RETIRED_PREFIX := "earlier/"
-const RETIRED_PLACES := 8
 ## What Home has already checked, kept beside the ledger so a return to Home
 ## does not replay every unfinished journal again (it took seconds a visit, and
 ## every chapter open waited for it). Only a cache: a missing, damaged or
@@ -544,12 +540,12 @@ static func _valid_envelope(value: Variant) -> bool:
 	for key: String in ["attempts", "completed", "replays", "room"]:
 		if not value[key] is Dictionary or not value[key].is_empty(): return false
 	var state: Variant = value.home_keepsakes
-	if not state is Dictionary or state.size() != 2 or not Typed.whole_number(state.get("schema_version")) or state.schema_version != 1 or not state.get("earned") is Dictionary or state.earned.size() > Catalog.ROWS.size() + RETIRED_PLACES: return false
+	if not state is Dictionary or state.size() != 2 or not Typed.whole_number(state.get("schema_version")) or state.schema_version != 1 or not state.get("earned") is Dictionary or state.earned.size() > Catalog.ROWS.size() + Catalog.RETIRED_PLACES: return false
 	for id: Variant in state.earned:
 		if not id is String: return false
 		var item := Catalog.by_id(id)
 		var mark: Variant = state.earned[id]
-		if item.is_empty() and id.begins_with(RETIRED_PREFIX): item = {"friend_available": true}
+		if item.is_empty() and id.begins_with(Catalog.RETIRED_PREFIX): item = {"friend_available": true}
 		if item.is_empty() or not mark is Dictionary or mark.size() != 2 or not mark.get("solo") is bool or not mark.get("friend") is bool or (not mark.solo and not mark.friend) or (mark.friend and not item.friend_available): return false
 	return true
 

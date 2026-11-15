@@ -19,6 +19,10 @@ const OTHER_CHAPTERS := {
 ## only by that key (the Lighthouse @2 of @1) is browsed under it. An unreleased
 ## chapter (released: false) is not on Home: it has no places there yet.
 static var CHAPTERS: Array = _chapters()
+## Places of the earlier islands, which are no longer in the game: a ledger
+## that earned them keeps them as saved, and they are never shown or counted.
+const RETIRED_PREFIX := "earlier/"
+const RETIRED_PLACES := 8
 ## A later version of a chapter earns the same places as the version it replaces.
 static var ALIASES: Dictionary = _aliases()
 ## [chapter key, stage id, title] per place, in browse order.
