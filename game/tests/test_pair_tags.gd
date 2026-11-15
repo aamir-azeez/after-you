@@ -11,6 +11,8 @@ extends SceneTree
 ##   colour, lit by the same rule as its tiles, from the snapshot alone;
 ## - every tile lies on its floor, clear of controls, ownership marks, decks,
 ##   the world's own scenery and every other row, and no two rows touch;
+##   nothing the world draws lies over a tile (a floor cap above its walking
+##   surface would hide it);
 ## - one mesh draws them all, and the states follow the snapshot alone:
 ##   faint, clear while either spirit is near one of the pair's inputs,
 ##   glowing while active, the same whatever came before (a replay shows what
@@ -301,8 +303,12 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		letters[looks[0]] = pair.control
 	_check(placed.all(func(tile: Dictionary) -> bool: return wired.any(func(pair: Dictionary) -> bool: return pair.control == tile.control)), "%s: every tile belongs to a wired control" % where)
 	# Each tile clear of everything, on its floor; rows apart.
+	var layers := _floor_layers(world)
 	for tile: Dictionary in placed:
 		_check((tile.clash as Array).is_empty(), "%s: %s's tile (%s) at %s has a clear place; it runs into %s" % [where, tile.control, tile.letter, tile.at, ", ".join(tile.clash)])
+		# Nothing the world draws lies over a tile on its floor (a raised cap, a rug).
+		var over := layers.filter(func(layer: Array) -> bool: return _buries(layer[1], tile.at)).map(func(layer: Array) -> String: return str(layer[0]))
+		_check(over.is_empty(), "%s: %s's tile (%s) at %s shows over its floor; it lies under %s" % [where, tile.control, tile.letter, tile.at, ", ".join(over)])
 	var rows: Array = []
 	for tile: Dictionary in placed:
 		if tile.row not in rows: rows.append(tile.row)
@@ -358,6 +364,26 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 			_check(pair.inputs.all(func(input: Dictionary) -> bool: return input.group == "controls") and not pair.inputs.is_empty(), "%s: the receiver %s has the mirrors that light it as its inputs: %s" % [where, pair.control, pair.inputs.map(func(input: Dictionary) -> String: return input.id)])
 	_states(world, where, wired)
 	return placed.size()
+
+## Every shown mesh of the world's terrain but the tags' own, as [name, box in
+## terrain space] (a folded batch's parts each on their own).
+static func _floor_layers(world: Node3D) -> Array:
+	var found: Array = []
+	var to_terrain: Transform3D = world.terrain.global_transform.affine_inverse()
+	for node: MeshInstance3D in world.terrain.find_children("*", "MeshInstance3D", true, false):
+		if str(node.name).begins_with("PairTag") or not node.is_visible_in_tree() or node.mesh == null: continue
+		var at: Transform3D = to_terrain * node.global_transform
+		if node.has_meta(PairTags.StaticBatch.PARTS_META):
+			for part: Array in node.get_meta(PairTags.StaticBatch.PARTS_META): found.append([world.terrain.get_path_to(node), at * (part[0] as Transform3D) * (part[1] as AABB)])
+		else: found.append([world.terrain.get_path_to(node), at * node.get_aabb()])
+	return found
+
+## Whether `box` lies over a tile on the floor at `at`: across its centre,
+## reaching down past the tile and topping out just over it, as a floor layer
+## drawn over the walking surface does (taller scenery the layout keeps clear of).
+static func _buries(box: AABB, at: Vector3) -> bool:
+	var tile_top := at.y + PairTags.LIFT
+	return box.position.y <= tile_top and box.end.y > tile_top + 0.0005 and box.end.y < at.y + 0.03 and Rect2(box.position.x, box.position.z, box.size.x, box.size.z).has_point(Vector2(at.x, at.z))
 
 ## Faint, near (either spirit), lit, and the same states whatever came before.
 func _states(world: Node3D, where: String, wired: Array[Dictionary]) -> void:

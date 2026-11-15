@@ -4,7 +4,7 @@ extends RefCounted
 ## shelf on every phone, and featuring changes nothing about what can be bought.
 ##
 ## - 3 Common slots and 2 Uncommon slots walk through their tier.
-## - 1 top slot follows a fixed 6-week cycle: Rare, Epic, Rare, Special, Rare,
+## - 1 top slot, first on the shelf, follows a fixed 6-week cycle: Rare, Epic, Rare, Special, Rare,
 ##   Epic. Each time a tier comes round, the next item of that tier shows, so
 ##   with the planned catalogue (12 Common, 8 Uncommon, 6 Rare, 4 Epic,
 ##   4 Special) each Common and Uncommon is featured every 4 weeks, each Rare
@@ -52,8 +52,9 @@ static func top_turns_before(week: int, tier: String) -> int:
 		if TOP_CYCLE[index] == tier: turns += 1
 	return turns
 
-## The shelf for `week`: up to 6 entries {id, tier, top}, Commons first, then
-## Uncommons, then the top slot. `by_tier`: tier name -> item ids on sale.
+## The shelf for `week`: up to 6 entries {id, tier, top}, the top slot first,
+## then Commons, then Uncommons. A line too narrow for all of them leaves out
+## the last ones (kit/one_row.gd), so the top slot always shows. `by_tier`: tier name -> item ids on sale.
 ## `featured`: the server's pick for the top slot, used only when `by_tier`
 ## sells it ("" for the built-in pick).
 static func shelf(week: int, by_tier: Dictionary, featured: String = "") -> Array:
@@ -62,8 +63,8 @@ static func shelf(week: int, by_tier: Dictionary, featured: String = "") -> Arra
 	var others := by_tier.duplicate()
 	others[tier] = (by_tier[tier] as Array).filter(func(id: Variant) -> bool: return id != featured)
 	var result := _built_in(week, others)
-	if not result.is_empty() and bool(result.back().top): result.pop_back()
-	result.append({"id": featured, "tier": tier, "top": true})
+	if not result.is_empty() and bool(result.front().top): result.pop_front()
+	result.push_front({"id": featured, "tier": tier, "top": true})
 	return result
 
 ## The tier whose list in `by_tier` holds `id`, or "".
@@ -82,5 +83,5 @@ static func _built_in(week: int, by_tier: Dictionary) -> Array:
 			result.append({"id": items[(at * row[1] + index) % items.size()], "tier": row[0], "top": false})
 	var top: String = TOP_CYCLE[at % TOP_CYCLE.size()]
 	var tops := order(by_tier.get(top, []))
-	if not tops.is_empty(): result.append({"id": tops[top_turns_before(at, top) % tops.size()], "tier": top, "top": true})
+	if not tops.is_empty(): result.push_front({"id": tops[top_turns_before(at, top) % tops.size()], "tier": top, "top": true})
 	return result

@@ -663,7 +663,7 @@ func _orchard_sets(view: Dictionary, owned: Array, offered: Array, look: Diction
 static func _default_pick(items: Array, look: Dictionary, featured: Array) -> String:
 	for slot: String in Catalog.slots():
 		if look.has(slot) and not _entry_in(items, str(look[slot])).is_empty(): return str(look[slot])
-	if not featured.is_empty(): return str(featured.back())
+	if not featured.is_empty(): return str(featured.front())
 	return str(items[0].id) if not items.is_empty() else ""
 
 func _redraw() -> void:

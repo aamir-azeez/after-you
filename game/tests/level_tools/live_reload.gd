@@ -111,7 +111,7 @@ func _swap_dressing(key: String, path: String) -> bool:
 	Dressing.FILES = files
 	# Readers take the resolved dressing (theme, picks and slot props applied),
 	# locked like the catalog's own: resolve the edited data the same way.
-	var data: Dictionary = Dressing.resolve(script.get_script_constant_map().DATA)
+	var data: Dictionary = Dressing.resolve(script.get_script_constant_map().DATA, key)
 	if not data.is_read_only(): data.make_read_only()
 	var resolved: Dictionary = Dressing.RESOLVED.duplicate()
 	resolved[key] = data
