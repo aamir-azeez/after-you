@@ -1,49 +1,26 @@
 extends "res://tests/test_world_fingerprint.gd"
-## Every chapter world draws its scenery with about one material per look: the
-## shape helpers share the kit's cached material for each colour
-## (Primitives.shared_material), and only meshes whose material changes later
-## (a plate that lights, a lamp that glows, a floor that fades) take their own.
-## - Built and folded, each chapter's stages use no more materials than
-##   MOST_MATERIALS allows. Before the kit shared looks, Turn of the Tide's
-##   harbour alone made over a thousand materials, most of them the same look.
+## Every chapter world stays cheap to draw on a phone, however rich its
+## scenery: the static fold (kit/static_batch.gd) folds plain scenery into a
+## few batches, whatever its colours (a palette batch draws them as vertex
+## colours) and however it is stretched, so a new prop or colour costs no
+## draw call.
+## - Shown and folded, each chapter stage draws at most MOST_DRAWS meshes and
+##   MOST_TRIANGLES triangles: one budget for every chapter, what the
+##   heaviest stage shipped (Turn of the Tide's second stage) with room to
+##   spare. Draws and triangles are what a frame costs a phone (the renderer
+##   draws no shadows); a stage within both runs like the stages already
+##   shipped. Frame times are measured on rendered runs, not here.
 ## - Driven through its fixture scenarios, Turn of the Tide @2 (not pinned by
 ##   the world fingerprint) changes no cached look in place.
-const Batch = preload("res://presentation/kit/static_batch.gd")
 
-## The most materials a chapter stage's built and folded world may use (all
-## geometry, shown or hidden), about a fifth above what it used when the kit
-## began sharing looks (Turn of the Tide: 309 against 1,936 before).
-const MOST_MATERIALS := {
-	"first-steps@1": [104, 104],
-	# Relay Isles' garden crossing (2026-11-15); train/scene-perf replaces these caps.
-	"relay-isles@2": [77, 77],
-	"high-and-low@1": [76, 94],
-	"rolling-home@1": [87, 95],
-	"a-house-for-two@1": [80, 99],
-	"conservatory@1": [119, 117],
-	"long-way-home@1": [106, 122],
-	"the-wishing-well@1": [89, 106],
-	"long-way-home@2": [106, 134],
-	"turn-of-the-tide@1": [371, 382],
-	"sleeping-lighthouse@2": [84, 83, 83, 104, 84, 107],
-	"turn-of-the-tide@2": [371, 382],
-}
-## Of those, the most that are not the kit's shared looks: materials a world
-## made itself (water, glass, lamps, plates, spirits and their faces).
-const MOST_OWN := {
-	"first-steps@1": [21, 21],
-	"relay-isles@2": [25, 25],
-	"high-and-low@1": [19, 24],
-	"rolling-home@1": [23, 28],
-	"a-house-for-two@1": [20, 28],
-	"conservatory@1": [40, 37],
-	"long-way-home@1": [40, 42],
-	"the-wishing-well@1": [18, 23],
-	"long-way-home@2": [40, 52],
-	"turn-of-the-tide@1": [227, 235],
-	"sleeping-lighthouse@2": [18, 22, 25, 30, 29, 31],
-	"turn-of-the-tide@2": [227, 235],
-}
+## The most meshes a chapter stage draws, shown and folded (each visible
+## mesh surface and overlay; a label or a multimesh is one). Turn of the
+## Tide's second stage drew 672 before the palette fold and draws 525 now;
+## every other stage draws at most 141 (Conservatory).
+const MOST_DRAWS := 580
+## The most triangles a chapter stage's visible meshes hold (Turn of the
+## Tide's second stage: 213,204).
+const MOST_TRIANGLES := 240000
 
 func _suite() -> String:
 	return "world_looks"
@@ -53,7 +30,7 @@ func _run() -> void:
 		var definition := Registry.definition(key)
 		if definition.is_empty() or definition.get("stages", []).is_empty(): continue
 		for index in range(definition.stages.size()):
-			_census(key, definition, index)
+			await _census(key, definition, index)
 	var key := "turn-of-the-tide@2"
 	var stages := _snapshots(key)
 	_check(stages.size() == 2, key + ": both stages replay from their fixtures")
@@ -72,25 +49,61 @@ func _native_chain(key: String) -> Dictionary:
 		stages.append([prefix + "-a.json", prefix + "-b.json", prefix + "-checkpoint.json"])
 	return {"stages": stages}
 
+## Shows a stage as a chapter screen does, lets it settle (a world places its
+## bubbles, then folds, in its first frames) and counts what it draws.
 func _census(key: String, definition: Dictionary, index: int) -> void:
 	var viewport := _viewport()
+	viewport.size = Vector2i(2400, 1080)
 	var world: Node3D = Registry.world_script(key).new()
 	_mount(viewport, world, false)
 	world.load_level(definition)
-	world.present_stage(definition.stages[index])
+	var stage: Dictionary = definition.stages[index]
+	if world.has_method("show_stage"): world.show_stage(stage)
+	else: world.present_stage(stage)
+	for _frame in range(3): await process_frame
 	if world._folds_static_scenery(): world._fold_static_scenery()
-	var materials: Dictionary = {}
-	var own := 0
-	for node: Node in world.find_children("*", "GeometryInstance3D", true, false):
-		var mat: Material = (node as GeometryInstance3D).material_override
-		if mat == null or materials.has(mat.get_instance_id()): continue
-		materials[mat.get_instance_id()] = true
-		if not Primitives.is_shared(mat): own += 1
 	var label := "%s stage %d" % [key, index + 1]
-	print("LOOKS|%s|materials %d|own %d" % [label, materials.size(), own])
-	var most: Array = MOST_MATERIALS.get(key, [])
-	var most_own: Array = MOST_OWN.get(key, [])
-	if _check(index < most.size() and index < most_own.size(), label + ": has a material bound (MOST_MATERIALS, MOST_OWN)"):
-		_check(materials.size() <= int(most[index]), label + ": uses at most %d materials (%d)" % [int(most[index]), materials.size()])
-		_check(own <= int(most_own[index]), label + ": at most %d of them its own, not kit looks (%d)" % [int(most_own[index]), own])
+	_check(not world._folds_static_scenery() or world.terrain.has_meta(Batch.FOLDED_META), label + ": its scenery folds")
+	var cost := drawn(world)
+	print("LOOKS|%s|draws %d|triangles %d" % [label, cost.draws, cost.triangles])
+	_check(cost.draws <= MOST_DRAWS, label + ": draws at most %d meshes (%d)" % [MOST_DRAWS, cost.draws])
+	_check(cost.triangles <= MOST_TRIANGLES, label + ": draws at most %d triangles (%d)" % [MOST_TRIANGLES, cost.triangles])
 	viewport.free()
+
+const Batch = preload("res://presentation/kit/static_batch.gd")
+
+## What a world draws a frame, everything shown in view or not: {draws,
+## triangles}. An upper bound on the renderer's own count, which leaves out
+## what is off screen.
+static func drawn(world: Node) -> Dictionary:
+	var draws := 0
+	var triangles := 0
+	var shapes: Dictionary = {}
+	for node: Node in world.find_children("*", "GeometryInstance3D", true, false):
+		var geometry := node as GeometryInstance3D
+		if not geometry.is_visible_in_tree(): continue
+		if geometry.material_overlay != null: draws += 1
+		if node is MeshInstance3D:
+			var mesh := (node as MeshInstance3D).mesh
+			if mesh == null: continue
+			draws += mesh.get_surface_count()
+			triangles += _triangles(mesh, shapes)
+		elif node is MultiMeshInstance3D:
+			var many := (node as MultiMeshInstance3D).multimesh
+			if many == null or many.mesh == null: continue
+			draws += 1
+			var count := many.visible_instance_count if many.visible_instance_count >= 0 else many.instance_count
+			triangles += _triangles(many.mesh, shapes) * count
+		else: draws += 1
+	return {"draws": draws, "triangles": triangles}
+
+## A mesh's triangles, counted once per mesh in shapes.
+static func _triangles(mesh: Mesh, shapes: Dictionary) -> int:
+	if shapes.has(mesh): return shapes[mesh]
+	var total := 0
+	for surface in range(mesh.get_surface_count()):
+		var arrays := mesh.surface_get_arrays(surface)
+		var indices: Variant = arrays[Mesh.ARRAY_INDEX]
+		total += ((indices as PackedInt32Array).size() if indices != null and not (indices as PackedInt32Array).is_empty() else (arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
+	shapes[mesh] = total
+	return total
