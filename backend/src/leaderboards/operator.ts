@@ -7,6 +7,7 @@ import { leaderboardCaller } from "./job-token";
 import { checkRun } from "./eligibility";
 import { pooled } from "../room-inbox";
 import { storeView } from "./view-cache";
+import { ownerId } from "../owner";
 import { MAX_REWARD_DELIVERIES, deliverRewards, type RewardBatch } from "./reward-delivery";
 import { wardrobeOn } from "../pollen/features";
 import { dropRunCopies } from "../duels/their-run-sweep";
@@ -119,7 +120,7 @@ async function verdicts(env: Env, value: unknown): Promise<{ ranked: string[] }>
   let deliveries = wardrobeOn(env) ? MAX_REWARD_DELIVERIES : 0;
   for (const [board, list] of parseVerdicts(value)) {
     const stub = env.LEADERBOARD_BOARDS.getByName(board);
-    const answer = await stub.verdicts(board, list, developerBest(board), deliveries);
+    const answer = await stub.verdicts(board, list, developerBest(board), deliveries, ownerId(env));
     await storeView(answer.view);
     ranked.push(...answer.ranked.map(note => note.entry_id));
     if (answer.rewards?.length) { deliveries -= answer.rewards.length; batches.push({ board, stub, rewards: answer.rewards }); }

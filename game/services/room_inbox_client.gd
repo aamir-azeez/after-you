@@ -33,6 +33,11 @@ var _seen: Dictionary = {}
 ## sequence seen then. New activity in such a room shows it again.
 var _hidden: Dictionary = {}
 var stale := true
+## The friends asking this player into their duel party, from the latest read
+## that carried them ([{from, at}], oldest first), and when that read was sent
+## (ticks). Kept in memory only: Home's card never shows an invite from disk.
+var _duel_invites: Array = []
+var _duel_invites_sent_ms := -1
 
 func _init(api: Node, identity: Callable, transport: Callable = Callable()) -> void:
 	_api = api
@@ -136,6 +141,7 @@ func refresh() -> bool:
 	busy = true
 	last_error = ""
 	var binding := _binding.duplicate(true)
+	var sent := Time.get_ticks_msec()
 	var response: Variant = await _transport.call(HTTPClient.METHOD_GET,"/v1/room-inbox",{}) if _transport.is_valid() else await _api.request_json(HTTPClient.METHOD_GET,"/v1/room-inbox",{},func() -> bool: return context() == binding)
 	if context() != binding:
 		busy = false
@@ -152,6 +158,9 @@ func refresh() -> bool:
 		stale = true
 		return false
 	_rooms.clear()
+	# A server without them (off, or rolled back) lists none.
+	_duel_invites = (data.get("duel_invites", []) as Array).duplicate(true)
+	_duel_invites_sent_ms = sent
 	for room: Dictionary in data.rooms:
 		_rooms.append(_normalize_room(room))
 		var key := room_key(RoomsApi.json_int(room.api_version),str(room.room_id))
@@ -161,6 +170,15 @@ func refresh() -> bool:
 	stale = false
 	_save()
 	return true
+
+## The friends asking this player into their duel party, as the latest read
+## listed them: [{from, at}], oldest first.
+func duel_invites() -> Array:
+	return _duel_invites.duplicate(true) if _bind() else []
+
+## When the read that listed duel_invites() was sent (ticks), or -1.
+func duel_invites_sent_ms() -> int:
+	return _duel_invites_sent_ms
 
 ## Call only after the destination room has loaded and rendered successfully.
 func confirm_room_rendered(api_version: int, room_id: String) -> bool:
@@ -241,6 +259,7 @@ func _bind(force: bool = false) -> bool:
 	var current := context()
 	if current.is_empty():
 		_binding = {}
+		_duel_invites = []
 		_rooms.clear()
 		_seen.clear()
 		_hidden.clear()
@@ -248,6 +267,8 @@ func _bind(force: bool = false) -> bool:
 		return false
 	if force or current != _binding:
 		_binding = current
+		_duel_invites = []
+		_duel_invites_sent_ms = -1
 		_rooms.clear()
 		_seen.clear()
 		_hidden.clear()
@@ -377,13 +398,22 @@ static func ordered(rooms: Array, seen: Dictionary, current_player: String = "")
 	return result
 
 static func valid_page(value: Variant) -> bool:
-	if not value is Dictionary or value.size() != 2 or not Typed.equal(value.get("schema_version"), 1) or not value.get("rooms") is Array or value.rooms.size() > 100: return false
+	if not value is Dictionary or value.size() != 2 + int(value.has("duel_invites")) or not Typed.equal(value.get("schema_version"), 1) or not value.get("rooms") is Array or value.rooms.size() > 100: return false
+	if value.has("duel_invites") and not valid_duel_invites(value.duel_invites): return false
 	var keys := {}
 	for item: Variant in value.rooms:
 		if not valid_server_room(item) and not valid_room(item): return false
 		var key := room_key(int(item.api_version),str(item.room_id))
 		if keys.has(key): return false
 		keys[key] = true
+	return true
+
+## The first page's duel party invites (to clients that send X-AfterYou-Duel-Invites):
+## [{from: a friend's id, at: when they asked, server ms}], at most 8 (backend duels/rules.ts MAX_PARTY_INVITES).
+static func valid_duel_invites(value: Variant) -> bool:
+	if not value is Array or value.size() > 8: return false
+	for item: Variant in value:
+		if not item is Dictionary or item.size() != 2 or not Presence.valid_id(item.get("from")) or not Typed.whole_number(item.get("at")) or item.at < 0: return false
 	return true
 
 static func valid_server_room(value: Variant) -> bool:

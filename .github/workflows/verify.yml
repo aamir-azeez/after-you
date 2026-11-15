@@ -121,6 +121,14 @@ jobs:
           config["revenuecat_public_key"] = ""
           config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
           PY
+      # Official actions/cache v6.1.0, pinned to its commit. The import below always runs, so a cache from an
+      # older commit only saves work: Godot reimports any asset whose source changed and rescans every script.
+      - name: Restore the import cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ runner.temp }}/after-you-game/.godot
+          key: godot-import-${{ env.GODOT_VERSION }}-${{ hashFiles('game/project.godot', 'game/**/*.import', 'game/**/*.png', 'game/**/*.svg', 'game/**/*.wav', 'game/**/*.ttf', 'game/**/*.gdshader*') }}
+          restore-keys: godot-import-${{ env.GODOT_VERSION }}-
       - name: Import the native project
         run: |
           set -euo pipefail
@@ -136,31 +144,38 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
-          run_suite() {
-            local started=$SECONDS
-            XDG_DATA_HOME="$RUNNER_TEMP/godot-state-$1" timeout 120s "$GODOT" --headless \
-              --path "$RUNNER_TEMP/after-you-game" --script "res://tests/test_$1.gd" 2>&1 | tee "$RUNNER_TEMP/$1.log"
-            # Wall time against the 120 s limit, so slow suites show before they fail.
-            echo "SUITE TIME $1 $((SECONDS - started)) s"
-            # Godot can return zero after a dependent script failed to compile.
-            # A worker destroyed while it runs can crash the exit; see worker_reaper.gd.
-            if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed|being destroyed without its completion' "$RUNNER_TEMP/$1.log"; then exit 1; fi
+          echo "Runner: $(nproc) CPUs ($(lscpu | sed -n 's/^Model name: *//p')), $(free -g | awk '/^Mem:/ { print $2 }') GB"
+          mkdir -p "$RUNNER_TEMP/suite-logs"
+          run_item() {
+            local name=$1 started=$SECONDS status=0 log="$RUNNER_TEMP/suite-logs/$1.log"
+            if [ "$name" = "@new_chapter_scaffold" ]; then
+              # Scaffolds chapters in a temporary copy of the imported game, then runs their suites there.
+              python3 scripts/test_new_chapter.py --godot "$GODOT" --game "$RUNNER_TEMP/after-you-game" > "$log" 2>&1 || status=$?
+            else
+              XDG_DATA_HOME="$RUNNER_TEMP/godot-state-$name" timeout 120s "$GODOT" --headless \
+                --path "$RUNNER_TEMP/after-you-game" --script "res://tests/test_$name.gd" > "$log" 2>&1 || status=$?
+              # Godot can return zero after a dependent script failed to compile.
+              # A worker destroyed while it runs can crash the exit; see worker_reaper.gd.
+              if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed|being destroyed without its completion' "$log"; then status=1; fi
+            fi
+            {
+              flock 9
+              echo "::group::$name"; cat "$log"; echo "::endgroup::"
+              # Wall time against the 120 s limit, so slow suites show before they fail.
+              echo "SUITE TIME $name $((SECONDS - started)) s"
+              if [ "$status" != 0 ]; then echo "::error::$name failed (exit $status)"; fi
+            } 9>"$RUNNER_TEMP/suite-logs.lock"
+            return "$status"
           }
-          # Each suite's shard is one sorted line in game/tests/ci_shards.txt, and test_ci_shards.gd checks it lists every suite.
-          # The guard must stay on a shard, so removing or skipping its line fails here.
-          if ! tr -d '\r' < game/tests/ci_shards.txt | awk '$1 == "ci_shards" && $2 ~ /^[123]$/ { found = 1 } END { exit !found }'; then
-            echo "game/tests/ci_shards.txt must run ci_shards on shard 1, 2 or 3"; exit 1
-          fi
-          mapfile -t shard_suites < <(tr -d '\r' < game/tests/ci_shards.txt | awk -v shard="$SHARD" '$1 !~ /^#/ && $2 == shard { print $1 }')
-          if [ "${#shard_suites[@]}" -eq 0 ]; then echo "No suites for shard $SHARD in game/tests/ci_shards.txt"; exit 1; fi
-          for name in "${shard_suites[@]}"; do run_suite "$name"; done
+          export -f run_item
+          # scripts/ci_shards.py picks this shard's suites from game/tests/ci_shards.txt, longest first by
+          # game/tests/ci_suite_times.txt; test_ci_shards.gd checks the list names every suite once.
+          python3 scripts/ci_shards.py plan "$SHARD" > "$RUNNER_TEMP/shard-suites.txt"
+          echo "Shard $SHARD: $(wc -l < "$RUNNER_TEMP/shard-suites.txt") items on $(nproc) lanes"
+          # Each suite has its own user data folder, so several share the imported copy at once.
+          # xargs runs every item and exits non-zero if any failed.
+          xargs -a "$RUNNER_TEMP/shard-suites.txt" -P "$(nproc)" -I{} bash -c 'run_item "$1"' _ {}
           if [ "$SHARD" = 1 ]; then
             XDG_DATA_HOME="$RUNNER_TEMP/godot-native-wrappers" timeout 120s "$GODOT" --headless \
               --path "$RUNNER_TEMP/after-you-game" --script "$GITHUB_WORKSPACE/native/tests/test_wrappers.gd"
           fi
-      # Scaffolds a cooperative chapter, a journey chapter and a later version in a
-      # temporary copy, then runs their suites and the chapter list suites there,
-      # and the chapter scripts on them. On shard 2, the lightest.
-      - name: New chapter scaffold
-        if: matrix.shard == 2
-        run: python3 scripts/test_new_chapter.py --godot "$GODOT" --game "$RUNNER_TEMP/after-you-game"
