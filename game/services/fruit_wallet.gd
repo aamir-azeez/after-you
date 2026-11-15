@@ -184,6 +184,10 @@ func packs(server: String, owner: String) -> bool:
 	return bool(scope.get("enabled", false)) and bool(scope.get("packs", false))
 
 ## The server's answer (services/relay_online_session.gd): Fruits `on`, and packs with them.
+## Whether this phone keeps any answer from the server for this player.
+func told(server: String, owner: String) -> bool:
+	return not _scope(server, owner).is_empty()
+
 func set_enabled(server: String, owner: String, on: bool, packs_on: bool = false) -> void:
 	var scope := _scope(server, owner, on)
 	var selling := on and packs_on

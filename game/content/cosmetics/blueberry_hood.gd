@@ -8,13 +8,11 @@ const DATA := {
 	"tier": "fruit_hat",
 	"name": PlayerCopy.COSMETIC_BLUEBERRY_HOOD,
 	"art": "res://presentation/pip_wear/fruit_hood.gd",
-	## Its star crown stands above the head.
-	"tall": true,
 	## A worn leaf item stands on a short stem out of the hood's top, raised
 	## clear of it (the plain leaf hides).
 	"leaf_lift": 0.05,
 	"leaf_mode": "sits_on_top",
 	## Kept as players own it: no stem.
 	"leaf_stem": false,
-	"leaf_max": "tall",
+	"leaf_max": "medium",
 }

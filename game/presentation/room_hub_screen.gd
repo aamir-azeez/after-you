@@ -855,7 +855,6 @@ func _add_room_card(room: Dictionary) -> void:
 	remove.icon = REMOVE_ICON
 	remove.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	remove.expand_icon = true
-	remove.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	remove.add_theme_constant_override("icon_max_width",22)
 	remove.custom_minimum_size = Vector2(50,50)
 	remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -929,7 +928,6 @@ func _menu_button(room: Dictionary, beside: Button) -> Button:
 	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	button.expand_icon = true
-	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	button.add_theme_constant_override("icon_max_width",24)
 	button.custom_minimum_size = Vector2(beside.custom_minimum_size.y,beside.custom_minimum_size.y)
 	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER

@@ -31,9 +31,9 @@ uniform vec3 band_edge_color[4];
 // Stamps: centre x, y (y unrolled over the head's top) and half width
 // (metres) and turn (radians); shape (0 none, 1 a five point star, 2 a five
 // lobed leaf) and side (1 the front and top, -1 the back below the top).
-uniform vec4 stamp_at[5];
-uniform vec4 stamp_style[5];
-uniform vec3 stamp_color[5];
+uniform vec4 stamp_at[8];
+uniform vec4 stamp_style[8];
+uniform vec3 stamp_color[8];
 // A thin seam line down the back: half width (metres, 0 none).
 uniform float seam_half = 0.0;
 uniform vec3 seam_color = vec3(0.5);
@@ -88,15 +88,18 @@ float pattern_star(vec2 p, float r) {
 	return length(p - ba * h) * sign(p.y * ba.x - p.x * ba.y) - round_by;
 }
 
-// A five lobed maple leaf, a pointed lobe up and its short stem down, radius r.
+// A maple leaf, radius r: five pointed lobes (a long one up, two broad ones
+// out to the sides, two small ones low down), deep notches between them, and
+// its short stem down between the low lobes.
 float pattern_leaf(vec2 p, float r) {
-	float a = atan(p.x, p.y + 1e-6);
-	// Five pointed lobes with deep notches between them, as a maple leaf.
-	float reach = 0.42 + 0.58 * pow(abs(cos(a * 2.5)), 2.2);
-	reach *= mix(1.0, 0.75, smoothstep(0.5, 1.0, -cos(a)));
-	float d = (length(p) - r * reach) * 0.75;
-	vec2 s = p - vec2(0.0, -r * 0.5);
-	float stem = length(vec2(s.x, s.y - clamp(s.y, -r * 0.55, 0.0))) - r * 0.07;
+	float a = abs(atan(p.x, p.y + 1e-6));
+	float reach = 0.42;
+	reach = max(reach, 1.0 - a / 0.78);
+	reach = max(reach, 0.92 * (1.0 - abs(a - 1.22) / 0.68));
+	reach = max(reach, 0.62 * (1.0 - abs(a - 2.12) / 0.55));
+	float d = (length(p) - r * reach) * 0.6;
+	vec2 s = p - vec2(0.0, -r * 0.3);
+	float stem = length(vec2(s.x, s.y - clamp(s.y, -r * 0.6, 0.0))) - r * 0.06;
 	return min(d, stem);
 }
 
@@ -146,7 +149,7 @@ vec3 pattern_color(vec3 p) {
 		vec2 e = vec2(abs(p.x) - safe_eyes.x, p.y - safe_eyes.y) / safe_eyes.zw;
 		clear = pattern_cover((1.0 - length(e)) * min(safe_eyes.z, safe_eyes.w));
 	}
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < 8; i++) {
 		if (stamp_style[i].x < 0.5 || (behind ? stamp_style[i].y > 0.0 : stamp_style[i].y < 0.0)) continue;
 		vec2 s = q - stamp_at[i].xy;
 		float t = stamp_at[i].w;

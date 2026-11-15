@@ -3,7 +3,7 @@ extends SceneTree
 ## (Main's RoomsApi, the live socket, the probe in services/connectivity_probe.gd)
 ## and the controls it greys (presentation/offline_hold.gd):
 ## - unknown at launch reads as online, so a first tap registers;
-## - going offline takes two failures in a row with no answer between them
+## - going offline takes three failures in a row with no answer between them
 ##   (one dropped request, or failures between answers, never grey anything);
 ## - any answer, of any status, or the live socket opening reads as online at once;
 ## - only real transport failures count: a request that could not start, a
@@ -359,7 +359,7 @@ func _home() -> void:
 	_check(app.home_menu_view.wardrobe_button.visible, "The Wardrobe row shows while the Wardrobe has something to show")
 	stub.on = false
 	state.force(false)
-	_check(stub.told == [false] and not app.home_menu_view.wardrobe_button.visible, "Offline the Wardrobe hears it and the row follows (hidden with nothing saved)")
+	_check(stub.told == [false] and not app.home_menu_view.wardrobe_button.visible, "Offline the Wardrobe hears it and the row follows (hidden while the server never said it is on)")
 	stub.on = true
 	state.note_reached()
 	_check(stub.told == [false, true] and app.home_menu_view.wardrobe_button.visible, "Online again the Wardrobe hears it and the row comes back")
@@ -379,11 +379,11 @@ func _home() -> void:
 	state.force(false)
 	app._live_health_changed(true)
 	_check(state.online(), "The live socket opening reads as online")
-	# The Pollen chip's plus (the store) greys; its balance stays.
+	# Every half of the Pollen chip needs the server: each greys and comes back.
 	var chip: Control = PollenChip.make(1200, true)
 	viewport.add_child(chip)
 	state.force(false)
-	_check(chip.plus_button.disabled and not chip.amount_button.disabled, "Offline the chip's plus greys and its balance stays")
+	_check(chip.plus_button.disabled and chip.amount_button.disabled, "Offline the chip's plus and balance grey")
 	state.note_reached()
 	_check(not chip.plus_button.disabled, "And the plus comes back")
 	chip.queue_free()

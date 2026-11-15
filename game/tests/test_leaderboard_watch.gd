@@ -161,7 +161,7 @@ func _watch(answer: Dictionary) -> void:
 	await process_frame
 	_check(is_instance_valid(board) and not board.is_queued_for_deletion(), "Back while the run plays never closes the board beneath it")
 	view._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-	_check(view.mode == "paused" and not _buttons(view).has("Report or block player"), "Back pauses the run, with no Report or block for a leaderboard run: %s" % [_buttons(view)])
+	_check(view.mode == "paused" and view.find_child("CardReport", true, false) == null, "Back pauses the run, with no Report or block flag for a leaderboard run: %s" % [_buttons(view)])
 	view._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await process_frame
 	_check(host.shared_replay_child == null and (not is_instance_valid(view) or view.is_queued_for_deletion()), "Back again leaves the replay")
