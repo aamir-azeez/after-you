@@ -33,8 +33,9 @@ extends RefCounted
 ## (kit/static_batch.gd) folds it into the batch of its colour that the stage
 ## draws anyway: marks add no draw call of their own. Nothing here runs per
 ## frame. A mark node is never given metadata, a script or children, and this
-## object never holds one; only a mark its world holds or hangs on something
-## that moves (a bucket) stays out of the fold.
+## object never holds one; only a mark its world holds stays out of the fold.
+## A mark hung on something that moves (a bucket) folds into that container's
+## own batch and rides with it.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
 const GOLD := Color("f4c38d")
