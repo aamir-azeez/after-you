@@ -1116,6 +1116,8 @@ const DUELS_PARTY_FRIENDS_ONLY := "Only your friends can join your party."
 const DUELS_PARTY_ASK := "Ask"
 const DUELS_PARTY_ASKED := "Asked"
 const DUELS_PARTY_SAY_YES := "Say yes"
+## Home's card for a friend's invite (presentation/redo_home_card.gd), whose title is DUELS_PARTY_INVITED without its full stop.
+const DUELS_PARTY_SEE_INVITE := "See invite"
 const DUELS_PARTY_LEAVE := "Leave party"
 const DUELS_PARTY_NO_FRIENDS := "Add a friend first. Friends you add show here."
 ## Starting a duel.
@@ -1460,6 +1462,8 @@ const ROOM_OPTIONS_INVITE := "Invite"
 const ROOM_OPTIONS_TURNS := "Turns"
 const ROOM_OPTIONS_CHAPTER := "Chapter"
 const ROOM_OPTIONS_SAFETY := "Safety"
+## The way to report or block a room partner: the Room options row and the pause cards' flag.
+const REPORT_OR_BLOCK := "Report or block player"
 const ROOM_OPTIONS_PARTNER := "Room partner"
 # A friend's redo request in Together rooms (presentation/redo_flow.gd,
 # presentation/redo_home_card.gd). %s is the friend's name.

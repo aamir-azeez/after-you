@@ -15,10 +15,11 @@ import { announceDuelNews } from "../duels/news";
 import { sendListings } from "../duels/directory";
 import { duelRunChecksOn } from "../duels/turn-hook";
 import { replaySplits } from "../duels/ticks";
+import { beatsOurRun, ourRunTicks, type OurRunView } from "./our-run";
 /** Run copy rooms one board hands the sweep at a time (duels/their-run-sweep.ts). */
 const MAX_COPY_SWEEP = 32;
 import { BoardProofs, LEGACY_PROOF_TABLE, PROOF_TABLE, encodeProof, sentProof } from "./proofs";
-import type { Duel, ProgressNote, SideRoom } from "../duels/model";
+import type { Duel, Ghost, ProgressNote, SideRoom } from "../duels/model";
 
 /**
  * One chapter version's board, one Durable Object named by its board key.
@@ -62,6 +63,8 @@ type EntryData = {
 };
 type EntryRow = { entry_id: string; pair_key: string; state: "checking" | "review" | "ranked"; ticks: number; finished_ms: number; data: string };
 type Entry = Omit<EntryRow, "data"> & { data: EntryData };
+/** Our run's row without its body. */
+type OurRunRow = Pick<OurRunView, "entry_id" | "ticks" | "replay_hash"> & { members: [Member, Member] };
 export type StandingWork = { entry_id: string; members: (string | null)[]; finished_ms: number };
 /** `checkpoint` is the stored JSON text, passed on unparsed so the Worker spends no CPU on it. */
 export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; byte_length: number; body: string };
@@ -88,6 +91,8 @@ const SCHEMA = [
   PROOF_TABLE,
   "CREATE TABLE IF NOT EXISTS lb_outcomes (entry_id TEXT PRIMARY KEY, outcome TEXT NOT NULL, at INTEGER NOT NULL)",
   "CREATE TABLE IF NOT EXISTS lb_replays (entry_id TEXT PRIMARY KEY, proof_hash TEXT NOT NULL, byte_length INTEGER NOT NULL, body BLOB NOT NULL)",
+  // Our run (our-run.ts): at most one row (slot 1), the owner's run with its replay as a tagged blob body and both members as its entry keeps them (ids for erasure, name choices, looks).
+  "CREATE TABLE IF NOT EXISTS lb_our_run (slot INTEGER PRIMARY KEY, entry_id TEXT NOT NULL, ticks INTEGER NOT NULL, members TEXT NOT NULL, proof_hash TEXT NOT NULL, byte_length INTEGER NOT NULL, body BLOB NOT NULL)",
   REWARD_LEDGER_SCHEMA
 ];
 
@@ -95,6 +100,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   private readonly rewards: RewardSink & BoardRewardLedger;
   private readonly duels: DuelStore;
   private readonly proofs: BoardProofs;
+  /** Our run's row as last read (null: none kept), undefined until read; every write forgets it, so a rolled back write never lingers. */
+  private ourRunRow: OurRunRow | null | undefined;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.rewards = new BoardRewardLedger(ctx.storage);
@@ -111,11 +118,17 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * board as anyone sees it now. `checked`: the account check, run by the
    * poster only after this board answered "crowded" (submit.ts).
    */
-  async submit(board: string, run: LeaderboardRun, checked?: StandingResult): Promise<{ status: SubmitStatus; view: BoardView }> {
+  /**
+   * `owner`: the owner's player id (owner.ts), or null. An owner run that would become Our run (our-run.ts) enters even
+   * when ten ranked runs beat it, so the replay check sees it; and the owner's fastest ranked run here, when it beats
+   * Our run (one checked before Our run could move), becomes Our run now. The new run is judged as ever.
+   */
+  async submit(board: string, run: LeaderboardRun, checked?: StandingResult, owner: string | null = null): Promise<{ status: SubmitStatus; view: BoardView }> {
     // Encoded where the room was read when it came from a turn (run.ts roomRun); a run posted again brings it raw.
     // Compression is async, so outside the transaction.
     const proof = run.proof ?? await encodeProof(run.checkpoint!);
     const status = this.ctx.storage.transactionSync((): SubmitStatus => {
+      if (owner !== null && run.members.includes(owner)) this.ourRunFromRanked(board, owner);
       if (this.outcome(run.entry_id) || this.entry(run.entry_id)) return "known";
       if (proof.byte_length > MAX_PROOF_CHARS) return "not_placed";
       const timed = { ticks: run.ticks, finished_ms: run.finished_ms, entry_id: run.entry_id };
@@ -125,7 +138,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       // One entry per pair: a run no better than the pair's own ranked or waiting run never enters.
       if (mine.some(entry => compareRuns(entry, timed) <= 0)) return "not_placed";
       const others = ranked.filter(entry => !samePair(keysOf(entry), run));
-      if (others.length >= TOP_PLACES && compareRuns(timed, others[TOP_PLACES - 1]) > 0) return "not_placed";
+      if (others.length >= TOP_PLACES && compareRuns(timed, others[TOP_PLACES - 1]) > 0 && !beatsOurRun(owner, run.members, run.ticks, this.ourTicks(board))) return "not_placed";
       if (checked && (!checked.eligible || checked.entry_id !== run.entry_id)) return "ineligible";
       const waiting = all.filter(entry => entry.state === "checking" && !samePair(keysOf(entry), run));
       // A player already waiting in MAX_WAITING_PER_MEMBER other pairs' runs posts no more until those are checked.
@@ -160,14 +173,16 @@ export class LeaderboardBoard extends DurableObject<Env> {
       rank: index + 1, entry_id: entry.entry_id, ticks: entry.ticks, finished_on: entry.data.finished_at.slice(0, 10),
       names: shownNames(entry.data.members), gold_leaf: index === 0 && entry.data.gold, replay_hash: replays.get(entry.entry_id) ?? null, looks: shownLooks(entry.data.members) }));
     const checking = this.entries().filter(entry => entry.state !== "ranked").map(entry => entry.entry_id).sort();
-    return { schema_version: 1, board, top, checking };
+    const our = this.ourRun();
+    return { schema_version: 1, board, top, checking, ...(our ? { our_run: { entry_id: our.entry_id, ticks: our.ticks, replay_hash: our.replay_hash, names: shownNames(our.members), looks: shownLooks(our.members) } } : {}) };
   }
 
-  /** A top 10 run's kept replay, or null for any other run, with the board as anyone sees it now. Reads only. */
+  /** A top 10 run's kept replay, or Our run's (our-run.ts), or null for any other run, with the board as anyone sees it now. Reads only. */
   replay(board: string, entryId: string): { replay: KeptReplay | null; view: BoardView } {
     const view = this.view(board);
     const row = view.top.find(item => item.entry_id === entryId);
-    const kept = row?.replay_hash ? this.ctx.storage.sql.exec<{ proof_hash: string; byte_length: number; body: ArrayBuffer }>("SELECT proof_hash,byte_length,body FROM lb_replays WHERE entry_id=?", entryId).toArray()[0] : undefined;
+    let kept = row?.replay_hash ? this.ctx.storage.sql.exec<{ proof_hash: string; byte_length: number; body: ArrayBuffer }>("SELECT proof_hash,byte_length,body FROM lb_replays WHERE entry_id=?", entryId).toArray()[0] : undefined;
+    if (!kept && view.our_run?.entry_id === entryId) kept = this.ourRunBody();
     return { replay: kept ? { proof_hash: kept.proof_hash, byte_length: kept.byte_length, body: new Uint8Array(kept.body) } : null, view };
   }
 
@@ -230,9 +245,12 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * in the blob format, so the same body becomes its replay, kept only once
    * the run ranks or waits, and only when it is still the proof the verdict
    * checked.
+   *
+   * `owner`: the owner's player id (owner.ts), or null. A passed run of the owner's pair, at its claimed time, that
+   * beats Our run becomes Our run (our-run.ts) before it ranks or waits, with its own copy of the replay.
    */
-  async verdicts(board: string, verdicts: Verdict[], developerBest: number | null, rewardLimit = 0): Promise<{ ranked: RankedNote[]; view: BoardView; rewards?: RewardDelivery[]; duels?: string[] }> {
-    const ranked: RankedNote[] = [], replays = await this.encodeKeepable(verdicts);
+  async verdicts(board: string, verdicts: Verdict[], developerBest: number | null, rewardLimit = 0, owner: string | null = null): Promise<{ ranked: RankedNote[]; view: BoardView; rewards?: RewardDelivery[]; duels?: string[] }> {
+    const ranked: RankedNote[] = [], replays = await this.encodeKeepable(board, verdicts, owner);
     this.ctx.storage.transactionSync(() => {
       for (const verdict of verdicts) {
         const entry = this.entry(verdict.entry_id);
@@ -242,6 +260,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
         // The job could not judge it (its build lacks the chapter, or the check broke): a person looks.
         if (!verdict.valid && REVIEW_REASONS.includes(verdict.reason)) { this.toReview(entry, [verdict.reason], replay); continue; }
         if (!verdict.valid || verdict.measured_ticks !== entry.ticks) { this.drop(entry.entry_id, "failed"); continue; }
+        if (replay) this.offerOurRun(board, entry, replay, owner);
         const first = this.ranked().find(item => !samePair(keysOf(item), keysOf(entry)));
         const holds = holdsFor(entry.ticks, developerBest, first ? first.ticks : null);
         if (holds.length) { this.toReview(entry, holds, replay); continue; }
@@ -257,7 +276,10 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * A new duel or ghost race on this chapter version (duels/store.ts create); null while the board is full of open ones.
    * A race against a run on this board gets the run's time after each turn from its kept replay here (Ghost.splits).
    */
-  async duelCreate(duel: Duel): Promise<Duel | null> {
+  /** `ourRun`: the race was asked for by an app that plays a kept Our run (our-run.ts playsOurRun). */
+  async duelCreate(duel: Duel, ourRun = false): Promise<Duel | null> {
+    const ours = ourRun ? await this.ourRunGhost(duel) : null;
+    if (ours) return this.duels.create({ ...duel, ghost: ours }, Date.now());
     const splits = await this.ghostSplits(duel);
     return this.duels.create(splits ? { ...duel, ghost: { ...duel.ghost!, splits } } : duel, Date.now());
   }
@@ -302,6 +324,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       done = revoked || present || this.outcome(entryId);
       if (!done) return;
       this.drop(entryId, "struck");
+      if (this.ourRun()?.entry_id === entryId) this.dropOurRun();
       const ranked = this.ranked();
       ranked.slice(0, TOP_PLACES).forEach((entry, index) => { if (this.award(board, entry, index, ranked)) promoted.push(noteOf(entry)); });
     });
@@ -337,6 +360,13 @@ export class LeaderboardBoard extends DurableObject<Env> {
         }
         if (touched) { this.save(entry); count++; }
       }
+      // Our run shows names by the same rule, so it follows the same choice.
+      const our = this.ourRun();
+      if (our && our.members.reduce((touched, member) => (member.id === player && choose(member, { show, name, rev })) || touched, false)) {
+        this.ctx.storage.sql.exec("UPDATE lb_our_run SET members=? WHERE slot=1", JSON.stringify(our.members));
+        this.ourRunRow = undefined;
+        count++;
+      }
       return count;
     });
     return { changed, view: this.view(board) };
@@ -359,6 +389,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
         this.ctx.storage.sql.exec("UPDATE lb_entries SET pair_key=? WHERE entry_id=?", crypto.randomUUID(), entry.entry_id);
       }
       this.rewards.forgetPlayer(player);
+      // Our run goes with either player's account: the shipped run is Our run again.
+      if (this.ourRun()?.members.some(member => member.id === player)) { this.dropOurRun(); count++; }
       return count + this.duels.forgetPlayer(player, Date.now());
     });
     // The rooms of this player's friend duels, told of the erasure now (duels/their-run-sweep.ts); the hourly sweep retries any left.
@@ -423,7 +455,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * The stored proof is the replay's body as it is. Read before the
    * transaction, which checks all of it again.
    */
-  private async encodeKeepable(verdicts: Verdict[]): Promise<Map<string, KeptReplay>> {
+  /** A run that would become Our run (our-run.ts) keeps one even when ten ranked runs beat it. */
+  private async encodeKeepable(board: string, verdicts: Verdict[], owner: string | null): Promise<Map<string, KeptReplay>> {
     // A verdict on a raw run from before the blob format (handed out before it was converted) finds it encoded.
     this.dropBroken(await this.proofs.convertLegacy(verdicts.map(verdict => verdict.entry_id)));
     const result = new Map<string, KeptReplay>(), ranked = this.ranked();
@@ -432,7 +465,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       if (!entry || entry.state !== "checking" || entry.data.eligible !== true) continue;
       if (verdict.valid ? verdict.measured_ticks !== entry.ticks : !REVIEW_REASONS.includes(verdict.reason)) continue;
       const others = ranked.filter(item => !samePair(keysOf(item), keysOf(entry)));
-      if (others.length >= TOP_PLACES && compareRuns(entry, others[TOP_PLACES - 1]) > 0) continue;
+      if (others.length >= TOP_PLACES && compareRuns(entry, others[TOP_PLACES - 1]) > 0 && !this.beatsOurRun(board, entry, owner)) continue;
       const proof = this.proofs.get(verdict.entry_id);
       if (!proof || proof.proof_hash !== verdict.proof_hash) continue;
       if (proof.body.byteLength <= MAX_REPLAY_BYTES) result.set(verdict.entry_id, proof);
@@ -454,6 +487,59 @@ export class LeaderboardBoard extends DurableObject<Env> {
     try { kept = this.ctx.storage.sql.exec<{ proof_hash: string; byte_length: number; body: ArrayBuffer }>("SELECT proof_hash,byte_length,body FROM lb_replays WHERE entry_id=?", ghost.entry_id).toArray()[0]; }
     catch { return null; }
     return kept && kept.proof_hash === ghost.replay_hash ? replaySplits(new Uint8Array(kept.body), kept.byte_length, duel.steps, ghost.ticks) : null;
+  }
+  /** Our run's row without its body, read once per object and again after each write (our-run.ts). */
+  private ourRun(): OurRunRow | null {
+    if (this.ourRunRow === undefined) {
+      const row = this.ctx.storage.sql.exec<{ entry_id: string; ticks: number; members: string; proof_hash: string }>("SELECT entry_id,ticks,members,proof_hash FROM lb_our_run WHERE slot=1").toArray()[0];
+      this.ourRunRow = row ? { entry_id: row.entry_id, ticks: row.ticks, replay_hash: row.proof_hash, members: JSON.parse(row.members) as [Member, Member] } : null;
+    }
+    return this.ourRunRow;
+  }
+  private ourRunBody(): { proof_hash: string; byte_length: number; body: ArrayBuffer } | undefined {
+    return this.ctx.storage.sql.exec<{ proof_hash: string; byte_length: number; body: ArrayBuffer }>("SELECT proof_hash,byte_length,body FROM lb_our_run WHERE slot=1").toArray()[0];
+  }
+  /** Our run's time here: the kept owner run's, else the shipped run's (our-run.ts ourRunTicks). */
+  private ourTicks(board: string): number | null {
+    const our = this.ourRun();
+    return ourRunTicks(board, our ? { our_run: our } : null, true);
+  }
+  private beatsOurRun(board: string, entry: Entry, owner: string | null): boolean {
+    return beatsOurRun(owner, entry.data.members.map(member => member.id), entry.ticks, this.ourTicks(board));
+  }
+  /**
+   * Keeps `entry`, with `replay`, as Our run when it is the owner's pair's and beats it. Inside the caller's transaction.
+   * The one row is replaced whole, so the older Our run's replay copy goes in the same write (our-run.ts).
+   */
+  private offerOurRun(board: string, entry: Entry, replay: KeptReplay, owner: string | null): void {
+    if (!this.beatsOurRun(board, entry, owner)) return;
+    this.ctx.storage.sql.exec("INSERT OR REPLACE INTO lb_our_run VALUES (1,?,?,?,?,?,?)", entry.entry_id, entry.ticks, JSON.stringify(entry.data.members), replay.proof_hash, replay.byte_length, replay.body);
+    this.ourRunRow = undefined;
+  }
+  /** The owner's fastest ranked run here, with a kept replay, becomes Our run when it beats it. Inside the caller's transaction. */
+  private ourRunFromRanked(board: string, owner: string): void {
+    const best = this.ranked().find(entry => entry.data.members.some(member => member.id === owner));
+    if (!best || !this.beatsOurRun(board, best, owner)) return;
+    const kept = this.ctx.storage.sql.exec<{ proof_hash: string; byte_length: number; body: ArrayBuffer }>("SELECT proof_hash,byte_length,body FROM lb_replays WHERE entry_id=?", best.entry_id).toArray()[0];
+    if (kept) this.offerOurRun(board, best, { proof_hash: kept.proof_hash, byte_length: kept.byte_length, body: new Uint8Array(kept.body) }, owner);
+  }
+  private dropOurRun(): void {
+    this.ctx.storage.sql.exec("DELETE FROM lb_our_run");
+    this.ourRunRow = undefined;
+  }
+  /**
+   * A race against Our run gets the owner's run when one is kept here: its time, replay hash and entry id (so a phone
+   * fetches its replay as it does a board run's), and its time after each turn from that replay. Null keeps the
+   * shipped run, and leaves a retried create of a race this board already holds as it was.
+   */
+  private async ourRunGhost(duel: Duel): Promise<Ghost | null> {
+    if (duel.kind !== "ghost" || duel.ghost?.source !== "developer" || this.duels.holds(duel.duel_id)) return null;
+    const our = this.ourRun(), kept = our ? this.ourRunBody() : undefined;
+    if (!our || !kept || kept.proof_hash !== our.replay_hash) return null;
+    const splits = await replaySplits(new Uint8Array(kept.body), kept.byte_length, duel.steps, our.ticks);
+    // Its looks as the run finished (a view leaves them out while looks are off, model.ts ghostView); its names stay on the
+    // board, where a name choice and erasure reach them, as a board run's do.
+    return { source: "developer", entry_id: our.entry_id, rank: null, ticks: our.ticks, names: null, replay_hash: our.replay_hash, looks: shownLooks(our.members), ...(splits ? { splits } : {}) };
   }
   /** Proof hash of each listed run that has a kept replay. */
   private replayHashes(ids: string[]): Map<string, string> {

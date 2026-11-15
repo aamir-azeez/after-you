@@ -9,6 +9,8 @@ import { pairAccounts, platformRequiredOn } from "./platform-rule";
 import type { PairLooks } from "./run-looks";
 import { cachedView, storeView } from "./view-cache";
 import { mightPlace } from "./view";
+import { ownerId } from "../owner";
+import { beatsOurRun, ourRunTicks } from "./our-run";
 
 /**
  * After an accepted turn (v2/routes.ts): when it finished a together run that
@@ -44,8 +46,9 @@ export type PostOutcome = { status: SubmitStatus | "listed" | "skipped" } | { st
 
 /**
  * Posts a finished run that might place. That is at most one board request,
- * and none when the cached board already holds ten faster runs or lists the
- * run. While the platform rule is on (platform-rule.ts) one PlatformLinks read
+ * and none when the cached board lists the run or already holds ten faster
+ * runs (but for the owner's run that would become Our run, our-run.ts).
+ * While the platform rule is on (platform-rule.ts) one PlatformLinks read
  * comes first, and a pair with an unlinked member writes nothing anywhere; the
  * same read gives a linked pair its account key (pair-accounts.ts), so the
  * board counts every identity pair behind the same two accounts as one.
@@ -58,18 +61,19 @@ export type PostOutcome = { status: SubmitStatus | "listed" | "skipped" } | { st
 export async function postRun(env: Env, run: LeaderboardRun): Promise<PostOutcome> {
   const cached = await cachedView(run.board);
   if (cached && (cached.checking.includes(run.entry_id) || cached.top.some(row => row.entry_id === run.entry_id))) return { status: "listed" };
-  if (cached && !mightPlace(cached, run.ticks, TOP_PLACES)) return { status: "skipped" };
+  const owner = ownerId(env);
+  if (cached && !mightPlace(cached, run.ticks, TOP_PLACES) && !beatsOurRun(owner, run.members, run.ticks, ourRunTicks(run.board, cached, true))) return { status: "skipped" };
   if (platformRequiredOn(env)) {
     const accounts = await pairAccounts(env, run.members);
     if (accounts.account_key === undefined) return { status: "platform_required", unlinked: accounts.unlinked };
     run = { ...run, account_key: accounts.account_key };
   }
   const stub = env.LEADERBOARD_BOARDS.getByName(run.board);
-  let answer = await stub.submit(run.board, run);
+  let answer = await stub.submit(run.board, run, undefined, owner);
   if (answer.status === "crowded") {
     const checked = await checkRun(env, run.board, run.entry_id, run.members, run.finished_ms);
     if (!checked.eligible) return { status: "ineligible" };
-    answer = await stub.submit(run.board, run, checked);
+    answer = await stub.submit(run.board, run, checked, owner);
   }
   await storeView(answer.view);
   return { status: answer.status };
