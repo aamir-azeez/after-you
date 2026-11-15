@@ -1,8 +1,7 @@
 extends SceneTree
 
 const World = preload("res://presentation/island_world.gd")
-const Levels = preload("res://core/levels.gd")
-const Simulation = preload("res://core/simulation.gd")
+const HomeLayout = preload("res://presentation/home_layout.gd")
 const Physical = preload("res://core/cooperative/simulation.gd")
 const PhysicalCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const PhysicalWorld = preload("res://presentation/cooperative_world.gd")
@@ -32,16 +31,11 @@ func _fixture(path: String) -> Dictionary:
 func _ownership_colors() -> void:
 	var world := World.new()
 	root.add_child(world)
-	world.load_level(Levels.get_level(0))
-	var first := _fixture("first-light-a.json")
-	var second := _fixture("first-light-b.json")
-	var simulation := Simulation.new()
-	_check(simulation.reset(Levels.get_level(0),first,"b",int(second.simulation_version)),"Native saved pair establishes real seed ownership")
+	world.load_level(HomeLayout.LEVEL)
 	var seen: Dictionary = {}
-	for input: Dictionary in Simulation.expand_recording_inputs(second):
-		var state: Dictionary = simulation.step(input)
-		var status := str(state.seed.status)
-		if seen.has(status): continue
+	for status: String in ["held_a", "flying", "held_b"]:
+		var state := HomeLayout.opening()
+		state.seed.status = status
 		seen[status] = true
 		var before := JSON.stringify(state)
 		world.present(state,true)
@@ -51,8 +45,8 @@ func _ownership_colors() -> void:
 		var body: Color = SeedVisual.WHITE.lerp(expected, 0.4 if status in ["held_a", "held_b"] else 0.0)
 		var glow := world.seed.get_node_or_null("SeedGlow") as MeshInstance3D
 		var halo: Color = (glow.material_override as StandardMaterial3D).albedo_color if glow != null else Color.BLACK
-		_check(material.albedo_color == body and material.emission == expected and Color(halo, 1.0) == expected,"Seed tint follows native ownership: "+status)
-		_check(JSON.stringify(state)==before,"Seed presentation leaves native snapshot unchanged")
+		_check(material.albedo_color == body and material.emission == expected and Color(halo, 1.0) == expected,"Seed tint follows its holder: "+status)
+		_check(JSON.stringify(state)==before,"Seed presentation leaves the snapshot unchanged")
 	_check(seen.has("held_a") and seen.has("flying") and seen.has("held_b"),"Color checks include source, free flight and actual catch")
 	world.queue_free()
 	await process_frame

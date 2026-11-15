@@ -277,9 +277,7 @@ func _blocked_cases(app: Node, native: FakeNative, api: FakeApi) -> void:
 	app._show_home()
 	await _frames(1)
 	var cases := [
-		["room draft", func(): app.saves.data.room_draft = {"room_id":"X"}, func(): app.saves.data.room_draft = {}, true],
 		["journey mode", func(): app.mode = "journey", func(): app.mode = "home", true],
-		["foreground refresh", func(): app.foreground_refresh_running = true, func(): app.foreground_refresh_running = false, false],
 	]
 	for entry: Array in cases:
 		app.toasts.clear()
@@ -327,15 +325,17 @@ func _typed_room_joins(app: Node, api: FakeApi) -> void:
 	await RoomEntry.built(self, app)
 	var joined: Array = api.calls.slice(before).filter(func(call: Dictionary) -> bool: return call.path == "/v2/rooms/join")
 	_check(not app.toasts.has("Invitation unavailable") and joined.size() == 1 and joined[0].body.invite_code == "A1".repeat(10),"A resolved chapter code from the room hub joins instead of showing Invitation unavailable")
-	resolve_reply = {}
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await _frames(2)
-	before = api.calls.size()
-	app._show_home()
+	# A code for a room of the earlier islands (an older build still sends them) joins nothing.
+	resolve_reply = {"schema_version":1,"family":"legacy","api_version":1}
+	await app.room_hub_flow.show_rooms()
 	await _frames(2)
-	await app.legacy_room_flow.join_room("room-" + LEGACY_CODE)
-	var joins: Array = api.calls.slice(before).filter(func(call: Dictionary) -> bool: return call.path == "/v1/rooms/join")
-	_check(joins.size() == 1 and joins[0].body.invite_code == LEGACY_CODE,"The legacy join sends a typed room code as the bare code")
+	before = api.calls.size()
+	await app.room_hub_flow._join("room-" + "b1".repeat(10))
+	await _frames(2)
+	_check(not is_instance_valid(app.relay_child) and api.calls.slice(before).all(func(call: Dictionary) -> bool: return not str(call.path).begins_with("/v1/rooms") and call.path != "/v2/rooms/join"),"An earlier-island code from the room hub joins nothing")
+	resolve_reply = {}
 
 func _frames(count: int) -> void:
 	for _i in count: await process_frame

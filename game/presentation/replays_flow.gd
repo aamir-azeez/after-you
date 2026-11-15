@@ -1,7 +1,7 @@
 extends Node
-## The Replays library: Your replays (solo), Shared replays (Together), the
-## worker that loads an earlier-island replay, Watch/Play launches, and saving
-## a finished room's replay to this phone with its friend photos.
+## The Replays library: Your replays (solo), Shared replays (Together),
+## Watch/Play launches, and saving a finished room's replay to this phone with
+## its friend photos.
 ##
 ## Main hosts it as a child and keeps the shared replay collection, the replay
 ## viewer child. The flow keeps its own state and screens,
@@ -10,21 +10,17 @@ extends Node
 ## - services: api, saves, shared_replays, relay_session, ensure_relay_session,
 ##   _wire_shared_history, friend_nicknames, _room_context_factory, app_status,
 ##   _update_gate_active, _relay_identity, identity_loading
-## - screen: mode, running, room_play, store_view_generation,
-##   application_backgrounded, submission_in_flight, lifecycle_generation,
-##   supersede_foreground_refresh, _retry_cancel, ui, overlay,
+## - screen: mode, store_view_generation, application_backgrounded,
+##   lifecycle_generation, _retry_cancel, ui, overlay,
 ##   overlay_shade, _clear_overlay, _bounded_card_scroll,
 ##   _bounded_card_stack, _set_world_visible, soundscape, title_font
-## - play: levels, current_level, attempt, earlier_islands_flow
-##   (preview_saved_attempt, activate_preview), _room_simulation_version,
-##   relay_child, LIGHTHOUSE_SCENE, _open_chapter_preview, _open_premium_chapter
+## - play: relay_child, LIGHTHOUSE_SCENE, _open_chapter_preview, _open_premium_chapter
 ## - Together viewer: shared_replay_child (this flow adds it to Main and removes it)
 ## - card kit: _card, _label, _paragraph, _button, _list_button, _back_button,
 ##   _scroll_list, _style, _fit_icon_button, _replay_preview_thumb, _toast
 ## - node: get_tree, is_inside_tree, add_child, remove_child
 ## Main calls deliver_completed_replay after a chapter room's play ends, the
-## service_* methods each frame, cancel_collection_replay when its
-## overlay is cleared, cancel_solo_collection_scan when the mode leaves Your
+## service_* methods each frame, cancel_solo_collection_scan when the mode leaves Your
 ## replays, invalidate_identity when the identity changes and release_workers
 ## when it leaves the tree.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -39,14 +35,11 @@ const WhenLabel = preload("res://presentation/when_label.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
-const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
-const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
-const EarlierIslandReplay = preload("res://services/earlier_island_replay.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
@@ -69,7 +62,6 @@ const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
 ## Main's mode on each screen of this flow.
 const MODE_COLLECTION := "collection"
-const MODE_COLLECTION_LOADING := "collection_loading"
 const MODE_SOLO_REPLAY_ATTEMPT := "solo_replay_attempt"
 const MODE_CONFIRM_DELETE := "confirm_delete_replay"
 const MODE_SHARED_REPLAYS := "shared_replays"
@@ -100,10 +92,6 @@ var host: Node
 # supply a saved partner's display name. Default playback shows a neutral label.
 var replay_partner_label: Callable = Callable()
 var _shared_replay_loading_bar: VBoxContainer
-var _collection_replay_worker: Thread
-var _collection_replay_job: Dictionary = {}
-var _collection_replay_worker_job: Dictionary = {}
-var _collection_replay_loading_bar: VBoxContainer
 var _replay_library_header: VBoxContainer
 var _replay_title_style: StyleBoxFlat
 var _replay_hit_style: StyleBoxEmpty
@@ -173,12 +161,6 @@ func invalidate_identity() -> void:
 
 ## Main is leaving the tree.
 func release_workers() -> void:
-	cancel_collection_replay()
-	# Never wait here: the cancelled check stops at its next step and the reaper joins it.
-	if _collection_replay_worker != null:
-		Reaper.adopt(_collection_replay_worker)
-		_collection_replay_worker=null
-		_collection_replay_worker_job={}
 	# Opening a chapter from Solo replays changes scene mid-scan. Keep what the
 	# scan has settled, then let the reaper join its verifier instead of this
 	# frame (the service's own teardown would block on it).
@@ -186,67 +168,9 @@ func release_workers() -> void:
 		cancel_solo_collection_scan()
 		solo_replays.release_workers()
 
-func begin_collection_replay(recording: Dictionary) -> void:
-	host.running=false
-	host.mode=MODE_COLLECTION_LOADING
-	var card: VBoxContainer = host._card(700,true)
-	card.add_child(host._label("Your replay",32,CREAM,true))
-	var progress := ReplayLoadProgress.new()
-	_collection_replay_loading_bar=ReplayLoadingBar.new()
-	_collection_replay_loading_bar.reduced_motion=bool(host.saves.data.settings.get("reduced_motion",false))
-	card.add_child(_collection_replay_loading_bar)
-	_collection_replay_loading_bar.update_progress(progress.snapshot())
-	card.add_child(host._back_button("Back to Your replays",show_collection,false))
-	_collection_replay_job={"view":host.store_view_generation,"definition":host.current_level.duplicate(true),"attempt":host.attempt.duplicate(true),"recording":recording.duplicate(true),"version":host._room_simulation_version(),"progress":progress,"storage":host.saves}
-	service_collection_replay()
-
-func cancel_collection_replay() -> void:
-	if not _collection_replay_job.is_empty(): _collection_replay_job.progress.cancel()
-	if not _collection_replay_worker_job.is_empty(): _collection_replay_worker_job.progress.cancel()
-	_collection_replay_job={}
-	_collection_replay_loading_bar=null
-
-func _collection_replay_current(job: Dictionary) -> bool:
-	return not job.is_empty() and host.mode == MODE_COLLECTION_LOADING and job.view == host.store_view_generation and not host.room_play and job.storage == host.saves and host.current_level == job.definition and host.attempt == job.attempt
-
-func service_collection_replay() -> void:
-	if host.application_backgrounded: return
-	if is_instance_valid(_collection_replay_loading_bar) and not _collection_replay_job.is_empty():
-		_collection_replay_loading_bar.update_progress(_collection_replay_job.progress.snapshot())
-	if _collection_replay_worker != null:
-		if _collection_replay_worker.is_alive(): return
-		var result: Dictionary = _collection_replay_worker.wait_to_finish()
-		var finished := _collection_replay_worker_job
-		_collection_replay_worker=null
-		_collection_replay_worker_job={}
-		if _collection_replay_current(finished) and not finished.progress.cancelled():
-			_collection_replay_job={}
-			if not result.get("ok",false):
-				show_collection(PlayerCopy.MAIN_CD2F00E32FC5+str(result.get("error","")))
-				return
-			host.earlier_islands_flow.activate_preview(finished.recording,true,result)
-			return
-	if _collection_replay_job.is_empty(): return
-	if not _collection_replay_current(_collection_replay_job):
-		cancel_collection_replay()
-		return
-	_collection_replay_worker_job=_collection_replay_job
-	# Joined here once it ends, or by the reaper after Main leaves the tree.
-	Reaper.ensure()
-	_collection_replay_worker=Thread.new()
-	# Only private immutable values and a mutex-backed progress tracker cross
-	# this boundary. The worker never sees the live save or any scene node.
-	var job := {"definition":_collection_replay_job.definition,"attempt":_collection_replay_job.attempt,"recording":_collection_replay_job.recording,"version":_collection_replay_job.version}
-	if _collection_replay_worker.start(Callable(EarlierIslandReplay,"prepare").bind(job,_collection_replay_job.progress)) != OK:
-		_collection_replay_worker=null
-		_collection_replay_worker_job={}
-		show_collection("Could not load this replay. Please try again.")
-
 func show_collection(message: String="") -> void:
 	# Redrawing the open list (scan results, selection) keeps its scroll offset.
 	var kept_scroll: int=host._bounded_card_scroll.scroll_vertical if host.mode == MODE_COLLECTION and is_instance_valid(host._bounded_card_scroll) else 0
-	host.running=false
-	host.room_play=false
 	if host.mode != MODE_COLLECTION: _hard_runs={}
 	host.mode=MODE_COLLECTION
 	_solo_collection_message=message
@@ -405,15 +329,10 @@ func _restore_replay_scroll(scroll: ScrollContainer, value: int) -> void:
 	if is_instance_valid(scroll) and scroll.is_inside_tree(): scroll.scroll_vertical=value
 
 func _solo_collection_entries() -> Array:
-	# Flat, ordered list of saved solo recordings: the legacy per-level copies
-	# first (in level order), then every discovered chapter attempt grouped by
-	# its stages. Each entry carries a stable key so the preview selection can
-	# survive a redraw.
+	# Flat, ordered list of saved solo recordings: every discovered chapter
+	# attempt grouped by its stages. Each entry carries a stable key so the
+	# preview selection can survive a redraw.
 	var entries: Array=[]
-	for i in range(host.levels.size()):
-		var saved: Dictionary=host.saves.replay(host.levels[i].id)
-		if saved.get("b",{}).is_empty(): continue
-		entries.append({"family":"legacy","key":"legacy:%d" % i,"level_index":i,"attempt":saved.duplicate(true),"title":str(host.levels[i].title),"chapter_key":"legacy-"+str(host.levels[i].id),"parts":1})
 	# During a scan only chapters with every source checked are listed, so an
 	# attempt keeps the number it is first shown with. Chapters still pending
 	# show the last finished scan's display rows, which are never playable.
@@ -794,8 +713,6 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 	play.size_flags_vertical=Control.SIZE_SHRINK_CENTER
 	rowbox.add_child(play)
 	_solo_row_views[key]={"title":card.title,"hit":card.hit,"play":play}
-	if not wide and entry.get("family")=="legacy":
-		rowbox.add_child(_collection_delete_button(func(): _confirm_delete_collection_replay(int(entry.get("level_index",-1)),entry.get("attempt",{})),str(entry.get("title",""))))
 	return panel
 
 func _fill_solo_preview(preview: VBoxContainer) -> void:
@@ -829,44 +746,32 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 	var export := _solo_export_button(entry)
 	if export != null: secondary.add_child(export)
 	secondary.add_child(_options_button(_open_solo_options,export != null))
-	if entry.get("family")=="legacy":
-		secondary.add_child(_collection_delete_button(func(): _confirm_delete_collection_replay(int(entry.get("level_index",-1)),entry.get("attempt",{})),str(entry.get("title",""))))
-	else:
-		var rows: Array=entry.get("rows",[])
-		if part<rows.size():
-			var remove := _collection_delete_button(func(): _confirm_remove_solo_part(rows[part]),_part_title(rows[part]))
-			remove.disabled=remove.disabled or entry.get("checking",false)
-			secondary.add_child(remove)
+	var rows: Array=entry.get("rows",[])
+	if part<rows.size():
+		var remove := _collection_delete_button(func(): _confirm_remove_solo_part(rows[part]),_part_title(rows[part]))
+		remove.disabled=remove.disabled or entry.get("checking",false)
+		secondary.add_child(remove)
 	preview.add_child(secondary)
 	_fit_replay_preview.call_deferred(preview)
 
 ## `from_first`: play every listed part from the first, ending with `part`.
 func _play_solo_entry(entry: Dictionary, part: int, from_first: bool = false) -> void:
 	if entry.get("checking",false): return
-	if entry.get("family")=="legacy":
-		var index := int(entry.get("level_index",-1))
-		if index<0 or index>=host.levels.size(): return
-		var selected: Dictionary=entry.get("attempt",{}).duplicate(true)
-		if selected.get("b",{}).is_empty(): return
-		host.earlier_islands_flow.preview_saved_attempt(index,selected)
-	else:
-		var rows: Array=entry.get("rows",[])
-		if rows.is_empty(): return
-		var chosen := clampi(part,0,rows.size()-1)
-		_selected_solo_attempt=entry.duplicate(true)
-		_selected_solo_attempt["part"]=chosen
-		await _launch_modern_solo_replay(rows[chosen],int(rows[0].get("stage_index",0)) if from_first else -1)
+	var rows: Array=entry.get("rows",[])
+	if rows.is_empty(): return
+	var chosen := clampi(part,0,rows.size()-1)
+	_selected_solo_attempt=entry.duplicate(true)
+	_selected_solo_attempt["part"]=chosen
+	await _launch_modern_solo_replay(rows[chosen],int(rows[0].get("stage_index",0)) if from_first else -1)
 
 func _solo_watch_button(text: String, entry: Dictionary, part: int, primary: bool, row: bool=false, from_first: bool=false) -> Button:
 	## Chapter replays open another scene, so their wait shows before it loads.
-	## Earlier-island replays open their own loading card at once.
 	var launch := func(): await _play_solo_entry(entry,part,from_first)
 	if entry.get("checking",false):
 		var waiting: Button = host._list_button(text,launch,primary) if row else host._button(text,launch,primary)
 		waiting.disabled=true
 		return waiting
-	if entry.get("family")=="chapter": return _replay_launch_button(text,launch,primary,row)
-	return host._list_button(text,launch,primary) if row else host._button(text,launch,primary)
+	return _replay_launch_button(text,launch,primary,row)
 
 func _replay_launch_button(text: String, launch: Callable, primary: bool, row: bool=false) -> Button:
 	var button: Button = host._list_button(text,launch,primary) if row else host._button(text,launch,primary)
@@ -963,43 +868,35 @@ func _show_solo_replay_attempt() -> void:
 	_turn_tries=TurnTries.new()
 	_faces=EndReactionStore.new()
 	var card: VBoxContainer = host._card(740,true)
-	var legacy: bool = _selected_solo_attempt.get("family")=="legacy"
 	var rows: Array=_selected_solo_attempt.get("rows",[])
-	var title := str(host.levels[int(_selected_solo_attempt.get("level_index",0))].title) if legacy else str(rows[0].get("chapter_title","Your replay"))
+	var title := str(rows[0].get("chapter_title","Your replay"))
 	card.add_child(host._label(title,34,CREAM,true))
 	var list: VBoxContainer = host._scroll_list(card,false)
-	if legacy:
-		var legacy_index := int(_selected_solo_attempt.level_index)
-		var selected: Dictionary=_selected_solo_attempt.attempt.duplicate(true)
-		list.add_child(host._paragraph("Solo · Accepted part",600))
-		list.add_child(host._button("Watch replay",func(): host.earlier_islands_flow.preview_saved_attempt(legacy_index,selected),true))
-		list.add_child(host._button("Remove from this device",func(): _confirm_delete_collection_replay(legacy_index,selected),false))
-	else:
-		for row: Dictionary in rows:
-			var frozen := row.duplicate(true)
-			var part_index := int(row.get("stage_index",0))
-			var action_row := HBoxContainer.new()
-			var watch := _replay_launch_button("Part %d · %s" % [part_index+1,_part_title(row)],func(): await _launch_modern_solo_replay(frozen),true,true)
-			watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-			action_row.add_child(watch)
-			action_row.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(frozen),_part_title(row)))
-			var tries := _tries_row(_solo_turns(row))
-			if tries == null:
-				list.add_child(action_row)
-				continue
-			# A part's pills sit tight under its button, set in a little.
-			var part_box := VBoxContainer.new()
-			part_box.add_theme_constant_override("separation",4)
-			part_box.add_child(action_row)
-			var inset := MarginContainer.new()
-			inset.add_theme_constant_override("margin_left",12)
-			inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			inset.add_child(tries)
-			part_box.add_child(inset)
-			list.add_child(part_box)
-		if rows.is_empty(): list.add_child(host._paragraph("This replay can't be found anymore.",600))
-		var export := _solo_export_button(_selected_solo_attempt)
-		if export != null: list.add_child(export)
+	for row: Dictionary in rows:
+		var frozen := row.duplicate(true)
+		var part_index := int(row.get("stage_index",0))
+		var action_row := HBoxContainer.new()
+		var watch := _replay_launch_button("Part %d · %s" % [part_index+1,_part_title(row)],func(): await _launch_modern_solo_replay(frozen),true,true)
+		watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		action_row.add_child(watch)
+		action_row.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(frozen),_part_title(row)))
+		var tries := _tries_row(_solo_turns(row))
+		if tries == null:
+			list.add_child(action_row)
+			continue
+		# A part's pills sit tight under its button, set in a little.
+		var part_box := VBoxContainer.new()
+		part_box.add_theme_constant_override("separation",4)
+		part_box.add_child(action_row)
+		var inset := MarginContainer.new()
+		inset.add_theme_constant_override("margin_left",12)
+		inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		inset.add_child(tries)
+		part_box.add_child(inset)
+		list.add_child(part_box)
+	if rows.is_empty(): list.add_child(host._paragraph("This replay can't be found anymore.",600))
+	var export := _solo_export_button(_selected_solo_attempt)
+	if export != null: list.add_child(export)
 	card.add_child(host._back_button("Back to Solo replays",show_collection,false))
 
 static func _solo_replay_context_from_rows(chapter_key: String, rows: Array, selected: Dictionary) -> Dictionary:
@@ -1070,31 +967,8 @@ func _collection_delete_button(callback: Callable, title: String) -> Button:
 	ControlTheme.danger(remove,remove.icon)
 	remove.tooltip_text="Delete replay: "+title
 	remove.accessibility_name=remove.tooltip_text
-	remove.disabled=host.saves.read_only or host.application_backgrounded or host.submission_in_flight
+	remove.disabled=host.saves.read_only or host.application_backgrounded
 	return remove
-
-func _confirm_delete_collection_replay(index: int, expected: Dictionary) -> void:
-	if host.mode not in [MODE_COLLECTION,MODE_SOLO_REPLAY_ATTEMPT] or host.application_backgrounded or host.submission_in_flight or index < 0 or index >= host.levels.size(): return
-	var level_id := str(host.levels[index].id)
-	if expected.get("b",{}).is_empty() or not Typed.same(host.saves.replay(level_id),expected): return
-	var storage: RefCounted = host.saves
-	var selected := expected.duplicate(true)
-	host.mode=MODE_CONFIRM_DELETE
-	var card: VBoxContainer = host._card(700)
-	card.add_child(host._label("Delete replay?",32,CREAM,true))
-	card.add_child(host._paragraph(str(host.levels[index].title),590))
-	card.add_child(host._paragraph("Remove this replay from Your replays on this phone? Progress, unfinished attempts and keepsakes will stay.",590))
-	var card_reference: WeakRef = weakref(card)
-	var current := func() -> bool:
-		var current_card: Variant = card_reference.get_ref()
-		return is_instance_valid(current_card) and current_card.is_inside_tree() and host.mode == MODE_CONFIRM_DELETE and host.saves == storage
-	card.add_child(host._button("Delete",func():
-		if not current.call() or host.application_backgrounded or host.submission_in_flight: return
-		var removed: bool = storage.remove_replay(level_id,selected)
-		show_collection("Replay deleted" if removed else (storage.last_error if not storage.last_error.is_empty() else "Could not remove this replay. Please try again.")),false))
-	host._retry_cancel = func():
-		if current.call(): show_collection()
-	card.add_child(host._button("Cancel",host._retry_cancel))
 
 func show_shared_replays(wanted: String = "") -> void:
 	_shared_wanted_room = wanted
@@ -1103,8 +977,6 @@ func show_shared_replays(wanted: String = "") -> void:
 	# switches rooms from inside that view, so there is no separate room-list
 	# entry point. The empty, loading, offline and unsupported states still show
 	# here, and Back leaves to Home like Solo's Back.
-	host.running=false
-	host.room_play=false
 	if host.mode not in [MODE_SHARED_REPLAYS,MODE_SHARED_MEMORIES]: _hard_runs={}
 	host.mode=MODE_SHARED_REPLAYS
 	if not host._relay_identity().ready:
@@ -1138,7 +1010,7 @@ func show_shared_replays(wanted: String = "") -> void:
 	host.shared_replays.configure_context_factory(host._room_context_factory())
 	# Queue the local check before the only draw, so the first frame already
 	# carries its loading bar rather than an empty state.
-	host.shared_replays.begin_local_load(host.saves.data.get("room",{}))
+	host.shared_replays.begin_local_load()
 	_open_default_shared_room()
 
 func _listed_shared_rooms() -> Array:
@@ -1202,11 +1074,11 @@ func _add_shared_replay_loading_bar(card: VBoxContainer, without_preview: bool =
 	_add_replay_wait_bar(card,_shared_replay_loading_bar,without_preview)
 	_shared_replay_loading_bar.update_progress(host.shared_replays.local_progress())
 
-## Earlier-island rooms and chapter rooms. Replays this phone kept from the
-## withdrawn Story feature show like any chapter's; requests for that room are
-## refused by the server and held by the room context.
+## Chapter rooms. Replays this phone kept from the withdrawn Story feature show
+## like any chapter's; requests for that room are refused by the server and held
+## by the room context.
 func _replay_room_allowed(room: Dictionary) -> bool:
-	return room.get("family") == "legacy" or (room.get("family") == "chapter" and host._relay_identity().ready)
+	return room.get("family") == "chapter" and host._relay_identity().ready
 
 func _replay_key_allowed(key: String) -> bool:
 	if host.shared_replays == null: return false
@@ -1420,15 +1292,9 @@ func _add_shared_room_selector(left: VBoxContainer) -> void:
 		if not key.is_empty() and key!=shared_replay_room: show_shared_replay_room(key))
 	left.add_child(option)
 
-func _shared_room_thumb_key(row: Dictionary = {}) -> String:
+func _shared_room_thumb_key() -> String:
 	var room := _current_shared_room()
-	var key := str(room.get("chapter_key","")) if not room.is_empty() else ""
-	if not key.is_empty() and ChapterThumbnailCatalog.has_picture(key): return key
-	# Earlier-island rooms: match the part to its island for a real picture.
-	var title := str(row.get("title",""))
-	for level: Dictionary in host.levels:
-		if str(level.get("title","")) == title: return "legacy-"+str(level.get("id",""))
-	return key
+	return str(room.get("chapter_key","")) if not room.is_empty() else ""
 
 func _select_shared_memory(rows: Array) -> void:
 	if rows.is_empty():
@@ -1448,7 +1314,7 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 			if not row.get("cached",false): _save_shared_memory(key,row)
 		else:
 			_open_shared_memory(key,row)
-	var card := _replay_row_card(_shared_room_thumb_key(row),str(row.get("title","Replay")),"Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],selected,open,true,_tries_row(_shared_turns(row)))
+	var card := _replay_row_card(_shared_room_thumb_key(),str(row.get("title","Replay")),"Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],selected,open,true,_tries_row(_shared_turns(row)))
 	var panel: PanelContainer=card.panel
 	var rowbox: HBoxContainer=card.rowbox
 	var play := _shared_watch_button("Play",key,row,false,true)
@@ -1460,8 +1326,8 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 		rowbox.add_child(remove)
 	return panel
 
-## A shared chapter memory's part is its stage; earlier-island rows (no stage)
-## keep their place in the list.
+## A shared chapter memory's part is its stage; a row without one keeps its
+## place in the list.
 static func _shared_part(row: Dictionary, index: int) -> int:
 	return int(row.stage_index) + 1 if row.has("stage_index") else index + 1
 
@@ -1481,7 +1347,7 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 			part=index
 			break
 	if current.is_empty(): return
-	var thumbnail: Control = host._replay_preview_thumb(_shared_room_thumb_key(current),Vector2(0,220),16)
+	var thumbnail: Control = host._replay_preview_thumb(_shared_room_thumb_key(),Vector2(0,220),16)
 	preview.add_child(thumbnail)
 	preview.set_meta("thumbnail",thumbnail)
 	preview.add_child(host._label(str(current.get("title","Replay")),28,CREAM,true))
@@ -1806,9 +1672,8 @@ func _open_shared_memory(key: String, row: Dictionary) -> void:
 
 func _play_shared_entries(entries: Array) -> void:
 	if entries.is_empty() or host.mode != MODE_SHARED_MEMORIES or not host._relay_identity().ready or is_instance_valid(host.shared_replay_child) or not _replay_key_allowed(shared_replay_room): return
-	host.supersede_foreground_refresh()
+	host.lifecycle_generation+=1
 	host.mode=MODE_SHARED_REPLAY
-	host.running=false
 	host.ui.visible=false
 	var view: Node3D=SharedReplayLaunch.make(host,entries)
 	view.context_factory=host._room_context_factory()
@@ -1902,7 +1767,7 @@ func _save_finished_replay_once(room_id: String, revision: int, in_play: bool = 
 
 ## Saving reads and verifies a whole replay: never during a turn or playback.
 func _replay_save_idle() -> bool:
-	return not host.running and host.mode != MODE_SHARED_REPLAY and not is_instance_valid(host.shared_replay_child) and not (is_instance_valid(host.relay_child) and host.relay_child.running)
+	return host.mode != MODE_SHARED_REPLAY and not is_instance_valid(host.shared_replay_child) and not (is_instance_valid(host.relay_child) and host.relay_child.running)
 
 ## A save that met a busy API, a lost connection or an outage; worth repeating.
 static func _replay_save_transient(result: Dictionary) -> bool:

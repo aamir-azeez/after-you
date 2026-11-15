@@ -50,7 +50,7 @@ func _run() -> void:
 	app._return_to_room_hub()
 	for _frame in range(4): await process_frame
 	var hub: Node=app.room_hub_flow.screen
-	_check(is_instance_valid(hub) and hub.room_action(ROOM)!=null and hub.room_action(LEGACY)!=null,"Play with a friend lists the joined chapter and earlier islands beside the old files")
+	_check(is_instance_valid(hub) and hub.room_action(ROOM)!=null and hub.room_action(LEGACY)==null,"Play with a friend lists the joined chapter beside the old files, and no room of the earlier islands")
 	if is_instance_valid(hub) and hub.room_action(ROOM)!=null:
 		hub.room_action(ROOM).pressed.emit()
 		for _frame in range(4): await process_frame
@@ -58,8 +58,8 @@ func _run() -> void:
 	_check(is_instance_valid(app.relay_child) and app.relay_child.chapter_key=="relay-isles@2","The joined chapter opens")
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await process_frame
-	await app._start_practice(0)
-	_check(app.mode=="ready" and not app.room_play,"Solo practice opens")
+	app.journey_flow.show_journey()
+	_check(app.mode=="journey","Play Solo opens")
 	app._show_home()
 	await process_frame
 	_check(app.mode=="home","Home opens")

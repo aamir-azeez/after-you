@@ -12,14 +12,12 @@ const TOGETHER_ICON = preload("res://assets/ui/social/users.svg")
 const TOGETHER_LIT := UiTokens.TOGETHER
 const GOLD := Color("efba73")
 const DIM := Color(0.71, 0.84, 0.78, 0.38)
-const EARLIER := "earlier"
 
 ## The line for one entry and its state. `together_hard`: the server hosts
 ## together Hard rooms (the gold top is only asked for then).
 static func line(entry: Dictionary, item: Dictionary, together_hard: bool) -> String:
 	var copy: Dictionary = entry.keepsake.copy
 	var stages: Array = item.get("stages", [])
-	if entry.id == EARLIER: return _lantern_line(entry, item, copy)
 	match str(item.get("look", "none")):
 		"next": return PlayerCopy.KEEPSAKE_NEXT % entry.title
 		"started":
@@ -35,13 +33,6 @@ static func line(entry: Dictionary, item: Dictionary, together_hard: bool) -> St
 	if entry.hard and entry.together and together_hard and not item.top:
 		return PlayerCopy.KEEPSAKE_WANTS_TOP % copy.top
 	return PlayerCopy.KEEPSAKE_DONE % str(copy.action).to_lower()
-
-static func _lantern_line(entry: Dictionary, item: Dictionary, copy: Dictionary) -> String:
-	var count: int = entry.places.size()
-	if not item.base: return PlayerCopy.KEEPSAKE_NEXT_EARLIER
-	if not item.together: return PlayerCopy.KEEPSAKE_LANTERNS_WANT_TOGETHER % [item.lit, count, copy.together]
-	if item.lit < count: return PlayerCopy.KEEPSAKE_LANTERNS_LIT % [item.lit, count, copy.together]
-	return PlayerCopy.KEEPSAKE_LANTERNS_DONE % str(copy.action).to_lower()
 
 ## Stages done with a friend (FRIEND), or in either mode (ANY).
 const ANY := -1
@@ -59,10 +50,6 @@ static func every_line(entries: Array) -> Array[String]:
 	for entry: Dictionary in entries:
 		var copy: Dictionary = entry.keepsake.copy
 		var count: int = entry.places.size()
-		if entry.id == EARLIER:
-			lines.append_array([PlayerCopy.KEEPSAKE_NEXT_EARLIER, PlayerCopy.KEEPSAKE_LANTERNS_WANT_TOGETHER % [count, count, copy.together],
-				PlayerCopy.KEEPSAKE_LANTERNS_LIT % [count - 1, count, copy.together], PlayerCopy.KEEPSAKE_LANTERNS_DONE % str(copy.action).to_lower()])
-			continue
 		lines.append_array([PlayerCopy.KEEPSAKE_NEXT % entry.title, PlayerCopy.KEEPSAKE_MIXED, PlayerCopy.KEEPSAKE_STARTED % [maxi(1, count - 1), count, entry.title],
 			PlayerCopy.KEEPSAKE_FRIEND_PART % [maxi(1, count - 1), count], PlayerCopy.KEEPSAKE_WANTS_TOGETHER % copy.together,
 			PlayerCopy.KEEPSAKE_WANTS_HARD % copy.hard, PlayerCopy.KEEPSAKE_WANTS_HARD_TOGETHER % copy.hard,

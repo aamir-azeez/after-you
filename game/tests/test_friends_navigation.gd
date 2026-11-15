@@ -75,32 +75,15 @@ func _run() -> void:
 	await app._show_friends()
 	await process_frame
 	await process_frame
+	var calls_before: int = api.calls.size()
 	joined=_screen_button(app.friends_flow.screen,"Join")
 	if joined!=null:
 		_pointer(viewport,joined.get_global_rect().get_center(),true)
 		_pointer(viewport,joined.get_global_rect().get_center(),false)
 		await process_frame
-	_check(app.mode=="room" and app.active_room.room_id==LEGACY_CODE.sha256_text().substr(0,22) and app.ui.visible,"Friend earlier-island entry retains its legacy room destination after screen close")
-	_check(_button_named(app,"Share current room") == null,"A guest cannot share the host's earlier-island room")
-	joins=api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/rooms/join")
-	_check(joins.size()==1 and joins[0].body.invite_code==LEGACY_CODE,"Friend earlier-island entry uses its original join exactly once")
-	friend_clock += 3000
-	await app._show_friends()
-	await process_frame
-	await app.friends_flow.screen._act("join",app.friends_client.view().friends[0])
-	await RoomEntry.built(self, app)
-	_check(app.mode=="room" and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/rooms/join").size()==1,"A known earlier island reopens through GET rather than another join")
-	# Start a room GET, then leave the route before the reply arrives.
-	app.room_hub_flow.show_rooms()
-	await app._show_friends()
-	await process_frame
-	api.hold_next=true
-	app.friends_flow.screen._open()
-	await process_frame
-	app._show_home()
-	api.release.emit()
-	await process_frame
-	_check(app.mode=="home" and not app.friends_flow.is_open(),"A delayed Return reply cannot reopen a room after Home")
+		await process_frame
+	_check(app.mode!="room" and not is_instance_valid(app.relay_child) and api.calls.slice(calls_before).all(func(call: Dictionary) -> bool: return not str(call.path).begins_with("/v1/rooms")),"A friend's room from the earlier islands is not joined and nothing opens")
+	friend_family=2
 	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
@@ -139,11 +122,9 @@ func _run() -> void:
 	await process_frame
 	await RoomEntry.enter(self, app)
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
-	app.legacy_room_flow.accept_room(_ok({"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":1,"host_id":HOST,"guest_id":GUEST,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}))
-	await _share_current_room(viewport,app,api,{"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22)},"Opening an earlier island after a chapter shares the latest earlier island")
 	await RoomEntry.enter(self, app)
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
-	await _share_current_room(viewport,app,api,{"api_version":2,"room_id":ROOM},"Opening the chapter after an earlier island shares the latest chapter")
+	await _share_current_room(viewport,app,api,{"api_version":2,"room_id":ROOM},"Opening the chapter again shares it")
 	await _host_from_friends(viewport,app,api)
 	await _direct_room_actions(viewport,app,api)
 	await _notification_entry_points(app,api)
@@ -237,21 +218,6 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	await process_frame
 	await process_frame
 	_check(app.mode == "home" and not app.friends_flow.is_open(),"A late share reply cannot reopen a room or Friends after leaving")
-	var legacy := {"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":0,"host_id":HOST,"guest_id":null,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}
-	app.legacy_room_flow.accept_room(_ok(legacy))
-	friend_status = app.overlay.find_child("RoomFriendStatus",true,false)
-	_check(friend_status != null and friend_status.text == "Waiting for friend","Earlier-island hosting exposes the same waiting status")
-	shares = api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share").size()
-	await _tap_direct_share(viewport,app)
-	requests = api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share")
-	_check(requests.size() == shares + 1 and requests.back().body.room == {"api_version":1,"room_id":legacy.room_id} and app.mode == "room","Earlier-island hosts share directly without leaving their room")
-	await app.legacy_room_flow.refresh_room()
-	friend_status = app.overlay.find_child("RoomFriendStatus",true,false)
-	_check(friend_status != null and friend_status.text == "Friend joined","An authoritative earlier-island refresh updates the joined indicator")
-	shares = requests.size()
-	api.player_id = GUEST
-	app.identity_data.player_id = GUEST
-	_check(not (await app.room_sharing.share({"api_version":1,"room_id":legacy.room_id})).get("ok",false) and api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share").size() == shares,"A stale host action cannot share after the current identity becomes a guest")
 
 func _tap_direct_share(viewport: SubViewport, screen: Node, label: String = "Share current room") -> void:
 	var share: Button = _button_named(screen,label)
@@ -314,10 +280,6 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 		return _ok({"schema_version":1,"shared_room":shared_friend_room})
 	if request.path=="/v1/friends/"+HOST+"/join":
 		return _ok({"schema_version":1,"api_version":friend_family,"room_id":ROOM if friend_family==2 else LEGACY_CODE.sha256_text().substr(0,22),"invite_code":"A1".repeat(10) if friend_family==2 else LEGACY_CODE})
-	if request.path=="/v1/rooms/join":
-		return _ok({"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":1,"host_id":HOST,"guest_id":GUEST,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0})
-	if request.path=="/v1/rooms/"+LEGACY_CODE.sha256_text().substr(0,22) or (request.path=="/v1/rooms" and request.method==HTTPClient.METHOD_POST):
-		return _ok({"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":1,"host_id":HOST,"guest_id":GUEST,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0})
 	return super._server(request,api)
 
 func _share_current_room(viewport: SubViewport, app: Node, api: FakeApi, expected: Dictionary, label: String) -> void:
@@ -370,13 +332,11 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	app.room_hub_flow.drop()
 	await process_frame
 	# A new friend's delayed join must not navigate after Back or backgrounding.
-	app.saves.data.erase("room")
-	app.active_room={}
 	app.room_hub_flow.show_rooms()
 	await app._show_friends()
 	await process_frame
 	api.hold_next=true
-	app.friends_flow.screen.join_requested.emit({"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22),"invite_code":LEGACY_CODE})
+	app.friends_flow.screen.join_requested.emit({"api_version":2,"room_id":ROOM,"invite_code":"A1".repeat(10)})
 	app.friends_flow.screen.close()
 	await process_frame
 	app._show_home()
@@ -387,7 +347,7 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	await app._show_friends()
 	await process_frame
 	api.hold_next=true
-	app.friends_flow.screen.join_requested.emit({"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22),"invite_code":LEGACY_CODE})
+	app.friends_flow.screen.join_requested.emit({"api_version":2,"room_id":ROOM,"invite_code":"A1".repeat(10)})
 	app.friends_flow.screen.close()
 	app._background_application()
 	api.release.emit()

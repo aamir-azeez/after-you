@@ -1,8 +1,8 @@
 extends SceneTree
 ## An iOS build that sells nothing (no App Store or Test Store configuration) lists only
-## the free chapters: no paid or locked cards in Play Solo or Play with your friend, only
-## the free earlier islands, no Full Journey offer on Home, no Check hosting access row
-## and no Next island into a paid island. Android, desktop and iOS with a store show
+## the free chapters: no paid or locked cards in Play Solo or Play with your friend, no
+## Full Journey offer on Home and no Check hosting access row. Android, desktop and iOS
+## with a store show
 ## exactly what they showed before. Joining a friend's paid room keeps its card details.
 ## Home's keepsake and Hard totals, the keepsakes standing on Home, and What's new
 ## count and show the free chapters alone there, and nothing else changes elsewhere.
@@ -85,7 +85,7 @@ func _run() -> void:
 	for key: String in Registry.offered_keys():
 		if Registry.descriptor(key).premium: paid_cards += 1
 	_check(baseline.paid_cards == paid_cards and baseline.locked_cards == baseline.paid_cards, "Play Solo lists every paid chapter locked")
-	_check(baseline.free_cards > 0 and baseline.islands == 8 and baseline.home_offer and baseline.hosting_row and baseline.next_island, "Earlier islands, the Full Journey offer, hosting access and Next island are all there")
+	_check(baseline.free_cards > 0 and baseline.home_offer and baseline.hosting_row, "The Full Journey offer and hosting access are there")
 	_check(baseline.together_paid > 0 and baseline.together_locked == baseline.together_paid, "Play with your friend lists the paid chapters locked")
 	_check(baseline.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY, "Account keeps its purchases summary")
 	_check(baseline.grant_card, "The monthly Full Journey Pollen card may show")
@@ -93,7 +93,7 @@ func _run() -> void:
 	baseline.erase("store_rows")
 	var together_modes := 2 if app.hard_together() else 1
 	var upgrades: int = States.states(States.entries(), [], {}, app.hard_together()).upgrades[1]
-	_check(baseline.keepsakes == " · ".join([PlayerCopy.KEEPSAKE_COUNT % [1, 11], PlayerCopy.KEEPSAKE_UPGRADE_COUNT % [0, upgrades], PlayerCopy.KEEPSAKE_HARD_COUNT % [0, 10]]),
+	_check(baseline.keepsakes == " · ".join([PlayerCopy.KEEPSAKE_COUNT % [1, 10], PlayerCopy.KEEPSAKE_UPGRADE_COUNT % [0, upgrades], PlayerCopy.KEEPSAKE_HARD_COUNT % [0, 10]]),
 		"Home counts every keepsake, its upgrades and the Hard upgrades, a started paid chapter not yet among them: " + baseline.keepsakes)
 	_check(baseline.keepsake_places == _sorted(States.entries().map(func(entry: Dictionary) -> String: return entry.id)), "Every chapter card's keepsake has its place on Home")
 	var lines := _changelog_lines(false)
@@ -121,22 +121,18 @@ func _run() -> void:
 		_check(free.free_cards == baseline.free_cards, "Play Solo still shows every free chapter" + label)
 		_check(free.columns == baseline.columns and free.hidden_cards == 0, "The free cards fill the same grid with no hidden card leaving a hole" + label)
 		_check(free.together_paid == 0 and free.together_locked == 0 and free.together_free == baseline.together_free, "Play with your friend lists only the free chapters, none locked" + label)
-		_check(free.islands == 3 and not free.island_scroll, "Earlier islands lists the three free islands with no empty scroll space" + label)
 		_check(not free.home_offer, "Home has no Full Journey button" + label)
 		_check(not free.hosting_row and free.store_rows == [false, false], "Settings has no Check hosting access, Full Journey or Restore purchases row" + label)
 		_check(free.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY_FREE, "Account's summary drops purchases" + label)
 		_check(not free.grant_card, "The monthly Full Journey Pollen card never shows" + label)
-		_check(not free.next_island and free.next_island_free, "Finishing island 3 offers no Next island into a paid one; earlier islands still lead on" + label)
-		# Free places: the earlier islands Earlier islands lists and the chapters Play Solo lists.
-		var free_places: Array = Catalog.all().filter(func(item: Dictionary) -> bool:
-			if item.family == "earlier": return Catalog.EARLIER_ROWS.slice(0, free.islands).any(func(row: Array) -> bool: return row[1] == item.stage_id)
-			return "FreeChapter_" + str(item.family).replace("-", "_") in free.free_card_names)
+		# Free places: the chapters Play Solo lists.
+		var free_places: Array = Catalog.all().filter(func(item: Dictionary) -> bool: return "FreeChapter_" + str(item.family).replace("-", "_") in free.free_card_names)
 		var free_total: int = free_places.reduce(func(total: int, item: Dictionary) -> int: return total + (2 if item.friend_available else 1), 0)
 		var free_hard: int = HardMode.eligible_keys().filter(func(key: String) -> bool: return "FreeChapter_" + key.get_slice("@", 0).replace("-", "_") in free.free_card_names).size()
-		_check(free_total == 26 and free_hard == 5, "The free chapters hold 26 keepsake places and 5 hard chapters" + label)
+		_check(free_total == 20 and free_hard == 5, "The free chapters hold 20 keepsake places and 5 hard chapters" + label)
 		var free_upgrades: int = States.states(States.entries(true), [], {}, app.hard_together()).upgrades[1]
-		_check(free.keepsakes == " · ".join([PlayerCopy.KEEPSAKE_COUNT % [1, 6], PlayerCopy.KEEPSAKE_UPGRADE_COUNT % [0, free_upgrades], PlayerCopy.KEEPSAKE_HARD_COUNT % [0, free_hard]]), "Home counts only the free keepsakes and their upgrades, leaving out a paid place earned with a friend: " + free.keepsakes + label)
-		_check(free.keepsake_places == _sorted(States.entries(true).map(func(entry: Dictionary) -> String: return entry.id)), "Only the free chapters and the Lantern Line stand on Home, so no paid outline is browsed" + label)
+		_check(free.keepsakes == " · ".join([PlayerCopy.KEEPSAKE_COUNT % [1, 5], PlayerCopy.KEEPSAKE_UPGRADE_COUNT % [0, free_upgrades], PlayerCopy.KEEPSAKE_HARD_COUNT % [0, free_hard]]), "Home counts only the free keepsakes and their upgrades, leaving out a paid place earned with a friend: " + free.keepsakes + label)
+		_check(free.keepsake_places == _sorted(States.entries(true).map(func(entry: Dictionary) -> String: return entry.id)), "Only the free chapters stand on Home, so no paid outline is browsed" + label)
 		var free_lines := _changelog_lines(true)
 		_check(free.whats_new.opened and free.whats_new.card == free_lines.card and free.whats_new.earlier == free_lines.earlier and free.whats_new.versions == free_lines.versions, "What's new still opens, without a paid highlight or a version left with none" + label)
 		_check(free.whats_new.versions < baseline.whats_new.versions and free.whats_new.earlier.size() < baseline.whats_new.earlier.size(), "What's new leaves the paid highlights out" + label)
@@ -215,7 +211,6 @@ func _rule() -> void:
 func _paid_places() -> void:
 	_check(Catalog.paid(Catalog.by_id("sleeping-lighthouse/borrowed-light")), "The Lighthouse's places are paid, through the chapter that earns them")
 	_check(Catalog.paid(Catalog.by_id("rolling-home/weight-of-a-friend")) and not Catalog.paid(Catalog.by_id("first-steps/a-little-lift")), "A premium chapter's places are paid and a free chapter's are not")
-	_check(not Catalog.paid(Catalog.by_id("earlier/long-way-home")) and Catalog.paid(Catalog.by_id("earlier/rising-together")), "The three first earlier islands are free, the rest paid")
 	var earned: Array = [{"id": "rolling-home/weight-of-a-friend", "solo": true, "friend": true}, {"id": "first-steps/a-little-lift", "solo": true}]
 	_check(Catalog.variant_count(earned) == 3 and Catalog.variant_count(earned, true) == 1, "A paid place earned with a friend counts only where paid content shows")
 	_check(Catalog.variant_total(true) < Catalog.variant_total(), "The free total leaves out the paid places")
@@ -331,10 +326,6 @@ func _surfaces(app: Node, platform: String, config: Dictionary) -> Dictionary:
 	seen.together_paid = together.filter(func(item: Dictionary) -> bool: return item.premium).size()
 	seen.together_free = together.size() - seen.together_paid
 	seen.together_locked = together.filter(func(item: Dictionary) -> bool: return item.locked).size()
-	app.journey_flow.show_earlier_islands()
-	await _settle()
-	seen.islands = _buttons_starting(app.overlay, ["01  ", "02  ", "03  ", "04  ", "05  ", "06  ", "07  ", "08  "])
-	seen.island_scroll = _island_row(app.overlay) != null and _scroll_of(_island_row(app.overlay)) != null
 	app._show_home()
 	await _settle()
 	var offer: Control = app.overlay.find_child("HomeFullJourney", true, false) as Control
@@ -360,8 +351,6 @@ func _surfaces(app: Node, platform: String, config: Dictionary) -> Dictionary:
 		store_rows.append(row != null and row.is_visible_in_tree())
 	seen.store_rows = store_rows
 	app.api.player_id = ""
-	seen.next_island = await _offers_next_island(app, 2)
-	seen.next_island_free = await _offers_next_island(app, 1)
 	app._show_home()
 	await _settle()
 	PlatformSupport.override_release = false
@@ -390,40 +379,6 @@ func _paywall_says(app: Node, text: String) -> bool:
 	app._show_home()
 	await _settle()
 	return found
-
-## Whether the solo celebration after earlier island `index` offers Next island.
-func _offers_next_island(app: Node, index: int) -> bool:
-	app.room_play = false
-	app.level_index = index
-	app.current_level = app.levels[index]
-	app.earlier_islands_flow.show_celebration()
-	await _settle()
-	return _button(app.overlay, "Next island") != null
-
-func _buttons_starting(node: Node, prefixes: Array) -> int:
-	var count := 0
-	for button: Button in node.find_children("*", "Button", true, false):
-		if not button.is_visible_in_tree() or button.is_queued_for_deletion(): continue
-		for prefix: String in prefixes:
-			if button.text.begins_with(prefix): count += 1
-	return count
-
-func _island_row(node: Node) -> Button:
-	for button: Button in node.find_children("*", "Button", true, false):
-		if button.text.begins_with("01  ") and not button.is_queued_for_deletion(): return button
-	return null
-
-func _scroll_of(control: Control) -> ScrollContainer:
-	var parent: Node = control.get_parent()
-	while parent != null and not parent is ScrollContainer: parent = parent.get_parent()
-	return parent as ScrollContainer
-
-func _button(node: Node, value: String) -> Button:
-	if node is Button and node.text == value and node.is_visible_in_tree() and not node.is_queued_for_deletion(): return node
-	for child: Node in node.get_children():
-		var found := _button(child, value)
-		if found != null: return found
-	return null
 
 func _differences(seen: Dictionary, expected: Dictionary) -> String:
 	var result: Array[String] = []

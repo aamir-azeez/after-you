@@ -131,7 +131,6 @@
 					"typed_digest": "d751ccefabc3fa3b2918abbf0554e13924bf70c4df86a2e36da2cf5db43e22a8"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					6,
@@ -280,7 +279,6 @@
 					"typed_digest": "a83cf1d49a5c217fe20d6dbb189102b0b8dc3737199072fada6d3c46792df2ac"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					7,
@@ -429,7 +427,6 @@
 					"typed_digest": "e030011ff39ecf652a7ae96c05eaafea9932e9b271bae9ea323b42bacb8c2a32"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					4,
@@ -576,7 +573,6 @@
 					"typed_digest": "595aa2d9c07f9fde8f9845866bb91a45923eeb1fbf5fb6c74444dc83c0751a6e"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					6,
@@ -725,7 +721,6 @@
 					"typed_digest": "ef4a1aaa612b05ba29572001b5e26468827e991cdcac9b3269bc20c7205508b0"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					7,
@@ -868,7 +863,6 @@
 					"typed_digest": "ef4a1aaa612b05ba29572001b5e26468827e991cdcac9b3269bc20c7205508b0"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					9,
@@ -1006,7 +1000,6 @@
 					"typed_digest": "f75b19efc6e0915c0d1dfba87eb64c47007eea3b36ee4622954c0503b18f9e5f"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					2,
@@ -1155,7 +1148,6 @@
 					"typed_digest": "71d426cd638e1268876b6d1033e5a52ec2052f9520a9092dae6f760b9e8bcb55"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					6,
@@ -1334,7 +1326,6 @@
 					"typed_digest": "df37f96dc82cc3f610a05a1534065ebd099b6f5f1eaa64349c6187c6244c53ef"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					11,
@@ -1467,7 +1458,6 @@
 					"typed_digest": "7911e963a97009ce34b33ff25ef839bab68de3c72c149944732c386c9f9d99f0"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					9,
@@ -1600,7 +1590,6 @@
 					"typed_digest": "1c2a0841cb50a83cb8f62ac9a5b77695b77e61496ef1b478f57bdbf2cba41a38"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					9,
@@ -1733,7 +1722,6 @@
 					"typed_digest": "e7879914f739a3e49c81f13ca27941a286d93a75c9b4417e586063a9dfb0a620"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					10,
@@ -3124,70 +3112,6 @@
 			"lighthouse_local_path": "user://lighthouse-journey-v3.json",
 			"rows": [
 				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/first-light",
-					"stage_id": "first-light",
-					"title": "First Light"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/long-way-home",
-					"stage_id": "long-way-home",
-					"title": "Long Way Home"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/patient-garden",
-					"stage_id": "patient-garden",
-					"title": "Patient Garden"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/rising-together",
-					"stage_id": "rising-together",
-					"title": "Rising Together"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/across-the-blue",
-					"stage_id": "across-the-blue",
-					"title": "Across the Blue"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/lantern-crossing",
-					"stage_id": "lantern-crossing",
-					"title": "Lantern Crossing"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/two-beats",
-					"stage_id": "two-beats",
-					"title": "Two Beats"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/after-you",
-					"stage_id": "after-you",
-					"title": "After You"
-				},
-				{
 					"chapter_key": "first-steps@1",
 					"family": "first-steps",
 					"friend_available": true,
@@ -3427,12 +3351,7 @@
 			"rolling-home",
 			"a-house-for-two",
 			"conservatory",
-			"long-way-home",
-			"legacy-rising-together",
-			"legacy-across-the-blue",
-			"legacy-lantern-crossing",
-			"legacy-two-beats",
-			"legacy-after-you"
+			"long-way-home"
 		],
 		"solo_replay": {
 			"legacy_chapters": [
@@ -3450,15 +3369,6 @@
 			"verified_schema": 2,
 			"verifier_version": 1
 		},
-		"story_keys": [
-			"first-steps@1",
-			"relay-isles@2",
-			"high-and-low@1",
-			"rolling-home@1",
-			"a-house-for-two@1",
-			"conservatory@1",
-			"long-way-home@1"
-		],
 		"thumbnails": {
 			"entries": {
 				"a-house-for-two@1": {
@@ -3476,38 +3386,6 @@
 				"high-and-low@1": {
 					"key": "high-and-low@1",
 					"texture": "res://assets/chapter_thumbnails/high-and-low.png"
-				},
-				"legacy-across-the-blue": {
-					"key": "legacy-across-the-blue",
-					"texture": "res://assets/paid_levels/legacy-across-the-blue.png"
-				},
-				"legacy-after-you": {
-					"key": "legacy-after-you",
-					"texture": "res://assets/paid_levels/legacy-after-you.png"
-				},
-				"legacy-first-light": {
-					"key": "legacy-first-light",
-					"texture": "res://assets/chapter_thumbnails/legacy-first-light.png"
-				},
-				"legacy-lantern-crossing": {
-					"key": "legacy-lantern-crossing",
-					"texture": "res://assets/paid_levels/legacy-lantern-crossing.png"
-				},
-				"legacy-long-way-home": {
-					"key": "legacy-long-way-home",
-					"texture": "res://assets/chapter_thumbnails/legacy-long-way-home.png"
-				},
-				"legacy-patient-garden": {
-					"key": "legacy-patient-garden",
-					"texture": "res://assets/chapter_thumbnails/legacy-patient-garden.png"
-				},
-				"legacy-rising-together": {
-					"key": "legacy-rising-together",
-					"texture": "res://assets/paid_levels/legacy-rising-together.png"
-				},
-				"legacy-two-beats": {
-					"key": "legacy-two-beats",
-					"texture": "res://assets/paid_levels/legacy-two-beats.png"
 				},
 				"long-way-home@1": {
 					"key": "long-way-home@1",
@@ -3559,15 +3437,7 @@
 				"long-way-home@2",
 				"turn-of-the-tide@1",
 				"sleeping-lighthouse@2",
-				"turn-of-the-tide@2",
-				"legacy-first-light",
-				"legacy-long-way-home",
-				"legacy-patient-garden",
-				"legacy-rising-together",
-				"legacy-across-the-blue",
-				"legacy-lantern-crossing",
-				"legacy-two-beats",
-				"legacy-after-you"
+				"turn-of-the-tide@2"
 			]
 		},
 		"unknown_key": {

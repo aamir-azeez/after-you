@@ -185,9 +185,6 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	if path == "/v2/rooms/join": return _join(player, body, headers)
 	if path == "/v1/room-inbox": return _inbox(player, headers)
 	if path == "/v1/invitations/resolve": return _resolve(body)
-	if path == "/v1/rooms/join" and legacy_invites.has(normalize_invite(body.get("invite_code"))):
-		var refusal: Array = legacy_invites[normalize_invite(body.get("invite_code"))]
-		return _fail(int(refusal[0]), str(refusal[1]))
 	if path == "/v1/friends" and method == HTTPClient.METHOD_GET:
 		return _ok({"schema_version": 1, "friend_code": player, "refresh_after_seconds": 30, "shared_room": record.get("shared_room"), "friends": _friend_rows(player)})
 	if path == "/v1/friends/share": return _share(player, body)

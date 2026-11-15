@@ -50,8 +50,7 @@ func _one_resolver() -> void:
 	for unknown: Variant in [{}, {"level_id": "the-orchard", "level_version": 1}, {"level_id": "first-steps", "level_version": 9}, {"level_id": 0, "level_version": 1}, {"level_id": "first-steps"}]:
 		h.check(RoomChapterTitle.for_room(unknown) == RoomChapterTitle.UNKNOWN, "an unknown room is a neutral saved chapter, never First Steps: %s" % [unknown])
 	h.check(RoomChapterTitle.title("", "Current room") == "Current room", "an empty key keeps the caller's neutral label")
-	h.check(RoomChapterTitle.legacy_title("first-light") == "First Light" and RoomChapterTitle.title("legacy-first-light") == "First Light", "an earlier island is named by its level id")
-	h.check(RoomChapterTitle.legacy_title(0) == RoomChapterTitle.UNKNOWN and RoomChapterTitle.legacy_title(1.0, "Island") == "Island", "a numeric legacy id is not clamped to the first island")
+	h.check(RoomChapterTitle.title("legacy-first-light") == RoomChapterTitle.UNKNOWN, "an earlier island's old key names no chapter")
 	var inbox := RoomInboxClient.new(null, Callable())
 	var shown: Dictionary = inbox._normalize_room({"room_id": "r", "family": "relay", "api_version": 2, "chapter": {"id": "the-wishing-well", "version": 1}, "membership": {}})
 	h.check(shown.chapter_key == "the-wishing-well@1" and shown.chapter_title == "The Wishing Well", "the hub names an inbox room by its chapter id and version: %s" % [shown])

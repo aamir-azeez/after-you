@@ -1,13 +1,10 @@
 extends SceneTree
 
-const Legacy = preload("res://core/simulation.gd")
-const Levels = preload("res://core/levels.gd")
 const Lift = preload("res://core/first_steps/simulation.gd")
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Registry = preload("res://services/chapter_registry.gd")
-const Objective = preload("res://presentation/objective_panel.gd")
 var checks := 0
 var failures := 0
 var comfort_lift: Dictionary = {}
@@ -17,7 +14,6 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	_legacy_handoffs()
 	_late_lift()
 	_retained_stage_boundaries()
 	if failures == 0 and "--write-fixtures" in OS.get_cmdline_user_args():
@@ -30,45 +26,6 @@ func _run() -> void:
 			if file != null: file.store_string(JSON.stringify({"pairs": [comfort_lift, comfort_garden]}, "\t") + "\n")
 	print("INTRO COMFORT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
-
-func _legacy_handoffs() -> void:
-	for definition: Dictionary in Levels.all_levels():
-		for late: bool in [false, true]:
-			var a := Legacy.new()
-			_check(a.reset(definition, {}, "a", 8), "New earlier-island source starts: " + definition.id)
-			_walk(a, definition.plate)
-			while not a.snapshot().bridge_open or not a.snapshot().lift_ready:
-				if a.finished: break
-				a.step({})
-			if late: _wait_until(a, 550)
-			a.step({"interact": true})
-			a.step({})
-			if definition.has("gate"): _walk(a, definition.gate.plate)
-			_wait_until(a, 600)
-			var source := a.export_recording()
-			_check(a.tick == 600 and source.simulation_version == 8, "Source uses the full unchanged first-player clock")
-			_check(a.can_commit() and Legacy.verify_recording(definition, source).valid, "Source is replayable after an actual late/early throw: %s/%s" % [definition.id, late])
-			var b := Legacy.new()
-			if not b.reset(definition, source, "b"):
-				_check(false, "Receiver accepts verified source: " + definition.id)
-				continue
-			_wait_until(b, 650)
-			_check(not b.finished and b.snapshot().duration_ticks == 900, "Receiver still has time after the former deadline: " + definition.id)
-			_check(b.snapshot().seed.status in ["waiting", "flying"], "Unclaimed seed stays available through the receiver's turn: " + definition.id)
-			_walk(b, [int(definition.starts.b[0]), int(definition.bridge.z)])
-			_walk(b, [int(definition.landing[0]), int(definition.bridge.z)])
-			_walk(b, definition.landing)
-			while b.snapshot().seed.status != "held_b" and not b.finished: b.step({})
-			_walk(b, definition.goal)
-			b.step({"interact": true})
-			_check(b.complete and b.tick < 900, "Real delayed receiver route completes: %s/%s at%d" % [definition.id, late, b.tick])
-			_check(Legacy.verify_recording(definition, b.export_recording(), source).valid, "Long receiver recording verifies exactly: " + definition.id)
-			_check(Canonical.same(source, a.export_recording()), "Receiver does not alter source evidence")
-	var lift := Legacy.new()
-	lift.reset(Levels.get_level("rising-together"), {}, "a", 8)
-	_walk(lift, lift.level.plate)
-	var meter := Objective.legacy_progress(lift.snapshot(), Legacy.TICK_RATE)
-	_check(meter.get("unit") == "seconds" and meter.required == 85.0 / 30.0, "Earlier lift exposes its actual hold requirement")
 
 func _late_lift() -> void:
 	var definition := Catalog.definition()

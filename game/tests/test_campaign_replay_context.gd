@@ -38,7 +38,7 @@ func _case() -> Dictionary:
 	var factory := Factory.new()
 	factory.api = api
 	var collection := Collection.new(api,owner.identity,cache,online,factory)
-	_check(collection._ready_owner() and collection._remember_room(_snapshot(Registry.FIRST_STEPS),"chapter"),"Known historical room and its native accepted checkpoint are replay-verified")
+	_check(collection._ready_owner() and collection._remember_room(_snapshot(Registry.FIRST_STEPS)),"Known historical room and its native accepted checkpoint are replay-verified")
 	var key := "chapter:"+ROOM
 	var entry: Dictionary = await collection.open_memory(key,"p0-1")
 	var pair: Dictionary = entry.pair.duplicate(true)

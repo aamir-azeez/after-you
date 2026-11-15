@@ -10,7 +10,6 @@ const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const ThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const PaidCatalog = preload("res://services/paid_level_catalog.gd")
 const SoloReplays = preload("res://services/solo_replay_collection.gd")
-const StoryWorld = preload("res://presentation/story_memory_world.gd")
 const GOLDEN := "registry.json"
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## One mid-chapter and one final checkpoint per chapter, for previous_checkpoint.
@@ -103,7 +102,6 @@ func _chapter(key: String) -> Dictionary:
 		"keepsake_places": KeepsakeCatalog.chapter_places(key),
 		"thumbnail": ThumbnailCatalog.entry(key),
 		"solo_replay_stamp": SoloReplays._chapter_stamp(key),
-		"story_illustration": key in StoryWorld.KEYS,
 		"paid_entry": PaidCatalog.entry(key.get_slice("@", 0)),
 	}
 	_check(entry.descriptor.get("definition_hash") == entry.definition_digest, "Descriptor hash is the definition digest: " + key)
@@ -192,7 +190,6 @@ func _shared() -> Dictionary:
 		"keepsakes": _keepsakes(),
 		"thumbnails": _thumbnails(),
 		"paid_levels": _paid_keys(),
-		"story_keys": _pinned(StoryWorld.KEYS),
 		"solo_replay": {"verifier_version": SoloReplays.VERIFIER_VERSION, "legacy_chapters": SoloReplays.LEGACY_CHAPTERS,
 			"legacy_group_stamp": SoloReplays._chapter_stamp(SoloReplays.LEGACY_GROUP), "lighthouse_stamp": SoloReplays._chapter_stamp(SoloReplays.LIGHTHOUSE_KEY),
 			"verified_schema": SoloReplays.VERIFIED_SCHEMA, "verified_path": SoloReplays.VERIFIED_PATH},

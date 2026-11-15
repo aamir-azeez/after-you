@@ -13,7 +13,7 @@ extends Node
 ## Main hosts it as a child and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
 ## - services: pollen_client, saves (reduced motion), title_font
-## - screen: mode, running, overlay (the page's parent), _clear_overlay, and
+## - screen: mode, overlay (the page's parent), _clear_overlay, and
 ##   _mark_screen_back when Main has it (Android Back)
 ## The chip is one pill split in two (kit/pollen_chip.gd): its balance opens
 ## this page, and its plus, shown only while the Pollen store can open
@@ -197,7 +197,6 @@ func is_open() -> bool:
 
 func _open(from: String) -> void:
 	if not available(): return
-	host.running = false
 	host.mode = MODE
 	host._clear_overlay()
 	_page = Page.new(host.get("title_font"))

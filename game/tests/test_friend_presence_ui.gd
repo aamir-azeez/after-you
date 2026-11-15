@@ -76,12 +76,6 @@ func _room_ui(key: String) -> void:
 	preview._leave()
 	_check(service._room.is_empty(), "Returning from a chapter clears its room lookup immediately: " + key)
 	await process_frame
-	app.active_room = {"schema_version": 1, "room_id": "L".repeat(22), "revision": 1, "level_index": 0, "level_id": "first-light", "host_id": HOST, "guest_id": GUEST, "first_player_id": HOST, "active_role": "a", "attempt": 0, "recordings": {"a": null, "b": null}, "completed_islands": [], "reactions": {}}
-	app.legacy_room_flow.show_room()
-	presence_api.response = {"ok": true, "data": {"schema_version": 1, "partner_joined": false, "partner_online": false, "expires_after_seconds": 0}}
-	await service.service()
-	badge = app.overlay.find_child("FriendPresence", true, false)
-	_check(badge != null and badge.text == "○ Waiting for friend" and presence_api.calls.back().path.begins_with("/v1/rooms/"), "Earlier-island room UI uses the legacy presence route and waiting label: " + key)
 	app.settings_flow.show_settings("friends")
 	var toggle := app.overlay.find_child("share_online_status", true, false) as CheckButton
 	_check(toggle != null and toggle.button_pressed, "Existing/default settings expose sharing as enabled: " + key)
@@ -93,7 +87,7 @@ func _room_ui(key: String) -> void:
 	await service.service()
 	_check(presence_api.calls.size() == before_offline + 1 and not presence_api.calls.back().body.online, "Settings opt-out sends only its lease's offline request: " + key)
 	app._invalidate_relay_identity()
-	_check(service._identity_key.is_empty() and service.view("v1", "L".repeat(22)).state == "checking", "Real identity invalidation clears cached presence immediately: " + key)
+	_check(service._identity_key.is_empty() and service.view("v2", "L".repeat(22)).state == "checking", "Real identity invalidation clears cached presence immediately: " + key)
 	app.identity_loading = true
 	app._sync_presence()
 	var before_missing := presence_api.calls.size()

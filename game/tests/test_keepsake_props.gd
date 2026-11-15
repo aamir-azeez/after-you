@@ -50,7 +50,6 @@ func _run() -> void:
 		_check(builder is Builder, "%s's builder extends keepsake_builder.gd" % entry.id)
 		for flags in range(16):
 			var state := {"together": flags & 1 != 0, "hard": flags & 2 != 0 and entry.hard, "top": flags & 4 != 0 and entry.hard}
-			if entry.id == States.EARLIER: state.lanterns = [true, false, true, false, true, false, true, false] if flags & 8 else [false, false, false]
 			_check_build(stage, entry, builder, state)
 		var full: Dictionary = builder.full_state()
 		var prop := Node3D.new()
@@ -180,7 +179,6 @@ func _check_explore(stage: Node3D, entry: Dictionary, builder: RefCounted) -> vo
 	var stay: Rect2 = builder.stay()
 	for flags in range(8):
 		var state := {"together": flags & 1 != 0, "hard": flags & 2 != 0 and entry.hard, "top": flags & 4 != 0 and entry.hard}
-		if entry.id == States.EARLIER: state.lanterns = [true, false, true]
 		var solids: Array[Rect2] = builder.solids(state)
 		_check(not solids.is_empty() and solids.all(func(rect: Rect2) -> bool: return ground.encloses(rect)), "%s %s keeps its solids inside its ground" % [entry.id, state])
 		if trigger.has("area"):
@@ -232,7 +230,6 @@ func _check_upgrades(stage: Node3D, entry: Dictionary, builder: RefCounted) -> v
 		if upgrade in ["hard", "top"] and not entry.hard: continue
 		var state := {}
 		if not upgrade.is_empty(): state[upgrade] = true
-		if entry.id == States.EARLIER: state.lanterns = [true, false, true]
 		var prop := Node3D.new()
 		stage.add_child(prop)
 		builder.build(prop, state)

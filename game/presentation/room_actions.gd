@@ -18,7 +18,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 
-# Shared with the Friends screen and the legacy room page.
+# Shared with the Friends screen.
 const SHARE := "Share current room"
 const SHARE_SCOPE := "All friends"
 const SHARED := "Shared with friends"

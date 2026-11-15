@@ -205,11 +205,11 @@ static func grown(parent: Node3D, size: float) -> Node3D:
 
 ## The keepsake's base look (`state`, usually {}) merged into one mesh, built
 ## once per `key`.
-static func outline_mesh(builder: RefCounted, key: String, state: Dictionary = {}) -> ArrayMesh:
+static func outline_mesh(builder: RefCounted, key: String) -> ArrayMesh:
 	var cached: ArrayMesh = _outlines.get(key)
 	if cached != null: return cached
 	var model := Node3D.new()
-	builder.build(model, state)
+	builder.build(model, {})
 	var vertices := PackedVector3Array()
 	var indices := PackedInt32Array()
 	for found: Node in model.find_children("*", "MeshInstance3D", true, false):
@@ -240,8 +240,8 @@ static func outline_mesh(builder: RefCounted, key: String, state: Dictionary = {
 
 ## The started or next look: the outline, and in front one dot per stage, lit
 ## peach for a stage done solo and mint for one done with a friend.
-static func outline(root: Node3D, builder: RefCounted, key: String, stages: Array, state: Dictionary = {}) -> MeshInstance3D:
-	var veil := Primitives.mesh_node(outline_mesh(builder, key, state), ghost(), Vector3.ZERO, root)
+static func outline(root: Node3D, builder: RefCounted, key: String, stages: Array) -> MeshInstance3D:
+	var veil := Primitives.mesh_node(outline_mesh(builder, key), ghost(), Vector3.ZERO, root)
 	veil.name = "Outline"
 	veil.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for index in range(stages.size()):

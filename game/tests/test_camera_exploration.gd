@@ -1,7 +1,7 @@
 extends SceneTree
 const Exploration = preload("res://presentation/camera_exploration.gd")
 const World = preload("res://presentation/island_world.gd")
-const Levels = preload("res://core/levels.gd")
+const HomeLayout = preload("res://presentation/home_layout.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Lighthouse = preload("res://presentation/lighthouse_world.gd")
 const LighthouseCatalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -123,7 +123,7 @@ func _test_gestures() -> void:
 
 func _test_worlds() -> void:
 	var cases := [
-		[World, Levels.get_level("first-light")],
+		[World, HomeLayout.LEVEL],
 		[Registry.world_script(Registry.FIRST_STEPS), Registry.definition(Registry.FIRST_STEPS)],
 		[Registry.world_script(Registry.RELAY), Registry.definition(Registry.RELAY)],
 		[Lighthouse, LighthouseCatalog.definition()],

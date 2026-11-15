@@ -25,8 +25,6 @@ const REUNION_DB: float = SoundCues.REUNION.db
 const REUNION_JITTER_DB: float = SoundCues.REUNION.gain.y
 ## No previous pitch yet: every pitch in the range is allowed.
 const NO_PITCH := INF
-## Chapter name for the earlier islands, which have no registry key.
-const ISLANDS_CHAPTER := "earlier-islands"
 ## Events caused by the first spirit (the replayed memory) and by the second.
 ## Any other event belongs to the live role.
 const FIRST_SPIRIT_EVENTS := ["seed_taken", "seed_thrown", "seed_landed", "seed_missed", "garden_opened", "lift_ready", "handoff_offer"]

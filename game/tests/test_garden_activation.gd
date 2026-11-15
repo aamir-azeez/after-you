@@ -3,8 +3,7 @@ extends SceneTree
 const World = preload("res://presentation/island_world.gd")
 const RelayWorld = preload("res://presentation/relay_world.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
-const Simulation = preload("res://core/simulation.gd")
-const Levels = preload("res://core/levels.gd")
+const HomeLayout = preload("res://presentation/home_layout.gd")
 const RelaySimulation = preload("res://core/v2/simulation_v2.gd")
 const RelayCatalog = preload("res://core/v2/stage_catalog.gd")
 const LighthouseCatalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -18,121 +17,11 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	await _test_legacy_gate_lift_replay()
 	await _test_plain_garden_and_replacement()
 	await _test_relay_socket_readiness()
 	await _test_lighthouse_has_no_garden()
 	print("AFTER YOU GARDEN ACTIVATION: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
-
-func _test_legacy_gate_lift_replay() -> void:
-	var level: Dictionary = Levels.get_level("after-you")
-	var first: Dictionary = _fixture("after-you-a")
-	var second: Dictionary = _fixture("after-you-b")
-	var untouched_records := Canonical.digest([first, second, level])
-	_check(Simulation.verify_recording(level, first).valid and Simulation.verify_recording(level, second, first).valid,
-		"Existing immutable A/B fixtures verify before their presentation is changed")
-	var world := World.new()
-	root.add_child(world)
-	world.set_process(false)
-	world.home_view = false
-	world.load_level(level)
-	var source := Simulation.new()
-	_check(source.reset(level), "The authored gate-and-lift island initializes")
-	var initial: Dictionary = source.snapshot()
-	world.present(initial, true)
-	var closed_pose := _pose(world)
-	var closed_reach := _petal_reach(world)
-	_check(world.garden_state == "closed" and not world.goal_ring.visible,
-		"The initially unavailable garden has folded leaves and an incomplete ring")
-	_check(_emission(world) == 0.0 and not world.bloomed, "Unavailable garden has no ready emission or flowers")
-	_check(_drawn_bloom(world) == 0 and _bloom_meshes(world) > 0,
-		"An unbloomed garden draws none of its flower, blossom or leaf-bed meshes: they are hidden, not shrunk to a speck")
-	_check(world.garden_activation.get_parent() == world.garden and world.goal_ring.get_parent() == world.garden,
-		"Activation leaves and ring share the planter's moving root")
-	_check(_count(world.garden_activation, "MeshInstance3D") == 4, "Only four small cue meshes are added")
-	_check(_count(world, "OmniLight3D") == 0 and _count(world, "CollisionObject3D") == 0,
-		"The garden cue introduces no point light or gameplay collision")
-	world.load_level(level)
-	world.present(initial, true)
-	_check(_pose(world) == closed_pose,
-		"Rebuilding the same closed garden restores every flower, blossom and leaf-bed pose")
-	var cue_positions := _global_positions(world.garden_activation)
-	var snapshots_untouched := true
-	var accurate_readiness := true
-	var saw_raised_closed := false
-	var saw_ready := false
-	var lift_translation_exact := false
-	for input: Dictionary in Simulation.expand_recording_inputs(first):
-		var state: Dictionary = source.step(input)
-		var before := Canonical.digest(state)
-		world.present(state, true)
-		snapshots_untouched = snapshots_untouched and Canonical.digest(state) == before
-		var expected_ready: bool = bool(state.gate_open) and bool(state.lift_ready)
-		accurate_readiness = accurate_readiness and world.garden_state == ("ready" if expected_ready else "closed")
-		if state.lift_ready and not state.gate_open:
-			saw_raised_closed = true
-			lift_translation_exact = _translated(cue_positions, _global_positions(world.garden_activation), float(state.lift_height) / 100.0)
-		if expected_ready:
-			saw_ready = true
-	_check(accurate_readiness and saw_raised_closed and saw_ready,
-		"Real recorded controls keep the raised garden closed until the separate garden plate opens it")
-	_check(lift_translation_exact, "Every folded cue child travels by the exact simulation lift delta")
-	_check(world.garden_state == "ready" and world.goal_ring.visible and _emission(world) > 0.0,
-		"Gate and lift readiness produce the full warm ring immediately")
-	_check(_pose(world) != closed_pose and _petal_reach(world) > closed_reach,
-		"Ready leaves open out geometrically instead of communicating only by color")
-	_check(_flowers_at(world, 0.001), "Readiness does not pretend that a seed was already planted")
-	var ready_pose := _pose(world)
-	var receiver := Simulation.new()
-	_check(receiver.reset(level, first, "b"), "Combined replay starts from the exact accepted earlier recording")
-	for input: Dictionary in Simulation.expand_recording_inputs(second):
-		var state: Dictionary = receiver.step(input)
-		var before := Canonical.digest(state)
-		world.present(state, true)
-		snapshots_untouched = snapshots_untouched and Canonical.digest(state) == before
-	_check(receiver.complete and receiver.state_hash() == second.final_state_hash,
-		"Garden presentation retains the original completed replay outcome")
-	_check(world.garden_state == "completed" and world.bloomed and _flowers_at(world, 1.0),
-		"Seeking directly to completed replay shows the whole bloom immediately")
-	_check(_drawn_bloom(world) == _bloom_meshes(world), "A whole bloom draws every flower, blossom and leaf-bed mesh")
-	_check(_pose(world) != ready_pose and world.goal_ring.visible and _emission(world) > 0.0,
-		"Completed flowers and flatter leaves remain distinct from the ready planter")
-	_check(is_equal_approx(world.garden.global_position.y, float(level.lift.height) / 100.0),
-		"Completed planter, ring, leaves and flowers remain at the raised goal height")
-	world.present(initial, true)
-	_check(_pose(world) == closed_pose and _flowers_at(world, 0.001),
-		"Backward replay seek restores the original closed pose without a stale bloom")
-	var completed: Dictionary = receiver.snapshot()
-	var completed_before := Canonical.digest(completed)
-	world.present(completed, false)
-	world._process(0.25)
-	var growing_pose := _pose(world)
-	var early_height: float = world.flowers[0].scale.y
-	world.present(completed, false)
-	world._process(0.25)
-	_check(early_height > 0.001 and early_height < 1.0 and world.flowers[0].scale.y > early_height,
-		"Ordinary playback after rewind grows the flowers across repeated completed snapshots")
-	world.reduced_motion = true
-	world.present(completed, false)
-	var reduced_pose := _pose(world)
-	_check(_flowers_at(world, 1.0), "Enabling reduced motion during growth immediately settles the completed garden")
-	world._process(1.0 / 30.0)
-	world._process(0.7)
-	_check(_pose(world) == reduced_pose, "Reduced-motion garden pose has no pulse, sway or delayed opening")
-	world.reduced_motion = false
-	world.present(completed, false)
-	world._process(0.7)
-	_check(_pose(world) == reduced_pose, "Disabling reduced motion does not restart an already settled bloom")
-	world.present(initial, true)
-	world.present(completed, false)
-	world._process(0.25)
-	_check(_pose(world) == growing_pose,
-		"Rewinding the settled garden allows the same visible bloom to play again")
-	_check(snapshots_untouched and Canonical.digest(completed) == completed_before and Canonical.digest([first, second, level]) == untouched_records,
-		"Repeated presentation never mutates a snapshot, definition or either committed recording")
-	world.queue_free()
-	await process_frame
 
 ## Every flower, blossom and leaf-bed mesh of the garden's bloom.
 func _bloom_meshes(world: Node3D) -> int:
@@ -152,19 +41,17 @@ func _test_plain_garden_and_replacement() -> void:
 	var world := World.new()
 	root.add_child(world)
 	world.set_process(false)
-	world.load_level(Levels.get_level("after-you"))
+	world.load_level(HomeLayout.LEVEL)
 	var old_activation: Node3D = world.garden_activation
 	var old_blossom_mesh: WeakRef = weakref(_first_blossom_petal(world).mesh)
-	var level: Dictionary = Levels.get_level("first-light")
+	var level: Dictionary = HomeLayout.LEVEL
 	world.load_level(level)
 	_check(_first_blossom_petal(world).mesh != old_blossom_mesh.get_ref(),
 		"Replacing a garden creates geometry with its own lifetime")
-	var simulation := Simulation.new()
-	simulation.reset(level)
-	var state: Dictionary = simulation.snapshot()
+	var state: Dictionary = HomeLayout.opening()
 	world.present(state, true)
 	_check(state.gate_open and state.lift_ready and world.garden_state == "ready",
-		"A garden with no gate or lift is ready from its actual initial simulation state")
+		"A garden with no gate or lift is ready from its opening state")
 	_check(is_zero_approx(world.garden.position.y) and world.garden_petals.size() == 4,
 		"Changing levels creates one fresh grounded cue without retaining lift state")
 	await process_frame

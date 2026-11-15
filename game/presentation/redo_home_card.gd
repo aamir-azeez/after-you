@@ -9,8 +9,7 @@ extends RefCounted
 ## clients that send X-AfterYou-Room-Redo). Home shows the list it already
 ## holds at once and reads it again only on the first Home of a session and
 ## when the app comes back, never closer than READ_GAP_MS (Home holds no live
-## socket). Together rooms only: the earlier islands' requests lead their room
-## page. Not now puts that request's card
+## socket). Not now puts that request's card
 ## away on this phone (services/redo_prompts.gd); the request still leads the
 ## room page. Play my turn again opens the room, which plays the turn again at
 ## once (presentation/redo_flow.gd accept_on_open).
