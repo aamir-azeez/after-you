@@ -345,16 +345,13 @@ const ROUTE_BARRIERS_OWNER := "res://presentation/cooperative_world.gd"
 ## Worlds that leave a closed stair's chain out themselves (route_barriers.skip();
 ## a whole chapter says it in its descriptor's "stair_gates" instead) or pick
 ## the "barrier" look in code rather than in their dressing (_barrier_style), with why.
-const ROUTE_BARRIER_OVERRIDES := {
-	"res://presentation/wishing_well_world.gd": "the well's lip takes the rail style, and the Well has no dressing file to pick it in (one would switch its plain look to the warm one) (_barrier_style)",
-}
+const ROUTE_BARRIER_OVERRIDES := {}
 ## Scripts that work out a chapter turn's sounds, which run each tick through
 ## the refusal finder first.
 const TURN_SOUND_SCREENS := ["res://relay_preview.gd", "res://presentation/shared_replay_view.gd"]
 ## Flat diamonds drawn outside the kit: how many, and why each is no ownership mark.
 const FLAT_DIAMONDS := {
 	"res://presentation/island_world.gd": [1, "the first island's plate glyph: a plate either spirit presses"],
-	"res://presentation/relay_world.gd": [1, "Relay Isles' plate glyphs: plates either spirit presses"],
 	"res://presentation/lighthouse_world.gd": [2, "the emitter pad's glyph and the path selector's pointer"],
 	"res://presentation/kit/pieces/selector.gd": [1, "a valve wheel's pointer head"],
 }
@@ -389,6 +386,7 @@ const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
 	"res://presentation/first_steps_world.gd": "builds its spots and its lift in the styles they resolve to (pad, lift); its loft bell stays its own",
+	"res://presentation/relay_world.gd": "builds its plates in the pad style they resolve to; its relay socket and sinking bridges stay its own",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {

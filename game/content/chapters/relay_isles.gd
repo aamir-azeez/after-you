@@ -8,6 +8,8 @@ const DATA := {
 	"world": "res://presentation/relay_world.gd",
 	"scene": "res://relay_preview.tscn",
 	"local_path": "user://relay-journey-v2.json",
+	# Scenery, grounds and plate looks: a garden crossing.
+	"dressing": "res://content/dressing/relay_isles.gd",
 	"copy": {
 		"summary": PlayerCopy.CHAPTER_REGISTRY_F78F85CE3DE5,
 		"completion": PlayerCopy.CHAPTER_REGISTRY_E73948E6FDBC,
