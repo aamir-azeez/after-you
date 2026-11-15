@@ -66,7 +66,7 @@ func bind_room(family: String, room: Dictionary) -> bool:
 	if context != _binding:
 		invalidate()
 		_binding = context
-	if family not in ["legacy", "relay"] or not _id(room.get("room_id")) or context.player_id not in [room.get("host_id"),room.get("guest_id")]: return _fail("room_not_found")
+	if family != "relay" or not _id(room.get("room_id")) or context.player_id not in [room.get("host_id"),room.get("guest_id")]: return _fail("room_not_found")
 	if not pending().is_empty() and (_room.get("room_id") != room.room_id or _family != family): return _fail("request_busy")
 	_family = family
 	_room = room.duplicate(true)
@@ -132,7 +132,7 @@ func _prepare(action: String) -> bool:
 	var body := {"action":action,"source":_source.duplicate(true)}
 	if action == "accept":
 		body = {"base_revision":_source.revision,"idempotency_key":RoomsApi.new_key(),"redo_request_id":_view.request.request_id}
-		if _family == "relay": body.merge({"branch":_source.branch,"stage_index":_source.stage_index})
+		body.merge({"branch":_source.branch,"stage_index":_source.stage_index})
 	var next := _state.duplicate(true)
 	next.pending = {"action":action,"body":body,"source":_source.duplicate(true),"checkpoint_hash":str(_room.get("checkpoint",{}).get("checkpoint_hash","")),"stage_id":str(_room.get("stage_id",""))}
 	if not _persist(next): return false
@@ -148,7 +148,7 @@ func retry(allow_mutations: bool = true) -> bool:
 	var response: Dictionary = {}
 	var fresh: bool = operation.action == "accept" and not _fresh_key.is_empty() and str(operation.body.get("idempotency_key", "")) == _fresh_key
 	_fresh_key = ""
-	if operation.action == "accept" and _family == "relay" and not fresh:
+	if operation.action == "accept" and not fresh:
 		response = await _net(HTTPClient.METHOD_GET, _path()+"/operations/"+str(operation.body.idempotency_key), {}, generation)
 		if response.get("status") == 410 and response.get("code") == "replay_transferred" and recover_replay_operation.is_valid():
 			response = await recover_replay_operation.call(str(_room.room_id), str(operation.body.idempotency_key), _transfer_receipt_valid.bind(operation))
@@ -161,7 +161,7 @@ func retry(allow_mutations: bool = true) -> bool:
 			busy = false
 			return _fail("v2_mutations_disabled")
 		response = await _net(HTTPClient.METHOD_POST, _path() + ("/fork" if operation.action == "accept" else "/redo"), operation.body, generation)
-		if _family == "relay" and operation.action != "accept" and response.get("status") == 410 and response.get("code") == "replay_transferred" and restore_replay_transfer.is_valid():
+		if operation.action != "accept" and response.get("status") == 410 and response.get("code") == "replay_transferred" and restore_replay_transfer.is_valid():
 			var restored: Dictionary = await restore_replay_transfer.call(str(_room.room_id))
 			if not _same(generation): return false
 			response = await _net(HTTPClient.METHOD_POST, _path()+"/redo", operation.body, generation) if restored.get("ok", false) else restored
@@ -201,7 +201,7 @@ func _net(method: int, path: String, body: Dictionary, generation: int) -> Dicti
 	if generation == _generation and not _same(generation): invalidate()
 	return response if _same(generation) else {"ok":false,"code":"identity_changed"}
 func _same(generation: int) -> bool: return generation == _generation and not _binding.is_empty() and _binding == _context()
-func _path() -> String: return ("/v2/rooms/" if _family == "relay" else "/v1/rooms/") + str(_room.room_id)
+func _path() -> String: return "/v2/rooms/" + str(_room.room_id)
 func _scope() -> String: return "relay-redo-" + _family + "-v1:" + str(_binding.player_id) + ":" + str(_room.room_id)
 func _persist(value: Dictionary) -> bool:
 	if not _storage_ready or not _same(_generation) or not _valid_state(value) or not _store.write(_scope(),value): return _fail("redo_storage_unavailable")
@@ -226,9 +226,8 @@ static func valid_view(value: Variant, source: Dictionary) -> bool:
 
 func _accepted_response(value: Variant, operation: Dictionary) -> bool:
 	if not value is Dictionary: return false
-	var room: Variant = value.get("room") if _family == "relay" else value
+	var room: Variant = value.get("room")
 	if not room is Dictionary or not Typed.equal(room.get("room_id"), _room.room_id) or not Typed.equal(room.get("host_id"), _room.host_id) or not Typed.equal(room.get("guest_id"), _room.guest_id) or Typed.as_int(room.get("revision"),-1)<=int(operation.source.revision): return false
-	if _family == "legacy": return Typed.as_int(room.get("attempt"),-1) > int(operation.source.branch)
 	return valid_fork_receipt(value.get("receipt"),operation.source,operation.body,operation.checkpoint_hash,operation.stage_id)
 
 static func valid_fork_receipt(receipt: Variant, source: Dictionary, body: Dictionary, checkpoint_hash: String, stage_id: String) -> bool:
@@ -258,13 +257,13 @@ static func valid_journal(value: Dictionary, owner: String, family: String, room
 	var expected_owner: String = operation.source.first_player_id if operation.action in ["accept","decline"] else operation.source.second_player_id
 	if owner != expected_owner: return false
 	if operation.action != "accept": return body.size()==2 and Typed.equal(body.get("action"), operation.action) and Typed.same(body.get("source"),operation.source)
-	return body.size()==(5 if family=="relay" else 3) and Typed.equal(body.get("base_revision"), operation.source.revision) and Typed.equal(body.get("redo_request_id"), Canonical.digest(operation.source)) and body.get("idempotency_key") is String and body.idempotency_key.length()==36 and (family=="legacy" or (Typed.equal(body.get("branch"), operation.source.branch) and Typed.equal(body.get("stage_index"), operation.source.stage_index)))
+	return body.size()==5 and Typed.equal(body.get("base_revision"), operation.source.revision) and Typed.equal(body.get("redo_request_id"), Canonical.digest(operation.source)) and body.get("idempotency_key") is String and body.idempotency_key.length()==36 and Typed.equal(body.get("branch"), operation.source.branch) and Typed.equal(body.get("stage_index"), operation.source.stage_index)
 
 static func source_for(family: String, room: Dictionary) -> Dictionary:
-	if family not in ["legacy","relay"] or not Typed.equal(room.get("active_role"), "b") or not _id(room.get("host_id")) or not _id(room.get("guest_id")) or room.get("first_player_id") not in [room.get("host_id"),room.get("guest_id")]: return {}
-	var a: Variant = room.get("recording_a") if family=="relay" else Typed.as_dict(room.get("recordings")).get("a")
+	if family != "relay" or not Typed.equal(room.get("active_role"), "b") or not _id(room.get("host_id")) or not _id(room.get("guest_id")) or room.get("first_player_id") not in [room.get("host_id"),room.get("guest_id")]: return {}
+	var a: Variant = room.get("recording_a")
 	if not a is Dictionary: return {}
-	var source := {"room_id":room.get("room_id"),"revision":room.get("revision"),"branch":room.get("branch") if family=="relay" else room.get("attempt"),"stage_index":room.get("stage_index") if family=="relay" else room.get("level_index"),"a_hash":a.get("recording_hash") if family=="relay" else a.get("final_state_hash"),"first_player_id":room.first_player_id,"second_player_id":room.guest_id if room.first_player_id==room.get("host_id") else room.get("host_id")}
+	var source := {"room_id":room.get("room_id"),"revision":room.get("revision"),"branch":room.get("branch"),"stage_index":room.get("stage_index"),"a_hash":a.get("recording_hash"),"first_player_id":room.first_player_id,"second_player_id":room.guest_id if room.first_player_id==room.get("host_id") else room.get("host_id")}
 	return source if _valid_source(source) else {}
 static func _valid_source(value: Variant) -> bool:
 	if not value is Dictionary or value.size()!=7 or not _id(value.get("room_id")) or not _id(value.get("first_player_id")) or not _id(value.get("second_player_id")) or value.first_player_id==value.second_player_id or not value.get("a_hash") is String or value.a_hash.length()!=64: return false

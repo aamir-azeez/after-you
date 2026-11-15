@@ -98,14 +98,14 @@ func _run() -> void:
 	var held: Dictionary = store.values[redo_scope].duplicate(true)
 	var calls := api.calls.size()
 	_check(not await session.open_room(OTHER) and session.last_room()==ROOM and api.calls.size()==calls,"Warm room switching cannot hide pending acceptance or change last_room")
-	_check(not session.can_leave_for_legacy() and (await session.create_room()).is_empty() and (await session.join_room("A1".repeat(10))).is_empty() and api.calls.size()==calls,"Legacy, create, and join respect the same unresolved redo hold")
+	_check(not session.can_leave() and (await session.create_room()).is_empty() and (await session.join_room("A1".repeat(10))).is_empty() and api.calls.size()==calls,"Legacy, create, and join respect the same unresolved redo hold")
 	session=Session.new(api,identity.current,store)
 	_check(await session.load_lobby(),"Cold Session can still list rooms while a redo receipt needs recovery")
 	calls=api.calls.size()
 	_check(not await session.open_room(OTHER) and session.last_room()==ROOM and api.calls.size()==calls,"Cold switch restores the previous room's control hold before any target GET")
-	_check(not session.can_leave_for_legacy() and (await session.create_room()).is_empty(),"Cold legacy and creation cannot bypass the control journal")
+	_check(not session.can_leave() and (await session.create_room()).is_empty(),"Cold legacy and creation cannot bypass the control journal")
 	var reads: int = store.reads
-	for iteration in range(60): session.can_leave_for_legacy()
+	for iteration in range(60): session.can_leave()
 	_check(store.reads==reads,"Repeated notification guards do not reread the control journal every frame")
 	_check(await session.open_room(ROOM) and session.coordinator.snapshot().active_role=="a","Same-room recovery refreshes the accepted fork through normal native validation")
 	client=session.redo_client()
@@ -115,7 +115,7 @@ func _run() -> void:
 	calls=api.calls.size()
 	_check(await client.retry(false) and client.accepted and client.pending().is_empty(),"Paused service reconciles accepted fork through its existing GET receipt")
 	_check(api.calls.size()==calls+1 and api.calls.back().method==HTTPClient.METHOD_GET and "/operations/" in api.calls.back().path,"Receipt recovery performs no POST while mutations are disabled")
-	_check(session.can_leave_for_legacy() and await session.open_room(OTHER),"Resolving the same durable request releases normal navigation")
+	_check(session.can_leave() and await session.open_room(OTHER),"Resolving the same durable request releases normal navigation")
 	store.values[redo_scope]=held
 	store.values["relay-lobby-v2:"+HOST].last_room=ROOM
 	api.rooms.erase(ROOM)

@@ -126,20 +126,20 @@ func _exercise() -> void:
 	_check(state.branch == 1 and _calls(_room_path()+"/fork",HTTPClient.METHOD_POST,GUEST).size() == 1,"Lost response corresponds to exactly one accepted branch change")
 	_check(guest.coordinator.snapshot().branch == original.branch and guest.coordinator.snapshot().recording_a != null,"Lost control response does not inject an unverified gameplay snapshot")
 	before = calls.size()
-	_check(not guest.can_leave_for_legacy() and calls.size() == before,"Warm Session holds navigation locally until consent is reconciled")
+	_check(not guest.can_leave() and calls.size() == before,"Warm Session holds navigation locally until consent is reconciled")
 
 	enabled = false
 	guest = Session.new(guest_api,guest_identity.current,guest_store)
 	if not _check(await guest.load_lobby() and not guest.mutations_enabled(),"Cold Session reloads while new chapter mutations are paused"): return
 	before = calls.size()
-	_check(guest.pending_redo_room() == room_id and not guest.can_leave_for_legacy() and calls.size() == before,"Cold Session restores the same durable consent hold without a network mutation")
+	_check(guest.pending_redo_room() == room_id and not guest.can_leave() and calls.size() == before,"Cold Session restores the same durable consent hold without a network mutation")
 	if not _check(await guest.open_room(room_id),"Same-room authenticated recovery independently validates the accepted fork"): return
 	consent = guest.redo_client()
 	if not _check(consent.bind_room("relay",guest.coordinator.snapshot()) and Canonical.same(consent.pending(),held),"Binding the new A-ready source keeps the exact old-source pending request"): return
 	before = calls.size()
 	if not _check(await consent.retry(false) and consent.accepted and consent.pending().is_empty(),"Paused cold recovery accepts the stored operation receipt without re-posting consent"): return
 	_check(calls.size() == before + 1 and calls.back().owner == GUEST and calls.back().method == HTTPClient.METHOD_GET and calls.back().path == _room_path()+"/operations/"+str(held.body.idempotency_key),"Recovery reads only the original caller's exact operation key")
-	_check(_calls(_room_path()+"/fork",HTTPClient.METHOD_POST,GUEST).size() == 1 and guest_store.values[redo_scope].pending.is_empty() and guest.can_leave_for_legacy(),"Confirmed receipt clears the durable hold without creating a second branch")
+	_check(_calls(_room_path()+"/fork",HTTPClient.METHOD_POST,GUEST).size() == 1 and guest_store.values[redo_scope].pending.is_empty() and guest.can_leave(),"Confirmed receipt clears the durable hold without creating a second branch")
 	if not _check(await guest.open_room(room_id),"Normal coordinator refresh remains the gameplay authority after receipt reconciliation"): return
 	var recovered: Dictionary = guest.coordinator.snapshot()
 	_check(recovered.simulation_version == 8 and recovered.stage_index == 1 and recovered.branch == 1 and recovered.active_role == "a" and recovered.active_player_id == GUEST and recovered.recording_a == null,"Redo returns Garden to G's A turn on the same explicit8 pin")

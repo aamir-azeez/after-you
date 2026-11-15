@@ -3,9 +3,6 @@ extends SceneTree
 ## is presentation only: it follows the flown distance, so two presentations of
 ## the same recording pose the seed identically, and reduced motion keeps it still.
 const Registry = preload("res://services/chapter_registry.gd")
-const Levels = preload("res://core/levels.gd")
-const LegacySimulation = preload("res://core/simulation.gd")
-const IslandWorld = preload("res://presentation/island_world.gd")
 const DELTA := 1.0 / 60.0
 var checks := 0
 var failures := 0
@@ -21,7 +18,6 @@ func _run() -> void:
 	var cases := [
 		{"label": "First Steps", "key": Registry.FIRST_STEPS, "stage": "a-place-to-grow", "checkpoint": _fixture("first_steps/lift-checkpoint"), "record": _fixture("first_steps/a-place-to-grow-a")},
 		{"label": "Relay", "key": Registry.RELAY, "stage": "relay", "checkpoint": Registry.initial_checkpoint(Registry.RELAY), "record": _fixture("v2/relay-a")},
-		{"label": "Earlier Islands", "key": "", "record": _fixture("first-light-a")},
 	]
 	for case: Dictionary in cases:
 		_check(not case.record.is_empty(), case.label + " fixture recording is present")
@@ -42,28 +38,16 @@ func _present(case: Dictionary, reduced: bool) -> Dictionary:
 	var world: Node3D
 	var sim: RefCounted
 	var inputs: Array
-	if str(case.key).is_empty():
-		var island := IslandWorld.new()
-		island.home_view = false
-		world = island
-		root.add_child(world)
-		world.set_process(false)
-		var level := Levels.get_level(0)
-		world.load_level(level)
-		sim = LegacySimulation.new()
-		sim.reset(level, {}, "a", int(case.record.simulation_version))
-		inputs = LegacySimulation.expand_recording_inputs(case.record)
-	else:
-		var level := Registry.definition(case.key)
-		world = Registry.world_script(case.key).new()
-		root.add_child(world)
-		world.set_process(false)
-		world.load_level(level)
-		for item: Dictionary in level.stages:
-			if item.id == case.stage: world.show_stage(item)
-		sim = Registry.simulation_script(case.key).new()
-		Registry.reset_simulation(sim, case.key, level, case.stage, case.checkpoint, {}, "a", case.record)
-		inputs = sim.expand_recording_inputs(case.record)
+	var level := Registry.definition(case.key)
+	world = Registry.world_script(case.key).new()
+	root.add_child(world)
+	world.set_process(false)
+	world.load_level(level)
+	for item: Dictionary in level.stages:
+		if item.id == case.stage: world.show_stage(item)
+	sim = Registry.simulation_script(case.key).new()
+	Registry.reset_simulation(sim, case.key, level, case.stage, case.checkpoint, {}, "a", case.record)
+	inputs = sim.expand_recording_inputs(case.record)
 	world.reduced_motion = reduced
 	world.present(sim.snapshot(), true)
 	var result := {"flying": 0, "settled": 0, "max_angle": 0.0, "upright_ok": true, "glow_ok": true, "leaves_follow": true, "poses": []}

@@ -54,7 +54,7 @@ func _run() -> void:
 	await _drain_local(collection)
 	_check(collection.local_progress().rooms_done == 2, "Retired work cannot add an extra completed room to the new generation")
 	var trace := PhaseTrace.new()
-	var job := {"owner": HOST, "key": "chapter:" + ROOM, "cached": {"ok": true, "found": true, "value": {"schema_version": 1, "owner": HOST, "entries": {"p0-0": entry}}}, "journal": {"ok": true, "found": false}, "legacy": {}, "verified": "", "raw": false, "online_raw": false, "progress": trace}
+	var job := {"owner": HOST, "key": "chapter:" + ROOM, "cached": {"ok": true, "found": true, "value": {"schema_version": 1, "owner": HOST, "entries": {"p0-0": entry}}}, "journal": {"ok": true, "found": false}, "verified": "", "raw": false, "online_raw": false, "progress": trace}
 	var worker := Thread.new()
 	var started := worker.start(Callable(Collection, "_verify_local_room").bind(job)) == OK
 	_check(started, "Pure progress trace starts on its owned worker")

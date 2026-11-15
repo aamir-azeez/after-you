@@ -619,8 +619,12 @@ func _room_selector(app: Node, viewport: SubViewport) -> void:
 	# scrolling card with enough rows to overflow; its own room switch is
 	# replaced by a counter so only the gesture is observed.
 	var shared := SharedStub.new()
+	# Chapter rooms are listed for a signed-in player.
+	app.identity_read_state = app.IdentityReadState.LOADED
+	app.api.player_id = "H".repeat(22)
+	app.api.device_token = "synthetic-token"
 	for index: int in range(12):
-		shared.listed.append({"family": "legacy", "room_id": "R%021d" % index, "title": "Room %d" % index, "host_id": "host", "guest_id": "guest"})
+		shared.listed.append({"family": "chapter", "room_id": "R%021d" % index, "title": "Room %d" % index, "host_id": "host", "guest_id": "guest"})
 	app.shared_replays = shared
 	app.replays_flow.replay_partner_label = func(_friend: String) -> String: return "Sam"
 	var list: VBoxContainer = app._scroll_list(app._card(700))

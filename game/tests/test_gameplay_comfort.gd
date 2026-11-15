@@ -1,8 +1,5 @@
 extends SceneTree
 
-const Main = preload("res://main.gd")
-const Storage = preload("res://services/local_save.gd")
-const Levels = preload("res://core/levels.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 var checks := 0
@@ -13,12 +10,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	await _joystick_target()
-	await _successful_retry()
 	print("GAMEPLAY COMFORT: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
-
-func _fixture(path: String) -> Dictionary:
-	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/"+path))
 
 func _joystick_target() -> void:
 	for left: bool in [false,true]:
@@ -58,65 +51,6 @@ func _joystick_target() -> void:
 		viewport.queue_free()
 		await _settle()
 
-func _successful_retry() -> void:
-	root.size=Vector2i(1280,720)
-	var path := "user://comfort-retry-"+str(Time.get_ticks_usec())+".json"
-	var save := Storage.new(path)
-	save.data.settings.sound=false
-	save.data.settings.haptics=false
-	_check(save.flush(),"Use a muted isolated retry save")
-	var app := Main.new()
-	app.saves=save
-	root.add_child(app)
-	app.set_process(false)
-	app.set_physics_process(false)
-	var first := _fixture("first-light-a.json")
-	var second := _fixture("first-light-b.json")
-	app.current_level=Levels.get_level(0)
-	app.attempt={"a":first,"b":{},"draft":second}
-	app.role="b"
-	app.earlier_islands_flow.prepare_turn()
-	app.earlier_islands_flow.resume_draft(second)
-	_check(app.mode=="review" and app.sim.complete,"Actual completed native B reaches review")
-	var tick: int=app.sim.tick
-	var original := FileAccess.get_file_as_bytes(path)
-	var recording: Dictionary=app.review_recording.duplicate(true)
-	await _tap(app.overlay,"Retry")
-	_check(app.mode=="confirm_retry" and app.sim.tick==tick,"Retry first asks and leaves the successful simulation intact")
-	var stale: Callable = _button(app.overlay,"Retry").get_signal_connection_list("pressed")[0].callable
-	await _tap(app.overlay,"Cancel")
-	_check(app.mode=="review" and app.review_recording==recording and FileAccess.get_file_as_bytes(path)==original,"Cancel preserves completed rehearsal and disk bytes")
-	stale.call()
-	_check(app.mode=="review" and app.sim.tick==tick,"Retired confirmation cannot reset the restored review")
-	_press(app.overlay,"Retry")
-	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-	_check(app.mode=="review" and app.sim.tick==tick and app.review_recording==recording,"Native Back cancels confirmation without dropping the successful turn")
-	_press(app.overlay,"Retry")
-	app.relay_identity_epoch += 1
-	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-	_check(app.mode=="confirm_retry" and app.sim.tick==tick,"A late native Back cannot revive Save under a replaced identity context")
-	app.relay_identity_epoch -= 1
-	_press(app.overlay,"Cancel")
-	_press(app.overlay,"Retry")
-	_press(app.overlay,"Retry")
-	_check(app.mode=="ready" and app.sim.tick==0 and FileAccess.get_file_as_bytes(path)==original,"Only explicit confirmation starts the new unsaved attempt")
-	# Already accepted legacy attempts keep their separate replay/archive flow.
-	_check(save.save_attempt("first-light",{"a":first,"b":second,"draft":{}},true),"Save a completed legacy pair for restart protection")
-	app._start_practice(0)
-	var completed := FileAccess.get_file_as_bytes(path)
-	_press(app.overlay,"Start a fresh attempt")
-	_check(app.mode=="confirm_restart" and FileAccess.get_file_as_bytes(path)==completed,"A completed saved island also asks before restarting")
-	_press(app.overlay,"Cancel")
-	_check(FileAccess.get_file_as_bytes(path)==completed and not app.attempt.b.is_empty(),"Cancelling saved restart preserves accepted evidence")
-	_press(app.overlay,"Start a fresh attempt")
-	_press(app.overlay,"Retry")
-	_check(app.mode=="ready" and app.attempt.a.is_empty() and save.data.replays["first-light"].b==second and save.data.attempt_archive.size()==1,"Confirmed restart archives the attempt and keeps its completed replay")
-	app.queue_free()
-	await _settle()
-	await create_timer(0.15).timeout
-	for suffix: String in ["",".tmp",".backup"]:
-		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
-
 func _pointer(viewport: Viewport, point: Vector2, pressed: bool) -> void:
 	var event := InputEventMouseButton.new()
 	event.position=point
@@ -132,28 +66,6 @@ func _touch(viewport: SubViewport, point: Vector2, index: int, pressed: bool) ->
 	event.index=index
 	event.pressed=pressed
 	viewport.push_input(event,true)
-
-func _button(node: Node, text: String) -> Button:
-	for child: Node in node.get_children():
-		if child is Button and child.text==text: return child
-		var found := _button(child,text)
-		if found != null: return found
-	return null
-
-func _press(node: Node, text: String) -> void:
-	var button := _button(node,text)
-	_check(button!=null,"Action is present: "+text)
-	if button != null: button.pressed.emit()
-
-func _tap(node: Node, text: String) -> void:
-	await _settle()
-	var button := _button(node,text)
-	_check(button!=null and button.is_visible_in_tree(),"Actual viewport action is visible: "+text)
-	if button == null: return
-	var point := button.get_global_rect().get_center()
-	_pointer(root,point,true)
-	_pointer(root,point,false)
-	await _settle()
 
 func _settle() -> void:
 	await process_frame

@@ -120,16 +120,16 @@ func _pause_while_joining_from_friends() -> void:
 	h.check(h.current_room(guest) == room and not room.is_empty(), "the guest is in the friend's room")
 	await h.finish()
 
-## An earlier-island invitation code typed on the hub whose join the server
-## refuses: the player stays on the hub with the reason, never on a screen
-## with no hub behind a stale Home.
+## An earlier-island invitation code typed on the hub (a friend on an older
+## build still sends them): the earlier islands are gone, so the player stays on
+## the hub with the reason and nothing joins.
 func _earlier_island_join_refused() -> void:
 	await _begin("earlier-island join refused")
 	var code := "B1B1B1B1B1B1B1B1B1B1"
-	h.server.legacy_invites[code] = [410, "invite_expired"]
+	h.server.legacy_invites[code] = true
 	await h.step("guest opens the hub", func(): h.open_hub(guest))
-	await h.step("guest joins with an expired earlier-island code", func(): h.join_room(guest, "room-" + code), [guest])
+	await h.step("guest joins with an earlier-island code", func(): h.join_room(guest, "room-" + code), [guest])
 	h.check(guest.hub() != null and guest.hub().visible, "the guest is still on the hub (at %s)" % guest.where())
 	h.check(guest.hub() != null and not guest.hub()._message.is_empty(), "the hub says why the join failed")
-	h.check(guest.api.requests.any(func(entry: Dictionary) -> bool: return entry.path == "/v1/rooms/join"), "the earlier-island join was asked for")
+	h.check(not guest.api.requests.any(func(entry: Dictionary) -> bool: return entry.path.begins_with("/v1/rooms")), "no earlier-island room is asked for")
 	await h.finish()

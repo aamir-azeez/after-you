@@ -391,10 +391,11 @@ func _home() -> void:
 	app.api.player_id = OWNER
 	var session := FakeSession.new()
 	app.relay_session = session
-	app.running = true
+	app.relay_child = Node3D.new()
 	app._service_leaderboard_celebration()
 	_check(not Celebration.showing(app.ui), "never in the middle of a turn")
-	app.running = false
+	app.relay_child.free()
+	app.relay_child = null
 	session.open = false
 	app._service_leaderboard_celebration()
 	_check(not Celebration.showing(app.ui), "nothing while the server has leaderboards off")

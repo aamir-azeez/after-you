@@ -84,7 +84,7 @@ func set_foreground(value: bool) -> void:
 	_set_state("checking")
 
 func monitor_room(family: String, room_id: String, context: RefCounted = null, required_context: bool = false) -> void:
-	if family not in ["v1", "v2"] or not valid_id(room_id):
+	if family != "v2" or not valid_id(room_id):
 		family = ""
 		room_id = ""
 	if _family == family and _room == room_id and _room_context == context and _required_context == required_context: return

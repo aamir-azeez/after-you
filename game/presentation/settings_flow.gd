@@ -18,7 +18,7 @@ extends Node
 ## - services: saves, _apply_settings, _play_store_enabled, identity_data, api,
 ##   secrets, get_tree, soundscape (tap_haptic: a flipped tile's tick and
 ##   a turned spirit's)
-## - screen: mode, running, overlay, ui, _clear_overlay, _back_button, _card,
+## - screen: mode, overlay, ui, _clear_overlay, _back_button, _card,
 ##   _label, _toast
 ## - flows (flow to flow, through the rows table): notification_flow
 ##   (reconcile, status_line, turn_notifications_on, set_turn_notifications,
@@ -101,7 +101,6 @@ func _init(main: Node = null) -> void:
 ## Opens Settings on a category (Everyday unless one is named). reveal: a row
 ## to scroll into view.
 func show_settings(category: String = EVERYDAY, reveal: String = "") -> void:
-	host.running = false
 	host.mode = MODE_SETTINGS
 	host._clear_overlay()
 	_categories = Rows.categories(host)

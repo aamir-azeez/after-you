@@ -536,13 +536,12 @@ func finish() -> void:
 	await watch_idle("finish")
 
 ## Lets `ms` of wall time pass for this phone's refresh schedulers: the room
-## poll, the legacy foreground poll and the notification route retry. The extra
+## poll and the notification route retry. The extra
 ## wait an idle room's backoff added passes too, so one elapse is still one poll.
 func elapse(device: Node, ms: int = 3200) -> void:
 	if not device.running(): return
 	var child: Node = device.child()
 	if child != null: _shift(child.refresh_schedule, ms)
-	_shift(device.app.foreground_schedule, ms)
 	device.app.notification_flow.route_retry_ms -= ms
 
 static func _shift(schedule: RefCounted, ms: int) -> void:

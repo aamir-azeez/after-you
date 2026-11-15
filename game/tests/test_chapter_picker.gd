@@ -426,15 +426,14 @@ func _peek_heights(app: Node, viewport: SubViewport) -> void:
 func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer) -> void:
 	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
 	var context := " at "+str(viewport.size)
-	# Header: a labelled Back and the page title, then Chapters/Earlier islands tabs.
+	# Header: a labelled Back and the page title, then the Chapters tab.
 	var back := _find_button(app.overlay,"Back")
 	_check(back != null and not scroll.is_ancestor_of(back) and screen.encloses(back.get_global_rect()) and back.get_global_rect().end.y <= scroll.get_global_rect().position.y,"A labelled Back stays fixed above the chapter grid"+context)
 	_check(_label_contains(app.overlay,"Your journey") and not _label_contains(app.overlay,PlayerCopy.MAIN_1DB48306B203) and not _label_contains(app.overlay,PlayerCopy.MAIN_F88B3CEBD7BA),"The picker is titled Your journey without the old First Steps heading"+context)
 	var chapters := _find_button(app.overlay,"Chapters")
-	var earlier := _find_button(app.overlay,"Earlier islands")
-	_check(chapters != null and chapters.disabled and earlier != null and not earlier.disabled and not scroll.is_ancestor_of(chapters) and not scroll.is_ancestor_of(earlier),"Chapters is the selected tab beside an available Earlier islands tab"+context)
-	if chapters != null and earlier != null:
-		_check(chapters.get_global_rect().size.y>=48 and earlier.get_global_rect().size.y>=48 and not chapters.get_global_rect().intersects(earlier.get_global_rect()),"Both tabs keep full, distinct touch targets"+context)
+	_check(chapters != null and chapters.disabled and not scroll.is_ancestor_of(chapters) and _find_button(app.overlay,"Earlier islands") == null,"Chapters is the selected tab, with no Earlier islands tab"+context)
+	if chapters != null:
+		_check(chapters.get_global_rect().size.y>=48,"The tab keeps a full touch target"+context)
 	# Every chapter is a picture card; free chapters lead, then Full Journey.
 	var grid: GridContainer = scroll.find_child("JourneyChapters",true,false)
 	var expected: Array[String] = []

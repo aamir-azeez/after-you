@@ -24,18 +24,15 @@ func _run() -> void:
 	app.identity_loading=false
 	app.identity_data={"player_id":HOST,"device_token":"synthetic-token"}
 	var cache := Memory.new()
-	app.shared_replays=Collection.new(api,app._relay_identity,cache,OnlineMemory.new())
-	var legacy := {"room_id":ROOM,"host_id":HOST,"guest_id":GUEST,"level_id":"first-light","attempt":3,"first_player_id":GUEST,"active_role":"complete","recordings":{"a":_fixture("","first-light-a"),"b":_fixture("","first-light-b")}}
-	_check(app.shared_replays.load_saved(legacy),"One real verified fixture replay is available")
-	var next_attempt := legacy.duplicate(true)
-	next_attempt.attempt=4
-	_check(app.shared_replays.load_saved(next_attempt),"A second saved attempt shares the same room")
-	var empty_room := legacy.duplicate(true)
-	empty_room.room_id=OTHER
-	empty_room.active_role="a"
-	empty_room.recordings={}
-	_check(app.shared_replays.load_saved(empty_room),"An unfinished room is retained without saved replays")
-	var key := "legacy:"+ROOM
+	var online := OnlineMemory.new()
+	var finished := Coordinator.new(_offline, online.load_scope, online.save_game, app._relay_identity)
+	_check(finished.bind_room(ROOM) and finished._accept_snapshot(_snapshot(Registry.FIRST_STEPS)),"A finished two-part First Steps room is saved on this phone")
+	var unfinished := Coordinator.new(_offline, online.load_scope, online.save_game, app._relay_identity)
+	_check(unfinished.bind_room(OTHER) and unfinished._accept_snapshot(_snapshot(Registry.FIRST_STEPS, OTHER, 0)),"An unfinished room is saved too")
+	online.values["relay-lobby-v2:" + HOST] = {"schema_version": 1, "owner_player_id": HOST, "room_ids": [ROOM, OTHER], "last_room": OTHER, "pending": {}}
+	app.shared_replays=Collection.new(api,app._relay_identity,cache,online)
+	_check(app.shared_replays.load_saved() and app.shared_replays.rooms().size() == 2,"Both rooms are found on this phone, the finished one with its two verified parts")
+	var key := "chapter:"+ROOM
 	app.replays_flow.show_shared_replays()
 	_check(app.shared_replays.rooms().size() == 2 and app.mode == "shared_memories" and app.replays_flow.shared_replay_room == key,"Together opens straight into the only room with a saved replay while retaining empty room metadata")
 	_check(app.replays_flow._listed_shared_rooms().size() == 1,"The unfinished room without a saved replay is kept but not offered")
@@ -103,8 +100,7 @@ func _run() -> void:
 	await _drain_local(app.shared_replays)
 	app.replays_flow._open_default_shared_room()
 	_check(app.replays_flow._listed_shared_rooms().is_empty() and app.mode == "shared_replays" and _has_text(app.overlay,Main.PlayerCopy.EMPTY_TOGETHER_TEXT),"Deleting the last replay drops its room so Together shows the empty state")
-	app.shared_replays=Collection.new(api,app._relay_identity,cache,OnlineMemory.new())
-	app.saves.data.room=next_attempt.duplicate(true)
+	app.shared_replays=Collection.new(api,app._relay_identity,cache,online)
 	var replay_reads: int = cache.reads.count("shared-replays:"+HOST+":"+key)
 	app.replays_flow.show_shared_replays()
 	_check(cache.reads.count("shared-replays:"+HOST+":"+key) == replay_reads,"Opening Together never synchronously loads an unverified replay cache")
@@ -112,7 +108,7 @@ func _run() -> void:
 	app.replays_flow._open_default_shared_room()
 	_check(app.shared_replays.rooms().size() == 2 and app.replays_flow._listed_shared_rooms().is_empty(),"Reopening honors both removals despite the retained completed room and preserves all room metadata")
 	# Home's own room list read (redo_home_card.gd, once a session) is not the deletion's.
-	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path != "/v1/room-inbox").is_empty(),"Local deletion and its confirmation send no network request: " + str(api.calls.map(func(call: Dictionary) -> String: return str(call.path))))
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.method != HTTPClient.METHOD_GET).is_empty(),"Local deletion and its confirmation send no request that changes anything: " + str(api.calls.map(func(call: Dictionary) -> String: return str(call.path))))
 	viewport.queue_free()
 	await process_frame
 	print("REPLAY DELETE UI: %d checks, %d failures" % [checks,failures])

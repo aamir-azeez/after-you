@@ -99,7 +99,6 @@ const KNOWN_FAILURES := {
 	"offline:res://presentation/account_flow.gd": "unowned (shared-paths audit): recovery and delete confirmations stay live offline",
 	"offline:res://presentation/safety_screen.gd": "unowned (shared-paths audit): unblock and report buttons stay live offline",
 	"offline:res://presentation/shared_replay_view.gd": "unowned (shared-paths audit): report and block in a replay stay live offline",
-	"offline:res://presentation/legacy_room_flow.gd": "unowned (shared-paths audit): legacy room create, join, fork and advance stay live offline",
 	"offline:res://presentation/notification_flow.gd": "unowned (shared-paths audit): a room alert tapped offline says the room could not be opened on every retry",
 	"offline:res://relay_preview.gd": "unowned (shared-paths audit): New room on the end card and redo requests stay live offline (turns themselves are kept)",
 }
@@ -131,7 +130,6 @@ const PIP_MAKERS := {
 	"res://presentation/wardrobe_sheets.gd": ["preview", "the buy sheet shows the item on the plain pip"],
 	"res://presentation/wardrobe_orchard.gd": ["preview", "Fruits board 4a: each Orchard item on the plain pip"],
 	"res://presentation/pollen_result_line.gd": ["preview", "owner 2026-11-02: the dropped item shows alone on a plain pip"],
-	"res://presentation/story_memory_world.gd": ["unshown", "Story was removed; only tests load it"],
 }
 ## A script that reads a player's look.
 const LOOK_SOURCE := "OwnLook\\.|TurnLooks|SlotLooks|slot_looks|Outfit\\.from\\(|\\.wear\\(|\\.outfit\\s*="
@@ -158,7 +156,6 @@ const OFFLINE_EXEMPT := {
 	"res://presentation/friends_flow.gd": "opens Friends, whose buttons hold (friends_screen.gd); its board read runs in the background",
 	"res://presentation/bundle_purchase.gd": "refuses offline itself before a purchase starts; the store page holds its buttons",
 	"res://presentation/settings_rows.gd": "declares rows online: true; settings_flow.gd holds each one",
-	"res://presentation/turn_flow.gd": "a turn is kept as pending_turn and sent again later, offline included",
 }
 
 ## (e) The name resolver and the scripts allowed under it.
@@ -193,11 +190,9 @@ const SAVE_EXEMPT := {
 ## (h) Every script that sends a server write: [how many, why each is safe].
 ## A reason starting "keyed" means the script sends idempotency keys.
 const WRITES := {
-	"res://main.gd": [3, "keyed: room reactions; POST /v1/identity has none (audit: check one lost answer never makes two identities)"],
+	"res://main.gd": [1, "unkeyed: POST /v1/identity (audit: check one lost answer never makes two identities)"],
 	"res://presentation/account_flow.gd": [2, "keyed: identity recovery; DELETE /v1/identity removes one thing"],
-	"res://presentation/legacy_room_flow.gd": [4, "keyed: room create, fork and advance; a join names one invite"],
 	"res://presentation/room_hub_flow.gd": [5, "unkeyed: close, leave and invite lookups end in the same state when repeated"],
-	"res://presentation/turn_flow.gd": [1, "keyed: the pending turn's key"],
 	"res://services/bundle_claims.gd": [1, "unkeyed: claims every purchase the store reports; each purchase token pays once"],
 	"res://services/deleted_identity_ack.gd": [1, "unkeyed: an acknowledgement"],
 	"res://services/display_name_client.gd": [2, "unkeyed: PUT sets the whole name"],
@@ -358,7 +353,6 @@ const FLAT_DIAMONDS := {
 ## Rings the size of the second spirit's mark drawn outside the kit: how many, and why.
 const MARK_SIZED_RINGS := {
 	"res://presentation/cooperative_world.gd": [1, "the pulley's gold wheel over a missing crossing"],
-	"res://presentation/keepsake_visual.gd": [1, "a keepsake's standing hoop"],
 }
 
 ## (s) The one falling effect kit, its shader, and each script that uses it with what for.

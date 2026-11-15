@@ -11,8 +11,7 @@ extends SceneTree
 const Spirit = preload("res://presentation/spirit_visual.gd")
 const Idle = preload("res://presentation/spirit_idle.gd")
 const World = preload("res://presentation/island_world.gd")
-const Levels = preload("res://core/levels.gd")
-const Simulation = preload("res://core/simulation.gd")
+const HomeLayout = preload("res://presentation/home_layout.gd")
 const Preview = preload("res://relay_preview.gd")
 const Frames = preload("res://services/frame_policy.gd")
 
@@ -262,16 +261,14 @@ func _test_pose_api() -> void:
 ## The ready and waiting cards hold the world and let only spirits breathe,
 ## a few times a second.
 func _test_card_frames() -> void:
-	var definition: Dictionary = Levels.get_level("first-light")
-	var simulation := Simulation.new()
-	var recording: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
-	_check(simulation.reset(definition, recording, "b"), "Card frames use a validated level")
+	var opening := HomeLayout.opening()
+	opening.role = "b"
 	var world: Node3D = World.new()
 	root.add_child(world)
 	world.set_process(false)
 	world.home_view = false
-	world.load_level(definition)
-	world.present(simulation.snapshot(), true)
+	world.load_level(HomeLayout.LEVEL)
+	world.present(opening, true)
 	var signals := [0]
 	world.footstep.connect(func(_spirit: String) -> void: signals[0] += 1)
 	world.reunion.connect(func() -> void: signals[0] += 1)
@@ -302,8 +299,8 @@ func _test_card_frames() -> void:
 	root.add_child(other)
 	other.set_process(false)
 	other.home_view = false
-	other.load_level(definition)
-	other.present(simulation.snapshot(), true)
+	other.load_level(HomeLayout.LEVEL)
+	other.present(opening, true)
 	for _frame in range(180):
 		other.update_spirit_attention()
 		for role: String in other.actors: other.actors[role].advance_motion(Vector3.ZERO, 1.0 / 60.0, false)

@@ -51,7 +51,7 @@ func _on_unlocked(_server: String, _owner: String) -> void:
 func service() -> String:
 	var store := _store()
 	if not _waiting or host == null: return ""
-	if bool(host.get("running")) or is_instance_valid(host.get("relay_child")) or bool(host.get("application_backgrounded")): return ""
+	if is_instance_valid(host.get("relay_child")) or bool(host.get("application_backgrounded")): return ""
 	var toast: Variant = host.get("toast")
 	if toast == null or toast.showing(): return ""
 	var scope: Dictionary = host._names_scope()

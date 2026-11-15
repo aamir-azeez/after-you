@@ -2,33 +2,17 @@ extends SceneTree
 
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
-const Levels = preload("res://core/levels.gd")
-const Simulation = preload("res://core/simulation.gd")
 const ReunionAudio = preload("res://tests/reunion_audio_checks.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
 
 class SoundProbe:
 	extends "res://services/soundscape.gd"
-	var deliveries: Array=[]
-	var pulses: Array=[]
 	var transitions: Array=[]
 	var startup_sound := true
 	var greetings := 0
-	var played: Array=[]
 	func _ready() -> void:
 		startup_sound=sound_enabled
 		super._ready()
-	func consume_events(events: Array, live_play: bool) -> void:
-		deliveries.append({"events":events.duplicate(),"live":live_play})
-		var voice_index := next_voice
-		super.consume_events(events,live_play)
-		if not sound_enabled or backgrounded: return
-		for event: Variant in events:
-			if CLIPS.has(str(event)):
-				played.append([str(event),voices[voice_index].pitch_scale,voices[voice_index].volume_db])
-				voice_index=(voice_index+1)%voices.size()
-	func _emit_haptic(duration_ms: int) -> void:
-		pulses.append(duration_ms)
 	func set_backgrounded(value: bool) -> void:
 		transitions.append(value)
 		super.set_backgrounded(value)
@@ -40,18 +24,12 @@ var checks := 0
 var failures := 0
 var app: Node
 var sound: SoundProbe
-var first: Dictionary
-var second: Dictionary
-var frames: Array
 
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
 	var path := "user://audio-integration-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
-	first=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
-	second=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))
-	frames=Simulation.expand_recording_inputs(second)
 	app=Main.new()
 	app.saves=Storage.new(path)
 	app.saves.data.settings.sound=false
@@ -70,13 +48,6 @@ func _run() -> void:
 	app._apply_settings()
 	_check(sound.sound_enabled and sound.ambience.playing,"Settings controls configure the installed sound service")
 	_test_home_reunion()
-	await _test_preview_delivery()
-	_test_live_delivery()
-	_test_draft_reconstruction()
-	_test_footstep_delivery()
-	await _test_recorded_pitches()
-	_test_home_after_turn()
-	_test_reunion_delivery()
 	_test_background()
 	sound.set_backgrounded(true)
 	app.queue_free()
@@ -89,141 +60,6 @@ func _run() -> void:
 			DirAccess.remove_absolute(path+suffix)
 	print("AFTER YOU AUDIO INTEGRATION: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
-
-func _prepare() -> void:
-	app.level_index=0
-	app.current_level=Levels.get_level(0)
-	app.attempt={"a":first.duplicate(true),"b":{},"draft":{}}
-	app.role="b"
-	app.room_play=false
-	sound.deliveries.clear()
-	sound.pulses.clear()
-	app.earlier_islands_flow.prepare_turn()
-
-func _events() -> Array:
-	var events: Array=[]
-	for delivery: Dictionary in sound.deliveries:
-		events.append_array(delivery.events)
-	return events
-
-func _test_preview_delivery() -> void:
-	_prepare()
-	app.earlier_islands_flow.preview(second,true)
-	_check(sound.deliveries.is_empty(),"Preparing a replay does not replay setup or verification events")
-	var deadline := Time.get_ticks_msec()+10000
-	while (app.replays_flow._collection_replay_worker != null or not app.replays_flow._collection_replay_job.is_empty()) and Time.get_ticks_msec() < deadline:
-		await process_frame
-		app.replays_flow.service_collection_replay()
-	var ready: bool=app.replays_flow._collection_replay_worker == null and app.replays_flow._collection_replay_job.is_empty() and app.mode == "preview" and app.running and app.collection_preview and app.sim.tick == 0
-	_check(ready,"Saved replay preparation finishes within the bounded load window before audio playback")
-	if not ready:
-		app.replays_flow.cancel_collection_replay()
-		return
-	_check(sound.deliveries.is_empty() and sound.pulses.is_empty(),"Joining replay preparation does not emit historic audio or haptics")
-	for _i: int in range(frames.size()+2):
-		app._physics_process(1.0/30.0)
-	_check(sound.deliveries.size()==int(second.duration_ticks),"Replay delivers events exactly once per advancing simulation tick")
-	var events := _events()
-	_check(events.count("seed_thrown")==1 and events.count("seed_caught")==1 and events.count("island_bloomed")==1,"Completed replay forwards throw, catch and bloom once each")
-	var all_preview := true
-	for delivery: Dictionary in sound.deliveries:
-		all_preview=all_preview and not delivery.live
-	_check(all_preview and sound.pulses.is_empty(),"Replay sound is never marked as live play and cannot vibrate")
-	var before: int=sound.deliveries.size()
-	app.running=true
-	app.mode="play"
-	app._physics_process(1.0/30.0)
-	_check(sound.deliveries.size()==before,"A finished simulation snapshot cannot replay its final audio event")
-
-func _play_live(inputs: Array) -> void:
-	app.earlier_islands_flow.begin_turn()
-	var right: Vector3=app.world.camera.global_basis.x
-	var forward: Vector3=app.world.camera.global_basis.z
-	right=Vector3(right.x,0,right.z).normalized()
-	forward=Vector3(forward.x,0,forward.z).normalized()
-	for frame: Dictionary in inputs:
-		var movement := Vector3(frame.move_x,0,frame.move_z)
-		app.stick.value=Vector2(movement.dot(right),movement.dot(forward))
-		app.action_pressed=frame.interact
-		app._physics_process(1.0/30.0)
-
-func _played(event: String) -> Array:
-	return sound.played.filter(func(item): return item[0]==event).map(func(item): return [item[1],item[2]])
-
-func _test_recorded_pitches() -> void:
-	# Turn A, live: the first spirit opens the bridge and throws.
-	_prepare()
-	app.role="a"
-	app.attempt={"a":{},"b":{},"draft":{}}
-	app.earlier_islands_flow.prepare_turn()
-	sound.played.clear()
-	_play_live(Simulation.expand_recording_inputs(first))
-	var thrown := _played("seed_thrown")
-	var bridge := _played("bridge_opened")
-	_check(app.sim.snapshot().outcome.threw_seed and thrown.size()==1 and bridge.size()>=1,"The live first turn throws once through Main's real controls")
-	# Turn B, live alongside that memory.
-	_prepare()
-	sound.played.clear()
-	_play_live(frames)
-	var live_b: Array=sound.played.duplicate(true)
-	_check(_played("seed_thrown")==thrown and _played("bridge_opened")==bridge,"The memory's throw and bridge sound exactly as they did in the live first turn")
-	_check(_played("seed_caught").size()==1 and _played("island_bloomed").size()==1,"The live second turn hears its own catch and bloom")
-	# A retry of turn B, then a replay of the saved recording.
-	_prepare()
-	sound.played.clear()
-	_play_live(frames)
-	_check(sound.played==live_b,"Retrying the turn reproduces every cue pitch and gain")
-	_prepare()
-	sound.played.clear()
-	app.earlier_islands_flow.preview(second)
-	for _i: int in range(frames.size()+2):
-		app._physics_process(1.0/30.0)
-	_check(app.mode!="play" and sound.played==live_b,"Replaying the recorded turn plays the pitches of the live turn")
-	await process_frame
-
-func _test_home_after_turn() -> void:
-	_prepare()
-	app.earlier_islands_flow.begin_turn()
-	_check(sound.in_turn(),"A turn names its chapter and stage for the sound identities")
-	app._show_home()
-	_check(not sound.in_turn(),"Returning Home leaves the recorded turn")
-	_test_home_reunion()
-
-func _test_live_delivery() -> void:
-	_prepare()
-	_play_live(frames)
-	_check(app.sim.complete and app.mode=="completion","Real main controls complete the fixture's second turn before the review overlay")
-	_check(sound.deliveries.size()==int(second.duration_ticks) and sound.pulses==[35,85],"Live catch and bloom produce exactly one haptic each")
-	var events := _events()
-	_check(events.count("seed_caught")==1 and events.count("island_bloomed")==1,"Rendering and autosave do not duplicate live success audio")
-
-func _test_draft_reconstruction() -> void:
-	_prepare()
-	app.earlier_islands_flow.resume_draft(second)
-	_check(app.mode=="review" and sound.deliveries.is_empty() and sound.pulses.is_empty(),"Completed draft reconstruction is silent despite historic catch and bloom events")
-	var partial := Simulation.new()
-	partial.reset(Levels.get_level(0),first,"b")
-	for frame: Dictionary in frames.slice(0,40):
-		partial.step(frame)
-	_prepare()
-	app.earlier_islands_flow.resume_draft(partial.export_recording())
-	_check(app.running and app.sim.tick==40 and sound.deliveries.is_empty(),"Partial draft fast-forward is silent and resumes at its saved tick")
-	app._physics_process(1.0/30.0)
-	_check(sound.deliveries.size()==1,"Only the first new tick after reconstruction reaches the sound service")
-
-func _test_footstep_delivery() -> void:
-	_prepare()
-	app.earlier_islands_flow.begin_turn()
-	var before := sound.next_step
-	var state_before := JSON.stringify(app.sim.snapshot())
-	var contacts := 0
-	for actor: Node3D in app.world.actors.values():
-		if actor.visible:
-			contacts += 1
-			actor.advance_motion(Vector3(0.42,0,0),0.175,false)
-	_check(contacts == 2 and sound.next_step == before + 2 and sound.step_voices.size() == 3,"Earlier Islands preserves simultaneous player and ghost footsteps through Main's real sound wiring")
-	_check(not is_equal_approx(sound.step_voices[before % 3].pitch_scale,sound.step_voices[(before + 1) % 3].pitch_scale),"Simultaneous player and ghost footsteps are pitched apart")
-	_check(JSON.stringify(app.sim.snapshot()) == state_before,"Earlier-island foot contacts remain presentation-only")
 
 func _test_home_reunion() -> void:
 	var stage: Control
@@ -253,37 +89,14 @@ func _test_home_reunion() -> void:
 	stage.set_process(true)
 	sound.stop_reunion()
 
-func _test_reunion_delivery() -> void:
-	_prepare()
-	app.earlier_islands_flow.begin_turn()
-	var before_state := JSON.stringify(app.sim.snapshot())
-	for playback: String in ["play","preview"]:
-		app.mode=playback
-		app.running=true
-		var before := sound.greetings
-		for encounter in range(3):
-			ReunionAudio.approach(app.world)
-			_check(sound.greetings==before+encounter+1 and sound.reunion_voice.playing,"Earlier-island player and ghost share one reunion greeting in "+playback)
-		for frame in range(90): app.world._process(1.0/60.0)
-		_check(sound.greetings==before+3,"Remaining together does not repeat earlier-island reunion audio")
-	app.earlier_islands_flow.pause()
-	_check(not sound.reunion_voice.playing,"Pausing an earlier-island replay stops reunion audio")
-	var before := sound.greetings
-	ReunionAudio.approach(app.world)
-	_check(sound.greetings==before,"Paused earlier-island playback suppresses reunion requests")
-	_check(JSON.stringify(app.sim.snapshot())==before_state,"Reunion audio cannot alter an earlier-island recording")
-	app.earlier_islands_flow.begin_turn()
-
 func _test_background() -> void:
 	sound.transitions.clear()
 	app._notification(Main.NOTIFICATION_APPLICATION_PAUSED)
 	app._notification(Main.NOTIFICATION_APPLICATION_PAUSED)
-	var before: int=sound.deliveries.size()
-	app._physics_process(1.0/30.0)
-	_check(sound.transitions==[true] and sound.backgrounded and not sound.ambience.playing and sound.deliveries.size()==before,"Background notification silences audio once and stops tick delivery")
+	_check(sound.transitions==[true] and sound.backgrounded and not sound.ambience.playing,"Background notification silences audio once")
 	app._notification(Main.NOTIFICATION_APPLICATION_RESUMED)
 	app._notification(Main.NOTIFICATION_APPLICATION_RESUMED)
-	_check(sound.transitions==[true,false] and sound.ambience.playing and app.mode=="paused" and not app.running,"Resume restores ambience once while leaving the rehearsal paused")
+	_check(sound.transitions==[true,false] and sound.ambience.playing,"Resume restores ambience once")
 	app.saves.data.settings.sound=false
 	app.saves.data.settings.haptics=false
 	app._apply_settings()

@@ -80,7 +80,6 @@ func _run() -> void:
 	_disk_removal(owner, api, selected)
 	_invalid_marker(owner, api, selected)
 	_identity_during_removal(api, selected)
-	await _legacy_removal(owner, api)
 	api.queue_free()
 	await process_frame
 	print("SHARED REPLAY REMOVAL: %d checks, %d failures" % [checks, failures])
@@ -109,7 +108,7 @@ func _disk_removal(owner: Boundary, api: Node, selected: Dictionary) -> void:
 	var disk := Disk.new(directory)
 	var writer := Collection.new(api, owner.identity, disk, OnlineMemory.new())
 	writer.rooms()
-	_check(writer._remember_room(_snapshot(Registry.FIRST_STEPS), "chapter"), "The first disk collection retains the original accepted pair cache")
+	_check(writer._remember_room(_snapshot(Registry.FIRST_STEPS)), "The first disk collection retains the original accepted pair cache")
 	var other_writer := Collection.new(api, owner.identity, Disk.new(directory), OnlineMemory.new())
 	other_writer.rooms()
 	var fork := selected.duplicate(true)
@@ -126,7 +125,7 @@ func _invalid_marker(owner: Boundary, api: Node, selected: Dictionary) -> void:
 		var cache := Memory.new()
 		var collection := Collection.new(api, owner.identity, cache, OnlineMemory.new())
 		collection.rooms()
-		_check(collection._remember_room(_snapshot(Registry.FIRST_STEPS), "chapter"), "Corrupt-marker fixture begins with accepted replay data")
+		_check(collection._remember_room(_snapshot(Registry.FIRST_STEPS)), "Corrupt-marker fixture begins with accepted replay data")
 		cache.values["shared-replays:" + HOST + ":removed:chapter:" + ROOM] = corruption
 		var before := Canonical.digest(cache.values)
 		_check(not collection.remove_memory("chapter:" + ROOM, "p0-0", selected) and collection.memories("chapter:" + ROOM).is_empty() and Canonical.digest(cache.values) == before, "Foreign, future or malformed removal metadata holds the collection without overwriting it")
@@ -136,18 +135,7 @@ func _identity_during_removal(api: Node, selected: Dictionary) -> void:
 	var cache := RemovalStore.new()
 	var collection := Collection.new(api, owner.identity, cache, OnlineMemory.new())
 	collection.rooms()
-	_check(collection._remember_room(_snapshot(Registry.FIRST_STEPS), "chapter"), "Identity-race removal has a real accepted source")
+	_check(collection._remember_room(_snapshot(Registry.FIRST_STEPS)), "Identity-race removal has a real accepted source")
 	cache.switch_owner = owner
 	_check(not collection.remove_memory("chapter:" + ROOM, "p0-0", selected), "Identity change during persistence prevents stale deletion success")
 	_check(collection.rooms().is_empty() and cache.values.keys().all(func(scope: String): return not scope.begins_with("shared-replays:" + OTHER + ":")), "Old-owner work never adopts entries or writes markers into the new owner's namespace")
-
-func _legacy_removal(owner: Boundary, api: Node) -> void:
-	var cache := Memory.new()
-	var collection := Collection.new(api, owner.identity, cache, OnlineMemory.new())
-	var legacy := {"room_id": "L".repeat(22), "host_id": HOST, "guest_id": GUEST, "level_id": "first-light", "attempt": 3, "first_player_id": GUEST, "active_role": "complete", "recordings": {"a": _fixture("", "first-light-a"), "b": _fixture("", "first-light-b")}}
-	var key := "legacy:" + str(legacy.room_id)
-	_check(collection.load_saved(legacy), "Legacy island replay remains available before removal")
-	var selected: Dictionary = await collection.open_memory(key, "a3")
-	_check(collection.remove_memory(key, "a3", selected), "Legacy attempt removal uses its exact verified contents")
-	var reopened := Collection.new(api, owner.identity, cache, OnlineMemory.new())
-	_check(reopened.load_saved(legacy) and reopened.memories(key).is_empty(), "Legacy saved-room backfill cannot resurrect the removed attempt")

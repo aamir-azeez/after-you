@@ -100,6 +100,8 @@ static func unresolved(room: Dictionary) -> bool:
 	return key.is_empty() or key == "unknown" or key.begins_with("<")
 
 func _shown(room: Dictionary) -> bool:
+	# Rooms of the earlier islands (version 1) are no longer in the game.
+	if int(room.get("api_version",0)) == 1: return false
 	var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
 	return not _hidden.has(key) or int(room.get("remote_activity_sequence",0)) > int(_hidden[key])
 
@@ -162,6 +164,8 @@ func refresh() -> bool:
 	_duel_invites = (data.get("duel_invites", []) as Array).duplicate(true)
 	_duel_invites_sent_ms = sent
 	for room: Dictionary in data.rooms:
+		# Rooms from the earlier islands are no longer in the game: they are not listed.
+		if room.get("family") == "legacy": continue
 		_rooms.append(_normalize_room(room))
 		var key := room_key(RoomsApi.json_int(room.api_version),str(room.room_id))
 		# Existing rooms begin at a read baseline. Only later remote activity is
@@ -182,7 +186,7 @@ func duel_invites_sent_ms() -> int:
 
 ## Call only after the destination room has loaded and rendered successfully.
 func confirm_room_rendered(api_version: int, room_id: String) -> bool:
-	if not _bind() or api_version not in [1,2] or not Presence.valid_id(room_id): return false
+	if not _bind() or api_version != 2 or not Presence.valid_id(room_id): return false
 	var identity := room_key(api_version,room_id)
 	var found := false
 	for row: Dictionary in _rooms:
@@ -318,14 +322,11 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 	# A room the server cannot read sends a null chapter id.
 	var id: Variant = chapter.get("id")
 	var chapter_key: String = id if id is String else ""
-	if value.get("family") == "legacy" and not chapter_key.is_empty():
-		# Earlier islands use their level id; the thumbnail catalog keys them as legacy-<id>.
-		chapter_key = RoomChapterTitle.LEGACY_PREFIX + chapter_key
-	elif not chapter_key.contains("@") and not RoomChapterTitle.key(chapter_key, chapter.get("version")).is_empty():
+	if not chapter_key.contains("@") and not RoomChapterTitle.key(chapter_key, chapter.get("version")).is_empty():
 		# Registry keys are "<id>@<version>"; the server sends them separately.
 		chapter_key = RoomChapterTitle.key(chapter_key, chapter.get("version"))
 	# A chapter this build does not know keeps a name made from its id.
-	var unknown := chapter_key.trim_prefix(RoomChapterTitle.LEGACY_PREFIX).get_slice("@",0).replace("-"," ").capitalize() if not chapter_key.is_empty() else UNAVAILABLE_TITLE
+	var unknown := chapter_key.get_slice("@",0).replace("-"," ").capitalize() if not chapter_key.is_empty() else UNAVAILABLE_TITLE
 	var title := RoomChapterTitle.title(chapter_key, unknown)
 	var members: Array[String] = []
 	for key: String in ["host_id","guest_id"]:

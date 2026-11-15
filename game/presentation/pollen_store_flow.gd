@@ -22,7 +22,7 @@ extends Node
 ##   same signals and calls), api, _names_scope, and store_flow when Main has it
 ##   (configure_purchases, identity_ready, store_configured: the one RevenueCat
 ##   set-up for this player, shared with Full Journey)
-## - screen: mode, running, overlay, ui, _clear_overlay, _toast, and
+## - screen: mode, overlay, ui, _clear_overlay, _toast, and
 ##   _mark_screen_back when Main has it
 ## - soundscape when Main has it (play_fixed_cue): a receipt's sound
 ## - show_pollen_from_play() -> bool (the Pollen page, presentation/pollen_play_flow.gd,
@@ -149,7 +149,6 @@ func show_store(from: String = "wardrobe", tab_name: String = Bundles.POLLEN) ->
 	if not available(): return
 	if OfflineHold.refuse(): return
 	tab = Bundles.FRUITS if tab_name == Bundles.FRUITS and fruits_shown() else Bundles.POLLEN
-	host.running = false
 	host.mode = MODE_POLLEN_STORE
 	host._clear_overlay()
 	_page = Page.new()

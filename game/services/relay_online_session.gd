@@ -605,9 +605,10 @@ func room_title(room_id: String) -> String:
 func chapter_key() -> String:
 	return coordinator.chapter_key() if _ready() and coordinator != null else ""
 
-func can_leave_for_legacy() -> bool:
-	# A legacy join must not bypass a durable chapter request after restart.
-	# This is a local scope read only; it never probes another join endpoint.
+## Whether another screen may take over now: a durable chapter request kept
+## over a restart must finish first. A local scope read only; it never probes
+## another join endpoint.
+func can_leave() -> bool:
 	if not _ready() or busy():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_78B4A09B905D
 		return false

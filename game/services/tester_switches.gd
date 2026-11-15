@@ -248,7 +248,7 @@ static func _valid_entry(entry: Dictionary) -> bool:
 	if entry.has("run_export") and not Typed.equal(entry.run_export, true): return false
 	for name: String in ["earned", "hard"]:
 		if not entry.has(name): continue
-		if not Typed.equal(entry.get("keepsakes"), FRESH) or not entry[name] is Dictionary or entry[name].size() > Catalog.ROWS.size(): return false
+		if not Typed.equal(entry.get("keepsakes"), FRESH) or not entry[name] is Dictionary or entry[name].size() > Catalog.ROWS.size() + Catalog.RETIRED_PLACES: return false
 		for id: Variant in entry[name]:
 			var mark: Variant = entry[name][id]
 			if not id is String or id.length() > MAX_KEY or not mark is Dictionary: return false

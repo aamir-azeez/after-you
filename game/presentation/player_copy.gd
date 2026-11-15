@@ -841,7 +841,6 @@ const ROOM_LEAVE_IN_PLAY := "Your friend is playing this room again, so you can'
 # chapter's title, a count or one of the keepsake's own words below) and the counts.
 const HOME_INVITE := "Invite your friends"
 const KEEPSAKE_NEXT := "Clear %s to earn it."
-const KEEPSAKE_NEXT_EARLIER := "Clear an earlier island to light the first lantern."
 const KEEPSAKE_STARTED := "%d of %d stages done. Clear %s to earn it."
 const KEEPSAKE_MIXED := "Every stage done. Clear them all solo or all with a friend."
 const KEEPSAKE_FRIEND_PART := "Cleared. %d of %d stages done with a friend."
@@ -850,9 +849,6 @@ const KEEPSAKE_WANTS_HARD := "Cleared. Hard next, for the %s."
 const KEEPSAKE_WANTS_HARD_TOGETHER := "Cleared together. Hard next, for the %s."
 const KEEPSAKE_WANTS_TOP := "Cleared on Hard. Play Hard with a friend for the %s."
 const KEEPSAKE_DONE := "Cleared every way. Tap it to %s."
-const KEEPSAKE_LANTERNS_WANT_TOGETHER := "%d of %d lanterns lit. Play the free islands together for the %s."
-const KEEPSAKE_LANTERNS_LIT := "%d of %d lanterns lit, with the %s."
-const KEEPSAKE_LANTERNS_DONE := "Every lantern lit. Tap it to %s."
 const KEEPSAKE_COUNT := "Keepsakes %d / %d"
 const KEEPSAKE_UPGRADE_COUNT := "Upgrades %d / %d"
 const KEEPSAKE_HARD_COUNT := "Hard %d / %d"
@@ -912,9 +908,6 @@ const KEEPSAKE_TIDE_POOL_ACTION := "Turn the tide"
 const KEEPSAKE_TIDE_POOL_TOGETHER := "rock pool"
 const KEEPSAKE_TIDE_POOL_HARD := "tide post"
 const KEEPSAKE_TIDE_POOL_TOP := "gold lantern"
-const KEEPSAKE_LANTERN_WALK_NAME := "Lantern Walk"
-const KEEPSAKE_LANTERN_WALK_ACTION := "Light the lanterns"
-const KEEPSAKE_LANTERN_WALK_TOGETHER := "mint bunting"
 # What's new: the Home button and Settings row, the card's version line, its link
 # to every release's notes, its close button, and the tip under the Home button
 # after an update. Earlier versions opens the list of every version before this
@@ -1736,61 +1729,13 @@ const MAIN_73EBEC98C7F5 := "Made for people who live apart but love close togeth
 const MAIN_1DB48306B203 := "Start with some assistance."
 # Chapter selection — body text
 const MAIN_F88B3CEBD7BA := "Provide lift power, then pass a seed to make the garden come alive."
-# Earlier islands selection — body text
-const MAIN_042C89C38B20 := "Do both parts individually, or with a friend when you're ready."
 # Lighthouse preview — toast / status or error
 const MAIN_FCB8424B7F88 := "Complete loading/recovering of your account before opening Full Journey."
 # Chapter preview — toast / status or error
 const MAIN_A776CD47C8D9 := "Do not start another rehearsal until the current online action has concluded."
 # Chapter preview — toast / status or error
 const MAIN_EB8856600899 := "The chapter could not be opened. Your saved journey is kept."
-# Start practice — toast / status or error
-const MAIN_996946E90346 := "Wait until the app confirms that your turn was saved. Once you've done that, you can begin another rehearsal."
-# Start practice — heading / label
-const MAIN_0984B81F14AB := "A little moment, kept."
-# Start practice — body text
-const MAIN_CCB173FD54CF := "You completed this island. Watch both turns together or make another attempt."
-# Legacy island turn introduction — heading / label
-const MAIN_408402D8E83C := "Continue from where they left off."
-# Legacy island turn introduction — body text
-const MAIN_0141427332B8 := "Walk with the thumbstick. Tap the action button when you’re in place. Rehearse as many times as desired."
-# Resume draft — toast / status or error; Toast prefix followed by the recording validation error.
-const MAIN_EA192FA7B9B0 := "This rehearsal could not be resumed. "
-# Legacy recording review — heading / label
-const MAIN_CBFD9EB78DBC := "Look what you made together."
-# Legacy recording review — heading / label
-const MAIN_6F96DCC47A05 := "A moment to be remembered."
-# Legacy recording review — body text
-const MAIN_32A4E00F108C := "The replay of both turns can now be saved."
-# Legacy recording review — body text
-const MAIN_92F966458583 := "Watch your recorded turn before saving it. The recording stays unchanged until you start a new attempt."
-# Legacy recording review — body text
-const MAIN_A01274C34177 := "The seed must be handed off. Your earlier committed recording is safe."
-# Preview — toast / status or error; Toast prefix followed by the recording validation error.
-const MAIN_CD2F00E32FC5 := "This recording is not playable. "
-# Commit turn — toast / status or error; Toast prefix followed by the recording validation error.
-const MAIN_C4E0C9A50B65 := "This turn is not ready to save. "
-# Commit turn — toast / status or error
-const MAIN_1A6455ED3E4B := "Could not save on this device. Your recording is still open."
-# Legacy island completion — heading / label
-const MAIN_754724C78F04 := "After you, a little more life."
-# Legacy island completion — body text
-const MAIN_A74DFEBB0414 := "This island is in your collection. Both recordings will always play simultaneously."
 # React — toast / status or error
-const MAIN_D808B160901A := "Wait until your saved turn has been checked before sending a reaction."
-# React — toast / status or error
-# React — toast / status or error
-const MAIN_5DD61CC297CD := "Send a reaction after opening the completed room."
-# React — toast / status or error
-const MAIN_78DF8178BC2B := "Before your reaction was sent, the room changed. Refresh the room to see what is going on."
-# React — toast / status or error
-const MAIN_B94C73E90E5B := "Your reaction could not be confirmed. Refresh this room to check."
-# Pause — body text
-const MAIN_1A19AF19EDB1 := "Replay is paused."
-# Pause — body text
-const MAIN_9E4FF2796D8F := "Your rehearsal is saved on this device. The clock waits for you."
-# Pause — body text
-const MAIN_359B02B14B2E := "Your rehearsal is still in memory, but this device could not save it. Rehearse and attempt to save again before closing the app."
 # Collection — body text
 const MAIN_43ADB38D37BC := "Complete your first island to keep a replay of both contributions here."
 # Shared replays — body text
@@ -1833,11 +1778,7 @@ const MAIN_F28F6ED35157 := "Wake the Sleeping Lighthouse."
 # Full Journey offer — body text
 const MAIN_772330A32E7D := "Six connected solo stages. Guide beams, carry a lost lens and leave a light for someone coming home."
 # Full Journey offer — body text
-const MAIN_8A5D2C91B813 := "There are five earlier islands included in Full Journey."
-# Full Journey offer — body text
 const MAIN_FAD34E850ED9 := "Solo play is unlocked through test purchases. To host premium islands for a friend, redeem your tester access code in Settings."
-# Full Journey offer — body text
-const MAIN_58C214DFC790 := "Host the earlier islands for a friend. Full Journey is only required for the host."
 # Full Journey purchase offer — body text
 const MAIN_38EAC523F08C := "RevenueCat Test Store · Test checkout; no real money is charged."
 # Full Journey unlocked — body text
@@ -1864,8 +1805,6 @@ const MAIN_3A4A78824AC3 := "Same island. Your own time."
 const MAIN_C372E9DBD93A := "This build does not have online rooms connected. Your solo recordings are stored on your local machine."
 # Online rooms menu — body text
 const MAIN_F87B75B52317 := "Invite a friend using a room code. Both of you install After You; neither needs to wait online."
-# Online rooms menu — body text
-const MAIN_E0448D410D86 := "Chapter rooms are used by First Steps and Relay. If you are looking for an older room, select an earlier island."
 # Relay available — toast / status or error
 const MAIN_8184DEB41266 := "Wait until the current island request has been checked before opening another online chapter."
 # Relay rooms — toast / status or error
@@ -1896,44 +1835,8 @@ const MAIN_3E8E7DA4CEE6 := "Online identity storage requires the Android app."
 const MAIN_F0A53024D858 := "Your saved identity could not be checked. Use Settings → Account & recovery to retry or recover it. No replacement has been made."
 # Ensure identity — toast / status or error
 const MAIN_71B742112D9F := "This device could not secure the online identity, so online play has not started."
-# Accept room — toast / status or error
-const MAIN_22FBAEF49772 := "The room response was not complete. Your saved turn is unchanged."
-# Legacy shared room — heading / label
-const MAIN_8046BBD776CA := "A place for the two of you."
 # Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
 const MAIN_1AAC5BE95E22 := "Your turn is ready."
-# Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
-const MAIN_FAC85D5E6CA7 := "You made it bloom."
-# Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
-const MAIN_BD6413254AB9 := "Your friend’s turn. Return at any time."
-# Legacy shared room — body text
-const MAIN_52C04F6029F5 := "A submission that has been saved must be checked for receipt before another turn can be sent."
-# Commit online — toast / status or error
-const MAIN_2FB9511D4AA8 := "Before saving this rehearsal, refresh the room."
-# Commit online — toast / status or error
-const MAIN_9F721149F702 := "The submission could not be saved safely. Nothing was sent."
-# Send pending — toast / status or error
-const MAIN_B701225FD961 := "Your turn was saved on the server, but this device still needs to save its receipt."
-# Send pending — toast / status or error; Toast suffix after the server error.
-const MAIN_F7B46601CBC3 := " Refresh before trying again."
-# Reconcile pending — toast / status or error
-const MAIN_ECBD713D8F0C := "This is a saved submission from your previous identity. Recover that identity to check its receipt."
-# Reconcile pending — message
-const MAIN_52480E5314F5 := "This room is no longer available for this identity. The rehearsal will remain saved on this device, but will not be submitted again."
-# Reconcile pending — toast / status or error; Toast suffix after the server error.
-const MAIN_602A7BD28B67 := " The submission is saved and still on hold."
-# Reconcile pending — toast / status or error
-const MAIN_A917FC21E486 := "Your saved turn is confirmed in the room."
-# Held turn — heading / label
-const MAIN_2A20737AA436 := "Your rehearsal is still here."
-# Held turn — body text
-const MAIN_6D127185ABF4 := "The room changed before this turn could be saved."
-# Held turn — body text
-const MAIN_BCD95F847CF2 := "Save this recording locally and go back to the current room. It will not be automatically resubmitted."
-# Confirm fork — heading / label
-const MAIN_F817D954E490 := "Start a new attempt?"
-# Confirm fork — body text
-const MAIN_C9DD5A234C97 := "The first turn and the second turn will be replaced. The new attempt will be visible to both players."
 # Account and recovery — message
 const MAIN_EC79109D7607 := "This device still has to complete local cleanup."
 # Account and recovery — body text
@@ -2050,12 +1953,6 @@ const MAIN_5367370EB8BE := "Your online identity is deleted."
 const MAIN_DB7ADD49F62D := "Your solo progress remains here. Close and reopen the app before making another online identity."
 # Saved online rooms — body text
 const MAIN_1AF3E273600E := "Create an island room or join a friend's invitation to begin."
-# Apply foreground response — toast / status or error
-const MAIN_076E60DB25EC := "The room could not refresh. The rehearsal you have saved is not modified."
-# Apply foreground response — toast / status or error
-const MAIN_09164F93CEA2 := "It is your turn. You can record your next contribution."
-# Notification — toast / status or error
-const MAIN_A3FDAA4A9D35 := "The rehearsal failed to be saved. Leave the app open and try again."
 # Setup turn notifications — toast / status or error
 const MAIN_6FE6B224FD24 := "A shared room notification is prepared. Your current rehearsal is kept."
 # Turn notification settings — heading / label
@@ -2070,10 +1967,6 @@ const MAIN_55E41B8A33F9 := "You can delay your notification. Go back to rooms wh
 const MAIN_15214ED7911C := "That notification's room could not be opened. The work you have saved is not altered."
 # Notification route — toast / status or error
 const MAIN_310F42091578 := "The room notification could not be confirmed. Your saved work is unchanged."
-# Notification route — toast / status or error
-const MAIN_6DE42F59590C := "This room requires a compatible app. Your saved work is kept."
-# Notification route — toast / status or error
-const MAIN_22017C43B345 := "This room could not be saved on your device. Your previous room is kept."
 # Notification route — toast / status or error
 const MAIN_F4F6AF4420A6 := "This chapter needs a compatible app. Your saved work is kept."
 # Notification route — toast / status or error
@@ -2090,8 +1983,6 @@ const MAIN_B39BBA0B04B0 := "You must have an Android identity. Your existing sav
 const MAIN_A44444872701 := "Redeem a tester code once to unlock Full Journey. This identity can then use its securely saved tester access offline. Tester access is separate from a store purchase."
 # Tester access form — body text
 const MAIN_2E2A18416368 := "Recovered your identity or changed devices? Restore its existing tester access once while online."
-# Active tester access — body text
-const MAIN_A72C1BFFB5C9 := "You now have access to Full Journey, which includes six Lighthouse stages and five earlier islands. This identity's tester access is saved on this device for offline play."
 # Request tester access — body text
 const MAIN_C7E8A28B2803 := "An internet connection is needed for this check. Your purchase records and saved journeys stay unchanged."
 # Request tester access — message
@@ -2222,124 +2113,8 @@ const BEAM_FIELD_040A3B136A0E := "Active overrides must be a bounded object."
 const BEAM_FIELD_9D3F80045721 := "Overrides must be based on existing optical IDs."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_2BA97C2AA40E := "Unsupported active property of this optical entity."
-# Original island levels — First Light; first-player instructions
-const LEVELS_FCAAB14393CE := "Step on the glowing plate. Tap Throw and stay on the plate for your friend."
-# Original island levels — First Light; second-player instructions
-const LEVELS_F0CF60646202 := "Cross the bridge. Grab the seed close to the landing ring and take it to the garden."
-# Original island levels — Long Way Home; level subtitle
-const LEVELS_AD9C71391AE7 := "A little detour is still a way together."
-# Original island levels — Long Way Home; first-player instructions
-const LEVELS_8458EB83A8E6 := "Find the plate by the upper bridge. Throw from the plate and hold the way open."
-# Original island levels — Long Way Home; second-player instructions
-const LEVELS_FB8A19E4C344 := "Find the upper crossing before running for the landing ring."
-# Original island levels — Patient Garden; first-player instructions
-const LEVELS_D8035F26B3AC := "Your seed has a long, slow arc. Continue to hold the bridge open and observe it as it moves."
-# Original island levels — Patient Garden; second-player instructions
-const LEVELS_DE8B2984E267 := "Cross first and then follow the landing marker down to the garden."
-# Original island levels — Rising Together; first-player instructions
-const LEVELS_C9270C871E7B := "Stay on the plate after throwing the seed. The plate also raises your friend's garden."
-# Original island levels — Rising Together; second-player instructions
-const LEVELS_515718BC4DDC := "Ride the rising garden, catch the seed, and plant it when the lift is at the top."
-# Original island levels — Across the Blue; level subtitle
-const LEVELS_F7B9CD8B295A := "Leave a trail for your friend, then open another door."
-# Original island levels — Across the Blue; first-player instructions
-const LEVELS_D7DA86B17271 := "Throw from the first plate and then walk onto the second plate. You keep the bridge open with your throw."
-# Original island levels — Across the Blue; second-player instructions
-const LEVELS_83E8B2C01C2B := "When your friend's ghost opens the garden with the second plate, catch the seed."
-# Original island levels — Lantern Crossing; level subtitle
-const LEVELS_14E01148A8DC := "A patient light makes a narrow way."
-# Original island levels — Lantern Crossing; first-player instructions
-const LEVELS_3C8421B0B1D9 := "Continue standing on the plate while the lantern is filling. When full, toss the seed. The narrow bridge opens when charged."
-# Original island levels — Lantern Crossing; second-player instructions
-const LEVELS_EB1D58BC28D6 := "Wait for the light to turn on on the bridge, cross near the middle, and then return to the garden with the seed."
-# Original island levels — Two Beats; first-player instructions
-const LEVELS_C52DF6019FEF := "Charge the plate, throw, and then go to the second plate. Both steps are your friend's welcome."
-# Original island levels — Two Beats; second-player instructions
-const LEVELS_34DE370F8E0D := "Cross on the first beat, catch the seed, and wait for the second plate to open the garden."
-# Original island levels — After You; first-player instructions
-const LEVELS_931147CF81E5 := "Charge the bridge and allow the lift to rise. Throw, then open the garden from the second plate."
-# Original island levels — After You; second-player instructions
-const LEVELS_9FFE14D53B34 := "Go over the bridge your friend opened and go on through the garden that is rising. Plant the last seed together."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_B9DBD1FEC911 := "This version is not available for this island. Keep your already-saved turn for a compatible app version."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_732C8A86304F := "Must have a valid first player throw."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_CADBD2D5F1AE := "The previous contribution is not complete or does not replay properly. "
-# Additional source scan; review surrounding UI flow
-const SIMULATION_343AAE8F2694 := "Your turn is ready to preview."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_84F72447759A := "If you try again, your previous saved turn will be safe."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_B88ECE03351A := "This turn is not in play."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_8DF867E0EC3F := "The seed has already been tossed."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_3DDF4545BF87 := "Place your feet on the round plate."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_3F6FC1083B6F := "Hold the plate until its light is full."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_5A7D67E517F0 := "Keep on the plate as the garden rises on its lift."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_BA9D88F62E73 := "Release the action and then tap it again."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_83A4B1CD8694 := "Carry the seed to the flower ring."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_E7A9B58FB218 := "Wait for the other recording to open the garden."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_A69116CCB2F2 := "Wait for the garden to finish rising."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_CDF9705AB9AB := "The seed is not available to catch."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_92E7675E8C04 := "Wait for the seed to come."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_2CA375FFB671 := "Cross the bridge and then walk beside the seed."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_FE700AEC7181 := "Bad integer recording header."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_A7065E0BA136 := "The recording is from a different version of the island."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_EEB6EC15A71F := "Unsupported recording role or tick rate."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_65EE9C1DA03F := "Recording is too long."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_0B3F66E1F8D3 := "Action duration does not match the recording."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_86D5D8A34E00 := "The recording's integrity data is missing."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_74D25DB59148 := "Catch assistance setting is invalid."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_C210FDA75C2E := "The last recording check point is not present."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_16547CE289AD := "The previous recording reference is not included."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_05DFA7C369C1 := "The first turn changed; fork this attempt before replaying."
 # Additional source scan; review surrounding UI flow
 const SIMULATION_88FACE52603B := "Actions are taken after a turn is completed."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_9F3224C1B019 := "A recording checkpoint does not match its actions."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_E24D1B49B27F := "The recording result is not aligned with its actions."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_6ED98B29C4F8 := "Stand on the round plate to open the bridge and throw."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_71A299AFBDA5 := "Stay on the plate until its light is full. Then tap Throw."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_B1028A196B10 := "While your friend's garden is rising, stand on the plate. Once the garden has risen to the top, throw from the plate without getting off."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_A1FC4C4C9D7B := "Open the second plate for your friend."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_E93B731FD846 := "Stay on the plate. Your friend will walk across next to your ghost."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_BC9223BF7105 := "The seed faded. Rehearse again; your friend's recording is still here."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_38BBE45E2EE8 := "You caught it! Tap Plant after carrying the seed to the flower ring."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_2F4C612EABA7 := "Carry the seed to the flower ring before planting."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_CD1E043B50DB := "Wait for your friend's ghost to open the garden from the second plate."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_8F02A0803840 := "Wait until the garden has fully risen before planting."
 # Shared action buttons — record action; tooltip
 const ACTION_BUTTONS_720AD17C8CC7 := "Begin making a recording of this turn."
 # Shared action buttons — resume action; tooltip
@@ -2661,12 +2436,12 @@ const RELAY_ONLINE_SESSION_268ED4C8A12F := "This service does not have online ch
 const RELAY_ONLINE_SESSION_58EDF3D26999 := "The room list could not be verified. Rooms that have been saved are still available."
 # Online chapter room status and errors — Status or error (load lobby)
 const RELAY_ONLINE_SESSION_EDC8E84089EF := "Unsupported data is present in the room list. Saved rooms are kept."
-# Online chapter room status and errors — Status or error (can leave for legacy)
-const RELAY_ONLINE_SESSION_78B4A09B905D := "Do not join an earlier island until the current chapter request has been completed."
-# Online chapter room status and errors — Status or error (can leave for legacy)
+# Online chapter room status and errors — Status or error (can leave the room)
+const RELAY_ONLINE_SESSION_78B4A09B905D := "Wait until the current chapter request has finished."
+# Online chapter room status and errors — Status or error (can leave the room)
 const RELAY_ONLINE_SESSION_800EE194F524 := "Check the saved request to create or join a chapter before continuing."
-# Online chapter room status and errors — Status or error (can leave for legacy)
-const RELAY_ONLINE_SESSION_1BE2F671819A := "Check the current chapter's saved submission before joining an earlier island."
+# Online chapter room status and errors — Status or error (can leave the room)
+const RELAY_ONLINE_SESSION_1BE2F671819A := "Check the current chapter's saved submission before continuing."
 # Online chapter room status and errors — Status or error (create room)
 const RELAY_ONLINE_SESSION_7805B3DE8AEB := "This chapter is not enabled by the service. Existing rooms and local practice are kept."
 # Online chapter room status and errors — Status or error (create room)
@@ -2988,8 +2763,6 @@ const TURN_PHOTO_CONTROLLER_AE5752E9DE40 := "The photo service was not available
 const TURN_PHOTO_CONTROLLER_73EB9E586D0B := "This picture was sent to the original phones. Get its temporary photo transfer (if one was made) on this phone."
 # Reaction photo request and storage errors — Status or error (fail)
 const TURN_PHOTO_CONTROLLER_B32D65DAE5AF := "The image is not available. Try again or pass it up; it doesn't affect your game contribution."
-# Turn recording validation — Status or error (review)
-const TURN_STATE_6DB429755E0C := "There is no recording available."
 # Additional source scan; review surrounding UI flow
 const SIMULATION_2CF4E6F7E5E5 := "Unsupported chapter definition or version."
 # Additional source scan; review surrounding UI flow
@@ -3274,9 +3047,6 @@ const STAGE_CATALOG_A4E97D8E7D9E := "Remove the seed from the relay. Stand on th
 const STAGE_CATALOG_D433013BE215 := "Follow both bridges, collect the seed and plant it."
 
 # Compact objective caption or numeric display.
-const OBJECTIVE_PANEL_29F874E70B59 := "Bridge charge"
-
-# Compact objective caption or numeric display.
 const LIGHTHOUSE_PREVIEW_D286213698F0 := "Beams together"
 
 # Compact objective caption or numeric display.
@@ -3443,7 +3213,6 @@ const TEXT := {
 	"lighthouse_preview.3feaadb6698f": LIGHTHOUSE_PREVIEW_3FEAADB6698F,
 	"lighthouse_preview.7d9e3287c90c": LIGHTHOUSE_PREVIEW_7D9E3287C90C,
 	"lighthouse_preview.d286213698f0": LIGHTHOUSE_PREVIEW_D286213698F0,
-	"objective_panel.29f874e70b59": OBJECTIVE_PANEL_29F874E70B59,
 	"lighthouse_preview.e52c132c24be": LIGHTHOUSE_PREVIEW_E52C132C24BE,
 	"lighthouse_preview.da74c3a728fc": LIGHTHOUSE_PREVIEW_DA74C3A728FC,
 	"lighthouse_preview.e51024e31751": LIGHTHOUSE_PREVIEW_E51024E31751,
@@ -3515,33 +3284,9 @@ const TEXT := {
 	"main.73ebec98c7f5": MAIN_73EBEC98C7F5,
 	"main.1db48306b203": MAIN_1DB48306B203,
 	"main.f88b3cebd7ba": MAIN_F88B3CEBD7BA,
-	"main.042c89c38b20": MAIN_042C89C38B20,
 	"main.fcb8424b7f88": MAIN_FCB8424B7F88,
 	"main.a776cd47c8d9": MAIN_A776CD47C8D9,
 	"main.eb8856600899": MAIN_EB8856600899,
-	"main.996946e90346": MAIN_996946E90346,
-	"main.0984b81f14ab": MAIN_0984B81F14AB,
-	"main.ccb173fd54cf": MAIN_CCB173FD54CF,
-	"main.408402d8e83c": MAIN_408402D8E83C,
-	"main.0141427332b8": MAIN_0141427332B8,
-	"main.ea192fa7b9b0": MAIN_EA192FA7B9B0,
-	"main.cbfd9eb78dbc": MAIN_CBFD9EB78DBC,
-	"main.6f96dcc47a05": MAIN_6F96DCC47A05,
-	"main.32a4e00f108c": MAIN_32A4E00F108C,
-	"main.92f966458583": MAIN_92F966458583,
-	"main.a01274c34177": MAIN_A01274C34177,
-	"main.cd2f00e32fc5": MAIN_CD2F00E32FC5,
-	"main.c4e0c9a50b65": MAIN_C4E0C9A50B65,
-	"main.1a6455ed3e4b": MAIN_1A6455ED3E4B,
-	"main.754724c78f04": MAIN_754724C78F04,
-	"main.a74dfebb0414": MAIN_A74DFEBB0414,
-	"main.d808b160901a": MAIN_D808B160901A,
-	"main.5dd61cc297cd": MAIN_5DD61CC297CD,
-	"main.78df8178bc2b": MAIN_78DF8178BC2B,
-	"main.b94c73e90e5b": MAIN_B94C73E90E5B,
-	"main.1a19af19edb1": MAIN_1A19AF19EDB1,
-	"main.9e4ff2796d8f": MAIN_9E4FF2796D8F,
-	"main.359b02b14b2e": MAIN_359B02B14B2E,
 	"main.43adb38d37bc": MAIN_43ADB38D37BC,
 	"main.1e12325b0b49": MAIN_1E12325B0B49,
 	"main.529cfae68df1": MAIN_529CFAE68DF1,
@@ -3562,9 +3307,7 @@ const TEXT := {
 	"main.dd823b20a782": MAIN_DD823B20A782,
 	"main.f28f6ed35157": MAIN_F28F6ED35157,
 	"main.772330a32e7d": MAIN_772330A32E7D,
-	"main.8a5d2c91b813": MAIN_8A5D2C91B813,
 	"main.fad34e850ed9": MAIN_FAD34E850ED9,
-	"main.58c214dfc790": MAIN_58C214DFC790,
 	"main.38eac523f08c": MAIN_38EAC523F08C,
 	"main.c5fdba9ba79b": MAIN_C5FDBA9BA79B,
 	"main.4a6b2c83e605": MAIN_4A6B2C83E605,
@@ -3578,7 +3321,6 @@ const TEXT := {
 	"main.3a4a78824ac3": MAIN_3A4A78824AC3,
 	"main.c372e9dbd93a": MAIN_C372E9DBD93A,
 	"main.f87b75b52317": MAIN_F87B75B52317,
-	"main.e0448d410d86": MAIN_E0448D410D86,
 	"main.8184deb41266": MAIN_8184DEB41266,
 	"main.ed8e80825350": MAIN_ED8E80825350,
 	"main.07713e9cc81e": MAIN_07713E9CC81E,
@@ -3594,25 +3336,7 @@ const TEXT := {
 	"main.3e8e7da4cee6": MAIN_3E8E7DA4CEE6,
 	"main.f0a53024d858": MAIN_F0A53024D858,
 	"main.71b742112d9f": MAIN_71B742112D9F,
-	"main.22fbaef49772": MAIN_22FBAEF49772,
-	"main.8046bbd776ca": MAIN_8046BBD776CA,
 	"main.1aac5be95e22": MAIN_1AAC5BE95E22,
-	"main.fac85d5e6ca7": MAIN_FAC85D5E6CA7,
-	"main.bd6413254ab9": MAIN_BD6413254AB9,
-	"main.52c04f6029f5": MAIN_52C04F6029F5,
-	"main.2fb9511d4aa8": MAIN_2FB9511D4AA8,
-	"main.9f721149f702": MAIN_9F721149F702,
-	"main.b701225fd961": MAIN_B701225FD961,
-	"main.f7b46601cbc3": MAIN_F7B46601CBC3,
-	"main.ecbd713d8f0c": MAIN_ECBD713D8F0C,
-	"main.52480e5314f5": MAIN_52480E5314F5,
-	"main.602a7bd28b67": MAIN_602A7BD28B67,
-	"main.a917fc21e486": MAIN_A917FC21E486,
-	"main.2a20737aa436": MAIN_2A20737AA436,
-	"main.6d127185abf4": MAIN_6D127185ABF4,
-	"main.bcd95f847cf2": MAIN_BCD95F847CF2,
-	"main.f817d954e490": MAIN_F817D954E490,
-	"main.c9dd5a234c97": MAIN_C9DD5A234C97,
 	"main.ec79109d7607": MAIN_EC79109D7607,
 	"main.f890477c65de": MAIN_F890477C65DE,
 	"main.93bf3a28c6f9": MAIN_93BF3A28C6F9,
@@ -3663,9 +3387,6 @@ const TEXT := {
 	"main.5367370eb8be": MAIN_5367370EB8BE,
 	"main.db7add49f62d": MAIN_DB7ADD49F62D,
 	"main.1af3e273600e": MAIN_1AF3E273600E,
-	"main.076e60db25ec": MAIN_076E60DB25EC,
-	"main.09164f93cea2": MAIN_09164F93CEA2,
-	"main.a3fdaa4a9d35": MAIN_A3FDAA4A9D35,
 	"main.6fe6b224fd24": MAIN_6FE6B224FD24,
 	"main.7ee625c6ec26": MAIN_7EE625C6EC26,
 	"main.ef43e19393e4": MAIN_EF43E19393E4,
@@ -3673,8 +3394,6 @@ const TEXT := {
 	"main.55e41b8a33f9": MAIN_55E41B8A33F9,
 	"main.15214ed7911c": MAIN_15214ED7911C,
 	"main.310f42091578": MAIN_310F42091578,
-	"main.6de42f59590c": MAIN_6DE42F59590C,
-	"main.22017c43b345": MAIN_22017C43B345,
 	"main.f4f6af4420a6": MAIN_F4F6AF4420A6,
 	"main.571e92f64ed1": MAIN_571E92F64ED1,
 	"main.be8e691311ee": MAIN_BE8E691311EE,
@@ -3683,7 +3402,6 @@ const TEXT := {
 	"main.b39bba0b04b0": MAIN_B39BBA0B04B0,
 	"main.a44444872701": MAIN_A44444872701,
 	"main.2e2a18416368": MAIN_2E2A18416368,
-	"main.a72c1bffb5c9": MAIN_A72C1BFFB5C9,
 	"main.c7e8a28b2803": MAIN_C7E8A28B2803,
 	"main.b7c7e85171cd": MAIN_B7C7E85171CD,
 	"main.85b232c00485": MAIN_85B232C00485,
@@ -3743,65 +3461,7 @@ const TEXT := {
 	"beam_field.040a3b136a0e": BEAM_FIELD_040A3B136A0E,
 	"beam_field.9d3f80045721": BEAM_FIELD_9D3F80045721,
 	"beam_field.2ba97c2aa40e": BEAM_FIELD_2BA97C2AA40E,
-	"levels.fcaab14393ce": LEVELS_FCAAB14393CE,
-	"levels.f0cf60646202": LEVELS_F0CF60646202,
-	"levels.ad9c71391ae7": LEVELS_AD9C71391AE7,
-	"levels.8458eb83a8e6": LEVELS_8458EB83A8E6,
-	"levels.fb8a19e4c344": LEVELS_FB8A19E4C344,
-	"levels.d8035f26b3ac": LEVELS_D8035F26B3AC,
-	"levels.de8b2984e267": LEVELS_DE8B2984E267,
-	"levels.c9270c871e7b": LEVELS_C9270C871E7B,
-	"levels.515718bc4ddc": LEVELS_515718BC4DDC,
-	"levels.f7b9cd8b295a": LEVELS_F7B9CD8B295A,
-	"levels.d7da86b17271": LEVELS_D7DA86B17271,
-	"levels.83e8b2c01c2b": LEVELS_83E8B2C01C2B,
-	"levels.14e01148a8dc": LEVELS_14E01148A8DC,
-	"levels.3c8421b0b1d9": LEVELS_3C8421B0B1D9,
-	"levels.eb1d58bc28d6": LEVELS_EB1D58BC28D6,
-	"levels.c52df6019fef": LEVELS_C52DF6019FEF,
-	"levels.34de370f8e0d": LEVELS_34DE370F8E0D,
-	"levels.931147cf81e5": LEVELS_931147CF81E5,
-	"levels.9ffe14d53b34": LEVELS_9FFE14D53B34,
-	"simulation.b9dbd1fec911": SIMULATION_B9DBD1FEC911,
-	"simulation.732c8a86304f": SIMULATION_732C8A86304F,
-	"simulation.cadbd2d5f1ae": SIMULATION_CADBD2D5F1AE,
-	"simulation.343aae8f2694": SIMULATION_343AAE8F2694,
-	"simulation.84f72447759a": SIMULATION_84F72447759A,
-	"simulation.b88ece03351a": SIMULATION_B88ECE03351A,
-	"simulation.8df867e0ec3f": SIMULATION_8DF867E0EC3F,
-	"simulation.3ddf4545bf87": SIMULATION_3DDF4545BF87,
-	"simulation.3f6fc1083b6f": SIMULATION_3F6FC1083B6F,
-	"simulation.5a7d67e517f0": SIMULATION_5A7D67E517F0,
-	"simulation.ba9d88f62e73": SIMULATION_BA9D88F62E73,
-	"simulation.83a4b1cd8694": SIMULATION_83A4B1CD8694,
-	"simulation.e7a9b58fb218": SIMULATION_E7A9B58FB218,
-	"simulation.a69116ccb2f2": SIMULATION_A69116CCB2F2,
-	"simulation.cdf9705ab9ab": SIMULATION_CDF9705AB9AB,
-	"simulation.92e7675e8c04": SIMULATION_92E7675E8C04,
-	"simulation.2ca375ffb671": SIMULATION_2CA375FFB671,
-	"simulation.fe700aec7181": SIMULATION_FE700AEC7181,
-	"simulation.a7065e0ba136": SIMULATION_A7065E0BA136,
-	"simulation.eeb6ec15a71f": SIMULATION_EEB6EC15A71F,
-	"simulation.65ee9c1da03f": SIMULATION_65EE9C1DA03F,
-	"simulation.0b3f66e1f8d3": SIMULATION_0B3F66E1F8D3,
-	"simulation.86d5d8a34e00": SIMULATION_86D5D8A34E00,
-	"simulation.74d25db59148": SIMULATION_74D25DB59148,
-	"simulation.c210fda75c2e": SIMULATION_C210FDA75C2E,
-	"simulation.16547ce289ad": SIMULATION_16547CE289AD,
-	"simulation.05dfa7c369c1": SIMULATION_05DFA7C369C1,
 	"simulation.88face52603b": SIMULATION_88FACE52603B,
-	"simulation.9f3224c1b019": SIMULATION_9F3224C1B019,
-	"simulation.e24d1b49b27f": SIMULATION_E24D1B49B27F,
-	"simulation.6ed98b29c4f8": SIMULATION_6ED98B29C4F8,
-	"simulation.71a299afbda5": SIMULATION_71A299AFBDA5,
-	"simulation.b1028a196b10": SIMULATION_B1028A196B10,
-	"simulation.a1fc4c4c9d7b": SIMULATION_A1FC4C4C9D7B,
-	"simulation.e93b731fd846": SIMULATION_E93B731FD846,
-	"simulation.bc9223bf7105": SIMULATION_BC9223BF7105,
-	"simulation.38bbe45e2ee8": SIMULATION_38BBE45E2EE8,
-	"simulation.2f4c612eaba7": SIMULATION_2F4C612EABA7,
-	"simulation.cd1e043b50db": SIMULATION_CD1E043B50DB,
-	"simulation.8f02a0803840": SIMULATION_8F02A0803840,
 	"action_buttons.720ad17c8cc7": ACTION_BUTTONS_720AD17C8CC7,
 	"action_buttons.b35f6908bd12": ACTION_BUTTONS_B35F6908BD12,
 	"action_buttons.e434ab682f32": ACTION_BUTTONS_E434AB682F32,
@@ -4123,7 +3783,6 @@ const TEXT := {
 	"turn_photo_controller.ae5752e9de40": TURN_PHOTO_CONTROLLER_AE5752E9DE40,
 	"turn_photo_controller.73eb9e586d0b": TURN_PHOTO_CONTROLLER_73EB9E586D0B,
 	"turn_photo_controller.b32d65dae5af": TURN_PHOTO_CONTROLLER_B32D65DAE5AF,
-	"turn_state.6db429755e0c": TURN_STATE_6DB429755E0C,
 	"simulation.2cf4e6f7e5e5": SIMULATION_2CF4E6F7E5E5,
 	"simulation.d25439f75f03": SIMULATION_D25439F75F03,
 	"simulation.25877edfe987": SIMULATION_25877EDFE987,
@@ -4311,25 +3970,6 @@ const CANONICAL_KEYS := {
 	"Your partner requires additional time in the light.": "snapshot.friend_8",
 	"Throw earlier so your partner has time to catch and deliver the seed.": "snapshot.friend_9",
 	"You were here. I was here. We made this.": "relay_preview.afc92040f3db",
-	"Stand on the glowing plate. Tap Throw, then stay there for your friend.": "levels.fcaab14393ce",
-	"Cross the bridge. Catch the seed near its landing ring, then bring it to the garden.": "levels.f0cf60646202",
-	"A little detour is still a way together.": "levels.ad9c71391ae7",
-	"Find the plate by the upper bridge. Throw from the plate and hold the way open.": "levels.8458eb83a8e6",
-	"Find the upper crossing before running for the landing ring.": "levels.fb8a19e4c344",
-	"Your seed takes a long, gentle arc. Hold the bridge and watch it travel.": "levels.d8035f26b3ac",
-	"Cross first, then follow the landing marker down to the garden.": "levels.de8b2984e267",
-	"Keep the plate held after your throw. It also raises your friend's garden.": "levels.c9270c871e7b",
-	"Ride the rising garden, catch the seed, then plant it when the lift reaches the top.": "levels.515718bc4ddc",
-	"Leave a path, then open another door.": "levels.f7b9cd8b295a",
-	"Throw from the first plate, then walk onto the second plate. Your throw keeps the bridge open.": "levels.d7da86b17271",
-	"Catch the seed while your friend's ghost opens the garden with the second plate.": "levels.83e8b2c01c2b",
-	"A patient light makes a narrow way.": "levels.14e01148a8dc",
-	"Hold the plate until the lantern fills, then throw. The narrow bridge opens when charged.": "levels.3c8421b0b1d9",
-	"Wait for the bridge's light, cross near its center, then carry the seed back to the garden.": "levels.eb1d58bc28d6",
-	"Charge the plate, throw, then move to the second plate. Both steps become your friend's welcome.": "levels.c52df6019fef",
-	"Cross on the first beat, catch the seed, and wait for the second plate to open the garden.": "levels.34de370f8e0d",
-	"Charge the bridge and let the lift rise. Throw, then open the garden from the second plate.": "levels.931147cf81e5",
-	"Follow your friend's path through the bridge and rising garden. Plant your last seed together.": "levels.9ffe14d53b34",
 	"Stand on the power pad. Keep it glowing, then finish your recording.": "stage_catalog.2c27c6d030c4",
 	"Step onto the low lift. Ride up, walk to the bell and ring it.": "stage_catalog.9c41fef5e8f3",
 	"Take the seed upstairs. Throw from the marked edge, then open the garden with the other pad.": "stage_catalog.e2903051e240",

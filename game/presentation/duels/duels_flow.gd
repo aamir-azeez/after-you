@@ -32,7 +32,7 @@ extends Node
 ##   _friends_client, _friend_display_name, pollen_client and fruit_spend_flow
 ##   (duel energy's wallet read and refill)
 ## - screen: mode, ui, application_backgrounded, _toast, _online_gated,
-##   _relay_available, _ensure_identity
+##   _ensure_identity
 ## - chapters: _chapter_unlocks, _full_journey_access, _paid_content_hidden
 ## - rooms: relay_lobby_flow (open_lobby, lobby_action, join_room), relay_child;
 ##   Main._return_to_room_hub asks return_instead() first

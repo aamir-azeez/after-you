@@ -45,7 +45,6 @@ func load_level(definition: Dictionary) -> void:
 	actor_badges.clear()
 	island_visuals.clear()
 	bridge_parts.clear()
-	lift_guides.clear()
 	flowers.clear()
 	garden_petals.clear()
 	garden = null

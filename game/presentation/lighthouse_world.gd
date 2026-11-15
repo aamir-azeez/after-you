@@ -114,8 +114,6 @@ func load_level(definition: Dictionary) -> void:
 	garden = null
 	landing_marker = null
 	lift = null
-	gate_plate = null
-	lift_guides.clear()
 	home_view = false
 	bloomed = false
 	_wake = false

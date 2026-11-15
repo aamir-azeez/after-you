@@ -6,7 +6,7 @@ extends Node
 ## through one busy-tap gate.
 ##
 ## Main hosts it as a child and keeps the room session, Friends and the relay
-## lobby; the legacy room is LegacyRoomFlow's. The flow keeps the hub's own state: the screen, its
+## lobby. The flow keeps the hub's own state: the screen, its
 ## inbox, and the chapter and visibility last chosen. It asks Main to navigate
 ## through the signals below, and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
@@ -17,13 +17,11 @@ extends Node
 ##   _chapter_unlocks
 ## Main's chapter unlocks read known_rooms(), from the same room list client
 ## the hub draws (rooms_client()).
-## - screen: mode, running, ui, overlay, store_view_generation, lifecycle_generation,
+## - screen: mode, ui, overlay, store_view_generation, lifecycle_generation,
 ##   application_backgrounded, _toast
-## - room flow: active_room, _relay_available,
-##   _return_to_room_hub, _settle_room_flow, _online_flow_idle,
-##   _room_session_idle, _prepare_ordinary_navigation, _friends_route_context,
+## - room flow: _return_to_room_hub, _settle_room_flow, _room_session_idle, _prepare_ordinary_navigation, _friends_route_context,
 ##   _friends_route_current, _show_friends, forget_removed_room,
-##   legacy_room_flow (open_room, join_room), relay_lobby_flow (open_lobby,
+##   relay_lobby_flow (open_lobby,
 ##   lobby_action, join_room)
 ## - card kit: _card, _label, _paragraph, _list_button, _back_button
 ## - names and friends: display_name_flow (maybe_ask, the first-run name prompt),
@@ -31,14 +29,12 @@ extends Node
 ## - node: add_child (the hub layer stays Main's child)
 ## Main asks is_open() and drives the hub through go_back(), redraw_chapters()
 ## and refresh(). It calls release() when another screen replaces the hub, and
-## drop() when Friends takes over or the identity changes. After a block it
-## calls hide_room() so the hub's saved list never shows the blocked room.
+## drop() when Friends takes over or the identity changes.
 ## RelayLobbyFlow calls select_chapter() when a chapter's rooms are checked.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
-const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
@@ -130,7 +126,6 @@ func _process(_delta: float) -> void:
 func show_rooms() -> void:
 	if host._online_gated(): return
 	if not host.api.configured():
-		host.running=false
 		host.mode=MODE_ROOMS
 		var frame: VBoxContainer = host._card(700)
 		frame.add_child(host._label(PlayerCopy.MAIN_3A4A78824AC3,34,CREAM,true))
@@ -141,7 +136,7 @@ func show_rooms() -> void:
 	if is_instance_valid(screen): return
 	var view: int = host.store_view_generation
 	var lifecycle: int = host.lifecycle_generation
-	if not host._relay_available() or not await host._ensure_identity(): return
+	if not await host._ensure_identity(): return
 	if view != host.store_view_generation or lifecycle != host.lifecycle_generation or host.application_backgrounded: return
 	# A note from the check stays on the hub's own notice.
 	var report := {"text": ""}
@@ -184,7 +179,6 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	if is_instance_valid(screen):
 		screen.show_notice(notice)
 		return
-	host.running=false
 	host.mode=MODE_ROOMS
 	host.ui.visible=false
 	inbox = rooms_client()
@@ -287,13 +281,6 @@ func _leave(keep_inbox: bool = false) -> void:
 	if not keep_inbox: inbox = null
 	host.ui.visible = true
 
-## Takes a room off this device's saved hub list, as Remove from list does,
-## whether or not the hub is up. New activity in the room brings it back.
-func hide_room(version: int, room_id: String) -> void:
-	var client: RefCounted = inbox if inbox != null else rooms_client()
-	for room: Dictionary in client.view().rooms:
-		if int(room.get("api_version",0)) == version and str(room.get("room_id","")) == room_id: client.hide(room)
-
 ## The hub can open before the saved tester code is read; once it is, the
 ## hosting locks are drawn again so a tester never keeps a stale lock.
 ## The host panel's Hard chip: shown only once the server says it hosts hard
@@ -329,7 +316,7 @@ func refresh_when_idle(hub: CanvasLayer) -> void:
 func _lists_finished_room() -> bool:
 	if inbox == null: return false
 	for room: Dictionary in inbox.view().get("rooms",[]):
-		if room.get("status") == "completed" and int(room.get("api_version",0)) in [1,2] and inbox.confirmed(room): return true
+		if room.get("status") == "completed" and int(room.get("api_version",0)) == 2 and inbox.confirmed(room): return true
 	return false
 
 func _leave_offered() -> bool:
@@ -351,7 +338,7 @@ func _remove_room(room: Dictionary, action: String) -> void:
 		client.hide(room)
 		hub.show_notice("")
 		return
-	if version not in [1,2]: return
+	if version != 2: return
 	var identity: String = host._tester_context()
 	var path := "/v%d/rooms/%s" % [version,room_id]
 	hub.set_removing(true)
@@ -528,7 +515,7 @@ func _partner_friend(room: Dictionary) -> Dictionary:
 	for member: Variant in room.get("member_ids", []):
 		if str(member) != str(host.api.player_id): partner = str(member)
 	var family := str(room.get("family", ""))
-	return {"state": host.partner_friends.state(partner, family if family in ["legacy", "relay"] else "", str(room.get("room_id", ""))), "partner": partner}
+	return {"state": host.partner_friends.state(partner, family if family == "relay" else "", str(room.get("room_id", ""))), "partner": partner}
 
 ## Add friend from a finished room's menu: the ordinary friend request.
 func _add_partner_friend(room: Dictionary, partner: String) -> void:
@@ -552,7 +539,7 @@ func _open_friends(source: Control = null) -> void:
 	if host.mode != MODE_ROOMS: return
 	# The hub stays up until Friends opens (_show_friends drops it then), so
 	# a refused open reports its reason on the hub.
-	await _tap(source, PlayerCopy.HUB_OPENING, host._online_flow_idle, PlayerCopy.HUB_FRIENDS_WAIT_EXPIRED, host._show_friends.bind(message))
+	await _tap(source, PlayerCopy.HUB_OPENING, Callable(), PlayerCopy.HUB_FRIENDS_WAIT_EXPIRED, host._show_friends.bind(message))
 
 func _tap(source: Control, label: String, ready: Callable, expired: String, run: Callable, room_id: String = "") -> void:
 	_tap_room = room_id
@@ -588,7 +575,7 @@ func _open_room(room: Dictionary, source: Control = null) -> void:
 	if room_id.is_empty(): return
 	# Watch replay on a finished room opens the Together page at once; it handles
 	# a save still in progress itself. A room in play waits for its flow.
-	var waits_for: Callable = Callable() if room.get("status") == "completed" else host._room_session_idle if version == 2 else host._online_flow_idle
+	var waits_for: Callable = Callable() if room.get("status") == "completed" else host._room_session_idle
 	await _tap(source, PlayerCopy.HUB_OPENING_ROOM, waits_for, PlayerCopy.MAIN_8184DEB41266, _open_room_now.bind(room), room_id)
 
 func _open_room_now(room: Dictionary) -> void:
@@ -606,11 +593,6 @@ func _open_room_now(room: Dictionary) -> void:
 		await host.relay_lobby_flow.lobby_action("open",room_id)
 		if host.mode == "relay_online" and host.relay_session != null and host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("room_id") == room_id:
 			if client != null: client.confirm_room_rendered(2,room_id)
-	elif version == 1:
-		await host.legacy_room_flow.open_room(room_id)
-		if host.mode == LegacyRoomFlow.MODE_ROOM and Typed.equal(host.active_room.get("room_id"), room_id):
-			if client != null: client.confirm_room_rendered(1,room_id)
-		else: host._settle_room_flow()
 	else:
 		host._return_to_room_hub("This room can't be opened on this version of After You.")
 
@@ -654,7 +636,7 @@ func _open_tester_code() -> void:
 
 func _join(code: String, source: Control = null) -> void:
 	if host.mode != MODE_ROOMS or not host._relay_identity().ready: return
-	# Accept room-<code> and legacy input; a friend code gets a clear local error.
+	# Accept room-<code> and unprefixed input; a friend code gets a clear local error.
 	var parsed := ShareCodes.parse(code,ShareCodes.ROOM)
 	if not parsed.ok:
 		message(ShareCodes.error_message(parsed,PlayerCopy.ROOMS_API_57B8AA801916))
@@ -678,14 +660,11 @@ func _join_code(code: String) -> void:
 		message(str(response.get("error","Invitation unavailable")))
 		return
 	var data: Variant = response.get("data")
-	if not data is Dictionary or data.size() != 3 or not Typed.equal(data.get("schema_version"), 1) or data.get("family") not in ["legacy","relay"] or RoomsApi.json_int(data.get("api_version")) not in [1,2]:
+	if not data is Dictionary or data.size() != 3 or not Typed.equal(data.get("schema_version"), 1) or data.get("family") != "relay" or RoomsApi.json_int(data.get("api_version")) != 2:
 		message("Invitation unavailable")
 		return
 	_leave()
-	if data.api_version == 2:
-		await host.relay_lobby_flow.join_room(code)
-	else:
-		await host.legacy_room_flow.join_room(code)
+	await host.relay_lobby_flow.join_room(code)
 	# A join that stopped short (refused, or not allowed now) brings the hub
 	# back with its reason; one that opened a room leaves it be.
 	host._settle_room_flow()

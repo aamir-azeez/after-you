@@ -10,7 +10,6 @@ signal mechanism_moving(kind: String, id: String, direction: int)
 
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
-const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
@@ -63,9 +62,7 @@ var _seed_launch_point := Vector3.ZERO
 var _seed_spin_axis := Vector3.ZERO
 var bridge_parts: Array[MeshInstance3D] = []
 var plate: MeshInstance3D
-var gate_plate: MeshInstance3D
 var lift: Node3D
-var lift_guides: Array[MeshInstance3D] = []
 var landing_marker: Node3D
 var garden: Node3D
 var camera: Camera3D
@@ -385,9 +382,7 @@ func load_level(level: Dictionary) -> void:
 	bridge_parts.clear()
 	flowers.clear()
 	bloomed = false
-	gate_plate = null
 	lift = null
-	lift_guides.clear()
 	var palettes := [Color("a6c9a0"),Color("9fc8b8"),Color("c5c7a3"),Color("abbfc5"),Color("8ec6b5"),Color("bbb4cd"),Color("d0bdac"),Color("adcbb1")]
 	var index := int(level.get("index",0))
 	var grass: Color = palettes[index % palettes.size()]
@@ -440,12 +435,6 @@ func load_level(level: Dictionary) -> void:
 	goal_ring = ring(0.49,Color("dce2b3"),Vector3(0,0.12,0),garden)
 	goal_ring.name="GoalRing"
 	_create_garden()
-	if level.has("gate"):
-		var gp := point(level.gate.plate)
-		gate_plate=cylinder(0.48,0.10,Color("c0a6dc"),gp+Vector3(0,0.06,0),terrain)
-		ring(0.53,CREAM,gp+Vector3(0,0.12,0),terrain)
-	if level.has("lift"):
-		_create_lift(level.lift.zone)
 	for role in ["a","b"]:
 		var actor := _create_spirit(GOLD if role=="a" else TEAL)
 		actor.position=point(level.starts[role])
@@ -471,7 +460,9 @@ func show_keepsake_landmark(stage_id: String) -> void:
 		if item.stage_id == stage_id:
 			descriptor = item
 			break
-	if descriptor.is_empty() or not is_instance_valid(terrain): return
+	# A chapter's corner shows its Home keepsake's first look.
+	var home: Dictionary = {} if descriptor.is_empty() else ChapterIndex.home_keepsake(str(descriptor.family))
+	if home.is_empty() or not is_instance_valid(terrain): return
 	var rect: Array = current_level.get("bounds", [-560,-290,560,290]).duplicate()
 	var height := 0.0
 	if not current_level.get("islands", []).is_empty():
@@ -498,22 +489,13 @@ func show_keepsake_landmark(stage_id: String) -> void:
 	keepsake_landmark.position = Vector3(best.x/100.0,height,best.y/100.0)
 	terrain.add_child(keepsake_landmark)
 	cylinder(0.43,0.16,Color("a8a38a"),Vector3(0,0.08,0),keepsake_landmark)
-	# A chapter's corner shows its Home keepsake's first look; an earlier island
-	# keeps its own small keepsake.
-	var home: Dictionary = {} if str(descriptor.family) == "earlier" else ChapterIndex.home_keepsake(str(descriptor.family))
-	var prop: Node3D
-	var size := 0.62
-	if home.is_empty():
-		prop = KeepsakeVisual.create(self,descriptor)
-	else:
-		prop = Node3D.new()
-		prop.name = "Keepsake_" + str(descriptor.family).replace("-", "_")
-		var builder: RefCounted = load(str(home.keepsake.builder)).new()
-		builder.build(prop, {})
-		# Home's keepsakes are drawn large; the corner shows one as small as it fits.
-		size = builder.landmark_scale()
+	var prop := Node3D.new()
+	prop.name = "Keepsake_" + str(descriptor.family).replace("-", "_")
+	var builder: RefCounted = load(str(home.keepsake.builder)).new()
+	builder.build(prop, {})
 	prop.position.y = 0.17
-	prop.scale = Vector3.ONE*size
+	# Home's keepsakes are drawn large; the corner shows one as small as it fits.
+	prop.scale = Vector3.ONE*builder.landmark_scale()
 	keepsake_landmark.add_child(prop)
 
 func _keepsake_points(value: Variant, result: Array[Vector2]) -> void:
@@ -528,64 +510,15 @@ func _keepsake_points(value: Variant, result: Array[Vector2]) -> void:
 func point(coords: Array) -> Vector3:
 	return Vector3(float(coords[0])/100.0,0,float(coords[1])/100.0)
 
-func _create_lift(zone: Array) -> void:
-	var width := float(zone[2]-zone[0])/100.0
-	var depth := float(zone[3]-zone[1])/100.0
-	var center := Vector3(float(zone[0]+zone[2])/200.0,0,float(zone[1]+zone[3])/200.0)
-	lift=Node3D.new()
-	lift.name="LiftDeck"
-	lift.position=center
-	terrain.add_child(lift)
-	# The root is the simulation's walking surface. All structure stays below it;
-	# the original rectangular footprint is covered even between the plank seams.
-	box(Vector3(width,0.12,depth),Color("77614f"),Vector3(0,-0.14,0),lift).name="DeckBase"
-	var planks := Node3D.new()
-	planks.name="Planks"
-	lift.add_child(planks)
-	var plank_colors := [Color("bda27e"),Color("c9af8a"),Color("c2a481"),Color("b99b77")]
-	for i in range(8):
-		var z := -depth/2.0+(float(i)+0.5)*depth/8.0
-		box(Vector3(width-0.12,0.08,depth/8.0-0.018),plank_colors[i%plank_colors.size()],Vector3(0,-0.04,z),planks)
-	var beams := Node3D.new()
-	beams.name="EdgeBeams"
-	lift.add_child(beams)
-	for side in [-1,1]:
-		box(Vector3(0.12,0.18,depth),Color("917253"),Vector3(side*(width/2.0-0.06),-0.10,0),beams)
-		box(Vector3(width-0.24,0.18,0.10),Color("917253"),Vector3(0,-0.10,side*(depth/2.0-0.05)),beams)
-		box(Vector3(width-0.28,0.12,0.19),Color("685343"),Vector3(0,-0.23,side*depth*0.32),lift)
-	# Small flush corner fasteners, with no rails across the approach or markers.
-	for x_side in [-1,1]:
-		for z_side in [-1,1]:
-			cylinder(0.035,0.012,Color("d2b577"),Vector3(x_side*(width/2.0-0.06),-0.006,z_side*(depth/2.0-0.15)),lift)
-	var mechanism := Node3D.new()
-	mechanism.name="GuideMechanism"
-	mechanism.position=center
-	terrain.add_child(mechanism)
-	for z_side in [-1,1]:
-		box(Vector3(width-0.45,0.08,0.28),Color("796c58"),Vector3(0,-0.055,z_side*depth*0.32),mechanism)
-		for x_side in [-1,1]:
-			var guide_position := Vector3(x_side*width*0.29,0,z_side*depth*0.32)
-			var guide := cylinder(0.07,1.0,Color("a1b9ae"),guide_position,mechanism)
-			guide.name="GuideShaft%d" % lift_guides.size()
-			guide.visible=false
-			lift_guides.append(guide)
-			cylinder(0.13,0.16,Color("aa8d5f"),guide_position+Vector3(0,-0.23,0),lift).name="GuideCollar%d" % (lift_guides.size()-1)
-
-func _lift_surface_height(coords: Array, height: float) -> float:
-	if not current_level.has("lift"):
-		return 0.0
-	var zone: Array=current_level.lift.zone
-	return height if coords[0]>=zone[0] and coords[0]<=zone[2] and coords[1]>=zone[1] and coords[1]<=zone[3] else 0.0
-
-## The ground style (kit/surfaces.gd) under the classic islands, Home's and
-## the earlier islands': grass over soil.
+## The ground style (kit/surfaces.gd) under the classic islands, Home's:
+## grass over soil.
 const CLASSIC_GROUND := "grass"
 ## The soil (kit/surfaces.gd soil) under this world's islands and the islands
 ## a screen adds to them; {} keeps the plain green shell. Only the classic
 ## level build sets it.
 var island_soil: Dictionary = {}
 
-## variant 0 is the classic island (Home and the legacy islands); chapter
+## variant 0 is the classic island (Home); chapter
 ## islands pass their index so neighbouring islands are not clones.
 func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color, variant: int = 0) -> void:
 	_island_shell(cx,cz,width,depth,grass,null,island_soil)
@@ -951,19 +884,6 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	bridge_ready=bool(snapshot.bridge_open)
 	if immediate: _settle_bridge()
 	Primitives.own_material(plate).albedo_color=Color("f5d990") if snapshot.plate_active else Color("b5a06e")
-	if is_instance_valid(gate_plate):
-		Primitives.own_material(gate_plate).albedo_color=Color("d5c5fa") if snapshot.get("gate_open",false) else Color("907ea8")
-	if is_instance_valid(lift):
-		var height := float(snapshot.get("lift_height",0))/100.0
-		lift.position.y=height
-		for guide: MeshInstance3D in lift_guides:
-			# Guide shafts extend from the fixed footings into the moving collars.
-			var extension := maxf(0.001,height-0.165)
-			guide.scale.y=extension
-			guide.position.y=-0.015+extension/2.0
-			guide.visible=height>0.165
-		garden.position.y=_lift_surface_height(current_level.goal,height)
-		landing_marker.position.y=_lift_surface_height(current_level.landing,height)
 	_present_garden(bool(snapshot.get("gate_open", false)) and bool(snapshot.get("lift_ready", false)), bool(snapshot.complete), immediate)
 
 func _reset_seed_pose() -> void:

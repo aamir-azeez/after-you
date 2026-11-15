@@ -12,10 +12,6 @@ const CoopPreview = preload("res://cooperative_preview.gd")
 const Lighthouse = preload("res://lighthouse_preview.gd")
 const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
-const Main = preload("res://main.gd")
-const Save = preload("res://services/local_save.gd")
-const Levels = preload("res://core/levels.gd")
-const LegacySimulation = preload("res://core/simulation.gd")
 const IDLE := {"move_x": 0.0, "move_z": 0.0, "interact": false}
 const SETTINGS := {"sound": false, "haptics": false, "reduced_motion": false, "assistance": true, "left_handed": false, "graphics_quality": "low", "photo_prompts": false}
 ## 1560x720 and 1280x720 as laid out; 800x360 stretches to a 1600x720 layout.
@@ -34,7 +30,6 @@ func _run() -> void:
 		await _check_chapter(key)
 	await _check_lighthouse()
 	await _check_shared_replay()
-	await _check_islands()
 	for path: String in cleanup:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -169,30 +164,6 @@ func _check_shared_replay() -> void:
 	var bar: Variant = view.controls.turn_progress if is_instance_valid(view.controls) else null
 	_check(bar is Control and bar.get_script() == SeedTimerBar and view.controls.timer_label == bar.label, "Shared replays show the shared seed timer")
 	view.free()
-	await process_frame
-
-func _check_islands() -> void:
-	var viewport := _viewport(Vector2i(1280, 720))
-	var app: Node = Main.new()
-	var path := "user://seed-timer-main-%d.json" % Time.get_ticks_usec()
-	cleanup.append(path)
-	app.saves = Save.new(path)
-	viewport.add_child(app)
-	app.set_process(false)
-	app.set_physics_process(false)
-	await process_frame
-	var bar: Variant = app.progress
-	_check(bar is Control and bar.get_script() == SeedTimerBar and app.timer_label == bar.label, "The earlier islands show the shared seed timer")
-	if bar is Control and bar.get_script() == SeedTimerBar:
-		var level := Levels.get_level(0)
-		var sim := LegacySimulation.new()
-		sim.reset(level, {}, "a", LegacySimulation.COMFORT_SIMULATION_VERSION)
-		for i in range(45): sim.step(IDLE)
-		var state: Dictionary = sim.snapshot()
-		app.earlier_islands_flow.update_hud(state)
-		var remaining := maxi(0, int(state.duration_ticks) - int(state.tick)) / 30.0
-		_check(bar.label.text == SeedTimerBar.format_remaining(remaining) and is_equal_approx(bar.max_value, int(state.duration_ticks) / 30.0) and is_equal_approx(bar.value, int(state.tick) / 30.0), "The earlier islands timer shows the remaining seconds (%s)" % bar.label.text)
-	viewport.free()
 	await process_frame
 
 func _frames(count: int) -> void:
