@@ -15,7 +15,13 @@ const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 static func look(world: Node3D) -> Array:
 	var terrain: Node3D = world.terrain
 	var held: Dictionary = {}
-	StaticBatch._collect_held(world, held)
+	# Held as a fold holds them: never through the world's own fold job, whose
+	# work lists name nodes only while a stepped fold is part way.
+	var job := {"holding": []}
+	for property: Dictionary in world.get_property_list():
+		if int(property.usage) & PROPERTY_USAGE_SCRIPT_VARIABLE and property.name != "_fold_job":
+			StaticBatch._queue_value(world.get(property.name), 0, held, job)
+	while not job.holding.is_empty(): StaticBatch._hold_some(job)
 	var still: Dictionary = {}
 	for node: Variant in world._fold_options().get("still", []):
 		if is_instance_valid(node): still[(node as Node).get_instance_id()] = true

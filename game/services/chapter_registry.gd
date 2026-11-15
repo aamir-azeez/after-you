@@ -3,6 +3,7 @@ extends RefCounted
 ## Each chapter is one descriptor file under content/chapters/ (listed in order
 ## by content/chapters/index.gd) plus its family's row in
 ## services/chapter_families.gd; every function here reads those.
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Index = preload("res://content/chapters/index.gd")
@@ -163,6 +164,8 @@ static func simulation_script(key: String) -> Script:
 	return _scripts.get(_family(key).get("simulation", ""))
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
+	# A replayed turn exports in its own form (core/v2/recording_codec.gd).
+	if not recording.is_empty() and "packed_recordings" in simulation: simulation.packed_recordings = RecordingCodec.is_packed(recording)
 	if not _chapter(key).is_empty(): # Every family's engine takes the rules to play by.
 		var rules := Typed.as_int(recording.get("simulation_version", prior.get("simulation_version", preferred_rules(key))), -1)
 		return simulation.reset(level, stage_id, checkpoint, prior, role, rules)

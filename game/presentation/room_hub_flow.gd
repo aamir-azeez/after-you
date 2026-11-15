@@ -171,8 +171,7 @@ func open_from_home(source: Control) -> void:
 ## What Play waits for: the session free, or out only for a capabilities read,
 ## which show_rooms then waits for (Main._prepare_ordinary_navigation).
 func _session_settled() -> bool:
-	var session: RefCounted = host.relay_session
-	return session == null or not session.busy() or (session.has_method("reading_capabilities_only") and session.reading_capabilities_only())
+	return not host.session_busy()
 
 ## True while a tap on Play waits for the busy session or runs.
 func tap_pending() -> bool:

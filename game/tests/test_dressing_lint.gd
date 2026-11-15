@@ -108,10 +108,22 @@ func _stage_ids(key: String) -> Array:
 func _stage_view(key: String, stage_id: String) -> Dictionary:
 	if key == LIGHTHOUSE: return LightCatalog.definition(stage_id)
 	if _first_steps(key): return _first_steps_view(Registry.definition(key), stage_id)
+	if _relay(key): return _relay_view(Registry.definition(key), stage_id)
 	return CooperativeCatalog.stage_definition(Registry.definition(key), stage_id)
 
 func _first_steps(key: String) -> bool:
 	return str(ChapterIndex.data(key).get("family", "")) == "first-steps"
+
+func _relay(key: String) -> bool:
+	return str(ChapterIndex.data(key).get("family", "")) == "relay"
+
+## Relay Isles has no gates: its floors, its bridges, its plates, sockets and
+## starts, and the stage's seed landing.
+func _relay_view(level: Dictionary, stage_id: String) -> Dictionary:
+	var view := {"islands": level.islands, "bridges": level.bridges, "plates": level.plates, "sockets": level.sockets, "starts": level.starts}
+	for stage: Dictionary in level.stages:
+		if stage.id == stage_id: view["landing"] = {"id": "seed-landing", "position_cm": stage.landing_cm, "radius_cm": 66, "surface_id": stage.landing_surface}
+	return view
 
 ## First Steps has no floors and gates: its floors, its spots (controls,
 ## sockets, goals, starts and the stage's seed landing) and its lift, whose
@@ -230,7 +242,7 @@ func _check_built_worlds() -> void:
 		world.set_process(false)
 		for stage_id: String in _stage_ids(key):
 			if key == LIGHTHOUSE: world.load_level(LightCatalog.definition(stage_id))
-			elif _first_steps(key):
+			elif _first_steps(key) or _relay(key):
 				if world.terrain == null: world.load_level(Registry.definition(key))
 				for stage: Dictionary in Registry.definition(key).stages:
 					if stage.id == stage_id: world.show_stage(stage)

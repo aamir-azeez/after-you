@@ -146,7 +146,7 @@ hosting_locked 2
 hosting_notification_preferences 2
 house 1
 house_world 3
-hub_exits 2
+hub_exits 3
 hud_efficiency 2
 inset_button 3
 intro_comfort 2
@@ -276,6 +276,8 @@ race_ghost 1
 reaction_photos 3
 recent_rooms 2
 recorded_routes 3
+recording_codec 1
+recording_codec_runs 2
 recovery_copy 2
 recovery_details 2
 recovery_discard 3
