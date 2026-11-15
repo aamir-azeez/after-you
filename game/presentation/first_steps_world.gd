@@ -7,18 +7,26 @@ const Typed = preload("res://services/typed_values.gd")
 const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 const LiftKit = preload("res://presentation/kit/pieces/lift.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## The bell hangs from a bracket on one post in front of the goal, clear of
 ## the rider's way in from the lift, so neither the post nor the bell stands
 ## between the play camera and the seed pedestal behind the goal. The goal
-## ring stays on the exact spot.
+## ring stays on the exact spot. BELL_HANG is the arm's end over the bell;
+## BELL_SPACE the room under its underside (kit/pieces/bell.gd), down to just
+## over a pip standing on the ring.
 const BELL_POST := Vector3(-0.30, 0, 0.55)
-const BELL_HANG := Vector3(-0.22, 1.55, 0.05)
+const BELL_HANG := Vector3(-0.22, 1.86, 0.05)
+const BELL_SPACE := Vector2(0.6, 0.55)
+## The arm's thickness.
+const ARM := 0.07
 var lift_piece: RefCounted
 var pad_pieces: Dictionary = {}
 var actor_badges: Dictionary = {}
 var island_visuals: Dictionary = {}
 var lift_target_height := 0.0
 var loft_bell: Node3D
+## The bell itself (kit/pieces/bell.gd), rung as the loft opens.
+var loft_chime: RefCounted
 var bell_ring: MeshInstance3D
 var pedestal: Node3D
 var active_stage: Dictionary = {}
@@ -34,6 +42,7 @@ func load_level(definition: Dictionary) -> void:
 	_load_dressing()
 	pad_pieces.clear()
 	lift_piece = null
+	loft_chime = null
 	if is_instance_valid(terrain):
 		remove_child(terrain)
 		terrain.queue_free()
@@ -99,9 +108,7 @@ func load_level(definition: Dictionary) -> void:
 		terrain.add_child(root)
 		if socket.kind == "garden":
 			garden = root
-			cylinder(0.48, 0.14, Color("6b847c"), Vector3(0, 0.07, 0), root)
-			cylinder(0.35, 0.035, Color("244b46"), Vector3(0, 0.155, 0), root)
-			goal_ring = ring(0.49, GOLD, Vector3(0, 0.17, 0), root)
+			goal_ring = SocketKit.garden(root, 0.48, GOLD)
 			_create_garden()
 		else:
 			pedestal = root
@@ -118,12 +125,11 @@ func load_level(definition: Dictionary) -> void:
 		# frame obscures the spirit's face at the adjacent seed pedestal.
 		cylinder(0.055, 1.95, Parts.TIMBER, BELL_POST + Vector3(0, 0.975, 0), loft_bell)
 		box(Vector3(0.14, 0.05, 0.14), Parts.TIMBER_DARK, BELL_POST + Vector3(0, 1.97, 0), loft_bell)
-		var arm_end := Vector3(BELL_HANG.x, 1.86, BELL_HANG.z - 0.06)
-		Primitives.bar_between(BELL_POST + Vector3(0, 1.86, 0), arm_end, 0.07, Primitives.shared_material(Parts.TIMBER_DARK), loft_bell)
-		Primitives.bar_between(BELL_POST + Vector3(0, 1.55, 0), (BELL_POST + Vector3(0, 1.86, 0)).lerp(arm_end, 0.4), 0.04, Primitives.shared_material(Parts.TIMBER), loft_bell)
-		cylinder(0.012, 0.16, Color("c9b48a"), Vector3(BELL_HANG.x, 1.77, BELL_HANG.z), loft_bell)
-		var bell := sphere(0.22, Parts.BRASS, BELL_HANG, loft_bell)
-		bell.scale = Vector3(1.0, 1.25, 1.0)
+		var arm_end := BELL_HANG - Vector3(0, 0, 0.06)
+		var arm_start := BELL_POST + Vector3(0, BELL_HANG.y, 0)
+		Primitives.bar_between(arm_start, arm_end, ARM, Primitives.shared_material(Parts.TIMBER_DARK), loft_bell)
+		Primitives.bar_between(BELL_POST + Vector3(0, 1.55, 0), arm_start.lerp(arm_end, 0.4), 0.04, Primitives.shared_material(Parts.TIMBER), loft_bell)
+		loft_chime = Bell.build(loft_bell, BELL_HANG - Vector3(0, ARM * 0.5, 0), BELL_SPACE)
 		bell_ring = ring(float(goal.radius_cm) / 100.0, CREAM, Vector3(0, 0.04, 0), loft_bell)
 	await _build_step()
 	await _build_dressing()
@@ -143,10 +149,7 @@ func load_level(definition: Dictionary) -> void:
 	landing_marker = Node3D.new()
 	landing_marker.name = "SeedLanding"
 	terrain.add_child(landing_marker)
-	ring(0.66, TEAL, Vector3(0, 0.035, 0), landing_marker)
-	for index in range(8):
-		var angle := float(index) * TAU / 8.0
-		box(Vector3(0.06, 0.025, 0.13), CREAM, Vector3(cos(angle) * 0.82, 0.03, sin(angle) * 0.82), landing_marker).rotation.y = -angle
+	SocketKit.landing(landing_marker)
 	camera.position = Vector3(8, 12, 18)
 	camera.look_at(Vector3(0, 0.9, 0))
 	camera.size = ViewFit.viewport(11.8, self)
@@ -201,7 +204,9 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in pad_pieces:
 		pad_pieces[id].set_held(bool(state.controls.get(id, false)))
 	# A bell rung while the friend's memory still plays rings when it ends.
-	bell_ring.visible = not bool(state.mechanisms.loft_open) or bool(state.get("ring_held", false))
+	var rung := bool(state.mechanisms.loft_open) and not bool(state.get("ring_held", false))
+	bell_ring.visible = not rung
+	if loft_chime != null: loft_chime.set_rung(rung, immediate or reduced_motion)
 	_present_seed(state.seed, immediate)
 	_present_garden(bool(state.mechanisms.garden_open), bool(state.complete) and state.seed.status == "planted", immediate)
 
@@ -220,6 +225,7 @@ func _doze_anchors() -> Array[Node3D]:
 func _static_keep() -> Array:
 	var keep := super._static_keep() + [pedestal]
 	if lift_piece != null: keep += lift_piece.moving_parts()
+	if loft_chime != null: keep += loft_chime.moving_parts()
 	for id: String in pad_pieces: keep += pad_pieces[id].moving_parts()
 	return keep
 
@@ -234,6 +240,7 @@ func _process(delta: float) -> void:
 		note_motion("lift", "lift", (1 if travel > 0.0 else -1) if absf(travel) > LIFT_SETTLED else 0)
 		lift.position.y = lerpf(lift.position.y, lift_target_height, minf(delta * 14.0, 1.0))
 		if lift_piece != null: lift_piece.set_height(lift.position.y)
+	if loft_chime != null and loft_chime.moving(): loft_chime.advance(delta)
 	if is_instance_valid(camera):
 		camera.size = ViewFit.viewport(11.8, self)
 		camera.h_offset = 0.0

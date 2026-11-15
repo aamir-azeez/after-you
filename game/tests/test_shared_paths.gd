@@ -379,8 +379,8 @@ const PIECE_KITS := "res://presentation/kit/pieces/"
 const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
-	"res://presentation/first_steps_world.gd": "builds its spots and its lift in the styles they resolve to (pad, lift); its loft bell stays its own",
-	"res://presentation/relay_world.gd": "builds its plates in the pad style they resolve to; its relay socket and sinking bridges stay its own",
+	"res://presentation/first_steps_world.gd": "builds its spots and its lift in the styles they resolve to (pad, lift); its loft bell is the kit bell on its own post and arm",
+	"res://presentation/relay_world.gd": "builds its plates in the pad style they resolve to; its sinking bridges stay its own",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {

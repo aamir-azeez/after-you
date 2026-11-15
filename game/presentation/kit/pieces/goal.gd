@@ -4,7 +4,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## keeps the goal's exact centre and radius: a low disc under a ring the size
 ## of the goal, and the ornament above it.
 ##
-##   "bell": a bell hung between two stone posts under a beam.
+##   "bell": the kit bell (bell.gd) hung between two stone posts under a
+##       beam; it rings once as the goal lights.
 ##   "harbour_lantern": a tall harbour lantern on a mole stone well north of
 ##       the standing point, so a spirit lighting it never hides its head
 ##       from the follow camera.
@@ -21,6 +22,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## style also keeps `window` for house_window.gd present.
 const WindowVisual = preload("res://presentation/house_window.gd")
 const Look = preload("res://presentation/kit/look.gd")
+const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## A lit goal's light, before the look's lamp scale (kit/look.gd lamp_energy).
 const LIGHT_ENERGY := 1.2
 const STYLES := ["bell", "harbour_lantern", "crest", "window", "walled_window"]
@@ -38,6 +40,8 @@ var bell: MeshInstance3D
 var ring: MeshInstance3D
 var light: OmniLight3D
 var window: Dictionary = {}
+## The bell style's bell (kit/pieces/bell.gd); null for the other styles.
+var chime: RefCounted
 
 ## A goal in `style` at `at` (parent space, on its floor) under `parent`,
 ## `radius_m` across.
@@ -48,17 +52,26 @@ static func build(goal_style: String, at: Vector3, radius_m: float, parent: Node
 
 ## Lights the goal once the stage's objective is done (the snapshot's
 ## objective_done), or puts it out: its ring and ornament glow and its light
-## comes up; a window glows gold and swings its shutters open.
-func set_lit(on: bool) -> void:
+## comes up; a window glows gold and swings its shutters open; a bell rings
+## once as it lights, unless immediate (a seek, a retry, reduced motion).
+func set_lit(on: bool, immediate: bool = false) -> void:
 	Parts.glow(ring, Parts.LIGHT, 1.0 if on else 0.0)
 	if window.is_empty(): Parts.glow(bell, Parts.LIGHT, 0.65 if on else 0.0)
 	else: WindowVisual.present(window, on, Parts.GOLD)
 	light.light_energy = Look.lamp_energy(LIGHT_ENERGY) if on else 0.0
 	bell.set_meta("lit", on)
+	if chime != null: chime.set_rung(on, immediate)
+
+func moving() -> bool:
+	return chime != null and chime.moving()
+
+func advance(delta: float) -> void:
+	chime.advance(delta)
 
 func moving_parts() -> Array[Node3D]:
 	var parts: Array[Node3D] = [bell, ring]
 	for shutter: Node3D in window.get("shutters", []): parts.append(shutter)
+	if chime != null: parts.append_array(chime.moving_parts())
 	return parts
 
 func _make(goal_style: String, at: Vector3, radius_m: float, parent: Node3D) -> void:
@@ -85,14 +98,9 @@ func _make_bell(radius_m: float) -> void:
 	ring = Parts.ring(radius_m, Color("a2b3c0"), Vector3(0, 0.07, 0), root)
 	for side: int in [-1, 1]: Parts.box(Vector3(0.10, 1.52, 0.13), Color("9e9180"), Vector3(float(side) * 0.43, 0.76, -0.12), root)
 	Parts.box(Vector3(0.98, 0.12, 0.18), Color("b4a381"), Vector3(0, 1.52, -0.12), root)
-	var shape := CylinderMesh.new()
-	shape.top_radius = 0.11
-	shape.bottom_radius = 0.27
-	shape.height = 0.42
-	shape.radial_segments = 20
-	bell = Parts.Primitives.mesh_node(shape, Parts.Primitives.shared_material(Color("b29868")), Vector3(0, 1.18, 0), root)
-	Parts.ring(0.27, Color("c4ad7a"), Vector3(0, 0.97, 0), root)
-	Parts.sphere(0.055, Color("dfc58c"), Vector3(0, 0.97, 0), root)
+	# Between the posts, under the beam, clear of a pip standing on the ring.
+	chime = Bell.build(root, Vector3(0, 1.46, -0.12), Vector2(0.76, 0.52))
+	bell = chime.body
 	_light(BELL_LIGHT, 4.0, Vector3(0, 1.6, 0))
 
 func _make_lantern(radius_m: float) -> void:

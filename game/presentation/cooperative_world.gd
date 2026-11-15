@@ -90,7 +90,7 @@ func show_stage(stage: Dictionary) -> void:
 	await super.load_level(view)
 	terrain.name = "CooperativeIslands"
 	if is_instance_valid(_bell):
-		_bell.get_parent().position.y = _surface_height(str(goal.surface_id))
+		_goal_piece.root.position.y = _surface_height(str(goal.surface_id))
 		_court_light.position.y += _surface_height(str(goal.surface_id))
 	await _build_step()
 	for stair: Dictionary in view.get("stairs", []):

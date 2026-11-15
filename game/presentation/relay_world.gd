@@ -86,21 +86,14 @@ func load_level(definition: Dictionary) -> void:
 		socket.name = str(item.id)
 		socket.position = at
 		terrain.add_child(socket)
-		cylinder(0.42, 0.14, Color("6b847c"), Vector3(0, 0.07, 0), socket)
-		cylinder(0.30, 0.035, Color("244b46"), Vector3(0, 0.155, 0), socket)
-		var socket_ring := ring(0.43, TEAL, Vector3(0, 0.17, 0), socket)
 		if item.get("kind", "") == "garden":
 			garden = socket
-			goal_ring = socket_ring
+			goal_ring = SocketKit.garden(socket, 0.42, TEAL)
 			_create_garden()
 			# Relay's garden socket has no gate or lift condition in simulation.
 			_present_garden(true, false, true)
 		else:
-			# A small cradle and two leaves distinguish a relay from a pressure plate.
-			for side in [-1, 1]:
-				var leaf := sphere(0.17, TEAL, Vector3(side * 0.36, 0.40, 0), socket)
-				leaf.scale = Vector3(0.5, 1.6, 0.35)
-				leaf.rotation.z = -side * 0.5
+			SocketKit.relay(socket)
 		socket_visuals[item.id] = socket
 		await _build_step()
 	await _build_dressing()
@@ -119,10 +112,7 @@ func load_level(definition: Dictionary) -> void:
 	landing_marker = Node3D.new()
 	landing_marker.name = "ActiveLanding"
 	terrain.add_child(landing_marker)
-	ring(0.65, TEAL, Vector3(0, 0.035, 0), landing_marker)
-	for index in range(8):
-		var angle := float(index) * TAU / 8.0
-		box(Vector3(0.06, 0.025, 0.13), CREAM, Vector3(cos(angle) * 0.83, 0.03, sin(angle) * 0.83), landing_marker).rotation.y = -angle
+	SocketKit.landing(landing_marker)
 	camera.position = Vector3(8, 14, 19)
 	camera.look_at(Vector3.ZERO)
 	camera.size = ViewFit.viewport(12.0, self)

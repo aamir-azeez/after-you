@@ -30,6 +30,11 @@ const MOUTH_X := [-704, -512]
 const SEA_GATE_Z := 5.20
 ## The sea chamber (the water block's "chamber" body) stands in walls to here.
 const CHAMBER_WALL_TOP := 0.74
+## The status lamps' sizes (kit/props.gd lamp_post, 1.45 m at size 1): beside
+## a lever, on the chamber's inner corners, and at each harbour mouth.
+const LEVER_LAMP := 0.4
+const CHAMBER_LAMP := 0.45
+const MOUTH_LAMP := 0.9
 const SPOUT := Color(0.80, 0.93, 0.95, 0.86)
 const STONE := Parts.STONE
 const STONE_DARK := Color("7d6d58")
@@ -516,10 +521,19 @@ func _build_lever(lever: Dictionary) -> void:
 	super._build_lever(lever)
 	if lever.get("kind", "") == "selector": return
 	# Levers toggle, so a lamp beside the handle says plainly whether it is on.
-	var lamp := sphere(0.07, Color("4a4038"), _at(lever) + Vector3(0.24, 0.22, 0.0), terrain)
-	lamp.name = "LeverLamp_" + str(lever.id)
-	box(Vector3(0.03, 0.18, 0.03), TIMBER, _at(lever) + Vector3(0.24, 0.09, 0.0), terrain)
+	var lamp := _status_lamp(_at(lever) + Vector3(0.24, 0, 0), LEVER_LAMP, "LeverLamp_" + str(lever.id))
 	_lever_lamps[lever.id] = {"lamp": lamp, "color": GOLD if lever.owner_slot == "p0" else TEAL}
+
+## A lamp that says a state (_lamp() lights it): the kit lamp post
+## (kit/props.gd) at `at`, `size` times its height, standing on its own
+## rather than in the chapter's dressing. Returns its glass, named `lamp_name`.
+func _status_lamp(at: Vector3, size: float, lamp_name: String) -> MeshInstance3D:
+	var post := Props.build({"kind": "lamp_post", "size": size}, terrain, 0.0, false)
+	post.remove_meta("dressing_kind")
+	post.position = at
+	var glass := post.find_child("LampGlass", false, false) as MeshInstance3D
+	glass.name = lamp_name
+	return glass
 
 # --- Gate links: tide gauges, crests and the catwalks' slack marks ---
 
@@ -749,9 +763,7 @@ func _build_chamber() -> void:
 		end.name = "ChamberWall"
 		waters.holds_water(end)
 		# A lamp on each inner corner glows while the chamber matches the harbour.
-		var lamp := sphere(0.07, Color("4a4038"), Vector3(east, CHAMBER_WALL_TOP + 0.10, z), terrain)
-		lamp.name = "ChamberMatched"
-		_chamber_lamps.append(lamp)
+		_chamber_lamps.append(_status_lamp(Vector3(east, CHAMBER_WALL_TOP, z), CHAMBER_LAMP, "ChamberMatched"))
 
 func _build_sea_gates() -> void:
 	# Leaves across both ends of the harbour mouth: closed while the sea is shut.
@@ -781,12 +793,13 @@ func _build_mouth_lamps() -> void:
 		var r: Array = route.rect_cm
 		var at := point([r[0] + 40, r[3] + 12])
 		var top := 1.20
-		cylinder(0.035, top - waters.seabed(), TIMBER.darkened(0.1), at + Vector3(0, (top + waters.seabed()) * 0.5, 0), terrain)
+		# The lamp post's glass stands where the lamp always has, its foot on a
+		# timber pile down to the seabed; the teal bands mark the water value.
+		var foot := top + 0.06 - MOUTH_LAMP * 1.3
+		cylinder(0.035, foot - waters.seabed(), TIMBER.darkened(0.1), at + Vector3(0, (foot + waters.seabed()) * 0.5, 0), terrain)
 		for band in range(_water_mark(value)):
 			cylinder(0.05, 0.03, TEAL, at + Vector3(0, top - 0.24 - float(band) * 0.07, 0), terrain)
-		var lamp := sphere(0.08, Color("4a4038"), at + Vector3(0, top + 0.06, 0), terrain)
-		lamp.name = "MouthLamp_" + value
-		_mouth_lamps[value] = lamp
+		_mouth_lamps[value] = _status_lamp(at + Vector3(0, foot, 0), MOUTH_LAMP, "MouthLamp_" + value)
 
 ## The spout: a pale ribbon of falling water from the aqueduct to the beach,
 ## with streaks running down it, foam and a splash ring where it lands, and a

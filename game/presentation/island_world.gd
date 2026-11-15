@@ -23,6 +23,8 @@ const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
 ## The piece kits' palette, shapes and glow (kit/pieces/parts.gd).
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
+## Where the seed rests, is planted and lands (kit/pieces/socket.gd).
+const SocketKit = preload("res://presentation/kit/pieces/socket.gd")
 const Props = preload("res://presentation/kit/props.gd")
 ## Scenery as data (content/dressing) and the ground styles it names.
 const DressingCatalog = preload("res://content/dressing/catalog.gd")
@@ -421,19 +423,13 @@ func load_level(level: Dictionary) -> void:
 	landing_marker.name="LandingMarker"
 	landing_marker.position=landing
 	terrain.add_child(landing_marker)
-	ring(0.68,TEAL,Vector3(0,0.05,0),landing_marker)
-	for i in range(8):
-		var angle := float(i)*TAU/8
-		box(Vector3(0.06,0.035,0.12),CREAM,Vector3(cos(angle)*0.85,0.03,sin(angle)*0.85),landing_marker).rotation.y=-angle
+	SocketKit.landing(landing_marker)
 	var goal := point(level.get("goal",[470,120]))
 	garden = Node3D.new()
 	garden.name="Garden"
 	garden.position=goal
 	terrain.add_child(garden)
-	cylinder(0.48,0.12,Color("6e8264"),Vector3(0,0.035,0),garden).name="Planter"
-	cylinder(0.37,0.02,Color("394d40"),Vector3(0,0.11,0),garden).name="Soil"
-	goal_ring = ring(0.49,Color("dce2b3"),Vector3(0,0.12,0),garden)
-	goal_ring.name="GoalRing"
+	goal_ring = SocketKit.garden(garden,0.48,Color("dce2b3"))
 	_create_garden()
 	for role in ["a","b"]:
 		var actor := _create_spirit(GOLD if role=="a" else TEAL)

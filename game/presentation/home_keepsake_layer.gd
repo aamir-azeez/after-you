@@ -57,7 +57,8 @@ var _world: Node3D
 var _free_only := false
 var together_hard := false
 ## (cue: String, variant: int) -> void: plays one keepsake sound. Variant n is
-## the n-th drop of a water run (soundscape fixed_pitch); 0 for everything else.
+## the n-th drop of a water run or the n-th bell a keepsake strikes in turn
+## (soundscape fixed_pitch); 0 for everything else.
 var cue: Callable
 ## A ride's joy (keepsake_anim.gd): (pip: Node3D) -> void pops a heart over the
 ## pip, and () -> void taps the phone lightly (Settings' Haptics decides).

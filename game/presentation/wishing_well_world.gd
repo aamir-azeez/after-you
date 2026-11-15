@@ -531,9 +531,9 @@ func _dress() -> void:
 	for index in range(15):
 		var x := -11.3 + float(index) * 1.55
 		if absf(x + 12.16) < 0.7 or absf(x - 9.76) < 0.7 or (x > 10.9 and x < 12.3): continue
-		_ivy(Vector3(x, cliff - 0.02, -0.15), 0.55 + 0.25 * float(index % 3), props)
-	_ivy(Vector3(11.42, cliff - 0.22, -0.47), 0.9, props)
-	_ivy(Vector3(11.80, cliff - 0.22, -0.47), 0.6, props)
+		_kit_prop({"kind": "ivy", "length": 55 + 25 * (index % 3)}, Vector3(x, cliff - 0.02, -0.15), props)
+	_kit_prop({"kind": "ivy", "length": 90}, Vector3(11.42, cliff - 0.22, -0.47), props)
+	_kit_prop({"kind": "ivy", "length": 60}, Vector3(11.80, cliff - 0.22, -0.47), props)
 	await _build_step()
 	# The notch rim keeps a lighter worn edge so the open mouth reads clearly.
 	# Its top stays between the hatch bars and a spirit's ground shadow
@@ -546,14 +546,14 @@ func _dress() -> void:
 	box(Vector3(25.12, 0.30, 0.42), STONE, Vector3(-0.24, cliff + 0.15, -2.29), props)
 	box(Vector3(25.10, 0.05, 0.40), MOSS, Vector3(-0.24, cliff + 0.32, -2.29), props)
 	for x: float in [-10.6, -6.4, -2.2, 2.0, 5.6, 9.2]:
-		_tree(Vector3(x, cliff + 0.32, -2.36), 0.9 + 0.12 * absf(sin(x)), props)
+		_kit_prop({"kind": "tree", "size": 0.9 + 0.12 * absf(sin(x))}, Vector3(x, cliff + 0.32, -2.36), props)
 	await _build_step()
 	for index in range(24):
 		var x := -12.4 + float(index) * 1.05
 		var bush := sphere(0.17, LEAF.darkened(0.08 * float(index % 3)), Vector3(x, cliff + 0.42, -2.18), props)
 		bush.scale = Vector3(1.3, 0.8, 0.9)
 		if index % 4 == 1: _flower_dot(Vector3(x + 0.12, cliff + 0.55, -2.12), props)
-	_bench(Vector3(-4.2, cliff + 0.32, -2.30), props)
+	_kit_prop({"kind": "bench"}, Vector3(-4.2, cliff + 0.32, -2.30), props)
 	for at: Vector3 in [Vector3(-8.2, cliff + 0.32, -2.20), Vector3(0.2, cliff + 0.32, -2.20), Vector3(11.0, cliff + 0.32, -2.20)]:
 		_lantern(at, 0.85, true, props)
 	await _build_step()
@@ -561,7 +561,7 @@ func _dress() -> void:
 	for index in range(22):
 		var x := -12.2 + float(index) * 1.1
 		if x > 10.9 and x < 12.4: continue
-		_tuft(Vector3(x, cliff, -1.98 + 0.06 * float(index % 2)), props)
+		_kit_prop({"kind": "tuft"}, Vector3(x, cliff, -1.98 + 0.06 * float(index % 2)), props)
 	await _build_step()
 	# Garden: a low picket fence just past the front edge, with lanterns.
 	var front := 2.95
@@ -575,10 +575,10 @@ func _dress() -> void:
 	await _build_step()
 	for index in range(40):
 		var x := -12.6 + float(index) * 0.58
-		_tuft(Vector3(x, 0.0, 2.84), props)
+		_kit_prop({"kind": "tuft"}, Vector3(x, 0.0, 2.84), props)
 		if index % 3 == 0: _flower_dot(Vector3(x + 0.2, 0.08, 2.82), props)
 		# A grass fringe softens the back edge above the gap.
-		if index % 2 == 0 and absf(x + 12.16) > 0.5 and absf(x - 9.76) > 0.5: _tuft(Vector3(x + 0.1, 0.0, 1.47), props)
+		if index % 2 == 0 and absf(x + 12.16) > 0.5 and absf(x - 9.76) > 0.5: _kit_prop({"kind": "tuft"}, Vector3(x + 0.1, 0.0, 1.47), props)
 	await _build_step()
 	# Wall-walk: a crenellated back parapet and a low front kerb.
 	box(Vector3(12.48, 0.34, 0.14), STONE, Vector3(21.92, tower + 0.17, -2.15), props)
@@ -588,7 +588,7 @@ func _dress() -> void:
 	for x: float in [16.5, 20.6, 24.8]:
 		_lantern(Vector3(x, tower + 0.34, -2.15), 0.6, x < 17.0, props)
 	for x: float in [17.2, 18.1, 25.9]:
-		_pot(Vector3(x, tower + 0.34, -2.12), props)
+		_kit_prop({"kind": "pot"}, Vector3(x, tower + 0.34, -2.12), props)
 	await _build_step()
 	# By the winch: a crate stack and a rope coil, clear of the lever.
 	box(Vector3(0.30, 0.28, 0.30), TIMBER.lightened(0.15), Vector3(27.10, tower + 0.14, -1.96), props)
@@ -597,37 +597,23 @@ func _dress() -> void:
 		var coil := ring(0.20 - loop * 0.03, ROPE, Vector3(28.0, tower + 0.03 + loop * 0.035, 0.24), props)
 		coil.scale.y = 1.6
 	for x: float in [13.86, 14.12]:
-		_tuft(Vector3(x, cliff, -1.86), props)
+		_kit_prop({"kind": "tuft"}, Vector3(x, cliff, -1.86), props)
 
-func _tree(at: Vector3, size: float, parent: Node3D) -> void:
-	cylinder(0.07 * size, 0.8 * size, Color("806f59"), at + Vector3(0, 0.4 * size, 0), parent)
-	for lobe in range(3):
-		var crown := sphere(0.38 * size, Color("659d86").lerp(Color("8daf83"), 0.3 * lobe), at + Vector3((lobe - 1) * 0.2 * size, (0.98 + 0.18 * (1 - absi(lobe - 1))) * size, 0), parent)
-		crown.scale = Vector3(0.85, 1.2, 0.85)
-	for j in range(3):
-		sphere(0.06, Color("ebc28f"), at + Vector3(sin(j * 2.1) * 0.27 * size, (0.92 + 0.12 * j) * size, cos(j * 2.1) * 0.22 * size + 0.1), parent)
-
-func _ivy(at: Vector3, length: float, parent: Node3D) -> void:
-	box(Vector3(0.12, length, 0.015), MOSS, at - Vector3(0, length * 0.5, 0), parent)
-	for index in range(int(length / 0.18)):
-		var leaf := sphere(0.07, LEAF.darkened(0.06 * float(index % 2)), at + Vector3(0.05 * (1 if index % 2 == 0 else -1), -0.1 - float(index) * 0.18, 0.012), parent)
-		leaf.scale = Vector3(1.2, 0.8, 0.35)
-
-func _tuft(at: Vector3, parent: Node3D) -> void:
-	for j in range(3):
-		var blade := box(Vector3(0.022, 0.08 + j * 0.03, 0.03), Color("6f9a64"), at + Vector3(j * 0.035 - 0.035, 0.04 + j * 0.01, 0), parent)
-		blade.rotation.z = (j - 1) * 0.3
+## A kit prop (kit/props.gd) the well's own cliff garden places at `at`,
+## apart from the chapter's dressing.
+func _kit_prop(spec: Dictionary, at: Vector3, parent: Node3D) -> Node3D:
+	var prop := Props.build(spec, parent, 0.0, true)
+	prop.remove_meta("dressing_kind")
+	prop.position = at
+	return prop
 
 func _flower_dot(at: Vector3, parent: Node3D) -> void:
 	var tints := [Color("f1c27d"), Color("e9a3a0"), Color("f4ecd0")]
 	sphere(0.045, tints[int(absf(at.x * 7.0)) % 3], at, parent)
 
+## The kit lantern `height` tall at `at`; a lit one also casts its light.
 func _lantern(at: Vector3, height: float, lit: bool, parent: Node3D) -> void:
-	box(Vector3(0.05, height, 0.05), TIMBER.darkened(0.1), at + Vector3(0, height * 0.5, 0), parent)
-	box(Vector3(0.16, 0.03, 0.03), TIMBER.darkened(0.1), at + Vector3(0.06, height - 0.02, 0), parent)
-	var lamp := box(Vector3(0.12, 0.15, 0.12), LAMP, at + Vector3(0.12, height - 0.13, 0), parent)
-	_glow(lamp, Color("f2a94e"), 0.7)
-	box(Vector3(0.16, 0.035, 0.16), TIMBER.darkened(0.2), at + Vector3(0.12, height - 0.04, 0), parent)
+	_kit_prop({"kind": "lantern", "size": height / 0.85}, at, parent)
 	if not lit: return
 	var light := OmniLight3D.new()
 	light.light_color = LAMP
@@ -637,14 +623,3 @@ func _lantern(at: Vector3, height: float, lit: bool, parent: Node3D) -> void:
 	light.set_meta("lantern", true)
 	light.visible = GraphicsPolicy.lantern_lights(_motion_quality)
 	parent.add_child(light)
-
-func _bench(at: Vector3, parent: Node3D) -> void:
-	box(Vector3(0.80, 0.05, 0.22), TIMBER.lightened(0.1), at + Vector3(0, 0.24, 0), parent)
-	box(Vector3(0.80, 0.18, 0.04), TIMBER.lightened(0.1), at + Vector3(0, 0.38, -0.10), parent)
-	for x: float in [-0.34, 0.34]: box(Vector3(0.05, 0.24, 0.18), TIMBER, at + Vector3(x, 0.12, 0), parent)
-
-func _pot(at: Vector3, parent: Node3D) -> void:
-	cylinder(0.08, 0.13, Color("b97b5a"), at + Vector3(0, 0.065, 0), parent)
-	var plant := sphere(0.10, LEAF, at + Vector3(0, 0.19, 0), parent)
-	plant.scale = Vector3(1.1, 0.9, 1.1)
-	_flower_dot(at + Vector3(0.04, 0.26, 0.03), parent)
