@@ -63,6 +63,27 @@ static func shared_material(color: Color, roughness: float = 0.9, glow: Color = 
 	SessionRelease.on_exit(Callable(load("res://presentation/kit/primitives.gd"), "release_cached"))
 	return cached
 
+## The one cached palette look for every plain look (is_plain) that differs
+## from source only in colour: white, taking its colour from the mesh's
+## vertex colours (sRGB, as albedo_color is), so the static fold draws
+## scenery of any number of colours in one batch (kit/static_batch.gd).
+## Shared like any cached look: never changed in place.
+static func palette_material(source: StandardMaterial3D) -> StandardMaterial3D:
+	var look := source.duplicate() as StandardMaterial3D
+	look.albedo_color = Color.WHITE
+	look.vertex_color_use_as_albedo = true
+	look.vertex_color_is_srgb = true
+	look.remove_meta(SHARED_META)
+	var key := [&"palette", _material_print(look)]
+	var cached: StandardMaterial3D = _materials.get(key)
+	if cached != null: return cached
+	look.set_meta(SHARED_META, true)
+	_materials[key] = look
+	_material_ids[look.get_instance_id()] = true
+	_material_prints[key] = _material_print(look)
+	SessionRelease.on_exit(Callable(load("res://presentation/kit/primitives.gd"), "release_cached"))
+	return look
+
 ## Lets go of every kept look and mesh (SessionRelease calls this at shutdown).
 static func release_cached() -> void:
 	_materials.clear()
@@ -229,7 +250,7 @@ static func share_static(root: Node) -> void:
 			if cached == null: _meshes[key] = instance.mesh
 			else: instance.mesh = cached
 		var mat := instance.material_override as StandardMaterial3D
-		if mat != null and not is_shared(mat) and _plain(mat):
+		if mat != null and not is_shared(mat) and is_plain(mat):
 			instance.material_override = shared_material(mat.albedo_color, mat.roughness)
 
 ## A primitive mesh's shape as exact values ([] for any other mesh).
@@ -241,7 +262,9 @@ static func _mesh_key(mesh: Mesh) -> Array:
 	if mesh is PrismMesh: return [&"prism", mesh.size, mesh.left_to_right]
 	return []
 
-static func _plain(mat: StandardMaterial3D) -> bool:
+## A plain look: colour and roughness only (no texture, glow, billboard,
+## unshaded or metal), see-through only when its colour is.
+static func is_plain(mat: StandardMaterial3D) -> bool:
 	return mat.get_class() == "StandardMaterial3D" and mat.albedo_texture == null and not mat.emission_enabled \
 		and mat.billboard_mode == BaseMaterial3D.BILLBOARD_DISABLED and mat.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL \
 		and mat.metallic == 0.0 and mat.render_priority == 0 and not mat.no_depth_test \

@@ -98,21 +98,37 @@ func _run() -> void:
 	tagged.set_meta("celebration_clear_point", Vector2.ZERO)
 	var stretched := _leaf(root, box, Color("c4b090"), Vector3(12, 0, 0))
 	stretched.scale = Vector3(1, 2, 1)
+	stretched.rotation = Vector3(0.3, 0, 0)
+	var mirrored := _leaf(root, box, Color("c4b090"), Vector3(13, 0, 0))
+	mirrored.scale = Vector3(-1, 1, 1)
+	var glowing := _leaf(root, box, Color("c4b090"), Vector3(14, 0, 0))
+	(glowing.material_override as StandardMaterial3D).emission_enabled = true
+	var glowing2 := _leaf(root, box, Color("8b7964"), Vector3(15, 0, 0))
+	glowing2.material_override = glowing.material_override
+	plain.append_array([other, other2, stretched])
 	var owner := Owner.new()
 	owner.held = [held, held_parent]
 	owner.by_name = {"x": by_name}
-	# The vertices the plain leaves draw, in the root's space.
+	# The vertices the plain leaves draw, in the root's space, with the normals
+	# and colours they are drawn with (a stretched leaf's normals turn by the
+	# inverse transpose, as the renderer turns them).
 	var expected := PackedVector3Array()
+	var expected_normals := PackedVector3Array()
+	var expected_colors := PackedColorArray()
 	for leaf: MeshInstance3D in plain:
 		var arrays := leaf.mesh.surface_get_arrays(0)
 		var xform: Transform3D = root.global_transform.affine_inverse() * leaf.global_transform
 		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		for index in indices: expected.append(xform * vertices[index])
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for index in indices:
+			expected.append(xform * vertices[index])
+			expected_normals.append((xform.basis.inverse().transposed() * normals[index]).normalized())
+			expected_colors.append((leaf.material_override as StandardMaterial3D).albedo_color)
 	await process_frame
 	var result: Dictionary = StaticBatch.fold(root, [owner])
 	await process_frame
-	_check(result.folded == 6 and result.batches == 2, "Six plain leaves of two materials fold into two batches (%s)" % str(result))
+	_check(result.folded == 9 and result.batches == 2, "Seven plain leaves of two colours, one stretched, fold into one batch, and two glowing leaves into their own (%s)" % str(result))
 	var batches: Array = root.find_children("StaticBatch*", "MeshInstance3D", false, false)
 	_check(batches.size() == 2, "Two batch meshes under the root")
 	var first: MeshInstance3D = batches[0] if batches.size() > 0 else null
@@ -120,18 +136,26 @@ func _run() -> void:
 		var arrays := first.mesh.surface_get_arrays(0)
 		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
 		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		var drawn := PackedVector3Array()
-		if indices.is_empty(): drawn = vertices
-		else:
-			for index in indices: drawn.append(vertices[index])
-		var same := drawn.size() == expected.size()
-		for i in range(mini(drawn.size(), expected.size())):
-			if not drawn[i].is_equal_approx(expected[i]): same = false
-		_check(same, "The batch draws the leaves' triangles, in the root's space and order (%d vertices)" % drawn.size())
-		_check((first.material_override as StandardMaterial3D).albedo_color == Color("c4b090"), "The batch keeps its leaves' material")
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR] if arrays[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+		var same := indices.size() == expected.size() and colors.size() == vertices.size()
+		var lit := same
+		var tinted := same
+		for i in range(mini(indices.size(), expected.size()) if same else 0):
+			if not vertices[indices[i]].is_equal_approx(expected[i]): same = false
+			if normals[indices[i]].normalized().dot(expected_normals[i]) < 0.999: lit = false
+			# Vertex colours are kept as bytes.
+			var color := colors[indices[i]]
+			if absf(color.r - expected_colors[i].r) > 0.003 or absf(color.g - expected_colors[i].g) > 0.003 or absf(color.b - expected_colors[i].b) > 0.003: tinted = false
+		_check(same, "The batch draws the leaves' triangles, in the root's space and order (%d vertices)" % indices.size())
+		_check(lit, "The batch's normals are the leaves' own, a stretched leaf's too")
+		_check(tinted, "The batch's vertices carry each leaf's colour")
+		var look := first.material_override as StandardMaterial3D
+		_check(look.vertex_color_use_as_albedo and look.vertex_color_is_srgb and look.albedo_color == Color.WHITE and Primitives.is_shared(look), "The batch draws with the shared palette look")
+	var second: MeshInstance3D = batches[1] if batches.size() > 1 else null
+	_check(second != null and second.material_override == glowing.material_override and second.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] == null, "Glowing leaves keep their own look, in a batch of their own")
 	for leaf: MeshInstance3D in plain: _check(not is_instance_valid(leaf) or not leaf.is_inside_tree(), "A folded leaf leaves the tree")
-	_check((not is_instance_valid(other) or not other.is_inside_tree()) and (not is_instance_valid(other2) or not other2.is_inside_tree()), "Leaves of another material fold into their own batch")
-	for kept: Node in [held, held_parent, under_held, by_name, under_script, hidden, see_through, tagged, stretched]:
+	for kept: Node in [held, held_parent, under_held, by_name, under_script, hidden, see_through, tagged, mirrored]:
 		_check(is_instance_valid(kept) and kept.is_inside_tree(), "Stays its own node: " + str(kept.position))
 	_check(StaticBatch.fold(root, [owner]).folded == 0, "A root is folded once")
 	root.queue_free()
