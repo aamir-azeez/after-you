@@ -83,7 +83,6 @@ static func icon(texture: Texture2D, side: float, tint: Color) -> TextureRect:
 	result.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	result.custom_minimum_size = Vector2(side, side)
 	result.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	result.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	result.modulate = tint
 	result.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return result

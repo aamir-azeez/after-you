@@ -32,10 +32,9 @@ const TurnLooks = preload("res://services/turn_looks.gd")
 const Outfit = preload("res://services/outfit.gd")
 const LEAF_ICON = preload("res://assets/ui/whats_new/leaf.svg")
 const WATCH_ICON = preload("res://assets/ui/play-circle.svg")
-## Report's flag is drawn heavier and near its shown size, so its strokes stay whole.
-const REPORT_ICON = preload("res://assets/ui/room/report-flag.svg")
+const REPORT_ICON = preload("res://assets/ui/room/flag.svg")
 ## Race wears the flag, as on the race picker boards.
-const RACE_ICON = preload("res://assets/ui/room/flag.svg")
+const RACE_ICON = REPORT_ICON
 const CLOCK_ICON = preload("res://assets/ui/social/clock.svg")
 ## The worlds' pips by slot (presentation/island_world.gd GOLD and TEAL).
 const FIRST_PIP := Color("f4c38d")
