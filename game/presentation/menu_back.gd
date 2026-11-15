@@ -1,6 +1,6 @@
 extends RefCounted
-## The one back history the menu screens share: Home or Settings at the bottom,
-## then the Wardrobe (with its Orchard), the store, the Fruits page and the
+## The one back history the menu screens share: Home, Settings or the room hub
+## (a pop-up's View once a room is left) at the bottom, then the Wardrobe (with its Orchard), the store, the Fruits page and the
 ## Pollen page in the order the player opened them. Each screen says when it
 ## opened (opened) and asks it to go Back (back). A screen already in the
 ## history opens in its own place, the screens above it dropped, so Back always
@@ -21,9 +21,11 @@ const WARDROBE := "wardrobe"
 const STORE := "store"
 const FRUITS := "fruits"
 const POLLEN := "pollen"
+## The room hub (presentation/room_hub_flow.gd MODE_ROOMS).
+const ROOMS := "rooms"
 ## Where a history starts: opening a screen from one of these starts it again.
-const ROOTS := [HOME, SETTINGS]
-const SCREENS := [HOME, SETTINGS, WARDROBE, STORE, FRUITS, POLLEN]
+const ROOTS := [HOME, SETTINGS, ROOMS]
+const SCREENS := [HOME, SETTINGS, ROOMS, WARDROBE, STORE, FRUITS, POLLEN]
 
 var routes: Dictionary = {}
 var _entries: Array[String] = []

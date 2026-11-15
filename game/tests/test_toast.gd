@@ -166,7 +166,7 @@ func _in_app() -> void:
 	await process_frame
 	app.notification_flow.service_friends()
 	await process_frame
-	_check(not app.friends_flow.is_open() and not app.toast.showing() and not app.notification_flow._view_wanted.is_empty(),"View during play waits without a line")
+	_check(not app.friends_flow.is_open() and not app.toast.showing() and app.toast.waiting(),"View during play waits without a line")
 	app.relay_child.free()
 	app.relay_child = null
 	app.notification_flow.service_friends()
@@ -180,7 +180,7 @@ func _in_app() -> void:
 	app.toast._action.pressed.emit()
 	app.notification_flow.service_friends()
 	for _i in 3: await process_frame
-	_check(not app.friends_flow.is_open() and app.notification_flow._view_wanted.is_empty(),"A View from before an identity change does nothing")
+	_check(not app.friends_flow.is_open() and not app.toast.waiting(),"A View from before an identity change does nothing")
 	# A live request hint on another screen reads the list once and offers View.
 	app.toast.dismiss()
 	requested = true

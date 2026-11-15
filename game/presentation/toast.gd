@@ -9,8 +9,14 @@ extends CanvasLayer
 ##   action (a "View") is the one worth keeping: a plain line that replaces it
 ##   holds it, and it comes back for at least HELD_MIN_SEC once that line goes.
 ##   A newer action line drops the held one. Nothing else queues.
-## - A line with an icon is friend news: it gets the icon and a bar that drains
-##   while it shows. Other lines look as the pop-up always has, centred text.
+## - A line with an icon gets it in a disc at its left and a bar that drains
+##   while it shows: friend news its picture, and a currency line (a Fruit goal)
+##   its currency's own mark (kit/currency_mark.gd), the same mark the chips
+##   wear. Other lines look as the pop-up always has, centred text.
+## - An action may say when it can run (`ready`): a View tapped while it can't,
+##   such as during play, is kept and runs on the first frame it can, so a View
+##   never pulls the player out of a room, a replay or a chapter (when_free).
+##   One is kept at a time; a newer one replaces it and drop_actions forgets it.
 ## - It sits inside the safe area. While `in_header` says so (Friends is up) it
 ##   sits in the page's header row, so the page under it never moves.
 ## - With Reduce motion it shows and goes at once and the bar stays hidden;
@@ -18,6 +24,7 @@ extends CanvasLayer
 ## Main owns the one instance (Main.toast) and sets `theme`, `reduced_motion`
 ## and `in_header`.
 const SafeArea = preload("res://presentation/safe_area.gd")
+const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
 const FRIENDS_ICON = preload("res://assets/ui/social/users.svg")
 const LAYER := 90
 const CREAM := Color("eceddb")
@@ -37,6 +44,8 @@ const HEADER_TOP := 22.0
 const HEIGHT := 60.0
 const SIDE_GAP := 16.0
 const ICON_SIZE := 36.0
+## A currency's mark in the disc.
+const MARK_SIZE := 24.0
 ## Between the icon, the line and the button.
 const GAP := 14.0
 const BAR_HEIGHT := 4.0
@@ -62,9 +71,13 @@ var _icon_disc: Panel
 var _icon: TextureRect
 var _action: Button
 var _bar: ColorRect
-## {text, icon, action_text, action, left, total}; empty while nothing shows.
+## The currency mark in the disc, while a currency line shows.
+var _mark: Control
+## {text, icon, action_text, action, ready, left, total}; empty while nothing shows.
 var _current: Dictionary = {}
 var _held: Dictionary = {}
+## {action, ready}: a View tapped while it could not run, kept until it can.
+var _wanted: Dictionary = {}
 var _header := false
 ## Fade direction: 1 while appearing, -1 while going, 0 at rest.
 var _fade := 0
@@ -142,11 +155,13 @@ func _ready() -> void:
 	SafeArea.watch(self, _place)
 	_place()
 
-## Shows `line` now. `icon` marks friend news; `action_text` with `action` adds
-## a button that runs `action` once and closes the pop-up.
-func post(line: String, icon: Texture2D = null, action_text: String = "", action: Callable = Callable()) -> void:
+## Shows `line` now. `icon` is a picture (friend news) or a currency's name
+## (CurrencyMark.FRUITS, CurrencyMark.POLLEN) for its mark. `action_text` with
+## `action` adds a button that closes the pop-up and runs `action` through
+## when_free with `ready`.
+func post(line: String, icon: Variant = null, action_text: String = "", action: Callable = Callable(), ready: Callable = Callable()) -> void:
 	if line.is_empty(): return
-	var entry := {"text": line, "icon": icon, "action_text": action_text if action.is_valid() else "", "action": action, "left": SHOW_SEC, "total": SHOW_SEC}
+	var entry := {"text": line, "icon": icon, "action_text": action_text if action.is_valid() else "", "action": action, "ready": ready, "left": SHOW_SEC, "total": SHOW_SEC}
 	if not entry.action_text.is_empty(): _held = {}
 	elif _showing() and not _current.action_text.is_empty() and _current.text != line:
 		_held = _current.duplicate()
@@ -175,10 +190,25 @@ func take_plain() -> String:
 		_show(held)
 	return line
 
-## Drops every line with an action (shown or held), as when the player who
-## got them is no longer the one signed in. Plain lines stay.
+## Runs `action` now when `ready` says it may (or says nothing), else keeps it
+## and runs it on the first frame it may, in place of any kept before.
+func when_free(action: Callable, ready: Callable = Callable()) -> void:
+	if not action.is_valid(): return
+	if ready.is_valid() and ready.call() != true:
+		_wanted = {"action": action, "ready": ready}
+		return
+	_wanted = {}
+	action.call()
+
+## Whether a View waits to run.
+func waiting() -> bool:
+	return not _wanted.is_empty()
+
+## Drops every line with an action (shown or held) and a kept View, as when
+## the player who got them is no longer the one signed in. Plain lines stay.
 func drop_actions() -> void:
 	_held = {}
+	_wanted = {}
 	if showing() and not _current.action_text.is_empty(): dismiss()
 
 ## True while a line shows (or fades out).
@@ -203,7 +233,13 @@ func _show(entry: Dictionary) -> void:
 		_fade = 0
 	var news: bool = entry.icon != null
 	_icon_disc.visible = news
-	_icon.texture = entry.icon
+	_icon.texture = entry.icon if entry.icon is Texture2D else null
+	if is_instance_valid(_mark): _mark.free()
+	if entry.icon is String:
+		_mark = CurrencyMark.make(entry.icon, MARK_SIZE)
+		_mark.position = Vector2.ONE * roundf((ICON_SIZE - MARK_SIZE) * 0.5)
+		_mark.size = Vector2.ONE * MARK_SIZE
+		_icon_disc.add_child(_mark)
 	label.text = entry.text
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if news else HORIZONTAL_ALIGNMENT_CENTER
 	_action.visible = not entry.action_text.is_empty()
@@ -214,8 +250,20 @@ func _show(entry: Dictionary) -> void:
 func _act() -> void:
 	if not _showing(): return
 	var action: Callable = _current.action
+	var ready: Callable = _current.ready
 	dismiss()
-	if action.is_valid(): action.call()
+	when_free(action, ready)
+
+func _run_wanted() -> void:
+	if _wanted.is_empty(): return
+	var ready: Callable = _wanted.ready
+	if not ready.is_valid() or not (_wanted.action as Callable).is_valid():
+		_wanted = {}
+		return
+	if ready.call() != true: return
+	var action: Callable = _wanted.action
+	_wanted = {}
+	action.call()
 
 func _reduced() -> bool:
 	return reduced_motion.is_valid() and reduced_motion.call() == true
@@ -260,6 +308,7 @@ func _draw_bar() -> void:
 	_bar.size = Vector2(roundf((card.size.x - BAR_INSET * 2.0) * fraction), BAR_HEIGHT)
 
 func _process(delta: float) -> void:
+	_run_wanted()
 	if not visible or _current.is_empty(): return
 	if _fade != 0:
 		if _reduced():

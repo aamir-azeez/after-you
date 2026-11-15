@@ -1,10 +1,7 @@
 extends "res://presentation/island_world.gd"
 ## A view of the v2 surface graph. Walkability and checkpoint state stay in core.
 ## Scenery and grounds come from the chapter's dressing (island_world's host);
-## the plates are pads in the style they resolve to (kit/pieces/pad.gd).
-const PieceStyles = preload("res://content/dressing/piece_styles.gd")
-const PadKit = preload("res://presentation/kit/pieces/pad.gd")
-var pad_pieces: Dictionary = {}
+## the plates are pads in the style they resolve to (island_world's pad build).
 
 var bridge_visuals: Dictionary = {}
 var bridge_targets: Dictionary = {}
@@ -19,7 +16,6 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition
-	_load_dressing()
 	pad_pieces.clear()
 	if is_instance_valid(terrain):
 		remove_child(terrain)
@@ -42,21 +38,8 @@ func load_level(definition: Dictionary) -> void:
 	garden_state = "closed"
 	bloomed = false
 	home_view = false
-	for island_index in range(definition.islands.size()):
-		var island: Dictionary = definition.islands[island_index]
-		var ground := _ground_style(str(island.id))
-		if not ground.is_empty():
-			var dressed := Node3D.new()
-			dressed.name = str(island.id)
-			terrain.add_child(dressed)
-			Surfaces.build(island, ground, dressed)
-			_surface_nodes[str(island.id)] = dressed
-			await _build_step()
-			continue
-		var rect: Array = island.rect_cm
-		_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
-			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("9fc8b8"), island_index + 1)
-		await _build_step()
+	# Floors, the plates and any scenery the chapter's dressing gives.
+	await _build_island_ground(definition)
 	for bridge: Dictionary in definition.bridges:
 		var rect: Array = bridge.rect_cm
 		var width := float(rect[2] - rect[0]) / 100.0
@@ -74,13 +57,6 @@ func load_level(definition: Dictionary) -> void:
 		mark_sound("bridge:%s" % bridge.id, root)
 		bridge_targets[bridge.id] = false
 		await _build_step()
-	for item: Dictionary in definition.plates:
-		# A plate's colour is the pip whose stage throws from it.
-		var user := "p0"
-		for stage: Dictionary in definition.stages:
-			if str(stage.plate_id) == str(item.id): user = str(stage.first_player_slot)
-		pad_pieces[item.id] = PadKit.build(PieceStyles.style("pad", str(item.id), _descriptor(), dressing), point(item.position_cm), float(item.radius_cm) / 100.0, terrain, {"owner": user, "id": item.id})
-	await _build_step()
 	for item: Dictionary in definition.sockets:
 		var at := point(item.position_cm)
 		var socket := Node3D.new()
@@ -97,7 +73,6 @@ func load_level(definition: Dictionary) -> void:
 			SocketKit.relay(socket)
 		socket_visuals[item.id] = socket
 		await _build_step()
-	await _build_dressing()
 	for slot: String in ["p0", "p1"]:
 		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL, slot)
 		terrain.add_child(spirit)
@@ -159,8 +134,9 @@ func _chapter_key() -> String:
 func _fold_key() -> String:
 	return _chapter_key()
 
-func _descriptor() -> Dictionary:
-	return ChapterIndex.data(_chapter_key())
+## Relay's plain floors (no ground style) keep their grass.
+func _plain_floor_colour() -> Color:
+	return Color("9fc8b8")
 
 ## A planted seed finds its socket by name and reads its cylinders.
 func _static_keep() -> Array:

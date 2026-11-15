@@ -6,8 +6,7 @@ const BEAM_HEIGHT := 1.12
 const LIGHT_COLOR := Parts.LIGHT
 const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
-## A piece's style (content/dressing/piece_styles.gd) and the goal kit.
-const PieceStyles = preload("res://content/dressing/piece_styles.gd")
+## The goal kit; a piece's style comes from island_world's PieceStyles.
 const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## Two lights, two receivers or two mirrors this close (cm) overlap: their
@@ -284,10 +283,7 @@ static func _superseded(spots: Array, index: int, position_cm: Array) -> bool:
 	return false
 
 func _shore(island: Dictionary, color: Color) -> void:
-	var style := _ground_style(str(island.id))
-	if not style.is_empty():
-		Surfaces.build(island, style, terrain)
-		return
+	if _dressed_ground(island, terrain): return
 	var bounds: Array = island.rect_cm
 	var width := float(bounds[2] - bounds[0]) / 100.0
 	var depth := float(bounds[3] - bounds[1]) / 100.0

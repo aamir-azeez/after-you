@@ -109,6 +109,7 @@ friends_navigation 1
 friends_offline 1
 friends_screen 1
 friends_screen_robust 2
+fruit_unlock_toasts 3
 fruit_wallet 1
 fruits_page 2
 full_journey_board 3
