@@ -515,6 +515,11 @@ func _at(value: Dictionary) -> Vector3:
 func _pair_control_anchor(entity: Dictionary) -> Vector3:
 	return _at(entity)
 
+## A light receiver's lamp post, for its pair tag's plaque (kit/pair_tags.gd):
+## {top (the height its lamp head sits at), radius}.
+func _pair_receiver_post(_receiver: Dictionary) -> Dictionary:
+	return {"top": _beam_height(), "radius": RECEIVER_POST}
+
 ## Where an owned stair's mark wants to sit (kit/owner_mark.gd): before its
 ## foot, stepping away from it, or past its head when the foot has no room.
 func _mark_stair(stair: Dictionary) -> Dictionary:
@@ -679,7 +684,7 @@ func _frame_camera() -> void:
 		super._frame_camera()
 		return
 	if not is_instance_valid(camera): return
-	camera.position = _follow_center + Vector3(3, 13, 10)
+	camera.position = _follow_center + ViewFit.CAMERA_FROM
 	camera.look_at(to_global(_follow_center))
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	camera.size = ViewFit.viewport(_follow_size, self)

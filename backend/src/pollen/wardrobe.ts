@@ -99,6 +99,11 @@ function owned(storage: DurableObjectStorage): Map<string, string> {
 export function ownedFaceIds(storage: DurableObjectStorage): string[] {
   try { return ownedFaces(owned(storage).keys()); } catch { return []; }
 }
+/** Which of `ids` (item or pack ids) the player owns, by one keyed read; earned items are never asked about. */
+export function ownedAmong(storage: DurableObjectStorage, ids: readonly string[]): string[] {
+  if (!ids.length || !present(storage)) return [];
+  return storage.sql.exec<{ item_id: string }>(`SELECT item_id FROM pollen_items WHERE item_id IN (${ids.map(() => "?").join(",")})`, ...ids).toArray().map(row => row.item_id);
+}
 /** The item ids the player owns (not packs): what an item bloom may no longer drop. Read inside the credit's transaction. */
 export function ownedItemIds(storage: DurableObjectStorage): ReadonlySet<string> {
   return new Set([...owned(storage)].filter(([, kind]) => kind === "item").map(([id]) => id));

@@ -4,16 +4,13 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DATA := {
 	"id": "rain_cap",
 	"slot": "hat",
-	"tier": "uncommon",
+	"tier": "common",
 	"name": PlayerCopy.COSMETIC_RAIN_CAP,
 	"art": "res://presentation/pip_wear/soft_cap.gd",
 	"code": 201,
 	## Held back until the server's release list names it.
 	"released": false,
-	## Its crown stands above the head.
-	"tall": true,
-	## The cap is whole: the leaf comes out of its top on a short stem.
+	## The cap is whole: the leaf sits right on its top (kit/wear_fit.gd top anchor).
 	"leaf_mode": "sits_on_top",
-	"leaf_lift": 0.185,
-	"leaf_max": "tall",
+	"leaf_max": "medium",
 }

@@ -3,21 +3,24 @@ extends RefCounted
 ## (kit/spirit_preview.gd) and the still snapshots (kit/pip_snapshots.gd), so a
 ## still pip looks exactly like a live one at rest: a warm ambient light, one
 ## sun, a narrow camera on a three-quarter view, and the real SpiritVisual
-## without its ground ring or shadow. A tall item (its descriptor's "tall")
+## without its ground ring or shadow. An item reaching past the pip's outline (kit/wear_fit.gd reach)
 ## pulls the camera back a little so it stays in frame; a wide one ("wide")
 ## pulls it back further and moves it toward the side the item hangs on; a hat
 ## that raises the leaf pulls it back by how far it raises it.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Outfit = preload("res://services/outfit.gd")
 const PipOutfit = preload("res://presentation/pip_outfit.gd")
+const WearFit = preload("res://presentation/kit/wear_fit.gd")
 
 const CAMERA_AT := Vector3(0.0, 0.66, 2.45)
 const LOOK_AT := Vector3(0.0, 0.53, 0.0)
 const FOV := 24.0
 ## With a tall item: how much farther the camera stands, and how much higher
 ## it looks.
-const TALL_PULL := 1.15
-const TALL_LIFT := 0.04
+## An item reaching more than this (metres) past the pip's outline pulls the views back.
+const REACH_MIN := 0.01
+const REACH_PULL := 1.15
+const REACH_LIFT := 0.04
 ## With a wide item: how much farther the camera stands, and how far it moves
 ## toward the item's side (+x: the view turns the pip's right side away).
 const WIDE_PULL := 1.25
@@ -26,7 +29,7 @@ const WIDE_PAN := 0.05
 ## much lower it looks, so the ring round the feet stays in frame.
 const LOW_PULL := 1.35
 const LOW_DROP := 0.12
-## With a hat that raises the leaf (Outfit.leaf_rise, metres): the camera
+## With a hat that raises the leaf (kit/wear_fit.gd lift_for, metres): the camera
 ## stands this much farther per metre raised and looks up half of it, so the
 ## raised leaf's top stays in frame and the feet stay where they were.
 const RISE_PULL := 1.05
@@ -69,20 +72,23 @@ static func pip(color: Color, outfit: Dictionary, place: StringName = PipOutfit.
 	made.wear(outfit)
 	return made
 
-## Points the camera at the pip, pulled back for a tall or wide outfit, or one
+## Points the camera at the pip, pulled back for an outfit reaching past the
+## pip's outline or a wide one, or one
 ## with a low item drawn in `place` (as the
 ## pip wears it: cleaned, so an item it can't wear never moves the camera).
 static func frame(camera: Camera3D, outfit: Dictionary, place: StringName = PipOutfit.STUDIO) -> void:
 	var worn := Outfit.from(outfit)
 	var wide := Outfit.wide(worn)
-	var tall := Outfit.tall(worn)
+	var reaching := false
+	for id: String in Outfit.items(worn):
+		if WearFit.reach(id) > REACH_MIN: reaching = true
 	var low := Outfit.low(worn, place)
-	var rise := Outfit.leaf_rise(worn)
-	if not wide and not tall and not low and rise <= 0.0:
+	var rise := WearFit.lift_for(str(worn.hat)) if worn.has("hat") else 0.0
+	if not wide and not reaching and not low and rise <= 0.0:
 		camera.look_at_from_position(CAMERA_AT, LOOK_AT)
 		return
-	var target := LOOK_AT + Vector3(WIDE_PAN if wide else 0.0, TALL_LIFT if wide or tall else 0.0, 0)
-	var pull := WIDE_PULL if wide else (TALL_PULL if tall else 1.0)
+	var target := LOOK_AT + Vector3(WIDE_PAN if wide else 0.0, REACH_LIFT if wide or reaching else 0.0, 0)
+	var pull := WIDE_PULL if wide else (REACH_PULL if reaching else 1.0)
 	target.y += rise * RISE_LIFT
 	pull += rise * RISE_PULL
 	if low:

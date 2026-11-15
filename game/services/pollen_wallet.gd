@@ -218,6 +218,10 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 func enabled(server: String, owner: String) -> bool:
 	return bool(_scope(server, owner).get("enabled", false))
 
+## Whether this phone keeps any answer from the server for this player.
+func told(server: String, owner: String) -> bool:
+	return not _scope(server, owner).is_empty()
+
 func set_enabled(server: String, owner: String, on: bool) -> void:
 	var scope := _scope(server, owner, on)
 	if scope.is_empty() or bool(scope.enabled) == on: return

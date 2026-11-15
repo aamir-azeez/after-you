@@ -112,7 +112,9 @@ static func dress(target: Node3D, worn: Dictionary) -> RefCounted:
 		made.apply_art(load(path))
 	made._slot = ""
 	var hat := str(worn.get("hat", ""))
-	if not hat.is_empty(): made.fit = WearFit.decide(hat, WearFit.leaf_class(str(worn.get("leaf", "")), target.sprout))
+	if not hat.is_empty():
+		WearFit.seat_hat(hat, target.upper_body, made._slot_nodes.get("hat", []))
+		made.fit = WearFit.decide(hat, WearFit.leaf_class(str(worn.get("leaf", "")), target.sprout))
 	# An outfit that wears nothing (the celebration's gilding) leaves the leaf as the pip's own fit has it.
 	if not worn.is_empty(): made._fit_leaf()
 	made.seed_lift = maxf(made._seed_own, made._seed_with_leaf + made.leaf_lift if made._seed_follows_leaf else 0.0)

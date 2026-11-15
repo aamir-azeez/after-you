@@ -9,13 +9,11 @@ const DATA := {
 	"name": PlayerCopy.COSMETIC_APPLE_HOOD,
 	"art": "res://presentation/pip_wear/fruit_hood.gd",
 	"set": "orchard",
-	## Its stem and leaf stand above the head.
-	"tall": true,
 	## A worn leaf item stands on a short stem out of the hood's top, raised
 	## clear of it (the plain leaf hides).
 	"leaf_lift": 0.05,
 	"leaf_mode": "sits_on_top",
 	## Kept as players own it: no stem.
 	"leaf_stem": false,
-	"leaf_max": "tall",
+	"leaf_max": "medium",
 }

@@ -78,11 +78,14 @@ const COSMETIC_WOOD_CHIME := "Wood chime"
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
 const DISPLAY_NAME_ASK_NOTE := "Friends and people you share a room with see it on rooms and replays."
+## The name prompt's switch while no name is chosen yet: the leaderboard name choice (services/leaderboard_client.gd), off by default.
+const DISPLAY_NAME_ASK_SHOW_NAME := "Show my name in public duels and on leaderboards"
+const DISPLAY_NAME_ASK_SHOW_NAME_LATER := "(can be changed later)"
 ## The prompt's title when it is opened from Friends to change the name.
 const DISPLAY_NAME_EDIT_TITLE := "Your name"
 const DISPLAY_NAME_FIELD := "Name"
 const DISPLAY_NAME_COUNTER := "%d / %d"
-const DISPLAY_NAME_ANONYMOUS := "Keep me anonymous"
+const DISPLAY_NAME_ANONYMOUS := "Keep my " + CREATURE + " name"
 ## %s is the anonymous name, such as "Kite 41".
 const DISPLAY_NAME_ANONYMOUS_NOTE := "Others see you as %s."
 const DISPLAY_NAME_PLAY_GAMES := "Use my Play Games name"
@@ -112,8 +115,8 @@ const DISPLAY_NAME_ERRORS := {
 	"invalid_display_name": "Use letters, numbers and spaces.",
 	"display_name_refused": "That name isn't allowed. Try another.",
 	"display_name_limited": "You've changed your name a few times today. Try again tomorrow.",
-	"display_name_locked": "You can't set a name right now. You can still stay anonymous.",
-	"pollen_short": "You need more Pollen for this change. Staying anonymous is always free.",
+	"display_name_locked": "You can't set a name right now. You can still keep your " + CREATURE + " name.",
+	"pollen_short": "You need more Pollen for this change. Keeping your " + CREATURE + " name is always free.",
 	"name_change_price": "The price of a name change just changed. Check it and save again.",
 	# A price refusal on a build that shows no price (display_name_flow.gd refusal_code).
 	"name_price_hidden": DISPLAY_NAME_PRICE_HIDDEN,
@@ -129,11 +132,11 @@ const DISPLAY_NAME_SAVE_SHORT := "Save for %s Pollen, %s more needed"
 ## Under the field: the amount is bold ([b]), as drawn.
 const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change now costs [b]%s Pollen[/b]."
 ## Under the choices, after the grain.
-const DISPLAY_NAME_PRICE_HAVE := "You have %s. Keeping me anonymous is always free."
+const DISPLAY_NAME_PRICE_HAVE := "You have %s. Keeping your " + CREATURE + " name is always free."
 ## The short of Pollen card (board 5b) for a name change: what costs.
 const DISPLAY_NAME_SHORT_ITEM := "A name change"
 ## The same place on a build that shows no price (services/pollen_surfaces.gd): a change that costs waits.
-const DISPLAY_NAME_PRICE_HIDDEN := "Your free change is used. Staying anonymous is always free."
+const DISPLAY_NAME_PRICE_HIDDEN := "Your free change is used. Keeping your " + CREATURE + " name is always free."
 ## Under a friend's nickname on their Friends row: the name they chose.
 const DISPLAY_NAME_GOES_BY := "Goes by %s"
 
@@ -376,6 +379,9 @@ const WARDROBE_SHORT_BUNDLE_GETS := " Pollen"
 const WARDROBE_SHORT_BUNDLE_GETS_GIFT := " Pollen with your first bundle gift"
 ## The balance chip's left half, for screen readers.
 const POLLEN_CHIP_BALANCE := "Pollen: %s"
+## A chip's amount before the first balance arrives (presentation/kit/pollen_chip.gd), and what a screen reader says for it.
+const CHIP_WAITING := "···"
+const CHIP_WAITING_SPOKEN := "loading"
 
 # The Pollen store (board 2: presentation/pollen_store_page.gd, pollen_store_flow.gd).
 const POLLEN_STORE_TITLE := "Store"
@@ -633,11 +639,9 @@ const FACE_DROWSY := "Drowsy"
 const FACE_GASP := "Gasp"
 const FACE_PEEKABOO := "Peekaboo"
 const FACE_YAY := "Yay"
-const FACE_SMITTEN := "Smitten"
 const FACE_STARRY := "Starry"
 const FACE_FLOWER := "Flower"
 ## The six pack faces sold one at a time (content/cosmetics/faces.gd).
-const FACE_HEART_EYES := "Heart eyes"
 const FACE_PROUD := "Proud"
 const FACE_WINK := "Wink"
 const FACE_WOW := "Wow"
@@ -656,10 +660,10 @@ const REACTION_SLOT_SIXTH := "Sixth reaction slot"
 ## The faces, by id (services/reaction_catalog.gd). The heart is icon only; its name is for screen readers.
 const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
 	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love",
-	"heart_eyes": FACE_HEART_EYES, "proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
+	"proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
 	"aww": FACE_AWW, "shy": FACE_SHY, "huh": FACE_HUH, "please": FACE_PLEASE, "touched": FACE_TOUCHED, "lucky": FACE_LUCKY,
 	"giggle": FACE_GIGGLE, "curious": FACE_CURIOUS, "nervous": FACE_NERVOUS, "drowsy": FACE_DROWSY, "gasp": FACE_GASP,
-	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "smitten": FACE_SMITTEN, "starry": FACE_STARRY, "flower": FACE_FLOWER}
+	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "starry": FACE_STARRY, "flower": FACE_FLOWER}
 ## The reaction packs (services/reaction_catalog.gd PACKS), and the faces card's
 ## tab for the everyday faces beside a tab per owned pack.
 const FACE_PACK_NAMES := {"garden_faces": "Garden faces", "big_feelings": "Big feelings"}
@@ -1115,6 +1119,8 @@ const DUELS_PARTY_FRIENDS_ONLY := "Only your friends can join your party."
 const DUELS_PARTY_ASK := "Ask"
 const DUELS_PARTY_ASKED := "Asked"
 const DUELS_PARTY_SAY_YES := "Say yes"
+## Home's card for a friend's invite (presentation/redo_home_card.gd), whose title is DUELS_PARTY_INVITED without its full stop.
+const DUELS_PARTY_SEE_INVITE := "See invite"
 const DUELS_PARTY_LEAVE := "Leave party"
 const DUELS_PARTY_NO_FRIENDS := "Add a friend first. Friends you add show here."
 ## Starting a duel.
@@ -1362,7 +1368,7 @@ const SETTINGS_RECOVER := "Recover a previous identity"
 const SETTINGS_DELETE_IDENTITY := "Delete online identity…"
 const SETTINGS_FINISH_RECOVERY := "Finish identity recovery"
 const SETTINGS_CLOSE_APP := "Close After You"
-const SETTINGS_CREATE_IDENTITY := "Create anonymous identity"
+const SETTINGS_CREATE_IDENTITY := "Create online identity"
 const SETTINGS_CHECK_IDENTITY := "Check saved identity"
 const SETTINGS_RETRY_CLEANUP := "Retry device cleanup"
 const SETTINGS_COMMUNITY := "Community & privacy"
@@ -1461,6 +1467,8 @@ const ROOM_OPTIONS_INVITE := "Invite"
 const ROOM_OPTIONS_TURNS := "Turns"
 const ROOM_OPTIONS_CHAPTER := "Chapter"
 const ROOM_OPTIONS_SAFETY := "Safety"
+## The way to report or block a room partner: the Room options row and the pause cards' flag.
+const REPORT_OR_BLOCK := "Report or block player"
 const ROOM_OPTIONS_PARTNER := "Friends"
 # A friend's redo request in Together rooms (presentation/redo_flow.gd,
 # presentation/redo_home_card.gd). %s is the friend's name.
@@ -1929,7 +1937,7 @@ const MAIN_C9DD5A234C97 := "The first turn and the second turn will be replaced.
 # Account and recovery — message
 const MAIN_EC79109D7607 := "This device still has to complete local cleanup."
 # Account and recovery — body text
-const MAIN_F890477C65DE := "Your identity is anonymous. Android keeps device credentials in its encrypted storage. Your recovery code gives access to your online identity; keep it private."
+const MAIN_F890477C65DE := "Your identity isn't linked to your name or email. Android keeps device credentials in its encrypted storage. Your recovery code gives access to your online identity; keep it private."
 # Account and recovery — body text
 const MAIN_93BF3A28C6F9 := "An identity recovery is saved on this device. Complete that request before you use online rooms."
 # Account and recovery — body text
@@ -1992,7 +2000,7 @@ const MAIN_3A8CB7C5D89F := "Recovery was not confirmed yet. Retry the same saved
 # removal, and the Settings note for a saved request that cannot be read.
 const RECOVERY_DISCARD := "Stop this recovery"
 const RECOVERY_DISCARD_TITLE := "Stop this recovery?"
-const RECOVERY_DISCARD_WARNING := "If the identity you tried to recover still exists, it keeps its rooms and friends, and its current recovery code can still bring it back. This device then checks its own saved identity again, or starts a new anonymous one if it has none."
+const RECOVERY_DISCARD_WARNING := "If the identity you tried to recover still exists, it keeps its rooms and friends, and its current recovery code can still bring it back. This device then checks its own saved identity again, or starts a new one if it has none."
 const RECOVERY_DISCARD_CONFIRM := "Stop recovery"
 const RECOVERY_DISCARD_FAILED := "This device could not remove the saved recovery request. Try again."
 const RECOVERY_DISCARD_UNUSABLE_NOTE := "The recovery request saved on this device can't be finished."
@@ -3321,7 +3329,7 @@ const SUBSCRIPTION_TERMS_APP_STORE := "Payment is charged to your Apple Account 
 const SUBSCRIPTION_ACTIVE_IOS := "Your subscription pays for hosting and server costs. You can change or cancel it in the App Store."
 const SUBSCRIPTION_TERMS_OF_USE := "Terms of Use"
 const MAIN_3E8E7DA4CEE6_IOS := "This build has no secure storage for an online identity."
-const MAIN_F890477C65DE_IOS := "Your identity is anonymous. iOS keeps device credentials in its encrypted Keychain. Your recovery code gives access to your online identity; keep it private."
+const MAIN_F890477C65DE_IOS := "Your identity isn't linked to your name or email. iOS keeps device credentials in its encrypted Keychain. Your recovery code gives access to your online identity; keep it private."
 const MAIN_570EC629872D_IOS := "Creating or recovering an online identity requires two things: secure storage on this device and a connection to the service."
 const MAIN_EF43E19393E4_IOS := "Decide if you want to receive notifications when your friend leaves a turn. Tap on a notification to go back to your shared room. Your current turn will not be interrupted."
 const MAIN_B39BBA0B04B0_IOS := "You need an online identity first. Your existing saved data is kept."
