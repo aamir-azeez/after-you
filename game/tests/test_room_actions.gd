@@ -129,7 +129,7 @@ func _layout() -> void:
 		_check(panel == state.contains("_panel"), "Panel states are named as panels: " + state)
 	var sections: Array = RoomActions.SECTIONS.keys()
 	_check(sections == ["invite", "turns", "partner", "chapter", "safety"] and RoomActions.SECTIONS.values().all(func(section: Dictionary): return section.column in [0, 1] and not str(section.title).is_empty()), "Room options has its five sections, each in a column")
-	_check(RoomActions.SECTIONS.partner.title == "Room partner" and RoomActions.ACTIONS.add_friend.section == "partner" and RoomActions.ACTIONS.friend_requested.section == "partner", "Add friend and Request sent sit under Room partner")
+	_check(RoomActions.SECTIONS.partner.title == "Friends" and RoomActions.ACTIONS.add_friend.section == "partner" and RoomActions.ACTIONS.friend_requested.section == "partner", "Add friend and Request sent sit under Room partner")
 	_check([RoomActions.SECTIONS.invite.title, RoomActions.SECTIONS.turns.title, RoomActions.SECTIONS.chapter.title, RoomActions.SECTIONS.safety.title] == ["Invite", "Turns", "Chapter", "Safety"], "The owner's section headings")
 	_check(RoomActions.SECTIONS.safety.get("danger", false) and RoomActions.SECTIONS.values().filter(func(section: Dictionary): return section.get("danger", false)).size() == 1, "Only Safety is drawn in the warning colour")
 	_check(RoomActions.REDO_ACTIONS == ["redo", "redo_status", "redo_retry", "solo_redo"], "Pause and review cards add the redo rows")

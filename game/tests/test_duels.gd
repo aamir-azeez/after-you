@@ -80,7 +80,7 @@ func _model() -> void:
 	_check(not view.is_empty(), "a running duel reads")
 	_check(DuelModel.time_text(3240) == "1:48.0" and DuelModel.time_text(2760) == "1:32.0", "times read as the board shows them")
 	_check(DuelModel.pair_title(view, 0, _name_of) == "You + Maya", "your pair reads You + Maya")
-	_check(DuelModel.pair_title(view, 1, _name_of) == "Finn + Finn's partner", "a player the server did not name reads as a partner: " + DuelModel.pair_title(view, 1, _name_of))
+	_check(DuelModel.pair_title(view, 1, _name_of) == "Finn + Finn's friend", "a player the server did not name reads as Finn's friend: " + DuelModel.pair_title(view, 1, _name_of))
 	_check(DuelModel.turn_line(view, 0, _name_of) == PlayerCopy.DUEL_YOUR_TURN and DuelModel.turn_line(view, 1, _name_of) == PlayerCopy.DUEL_WAITING_FOR % PlayerCopy.DUEL_PARTNER, "whose turn each pair shows")
 	_check(DuelModel.action(view, ME) == "play" and DuelModel.action(view, MAYA) == "open", "Play for the player whose turn it is, Open for the partner")
 	var level := Client.valid_view(_wire("running", {"sides": [_wire().sides[0].merged({"steps": 4, "ticks": 3000}, true), _wire().sides[1].merged({"steps": 4, "ticks": 3360}, true)]}))
