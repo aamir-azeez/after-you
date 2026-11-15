@@ -9,8 +9,11 @@ extends RefCounted
 const Primitives = preload("res://presentation/kit/primitives.gd")
 
 const STYLES := {
-	# Meadow grass over a soil band and warm sandstone.
-	"grass": {"top": Color("7fa564"), "trim": Color("94b878"), "skirt": Color("62894f"), "band": Color("8a6b4e"), "rock": Color("b49a76"), "lines": ""},
+	# Meadow grass over a soil band and warm sandstone. A floating shell under
+	# it (island_world.gd _island_shell) runs the band down into deeper soil, a
+	# darker underside and roots.
+	"grass": {"top": Color("7fa564"), "trim": Color("94b878"), "skirt": Color("62894f"), "band": Color("8a6b4e"), "rock": Color("b49a76"), "lines": "",
+		"soil": Color("6f5440"), "underside": Color("533e2d"), "root": Color("4a3729")},
 	# A raised plank deck on beams, with no rock below: supports come from posts.
 	"deck": {"top": Color("a07a55"), "trim": Color("8a6b4e"), "skirt": Color("7a5c40"), "band": Color("6b5038"), "rock": Color("a88f6c"), "lines": "x", "line": Color("8f6d4d"), "spacing": 0.36, "rockless": true},
 	# Plank decking.
@@ -31,6 +34,12 @@ const STYLES := {
 
 static func has_style(name: String) -> bool:
 	return STYLES.has(name)
+
+## The style's soil for a floating shell (band, soil, underside and root
+## colours); {} for a style with none.
+static func soil(name: String) -> Dictionary:
+	var style: Dictionary = STYLES.get(name, {})
+	return style if style.has("soil") else {}
 
 ## Builds the island's floor in the named style under parent (whose origin is
 ## the island's height). Node names match the plain shore: <id>Floor and

@@ -472,7 +472,7 @@ func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
 		_check(not app.identity_loading and app.identity_read_state==Main.IdentityReadState.FAILED,"Failed or malformed secure read %d remains distinct from missing" % index)
 		_check(not await app._ensure_identity() and api.calls.is_empty() and storage.writes.is_empty(),"Secure read failure %d sends no identity creation and overwrites nothing" % index)
 	app.settings_flow.show_settings("account")
-	_check(_find_button(app.overlay,"Create anonymous identity")==null and _find_button(app.overlay,"Check saved identity")!=null and _find_button(app.overlay,"Recover a previous identity")!=null,"Failed identity read exposes retry/recovery instead of replacement")
+	_check(_find_button(app.overlay,"Create online identity")==null and _find_button(app.overlay,"Check saved identity")!=null and _find_button(app.overlay,"Recover a previous identity")!=null,"Failed identity read exposes retry/recovery instead of replacement")
 	var identity := {"player_id":TEST_SAVED_PLAYER,"device_token":TEST_DEVICE_TOKEN,"recovery_code":TEST_RECOVERY_CODE}
 	storage.read_response={"ok":true,"payload":{"found":true,"value":JSON.stringify(identity)}}
 	await app.account_flow.retry_saved_identity()

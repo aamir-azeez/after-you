@@ -401,6 +401,7 @@ func load_level(level: Dictionary) -> void:
 	var right_edge := float(gap[1])/100.0
 	var z_center := (min_z+max_z)/2.0
 	var depth := max_z-min_z
+	island_soil = Surfaces.soil(CLASSIC_GROUND)
 	_make_island((min_x+left_edge)/2.0, z_center, left_edge-min_x, depth, grass)
 	_make_island((right_edge+max_x)/2.0, z_center, max_x-right_edge, depth, grass)
 	var bridge: Dictionary = level.get("bridge", {"z":0,"width":180})
@@ -576,10 +577,18 @@ func _lift_surface_height(coords: Array, height: float) -> float:
 	var zone: Array=current_level.lift.zone
 	return height if coords[0]>=zone[0] and coords[0]<=zone[2] and coords[1]>=zone[1] and coords[1]<=zone[3] else 0.0
 
+## The ground style (kit/surfaces.gd) under the classic islands, Home's and
+## the earlier islands': grass over soil.
+const CLASSIC_GROUND := "grass"
+## The soil (kit/surfaces.gd soil) under this world's islands and the islands
+## a screen adds to them; {} keeps the plain green shell. Only the classic
+## level build sets it.
+var island_soil: Dictionary = {}
+
 ## variant 0 is the classic island (Home and the legacy islands); chapter
 ## islands pass their index so neighbouring islands are not clones.
 func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color, variant: int = 0) -> void:
-	_island_shell(cx,cz,width,depth,grass)
+	_island_shell(cx,cz,width,depth,grass,null,island_soil)
 	island_dressing(cx,cz,width,depth,variant,terrain)
 	# Scenic edges stay outside the puzzle's readable central routes.
 	if variant > 0:
@@ -631,17 +640,21 @@ func island_dressing(cx: float, cz: float, width: float, depth: float, variant: 
 				var blade := box(Vector3(0.025,0.13+j*0.05,0.035),Color("638d69"),Vector3(x+j*0.04,0.06+j*0.015,z),parent)
 				blade.rotation.z=(j-1)*0.24
 	# Small suspended roots make the islands legible as floating worlds.
+	var root_color: Color = island_soil.get("root", Color("456b59"))
 	for i in range(5):
-		var root := cylinder(0.025,0.7+i*0.07,Color("456b59"),Vector3(cx+sin(i*2.8)*(width/2-0.2),-1.35,cz+cos(i)*depth/2),parent)
+		var root := cylinder(0.025,0.7+i*0.07,root_color,Vector3(cx+sin(i*2.8)*(width/2-0.2),-1.35,cz+cos(i)*depth/2),parent)
 		root.rotation.z=sin(i)*0.3
 
 ## An island's floating landform under `parent`, for islands a screen adds
 ## to the level's own (Home's keepsake isles, presentation/keepsakes/home_isles.gd).
+## Its sides match the level's islands (island_soil).
 func island_shell(cx: float, cz: float, width: float, depth: float, grass: Color, parent: Node3D) -> void:
-	_island_shell(cx, cz, width, depth, grass, parent)
+	_island_shell(cx, cz, width, depth, grass, parent, island_soil)
 
-## `parent`: where the shell goes (the terrain when left out).
-func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Color, parent: Node3D = null) -> void:
+## `parent`: where the shell goes (the terrain when left out). `soil`
+## (kit/surfaces.gd soil): the sides below the grass lip run soil down to a
+## darker underside; {} keeps the plain green shell.
+func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Color, parent: Node3D = null, soil: Dictionary = {}) -> void:
 	# A faceted floating landform encloses the full rectangular simulation floor.
 	# Decorative bevels extend outwards; they never remove a walkable corner.
 	var hx := width/2.0
@@ -665,6 +678,8 @@ func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Colo
 				y=-1.66+cos(i*2.0)*0.24
 			points.append(Vector3(cx+p.x*scale_value,y,cz+p.y*scale_value))
 		layers.append(points)
+	var sides: Array = [grass.darkened(0.08),soil.band,soil.soil] if not soil.is_empty() else [grass.darkened(0.08),Color("92a28b"),Color("759487")]
+	var underside: Color = soil.get("underside", Color("648175"))
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	surface.set_smooth_group(-1)
@@ -672,11 +687,11 @@ func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Colo
 		var next := (i+1)%outline.size()
 		_shell_triangle(surface,Vector3(cx,-0.012,cz),layers[0][i],layers[0][next],grass)
 		for layer in range(3):
-			var color: Color=[grass.darkened(0.08),Color("92a28b"),Color("759487")][layer]
+			var color: Color=sides[layer]
 			color=color.lightened(0.035*float(i%3))
 			_shell_triangle(surface,layers[layer][i],layers[layer+1][i],layers[layer+1][next],color)
 			_shell_triangle(surface,layers[layer][i],layers[layer+1][next],layers[layer][next],color)
-		_shell_triangle(surface,layers[3][i],Vector3(cx+0.3,-2.32,cz-0.18),layers[3][next],Color("648175").lightened(0.03*float(i%3)))
+		_shell_triangle(surface,layers[3][i],Vector3(cx+0.3,-2.32,cz-0.18),layers[3][next],underside.lightened(0.03*float(i%3)))
 	surface.generate_normals()
 	var shell := MeshInstance3D.new()
 	shell.mesh=surface.commit()
