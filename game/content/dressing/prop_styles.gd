@@ -32,7 +32,7 @@ const SLOTS := {
 	},
 	# Low things along the front of a bank. Each stays under kit/props.gd LOW
 	# laid at trim size on a bank's front lip, so it never hides a spirit
-	# (tests/test_dressing_mixes.gd TRIM_SIZE, TRIM_LIP).
+	# (presentation/kit/prop_rules.gd TRIM_SIZE, TRIM_LIP; tests/test_dressing_mixes.gd).
 	"trim": {
 		"flowers": {"kind": "flowers"},
 		"bollards": {"kind": "bollard"},

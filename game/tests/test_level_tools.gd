@@ -7,6 +7,10 @@ extends SceneTree
 ##    stage of every floor chapter and for a layout no chapter registers;
 ##  - the stage shots: a pip beside a control stands on its floor, a worked
 ##    control opens what its gates say;
+##  - the quick prop check flags what the dressing lint flags, by the same
+##    rules: a seeded tree on a floor and a lamp over a control, and nothing
+##    in a published chapter's dressing or faces; it marks ground props may
+##    stand on;
 ##  - live reload redraws a world from an edited catalog and dressing read from
 ##    a folder outside the game, leaves the registry's definition, user:// and
 ##    the engine alone, keeps the world on a catalog with no stages, and
@@ -22,6 +26,9 @@ const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PropCheck = preload("res://tests/level_tools/prop_check.gd")
+const Lint = preload("res://tests/test_dressing_lint.gd")
+const Placement = preload("res://content/dressing/placement.gd")
 var checks := 0
 var failures := 0
 
@@ -31,6 +38,7 @@ func _run() -> void:
 	_graph()
 	_maps()
 	_shots()
+	_prop_check()
 	await _live()
 	_ships_nowhere()
 	print("LEVEL TOOLS: %d checks, %d failures" % [checks, failures])
@@ -42,6 +50,30 @@ func _check(ok: bool, message: String) -> void:
 		failures += 1
 		push_error(message)
 		print("FAIL: " + message)
+
+# --- The quick prop check -----------------------------------------------------------
+
+func _prop_check() -> void:
+	var key := "first-steps@1"
+	var stage := str(Placement.stage_ids(key)[0])
+	var started := Time.get_ticks_msec()
+	var clean := PropCheck.check(key, stage)
+	_check(PropCheck.lines(clean).is_empty(), "The prop check passes a published dressing the lint passes: %s" % [PropCheck.lines(clean)])
+	_check(clean.props.size() == Dressing.stage_props(Dressing.for_key(key), stage).size() and not clean.stand.tall.is_empty() and not clean.stand.low.is_empty(), "The prop check judges every prop and marks ground for tall and for low props")
+	print("PROP CHECK one stage in %d ms" % (Time.get_ticks_msec() - started))
+	# A tree in the middle of the shore and a lantern over the power spot.
+	var seeded := {"props": {"*": [{"kind": "tree", "at": [-360, 0], "surface": "shore"}, {"kind": "lantern", "at": [-336, -166], "surface": "shore"}]}}
+	var flagged := PropCheck.lines(PropCheck.check(key, stage, seeded))
+	_check(flagged.size() == 2 and flagged[0].contains("walkable island shore") and flagged[1].contains("covers"), "The prop check flags a prop on a floor and one over a control: %s" % [flagged])
+	var lint: SceneTree = Lint.new()
+	lint._lint(key, stage, Placement.stage_view(key, stage), seeded)
+	_check(lint.failures >= 2, "The dressing lint flags the same seeded props (%d)" % lint.failures)
+	lint.free()
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var faces := PropCheck.faces(holder, key, [stage])
+	_check(faces.is_empty(), "No published face of %s flickers: %s" % [key, faces])
+	holder.free()
 
 # --- The graph ----------------------------------------------------------------------
 

@@ -77,6 +77,7 @@ const Sheets = preload("res://presentation/wardrobe_sheets.gd")
 const OrchardSurface = preload("res://presentation/kit/orchard_surface.gd")
 const CurrencyMark = preload("res://presentation/kit/currency_mark.gd")
 const Reactions = preload("res://presentation/wardrobe_reactions.gd")
+const OneRow = preload("res://presentation/kit/one_row.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 
 const CREAM := ShopKit.CREAM
@@ -139,11 +140,12 @@ var _tabs := {}
 var _tab_row: HBoxContainer
 var _stays: Label
 var _views := {}
-## The slot chips and the shelf's cards flow onto more rows where the panel is
-## narrow, so the page is never wider than the screen.
+## The slot chips flow onto more rows where the panel is narrow, so the page is
+## never wider than the screen.
 var _kinds: HFlowContainer
 var _shelf: PanelContainer
-var _featured: HFlowContainer
+## The shelf's cards stay on one line (kit/one_row.gd): a little smaller, then fewer.
+var _featured: OneRow
 var _grid: HFlowContainer
 ## The Reactions chip's slot row and faces, shown in the cards' place.
 var _reactions: Reactions
@@ -361,7 +363,7 @@ func _shop_panel() -> Control:
 	_list.add_child(_reactions)
 	return panel
 
-## "Featured this week" in its own tinted panel: the title, then the six cards.
+## "Featured this week" in its own tinted panel: the title, then one line of cards.
 func _shelf_panel() -> Control:
 	_shelf = PanelContainer.new()
 	_shelf.name = "WardrobeShelf"
@@ -377,10 +379,9 @@ func _shelf_panel() -> Control:
 	title.add_child(spark)
 	title.add_child(ShopKit.text(PlayerCopy.WARDROBE_FEATURED, 17, INK, ShopKit.bold_font()))
 	column.add_child(title)
-	_featured = HFlowContainer.new()
+	_featured = OneRow.new()
 	_featured.name = "WardrobeFeatured"
-	_featured.add_theme_constant_override("h_separation", 10)
-	_featured.add_theme_constant_override("v_separation", 10)
+	_featured.tile = SHELF_CARD_SIZE
 	column.add_child(_featured)
 	return _shelf
 

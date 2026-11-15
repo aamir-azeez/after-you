@@ -334,6 +334,8 @@ func _find_keys(state: Dictionary) -> void:
 		var actors: Dictionary = world.actors
 		if not actors.has(_live_key) and actors.has("b"): _live_key = "b"
 		if not actors.has(_memory_key) and actors.has("a"): _memory_key = "a"
+	# A sound caused by role a or b is heard from that role's pip.
+	if is_instance_valid(world) and world.has_method("note_live_spirit"): world.note_live_spirit(str(state.get("role", _role)), _live_key)
 
 ## Doze by the goal and let the camera follow the memory.
 func _apply_wait(immediate: bool = false) -> void:
