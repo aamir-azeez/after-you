@@ -77,7 +77,7 @@ const COSMETIC_WOOD_CHIME := "Wood chime"
 
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
-const DISPLAY_NAME_ASK_NOTE := "Your friends see it on rooms and replays."
+const DISPLAY_NAME_ASK_NOTE := "Friends and people you share a room with see it on rooms and replays."
 ## The prompt's title when it is opened from Friends to change the name.
 const DISPLAY_NAME_EDIT_TITLE := "Your name"
 const DISPLAY_NAME_FIELD := "Name"
@@ -973,7 +973,7 @@ const SETTINGS_RESET_GRAPHICS := "Reset graphics"
 const SETTINGS_RESET_GRAPHICS_CONFIRM := "Reset graphics to default?"
 const SETTINGS_RESET := "Reset"
 const SETTINGS_CANCEL := "Cancel"
-const SETTINGS_ONLINE_STATUS_NOTE := "Your friends can see when you're here."
+const SETTINGS_ONLINE_STATUS_NOTE := "Friends and people you share a room with can see when you're here."
 const SETTINGS_RECOVERY_DETAILS_NOTE := "Your identity and recovery code."
 const SETTINGS_RECOVERY_DETAILS_HIDE := "Hide my recovery details"
 const SETTINGS_HOSTING_ACCESS_NOTE := "Ask the server what you can host."
@@ -3089,39 +3089,39 @@ const BORROWED_LIGHT_5FCA9929F99A := "A welcome, left on. The entire previous re
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_C2032291E051 := "Return the lens to its corresponding lens cradle."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_612209B6657F := "Leave the lens where your friend can reach it."
+const BORROWED_LIGHT_612209B6657F := "Leave the lens where your partner can reach it."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_13086E53C08C := "Bring the lens to the tower."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_1DA118866EEF := "From this moment on, your friend can take the lens."
+const BORROWED_LIGHT_1DA118866EEF := "From this moment on, your partner can take the lens."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_DDEA9DFE5842 := "The cradle is complete. The entire previous recording will be completed before review."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_D9CB635673D0 := "The lens is not available to your friend yet."
+const BORROWED_LIGHT_D9CB635673D0 := "The lens is not available to your partner yet."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_EF30C7801632 := "Your friend does not have enough time to get to the lens."
+const BORROWED_LIGHT_EF30C7801632 := "Your partner does not have enough time to get to the lens."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_261E1E1579C8 := "The light sequence was broken. Try another turn."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_99ABEE69466E := "The first path is not illuminated."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_7EE2CC277F92 := "Your friend requires additional light for the first crossing."
+const BORROWED_LIGHT_7EE2CC277F92 := "Your partner requires additional light for the first crossing."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_BD25BF01CD59 := "The second path is not illuminated."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_C32947723A33 := "Your friend needs more light for the second crossing."
+const BORROWED_LIGHT_C32947723A33 := "Your partner needs more light for the second crossing."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_0F44509EEEEB := "The light was cut off. Try another turn."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_26B9B7BD2E4E := "The light was cut off. Try another turn."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_A6789290B4A2 := "Your friend should have a light to follow."
+const BORROWED_LIGHT_A6789290B4A2 := "Your partner should have a light to follow."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_45E3CCB01EFE := "Your friend should have a light to follow."
+const BORROWED_LIGHT_45E3CCB01EFE := "Your partner should have a light to follow."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_846C2C892A05 := "Your friend requires additional time in the light."
+const BORROWED_LIGHT_846C2C892A05 := "Your partner requires additional time in the light."
 # Additional source scan; review surrounding UI flow
-const BORROWED_LIGHT_F8310F973530 := "Your friend requires additional time in the light."
+const BORROWED_LIGHT_F8310F973530 := "Your partner requires additional time in the light."
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_32C4278DBA4E := "The light is not yet ready to save."
 # Additional source scan; review surrounding UI flow
@@ -3233,7 +3233,7 @@ const SIMULATION_V2_64571A65DFB3 := "A first turn cannot rely on another first t
 # Additional source scan; review surrounding UI flow
 const SIMULATION_V2_05B907B69C50 := "There must be a verified and viable previous contribution."
 # Additional source scan; review surrounding UI flow
-const SIMULATION_V2_87EBE45E5BD8 := "Throw earlier so your friend has time to catch and deliver the seed."
+const SIMULATION_V2_87EBE45E5BD8 := "Throw earlier so your partner has time to catch and deliver the seed."
 # Additional source scan; review surrounding UI flow
 const SIMULATION_V2_84DF368FE16B := "Before saving your checkpoint, use Preview to view this handoff."
 # Additional source scan; review surrounding UI flow
@@ -3351,6 +3351,16 @@ const RECORDING_FIRST_TURN := "The first turn can't have a friend's recording."
 const RECORDING_NOT_READY := "Your friend's recording is not ready."
 const RECORDING_MISMATCH := "Your friend's recording does not match."
 const RECORDING_UNEXPECTED := "This turn should not have a friend's recording."
+## The player's words for lines the simulators keep in their snapshots (pinned by snapshot digests).
+const SNAPSHOT_FRIEND_1 := "Leave the lens where your friend can reach it."
+const SNAPSHOT_FRIEND_2 := "From this moment on, your friend can take the lens."
+const SNAPSHOT_FRIEND_3 := "The lens is not available to your friend yet."
+const SNAPSHOT_FRIEND_4 := "Your friend does not have enough time to get to the lens."
+const SNAPSHOT_FRIEND_5 := "Your friend requires additional light for the first crossing."
+const SNAPSHOT_FRIEND_6 := "Your friend needs more light for the second crossing."
+const SNAPSHOT_FRIEND_7 := "Your friend should have a light to follow."
+const SNAPSHOT_FRIEND_8 := "Your friend requires additional time in the light."
+const SNAPSHOT_FRIEND_9 := "Throw earlier so your friend has time to catch and deliver the seed."
 
 # Notifications screen: the optional alert when a friend asks you to redo your turn.
 const TURN_REQUEST_NOTIFICATIONS := "Also tell me when my friend asks for a redo"
@@ -3409,6 +3419,15 @@ const TEXT := {
 	"recording.not_ready": RECORDING_NOT_READY,
 	"recording.mismatch": RECORDING_MISMATCH,
 	"recording.unexpected": RECORDING_UNEXPECTED,
+	"snapshot.friend_1": SNAPSHOT_FRIEND_1,
+	"snapshot.friend_2": SNAPSHOT_FRIEND_2,
+	"snapshot.friend_3": SNAPSHOT_FRIEND_3,
+	"snapshot.friend_4": SNAPSHOT_FRIEND_4,
+	"snapshot.friend_5": SNAPSHOT_FRIEND_5,
+	"snapshot.friend_6": SNAPSHOT_FRIEND_6,
+	"snapshot.friend_7": SNAPSHOT_FRIEND_7,
+	"snapshot.friend_8": SNAPSHOT_FRIEND_8,
+	"snapshot.friend_9": SNAPSHOT_FRIEND_9,
 	"lighthouse_preview.ddc41a9de09f": LIGHTHOUSE_PREVIEW_DDC41A9DE09F,
 	"objective_panel.e08ff54fb4f9": OBJECTIVE_PANEL_E08FF54FB4F9,
 	"objective_panel.0d1ab3f4b1af": OBJECTIVE_PANEL_0D1AB3F4B1AF,
@@ -4274,6 +4293,15 @@ const CANONICAL_KEYS := {
 	"The partner recording is not ready.": "recording.not_ready",
 	"The partner recording does not match.": "recording.mismatch",
 	"Unexpected partner recording.": "recording.unexpected",
+	"Leave the lens where your partner can reach it.": "snapshot.friend_1",
+	"From this moment on, your partner can take the lens.": "snapshot.friend_2",
+	"The lens is not available to your partner yet.": "snapshot.friend_3",
+	"Your partner does not have enough time to get to the lens.": "snapshot.friend_4",
+	"Your partner requires additional light for the first crossing.": "snapshot.friend_5",
+	"Your partner needs more light for the second crossing.": "snapshot.friend_6",
+	"Your partner should have a light to follow.": "snapshot.friend_7",
+	"Your partner requires additional time in the light.": "snapshot.friend_8",
+	"Throw earlier so your partner has time to catch and deliver the seed.": "snapshot.friend_9",
 	"You were here. I was here. We made this.": "relay_preview.afc92040f3db",
 	"Stand on the glowing plate. Tap Throw, then stay there for your friend.": "levels.fcaab14393ce",
 	"Cross the bridge. Catch the seed near its landing ring, then bring it to the garden.": "levels.f0cf60646202",
