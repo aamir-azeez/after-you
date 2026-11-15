@@ -269,7 +269,6 @@
 			"from_surface": "w-terrace",
 			"height_cm": 48,
 			"id": "gate-catwalk",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-368,
 				-192,
@@ -318,7 +317,6 @@
 			"from_surface": "w-quay",
 			"height_cm": 96,
 			"id": "quay-catwalk",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-200,
 				-544,
@@ -1756,7 +1754,6 @@
 			"from_height_cm": 96,
 			"from_surface": "m-quay",
 			"id": "mill-ladder",
-			"owner_slot": "p0",
 			"rect_cm": [
 				48,
 				-224,

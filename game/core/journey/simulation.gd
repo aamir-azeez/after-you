@@ -170,16 +170,17 @@ func _may_complete() -> bool:
 func _may_pass() -> bool:
 	return not _on_closing() and _drowned.is_empty()
 
-## Open turns: a memory rings only where the goal's light holds for it.
-func _ring_allowed(slot: String) -> bool:
-	return super._ring_allowed(slot) and Seven.predicate(stage.goal_policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, _open_controls())
+## Open turns: the goal holds for a pip only while the goal's light holds.
+func _at_goal(slot: String) -> bool:
+	return super._at_goal(slot) and Seven.predicate(stage.goal_policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, _open_controls())
 
 ## Open controls: the live pip may undo the first turn's part (a selector its
 ## readiness needs, the pad its choice stands on), so a stage completes only
 ## while that part still holds on the live state, as the server's checkpoint
 ## asks. Owner rules copy the memory's controls, so it always holds there.
+## Open turns have no such part: both pips at the goal is the finish.
 func _source_holds() -> bool:
-	if not _open_controls(): return true
+	if not _open_controls() or _open_turns(): return true
 	var policy: Dictionary = stage.source_policy
 	if policy.kind == "choice_pad": return not Seven.choice(stage, _players, true).is_empty()
 	if policy.kind in ["route_endpoint", "signal_route"]:

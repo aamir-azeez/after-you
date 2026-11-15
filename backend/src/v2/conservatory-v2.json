@@ -793,7 +793,6 @@
 			"from_height_cm": 0,
 			"from_surface": "court",
 			"id": "high-stair",
-			"owner_slot": "p1",
 			"rect_cm": [
 				-160,
 				-304,

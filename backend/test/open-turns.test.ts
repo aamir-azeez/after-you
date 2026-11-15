@@ -57,7 +57,8 @@ async function later(fixtureB: Rec, first: string, n: number, memory: Rec, close
 async function closing(fixtureEnd: Rec, previous: Rec, turns: Rec[], together = true): Promise<Rec> {
   const { a_recording_hash: _a, b_recording_hash: _b, ...rest } = structuredClone(fixtureEnd); void _a; void _b;
   const goalPip = rest.players[other(turns[0].player_slot)];
-  if (together) rest.players = { p0: { ...goalPip }, p1: { ...goalPip } };
+  // Apart: the first pip back where the stage started it, away from the goal.
+  rest.players = together ? { p0: { ...goalPip }, p1: { ...goalPip } } : { ...rest.players, [turns[0].player_slot]: structuredClone(previous.players[turns[0].player_slot]) };
   return sealed({ ...rest, schema_version: 8, previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash), proof: { checkpoint: previous, turns } });
 }
 /** A stage's chain: turn 1 and `passes` passes, then the closing turn and its checkpoint. */
@@ -110,7 +111,7 @@ describe("open turns: rules and bounds", () => {
     expect(turnOfTheTideV2.limits).toEqual(scaledLimits(turnLimits(tideV2Definition)!));
     expect(() => openTurnLimits([{ turn_cap: 1 }], 65_536, 7)).toThrow("invalid turn_cap");
     expect(() => openTurnLimits([{ turn_cap: 21 }], 65_536, 7)).toThrow("invalid turn_cap");
-    expect(() => openTurnLimits([{ turn_cap: 9 }], 65_536, 7)).toThrow("invalid turn_cap");
+    expect(() => openTurnLimits([{ turn_cap: 9 }], 65_536, 7)).not.toThrow();
   });
   it("names turns by letter, a and b first, and gives odd turns to the stage's first pip", () => {
     expect([1, 2, 3, 20].map(n => turnId(3, 1, n))).toEqual(["t3-1-a", "t3-1-b", "t3-1-c", "t3-1-t"]);

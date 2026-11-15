@@ -90,13 +90,13 @@ func _live_turns_a_memory_control() -> void:
 	var turned_at := int(b.tick)
 	for tick in range(60): b.step({})
 	_check(str(b._mechanisms.controls["path-selector"]) == "home", "The live turn holds: the memory does not take it back (turned at tick %d)" % turned_at)
-	# The first turn's part is undone, so the stage may not complete, even
-	# with the window lit: the server's checkpoint needs the path at friend.
-	_check(not b._source_holds() and not b._may_complete(), "With the memory's path undone the stage cannot complete")
+	# Open turns: the first turn's part is not asked again at the end; the
+	# stage ends only with both pips at the goal.
+	_check(b._source_holds(), "On open turns undoing the memory's part does not by itself block the finish")
 	_walk(b, [640, 224])
 	if b.context_action().id == "ring": b.step({"interact": true})
 	for tick in range(400): b.step({})
-	_check(b._objective and not b.complete, "Played out with the window lit, the stage still does not complete")
+	_check(not b._objective and not b.complete, "At the window alone, with the memory waiting in the garden, the stage does not complete")
 	var record: Dictionary = b.export_recording()
 	var initial := Registry.initial_checkpoint(HOME)
 	var first := _fixture("long-way-home-v3-%s-a.json" % PATH)
@@ -180,8 +180,8 @@ func _levers() -> void:
 	var action: Dictionary = b.context_action()
 	_check(action.id == "lever" and action.target_id == lever_id, "The live pip may pull the memory's lever (%s)" % str(action))
 
-## Slack Water on the open tide rules: the memory ends its turn on the gate
-## post, which holds while the basin stands at low. The live pip turns the
+## Slack Water on the open tide rules: the memory ends its turn on the boom
+## post, which holds while the basin stands at half. The live pip turns the
 ## basin, the memory's own wheel under owner rules: the post closes, and 45
 ## ticks later the memory drowns and the turn ends.
 func _live_toggle_drowns_memory() -> void:
@@ -193,7 +193,7 @@ func _live_toggle_drowns_memory() -> void:
 	# The live pip plays its own recorded part until the memory's turn has ended.
 	var frames: Array = Simulation.expand_recording_inputs(_fixture("turn-of-the-tide-v3-slack-water-b.json"))
 	while not b.finished and int(b.tick) < mini(int(first.duration_ticks), frames.size()): b.step(_input(frames[b.tick]))
-	_check(str(b._players.p1.surface_id) == "gate-post" and str(b._mechanisms.controls.basin) == "low", "The memory stands on the gate post at a low basin")
+	_check(str(b._players.p1.surface_id) == "boom-post" and str(b._mechanisms.controls.basin) == "half", "The memory stands on the boom post at a half basin")
 	var basin := _entity(b.stage.controls, "basin")
 	b._players.p0 = {"x": int(basin.position_cm[0]), "z": int(basin.position_cm[1]), "height": int(basin.height_cm), "surface_id": str(basin.surface_id)}
 	var action: Dictionary = b.context_action()
@@ -202,7 +202,7 @@ func _live_toggle_drowns_memory() -> void:
 	var turned := int(b.tick) - 1
 	while not b.finished: b.step({})
 	var drowned: Dictionary = b.snapshot().drowned
-	_check(drowned.get("slot") == "p1" and drowned.get("route") == "gate-post" and int(drowned.tick) == turned + int(level.closing_ticks), "The gate post shuts under the memory and it drowns (%s, turned at %d)" % [str(drowned), turned])
+	_check(drowned.get("slot") == "p1" and drowned.get("route") == "boom-post" and int(drowned.tick) == turned + int(level.closing_ticks), "The boom post shuts under the memory and it drowns (%s, turned at %d)" % [str(drowned), turned])
 	_check(b.commit_reason() == Simulation.DROWNED_FRIEND and not b.can_commit() and not b.keeps_draft(), "The turn ends with DROWNED_FRIEND, cannot be saved and keeps no draft")
 
 func _receiver(key: String) -> Simulation:

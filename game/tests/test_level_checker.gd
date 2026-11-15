@@ -26,14 +26,15 @@ extends SceneTree
 ##    controls only, and the route barriers still show those causes.
 ##    A crossing an open version keeps owned must still be needed: opening it
 ##    lets one pip finish a stage alone.
-##  - Open turns (core/physical/open_turns.gd, 14 and 15): a stage passes back
-##    and forth up to its cap, so no stage may be finished by either pip alone
-##    across any number of its own turns while the other does nothing (stands
-##    at its start every turn). Each turn starts from the stage's checkpoint and
-##    the graph's reach is a fixed point over everything one pip could do, so
-##    one probe per pip covers every number of turns. Only the goal's own pip
-##    lights it (OpenTurns.ringers). Each cap is an even number from 2 to 20;
-##    the chapter suite checks its witness finishes within it.
+##  - Open turns (core/physical/open_turns.gd, 14 and 15): a stage ends when a
+##    turn ends with both pips at its goal, its light holding. So no stage may
+##    be finished by one pip alone across any number of its own turns while
+##    the other does nothing: only a pip that starts at the goal could stand
+##    there doing nothing, and the other would still have to reach it. Each
+##    stage must be solvable: both pips reach the goal's floor and stand at it
+##    with its light able to hold (an over-approximation; the chapter suite's
+##    witness, played within the cap, is the proof). Each cap is a whole
+##    number from 2 to 20. Owned crossings need a reason the solo probe sees.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
 ##    each other on a stage. Props against routes, pads, levers, goals and
 ##    starts, and the camera's view of them, are tests/test_dressing_lint.gd's.
@@ -442,8 +443,9 @@ static func _kind_name(kind: String) -> String:
 
 # --- Both pips (open controls) ---------------------------------------------------
 
-## On open controls, every stage needs both pips; on open turns, whichever
-## pip is left alone, and each cap is one a level may set (header).
+## On open controls, every stage needs both pips; on open turns, neither pip
+## finishes alone, both can reach the goal, and each cap is one a level may
+## set (header).
 func _needs_both(key: String) -> void:
 	var level := Registry.definition(key)
 	if not OpenControls.pinned(level): return
@@ -455,10 +457,11 @@ func _needs_both(key: String) -> void:
 		var stage: Dictionary = item.view
 		var where := "%s %s" % [key, stage.stage_id]
 		if turns:
-			_expect(OpenTurns.cap_valid(item.stage), "%s turn cap" % where, "%s: its turn_cap (%s) is not an even number of turns from %d to %d, so its last turn may not be the goal's own pip's" % [where, item.stage.get("turn_cap", OpenTurns.DEFAULT_CAP), OpenTurns.MIN_CAP, OpenTurns.MAX_CAP])
+			_expect(OpenTurns.cap_valid(item.stage), "%s turn cap" % where, "%s: its turn_cap (%s) is not a whole number of turns from %d to %d" % [where, item.stage.get("turn_cap", OpenTurns.DEFAULT_CAP), OpenTurns.MIN_CAP, OpenTurns.MAX_CAP])
 			for slot: String in ["p0", "p1"]:
 				var other := "p1" if slot == "p0" else "p0"
-				_expect(not solo_finish(graph, stage, item.checkpoint, journey, slot), "%s alone %s" % [where, slot], "%s: with %s doing nothing on every turn, %s still lights the goal on one of its own turns; give %s a part only it can play" % [where, other, slot, other])
+				_expect(not solo_finish(graph, stage, item.checkpoint, journey, slot), "%s alone %s" % [where, slot], "%s: %s starts at the goal, so %s finishes alone while it does nothing; start it away from the goal" % [where, other, slot])
+			_expect(solvable(graph, stage, item.checkpoint, journey), "%s solvable" % where, "%s: the two pips can never both stand at the goal %s with its light holding" % [where, stage.get("goal", {}).get("id", "")])
 		else:
 			_expect(not solo_finish(graph, stage, item.checkpoint, journey), "%s alone" % where, "%s: with the first pip standing still, the second still reaches the goal with it lit; give the first pip a part only it can play" % where)
 		# The first turn sees the second pip standing still at its start; on a
@@ -468,18 +471,45 @@ func _needs_both(key: String) -> void:
 			_expect(second.is_empty() or not Seven.near(second, pad), "%s pad %s under the second pip" % [where, pad.id], "%s: the second pip starts on the pad %s, so it holds it through the first turn" % [where, pad.id])
 
 ## Whether one pip could finish `stage` alone, the other standing still at its
-## start: by default the second pip (two turns, open controls); on open turns
-## `solo`, either pip, which lights a ring goal only if it is the goal's own.
+## start. Two turns (the default): the second pip lights the goal itself. Open
+## turns (`solo`, either pip): the stage ends with both pips at the goal, so
+## the still pip must already start there.
 static func solo_finish(graph: RefCounted, stage: Dictionary, checkpoint: Dictionary, journey: bool, solo: String = "") -> bool:
 	var live := Shots.goal_slot(stage) if solo.is_empty() else solo
-	var ring := str(stage.get("goal_policy", {}).get("kind", "ring")) == "ring"
-	if not solo.is_empty() and ring and live not in OpenTurns.ringers(stage): return false
-	var found: Dictionary = graph.reach(stage, checkpoint, journey, "p1" if live == "p0" else "p0")
+	var still := "p1" if live == "p0" else "p0"
 	var goal: Dictionary = stage.get("goal", {})
-	if goal.is_empty() or not found.floors[live].has(str(goal.get("surface_id", "")) ): return false
-	if ring and not graph.can_stand_at(goal, live, found.open, journey): return false
+	if goal.is_empty(): return false
+	if not solo.is_empty() and not _starts_at(checkpoint.get("players", {}).get(still, {}), goal): return false
+	var found: Dictionary = graph.reach(stage, checkpoint, journey, still)
+	return _goal_holds(graph, stage, checkpoint, journey, found, [live])
+
+## Open turns: whether both pips could stand at the goal together with its
+## light holding, nobody held still. Both stand at the goal then, so the light
+## may count only the pads a pip at the goal could hold. Necessary, not
+## enough: the witness proves it.
+static func solvable(graph: RefCounted, stage: Dictionary, checkpoint: Dictionary, journey: bool) -> bool:
+	var goal: Dictionary = stage.get("goal", {})
+	if goal.is_empty(): return false
+	var found: Dictionary = graph.reach(stage, checkpoint, journey)
+	var there: Dictionary = stage.duplicate(true)
+	there.pressure_pads = stage.get("pressure_pads", []).filter(func(pad: Dictionary) -> bool: return str(pad.get("surface_id", "")) == str(goal.get("surface_id", "")) and Vector2(float(pad.position_cm[0]), float(pad.position_cm[1])).distance_to(Vector2(float(goal.position_cm[0]), float(goal.position_cm[1]))) <= float(int(pad.get("radius_cm", 28)) + int(goal.get("radius_cm", 28))))
+	return _goal_holds(graph, there, checkpoint, journey, found, ["p0", "p1"])
+
+## Whether each pip in `slots` reaches the goal's floor and can stand at it, and
+## the goal's light can hold, with what `found` (a reach) opens.
+static func _goal_holds(graph: RefCounted, stage: Dictionary, checkpoint: Dictionary, journey: bool, found: Dictionary, slots: Array) -> bool:
+	var goal: Dictionary = stage.goal
+	var ring := str(stage.get("goal_policy", {}).get("kind", "ring")) == "ring"
+	for slot: String in slots:
+		if not found.floors[slot].has(str(goal.get("surface_id", ""))): return false
+		if ring and not graph.can_stand_at(goal, slot, found.open, journey): return false
 	var when: Dictionary = stage.get("goal_policy", {}).get("when", {})
 	return when.is_empty() or graph.gate_can_hold({"when": when}, stage, found.settable, checkpoint.get("mechanisms", {}), journey, found.floors)
+
+## Whether a pip's start (a checkpoint player) stands at `goal`: its floor, within its radius.
+static func _starts_at(player: Dictionary, goal: Dictionary) -> bool:
+	if player.is_empty() or str(player.get("surface_id", "")) != str(goal.get("surface_id", "")): return false
+	return Vector2i(int(player.x), int(player.z)).distance_squared_to(Vector2i(int(goal.position_cm[0]), int(goal.position_cm[1]))) <= int(goal.get("radius_cm", 28)) ** 2
 
 ## On open controls, a crossing the level keeps owned must be needed: with it
 ## open to both pips, some stage could be finished by one pip alone.
@@ -502,26 +532,32 @@ func _kept_crossings(key: String) -> void:
 					needed = needed or solo_finish(graph, item.view, item.checkpoint, journey, solo)
 			_expect(needed, "%s kept %s" % [key, route.id], "%s: the %s %s stays %s's only, but open to both pips no stage could be finished by one pip alone; open it" % [key, kind.trim_suffix("s"), route.id, route.owner_slot])
 
-## The probe can fail: Conservatory@1's first stage on open controls, its forks
-## on the court both pips share, lets the second pip finish alone; @2's
-## balcony does not. On open turns the first pip of Long Way Home@3's first
-## stage ends its part in the garden beside the window, so it would light the
-## window on its next turn if the window were its own; it is the second pip's.
+## The probes can fail: Conservatory@1's first stage on open controls, its
+## forks on the court both pips share, lets the second pip finish alone; @2's
+## balcony does not. On open turns Long Way Home@3's first stage is solvable
+## and nobody finishes it alone, but it would be soloable with the second pip
+## starting at the window, and unsolvable with a light no selector gives.
 func _needs_both_rule() -> void:
 	var opened: Dictionary = OpenControls.pin(Registry.definition("conservatory@1").duplicate(true))
 	var stage: Dictionary = Stages.stages("conservatory@1", opened)[0]
 	_check(solo_finish(LevelGraph.new(opened), stage.view, Stages.starts_checkpoint(opened), true), "On open controls Conservatory@1's first stage can be finished by the second pip alone, so the probe can fail")
-	var balcony := Registry.definition("conservatory@2")
-	_check(not solo_finish(LevelGraph.new(balcony), Stages.stages("conservatory@2", balcony)[0].view, Stages.starts_checkpoint(balcony), true), "Conservatory@2's balcony keeps the forks the first pip's, so its first stage needs both")
 	var home := Registry.definition("long-way-home@3")
 	var path: Dictionary = Stages.stages("long-way-home@3", home)[0]
+	var graph: RefCounted = LevelGraph.new(home)
 	var first := str(path.view.get("first_player_slot", "p0"))
-	_check(OpenTurns.pinned(home) and not solo_finish(LevelGraph.new(home), path.view, path.checkpoint, true, first), "On open turns the first pip never lights Long Way Home@3's first window alone: it is the second pip's")
-	var mine := home.duplicate(true)
-	mine.stages[0].goal.owner_slot = first
-	var moved: Dictionary = Stages.stages("long-way-home@3", mine)[0]
-	_check(solo_finish(LevelGraph.new(mine), moved.view, moved.checkpoint, true, first), "With the window the first pip's, it finishes Long Way Home@3's first stage alone on a later turn, so the open turns probe can fail")
-	_check(OpenTurns.cap_valid({"turn_cap": 10}) and not OpenTurns.cap_valid({"turn_cap": 11}) and not OpenTurns.cap_valid({"turn_cap": 22}) and not OpenTurns.cap_valid({"turn_cap": 1}) and OpenTurns.cap_valid({}), "A cap is even, from 2 to 20, so its last turn is the goal's own pip's; a stage with none gets 10")
+	var second := "p1" if first == "p0" else "p0"
+	_check(OpenTurns.pinned(home) and solvable(graph, path.view, path.checkpoint, true) and not solo_finish(graph, path.view, path.checkpoint, true, second), "Long Way Home@3's first stage on open turns is solvable and the second pip never finishes it alone")
+	var waiting: Dictionary = path.checkpoint.duplicate(true)
+	var goal: Dictionary = path.view.goal
+	waiting.players[second] = {"x": int(goal.position_cm[0]), "z": int(goal.position_cm[1]), "height": int(goal.get("height_cm", 0)), "surface_id": str(goal.surface_id)}
+	_check(solo_finish(graph, path.view, waiting, true, first), "With the second pip starting at the window, the first finishes the stage alone, so the open turns probe can fail")
+	var dark: Dictionary = path.view.duplicate(true)
+	dark.goal_policy = {"kind": "ring", "when": {"control_id": "path-selector", "value": "nowhere"}}
+	_check(not solvable(graph, dark, path.checkpoint, true), "A goal whose light no selector gives is unsolvable, so the solvable probe can fail")
+	var place: Dictionary = Stages.stages("long-way-home@3", home)[1].view.duplicate(true)
+	place.goal_policy = {"kind": "ring", "when": {"pad_id": "near-window"}}
+	_check(not solvable(graph, place, Stages.stages("long-way-home@3", home)[1].checkpoint, true), "A goal lit only while someone holds a pad away from it is unsolvable: both pips stand at the goal")
+	_check(OpenTurns.cap_valid({"turn_cap": 10}) and OpenTurns.cap_valid({"turn_cap": 11}) and not OpenTurns.cap_valid({"turn_cap": 22}) and not OpenTurns.cap_valid({"turn_cap": 1}) and OpenTurns.cap_valid({}), "A cap is a whole number from 2 to 20; a stage with none gets 10")
 
 # --- Props ----------------------------------------------------------------------
 

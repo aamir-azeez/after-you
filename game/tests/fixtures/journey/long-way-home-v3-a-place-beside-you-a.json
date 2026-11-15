@@ -14,7 +14,37 @@
 		},
 		{
 			"action": false,
-			"ticks": 62,
+			"ticks": 30,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 32,
 			"x": 100,
 			"z": 0
 		},
@@ -26,11 +56,11 @@
 		}
 	],
 	"catch_assistance": true,
-	"checkpoint_hash": "4e57b3003a1d61cce89f0e4878ef46a3d33a8135d8af06ad9464e6c6b1bc61e2",
+	"checkpoint_hash": "6be02ff9bf1ed96ff9eafa0b24d698efc3114a66a82af37317a7c5d11761549f",
 	"completed": false,
-	"definition_hash": "1486cba0eb91097b474bc12f0e763f049dfe8c5cae759950b92b6929a8685376",
-	"duration_ticks": 106,
-	"final_state_hash": "1e0b593d12c163367756f22c739f0ff9a9326ccd960e0f7833c44cb89002a8a4",
+	"definition_hash": "81e6342e5f80158ca6cf6c9e02a61cc2baa7e24c63e23603561db50fd1311ddc",
+	"duration_ticks": 124,
+	"final_state_hash": "13240012dbf4241d938c9d3b8291c5056eb1af0fad39c6a45f9e34d121759d75",
 	"level_id": "long-way-home",
 	"level_version": 3,
 	"outcome": {
@@ -38,23 +68,27 @@
 		"source_ready": true
 	},
 	"player_slot": "p1",
-	"recording_hash": "b778c27b5debc8a01c3f9e3c10f03c78f139c1baeb36c6963fc2a3631c35f772",
+	"recording_hash": "d810e24f01c397a1b51af54c48c212ed25b462ef0107e4ec54db95eec37af645",
 	"replay_checks": [
 		{
-			"state_hash": "3082b338ad28d7d0541b757fb748063bf52632059376633a13212167dc5dea70",
+			"state_hash": "acc4c417bdaf37d731095c0ef776c4226f3cb985e780d6a769312a5ff4e1434c",
 			"tick": 30
 		},
 		{
-			"state_hash": "cc39bea1c8fc872f16b14c712d8a12b2f1de59e9ce1d6ebc004ebf06ef056fa6",
+			"state_hash": "7ef3009d9dd0ca97ceda08dfb840ec7369980f3713a8b0d9793558e17228b00f",
 			"tick": 60
 		},
 		{
-			"state_hash": "7bb1748a3d6c1fafc7b0689499287e71377df272d7a35f9303f304e8f3b26dc4",
+			"state_hash": "bf2f72a9f8e9ec5b10eb9a7c231ee7a14a2242289e4a4385e879812b9f5f5fa0",
 			"tick": 90
 		},
 		{
-			"state_hash": "1e0b593d12c163367756f22c739f0ff9a9326ccd960e0f7833c44cb89002a8a4",
-			"tick": 106
+			"state_hash": "4d7f2b888cc519c8b67e818b092ca407b3590114228244d88d23ee7bcf96409e",
+			"tick": 120
+		},
+		{
+			"state_hash": "13240012dbf4241d938c9d3b8291c5056eb1af0fad39c6a45f9e34d121759d75",
+			"tick": 124
 		}
 	],
 	"role": "a",

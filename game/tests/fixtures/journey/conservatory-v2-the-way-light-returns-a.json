@@ -38,11 +38,11 @@
 		}
 	],
 	"catch_assistance": true,
-	"checkpoint_hash": "24308beecf2c3178b02b97788791ef5a4b3daee7ecaa1f5156b797faf5352c98",
+	"checkpoint_hash": "0a7a0cc9e7c6ed674fa8ff074430b9b3fce4bdeb6f73ffd255658b2a894b2e19",
 	"completed": false,
-	"definition_hash": "caaa39e301453b4082b447d5c7e5569ec952ad9b3011ee581badd265e976c50d",
+	"definition_hash": "90e49a79c3aae874c960cdd73605a12d58f5221878fceb57a224d83e18fbdcbb",
 	"duration_ticks": 66,
-	"final_state_hash": "254ca6f362e3cc6e893aeb33666efe7f6a957d245af287113d922b7b8208b728",
+	"final_state_hash": "6fc2851beda85e477c7d10b9e96566f20703aa05cccf0a30db074440c782aa2b",
 	"level_id": "conservatory",
 	"level_version": 2,
 	"outcome": {
@@ -50,18 +50,18 @@
 		"source_ready": true
 	},
 	"player_slot": "p1",
-	"recording_hash": "bb1315ac978f93bee6b2b52902638db6d47bfa2e9acc1314087eec2823948521",
+	"recording_hash": "8ae83ff6cf3db91998f5c49000c279047c8fee5ec97d450ded359fca3ae43a30",
 	"replay_checks": [
 		{
-			"state_hash": "cfdb6f2eda549cc95d7606cba382d8f26a47c35113735030c76de149f8df1470",
+			"state_hash": "7d07a791f77bb7c752532b979d27debf7a1d7aa656fbfb3282f21e7478ddb63e",
 			"tick": 30
 		},
 		{
-			"state_hash": "d4c0d7a75c4e6ecfb0342d848da72ac996dc133177cd771fea8da2b0b043c626",
+			"state_hash": "4ace6e3318ad56d04e132a2daf044fc50fe4f4a9e43d7e8e0c8f7e406d228de0",
 			"tick": 60
 		},
 		{
-			"state_hash": "254ca6f362e3cc6e893aeb33666efe7f6a957d245af287113d922b7b8208b728",
+			"state_hash": "6fc2851beda85e477c7d10b9e96566f20703aa05cccf0a30db074440c782aa2b",
 			"tick": 66
 		}
 	],

@@ -74,7 +74,6 @@ var _source_toggles: Dictionary = {"levers": {}, "controls": {}}
 ## memory's own memory did, so a pip's earlier turn never acts against its
 ## live play.
 var _own_toggles: Dictionary = {"levers": {}, "controls": {}}
-var _own_rang := false
 ## The digest of `level`, worked out on first use after a reset (level is set
 ## only by a reset, to its own deep copy, and never changed after): the state
 ## hash, the recording and the navigation index read it instead of digesting
@@ -138,7 +137,6 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_comfort_entries = {}
 	_source_toggles = {"levers": {}, "controls": {}}
 	_own_toggles = {"levers": {}, "controls": {}}
-	_own_rang = false
 	tick = 0
 	finished = false
 	complete = false
@@ -161,16 +159,16 @@ func step(input: Dictionary = {}) -> Dictionary:
 		return snapshot()
 	_events = []
 	_own_toggles = {"levers": {}, "controls": {}}
-	_own_rang = false
 	var previous_routes := _routes.duplicate()
 	var frame := quantize_input(input)
 	_append_frame(frame)
 	if role == "b": _advance_source()
 	_refresh_routes()
-	if not _objective: _move(frame)
+	# Open turns: both pips at the goal is a state, not a bell, so nothing freezes.
+	if not _objective or _open_turns(): _move(frame)
 	_after_move()
 	_refresh_routes()
-	if not _objective and bool(frame.action) and not _held: _interact()
+	if (not _objective or _open_turns()) and bool(frame.action) and not _held: _interact()
 	_held = bool(frame.action)
 	_refresh_routes()
 	for route_id: String in _routes:
@@ -178,6 +176,8 @@ func step(input: Dictionary = {}) -> Dictionary:
 	_check_hazards()
 	if role == "a": _update_source_readiness()
 	if role == "b" and stage.goal_policy.kind == "ball_home": _check_ball_home()
+	# Open turns: the goal holds while both pips stand at it (open_turns.gd).
+	if role == "b" and _open_turns(): _objective = _at_goal(active_slot) and _at_goal(memory_slot)
 	tick += 1
 	# Only a hazard (_check_hazards) can have ended the turn before this point.
 	if role == "b" and _objective and tick >= int(_prior.duration_ticks) and not finished and _may_complete():
@@ -203,10 +203,6 @@ func _advance_source() -> void:
 	if stepped: _source.step(_prior_frames[tick])
 	_players[memory_slot] = _source._players[memory_slot].duplicate(true)
 	if open: _source_toggles = (_source._own_toggles.duplicate(true) if stepped else {"levers": {}, "controls": {}}) if nested else _changed_since(before)
-	# A memory that rang its goal rings it here too, where the goal still holds for it.
-	if nested and stepped and _source._own_rang and memory_slot in OpenTurns.ringers(stage) and not _objective and _ring_allowed(memory_slot):
-		_objective = true
-		_events.append("bell")
 	for lever: Dictionary in stage.get("levers", []):
 		if open:
 			if _source_toggles.levers.has(lever.id): _mechanisms.levers[lever.id] = _source._mechanisms.levers[lever.id]
@@ -327,7 +323,6 @@ func _interact() -> void:
 			_events.append("lever")
 		"ring":
 			_objective = true
-			_own_rang = true
 			_events.append("bell")
 		"offer":
 			var ball: Dictionary = _mechanisms.props[stage.source_policy.prop_id]
@@ -351,8 +346,8 @@ func context_action() -> Dictionary:
 	for lever: Dictionary in stage.get("levers", []):
 		if (_open_controls() or lever.owner_slot == active_slot) and _near_entity(player, lever):
 			return _action("lever", "Pull lever", true, lever.id)
-	# Open turns: only the goal's own pip lights it (OpenTurns.ringers).
-	if role == "b" and stage.goal_policy.kind == "ring" and _near_entity(player, stage.goal) and (simulation_version not in OpenTurns.RULES or active_slot in OpenTurns.ringers(stage)):
+	# Open turns: no bell; both pips standing at the goal finish the stage.
+	if role == "b" and stage.goal_policy.kind == "ring" and not _open_turns() and _near_entity(player, stage.goal):
 		return _action("ring", "Ring bell", true, stage.goal.id)
 	if stage.source_policy.kind == "offer_ball":
 		var ball: Dictionary = _mechanisms.props[stage.source_policy.prop_id]
@@ -420,8 +415,8 @@ func pass_turn() -> Dictionary:
 	_events = ["turn_passed"]
 	return snapshot()
 
-## Open turns: whether `slot`'s pip may ring the goal now.
-func _ring_allowed(slot: String) -> bool:
+## Open turns: whether `slot`'s pip stands at the goal now, where it holds.
+func _at_goal(slot: String) -> bool:
 	return stage.goal_policy.kind == "ring" and _near_entity(_players[slot], stage.goal)
 
 ## The longest turn `turn_role` may record under `version` in `definition`.

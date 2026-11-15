@@ -45,10 +45,13 @@ func _verify(key: String, level: Dictionary, evidence: Dictionary) -> void:
 	for index in range(evidence.pairs.size()):
 		var pair: Dictionary = evidence.pairs[index]
 		var previous: Dictionary = evidence.checkpoints[index]
-		for role: String in ["a", "b"]:
-			var prior: Dictionary = pair.a if role == "b" else {}
-			var verdict: Dictionary = simulation.verify_recording(level, _json(pair[role]), _json(previous), _json(prior))
-			_check(verdict.valid and int(pair[role].simulation_version) == int(level.simulation_version), "Recording verifies on rules %d: %s/%s %s" % [int(level.simulation_version), level.stages[index].id, role, verdict.get("error", "")])
+		# Each turn over the one before it, which nests the rest (open turns); before open turns, a then b.
+		var turns: Array = pair.get("turns", [pair.a, pair.b])
+		for turn in range(turns.size()):
+			var prior: Dictionary = turns[turn - 1] if turn > 0 else {}
+			var chain: Array = turns.slice(0, maxi(0, turn - 1)).map(func(earlier: Dictionary) -> Dictionary: return _json(earlier))
+			var verdict: Dictionary = simulation.verify_recording(level, _json(turns[turn]), _json(previous), _json(prior), chain) if not chain.is_empty() else simulation.verify_recording(level, _json(turns[turn]), _json(previous), _json(prior))
+			_check(verdict.valid and int(turns[turn].simulation_version) == int(level.simulation_version), "Recording verifies on rules %d: %s turn %d %s" % [int(level.simulation_version), level.stages[index].id, turn + 1, verdict.get("error", "")])
 		_check(simulation.verify_checkpoint(level, _json(evidence.checkpoints[index + 1])).valid, "Checkpoint verifies: " + str(level.stages[index].id))
 	if not OpenTurns.pinned(level): return
 	for index in range(level.stages.size()):
@@ -64,8 +67,9 @@ func _write_fixtures(key: String, level: Dictionary, evidence: Dictionary) -> vo
 	_write(names.chapter + "final-checkpoint", evidence.checkpoints[-1])
 	for index in range(evidence.pairs.size()):
 		var id: String = level.stages[index].id
-		_write(names.stages + id + "-a", evidence.pairs[index].a)
-		_write(names.stages + id + "-b", evidence.pairs[index].b)
+		# One file per turn, by its letter (open_turns.gd LETTERS): -a, -b, then -c and on for open turns.
+		var turns: Array = evidence.pairs[index].get("turns", [evidence.pairs[index].a, evidence.pairs[index].b])
+		for turn in range(turns.size()): _write(names.stages + id + "-" + OpenTurns.LETTERS[turn], turns[turn])
 		_write(names.stages + id + "-checkpoint", evidence.checkpoints[index + 1])
 
 func _write(name: String, value: Dictionary) -> void:

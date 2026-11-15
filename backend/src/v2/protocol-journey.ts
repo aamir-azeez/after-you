@@ -25,9 +25,9 @@ export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea8
 export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
 export const TURN_OF_THE_TIDE_HASH = "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a";
 export const TURN_OF_THE_TIDE_V2_HASH = "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43";
-export const LONG_WAY_HOME_V3_HASH = "1486cba0eb91097b474bc12f0e763f049dfe8c5cae759950b92b6929a8685376";
-export const TURN_OF_THE_TIDE_V3_HASH = "360bd8aa79426ca80942e0f54b304dc21108e0f8845ac6c885297ccf1f74a32f";
-export const CONSERVATORY_V2_HASH = "caaa39e301453b4082b447d5c7e5569ec952ad9b3011ee581badd265e976c50d";
+export const LONG_WAY_HOME_V3_HASH = "81e6342e5f80158ca6cf6c9e02a61cc2baa7e24c63e23603561db50fd1311ddc";
+export const TURN_OF_THE_TIDE_V3_HASH = "4604f025d89fba1bcd024be1d60ffefd65d50f189b3993399c4d12b9f2a0a21c";
+export const CONSERVATORY_V2_HASH = "90e49a79c3aae874c960cdd73605a12d58f5221878fceb57a224d83e18fbdcbb";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
@@ -162,7 +162,8 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
         predicate(policy.when) && (!policy.endpoint || near(source, policy.endpoint)), "checkpoint_source_position_mismatch");
       if (definition.id === "conservatory" && index === 1) need(source.surface_id === "court", "checkpoint_source_position_mismatch");
     }
-    if (definition.id === "long-way-home" && index === 1) need(stage.gates.every(gate => routes.includes(gate.route_id)), "checkpoint_mechanism_mismatch");
+    // The first turn's own part (here, every gate it opened) is not asked again on open turns.
+    if (definition.id === "long-way-home" && index === 1 && !openLimits) need(stage.gates.every(gate => routes.includes(gate.route_id)), "checkpoint_mechanism_mismatch");
     if (!tideRules) for (const gate of stage.gates) {
       const open = previousRoutes.includes(gate.route_id) || predicate(gate.when);
       need(!open || routes.includes(gate.route_id), "checkpoint_mechanism_mismatch");

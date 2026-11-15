@@ -6,8 +6,8 @@ import { MAX_REPLAY_ARCHIVE_BYTES, MAX_ROW_BYTES } from "./row-bound";
  * Open turns: the open turns rules (14 and 15, chapter-types.ts OPEN_TURNS_RULES, open controls with open turns) play a stage in as many
  * turns as it takes. Turn 1 is a first turn as before (role "a"); every later turn (role "b") plays from the stage's
  * checkpoint with the other pip's latest turn as its memory, which nests the turns before it by
- * `source_recording_hash`. Odd turns are the stage's first player's, even turns the other's. A turn whose goal holds
- * at its end closes the stage (completed, with the checkpoint that proves every turn); any other later turn is a
+ * `source_recording_hash`. Odd turns are the stage's first player's, even turns the other's. A turn that ends with both players at the goal (its light holding)
+ * closes the stage (completed, with the checkpoint that proves every turn); any other later turn is a
  * pass (not completed, no checkpoint) and play goes to the other pip. A turn lasts at least as long as its memory.
  *
  * The caps: each stage's `turn_cap` from its definition (DEFAULT_TURN_CAP when absent), the room's 128 turns, and a
@@ -42,10 +42,10 @@ export type OpenTurns = {
   readonly branches: number;
 };
 
-/** A stage's turn cap, as its definition declares it: even, so the last turn is the goal pip's (open_turns.gd cap_valid). Throws at module load on a bad value. */
+/** A stage's turn cap, as its definition declares it: a whole number from 2 to 20 (open_turns.gd cap_valid). Throws at module load on a bad value. */
 export function stageTurnCap(stage: { turn_cap?: unknown }): number {
   if (stage.turn_cap === undefined) return DEFAULT_TURN_CAP;
-  if (!Number.isSafeInteger(stage.turn_cap) || (stage.turn_cap as number) < MIN_TURN_CAP || (stage.turn_cap as number) > MAX_TURN_CAP || (stage.turn_cap as number) % 2 !== 0) throw new Error("invalid turn_cap");
+  if (!Number.isSafeInteger(stage.turn_cap) || (stage.turn_cap as number) < MIN_TURN_CAP || (stage.turn_cap as number) > MAX_TURN_CAP) throw new Error("invalid turn_cap");
   return stage.turn_cap as number;
 }
 

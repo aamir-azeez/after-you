@@ -43,9 +43,18 @@ func _load_chapter(key: String) -> void:
 		# A later version of a chapter keeps its fixtures under its own versioned name.
 		var name: String = level.id if int(level.version) == 1 else "%s-v%d" % [level.id, int(level.version)]
 		var stage := "" if int(level.version) == 1 else name + "-"
-		files = [stage + level.stages[0].id + "-a", stage + level.stages[0].id + "-b", stage + level.stages[1].id + "-a", stage + level.stages[1].id + "-b", name + "-initial-checkpoint", stage + level.stages[0].id + "-checkpoint", name + "-final-checkpoint"]
+		# On open turns a stage's closing turn is its last turn file (-b, -c, ...).
+		files = [stage + level.stages[0].id + "-a", _closing(folder, stage + level.stages[0].id), stage + level.stages[1].id + "-a", _closing(folder, stage + level.stages[1].id), name + "-initial-checkpoint", stage + level.stages[0].id + "-checkpoint", name + "-final-checkpoint"]
 	for index: int in names.size():
 		fixtures[names[index]] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + files[index] + ".json"))
+
+## A stage's closing turn fixture: its last turn by letter (open_turns.gd LETTERS).
+static func _closing(folder: String, prefix: String) -> String:
+	var last := prefix + "-b"
+	for letter: String in "cdefghijklmnopqrst":
+		if not FileAccess.file_exists("res://tests/fixtures/%s/%s-%s.json" % [folder, prefix, letter]): break
+		last = prefix + "-" + letter
+	return last
 
 func _snapshot(api: FakeApi, owner: String) -> Dictionary:
 	var value := super._snapshot(api, owner)

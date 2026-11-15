@@ -6,13 +6,17 @@ extends SceneTree
 ##   is ready to be a memory; the room's must_finish takes the pass away;
 ## - turn 3 is the first pip's again, over turn 2 (which nests turn 1): the
 ##   memory pip is the second one, and the memory's own memory never acts;
-## - turn 4 plays the second pip's route over it and closes the stage, and the
-##   checkpoint nests all four turns (schema 8), checked again from scratch;
+##   there is no bell, and the first pip walks to the goal and passes, since
+##   the second pip is not there (the witness route's third turn);
+## - turn 4 plays the second pip's route over it and closes the stage with both
+##   pips at the goal, and the checkpoint nests all four turns (schema 8),
+##   checked again from scratch;
 ## - a published two turn stage still proves the published way.
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Witness = preload("res://tests/chapter_witness.gd")
 const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
 var checks := 0
@@ -64,8 +68,9 @@ func _chain() -> void:
 	_check(three.reset(level, STAGE, start, pass_two, "b", 0, [a]), "Turn 3 starts over turn 2 (%s)" % three.error)
 	_check(three.turn_number == 3 and three.active_slot == three.first_player_slot and three.memory_slot != three.first_player_slot, "Turn 3 is the first pip's, the memory the second's")
 	_check(three.snapshot().players[three.memory_slot].ghost and not three.snapshot().players[three.active_slot].ghost, "The memory pip is the ghost")
-	_check(three.context_action().get("id", "") != "ring" or three.active_slot in OpenTurns.ringers(three.stage), "Only the goal's own pip may light it")
-	while int(three.tick) < int(pass_two.duration_ticks): three.step(a_frames[three.tick] if int(three.tick) < a_frames.size() else {})
+	_check(Witness._play(three, Witness.routes(TIDE)[STAGE].turns[2]).is_empty() and three.snapshot().context_action.get("id", "") != "ring", "Turn 3 walks the first pip to the goal; there is no bell to ring")
+	_check(not three.complete and not three.finished, "One pip at the goal does not finish the stage")
+	while int(three.tick) < int(pass_two.duration_ticks): three.step({})
 	_check(three.can_pass(), "Turn 3 may pass once turn 2 is over (%s)" % three.commit_reason())
 	three.pass_turn()
 	var pass_three: Dictionary = _json(three.export_recording())
@@ -77,7 +82,7 @@ func _chain() -> void:
 	_check(four.reset(level, STAGE, start, pass_three, "b", 0, [a, pass_two]), "Turn 4 starts over turn 3 (%s)" % four.error)
 	_check(four.active_slot == two.active_slot, "Turn 4 is the second pip's")
 	while not four.finished: four.step(b_frames[four.tick] if int(four.tick) < b_frames.size() else {})
-	_check(four.complete, "Turn 4 closes the stage over its nested memory (%s)" % four.commit_reason())
+	_check(four.complete, "Turn 4 closes the stage with both pips at the goal (%s)" % four.commit_reason())
 	if not four.complete: return
 	var closing: Dictionary = _json(four.export_recording())
 	var derived := Simulation.derive_checkpoint(level, start, a, closing, [pass_two, pass_three])

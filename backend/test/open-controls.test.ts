@@ -12,25 +12,31 @@ import homeDefinition from "../../game/tests/fixtures/journey/long-way-home-v3-d
 import homeInitial from "../../game/tests/fixtures/journey/long-way-home-v3-initial-checkpoint.json";
 import homePathA from "../../game/tests/fixtures/journey/long-way-home-v3-the-path-you-leave-a.json";
 import homePathB from "../../game/tests/fixtures/journey/long-way-home-v3-the-path-you-leave-b.json";
+import homePathC from "../../game/tests/fixtures/journey/long-way-home-v3-the-path-you-leave-c.json";
 import homePathEnd from "../../game/tests/fixtures/journey/long-way-home-v3-the-path-you-leave-checkpoint.json";
 import homePlaceA from "../../game/tests/fixtures/journey/long-way-home-v3-a-place-beside-you-a.json";
 import homePlaceB from "../../game/tests/fixtures/journey/long-way-home-v3-a-place-beside-you-b.json";
+import homePlaceC from "../../game/tests/fixtures/journey/long-way-home-v3-a-place-beside-you-c.json";
 import homePlaceEnd from "../../game/tests/fixtures/journey/long-way-home-v3-a-place-beside-you-checkpoint.json";
 import tideDefinition from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-definition.json";
 import tideInitial from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-initial-checkpoint.json";
 import tideSetA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-a.json";
 import tideSetB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-b.json";
+import tideSetC from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-c.json";
 import tideSetEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-checkpoint.json";
 import tideSlackA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-a.json";
 import tideSlackB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-b.json";
+import tideSlackC from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-c.json";
 import tideSlackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-checkpoint.json";
 import roomsDefinition from "../../game/tests/fixtures/journey/conservatory-v2-definition.json";
 import roomsInitial from "../../game/tests/fixtures/journey/conservatory-v2-initial-checkpoint.json";
 import roomsAboveA from "../../game/tests/fixtures/journey/conservatory-v2-a-light-above-a.json";
 import roomsAboveB from "../../game/tests/fixtures/journey/conservatory-v2-a-light-above-b.json";
+import roomsAboveC from "../../game/tests/fixtures/journey/conservatory-v2-a-light-above-c.json";
 import roomsAboveEnd from "../../game/tests/fixtures/journey/conservatory-v2-a-light-above-checkpoint.json";
 import roomsReturnA from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-a.json";
 import roomsReturnB from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-b.json";
+import roomsReturnC from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-c.json";
 import roomsReturnEnd from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-checkpoint.json";
 import bundledHome from "../src/v2/long-way-home-v3.json";
 import bundledHomeInitial from "../src/v2/long-way-home-v3-initial.json";
@@ -42,14 +48,15 @@ import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string };
 type Chain = { name: string; adapter: ChapterAdapter; hash: string; rules: number; flag: string; definition: unknown; initial: unknown; bundled: unknown; bundledInitial: unknown;
-  stages: [unknown, unknown, unknown][] };
+  /** Each stage's first turn, its second turn (a pass), its closing third turn and its checkpoint (open turns). */
+  stages: [unknown, unknown, unknown, unknown][] };
 const CHAINS: Chain[] = [
   { name: "long-way-home@3", adapter: longWayHomeV3, hash: LONG_WAY_HOME_V3_HASH, rules: 14, flag: "LONG_WAY_HOME_V3_CHAPTER_ENABLED", definition: homeDefinition, initial: homeInitial,
-    bundled: bundledHome, bundledInitial: bundledHomeInitial, stages: [[homePathA, homePathB, homePathEnd], [homePlaceA, homePlaceB, homePlaceEnd]] },
+    bundled: bundledHome, bundledInitial: bundledHomeInitial, stages: [[homePathA, homePathB, homePathC, homePathEnd], [homePlaceA, homePlaceB, homePlaceC, homePlaceEnd]] },
   { name: "turn-of-the-tide@3", adapter: turnOfTheTideV3, hash: TURN_OF_THE_TIDE_V3_HASH, rules: 15, flag: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", definition: tideDefinition, initial: tideInitial,
-    bundled: bundledTide, bundledInitial: bundledTideInitial, stages: [[tideSetA, tideSetB, tideSetEnd], [tideSlackA, tideSlackB, tideSlackEnd]] },
+    bundled: bundledTide, bundledInitial: bundledTideInitial, stages: [[tideSetA, tideSetB, tideSetC, tideSetEnd], [tideSlackA, tideSlackB, tideSlackC, tideSlackEnd]] },
   { name: "conservatory@2", adapter: conservatoryV2, hash: CONSERVATORY_V2_HASH, rules: 14, flag: "CONSERVATORY_V2_CHAPTER_ENABLED", definition: roomsDefinition, initial: roomsInitial,
-    bundled: bundledRooms, bundledInitial: bundledRoomsInitial, stages: [[roomsAboveA, roomsAboveB, roomsAboveEnd], [roomsReturnA, roomsReturnB, roomsReturnEnd]] },
+    bundled: bundledRooms, bundledInitial: bundledRoomsInitial, stages: [[roomsAboveA, roomsAboveB, roomsAboveC, roomsAboveEnd], [roomsReturnA, roomsReturnB, roomsReturnC, roomsReturnEnd]] },
 ];
 // 0.8.1 and older: none of them offers 12 or 13 (11 is the Lighthouse room's).
 const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8, 9, 10], [2, 4, 5, 6, 7, 8, 9, 10, 11], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -69,13 +76,13 @@ async function rehash(input: Record<string, unknown>): Promise<Record<string, un
   const body = { ...input }; delete body.checkpoint_hash; delete body.proof;
   return { ...input, checkpoint_hash: await digest(canonicalJson(body)) };
 }
-async function records(chain: Chain, index: number): Promise<[ChapterRecording, ChapterRecording]> {
-  const [a, b] = chain.stages[index];
-  return [await recordingV2(a, chain.adapter.key) as ChapterRecording, await recordingV2(b, chain.adapter.key) as ChapterRecording];
+async function records(chain: Chain, index: number): Promise<[ChapterRecording, ChapterRecording, ChapterRecording]> {
+  const [a, b, c] = chain.stages[index];
+  return [await recordingV2(a, chain.adapter.key) as ChapterRecording, await recordingV2(b, chain.adapter.key) as ChapterRecording, await recordingV2(c, chain.adapter.key) as ChapterRecording];
 }
 async function stageOne(chain: Chain): Promise<ChapterCheckpoint> {
-  const [a, b] = await records(chain, 0);
-  return checkpointV2(chain.stages[0][2], initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, b);
+  const [a, b, c] = await records(chain, 0);
+  return checkpointV2(chain.stages[0][3], initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b]);
 }
 afterEach(async () => { await reset(); });
 
@@ -106,32 +113,26 @@ describe("open controls (rules 12 and 13)", () => {
     it(`${chain.name}: accepts the native chain`, async () => {
       let previous = initialCheckpoint(chain.adapter.key) as ChapterCheckpoint;
       for (let index = 0; index < chain.stages.length; index++) {
-        const [a, b] = await records(chain, index);
-        expect(acceptedRecording(a) && acceptedRecording(b)).toBe(true);
-        previous = await checkpointV2(chain.stages[index][2], previous, a, b);
-        expect(previous).toEqual(chain.stages[index][2]);
+        const [a, b, c] = await records(chain, index);
+        expect(acceptedRecording(a) && acceptedRecording(b) && acceptedRecording(c)).toBe(true);
+        previous = await checkpointV2(chain.stages[index][3], previous, a, c, [b]);
+        expect(previous).toEqual(chain.stages[index][3]);
       }
     });
   }
-  it("holds an unowned pad for the player standing on it, and not once it steps off", async () => {
-    // Long Way Home@3's homecoming lights its window while the near-window pad, which has no owner, is held:
-    // the native chain above ends with the first player on it. Owner rules would read the pad's missing owner.
-    const chain = CHAINS[0], first = await stageOne(chain), [a, b] = await records(chain, 1);
+  it("ends an open turns stage only with both players at its goal", async () => {
+    // Long Way Home@3's homecoming ends with both players at the second window; one of them away is refused.
+    const chain = CHAINS[0], first = await stageOne(chain), [a, b, c] = await records(chain, 1);
     const end = structuredClone(homePlaceEnd) as Record<string, any>;
-    expect(end.players.p1).toMatchObject({ x: 1200, z: 32, surface_id: "home-room" });
-    const away = structuredClone(end); away.players.p1 = { ...away.players.p1, x: 1440, z: 280 };
-    await expect(checkpointV2(await rehash(away), first, a, b)).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
+    expect(end.players.p0).toMatchObject({ x: 1408, z: 96, surface_id: "home-room" });
+    expect(end.players.p1).toMatchObject({ x: 1408, z: 96, surface_id: "home-room" });
+    const away = structuredClone(end); away.players.p1 = { ...away.players.p1, x: 1200, z: 32 };
+    await expect(checkpointV2(await rehash(away), first, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
   });
-  it("keeps the tide rules on 13: no route latches", async () => {
-    const chain = CHAINS[1], [a, b] = await records(chain, 0);
+  it("keeps the tide rules on 15: no route latches", async () => {
+    const chain = CHAINS[1], [a, b, c] = await records(chain, 0);
     const kept = structuredClone(tideSetEnd) as Record<string, any>; kept.mechanisms.latched_bridges = [kept.players.p0.surface_id];
-    await expect(checkpointV2(await rehash(kept), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, b)).rejects.toMatchObject({ code: "checkpoint_mechanism_mismatch" });
-  });
-  it("ends Conservatory@2's first turn on the court, never on the forks' balcony", async () => {
-    const chain = CHAINS[2], [a, b] = await records(chain, 0);
-    expect(roomsAboveEnd.players.p0.surface_id).toBe("court");
-    const above = structuredClone(roomsAboveEnd) as Record<string, any>; above.players.p0 = { x: -416, z: -224, height: 160, surface_id: "fork-balcony" };
-    await expect(checkpointV2(await rehash(above), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, b)).rejects.toMatchObject({ code: "checkpoint_source_position_mismatch" });
+    await expect(checkpointV2(await rehash(kept), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_mechanism_mismatch" });
   });
   it("refuses a guest whose client never offered the open rules, and plays a room to completion", async () => {
     // Turn of the Tide@3 is free, so a room needs no purchase.
@@ -146,12 +147,15 @@ describe("open controls (rules 12 and 13)", () => {
       }
       const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT }, flags);
       expect(joined.status, chain.name).toBe(200);
-      const [[setA, setB, setEnd], [nextA, nextB, nextEnd]] = chain.stages;
+      // Each stage: the first turn, a pass, then the first player's closing turn with both at the goal.
+      const [[setA, setB, setC, setEnd], [nextA, nextB, nextC, nextEnd]] = chain.stages;
       const first = (setA as { player_slot: string }).player_slot === "p0" ? host : guest, second = first === host ? guest : host;
-      const one = await submit(await joined.json<RoomSnapshotV2>(), first, setA, undefined, flags), two = await submit(one.room, second, setB, setEnd, flags);
-      expect(two.room).toMatchObject({ stage_index: 1, checkpoint: setEnd });
-      const three = await submit(two.room, second, nextA, undefined, flags), four = await submit(three.room, first, nextB, nextEnd, flags);
-      expect(four.room).toMatchObject({ stage_index: 2, active_role: "complete", checkpoint: nextEnd });
+      const one = await submit(await joined.json<RoomSnapshotV2>(), first, setA, undefined, flags), two = await submit(one.room, second, setB, undefined, flags);
+      const three = await submit(two.room, first, setC, setEnd, flags);
+      expect(three.room).toMatchObject({ stage_index: 1, checkpoint: setEnd });
+      const four = await submit(three.room, second, nextA, undefined, flags), five = await submit(four.room, first, nextB, undefined, flags);
+      const six = await submit(five.room, second, nextC, nextEnd, flags);
+      expect(six.room).toMatchObject({ stage_index: 2, active_role: "complete", checkpoint: nextEnd });
     }
   });
 });

@@ -1,57 +1,89 @@
 {
 	"the-path-you-leave": {
-		"a": [
-			["input", 26, 100, 0, false],
-			["input", 8, 0, -100, false],
-			["input", 48, 100, 0, false],
-			["input", 8, 0, 100, false],
-			["input", 1, 0, 0, false],
-			["input", 1, 0, 0, true],
-			["input", 8, 0, -100, false],
-			["input", 48, -100, 0, false],
-			["input", 30, 0, -100, false],
-			["input", 110, 100, 0, false],
-			["input", 34, 0, 100, false],
-			["input", 10, 100, 0, false]
-		],
-		"b": [
-			["input", 16, 0, -100, false],
-			["input", 106, 100, 0, false],
-			["input", 1, 50, 0, false],
-			["input", 18, 100, 0, false],
-			["input", 6, 0, -100, false],
-			["input", 1, 0, 0, false],
-			["input", 1, 0, 0, true],
-			["input", 18, 0, -100, false],
-			["input", 64, 100, 0, false],
-			["input", 18, 0, 100, false],
-			["input", 1, 0, 0, false],
-			["input", 1, 0, 0, true],
-			["input", 81, 0, 0, false]
+		"turns": [
+			[
+				["input", 26, 100, 0, false],
+				["input", 8, 0, -100, false],
+				["input", 48, 100, 0, false],
+				["input", 8, 0, 100, false],
+				["input", 1, 0, 0, false],
+				["input", 1, 0, 0, true],
+				["input", 8, 0, -100, false],
+				["input", 48, -100, 0, false],
+				["input", 30, 0, -100, false],
+				["input", 110, 100, 0, false],
+				["input", 34, 0, 100, false],
+				["input", 10, 100, 0, false]
+			],
+			[
+				["input", 16, 0, -100, false],
+				["input", 106, 100, 0, false],
+				["input", 1, 50, 0, false],
+				["input", 18, 100, 0, false],
+				["input", 6, 0, -100, false],
+				["input", 1, 0, 0, false],
+				["input", 1, 0, 0, true],
+				["input", 18, 0, -100, false],
+				["input", 64, 100, 0, false],
+				["input", 18, 0, 100, false],
+				["input", 1, 0, 0, false],
+				["input", 1, 0, 0, true],
+				["input", 81, 0, 0, false]
+			],
+			[
+				["input", 26, 100, 0, false],
+				["input", 8, 0, -100, false],
+				["input", 48, 100, 0, false],
+				["input", 8, 0, 100, false],
+				["input", 1, 0, 0, false],
+				["input", 1, 0, 0, true],
+				["input", 8, 0, -100, false],
+				["input", 48, -100, 0, false],
+				["input", 30, 0, -100, false],
+				["input", 110, 100, 0, false],
+				["input", 34, 0, 100, false],
+				["input", 10, 100, 0, false],
+				["walk", [640, 224]]
+			]
 		]
 	},
 	"a-place-beside-you": {
-		"a": [
-			["input", 8, 100, 0, false],
-			["input", 30, 0, -100, false],
-			["input", 62, 100, 0, false],
-			["input", 6, 0, 100, false]
-		],
-		"b": [
-			["input", 8, 100, 0, false],
-			["input", 24, 0, 100, false],
-			["input", 94, 100, 0, false],
-			["input", 1, 50, 0, false],
-			["input", 1, 0, 0, false],
-			["input", 1, 0, 0, true],
-			["input", 7, 100, 0, false],
-			["input", 7, -100, 0, false],
-			["input", 1, 0, 0, false],
-			["input", 1, 0, 0, true],
-			["input", 56, 100, 0, false],
-			["input", 16, 0, -100, false],
-			["input", 1, 0, 0, false],
-			["input", 1, 0, 0, true]
+		"turns": [
+			[
+				["walk", [704, 224]],
+				["walk", [704, -16]],
+				["walk", [944, -16]],
+				["walk", [944, -80]],
+				["tap"],
+				["walk", [944, -16]],
+				["walk", [1168, -16]],
+				["walk", [1200, -16]],
+				["walk", [1200, 32]]
+			],
+			[
+				["walk", [736, 200]],
+				["walk", [736, 288]],
+				["walk", [736, 448]],
+				["walk", [800, 448]],
+				["tap"],
+				["walk", [1152, 448]],
+				["walk", [1152, 272]],
+				["walk", [1408, 272]],
+				["walk", [1408, 96]]
+			],
+			[
+				["walk", [704, 224]],
+				["walk", [704, -16]],
+				["walk", [944, -16]],
+				["walk", [944, -80]],
+				["tap"],
+				["walk", [944, -16]],
+				["walk", [1168, -16]],
+				["walk", [1200, -16]],
+				["walk", [1200, 32]],
+				["walk", [1408, 32]],
+				["walk", [1408, 96]]
+			]
 		]
 	}
 }

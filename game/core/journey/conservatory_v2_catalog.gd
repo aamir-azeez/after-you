@@ -2,7 +2,8 @@ extends RefCounted
 ## conservatory@2: conservatory@1's definition as version 2, pinned to open
 ## controls and open turns (core/physical/open_turns.gd: 14), so it never
 ## shares a record with an earlier version, its controls carry no owner, and a
-## stage passes back and forth until its garden is lit, up to its cap. Its words are the descriptor's copy and stage_copy, never the
+## stage passes back and forth until both pips end a turn in its lit garden, up to its cap.
+## Its words are the descriptor's copy and stage_copy, never the
 ## definition's. It keeps conservatory@1's turn limits: the open rules need no more.
 ##
 ## A Light Above: with open controls the second spirit could turn the court's
@@ -26,9 +27,9 @@ const BALCONY_RECT := [-512, -400, -368, 176]
 const FORKS := ["court-fork", "high-return"]
 const START := [-416, -224]
 const HATCH := {"id": "balcony-hatch", "rect_cm": [-504, -24, -464, 24], "surface_id": BALCONY, "destination_surface": "court", "height_cm": 0}
-## The one crossing kept owned: open, the high stair would let the second pip
-## climb to the gallery and finish The Way Light Returns alone, on any of its turns.
-const OWNED := ["high-stair"]
+## No crossing is kept owned: a stage ends with both pips at its goal, so no
+## pip finishes alone whatever it can reach (tests/test_level_checker.gd).
+const OWNED := []
 ## Turns a stage may take: A Light Above, ten; the ending's two lights, twenty.
 const CAPS := {"a-light-above": 10, "the-way-light-returns": 20}
 ## The balcony's timber posts, solid (Navigation obstacles on the court), 12 cm

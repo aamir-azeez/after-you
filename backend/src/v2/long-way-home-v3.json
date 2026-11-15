@@ -703,7 +703,6 @@
 			"from_height_cm": 0,
 			"from_surface": "garden",
 			"id": "service-up",
-			"owner_slot": "p1",
 			"rect_cm": [
 				768,
 				-64,
