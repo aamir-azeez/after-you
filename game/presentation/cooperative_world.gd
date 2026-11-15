@@ -446,6 +446,7 @@ func _build_lever(lever: Dictionary) -> void:
 	var piece: RefCounted = kit.build(_piece_style(slot, str(lever.id)), _at(lever), terrain, options)
 	_lever_pieces[lever.id] = piece
 	_physical_levers[lever.id] = piece.anchor
+	mark_sound("control:%s" % lever.id, piece.anchor)
 
 ## Gate links: cables this wide, their centres this high.
 const LINK_WIDTH := 0.025

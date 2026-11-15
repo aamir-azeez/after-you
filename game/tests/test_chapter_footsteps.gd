@@ -54,13 +54,13 @@ func _chapter(key: String) -> void:
 	var state_before: String = Canonical.digest(screen.sim.snapshot())
 	var save_before := FileAccess.get_sha256(path)
 	_contacts(screen, false)
-	_check(sound.next_step == 2 and sound.step_voices[0].playing and sound.step_voices[1].playing, "Two actual visible spirits stepping together retain both overlapping contacts: " + key)
-	var first_clips: Array = [sound.step_voices[0].stream, sound.step_voices[1].stream]
+	_check(sound.next_step == 2 and sound.step_slots[0].playing and sound.step_slots[1].playing, "Two actual visible spirits stepping together retain both overlapping contacts: " + key)
+	var first_clips: Array = [sound.step_slots[0].stream, sound.step_slots[1].stream]
 	_check(first_clips[0] != first_clips[1], "Two spirits stepping together use both contact samples: " + key)
-	var pitches: Array[float] = [sound.step_voices[0].pitch_scale, sound.step_voices[1].pitch_scale]
+	var pitches: Array[float] = [sound.step_slots[0].pitch_scale, sound.step_slots[1].pitch_scale]
 	_contacts(screen, true)
-	_check(sound.next_step == 4 and sound.step_voices[2].stream != first_clips[0] and sound.step_voices[0].stream != first_clips[1], "Reduced motion retains each spirit's alternating contacts without throttling: " + key)
-	pitches.append_array([sound.step_voices[2].pitch_scale, sound.step_voices[0].pitch_scale])
+	_check(sound.next_step == 4 and sound.step_slots[2].stream != first_clips[0] and sound.step_slots[0].stream != first_clips[1], "Reduced motion retains each spirit's alternating contacts without throttling: " + key)
+	pitches.append_array([sound.step_slots[2].pitch_scale, sound.step_slots[0].pitch_scale])
 	var varied := true
 	for i in range(1, pitches.size()):
 		varied = varied and not is_equal_approx(pitches[i], pitches[i - 1])
@@ -68,11 +68,11 @@ func _chapter(key: String) -> void:
 	_check(Canonical.digest(screen.sim.snapshot()) == state_before and FileAccess.get_sha256(path) == save_before, "Visual walking and audio never mutate simulation or saved proof: " + key)
 	sound.configure({"sound": false, "haptics": false})
 	_contacts(screen, false)
-	_check(sound.next_step == 4 and not sound.step_voices[0].playing, "Saved sound-off suppresses contacts in the actual scene: " + key)
+	_check(sound.next_step == 4 and not sound.step_slots[0].playing, "Saved sound-off suppresses contacts in the actual scene: " + key)
 	sound.configure({"sound": true, "haptics": false})
 	screen._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	_contacts(screen, false)
-	_check(sound.next_step == 4 and sound.backgrounded and not sound.step_voices[0].playing, "Backgrounding stops the footstep and scene emission path: " + key)
+	_check(sound.next_step == 4 and sound.backgrounded and not sound.step_slots[0].playing, "Backgrounding stops the footstep and scene emission path: " + key)
 	screen._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
 	_contacts(screen, false)
 	_check(sound.next_step == 4 and not screen.running, "Returning to a paused turn does not replay queued footsteps: " + key)
@@ -123,7 +123,7 @@ func _drive(screen: Node, recording: Dictionary) -> Array:
 		screen.advance_input(input)
 		var index := before
 		while index != sound.next_voice:
-			var voice: AudioStreamPlayer = sound.voices[index]
+			var voice: Node = sound.cue_slots[index]
 			heard.append([_cue_name(voice.stream), voice.pitch_scale, voice.volume_db])
 			index = (index + 1) % sound.voices.size()
 	return heard

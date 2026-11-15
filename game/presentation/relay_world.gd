@@ -71,6 +71,7 @@ func load_level(definition: Dictionary) -> void:
 			for side in [-1, 1]:
 				cylinder(0.035, 0.3, Color("8b7964"), Vector3(0, 0.19, side * (depth / 2.0 - 0.06)), plank)
 		bridge_visuals[bridge.id] = root
+		mark_sound("bridge:%s" % bridge.id, root)
 		bridge_targets[bridge.id] = false
 		await _build_step()
 	for item: Dictionary in definition.plates:

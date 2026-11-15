@@ -274,7 +274,7 @@ func _heard_throws(app: Node, inputs: Array) -> Array:
 		var index: int = sound.next_voice
 		app.advance_input(input)
 		while index != sound.next_voice:
-			var voice: AudioStreamPlayer = sound.voices[index]
+			var voice: Node = sound.cue_slots[index]
 			if voice.stream == sound.CLIPS.seed_thrown: heard.append([voice.pitch_scale, voice.volume_db])
 			index = (index + 1) % sound.voices.size()
 	sound.configure(app.settings)
