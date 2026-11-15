@@ -321,13 +321,18 @@ static func quick_face(last: String, context: Dictionary) -> String:
 	if context.get("slots") is Array: return last if last in context.slots else Store.DEFAULT_FACE
 	return last if FacePacks.can_pick(last, bool(context.get("local", false))) else Store.DEFAULT_FACE
 
-## The faces a card offers in slot order, empty places left out: the context's
-## "slots" (tests), else the player's reaction slots (FacePacks.slots); [] while
-## the server keeps none, so the card shows the free faces and pack tabs.
+## The places a card offers, one per open reaction slot in slot order, each its
+## face or "" for an empty place: the context's "slots" (tests), else the
+## player's (FacePacks.slots); [] while the server keeps none, so the card shows
+## the free faces and pack tabs.
 static func offered_slots(context: Dictionary) -> Array:
 	var given: Variant = context.get("slots")
 	var slots: Array = given if given is Array else FacePacks.slots(bool(context.get("local", false)))
-	return slots.filter(func(face: Variant) -> bool: return face is String and Store.Catalog.is_face(face) and face != Store.HEART)
+	return slots.map(func(face: Variant) -> String: return str(face) if face is String and Store.Catalog.is_face(face) and face != Store.HEART else "")
+
+## The faces card's columns for `places` reaction slots: 2 x 2 for four, else 3 a row.
+static func slot_columns(places: int) -> int:
+	return 2 if places <= 4 else 3
 
 ## The packs whose faces a card offers for `context` (a row's, or any faces card
 ## owner's): its "packs" (tests), else those the player may pick now, with
@@ -678,8 +683,9 @@ class FacesCard extends CanvasLayer:
 		if not packs.is_empty(): stack.add_child(_tab_strip(packs))
 		grid = GridContainer.new()
 		grid.name = "ReactionGrid"
-		# The slots draw 3 x 2 (Wardrobe board, the React card); the free faces 4 x 2.
-		grid.columns = 4 if slot_faces.is_empty() else 3
+		# The slots draw 3 x 2 (Wardrobe board, the React card), four open places
+		# 2 x 2, five 3 and 2; the free faces 4 x 2.
+		grid.columns = 4 if slot_faces.is_empty() else load(SCRIPT_PATH).slot_columns(slot_faces.size())
 		grid.add_theme_constant_override("h_separation", 8)
 		grid.add_theme_constant_override("v_separation", 8)
 		stack.add_child(grid)
@@ -734,9 +740,11 @@ class FacesCard extends CanvasLayer:
 			grid.remove_child(child)
 			child.queue_free()
 		var faces: Array = slot_faces if not slot_faces.is_empty() else Store.Catalog.PACKS.get(id, Store.FACES)
-		for face: String in faces:
+		for index: int in faces.size():
+			var face: String = faces[index]
 			if face == Store.HEART: continue
-			grid.add_child(_cell(face, CELL_SIZE, true))
+			if face.is_empty(): grid.add_child(_empty_cell(index))
+			else: grid.add_child(_cell(face, CELL_SIZE, true))
 		for key: String in tabs: _style_tab(tabs[key], key == id)
 		# Placed again once built: the grid may be a row shorter or taller.
 		if pointer != null and panel.is_inside_tree(): place()
@@ -791,6 +799,16 @@ class FacesCard extends CanvasLayer:
 		cell.pressed.connect(func(): if not closing and is_instance_valid(row): row.choose(face))
 		ButtonTicks.quiet(cell)
 		cells[face] = cell
+		return cell
+
+	## An open reaction slot with no face in it: its place kept, as the
+	## Wardrobe's slot row draws it, and nothing to tap.
+	func _empty_cell(index: int) -> Control:
+		var cell := Panel.new()
+		cell.name = "EmptySlot_%d" % index
+		cell.custom_minimum_size = CELL_SIZE
+		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cell.add_theme_stylebox_override("panel", ControlTheme.rounded(Color(CELL_FILL, 0.5), 16, CELL_BORDER))
 		return cell
 
 	## Beside the pill on the hand side when it fits there, its pointer on the

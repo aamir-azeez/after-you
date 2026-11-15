@@ -21,6 +21,7 @@ const FastForwardBadge = preload("res://presentation/fast_forward_badge.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
 const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const PairChip = preload("res://presentation/kit/pair_chip.gd")
+const Icons = preload("res://presentation/kit/icons.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -519,6 +520,24 @@ func card(title: String, body: String) -> VBoxContainer:
 	stack.add_child(paragraph)
 	_layout_card.call_deferred()
 	return stack
+
+## Report or block on the current card: the shared flag button (kit/icons.gd)
+## at the card's top right, beside its title. Returns the button.
+func card_report(action: Callable) -> Button:
+	var title: Label = modal_stack.get_child(0)
+	var line := HBoxContainer.new()
+	line.name = "CardTitleLine"
+	line.add_theme_constant_override("separation", 12)
+	modal_stack.add_child(line)
+	modal_stack.move_child(line, 0)
+	title.reparent(line, false)
+	title.custom_minimum_size.x = 0
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var flag := Icons.report_button(action, PlayerCopy.REPORT_OR_BLOCK)
+	flag.name = "CardReport"
+	flag.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	line.add_child(flag)
+	return flag
 
 func _layout_card() -> void:
 	if not is_instance_valid(modal_scroll) or not is_instance_valid(modal_stack): return

@@ -77,6 +77,10 @@ extends SceneTree
 ##     builder is in PIECE_OVERRIDES with what it adds, and no script keeps the
 ##     old per-world switches ("lever_looks", "stand_spots"). test_piece_styles.gd,
 ##     which must stay in CI, builds every style once.
+## (v) UI icons: every svg under assets/ui imports with mipmaps and 2D draws use
+##     them by default (project.godot canvas_textures/default_texture_filter), so
+##     an icon drawn far smaller than its source stays whole; no control sets its
+##     own mipmap filter.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -441,6 +445,7 @@ func _initialize() -> void:
 	_level_hints()
 	_route_barriers()
 	_piece_styles()
+	_ui_icons()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -1023,6 +1028,18 @@ func _energy() -> void:
 		_check(chips.has(path), "ENERGY_CHIP_SURFACES names %s, which wears no chip through presentation/kit/energy_chip.gd now: delete it" % path)
 	for path: String in ENERGY_METER_SURFACES:
 		_check(meters.has(path), "ENERGY_METER_SURFACES names %s, which shows no meter through presentation/duels/energy_meter.gd now: delete it" % path)
+
+# (v) UI icons ------------------------------------------------------------------
+
+func _ui_icons() -> void:
+	_check(int(ProjectSettings.get_setting("rendering/textures/canvas_textures/default_texture_filter", 1)) == Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR_WITH_MIPMAPS, "2D draws use mipmaps by default (project.godot rendering/textures/canvas_textures/default_texture_filter=2, Linear Mipmap)")
+	var icons := _scripts("res://assets/ui", ".svg")
+	_check(icons.size() > 50, "The scan finds the UI icons: %d" % icons.size())
+	for path: String in icons:
+		var settings := FileAccess.get_file_as_string(path + ".import")
+		_check(settings.contains("mipmaps/generate=true"), "%s imports with mipmaps: commit %s.import with mipmaps/generate=true" % [path, path.get_file()])
+	for path: String in _sources:
+		_check(_found("\\btexture_filter\\s*=\\s*(?:CanvasItem\\.)?TEXTURE_FILTER_LINEAR_WITH_MIPMAPS", _sources[path]) == 0, "%s sets its own mipmap filter, which is the 2D default now: delete the line" % path)
 
 func _suites() -> void:
 	var shards := {}

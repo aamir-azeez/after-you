@@ -104,7 +104,6 @@ func _init() -> void:
 	_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_icon.modulate = INK
 	_icon.position = Vector2(8, 8)
 	_icon.size = Vector2(ICON_SIZE - 16, ICON_SIZE - 16)

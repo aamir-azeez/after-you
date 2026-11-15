@@ -4,17 +4,16 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DATA := {
 	"id": "paper_boat",
 	"slot": "hat",
-	"tier": "common",
+	"tier": "uncommon",
 	"name": PlayerCopy.COSMETIC_PAPER_BOAT,
 	"art": "res://presentation/pip_wear/paper_boat.gd",
 	"code": 200,
 	## Held back until the server's release list names it.
 	"released": false,
-	## It stands above the head.
-	"tall": true,
-	## Its raised end hangs out past the head on the side the views turn away.
-	"wide": true,
-	## The leaf grows clear beside it.
-	"leaf_mode": "pokes_through",
+	## The leaf comes out of the boat's hull just left of the stripe, raised
+	## this far to the hull's rim there (its own leaf point, not the shared top
+	## anchor; it may clip the paper it passes).
+	"leaf_mode": "sits_on_top",
+	"leaf_lift": 0.045,
 	"leaf_max": "medium",
 }

@@ -537,11 +537,14 @@ func _build_mirror(control: Dictionary) -> void:
 		var arrow := box(Vector3(0.10, 0.02, 0.06), Color("d0dce2"), at + Vector3(side * 0.29, base_height + 0.06, 0.18), terrain)
 		arrow.rotation.y = side * PI / 4.0
 
+## A receiver's lamp post's radius (its pair tag's plaque clamps round it).
+const RECEIVER_POST := 0.06
+
 func _build_receiver(receiver: Dictionary) -> void:
 	var at := point(receiver.position_cm)
 	var base_height := _control_base_height(receiver)
 	var axis := _beam_height()
-	cylinder(0.06, axis - base_height, Color("697a88"), at + Vector3(0, (axis + base_height) / 2.0, 0), terrain)
+	cylinder(RECEIVER_POST, axis - base_height, Color("697a88"), at + Vector3(0, (axis + base_height) / 2.0, 0), terrain)
 	var disk := cylinder(0.22, 0.07, Color("8da2ac"), at + Vector3(0, axis, 0), terrain)
 	disk.rotation.x = PI / 2.0
 	_receiver_lens = box(Vector3(0.20, 0.20, 0.035), Color("536579"), at + Vector3(0, axis, 0.052), terrain)
@@ -882,7 +885,7 @@ func _frame_camera() -> void:
 	if not is_instance_valid(camera):
 		return
 	if _follows_view():
-		camera.position = _follow_point + Vector3(3, 13, 10)
+		camera.position = _follow_point + ViewFit.CAMERA_FROM
 		camera.look_at(to_global(_follow_point))
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		camera.size = ViewFit.viewport(FOLLOW_SIZE, self)
@@ -891,7 +894,7 @@ func _frame_camera() -> void:
 		return
 	# A higher, less oblique view keeps the short mirror-to-receiver segment
 	# visible behind the mirror face without moving either optical endpoint.
-	camera.position = _view_center + Vector3(3, 13, 10)
+	camera.position = _view_center + ViewFit.CAMERA_FROM
 	camera.look_at(to_global(_view_center))
 	camera.size = _view_size
 	camera.h_offset = 0.0
