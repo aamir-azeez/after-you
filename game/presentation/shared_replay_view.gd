@@ -384,7 +384,7 @@ func _pause() -> void:
 	var card: VBoxContainer = controls.card(_words.paused, _words.paused_body)
 	card.add_child(controls.button_for("resume", _resume))
 	card.add_child(controls.button_for("replay", _start))
-	if not _board_run(): card.add_child(controls.button("Report or block player", _open_safety))
+	if not _board_run(): controls.card_report(_open_safety)
 	card.add_child(controls.button_for("back", _leave))
 
 func _finished() -> void:
@@ -405,7 +405,7 @@ func _show_finished() -> void:
 	if is_instance_valid(strip): strip.clear()
 	var card: VBoxContainer = controls.card(_words.done, _words.done_body)
 	card.add_child(controls.button_for("replay", _start))
-	if not _board_run(): card.add_child(controls.button("Report or block player", _open_safety))
+	if not _board_run(): card.add_child(controls.button(PlayerCopy.REPORT_OR_BLOCK, _open_safety))
 	card.add_child(controls.button_for("back", _leave))
 
 func _process(delta: float) -> void:

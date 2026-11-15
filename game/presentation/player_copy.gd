@@ -1459,6 +1459,8 @@ const ROOM_OPTIONS_INVITE := "Invite"
 const ROOM_OPTIONS_TURNS := "Turns"
 const ROOM_OPTIONS_CHAPTER := "Chapter"
 const ROOM_OPTIONS_SAFETY := "Safety"
+## The way to report or block a room partner: the Room options row and the pause cards' flag.
+const REPORT_OR_BLOCK := "Report or block player"
 const ROOM_OPTIONS_PARTNER := "Room partner"
 # A friend's redo request in Together rooms (presentation/redo_flow.gd,
 # presentation/redo_home_card.gd). %s is the friend's name.

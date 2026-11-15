@@ -1032,7 +1032,7 @@ func _energy() -> void:
 # (v) UI icons ------------------------------------------------------------------
 
 func _ui_icons() -> void:
-	_check(int(ProjectSettings.get_setting("rendering/textures/canvas_textures/default_texture_filter", 1)) == CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS, "2D draws use mipmaps by default (project.godot rendering/textures/canvas_textures/default_texture_filter=3)")
+	_check(int(ProjectSettings.get_setting("rendering/textures/canvas_textures/default_texture_filter", 1)) == Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR_WITH_MIPMAPS, "2D draws use mipmaps by default (project.godot rendering/textures/canvas_textures/default_texture_filter=2, Linear Mipmap)")
 	var icons := _scripts("res://assets/ui", ".svg")
 	_check(icons.size() > 50, "The scan finds the UI icons: %d" % icons.size())
 	for path: String in icons:
