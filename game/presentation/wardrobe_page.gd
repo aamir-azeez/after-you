@@ -89,13 +89,14 @@ const SHELF := Color("e4eee0")
 const PICTURE := Color("efe8d4")
 const CHIP := Color("e6e0cc")
 const MINT := Color("a6d9c4")
-const CARD_SIZE := Vector2(206, 158)
+static var CARD_SIZE: Vector2 = ShopKit.tile(Vector2(206, 158))
 ## An item card's inner margin and picture height.
 const CARD_PAD := 10
-const CARD_PICTURE := 72
-const SHELF_CARD_SIZE := Vector2(150, 150)
-const CARD_PIP := Vector2(56, 70)
-const SHELF_PIP := Vector2(50, 62)
+static var CARD_PICTURE: float = ShopKit.tile(72.0)
+## (MoreArt, an inner class, works it out the same way: inner classes see constants, not static vars.)
+static var SHELF_CARD_SIZE: Vector2 = ShopKit.tile(Vector2(150, 150))
+static var CARD_PIP: Vector2 = ShopKit.tile(Vector2(56, 70))
+static var SHELF_PIP: Vector2 = ShopKit.tile(Vector2(50, 62))
 ## A trail's card shows its pip in a wider picture, so the still sample row
 ## of marks beside it (kit/trail_kit.gd SAMPLE) fits, as the trails board draws it.
 const TRAIL_PIP_WIDTH := 2.6
@@ -138,14 +139,19 @@ var _tabs := {}
 var _tab_row: HBoxContainer
 var _stays: Label
 var _views := {}
-var _kinds: HBoxContainer
+## The slot chips and the shelf's cards flow onto more rows where the panel is
+## narrow, so the page is never wider than the screen.
+var _kinds: HFlowContainer
 var _shelf: PanelContainer
-var _featured: HBoxContainer
+var _featured: HFlowContainer
 var _grid: HFlowContainer
 ## The Reactions chip's slot row and faces, shown in the cards' place.
 var _reactions: Reactions
 ## The scroll's list, and the empty list's drawing in it while there is one.
 var _list: VBoxContainer
+var _scroll: ScrollContainer
+## The chip the list shows; another chip starts the list at its top.
+var _shown_kind := ""
 ## The cream shop panel, and the Orchard shown in its place on the Orchard tab.
 var _shop: Control
 var _orchard: Orchard
@@ -323,9 +329,13 @@ func _shop_panel() -> Control:
 	_retry.pressed.connect(func() -> void: retry_pressed.emit())
 	column.add_child(_retry)
 	var scroll := ScrollContainer.new()
+	_scroll = scroll
 	scroll.name = "WardrobeScroll"
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# The bar's room is always kept, so a list that grows past the view or
+	# shrinks back never changes the grid's width under it.
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
 	ThemeRules.touch_scroll(scroll)
 	column.add_child(scroll)
 	_list = VBoxContainer.new()
@@ -334,9 +344,10 @@ func _shop_panel() -> Control:
 	_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(_list)
 	_list.add_child(_shelf_panel())
-	_kinds = HBoxContainer.new()
+	_kinds = HFlowContainer.new()
 	_kinds.name = "WardrobeKinds"
-	_kinds.add_theme_constant_override("separation", 8)
+	_kinds.add_theme_constant_override("h_separation", 8)
+	_kinds.add_theme_constant_override("v_separation", 8)
 	_list.add_child(_kinds)
 	_grid = HFlowContainer.new()
 	_grid.name = "WardrobeItems"
@@ -366,9 +377,10 @@ func _shelf_panel() -> Control:
 	title.add_child(spark)
 	title.add_child(ShopKit.text(PlayerCopy.WARDROBE_FEATURED, 17, INK, ShopKit.bold_font()))
 	column.add_child(title)
-	_featured = HBoxContainer.new()
+	_featured = HFlowContainer.new()
 	_featured.name = "WardrobeFeatured"
-	_featured.add_theme_constant_override("separation", 10)
+	_featured.add_theme_constant_override("h_separation", 10)
+	_featured.add_theme_constant_override("v_separation", 10)
 	column.add_child(_featured)
 	return _shelf
 
@@ -412,6 +424,9 @@ func render(model: Dictionary) -> void:
 	# Owned ends with Get more when the flow says so (model.more), after at least one owned card.
 	var more := bool(model.get("more", false)) and not shown.is_empty()
 	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty, more, model.get("orchard", false), view])
+	if kind != _shown_kind:
+		_shown_kind = kind
+		_scroll.scroll_vertical = 0
 	if key != _cards_key and not orchard:
 		_cards_key = key
 		_fill(_featured, featured, true)
@@ -614,14 +629,15 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	var picture := PanelContainer.new()
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(PICTURE, 12))
-	picture.custom_minimum_size.y = 64 if small else CARD_PICTURE
+	picture.custom_minimum_size.y = ShopKit.tile(64.0) if small else CARD_PICTURE
 	column.add_child(picture)
-	if entry.slot == "rest_face" and not small:
+	if entry.slot == "rest_face":
 		# A resting face: the head front on, as faces board 4 crops it, so Button, Bean and Round read apart.
+		# Drawn flat on a shelf card too: no still pip to wait for, so it never sits blank.
 		var head := RestFace.new()
 		head.color = "mint" if _view == "friend" else "peach"
 		head.expression = "normal" if bool(entry.get("classic", false)) else str(entry.id)
-		head.custom_minimum_size = Vector2(CARD_PICTURE, CARD_PICTURE)
+		head.custom_minimum_size = Vector2.ONE * (ShopKit.tile(64.0) if small else CARD_PICTURE)
 		head.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		picture.add_child(head)
 	else:
@@ -636,14 +652,14 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	var title_row := HBoxContainer.new()
 	title_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_child(title_row)
-	var title := ShopKit.text(str(entry.name), 13 if small else 15, INK, ShopKit.bold_font())
+	var title := ShopKit.text(str(entry.name), ShopKit.tile_text(13 if small else 15), INK, ShopKit.bold_font())
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.clip_text = true
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	title_row.add_child(title)
 	# An Orchard item (in Owned) has its Orchard word; the Pollen tiers their mark and word.
-	if not small and entry.get("currency", "") == "fruits": title_row.add_child(ShopKit.text(Orchard.tier_word(tier).to_upper(), 11, INK_SOFT, ShopKit.bold_font()))
-	elif not small: title_row.add_child(TierFrame.label(tier, 11, ShopKit.bold_font()))
+	if not small and entry.get("currency", "") == "fruits": title_row.add_child(ShopKit.text(Orchard.tier_word(tier).to_upper(), ShopKit.tile_text(11), INK_SOFT, ShopKit.bold_font()))
+	elif not small: title_row.add_child(TierFrame.label(tier, ShopKit.tile_text(11), ShopKit.bold_font()))
 	var bottom := HBoxContainer.new()
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bottom.add_theme_constant_override("separation", 6)
@@ -656,7 +672,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 		if tier == "earned" and shop and not small: bottom.add_child(spacer)
 		bottom.add_child(_tag(PlayerCopy.WARDROBE_WEARING if bool(entry.worn) else PlayerCopy.WARDROBE_OWNED_TAG))
 	elif bool(entry.sold) and shop:
-		bottom.add_child(ShopKit.amount(int(entry.price), 13 if small else 15, INK, "", "", str(entry.get("currency", ""))))
+		bottom.add_child(ShopKit.amount(int(entry.price), ShopKit.tile_text(13 if small else 15), INK, "", "", str(entry.get("currency", ""))))
 	return card
 
 ## The Owned tab's Get more card for slot `kind`: an item card's size, the
@@ -765,7 +781,7 @@ class MoreArt extends Control:
 
 	func _draw() -> void:
 		var spec: Dictionary = EmptyArt.CARDS.wardrobe
-		var picture := Rect2(CARD_PAD, CARD_PAD, size.x - CARD_PAD * 2, CARD_PICTURE)
+		var picture := Rect2(CARD_PAD, CARD_PAD, size.x - CARD_PAD * 2, ShopKit.tile(72.0))
 		EmptyArt.ghost_outline(self, Rect2(Vector2.ONE, size - Vector2(2, 2)), spec.radius, picture, spec.slot_radius, spec.ink)
 		EmptyArt.scene(self, "wardrobe", picture)
 

@@ -35,10 +35,9 @@ uniform vec4 tear_pupil[2];
 uniform vec4 stroke[2];
 uniform vec4 stroke_end[2];
 uniform vec4 blush[2];
-// The pack faces (spirit_look.gd eye()): eye_shape.x the pupil's outline (0 oval, 1 heart,
-// 2 star), eye_shape.y the cream's (0 oval, 1 heart); a cream tear stream
-// from tear_stream (x, y, radius) to tear_stream_end (x, y, radius); the
-// heart pupil's colour.
+// The pack faces (spirit_look.gd eye()): eye_shape.x the pupil's outline (0 oval,
+// 2 star, 3 clover); a cream tear stream from tear_stream (x, y, radius) to
+// tear_stream_end (x, y, radius); heart_color, a red pupil's and a heart mark's colour.
 uniform vec4 eye_shape[2];
 uniform vec4 tear_stream[2];
 uniform vec4 tear_stream_end[2];
@@ -226,11 +225,10 @@ void fragment() {
 			float d = min(segment(q, stroke[i].xy, stroke[i].zw), segment(q, from, stroke_end[i].xy)) - stroke_end[i].z;
 			color = mix(color, pupil_color, coverage(d) * front);
 		} else {
-			float d_outer = eye_shape[i].y > 0.5 ? heart(q, outer[i].zw, outer[i].x) : oval(q, outer[i], outer_wave[i], outer_phase[i]);
+			float d_outer = oval(q, outer[i], outer_wave[i], outer_phase[i]);
 			float d_pupil;
 			if (eye_shape[i].x > 2.5) d_pupil = clover(q - look_shift - pupil[i].zw, pupil[i].x);
 			else if (eye_shape[i].x > 1.5) d_pupil = star5(q - look_shift, pupil[i].zw, pupil[i].x, pupil[i].y);
-			else if (eye_shape[i].x > 0.5) d_pupil = heart(q - look_shift, pupil[i].zw, pupil[i].x);
 			else d_pupil = oval(q - look_shift, pupil[i], pupil_wave[i], pupil_phase[i]);
 			if (tear[i].z > 0.0) {
 				d_outer = smooth_union(d_outer, length(q - tear[i].xy) - tear[i].z, 0.035);
@@ -243,7 +241,7 @@ void fragment() {
 			d_outer = max(d_outer, d_cut);
 			d_pupil = max(d_pupil, d_cut + cut[i].w);
 			color = mix(color, cream_color, coverage(d_outer) * front);
-			vec3 ink = eye_shape[i].x > 0.5 && eye_shape[i].x < 1.5 ? heart_color : pupil_color;
+			vec3 ink = pupil_color;
 			if (eye_shape[i].z > 1.5) ink = leaf_color;
 			else if (eye_shape[i].z > 0.5) ink = heart_color;
 			float in_pupil = coverage(d_pupil);
