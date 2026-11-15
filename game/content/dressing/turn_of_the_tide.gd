@@ -24,6 +24,7 @@ const DATA := {
 	"selector": "brass",
 	"pad": "stand_spot",
 	"goal": "bell",
+	"lift": "plain",
 	# How each crossing is built (tide_world._lay_deck); "stones" stand in
 	# the channel as they are, under the water when it rises over them.
 	"decks": {"sand-1": "sand", "slipway": "sand", "stones-1": "stones", "stones-2": "stones", "stones-3": "stones",
