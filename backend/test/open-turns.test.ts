@@ -6,7 +6,9 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint } from "../src/v2/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
-import { DEFAULT_TURN_CAP, OPEN_TURN_ID_PATTERN, mustFinish, openTurnLimits, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { DEFAULT_TURN_CAP, OPEN_TURN_ID_PATTERN, mustFinish, openTurnLimits, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { packRecording } from "../src/v2/recording-codec";
+import { PACKED_HEADER } from "../src/v2/packed-rooms";
 import { conservatoryV2, longWayHomeV2, longWayHomeV3, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -33,9 +35,11 @@ const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 const adapter = turnOfTheTideV3;
 const key = () => crypto.randomUUID();
 let address = 0;
+/** Packed recordings (v2/packed-rooms.ts) on for the packed room test only. */
+let packedOn = false;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.15." + (++address % 250),
-    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, ...FLAGS }));
+    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, ...FLAGS, ...(packedOn ? { PACKED_RECORDINGS: "true" } : {}) }));
 }
 async function json<T>(response: Promise<Response>, status = 200): Promise<T> {
   const result = await response, text = await result.text();
@@ -85,7 +89,12 @@ const send = (room: RoomSnapshotV2, who: Account, recording: Rec, checkpoint?: R
 const read = (room: RoomSnapshotV2, who: Account) => json<RoomSnapshotV2>(call(`/v2/rooms/${room.room_id}`, "GET", who));
 const failure = async (response: Promise<Response>, status: number, code: string) => { const result = await response; expect(result.status).toBe(status); expect(await result.json()).toMatchObject({ error: { code } }); };
 
-afterEach(async () => { await reset(); vi.restoreAllMocks(); });
+afterEach(async () => { packedOn = false; await reset(); vi.restoreAllMocks(); });
+/** `record` in the packed form (v2/recording-codec.ts) over `source`, hashed again. */
+async function packedForm(record: Rec, source: string): Promise<Rec> {
+  const { actions, replay_checks, ...rest } = structuredClone(record);
+  return hashed({ ...rest, source_recording_hash: source, packed: packRecording(actions, replay_checks, record.duration_ticks) });
+}
 
 describe("open turns: rules and bounds", () => {
   it("gives only the open controls chapters open turns, with a cap a stage and a budget that fits the row and the archive", () => {
@@ -366,5 +375,37 @@ describe("open turns: snapshot restore", () => {
     const closingTurn = await later(setB as Rec, setA.player_slot, 4, again, true, initial().checkpoint_hash, 15);
     await send(seen, second, closingTurn, await closing(setEnd as Rec, initial(), [turns[0], turns[1], again, closingTurn]));
     expect((await roundTrip(joined.room_id)).payload.summary).toMatchObject({ state: "active", branch: 1 });
+  });
+});
+
+describe("open turns: a packed room", () => {
+  it("takes a JSON first turn, then packed passes and a packed closing turn whose checkpoint nests both forms", async () => {
+    packedOn = true;
+    const asks = { [PACKED_HEADER]: "1" }, host = await account(), guest = await account();
+    const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }, asks));
+    const joined = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }, asks));
+    expect((await json<Rec>(call(`/v2/rooms/${joined.room_id}`, "GET", host, undefined, asks))).packed_recordings).toBe(true);
+    const first = setA.player_slot === "p0" ? host : guest, second = first === host ? guest : host, start = initial(), open = adapter.open_turns!;
+    // Turn 1 as JSON (a phone that sent it before it heard the room was packed), every later turn packed over the one before.
+    const turns: Rec[] = [await hashed({ ...structuredClone(setA), checkpoint_hash: start.checkpoint_hash })];
+    for (let n = 2; n <= 4; n++) turns.push(await packedForm(await later(setB as Rec, setA.player_slot, n, turns.at(-1)!, n === 4, start.checkpoint_hash), turns.at(-1)!.recording_hash));
+    const checkpoint = await closing(setEnd as Rec, start, turns);
+    expect(await validate(checkpoint, start, turns)).toEqual(checkpoint);
+    const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]), three = await send(two.room, first, turns[2]);
+    expect(three.room.open_turns!.passes).toEqual([turns[1], turns[2]]);
+    // The stage's budget counts each turn in the form it came in.
+    expect(three.room.open_turns!.pass_bytes).toBe(open.stage_bytes - open.recording_bytes - turns.slice(0, 3).reduce((sum, turn) => sum + recordingBytes(turn as ChapterRecording), 0));
+    expect(recordingBytes(turns[1] as ChapterRecording)).toBeLessThan(recordingBytes(await later(setB as Rec, setA.player_slot, 2, turns[0], false, start.checkpoint_hash) as ChapterRecording));
+    const four = await send(three.room, second, turns[3], checkpoint);
+    expect(four.receipt).toMatchObject({ turn_id: "t0-0-d", pair_id: "p0-0" });
+    const pair = await json<Rec>(call(`/v2/rooms/${joined.room_id}/pairs/p0-0`, "GET", first));
+    expect(pair.checkpoint.proof.turns).toEqual(turns);
+    expect(pair.checkpoint.proof.turns.map((turn: Rec) => "packed" in turn)).toEqual([false, true, true, true]);
+  });
+  it("refuses a packed pass in a room whose members did not both ask", async () => {
+    const { room: joined, first, second } = await room(), start = initial();
+    const one = await send(joined, first, await hashed({ ...structuredClone(setA), checkpoint_hash: start.checkpoint_hash }));
+    const pass = await packedForm(await later(setB as Rec, setA.player_slot, 2, one.room.recording_a as Rec, false, start.checkpoint_hash), (one.room.recording_a as Rec).recording_hash);
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", second, { base_revision: one.room.revision, branch: 0, idempotency_key: key(), recording: pass }), 422, "packed_recording_not_allowed");
   });
 });

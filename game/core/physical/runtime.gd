@@ -509,13 +509,15 @@ func snapshot() -> Dictionary:
 			var radius := PLAYER_RADIUS + int(_entity(level.props,id).radius_cm) + 2
 			if int(actor.height) != int(ball.height) or Vector2i(actor.x,actor.z).distance_squared_to(Vector2i(ball.x,ball.z)) > radius * radius: controller = ""
 		ball["controller_slot"] = controller
-	return {"schema_version":_schema_version(),"stage_id":stage.id,"role":role,"active_slot":active_slot,"first_player_slot":first_player_slot,
+	var state := {"schema_version":_schema_version(),"stage_id":stage.id,"role":role,"active_slot":active_slot,"first_player_slot":first_player_slot,
 		"tick":tick,"time_seconds":float(tick)/TICK_RATE,"duration_ticks":duration_limit(),"complete":complete,"finished":finished,"can_commit":can_commit(),
 		"commit_reason":commit_reason(),"error":error,"message":str(stage.get("hint_"+role,"")),"players":players,"mechanisms":_mechanisms.duplicate(true),
 		"bridges":_routes.duplicate(),"props":displayed_props,"levers":_mechanisms.levers.duplicate(),"hold_pads":pads,
 		"objective_done":_objective,"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
-		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective,
-		"turn_number":turn_number,"can_pass":can_pass(),"passed":passed}
+		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
+	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
+	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"passed":passed})
+	return state
 
 func _objective_display() -> Dictionary:
 	if role == "a":

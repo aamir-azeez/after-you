@@ -736,21 +736,23 @@ func fork_from_stage(index: int) -> bool:
 
 ## Solo "Redo my previous turn": what one step back would take back, for the
 ## offer only. Like can_restart it never loads or writes. "first_turn" clears
-## this stage's accepted first turn; "stage" reopens the last saved stage at
-## its second turn, with its first turn restored. {} before any turn is saved.
+## this stage's accepted first turn; "pass" (open turns) clears the stage's
+## latest pass, so the turn before it is the memory again; "stage" reopens the
+## last saved stage at its closing turn, with its earlier turns restored. {}
+## before any turn is saved.
 ## The remaining fields let redo_previous refuse an offer that went stale.
 ## A stage is not offered while the archive has no room for the attempt it
 ## would keep.
 func redo_plan() -> Dictionary:
 	if not _loaded or read_only: return {}
-	# Open turns: a stage holding passes offers no solo redo yet.
-	if not _state.get(PASSES, []).is_empty(): return {}
 	var count: int = _state.pairs.size()
+	var held: Array = _state.get(PASSES, [])
 	var first_turn: bool = not _state.a.is_empty()
 	if not first_turn and count == 0: return {}
 	if not first_turn and Archive.full(_path, _state, MAX_ARCHIVED_ATTEMPTS): return {}
-	var taken: Dictionary = _state.a if first_turn else _state.pairs[-1].b
-	return {"kind": "first_turn" if first_turn else "stage", "stage_index": count if first_turn else count - 1, "pairs": count,
+	var taken: Dictionary = held[-1] if not held.is_empty() else _state.a if first_turn else _state.pairs[-1].b
+	var kind := "pass" if not held.is_empty() else "first_turn" if first_turn else "stage"
+	return {"kind": kind, "stage_index": count if first_turn else count - 1, "pairs": count,
 		"checkpoint": str(_checkpoint.get("checkpoint_hash", "")), "turn": str(taken.get("recording_hash", "")), "drops_draft": not _state.draft.is_empty()}
 
 ## Takes back exactly the turn redo_plan() named, and only while it still names
@@ -772,8 +774,17 @@ func redo_previous(expected: Dictionary) -> bool:
 		next.a = {}
 		# The kept pairs and checkpoint are already proven; nothing is replayed.
 		checked = _validate_state(next, {"pairs": next.pairs.size(), "checkpoint": _checkpoint})
+	elif plan.kind == "pass":
+		var held: Array = next[PASSES]
+		held.pop_back()
+		if held.is_empty(): next.erase(PASSES)
+		# The first turn and the passes before the cleared one were proven with it; nothing is replayed.
+		checked = _validate_state(next, {"pairs": next.pairs.size(), "checkpoint": _checkpoint, "a_verified": true, "passes_verified": true})
 	else:
-		next.a = next.pairs.pop_back().a
+		var reopened: Dictionary = next.pairs.pop_back()
+		next.a = reopened.a
+		# Open turns: the stage's passes come back too, so its closing turn is played over the last of them again.
+		if reopened.has(PASSES): next[PASSES] = reopened[PASSES]
 		# This exact state was proven when its first turn was saved; the
 		# kept chain and the restored first turn replay in full only when
 		# that proof is no longer remembered or does not hold.

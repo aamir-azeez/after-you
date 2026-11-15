@@ -8,7 +8,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## there is nothing to take back. The button repeats the title's verb.
 static func confirm_copy(plan: Dictionary) -> Dictionary:
 	var kind: Variant = plan.get("kind")
-	if kind not in ["first_turn", "stage"]: return {}
+	if kind not in ["first_turn", "pass", "stage"]: return {}
 	var stage_index := int(plan.get("stage_index", 0))
 	var title := ""
 	var confirm := ""
@@ -20,7 +20,8 @@ static func confirm_copy(plan: Dictionary) -> Dictionary:
 	else:
 		title = PlayerCopy.SOLO_REDO_FIRST_TURN_TITLE
 		confirm = PlayerCopy.SOLO_REDO_FIRST_TURN_CONFIRM
-		lines.append(PlayerCopy.SOLO_REDO_FIRST_TURN_BODY)
+		# Open turns: a pass clears only the latest turn; the turns before it stay.
+		lines.append(PlayerCopy.SOLO_REDO_PASS_BODY if kind == "pass" else PlayerCopy.SOLO_REDO_FIRST_TURN_BODY)
 		if stage_index > 0: lines.append(PlayerCopy.SOLO_REDO_KEEPS_EARLIER)
 	if plan.get("drops_draft", false): lines.append(PlayerCopy.SOLO_REDO_DROPS_DRAFT)
 	return {"title": title, "body": " ".join(lines), "confirm": confirm}
