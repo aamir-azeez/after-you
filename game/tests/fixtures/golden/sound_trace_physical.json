@@ -105,13 +105,13 @@
 			{
 				"a": [
 					"16 bridge_opened bridge_opened:cliff-steps|bridge_opened:cliff-steps",
-					"16 lever_pulled lever:garden-gate|lever:garden-gate",
+					"16 winch_wound lever:garden-gate|lever:garden-gate",
 					"412 well_plunk a|drop",
 					"412 bridge_opened bridge_opened:long-stair|bridge_opened:long-stair"
 				],
 				"b": [
 					"16 bridge_opened bridge_opened:cliff-steps|bridge_opened:cliff-steps",
-					"16 lever_pulled lever:garden-gate|lever:garden-gate",
+					"16 winch_wound lever:garden-gate|lever:garden-gate",
 					"412 bridge_opened bridge_opened:long-stair|bridge_opened:long-stair",
 					"412 well_plunk a|drop",
 					"470 bell_rung b|bell",
@@ -122,11 +122,11 @@
 			{
 				"a": [
 					"233 bridge_opened bridge_opened:well-ladder|bridge_opened:well-ladder",
-					"233 lever_pulled lever:winch-lever|lever:winch-lever"
+					"233 winch_wound lever:winch-lever|lever:winch-lever"
 				],
 				"b": [
 					"233 bridge_opened bridge_opened:well-ladder|bridge_opened:well-ladder",
-					"233 lever_pulled lever:winch-lever|lever:winch-lever",
+					"233 winch_wound lever:winch-lever|lever:winch-lever",
 					"296 bell_rung b|bell",
 					"400 island_bloomed b|stage_complete"
 				],
