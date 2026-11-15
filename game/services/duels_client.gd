@@ -61,6 +61,7 @@ var _api: Node
 var _owner: String
 var _path := SAVE_PATH
 var _lobby: Dictionary = {}
+var _lobby_sent_ms := -1
 var _ghosts: Dictionary = {}
 var _ghosts_at := -GHOSTS_KEEP_MS
 var _hints := false
@@ -92,16 +93,22 @@ func _init(api: Node, owner: String, path: String = SAVE_PATH) -> void:
 
 ## {ok, lobby} or {ok: false, code}.
 func lobby() -> Dictionary:
+	var sent := Time.get_ticks_msec()
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_GET, PREFIX)
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
 	_note_hints(response.get("data"))
 	var checked := valid_lobby(response.get("data"))
 	if checked.is_empty(): return {"ok": false, "code": "invalid_duels"}
-	return {"ok": true, "lobby": _take(checked)}
+	return {"ok": true, "lobby": _take(checked, sent)}
 
 ## The last lobby read, or {}.
 func last_lobby() -> Dictionary:
 	return _lobby
+
+## When the request that answered last_lobby() was sent (ticks), or -1: Home's
+## invite card (presentation/redo_home_card.gd) trusts whichever read is newer.
+func lobby_sent_ms() -> int:
+	return _lobby_sent_ms
 
 ## How many duels of `kind` ("friend" or "ghost") a pair may have going, as the last lobby read said.
 func limit(kind: String) -> int:
@@ -271,12 +278,13 @@ func mark_rung(duel_id: String) -> void:
 func _party(action: String, body: Dictionary) -> Dictionary:
 	var sent := body.duplicate()
 	sent["schema_version"] = 1
+	var sent_ms := Time.get_ticks_msec()
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s/party/%s" % [PREFIX, action], sent)
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
 	_note_hints(response.get("data"))
 	var checked := valid_lobby(response.get("data"))
 	if checked.is_empty(): return {"ok": false, "code": "invalid_duels"}
-	return {"ok": true, "lobby": _take(checked)}
+	return {"ok": true, "lobby": _take(checked, sent_ms)}
 
 ## A duel answer from another duel route (services/public_duels_client.gd), checked and kept like this client's own.
 func duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
@@ -360,13 +368,14 @@ func _keep_in_lobby(view: Dictionary) -> void:
 ## Keeps a lobby the server answered (a read or a party action). A read that
 ## went out before an action (Leave) answers with older copies of its duels:
 ## the newer copies kept here stay. Duels the server dropped stay dropped.
-func _take(checked: Dictionary) -> Dictionary:
+func _take(checked: Dictionary, sent_ms: int) -> Dictionary:
 	var held: Dictionary = {}
 	for view: Dictionary in _lobby.get("duels", []): held[view.duel_id] = view
 	for index in range(checked.duels.size()):
 		var fresh: Dictionary = checked.duels[index]
 		if held.has(fresh.duel_id) and _older(fresh, held[fresh.duel_id]): checked.duels[index] = held[fresh.duel_id]
 	_lobby = checked
+	_lobby_sent_ms = maxi(_lobby_sent_ms, sent_ms)
 	_remember(checked.duels)
 	if checked.has("public"): note_public(bool(checked.public.on))
 	return checked

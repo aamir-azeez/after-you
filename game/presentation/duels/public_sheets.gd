@@ -106,17 +106,8 @@ static func first_time(root: Control, show_name: bool, confirm: Callable, action
 	modal.content.add_child(_point(FACES_ICON, PlayerCopy.PUBLIC_FIRST_FACES))
 	modal.content.add_child(_point(NAME_ICON, PlayerCopy.PUBLIC_FIRST_NAME))
 	modal.content.add_child(_point(FLAG_ICON, PlayerCopy.PUBLIC_FIRST_REPORT))
-	var row := Kit.panel("PublicShowName", Color("163f3b"), Kit.PANEL_EDGE, 12, 10.0)
-	var line := HBoxContainer.new()
-	row.add_child(line)
-	var words := Kit.text(PlayerCopy.PUBLIC_FIRST_SHOW_NAME, 18, UiTokens.CREAM, true)
-	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	line.add_child(words)
-	var toggle := CheckButton.new()
-	toggle.name = "PublicShowNameSwitch"
-	toggle.button_pressed = show_name
-	toggle.accessibility_name = PlayerCopy.PUBLIC_FIRST_SHOW_NAME
-	line.add_child(toggle)
+	var row := Kit.switch_row("PublicShowName", "PublicShowNameSwitch", PlayerCopy.PUBLIC_FIRST_SHOW_NAME, show_name)
+	var toggle := row.find_child("PublicShowNameSwitch", true, false) as CheckButton
 	modal.content.add_child(row)
 	var go: Button = modal.add_actions(action, func() -> void:
 		var named := toggle.button_pressed

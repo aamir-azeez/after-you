@@ -78,6 +78,9 @@ const COSMETIC_WOOD_CHIME := "Wood chime"
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
 const DISPLAY_NAME_ASK_NOTE := "Friends and room partners see it on rooms and replays."
+## The name prompt's switch while no name is chosen yet: the leaderboard name choice (services/leaderboard_client.gd), off by default.
+const DISPLAY_NAME_ASK_SHOW_NAME := "Show my name in public duels and on leaderboards"
+const DISPLAY_NAME_ASK_SHOW_NAME_LATER := "(can be changed later)"
 ## The prompt's title when it is opened from Friends to change the name.
 const DISPLAY_NAME_EDIT_TITLE := "Your name"
 const DISPLAY_NAME_FIELD := "Name"
@@ -1116,6 +1119,8 @@ const DUELS_PARTY_FRIENDS_ONLY := "Only your friends can join your party."
 const DUELS_PARTY_ASK := "Ask"
 const DUELS_PARTY_ASKED := "Asked"
 const DUELS_PARTY_SAY_YES := "Say yes"
+## Home's card for a friend's invite (presentation/redo_home_card.gd), whose title is DUELS_PARTY_INVITED without its full stop.
+const DUELS_PARTY_SEE_INVITE := "See invite"
 const DUELS_PARTY_LEAVE := "Leave party"
 const DUELS_PARTY_NO_FRIENDS := "Add a friend first. Friends you add show here."
 ## Starting a duel.

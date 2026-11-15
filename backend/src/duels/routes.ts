@@ -22,6 +22,7 @@ import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
 import { developerGhost, developerGhostSplits } from "./developer-ghosts";
+import { ourRunTicks, playsOurRun } from "../leaderboards/our-run";
 import { announceLobby, hintsField } from "./news";
 import { blobBase64 } from "../blob-codec";
 import { looksOn } from "../pollen/features";
@@ -41,6 +42,7 @@ import { lastingAnswer, receiptOf, type PayoutShown } from "./payout-receipt";
  * - GET  /v1/duels/ghosts: each chapter's recorded times to race, from the
  *   board views (cached, so usually no request) and the developers' ghosts.
  * - POST /v1/duels/party/{invite,accept,dismiss,cancel,leave}
+ * - GET  /v1/room-inbox's first page carries the party invites waiting (inboxDuelInvites), for Home's notice.
  * - POST /v1/duels/challenge, POST /v1/duels/ghost
  * - GET  /v1/duels/<board>/<duel_id>: one duel, with what it paid this player.
  * - POST /v1/duels/<board>/<duel_id>/{accept,decline,leave,sync}
@@ -90,6 +92,21 @@ export function chapterRow(board: string) {
   return row;
 }
 export const party = (env: Env, id: string) => env.LEADERBOARD_MEMBERS.getByName(id);
+
+/** Clients that show a friend's party invite on Home send this ("1"); the room inbox's first page then carries duel_invites. */
+export const DUEL_INVITES_HEADER = "X-AfterYou-Duel-Invites";
+/**
+ * The party invites waiting for `player`, oldest first, as GET /v1/room-inbox's `duel_invites` (Home's invite notice): who asked
+ * and when, as the lobby's party.invites_in has them. Only while duels are on, else nothing. One request, the player's own party
+ * row, read without a write (no look passed); a failed read leaves the field out, so the inbox still answers.
+ */
+export async function inboxDuelInvites(env: Env, player: string, now: number): Promise<{ duel_invites?: { from: string; at: number }[] }> {
+  if (!duelsOn(env)) return {};
+  try {
+    const state = await party(env, player).partyRead(now);
+    return { duel_invites: state.invites_in.map(invite => ({ from: invite.from, at: invite.at })) };
+  } catch { return {}; }
+}
 const board = (env: Env, key: string) => env.LEADERBOARD_BOARDS.getByName(key);
 /**
  * The board's duel calls, typed as the model's own shapes: RPC answers come back as plain
@@ -100,7 +117,8 @@ export function duelsAt(env: Env, key: string) {
   return {
     /** `reader`: whose read this is; a duel it settles (an expiry, a stall) is news to the others only. */
     read: async (ids: string[], reader?: string) => (await stub.duelRead(ids, reader)) as unknown as Duel[],
-    create: async (duel: Duel) => (await stub.duelCreate(duel)) as unknown as Duel | null,
+    /** `ourRun`: an app that plays a kept Our run asked (leaderboards/our-run.ts). */
+    create: async (duel: Duel, ourRun = false) => (await stub.duelCreate(duel, ourRun)) as unknown as Duel | null,
     act: async (id: string, action: DuelAction) => (await stub.duelAct(id, action)) as unknown as Outcome<{ duel: Duel; room?: SideRoom }>,
     progress: async (id: string, note: ProgressNote, proof?: FinishProof, actor?: string) => (await stub.duelProgress(id, note, proof, actor)) as unknown as Outcome<Duel>,
     /** A player's label or list pause on the public duels named (duels/public-routes.ts). */
@@ -234,12 +252,15 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
   };
 }
 
-/** Each board's times to race: its top runs from the view (cached when it can be) and the developers' ghost. */
-async function ghosts(env: Env): Promise<unknown> {
+/**
+ * Each board's times to race: its top runs from the view (cached when it can be) and Our run: for an app that plays
+ * it (`plays`), the owner's run the view names, else the shipped one (leaderboards/our-run.ts).
+ */
+async function ghosts(env: Env, plays: boolean): Promise<unknown> {
   const boards = await pooled([...boardKeys()], BOARD_CONCURRENCY, async key => {
     let view = await cachedView(key);
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
-    return { board: key, developer: developerGhost(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
+    return { board: key, developer: ourRunTicks(key, view, plays), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
   });
   return { schema_version: 1, boards };
 }
@@ -264,7 +285,9 @@ async function partyRoute(env: Env, action: string, player: string, input: unkno
       if (!await friends(env, player, friend)) throw new ApiError(403, "party_friends_only");
       await apply(friend, { kind: "invited", from: player });
       told.push(friend);
-      await apply(player, { kind: "invite", to: friend });
+      // Asking another friend takes back the invite to the one asked before, so their Home stops showing it.
+      const { withdrawn } = await apply(player, { kind: "invite", to: friend });
+      if (withdrawn) { await party(env, withdrawn).partyApply(withdrawn, { kind: "dismiss", from: player }, now); told.push(withdrawn); }
     } else if (action === "accept") {
       const from = playerId(fields(input, ["from"]).from);
       if (!await friends(env, player, from)) throw new ApiError(403, "party_friends_only");
@@ -342,7 +365,7 @@ async function challenge(env: Env, reach: Reach, player: string, input: unknown,
   return { schema_version: 1, duel: viewFor(made, player, shownLooks), ...(energy ? { energy } : {}) };
 }
 
-async function ghostRace(env: Env, reach: Reach, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
+async function ghostRace(env: Env, reach: Reach, player: string, input: unknown, now: number, look?: Look, plays = false): Promise<unknown> {
   const shownLooks = looksOn(env);
   const body = fields(input, ["idempotency_key", "board", "source", "entry_id"]);
   if (typeof body.idempotency_key !== "string" || !IDEMPOTENCY_PATTERN.test(body.idempotency_key) || (body.source !== "board" && body.source !== "developer")) throw new ApiError(400, "invalid_duel_request");
@@ -357,7 +380,8 @@ async function ghostRace(env: Env, reach: Reach, player: string, input: unknown,
   if (body.source === "developer") {
     const ticks = developerGhost(key);
     if (ticks === null || body.entry_id !== null) throw new ApiError(404, "ghost_not_found");
-    // Its time after each turn, so a phone can set it beside the pair's after the same number of turns.
+    // Its time after each turn, so a phone can set it beside the pair's after the same number of turns. For an app that
+    // plays it (`plays`), the board swaps in the owner's run when it keeps one as Our run (leaderboards/board.ts duelCreate).
     const splits = developerGhostSplits(key);
     ghost = { source: "developer", entry_id: null, rank: null, ticks, names: null, ...(splits && splits.length === row.adapter.stages.length * 2 ? { splits } : {}) };
   } else {
@@ -377,7 +401,7 @@ async function ghostRace(env: Env, reach: Reach, player: string, input: unknown,
   if (openFor(duels, aKeys, "ghost") >= MAX_GHOST_RACES_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
   const { value: made, energy } = await withEnergy(env, reach, player, a, duelId, async () => {
     const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
-      a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), ghost }, now));
+      a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), ghost }, now), plays);
     if (!made) throw new ApiError(503, "duels_busy");
     return made;
   });
@@ -471,7 +495,7 @@ export async function routeDuels(request: Request, path: string, player: string,
   if (request.method === "PUT" && path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) return routePublicDuels(request, path, player, env, now, await boundedJson(request, 1024), look);
   if (request.method === "GET") {
     if (path === DUELS_PREFIX) return lobby(env, player, now, look);
-    if (path === DUELS_PREFIX + "/ghosts") return ghosts(env);
+    if (path === DUELS_PREFIX + "/ghosts") return ghosts(env, playsOurRun(request));
     if (path.startsWith(PUBLIC_PREFIX) && publicDuelsOn(env)) { const answer = await routePublicDuels(request, path, player, env, now, null, look, safetyToken); if (answer !== null) return answer; }
     const match = DUEL_PATH.exec(path);
     if (match && !match[3]) return duelAction(env, clientReach(request), player, boardOf(match[1]), match[2], undefined, null, now);
@@ -485,7 +509,7 @@ export async function routeDuels(request: Request, path: string, player: string,
   const partyMatch = PARTY_PATH.exec(path);
   if (partyMatch) return partyRoute(env, partyMatch[1], player, input, now, look);
   if (path === DUELS_PREFIX + "/challenge") return challenge(env, clientReach(request), player, input, now, look);
-  if (path === DUELS_PREFIX + "/ghost") return ghostRace(env, clientReach(request), player, input, now, look);
+  if (path === DUELS_PREFIX + "/ghost") return ghostRace(env, clientReach(request), player, input, now, look, playsOurRun(request));
   const match = DUEL_PATH.exec(path);
   if (match?.[3] === "their-run/ack") return acknowledgeRun(env, player, boardOf(match[1]), match[2], input);
   if (match?.[3] && match[3] !== "their-run") return duelAction(env, clientReach(request), player, boardOf(match[1]), match[2], match[3], input, now);
