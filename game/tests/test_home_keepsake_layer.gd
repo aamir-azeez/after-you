@@ -26,6 +26,12 @@ const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const SPIRIT_HEIGHT := 1.15
 ## The water a keepsake pours or rocks (services/sound_cues.gd), heard beside its beats.
 const WATER_CUES := ["drip", "slosh"]
+## Every beat earned: a keepsake that strikes several kit bells in a beat
+## (kit/pieces/bell.gd) sounds each at its strike, the n-th bell one pitch
+## step on: its cues as [cue, variant], in time order.
+const BELLS_HEARD := {
+	"first-steps": [["bell_rung", 0], ["lift_ready", 0], ["bell_rung", 1], ["tower_bell", 0], ["tower_bell", 1], ["tower_bell", 2], ["island_bloomed", 0]],
+}
 ## Every beat earned: each water keepsake's water as [cue, variant], in time order.
 const WATER_HEARD := {
 	"conservatory": [["drip", 0], ["drip", 1], ["drip", 2], ["drip", 3], ["drip", 4], ["drip", 5], ["drip", 6]],
@@ -551,14 +557,18 @@ func _check_play() -> void:
 	var layer: Node3D = home.layer
 	await _settle(layer)
 	var cues: Array = []
+	var heard: Array = []
 	var water: Array = []
 	stage.play_cue = func(cue: String, variant: int) -> void:
 		if cue in WATER_CUES: water.append([cue, variant])
-		else: cues.append(cue)
+		else:
+			cues.append(cue)
+			heard.append([cue, variant])
 	for id: String in layer.shown_ids():
 		var rest := _pose(layer, id)
 		var tap_start := Time.get_ticks_msec()
 		cues.clear()
+		heard.clear()
 		water.clear()
 		_check(stage.play_keepsake(id) and stage.keepsake_playing(), "%s plays" % id)
 		_check(not stage.play_keepsake(id), "A second tap while %s plays is ignored" % id)
@@ -579,7 +589,8 @@ func _check_play() -> void:
 		if layer.holding(id): layer._release(id)
 		_check(_pose(layer, id) == rest, "%s ends in exactly its rest pose" % id)
 		var keepsake: Dictionary = States.entries()[States.entries().map(func(entry: Dictionary) -> String: return entry.id).find(id)].keepsake
-		_check(cues.size() == keepsake.sounds.size() and cues == keepsake.sounds.values(), "%s plays one fixed cue per beat: %s" % [id, cues])
+		if BELLS_HEARD.has(id): _check(heard == BELLS_HEARD[id], "%s strikes each bell it has in turn, each at its own pitch: %s" % [id, heard])
+		else: _check(cues.size() == keepsake.sounds.size() and cues == keepsake.sounds.values(), "%s plays one fixed cue per beat: %s" % [id, cues])
 		_check(water == WATER_HEARD.get(id, []), "%s plays its water at its moments, each drop of a run at its own pitch: %s" % [id, water])
 		_check(layer.prop_node(id).get_node_or_null("Tap") == null, "%s frees what it made for the tap" % id)
 	# Reduce motion: parts jump to the lit pose, hold, and go back; nothing slides.

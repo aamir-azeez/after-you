@@ -32,7 +32,7 @@ const SEA_GATE_Z := 5.20
 const CHAMBER_WALL_TOP := 0.74
 ## The status lamps' sizes (kit/props.gd lamp_post, 1.45 m at size 1): beside
 ## a lever, on the chamber's inner corners, and at each harbour mouth.
-const LEVER_LAMP := 0.4
+const LEVER_LAMP := 0.62
 const CHAMBER_LAMP := 0.45
 const MOUTH_LAMP := 0.9
 const SPOUT := Color(0.80, 0.93, 0.95, 0.86)
