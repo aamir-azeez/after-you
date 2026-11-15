@@ -280,6 +280,9 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Duels: 1")
 	# This build can export a run (services/run_export.gd), so the server may say the owner may.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Run-Export: 1")
+	# This build fetches and plays the owner's run as Our run (services/race_ghost.gd), so the race list
+	# and a race against Our run may name it (backend leaderboards/our-run.ts). Older builds keep the shipped run.
+	if path in ["/v1/duels/ghosts", "/v1/duels/ghost"]: headers.append("X-AfterYou-Our-Run: 1")
 	# This build knows public duels' safety (services/safety_client.gd): their rules version and
 	# `duel_blocks`. An older phone, which never sends it, keeps the old rules and the old blocks reply.
 	if path.begins_with("/v1/safety/"): headers.append(PUBLIC_DUELS_SAFETY_HEADER)

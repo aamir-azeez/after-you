@@ -1153,8 +1153,8 @@ describe("Our run", () => {
   const OWNER = "o".repeat(22);
   const partner = (letter: string): [string, string] => [OWNER, letter.repeat(22)];
   const ourRows = () => runInDurableObject(board(), async (_, ctx) => ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM lb_our_run").one().n);
-  const ghostRace = (ticks: number, duelId = "d".repeat(32)) => board().duelCreate(newGhostRace({ duel_id: duelId, board: RELAY_BOARD, chapter: { ...CHAPTERS[0].adapter.key }, steps: 4, starter: "x".repeat(22),
-    a: blankSide(["x".repeat(22), "y".repeat(22)], "k".repeat(64)), ghost: { source: "developer", entry_id: null, rank: null, ticks, names: null, splits: developerGhostSplits(RELAY_BOARD)! } }, Date.now()));
+  const ghostRace = (ticks: number, duelId = "d".repeat(32), plays = true) => board().duelCreate(newGhostRace({ duel_id: duelId, board: RELAY_BOARD, chapter: { ...CHAPTERS[0].adapter.key }, steps: 4, starter: "x".repeat(22),
+    a: blankSide(["x".repeat(22), "y".repeat(22)], "k".repeat(64)), ghost: { source: "developer", entry_id: null, rank: null, ticks, names: null, splits: developerGhostSplits(RELAY_BOARD)! } }, Date.now()), plays);
 
   it("is the owner pair's checked run once it beats the shipped run, and only a faster owner run replaces it", async () => {
     const shipped = developerGhost(RELAY_BOARD)!;
@@ -1195,12 +1195,15 @@ describe("Our run", () => {
     expect(served.status).toBe(200);
     expect(await served.json()).toMatchObject({ entry_id: owners.entry_id, rank: null, ticks: 300, names: null, gold_leaf: false, digest: hash });
     // The duel lobby's race list and a new race against Our run take its time; a retried create keeps the race as made.
-    const reader = await create();
-    const ghosts = await call("/v1/duels/ghosts", "GET", reader, undefined, { ...ON, features: ["LEADERBOARDS", "DUELS"] });
-    expect(((await ghosts.json()) as { boards: { board: string; developer: number }[] }).boards.find(item => item.board === RELAY_BOARD)!.developer).toBe(300);
+    // Only for an app that plays it: an older app keeps the shipped run's time and ghost, so its own copy still plays.
+    const reader = await create(), duels = { ...ON, features: ["LEADERBOARDS", "DUELS"] };
+    const listed = async (headers: Record<string, string>) => ((await (await call("/v1/duels/ghosts", "GET", reader, undefined, duels, headers)).json()) as { boards: { board: string; developer: number }[] }).boards.find(item => item.board === RELAY_BOARD)!.developer;
+    expect(await listed({ "X-AfterYou-Our-Run": "1" })).toBe(300);
+    expect(await listed({})).toBe(developerGhost(RELAY_BOARD));
     const raced = (await ghostRace(developerGhost(RELAY_BOARD)!)) as Duel;
     expect(raced.ghost).toEqual({ source: "developer", entry_id: owners.entry_id, rank: null, ticks: 300, names: null, replay_hash: hash });
     expect(((await ghostRace(developerGhost(RELAY_BOARD)!)) as Duel).ghost).toEqual(raced.ghost);
+    expect(((await ghostRace(developerGhost(RELAY_BOARD)!, "e".repeat(32), false)) as Duel).ghost).toEqual({ source: "developer", entry_id: null, rank: null, ticks: developerGhost(RELAY_BOARD), names: null, splits: developerGhostSplits(RELAY_BOARD) });
   });
 
   it("takes the owner's played run, named by CONFIG's alias, with its time after each turn from its replay", async () => {

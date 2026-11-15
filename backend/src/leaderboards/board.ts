@@ -276,8 +276,9 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * A new duel or ghost race on this chapter version (duels/store.ts create); null while the board is full of open ones.
    * A race against a run on this board gets the run's time after each turn from its kept replay here (Ghost.splits).
    */
-  async duelCreate(duel: Duel): Promise<Duel | null> {
-    const ours = await this.ourRunGhost(duel);
+  /** `ourRun`: the race was asked for by an app that plays a kept Our run (our-run.ts playsOurRun). */
+  async duelCreate(duel: Duel, ourRun = false): Promise<Duel | null> {
+    const ours = ourRun ? await this.ourRunGhost(duel) : null;
     if (ours) return this.duels.create({ ...duel, ghost: ours }, Date.now());
     const splits = await this.ghostSplits(duel);
     return this.duels.create(splits ? { ...duel, ghost: { ...duel.ghost!, splits } } : duel, Date.now());
@@ -494,7 +495,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
   /** Our run's time here: the kept owner run's, else the shipped run's (our-run.ts ourRunTicks). */
   private ourTicks(board: string): number | null {
     const our = this.ourRun();
-    return ourRunTicks(board, our ? { our_run: our } : null);
+    return ourRunTicks(board, our ? { our_run: our } : null, true);
   }
   private beatsOurRun(board: string, entry: Entry, owner: string | null): boolean {
     return beatsOurRun(owner, entry.data.members.map(member => member.id), entry.ticks, this.ourTicks(board));
