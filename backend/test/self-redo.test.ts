@@ -9,6 +9,8 @@ import type { RedoSource, RedoState, RedoStateV2 } from "../src/redo-control";
 import a from "../../game/tests/fixtures/v2/relay-a.json";
 import b from "../../game/tests/fixtures/v2/relay-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
+import { PACKED_CHECKPOINT } from "../src/v2/row-codec";
+import { configJson } from "./config";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 let address = 0;
@@ -183,6 +185,26 @@ describe("start over", () => {
     expect(again.room).toMatchObject({ stage_index: 0, active_role: "b" });
     expect(await redoV2(path, guest)).toMatchObject({ start_over: null, run_from: agreed.room.branch });
     expect(await inboxRedo(host, room.room_id, "2")).toBeUndefined();
+  });
+
+  it("reads as a start over on Home from a compressed room, and a redo there still reads as a redo", async () => {
+    const shared = env as unknown as Record<string, unknown>, before = shared.CONFIG;
+    shared.CONFIG = configJson({ features: ["COMPRESSED_ROOMS"] });
+    try {
+      const { host, guest, room, path } = await played();
+      const packed = await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), async (_instance, ctx) =>
+        ctx.storage.sql.exec<{ checkpoint: SqlStorageValue }>("SELECT json_extract(data,'$.checkpoint') AS checkpoint FROM room WHERE id=1").one().checkpoint);
+      expect(typeof packed === "string" && packed.startsWith(PACKED_CHECKPOINT)).toBe(true);
+      await json(call(path + "/redo", "POST", guest, { action: "request", source: startOver(room, guest, host) }));
+      expect(await inboxRedo(host, room.room_id, "2")).toBe("start_over_asked_you");
+      expect(await inboxRedo(guest, room.room_id, "2")).toBe("start_over_you_asked");
+      expect(await inboxRedo(host, room.room_id, "1")).toBeUndefined();
+      const other = await played();
+      const turnSource = (await json<RedoState>(call(other.path + "/redo", "GET", other.guest))).source;
+      await json(call(other.path + "/redo", "POST", other.guest, { action: "request", source: turnSource }));
+      expect(await inboxRedo(other.host, other.room.room_id, "1")).toBe("asked_you");
+      expect(await inboxRedo(other.host, other.room.room_id, "2")).toBe("asked_you");
+    } finally { if (before === undefined) delete shared.CONFIG; else shared.CONFIG = before; }
   });
 
   it("declines, cancels, and is refused with nothing to undo", async () => {
