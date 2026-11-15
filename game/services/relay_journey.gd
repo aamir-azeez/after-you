@@ -14,11 +14,16 @@ const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const PATH := "user://relay-journey-v2.json"
 const MAX_SAVE_BYTES := 1048576
 const MAX_ARCHIVED_ATTEMPTS := 32
 const STATE_KEYS := ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "pairs", "a", "draft"]
+## Open turns: a state may also hold "passes", the current stage's later turns
+## after its first (`a`), oldest first, written only while there are any. The
+## next turn plays over the latest of them, which nests the rest.
+const PASSES := "passes"
 const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "completed", "replays", "room", "relay"]
 ## Definitions a chapter's journal may still carry from an unreleased build at
 ## the same level version. Such a journal cannot replay under the current
@@ -199,7 +204,25 @@ func role() -> String:
 
 func prior_recording() -> Dictionary:
 	_ensure_loaded()
-	return {} if read_only else _state.a.duplicate(true)
+	return {} if read_only else _memory(_state).duplicate(true)
+
+
+## Open turns: the current stage's passes, oldest first ([] before open turns).
+func passes() -> Array:
+	_ensure_loaded()
+	return [] if read_only else _state.get(PASSES, []).duplicate(true)
+
+
+## The turn the next later turn plays over: the latest pass, else the first turn.
+static func _memory(state: Dictionary) -> Dictionary:
+	var held: Array = state.get(PASSES, [])
+	return held[-1] if not held.is_empty() else state.a
+
+
+## The turns under that memory, oldest first ([] when it is the first turn).
+static func _chain(state: Dictionary) -> Array:
+	var held: Array = state.get(PASSES, [])
+	return [] if held.is_empty() else ([state.a] + held).slice(0, held.size())
 
 
 func draft() -> Dictionary:
@@ -285,11 +308,11 @@ func next_turn_job(first_turn: Dictionary = {}, private: bool = true) -> Diction
 	_ensure_loaded()
 	if read_only or chapter_complete(): return {}
 	if not first_turn.is_empty() and role() != "a": return {}
-	var prior: Dictionary = _state.a if first_turn.is_empty() else first_turn
-	var job := {"chapter": _chapter_key, "family": _simulation, "level": _level, "stage": stage_id(), "checkpoint": _checkpoint, "prior": prior,
+	var prior: Dictionary = _memory(_state) if first_turn.is_empty() else first_turn
+	var job := {"chapter": _chapter_key, "family": _simulation, "level": _level, "stage": stage_id(), "checkpoint": _checkpoint, "prior": prior, "chain": _chain(_state) if first_turn.is_empty() else [],
 		"role": role() if first_turn.is_empty() else "b", "saved": {} if _chapter_key == Registry.FIRST_STEPS else {"simulation_version": int(_state.simulation_version)}, "proven": true}
 	if private:
-		for key: String in ["level", "checkpoint", "prior", "saved"]: job[key] = job[key].duplicate(true)
+		for key: String in ["level", "checkpoint", "prior", "saved", "chain"]: job[key] = job[key].duplicate(true)
 	return job
 
 
@@ -326,7 +349,8 @@ func adopt_live_simulation(job: Dictionary, built: Dictionary) -> RefCounted:
 		if str(job.get(key)) != str(now[key]): return null
 	for key: String in ["level", "checkpoint", "prior", "saved"]:
 		if not job.get(key) is Dictionary or not Typed.same(job[key], now[key]): return null
-	if tick_of(simulation) != 0 or not str(simulation.get("error")).is_empty() or simulation.get("role") != now.role or not Typed.same(simulation.get("_checkpoint"), _checkpoint) or not Typed.same(simulation.get("_prior"), _state.a):
+	if not Typed.same(job.get("chain", []), now.chain): return null
+	if tick_of(simulation) != 0 or not str(simulation.get("error")).is_empty() or simulation.get("role") != now.role or not Typed.same(simulation.get("_checkpoint"), _checkpoint) or not Typed.same(simulation.get("_prior"), _memory(_state)):
 		return null
 	_last_setup_usec = int(built.get("usec", 0))
 	_live_simulation = weakref(simulation)
@@ -448,19 +472,26 @@ func accept_recording(recording: Dictionary) -> bool:
 	if not checked.valid:
 		last_error = str(checked.error)
 		return false
-	if not checked.snapshot.get("can_commit", false):
+	# Open turns: a later turn that does not finish the stage is a pass, kept to play over next.
+	var passing: bool = role() == "b" and recording.get("completed") == false and checked.get("ready", false)
+	if not passing and not checked.snapshot.get("can_commit", false):
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_E16BEB3ABB12
 		return false
 	var next := _state.duplicate(true)
 	var derived := _checkpoint
 	if role() == "a":
 		next.a = recording.duplicate(true)
+	elif passing:
+		next[PASSES] = next.get(PASSES, []) + [recording.duplicate(true)]
 	else:
+		var held: Array = next.get(PASSES, [])
 		next.pairs.append({"a": next.a.duplicate(true), "b": recording.duplicate(true)})
+		if not held.is_empty(): next.pairs[-1][PASSES] = held
 		next.a = {}
+		next.erase(PASSES)
 		# The finished pair's checkpoint comes from the check just made, the
 		# same replay the full derivation would run again.
-		var built := _next_checkpoint(next.pairs[-1].a, next.pairs[-1].b, checked)
+		var built := _next_checkpoint(next.pairs[-1].a, next.pairs[-1].b, checked, held)
 		if not built.get("valid", false):
 			last_error = str(built.get("error", ""))
 			return false
@@ -468,7 +499,7 @@ func accept_recording(recording: Dictionary) -> bool:
 	next.draft = {}
 	# Earlier pairs and the current checkpoint were proven when they were
 	# loaded or accepted; every structural and version rule still runs.
-	var verdict := _validate_state(next, {"pairs": next.pairs.size(), "checkpoint": derived, "a_verified": role() == "a"})
+	var verdict := _validate_state(next, {"pairs": next.pairs.size(), "checkpoint": derived, "a_verified": role() == "a", "passes_verified": passing})
 	if not verdict.valid:
 		last_error = str(verdict.error)
 		return false
@@ -505,7 +536,7 @@ func _verify_current(recording: Dictionary) -> Dictionary:
 
 
 func _turn_key(recording: Dictionary) -> String:
-	return "|".join(PackedStringArray([_chapter_key, str(_state.simulation_version), str(_checkpoint.get("checkpoint_hash", "")), Canonical.digest(_state.a), Canonical.digest(recording)]))
+	return "|".join(PackedStringArray([_chapter_key, str(_state.simulation_version), str(_checkpoint.get("checkpoint_hash", "")), Canonical.digest(_state.a), Canonical.digest(_state.get(PASSES, [])), Canonical.digest(recording)]))
 
 
 func _remember_turn(key: String, checked: Dictionary) -> void:
@@ -528,7 +559,7 @@ func turn_check_job(recording: Dictionary) -> Dictionary:
 	if recording.get("role") != role() or recording.get("stage_id") != stage_id(): return {}
 	var key := _turn_key(recording)
 	if _verified_turns.has(key): return {}
-	return {"key": key, "family": _simulation, "path": _check_path(), "level": _level, "checkpoint": _checkpoint, "prior": _state.a, "recording": recording.duplicate(true)}
+	return {"key": key, "family": _simulation, "path": _check_path(), "level": _level, "checkpoint": _checkpoint, "prior": _memory(_state), "chain": _chain(_state), "recording": recording.duplicate(true)}
 
 
 ## A finished chapter's final scene, for a worker: its last second turn set
@@ -570,7 +601,7 @@ func turn_check_runner() -> Callable:
 ## The worker: the same replay verify_turn makes. Reads only the job.
 static func run_turn_check(job: Dictionary) -> Dictionary:
 	var started := Time.get_ticks_usec()
-	var checked := _check_on(job.family, str(job.path), job.level, job.recording, job.checkpoint, job.prior)
+	var checked := _check_on(job.family, str(job.path), job.level, job.recording, job.checkpoint, job.prior, job.get("chain", []))
 	return {"checked": checked, "usec": Time.get_ticks_usec() - started}
 
 
@@ -593,7 +624,7 @@ func expected_check_usec(recording: Dictionary) -> int:
 
 
 func _check_ticks(recording: Dictionary) -> int:
-	return int(recording.get("duration_ticks", 0)) + (int(_state.a.get("duration_ticks", 0)) if recording.get("role") == "b" else 0)
+	return int(recording.get("duration_ticks", 0)) + (int(_memory(_state).get("duration_ticks", 0)) if recording.get("role") == "b" else 0)
 
 
 ## The family's replay check of one turn from this journey's checkpoint. Load
@@ -612,7 +643,7 @@ func expected_wait_usec() -> int:
 
 
 func _verify_on_checkpoint(recording: Dictionary) -> Dictionary:
-	return _check_on(_simulation, _check_path(), _level, recording, _checkpoint, _state.a)
+	return _check_on(_simulation, _check_path(), _level, recording, _checkpoint, _memory(_state), _chain(_state))
 
 
 func _check_path() -> String:
@@ -621,7 +652,9 @@ func _check_path() -> String:
 	return "public"
 
 
-static func _check_on(family: Script, path: String, level: Dictionary, recording: Dictionary, checkpoint: Dictionary, prior: Dictionary) -> Dictionary:
+static func _check_on(family: Script, path: String, level: Dictionary, recording: Dictionary, checkpoint: Dictionary, prior: Dictionary, chain: Array = []) -> Dictionary:
+	# Open turns: a turn over a pass replays over the turns that pass nests.
+	if not chain.is_empty(): return family._proof(family._record_version(recording))._verify_raw(level, recording, checkpoint, prior, chain)
 	if path == "raw":
 		return family._verify_raw(level, recording, checkpoint, prior)
 	if path == "proof":
@@ -631,7 +664,10 @@ static func _check_on(family: Script, path: String, level: Dictionary, recording
 
 ## The checkpoint after a finished pair, built from the B check already made
 ## from this journey's checkpoint, as derive_checkpoint builds it.
-func _next_checkpoint(first: Dictionary, second: Dictionary, checked: Dictionary) -> Dictionary:
+func _next_checkpoint(first: Dictionary, second: Dictionary, checked: Dictionary, held: Array = []) -> Dictionary:
+	if not held.is_empty():
+		if not checked.get("snapshot", {}).get("complete", false): return _simulation.derive_checkpoint(_level, _checkpoint, first, second, held)
+		return {"valid": true, "error": "", "checkpoint": _simulation._proof(_simulation._record_version(first))._build_checkpoint(_level, _checkpoint, first, second, checked.snapshot, held)}
 	if first.get("role") != "a" or second.get("role") != "b" or not checked.get("snapshot", {}).get("complete", false):
 		return _simulation.derive_checkpoint(_level, _checkpoint, first, second)
 	if _has_static("_build_checkpoint"):
@@ -680,6 +716,7 @@ func fork_from_stage(index: int) -> bool:
 	var next := _state.duplicate(true)
 	next.pairs = _state.pairs.slice(0, index).duplicate(true)
 	next.a = {}
+	next.erase(PASSES)
 	next.draft = {}
 	# Only a deliberate whole-chapter restart can change its rules. A later
 	# checkpoint must keep the retained prefix's pin; First Steps already
@@ -706,6 +743,8 @@ func fork_from_stage(index: int) -> bool:
 ## would keep.
 func redo_plan() -> Dictionary:
 	if not _loaded or read_only: return {}
+	# Open turns: a stage holding passes offers no solo redo yet.
+	if not _state.get(PASSES, []).is_empty(): return {}
 	var count: int = _state.pairs.size()
 	var first_turn: bool = not _state.a.is_empty()
 	if not first_turn and count == 0: return {}
@@ -794,7 +833,7 @@ func _adopt_written(next: Dictionary, derived_checkpoint: Dictionary) -> void:
 ## checked from it is not replayed again; all structural and version rules
 ## still run. Only accept passes it, for pairs it has just proven.
 func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
-	if not value is Dictionary or not _exact_keys(value, STATE_KEYS):
+	if not value is Dictionary or not (_exact_keys(value, STATE_KEYS) or (_exact_keys(value, STATE_KEYS + [PASSES]) and value.passes is Array and not value.passes.is_empty() and value.passes.all(func(turn: Variant) -> bool: return turn is Dictionary))):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
 	if not Typed.equal(value.schema_version, _level.schema_version) or not Typed.whole_number(value.simulation_version) or int(value.simulation_version) not in Registry.supported_rules(_chapter_key) or not Typed.equal(value.level_id, _level.id) or not Typed.equal(value.level_version, _level.version) or not Typed.equal(value.definition_hash, Canonical.digest(_level)):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD)
@@ -823,12 +862,21 @@ func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 		var first: Dictionary = {"valid": true, "snapshot": {"can_commit": true}} if proven and trusted.get("a_verified", false) else _simulation.verify_recording(_level, value.a, derived)
 		if not Typed.equal(value.a.get("role"), "a") or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B)
+	# Open turns: the passes follow the first turn, each the next pip's, the latest ready to be played over.
+	var held: Array = value.get(PASSES, [])
+	if not held.is_empty():
+		if value.a.is_empty() or not OpenTurns.pinned(_level): return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
+		for turn: Dictionary in held:
+			if not Typed.equal(turn.get("simulation_version"), value.simulation_version): return _invalid("Unsupported recording version.")
+		if not (proven and trusted.get("passes_verified", false)):
+			var latest: Dictionary = Proofs.rehearse(self, held[-1], derived, _memory({"a": value.a, PASSES: held.slice(0, held.size() - 1)}), _chain({"a": value.a, PASSES: held.slice(0, held.size() - 1)}))
+			if not latest.get("valid", false) or not latest.get("ready", false): return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B)
 	if not value.draft.is_empty():
 		if _chapter_key != Registry.FIRST_STEPS and not Typed.equal(value.draft.get("simulation_version"), value.simulation_version): return _invalid("Unsupported recording version.")
 		var expected_role := "a" if value.a.is_empty() else "b"
 		if not Typed.equal(value.draft.get("role"), expected_role):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
-		var rehearsal: Dictionary = Proofs.rehearse(self, value.draft, derived, value.a) if proven else _simulation.verify_recording(_level, value.draft, derived, value.a)
+		var rehearsal: Dictionary = Proofs.rehearse(self, value.draft, derived, _memory(value), _chain(value)) if proven or not held.is_empty() else _simulation.verify_recording(_level, value.draft, derived, value.a)
 		if not rehearsal.valid:
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3E836B83D99B + str(rehearsal.error))
 	return {"valid": true, "error": "", "checkpoint": derived}

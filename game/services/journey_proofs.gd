@@ -189,9 +189,9 @@ static func remember(journey: RefCounted, value: Variant, checkpoint: Dictionary
 
 ## A draft's rehearsal from a checkpoint this journey has proven: its own
 ## replay (and its partner turn's), without the chain behind the checkpoint.
-static func rehearse(journey: RefCounted, draft: Dictionary, checkpoint: Dictionary, prior_a: Dictionary) -> Dictionary:
+static func rehearse(journey: RefCounted, draft: Dictionary, checkpoint: Dictionary, prior_a: Dictionary, chain: Array = []) -> Dictionary:
 	var family: Script = journey._simulation
-	if _runtime_family(family): return family._proof(family._record_version(draft))._verify_raw(journey._level, draft, checkpoint, prior_a)
+	if _runtime_family(family): return family._proof(family._record_version(draft))._verify_raw(journey._level, draft, checkpoint, prior_a, chain)
 	return family.verify_recording(journey._level, draft, checkpoint, prior_a)
 
 
@@ -202,7 +202,9 @@ static func rehearse(journey: RefCounted, draft: Dictionary, checkpoint: Diction
 ## refusal, goes through the family's own reset.
 static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 	var chapter := str(job.chapter)
-	if not _trusted_setup(job) or simulation.get_script() != job.family: return Registry.reset_simulation(simulation, chapter, job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), job.saved)
+	# Open turns: the turns under the memory (a solo journal's passes).
+	var chain: Array = job.get("chain", [])
+	if not _trusted_setup(job) or simulation.get_script() != job.family: return Registry.reset_simulation(simulation, chapter, job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), job.saved, chain)
 	var level: Dictionary = job.level
 	var stage := str(job.stage)
 	var checkpoint: Dictionary = job.checkpoint
@@ -218,10 +220,11 @@ static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 	var fits: bool = role in ["a", "b"] and not stage.is_empty() and stage == checkpoint.get("next_stage_id") and not (role == "a" and not prior.is_empty())
 	if allowed and fits:
 		simulation.simulation_version = rules
-		simulation._reset_trusted(level, stage, checkpoint, prior, role)
+		if chain.is_empty(): simulation._reset_trusted(level, stage, checkpoint, prior, role)
+		else: simulation._reset_trusted(level, stage, checkpoint, prior, role, chain)
 		# The facade reports a stage requirement it refuses; the full reset names it.
 		if not lighthouse or str(simulation.get("error")).is_empty(): return true
-	return Registry.reset_simulation(simulation, chapter, level, stage, checkpoint, prior, role, saved)
+	return Registry.reset_simulation(simulation, chapter, level, stage, checkpoint, prior, role, saved, chain)
 
 ## Whether reset_live may take job's checkpoint and partner turn as proven:
 ## a journey's job (proven) under the shared runtime rules.

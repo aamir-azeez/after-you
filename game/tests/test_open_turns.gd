@@ -17,6 +17,7 @@ const Simulation = preload("res://core/journey/simulation.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Witness = preload("res://tests/chapter_witness.gd")
+const Journey = preload("res://services/relay_journey.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 const Collection = preload("res://services/shared_replay_collection.gd")
@@ -97,6 +98,16 @@ func _chain() -> void:
 	_check(int(checkpoint.schema_version) == OpenTurns.CHECKPOINT_SCHEMA and checkpoint.turn_hashes == [a.recording_hash, pass_two.recording_hash, pass_three.recording_hash, closing.recording_hash] and checkpoint.proof.turns.size() == 4 and not checkpoint.has("a_recording_hash"), "It nests all four turns in order (schema 8)")
 	MemoryTrace.clear()
 	_check(Simulation.verify_checkpoint(level, checkpoint).valid, "The four turn checkpoint proves from scratch")
+	# A solo journal keeps the passes and plays each turn over the latest (relay_journey.gd).
+	var path := "user://open-turns-journal.json"
+	var journal := Journey.new(path, null, TIDE)
+	_check(journal.accept_recording(a) and journal.accept_recording(pass_two) and journal.accept_recording(pass_three), "A solo journal takes turn 1 and two passes (%s)" % journal.last_error)
+	_check(journal.passes().size() == 2 and journal.prior_recording().get("recording_hash") == pass_three.recording_hash and journal.role() == "b", "Its next turn plays over the latest pass")
+	_check(Journey.new(path, null, TIDE).passes().size() == 2, "The passes survive a reload")
+	_check(journal.accept_recording(closing) and journal.passes().is_empty() and journal.pairs()[0].get("passes", []).size() == 2 and Canonical.same(journal.checkpoint(), checkpoint), "The closing turn ends the stage with its passes in the pair (%s)" % journal.last_error)
+	_check(Canonical.same(Journey.new(path, null, TIDE).checkpoint(), checkpoint), "A reloaded journal proves the stage with its passes")
+	for suffix: String in ["", ".tmp", ".backup"]:
+		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	# Replays, room history and local records read the stage's turns from its checkpoint (checkpoint_pairs.gd).
 	var pair := CheckpointPairs.pair(TIDE, checkpoint, 0, 0)
 	_check(pair.get("a", {}).get("recording_hash") == a.recording_hash and pair.get("b", {}).get("recording_hash") == closing.recording_hash and OpenTurns.pair_turns(pair).map(func(turn: Dictionary) -> String: return str(turn.recording_hash)) == checkpoint.turn_hashes, "A replay pair holds the first and closing turn, its passes from the checkpoint")
