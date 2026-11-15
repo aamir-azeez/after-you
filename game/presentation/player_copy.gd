@@ -1482,6 +1482,18 @@ const REDO_RETRY := "Retry request"
 const REDO_AGAIN_NOTE := "Your turn again"
 const REDO_ALERTS_TITLE := "Tell you when a friend asks for a redo?"
 const REDO_ALERTS_YES := "Yes, tell me"
+# Start over in Together rooms (presentation/redo_flow.gd): one asks, the friend
+# agrees and the room goes back to its first stage. %s is the friend's name.
+const START_OVER_ASK := "Start over"
+const START_OVER_ASKED_FOR := "%s wants to start over"
+const START_OVER_LINE := "Back to the first stage, together"
+const START_OVER_AGREE := "Start over"
+const START_OVER_KEEP := "Keep playing"
+const START_OVER_KEPT := "%s wants to keep playing"
+const START_OVER_CONFIRM_TITLE := "Start over?"
+const START_OVER_CONFIRM_BODY := "The room goes back to the first stage for both of you. Every turn played so far is removed."
+const START_OVER_CONFIRM := "Start over"
+const START_OVER_CANCEL := "Cancel"
 # Solo chapters: take back the last saved turn, one turn per tap.
 const SOLO_REDO_ACTION := "Redo my previous turn"
 const SOLO_REDO_FIRST_TURN_TITLE := "Record your path again?"

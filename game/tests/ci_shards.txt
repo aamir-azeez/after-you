@@ -214,7 +214,7 @@ online_random 1
 online_random_extra 2
 online_random_more 2
 online_replay_authority 3
-online_robust 2
+online_robust 1
 online_scenarios 2
 online_scenarios_edges 3
 online_scenarios_more 1
@@ -339,6 +339,7 @@ scrolling_camera 3
 seed_spin 1
 seed_timer_bar 1
 seed_visual 2
+self_redo 2
 session_release 1
 settings 1
 share_codes 2

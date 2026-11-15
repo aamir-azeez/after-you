@@ -12,10 +12,12 @@ extends RefCounted
 ## socket). Not now puts that request's card
 ## away on this phone (services/redo_prompts.gd); the request still leads the
 ## room page. Play my turn again opens the room, which plays the turn again at
-## once (presentation/redo_flow.gd accept_on_open).
+## once (presentation/redo_flow.gd accept_on_open). A friend's start over
+## request (start_over_asked_you) reads the same way with Start over, which
+## opens the room and agrees there.
 ##
 ## A friend asking this player into their duel party shows on the same card
-## when no redo request does: "Sam asked you to be their duel partner", then Not
+## when no redo or start over request does: "Sam asked you to be their duel partner", then Not
 ## now and See invite, which opens Duels' Party page, where they say yes or not
 ## now. The same list read carries the invites (duel_invites); a newer duels
 ## read (services/duels_client.gd lobby_sent_ms) wins, so an invite answered,
@@ -35,6 +37,9 @@ const RedoPrompts = preload("res://services/redo_prompts.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const PLAY := preload("res://assets/ui/play.svg")
+const RETRY := preload("res://assets/ui/retry.svg")
+## The requests that put this card on Home.
+const ASKED := ["asked_you", "start_over_asked_you"]
 const PENNANT := preload("res://assets/ui/duels/pennant.svg")
 ## The closest two of Home's own reads of the room list may be.
 const READ_GAP_MS := 60000
@@ -91,7 +96,7 @@ func _request() -> Dictionary:
 	var client: RefCounted = host.room_hub_flow.rooms_client()
 	for room: Dictionary in client.view().get("rooms", []):
 		var redo: Variant = room.get("redo")
-		if redo is Dictionary and redo.get("state") == "asked_you" and int(room.get("api_version", 0)) == 2 and not RedoPrompts.shared().dismissed(_key(room)): return room
+		if redo is Dictionary and redo.get("state") in ASKED and int(room.get("api_version", 0)) == 2 and not RedoPrompts.shared().dismissed(_key(room)): return room
 	return {}
 
 ## The newest friend's duel party invite Home has not put away: {from, at}, or {}.
@@ -127,19 +132,22 @@ func show_card() -> void:
 	if invite.is_empty(): open_card(room)
 	else: open_invite(invite)
 
-## The card for `room`, a room-list entry whose redo is asked_you.
+## The card for `room`, a room-list entry whose redo is asked_you or start_over_asked_you.
 func open_card(room: Dictionary) -> void:
 	_close()
 	_shown_key = _key(room)
 	var friend := _friend(room)
-	var play := _build("RedoAskCard", friend, room.get("member_ids", []).find(friend) == 0, PlayerCopy.REDO_ASKED_FOR % FriendNicknames.sentence_start(host._friend_display_name(friend)), _line(room), func() -> void:
+	var over := _start_over(room)
+	var play := _build("RedoAskCard", friend, room.get("member_ids", []).find(friend) == 0, (PlayerCopy.START_OVER_ASKED_FOR if over else PlayerCopy.REDO_ASKED_FOR) % FriendNicknames.sentence_start(host._friend_display_name(friend)), _line(room), func() -> void:
 		RedoPrompts.shared().dismiss(_key(room))
 		_close()
 		# Seeing a friend's request in the app for the first time asks about redo alerts once.
 		if _on_home(): host.notification_flow.offer_redo_alerts(host.ui))
-	play.name = "RedoPlayAgain"
-	play.text = PlayerCopy.REDO_PLAY_AGAIN
-	play.icon = PLAY
+	play.name = "StartOverAgree" if over else "RedoPlayAgain"
+	play.text = PlayerCopy.START_OVER_AGREE if over else PlayerCopy.REDO_PLAY_AGAIN
+	play.icon = RETRY if over else PLAY
+	# Start over removes the run: the coral button, and the room asks once more before it goes.
+	if over: ControlTheme.danger(play)
 	play.pressed.connect(_play.bind(room))
 	ControlTheme.center_icon_label(play)
 
@@ -204,8 +212,11 @@ func _line(room: Dictionary) -> String:
 	var parts: PackedStringArray = [str(room.get("chapter_title", ""))]
 	var stages: Variant = ChapterRegistry.definition(str(room.get("chapter_key", ""))).get("stages") if int(room.get("api_version", 0)) == 2 else null
 	if stages is Array and not stages.is_empty(): parts.append("%d / %d" % [int(room.redo.stage_index) + 1, stages.size()])
-	parts.append(PlayerCopy.REDO_FIRST_TURN)
+	parts.append(PlayerCopy.START_OVER_LINE if _start_over(room) else PlayerCopy.REDO_FIRST_TURN)
 	return " · ".join(parts)
+
+static func _start_over(room: Dictionary) -> bool:
+	return str(room.get("redo", {}).get("state", "")).begins_with("start_over_")
 
 func _friend(room: Dictionary) -> String:
 	for member: Variant in room.get("member_ids", []):
@@ -234,7 +245,7 @@ func _play(room: Dictionary) -> void:
 	_close()
 	var room_id := str(room.get("room_id", ""))
 	await host.relay_lobby_flow.lobby_action("open", room_id)
-	if is_instance_valid(host.relay_child) and host.relay_child.has_method("accept_redo_on_open"): host.relay_child.accept_redo_on_open(room_id)
+	if is_instance_valid(host.relay_child) and host.relay_child.has_method("accept_redo_on_open"): host.relay_child.accept_redo_on_open(room_id, "start_over" if _start_over(room) else "redo")
 	_opening = false
 
 ## See invite: Duels, then its Party page, where the invite has Say yes and Not now.

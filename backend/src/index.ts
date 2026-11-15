@@ -9,7 +9,7 @@ import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
-import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, ROOM_INBOX_REDO_HEADER } from "./room-inbox";
+import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, ROOM_INBOX_REDO_HEADER, redoInboxVersion } from "./room-inbox";
 import { endReactionsWanted } from "./v2/end-reactions";
 import { DISPLAY_NAME_PATH, displayNamesShown, friendLinkCode, namesRoomRoute, routeDisplayName, routeFriendLinkName } from "./display-names";
 import { leaveRoom, requireInPlay } from "./room-leave";
@@ -161,7 +161,7 @@ export default {
         const showReactions = endReactionsWanted(request), showNames = displayNamesShown(request, env);
         // A friend's duel party invites, for Home's notice: only on the first page, only for clients that show them.
         const offset = pageOffset(request), invites = offset === 0 && request.headers.get(DUEL_INVITES_HEADER) === "1" ? inboxDuelInvites(env, playerId, Date.now()) : Promise.resolve({});
-        const [page, waiting] = await Promise.all([indexedRoomInbox(playerId, env, showClosed, showLeft, offset, showReactions, showNames, servedFaceVersion(request, env), request.headers.get(ROOM_INBOX_REDO_HEADER) === "1"), invites]);
+        const [page, waiting] = await Promise.all([indexedRoomInbox(playerId, env, showClosed, showLeft, offset, showReactions, showNames, servedFaceVersion(request, env), redoInboxVersion(request.headers.get(ROOM_INBOX_REDO_HEADER), request.headers.get("X-AfterYou-Redo-Extras"))), invites]);
         return await maskedResponse(withNext(json({ ...page.body, ...waiting }), page.next), playerId);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));

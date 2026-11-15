@@ -17,8 +17,8 @@ const SETTINGS := {"sound": false, "haptics": false, "reduced_motion": true, "as
 const GOLDEN := {
 	"ready_panel": {
 		"header": ["refresh"],
-		"primary": ["resume", "record"],
-		"turn": ["redo", "redo_status", "redo_retry"],
+		"primary": ["start_over_agree", "resume", "record"],
+		"turn": ["start_over_keep", "redo_self_keep", "redo", "redo_status", "start_over", "start_over_status", "redo_retry"],
 		"pair": ["room_options"],
 		"options": ["share", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
@@ -32,8 +32,8 @@ const GOLDEN := {
 	"waiting_panel": {
 		"header": ["refresh"],
 		"status": ["alerts"],
-		"primary": ["redo_play", "notify"],
-		"turn": ["redo_keep", "redo_retry"],
+		"primary": ["redo_play", "start_over_agree", "redo_self", "notify"],
+		"turn": ["redo_keep", "start_over_keep", "start_over", "start_over_status", "redo_retry"],
 		"pair": ["room_options", "your_rooms"],
 		"options": ["share", "notify", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
@@ -54,11 +54,11 @@ const GOLDEN := {
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
-		"turn": ["resume", "record", "redo", "redo_status", "redo_retry", "refresh", "local_replays", "restart", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["start_over_agree", "start_over_keep", "redo_self_keep", "resume", "record", "redo", "redo_status", "start_over", "start_over_status", "redo_retry", "refresh", "local_replays", "restart", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"waiting_card": {
 		"invite": ["copy_code"],
-		"turn": ["check_saved", "keep_held", "redo_play", "redo_keep", "redo_retry", "alerts", "notify", "refresh", "share"],
+		"turn": ["check_saved", "keep_held", "redo_play", "redo_keep", "start_over_agree", "start_over_keep", "redo_self", "start_over", "start_over_status", "redo_retry", "alerts", "notify", "refresh", "share"],
 		"more": ["replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"complete": {
