@@ -5,6 +5,7 @@ const Controls = preload("res://core/first_steps/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const COMFORT_VERSION := 8
@@ -53,31 +54,59 @@ func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Di
 ## A turn replayed over its memory (`prior_a`, which replays over `chain`).
 ## "ready": whether it may be a memory: a first turn that can be saved, or an
 ## open turns pass that waited out its own memory and did not finish the stage.
-func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary, chain: Array = []) -> Dictionary:
+## Open turns keep each exact replay's result and memory trace (memory_trace.gd):
+## a turn checked once is not simulated again, and `simulate` forces the run
+## when its trace is wanted.
+func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary, chain: Array = [], simulate: bool = false) -> Dictionary:
 	var reason := recording_error(definition, record, checkpoint)
 	if not reason.is_empty(): return _invalid(reason)
 	var open := OpenTurns.rules(_version)
+	var id := MemoryTrace.key(_factory, _version, record) if open else ""
 	if record.role == "b":
 		if prior_a.get("role") != ("a" if chain.is_empty() else "b") or (not chain.is_empty() and not open) or record.source_recording_hash != prior_a.get("recording_hash", ""): return _invalid("The partner recording does not match.")
 		var turn := chain.size() + 2
 		var selected := stage_by_id(definition, str(record.stage_id))
 		if open and (record.player_slot != OpenTurns.slot(str(selected.first_player_slot), turn) or turn > OpenTurns.cap(selected) or int(record.duration_ticks) < int(prior_a.get("duration_ticks", 0))): return _invalid("Incorrect player identity.")
+		# A kept result covers the memory it was checked over; the memory given must be that one.
+		var kept := MemoryTrace.check(id) if open and not simulate else {}
+		if not kept.is_empty() and recording_hash(prior_a) == prior_a.recording_hash: return kept
 		var first_check := _replayed_turn(definition, prior_a, checkpoint, chain)
 		if not first_check.valid or not first_check.ready: return _invalid("The partner recording is not ready.")
 	elif not prior_a.is_empty() or not chain.is_empty() or not str(record.source_recording_hash).is_empty(): return _invalid("Unexpected partner recording.")
+	elif open and not simulate:
+		var kept := MemoryTrace.check(id)
+		if not kept.is_empty(): return kept
 	var simulation: RefCounted = _factory.new()
 	simulation.simulation_version = _version
 	simulation.catch_assistance = record.catch_assistance
 	# Only open turns pass a chain: other facades (the Lighthouse room's) keep five arguments.
 	if chain.is_empty(): simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role)
 	else: simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role, chain)
+	var frames: Array = []
+	if open: MemoryTrace.record(frames, simulation)
+	# Runtime engines tick without building a snapshot each tick; the Lighthouse room's steps.
+	var lean: bool = simulation.has_method("_tick")
 	for input: Dictionary in expand_recording_inputs(record):
 		if simulation.finished: return _invalid("The recording continues after the turn ended.")
-		simulation.step(input)
+		if lean: simulation._tick(input)
+		else: simulation.step(input)
+		if open: MemoryTrace.record(frames, simulation)
 	if not Canonical.same(simulation.export_recording(), record): return _invalid("The recording did not replay exactly.")
 	var state: Dictionary = simulation.snapshot()
 	var ready: bool = state.can_commit if record.role == "a" else open and not state.complete and int(record.duration_ticks) >= int(prior_a.get("duration_ticks", 0))
-	return {"valid":true,"error":"","snapshot":state,"ready":ready}
+	var result := {"valid":true,"error":"","snapshot":state,"ready":ready}
+	if open: MemoryTrace.keep(id, result, frames, str(record.player_slot), str(record.role))
+	return result
+
+## Open turns: the trace `record` plays back as a memory over `chain` (the
+## turns before it), checked once and kept; {} when it does not replay exactly.
+func memory_trace(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, chain: Array) -> Dictionary:
+	if not MemoryTrace.enabled: return {}
+	var id := MemoryTrace.key(_factory, _version, record)
+	var found := MemoryTrace.trace(id)
+	if not found.is_empty(): return found
+	var checked := _verify_raw(definition, record, checkpoint, chain.back() if not chain.is_empty() else {}, chain.slice(0, maxi(0, chain.size() - 1)), true)
+	return MemoryTrace.trace(id) if checked.valid else {}
 
 ## _verify_raw once per recording hash in this proof (open turns chains).
 func _replayed_turn(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, chain: Array) -> Dictionary:

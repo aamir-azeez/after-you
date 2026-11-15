@@ -37,6 +37,12 @@ var _closing: Dictionary = {}
 var _drowned: Dictionary = {}
 var _ready_branch := ""
 var _optics: Dictionary = {"segments":[],"signals":{}}
+## Fixed once a reset sets the level and stage (_reset_mechanics): every
+## bridge and stair in order, and each gate's route with its condition (null
+## when it has none, which always holds). _refresh_routes runs three times a
+## tick, so it reads these instead of building them again.
+var _route_defs: Array = []
+var _gate_plan: Array = []
 
 func _init() -> void:
 	simulation_version = CURRENT_SIMULATION_VERSION
@@ -92,6 +98,11 @@ static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary =
 	return pinned if pinned > 0 else CURRENT_SIMULATION_VERSION
 
 func _reset_mechanics() -> void:
+	_route_defs = level.get("bridges", []) + level.get("stairs", [])
+	_gate_plan = []
+	for gate: Dictionary in stage.get("gates", []):
+		var when: Dictionary = gate.get("when", {})
+		_gate_plan.append([gate.route_id, null if when.is_empty() else when])
 	_entry_latches = {}
 	_closing = {}
 	_drowned = {}
@@ -114,10 +125,11 @@ func _advance_source() -> void:
 func _refresh_routes() -> void:
 	_refresh_optics()
 	var was: Dictionary = _routes.duplicate() if _tide_rules() else {}
-	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
+	for route: Dictionary in _route_defs:
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_entry_latches.get(route.id, false))
-	for gate: Dictionary in stage.get("gates", []):
-		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or Seven.predicate(gate.get("when", {}), stage, _players, _mechanisms, _optics.signals, _open_controls())
+	var open := _open_controls()
+	for gate: Array in _gate_plan:
+		_routes[gate[0]] = bool(_routes.get(gate[0], false)) or gate[1] == null or Seven.predicate(gate[1], stage, _players, _mechanisms, _optics.signals, open)
 	if _tide_rules(): _close_slowly(was)
 
 func _tide_rules() -> bool:
@@ -189,6 +201,11 @@ func _source_holds() -> bool:
 
 ## Whether this turn may be kept anywhere: a draft, a replay or an upload. A
 ## drowned turn is not (tide rules); the screen still holds it for Preview.
+func _memory_frame() -> Array:
+	var frame := super._memory_frame()
+	frame[MemoryTrace.READY_BRANCH] = _ready_branch
+	return frame
+
 func keeps_draft() -> bool:
 	return _drowned.is_empty()
 

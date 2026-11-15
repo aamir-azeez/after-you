@@ -6,6 +6,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Controls = preload("res://core/first_steps/simulation.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const MOVE_PER_TICK := 8
@@ -144,7 +145,11 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_prior_frames = expand_recording_inputs(prior_a)
 	_source = null
 	_reset_mechanics()
-	if role == "b":
+	# Open turns: the memory plays back what it did when it was checked (memory_trace.gd), so a turn costs one simulation however deep its memories nest.
+	var trace: Dictionary = _proof_engine().memory_trace(definition, prior_a, checkpoint, chain) if role == "b" and _open_turns() else {}
+	if not trace.is_empty():
+		_source = MemoryTrace.Playback.new(trace)
+	elif role == "b":
 		# The memory replays in its own world: a first turn alone, or a later turn over its own memory.
 		_source = _new_simulation()
 		_source.simulation_version = simulation_version
@@ -153,10 +158,15 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_refresh_routes()
 
 func step(input: Dictionary = {}) -> Dictionary:
-	if finished or not error.is_empty() or level.is_empty(): return snapshot()
+	_tick(input)
+	return snapshot()
+
+## One tick without building a snapshot: what a memory and a check play.
+func _tick(input: Dictionary = {}) -> void:
+	if finished or not error.is_empty() or level.is_empty(): return
 	if not Controls._valid_input(input):
 		error = "Unsupported control input."
-		return snapshot()
+		return
 	_events = []
 	_own_toggles = {"levers": {}, "controls": {}}
 	var previous_routes := _routes.duplicate()
@@ -192,7 +202,6 @@ func step(input: Dictionary = {}) -> Dictionary:
 		finished = true
 		_events.append("turn_finished")
 	if tick % TICK_RATE == 0 or finished: _checks.append({"tick":tick,"state_hash":state_hash()})
-	return snapshot()
 
 func _advance_source() -> void:
 	var open := _open_controls()
@@ -200,7 +209,7 @@ func _advance_source() -> void:
 	var nested: bool = _source.role == "b"
 	var before: Dictionary = _source_values() if open and not nested else {}
 	var stepped := tick < _prior_frames.size()
-	if stepped: _source.step(_prior_frames[tick])
+	if stepped: _source._tick(_prior_frames[tick])
 	_players[memory_slot] = _source._players[memory_slot].duplicate(true)
 	if open: _source_toggles = (_source._own_toggles.duplicate(true) if stepped else {"levers": {}, "controls": {}}) if nested else _changed_since(before)
 	for lever: Dictionary in stage.get("levers", []):
@@ -596,6 +605,12 @@ func _comfort_rules() -> bool:
 # Facades bind these to trusted code, never to values from a checkpoint.
 func _schema_version() -> int:
 	return 6
+
+## Open turns: what a later turn reads of this one while it plays as its
+## memory (_advance_source and the facades' overrides), in MemoryTrace order.
+## Values the engine changes in place are copied; the rest are replaced each tick.
+func _memory_frame() -> Array:
+	return [_players[active_slot].duplicate(), _mechanisms.duplicate(true), _own_toggles, _own_rang, _offer_tick, _hold_ticks, _hold_start, ""]
 
 func _new_simulation() -> RefCounted:
 	assert(false, "A physical simulation needs its sealed facade factory.")
