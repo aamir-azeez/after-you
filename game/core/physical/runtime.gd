@@ -610,7 +610,7 @@ func _schema_version() -> int:
 ## memory (_advance_source and the facades' overrides), in MemoryTrace order.
 ## Values the engine changes in place are copied; the rest are replaced each tick.
 func _memory_frame() -> Array:
-	return [_players[active_slot].duplicate(), _mechanisms.duplicate(true), _own_toggles, _own_rang, _offer_tick, _hold_ticks, _hold_start, ""]
+	return [_players[active_slot].duplicate(), _mechanisms.duplicate(true), _own_toggles, _offer_tick, _hold_ticks, _hold_start, ""]
 
 func _new_simulation() -> RefCounted:
 	assert(false, "A physical simulation needs its sealed facade factory.")
