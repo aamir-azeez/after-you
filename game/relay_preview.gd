@@ -1181,7 +1181,7 @@ var nickname_store: RefCounted = null
 func _open_turns_view() -> Dictionary:
 	if mode == "replay" or online_session == null or not journey.has_method("open_turns"): return {}
 	var open: Dictionary = journey.open_turns()
-	var index := int(checkpoint.stage_index) if checkpoint is Dictionary and checkpoint.has("stage_index") else -1
+	var index := int(open.get("stage_index", -1))
 	if open.is_empty() or index < 0 or index >= definition.stages.size(): return {}
 	return TurnDots.view(open, str(definition.stages[index].get("first_player_slot", "")))
 

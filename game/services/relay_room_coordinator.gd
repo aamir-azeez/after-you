@@ -368,14 +368,14 @@ func memory_chain() -> Array:
 	return OpenTurns.memory(snapshot()).chain.duplicate(true)
 
 ## Open turns: the room's turn count view ({} before open turns): turn, cap,
-## must_finish and the viewer's player_slot. Cheap enough for every tick of the
-## turn HUD (kit/turn_dots.gd): it copies none of the room's turns.
+## must_finish, the viewer's player_slot and the stage_index. Cheap enough for
+## every tick of the turn HUD (kit/turn_dots.gd): it copies none of the room's turns.
 func open_turns() -> Dictionary:
 	if not _guard() or _state.auth_required: return {}
 	var room: Dictionary = _room_now()
 	var value: Variant = room.get("open_turns")
 	if not value is Dictionary: return {}
-	return {"turn": int(value.get("turn", 0)), "cap": int(value.get("cap", 0)), "must_finish": bool(value.get("must_finish", false)), "player_slot": str(room.get("player_slot", ""))}
+	return {"turn": int(value.get("turn", 0)), "cap": int(value.get("cap", 0)), "must_finish": bool(value.get("must_finish", false)), "player_slot": str(room.get("player_slot", "")), "stage_index": int(room.get("stage_index", -1))}
 
 
 func chapter_complete() -> bool:
