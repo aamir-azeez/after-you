@@ -8,7 +8,7 @@ numbers; `balance` rebalances from the times file alone.
 
 Run: python3 scripts/ci_shards.py plan 2
      python3 scripts/ci_shards.py refresh [RUN_ID ...]   (default: the latest green run on main)
-     python3 scripts/ci_shards.py balance
+     python3 scripts/ci_shards.py balance [--full]   (--full reassigns every suite, longest first)
 """
 from __future__ import annotations
 
@@ -26,6 +26,8 @@ SHARDS = ["1", "2", "3"]
 # The chapter scaffold check (scripts/test_new_chapter.py) runs as one more item on this shard.
 SCAFFOLD = "@new_chapter_scaffold"
 SCAFFOLD_SHARD = "2"
+# A rebalance stops once the heaviest and lightest shard are this many suite seconds apart.
+TOLERANCE = 20.0
 SUITE_TIME = re.compile(r"^\S+Z SUITE TIME (@?[a-z0-9_]+) (\d+) s$")
 REPO = "aamir-azeez/after-you"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
@@ -76,18 +78,37 @@ def plan(shard: str) -> list[str]:
     return sorted(names, key=lambda name: (-weight[name], name))
 
 
-def balance(times: dict[str, float]) -> dict[str, float]:
-    """Gives each running suite the shard with the least measured time so far (longest first)."""
+def balance(times: dict[str, float], full: bool = False) -> dict[str, float]:
+    """Evens out the shards' measured time. By default it keeps each suite on its shard and moves
+    as few as it can, so a refresh changes few lines; `full` reassigns them all, longest first."""
     rows = shard_lines()
     names = [name for name, value in rows if value != "skip"]
     weight = weights(times, names + [SCAFFOLD])
+    chosen = {name: value for name, value in rows if value in SHARDS}
+    if full:
+        chosen = {}
     load = {shard: 0.0 for shard in SHARDS}
     load[SCAFFOLD_SHARD] += weight[SCAFFOLD]
-    chosen = {}
-    for name in sorted(names, key=lambda name: (-weight[name], name)):
+    for name, shard in chosen.items():
+        load[shard] += weight[name]
+    for name in sorted((name for name in names if name not in chosen), key=lambda name: (-weight[name], name)):
         shard = min(SHARDS, key=lambda shard: (load[shard], shard))
         chosen[name] = shard
         load[shard] += weight[name]
+    for _ in range(len(names)):
+        heavy = max(SHARDS, key=lambda shard: (load[shard], shard))
+        light = min(SHARDS, key=lambda shard: (load[shard], shard))
+        gap = load[heavy] - load[light]
+        if gap <= TOLERANCE:
+            break
+        # The move that leaves the two shards closest: a suite near half the gap.
+        movable = [name for name, shard in chosen.items() if shard == heavy and weight[name] < gap]
+        if not movable:
+            break
+        name = min(movable, key=lambda name: (abs(gap / 2 - weight[name]), name))
+        chosen[name] = light
+        load[heavy] -= weight[name]
+        load[light] += weight[name]
     out = []
     for line in read_lines(SHARDS_FILE):
         parts = line.split(" ")
@@ -147,8 +168,8 @@ def main(argv: list[str]) -> int:
         print("\n".join(plan(argv[1])))
     elif argv and argv[0] == "refresh":
         refresh(argv[1:])
-    elif argv == ["balance"]:
-        report(balance(read_times()))
+    elif argv and argv[0] == "balance" and argv[1:] in ([], ["--full"]):
+        report(balance(read_times(), full=argv[1:] == ["--full"]))
     else:
         print(__doc__)
         return 2

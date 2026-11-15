@@ -54,7 +54,7 @@ comfort_journal 3
 comfort_restart 2
 comfort_rules 3
 comfort_social_integration 1
-completion_moment 1
+completion_moment 3
 compressed_rooms_client 1
 connectivity 3
 cooperative 2
@@ -221,7 +221,7 @@ online_random_more 2
 online_replay_authority 3
 online_robust 2
 online_scenarios 2
-online_scenarios_edges 2
+online_scenarios_edges 3
 online_scenarios_more 1
 online_staged_open 2
 online_unlocks 2
