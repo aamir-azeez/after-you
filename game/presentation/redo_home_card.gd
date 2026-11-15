@@ -163,6 +163,8 @@ func open_invite(invite: Dictionary) -> void:
 func _build(node_name: String, friend: String, first: bool, title: String, line: String, later_tap: Callable) -> Button:
 	card = InGameModal.open(host.ui, node_name, title, line)
 	card.widen(520.0)
+	# A long name or line wraps inside the card's width instead of pushing it off the screen.
+	card.title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var pip := FriendPip.make(friend, first, 64.0)
 	card.header.add_child(pip)
 	card.header.move_child(pip, 0)
