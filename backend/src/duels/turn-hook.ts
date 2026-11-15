@@ -38,6 +38,7 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
   // A finish that may wait for the check brings its checkpoint: every friend run, and a ghost race run faster than the
   // developers' ghost. The board decides (model.ts awaitsCheck, which reads DUEL_RUN_CHECKS in the board's own CONFIG),
   // and with checks off it neither encodes nor keeps it; this only spares the rest the payload.
+  // The shipped run's time stays right while the owner's run is Our run: that run only ever replaces a slower one.
   const checked = link.kind === "friend" || progress.ticks < (developerGhost(link.board) ?? 0);
   const proof = complete && checked ? { ...(encode ? { proof: await encode(room.checkpoint) } : { checkpoint: room.checkpoint }), simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
   return { note, ...(proof ? { proof } : {}) };

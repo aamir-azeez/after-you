@@ -2,10 +2,12 @@ import { ApiError } from "../protocol";
 import { JSON_HEADERS } from "../http";
 import { blobBase64 } from "../blob-codec";
 import { cachedView, storeView } from "./view-cache";
+import type { BoardView } from "./view";
 
 /**
  * GET /v1/leaderboards/<board>/replay/<entry_id>: a top 10 run's kept replay
- * (board.ts lb_replays), the same bytes for every reader. It answers only for
+ * (board.ts lb_replays), or Our run's when the view names the owner's run as
+ * Our run (our-run.ts: its time and names, with no place), the same bytes for every reader. It answers only for
  * a row of the board view that names a replay, and carries what that row
  * shows (place, time, the names both players chose to show) and the replay
  * in the shared blob format: `body` is the tagged body in base64, decoded on
@@ -28,19 +30,27 @@ let cachedChars = 0;
 
 export async function serveReplay(env: Env, board: string, entryId: string): Promise<Response> {
   const cached = await cachedView(board);
-  let row = cached?.top.find(item => item.entry_id === entryId);
+  let row = cached ? shownRow(cached, entryId) : undefined;
   if (cached && !row?.replay_hash) throw new ApiError(404, "replay_not_found");
   let body = row?.replay_hash ? held(row.replay_hash) : undefined;
   if (!row || !body) {
     const answer = await env.LEADERBOARD_BOARDS.getByName(board).replay(board, entryId);
     await storeView(answer.view);
-    row = answer.view.top.find(item => item.entry_id === entryId);
+    row = shownRow(answer.view, entryId);
     if (!row || !answer.replay || row.replay_hash !== answer.replay.proof_hash) throw new ApiError(404, "replay_not_found");
     body = remember(answer.replay.proof_hash, { byte_length: answer.replay.byte_length, base64: blobBase64(answer.replay.body) });
   }
   const head = { schema_version: 1, board, entry_id: row.entry_id, rank: row.rank, ticks: row.ticks, finished_on: row.finished_on, names: row.names, gold_leaf: row.gold_leaf, digest: row.replay_hash, byte_length: body.byte_length };
   // The body is spliced in, never run through JSON.stringify: base64 needs no escaping.
   return new Response(JSON.stringify(head).slice(0, -1) + `,"body":"${body.base64}"}`, { headers: JSON_HEADERS });
+}
+
+type ShownRow = { rank: number | null; entry_id: string; ticks: number; finished_on: string; names: string[] | null; gold_leaf: boolean; replay_hash: string | null };
+/** The view's top 10 row for `entryId`, or Our run's as one with no place or names, or undefined. */
+function shownRow(view: BoardView, entryId: string): ShownRow | undefined {
+  const row = view.top.find(item => item.entry_id === entryId), our = view.our_run;
+  if (row || our?.entry_id !== entryId) return row;
+  return { rank: null, entry_id: our.entry_id, ticks: our.ticks, finished_on: "", names: our.names ?? null, gold_leaf: false, replay_hash: our.replay_hash };
 }
 
 function held(hash: string): Body | undefined {

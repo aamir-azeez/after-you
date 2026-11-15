@@ -104,6 +104,7 @@ func _run() -> void:
 	await _platform_and_save()
 	await _empty_save()
 	await _edit_mode()
+	await _show_name_switch()
 	await _flow()
 	await _platform_follows()
 	await _friends()
@@ -308,6 +309,44 @@ func _edit_mode() -> void:
 	_check(_has_label(modal, PlayerCopy.DISPLAY_NAME_EDIT_TITLE) and not _has_label(modal, PlayerCopy.DISPLAY_NAME_ASK), "From Friends it is titled Your name")
 	_check(prompt.choice() == "anonymous" and prompt.tag.text == "Kite 41", "with the choice the player made")
 	modal.close()
+	await _frames(1)
+
+# The first name's "show my name" switch: there only when the flow gives it, starting
+# where the choice stands, written once a Save lands and never on a refusal or Not now.
+func _show_name_switch() -> void:
+	var plain := await _open({"own": {"choice": "", "name": ""}, "anonymous": "Kite 41", "platform": "", "save": func(_c: String, _n: String) -> Dictionary: return {"closed": true}})
+	_check(_prompt_node(plain).show_name_switch == null and plain.find_child("DisplayNameShowName", true, false) == null, "No show_name from the flow: no switch")
+	plain.close()
+	await _frames(1)
+	var shown: Array = []
+	var answers: Array = [{"closed": false, "code": "display_name_refused"}, {"closed": true}]
+	var context := {"own": {"choice": "", "name": ""}, "anonymous": "Kite 41", "platform": "", "name_shown": false,
+		"show_name": func(on: bool) -> void: shown.append(on),
+		"save": func(_c: String, _n: String) -> Dictionary: return answers.pop_front()}
+	var modal := await _open(context)
+	var prompt := _prompt_node(modal)
+	var toggle: CheckButton = prompt.show_name_switch
+	_check(toggle != null and not toggle.button_pressed and toggle.accessibility_name == PlayerCopy.DISPLAY_NAME_ASK_SHOW_NAME, "The first name has the switch, off as the choice stands")
+	var found: Array[Node] = modal.find_child("DisplayNameShowName", true, false).find_children("*", "RichTextLabel", true, false)
+	var words: RichTextLabel = found[0] if found.size() == 1 else null
+	_check(words != null and words.get_parsed_text() == PlayerCopy.DISPLAY_NAME_ASK_SHOW_NAME + " " + PlayerCopy.DISPLAY_NAME_ASK_SHOW_NAME_LATER, "It says where the name shows and that it can change later")
+	_check(modal.get_global_rect().encloses(toggle.get_global_rect()), "The switch fits on the card")
+	await _click(toggle)
+	_check(toggle.button_pressed and shown.is_empty(), "A tap turns it on and writes nothing yet")
+	await _click(prompt.save_button)
+	await _frames(2)
+	_check(shown.is_empty() and is_instance_valid(modal), "A refused save writes nothing")
+	await _click(prompt.save_button)
+	await _frames(2)
+	_check(shown == [true] and not is_instance_valid(modal), "A save that lands writes the switch once: " + str(shown))
+	shown.clear()
+	context.name_shown = true
+	modal = await _open(context)
+	_check(_prompt_node(modal).show_name_switch.button_pressed, "It starts on when the choice is on")
+	await _click(modal.find_child("ModalCancel", true, false))
+	await _frames(2)
+	_check(shown.is_empty(), "Not now writes nothing")
+	if is_instance_valid(modal): modal.close()
 	await _frames(1)
 
 # --- The flow ---------------------------------------------------------------

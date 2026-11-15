@@ -37,6 +37,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const WardrobeSheets = preload("res://presentation/wardrobe_sheets.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
+const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 
 ## The player's own name or where it stands changed (chips redraw).
 signal changed
@@ -111,6 +112,10 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 		"price": _price_for_prompt(current),
 		"get_pollen": func(link: Control) -> void: _open_short(parent, link),
 	}
+	# A first name also asks whether to show it, while Settings shows the same choice.
+	if str(context.own.get("choice", "")).is_empty() and _name_choice_offered():
+		context["name_shown"] = LeaderboardClient.shared(host.api, str(host.api.player_id)).show_name()
+		context["show_name"] = _choose_show_name
 	var modal: Control = Prompt.open(parent, context, opener)
 	_prompt = weakref(modal)
 	# An offer this session never learned (a launch read that failed) is read again; the card follows it.
@@ -162,6 +167,17 @@ func _after_bundle() -> void:
 	if prompt == null or price.is_empty(): return
 	_prompt_price = price
 	prompt.set_price(price)
+
+## Whether Settings offers "Show my name on leaderboards" now (settings_rows.gd
+## leaderboard_name): leaderboards open and a player id. Public duels name you
+## through the same choice.
+func _name_choice_offered() -> bool:
+	return host != null and host.has_method("_leaderboards_offered") and host._leaderboards_offered() and is_instance_valid(host.get("api")) and not str(host.api.player_id).is_empty()
+
+## The prompt's switch, written as Settings writes it, only when it changed (each write is a server request).
+func _choose_show_name(on: bool) -> void:
+	var names: RefCounted = LeaderboardClient.shared(host.api, str(host.api.player_id))
+	if names.show_name() != on: names.set_show_name(on)
 
 ## The Friends header's Display name chip, or null while names are off.
 func chip() -> Control:

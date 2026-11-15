@@ -47,7 +47,10 @@ extends Node
 ##     no price, services/pollen_surfaces.gd) names no price: a change that would
 ##     cost waits, with a line that the free change is used, and no link;
 ##   get_pollen (Callable (opener: Control), optional): the link's tap (the flow
-##     opens the short of Pollen card, board 5b); without it there is no link.
+##     opens the short of Pollen card, board 5b); without it there is no link;
+##   show_name (Callable (bool), optional): the "show my name" switch under the
+##     choices (while no name is chosen yet); called with the switch once a Save
+##     lands, never on Not now or a refused save. name_shown (bool) is its start.
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -58,6 +61,7 @@ const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
+const DuelKit = preload("res://presentation/duels/duel_kit.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
 ## The tag above the pip: the world badge's cream and ink (kit/badges.gd).
@@ -86,6 +90,8 @@ var _price_note: RichTextLabel
 var _have_line: HBoxContainer
 var _have_label: Label
 var get_pollen_link: LinkButton
+## The show-my-name switch, or null when the flow gave no show_name.
+var show_name_switch: CheckButton
 ## What Save's content shows ([amount, short, ink]), so a keystroke that changes nothing rebuilds nothing.
 var _save_shown: Array = []
 ## The rows' column, and the platform row's label as shown ("" for none).
@@ -191,6 +197,11 @@ func _build(card: Control) -> void:
 	_have_label = _small("", MUTED, _have_line)
 	_have_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_have_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var show_name: Variant = _context.get("show_name")
+	if show_name is Callable and show_name.is_valid():
+		var row := DuelKit.switch_row("DisplayNameShowName", "DisplayNameShowNameSwitch", PlayerCopy.DISPLAY_NAME_ASK_SHOW_NAME, bool(_context.get("name_shown", false)), PlayerCopy.DISPLAY_NAME_ASK_SHOW_NAME_LATER)
+		show_name_switch = row.find_child("DisplayNameShowNameSwitch", true, false) as CheckButton
+		modal.content.add_child(row)
 	save_button = modal.add_actions(PlayerCopy.DISPLAY_NAME_SAVE, _save, PlayerCopy.DISPLAY_NAME_NOT_NOW if not _context.get("edit", false) else PlayerCopy.DISPLAY_NAME_CANCEL)
 	_add_get_pollen()
 	var dismissed: Variant = _context.get("dismissed")
@@ -645,6 +656,8 @@ func _save() -> void:
 		_show()
 		return
 	_saved = true
+	var show_name: Variant = _context.get("show_name")
+	if show_name_switch != null and show_name is Callable and show_name.is_valid(): show_name.call(show_name_switch.button_pressed)
 	modal.close()
 
 ## The tag's tail, pointing down at the pip.

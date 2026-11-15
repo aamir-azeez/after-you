@@ -393,6 +393,10 @@ func _toast_failure(answer: Dictionary, kind: String = "friend") -> void:
 		return
 	host._toast(PlayerCopy.DUELS_FRIEND_NO_PARTNER if code == "opponent_party_required" else PlayerCopy.DUELS_NO_PARTY if code == "party_required" else PlayerCopy.DUELS_ACTION_FAILED)
 
+## The Party page over the open lobby (Home's invite card), unless it is already up.
+func open_party() -> void:
+	if is_open() and not screen.overlay() is PartyPage: _open_party()
+
 func _open_party() -> void:
 	if not is_open(): return
 	var page := PartyPage.new()
