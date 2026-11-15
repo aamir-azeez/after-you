@@ -7,9 +7,32 @@ const INDEX_PATH := "res://content/cosmetics/index.gd"
 
 const EARNED := "earned"
 
-## Every item id in shop order.
+## Every item id in content/cosmetics/index.gd order.
 static func ids() -> Array[String]:
 	return Index.ids()
+
+## Every item id in shop order: the Pollen items by tier up the price ladder
+## (the order of content/cosmetics/index.gd TIER_PRICES: cheapest first, then
+## earned, then the face tiers cheapest first), in index order within a tier;
+## then the Orchard's Fruit items in their board's order (index order, the
+## hoods first), as the Orchard page lays them out. A copy: callers may change it.
+static func shop_order() -> Array[String]:
+	if _shop_order.is_empty():
+		var listed := Index.ids()
+		var order: Array[String] = listed.duplicate()
+		var rank := func(id: String) -> int: return tier_rank(tier(id)) if currency(id) == "pollen" else Index.TIER_PRICES.size()
+		order.sort_custom(func(a: String, b: String) -> bool:
+			var ranks: Array = [rank.call(a), rank.call(b)]
+			return ranks[0] < ranks[1] if ranks[0] != ranks[1] else listed.find(a) < listed.find(b))
+		_shop_order = order
+	return _shop_order.duplicate()
+
+static var _shop_order: Array[String] = []
+
+## A tier's place on the price ladder (TIER_PRICES order), lowest first; a
+## tier not on it (the reaction faces everyone has) comes before them all.
+static func tier_rank(name: String) -> int:
+	return Index.TIER_PRICES.keys().find(name)
 
 ## The slot ids, in order (content/cosmetics/index.gd SLOTS).
 static func slots() -> Array[String]:
@@ -97,9 +120,6 @@ static func released_ids() -> Array[String]:
 		if released(id): result.append(id)
 	return result
 
-## Whether wearing it pulls the pip views back.
-static func tall(id: String) -> bool:
-	return bool(Index.data(id).get("tall", false))
 
 ## Whether its look moves on its own (a Wardrobe card shows it live).
 static func moving(id: String) -> bool:
@@ -123,7 +143,7 @@ static func leaf_mode(id: String) -> String:
 
 ## The largest leaf size class a hat takes its way.
 static func leaf_max(id: String) -> String:
-	return str(Index.data(id).get("leaf_max", "tall"))
+	return str(Index.data(id).get("leaf_max", "medium"))
 ## The Wardrobe chip a slot is listed under (content/cosmetics/index.gd
 ## SLOT_CHIPS): the slot itself unless it is grouped.
 static func chip(slot_id: String) -> String:

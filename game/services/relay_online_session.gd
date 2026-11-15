@@ -34,6 +34,7 @@ const TurnLooks = preload("res://services/turn_looks.gd")
 const OwnLook = preload("res://services/own_look.gd")
 const ServerSwitches = preload("res://services/server_switches.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
+const FacePacks = preload("res://services/face_packs.gd")
 ## Every rules version this build can replay, for a server that allows at most
 ## 8 entries (every server before room level 2): 10 = the tide rules of
 ## turn-of-the-tide@2. Saved joins keep their exact body: each array ever sent
@@ -502,6 +503,8 @@ func _load_capabilities(still: Callable) -> bool:
 	_supported_chapters.assign(checked.chapters)
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
+	# The faces this server takes, for every faces card wherever it shows (services/face_packs.gd).
+	if not scope.is_empty(): FacePacks.note_version(str(scope.server), str(scope.owner), face_version())
 	# Home's rows that follow the server's public switches keep this answer too (services/server_switches.gd).
 	if not scope.is_empty(): ServerSwitches.shared().note(str(scope.server), {"duels": duels_supported(), "leaderboards": leaderboards_supported(), "hard_mode": hard_mode_supported(), "leaderboards_platform": leaderboards_platform_required(), "public_duels": public_duels_supported()})
 	# Only an iPhone asks whether the server takes App Store purchases (services/store_support.gd), noted

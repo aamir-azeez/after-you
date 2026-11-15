@@ -337,7 +337,6 @@ func _icon_button(icon: Texture2D, description: String, action: Callable, enable
 	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.expand_icon = true
 	# Mipmapped icons stay crisp when the window is scaled below its design size.
-	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	button.tooltip_text = description
 	button.accessibility_name = description
 	button.custom_minimum_size = Vector2(48,48)

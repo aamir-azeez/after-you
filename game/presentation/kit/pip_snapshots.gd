@@ -28,6 +28,10 @@ const IDLE_SECONDS := 2.0
 ## A render with no frame drawn after this many frames is asked for again,
 ## or, with no GPU, taken as a blank.
 const DRAW_WAIT_FRAMES := 3
+## The frame policy autoload (services/frame_policy.gd) and how long each
+## render keeps it drawing full frames (milliseconds).
+const FRAME_POLICY := "FramePolicy"
+const WAKE_MSEC := 250
 
 ## Drawn textures by key, oldest first.
 static var _cache: Dictionary = {}
@@ -116,6 +120,7 @@ func _process(delta: float) -> void:
 			# A frame the system skipped: draw it again rather than keep a blank.
 			_waited = 0
 			_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+			_keep_drawing()
 			return
 		_finish()
 	var next := _next()
@@ -157,6 +162,15 @@ func _start(spec: Dictionary) -> void:
 	_waited = 0
 	_drawn = false
 	_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_keep_drawing()
+
+## A menu on a phone draws only when something on screen changed
+## (services/frame_policy.gd CALM): an offscreen render changes nothing on
+## screen, so without this its frame never came and the still pip sat blank
+## until the next touch. Asks the policy for full frames a moment longer.
+func _keep_drawing() -> void:
+	var policy: Node = get_tree().root.get_node_or_null(FRAME_POLICY) if is_inside_tree() else null
+	if policy != null and policy.has_method("wake"): policy.call("wake", WAKE_MSEC)
 
 func _build() -> void:
 	if is_instance_valid(_view): return
