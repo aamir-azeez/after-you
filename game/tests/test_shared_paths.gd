@@ -351,7 +351,6 @@ const TURN_SOUND_SCREENS := ["res://relay_preview.gd", "res://presentation/share
 const FLAT_DIAMONDS := {
 	"res://presentation/island_world.gd": [1, "the first island's plate glyph: a plate either spirit presses"],
 	"res://presentation/relay_world.gd": [1, "Relay Isles' plate glyphs: plates either spirit presses"],
-	"res://presentation/first_steps_world.gd": [1, "First Steps' control glyphs: controls either spirit uses"],
 	"res://presentation/lighthouse_world.gd": [2, "the emitter pad's glyph and the path selector's pointer"],
 	"res://presentation/kit/pieces/selector.gd": [1, "a valve wheel's pointer head"],
 }
@@ -385,6 +384,7 @@ const PIECE_KITS := "res://presentation/kit/pieces/"
 const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
+	"res://presentation/first_steps_world.gd": "builds its spots and its lift in the styles they resolve to (pad, lift); its loft bell stays its own",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {
@@ -884,7 +884,7 @@ func _piece_styles() -> void:
 		if path.begins_with("res://tests/") or path.begins_with(PIECE_KITS) or path == PIECE_STYLES: continue
 		var source: String = _sources[path]
 		_check(_found("\"(?:lever_looks|stand_spots)\"|\\.(?:lever_looks|stand_spots)\\b|kit/lever_looks\\.gd", source) == 0, "%s keeps a per-world piece switch: pin or pick a piece style (content/dressing/piece_styles.gd)" % path)
-		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal)\\.gd\"", source) > 0:
+		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal|lift)\\.gd\"", source) > 0:
 			builders[path] = true
 			_check(PIECE_BUILDERS.has(path), "%s builds a piece itself: worlds build pieces through cooperative_world and lighthouse_world, or add it to PIECE_BUILDERS with why" % path)
 		if _found("\\.get\\(\\s*\"piece_styles\"|\\[\"piece_styles\"\\]|\\.piece_styles\\b|\\bPieceStyles\\.PINS\\b", source) > 0:
