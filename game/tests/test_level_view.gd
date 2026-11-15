@@ -68,9 +68,11 @@ func _run() -> void:
 	print("LEVEL VIEW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-## The chapters this suite walks; a split suite narrows it.
+## The chapters this suite walks; a split suite narrows it. Only the
+## cooperative and journey worlds follow a pip with their camera and draw
+## bubbles and route barriers; the others show every island at once.
 func _keys() -> Array[String]:
-	return Registry.keys().filter(func(key: String) -> bool: return Stages.floor_chapter(key))
+	return Registry.keys().filter(func(key: String) -> bool: return Registry.is_cooperative(key))
 
 func _check(ok: bool, message: String) -> void:
 	checks += 1
@@ -102,9 +104,9 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 		var where := "%s %s" % [key, view.stage_id]
 		if item.checkpoint.is_empty(): continue
 		await world.show_stage(item.stage)
-		world.present_history(item.checkpoint)
+		world.present_history(item.opening)
 		_barriers(world, where, view, item.checkpoint, ends)
-		var shots := Shots.new(key, level, str(view.stage_id), item.checkpoint)
+		var shots := Shots.new(key, level, str(view.stage_id), item.opening)
 		var base := shots.snapshot()
 		_check(not base.is_empty(), "%s: the engine opens the stage" % where)
 		if base.is_empty(): continue

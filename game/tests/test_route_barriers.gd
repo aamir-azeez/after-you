@@ -45,7 +45,7 @@ func _run() -> void:
 	_sounds()
 	var played := 0
 	for key: String in Registry.keys():
-		if not Stages.floor_chapter(key): continue
+		if not Registry.is_cooperative(key): continue
 		played += _fixtures(key)
 	_check(played >= 12, "Every floor chapter's fixture turns were walked (%d stages)" % played)
 	print("ROUTE BARRIERS: %d checks, %d failures" % [checks, failures])
@@ -142,7 +142,7 @@ func _shapes() -> void:
 	_check(problems.is_empty(), "The gates at both ends of a short wide bridge stand straight across it and never meet: %s" % [problems])
 	var stages := 0
 	for key: String in Registry.keys():
-		if not Stages.floor_chapter(key): continue
+		if not Registry.is_cooperative(key): continue
 		for entry: Dictionary in Stages.stages(key):
 			stages += 1
 			problems = _gate_problems(entry.view, "%s stage %d" % [key, int(entry.index) + 1])

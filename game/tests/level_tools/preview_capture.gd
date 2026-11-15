@@ -17,6 +17,7 @@ const Stages = preload("res://tests/level_tools/level_stages.gd")
 const Shots = preload("res://tests/level_tools/stage_shots.gd")
 const Sheet = preload("res://tests/level_tools/contact_sheet.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const Layout = preload("res://services/level_layout.gd")
 const SIZE := Vector2i(800, 360)
 ## Frames a moment settles for before it is taken (water, tags, bubbles).
 const SETTLE_FRAMES := 8
@@ -42,7 +43,7 @@ func _run() -> void:
 		return
 	if options.has("only"): _only = Array(str(options.only).split(",", false))
 	root.size = SIZE
-	var key := str(layout.key) if layout.registered else str(options.get("world", _family_world(layout.journey)))
+	var key := str(layout.key) if layout.registered else str(options.get("world", _family_world(str(layout.family))))
 	var level: Dictionary = layout.level
 	var world: Node3D = Registry.world_script(key).new()
 	root.add_child(world)
@@ -69,15 +70,15 @@ func _run() -> void:
 	quit(0)
 
 ## The first chapter of the family, whose world shows a bare layout.
-static func _family_world(journey: bool) -> String:
+static func _family_world(family: String) -> String:
 	for key: String in Registry.keys():
-		if Stages.floor_chapter(key) and Registry.is_journey(key) == journey: return key
+		if Layout.family_of(key) == family: return key
 	return ""
 
 ## Every moment of one stage; returns the sheet's groups.
 func _stage(world: Node3D, shots: RefCounted, stage: Dictionary, folder: String) -> Array:
 	await world.show_stage(stage)
-	world.present_history(shots.checkpoint)
+	if world.has_method("present_history"): world.present_history(shots.checkpoint)
 	var base: Dictionary = shots.snapshot()
 	if base.is_empty():
 		print("NOTE %s: the engine has no such stage" % stage.id)

@@ -81,7 +81,7 @@ func _graph() -> void:
 func _maps() -> void:
 	var stages := 0
 	for key: String in Registry.keys():
-		if not Stages.floor_chapter(key): continue
+		if not Stages.laid_out(key): continue
 		var level := Registry.definition(key)
 		var digest := Canonical.digest(level)
 		for item: Dictionary in Stages.stages(key, level):
@@ -102,7 +102,7 @@ func _maps() -> void:
 			_check(plan.floors.any(func(f: Dictionary) -> bool: return f.reached) and plan.starts.size() == 2, "%s: the plan marks reach and both starts" % where)
 			stages += 1
 		_check(Canonical.digest(level) == digest, "%s: drawing plans never changes the definition" % key)
-	_check(stages >= 18, "Plans for every floor chapter's stages (%d)" % stages)
+	_check(stages >= 28, "Plans for every chapter's stages (%d)" % stages)
 	var bare := _small(true)
 	var plan := Model.build(bare, CooperativeCatalog.stage_definition(bare, "only"), Stages.starts_checkpoint(bare), true)
 	var reached: Dictionary = {}
@@ -115,7 +115,7 @@ func _shots() -> void:
 	var key := "turn-of-the-tide@1"
 	var level := Registry.definition(key)
 	var item: Dictionary = Stages.stages(key, level)[0]
-	var shots := Shots.new(key, level, str(item.stage.id), item.checkpoint)
+	var shots := Shots.new(key, level, str(item.stage.id), item.opening)
 	var base: Dictionary = shots.snapshot()
 	_check(not base.is_empty() and base.has("players"), "The engine opens a stage for the shots")
 	var spot: Dictionary = shots.spots().filter(func(s: Dictionary) -> bool: return s.id == "tide")[0]

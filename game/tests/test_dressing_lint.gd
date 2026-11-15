@@ -16,7 +16,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
-const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+const Layout = preload("res://services/level_layout.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
@@ -99,31 +99,17 @@ func _check_water_dressing(key: String, data: Dictionary) -> void:
 	var bodies: Array = [] if path.is_empty() else load(path).DATA.bodies.map(func(body: Dictionary) -> String: return str(body.id))
 	for boat: Dictionary in data.get("moored_boats", []): _check(str(boat.get("water", "")) in bodies and boat.get("at", []).size() == 2, "A moored boat of %s rides a body of the chapter's water: %s" % [key, boat])
 
+## The chapter whose plans (services/level_layout.gd) a dressing key's stages
+## are: the unregistered Lighthouse @1 dresses the six stages the room
+## chapter (@2) lays out from the same native definitions.
+static func _layout_key(key: String) -> String:
+	return Registry.LIGHTHOUSE_V2 if key == LIGHTHOUSE else key
+
 func _stage_ids(key: String) -> Array:
-	if key == LIGHTHOUSE: return LightCatalog.STAGE_IDS.duplicate()
-	var result: Array = []
-	for stage: Dictionary in Registry.definition(key).stages: result.append(str(stage.id))
-	return result
+	return Layout.stage_ids(Registry.definition(_layout_key(key)))
 
 func _stage_view(key: String, stage_id: String) -> Dictionary:
-	if key == LIGHTHOUSE: return LightCatalog.definition(stage_id)
-	if _first_steps(key): return _first_steps_view(Registry.definition(key), stage_id)
-	return CooperativeCatalog.stage_definition(Registry.definition(key), stage_id)
-
-func _first_steps(key: String) -> bool:
-	return str(ChapterIndex.data(key).get("family", "")) == "first-steps"
-
-## First Steps has no floors and gates: its floors, its spots (controls,
-## sockets, goals, starts and the stage's seed landing) and its lift, whose
-## walking space spans the whole ride like a stair's.
-func _first_steps_view(level: Dictionary, stage_id: String) -> Dictionary:
-	var lift: Dictionary = level.lift
-	var view := {"islands": level.islands, "controls": level.controls, "sockets": level.sockets, "goals": level.goals, "starts": level.starts,
-		"stairs": [{"id": lift.id, "rect_cm": lift.rect_cm, "from_height_cm": lift.bottom_height_cm, "to_height_cm": lift.top_height_cm}]}
-	for stage: Dictionary in level.stages:
-		if stage.id == stage_id and stage.has("landing_cm"):
-			view["landing"] = {"id": "seed-landing", "position_cm": stage.landing_cm, "radius_cm": 66, "surface_id": stage.landing_surface}
-	return view
+	return Layout.for_key(_layout_key(key), stage_id)
 
 func _rect(r: Array) -> Rect2:
 	return Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
@@ -133,41 +119,23 @@ func _heights(view: Dictionary) -> Dictionary:
 	for island: Dictionary in view.get("islands", []): result[str(island.id)] = float(island.get("height_cm", 0)) / 100.0
 	return result
 
-## Walking spaces: {rect, y, rise, name}. Stairs span their whole rise.
+## Walking spaces (Layout.walking_areas) in metres: {rect, y, rise, name}.
+## Stairs span their whole rise.
 func _walkable(view: Dictionary) -> Array:
-	var spaces: Array = []
-	for island: Dictionary in view.get("islands", []):
-		spaces.append({"rect": _rect(island.rect_cm), "y": float(island.get("height_cm", 0)) / 100.0, "rise": 0.0, "name": "island " + str(island.id)})
-	for bridge: Dictionary in view.get("bridges", []):
-		spaces.append({"rect": _rect(bridge.rect_cm), "y": float(bridge.get("height_cm", 0)) / 100.0, "rise": 0.0, "name": "route " + str(bridge.id)})
-	for stair: Dictionary in view.get("stairs", []):
-		var low := minf(float(stair.from_height_cm), float(stair.to_height_cm)) / 100.0
-		spaces.append({"rect": _rect(stair.rect_cm), "y": low, "rise": absf(float(stair.to_height_cm - stair.from_height_cm)) / 100.0, "name": "stair " + str(stair.id)})
-	return spaces
+	var names := {"island": "island", "bridge": "route", "stair": "stair"}
+	return Layout.walking_areas(view).map(func(area: Dictionary) -> Dictionary:
+		return {"rect": _rect(area.rect_cm), "y": float(area.height_cm) / 100.0, "rise": float(area.rise_cm) / 100.0, "name": "%s %s" % [names[area.kind], area.id]})
 
-## Interactive places: pads, levers, switches, goals, starts, drops, optics.
+## Interactive places (Layout.spots: pads, levers, switches, goals, starts,
+## optics) and drops, in metres: {rect, y, name}.
 func _controls(view: Dictionary, heights: Dictionary) -> Array:
-	var found: Array = []
-	_collect(view, heights, found, "")
+	var found: Array = Layout.spots(view).map(func(spot: Dictionary) -> Dictionary:
+		var radius := float(spot.radius_cm) / 100.0
+		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
+		return {"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(spot.height_cm) / 100.0, "name": "%s %s" % [spot.kind, spot.id]})
 	for drop: Dictionary in view.get("drops", []):
 		found.append({"rect": _rect(drop.rect_cm), "y": float(heights.get(str(drop.get("surface_id", "")), 0.0)), "name": "drop " + str(drop.get("id", ""))})
-	var starts: Dictionary = view.get("starts", {}) if view.get("starts") is Dictionary else {}
-	for slot: String in starts:
-		var start: Variant = starts[slot]
-		var at: Array = start.position_cm if start is Dictionary else start
-		found.append({"rect": Rect2(Vector2(float(at[0]), float(at[1])) / 100.0 - Vector2.ONE * 0.3, Vector2.ONE * 0.6), "y": float(heights.get(str(start.get("surface_id", "")), 0.0)) if start is Dictionary else 0.0, "name": "start " + slot})
 	return found
-
-func _collect(value: Variant, heights: Dictionary, found: Array, path: String) -> void:
-	if value is Dictionary:
-		if value.has("position_cm") and value.position_cm is Array and value.position_cm.size() == 2:
-			var radius := float(value.get("radius_cm", 30)) / 100.0
-			var at := Vector2(float(value.position_cm[0]), float(value.position_cm[1])) / 100.0
-			found.append({"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(heights.get(str(value.get("surface_id", "")), 0.0)), "name": "%s %s" % [path, value.get("id", "")]})
-		for child: Variant in value:
-			if str(child) != "starts": _collect(value[child], heights, found, str(child))
-	elif value is Array:
-		for item: Variant in value: _collect(item, heights, found, path)
 
 func _lint(key: String, stage_id: String, view: Dictionary, data: Dictionary) -> void:
 	var heights := _heights(view)
@@ -228,14 +196,10 @@ func _check_built_worlds() -> void:
 		var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
 		root.add_child(world)
 		world.set_process(false)
+		if key != LIGHTHOUSE: world.load_level(Registry.definition(key))
 		for stage_id: String in _stage_ids(key):
 			if key == LIGHTHOUSE: world.load_level(LightCatalog.definition(stage_id))
-			elif _first_steps(key):
-				if world.terrain == null: world.load_level(Registry.definition(key))
-				for stage: Dictionary in Registry.definition(key).stages:
-					if stage.id == stage_id: world.show_stage(stage)
 			else:
-				if world.chapter_definition.is_empty(): world.load_level(Registry.definition(key))
 				for stage: Dictionary in Registry.definition(key).stages:
 					if stage.id == stage_id: world.show_stage(stage)
 			var dressed: Array = world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("dressing_kind"))
