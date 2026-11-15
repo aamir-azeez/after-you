@@ -19,6 +19,10 @@ extends RefCounted
 ##
 ## Kept per player in one small file written whole with AtomicFile. Every
 ## value read back is checked; a file that cannot be read reads as empty.
+## Names are never written there: a player may hide their name at any time
+## (backend leaderboards/members.ts syncMemberName), so a placing's names come
+## only from a board read this session, and one read back after a restart
+## reads "A pair" until its board is read again.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
@@ -157,11 +161,12 @@ func _load() -> void:
 		var pending: Array = []
 		for item: Variant in value.pending:
 			if _placing(item) and not shown.has(item.entry_id) and _find(pending, item.entry_id) < 0:
-				pending.append({"entry_id": item.entry_id, "board": item.board, "rank": int(item.rank), "ticks": int(item.ticks), "names": item.names, "gold_leaf": item.gold_leaf, "partner": item.partner})
+				pending.append({"entry_id": item.entry_id, "board": item.board, "rank": int(item.rank), "ticks": int(item.ticks), "names": null, "gold_leaf": item.gold_leaf, "partner": item.partner})
 		_players[owner] = {"shown": shown, "pending": pending.slice(maxi(pending.size() - MAX_PENDING, 0))}
 
 func _save() -> bool:
 	var players: Dictionary = {}
 	for owner: String in _players:
-		players[owner] = {"shown": (_players[owner].shown as Dictionary).keys(), "pending": _players[owner].pending}
+		var pending: Array = (_players[owner].pending as Array).map(func(item: Dictionary) -> Dictionary: return item.merged({"names": null}, true))
+		players[owner] = {"shown": (_players[owner].shown as Dictionary).keys(), "pending": pending}
 	return AtomicFile.write_text(path, JSON.stringify({"version": VERSION, "players": players}))

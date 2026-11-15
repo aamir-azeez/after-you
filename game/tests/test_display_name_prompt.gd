@@ -31,6 +31,7 @@ const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const Look = preload("res://presentation/spirit_look.gd")
+const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -51,6 +52,10 @@ class Api extends Node:
 	var player_id := "aaaaaaaaaaaaaaaaaaaaaa"
 	var device_token := "synthetic-token"
 	var busy := false
+	var requests: Array = []
+	func request_json(method: int, path: String, body: Dictionary = {}) -> Dictionary:
+		requests.append([method, path, body])
+		return {"ok": false, "code": "offline"}
 
 class Saves extends RefCounted:
 	var data := {"settings": {"reduced_motion": false}}
@@ -60,6 +65,8 @@ class Host extends Node:
 	var saves := Saves.new()
 	var toasts: Array = []
 	var soundscape: Node = null
+	var boards := false
+	func _leaderboards_offered() -> bool: return boards
 	func _relay_identity() -> Dictionary: return {"ready": true, "player_id": api.player_id, "epoch": 1}
 	func _names_scope() -> Dictionary: return {"server": str(api.base_url), "owner": str(api.player_id)}
 	func _toast(text: String) -> void: toasts.append(text)
@@ -311,7 +318,7 @@ func _edit_mode() -> void:
 	modal.close()
 	await _frames(1)
 
-# The first name's "show my name" switch: there only when the flow gives it, starting
+# The "show my name" switch: there only when the flow gives it, starting
 # where the choice stands, written once a Save lands and never on a refusal or Not now.
 func _show_name_switch() -> void:
 	var plain := await _open({"own": {"choice": "", "name": ""}, "anonymous": "Kite 41", "platform": "", "save": func(_c: String, _n: String) -> Dictionary: return {"closed": true}})
@@ -393,12 +400,37 @@ func _flow() -> void:
 	modal = page.find_child("DisplayNameModal", true, false)
 	_check(modal != null and _has_label(modal, PlayerCopy.DISPLAY_NAME_EDIT_TITLE), "Change opens the prompt to change it")
 	var prompt := _prompt_node(modal)
+	_check(prompt.show_name_switch == null, "Without leaderboards there is no show-my-name switch, as in Settings")
 	prompt.field.grab_focus()
 	await _type("Robin")
 	await _click(prompt.save_button)
 	await _frames(6)
 	_check(sent.size() == 1 and sent[0].display_name == "Robin" and not is_instance_valid(modal), "Save sends the name and the card closes")
 	_check(chip.name_label.text == "Robin" and not chip.status_label.visible, "The chip shows the saved name")
+	# With leaderboards open, changing a chosen name shows the switch too, from the saved choice.
+	var board_choice: RefCounted = LeaderboardClient.new(api, ME, _path("board-name"))
+	board_choice._choice = {"show": true, "pending": false, "synced": true}
+	LeaderboardClient._shared = board_choice
+	host.boards = true
+	await _click(chip.change_button)
+	await _frames(3)
+	modal = page.find_child("DisplayNameModal", true, false)
+	var toggle: CheckButton = _prompt_node(modal).show_name_switch if modal != null else null
+	_check(toggle != null and toggle.button_pressed, "Changing a chosen name has the switch, starting from the saved choice")
+	await _click(modal.find_child("ModalCancel", true, false))
+	await _frames(2)
+	_check(board_choice.show_name() and not board_choice._choice.pending, "Cancel writes nothing")
+	await _click(chip.change_button)
+	await _frames(3)
+	modal = page.find_child("DisplayNameModal", true, false)
+	prompt = _prompt_node(modal)
+	await _click(prompt.show_name_switch)
+	await _click(prompt.save_button)
+	await _frames(6)
+	_check(not is_instance_valid(modal) and not board_choice.show_name() and board_choice._choice.pending, "Saving the same name with the switch flipped writes the switch")
+	_check(api.requests.size() == 1 and api.requests[0][2] == {"schema_version": 1, "show_name": false}, "and sends it once: %s" % [api.requests])
+	host.boards = false
+	LeaderboardClient._shared = null
 	store.choose(BASE, ME, "typed", "Offline")
 	flow._refresh_chips()
 	_check(chip.status_label.visible and chip.status_label.text == PlayerCopy.DISPLAY_NAME_PENDING, "A name waiting to be sent says so")
