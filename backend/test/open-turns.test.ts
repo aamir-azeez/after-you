@@ -288,3 +288,71 @@ describe("open turns: a friend room", () => {
     expect(chapter(turnOfTheTideV2.key).open_turns).toBeUndefined();
   });
 });
+
+describe("open turns: snapshot restore", () => {
+  type Archive = { payload: { tables: { name: string; rows: Rec[] }[]; summary: Rec }; checksum: { value: string } };
+  const commit = "d".repeat(40);
+  async function exported(stub: { exportSnapshot(commit: string): Promise<{ ok: boolean; value?: string; code?: string }> }): Promise<string> {
+    const result = await stub.exportSnapshot(commit); expect(result, result.code).toMatchObject({ ok: true }); return result.value!;
+  }
+  const restore = (roomId: string, archive: string) => env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId()).restoreSnapshot(archive, roomId);
+  /** Exports the live room, restores it into an empty object and exports that again: the same tables and summary. */
+  async function roundTrip(roomId: string): Promise<Archive> {
+    const archive = await exported(env.ROOMS_V2.getByName(roomId)), target = env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId());
+    expect(await target.restoreSnapshot(archive, roomId)).toMatchObject({ ok: true });
+    const original = JSON.parse(archive) as Archive, again = JSON.parse(await exported(target)) as Archive;
+    expect(again.payload.tables).toEqual(original.payload.tables); expect(again.payload.summary).toEqual(original.payload.summary);
+    return original;
+  }
+  const roomRow = (archive: Archive) => archive.payload.tables[0].rows[0];
+  async function tampered(archive: Archive, change: (room: Rec) => void): Promise<string> {
+    const copy = structuredClone(archive), room = JSON.parse(roomRow(copy).data); change(room); roomRow(copy).data = JSON.stringify(room);
+    copy.checksum.value = await digest(canonicalJson(copy.payload)); return canonicalJson(copy);
+  }
+
+  it("restores a room mid stage with its passes, and refuses a changed open stage", async () => {
+    const { room: joined, first, second } = await room();
+    const { turns } = await chain(0, initial(), 2);
+    const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]);
+    await send(two.room, first, turns[2]);
+    const archive = await roundTrip(joined.room_id);
+    expect(JSON.parse(roomRow(archive).data).open_stage.passes.map((pass: Rec) => pass.turn_id)).toEqual(["t0-0-b", "t0-0-c"]);
+    for (const change of [
+      (state: Rec) => { state.open_stage.passes[1].recording_hash = turns[1].recording_hash; },
+      (state: Rec) => { state.open_stage.bytes++; },
+      (state: Rec) => { state.open_stage.passes.pop(); },
+      (state: Rec) => { delete state.open_stage; },
+    ]) expect(await restore(joined.room_id, await tampered(archive, change))).toMatchObject({ ok: false, code: "snapshot_open_stage_mismatch" });
+  });
+  it("restores a finished two stage room with passes", async () => {
+    const { room: joined, first, second } = await room();
+    const { turns, checkpoint } = await chain(0, initial(), 2);
+    let current = joined;
+    for (const [i, turn] of turns.entries()) current = (await send(current, i % 2 ? second : first, turn, i === turns.length - 1 ? checkpoint : undefined)).room;
+    const next = await chain(1, checkpoint, 1), slackFirst = slackA.player_slot === setA.player_slot ? first : second, slackSecond = slackFirst === first ? second : first;
+    for (const [i, turn] of next.turns.entries()) current = (await send(current, i % 2 ? slackSecond : slackFirst, turn, i === next.turns.length - 1 ? next.checkpoint : undefined)).room;
+    expect(current).toMatchObject({ stage_index: 2, active_role: "complete" });
+    const archive = await roundTrip(joined.room_id);
+    expect(archive.payload.summary).toMatchObject({ state: "active", branch: 0 });
+    expect(archive.payload.tables.find(table => table.name === "turns")!.rows).toHaveLength(7);
+  });
+  it("restores a room after a pass played again, with the turns it copied and no receipt of their own", async () => {
+    const { room: joined, first, second } = await room();
+    const { turns } = await chain(0, initial(), 2);
+    const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]);
+    const three = await send(await read(two.room, first), first, turns[2]);
+    const again = await later(setB as Rec, setA.player_slot, 3, turns[1], false, initial().checkpoint_hash, 15);
+    const replaced = await send(three.room, first, again, undefined, { replaces: turns[2].recording_hash });
+    const mid = await roundTrip(joined.room_id);
+    expect(mid.payload.tables.find(table => table.name === "operations")!.rows).toHaveLength(4);
+    // A copy that no longer matches the turn it came from has no receipt to stand on.
+    const changedCopy = structuredClone(mid), copy = changedCopy.payload.tables[1].rows.find(row => row.turn_id === "t1-0-b")!;
+    copy.accepted_revision++;
+    changedCopy.checksum.value = await digest(canonicalJson(changedCopy.payload));
+    expect(await restore(joined.room_id, canonicalJson(changedCopy))).toMatchObject({ ok: false, code: "snapshot_missing_receipt" });
+    const seen = await read(replaced.room, second);
+    const closingTurn = await later(setB as Rec, setA.player_slot, 4, again, true, initial().checkpoint_hash, 15);
+    await send(seen, second, closingTurn, await closing(setEnd as Rec, initial(), [turns[0], turns[1], again, closingTurn]));
+    expect((await roundTrip(joined.room_id)).payload.summary).toMatchObject({ state: "active", branch: 1 });
+  });
+});

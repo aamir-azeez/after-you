@@ -24,6 +24,7 @@ import { clearMemberNames, isMemberNamesTable } from "../display-names";
 
 import { MAX_ROW_BYTES } from "./row-bound";
 import { nestedProof } from "./checkpoint-chain";
+import { OPEN_TURN_ID_PATTERN, recordingBytes, turnId, turnNumber, turnSlot } from "./open-turns";
 import { plainRow, type RowData } from "./row-codec";
 import { MAX_ATTEMPT_BYTES, ZERO_LINK, attemptLink, blobBytes, blobFromRows } from "./history-blob";
 import { bytesDigest } from "../blob-codec";
@@ -177,12 +178,13 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
   const tombstone = rawState.replay_transfer_version === 2;
   need(!tombstone || allow.tombstone, "invalid_history_snapshot");
   const state = exact(rawState, ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", tombstone ? "checkpoint_hash" : "checkpoint", "a_turn_id", "completed_pair_ids", "invite_code", "invite_expires_at", "created_at", "updated_at",
-    ...(tombstone ? ["replay_transfer_version"] : []), ...(rawState.simulation_version === undefined ? [] : ["simulation_version"])]);
+    ...(tombstone ? ["replay_transfer_version"] : []), ...(rawState.simulation_version === undefined ? [] : ["simulation_version"]), ...(rawState.open_stage === undefined ? [] : ["open_stage"])]);
   need(state.schema_version === 2);
   let selected;
   try { selected = chapter(state); } catch { throw new SnapshotError("unsupported_snapshot_chapter"); }
-  // Open turns rooms (open-turns.ts) are not restored by this tool yet: its checks read two turns a stage.
-  if (selected.open_turns) throw new SnapshotError("unsupported_snapshot_open_turns");
+  // Open turns (open-turns.ts): a stage takes as many turns as it needs, lettered a on; turn 1 is role a, every later one b.
+  const open = selected.open_turns;
+  need(open || state.open_stage === undefined);
   const simulationVersion = state.simulation_version ?? selected.simulation_version;
   need(typeof simulationVersion === "number" && Number.isInteger(simulationVersion) && (selected.supported_simulation_versions ?? [selected.simulation_version]).includes(simulationVersion), "unsupported_snapshot_simulation");
   need(text(state.room_id, ID_PATTERN) && text(state.host_id, ID_PATTERN) && (state.guest_id === null || text(state.guest_id, ID_PATTERN)) && state.host_id !== state.guest_id);
@@ -191,27 +193,48 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
   need(text(state.invite_code, /^[A-F0-9]{20}$/)); for (const name of ["created_at", "updated_at", "invite_expires_at"]) iso(state[name]);
   if (tombstone) need(state.stage_index === stages && state.a_turn_id === null && state.guest_id !== null && text(state.checkpoint_hash, HASH_PATTERN), "invalid_history_snapshot");
   const stubbed = (branch: number) => allow.offloaded.has(branch);
-  const roleOf = (id: string) => id.slice(-1);
-  const turns = new Map<string, { recording: RecordingV2 | { recording_hash: string }; full: RecordingV2 | null; row: Row }>();
+  const roleOf = (id: string) => open ? (turnNumber(id) === 1 ? "a" : "b") : id.slice(-1);
+  type Turn = { recording: RecordingV2 | { recording_hash: string }; full: RecordingV2 | null; row: Row };
+  const turns = new Map<string, Turn>();
   for (const row of turnRows) {
-    need(text(row.turn_id, /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/) && Number(String(row.turn_id).split("-")[1]) < stages && integer(row.accepted_revision) && row.accepted_revision > 0 && row.accepted_revision <= state.revision);
-    const [branch, index, role] = row.turn_id.slice(1).split("-");
-    need(Number(branch) <= state.branch);
+    need(text(row.turn_id, open ? OPEN_TURN_ID_PATTERN : /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/) && Number(String(row.turn_id).split("-")[1]) < stages && integer(row.accepted_revision) && row.accepted_revision > 0 && row.accepted_revision <= state.revision);
+    const [branch, index] = row.turn_id.slice(1).split("-"), role = roleOf(row.turn_id);
+    need(Number(branch) <= state.branch && (!open || turnNumber(row.turn_id) <= open.caps[Number(index)]));
+    // Odd turns are the stage's first pip's, even turns the other's (a and b before open turns).
+    const slot = turnSlot(selected.stages[Number(index)].first_player_slot, turnNumber(row.turn_id));
     const data = parseData(row.data);
     if (Object.keys(data).length === 1 && Object.hasOwn(data, "recording_hash")) {
       need(stubbed(Number(branch)) && text(data.recording_hash, HASH_PATTERN), "snapshot_unexpected_stub");
-      const first = selected.stages[Number(index)].first_player_slot === "p0" ? state.host_id : state.guest_id;
-      need(state.guest_id !== null && row.player_id === (role === "a" ? first : first === state.host_id ? state.guest_id : state.host_id));
+      need(state.guest_id !== null && row.player_id === (slot === "p0" ? state.host_id : state.guest_id));
       turns.set(row.turn_id, { recording: { recording_hash: data.recording_hash }, full: null, row }); continue;
     }
     let recording: RecordingV2;
     try { recording = await recordingV2(data, selected.key); } catch { throw new SnapshotError("invalid_snapshot_recording"); }
     need(recording.simulation_version === simulationVersion, "snapshot_simulation_mismatch");
-    need(recording.stage_id === selected.stages[Number(index)].id && recording.role === role);
+    need(recording.stage_id === selected.stages[Number(index)].id && recording.role === role && (!open || recording.player_slot === slot));
     need(row.player_id === (recording.player_slot === "p0" ? state.host_id : state.guest_id) && row.player_id !== null);
     need(acceptedRecording(recording));
     turns.set(row.turn_id, { recording, full: recording, row });
   }
+  /**
+   * Open turns: each branch's turns of a stage in play order, a on without a gap. Held records chain as the room took
+   * them: one checkpoint, each over the turn before it, never shorter, and only the last may close the stage.
+   */
+  const chains = new Map<string, Turn[]>();
+  if (open) for (const id of turns.keys()) {
+    const [branch, index] = id.slice(1).split("-").map(Number), group = `${branch}-${index}`;
+    if (chains.has(group)) continue;
+    const chain: Turn[] = [];
+    for (let n = 1; turns.has(turnId(branch, index, n)); n++) chain.push(turns.get(turnId(branch, index, n))!);
+    need([...turns.keys()].filter(other => other.startsWith(`t${group}-`)).length === chain.length, "snapshot_turn_gap");
+    chain.forEach((turn, i) => {
+      const previous = chain[i - 1]?.full, full = turn.full;
+      if (!previous || !full) return;
+      need(full.checkpoint_hash === previous.checkpoint_hash && full.source_recording_hash === previous.recording_hash && full.duration_ticks >= previous.duration_ticks && (i === chain.length - 1 || !full.completed), "snapshot_turn_chain");
+    });
+    chains.set(group, chain);
+  }
+  const stageChain = (branch: unknown, index: unknown) => chains.get(`${branch}-${index}`) ?? [];
   const initial = selected.initial(), chapterKey = selected.key;
   // A stub keeps only its checkpoint's hash; its stage is the stub pair's.
   type Known = { checkpoint_hash: string; stage_index: number; full: CheckpointV2 | null };
@@ -222,9 +245,11 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     const proof = nestedProof(checkpoint); need(proof, "invalid_snapshot_checkpoint");
     const previous = await nested(proof.previous);
     try {
-      const a = await recordingV2(proof.a, chapterKey), b = await recordingV2(proof.b, chapterKey);
-      need(acceptedRecording(a) && acceptedRecording(b), "invalid_snapshot_checkpoint");
-      return await checkpointV2(checkpoint, previous, a, b);
+      // Every turn of the stage, in play order: a and b, or an open turns stage's first, passes and closing turn.
+      const all: RecordingV2[] = [];
+      for (const turn of proof.turns) all.push(await recordingV2(turn, chapterKey));
+      need(all.every(turn => acceptedRecording(turn)), "invalid_snapshot_checkpoint");
+      return await checkpointV2(checkpoint, previous, all[0], all.at(-1)!, all.slice(1, -1));
     } catch { throw new SnapshotError("invalid_snapshot_checkpoint"); }
   }
   const pairs = new Map<string, { a: { recording_hash: string }; b: { recording_hash: string }; checkpoint: Known; stub: boolean }>();
@@ -232,7 +257,9 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     need(text(row.pair_id, /^p(?:[0-9]|[12][0-9]|3[01])-[0-7]$/) && Number(String(row.pair_id).split("-")[1]) < stages);
     const pair = exact(parseData(row.data), ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]);
     need(pair.pair_id === row.pair_id && integer(pair.branch, state.branch) && integer(pair.stage_index, stages - 1) && row.pair_id === `p${pair.branch}-${pair.stage_index}`);
-    const a = turns.get(`t${pair.branch}-${pair.stage_index}-a`), b = turns.get(`t${pair.branch}-${pair.stage_index}-b`);
+    // Open turns: a is turn 1 and b the closing turn, the stage's last on the branch; the turns between are its passes.
+    const chain = open ? stageChain(pair.branch, pair.stage_index) : [];
+    const a = open ? chain[0] : turns.get(`t${pair.branch}-${pair.stage_index}-a`), b = open ? (chain.length >= 2 ? chain.at(-1) : undefined) : turns.get(`t${pair.branch}-${pair.stage_index}-b`);
     need(a && b);
     if (isObject(pair.checkpoint) && Object.keys(pair.checkpoint).length === 1) {
       const hash = pair.checkpoint.checkpoint_hash;
@@ -243,7 +270,10 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     }
     need(a.full && b.full && same(pair.a, a.full) && same(pair.b, b.full));
     const known = checkpoints.get(a.full.checkpoint_hash);
-    need(known && known.stage_index === pair.stage_index && b.full.checkpoint_hash === known.checkpoint_hash && b.full.source_recording_hash === a.full.recording_hash && b.full.duration_ticks >= a.full.duration_ticks);
+    // An open turns closing turn chains over the stage's last pass (stageChain); checkpointV2 binds them all.
+    need(known && known.stage_index === pair.stage_index && b.full.checkpoint_hash === known.checkpoint_hash && (open !== undefined || (b.full.source_recording_hash === a.full.recording_hash && b.full.duration_ticks >= a.full.duration_ticks)));
+    const passes = chain.slice(1, -1).map(turn => turn.full);
+    need(passes.every(turn => turn !== null), "snapshot_live_stub");
     let previous = known.full;
     if (!previous) {
       need(isObject(pair.checkpoint)); const proof = nestedProof(pair.checkpoint as unknown as CheckpointV2);
@@ -251,7 +281,7 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
       previous = await nested(proof.previous); checkpoints.set(previous.checkpoint_hash, { ...known, full: previous });
     }
     let checkpoint: CheckpointV2;
-    try { checkpoint = await checkpointV2(pair.checkpoint, previous, a.full, b.full); } catch { throw new SnapshotError("invalid_snapshot_checkpoint"); }
+    try { checkpoint = await checkpointV2(pair.checkpoint, previous, a.full, b.full, passes as RecordingV2[]); } catch { throw new SnapshotError("invalid_snapshot_checkpoint"); }
     const entry = { checkpoint_hash: checkpoint.checkpoint_hash, stage_index: checkpoint.stage_index, full: checkpoint };
     checkpoints.set(checkpoint.checkpoint_hash, entry); pairs.set(row.pair_id, { a: a.full, b: b.full, checkpoint: entry, stub: false });
   }
@@ -271,6 +301,21 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
   const activeId = `t${state.branch}-${state.stage_index}-a`;
   need(state.a_turn_id === (state.stage_index < stages && turns.has(activeId) ? activeId : null));
   if (state.a_turn_id !== null) { const active = turns.get(String(state.a_turn_id)); need(active?.full && active.full.checkpoint_hash === current.checkpoint_hash, "snapshot_live_stub"); }
+  // Open turns: while the stage has its turn 1, open_stage lists every later turn of it in order, and their bytes with turn 1's.
+  const stageIds = new Set<string>();
+  if (open) {
+    need((state.open_stage === undefined) === (state.a_turn_id === null), "snapshot_open_stage_mismatch");
+    if (state.open_stage !== undefined) {
+      const kept = exact(state.open_stage, ["passes", "bytes"]), chain = stageChain(state.branch, state.stage_index);
+      need(Array.isArray(kept.passes) && kept.passes.length <= open.caps[Number(state.stage_index)] - 2 && chain.length === kept.passes.length + 1 && integer(kept.bytes, open.stage_bytes), "snapshot_open_stage_mismatch");
+      kept.passes.forEach((raw, i) => {
+        const pass = exact(raw, ["turn_id", "recording_hash"]), turn = chain[i + 1];
+        need(pass.turn_id === turnId(Number(state.branch), Number(state.stage_index), i + 2) && pass.recording_hash === turn.recording.recording_hash && turn.full && !turn.full.completed, "snapshot_open_stage_mismatch");
+      });
+      need(chain.every(turn => turn.full) && kept.bytes === chain.reduce((sum, turn) => sum + recordingBytes(turn.full!), 0), "snapshot_open_stage_mismatch");
+      for (const turn of chain) stageIds.add(String(turn.row.turn_id));
+    }
+  }
   // Historical attempts remain replayable. Within the current branch, every
   // accepted turn must agree with the live cursor or a completed active pair;
   // hiding an existing turn would make the next insert collide with its key.
@@ -279,10 +324,14 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     if (branch !== state.branch) continue;
     need(index <= state.stage_index);
     if (index < state.stage_index) need(state.completed_pair_ids[index] === `p${branch}-${index}`);
-    else need(roleOf(id) === "a" && state.a_turn_id === id);
+    else need(open ? stageIds.has(id) : roleOf(id) === "a" && state.a_turn_id === id);
     if (!tombstone) need(turn.full, "snapshot_live_stub");
   }
-  if (!tombstone) for (const id of state.completed_pair_ids) { const [branch, index] = String(id).slice(1).split("-"); for (const role of ["a", "b"]) need(turns.get(`t${branch}-${index}-${role}`)?.full, "snapshot_live_stub"); }
+  if (!tombstone) for (const id of state.completed_pair_ids) {
+    const [branch, index] = String(id).slice(1).split("-");
+    if (open) for (const turn of stageChain(branch, index)) need(turn.full, "snapshot_live_stub");
+    else for (const role of ["a", "b"]) need(turns.get(`t${branch}-${index}-${role}`)?.full, "snapshot_live_stub");
+  }
   const operationTurns = new Set<string>(), revisions = new Set<number>();
   for (const row of operationRows) {
     need(typeof row.request_key === "string" && text(row.request_hash, HASH_PATTERN));
@@ -293,12 +342,24 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     need(integer(r.branch, state.branch) && integer(r.stage_index, stages - 1) && r.stage_id === selected.stages[r.stage_index].id && typeof r.checkpoint_hash === "string" && checkpoints.has(r.checkpoint_hash));
     if (r.operation === "turns") {
       need(typeof r.turn_id === "string"); const turn = turns.get(r.turn_id);
-      need(turn && turn.row.player_id === owner && turn.row.accepted_revision === r.accepted_revision && turn.recording.recording_hash === r.recording_hash && r.turn_id === `t${r.branch}-${r.stage_index}-${roleOf(r.turn_id)}` && !operationTurns.has(r.turn_id)); operationTurns.add(r.turn_id);
-      if (roleOf(r.turn_id) === "a") need(r.pair_id === null && (turn.full ? r.checkpoint_hash === turn.full.checkpoint_hash : checkpoints.get(r.checkpoint_hash)?.stage_index === r.stage_index));
-      else { need(r.pair_id === `p${r.branch}-${r.stage_index}`); const pair = pairs.get(String(r.pair_id)); need(pair && pair.checkpoint.checkpoint_hash === r.checkpoint_hash); }
+      need(turn && turn.row.player_id === owner && turn.row.accepted_revision === r.accepted_revision && turn.recording.recording_hash === r.recording_hash && r.turn_id === `t${r.branch}-${r.stage_index}-${r.turn_id.slice(-1)}` && !operationTurns.has(r.turn_id)); operationTurns.add(r.turn_id);
+      // Open turns: a pass is receipted as a first turn is (no pair, the stage's checkpoint); only the closing turn names the pair.
+      const closes = open ? r.pair_id !== null : roleOf(r.turn_id) === "b";
+      if (!closes) need(r.pair_id === null && (turn.full ? r.checkpoint_hash === turn.full.checkpoint_hash && (roleOf(r.turn_id) === "a" || !turn.full.completed) : checkpoints.get(r.checkpoint_hash)?.stage_index === r.stage_index));
+      else { need(r.pair_id === `p${r.branch}-${r.stage_index}` && roleOf(r.turn_id) === "b"); const pair = pairs.get(String(r.pair_id)); need(pair && pair.checkpoint.checkpoint_hash === r.checkpoint_hash && (!open || pair.b.recording_hash === r.recording_hash)); }
     } else need(r.operation === "fork" && r.branch > 0 && r.turn_id === null && r.recording_hash === null && r.pair_id === null && checkpoints.get(r.checkpoint_hash)?.stage_index === r.stage_index);
   }
-  need(operationTurns.size === turns.size, "snapshot_missing_receipt");
+  // Open turns: playing a turn again copies the stage's turns before it onto the new branch (room.ts copyTurns) with no
+  // receipt of their own. A copy is the same turn one branch back (record, member, revision); copies lead their stage and a turn follows them.
+  let copies = 0;
+  if (open) for (const [id, turn] of turns) {
+    if (operationTurns.has(id)) continue;
+    const [branch, index] = id.slice(1).split("-").map(Number), n = turnNumber(id), source = branch > 0 ? turns.get(turnId(branch - 1, index, n)) : undefined;
+    need(source && source.recording.recording_hash === turn.recording.recording_hash && source.row.player_id === turn.row.player_id && source.row.accepted_revision === turn.row.accepted_revision &&
+      (n === 1 || !operationTurns.has(turnId(branch, index, n - 1))) && turns.has(turnId(branch, index, n + 1)), "snapshot_missing_receipt");
+    copies++;
+  }
+  need(operationTurns.size + copies === turns.size, "snapshot_missing_receipt");
   await mediaContent(state, turns, pairs, photoRows, photoOperationRows, reactionRows, reactionOperationRows, deliveryRows);
   return { logicalId: state.room_id, summary: { state: tombstone ? "transferred" : "active", revision: state.revision, branch: state.branch }, newChapter: !sameChapter(selected.key, RELAY_KEY) };
 }
