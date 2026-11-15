@@ -1067,7 +1067,7 @@ func _fruits_tab() -> void:
 	plain.flow.show_store("home", "fruits")
 	await _frames()
 	_check(plain.flow.tab == "fruits" and plain.host.overlay.find_child("PollenStoreTogether", true, false) == null and plain.host.overlay.find_child("PollenStoreConvert", true, false) == null, "Opened on its Fruits tab; with no Fruits page to open, neither of its buttons shows")
-	_check((plain.flow._page.chip as Control).fruits_label.text == "0", "Before the first Fruits read the chip shows 0 Fruits")
+	_check((plain.flow._page.chip as Control).fruits_label.text == PlayerCopy.CHIP_WAITING, "Before the first Fruits read the chip shows the placeholder, never 0")
 	plain.host.queue_free()
 	await _frames(2)
 

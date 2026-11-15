@@ -93,7 +93,7 @@ class Preview extends "res://relay_preview.gd":
 		button.name = action_id
 		actions[action_id] = callback
 		return button
-	func _add_safety_action(_card: VBoxContainer) -> void: pass
+	func _add_safety_flag() -> void: pass
 	func _add_redo_action(_card: VBoxContainer) -> void: pass
 
 ## The solo Lighthouse screen with its save and finish left out.

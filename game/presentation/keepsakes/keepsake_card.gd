@@ -101,7 +101,6 @@ static func marks_row(side: float) -> HBoxContainer:
 	together.tooltip_text = PlayerCopy.KEEPSAKE_MARK_TOGETHER
 	together.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	together.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	together.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	together.custom_minimum_size = Vector2(side, side)
 	together.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(together)

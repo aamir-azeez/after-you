@@ -214,7 +214,7 @@ func show_room() -> void:
 			reactions.add_child(host._list_button(reaction,func(): host.room_play=true; host._react(reaction),false))
 		card.add_child(reactions)
 	if host.active_room.get("guest_id") != null:
-		card.add_child(host._list_button("Report or block player",host._room_safety,false))
+		card.add_child(host._list_button(PlayerCopy.REPORT_OR_BLOCK,host._room_safety,false))
 	if pending.is_empty() and not redo_pending and not LocalSave.normalize_attempt(host.active_room.get("recordings",{})).a.is_empty():
 		card.add_child(host._list_button("Start a new attempt",confirm_fork,false))
 	if pending.is_empty(): _add_redo_action(card)

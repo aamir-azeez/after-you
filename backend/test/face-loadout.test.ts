@@ -10,6 +10,8 @@ import { POLLEN_CLIENT, withConfig } from "./config";
 import { FACE_PACKS_HEADER } from "../src/v2/end-reactions";
 import { droppable } from "../src/pollen/item-blooms";
 import { releasedCatalog } from "../src/pollen/catalog";
+import { RETIRED_KIND, retiredRefunds } from "../src/pollen/retired";
+import { POLLEN_SHOP_TABLES } from "../src/storage-schema";
 
 // Face cosmetics on the wardrobe (FACE_SINGLES): the reaction slots kept beside the look, the resting face slot, the
 // reaction slot items, and a face owned through a pack never sold again. Synthetic identities only.
@@ -122,23 +124,60 @@ describe("the reaction slots", () => {
   it("count a pack's faces as owned and never sell one of them again", async () => {
     const player = await create();
     await fund(player, 10_000);
-    const vars = FACES_ON("wink");
-    // Garden faces still sells while none of its faces sells alone.
-    expect((await buy(player, "pack", "garden_faces", 5000, SHOP)).status).toBe(200);
-    expect((await wardrobe(player, vars)).faces).toEqual(["heart_eyes", "proud", "wink"]);
-    expect(await errorOf(await buy(player, "item", "wink", 1000, vars))).toBe("already_owned");
-    expect((await equip(player, {}, vars, ["wink", "heart_eyes", "", "", "", ""])).status).toBe(200);
-    // With Wink sold alone, its pack no longer sells; the other pack still does.
+    const vars = FACES_ON("wow");
+    // Big feelings still sells while none of its faces sells alone; Garden faces, holding the retired Heart eyes, never does.
+    expect(await errorOf(await buy(player, "pack", "garden_faces", 5000, SHOP))).toBe("not_for_sale");
+    expect((await buy(player, "pack", "big_feelings", 5000, SHOP)).status).toBe(200);
+    expect((await wardrobe(player, vars)).faces).toEqual(["crying", "dizzy", "wow"]);
+    expect(await errorOf(await buy(player, "item", "wow", 1500, vars))).toBe("already_owned");
+    expect((await equip(player, {}, vars, ["wow", "dizzy", "", "", "", ""])).status).toBe(200);
+    // With Wow sold alone, its pack no longer sells.
     const other = await create();
     await fund(other, 10_000);
-    expect(await errorOf(await buy(other, "pack", "garden_faces", 5000, vars))).toBe("not_for_sale");
-    expect((await buy(other, "pack", "big_feelings", 5000, vars)).status).toBe(200);
+    expect(await errorOf(await buy(other, "pack", "big_feelings", 5000, vars))).toBe("not_for_sale");
     // A pack whose every face was bought alone is never sold for nothing.
     const third = await create();
     await fund(third, 20_000);
-    const all = FACES_ON("heart_eyes", "proud", "wink");
-    for (const face of ["heart_eyes", "proud", "wink"]) expect((await buy(third, "item", face, CATALOG.tier_prices[CATALOG.items[face].tier], all)).status).toBe(200);
-    expect(await errorOf(await buy(third, "pack", "garden_faces", 5000, SHOP))).toBe("already_owned");
+    const all = FACES_ON("wow", "crying", "dizzy");
+    for (const face of ["wow", "crying", "dizzy"]) expect((await buy(third, "item", face, CATALOG.tier_prices[CATALOG.items[face].tier], all)).status).toBe(200);
+    expect(await errorOf(await buy(third, "pack", "big_feelings", 5000, SHOP))).toBe("already_owned");
+  });
+});
+
+describe("the retired faces", () => {
+  const balance = async (account: Account) => (await (await call("/v1/pollen", "GET", account, undefined, SHOP)).json<{ balance: number }>()).balance;
+  const own = (account: Account, ...ids: string[]) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, state) => {
+    for (const table of POLLEN_SHOP_TABLES) state.storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+    for (const id of ids) state.storage.sql.exec("INSERT INTO pollen_items VALUES (?,?,?,?)", id, CATALOG.packs[id] ? "pack" : "item", "test", Date.now());
+  });
+
+  it("are never released or sold, whatever CONFIG lists, and their codes stay reserved", async () => {
+    expect([...CATALOG.retired ?? []].sort()).toEqual(["heart_eyes", "smitten"]);
+    const released = releasedCatalog(new Set(codes("smitten", "heart_eyes", "proud")));
+    expect([released.items.smitten.released, released.items.heart_eyes.released, released.items.proud.released]).toEqual([false, false, true]);
+    expect([CATALOG.items.smitten.code, CATALOG.items.heart_eyes.code]).toEqual([413, 416]);
+    const player = await create();
+    await fund(player, 10_000);
+    const vars = FACES_ON("smitten", "heart_eyes");
+    expect(await errorOf(await buy(player, "item", "smitten", 3000, vars))).toBe("not_for_sale");
+    expect(await errorOf(await buy(player, "item", "heart_eyes", 1500, vars))).toBe("not_for_sale");
+    expect((await wardrobe(player, vars)).prices).not.toHaveProperty("smitten");
+  });
+
+  it("are paid back once to whoever owns one, alone or in its pack, and stay owned", async () => {
+    expect(retiredRefunds(["garden_faces", "smitten", "wow"]).map(entry => [entry.key, entry.amount, entry.kind])).toEqual([
+      ["retired:smitten", 3000, RETIRED_KIND], ["retired:heart_eyes", 1500, RETIRED_KIND]]);
+    expect(retiredRefunds(["big_feelings", "proud"])).toEqual([]);
+    const player = await create();
+    await fund(player, 100);
+    await own(player, "smitten", "garden_faces");
+    expect(await balance(player)).toBe(100 + 3000 + 1500);
+    expect(await balance(player)).toBe(4600);
+    expect((await wardrobe(player, FACES_ON())).faces).toEqual(["heart_eyes", "proud", "smitten", "wink"]);
+    // A player who owns neither is paid nothing.
+    const other = await create();
+    await fund(other, 100);
+    expect(await balance(other)).toBe(100);
   });
 });
 

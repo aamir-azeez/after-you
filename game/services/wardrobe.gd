@@ -61,6 +61,7 @@ extends RefCounted
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
+const ReactionCatalog = preload("res://services/reaction_catalog.gd")
 
 const PATH := "user://wardrobe.json"
 const VERSION := 1
@@ -433,8 +434,9 @@ func pending(server: String, owner: String) -> Dictionary:
 func effective_slots(server: String, owner: String) -> Array:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not (scope.view as Dictionary).has("reactions"): return []
-	if scope.has("pending") and scope.pending.has("reactions"): return (scope.pending.reactions as Array).duplicate()
-	return (scope.view.reactions as Array).duplicate()
+	var slots: Array = scope.pending.reactions if scope.has("pending") and scope.pending.has("reactions") else scope.view.reactions
+	# A face this build does not know (one taken out of the game) leaves its place empty.
+	return slots.map(func(face: Variant) -> Variant: return face if face is String and (face.is_empty() or ReactionCatalog.is_face(face)) else "")
 
 ## What the player wears on this phone: the pending look, else the confirmed one.
 func effective_look(server: String, owner: String) -> Dictionary:
@@ -548,6 +550,24 @@ func active_look() -> Dictionary:
 	if scope.is_empty() or not bool(scope.get("enabled", false)): return {}
 	if scope.has("pending"): return (scope.pending.look as Dictionary).duplicate()
 	return ((scope.view as Dictionary).get("look", {}) as Dictionary).duplicate()
+
+## The signed-in player's last confirmed wardrobe ({} while the wardrobe is
+## off), and their reaction slots as shown on this phone (effective_slots).
+## The active scope outlives Main (follow keeps it as Main leaves), so every
+## faces card reads these, on Home and in a solo chapter alike (services/face_packs.gd).
+func active_view() -> Dictionary:
+	follow()
+	var scope: Dictionary = _scopes.get(_active, {})
+	return (scope.view as Dictionary).duplicate(true) if not scope.is_empty() and bool(scope.get("enabled", false)) else {}
+
+func active_slots() -> Array:
+	follow()
+	return effective_slots(_active.get_slice("|", 0), _active.get_slice("|", 1)) if _active.contains("|") else []
+
+## The active scope's key ("" while signed out).
+func active_key() -> String:
+	follow()
+	return _active
 
 func _announce(server: String, owner: String) -> void:
 	follow()

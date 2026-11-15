@@ -9,16 +9,18 @@ extends RefCounted
 ## the play screen's action pop-up while the live pip is at it (prompt(), drawn
 ## by kit/pair_chip.gd, lit while the control is on). A ball pad keeps a tile
 ## beside it, as no pop-up carries its letter. A light receiver is a result,
-## not an input: it keeps a tile that lights only while its gate stands open,
-## and its inputs are the mirrors on the paths that light it (_light_inputs),
-## which carry its letter in the pop-up and show its pair near. A gate several controls work
+## not an input: its letter is on a plaque on its own lamp post (no floor tile
+## beside it), which lights only while one of its gates stands open, and its
+## inputs are the mirrors on the paths that light it (_light_inputs), which
+## carry its letter in the pop-up and show its pair near. A gate several controls work
 ## shows their tiles side by side in one short row; a control whose tile and
 ## gate tile would touch shows it once, and every row is placed on its own
 ## floor clear of the controls, the ownership marks, the decks and other rows,
 ## by the gate's entrance or, without room there, by its far end. A world overrides with skip() (a control or gate it shows some other
 ## way) and tag() (a tile on a sign it builds itself); it supplies the floor
 ## point of a control (_pair_control_anchor), of a gate's crossing's ends,
-## the entrance first (_pair_gate_anchors) and anything else of its own a tile keeps clear of
+## the entrance first (_pair_gate_anchors), a receiver's lamp post
+## (_pair_receiver_post: {top, radius}) and anything else of its own a tile keeps clear of
 ## (_pair_keep_clear: discs {centre, radius} or {rect}, with an optional y).
 ##
 ## States, from the snapshot alone and per tile: faint (a soft wash of the
@@ -28,8 +30,9 @@ extends RefCounted
 ## and a pool of warm light around the tile): a lever's or pad's tiles while
 ## it is on or held; a selector's or receiver's tile at a gate only while that
 ## gate stands open at a value it asks of the selector, so a selector lights
-## the one gate end its value opens; a receiver's own tile while any of its
-## gates is open. The world
+## the one gate end its value opens; a receiver's plaque while any of its
+## gates is open. On a plaque's metal the faint state shows a little more
+## (PLAQUE_FAINT_ALPHA), so its letter still reads. The world
 ## hands the stage over with prepare() and the tiles are laid out when first
 ## shown or read, after every world has built its own scenery.
 ## Past ten pairs the letters start again with a band down the tile's edge
@@ -44,7 +47,8 @@ extends RefCounted
 ## Presentation only: built from the hashed stage and fed the snapshot;
 ## nothing here feeds the simulation, a recording or a checkpoint, so a replay
 ## shows what play showed. Cost: one mesh and one material per stage (a sign
-## tile adds one small mesh); present() works out the states, a few distance
+## tile adds one small mesh; plaques share a second material, each a small
+## mesh and four shared-material parts); present() works out the states, a few distance
 ## checks, and sets the material only when they change. The mirrors that light
 ## a receiver are traced once per stage, every way its mirrors can turn. The letter meshes, the
 ## pop-up's font and the shader are made once a session and let go through
@@ -56,6 +60,9 @@ const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
 ## The game's own light rule, to find the mirrors that light a receiver.
 const BeamField = preload("res://core/beam_field.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
+## The camera's angle, which a plaque faces.
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const SHADER := preload("res://presentation/kit/pair_tags.gdshader")
 ## A tile is TAG across; tiles keep GAP from each other and from what they avoid.
 const TAG := 0.28
@@ -114,6 +121,19 @@ const HALO := 3.6
 const GLOW_ALPHA := 0.9
 ## Tiles this near in height share a floor for the pool's reach.
 const GLOW_FLOOR := 0.3
+## A receiver's plaque: a metal plate on a short arm, clamped to its lamp post
+## PLAQUE_UP over its floor (on a shorter post PLAQUE_BELOW_TOP under its lamp
+## head, never under PLAQUE_LOW), turned to face the camera. Its tile is
+## PLAQUE_SCALE times a floor tile, so its letter reads at phone size, on a
+## plate PLAQUE_MARGIN of it across with a darker rim and clamp. Faint, its
+## layers (rim, face, letter) show PLAQUE_FAINT_ALPHA strong over the metal.
+const PLAQUE_UP := 1.1
+const PLAQUE_BELOW_TOP := 0.45
+const PLAQUE_LOW := 0.3
+const PLAQUE_SCALE := 1.45
+const PLAQUE_MARGIN := 1.12
+const PLAQUE_METAL := Color("697a88")
+const PLAQUE_FAINT_ALPHA := Vector3(0.34, 0.38, 0.55)
 ## The shader's uniforms, by name (pair_tags.gdshader).
 const LOOK := {&"faint_alpha": FAINT_ALPHA, &"near_lighten": NEAR_LIGHTEN, &"pale": PALE, &"lit_lighten": LIT_LIGHTEN, &"lit_glow": LIT_GLOW, &"warm": WARM, &"glow": GLOW, &"glow_alpha": GLOW_ALPHA}
 ## The shader keeps a state for this many tiles (a pair's tile in a row, or on
@@ -144,8 +164,9 @@ const GATE_KEYS := ["pad_id", "lever_id", "second_lever_id", "ball_pad_id"]
 const GROUPS := ["pressure_pads", "ball_pads", "levers", "controls", "receivers"]
 ## Inputs whose letter the action pop-up carries, so they have no floor tile:
 ## levers and selectors (worked with the action button) and pressure pads (a
-## pip stands on them). Ball pads and receivers keep their tile.
+## pip stands on them). Ball pads keep their tile; receivers show a plaque.
 const PROMPTED := ["levers", "controls", "pressure_pads"]
+const PLAQUED := "receivers"
 ## The pop-up's chip, in the play screen's canvas pixels (1280 by 720 at the
 ## least): CHIP across, the letter LETTER_SHARE of its face tall, so on a
 ## 2400 by 1080 phone it is about 72 px with a letter about 30 px tall.
@@ -170,6 +191,8 @@ var _rows: Array[Dictionary] = []
 ## Every tile drawn, by its state slot: {pair (index), gates (route ids)}.
 var _tiles: Array[Dictionary] = []
 var _material: ShaderMaterial
+## The plaques' material: the same states, a stronger faint.
+var _plaque_material: ShaderMaterial
 var _node: MeshInstance3D
 var _states := PackedVector2Array()
 var _next := PackedVector2Array()
@@ -189,6 +212,7 @@ func clear() -> void:
 	_rows.clear()
 	_tiles.clear()
 	_material = null
+	_plaque_material = null
 	_node = null
 	_states = PackedVector2Array()
 	_view = {}
@@ -341,14 +365,9 @@ func build(view: Dictionary) -> void:
 	if not FRAMES.has(_frame): _frame = DEFAULT_FRAME
 	_states.resize(MAX_STATES)
 	_states.fill(Vector2.ZERO)
-	if _rows.reduce(func(sum: int, row: Dictionary) -> int: return sum + row.pairs.size(), 0) + _signs.size() > MAX_STATES: push_warning("PairTags: more tiles than the shader's %d states; the last ones share one" % MAX_STATES)
-	_material = ShaderMaterial.new()
-	_material.shader = SHADER
-	# Under the spirits' ground shadows, which are see-through too.
-	_material.render_priority = -1
-	for uniform: StringName in LOOK:
-		_material.set_shader_parameter(uniform, LOOK[uniform])
-	_material.set_shader_parameter(&"states", _states)
+	var plaqued := _pairs.filter(func(pair: Dictionary) -> bool: return pair.group == PLAQUED)
+	if _rows.reduce(func(sum: int, row: Dictionary) -> int: return sum + row.pairs.size(), 0) + _signs.size() + plaqued.size() > MAX_STATES: push_warning("PairTags: more tiles than the shader's %d states; the last ones share one" % MAX_STATES)
+	_material = _look(FAINT_ALPHA)
 	if not _rows.is_empty():
 		_node = MeshInstance3D.new()
 		_node.name = "PairTags"
@@ -370,6 +389,57 @@ func build(view: Dictionary) -> void:
 		node.material_override = _material
 		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		(sign.parent as Node3D).add_child(node)
+	if not plaqued.is_empty(): _plaque_material = _look(PLAQUE_FAINT_ALPHA)
+	for pair: Dictionary in plaqued: _plaque(pair)
+
+## The tiles' material: the kit's LOOK, faint at `faint` (alphas per layer),
+## reading the stage's states.
+func _look(faint: Vector3) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = SHADER
+	# Under the spirits' ground shadows, which are see-through too.
+	material.render_priority = -1
+	for uniform: StringName in LOOK:
+		material.set_shader_parameter(uniform, LOOK[uniform])
+	material.set_shader_parameter(&"faint_alpha", faint)
+	material.set_shader_parameter(&"states", _states)
+	return material
+
+## Receiver `pair`'s plaque on its lamp post (PLAQUE_UP), facing the camera:
+## an arm out from a clamp round the post, a plate with a darker rim leaning
+## back until it faces the camera, its top edge clear of the post, and on it
+## the pair's tile, lit for every gate the receiver works.
+func _plaque(pair: Dictionary) -> void:
+	var post: Dictionary = _world.call(&"_pair_receiver_post", pair.entity)
+	var foot: Vector3 = pair.anchor
+	var facing := ViewFit.CAMERA_FROM.normalized()
+	var lean := atan2(Vector2(facing.x, facing.z).length(), facing.y)
+	var side := TAG * PLAQUE_SCALE * PLAQUE_MARGIN
+	var radius := float(post.radius)
+	var out := radius + side * 0.5 * cos(lean) + 0.02
+	var mount := Node3D.new()
+	mount.name = "PairTagPlaque_" + str(pair.control)
+	mount.position = foot + Vector3(0, clampf(float(post.top) - foot.y - PLAQUE_BELOW_TOP, PLAQUE_LOW, PLAQUE_UP), 0)
+	# Its arm points toward the camera across the floor.
+	mount.rotation.y = atan2(facing.x, facing.z)
+	_world.get("terrain").add_child(mount)
+	Primitives.mesh_node(Primitives.cached_box(Vector3(0.035, 0.035, out)), Primitives.shared_material(PLAQUE_METAL.darkened(0.15)), Vector3(0, 0, out * 0.5), mount)
+	Primitives.mesh_node(Primitives.cached_shape(Primitives.cylinder_mesh(radius + 0.025, 0.06)), Primitives.shared_material(PLAQUE_METAL.darkened(0.25)), Vector3(0, 0.07, 0), mount)
+	var plate := Node3D.new()
+	plate.position = Vector3(0, 0, out)
+	plate.rotation.x = lean
+	mount.add_child(plate)
+	Primitives.mesh_node(Primitives.cached_box(Vector3(side, 0.022, side)), Primitives.shared_material(PLAQUE_METAL), Vector3(0, -0.012, 0), plate)
+	Primitives.mesh_node(Primitives.cached_box(Vector3(side + 0.035, 0.03, side + 0.035)), Primitives.shared_material(PLAQUE_METAL.darkened(0.3)), Vector3(0, -0.03, 0), plate)
+	var tile := MeshInstance3D.new()
+	tile.name = "PairTagPlaqueTile"
+	tile.scale = Vector3.ONE * PLAQUE_SCALE
+	# The tile glows on its own face: no pool of light in the air.
+	tile.mesh = _bake([{"at": Vector3.ZERO, "pairs": [pair.index], "slots": {pair.index: _tiles.size()}}], false)
+	_tiles.append({"pair": pair.index, "gates": pair.gates.map(func(route: Dictionary) -> String: return str(route.id))})
+	tile.material_override = _plaque_material
+	tile.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	plate.add_child(tile)
 
 ## Every tile the stage shows: {control, letter, band, index, sides (CONTROL
 ## and or GATE), gates (route ids), at (terrain space, the floor under its
@@ -462,6 +532,7 @@ func present(state: Dictionary) -> void:
 	_states = _next
 	_next = shown
 	_material.set_shader_parameter(&"states", _states)
+	if _plaque_material != null: _plaque_material.set_shader_parameter(&"states", _states)
 
 ## Whether either spirit stands near one of the pair's inputs.
 func _spirit_near(pair: Dictionary, players: Dictionary) -> bool:
@@ -471,11 +542,11 @@ func _spirit_near(pair: Dictionary, players: Dictionary) -> bool:
 	return false
 
 ## Whether a tile of `pair` at `gates` (route ids; none beside the control)
-## glows: a lever's or pad's tiles while it is on; a selector's or receiver's
-## tile at gates only while one of them stands open at a value it asks, and
-## beside it while any of its gates does.
+## glows: a lever's or pad's tiles while it is on; a selector's tile or a
+## receiver's (at a gate, or its plaque, at every gate it works) only while
+## one of its gates stands open at a value it asks.
 func _tile_lit(pair: Dictionary, gates: Array, state: Dictionary) -> bool:
-	if gates.is_empty() or pair.kind != &"other": return _active(pair, state)
+	if pair.kind != &"other": return _active(pair, state)
 	var open: Dictionary = state.get("bridges", {})
 	var value := str(state.get("controls", {}).get(str(pair.control), ""))
 	for route: String in gates:
@@ -539,18 +610,13 @@ func _badge(pair: Dictionary, state: Dictionary, input: Dictionary) -> Dictionar
 	elif pair.kind != &"other": lit = _active(pair, state)
 	return {"control": str(pair.control), "input": str(input.get("id", pair.control)), "letter": letter_of(index), "band": band_of(index), "colour": colour_of(index), "frame": _frame, "lit": lit}
 
+## Whether a lever is on or a pad held now (a selector or receiver is read
+## through its gates, _tile_lit).
 func _active(pair: Dictionary, state: Dictionary) -> bool:
 	var id := str(pair.control)
 	match pair.kind:
 		&"lever": return bool(state.get("levers", {}).get(id, false))
 		&"pad": return bool(state.get("hold_pads", {}).get(id, false))
-	# A selector or receiver is active while a gate it works stands open with
-	# the selector at a value that gate asks of it.
-	var open: Dictionary = state.get("bridges", {})
-	var value := str(state.get("controls", {}).get(id, ""))
-	for route: Dictionary in pair.gates:
-		var asked: Array = pair.values.get(str(route.id), [])
-		if bool(open.get(str(route.id), false)) and (asked.is_empty() or value in asked): return true
 	return false
 
 func _pair(control: String) -> Dictionary:
@@ -598,8 +664,9 @@ func _layout(view: Dictionary) -> Array[Dictionary]:
 		# The near state reads every input's floor point, tile or not.
 		for input: Dictionary in pair.inputs:
 			input["anchor"] = anchor if input.id == pair.control else _world.call(&"_pair_control_anchor", input.entity)
-		# A prompted input's letter is in the action pop-up, not on the floor.
-		if pair.prompted: continue
+		# A prompted input's letter is in the action pop-up, a receiver's on its
+		# plaque (_plaque), not on the floor.
+		if pair.prompted or pair.group == PLAQUED: continue
 		# Beside the control on its floor, else on the nearest floor beside it
 		# (a bucket hanging in a shaft shows its tile on the rim above).
 		var ends: Array = [anchor]

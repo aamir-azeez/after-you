@@ -44,7 +44,7 @@ const BODY_SHADER = preload("res://presentation/spirit_body_pattern.gdshader")
 const MAX_FIELDS := 4
 const MAX_FIELD_POINTS := 24
 const MAX_BANDS := 4
-const MAX_STAMPS := 5
+const MAX_STAMPS := 8
 ## The head's mapping: half width, the height of v 0, the height (metres,
 ## head space). The board's u, v name the visible front, so 0 to 1 spans
 ## FRONT_WIDTH of the head's width and FRONT_HEIGHT of its height: the rounded

@@ -26,8 +26,8 @@ const LIFTED_EDGE := Color("4f9d89")
 const SLOT_FILL := Color("efe8d4")
 const HEART_FILL := Color("fbe1dc")
 const SLOT_SIZE := Vector2(96, 96)
-const CARD_SIZE := Vector2(112, 132)
-const FACE := 56.0
+static var CARD_SIZE: Vector2 = ShopKit.tile(Vector2(112, 132))
+static var FACE: float = ShopKit.tile(60.0)
 ## A face in a reaction slot.
 const SLOT_FACE := 76.0
 ## The other cards while a face is being put in a slot.
@@ -37,7 +37,7 @@ signal face_chosen(id: String)
 signal slot_chosen(index: int)
 
 var _row_panel: PanelContainer
-var _row: HBoxContainer
+var _row: HFlowContainer
 var _grid: HFlowContainer
 var _key := ""
 
@@ -51,8 +51,10 @@ func _init() -> void:
 	column.add_theme_constant_override("separation", 8)
 	_row_panel.add_child(column)
 	column.add_child(ShopKit.text(PlayerCopy.WARDROBE_YOUR_REACTIONS, 17, INK, ShopKit.bold_font()))
-	_row = HBoxContainer.new()
-	_row.add_theme_constant_override("separation", 10)
+	# Flows onto a second row where the panel is narrow.
+	_row = HFlowContainer.new()
+	_row.add_theme_constant_override("h_separation", 10)
+	_row.add_theme_constant_override("v_separation", 10)
 	column.add_child(_row)
 	_grid = HFlowContainer.new()
 	_grid.name = "ReactionFaces"
@@ -157,7 +159,7 @@ func _card(entry: Dictionary, picked: bool, shop: bool, color: String) -> Button
 	var picture := PanelContainer.new()
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	picture.add_theme_stylebox_override("panel", ThemeRules.rounded(SLOT_FILL, 10))
-	picture.custom_minimum_size.y = 64
+	picture.custom_minimum_size.y = ShopKit.tile(68.0)
 	column.add_child(picture)
 	var icon := EndReactions.FaceIcon.new(str(entry.id), color, FACE)
 	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -169,7 +171,7 @@ func _card(entry: Dictionary, picked: bool, shop: bool, color: String) -> Button
 		play.size_flags_horizontal = Control.SIZE_SHRINK_END
 		play.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		picture.add_child(play)
-	var title := ShopKit.text(str(entry.name), 13, INK, ShopKit.bold_font())
+	var title := ShopKit.text(str(entry.name), ShopKit.tile_text(13), INK, ShopKit.bold_font())
 	title.clip_text = true
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	column.add_child(title)
@@ -178,13 +180,13 @@ func _card(entry: Dictionary, picked: bool, shop: bool, color: String) -> Button
 	bottom.add_theme_constant_override("separation", 4)
 	column.add_child(bottom)
 	var word := PlayerCopy.FACE_PACK_FREE_TAB.to_upper() if tier == "free" else TierFrame.word(tier)
-	var tier_word := ShopKit.text(word, 9, TierFrame.ink(tier), ShopKit.bold_font())
+	var tier_word := ShopKit.text(word, ShopKit.tile_text(9), TierFrame.ink(tier), ShopKit.bold_font())
 	tier_word.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tier_word.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	bottom.add_child(tier_word)
 	if int(entry.get("in_slot", -1)) >= 0: bottom.add_child(_tag(PlayerCopy.WARDROBE_IN_SLOT, true))
 	elif bool(entry.owned) and tier != "free": bottom.add_child(_tag(PlayerCopy.WARDROBE_OWNED_TAG, false))
-	elif bool(entry.sold) and shop: bottom.add_child(ShopKit.amount(int(entry.price), 12, INK, "", "", "pollen"))
+	elif bool(entry.sold) and shop: bottom.add_child(ShopKit.amount(int(entry.price), ShopKit.tile_text(12), INK, "", "", "pollen"))
 	return card
 
 ## In a slot (ink) or Yours (mint), a small pill.

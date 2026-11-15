@@ -56,7 +56,6 @@ func _init() -> void:
 	max_value = 20.0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	custom_minimum_size = MIN_SIZE
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	set_process(false)
 	label = Label.new()
 	label.name = "Remaining"

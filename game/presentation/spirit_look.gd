@@ -24,11 +24,10 @@ const KNOCKED_OUT := &"knocked_out"
 ## The 3D face; no reaction icon draws it.
 const JOY := &"joy"
 ## The reaction packs' faces (services/reaction_catalog.gd PACKS, approved on
-## board 6b). Garden faces: a cream heart with a red heart inside, eyes shut
-## in arcs bowed down with Joy's cheeks, and one eye shut in a wink. Big
+## board 6b). Garden faces: eyes shut in arcs bowed down with Joy's cheeks,
+## and one eye shut in a wink. Big
 ## feelings: a star for each pupil, squeezed shut with tear streams, and a
 ## spiral in each eye.
-const HEART_EYES := &"heart_eyes"
 const PROUD := &"proud"
 const WINK := &"wink"
 const WOW := &"wow"
@@ -50,7 +49,6 @@ const DROWSY := &"drowsy"
 const GASP := &"gasp"
 const PEEKABOO := &"peekaboo"
 const YAY := &"yay"
-const SMITTEN := &"smitten"
 const STARRY := &"starry"
 const FLOWER := &"flower"
 ## The resting faces (content/cosmetics/faces.gd slot "rest_face"): worn like a
@@ -61,24 +59,24 @@ const REST_BEAN := &"rest_bean"
 const REST_ROUND := &"rest_round"
 const REST_WIDE := &"rest_wide"
 const REST_SPROUT := &"rest_sprout"
-const REACTION_FACES: Array[StringName] = [AWW, SHY, HUH, PLEASE, TOUCHED, LUCKY, GIGGLE, CURIOUS, NERVOUS, DROWSY, GASP, PEEKABOO, YAY, SMITTEN, STARRY, FLOWER]
+const REACTION_FACES: Array[StringName] = [AWW, SHY, HUH, PLEASE, TOUCHED, LUCKY, GIGGLE, CURIOUS, NERVOUS, DROWSY, GASP, PEEKABOO, YAY, STARRY, FLOWER]
 const REST_FACES: Array[StringName] = [REST_BUTTON, REST_BEAN, REST_ROUND, REST_WIDE, REST_SPROUT]
 ## The faces that move: eye_at() changes them on the face's own clock.
-const ANIMATED: Array[StringName] = [GIGGLE, CURIOUS, NERVOUS, DROWSY, GASP, PEEKABOO, YAY, SMITTEN, STARRY, FLOWER]
-const EXPRESSIONS: Array[StringName] = [NORMAL, HAPPY, ANNOYED, SAD, ANGRY, SURPRISED, SLEEPY, SQUEEZE, KNOCKED_OUT, JOY, HEART_EYES, PROUD, WINK, WOW, CRYING, DIZZY,
-	AWW, SHY, HUH, PLEASE, TOUCHED, LUCKY, GIGGLE, CURIOUS, NERVOUS, DROWSY, GASP, PEEKABOO, YAY, SMITTEN, STARRY, FLOWER,
+const ANIMATED: Array[StringName] = [GIGGLE, CURIOUS, NERVOUS, DROWSY, GASP, PEEKABOO, YAY, STARRY, FLOWER]
+const EXPRESSIONS: Array[StringName] = [NORMAL, HAPPY, ANNOYED, SAD, ANGRY, SURPRISED, SLEEPY, SQUEEZE, KNOCKED_OUT, JOY, PROUD, WINK, WOW, CRYING, DIZZY,
+	AWW, SHY, HUH, PLEASE, TOUCHED, LUCKY, GIGGLE, CURIOUS, NERVOUS, DROWSY, GASP, PEEKABOO, YAY, STARRY, FLOWER,
 	REST_BUTTON, REST_BEAN, REST_ROUND, REST_WIDE, REST_SPROUT]
 ## The expressions that never blink: those drawn as dark strokes only, with no
 ## cream, and those that hold an eye shut (Wink, Smitten).
-const STROKED: Array[StringName] = [SLEEPY, SQUEEZE, KNOCKED_OUT, JOY, PROUD, WINK, CRYING, DIZZY, GIGGLE, PEEKABOO, YAY, SMITTEN]
+const STROKED: Array[StringName] = [SLEEPY, SQUEEZE, KNOCKED_OUT, JOY, PROUD, WINK, CRYING, DIZZY, GIGGLE, PEEKABOO, YAY]
 ## A moving face's loop, in seconds of its clock (captures and tests sample
 ## along it; eye_at itself needs no loop).
-const MOTION_LOOP := {GIGGLE: 0.9, CURIOUS: 2.4, NERVOUS: 0.6, DROWSY: 3.0, GASP: 2.4, PEEKABOO: 2.6, YAY: 1.5, SMITTEN: 1.1, STARRY: 2.0, FLOWER: 3.5}
+const MOTION_LOOP := {GIGGLE: 0.9, CURIOUS: 2.4, NERVOUS: 0.6, DROWSY: 3.0, GASP: 2.4, PEEKABOO: 2.6, YAY: 1.5, STARRY: 2.0, FLOWER: 3.5}
 ## The shader parameters each moving face changes along its loop: the face
 ## writes only these while it moves (presentation/spirit_face.gd).
 const MOTION_KEYS := {GIGGLE: ["stroke"], CURIOUS: ["pupil"], NERVOUS: ["pupil"], DROWSY: ["cut", "pupil"], GASP: ["outer", "pupil"],
 	PEEKABOO: ["outer", "pupil", "pupil_wave", "pupil_phase", "stroke", "stroke_end"], YAY: ["mark", "mark_spin"],
-	SMITTEN: ["outer", "pupil"], STARRY: ["shine_size"], FLOWER: ["pupil_phase"]}
+	STARRY: ["shine_size"], FLOWER: ["pupil_phase"]}
 ## How a resting face blinks (blink()): today's blink unless named here.
 ## "quick": the same rhythm, shut for half as long; "one_by_one": one eye,
 ## then the other.
@@ -90,11 +88,10 @@ const REST_BLINK := {REST_BUTTON: BLINK_QUICK, REST_ROUND: BLINK_ONE_BY_ONE}
 ## holds on the cream.
 const HEART_RED := Color("e2626b")
 ## An open eye's outlines (eye()'s eye_shape): x the pupil's, 0 a wavy oval,
-## 1 a heart (pupil.x its size), 2 a five point star (pupil.x its radius,
-## pupil.y its inner radius as a fraction of it); y the cream's, 0 a wavy oval,
-## 1 a heart (outer.x its size). A heart pupil is drawn in HEART_RED.
+## 2 a five point star (pupil.x its radius, pupil.y its inner radius as a
+## fraction of it); y the cream's, a wavy oval. (1 was the heart of a face
+## taken out of the game.)
 const SHAPE_OVAL := 0.0
-const SHAPE_HEART := 1.0
 const SHAPE_STAR := 2.0
 ## eye_shape.x 3: a four leaf clover pupil (pupil.x its reach).
 const SHAPE_CLOVER := 3.0
@@ -206,7 +203,7 @@ const _NO_CUT := Vector4(0, 1, 9.0, 0)
 ##               way), 5 an arc bowed downward: kind 3 mirrored about its centre
 ##   blush       a soft pink cheek: radii x, y and centre offset x, y (0: none)
 ##   eye_shape   an open eye's outlines: x the pupil's, y the cream's
-##               (SHAPE_OVAL, SHAPE_HEART, SHAPE_STAR)
+##               (SHAPE_OVAL, SHAPE_STAR)
 ##   tear_stream tear_stream_end  a cream stream falling from under the eye:
 ##               its top x, y and radius, then its bottom x, y and radius
 ##               (0: none)
@@ -303,12 +300,6 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.stroke_end = Vector4(0, 0, 0.019, 3)
 			var cheek: Vector2 = at.call(0.050, -0.088)
 			e.blush = Vector4(0.050, 0.032, cheek.x, cheek.y)
-		HEART_EYES:
-			# A cream heart with a red heart inside: the open eye's
-			# outline and pupil, heart shaped.
-			e.eye_shape = Vector4(SHAPE_HEART, SHAPE_HEART, 0, 0)
-			e.outer = Vector4(0.180, 0, 0, 0.006)
-			e.pupil = Vector4(0.152, 0, 0, 0.002)
 		PROUD:
 			# Shut and pleased: an arc bowed downward, chin up, with
 			# Joy's pink cheeks.
@@ -344,9 +335,9 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.tear_stream = Vector4(top.x, top.y, 0.022, 0)
 			e.tear_stream_end = Vector4(bottom.x, bottom.y, 0.042, 0)
 		DIZZY:
-			# A spiral in each eye, turning opposite ways.
+			# A spiral in each eye, both turning the same way.
 			e.mode = 1
-			e.stroke = Vector4(0, 0, 0.078, 1.6 * side)
+			e.stroke = Vector4(0, 0, 0.078, 1.6)
 			e.stroke_end = Vector4(0, 0, 0.0145, 4)
 		AWW:
 			# Soft lids sloping down toward the face's edge, big pupils looking
@@ -453,16 +444,6 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.stroke_end = Vector4(0, 0, 0.020, 3)
 			var spark: Vector2 = at.call(0.104, 0.064)
 			e.mark = Vector4(spark.x, spark.y, 0.092, MARK_GOLD)
-		SMITTEN:
-			# Lovestruck on one side: the viewer's left eye shut in Joy's arc
-			# with a pink cheek, the right one Heart eyes' heart; eye_at
-			# makes the heart beat.
-			if index == 1: return eye(HEART_EYES, 1)
-			e.mode = 1
-			e.stroke = Vector4(0, -0.030, 0.062, 1.2)
-			e.stroke_end = Vector4(0, 0, 0.019, 3)
-			var cheek: Vector2 = at.call(0.050, -0.088)
-			e.blush = Vector4(0.050, 0.032, cheek.x, cheek.y)
 		STARRY:
 			# Please's big pupils with three cream sparkles inside; eye_at
 			# makes them twinkle.
@@ -573,15 +554,6 @@ static func eye_at(expression: StringName, index: int, t: float) -> Dictionary:
 			var tw := 0.55 + 0.45 * absf(cos(t * 4.2 + (0.0 if index == 0 else 0.35)))
 			e.mark = Vector4(m.x, m.y, m.z * tw, m.w)
 			e.mark_spin = Vector4(sin(t * 2.0) * 0.4 * side, 0, 0, 0)
-		SMITTEN:
-			# A heartbeat in the heart eye: two quick swells every 1.1 s.
-			if index == 1:
-				var u := fposmod(t, 1.1)
-				var beat := maxf(sin(clampf(u / 0.16, 0.0, 1.0) * PI), sin(clampf((u - 0.24) / 0.16, 0.0, 1.0) * PI) * 0.7)
-				var o: Vector4 = e.outer
-				var p: Vector4 = e.pupil
-				e.outer = Vector4(o.x * (1.0 + beat * 0.14), o.y, o.z, o.w)
-				e.pupil = Vector4(p.x * (1.0 + beat * 0.14), p.y, p.z, p.w)
 		STARRY:
 			# Each sparkle twinkles on its own beat.
 			e.shine_size = Vector4(0.6 + 0.4 * absf(sin(t * 3.1)), 0.6 + 0.4 * absf(sin(t * 3.1 + 2.0)), 0.6 + 0.4 * absf(sin(t * 3.1 + 4.1)), t * 0.6)
@@ -683,7 +655,7 @@ static func _eye_contours(expression: StringName, index: int, steps: int) -> Dic
 		hull.append_array(_oval(Vector4(ts.z, ts.z, ts.x, ts.y), Vector4.ZERO, Vector4.ZERO, 24))
 		hull.append_array(_oval(Vector4(te.z, te.z, te.x, te.y), Vector4.ZERO, Vector4.ZERO, 32))
 		result.streams = [Geometry2D.convex_hull(hull)]
-	if e.eye_shape.x == SHAPE_HEART or e.eye_shape.z == INK_RED: result.pupil_color = HEART_RED
+	if e.eye_shape.z == INK_RED: result.pupil_color = HEART_RED
 	elif e.eye_shape.z == INK_LEAF: result.pupil_color = LEAF
 	var shine: Vector4 = e.shine
 	if shine.w > 0.5 and not (result.pupil as Array).is_empty(): result.shines = _intersect(_shines(e), result.pupil)
@@ -782,12 +754,11 @@ static func _eye_contours_base(e: Dictionary, steps: int) -> Dictionary:
 		pupil = _intersect(pupil, [_half_plane(Vector2(cut.x, cut.y), cut.z - cut.w)])
 	return {"outer": outer, "pupil": pupil, "strokes": [], "width": 0.0}
 
-## An open eye whose cream or pupil is a heart, a star or a clover.
+## An open eye whose pupil is a star or a clover.
 static func _shaped_contours(e: Dictionary, steps: int) -> Dictionary:
-	var outer: Array = [_heart(e.outer) if e.eye_shape.y == SHAPE_HEART else _oval(e.outer, e.outer_wave, e.outer_phase, steps)]
+	var outer: Array = [_oval(e.outer, e.outer_wave, e.outer_phase, steps)]
 	var pupil_shape: PackedVector2Array
-	if e.eye_shape.x == SHAPE_HEART: pupil_shape = _heart(e.pupil)
-	elif e.eye_shape.x == SHAPE_STAR: pupil_shape = _star(e.pupil)
+	if e.eye_shape.x == SHAPE_STAR: pupil_shape = _star(e.pupil)
 	elif e.eye_shape.x == SHAPE_CLOVER: pupil_shape = _clover(e.pupil)
 	else: pupil_shape = _oval(e.pupil, e.pupil_wave, e.pupil_phase, steps)
 	var inner: Array = []

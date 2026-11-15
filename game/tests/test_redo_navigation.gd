@@ -2,6 +2,7 @@ extends "res://tests/test_relay_online.gd"
 const Redo = preload("res://services/redo_client.gd")
 const RedoFixture = preload("res://tests/test_redo_client.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 var server_branch := 0
 var server_request: Variant = null
 var fork_responses: Dictionary = {}
@@ -60,9 +61,22 @@ func _run() -> void:
 	_check(redo_action!=null and not _is_cream_primary(redo_action),"The ready card offers Ask for a redo under Record as a plain row")
 	preview._open_room_options()
 	_check(_option_row(preview,"Ask for a redo")==null,"Room options no longer lists it")
-	var report_action := _option_row(preview,"Report or block player")
+	var report_action := _option_row(preview,PlayerCopy.REPORT_OR_BLOCK)
 	_check(report_action!=null and not _is_cream_primary(report_action),"Room options lists the safety action, never as a cream primary")
 	preview._room_options_modal.close(false)
+	await _settle()
+	# The pause card keeps Report or block as the flag at its top right, and it opens the same sheet.
+	preview._pause()
+	await _settle()
+	var flag: Button = preview.overlay.find_child("CardReport",true,false)
+	_check(preview.mode=="paused" and flag!=null and flag.get_parent().name=="CardTitleLine" and flag.accessibility_name==PlayerCopy.REPORT_OR_BLOCK and flag.tooltip_text==PlayerCopy.REPORT_OR_BLOCK and flag.size.x>=44.0 and flag.size.y>=44.0,"The pause card shows Report or block as a 44 px flag beside its title, named for screen readers")
+	_check(_find_button(preview.overlay,PlayerCopy.REPORT_OR_BLOCK)==null,"The pause card has no Report or block row any more")
+	if flag!=null: flag.pressed.emit()
+	await _settle()
+	_check(preview.mode=="safety" and is_instance_valid(preview._safety_screen),"The flag opens the report and block sheet")
+	if is_instance_valid(preview._safety_screen):
+		preview._safety_screen.queue_free()
+		preview._close_safety()
 	await _settle()
 	_check(preview.mode=="ready" and preview._room_state_current(),"Closing the request panel returns to the ready panel")
 	preview._open_redo()
