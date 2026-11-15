@@ -6,7 +6,7 @@ extends Node
 ## publication id live in the room event client, so a restart keeps the alert
 ## and a retry never sends it twice.
 ##
-## The relay lobby, the open room, the legacy room page and Friends drive it; it
+## The relay lobby, the open room and Friends drive it; it
 ## draws nothing. Main hosts it as an internal child, so a quiet retry ends with
 ## Main, and passes in what it reads. share reads the Friends client once, when
 ## it starts; view and each retry read it again:

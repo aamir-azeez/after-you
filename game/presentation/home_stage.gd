@@ -420,7 +420,7 @@ func _layout() -> void:
 func _fit_box(wrap: float) -> Dictionary:
 	var key := roundi(wrap)
 	if _box_fit.has(key): return _box_fit[key]
-	var lines: Array[String] = _keepsake_layer.every_line() if is_instance_valid(_keepsake_layer) else [PlayerCopy.KEEPSAKE_NEXT_EARLIER]
+	var lines: Array[String] = _keepsake_layer.every_line() if is_instance_valid(_keepsake_layer) else [""]
 	var status_font := _keepsake_status.get_theme_font("font")
 	var status_size := _keepsake_status.get_theme_font_size("font_size")
 	var line_height := status_font.get_height(status_size)
@@ -616,7 +616,7 @@ func _update_keepsake_labels() -> void:
 	var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
 	_keepsake_controls.visible = not item.is_empty()
 	_keepsake_count.text = _keepsake_layer.count_line() if is_instance_valid(_keepsake_layer) else ""
-	_keepsake_status.text = str(item.get("line", PlayerCopy.KEEPSAKE_NEXT_EARLIER))
+	_keepsake_status.text = str(item.get("line", ""))
 	_update_explore_action()
 	if item.is_empty(): return
 	_keepsake_title.text = str(item.name)

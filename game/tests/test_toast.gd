@@ -161,13 +161,14 @@ func _in_app() -> void:
 	await process_frame
 	# In play: View waits quietly and opens Friends after.
 	app.notification_flow._friends_news("New friend request")
-	app.running = true
+	app.relay_child = Node3D.new()
 	app.toast._action.pressed.emit()
 	await process_frame
 	app.notification_flow.service_friends()
 	await process_frame
 	_check(not app.friends_flow.is_open() and not app.toast.showing() and not app.notification_flow._view_wanted.is_empty(),"View during play waits without a line")
-	app.running = false
+	app.relay_child.free()
+	app.relay_child = null
 	app.notification_flow.service_friends()
 	for _i in 4: await process_frame
 	_check(app.friends_flow.is_open(),"Friends opens once play is over")

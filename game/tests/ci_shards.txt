@@ -4,7 +4,6 @@
 #   <suite> skip <reason>     CI never runs this suite; say why
 # test_ci_shards.gd checks this file. A new suite can take any shard;
 # python3 scripts/ci_shards.py refresh rebalances them by ci_suite_times.txt.
-action_availability 1
 action_buttons 2
 android_back 1
 app_state 3
@@ -54,7 +53,6 @@ comfort_journal 3
 comfort_restart 2
 comfort_rules 3
 comfort_social_integration 1
-completion_moment 3
 compressed_rooms_client 1
 connectivity 3
 cooperative 2
@@ -146,7 +144,7 @@ hosting_locked 2
 hosting_notification_preferences 2
 house 1
 house_world 3
-hub_exits 2
+hub_exits 3
 hud_efficiency 2
 inset_button 3
 intro_comfort 2
@@ -169,15 +167,12 @@ leaderboard_celebration 1
 leaderboard_replay_check 3
 leaderboard_screen 3
 leaderboard_watch 1
-legacy_cumulative_holds 1
-legacy_redo_navigation 1
 level_checker 3
 level_tools 2
 level_view 2
 license_catalog 2
 licenses 3
 lifecycle 2
-lift_presentation 1
 lighthouse_admission 2
 lighthouse_compatibility 3
 lighthouse_finale 3
@@ -219,7 +214,7 @@ online_random 1
 online_random_extra 2
 online_random_more 2
 online_replay_authority 3
-online_robust 2
+online_robust 1
 online_scenarios 2
 online_scenarios_edges 3
 online_scenarios_more 1
@@ -276,6 +271,8 @@ race_ghost 1
 reaction_photos 3
 recent_rooms 2
 recorded_routes 3
+recording_codec 1
+recording_codec_runs 2
 recovery_copy 2
 recovery_details 2
 recovery_discard 3
@@ -320,13 +317,10 @@ room_gone_poll 2
 room_held_drafts 3
 room_hide_current 2
 room_hub_activity 3
-room_hub_block 1
 room_inbox_client 1
-room_layout 1
 room_limit_message 2
 room_probe 2
 room_prove_ahead 1
-room_reactions 2
 room_refresh_noop 2
 room_removal 3
 rooms_api_limits 1
@@ -345,6 +339,7 @@ scrolling_camera 3
 seed_spin 1
 seed_timer_bar 1
 seed_visual 2
+self_redo 2
 session_release 1
 settings 1
 share_codes 2
@@ -356,7 +351,6 @@ shared_replay_proof_cache 3
 shared_replay_removal 1
 shared_replays 2
 shared_room_followups 2
-simulation 3
 simulation_v2 1
 skins_trails 2
 solo_draft_writer 3
@@ -448,5 +442,3 @@ world_kit 3
 world_looks 2
 world_prewarm 3
 world_slot_looks 1
-your_replay_delete_ui 1
-your_replay_loading 3

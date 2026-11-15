@@ -4,18 +4,7 @@ extends RefCounted
 ## content/chapters/); this file adds the entries that are not registered
 ## chapters and works out the browse order.
 const Index = preload("res://content/chapters/index.gd")
-const Levels = preload("res://core/levels.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
-## The earlier islands' places, first in browse order.
-const EARLIER_ROWS := [
-	["earlier", "first-light", "First Light"],
-	["earlier", "long-way-home", "Long Way Home"],
-	["earlier", "patient-garden", "Patient Garden"],
-	["earlier", "rising-together", "Rising Together"],
-	["earlier", "across-the-blue", "Across the Blue"],
-	["earlier", "lantern-crossing", "Lantern Crossing"],
-	["earlier", "two-beats", "Two Beats"],
-	["earlier", "after-you", "After You"]]
 ## Keys that are not registered chapters: their browse position, places and save.
 const OTHER_CHAPTERS := {
 	LIGHTHOUSE: {"position": 2, "local_path": "user://lighthouse-journey-v3.json", "places": [
@@ -30,9 +19,13 @@ const OTHER_CHAPTERS := {
 ## only by that key (the Lighthouse @2 of @1) is browsed under it. An unreleased
 ## chapter (released: false) is not on Home: it has no places there yet.
 static var CHAPTERS: Array = _chapters()
+## Places of the earlier islands, which are no longer in the game: a ledger
+## that earned them keeps them as saved, and they are never shown or counted.
+const RETIRED_PREFIX := "earlier/"
+const RETIRED_PLACES := 8
 ## A later version of a chapter earns the same places as the version it replaces.
 static var ALIASES: Dictionary = _aliases()
-## [chapter key or "earlier", stage id, title] per place, in browse order.
+## [chapter key, stage id, title] per place, in browse order.
 static var ROWS: Array = _rows()
 
 static func _chapters() -> Array:
@@ -53,7 +46,7 @@ static func _aliases() -> Dictionary:
 	return result
 
 static func _rows() -> Array:
-	var result: Array = EARLIER_ROWS.duplicate()
+	var result: Array = []
 	for key: String in CHAPTERS:
 		if OTHER_CHAPTERS.has(key):
 			for place: Array in OTHER_CHAPTERS[key].places: result.append([key, place[0], place[1]])
@@ -69,7 +62,7 @@ static func all() -> Array[Dictionary]:
 	for row: Array in ROWS:
 		var family := str(row[0]).get_slice("@", 0)
 		result.append({"id": family + "/" + str(row[1]), "title": row[2], "family": family,
-			"chapter_key": "" if family == "earlier" else row[0], "stage_id": row[1],
+			"chapter_key": row[0], "stage_id": row[1],
 			"friend_available": row[0] != LIGHTHOUSE or lighthouse_together})
 	return result
 
@@ -99,12 +92,10 @@ static func variant_count(earned: Array, free_only: bool = false) -> int:
 		if item.get("friend", false) == true and place.friend_available: count += 1
 	return count
 
-## Whether a place is paid content: an earlier island marked premium (core/levels.gd)
-## or a place of a premium chapter (its registry descriptor). A key Home knows only
-## by an older version (the Lighthouse @1) asks the registered version that earns
-## its places.
+## Whether a place is paid content: a place of a premium chapter (its registry
+## descriptor). A key Home knows only by an older version (the Lighthouse @1)
+## asks the registered version that earns its places.
 static func paid(item: Dictionary) -> bool:
-	if item.family == "earlier": return bool(Levels.get_level(str(item.stage_id)).get("premium", false))
 	return item.chapter_key in _paid_chapters()
 
 ## Premium chapter keys of CHAPTERS, worked out on first ask and kept: descriptors

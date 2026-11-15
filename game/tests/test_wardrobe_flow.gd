@@ -56,6 +56,7 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const TierFrame = preload("res://presentation/kit/tier_frame.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Page = preload("res://presentation/wardrobe_page.gd")
+const OneRow = preload("res://presentation/kit/one_row.gd")
 const Sheets = preload("res://presentation/wardrobe_sheets.gd")
 const Bundles = preload("res://services/pollen_bundles.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
@@ -243,7 +244,7 @@ func _buying() -> void:
 	await _frames()
 	var model: Dictionary = t.flow.model()
 	_check(model.balance == 24000 and model.items.size() == 9 and model.items.filter(func(entry: Dictionary) -> bool: return entry.sold).size() == 6 and t.fake.sent.size() == 1 and t.fake.sent[0].path == "/v1/pollen", "It reads the wardrobe and lists the six items the server sells, and the three earned ones")
-	_check(model.featured.size() == 4 and model.featured[3] == "lighthouse_lamp", "Week 3's shelf: the Commons, the Uncommon and the Special in the top slot")
+	_check(model.featured.size() == 4 and model.featured[0] == "lighthouse_lamp", "Week 3's shelf: the Special in the top slot, first, then the Commons and the Uncommon")
 	_check(model.selected == "lighthouse_lamp", "With nothing picked, the shelf's top slot is on the big pip")
 	_check(t.host.overlay.find_child("WardrobeCard_daisy", true, false) != null and t.host.overlay.find_child("WardrobeShelfCard_lighthouse_lamp", true, false) != null, "The items and the shelf are drawn")
 	_check("24,000" in _texts(t.host.overlay.find_child("WardrobeBalance", true, false)), "The chip shows the balance grouped")
@@ -287,15 +288,15 @@ func _server_featured() -> void:
 	t.flow.show_wardrobe()
 	await _frames()
 	var built_in: Array = t.flow.model().featured
-	_check(built_in == ["seashell", "daisy", "straw_hat", "lighthouse_lamp"] and t.store.featured_code(SERVER, ME) == 0, "With no featured item from the server, the built-in shelf of week 3 shows: " + str(built_in))
+	_check(built_in == ["lighthouse_lamp", "seashell", "daisy", "straw_hat"] and t.store.featured_code(SERVER, ME) == 0, "With no featured item from the server, the built-in shelf of week 3 shows: " + str(built_in))
 	# Codes arrive as JSON numbers: 4 is the Tide (content/cosmetics/tide.gd).
 	t.store.note_featured(SERVER, ME, 4.0)
 	var model: Dictionary = t.flow.model()
-	_check(model.featured == ["seashell", "daisy", "straw_hat", "tide"] and model.selected == "tide", "The server's pick takes the top slot and is the default pick: " + str(model.featured))
+	_check(model.featured == ["tide", "seashell", "daisy", "straw_hat"] and model.selected == "tide", "The server's pick takes the top slot, first on the shelf, and is the default pick: " + str(model.featured))
 	_check(t.host.overlay.find_child("WardrobeShelfCard_tide", true, false) != null, "An open Wardrobe draws the new pick as soon as it arrives")
 	t.store.note_featured(SERVER, ME, 1.0)
 	model = t.flow.model()
-	_check(model.featured.back() == "daisy" and model.featured.count("daisy") == 1 and model.featured.has("seashell"), "A Common featured moves to the top slot and is not shown twice: " + str(model.featured))
+	_check(model.featured.front() == "daisy" and model.featured.count("daisy") == 1 and model.featured.has("seashell"), "A Common featured moves to the top slot and is not shown twice: " + str(model.featured))
 	# Unknown, earned (Gold leaf, 7), Orchard (Apple hood, 10, Fruits only) and malformed codes keep the built-in shelf.
 	for code: Variant in [998.0, 7.0, 10.0, "4", -1.0, 4.5, null]:
 		t.store.note_featured(SERVER, ME, code)
@@ -1143,8 +1144,29 @@ func _fits_every_screen() -> void:
 			for a in range(blocks.size()):
 				for b in range(a + 1, blocks.size()): covered = covered or (blocks[a] as Control).get_global_rect().intersects((blocks[b] as Control).get_global_rect())
 			_check(not covered and blocks.all(func(block: Control) -> bool: return block.is_visible_in_tree()), "%s: the header, the pip panel and the shop sit apart" % label)
+			if view == ["all", "hat"]: _shelf_one_line(page, t.flow.model().featured, label)
 	t.host.queue_free()
 	await _frames(2)
+	_one_row_rule()
+
+## The shelf on a screen: one line of cards, none below OneRow.MIN_SCALE of
+## the full card, the first of the shelf's own order kept, the last ones left out.
+func _shelf_one_line(page: Control, featured: Array, label: String) -> void:
+	var cards: Array = page.find_child("WardrobeFeatured", true, false).get_children().filter(func(card: Control) -> bool: return card.is_visible_in_tree())
+	var ids: Array = cards.map(func(card: Control) -> String: return str(card.get_meta("item_id", "")))
+	var full: Vector2 = Page.SHELF_CARD_SIZE
+	_check(not cards.is_empty() and cards.all(func(card: Control) -> bool: return is_equal_approx(card.global_position.y, (cards[0] as Control).global_position.y)), "%s: the shelf is one line: %s" % [label, cards.map(func(card: Control) -> Vector2: return card.global_position)])
+	_check(cards.all(func(card: Control) -> bool: return card.size.x >= floorf(full.x * OneRow.MIN_SCALE) and card.size.x <= full.x), "%s: shelf cards stay near full size: %s" % [label, cards.map(func(card: Control) -> Vector2: return card.size)])
+	_check(ids == featured.slice(0, ids.size()), "%s: the shelf keeps its first cards in order: %s of %s" % [label, ids, featured])
+
+## The one-line rule (kit/one_row.gd fit): all at full size where they fit,
+## then a little smaller, then the last ones left out, never fewer than one.
+func _one_row_rule() -> void:
+	_check(OneRow.fit(1000.0, 100.0, 10.0, 6) == {"shown": 6, "scale": 1.0}, "Six 100 px tiles fit 1000 px at full size")
+	var shrunk := OneRow.fit(600.0, 100.0, 10.0, 6)
+	_check(shrunk.shown == 6 and is_equal_approx(shrunk.scale, 550.0 / 600.0), "Six tiles in 600 px all show, a little smaller: " + str(shrunk))
+	_check(OneRow.fit(400.0, 100.0, 10.0, 6) == {"shown": 4, "scale": 370.0 / 400.0}, "Too narrow even at the smallest size, the last tiles are left out")
+	_check(OneRow.fit(10.0, 100.0, 10.0, 6) == {"shown": 1, "scale": OneRow.MIN_SCALE}, "The first tile always shows")
 
 ## Collects each visible button, label or panel under `node` that leaves
 ## `inside`, skipping what a scroll holds out of view on purpose. A row that

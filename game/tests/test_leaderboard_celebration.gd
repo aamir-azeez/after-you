@@ -131,6 +131,9 @@ func _placings() -> void:
 	_check(store.learn(OWNER, BOARD, _view(_others(1) + [_row(2, MINE, 6300, ["Ada", "Bo"])])), "this player's ranked run is a placing")
 	var waiting: Dictionary = store.next(OWNER)
 	_check(waiting.entry_id == MINE and waiting.rank == 2 and waiting.ticks == 6300 and waiting.board == BOARD and waiting.names == ["Ada", "Bo"] and waiting.partner == PARTNER, "the placing keeps what its card shows: %s" % [waiting])
+	var restarted: RefCounted = Placings.new(PLACINGS_PATH)
+	_check(restarted.next(OWNER).entry_id == MINE and restarted.next(OWNER).names == null, "a placing's names are never kept on disk, so a name hidden since never shows after a restart")
+	_check(restarted.learn(OWNER, BOARD, _view(_others(1) + [_row(2, MINE, 6300, ["Ada", "Bo"])])) and restarted.next(OWNER).names == ["Ada", "Bo"], "the next board read gives the names back")
 	_check(store.learn(OWNER, BOARD, _view([_row(1, MINE, 6300)])) and store.next(OWNER).rank == 1, "a placing waiting follows its board's newest read")
 	_check(not store.learn(OWNER, BOARD, _view([_row(1, MINE, 6300)])), "the same read changes nothing")
 	_check(store.learn(OWNER, BOARD, _view(_others(10))) and store.next(OWNER).is_empty(), "a placing its board no longer lists (pushed out or struck) is not celebrated")
@@ -391,10 +394,11 @@ func _home() -> void:
 	app.api.player_id = OWNER
 	var session := FakeSession.new()
 	app.relay_session = session
-	app.running = true
+	app.relay_child = Node3D.new()
 	app._service_leaderboard_celebration()
 	_check(not Celebration.showing(app.ui), "never in the middle of a turn")
-	app.running = false
+	app.relay_child.free()
+	app.relay_child = null
 	session.open = false
 	app._service_leaderboard_celebration()
 	_check(not Celebration.showing(app.ui), "nothing while the server has leaderboards off")

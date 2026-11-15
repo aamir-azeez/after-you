@@ -4,7 +4,6 @@ const Simulation = preload("res://core/first_steps/simulation.gd")
 const World = preload("res://presentation/first_steps_world.gd")
 const Main = preload("res://tests/unlocked_main.gd")
 const Save = preload("res://services/local_save.gd")
-const Canonical = preload("res://core/v2/canonical.gd")
 var checks := 0
 var failures := 0
 var capture_dir := ""
@@ -123,7 +122,7 @@ func _chooser() -> void:
 		and lighthouse_buttons[0].get_meta("completion_chapter","")==Registry.LIGHTHOUSE_V2 and lighthouse_buttons[0].get_meta("completion_variant","")=="solo"
 		and lighthouse.find_child("ChapterAccess",true,false).text=="Full Journey" and lighthouse.find_child("ChapterAccess",true,false).get_meta("full_journey_locked",false),
 		"Lighthouse remains nearby, explicitly solo and marked as Full Journey")
-	_check(buttons.has("Earlier islands") and not buttons.has("01  First Light"),"Old easy grid is secondary instead of pretending the intro is merely another preview")
+	_check(not buttons.has("Earlier islands") and not buttons.has("01  First Light"),"The chapter chooser lists the chapters alone, with no earlier islands")
 	# Card targets share an empty label: check every control rather than the
 	# text-keyed lookup, which retains only one button per label.
 	for button: Button in chooser_buttons:
@@ -137,12 +136,6 @@ func _chooser() -> void:
 			_check(ancestor.get_global_rect().grow(0.5).encloses(button.get_global_rect()),"Each scrollable chooser action is fully reachable")
 		_check(Rect2(Vector2.ZERO,root.get_visible_rect().size).encloses(button.get_global_rect()),"Primary chooser control fits the actual viewport after scrolling")
 	await _capture("first-steps-chapter-chooser")
-	var before := Canonical.digest(app.saves.data)
-	buttons["Earlier islands"].pressed.emit()
-	await process_frame
-	_check(_buttons(app.overlay).has("01  First Light"),"Original island access survives through the explicit secondary route")
-	_check(Canonical.digest(app.saves.data)==before,"Choosing earlier islands does not migrate or alter old saves")
-	await _capture("first-steps-earlier-islands")
 	app.queue_free()
 	await process_frame
 	await process_frame

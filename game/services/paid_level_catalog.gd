@@ -1,5 +1,5 @@
 extends RefCounted
-## Presentation keys include the separate Lighthouse and earlier-island catalogs.
+## Presentation keys include the separate Lighthouse catalog.
 ## "together_when" names the chapter whose offer makes an entry playable together.
 const ENTRIES := [
 	{"key":"sleeping-lighthouse","title":"Sleeping Lighthouse","stages":6,"together_when":"sleeping-lighthouse@2"},
@@ -7,11 +7,6 @@ const ENTRIES := [
 	{"key":"a-house-for-two","title":"A House for Two","stages":2,"together":true},
 	{"key":"conservatory","title":"Conservatory","stages":2,"together":true},
 	{"key":"long-way-home","title":"Long Way Home","stages":2,"together":true},
-	{"key":"legacy-rising-together","title":"Rising Together","stages":1,"together":true},
-	{"key":"legacy-across-the-blue","title":"Across the Blue","stages":1,"together":true},
-	{"key":"legacy-lantern-crossing","title":"Lantern Crossing","stages":1,"together":true},
-	{"key":"legacy-two-beats","title":"Two Beats","stages":1,"together":true},
-	{"key":"legacy-after-you","title":"After You","stages":1,"together":true},
 ]
 
 static func keys() -> Array[String]:

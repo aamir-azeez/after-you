@@ -10,7 +10,6 @@ const Sources = preload("res://services/platform_games/cloud_save_sources.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
-const Levels = preload("res://core/levels.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
@@ -268,7 +267,7 @@ func _sources_apply(dir: String) -> void:
 	root.add_child(host)
 	host.saves = LocalSave.new(dir.path_join("journey.json"))
 	host.saves.load_data()
-	host.saves.update_values({"completed": {Levels.IDS[0]: true}})
+	host.saves.update_values({"completed": {"first-light": true}})
 	host.home_keepsakes = HomeKeepsakes.new(dir.path_join("keepsakes.json"))
 	host.home_keepsakes.load_data()
 	var state: RefCounted = State.new(dir.path_join("sources-state.json"))
@@ -280,11 +279,11 @@ func _sources_apply(dir: String) -> void:
 	_check(HardMode.new(sources.hard_path).record(Registry.FIRST_STEPS, HardMode.SOLO), "A local Hard mark")
 	var local: Dictionary = await sources.collect()
 	_check(local.hard == {Registry.FIRST_STEPS: {"solo": true, "together": false}}, "This phone's Hard marks are collected")
-	_check(local.completed.has(Levels.IDS[0]) and local.settings.stamp == 0, "Untouched default settings collect with stamp 0")
+	_check(local.completed.has("first-light") and local.settings.stamp == 0, "An earlier island finished on this phone still goes to the cloud for older builds, and untouched default settings collect with stamp 0")
 	var place: String = Catalog.all()[0].id
 	var remote := Bundle.empty()
-	remote.completed = {Levels.IDS[1]: true, "not-a-level": true}
-	remote.replays = {Levels.IDS[1]: {"a": {"x": 1}, "b": {}, "draft": {}}}
+	remote.completed = {"long-way-home": true, "not-a-level": true}
+	remote.replays = {"long-way-home": {"a": {"x": 1}, "b": {}, "draft": {}}}
 	remote.keepsakes = {place: {"solo": true, "friend": false}, "nowhere/at-all": {"solo": true, "friend": false}}
 	remote.settings = {"values": {"sound": false, "haptics": false}, "stamp": 50}
 	remote.hard = {Registry.FIRST_STEPS: {"solo": false, "together": true}, "turn-of-the-tide@1": {"solo": true, "together": false}, "earlier@1": {"solo": true, "together": true}}
@@ -293,8 +292,7 @@ func _sources_apply(dir: String) -> void:
 	_check(not await sources.apply(merged), "Nothing applies away from Home")
 	host.mode = "home"
 	_check(await sources.apply(merged), "At Home the merged copy applies")
-	_check(host.saves.data.completed.has(Levels.IDS[1]) and not host.saves.data.completed.has("not-a-level"), "Only known levels are marked finished")
-	_check(host.saves.data.replays.has(Levels.IDS[1]) and host.saves.data.replays[Levels.IDS[1]].keys().size() == 3, "A finished island's replay arrives in the save's own shape")
+	_check(host.saves.data.completed == {"first-light": true} and host.saves.data.replays.is_empty(), "The earlier islands' progress from the cloud is not applied: they are no longer in the game")
 	_check(host.saves.data.settings.sound == false and host.applied_settings == 1, "Newer settings apply and take effect")
 	_check(host.saves.data.settings.graphics_quality == LocalSave.defaults().settings.graphics_quality, "Device settings are untouched")
 	_check(host.home_keepsakes.earned_marks().has(place) and not host.home_keepsakes.earned_marks().has("nowhere/at-all"), "Keepsakes go through the catalog")

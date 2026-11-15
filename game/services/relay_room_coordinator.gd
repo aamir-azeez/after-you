@@ -20,6 +20,7 @@ const Proofs = preload("res://services/journey_proofs.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const Typed = preload("res://services/typed_values.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
@@ -88,6 +89,10 @@ var _state: Dictionary = {}
 var _owner := ""
 var _epoch := -1
 var _room := ""
+## The room said `packed_recordings` beside a reply (backend src/v2/packed-rooms.ts):
+## both members read packed turns, so this phone records its turns packed. A
+## room never stops being packed; another room starts unknown.
+var _packed_room := false
 var _scope := ""
 var _generation := 0
 var _serial := 0
@@ -189,10 +194,12 @@ func invalidate_identity() -> void:
 	_replay_recovering = false
 	_proven_turns.clear()
 	_verified = {}
+	_replace = {}
 	_state = {}
 	_owner = ""
 	_epoch = -1
 	_room = ""
+	_packed_room = false
 	_scope = ""
 	read_only = false
 	_remote_hold = false
@@ -216,10 +223,12 @@ func bind_room(room_id: String) -> bool:
 	_owner = identity.player_id
 	_last_refresh_result = {}
 	_epoch = int(identity.epoch)
+	if room_id != _room: _packed_room = false
 	_room = room_id
 	_scope = "relay-room-v2:" + _owner + ":" + _room
 	_clear_chapter()
 	_state = _empty_state()
+	_replace = {}
 	_proven_turns.clear()
 	_verified = {}
 	_retire_live()
@@ -258,12 +267,58 @@ func _sync_chapter() -> void:
 	_level = Registry.definition(_chapter_key)
 	_simulation = Registry.simulation_script(_chapter_key)
 
+## Play my turn again (presentation/redo_flow.gd): while it lasts this phone plays the room as it
+## stood before its own saved first turn (the same stage, checkpoint, revision and branch, with no
+## first turn), and the turn it saves replaces that one in one request (backend commitTurn
+## `replaces`). Memory only: leaving, another room or a room that moved ends it, and the saved
+## turn stays as it was.
+var _replace: Dictionary = {}
+
+func begin_replace() -> bool:
+	if not finish_live_draft_save() or not _guard() or _state.auth_required or read_only or _busy != 0 or _remote_hold or not _state.pending.is_empty(): return false
+	var room: Dictionary = _state.snapshot
+	if room.is_empty() or not Typed.equal(room.get("active_role"), "b") or not Typed.equal(room.get("first_player_id"), _owner) or not room.get("recording_a") is Dictionary: return false
+	var before := room.duplicate(true)
+	before.active_role = "a"
+	before.active_player_id = _owner
+	before.a_turn_id = null
+	before.recording_a = null
+	if not _valid_snapshot(before): return false
+	_retire_live()
+	_replace = {"origin": room.duplicate(true), "room": before}
+	return true
+
+## Start over, agreed (presentation/redo_flow.gd): this phone's copies of the old run in this
+## room go as the server's did: its unsent draft, the turns it kept aside and the last receipt.
+func forget_run() -> bool:
+	if not finish_live_draft_save() or not _guard() or read_only or _busy != 0 or not _state.pending.is_empty(): return false
+	var next := _state.duplicate(true)
+	next.draft = {}
+	next.held_drafts = []
+	next.last_receipt = {}
+	_replace = {}
+	_retire_live()
+	return _persist(next)
+
+func end_replace() -> void:
+	if _replace.is_empty(): return
+	_retire_live()
+	_replace = {}
+
+func replacing() -> bool:
+	return not _replace.is_empty() and _guard() and _state.pending.is_empty() and Typed.same(_replace.origin, _state.snapshot)
+
+## The room a turn is played on: the real one, or the one before this player's saved first turn.
+func _room_now() -> Dictionary:
+	return _replace.room if replacing() else _state.get("snapshot", {})
+
+
 func busy() -> bool:
 	return _replay_recovering or _busy != 0 or _draft_writer != null
 
 
 func snapshot() -> Dictionary:
-	return _state.snapshot.duplicate(true) if _guard() and not _state.auth_required else {}
+	return _room_now().duplicate(true) if _guard() and not _state.auth_required else {}
 
 
 func pending() -> Dictionary:
@@ -314,21 +369,21 @@ func my_turn() -> bool:
 
 func draft() -> Dictionary:
 	if not finish_live_draft_save(): return {}
-	if not _guard() or _state.auth_required or _state.draft.is_empty() or _state.snapshot.is_empty():
+	if not _guard() or _state.auth_required or _state.draft.is_empty() or _room_now().is_empty():
 		return {}
 	if not _verify_saved_draft():
 		return {}
-	return _state.draft.recording.duplicate(true) if _same_context(_state.draft.origin, _state.snapshot) else {}
+	return _state.draft.recording.duplicate(true) if _same_context(_state.draft.origin, _room_now()) else {}
 
 
 func save_draft(recording: Dictionary) -> bool:
 	if not finish_live_draft_save(): return false
 	if not my_turn() or read_only:
 		return _error("draft_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_09FED8C87561)
-	if not recording.is_empty() and not _valid_recording(recording, _state.snapshot):
+	if not recording.is_empty() and not _valid_recording(recording, _room_now()):
 		return _error("invalid_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_56C2B84DDCD8)
 	var next := _state.duplicate(true)
-	next.draft = {} if recording.is_empty() else {"origin": _state.snapshot.duplicate(true), "recording": recording.duplicate(true)}
+	next.draft = {} if recording.is_empty() else {"origin": _room_now().duplicate(true), "recording": recording.duplicate(true)}
 	var saved := _persist(next)
 	if saved:
 		_retire_live()
@@ -343,7 +398,7 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	if not my_turn() or read_only or _busy != 0:
 		_error("rehearsal_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_D879B5A3D87C)
 		return null
-	var room: Dictionary = _state.snapshot
+	var room: Dictionary = _room_now()
 	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 	var simulation: RefCounted = _simulation.new()
 	var saved: Dictionary = draft() if resume_draft else {}
@@ -353,6 +408,7 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	if not Registry.reset_simulation(simulation, _chapter_key, _level, room.stage_id, room.checkpoint, prior, room.active_role, saved):
 		_error("invalid_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_8F47C70FEFCA)
 		return null
+	if "packed_recordings" in simulation: simulation.packed_recordings = packed_room()
 	_live_simulation = weakref(simulation)
 	_live_context = {"generation": _generation, "owner": _owner, "epoch": _epoch, "room": _room,
 		"origin": room.duplicate(true), "level_ref": simulation.level,
@@ -373,13 +429,13 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 	# committing still replay it. Caller-supplied dictionaries use save_draft.
 	if not my_turn() or read_only or _busy != 0 or simulation == null or _live_simulation == null or _live_simulation.get_ref() != simulation or simulation.get_script() != _simulation or _live_context.is_empty():
 		return _error("unregistered_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_52D3BB714BCD)
-	if _live_context.generation != _generation or _live_context.owner != _owner or _live_context.epoch != _epoch or _live_context.room != _room or not _same_context(_live_context.origin, _state.snapshot):
+	if _live_context.generation != _generation or _live_context.owner != _owner or _live_context.epoch != _epoch or _live_context.room != _room or not _same_context(_live_context.origin, _room_now()):
 		return _error("stale_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_054B1FA46C85)
 	# Reference equality detects resetting the same instance, even back to
 	# identical values; full comparisons also catch mutations keeping old hashes.
 	if not is_same(simulation.get("level"), _live_context.level_ref) or not is_same(simulation.get("_checkpoint"), _live_context.checkpoint_ref) or not is_same(simulation.get("_prior"), _live_context.prior_ref):
 		return _error("reset_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_53B70FA2233F)
-	var room: Dictionary = _state.snapshot
+	var room: Dictionary = _room_now()
 	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 	# A periodic capture is checked, exported and written on the worker: all of
 	# that grows with the turn's recording, and on the main thread it hitched
@@ -467,6 +523,7 @@ func refresh() -> bool:
 		_note_end_reactions(response)
 		_note_partner_name(response)
 		_note_partner_look(response)
+		_note_packed(response)
 		# A finished room: its first clear waits to be claimed, unless this player's own turn finished it.
 		if chapter_complete() and pollen_finished_sink.is_valid(): pollen_finished_sink.call(_room)
 	return accepted
@@ -488,6 +545,13 @@ func _note_redo(response: Dictionary) -> void:
 
 ## The room partner's display name that came beside an accepted reply
 ## (rooms_api.gd takes it out of the room), for the names this phone keeps.
+func _note_packed(response: Dictionary) -> void:
+	if response.get("packed_recordings") == true and RoomsApi.packed_supported: _packed_room = true
+
+## Whether this phone records the room's turns packed (core/v2/recording_codec.gd).
+func packed_room() -> bool:
+	return _packed_room and RoomsApi.packed_supported
+
 func _note_partner_name(response: Dictionary) -> void:
 	if not response.has("partner_name") or not partner_name_sink.is_valid() or _state.is_empty(): return
 	var snapshot: Dictionary = _state.snapshot
@@ -572,12 +636,12 @@ func commit(recording: Dictionary, tries: int = 0, face: String = "", track: Arr
 			return _error("commit_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_BBE0446F0FDD)
 		# A failed check is not kept, so it is used here rather than made again.
 		if result is Dictionary and adopt_turn_check(job, result): checked = result.checked
-	if checked.is_empty(): checked = _verify_recording(recording, _state.snapshot)
+	if checked.is_empty(): checked = _verify_recording(recording, _room_now())
 	if not checked.valid or not checked.get("snapshot", {}).get("can_commit", false):
 		return _error("incomplete_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_D74CA6BA0A5A)
-	var body := {"base_revision": _state.snapshot.revision, "idempotency_key": _new_key(), "branch": _state.snapshot.branch, "recording": recording.duplicate(true)}
+	var body := {"base_revision": _room_now().revision, "idempotency_key": _new_key(), "branch": _room_now().branch, "recording": recording.duplicate(true)}
 	if recording.role == "b":
-		var derived: Dictionary = _derived_checkpoint(_state.snapshot, recording)
+		var derived: Dictionary = _derived_checkpoint(_room_now(), recording)
 		if not derived.valid:
 			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
 		body["checkpoint"] = derived.checkpoint
@@ -586,8 +650,11 @@ func commit(recording: Dictionary, tries: int = 0, face: String = "", track: Arr
 	if EndReactionStore.is_face(face) and FacePacks.can_pick(face): body["end_reaction"] = face
 	var reactions := RunReactionTrack.parse(track, int(recording.get("duration_ticks", 0))).filter(func(entry: Dictionary) -> bool: return FacePacks.can_pick(str(entry.id)))
 	if not reactions.is_empty(): body["run_reactions"] = reactions
+	if replacing(): body["replaces"] = str(_replace.origin.recording_a.recording_hash)
 	if not _prepare_pending("turns", body):
 		return false
+	# The pending turn now carries the replacement; a refusal keeps it as any refused turn.
+	_replace = {}
 	return await _send_pending()
 
 
@@ -710,7 +777,7 @@ func fetch_pair(pair_id: String) -> Dictionary:
 
 func _prepare_pending(operation: String, body: Dictionary) -> bool:
 	var next := _state.duplicate(true)
-	next.pending = {"operation": operation, "body": body.duplicate(true), "request_hash": _request_hash(operation, body), "origin": _state.snapshot.duplicate(true), "held": false, "error_code": ""}
+	next.pending = {"operation": operation, "body": body.duplicate(true), "request_hash": _request_hash(operation, body), "origin": _room_now().duplicate(true), "held": false, "error_code": ""}
 	if not _valid_pending(next.pending):
 		return _error("invalid_pending", PlayerCopy.RELAY_ROOM_COORDINATOR_CF423F666E23)
 	var saved := _persist(next)
@@ -754,6 +821,7 @@ func _accept_sent(response: Dictionary) -> bool:
 		_note_end_reactions(response)
 		_note_partner_name(response)
 		_note_partner_look(response)
+		_note_packed(response)
 		if turn and not recording_hash.is_empty() and own_turn_look_sink.is_valid(): own_turn_look_sink.call(recording_hash)
 		# The turn's Pollen credit (rooms_api.gd takes it out of the reply), or none to claim later.
 		if turn and not recording_hash.is_empty() and pollen_sink.is_valid(): pollen_sink.call(_room, recording_hash, response.get("pollen"), chapter_complete())
@@ -1234,8 +1302,8 @@ func _note_check_time(usec: int, recording: Dictionary, prior: Dictionary) -> vo
 ## already, or when the turn is not this player's to save here (the checks that
 ## follow then say why). The job holds private copies only.
 func turn_check_job(recording: Dictionary) -> Dictionary:
-	if not _guard() or read_only or _state.auth_required or _state.snapshot.is_empty() or recording.is_empty(): return {}
-	var origin: Dictionary = _state.snapshot
+	if not _guard() or read_only or _state.auth_required or _room_now().is_empty() or recording.is_empty(): return {}
+	var origin: Dictionary = _room_now()
 	if not _bounded(recording) or not Typed.equal(origin.active_player_id, _owner) or not Typed.equal(recording.get("role"), origin.active_role) or Typed.equal(origin.active_role, "complete"): return {}
 	var chapter := Registry.resolve(origin)
 	if chapter.is_empty() or not Typed.equal(recording.get("simulation_version"), origin.get("simulation_version", Registry.definition(chapter).simulation_version)): return {}
@@ -1270,8 +1338,8 @@ static func run_turn_check(job: Dictionary) -> Dictionary:
 ## Keeps a worker's check while the room still stands where its job was made
 ## (a failed one is never kept). True when it does stand there.
 func adopt_turn_check(job: Dictionary, result: Dictionary) -> bool:
-	if job.is_empty() or not result.get("checked") is Dictionary or not _guard() or _state.snapshot.is_empty(): return false
-	var origin: Dictionary = _state.snapshot
+	if job.is_empty() or not result.get("checked") is Dictionary or not _guard() or _room_now().is_empty(): return false
+	var origin: Dictionary = _room_now()
 	var prior: Dictionary = origin.recording_a if origin.recording_a is Dictionary else {}
 	if _turn_key(Registry.resolve(origin), origin.checkpoint, prior, job.recording) != str(job.key): return false
 	_note_check_time(int(result.get("usec", 0)), job.recording, prior)
@@ -1282,8 +1350,8 @@ func adopt_turn_check(job: Dictionary, result: Dictionary) -> bool:
 ## The check relay_preview's review shows for `recording` from this room's
 ## snapshot: the same verify_recording it made before, made once.
 func verify_turn(recording: Dictionary) -> Dictionary:
-	if not _guard() or _state.snapshot.is_empty() or Typed.equal(_state.snapshot.active_role, "complete"): return {"valid": false}
-	var origin: Dictionary = _state.snapshot
+	if not _guard() or _room_now().is_empty() or Typed.equal(_room_now().active_role, "complete"): return {"valid": false}
+	var origin: Dictionary = _room_now()
 	return _checked_turn(Registry.resolve(origin), origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {}, recording)
 
 
@@ -1313,6 +1381,9 @@ func _valid_pending(value: Variant) -> bool:
 	if Typed.equal(value.operation, "turns") and body.has("end_reaction"):
 		if not EndReactionStore.is_face(body.end_reaction): return false
 		keys.append("end_reaction")
+	if Typed.equal(value.operation, "turns") and body.has("replaces"):
+		if not _pattern(body.replaces, "^[a-f0-9]{64}$") or not body.get("recording") is Dictionary or not Typed.equal(body.recording.get("role"), "a"): return false
+		keys.append("replaces")
 	if Typed.equal(value.operation, "turns") and body.has("run_reactions"):
 		if not body.recording is Dictionary or RunReactionTrack.parse(body.run_reactions, int(body.recording.get("duration_ticks", 0))).is_empty(): return false
 		keys.append("run_reactions")
@@ -1346,6 +1417,8 @@ func _valid_receipt(value: Variant, request: Dictionary) -> bool:
 			return false
 	else:
 		var recording: Dictionary = request.body.recording
+		# A replaced first turn goes back to the start of its stage on a new branch first.
+		if request.body.has("replaces"): branch += 1
 		if not Typed.equal(value.turn_id, "t%d-%d-%s" % [branch, index, recording.role]) or not Typed.equal(value.recording_hash, recording.recording_hash) or not Typed.equal(value.pair_id, ("p%d-%d" % [branch, index] if recording.role == "b" else null)):
 			return false
 		if recording.role == "b":
@@ -1454,12 +1527,13 @@ static func _bounded_nodes(value: Variant, bytes: int, maximum_nodes: int) -> bo
 			for key: Variant in v:
 				if not key is String or key.length() > 80:
 					return false
-				pending.append({"value": v[key], "depth": int(item.depth) + 1})
+				pending.append({"value": v[key], "depth": int(item.depth) + 1, "key": key})
 		elif v is Array:
 			for child: Variant in v:
 				pending.append({"value": child, "depth": int(item.depth) + 1})
 		elif v is String:
-			if v.length() > 512:
+			# A packed record's runs and checks are one string (core/v2/recording_codec.gd); the byte bound still holds.
+			if v.length() > (RecordingCodec.MAX_PACKED_CHARS if item.get("key") == RecordingCodec.PACKED_KEY else 512):
 				return false
 		elif not (v == null or v is bool or _range(v, -9007199254740991, 9007199254740991)):
 			return false

@@ -38,6 +38,11 @@ export function bothSupport(storage: DurableObjectStorage, host: string, guest: 
   return guest !== null && members.get(host) === 1 && members.get(guest) === 1;
 }
 
+/** Start over (v2/room.ts wipeRun): every attempt record goes; each member's support stays. */
+export function clearAttempts(storage: DurableObjectStorage): void {
+  if (historyPresent(storage)) storage.sql.exec("DELETE FROM history_attempts");
+}
+
 export function clearHistory(storage: DurableObjectStorage): void {
   if (!historyPresent(storage)) return;
   storage.sql.exec("DELETE FROM history_attempts"); storage.sql.exec("DELETE FROM history_members");

@@ -58,7 +58,7 @@ func _gone_turn(answer: String) -> void:
 	_check(online.last_room().is_empty() and online.coordinator == null and online.last_error.is_empty(),answer+": the gone room is no longer the last room")
 	_check(online.take_released_room_note() == PlayerCopy.ROOMS_API_A7ACF38988EE and online.take_released_room_note().is_empty(),answer+": the player is told once that the room was closed")
 	_check(_journals(c.h.store) == journals and not c.h.store.saved[_room_scope(ORDINARY)].pending.is_empty(),answer+": the turn's journal keeps its exact bytes")
-	_check(online.can_leave_for_legacy() and await online.open_room(NEXT_ROOM) and online.last_room() == NEXT_ROOM,answer+": other rooms open again")
+	_check(online.can_leave() and await online.open_room(NEXT_ROOM) and online.last_room() == NEXT_ROOM,answer+": other rooms open again")
 	_check(_room_bytes(c.h.store,ORDINARY) == room_bytes,answer+": opening another room leaves the old journal alone")
 	c.h.free()
 

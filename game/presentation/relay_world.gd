@@ -1,5 +1,7 @@
 extends "res://presentation/island_world.gd"
 ## A view of the v2 surface graph. Walkability and checkpoint state stay in core.
+## Scenery and grounds come from the chapter's dressing (island_world's host);
+## the plates are pads in the style they resolve to (island_world's pad build).
 
 var bridge_visuals: Dictionary = {}
 var bridge_targets: Dictionary = {}
@@ -14,6 +16,7 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition
+	pad_pieces.clear()
 	if is_instance_valid(terrain):
 		remove_child(terrain)
 		terrain.queue_free()
@@ -26,7 +29,6 @@ func load_level(definition: Dictionary) -> void:
 	bridge_visuals.clear()
 	bridge_targets.clear()
 	socket_visuals.clear()
-	pad_pieces.clear()
 	actor_badges.clear()
 	flowers.clear()
 	garden = null
@@ -60,21 +62,14 @@ func load_level(definition: Dictionary) -> void:
 		socket.name = str(item.id)
 		socket.position = at
 		terrain.add_child(socket)
-		cylinder(0.42, 0.14, Color("6b847c"), Vector3(0, 0.07, 0), socket)
-		cylinder(0.30, 0.035, Color("244b46"), Vector3(0, 0.155, 0), socket)
-		var socket_ring := ring(0.43, TEAL, Vector3(0, 0.17, 0), socket)
 		if item.get("kind", "") == "garden":
 			garden = socket
-			goal_ring = socket_ring
+			goal_ring = SocketKit.garden(socket, 0.42, TEAL)
 			_create_garden()
 			# Relay's garden socket has no gate or lift condition in simulation.
 			_present_garden(true, false, true)
 		else:
-			# A small cradle and two leaves distinguish a relay from a pressure plate.
-			for side in [-1, 1]:
-				var leaf := sphere(0.17, TEAL, Vector3(side * 0.36, 0.40, 0), socket)
-				leaf.scale = Vector3(0.5, 1.6, 0.35)
-				leaf.rotation.z = -side * 0.5
+			SocketKit.relay(socket)
 		socket_visuals[item.id] = socket
 		await _build_step()
 	for slot: String in ["p0", "p1"]:
@@ -92,10 +87,7 @@ func load_level(definition: Dictionary) -> void:
 	landing_marker = Node3D.new()
 	landing_marker.name = "ActiveLanding"
 	terrain.add_child(landing_marker)
-	ring(0.65, TEAL, Vector3(0, 0.035, 0), landing_marker)
-	for index in range(8):
-		var angle := float(index) * TAU / 8.0
-		box(Vector3(0.06, 0.025, 0.13), CREAM, Vector3(cos(angle) * 0.83, 0.03, sin(angle) * 0.83), landing_marker).rotation.y = -angle
+	SocketKit.landing(landing_marker)
 	camera.position = Vector3(8, 14, 19)
 	camera.look_at(Vector3.ZERO)
 	camera.size = ViewFit.viewport(12.0, self)
@@ -129,8 +121,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		if immediate:
 			bridge_visuals[id].position.y = 0.0 if bridge_targets[id] else -0.65
 	for bridge: Dictionary in current_level.bridges:
-		var disk: MeshInstance3D = pad_pieces[bridge.plate_id]
-		Primitives.own_material(disk).albedo_color = Color("f5d990") if bridge_targets[bridge.id] else Color("a18f66")
+		pad_pieces[bridge.plate_id].set_held(bridge_targets[bridge.id])
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 	_present_garden(true, garden_complete, immediate)
@@ -142,26 +133,15 @@ func _chapter_key() -> String:
 func _fold_key() -> String:
 	return _chapter_key()
 
-## Relay's islands stand straight in the terrain, each in its own grass.
-func _floor_root(_island: Dictionary) -> Node3D:
-	return terrain
-
+## Relay's plain floors (no ground style) keep their grass.
 func _plain_floor_colour() -> Color:
 	return Color("9fc8b8")
 
-## Relay's plate keeps its published look: a gold disc under a cream ring and
-## a diamond glyph, lit while its bridge is open (present()). The disc is its
-## piece.
-func _build_pad(pad: Dictionary, at: Vector3) -> Variant:
-	var radius := float(pad.radius_cm) / 100.0
-	var disk := cylinder(radius, 0.10, GOLD, at + Vector3(0, 0.055, 0), terrain)
-	ring(radius + 0.025, CREAM, at + Vector3(0, 0.12, 0), terrain)
-	box(Vector3(0.21, 0.022, 0.21), Color("977346"), at + Vector3(0, 0.12, 0), terrain).rotation.y = PI / 4
-	return disk
-
 ## A planted seed finds its socket by name and reads its cylinders.
 func _static_keep() -> Array:
-	return super._static_keep() + socket_visuals.values()
+	var keep: Array = super._static_keep() + socket_visuals.values()
+	for id: String in pad_pieces: keep += pad_pieces[id].moving_parts()
+	return keep
 
 func _process(delta: float) -> void:
 	# Reuse character gait, garden animation and motes; no legacy bridge is present.

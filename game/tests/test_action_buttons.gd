@@ -10,11 +10,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const LighthouseSimulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Main = preload("res://main.gd")
-const LocalSave = preload("res://services/local_save.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
-const Levels = preload("res://core/levels.gd")
-const LegacySimulation = preload("res://core/simulation.gd")
 
 # Admission is local and deterministic. This test exercises controls, not an
 # SDK transaction or server entitlement, and makes no live service requests.
@@ -41,7 +37,6 @@ func _run() -> void:
 	await _relay_scene(Registry.RELAY, "v2", "relay", "garden-a")
 	await _relay_scene(Registry.FIRST_STEPS, "first_steps", "a-little-lift", "a-place-to-grow-a")
 	await _lighthouse_scene()
-	await _earlier_island()
 	for path: String in paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -187,62 +182,6 @@ func _exercise_scene(app: Node3D, path: String, inputs: Array, chapter: String) 
 	var reopened: RefCounted = LighthouseJournal.new(path) if chapter == "Lighthouse" else RelayJournal.new(path, null, app.chapter_key)
 	reopened.load_data()
 	_check(not reopened.read_only and int(reopened.draft().get("duration_ticks", -1)) == 7 and _accepted_bytes(reopened) == accepted_bytes, "A fresh journal reads the new draft and the exact old checkpoint: " + chapter)
-
-
-func _earlier_island() -> void:
-	var path := _new_path("earlier-island")
-	var first := _fixture("first-light-a.json")
-	var definition: Dictionary = Levels.get_level(0)
-	_check(LegacySimulation.verify_recording(definition, first).get("valid", false), "Earlier Islands starts with an independently verified earlier contribution")
-	var seed := LocalSave.new(path)
-	seed.load_data()
-	var settings: Dictionary = seed.data.settings.duplicate(true)
-	settings.merge(_settings(), true)
-	_check(seed.update_values({"settings": settings}) and seed.save_attempt(definition.id, {"a": first, "b": {}, "draft": {}}), "Earlier Islands stores its accepted A before the controls test")
-	var viewport := SubViewport.new()
-	viewport.size = Vector2i(1600, 720)
-	root.add_child(viewport)
-	var app := Main.new()
-	app.saves = LocalSave.new(path)
-	viewport.add_child(app)
-	app.set_physics_process(false)
-	app.set_process(false)
-	app.world.set_process(false)
-	await _settle()
-	app.application_backgrounded = false
-	app._start_practice(0)
-	_check(app.mode == "ready" and app.role == "b", "Earlier Islands opens the next contribution without restarting the accepted first turn")
-	var accepted_bytes := _earlier_accepted_bytes(app.saves, definition.id)
-	if _press_action(app.overlay, "record", "Earlier Islands"):
-		for _index in range(20): app._physics_process(1.0 / 30.0)
-		var live_record: Dictionary = app.sim.export_recording()
-		if _press_action(app.hud, "pause", "Earlier Islands"):
-			_check(app.mode == "paused" and not app.running and app.sim.tick == 20, "Earlier Islands Pause holds exactly twenty live ticks")
-			var before_resume := _save_bytes(path)
-			if _press_action(app.overlay, "resume", "Earlier Islands"):
-				_check(app.mode == "play" and app.running and app.sim.tick == 20 and Canonical.same(app.sim.export_recording(), live_record), "Earlier Islands Resume retains the exact partial turn")
-				_check(_save_bytes(path) == before_resume, "Earlier Islands Resume writes no primary, backup or temporary bytes")
-				if _press_action(app.hud, "pause", "Earlier Islands"):
-					var before_retry := _save_bytes(path)
-					var old_draft: Dictionary = app.saves.attempt(definition.id).draft
-					if _press_action(app.overlay, "retry", "Earlier Islands"):
-						_check(app.mode == "ready" and not app.running and app.sim.tick == 0, "Earlier Islands Retry preserves its explicit Record boundary")
-						_check(_save_bytes(path) == before_retry and Canonical.same(app.saves.attempt(definition.id).draft, old_draft), "Earlier Islands Retry keeps the last durable draft until another recording is saved")
-						_check(_earlier_accepted_bytes(app.saves, definition.id) == accepted_bytes, "Earlier Islands Retry preserves accepted A and every completed replay")
-						if _press_action(app.overlay, "record", "Earlier Islands"):
-							for _index in range(7): app._physics_process(1.0 / 30.0)
-							if _press_action(app.hud, "pause", "Earlier Islands"):
-								var reopened := LocalSave.new(path)
-								reopened.load_data()
-								_check(not reopened.read_only and int(reopened.attempt(definition.id).draft.get("duration_ticks", -1)) == 7, "Earlier Islands persists only the seven ticks of the retried draft")
-								_check(_earlier_accepted_bytes(reopened, definition.id) == accepted_bytes, "Earlier Islands accepted source and completed replay bytes survive reopening")
-	viewport.queue_free()
-	await _settle()
-
-
-func _earlier_accepted_bytes(storage: RefCounted, level_id: String) -> PackedByteArray:
-	var attempt: Dictionary = storage.attempt(level_id)
-	return JSON.stringify(Canonical.normalized({"a": attempt.a, "b": attempt.b, "completed": storage.data.completed, "replays": storage.data.replays})).to_utf8_buffer()
 
 
 func _press_action(node: Node, action_id: String, chapter: String) -> bool:

@@ -24,7 +24,7 @@ const HardMode = preload("res://services/hard_mode.gd")
 const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const House = preload("res://presentation/keepsakes/little_house.gd")
 const TidePool = preload("res://presentation/keepsakes/tide_pool.gd")
-const Levels = preload("res://core/levels.gd")
+const HomeLayout = preload("res://presentation/home_layout.gd")
 const Main = preload("res://main.gd")
 ## Room each side of the pip's middle along every way: two solids stand at
 ## least 2 x (ROUTE_ROOM + Layer.WALK_CLEARANCE) = 0.64 m apart, wider than
@@ -108,7 +108,7 @@ func _home(friend: bool, hard: Dictionary) -> Dictionary:
 	root.add_child(viewport)
 	var world := World.new()
 	viewport.add_child(world)
-	world.load_level(Levels.get_level("first-light"))
+	world.load_level(HomeLayout.LEVEL)
 	world.set_process(false)
 	var stage := Stage.new()
 	var theme_source := Main.new()

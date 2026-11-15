@@ -4,7 +4,7 @@ const Catalog = preload("res://services/paid_level_catalog.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("a6c7bc")
 
-static func row(key: String, actions: Control = null, show_title: bool = true) -> PanelContainer:
+static func row(key: String) -> PanelContainer:
 	var item := Catalog.entry(key)
 	var panel := PanelContainer.new()
 	panel.name = "PaidLevel_" + key.replace("-", "_")
@@ -42,18 +42,13 @@ static func row(key: String, actions: Control = null, show_title: bool = true) -
 	body.mouse_filter = Control.MOUSE_FILTER_PASS
 	body.add_theme_constant_override("separation", 10)
 	line.add_child(body)
-	if show_title:
-		var title := _label(str(item.get("title", "")), 23, CREAM)
-		title.name = "LevelTitle"
-		body.add_child(title)
+	var title := _label(str(item.get("title", "")), 23, CREAM)
+	title.name = "LevelTitle"
+	body.add_child(title)
 	var count := int(item.get("stages", 0))
 	var detail := "%d %s" % [count, "stage" if count == 1 else "stages"]
-	if actions == null: detail += " · Solo · Together" if item.get("together",false) else " · Solo"
+	detail += " · Solo · Together" if item.get("together",false) else " · Solo"
 	body.add_child(_label(detail, 17, MUTED))
-	if actions != null:
-		actions.mouse_filter = Control.MOUSE_FILTER_PASS
-		actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		body.add_child(actions)
 	return panel
 
 static func gallery(minimum_height: float = 260.0) -> ScrollContainer:

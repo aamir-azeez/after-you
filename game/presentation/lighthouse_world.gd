@@ -8,6 +8,7 @@ const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 ## The goal kit; a piece's style comes from island_world's PieceStyles.
 const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
+const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## Two lights, two receivers or two mirrors this close (cm) overlap: their
 ## widest tops reach 22 cm from their centres at the same heights, so they
 ## would z-fight. A later one of the kind stands in for a remembered one.
@@ -113,8 +114,6 @@ func load_level(definition: Dictionary) -> void:
 	garden = null
 	landing_marker = null
 	lift = null
-	gate_plate = null
-	lift_guides.clear()
 	home_view = false
 	bloomed = false
 	_wake = false
@@ -230,35 +229,20 @@ func present_history(checkpoint: Dictionary) -> void:
 			if _mirror_nodes.has(id) or drawn.has(id) or _superseded(later.mirror, index, control.position_cm) or not remembered_mirrors.has(id):
 				continue
 			drawn[id] = true
-			var at := point(control.position_cm)
-			cylinder(0.055, BEAM_HEIGHT, Color("71818b"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), _history_root)
-			var pivot := Node3D.new()
-			pivot.position = at + Vector3(0, BEAM_HEIGHT, 0)
+			var pivot := _mirror_body(point(control.position_cm), 0.0, _history_root, true)
 			pivot.rotation.y = PI / 4.0 if remembered_mirrors[id] == "slash" else -PI / 4.0
-			_history_root.add_child(pivot)
 			pivot.set_meta("mirror_id", id)
 			pivot.set_meta("orientation", remembered_mirrors[id])
-			box(Vector3(0.70, 0.54, 0.06), Color("8b8d82"), Vector3.ZERO, pivot)
-			for side in [-1, 1]:
-				box(Vector3(0.60, 0.44, 0.012), Color("789399"), Vector3(0, 0, side * 0.037), pivot)
 		for emitter: Dictionary in earlier.optics.emitters:
 			if _source_nodes.has(emitter.id) or drawn.has(emitter.id) or _superseded(later.light, index, emitter.position_cm):
 				continue
 			drawn[emitter.id] = true
-			var at := point(emitter.position_cm)
-			cylinder(0.08, BEAM_HEIGHT, Color("71818b"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), _history_root)
-			cylinder(0.19, 0.30, Color("b09e78"), at + Vector3(0, BEAM_HEIGHT, 0), _history_root)
-			cylinder(0.22, 0.05, Color("8b8d82"), at + Vector3(0, BEAM_HEIGHT + 0.18, 0), _history_root)
+			_source_body(point(emitter.position_cm), 0.0, _history_root, true)
 		for receiver: Dictionary in earlier.optics.receivers:
 			if _receiver_nodes.has(receiver.id) or drawn.has(receiver.id) or _superseded(later.receiver, index, receiver.position_cm):
 				continue
 			drawn[receiver.id] = true
-			var at := point(receiver.position_cm)
-			cylinder(0.06, BEAM_HEIGHT, Color("71818b"), at + Vector3(0, BEAM_HEIGHT / 2.0, 0), _history_root)
-			var disk := cylinder(0.22, 0.07, Color("8da2ac"), at + Vector3(0, BEAM_HEIGHT, 0), _history_root)
-			disk.rotation.x = PI / 2.0
-			var glass := box(Vector3(0.20, 0.20, 0.035), Color("899998"), at + Vector3(0, BEAM_HEIGHT, 0.052), _history_root)
-			glass.rotation.z = PI / 4.0
+			_receiver_body(point(receiver.position_cm), 0.0, _history_root, true)
 		if earlier.has("plate"):
 			var pad: Dictionary = earlier.plate
 			if not drawn.has(pad.id):
@@ -272,11 +256,7 @@ func present_history(checkpoint: Dictionary) -> void:
 				# remains marked without adding an apparent obstacle to its ray.
 				var at := point(goal.position_cm)
 				cylinder(0.34, 0.065, Color("697b8e"), at + Vector3(0, 0.033, 0), _history_root)
-				var shape := CylinderMesh.new()
-				shape.top_radius = 0.11
-				shape.bottom_radius = 0.27
-				shape.height = 0.42
-				var bell := mesh_node(shape, Color("b29868"), at + Vector3(0, 0.29, 0), _history_root)
+				var bell: MeshInstance3D = Bell.build(_history_root, at + Vector3(0, 0.065, 0), Vector2(0.6, 0.46), "none").body
 				_glow(bell, LIGHT_COLOR, 0.25)
 	_history_root.set_meta("checkpoint_hash", checkpoint.get("checkpoint_hash", ""))
 
@@ -426,33 +406,17 @@ func _build_source(control: Dictionary, emitter: Dictionary) -> void:
 		plate.name = "EmitterPad"
 		_pad_ring = ring(radius + 0.02, Color("bba775"), base + Vector3(0, 0.08, 0), terrain)
 		box(Vector3(0.18, 0.018, 0.18), Color("ded2a7"), base + Vector3(0, 0.075, 0), terrain).rotation.y = PI / 4.0
-	var at := point(emitter.position_cm)
-	var axis := _beam_height()
-	var base_height := _control_base_height(emitter)
-	cylinder(0.08, axis - base_height, Color("897c67"), at + Vector3(0, (axis + base_height) / 2.0, 0), terrain)
-	var lantern := cylinder(0.16, 0.30, Color("6c777c"), at + Vector3(0, axis, 0), terrain)
-	lantern.name = "HarbourEmitter"
-	_source_lens = sphere(0.13, Color("706d5e"), at + Vector3(0.04, axis, 0), terrain)
+	_source_lens = _source_body(point(emitter.position_cm), _control_base_height(emitter), terrain, false)
 	_source_nodes[emitter.id] = _source_lens
 	_glow(_source_lens, LIGHT_COLOR, 0.0)
-	cylinder(0.20, 0.05, Color("ab966d"), at + Vector3(0, axis + 0.18, 0), terrain)
 
 func _build_mirror(control: Dictionary) -> void:
 	var at := point(control.position_cm)
 	var base_height := _control_base_height(control)
-	var axis := _beam_height()
 	cylinder(0.18, 0.07, Color("98a8ad"), at + Vector3(0, base_height + 0.035, 0), terrain)
 	ring(float(control.radius_cm) / 100.0, Color("8caab9"), at + Vector3(0, base_height + 0.04, 0), terrain)
-	cylinder(0.055, axis - base_height, Color("819199"), at + Vector3(0, (axis + base_height) / 2.0, 0), terrain)
-	_mirror_pivot = Node3D.new()
-	_mirror_pivot.name = "MirrorOrientation"
-	_mirror_pivot.position = at + Vector3(0, axis, 0)
-	terrain.add_child(_mirror_pivot)
+	_mirror_pivot = _mirror_body(at, base_height, terrain, false)
 	_mirror_nodes[control.get("optical_id", control.id)] = _mirror_pivot
-	box(Vector3(0.70, 0.54, 0.06), Color("c3ae78"), Vector3.ZERO, _mirror_pivot)
-	for side in [-1, 1]:
-		var glass := box(Vector3(0.62, 0.46, 0.012), Color("acd6e7"), Vector3(0, 0, side * 0.037), _mirror_pivot)
-		_glow(glass, Color("7eadc3"), 0.25)
 	_mirror_target = -PI / 4.0
 	_mirror_pivot.rotation.y = _mirror_target
 	# Discrete engraved arrows show two positions instead of implying free aim.
@@ -464,17 +428,55 @@ func _build_mirror(control: Dictionary) -> void:
 const RECEIVER_POST := 0.06
 
 func _build_receiver(receiver: Dictionary) -> void:
-	var at := point(receiver.position_cm)
-	var base_height := _control_base_height(receiver)
-	var axis := _beam_height()
-	cylinder(RECEIVER_POST, axis - base_height, Color("697a88"), at + Vector3(0, (axis + base_height) / 2.0, 0), terrain)
-	var disk := cylinder(0.22, 0.07, Color("8da2ac"), at + Vector3(0, axis, 0), terrain)
-	disk.rotation.x = PI / 2.0
-	_receiver_lens = box(Vector3(0.20, 0.20, 0.035), Color("536579"), at + Vector3(0, axis, 0.052), terrain)
-	_receiver_lens.rotation.z = PI / 4.0
-	_receiver_lens.name = "BridgeReceiver"
+	_receiver_lens = _receiver_body(point(receiver.position_cm), _control_base_height(receiver), terrain, false)
 	_receiver_nodes[receiver.id] = _receiver_lens
 	_glow(_receiver_lens, LIGHT_COLOR, 0.0)
+
+# The fixtures themselves, live or remembered: a light, a mirror and a receiver
+# at `at` on a floor `base_height` up, under `parent`. A remembered one (an
+# earlier stage's, present_history) is the same fixture faded (_faded).
+
+## The colour a remembered fixture fades toward, and how far.
+const FADED := Color("7d8a90")
+const FADE := 0.55
+
+static func _faded(color: Color, faded: bool) -> Color:
+	return color.lerp(FADED, FADE) if faded else color
+
+## A light: its post, lantern, cap and the lens it shines from (returned).
+func _source_body(at: Vector3, base_height: float, parent: Node3D, faded: bool) -> MeshInstance3D:
+	var axis := _beam_height()
+	cylinder(0.08, axis - base_height, _faded(Color("897c67"), faded), at + Vector3(0, (axis + base_height) / 2.0, 0), parent)
+	var lantern := cylinder(0.16, 0.30, _faded(Color("6c777c"), faded), at + Vector3(0, axis, 0), parent)
+	lantern.name = "HarbourEmitter"
+	var lens := sphere(0.13, _faded(Color("706d5e"), faded), at + Vector3(0.04, axis, 0), parent)
+	cylinder(0.20, 0.05, _faded(Color("ab966d"), faded), at + Vector3(0, axis + 0.18, 0), parent)
+	return lens
+
+## A mirror: its post and the framed two-sided glass on its turning pivot (returned).
+func _mirror_body(at: Vector3, base_height: float, parent: Node3D, faded: bool) -> Node3D:
+	var axis := _beam_height()
+	cylinder(0.055, axis - base_height, _faded(Color("819199"), faded), at + Vector3(0, (axis + base_height) / 2.0, 0), parent)
+	var pivot := Node3D.new()
+	pivot.name = "MirrorOrientation"
+	pivot.position = at + Vector3(0, axis, 0)
+	parent.add_child(pivot)
+	box(Vector3(0.70, 0.54, 0.06), _faded(Color("c3ae78"), faded), Vector3.ZERO, pivot)
+	for side in [-1, 1]:
+		var glass := box(Vector3(0.62, 0.46, 0.012), _faded(Color("acd6e7"), faded), Vector3(0, 0, side * 0.037), pivot)
+		if not faded: _glow(glass, Color("7eadc3"), 0.25)
+	return pivot
+
+## A receiver: its post, its disc and the lens that lights (returned).
+func _receiver_body(at: Vector3, base_height: float, parent: Node3D, faded: bool) -> MeshInstance3D:
+	var axis := _beam_height()
+	cylinder(RECEIVER_POST, axis - base_height, _faded(Color("697a88"), faded), at + Vector3(0, (axis + base_height) / 2.0, 0), parent)
+	var disk := cylinder(0.22, 0.07, _faded(Color("8da2ac"), faded), at + Vector3(0, axis, 0), parent)
+	disk.rotation.x = PI / 2.0
+	var lens := box(Vector3(0.20, 0.20, 0.035), _faded(Color("536579"), faded), at + Vector3(0, axis, 0.052), parent)
+	lens.rotation.z = PI / 4.0
+	lens.name = "BridgeReceiver"
+	return lens
 
 func _build_selector(control: Dictionary) -> void:
 	# The mirror still follows the exact optical orientation. Three engraved
@@ -736,7 +738,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_follow_slot = str(state.get("active_slot", _follow_slot))
 	if immediate and _follows_view(): _follow_point = _follow_target()
 	_present_celebration(immediate)
-	if _goal_piece != null and is_instance_valid(_bell): _goal_piece.set_lit(_wake)
+	if _goal_piece != null and is_instance_valid(_bell): _goal_piece.set_lit(_wake, immediate or reduced_motion)
 	_present_beams(state.optics.segments)
 
 ## A solved stage makes both spirits jump, sparkle and smile, as in the other
@@ -866,6 +868,7 @@ func _static_keep() -> Array:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	if _goal_piece != null and _goal_piece.moving(): _goal_piece.advance(delta)
 	_follow_lenses()
 
 func _idle_card_frame() -> void:

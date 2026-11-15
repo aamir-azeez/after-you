@@ -14,12 +14,16 @@ const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SparkleStar = preload("res://presentation/kit/sparkle_star.gd")
 const Index = preload("res://content/chapters/index.gd")
+const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## Round 2's keepsakes are bigger: the README budget for all eleven with every
 ## upgrade is 45,000 triangles (Home's isles included, counted by the layer suite).
 const MAX_PARTS := 90
 const MAX_TRIANGLES := 6000
 const ALL_TRIANGLES := 40000
 const MAX_MOVING := 6
+## Kit bells (kit/pieces/bell.gd) move apart from that: each keeps its swing,
+## hammer and clapper whole (Bell.hold), and a keepsake hangs at most this many.
+const MAX_BELLS := 5
 ## Every beat, then the ease back to rest.
 const TOTAL_MAX := 5.65
 ## The owner let the Relay Masts take longer (2026-11-02), so its flag keeps
@@ -50,7 +54,6 @@ func _run() -> void:
 		_check(builder is Builder, "%s's builder extends keepsake_builder.gd" % entry.id)
 		for flags in range(16):
 			var state := {"together": flags & 1 != 0, "hard": flags & 2 != 0 and entry.hard, "top": flags & 4 != 0 and entry.hard}
-			if entry.id == States.EARLIER: state.lanterns = [true, false, true, false, true, false, true, false] if flags & 8 else [false, false, false]
 			_check_build(stage, entry, builder, state)
 		var full: Dictionary = builder.full_state()
 		var prop := Node3D.new()
@@ -125,8 +128,10 @@ func _check_build(stage: Node3D, entry: Dictionary, builder: RefCounted, state: 
 	var label := "%s %s" % [entry.id, state]
 	var counted := _count(prop)
 	_check(counted[0] <= MAX_PARTS and counted[1] <= MAX_TRIANGLES, "%s stays within %d parts and %d triangles: %s" % [label, MAX_PARTS, MAX_TRIANGLES, counted])
-	var moving := parts.values().filter(func(part: Variant) -> bool: return part is Node)
-	_check(moving.size() <= MAX_MOVING, "%s moves at most %d parts: %d" % [label, MAX_MOVING, moving.size()])
+	var moving := parts.values().filter(func(part: Variant) -> bool: return part is Node and not Bell.is_part(part))
+	_check(moving.size() <= MAX_MOVING, "%s moves at most %d parts besides its bells: %d" % [label, MAX_MOVING, moving.size()])
+	var bells := parts.values().filter(func(part: Variant) -> bool: return part is Node and (part as Node).name == &"BellSwing")
+	_check(bells.size() <= MAX_BELLS, "%s hangs at most %d bells: %d" % [label, MAX_BELLS, bells.size()])
 	_check(prop.find_children("*", "", true, false).all(func(node: Node) -> bool: return node.get_script() == null), "%s carries no script, so its still parts fold" % label)
 	# Its pieces stay inside its ground: the footing under, the together piece beside, the top above.
 	var area: Rect2 = builder.footprint().grow(0.06)
@@ -180,7 +185,6 @@ func _check_explore(stage: Node3D, entry: Dictionary, builder: RefCounted) -> vo
 	var stay: Rect2 = builder.stay()
 	for flags in range(8):
 		var state := {"together": flags & 1 != 0, "hard": flags & 2 != 0 and entry.hard, "top": flags & 4 != 0 and entry.hard}
-		if entry.id == States.EARLIER: state.lanterns = [true, false, true]
 		var solids: Array[Rect2] = builder.solids(state)
 		_check(not solids.is_empty() and solids.all(func(rect: Rect2) -> bool: return ground.encloses(rect)), "%s %s keeps its solids inside its ground" % [entry.id, state])
 		if trigger.has("area"):
@@ -232,7 +236,6 @@ func _check_upgrades(stage: Node3D, entry: Dictionary, builder: RefCounted) -> v
 		if upgrade in ["hard", "top"] and not entry.hard: continue
 		var state := {}
 		if not upgrade.is_empty(): state[upgrade] = true
-		if entry.id == States.EARLIER: state.lanterns = [true, false, true]
 		var prop := Node3D.new()
 		stage.add_child(prop)
 		builder.build(prop, state)

@@ -99,7 +99,6 @@ const KNOWN_FAILURES := {
 	"offline:res://presentation/account_flow.gd": "unowned (shared-paths audit): recovery and delete confirmations stay live offline",
 	"offline:res://presentation/safety_screen.gd": "unowned (shared-paths audit): unblock and report buttons stay live offline",
 	"offline:res://presentation/shared_replay_view.gd": "unowned (shared-paths audit): report and block in a replay stay live offline",
-	"offline:res://presentation/legacy_room_flow.gd": "unowned (shared-paths audit): legacy room create, join, fork and advance stay live offline",
 	"offline:res://presentation/notification_flow.gd": "unowned (shared-paths audit): a room alert tapped offline says the room could not be opened on every retry",
 	"offline:res://relay_preview.gd": "unowned (shared-paths audit): New room on the end card and redo requests stay live offline (turns themselves are kept)",
 }
@@ -131,7 +130,6 @@ const PIP_MAKERS := {
 	"res://presentation/wardrobe_sheets.gd": ["preview", "the buy sheet shows the item on the plain pip"],
 	"res://presentation/wardrobe_orchard.gd": ["preview", "Fruits board 4a: each Orchard item on the plain pip"],
 	"res://presentation/pollen_result_line.gd": ["preview", "owner 2026-11-02: the dropped item shows alone on a plain pip"],
-	"res://presentation/story_memory_world.gd": ["unshown", "Story was removed; only tests load it"],
 }
 ## A script that reads a player's look.
 const LOOK_SOURCE := "OwnLook\\.|TurnLooks|SlotLooks|slot_looks|Outfit\\.from\\(|\\.wear\\(|\\.outfit\\s*="
@@ -158,7 +156,6 @@ const OFFLINE_EXEMPT := {
 	"res://presentation/friends_flow.gd": "opens Friends, whose buttons hold (friends_screen.gd); its board read runs in the background",
 	"res://presentation/bundle_purchase.gd": "refuses offline itself before a purchase starts; the store page holds its buttons",
 	"res://presentation/settings_rows.gd": "declares rows online: true; settings_flow.gd holds each one",
-	"res://presentation/turn_flow.gd": "a turn is kept as pending_turn and sent again later, offline included",
 }
 
 ## (e) The name resolver and the scripts allowed under it.
@@ -193,11 +190,9 @@ const SAVE_EXEMPT := {
 ## (h) Every script that sends a server write: [how many, why each is safe].
 ## A reason starting "keyed" means the script sends idempotency keys.
 const WRITES := {
-	"res://main.gd": [3, "keyed: room reactions; POST /v1/identity has none (audit: check one lost answer never makes two identities)"],
+	"res://main.gd": [1, "unkeyed: POST /v1/identity (audit: check one lost answer never makes two identities)"],
 	"res://presentation/account_flow.gd": [2, "keyed: identity recovery; DELETE /v1/identity removes one thing"],
-	"res://presentation/legacy_room_flow.gd": [4, "keyed: room create, fork and advance; a join names one invite"],
 	"res://presentation/room_hub_flow.gd": [5, "unkeyed: close, leave and invite lookups end in the same state when repeated"],
-	"res://presentation/turn_flow.gd": [1, "keyed: the pending turn's key"],
 	"res://services/bundle_claims.gd": [1, "unkeyed: claims every purchase the store reports; each purchase token pays once"],
 	"res://services/deleted_identity_ack.gd": [1, "unkeyed: an acknowledgement"],
 	"res://services/display_name_client.gd": [2, "unkeyed: PUT sets the whole name"],
@@ -345,23 +340,19 @@ const ROUTE_BARRIERS_OWNER := "res://presentation/cooperative_world.gd"
 ## Worlds that leave a closed stair's chain out themselves (route_barriers.skip();
 ## a whole chapter says it in its descriptor's "stair_gates" instead) or pick
 ## the "barrier" look in code rather than in their dressing (_barrier_style), with why.
-const ROUTE_BARRIER_OVERRIDES := {
-	"res://presentation/wishing_well_world.gd": "the well's lip takes the rail style, and the Well has no dressing file to pick it in (one would switch its plain look to the warm one) (_barrier_style)",
-}
+const ROUTE_BARRIER_OVERRIDES := {}
 ## Scripts that work out a chapter turn's sounds, which run each tick through
 ## the refusal finder first.
 const TURN_SOUND_SCREENS := ["res://relay_preview.gd", "res://presentation/shared_replay_view.gd"]
 ## Flat diamonds drawn outside the kit: how many, and why each is no ownership mark.
 const FLAT_DIAMONDS := {
 	"res://presentation/island_world.gd": [1, "the first island's plate glyph: a plate either spirit presses"],
-	"res://presentation/relay_world.gd": [1, "Relay Isles' plate glyphs: plates either spirit presses"],
 	"res://presentation/lighthouse_world.gd": [2, "the emitter pad's glyph and the path selector's pointer"],
 	"res://presentation/kit/pieces/selector.gd": [1, "a valve wheel's pointer head"],
 }
 ## Rings the size of the second spirit's mark drawn outside the kit: how many, and why.
 const MARK_SIZED_RINGS := {
 	"res://presentation/cooperative_world.gd": [1, "the pulley's gold wheel over a missing crossing"],
-	"res://presentation/keepsake_visual.gd": [1, "a keepsake's standing hoop"],
 }
 
 ## (s) The one falling effect kit, its shader, and each script that uses it with what for.
@@ -389,7 +380,7 @@ const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
 	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad)",
-	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell stays its own",
+	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {
@@ -402,7 +393,6 @@ const PIECE_OVERRIDES := {
 	"res://presentation/journey_world.gd": "a selector's value bubble over its lever (_build_selector)",
 	"res://presentation/tide_world.gd": "a valve's water sign (_build_selector) and every lever's on lamp (_build_lever)",
 	"res://presentation/long_way_home_world.gd": "the porch and garden pads' word labels and the cables to the greeting window (_build_physical_pad)",
-	"res://presentation/relay_world.gd": "Relay Isles' published plate: a gold disc under a cream ring and a diamond glyph, lit while its bridge is open (_build_pad)",
 }
 ## The base builders the overrides extend.
 const PIECE_BASES := ["res://presentation/island_world.gd", "res://presentation/lighthouse_world.gd", "res://presentation/cooperative_world.gd"]

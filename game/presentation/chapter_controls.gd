@@ -104,7 +104,7 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	turn_progress.reduced_motion = bool(settings.get("reduced_motion", false))
 	turn_progress.set_remaining(remaining, float(state.get("duration_ticks", 600)) / 30.0)
 	hint_label.text = PlayerCopy.from_canonical(str(state.get("message", "")), solo)
-	var objective: Dictionary = state.get("objective_display", ObjectivePanel.legacy_progress(state, 30.0))
+	var objective: Dictionary = state.get("objective_display", {})
 	objective_panel.show_objective(objective, str(state.get("progress_message", "")))
 	var action: Dictionary = state.get("context_action", {})
 	action_button.text = PlayerCopy.from_canonical(str(action.get("label", "Interact")))

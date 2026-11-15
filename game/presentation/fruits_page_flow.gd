@@ -17,7 +17,7 @@ extends Node
 ## Everything hides while Fruits do not show (services/pollen_surfaces.gd fruits_visible).
 ##
 ## Main hosts it as a child and reads Main only through: pollen_client,
-## title_font, mode, running, overlay, _clear_overlay, and _mark_screen_back
+## title_font, mode, overlay, _clear_overlay, and _mark_screen_back
 ## (Android Back) and menu_opened (the back history) when Main has them.
 const Page = preload("res://presentation/fruits_page.gd")
 const WalletView = preload("res://presentation/fruit_wallet_view.gd")
@@ -76,7 +76,6 @@ func is_open() -> bool:
 ## Opens the page over the screen `from`; nothing while it is open already or Fruits do not show.
 func open(from: String = "home") -> void:
 	if is_open() or not available(): return
-	host.running = false
 	host.mode = MODE
 	host._clear_overlay()
 	_page = Page.new(host.get("title_font"))

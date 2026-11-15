@@ -75,7 +75,7 @@ func _ids(menu: CanvasLayer) -> Array:
 
 func _rows_by_offer() -> void:
 	var inbox := Inbox.new()
-	inbox.rooms = [_room("done", "completed"), _room("legacy", "completed", 1), _room("cached", "completed"), _room("story", "completed", 3)]
+	inbox.rooms = [_room("done", "completed"), _room("cached", "completed"), _room("story", "completed", 3)]
 	inbox.unconfirmed = ["cached"]
 	var hub: Node = await _hub(inbox)
 	var watch: Button = hub.room_action("done")
@@ -85,19 +85,19 @@ func _rows_by_offer() -> void:
 	_check(dots != null and is_equal_approx(dots.size.y, watch.size.y) and is_equal_approx(dots.size.x, dots.size.y), "The ... button is square and as tall as Watch replay")
 	_check(dots != null and dots.get_theme_stylebox("normal").bg_color == watch.get_theme_stylebox("normal").bg_color and dots.get_theme_stylebox("normal").border_color == watch.get_theme_stylebox("normal").border_color, "The ... button has Watch replay's fill and border")
 	_check(dots != null and dots.accessibility_name.begins_with(PlayerCopy.ROOM_MENU), "Screen readers hear More options")
-	var ids := ["done", "legacy", "cached", "story"]
-	var expected := [["hide"], ["hide"], ["hide"], ["hide"]]
-	for index in range(4):
+	var ids := ["done", "cached", "story"]
+	var expected := [["hide"], ["hide"], ["hide"]]
+	for index in range(3):
 		var menu := await _open(hub, ids[index])
 		_check(_ids(menu) == expected[index], "Without the server's offer the menu only hides: " + ids[index])
 		if menu != null: menu.close()
 		await process_frame
 	hub.set_leave_finished(true)
 	await process_frame
-	expected = [["hide", "leave_finished"], ["hide", "leave_finished"], ["hide"], ["hide"]]
-	for index in range(4):
+	expected = [["hide", "leave_finished"], ["hide"], ["hide"]]
+	for index in range(3):
 		var menu := await _open(hub, ids[index])
-		_check(_ids(menu) == expected[index], "With the offer, confirmed relay and legacy rooms can be left; unconfirmed and Story rooms only hide: " + ids[index])
+		_check(_ids(menu) == expected[index], "With the offer, a confirmed chapter room can be left; unconfirmed and Story rooms only hide: " + ids[index])
 		if index == 0 and menu != null:
 			var hide: Button = menu.rows[0]
 			var leave: Button = menu.rows[1]

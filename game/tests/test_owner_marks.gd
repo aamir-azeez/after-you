@@ -35,9 +35,7 @@ const SAME_FLOOR := 0.05
 const RING_REACH := OwnerMark.RING_RADIUS + 0.025
 ## Marks that cannot be other than they are, by chapter: "<chapter key>:
 ## <check> <kind> <id>" -> why. An entry that no failing check matches fails.
-const KNOWN := {
-	"the-wishing-well@1: fold bucket": "the bucket's mark rides the moving bucket: one draw call",
-}
+const KNOWN := {}
 var checks := 0
 var failures := 0
 var _known := {}

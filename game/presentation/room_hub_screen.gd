@@ -897,7 +897,7 @@ func _removal(room: Dictionary) -> String:
 	var status := str(room.get("status",""))
 	if status == "completed": return ""
 	if status == "unavailable": return "hide"
-	if Typed.as_int(room.get("api_version")) not in [1,2] or not client.confirmed(room): return ""
+	if Typed.as_int(room.get("api_version")) != 2 or not client.confirmed(room): return ""
 	if status == "closed": return "leave"
 	return "close" if status in ACTIVE_STATUSES else ""
 
@@ -908,7 +908,7 @@ func _removal_label(removal: String) -> String:
 ## the server offers it for a room its latest list confirmed.
 func _menu_rows(room: Dictionary) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = [{"id": "hide", "title": PlayerCopy.ROOM_HIDE, "detail": PlayerCopy.ROOM_HIDE_DETAIL, "icon": HIDE_ICON}]
-	if _leave_finished and int(room.get("api_version",0)) in [1,2] and client != null and client.has_method("confirmed") and client.confirmed(room):
+	if _leave_finished and int(room.get("api_version",0)) == 2 and client != null and client.has_method("confirmed") and client.confirmed(room):
 		rows.append({"id": "leave_finished", "title": PlayerCopy.ROOM_LEAVE, "detail": PlayerCopy.ROOM_LEAVE_DETAIL, "icon": LEAVE_ICON, "tone": "danger"})
 	var partner: Dictionary = partner_friend.call(room) if partner_friend.is_valid() else {}
 	match str(partner.get("state", "")):

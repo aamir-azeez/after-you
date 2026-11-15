@@ -7,7 +7,7 @@ extends Node
 ## Main hosts it as a child and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
 ## - services: api, _names_scope, saves (reduced motion)
-## - screen: mode, running, overlay (the page's parent), ui (the cards' parent),
+## - screen: mode, overlay (the page's parent), ui (the cards' parent),
 ##   _clear_overlay, _toast, and _mark_screen_back when Main has it (Android Back)
 ## - soundscape when Main has it (play_fixed_cue): worn, taken off and bought,
 ##   and a picked Bell sound item's own sound.
@@ -198,7 +198,6 @@ func is_open() -> bool:
 ## show_orchard was asked from; "" when Back comes to it).
 func show_wardrobe(from: String = "settings") -> void:
 	if not available(): return
-	host.running = false
 	host.mode = MODE_WARDROBE
 	host._clear_overlay()
 	var reduced: bool = bool(host.saves.data.settings.get("reduced_motion", false)) if host.get("saves") != null else false
@@ -664,7 +663,7 @@ func _orchard_sets(view: Dictionary, owned: Array, offered: Array, look: Diction
 static func _default_pick(items: Array, look: Dictionary, featured: Array) -> String:
 	for slot: String in Catalog.slots():
 		if look.has(slot) and not _entry_in(items, str(look[slot])).is_empty(): return str(look[slot])
-	if not featured.is_empty(): return str(featured.back())
+	if not featured.is_empty(): return str(featured.front())
 	return str(items[0].id) if not items.is_empty() else ""
 
 func _redraw() -> void:

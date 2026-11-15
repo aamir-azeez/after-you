@@ -38,7 +38,7 @@ func _case() -> Dictionary:
 	var factory := Factory.new()
 	factory.api = api
 	var collection := Collection.new(api,owner.identity,cache,online,factory)
-	_check(collection._ready_owner() and collection._remember_room(_snapshot(Registry.FIRST_STEPS),"chapter"),"Known historical room and its native accepted checkpoint are replay-verified")
+	_check(collection._ready_owner() and collection._remember_room(_snapshot(Registry.FIRST_STEPS)),"Known historical room and its native accepted checkpoint are replay-verified")
 	var key := "chapter:"+ROOM
 	var entry: Dictionary = await collection.open_memory(key,"p0-1")
 	var pair: Dictionary = entry.pair.duplicate(true)
@@ -66,7 +66,7 @@ func _historical_reads() -> void:
 	_check((await c.collection.refresh_memories(c.key)).size() == 3 and not (await c.collection.open_memory(c.key,"p1-1")).is_empty() and c.cache.writes == writes,"Held remote authority preserves already verified accepted replay evidence")
 	var contexts: int = c.factory.requests.size()
 	await c.collection.refresh_rooms()
-	_check(c.factory.requests.size() == contexts and c.api.calls[-2].path == "/v1/rooms" and c.api.calls[-1].path == "/v2/rooms","Ordinary and legacy discovery lists do not infer room context from their URL")
+	_check(c.factory.requests.size() == contexts and c.api.calls[-1].path == "/v2/rooms","The rooms discovery list does not infer room context from its URL")
 	await _dispose(c)
 
 func _factory_reconfiguration() -> void:

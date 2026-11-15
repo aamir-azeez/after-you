@@ -211,7 +211,6 @@ func _together(paths: Dictionary) -> void:
 	var room := {"family": "chapter", "room_id": ROOM, "chapter_key": Registry.RELAY}
 	_check(flow._shared_export_button(room, {"id": "p1-0"}) == null, "Together offers nothing without the capability")
 	flow.run_export_allowed = func() -> bool: return true
-	_check(flow._shared_export_button({"family": "legacy", "room_id": ROOM, "chapter_key": ""}, {"id": "a1"}) == null, "nor for an earlier-islands room")
 	var export: Button = flow._shared_export_button(room, {"id": "p1-0"})
 	_check(export != null and str(export.get_meta("export_file_name", "")) == "relay-isles-attempt-2.afteryou", "A Together part offers its attempt, named by the attempt's place")
 	if export != null:

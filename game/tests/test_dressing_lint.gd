@@ -1,5 +1,6 @@
 extends SceneTree
 ## Scenery lint. Every prop in content/dressing, on every stage it shows on:
+## (the placement rules are shared code, presentation/kit/prop_rules.gd)
 ##  - stands off every walkable route, island, stair and drop whose walking
 ##    space it would share (flat decals excepted),
 ##  - stays clear of every pad, lever, switch, goal and start,
@@ -15,17 +16,14 @@ extends SceneTree
 const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
+const PropRules = preload("res://presentation/kit/prop_rules.gd")
+const Placement = preload("res://content/dressing/placement.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
-const Layout = preload("res://services/level_layout.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
-const SPIRIT := 1.0
-## About a spirit's body radius beyond the rectangle its centre walks in.
-const MARGIN := 0.12
-const VIEW := Vector2(-3.0, -10.0) / 13.0
 ## Two same-facing faces closer than this (metres) z-fight on some depth
 ## buffers at the chapter camera's distance; real gaps are a few millimetres.
 ## A chapter whose camera has coarser depth steps needs more (min_gap()).
@@ -99,89 +97,52 @@ func _check_water_dressing(key: String, data: Dictionary) -> void:
 	var bodies: Array = [] if path.is_empty() else load(path).DATA.bodies.map(func(body: Dictionary) -> String: return str(body.id))
 	for boat: Dictionary in data.get("moored_boats", []): _check(str(boat.get("water", "")) in bodies and boat.get("at", []).size() == 2, "A moored boat of %s rides a body of the chapter's water: %s" % [key, boat])
 
-## The chapter whose plans (services/level_layout.gd) a dressing key's stages
-## are: the unregistered Lighthouse @1 dresses the six stages the room
-## chapter (@2) lays out from the same native definitions.
-static func _layout_key(key: String) -> String:
-	return Registry.LIGHTHOUSE_V2 if key == LIGHTHOUSE else key
-
 func _stage_ids(key: String) -> Array:
-	return Layout.stage_ids(Registry.definition(_layout_key(key)))
+	return Placement.stage_ids(key)
 
 func _stage_view(key: String, stage_id: String) -> Dictionary:
-	return Layout.for_key(_layout_key(key), stage_id)
+	return Placement.stage_view(key, stage_id)
 
-func _rect(r: Array) -> Rect2:
-	return Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
+## A chapter's dressed world under `parent`, its level built and showing no
+## stage yet (show_dressed_stage()). Free it when done.
+static func dressed_world(parent: Node, key: String) -> Node3D:
+	var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
+	parent.add_child(world)
+	world.set_process(false)
+	if key != LIGHTHOUSE: world.load_level(Registry.definition(key))
+	return world
 
-func _heights(view: Dictionary) -> Dictionary:
-	var result: Dictionary = {}
-	for island: Dictionary in view.get("islands", []): result[str(island.id)] = float(island.get("height_cm", 0)) / 100.0
-	return result
+## Shows one stage of a dressed world as the game does.
+static func show_dressed_stage(world: Node3D, key: String, stage_id: String) -> void:
+	if key == LIGHTHOUSE:
+		world.load_level(LightCatalog.definition(stage_id))
+		return
+	for stage: Dictionary in Registry.definition(key).stages:
+		if stage.id == stage_id: world.show_stage(stage)
 
-## Walking spaces (Layout.walking_areas) in metres: {rect, y, rise, name}.
-## Stairs span their whole rise.
-func _walkable(view: Dictionary) -> Array:
-	var names := {"island": "island", "bridge": "route", "stair": "stair"}
-	return Layout.walking_areas(view).map(func(area: Dictionary) -> Dictionary:
-		return {"rect": _rect(area.rect_cm), "y": float(area.height_cm) / 100.0, "rise": float(area.rise_cm) / 100.0, "name": "%s %s" % [names[area.kind], area.id]})
-
-## Interactive places (Layout.spots: pads, levers, switches, goals, starts,
-## optics) and drops, in metres: {rect, y, name}.
-func _controls(view: Dictionary, heights: Dictionary) -> Array:
-	var found: Array = Layout.spots(view).map(func(spot: Dictionary) -> Dictionary:
-		var radius := float(spot.radius_cm) / 100.0
-		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
-		return {"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(spot.height_cm) / 100.0, "name": "%s %s" % [spot.kind, spot.id]})
-	for drop: Dictionary in view.get("drops", []):
-		found.append({"rect": _rect(drop.rect_cm), "y": float(heights.get(str(drop.get("surface_id", "")), 0.0)), "name": "drop " + str(drop.get("id", ""))})
-	return found
-
+## The shared rules (kit/prop_rules.gd), one check per walking space, place
+## and camera target, so a failure names what the prop is in.
 func _lint(key: String, stage_id: String, view: Dictionary, data: Dictionary) -> void:
-	var heights := _heights(view)
-	var spaces := _walkable(view)
-	var controls := _controls(view, heights)
+	var heights := PropRules.heights(view)
+	var spaces := PropRules.walkable(view)
+	var controls := PropRules.places(view, heights)
 	for spec: Dictionary in Props.expand(Catalog.stage_props(data, stage_id)):
 		var label := "%s %s %s at %s" % [key, stage_id, spec.get("kind", "?"), spec.get("at", spec.get("from", spec.get("rect", "")))]
 		if not _check(_known(spec), "Dressing prop kind exists: " + label): continue
-		var extent := Props.extent(spec)
 		var surface := str(spec.get("surface", ""))
 		_check(surface.is_empty() or heights.has(surface), "Dressing surface exists on this stage: %s (%s)" % [label, surface])
-		var base := float(heights.get(surface, 0.0)) + float(extent.base)
-		var top := base + float(extent.height)
-		var footprint: Rect2 = extent.rect
-		var inner := footprint.grow(-0.01)
-		if not bool(extent.flat):
+		var foot := PropRules.footing(spec, heights)
+		if not bool(foot.flat):
 			for space: Dictionary in spaces:
-				if bool(extent.get("wall", false)) and _on_back_wall(footprint, base, space): continue
-				var shares := top > float(space.y) + 0.02 and base < float(space.y) + float(space.rise) + SPIRIT
-				_check(not (shares and inner.intersects(space.rect)), "Prop stands on a walkable %s: %s" % [space.name, label])
+				if bool(foot.wall) and PropRules.on_back_wall(foot.rect, float(foot.base), space): continue
+				_check(not PropRules.on_walkable(foot, space), "Prop stands on a walkable %s: %s" % [space.name, label])
 		for item: Dictionary in controls:
-			_check(not (top > float(item.y) and base < float(item.y) + SPIRIT and inner.intersects(item.rect.grow(0.1))), "Prop covers %s: %s" % [item.name, label])
-		if top - float(heights.get(surface, 0.0)) <= Props.LOW or bool(extent.flat): continue
+			_check(not PropRules.covers(foot, item), "Prop covers %s: %s" % [item.name, label])
+		if PropRules.low(foot): continue
 		for target: Dictionary in spaces + controls:
-			# A wall-hung prop sits above head height against its own room's back wall.
-			if bool(extent.get("wall", false)) and _on_back_wall(footprint, base, target): continue
-			if _hides(footprint, base, top, target):
+			if PropRules.hides_target(foot, target):
 				_check(false, "Prop hides %s from the camera: %s" % [target.name, label])
 				break
-
-func _on_back_wall(footprint: Rect2, base: float, target: Dictionary) -> bool:
-	var rect: Rect2 = target.rect
-	return base >= float(target.y) + 1.1 and footprint.position.x >= rect.position.x - 0.05 and footprint.end.x <= rect.end.x + 0.05 and footprint.position.y <= rect.position.y + 0.25
-
-## The prop's view shadow at the target's height overlaps the target.
-func _hides(footprint: Rect2, base: float, top: float, target: Dictionary) -> bool:
-	var y0 := float(target.y)
-	var near := maxf(0.0, base - y0 - SPIRIT - float(target.get("rise", 0.0)))
-	var far := top - y0
-	if far <= 0.0: return false
-	var goal: Rect2 = target.rect.grow(MARGIN)
-	var step := near
-	while step <= far + 0.001:
-		if Rect2(footprint.position + VIEW * step, footprint.size).grow(-0.01).intersects(goal): return true
-		step += 0.05
-	return false
 
 func _known(spec: Dictionary) -> bool:
 	var holder := Node3D.new()
@@ -193,15 +154,9 @@ func _known(spec: Dictionary) -> bool:
 ## Builds each dressed world and proves the scenery has no physics.
 func _check_built_worlds() -> void:
 	for key: String in Catalog.keys():
-		var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
-		root.add_child(world)
-		world.set_process(false)
-		if key != LIGHTHOUSE: world.load_level(Registry.definition(key))
+		var world := dressed_world(root, key)
 		for stage_id: String in _stage_ids(key):
-			if key == LIGHTHOUSE: world.load_level(LightCatalog.definition(stage_id))
-			else:
-				for stage: Dictionary in Registry.definition(key).stages:
-					if stage.id == stage_id: world.show_stage(stage)
+			show_dressed_stage(world, key, stage_id)
 			var dressed: Array = world.terrain.find_children("*", "Node3D", true, false).filter(func(node: Node) -> bool: return node.has_meta("dressing_kind"))
 			var expected := Props.expand(Catalog.stage_props(Catalog.for_key(key), stage_id)).size()
 			_check(dressed.size() == expected, "Every dressing prop is built: %s %s (%d of %d)" % [key, stage_id, dressed.size(), expected])

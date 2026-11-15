@@ -322,14 +322,11 @@ func _screen() -> void:
 	var app: Node = made[1]
 	_check(app.mode == "home" and not app._update_gate_active(), "Home shows at once and nothing is gated before an answer")
 	var transport := Transport.new()
-	# An answer arriving during a solo turn waits: the turn is never interrupted.
-	app._start_practice(0)
+	# An answer arriving on another screen waits for Home: that screen is never replaced.
+	app.journey_flow.show_journey()
 	await _settle()
-	app.earlier_islands_flow.begin_turn()
-	await _settle()
-	var in_turn: String = app.mode
 	await _gate(app, transport, _required())
-	_check(app._update_gate_active() and app.mode == in_turn and app.running, "An answer that arrives mid-turn leaves the turn running")
+	_check(app._update_gate_active() and app.mode == "journey", "An answer that arrives on Play Solo leaves it open")
 	app._show_home()
 	app._service_update_gate()
 	await _settle()
@@ -356,11 +353,9 @@ func _screen() -> void:
 		await _tap(viewport, solo.get_global_rect().get_center())
 		_check(app.mode == "journey", "Play Solo opens the solo chapters")
 	# Solo play while gated.
-	app._start_practice(0)
+	app.journey_flow.show_journey()
 	await _settle()
-	app.earlier_islands_flow.begin_turn()
-	await _settle()
-	_check(app.running and app.mode == "play", "A solo chapter starts while gated")
+	_check(app.mode == "journey", "Play Solo's chapters open while gated")
 	app._show_home()
 	app._service_update_gate()
 	await _settle()

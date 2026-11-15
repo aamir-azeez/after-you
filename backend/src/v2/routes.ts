@@ -1,3 +1,4 @@
+import { packedAsked, packedCapability, packedReader } from "./packed-rooms";
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, inviteRoomId, newInvite, object, parseInvite, readBounded, text, unwrap, type Outcome } from "../protocol";
 import { platformCapability } from "../platform-routes";
 import { bytes, json, bearerDigest } from "../http";
@@ -84,14 +85,20 @@ export function knownRoom(request: Request): KnownRoom | undefined {
 /**
  * Sent with X-AfterYou-Known-Room by a client that reads the redo state from its poll instead of
  * a separate GET /redo. Its capabilities then say poll_redo_version 1, and both poll replies end
- * with `redo`. Without it every byte is as before.
+ * with `redo`. Without it every byte is as before. With REDO_EXTRAS_HEADER too, `redo` (and GET /redo) is
+ * RedoStateV2 (redo-control.ts), with the room's start over request and whether Play my turn again is open.
  */
 export const POLL_REDO_HEADER = "X-AfterYou-Poll-Redo";
-function pollRedo(request: Request): boolean { return request.headers.get(POLL_REDO_HEADER) === "1"; }
+/** Sent beside it (and on GET /redo and the inbox) by a client that reads redo version 2; its capabilities then say redo_extras_version 1. */
+export const REDO_EXTRAS_HEADER = "X-AfterYou-Redo-Extras";
+const redoExtras = (request: Request): boolean => request.headers.get(REDO_EXTRAS_HEADER) === "1";
+/** The redo state a read carries: 0 none, 1 RedoState, 2 RedoStateV2. */
+function redoVersion(request: Request): number { return redoExtras(request) ? 2 : 1; }
+function pollRedo(request: Request): number { return request.headers.get(POLL_REDO_HEADER) === "1" ? redoVersion(request) : 0; }
 /** What a standalone room read or turn reply carries beside the room: each part the client asked for (names and looks while their flags are on). A Story request gets none. */
 function besideWanted(request: Request, env: Env, context: unknown): Beside {
   if (context !== undefined) return {};
-  return { faces: endReactionsWanted(request), names: displayNamesShown(request, env), tracks: runReactionsWanted(request), looks: looksShown(request, env), packs: servedFaceVersion(request, env) };
+  return { faces: endReactionsWanted(request), names: displayNamesShown(request, env), tracks: runReactionsWanted(request), looks: looksShown(request, env), packs: servedFaceVersion(request, env), packed: packedAsked(request) };
 }
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
@@ -128,6 +135,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     // Only clients that keep attempts ask; everyone else gets the same bytes as before.
     ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: true } : {}),
     ...(pollRedo(request) ? { poll_redo_version: 1 } : {}),
+    ...(redoExtras(request) ? { redo_extras_version: 1 } : {}),
     // Each version below goes only to clients that ask for it; everyone else gets the same bytes as before.
     ...(triesWanted(request) ? { turn_tries_version: 1 } : {}),
     ...(endReactionsWanted(request) ? { end_reactions_version: 1 } : {}),
@@ -144,6 +152,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...leaderboardsCapability(request, env),
     ...duelsCapability(request, env),
     ...compressedCapability(request, env),
+    ...packedCapability(request, env),
     ...await testerSwitchCapability(playerId, env),
     ...runExportCapability(request, playerId, env),
     validation: "structural_client_replay_required" });
@@ -183,7 +192,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       const claimed = await claimDuelRoom(env, playerId, duel, link.room_id, link.invite_code);
       if (!claimed.ok) { await player.removeRoom(link.room_id, 2); throw new ApiError(claimed.status, claimed.code); }
     }
-    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen, look, duel)));
+    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen, look, duel, packedReader(request, env))));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
     const input = object(await boundedJson(request, 4096)); exact(input, ["invite_code", ...(input.supported_simulation_versions === undefined ? [] : ["supported_simulation_versions"])]);
@@ -193,7 +202,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), settleFromRoomIndex));
-    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName, pollen, look, open);
+    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName, pollen, look, open, packedReader(request, env));
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.
@@ -305,7 +314,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // caller's safety token), so it skips the separate router check. A read: auth() has just checked the device;
   // requests re-check it.
   if (operation === "redo" && !item && context === undefined) {
-    if (request.method === "GET") return json(unwrap(await room.redoGated(playerId, undefined, undefined, safetyToken)));
+    if (request.method === "GET") return json(unwrap(await room.redoGated(playerId, undefined, undefined, safetyToken, redoVersion(request))));
     if (request.method === "POST") return json(unwrap(await room.redoGated(playerId, await boundedJson(request, 4096), await bearerDigest(request), safetyToken)));
     throw new ApiError(405, "method_not_allowed");
   }
