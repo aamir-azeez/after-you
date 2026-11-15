@@ -8,6 +8,9 @@ extends RefCounted
 
 ## The authored frame: project.godot's base viewport.
 const BASE := Vector2(1280, 720)
+## Where the worlds' camera stands from the point it looks at: every view keeps
+## this angle, so a part built to face the camera faces along it.
+const CAMERA_FROM := Vector3(3, 13, 10)
 
 ## `authored` (a KEEP_HEIGHT camera size) for a view `shown` wide per unit of
 ## height, grown when that is narrower than `reference`. Unchanged otherwise.
