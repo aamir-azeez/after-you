@@ -107,7 +107,7 @@ func _fields(key: String, raw: Dictionary) -> void:
 func _families() -> void:
 	for name: String in Families.ROWS:
 		var family: Dictionary = Families.ROWS[name]
-		for path: String in [family.simulation, family.initial[0]]:
+		for path: String in [family.simulation, family.initial[0], family.layout]:
 			_check(ResourceLoader.exists(path), "Family %s names a script that exists: %s" % [name, path])
 		_check(family.checkpoint_field in ["checkpoint", "previous_checkpoint"], "Family %s keeps a known previous checkpoint field" % name)
 		_check(family.stage_hud in ["authored", "stage_copy", "native"], "Family %s has a known stage HUD source" % name)

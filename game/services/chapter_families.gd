@@ -22,31 +22,33 @@ extends RefCounted
 ##   "checkpoint_copy": the descriptor copy a chapter gets unless it names its own
 ##   "catch_assistance": the catch assistance setting applies to its turns
 ##   "fixture_dir":  folder under tests/fixtures/ for the chapter's fixtures
+##   "layout":       the script whose plan(level, stage_id) lays a stage out as
+##                   floors, crossings and spots (services/level_layout.gd)
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const ROWS := {
 	"relay": {"cooperative": false, "simulation": "res://core/v2/simulation_v2.gd",
 		"initial": ["res://core/v2/stage_catalog.gd", true], "rules": [2, 8], "pinned_rules": false,
-		"checkpoint_field": "previous_checkpoint", "stage_hud": "authored", "checkpoint_copy": {}, "fixture_dir": "v2",
+		"checkpoint_field": "previous_checkpoint", "stage_hud": "authored", "checkpoint_copy": {}, "fixture_dir": "v2", "layout": "res://core/v2/layout.gd",
 		"catch_assistance": true},
 	"first-steps": {"cooperative": false, "simulation": "res://core/first_steps/simulation.gd",
 		"initial": ["res://core/first_steps/stage_catalog.gd", false], "rules": [4, 5, 8], "pinned_rules": false,
-		"checkpoint_field": "checkpoint", "stage_hud": "authored", "checkpoint_copy": {}, "fixture_dir": "first_steps",
+		"checkpoint_field": "checkpoint", "stage_hud": "authored", "checkpoint_copy": {}, "fixture_dir": "first_steps", "layout": "res://core/first_steps/layout.gd",
 		"catch_assistance": true},
 	"cooperative": {"cooperative": true, "simulation": "res://core/cooperative/simulation.gd",
 		"initial": ["res://core/cooperative/stage_catalog.gd", true], "rules": [6, 8], "pinned_rules": true,
 		"checkpoint_field": "checkpoint", "stage_hud": "authored",
-		"checkpoint_copy": {"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT}, "fixture_dir": "cooperative",
+		"checkpoint_copy": {"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT}, "fixture_dir": "cooperative", "layout": "res://core/cooperative/layout.gd",
 		"catch_assistance": true},
 	"journey": {"cooperative": true, "simulation": "res://core/journey/simulation.gd",
 		"initial": ["res://core/journey/stage_catalog.gd", true], "rules": [7, 8], "pinned_rules": true,
 		"checkpoint_field": "checkpoint", "stage_hud": "stage_copy",
-		"checkpoint_copy": {"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT}, "fixture_dir": "journey",
+		"checkpoint_copy": {"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT}, "fixture_dir": "journey", "layout": "res://core/cooperative/layout.gd",
 		"catch_assistance": true},
 	"lighthouse-room": {"cooperative": false, "simulation": "res://core/lighthouse/room_simulation.gd",
 		"initial": ["res://core/lighthouse/room_catalog.gd", true], "rules": [11], "pinned_rules": false,
 		"checkpoint_field": "checkpoint", "stage_hud": "native",
-		"checkpoint_copy": {"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT}, "fixture_dir": "lighthouse",
+		"checkpoint_copy": {"checkpoint_title": "A path kept", "checkpoint_text": PlayerCopy.COOPERATIVE_CHECKPOINT}, "fixture_dir": "lighthouse", "layout": "res://core/lighthouse/layout.gd",
 		# The Lighthouse has no catch to assist; its records always say false.
 		"catch_assistance": false},
 }
