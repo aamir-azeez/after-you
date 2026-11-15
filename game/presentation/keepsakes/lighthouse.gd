@@ -9,6 +9,7 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## into the slow turn. Together Hard: a gold weathervane on the roof, and the
 ## beam turns gold.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## One full turn of the beam, in seconds, once it is on.
 const SWEEP := 10.0
 ## Pressing it again while it is on: SWITCH fades it off (a lamp switched off);
@@ -64,8 +65,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 			var angle := index * TAU / 8.0
 			P.box(root, Vector3(0.025, 0.12, 0.025), P.WOOD_LIGHT, Vector3(cos(angle) * 0.47, y0 + 2.2, sin(angle) * 0.47))
 		var bell := P.pivot(root, Vector3(0.5, y0 + 2.05, 0.2), "Bell")
-		P.sph(bell, 0.1, P.GOLD, Vector3(0, -0.1, 0), Vector3(1, 1.2, 1))
-		parts.bell = bell
+		Bell.hold(parts, "bell", Bell.build(bell, Vector3.ZERO, Vector2(0.4, 0.28), "loop", P.GOLD, null, true, true))
 	if state.get("top", false):
 		P.cyl(root, 0.02, 0.28, P.WOOD, Vector3(0, y0 + 3.0, 0))
 		var vane := P.pivot(root, Vector3(0, y0 + 3.05, 0), "Weathervane")
@@ -143,10 +143,7 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			# have been), and the gallery bell rings.
 			anim.move(_beam(anim, state).arm, "rotation:y", TAU, 0.0, 0.6, Tween.TRANS_SINE, Tween.EASE_IN_OUT)
 			var bell: Node3D = parts.bell
-			anim.move(bell, "rotation:z", 0.5, 0.0, 0.12)
-			anim.move(bell, "rotation:z", -0.35, 0.12, 0.18)
-			anim.move(bell, "rotation:z", 0.0, 0.3, 0.2)
-			anim.sound(str(sounds.get("hard", "")), 0.0)
+			anim.sound(str(sounds.get("hard", "")), Bell.ring(anim, bell, 0.0))
 		"top":
 			# The beam turns gold and the weathervane spins.
 			anim.set_at(_beam(anim, state).cone, "material_override", P.clear(BEAM_GOLD, BEAM_ALPHA, 1.2), 0.0)

@@ -8,6 +8,7 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## goes all the way round it. Together Hard: a gold bell over the dip rings as
 ## the pip passes under.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+const Bell = preload("res://presentation/kit/pieces/bell.gd")
 const CUP := Vector3(1.75, 0, 0.2)
 const LOOP := Vector3(0.0, 1.25, 0.0)
 const LOOP_RADIUS := 0.42
@@ -52,9 +53,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		P.box(root, Vector3(0.07, 2.4, 0.07), P.WOOD, Vector3(0, 1.2, -0.75))
 		P.bar(root, Vector3(0, 2.4, -0.75), Vector3(0, 2.4, 0), 0.06, P.WOOD)
 		var bell := P.pivot(root, Vector3(0, 2.4, 0), "GoldBell")
-		P.node(bell, P.low_sphere(0.17, 0.41), P.gold(), Vector3(0, -0.2, 0))
-		P.ring(bell, 0.17, 0.05, P.GOLD, Vector3(0, -0.34, 0))
-		parts.bell = bell
+		Bell.hold(parts, "bell", Bell.build(bell, Vector3(0, -0.03, 0), Vector2(0.7, 0.44), "loop", P.GOLD_DEEP, P.gold(), true, true))
 	return parts
 
 static func _cart_rest() -> Vector3:
@@ -129,11 +128,8 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			anim.sound(str(sounds.get("hard", "")), 0.0)
 		"top":
 			var bell: Node3D = parts.bell
-			anim.move(bell, "rotation:z", 0.45, 0.0, 0.12)
-			anim.move(bell, "rotation:z", -0.35, 0.12, 0.18)
-			anim.move(bell, "rotation:z", 0.0, 0.3, 0.2)
 			brighten(anim, bell, 0.0)
-			anim.sound(str(sounds.get("top", "")), 0.0)
+			anim.sound(str(sounds.get("top", "")), Bell.ring(anim, bell, 0.0))
 
 ## Walking up to the front of the boarding stand.
 func trigger() -> Dictionary:

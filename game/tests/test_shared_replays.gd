@@ -37,10 +37,6 @@ class SnapshotTrace extends RefCounted:
 			if not Canonical.same(value.actual, value.expected): return false
 		return true
 
-class CountedLegacy extends "res://core/simulation.gd":
-	var trace := SnapshotTrace.new()
-	func snapshot() -> Dictionary: return trace.capture(super.snapshot())
-
 class CountedFirstSteps extends "res://core/first_steps/simulation.gd":
 	var trace := SnapshotTrace.new()
 	func snapshot() -> Dictionary: return trace.capture(super.snapshot())
@@ -198,12 +194,7 @@ func _run() -> void:
 	_check((await collection.open_memory(key, "p1-1", expected)).is_empty(), "A cached pair also rejects mismatched selected contribution hashes")
 	_check(Canonical.digest(online.values) == before, "Fetching an archived replay never switches the active room or reconciles its pending POST")
 	for call: Dictionary in api.calls: _check(call.method == HTTPClient.METHOD_GET and call.body.is_empty(), "Every collection network operation is GET-only")
-	var legacy := {"room_id": "L".repeat(22), "host_id": HOST, "guest_id": GUEST, "level_id": "first-light", "attempt": 3, "first_player_id": GUEST, "active_role": "complete", "recordings": {"a": _fixture("", "first-light-a"), "b": _fixture("", "first-light-b")}}
-	_check(collection.load_saved(legacy), "Earlier-island collection remains compatible with its original engine")
-	var legacy_entry: Dictionary = await collection.open_memory("legacy:" + str(legacy.room_id), "a3")
-	_check(not legacy_entry.is_empty() and Collection.photo_turns(legacy_entry, HOST).is_empty(), "Legacy replay is verified without inventing chapter photo references")
 	await _viewer(entry, api, owner, "2 · a-place-to-grow")
-	await _viewer(legacy_entry, api, owner, "First Light")
 	for fixture: Array in [[Registry.ROLLING_HOME, "cooperative", "bring-it-home"], [Registry.CONSERVATORY, "journey", "a-light-above"]]:
 		var published := _published_entry(fixture[0], fixture[1], fixture[2])
 		_check(Collection.verify_entry(published, HOST), "Published physical or Journey pair passes native shared-replay verification: " + str(fixture[0]))
@@ -214,7 +205,7 @@ func _run() -> void:
 	await _first_photo_read(entry)
 	await _local_photo_read(entry)
 	var relay := _snapshot(Registry.RELAY, "T".repeat(22))
-	_check(collection._remember_room(relay, "chapter") and collection.memories("chapter:" + str(relay.room_id)).size() == 2, "Original Relay schema and proof chain are supported alongside First Steps")
+	_check(collection._remember_room(relay) and collection.memories("chapter:" + str(relay.room_id)).size() == 2, "Original Relay schema and proof chain are supported alongside First Steps")
 	await _identity_race(collection, api, owner, cache)
 	_disk()
 	await _home_entries()
@@ -319,7 +310,7 @@ func _local_disk_race(online: RefCounted, final_entry: Dictionary) -> void:
 	var store := Disk.new(directory)
 	var writer := Collection.new(api, owner.identity, store, OnlineMemory.new())
 	writer.rooms() # Bind the owner before calling the internal ingestion path.
-	_check(writer._remember_room(_snapshot(Registry.FIRST_STEPS), "chapter"), "Independent cache writer stores both original parts")
+	_check(writer._remember_room(_snapshot(Registry.FIRST_STEPS)), "Independent cache writer stores both original parts")
 	var collection := Collection.new(api, owner.identity, store, online)
 	_check(collection.begin_local_load(), "Disk-backed scan starts from the original generation")
 	collection.advance_local_load()
@@ -328,7 +319,7 @@ func _local_disk_race(online: RefCounted, final_entry: Dictionary) -> void:
 	forked.pair.branch = 1
 	_check(writer._cache(forked), "Another collection durably adds a verified archived pair before scan adoption")
 	var extra_room := "Z".repeat(22)
-	_check(writer._remember_room(_snapshot(Registry.FIRST_STEPS, extra_room), "chapter"), "Concurrent index writer adds an independent completed room")
+	_check(writer._remember_room(_snapshot(Registry.FIRST_STEPS, extra_room)), "Concurrent index writer adds an independent completed room")
 	await _drain_local(collection)
 	var rows: Array = collection.memories("chapter:" + ROOM, true)
 	var saved: Dictionary = store.load_scope("shared-replays:" + HOST + ":chapter:" + ROOM)
@@ -417,16 +408,12 @@ func _expected_snapshots_per_tick() -> int:
 func _counted_simulation(entry: Dictionary) -> RefCounted:
 	var native: RefCounted
 	var ready := false
-	if entry.room.family == "legacy":
-		native = CountedLegacy.new()
-		ready = native.reset(View.Levels.get_level(entry.pair.level_id), entry.pair.a, "b")
-	else:
-		var key: String = entry.room.chapter_key
-		if key == Registry.FIRST_STEPS: native = CountedFirstSteps.new()
-		elif Registry.is_journey(key): native = CountedJourney.new()
-		else: native = CountedPhysical.new()
-		ready = Registry.reset_simulation(native, key, Registry.definition(key), str(entry.pair.b.stage_id),
-			Registry.previous_checkpoint(key, entry.pair.checkpoint), entry.pair.a, "b", entry.pair.b)
+	var key: String = entry.room.chapter_key
+	if key == Registry.FIRST_STEPS: native = CountedFirstSteps.new()
+	elif Registry.is_journey(key): native = CountedJourney.new()
+	else: native = CountedPhysical.new()
+	ready = Registry.reset_simulation(native, key, Registry.definition(key), str(entry.pair.b.stage_id),
+		Registry.previous_checkpoint(key, entry.pair.checkpoint), entry.pair.a, "b", entry.pair.b)
 	native.catch_assistance = bool(entry.pair.b.get("catch_assistance", true))
 	_check(ready, "Snapshot-counting native replay resets from the verified pair")
 	return native if ready else null
@@ -464,7 +451,7 @@ func _viewer(entry: Dictionary, api: Node, owner: RefCounted, expected_title: St
 	_check(view.controls.reset_view_button.is_visible_in_tree(), "Zooming the real shared replay view reveals Reset view")
 	view.controls.reset_view_button.pressed.emit()
 	_check(is_equal_approx(view.world.camera_exploration.zoom_ratio, 1.0) and not view.controls.reset_view_button.visible, "Reset view restores the real shared replay view")
-	_check(view.controls.chapter_label.text == expected_label and view.controls.hud.visible, "Each newly opened replay shows its own chapter or legacy title")
+	_check(view.controls.chapter_label.text == expected_label and view.controls.hud.visible, "Each newly opened replay shows its own chapter title")
 	for i in range(5):
 		var reads := trace.reads
 		view._physics_process(1.0 / 30.0)
@@ -527,7 +514,7 @@ func _rejected_view(entry: Dictionary, api: Node, player: String) -> void:
 	await process_frame
 
 func _identity_race(collection: RefCounted, api: Node, owner: RefCounted, cache: RefCounted) -> void:
-	api.replies["/v1/rooms"] = _ok({"rooms": []})
+	api.replies["/v2/rooms"] = _ok({"rooms": []})
 	api.hold = true
 	var result := {"done": false}
 	var run := func(): await collection.refresh_rooms(); result.done = true

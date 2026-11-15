@@ -216,13 +216,14 @@ func join_friend(row: Dictionary) -> Dictionary:
 				if peer.player_id == row.player_id and peer.request_id == row.request_id: peer.join_available = false
 		return {}
 	var data: Variant = response.get("data")
-	if not data is Dictionary or data.size() != 4 or not Typed.equal(data.get("schema_version"), 1) or not _room({"api_version":data.get("api_version"),"room_id":data.get("room_id")}):
+	if not data is Dictionary or data.size() != 4 or not Typed.equal(data.get("schema_version"), 1) or not _room({"api_version":data.get("api_version"),"room_id":data.get("room_id")}) or data.api_version != 2:
+		# A room from the earlier islands, which are no longer in the game, cannot be joined.
 		last_error = "Room unavailable"; return {}
 	var code: Variant = data.get("invite_code")
 	if not code is String or code.length() != 20: last_error = "Room unavailable"; return {}
 	for character: String in code:
 		if character not in "0123456789ABCDEF": last_error = "Room unavailable"; return {}
-	var expected: String = (("v2:" if data.api_version == 2 else "") + code).sha256_text().substr(0,22)
+	var expected: String = ("v2:" + code).sha256_text().substr(0,22)
 	if expected != data.room_id: last_error = "Room unavailable"; return {}
 	return data.duplicate(true)
 

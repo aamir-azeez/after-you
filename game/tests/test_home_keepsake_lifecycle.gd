@@ -17,7 +17,7 @@ class LedgerProbe extends Keepsakes:
 	func reconcile_friend(_collection: RefCounted) -> bool:
 		friend_passes += 1
 		return true
-	func reconcile_solo(_legacy_replays: Dictionary = {}) -> bool:
+	func reconcile_solo() -> bool:
 		solo_passes += 1
 		return true
 	func advance_backfill(_max_sources: int = 1) -> bool:

@@ -92,7 +92,7 @@ func _check_every_style(holder: Node3D) -> void:
 	_check(Pad.build("stand_spot", AT, 0.36, holder, {"heavy": true}).style == "plain", "A ball pad is always plain")
 	for style: String in Styles.SLOTS.goal:
 		var piece: RefCounted = Goal.build(style, AT, 0.28, holder)
-		_check(piece.style == style and piece.bell is MeshInstance3D and piece.ring is MeshInstance3D and piece.light.get_parent() == holder and piece.bell.get_parent() == piece.root, "Goal %s keeps its bell, ring and light" % style)
+		_check(piece.style == style and piece.bell is MeshInstance3D and piece.ring is MeshInstance3D and piece.light.get_parent() == holder and piece.root.is_ancestor_of(piece.bell), "Goal %s keeps its bell, ring and light" % style)
 		_check(is_equal_approx((piece.ring.mesh as TorusMesh).outer_radius, 0.28 + 0.025) and piece.root.position == AT, "Goal %s rings the goal's exact spot" % style)
 		_check(is_zero_approx(piece.light.light_energy), "Goal %s is built unlit" % style)
 	for style: String in Styles.SLOTS.lift:
@@ -176,7 +176,9 @@ func _check_selector_props(holder: Node3D) -> void:
 	_check(board.get_meta("down") == false and is_equal_approx(down, Selector.SHUTTER_DOWN) and is_equal_approx(board.position.y, Selector.SHUTTER_UP), "The shutter slides down and back up with its value")
 
 ## A goal lights once its stage is done: ring and ornament glow, its light
-## comes up, a window opens; put out, all of it goes back.
+## comes up, a window opens, a bell rings once (never on an immediate
+## light, which a seek, a retry and a replay snap to); put out, all of it goes
+## back.
 func _check_goal_light(holder: Node3D) -> void:
 	for style: String in Styles.SLOTS.goal:
 		var goal: RefCounted = Goal.build(style, AT, 0.28, holder)
@@ -184,8 +186,19 @@ func _check_goal_light(holder: Node3D) -> void:
 		var shutters: Array = goal.window.get("shutters", [])
 		_check((goal.ring.material_override as StandardMaterial3D).emission_enabled and (goal.bell.material_override as StandardMaterial3D).emission_enabled and goal.light.light_energy > 0.0 and goal.bell.get_meta("lit"), "Goal %s lights" % style)
 		_check(shutters.all(func(shutter: Node3D) -> bool: return not is_zero_approx(shutter.rotation.y)), "Goal %s opens any shutters it has" % style)
+		if goal.chime != null:
+			var swing: Node3D = goal.chime.swing
+			_check(goal.moving() and goal.moving_parts().has(swing), "Goal %s rings as it lights, and keeps its swing whole" % style)
+			goal.advance(Goal.Bell.STRIKE)
+			_check(swing.rotation.x > 0.1, "Goal %s's bell swings out by its strike" % style)
+			goal.set_lit(true)
+			_check(goal.moving(), "Goal %s rings on while it stays lit" % style)
+			goal.advance(Goal.Bell.RING_TIME)
+			_check(not goal.moving() and is_zero_approx(swing.rotation.x), "Goal %s's bell comes back to rest" % style)
 		goal.set_lit(false)
 		_check(not (goal.ring.material_override as StandardMaterial3D).emission_enabled and is_zero_approx(goal.light.light_energy) and not goal.bell.get_meta("lit"), "Goal %s goes out" % style)
+		goal.set_lit(true, true)
+		_check(not goal.moving(), "Goal %s lit at once (a seek) stays still" % style)
 
 func _meshes(node: Node) -> int:
 	return node.find_children("*", "MeshInstance3D", true, false).size()

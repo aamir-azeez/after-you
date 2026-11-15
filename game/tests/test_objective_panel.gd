@@ -1,7 +1,6 @@
 extends SceneTree
 
 const Controls = preload("res://presentation/chapter_controls.gd")
-const Objective = preload("res://presentation/objective_panel.gd")
 const Lighthouse = preload("res://lighthouse_preview.gd")
 const LightSimulation = preload("res://core/lighthouse/borrowed_light.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -43,16 +42,10 @@ func _run() -> void:
 			_check(panel.get_global_rect().size.y < bounds.size.y, "A shorter objective releases the previous panel height")
 			controls.update_state("First Steps", 20.0, {}, true)
 			_check(not panel.visible, "No objective leaves the playfield clear")
-			controls.update_state("Earlier island", 19.0, {"bridge_charge": 15, "bridge_charge_required": 60}, true)
-			_check(panel.visible and panel.value_label.text == "0.5 / 2.0 s", "Earlier-island charge uses the same objective component")
-			controls.update_state("Earlier island", 19.0, {"bridge_charge": 1, "bridge_charge_required": 1}, true)
-			_check(not panel.visible, "Instant bridges do not show a meaningless hold timer")
 			controls.card("Paused", "Your progress is kept.")
 			_check(not panel.is_visible_in_tree(), "A modal hides the objective with the rest of the HUD")
 			viewport.queue_free()
 			await _settle()
-	var untouched := {"bridge_charge": 30, "bridge_charge_required": 90}
-	_check(Objective.legacy_progress(untouched, 30.0).required == 3.0 and untouched.size() == 2, "Legacy presentation uses supplied numeric state without modifying it")
 	await _test_invalid_hold()
 	await _test_cumulative_sequence_hints()
 	print("OBJECTIVE PANEL: %d checks, %d failures" % [checks, failures])

@@ -7,8 +7,6 @@ const Storage = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Levels = preload("res://core/levels.gd")
-const LegacySimulation = preload("res://core/simulation.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
@@ -173,18 +171,9 @@ func solo_finished_levels() -> Array[String]:
 		if not level in levels and _chapter_earned(chapter, "solo"): levels.append(level)
 	return levels
 
-func reconcile_solo(legacy_replays: Dictionary = {}) -> bool:
+func reconcile_solo() -> bool:
 	_ensure_loaded()
 	if read_only: return false
-	# Only committed replay containers are supplied by the caller. A completed
-	# flag or a rehearsal is never an input to this boundary.
-	for item: Dictionary in Catalog.all():
-		if item.family != "earlier" or _has_award(item.id, "solo"): continue
-		var value: Variant = legacy_replays.get(item.stage_id)
-		if not value is Dictionary or value.is_empty(): continue
-		if JSON.stringify(value).to_utf8_buffer().size() > MAX_SOURCE_BYTES: continue
-		var fingerprint := Canonical.digest(value)
-		_queue_job("legacy:" + item.id, fingerprint, {"kind": "legacy", "id": item.id, "level_id": item.stage_id, "attempt": value.duplicate(true)})
 	for chapter: String in Catalog.CHAPTERS:
 		if _chapter_earned(chapter, "solo"): continue
 		var path: String = _source_paths.get(chapter, Catalog.local_path(chapter))
@@ -249,7 +238,7 @@ func advance_backfill(max_sources: int = 1) -> bool:
 	if not _jobs.is_empty():
 		var job: Dictionary = _jobs.pop_front()
 		_queued.erase(job.source)
-		if job.kind != "legacy" and _chapter_earned(job.chapter, "solo"):
+		if _chapter_earned(job.chapter, "solo"):
 			_scanned[job.source] = job.fingerprint
 			return okay
 		var snapshot := _capture_solo_source(job)
@@ -259,11 +248,9 @@ func advance_backfill(max_sources: int = 1) -> bool:
 		if snapshot.is_empty():
 			_scanned[job.source] = job.fingerprint
 			return okay
-		var validator: RefCounted = null
-		if job.kind != "legacy":
-			# Instantiate on the main thread. The worker receives a private pure
-			# validator and immutable bytes; it never calls journey.load_data().
-			validator = _solo_scripts.lighthouse.new(job.path) if job.chapter == Catalog.LIGHTHOUSE else _solo_scripts.relay.new(job.path, null, job.chapter)
+		# Instantiate on the main thread. The worker receives a private pure
+		# validator and immutable bytes; it never calls journey.load_data().
+		var validator: RefCounted = _solo_scripts.lighthouse.new(job.path) if job.chapter == Catalog.LIGHTHOUSE else _solo_scripts.relay.new(job.path, null, job.chapter)
 		job.generation = _work_generation
 		return _start_worker(job, snapshot, validator) and okay
 	if _friend_pending and _friend_collection != null:
@@ -312,7 +299,6 @@ func _start_worker(job: Dictionary, snapshot: Dictionary, validator: RefCounted)
 	return false
 
 static func _capture_solo_source(job: Dictionary) -> Dictionary:
-	if job.kind == "legacy": return job.duplicate(true)
 	var result := job.duplicate(true)
 	result.raw = []
 	var path: String = job.path + ".attempt-" + str(job.archive_id) + ".json" if job.kind == "archive" else job.path
@@ -330,12 +316,6 @@ static func _verify_source_snapshot(snapshot: Dictionary, validator: RefCounted,
 	# The proof cache (journey_proofs.gd) is the one shared store it reads and
 	# adds to, exactly as the chapter's own load does.
 	if snapshot.kind == "friend": return validator.verify_keepsake_snapshot(snapshot)
-	if snapshot.kind == "legacy":
-		var attempt: Dictionary = snapshot.attempt
-		if not attempt.get("a") is Dictionary or not attempt.get("b") is Dictionary or not Typed.equal(attempt.a.get("role"), "a") or not Typed.equal(attempt.b.get("role"), "b"): return {"ok": false, "ids": []}
-		var checked: Dictionary = LegacySimulation.verify_recording(Levels.get_level(snapshot.level_id), attempt.b, attempt.a)
-		var valid: bool = checked.get("valid", false) and checked.get("snapshot", {}).get("can_commit", false)
-		return {"ok": valid, "ids": [snapshot.id] if valid else []}
 	var field := "lighthouse" if snapshot.chapter == Catalog.LIGHTHOUSE else "relay"
 	var selected: Dictionary = {}
 	var generation := -1
@@ -390,12 +370,6 @@ static func record_friend_prefix(chapter: String, accepted_stage_count: int) -> 
 static func record_friend_place(chapter: String, stage_index: int) -> void:
 	var places := Catalog.chapter_places(chapter)
 	if stage_index >= 0 and stage_index < places.size(): _dispatch([places[stage_index]], "friend")
-
-static func record_legacy_solo(level_id: String) -> void:
-	_dispatch(["earlier/" + level_id], "solo")
-
-static func record_legacy_friend(level_id: String) -> void:
-	_dispatch(["earlier/" + level_id], "friend")
 
 static func _dispatch(ids: Array, variant: String) -> void:
 	if award_observer.is_valid() and not ids.is_empty(): award_observer.call(ids, variant)
@@ -500,11 +474,8 @@ static func _source_fingerprint(path: String, generations: bool = true) -> Strin
 
 ## A queued job's source fingerprint as it is now, on the main thread.
 static func _job_fingerprint(job: Dictionary) -> String:
-	match str(job.kind):
-		"chapter": return _source_fingerprint(str(job.path))
-		"archive": return _archive_fingerprint(str(job.path) + ".attempt-" + str(job.archive_id) + ".json")
-	# A legacy attempt's fingerprint is the digest of its exact value.
-	return str(job.fingerprint)
+	if job.kind == "chapter": return _source_fingerprint(str(job.path))
+	return _archive_fingerprint(str(job.path) + ".attempt-" + str(job.archive_id) + ".json")
 
 ## Everything besides the bytes that decides a check's verdict: this build
 ## (engine and game version), the scan and proof formats, and each chapter's
@@ -569,11 +540,12 @@ static func _valid_envelope(value: Variant) -> bool:
 	for key: String in ["attempts", "completed", "replays", "room"]:
 		if not value[key] is Dictionary or not value[key].is_empty(): return false
 	var state: Variant = value.home_keepsakes
-	if not state is Dictionary or state.size() != 2 or not Typed.whole_number(state.get("schema_version")) or state.schema_version != 1 or not state.get("earned") is Dictionary or state.earned.size() > Catalog.ROWS.size(): return false
+	if not state is Dictionary or state.size() != 2 or not Typed.whole_number(state.get("schema_version")) or state.schema_version != 1 or not state.get("earned") is Dictionary or state.earned.size() > Catalog.ROWS.size() + Catalog.RETIRED_PLACES: return false
 	for id: Variant in state.earned:
 		if not id is String: return false
 		var item := Catalog.by_id(id)
 		var mark: Variant = state.earned[id]
+		if item.is_empty() and id.begins_with(Catalog.RETIRED_PREFIX): item = {"friend_available": true}
 		if item.is_empty() or not mark is Dictionary or mark.size() != 2 or not mark.get("solo") is bool or not mark.get("friend") is bool or (not mark.solo and not mark.friend) or (mark.friend and not item.friend_available): return false
 	return true
 

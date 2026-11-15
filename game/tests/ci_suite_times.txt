@@ -2,7 +2,6 @@
 # uses to balance the shards and run long suites first. Refreshed from runs 43659285213.
 # Refresh: python3 scripts/ci_shards.py refresh [RUN_ID ...]
 @new_chapter_scaffold 229
-action_availability 7
 action_buttons 8
 android_back 8
 app_state 8
@@ -52,7 +51,6 @@ comfort_journal 33
 comfort_restart 10
 comfort_rules 21
 comfort_social_integration 6
-completion_moment 19
 compressed_rooms_client 1
 connectivity 9
 cooperative 16
@@ -167,15 +165,12 @@ leaderboard_celebration 12
 leaderboard_replay_check 4
 leaderboard_screen 3
 leaderboard_watch 5
-legacy_cumulative_holds 7
-legacy_redo_navigation 9
 level_checker 8
 level_tools 11
 level_view 7
 license_catalog 0
 licenses 12
 lifecycle 8
-lift_presentation 5
 lighthouse_admission 4
 lighthouse_compatibility 1
 lighthouse_finale 7
@@ -318,13 +313,10 @@ room_gone_poll 3
 room_held_drafts 3
 room_hide_current 3
 room_hub_activity 3
-room_hub_block 10
 room_inbox_client 3
-room_layout 8
 room_limit_message 1
 room_probe 4
 room_prove_ahead 5
-room_reactions 8
 room_refresh_noop 4
 room_removal 9
 rooms_api_limits 31
@@ -354,7 +346,6 @@ shared_replay_proof_cache 7
 shared_replay_removal 8
 shared_replays 14
 shared_room_followups 6
-simulation 1
 simulation_v2 2
 skins_trails 3
 solo_draft_writer 12
@@ -446,5 +437,3 @@ world_kit 4
 world_looks 11
 world_prewarm 12
 world_slot_looks 5
-your_replay_delete_ui 9
-your_replay_loading 8

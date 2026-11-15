@@ -2,7 +2,7 @@ extends SceneTree
 ## Home input and wandering use real controls/camera, without changing a save.
 const Stage = preload("res://presentation/home_stage.gd")
 const World = preload("res://presentation/island_world.gd")
-const Levels = preload("res://core/levels.gd")
+const HomeLayout = preload("res://presentation/home_layout.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Spirit = preload("res://presentation/spirit_visual.gd")
@@ -107,7 +107,7 @@ func _test_gestures_and_wander() -> void:
 	var world := World.new()
 	viewport.add_child(world)
 	world.set_process(false)
-	var definition: Dictionary = Levels.get_level("first-light")
+	var definition: Dictionary = HomeLayout.LEVEL.duplicate(true)
 	var definition_before := JSON.stringify(definition)
 	world.load_level(definition)
 	var original := _positions(world)
@@ -227,7 +227,7 @@ func _test_gestures_and_wander() -> void:
 	stale.zoom_size=Stage.MIN_SIZE
 	stale._frame_camera()
 	world.home_view=false
-	world.load_level(Levels.get_level("rising-together"))
+	world.load_level(HomeLayout.LEVEL)
 	var loaded := _positions(world)
 	stale.free()
 	_check(world.home_presentation_owner==0 and _positions(world)==loaded,"Late home teardown cannot move actors from a newly loaded level")
@@ -401,7 +401,7 @@ func _test_own_pip_tap() -> void:
 	var world := World.new()
 	viewport.add_child(world)
 	world.set_process(false)
-	world.load_level(Levels.get_level("first-light"))
+	world.load_level(HomeLayout.LEVEL)
 	var ui := Control.new()
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	viewport.add_child(ui)
@@ -500,7 +500,7 @@ func _test_spirit_tap() -> void:
 	var world := World.new()
 	viewport.add_child(world)
 	world.set_process(false)
-	world.load_level(Levels.get_level("first-light"))
+	world.load_level(HomeLayout.LEVEL)
 	var foreground := [true]
 	var ui := Control.new()
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -917,7 +917,7 @@ func _test_tall_screen() -> void:
 	var world := World.new()
 	viewport.add_child(world)
 	world.set_process(false)
-	world.load_level(Levels.get_level("first-light"))
+	world.load_level(HomeLayout.LEVEL)
 	var stage := Stage.new()
 	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stage.configure(world,func() -> bool: return true)
@@ -1001,7 +1001,7 @@ func _test_own_look() -> void:
 	wardrobe.set_enabled(server, me, false)
 	_check(actors.a.outfit().is_empty() and actors.b.outfit().is_empty(),"The wardrobe turned off takes the look off the Home pips")
 	wardrobe.set_enabled(server, me, true)
-	app.world.load_level(Levels.get_level("first-light"))
+	app.world.load_level(HomeLayout.LEVEL)
 	_check(app.world.actors.a.outfit().is_empty() and app.world.actors.b.outfit().is_empty(),"A level built after Home wears nothing of Home's look")
 	viewport.free()
 	await process_frame

@@ -24,7 +24,7 @@ static func build(friend_id: String, title: String, status: Label, heading_font:
 	text.add_theme_constant_override("separation", 0)
 	strip.add_child(text)
 	var name := Label.new()
-	# Tests and the legacy room page read the friend's status under this name.
+	# Tests read the friend's status under this name.
 	name.name = "RoomFriendStatus"
 	name.text = title
 	name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

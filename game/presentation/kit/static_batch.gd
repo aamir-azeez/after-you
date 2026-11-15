@@ -1,13 +1,21 @@
 extends RefCounted
-## Folds a built world's static geometry into one mesh per material, so the
-## renderer draws a few batches instead of one draw call per box, sphere and
-## cylinder (Home drew about 380 a frame). Draws the same pixels.
+## Folds a built world's static geometry into a few meshes, so the renderer
+## draws a few batches instead of one draw call per box, sphere and cylinder
+## (Home drew about 380 a frame). Draws the same pixels.
+##
+## Leaves whose looks differ only in colour fold into one batch: a plain look
+## (Primitives.is_plain) goes into the batch as vertex colours, drawn with
+## the one palette look for its other values (Primitives.palette_material),
+## so a new scenery colour costs no draw call. Other looks (glow) batch per
+## material. A batch spans one CELL of its container's floor plan, so the
+## renderer still leaves out what is off screen and lights each batch only
+## with the lamps near it.
 ##
 ## Only plain leaves are folded: a MeshInstance3D with no script, no children,
 ## no metadata, visible, one-surface primitive mesh, an opaque untextured
-## StandardMaterial3D override and no other material, and a rotation with a
-## uniform scale relative to the root (SurfaceTool turns normals by the basis
-## itself, which is exact only then). Anything the owners hold on to (any
+## StandardMaterial3D override and no other material, and a transform that
+## does not mirror. Any scale folds: a stretched leaf's normals are turned by
+## its basis's inverse transpose, as the renderer turns them. Anything the owners hold on to (any
 ## node in their script variables, or under one) and anything under a node
 ## with a script stays as it is: those are what move, fade, recolour, hide or
 ## are looked up later. Scripted nodes under the root count as owners too.
@@ -34,8 +42,9 @@ extends RefCounted
 ## hitch; every batch replaces its leaves in one go, so a half-folded world
 ## draws the same pixels too.
 const FOLDED_META := "static_batch_folded"
-## On a batch: [transform in the batch's space, mesh box] per folded leaf, for
-## code that measures scenery piece by piece (part_boxes()).
+## On a batch: [transform in the batch's space, mesh box, colour] per folded
+## leaf, for code that measures scenery piece by piece (part_boxes()); the
+## colour is the leaf's own look's, which a palette batch draws.
 const PARTS_META := "static_batch_parts"
 const PRIMITIVES := ["BoxMesh", "SphereMesh", "CylinderMesh", "TorusMesh", "QuadMesh", "PlaneMesh", "PrismMesh", "CapsuleMesh"]
 ## Off only for comparing a folded and an unfolded frame in one process.
@@ -215,10 +224,13 @@ static func _walk(job: Dictionary) -> void:
 	var xform: Transform3D = (base.node as Node3D).global_transform.affine_inverse() * leaf.global_transform
 	var key := _key(leaf, xform, job.materials)
 	if key.is_empty(): return
+	# One batch per look and cell: the renderer still leaves out the cells off
+	# screen and lights each cell only with the lamps that reach it.
+	key += "|%d|%d" % [floori(xform.origin.x / CELL), floori(xform.origin.z / CELL)]
 	if not base.groups.has(key):
 		base.groups[key] = []
 		base.order.append(key)
-	base.groups[key].append([leaf, xform])
+	base.groups[key].append([leaf, xform, (leaf.material_override as StandardMaterial3D).albedo_color])
 
 ## Appends the next leaf of the current group, or finishes the group.
 static func _build(job: Dictionary) -> void:
@@ -258,13 +270,16 @@ static func _build(job: Dictionary) -> void:
 	# then the whole group stays as it is.
 	var container: Variant = base.node
 	if not _group_folds(group, container, job): return
+	var palette := (base.order[job.key_index - 1] as String).begins_with(PALETTE)
+	var mesh: ArrayMesh = reused if reused != null else _commit(tool, group, palette)
+	if mesh == null: return
 	var parts: Array = []
-	for entry: Array in group: parts.append([entry[1], (entry[0] as MeshInstance3D).get_aabb()])
+	for entry: Array in group: parts.append([entry[1], (entry[0] as MeshInstance3D).get_aabb(), entry[2]])
 	var batch := MeshInstance3D.new()
 	batch.name = "StaticBatch%d" % job.batches
-	batch.mesh = reused if reused != null else _keep_batch(signature, tool.commit())
+	batch.mesh = mesh if reused != null else _keep_batch(signature, mesh)
 	var first: MeshInstance3D = group[0][0]
-	batch.material_override = first.material_override
+	batch.material_override = Primitives.palette_material(first.material_override) if palette else first.material_override
 	batch.cast_shadow = first.cast_shadow
 	batch.layers = first.layers
 	batch.gi_mode = first.gi_mode
@@ -277,8 +292,48 @@ static func _build(job: Dictionary) -> void:
 	job.folded += group.size()
 	job.batches += 1
 
+## The group's appended leaves as one mesh: a stretched leaf's normals turned
+## by its basis's inverse transpose (SurfaceTool turns them by the basis), and
+## in a palette group every leaf's colour on its vertices. null when the
+## vertices do not line up with the leaves (then the group stays as it is).
+static func _commit(tool: SurfaceTool, group: Array, palette: bool) -> ArrayMesh:
+	var arrays := tool.commit_to_arrays()
+	var appended: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL] if arrays[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()
+	var turned := PackedVector3Array()
+	var colors := PackedColorArray()
+	var stretched := false
+	var start := 0
+	# Per shape (leaves share cached shapes): [vertex count, normals].
+	var shapes: Dictionary = {}
+	for entry: Array in group:
+		var leaf_mesh: Mesh = (entry[0] as MeshInstance3D).mesh
+		if not shapes.has(leaf_mesh):
+			var surface := leaf_mesh.surface_get_arrays(0)
+			shapes[leaf_mesh] = [(surface[Mesh.ARRAY_VERTEX] as PackedVector3Array).size(), surface[Mesh.ARRAY_NORMAL] if surface[Mesh.ARRAY_NORMAL] != null else PackedVector3Array()]
+		var shape: Array = shapes[leaf_mesh]
+		var count: int = shape[0]
+		var basis: Basis = (entry[1] as Transform3D).basis
+		if not normals.is_empty():
+			if _uniform(basis): turned.append_array(normals.slice(start, start + count))
+			else:
+				stretched = true
+				turned.append_array(Transform3D(basis.inverse().transposed(), Vector3.ZERO) * (shape[1] as PackedVector3Array))
+		if palette:
+			var tone := PackedColorArray()
+			tone.resize(count)
+			tone.fill(entry[2])
+			colors.append_array(tone)
+		start += count
+	if start != appended.size() or turned.size() != normals.size(): return null
+	if stretched: arrays[Mesh.ARRAY_NORMAL] = turned
+	if palette: arrays[Mesh.ARRAY_COLOR] = colors
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
 ## Everything a group's batch is made from, as exact values: its key, and per
-## leaf its shape (_shape) and transform. null when a leaf has gone or its
+## leaf its shape (_shape), transform and colour. null when a leaf has gone or its
 ## shape cannot be told by value; that group is built afresh and not kept.
 static func _signature(key: String, group: Array, job: Dictionary) -> Variant:
 	var signature: Array = [key]
@@ -288,6 +343,7 @@ static func _signature(key: String, group: Array, job: Dictionary) -> Variant:
 		if shape == null: return null
 		signature.append(shape)
 		signature.append(entry[1])
+		signature.append(entry[2])
 	return signature
 
 ## A primitive mesh's class and every stored value (what its surface is made
@@ -398,12 +454,21 @@ static func _key(leaf: MeshInstance3D, xform: Transform3D, materials: Dictionary
 	var material := leaf.material_override as StandardMaterial3D
 	if material == null or material.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED or material.albedo_color.a < 1.0 or material.albedo_texture != null: return ""
 	if material.next_pass != null: return ""
-	if not _uniform(xform.basis): return ""
-	return "%d|%d|%d|%s" % [leaf.cast_shadow, leaf.layers, leaf.gi_mode, _material_key(material, materials)]
+	if xform.basis.determinant() <= 0.000001: return ""
+	var palette := Primitives.is_plain(material) and not material.vertex_color_use_as_albedo
+	return "%s%d|%d|%d|%s" % [PALETTE if palette else "", leaf.cast_shadow, leaf.layers, leaf.gi_mode, _material_key(material, materials, palette)]
 
-## Every stored value of a material, hashed once per material in a fold.
-static func _material_key(material: StandardMaterial3D, materials: Dictionary) -> String:
-	var id := material.get_instance_id()
+## The side of the square cells (metres, in the batch's space) a batch
+## spans at most: about a lamp's reach.
+const CELL := 8.0
+
+## Starts the key of a group drawn with a palette look.
+const PALETTE := "palette|"
+
+## Every stored value of a material (but its colour, for a palette group),
+## hashed once per material in a fold.
+static func _material_key(material: StandardMaterial3D, materials: Dictionary, palette: bool) -> String:
+	var id: Variant = [material.get_instance_id(), palette]
 	if materials.has(id): return materials[id]
 	if Primitives.is_cached(material) and _shared_keys.has(id):
 		materials[id] = _shared_keys[id]
@@ -416,14 +481,14 @@ static func _material_key(material: StandardMaterial3D, materials: Dictionary) -
 			if int(property.usage) & PROPERTY_USAGE_STORAGE and not name in SKIPPED_MATERIAL_PROPERTIES and not name.begins_with("metadata/"): names.append(StringName(name))
 		_material_properties[kind] = names
 	var values: Array = []
-	for name: StringName in _material_properties[kind]: values.append(material.get(name))
+	for name: StringName in _material_properties[kind]: values.append(Color.WHITE if palette and name == &"albedo_color" else material.get(name))
 	for name: StringName in material.get_meta_list(): values.append([name, material.get_meta(name)])
 	var key := var_to_bytes(values).hex_encode().sha256_text()
 	materials[id] = key
 	if Primitives.is_cached(material): _shared_keys[id] = key
 	return key
 
-## A rotation times one scale for all axes.
+## A rotation times one scale for all axes: SurfaceTool turns its normals right.
 static func _uniform(basis: Basis) -> bool:
 	var x := basis.x.length()
 	var y := basis.y.length()

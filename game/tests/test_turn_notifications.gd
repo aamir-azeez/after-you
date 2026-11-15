@@ -2,8 +2,6 @@ extends SceneTree
 const Notifications = preload("res://services/turn_notifications.gd")
 const Storage = preload("res://services/local_save.gd")
 const Main = preload("res://main.gd")
-const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
-const Levels = preload("res://core/levels.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
@@ -108,7 +106,6 @@ class RouteMain extends Main:
 	var opened := 0
 	var messages := 0
 	func _ready() -> void: pass
-	func _new_legacy_room_flow() -> LegacyRoomFlow: return RouteRoomFlow.new(self)
 	func _enter_online_relay() -> void: opened += 1; mode = "relay_online"
 	func _toast(_message: String) -> void: messages += 1
 	func _process(_delta: float) -> void: pass
@@ -117,10 +114,6 @@ class RouteMain extends Main:
 class PollenMain extends RouteMain:
 	var homes := 0
 	func _show_home() -> void: homes += 1; mode = "home"
-
-## Counts each time the room page opens, instead of drawing it.
-class RouteRoomFlow extends LegacyRoomFlow:
-	func show_room() -> void: host.opened += 1; host.mode = "room"
 
 class RoomStub extends Node3D:
 	var notes: Array[String] = []
@@ -167,7 +160,7 @@ func _drop(f: Dictionary) -> void:
 	f.service.free(); f.native.free(); f.api.free()
 
 func _route(epoch: String = EPOCH) -> Dictionary:
-	return {"schema_version": "1", "event_id": "synthetic_event_00000001", "kind": "turn_ready", "room_id": ROOM, "room_family": "legacy", "revision": "1", "binding_epoch": epoch}
+	return {"schema_version": "1", "event_id": "synthetic_event_00000001", "kind": "turn_ready", "room_id": ROOM, "room_family": "relay", "revision": "1", "binding_epoch": epoch}
 
 func _bind_value() -> Dictionary:
 	return {"schema_version": 1, "owner": OWNER, "credential_hash": "synthetic-device-credential".sha256_text(), "binding_epoch": EPOCH}
@@ -182,8 +175,6 @@ func _run() -> void:
 	await _test_registration_and_refresh()
 	await _test_late_registration()
 	await _test_cold_route_and_identity()
-	await _test_actual_main_route()
-	await _test_latest_tap()
 	await _test_actual_chapter_route(false)
 	await _test_actual_chapter_route(true)
 	await _test_redo_requests()
@@ -217,6 +208,9 @@ func _test_shapes_and_old_settings() -> void:
 	for update: Dictionary in [{"kind": "reaction"}, {"room_family": "unknown"}, {"revision": "0"}, {"revision": "01"}, {"revision": "9007199254740992"}, {"revision": 1}, {"room_id": "../room"}, {"invite_code": "NEVER_JOIN"}]:
 		var invalid := event.duplicate(true); invalid.merge(update, true)
 		_check(not Notifications.valid_route(invalid), "Unsupported or malformed notification cannot become a route")
+	var island := event.duplicate(true)
+	island.room_family = "legacy"
+	_check(not Notifications.valid_route(island), "An alert for a room of the earlier islands is never a route")
 
 func _test_permission_and_storage() -> void:
 	var f := _fixture()
@@ -234,39 +228,10 @@ func _test_permission_and_storage() -> void:
 	_check(f.api.calls.is_empty() and not f.service.registered(), "A failed secure binding write sends no registration")
 	_drop(f)
 
-func _test_latest_tap() -> void:
-	var f := _fixture()
-	f.state.stored = _bind_value(); f.native.bound = EPOCH; f.native.route = _route()
-	await f.service.service(Time.get_ticks_msec(), true, true)
-	var screen := RouteMain.new()
-	screen.api = f.api; screen.turn_notifications = f.service
-	screen.identity_read_state = screen.IdentityReadState.LOADED
-	screen.saves.path = "user://notification-latest-tap-test.json"
-	root.add_child(screen)
-	f.api.room = {"room_id": ROOM, "host_id": OWNER, "guest_id": "D".repeat(22), "revision": 1, "level_id": Levels.all_levels()[0].id}
-	f.api.hold = true
-	screen.notification_flow.service_route()
-	var newer := _route()
-	newer.room_id = "E".repeat(22); newer.event_id = "synthetic_event_00000002"
-	f.native.route = newer
-	f.api.hold = false; f.api.release.emit()
-	await process_frame
-	_check(screen.opened == 0 and screen.saves.data.room.is_empty(), "A newer native tap prevents an older HTTP response from selecting its room")
-	_check(f.service.pending_route() == newer, "The newest tap remains queued with its exact family and room")
-	f.api.room.room_id = newer.room_id
-	screen.notification_flow.service_route()
-	await process_frame
-	_check(screen.opened == 1 and screen.saves.data.room.room_id == newer.room_id, "The newer tap opens only after its own authenticated read")
-	screen.free()
-	for suffix: String in ["", ".tmp", ".backup"]:
-		var path := "user://notification-latest-tap-test.json" + suffix
-		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
-	_drop(f)
-
 func _test_actual_chapter_route(tamper: bool) -> void:
 	var f := _fixture()
 	var event := _route()
-	event.room_family = "relay"; event.revision = "3"
+	event.revision = "3"
 	f.state.stored = _bind_value(); f.native.bound = EPOCH; f.native.route = event
 	await f.service.service(Time.get_ticks_msec(), true, true)
 	var screen := RouteMain.new()
@@ -379,49 +344,6 @@ func _test_cold_route_and_identity() -> void:
 	_check(not f.service.accepts(_route()), "The old epoch cannot authorize a recovered identity even before reconciliation")
 	_drop(f)
 
-func _test_actual_main_route() -> void:
-	var f := _fixture()
-	f.state.stored = _bind_value(); f.native.bound = EPOCH; f.native.route = _route()
-	await f.service.service(Time.get_ticks_msec(), true, true)
-	var screen := RouteMain.new()
-	screen.api = f.api; screen.turn_notifications = f.service
-	screen.identity_read_state = screen.IdentityReadState.LOADED
-	screen.saves.path = "user://notification-routing-test.json"
-	root.add_child(screen)
-	var level: Dictionary = Levels.all_levels()[0]
-	f.api.room = {"room_id": ROOM, "host_id": OWNER, "guest_id": "DDDDDDDDDDDDDDDDDDDDDD", "revision": 1, "level_id": level.id}
-	var request_count: int = f.api.calls.size()
-	screen.mode = "play"; screen.running = true
-	screen.notification_flow.service_route()
-	_check(f.api.calls.size() == request_count and screen.opened == 0, "Actual main routing does not interrupt active recording")
-	screen.running = false; screen.mode = "home"; screen.saves.data.pending_turn = {"kept": true}
-	screen.notification_flow.service_route()
-	_check(f.api.calls.size() == request_count, "A pending gameplay request prevents notification navigation")
-	screen.saves.data.erase("pending_turn"); screen.saves.data.room_draft = {"kept": true}
-	screen.notification_flow.service_route()
-	_check(f.api.calls.size() == request_count and screen.saves.data.room_draft == {"kept": true}, "A notification preserves an existing legacy draft")
-	screen.saves.data.erase("room_draft")
-	f.api.hold = true
-	screen.notification_flow.service_route()
-	_check(f.api.busy and screen.opened == 0, "Actual main waits for the authenticated room GET before opening")
-	screen.relay_identity_epoch += 1
-	f.api.hold = false; f.api.release.emit()
-	await process_frame
-	_check(screen.opened == 0 and screen.saves.data.room.is_empty(), "A response for an invalidated identity context changes no room")
-	# A waiting invite link is independent state; tap routing neither waits for nor consumes it.
-	screen.invite_link_pending = "Z".repeat(22)
-	screen.invite_link_expires_ms = Time.get_ticks_msec() + 60000
-	screen.notification_flow.service_route()
-	await process_frame
-	_check(screen.opened == 1 and screen.saves.data.room.room_id == ROOM, "Only the checked owned room is opened after a fresh GET")
-	_check(screen.invite_link_pending == "Z".repeat(22), "Notification routing leaves a pending invite link untouched")
-	_check(f.api.calls.slice(request_count).all(func(item: Dictionary) -> bool: return item.method == HTTPClient.METHOD_GET and item.path == "/v1/rooms/" + ROOM), "Notification navigation never probes or submits a join endpoint")
-	screen.free()
-	for suffix: String in ["", ".tmp", ".backup"]:
-		var path := "user://notification-routing-test.json" + suffix
-		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
-	_drop(f)
-
 func _test_hosting_categories() -> void:
 	var f := _fixture()
 	f.state.desired = false
@@ -432,7 +354,7 @@ func _test_hosting_categories() -> void:
 	_check(not f.service.enabled(),"Hosting consent never enables turn alerts")
 	await f.service.service(Time.get_ticks_msec(),true,true)
 	_check(f.native.count("request_permission") == 1 and (f.service.registered() or f.service.hosting_registered()),"Hosting opt-in uses common OS permission and registration")
-	var event := {"schema_version":"1","event_id":peer+"_1","kind":"friend_room_available","room_id":ROOM,"room_family":"legacy","host_id":peer,"publication_epoch":"1","binding_epoch":f.native.bound}
+	var event := {"schema_version":"1","event_id":peer+"_1","kind":"friend_room_available","room_id":ROOM,"room_family":"relay","host_id":peer,"publication_epoch":"1","binding_epoch":f.native.bound}
 	_check(Notifications.valid_route(event) and f.service.accepts(event),"Selected friend hosting hint is accepted under current binding")
 	for update: Dictionary in [{"host_id":OWNER},{"publication_epoch":"01"},{"revision":"1"},{"schema_version":"2"},{"event_id":peer+"_2"}]:
 		var bad := event.duplicate(true); bad.merge(update,true)
@@ -744,14 +666,10 @@ func _test_pollen_route() -> void:
 	screen.toast = Toast.new()
 	screen.add_child(screen.toast)
 	var requests: int = f.api.calls.size()
-	screen.mode = "play"; screen.running = true
+	screen.mode = "play"
 	for _i in 3: screen.notification_flow.service_route()
-	_check(screen.homes == 0 and screen.mode == "play" and screen.running and not f.service.pending_route().is_empty(), "A Pollen tap never pulls the player out of a level; it waits")
+	_check(screen.homes == 0 and screen.mode == "play" and not f.service.pending_route().is_empty(), "A Pollen tap never pulls the player out of a level; it waits")
 	_check(screen.messages == 0 and not screen.toast.showing(), "A waiting Pollen tap shows no room pop-up")
-	screen.running = false; screen.mode = "home"; screen.saves.data.pending_turn = {"kept": true}
-	screen.notification_flow.service_route()
-	_check(not f.service.pending_route().is_empty() and screen.homes == 0, "An unsent turn keeps the Pollen tap waiting")
-	screen.saves.data.erase("pending_turn")
 	screen.mode = "journey"
 	screen.notification_flow.service_route()
 	_check(screen.homes == 1 and screen.mode == "home" and f.service.pending_route().is_empty() and f.native.route.is_empty(), "Once leaving is safe, a Pollen tap opens Home and is used up")

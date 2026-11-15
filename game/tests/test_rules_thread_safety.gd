@@ -1,8 +1,7 @@
 extends SceneTree
 ## Background replay checks run the same chapter rules as the scene on the main
-## thread. This suite runs the three production worker paths (Together shared
-## replays, Home keepsakes backfill, Earlier islands replay preparation) on
-## their own threads while the main thread steps and verifies the same chapter
+## thread. This suite runs the two production worker paths (Together shared
+## replays and Home keepsakes backfill) on their own threads while the main thread steps and verifies the same chapter
 ## families, and requires every result to match a serial run exactly. It then
 ## frees each owner of a background check mid-check and requires the join: by
 ## the owner itself, or by the shared reaper for a screen that leaves.
@@ -11,16 +10,11 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Collection = preload("res://services/shared_replay_collection.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
-const Levels = preload("res://core/levels.gd")
-const LegacySimulation = preload("res://core/simulation.gd")
 const LoadProgress = preload("res://services/replay_load_progress.gd")
-const Main = preload("res://main.gd")
 const Solo = preload("res://services/solo_replay_collection.gd")
 const View = preload("res://presentation/shared_replay_view.gd")
 const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
-const Storage = preload("res://services/local_save.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
-const EarlierIslandReplay = preload("res://services/earlier_island_replay.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -50,9 +44,9 @@ func _run() -> void:
 	_check(expected.together.size() == inputs.together.size() and expected.keepsakes.size() == inputs.keepsakes.size(), "Serial baseline covers every worker input")
 	for key: String in expected.valid:
 		print("serial %s valid=%s" % [key, expected.valid[key]])
-	_check(expected.valid.get(Registry.WISHING_WELL, false) and expected.valid.get(Registry.LONG_WAY_HOME, false) and expected.valid.get("legacy", false), "Serial baseline replays cooperative, journey and legacy proofs as valid")
+	_check(expected.valid.get(Registry.WISHING_WELL, false) and expected.valid.get(Registry.LONG_WAY_HOME, false), "Serial baseline replays cooperative and journey proofs as valid")
 	var workers: Array = []
-	for path: Array in [["together", _together_loop], ["keepsakes", _keepsakes_loop], ["earlier", _earlier_loop]]:
+	for path: Array in [["together", _together_loop], ["keepsakes", _keepsakes_loop]]:
 		var thread := Thread.new()
 		# Each worker receives its own deep copies, as the production paths do.
 		var started := thread.start(Callable(path[1]).bind(inputs.duplicate(true), expected.duplicate(true)))
@@ -104,7 +98,7 @@ static func _pairs(checkpoint: Dictionary) -> Array:
 	return pairs
 
 func _inputs() -> Dictionary:
-	var value := {"checkpoints": {}, "together": [], "keepsakes": [], "earlier": {}}
+	var value := {"checkpoints": {}, "together": [], "keepsakes": []}
 	for family: Array in FAMILIES:
 		var key: String = family[0]
 		var checkpoint := _fixture(family[1])
@@ -119,17 +113,11 @@ func _inputs() -> Dictionary:
 			"definition_hash": Canonical.digest(level), "pairs": _pairs(checkpoint), "a": {}, "draft": {}}
 		var raw := JSON.stringify({"archive_version": 1, "relay": state})
 		value.keepsakes.append({"family": key, "snapshot": {"kind": "archive", "chapter": key, "path": "user://unused", "archive_id": Canonical.digest(JSON.parse_string(raw).relay), "raw": [raw]}})
-	var a := _fixture("after-you-a")
-	var b := _fixture("after-you-b")
-	value.together.append({"family": "legacy", "entry": {"schema_version": 1, "room": {"family": "legacy", "room_id": ROOM, "host_id": HOST, "guest_id": GUEST, "chapter_key": "", "title": "Earlier islands"},
-		"pair": {"attempt": 1, "level_id": "after-you", "first_player_id": HOST, "a": a, "b": b}}})
-	value.keepsakes.append({"family": "legacy", "snapshot": {"kind": "legacy", "id": "earlier/after-you", "level_id": "after-you", "attempt": {"a": a, "b": b}}})
-	value.earlier = {"definition": Levels.get_level("after-you"), "attempt": {"a": a, "b": b, "draft": {}}, "recording": b, "version": int(b.simulation_version)}
 	return value
 
 ## Exactly what each worker path returns, computed with no other thread running.
 func _serial(inputs: Dictionary) -> Dictionary:
-	var value := {"valid": {}, "together": [], "keepsakes": [], "earlier": ""}
+	var value := {"valid": {}, "together": [], "keepsakes": []}
 	# A pair entry replays the whole chain to its checkpoint, so its result is
 	# also that checkpoint's validity.
 	for item: Dictionary in inputs.together:
@@ -137,15 +125,10 @@ func _serial(inputs: Dictionary) -> Dictionary:
 		value.valid[item.family] = value.together[-1]
 	for item: Dictionary in inputs.keepsakes:
 		value.keepsakes.append(Canonical.digest(Keepsakes._verify_source_snapshot(item.snapshot.duplicate(true), _validator(item.family))))
-	value.earlier = _earlier_digest(EarlierIslandReplay.prepare(inputs.earlier.duplicate(true), LoadProgress.new()))
 	return value
 
 static func _validator(family: String) -> RefCounted:
-	return null if family == "legacy" else RelayJourney.new("user://unused-%s.json" % family.get_slice("@", 0), null, family)
-
-static func _earlier_digest(result: Dictionary) -> String:
-	if not result.get("ok", false): return "failed:" + str(result.get("error", ""))
-	return Canonical.digest({"frames": result.frames, "state": result.simulation.snapshot()})
+	return RelayJourney.new("user://unused-%s.json" % family.get_slice("@", 0), null, family)
 
 func _together_loop(inputs: Dictionary, expected: Dictionary) -> Dictionary:
 	var rounds := 0
@@ -167,14 +150,6 @@ func _keepsakes_loop(inputs: Dictionary, expected: Dictionary) -> Dictionary:
 		rounds += 1
 	return {"rounds": rounds, "mismatch": mismatch}
 
-func _earlier_loop(inputs: Dictionary, expected: Dictionary) -> Dictionary:
-	var rounds := 0
-	var mismatch := 0
-	while rounds < MIN_WORKER_ROUNDS or not _stopped():
-		if _earlier_digest(EarlierIslandReplay.prepare(inputs.earlier.duplicate(true), LoadProgress.new())) != expected.earlier: mismatch += 1
-		rounds += 1
-	return {"rounds": rounds, "mismatch": mismatch}
-
 ## Live play on the main thread: each family's first stage as the first player,
 ## stepped with a fixed input pattern. The expected digest is taken before any
 ## worker starts.
@@ -184,20 +159,11 @@ func _live_inputs() -> Array:
 		var item := {"key": family[0], "level": Registry.definition(family[0]), "checkpoint": Registry.initial_checkpoint(family[0])}
 		item.expected = _live_digest(item)
 		items.append(item)
-	var level := Levels.get_level("after-you")
-	var legacy := {"key": "legacy", "level": level}
-	legacy.expected = _live_digest(legacy)
-	items.append(legacy)
 	return items
 
 static func _live_digest(item: Dictionary) -> String:
-	var simulation: RefCounted
-	if item.key == "legacy":
-		simulation = LegacySimulation.new()
-		if not simulation.reset(item.level, {}, "a"): return "reset failed: " + str(simulation.error)
-	else:
-		simulation = Registry.simulation_script(item.key).new()
-		if not Registry.reset_simulation(simulation, item.key, item.level, str(item.level.stages[0].id), item.checkpoint, {}, "a"): return "reset failed: " + str(simulation.error)
+	var simulation: RefCounted = Registry.simulation_script(item.key).new()
+	if not Registry.reset_simulation(simulation, item.key, item.level, str(item.level.stages[0].id), item.checkpoint, {}, "a"): return "reset failed: " + str(simulation.error)
 	for tick in range(240):
 		simulation.step({"x": [60, 0, -40, 20][tick / 60 % 4], "z": [0, 70, 30, -60][tick / 60 % 4], "action": tick % 45 == 0})
 	return Canonical.digest(simulation.snapshot())
@@ -227,12 +193,6 @@ func _lifecycle(inputs: Dictionary) -> void:
 		waited += 1
 		await process_frame
 	_released("Solo replays", _solo_worker(holder), holder)
-	var app := Main.new()
-	app.saves = Storage.new("user://thread-safety-save.json")
-	app.saves.data.settings.sound = false
-	root.add_child(app)
-	for frame in range(3): await process_frame
-	await _reaped("Earlier islands", _start_earlier(app, inputs.earlier), app)
 	_released("Lighthouse loader", _start_lighthouse(holder), holder)
 
 static func _identity() -> Dictionary:
@@ -244,7 +204,7 @@ func _start_library(holder: Array, entry: Dictionary) -> Thread:
 	_forget_proofs()
 	var library := Collection.new(null, _identity, null, null)
 	holder.append(library)
-	var job := {"owner": HOST, "epoch": 1, "generation": 0, "key": "chapter:" + ROOM, "journal": {"ok": true, "found": false}, "raw": false, "online_raw": false, "verified": "", "legacy": {},
+	var job := {"owner": HOST, "epoch": 1, "generation": 0, "key": "chapter:" + ROOM, "journal": {"ok": true, "found": false}, "raw": false, "online_raw": false, "verified": "",
 		"cached": {"ok": true, "found": true, "value": {"schema_version": 1, "owner": HOST, "entries": {str(entry.pair.pair_id): entry.duplicate(true)}}}, "progress": LoadProgress.new()}
 	library._local_job = job
 	library._local_worker = Thread.new()
@@ -287,13 +247,6 @@ func _solo_posted(holder: Array) -> bool:
 func _solo_worker(holder: Array) -> Thread:
 	_check(holder[0]._worker != null, "Solo replays posts the archived attempt to its verifier")
 	return holder[0]._worker
-
-## Earlier islands: the main screen's replay preparation worker.
-func _start_earlier(app: Node, earlier: Dictionary) -> Thread:
-	Reaper.ensure()
-	app.replays_flow._collection_replay_worker = Thread.new()
-	_check(app.replays_flow._collection_replay_worker.start(Callable(EarlierIslandReplay, "prepare").bind(earlier.duplicate(true), LoadProgress.new())) == OK, "Earlier islands preparation starts")
-	return app.replays_flow._collection_replay_worker
 
 ## Lighthouse: the loader's replay-verifying journal load.
 func _start_lighthouse(holder: Array) -> Thread:

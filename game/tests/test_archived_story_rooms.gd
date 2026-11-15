@@ -90,9 +90,9 @@ func _story_last_room() -> void:
 	var before: Dictionary = c.h.store.saved.duplicate(true)
 	var online := _cold(c)
 	var count: int = c.h.calls.size()
-	_check(not online.can_leave_for_legacy() and not await online.open_room(ORDINARY) and c.h.calls.size() == count,"An unproven last room holds navigation before any request")
+	_check(not online.can_leave() and not await online.open_room(ORDINARY) and c.h.calls.size() == count,"An unproven last room holds navigation before any request")
 	c.h.replies["/v2/rooms/"+STORY_ROOM] = {"ok":false,"status":409,"code":"campaign_client_required"}
-	_check(await online.prepare_archived_navigation() and online.can_leave_for_legacy(),"The server's Story answer releases navigation")
+	_check(await online.prepare_archived_navigation() and online.can_leave(),"The server's Story answer releases navigation")
 	_check(c.h.calls.size() == count+1 and c.h.calls.back().method == HTTPClient.METHOD_GET and c.h.calls.back().path == "/v2/rooms/"+STORY_ROOM,"The old room is read once and its saved turn is never sent")
 	_check(online.archived_room_kind(STORY_ROOM) == "story" and online.coordinator == null and online.pending_redo_room().is_empty(),"The Story room is never bound as an ordinary recovery room")
 	_check(Canonical.same(before,c.h.store.saved),"Its journal, pending turn and old Story files stay exactly as they were")
@@ -136,7 +136,7 @@ func _schema_one_ordinary_pending() -> void:
 	var before: Dictionary = c.h.store.saved.duplicate(true)
 	var online := _cold(c)
 	var count: int = c.h.calls.size()
-	_check(not online.can_leave_for_legacy() and not await online.open_room(NEXT_ROOM),"A missing standalone proof cannot release the old pending turn")
+	_check(not online.can_leave() and not await online.open_room(NEXT_ROOM),"A missing standalone proof cannot release the old pending turn")
 	_check(online.coordinator == null and c.h.calls.size() == count,"The unknown room is held before its cache loads or another room is read")
 	_check(await online.prepare_archived_navigation(),"A checked ordinary read identifies the old room")
 	_check(c.h.calls.size() == count+1 and c.h.calls.back().method == HTTPClient.METHOD_GET and c.h.calls.back().path == "/v2/rooms/"+ORDINARY,"One GET and no turn POST")
@@ -144,7 +144,7 @@ func _schema_one_ordinary_pending() -> void:
 	_check(online.coordinator != null and not pending.is_empty(),"The exact pending journal is restored")
 	_check(Canonical.same(before,c.h.store.saved),"Identifying it writes nothing")
 	count = c.h.calls.size()
-	_check(not online.can_leave_for_legacy() and not await online.open_room(NEXT_ROOM),"The restored pending turn still blocks another room")
+	_check(not online.can_leave() and not await online.open_room(NEXT_ROOM),"The restored pending turn still blocks another room")
 	_check(c.h.calls.size() == count and Canonical.same(before,c.h.store.saved),"Leaving cannot resend or erase it")
 	_check(await online.open_room(ORDINARY) and Canonical.same(pending,online.coordinator.pending()),"Opening the same room keeps its recovery request")
 	online.invalidate_identity()
@@ -173,7 +173,7 @@ func _unknown_replies_hold() -> void:
 		_check(not await online.prepare_archived_navigation(),failure+" proves neither a Story nor an ordinary room")
 		_check(c.h.calls.size() == count+1 and c.h.calls.back().path == "/v2/rooms/"+ORDINARY,failure+": only the previous room is read")
 		_check(online.coordinator == null and online.archived_room_kind(ORDINARY).is_empty() and Canonical.same(before,c.h.store.saved),failure+" keeps the cache, pending turn and selection")
-		_check(not online.can_leave_for_legacy() and not await online.open_room(NEXT_ROOM) and c.h.calls.size() == count+1,failure+" cannot release the pending turn or read another room")
+		_check(not online.can_leave() and not await online.open_room(NEXT_ROOM) and c.h.calls.size() == count+1,failure+" cannot release the pending turn or read another room")
 		c.h.free()
 
 func _classification_lifetime() -> void:

@@ -7,7 +7,6 @@ class Routes extends Main:
 	var routed: Array = []
 	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}, _hard: Dictionary = {}) -> void: routed.append("premium:"+scene)
 	func _new_relay_lobby_flow() -> RelayLobbyFlow: return RoutesLobby.new(self)
-	func _start_practice(index: int) -> void: routed.append("legacy:"+str(index))
 
 ## Records where a chapter's Play with your friend leads, instead of opening rooms.
 class RoutesLobby extends RelayLobbyFlow:
@@ -16,8 +15,8 @@ class RoutesLobby extends RelayLobbyFlow:
 		return false
 
 func _run() -> void:
-	var expected := ["sleeping-lighthouse","rolling-home","a-house-for-two","conservatory","long-way-home","legacy-rising-together","legacy-across-the-blue","legacy-lantern-crossing","legacy-two-beats","legacy-after-you"]
-	_check(PaidCatalog.keys()==expected,"All ten paid entries include Lighthouse and the separate earlier islands")
+	var expected := ["sleeping-lighthouse","rolling-home","a-house-for-two","conservatory","long-way-home"]
+	_check(PaidCatalog.keys()==expected,"All five paid entries include Lighthouse")
 	var total := 0
 	for key: String in PaidCatalog.keys():
 		var entry := PaidCatalog.entry(key)
@@ -26,7 +25,7 @@ func _run() -> void:
 		if ResourceLoader.exists(entry.texture):
 			var texture: Texture2D = load(entry.texture)
 			_check(texture.get_size()==Vector2(640,360),"Each menu asset has a bounded16:9 size: "+key)
-	_check(total==19 and PaidCatalog.entry("legacy-long-way-home").is_empty(),"Paid catalog has19 stages and excludes the free earlier Long Way Home")
+	_check(total==14 and PaidCatalog.entry("legacy-rising-together").is_empty(),"Paid catalog has 14 stages and no earlier islands")
 	var path := "user://paid-thumbnails-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
 	var storage := Storage.new(path)
 	storage.data.settings.sound=false
@@ -49,7 +48,6 @@ func _run() -> void:
 	for size: Vector2i in [Vector2i(1280,720),Vector2i(960,540)]:
 		viewport.size=size
 		await _paid_journey(app,viewport)
-		await _paid_earlier(app,viewport)
 		await _gallery(app,viewport,false)
 		await _gallery(app,viewport,true)
 	Input.emulate_touch_from_mouse=original_emulation
@@ -96,21 +94,6 @@ func _paid_journey(app: Node, viewport: SubViewport) -> void:
 			_check(app.routed.size()==before+1 and app.routed[-1]==expected,"Actual play-button tap retains its existing callback: "+expected)
 	_check(_fixed_back(app,viewport,"Back"),"Journey Back remains outside and below the scroll body")
 
-func _paid_earlier(app: Node, viewport: SubViewport) -> void:
-	app.journey_flow.show_earlier_islands()
-	await _settle()
-	var scroll := app.overlay.find_children("*","ScrollContainer",true,false)[0] as ScrollContainer
-	_check(_cards(scroll).size()==5 and _rows(scroll).size()==8,"Earlier islands keeps three free and all five paid entries")
-	for card: Control in _cards(scroll):
-		await _picture_drag(app,viewport,scroll,card)
-		var button := card.find_children("*","Button",true,false)[0] as Button
-		scroll.ensure_control_visible(button); await _settle()
-		var before: int=app.routed.size()
-		_pointer(viewport,button.get_global_rect().get_center(),true)
-		_pointer(viewport,button.get_global_rect().get_center(),false)
-		_check(app.routed.size()==before+1 and str(app.routed[-1]).begins_with("legacy:"),"Earlier thumbnail retains the existing gated practice callback")
-	_check(_fixed_back(app,viewport,"Back to chapters"),"Earlier islands Back stays fixed")
-
 func _gallery(app: Node, viewport: SubViewport, large: bool) -> void:
 	var card: VBoxContainer=app._card(800)
 	card.add_child(app._label("Full Journey",32))
@@ -122,7 +105,7 @@ func _gallery(app: Node, viewport: SubViewport, large: bool) -> void:
 		for label: Label in gallery.find_children("*","Label",true,false):
 			label.add_theme_font_size_override("font_size",roundi(float(label.get_theme_font_size("font_size"))*1.5))
 	await _settle()
-	_check(_cards(gallery).size()==10,"Read-only paywall gallery contains every paid entry")
+	_check(_cards(gallery).size()==5,"Read-only paywall gallery contains every paid entry")
 	_check(_rows(gallery).is_empty(),"Pictures do not provide an ungated gameplay or hidden preview action")
 	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
 	_check(screen.encloses(gallery.get_global_rect()),"Gallery is bounded at both sizes and text scales")

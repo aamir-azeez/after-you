@@ -17,8 +17,8 @@ extends SceneTree
 ## hashed definition (HASHED_WORDS), unless HASHED_WORDS_KEPT names it.
 ##
 ## The menu, Home, look and sound tables also hold entries that are not
-## registered chapters (the Sleeping Lighthouse @1, the earlier islands, Home,
-## legacy thumbnails). They are pinned below exactly, positions included.
+## registered chapters (the Sleeping Lighthouse @1 and Home). They are pinned
+## below exactly, positions included.
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -53,10 +53,8 @@ const HASHED_WORDS_KEPT := {
 	"turn-of-the-tide@1": "published before the rule; its definition hash is pinned by saves, rooms and replays",
 	"turn-of-the-tide@2": "published before the rule, with @1's words; its definition hash is pinned by saves, rooms and replays",
 }
-const EARLIER_STAGES := ["first-light", "long-way-home", "patient-garden", "rising-together", "across-the-blue", "lantern-crossing", "two-beats", "after-you"]
 const LIGHTHOUSE_STAGES := ["borrowed-light", "missing-piece", "two-promises", "after-the-first-bell", "what-carried-you", "a-welcome-left-on"]
-const LEGACY_THUMBNAILS := ["legacy-first-light", "legacy-long-way-home", "legacy-patient-garden", "sleeping-lighthouse",
-	"legacy-rising-together", "legacy-across-the-blue", "legacy-lantern-crossing", "legacy-two-beats", "legacy-after-you"]
+const OTHER_THUMBNAILS := ["sleeping-lighthouse"]
 
 var checks := 0
 var failures := 0
@@ -345,13 +343,10 @@ func _home() -> void:
 	_check("sleeping-lighthouse@2" not in Keepsakes.CHAPTERS and Keepsakes.ALIASES.get("sleeping-lighthouse@2") == LEGACY_LIGHTHOUSE, "Home browses the Lighthouse @2 under @1")
 	_same(Keepsakes.local_path(LEGACY_LIGHTHOUSE), "user://lighthouse-journey-v3.json", "Keepsake save path of the Lighthouse @1")
 	_same(Keepsakes.local_path("sleeping-lighthouse@2"), "", "The Lighthouse @2 keeps no Home save path of its own")
-	var earlier: Array = []
 	var lighthouse: Array = []
 	for row: Array in Keepsakes.ROWS:
-		if row[0] == "earlier": earlier.append(row[1])
 		if row[0] == LEGACY_LIGHTHOUSE: lighthouse.append(row[1])
-	_same(earlier, EARLIER_STAGES, "The earlier islands' places")
-	_same(Keepsakes.ROWS.slice(0, EARLIER_STAGES.size()).map(func(row: Array) -> String: return row[0]), _repeat("earlier", EARLIER_STAGES.size()), "The earlier islands' places come first")
+	_check(not Keepsakes.ROWS.any(func(row: Array) -> bool: return row[0] == "earlier"), "Home has no places for the earlier islands")
 	_same(lighthouse, LIGHTHOUSE_STAGES, "The Lighthouse @1's places")
 	for key: String in Keepsakes.CHAPTERS:
 		if key != LEGACY_LIGHTHOUSE: _same(Keepsakes.local_path(key), Index.data(key).local_path, "A browsed chapter's Home save is its solo save: " + key)
@@ -390,7 +385,7 @@ func _home_keepsakes() -> void:
 
 ## The other tables' entries that are not registered chapters.
 func _tables() -> void:
-	_same(_sorted(Thumbnails.OTHER_THUMBNAILS.keys()), _sorted(LEGACY_THUMBNAILS), "Thumbnails that are not registered chapters")
+	_same(_sorted(Thumbnails.OTHER_THUMBNAILS.keys()), _sorted(OTHER_THUMBNAILS), "Thumbnails that are not registered chapters")
 	_same(Dressing.OTHER_FILES.keys(), [LEGACY_LIGHTHOUSE], "Dressing that is not a registered chapter's")
 	_same(Dressing.FILES[LEGACY_LIGHTHOUSE].resource_path, "res://content/dressing/sleeping_lighthouse.gd", "Dressing of the Lighthouse @1")
 	_same(IslandWorld.OTHER_STATIC_FOLD_CHAPTERS, [LEGACY_LIGHTHOUSE], "Folded keys that are not registered chapters")
@@ -400,11 +395,6 @@ func _tables() -> void:
 		_same(Thumbnails.path(key), data.thumbnail, "Thumbnail of " + key)
 		_same(Dressing.FILES[key].resource_path if Dressing.FILES.has(key) else "", data.dressing, "Dressing of " + key)
 		_same(key in IslandWorld.STATIC_FOLD_CHAPTERS, data.fold_static, "Static fold of " + key)
-
-func _repeat(value: Variant, count: int) -> Array:
-	var result: Array = []
-	for index in range(count): result.append(value)
-	return result
 
 func _sorted(values: Array) -> Array:
 	var result := values.duplicate()

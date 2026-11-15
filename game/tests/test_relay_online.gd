@@ -444,7 +444,6 @@ func _real_ui_flow() -> void:
 	preview.set_process(false)
 	await process_frame
 	_check(is_instance_valid(preview) and api.get_parent()==app and not app.ui.visible and not app.world.visible,"Online child retains the real main/API owner and hides the old world/UI")
-	_check(not app._foreground_refresh_safe(),"Legacy foreground refresh is suspended while the child owns the room")
 	var hidden_time: float = app.world.time
 	var sibling_frames := sibling_probe.frames
 	await process_frame
@@ -497,9 +496,6 @@ func _real_ui_flow() -> void:
 	await _play(preview,"relay-a")
 	_check(preview.mode=="online_waiting" and not preview.journey.pending().is_empty(),"Lost commit reply opens receipt-check state without enabling another turn")
 	_check_waiting_viewer(preview,api,store,"p0","host with uncertain saved A")
-	var calls := api.calls.size()
-	app._service_foreground_refresh()
-	_check(api.calls.size()==calls,"Parent cannot compete with pending online chapter request")
 	preview._leave()
 	await app.relay_lobby_flow.lobby_action("open","Z".repeat(22))
 	_check(not is_instance_valid(app.relay_child) and app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen),"Blocked room selection never enters a different cached room and returns to the room hub")

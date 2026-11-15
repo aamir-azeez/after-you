@@ -1,7 +1,7 @@
 extends SceneTree
 ## Replays loading feedback on the real Main screens: Solo shows a progress bar
 ## (never "nothing saved") while its read-only scan runs, fills in by itself,
-## keeps selection and scroll, and draws the last finished list at once from a
+## and draws the last finished list at once from a
 ## display-only snapshot whose rows stay unplayable until checked. Together
 ## shows its bar on every local loading path. A Watch tap disables the control
 ## and shows a wait before any scene load.
@@ -11,7 +11,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Archive = preload("res://services/attempt_archive.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Levels = preload("res://core/levels.gd")
+const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Solo = preload("res://services/solo_replay_collection.gd")
 const Index = preload("res://services/solo_replay_index.gd")
 const ReplayBar = preload("res://presentation/replay_loading_bar.gd")
@@ -78,8 +78,9 @@ func _run() -> void:
 	await _watch_wait(app, paths)
 	await _snapshot(app, paths)
 	await _reopen_after_leaving(app, paths)
+	_check(api.calls.is_empty(), "Loading feedback and snapshot rows send no network request")
 	await _together(app)
-	_check(api.calls.is_empty(), "Loading feedback, snapshot rows and Together local checks send no network request")
+	_check(api.calls.all(func(call: Dictionary) -> bool: return call.method == HTTPClient.METHOD_GET), "Together's local checks change nothing on the server")
 	await _leave_mid_scan(viewport, app, paths)
 	viewport.queue_free()
 	await process_frame
@@ -117,28 +118,14 @@ func _seed_solo() -> Dictionary:
 
 func _solo_scan(app: Node, paths: Dictionary) -> void:
 	Solo._verified.clear()
-	# Eight layout-only earlier-island rows make the list scroll; they are
-	# never played or verified here.
-	var replays := {}
-	for index in range(8): replays[Levels.get_level(index).id] = {"b": {"layout_fixture": true}}
-	app.saves.data.replays = replays
 	app.replays_flow.solo_replays = Solo.new(paths, "")
 	app.replays_flow._solo_collection_started = false
 	app.replays_flow.show_collection()
 	var bar: Control = app.replays_flow._solo_scan_bar
 	_check(app.replays_flow.solo_replays.scan_pending() and is_instance_valid(bar) and bar.is_inside_tree(), "Opening Solo shows the loading bar in the same frame the screen is built")
 	_check(not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "While scanning, the empty message is never shown")
-	_check(bar.status.text.ends_with("0 / 3") and bar.status.text.begins_with(ReplaysFlow.SOLO_COLLECTION_SCANNING), "The bar counts real sources (0 of 3) and reuses the existing scanning copy")
-	_check(_chapter_rows(app).is_empty() and _rows(app).size() == 8, "Only already known rows are listed before any chapter is checked")
-	# Select an earlier island deliberately, then scroll the list.
-	var chosen: Button = _rows(app)[3]
-	chosen.pressed.emit()
-	var chosen_key := str(app.replays_flow._selected_solo_attempt.get("key", ""))
-	await _frames(3)
-	var scroll: ScrollContainer = app._bounded_card_scroll
-	_check(scroll.get_v_scroll_bar().max_value > scroll.size.y + 60, "The eight-row list is long enough to scroll")
-	scroll.scroll_vertical = 60
-	await _frames(1)
+	_check(bar.status.text.ends_with("0 / 3") and bar.status.text.begins_with("Loading saved replays"), "The bar counts real sources (0 of 3) with the general loading text while nothing is listed yet")
+	_check(_rows(app).is_empty(), "No row is listed before any chapter is checked")
 	# Zero chapter rows found yet: the bar stays and the empty text stays away.
 	var guard := 0
 	var redraws := 0
@@ -160,8 +147,6 @@ func _solo_scan(app: Node, paths: Dictionary) -> void:
 				await _frames(2)
 				_check(is_instance_valid(app.replays_flow._solo_scan_bar) and app.replays_flow._solo_scan_bar.is_visible_in_tree(), "Partial results keep the loading bar beside the rows")
 				_check(_chapter_rows(app).all(func(button: Button) -> bool: return button.text.begins_with("First Steps")), "Only fully checked chapters are listed while others are still checked")
-				_check(str(app.replays_flow._selected_solo_attempt.get("key", "")) == chosen_key, "Arriving rows keep the player's selection")
-				_check(app._bounded_card_scroll.scroll_vertical == 60, "Arriving rows keep the list's scroll position")
 		_check(app.mode == "collection" and not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "No empty state appears at any point of the scan")
 		guard += 1
 		await process_frame
@@ -174,7 +159,6 @@ func _solo_scan(app: Node, paths: Dictionary) -> void:
 	var titles: Array = _chapter_rows(app).map(func(button: Button) -> String: return button.text)
 	var relay_title := str(Registry.descriptor(Registry.RELAY).title)
 	_check(titles.has("First Steps · Attempt 1") and titles.has(relay_title + " · Attempt 1") and titles.has(relay_title + " · Attempt 2"), "Finished results appear on the open screen without leaving it: " + str(titles))
-	_check(str(app.replays_flow._selected_solo_attempt.get("key", "")) == chosen_key and app._bounded_card_scroll.scroll_vertical == 60, "Selection and scroll survive the final redraw")
 	_check(not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "A populated finished scan never shows the empty message")
 	var settled: int = app.replays_flow._solo_collection_entries().size()
 	app.replays_flow.service_solo_collection()
@@ -184,7 +168,6 @@ func _solo_scan(app: Node, paths: Dictionary) -> void:
 func _solo_finished_empty(app: Node, paths: Dictionary) -> void:
 	# A journal with no accepted pair: scanning shows the bar, and only the
 	# finished scan shows the empty message.
-	app.saves.data.replays = {}
 	var empty_paths := paths.duplicate()
 	for chapter: String in empty_paths: empty_paths[chapter] = directory + "/none-" + chapter.validate_filename() + ".json"
 	_check(Retained.seed(str(empty_paths[Registry.RELAY]), Registry.RELAY), "An unfinished Relay journal has no accepted pair")
@@ -464,15 +447,17 @@ func _together(app: Node) -> void:
 	app.identity_data = {"player_id": HOST, "device_token": "synthetic-token"}
 	api.player_id = HOST
 	api.device_token = "synthetic-token"
-	# Two saved rooms, each with a verified earlier-island replay.
+	# Two saved finished First Steps rooms, each with two verified parts.
 	var cache := Memory.new()
-	var seed := Shared.new(api, app._relay_identity, cache, OnlineMemory.new())
-	var legacy := {"room_id": ROOM, "host_id": HOST, "guest_id": GUEST, "level_id": "first-light", "attempt": 3, "first_player_id": GUEST, "active_role": "complete", "recordings": {"a": _fixture("first-light-a"), "b": _fixture("first-light-b")}}
-	var other := legacy.duplicate(true)
-	other.room_id = OTHER
-	_check(seed.load_saved(legacy) and seed.load_saved(other), "Two shared rooms are saved on this device")
+	var online := OnlineMemory.new()
+	for room_id: String in [ROOM, OTHER]:
+		var journal := Coordinator.new(_offline, online.load_scope, online.save_game, app._relay_identity)
+		_check(journal.bind_room(room_id) and journal._accept_snapshot(_finished_room(room_id)), "A finished First Steps room is saved on this device")
+	online.values["relay-lobby-v2:" + HOST] = {"schema_version": 1, "owner_player_id": HOST, "room_ids": [ROOM, OTHER], "last_room": OTHER, "pending": {}}
+	var seed := Shared.new(api, app._relay_identity, cache, online)
+	_check(seed.load_saved() and seed.rooms().size() == 2, "Two shared rooms are saved on this device")
 	# First open of a cold process: nothing is checked yet.
-	app.shared_replays = Shared.new(api, app._relay_identity, cache, OnlineMemory.new())
+	app.shared_replays = Shared.new(api, app._relay_identity, cache, online)
 	app.replays_flow.service_shared_replays()
 	_check(app.replays_flow._shared_identity_wait_until == -1, "The account wait ends once the account is read")
 	app.replays_flow.show_shared_replays()
@@ -486,9 +471,8 @@ func _together(app: Node) -> void:
 		await process_frame
 	_check(app.mode == "shared_memories" and app.replays_flow._listed_shared_rooms().size() == 2 and app.replays_flow._shared_replay_loading_bar == null, "Finished local check opens a room, with the bar gone")
 	# Reopen while the active room is re-checked, then switch rooms meanwhile.
-	app.saves.data.room = legacy.duplicate(true)
 	app.replays_flow.show_shared_replays()
-	_check(app.shared_replays.local_loading() and app.mode == "shared_memories" and is_instance_valid(app.replays_flow._shared_replay_loading_bar) and _rows(app).size() == 1, "Reopening shows the saved rows together with the bar")
+	_check(app.shared_replays.local_loading() and app.mode == "shared_memories" and is_instance_valid(app.replays_flow._shared_replay_loading_bar) and _rows(app).size() == 2, "Reopening shows the saved rows together with the bar")
 	var selector: OptionButton = app.overlay.find_children("*", "OptionButton", true, false)[0]
 	var target := 1 - selector.selected
 	selector.select(target)
@@ -499,8 +483,7 @@ func _together(app: Node) -> void:
 		app.replays_flow.service_shared_replays()
 		guard += 1
 		await process_frame
-	_check(app.mode == "shared_memories" and app.replays_flow._shared_replay_loading_bar == null and _rows(app).size() == 1, "The switched room finishes without the bar")
-	app.saves.data.room = {}
+	_check(app.mode == "shared_memories" and app.replays_flow._shared_replay_loading_bar == null and _rows(app).size() == 2, "The switched room finishes without the bar")
 
 func _chapter_rows(app: Node) -> Array:
 	return _rows(app).filter(func(button: Button) -> bool: return " · Attempt " in button.text)
@@ -534,6 +517,13 @@ func _hashes() -> Dictionary:
 
 func _frames(count: int) -> void:
 	for frame in range(count): await process_frame
+
+func _offline(_request: Dictionary) -> Dictionary: return {"ok": false, "status": 0, "code": "offline"}
+
+## A finished two-stage First Steps room as the server sends it, for this phone's journal.
+func _finished_room(room_id: String) -> Dictionary:
+	var level := Registry.definition(Registry.FIRST_STEPS)
+	return {"schema_version": 2, "api_version": 2, "room_id": room_id, "revision": 5, "branch": 0, "stage_index": 2, "level_id": level.id, "level_version": level.version, "definition_hash": Canonical.digest(level), "host_id": HOST, "guest_id": GUEST, "checkpoint": _fixture("first_steps/final-checkpoint"), "a_turn_id": null, "completed_pair_ids": ["p0-0", "p0-1"], "invite_code": "A1".repeat(10), "invite_expires_at": "2026-09-21T12:00:00Z", "created_at": "2026-09-14T12:00:00Z", "updated_at": "2026-09-14T12:00:00Z", "active_role": "complete", "first_player_id": null, "active_player_id": null, "player_slot": "p0", "stage_id": "", "recording_a": null, "validation": "structural_client_replay_required"}
 
 func _fixture(name: String) -> Dictionary:
 	var value: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + name + ".json"))
