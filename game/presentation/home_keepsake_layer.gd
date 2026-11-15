@@ -57,7 +57,8 @@ var _world: Node3D
 var _free_only := false
 var together_hard := false
 ## (cue: String, variant: int) -> void: plays one keepsake sound. Variant n is
-## the n-th drop of a water run (soundscape fixed_pitch); 0 for everything else.
+## the n-th drop of a water run or the n-th bell a keepsake strikes in turn
+## (soundscape fixed_pitch); 0 for everything else.
 var cue: Callable
 ## A ride's joy (keepsake_anim.gd): (pip: Node3D) -> void pops a heart over the
 ## pip, and () -> void taps the phone lightly (Settings' Haptics decides).
@@ -153,7 +154,7 @@ func _keys() -> Dictionary:
 	var keys := {}
 	for id: String in _shown:
 		var item: Dictionary = _items[id]
-		keys[id] = [item.look, item.together, item.hard, item.top, item.stages if item.look == "started" or id == States.EARLIER else []]
+		keys[id] = [item.look, item.together, item.hard, item.top, item.stages if item.look == "started" else []]
 	return keys
 
 func _entry(id: String) -> Dictionary:
@@ -188,12 +189,10 @@ func _frame_of(id: String) -> Dictionary:
 	return {"placed": placed, "inverse": placed.affine_inverse(), "trigger": trigger, "stay": stay, "walkways": walkways,
 		"gated": not builder.gates({}, {}, Vector2(INF, INF)).is_empty(), "reach": [Vector2(middle.x, middle.z), reach.size.length() * 0.5 * HOME_SCALE + 0.3]}
 
-## The state a builder draws: the earned upgrades, and the Lantern Walk's lanterns.
+## The state a builder draws: the earned upgrades.
 func _look(id: String) -> Dictionary:
 	var item: Dictionary = _items[id]
-	var state := {"together": item.together, "hard": item.hard, "top": item.top}
-	if id == States.EARLIER: state.lanterns = item.stages.map(func(stage: Array) -> bool: return stage[0] or stage[1])
-	return state
+	return {"together": item.together, "hard": item.hard, "top": item.top}
 
 func _make_set(shown_now: bool) -> Dictionary:
 	var root := Node3D.new()
@@ -213,9 +212,7 @@ func _make_set(shown_now: bool) -> Dictionary:
 		if item.look == "keepsake":
 			parts = builder.build(holder, state)
 		else:
-			var plain := {}
-			if id == States.EARLIER: plain.lanterns = state.lanterns.map(func(_lit: bool) -> bool: return false)
-			Parts.outline(holder, builder, "%s|%d" % [id, item.stages.size()], item.stages if item.look == "started" else [], plain)
+			Parts.outline(holder, builder, "%s|%d" % [id, item.stages.size()], item.stages if item.look == "started" else [])
 		for part: Node in _moving(parts): _held.append(part)
 		var drawn := state if item.look == "keepsake" else {}
 		var solids: Array[Rect2] = builder.solids(drawn)

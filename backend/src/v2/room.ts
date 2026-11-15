@@ -1,3 +1,5 @@
+import { isPacked } from "./recording-codec";
+import { noteReader, packedRoom } from "./packed-rooms";
 import { acknowledgePhoto, photoDelivery, clearDelivery } from "./photo-delivery";
 import { flags } from "../flags";
 import { DurableObject } from "cloudflare:workers";
@@ -131,8 +133,8 @@ export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?:
  * `packs`: the member's phone draws pack faces; without it, faces and tracks carry each pack face's
  * everyday stand-in (end-reactions.ts shownFace). It adds no field of its own.
  */
-export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean; looks?: boolean; packs?: FaceVersion };
-type BesideFields = { end_reactions?: EndReactionsView; partner_name?: string | null; run_reactions?: RunReactionsView; partner_look?: Look; turn_looks?: Record<string, Look> };
+export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean; looks?: boolean; packs?: FaceVersion; packed?: boolean };
+type BesideFields = { end_reactions?: EndReactionsView; partner_name?: string | null; run_reactions?: RunReactionsView; partner_look?: Look; turn_looks?: Record<string, Look>; packed_recordings?: true };
 /** The revision and branch a polling member already holds (X-AfterYou-Known-Room). */
 export type KnownRoom = { revision: number; branch: number };
 /** The small poll reply when nothing changed since the member's known revision and branch. */
@@ -615,7 +617,7 @@ export class RoomV2 extends DurableObject<Env> {
   }
   /** A room view with what the member asked for beside it (Beside). */
   private withBeside(view: RoomSnapshotV2, state: RoomStateV2, player: string, wanted: Beside): RoomSnapshotV2 {
-    return wanted.faces || wanted.names || wanted.tracks || wanted.looks ? { ...view, ...this.beside(state, player, wanted) } : view;
+    return wanted.faces || wanted.names || wanted.tracks || wanted.looks || wanted.packed ? { ...view, ...this.beside(state, player, wanted) } : view;
   }
   /** The optional fields a room read or a turn reply carries beside the room. */
   private beside(state: { host_id: string; guest_id: string | null }, player: string, wanted: Beside): BesideFields {
@@ -623,7 +625,8 @@ export class RoomV2 extends DurableObject<Env> {
     const packs = wanted.packs ?? 0;
     return { ...(wanted.faces ? { end_reactions: endReactionsView(this.ctx.storage, partner, packs) } : {}), ...(wanted.names ? { partner_name: memberName(this.ctx.storage, partner) } : {}),
       ...(wanted.tracks ? { run_reactions: partnerTrack(this.ctx.storage, partner, packs) } : {}),
-      ...(wanted.looks ? { partner_look: memberLook(this.ctx.storage, partner), turn_looks: turnLooks(this.ctx.storage, partner) } : {}) };
+      ...(wanted.looks ? { partner_look: memberLook(this.ctx.storage, partner), turn_looks: turnLooks(this.ctx.storage, partner) } : {}),
+      ...(wanted.packed && packedRoom(this.ctx.storage) ? { packed_recordings: true as const } : {}) };
   }
   private write(state: RoomStateV2): void {
     state.updated_at = new Date().toISOString();
@@ -634,8 +637,9 @@ export class RoomV2 extends DurableObject<Env> {
    * `pollen`: the host's Full Journey end while Pollen earning is on (pollen/turn-facts.ts recordMember); undefined writes nothing.
    * `look`: the host's look while looks are on (pollen/room-looks.ts recordMemberLook); undefined writes nothing.
    * `duel`: the duel this room is made for (duels/room-link.ts); a retry must name the same one.
+   * `packedReader`: the host's phone reads packed recordings (v2/packed-rooms.ts).
    */
-  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard", name?: string | null, pollen?: PollenMember, look?: Look, duel?: DuelLink): Outcome<RoomSnapshotV2> {
+  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard", name?: string | null, pollen?: PollenMember, look?: Look, duel?: DuelLink, packedReader = false): Outcome<RoomSnapshotV2> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_initialize_required"); if (boundary) return boundary;
     let selected;
     try { selected = chapter(requestedChapter); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -663,6 +667,7 @@ export class RoomV2 extends DurableObject<Env> {
       this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", storedRoom(state, this.compress()));
       if (mode === "hard") initializeHard(this.ctx.storage, this.hard);
       if (duel) recordDuelLink(this.ctx.storage, duel);
+      if (packedReader) noteReader(this.ctx.storage, "host");
       recordMemberName(this.ctx.storage, host, name);
       recordMember(this.ctx.storage, host, pollen);
       recordMemberLook(this.ctx.storage, host, look);
@@ -756,7 +761,7 @@ export class RoomV2 extends DurableObject<Env> {
   }
   /** `hardClient`: the joining phone plays hard rooms (X-AfterYou-Hard-Mode). `name`, `pollen` and `look`: as in initialize, for a member who joins or returns.
    * `open`: the level ids the joining phone has open (chapter-unlocks.ts); a new guest whose list leaves out this room's chapter is refused. */
-  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false, name?: string | null, pollen?: PollenMember, look?: Look, open?: string[]): Promise<Outcome<RoomSnapshotV2>> {
+  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false, name?: string | null, pollen?: PollenMember, look?: Look, open?: string[], packedReader = false): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.stored();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
@@ -783,6 +788,7 @@ export class RoomV2 extends DurableObject<Env> {
     if (admission) admitToDuelLink(this.ctx.storage, player, admission.known);
     if (!duelJoinAllowed(duelLink(this.ctx.storage), player)) return fail(403, "duel_pair_only");
     state.guest_id = player; state.revision++; this.write(state);
+    if (packedReader) noteReader(this.ctx.storage, "guest");
     recordMemberName(this.ctx.storage, player, name);
     recordMember(this.ctx.storage, player, pollen);
     recordMemberLook(this.ctx.storage, player, look);
@@ -1002,7 +1008,7 @@ export class RoomV2 extends DurableObject<Env> {
       ...(link ? { duel_link: link } : {}),
       // A duel room's turn while looks are on: both members' looks now, host first, for the duel's side (duels/model.ts).
       ...(link && look !== undefined ? { duel_looks: pairLooks(this.ctx.storage, finished.host_id, finished.guest_id) } : {}) };
-    if (!(beside.faces || beside.names || beside.tracks || beside.looks)) return Object.keys(extra).length ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
+    if (!(beside.faces || beside.names || beside.tracks || beside.looks || beside.packed)) return Object.keys(extra).length ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
     const state = this.stored();
     return state ? ok<CommittedV2>({ ...outcome.value, ...this.beside(state, player, beside), ...extra }) : outcome;
   }
@@ -1096,6 +1102,7 @@ export class RoomV2 extends DurableObject<Env> {
       // Only open turns take a later turn without a checkpoint (exactTurnFields); elsewhere it is the missing field it always was.
       if (raw.role === "b" && input.checkpoint === undefined && !chapter(observed).open_turns) return fail(400, "unexpected_fields");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
+      if (isPacked(recording) && !packedRoom(this.ctx.storage)) return fail(422, "packed_recording_not_allowed");
       if (recording.simulation_version !== (observed.simulation_version ?? chapter(observed).simulation_version)) return fail(422, "unsupported_simulation_version");
       const open = chapter(observed).open_turns;
       if (replaces !== undefined && ((recording.role !== "a" && !open) || context !== undefined)) return fail(409, "self_redo_unavailable");
@@ -1308,6 +1315,7 @@ export class RoomV2 extends DurableObject<Env> {
       // A slip that does not check is dropped, never the reset: the room must start again.
       let slipRecording: RecordingV2 | null = null;
       if (input.slip !== undefined) { try { slipRecording = await recordingV2(input.slip, observed); } catch { slipRecording = null; } }
+      if (slipRecording && isPacked(slipRecording) && !packedRoom(this.ctx.storage)) slipRecording = null;
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       return this.indexed(await this.ctx.storage.transaction(async () => {
         const state = this.read();

@@ -14,6 +14,7 @@ const Lever = preload("res://presentation/kit/pieces/lever.gd")
 const Selector = preload("res://presentation/kit/pieces/selector.gd")
 const Pad = preload("res://presentation/kit/pieces/pad.gd")
 const Goal = preload("res://presentation/kit/pieces/goal.gd")
+const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const JourneyWorld = preload("res://presentation/journey_world.gd")
 const AT := Vector3(1, 0.5, 2)
@@ -91,9 +92,15 @@ func _check_every_style(holder: Node3D) -> void:
 	_check(Pad.build("stand_spot", AT, 0.36, holder, {"heavy": true}).style == "plain", "A ball pad is always plain")
 	for style: String in Styles.SLOTS.goal:
 		var piece: RefCounted = Goal.build(style, AT, 0.28, holder)
-		_check(piece.style == style and piece.bell is MeshInstance3D and piece.ring is MeshInstance3D and piece.light.get_parent() == holder and piece.bell.get_parent() == piece.root, "Goal %s keeps its bell, ring and light" % style)
+		_check(piece.style == style and piece.bell is MeshInstance3D and piece.ring is MeshInstance3D and piece.light.get_parent() == holder and piece.root.is_ancestor_of(piece.bell), "Goal %s keeps its bell, ring and light" % style)
 		_check(is_equal_approx((piece.ring.mesh as TorusMesh).outer_radius, 0.28 + 0.025) and piece.root.position == AT, "Goal %s rings the goal's exact spot" % style)
 		_check(is_zero_approx(piece.light.light_energy), "Goal %s is built unlit" % style)
+	for style: String in Styles.SLOTS.lift:
+		var piece: RefCounted = Lift.build(style, Rect2(-1.0, -0.9, 2.0, 1.8), 0.0, 1.6, holder, {"drive": Vector3(-3.0, 0, -1.3)})
+		_check(piece.style == style and piece.root.get_parent() == holder and piece.moving_parts().has(piece.root) and _meshes(piece.root) > 0, "Lift %s builds its deck and keeps it moving" % style)
+		piece.set_height(0.8)
+		_check(is_equal_approx(piece.root.position.y, 0.8), "Lift %s's deck stands at the shown height" % style)
+	_check(Lift.build("teapot", Rect2(0, 0, 1, 1), 0.0, 1.0, holder).style == "plain", "An unknown lift style builds plain")
 	_check(Lever.build("teapot", AT, holder).style == "plain" and Selector.build("teapot", AT, holder).style == "plain" and Pad.build("teapot", AT, 0.3, holder).style == "plain" and Goal.build("teapot", AT, 0.3, holder).style == "bell", "An unknown style builds the default")
 
 ## A handle snaps; a machine stands inside its lever's reach, its anchor puts
@@ -169,7 +176,9 @@ func _check_selector_props(holder: Node3D) -> void:
 	_check(board.get_meta("down") == false and is_equal_approx(down, Selector.SHUTTER_DOWN) and is_equal_approx(board.position.y, Selector.SHUTTER_UP), "The shutter slides down and back up with its value")
 
 ## A goal lights once its stage is done: ring and ornament glow, its light
-## comes up, a window opens; put out, all of it goes back.
+## comes up, a window opens, a bell rings once (never on an immediate
+## light, which a seek, a retry and a replay snap to); put out, all of it goes
+## back.
 func _check_goal_light(holder: Node3D) -> void:
 	for style: String in Styles.SLOTS.goal:
 		var goal: RefCounted = Goal.build(style, AT, 0.28, holder)
@@ -177,8 +186,19 @@ func _check_goal_light(holder: Node3D) -> void:
 		var shutters: Array = goal.window.get("shutters", [])
 		_check((goal.ring.material_override as StandardMaterial3D).emission_enabled and (goal.bell.material_override as StandardMaterial3D).emission_enabled and goal.light.light_energy > 0.0 and goal.bell.get_meta("lit"), "Goal %s lights" % style)
 		_check(shutters.all(func(shutter: Node3D) -> bool: return not is_zero_approx(shutter.rotation.y)), "Goal %s opens any shutters it has" % style)
+		if goal.chime != null:
+			var swing: Node3D = goal.chime.swing
+			_check(goal.moving() and goal.moving_parts().has(swing), "Goal %s rings as it lights, and keeps its swing whole" % style)
+			goal.advance(Goal.Bell.STRIKE)
+			_check(swing.rotation.x > 0.1, "Goal %s's bell swings out by its strike" % style)
+			goal.set_lit(true)
+			_check(goal.moving(), "Goal %s rings on while it stays lit" % style)
+			goal.advance(Goal.Bell.RING_TIME)
+			_check(not goal.moving() and is_zero_approx(swing.rotation.x), "Goal %s's bell comes back to rest" % style)
 		goal.set_lit(false)
 		_check(not (goal.ring.material_override as StandardMaterial3D).emission_enabled and is_zero_approx(goal.light.light_energy) and not goal.bell.get_meta("lit"), "Goal %s goes out" % style)
+		goal.set_lit(true, true)
+		_check(not goal.moving(), "Goal %s lit at once (a seek) stays still" % style)
 
 func _meshes(node: Node) -> int:
 	return node.find_children("*", "MeshInstance3D", true, false).size()

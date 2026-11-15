@@ -12,7 +12,7 @@ const Faces = preload("res://services/reaction_catalog.gd")
 const Icon = preload("res://presentation/friend_play_icon.gd")
 const SpiritFaceScript = preload("res://presentation/spirit_face.gd")
 ## The single faces drawn with Joy's pink cheeks (content/cosmetics/faces.gd).
-const CHEEKED: Array[StringName] = [Look.AWW, Look.SHY, Look.TOUCHED, Look.SMITTEN]
+const CHEEKED: Array[StringName] = [Look.AWW, Look.SHY, Look.TOUCHED]
 ## The flat outlines of the nine looks the icons draw (eye_contours()), as on
 ## origin/main 1ee75731 before Joy: picker cells, the Play with your friend
 ## icon, empty states and badges must keep exactly these faces.
@@ -63,7 +63,7 @@ func _anchor(index: int) -> Vector2:
 	return Vector2(-Look.EYE_X if index == 0 else Look.EYE_X, Look.EYE_Y)
 
 func _test_table() -> void:
-	_check(Look.EXPRESSIONS.size() == 16 + Look.REACTION_FACES.size() + Look.REST_FACES.size() and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE) and Look.EXPRESSIONS.has(Look.KNOCKED_OUT) and Look.KNOCKED_OUT == &"knocked_out" and Look.EXPRESSIONS.has(Look.JOY) and Look.JOY == &"joy", "Ten expressions, the six pack faces, the single faces and the resting faces, knocked_out and joy among them")
+	_check(Look.EXPRESSIONS.size() == 15 + Look.REACTION_FACES.size() + Look.REST_FACES.size() and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE) and Look.EXPRESSIONS.has(Look.KNOCKED_OUT) and Look.KNOCKED_OUT == &"knocked_out" and Look.EXPRESSIONS.has(Look.JOY) and Look.JOY == &"joy", "Ten expressions, the five pack faces, the single faces and the resting faces, knocked_out and joy among them")
 	var complete := true
 	for expression: StringName in Look.EXPRESSIONS:
 		for index in range(2):
@@ -72,7 +72,7 @@ func _test_table() -> void:
 				complete = complete and eye.get(key) is Vector4
 			# The shader reads the mode from stroke_end.w.
 			# Wink and Smitten alone mix an open eye with a shut one, and never blink.
-			complete = complete and (eye.stroke_end.w > 0.5) == (eye.mode == 1) and (expression in [Look.WINK, Look.SMITTEN] or (eye.mode == 1) == (not Look.is_open(expression)))
+			complete = complete and (eye.stroke_end.w > 0.5) == (eye.mode == 1) and (expression in [Look.WINK] or (eye.mode == 1) == (not Look.is_open(expression)))
 	_check(complete, "Every expression gives both eyes every shader parameter, with the mode in step")
 
 func _test_open_eyes() -> void:

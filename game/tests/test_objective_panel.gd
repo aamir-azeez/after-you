@@ -1,7 +1,6 @@
 extends SceneTree
 
 const Controls = preload("res://presentation/chapter_controls.gd")
-const Objective = preload("res://presentation/objective_panel.gd")
 const Lighthouse = preload("res://lighthouse_preview.gd")
 const LightSimulation = preload("res://core/lighthouse/borrowed_light.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
@@ -43,16 +42,10 @@ func _run() -> void:
 			_check(panel.get_global_rect().size.y < bounds.size.y, "A shorter objective releases the previous panel height")
 			controls.update_state("First Steps", 20.0, {}, true)
 			_check(not panel.visible, "No objective leaves the playfield clear")
-			controls.update_state("Earlier island", 19.0, {"bridge_charge": 15, "bridge_charge_required": 60}, true)
-			_check(panel.visible and panel.value_label.text == "0.5 / 2.0 s", "Earlier-island charge uses the same objective component")
-			controls.update_state("Earlier island", 19.0, {"bridge_charge": 1, "bridge_charge_required": 1}, true)
-			_check(not panel.visible, "Instant bridges do not show a meaningless hold timer")
 			controls.card("Paused", "Your progress is kept.")
 			_check(not panel.is_visible_in_tree(), "A modal hides the objective with the rest of the HUD")
 			viewport.queue_free()
 			await _settle()
-	var untouched := {"bridge_charge": 30, "bridge_charge_required": 90}
-	_check(Objective.legacy_progress(untouched, 30.0).required == 3.0 and untouched.size() == 2, "Legacy presentation uses supplied numeric state without modifying it")
 	await _test_invalid_hold()
 	await _test_cumulative_sequence_hints()
 	print("OBJECTIVE PANEL: %d checks, %d failures" % [checks, failures])
@@ -85,7 +78,7 @@ func _test_invalid_hold() -> void:
 		_check(not state.can_commit and state.hold_ticks >= LightSimulation.MIN_HOLD_TICKS, "Real invalid source retains a completed hold duration")
 		screen._update_hud(state)
 		await _settle()
-		_check(controls.finish_button.disabled and controls.objective_panel.detail_label.text == sim.commit_reason(), "A completed hold cannot hide the actual recovery instruction")
+		_check(controls.finish_button.disabled and controls.objective_panel.detail_label.text == PlayerCopy.from_canonical(sim.commit_reason()), "A completed hold cannot hide the actual recovery instruction")
 		_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(controls.objective_panel.get_global_rect()), "Long hold recovery guidance remains inside a narrow screen")
 		_check(not controls.objective_panel.get_global_rect().intersects(controls.action_button.get_global_rect()), "Long objective guidance does not cover Action")
 	screen.free()
@@ -113,7 +106,7 @@ func _test_cumulative_sequence_hints() -> void:
 		screen._update_hud(state)
 		await _settle()
 		var current := version == LightSimulation.CURRENT_SIMULATION_VERSION
-		_check(controls.objective_panel.detail_label.text == (PlayerCopy.BORROWED_LIGHT_7EE2CC277F92 if current else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3), "Cumulative source guidance explains the recoverable missing path while old recordings retain their retry instruction")
+		_check(controls.objective_panel.detail_label.text == PlayerCopy.from_canonical(PlayerCopy.BORROWED_LIGHT_7EE2CC277F92 if current else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3), "Cumulative source guidance explains the recoverable missing path while old recordings retain their retry instruction")
 		_check(controls.action_button.text == ("Action" if current else PlayerCopy.STAGE_CATALOG_7220843FC24F), "The cumulative selector no longer claims to reset accumulated progress")
 		_check(state == original, "Recoverable presentation guidance leaves the observed simulation state unchanged")
 		state.role = "b"

@@ -1054,14 +1054,12 @@ func _check_bridge_at_rest() -> void:
 	var heard: Array = []
 	world.mechanism_moving.connect(func(kind: String, id: String, direction: int): heard.append([kind, id, direction]))
 	root.add_child(world)
-	var level: Dictionary = preload("res://core/levels.gd").all_levels()[0]
-	world.load_level(level)
-	var sim: RefCounted = preload("res://core/simulation.gd").new()
-	sim.reset(level)
-	world.present(sim.snapshot(), true)
+	var home: Script = preload("res://presentation/home_layout.gd")
+	world.load_level(home.LEVEL)
+	world.present(home.opening(), true)
 	for i in range(4): await process_frame
 	_check(heard.is_empty(), "A new level reports no moving bridge: %s" % [heard])
-	var open: Dictionary = sim.snapshot()
+	var open: Dictionary = home.opening()
 	open.bridge_open = true
 	world.present(open, true)
 	for i in range(3): await process_frame

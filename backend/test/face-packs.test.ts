@@ -61,7 +61,8 @@ afterEach(async () => { features = []; await reset(); });
 describe("reaction pack faces", () => {
   it("each belong to exactly one released pack, and every everyday face to none", () => {
     expect(PACK_FACES).toEqual(["heart_eyes", "proud", "wink", "wow", "crying", "dizzy"]);
-    expect(offeredPacks()).toEqual(["garden_faces", "big_feelings"]);
+    // Garden faces holds the retired Heart eyes, so it never sells again (catalog.ts offeredPacks).
+    expect(offeredPacks()).toEqual(["big_feelings"]);
     expect(CATALOG.pack_price).toBe(5000);
     expect(Object.fromEntries(PACK_FACES.map(face => [face, packOfFace(face)]))).toEqual({
       heart_eyes: "garden_faces", proud: "garden_faces", wink: "garden_faces", wow: "big_feelings", crying: "big_feelings", dizzy: "big_feelings" });

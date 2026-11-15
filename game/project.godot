@@ -3,7 +3,7 @@ config_version=5
 
 [application]
 config/name="After You"
-config/version="0.8.1"
+config/version="0.8.2"
 ; Screens handle Android Back through their existing navigation/save guards.
 config/quit_on_go_back=false
 run/main_scene="res://main.tscn"
@@ -43,6 +43,8 @@ pointing/android/disable_scroll_deadzone=true
 [rendering]
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+; UI icons carry mipmaps (tests/test_shared_paths.gd guards it); 2D draws use them when shrunk.
+textures/canvas_textures/default_texture_filter=2
 textures/default_filters/use_nearest_mipmap_filter=false
 textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(0.055,0.15,0.17,1)

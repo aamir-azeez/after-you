@@ -91,7 +91,6 @@ func _build(heading: String, subtitle: String) -> void:
 	close_button.icon = CLOSE_ICON
 	close_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	close_button.expand_icon = true
-	close_button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	close_button.add_theme_constant_override("icon_max_width",18)
 	close_button.tooltip_text = "Close"
 	close_button.accessibility_name = "Close"

@@ -81,15 +81,16 @@ const RAIL := Vector3(0.0, 0.022, 0.02)
 const RAIL_HEIGHTS := [0.07, 0.2]
 ## The broad cap along a leaf's top: its height and depth.
 const LEAF_CAP := Vector3(0.0, 0.022, 0.05)
-## A shut leaf stands this far onto its crossing from the crossing's end; an
-## open leaf lies along the crossing's side this far inside it (a spirit's
-## centre keeps 12 cm in from the side, so it never meets an open leaf).
+## A shut leaf stands this far onto its crossing from the crossing's end,
+## straight across it (square to the way through); an open leaf lies along the
+## crossing's side this far inside it (a spirit's centre keeps 12 cm in from
+## the side, so it never meets an open leaf).
 const LEAF_ON := 0.03
 const LEAF_IN := 0.014
-## An open half is at most this long.
+## An open half is at most this long, and on a short bridge stops this far
+## short of the bridge's middle, so the halves of its two ends never meet.
 const OPEN_LEAF := 0.34
-## A bridge's shut halves turn this far (radians) onto the deck from its end.
-const SHUT_ANGLE := 0.55
+const LEAF_GAP := 0.03
 ## A stair gate's bar and chain.
 const BAR_HEIGHT := 0.36
 const BAR := 0.05
@@ -503,19 +504,9 @@ func _gate(tool: SurfaceTool, mouth: Dictionary) -> void:
 		_piece(tool, foot + Vector3(0, POST_TALL * 0.5, 0), Vector3(POST, POST_TALL, POST), along, TIMBER, slot, POSTS, at.y)
 		_piece(tool, foot + Vector3(0, POST_TALL + CAP.y * 0.5, 0), CAP, along, TIMBER_DARK, slot, POSTS, at.y)
 	if not str(mouth.owner).is_empty():
-		# Open, a bridge's halves lie along its sides just inside it; a stair's
-		# lie back along its floor, clear of the treads.
-		var swing := along if mouth.kind == &"bridge" else -along
-		for side: float in [-1.0, 1.0]:
-			# A shut half: from its post's side of the end to the middle, just on
-			# the crossing, so the floor beside it stays free for marks and tags.
-			var hinge := at + across * side * half + along * LEAF_ON
-			# A bridge's halves meet in a shallow V on the deck, so a gate seen
-			# nearly edge on from the camera still shows its pickets.
-			var angle := SHUT_ANGLE if mouth.kind == &"bridge" else 0.0
-			var inward := (-across * side) * cos(angle) + along * sin(angle)
-			_leaf(tool, hinge, inward, (half - 0.004) / cos(angle), Vector3.UP.cross(inward).normalized() * -side, colour, slot, SHUT, at.y)
-			_leaf(tool, hinge - across * side * LEAF_IN, swing, open_length(half), across, colour, slot, OPEN, at.y)
+		for layer: int in [SHUT, OPEN]:
+			for leaf: Dictionary in leaves(mouth, layer):
+				_leaf(tool, leaf.hinge, leaf.run, leaf.length, leaf.normal, colour, slot, layer, at.y)
 	if mouth.stair_gate:
 		# A painted bar in red and cream stripes across the top, and the chain below.
 		for stripe in range(BAR_STRIPES):
@@ -769,9 +760,50 @@ static func post_of(mouth: Dictionary, side: float) -> Vector2:
 	var shift := float((mouth.get("post_shift", NO_SHIFT) as Array)[0 if side < 0.0 else 1])
 	return Vector2(mouth.at.x, mouth.at.z) + across * side * (float(mouth.half) + POST * 0.5 + 0.006 + shift) - along * (POST * 0.5)
 
-## How long an open half of a gate `half` wide at its end is.
-static func open_length(half: float) -> float:
-	return minf(half, OPEN_LEAF)
+## The two halves of `mouth`'s gate in `layer` (SHUT or OPEN): [{hinge
+## (Vector3, m), run (unit Vector3), length (m), normal (the pickets' facing)}].
+## Shut, each half runs from its side of the end to the middle, straight across
+## the crossing just on it, so the gate is exactly as wide as the way through
+## and the floor beside it stays free for marks and tags. Open, a bridge's
+## halves lie along its sides just inside it; a stair's lie back along its
+## floor, clear of the treads. The one shape _gate draws, discs() keeps clear
+## of and the tests measure.
+static func leaves(mouth: Dictionary, layer: int) -> Array:
+	var at: Vector3 = mouth.at
+	var along := Vector3(mouth.along.x, 0, mouth.along.y)
+	var across := Vector3(mouth.along.y, 0, -mouth.along.x)
+	var half := float(mouth.half)
+	var found: Array = []
+	for side: float in [-1.0, 1.0]:
+		var hinge := at + across * side * half + along * LEAF_ON
+		if layer == SHUT:
+			found.append({"hinge": hinge, "run": -across * side, "length": half - 0.004, "normal": along})
+		else:
+			found.append({"hinge": hinge - across * side * LEAF_IN, "run": along if mouth.kind == &"bridge" else -along, "length": open_length(mouth), "normal": across})
+	return found
+
+## How long an open half of `mouth`'s gate is: at most OPEN_LEAF and its half
+## width, and on a bridge short of the middle of the bridge's length (the
+## halves of both its ends lie along the same sides).
+static func open_length(mouth: Dictionary) -> float:
+	var length := minf(float(mouth.half), OPEN_LEAF)
+	if mouth.kind != &"bridge": return length
+	var rect: Rect2 = mouth.rect
+	var depth := rect.size.x if absf(Vector2(mouth.along).x) > 0.5 else rect.size.y
+	return clampf(depth * 0.5 - LEAF_ON - LEAF_GAP, 0.0, length)
+
+## The floor each half of `mouth`'s gate covers in `layers` (SHUT, OPEN or
+## both), as rects (m, across the floor), as deep as its cap.
+static func leaf_rects(mouth: Dictionary, layers: int) -> Array:
+	var found: Array = []
+	for layer: int in [SHUT, OPEN]:
+		if not layers & layer: continue
+		for leaf: Dictionary in leaves(mouth, layer):
+			var from := Vector2(leaf.hinge.x, leaf.hinge.z)
+			var to := from + Vector2(leaf.run.x, leaf.run.z) * float(leaf.length)
+			var normal := Vector2(leaf.normal.x, leaf.normal.z) * (LEAF_CAP.z * 0.5 + 0.004)
+			found.append(Rect2(from, Vector2.ZERO).expand(to).expand(from + normal).expand(from - normal).expand(to + normal).expand(to - normal))
+	return found
 
 ## What marks and pair tags keep clear of: each gate's posts and its leaves
 ## (shut on the crossing; a stair's open halves on the floor before it), each
@@ -780,23 +812,17 @@ func discs() -> Array:
 	var found: Array = []
 	for mouth: Dictionary in _layout.get("mouths", []):
 		var at: Vector3 = mouth.at
-		var along := Vector2(mouth.along)
-		var across := Vector2(along.y, -along.x)
-		var half := float(mouth.half)
-		var end := Vector2(at.x, at.z)
 		for side: float in [-1.0, 1.0]:
-			var post := post_of(mouth, side)
 			# A small disc: marks and tags keep their own gap (FloorSpots, 2 to
 			# 5 cm) past it, which already clears the post's corners.
-			found.append({"centre": post, "radius": POST * 0.25, "y": at.y, "what": "a post of the gate at %s" % mouth.route})
-			if mouth.kind == &"stair" and not str(mouth.owner).is_empty():
-				var hinge := end + across * side * (half - LEAF_IN)
-				found.append({"rect": Rect2(hinge, Vector2.ZERO).expand(hinge - along * open_length(half)).grow(RAIL.z), "y": at.y, "what": "the open gate at %s" % mouth.route})
-		# The shut leaf on the crossing, a bridge's V reaching further in.
-		var depth := LEAF_CAP.z * 0.5 + 0.004 + (half * tan(SHUT_ANGLE) * 0.5 if mouth.kind == &"bridge" else 0.0)
-		var line := end + along * (LEAF_ON + depth - LEAF_CAP.z * 0.5 - 0.004)
-		var extent := (across * half).abs() + (along * depth).abs()
-		found.append({"rect": Rect2(line - extent, extent * 2.0), "y": at.y, "what": "the gate at %s" % mouth.route})
+			found.append({"centre": post_of(mouth, side), "radius": POST * 0.25, "y": at.y, "what": "a post of the gate at %s" % mouth.route})
+		# The shut leaf across the end (a stair gate's chain hangs there too),
+		# and a stair's open halves on the floor before it.
+		for rect: Rect2 in leaf_rects(mouth, SHUT):
+			found.append({"rect": rect, "y": at.y, "what": "the gate at %s" % mouth.route})
+		if mouth.kind == &"stair" and not str(mouth.owner).is_empty():
+			for rect: Rect2 in leaf_rects(mouth, OPEN):
+				found.append({"rect": rect, "y": at.y, "what": "the open gate at %s" % mouth.route})
 	for span: Dictionary in _layout.get("spans", []):
 		var a: Vector3 = span.a
 		var b: Vector3 = span.b

@@ -9,6 +9,9 @@ const DATA := {
 	"scene": "res://the_wishing_well.tscn",
 	"stair_gates": false,
 	"local_path": "user://the-wishing-well-journey-v1.json",
+	# Scenery: lit windows down the cliff. Both levers are hand winches.
+	"dressing": "res://content/dressing/the_wishing_well.gd",
+	"piece_styles": {"garden-gate": "winch", "winch-lever": "winch"},
 	"copy": {
 		"title": PlayerCopy.WISHING_WELL_TITLE,
 		"summary": PlayerCopy.WISHING_WELL_SUMMARY,

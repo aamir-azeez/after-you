@@ -7,7 +7,7 @@ extends Node
 ## Main hosts it as a child and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
 ## - services: api, _names_scope, saves (reduced motion)
-## - screen: mode, running, overlay (the page's parent), ui (the cards' parent),
+## - screen: mode, overlay (the page's parent), ui (the cards' parent),
 ##   _clear_overlay, _toast, and _mark_screen_back when Main has it (Android Back)
 ## - soundscape when Main has it (play_fixed_cue): worn, taken off and bought,
 ##   and a picked Bell sound item's own sound.
@@ -198,7 +198,6 @@ func is_open() -> bool:
 ## show_orchard was asked from; "" when Back comes to it).
 func show_wardrobe(from: String = "settings") -> void:
 	if not available(): return
-	host.running = false
 	host.mode = MODE_WARDROBE
 	host._clear_overlay()
 	var reduced: bool = bool(host.saves.data.settings.get("reduced_motion", false)) if host.get("saves") != null else false
@@ -567,7 +566,7 @@ func model() -> Dictionary:
 	var offered: Array = view.get("offered", [])
 	var items: Array = []
 	var by_tier := {}
-	for id: String in Catalog.ids():
+	for id: String in Catalog.shop_order():
 		var mine := id in owned
 		var fruit := Catalog.currency(id) == FRUITS
 		# The server's catalogue decides what shows: what it sells, anything owned, and every earned item it offers.

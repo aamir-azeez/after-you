@@ -46,18 +46,15 @@ func _run() -> void:
 	layer.free()
 	await _frames(2)
 	_check(not viewport.disable_3d and app.world.is_processing(), "Closing it brings the world back")
-	# Safety and Redo requests are opaque full-screen layers too.
-	for script_path: String in ["res://presentation/safety_screen.gd", "res://presentation/redo_screen.gd"]:
-		var screen: CanvasLayer = CanvasLayer.new()
-		# Main holds the Safety screen; LegacyRoomFlow holds the Redo requests screen.
-		var holder: Object = app if script_path.contains("safety") else app.legacy_room_flow
-		holder.set("safety_screen" if script_path.contains("safety") else "redo_screen", screen)
-		await _frames(2)
-		_check(viewport.disable_3d and not app.world.is_processing(), "Behind %s the world is neither drawn nor run" % script_path.get_file())
-		holder.set("safety_screen" if script_path.contains("safety") else "redo_screen", null)
-		screen.free()
-		await _frames(2)
-		_check(not viewport.disable_3d and app.world.is_processing(), "Closing %s brings the world back" % script_path.get_file())
+	# Safety is an opaque full-screen layer too.
+	var screen: CanvasLayer = CanvasLayer.new()
+	app.safety_screen = screen
+	await _frames(2)
+	_check(viewport.disable_3d and not app.world.is_processing(), "Behind Safety the world is neither drawn nor run")
+	app.safety_screen = null
+	screen.free()
+	await _frames(2)
+	_check(not viewport.disable_3d and app.world.is_processing(), "Closing Safety brings the world back")
 	# A leaderboard run's replay opened from Friends (friends_flow.gd) draws its own world over Friends.
 	var friends := CanvasLayer.new()
 	app.friends_flow.screen = friends

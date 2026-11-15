@@ -131,7 +131,6 @@
 					"typed_digest": "d751ccefabc3fa3b2918abbf0554e13924bf70c4df86a2e36da2cf5db43e22a8"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					6,
@@ -280,7 +279,6 @@
 					"typed_digest": "a83cf1d49a5c217fe20d6dbb189102b0b8dc3737199072fada6d3c46792df2ac"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					7,
@@ -429,7 +427,6 @@
 					"typed_digest": "e030011ff39ecf652a7ae96c05eaafea9932e9b271bae9ea323b42bacb8c2a32"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					4,
@@ -576,7 +573,6 @@
 					"typed_digest": "595aa2d9c07f9fde8f9845866bb91a45923eeb1fbf5fb6c74444dc83c0751a6e"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					6,
@@ -610,7 +606,7 @@
 				"recording_version": 7,
 				"simulation_version": 8,
 				"stage_count": 2,
-				"summary": "Leave a path for your partner and go back home together.",
+				"summary": "Leave a path for your friend and go back home together.",
 				"title": "Long Way Home"
 			},
 			"initial_checkpoint_hash": "fc74e608708a07e7ea28794d245d1aa252c24189b95b13ec7f226fc5468a5c8a",
@@ -711,21 +707,20 @@
 			],
 			"stage_presentation": {
 				"a-place-beside-you": {
-					"hint_a": "Pick a window to greet your partner when they come home.",
+					"hint_a": "Pick a window to greet your friend when they come home.",
 					"hint_b": "Follow the open path and light the second window.",
 					"is_authored_stage": false,
 					"title": "A Place Beside You",
-					"typed_digest": "18fa1941e5448db7582235094609b8b42185ebb336a7afdace7689e8be1e4cb6"
+					"typed_digest": "345827c38a3570d44df2b76cd052e2a3b96e80cb785344b1f184418118e9669a"
 				},
 				"the-path-you-leave": {
-					"hint_a": "Leave a trail for your partner and then go to the garden on your own.",
+					"hint_a": "Leave a trail for your friend and then go to the garden on your own.",
 					"hint_b": "Reach the garden.",
 					"is_authored_stage": false,
 					"title": "The Path You Leave",
-					"typed_digest": "ef4a1aaa612b05ba29572001b5e26468827e991cdcac9b3269bc20c7205508b0"
+					"typed_digest": "ea45ef514174bab22868f24cceb99e1722e273114da660d2ced80ee7c6de5b25"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					7,
@@ -759,7 +754,7 @@
 				"recording_version": 7,
 				"simulation_version": 9,
 				"stage_count": 2,
-				"summary": "Leave a path for your partner and go back home together.",
+				"summary": "Leave a path for your friend and go back home together.",
 				"title": "Long Way Home"
 			},
 			"initial_checkpoint_hash": "fe0c7aaf890b5da6e89683a2c3c3e4938537c69f038b11a814725225d72b6299",
@@ -861,14 +856,13 @@
 					"typed_digest": "dd9e3e50cca7e8b01369b03dd7af88c5fc53f6404216413d1f48be738756943e"
 				},
 				"the-path-you-leave": {
-					"hint_a": "Leave a trail for your partner and then go to the garden on your own.",
+					"hint_a": "Leave a trail for your friend and then go to the garden on your own.",
 					"hint_b": "Reach the garden.",
 					"is_authored_stage": false,
 					"title": "The Path You Leave",
-					"typed_digest": "ef4a1aaa612b05ba29572001b5e26468827e991cdcac9b3269bc20c7205508b0"
+					"typed_digest": "ea45ef514174bab22868f24cceb99e1722e273114da660d2ced80ee7c6de5b25"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					9,
@@ -1006,7 +1000,6 @@
 					"typed_digest": "f75b19efc6e0915c0d1dfba87eb64c47007eea3b36ee4622954c0503b18f9e5f"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					2,
@@ -1155,7 +1148,6 @@
 					"typed_digest": "71d426cd638e1268876b6d1033e5a52ec2052f9520a9092dae6f760b9e8bcb55"
 				}
 			},
-			"story_illustration": true,
 			"supported_rules": [
 				[
 					6,
@@ -1334,7 +1326,6 @@
 					"typed_digest": "df37f96dc82cc3f610a05a1534065ebd099b6f5f1eaa64349c6187c6244c53ef"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					11,
@@ -1467,7 +1458,6 @@
 					"typed_digest": "7911e963a97009ce34b33ff25ef839bab68de3c72c149944732c386c9f9d99f0"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					9,
@@ -1497,7 +1487,7 @@
 				"recording_version": 7,
 				"simulation_version": 9,
 				"stage_count": 2,
-				"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+				"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 				"title": "Turn of the Tide"
 			},
 			"initial_checkpoint_hash": "d3f696f9eaf0dbaddd2a1d4f571642e602d55a3999328526ca73c926fe92e51c",
@@ -1586,11 +1576,11 @@
 			],
 			"stage_presentation": {
 				"set-the-tide": {
-					"hint_a": "Turn the tide for your partner and wait on a step by the wheel.",
+					"hint_a": "Turn the tide for your friend and wait on a step by the wheel.",
 					"hint_b": "Cross when the tide is right and ring the harbour bell.",
 					"is_authored_stage": false,
 					"title": "Set the Tide",
-					"typed_digest": "604143762700619fca2d86116eb06b9475d5ede08fe71bbb01561e55e080bf13"
+					"typed_digest": "42a5e9891193dd41bef7bfd4604ad686a8da9f94a985615600e14c16bc8dfc08"
 				},
 				"slack-water": {
 					"hint_a": "Pull what you can reach while the sea is shut. Then open it, pull the rest and turn the sea wheel to your post's level.",
@@ -1600,7 +1590,6 @@
 					"typed_digest": "1c2a0841cb50a83cb8f62ac9a5b77695b77e61496ef1b478f57bdbf2cba41a38"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					9,
@@ -1630,7 +1619,7 @@
 				"recording_version": 7,
 				"simulation_version": 10,
 				"stage_count": 2,
-				"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+				"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 				"title": "Turn of the Tide"
 			},
 			"initial_checkpoint_hash": "f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9",
@@ -1719,11 +1708,11 @@
 			],
 			"stage_presentation": {
 				"set-the-tide": {
-					"hint_a": "Turn the tide for your partner and wait on a step by the wheel.",
+					"hint_a": "Turn the tide for your friend and wait on a step by the wheel.",
 					"hint_b": "Cross when the tide is right and ring the harbour bell.",
 					"is_authored_stage": false,
 					"title": "Set the Tide",
-					"typed_digest": "604143762700619fca2d86116eb06b9475d5ede08fe71bbb01561e55e080bf13"
+					"typed_digest": "42a5e9891193dd41bef7bfd4604ad686a8da9f94a985615600e14c16bc8dfc08"
 				},
 				"slack-water": {
 					"hint_a": "Pull what you can reach while the sea is shut. Then open it, pull the rest and turn the sea wheel to your post's level.",
@@ -1733,7 +1722,6 @@
 					"typed_digest": "e7879914f739a3e49c81f13ca27941a286d93a75c9b4417e586063a9dfb0a620"
 				}
 			},
-			"story_illustration": false,
 			"supported_rules": [
 				[
 					10,
@@ -1866,7 +1854,7 @@
 						"recording_version": 7,
 						"simulation_version": 8,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -1898,7 +1886,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -1914,7 +1902,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					},
 					{
@@ -1946,7 +1934,7 @@
 						"recording_version": 7,
 						"simulation_version": 10,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					}
 				],
@@ -2215,7 +2203,7 @@
 						"recording_version": 7,
 						"simulation_version": 8,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -2247,7 +2235,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -2263,7 +2251,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					},
 					{
@@ -2295,7 +2283,7 @@
 						"recording_version": 7,
 						"simulation_version": 10,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					}
 				],
@@ -2418,7 +2406,7 @@
 						"recording_version": 7,
 						"simulation_version": 8,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -2450,7 +2438,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -2466,7 +2454,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					},
 					{
@@ -2498,7 +2486,7 @@
 						"recording_version": 7,
 						"simulation_version": 10,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					}
 				],
@@ -2663,7 +2651,7 @@
 						"recording_version": 7,
 						"simulation_version": 8,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -2695,7 +2683,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -2711,7 +2699,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					},
 					{
@@ -2743,7 +2731,7 @@
 						"recording_version": 7,
 						"simulation_version": 10,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					}
 				],
@@ -2881,7 +2869,7 @@
 						"recording_version": 7,
 						"simulation_version": 8,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -2913,7 +2901,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Leave a path for your partner and go back home together.",
+						"summary": "Leave a path for your friend and go back home together.",
 						"title": "Long Way Home"
 					},
 					{
@@ -2929,7 +2917,7 @@
 						"recording_version": 7,
 						"simulation_version": 9,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					},
 					{
@@ -2961,7 +2949,7 @@
 						"recording_version": 7,
 						"simulation_version": 10,
 						"stage_count": 2,
-						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"summary": "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across.",
 						"title": "Turn of the Tide"
 					}
 				],
@@ -3123,70 +3111,6 @@
 			],
 			"lighthouse_local_path": "user://lighthouse-journey-v3.json",
 			"rows": [
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/first-light",
-					"stage_id": "first-light",
-					"title": "First Light"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/long-way-home",
-					"stage_id": "long-way-home",
-					"title": "Long Way Home"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/patient-garden",
-					"stage_id": "patient-garden",
-					"title": "Patient Garden"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/rising-together",
-					"stage_id": "rising-together",
-					"title": "Rising Together"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/across-the-blue",
-					"stage_id": "across-the-blue",
-					"title": "Across the Blue"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/lantern-crossing",
-					"stage_id": "lantern-crossing",
-					"title": "Lantern Crossing"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/two-beats",
-					"stage_id": "two-beats",
-					"title": "Two Beats"
-				},
-				{
-					"chapter_key": "",
-					"family": "earlier",
-					"friend_available": true,
-					"id": "earlier/after-you",
-					"stage_id": "after-you",
-					"title": "After You"
-				},
 				{
 					"chapter_key": "first-steps@1",
 					"family": "first-steps",
@@ -3427,12 +3351,7 @@
 			"rolling-home",
 			"a-house-for-two",
 			"conservatory",
-			"long-way-home",
-			"legacy-rising-together",
-			"legacy-across-the-blue",
-			"legacy-lantern-crossing",
-			"legacy-two-beats",
-			"legacy-after-you"
+			"long-way-home"
 		],
 		"solo_replay": {
 			"legacy_chapters": [
@@ -3450,15 +3369,6 @@
 			"verified_schema": 2,
 			"verifier_version": 1
 		},
-		"story_keys": [
-			"first-steps@1",
-			"relay-isles@2",
-			"high-and-low@1",
-			"rolling-home@1",
-			"a-house-for-two@1",
-			"conservatory@1",
-			"long-way-home@1"
-		],
 		"thumbnails": {
 			"entries": {
 				"a-house-for-two@1": {
@@ -3476,38 +3386,6 @@
 				"high-and-low@1": {
 					"key": "high-and-low@1",
 					"texture": "res://assets/chapter_thumbnails/high-and-low.png"
-				},
-				"legacy-across-the-blue": {
-					"key": "legacy-across-the-blue",
-					"texture": "res://assets/paid_levels/legacy-across-the-blue.png"
-				},
-				"legacy-after-you": {
-					"key": "legacy-after-you",
-					"texture": "res://assets/paid_levels/legacy-after-you.png"
-				},
-				"legacy-first-light": {
-					"key": "legacy-first-light",
-					"texture": "res://assets/chapter_thumbnails/legacy-first-light.png"
-				},
-				"legacy-lantern-crossing": {
-					"key": "legacy-lantern-crossing",
-					"texture": "res://assets/paid_levels/legacy-lantern-crossing.png"
-				},
-				"legacy-long-way-home": {
-					"key": "legacy-long-way-home",
-					"texture": "res://assets/chapter_thumbnails/legacy-long-way-home.png"
-				},
-				"legacy-patient-garden": {
-					"key": "legacy-patient-garden",
-					"texture": "res://assets/chapter_thumbnails/legacy-patient-garden.png"
-				},
-				"legacy-rising-together": {
-					"key": "legacy-rising-together",
-					"texture": "res://assets/paid_levels/legacy-rising-together.png"
-				},
-				"legacy-two-beats": {
-					"key": "legacy-two-beats",
-					"texture": "res://assets/paid_levels/legacy-two-beats.png"
 				},
 				"long-way-home@1": {
 					"key": "long-way-home@1",
@@ -3559,15 +3437,7 @@
 				"long-way-home@2",
 				"turn-of-the-tide@1",
 				"sleeping-lighthouse@2",
-				"turn-of-the-tide@2",
-				"legacy-first-light",
-				"legacy-long-way-home",
-				"legacy-patient-garden",
-				"legacy-rising-together",
-				"legacy-across-the-blue",
-				"legacy-lantern-crossing",
-				"legacy-two-beats",
-				"legacy-after-you"
+				"turn-of-the-tide@2"
 			]
 		},
 		"unknown_key": {

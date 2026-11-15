@@ -15,9 +15,10 @@ extends RefCounted
 ## options the invitation code and Share answer on their own row, so they also
 ## have a hook that wires that row.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Icons = preload("res://presentation/kit/icons.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 
-# Shared with the Friends screen and the legacy room page.
+# Shared with the Friends screen.
 const SHARE := "Share current room"
 const SHARE_SCOPE := "All friends"
 const SHARED := "Shared with friends"
@@ -87,7 +88,7 @@ const ACTIONS := {
 	"add_friend": {"text": PlayerCopy.ROOM_ADD_FRIEND, "icon": preload("res://assets/ui/social/plus.svg"), "section": "partner", "when": ["online", "partner_addable"]},
 	"friend_requested": {"text": PlayerCopy.ROOM_FRIEND_REQUESTED, "icon": preload("res://assets/ui/check.svg"), "section": "partner", "when": ["online", "partner_requested"]},
 	"about": {"text": "About this chapter", "icon": preload("res://assets/ui/social/info.svg"), "section": "chapter", "when": ["about"]},
-	"safety": {"text": "Report or block player", "icon": preload("res://assets/ui/room/flag.svg"), "section": "safety", "when": ["safety"]},
+	"safety": {"text": PlayerCopy.REPORT_OR_BLOCK, "icon": Icons.REPORT, "section": "safety", "when": ["safety"]},
 	"room_options": {"text": "Room options", "icon": preload("res://assets/ui/room/dots.svg"), "when": ["options"]},
 	"your_rooms": {"text": "Your rooms", "icon": preload("res://assets/ui/room/door-exit.svg"), "when": []},
 	"back": {"button": "back", "when": []},

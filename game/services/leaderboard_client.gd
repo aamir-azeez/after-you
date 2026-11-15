@@ -211,7 +211,14 @@ static func valid_view(value: Variant, key: String) -> Dictionary:
 	for id: Variant in value.checking:
 		if not _entry(id): return {}
 		checking.append(id)
-	return {"board": key, "top": top, "checking": checking}
+	var view := {"board": key, "top": top, "checking": checking}
+	# The owner's run as Our run (backend leaderboards/our-run.ts), for its names and looks; a bad one is left out, never refusing the board.
+	var ours: Variant = value.get("our_run")
+	if ours is Dictionary and _entry(ours.get("entry_id")) and _hash(ours.get("replay_hash")) and Typed.whole_number(ours.get("ticks")):
+		var names: Variant = ours.get("names")
+		var shown: bool = names is Array and names.size() == 2 and names[0] is String and names[1] is String
+		view["our_run"] = {"entry_id": ours.entry_id, "ticks": int(ours.ticks), "replay_hash": ours.replay_hash, "names": names if shown else null, "looks": row_looks(ours.get("looks"))}
+	return view
 
 ## A row's two looks in slot order (backend leaderboards/run-looks.ts), each
 ## cleaned by services/outfit.gd, or [] when the row has none (a server before

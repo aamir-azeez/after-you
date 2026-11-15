@@ -1,6 +1,6 @@
 extends RefCounted
 ## Where cloud save reads and writes this phone's progress, always through the files' owners:
-## Main's journey save (settings, finished earlier islands and their replays), HomeKeepsakes,
+## Main's journey save (settings), HomeKeepsakes,
 ## the Hard marks (HardMode) and the solo chapter journals. Built by Main; lives only while Main does.
 ##
 ## Safety, kept from the local save rules:
@@ -16,7 +16,6 @@ const Registry = preload("res://services/chapter_registry.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
-const Levels = preload("res://core/levels.gd")
 const State = preload("res://services/platform_games/platform_games_state.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 
@@ -150,22 +149,6 @@ func apply(merged: Dictionary) -> bool:
 		for key: String in incoming: settings[key] = incoming[key]
 		changes.settings = settings
 		settings_changed = true
-	var completed: Dictionary = data.get("completed", {}).duplicate(true)
-	var replays: Dictionary = data.get("replays", {}).duplicate(true)
-	var removed: Dictionary = data.get("removed_replays", {}).duplicate(true)
-	for id: String in merged.removed_replays:
-		if not id in Levels.IDS: continue
-		var marks: Dictionary = removed.get(id, {}).duplicate(true)
-		for digest: String in merged.removed_replays[id]: marks[digest] = true
-		removed[id] = marks
-	for id: String in merged.completed:
-		if id in Levels.IDS and not completed.has(id): completed[id] = true
-	for id: String in merged.replays:
-		if id in Levels.IDS and not replays.has(id) and not removed.get(id, {}).has(Bundle.replay_digest(merged.replays[id])):
-			replays[id] = LocalSave.normalize_attempt(merged.replays[id])
-	if completed != data.get("completed", {}): changes.completed = completed
-	if replays != data.get("replays", {}): changes.replays = replays
-	if removed != data.get("removed_replays", {}): changes.removed_replays = removed
 	if not changes.is_empty() and not host.saves.update_values(changes): return false
 	if settings_changed:
 		_state.set_cloud({"settings_hash": JSON.stringify(_values(changes.settings), "", true).sha256_text(), "settings_stamp": int(merged.settings.stamp)})

@@ -174,12 +174,6 @@ func _run() -> void:
 	await _frames(2)
 	_check(app.frame_demand() == Frames.CALM, "A page is calm")
 	app._show_home()
-	app.running = true
-	_check(app.frame_demand() == Frames.ACTIVE, "Main's own play is full rate")
-	app.running = false
-	app.mode = "completion"
-	_check(app.frame_demand() == Frames.ACTIVE, "Main's completion moment is full rate")
-	app.mode = "home"
 	app.capture_path = "user://unused.png"
 	_check(app.frame_demand() == Frames.ACTIVE, "A capture run draws every frame")
 	app.capture_path = ""

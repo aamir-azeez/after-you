@@ -1,10 +1,14 @@
 extends "res://presentation/island_world.gd"
 ## A view of the v2 surface graph. Walkability and checkpoint state stay in core.
+## Scenery and grounds come from the chapter's dressing (island_world's host);
+## the plates are pads in the style they resolve to (kit/pieces/pad.gd).
+const PieceStyles = preload("res://content/dressing/piece_styles.gd")
+const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+var pad_pieces: Dictionary = {}
 
 var bridge_visuals: Dictionary = {}
 var bridge_targets: Dictionary = {}
 var socket_visuals: Dictionary = {}
-var plate_visuals: Dictionary = {}
 var actor_badges: Dictionary = {}
 var active_landing: Vector3 = Vector3.ZERO
 var view_center := Vector3.ZERO
@@ -15,6 +19,8 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition
+	_load_dressing()
+	pad_pieces.clear()
 	if is_instance_valid(terrain):
 		remove_child(terrain)
 		terrain.queue_free()
@@ -27,7 +33,6 @@ func load_level(definition: Dictionary) -> void:
 	bridge_visuals.clear()
 	bridge_targets.clear()
 	socket_visuals.clear()
-	plate_visuals.clear()
 	actor_badges.clear()
 	flowers.clear()
 	garden = null
@@ -38,7 +43,17 @@ func load_level(definition: Dictionary) -> void:
 	bloomed = false
 	home_view = false
 	for island_index in range(definition.islands.size()):
-		var rect: Array = definition.islands[island_index].rect_cm
+		var island: Dictionary = definition.islands[island_index]
+		var ground := _ground_style(str(island.id))
+		if not ground.is_empty():
+			var dressed := Node3D.new()
+			dressed.name = str(island.id)
+			terrain.add_child(dressed)
+			Surfaces.build(island, ground, dressed)
+			_surface_nodes[str(island.id)] = dressed
+			await _build_step()
+			continue
+		var rect: Array = island.rect_cm
 		_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
 			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("9fc8b8"), island_index + 1)
 		await _build_step()
@@ -59,12 +74,11 @@ func load_level(definition: Dictionary) -> void:
 		bridge_targets[bridge.id] = false
 		await _build_step()
 	for item: Dictionary in definition.plates:
-		var p := point(item.position_cm)
-		var radius := float(item.radius_cm) / 100.0
-		var disk := cylinder(radius, 0.10, GOLD, p + Vector3(0, 0.055, 0), terrain)
-		ring(radius + 0.025, CREAM, p + Vector3(0, 0.12, 0), terrain)
-		box(Vector3(0.21, 0.022, 0.21), Color("977346"), p + Vector3(0, 0.12, 0), terrain).rotation.y = PI / 4
-		plate_visuals[item.id] = disk
+		# A plate's colour is the pip whose stage throws from it.
+		var user := "p0"
+		for stage: Dictionary in definition.stages:
+			if str(stage.plate_id) == str(item.id): user = str(stage.first_player_slot)
+		pad_pieces[item.id] = PadKit.build(PieceStyles.style("pad", str(item.id), _descriptor(), dressing), point(item.position_cm), float(item.radius_cm) / 100.0, terrain, {"owner": user, "id": item.id})
 	await _build_step()
 	for item: Dictionary in definition.sockets:
 		var at := point(item.position_cm)
@@ -72,23 +86,17 @@ func load_level(definition: Dictionary) -> void:
 		socket.name = str(item.id)
 		socket.position = at
 		terrain.add_child(socket)
-		cylinder(0.42, 0.14, Color("6b847c"), Vector3(0, 0.07, 0), socket)
-		cylinder(0.30, 0.035, Color("244b46"), Vector3(0, 0.155, 0), socket)
-		var socket_ring := ring(0.43, TEAL, Vector3(0, 0.17, 0), socket)
 		if item.get("kind", "") == "garden":
 			garden = socket
-			goal_ring = socket_ring
+			goal_ring = SocketKit.garden(socket, 0.42, TEAL)
 			_create_garden()
 			# Relay's garden socket has no gate or lift condition in simulation.
 			_present_garden(true, false, true)
 		else:
-			# A small cradle and two leaves distinguish a relay from a pressure plate.
-			for side in [-1, 1]:
-				var leaf := sphere(0.17, TEAL, Vector3(side * 0.36, 0.40, 0), socket)
-				leaf.scale = Vector3(0.5, 1.6, 0.35)
-				leaf.rotation.z = -side * 0.5
+			SocketKit.relay(socket)
 		socket_visuals[item.id] = socket
 		await _build_step()
+	await _build_dressing()
 	for slot: String in ["p0", "p1"]:
 		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL, slot)
 		terrain.add_child(spirit)
@@ -104,10 +112,7 @@ func load_level(definition: Dictionary) -> void:
 	landing_marker = Node3D.new()
 	landing_marker.name = "ActiveLanding"
 	terrain.add_child(landing_marker)
-	ring(0.65, TEAL, Vector3(0, 0.035, 0), landing_marker)
-	for index in range(8):
-		var angle := float(index) * TAU / 8.0
-		box(Vector3(0.06, 0.025, 0.13), CREAM, Vector3(cos(angle) * 0.83, 0.03, sin(angle) * 0.83), landing_marker).rotation.y = -angle
+	SocketKit.landing(landing_marker)
 	camera.position = Vector3(8, 14, 19)
 	camera.look_at(Vector3.ZERO)
 	camera.size = ViewFit.viewport(12.0, self)
@@ -141,19 +146,26 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		if immediate:
 			bridge_visuals[id].position.y = 0.0 if bridge_targets[id] else -0.65
 	for bridge: Dictionary in current_level.bridges:
-		var disk: MeshInstance3D = plate_visuals[bridge.plate_id]
-		Primitives.own_material(disk).albedo_color = Color("f5d990") if bridge_targets[bridge.id] else Color("a18f66")
+		pad_pieces[bridge.plate_id].set_held(bridge_targets[bridge.id])
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 	_present_garden(true, garden_complete, immediate)
 
 
-func _fold_key() -> String:
+func _chapter_key() -> String:
 	return "relay-isles@2"
+
+func _fold_key() -> String:
+	return _chapter_key()
+
+func _descriptor() -> Dictionary:
+	return ChapterIndex.data(_chapter_key())
 
 ## A planted seed finds its socket by name and reads its cylinders.
 func _static_keep() -> Array:
-	return super._static_keep() + socket_visuals.values()
+	var keep: Array = super._static_keep() + socket_visuals.values()
+	for id: String in pad_pieces: keep += pad_pieces[id].moving_parts()
+	return keep
 
 func _process(delta: float) -> void:
 	# Reuse character gait, garden animation and motes; no legacy bridge is present.

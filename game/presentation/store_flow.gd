@@ -5,7 +5,7 @@ extends Node
 ## to navigate through the signals below, and reads Main only through this host
 ## contract (read at call time, so Main or a test can swap a service):
 ## - services: purchases, tester_access, config, api
-## - screen: mode, running, store_view_generation, application_backgrounded,
+## - screen: mode, store_view_generation, application_backgrounded,
 ##   identity_restart_required, overlay
 ## - card kit: _card, _label, _paragraph, _button, _style, _screen_shell,
 ##   _replay_preview_thumb, _toast
@@ -80,7 +80,6 @@ func _init(main: Node = null) -> void:
 	host = main
 
 func show_paywall(manual_store: bool = false) -> void:
-	host.running=false
 	host.mode=MODE_PAYWALL
 	tester_store_manual = manual_store
 	if not manual_store: store_from_settings = false
@@ -267,7 +266,6 @@ func show_store_from_settings() -> void:
 	show_paywall(true)
 
 func show_hosting_locked(chapter_key: String) -> void:
-	host.running = false
 	host.mode = MODE_PAYWALL
 	var descriptor := ChapterRegistry.descriptor(chapter_key)
 	var test_store := str(host.config.get("purchase_mode","")) == "test_store"
@@ -550,7 +548,6 @@ func _tester_cache_checking() -> bool:
 	return is_instance_valid(host.tester_access) and host.tester_access.cache_checking
 
 func show_tester_access() -> void:
-	host.running = false
 	host.mode = MODE_TESTER_ACCESS
 	var card: VBoxContainer = host._card(700)
 	card.add_child(host._label("Tester access",32,CREAM,true))

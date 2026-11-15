@@ -8,9 +8,6 @@ const Collection = preload("res://services/shared_replay_collection.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const SlotLooks = preload("res://presentation/slot_looks.gd")
 const RoomStages = preload("res://services/room_stages.gd")
-const LegacySimulation = preload("res://core/simulation.gd")
-const Levels = preload("res://core/levels.gd")
-const LegacyWorld = preload("res://presentation/island_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const Strip = preload("res://presentation/reaction_photo_strip.gd")
 const Session = preload("res://services/relay_online_session.gd")
@@ -182,12 +179,12 @@ func _ready() -> void:
 func _prepare_replay() -> void:
 	entry = sequence[0]
 	_display_title = str(Collection.summary(entry).title)
-	world = Registry.world_script(entry.room.chapter_key).new() if entry.room.family == "chapter" else LegacyWorld.new()
+	world = Registry.world_script(entry.room.chapter_key).new()
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	world.fold_over_frames = true
 	add_child(world)
 	GraphicsPolicy.apply(world, settings)
-	var definition: Dictionary = Registry.definition(entry.room.chapter_key) if entry.room.family == "chapter" else Levels.get_level(entry.pair.level_id)
+	var definition: Dictionary = Registry.definition(entry.room.chapter_key)
 	world.load_level(definition)
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	controls.watch_view(world)
@@ -208,7 +205,7 @@ func _prepare_replay() -> void:
 	run_player.hud = controls.hud
 	run_player.soundscape = soundscape
 	run_player.settings = settings
-	if entry.room.family == "chapter" and not _board_run():
+	if not _board_run():
 		_photos = ReadSession.new(api, identity)
 		_photos.photo_context_factory = context_factory
 		_photos.photo_targets = Collection._verified_photo_turns(entry, _binding.player_id)
@@ -294,30 +291,23 @@ func _start_part() -> void:
 	_paused_completion = false
 	var pair: Dictionary = entry.pair
 	# Open turns: a stage plays each later turn over the one before it, in order, so every pass shows; before open turns that is b over a.
-	var turns: Array = OpenTurns.pair_turns(pair) if entry.room.family == "chapter" else [pair.get("a"), pair.get("b")]
+	var turns: Array = OpenTurns.pair_turns(pair)
 	_turn_index = clampi(_turn_index, 1, turns.size() - 1)
 	var memory: Dictionary = turns[_turn_index - 1]
 	var watched: Dictionary = turns[_turn_index]
 	# Each turn plays in the look it was played in (presentation/slot_looks.gd).
 	if world.has_method("wear_slots"): world.wear_slots(SlotLooks.replay([memory, watched]))
-	if entry.room.family == "chapter":
-		var engine: Script = Registry.simulation_script(entry.room.chapter_key)
-		sim = engine.new()
-		var definition := Registry.definition(entry.room.chapter_key)
-		if not Registry.reset_simulation(sim, entry.room.chapter_key, definition, str(watched.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), memory, "b", watched, turns.slice(0, _turn_index - 1)):
-			_show_error(sim.error); return
-		world.show_stage(definition.stages[int(pair.stage_index)])
-		_frames = engine.expand_recording_inputs(watched)
-		# The same identities as the original turn, so its sounds match.
-		soundscape.begin_turn(str(entry.room.chapter_key), str(watched.stage_id))
-		_sound_seen = ChapterSoundMap.remember(sim.snapshot())
-		_refusals.begin(str(entry.room.chapter_key), definition, sim.snapshot(), memory)
-	else:
-		sim = LegacySimulation.new()
-		if not sim.reset(Levels.get_level(pair.level_id), pair.a, "b"):
-			_show_error(sim.error); return
-		_frames = LegacySimulation.expand_recording_inputs(pair.b)
-		soundscape.begin_turn(Soundscape.ISLANDS_CHAPTER, str(Levels.get_level(pair.level_id).get("id", "")))
+	var engine: Script = Registry.simulation_script(entry.room.chapter_key)
+	sim = engine.new()
+	var definition := Registry.definition(entry.room.chapter_key)
+	if not Registry.reset_simulation(sim, entry.room.chapter_key, definition, str(watched.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), memory, "b", watched, turns.slice(0, _turn_index - 1)):
+		_show_error(sim.error); return
+	world.show_stage(definition.stages[int(pair.stage_index)])
+	_frames = engine.expand_recording_inputs(watched)
+	# The same identities as the original turn, so its sounds match.
+	soundscape.begin_turn(str(entry.room.chapter_key), str(watched.stage_id))
+	_sound_seen = ChapterSoundMap.remember(sim.snapshot())
+	_refusals.begin(str(entry.room.chapter_key), definition, sim.snapshot(), memory)
 	sim.catch_assistance = bool(watched.get("catch_assistance", true))
 	memory_wait.begin("b", MemoryWait.prior_ticks(memory))
 	# Both turns' reactions made during the run, at their ticks (a chapter's recordings name their spirit).
@@ -366,12 +356,8 @@ func _physics_process(delta: float) -> void:
 ## The watched turn's cues, as its chapter screen plays them; never haptics.
 ## `input` is the tick's recorded input, for its pushes into barriers.
 func _cues(snapshot: Dictionary, input: Dictionary = MemoryWait.STILL_INPUT) -> Dictionary:
-	if entry.room.family == "chapter":
-		_refusals.annotate(snapshot, input)
-		return ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
-	var sources: Array = []
-	for event: String in snapshot.get("events", []): sources.append(Soundscape.event_source(event, "b"))
-	return {"cues": snapshot.get("events", []), "sources": sources}
+	_refusals.annotate(snapshot, input)
+	return ChapterSoundMap.cues(str(entry.room.chapter_key), snapshot, _sound_seen)
 
 func _update_hud(snapshot: Dictionary = {}) -> void:
 	var state: Dictionary = (sim.snapshot() if snapshot.is_empty() else snapshot).duplicate()
@@ -393,7 +379,7 @@ func _pause() -> void:
 	var card: VBoxContainer = controls.card(_words.paused, _words.paused_body)
 	card.add_child(controls.button_for("resume", _resume))
 	card.add_child(controls.button_for("replay", _start))
-	if not _board_run(): card.add_child(controls.button("Report or block player", _open_safety))
+	if not _board_run(): controls.card_report(_open_safety)
 	card.add_child(controls.button_for("back", _leave))
 
 func _finished() -> void:
@@ -406,7 +392,7 @@ func _finished() -> void:
 
 func _show_finished() -> void:
 	# Open turns: the stage's next turn first, then the next stage.
-	if entry.room.family == "chapter" and _turn_index + 1 < OpenTurns.pair_turns(entry.pair).size():
+	if _turn_index + 1 < OpenTurns.pair_turns(entry.pair).size():
 		_turn_index += 1
 		_start_part()
 		return
@@ -420,7 +406,7 @@ func _show_finished() -> void:
 	if is_instance_valid(strip): strip.clear()
 	var card: VBoxContainer = controls.card(_words.done, _words.done_body)
 	card.add_child(controls.button_for("replay", _start))
-	if not _board_run(): card.add_child(controls.button("Report or block player", _open_safety))
+	if not _board_run(): card.add_child(controls.button(PlayerCopy.REPORT_OR_BLOCK, _open_safety))
 	card.add_child(controls.button_for("back", _leave))
 
 func _process(delta: float) -> void:
@@ -513,7 +499,7 @@ func _report_photo(reference: Dictionary) -> void:
 func _open_safety() -> void:
 	if not _current() or is_instance_valid(_safety_screen) or _board_run(): return
 	var peer: String = entry.room.guest_id if entry.room.host_id == _binding.player_id else entry.room.host_id
-	var room := {"room_family": "relay" if entry.room.family == "chapter" else "legacy", "room_id": entry.room.room_id, "peer_id": peer, "photos": _safety_photos.duplicate(true)}
+	var room := {"room_family": "relay", "room_id": entry.room.room_id, "peer_id": peer, "photos": _safety_photos.duplicate(true)}
 	running = false
 	mode = "safety"
 	if is_instance_valid(strip): strip.clear()

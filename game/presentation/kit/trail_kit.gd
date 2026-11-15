@@ -46,7 +46,7 @@ const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const FlatShapes = preload("res://presentation/kit/flat_shapes.gd")
 const FallEffect = preload("res://presentation/kit/fall_effect.gd")
 const Look = preload("res://presentation/spirit_look.gd")
-const Simulation = preload("res://core/simulation.gd")
+const Runtime = preload("res://core/physical/runtime.gd")
 const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const SHADER = preload("res://presentation/kit/trail.gdshader")
 
@@ -73,9 +73,9 @@ const LIVE_MARKS := 4
 const LIFT := 0.0085
 ## Drawn before the pair tags (render priority -1).
 const RENDER_PRIORITY := -2
-## The game's walking speed, metres a second (core/simulation.gd: centimetres
-## a tick at its tick rate).
-const WALK_SPEED := Simulation.MOVE_PER_TICK * Simulation.TICK_RATE / 100.0
+## The game's walking speed, metres a second (core/physical/runtime.gd:
+## centimetres a tick at its tick rate).
+const WALK_SPEED := Runtime.MOVE_PER_TICK * Runtime.TICK_RATE / 100.0
 ## A mark shows this long after the pip's recorded path crosses its spot, so
 ## it appears under or behind the drawn pip, which eases after that path.
 const FOLLOW := 0.08

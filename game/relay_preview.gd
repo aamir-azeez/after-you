@@ -1724,7 +1724,7 @@ func _restore_paused_draft() -> void:
 	var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
 	card.add_child(_action_button("resume", _start_play))
 	card.add_child(_action_button("retry", _begin))
-	_add_safety_action(card)
+	_add_safety_flag()
 	_add_redo_action(card)
 	card.add_child(_action_button("back", _leave))
 
@@ -1770,7 +1770,7 @@ func _return_from_solo_redo(previous_mode: String) -> void:
 			var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
 			card.add_child(_action_button("resume", _start_play))
 			card.add_child(_action_button("retry", _begin))
-			_add_safety_action(card)
+			_add_safety_flag()
 			_add_redo_action(card)
 			card.add_child(_action_button("back", _leave))
 		_: _show_ready()
@@ -3449,7 +3449,7 @@ func _show_paused(previous: String) -> void:
 		_add_preview_retry(card, previous)
 	else:
 		card.add_child(_action_button("continue", _show_ready))
-	_add_safety_action(card)
+	_add_safety_flag()
 	if previous == "play": _add_redo_action(card)
 	card.add_child(_action_button("back", _leave))
 
@@ -3734,9 +3734,9 @@ func _show_deferred_notes() -> void:
 		stack.add_child(note)
 	note.text = "\n".join(_deferred_notes)
 
-## The safety row on a card outside the room panel (pause).
-func _add_safety_action(card: VBoxContainer) -> void:
-	_add_room_action(card, "safety")
+## Report or block on the pause card: the flag at its top right, when this room offers it.
+func _add_safety_flag() -> void:
+	if RoomActions.applies("safety", _room_facts(), _room_state): controls.card_report(_room_action_handler("safety"))
 
 ## This room's partner as services/partner_friends.gd sees them: "" (nothing to
 ## offer), ADDABLE or REQUESTED. Read from what this phone keeps, never the network.

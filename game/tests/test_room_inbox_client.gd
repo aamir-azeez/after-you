@@ -26,10 +26,10 @@ func transport(method: int,path: String,body: Dictionary) -> Dictionary:
 	return response
 
 func room(id: String,sequence: int,at: int,status: String="your_turn") -> Dictionary:
-	return {"api_version":1,"room_id":id,"chapter_key":"long-way-home","chapter_title":"Long Way Home","member_ids":["aaaaaaaaaaaaaaaaaaaaaa","bbbbbbbbbbbbbbbbbbbbbb"],"status":status,"revision":4,"remote_activity_sequence":sequence,"activity_at":at}
+	return {"api_version":2,"room_id":id,"chapter_key":"long-way-home@2","chapter_title":"Long Way Home","member_ids":["aaaaaaaaaaaaaaaaaaaaaa","bbbbbbbbbbbbbbbbbbbbbb"],"status":status,"revision":4,"remote_activity_sequence":sequence,"activity_at":at}
 
 func server_room(id: String,sequence: int,status: String="your_turn") -> Dictionary:
-	return {"room_id":id,"family":"legacy","api_version":1,"chapter":{"id":"long-way-home","version":1},"membership":{"host_id":"aaaaaaaaaaaaaaaaaaaaaa","guest_id":"bbbbbbbbbbbbbbbbbbbbbb","you_are_host":true},"status":status,"revision":4,"remote_activity_sequence":sequence,"activity_at":"2026-10-09T13:00:00.000Z"}
+	return {"room_id":id,"family":"relay","api_version":2,"chapter":{"id":"long-way-home","version":2},"membership":{"host_id":"aaaaaaaaaaaaaaaaaaaaaa","guest_id":"bbbbbbbbbbbbbbbbbbbbbb","you_are_host":true},"status":status,"revision":4,"remote_activity_sequence":sequence,"activity_at":"2026-10-09T13:00:00.000Z"}
 
 func _run() -> void:
 	var api := FakeApi.new()
@@ -39,9 +39,9 @@ func _run() -> void:
 	var old_room := room("cccccccccccccccccccccc",2,10)
 	var newer_room := room("dddddddddddddddddddddd",3,20)
 	var equal_time := room("eeeeeeeeeeeeeeeeeeeeee",1,20)
-	var seen := {Client.room_key(1,old_room.room_id):1}
+	var seen := {Client.room_key(2,old_room.room_id):1}
 	check(Client.is_unread(old_room,seen),"remote sequence newer than seen state is unread")
-	check(not Client.is_unread(equal_time,{Client.room_key(1,equal_time.room_id):1}),"baseline existing room stays read")
+	check(not Client.is_unread(equal_time,{Client.room_key(2,equal_time.room_id):1}),"baseline existing room stays read")
 	var ordered := Client.ordered([old_room,newer_room,equal_time],seen)
 	check(ordered[0].room_id == old_room.room_id and ordered[1].room_id == newer_room.room_id,"unread rooms sort before read rooms")
 	check(ordered[1].room_id == newer_room.room_id and ordered[2].room_id == equal_time.room_id,"activity sorts newest first within unread/read groups")
@@ -55,7 +55,13 @@ func _run() -> void:
 	check(calls.size() == 1 and calls[0].path == "/v1/room-inbox","refresh is one explicit metadata request")
 	var normalized: Dictionary = client.view().rooms[0]
 	check(normalized.chapter_title == "Long Way Home" and normalized.member_ids.size() == 2,"nested metadata is normalized for the room cards")
-	check(normalized.chapter_key == "legacy-long-way-home","earlier-island rooms map to their thumbnail key")
+	check(normalized.chapter_key == "long-way-home@2","chapter rooms map to their registry key")
+	var island := server_room("gggggggggggggggggggggg",1)
+	island.family = "legacy"
+	island.api_version = 1
+	island.chapter = {"id":"first-light","version":1}
+	response = {"ok":true,"data":{"schema_version":1,"rooms":[server_old,server_new,island]}}
+	check(await client.refresh() and client.view().rooms.size() == 2 and calls.size() == 2,"a room of the earlier islands is read and left out of the list")
 	var relay_room := server_room("ffffffffffffffffffffff",1)
 	relay_room.family = "relay"
 	relay_room.api_version = 2
@@ -80,14 +86,14 @@ func _run() -> void:
 	response = {"ok":true,"data":{"schema_version":1,"rooms":[server_old,server_new]}}
 	var refreshed_second: bool = await client.refresh()
 	check(refreshed_second and client.unread(server_old),"later remote activity is unread and refresh does not clear it")
-	check(not client.confirm_room_rendered(1,"ffffffffffffffffffffff"),"unknown room cannot be acknowledged")
+	check(not client.confirm_room_rendered(2,"ffffffffffffffffffffff"),"unknown room cannot be acknowledged")
 	check(client.unread(server_old),"opening unknown room does not affect seen state")
-	check(client.confirm_room_rendered(1,server_old.room_id),"caller may acknowledge after successful room render")
+	check(client.confirm_room_rendered(2,server_old.room_id),"caller may acknowledge after successful room render")
 	check(not client.unread(server_old),"only explicit render confirmation clears activity")
 	# A real reply is parsed JSON: every number, api_version included, is a float.
 	response = {"ok":true,"data":JSON.parse_string(JSON.stringify({"schema_version":1,"rooms":[server_old,server_new]}))}
 	check(response.data.rooms[0].api_version is float and await client.refresh(),"a parsed reply with float versions refreshes")
-	check(not client.unread(server_old) and client.confirm_room_rendered(1,server_new.room_id),"parsed rooms keep the same integer room keys")
+	check(not client.unread(server_old) and client.confirm_room_rendered(2,server_new.room_id),"parsed rooms keep the same integer room keys")
 	check(Client.room_key(1,"x") == "1:x","room keys use the integer version")
 	response = {"ok":false,"code":"network_error"}
 	check(not await client.refresh(),"failed refresh reports failure")

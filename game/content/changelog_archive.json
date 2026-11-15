@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.0",
+      "date": "2026-10-20",
+      "highlights": [{"icon": "star", "text": "Hard mode: play a whole chapter with no retries"}, {"icon": "home", "text": "A new Home, and the spirits are pips now"}, {"icon": "leaf", "text": "Chapters and screens open much faster"}, {"icon": "link", "text": "Rooms and Friends update almost at once"}, {"icon": "people", "text": "Give your pip a name, and add room partners as friends"}, {"icon": "spark", "text": "Turn of the Tide is harder, and the water rises"}, {"icon": "tap", "text": "See your tries and react when a run ends"}, {"icon": "sun", "text": "Settings is one page, with a 30 or 60 fps choice"}]
+    },
+    {
       "version": "0.6.3",
       "date": "2026-10-16",
       "highlights": [{"icon": "bell", "text": "New sounds for water, the well and moving parts"}, {"icon": "picture", "text": "Turn photos get a polaroid and survive the app closing"}, {"icon": "leaf", "text": "Chapters open faster"}, {"icon": "spark", "text": "Spirits breathe and glance around while they wait"}]

@@ -32,9 +32,9 @@ const TurnLooks = preload("res://services/turn_looks.gd")
 const Outfit = preload("res://services/outfit.gd")
 const LEAF_ICON = preload("res://assets/ui/whats_new/leaf.svg")
 const WATCH_ICON = preload("res://assets/ui/play-circle.svg")
-const REPORT_ICON = preload("res://assets/ui/room/flag.svg")
-## Race wears the flag, as on the race picker boards.
-const RACE_ICON = REPORT_ICON
+const Icons = preload("res://presentation/kit/icons.gd")
+## Race wears the Report flag, as on the race picker boards.
+const RACE_ICON = Icons.REPORT
 const CLOCK_ICON = preload("res://assets/ui/social/clock.svg")
 ## The worlds' pips by slot (presentation/island_world.gd GOLD and TEAL).
 const FIRST_PIP := Color("f4c38d")
@@ -279,23 +279,11 @@ static func _cell_button(node_name: String, text: String, icon: Texture2D, icon_
 		button.add_theme_color_override("icon_" + state + "_color", UiTokens.CREAM)
 	return button
 
-## Report as a flag, or a space as wide.
+## Report as the shared flag button (kit/icons.gd), or a space as wide.
 static func report_cell(action: Callable) -> Control:
 	if not action.is_valid(): return _gap(TARGET)
-	var button := Button.new()
+	var button := Icons.report_button(action, PlayerCopy.LEADERBOARD_REPORT)
 	button.name = "LeaderboardReport"
-	button.icon = REPORT_ICON
-	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	button.expand_icon = true
-	button.tooltip_text = PlayerCopy.LEADERBOARD_REPORT
-	button.accessibility_name = PlayerCopy.LEADERBOARD_REPORT
-	button.add_theme_constant_override("icon_max_width", 20)
-	button.custom_minimum_size = Vector2(TARGET, TARGET)
-	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	ThemeRules.plain_tab(button)
-	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
-		button.add_theme_color_override("icon_" + state + "_color", UiTokens.SOFT)
-	button.pressed.connect(action)
 	return button
 
 static func _gap(width: float) -> Control:

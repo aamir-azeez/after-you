@@ -15,6 +15,8 @@ const DATA := {
 		"checkpoint_text": PlayerCopy.CHAPTER_REGISTRY_DA6530899780,
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/first-steps.png",
+	# Scenery and piece looks: a cottage garden with a timber rope lift.
+	"dressing": "res://content/dressing/first_steps.gd",
 	"turn_intro": [PlayerCopy.RELAY_PREVIEW_9A01DAC077E3, PlayerCopy.RELAY_PREVIEW_4238BDD23E08],
 	"keepsakes": [
 		{"stage_id": "a-little-lift", "title": "A Little Lift"},

@@ -21,7 +21,7 @@ func _reads() -> void:
 	var collection := Collection.new(api, owner.identity, Memory.new(), OnlineMemory.new())
 	var supported := {"value": false}
 	collection.turn_tries_supported = func() -> bool: return supported.value
-	_check(collection._ready_owner() and collection._remember_room(_snapshot(Registry.RELAY), "chapter"), "A finished Relay room is known with its parts")
+	_check(collection._ready_owner() and collection._remember_room(_snapshot(Registry.RELAY)), "A finished Relay room is known with its parts")
 	var key := "chapter:" + ROOM
 	var rows: Array = collection.memories(key)
 	_check(rows.size() == 2, "Both parts are saved on this phone")

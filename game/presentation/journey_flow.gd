@@ -1,6 +1,6 @@
 extends Node
-## Play Solo's pages: the Chapters page (the chapter picker, with its Hard
-## chip) and the Earlier islands list, and which chapter a picked card opens.
+## Play Solo's page: the Chapters page (the chapter picker, with its Hard
+## chip), and which chapter a picked card opens.
 ## It also answers which chapters the player can open next, for Home's idle
 ## warm ups (GL programs, worlds and the page's pictures).
 ##
@@ -10,15 +10,14 @@ extends Node
 ## hub and tester access share. The flow reads Main only through this host
 ## contract (read at call time, so Main or a test can swap a service or
 ## override an entry point):
-## - services: saves, levels, title_font, hard_states, _chapter_marks,
+## - services: title_font, hard_states, _chapter_marks,
 ##   _chapter_unlocks, _full_journey_access, _paid_content_hidden
-## - screen: mode, running, ui, overlay, _screen_shell, _card, _scroll_list,
+## - screen: mode, ui, overlay, _screen_shell, _card, _scroll_list,
 ##   _button, _back_button, _label, _paragraph, _toast, _show_home
-## - chapter opens: _open_premium_chapter,
-##   _open_chapter_preview, _start_practice (an earlier island)
+## - chapter opens: _open_premium_chapter, _open_chapter_preview
 ## Main opens it through show_journey() (Home's Play Solo, StoreFlow's and
-## RoomHubFlow's journey requests, the update screen's Play Solo and an earlier
-## island's Back) and refreshes it through refresh_marks() and access_changed().
+## RoomHubFlow's journey requests and the update screen's Play Solo) and
+## refreshes it through refresh_marks() and access_changed().
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -27,13 +26,9 @@ const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
-const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
-const UiTokens = preload("res://presentation/ui_tokens.gd")
-const CREAM := UiTokens.CREAM
-## Main's modes on these pages.
+## Main's mode on this page.
 const MODE_JOURNEY := "journey"
-const MODE_EARLIER_ISLANDS := "earlier_islands"
 
 var host: Node
 ## The Chapters page's picker while it is drawn.
@@ -51,7 +46,6 @@ func _init(main: Node = null) -> void:
 	host = main
 
 func show_journey() -> void:
-	host.running = false
 	host.mode = MODE_JOURNEY
 	var shell: Dictionary = host._screen_shell("Your journey",host._show_home)
 	var outer: VBoxContainer = shell.outer
@@ -61,9 +55,6 @@ func show_journey() -> void:
 	chapters_tab.disabled = true
 	ControlTheme.selected_tab(chapters_tab)
 	tabs.add_child(chapters_tab)
-	var earlier: Button = host._button("Earlier islands",show_earlier_islands,false)
-	ControlTheme.plain_tab(earlier)
-	tabs.add_child(earlier)
 	# Hard: the whole chapter in one go (services/hard_mode.gd).
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -188,42 +179,9 @@ static func _locked(shown: Array[Dictionary]) -> Array[String]:
 		if bool(item.get("locked",false)): keys.append(str(item.key))
 	return keys
 
-func show_earlier_islands() -> void:
-	host.running=false
-	host.mode=MODE_EARLIER_ISLANDS
-	_grid_access_drawn = host._full_journey_access()
-	var card: VBoxContainer = host._card(800)
-	card.add_child(host._label("Earlier islands.",34,CREAM,true))
-	card.add_child(host._paragraph(PlayerCopy.MAIN_042C89C38B20,710))
-	# A build that sells nothing lists the free islands alone, which fit without a scroll.
-	var free_only: bool = host._paid_content_hidden()
-	var list: VBoxContainer = host._scroll_list(card,not free_only)
-	if not free_only: list.get_parent().custom_minimum_size.y = 340
-	for index in range(host.levels.size()):
-		var level: Dictionary=host.levels[index]
-		if free_only and bool(level.get("premium",false)): continue
-		var locked: bool = index>=3 and not host._full_journey_access()
-		var complete: bool = host.saves.data.completed.has(level.id)
-		var text := "%02d  %s%s%s" % [index+1,level.title,"  ·  Full Journey" if locked else "","  ✓" if complete else ""]
-		var button: Button = host._button(text,func(): host._start_practice(index),false)
-		button.custom_minimum_size.y=65
-		button.mouse_filter=Control.MOUSE_FILTER_PASS
-		button.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-		button.add_theme_font_size_override("font_size",18)
-		if index>=3:
-			var actions := VBoxContainer.new()
-			actions.add_child(button)
-			list.add_child(PaidThumbnails.row("legacy-"+str(level.id),actions,false))
-		else:
-			list.add_child(button)
-	card.add_child(host._back_button("Back to chapters",show_journey,false))
-
-## The store's customer information changed while a page is open
+## The store's customer information changed while the page is open
 ## (Main._customer_info_changed): the page is drawn again only when Full
 ## Journey access differs from what it was drawn with, after any tap in progress.
 func access_changed() -> void:
 	if host._full_journey_access() == _grid_access_drawn: return
-	await TouchInput.redraw_when_released(host.overlay,func() -> bool: return host.mode in [MODE_JOURNEY,MODE_EARLIER_ISLANDS] and host._full_journey_access() != _grid_access_drawn,
-		func() -> void:
-			if host.mode==MODE_JOURNEY: show_journey()
-			else: show_earlier_islands())
+	await TouchInput.redraw_when_released(host.overlay,func() -> bool: return host.mode == MODE_JOURNEY and host._full_journey_access() != _grid_access_drawn,show_journey)

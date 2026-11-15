@@ -171,11 +171,6 @@ func _main_flow() -> void:
 	scene.journey_flow.open_solo_chapter(Main.ChapterRegistry.LIGHTHOUSE_V2)
 	await process_frame
 	_check(scene.opened == Main.ChapterRegistry.open_scene(Main.ChapterRegistry.LIGHTHOUSE_V2) and store.refresh_calls == 0, "Actual Home Lighthouse action bypasses store readiness for a cached tester")
-	scene.journey_flow.show_earlier_islands()
-	_check(_button_containing(scene, "Full Journey") == null, "Earlier-island chooser removes premium locks for tester access")
-	scene._start_practice(3)
-	await process_frame
-	_check(scene.level_index == 3 and scene.mode != "paywall", "A premium earlier island opens through the actual tester gate")
 	scene.store_flow.show_paywall()
 	await process_frame
 	_check(scene.mode == "tester_access" and _text(scene, "Tester access active"), "A cached tester sees distinct active access instead of an unnecessary purchase offer")
@@ -222,15 +217,6 @@ func _main_flow() -> void:
 	cache.pause_read = false
 	await _settle_main(scene)
 	_check(scene.opened.is_empty() and scene.mode == "settings", "Back or another view cancels a deferred Lighthouse entry intent")
-	cache.pause_read = true
-	scene.tester_access.cache_checked_context = ""
-	scene.journey_flow.show_earlier_islands()
-	scene._start_practice(4)
-	scene.application_backgrounded = true
-	cache.pause_read = false
-	await _settle_main(scene)
-	_check(scene.level_index == 3 and not scene.running, "A deferred premium island action cannot start play after backgrounding")
-	scene.application_backgrounded = false
 	scene.store_flow._show_tester_active()
 	_check(_button(scene,"Store purchases") == null and _button(scene,"Get it on Google Play") != null, "GitHub tester access offers Google Play without a Test Store escape")
 	scene.store_flow.show_paywall(true)
@@ -410,13 +396,6 @@ func _button(node: Node, value: String) -> Button:
 	if node is Button and node.text == value: return node
 	for child: Node in node.get_children():
 		var found := _button(child, value)
-		if found != null: return found
-	return null
-
-func _button_containing(node: Node, value: String) -> Button:
-	if node is Button and value in node.text: return node
-	for child: Node in node.get_children():
-		var found := _button_containing(child, value)
 		if found != null: return found
 	return null
 

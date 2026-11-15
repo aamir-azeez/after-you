@@ -17,7 +17,7 @@ extends Node
 ##   deleted_identity_owner, _ensure_identity,
 ##   _load_saved_identity, _invalidate_relay_identity, _await_secret,
 ##   _tester_checks_enabled, _play_store_enabled
-## - screen: mode, running
+## - screen: mode
 ## - settings_flow (flow to flow): view_token, view_current, refresh. Its rows
 ##   table (presentation/settings_rows.gd) calls this flow's panel_state and
 ##   inline actions, which draw into the box under their row.
@@ -460,7 +460,6 @@ func can_discard_recovery() -> bool:
 ## Warns once that the identity being recovered keeps its rooms and friends.
 func confirm_discard_recovery() -> void:
 	if not can_discard_recovery(): return
-	host.running=false
 	host.mode=MODE_RECOVERY_DISCARD
 	var card: VBoxContainer = host._card()
 	card.add_child(host._label(PlayerCopy.RECOVERY_DISCARD_TITLE,30,CREAM,true))
@@ -572,7 +571,6 @@ func _finish_identity_change() -> void:
 
 func confirm_delete_identity(message: String="") -> void:
 	if host.identity_busy or deletion_cleanup_busy: return
-	host.running=false
 	host.mode=MODE_ACCOUNT
 	var card: VBoxContainer = host._card()
 	card.add_child(host._label(PlayerCopy.MAIN_4335B260B3E1,30,CREAM,true))
@@ -586,7 +584,6 @@ func delete_identity() -> void:
 		return
 	host._invalidate_relay_identity()
 	host.identity_busy = true
-	host.running=false
 	host.mode=MODE_IDENTITY_DELETING
 	var card: VBoxContainer = host._card()
 	card.add_child(host._label("Deleting online identity…",30,CREAM,true))
@@ -696,7 +693,6 @@ func clear_deleted_identity() -> void:
 	card.add_child(host._button("Close After You",func(): host.get_tree().quit()))
 
 func _show_deleted_identity_cleanup(message: String, retry: bool=true) -> void:
-	host.running=false
 	host.mode=MODE_ACCOUNT_CLEANUP
 	var card: VBoxContainer = host._card()
 	card.add_child(host._label("Finish device cleanup",30,CREAM,true))

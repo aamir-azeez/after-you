@@ -12,6 +12,7 @@ import { MAX_ROW_BYTES } from "./row-bound";
  *   and the tagged body of that JSON (blob-codec.ts);
  * - its room row as JSON text still, so SQL keeps reading its small fields (room-inbox.ts, friends.ts), with only
  *   `checkpoint` held as a string: PACKED_CHECKPOINT and the base64 of the same BLOB form of the checkpoint's JSON.
+ *   room-inbox.ts reads that string through unpackCheckpoint only when a start over or redo request needs its hash.
  * The JSON inside is exactly the text that would have been stored, so every recording, checkpoint and hash is as before.
  *
  * Readers take both forms whatever the flag says. Nothing converts in bulk: a room row takes the new form the next
@@ -71,11 +72,14 @@ export function storedRow(value: unknown, compress: boolean): RowData {
 /** A room row's value with its checkpoint as stored; a packed one is read back. Tombstones and markers pass through. */
 export function parseRoom(data: string): Record<string, unknown> {
   const value = JSON.parse(data) as Record<string, unknown>;
-  if (typeof value.checkpoint !== "string") return value;
-  if (!value.checkpoint.startsWith(PACKED_CHECKPOINT)) unreadable();
+  return typeof value.checkpoint !== "string" ? value : { ...value, checkpoint: unpackCheckpoint(value.checkpoint) };
+}
+/** A room row's packed checkpoint (PACKED_CHECKPOINT and base64) read back. */
+export function unpackCheckpoint(packedCheckpoint: string): unknown {
+  if (!packedCheckpoint.startsWith(PACKED_CHECKPOINT)) unreadable();
   let bytes: Uint8Array;
-  try { bytes = new Uint8Array(Buffer.from(value.checkpoint.slice(PACKED_CHECKPOINT.length), "base64")); } catch { return unreadable(); }
-  return { ...value, checkpoint: JSON.parse(unpacked(bytes)) };
+  try { bytes = new Uint8Array(Buffer.from(packedCheckpoint.slice(PACKED_CHECKPOINT.length), "base64")); } catch { return unreadable(); }
+  return JSON.parse(unpacked(bytes));
 }
 /** A room row for `state` (a live room, whose checkpoint is an object), its checkpoint packed when `compress`. */
 export function storedRoom(state: { checkpoint: unknown }, compress: boolean): string {

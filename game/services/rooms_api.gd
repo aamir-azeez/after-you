@@ -41,6 +41,12 @@ const POLLEN_HEADER := "x-afteryou-pollen"
 ## The most JSON one compressed reply may hold once inflated.
 const MAX_COMPRESSED_REPLY_BYTES := 32 * 1024 * 1024
 static var compressed_supported := false
+## Packed recordings (backend src/v2/packed-rooms.ts, core/v2/recording_codec.gd):
+## this build reads them, so it says so to the capabilities and, once they say
+## packed_recordings_version 1, to every room request. A room both members made
+## or joined that way says `packed_recordings` beside its replies.
+const PACKED_HEADER := "X-AfterYou-Packed-Recordings: 1"
+static var packed_supported := false
 var base_url := ""
 var player_id := ""
 var device_token := ""
@@ -180,6 +186,10 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	if payload.has("turn_looks"):
 		if result.ok: TurnLooks.shared().note_turns(payload["turn_looks"])
 		payload.erase("turn_looks")
+	# So does a packed room's word that both members read packed turns.
+	if payload.has("packed_recordings"):
+		result["packed_recordings"] = payload["packed_recordings"] == true
+		payload.erase("packed_recordings")
 	# So does a poll's redo state (X-AfterYou-Poll-Redo); redo_client.gd checks it.
 	if payload.has("redo") and payload.has("revision"):
 		result["redo"] = payload["redo"]
@@ -280,6 +290,9 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Duels: 1")
 	# This build can export a run (services/run_export.gd), so the server may say the owner may.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Run-Export: 1")
+	# This build fetches and plays the owner's run as Our run (services/race_ghost.gd), so the race list
+	# and a race against Our run may name it (backend leaderboards/our-run.ts). Older builds keep the shipped run.
+	if path in ["/v1/duels/ghosts", "/v1/duels/ghost"]: headers.append("X-AfterYou-Our-Run: 1")
 	# This build knows public duels' safety (services/safety_client.gd): their rules version and
 	# `duel_blocks`. An older phone, which never sends it, keeps the old rules and the old blocks reply.
 	if path.begins_with("/v1/safety/"): headers.append(PUBLIC_DUELS_SAFETY_HEADER)
@@ -300,6 +313,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Redo: 1")
 	# An open turns room in play then carries its turn and cap (open_turns), for the room list's turn dots.
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Open-Turns: 1")
+	# Its first page then lists the friends asking this player into their duel party (duel_invites), for Home's card.
+	if path == "/v1/room-inbox": headers.append("X-AfterYou-Duel-Invites: 1")
 	# A room poll that names its known revision also carries the redo state (redo), so the
 	# room page needs no separate GET /redo; the capabilities read then says poll_redo_version 1.
 	if method == HTTPClient.METHOD_GET and (path == "/v2/capabilities" or (path.begins_with("/v2/rooms/") and path.count("/") == 3)): headers.append("X-AfterYou-Poll-Redo: 1")
@@ -317,6 +332,7 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path in ["/v1/social/inbox","/v1/notifications/registration"]: headers.append("X-AfterYou-Friend-Events: 2")
 	# This phone keeps room attempts durably, so a finished attempt may leave the server.
 	if history_supported and path.begins_with("/v2/"): headers.append("X-AfterYou-History: 1")
+	if path == "/v2/capabilities" or (packed_supported and path.begins_with("/v2/rooms")): headers.append(PACKED_HEADER)
 	# This build reads compressed rooms; the server says whether it serves them.
 	if path == "/v2/capabilities" or (compressed_supported and compressed_path(method, path)): headers.append(COMPRESSED_HEADER)
 	# This build's version and channel, so the server can ask an old build to update.

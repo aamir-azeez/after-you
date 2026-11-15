@@ -32,28 +32,10 @@ func _run() -> void:
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
-	app._start_practice(0)
-	app._close_overlay()
-	app.running=false
 	for size: Vector2i in [Vector2i(1280,720),Vector2i(1600,720),Vector2i(1280,960)]:
 		viewport.size=size
 		await process_frame
-		for left in [false,true,false]:
-			app.saves.data.settings.left_handed=left
-			app._apply_settings()
-			await process_frame
-			var screen := Rect2(Vector2.ZERO,Vector2(size))
-			for control: Control in [app.stick,app.interact_button,app.finish_button]:
-				_check(screen.encloses(control.get_global_rect()),"%s remains fully visible at %s with left action=%s" % [control.name,size,left])
-				_check(control.size.x>=44 and control.size.y>=44,"Touch targets retain usable minimum bounds")
-			_check(not app.stick.get_global_rect().intersects(app.interact_button.get_global_rect()),"Movement and action controls do not overlap")
-			_check(not app.interact_button.get_global_rect().intersects(app.finish_button.get_global_rect()),"Throw and finish remain separate touch targets")
-			_check((app.stick.position.x>app.interact_button.position.x)==left,"Handedness moves the action and movement controls to opposite sides")
-			_check(screen.encloses(app.hint_label.get_global_rect()),"The actual hint stays on-screen after resizing and changing handedness")
-			for control: Control in [app.stick,app.interact_button,app.finish_button]:
-				_check(not app.hint_label.get_global_rect().intersects(control.get_global_rect()),"Wrapped guidance remains outside every full touch target after layout changes")
 		await _test_menu_layouts(app,viewport)
-	await _test_narrow_hint(app,viewport)
 	viewport.size=Vector2i(1280,720)
 	var native_available := AvailableSecrets.new()
 	app.add_child(native_available)
@@ -76,24 +58,6 @@ func _run() -> void:
 	print("AFTER YOU LAYOUT: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
 
-func _test_narrow_hint(app: Node, viewport: SubViewport) -> void:
-	viewport.size=Vector2i(960,540)
-	await process_frame
-	app._start_practice(0)
-	app._close_overlay()
-	app.running=false
-	for left: bool in [false,true]:
-		app.saves.data.settings.left_handed=left
-		app._apply_settings()
-		await process_frame
-		await process_frame
-		var hint: Label=app.hint_label
-		_check(hint.text==PlayerCopy.LEVELS_FCAAB14393CE,"The narrow layout uses First Light's actual opening instruction")
-		_check(Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(hint.get_global_rect()),"The narrow gameplay hint remains inside the screen")
-		_check(hint.get_line_count()>1 and hint.get_visible_line_count()==hint.get_line_count(),"The narrow opening instruction wraps with every line visible")
-		for control: Control in [app.stick,app.interact_button,app.finish_button]:
-			_check(not hint.get_global_rect().intersects(control.get_global_rect()),"The narrow instruction avoids the full joystick and action touch areas")
-
 func _buttons(node: Node) -> Array[Button]:
 	var result: Array[Button]=[]
 	if node is Button:
@@ -104,16 +68,9 @@ func _buttons(node: Node) -> Array[Button]:
 
 func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
-	app._start_practice(0)
-	app._close_overlay()
-	app.running=false
 	app._toast("Your rehearsal is safely saved on this device.")
 	await process_frame
-	for control: Control in [app.timer_label,app.progress,app.hint_label,app.toast.card]:
-		_check(screen.encloses(control.get_global_rect()),"Anchored HUD control stays visible at %s: %s" % [viewport.size,control.name])
-	for button: Button in _buttons(app.hud):
-		_check(screen.encloses(button.get_global_rect()),"Anchored HUD action stays visible at %s: %s" % [viewport.size,button.text])
-	_check(not app.hint_label.get_global_rect().intersects(app.interact_button.get_global_rect()) and not app.hint_label.get_global_rect().intersects(app.finish_button.get_global_rect()),"Instruction text does not overlap action controls at %s" % viewport.size)
+	_check(screen.encloses(app.toast.card.get_global_rect()),"The pop-up stays visible at %s" % [viewport.size])
 	app._show_home()
 	await process_frame
 	var captions := _labels(app.overlay)
@@ -149,23 +106,6 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app.account_flow.show_hosting_access(app.settings_flow.detail("hosting_access"),{"ok":true,"data":{"status":"verified","full_journey":false}})
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Introductory hosting")
-	var first: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
-	var second: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))
-	app.room_play=false
-	app.collection_preview=false
-	app.attempt={"a":{},"b":{},"draft":{}}
-	app.review_recording=first
-	app.earlier_islands_flow.show_review()
-	await process_frame
-	await _check_card_contents(app.overlay,screen,"First-turn review")
-	app.attempt={"a":first,"b":{},"draft":{}}
-	app.review_recording=second
-	app.earlier_islands_flow.show_review()
-	await process_frame
-	await _check_card_contents(app.overlay,screen,"Completed-island review")
-	app._start_practice(0)
-	app._close_overlay()
-	app.running=false
 
 func _check_card_contents(node: Node, screen: Rect2, context: String) -> void:
 	var controls: Array[Button]=_buttons(node)

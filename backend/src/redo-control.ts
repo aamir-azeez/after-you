@@ -84,12 +84,13 @@ export function acceptedRedo(storage: DurableObjectStorage): void {
  * is current only on the same revision, branch and stage, since the revision moves with every turn. Reads one small
  * row and never the turn; a damaged row only drops the field.
  */
-export function inboxRedo(storage: DurableObjectStorage, player: string, room: { revision: number; branch: number; stage_index: number; a_turn_id: string | null; checkpoint_hash: string | null }): { redo?: InboxRedo } {
+export function inboxRedo(storage: DurableObjectStorage, player: string, room: { revision: number; branch: number; stage_index: number; a_turn_id: string | null }, checkpointHash: () => string | null): { redo?: InboxRedo } {
   let request: RedoRequest | null;
   try { request = stored(storage); } catch { return {}; }
   if (!request || request.source.revision !== room.revision || request.source.branch !== room.branch || request.source.stage_index !== room.stage_index) return {};
   // A redo only while the second turn is unplayed; a start over (isStartOver) at any stage, shown as start_over_*.
-  const over = room.checkpoint_hash !== null && request.source.a_hash === room.checkpoint_hash;
+  const checkpoint = checkpointHash();
+  const over = checkpoint !== null && request.source.a_hash === checkpoint;
   if (!over && !room.a_turn_id) return {};
   const shown = (state: "asked_you" | "you_asked" | "kept"): { redo: InboxRedo } => ({ redo: { state: over ? `start_over_${state}` as const : state, stage_index: room.stage_index } });
   if (request.status === "pending") return player === request.source.first_player_id ? shown("asked_you") : player === request.source.second_player_id ? shown("you_asked") : {};

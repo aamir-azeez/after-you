@@ -104,8 +104,8 @@ func _menu_boundary() -> void:
 	screen.purchases._configuration = LOCKED.duplicate(true)
 	screen.purchases.customer_info = OLD.duplicate(true)
 	var before := screen.saves.data.duplicate(true)
-	screen._start_practice(3)
-	_check(screen.mode == "paywall" and not screen.running, "A retained Test Store buyer reaches the paywall for an earlier paid island")
+	screen.store_flow.show_paywall()
+	_check(screen.mode == "paywall", "A retained Test Store buyer reaches the paywall")
 	_check(_button(screen.overlay,"Get it on Google Play") != null and _button(screen.overlay,"Tester code") != null, "Restricted paywall offers the store download and tester code")
 	_check(_button(screen.overlay,"Restore purchases") == null and _button(screen.overlay,"Retry store") == null, "Restricted paywall offers no retired free store actions")
 	_button(screen.overlay,"Get it on Google Play").pressed.emit()
@@ -122,8 +122,8 @@ func _menu_boundary() -> void:
 	screen.store_flow._show_store_offer()
 	_check(_button(screen.overlay,"Get it on Google Play") != null, "An old offering callback cannot recreate the free checkout")
 	_check(screen.saves.data == before, "Denied access preserves the complete local saved game")
-	screen._start_practice(0)
-	_check(screen.mode == "ready", "The free opening island remains playable")
+	screen.journey_flow.show_journey()
+	_check(screen.mode == "journey", "The free chapters remain open")
 	screen.queue_free()
 	await process_frame
 	await process_frame

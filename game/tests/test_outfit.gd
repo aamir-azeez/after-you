@@ -75,5 +75,4 @@ func _combinations() -> void:
 	_check(digests.size() == count, "Every combination has its own digest")
 
 func _facts() -> void:
-	_check(Outfit.tall(Outfit.of("lighthouse_lamp", true)) and not Outfit.tall(Outfit.of("daisy", true)) and not Outfit.tall({}), "Only a tall item pulls the view back")
 	_check(Outfit.wide(Outfit.from({"hat": "lantern", "leaf": "gold_leaf"}, true)) and not Outfit.wide(Outfit.of("lighthouse_lamp", true)) and not Outfit.wide({}), "Only a wide item pulls the view back further")

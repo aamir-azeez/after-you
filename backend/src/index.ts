@@ -50,7 +50,7 @@ export { PublicDuelDirectory } from "./duels/directory";
 import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
 import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
 import { forgetLeaderboardPlayer, forgetLeaderboardPlayerIfKnown } from "./leaderboards/members";
-import { routeDuels } from "./duels/routes";
+import { DUEL_INVITES_HEADER, inboxDuelInvites, routeDuels } from "./duels/routes";
 import { publicListRoute } from "./duels/public-routes";
 import { limitAuth, limitCostly, limitCostlyRoute, limitPlayer, limitPublic } from "./limits";
 import { maskedResponse } from "./duels/public-mask";
@@ -159,8 +159,10 @@ export default {
         const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
         // The face on the friend's latest turn, only for clients that show it.
         const showReactions = endReactionsWanted(request), showNames = displayNamesShown(request, env);
-        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, servedFaceVersion(request, env), redoInboxVersion(request.headers.get(ROOM_INBOX_REDO_HEADER), request.headers.get("X-AfterYou-Redo-Extras")), request.headers.get(ROOM_INBOX_OPEN_TURNS_HEADER) === "1");
-        return await maskedResponse(withNext(json(page.body), page.next), playerId);
+        // A friend's duel party invites, for Home's notice: only on the first page, only for clients that show them.
+        const offset = pageOffset(request), invites = offset === 0 && request.headers.get(DUEL_INVITES_HEADER) === "1" ? inboxDuelInvites(env, playerId, Date.now()) : Promise.resolve({});
+        const [page, waiting] = await Promise.all([indexedRoomInbox(playerId, env, showClosed, showLeft, offset, showReactions, showNames, servedFaceVersion(request, env), redoInboxVersion(request.headers.get(ROOM_INBOX_REDO_HEADER), request.headers.get("X-AfterYou-Redo-Extras")), request.headers.get(ROOM_INBOX_OPEN_TURNS_HEADER) === "1"), invites]);
+        return await maskedResponse(withNext(json({ ...page.body, ...waiting }), page.next), playerId);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
       if (pollenRoute(path, env)) return json(await routePollen(request, path, playerId, env, pollenView));

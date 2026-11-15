@@ -521,7 +521,7 @@ static func valid_route(value: Variant) -> bool:
 	for key: String in keys:
 		if not value.get(key) is String: return false
 	var sequence: String = value.publication_epoch if hosting else value.revision
-	if value.schema_version != "1" or value.kind not in ["turn_ready","friend_room_available","redo_requested"] or value.room_family not in ["legacy","relay"] or not Typed.valid_id(value.room_id) or not Typed.valid_id(value.binding_epoch) or not _matches(value.event_id,"^[A-Za-z0-9_-]{16,128}$") or not _matches(sequence,"^[1-9][0-9]{0,15}$") or int(sequence) > 9007199254740991: return false
+	if value.schema_version != "1" or value.kind not in ["turn_ready","friend_room_available","redo_requested"] or value.room_family != "relay" or not Typed.valid_id(value.room_id) or not Typed.valid_id(value.binding_epoch) or not _matches(value.event_id,"^[A-Za-z0-9_-]{16,128}$") or not _matches(sequence,"^[1-9][0-9]{0,15}$") or int(sequence) > 9007199254740991: return false
 	if value.kind == "redo_requested" and not _matches(value.event_id,"^redo_[a-f0-9]{64}$"): return false
 	return not hosting or (Typed.valid_id(value.host_id) and value.event_id == value.host_id + "_" + sequence)
 

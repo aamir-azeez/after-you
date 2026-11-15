@@ -6,6 +6,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const COMFORT_VERSION := 8
@@ -79,6 +80,7 @@ func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Diction
 	var simulation: RefCounted = _factory.new()
 	simulation.simulation_version = _version
 	simulation.catch_assistance = record.catch_assistance
+	simulation.packed_recordings = RecordingCodec.is_packed(record)
 	# Only open turns pass a chain: other facades (the Lighthouse room's) keep five arguments.
 	if chain.is_empty(): simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role)
 	else: simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role, chain)
@@ -115,7 +117,7 @@ func _replayed_turn(definition: Dictionary, record: Dictionary, checkpoint: Dict
 	return _replayed[key]
 
 func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dictionary) -> String:
-	if not _exact_keys(record, RECORD_KEYS): return "Malformed recording."
+	if not _exact_keys(record, RecordingCodec.keys_for(record, RECORD_KEYS)): return "Malformed recording."
 	for key: String in ["schema_version", "simulation_version", "level_version", "stage_version"]:
 		var expected := _version if key == "simulation_version" else _schema if key == "schema_version" else _level_version(definition) if key == "level_version" else 1
 		if not _integer(record[key]) or int(record[key]) != expected: return "Unsupported recording version."
@@ -132,6 +134,10 @@ func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dic
 	for key: String in OUTCOME_KEYS:
 		if not record.outcome[key] is bool: return "Invalid recording outcome."
 	if not record.source_recording_hash is String or not _hash(record.final_state_hash) or not _hash(record.recording_hash) or (record.role == "b" and not _hash(record.source_recording_hash)): return "Invalid recording hashes."
+	# A packed record's runs and checks come back canonical, on the implied ticks and ending on final_state_hash.
+	if RecordingCodec.is_packed(record):
+		if RecordingCodec.unpack(record.packed, int(record.duration_ticks), str(record.final_state_hash), limit).is_empty(): return "Invalid action list."
+		return "" if recording_hash(record) == record.recording_hash else "Recording hash mismatch."
 	if not record.actions is Array or record.actions.is_empty() or record.actions.size() > limit: return "Invalid action list."
 	var total := 0
 	for item: Variant in record.actions:

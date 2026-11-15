@@ -1,11 +1,8 @@
 extends SceneTree
 ## The planting beat (presentation/plant_animation.gd) in every world that
-## plants a seed: First Steps, Relay and the Earlier Islands. Each world is
+## plants a seed: First Steps and Relay. Each world is
 ## driven by its published fixture recordings up to the real planting tick.
 const Registry = preload("res://services/chapter_registry.gd")
-const Levels = preload("res://core/levels.gd")
-const LegacySimulation = preload("res://core/simulation.gd")
-const IslandWorld = preload("res://presentation/island_world.gd")
 const PlantAnimation = preload("res://presentation/plant_animation.gd")
 const DELTA := 1.0 / 60.0
 var checks := 0
@@ -26,7 +23,6 @@ func _fixture(path: String) -> Dictionary:
 func _run() -> void:
 	await _world_case("First Steps", func() -> Array: return _chapter(Registry.FIRST_STEPS, "first_steps/lift-checkpoint", "first_steps/a-place-to-grow-a", "first_steps/a-place-to-grow-b"))
 	await _world_case("Relay", func() -> Array: return _chapter(Registry.RELAY, "v2/relay-checkpoint", "v2/garden-a", "v2/garden-b"))
-	await _world_case("Earlier Islands", _islands)
 	_check(preload("res://presentation/kit/primitives.gd").changed_shared_looks().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_looks()])
 	print("AFTER YOU PLANT ANIMATION: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -46,19 +42,6 @@ func _chapter(key: String, checkpoint_path: String, a_path: String, b_path: Stri
 	Registry.reset_simulation(sim, key, level, str(b.stage_id), _fixture(checkpoint_path), a, str(b.role), b)
 	world.show_stage(engine.stage_by_id(level, str(b.stage_id)))
 	return _until_planted(world, sim, engine.expand_recording_inputs(b))
-
-func _islands() -> Array:
-	var world := IslandWorld.new()
-	root.add_child(world)
-	world.set_process(false)
-	world.home_view = false
-	var level := Levels.get_level(0)
-	world.load_level(level)
-	var a := _fixture("first-light-a")
-	var b := _fixture("first-light-b")
-	var sim := LegacySimulation.new()
-	sim.reset(level, a, "b", int(b.simulation_version))
-	return _until_planted(world, sim, LegacySimulation.expand_recording_inputs(b))
 
 func _until_planted(world: Node3D, sim: RefCounted, inputs: Array) -> Array:
 	var start: Dictionary = sim.snapshot().duplicate(true)

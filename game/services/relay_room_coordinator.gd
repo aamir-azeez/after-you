@@ -20,6 +20,7 @@ const Proofs = preload("res://services/journey_proofs.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const Typed = preload("res://services/typed_values.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
@@ -91,6 +92,10 @@ var _state: Dictionary = {}
 var _owner := ""
 var _epoch := -1
 var _room := ""
+## The room said `packed_recordings` beside a reply (backend src/v2/packed-rooms.ts):
+## both members read packed turns, so this phone records its turns packed. A
+## room never stops being packed; another room starts unknown.
+var _packed_room := false
 var _scope := ""
 var _generation := 0
 var _serial := 0
@@ -197,6 +202,7 @@ func invalidate_identity() -> void:
 	_owner = ""
 	_epoch = -1
 	_room = ""
+	_packed_room = false
 	_scope = ""
 	read_only = false
 	_remote_hold = false
@@ -220,6 +226,7 @@ func bind_room(room_id: String) -> bool:
 	_owner = identity.player_id
 	_last_refresh_result = {}
 	_epoch = int(identity.epoch)
+	if room_id != _room: _packed_room = false
 	_room = room_id
 	_scope = "relay-room-v2:" + _owner + ":" + _room
 	_clear_chapter()
@@ -432,6 +439,7 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 		return null
 	# Open turns: the turn the room says must finish the stage offers no pass.
 	if room.get("open_turns") is Dictionary and "pass_allowed" in simulation: simulation.pass_allowed = not bool(room.open_turns.get("must_finish", false))
+	if "packed_recordings" in simulation: simulation.packed_recordings = packed_room()
 	_live_simulation = weakref(simulation)
 	_live_context = {"generation": _generation, "owner": _owner, "epoch": _epoch, "room": _room,
 		"origin": room.duplicate(true), "level_ref": simulation.level,
@@ -546,6 +554,7 @@ func refresh() -> bool:
 		_note_end_reactions(response)
 		_note_partner_name(response)
 		_note_partner_look(response)
+		_note_packed(response)
 		# A finished room: its first clear waits to be claimed, unless this player's own turn finished it.
 		if chapter_complete() and pollen_finished_sink.is_valid(): pollen_finished_sink.call(_room)
 	return accepted
@@ -567,6 +576,13 @@ func _note_redo(response: Dictionary) -> void:
 
 ## The room partner's display name that came beside an accepted reply
 ## (rooms_api.gd takes it out of the room), for the names this phone keeps.
+func _note_packed(response: Dictionary) -> void:
+	if response.get("packed_recordings") == true and RoomsApi.packed_supported: _packed_room = true
+
+## Whether this phone records the room's turns packed (core/v2/recording_codec.gd).
+func packed_room() -> bool:
+	return _packed_room and RoomsApi.packed_supported
+
 func _note_partner_name(response: Dictionary) -> void:
 	if not response.has("partner_name") or not partner_name_sink.is_valid() or _state.is_empty(): return
 	var snapshot: Dictionary = _state.snapshot
@@ -841,6 +857,7 @@ func _accept_sent(response: Dictionary) -> bool:
 		_note_end_reactions(response)
 		_note_partner_name(response)
 		_note_partner_look(response)
+		_note_packed(response)
 		if turn and not recording_hash.is_empty() and own_turn_look_sink.is_valid(): own_turn_look_sink.call(recording_hash)
 		# The turn's Pollen credit (rooms_api.gd takes it out of the reply), or none to claim later.
 		if turn and not recording_hash.is_empty() and pollen_sink.is_valid(): pollen_sink.call(_room, recording_hash, response.get("pollen"), chapter_complete())
@@ -1577,12 +1594,13 @@ static func _bounded_nodes(value: Variant, bytes: int, maximum_nodes: int) -> bo
 			for key: Variant in v:
 				if not key is String or key.length() > 80:
 					return false
-				pending.append({"value": v[key], "depth": int(item.depth) + 1})
+				pending.append({"value": v[key], "depth": int(item.depth) + 1, "key": key})
 		elif v is Array:
 			for child: Variant in v:
 				pending.append({"value": child, "depth": int(item.depth) + 1})
 		elif v is String:
-			if v.length() > 512:
+			# A packed record's runs and checks are one string (core/v2/recording_codec.gd); the byte bound still holds.
+			if v.length() > (RecordingCodec.MAX_PACKED_CHARS if item.get("key") == RecordingCodec.PACKED_KEY else 512):
 				return false
 		elif not (v == null or v is bool or _range(v, -9007199254740991, 9007199254740991)):
 			return false

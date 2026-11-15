@@ -120,7 +120,7 @@ static func cancel(host: Node) -> void:
 
 ## Where the seed goes in: the soil's centre (global, at its top) and radius.
 ## The planter is the planted socket by id (First Steps, Relay), else the
-## world's garden (the Earlier Islands), else a planter's depth below the pose.
+## world's own garden, else a planter's depth below the pose.
 static func soil(world: Node3D, host: Node3D, value: Dictionary, target: Vector3) -> Dictionary:
 	var planter: Node3D = null
 	var socket_id := str(value.get("socket_id", ""))

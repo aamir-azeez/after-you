@@ -77,6 +77,10 @@ extends SceneTree
 ##     builder is in PIECE_OVERRIDES with what it adds, and no script keeps the
 ##     old per-world switches ("lever_looks", "stand_spots"). test_piece_styles.gd,
 ##     which must stay in CI, builds every style once.
+## (v) UI icons: every svg under assets/ui imports with mipmaps and 2D draws use
+##     them by default (project.godot canvas_textures/default_texture_filter), so
+##     an icon drawn far smaller than its source stays whole; no control sets its
+##     own mipmap filter.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -95,7 +99,6 @@ const KNOWN_FAILURES := {
 	"offline:res://presentation/account_flow.gd": "unowned (shared-paths audit): recovery and delete confirmations stay live offline",
 	"offline:res://presentation/safety_screen.gd": "unowned (shared-paths audit): unblock and report buttons stay live offline",
 	"offline:res://presentation/shared_replay_view.gd": "unowned (shared-paths audit): report and block in a replay stay live offline",
-	"offline:res://presentation/legacy_room_flow.gd": "unowned (shared-paths audit): legacy room create, join, fork and advance stay live offline",
 	"offline:res://presentation/notification_flow.gd": "unowned (shared-paths audit): a room alert tapped offline says the room could not be opened on every retry",
 	"offline:res://relay_preview.gd": "unowned (shared-paths audit): New room on the end card and redo requests stay live offline (turns themselves are kept)",
 }
@@ -128,7 +131,6 @@ const PIP_MAKERS := {
 	"res://presentation/wardrobe_sheets.gd": ["preview", "the buy sheet shows the item on the plain pip"],
 	"res://presentation/wardrobe_orchard.gd": ["preview", "Fruits board 4a: each Orchard item on the plain pip"],
 	"res://presentation/pollen_result_line.gd": ["preview", "owner 2026-11-02: the dropped item shows alone on a plain pip"],
-	"res://presentation/story_memory_world.gd": ["unshown", "Story was removed; only tests load it"],
 }
 ## A script that reads a player's look.
 const LOOK_SOURCE := "OwnLook\\.|TurnLooks|SlotLooks|slot_looks|Outfit\\.from\\(|\\.wear\\(|\\.outfit\\s*="
@@ -155,7 +157,6 @@ const OFFLINE_EXEMPT := {
 	"res://presentation/friends_flow.gd": "opens Friends, whose buttons hold (friends_screen.gd); its board read runs in the background",
 	"res://presentation/bundle_purchase.gd": "refuses offline itself before a purchase starts; the store page holds its buttons",
 	"res://presentation/settings_rows.gd": "declares rows online: true; settings_flow.gd holds each one",
-	"res://presentation/turn_flow.gd": "a turn is kept as pending_turn and sent again later, offline included",
 }
 
 ## (e) The name resolver and the scripts allowed under it.
@@ -190,11 +191,9 @@ const SAVE_EXEMPT := {
 ## (h) Every script that sends a server write: [how many, why each is safe].
 ## A reason starting "keyed" means the script sends idempotency keys.
 const WRITES := {
-	"res://main.gd": [3, "keyed: room reactions; POST /v1/identity has none (audit: check one lost answer never makes two identities)"],
+	"res://main.gd": [1, "unkeyed: POST /v1/identity (audit: check one lost answer never makes two identities)"],
 	"res://presentation/account_flow.gd": [2, "keyed: identity recovery; DELETE /v1/identity removes one thing"],
-	"res://presentation/legacy_room_flow.gd": [4, "keyed: room create, fork and advance; a join names one invite"],
 	"res://presentation/room_hub_flow.gd": [5, "unkeyed: close, leave and invite lookups end in the same state when repeated"],
-	"res://presentation/turn_flow.gd": [1, "keyed: the pending turn's key"],
 	"res://services/bundle_claims.gd": [1, "unkeyed: claims every purchase the store reports; each purchase token pays once"],
 	"res://services/deleted_identity_ack.gd": [1, "unkeyed: an acknowledgement"],
 	"res://services/display_name_client.gd": [2, "unkeyed: PUT sets the whole name"],
@@ -342,24 +341,19 @@ const ROUTE_BARRIERS_OWNER := "res://presentation/cooperative_world.gd"
 ## Worlds that leave a closed stair's chain out themselves (route_barriers.skip();
 ## a whole chapter says it in its descriptor's "stair_gates" instead) or pick
 ## the "barrier" look in code rather than in their dressing (_barrier_style), with why.
-const ROUTE_BARRIER_OVERRIDES := {
-	"res://presentation/wishing_well_world.gd": "the well's lip takes the rail style, and the Well has no dressing file to pick it in (one would switch its plain look to the warm one) (_barrier_style)",
-}
+const ROUTE_BARRIER_OVERRIDES := {}
 ## Scripts that work out a chapter turn's sounds, which run each tick through
 ## the refusal finder first.
 const TURN_SOUND_SCREENS := ["res://relay_preview.gd", "res://presentation/shared_replay_view.gd"]
 ## Flat diamonds drawn outside the kit: how many, and why each is no ownership mark.
 const FLAT_DIAMONDS := {
 	"res://presentation/island_world.gd": [1, "the first island's plate glyph: a plate either spirit presses"],
-	"res://presentation/relay_world.gd": [1, "Relay Isles' plate glyphs: plates either spirit presses"],
-	"res://presentation/first_steps_world.gd": [1, "First Steps' control glyphs: controls either spirit uses"],
 	"res://presentation/lighthouse_world.gd": [2, "the emitter pad's glyph and the path selector's pointer"],
 	"res://presentation/kit/pieces/selector.gd": [1, "a valve wheel's pointer head"],
 }
 ## Rings the size of the second spirit's mark drawn outside the kit: how many, and why.
 const MARK_SIZED_RINGS := {
 	"res://presentation/cooperative_world.gd": [1, "the pulley's gold wheel over a missing crossing"],
-	"res://presentation/keepsake_visual.gd": [1, "a keepsake's standing hoop"],
 }
 
 ## (s) The one falling effect kit, its shader, and each script that uses it with what for.
@@ -386,6 +380,8 @@ const PIECE_KITS := "res://presentation/kit/pieces/"
 const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
+	"res://presentation/first_steps_world.gd": "builds its spots and its lift in the styles they resolve to (pad, lift); its loft bell is the kit bell on its own post and arm",
+	"res://presentation/relay_world.gd": "builds its plates in the pad style they resolve to; its sinking bridges stay its own",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {
@@ -442,6 +438,7 @@ func _initialize() -> void:
 	_level_hints()
 	_route_barriers()
 	_piece_styles()
+	_ui_icons()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -885,7 +882,7 @@ func _piece_styles() -> void:
 		if path.begins_with("res://tests/") or path.begins_with(PIECE_KITS) or path == PIECE_STYLES: continue
 		var source: String = _sources[path]
 		_check(_found("\"(?:lever_looks|stand_spots)\"|\\.(?:lever_looks|stand_spots)\\b|kit/lever_looks\\.gd", source) == 0, "%s keeps a per-world piece switch: pin or pick a piece style (content/dressing/piece_styles.gd)" % path)
-		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal)\\.gd\"", source) > 0:
+		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal|lift)\\.gd\"", source) > 0:
 			builders[path] = true
 			_check(PIECE_BUILDERS.has(path), "%s builds a piece itself: worlds build pieces through cooperative_world and lighthouse_world, or add it to PIECE_BUILDERS with why" % path)
 		if _found("\\.get\\(\\s*\"piece_styles\"|\\[\"piece_styles\"\\]|\\.piece_styles\\b|\\bPieceStyles\\.PINS\\b", source) > 0:
@@ -1024,6 +1021,18 @@ func _energy() -> void:
 		_check(chips.has(path), "ENERGY_CHIP_SURFACES names %s, which wears no chip through presentation/kit/energy_chip.gd now: delete it" % path)
 	for path: String in ENERGY_METER_SURFACES:
 		_check(meters.has(path), "ENERGY_METER_SURFACES names %s, which shows no meter through presentation/duels/energy_meter.gd now: delete it" % path)
+
+# (v) UI icons ------------------------------------------------------------------
+
+func _ui_icons() -> void:
+	_check(int(ProjectSettings.get_setting("rendering/textures/canvas_textures/default_texture_filter", 1)) == Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR_WITH_MIPMAPS, "2D draws use mipmaps by default (project.godot rendering/textures/canvas_textures/default_texture_filter=2, Linear Mipmap)")
+	var icons := _scripts("res://assets/ui", ".svg")
+	_check(icons.size() > 50, "The scan finds the UI icons: %d" % icons.size())
+	for path: String in icons:
+		var settings := FileAccess.get_file_as_string(path + ".import")
+		_check(settings.contains("mipmaps/generate=true"), "%s imports with mipmaps: commit %s.import with mipmaps/generate=true" % [path, path.get_file()])
+	for path: String in _sources:
+		_check(_found("\\btexture_filter\\s*=\\s*(?:CanvasItem\\.)?TEXTURE_FILTER_LINEAR_WITH_MIPMAPS", _sources[path]) == 0, "%s sets its own mipmap filter, which is the 2D default now: delete the line" % path)
 
 func _suites() -> void:
 	var shards := {}

@@ -7,6 +7,7 @@ const Controls = preload("res://core/first_steps/simulation.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const MOVE_PER_TICK := 8
@@ -49,6 +50,9 @@ var turn_number := 1
 var memory_slot := "p0"
 var pass_allowed := true
 var passed := false
+## Export the packed form (core/v2/recording_codec.gd): set for a live turn in a
+## packed room, and from the record itself whenever one is replayed.
+var packed_recordings := false
 var _checkpoint: Dictionary = {}
 var _prior: Dictionary = {}
 var _players: Dictionary = {}
@@ -537,6 +541,7 @@ func export_recording() -> Dictionary:
 		"stage_id":stage.id,"stage_version":stage.version,"checkpoint_hash":_checkpoint.checkpoint_hash,"role":role,"player_slot":active_slot,"tick_rate":TICK_RATE,
 		"duration_ticks":tick,"catch_assistance":catch_assistance,"actions":_actions.duplicate(true),"replay_checks":checks,"final_state_hash":state_hash(),
 		"completed":complete,"outcome":_outcome(),"source_recording_hash":str(_prior.get("recording_hash", "")) if role == "b" else ""}
+	if packed_recordings: record = RecordingCodec.packed_form(record)
 	record["recording_hash"] = recording_hash(record)
 	return record
 

@@ -9,6 +9,9 @@ extends HBoxContainer
 ## last half is a plus, only where the store can sell and is not the screen
 ## showing the chip; a tap there is `plus_pressed` (the store). Without the plus
 ## the last amount half closes the pill. A zero balance is the same plain chip.
+## Before a balance arrives (WAITING) its half shows a quiet placeholder in the muted
+## colour, never a number. Every half needs the server, so each greys while the
+## phone is offline (presentation/offline_hold.gd) and comes back on its own.
 ## Home shows it left of Full Journey; the Wardrobe, the store, the Pollen page
 ## and the Fruits page in their headers. Every mark comes from kit/currency_mark.gd.
 ##
@@ -30,6 +33,8 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 
+## An amount not known yet (a balance may be below zero after a refund, so never -1).
+const WAITING := -4611686018427387904
 const FONT_SIZE := 22
 const HEIGHT := 54.0
 ## The plus half: wide enough for a thumb, the plus centred in it.
@@ -62,32 +67,42 @@ var plus_icon: Control
 var _row: HBoxContainer
 var _fruit_row: HBoxContainer
 
-## A chip for `balance`; `plus`: show the plus half; `fruits`: [] hides the
-## Fruit half, [n] shows it with n Fruits (fruits_for() says which).
+## A chip for `balance` (WAITING: not known yet); `plus`: show the plus half;
+## `fruits`: [] hides the Fruit half, [n] shows it with n Fruits, [WAITING] with the
+## placeholder (fruits_for() says which).
 static func make(balance: int, plus: bool, fruits: Array = []) -> Control:
 	var chip: Control = load("res://presentation/kit/pollen_chip.gd").new()
 	chip._build(balance, plus, fruits)
 	return chip
 
 ## What the Fruit half shows for the player of `scope`: [] while Fruits do not
-## show (the build or the server), else [the kept Fruit balance], [0] until the
-## server has said. `surfaces` and `fruits` default to the shared ones.
+## show (the build or the server), else [the kept Fruit balance], [WAITING] (the
+## placeholder) until the server has said. `surfaces` and `fruits` default to
+## the shared ones.
 static func fruits_for(scope: Dictionary, surfaces: RefCounted = null, fruits: RefCounted = null) -> Array:
 	var shown: RefCounted = surfaces if surfaces != null else PollenSurfaces.shared()
 	var store: RefCounted = fruits if fruits != null else FruitWallet.shared()
 	if scope.is_empty() or not shown.fruits_visible(store, scope): return []
+	if store.part(str(scope.server), str(scope.owner)).is_empty(): return [WAITING]
 	return [int(store.balance(str(scope.server), str(scope.owner)))]
+
+## An amount as a half shows it: grouped, or the placeholder before it is known.
+static func amount_text(amount: int) -> String:
+	return PlayerCopy.CHIP_WAITING if amount == WAITING else PollenMoney.grouped(amount)
+
+static func _spoken(amount: int) -> String:
+	return PlayerCopy.CHIP_WAITING_SPOKEN if amount == WAITING else PollenMoney.grouped(amount)
 
 func _build(balance: int, plus: bool, fruits: Array = []) -> void:
 	name = "PollenChip"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_theme_constant_override("separation", 0)
-	amount_button = _half("PollenChipBalance", PlayerCopy.POLLEN_CHIP_BALANCE % PollenMoney.grouped(balance))
+	amount_button = _half("PollenChipBalance", PlayerCopy.POLLEN_CHIP_BALANCE % _spoken(balance))
 	amount_button.pressed.connect(func() -> void: amount_pressed.emit())
 	_row = _half_row("PollenChipRow", plus or not fruits.is_empty())
 	amount_button.add_child(_row)
 	_row.add_child(CurrencyMark.beside(CurrencyMark.POLLEN, FONT_SIZE))
-	amount_label = _text(PollenMoney.grouped(balance), UiTokens.CREAM)
+	amount_label = _text(amount_text(balance), UiTokens.MUTED if balance == WAITING else UiTokens.CREAM)
 	amount_label.name = "PollenChipAmount"
 	_row.add_child(amount_label)
 	gain_label = _text("", GOLD)
@@ -99,8 +114,6 @@ func _build(balance: int, plus: bool, fruits: Array = []) -> void:
 		plus_button = _half("PollenChipPlusButton", PlayerCopy.WARDROBE_GET_POLLEN)
 		plus_button.custom_minimum_size = Vector2(PLUS_WIDTH, HEIGHT)
 		plus_button.pressed.connect(func() -> void: plus_pressed.emit())
-		# The store needs the server: the plus greys while offline (presentation/offline_hold.gd).
-		OfflineHold.hold(plus_button)
 		# Drawn as two strokes, so it stays a plus at any scale (a phone 360 tall halves it).
 		plus_icon = Control.new()
 		plus_icon.name = "PollenChipPlus"
@@ -119,12 +132,12 @@ func _build(balance: int, plus: bool, fruits: Array = []) -> void:
 
 ## The Fruit half: the Fruit mark and the Fruit balance on the Orchard plum.
 func _fruit_half(fruits: int, plus: bool) -> void:
-	fruits_button = _half("PollenChipFruits", PlayerCopy.FRUIT_CHIP_BALANCE % PollenMoney.grouped(fruits))
+	fruits_button = _half("PollenChipFruits", PlayerCopy.FRUIT_CHIP_BALANCE % _spoken(fruits))
 	fruits_button.pressed.connect(func() -> void: fruits_pressed.emit())
 	_fruit_row = _half_row("PollenChipFruitRow", plus)
 	fruits_button.add_child(_fruit_row)
 	_fruit_row.add_child(CurrencyMark.beside(CurrencyMark.FRUITS, FONT_SIZE))
-	fruits_label = _text(PollenMoney.grouped(fruits), UiTokens.CREAM)
+	fruits_label = _text(amount_text(fruits), UiTokens.MUTED if fruits == WAITING else UiTokens.CREAM)
 	fruits_label.name = "PollenChipFruitAmount"
 	_fruit_row.add_child(fruits_label)
 
@@ -149,6 +162,8 @@ func _half(node_name: String, spoken: String) -> Button:
 	half.accessibility_name = spoken
 	half.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	add_child(half)
+	# Every half needs the server: it greys while offline and comes back on its own.
+	OfflineHold.hold(half)
 	return half
 
 ## The plus: the store's line icon's two strokes, in the chip's cream.

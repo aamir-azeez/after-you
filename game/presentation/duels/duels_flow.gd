@@ -32,7 +32,7 @@ extends Node
 ##   _friends_client, _friend_display_name, pollen_client and fruit_spend_flow
 ##   (duel energy's wallet read and refill)
 ## - screen: mode, ui, application_backgrounded, _toast, _online_gated,
-##   _relay_available, _ensure_identity
+##   _ensure_identity
 ## - chapters: _chapter_unlocks, _full_journey_access, _paid_content_hidden
 ## - rooms: relay_lobby_flow (open_lobby, lobby_action, join_room), relay_child;
 ##   Main._return_to_room_hub asks return_instead() first
@@ -392,6 +392,10 @@ func _toast_failure(answer: Dictionary, kind: String = "friend") -> void:
 		host._toast((PlayerCopy.DUELS_RACE_LIMIT if kind == "ghost" else PlayerCopy.DUELS_LIMIT) % client().limit(kind))
 		return
 	host._toast(PlayerCopy.DUELS_FRIEND_NO_PARTNER if code == "opponent_party_required" else PlayerCopy.DUELS_NO_PARTY if code == "party_required" else PlayerCopy.DUELS_ACTION_FAILED)
+
+## The Party page over the open lobby (Home's invite card), unless it is already up.
+func open_party() -> void:
+	if is_open() and not screen.overlay() is PartyPage: _open_party()
 
 func _open_party() -> void:
 	if not is_open(): return

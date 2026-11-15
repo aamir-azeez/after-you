@@ -2,11 +2,10 @@ extends RefCounted
 ## The cloud copy of local progress, as one bundle, and the one rule that joins two copies.
 ##
 ## Every field merges so that nothing is lost and an older copy never wins over a newer one:
-## - completed: the union of finished earlier islands;
-## - replays: an earlier island's finished recording is kept from whichever copy has it
-##   (this phone's first), unless either copy removed it;
-## - removed_replays: the union of replays a player removed (by their pair digest), so a replay
-##   removed on one phone never comes back from another;
+## - completed, replays and removed_replays: the earlier islands' progress, which this build
+##   no longer plays or applies, merged as before (finished islands and removed replays as
+##   unions; a finished recording from whichever copy has it, this phone's first, unless
+##   either copy removed it) so an older build on the same account loses nothing;
 ## - keepsakes: per place, solo and friend each stay earned once either copy earned them;
 ## - hard: per chapter, its solo and together Hard marks, merged like keepsakes (a mark only
 ##   ever turns on). A copy from before this field reads as one with no Hard marks,

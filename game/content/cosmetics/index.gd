@@ -43,9 +43,6 @@ const OPTIONAL := {
 	## The level id (any version) a player must clear before a Special can be
 	## bought, or "".
 	"unlock": "",
-	## true: the Settings, name page and chip views pull back a little so the
-	## item stays in frame.
-	"tall": false,
 	## true: the item hangs out past the head on the side the three-quarter
 	## views turn away, so those views pull back further and look a little
 	## toward it (presentation/kit/pip_stage.gd).
@@ -70,9 +67,9 @@ const OPTIONAL := {
 	## "sits_on_top" (it is raised onto the hat by "leaf_lift"). Every hat
 	## names one; "" for an item in another slot.
 	"leaf_mode": "",
-	## The largest leaf size class ("small", "medium", "tall") the hat takes
-	## that way; a bigger leaf is raised onto it or hidden (wear_fit.gd).
-	"leaf_max": "tall",
+	## The largest leaf size class ("small" or "medium") the hat takes that
+	## way; a bigger leaf is raised onto it or hidden (wear_fit.gd).
+	"leaf_max": "medium",
 	## false: a raised leaf stands with no stem under it (the hats players
 	## owned before the fit, kept as they were by the owner's choice).
 	"leaf_stem": true,
@@ -90,6 +87,10 @@ const OPTIONAL := {
 const REQUIRED := ["id", "code", "slot", "tier", "name", "art"]
 ## The highest item code (backend/src/config.ts COSMETIC_CODE_MAX).
 const CODE_MAX := 999
+## Codes of items taken out of the game, reserved for good: no item here has
+## them and none ever will (the server keeps them for its refunds, backend
+## catalog.json "retired", pollen/retired.ts).
+const RETIRED_CODES := {413: "smitten", 416: "heart_eyes"}
 
 ## The places on a pip, one item each, in the order they are listed and dressed.
 ## "trail": marks left on the floor while walking (presentation/kit/trail_kit.gd).

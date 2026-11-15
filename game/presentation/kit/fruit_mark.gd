@@ -64,7 +64,6 @@ static func make(side: float) -> Control:
 	mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	mark.accessibility_name = "Fruits"
 	# The render is drawn well below its own size at most sizes.
-	mark.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	mark._render = render()
 	return mark
 

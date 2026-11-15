@@ -175,7 +175,7 @@ func _render() -> void:
 			var photos: Array = context.get("photos", [])
 			for index in range(photos.size()):
 				var photo: Dictionary = photos[index].duplicate(true)
-				_button("Report partner photo " + str(index + 1), func(): _photo = photo; _page = "report"; _render(), pending.is_empty())
+				_button("Report photo " + str(index + 1), func(): _photo = photo; _page = "report"; _render(), pending.is_empty())
 			_button("Block this player…", func(): _page = "block"; _render())
 		var blocked: Array = client.blocked_players()
 		if not blocked.is_empty():
