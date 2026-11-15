@@ -41,9 +41,18 @@ class FakeNative extends Object:
 	var calls: Array[String] = []
 	## Who is calling: "main" until the chapter scene enters the tree.
 	var caller := "main"
+	## While true, a tester receipt read waits for release(): a test decides when Home's read ends.
+	var holding := false
+	var held: Array = []
 	func secure_get(name: String, request_id: String) -> void:
 		calls.append(caller + ": get " + name)
-		secure_result.emit.call_deferred(request_id, "get", JSON.stringify({"found": values.has(name), "value": values.get(name)}))
+		var answer := [request_id, "get", JSON.stringify({"found": values.has(name), "value": values.get(name)})]
+		if holding and name.begins_with("tester_"): held.append(answer)
+		else: secure_result.emit.call_deferred(answer[0], answer[1], answer[2])
+	func release() -> void:
+		holding = false
+		for answer: Array in held: secure_result.emit.call_deferred(answer[0], answer[1], answer[2])
+		held.clear()
 	func secure_put(name: String, value: String, request_id: String) -> void:
 		calls.append(caller + ": put " + name)
 		values[name] = value
@@ -110,7 +119,8 @@ func _cold_tap() -> void:
 	var opened := await _measure(func():
 		app.journey_flow.open_solo_chapter(CHAPTER)
 		var card: Node = root.get_node_or_null("ChapterLoadingCard")
-		cards.append(card != null and card.visible))
+		cards.append(card != null and card.visible)
+		native.release())
 	_check(cards == [true], "The tap puts the opening card up at once, before the receipt read ends")
 	_check(opened.ready and opened.chapter_reads == 0 and current_scene.admission.reason == "tester", "The chapter takes Main's read made during the tap (%s)" % _cost(opened))
 	print("COLD TAP: %s, %d frames" % [_cost(opened), opened.frames])
@@ -254,6 +264,7 @@ func _hand_over_rules() -> void:
 ## Home with a saved identity on a phone, its startup receipt read finished.
 func _home(read_finished: bool = true) -> Node:
 	PlatformSupport.override_platform = ""
+	native.holding = not read_finished
 	var app: Node = Main.new()
 	var path := "user://test-premium-cost-%d.json" % Time.get_ticks_usec()
 	paths.append(path)
@@ -261,19 +272,25 @@ func _home(read_finished: bool = true) -> Node:
 	app.tester_access_factory = func(): return TesterAccess.new()
 	root.add_child(app)
 	current_scene = app
+	# Main's notification binding read is startup work that lands whenever the
+	# network is first idle, never an open's: answer it without the secure store
+	# so every count here is only the reads it measures.
+	app.turn_notifications._read_binding = func() -> Dictionary: return {"ok": true, "value": {}}
 	app.api.base_url = BASE
-	var deadline := Time.get_ticks_msec() + 5000
+	var deadline := Time.get_ticks_msec() + 10000
 	if not read_finished:
-		while not app.tester_access.cache_checking and Time.get_ticks_msec() < deadline: await process_frame
+		# Home's receipt read is held open until the tap (FakeNative.release).
+		while not (app.tester_access.cache_checking and native.held.size() > 0 and not app._chapter_open_busy()) and Time.get_ticks_msec() < deadline: await process_frame
+		_check(not app._chapter_open_busy(), "Fixture: Home's startup work is done before the tap")
 		return app
 	while (app._tester_context().is_empty() or app.tester_access.cache_checked_context != app._tester_context()) and Time.get_ticks_msec() < deadline:
 		await process_frame
 	if app.tester_access.cache_checked_context.is_empty():
 		_check(false, "Fixture: Home finished its startup receipt read")
 		return null
-	# Home's own first read of the notification binding is startup work, not an
-	# open's: it lands whenever the network is first idle, so let it finish first.
-	while not app.turn_notifications._loaded and Time.get_ticks_msec() < deadline: await process_frame
+	# An open made while Home's startup refresh runs is refused with a toast: tap only once it is done.
+	while app._chapter_open_busy() and Time.get_ticks_msec() < deadline: await process_frame
+	_check(not app._chapter_open_busy(), "Fixture: Home's startup work is done before the tap")
 	await process_frame
 	return app
 
