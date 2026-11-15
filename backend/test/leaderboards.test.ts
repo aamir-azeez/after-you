@@ -27,6 +27,9 @@ import secondA from "../../game/tests/fixtures/v2/garden-a.json";
 import secondB from "../../game/tests/fixtures/v2/garden-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
 import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
+import { developerGhost, developerGhostSplits } from "../src/duels/developer-ghosts";
+import { blankSide, newGhostRace, type Duel } from "../src/duels/model";
+import { OWNER_ALIAS } from "../src/owner";
 
 // Every board has a developers' best now, so a test that needs the "no best yet"
 // path clears one board's best here; afterEach puts the real values back.
@@ -35,6 +38,14 @@ vi.mock("../src/leaderboards/developer-bests", async original => {
   const actual = await original<typeof import("../src/leaderboards/developer-bests")>();
   Object.assign(bests.real, actual.DEVELOPER_BESTS);
   return { DEVELOPER_BESTS: Object.assign(bests.live, actual.DEVELOPER_BESTS) };
+});
+// The shipped Our run times, the same way: a test that needs the played Relay fixture to beat the shipped run raises it.
+const shippedGhosts = vi.hoisted(() => ({ live: {} as Record<string, number>, real: {} as Record<string, number> }));
+vi.mock("../src/duels/developer-ghosts", async original => {
+  const actual = await original<typeof import("../src/duels/developer-ghosts")>();
+  Object.assign(shippedGhosts.real, actual.DEVELOPER_GHOSTS);
+  Object.assign(shippedGhosts.live, actual.DEVELOPER_GHOSTS);
+  return { ...actual, DEVELOPER_GHOSTS: shippedGhosts.live, developerGhost: (key: string) => shippedGhosts.live[key] ?? null };
 });
 
 // Synthetic identities only: every account here is made by POST /v1/identity in the test runtime.
@@ -127,17 +138,17 @@ async function run(ticks: number, finished_ms: number, members: [string, string]
   return { schema_version: 1, board: RELAY_BOARD, entry_id: await entryId(`room${++serial}`.padEnd(22, "z"), 0), pair_key: await pairKey(...members), members, ticks,
     finished_at: new Date(finished_ms).toISOString(), finished_ms, chapter: { ...CHAPTERS[0].adapter.key }, simulation_version: 8, checkpoint, proof: await encodeProof(checkpoint) };
 }
-async function rankDirect(entry: LeaderboardRun, best: number | null = 1) {
+async function rankDirect(entry: LeaderboardRun, best: number | null = 1, owner: string | null = null) {
   const stub = board();
-  await stub.submit(RELAY_BOARD, entry);
+  await stub.submit(RELAY_BOARD, entry, undefined, owner);
   await stub.standings(RELAY_BOARD, [{ entry_id: entry.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
   const work = await stub.pendingWork();
   const mine = work.replay.find(item => item.entry_id === entry.entry_id)!;
-  return stub.verdicts(RELAY_BOARD, [{ entry_id: entry.entry_id, proof_hash: mine.proof_hash, valid: true, measured_ticks: entry.ticks, reason: "" }], best);
+  return stub.verdicts(RELAY_BOARD, [{ entry_id: entry.entry_id, proof_hash: mine.proof_hash, valid: true, measured_ticks: entry.ticks, reason: "" }], best, 0, owner);
 }
 
 beforeEach(async () => { await forgetViews(boardKeys()); forgetReplays(); });
-afterEach(async () => { Object.assign(bests.live, bests.real); await reset(); });
+afterEach(async () => { Object.assign(bests.live, bests.real); Object.assign(shippedGhosts.live, shippedGhosts.real); await reset(); });
 
 describe("leaderboard rules", () => {
   it("orders by ticks, then by when the last turn was accepted", () => {
@@ -1134,5 +1145,103 @@ describe("pair keys by platform account (PAIR-KEYS.md)", () => {
     expect(row.state).toBe("ranked");
     expect(row.data).not.toContain("account_key");
     expect(row.data).not.toContain(members[0]);
+  });
+});
+
+describe("Our run", () => {
+  // A synthetic owner: the id CONFIG's alias would name (owner.ts), handed to the board as the Worker hands it.
+  const OWNER = "o".repeat(22);
+  const partner = (letter: string): [string, string] => [OWNER, letter.repeat(22)];
+  const ourRows = () => runInDurableObject(board(), async (_, ctx) => ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM lb_our_run").one().n);
+  const ghostRace = (ticks: number, duelId = "d".repeat(32)) => board().duelCreate(newGhostRace({ duel_id: duelId, board: RELAY_BOARD, chapter: { ...CHAPTERS[0].adapter.key }, steps: 4, starter: "x".repeat(22),
+    a: blankSide(["x".repeat(22), "y".repeat(22)], "k".repeat(64)), ghost: { source: "developer", entry_id: null, rank: null, ticks, names: null, splits: developerGhostSplits(RELAY_BOARD)! } }, Date.now()));
+
+  it("is the owner pair's checked run once it beats the shipped run, and only a faster owner run replaces it", async () => {
+    const shipped = developerGhost(RELAY_BOARD)!;
+    expect((await board().view(RELAY_BOARD)).our_run).toBeUndefined();
+    const first = await run(shipped - 10, 1000, partner("p"));
+    const { rows } = await meterRows({ board: board() }, () => rankDirect(first, 1, OWNER));
+    const view = await board().view(RELAY_BOARD);
+    expect(view.our_run).toEqual({ entry_id: first.entry_id, ticks: shipped - 10, replay_hash: view.top[0].replay_hash });
+    // Slower than Our run, a faster run of another pair, a failed check, the owner's run with no owner named: none replace it.
+    await rankDirect(await run(shipped - 5, 2000, partner("q")), 1, OWNER);
+    await rankDirect(await run(shipped - 50, 3000), 1, OWNER);
+    const failed = await run(shipped - 70, 5000, partner("s"));
+    await board().submit(RELAY_BOARD, failed, undefined, OWNER);
+    await board().standings(RELAY_BOARD, [{ entry_id: failed.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
+    const work = (await board().pendingWork()).replay.find(item => item.entry_id === failed.entry_id)!;
+    await board().verdicts(RELAY_BOARD, [{ entry_id: failed.entry_id, proof_hash: work.proof_hash, valid: false, measured_ticks: failed.ticks, reason: "replay_mismatch" }], 1, 0, OWNER);
+    expect((await board().view(RELAY_BOARD)).our_run?.entry_id).toBe(first.entry_id);
+    await rankDirect(await run(shipped - 60, 4000, partner("r")), 1, null);
+    expect((await board().view(RELAY_BOARD)).our_run?.entry_id).toBe(first.entry_id);
+    // A faster owner run, with any partner, takes its one row.
+    const faster = await run(shipped - 80, 6000, partner("t"));
+    await rankDirect(faster, 1, OWNER);
+    expect((await board().view(RELAY_BOARD)).our_run).toMatchObject({ entry_id: faster.entry_id, ticks: shipped - 80 });
+    expect(await ourRows()).toBe(1);
+    console.log(`Our run kept with a checked run: ${rows.board.read} rows read, ${rows.board.written} written in all for the post, account check and verdict`);
+  });
+
+  it("enters a full board for the check, keeps its replay after the run misses the top 10, and races in place of the shipped run", async () => {
+    for (let index = 0; index < TOP_PLACES; index++) await rankDirect(await run(100 + index, 1000 + index));
+    const owners = await run(300, 9000, partner("p"));
+    expect((await rankDirect(owners, 1, OWNER)).ranked).toEqual([]);
+    const view = await board().view(RELAY_BOARD);
+    expect(view.top.map(row => row.entry_id)).not.toContain(owners.entry_id);
+    const hash = await digest(canonicalJson(owners.checkpoint));
+    expect(view.our_run).toEqual({ entry_id: owners.entry_id, ticks: 300, replay_hash: hash });
+    // Its replay is served like a top 10 run's, with no place and no names.
+    const served = await call(`/v1/leaderboards/${RELAY_BOARD}/replay/${owners.entry_id}`);
+    expect(served.status).toBe(200);
+    expect(await served.json()).toMatchObject({ entry_id: owners.entry_id, rank: null, ticks: 300, names: null, gold_leaf: false, digest: hash });
+    // The duel lobby's race list and a new race against Our run take its time; a retried create keeps the race as made.
+    const reader = await create();
+    const ghosts = await call("/v1/duels/ghosts", "GET", reader, undefined, { ...ON, features: ["LEADERBOARDS", "DUELS"] });
+    expect(((await ghosts.json()) as { boards: { board: string; developer: number }[] }).boards.find(item => item.board === RELAY_BOARD)!.developer).toBe(300);
+    const raced = (await ghostRace(developerGhost(RELAY_BOARD)!)) as Duel;
+    expect(raced.ghost).toEqual({ source: "developer", entry_id: owners.entry_id, rank: null, ticks: 300, names: null, replay_hash: hash });
+    expect(((await ghostRace(developerGhost(RELAY_BOARD)!)) as Duel).ghost).toEqual(raced.ghost);
+  });
+
+  it("takes the owner's played run, named by CONFIG's alias, with its time after each turn from its replay", async () => {
+    shippedGhosts.live[RELAY_BOARD] = RELAY_TICKS + 30;
+    const owner = await create(), mate = await create();
+    const owned: Vars = { ...ON, friend_aliases: { [OWNER_ALIAS]: owner.player_id } };
+    // Ten faster runs fill the board, and the cached board says so: the post still goes, as the owner's run beats Our run.
+    for (let index = 0; index < TOP_PLACES; index++) await rankDirect(await run(100 + index, 1000 + index));
+    await view(RELAY_BOARD, owned);
+    const played = await almostDone(owner, mate, owned);
+    expect((await played.last()).status).toBe(200);
+    const { entries } = await (await operator("pending", { schema_version: 1 }, await deriveJobToken(OPERATOR), owned)).json<{ entries: { board: string; entry_id: string; ticks: number; proof_hash: string }[] }>();
+    expect(entries.map(entry => entry.ticks)).toEqual([RELAY_TICKS]);
+    const verdicts = entries.map(entry => ({ board: entry.board, entry_id: entry.entry_id, proof_hash: entry.proof_hash, valid: true, measured_ticks: entry.ticks, reason: "" }));
+    expect((await operator("verdicts", { schema_version: 1, verdicts }, await deriveJobToken(OPERATOR), owned)).status).toBe(200);
+    expect((await view(RELAY_BOARD, owned)).our_run).toMatchObject({ entry_id: entries[0].entry_id, ticks: RELAY_TICKS });
+    expect(((await ghostRace(RELAY_TICKS + 30)) as Duel).ghost!.splits).toEqual([140, 280, 430, RELAY_TICKS]);
+  });
+
+  it("goes back to the shipped run when either player's account is erased or the run is struck", async () => {
+    const shipped = developerGhost(RELAY_BOARD)!;
+    const mine = await run(shipped - 10, 1000, partner("p"));
+    await rankDirect(mine, 1, OWNER);
+    await board().forget(RELAY_BOARD, "p".repeat(22));
+    expect((await board().view(RELAY_BOARD)).our_run).toBeUndefined();
+    expect(await ourRows()).toBe(0);
+    expect(((await ghostRace(shipped)) as Duel).ghost).toMatchObject({ source: "developer", entry_id: null, ticks: shipped });
+    const again = await run(shipped - 10, 2000, partner("q"));
+    await rankDirect(again, 1, OWNER);
+    expect((await board().view(RELAY_BOARD)).our_run?.entry_id).toBe(again.entry_id);
+    await board().strike(RELAY_BOARD, again.entry_id);
+    expect((await board().view(RELAY_BOARD)).our_run).toBeUndefined();
+  });
+
+  it("takes the owner's run that ranked before Our run could move on their next post", async () => {
+    const shipped = developerGhost(RELAY_BOARD)!;
+    const before = await run(shipped - 30, 1000, partner("p"));
+    await rankDirect(before, 1, null);
+    expect((await board().view(RELAY_BOARD)).our_run).toBeUndefined();
+    const next = await run(shipped - 5, 2000, partner("p"));
+    expect((await board().submit(RELAY_BOARD, next, undefined, OWNER)).status).toBe("not_placed");
+    expect((await board().view(RELAY_BOARD)).our_run).toMatchObject({ entry_id: before.entry_id, ticks: shipped - 30 });
   });
 });

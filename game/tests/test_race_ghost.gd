@@ -130,6 +130,18 @@ func _service(relay: Dictionary) -> void:
 	var developer: Dictionary = await RaceGhost.new(api, OWNER).turn(ROOM, true, chapter, 0, "a")
 	_check(not developer.is_empty() and developer.developer and developer.look == {} and api.requests.size() == asked, "a race against Our run plays the shipped run, asking nothing")
 	_check(RaceGhost.developer_run(board, int(relay.ticks) + 1).is_empty() and RaceGhost.developer_run("no-such-board@1", 1).is_empty(), "a race whose time is not the shipped run's has no ghost")
+	# The owner's run as Our run (backend leaderboards/our-run.ts): the race names its entry and replay, fetched and kept like a board run's, still Our run in the default look.
+	var owners := _race_view(board, "running", str(relay.proof_hash))
+	owners.duel_id = "a".repeat(32)
+	owners.ghost = {"source": "developer", "entry_id": ENTRY, "rank": null, "ticks": int(relay.ticks) - 1, "names": null, "replay_hash": relay.proof_hash}
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": PARTNER, "intact": true, "invites_in": [], "invite_out": null}, "duels": [owners]}}
+	api.replies[replay_path] = {"ok": true, "data": {"schema_version": 1, "board": board, "entry_id": ENTRY, "rank": null, "ticks": int(relay.ticks) - 1, "finished_on": "", "names": null, "gold_leaf": false, "digest": relay.proof_hash, "byte_length": int(relay.byte_length), "body": relay.body}}
+	await DuelsClient.shared(api, OWNER).lobby()
+	var fetched := api.requests.count(replay_path)
+	var served: Dictionary = await RaceGhost.new(api, OWNER).turn(ROOM, true, chapter, 0, "a")
+	_check(not served.is_empty() and served.developer and served.look == {} and served.name == "" and api.requests.count(replay_path) == fetched + 1, "a race against the owner's run as Our run fetches its replay once and plays it as Our run")
+	_check(TheirRun.kept_run(OWNER, owners.duel_id, true).get("digest") == relay.proof_hash, "and keeps it as a ghost copy, so erasure and the race's end clear it")
+	TheirRun.forget(OWNER, owners.duel_id, true)
 	api.queue_free()
 	await _drop_mode(relay)
 

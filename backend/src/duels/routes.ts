@@ -22,6 +22,7 @@ import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
 import { developerGhost, developerGhostSplits } from "./developer-ghosts";
+import { ourRunTicks } from "../leaderboards/our-run";
 import { announceLobby, hintsField } from "./news";
 import { blobBase64 } from "../blob-codec";
 import { looksOn } from "../pollen/features";
@@ -234,12 +235,12 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
   };
 }
 
-/** Each board's times to race: its top runs from the view (cached when it can be) and the developers' ghost. */
+/** Each board's times to race: its top runs from the view (cached when it can be) and Our run, the owner's run the view names or else the shipped one (leaderboards/our-run.ts). */
 async function ghosts(env: Env): Promise<unknown> {
   const boards = await pooled([...boardKeys()], BOARD_CONCURRENCY, async key => {
     let view = await cachedView(key);
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
-    return { board: key, developer: developerGhost(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
+    return { board: key, developer: ourRunTicks(key, view), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
   });
   return { schema_version: 1, boards };
 }
@@ -357,7 +358,8 @@ async function ghostRace(env: Env, reach: Reach, player: string, input: unknown,
   if (body.source === "developer") {
     const ticks = developerGhost(key);
     if (ticks === null || body.entry_id !== null) throw new ApiError(404, "ghost_not_found");
-    // Its time after each turn, so a phone can set it beside the pair's after the same number of turns.
+    // Its time after each turn, so a phone can set it beside the pair's after the same number of turns. The board swaps in
+    // the owner's run when it keeps one as Our run (leaderboards/board.ts duelCreate), in the same request.
     const splits = developerGhostSplits(key);
     ghost = { source: "developer", entry_id: null, rank: null, ticks, names: null, ...(splits && splits.length === row.adapter.stages.length * 2 ? { splits } : {}) };
   } else {

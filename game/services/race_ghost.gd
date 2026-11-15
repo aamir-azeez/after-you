@@ -9,7 +9,10 @@ extends RefCounted
 ##   replay_hash (backend duels/model.ts Ghost). Our run is the developers'
 ##   whole run shipped in content/dev_ghosts.json (the server races the same
 ##   recording, backend duels/developer-ghosts.ts): no request, and no ghost
-##   when the race's time is not the shipped run's (a later re-record).
+##   when the race's time is not the shipped run's (a later re-record). Once
+##   the owner's run is Our run on the board (backend leaderboards/our-run.ts),
+##   the race names its entry_id and replay_hash like a board run, and it is
+##   fetched and kept the same way.
 ## - A board run's replay: fetched once from the board (services/leaderboard_client.gd
 ##   replay_blob) and kept still encoded and hash-checked in the shared blob
 ##   format, beside a friend duel's other run (services/duel_their_run.gd, as
@@ -78,7 +81,7 @@ func turn(room_id: String, duel_room: bool, chapter_key: String, stage_index: in
 	var ghost: Variant = race.get("ghost")
 	if not ghost is Dictionary or not race.status in ["running", "challenged"]: return {}
 	var developer: bool = ghost.source == "developer"
-	if not developer and (ghost.get("replay_hash") == null or ghost.get("entry_id") == null): return {}
+	if not developer and not served(ghost): return {}
 	var parts := await _parts_of(race, chapter_key)
 	if stage_index < 0 or stage_index >= parts.size(): return {}
 	var key := "%d|%s" % [stage_index, role]
@@ -99,7 +102,7 @@ func turn(room_id: String, duel_room: bool, chapter_key: String, stage_index: in
 ## the top 10 before the first turn still plays (no decode; a failure retries at the turn).
 func prefetch(race: Dictionary) -> void:
 	var ghost: Variant = race.get("ghost")
-	if not keep_copy or not ghost is Dictionary or ghost.get("replay_hash") == null or ghost.get("entry_id") == null: return
+	if not keep_copy or not ghost is Dictionary or not served(ghost): return
 	if not TheirRun.kept_run(_owner, str(race.duel_id), true).get("digest", "") == ghost.replay_hash: await _fetch(race)
 
 ## Lets go of the copy and tracks of every ghost race `lobby` does not show
@@ -130,9 +133,10 @@ func _parts_of(race: Dictionary, chapter_key: String) -> Array:
 	if duel_id != _duel_id:
 		_forget_memory()
 		_duel_id = duel_id
-	var developer: bool = race.ghost.source == "developer"
+	# Our run as the game ships it, else a run the server serves (a board run, or the owner's run as Our run).
+	var shipped: bool = race.ghost.source == "developer" and not served(race.ghost)
 	# The switch off: a board run plays only while the board still lists it with this replay.
-	if not keep_copy and not developer:
+	if not keep_copy and race.ghost.source != "developer":
 		var row := await _row(race)
 		if duel_id != _duel_id: return []
 		if row.get("replay_hash") != race.ghost.replay_hash:
@@ -141,7 +145,7 @@ func _parts_of(race: Dictionary, chapter_key: String) -> Array:
 			return []
 	if not _parts.is_empty(): return _parts
 	var kept: Dictionary
-	if developer: kept = developer_run(str(race.board), int(race.ghost.ticks))
+	if shipped: kept = developer_run(str(race.board), int(race.ghost.ticks))
 	else:
 		kept = TheirRun.kept_run(_owner, duel_id, true) if keep_copy else {}
 		if kept.get("digest", "") != race.ghost.replay_hash: kept = await _fetch(race)
@@ -149,7 +153,7 @@ func _parts_of(race: Dictionary, chapter_key: String) -> Array:
 	var parts: Variant = await Reaper.run(Callable(TheirRun, "parts").bind(kept, chapter_key), true)
 	if duel_id != _duel_id: return []
 	if not parts is Array or parts.is_empty():
-		if not developer: TheirRun.forget(_owner, duel_id, true)
+		if not shipped: TheirRun.forget(_owner, duel_id, true)
 		return []
 	_parts = parts
 	return _parts
@@ -161,6 +165,10 @@ func _fetch(race: Dictionary) -> Dictionary:
 	if not answer.get("ok", false) or _owner != owner or owner.is_empty(): return {}
 	if keep_copy: TheirRun.keep(owner, str(race.duel_id), answer.blob, true)
 	return answer.blob
+
+## Whether the race's ghost names a run the server serves (entry_id and replay_hash): a board run, or the owner's run as Our run.
+static func served(ghost: Dictionary) -> bool:
+	return ghost.get("replay_hash") != null and ghost.get("entry_id") != null
 
 ## Our run on `board` as the game ships it ({digest, byte_length, body}, as a kept
 ## run), or {} when there is none or its time is not `ticks`, the time the race races.

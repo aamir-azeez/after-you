@@ -1,4 +1,5 @@
 import type { PairLooks } from "./run-looks";
+import type { OurRunView } from "./our-run";
 
 /**
  * What anyone may read of a board, the same bytes for every reader, so it can
@@ -12,9 +13,11 @@ import type { PairLooks } from "./run-looks";
  *   look, also on a hidden-name row (run-looks.ts). Left out while looks are off.
  * - checking: opaque ids of runs waiting for the replay check or a person.
  *   A member works out their own run's id (run.ts entryId) to find it here.
+ * - `our_run`: the owner's run that is Our run here (our-run.ts), left out while the shipped run is.
+ *   GET .../replay/<entry_id> serves its replay too.
  */
 export type BoardRow = { rank: number; entry_id: string; ticks: number; finished_on: string; names: string[] | null; gold_leaf: boolean; replay_hash: string | null; looks?: PairLooks };
-export type BoardView = { schema_version: 1; board: string; top: BoardRow[]; checking: string[] };
+export type BoardView = { schema_version: 1; board: string; top: BoardRow[]; checking: string[]; our_run?: OurRunView };
 
 export function emptyView(board: string): BoardView { return { schema_version: 1, board, top: [], checking: [] }; }
 
