@@ -300,7 +300,6 @@ replay_transfer 33
 replay_transfer_delivery 7
 replay_transfer_session 14
 request_queue 0
-restart_chapter_ui 6
 resume_child_sound 7
 review_access 1
 rolling_offer 6

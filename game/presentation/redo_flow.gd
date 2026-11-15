@@ -16,10 +16,16 @@ extends RefCounted
 ## fetched it (replace), and ask, agree to or decline starting the room over
 ## from its first stage (start over); both need version 2 redo reads.
 ##
+## A solo chapter shares Play my turn again, Keep it as it is and Start over:
+## its journey plays the last saved turn again in memory until a new one is
+## saved (relay_journey.gd begin_replace), and Start over asks once, then
+## takes the chapter back to its first stage.
+##
 ## Host contract (relay_preview.gd): online_session, journey, controls, mode,
 ## running, backgrounded, _leaving, _room_context_lost; calls _hard_on(),
 ## _ordinary_redo_available(), _waiting_partner_name(), _partner_id(),
-## _show_ready(), _show_online_waiting(), _online_refresh(), _begin() and
+## _show_ready(), _show_online_waiting(), _online_refresh(), _begin(),
+## _after_visible_wait(), _drop_prefetch(), _solo_turn_changed(), _note_refusal() and
 ## offer_redo_alerts.
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoPrompts = preload("res://services/redo_prompts.gd")
@@ -61,6 +67,14 @@ func client() -> RefCounted:
 ## An ordinary Together room (never a hard one) with a redo client.
 func available() -> bool:
 	return host._ordinary_redo_available() and not host._hard_on()
+
+## A solo chapter whose journal plays turns again (never a hard run, a replay or a held journal).
+func solo() -> bool:
+	return is_instance_valid(host) and host.online_session == null and host.journey != null and host.journey.has_method("begin_replace") and not host.journey.read_only and not host._hard_on() and not host._solo_replay_only and not host._solo_replay_context_error
+
+## A solo tap lands only on the page it was drawn on (a turn ending's card is a review).
+func _solo_tap_open() -> bool:
+	return solo() and host.mode in ["ready", "complete", "review"] and not host.running and not host.backgrounded and not host._leaving
 
 ## The friend's name as the room shows it ("A friend" when unknown).
 func partner() -> String:
@@ -284,15 +298,30 @@ func offer_owed_alerts() -> void:
 ## The server says the friend's phone has not fetched this player's saved first turn
 ## (version 2 redo reads): it can be played again, and the new one replaces it when saved.
 func can_replace() -> bool:
+	if solo(): return not replacing() and not host.journey.redo_plan().is_empty()
 	return available() and not host._duel_room() and host.online_session.redo_extras_supported() and host.online_session.mutations_enabled() and not replacing() and host.journey.pending().is_empty() and not host.journey.my_turn() and client().replace_open()
 
 ## This player is playing their saved turn again (relay_room_coordinator.gd begin_replace).
 func replacing() -> bool:
-	return is_instance_valid(host) and host.online_session != null and host.journey != null and host.journey.has_method("replacing") and host.journey.replacing()
+	return is_instance_valid(host) and host.journey != null and host.journey.has_method("replacing") and host.journey.replacing()
 
 ## Play my turn again: the turn starts at once from the same start, with "Your turn again".
 ## Leaving it unsaved keeps the saved turn.
 func replace(control: Control = null) -> void:
+	if solo():
+		# Solo: the page shows Your turn again with Record, as the board draws it.
+		if not _solo_tap_open() or not can_replace(): return
+		var journey: RefCounted = host.journey
+		var plan: Dictionary = journey.redo_plan()
+		host._drop_prefetch()
+		# Reopening a stage can replay its kept chain: a slow one says so first, as Save turn does.
+		host._after_visible_wait(func() -> void:
+			if host.journey != journey: return
+			if journey.begin_replace(plan): host._solo_turn_changed()
+			var reason: String = journey.last_error
+			host._show_ready()
+			if not journey.replacing(): host._note_refusal(reason))
+		return
 	await _tap(control, func() -> void:
 		if not can_replace() or not host.journey.begin_replace(): return
 		_play_after_accept = true
@@ -300,6 +329,12 @@ func replace(control: Control = null) -> void:
 
 ## Keep it as it is: back to the saved turn and the waiting page.
 func keep_saved(control: Control = null) -> void:
+	if solo():
+		if not replacing() or host.running or host.backgrounded or host._leaving: return
+		host.journey.end_replace()
+		host._solo_turn_changed()
+		host._show_ready()
+		return
 	await _tap(control, func() -> void:
 		if not replacing(): return
 		host.journey.end_replace()
@@ -312,20 +347,38 @@ func keep_saved(control: Control = null) -> void:
 var _over_card: Control
 func confirm_start_over(control: Control, agree: bool) -> void:
 	if is_instance_valid(_over_card) or not (can_answer_start_over() if agree else can_ask_start_over()): return
+	if solo() and not _solo_tap_open(): return
 	var card := InGameModal.open(host.controls.ui, "StartOverConfirm", PlayerCopy.START_OVER_CONFIRM_TITLE, "", control)
 	_over_card = card
 	card.widen(500.0)
-	card.label(PlayerCopy.START_OVER_CONFIRM_BODY)
+	card.label(PlayerCopy.SOLO_START_OVER_BODY if solo() else PlayerCopy.START_OVER_CONFIRM_BODY)
+	var journey: RefCounted = host.journey
+	var from_mode: String = host.mode
 	card.add_actions(PlayerCopy.START_OVER_CONFIRM, func() -> void:
 		if _over_card != card or not is_instance_valid(card): return
 		_over_card = null
 		card.close(false)
-		if agree: await agree_start_over(control)
+		if solo(): _start_over_solo(journey, from_mode)
+		elif agree: await agree_start_over(control)
 		else: await ask_start_over(control), PlayerCopy.START_OVER_CANCEL, true)
 	card.closed.connect(func() -> void: if _over_card == card: _over_card = null)
 
+## Solo Start over, confirmed: the chapter goes back to its first stage, the
+## attempt kept in Replays (relay_journey.gd fork_from_stage). A page that moved
+## on since the card opened is left as it is.
+func _start_over_solo(journey: RefCounted, from_mode: String) -> void:
+	if host.journey != journey or host.mode != from_mode or not _solo_tap_open() or not can_ask_start_over(): return
+	host._drop_prefetch()
+	var done: bool = journey.fork_from_stage(0)
+	var reason: String = journey.last_error
+	if done: host._solo_turn_changed()
+	host._show_ready()
+	if not done: host._note_refusal(reason)
+
 ## Either player may ask to take the room back to its first stage, once per room position.
+## Solo, any saved progress can start over.
 func can_ask_start_over() -> bool:
+	if solo(): return not replacing() and host.journey.can_restart()
 	return available() and not host._duel_room() and host.online_session.redo_extras_supported() and host.online_session.mutations_enabled() and not replacing() and host.journey.pending().is_empty() and client().can_ask_start_over()
 
 ## The friend asked this player to start over.

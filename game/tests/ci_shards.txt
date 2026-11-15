@@ -304,7 +304,6 @@ replay_transfer 3
 replay_transfer_delivery 2
 replay_transfer_session 2
 request_queue 2
-restart_chapter_ui 1
 resume_child_sound 3
 review_access 3
 rolling_offer 2

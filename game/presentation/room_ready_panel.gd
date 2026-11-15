@@ -30,6 +30,8 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	back_button.custom_minimum_size = Vector2(48,48)
 	back_button.tooltip_text = "Back"
 	back_button.accessibility_name = "Back"
+	# The shared Back action (action_buttons.gd "back"), drawn as the page's icon.
+	back_button.set_meta("action_id", "back")
 	ThemeRules.danger(back_button,BACK)
 	back_button.pressed.connect(back)
 	header.add_child(back_button)

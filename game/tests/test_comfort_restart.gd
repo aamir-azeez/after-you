@@ -84,7 +84,7 @@ func _full_restart(chapter: String, retained: Dictionary) -> void:
 	var cold := Journey.new(path, null, chapter)
 	cold.load_data()
 	if not _check(not cold.read_only and Canonical.same(cold.draft(), draft), "New8 draft and old backup survive real JSON cold restore"): return
-	_check(cold.can_restart() and not cold.restart_upgrades_rules(), "Already-fresh8 saved progress never advertises the old-rules upgrade")
+	_check(cold.can_restart() and not _upgrades(cold), "Already-fresh8 saved progress never advertises the old-rules upgrade")
 	var resumed: RefCounted = cold.create_live_simulation(true)
 	_replay_draft(resumed, chapter, draft)
 	_check(resumed != null and Canonical.same(resumed.export_recording(), draft), "Resumed new8 native replay retains exact draft evidence")
@@ -134,7 +134,7 @@ func _empty_restart(chapter: String, retained: Dictionary) -> void:
 	var before := FileAccess.get_file_as_string(path)
 	var journey := Journey.new(path, null, chapter)
 	journey.load_data()
-	if not _check(not journey.read_only and journey.can_restart() and journey.restart_upgrades_rules(), "Retained empty old metadata offers a deliberate full restart"): return
+	if not _check(not journey.read_only and journey.can_restart() and _upgrades(journey), "Retained empty old metadata offers a deliberate full restart"): return
 	var old: RefCounted = journey.create_live_simulation(false)
 	_check(old != null and old.simulation_version == retained.simulation_version and FileAccess.get_file_as_string(path) == before, "Opening empty old metadata keeps its pin and does not write")
 	if not _check(journey.fork_from_stage(0), "Explicit empty-old restart upgrades without inventing recording evidence"): return
@@ -153,14 +153,14 @@ func _unfinished_restart(chapter: String, retained: Dictionary, kind: String) ->
 	if not _seed(path, empty): return
 	var journey := Journey.new(path, null, chapter)
 	var untouched := FileAccess.get_file_as_string(path)
-	_check(not journey.can_restart() and journey.simulation_version() == -1 and not journey.restart_upgrades_rules(), "Unloaded eligibility observers do not restore or grant restart")
+	_check(not journey.can_restart() and journey.simulation_version() == -1 and not _upgrades(journey), "Unloaded eligibility observers do not restore or grant restart")
 	_check(FileAccess.get_file_as_string(path) == untouched, "Unloaded queries leave retained bytes alone")
 	journey.load_data()
 	if not _check(not journey.read_only, "Valid old empty journal loads before receiving saved progress"): return
 	if chapter == Registry.FIRST_STEPS:
-		_check(not journey.can_restart() and not journey.restart_upgrades_rules() and not journey.fork_from_stage(0), "Empty First Steps already chooses fresh A and offers no empty restart")
+		_check(not journey.can_restart() and not _upgrades(journey) and not journey.fork_from_stage(0), "Empty First Steps already chooses fresh A and offers no empty restart")
 	else:
-		_check(journey.can_restart() and journey.restart_upgrades_rules(), "Old empty metadata needs explicit action rather than automatic migration")
+		_check(journey.can_restart() and _upgrades(journey), "Old empty metadata needs explicit action rather than automatic migration")
 	_check(FileAccess.get_file_as_string(path) == untouched, "Eligibility alone never manufactures an archive or upgrades saved metadata")
 	if kind == "draft_a":
 		var engine: Script = Registry.simulation_script(chapter)
@@ -170,7 +170,7 @@ func _unfinished_restart(chapter: String, retained: Dictionary, kind: String) ->
 		if not _check(journey.save_draft(source_simulation.export_recording()), "Persist actual unfinished old source recording"): return
 	else:
 		if not _check(journey.accept_recording(source), "Persist old accepted source before its receiver exists"): return
-		_check(journey.can_restart() and journey.restart_upgrades_rules(), "An accepted old A alone enables explicit full restart")
+		_check(journey.can_restart() and _upgrades(journey), "An accepted old A alone enables explicit full restart")
 		if kind == "draft_b":
 			var receiver: RefCounted = journey.create_live_simulation(false)
 			if not _check(receiver != null and receiver.simulation_version == old_rules, "Old accepted A still starts old B"): return
@@ -182,7 +182,7 @@ func _unfinished_restart(chapter: String, retained: Dictionary, kind: String) ->
 	var cold := Journey.new(path, storage, chapter)
 	cold.load_data()
 	if not _check(not cold.read_only and Canonical.same(cold._state, original), "Cold unfinished old journal restores all exact A/draft evidence"): return
-	_check(cold.can_restart() and cold.restart_upgrades_rules() and cold.pairs().is_empty(), "Saved unfinished old progress enables a deliberate upgrade with no completed pairs")
+	_check(cold.can_restart() and _upgrades(cold) and cold.pairs().is_empty(), "Saved unfinished old progress enables a deliberate upgrade with no completed pairs")
 	var resumed: RefCounted = cold.create_live_simulation(true)
 	if not _check(resumed != null and resumed.simulation_version == old_rules, "Mere opening or Resume never chooses8 for an unfinished old turn"): return
 	if not original.draft.is_empty():
@@ -202,7 +202,7 @@ func _unfinished_restart(chapter: String, retained: Dictionary, kind: String) ->
 	_check(FileAccess.get_sha256(archive_path) == archive_hash, "Successful retry reuses the exact old unfinished archive")
 	var fresh: RefCounted = cold.create_live_simulation(false)
 	_check(fresh != null and fresh.simulation_version == 8 and cold.role() == "a", "Explicit unfinished restart creates a real new8 source engine")
-	_check(not cold.restart_upgrades_rules(), "Already-fresh attempt no longer offers the rules upgrade")
+	_check(not _upgrades(cold), "Already-fresh attempt no longer offers the rules upgrade")
 	_check(cold.simulation_version() == (4 if chapter == Registry.FIRST_STEPS else 8), "First Steps retains its historical envelope convention; other journals pin8")
 
 func _first_steps_unfinished() -> void:
@@ -219,11 +219,11 @@ func _first_steps_unfinished() -> void:
 	if not _seed(path, prefix): return
 	var journey := Journey.new(path, null, Registry.FIRST_STEPS)
 	journey.load_data()
-	if not _check(not journey.read_only and journey.can_restart() and not journey.restart_upgrades_rules(), "Old First Steps prefix with an already-fresh A needs no rules upgrade"): return
+	if not _check(not journey.read_only and journey.can_restart() and not _upgrades(journey), "Old First Steps prefix with an already-fresh A needs no rules upgrade"): return
 	var fresh: RefCounted = journey.create_live_simulation(false)
 	if not _check(fresh != null and fresh.simulation_version == 8, "First Steps next pair independently chooses8 despite envelope4"): return
 	_step_prefix(fresh, Registry.FIRST_STEPS, retained.pairs[1].a)
-	_check(journey.save_live_draft(fresh) and not journey.restart_upgrades_rules(), "Saved fresh8 A with old prefix does not expose an old-rules restart action")
+	_check(journey.save_live_draft(fresh) and not _upgrades(journey), "Saved fresh8 A with old prefix does not expose an old-rules restart action")
 
 func _eligibility_holds() -> void:
 	var path := directory + "/future.json"
@@ -233,7 +233,7 @@ func _eligibility_holds() -> void:
 	var before := FileAccess.get_file_as_string(path)
 	var journey := Journey.new(path)
 	journey.load_data()
-	_check(journey.read_only and not journey.can_restart() and not journey.restart_upgrades_rules() and journey.simulation_version() == -1, "Unsupported journal never grants restart eligibility")
+	_check(journey.read_only and not journey.can_restart() and not _upgrades(journey) and journey.simulation_version() == -1, "Unsupported journal never grants restart eligibility")
 	_check(not journey.fork_from_stage(0) and FileAccess.get_file_as_string(path) == before, "Read-only restart refusal preserves exact future evidence")
 
 func _write_failure(chapter: String, retained: Dictionary) -> void:
@@ -295,6 +295,10 @@ func _seed(path: String, state: Dictionary) -> bool:
 	file.store_string(JSON.stringify(envelope))
 	file.close()
 	return true
+
+## Whether Start over would move this journal to the chapter's newest rules.
+func _upgrades(journey: RefCounted) -> bool:
+	return journey.can_restart() and journey._restart_rules_version() != Registry.preferred_rules(journey.chapter_key())
 
 func _check(value: bool, message: String) -> bool:
 	checks += 1

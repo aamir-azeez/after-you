@@ -100,7 +100,7 @@ func _run() -> void:
 		app._accept()
 		_check(app.mode != "error", "Explicit Save accepts the verified draft: " + name)
 		if name == "a-little-lift-b":
-			_check(app.mode == "checkpoint" and app.journey.stage_id() == "a-place-to-grow", "A midpoint checkpoint needs explicit Continue")
+			_check(app.mode == "ready" and app.journey.stage_id() == "a-place-to-grow", "A kept stage goes on to the next stage's page")
 			var reopened := _journey(path)
 			reopened.load_data()
 			_check(not reopened.read_only and reopened.stage_id() == "a-place-to-grow", "Checkpoint is actually durable on reopening")
