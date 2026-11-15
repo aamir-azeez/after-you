@@ -15,6 +15,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Storage = preload("res://services/local_save.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const AccessTests = preload("res://tests/test_chapter_access.gd")
+const Session = preload("res://services/relay_online_session.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BASE := "https://test.example.invalid"
 const OWNER := "TTTTTTTTTTTTTTTTTTTTTT"
 const TOKEN := "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
@@ -53,6 +55,26 @@ class FakeNative extends Object:
 		values.erase(name)
 		secure_result.emit.call_deferred(request_id, "remove", JSON.stringify({"removed": true}))
 
+## A server whose answers wait while `hold` is on: Home's capabilities read on a slow network at launch.
+class HeldApi extends Node:
+	signal release
+	var player_id := OWNER
+	var device_token := TOKEN
+	var base_url := BASE
+	var hold := false
+	func configured() -> bool: return true
+	func request_json(_method: int, path: String, _body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
+		while hold: await release
+		if path == "/v2/capabilities": return {"ok": true, "status": 200, "data": {"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "validation": "structural_client_replay_required", "chapters": []}}
+		return {"ok": false, "status": 404, "code": "not_found"}
+
+class SessionStore extends RefCounted:
+	var values: Dictionary = {}
+	func load_scope(scope: String) -> Dictionary: return {"ok": true, "found": values.has(scope), "value": values.get(scope, {}).duplicate(true)}
+	func save_scope(scope: String, value: Dictionary) -> Dictionary:
+		values[scope] = value.duplicate(true)
+		return {"ok": true}
+
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
@@ -65,6 +87,7 @@ func _run() -> void:
 	native.values["player_identity"] = JSON.stringify({"player_id": OWNER, "device_token": TOKEN})
 	node_added.connect(_counted)
 	await _tester_open()
+	await _tap_during_capabilities_read()
 	await _cold_tap()
 	await _store_unavailable()
 	await _buyer_open()
@@ -98,6 +121,38 @@ func _tester_open() -> void:
 	_check(opened.ready and screen.admission.is_granted() and screen.admission.reason == "tester", "The tester's chapter opens to its ready card through tester admission")
 	_check(_same(opened, OPEN_COST), "One tester open costs %s (pinned %s)" % [_cost(opened), OPEN_COST])
 	print("TESTER OPEN: %s, %d frames" % [_cost(opened), opened.frames])
+	await _leave_chapter()
+
+## A tap on a paid chapter while Home's capabilities read is out (the launch
+## read, services/capabilities_refresh.gd) finds the room session busy with
+## that read: the open waits for it on its opening card, never says busy and
+## never opens under it, then opens once the read lands, with no second tap.
+func _tap_during_capabilities_read() -> void:
+	var app := await _home()
+	if app == null: return
+	var held := HeldApi.new()
+	held.hold = true
+	root.add_child(held)
+	app.relay_session = Session.new(held, app._relay_identity, SessionStore.new())
+	app._read_capabilities_now()
+	_check(app.relay_session.busy() and app.relay_session.reading_capabilities_only(), "Fixture: Home's capabilities read is out and holds the room session")
+	var seen := {"busy_toast": false, "early": false, "card": true}
+	# The chapter takes Main's place, so the frames after look Main up rather than keep it.
+	var home := {"app": app}
+	var hold_frames := 200
+	var each_frame := func(frame: int) -> void:
+		if not held.hold: return
+		if is_instance_valid(home.app) and home.app.toast.visible and home.app.toast.text == PlayerCopy.MAIN_A776CD47C8D9: seen.busy_toast = true
+		if native.caller == "chapter": seen.early = true
+		if root.get_node_or_null("ChapterLoadingCard") == null: seen.card = false
+		if frame >= hold_frames:
+			held.hold = false
+			held.release.emit()
+	var opened := await _measure(func(): app.journey_flow.open_solo_chapter(CHAPTER), Callable(), each_frame)
+	_check(not seen.busy_toast and seen.card and not seen.early, "While the read is out the tap waits on its opening card, with no busy toast and no chapter yet: %s" % seen)
+	_check(opened.ready and opened.frames > hold_frames and current_scene.admission.reason == "tester", "Once the read lands the same tap opens the chapter (%s, %d frames)" % [_cost(opened), opened.frames])
+	_check(_same(opened, OPEN_COST), "An open that waited for the read costs %s (pinned %s)" % [_cost(opened), OPEN_COST])
+	held.free()
 	await _leave_chapter()
 
 ## A tap made while Home is still reading the saved receipt waits on the
