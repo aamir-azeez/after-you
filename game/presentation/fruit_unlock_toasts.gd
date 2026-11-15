@@ -13,7 +13,8 @@ extends Node
 ## only while no line shows (a posted line replaces the one showing), nothing is
 ## being played (Main.in_play: a room, whose turn's result card says its goals
 ## in its own plum line, presentation/pollen_result_line.gd, which marks them
-## shown; a replay; a chapter on its way in) and the app is in front. Nothing runs while no goal waits or Fruits do not
+## shown; a replay; a chapter on its way in), the app is in front and the
+## screen up is one its View opens the page over (open_ready). Nothing runs while no goal waits or Fruits do not
 ## show: the Fruit store's `unlocked` and `changed` signals wake it.
 ##
 ## Main hosts it and reads Main only through: toast, in_play,
@@ -58,6 +59,8 @@ func service() -> String:
 	var store := _store()
 	if not _waiting or host == null: return ""
 	if host.in_play() or bool(host.get("application_backgrounded")): return ""
+	# Only where its View opens the page at once (Friends, Journey or a lobby wait).
+	if open_ready.is_valid() and open_ready.call() != true: return ""
 	var toast: Variant = host.get("toast")
 	if toast == null or toast.showing(): return ""
 	var scope: Dictionary = host._names_scope()

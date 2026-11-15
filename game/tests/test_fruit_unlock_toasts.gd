@@ -8,7 +8,8 @@ extends SceneTree
 ##   View inside a room never touches the room: the Fruits page waits and opens
 ##   once the player is back on the room hub, and its Back comes to the hub;
 ## - left to Home instead, it opens over Home and Back comes Home;
-## - a shared replay is play too: no goal line posts over one;
+## - a shared replay is play too: no goal line posts over one, nor on a
+##   screen its View could not open over (Friends, Journey);
 ## - a waiting View is forgotten when the player changes.
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
@@ -78,6 +79,7 @@ func _run() -> void:
 	await _room_result()
 	await _left_to_home()
 	await _replay_is_play()
+	await _only_where_view_opens()
 	await _player_changed()
 	viewport.free()
 	await process_frame
@@ -182,6 +184,21 @@ func _replay_is_play() -> void:
 	replay.free()
 	app.shared_replay_child = null
 	_check(app.fruit_unlock_toasts.service() != "", "and it says itself once the replay closes")
+
+## A line posts only where its View opens the page at once: not over Friends
+## or Journey, and once back on Home it says itself.
+func _only_where_view_opens() -> void:
+	app._show_home()
+	app.toast.dismiss()
+	await process_frame
+	_pay("public_duel_first", 10)
+	for screen: String in ["friends", "journey"]:
+		app.mode = screen
+		_check(app.fruit_unlock_toasts.service() == "" and not app.toast.showing(), "No goal line posts on %s, where View could not open the page" % screen)
+	app._show_home()
+	await process_frame
+	_check(app.fruit_unlock_toasts.service() != "" and app.toast.showing(), "and back on Home it says itself")
+	app.toast.dismiss()
 
 ## A View kept for later is the signed-in player's: a change forgets it.
 func _player_changed() -> void:
