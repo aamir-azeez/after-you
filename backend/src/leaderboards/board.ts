@@ -64,7 +64,7 @@ type EntryData = {
 type EntryRow = { entry_id: string; pair_key: string; state: "checking" | "review" | "ranked"; ticks: number; finished_ms: number; data: string };
 type Entry = Omit<EntryRow, "data"> & { data: EntryData };
 /** Our run's row without its body. */
-type OurRunRow = OurRunView & { members: (string | null)[] };
+type OurRunRow = Pick<OurRunView, "entry_id" | "ticks" | "replay_hash"> & { members: [Member, Member] };
 export type StandingWork = { entry_id: string; members: (string | null)[]; finished_ms: number };
 /** `checkpoint` is the stored JSON text, passed on unparsed so the Worker spends no CPU on it. */
 export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; byte_length: number; body: string };
@@ -91,7 +91,7 @@ const SCHEMA = [
   PROOF_TABLE,
   "CREATE TABLE IF NOT EXISTS lb_outcomes (entry_id TEXT PRIMARY KEY, outcome TEXT NOT NULL, at INTEGER NOT NULL)",
   "CREATE TABLE IF NOT EXISTS lb_replays (entry_id TEXT PRIMARY KEY, proof_hash TEXT NOT NULL, byte_length INTEGER NOT NULL, body BLOB NOT NULL)",
-  // Our run (our-run.ts): at most one row (slot 1), the owner's run with its replay as a tagged blob body and both member ids, kept only for erasure.
+  // Our run (our-run.ts): at most one row (slot 1), the owner's run with its replay as a tagged blob body and both members as its entry keeps them (ids for erasure, name choices, looks).
   "CREATE TABLE IF NOT EXISTS lb_our_run (slot INTEGER PRIMARY KEY, entry_id TEXT NOT NULL, ticks INTEGER NOT NULL, members TEXT NOT NULL, proof_hash TEXT NOT NULL, byte_length INTEGER NOT NULL, body BLOB NOT NULL)",
   REWARD_LEDGER_SCHEMA
 ];
@@ -174,7 +174,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       names: shownNames(entry.data.members), gold_leaf: index === 0 && entry.data.gold, replay_hash: replays.get(entry.entry_id) ?? null, looks: shownLooks(entry.data.members) }));
     const checking = this.entries().filter(entry => entry.state !== "ranked").map(entry => entry.entry_id).sort();
     const our = this.ourRun();
-    return { schema_version: 1, board, top, checking, ...(our ? { our_run: { entry_id: our.entry_id, ticks: our.ticks, replay_hash: our.replay_hash } } : {}) };
+    return { schema_version: 1, board, top, checking, ...(our ? { our_run: { entry_id: our.entry_id, ticks: our.ticks, replay_hash: our.replay_hash, names: shownNames(our.members), looks: shownLooks(our.members) } } : {}) };
   }
 
   /** A top 10 run's kept replay, or Our run's (our-run.ts), or null for any other run, with the board as anyone sees it now. Reads only. */
@@ -360,6 +360,13 @@ export class LeaderboardBoard extends DurableObject<Env> {
         }
         if (touched) { this.save(entry); count++; }
       }
+      // Our run shows names by the same rule, so it follows the same choice.
+      const our = this.ourRun();
+      if (our && our.members.reduce((touched, member) => (member.id === player && choose(member, { show, name, rev })) || touched, false)) {
+        this.ctx.storage.sql.exec("UPDATE lb_our_run SET members=? WHERE slot=1", JSON.stringify(our.members));
+        this.ourRunRow = undefined;
+        count++;
+      }
       return count;
     });
     return { changed, view: this.view(board) };
@@ -383,7 +390,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       }
       this.rewards.forgetPlayer(player);
       // Our run goes with either player's account: the shipped run is Our run again.
-      if (this.ourRun()?.members.includes(player)) { this.dropOurRun(); count++; }
+      if (this.ourRun()?.members.some(member => member.id === player)) { this.dropOurRun(); count++; }
       return count + this.duels.forgetPlayer(player, Date.now());
     });
     // The rooms of this player's friend duels, told of the erasure now (duels/their-run-sweep.ts); the hourly sweep retries any left.
@@ -485,7 +492,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
   private ourRun(): OurRunRow | null {
     if (this.ourRunRow === undefined) {
       const row = this.ctx.storage.sql.exec<{ entry_id: string; ticks: number; members: string; proof_hash: string }>("SELECT entry_id,ticks,members,proof_hash FROM lb_our_run WHERE slot=1").toArray()[0];
-      this.ourRunRow = row ? { entry_id: row.entry_id, ticks: row.ticks, replay_hash: row.proof_hash, members: JSON.parse(row.members) as (string | null)[] } : null;
+      this.ourRunRow = row ? { entry_id: row.entry_id, ticks: row.ticks, replay_hash: row.proof_hash, members: JSON.parse(row.members) as [Member, Member] } : null;
     }
     return this.ourRunRow;
   }
@@ -500,10 +507,13 @@ export class LeaderboardBoard extends DurableObject<Env> {
   private beatsOurRun(board: string, entry: Entry, owner: string | null): boolean {
     return beatsOurRun(owner, entry.data.members.map(member => member.id), entry.ticks, this.ourTicks(board));
   }
-  /** Keeps `entry`, with `replay`, as Our run when it is the owner's pair's and beats it. Inside the caller's transaction. */
+  /**
+   * Keeps `entry`, with `replay`, as Our run when it is the owner's pair's and beats it. Inside the caller's transaction.
+   * The one row is replaced whole, so the older Our run's replay copy goes in the same write (our-run.ts).
+   */
   private offerOurRun(board: string, entry: Entry, replay: KeptReplay, owner: string | null): void {
     if (!this.beatsOurRun(board, entry, owner)) return;
-    this.ctx.storage.sql.exec("INSERT OR REPLACE INTO lb_our_run VALUES (1,?,?,?,?,?,?)", entry.entry_id, entry.ticks, JSON.stringify(entry.data.members.map(member => member.id)), replay.proof_hash, replay.byte_length, replay.body);
+    this.ctx.storage.sql.exec("INSERT OR REPLACE INTO lb_our_run VALUES (1,?,?,?,?,?,?)", entry.entry_id, entry.ticks, JSON.stringify(entry.data.members), replay.proof_hash, replay.byte_length, replay.body);
     this.ourRunRow = undefined;
   }
   /** The owner's fastest ranked run here, with a kept replay, becomes Our run when it beats it. Inside the caller's transaction. */
@@ -527,7 +537,9 @@ export class LeaderboardBoard extends DurableObject<Env> {
     const our = this.ourRun(), kept = our ? this.ourRunBody() : undefined;
     if (!our || !kept || kept.proof_hash !== our.replay_hash) return null;
     const splits = await replaySplits(new Uint8Array(kept.body), kept.byte_length, duel.steps, our.ticks);
-    return { source: "developer", entry_id: our.entry_id, rank: null, ticks: our.ticks, names: null, replay_hash: our.replay_hash, ...(splits ? { splits } : {}) };
+    // Its looks as the run finished (a view leaves them out while looks are off, model.ts ghostView); its names stay on the
+    // board, where a name choice and erasure reach them, as a board run's do.
+    return { source: "developer", entry_id: our.entry_id, rank: null, ticks: our.ticks, names: null, replay_hash: our.replay_hash, looks: shownLooks(our.members), ...(splits ? { splits } : {}) };
   }
   /** Proof hash of each listed run that has a kept replay. */
   private replayHashes(ids: string[]): Map<string, string> {

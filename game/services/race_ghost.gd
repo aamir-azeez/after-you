@@ -24,7 +24,10 @@ extends RefCounted
 ##   role, kept in memory for the race being played only.
 ## - Who and how: the raced player's look from the race (`ghost.looks`, slot
 ##   order) and their name from the board this phone last read, else "" (the
-##   view writes "Recorded run"); Our run in the default look (`developer`).
+##   view writes "Recorded run"); Our run as the game ships it in the default
+##   look (`developer`). The owner's run as Our run wears its pair's looks and
+##   shows their names by the board's rule (the board's `our_run`), else reads
+##   Our run.
 ##
 ## Requests: at most one replay read per race (usually answered from the
 ## server's cache, no Durable Object request), and one board read kept a
@@ -93,9 +96,11 @@ func turn(room_id: String, duel_room: bool, chapter_key: String, stage_index: in
 	if track.is_empty(): return {}
 	var index := 1 if str(track.slot) == "p1" else 0
 	var shown := track.duplicate()
-	shown["developer"] = developer
-	shown["look"] = Outfit.from(ghost.looks[index]) if not developer and ghost.get("looks") is Array and ghost.looks.size() > index else {}
-	shown["name"] = "" if developer else await _name(race, index)
+	# A run the server serves (a board run, or the owner's run as Our run) wears its pair's looks and names.
+	var named := served(ghost)
+	shown["look"] = Outfit.from(ghost.looks[index]) if named and ghost.get("looks") is Array and ghost.looks.size() > index else {}
+	shown["name"] = await _name(race, index) if named else ""
+	shown["developer"] = developer and str(shown.name).is_empty()
 	return shown
 
 ## Keeps the raced run's replay as soon as a race starts, so a run that leaves
@@ -188,7 +193,8 @@ func _row(race: Dictionary) -> Dictionary:
 	if not answer.get("ok", false): return {}
 	for row: Dictionary in answer.view.get("top", []):
 		if row.entry_id == race.ghost.entry_id: return row
-	return {}
+	var ours: Dictionary = answer.view.get("our_run", {})
+	return ours if race.ghost.source == "developer" and ours.get("entry_id") == race.ghost.entry_id else {}
 
 ## The raced player's name as the board shows it now, or "" (names hidden, or the run no longer listed).
 func _name(race: Dictionary, index: int) -> String:

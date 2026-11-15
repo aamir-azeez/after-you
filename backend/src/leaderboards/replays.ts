@@ -7,7 +7,7 @@ import type { BoardView } from "./view";
 /**
  * GET /v1/leaderboards/<board>/replay/<entry_id>: a top 10 run's kept replay
  * (board.ts lb_replays), or Our run's when the view names the owner's run as
- * Our run (our-run.ts: its time, with no place or names), the same bytes for every reader. It answers only for
+ * Our run (our-run.ts: its time and names, with no place), the same bytes for every reader. It answers only for
  * a row of the board view that names a replay, and carries what that row
  * shows (place, time, the names both players chose to show) and the replay
  * in the shared blob format: `body` is the tagged body in base64, decoded on
@@ -50,7 +50,7 @@ type ShownRow = { rank: number | null; entry_id: string; ticks: number; finished
 function shownRow(view: BoardView, entryId: string): ShownRow | undefined {
   const row = view.top.find(item => item.entry_id === entryId), our = view.our_run;
   if (row || our?.entry_id !== entryId) return row;
-  return { rank: null, entry_id: our.entry_id, ticks: our.ticks, finished_on: "", names: null, gold_leaf: false, replay_hash: our.replay_hash };
+  return { rank: null, entry_id: our.entry_id, ticks: our.ticks, finished_on: "", names: our.names ?? null, gold_leaf: false, replay_hash: our.replay_hash };
 }
 
 function held(hash: string): Body | undefined {

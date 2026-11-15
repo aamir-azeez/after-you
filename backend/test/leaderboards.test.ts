@@ -1162,7 +1162,7 @@ describe("Our run", () => {
     const first = await run(shipped - 10, 1000, partner("p"));
     const { rows } = await meterRows({ board: board() }, () => rankDirect(first, 1, OWNER));
     const view = await board().view(RELAY_BOARD);
-    expect(view.our_run).toEqual({ entry_id: first.entry_id, ticks: shipped - 10, replay_hash: view.top[0].replay_hash });
+    expect(view.our_run).toEqual({ entry_id: first.entry_id, ticks: shipped - 10, replay_hash: view.top[0].replay_hash, names: null, looks: [{}, {}] });
     // Slower than Our run, a faster run of another pair, a failed check, the owner's run with no owner named: none replace it.
     await rankDirect(await run(shipped - 5, 2000, partner("q")), 1, OWNER);
     await rankDirect(await run(shipped - 50, 3000), 1, OWNER);
@@ -1178,7 +1178,10 @@ describe("Our run", () => {
     const faster = await run(shipped - 80, 6000, partner("t"));
     await rankDirect(faster, 1, OWNER);
     expect((await board().view(RELAY_BOARD)).our_run).toMatchObject({ entry_id: faster.entry_id, ticks: shipped - 80 });
+    // The one row is replaced whole: only the new run's replay copy is kept.
     expect(await ourRows()).toBe(1);
+    expect(await runInDurableObject(board(), async (_, ctx) => ctx.storage.sql.exec<{ proof_hash: string }>("SELECT proof_hash FROM lb_our_run").toArray().map(row => row.proof_hash)))
+      .toEqual([await digest(canonicalJson(faster.checkpoint))]);
     console.log(`Our run kept with a checked run: ${rows.board.read} rows read, ${rows.board.written} written in all for the post, account check and verdict`);
   });
 
@@ -1189,7 +1192,7 @@ describe("Our run", () => {
     const view = await board().view(RELAY_BOARD);
     expect(view.top.map(row => row.entry_id)).not.toContain(owners.entry_id);
     const hash = await digest(canonicalJson(owners.checkpoint));
-    expect(view.our_run).toEqual({ entry_id: owners.entry_id, ticks: 300, replay_hash: hash });
+    expect(view.our_run).toMatchObject({ entry_id: owners.entry_id, ticks: 300, replay_hash: hash });
     // Its replay is served like a top 10 run's, with no place and no names.
     const served = await call(`/v1/leaderboards/${RELAY_BOARD}/replay/${owners.entry_id}`);
     expect(served.status).toBe(200);
@@ -1201,7 +1204,7 @@ describe("Our run", () => {
     expect(await listed({ "X-AfterYou-Our-Run": "1" })).toBe(300);
     expect(await listed({})).toBe(developerGhost(RELAY_BOARD));
     const raced = (await ghostRace(developerGhost(RELAY_BOARD)!)) as Duel;
-    expect(raced.ghost).toEqual({ source: "developer", entry_id: owners.entry_id, rank: null, ticks: 300, names: null, replay_hash: hash });
+    expect(raced.ghost).toEqual({ source: "developer", entry_id: owners.entry_id, rank: null, ticks: 300, names: null, replay_hash: hash, looks: [{}, {}] });
     expect(((await ghostRace(developerGhost(RELAY_BOARD)!)) as Duel).ghost).toEqual(raced.ghost);
     expect(((await ghostRace(developerGhost(RELAY_BOARD)!, "e".repeat(32), false)) as Duel).ghost).toEqual({ source: "developer", entry_id: null, rank: null, ticks: developerGhost(RELAY_BOARD), names: null, splits: developerGhostSplits(RELAY_BOARD) });
   });
@@ -1221,6 +1224,22 @@ describe("Our run", () => {
     expect((await operator("verdicts", { schema_version: 1, verdicts }, await deriveJobToken(OPERATOR), owned)).status).toBe(200);
     expect((await view(RELAY_BOARD, owned)).our_run).toMatchObject({ entry_id: entries[0].entry_id, ticks: RELAY_TICKS });
     expect(((await ghostRace(RELAY_TICKS + 30)) as Duel).ghost!.splits).toEqual([140, 280, 430, RELAY_TICKS]);
+  });
+
+  it("shows the pair's looks, and their names only while both show them on boards, on the board, its replay and the race", async () => {
+    const HAT = { hat: "straw_hat" }, DAISY = { hat: "daisy" };
+    const mine = { ...await run(developerGhost(RELAY_BOARD)! - 10, 1000, partner("p")), looks: [HAT, DAISY] };
+    await rankDirect(mine, 1, OWNER);
+    expect((await board().view(RELAY_BOARD)).our_run).toMatchObject({ names: null, looks: [HAT, DAISY] });
+    expect(((await ghostRace(developerGhost(RELAY_BOARD)!)) as Duel).ghost).toMatchObject({ names: null, looks: [HAT, DAISY] });
+    await board().setMember(RELAY_BOARD, OWNER, true, "Ada", 1);
+    expect((await board().view(RELAY_BOARD)).our_run?.names).toBeNull();
+    await board().setMember(RELAY_BOARD, "p".repeat(22), true, "Bo", 1);
+    expect((await board().view(RELAY_BOARD)).our_run?.names).toEqual(["Ada", "Bo"]);
+    const served = await (await call(`/v1/leaderboards/${RELAY_BOARD}/replay/${mine.entry_id}`)).json<{ names: string[] | null }>();
+    expect(served.names).toEqual(["Ada", "Bo"]);
+    await board().setMember(RELAY_BOARD, OWNER, false, null, 2);
+    expect((await board().view(RELAY_BOARD)).our_run).toMatchObject({ names: null, looks: [HAT, DAISY] });
   });
 
   it("goes back to the shipped run when either player's account is erased or the run is struck", async () => {
