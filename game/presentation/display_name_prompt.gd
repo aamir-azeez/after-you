@@ -49,7 +49,7 @@ extends Node
 ##   get_pollen (Callable (opener: Control), optional): the link's tap (the flow
 ##     opens the short of Pollen card, board 5b); without it there is no link;
 ##   show_name (Callable (bool), optional): the "show my name" switch under the
-##     choices (while no name is chosen yet); called with the switch once a Save
+##     choices, on a first name and on a change; called with the switch once a Save
 ##     lands, never on Not now or a refused save. name_shown (bool) is its start.
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
