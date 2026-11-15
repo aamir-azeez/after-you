@@ -43,7 +43,10 @@ func _run() -> void:
 		var view := CooperativeCatalog.stage_definition(level, str(stage.id))
 		var drawer: Control = MapView.new()
 		drawer.plan = Model.build(level, view, checkpoint, layout.journey, skips.get(str(stage.id), []))
-		if layout.registered and str(layout.key) in Dressing.keys(): drawer.plan["props"] = PropCheck.check(str(layout.key), str(stage.id))
+		if layout.registered and str(layout.key) in Dressing.keys():
+			drawer.plan["props"] = PropCheck.check(str(layout.key), str(stage.id))
+			# The map reaches every prop, so none is drawn over the title.
+			for prop: Dictionary in drawer.plan.props.props: drawer.plan.bounds = (drawer.plan.bounds as Rect2).merge(prop.rect)
 		var image: Image = await Kit.render(self, drawer, drawer.canvas_size())
 		Kit.save(image, out, "%s-%s-map.png" % [layout.name, stage.id])
 		frames.append({"image": image, "caption": "Stage %d: %s" % [index + 1, stage.get("title", stage.id)]})

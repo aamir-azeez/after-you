@@ -96,8 +96,12 @@ func _draw() -> void:
 
 func _stand() -> void:
 	if not plan.has("props"): return
-	for cell: Rect2 in plan.props.stand.tall: draw_rect(box(cell), TALL_GROUND)
-	for cell: Rect2 in plan.props.stand.low: draw_rect(box(cell), LOW_GROUND)
+	# Only over the map's own sea, never under the title or the key.
+	var sea := box(plan.bounds).grow(22.0)
+	for list: Array in [[plan.props.stand.tall, TALL_GROUND], [plan.props.stand.low, LOW_GROUND]]:
+		for cell: Rect2 in list[0]:
+			var shown := box(cell).intersection(sea)
+			if shown.has_area(): draw_rect(shown, list[1])
 
 func _props() -> void:
 	if not plan.has("props"): return
@@ -105,7 +109,8 @@ func _props() -> void:
 		var rect := box(prop.rect)
 		var flagged: bool = not prop.faults.is_empty()
 		var colour := FLAGGED if flagged else PROP_LINE
-		if str(prop.spec.get("kind", "")) not in PropRules.SQUARE_KINDS: draw_arc(rect.get_center(), rect.size.x * 0.5, 0.0, TAU, 24, colour, 2.0 if flagged else 1.2, true)
+		# Round kinds are drawn as their circle; banks, lines and boxes as their rectangle.
+		if str(prop.spec.get("kind", "")) not in PropRules.SQUARE_KINDS and absf(rect.size.x - rect.size.y) < 1.0: draw_arc(rect.get_center(), rect.size.x * 0.5, 0.0, TAU, 24, colour, 2.0 if flagged else 1.2, true)
 		else: draw_rect(rect, colour, false, 2.0 if flagged else 1.2)
 		if flagged: _text("!", rect.position + Vector2(rect.size.x, 0) + Vector2(2, 4), 16, FLAGGED, HEADING)
 
