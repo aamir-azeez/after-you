@@ -112,8 +112,8 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 		"price": _price_for_prompt(current),
 		"get_pollen": func(link: Control) -> void: _open_short(parent, link),
 	}
-	# A first name also asks whether to show it, while Settings shows the same choice.
-	if str(context.own.get("choice", "")).is_empty() and _name_choice_offered():
+	# Choosing or changing a name also asks whether to show it, wherever Settings shows the same choice.
+	if _name_choice_offered():
 		context["name_shown"] = LeaderboardClient.shared(host.api, str(host.api.player_id)).show_name()
 		context["show_name"] = _choose_show_name
 	var modal: Control = Prompt.open(parent, context, opener)
