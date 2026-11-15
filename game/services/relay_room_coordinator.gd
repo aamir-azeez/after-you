@@ -33,6 +33,7 @@ const FacePacks = preload("res://services/face_packs.gd")
 const FACE_PACK_REFUSALS := {403: ["face_pack_not_owned"], 400: ["invalid_end_reaction", "invalid_run_reactions"]}
 const HardRoomClient = preload("res://services/hard_room_client.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -259,6 +260,7 @@ func _sync_chapter() -> void:
 	_chapter_key = Registry.resolve(_state.get("snapshot"))
 	# A chapter whose proof remembers verified checkpoints keeps them for restarts.
 	Proofs.save_memo(_chapter_key)
+	Proofs.prepare_traces()
 	_level = Registry.definition(_chapter_key)
 	_simulation = Registry.simulation_script(_chapter_key)
 
@@ -780,7 +782,7 @@ func fetch_pair(pair_id: String) -> Dictionary:
 	if not proof is Dictionary or Registry.previous_checkpoint(_chapter_key, pair.checkpoint).is_empty() or not pair.a is Dictionary or not pair.b is Dictionary:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_806EA219BFEC)
 		return {}
-	var derived: Dictionary = _simulation.derive_checkpoint(_level, Registry.previous_checkpoint(_chapter_key, pair.checkpoint), pair.a, pair.b)
+	var derived: Dictionary = CheckpointPairs.derive(_simulation, _level, Registry.previous_checkpoint(_chapter_key, pair.checkpoint), pair)
 	if not derived.valid or not Typed.same(derived.get("checkpoint", {}), pair.checkpoint) or pair.stage_index != int(pair.checkpoint.stage_index) - 1 or pair_id != "p%d-%d" % [int(pair.branch), int(pair.stage_index)]:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_35B4466C889C)
 		return {}

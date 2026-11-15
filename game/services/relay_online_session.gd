@@ -22,6 +22,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
@@ -1097,8 +1098,12 @@ func chapter_pairs() -> Array:
 	for _index_value in range(RoomStages.count(Registry.definition(chapter))):
 		if checkpoint.get("stage_index", 0) == 0:
 			break
-		var proof: Dictionary = checkpoint.proof
-		pairs.push_front({"a": proof.a.duplicate(true), "b": proof.b.duplicate(true)})
+		# Open turns: a stage's record carries its passes between the first and closing turn.
+		var turns := OpenTurns.proof_turns(checkpoint.proof)
+		if turns.is_empty(): return []
+		var pair := {"a": turns[0].duplicate(true), "b": turns[-1].duplicate(true)}
+		if turns.size() > 2: pair["passes"] = turns.slice(1, turns.size() - 1).duplicate(true)
+		pairs.push_front(pair)
 		checkpoint = Registry.previous_checkpoint(chapter, checkpoint)
 	return pairs
 
@@ -1204,10 +1209,12 @@ func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 	if not PhotoController._turn("t" + pair_id.substr(1) + "-a") or int(pair_id.get_slice("-", 1)) != index:
 		return []
 	var result: Array = []
+	# Open turns: the closing turn's id has its number's letter (b with no passes).
+	var closing := OpenTurns.turn_id(int(pair_id.substr(1).get_slice("-", 0)), index, 2 + pair.get("passes", []).size())
 	for role: String in ["a", "b"]:
 		var recording: Dictionary = pair[role]
 		var player: String = str(room.host_id if recording.player_slot == "p0" else room.guest_id)
-		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-" + role, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
+		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-a" if role == "a" else closing, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
 	return result
 
 func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray(), caller_still: Callable = Callable()) -> Dictionary:

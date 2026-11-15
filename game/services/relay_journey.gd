@@ -6,6 +6,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Storage = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 const Archive = preload("res://services/attempt_archive.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
@@ -802,11 +803,12 @@ func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 	var derived := Registry.initial_checkpoint(_chapter_key)
 	var proven: bool = not trusted.is_empty() and int(trusted.get("pairs", -1)) == value.pairs.size()
 	for pair: Variant in value.pairs:
-		if not pair is Dictionary or not _exact_keys(pair, ["a", "b"]) or not pair.a is Dictionary or not pair.b is Dictionary:
+		# Open turns: a stage's record may carry its passes too (relay_online_session.gd chapter_pairs).
+		if not pair is Dictionary or not (_exact_keys(pair, ["a", "b"]) or (_exact_keys(pair, ["a", "b", "passes"]) and pair.passes is Array and not pair.passes.is_empty() and pair.passes.all(func(turn: Variant) -> bool: return turn is Dictionary))) or not pair.a is Dictionary or not pair.b is Dictionary:
 			return _invalid("Malformed completed pair.")
 		if _chapter_key != Registry.FIRST_STEPS and (not Typed.equal(pair.a.get("simulation_version"), value.simulation_version) or not Typed.equal(pair.b.get("simulation_version"), value.simulation_version)): return _invalid("Unsupported recording version.")
 		if proven: continue
-		var checked: Dictionary = _simulation.derive_checkpoint(_level, derived, pair.a, pair.b)
+		var checked: Dictionary = CheckpointPairs.derive(_simulation, _level, derived, pair)
 		if not checked.valid:
 			return _invalid(str(checked.error))
 		derived = checked.checkpoint

@@ -17,6 +17,11 @@ const Simulation = preload("res://core/journey/simulation.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Witness = preload("res://tests/chapter_witness.gd")
+const MemoryTrace = preload("res://core/physical/memory_trace.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
+const Collection = preload("res://services/shared_replay_collection.gd")
+const TraceStore = preload("res://services/memory_trace_store.gd")
+const TRACES := "user://open-turns-test-traces"
 const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
 var checks := 0
@@ -90,37 +95,105 @@ func _chain() -> void:
 	if not derived.valid: return
 	var checkpoint: Dictionary = derived.checkpoint
 	_check(int(checkpoint.schema_version) == OpenTurns.CHECKPOINT_SCHEMA and checkpoint.turn_hashes == [a.recording_hash, pass_two.recording_hash, pass_three.recording_hash, closing.recording_hash] and checkpoint.proof.turns.size() == 4 and not checkpoint.has("a_recording_hash"), "It nests all four turns in order (schema 8)")
+	MemoryTrace.clear()
 	_check(Simulation.verify_checkpoint(level, checkpoint).valid, "The four turn checkpoint proves from scratch")
+	# Replays, room history and local records read the stage's turns from its checkpoint (checkpoint_pairs.gd).
+	var pair := CheckpointPairs.pair(TIDE, checkpoint, 0, 0)
+	_check(pair.get("a", {}).get("recording_hash") == a.recording_hash and pair.get("b", {}).get("recording_hash") == closing.recording_hash and OpenTurns.pair_turns(pair).map(func(turn: Dictionary) -> String: return str(turn.recording_hash)) == checkpoint.turn_hashes, "A replay pair holds the first and closing turn, its passes from the checkpoint")
+	_check(Canonical.same(CheckpointPairs.derive(Simulation, level, start, pair).get("checkpoint"), checkpoint) and Canonical.same(CheckpointPairs.derive(Simulation, level, start, {"a": a, "b": closing, "passes": [pass_two, pass_three]}).get("checkpoint"), checkpoint), "A pair or a local record with its passes derives the same checkpoint")
+	_check(OpenTurns.number("t3-1-c") == 3 and OpenTurns.number("t0-0-a") == 1, "A turn id's letter is its number")
+	var host := "A".repeat(22)
+	var entry := {"schema_version": 1, "room": {"family": "chapter", "room_id": "C".repeat(22), "host_id": host, "guest_id": "B".repeat(22), "chapter_key": TIDE, "title": "Tide"}, "pair": pair}
+	_check(Collection.verify_entry(entry, host), "Replays list a stage with passes")
 	var shuffled: Dictionary = checkpoint.duplicate(true)
 	shuffled.proof.turns = [a, pass_three, pass_two, closing]
 	_check(not Simulation.verify_checkpoint(level, shuffled).valid, "Turns out of order are refused")
 
 ## Ten turns of passes, each pip's own route again: every one replays and
-## may be a memory, and one check of the latest covers the chain. Prints how
-## long that check takes, nested memories and all.
+## may be a memory, and one check of the latest covers the chain. Memories
+## play back from their kept traces (memory_trace.gd), so the same turns give
+## the same recordings as simulating every nested memory. Prints how long the
+## checks take: 15 s turns, then 100 s turns (the tide's longest) started and
+## checked with the traces kept.
 func _ten_turns() -> void:
 	var level := Registry.definition(TIDE)
 	var start := Registry.initial_checkpoint(TIDE)
 	var a := _fixture("turn-of-the-tide-v3-set-the-tide-a.json")
+	var short := _passes(level, start, a, 10, int(a.duration_ticks))
+	if short.size() < 10: return
+	var started := Time.get_ticks_msec()
+	var checked := Simulation.verify_recording(level, short[-1], start, short[-2], short.slice(0, short.size() - 2))
+	print("OPEN TURNS: turn 10's check over its nine memories took %d ms (%d ticks a turn)" % [Time.get_ticks_msec() - started, int(a.duration_ticks)])
+	_check(checked.valid and checked.get("ready", false), "Turn 10's pass checks over nine nested memories (%s)" % str(checked.get("error", "")))
+	# The same six turns simulating every nested memory: the same recordings.
+	MemoryTrace.clear()
+	MemoryTrace.enabled = false
+	var nested := _passes(level, start, a, 6, int(a.duration_ticks))
+	MemoryTrace.enabled = true
+	_check(nested.size() == 6 and Canonical.same(nested, short.slice(0, 6)), "Played over kept traces, turns record the same as over nested memories")
+	MemoryTrace.clear()
+	var cold := Simulation.verify_recording(level, short[5], start, short[4], short.slice(0, 4))
+	_check(cold.valid and Canonical.same(cold, Simulation.verify_recording(level, short[5], start, short[4], short.slice(0, 4))), "A kept check is the check")
+	# 100 s turns, every checked turn persisted as the phone keeps them.
+	TraceStore.attach(TRACES)
+	var long_ticks := Simulation.turn_ticks(level, 15, "b") - 10
+	var long := _passes(level, start, a, 10, long_ticks)
+	if long.size() < 10: return
+	var memory: Dictionary = long[-2]
+	var before: Array = long.slice(0, long.size() - 2)
+	started = Time.get_ticks_msec()
+	var ten := Simulation.new()
+	var ten_started := ten.reset(level, STAGE, start, memory, "b", 0, before)
+	var reset_ms := Time.get_ticks_msec() - started
+	started = Time.get_ticks_msec()
+	var ten_checked := Simulation.verify_recording(level, long[-1], start, memory, before)
+	print("OPEN TURNS: 100 s turns (%d ticks), turn 10 starts in %d ms and checks in %d ms with its memories' traces kept" % [long_ticks, reset_ms, Time.get_ticks_msec() - started])
+	_check(ten_started and ten_checked.valid and ten_checked.get("ready", false), "Turn 10 of 100 s turns starts and checks (%s)" % ten.error)
+	# After a restart: nothing in memory, the kept turns read back from their files.
+	MemoryTrace.clear()
+	started = Time.get_ticks_msec()
+	var again := Simulation.new()
+	var again_started := again.reset(level, STAGE, start, memory, "b", 0, before)
+	reset_ms = Time.get_ticks_msec() - started
+	started = Time.get_ticks_msec()
+	var again_checked := Simulation.verify_recording(level, long[-1], start, memory, before)
+	print("OPEN TURNS: after a restart turn 10 starts in %d ms and checks in %d ms from the kept files" % [reset_ms, Time.get_ticks_msec() - started])
+	_check(again_started and again_checked.valid and again_checked.get("ready", false) and MemoryTrace.simulated == 0, "After a restart turn 10 starts and checks from its kept files, simulating nothing")
+	var frames: Array = Simulation.expand_recording_inputs(long[-1])
+	for frame: Dictionary in frames: again._tick(frame)
+	again.pass_turn()
+	_check(Canonical.same(_json(again.export_recording()), long[-1]), "A memory read back from its file plays the same turn")
+	TraceStore.detach()
+	for name: String in DirAccess.get_files_at(TRACES): DirAccess.remove_absolute(TRACES.path_join(name))
+
+## `count` turns of one stage, each pip's own route up to turn 1's length then standing still,
+## every pass `ticks` long; [] when one cannot pass.
+func _passes(level: Dictionary, start: Dictionary, a: Dictionary, count: int, ticks: int) -> Array:
 	var routes := [Simulation.expand_recording_inputs(a), Simulation.expand_recording_inputs(_fixture("turn-of-the-tide-v3-set-the-tide-b.json"))]
-	var turns: Array = [a]
-	for n in range(2, 11):
+	var first := a
+	if ticks > int(a.duration_ticks):
+		var one := Simulation.new()
+		one.reset(level, STAGE, start, {}, "a")
+		while int(one.tick) < ticks: one._tick(routes[0][one.tick] if int(one.tick) < routes[0].size() else {})
+		if not one.can_commit():
+			_check(false, "A %d tick first turn may be saved (%s)" % [ticks, one.commit_reason()])
+			return []
+		first = _json(one.export_recording())
+	var turns: Array = [first]
+	for n in range(2, count + 1):
 		var sim := Simulation.new()
 		if not sim.reset(level, STAGE, start, turns[-1], "b", 0, turns.slice(0, turns.size() - 1)):
 			_check(false, "Turn %d starts (%s)" % [n, sim.error])
-			return
+			return []
 		var frames: Array = routes[1 if n % 2 == 0 else 0]
-		while int(sim.tick) < int(a.duration_ticks) and not sim.finished: sim.step(frames[sim.tick] if int(sim.tick) < frames.size() else {})
+		# Each route stops where turn 1 ended, short of the goal, then the pip stands still.
+		while int(sim.tick) < ticks and not sim.finished: sim._tick(frames[sim.tick] if int(sim.tick) < mini(frames.size(), int(a.duration_ticks)) else {})
 		if not sim.can_pass():
 			_check(false, "Turn %d may pass (%s)" % [n, sim.commit_reason()])
-			return
+			return []
 		sim.pass_turn()
 		turns.append(_json(sim.export_recording()))
-	var started := Time.get_ticks_msec()
-	var checked := Simulation.verify_recording(level, turns[-1], start, turns[-2], turns.slice(0, turns.size() - 2))
-	var elapsed := Time.get_ticks_msec() - started
-	print("OPEN TURNS: turn 10's check over its nine memories took %d ms (%d ticks a turn)" % [elapsed, int(a.duration_ticks)])
-	_check(checked.valid and checked.get("ready", false), "Turn 10's pass checks over nine nested memories (%s)" % str(checked.get("error", "")))
+	return turns
 
 ## A published tide stage (rules 10) still nests a and b.
 func _published() -> void:

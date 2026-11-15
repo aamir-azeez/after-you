@@ -146,6 +146,8 @@ var replay_frames: Array = []
 var replay_cursor := 0
 var _replay_context: Dictionary = {}
 var _continue_replay_context := false
+## Open turns: the turns under a replayed closing turn's memory, for _start_replay only.
+var _replay_chain: Array = []
 var replay_pair_index := -1
 var _replay_collection: Array = []
 var _solo_replay_only := false
@@ -244,6 +246,8 @@ const ScreenSwitch = preload("res://services/screen_switch.gd")
 const OpeningCard = preload("res://presentation/chapter_loading_card.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 const PollenResultLine = preload("res://presentation/pollen_result_line.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -3025,7 +3029,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 	# A replay from the room panel plays in the play camera.
 	_restore_ready_world()
 	_clear_reaction_view()
-	if not Registry.reset_simulation(sim, chapter_key, definition, str(recording.stage_id), start, source, str(recording.role), recording):
+	if not Registry.reset_simulation(sim, chapter_key, definition, str(recording.stage_id), start, source, str(recording.role), recording, _replay_chain):
 		_show_error(sim.error)
 		return
 	_begin_sound_turn()
@@ -3095,7 +3099,7 @@ func _play_collection_pair(continue_collection: bool = false) -> void:
 	var own_start: bool = pair.get("start") is Dictionary
 	var start: Dictionary = pair.start if own_start else Registry.initial_checkpoint(chapter_key)
 	for index in range(0 if own_start else replay_pair_index):
-		var derived: Dictionary = _simulation.derive_checkpoint(definition, start, pairs[index].a, pairs[index].b)
+		var derived: Dictionary = CheckpointPairs.derive(_simulation, definition, start, pairs[index])
 		if not derived.get("valid", false):
 			_show_error(str(derived.get("error", PlayerCopy.RELAY_PREVIEW_ED3A094D0041)))
 			return
@@ -3103,7 +3107,11 @@ func _play_collection_pair(continue_collection: bool = false) -> void:
 	# Keep the existing subclass admission hook and its three-argument API.
 	# The continuation flag spans only this synchronous call.
 	_continue_replay_context = continue_collection
-	_start_replay(pair.b, start, pair.a)
+	# Open turns: the closing turn plays over its stage's last pass, which nests the turns before it.
+	var turns := OpenTurns.pair_turns(pair)
+	_replay_chain = turns.slice(0, turns.size() - 2)
+	_start_replay(pair.b, start, turns[-2])
+	_replay_chain = []
 	_continue_replay_context = false
 	_load_replay_photos()
 

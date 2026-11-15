@@ -27,6 +27,7 @@ const Reaper = preload("res://services/worker_reaper.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const COMPLETION_DURATION := 3.0
 const RunReactionPlayer = preload("res://presentation/run_reaction_player.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
@@ -37,6 +38,8 @@ var run_player := RunReactionPlayer.new()
 var entry: Dictionary = {}
 var sequence: Array = []
 var _part_index := 0
+## Open turns: the turn of the part being watched, over the one before it (1: b over a).
+var _turn_index := 1
 var _validation_worker: Thread
 var _validation_progress := LoadProgress.new()
 var _loading_bar: VBoxContainer
@@ -279,6 +282,7 @@ static func _valid_parts(values: Array, verify: Callable, progress: RefCounted) 
 
 func _start() -> void:
 	_part_index = 0
+	_turn_index = 1
 	_start_part()
 
 func _start_part() -> void:
@@ -289,32 +293,37 @@ func _start_part() -> void:
 	completion_remaining = 0.0
 	_paused_completion = false
 	var pair: Dictionary = entry.pair
+	# Open turns: a stage plays each later turn over the one before it, in order, so every pass shows; before open turns that is b over a.
+	var turns: Array = OpenTurns.pair_turns(pair) if entry.room.family == "chapter" else [pair.get("a"), pair.get("b")]
+	_turn_index = clampi(_turn_index, 1, turns.size() - 1)
+	var memory: Dictionary = turns[_turn_index - 1]
+	var watched: Dictionary = turns[_turn_index]
 	# Each turn plays in the look it was played in (presentation/slot_looks.gd).
-	if world.has_method("wear_slots"): world.wear_slots(SlotLooks.replay([pair.get("a"), pair.get("b")]))
+	if world.has_method("wear_slots"): world.wear_slots(SlotLooks.replay([memory, watched]))
 	if entry.room.family == "chapter":
 		var engine: Script = Registry.simulation_script(entry.room.chapter_key)
 		sim = engine.new()
 		var definition := Registry.definition(entry.room.chapter_key)
-		if not Registry.reset_simulation(sim, entry.room.chapter_key, definition, str(pair.b.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), pair.a, "b", pair.b):
+		if not Registry.reset_simulation(sim, entry.room.chapter_key, definition, str(watched.stage_id), Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint), memory, "b", watched, turns.slice(0, _turn_index - 1)):
 			_show_error(sim.error); return
 		world.show_stage(definition.stages[int(pair.stage_index)])
-		_frames = engine.expand_recording_inputs(pair.b)
+		_frames = engine.expand_recording_inputs(watched)
 		# The same identities as the original turn, so its sounds match.
-		soundscape.begin_turn(str(entry.room.chapter_key), str(pair.b.stage_id))
+		soundscape.begin_turn(str(entry.room.chapter_key), str(watched.stage_id))
 		_sound_seen = ChapterSoundMap.remember(sim.snapshot())
-		_refusals.begin(str(entry.room.chapter_key), definition, sim.snapshot(), pair.a)
+		_refusals.begin(str(entry.room.chapter_key), definition, sim.snapshot(), memory)
 	else:
 		sim = LegacySimulation.new()
 		if not sim.reset(Levels.get_level(pair.level_id), pair.a, "b"):
 			_show_error(sim.error); return
 		_frames = LegacySimulation.expand_recording_inputs(pair.b)
 		soundscape.begin_turn(Soundscape.ISLANDS_CHAPTER, str(Levels.get_level(pair.level_id).get("id", "")))
-	sim.catch_assistance = bool(pair.b.get("catch_assistance", true))
-	memory_wait.begin("b", MemoryWait.prior_ticks(pair.a))
+	sim.catch_assistance = bool(watched.get("catch_assistance", true))
+	memory_wait.begin("b", MemoryWait.prior_ticks(memory))
 	# Both turns' reactions made during the run, at their ticks (a chapter's recordings name their spirit).
 	run_player.begin()
 	var tracks := RunReactionStore.new()
-	for recording: Variant in [pair.b, pair.a]:
+	for recording: Variant in [watched, memory]:
 		if recording is Dictionary: run_player.play(recording, tracks.track(str(recording.get("recording_hash", ""))))
 	cursor = 0
 	_tick_time = 0.0
@@ -396,8 +405,14 @@ func _finished() -> void:
 		_show_finished()
 
 func _show_finished() -> void:
+	# Open turns: the stage's next turn first, then the next stage.
+	if entry.room.family == "chapter" and _turn_index + 1 < OpenTurns.pair_turns(entry.pair).size():
+		_turn_index += 1
+		_start_part()
+		return
 	if _part_index + 1 < sequence.size():
 		_part_index += 1
+		_turn_index = 1
 		_start_part()
 		return
 	running = false

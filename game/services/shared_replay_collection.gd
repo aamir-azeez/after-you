@@ -20,6 +20,9 @@ const RoomStages = preload("res://services/room_stages.gd")
 const WhenLabel = preload("res://presentation/when_label.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
 const VERIFIED_PROOF_LIMIT := 256
@@ -288,9 +291,11 @@ static func _verify_local_room(job: Dictionary) -> Dictionary:
 			var metadata := {"family": "chapter", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": chapter, "title": RoomChapterTitle.title(chapter)}
 			var checkpoint: Dictionary = room.checkpoint
 			for index in range(room.completed_pair_ids.size() - 1, -1, -1):
-				var proof: Dictionary = checkpoint.proof
+				# Open turns: the first and closing turn; the passes stay in the checkpoint.
+				var turns := OpenTurns.proof_turns(checkpoint.proof)
+				if turns.is_empty(): return {"ok": false}
 				var id: String = room.completed_pair_ids[index]
-				var pair := {"pair_id": id, "branch": int(id.substr(1).get_slice("-", 0)), "stage_index": index, "a": proof.a, "b": proof.b, "checkpoint": checkpoint}
+				var pair := {"pair_id": id, "branch": int(id.substr(1).get_slice("-", 0)), "stage_index": index, "a": turns[0], "b": turns[-1], "checkpoint": checkpoint}
 				var entry := {"schema_version": 1, "room": metadata, "pair": pair}
 				if entries.has(id) and not Typed.same(entries[id], entry): return {"ok": false}
 				changed = changed or not entries.has(id)
@@ -738,9 +743,10 @@ func _remember_room(snapshot: Dictionary, family: String, verified: bool = false
 	elif not snapshot.get("completed_pair_ids", []).is_empty():
 		var checkpoint: Dictionary = snapshot.checkpoint
 		for index in range(snapshot.completed_pair_ids.size() - 1, -1, -1):
-			var proof: Dictionary = checkpoint.proof
+			var turns := OpenTurns.proof_turns(checkpoint.proof)
+			if turns.is_empty(): return false
 			var id: String = snapshot.completed_pair_ids[index]
-			var pair := {"pair_id": id, "branch": int(id.substr(1).get_slice("-", 0)), "stage_index": index, "a": proof.a.duplicate(true), "b": proof.b.duplicate(true), "checkpoint": checkpoint.duplicate(true)}
+			var pair := {"pair_id": id, "branch": int(id.substr(1).get_slice("-", 0)), "stage_index": index, "a": turns[0].duplicate(true), "b": turns[-1].duplicate(true), "checkpoint": checkpoint.duplicate(true)}
 			_cache({"schema_version": 1, "room": room, "pair": pair})
 			checkpoint = Registry.previous_checkpoint(room.chapter_key, checkpoint)
 	return true
@@ -1029,7 +1035,8 @@ static func _verify_entry_proof(entry: Dictionary) -> bool:
 		var start := Registry.previous_checkpoint(entry.room.chapter_key, pair.checkpoint)
 		if start.is_empty(): return false
 		var engine: Script = Registry.simulation_script(entry.room.chapter_key)
-		var checked: Dictionary = engine.derive_checkpoint(Registry.definition(entry.room.chapter_key), start, pair.a, pair.b)
+		Proofs.prepare_traces()
+		var checked: Dictionary = CheckpointPairs.derive(engine, Registry.definition(entry.room.chapter_key), start, pair)
 		return checked.get("valid", false) and Typed.same(checked.get("checkpoint"), pair.checkpoint) and int(pair.checkpoint.stage_index) == int(pair.stage_index) + 1
 	if pair.size() != 5 or not Coordinator._range(pair.get("attempt"), 0, 1000000) or pair.get("first_player_id") not in [entry.room.host_id, entry.room.guest_id]: return false
 	var level := Levels.get_level(str(pair.get("level_id", "")))

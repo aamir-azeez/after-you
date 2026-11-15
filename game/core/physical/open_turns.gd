@@ -67,6 +67,25 @@ const LETTERS := "abcdefghijklmnopqrst"
 const CHECKPOINT_SCHEMA := 8
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash", "proof"]
 
+## A completed stage's turns in play order, from its checkpoint's `proof`:
+## every turn under open turns (proof.turns), a and b before. [] when the
+## proof holds neither.
+static func proof_turns(proof: Variant) -> Array:
+	if not proof is Dictionary: return []
+	if proof.get("turns") is Array:
+		var turns: Array = proof.turns
+		return turns if turns.size() >= 2 and turns.all(func(turn: Variant) -> bool: return turn is Dictionary) else []
+	return [proof.a, proof.b] if proof.get("a") is Dictionary and proof.get("b") is Dictionary else []
+
+## A completed pair's turns in play order: its first turn, its passes (from its
+## checkpoint's proof, or a local record's own "passes"), its closing turn.
+static func pair_turns(pair: Dictionary) -> Array:
+	var passes: Variant = pair.get("passes")
+	if not passes is Array:
+		var nested := proof_turns(pair.get("checkpoint", {}).get("proof") if pair.get("checkpoint") is Dictionary else null)
+		passes = nested.slice(1, nested.size() - 1) if nested.size() > 2 else []
+	return [pair.get("a")] + passes + [pair.get("b")]
+
 ## Whether rules `version` play open turns.
 static func rules(version: int) -> bool:
 	return version in RULES
@@ -74,6 +93,10 @@ static func rules(version: int) -> bool:
 ## The slot that plays turn `turn` (1 based) of a stage whose first pip is `first`.
 static func slot(first: String, turn: int) -> String:
 	return first if turn % 2 == 1 else ("p1" if first == "p0" else "p0")
+
+## The turn number a turn id names by its letter (a = 1), or 0.
+static func number(id: String) -> int:
+	return LETTERS.find(id.right(1)) + 1 if not id.is_empty() else 0
 
 ## Turn `turn`'s id on `branch` and stage `stage_index`.
 static func turn_id(branch: int, stage_index: int, turn: int) -> String:
