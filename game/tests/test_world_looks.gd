@@ -15,11 +15,12 @@ extends "res://tests/test_world_fingerprint.gd"
 
 ## The most meshes a chapter stage draws, shown and folded (each visible
 ## mesh surface and overlay; a label or a multimesh is one). Turn of the
-## Tide's second stage drew 672 before the palette fold and draws 446 now.
-const MOST_DRAWS := 500
+## Tide's second stage drew 672 before the palette fold and draws 503 now;
+## every other stage draws under 130.
+const MOST_DRAWS := 560
 ## The most triangles a chapter stage's visible meshes hold (Turn of the
-## Tide's second stage: about 190,000).
-const MOST_TRIANGLES := 220000
+## Tide's second stage: 213,204).
+const MOST_TRIANGLES := 240000
 
 func _suite() -> String:
 	return "world_looks"

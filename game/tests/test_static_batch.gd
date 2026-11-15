@@ -1,11 +1,13 @@
 extends SceneTree
 ## kit/static_batch.gd folds a world's plain static leaves into one mesh per
-## material and leaves everything that can change as its own node.
-## - Plain leaves of one material become one batch whose vertices are the
-##   leaves' vertices in the root's space, in order.
+## look and leaves everything that can change as its own node.
+## - Plain leaves whose looks differ only in colour become one batch whose
+##   vertices are the leaves' vertices in the root's space, in order, with
+##   their normals (a stretched leaf's too) and each leaf's colour, drawn
+##   with the shared palette look; glowing leaves batch per material.
 ## - Held nodes (owner variables) and what is under them, scripted nodes,
-##   hidden, see-through, textured, meta-tagged and non-uniformly scaled
-##   leaves stay; a root is folded once. A scripted node under the root holds
+##   hidden, see-through, textured, meta-tagged and mirrored leaves stay; a
+##   root is folded once. A scripted node under the root holds
 ##   what its own variables name; a freed node in a variable is skipped.
 ## - With "containers", a held plain container's leaves batch under it, in
 ##   its space, so moving or hiding the container moves or hides them; a
@@ -104,7 +106,8 @@ func _run() -> void:
 	var glowing := _leaf(root, box, Color("c4b090"), Vector3(14, 0, 0))
 	(glowing.material_override as StandardMaterial3D).emission_enabled = true
 	var glowing2 := _leaf(root, box, Color("8b7964"), Vector3(15, 0, 0))
-	glowing2.material_override = glowing.material_override
+	var glow: Material = glowing.material_override
+	glowing2.material_override = glow
 	plain.append_array([other, other2, stretched])
 	var owner := Owner.new()
 	owner.held = [held, held_parent]
@@ -153,7 +156,7 @@ func _run() -> void:
 		var look := first.material_override as StandardMaterial3D
 		_check(look.vertex_color_use_as_albedo and look.vertex_color_is_srgb and look.albedo_color == Color.WHITE and Primitives.is_shared(look), "The batch draws with the shared palette look")
 	var second: MeshInstance3D = batches[1] if batches.size() > 1 else null
-	_check(second != null and second.material_override == glowing.material_override and second.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] == null, "Glowing leaves keep their own look, in a batch of their own")
+	_check(second != null and second.material_override == glow and second.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR] == null, "Glowing leaves keep their own look, in a batch of their own")
 	for leaf: MeshInstance3D in plain: _check(not is_instance_valid(leaf) or not leaf.is_inside_tree(), "A folded leaf leaves the tree")
 	for kept: Node in [held, held_parent, under_held, by_name, under_script, hidden, see_through, tagged, mirrored]:
 		_check(is_instance_valid(kept) and kept.is_inside_tree(), "Stays its own node: " + str(kept.position))
@@ -237,7 +240,9 @@ func _containers() -> void:
 	root.add_child(held)
 	var inside: Array[MeshInstance3D] = []
 	for i in range(3): inside.append(_leaf(held, box, Color("c4b090"), Vector3(i, 0, 0)))
+	# Another look than its neighbours' (not only another colour): no partner.
 	var lone := _leaf(held, box, Color("8b7964"), Vector3(0, 0, 1))
+	(lone.material_override as StandardMaterial3D).roughness = 0.4
 	var nested := Node3D.new()
 	nested.position = Vector3(0, 0.5, 0)
 	held.add_child(nested)
@@ -302,6 +307,7 @@ func _still() -> void:
 		for i in range(2): pieces.append(_leaf(floor_node, box, Color("c4b090"), Vector3(i, 0, 0)))
 	var marker := _leaf(floors[0], box, Color("c4b090"), Vector3(0, 0, 2))
 	var lone := _leaf(floors[0], box, Color("8b7964"), Vector3(0, 0, -2))
+	(lone.material_override as StandardMaterial3D).roughness = 0.4
 	var moving := Node3D.new()
 	floors[1].add_child(moving)
 	var moving_leaves: Array[MeshInstance3D] = []
@@ -439,7 +445,7 @@ func _steps() -> void:
 	var box := BoxMesh.new()
 	var first: Array[MeshInstance3D] = []
 	for i in range(3): first.append(_leaf(root, box, Color("c4b090"), Vector3(i, 0, 0)))
-	for i in range(2): _leaf(root, box, Color("8b7964"), Vector3(i, 0, 2))
+	for i in range(2): (_leaf(root, box, Color("8b7964"), Vector3(i, 0, 2)).material_override as StandardMaterial3D).roughness = 0.4
 	await process_frame
 	var waiting := StaticBatch.start(root, [])
 	while not waiting.walk.is_empty() or not waiting.owners.is_empty() or not waiting.scan.is_empty(): StaticBatch.step(waiting, 1)
@@ -536,7 +542,7 @@ func _chapters() -> void:
 		_check(terrain.has_meta(StaticBatch.FOLDED_META) and not world.scenery_folding(), key + ": the world folds its terrain on its first frame")
 		var batches := terrain.find_children("StaticBatch*", "MeshInstance3D", true, false).size()
 		var after := terrain.find_children("*", "MeshInstance3D", true, false).size()
-		_check(batches > 10 and after < meshes, "%s: %d meshes become %d (%d batches)" % [key, meshes, after, batches])
+		_check(batches > 0 and after < meshes, "%s: %d meshes become %d (%d batches)" % [key, meshes, after, batches])
 		var kept := true
 		for id: int in held:
 			var node := instance_from_id(id) as Node
@@ -642,7 +648,7 @@ func _tide() -> void:
 		var name := "Turn of the Tide stage %d" % (index + 1)
 		var batches: Array = tide.terrain.find_children("StaticBatch*", "MeshInstance3D", true, false)
 		var after: int = tide.terrain.find_children("*", "MeshInstance3D", true, false).size()
-		_check(tide.terrain.has_meta(StaticBatch.FOLDED_META) and batches.size() > 10 and after < meshes, "%s folds: %d meshes become %d (%d batches)" % [name, meshes, after, batches.size()])
+		_check(tide.terrain.has_meta(StaticBatch.FOLDED_META) and batches.size() > 0 and after < meshes, "%s folds: %d meshes become %d (%d batches)" % [name, meshes, after, batches.size()])
 		var kept := true
 		for id: int in before.held.keys() + before.kept_under.keys():
 			var node := instance_from_id(id) as Node
@@ -658,7 +664,7 @@ func _tide() -> void:
 		var floors := 0
 		for batch: Node in batches:
 			if batch.get_parent() == tide.terrain: floors += 1
-		_check(floors > 10, name + ": the floors' plain pieces fold together at the terrain (%d batches there)" % floors)
+		_check(floors > 0, name + ": the floors' plain pieces fold together at the terrain (%d batches there)" % floors)
 		if index == 0:
 			# A kept node freed before the next fold is skipped, never asked its type.
 			var gone := Node3D.new()

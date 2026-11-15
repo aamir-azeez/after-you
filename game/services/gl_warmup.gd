@@ -77,19 +77,19 @@ const MATERIALS: Array[Dictionary] = [
 ## Which listed keys each chapter draws: "m" indices into MATERIALS, "s" into
 ## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.
 const CHAPTERS := {
-	"first-steps@1": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 4], "l": [2]},
-	"relay-isles@2": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 4], "l": [2]},
-	"high-and-low@1": {"m": [0, 1, 2, 6, 8], "s": [0, 12, 16], "l": [2]},
-	"rolling-home@1": {"m": [0, 1, 2, 6, 8], "s": [0, 12, 16], "l": [2]},
-	"a-house-for-two@1": {"m": [0, 1, 2, 3, 6], "s": [0, 12, 16], "l": [2]},
-	"conservatory@1": {"m": [0, 1, 2, 3, 6, 8, 9], "s": [0, 12, 16], "l": [2]},
-	"the-wishing-well@1": {"m": [0, 1, 2, 6, 8], "s": [0, 12, 16], "l": [2]},
-	"long-way-home@1": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 1, 12, 16], "l": [0, 2]},
-	"long-way-home@2": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 1, 12, 16], "l": [0, 2]},
-	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7], "s": [0, 1, 7, 12, 16], "l": [0, 1, 2]},
-	"turn-of-the-tide@2": {"m": [0, 1, 2, 3, 4, 5, 6, 7], "s": [0, 1, 7, 12, 16], "l": [0, 1, 2]},
-	"sleeping-lighthouse@1": {"m": [0, 1, 2, 3, 6, 8], "s": [0], "l": [2]},
-	"sleeping-lighthouse@2": {"m": [0, 1, 2, 3, 6, 8], "s": [0], "l": [2]},
+	"first-steps@1": {"m": [0, 1, 2, 5, 6, 8, 12], "s": [0, 4], "l": [2]},
+	"relay-isles@2": {"m": [0, 1, 2, 5, 6, 8, 12], "s": [0, 4], "l": [2]},
+	"high-and-low@1": {"m": [0, 1, 2, 6, 8, 12, 13], "s": [0, 12, 16], "l": [2]},
+	"rolling-home@1": {"m": [0, 1, 2, 6, 8, 12], "s": [0, 12, 16], "l": [2]},
+	"a-house-for-two@1": {"m": [0, 1, 2, 3, 6, 12, 13], "s": [0, 12, 16], "l": [2]},
+	"conservatory@1": {"m": [0, 1, 2, 3, 6, 8, 9, 12], "s": [0, 12, 16], "l": [2]},
+	"the-wishing-well@1": {"m": [0, 1, 2, 6, 8, 12, 13], "s": [0, 12, 16], "l": [2]},
+	"long-way-home@1": {"m": [0, 1, 2, 5, 6, 8, 12, 13], "s": [0, 1, 12, 16], "l": [0, 2]},
+	"long-way-home@2": {"m": [0, 1, 2, 5, 6, 8, 12, 13], "s": [0, 1, 12, 16], "l": [0, 2]},
+	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13], "s": [0, 1, 7, 12, 16], "l": [0, 1, 2]},
+	"turn-of-the-tide@2": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13], "s": [0, 1, 7, 12, 16], "l": [0, 1, 2]},
+	"sleeping-lighthouse@1": {"m": [0, 1, 2, 3, 6, 8, 12], "s": [0], "l": [2]},
+	"sleeping-lighthouse@2": {"m": [0, 1, 2, 3, 6, 8, 12], "s": [0], "l": [2]},
 }
 ## Every Label3D key the chapters draw ("msdf": the font draws from a distance field).
 const LABELS: Array[Dictionary] = [
