@@ -16,6 +16,7 @@ const DATA := {
 	"selector": "plain",
 	"pad": "plain",
 	"goal": "bell",
+	"lift": "plain",
 	"bridges": "timber",
 	"props": {"*": [
 		# Shore: a planted bank behind and to the left, flowers along the front.
