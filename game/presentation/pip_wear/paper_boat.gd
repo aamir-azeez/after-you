@@ -3,16 +3,21 @@ extends RefCounted
 ## the leaf, as the hats board draws it: a cream hull with pointed ends and a
 ## terracotta fold along its front edge, a cream sail folded down its middle,
 ## and the dark inside of the hull between them. Every face is flat, so the
-## folds read as paper. It sits clear beside the leaf ("pokes_through"). One
-## baked mesh, one draw call.
+## folds read as paper. It sits as the board drew it, moved across the head
+## so the hull's left part, just left of where the stripe starts, is over the
+## leaf's sprout: the leaf comes out of the boat there (the descriptor's
+## "leaf_lift"). One baked mesh, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const PAPER := Color("eee9d4")
 const FOLD := Color("cb8967")
 const INK := Color("193d39")
 ## Where the keel's middle sits on the head and the boat's turn (head space):
-## its right end raised, turned a little to show its side, and its size.
-const AT := Vector3(0.24, 0.255, -0.015)
+## the board's boat (its right end raised, turned a little to show its side,
+## its size) moved only, so the hull point a little left of the stripe's start
+## (boat x -0.13) is over the leaf's sprout and its keel sits as deep in the
+## head as the board's did.
+const AT := Vector3(-0.022, 0.248, 0.013)
 const TURN := Vector3(0.0, -0.22, 0.24)
 const SCALE := 1.2
 ## The boat's own space: x along it, y up, z across. The keel's half length,
@@ -30,7 +35,7 @@ const SAIL_FOLD := 0.018
 
 ## Metres a carried seed or lens sits higher while it is worn, just clear of
 ## the hat itself (a leaf may touch it; pip_outfit.gd lift_seed).
-const SEED_LIFT := 0.075
+const SEED_LIFT := 0.2
 
 static func wear(look: RefCounted) -> void:
 	look.mesh(look.head(), Kit.cached_mesh("paper_boat", _build), Kit.vertex_material())

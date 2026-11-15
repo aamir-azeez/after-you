@@ -271,6 +271,9 @@ func _home(read_finished: bool = true) -> Node:
 	if app.tester_access.cache_checked_context.is_empty():
 		_check(false, "Fixture: Home finished its startup receipt read")
 		return null
+	# Home's own first read of the notification binding is startup work, not an
+	# open's: it lands whenever the network is first idle, so let it finish first.
+	while not app.turn_notifications._loaded and Time.get_ticks_msec() < deadline: await process_frame
 	await process_frame
 	return app
 

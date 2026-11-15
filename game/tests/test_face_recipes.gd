@@ -43,8 +43,8 @@ func _area(polygons: Array) -> float:
 	return total
 
 func _table() -> void:
-	_check(Look.REACTION_FACES.size() == 16 and Look.REST_FACES.size() == 5, "Sixteen reaction faces and five resting faces (Classic is Normal)")
-	var ids: Array[String] = ["aww", "shy", "huh", "please", "touched", "lucky", "giggle", "curious", "nervous", "drowsy", "gasp", "peekaboo", "yay", "smitten", "starry", "flower"]
+	_check(Look.REACTION_FACES.size() == 15 and Look.REST_FACES.size() == 5, "Fifteen reaction faces and five resting faces (Classic is Normal)")
+	var ids: Array[String] = ["aww", "shy", "huh", "please", "touched", "lucky", "giggle", "curious", "nervous", "drowsy", "gasp", "peekaboo", "yay", "starry", "flower"]
 	_check(Look.REACTION_FACES.map(func(face: StringName) -> String: return str(face)) == ids, "The reaction faces keep their reaction ids, in shop order")
 	_check(Look.REST_FACES == [&"rest_button", &"rest_bean", &"rest_round", &"rest_wide", &"rest_sprout"], "The resting faces keep their item ids")
 	for face: StringName in Look.REACTION_FACES + Look.REST_FACES:
@@ -81,7 +81,6 @@ func _flat_parts() -> void:
 		var mark: Vector4 = Look.eye(Look.YAY, index).mark
 		var outward := mark.x * (-1.0 if index == 0 else 1.0)
 		_check(outward > 0.07, "Yay eye %d: the sparkle is out past the eye's outer edge" % index)
-	_check(Look.eye_contours(Look.SMITTEN, 1).get("pupil_color") == Look.HEART_RED and not (Look.eye_contours(Look.SMITTEN, 0).strokes as Array).is_empty(), "Smitten: one heart eye and one shut in an arc")
 	_check((Look.eye_contours(Look.TOUCHED, 0).get("shines", []) as Array).size() == 1 and Look.eye_contours(Look.TOUCHED, 0).has("blush"), "Touched: a shine, a tear and cheeks")
 	_check(Look.eye_contours(Look.NERVOUS, 1).has("streams") and not Look.eye_contours(Look.NERVOUS, 0).has("streams"), "Nervous: one drop at the temple")
 

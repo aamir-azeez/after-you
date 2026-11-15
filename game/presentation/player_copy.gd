@@ -636,11 +636,9 @@ const FACE_DROWSY := "Drowsy"
 const FACE_GASP := "Gasp"
 const FACE_PEEKABOO := "Peekaboo"
 const FACE_YAY := "Yay"
-const FACE_SMITTEN := "Smitten"
 const FACE_STARRY := "Starry"
 const FACE_FLOWER := "Flower"
 ## The six pack faces sold one at a time (content/cosmetics/faces.gd).
-const FACE_HEART_EYES := "Heart eyes"
 const FACE_PROUD := "Proud"
 const FACE_WINK := "Wink"
 const FACE_WOW := "Wow"
@@ -659,10 +657,10 @@ const REACTION_SLOT_SIXTH := "Sixth reaction slot"
 ## The faces, by id (services/reaction_catalog.gd). The heart is icon only; its name is for screen readers.
 const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
 	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love",
-	"heart_eyes": FACE_HEART_EYES, "proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
+	"proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
 	"aww": FACE_AWW, "shy": FACE_SHY, "huh": FACE_HUH, "please": FACE_PLEASE, "touched": FACE_TOUCHED, "lucky": FACE_LUCKY,
 	"giggle": FACE_GIGGLE, "curious": FACE_CURIOUS, "nervous": FACE_NERVOUS, "drowsy": FACE_DROWSY, "gasp": FACE_GASP,
-	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "smitten": FACE_SMITTEN, "starry": FACE_STARRY, "flower": FACE_FLOWER}
+	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "starry": FACE_STARRY, "flower": FACE_FLOWER}
 ## The reaction packs (services/reaction_catalog.gd PACKS), and the faces card's
 ## tab for the everyday faces beside a tab per owned pack.
 const FACE_PACK_NAMES := {"garden_faces": "Garden faces", "big_feelings": "Big feelings"}
