@@ -25,6 +25,15 @@ const Look = preload("res://presentation/kit/look.gd")
 ## The piece kits' palette, shapes and glow (kit/pieces/parts.gd).
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const Props = preload("res://presentation/kit/props.gd")
+## Scenery as data (content/dressing) and the ground styles it names.
+const DressingCatalog = preload("res://content/dressing/catalog.gd")
+const Surfaces = preload("res://presentation/kit/surfaces.gd")
+const FIREFLY := Color("ffe9a8")
+## This chapter's scenery data (content/dressing); empty keeps the plain world.
+var dressing: Dictionary = {}
+## Walkable surface roots by island id, where props on that surface belong.
+var _surface_nodes: Dictionary = {}
+var _fireflies: Array[MeshInstance3D] = []
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 ## Every world camera writes its size through this (tall screens keep the authored width).
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
@@ -189,6 +198,8 @@ func apply_graphics_quality(quality: String) -> void:
 	var visible_count := GraphicsPolicy.mote_count(_authored_motes.size(), quality)
 	for index in range(_authored_motes.size()):
 		_authored_motes[index].visible = index < visible_count
+	for fly: MeshInstance3D in _fireflies:
+		if is_instance_valid(fly): fly.visible = GraphicsPolicy.fireflies(quality)
 
 # --- Staged build: the one way a world is built over frames ---
 # A chapter screen opened behind its card builds with build_staged; every
@@ -1235,6 +1246,7 @@ func _process(delta: float) -> void:
 		for i in range(motes.size()):
 			if motes[i].visible:
 				motes[i].position.y+=sin(time*0.4+i)*delta*0.07
+	_advance_fireflies()
 	_advance_camera(delta)
 
 ## Moves the planks `weight` of the way to their pose and reports the
@@ -1369,3 +1381,80 @@ func _doze_anchor(actor: Node3D) -> Variant:
 			reach = distance
 			best = at
 	return best
+
+# --- Dressing: one host for every world (content/dressing) ---
+
+## The registry key this world's dressing is filed under; "" has none.
+func _chapter_key() -> String:
+	return ""
+
+## Reads the chapter's dressing and its light; call at the start of a build.
+func _load_dressing() -> void:
+	dressing = DressingCatalog.for_key(_chapter_key())
+	if dressing.has("look"): relight(str(dressing.look))
+	_surface_nodes.clear()
+	_fireflies.clear()
+
+func _dressing_stage_id() -> String:
+	return str(current_level.get("stage_id", ""))
+
+## Height of a surface whose props have no surface root of their own.
+func _surface_base(_surface_id: String) -> float:
+	return 0.0
+
+## The ground style for an island from the dressing; "" keeps the plain shore.
+func _ground_style(island_id: String) -> String:
+	var ground: Dictionary = dressing.get("ground", {})
+	var style := str(ground.get(island_id, ground.get("*", "")))
+	return style if Surfaces.has_style(style) else ""
+
+## Props from the dressing data: visual only, never collision or state. A
+## staged build gets the frame back between props. Await it.
+func _build_dressing() -> void:
+	var specs := Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id()))
+	var lit := bool(dressing.get("lit", true))
+	var anchors: Array[Vector3] = []
+	for spec: Dictionary in specs:
+		await _build_step()
+		if not GraphicsPolicy.detail_dressing(_motion_quality) and bool(spec.get("detail", false)): continue
+		var surface := str(spec.get("surface", ""))
+		var parent: Node3D = _surface_nodes.get(surface, terrain)
+		var base := 0.0 if _surface_nodes.has(surface) else _surface_base(surface)
+		var prop := Props.build(spec, parent, base, lit)
+		if prop == null: continue
+		prop.set_meta("dressing", true)
+		if str(spec.kind) in ["tree", "bush", "hedge", "flowers", "fern", "planter", "lantern", "lamp_post"]:
+			anchors.append(parent.position + prop.position)
+		_dressed_prop(prop)
+	_build_fireflies(int(dressing.get("fireflies", 0)), anchors)
+
+## Small warm lights drifting near the planting. They are not motes:
+## GraphicsPolicy.fireflies hides them on Low, and they never count as authored
+## motes.
+func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
+	if count <= 0 or anchors.is_empty(): return
+	var root := Node3D.new()
+	root.name = "Fireflies"
+	terrain.add_child(root)
+	var glow := Primitives.shared_material(FIREFLY, 0.9, FIREFLY, 2.2)
+	for index in range(count):
+		var anchor: Vector3 = anchors[(index * 7) % anchors.size()]
+		var at := anchor + Vector3(sin(index * 2.3) * 0.5, 0.45 + 0.25 * float(index % 3), cos(index * 1.7) * 0.35)
+		var fly := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.028), glow, at, root)
+		fly.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		fly.set_meta("rest", at)
+		fly.visible = GraphicsPolicy.fireflies(_motion_quality)
+		_fireflies.append(fly)
+
+func _advance_fireflies() -> void:
+	if reduced_motion: return
+	for index in range(_fireflies.size()):
+		var fly := _fireflies[index]
+		if not is_instance_valid(fly): continue
+		var rest: Vector3 = fly.get_meta("rest")
+		var phase := time * 0.7 + float(index) * 1.9
+		fly.position = rest + Vector3(sin(phase) * 0.18, sin(phase * 1.3) * 0.08, cos(phase * 0.8) * 0.12)
+
+## A built dressing prop, for a world that wakes a part of it later.
+func _dressed_prop(_prop: Node3D) -> void:
+	pass

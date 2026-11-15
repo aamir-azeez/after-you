@@ -14,6 +14,7 @@ const Lever = preload("res://presentation/kit/pieces/lever.gd")
 const Selector = preload("res://presentation/kit/pieces/selector.gd")
 const Pad = preload("res://presentation/kit/pieces/pad.gd")
 const Goal = preload("res://presentation/kit/pieces/goal.gd")
+const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const JourneyWorld = preload("res://presentation/journey_world.gd")
 const AT := Vector3(1, 0.5, 2)
@@ -94,6 +95,12 @@ func _check_every_style(holder: Node3D) -> void:
 		_check(piece.style == style and piece.bell is MeshInstance3D and piece.ring is MeshInstance3D and piece.light.get_parent() == holder and piece.bell.get_parent() == piece.root, "Goal %s keeps its bell, ring and light" % style)
 		_check(is_equal_approx((piece.ring.mesh as TorusMesh).outer_radius, 0.28 + 0.025) and piece.root.position == AT, "Goal %s rings the goal's exact spot" % style)
 		_check(is_zero_approx(piece.light.light_energy), "Goal %s is built unlit" % style)
+	for style: String in Styles.SLOTS.lift:
+		var piece: RefCounted = Lift.build(style, Rect2(-1.0, -0.9, 2.0, 1.8), 0.0, 1.6, holder, {"drive": Vector3(-3.0, 0, -1.3)})
+		_check(piece.style == style and piece.root.get_parent() == holder and piece.moving_parts().has(piece.root) and _meshes(piece.root) > 0, "Lift %s builds its deck and keeps it moving" % style)
+		piece.set_height(0.8)
+		_check(is_equal_approx(piece.root.position.y, 0.8), "Lift %s's deck stands at the shown height" % style)
+	_check(Lift.build("teapot", Rect2(0, 0, 1, 1), 0.0, 1.0, holder).style == "plain", "An unknown lift style builds plain")
 	_check(Lever.build("teapot", AT, holder).style == "plain" and Selector.build("teapot", AT, holder).style == "plain" and Pad.build("teapot", AT, 0.3, holder).style == "plain" and Goal.build("teapot", AT, 0.3, holder).style == "bell", "An unknown style builds the default")
 
 ## A handle snaps; a machine stands inside its lever's reach, its anchor puts
