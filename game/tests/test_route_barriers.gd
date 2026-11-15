@@ -9,6 +9,9 @@ extends SceneTree
 ##    no spirit ever walks through a shut gate, a stair's chain or a zone's
 ##    rope while it shows, and the memory's pushes are the ones its own turn
 ##    found (so a push rattles the same live, as the memory and in a replay);
+##  - every gate of every floor chapter's stages is a short, upright gate
+##    straight across its crossing's mouth, no wider than the way it lands on,
+##    and no gate meets another gate or a zone's rope, shut or open;
 ##  - the sound map plays a rattle and a clunk named by what was pushed.
 const Registry = preload("res://services/chapter_registry.gd")
 const Golden = preload("res://tests/golden_support.gd")
@@ -37,6 +40,7 @@ func _run() -> void:
 	for style: String in PropStyles.SLOTS.barrier:
 		_check(RouteBarriers.EDGE_LOOKS.has(StringName(str(PropStyles.SLOTS.barrier[style].edge))), "The barrier style %s names a zone edge look" % style)
 	_rules()
+	_shapes()
 	_refusals()
 	_sounds()
 	var played := 0
@@ -124,6 +128,68 @@ func _rules() -> void:
 	_check(RouteBarriers.refusal(view, routes, _player(-168, 88, "west"), "p1", Vector2(0, 1), 12, 8).get("kind") == RouteBarriers.STAIR, "A push onto a closed stair is a stair refusal")
 	_check(RouteBarriers.refusal(view, routes, _player(290, 0, "east"), "p1", Vector2.RIGHT, 12, 8).get("kind") == RouteBarriers.ZONE, "A push into a zone the other pip owns is a zone refusal")
 	_check(RouteBarriers.refusal(view, routes, _player(290, 0, "east"), "p0", Vector2.RIGHT, 12, 8).is_empty(), "A zone's owner walks in")
+
+# --- Gate shapes ------------------------------------------------------------------
+
+## A short, wide crossing (Slack Water's sea gates are 64 cm long and 128 cm
+## wide), then every stage of every floor chapter.
+func _shapes() -> void:
+	var short := {
+		"islands": [{"id": "west", "rect_cm": [-300, -100, 0, 100], "height_cm": 0}, {"id": "east", "rect_cm": [64, -100, 300, 100], "height_cm": 0}],
+		"bridges": [{"id": "sluice", "rect_cm": [0, -64, 64, 64], "height_cm": 0, "owner_slot": "p0"}],
+	}
+	var problems := _gate_problems(short, "a short wide bridge")
+	_check(problems.is_empty(), "The gates at both ends of a short wide bridge stand straight across it and never meet: %s" % [problems])
+	var stages := 0
+	for key: String in Registry.keys():
+		if not Stages.floor_chapter(key): continue
+		for entry: Dictionary in Stages.stages(key):
+			stages += 1
+			problems = _gate_problems(entry.view, "%s stage %d" % [key, int(entry.index) + 1])
+			_check(problems.is_empty(), "%s stage %d: every gate is straight across its mouth and meets no other barrier: %s" % [key, int(entry.index) + 1, problems])
+	_check(stages >= 12, "Every floor chapter's stages were measured (%d)" % stages)
+
+## What is wrong with `view`'s gates: a leaf not square to the way through or
+## wider than the way it lands on, two gates (posts, shut or open leaves) on
+## one floor meeting, a gate crossing a zone's rope.
+static func _gate_problems(view: Dictionary, where: String) -> Array:
+	var problems: Array = []
+	var layout := RouteBarriers.layout(view)
+	var floors := RouteBarriers.floors_of(view)
+	var parts: Array = []
+	for mouth: Dictionary in layout.mouths:
+		var along := Vector2(mouth.along)
+		var across := Vector2(along.y, -along.x)
+		var at := Vector2(mouth.at.x, mouth.at.z)
+		var name := "%s end %d" % [mouth.route, mouth.end]
+		for share: float in [-0.95, 0.0, 0.95]:
+			if RouteBarriers._floor_at(floors, at - along * RouteBarriers.LANDING_REACH + across * float(mouth.half) * share, mouth.at.y, mouth.route).is_empty(): problems.append("%s is wider than the way it lands on" % name)
+		var mine: Array = []
+		for side: float in [-1.0, 1.0]:
+			var post := RouteBarriers.post_of(mouth, side)
+			mine.append(Rect2(post - Vector2.ONE * RouteBarriers.POST * 0.5, Vector2.ONE * RouteBarriers.POST))
+		if not str(mouth.owner).is_empty():
+			var width := 0.0
+			for leaf: Dictionary in RouteBarriers.leaves(mouth, RouteBarriers.SHUT):
+				var run := Vector2(leaf.run.x, leaf.run.z)
+				if absf(run.dot(along)) > 0.001 or absf(leaf.run.y) > 0.001: problems.append("%s leans off square" % name)
+				width += float(leaf.length)
+			if width > float(mouth.half) * 2.0 + 0.001: problems.append("%s is %.2f m wide on a %.2f m way" % [name, width, float(mouth.half) * 2.0])
+			mine.append_array(RouteBarriers.leaf_rects(mouth, RouteBarriers.SHUT | RouteBarriers.OPEN))
+		parts.append({"name": name, "y": float(mouth.at.y), "rects": mine})
+	for i in range(parts.size()):
+		for j in range(i + 1, parts.size()):
+			if absf(float(parts[i].y) - float(parts[j].y)) > 0.05: continue
+			for a: Rect2 in parts[i].rects:
+				for b: Rect2 in parts[j].rects:
+					if a.grow(-0.002).intersects(b.grow(-0.002)) and not problems.has("%s meets %s" % [parts[i].name, parts[j].name]): problems.append("%s meets %s" % [parts[i].name, parts[j].name])
+	for span: Dictionary in layout.spans:
+		var low := Vector2(minf(span.a.x, span.b.x), minf(span.a.z, span.b.z))
+		var line := Rect2(low, Vector2(maxf(span.a.x, span.b.x), maxf(span.a.z, span.b.z)) - low).grow(0.025)
+		for part: Dictionary in parts:
+			if absf(float(part.y) - float(span.a.y)) > 0.05: continue
+			if part.rects.any(func(r: Rect2) -> bool: return r.intersects(line)): problems.append("%s crosses the rope of zone %s" % [part.name, span.zone])
+	return problems.map(func(p: String) -> String: return "%s: %s" % [where, p])
 
 # --- The refusal finder --------------------------------------------------------------
 

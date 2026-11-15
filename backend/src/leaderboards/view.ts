@@ -1,4 +1,5 @@
 import type { PairLooks } from "./run-looks";
+import type { OurRunView } from "./our-run";
 
 /**
  * What anyone may read of a board, the same bytes for every reader, so it can
@@ -12,16 +13,20 @@ import type { PairLooks } from "./run-looks";
  *   look, also on a hidden-name row (run-looks.ts). Left out while looks are off.
  * - checking: opaque ids of runs waiting for the replay check or a person.
  *   A member works out their own run's id (run.ts entryId) to find it here.
+ * - `our_run`: the owner's run that is Our run here (our-run.ts), left out while the shipped run is.
+ *   GET .../replay/<entry_id> serves its replay too.
  */
 export type BoardRow = { rank: number; entry_id: string; ticks: number; finished_on: string; names: string[] | null; gold_leaf: boolean; replay_hash: string | null; looks?: PairLooks };
-export type BoardView = { schema_version: 1; board: string; top: BoardRow[]; checking: string[] };
+export type BoardView = { schema_version: 1; board: string; top: BoardRow[]; checking: string[]; our_run?: OurRunView };
 
 export function emptyView(board: string): BoardView { return { schema_version: 1, board, top: [], checking: [] }; }
 
 /** The board as a phone gets it: without `looks` while looks are off, so a board reads as it did before looks. */
 export function publicView(view: BoardView, looks: boolean): BoardView {
-  if (looks || !view.top.some(row => row.looks !== undefined)) return view;
-  return { ...view, top: view.top.map(({ looks: _hidden, ...row }) => row) };
+  if (looks || (!view.top.some(row => row.looks !== undefined) && view.our_run?.looks === undefined)) return view;
+  const { our_run, ...rest } = view;
+  const ourRun = our_run ? (({ looks: _hidden, ...run }) => run)(our_run) : undefined;
+  return { ...rest, top: view.top.map(({ looks: _hidden, ...row }) => row), ...(ourRun ? { our_run: ourRun } : {}) };
 }
 
 /** Whether a run of `ticks` could still place: true unless ten ranked runs are all strictly faster. Ties go to the board, which knows when each finished. */

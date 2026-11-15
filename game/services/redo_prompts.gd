@@ -4,7 +4,8 @@ extends RefCounted
 ## - the nudge: per turn being played, when this phone first started it and
 ##   whether the nudge already showed for it (once per turn);
 ## - Home's request card: the requests whose card got Not now, so Not now
-##   only puts the card away (the request stays on the room page);
+##   only puts the card away (the request stays on the room page), and the
+##   same for a friend's duel party invite (it stays on Duels' Party page);
 ## - the redo alerts question: asked once, whatever the answer.
 ## Presentation only and never sent. One small file, written through
 ## atomic_file.gd; a damaged file reads as empty, which at worst shows a
@@ -46,6 +47,10 @@ static func turn_key(slot: String) -> String:
 ## revision moves with every turn; the stage is kept for reading).
 static func request_key(room_id: String, revision: int, stage_index: int) -> String:
 	return "%s:%d:%d" % [room_id, revision, stage_index]
+
+## A friend's duel party invite on Home: who asked and when, so a new invite shows again.
+static func invite_key(from: String, at_ms: int) -> String:
+	return "party:%s:%d" % [from, at_ms]
 
 ## Notes a start of the turn `key` at `now_s` (unix seconds) and answers
 ## whether its nudge is due: NUDGE_TRIES tries, or NUDGE_SECONDS since this

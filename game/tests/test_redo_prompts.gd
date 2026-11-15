@@ -2,7 +2,10 @@ extends SceneTree
 ## Redo requests on this phone (concept boards claude-20261011/redo-concepts):
 ## the nudge once a turn after 8 tries or 5 minutes, Home's Not now, the redo
 ## alerts question asked once, the room list's redo field, and the turn's chip.
+## A friend's duel party invite on the same Home card: the list's duel_invites
+## field, and which invite the card shows as the list and duels reads move on.
 const RedoPrompts = preload("res://services/redo_prompts.gd")
+const RedoHomeCard = preload("res://presentation/redo_home_card.gd")
 const Inbox = preload("res://services/room_inbox_client.gd")
 const ChapterControls = preload("res://presentation/chapter_controls.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -10,12 +13,32 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 var checks := 0
 var failures := 0
 
+## Home's two reads as the card sees them: the room list's invites and the duels lobby.
+class Reads:
+	extends RefCounted
+	var invites: Array = []
+	var invites_sent := -1
+	var lobby: Dictionary = {}
+	var lobby_sent := -1
+	func rooms_client() -> RefCounted: return self
+	func client() -> RefCounted: return self
+	func duel_invites() -> Array: return invites.duplicate(true)
+	func duel_invites_sent_ms() -> int: return invites_sent
+	func last_lobby() -> Dictionary: return lobby
+	func lobby_sent_ms() -> int: return lobby_sent
+
+class Host:
+	extends Node
+	var room_hub_flow: RefCounted
+	var duels_flow: RefCounted
+
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	_nudge()
 	_home_and_alerts()
 	_inbox_field()
+	await _invites()
 	await _chip()
 	print("REDO PROMPTS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
@@ -74,6 +97,45 @@ func _inbox_field() -> void:
 	var shown: Dictionary = client._normalize_room(asked)
 	_check(shown.get("redo") == {"state": "asked_you", "stage_index": 0} and Inbox.valid_room(shown), "The kept room carries it and stays valid")
 	_check(not client._normalize_room(base).has("redo"), "and a room without one has none")
+
+func _invites() -> void:
+	var a := "aaaaaaaaaaaaaaaaaaaaaa"
+	var b := "bbbbbbbbbbbbbbbbbbbbbb"
+	var page := {"schema_version": 1, "rooms": [], "duel_invites": [{"from": a, "at": 1000.0}]}
+	_check(Inbox.valid_page(page) and Inbox.valid_page({"schema_version": 1, "rooms": []}), "The list's first page may carry invites; a page without them is as before")
+	for bad: Variant in [[{"from": "short", "at": 1}], [{"from": a, "at": -1}], [{"from": a, "at": 1.5}], [{"from": a, "at": 1, "x": 1}], {"from": a}, "x"]:
+		_check(not Inbox.valid_page({"schema_version": 1, "rooms": [], "duel_invites": bad}), "A malformed invite fails the page: " + str(bad))
+	_check(not Inbox.valid_page({"schema_version": 1, "rooms": [], "other": []}), "Any other extra field still fails it")
+	var key := RedoPrompts.invite_key(a, 1763150000000)
+	_check(key.length() <= 64 and key != RedoPrompts.invite_key(a, 1763150000001), "An invite's key fits the store and changes with a new invite")
+	var store: RefCounted = RedoPrompts.new(_path())
+	RedoPrompts.use_shared(store)
+	var reads := Reads.new()
+	var host := Host.new()
+	host.room_hub_flow = reads
+	host.duels_flow = reads
+	root.add_child(host)
+	var card: RefCounted = RedoHomeCard.new(host)
+	reads.invites = [{"from": a, "at": 1000}, {"from": b, "at": 2000}]
+	reads.invites_sent = 50
+	_check(card._invite().get("from") == b, "The newest invite shows")
+	store.dismiss(RedoHomeCard._invite_key({"from": b, "at": 2000}))
+	_check(card._invite().get("from") == a, "Not now puts away only that invite")
+	reads.lobby = {"party": {"invites_in": [b]}}
+	reads.lobby_sent = 40
+	_check(card._invite().get("from") == a, "An older duels read changes nothing")
+	reads.lobby_sent = 60
+	_check(card._invite().is_empty(), "A newer duels read without it (answered, taken back or expired) puts it away")
+	reads.invites = [{"from": a, "at": 3000}]
+	reads.invites_sent = 70
+	_check(card._invite() == {"from": a, "at": 3000}, "A newer list read with a new invite shows it again")
+	reads.invites = []
+	reads.invites_sent = 80
+	_check(card._invite().is_empty(), "A list without invites (none, or a server without them) shows none")
+	host.free()
+	RedoPrompts.use_shared(null)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(store.path))
+	await process_frame
 
 func _chip() -> void:
 	var controls: CanvasLayer = ChapterControls.new()
