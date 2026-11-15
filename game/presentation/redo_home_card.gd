@@ -149,7 +149,7 @@ func open_invite(invite: Dictionary) -> void:
 	_close()
 	_shown_key = _invite_key(invite)
 	var friend := str(invite.from)
-	var open := _build("DuelInviteCard", friend, false, PlayerCopy.DUELS_PARTY_ASKED_FOR % FriendNicknames.sentence_start(host._friend_display_name(friend)), "", func() -> void:
+	var open := _build("DuelInviteCard", friend, false, PlayerCopy.DUELS_PARTY_INVITED.trim_suffix(".") % FriendNicknames.sentence_start(host._friend_display_name(friend)), "", func() -> void:
 		RedoPrompts.shared().dismiss(_invite_key(invite))
 		_close())
 	open.name = "DuelInviteOpen"

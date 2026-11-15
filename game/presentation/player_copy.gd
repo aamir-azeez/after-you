@@ -1115,8 +1115,7 @@ const DUELS_PARTY_FRIENDS_ONLY := "Only your friends can join your party."
 const DUELS_PARTY_ASK := "Ask"
 const DUELS_PARTY_ASKED := "Asked"
 const DUELS_PARTY_SAY_YES := "Say yes"
-## Home's card for a friend's invite (presentation/redo_home_card.gd). %s is the friend's name.
-const DUELS_PARTY_ASKED_FOR := "%s asked you to be their duel partner"
+## Home's card for a friend's invite (presentation/redo_home_card.gd), whose title is DUELS_PARTY_INVITED without its full stop.
 const DUELS_PARTY_SEE_INVITE := "See invite"
 const DUELS_PARTY_LEAVE := "Leave party"
 const DUELS_PARTY_NO_FRIENDS := "Add a friend first. Friends you add show here."
