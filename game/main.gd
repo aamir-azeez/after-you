@@ -1338,8 +1338,8 @@ func open_fruit_convert() -> bool:
 	return true
 
 ## The menu screens' one back history (presentation/menu_back.gd): Home,
-## Settings, the Wardrobe and its Orchard, the store, the Fruits page and the
-## Pollen page. Each flow says when it opened (menu_opened); Back and the Home
+## Settings, the room hub, the Wardrobe and its Orchard, the store, the Fruits
+## page and the Pollen page. Each flow says when it opened (menu_opened); Back and the Home
 ## square go through it. Its routes open a screen again, read at call time.
 func _make_menu_back() -> MenuBack:
 	var history := MenuBack.new()
@@ -1350,6 +1350,10 @@ func _make_menu_back() -> MenuBack:
 		MenuBack.SETTINGS: func() -> bool:
 			settings_flow.show_settings()
 			return true,
+		MenuBack.ROOMS: func() -> bool:
+			_clear_overlay()
+			room_hub_flow.open_hub()
+			return room_hub_flow.is_open(),
 		MenuBack.WARDROBE: func() -> bool:
 			if wardrobe_flow.available(): wardrobe_flow.reopen()
 			return wardrobe_flow.is_open(),
@@ -1413,25 +1417,49 @@ func _host_fruits_page_flow() -> FruitsPageFlow:
 	return flow
 
 ## An internal child: each Fruit goal paid away from its result card, said once (service in _process).
+## Its View opens the Fruits page over the screen up, once the player is on one
+## it opens over (fruits_view_ready); a capabilities read out lands first.
 func _host_fruit_unlock_toasts() -> FruitUnlockToasts:
 	var flow := FruitUnlockToasts.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.open_page = func(_from: String) -> void: show_fruits_page(_fruit_screen())
+	flow.open_page = func(_from: String) -> void:
+		if await until_capabilities_read(): show_fruits_page(_fruit_screen())
+	flow.open_ready = fruits_view_ready
 	return flow
 
+## Something plays over Main's screens: a room, a shared replay, photo transfer
+## or a chapter on its way in. No pop-up's View leaves it (presentation/toast.gd when_free).
+func in_play() -> bool:
+	return is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(_chapter_opening)
+
+## The screens the Fruits page opens over from a pop-up: each one is in the back
+## history, so the page's Back comes to it.
+const FRUIT_VIEW_MODES := ["home", SettingsFlow.MODE_SETTINGS, RoomHubFlow.MODE_ROOMS, WardrobeFlow.MODE_WARDROBE, PollenStoreFlow.MODE_POLLEN_STORE, FruitsPageFlow.MODE, PollenPlayFlow.MODE]
+
+## Whether a pop-up's View may open the Fruits page now: nothing played, no
+## card or Friends over the screen, no room tap on its way, the app in front,
+## no identity work and the room session free (a capabilities read alone is
+## waited for), on one of FRUIT_VIEW_MODES.
+func fruits_view_ready() -> bool:
+	if application_backgrounded or identity_loading or identity_busy or in_play() or session_busy(): return false
+	if friends_flow.is_open() or _top_modal() != null or mode not in FRUIT_VIEW_MODES: return false
+	return mode != RoomHubFlow.MODE_ROOMS or (room_hub_flow.is_open() and not room_hub_flow.tap_pending())
+
 ## The screen up now, as the back history names it: the Fruits page, the
-## Pollen page, the Wardrobe, the store, Settings, or Home.
+## Pollen page, the Wardrobe, the store, Settings, the room hub, or Home.
 func _fruit_screen() -> String:
 	if fruits_page_flow.is_open(): return MenuBack.FRUITS
 	if pollen_play_flow.is_open(): return MenuBack.POLLEN
 	if wardrobe_flow.is_open(): return MenuBack.WARDROBE
 	if pollen_store_flow.is_open(): return MenuBack.STORE
 	if mode == SettingsFlow.MODE_SETTINGS: return MenuBack.SETTINGS
+	if mode == RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open(): return MenuBack.ROOMS
 	return MenuBack.HOME
 
-## The Fruits page over the screen `from` ("home", "pollen", "wardrobe" or
-## "store"); the back history keeps Back from looping.
+## The Fruits page over the screen `from` ("home", "pollen", "wardrobe",
+## "store" or "rooms"); the back history keeps Back from looping. Never over play.
 func show_fruits_page(from: String) -> void:
+	if in_play(): return
 	fruits_page_flow.open(from)
 
 ## Turn Fruits into Pollen over the screen up now (the store's Fruits tab).

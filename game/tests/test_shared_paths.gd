@@ -288,6 +288,7 @@ const CURRENCY_MARK_SURFACES := {
 	"res://presentation/fruit_convert_sheet.gd": "Fruits into Pollen (Fruits board 8)",
 	"res://presentation/fruit_goals_view.gd": "the Fruits page's goals (Fruits board 6a)",
 	"res://presentation/fruit_wallet_view.gd": "the Fruits page's balance (Fruits board 6a)",
+	"res://presentation/toast.gd": "a currency line's mark in the pop-up's disc (a Fruit goal's +10 Fruits)",
 	"res://presentation/sunshine_card.gd": "the Sunshine card's price (Fruits board 7)",
 }
 
