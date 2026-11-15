@@ -15,7 +15,8 @@ const Batch = preload("res://presentation/kit/static_batch.gd")
 ## began sharing looks (Turn of the Tide: 309 against 1,936 before).
 const MOST_MATERIALS := {
 	"first-steps@1": [104, 104],
-	"relay-isles@2": [72, 74],
+	# Relay Isles' garden crossing (2026-11-15); train/scene-perf replaces these caps.
+	"relay-isles@2": [77, 77],
 	"high-and-low@1": [76, 94],
 	"rolling-home@1": [87, 95],
 	"a-house-for-two@1": [80, 99],

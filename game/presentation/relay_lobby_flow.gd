@@ -104,7 +104,7 @@ func draw_progress(message: String) -> void:
 ## hard: "create" makes a hard room (services/hard_mode.gd).
 ## duel: "duel" makes the room of one side of a duel, {duel_id, board}, for chapter `value`.
 func lobby_action(action: String, value: String = "", hard: bool = false, duel: Dictionary = {}) -> void:
-	if host.relay_session == null or host.relay_session.busy() or not host._relay_identity().ready or not await host._prepare_ordinary_navigation():
+	if host.relay_session == null or host.session_busy() or not host._relay_identity().ready or not await host._prepare_ordinary_navigation():
 		host._settle_room_flow()
 		return
 	_menu_generation += 1

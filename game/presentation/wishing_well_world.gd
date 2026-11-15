@@ -62,12 +62,6 @@ var _stair_marks: Dictionary = {}
 func _mark_stair(stair: Dictionary) -> Dictionary:
 	return _stair_marks.get(stair.id, super._mark_stair(stair))
 
-## The well's lip is edged with a low rail: the "barrier" look slot's rail
-## style. The Well has no dressing file to pick it in (one would switch its
-## plain look to the warm one), so the world picks it.
-func _barrier_style() -> String:
-	return "rail"
-
 ## A stage's bell, around its centre: its base, its frame and the floor its
 ## frame and bell hide from the camera behind them.
 const BELL_SHADE := Rect2(-0.53, -1.6, 1.06, 1.94)
@@ -421,8 +415,8 @@ func _build_gate_links(view: Dictionary) -> void:
 	for gate: Dictionary in view.get("gates", []):
 		match [str(gate.route_id), str(gate.get("lever_id", "")), str(gate.get("pad_id", ""))]:
 			["cliff-steps", "garden-gate", ""]:
-				# Gate cable along the grass to the folded steps.
-				_rope_path([Vector3(-11.04, 0.04, 1.92), Vector3(-11.04, 0.04, 1.62), Vector3(-12.16, 0.04, 1.62)])
+				# Gate cable from the winch's back edge along the grass to the folded steps.
+				_rope_path([Vector3(-11.04, 0.04, 1.80), Vector3(-11.04, 0.04, 1.62), Vector3(-12.16, 0.04, 1.62)])
 			["long-stair", "", "bucket-rope"]:
 				# The bucket rope runs over the windlass and west to the long stair's hinge.
 				_rope_path([Vector3(11.25, cliff + 0.66, -0.27), Vector3(11.10, cliff + 0.03, -0.27), Vector3(9.76, cliff + 0.03, -0.27), Vector3(9.76, cliff + 0.03, -0.18)])

@@ -810,9 +810,9 @@ func _read_capabilities_now() -> Variant:
 	return await relay_session.load_capabilities(func() -> bool: return true)
 
 ## A background capabilities read runs only over Home, Settings and the menu
-## screens, never under a game, a room or a replay.
+## screens, never under a game, a room, a replay or a chapter on its way in.
 func _capabilities_read_allowed() -> bool:
-	return not is_instance_valid(relay_child) and mode in ["home", SettingsFlow.MODE_SETTINGS, WardrobeFlow.MODE_WARDROBE, PollenStoreFlow.MODE_POLLEN_STORE, FruitsPageFlow.MODE, PollenPlayFlow.MODE]
+	return not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and mode in ["home", SettingsFlow.MODE_SETTINGS, WardrobeFlow.MODE_WARDROBE, PollenStoreFlow.MODE_POLLEN_STORE, FruitsPageFlow.MODE, PollenPlayFlow.MODE]
 
 ## A tap on the player's own pip on the island: the Wardrobe, only while Home
 ## is free for a card (nothing over it, no turn, no held finger). False leaves
@@ -1042,7 +1042,8 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard:
 	await opening.drawn()
 	# Never waits for Home's keepsake check: leaving Home hands it to the reaper.
 	await opening.prepare(scene, replay_context.is_empty(), self)
-	if not is_inside_tree() or mode != view or _chapter_open_busy():
+	# A capabilities read out (a tap during Home's launch read) lands first, on the card.
+	if not is_inside_tree() or not await until_capabilities_read() or mode != view or _chapter_open_busy():
 		opening.cancel()
 		return
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
@@ -1065,7 +1066,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard:
 	opening.follow_scene_change(self)
 
 func _chapter_open_busy() -> bool:
-	return identity_loading or identity_busy or (relay_session != null and relay_session.busy())
+	return identity_loading or identity_busy or session_busy()
 
 static func _write_solo_replay_context(context: Dictionary) -> bool:
 	return SoloReplayLaunch.write(context)
@@ -1090,10 +1091,11 @@ func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Contr
 
 func _open_photo_transfer() -> void:
 	if _online_gated() or _offline_blocked(): return
+	if not await until_capabilities_read(): return
 	if not _relay_identity().ready:
 		_toast(PlayerCopy.MAIN_2BCA37F28163)
 		return
-	if relay_session!=null and relay_session.busy():
+	if session_busy():
 		_toast(PlayerCopy.MAIN_27C2299C47EE)
 		return
 	if is_instance_valid(photo_transfer_child): return
@@ -1630,7 +1632,8 @@ func _show_duels(report: Callable = Callable()) -> void:
 	ensure_relay_session()
 	if relay_session.capabilities.is_empty() or not duels_flow.supported():
 		# A busy session would refuse the read and drop what it knows: the tap says so instead.
-		if relay_session.busy():
+		# A capabilities read out (Home's launch read) is no refusal: the read below takes its answer.
+		if session_busy():
 			_report(report,PlayerCopy.ROOMS_API_DA75E6F7A674)
 			return
 		var session: RefCounted = relay_session
@@ -2452,6 +2455,8 @@ func _photo_resume_safe() -> bool:
 ## the caller asks on Home instead, and anything the player did meanwhile wins.
 func _open_photo_resume_room(room_id: String, automatic: bool = false) -> bool:
 	if _online_gated(): return false
+	# A tap during a capabilities read waits for it; an automatic open asks on Home instead.
+	if not automatic and not await until_capabilities_read(): return false
 	if not _photo_resume_safe():
 		if not automatic: _toast(PlayerCopy.MAIN_BE8E691311EE)
 		return false
@@ -2553,8 +2558,8 @@ func _service_invite_link() -> void:
 	if invite_link_attempts >= INVITE_LINK_ATTEMPTS: invite_link_pending = ""
 
 func _open_safety(return_to: String = "settings") -> void:
-	if is_instance_valid(safety_screen): return
-	if relay_session != null and relay_session.busy():
+	if is_instance_valid(safety_screen) or not await until_capabilities_read() or is_instance_valid(safety_screen): return
+	if session_busy():
 		_toast(PlayerCopy.MAIN_8D6F750820DC)
 		return
 	lifecycle_generation += 1
@@ -2698,18 +2703,29 @@ func _room_context_factory() -> RefCounted:
 	if shared_replays != null: shared_replays.configure_context_factory(factory)
 	return factory
 
+## The room session busy with more than a capabilities read: what a tap refuses
+## on. A read alone (Home's launch or resume read, services/capabilities_refresh.gd,
+## or a screen's) is waited for instead (until_capabilities_read).
+func session_busy() -> bool:
+	return relay_session != null and relay_session.busy() and not (relay_session.has_method("reading_capabilities_only") and relay_session.reading_capabilities_only())
+
+## A tap that finds a capabilities read out, even from a screen already left,
+## waits for it to land and then goes on, so first taps register. False when the
+## player moved on or the session changed meanwhile.
+func until_capabilities_read() -> bool:
+	var session: RefCounted = relay_session
+	if session == null or not session.has_method("until_capabilities_read"): return true
+	var asked := [store_view_generation, lifecycle_generation, mode]
+	await session.until_capabilities_read()
+	return relay_session == session and not application_backgrounded and asked == [store_view_generation, lifecycle_generation, mode]
+
 func _prepare_ordinary_navigation(report: Callable = Callable()) -> bool:
 	if _relay_identity().ready: _room_context_factory()
 	if relay_session == null:
 		_report(report,PlayerCopy.MAIN_21155817127A)
 		return false
 	var session: RefCounted = relay_session
-	# A capabilities read still out, even from a screen already left, is a read:
-	# navigation waits for it rather than refusing.
-	if session.has_method("until_capabilities_read"):
-		var asked := [store_view_generation, lifecycle_generation, mode]
-		await session.until_capabilities_read()
-		if relay_session != session or application_backgrounded or asked != [store_view_generation, lifecycle_generation, mode]: return false
+	if not await until_capabilities_read(): return false
 	# The session refuses while busy (a replay save can outlive its screen) and has no reason of its own to give.
 	if session.busy():
 		_report(report,PlayerCopy.ROOMS_API_DA75E6F7A674)
