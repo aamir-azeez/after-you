@@ -298,6 +298,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Leave: 1")
 	# A room in play with a current redo request then says so (redo), for Home's request card.
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Redo: 1")
+	# An open turns room in play then carries its turn and cap (open_turns), for the room list's turn dots.
+	if path == "/v1/room-inbox": headers.append("X-AfterYou-Open-Turns: 1")
 	# A room poll that names its known revision also carries the redo state (redo), so the
 	# room page needs no separate GET /redo; the capabilities read then says poll_redo_version 1.
 	if method == HTTPClient.METHOD_GET and (path == "/v2/capabilities" or (path.begins_with("/v2/rooms/") and path.count("/") == 3)): headers.append("X-AfterYou-Poll-Redo: 1")

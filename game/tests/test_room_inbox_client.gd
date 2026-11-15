@@ -62,6 +62,19 @@ func _run() -> void:
 	relay_room.chapter = {"id":"high-and-low","version":1}
 	var relay_view: Dictionary = client._normalize_room(relay_room)
 	check(relay_view.chapter_key == "high-and-low@1" and relay_view.chapter_title == "High and Low","chapter rooms map id and version to the registry key and title")
+	# Open turns: the room list's turn dots read the turn and cap, and turn 1's pip from whose turn it is now.
+	var open_room := relay_room.duplicate(true)
+	open_room.open_turns = {"turn":4,"cap":10}
+	open_room.status = "waiting_for_their_turn"
+	check(Client.valid_page({"schema_version":1,"rooms":[open_room]}),"A room in play may carry its open turns count")
+	var open_view: Dictionary = client._normalize_room(open_room)
+	check(open_view.get("open_turns") == {"turn":4,"cap":10,"first_slot":"p0"},"The friend plays turn 4, so the host played turn 1")
+	check(Client.valid_room(open_view),"A kept room keeps its open turns count")
+	for bad: Variant in [{"turn":11,"cap":10}, {"turn":0,"cap":10}, {"turn":2,"cap":22}, {"turn":2}, {"turn":"2","cap":10}]:
+		open_room.open_turns = bad
+		check(not Client.valid_page({"schema_version":1,"rooms":[open_room]}),"An open turns count out of shape is refused: "+str(bad))
+	open_room.erase("open_turns")
+	check(not client._normalize_room(open_room).has("open_turns"),"A room without the count draws no dots")
 	check(not client.unread(server_old),"first observation establishes a read baseline")
 	server_old.remote_activity_sequence = 3
 	response = {"ok":true,"data":{"schema_version":1,"rooms":[server_old,server_new]}}

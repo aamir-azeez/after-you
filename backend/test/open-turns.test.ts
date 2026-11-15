@@ -210,6 +210,18 @@ describe("open turns: a friend room", () => {
     await send(one.room, second, turns[1]);
     expect([await status(first), await status(second)]).toEqual(["your_turn", "waiting_for_their_turn"]);
   });
+  it("gives the room list the turn and the cap only to apps that draw the turn dots", async () => {
+    const { room: joined, first, second } = await room();
+    const { turns } = await chain(0, initial(), 2);
+    type Row = { room_id: string; open_turns?: { turn: number; cap: number } };
+    const row = async (who: Account, dots: boolean) => (await json<{ rooms: Row[] }>(call("/v1/room-inbox", "GET", who, undefined, dots ? { "X-AfterYou-Open-Turns": "1" } : {}))).rooms.find(entry => entry.room_id === joined.room_id)!;
+    const one = await send(joined, first, turns[0]);
+    const cap = (one.room as unknown as { open_turns: { cap: number } }).open_turns.cap;
+    expect([(await row(first, true)).open_turns, (await row(second, true)).open_turns]).toEqual([{ turn: 2, cap }, { turn: 2, cap }]);
+    expect("open_turns" in await row(first, false)).toBe(false);
+    await send(one.room, second, turns[1]);
+    expect((await row(second, true)).open_turns).toEqual({ turn: 3, cap });
+  });
   it("plays my turn again at turn three, keeping turns one and two on the new branch, until the friend has it", async () => {
     const { room: joined, first, second } = await room();
     const { turns } = await chain(0, initial(), 2);

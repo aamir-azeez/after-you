@@ -71,6 +71,7 @@ const RunReactions = preload("res://presentation/run_reactions.gd")
 const RunReactionPlayer = preload("res://presentation/run_reaction_player.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
+const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardRunFlow = preload("res://presentation/hard_run_flow.gd")
 const RoomRefreshFlow = preload("res://presentation/room_refresh_flow.gd")
@@ -1174,6 +1175,31 @@ func _add_room_status_chip(card: VBoxContainer, fixed_text: String = "") -> Pane
 ## The friend-nickname store; tests pass one with its own file. Left empty, the
 ## device's saved nicknames are read when the waiting card is drawn.
 var nickname_store: RefCounted = null
+## Open turns (core/physical/open_turns.gd): the room's turn as the turn dots
+## draw it (kit/turn_dots.gd view()), read from the room's coordinator
+## (open_turns()); {} offline, in a replay, or on a chapter without open turns.
+func _open_turns_view() -> Dictionary:
+	if mode == "replay" or online_session == null or not journey.has_method("open_turns"): return {}
+	var open: Dictionary = journey.open_turns()
+	var index := int(checkpoint.stage_index) if checkpoint is Dictionary and checkpoint.has("stage_index") else -1
+	if open.is_empty() or index < 0 or index >= definition.stages.size(): return {}
+	return TurnDots.view(open, str(definition.stages[index].get("first_player_slot", "")))
+
+## The player's pip colour in this room: the host's slot is peach, the guest's mint.
+func _own_room_color() -> Color:
+	return SpiritLook.MINT if journey.has_method("open_turns") and str(journey.open_turns().get("player_slot", "p0")) == "p1" else SpiritLook.PEACH
+
+## The turn dots under the room page's line that names whose turn it is (WaitingPartnerLine).
+func _add_turn_dots(card: Control) -> void:
+	var open := _open_turns_view()
+	var line := card.find_child("WaitingPartnerLine", true, false) as Control
+	if open.is_empty() or line == null: return
+	var dots := TurnDots.new(30.0, false)
+	dots.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dots.show_turns(open)
+	line.get_parent().add_child(dots)
+	line.get_parent().move_child(dots, line.get_index() + 1)
+
 func _waiting_partner_name(room: Dictionary) -> String:
 	# The viewer's slot is p0 when they host and p1 when they joined, so the
 	# partner is the other player id. Use the local nickname when one is saved,
@@ -1349,6 +1375,8 @@ func _show_online_waiting() -> void:
 	var saved: bool = not pending.is_empty() or _viewer_saved_turn(room)
 	var partner := _waiting_partner_name(room)
 	var whose := WAITING_FOR_PARTNER_TURN % (partner if not partner.is_empty() else "your friend")
+	# Open turns: "Maya's turn", with the stage's turn dots under it (_add_turn_dots).
+	if not _open_turns_view().is_empty(): whose = PlayerCopy.OPEN_TURNS_PARTNER_TURN % FriendNicknames.sentence_start(partner if not partner.is_empty() else "your friend")
 	var heading := WAITING_TURN_SAVED if saved else whose if partner_present else WAITING_FOR_FRIEND
 	var subline := whose if saved and partner_present else "" if room.is_empty() else PlayerCopy.RELAY_PREVIEW_06FE980C1040
 	# A friend's redo request leads the page (redo_flow.gd): its rows follow.
@@ -1375,6 +1403,7 @@ func _show_online_waiting() -> void:
 	var chip: PanelContainer = _add_room_status_chip(card, chip_text) if joined or not chip_text.is_empty() else null
 	if chip != null: card.move_child(chip, 0)
 	RoomPageBuilder.waiting_lines(card, subline, whose, notices)
+	_add_turn_dots(card)
 	if saved: _add_pollen_line(card)
 	_set_room_state("waiting_card")
 	var facts := _room_facts()
@@ -1402,6 +1431,7 @@ func _show_waiting_panel(room: Dictionary, heading: String, subline: String, who
 		if heading == whose: title.name = "WaitingPartnerLine"
 		top.add_child(title)
 	RoomPageBuilder.waiting_lines(top, subline if partner_present or not saved else "", whose, notices)
+	_add_turn_dots(top)
 	if saved: _add_pollen_line(top)
 	_add_room_actions(top, _room_state, "status", facts)
 	_add_room_panel_actions(card, facts)
@@ -2398,6 +2428,9 @@ func _update_hud(state: Dictionary) -> void:
 	_show_tries()
 	var index := int(checkpoint.stage_index)
 	var turn := "Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"
+	# Open turns: the dots under the timer say which turn this is, so the line drops it once turns pass back and forth.
+	var open := _open_turns_view()
+	if not open.is_empty() and int(open.turn) >= 2: turn = ""
 	var title := "%s · %d / %d · %s" % [chapter.title, index+1, definition.stages.size(), turn]
 	var display := state
 	match Registry.stage_hud(chapter_key):
@@ -2419,6 +2452,8 @@ func _update_hud(state: Dictionary) -> void:
 	display = _name_lever_action(display)
 	if is_instance_valid(world) and world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(mode == "play")
 	_update_memory_wait_hud()
+	if turn.is_empty(): title = title.trim_suffix(" · ")
+	if controls.has_method("show_turns"): controls.show_turns(open, _own_room_color())
 	controls.set("solo", online_session == null)
 	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
 	_update_run_pill(int(state.tick))

@@ -11,7 +11,9 @@ extends SceneTree
 ## - turn 4 plays the second pip's route over it and closes the stage with both
 ##   pips at the goal, and the checkpoint nests all four turns (schema 8),
 ##   checked again from scratch;
-## - a published two turn stage still proves the published way.
+## - a published two turn stage still proves the published way;
+## - the turn dots (presentation/kit/turn_dots.gd) ring the last turn: the cap's
+##   once it is next, this one when the room says it must finish.
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
@@ -22,6 +24,7 @@ const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 const Collection = preload("res://services/shared_replay_collection.gd")
 const TraceStore = preload("res://services/memory_trace_store.gd")
+const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const TRACES := "user://open-turns-test-traces"
 const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
@@ -35,6 +38,7 @@ func _run() -> void:
 	_chain()
 	_ten_turns()
 	_published()
+	_dots()
 	print("OPEN TURNS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -222,6 +226,15 @@ func _fixture(name: String) -> Dictionary:
 
 static func _json(value: Dictionary) -> Dictionary:
 	return JSON.parse_string(JSON.stringify(value))
+
+func _dots() -> void:
+	_check(TurnDots.view({"turn": 4, "cap": 10, "must_finish": false}, "p1") == {"turn": 4, "cap": 10, "first_slot": "p1", "last": 0, "edge": false}, "Mid stage, no turn wears the last turn's ring")
+	_check(TurnDots.view({"turn": 9, "cap": 10, "must_finish": false}, "p0").last == 10, "With the cap's turn next, its dot wears the ring")
+	var last := TurnDots.view({"turn": 10, "cap": 10, "must_finish": true}, "p0")
+	_check(last.last == 10 and last.edge, "The cap's turn must finish: ring and coral edge")
+	var early := TurnDots.view({"turn": 6, "cap": 20, "must_finish": true}, "p0")
+	_check(early.last == 6 and early.edge, "A turn that must finish early (the stage's bytes ran out) wears the ring itself")
+	_check(TurnDots.view({"turn": 3, "cap": 10}, "").is_empty() and TurnDots.view({}, "p0").is_empty(), "No stage or no count draws no dots")
 
 func _check(okay: bool, label: String) -> void:
 	checks += 1
