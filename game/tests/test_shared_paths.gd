@@ -380,8 +380,8 @@ const PIECE_KITS := "res://presentation/kit/pieces/"
 const PIECE_BUILDERS := {
 	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
-	"res://presentation/first_steps_world.gd": "builds its spots and its lift in the styles they resolve to (pad, lift); its loft bell is the kit bell on its own post and arm",
-	"res://presentation/relay_world.gd": "builds its plates in the pad style they resolve to; its sinking bridges stay its own",
+	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad)",
+	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {
@@ -396,7 +396,7 @@ const PIECE_OVERRIDES := {
 	"res://presentation/long_way_home_world.gd": "the porch and garden pads' word labels and the cables to the greeting window (_build_physical_pad)",
 }
 ## The base builders the overrides extend.
-const PIECE_BASES := ["res://presentation/lighthouse_world.gd", "res://presentation/cooperative_world.gd"]
+const PIECE_BASES := ["res://presentation/island_world.gd", "res://presentation/lighthouse_world.gd", "res://presentation/cooperative_world.gd"]
 
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles"]
@@ -884,11 +884,11 @@ func _piece_styles() -> void:
 		_check(_found("\"(?:lever_looks|stand_spots)\"|\\.(?:lever_looks|stand_spots)\\b|kit/lever_looks\\.gd", source) == 0, "%s keeps a per-world piece switch: pin or pick a piece style (content/dressing/piece_styles.gd)" % path)
 		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal|lift)\\.gd\"", source) > 0:
 			builders[path] = true
-			_check(PIECE_BUILDERS.has(path), "%s builds a piece itself: worlds build pieces through cooperative_world and lighthouse_world, or add it to PIECE_BUILDERS with why" % path)
+			_check(PIECE_BUILDERS.has(path), "%s builds a piece itself: worlds build pieces through island_world, cooperative_world and lighthouse_world, or add it to PIECE_BUILDERS with why" % path)
 		if _found("\\.get\\(\\s*\"piece_styles\"|\\[\"piece_styles\"\\]|\\.piece_styles\\b|\\bPieceStyles\\.PINS\\b", source) > 0:
 			readers[path] = true
 			_check(PIN_READERS.has(path), "%s reads piece pins itself: ask content/dressing/piece_styles.gd style(), or add it to PIN_READERS with why" % path)
-		if path not in PIECE_BASES and _found("\\bfunc\\s+_(?:build_bell|build_lever|build_selector|build_physical_pad)\\(", source) > 0:
+		if path not in PIECE_BASES and _found("\\bfunc\\s+_(?:build_bell|build_lever|build_selector|build_physical_pad|build_pad)\\(", source) > 0:
 			overrides[path] = true
 			_check(PIECE_OVERRIDES.has(path), "%s extends a piece builder: style the piece through content/dressing/piece_styles.gd, or add it to PIECE_OVERRIDES with what it adds" % path)
 	for path: String in PIECE_BUILDERS:

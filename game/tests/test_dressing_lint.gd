@@ -103,12 +103,13 @@ func _stage_ids(key: String) -> Array:
 func _stage_view(key: String, stage_id: String) -> Dictionary:
 	return Placement.stage_view(key, stage_id)
 
-## A chapter's dressed world under `parent`, built and showing nothing yet
-## (show_dressed_stage()). Free it when done.
+## A chapter's dressed world under `parent`, its level built and showing no
+## stage yet (show_dressed_stage()). Free it when done.
 static func dressed_world(parent: Node, key: String) -> Node3D:
 	var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
 	parent.add_child(world)
 	world.set_process(false)
+	if key != LIGHTHOUSE: world.load_level(Registry.definition(key))
 	return world
 
 ## Shows one stage of a dressed world as the game does.
@@ -116,10 +117,6 @@ static func show_dressed_stage(world: Node3D, key: String, stage_id: String) -> 
 	if key == LIGHTHOUSE:
 		world.load_level(LightCatalog.definition(stage_id))
 		return
-	var family := str(ChapterIndex.data(key).get("family", ""))
-	if family in ["first-steps", "relay"]:
-		if world.terrain == null: world.load_level(Registry.definition(key))
-	elif world.chapter_definition.is_empty(): world.load_level(Registry.definition(key))
 	for stage: Dictionary in Registry.definition(key).stages:
 		if stage.id == stage_id: world.show_stage(stage)
 

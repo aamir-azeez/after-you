@@ -9,6 +9,8 @@ extends RefCounted
 ## over its level (content/dressing/placement.gd stage_view()). A prop's
 ## footing (footing()) is its kit extent (kit/props.gd) raised onto its surface.
 const Props = preload("res://presentation/kit/props.gd")
+## Each family's floors, crossings and spots (services/level_layout.gd).
+const LevelLayout = preload("res://services/level_layout.gd")
 
 ## A spirit's height: a prop shares a walking space it reaches into up to this
 ## far above the floor.
@@ -39,42 +41,25 @@ static func heights(view: Dictionary) -> Dictionary:
 	for island: Dictionary in view.get("islands", []): result[str(island.id)] = float(island.get("height_cm", 0)) / 100.0
 	return result
 
-## Walking spaces: {rect, y, rise, name}. Stairs span their whole rise.
+## Walking spaces (LevelLayout.walking_areas): {rect, y, rise, name, id}.
+## Stairs span their whole rise.
 static func walkable(view: Dictionary) -> Array:
-	var spaces: Array = []
-	for island: Dictionary in view.get("islands", []):
-		spaces.append({"rect": rect(island.rect_cm), "y": float(island.get("height_cm", 0)) / 100.0, "rise": 0.0, "name": "island " + str(island.id), "id": str(island.id)})
-	for bridge: Dictionary in view.get("bridges", []):
-		spaces.append({"rect": rect(bridge.rect_cm), "y": float(bridge.get("height_cm", 0)) / 100.0, "rise": 0.0, "name": "route " + str(bridge.id), "id": str(bridge.id)})
-	for stair: Dictionary in view.get("stairs", []):
-		var low := minf(float(stair.from_height_cm), float(stair.to_height_cm)) / 100.0
-		spaces.append({"rect": rect(stair.rect_cm), "y": low, "rise": absf(float(stair.to_height_cm - stair.from_height_cm)) / 100.0, "name": "stair " + str(stair.id), "id": str(stair.id)})
-	return spaces
+	var names := {"island": "island", "bridge": "route", "stair": "stair"}
+	return LevelLayout.walking_areas(view).map(func(area: Dictionary) -> Dictionary:
+		return {"rect": rect(area.rect_cm), "y": float(area.height_cm) / 100.0, "rise": float(area.rise_cm) / 100.0, "name": "%s %s" % [names[area.kind], area.id], "id": str(area.id)})
 
-## Interactive places: pads, levers, switches, goals, starts, drops, optics
-## (anything with a position_cm), each as {rect, y, name}.
+## Interactive places (LevelLayout.spots: pads, levers, switches, goals,
+## optics, starts) and drops, each as {rect, y, name}.
 static func places(view: Dictionary, floor_heights: Dictionary) -> Array:
 	var found: Array = []
-	_collect(view, floor_heights, found, "")
+	var starts: Array = []
+	for spot: Dictionary in LevelLayout.spots(view):
+		var radius := float(spot.radius_cm) / 100.0
+		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
+		(starts if spot.kind == "start" else found).append({"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(spot.height_cm) / 100.0, "name": "%s %s" % [spot.kind, spot.id]})
 	for drop: Dictionary in view.get("drops", []):
 		found.append({"rect": rect(drop.rect_cm), "y": float(floor_heights.get(str(drop.get("surface_id", "")), 0.0)), "name": "drop " + str(drop.get("id", ""))})
-	var starts: Dictionary = view.get("starts", {}) if view.get("starts") is Dictionary else {}
-	for slot: String in starts:
-		var start: Variant = starts[slot]
-		var at: Array = start.position_cm if start is Dictionary else start
-		found.append({"rect": Rect2(Vector2(float(at[0]), float(at[1])) / 100.0 - Vector2.ONE * 0.3, Vector2.ONE * 0.6), "y": float(floor_heights.get(str(start.get("surface_id", "")), 0.0)) if start is Dictionary else 0.0, "name": "start " + slot})
-	return found
-
-static func _collect(value: Variant, floor_heights: Dictionary, found: Array, path: String) -> void:
-	if value is Dictionary:
-		if value.has("position_cm") and value.position_cm is Array and value.position_cm.size() == 2:
-			var radius := float(value.get("radius_cm", 30)) / 100.0
-			var at := Vector2(float(value.position_cm[0]), float(value.position_cm[1])) / 100.0
-			found.append({"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(floor_heights.get(str(value.get("surface_id", "")), 0.0)), "name": "%s %s" % [path, value.get("id", "")]})
-		for child: Variant in value:
-			if str(child) != "starts": _collect(value[child], floor_heights, found, str(child))
-	elif value is Array:
-		for item: Variant in value: _collect(item, floor_heights, found, path)
+	return found + starts
 
 ## Everything a stage's props are judged against, worked out once per stage.
 static func scene(view: Dictionary) -> Dictionary:

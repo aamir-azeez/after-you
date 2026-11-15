@@ -3,10 +3,8 @@ extends "res://presentation/island_world.gd"
 ## Visual interpolation never decides boarding, arrival, seed ownership or activation.
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
 const Typed = preload("res://services/typed_values.gd")
-## Piece looks (content/dressing/piece_styles.gd) and the kits that build them.
-const PieceStyles = preload("res://content/dressing/piece_styles.gd")
+## The lift's look (content/dressing/piece_styles.gd "lift") and its kit.
 const LiftKit = preload("res://presentation/kit/pieces/lift.gd")
-const PadKit = preload("res://presentation/kit/pieces/pad.gd")
 const Bell = preload("res://presentation/kit/pieces/bell.gd")
 ## The bell hangs from a bracket on one post in front of the goal, clear of
 ## the rider's way in from the lift, so neither the post nor the bell stands
@@ -20,9 +18,7 @@ const BELL_SPACE := Vector2(0.6, 0.55)
 ## The arm's thickness.
 const ARM := 0.07
 var lift_piece: RefCounted
-var pad_pieces: Dictionary = {}
 var actor_badges: Dictionary = {}
-var island_visuals: Dictionary = {}
 var lift_target_height := 0.0
 var loft_bell: Node3D
 ## The bell itself (kit/pieces/bell.gd), rung as the loft opens.
@@ -39,7 +35,6 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition.duplicate(true)
-	_load_dressing()
 	pad_pieces.clear()
 	lift_piece = null
 	loft_chime = null
@@ -52,7 +47,6 @@ func load_level(definition: Dictionary) -> void:
 	actors.clear()
 	actor_targets.clear()
 	actor_badges.clear()
-	island_visuals.clear()
 	bridge_parts.clear()
 	flowers.clear()
 	garden_petals.clear()
@@ -62,49 +56,14 @@ func load_level(definition: Dictionary) -> void:
 	garden_state = "closed"
 	bloomed = false
 	home_view = false
-	for island_index in range(definition.islands.size()):
-		var island: Dictionary = definition.islands[island_index]
-		var ground := _ground_style(str(island.id))
-		if not ground.is_empty():
-			var dressed := Node3D.new()
-			dressed.name = str(island.id)
-			terrain.add_child(dressed)
-			dressed.position.y = float(island.height_cm) / 100.0
-			Surfaces.build(island, ground, dressed)
-			island_visuals[island.id] = dressed
-			_surface_nodes[str(island.id)] = dressed
-			await _build_step()
-			continue
-		var start := terrain.get_child_count()
-		var rect: Array = island.rect_cm
-		_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
-			float(rect[2] - rect[0]) / 100.0, float(rect[3] - rect[1]) / 100.0, Color("a4c9aa"), island_index + 1)
-		var root := Node3D.new()
-		root.name = str(island.id)
-		terrain.add_child(root)
-		# The shared scenery builder uses y=0. Group exactly these new nodes,
-		# then raise the whole floor/scenery to its authored walking height.
-		var additions := terrain.get_children().slice(start, terrain.get_child_count() - 1)
-		for node: Node3D in additions:
-			node.reparent(root, false)
-		root.position.y = float(island.height_cm) / 100.0
-		island_visuals[island.id] = root
-		_surface_nodes[str(island.id)] = root
-		await _build_step()
+	# Floors, the spots' pads (each in its pip's colour) and the scenery.
+	await _build_island_ground(definition)
 	_build_lift(definition.lift)
-	await _build_step()
-	for control: Dictionary in definition.controls:
-		var at := _surface_point(control.position_cm, control.surface_id)
-		var radius := float(control.radius_cm) / 100.0
-		# A spot's colour is the pip whose part uses it: the first stage's
-		# first pip powers the lift, the last stage's first pip the rest.
-		var user := str(definition.stages[0].first_player_slot) if control.id == definition.stages[0].power_control else str(definition.stages[-1].first_player_slot)
-		pad_pieces[control.id] = PadKit.build(PieceStyles.style("pad", str(control.id), _descriptor(), dressing), at, radius, terrain, {"owner": user, "id": control.id})
 	await _build_step()
 	for socket: Dictionary in definition.sockets:
 		var root := Node3D.new()
 		root.name = str(socket.id)
-		root.position = _surface_point(socket.position_cm, socket.surface_id)
+		root.position = _floor_point(socket.position_cm, socket.surface_id)
 		terrain.add_child(root)
 		if socket.kind == "garden":
 			garden = root
@@ -119,7 +78,7 @@ func load_level(definition: Dictionary) -> void:
 	for goal: Dictionary in definition.goals:
 		loft_bell = Node3D.new()
 		loft_bell.name = str(goal.id)
-		loft_bell.position = _surface_point(goal.position_cm, goal.surface_id)
+		loft_bell.position = _floor_point(goal.position_cm, goal.surface_id)
 		terrain.add_child(loft_bell)
 		# Keep the exact floor goal beneath an overhead chime. A waist-high
 		# frame obscures the spirit's face at the adjacent seed pedestal.
@@ -131,8 +90,6 @@ func load_level(definition: Dictionary) -> void:
 		Primitives.bar_between(BELL_POST + Vector3(0, 1.55, 0), arm_start.lerp(arm_end, 0.4), 0.04, Primitives.shared_material(Parts.TIMBER), loft_bell)
 		loft_chime = Bell.build(loft_bell, BELL_HANG - Vector3(0, ARM * 0.5, 0), BELL_SPACE)
 		bell_ring = ring(float(goal.radius_cm) / 100.0, CREAM, Vector3(0, 0.04, 0), loft_bell)
-	await _build_step()
-	await _build_dressing()
 	await _build_step()
 	for slot: String in ["p0", "p1"]:
 		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL, slot)
@@ -163,7 +120,7 @@ func _build_lift(authored: Dictionary) -> void:
 	var area := Rect2(float(r[0]) / 100.0, float(r[1]) / 100.0, float(r[2] - r[0]) / 100.0, float(r[3] - r[1]) / 100.0)
 	var drive := Vector3.ZERO
 	for control: Dictionary in current_level.controls:
-		if control.id == current_level.stages[0].power_control: drive = _surface_point(control.position_cm, control.surface_id)
+		if control.id == current_level.stages[0].power_control: drive = _floor_point(control.position_cm, control.surface_id)
 	lift_piece = LiftKit.build(PieceStyles.style("lift", str(authored.id), _descriptor(), dressing), area, float(authored.bottom_height_cm) / 100.0, float(authored.top_height_cm) / 100.0, terrain, {"drive": drive})
 	lift = lift_piece.root
 	lift.name = str(authored.id)
@@ -173,11 +130,6 @@ func _build_lift(authored: Dictionary) -> void:
 func _descriptor() -> Dictionary:
 	return ChapterIndex.data(_chapter_key())
 
-func _surface_point(position_cm: Array, surface: String) -> Vector3:
-	for island: Dictionary in current_level.islands:
-		if island.id == surface:
-			return Vector3(float(position_cm[0]) / 100.0, float(island.height_cm) / 100.0, float(position_cm[1]) / 100.0)
-	return Vector3.ZERO # Bundled definition is validated before any geometry.
 
 func show_stage(value: Dictionary) -> void:
 	reset_camera_exploration()
@@ -185,7 +137,7 @@ func show_stage(value: Dictionary) -> void:
 	active_stage = value.duplicate(true)
 	landing_marker.visible = value.has("landing_cm")
 	if landing_marker.visible:
-		landing_marker.position = _surface_point(value.landing_cm, value.landing_surface)
+		landing_marker.position = _floor_point(value.landing_cm, value.landing_surface)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	if immediate: reset_camera_exploration()
