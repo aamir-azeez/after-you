@@ -8,6 +8,7 @@ import { partnerFace, shownFace, type Face, type FaceVersion } from "./v2/end-re
 import { partnerNameField, shownName } from "./display-names";
 import { duelLink, duelMasks } from "./duels/room-link";
 import { inboxRedo } from "./redo-control";
+import { unpackCheckpoint } from "./v2/row-codec";
 
 export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_their_turn" | "completed" | "unavailable" | "closed";
 /** Clients from 0.5.2 send this header and understand the "closed" status; older clients validate the status list exactly. */
@@ -78,7 +79,8 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
 }
 
 /**
- * Relay-family projection also selects only small room metadata, never turn or pair data,
+ * Relay-family projection also selects only small room metadata (and a compressed room's packed checkpoint, unpacked
+ * only for a current request's hash), never turn or pair data,
  * except that a room which holds end reactions also looks up the other member's latest
  * turn id for their face (v2/end-reactions.ts partnerFace); other rooms read nothing more.
  * A room whose replay both members saved keeps these fields in its compacted row, so it
@@ -88,8 +90,8 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
 export function relayInboxProjection(storage: DurableObjectStorage, player: string, names = false): Outcome<RoomInboxProjection> {
   const row = storage.sql.exec<{
     room_id: string; revision: number; stage_index: number; branch: number; level_id: string; level_version: number;
-    definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; checkpoint_hash: string | null; updated_at: string;
-  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
+    definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; checkpoint_hash: string | null; packed_checkpoint: string | null; updated_at: string;
+  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash,CASE WHEN json_type(data,'$.checkpoint')='text' THEN json_extract(data,'$.checkpoint') END AS packed_checkpoint,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
   if (!row && closedRoom(storage)) return fail(410, "room_closed");
   if (!row || !isMember(storage, row, player)) return fail(404, "room_not_found");
   let active: string | null = null;
@@ -110,10 +112,17 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at, ...partnerLeft(storage, row, player), ...partnerReaction(storage, row, player),
     ...(names ? partnerNameField(storage, player === row.host_id ? row.guest_id : row.host_id) : {}),
     // The stored request must name this exact revision; a redo shows only while the second turn is unplayed (inboxRedo).
-    ...(row.guest_id ? inboxRedo(storage, player, row) : {}),
+    // A compressed room's checkpoint hash is unpacked only once a request names this position (v2/row-codec.ts).
+    ...(row.guest_id ? inboxRedo(storage, player, row, () => checkpointHash(row)) : {}),
     // A public duel's room: the Worker shows the partner's stand-in, never their id (duels/public-mask.ts).
     ...duelMasks(duelLink(storage), row)
   });
+}
+
+/** The room's checkpoint hash from either row form; an unreadable packed checkpoint reads as none, as before. */
+function checkpointHash(row: { checkpoint_hash: string | null; packed_checkpoint: string | null }): string | null {
+  if (row.checkpoint_hash !== null || row.packed_checkpoint === null) return row.checkpoint_hash;
+  try { const hash = (unpackCheckpoint(row.packed_checkpoint) as { checkpoint_hash?: unknown } | null)?.checkpoint_hash; return typeof hash === "string" ? hash : null; } catch { return null; }
 }
 
 /** The face the other member sent with their latest turn, if any (v2/end-reactions.ts). */
