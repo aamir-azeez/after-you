@@ -1,6 +1,6 @@
 extends RefCounted
 ## Self-placing scenery: a dressing prop placed by a floor's edge instead of by
-## centimetres, and the stage layout it is placed on (stage_view()).
+## centimetres, on the stage's plan (stage_view(): services/level_layout.gd).
 ##
 ## A prop that names "floor" and "edge" ("back", "front", "left" or "right";
 ## the camera looks from the front right) is placed from that floor's
@@ -28,13 +28,13 @@ extends RefCounted
 ## bank's top. content/dressing/catalog.gd resolve() runs this per stage, so
 ## every reader gets plain kit specs.
 const ChapterIndex = preload("res://content/chapters/index.gd")
-const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
-const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
+const LevelLayout = preload("res://services/level_layout.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
 ## The Lighthouse room's dressing key: its stages come from its own catalog.
 const LIGHTHOUSE := "sleeping-lighthouse@1"
+const LIGHTHOUSE_ROOM := "sleeping-lighthouse@2"
 const EDGES := ["back", "front", "left", "right"]
 ## Fields that say where a prop goes; never passed on to the kit.
 const FIELDS := ["floor", "edge", "along", "spacing", "out", "inset", "span", "gap"]
@@ -47,52 +47,29 @@ const CLEARANCE := 2.0
 const INSET := 20.0
 
 # --- The stage layout -----------------------------------------------------------
-# Read from the chapter's own catalog (its descriptor's "definition"), never
-# through the chapter registry: the registry loads every world, and the worlds
-# load this file, so the dressing is resolved before the registry is ready.
+# Each stage's plan comes from the chapter family's layout function
+# (services/level_layout.gd), fed the chapter's own definition (its
+# descriptor's "definition"), never through the chapter registry: the
+# registry loads every world, and the worlds load the dressing catalog.
+
+## The chapter whose plans a dressing key's stages are: the unregistered
+## Lighthouse @1 dresses the six stages the room chapter (@2) lays out.
+static func layout_key(key: String) -> String:
+	return LIGHTHOUSE_ROOM if key == LIGHTHOUSE else key
 
 ## A chapter's definition, as Registry.definition(key) gives it.
 static func definition(key: String) -> Dictionary:
-	var source: Array = ChapterIndex.data(key).get("definition", [])
+	var source: Array = ChapterIndex.data(layout_key(key)).get("definition", [])
 	if source.is_empty(): return {}
 	return load(str(source[0])).callv(str(source[1]), source.slice(2))
 
-## A chapter's stage ids, in order.
-static func stage_ids(key: String) -> Array:
-	if key == LIGHTHOUSE: return LightCatalog.STAGE_IDS.duplicate()
-	var result: Array = []
-	for stage: Dictionary in definition(key).get("stages", []): result.append(str(stage.id))
-	return result
+## A chapter's stage ids, in order (`level`: its definition, if at hand).
+static func stage_ids(key: String, level: Dictionary = {}) -> Array:
+	return LevelLayout.stage_ids(level if not level.is_empty() else definition(key))
 
-## One stage merged over its level: floors (islands), crossings, stairs and
-## every spot, as the dressing lint reads them.
-static func stage_view(key: String, stage_id: String) -> Dictionary:
-	if key == LIGHTHOUSE: return LightCatalog.definition(stage_id)
-	var level := definition(key)
-	match str(ChapterIndex.data(key).get("family", "")):
-		"first-steps": return _first_steps_view(level, stage_id)
-		"relay": return _relay_view(level, stage_id)
-	return CooperativeCatalog.stage_definition(level, stage_id)
-
-## Relay Isles has no gates: its floors, its bridges, its plates, sockets and
-## starts, and the stage's seed landing.
-static func _relay_view(level: Dictionary, stage_id: String) -> Dictionary:
-	var view := {"islands": level.islands, "bridges": level.bridges, "plates": level.plates, "sockets": level.sockets, "starts": level.starts}
-	for stage: Dictionary in level.stages:
-		if stage.id == stage_id: view["landing"] = {"id": "seed-landing", "position_cm": stage.landing_cm, "radius_cm": 66, "surface_id": stage.landing_surface}
-	return view
-
-## First Steps has no floors and gates: its floors, its spots (controls,
-## sockets, goals, starts and the stage's seed landing) and its lift, whose
-## walking space spans the whole ride like a stair's.
-static func _first_steps_view(level: Dictionary, stage_id: String) -> Dictionary:
-	var lift: Dictionary = level.lift
-	var view := {"islands": level.islands, "controls": level.controls, "sockets": level.sockets, "goals": level.goals, "starts": level.starts,
-		"stairs": [{"id": lift.id, "rect_cm": lift.rect_cm, "from_height_cm": lift.bottom_height_cm, "to_height_cm": lift.top_height_cm}]}
-	for stage: Dictionary in level.stages:
-		if stage.id == stage_id and stage.has("landing_cm"):
-			view["landing"] = {"id": "seed-landing", "position_cm": stage.landing_cm, "radius_cm": 66, "surface_id": stage.landing_surface}
-	return view
+## One stage's plan: floors (islands), crossings, stairs and every spot.
+static func stage_view(key: String, stage_id: String, level: Dictionary = {}) -> Dictionary:
+	return LevelLayout.plan(LevelLayout.family_of(layout_key(key)), level if not level.is_empty() else definition(key), stage_id)
 
 # --- Placing --------------------------------------------------------------------
 

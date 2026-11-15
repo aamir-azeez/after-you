@@ -45,8 +45,14 @@ const OTHER_FILES := {
 const MIX_FIELDS := ["theme", "picks", "props", "edged", "edging"]
 ## Key -> dressing script, loaded once with this file, then only read.
 static var FILES: Dictionary = _files()
-## Key -> resolved dressing data, worked out once with this file, then only read.
+## Key -> resolved dressing data, worked out once with this file, then only
+## read. Dressings placed by floor edges are not here (_placed_files).
 static var RESOLVED: Dictionary = _resolve_files()
+## Key -> a dressing placed by floor edges, resolved the first time a reader
+## asks: placing reads every stage's floors (several ms a chapter on a
+## desktop), so it stays off the app's start.
+static var _placed_files: Dictionary = {}
+static var _placing := Mutex.new()
 
 static func _files() -> Dictionary:
 	var result: Dictionary = OTHER_FILES.duplicate()
@@ -59,7 +65,8 @@ static func _files() -> Dictionary:
 static func _resolve_files() -> Dictionary:
 	var result: Dictionary = {}
 	for key: String in FILES:
-		var data: Dictionary = resolve(FILES[key].DATA, key)
+		if Placement.used(FILES[key].DATA): continue
+		var data: Dictionary = resolve(FILES[key].DATA)
 		# A mixed dressing is new data: locked like the const files it stands for.
 		if not data.is_read_only(): data.make_read_only()
 		result[key] = data
@@ -67,7 +74,15 @@ static func _resolve_files() -> Dictionary:
 	return result
 
 static func for_key(key: String) -> Dictionary:
-	return RESOLVED.get(key, {})
+	if RESOLVED.has(key) or not FILES.has(key): return RESOLVED.get(key, {})
+	_placing.lock()
+	if not _placed_files.has(key):
+		var data: Dictionary = resolve(FILES[key].DATA, key)
+		data.make_read_only()
+		_placed_files[key] = data
+	var result: Dictionary = _placed_files[key]
+	_placing.unlock()
+	return result
 
 static func keys() -> Array:
 	return FILES.keys()
@@ -122,8 +137,9 @@ static func _edging(data: Dictionary, theme: Dictionary) -> Dictionary:
 static func _placed(data: Dictionary, key: String, picks: Dictionary, rules: Dictionary) -> Dictionary:
 	var result: Dictionary = {}
 	if key.is_empty(): return result
-	for stage_id: String in Placement.stage_ids(key):
-		var view := Placement.stage_view(key, stage_id)
+	var level := Placement.definition(key)
+	for stage_id: String in Placement.stage_ids(key, level):
+		var view := Placement.stage_view(key, stage_id, level)
 		var plain: Array = []
 		var edged: Array = []
 		for spec: Dictionary in stage_props(data, stage_id):
