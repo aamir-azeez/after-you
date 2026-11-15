@@ -13,29 +13,15 @@
  * answer is untouched. Reading them costs no Durable Object request.
  */
 import { flags, type ServerVars } from "./flags";
-import { MAX_VERSION_LENGTH, parseVersion, serverConfig, type Version } from "./config";
+import { MAX_VERSION_LENGTH, compareVersions, parseVersion, serverConfig, type Version } from "./config";
 import { duelsOn } from "./duels/turn-hook";
 
+export { compareVersions };
 export const CLIENT_HEADER = "X-AfterYou-Client";
 export const SWITCHES_HEADER = "X-AfterYou-Switches";
 export const CHANNELS = ["play", "github", "app_store", "dev"] as const;
 export type Channel = typeof CHANNELS[number];
 const MAX_HEADER_LENGTH = MAX_VERSION_LENGTH + 1 + 9;
-
-/** Semantic version precedence: negative when a is older, 0 when equal, positive when newer. */
-export function compareVersions(a: Version, b: Version): number {
-  for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] < b.core[i] ? -1 : 1;
-  if (a.pre.length === 0 || b.pre.length === 0) return a.pre.length === b.pre.length ? 0 : a.pre.length === 0 ? 1 : -1;
-  for (let i = 0; i < Math.min(a.pre.length, b.pre.length); i++) {
-    const x = a.pre[i], y = b.pre[i];
-    if (x === y) continue;
-    const xn = /^[0-9]+$/.test(x), yn = /^[0-9]+$/.test(y);
-    if (xn && yn) return Number(x) < Number(y) ? -1 : 1;
-    if (xn !== yn) return xn ? -1 : 1;
-    return x < y ? -1 : 1;
-  }
-  return a.pre.length === b.pre.length ? 0 : a.pre.length < b.pre.length ? -1 : 1;
-}
 
 /** The version and channel a client named, or null for a missing or malformed header. */
 export function clientHeader(request: Request): { version: Version; text: string; channel: Channel } | null {
@@ -46,6 +32,8 @@ export function clientHeader(request: Request): { version: Version; text: string
   const version = parseVersion(parts[0]);
   return version ? { version, text: parts[0], channel: parts[1] as Channel } : null;
 }
+/** The app a request comes from, for the version gates (flags.ts Reach): its version, or null when it names none, which is older than any gate. */
+export function clientReach(request: Request): Version | null { return clientHeader(request)?.version ?? null; }
 
 /** The minimum a channel needs, or null when it is missing or malformed. */
 export function channelMinimum(env: ServerVars, channel: Channel): { version: Version; text: string } | null {

@@ -102,13 +102,13 @@ describe("the Fruit rules", () => {
   });
   it("turns on only with the shop, and sells packs only where that store's bundles sell and its Fruit products are set up", () => {
     const vars = (features: string[]) => withConfig({ POLLEN_SECRET: SECRET, features });
-    expect(fruitsOn(vars(["FRUITS"]))).toBe(false);
-    expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"]))).toBe(false);
-    expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "FRUITS"]))).toBe(true);
+    expect(fruitsOn(vars(["FRUITS"]), null)).toBe(false);
+    expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"]), null)).toBe(false);
+    expect(fruitsOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "FRUITS"]), null)).toBe(true);
     // Set up in RevenueCat: Play sells Fruit packs once Fruits and Play's bundles are both on.
-    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES", "FRUITS"]))).toBe(true);
-    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES"]))).toBe(false);
-    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "FRUITS"]))).toBe(false);
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES", "FRUITS"]), null)).toBe(true);
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES"]), null)).toBe(false);
+    expect(fruitPacksOn(vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "FRUITS"]), null)).toBe(false);
   });
 });
 
@@ -166,12 +166,13 @@ describe("Fruit packs", () => {
       expect(await settleBundles(storage, MONDAY, () => true, { read, claim, fruits: true })).toMatchObject({ reply: { fruit_credited: [{ bundle: "crate", fruits: 120, first_gift: 120 }] } });
     });
   });
-  it("pay one App Store sandbox Fruit pack per identity", () => {
-    const sandbox = (id: string) => p(id, "crate", { sandbox: true, order: "appstore:" + id });
-    const plan = planBundles([sandbox("s1"), sandbox("s2")], () => true, [], new Set(), { pollen: true, fruits: true });
-    expect(plan.fruitCredited.map(each => each.order)).toEqual(["s1"]);
-    const later = planBundles([sandbox("s3")], () => true, [{ key: "fruit:bundle:appstore:s1", amount: 240, detail: { environment: "sandbox" } }], new Set(), { pollen: true, fruits: false });
-    expect(later.fruitCredited).toEqual([]);
+  it("pay every sandbox Fruit pack, in either store, as a real one, keeping the sandbox mark", () => {
+    const sandbox = (order: string) => p(order, "crate", { sandbox: true, order });
+    const plan = planBundles([sandbox("appstore:s1"), sandbox("appstore:s2"), sandbox("GPA.s3")], () => true, [], new Set(), { pollen: true, fruits: true });
+    expect(plan.fruitCredited.map(each => each.order)).toEqual(["s1", "s2", "GPA.s3"]);
+    expect(plan.entries.map(entry => entry.detail.environment)).toEqual(["sandbox", "sandbox", "sandbox"]);
+    const later = planBundles([sandbox("appstore:s4")], () => true, [{ key: "fruit:bundle:appstore:s1", amount: 240, detail: { environment: "sandbox" } }], new Set(), { pollen: true, fruits: false });
+    expect(later.fruitCredited.map(each => each.order)).toEqual(["s4"]);
   });
 });
 

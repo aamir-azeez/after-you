@@ -269,6 +269,10 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 		_scopes[key] = {"enabled": false, "shop": false, "bundles": false, "view": {}}
 	return _scopes[key]
 
+## Whether this phone keeps any answer about the wardrobe for this player.
+func told(server: String, owner: String) -> bool:
+	return not _scope(server, owner).is_empty()
+
 ## Whether the server said the wardrobe is on for this player.
 func enabled(server: String, owner: String) -> bool:
 	return bool(_scope(server, owner).get("enabled", false))

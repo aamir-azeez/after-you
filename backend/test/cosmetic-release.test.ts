@@ -98,12 +98,12 @@ describe("releasing by code", () => {
     // With FACE_SINGLES off, listing the face items too changes nothing.
     expect(releasedCatalog(new Set(Object.values(CATALOG.items).filter(item => item.released || item.code >= 400 && item.code <= 499).map(item => item.code)), CATALOG, false)).toBe(CATALOG);
     expect(releasedCatalog(new Set([998, 999]))).toBe(CATALOG);
-    expect(catalogFor(withConfig({}))).toBe(CATALOG);
-    expect(catalogFor({})).toBe(CATALOG);
-    expect(catalogFor(withConfig({ cosmetics_released: [1, 2, 3], cosmetics_featured: 4 }))).toBe(CATALOG);
+    expect(catalogFor(withConfig({}), null)).toBe(CATALOG);
+    expect(catalogFor({}, null)).toBe(CATALOG);
+    expect(catalogFor(withConfig({ cosmetics_released: [1, 2, 3], cosmetics_featured: 4 }), null)).toBe(CATALOG);
     // The tags phones hold stay exactly as they are, so a deploy with no list reads no wallet again.
-    expect(offeredTagFor(withConfig({}), false)).toBe(OFFERED_TAG);
-    expect(offeredTagFor(withConfig({}), true)).toBe(FRUITS_OFFERED_TAG);
+    expect(offeredTagFor(withConfig({}), false, null)).toBe(OFFERED_TAG);
+    expect(offeredTagFor(withConfig({}), true, null)).toBe(FRUITS_OFFERED_TAG);
     expect([OFFERED_TAG, FRUITS_OFFERED_TAG]).toEqual(["779e8348", "82a1733d"]);
   });
   it("refuses to sell, offer, set or drop an item built unreleased until its code is listed", () => {
@@ -133,14 +133,14 @@ describe("releasing by code", () => {
 });
 
 describe("the featured item", () => {
-  const featured = (code: unknown) => featuredItem(withConfig({ cosmetics_featured: code }));
+  const featured = (code: unknown) => { const env = withConfig({ cosmetics_featured: code }); return featuredItem(env, catalogFor(env, null)); };
   it("names a released item sold for Pollen, and nothing else", () => {
     expect(featured(4)).toBe("tide");
     expect(featured(1)).toBe("daisy");
     expect(featured(7)).toBeUndefined(); // Gold leaf: earned, never sold
     expect(featured(10)).toBeUndefined(); // Apple hood: Fruits, not on the Pollen shelf
     expect(featured(998)).toBeUndefined(); // no such item
-    expect(featuredItem(withConfig({}))).toBeUndefined();
+    expect(featuredItem(withConfig({}), CATALOG)).toBeUndefined();
     const env901 = withConfig({ cosmetics_featured: 901 });
     expect(featuredItem(env901, BUILT)).toBeUndefined(); // built unreleased
     expect(featuredItem(env901, releasedCatalog(new Set([901]), BUILT))).toBe("reed_cap");

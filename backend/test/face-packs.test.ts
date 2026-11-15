@@ -163,8 +163,8 @@ describe("single faces", () => {
   it("are hidden while FACE_SINGLES is off, whatever CONFIG releases, and version 2 is answered only while it is on", async () => {
     const player = await create();
     const all = new Set(Object.values(CATALOG.items).map(item => item.code));
-    expect(Object.keys(catalogFor(withConfig({ ...env, cosmetics_released: [...all] })).items).filter(id => ["aww", "rest_bean", "reaction_slot_5"].includes(id) && catalogFor(withConfig({ ...env, cosmetics_released: [...all] })).items[id].released)).toEqual([]);
-    expect(catalogFor(withConfig({ ...env, cosmetics_released: [...all], features: SINGLES_ON, POLLEN_SECRET: SECRET })).items.aww.released).toBe(true);
+    expect(Object.keys(catalogFor(withConfig({ ...env, cosmetics_released: [...all] }), null).items).filter(id => ["aww", "rest_bean", "reaction_slot_5"].includes(id) && catalogFor(withConfig({ ...env, cosmetics_released: [...all] }), null).items[id].released)).toEqual([]);
+    expect(catalogFor(withConfig({ ...env, cosmetics_released: [...all], features: SINGLES_ON, POLLEN_SECRET: SECRET }), null).items.aww.released).toBe(true);
     expect(await (await call("/v2/capabilities", "GET", player, undefined, SINGLES)).json()).toMatchObject({ face_packs_version: 1 });
     features = SINGLES_ON;
     expect(await (await call("/v2/capabilities", "GET", player, undefined, SINGLES)).json()).toMatchObject({ face_packs_version: 2 });

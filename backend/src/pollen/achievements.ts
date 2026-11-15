@@ -71,6 +71,14 @@ function progress(storage: DurableObjectStorage, rates: Rates): Record<Track, nu
 }
 
 /**
+ * settleAchievements for bookkeeping no Fruits app asked for (a turn from an app Fruits are gated off for, a partner's clear,
+ * a duel result, board rewards): only for a player whose sweep has run, so a player who has only used older apps writes
+ * nothing, as with FRUITS off, and their first Fruits read sweeps it all from their records. One row read when unswept.
+ */
+export function settleStartedAchievements(storage: DurableObjectStorage, now: number, moment: Moment = {}): FruitsReceipt | null {
+  return purse(storage, "swept").balance > 0 ? settleAchievements(storage, now, moment) : null;
+}
+/**
  * Notes `moment` and pays every live achievement now due, inside the caller's transaction. Only while Fruits are on (the
  * caller decides). Answers what it paid and the Fruit balance, or null when nothing was paid.
  */
