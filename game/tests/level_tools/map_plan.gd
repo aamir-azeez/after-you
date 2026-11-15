@@ -7,7 +7,9 @@ extends SceneTree
 ##   --out=<folder> [--stages=<id,id>] [--no-world]
 ## With a registered chapter the world is built unseen once, only to read the
 ## pair tags it leaves out (pair_tags.skips()), so the letters match the
-## game's; --no-world (or a bare layout) letters every wired control.
+## game's; --no-world (or a bare layout) letters every wired control. A
+## dressed chapter's map also shows the quick prop check (prop_check.gd):
+## where props may stand, each prop's footprint, and the ones it flags.
 const Kit = preload("res://tests/level_tools/render_kit.gd")
 const Stages = preload("res://tests/level_tools/level_stages.gd")
 const Model = preload("res://tests/level_tools/map_plan_model.gd")
@@ -15,6 +17,8 @@ const MapView = preload("res://tests/level_tools/map_plan_view.gd")
 const Sheet = preload("res://tests/level_tools/contact_sheet.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const PropCheck = preload("res://tests/level_tools/prop_check.gd")
+const Dressing = preload("res://content/dressing/catalog.gd")
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -39,6 +43,10 @@ func _run() -> void:
 		var view := CooperativeCatalog.stage_definition(level, str(stage.id))
 		var drawer: Control = MapView.new()
 		drawer.plan = Model.build(level, view, checkpoint, layout.journey, skips.get(str(stage.id), []))
+		if layout.registered and str(layout.key) in Dressing.keys():
+			drawer.plan["props"] = PropCheck.check(str(layout.key), str(stage.id))
+			# The map reaches every prop, so none is drawn over the title.
+			for prop: Dictionary in drawer.plan.props.props: drawer.plan.bounds = (drawer.plan.bounds as Rect2).merge(prop.rect)
 		var image: Image = await Kit.render(self, drawer, drawer.canvas_size())
 		Kit.save(image, out, "%s-%s-map.png" % [layout.name, stage.id])
 		frames.append({"image": image, "caption": "Stage %d: %s" % [index + 1, stage.get("title", stage.id)]})
