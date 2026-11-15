@@ -63,7 +63,7 @@ static func panel(node_name: String, fill: Color = PANEL_FILL, edge: Color = PAN
 	return box
 
 ## The show-my-name choice as one small panel: its words, then `faint` in a softer
-## ink when given, and a switch at the end (the public duels first-time card and the
+## ink and regular weight when given, and a switch at the end (the public duels first-time card and the
 ## name prompt). The switch is the child named `switch_name`.
 static func switch_row(node_name: String, switch_name: String, words: String, on: bool, faint: String = "") -> PanelContainer:
 	var row := panel(node_name, PANEL_FILL, PANEL_EDGE, 12, 10.0)
@@ -84,8 +84,11 @@ static func switch_row(node_name: String, switch_name: String, words: String, on
 		both.push_color(UiTokens.CREAM)
 		both.add_text(words + " ")
 		both.pop()
+		# The quiet part as the cards' other notes: regular Nunito in the soft ink.
+		both.push_font(SettingsKit.font(400), 16)
 		both.push_color(UiTokens.SOFT)
 		both.add_text(faint)
+		both.pop()
 		both.pop()
 		said = both
 	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
