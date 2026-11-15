@@ -169,14 +169,15 @@ func _run() -> void:
 	app.friends_flow.screen.close()
 	await _frames(1)
 	app._show_home()
-	app.running = true
+	app.relay_child = Node3D.new()
 	app.toasts.clear()
 	native.offer(ShareCodes.link(ShareCodes.FRIEND,"Z".repeat(22)))
 	await _frames(2)
 	await app._service_invite_link()
 	await app._service_invite_link()
 	_check(app.toasts == [PlayerCopy.INVITE_LINK_WAITING] and not app.friends_flow.is_open() and app.invite_link_pending == "Z".repeat(22),"Gameplay keeps the link and notes it once")
-	app.running = false
+	app.relay_child.free()
+	app.relay_child = null
 	await app._service_invite_link()
 	await _frames(3)
 	_check(_modal(app) != null and _label_in(_modal(app),"friend-"+"Z".repeat(22)),"Leaving play opens the waiting confirmation")

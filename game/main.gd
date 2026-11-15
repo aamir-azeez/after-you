@@ -649,10 +649,6 @@ func _clear_overlay() -> void:
 		child.queue_free()
 	overlay.visible=true
 
-func _close_overlay() -> void:
-	_clear_overlay()
-	overlay.visible=false
-
 func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 	_clear_overlay()
 	var shade := ColorRect.new()

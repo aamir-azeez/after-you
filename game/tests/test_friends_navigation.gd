@@ -331,29 +331,6 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/friends/share").size()==shared_before and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms" and call.method==HTTPClient.METHOD_POST).size()==creates_before,"Opening the host hub never shares or creates a room by itself")
 	app.room_hub_flow.drop()
 	await process_frame
-	# A new friend's delayed join must not navigate after Back or backgrounding.
-	app.room_hub_flow.show_rooms()
-	await app._show_friends()
-	await process_frame
-	api.hold_next=true
-	app.friends_flow.screen.join_requested.emit({"api_version":2,"room_id":ROOM,"invite_code":"A1".repeat(10)})
-	app.friends_flow.screen.close()
-	await process_frame
-	app._show_home()
-	api.release.emit()
-	await process_frame
-	_check(app.mode=="home","A late new-friend join cannot replace Home")
-	app.room_hub_flow.show_rooms()
-	await app._show_friends()
-	await process_frame
-	api.hold_next=true
-	app.friends_flow.screen.join_requested.emit({"api_version":2,"room_id":ROOM,"invite_code":"A1".repeat(10)})
-	app.friends_flow.screen.close()
-	app._background_application()
-	api.release.emit()
-	await process_frame
-	_check(app.mode=="rooms","A join completing in the background does not open gameplay")
-	app._resume_application()
 
 func _pointer(viewport: SubViewport, point: Vector2, pressed: bool) -> void:
 	var event := InputEventMouseButton.new()

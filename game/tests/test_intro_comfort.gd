@@ -141,14 +141,14 @@ func _walk(simulation: RefCounted, target: Array) -> void:
 	for axis: String in ["x", "z"]:
 		for _i in range(950):
 			if simulation.finished: break
-			var slot: String = simulation.role if simulation is Legacy else simulation.active_slot
+			var slot: String = simulation.active_slot
 			var position: Dictionary = simulation.snapshot().players[slot]
 			var distance := int(target[0 if axis == "x" else 1]) - int(position[axis])
 			if absi(distance) <= 1: break
 			var frame := {"move_x": 0.0, "move_z": 0.0}
 			frame["move_" + axis] = clampf(float(distance) / 8.0, -1, 1)
 			simulation.step(frame)
-	var final_slot: String = simulation.role if simulation is Legacy else simulation.active_slot
+	var final_slot: String = simulation.active_slot
 	var final_position: Dictionary = simulation.snapshot().players[final_slot]
 	_check(absi(int(final_position.x) - int(target[0])) <= 1 and absi(int(final_position.z) - int(target[1])) <= 1,
 		"Native route reaches its actual waypoint (%s,%s), tick%d" % [target[0], target[1], simulation.tick])

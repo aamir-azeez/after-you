@@ -105,7 +105,7 @@ func _gallery(app: Node, viewport: SubViewport, large: bool) -> void:
 		for label: Label in gallery.find_children("*","Label",true,false):
 			label.add_theme_font_size_override("font_size",roundi(float(label.get_theme_font_size("font_size"))*1.5))
 	await _settle()
-	_check(_cards(gallery).size()==10,"Read-only paywall gallery contains every paid entry")
+	_check(_cards(gallery).size()==5,"Read-only paywall gallery contains every paid entry")
 	_check(_rows(gallery).is_empty(),"Pictures do not provide an ungated gameplay or hidden preview action")
 	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
 	_check(screen.encloses(gallery.get_global_rect()),"Gallery is bounded at both sizes and text scales")

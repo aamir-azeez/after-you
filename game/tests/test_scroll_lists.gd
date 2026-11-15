@@ -8,7 +8,6 @@ const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const Shared = preload("res://services/shared_replay_collection.gd")
 const OnlineSession = preload("res://services/relay_online_session.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 
 class Memory extends RefCounted:
@@ -90,7 +89,7 @@ func _run() -> void:
 	_check(FileAccess.get_file_as_string(path) == saved_bytes, "List inspection and gestures never modify the isolated save on disk")
 	for request: Dictionary in api.calls:
 		_check(request.method == HTTPClient.METHOD_GET and request.body.is_empty(), "Only synthetic read requests reach the fake API")
-	_check(api.calls.size() == 12 and api.responses.is_empty(), "Exactly six explicit list/collection GETs run per viewport size without leaving queued responses: %d" % api.calls.size())
+	_check(api.calls.size() == 2 and api.responses.is_empty(), "One explicit shared-room GET runs per viewport size without leaving queued responses: %d" % api.calls.size())
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.15).timeout

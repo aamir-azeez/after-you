@@ -100,7 +100,8 @@ static func unresolved(room: Dictionary) -> bool:
 	return key.is_empty() or key == "unknown" or key.begins_with("<")
 
 func _shown(room: Dictionary) -> bool:
-	if int(room.get("api_version",0)) != 2: return false
+	# Rooms of the earlier islands (version 1) are no longer in the game.
+	if int(room.get("api_version",0)) == 1: return false
 	var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
 	return not _hidden.has(key) or int(room.get("remote_activity_sequence",0)) > int(_hidden[key])
 

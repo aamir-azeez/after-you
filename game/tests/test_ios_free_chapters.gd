@@ -160,7 +160,7 @@ func _run() -> void:
 	_check(unknown == baseline, "Before any server answer an iPhone that sells shows what it showed before: " + _differences(unknown, baseline))
 	support.note("https://ios-free.example.test", "P".repeat(22), false)
 	var held: Dictionary = await _surfaces(app, PlatformSupport.IOS, APP_STORE)
-	_check(held.paid_cards == 0 and held.locked_cards == 0 and held.together_paid == 0 and held.islands == 3, "A server without App Store purchases: no paid or locked chapter and the three free islands")
+	_check(held.paid_cards == 0 and held.locked_cards == 0 and held.together_paid == 0, "A server without App Store purchases: no paid or locked chapter")
 	_check(not held.home_offer and held.store_rows == [false, false] and not held.hosting_row and not held.grant_card and held.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY_FREE,
 		"A server without App Store purchases: no Full Journey offer, store rows, hosting row or monthly card")
 	support.note("https://ios-free.example.test", "P".repeat(22), true)

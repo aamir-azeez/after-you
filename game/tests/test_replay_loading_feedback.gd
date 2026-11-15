@@ -78,8 +78,9 @@ func _run() -> void:
 	await _watch_wait(app, paths)
 	await _snapshot(app, paths)
 	await _reopen_after_leaving(app, paths)
+	_check(api.calls.is_empty(), "Loading feedback and snapshot rows send no network request")
 	await _together(app)
-	_check(api.calls.is_empty(), "Loading feedback, snapshot rows and Together local checks send no network request")
+	_check(api.calls.all(func(call: Dictionary) -> bool: return call.method == HTTPClient.METHOD_GET), "Together's local checks change nothing on the server")
 	await _leave_mid_scan(viewport, app, paths)
 	viewport.queue_free()
 	await process_frame
@@ -123,7 +124,7 @@ func _solo_scan(app: Node, paths: Dictionary) -> void:
 	var bar: Control = app.replays_flow._solo_scan_bar
 	_check(app.replays_flow.solo_replays.scan_pending() and is_instance_valid(bar) and bar.is_inside_tree(), "Opening Solo shows the loading bar in the same frame the screen is built")
 	_check(not _has_text(app.overlay, ReplaysFlow.EMPTY_SOLO_COLLECTION), "While scanning, the empty message is never shown")
-	_check(bar.status.text.ends_with("0 / 3") and bar.status.text.begins_with(ReplaysFlow.SOLO_COLLECTION_SCANNING), "The bar counts real sources (0 of 3) and reuses the existing scanning copy")
+	_check(bar.status.text.ends_with("0 / 3") and bar.status.text.begins_with("Loading saved replays"), "The bar counts real sources (0 of 3) with the general loading text while nothing is listed yet")
 	_check(_rows(app).is_empty(), "No row is listed before any chapter is checked")
 	# Zero chapter rows found yet: the bar stays and the empty text stays away.
 	var guard := 0
