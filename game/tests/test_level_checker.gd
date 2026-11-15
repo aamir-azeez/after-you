@@ -30,10 +30,7 @@ const Stages = preload("res://tests/level_tools/level_stages.gd")
 const Shots = preload("res://tests/level_tools/stage_shots.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const Props = preload("res://presentation/kit/props.gd")
-## Two props stand in each other when their footprints share more than this
-## much of the smaller one's (and their heights meet): touching leaves and a
-## lamp beside a crate are fine, one crate inside another is not.
-const PROP_SHARE := 0.3
+const PropRules = preload("res://presentation/kit/prop_rules.gd")
 ## Known failures: {failure id: why it is left}. Published worlds never change
 ## to clear one; a new chapter fixes its own.
 const KNOWN := {
@@ -395,18 +392,16 @@ func _props(key: String) -> void:
 		var where := "%s %s" % [key, stage.id]
 		var solid: Array = []
 		for spec: Dictionary in Props.expand(Dressing.stage_props(data, str(stage.id))):
-			var extent := Props.extent(spec)
-			if bool(extent.flat) or str(spec.get("kind", "")) == "bank": continue
-			var base := float(heights.get(str(spec.get("surface", "")), 0.0)) + float(extent.base)
-			solid.append({"spec": spec, "rect": extent.rect, "round": _round(spec), "low": base, "high": base + float(extent.height)})
+			var item := PropRules.solid(spec, heights)
+			if not item.is_empty(): solid.append(item.merged({"spec": spec}))
 		for a in range(solid.size()):
 			for b in range(a + 1, solid.size()):
 				var one: Dictionary = solid[a]
 				var two: Dictionary = solid[b]
 				if one.high <= two.low + 0.01 or two.high <= one.low + 0.01: continue
-				var share := _share(one, two)
+				var share := PropRules.share(one, two)
 				var id := "%s props %s and %s" % [where, _prop(one.spec), _prop(two.spec)]
-				_expect(share <= PROP_SHARE, id, "%s: the %s and the %s stand in each other (%d%% of the smaller)" % [where, _prop(one.spec), _prop(two.spec), roundi(share * 100.0)])
+				_expect(share <= PropRules.PROP_SHARE, id, "%s: the %s and the %s stand in each other (%d%% of the smaller)" % [where, _prop(one.spec), _prop(two.spec), roundi(share * 100.0)])
 
 ## The prop rule on small cases, so it can fail at all.
 func _share_rule() -> void:
@@ -414,38 +409,8 @@ func _share_rule() -> void:
 	var inside := {"rect": Rect2(-0.1, -0.1, 0.2, 0.4), "round": false}
 	var beside := {"rect": Rect2(0.15, -0.2, 0.4, 0.4), "round": true}
 	var apart := {"rect": Rect2(1.0, 1.0, 0.4, 0.4), "round": true}
-	_check(_share(crate, crate) > 0.99 and _share(crate, inside) > PROP_SHARE, "Two props in one place, or one inside another, stand in each other")
-	_check(_share(crate, beside) <= PROP_SHARE and _share(crate, apart) == 0.0, "Props that only touch, or stand apart, pass")
-
-## Round kinds keep a circle footprint; boxes and lines keep their rectangle.
-static func _round(spec: Dictionary) -> bool:
-	return str(spec.get("kind", "")) not in ["bench", "cottage", "rug", "path", "planter", "boat", "lobster_pot", "shelf", "frame", "fence", "hedge", "wall"]
-
-## How much of the smaller footprint the two share, from 0 to 1 (a circle is
-## sampled on a 9 by 9 grid over its square).
-static func _share(one: Dictionary, two: Dictionary) -> float:
-	var small: Dictionary = one if _area(one) <= _area(two) else two
-	var large: Dictionary = two if small == one else one
-	if not (small.rect as Rect2).intersects(large.rect): return 0.0
-	var inside := 0
-	var total := 0
-	var rect: Rect2 = small.rect
-	for i in range(9):
-		for j in range(9):
-			var point := rect.position + rect.size * Vector2((float(i) + 0.5) / 9.0, (float(j) + 0.5) / 9.0)
-			if not _covers(small, point): continue
-			total += 1
-			if _covers(large, point): inside += 1
-	return float(inside) / float(maxi(total, 1))
-
-static func _covers(item: Dictionary, point: Vector2) -> bool:
-	var rect: Rect2 = item.rect
-	if not item.round: return rect.has_point(point)
-	return point.distance_to(rect.get_center()) <= rect.size.x * 0.5
-
-static func _area(item: Dictionary) -> float:
-	var rect: Rect2 = item.rect
-	return rect.get_area() * (PI / 4.0 if item.round else 1.0)
+	_check(PropRules.share(crate, crate) > 0.99 and PropRules.share(crate, inside) > PropRules.PROP_SHARE, "Two props in one place, or one inside another, stand in each other")
+	_check(PropRules.share(crate, beside) <= PropRules.PROP_SHARE and PropRules.share(crate, apart) == 0.0, "Props that only touch, or stand apart, pass")
 
 static func _prop(spec: Dictionary) -> String:
 	return "%s at %s" % [spec.get("kind", "?"), _cm(spec.get("at", spec.get("from", [0, 0])))]

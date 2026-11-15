@@ -37,6 +37,9 @@ const ROPE := Color("d1b98c")
 
 ## Kinds lower than this (metres) never hide a spirit or a control.
 const LOW := 0.16
+## A bank's top layer: this thick (metres), its top face half of it above the
+## bank's height, so it never shares a depth with the bank's sides.
+const BANK_LAYER := 0.03
 ## A cobble wall's full height and depth (metres), nudged stones included.
 const STONE_WALL_HEIGHT := 0.34
 const STONE_WALL_DEPTH := 0.32
@@ -121,11 +124,20 @@ static func expand(specs: Array) -> Array:
 			item["at"] = [at.x, at.y]
 			for key: String in ["surface", "y"]:
 				if spec.has(key) and not item.has(key): item[key] = spec[key]
-			if spec.get("vary", false):
-				item["size"] = float(item.get("size", 1.0)) * (0.85 + 0.15 * absf(sin(float(index) * 2.3 + at.x)))
-				item["rot"] = float(item.get("rot", 0)) + float(index) * 47.0
+			if spec.get("vary", false): vary(item, index, at.x)
 			result.append(item)
 	return result
+
+## The `index`th prop of a varied row at `x` cm: a little smaller or larger
+## and turned, the same every build.
+static func vary(item: Dictionary, index: int, x: float) -> void:
+	item["size"] = float(item.get("size", 1.0)) * (0.85 + 0.15 * absf(sin(float(index) * 2.3 + x)))
+	item["rot"] = float(item.get("rot", 0)) + float(index) * 47.0
+
+## The height (cm above its surface) a prop stands at on this bank: the top
+## face of its top layer. Never the bank's own height, which is under it.
+static func bank_top(spec: Dictionary) -> float:
+	return float(spec.get("y", 0)) + float(spec.get("height", 12)) + BANK_LAYER * 50.0
 
 static func _point(coords: Array) -> Vector2:
 	return Vector2(float(coords[0]), float(coords[1])) / 100.0
@@ -295,14 +307,16 @@ static func _cottage(root: Node3D, s: float, width: float, depth: float, lit: bo
 	var roof := Primitives.mesh_node(Primitives.shared_mesh("prism", w + 0.24 * s, 0.72 * s, d + 0.22 * s), _m(ROOF), Vector3(0, wall_h + 0.36 * s, 0), root)
 	roof.name = "CottageRoof"
 	_box(Vector3(0.14, 0.42, 0.14) * s, ROOF_DARK, Vector3(w * 0.28, wall_h + 0.55 * s, -d * 0.15), root)
-	# The door and windows face the camera (+z).
-	_box(Vector3(0.34, 0.66, 0.03) * s, TIMBER, Vector3(-w * 0.18, 0.33 * s, d * 0.5 + 0.015), root)
-	_box(Vector3(0.05, 0.05, 0.04) * s, Color("e3c27a"), Vector3(-w * 0.18 + 0.1 * s, 0.33 * s, d * 0.5 + 0.035), root)
+	# The door and windows face the camera (+z), STANDOFF clear of the
+	# plinth's front at any size.
+	var face := d * 0.5 + 0.02 + STANDOFF
+	_box(Vector3(0.34, 0.66, 0.03) * s, TIMBER, Vector3(-w * 0.18, 0.33 * s, face), root)
+	_box(Vector3(0.05, 0.05, 0.04) * s, Color("e3c27a"), Vector3(-w * 0.18 + 0.1 * s, 0.33 * s, face + 0.02), root)
 	for x: float in [w * 0.22]:
-		var pane := _box(Vector3(0.34, 0.3, 0.03) * s, WINDOW_WARM if lit else Color("8fb3ad"), Vector3(x, 0.66 * s, d * 0.5 + 0.015), root, 0.9 if lit else 0.0)
+		var pane := _box(Vector3(0.34, 0.3, 0.03) * s, WINDOW_WARM if lit else Color("8fb3ad"), Vector3(x, 0.66 * s, face), root, 0.9 if lit else 0.0)
 		pane.name = "CottageWindow"
-		_box(Vector3(0.4, 0.05, 0.05) * s, TIMBER_DARK, Vector3(x, 0.49 * s, d * 0.5 + 0.03), root)
-		_box(Vector3(0.025, 0.29, 0.035) * s, TIMBER_DARK, Vector3(x, 0.66 * s, d * 0.5 + 0.03), root)
+		_box(Vector3(0.4, 0.05, 0.05) * s, TIMBER_DARK, Vector3(x, 0.49 * s, face + 0.015), root)
+		_box(Vector3(0.025, 0.29, 0.035) * s, TIMBER_DARK, Vector3(x, 0.66 * s, face + 0.015), root)
 	for x: float in [-w * 0.36, w * 0.38]:
 		_ball(0.13 * s, LEAF, Vector3(x, 0.12 * s, d * 0.5 + 0.12 * s), root, Vector3(1.2, 0.85, 0.9))
 
@@ -363,9 +377,9 @@ static func _ivy(root: Node3D, length: float) -> void:
 
 static func _boat(root: Node3D, s: float) -> void:
 	_box(Vector3(1.1, 0.22, 0.44) * s, TIMBER, Vector3(0, 0.11 * s, 0), root)
-	# The deck stands a few millimetres proud of the hull's rim: equal tops
-	# z-fight and flicker as the camera moves.
-	_box(Vector3(1.0, 0.04, 0.36) * s, TIMBER_LIGHT, Vector3(0, 0.206 * s, 0), root)
+	# The deck stands STANDOFF proud of the hull's rim at any size: equal
+	# tops z-fight and flicker as the camera moves.
+	_box(Vector3(1.0, 0.04, 0.36) * s, TIMBER_LIGHT, Vector3(0, 0.2 * s + STANDOFF, 0), root)
 	_box(Vector3(0.06, 0.05, 0.4) * s, TIMBER_DARK, Vector3(0.15 * s, 0.24 * s, 0), root)
 
 ## A squat harbour bollard with a coil of rope at its foot.
@@ -378,15 +392,23 @@ static func _bollard(root: Node3D, s: float) -> void:
 	coil.position = Vector3(0, 0.02, 0)
 	root.add_child(coil)
 
+## Built-in standoff (metres) between parts of one prop that would otherwise
+## share a face: never scaled with the prop, so no size or turn brings two
+## faces within the lint's z-fight gap (test_dressing_lint COPLANAR).
+const STANDOFF := 0.006
+
+## The hoops stand STANDOFF proud of the staves at every size.
 static func _barrel(root: Node3D, s: float) -> void:
 	_rod(0.13 * s, 0.30 * s, TIMBER_LIGHT, Vector3(0, 0.15 * s, 0), root)
-	for y: float in [0.06, 0.24]: _rod(0.135 * s, 0.025 * s, TIMBER_DARK, Vector3(0, y * s, 0), root)
+	for y: float in [0.06, 0.24]: _rod(0.13 * s + STANDOFF, 0.025 * s, TIMBER_DARK, Vector3(0, y * s, 0), root)
 
-## A slatted timber lobster pot with a rope loop.
+## A slatted timber lobster pot with a rope loop. The slats stop STANDOFF
+## short of the base's and lid's sides, so the pot turned any way never
+## lines a slat's end up with them.
 static func _lobster_pot(root: Node3D, s: float) -> void:
 	_box(Vector3(0.38, 0.03, 0.26) * s, TIMBER_DARK, Vector3(0, 0.015 * s, 0), root)
 	for x: float in [-0.16, -0.05, 0.05, 0.16]:
-		_box(Vector3(0.025, 0.16, 0.26) * s, TIMBER_LIGHT, Vector3(x * s, 0.09 * s, 0), root)
+		_box(Vector3(0.025 * s, 0.16 * s, 0.26 * s - STANDOFF * 2.0), TIMBER_LIGHT, Vector3(x * s, 0.09 * s, 0), root)
 	_box(Vector3(0.38, 0.025, 0.26) * s, TIMBER, Vector3(0, 0.17 * s, 0), root)
 
 static func _shelf(root: Node3D, s: float) -> void:
@@ -396,9 +418,11 @@ static func _shelf(root: Node3D, s: float) -> void:
 	Primitives.mesh_node(Primitives.shared_mesh("cylinder", 0.06 * s, 0.12 * s, 0.07 * s), _m(POT), Vector3(0.3 * s, 0.08 * s, 0), root)
 	_ball(0.08 * s, LEAF, Vector3(0.3 * s, 0.2 * s, 0), root)
 
+## The picture stands STANDOFF proud of its frame and no deeper behind it, so
+## the frame's back is the only face against a wall at any size.
 static func _frame(root: Node3D, s: float, color: Variant) -> void:
 	_box(Vector3(0.4, 0.3, 0.03) * s, TIMBER_DARK, Vector3.ZERO, root)
-	_box(Vector3(0.32, 0.22, 0.04) * s, Color(str(color)), Vector3.ZERO, root)
+	_box(Vector3(0.32 * s, 0.22 * s, 0.03 * s), Color(str(color)), Vector3(0, 0, STANDOFF), root)
 
 static func _fence(root: Node3D, from: Vector2, to: Vector2, s: float) -> void:
 	var length := from.distance_to(to)
@@ -432,7 +456,7 @@ static func _bank(root: Node3D, spec: Dictionary) -> void:
 	var side := Color(str(spec.get("side", "8a6b4e")))
 	var top := Color(str(spec.get("top", "7fa36a")))
 	_box(Vector3(width, height + 0.30, depth), side, center + Vector3(0, (height - 0.30) * 0.5, 0), root)
-	_box(Vector3(width - 0.02, 0.03, depth - 0.02), top, center + Vector3(0, height, 0), root)
+	_box(Vector3(width - 0.02, BANK_LAYER, depth - 0.02), top, center + Vector3(0, height, 0), root)
 
 static func _wall(root: Node3D, from: Vector2, to: Vector2, height: float, thickness: float, color: Variant) -> void:
 	var middle := (from + to) * 0.5

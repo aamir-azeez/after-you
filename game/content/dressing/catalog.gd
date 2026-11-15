@@ -20,23 +20,29 @@ extends RefCounted
 ##   "theme":  a content/dressing/themes.gd preset filling every field above
 ##             the file leaves out ("ground" island by island)
 ##   "picks":  {slot: style}, over the theme's (content/dressing/prop_styles.gd)
+##   "edged":  {floor id or "*": [edges]}: floors that grow their theme's
+##             "edging" (props laid by a floor's edge, content/dressing/placement.gd)
+##   "edging": {edge: [props]}, over the theme's edge by edge
 ## A prop may name a "slot" instead of a "kind"; resolve() turns it into the
 ## picked style's kind here, once per key, so every reader (the worlds, the
-## lint) sees plain kit specs. A file with no theme, picks or slot props is
-## returned exactly as written.
+## lint) sees plain kit specs. A prop with "floor" and "edge" is placed from
+## the floors of each stage (placement.gd), so a placed dressing comes back
+## with its props listed stage by stage. A file with no theme, picks or slot
+## props is returned exactly as written.
 ## tests/test_dressing_lint.gd checks every prop against every route, pad,
 ## lever, goal, start and drop, including the camera's view of them.
 
 const Index = preload("res://content/chapters/index.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
 const Themes = preload("res://content/dressing/themes.gd")
+const Placement = preload("res://content/dressing/placement.gd")
 ## Dressing for keys that are not registered chapters. A registered chapter
 ## names its file in its descriptor ("dressing").
 const OTHER_FILES := {
 	"sleeping-lighthouse@1": preload("res://content/dressing/sleeping_lighthouse.gd"),
 }
 ## Fields a theme does not pass on as they are.
-const MIX_FIELDS := ["theme", "picks", "props"]
+const MIX_FIELDS := ["theme", "picks", "props", "edged", "edging"]
 ## Key -> dressing script, loaded once with this file, then only read.
 static var FILES: Dictionary = _files()
 ## Key -> resolved dressing data, worked out once with this file, then only read.
@@ -53,7 +59,7 @@ static func _files() -> Dictionary:
 static func _resolve_files() -> Dictionary:
 	var result: Dictionary = {}
 	for key: String in FILES:
-		var data: Dictionary = resolve(FILES[key].DATA)
+		var data: Dictionary = resolve(FILES[key].DATA, key)
 		# A mixed dressing is new data: locked like the const files it stands for.
 		if not data.is_read_only(): data.make_read_only()
 		result[key] = data
@@ -74,7 +80,9 @@ static func stage_props(data: Dictionary, stage_id: String) -> Array:
 ## The dressing with its theme and picks applied and every slot prop turned
 ## into its style's kit spec. Returns `data` itself when it mixes nothing. A
 ## slot, style or theme that does not exist is left out (problems() names it).
-static func resolve(data: Dictionary) -> Dictionary:
+## Props placed by a floor's edge need the chapter `key` whose floors they
+## stand by; without it they are left out.
+static func resolve(data: Dictionary, key: String = "") -> Dictionary:
 	if not mixes(data): return data
 	var theme: Dictionary = Themes.THEMES.get(str(data.get("theme", "")), {})
 	var result: Dictionary = {}
@@ -90,6 +98,9 @@ static func resolve(data: Dictionary) -> Dictionary:
 	# A look slot's pick rides along as its own field, unless the dressing gives it.
 	for slot: String in Styles.LOOK_SLOTS:
 		if not result.has(slot): result[slot] = picks[slot]
+	if Placement.used(data):
+		result["props"] = _placed(data, key, picks, _edging(data, theme))
+		return result
 	var props: Dictionary = {}
 	for stage: String in data.get("props", {}):
 		var specs: Array = []
@@ -100,9 +111,50 @@ static func resolve(data: Dictionary) -> Dictionary:
 	if data.has("props"): result["props"] = props
 	return result
 
+## The theme's edging with the dressing's own over it, edge by edge.
+static func _edging(data: Dictionary, theme: Dictionary) -> Dictionary:
+	var rules: Dictionary = theme.get("edging", {}).duplicate()
+	rules.merge(data.get("edging", {}), true)
+	return rules
+
+## {stage id: plain kit specs}: each stage's props, the ones placed by a
+## floor's edge (and those the "edged" floors grow) worked out on its floors.
+static func _placed(data: Dictionary, key: String, picks: Dictionary, rules: Dictionary) -> Dictionary:
+	var result: Dictionary = {}
+	if key.is_empty(): return result
+	for stage_id: String in Placement.stage_ids(key):
+		var view := Placement.stage_view(key, stage_id)
+		var plain: Array = []
+		var edged: Array = []
+		for spec: Dictionary in stage_props(data, stage_id):
+			if not spec.has("edge"):
+				var made := _resolve_spec(spec, picks)
+				if not made.is_empty(): plain.append(made)
+			elif spec.has("slot"):
+				var styled := _styled(spec, picks)
+				if not styled.is_empty(): edged.append(styled)
+			else: edged.append(spec.duplicate(true))
+		for spec: Dictionary in Placement.grown(data.get("edged", {}), rules, view):
+			var styled := _styled(spec, picks)
+			if not styled.is_empty(): edged.append(styled)
+		result[stage_id] = Placement.lay(plain, edged, view)
+	return _shared(result)
+
+## Props every stage has in common go under "*" (a world that dresses once
+## for its whole chapter reads only those); each stage keeps the rest.
+static func _shared(stages: Dictionary) -> Dictionary:
+	if stages.is_empty(): return stages
+	var first: Array = stages.values()[0]
+	var common: Array = first.filter(func(spec: Dictionary) -> bool: return stages.values().all(func(specs: Array) -> bool: return specs.has(spec)))
+	var result: Dictionary = {"*": common}
+	for stage_id: String in stages:
+		var own: Array = stages[stage_id].filter(func(spec: Dictionary) -> bool: return not common.has(spec))
+		if not own.is_empty(): result[stage_id] = own
+	return result
+
 ## True when the dressing names a theme, picks or any slot prop.
 static func mixes(data: Dictionary) -> bool:
-	if data.has("theme") or data.has("picks"): return true
+	if data.has("theme") or data.has("picks") or data.has("edged") or data.has("edging"): return true
 	for stage: String in data.get("props", {}):
 		for spec: Dictionary in data.props[stage]:
 			if spec.has("slot") or (spec.get("of") is Dictionary and spec.of.has("slot")): return true
@@ -113,6 +165,11 @@ static func problems(data: Dictionary) -> Array[String]:
 	var found: Array[String] = []
 	var theme := str(data.get("theme", ""))
 	if data.has("theme") and not Themes.THEMES.has(theme): found.append("Unknown theme " + theme)
+	var rules := _edging(data, Themes.THEMES.get(theme, {}))
+	found.append_array(Placement.problems(data, rules))
+	for edge: String in rules:
+		for rule: Dictionary in rules[edge]:
+			if not Styles.SLOTS.has(str(rule.get("slot", ""))): found.append("Edging names no prop slot: %s" % [rule])
 	var picks: Dictionary = Styles.DEFAULT_PICKS.duplicate()
 	picks.merge(Themes.THEMES.get(theme, {}).get("picks", {}), true)
 	for slot: String in data.get("picks", {}):
@@ -121,7 +178,7 @@ static func problems(data: Dictionary) -> Array[String]:
 	for stage: String in data.get("props", {}):
 		for spec: Dictionary in data.props[stage]:
 			var inner: Dictionary = spec.of if spec.get("of") is Dictionary else spec
-			if not inner.has("slot"): continue
+			if not inner.has("slot") or inner.has("edge"): continue
 			if inner.has("kind"): found.append("A slot prop names a kind too: %s" % inner)
 			if str(inner.slot) in Styles.LOOK_SLOTS:
 				found.append("%s picks a look, not a prop: %s" % [inner.slot, inner])

@@ -3,7 +3,9 @@ extends Control
 ## floors shaded by height, crossings by what this stage does with them, every
 ## control with its owner's mark and its pair tile (the game's letter and
 ## colour), a line in the pair's colour to every gate it works, the goal and
-## the pips' starts, a title and a key. Tiles and words are laid out first
+## the pips' starts, a title and a key. With a prop check in the plan
+## ("props", prop_check.gd), the ground props may stand on (tall, or low
+## only), every prop's footprint and the props it flags. Tiles and words are laid out first
 ## (_layout) so none covers another or a glyph. Set `plan`; canvas_size() gives
 ## the canvas; the caller renders it on a SubViewport (map_plan.gd).
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
@@ -32,6 +34,13 @@ const MARGIN := 48.0
 const TITLE_HEIGHT := 78.0
 const KEY_HEIGHT := 96.0
 const TILE := 22.0
+const PropRules = preload("res://presentation/kit/prop_rules.gd")
+## The prop check's layer: ground a tall prop may stand on, ground only a low
+## one may, a prop's footprint, and a flagged one.
+const TALL_GROUND := Color(0.42, 0.66, 0.36, 0.30)
+const LOW_GROUND := Color(0.91, 0.72, 0.30, 0.34)
+const PROP_LINE := Color(0.17, 0.21, 0.2, 0.55)
+const FLAGGED := Color("d1495b")
 
 var plan: Dictionary = {}
 var _scale := 60.0
@@ -46,7 +55,10 @@ func canvas_size() -> Vector2i:
 	_scale = clampf(minf(FIT.x / maxf(metres.x, 0.1), FIT.y / maxf(metres.y, 0.1)), MIN_SCALE, MAX_SCALE)
 	_origin = Vector2(MARGIN, MARGIN + TITLE_HEIGHT) - bounds.position / 100.0 * _scale
 	var drawn := metres * _scale
-	return Vector2i(ceili(maxf(drawn.x + MARGIN * 2.0, 1100.0)), ceili(drawn.y + MARGIN * 2.0 + TITLE_HEIGHT + KEY_HEIGHT))
+	return Vector2i(ceili(maxf(drawn.x + MARGIN * 2.0, 1100.0)), ceili(drawn.y + MARGIN * 2.0 + TITLE_HEIGHT + _key_height()))
+
+func _key_height() -> float:
+	return KEY_HEIGHT + (34.0 if plan.has("props") else 0.0)
 
 ## A plan point (cm) on the canvas.
 func at(point: Vector2) -> Vector2:
@@ -62,11 +74,13 @@ func _draw() -> void:
 	draw_rect(sea, WATER)
 	for y in range(int(sea.position.y) + 14, int(sea.end.y), 28):
 		draw_line(Vector2(sea.position.x, y), Vector2(sea.end.x, y), WATER_LINE, 1.0)
+	_stand()
 	_floors()
 	for zone: Dictionary in plan.zones: _dashed_rect(box(zone.rect).grow(-2.0), OwnerMark.color(zone.owner).darkened(0.25), 2.0)
 	for obstacle: Dictionary in plan.obstacles: _hatched(box(obstacle.rect), Color("8f7a5c"))
 	_crossings()
 	for drop: Dictionary in plan.drops: _drop(drop)
+	_props()
 	var layout := _layout()
 	var busy: bool = plan.pairs.size() > BUSY_PAIRS
 	for line: Array in layout.lines: draw_line(line[0], line[1], Color(line[2], 0.45) if busy else line[2], 1.5 if busy else 2.0, true)
@@ -77,6 +91,23 @@ func _draw() -> void:
 	for caption: Array in layout.captions: _place(caption[0], caption[1])
 	_title(size)
 	_key(size)
+
+# --- The prop check ----------------------------------------------------------------
+
+func _stand() -> void:
+	if not plan.has("props"): return
+	for cell: Rect2 in plan.props.stand.tall: draw_rect(box(cell), TALL_GROUND)
+	for cell: Rect2 in plan.props.stand.low: draw_rect(box(cell), LOW_GROUND)
+
+func _props() -> void:
+	if not plan.has("props"): return
+	for prop: Dictionary in plan.props.props:
+		var rect := box(prop.rect)
+		var flagged: bool = not prop.faults.is_empty()
+		var colour := FLAGGED if flagged else PROP_LINE
+		if str(prop.spec.get("kind", "")) not in PropRules.SQUARE_KINDS: draw_arc(rect.get_center(), rect.size.x * 0.5, 0.0, TAU, 24, colour, 2.0 if flagged else 1.2, true)
+		else: draw_rect(rect, colour, false, 2.0 if flagged else 1.2)
+		if flagged: _text("!", rect.position + Vector2(rect.size.x, 0) + Vector2(2, 4), 16, FLAGGED, HEADING)
 
 # --- Floors and crossings ---------------------------------------------------------
 
@@ -327,7 +358,7 @@ func _title(size: Vector2) -> void:
 	_text(note, Vector2(size.x - MARGIN - _text_width(note, 13), 44), 13, SOFT_INK, BODY)
 
 func _key(size: Vector2) -> void:
-	var y := size.y - KEY_HEIGHT + 30.0
+	var y := size.y - _key_height() + 30.0
 	var x := MARGIN
 	_text("Floors", Vector2(x, y - 12), 12, SOFT_INK, HEADING)
 	for height: int in _heights():
@@ -360,6 +391,18 @@ func _key(size: Vector2) -> void:
 	draw_line(Vector2(x + 24, y + 8), Vector2(x + 70, y + 8), Color(PairTags.colour_of(0).darkened(0.2), 0.75), 2.0, true)
 	_tile({"letter": "A", "band": 0, "colour": PairTags.colour_of(0)}, Vector2(x + 83, y + 8))
 	_text("a control's letter, and the same letter at every gate it works", Vector2(x + 100, y + 13), 12, INK, BODY)
+	if not plan.has("props"): return
+	y += 34.0
+	x = MARGIN
+	for sample: Array in [[TALL_GROUND, "any prop may stand"], [LOW_GROUND, "only low props (they would hide a pip)"]]:
+		draw_rect(Rect2(x, y, 26, 16), sample[0])
+		_text(sample[1], Vector2(x + 30, y + 13), 12, INK, BODY)
+		x += 30.0 + _text_width(sample[1], 12) + 18.0
+	draw_rect(Rect2(x, y, 26, 16), PROP_LINE, false, 1.2)
+	_text("a prop", Vector2(x + 30, y + 13), 12, INK, BODY)
+	x += 30.0 + _text_width("a prop", 12) + 18.0
+	draw_rect(Rect2(x, y, 26, 16), FLAGGED, false, 2.0)
+	_text("a prop the check flags (the prop check names why)", Vector2(x + 30, y + 13), 12, INK, BODY)
 
 # --- Helpers ------------------------------------------------------------------------
 
