@@ -46,12 +46,20 @@ const DATA := {
 			{"kind": "lantern", "at": [-800, -228], "surface": "harbour", "y": 12},
 			{"kind": "crate", "at": [-720, -232], "surface": "harbour", "y": 12, "stack": true},
 			{"kind": "pot", "at": [-655, -226], "surface": "harbour", "y": 12},
-			{"kind": "lantern", "at": [-478, -228], "surface": "harbour", "y": 12},
+			{"kind": "lamp_post", "at": [-478, -228], "surface": "harbour", "y": 12, "size": 0.8},
 			{"kind": "rug", "at": [-950, 0], "y": -24, "width": 150, "depth": 420, "color": "3f6a77"},
 			{"kind": "boat", "at": [-935, 70], "rot": 90, "y": -18},
 			{"kind": "boat", "at": [-935, -90], "rot": 80, "y": -18, "size": 0.8},
 			{"kind": "post", "at": [-878, -150], "y": -40, "height": 70},
 			{"kind": "post", "at": [-878, 150], "y": -40, "height": 70},
+			# A working quay: bollards along the harbour's front lip, lobster
+			# pots and a crate on the quay edge by the boats.
+			{"kind": "bank", "rect": [-850, 180, -460, 226], "surface": "harbour", "height": 6, "top": "8fa56c"},
+			{"kind": "row", "of": {"kind": "bollard", "size": 0.6}, "from": [-825, 203], "to": [-485, 203], "count": 5, "surface": "harbour", "y": 6},
+			{"kind": "bank", "rect": [-906, -150, -878, 150], "surface": "harbour", "height": 12, "top": "8fa56c"},
+			{"kind": "lobster_pot", "at": [-892, -70], "surface": "harbour", "y": 14, "size": 0.55, "rot": 70},
+			{"kind": "lobster_pot", "at": [-892, 10], "surface": "harbour", "y": 14, "size": 0.5, "rot": 105},
+			{"kind": "crate", "at": [-892, 95], "surface": "harbour", "y": 14, "size": 0.6, "rot": 12},
 			# The court: flowers in front, clear of both bridges.
 			{"kind": "bank", "rect": [-250, 130, -112, 158], "surface": "court", "height": 6, "top": "8fa56c"},
 			{"kind": "bank", "rect": [12, 130, 150, 158], "surface": "court", "height": 6, "top": "8fa56c"},

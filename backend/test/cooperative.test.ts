@@ -7,7 +7,8 @@ import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { HOST_ACCESS_OUTAGE_GRACE_MS } from "../src/v2/host-access";
 import { acceptedRecording, chapter, checkpointV2, initialCheckpoint, recordingV2, boundedValue, MAX_RECORDING_BYTES, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
 import { highAndLow, rollingHome, houseForTwo } from "../src/v2/protocol-cooperative";
-import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
+import { jsonForm } from "../src/v2/recording-codec";
+import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording, JsonChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { RoomV2Archive } from "../src/v2/snapshot";
 import type { PortableSnapshot } from "../src/snapshot";
@@ -198,14 +199,14 @@ describe("bounded cooperative chapters", () => {
     // encoding and structural admission, not a claim that these inputs solve
     // the native level. Native solution/replay evidence lives in the fixtures.
     const stateHash = "f".repeat(64);
-    async function maximumRecord(base: Record<string, unknown>, previous: ChapterCheckpoint, sourceHash = ""): Promise<ChapterRecording> {
-      return recordingV2(await rehash({ ...base, checkpoint_hash: previous.checkpoint_hash, source_recording_hash: sourceHash,
+    async function maximumRecord(base: Record<string, unknown>, previous: ChapterCheckpoint, sourceHash = ""): Promise<JsonChapterRecording> {
+      return jsonForm(await recordingV2(await rehash({ ...base, checkpoint_hash: previous.checkpoint_hash, source_recording_hash: sourceHash,
         duration_ticks: 900, catch_assistance: false,
         // Adjacent frames differ, so the native RLE writer cannot merge them.
         actions: Array.from({ length: 900 }, (_, i) => ({ ticks: 1, x: -100, z: i % 2 ? -99 : -100, action: false })),
         // Include the envelope's extra check allowance as well as its native
         // 30-tick cadence, so even the admitted worst case stays bounded.
-        replay_checks: [{ tick: 1, state_hash: stateHash }, ...Array.from({ length: 30 }, (_, i) => ({ tick: (i + 1) * 30, state_hash: stateHash }))], final_state_hash: stateHash }), fixture.adapter.key);
+        replay_checks: [{ tick: 1, state_hash: stateHash }, ...Array.from({ length: 30 }, (_, i) => ({ tick: (i + 1) * 30, state_hash: stateHash }))], final_state_hash: stateHash }), fixture.adapter.key));
     }
     async function nextCheckpoint(base: Record<string, unknown>, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
       return checkpointV2(await rehash({ ...base, previous_checkpoint_hash: previous.checkpoint_hash, a_recording_hash: a.recording_hash, b_recording_hash: b.recording_hash,
