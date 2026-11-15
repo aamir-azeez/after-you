@@ -24,6 +24,15 @@ const Look = preload("res://presentation/kit/look.gd")
 ## The piece kits' palette, shapes and glow (kit/pieces/parts.gd).
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 const Props = preload("res://presentation/kit/props.gd")
+## Scenery as data (content/dressing) and the ground styles it names.
+const DressingCatalog = preload("res://content/dressing/catalog.gd")
+const Surfaces = preload("res://presentation/kit/surfaces.gd")
+const FIREFLY := Color("ffe9a8")
+## This chapter's scenery data (content/dressing); empty keeps the plain world.
+var dressing: Dictionary = {}
+## Walkable surface roots by island id, where props on that surface belong.
+var _surface_nodes: Dictionary = {}
+var _fireflies: Array[MeshInstance3D] = []
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 ## Every world camera writes its size through this (tall screens keep the authored width).
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
@@ -186,6 +195,8 @@ func apply_graphics_quality(quality: String) -> void:
 	var visible_count := GraphicsPolicy.mote_count(_authored_motes.size(), quality)
 	for index in range(_authored_motes.size()):
 		_authored_motes[index].visible = index < visible_count
+	for fly: MeshInstance3D in _fireflies:
+		if is_instance_valid(fly): fly.visible = GraphicsPolicy.fireflies(quality)
 
 # --- Staged build: the one way a world is built over frames ---
 # A chapter screen opened behind its card builds with build_staged; every
@@ -385,6 +396,7 @@ func load_level(level: Dictionary) -> void:
 	var right_edge := float(gap[1])/100.0
 	var z_center := (min_z+max_z)/2.0
 	var depth := max_z-min_z
+	island_soil = Surfaces.soil(CLASSIC_GROUND)
 	_make_island((min_x+left_edge)/2.0, z_center, left_edge-min_x, depth, grass)
 	_make_island((right_edge+max_x)/2.0, z_center, max_x-right_edge, depth, grass)
 	var bridge: Dictionary = level.get("bridge", {"z":0,"width":180})
@@ -498,10 +510,18 @@ func _keepsake_points(value: Variant, result: Array[Vector2]) -> void:
 func point(coords: Array) -> Vector3:
 	return Vector3(float(coords[0])/100.0,0,float(coords[1])/100.0)
 
+## The ground style (kit/surfaces.gd) under the classic islands, Home's:
+## grass over soil.
+const CLASSIC_GROUND := "grass"
+## The soil (kit/surfaces.gd soil) under this world's islands and the islands
+## a screen adds to them; {} keeps the plain green shell. Only the classic
+## level build sets it.
+var island_soil: Dictionary = {}
+
 ## variant 0 is the classic island (Home); chapter
 ## islands pass their index so neighbouring islands are not clones.
 func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color, variant: int = 0) -> void:
-	_island_shell(cx,cz,width,depth,grass)
+	_island_shell(cx,cz,width,depth,grass,null,island_soil)
 	island_dressing(cx,cz,width,depth,variant,terrain)
 	# Scenic edges stay outside the puzzle's readable central routes.
 	if variant > 0:
@@ -553,17 +573,21 @@ func island_dressing(cx: float, cz: float, width: float, depth: float, variant: 
 				var blade := box(Vector3(0.025,0.13+j*0.05,0.035),Color("638d69"),Vector3(x+j*0.04,0.06+j*0.015,z),parent)
 				blade.rotation.z=(j-1)*0.24
 	# Small suspended roots make the islands legible as floating worlds.
+	var root_color: Color = island_soil.get("root", Color("456b59"))
 	for i in range(5):
-		var root := cylinder(0.025,0.7+i*0.07,Color("456b59"),Vector3(cx+sin(i*2.8)*(width/2-0.2),-1.35,cz+cos(i)*depth/2),parent)
+		var root := cylinder(0.025,0.7+i*0.07,root_color,Vector3(cx+sin(i*2.8)*(width/2-0.2),-1.35,cz+cos(i)*depth/2),parent)
 		root.rotation.z=sin(i)*0.3
 
 ## An island's floating landform under `parent`, for islands a screen adds
 ## to the level's own (Home's keepsake isles, presentation/keepsakes/home_isles.gd).
+## Its sides match the level's islands (island_soil).
 func island_shell(cx: float, cz: float, width: float, depth: float, grass: Color, parent: Node3D) -> void:
-	_island_shell(cx, cz, width, depth, grass, parent)
+	_island_shell(cx, cz, width, depth, grass, parent, island_soil)
 
-## `parent`: where the shell goes (the terrain when left out).
-func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Color, parent: Node3D = null) -> void:
+## `parent`: where the shell goes (the terrain when left out). `soil`
+## (kit/surfaces.gd soil): the sides below the grass lip run soil down to a
+## darker underside; {} keeps the plain green shell.
+func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Color, parent: Node3D = null, soil: Dictionary = {}) -> void:
 	# A faceted floating landform encloses the full rectangular simulation floor.
 	# Decorative bevels extend outwards; they never remove a walkable corner.
 	var hx := width/2.0
@@ -587,6 +611,8 @@ func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Colo
 				y=-1.66+cos(i*2.0)*0.24
 			points.append(Vector3(cx+p.x*scale_value,y,cz+p.y*scale_value))
 		layers.append(points)
+	var sides: Array = [grass.darkened(0.08),soil.band,soil.soil] if not soil.is_empty() else [grass.darkened(0.08),Color("92a28b"),Color("759487")]
+	var underside: Color = soil.get("underside", Color("648175"))
 	var surface := SurfaceTool.new()
 	surface.begin(Mesh.PRIMITIVE_TRIANGLES)
 	surface.set_smooth_group(-1)
@@ -594,11 +620,11 @@ func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Colo
 		var next := (i+1)%outline.size()
 		_shell_triangle(surface,Vector3(cx,-0.012,cz),layers[0][i],layers[0][next],grass)
 		for layer in range(3):
-			var color: Color=[grass.darkened(0.08),Color("92a28b"),Color("759487")][layer]
+			var color: Color=sides[layer]
 			color=color.lightened(0.035*float(i%3))
 			_shell_triangle(surface,layers[layer][i],layers[layer+1][i],layers[layer+1][next],color)
 			_shell_triangle(surface,layers[layer][i],layers[layer+1][next],layers[layer][next],color)
-		_shell_triangle(surface,layers[3][i],Vector3(cx+0.3,-2.32,cz-0.18),layers[3][next],Color("648175").lightened(0.03*float(i%3)))
+		_shell_triangle(surface,layers[3][i],Vector3(cx+0.3,-2.32,cz-0.18),layers[3][next],underside.lightened(0.03*float(i%3)))
 	surface.generate_normals()
 	var shell := MeshInstance3D.new()
 	shell.mesh=surface.commit()
@@ -1155,6 +1181,7 @@ func _process(delta: float) -> void:
 		for i in range(motes.size()):
 			if motes[i].visible:
 				motes[i].position.y+=sin(time*0.4+i)*delta*0.07
+	_advance_fireflies()
 	_advance_camera(delta)
 
 ## Moves the planks `weight` of the way to their pose and reports the
@@ -1289,3 +1316,80 @@ func _doze_anchor(actor: Node3D) -> Variant:
 			reach = distance
 			best = at
 	return best
+
+# --- Dressing: one host for every world (content/dressing) ---
+
+## The registry key this world's dressing is filed under; "" has none.
+func _chapter_key() -> String:
+	return ""
+
+## Reads the chapter's dressing and its light; call at the start of a build.
+func _load_dressing() -> void:
+	dressing = DressingCatalog.for_key(_chapter_key())
+	if dressing.has("look"): relight(str(dressing.look))
+	_surface_nodes.clear()
+	_fireflies.clear()
+
+func _dressing_stage_id() -> String:
+	return str(current_level.get("stage_id", ""))
+
+## Height of a surface whose props have no surface root of their own.
+func _surface_base(_surface_id: String) -> float:
+	return 0.0
+
+## The ground style for an island from the dressing; "" keeps the plain shore.
+func _ground_style(island_id: String) -> String:
+	var ground: Dictionary = dressing.get("ground", {})
+	var style := str(ground.get(island_id, ground.get("*", "")))
+	return style if Surfaces.has_style(style) else ""
+
+## Props from the dressing data: visual only, never collision or state. A
+## staged build gets the frame back between props. Await it.
+func _build_dressing() -> void:
+	var specs := Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id()))
+	var lit := bool(dressing.get("lit", true))
+	var anchors: Array[Vector3] = []
+	for spec: Dictionary in specs:
+		await _build_step()
+		if not GraphicsPolicy.detail_dressing(_motion_quality) and bool(spec.get("detail", false)): continue
+		var surface := str(spec.get("surface", ""))
+		var parent: Node3D = _surface_nodes.get(surface, terrain)
+		var base := 0.0 if _surface_nodes.has(surface) else _surface_base(surface)
+		var prop := Props.build(spec, parent, base, lit)
+		if prop == null: continue
+		prop.set_meta("dressing", true)
+		if str(spec.kind) in ["tree", "bush", "hedge", "flowers", "fern", "planter", "lantern", "lamp_post"]:
+			anchors.append(parent.position + prop.position)
+		_dressed_prop(prop)
+	_build_fireflies(int(dressing.get("fireflies", 0)), anchors)
+
+## Small warm lights drifting near the planting. They are not motes:
+## GraphicsPolicy.fireflies hides them on Low, and they never count as authored
+## motes.
+func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
+	if count <= 0 or anchors.is_empty(): return
+	var root := Node3D.new()
+	root.name = "Fireflies"
+	terrain.add_child(root)
+	var glow := Primitives.shared_material(FIREFLY, 0.9, FIREFLY, 2.2)
+	for index in range(count):
+		var anchor: Vector3 = anchors[(index * 7) % anchors.size()]
+		var at := anchor + Vector3(sin(index * 2.3) * 0.5, 0.45 + 0.25 * float(index % 3), cos(index * 1.7) * 0.35)
+		var fly := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.028), glow, at, root)
+		fly.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		fly.set_meta("rest", at)
+		fly.visible = GraphicsPolicy.fireflies(_motion_quality)
+		_fireflies.append(fly)
+
+func _advance_fireflies() -> void:
+	if reduced_motion: return
+	for index in range(_fireflies.size()):
+		var fly := _fireflies[index]
+		if not is_instance_valid(fly): continue
+		var rest: Vector3 = fly.get_meta("rest")
+		var phase := time * 0.7 + float(index) * 1.9
+		fly.position = rest + Vector3(sin(phase) * 0.18, sin(phase * 1.3) * 0.08, cos(phase * 0.8) * 0.12)
+
+## A built dressing prop, for a world that wakes a part of it later.
+func _dressed_prop(_prop: Node3D) -> void:
+	pass

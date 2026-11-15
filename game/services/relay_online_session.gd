@@ -499,6 +499,7 @@ func _load_capabilities(still: Callable) -> bool:
 		return false
 	capabilities = data.duplicate(true)
 	RoomsApi.compressed_supported = Typed.equal(capabilities.get("compressed_rooms_version"), 1.0)
+	RoomsApi.packed_supported = Typed.equal(capabilities.get("packed_recordings_version"), 1.0)
 	_supported_chapters.assign(checked.chapters)
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())

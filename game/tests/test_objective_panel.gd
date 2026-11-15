@@ -78,7 +78,7 @@ func _test_invalid_hold() -> void:
 		_check(not state.can_commit and state.hold_ticks >= LightSimulation.MIN_HOLD_TICKS, "Real invalid source retains a completed hold duration")
 		screen._update_hud(state)
 		await _settle()
-		_check(controls.finish_button.disabled and controls.objective_panel.detail_label.text == sim.commit_reason(), "A completed hold cannot hide the actual recovery instruction")
+		_check(controls.finish_button.disabled and controls.objective_panel.detail_label.text == PlayerCopy.from_canonical(sim.commit_reason()), "A completed hold cannot hide the actual recovery instruction")
 		_check(Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(controls.objective_panel.get_global_rect()), "Long hold recovery guidance remains inside a narrow screen")
 		_check(not controls.objective_panel.get_global_rect().intersects(controls.action_button.get_global_rect()), "Long objective guidance does not cover Action")
 	screen.free()
@@ -106,7 +106,7 @@ func _test_cumulative_sequence_hints() -> void:
 		screen._update_hud(state)
 		await _settle()
 		var current := version == LightSimulation.CURRENT_SIMULATION_VERSION
-		_check(controls.objective_panel.detail_label.text == (PlayerCopy.BORROWED_LIGHT_7EE2CC277F92 if current else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3), "Cumulative source guidance explains the recoverable missing path while old recordings retain their retry instruction")
+		_check(controls.objective_panel.detail_label.text == PlayerCopy.from_canonical(PlayerCopy.BORROWED_LIGHT_7EE2CC277F92 if current else PlayerCopy.LIGHTHOUSE_PREVIEW_B7D36B943CC3), "Cumulative source guidance explains the recoverable missing path while old recordings retain their retry instruction")
 		_check(controls.action_button.text == ("Action" if current else PlayerCopy.STAGE_CATALOG_7220843FC24F), "The cumulative selector no longer claims to reset accumulated progress")
 		_check(state == original, "Recoverable presentation guidance leaves the observed simulation state unchanged")
 		state.role = "b"

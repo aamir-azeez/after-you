@@ -10,12 +10,15 @@ const Catalog = preload("res://core/lighthouse/room_catalog.gd")
 const RoomProof = preload("res://core/lighthouse/room_proof.gd")
 const Controls = preload("res://core/first_steps/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 ## Inner engine rules. The room record carries the chapter's pinned rules.
 const PHYSICS := 5
 const TICK_RATE := 30
 
 var simulation_version := Catalog.RULES
 var catch_assistance := false
+## Export the packed form (core/v2/recording_codec.gd), as runtime.gd.
+var packed_recordings := false
 var level: Dictionary = {}
 var stage: Dictionary = {}
 var role := "a"
@@ -77,16 +80,24 @@ static func native_checkpoint(checkpoint: Dictionary, native_index: int) -> Dict
 ## The partner's room record in the native shape the inner ghost replays.
 static func native_record(online: Dictionary, checkpoint: Dictionary) -> Dictionary:
 	var actions: Array = []
-	for run: Dictionary in online.actions:
+	for run: Dictionary in RecordingCodec.actions(online):
 		actions.append({"ticks": int(run.ticks), "x": int(run.x) / 100, "z": int(run.z) / 100, "action": bool(run.action)})
 	var record := {"schema_version": 3, "simulation_version": PHYSICS, "level_id": Catalog.ID, "level_version": 1,
 		"stage_id": online.stage_id, "stage_version": 1, "definition_hash": Canonical.digest(LightCatalog.definition(str(online.stage_id))),
 		"role": online.role, "player_slot": online.player_slot, "tick_rate": TICK_RATE, "duration_ticks": int(online.duration_ticks), "actions": actions,
-		"replay_checks": online.replay_checks.duplicate(true), "completed": online.completed, "final_state_hash": online.final_state_hash,
+		"replay_checks": _native_checks(online), "completed": online.completed, "final_state_hash": online.final_state_hash,
 		"source_recording_hash": ""}
 	if online.stage_id != LightCatalog.STAGE_IDS[0]: record["checkpoint_hash"] = checkpoint.checkpoint_hash
 	record["recording_hash"] = Native.recording_hash(record)
 	return record
+
+## The native engine reads a ghost's record only once its checks are full state
+## hashes, so a packed record lends it its full ones (every fifth second and the end).
+static func _native_checks(online: Dictionary) -> Array:
+	var checks: Array = []
+	for check: Dictionary in RecordingCodec.checks(online):
+		if str(check.state_hash).length() == RecordingCodec.FULL_HASH_BYTES * 2: checks.append(check.duplicate())
+	return checks
 
 func step(input: Dictionary = {}) -> Dictionary:
 	if _inner == null or finished or not error.is_empty(): return snapshot()
@@ -142,6 +153,7 @@ func export_recording() -> Dictionary:
 		"role": role, "player_slot": native.player_slot, "tick_rate": TICK_RATE, "duration_ticks": native.duration_ticks, "catch_assistance": catch_assistance,
 		"actions": actions, "replay_checks": native.replay_checks, "final_state_hash": native.final_state_hash, "completed": native.completed,
 		"outcome": _outcome(state), "source_recording_hash": str(_prior.get("recording_hash", ""))}
+	if packed_recordings: record = RecordingCodec.packed_form(record)
 	record["recording_hash"] = Controls.recording_hash(record)
 	return record
 

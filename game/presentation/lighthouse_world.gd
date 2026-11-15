@@ -6,21 +6,13 @@ const BEAM_HEIGHT := 1.12
 const LIGHT_COLOR := Parts.LIGHT
 const SLEEP_COLOR := Color("536979")
 const StageCatalog = preload("res://core/lighthouse/stage_catalog.gd")
-const DressingCatalog = preload("res://content/dressing/catalog.gd")
-const Surfaces = preload("res://presentation/kit/surfaces.gd")
 ## A piece's style (content/dressing/piece_styles.gd) and the goal kit.
 const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 const GoalPiece = preload("res://presentation/kit/pieces/goal.gd")
-const FIREFLY := Color("ffe9a8")
 ## Two lights, two receivers or two mirrors this close (cm) overlap: their
 ## widest tops reach 22 cm from their centres at the same heights, so they
 ## would z-fight. A later one of the kind stands in for a remembered one.
 const FIXTURE_CLEARANCE_CM := 45.0
-## This chapter's scenery data (content/dressing); empty keeps the plain world.
-var dressing: Dictionary = {}
-## Walkable surface roots by island id, where props on that surface belong.
-var _surface_nodes: Dictionary = {}
-var _fireflies: Array[MeshInstance3D] = []
 var _tower_lamp: MeshInstance3D
 var _deck: Node3D
 var _mirror_pivot: Node3D
@@ -83,10 +75,7 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition.duplicate(true)
-	dressing = DressingCatalog.for_key(_chapter_key())
-	if dressing.has("look"): relight(str(dressing.look))
-	_surface_nodes.clear()
-	_fireflies.clear()
+	_load_dressing()
 	_tower_lamp = null
 	if is_instance_valid(terrain):
 		remove_child(terrain)
@@ -204,75 +193,13 @@ func load_level(definition: Dictionary) -> void:
 func _chapter_key() -> String:
 	return "sleeping-lighthouse@1"
 
-func _dressing_stage_id() -> String:
-	return str(current_level.get("stage_id", ""))
-
-## Height of a surface whose props have no surface root of their own.
-func _surface_base(_surface_id: String) -> float:
-	return 0.0
-
-## The ground style for an island from the dressing; "" keeps the plain shore.
-func _ground_style(island_id: String) -> String:
-	var ground: Dictionary = dressing.get("ground", {})
-	var style := str(ground.get(island_id, ground.get("*", "")))
-	return style if Surfaces.has_style(style) else ""
-
-## Props from the dressing data: visual only, never collision or state. A
-## staged build gets the frame back between props. Await it.
-func _build_dressing() -> void:
-	var specs := Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id()))
-	var lit := bool(dressing.get("lit", true))
-	var anchors: Array[Vector3] = []
-	for spec: Dictionary in specs:
-		await _build_step()
-		if not GraphicsPolicy.detail_dressing(_motion_quality) and bool(spec.get("detail", false)): continue
-		var surface := str(spec.get("surface", ""))
-		var parent: Node3D = _surface_nodes.get(surface, terrain)
-		var base := 0.0 if _surface_nodes.has(surface) else _surface_base(surface)
-		var prop := Props.build(spec, parent, base, lit)
-		if prop == null: continue
-		prop.set_meta("dressing", true)
-		if str(spec.kind) in ["tree", "bush", "hedge", "flowers", "fern", "planter", "lantern", "lamp_post"]:
-			anchors.append(parent.position + prop.position)
-		var lamp := prop.find_child("TowerLamp", true, false) as MeshInstance3D
-		if lamp != null:
-			# The lighthouse lamp sleeps until the beacon is lit.
-			_tower_lamp = lamp
-			Primitives.own_material(lamp)
-			_glow(lamp, LIGHT_COLOR, 0.0)
-	_build_fireflies(int(dressing.get("fireflies", 0)), anchors)
-
-## Small warm lights drifting near the planting. They are not motes:
-## GraphicsPolicy.fireflies hides them on Low, and they never count as authored
-## motes.
-func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
-	if count <= 0 or anchors.is_empty(): return
-	var root := Node3D.new()
-	root.name = "Fireflies"
-	terrain.add_child(root)
-	var glow := Primitives.shared_material(FIREFLY, 0.9, FIREFLY, 2.2)
-	for index in range(count):
-		var anchor: Vector3 = anchors[(index * 7) % anchors.size()]
-		var at := anchor + Vector3(sin(index * 2.3) * 0.5, 0.45 + 0.25 * float(index % 3), cos(index * 1.7) * 0.35)
-		var fly := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.028), glow, at, root)
-		fly.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		fly.set_meta("rest", at)
-		fly.visible = GraphicsPolicy.fireflies(_motion_quality)
-		_fireflies.append(fly)
-
-func _advance_fireflies() -> void:
-	if reduced_motion: return
-	for index in range(_fireflies.size()):
-		var fly := _fireflies[index]
-		if not is_instance_valid(fly): continue
-		var rest: Vector3 = fly.get_meta("rest")
-		var phase := time * 0.7 + float(index) * 1.9
-		fly.position = rest + Vector3(sin(phase) * 0.18, sin(phase * 1.3) * 0.08, cos(phase * 0.8) * 0.12)
-
-func apply_graphics_quality(quality: String) -> void:
-	super.apply_graphics_quality(quality)
-	for fly: MeshInstance3D in _fireflies:
-		if is_instance_valid(fly): fly.visible = GraphicsPolicy.fireflies(quality)
+## The lighthouse lamp sleeps until the beacon is lit.
+func _dressed_prop(prop: Node3D) -> void:
+	var lamp := prop.find_child("TowerLamp", true, false) as MeshInstance3D
+	if lamp == null: return
+	_tower_lamp = lamp
+	Primitives.own_material(lamp)
+	_glow(lamp, LIGHT_COLOR, 0.0)
 
 ## Supply the checkpoint already verified by the chapter coordinator. Archived
 ## mechanisms are landmarks only: they add no controls, beams or collision.
@@ -941,7 +868,6 @@ func _static_keep() -> Array:
 
 func _process(delta: float) -> void:
 	super._process(delta)
-	_advance_fireflies()
 	_follow_lenses()
 
 func _idle_card_frame() -> void:
