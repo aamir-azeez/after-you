@@ -62,6 +62,43 @@ static func panel(node_name: String, fill: Color = PANEL_FILL, edge: Color = PAN
 	box.add_theme_stylebox_override("panel", style)
 	return box
 
+## The show-my-name choice as one small panel: its words, then `faint` in a softer
+## ink when given, and a switch at the end (the public duels first-time card and the
+## name prompt). The switch is the child named `switch_name`.
+static func switch_row(node_name: String, switch_name: String, words: String, on: bool, faint: String = "") -> PanelContainer:
+	var row := panel(node_name, PANEL_FILL, PANEL_EDGE, 12, 10.0)
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 12)
+	row.add_child(line)
+	var said: Control
+	if faint.is_empty():
+		said = text(words, 18, UiTokens.CREAM, true)
+	else:
+		var both := RichTextLabel.new()
+		both.fit_content = true
+		both.scroll_active = false
+		both.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		both.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		both.add_theme_font_override("normal_font", SettingsKit.font(600, true))
+		both.add_theme_font_size_override("normal_font_size", 18)
+		both.push_color(UiTokens.CREAM)
+		both.add_text(words + " ")
+		both.pop()
+		both.push_color(UiTokens.SOFT)
+		both.add_text(faint)
+		both.pop()
+		said = both
+	said.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	said.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_child(said)
+	var toggle := CheckButton.new()
+	toggle.name = switch_name
+	toggle.button_pressed = on
+	toggle.accessibility_name = words
+	toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_child(toggle)
+	return row
+
 ## The cream primary (the theme's own button) or the outlined secondary.
 static func button(label: String, action: Callable, primary: bool = true, height: float = 52.0) -> Button:
 	var made := Button.new()
