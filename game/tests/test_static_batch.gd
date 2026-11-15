@@ -72,6 +72,8 @@ func _run() -> void:
 	var group := Node3D.new()
 	group.rotation = Vector3(0, 0.7, 0)
 	group.scale = Vector3(2, 2, 2)
+	# Within one cell (StaticBatch.CELL) of the root's floor plan.
+	group.position = Vector3(1, 0, 4)
 	root.add_child(group)
 	var box := BoxMesh.new()
 	box.size = Vector3(0.4, 0.2, 0.6)
@@ -98,7 +100,7 @@ func _run() -> void:
 	(see_through.material_override as StandardMaterial3D).transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	var tagged := _leaf(root, box, Color("c4b090"), Vector3(11, 0, 0))
 	tagged.set_meta("celebration_clear_point", Vector2.ZERO)
-	var stretched := _leaf(root, box, Color("c4b090"), Vector3(12, 0, 0))
+	var stretched := _leaf(root, box, Color("c4b090"), Vector3(4, 0, 1))
 	stretched.scale = Vector3(1, 2, 1)
 	stretched.rotation = Vector3(0.3, 0, 0)
 	var mirrored := _leaf(root, box, Color("c4b090"), Vector3(13, 0, 0))
@@ -108,6 +110,8 @@ func _run() -> void:
 	var glowing2 := _leaf(root, box, Color("8b7964"), Vector3(15, 0, 0))
 	var glow: Material = glowing.material_override
 	glowing2.material_override = glow
+	# Plain leaves a cell away (StaticBatch.CELL) batch on their own.
+	var far: Array[MeshInstance3D] = [_leaf(root, box, Color("c4b090"), Vector3(StaticBatch.CELL * 2.0, 0, 0)), _leaf(root, box, Color("8b7964"), Vector3(StaticBatch.CELL * 2.0 + 1.0, 0, 0))]
 	plain.append_array([other, other2, stretched])
 	var owner := Owner.new()
 	owner.held = [held, held_parent]
@@ -131,9 +135,11 @@ func _run() -> void:
 	await process_frame
 	var result: Dictionary = StaticBatch.fold(root, [owner])
 	await process_frame
-	_check(result.folded == 9 and result.batches == 2, "Seven plain leaves of two colours, one stretched, fold into one batch, and two glowing leaves into their own (%s)" % str(result))
+	_check(result.folded == 11 and result.batches == 3, "Seven plain leaves of two colours, one stretched, fold into one batch, two glowing leaves into their own, and two leaves a cell away into a third (%s)" % str(result))
 	var batches: Array = root.find_children("StaticBatch*", "MeshInstance3D", false, false)
-	_check(batches.size() == 2, "Two batch meshes under the root")
+	_check(batches.size() == 3, "Three batch meshes under the root")
+	var far_parts: Array = (batches[2] as Node).get_meta(StaticBatch.PARTS_META, []) if batches.size() > 2 else []
+	_check(far_parts.size() == 2 and far.all(func(leaf: Variant) -> bool: return not is_instance_valid(leaf) or not (leaf as Node).is_inside_tree()), "The leaves a cell away fold into a batch of their own")
 	var first: MeshInstance3D = batches[0] if batches.size() > 0 else null
 	if first != null:
 		var arrays := first.mesh.surface_get_arrays(0)
@@ -246,7 +252,7 @@ func _containers() -> void:
 	var nested := Node3D.new()
 	nested.position = Vector3(0, 0.5, 0)
 	held.add_child(nested)
-	for i in range(2): _leaf(nested, box, Color("c4b090"), Vector3(0, 0, -i))
+	for i in range(2): _leaf(nested, box, Color("c4b090"), Vector3(0, 0, i))
 	var kept := Node3D.new()
 	root.add_child(kept)
 	var kept_leaves: Array[MeshInstance3D] = []

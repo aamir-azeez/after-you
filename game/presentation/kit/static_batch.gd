@@ -7,7 +7,9 @@ extends RefCounted
 ## (Primitives.is_plain) goes into the batch as vertex colours, drawn with
 ## the one palette look for its other values (Primitives.palette_material),
 ## so a new scenery colour costs no draw call. Other looks (glow) batch per
-## material.
+## material. A batch spans one CELL of its container's floor plan, so the
+## renderer still leaves out what is off screen and lights each batch only
+## with the lamps near it.
 ##
 ## Only plain leaves are folded: a MeshInstance3D with no script, no children,
 ## no metadata, visible, one-surface primitive mesh, an opaque untextured
@@ -222,6 +224,9 @@ static func _walk(job: Dictionary) -> void:
 	var xform: Transform3D = (base.node as Node3D).global_transform.affine_inverse() * leaf.global_transform
 	var key := _key(leaf, xform, job.materials)
 	if key.is_empty(): return
+	# One batch per look and cell: the renderer still leaves out the cells off
+	# screen and lights each cell only with the lamps that reach it.
+	key += "|%d|%d" % [floori(xform.origin.x / CELL), floori(xform.origin.z / CELL)]
 	if not base.groups.has(key):
 		base.groups[key] = []
 		base.order.append(key)
@@ -452,6 +457,10 @@ static func _key(leaf: MeshInstance3D, xform: Transform3D, materials: Dictionary
 	if xform.basis.determinant() <= 0.000001: return ""
 	var palette := Primitives.is_plain(material) and not material.vertex_color_use_as_albedo
 	return "%s%d|%d|%d|%s" % [PALETTE if palette else "", leaf.cast_shadow, leaf.layers, leaf.gi_mode, _material_key(material, materials, palette)]
+
+## The side of the square cells (metres, in the batch's space) a batch
+## spans at most: about a lamp's reach.
+const CELL := 8.0
 
 ## Starts the key of a group drawn with a palette look.
 const PALETTE := "palette|"
