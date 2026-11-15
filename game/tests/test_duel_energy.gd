@@ -502,7 +502,7 @@ func _flow(online: Online) -> void:
 	_check(energy.refused(page, {"ok": false, "code": "partner_energy_empty"}, send, "Maya"), "partner_energy_empty is energy's")
 	var note: Label = page.root.find_child(EnergyFlow.NOTE, true, false)
 	_check(note != null and note.text == "Maya is waiting for energy", "and says so where the button is: %s" % [note.text if note != null else ""])
-	_check(EnergyFlow.waiting_words("") == "Your partner is waiting for energy", "A partner without a name: %s" % EnergyFlow.waiting_words(""))
+	_check(EnergyFlow.waiting_words("") == "Your friend is waiting for energy", "A friend without a name: %s" % EnergyFlow.waiting_words(""))
 	for code: String in ["energy_unavailable", "duel_limit_reached", ""]:
 		_check(not energy.refused(page, {"ok": false, "code": code}, send), "%s stays the caller's usual line" % code)
 	page.close()

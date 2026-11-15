@@ -77,7 +77,7 @@ const COSMETIC_WOOD_CHIME := "Wood chime"
 
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
-const DISPLAY_NAME_ASK_NOTE := "Friends and room partners see it on rooms and replays."
+const DISPLAY_NAME_ASK_NOTE := "Friends and people you share a room with see it on rooms and replays."
 ## The name prompt's switch while no name is chosen yet: the leaderboard name choice (services/leaderboard_client.gd), off by default.
 const DISPLAY_NAME_ASK_SHOW_NAME := "Show my name in public duels and on leaderboards"
 const DISPLAY_NAME_ASK_SHOW_NAME_LATER := "(can be changed later)"
@@ -85,7 +85,7 @@ const DISPLAY_NAME_ASK_SHOW_NAME_LATER := "(can be changed later)"
 const DISPLAY_NAME_EDIT_TITLE := "Your name"
 const DISPLAY_NAME_FIELD := "Name"
 const DISPLAY_NAME_COUNTER := "%d / %d"
-const DISPLAY_NAME_ANONYMOUS := "Keep me anonymous"
+const DISPLAY_NAME_ANONYMOUS := "Keep my " + CREATURE + " name"
 ## %s is the anonymous name, such as "Kite 41".
 const DISPLAY_NAME_ANONYMOUS_NOTE := "Others see you as %s."
 const DISPLAY_NAME_PLAY_GAMES := "Use my Play Games name"
@@ -115,8 +115,8 @@ const DISPLAY_NAME_ERRORS := {
 	"invalid_display_name": "Use letters, numbers and spaces.",
 	"display_name_refused": "That name isn't allowed. Try another.",
 	"display_name_limited": "You've changed your name a few times today. Try again tomorrow.",
-	"display_name_locked": "You can't set a name right now. You can still stay anonymous.",
-	"pollen_short": "You need more Pollen for this change. Staying anonymous is always free.",
+	"display_name_locked": "You can't set a name right now. You can still keep your " + CREATURE + " name.",
+	"pollen_short": "You need more Pollen for this change. Keeping your " + CREATURE + " name is always free.",
 	"name_change_price": "The price of a name change just changed. Check it and save again.",
 	# A price refusal on a build that shows no price (display_name_flow.gd refusal_code).
 	"name_price_hidden": DISPLAY_NAME_PRICE_HIDDEN,
@@ -132,11 +132,11 @@ const DISPLAY_NAME_SAVE_SHORT := "Save for %s Pollen, %s more needed"
 ## Under the field: the amount is bold ([b]), as drawn.
 const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change now costs [b]%s Pollen[/b]."
 ## Under the choices, after the grain.
-const DISPLAY_NAME_PRICE_HAVE := "You have %s. Keeping me anonymous is always free."
+const DISPLAY_NAME_PRICE_HAVE := "You have %s. Keeping your " + CREATURE + " name is always free."
 ## The short of Pollen card (board 5b) for a name change: what costs.
 const DISPLAY_NAME_SHORT_ITEM := "A name change"
 ## The same place on a build that shows no price (services/pollen_surfaces.gd): a change that costs waits.
-const DISPLAY_NAME_PRICE_HIDDEN := "Your free change is used. Staying anonymous is always free."
+const DISPLAY_NAME_PRICE_HIDDEN := "Your free change is used. Keeping your " + CREATURE + " name is always free."
 ## Under a friend's nickname on their Friends row: the name they chose.
 const DISPLAY_NAME_GOES_BY := "Goes by %s"
 
@@ -977,7 +977,7 @@ const SETTINGS_RESET_GRAPHICS := "Reset graphics"
 const SETTINGS_RESET_GRAPHICS_CONFIRM := "Reset graphics to default?"
 const SETTINGS_RESET := "Reset"
 const SETTINGS_CANCEL := "Cancel"
-const SETTINGS_ONLINE_STATUS_NOTE := "Friends and room partners can see when you're here."
+const SETTINGS_ONLINE_STATUS_NOTE := "Friends and people you share a room with can see when you're here."
 const SETTINGS_RECOVERY_DETAILS_NOTE := "Your identity and recovery code."
 const SETTINGS_RECOVERY_DETAILS_HIDE := "Hide my recovery details"
 const SETTINGS_HOSTING_ACCESS_NOTE := "Ask the server what you can host."
@@ -999,7 +999,7 @@ const SETTINGS_ASSISTANCE_CONFIRM_ACCEPT := "Turn on"
 const SETTINGS_ONLINE_STATUS := "Share online status"
 ## Leaderboards (presentation/leaderboard_screen.gd and the Friends setting).
 const SETTINGS_LEADERBOARD_NAME := "Show my name on leaderboards"
-const SETTINGS_LEADERBOARD_NAME_NOTE := "Your name shows only when your partner shows theirs too. Until then your runs show as A pair."
+const SETTINGS_LEADERBOARD_NAME_NOTE := "Your name shows only when your friend shows theirs too. Until then your runs show as A pair."
 const LEADERBOARDS := "Leaderboards"
 const LEADERBOARD_FASTEST_PAIR := "Fastest pair"
 const LEADERBOARD_ALL_TIME := "All time"
@@ -1017,7 +1017,7 @@ const LEADERBOARD_TIME := "Time"
 const LEADERBOARD_WAITING_CHECK := "Waiting to be checked"
 ## The card beside the board while a run of this player's waits there for its replay check, and its time.
 const LEADERBOARD_RUN_CHECKING := "Your time is being checked"
-const LEADERBOARD_RUN_CHECKING_NOTE := "You and your partner see its place now. Others see it once the check passes."
+const LEADERBOARD_RUN_CHECKING_NOTE := "You and your friend see its place now. Others see it once the check passes."
 const LEADERBOARD_SHARED_BOARD := "Normal runs and duel runs share this board."
 const LEADERBOARD_EMPTY := "No times here yet. Finish this chapter together to set the first one."
 const LEADERBOARD_NO_RUN := "Finish this chapter with a friend and your best time shows here."
@@ -1038,11 +1038,11 @@ const BOARD_LINE_NOT_LISTED := "Your time %s didn't make the leaderboard."
 ## While the server posts only runs whose players both sign in to Play Games or Game Center
 ## (backend leaderboards/platform-rule.ts). "%s": "Play Games" or "Game Center".
 const BOARD_LINE_PLATFORM_YOU := "Sign in to %s to post your time."
-const BOARD_LINE_PLATFORM_PARTNER := "Your partner needs to sign in to Play Games or Game Center to post this time."
+const BOARD_LINE_PLATFORM_PARTNER := "Your friend needs to sign in to Play Games or Game Center to post this time."
 const BOARD_LINE_SIGN_IN := "Sign in"
 ## Under "Your best" on the board for the same case ("%s" as above).
 const LEADERBOARD_OWN_PLATFORM_YOU := "Sign in to %s to post your times."
-const LEADERBOARD_OWN_PLATFORM_PARTNER := "This time posts once your partner signs in to Play Games or Game Center."
+const LEADERBOARD_OWN_PLATFORM_PARTNER := "This time posts once your friend signs in to Play Games or Game Center."
 ## A note on Home while a run of this player's waits for its check ("%s": its time).
 const BOARD_HOME_CHECKING := "Your time %s is being checked for the leaderboard."
 const LEADERBOARD_REPORT := "Report"
@@ -1092,7 +1092,7 @@ const DUELS_EMPTY_TITLE := "No duels yet"
 const DUELS_LOADING := "Loading your duels"
 const DUELS_FAILED := "Your duels did not load. Try again in a moment."
 const DUELS_NO_PARTY := "Pick a friend to duel with. Pairs play every duel together."
-const DUELS_PARTY_INVITED := "%s asked you to be their duel partner."
+const DUELS_PARTY_INVITED := "%s asked you to duel together."
 const DUELS_PARTY_WAITING := "Waiting for %s to say yes."
 const DUELS_BOOST := "+%d%% Pollen"
 const DUELS_BOOST_NOTE := "For both of you in this party."
@@ -1126,12 +1126,12 @@ const DUELS_PARTY_NO_FRIENDS := "Add a friend first. Friends you add show here."
 ## Starting a duel.
 const DUELS_PICK_PAIR := "Pick a pair"
 const DUELS_PICK_CHAPTER := "Pick a chapter"
-const DUELS_FRIEND_NO_PARTNER := "That friend has no duel partner yet."
+const DUELS_FRIEND_NO_PARTNER := "That friend isn't in a duel pair yet."
 const DUELS_SEND := "Send challenge"
 const DUELS_SENT := "Challenge sent."
 ## Racing a recording.
 const DUELS_GHOST_TITLE := "Race a recorded run"
-const DUELS_GHOST_SUBTITLE := "Beat the time with your partner."
+const DUELS_GHOST_SUBTITLE := "Beat the time with your friend."
 const DUELS_GHOST_DEVELOPERS := "Our run"
 ## A chapter's leaderboard button, and the same button greyed while its board has no times.
 const RACE_PICK_TOP := "Top 10"
@@ -1169,8 +1169,8 @@ const DUEL_LEAVE_KEEP := "Stay"
 ## Names, turns and results.
 const DUEL_YOU := "You"
 const DUEL_PAIR := "%s + %s"
-const DUEL_PARTNER := "your partner"
-const DUEL_PARTNER_OF := "%s's partner"
+const DUEL_PARTNER := "your friend"
+const DUEL_PARTNER_OF := "%s's friend"
 const DUEL_THEIR_PAIR := "Their pair"
 const DUEL_GHOST_PAIR := "Recorded run"
 const DUEL_RECORDED := "Recorded"
@@ -1300,6 +1300,8 @@ const PUBLIC_OPEN_PAIR := "Open pair"
 const PUBLIC_OPEN_SPOT := "%s + open spot"
 const PUBLIC_NOBODY_YET := "Nobody yet"
 const PUBLIC_WAITING_PARTNER := "Waiting for a partner"
+## The player beside you in a public duel, when no name shows (DUEL_PARTNER is a friend).
+const PUBLIC_DUEL_PARTNER := "your partner"
 const PUBLIC_WAITING_THEM := "Waiting for them"
 const PUBLIC_GO_FIRST := "You go first for your pair."
 const PUBLIC_EITHER_FIRST := "You or %s can go first."
@@ -1366,7 +1368,7 @@ const SETTINGS_RECOVER := "Recover a previous identity"
 const SETTINGS_DELETE_IDENTITY := "Delete online identity…"
 const SETTINGS_FINISH_RECOVERY := "Finish identity recovery"
 const SETTINGS_CLOSE_APP := "Close After You"
-const SETTINGS_CREATE_IDENTITY := "Create anonymous identity"
+const SETTINGS_CREATE_IDENTITY := "Create online identity"
 const SETTINGS_CHECK_IDENTITY := "Check saved identity"
 const SETTINGS_RETRY_CLEANUP := "Retry device cleanup"
 const SETTINGS_COMMUNITY := "Community & privacy"
@@ -1467,7 +1469,7 @@ const ROOM_OPTIONS_CHAPTER := "Chapter"
 const ROOM_OPTIONS_SAFETY := "Safety"
 ## The way to report or block a room partner: the Room options row and the pause cards' flag.
 const REPORT_OR_BLOCK := "Report or block player"
-const ROOM_OPTIONS_PARTNER := "Room partner"
+const ROOM_OPTIONS_PARTNER := "Friends"
 # A friend's redo request in Together rooms (presentation/redo_flow.gd,
 # presentation/redo_home_card.gd). %s is the friend's name.
 const REDO_ASK := "Ask for a redo"
@@ -1516,13 +1518,13 @@ const CONSERVATORY_RETURNS_TITLE := "The Way Light Returns"
 const CONSERVATORY_RETURNS_HINT_A := "Leave the lower crossing lit and wait in the garden."
 const CONSERVATORY_RETURNS_HINT_B := "Open the return shutter and bring both lights to the garden."
 const LONG_WAY_HOME_TITLE := "Long Way Home"
-const LONG_WAY_HOME_SUMMARY := "Leave a path for your partner and go back home together."
+const LONG_WAY_HOME_SUMMARY := "Leave a path for your friend and go back home together."
 const LONG_WAY_HOME_COMPLETION := "You're both at home."
 const LONG_WAY_HOME_PATH_TITLE := "The Path You Leave"
-const LONG_WAY_HOME_PATH_HINT_A := "Leave a trail for your partner and then go to the garden on your own."
+const LONG_WAY_HOME_PATH_HINT_A := "Leave a trail for your friend and then go to the garden on your own."
 const LONG_WAY_HOME_PATH_HINT_B := "Reach the garden."
 const LONG_WAY_HOME_PLACE_TITLE := "A Place Beside You"
-const LONG_WAY_HOME_PLACE_HINT_A := "Pick a window to greet your partner when they come home."
+const LONG_WAY_HOME_PLACE_HINT_A := "Pick a window to greet your friend when they come home."
 const LONG_WAY_HOME_PLACE_HINT_B := "Follow the open path and light the second window."
 const LONG_WAY_HOME_V2_PLACE_HINT_A := "Wait at the porch window or light the hall lamp and wait at the garden window."
 const LONG_WAY_HOME_V2_PLACE_HINT_B := "Follow the trail they left behind. Match the gate to the lamp and light the second window."
@@ -1538,10 +1540,10 @@ const WISHING_WELL_BACK_HINT_A := "They're still holding on. Bring the ladder do
 const WISHING_WELL_BACK_HINT_B := "Get out of the well and sound the bell."
 
 const TURN_OF_THE_TIDE_TITLE := "Turn of the Tide"
-const TURN_OF_THE_TIDE_SUMMARY := "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across."
+const TURN_OF_THE_TIDE_SUMMARY := "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across."
 const TURN_OF_THE_TIDE_COMPLETION := "The harbour lantern is alight."
 const TURN_OF_THE_TIDE_SET_TITLE := "Set the Tide"
-const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide for your partner and wait on a step by the wheel."
+const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide for your friend and wait on a step by the wheel."
 const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the harbour bell."
 const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
 const TURN_OF_THE_TIDE_SLACK_HINT_A := "Pull what you can reach while the sea is shut. Then open it, pull the rest and turn the sea wheel to your post's level."
@@ -1662,15 +1664,15 @@ const LIGHTHOUSE_PREVIEW_E4B624E028B0 := "Cross to the tower"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_4D47D03902BF := "Tower reached · ring the bell"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_E1B989F40743 := "The lens is not available to your partner yet."
+const LIGHTHOUSE_PREVIEW_E1B989F40743 := "The lens is not available to your friend yet."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_384D841A26F0 := "Your partner still holds the lens"
+const LIGHTHOUSE_PREVIEW_384D841A26F0 := "Your friend still holds the lens"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_36FD8BD84EAF := "Lens shared · ready to finish"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_D92D80808C6B := "Your partner does not have enough time to get to the lens."
+const LIGHTHOUSE_PREVIEW_D92D80808C6B := "Your friend does not have enough time to get to the lens."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_916B79F531D4 := "Your partner has left the lens for you."
+const LIGHTHOUSE_PREVIEW_916B79F531D4 := "Your friend has left the lens for you."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_632EBC193BA2 := "The same light, in its new home"
 # Lighthouse chapter — update hud
@@ -1935,7 +1937,7 @@ const MAIN_C9DD5A234C97 := "The first turn and the second turn will be replaced.
 # Account and recovery — message
 const MAIN_EC79109D7607 := "This device still has to complete local cleanup."
 # Account and recovery — body text
-const MAIN_F890477C65DE := "Your identity is anonymous. Android keeps device credentials in its encrypted storage. Your recovery code gives access to your online identity; keep it private."
+const MAIN_F890477C65DE := "Your identity isn't linked to your name or email. Android keeps device credentials in its encrypted storage. Your recovery code gives access to your online identity; keep it private."
 # Account and recovery — body text
 const MAIN_93BF3A28C6F9 := "An identity recovery is saved on this device. Complete that request before you use online rooms."
 # Account and recovery — body text
@@ -1998,7 +2000,7 @@ const MAIN_3A8CB7C5D89F := "Recovery was not confirmed yet. Retry the same saved
 # removal, and the Settings note for a saved request that cannot be read.
 const RECOVERY_DISCARD := "Stop this recovery"
 const RECOVERY_DISCARD_TITLE := "Stop this recovery?"
-const RECOVERY_DISCARD_WARNING := "If the identity you tried to recover still exists, it keeps its rooms and friends, and its current recovery code can still bring it back. This device then checks its own saved identity again, or starts a new anonymous one if it has none."
+const RECOVERY_DISCARD_WARNING := "If the identity you tried to recover still exists, it keeps its rooms and friends, and its current recovery code can still bring it back. This device then checks its own saved identity again, or starts a new one if it has none."
 const RECOVERY_DISCARD_CONFIRM := "Stop recovery"
 const RECOVERY_DISCARD_FAILED := "This device could not remove the saved recovery request. Try again."
 const RECOVERY_DISCARD_UNUSABLE_NOTE := "The recovery request saved on this device can't be finished."
@@ -2431,7 +2433,7 @@ const SAFETY_SCREEN_BF2F0442C98C := "Checking with the service, please hold on�
 # Community and privacy screen — Heading or explanatory text (render)
 const SAFETY_SCREEN_25F225BDB8EB := "Choose the reason for your report. This will send the room and photo reference to the developer for review, but will not upload another copy of the photo. Do not give out personal details in subsequent evidence."
 # Community and privacy screen — Heading or explanatory text (render)
-const SAFETY_SCREEN_2FEE2DCBAAB6 := "This prevents new shared-room interaction and partner photo delivery in both directions. Their pictures will be concealed in common replays. Images that are already in your personal library remain in your personal library. Copies cannot be recalled from another person's device. Your recorded contributions are kept."
+const SAFETY_SCREEN_2FEE2DCBAAB6 := "This prevents new shared-room interaction and photo delivery between you in both directions. Their pictures will be concealed in common replays. Images that are already in your personal library remain in your personal library. Copies cannot be recalled from another person's device. Your recorded contributions are kept."
 # Community and privacy screen — Heading or explanatory text (render)
 const SAFETY_SCREEN_9922536928E7 := "Stop checking this saved report?"
 # Community and privacy screen — Heading or explanatory text (render)
@@ -3177,7 +3179,7 @@ const BORROWED_LIGHT_C4669E6E3E4F := "Replay duration or replay integrity checks
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_AED4B33F5C33 := "Malformed replay integrity check."
 # Lighthouse chapter catalog — borrowed light; hint a
-const STAGE_CATALOG_5CB0F8C748CE := "Leave a light on for your partner."
+const STAGE_CATALOG_5CB0F8C748CE := "Leave a light on for your friend."
 # Lighthouse chapter catalog — borrowed light; hint b
 const STAGE_CATALOG_2D249B804408 := "Locate a bell to ring."
 # Lighthouse chapter catalog — missing piece; hint a
@@ -3185,15 +3187,15 @@ const STAGE_CATALOG_3AC21DFE1370 := "Light a way to the missing lens."
 # Lighthouse chapter catalog — missing piece; hint b
 const STAGE_CATALOG_F928DF96CA2E := "Take the missing lens home."
 # Lighthouse chapter catalog — two promises
-const STAGE_CATALOG_AB2B94CAA7D7 := "Your partner requires additional time in the light."
+const STAGE_CATALOG_AB2B94CAA7D7 := "Your friend requires additional time in the light."
 # Lighthouse chapter catalog — two promises
-const STAGE_CATALOG_73173CD29A96 := "Your partner should have a light to follow."
+const STAGE_CATALOG_73173CD29A96 := "Your friend should have a light to follow."
 # Lighthouse chapter catalog — two promises
 const STAGE_CATALOG_AD4DEFD472A8 := "The light was cut off. Try another turn."
 # Lighthouse chapter catalog — two promises
 const STAGE_CATALOG_93A249472FFA := "The light is not yet ready to save."
 # Lighthouse chapter catalog — two promises; hint a
-const STAGE_CATALOG_6020135FC748 := "Leave one light on for your partner."
+const STAGE_CATALOG_6020135FC748 := "Leave one light on for your friend."
 # Lighthouse chapter catalog — two promises; hint b
 const STAGE_CATALOG_AE526D45F8E5 := "Light both receivers."
 # Lighthouse chapter catalog — two promises; completion message
@@ -3205,7 +3207,7 @@ const STAGE_CATALOG_96788A978EE0 := "Light the second path"
 # Lighthouse chapter catalog — after the first bell
 const STAGE_CATALOG_7220843FC24F := "Start the light sequence over from the beginning."
 # Lighthouse chapter catalog — after the first bell; hint a
-const STAGE_CATALOG_7C53331C7B69 := "Leave a trail of light for your partner."
+const STAGE_CATALOG_7C53331C7B69 := "Leave a trail of light for your friend."
 # Lighthouse chapter catalog — after the first bell; hint b
 const STAGE_CATALOG_76EEF9EFC796 := "Find a way to the tower bell."
 # Lighthouse chapter catalog — after the first bell; completion message
@@ -3213,17 +3215,17 @@ const STAGE_CATALOG_1716777DE4B4 := "You reached the tower and rang its bell. Pr
 # Lighthouse chapter catalog — what carried you; title
 const STAGE_CATALOG_7EF4E1C96BAC := "What Carried You Can Come With You"
 # Lighthouse chapter catalog — what carried you; hint a
-const STAGE_CATALOG_269CDD6F2BE9 := "Leave the lens where your partner can reach it."
+const STAGE_CATALOG_269CDD6F2BE9 := "Leave the lens where your friend can reach it."
 # Lighthouse chapter catalog — what carried you; hint b
 const STAGE_CATALOG_383A6AD272C5 := "Bring the lens to the tower."
 # Lighthouse chapter catalog — what carried you; completion message
 const STAGE_CATALOG_0114C1D56C6E := "The lens is in the tower projector. Preview your turn, then save it."
 # Lighthouse chapter catalog — a welcome left on
-const STAGE_CATALOG_3C6C84A6D7BD := "Your partner should have a light to follow."
+const STAGE_CATALOG_3C6C84A6D7BD := "Your friend should have a light to follow."
 # Lighthouse chapter catalog — a welcome left on
 const STAGE_CATALOG_2C0D4F05AB0E := "The light was cut off. Try another turn."
 # Lighthouse chapter catalog — a welcome left on
-const STAGE_CATALOG_E098029083B0 := "Your partner requires additional time in the light."
+const STAGE_CATALOG_E098029083B0 := "Your friend requires additional time in the light."
 # Lighthouse chapter catalog — a welcome left on
 const STAGE_CATALOG_44C1B603DE80 := "Complete when the upper light is on."
 # Lighthouse chapter catalog — a welcome left on; hint a
@@ -3327,7 +3329,7 @@ const SUBSCRIPTION_TERMS_APP_STORE := "Payment is charged to your Apple Account 
 const SUBSCRIPTION_ACTIVE_IOS := "Your subscription pays for hosting and server costs. You can change or cancel it in the App Store."
 const SUBSCRIPTION_TERMS_OF_USE := "Terms of Use"
 const MAIN_3E8E7DA4CEE6_IOS := "This build has no secure storage for an online identity."
-const MAIN_F890477C65DE_IOS := "Your identity is anonymous. iOS keeps device credentials in its encrypted Keychain. Your recovery code gives access to your online identity; keep it private."
+const MAIN_F890477C65DE_IOS := "Your identity isn't linked to your name or email. iOS keeps device credentials in its encrypted Keychain. Your recovery code gives access to your online identity; keep it private."
 const MAIN_570EC629872D_IOS := "Creating or recovering an online identity requires two things: secure storage on this device and a connection to the service."
 const MAIN_EF43E19393E4_IOS := "Decide if you want to receive notifications when your friend leaves a turn. Tap on a notification to go back to your shared room. Your current turn will not be interrupted."
 const MAIN_B39BBA0B04B0_IOS := "You need an online identity first. Your existing saved data is kept."
@@ -3341,13 +3343,32 @@ const COOPERATIVE_UPPER_PATH_A := "Assist your friend to the loft."
 const COOPERATIVE_UPPER_PATH_B := "Climb up to the bell above."
 const COOPERATIVE_DOWN_AND_AROUND_A := "Open a way through the lower islands."
 const COOPERATIVE_DOWN_AND_AROUND_B := "Arrive at the garden bell."
-const COOPERATIVE_WEIGHT_OF_A_FRIEND_A := "Support your partner in crossing with the ball's weight."
+const COOPERATIVE_WEIGHT_OF_A_FRIEND_A := "Support your friend in crossing with the ball's weight."
 const COOPERATIVE_WEIGHT_OF_A_FRIEND_B := "Find a way to keep both crossings open."
-const COOPERATIVE_BRING_IT_HOME_A := "Return the ball to your partner."
+const COOPERATIVE_BRING_IT_HOME_A := "Return the ball to your friend."
 const COOPERATIVE_BRING_IT_HOME_B := "Roll the ball home."
-const COOPERATIVE_FINISH_ROUTE := "Complete the course with your partner."
+const COOPERATIVE_FINISH_ROUTE := "Complete the course with your friend."
 const COOPERATIVE_LEAVE_BALL := "Leave the ball on the marker.\nYour friend will take over from there."
-const COOPERATIVE_KEEP_CROSSING := "Your partner requires the crossing to remain open."
+const COOPERATIVE_KEEP_CROSSING := "Your friend requires the crossing to remain open."
+const COOPERATIVE_MORE_TIME := "Try again with more time left for your friend."
+const RESERVED_SELECTOR := "Your friend's selector"
+const RESERVED_MIRROR := "Your friend's mirror"
+const RESERVED_CREST := "Your friend's crest"
+const RESERVED_LENS := "Your friend's lens"
+const RECORDING_FIRST_TURN := "The first turn can't have a friend's recording."
+const RECORDING_NOT_READY := "Your friend's recording is not ready."
+const RECORDING_MISMATCH := "Your friend's recording does not match."
+const RECORDING_UNEXPECTED := "This turn should not have a friend's recording."
+## The player's words for lines the simulators keep in their snapshots (pinned by snapshot digests).
+const SNAPSHOT_FRIEND_1 := "Leave the lens where your friend can reach it."
+const SNAPSHOT_FRIEND_2 := "From this moment on, your friend can take the lens."
+const SNAPSHOT_FRIEND_3 := "The lens is not available to your friend yet."
+const SNAPSHOT_FRIEND_4 := "Your friend does not have enough time to get to the lens."
+const SNAPSHOT_FRIEND_5 := "Your friend requires additional light for the first crossing."
+const SNAPSHOT_FRIEND_6 := "Your friend needs more light for the second crossing."
+const SNAPSHOT_FRIEND_7 := "Your friend should have a light to follow."
+const SNAPSHOT_FRIEND_8 := "Your friend requires additional time in the light."
+const SNAPSHOT_FRIEND_9 := "Throw earlier so your friend has time to catch and deliver the seed."
 
 # Notifications screen: the optional alert when a friend asks you to redo your turn.
 const TURN_REQUEST_NOTIFICATIONS := "Also tell me when my friend asks for a redo"
@@ -3397,6 +3418,24 @@ const TEXT := {
 	"cooperative.finish_route": COOPERATIVE_FINISH_ROUTE,
 	"cooperative.leave_ball": COOPERATIVE_LEAVE_BALL,
 	"cooperative.keep_crossing": COOPERATIVE_KEEP_CROSSING,
+	"cooperative.more_time": COOPERATIVE_MORE_TIME,
+	"reserved.selector": RESERVED_SELECTOR,
+	"reserved.mirror": RESERVED_MIRROR,
+	"reserved.crest": RESERVED_CREST,
+	"reserved.lens": RESERVED_LENS,
+	"recording.first_turn": RECORDING_FIRST_TURN,
+	"recording.not_ready": RECORDING_NOT_READY,
+	"recording.mismatch": RECORDING_MISMATCH,
+	"recording.unexpected": RECORDING_UNEXPECTED,
+	"snapshot.friend_1": SNAPSHOT_FRIEND_1,
+	"snapshot.friend_2": SNAPSHOT_FRIEND_2,
+	"snapshot.friend_3": SNAPSHOT_FRIEND_3,
+	"snapshot.friend_4": SNAPSHOT_FRIEND_4,
+	"snapshot.friend_5": SNAPSHOT_FRIEND_5,
+	"snapshot.friend_6": SNAPSHOT_FRIEND_6,
+	"snapshot.friend_7": SNAPSHOT_FRIEND_7,
+	"snapshot.friend_8": SNAPSHOT_FRIEND_8,
+	"snapshot.friend_9": SNAPSHOT_FRIEND_9,
 	"lighthouse_preview.ddc41a9de09f": LIGHTHOUSE_PREVIEW_DDC41A9DE09F,
 	"objective_panel.e08ff54fb4f9": OBJECTIVE_PANEL_E08FF54FB4F9,
 	"objective_panel.0d1ab3f4b1af": OBJECTIVE_PANEL_0D1AB3F4B1AF,
@@ -4253,6 +4292,24 @@ const CANONICAL_KEYS := {
 	"Finish the route with your partner.": "cooperative.finish_route",
 	"Leave the ball where your partner can take over.": "cooperative.leave_ball",
 	"Keep the crossing ready for your partner.": "cooperative.keep_crossing",
+	"Try again with more time left for your partner.": "cooperative.more_time",
+	"Partner's selector": "reserved.selector",
+	"Partner's mirror": "reserved.mirror",
+	"Partner's crest": "reserved.crest",
+	"Partner's lens": "reserved.lens",
+	"The first turn cannot contain a partner recording.": "recording.first_turn",
+	"The partner recording is not ready.": "recording.not_ready",
+	"The partner recording does not match.": "recording.mismatch",
+	"Unexpected partner recording.": "recording.unexpected",
+	"Leave the lens where your partner can reach it.": "snapshot.friend_1",
+	"From this moment on, your partner can take the lens.": "snapshot.friend_2",
+	"The lens is not available to your partner yet.": "snapshot.friend_3",
+	"Your partner does not have enough time to get to the lens.": "snapshot.friend_4",
+	"Your partner requires additional light for the first crossing.": "snapshot.friend_5",
+	"Your partner needs more light for the second crossing.": "snapshot.friend_6",
+	"Your partner should have a light to follow.": "snapshot.friend_7",
+	"Your partner requires additional time in the light.": "snapshot.friend_8",
+	"Throw earlier so your partner has time to catch and deliver the seed.": "snapshot.friend_9",
 	"You were here. I was here. We made this.": "relay_preview.afc92040f3db",
 	"Stand on the glowing plate. Tap Throw, then stay there for your friend.": "levels.fcaab14393ce",
 	"Cross the bridge. Catch the seed near its landing ring, then bring it to the garden.": "levels.f0cf60646202",

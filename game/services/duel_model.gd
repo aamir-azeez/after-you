@@ -70,8 +70,9 @@ static func turn_line(view: Dictionary, index: int, name_of: Callable) -> String
 	if side.turn < 0: return PlayerCopy.DUEL_NOT_STARTED
 	var id: Variant = side.members[side.turn]
 	var shown := _name(id, side.you, name_of) if not is_public(view) else _seat_shown(view, index, side.turn, name_of)
-	if side.you: return PlayerCopy.DUEL_YOUR_TURN if shown == PlayerCopy.DUEL_YOU else PlayerCopy.DUEL_THEIR_TURN % (shown if not shown.is_empty() else PlayerCopy.DUEL_PARTNER)
-	return PlayerCopy.DUEL_WAITING_FOR % (shown if not shown.is_empty() else PlayerCopy.DUEL_PARTNER)
+	if shown.is_empty(): shown = _partner_word(view)
+	if side.you: return PlayerCopy.DUEL_YOUR_TURN if shown == PlayerCopy.DUEL_YOU else PlayerCopy.DUEL_THEIR_TURN % shown
+	return PlayerCopy.DUEL_WAITING_FOR % shown
 
 ## Whether it is this player's own move in the duel now.
 static func your_turn(view: Dictionary, me: String) -> bool:
@@ -138,7 +139,7 @@ static func partner_name(view: Dictionary, me: String, name_of: Callable) -> Str
 			if held.get("you", false): continue
 			if held.get("open", false): return ""
 			var shown := _seat_shown(view, view.mine, slot, name_of)
-			return shown if not shown.is_empty() else PlayerCopy.DUEL_PARTNER
+			return shown if not shown.is_empty() else PlayerCopy.PUBLIC_DUEL_PARTNER
 		var id: Variant = side.members[slot]
 		if id != null and id != me and name_of.is_valid(): return str(name_of.call(id))
 	return PlayerCopy.DUEL_PARTNER
@@ -288,7 +289,11 @@ static func _partner_name(view: Dictionary, name_of: Callable) -> String:
 	for id: Variant in side.members:
 		var shown := _name(id, true, name_of)
 		if shown != PlayerCopy.DUEL_YOU and not shown.is_empty(): return shown
-	return PlayerCopy.DUEL_PARTNER
+	return _partner_word(view)
+
+## "your friend", or "your partner" for the player beside you in a public duel.
+static func _partner_word(view: Dictionary) -> String:
+	return PlayerCopy.PUBLIC_DUEL_PARTNER if is_public(view) else PlayerCopy.DUEL_PARTNER
 
 ## The note while your finished run waits for the replay check: while the server checks duel runs
 ## (backend DUEL_RUN_CHECKS), every friend run, and a ghost race run faster than Our run (its first

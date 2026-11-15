@@ -2,8 +2,10 @@ import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object, text } 
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES, MAX_RECORDING_BYTES, MAX_V2_BODY_BYTES } from "./protocol-relay";
 import { comfortRules, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { MAX_ROW_BYTES } from "./row-bound";
+import { isPacked, packedKeys, unpackRecording } from "./recording-codec";
 
 const RECORD_KEYS = ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "stage_id", "stage_version", "checkpoint_hash", "role", "player_slot", "tick_rate", "duration_ticks", "catch_assistance", "actions", "replay_checks", "final_state_hash", "completed", "outcome", "source_recording_hash", "recording_hash"];
+const PACKED_KEYS = packedKeys(RECORD_KEYS);
 const OUTCOMES = ["source_ready", "objective_complete"];
 const MAX_TICKS = 900, MAX_REPLAY_CHECKS = 31;
 function need(value: unknown, code: string): asserts value { if (!value) throw new ApiError(422, code); }
@@ -47,7 +49,8 @@ export function physicalRecording(definition: { stages: readonly { id: string; f
   return async (value: unknown): Promise<ChapterRecording> => {
     const comfort = value !== null && typeof value === "object" && "simulation_version" in value && comfortRules(value.simulation_version) && supported.includes(value.simulation_version as number);
     boundedValue(value, comfort ? limits?.recording_bytes ?? 65_536 : MAX_RECORDING_BYTES, comfort ? limits?.recording_values : undefined);
-    const r = object(value); exact(r, RECORD_KEYS); need(r.level_id === key.level_id && r.level_version === key.level_version && r.definition_hash === key.definition_hash, "unsupported_chapter");
+    // A packed record (v2/recording-codec.ts) carries its runs and checks as one string; whether the room may take it is the room's call.
+    const r = object(value), packed = isPacked(r); exact(r, packed ? PACKED_KEYS : RECORD_KEYS); need(r.level_id === key.level_id && r.level_version === key.level_version && r.definition_hash === key.definition_hash, "unsupported_chapter");
     need(r.schema_version === version && supported.includes(r.simulation_version as number) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
     const stage = definition.stages.find(stage => stage.id === r.stage_id); need(stage, "unknown_stage");
     need(r.role === "a" || r.role === "b", "invalid_role");
@@ -57,6 +60,8 @@ export function physicalRecording(definition: { stages: readonly { id: string; f
     const duration = integer(r.duration_ticks, 1, limit); bool(r.catch_assistance); bool(r.completed);
     for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash"]) text(r[name], HASH_PATTERN);
     need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");
+    // Packed runs and checks come back canonical, on the implied check ticks and ending on final_state_hash.
+    if (packed) { unpackRecording(r.packed, duration, r.final_state_hash as string, limit); return hashed(r); }
     need(Array.isArray(r.actions) && r.actions.length > 0 && r.actions.length <= limit, "invalid_actions");
     let ticks = 0;
     for (const value of r.actions) {
@@ -74,8 +79,11 @@ export function physicalRecording(definition: { stages: readonly { id: string; f
       need(tick > previous, "unordered_replay_checks"); previous = tick;
     }
     need(previous === duration && r.replay_checks.at(-1).state_hash === r.final_state_hash, "final_replay_check_mismatch");
-    const outcome = object(r.outcome); exact(outcome, OUTCOMES); Object.values(outcome).forEach(bool);
-    const { recording_hash, ...body } = r; need(await digest(canonicalJson(body)) === recording_hash, "recording_hash_mismatch");
-    return r as ChapterRecording;
+    return hashed(r);
   };
+}
+async function hashed(r: Record<string, unknown>): Promise<ChapterRecording> {
+  const outcome = object(r.outcome); exact(outcome, OUTCOMES); Object.values(outcome).forEach(bool);
+  const { recording_hash, ...body } = r; need(await digest(canonicalJson(body)) === recording_hash, "recording_hash_mismatch");
+  return r as ChapterRecording;
 }
