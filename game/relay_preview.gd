@@ -953,6 +953,8 @@ func _add_room_panel_actions(card: VBoxContainer, facts: Callable) -> void:
 	line.add_theme_constant_override("separation", 10)
 	card.add_child(line)
 	_add_room_actions(line, state, "pair", facts)
+	# A page with nothing on its last line keeps no gap for it.
+	line.visible = line.get_child_count() > 0
 	_add_room_actions(_room_ready_panel.header, state, "header", facts)
 
 ## Adds one table row when it applies, drawn in `look` (RoomActions.look), and
@@ -1392,12 +1394,10 @@ func _show_online_waiting() -> void:
 	elif pending.is_empty() and redo_flow.can_answer_start_over():
 		heading = PlayerCopy.START_OVER_ASKED_FOR % FriendNicknames.sentence_start(partner)
 		subline = PlayerCopy.START_OVER_LINE
-	# A stage just kept leads the page: whose turn is next, then the stage's line.
+	# A stage just kept leads the page, with whose turn is next under it.
 	elif not saved and partner_present and not _turn_news().is_empty():
-		var news := _turn_news()
-		heading = str(news.heading)
+		heading = str(_turn_news().heading)
 		subline = whose
-		notices.insert(0, str(news.get("sub", "")))
 	notification_hint = null
 	notification_offer = null
 	_waiting_notify_section = false
@@ -3136,6 +3136,8 @@ func _show_completed() -> void:
 	var top: VBoxContainer
 	if compact:
 		card = _ordinary_room_card("", "")
+		# A room's end keeps its friend strip, as every room page does.
+		if online_session != null: _add_friend_strip(card, journey.snapshot().get("guest_id") != null)
 		top = RoomPageBuilder.group(card, 4)
 		_add_news(top, {"heading": PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, "sub": str(chapter.completion_text), "pollen": false})
 	else:
