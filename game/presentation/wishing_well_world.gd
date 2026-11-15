@@ -160,10 +160,11 @@ func _build_rock(island: Dictionary, top_hole: Array, body_hole: Array, top_colo
 	if raised.position.y > 0.5: _upper_islands.append(raised)
 	var height := raised.position.y
 	for piece: Array in _pieces(island.rect_cm, top_hole):
-		_slab(piece, -0.20, 0.0, top_color, raised)
-		# The lighter cap starts at the walking surface, so its sides never lie
-		# on the slab's (coplanar faces flicker as the camera moves).
-		_slab(piece, 0.0, 0.012, top_color.lightened(0.12), raised)
+		_slab(piece, -0.20, -0.012, top_color, raised)
+		# The lighter cap ends at the walking surface, so the pair tags and floor
+		# lines lying just over it show; its sides never lie on the slab's
+		# (coplanar faces flicker as the camera moves).
+		_slab(piece, -0.012, 0.0, top_color.lightened(0.12), raised)
 	for piece: Array in _pieces(island.rect_cm, body_hole):
 		_slab(piece, -height - 1.45, -0.20, body_color, raised)
 	var r: Array = island.rect_cm

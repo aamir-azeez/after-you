@@ -387,6 +387,7 @@ func load_level(level: Dictionary) -> void:
 	actors.clear()
 	actor_targets.clear()
 	bridge_parts.clear()
+	sound_anchors.clear()
 	flowers.clear()
 	bloomed = false
 	lift = null
@@ -416,6 +417,8 @@ func load_level(level: Dictionary) -> void:
 		# on the first frame, and its reel sounded through the launch splash.
 		var plank := box(Vector3((right_edge-left_edge)/9.0-0.025,0.12,bridge_width),Color("c4b090"),Vector3(x,bridge_plank_y(i,false),bridge_z),terrain)
 		bridge_parts.append(plank)
+		# The one crossing sounds from its middle plank.
+		if i == 4: mark_sound("bridge:", plank)
 		# The handrail posts travel with their plank when the bridge lowers.
 		for side in [-1,1]:
 			cylinder(0.045,0.40,Color("8b7964"),Vector3(0,0.25,side*(bridge_width/2-0.07)),plank)
@@ -1271,6 +1274,37 @@ const DOZE_LEAN_REACH := 1.6
 ## waits for its friend's memory; empty otherwise. Worlds with a following
 ## camera read it through _camera_slot().
 var camera_focus := ""
+
+## Pieces a turn's sounds come from, by "<kind>:<id>" (Soundscape.source_anchor):
+## each world marks them as it builds them (mark_sound).
+var sound_anchors: Dictionary = {}
+## The live spirit's role and actor key (memory_wait.gd), so a sound caused by
+## role "a" or "b" finds its pip in a world that names pips by slot.
+var _sound_live_role := ""
+var _sound_live_key := ""
+
+func mark_sound(anchor: String, node: Node3D) -> void:
+	sound_anchors[anchor] = node
+
+func note_live_spirit(role: String, key: String) -> void:
+	_sound_live_role = role
+	_sound_live_key = key
+
+## Where a sound is (soundscape placing): a marked piece or a pip
+## ("spirit:" and its role or actor key); null when this world has no such
+## place, and the sound plays unplaced.
+func sound_point(anchor: String) -> Variant:
+	var node: Variant = _sound_spirit(anchor.trim_prefix("spirit:")) if anchor.begins_with("spirit:") else sound_anchors.get(anchor)
+	if not is_instance_valid(node) or not (node as Node3D).is_inside_tree(): return null
+	return (node as Node3D).global_position
+
+func _sound_spirit(key: String) -> Variant:
+	if actors.has(key): return actors[key]
+	if not key in ["a", "b"] or not actors.has(_sound_live_key): return null
+	if key == _sound_live_role: return actors[_sound_live_key]
+	for other: Variant in actors:
+		if other != _sound_live_key: return actors[other]
+	return null
 
 ## The spirit a following camera tracks: the memory while the live spirit
 ## waits, otherwise `live`.

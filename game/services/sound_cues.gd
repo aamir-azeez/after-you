@@ -154,6 +154,17 @@ const REUNION := {"clip": GREETING, "db": -8.0, "gain": Vector2(-0.75, 0.75), "r
 ## same reaction sounds the same picked, on the friend's card and in a rewatch.
 const REACTION := {"clip": POP, "db": -4.0, "gain": Vector2(-0.75, 0.75), "range": Vector2(-2.0, 5.0)}
 
+## Where a turn's cues and steps are heard (soundscape: one listener on the
+## camera's view). A sound pans by where it is on screen and fades by how far
+## it is from the view's centre, counted in half view heights: no fade within
+## `near`, falling to `fade_db` at `far` and no lower. The listener sits `back`
+## half view heights behind the focus, so pan grows with the distance on
+## screen instead of jumping to one side next to the centre. `level_db` lifts
+## a placed sound to an unplaced one's level: the 3D mix shares a centred
+## sound between the speakers at equal power, about 3 dB down. Ambience, beds,
+## calls, the meetup greeting and screen cues are never placed.
+const PLACE := {"near": 0.5, "far": 2.0, "fade_db": -6.0, "back": 1.0, "level_db": 3.0}
+
 ## Loops started and stopped by what the world shows. `db` is the player's
 ## own level (not relative), `pitch` a fixed shift; no loop varies its pitch.
 const LOOPS := {

@@ -331,6 +331,7 @@ func _build_bridge(definition: Dictionary) -> void:
 	_deck.position = point([(rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0])
 	terrain.add_child(_deck)
 	_decks[definition.id] = _deck
+	mark_sound("bridge:%s" % definition.id, _deck)
 	var across_x := width >= depth
 	# The deck spans only the open gap: where a route crosses a floor at its
 	# own height, that floor is already drawn there, and two tops at one
@@ -417,6 +418,7 @@ func _build_mirror(control: Dictionary) -> void:
 	ring(float(control.radius_cm) / 100.0, Color("8caab9"), at + Vector3(0, base_height + 0.04, 0), terrain)
 	_mirror_pivot = _mirror_body(at, base_height, terrain, false)
 	_mirror_nodes[control.get("optical_id", control.id)] = _mirror_pivot
+	mark_sound("mirror:%s" % control.get("optical_id", control.id), _mirror_pivot)
 	_mirror_target = -PI / 4.0
 	_mirror_pivot.rotation.y = _mirror_target
 	# Discrete engraved arrows show two positions instead of implying free aim.
@@ -498,6 +500,7 @@ func _build_selector(control: Dictionary) -> void:
 	var pointer := box(Vector3(0.085, 0.03, 0.085), LIGHT_COLOR, Vector3(-0.30, 0.095, 0.64), dial)
 	pointer.rotation.y = PI / 4.0
 	_selector_nodes[control.id] = {"root": dial, "dots": dots, "pointer": pointer, "states": control.states.duplicate()}
+	mark_sound("control:%s" % control.id, dial)
 
 ## The goal in its style (kit/pieces/goal.gd), at its exact centre and radius.
 func _build_bell(goal: Dictionary) -> void:
