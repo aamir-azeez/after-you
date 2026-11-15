@@ -109,6 +109,9 @@ class Host extends Node:
 	var ui: Control
 	var toasts: Array = []
 	var scope := {}
+	## The screens the Wardrobe said it opened over (Main's back history, menu_opened).
+	var opened: Array = []
+	func menu_opened(_screen: String, from: String, _back: Button) -> void: opened.append(from)
 	func _names_scope() -> Dictionary: return scope
 	func _clear_overlay() -> void:
 		for child: Node in overlay.get_children(): child.queue_free()
@@ -236,7 +239,7 @@ func _buying() -> void:
 	var t := _setup()
 	t.fake.replies = [_answer([], {}, 24000)]
 	t.flow.show_wardrobe()
-	_check(t.host.mode == Flow.MODE_WARDROBE and t.flow.is_open() and t.flow.return_to == "settings", "The page opens, from Settings by default")
+	_check(t.host.mode == Flow.MODE_WARDROBE and t.flow.is_open() and t.host.opened.back() == "settings", "The page opens, from Settings by default")
 	await _frames()
 	var model: Dictionary = t.flow.model()
 	_check(model.balance == 24000 and model.items.size() == 9 and model.items.filter(func(entry: Dictionary) -> bool: return entry.sold).size() == 6 and t.fake.sent.size() == 1 and t.fake.sent[0].path == "/v1/pollen", "It reads the wardrobe and lists the six items the server sells, and the three earned ones")
@@ -273,7 +276,7 @@ func _buying() -> void:
 	(t.host.overlay.find_child("WardrobeBack", true, false) as Button).pressed.emit()
 	_check(back.asked, "Back asks the host to leave")
 	t.flow.show_wardrobe("home")
-	_check(t.flow.return_to == "home", "Opened from Home, Back goes to Home")
+	_check(t.host.opened.back() == "home", "Opened from Home, the back history hears it opened over Home")
 	t.host.queue_free()
 	await _frames(2)
 
@@ -923,11 +926,23 @@ static func _orchard_answer(items: Array, look: Dictionary, balance: int, fruits
 	return answer
 
 ## A Wardrobe whose server sells the Orchard; `on`: Fruits on for the player, `packs`: Fruit packs sell too.
-func _orchard_setup(items: Array, fruits: int, on: bool = true, packs: bool = false, look: Dictionary = {}) -> Dictionary:
+## `faces`: the server sells every face item too (the Face and Reactions chips).
+func _orchard_setup(items: Array, fruits: int, on: bool = true, packs: bool = false, look: Dictionary = {}, faces: bool = false) -> Dictionary:
 	var t := _setup(true, packs)
-	preload("res://services/cosmetic_catalog.gd").set_offered(SOLD + ["gold_leaf", "every_hard", "top_ten_ribbon"] + ORCHARD)
+	var face_ids: Array = Catalog.ids().filter(func(id: String) -> bool: return Catalog.slot(id) in ["rest_face", "reaction", "reaction_slot"]) if faces else []
+	preload("res://services/cosmetic_catalog.gd").set_offered(SOLD + ["gold_leaf", "every_hard", "top_ten_ribbon"] + ORCHARD + face_ids)
 	if on: t.fruits.set_enabled(SERVER, ME, true, packs)
-	t.fake.replies = [_orchard_answer(items, look, 24000, fruits)]
+	var answer := _orchard_answer(items, look, 24000, fruits)
+	if faces:
+		var part: Dictionary = answer.data.wardrobe
+		part.offered = (part.offered as Array) + face_ids
+		var prices: Dictionary = part.get("prices", {})
+		for id: String in face_ids: prices[id] = float(Catalog.price(id))
+		part.prices = prices
+		part.faces = ["aww"]
+		part.reactions = ["happy", "aww", "sad", "squeeze", "", ""]
+		part.reaction_slots = 4.0
+	t.fake.replies = [answer]
 	t.flow.show_wardrobe()
 	await _frames()
 	return t
@@ -1110,9 +1125,9 @@ const SCREENS := [Vector2(1280, 720), Vector2(1561, 720), Vector2(1600, 720), Ve
 ## Every tab on every screen: each control that shows is inside the page, and
 ## the header, the pip panel and the shop or Orchard never cover each other.
 func _fits_every_screen() -> void:
-	var t := await _orchard_setup(["daisy", "straw_hat"], 101)
+	var t := await _orchard_setup(["daisy", "straw_hat"], 101, true, false, {}, true)
 	var page: Control = t.host.overlay
-	var views := [["all", "hat"], ["all", "body"], ["all", "leaf"], ["owned", "hat"], ["orchard", ""]]
+	var views := [["all", "hat"], ["all", "body"], ["all", "leaf"], ["all", "rest_face"], ["all", "reactions"], ["owned", "hat"], ["orchard", ""]]
 	for screen: Vector2 in SCREENS:
 		page.size = screen
 		for view: Array in views:
@@ -1162,10 +1177,11 @@ func _orchard_scrolls() -> void:
 	t.host.ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var page: Control = t.host.overlay
 	t.flow.set_tab("orchard")
-	page.size = Vector2(1600, 720)
+	screen.size = Vector2i(2200, 990)
+	page.size = Vector2(2200, 990)
 	await _frames(4)
 	var orchard: Control = page.find_child("WardrobeOrchard", true, false)
-	_check(not orchard.cards_scroll(), "At 1600 every Orchard card fits and nothing scrolls")
+	_check(not orchard.cards_scroll(), "On a big screen every Orchard card fits and nothing scrolls")
 	screen.size = Vector2i(1280, 720)
 	page.size = Vector2(1280, 720)
 	await _frames(4)
@@ -1215,7 +1231,7 @@ func _orchard_confirm() -> void:
 	var t := await _orchard_setup([], 151)
 	t.flow.show_orchard("fruits")
 	await _frames()
-	_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.flow.return_to == "fruits", "show_orchard opens the Wardrobe on the Orchard, Back going where it was asked from")
+	_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.host.opened.back() == "fruits", "show_orchard opens the Wardrobe on the Orchard over the screen it was asked from")
 	await t.flow.act("apple_hood")
 	var sheet: Node = t.host.ui.find_child("WardrobeConfirm", true, false)
 	var words := _texts(sheet)
@@ -1260,7 +1276,7 @@ func _orchard_short() -> void:
 			_check(asked.store == 1 and t.host.ui.find_child("WardrobeShort", true, false) == null, "Get Fruits asks for the store and the card closes")
 			t.flow.reopen()
 			await _frames(2)
-			_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.flow.return_to == "settings" and t.flow.model().selected == "blossom_crown", "Back from the store reopens the Orchard with the Back it had, on the item picked")
+			_check(t.flow.is_open() and t.flow.model().tab == "orchard" and t.host.opened.back() == "" and t.flow.model().selected == "blossom_crown", "Back from the store reopens the Orchard on the item picked")
 			t.flow.reopen()
 			await _frames(2)
 			_check(t.flow.model().tab == "all", "Only once: the next reopen is the Wardrobe as it opens")

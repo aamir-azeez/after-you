@@ -6,8 +6,10 @@ extends SceneTree
 ## plain chip; the mark level with the amount; and the gain shown on request
 ## and gone after a moment. With Fruits (Fruits board 2): the Fruit half on the
 ## Orchard plum between the Pollen half and the plus, its own target and tap,
-## 0 for a player with none, and shown only while Fruits show (fruits_for).
+## 0 for a player with none, a quiet placeholder before any balance arrives,
+## and shown only while Fruits show (fruits_for).
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Orchard = preload("res://presentation/kit/orchard_surface.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
@@ -102,10 +104,13 @@ func _fruits(viewport: SubViewport) -> void:
 	var scope := {"server": "https://chip.example.test", "owner": "cccccccccccccccccccccc"}
 	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(true), fruits) == [], "Fruits off on the server: no Fruit half")
 	fruits.set_enabled(scope.server, scope.owner, true)
-	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(true), fruits) == [0], "Fruits on, nothing read yet: 0")
+	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(true), fruits) == [PollenChip.WAITING], "Fruits on, nothing read yet: the placeholder, never a number")
 	fruits.note_view(scope.server, scope.owner, {"fruits": {"schema_version": 1.0, "balance": 101.0, "earned": 101.0, "achievements": []}})
 	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(true), fruits) == [101], "Fruits on: the kept balance")
 	_check(PollenChip.fruits_for(scope, PollenSurfaces.new(false), fruits) == [] and PollenChip.fruits_for({}, PollenSurfaces.new(true), fruits) == [], "A build that sells nothing, or no player, shows no Fruit half")
+	var waiting: Control = PollenChip.make(PollenChip.WAITING, false, [PollenChip.WAITING])
+	_check(waiting.amount_label.text == PlayerCopy.CHIP_WAITING and waiting.fruits_label.text == PlayerCopy.CHIP_WAITING and waiting.amount_button.accessibility_name == PlayerCopy.POLLEN_CHIP_BALANCE % PlayerCopy.CHIP_WAITING_SPOKEN, "Before a balance arrives each half shows the quiet placeholder, never a number")
+	waiting.free()
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 

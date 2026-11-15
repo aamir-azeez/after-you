@@ -3,7 +3,7 @@ extends SceneTree
 ## (Main's RoomsApi, the live socket, the probe in services/connectivity_probe.gd)
 ## and the controls it greys (presentation/offline_hold.gd):
 ## - unknown at launch reads as online, so a first tap registers;
-## - going offline takes two failures in a row with no answer between them
+## - going offline takes three failures in a row with no answer between them
 ##   (one dropped request, or failures between answers, never grey anything);
 ## - any answer, of any status, or the live socket opening reads as online at once;
 ## - only real transport failures count: a request that could not start, a
@@ -105,9 +105,10 @@ func _states() -> void:
 	state.changed.connect(func(online: bool) -> void: heard.append(online))
 	_check(state.state == Connectivity.State.UNKNOWN and state.online(), "Unknown at launch reads as online")
 	state.note_response(CANT)
-	_check(state.online() and heard.is_empty(), "One failure greys nothing")
 	state.note_response(CANT)
-	_check(not state.online() and heard == [false], "A second failure in a row reads as offline, said once")
+	_check(state.online() and heard.is_empty(), "Two failures grey nothing")
+	state.note_response(CANT)
+	_check(not state.online() and heard == [false], "A third failure in a row reads as offline, said once")
 	state.note_response(CANT)
 	_check(heard == [false], "More failures say nothing new")
 	state.note_response([HTTPRequest.RESULT_SUCCESS, 503, PackedStringArray(), PackedByteArray()])
@@ -124,9 +125,8 @@ func _states() -> void:
 	_check(state.online(), "A request that could not start, an oversized body or a failed request call say nothing")
 	for code: int in [HTTPRequest.RESULT_CANT_RESOLVE, HTTPRequest.RESULT_TIMEOUT]:
 		state.note_reached()
-		state.note_response([code, 0, PackedStringArray(), PackedByteArray()])
-		state.note_response([code, 0, PackedStringArray(), PackedByteArray()])
-		_check(not state.online(), "Result %d twice reads as offline" % code)
+		for i in range(Connectivity.OFFLINE_AFTER): state.note_response([code, 0, PackedStringArray(), PackedByteArray()])
+		_check(not state.online(), "Result %d three times reads as offline" % code)
 	state.note_reached()
 	_check(state.online() and state.state == Connectivity.State.ONLINE, "The live socket opening (note_reached) is online at once")
 	var probes := [0]
@@ -160,7 +160,9 @@ func _rooms_api() -> void:
 	await api.request_json(HTTPClient.METHOD_GET, "/v1/friends")
 	_check(state.online(), "One failed request leaves it online")
 	await api.request_json(HTTPClient.METHOD_POST, "/v1/pollen/equip", {})
-	_check(not state.online(), "Two failed requests read as offline")
+	_check(state.online(), "Two leave it online too")
+	await api.request_json(HTTPClient.METHOD_GET, "/v1/friends")
+	_check(not state.online(), "Three failed requests read as offline")
 	api.reply = [HTTPRequest.RESULT_SUCCESS, 409, PackedStringArray(), JSON.stringify({"error": {"code": "room_full"}}).to_utf8_buffer()]
 	await api.request_json(HTTPClient.METHOD_POST, "/v2/rooms/join", {})
 	_check(state.online(), "A refusal is still an answer: online")
@@ -357,7 +359,7 @@ func _home() -> void:
 	_check(app.home_menu_view.wardrobe_button.visible, "The Wardrobe row shows while the Wardrobe has something to show")
 	stub.on = false
 	state.force(false)
-	_check(stub.told == [false] and not app.home_menu_view.wardrobe_button.visible, "Offline the Wardrobe hears it and the row follows (hidden with nothing saved)")
+	_check(stub.told == [false] and not app.home_menu_view.wardrobe_button.visible, "Offline the Wardrobe hears it and the row follows (hidden while the server never said it is on)")
 	stub.on = true
 	state.note_reached()
 	_check(stub.told == [false, true] and app.home_menu_view.wardrobe_button.visible, "Online again the Wardrobe hears it and the row comes back")
@@ -377,11 +379,11 @@ func _home() -> void:
 	state.force(false)
 	app._live_health_changed(true)
 	_check(state.online(), "The live socket opening reads as online")
-	# The Pollen chip's plus (the store) greys; its balance stays.
+	# Every half of the Pollen chip needs the server: each greys and comes back.
 	var chip: Control = PollenChip.make(1200, true)
 	viewport.add_child(chip)
 	state.force(false)
-	_check(chip.plus_button.disabled and not chip.amount_button.disabled, "Offline the chip's plus greys and its balance stays")
+	_check(chip.plus_button.disabled and chip.amount_button.disabled, "Offline the chip's plus and balance grey")
 	state.note_reached()
 	_check(not chip.plus_button.disabled, "And the plus comes back")
 	chip.queue_free()

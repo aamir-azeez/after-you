@@ -13,6 +13,9 @@ const RoomStages = preload("res://services/room_stages.gd")
 const Store = preload("res://services/relay_online_store.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
+const Frozen = preload("res://services/frozen_simulation.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -40,6 +43,7 @@ func _run() -> void:
 	_check(RoomStages.count(level) == 6 and Registry.descriptor(KEY).stage_count == 6, "The chapter has six stages")
 	_check(Canonical.same(chain.definition, level), "The fixture chain is the registered chapter")
 	await _coordinator_walk()
+	await _packed_gating()
 	await _fork_and_pairs()
 	await _turn_checks()
 	_refusals()
@@ -101,6 +105,42 @@ func _coordinator_walk() -> void:
 	_check(coordinator.chapter_complete() and int(coordinator.snapshot().stage_index) == 6 and coordinator.pending().is_empty(), "The room is complete only at stage index 6")
 	var restarted := Coordinator.new(disk.transport, disk.load_store, disk.save_store, disk.owner, disk.key)
 	_check(restarted.bind_room(ROOM) and not restarted.read_only and restarted.chapter_complete(), "A cold restart verifies the complete six-stage journal")
+
+## Turns go packed (core/v2/recording_codec.gd) only while the capabilities
+## allow it and the room said `packed_recordings` beside a reply; the live
+## engine, its periodic draft copy and the turn all take that form, and
+## another room starts unknown.
+func _packed_gating() -> void:
+	var made := _coordinator()
+	var coordinator: RefCounted = made[0]
+	var disk: RefCounted = made[1]
+	RoomsApi.packed_supported = true
+	var k := 0
+	var with_a := false
+	disk.responses.append(_ok(_room(k, with_a, 1)))
+	_check(await coordinator.refresh(), "A room without the word reads")
+	if not coordinator.my_turn():
+		with_a = true
+		disk.responses.append(_ok(_room(k, with_a, 2)))
+		_check(await coordinator.refresh() and coordinator.my_turn(), "The host's turn comes")
+	var live: RefCounted = coordinator.create_live_simulation()
+	_check(live != null and not live.packed_recordings and not coordinator.packed_room(), "Without the room's word the turn records JSON")
+	var reply := _ok(_room(k, with_a, 3))
+	reply["packed_recordings"] = true
+	disk.responses.append(reply)
+	_check(await coordinator.refresh() and coordinator.packed_room(), "The room's word makes it packed")
+	live = coordinator.create_live_simulation()
+	for _tick in range(40): live.step({"move_x": 1.0, "move_z": 0.0, "interact": false})
+	_check(live.packed_recordings and Frozen.of(live).packed_recordings, "The live engine and its draft copy record packed")
+	var recording: Dictionary = live.export_recording()
+	_check(RecordingCodec.is_packed(recording) and coordinator.save_live_draft(live) and RecordingCodec.is_packed(coordinator.draft()), "The turn and its saved draft are packed")
+	RoomsApi.packed_supported = false
+	_check(not coordinator.packed_room() and not coordinator.create_live_simulation().packed_recordings, "Without the capability the turn records JSON")
+	RoomsApi.packed_supported = true
+	disk.responses.append(_ok(_room(k, with_a, 4)))
+	_check(await coordinator.refresh() and coordinator.packed_room(), "A later reply without the word keeps the room packed")
+	_check(coordinator.bind_room("N".repeat(22)) and not coordinator.packed_room(), "Another room starts unknown")
+	RoomsApi.packed_supported = false
 
 ## Fork back into the middle of the chapter, and read a stage-5 pair.
 func _fork_and_pairs() -> void:

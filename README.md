@@ -65,7 +65,7 @@ Make a chapter room and post the invitation so your friend can take the next tur
 
 ## Try it
 
-Start free with First Steps, The Relay Isles and High and Low. Full Journey is a one-time purchase in the Google Play version. It includes Sleeping Lighthouse, Rolling Home, A House for Two, Conservatory and Long Way Home. The earlier islands are also still available.
+Start free with First Steps, The Relay Isles and High and Low. Full Journey is a one-time purchase in the Google Play version. It includes Sleeping Lighthouse, Rolling Home, A House for Two, Conservatory and Long Way Home.
 
 If the chapter is a shared Full Journey chapter, then only the host requires the unlock. Your friend can join without purchasing it. Players must have the app, online rooms must have an internet connection. After You runs on Android 7.0 and later.
 
@@ -99,7 +99,7 @@ To play the game on desktop, launch game/project.godot in Godot 4.7.2. The curre
 
 
 
-[Android & builds](native/README.md) · [Backend & API](backend/README.md) · [Simulation & replays](game/core/README.md) · [CI](.github/workflows/verify.yml)
+[Android & builds](native/README.md) · [Backend & API](backend/README.md) · [CI](.github/workflows/verify.yml)
 
 The source code is licensed under the [GNU AGPL v3.0](LICENSE) as set out in [COPYRIGHT](COPYRIGHT), and the art, sound, levels, text, name and logo are all rights reserved under [ASSETS-LICENSE.md](ASSETS-LICENSE.md).
 External libraries, fonts and other third-party parts keep their own licenses.

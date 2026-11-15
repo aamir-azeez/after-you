@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Pure fixed-tick chapter. Source actors stay on fixed land; only B boards a lift.
 
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 600
@@ -413,7 +414,7 @@ static func stage_by_id(definition: Dictionary, stage_id: String) -> Dictionary:
 
 static func expand_recording_inputs(recording: Dictionary) -> Array:
 	var frames: Array = []
-	for run: Dictionary in recording.get("actions", []):
+	for run: Dictionary in RecordingCodec.actions(recording):
 		for _index in range(int(run.ticks)):
 			frames.append({"move_x": float(run.x) / 100.0, "move_z": float(run.z) / 100.0, "interact": bool(run.action)})
 	return frames

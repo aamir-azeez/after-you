@@ -16,10 +16,9 @@ extends Node
 ## - services: api, saves, relay_session, ensure_relay_session, room_sharing,
 ##   _friend_events
 ## - identity: _relay_identity, _ensure_identity
-## - screen: mode, running, ui, application_backgrounded, store_view_generation,
+## - screen: mode, ui, application_backgrounded, store_view_generation,
 ##   lifecycle_generation, _online_gated, _toast
 ## - room flow: room_hub_flow (select_chapter, host_visibility),
-##   legacy_room_flow (navigation_ready), _relay_available,
 ##   _prepare_ordinary_navigation, _friends_route_context,
 ##   _friends_route_current, _settle_room_flow, _return_to_room_hub,
 ##   _enter_online_relay
@@ -59,11 +58,10 @@ func _check_rooms(chapter: String) -> void:
 		host.room_hub_flow.select_chapter(chapter)
 	var view: int = host.store_view_generation
 	var lifecycle: int = host.lifecycle_generation
-	if not host._relay_available() or not await host._ensure_identity() or view != host.store_view_generation or lifecycle != host.lifecycle_generation or host.application_backgrounded or not await host._prepare_ordinary_navigation():
+	if not await host._ensure_identity() or view != host.store_view_generation or lifecycle != host.lifecycle_generation or host.application_backgrounded or not await host._prepare_ordinary_navigation():
 		host._settle_room_flow()
 		return
 	host.ensure_relay_session()
-	host.running = false
 	_menu_generation += 1
 	var generation := _menu_generation
 	draw_progress(PlayerCopy.MAIN_07713E9CC81E)
@@ -106,7 +104,7 @@ func draw_progress(message: String) -> void:
 ## hard: "create" makes a hard room (services/hard_mode.gd).
 ## duel: "duel" makes the room of one side of a duel, {duel_id, board}, for chapter `value`.
 func lobby_action(action: String, value: String = "", hard: bool = false, duel: Dictionary = {}) -> void:
-	if host.relay_session == null or host.relay_session.busy() or not host._relay_available() or not host._relay_identity().ready or not host.legacy_room_flow.navigation_ready() or not await host._prepare_ordinary_navigation():
+	if host.relay_session == null or host.session_busy() or not host._relay_identity().ready or not await host._prepare_ordinary_navigation():
 		host._settle_room_flow()
 		return
 	_menu_generation += 1
@@ -158,9 +156,8 @@ func lobby_action(action: String, value: String = "", hard: bool = false, duel: 
 	host._enter_online_relay()
 
 func join_room(code: String) -> void:
-	if code.strip_edges().is_empty() or not host._relay_available() or not await host._ensure_identity():
+	if code.strip_edges().is_empty() or not await host._ensure_identity():
 		return
-	if not host.legacy_room_flow.navigation_ready(): return
 	# Both protocols use twenty hex characters, so the visible room-type choice
 	# is authoritative. Never probe two mutating join endpoints with one code.
 	if not await open_lobby():

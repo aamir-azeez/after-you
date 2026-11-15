@@ -2,9 +2,6 @@ extends SceneTree
 
 const Spirit = preload("res://presentation/spirit_visual.gd")
 const Look = preload("res://presentation/spirit_look.gd")
-const World = preload("res://presentation/island_world.gd")
-const Simulation = preload("res://core/simulation.gd")
-const Levels = preload("res://core/levels.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const LighthouseStages = preload("res://core/lighthouse/stage_catalog.gd")
 
@@ -27,7 +24,6 @@ func _run() -> void:
 	_test_completion_dance()
 	_test_happy_eyes()
 	_test_lighthouse_carry()
-	await _test_saved_ghost_integration()
 	print("AFTER YOU SPIRIT MOTION: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
 
@@ -242,40 +238,6 @@ func _test_throw_and_head_carry() -> void:
 	spirit.advance_motion(Vector3.ZERO,0.01,false)
 	_check(spirit.throw_age==Spirit.THROW_DURATION and spirit.upper_body.position==Vector3.ZERO,"Replay seeks cannot leave a throw animation running")
 	spirit.free()
-
-func _test_saved_ghost_integration() -> void:
-	var definition: Dictionary=Levels.get_level("first-light")
-	var first: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
-	var second: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))
-	var original_first := JSON.stringify(first)
-	var original_second := JSON.stringify(second)
-	var simulation := Simulation.new()
-	_check(simulation.reset(definition,first,"b"),"Animation integration uses a validated saved first-player recording")
-	var world := World.new()
-	root.add_child(world)
-	world.set_process(false)
-	world.home_view=false
-	world.load_level(definition)
-	world.present(simulation.snapshot(),true)
-	var strongest_motion := {"a":0.0,"b":0.0}
-	var untouched := true
-	for input: Dictionary in Simulation.expand_recording_inputs(second):
-		var state := simulation.step(input)
-		var before := JSON.stringify(state)
-		world.present(state)
-		for _frame in range(2):
-			world._process(1.0/60.0)
-			for role in ["a","b"]:
-				strongest_motion[role]=maxf(strongest_motion[role],world.actors[role].motion_blend)
-		untouched=untouched and JSON.stringify(state)==before
-	_check(strongest_motion.a>0.25,"Earlier saved ghost receives locomotion from its replayed movement")
-	_check(strongest_motion.b>0.25,"Active later player receives locomotion through the same world integration")
-	_check(untouched and JSON.stringify(first)==original_first and JSON.stringify(second)==original_second,"Presentation never mutates snapshots or either saved recording")
-	_check(simulation.complete and simulation.state_hash()==second.final_state_hash,"Animated combined replay retains the exact deterministic puzzle outcome")
-	world.present(simulation.snapshot(),true)
-	_check(world.actors.a.motion_blend==0.0 and world.actors.b.motion_blend==0.0,"Immediate snapshot placement clears both actors' animation history")
-	world.queue_free()
-	await process_frame
 
 func _test_expressions() -> void:
 	var first := Spirit.new()

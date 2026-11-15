@@ -77,12 +77,15 @@ const COSMETIC_WOOD_CHIME := "Wood chime"
 
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
-const DISPLAY_NAME_ASK_NOTE := "Friends and room partners see it on rooms and replays."
+const DISPLAY_NAME_ASK_NOTE := "Friends and people you share a room with see it on rooms and replays."
+## The name prompt's switch while no name is chosen yet: the leaderboard name choice (services/leaderboard_client.gd), off by default.
+const DISPLAY_NAME_ASK_SHOW_NAME := "Show my name in public duels and on leaderboards"
+const DISPLAY_NAME_ASK_SHOW_NAME_LATER := "(can be changed later)"
 ## The prompt's title when it is opened from Friends to change the name.
 const DISPLAY_NAME_EDIT_TITLE := "Your name"
 const DISPLAY_NAME_FIELD := "Name"
 const DISPLAY_NAME_COUNTER := "%d / %d"
-const DISPLAY_NAME_ANONYMOUS := "Keep me anonymous"
+const DISPLAY_NAME_ANONYMOUS := "Keep my " + CREATURE + " name"
 ## %s is the anonymous name, such as "Kite 41".
 const DISPLAY_NAME_ANONYMOUS_NOTE := "Others see you as %s."
 const DISPLAY_NAME_PLAY_GAMES := "Use my Play Games name"
@@ -112,8 +115,8 @@ const DISPLAY_NAME_ERRORS := {
 	"invalid_display_name": "Use letters, numbers and spaces.",
 	"display_name_refused": "That name isn't allowed. Try another.",
 	"display_name_limited": "You've changed your name a few times today. Try again tomorrow.",
-	"display_name_locked": "You can't set a name right now. You can still stay anonymous.",
-	"pollen_short": "You need more Pollen for this change. Staying anonymous is always free.",
+	"display_name_locked": "You can't set a name right now. You can still keep your " + CREATURE + " name.",
+	"pollen_short": "You need more Pollen for this change. Keeping your " + CREATURE + " name is always free.",
 	"name_change_price": "The price of a name change just changed. Check it and save again.",
 	# A price refusal on a build that shows no price (display_name_flow.gd refusal_code).
 	"name_price_hidden": DISPLAY_NAME_PRICE_HIDDEN,
@@ -129,11 +132,11 @@ const DISPLAY_NAME_SAVE_SHORT := "Save for %s Pollen, %s more needed"
 ## Under the field: the amount is bold ([b]), as drawn.
 const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change now costs [b]%s Pollen[/b]."
 ## Under the choices, after the grain.
-const DISPLAY_NAME_PRICE_HAVE := "You have %s. Keeping me anonymous is always free."
+const DISPLAY_NAME_PRICE_HAVE := "You have %s. Keeping your " + CREATURE + " name is always free."
 ## The short of Pollen card (board 5b) for a name change: what costs.
 const DISPLAY_NAME_SHORT_ITEM := "A name change"
 ## The same place on a build that shows no price (services/pollen_surfaces.gd): a change that costs waits.
-const DISPLAY_NAME_PRICE_HIDDEN := "Your free change is used. Staying anonymous is always free."
+const DISPLAY_NAME_PRICE_HIDDEN := "Your free change is used. Keeping your " + CREATURE + " name is always free."
 ## Under a friend's nickname on their Friends row: the name they chose.
 const DISPLAY_NAME_GOES_BY := "Goes by %s"
 
@@ -219,13 +222,11 @@ const POLLEN_BLOOM_SHORT := "×%d"
 # Pollen from play (presentation/pollen_play_page.gd, pollen board 7b). Every
 # number in these lines comes from the server.
 const POLLEN_PLAY_TITLE := "Pollen"
-const POLLEN_PLAY_SUBTITLE := "A week away costs you nothing."
 const POLLEN_PLAY_LOADING := "Loading your Pollen…"
 const POLLEN_PLAY_OFFLINE := "Your Pollen did not load. Try again in a moment."
 const POLLEN_PLAY_RETRY := "Try again"
 const POLLEN_PLAY_BACK := "Back"
 const POLLEN_TURNS_TITLE := "Turns with friends"
-const POLLEN_TURNS_NOTE := "A turn counts once the server accepts it. Longer and harder chapters pay more, and playing well adds a little."
 const POLLEN_BANK_COUNT := "full rate turns in your bank"
 const POLLEN_BANK_COUNT_ONE := "full rate turn in your bank"
 const POLLEN_BANK_REFILL := "+%d every Monday"
@@ -243,7 +244,6 @@ const POLLEN_TURN_LATE := "From an earlier week, so it paid a little."
 const POLLEN_TURN_BONUS_JOIN := " · "
 const POLLEN_TURNS_NONE := "No turns yet. A turn with a friend earns Pollen."
 const POLLEN_CLEARS_TITLE := "First chapter clears"
-const POLLEN_CLEARS_NOTE := "Once per chapter, solo or together."
 const POLLEN_CLEAR_EARNED := "+%s earned"
 const POLLEN_CLEARS_FULL_JOURNEY := "Full Journey chapters pay more."
 const POLLEN_CLEARS_HARD := "Your first Hard clear together pays the same amount again"
@@ -287,6 +287,8 @@ const POLLEN_ODDS_PAID := "Paid chapters never bloom, and Full Journey never cha
 const WARDROBE_OPEN := "Wardrobe"
 const WARDROBE_TITLE := "Wardrobe"
 const WARDROBE_BACK := "Back"
+## The Home square beside Back on the menu screens (presentation/kit/home_square.gd).
+const MENU_HOME := "Home"
 ## Under the picked item's name: its slot and tier ("Hat, Common").
 const WARDROBE_FACTS := "%s, %s"
 const WARDROBE_NOTE := "Customize your little pip!"
@@ -377,6 +379,9 @@ const WARDROBE_SHORT_BUNDLE_GETS := " Pollen"
 const WARDROBE_SHORT_BUNDLE_GETS_GIFT := " Pollen with your first bundle gift"
 ## The balance chip's left half, for screen readers.
 const POLLEN_CHIP_BALANCE := "Pollen: %s"
+## A chip's amount before the first balance arrives (presentation/kit/pollen_chip.gd), and what a screen reader says for it.
+const CHIP_WAITING := "···"
+const CHIP_WAITING_SPOKEN := "loading"
 
 # The Pollen store (board 2: presentation/pollen_store_page.gd, pollen_store_flow.gd).
 const POLLEN_STORE_TITLE := "Store"
@@ -511,7 +516,6 @@ const ORCHARD_ERRORS := {
 # pollen_turns_view.gd, chapter_controls.gd). Amounts come in grouped.
 ## The Fruits page (board 6a): its header, and its states before the history is in.
 const FRUITS_PAGE_TITLE := "Fruits"
-const FRUITS_PAGE_SUBTITLE := "Rare, and they never expire."
 const FRUITS_PAGE_BACK := "Back"
 const FRUITS_PAGE_LOADING := "Loading your Fruits…"
 const FRUITS_PAGE_OFFLINE := "Your Fruits did not load. Try again in a moment."
@@ -635,11 +639,9 @@ const FACE_DROWSY := "Drowsy"
 const FACE_GASP := "Gasp"
 const FACE_PEEKABOO := "Peekaboo"
 const FACE_YAY := "Yay"
-const FACE_SMITTEN := "Smitten"
 const FACE_STARRY := "Starry"
 const FACE_FLOWER := "Flower"
 ## The six pack faces sold one at a time (content/cosmetics/faces.gd).
-const FACE_HEART_EYES := "Heart eyes"
 const FACE_PROUD := "Proud"
 const FACE_WINK := "Wink"
 const FACE_WOW := "Wow"
@@ -658,10 +660,10 @@ const REACTION_SLOT_SIXTH := "Sixth reaction slot"
 ## The faces, by id (services/reaction_catalog.gd). The heart is icon only; its name is for screen readers.
 const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
 	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love",
-	"heart_eyes": FACE_HEART_EYES, "proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
+	"proud": FACE_PROUD, "wink": FACE_WINK, "wow": FACE_WOW, "crying": FACE_CRYING, "dizzy": FACE_DIZZY,
 	"aww": FACE_AWW, "shy": FACE_SHY, "huh": FACE_HUH, "please": FACE_PLEASE, "touched": FACE_TOUCHED, "lucky": FACE_LUCKY,
 	"giggle": FACE_GIGGLE, "curious": FACE_CURIOUS, "nervous": FACE_NERVOUS, "drowsy": FACE_DROWSY, "gasp": FACE_GASP,
-	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "smitten": FACE_SMITTEN, "starry": FACE_STARRY, "flower": FACE_FLOWER}
+	"peekaboo": FACE_PEEKABOO, "yay": FACE_YAY, "starry": FACE_STARRY, "flower": FACE_FLOWER}
 ## The reaction packs (services/reaction_catalog.gd PACKS), and the faces card's
 ## tab for the everyday faces beside a tab per owned pack.
 const FACE_PACK_NAMES := {"garden_faces": "Garden faces", "big_feelings": "Big feelings"}
@@ -839,7 +841,6 @@ const ROOM_LEAVE_IN_PLAY := "Your friend is playing this room again, so you can'
 # chapter's title, a count or one of the keepsake's own words below) and the counts.
 const HOME_INVITE := "Invite your friends"
 const KEEPSAKE_NEXT := "Clear %s to earn it."
-const KEEPSAKE_NEXT_EARLIER := "Clear an earlier island to light the first lantern."
 const KEEPSAKE_STARTED := "%d of %d stages done. Clear %s to earn it."
 const KEEPSAKE_MIXED := "Every stage done. Clear them all solo or all with a friend."
 const KEEPSAKE_FRIEND_PART := "Cleared. %d of %d stages done with a friend."
@@ -848,9 +849,6 @@ const KEEPSAKE_WANTS_HARD := "Cleared. Hard next, for the %s."
 const KEEPSAKE_WANTS_HARD_TOGETHER := "Cleared together. Hard next, for the %s."
 const KEEPSAKE_WANTS_TOP := "Cleared on Hard. Play Hard with a friend for the %s."
 const KEEPSAKE_DONE := "Cleared every way. Tap it to %s."
-const KEEPSAKE_LANTERNS_WANT_TOGETHER := "%d of %d lanterns lit. Play the free islands together for the %s."
-const KEEPSAKE_LANTERNS_LIT := "%d of %d lanterns lit, with the %s."
-const KEEPSAKE_LANTERNS_DONE := "Every lantern lit. Tap it to %s."
 const KEEPSAKE_COUNT := "Keepsakes %d / %d"
 const KEEPSAKE_UPGRADE_COUNT := "Upgrades %d / %d"
 const KEEPSAKE_HARD_COUNT := "Hard %d / %d"
@@ -910,9 +908,6 @@ const KEEPSAKE_TIDE_POOL_ACTION := "Turn the tide"
 const KEEPSAKE_TIDE_POOL_TOGETHER := "rock pool"
 const KEEPSAKE_TIDE_POOL_HARD := "tide post"
 const KEEPSAKE_TIDE_POOL_TOP := "gold lantern"
-const KEEPSAKE_LANTERN_WALK_NAME := "Lantern Walk"
-const KEEPSAKE_LANTERN_WALK_ACTION := "Light the lanterns"
-const KEEPSAKE_LANTERN_WALK_TOGETHER := "mint bunting"
 # What's new: the Home button and Settings row, the card's version line, its link
 # to every release's notes, its close button, and the tip under the Home button
 # after an update. Earlier versions opens the list of every version before this
@@ -975,7 +970,7 @@ const SETTINGS_RESET_GRAPHICS := "Reset graphics"
 const SETTINGS_RESET_GRAPHICS_CONFIRM := "Reset graphics to default?"
 const SETTINGS_RESET := "Reset"
 const SETTINGS_CANCEL := "Cancel"
-const SETTINGS_ONLINE_STATUS_NOTE := "Friends and room partners can see when you're here."
+const SETTINGS_ONLINE_STATUS_NOTE := "Friends and people you share a room with can see when you're here."
 const SETTINGS_RECOVERY_DETAILS_NOTE := "Your identity and recovery code."
 const SETTINGS_RECOVERY_DETAILS_HIDE := "Hide my recovery details"
 const SETTINGS_HOSTING_ACCESS_NOTE := "Ask the server what you can host."
@@ -997,7 +992,7 @@ const SETTINGS_ASSISTANCE_CONFIRM_ACCEPT := "Turn on"
 const SETTINGS_ONLINE_STATUS := "Share online status"
 ## Leaderboards (presentation/leaderboard_screen.gd and the Friends setting).
 const SETTINGS_LEADERBOARD_NAME := "Show my name on leaderboards"
-const SETTINGS_LEADERBOARD_NAME_NOTE := "Your name shows only when your partner shows theirs too. Until then your runs show as A pair."
+const SETTINGS_LEADERBOARD_NAME_NOTE := "Your name shows only when your friend shows theirs too. Until then your runs show as A pair."
 const LEADERBOARDS := "Leaderboards"
 const LEADERBOARD_FASTEST_PAIR := "Fastest pair"
 const LEADERBOARD_ALL_TIME := "All time"
@@ -1015,7 +1010,7 @@ const LEADERBOARD_TIME := "Time"
 const LEADERBOARD_WAITING_CHECK := "Waiting to be checked"
 ## The card beside the board while a run of this player's waits there for its replay check, and its time.
 const LEADERBOARD_RUN_CHECKING := "Your time is being checked"
-const LEADERBOARD_RUN_CHECKING_NOTE := "You and your partner see its place now. Others see it once the check passes."
+const LEADERBOARD_RUN_CHECKING_NOTE := "You and your friend see its place now. Others see it once the check passes."
 const LEADERBOARD_SHARED_BOARD := "Normal runs and duel runs share this board."
 const LEADERBOARD_EMPTY := "No times here yet. Finish this chapter together to set the first one."
 const LEADERBOARD_NO_RUN := "Finish this chapter with a friend and your best time shows here."
@@ -1036,11 +1031,11 @@ const BOARD_LINE_NOT_LISTED := "Your time %s didn't make the leaderboard."
 ## While the server posts only runs whose players both sign in to Play Games or Game Center
 ## (backend leaderboards/platform-rule.ts). "%s": "Play Games" or "Game Center".
 const BOARD_LINE_PLATFORM_YOU := "Sign in to %s to post your time."
-const BOARD_LINE_PLATFORM_PARTNER := "Your partner needs to sign in to Play Games or Game Center to post this time."
+const BOARD_LINE_PLATFORM_PARTNER := "Your friend needs to sign in to Play Games or Game Center to post this time."
 const BOARD_LINE_SIGN_IN := "Sign in"
 ## Under "Your best" on the board for the same case ("%s" as above).
 const LEADERBOARD_OWN_PLATFORM_YOU := "Sign in to %s to post your times."
-const LEADERBOARD_OWN_PLATFORM_PARTNER := "This time posts once your partner signs in to Play Games or Game Center."
+const LEADERBOARD_OWN_PLATFORM_PARTNER := "This time posts once your friend signs in to Play Games or Game Center."
 ## A note on Home while a run of this player's waits for its check ("%s": its time).
 const BOARD_HOME_CHECKING := "Your time %s is being checked for the leaderboard."
 const LEADERBOARD_REPORT := "Report"
@@ -1090,7 +1085,7 @@ const DUELS_EMPTY_TITLE := "No duels yet"
 const DUELS_LOADING := "Loading your duels"
 const DUELS_FAILED := "Your duels did not load. Try again in a moment."
 const DUELS_NO_PARTY := "Pick a friend to duel with. Pairs play every duel together."
-const DUELS_PARTY_INVITED := "%s asked you to be their duel partner."
+const DUELS_PARTY_INVITED := "%s asked you to duel together."
 const DUELS_PARTY_WAITING := "Waiting for %s to say yes."
 const DUELS_BOOST := "+%d%% Pollen"
 const DUELS_BOOST_NOTE := "For both of you in this party."
@@ -1117,17 +1112,19 @@ const DUELS_PARTY_FRIENDS_ONLY := "Only your friends can join your party."
 const DUELS_PARTY_ASK := "Ask"
 const DUELS_PARTY_ASKED := "Asked"
 const DUELS_PARTY_SAY_YES := "Say yes"
+## Home's card for a friend's invite (presentation/redo_home_card.gd), whose title is DUELS_PARTY_INVITED without its full stop.
+const DUELS_PARTY_SEE_INVITE := "See invite"
 const DUELS_PARTY_LEAVE := "Leave party"
 const DUELS_PARTY_NO_FRIENDS := "Add a friend first. Friends you add show here."
 ## Starting a duel.
 const DUELS_PICK_PAIR := "Pick a pair"
 const DUELS_PICK_CHAPTER := "Pick a chapter"
-const DUELS_FRIEND_NO_PARTNER := "That friend has no duel partner yet."
+const DUELS_FRIEND_NO_PARTNER := "That friend isn't in a duel pair yet."
 const DUELS_SEND := "Send challenge"
 const DUELS_SENT := "Challenge sent."
 ## Racing a recording.
 const DUELS_GHOST_TITLE := "Race a recorded run"
-const DUELS_GHOST_SUBTITLE := "Beat the time with your partner."
+const DUELS_GHOST_SUBTITLE := "Beat the time with your friend."
 const DUELS_GHOST_DEVELOPERS := "Our run"
 ## A chapter's leaderboard button, and the same button greyed while its board has no times.
 const RACE_PICK_TOP := "Top 10"
@@ -1165,8 +1162,8 @@ const DUEL_LEAVE_KEEP := "Stay"
 ## Names, turns and results.
 const DUEL_YOU := "You"
 const DUEL_PAIR := "%s + %s"
-const DUEL_PARTNER := "your partner"
-const DUEL_PARTNER_OF := "%s's partner"
+const DUEL_PARTNER := "your friend"
+const DUEL_PARTNER_OF := "%s's friend"
 const DUEL_THEIR_PAIR := "Their pair"
 const DUEL_GHOST_PAIR := "Recorded run"
 const DUEL_RECORDED := "Recorded"
@@ -1296,6 +1293,8 @@ const PUBLIC_OPEN_PAIR := "Open pair"
 const PUBLIC_OPEN_SPOT := "%s + open spot"
 const PUBLIC_NOBODY_YET := "Nobody yet"
 const PUBLIC_WAITING_PARTNER := "Waiting for a partner"
+## The player beside you in a public duel, when no name shows (DUEL_PARTNER is a friend).
+const PUBLIC_DUEL_PARTNER := "your partner"
 const PUBLIC_WAITING_THEM := "Waiting for them"
 const PUBLIC_GO_FIRST := "You go first for your pair."
 const PUBLIC_EITHER_FIRST := "You or %s can go first."
@@ -1362,7 +1361,7 @@ const SETTINGS_RECOVER := "Recover a previous identity"
 const SETTINGS_DELETE_IDENTITY := "Delete online identity…"
 const SETTINGS_FINISH_RECOVERY := "Finish identity recovery"
 const SETTINGS_CLOSE_APP := "Close After You"
-const SETTINGS_CREATE_IDENTITY := "Create anonymous identity"
+const SETTINGS_CREATE_IDENTITY := "Create online identity"
 const SETTINGS_CHECK_IDENTITY := "Check saved identity"
 const SETTINGS_RETRY_CLEANUP := "Retry device cleanup"
 const SETTINGS_COMMUNITY := "Community & privacy"
@@ -1461,7 +1460,9 @@ const ROOM_OPTIONS_INVITE := "Invite"
 const ROOM_OPTIONS_TURNS := "Turns"
 const ROOM_OPTIONS_CHAPTER := "Chapter"
 const ROOM_OPTIONS_SAFETY := "Safety"
-const ROOM_OPTIONS_PARTNER := "Room partner"
+## The way to report or block a room partner: the Room options row and the pause cards' flag.
+const REPORT_OR_BLOCK := "Report or block player"
+const ROOM_OPTIONS_PARTNER := "Friends"
 # A friend's redo request in Together rooms (presentation/redo_flow.gd,
 # presentation/redo_home_card.gd). %s is the friend's name.
 const REDO_ASK := "Ask for a redo"
@@ -1522,13 +1523,13 @@ const CONSERVATORY_RETURNS_TITLE := "The Way Light Returns"
 const CONSERVATORY_RETURNS_HINT_A := "Leave the lower crossing lit and wait in the garden."
 const CONSERVATORY_RETURNS_HINT_B := "Open the return shutter and bring both lights to the garden."
 const LONG_WAY_HOME_TITLE := "Long Way Home"
-const LONG_WAY_HOME_SUMMARY := "Leave a path for your partner and go back home together."
+const LONG_WAY_HOME_SUMMARY := "Leave a path for your friend and go back home together."
 const LONG_WAY_HOME_COMPLETION := "You're both at home."
 const LONG_WAY_HOME_PATH_TITLE := "The Path You Leave"
-const LONG_WAY_HOME_PATH_HINT_A := "Leave a trail for your partner and then go to the garden on your own."
+const LONG_WAY_HOME_PATH_HINT_A := "Leave a trail for your friend and then go to the garden on your own."
 const LONG_WAY_HOME_PATH_HINT_B := "Reach the garden."
 const LONG_WAY_HOME_PLACE_TITLE := "A Place Beside You"
-const LONG_WAY_HOME_PLACE_HINT_A := "Pick a window to greet your partner when they come home."
+const LONG_WAY_HOME_PLACE_HINT_A := "Pick a window to greet your friend when they come home."
 const LONG_WAY_HOME_PLACE_HINT_B := "Follow the open path and light the second window."
 const LONG_WAY_HOME_V2_PLACE_HINT_A := "Wait at the porch window or light the hall lamp and wait at the garden window."
 const LONG_WAY_HOME_V2_PLACE_HINT_B := "Follow the trail they left behind. Match the gate to the lamp and light the second window."
@@ -1544,10 +1545,10 @@ const WISHING_WELL_BACK_HINT_A := "They're still holding on. Bring the ladder do
 const WISHING_WELL_BACK_HINT_B := "Get out of the well and sound the bell."
 
 const TURN_OF_THE_TIDE_TITLE := "Turn of the Tide"
-const TURN_OF_THE_TIDE_SUMMARY := "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across."
+const TURN_OF_THE_TIDE_SUMMARY := "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across."
 const TURN_OF_THE_TIDE_COMPLETION := "The harbour lantern is alight."
 const TURN_OF_THE_TIDE_SET_TITLE := "Set the Tide"
-const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide for your partner and wait on a step by the wheel."
+const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide for your friend and wait on a step by the wheel."
 const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the harbour bell."
 const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
 const TURN_OF_THE_TIDE_SLACK_HINT_A := "Pull what you can reach while the sea is shut. Then open it, pull the rest and turn the sea wheel to your post's level."
@@ -1668,15 +1669,15 @@ const LIGHTHOUSE_PREVIEW_E4B624E028B0 := "Cross to the tower"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_4D47D03902BF := "Tower reached · ring the bell"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_E1B989F40743 := "The lens is not available to your partner yet."
+const LIGHTHOUSE_PREVIEW_E1B989F40743 := "The lens is not available to your friend yet."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_384D841A26F0 := "Your partner still holds the lens"
+const LIGHTHOUSE_PREVIEW_384D841A26F0 := "Your friend still holds the lens"
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_36FD8BD84EAF := "Lens shared · ready to finish"
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_D92D80808C6B := "Your partner does not have enough time to get to the lens."
+const LIGHTHOUSE_PREVIEW_D92D80808C6B := "Your friend does not have enough time to get to the lens."
 # Lighthouse chapter — update hud
-const LIGHTHOUSE_PREVIEW_916B79F531D4 := "Your partner has left the lens for you."
+const LIGHTHOUSE_PREVIEW_916B79F531D4 := "Your friend has left the lens for you."
 # Lighthouse chapter — update hud
 const LIGHTHOUSE_PREVIEW_632EBC193BA2 := "The same light, in its new home"
 # Lighthouse chapter — update hud
@@ -1740,61 +1741,13 @@ const MAIN_73EBEC98C7F5 := "Made for people who live apart but love close togeth
 const MAIN_1DB48306B203 := "Start with some assistance."
 # Chapter selection — body text
 const MAIN_F88B3CEBD7BA := "Provide lift power, then pass a seed to make the garden come alive."
-# Earlier islands selection — body text
-const MAIN_042C89C38B20 := "Do both parts individually, or with a friend when you're ready."
 # Lighthouse preview — toast / status or error
 const MAIN_FCB8424B7F88 := "Complete loading/recovering of your account before opening Full Journey."
 # Chapter preview — toast / status or error
 const MAIN_A776CD47C8D9 := "Do not start another rehearsal until the current online action has concluded."
 # Chapter preview — toast / status or error
 const MAIN_EB8856600899 := "The chapter could not be opened. Your saved journey is kept."
-# Start practice — toast / status or error
-const MAIN_996946E90346 := "Wait until the app confirms that your turn was saved. Once you've done that, you can begin another rehearsal."
-# Start practice — heading / label
-const MAIN_0984B81F14AB := "A little moment, kept."
-# Start practice — body text
-const MAIN_CCB173FD54CF := "You completed this island. Watch both turns together or make another attempt."
-# Legacy island turn introduction — heading / label
-const MAIN_408402D8E83C := "Continue from where they left off."
-# Legacy island turn introduction — body text
-const MAIN_0141427332B8 := "Walk with the thumbstick. Tap the action button when you’re in place. Rehearse as many times as desired."
-# Resume draft — toast / status or error; Toast prefix followed by the recording validation error.
-const MAIN_EA192FA7B9B0 := "This rehearsal could not be resumed. "
-# Legacy recording review — heading / label
-const MAIN_CBFD9EB78DBC := "Look what you made together."
-# Legacy recording review — heading / label
-const MAIN_6F96DCC47A05 := "A moment to be remembered."
-# Legacy recording review — body text
-const MAIN_32A4E00F108C := "The replay of both turns can now be saved."
-# Legacy recording review — body text
-const MAIN_92F966458583 := "Watch your recorded turn before saving it. The recording stays unchanged until you start a new attempt."
-# Legacy recording review — body text
-const MAIN_A01274C34177 := "The seed must be handed off. Your earlier committed recording is safe."
-# Preview — toast / status or error; Toast prefix followed by the recording validation error.
-const MAIN_CD2F00E32FC5 := "This recording is not playable. "
-# Commit turn — toast / status or error; Toast prefix followed by the recording validation error.
-const MAIN_C4E0C9A50B65 := "This turn is not ready to save. "
-# Commit turn — toast / status or error
-const MAIN_1A6455ED3E4B := "Could not save on this device. Your recording is still open."
-# Legacy island completion — heading / label
-const MAIN_754724C78F04 := "After you, a little more life."
-# Legacy island completion — body text
-const MAIN_A74DFEBB0414 := "This island is in your collection. Both recordings will always play simultaneously."
 # React — toast / status or error
-const MAIN_D808B160901A := "Wait until your saved turn has been checked before sending a reaction."
-# React — toast / status or error
-# React — toast / status or error
-const MAIN_5DD61CC297CD := "Send a reaction after opening the completed room."
-# React — toast / status or error
-const MAIN_78DF8178BC2B := "Before your reaction was sent, the room changed. Refresh the room to see what is going on."
-# React — toast / status or error
-const MAIN_B94C73E90E5B := "Your reaction could not be confirmed. Refresh this room to check."
-# Pause — body text
-const MAIN_1A19AF19EDB1 := "Replay is paused."
-# Pause — body text
-const MAIN_9E4FF2796D8F := "Your rehearsal is saved on this device. The clock waits for you."
-# Pause — body text
-const MAIN_359B02B14B2E := "Your rehearsal is still in memory, but this device could not save it. Rehearse and attempt to save again before closing the app."
 # Collection — body text
 const MAIN_43ADB38D37BC := "Complete your first island to keep a replay of both contributions here."
 # Shared replays — body text
@@ -1837,11 +1790,7 @@ const MAIN_F28F6ED35157 := "Wake the Sleeping Lighthouse."
 # Full Journey offer — body text
 const MAIN_772330A32E7D := "Six connected solo stages. Guide beams, carry a lost lens and leave a light for someone coming home."
 # Full Journey offer — body text
-const MAIN_8A5D2C91B813 := "There are five earlier islands included in Full Journey."
-# Full Journey offer — body text
 const MAIN_FAD34E850ED9 := "Solo play is unlocked through test purchases. To host premium islands for a friend, redeem your tester access code in Settings."
-# Full Journey offer — body text
-const MAIN_58C214DFC790 := "Host the earlier islands for a friend. Full Journey is only required for the host."
 # Full Journey purchase offer — body text
 const MAIN_38EAC523F08C := "RevenueCat Test Store · Test checkout; no real money is charged."
 # Full Journey unlocked — body text
@@ -1868,8 +1817,6 @@ const MAIN_3A4A78824AC3 := "Same island. Your own time."
 const MAIN_C372E9DBD93A := "This build does not have online rooms connected. Your solo recordings are stored on your local machine."
 # Online rooms menu — body text
 const MAIN_F87B75B52317 := "Invite a friend using a room code. Both of you install After You; neither needs to wait online."
-# Online rooms menu — body text
-const MAIN_E0448D410D86 := "Chapter rooms are used by First Steps and Relay. If you are looking for an older room, select an earlier island."
 # Relay available — toast / status or error
 const MAIN_8184DEB41266 := "Wait until the current island request has been checked before opening another online chapter."
 # Relay rooms — toast / status or error
@@ -1900,48 +1847,12 @@ const MAIN_3E8E7DA4CEE6 := "Online identity storage requires the Android app."
 const MAIN_F0A53024D858 := "Your saved identity could not be checked. Use Settings → Account & recovery to retry or recover it. No replacement has been made."
 # Ensure identity — toast / status or error
 const MAIN_71B742112D9F := "This device could not secure the online identity, so online play has not started."
-# Accept room — toast / status or error
-const MAIN_22FBAEF49772 := "The room response was not complete. Your saved turn is unchanged."
-# Legacy shared room — heading / label
-const MAIN_8046BBD776CA := "A place for the two of you."
 # Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
 const MAIN_1AAC5BE95E22 := "Your turn is ready."
-# Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
-const MAIN_FAC85D5E6CA7 := "You made it bloom."
-# Legacy shared room — body text; Room status: %d is island number; %s is one of the turn-status strings.
-const MAIN_BD6413254AB9 := "Your friend’s turn. Return at any time."
-# Legacy shared room — body text
-const MAIN_52C04F6029F5 := "A submission that has been saved must be checked for receipt before another turn can be sent."
-# Commit online — toast / status or error
-const MAIN_2FB9511D4AA8 := "Before saving this rehearsal, refresh the room."
-# Commit online — toast / status or error
-const MAIN_9F721149F702 := "The submission could not be saved safely. Nothing was sent."
-# Send pending — toast / status or error
-const MAIN_B701225FD961 := "Your turn was saved on the server, but this device still needs to save its receipt."
-# Send pending — toast / status or error; Toast suffix after the server error.
-const MAIN_F7B46601CBC3 := " Refresh before trying again."
-# Reconcile pending — toast / status or error
-const MAIN_ECBD713D8F0C := "This is a saved submission from your previous identity. Recover that identity to check its receipt."
-# Reconcile pending — message
-const MAIN_52480E5314F5 := "This room is no longer available for this identity. The rehearsal will remain saved on this device, but will not be submitted again."
-# Reconcile pending — toast / status or error; Toast suffix after the server error.
-const MAIN_602A7BD28B67 := " The submission is saved and still on hold."
-# Reconcile pending — toast / status or error
-const MAIN_A917FC21E486 := "Your saved turn is confirmed in the room."
-# Held turn — heading / label
-const MAIN_2A20737AA436 := "Your rehearsal is still here."
-# Held turn — body text
-const MAIN_6D127185ABF4 := "The room changed before this turn could be saved."
-# Held turn — body text
-const MAIN_BCD95F847CF2 := "Save this recording locally and go back to the current room. It will not be automatically resubmitted."
-# Confirm fork — heading / label
-const MAIN_F817D954E490 := "Start a new attempt?"
-# Confirm fork — body text
-const MAIN_C9DD5A234C97 := "The first turn and the second turn will be replaced. The new attempt will be visible to both players."
 # Account and recovery — message
 const MAIN_EC79109D7607 := "This device still has to complete local cleanup."
 # Account and recovery — body text
-const MAIN_F890477C65DE := "Your identity is anonymous. Android keeps device credentials in its encrypted storage. Your recovery code gives access to your online identity; keep it private."
+const MAIN_F890477C65DE := "Your identity isn't linked to your name or email. Android keeps device credentials in its encrypted storage. Your recovery code gives access to your online identity; keep it private."
 # Account and recovery — body text
 const MAIN_93BF3A28C6F9 := "An identity recovery is saved on this device. Complete that request before you use online rooms."
 # Account and recovery — body text
@@ -2004,7 +1915,7 @@ const MAIN_3A8CB7C5D89F := "Recovery was not confirmed yet. Retry the same saved
 # removal, and the Settings note for a saved request that cannot be read.
 const RECOVERY_DISCARD := "Stop this recovery"
 const RECOVERY_DISCARD_TITLE := "Stop this recovery?"
-const RECOVERY_DISCARD_WARNING := "If the identity you tried to recover still exists, it keeps its rooms and friends, and its current recovery code can still bring it back. This device then checks its own saved identity again, or starts a new anonymous one if it has none."
+const RECOVERY_DISCARD_WARNING := "If the identity you tried to recover still exists, it keeps its rooms and friends, and its current recovery code can still bring it back. This device then checks its own saved identity again, or starts a new one if it has none."
 const RECOVERY_DISCARD_CONFIRM := "Stop recovery"
 const RECOVERY_DISCARD_FAILED := "This device could not remove the saved recovery request. Try again."
 const RECOVERY_DISCARD_UNUSABLE_NOTE := "The recovery request saved on this device can't be finished."
@@ -2054,12 +1965,6 @@ const MAIN_5367370EB8BE := "Your online identity is deleted."
 const MAIN_DB7ADD49F62D := "Your solo progress remains here. Close and reopen the app before making another online identity."
 # Saved online rooms — body text
 const MAIN_1AF3E273600E := "Create an island room or join a friend's invitation to begin."
-# Apply foreground response — toast / status or error
-const MAIN_076E60DB25EC := "The room could not refresh. The rehearsal you have saved is not modified."
-# Apply foreground response — toast / status or error
-const MAIN_09164F93CEA2 := "It is your turn. You can record your next contribution."
-# Notification — toast / status or error
-const MAIN_A3FDAA4A9D35 := "The rehearsal failed to be saved. Leave the app open and try again."
 # Setup turn notifications — toast / status or error
 const MAIN_6FE6B224FD24 := "A shared room notification is prepared. Your current rehearsal is kept."
 # Turn notification settings — heading / label
@@ -2074,10 +1979,6 @@ const MAIN_55E41B8A33F9 := "You can delay your notification. Go back to rooms wh
 const MAIN_15214ED7911C := "That notification's room could not be opened. The work you have saved is not altered."
 # Notification route — toast / status or error
 const MAIN_310F42091578 := "The room notification could not be confirmed. Your saved work is unchanged."
-# Notification route — toast / status or error
-const MAIN_6DE42F59590C := "This room requires a compatible app. Your saved work is kept."
-# Notification route — toast / status or error
-const MAIN_22017C43B345 := "This room could not be saved on your device. Your previous room is kept."
 # Notification route — toast / status or error
 const MAIN_F4F6AF4420A6 := "This chapter needs a compatible app. Your saved work is kept."
 # Notification route — toast / status or error
@@ -2094,8 +1995,6 @@ const MAIN_B39BBA0B04B0 := "You must have an Android identity. Your existing sav
 const MAIN_A44444872701 := "Redeem a tester code once to unlock Full Journey. This identity can then use its securely saved tester access offline. Tester access is separate from a store purchase."
 # Tester access form — body text
 const MAIN_2E2A18416368 := "Recovered your identity or changed devices? Restore its existing tester access once while online."
-# Active tester access — body text
-const MAIN_A72C1BFFB5C9 := "You now have access to Full Journey, which includes six Lighthouse stages and five earlier islands. This identity's tester access is saved on this device for offline play."
 # Request tester access — body text
 const MAIN_C7E8A28B2803 := "An internet connection is needed for this check. Your purchase records and saved journeys stay unchanged."
 # Request tester access — message
@@ -2226,124 +2125,8 @@ const BEAM_FIELD_040A3B136A0E := "Active overrides must be a bounded object."
 const BEAM_FIELD_9D3F80045721 := "Overrides must be based on existing optical IDs."
 # Additional source scan; review surrounding UI flow
 const BEAM_FIELD_2BA97C2AA40E := "Unsupported active property of this optical entity."
-# Original island levels — First Light; first-player instructions
-const LEVELS_FCAAB14393CE := "Step on the glowing plate. Tap Throw and stay on the plate for your friend."
-# Original island levels — First Light; second-player instructions
-const LEVELS_F0CF60646202 := "Cross the bridge. Grab the seed close to the landing ring and take it to the garden."
-# Original island levels — Long Way Home; level subtitle
-const LEVELS_AD9C71391AE7 := "A little detour is still a way together."
-# Original island levels — Long Way Home; first-player instructions
-const LEVELS_8458EB83A8E6 := "Find the plate by the upper bridge. Throw from the plate and hold the way open."
-# Original island levels — Long Way Home; second-player instructions
-const LEVELS_FB8A19E4C344 := "Find the upper crossing before running for the landing ring."
-# Original island levels — Patient Garden; first-player instructions
-const LEVELS_D8035F26B3AC := "Your seed has a long, slow arc. Continue to hold the bridge open and observe it as it moves."
-# Original island levels — Patient Garden; second-player instructions
-const LEVELS_DE8B2984E267 := "Cross first and then follow the landing marker down to the garden."
-# Original island levels — Rising Together; first-player instructions
-const LEVELS_C9270C871E7B := "Stay on the plate after throwing the seed. The plate also raises your friend's garden."
-# Original island levels — Rising Together; second-player instructions
-const LEVELS_515718BC4DDC := "Ride the rising garden, catch the seed, and plant it when the lift is at the top."
-# Original island levels — Across the Blue; level subtitle
-const LEVELS_F7B9CD8B295A := "Leave a trail for your friend, then open another door."
-# Original island levels — Across the Blue; first-player instructions
-const LEVELS_D7DA86B17271 := "Throw from the first plate and then walk onto the second plate. You keep the bridge open with your throw."
-# Original island levels — Across the Blue; second-player instructions
-const LEVELS_83E8B2C01C2B := "When your friend's ghost opens the garden with the second plate, catch the seed."
-# Original island levels — Lantern Crossing; level subtitle
-const LEVELS_14E01148A8DC := "A patient light makes a narrow way."
-# Original island levels — Lantern Crossing; first-player instructions
-const LEVELS_3C8421B0B1D9 := "Continue standing on the plate while the lantern is filling. When full, toss the seed. The narrow bridge opens when charged."
-# Original island levels — Lantern Crossing; second-player instructions
-const LEVELS_EB1D58BC28D6 := "Wait for the light to turn on on the bridge, cross near the middle, and then return to the garden with the seed."
-# Original island levels — Two Beats; first-player instructions
-const LEVELS_C52DF6019FEF := "Charge the plate, throw, and then go to the second plate. Both steps are your friend's welcome."
-# Original island levels — Two Beats; second-player instructions
-const LEVELS_34DE370F8E0D := "Cross on the first beat, catch the seed, and wait for the second plate to open the garden."
-# Original island levels — After You; first-player instructions
-const LEVELS_931147CF81E5 := "Charge the bridge and allow the lift to rise. Throw, then open the garden from the second plate."
-# Original island levels — After You; second-player instructions
-const LEVELS_9FFE14D53B34 := "Go over the bridge your friend opened and go on through the garden that is rising. Plant the last seed together."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_B9DBD1FEC911 := "This version is not available for this island. Keep your already-saved turn for a compatible app version."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_732C8A86304F := "Must have a valid first player throw."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_CADBD2D5F1AE := "The previous contribution is not complete or does not replay properly. "
-# Additional source scan; review surrounding UI flow
-const SIMULATION_343AAE8F2694 := "Your turn is ready to preview."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_84F72447759A := "If you try again, your previous saved turn will be safe."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_B88ECE03351A := "This turn is not in play."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_8DF867E0EC3F := "The seed has already been tossed."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_3DDF4545BF87 := "Place your feet on the round plate."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_3F6FC1083B6F := "Hold the plate until its light is full."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_5A7D67E517F0 := "Keep on the plate as the garden rises on its lift."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_BA9D88F62E73 := "Release the action and then tap it again."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_83A4B1CD8694 := "Carry the seed to the flower ring."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_E7A9B58FB218 := "Wait for the other recording to open the garden."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_A69116CCB2F2 := "Wait for the garden to finish rising."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_CDF9705AB9AB := "The seed is not available to catch."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_92E7675E8C04 := "Wait for the seed to come."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_2CA375FFB671 := "Cross the bridge and then walk beside the seed."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_FE700AEC7181 := "Bad integer recording header."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_A7065E0BA136 := "The recording is from a different version of the island."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_EEB6EC15A71F := "Unsupported recording role or tick rate."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_65EE9C1DA03F := "Recording is too long."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_0B3F66E1F8D3 := "Action duration does not match the recording."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_86D5D8A34E00 := "The recording's integrity data is missing."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_74D25DB59148 := "Catch assistance setting is invalid."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_C210FDA75C2E := "The last recording check point is not present."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_16547CE289AD := "The previous recording reference is not included."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_05DFA7C369C1 := "The first turn changed; fork this attempt before replaying."
 # Additional source scan; review surrounding UI flow
 const SIMULATION_88FACE52603B := "Actions are taken after a turn is completed."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_9F3224C1B019 := "A recording checkpoint does not match its actions."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_E24D1B49B27F := "The recording result is not aligned with its actions."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_6ED98B29C4F8 := "Stand on the round plate to open the bridge and throw."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_71A299AFBDA5 := "Stay on the plate until its light is full. Then tap Throw."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_B1028A196B10 := "While your friend's garden is rising, stand on the plate. Once the garden has risen to the top, throw from the plate without getting off."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_A1FC4C4C9D7B := "Open the second plate for your friend."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_E93B731FD846 := "Stay on the plate. Your friend will walk across next to your ghost."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_BC9223BF7105 := "The seed faded. Rehearse again; your friend's recording is still here."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_38BBE45E2EE8 := "You caught it! Tap Plant after carrying the seed to the flower ring."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_2F4C612EABA7 := "Carry the seed to the flower ring before planting."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_CD1E043B50DB := "Wait for your friend's ghost to open the garden from the second plate."
-# Additional source scan; review surrounding UI flow
-const SIMULATION_8F02A0803840 := "Wait until the garden has fully risen before planting."
 # Shared action buttons — record action; tooltip
 const ACTION_BUTTONS_720AD17C8CC7 := "Begin making a recording of this turn."
 # Shared action buttons — resume action; tooltip
@@ -2437,7 +2220,7 @@ const SAFETY_SCREEN_BF2F0442C98C := "Checking with the service, please hold on�
 # Community and privacy screen — Heading or explanatory text (render)
 const SAFETY_SCREEN_25F225BDB8EB := "Choose the reason for your report. This will send the room and photo reference to the developer for review, but will not upload another copy of the photo. Do not give out personal details in subsequent evidence."
 # Community and privacy screen — Heading or explanatory text (render)
-const SAFETY_SCREEN_2FEE2DCBAAB6 := "This prevents new shared-room interaction and partner photo delivery in both directions. Their pictures will be concealed in common replays. Images that are already in your personal library remain in your personal library. Copies cannot be recalled from another person's device. Your recorded contributions are kept."
+const SAFETY_SCREEN_2FEE2DCBAAB6 := "This prevents new shared-room interaction and photo delivery between you in both directions. Their pictures will be concealed in common replays. Images that are already in your personal library remain in your personal library. Copies cannot be recalled from another person's device. Your recorded contributions are kept."
 # Community and privacy screen — Heading or explanatory text (render)
 const SAFETY_SCREEN_9922536928E7 := "Stop checking this saved report?"
 # Community and privacy screen — Heading or explanatory text (render)
@@ -2665,12 +2448,12 @@ const RELAY_ONLINE_SESSION_268ED4C8A12F := "This service does not have online ch
 const RELAY_ONLINE_SESSION_58EDF3D26999 := "The room list could not be verified. Rooms that have been saved are still available."
 # Online chapter room status and errors — Status or error (load lobby)
 const RELAY_ONLINE_SESSION_EDC8E84089EF := "Unsupported data is present in the room list. Saved rooms are kept."
-# Online chapter room status and errors — Status or error (can leave for legacy)
-const RELAY_ONLINE_SESSION_78B4A09B905D := "Do not join an earlier island until the current chapter request has been completed."
-# Online chapter room status and errors — Status or error (can leave for legacy)
+# Online chapter room status and errors — Status or error (can leave the room)
+const RELAY_ONLINE_SESSION_78B4A09B905D := "Wait until the current chapter request has finished."
+# Online chapter room status and errors — Status or error (can leave the room)
 const RELAY_ONLINE_SESSION_800EE194F524 := "Check the saved request to create or join a chapter before continuing."
-# Online chapter room status and errors — Status or error (can leave for legacy)
-const RELAY_ONLINE_SESSION_1BE2F671819A := "Check the current chapter's saved submission before joining an earlier island."
+# Online chapter room status and errors — Status or error (can leave the room)
+const RELAY_ONLINE_SESSION_1BE2F671819A := "Check the current chapter's saved submission before continuing."
 # Online chapter room status and errors — Status or error (create room)
 const RELAY_ONLINE_SESSION_7805B3DE8AEB := "This chapter is not enabled by the service. Existing rooms and local practice are kept."
 # Online chapter room status and errors — Status or error (create room)
@@ -2992,8 +2775,6 @@ const TURN_PHOTO_CONTROLLER_AE5752E9DE40 := "The photo service was not available
 const TURN_PHOTO_CONTROLLER_73EB9E586D0B := "This picture was sent to the original phones. Get its temporary photo transfer (if one was made) on this phone."
 # Reaction photo request and storage errors — Status or error (fail)
 const TURN_PHOTO_CONTROLLER_B32D65DAE5AF := "The image is not available. Try again or pass it up; it doesn't affect your game contribution."
-# Turn recording validation — Status or error (review)
-const TURN_STATE_6DB429755E0C := "There is no recording available."
 # Additional source scan; review surrounding UI flow
 const SIMULATION_2CF4E6F7E5E5 := "Unsupported chapter definition or version."
 # Additional source scan; review surrounding UI flow
@@ -3183,7 +2964,7 @@ const BORROWED_LIGHT_C4669E6E3E4F := "Replay duration or replay integrity checks
 # Additional source scan; review surrounding UI flow
 const BORROWED_LIGHT_AED4B33F5C33 := "Malformed replay integrity check."
 # Lighthouse chapter catalog — borrowed light; hint a
-const STAGE_CATALOG_5CB0F8C748CE := "Leave a light on for your partner."
+const STAGE_CATALOG_5CB0F8C748CE := "Leave a light on for your friend."
 # Lighthouse chapter catalog — borrowed light; hint b
 const STAGE_CATALOG_2D249B804408 := "Locate a bell to ring."
 # Lighthouse chapter catalog — missing piece; hint a
@@ -3191,15 +2972,15 @@ const STAGE_CATALOG_3AC21DFE1370 := "Light a way to the missing lens."
 # Lighthouse chapter catalog — missing piece; hint b
 const STAGE_CATALOG_F928DF96CA2E := "Take the missing lens home."
 # Lighthouse chapter catalog — two promises
-const STAGE_CATALOG_AB2B94CAA7D7 := "Your partner requires additional time in the light."
+const STAGE_CATALOG_AB2B94CAA7D7 := "Your friend requires additional time in the light."
 # Lighthouse chapter catalog — two promises
-const STAGE_CATALOG_73173CD29A96 := "Your partner should have a light to follow."
+const STAGE_CATALOG_73173CD29A96 := "Your friend should have a light to follow."
 # Lighthouse chapter catalog — two promises
 const STAGE_CATALOG_AD4DEFD472A8 := "The light was cut off. Try another turn."
 # Lighthouse chapter catalog — two promises
 const STAGE_CATALOG_93A249472FFA := "The light is not yet ready to save."
 # Lighthouse chapter catalog — two promises; hint a
-const STAGE_CATALOG_6020135FC748 := "Leave one light on for your partner."
+const STAGE_CATALOG_6020135FC748 := "Leave one light on for your friend."
 # Lighthouse chapter catalog — two promises; hint b
 const STAGE_CATALOG_AE526D45F8E5 := "Light both receivers."
 # Lighthouse chapter catalog — two promises; completion message
@@ -3211,7 +2992,7 @@ const STAGE_CATALOG_96788A978EE0 := "Light the second path"
 # Lighthouse chapter catalog — after the first bell
 const STAGE_CATALOG_7220843FC24F := "Start the light sequence over from the beginning."
 # Lighthouse chapter catalog — after the first bell; hint a
-const STAGE_CATALOG_7C53331C7B69 := "Leave a trail of light for your partner."
+const STAGE_CATALOG_7C53331C7B69 := "Leave a trail of light for your friend."
 # Lighthouse chapter catalog — after the first bell; hint b
 const STAGE_CATALOG_76EEF9EFC796 := "Find a way to the tower bell."
 # Lighthouse chapter catalog — after the first bell; completion message
@@ -3219,17 +3000,17 @@ const STAGE_CATALOG_1716777DE4B4 := "You reached the tower and rang its bell. Pr
 # Lighthouse chapter catalog — what carried you; title
 const STAGE_CATALOG_7EF4E1C96BAC := "What Carried You Can Come With You"
 # Lighthouse chapter catalog — what carried you; hint a
-const STAGE_CATALOG_269CDD6F2BE9 := "Leave the lens where your partner can reach it."
+const STAGE_CATALOG_269CDD6F2BE9 := "Leave the lens where your friend can reach it."
 # Lighthouse chapter catalog — what carried you; hint b
 const STAGE_CATALOG_383A6AD272C5 := "Bring the lens to the tower."
 # Lighthouse chapter catalog — what carried you; completion message
 const STAGE_CATALOG_0114C1D56C6E := "The lens is in the tower projector. Preview your turn, then save it."
 # Lighthouse chapter catalog — a welcome left on
-const STAGE_CATALOG_3C6C84A6D7BD := "Your partner should have a light to follow."
+const STAGE_CATALOG_3C6C84A6D7BD := "Your friend should have a light to follow."
 # Lighthouse chapter catalog — a welcome left on
 const STAGE_CATALOG_2C0D4F05AB0E := "The light was cut off. Try another turn."
 # Lighthouse chapter catalog — a welcome left on
-const STAGE_CATALOG_E098029083B0 := "Your partner requires additional time in the light."
+const STAGE_CATALOG_E098029083B0 := "Your friend requires additional time in the light."
 # Lighthouse chapter catalog — a welcome left on
 const STAGE_CATALOG_44C1B603DE80 := "Complete when the upper light is on."
 # Lighthouse chapter catalog — a welcome left on; hint a
@@ -3276,9 +3057,6 @@ const STAGE_CATALOG_24E735096121 := "Catch the seed and put it in the relay sock
 const STAGE_CATALOG_A4E97D8E7D9E := "Remove the seed from the relay. Stand on the next plate to hold it down and throw."
 # V2 chapter catalog — relay isles; hint b
 const STAGE_CATALOG_D433013BE215 := "Follow both bridges, collect the seed and plant it."
-
-# Compact objective caption or numeric display.
-const OBJECTIVE_PANEL_29F874E70B59 := "Bridge charge"
 
 # Compact objective caption or numeric display.
 const LIGHTHOUSE_PREVIEW_D286213698F0 := "Beams together"
@@ -3333,7 +3111,7 @@ const SUBSCRIPTION_TERMS_APP_STORE := "Payment is charged to your Apple Account 
 const SUBSCRIPTION_ACTIVE_IOS := "Your subscription pays for hosting and server costs. You can change or cancel it in the App Store."
 const SUBSCRIPTION_TERMS_OF_USE := "Terms of Use"
 const MAIN_3E8E7DA4CEE6_IOS := "This build has no secure storage for an online identity."
-const MAIN_F890477C65DE_IOS := "Your identity is anonymous. iOS keeps device credentials in its encrypted Keychain. Your recovery code gives access to your online identity; keep it private."
+const MAIN_F890477C65DE_IOS := "Your identity isn't linked to your name or email. iOS keeps device credentials in its encrypted Keychain. Your recovery code gives access to your online identity; keep it private."
 const MAIN_570EC629872D_IOS := "Creating or recovering an online identity requires two things: secure storage on this device and a connection to the service."
 const MAIN_EF43E19393E4_IOS := "Decide if you want to receive notifications when your friend leaves a turn. Tap on a notification to go back to your shared room. Your current turn will not be interrupted."
 const MAIN_B39BBA0B04B0_IOS := "You need an online identity first. Your existing saved data is kept."
@@ -3347,13 +3125,32 @@ const COOPERATIVE_UPPER_PATH_A := "Assist your friend to the loft."
 const COOPERATIVE_UPPER_PATH_B := "Climb up to the bell above."
 const COOPERATIVE_DOWN_AND_AROUND_A := "Open a way through the lower islands."
 const COOPERATIVE_DOWN_AND_AROUND_B := "Arrive at the garden bell."
-const COOPERATIVE_WEIGHT_OF_A_FRIEND_A := "Support your partner in crossing with the ball's weight."
+const COOPERATIVE_WEIGHT_OF_A_FRIEND_A := "Support your friend in crossing with the ball's weight."
 const COOPERATIVE_WEIGHT_OF_A_FRIEND_B := "Find a way to keep both crossings open."
-const COOPERATIVE_BRING_IT_HOME_A := "Return the ball to your partner."
+const COOPERATIVE_BRING_IT_HOME_A := "Return the ball to your friend."
 const COOPERATIVE_BRING_IT_HOME_B := "Roll the ball home."
-const COOPERATIVE_FINISH_ROUTE := "Complete the course with your partner."
+const COOPERATIVE_FINISH_ROUTE := "Complete the course with your friend."
 const COOPERATIVE_LEAVE_BALL := "Leave the ball on the marker.\nYour friend will take over from there."
-const COOPERATIVE_KEEP_CROSSING := "Your partner requires the crossing to remain open."
+const COOPERATIVE_KEEP_CROSSING := "Your friend requires the crossing to remain open."
+const COOPERATIVE_MORE_TIME := "Try again with more time left for your friend."
+const RESERVED_SELECTOR := "Your friend's selector"
+const RESERVED_MIRROR := "Your friend's mirror"
+const RESERVED_CREST := "Your friend's crest"
+const RESERVED_LENS := "Your friend's lens"
+const RECORDING_FIRST_TURN := "The first turn can't have a friend's recording."
+const RECORDING_NOT_READY := "Your friend's recording is not ready."
+const RECORDING_MISMATCH := "Your friend's recording does not match."
+const RECORDING_UNEXPECTED := "This turn should not have a friend's recording."
+## The player's words for lines the simulators keep in their snapshots (pinned by snapshot digests).
+const SNAPSHOT_FRIEND_1 := "Leave the lens where your friend can reach it."
+const SNAPSHOT_FRIEND_2 := "From this moment on, your friend can take the lens."
+const SNAPSHOT_FRIEND_3 := "The lens is not available to your friend yet."
+const SNAPSHOT_FRIEND_4 := "Your friend does not have enough time to get to the lens."
+const SNAPSHOT_FRIEND_5 := "Your friend requires additional light for the first crossing."
+const SNAPSHOT_FRIEND_6 := "Your friend needs more light for the second crossing."
+const SNAPSHOT_FRIEND_7 := "Your friend should have a light to follow."
+const SNAPSHOT_FRIEND_8 := "Your friend requires additional time in the light."
+const SNAPSHOT_FRIEND_9 := "Throw earlier so your friend has time to catch and deliver the seed."
 
 # Notifications screen: the optional alert when a friend asks you to redo your turn.
 const TURN_REQUEST_NOTIFICATIONS := "Also tell me when my friend asks for a redo"
@@ -3403,6 +3200,24 @@ const TEXT := {
 	"cooperative.finish_route": COOPERATIVE_FINISH_ROUTE,
 	"cooperative.leave_ball": COOPERATIVE_LEAVE_BALL,
 	"cooperative.keep_crossing": COOPERATIVE_KEEP_CROSSING,
+	"cooperative.more_time": COOPERATIVE_MORE_TIME,
+	"reserved.selector": RESERVED_SELECTOR,
+	"reserved.mirror": RESERVED_MIRROR,
+	"reserved.crest": RESERVED_CREST,
+	"reserved.lens": RESERVED_LENS,
+	"recording.first_turn": RECORDING_FIRST_TURN,
+	"recording.not_ready": RECORDING_NOT_READY,
+	"recording.mismatch": RECORDING_MISMATCH,
+	"recording.unexpected": RECORDING_UNEXPECTED,
+	"snapshot.friend_1": SNAPSHOT_FRIEND_1,
+	"snapshot.friend_2": SNAPSHOT_FRIEND_2,
+	"snapshot.friend_3": SNAPSHOT_FRIEND_3,
+	"snapshot.friend_4": SNAPSHOT_FRIEND_4,
+	"snapshot.friend_5": SNAPSHOT_FRIEND_5,
+	"snapshot.friend_6": SNAPSHOT_FRIEND_6,
+	"snapshot.friend_7": SNAPSHOT_FRIEND_7,
+	"snapshot.friend_8": SNAPSHOT_FRIEND_8,
+	"snapshot.friend_9": SNAPSHOT_FRIEND_9,
 	"lighthouse_preview.ddc41a9de09f": LIGHTHOUSE_PREVIEW_DDC41A9DE09F,
 	"objective_panel.e08ff54fb4f9": OBJECTIVE_PANEL_E08FF54FB4F9,
 	"objective_panel.0d1ab3f4b1af": OBJECTIVE_PANEL_0D1AB3F4B1AF,
@@ -3410,7 +3225,6 @@ const TEXT := {
 	"lighthouse_preview.3feaadb6698f": LIGHTHOUSE_PREVIEW_3FEAADB6698F,
 	"lighthouse_preview.7d9e3287c90c": LIGHTHOUSE_PREVIEW_7D9E3287C90C,
 	"lighthouse_preview.d286213698f0": LIGHTHOUSE_PREVIEW_D286213698F0,
-	"objective_panel.29f874e70b59": OBJECTIVE_PANEL_29F874E70B59,
 	"lighthouse_preview.e52c132c24be": LIGHTHOUSE_PREVIEW_E52C132C24BE,
 	"lighthouse_preview.da74c3a728fc": LIGHTHOUSE_PREVIEW_DA74C3A728FC,
 	"lighthouse_preview.e51024e31751": LIGHTHOUSE_PREVIEW_E51024E31751,
@@ -3482,33 +3296,9 @@ const TEXT := {
 	"main.73ebec98c7f5": MAIN_73EBEC98C7F5,
 	"main.1db48306b203": MAIN_1DB48306B203,
 	"main.f88b3cebd7ba": MAIN_F88B3CEBD7BA,
-	"main.042c89c38b20": MAIN_042C89C38B20,
 	"main.fcb8424b7f88": MAIN_FCB8424B7F88,
 	"main.a776cd47c8d9": MAIN_A776CD47C8D9,
 	"main.eb8856600899": MAIN_EB8856600899,
-	"main.996946e90346": MAIN_996946E90346,
-	"main.0984b81f14ab": MAIN_0984B81F14AB,
-	"main.ccb173fd54cf": MAIN_CCB173FD54CF,
-	"main.408402d8e83c": MAIN_408402D8E83C,
-	"main.0141427332b8": MAIN_0141427332B8,
-	"main.ea192fa7b9b0": MAIN_EA192FA7B9B0,
-	"main.cbfd9eb78dbc": MAIN_CBFD9EB78DBC,
-	"main.6f96dcc47a05": MAIN_6F96DCC47A05,
-	"main.32a4e00f108c": MAIN_32A4E00F108C,
-	"main.92f966458583": MAIN_92F966458583,
-	"main.a01274c34177": MAIN_A01274C34177,
-	"main.cd2f00e32fc5": MAIN_CD2F00E32FC5,
-	"main.c4e0c9a50b65": MAIN_C4E0C9A50B65,
-	"main.1a6455ed3e4b": MAIN_1A6455ED3E4B,
-	"main.754724c78f04": MAIN_754724C78F04,
-	"main.a74dfebb0414": MAIN_A74DFEBB0414,
-	"main.d808b160901a": MAIN_D808B160901A,
-	"main.5dd61cc297cd": MAIN_5DD61CC297CD,
-	"main.78df8178bc2b": MAIN_78DF8178BC2B,
-	"main.b94c73e90e5b": MAIN_B94C73E90E5B,
-	"main.1a19af19edb1": MAIN_1A19AF19EDB1,
-	"main.9e4ff2796d8f": MAIN_9E4FF2796D8F,
-	"main.359b02b14b2e": MAIN_359B02B14B2E,
 	"main.43adb38d37bc": MAIN_43ADB38D37BC,
 	"main.1e12325b0b49": MAIN_1E12325B0B49,
 	"main.529cfae68df1": MAIN_529CFAE68DF1,
@@ -3529,9 +3319,7 @@ const TEXT := {
 	"main.dd823b20a782": MAIN_DD823B20A782,
 	"main.f28f6ed35157": MAIN_F28F6ED35157,
 	"main.772330a32e7d": MAIN_772330A32E7D,
-	"main.8a5d2c91b813": MAIN_8A5D2C91B813,
 	"main.fad34e850ed9": MAIN_FAD34E850ED9,
-	"main.58c214dfc790": MAIN_58C214DFC790,
 	"main.38eac523f08c": MAIN_38EAC523F08C,
 	"main.c5fdba9ba79b": MAIN_C5FDBA9BA79B,
 	"main.4a6b2c83e605": MAIN_4A6B2C83E605,
@@ -3545,7 +3333,6 @@ const TEXT := {
 	"main.3a4a78824ac3": MAIN_3A4A78824AC3,
 	"main.c372e9dbd93a": MAIN_C372E9DBD93A,
 	"main.f87b75b52317": MAIN_F87B75B52317,
-	"main.e0448d410d86": MAIN_E0448D410D86,
 	"main.8184deb41266": MAIN_8184DEB41266,
 	"main.ed8e80825350": MAIN_ED8E80825350,
 	"main.07713e9cc81e": MAIN_07713E9CC81E,
@@ -3561,25 +3348,7 @@ const TEXT := {
 	"main.3e8e7da4cee6": MAIN_3E8E7DA4CEE6,
 	"main.f0a53024d858": MAIN_F0A53024D858,
 	"main.71b742112d9f": MAIN_71B742112D9F,
-	"main.22fbaef49772": MAIN_22FBAEF49772,
-	"main.8046bbd776ca": MAIN_8046BBD776CA,
 	"main.1aac5be95e22": MAIN_1AAC5BE95E22,
-	"main.fac85d5e6ca7": MAIN_FAC85D5E6CA7,
-	"main.bd6413254ab9": MAIN_BD6413254AB9,
-	"main.52c04f6029f5": MAIN_52C04F6029F5,
-	"main.2fb9511d4aa8": MAIN_2FB9511D4AA8,
-	"main.9f721149f702": MAIN_9F721149F702,
-	"main.b701225fd961": MAIN_B701225FD961,
-	"main.f7b46601cbc3": MAIN_F7B46601CBC3,
-	"main.ecbd713d8f0c": MAIN_ECBD713D8F0C,
-	"main.52480e5314f5": MAIN_52480E5314F5,
-	"main.602a7bd28b67": MAIN_602A7BD28B67,
-	"main.a917fc21e486": MAIN_A917FC21E486,
-	"main.2a20737aa436": MAIN_2A20737AA436,
-	"main.6d127185abf4": MAIN_6D127185ABF4,
-	"main.bcd95f847cf2": MAIN_BCD95F847CF2,
-	"main.f817d954e490": MAIN_F817D954E490,
-	"main.c9dd5a234c97": MAIN_C9DD5A234C97,
 	"main.ec79109d7607": MAIN_EC79109D7607,
 	"main.f890477c65de": MAIN_F890477C65DE,
 	"main.93bf3a28c6f9": MAIN_93BF3A28C6F9,
@@ -3630,9 +3399,6 @@ const TEXT := {
 	"main.5367370eb8be": MAIN_5367370EB8BE,
 	"main.db7add49f62d": MAIN_DB7ADD49F62D,
 	"main.1af3e273600e": MAIN_1AF3E273600E,
-	"main.076e60db25ec": MAIN_076E60DB25EC,
-	"main.09164f93cea2": MAIN_09164F93CEA2,
-	"main.a3fdaa4a9d35": MAIN_A3FDAA4A9D35,
 	"main.6fe6b224fd24": MAIN_6FE6B224FD24,
 	"main.7ee625c6ec26": MAIN_7EE625C6EC26,
 	"main.ef43e19393e4": MAIN_EF43E19393E4,
@@ -3640,8 +3406,6 @@ const TEXT := {
 	"main.55e41b8a33f9": MAIN_55E41B8A33F9,
 	"main.15214ed7911c": MAIN_15214ED7911C,
 	"main.310f42091578": MAIN_310F42091578,
-	"main.6de42f59590c": MAIN_6DE42F59590C,
-	"main.22017c43b345": MAIN_22017C43B345,
 	"main.f4f6af4420a6": MAIN_F4F6AF4420A6,
 	"main.571e92f64ed1": MAIN_571E92F64ED1,
 	"main.be8e691311ee": MAIN_BE8E691311EE,
@@ -3650,7 +3414,6 @@ const TEXT := {
 	"main.b39bba0b04b0": MAIN_B39BBA0B04B0,
 	"main.a44444872701": MAIN_A44444872701,
 	"main.2e2a18416368": MAIN_2E2A18416368,
-	"main.a72c1bffb5c9": MAIN_A72C1BFFB5C9,
 	"main.c7e8a28b2803": MAIN_C7E8A28B2803,
 	"main.b7c7e85171cd": MAIN_B7C7E85171CD,
 	"main.85b232c00485": MAIN_85B232C00485,
@@ -3710,65 +3473,7 @@ const TEXT := {
 	"beam_field.040a3b136a0e": BEAM_FIELD_040A3B136A0E,
 	"beam_field.9d3f80045721": BEAM_FIELD_9D3F80045721,
 	"beam_field.2ba97c2aa40e": BEAM_FIELD_2BA97C2AA40E,
-	"levels.fcaab14393ce": LEVELS_FCAAB14393CE,
-	"levels.f0cf60646202": LEVELS_F0CF60646202,
-	"levels.ad9c71391ae7": LEVELS_AD9C71391AE7,
-	"levels.8458eb83a8e6": LEVELS_8458EB83A8E6,
-	"levels.fb8a19e4c344": LEVELS_FB8A19E4C344,
-	"levels.d8035f26b3ac": LEVELS_D8035F26B3AC,
-	"levels.de8b2984e267": LEVELS_DE8B2984E267,
-	"levels.c9270c871e7b": LEVELS_C9270C871E7B,
-	"levels.515718bc4ddc": LEVELS_515718BC4DDC,
-	"levels.f7b9cd8b295a": LEVELS_F7B9CD8B295A,
-	"levels.d7da86b17271": LEVELS_D7DA86B17271,
-	"levels.83e8b2c01c2b": LEVELS_83E8B2C01C2B,
-	"levels.14e01148a8dc": LEVELS_14E01148A8DC,
-	"levels.3c8421b0b1d9": LEVELS_3C8421B0B1D9,
-	"levels.eb1d58bc28d6": LEVELS_EB1D58BC28D6,
-	"levels.c52df6019fef": LEVELS_C52DF6019FEF,
-	"levels.34de370f8e0d": LEVELS_34DE370F8E0D,
-	"levels.931147cf81e5": LEVELS_931147CF81E5,
-	"levels.9ffe14d53b34": LEVELS_9FFE14D53B34,
-	"simulation.b9dbd1fec911": SIMULATION_B9DBD1FEC911,
-	"simulation.732c8a86304f": SIMULATION_732C8A86304F,
-	"simulation.cadbd2d5f1ae": SIMULATION_CADBD2D5F1AE,
-	"simulation.343aae8f2694": SIMULATION_343AAE8F2694,
-	"simulation.84f72447759a": SIMULATION_84F72447759A,
-	"simulation.b88ece03351a": SIMULATION_B88ECE03351A,
-	"simulation.8df867e0ec3f": SIMULATION_8DF867E0EC3F,
-	"simulation.3ddf4545bf87": SIMULATION_3DDF4545BF87,
-	"simulation.3f6fc1083b6f": SIMULATION_3F6FC1083B6F,
-	"simulation.5a7d67e517f0": SIMULATION_5A7D67E517F0,
-	"simulation.ba9d88f62e73": SIMULATION_BA9D88F62E73,
-	"simulation.83a4b1cd8694": SIMULATION_83A4B1CD8694,
-	"simulation.e7a9b58fb218": SIMULATION_E7A9B58FB218,
-	"simulation.a69116ccb2f2": SIMULATION_A69116CCB2F2,
-	"simulation.cdf9705ab9ab": SIMULATION_CDF9705AB9AB,
-	"simulation.92e7675e8c04": SIMULATION_92E7675E8C04,
-	"simulation.2ca375ffb671": SIMULATION_2CA375FFB671,
-	"simulation.fe700aec7181": SIMULATION_FE700AEC7181,
-	"simulation.a7065e0ba136": SIMULATION_A7065E0BA136,
-	"simulation.eeb6ec15a71f": SIMULATION_EEB6EC15A71F,
-	"simulation.65ee9c1da03f": SIMULATION_65EE9C1DA03F,
-	"simulation.0b3f66e1f8d3": SIMULATION_0B3F66E1F8D3,
-	"simulation.86d5d8a34e00": SIMULATION_86D5D8A34E00,
-	"simulation.74d25db59148": SIMULATION_74D25DB59148,
-	"simulation.c210fda75c2e": SIMULATION_C210FDA75C2E,
-	"simulation.16547ce289ad": SIMULATION_16547CE289AD,
-	"simulation.05dfa7c369c1": SIMULATION_05DFA7C369C1,
 	"simulation.88face52603b": SIMULATION_88FACE52603B,
-	"simulation.9f3224c1b019": SIMULATION_9F3224C1B019,
-	"simulation.e24d1b49b27f": SIMULATION_E24D1B49B27F,
-	"simulation.6ed98b29c4f8": SIMULATION_6ED98B29C4F8,
-	"simulation.71a299afbda5": SIMULATION_71A299AFBDA5,
-	"simulation.b1028a196b10": SIMULATION_B1028A196B10,
-	"simulation.a1fc4c4c9d7b": SIMULATION_A1FC4C4C9D7B,
-	"simulation.e93b731fd846": SIMULATION_E93B731FD846,
-	"simulation.bc9223bf7105": SIMULATION_BC9223BF7105,
-	"simulation.38bbe45e2ee8": SIMULATION_38BBE45E2EE8,
-	"simulation.2f4c612eaba7": SIMULATION_2F4C612EABA7,
-	"simulation.cd1e043b50db": SIMULATION_CD1E043B50DB,
-	"simulation.8f02a0803840": SIMULATION_8F02A0803840,
 	"action_buttons.720ad17c8cc7": ACTION_BUTTONS_720AD17C8CC7,
 	"action_buttons.b35f6908bd12": ACTION_BUTTONS_B35F6908BD12,
 	"action_buttons.e434ab682f32": ACTION_BUTTONS_E434AB682F32,
@@ -4090,7 +3795,6 @@ const TEXT := {
 	"turn_photo_controller.ae5752e9de40": TURN_PHOTO_CONTROLLER_AE5752E9DE40,
 	"turn_photo_controller.73eb9e586d0b": TURN_PHOTO_CONTROLLER_73EB9E586D0B,
 	"turn_photo_controller.b32d65dae5af": TURN_PHOTO_CONTROLLER_B32D65DAE5AF,
-	"turn_state.6db429755e0c": TURN_STATE_6DB429755E0C,
 	"simulation.2cf4e6f7e5e5": SIMULATION_2CF4E6F7E5E5,
 	"simulation.d25439f75f03": SIMULATION_D25439F75F03,
 	"simulation.25877edfe987": SIMULATION_25877EDFE987,
@@ -4259,26 +3963,25 @@ const CANONICAL_KEYS := {
 	"Finish the route with your partner.": "cooperative.finish_route",
 	"Leave the ball where your partner can take over.": "cooperative.leave_ball",
 	"Keep the crossing ready for your partner.": "cooperative.keep_crossing",
+	"Try again with more time left for your partner.": "cooperative.more_time",
+	"Partner's selector": "reserved.selector",
+	"Partner's mirror": "reserved.mirror",
+	"Partner's crest": "reserved.crest",
+	"Partner's lens": "reserved.lens",
+	"The first turn cannot contain a partner recording.": "recording.first_turn",
+	"The partner recording is not ready.": "recording.not_ready",
+	"The partner recording does not match.": "recording.mismatch",
+	"Unexpected partner recording.": "recording.unexpected",
+	"Leave the lens where your partner can reach it.": "snapshot.friend_1",
+	"From this moment on, your partner can take the lens.": "snapshot.friend_2",
+	"The lens is not available to your partner yet.": "snapshot.friend_3",
+	"Your partner does not have enough time to get to the lens.": "snapshot.friend_4",
+	"Your partner requires additional light for the first crossing.": "snapshot.friend_5",
+	"Your partner needs more light for the second crossing.": "snapshot.friend_6",
+	"Your partner should have a light to follow.": "snapshot.friend_7",
+	"Your partner requires additional time in the light.": "snapshot.friend_8",
+	"Throw earlier so your partner has time to catch and deliver the seed.": "snapshot.friend_9",
 	"You were here. I was here. We made this.": "relay_preview.afc92040f3db",
-	"Stand on the glowing plate. Tap Throw, then stay there for your friend.": "levels.fcaab14393ce",
-	"Cross the bridge. Catch the seed near its landing ring, then bring it to the garden.": "levels.f0cf60646202",
-	"A little detour is still a way together.": "levels.ad9c71391ae7",
-	"Find the plate by the upper bridge. Throw from the plate and hold the way open.": "levels.8458eb83a8e6",
-	"Find the upper crossing before running for the landing ring.": "levels.fb8a19e4c344",
-	"Your seed takes a long, gentle arc. Hold the bridge and watch it travel.": "levels.d8035f26b3ac",
-	"Cross first, then follow the landing marker down to the garden.": "levels.de8b2984e267",
-	"Keep the plate held after your throw. It also raises your friend's garden.": "levels.c9270c871e7b",
-	"Ride the rising garden, catch the seed, then plant it when the lift reaches the top.": "levels.515718bc4ddc",
-	"Leave a path, then open another door.": "levels.f7b9cd8b295a",
-	"Throw from the first plate, then walk onto the second plate. Your throw keeps the bridge open.": "levels.d7da86b17271",
-	"Catch the seed while your friend's ghost opens the garden with the second plate.": "levels.83e8b2c01c2b",
-	"A patient light makes a narrow way.": "levels.14e01148a8dc",
-	"Hold the plate until the lantern fills, then throw. The narrow bridge opens when charged.": "levels.3c8421b0b1d9",
-	"Wait for the bridge's light, cross near its center, then carry the seed back to the garden.": "levels.eb1d58bc28d6",
-	"Charge the plate, throw, then move to the second plate. Both steps become your friend's welcome.": "levels.c52df6019fef",
-	"Cross on the first beat, catch the seed, and wait for the second plate to open the garden.": "levels.34de370f8e0d",
-	"Charge the bridge and let the lift rise. Throw, then open the garden from the second plate.": "levels.931147cf81e5",
-	"Follow your friend's path through the bridge and rising garden. Plant your last seed together.": "levels.9ffe14d53b34",
 	"Stand on the power pad. Keep it glowing, then finish your recording.": "stage_catalog.2c27c6d030c4",
 	"Step onto the low lift. Ride up, walk to the bell and ring it.": "stage_catalog.9c41fef5e8f3",
 	"Take the seed upstairs. Throw from the marked edge, then open the garden with the other pad.": "stage_catalog.e2903051e240",

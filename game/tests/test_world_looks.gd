@@ -14,8 +14,9 @@ const Batch = preload("res://presentation/kit/static_batch.gd")
 ## geometry, shown or hidden), about a fifth above what it used when the kit
 ## began sharing looks (Turn of the Tide: 309 against 1,936 before).
 const MOST_MATERIALS := {
-	"first-steps@1": [74, 74],
-	"relay-isles@2": [72, 74],
+	"first-steps@1": [104, 104],
+	# Relay Isles' garden crossing (2026-11-15); train/scene-perf replaces these caps.
+	"relay-isles@2": [77, 77],
 	"high-and-low@1": [76, 94],
 	"rolling-home@1": [87, 95],
 	"a-house-for-two@1": [80, 99],
@@ -30,7 +31,7 @@ const MOST_MATERIALS := {
 ## Of those, the most that are not the kit's shared looks: materials a world
 ## made itself (water, glass, lamps, plates, spirits and their faces).
 const MOST_OWN := {
-	"first-steps@1": [24, 24],
+	"first-steps@1": [21, 21],
 	"relay-isles@2": [25, 25],
 	"high-and-low@1": [19, 24],
 	"rolling-home@1": [23, 28],

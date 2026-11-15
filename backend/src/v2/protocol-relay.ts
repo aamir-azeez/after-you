@@ -1,3 +1,4 @@
+import { MAX_PACKED_CHARS, PACKED_KEY } from "./recording-codec";
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object, text } from "../protocol";
 import definition from "./relay-isles.json";
 import initial from "./initial-checkpoint.json";
@@ -51,19 +52,20 @@ export function boundedTurnValue(value: unknown, limits?: { turn_body_bytes: num
 function boundedStructure(value: unknown, bytes: number, maximumNodes: number): void {
   // Iterative preflight bounds untrusted proof trees before recursive JSON
   // serialization or canonical hashing. A checkpoint has at most two ancestors.
-  const pending: { value: unknown; depth: number }[] = [{ value, depth: 0 }];
+  const pending: { value: unknown; depth: number; key?: string }[] = [{ value, depth: 0 }];
   let nodes = 0;
   while (pending.length) {
     const item = pending.pop()!;
     if (++nodes > maximumNodes || item.depth > 16) throw new ApiError(413, "structure_too_large");
     if (typeof item.value === "string") {
-      if (item.value.length > 512) throw new ApiError(400, "invalid_text_length");
+      // A packed record's runs and checks are one string (v2/recording-codec.ts); the byte bound below still holds.
+      if (item.value.length > (item.key === PACKED_KEY ? MAX_PACKED_CHARS : 512)) throw new ApiError(400, "invalid_text_length");
     } else if (typeof item.value === "number") {
       if (!Number.isSafeInteger(item.value)) throw new ApiError(400, "invalid_integer");
     } else if (typeof item.value === "object" && item.value !== null) {
       for (const [key, child] of Object.entries(item.value)) {
         if (key.length > 80) throw new ApiError(400, "invalid_field_name");
-        pending.push({ value: child, depth: item.depth + 1 });
+        pending.push({ value: child, depth: item.depth + 1, key });
         if (pending.length > maximumNodes) throw new ApiError(413, "structure_too_large");
       }
     } else if (item.value !== null && typeof item.value !== "boolean") throw new ApiError(400, "invalid_json_value");

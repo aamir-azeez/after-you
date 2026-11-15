@@ -5,13 +5,13 @@ import worker from "../src/index";
 import { canonicalJson, digest } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { chapter } from "../src/v2/protocol";
-import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
+import type { ChapterCheckpoint, ChapterRecording, JsonChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import native from "../../game/tests/fixtures/comfort8/recordings.json";
 import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string };
-type Proof = { pairs: { a: ChapterRecording; b: ChapterRecording }[]; checkpoints: ChapterCheckpoint[] };
+type Proof = { pairs: { a: JsonChapterRecording; b: JsonChapterRecording }[]; checkpoints: ChapterCheckpoint[] };
 const proofs = native as unknown as Record<string, Proof>;
 const chapters = ["rolling-home", "a-house-for-two", "long-way-home"];
 const code = "SYNTHETIC-FIRST-TURN-HOST";

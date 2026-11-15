@@ -11,8 +11,7 @@ extends RefCounted
 ##   fold into a batch under it, so a cutaway, a row of bells or a set of
 ##   windows moves, fades or lights as one part. Parts made for a tap go under
 ##   anim.fx, in root's frame. `state` holds the earned upgrades: "together",
-##   "hard", "top" (bools), and for the Lantern Walk "lanterns" (one bool per
-##   island). An empty state is the base look. Each keepsake puts its upgrades
+##   "hard", "top" (bools). An empty state is the base look. Each keepsake puts its upgrades
 ##   where its board draws them; a Hard plinth is a node named "Footing".
 ## - beats(state) is the tap's timeline: the base beat, then one per earned
 ##   upgrade, each {"beat", "time"}. The base takes at most BASE_MAX seconds and
@@ -38,7 +37,7 @@ extends RefCounted
 ##   has walked out again); {"line": [Vector2, Vector2]} plays it when a step
 ##   crosses that segment (an arch walked through); {} for none (the Explore
 ##   action and a tap still play it).
-## - stay(): a Rect2 the pip can be inside of (a house, a path under lanterns);
+## - stay(): a Rect2 the pip can be inside of (a house, a path);
 ##   arrive(), follow() and depart() run as it walks in, along and out.
 ##   Rect2() for none. floor() is the height the pip stands at in there.
 ## - gates(parts, state, at): solids a moving part stands as only while shut

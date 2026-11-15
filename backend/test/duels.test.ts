@@ -232,6 +232,47 @@ describe("duel parties", () => {
     await ok(call("/v1/duels/party/leave", "POST", c, { schema_version: 1 }));
     expect((await lobby(a)).party.partner).toBeNull();
   });
+
+  it("reach the friend's Home through the room inbox they already read, until answered, taken back or expired", async () => {
+    const [a, b, c] = await Promise.all([create(), create(), create()]);
+    await befriend(a, b); await befriend(a, c); await befriend(b, c);
+    const ASKS = { "X-AfterYou-Duel-Invites": "1" };
+    type Inbox = { duel_invites: { from: string; at: number }[] };
+    const inbox = (who: Account, headers: Record<string, string> = ASKS, vars = ON, base: Env = env) => ok<Inbox>(call("/v1/room-inbox", "GET", who, undefined, vars, headers, base));
+    const invite = (from: Account, to: Account) => ok(call("/v1/duels/party/invite", "POST", from, { schema_version: 1, friend: to.player_id }));
+    const party = (who: Account, action: string, body: Any = {}) => ok(call("/v1/duels/party/" + action, "POST", who, { schema_version: 1, ...body }));
+    expect((await inbox(b)).duel_invites).toEqual([]);
+    await invite(a, b);
+    const [asked] = (await inbox(b)).duel_invites;
+    expect(asked).toEqual({ from: a.player_id, at: expect.any(Number) });
+    // Old apps, later pages and a server with duels off get the same bytes as before.
+    expect(Object.keys(await inbox(b, {}))).toEqual(["schema_version", "rooms"]);
+    expect(await inbox(b, { ...ASKS, "X-AfterYou-Room-Page": "1" })).not.toHaveProperty("duel_invites");
+    expect(await inbox(b, ASKS, NO_DUELS)).not.toHaveProperty("duel_invites");
+    // One request more than the inbox already makes, the friend's own party row, and no row written.
+    const meter = countingEnv(Object.assign({ ...env }, ON) as Env);
+    const { rows } = await meterRows({ party: env.LEADERBOARD_MEMBERS.getByName(b.player_id) }, () => inbox(b, ASKS, ON, meter.env));
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD_MEMBERS"))).toEqual(["LEADERBOARD_MEMBERS.partyRead"]);
+    expect(rows.party.written).toBe(0);
+    // Asking another friend takes the first invite back; taking it back clears it; Not now and Say yes clear their own.
+    await invite(a, c);
+    expect((await inbox(b)).duel_invites).toEqual([]);
+    expect((await inbox(c)).duel_invites.map(item => item.from)).toEqual([a.player_id]);
+    await party(a, "cancel");
+    expect((await inbox(c)).duel_invites).toEqual([]);
+    await invite(a, c); await invite(b, c);
+    await party(c, "dismiss", { from: b.player_id });
+    expect((await inbox(c)).duel_invites.map(item => item.from)).toEqual([a.player_id]);
+    await party(c, "accept", { from: a.player_id });
+    await party(c, "accept", { from: a.player_id });
+    expect((await inbox(c)).duel_invites).toEqual([]);
+    // An invite past its week reads as gone.
+    await invite(b, a);
+    const later = Date.now() + 7 * DAY + 1000;
+    expect((await env.LEADERBOARD_MEMBERS.getByName(a.player_id).partyRead(later)).invites_in).toEqual([]);
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(later);
+    try { expect((await inbox(a)).duel_invites).toEqual([]); } finally { vi.useRealTimers(); }
+  }, 60_000);
 });
 
 describe("friend duels", () => {
@@ -1017,7 +1058,8 @@ describe("duel hints", () => {
     await step(sockets, () => party(b, "accept", { from: a.player_id }), { a: 1, b: 0, c: 0 });
     await step(sockets, () => party(c, "invite", { friend: a.player_id }), { a: 1, b: 0, c: 0 });
     await step(sockets, () => party(a, "dismiss", { from: c.player_id }), { a: 0, b: 0, c: 0 });
-    await step(sockets, () => party(c, "invite", { friend: b.player_id }), { a: 0, b: 1, c: 0 });
+    // Asking b takes back c's invite to a (already dismissed there), so a's row is told too.
+    await step(sockets, () => party(c, "invite", { friend: b.player_id }), { a: 1, b: 1, c: 0 });
     await step(sockets, () => party(c, "cancel"), { a: 0, b: 1, c: 0 });
     await step(sockets, () => party(b, "leave"), { a: 1, b: 0, c: 0 });
   });

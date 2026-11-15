@@ -2,9 +2,7 @@ extends SceneTree
 
 const Storage = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
-const State = preload("res://services/turn_state.gd")
 const Purchases = preload("res://services/purchases.gd")
-const Levels = preload("res://core/levels.gd")
 const Main = preload("res://tests/unlocked_main.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
@@ -98,19 +96,13 @@ class StoreProbe:
 var checks := 0
 var failures := 0
 var paths: Array[String] = []
-var first: Dictionary
-var second: Dictionary
 
 func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
-	first=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
-	second=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))
 	_test_save_generations()
-	_test_receipts_and_roles()
 	_test_store_offers()
-	await _test_main_lifecycle()
 	await _test_identity_and_entitlement()
 	for path: String in paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
@@ -135,18 +127,18 @@ func _test_save_generations() -> void:
 	var store := Storage.new(path)
 	store.load_data()
 	_check(store.fresh and store.data.settings.assistance and not store.read_only and Storage.NEW_PLAYER_SETTINGS.assistance == false,"Missing save starts with complete defaults and is marked fresh for the new player settings")
-	_check(store.save_attempt("first-light",{"a":first,"b":second,"draft":{}},true),"Completed attempt persisted")
-	var saved := store.attempt("first-light")
-	saved.a.actions[0].x=999
-	_check(store.attempt("first-light").a.actions[0].x!=999,"Read copies cannot mutate committed recordings")
-	_check(store.save_attempt("first-light",{"a":{},"b":{},"draft":{}}),"New rehearsal persisted")
-	_check(not store.data.replays["first-light"].b.is_empty(),"Completed replay survives a restarted attempt")
+	var quiet: Dictionary = store.data.settings.duplicate(true)
+	quiet.sound=false
+	_check(store.update_values({"settings":quiet}),"A settings change persisted")
+	var still: Dictionary = quiet.duplicate(true)
+	still.haptics=false
+	_check(store.update_values({"settings":still}),"A second change persisted")
 	var restored := Storage.new(path)
 	restored.load_data()
-	_check(restored.data.completed["first-light"] and restored.data.generation==2,"Current save reloads marks and generation")
+	_check(not restored.data.settings.haptics and restored.data.generation==2,"Current save reloads settings and generation")
 	_write(path,"{ interrupted")
 	restored.load_data()
-	_check(restored.loaded_from==path+".backup" and not restored.attempt("first-light").b.is_empty(),"Corrupted primary recovers valid previous generation")
+	_check(restored.loaded_from==path+".backup" and not restored.data.settings.sound and restored.data.settings.haptics,"Corrupted primary recovers valid previous generation")
 	var good_backup := FileAccess.get_file_as_string(path+".backup")
 	_check(restored.flush(),"Recovered backup can become a new valid primary")
 	_check(FileAccess.get_file_as_string(path+".backup")==good_backup,"A flush over a corrupted primary never copies it over the good backup")
@@ -174,27 +166,29 @@ func _test_save_generations() -> void:
 	old.load_data()
 	_check(not old.data.settings.sound and old.data.settings.assistance,"Older partial settings gain defaults without losing preferences")
 	var unavailable := Storage.new("user://missing-test-parent-"+Crypto.new().generate_random_bytes(8).hex_encode()+"/journey.json")
-	_check(not unavailable.save_attempt("first-light",{"a":first},true),"Unwritable save reports failure")
-	_check(unavailable.data.attempts.is_empty() and unavailable.data.completed.is_empty(),"Failed transaction rolls back in-memory commitment")
+	_check(not unavailable.update_values({"settings":quiet}),"Unwritable save reports failure")
+	_check(unavailable.data.settings.sound,"Failed transaction rolls back in-memory commitment")
 	_test_failed_flush_leaves_no_tmp()
 	_test_save_field_types()
-	var normalized := Storage.normalize_attempt({"a":null,"b":second,"draft":null})
-	_check(normalized.a.is_empty() and normalized.draft.is_empty() and not normalized.b.is_empty(),"Nullable network recordings normalize safely")
 
 func _test_failed_flush_leaves_no_tmp() -> void:
 	var path := _temporary_path()
 	var store := Storage.new(path)
 	store.load_data()
-	_check(store.save_attempt("first-light",{"a":first,"b":{},"draft":{}}),"The first generation saves")
+	var quiet: Dictionary = store.data.settings.duplicate(true)
+	quiet.sound=false
+	_check(store.update_values({"settings":quiet}),"The first generation saves")
+	var still: Dictionary = quiet.duplicate(true)
+	still.haptics=false
 	# A directory where the backup belongs makes the backup copy fail after
 	# the new generation was already written to the tmp file.
 	DirAccess.make_dir_absolute(ProjectSettings.globalize_path(path+".backup"))
-	_check(not store.save_attempt("first-light",{"a":first,"b":second,"draft":{}},true),"A flush whose backup copy fails reports failure")
+	_check(not store.update_values({"settings":still}),"A flush whose backup copy fails reports failure")
 	_check(not FileAccess.file_exists(path+".tmp"),"A failed flush removes its tmp generation")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path+".backup"))
 	var reopened := Storage.new(path)
 	reopened.load_data()
-	_check(reopened.loaded_from==path and not reopened.data.completed.has("first-light") and reopened.attempt("first-light").b.is_empty(),"The refused change does not apply after a restart")
+	_check(reopened.loaded_from==path and reopened.data.settings.haptics,"The refused change does not apply after a restart")
 
 func _test_save_field_types() -> void:
 	for value: Variant in [0, 7, 1.0, -3, 9007199254740991.0]:
@@ -239,52 +233,6 @@ func _test_save_field_types() -> void:
 	store.load_data()
 	_check(store.read_only and store.last_error==PlayerCopy.LOCAL_SAVE_34FCC2945DC1,"A primary with a list generation and no other copy is held read-only")
 
-func _room() -> Dictionary:
-	return {"room_id":"room-test","revision":4,"level_id":"first-light","level_index":0,"first_player_id":"host","host_id":"host","guest_id":null,"active_role":"a","recordings":{"a":null,"b":null}}
-
-func _test_receipts_and_roles() -> void:
-	var room := _room()
-	var pending := {"room_id":room.room_id,"base_revision":room.revision,"recording":first,"idempotency_key":"same-exact-key"}
-	_check(State.pending_status(pending,room)=="retry","Unchanged room allows original request retry")
-	room.revision+=1
-	_check(State.pending_status(pending,room)=="stale","Changed revision cannot be treated as a receipt")
-	room.recordings.a=first.duplicate(true)
-	_check(State.pending_status(pending,room)=="accepted","Actual saved recording confirms uncertain submission")
-	var fresh: Dictionary=State._normalized_value(first)
-	_check(State.same_recording(fresh,first),"Native integer recording matches JSON parsed numeric receipt")
-	for variant: Dictionary in WrongTypes.variants(pending, 1):
-		if variant.path == "room_id":
-			_check(State.pending_status(variant.value,room) != "accepted","A pending turn with a wrongly typed field is never taken as accepted: "+variant.path)
-	for odd: Variant in ["4", [4], {}, true]:
-		var changed: Dictionary = pending.duplicate(true)
-		changed.base_revision = odd
-		changed.recording = {"role": "a"}
-		_check(State.pending_status(changed,room) == "stale","A pending turn whose base revision is not a number is stale: %s" % [odd])
-	for odd: Variant in ["1", [1], true]:
-		var changed: Dictionary = pending.duplicate(true)
-		changed.recording = odd
-		_check(State.pending_status(changed,room) != "accepted","A pending turn whose recording is not a dictionary is never taken as accepted: %s" % [odd])
-	for variant: Dictionary in WrongTypes.variants(first, 1):
-		_check(not State.same_recording(variant.value,first),"A recording with a wrongly typed field is not the same recording: "+variant.path)
-	room.recordings.a.actions[0].x+=1
-	_check(State.pending_status(pending,room)=="stale","Matching final hash alone is not enough to confirm a turn")
-	room.room_id="another-room"
-	_check(State.pending_status(pending,room)=="other_room","An unrelated room cannot resolve a queued request")
-	room=_room()
-	_check(State.my_turn(room,"host") and not State.my_turn(room,"outsider"),"Only room members can start their turn")
-	room.active_role="b"
-	_check(not State.my_turn(room,"host") and not State.my_turn(room,""),"Missing guest never grants host the second turn")
-	room.guest_id="guest"
-	_check(State.my_turn(room,"guest"),"Joined guest receives second role")
-	room.first_player_id="guest"
-	room.active_role="a"
-	_check(State.my_turn(room,"guest") and not State.my_turn(room,"host"),"First-player assignment alternates independently of host")
-	var check: Dictionary=State.review(Levels.get_level(0),second,{"a":first})
-	_check(check.valid and check.can_commit,"Review validates the actual completed recording")
-	var altered := second.duplicate(true)
-	altered.checkpoints[0].state_hash="0".repeat(64)
-	_check(not State.review(Levels.get_level(0),altered,{"a":first}).valid,"Review rejects altered recording despite completion flag")
-
 func _test_store_offers() -> void:
 	var play := {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
 	var offer := {"current_id":"journey","offerings":[{"id":"journey","packages":[
@@ -304,128 +252,6 @@ func _test_store_offers() -> void:
 	offer.offerings[0].packages[1].product_id="after_you_full_journey_monthly"
 	offer.current_id="missing"
 	_check(Purchases.select_subscription_offer(offer,play).is_empty(),"Noncurrent offering is not selected silently")
-
-func _test_main_lifecycle() -> void:
-	var app := Main.new()
-	app.saves=Storage.new(_temporary_path())
-	root.add_child(app)
-	await process_frame
-	app.current_level=Levels.get_level(0)
-	app.level_index=0
-	app.attempt={"a":first.duplicate(true),"b":second.duplicate(true),"draft":{}}
-	app.earlier_islands_flow.preview(second,true)
-	if not await _wait_for_collection_preview(app):
-		app.queue_free()
-		await process_frame
-		return
-	app._physics_process(1.0/30.0)
-	var paused_tick: int=app.sim.tick
-	app.earlier_islands_flow.pause()
-	app._physics_process(1.0/30.0)
-	_check(app.mode=="paused" and app.sim.tick==paused_tick,"Preview pause freezes simulation")
-	_check(_find_button(app.overlay,"Retry")==null,"A saved replay's pause offers no Retry: there is no turn to retry")
-	var continue_button := _find_button(app.overlay,"Resume")
-	continue_button.pressed.emit()
-	_check(app.mode=="preview" and app.running,"Resume restores preview mode rather than starting a live turn")
-	for _i: int in range(601):
-		app._physics_process(1.0/30.0)
-	app.earlier_islands_flow.advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
-	_check(app.mode=="collection" and app.collection_preview,"Completed collection preview retains read-only origin")
-	_check(_find_button(app.overlay,"Save turn")==null,"Collection preview does not offer a second commitment")
-	var generation: int=app.saves.data.generation
-	app.earlier_islands_flow.commit_turn()
-	_check(app.saves.data.generation==generation,"Direct duplicate collection commitment does not write a save")
-	app.earlier_islands_flow.preview(second,true)
-	if not await _wait_for_collection_preview(app):
-		app.queue_free()
-		await process_frame
-		return
-	for _i: int in range(601):
-		app._physics_process(1.0/30.0)
-	app.earlier_islands_flow.advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
-	_check(app.mode=="collection","Repeated previews remain read-only")
-	app.attempt={"a":{},"b":{},"draft":{}}
-	app.role="a"
-	app.earlier_islands_flow.prepare_turn()
-	var invalid := first.duplicate(true)
-	invalid.final_state_hash="0".repeat(64)
-	app.earlier_islands_flow.resume_draft(invalid)
-	_check(app.mode=="ready" and not app.running and app.sim.tick==0,"Invalid draft cannot silently start playback or live input")
-	app.earlier_islands_flow.resume_draft(first)
-	_check(app.mode=="review" and not app.running,"Finished rehearsal resumes into review rather than a frozen live turn")
-	# Pause while watching this turn back (Preview): the review card's Retry is there too.
-	app.earlier_islands_flow.preview(app.review_recording)
-	app._physics_process(1.0/30.0)
-	var preview_tick: int=app.sim.tick
-	app.earlier_islands_flow.pause()
-	var preview_retry := _find_button(app.overlay,"Retry")
-	_check(app.mode=="paused" and preview_retry!=null,"Pausing a Preview of this turn offers Retry")
-	if preview_retry!=null:
-		preview_retry.pressed.emit()
-		if app.mode=="confirm_retry":
-			_find_button(app.overlay,"Cancel").pressed.emit()
-			_check(app.mode=="paused" and app.sim.tick==preview_tick and _find_button(app.overlay,"Resume")!=null,"Retry's Cancel goes back to the paused Preview")
-			_find_button(app.overlay,"Retry").pressed.emit()
-			_find_button(app.overlay,"Retry").pressed.emit()
-		_check(app.mode=="ready" and not app.running and app.sim.tick==0,"Retry from a paused Preview sets this turn up again")
-	app.role="b"
-	app.attempt={"a":invalid,"b":{},"draft":{}}
-	app.earlier_islands_flow.prepare_turn()
-	_check(app.mode=="journey" and not app.running,"Invalid earlier source fails setup without continuing the old simulation")
-	await _test_main_pending(app)
-	app.queue_free()
-	await process_frame
-
-func _wait_for_collection_preview(app: Node) -> bool:
-	var deadline := Time.get_ticks_msec()+10000
-	var frames := 0
-	while app.mode=="collection_loading" and frames<1800 and Time.get_ticks_msec()<deadline:
-		await process_frame
-		frames+=1
-	var ready: bool=app.mode=="preview" and app.running
-	_check(ready,"Collection replay loads before lifecycle checks within 10 seconds / 1800 frames (mode: %s)" % app.mode)
-	return ready
-
-func _test_main_pending(app: Node) -> void:
-	var fake := FakeApi.new()
-	app.add_child(fake)
-	app.api=fake
-	app.identity_loading=false
-	app.active_room=_room()
-	app.room_play=true
-	app.role="a"
-	app.current_level=Levels.get_level(0)
-	app.attempt={"a":{},"b":{},"draft":{}}
-	app.review_recording=first.duplicate(true)
-	app.collection_preview=false
-	app.mode="review"
-	await app.turn_flow.commit_online()
-	var pending: Dictionary=app.saves.data.pending_turn.duplicate(true)
-	_check(fake.calls.size()==1 and not pending.is_empty(),"Interrupted POST retains durable original request")
-	var accepted := _room()
-	accepted.recordings.a=first.duplicate(true)
-	accepted.active_role="b"
-	accepted.revision=5
-	fake.responses=[{"ok":true,"status":200,"data":_room()},{"ok":true,"status":200,"data":accepted}]
-	var writing: Array = []
-	fake.on_call = func() -> void: writing.append(app.submission_in_flight)
-	await app.turn_flow.reconcile_pending()
-	fake.on_call = Callable()
-	_check(writing == [true, true],"The turn check holds other room writes during its GET as well as its resend: %s" % [writing])
-	_check(fake.calls.size()==3 and fake.calls[1].method==HTTPClient.METHOD_GET,"Uncertain submission is checked before retry")
-	_check(fake.calls[0].body==fake.calls[2].body,"Retry preserves exact request body and idempotency key")
-	_check(not app.saves.data.has("pending_turn") and app.active_room.active_role=="b","Successful receipt clears uncertainty and advances room")
-	app.saves.update_values({"pending_turn":pending})
-	fake.responses=[{"ok":true,"status":200,"data":accepted}]
-	var before_calls: int=fake.calls.size()
-	await app.turn_flow.reconcile_pending()
-	_check(fake.calls.size()==before_calls+1 and not app.saves.data.has("pending_turn"),"Matching saved recording resolves uncertainty without another POST")
-	app.saves=Storage.new("user://absent-parent-"+Crypto.new().generate_random_bytes(8).hex_encode()+"/journey.json")
-	app.active_room=_room()
-	app.review_recording=first.duplicate(true)
-	before_calls=fake.calls.size()
-	await app.turn_flow.commit_online()
-	_check(fake.calls.size()==before_calls and not app.saves.data.has("pending_turn"),"Failed durable pending write prevents network submission")
 
 func _test_identity_and_entitlement() -> void:
 	var app := Main.new()
@@ -449,7 +275,6 @@ func _test_identity_and_entitlement() -> void:
 	storage.failed.connect(app._secret_failed)
 	await process_frame
 	await _test_identity_reads(app,fake,storage)
-	await _test_live_entitlement(app)
 	await _test_lighthouse_paywall(app)
 	await _test_hosting_access(app,fake)
 	await _test_recovery_interruptions(app,fake,storage)
@@ -472,7 +297,7 @@ func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
 		_check(not app.identity_loading and app.identity_read_state==Main.IdentityReadState.FAILED,"Failed or malformed secure read %d remains distinct from missing" % index)
 		_check(not await app._ensure_identity() and api.calls.is_empty() and storage.writes.is_empty(),"Secure read failure %d sends no identity creation and overwrites nothing" % index)
 	app.settings_flow.show_settings("account")
-	_check(_find_button(app.overlay,"Create anonymous identity")==null and _find_button(app.overlay,"Check saved identity")!=null and _find_button(app.overlay,"Recover a previous identity")!=null,"Failed identity read exposes retry/recovery instead of replacement")
+	_check(_find_button(app.overlay,"Create online identity")==null and _find_button(app.overlay,"Check saved identity")!=null and _find_button(app.overlay,"Recover a previous identity")!=null,"Failed identity read exposes retry/recovery instead of replacement")
 	var identity := {"player_id":TEST_SAVED_PLAYER,"device_token":TEST_DEVICE_TOKEN,"recovery_code":TEST_RECOVERY_CODE}
 	storage.read_response={"ok":true,"payload":{"found":true,"value":JSON.stringify(identity)}}
 	await app.account_flow.retry_saved_identity()
@@ -497,31 +322,6 @@ func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
 	await app.account_flow.recover_identity(TEST_SAVED_PLAYER,TEST_RECOVERY_CODE)
 	_check(api.calls.size()==1 and api.calls[0].path=="/v1/identity/recover" and storage.writes.size()==2,"Explicit recovery secures its proposal and resulting identity after a failed secure read")
 	_check(app.identity_restart_required and app.identity_read_state==Main.IdentityReadState.LOADED,"Recovered identity is secured and requires restart before reuse")
-
-func _test_live_entitlement(app: Node) -> void:
-	app.purchases.customer_info={}
-	app.journey_flow.show_earlier_islands()
-	var locked_label: String="04  "+str(Levels.get_level(3).title)+"  ·  Full Journey"
-	var unlocked_label: String="04  "+str(Levels.get_level(3).title)
-	var button := _find_button(app.overlay,locked_label)
-	app.purchases.customer_info={"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
-	button.pressed.emit()
-	_check(app.mode=="ready" and app.level_index==3,"Existing journey button checks current entitlement instead of captured lock")
-	app.purchases.customer_info={}
-	app.journey_flow.show_earlier_islands()
-	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}))
-	await process_frame
-	_check(app.mode=="earlier_islands" and _find_button(app.overlay,unlocked_label)!=null and _find_button(app.overlay,locked_label)==null,"Asynchronous customer info refreshes visible earlier-island lock labels without leaving that panel")
-	button=_find_button(app.overlay,unlocked_label)
-	app.purchases.customer_info={}
-	button.pressed.emit()
-	_check(app.mode=="paywall","Existing unlocked button also checks entitlement loss before opening premium island")
-	app._start_practice(0)
-	app.earlier_islands_flow.begin_turn()
-	app._physics_process(1.0/30.0)
-	var tick: int=app.sim.tick
-	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}))
-	_check(app.mode=="play" and app.running and app.sim.tick==tick,"Entitlement update does not replace an active rehearsal")
 
 func _test_lighthouse_paywall(app: Node) -> void:
 	var original_store: Node = app.purchases

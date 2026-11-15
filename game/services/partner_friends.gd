@@ -34,7 +34,7 @@ func _init(scope_source: Callable, friends_source: Callable, roster_store: RefCo
 
 ## HIDDEN for a friend, a pending request either way, a blocked or reported
 ## partner, or no partner; REQUESTED once this player sent one; else ADDABLE.
-## `family` and `room` name the room ("relay" or "legacy" and its id).
+## `family` and `room` name the room ("relay" and its id).
 func state(peer: String, family: String = "", room: String = "") -> String:
 	var current: Dictionary = scope.call() if scope.is_valid() else {}
 	if current.is_empty() or not Presence.valid_id(peer) or peer == current.owner: return HIDDEN

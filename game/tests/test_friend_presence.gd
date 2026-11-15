@@ -188,15 +188,15 @@ func _stale_contexts() -> void:
 	api.held = true
 	service.service()
 	_check(api.busy, "Delayed GET is genuinely in flight")
-	service.monitor_room("v1", OTHER)
+	service.monitor_room("v2", OTHER)
 	await service.service()
-	_check(api.calls.size() == 1 and service.view("v1", OTHER).state == "checking", "Changing rooms clears the badge without overlapping HTTP")
+	_check(api.calls.size() == 1 and service.view("v2", OTHER).state == "checking", "Changing rooms clears the badge without overlapping HTTP")
 	api.release.emit()
 	await process_frame
-	_check(service.view("v1", OTHER).state == "checking", "Late reply for the departed room is ignored")
+	_check(service.view("v2", OTHER).state == "checking", "Late reply for the departed room is ignored")
 	api.held = false
 	await service.service()
-	_check(api.calls.back().path == "/v1/rooms/" + OTHER + "/presence" and service.view("v1", OTHER).state == "online", "The new room gets its own authenticated result")
+	_check(api.calls.back().path == "/v2/rooms/" + OTHER + "/presence" and service.view("v2", OTHER).state == "online", "The new room gets its own authenticated result")
 	clock.now += 30000
 	api.held = true
 	service.service()
@@ -205,19 +205,19 @@ func _stale_contexts() -> void:
 	await process_frame
 	_check(service._fresh_until == clock.now + 70000, "Response transit time is subtracted from server TTL, never added")
 	clock.now += 70000
-	_check(service.view("v1", OTHER).state == "checking", "Expired lease cannot continue to claim online before another response")
+	_check(service.view("v2", OTHER).state == "checking", "Expired lease cannot continue to claim online before another response")
 	service.service()
 	service.set_identity(_identity(2, "B".repeat(22)))
 	api.release.emit()
 	await process_frame
-	_check(service.view("v1", OTHER).state == "checking", "A recovered identity rejects an in-flight old-owner result")
+	_check(service.view("v2", OTHER).state == "checking", "A recovered identity rejects an in-flight old-owner result")
 	api.held = false
 	await service.service()
 	_check(api.calls.back().owner == "B".repeat(22), "The replacement identity owns the next lookup")
 	service.set_identity({"ready": false})
 	var before := api.calls.size()
 	await service.service()
-	_check(api.calls.size() == before and service.view("v1", OTHER).state == "checking", "Missing or unreadable identity cannot read or publish")
+	_check(api.calls.size() == before and service.view("v2", OTHER).state == "checking", "Missing or unreadable identity cannot read or publish")
 	service.queue_free()
 	await process_frame
 

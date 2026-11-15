@@ -10,6 +10,4 @@ const DATA := {
 	"code": 208,
 	## Held back until the server's release list names it.
 	"released": false,
-	## It stands above the head.
-	"tall": true,
 }

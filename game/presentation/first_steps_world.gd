@@ -3,8 +3,19 @@ extends "res://presentation/island_world.gd"
 ## Visual interpolation never decides boarding, arrival, seed ownership or activation.
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
 const Typed = preload("res://services/typed_values.gd")
+## Piece looks (content/dressing/piece_styles.gd) and the kits that build them.
+const PieceStyles = preload("res://content/dressing/piece_styles.gd")
+const LiftKit = preload("res://presentation/kit/pieces/lift.gd")
+const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+## The bell hangs from a bracket on one post in front of the goal, clear of
+## the rider's way in from the lift, so neither the post nor the bell stands
+## between the play camera and the seed pedestal behind the goal. The goal
+## ring stays on the exact spot.
+const BELL_POST := Vector3(-0.30, 0, 0.55)
+const BELL_HANG := Vector3(-0.22, 1.55, 0.05)
+var lift_piece: RefCounted
+var pad_pieces: Dictionary = {}
 var actor_badges: Dictionary = {}
-var control_visuals: Dictionary = {}
 var island_visuals: Dictionary = {}
 var lift_target_height := 0.0
 var loft_bell: Node3D
@@ -20,6 +31,9 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition.duplicate(true)
+	_load_dressing()
+	pad_pieces.clear()
+	lift_piece = null
 	if is_instance_valid(terrain):
 		remove_child(terrain)
 		terrain.queue_free()
@@ -29,10 +43,8 @@ func load_level(definition: Dictionary) -> void:
 	actors.clear()
 	actor_targets.clear()
 	actor_badges.clear()
-	control_visuals.clear()
 	island_visuals.clear()
 	bridge_parts.clear()
-	lift_guides.clear()
 	flowers.clear()
 	garden_petals.clear()
 	garden = null
@@ -43,6 +55,17 @@ func load_level(definition: Dictionary) -> void:
 	home_view = false
 	for island_index in range(definition.islands.size()):
 		var island: Dictionary = definition.islands[island_index]
+		var ground := _ground_style(str(island.id))
+		if not ground.is_empty():
+			var dressed := Node3D.new()
+			dressed.name = str(island.id)
+			terrain.add_child(dressed)
+			dressed.position.y = float(island.height_cm) / 100.0
+			Surfaces.build(island, ground, dressed)
+			island_visuals[island.id] = dressed
+			_surface_nodes[str(island.id)] = dressed
+			await _build_step()
+			continue
 		var start := terrain.get_child_count()
 		var rect: Array = island.rect_cm
 		_make_island(float(rect[0] + rect[2]) / 200.0, float(rect[1] + rect[3]) / 200.0,
@@ -57,17 +80,17 @@ func load_level(definition: Dictionary) -> void:
 			node.reparent(root, false)
 		root.position.y = float(island.height_cm) / 100.0
 		island_visuals[island.id] = root
+		_surface_nodes[str(island.id)] = root
 		await _build_step()
 	_build_lift(definition.lift)
 	await _build_step()
 	for control: Dictionary in definition.controls:
 		var at := _surface_point(control.position_cm, control.surface_id)
 		var radius := float(control.radius_cm) / 100.0
-		var disk := cylinder(radius, 0.10, Color("9c9672"), at + Vector3(0, 0.055, 0), terrain)
-		ring(radius + 0.05, CREAM, at + Vector3(0, 0.12, 0), terrain)
-		var glyph := box(Vector3(0.18, 0.025, 0.18), GOLD, at + Vector3(0, 0.13, 0), terrain)
-		glyph.rotation.y = PI / 4
-		control_visuals[control.id] = disk
+		# A spot's colour is the pip whose part uses it: the first stage's
+		# first pip powers the lift, the last stage's first pip the rest.
+		var user := str(definition.stages[0].first_player_slot) if control.id == definition.stages[0].power_control else str(definition.stages[-1].first_player_slot)
+		pad_pieces[control.id] = PadKit.build(PieceStyles.style("pad", str(control.id), _descriptor(), dressing), at, radius, terrain, {"owner": user, "id": control.id})
 	await _build_step()
 	for socket: Dictionary in definition.sockets:
 		var root := Node3D.new()
@@ -91,14 +114,19 @@ func load_level(definition: Dictionary) -> void:
 		loft_bell.name = str(goal.id)
 		loft_bell.position = _surface_point(goal.position_cm, goal.surface_id)
 		terrain.add_child(loft_bell)
-		for side in [-1, 1]:
-			cylinder(0.055, 1.80, Color("8d8f77"), Vector3(side * 0.44, 0.90, 0), loft_bell)
 		# Keep the exact floor goal beneath an overhead chime. A waist-high
 		# frame obscures the spirit's face at the adjacent seed pedestal.
-		box(Vector3(1.04, 0.10, 0.13), CREAM, Vector3(0, 1.82, 0), loft_bell)
-		var bell := sphere(0.22, GOLD, Vector3(0, 1.55, 0), loft_bell)
+		cylinder(0.055, 1.95, Parts.TIMBER, BELL_POST + Vector3(0, 0.975, 0), loft_bell)
+		box(Vector3(0.14, 0.05, 0.14), Parts.TIMBER_DARK, BELL_POST + Vector3(0, 1.97, 0), loft_bell)
+		var arm_end := Vector3(BELL_HANG.x, 1.86, BELL_HANG.z - 0.06)
+		Primitives.bar_between(BELL_POST + Vector3(0, 1.86, 0), arm_end, 0.07, Primitives.shared_material(Parts.TIMBER_DARK), loft_bell)
+		Primitives.bar_between(BELL_POST + Vector3(0, 1.55, 0), (BELL_POST + Vector3(0, 1.86, 0)).lerp(arm_end, 0.4), 0.04, Primitives.shared_material(Parts.TIMBER), loft_bell)
+		cylinder(0.012, 0.16, Color("c9b48a"), Vector3(BELL_HANG.x, 1.77, BELL_HANG.z), loft_bell)
+		var bell := sphere(0.22, Parts.BRASS, BELL_HANG, loft_bell)
 		bell.scale = Vector3(1.0, 1.25, 1.0)
 		bell_ring = ring(float(goal.radius_cm) / 100.0, CREAM, Vector3(0, 0.04, 0), loft_bell)
+	await _build_step()
+	await _build_dressing()
 	await _build_step()
 	for slot: String in ["p0", "p1"]:
 		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL, slot)
@@ -125,29 +153,22 @@ func load_level(definition: Dictionary) -> void:
 	camera.h_offset = 0.0
 	_present_garden(false, false, true)
 
+## The lift in its style (content/dressing/piece_styles.gd "lift"); a
+## rope_tower's winch stands beside the first stage's power spot.
 func _build_lift(authored: Dictionary) -> void:
-	var rect: Array = authored.rect_cm
-	var width := float(rect[2] - rect[0]) / 100.0
-	var depth := float(rect[3] - rect[1]) / 100.0
-	var center := Vector3(float(rect[0] + rect[2]) / 200.0, 0, float(rect[1] + rect[3]) / 200.0)
-	lift = Node3D.new()
+	var r: Array = authored.rect_cm
+	var area := Rect2(float(r[0]) / 100.0, float(r[1]) / 100.0, float(r[2] - r[0]) / 100.0, float(r[3] - r[1]) / 100.0)
+	var drive := Vector3.ZERO
+	for control: Dictionary in current_level.controls:
+		if control.id == current_level.stages[0].power_control: drive = _surface_point(control.position_cm, control.surface_id)
+	lift_piece = LiftKit.build(PieceStyles.style("lift", str(authored.id), _descriptor(), dressing), area, float(authored.bottom_height_cm) / 100.0, float(authored.top_height_cm) / 100.0, terrain, {"drive": drive})
+	lift = lift_piece.root
 	lift.name = str(authored.id)
-	lift.position = center
-	terrain.add_child(lift)
-	box(Vector3(width, 0.18, depth), Color("b8aa8c"), Vector3(0, -0.09, 0), lift)
-	# The riding plate's top stays under a spirit's ground shadow
-	# (SpiritVisual.SHADOW_TOP), so the shadow never stripes on it.
-	box(Vector3(width - 0.06, 0.018, depth - 0.06), Color("e0d4ac"), Vector3(0, 0.009, 0), lift)
-	ring(0.40, GOLD, Vector3(0, 0.035, 0), lift)
-	var height := float(authored.top_height_cm - authored.bottom_height_cm) / 100.0
-	for side in [-1, 1]:
-		# Side guides sit outside the walkable rectangle; entry/exit remain open.
-		for edge in [-1, 1]:
-			var at := center + Vector3(edge * (width / 2.0 - 0.16), height / 2.0, side * (depth / 2.0 + 0.10))
-			cylinder(0.045, height + 0.40, Color("809d91"), at, terrain)
-		box(Vector3(width, 0.05, 0.045), CREAM, Vector3(0, 0.33, side * (depth / 2.0 + 0.04)), lift)
 	lift_target_height = float(authored.bottom_height_cm) / 100.0
-	lift.position.y = lift_target_height
+	lift_piece.set_height(lift_target_height)
+
+func _descriptor() -> Dictionary:
+	return ChapterIndex.data(_chapter_key())
 
 func _surface_point(position_cm: Array, surface: String) -> Vector3:
 	for island: Dictionary in current_level.islands:
@@ -176,20 +197,19 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		actor_badges[slot].text = _role_badge_text(state, slot)
 	lift_target_height = float(state.mechanisms.lift.height_cm) / 100.0
 	if immediate: lift.position.y = lift_target_height
-	for id: String in control_visuals:
-		var mat := Primitives.own_material(control_visuals[id])
-		var active: bool = bool(state.controls.get(id, false))
-		mat.albedo_color = Color("f5d990") if active else Color("9c9672")
-		mat.emission_enabled = active
-		mat.emission = GOLD
-		mat.emission_energy_multiplier = 0.28
+	if lift_piece != null: lift_piece.set_height(lift.position.y)
+	for id: String in pad_pieces:
+		pad_pieces[id].set_held(bool(state.controls.get(id, false)))
 	# A bell rung while the friend's memory still plays rings when it ends.
 	bell_ring.visible = not bool(state.mechanisms.loft_open) or bool(state.get("ring_held", false))
 	_present_seed(state.seed, immediate)
 	_present_garden(bool(state.mechanisms.garden_open), bool(state.complete) and state.seed.status == "planted", immediate)
 
-func _fold_key() -> String:
+func _chapter_key() -> String:
 	return "first-steps@1"
+
+func _fold_key() -> String:
+	return _chapter_key()
 
 func _doze_anchors() -> Array[Node3D]:
 	var anchors := super._doze_anchors()
@@ -198,7 +218,10 @@ func _doze_anchors() -> Array[Node3D]:
 
 ## A planted seed finds its socket by name and reads its cylinders.
 func _static_keep() -> Array:
-	return super._static_keep() + [pedestal]
+	var keep := super._static_keep() + [pedestal]
+	if lift_piece != null: keep += lift_piece.moving_parts()
+	for id: String in pad_pieces: keep += pad_pieces[id].moving_parts()
+	return keep
 
 ## The lift is still once it is this close (metres) to its height.
 const LIFT_SETTLED := 0.005
@@ -210,6 +233,7 @@ func _process(delta: float) -> void:
 		var travel := lift_target_height - lift.position.y
 		note_motion("lift", "lift", (1 if travel > 0.0 else -1) if absf(travel) > LIFT_SETTLED else 0)
 		lift.position.y = lerpf(lift.position.y, lift_target_height, minf(delta * 14.0, 1.0))
+		if lift_piece != null: lift_piece.set_height(lift.position.y)
 	if is_instance_valid(camera):
 		camera.size = ViewFit.viewport(11.8, self)
 		camera.h_offset = 0.0

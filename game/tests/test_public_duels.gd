@@ -174,7 +174,7 @@ func _names() -> void:
 	# A stranger takes the open seat after your first turn (the server points the turn at their seat, backend public.ts publicWaitingSlot).
 	var taken := DuelsClient.valid_view(_public_view())
 	taken.sides[0].turn = 1
-	_check(not DuelModel.your_turn(taken, ME) and DuelModel.turn_line(taken, 0, name_of) == PlayerCopy.DUEL_THEIR_TURN % PlayerCopy.DUEL_PARTNER, "Their turn once a stranger sits beside you: %s" % DuelModel.turn_line(taken, 0, name_of))
+	_check(not DuelModel.your_turn(taken, ME) and DuelModel.turn_line(taken, 0, name_of) == PlayerCopy.DUEL_THEIR_TURN % PlayerCopy.PUBLIC_DUEL_PARTNER, "Their turn once a stranger sits beside you: %s" % DuelModel.turn_line(taken, 0, name_of))
 	var theirs := DuelsClient.valid_view(_public_view())
 	theirs.sides[0].members = [null, MAYA]
 	theirs.sides[0].seats = [{"open": false, "you": false, "label": "Kite"}, {"open": false, "you": true, "label": ""}]

@@ -12,11 +12,10 @@ extends Node
 ## - services: api, saves, relay_session, friend_nicknames, turn_notifications,
 ##   room_sharing, live_connection, _friends_client, _friend_events
 ## - identity: _relay_identity, _tester_context
-## - screen: mode, running, ui, application_backgrounded, lifecycle_generation,
+## - screen: mode, ui, application_backgrounded, lifecycle_generation,
 ##   _sync_presence
-## - room flow: active_room, friend_share_target, _friends_to_rooms,
-##   legacy_room_flow (open_room, join_room), relay_lobby_flow (open_lobby,
-##   lobby_action)
+## - room flow: friend_share_target, _friends_to_rooms, relay_lobby_flow
+##   (open_lobby, lobby_action)
 ## - pop-up: notification_flow (friends_notice), which shows the screen's lines
 ## - names: display_name_flow (chip, flush, maybe_ask), for the header chip and
 ##   the first-run name prompt
@@ -35,7 +34,6 @@ const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
-const Typed = preload("res://services/typed_values.gd")
 const Safety = preload("res://services/safety_client.gd")
 ## A leaderboard celebration sounds on the host's soundscape (play_on).
 const Soundscape = preload("res://services/soundscape.gd")
@@ -69,10 +67,6 @@ func open(from_home: bool) -> void:
 		var room: Dictionary = host.relay_session.coordinator.snapshot()
 		title = RoomChapterTitle.for_room(room,"Current room")
 		if room.get("host_id") == host.api.player_id: shareable = current.duplicate(true)
-	elif current.get("api_version") == 1:
-		title = RoomChapterTitle.legacy_title(host.active_room.get("level_id"),"Current room")
-		if Typed.equal(host.active_room.get("host_id"), host.api.player_id): shareable = current.duplicate(true)
-	host.running = false
 	host.mode = MODE_FRIENDS
 	host._sync_presence()
 	host.ui.visible = false
@@ -91,7 +85,7 @@ func open(from_home: bool) -> void:
 	screen.room_title = title
 	screen.shared_room_title = _shared_room_title
 	if not current.is_empty():
-		var snapshot: Dictionary = host.relay_session.coordinator.snapshot() if current.get("api_version") == 2 else host.active_room
+		var snapshot: Dictionary = host.relay_session.coordinator.snapshot()
 		screen.room_status = "Waiting for friend" if snapshot.get("guest_id") == null else "Friend joined"
 	screen.openable_room = not current.is_empty()
 	screen.closed.connect(_leave)
@@ -206,9 +200,6 @@ func _shared_room_title(room: Dictionary) -> String:
 	var room_id := str(room.get("room_id",""))
 	if room.get("api_version") == 2 and host.relay_session != null:
 		return RoomChapterTitle.title(host.relay_session.room_chapter(room_id),"")
-	if room.get("api_version") == 1:
-		for saved: Variant in [host.active_room,host.saves.data.get("room",{})]:
-			if saved is Dictionary and Typed.equal(saved.get("room_id"), room_id): return RoomChapterTitle.legacy_title(saved.get("level_id"),"")
 	return ""
 
 ## The room Friends offers to return to: friend_share_target, while this player
@@ -219,8 +210,6 @@ func _current_room() -> Dictionary:
 	var target: Dictionary = host.friend_share_target
 	if target.get("api_version") == 2 and host.relay_session != null and host.relay_session.coordinator != null:
 		room = host.relay_session.coordinator.snapshot()
-	elif target.get("api_version") == 1:
-		room = host.active_room
 	if room.get("room_id") != target.get("room_id") or host.api.player_id not in [room.get("host_id"),room.get("guest_id")]: return {}
 	return target.duplicate(true)
 
@@ -234,8 +223,7 @@ func _return_to_room() -> void:
 	var target := _current_room()
 	if target.is_empty(): return
 	host._friends_to_rooms()
-	if target.api_version == 2: host.relay_lobby_flow.lobby_action("open",target.room_id)
-	else: host.legacy_room_flow.open_room(target.room_id)
+	host.relay_lobby_flow.lobby_action("open",target.room_id)
 
 func _leave() -> void:
 	screen = null
@@ -263,8 +251,3 @@ func _join(descriptor: Dictionary) -> void:
 			if not current or host.application_backgrounded or identity != host._tester_context(): return
 			if room_id in host.relay_session.room_ids(): host.relay_lobby_flow.lobby_action("open",room_id)
 			else: host.relay_lobby_flow.lobby_action("join",str(descriptor.get("invite_code","")))
-	elif descriptor.get("api_version") == 1:
-		var room_id := str(descriptor.get("room_id",""))
-		var saved: Dictionary = host.saves.data.get("room",{})
-		if Typed.equal(saved.get("room_id"), room_id) and host.api.player_id in [saved.get("host_id"),saved.get("guest_id")]: host.legacy_room_flow.open_room(room_id)
-		else: host.legacy_room_flow.join_room(str(descriptor.get("invite_code","")))

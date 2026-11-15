@@ -112,10 +112,10 @@ func _run() -> void:
 	retry.load_data()
 	retry.activate()
 	store.fail = true
-	Keepsakes.record_legacy_solo("first-light")
+	Keepsakes.record_solo_prefix("first-steps@1", 1)
 	_check(retry.earned_descriptors().is_empty() and not retry.last_error.is_empty(), "Cosmetic I/O failure does not claim persisted unlock")
 	store.fail = false
-	_check(retry.advance_backfill() and _mark(retry, "earlier/first-light", "solo"), "Next reconciliation retries failed cosmetic award")
+	_check(retry.advance_backfill() and _mark(retry, "first-steps/a-little-lift", "solo"), "Next reconciliation retries failed cosmetic award")
 	retry.deactivate()
 	var future := Save.defaults()
 	future.home_keepsakes = {"schema_version": 2, "earned": {}}
@@ -123,7 +123,7 @@ func _run() -> void:
 	var future_hash := FileAccess.get_sha256(prefix + "-future.json")
 	var held := _keepsakes(prefix + "-future.json")
 	held.load_data()
-	_check(held.read_only and not held._award(["earlier/first-light"], "solo") and future_hash == FileAccess.get_sha256(prefix + "-future.json"), "Future save preserved byte-for-byte")
+	_check(held.read_only and not held._award(["first-steps/a-place-to-grow"], "solo") and future_hash == FileAccess.get_sha256(prefix + "-future.json"), "Future save preserved byte-for-byte")
 	_write(prefix + "-corrupt.json", "{broken")
 	var corrupt := _keepsakes(prefix + "-corrupt.json")
 	corrupt.load_data()
@@ -131,7 +131,15 @@ func _run() -> void:
 	# again from their sources) and keeps the bytes aside, as the main save does.
 	var aside := prefix + "-corrupt.json" + Save.UNREADABLE + "{broken".sha256_text() + ".json"
 	_check(not corrupt.read_only and not FileAccess.file_exists(prefix + "-corrupt.json") and FileAccess.get_file_as_string(aside) == "{broken", "An unreadable ledger with no other copy starts over and keeps its bytes aside")
-	_check(corrupt._award(["earlier/first-light"], "solo") and _mark(_keepsakes(prefix + "-corrupt.json"), "earlier/first-light", "solo"), "...and earns places again")
+	_check(corrupt._award(["first-steps/a-place-to-grow"], "solo") and _mark(_keepsakes(prefix + "-corrupt.json"), "first-steps/a-place-to-grow", "solo"), "...and earns places again")
+	# The earlier islands left the game: a ledger that earned their places still loads,
+	# keeps them as saved and never shows them.
+	var retired := Save.defaults()
+	retired.home_keepsakes = {"schema_version": 1, "earned": {"earlier/first-light": {"solo": true, "friend": true}, "first-steps/a-place-to-grow": {"solo": true, "friend": false}}}
+	_write(prefix + "-retired.json", retired)
+	var kept := _keepsakes(prefix + "-retired.json")
+	kept.load_data()
+	_check(not kept.read_only and kept.earned_descriptors().size() == 1 and kept.earned_marks().has("earlier/first-light") and kept._award(["first-steps/a-little-lift"], "solo") and _keepsakes(prefix + "-retired.json").earned_marks().has("earlier/first-light"), "A ledger with an earlier island's place loads, shows only chapter places and keeps the old place on its next write")
 	var recovery_path := prefix + "-recover.json"
 	DirAccess.copy_absolute(prefix + ".json", recovery_path + ".backup")
 	_write(recovery_path, "{interrupted")
@@ -175,7 +183,7 @@ func _run() -> void:
 	var historical := _keepsakes(prefix + "-historical.json")
 	historical.load_data()
 	var started := Time.get_ticks_usec()
-	historical.reconcile_solo({"first-light": {"completed": true}})
+	historical.reconcile_solo()
 	var enqueue_us := Time.get_ticks_usec() - started
 	var longest_us := 0
 	while historical.backfill_pending():
@@ -184,7 +192,6 @@ func _run() -> void:
 		longest_us = maxi(longest_us, Time.get_ticks_usec() - started)
 		await process_frame
 	_check(_mark(historical, "high-and-low/upper-path", "solo") and _mark(historical, "high-and-low/down-and-around", "solo"), "Retroactive archived accepted stages survive restart/fork")
-	_check(not _mark(historical, "earlier/first-light", "solo"), "Legacy completed marker alone earns nothing")
 	_check(_mark(historical, "sleeping-lighthouse/a-welcome-left-on", "solo"), "Complete six-stage Lighthouse history backfills through native validation")
 	var cancelled := _keepsakes(prefix + "-cancelled.json")
 	cancelled.load_data()
@@ -427,7 +434,7 @@ func _raw_friend_cache() -> void:
 		service.advance_backfill()
 		longest_us = maxi(longest_us, Time.get_ticks_usec() - started)
 		await process_frame
-	_check(_mark(service, "earlier/first-light", "friend") and collection._keepsake_failed_rooms.has("legacy:" + BAD), "Future first room cannot starve later65-entry native cache after worker decoding")
+	_check(service.earned_descriptors().is_empty() and collection._index_loaded and collection._rooms.is_empty() and collection._keepsake_failed_rooms.is_empty(), "Rooms of the earlier islands in an older index are read and left out: no award and no failure")
 	_check(FileAccess.get_file_as_string(good_path) == "{interrupted-cache" and FileAccess.get_file_as_string(directory.path_join(bad_scope.sha256_text() + ".json")) == JSON.stringify(future), "Backfill never repairs corrupt cache or rewrites readable future data")
 	var decoded: Dictionary = await _decode_cache_worker(disk.capture_scope(good_scope))
 	_check(decoded.get("ok", false) and decoded.value.entries.size() == 65, "Read-only decoder selects retained valid generation after malformed primary")

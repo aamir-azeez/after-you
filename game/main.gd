@@ -5,9 +5,8 @@ const Frames = preload("res://services/frame_policy.gd")
 const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const DeletedStores = preload("res://services/deleted_identity_stores.gd")
 
-const Simulation = preload("res://core/simulation.gd")
-const Levels = preload("res://core/levels.gd")
 const World = preload("res://presentation/island_world.gd")
+const HomeLayout = preload("res://presentation/home_layout.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
 const ScreenSwitch = preload("res://services/screen_switch.gd")
 const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
@@ -15,7 +14,6 @@ const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
 const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
-const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
@@ -25,11 +23,9 @@ const TouchInput = preload("res://presentation/touch_input.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
-const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RelayOnline = preload("res://services/relay_online_session.gd")
 const RelayPreview = preload("res://relay_preview.gd")
-const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const StoreFlow = preload("res://presentation/store_flow.gd")
@@ -40,8 +36,6 @@ const RedoHomeCard = preload("res://presentation/redo_home_card.gd")
 const RoomHubFlow = preload("res://presentation/room_hub_flow.gd")
 const FriendsFlow = preload("res://presentation/friends_flow.gd")
 const DuelsFlow = preload("res://presentation/duels/duels_flow.gd")
-const TurnFlow = preload("res://presentation/turn_flow.gd")
-const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const SettingsFlow = preload("res://presentation/settings_flow.gd")
 const PlatformGamesFlow = preload("res://presentation/platform_games_flow.gd")
@@ -50,10 +44,9 @@ const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
 const PollenPlayFlow = preload("res://presentation/pollen_play_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenStoreFlow = preload("res://presentation/pollen_store_flow.gd")
+const MenuBack = preload("res://presentation/menu_back.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
-const FacePacks = preload("res://services/face_packs.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
-const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
 const RoomPartnerNames = preload("res://services/room_partner_names.gd")
 const PollenClient = preload("res://services/pollen_client.gd")
@@ -73,9 +66,7 @@ const ServerSwitches = preload("res://services/server_switches.gd")
 const TesterSwitches = preload("res://services/tester_switches.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
-const RoomReactions = preload("res://presentation/room_reactions.gd")
 const Soundscape = preload("res://services/soundscape.gd")
-const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
 const HostingNotificationPreferences = preload("res://services/hosting_notification_preferences.gd")
 const FriendPresence = preload("res://services/friend_presence.gd")
@@ -86,6 +77,7 @@ const RoomSharing = preload("res://services/room_sharing.gd")
 const LiveConnection = preload("res://services/live_connection.gd")
 const Connectivity = preload("res://services/connectivity.gd")
 const ConnectivityProbe = preload("res://services/connectivity_probe.gd")
+const CapabilitiesRefresh = preload("res://services/capabilities_refresh.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -100,7 +92,6 @@ const Changelog = preload("res://services/changelog.gd")
 const WhatsNewCard = preload("res://presentation/whats_new_card.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
-const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const Toast = preload("res://presentation/toast.gd")
 const FriendPlayIcon = preload("res://presentation/friend_play_icon.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
@@ -117,9 +108,7 @@ const INVITE_LINK_ATTEMPTS := 3
 # Invite links open Friends by themselves only from these modes, and only when idle.
 const INVITE_LINK_MODES := ["home", RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS]
 ## Screens a tapped notification may leave to open its room (Friends too, for a hosting alert).
-const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, LegacyRoomFlow.MODE_ROOM, JourneyFlow.MODE_JOURNEY, JourneyFlow.MODE_EARLIER_ISLANDS, ReplaysFlow.MODE_COLLECTION, "saved", RelayLobbyFlow.MODE_LOBBY]
-const ObjectivePanel = preload("res://presentation/objective_panel.gd")
-const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
+const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, JourneyFlow.MODE_JOURNEY, ReplaysFlow.MODE_COLLECTION, RelayLobbyFlow.MODE_LOBBY]
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const PhotoResumePrompt = preload("res://presentation/photo_resume_prompt.gd")
 const NativeFiles = preload("res://services/native_files.gd")
@@ -168,7 +157,6 @@ const CREAM := UiTokens.CREAM
 const MINT := UiTokens.MINT
 const MUTED := UiTokens.MUTED
 const GOLD := Color("f1c48a")
-const COMPLETION_MOMENT_SECONDS := EarlierIslandsFlow.COMPLETION_MOMENT_SECONDS
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D
@@ -177,7 +165,6 @@ var _suspended_world_id := 0
 ## behind them is neither drawn nor run (_service_world_cover).
 var _world_covered := false
 var _world_was_processing := false
-var sim := Simulation.new()
 var saves := LocalSave.new()
 var home_keepsakes := HomeKeepsakes.new()
 var home_stage_view: Control
@@ -209,40 +196,16 @@ var photo_transfer_child: Node
 var ui: Control
 var overlay: Control
 var overlay_shade: ColorRect
-var hud: Control
-var stick: Control
-var timer_label: Label
-var objective_panel: PanelContainer
-var hint_label: Label
-var role_label: Label
-var progress: SeedTimerBar
-var interact_button: Button
-var finish_button: Button
 ## The pop-up (presentation/toast.gd), above every screen.
 var toast: Toast
 var title_font: Font=preload("res://assets/fonts/fredoka.ttf")
 var body_font: Font=preload("res://assets/fonts/nunito.ttf")
-var levels: Array=[]
-var level_index := 0
-var current_level: Dictionary={}
-var attempt: Dictionary={}
-var role := "a"
-var completion_time_left := 0.0
 var mode := "home":
 	set(value):
-		if mode=="completion" and value!="completion":
-			completion_time_left=0.0
 		if mode==ReplaysFlow.MODE_COLLECTION and value!=ReplaysFlow.MODE_COLLECTION:
 			replays_flow.cancel_solo_collection_scan()
 		mode=value
-var running := false
-var action_pressed := false
-var replay_frames: Array=[]
-var replay_index := 0
-var review_recording: Dictionary={}
 var _retry_cancel: Callable
-var active_room: Dictionary={}
-var room_play := false
 var identity_request := ""
 var recovery_read_request := ""
 var pending_recovery: Dictionary = {}
@@ -257,7 +220,6 @@ var capture_path := ""
 var capture_frames := 0
 var ui_theme: Theme
 var frame_times: Array[float]=[]
-var collection_preview := false
 var identity_loading := false
 var identity_read_state := IdentityReadState.UNCHECKED
 var identity_busy := false
@@ -282,10 +244,6 @@ var room_hub_flow: RoomHubFlow = _host_room_hub_flow()
 var friends_flow: FriendsFlow = _host_friends_flow()
 ## Duels: the lobby, its pages and Play into a duel's room.
 var duels_flow: DuelsFlow = _host_duels_flow()
-## Earlier-island turns: submitting one, checking an unanswered one and the held turn.
-var turn_flow: TurnFlow = _host_turn_flow()
-## The earlier-island room page, its redo request, fork and advance.
-var legacy_room_flow: LegacyRoomFlow = _host_legacy_room_flow()
 ## The chapter room lobby: checking rooms, its progress card and its create, join, retry and open steps.
 var relay_lobby_flow: RelayLobbyFlow = _host_relay_lobby_flow()
 ## Settings: one page of categories, and a licence's text.
@@ -296,6 +254,8 @@ var board_feedback: RefCounted = BoardFeedbackFlow.new(self)
 var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
 ## Display names: the first-run prompt, the prompt from Friends and the Friends header chip.
 var display_name_flow: DisplayNameFlow = _host_display_name_flow()
+## The menu screens' one back history (_make_menu_back), made before the flows that use it.
+var menu_back: MenuBack = _make_menu_back()
 ## The Wardrobe: buying and wearing pip cosmetics with Pollen, opened from Settings.
 var wardrobe_flow: WardrobeFlow = _host_wardrobe_flow()
 ## Pollen from play and Home's Pollen chip (presentation/pollen_play_flow.gd).
@@ -308,28 +268,22 @@ var fruit_spend_flow: FruitSpendFlow = _host_fruit_spend_flow()
 var fruits_page_flow: FruitsPageFlow = _host_fruits_page_flow()
 var fruit_unlock_toasts: FruitUnlockToasts = _host_fruit_unlock_toasts()
 # End of Fruits page and play.
-## Play Solo: the Chapters page, Earlier islands and which chapter a card opens.
+## Play Solo: the Chapters page and which chapter a card opens.
 var journey_flow: JourneyFlow = _host_journey_flow()
-## Playing an earlier island, solo or in a legacy room (presentation/earlier_islands_flow.gd).
-var earlier_islands_flow: EarlierIslandsFlow = _host_earlier_islands_flow()
 ## Adding a room partner as a friend (room options and the room list's menu).
 var partner_friends: RefCounted = PartnerFriends.new(_names_scope, _friends_client)
 ## Sends Pollen claims that wait and reads the wallet when this phone has none
 ## (services/pollen_client.gd): when the server's capabilities are read, and on resume.
 var pollen_client: RefCounted
+## The launch and resume capabilities read Home's server-backed rows hang on (services/capabilities_refresh.gd).
+var capabilities_refresh: CapabilitiesRefresh
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
-var foreground_refresh_queued := false
-var foreground_refresh_running := false
-var foreground_schedule := RefreshClock.new()
-var foreground_response: Dictionary = {}
 var lifecycle_generation := 0
-var submission_in_flight := false
 var relay_session: RefCounted
 var relay_child: Node3D
 var relay_identity_epoch := 0
-var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
 var safety_screen: CanvasLayer
 var safety_return := "settings"
@@ -342,7 +296,6 @@ var _photo_resume_left_home := false
 var turn_notifications: Node
 var hosting_notification_preferences := HostingNotificationPreferences.new()
 var friend_presence: Node
-var presence_hud: Label
 var invite_link_bridge: Node
 ## Native inbox override for tests; production uses the native plugin.
 var invite_link_native: Object
@@ -395,8 +348,6 @@ func _ready() -> void:
 	add_child(soundscape)
 	# Every button in the app ticks on a press, from one hook that outlives scene changes.
 	ButtonTicks.install(get_tree())
-	levels=Levels.all_levels()
-	current_level=levels[0]
 	var loaded_config: Variant=LocalSave.parse_json(FileAccess.get_file_as_string("res://app_config.json"))
 	config=loaded_config if loaded_config is Dictionary else {}
 	api=RoomsApi.new()
@@ -410,6 +361,12 @@ func _ready() -> void:
 	probe.base_url=api.base_url
 	probe.configured=api.configured()
 	add_child(probe,false,Node.INTERNAL_MODE_BACK)
+	capabilities_refresh=CapabilitiesRefresh.new()
+	capabilities_refresh.read=_read_capabilities_now
+	capabilities_refresh.may_read=_capabilities_read_allowed
+	add_child(capabilities_refresh,false,Node.INTERNAL_MODE_BACK)
+	# Each answer, or a run of failures, redraws Home's rows that wait on it.
+	capabilities_refresh.changed.connect(_refresh_home_pollen)
 	pollen_client=PollenClient.new(api,_names_scope)
 	# The player's own look follows the signed-in player (services/own_look.gd).
 	Wardrobe.shared().scope_source=_names_scope
@@ -425,8 +382,6 @@ func _ready() -> void:
 	# Bundle purchases whose claim got no answer go again with each flush (services/bundle_claims.gd).
 	BundleClaims.shared().connect_to(api,_names_scope)
 	pollen_client.bundle_claims=BundleClaims.shared()
-	# The reaction packs the player may pick faces from (services/face_packs.gd).
-	FacePacks.source=_face_packs_state
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
 	# Only a phone with Full Journey reads the wallet for the monthly grant (any wallet read may bring a card: _service_grant_card).
 	pollen_client.subscribed=_full_journey_access
@@ -497,18 +452,16 @@ func _ready() -> void:
 	add_child(world)
 	_sync_world_processing()
 	world.footstep.connect(func(spirit: String):
-		if mode=="home" or (running and mode in ["play","preview"]): soundscape.play_footstep(spirit))
+		if mode=="home": soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
-		if mode=="home" or (running and mode in ["play","preview"]): soundscape.play_reunion())
+		if mode=="home": soundscape.play_reunion())
 	soundscape.listen_to(world,"home")
-	world.load_level(current_level)
-	sim.reset(current_level)
-	world.present(sim.snapshot(),true)
+	world.load_level(HomeLayout.LEVEL)
+	world.present(HomeLayout.opening(),true)
 	_build_theme()
 	# Before any list exists: lists wait for a finger's slop before scrolling.
 	TouchInput.install(get_viewport())
 	_build_ui()
-	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	SafeArea.watch(self,_refresh_safe_area)
 	_refresh_safe_area()
 	_refresh_safe_area.call_deferred()
@@ -530,10 +483,6 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture="):
 			capture_path=arg.trim_prefix("--capture=")
-		if arg=="--preview-island":
-			_start_practice(0)
-			_close_overlay()
-			running=false
 	get_tree().auto_accept_quit=false
 
 func _build_theme() -> void:
@@ -576,62 +525,6 @@ func _build_ui() -> void:
 	ui.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	ui.theme=ui_theme
 	layer.add_child(ui)
-	hud=Control.new()
-	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	hud.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	ui.add_child(hud)
-	var top := _label("AFTER YOU",22,CREAM,true)
-	top.position=Vector2(36,26)
-	hud.add_child(top)
-	role_label=_label("",18,MUTED)
-	role_label.position=Vector2(36,61)
-	hud.add_child(role_label)
-	var menu_button := _action_button("pause",earlier_islands_flow.pause)
-	menu_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	menu_button.position=Vector2(-168,24)
-	menu_button.size=Vector2(132,54)
-	hud.add_child(menu_button)
-	# The same seed timer as every chapter HUD; it owns the remaining-seconds number.
-	progress=SeedTimerBar.new()
-	hud.add_child(progress)
-	progress.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	progress.offset_left=-160
-	progress.offset_top=24
-	progress.offset_right=160
-	progress.offset_bottom=24+SeedTimerBar.MIN_SIZE.y
-	timer_label=progress.label
-	objective_panel=ObjectivePanel.new()
-	hud.add_child(objective_panel)
-	objective_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	objective_panel.offset_left=-260
-	objective_panel.offset_top=124
-	objective_panel.offset_right=-36
-	objective_panel.offset_bottom=124
-	hint_label=_label("",22,CREAM)
-	hint_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	hint_label.position=Vector2(-370,-98)
-	hint_label.size=Vector2(740,65)
-	hint_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	hint_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	hud.add_child(hint_label)
-	stick=Joystick.new()
-	stick.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	stick.position=Vector2(12,-210)
-	stick.size=Vector2(Joystick.HIT_SIZE,Joystick.HIT_SIZE)
-	hud.add_child(stick)
-	interact_button=_button("Throw seed",earlier_islands_flow.request_context_action)
-	# In-run controls make the run's own cues: no tick.
-	ButtonTicks.quiet(interact_button)
-	interact_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	interact_button.position=Vector2(-232,-168)
-	interact_button.size=Vector2(195,72)
-	hud.add_child(interact_button)
-	finish_button=_action_button("finish",earlier_islands_flow.finish_recording)
-	ButtonTicks.quiet(finish_button)
-	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	finish_button.position=Vector2(-247,-87)
-	finish_button.size=Vector2(210,54)
-	hud.add_child(finish_button)
 	overlay=Control.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(overlay)
@@ -649,16 +542,7 @@ func _refresh_safe_area() -> void:
 
 func _apply_safe_area(safe: Rect2) -> void:
 	SafeArea.inset(ui,safe)
-	_layout_hint()
 	_layout_bounded_card.call_deferred()
-
-func _layout_hint() -> void:
-	var bounds := ControlTheme.hint_bounds(ui.size.x, bool(saves.data.settings.get("left_handed",false)))
-	hint_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	hint_label.offset_left=bounds.position.x
-	hint_label.offset_top=bounds.position.y
-	hint_label.offset_right=bounds.end.x
-	hint_label.offset_bottom=bounds.end.y
 
 func _label(text: String, font_size: int=20, color: Color=CREAM, title: bool=false) -> Label:
 	var label := Label.new()
@@ -756,7 +640,6 @@ func _fit_icon_button(button: Button) -> void:
 
 func _clear_overlay() -> void:
 	room_hub_flow.release()
-	replays_flow.cancel_collection_replay()
 	store_view_generation += 1
 	_bounded_card_scroll=null
 	_bounded_card_stack=null
@@ -765,10 +648,6 @@ func _clear_overlay() -> void:
 		overlay.remove_child(child)
 		child.queue_free()
 	overlay.visible=true
-
-func _close_overlay() -> void:
-	_clear_overlay()
-	overlay.visible=false
 
 func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 	_clear_overlay()
@@ -823,12 +702,9 @@ func _paragraph(text: String, width: float=480) -> Label:
 	return result
 
 func _show_home() -> void:
-	running=false
 	mode="home"
 	# Home meetups are not recorded, so their chime stays random.
 	soundscape.clear_turn()
-	room_play=false
-	hud.visible=false
 	world.home_view=true
 	_clear_overlay()
 	var home_stage := HomeStage.new()
@@ -847,6 +723,8 @@ func _show_home() -> void:
 	_set_home_hard(home_stage)
 	home_stage.play_cue = soundscape.play_fixed_cue
 	home_stage.play_haptic = soundscape.tap_haptic
+	# A face picked on Home pops like a picked end reaction, one pitch per face.
+	home_stage.play_reaction = func(face: String) -> void: soundscape.play_reaction(["home", face])
 	overlay.add_child(home_stage)
 	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
 	var menu := HomeMenu.new()
@@ -871,9 +749,70 @@ func _show_home() -> void:
 	redo_home_card.home_shown()
 
 ## Home's Wardrobe row and the monthly Pollen card: the Wardrobe, whose Back returns to Home.
+## Before this run's first capabilities answer the row shows as if it works
+## (_wardrobe_offered): a tap waits for that read, then opens it or says the
+## phone is offline.
 func _open_wardrobe_from_home() -> void:
-	if mode != "home" or application_backgrounded or _top_modal() != null or not wardrobe_flow.available(): return
-	wardrobe_flow.show_wardrobe("home")
+	if mode != "home" or application_backgrounded or _top_modal() != null: return
+	open_when_answered(func() -> bool:
+		if not wardrobe_flow.available() or _top_modal() != null: return false
+		wardrobe_flow.show_wardrobe("home")
+		return true)
+
+## A tap on something on Home that needs the server's answer (the Wardrobe row,
+## the chips' halves): `open` (true once it opened) runs now; when it cannot
+## yet, before this run's first capabilities answer, it waits for that read
+## (CapabilitiesRefresh.until_read, briefly) and tries once more, or says the
+## phone is offline. Taps while one waits wait with it.
+func open_when_answered(open: Callable) -> void:
+	if open.call() == true or _answer_waiting: return
+	if capabilities_refresh == null or not capabilities_refresh.pending(): return
+	_answer_waiting = true
+	var screen := mode
+	await capabilities_refresh.until_read()
+	_answer_waiting = false
+	if mode != screen or application_backgrounded: return
+	if open.call() == true: return
+	_refresh_home_pollen()
+	if not capabilities_refresh.known(): _toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
+
+## A tap waiting for the first capabilities answer (open_when_answered).
+var _answer_waiting := false
+
+## Whether the server's first answer of this run is still to come for the
+## player's part of `store` (Wardrobe, PollenWallet or FruitWallet): before it,
+## and with no answer kept for this player, Home's server buttons show as if
+## they work (the one rule for the Wardrobe row and the chips).
+func awaiting_answer(store: RefCounted) -> bool:
+	if capabilities_refresh == null or not capabilities_refresh.pending() or store == null: return false
+	var scope := _names_scope()
+	return not scope.is_empty() and not store.told(str(scope.server), str(scope.owner))
+
+## Home's Wardrobe row: while the server has it on (offline too, greyed while
+## there is nothing kept to show, never gone), or, while its first answer is to
+## come (awaiting_answer), wherever this build shows the Wardrobe; only the
+## server saying off hides it.
+func _wardrobe_offered() -> bool:
+	if wardrobe_flow.available(): return true
+	if not wardrobe_flow.build_shows(): return false
+	var scope := _names_scope()
+	if not scope.is_empty() and Wardrobe.shared().enabled(str(scope.server), str(scope.owner)): return true
+	return awaiting_answer(Wardrobe.shared())
+
+## The launch and resume capabilities read (services/capabilities_refresh.gd):
+## true answered, false failed, null not now (no player yet, or the room
+## session busy with something else). Its caller always wants it, so Home's
+## Play waits for it instead of running out (until_capabilities_read).
+func _read_capabilities_now() -> Variant:
+	if _names_scope().is_empty(): return null
+	ensure_relay_session()
+	if relay_session.busy(): return null
+	return await relay_session.load_capabilities(func() -> bool: return true)
+
+## A background capabilities read runs only over Home, Settings and the menu
+## screens, never under a game, a room, a replay or a chapter on its way in.
+func _capabilities_read_allowed() -> bool:
+	return not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and mode in ["home", SettingsFlow.MODE_SETTINGS, WardrobeFlow.MODE_WARDROBE, PollenStoreFlow.MODE_POLLEN_STORE, FruitsPageFlow.MODE, PollenPlayFlow.MODE]
 
 ## A tap on the player's own pip on the island: the Wardrobe, only while Home
 ## is free for a card (nothing over it, no turn, no held finger). False leaves
@@ -895,7 +834,9 @@ func _open_wardrobe_from_pip() -> bool:
 ## failed read changes nothing kept, so only the server saying off hides them.
 func _refresh_home_pollen() -> void:
 	if mode != "home" or not is_instance_valid(home_menu_view): return
-	home_menu_view.show_wardrobe(wardrobe_flow.available())
+	home_menu_view.show_wardrobe(_wardrobe_offered())
+	# A row shown before the server's first answer greys with Play and Duels once reads keep failing.
+	if home_menu_view.wardrobe_button.visible and not wardrobe_flow.available(): OfflineHold.hold(home_menu_view.wardrobe_button)
 	_refresh_pollen_chip()
 
 ## A public switch changed (services/server_switches.gd): Home's Duels row follows at once.
@@ -912,6 +853,8 @@ func _refresh_home_wardrobe() -> void:
 ## The identity was read or made: the wardrobe follows the signed-in player
 ## (their look, and what the catalogue releases), then Home's row and chip.
 func _follow_identity() -> void:
+	var scope := _names_scope()
+	if not scope.is_empty() and capabilities_refresh != null: capabilities_refresh.identity_ready(Wardrobe.scope_key(str(scope.server), str(scope.owner)))
 	Wardrobe.shared().follow()
 	_refresh_home_pollen()
 	wardrobe_flow.sync_pending()
@@ -1099,7 +1042,8 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard:
 	await opening.drawn()
 	# Never waits for Home's keepsake check: leaving Home hands it to the reaper.
 	await opening.prepare(scene, replay_context.is_empty(), self)
-	if not is_inside_tree() or mode != view or _chapter_open_busy():
+	# A capabilities read out (a tap during Home's launch read) lands first, on the card.
+	if not is_inside_tree() or not await until_capabilities_read() or mode != view or _chapter_open_busy():
 		opening.cancel()
 		return
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
@@ -1122,106 +1066,24 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard:
 	opening.follow_scene_change(self)
 
 func _chapter_open_busy() -> bool:
-	return submission_in_flight or foreground_refresh_running or identity_loading or identity_busy or (relay_session != null and relay_session.busy())
+	return identity_loading or identity_busy or session_busy()
 
 static func _write_solo_replay_context(context: Dictionary) -> bool:
 	return SoloReplayLaunch.write(context)
 
-## Opens an earlier island (EarlierIslandsFlow.start_practice): JourneyFlow's
-## Earlier islands list and the flow's Next island and Cancel reach it here.
-func _start_practice(index: int) -> void:
-	await earlier_islands_flow.start_practice(index)
-
-## The open earlier-island turn or Preview steps in Main's physics callback.
-func _physics_process(delta: float) -> void:
-	earlier_islands_flow.physics_step(delta)
-
 func _unhandled_key_input(event: InputEvent) -> void:
-	if legacy_room_flow.redo_open():
-		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
-			legacy_room_flow.close_redo()
-			get_viewport().set_input_as_handled()
-		return
 	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child):
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
-			earlier_islands_flow.request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
 			if account_flow.holds_back() or mode == "update_gate":
 				get_viewport().set_input_as_handled()
 				return
-			if mode == ReplaysFlow.MODE_COLLECTION_LOADING: replays_flow.show_collection()
-			elif mode in ["confirm_retry", "confirm_restart", ReplaysFlow.MODE_CONFIRM_DELETE]:
+			if mode == ReplaysFlow.MODE_CONFIRM_DELETE:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			elif mode == RelayLobbyFlow.MODE_LOBBY: _return_to_room_hub()
 			elif mode == RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open(): room_hub_flow.go_back()
-			else: earlier_islands_flow.pause() if running or mode=="completion" else _show_home()
-
-func _react(reaction: String) -> void:
-	var code := RoomReactions.code_for_label(reaction)
-	if code.is_empty():
-		return
-	if room_play:
-		if _offline_blocked(): return
-		await _one_room_write(_send_reaction.bind(code))
-		return
-	saves.data["last_reaction"]=reaction
-	saves.flush()
-	_toast(reaction)
-
-func _send_reaction(code: String) -> void:
-	if not saves.data.get("pending_turn",{}).is_empty():
-		_toast(PlayerCopy.MAIN_D808B160901A)
-		return
-	var identity := _relay_identity()
-	if not identity.ready or active_room.get("active_role") != "complete":
-		_toast(PlayerCopy.MAIN_5DD61CC297CD)
-		return
-	var context := {"identity": identity.duplicate(true), "room": active_room.duplicate(true), "mode": mode, "generation": lifecycle_generation}
-	var path := "/v1/rooms/" + str(active_room.room_id)
-	var body := {"base_revision": active_room.revision, "idempotency_key": RoomsApi.new_key(), "reaction": code}
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST, path + "/reactions", body)
-	if not _reaction_response_current(context):
-		return
-	# Two friends may react from the same revision. Refresh once and retry only
-	# while this is still the exact same completed island/attempt.
-	if not response.ok and response.get("code") == "stale_revision":
-		var latest: Dictionary = await api.request_json(HTTPClient.METHOD_GET, path)
-		if not _reaction_response_current(context):
-			return
-		if not latest.ok or not latest.get("data") is Dictionary or not RoomReactions.same_completed_room(context.room, latest.data):
-			_toast(PlayerCopy.MAIN_78DF8178BC2B)
-			return
-		body.base_revision = latest.data.revision
-		body.idempotency_key = RoomsApi.new_key()
-		response = await api.request_json(HTTPClient.METHOD_POST, path + "/reactions", body)
-		if not _reaction_response_current(context):
-			return
-	if response.ok:
-		var incoming: Variant = response.get("data")
-		if not incoming is Dictionary or not RoomReactions.same_completed_room(context.room, incoming) or not incoming.get("reactions") is Dictionary or incoming.reactions.get(identity.player_id) != code:
-			_toast(PlayerCopy.MAIN_B94C73E90E5B)
-			return
-		legacy_room_flow.accept_room(response)
-		_toast("Reaction sent.")
-	else:
-		_toast(str(response.get("error", PlayerCopy.MAIN_B94C73E90E5B)))
-
-func _reaction_response_current(context: Dictionary) -> bool:
-	return is_inside_tree() and mode == context.mode and lifecycle_generation == context.generation \
-		and _relay_identity() == context.identity and RoomReactions.same_completed_room(context.room, active_room)
-
-func _add_room_reaction_summary(card: VBoxContainer, room: Dictionary) -> void:
-	for row: Dictionary in RoomReactions.rows(room, str(api.player_id)):
-		var label := _paragraph(row.text)
-		label.name = "YourRoomReaction" if row.own else "FriendRoomReaction"
-		card.add_child(label)
-
-func _notice_room_reactions(previous: Dictionary, incoming: Dictionary) -> void:
-	var notice := RoomReactions.new_partner_notice(previous, incoming, str(api.player_id), room_reaction_notices)
-	if not notice.is_empty():
-		_toast(notice)
+			else: _show_home()
 
 func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Control:
 	# One framed picture for every chapter view; the chapter picker owns it.
@@ -1229,20 +1091,18 @@ func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Contr
 
 func _open_photo_transfer() -> void:
 	if _online_gated() or _offline_blocked(): return
+	if not await until_capabilities_read(): return
 	if not _relay_identity().ready:
 		_toast(PlayerCopy.MAIN_2BCA37F28163)
 		return
-	if submission_in_flight or foreground_refresh_running or (relay_session!=null and relay_session.busy()):
+	if session_busy():
 		_toast(PlayerCopy.MAIN_27C2299C47EE)
 		return
 	if is_instance_valid(photo_transfer_child): return
 	var screen: Script=load("res://presentation/photo_transfer_screen.gd")
 	if screen==null: _toast(PlayerCopy.MAIN_E595640A21FC); return
 	lifecycle_generation+=1
-	foreground_refresh_queued=false
-	foreground_response={}
 	mode="photo_transfer"
-	running=false
 	_set_world_visible(false)
 	ui.visible=false
 	soundscape.set_covered(true)
@@ -1317,20 +1177,6 @@ func _apply_settings() -> void:
 	if is_instance_valid(friend_presence): friend_presence.set_enabled(bool(saves.data.settings.get("share_online_status", true)))
 	soundscape.configure(saves.data.settings)
 	world.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
-	var left := bool(saves.data.settings.get("left_handed",false))
-	stick.anchor_left=1.0 if left else 0.0
-	stick.anchor_right=stick.anchor_left
-	# Once parented, position is absolute in the HUD. Use anchor-relative
-	# offsets so right-aligned controls remain inside the viewport on resize.
-	stick.offset_left=-208 if left else 12
-	stick.offset_right=stick.offset_left+Joystick.HIT_SIZE
-	for button in [interact_button,finish_button]:
-		var width := 210 if button==finish_button else 195
-		button.anchor_left=0.0 if left else 1.0
-		button.anchor_right=button.anchor_left
-		button.offset_left=36 if left else -37-width
-		button.offset_right=button.offset_left+width
-	_layout_hint()
 
 ## An internal child: it leaves Main's own child order alone.
 func _host_store_flow() -> StoreFlow:
@@ -1349,7 +1195,7 @@ func _host_account_flow() -> AccountFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.settings_requested.connect(func(): settings_flow.show_settings(SettingsFlow.ACCOUNT))
 	flow.photo_transfer_requested.connect(_open_photo_transfer)
-	flow.safety_requested.connect(func(): _open_safety({},"account"))
+	flow.safety_requested.connect(func(): _open_safety("account"))
 	return flow
 
 ## An internal child, like StoreFlow.
@@ -1421,25 +1267,6 @@ func _host_friends_flow() -> FriendsFlow:
 	return flow
 
 ## An internal child, like StoreFlow.
-func _host_turn_flow() -> TurnFlow:
-	var flow := TurnFlow.new(self)
-	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
-	return flow
-
-## An internal child, like StoreFlow.
-func _host_legacy_room_flow() -> LegacyRoomFlow:
-	var flow := _new_legacy_room_flow()
-	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
-	flow.home_requested.connect(_show_home)
-	return flow
-
-## The flow Main hosts and wires; a test harness may return its own LegacyRoomFlow.
-func _new_legacy_room_flow() -> LegacyRoomFlow:
-	return LegacyRoomFlow.new(self)
-
-## An internal child, like StoreFlow.
 func _host_relay_lobby_flow() -> RelayLobbyFlow:
 	var flow := _new_relay_lobby_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
@@ -1461,15 +1288,11 @@ func _host_display_name_flow() -> DisplayNameFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
 
-## An internal child, like StoreFlow. Its Back returns where it opened: Settings or Home.
+## An internal child, like StoreFlow. Its Back goes through the menu back history (menu_back).
 func _host_wardrobe_flow() -> WardrobeFlow:
-	var flow := WardrobeFlow.new(self)
+	var flow := _new_wardrobe_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(func():
-		if flow.return_to == "home": _show_home()
-		# Fruits page and play: the Orchard opened from the Fruits page goes back to it.
-		elif flow.return_to == "fruits": reopen_fruits_page()
-		else: settings_flow.show_settings())
+	flow.back_requested.connect(menu_back.back.bind(MenuBack.WARDROBE))
 	flow.store_requested.connect(func(): pollen_store_flow.show_store("wardrobe"))
 	flow.pollen_requested.connect(func(): pollen_play_flow.open_from_wardrobe())
 	flow.fruits_requested.connect(func(): open_fruits_page("wardrobe"))
@@ -1477,40 +1300,24 @@ func _host_wardrobe_flow() -> WardrobeFlow:
 	flow.fruits_store_requested.connect(func(): pollen_store_flow.show_store("wardrobe", "fruits"))
 	return flow
 
-## An internal child, like StoreFlow. The Pollen store opens from the Wardrobe
-## and goes back to it (or Home, when the Wardrobe is off), and from the plus
-## on Home's chip or the Pollen page's and goes back there; its receipt's Open the
-## Wardrobe opens the Wardrobe.
+## An internal child, like StoreFlow. Its Back goes through the menu back
+## history (menu_back); its receipt's Open the Wardrobe opens the Wardrobe (on
+## the Orchard after its Get Fruits), or Home while the Wardrobe is off.
 func _host_pollen_store_flow() -> PollenStoreFlow:
-	var flow := PollenStoreFlow.new(self)
+	var flow := _new_pollen_store_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(_pollen_store_back.bind(flow))
-	flow.wardrobe_requested.connect(_back_to_wardrobe)
+	flow.back_requested.connect(menu_back.back.bind(MenuBack.STORE))
+	flow.wardrobe_requested.connect(func():
+		if wardrobe_flow.available(): wardrobe_flow.reopen(MenuBack.STORE)
+		if not wardrobe_flow.is_open(): menu_back.home())
 	return flow
 
-## The Pollen store's Back, to where it opened (its return_to).
-func _pollen_store_back(store: PollenStoreFlow) -> void:
-	match store.return_to:
-		"home": _show_home()
-		"pollen":
-			pollen_play_flow.reopen()
-			if not pollen_play_flow.is_open(): _show_home()
-		# The Fruits page opened it ("Get Fruits"): back to that page, with the Back it had.
-		"fruits": reopen_fruits_page()
-		_: _back_to_wardrobe()
-
-## The Wardrobe, with the Back it opened with (on the Orchard after its Get Fruits), or Home while the Wardrobe is off.
-func _back_to_wardrobe() -> void:
-	if wardrobe_flow.available(): wardrobe_flow.reopen()
-	else: _show_home()
-
-## An internal child, like StoreFlow. Back returns where it opened: Home,
-## Settings, the Wardrobe, or the Pollen store (the store's own Back when it
-## cannot open now). The plus on its chips opens the Pollen store while it sells.
+## An internal child, like StoreFlow. Its Back goes through the menu back
+## history (menu_back). The plus on its chips opens the Pollen store while it sells.
 func _host_pollen_play_flow() -> PollenPlayFlow:
-	var flow := PollenPlayFlow.new(self)
+	var flow := _new_pollen_play_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(_pollen_page_back.bind(flow))
+	flow.back_requested.connect(menu_back.back.bind(MenuBack.POLLEN))
 	# Read at call time: the Pollen store is made after this flow.
 	flow.store_route = func(from: String): pollen_store_flow.show_store(from, "fruits" if from == PollenPlayFlow.FROM_FRUITS else "pollen")
 	flow.store_sells = func() -> bool: return is_instance_valid(pollen_store_flow) and pollen_store_flow.available()
@@ -1518,7 +1325,7 @@ func _host_pollen_play_flow() -> PollenPlayFlow:
 	return flow
 
 ## The Fruits page (presentation/fruits_page_flow.gd, show_fruits_page) from a
-## chip's Fruit half or the store, its Back going to `from` ("home", "pollen",
+## chip's Fruit half or the store, over the screen `from` ("home", "pollen",
 ## "wardrobe" or "store"): the one route every Fruit half and store button
 ## takes. True once the Fruits page is open.
 func open_fruits_page(from: String) -> bool:
@@ -1530,18 +1337,43 @@ func open_fruit_convert() -> bool:
 	show_fruit_convert()
 	return true
 
-## The Pollen page's Back, to where it opened (its return_to).
-func _pollen_page_back(page: PollenPlayFlow) -> void:
-	match page.return_to:
-		"settings": settings_flow.show_settings()
-		"wardrobe": _back_to_wardrobe()
-		"store":
-			# A store that cannot open now: where its own Back goes (never "pollen" here, see PollenStoreFlow.show_earning).
-			if pollen_store_flow.available(): pollen_store_flow.reopen()
-			else: _pollen_store_back(pollen_store_flow)
-		# Fruits page and play: opened by the Fruits page's Sunshine.
-		PollenPlayFlow.FROM_FRUITS: reopen_fruits_page()
-		_: _show_home()
+## The menu screens' one back history (presentation/menu_back.gd): Home,
+## Settings, the Wardrobe and its Orchard, the store, the Fruits page and the
+## Pollen page. Each flow says when it opened (menu_opened); Back and the Home
+## square go through it. Its routes open a screen again, read at call time.
+func _make_menu_back() -> MenuBack:
+	var history := MenuBack.new()
+	history.routes = {
+		MenuBack.HOME: func() -> bool:
+			_show_home()
+			return true,
+		MenuBack.SETTINGS: func() -> bool:
+			settings_flow.show_settings()
+			return true,
+		MenuBack.WARDROBE: func() -> bool:
+			if wardrobe_flow.available(): wardrobe_flow.reopen()
+			return wardrobe_flow.is_open(),
+		MenuBack.STORE: func() -> bool:
+			pollen_store_flow.reopen()
+			return pollen_store_flow.is_open(),
+		MenuBack.FRUITS: func() -> bool:
+			fruits_page_flow.reopen()
+			return fruits_page_flow.is_open(),
+		MenuBack.POLLEN: func() -> bool:
+			pollen_play_flow.reopen()
+			return pollen_play_flow.is_open(),
+	}
+	return history
+
+## The menu flows Main hosts; a test harness may return its own (test_menu_back.gd).
+func _new_wardrobe_flow() -> WardrobeFlow: return WardrobeFlow.new(self)
+func _new_pollen_store_flow() -> PollenStoreFlow: return PollenStoreFlow.new(self)
+func _new_pollen_play_flow() -> PollenPlayFlow: return PollenPlayFlow.new(self)
+func _new_fruits_page_flow() -> FruitsPageFlow: return FruitsPageFlow.new(self)
+
+## A menu screen opened over `from` (presentation/menu_back.gd opened), its Back beside the Home square.
+func menu_opened(screen: String, from: String, back: Button) -> void:
+	menu_back.opened(screen, from, back)
 
 # Fruits page and play ------------------------------------------------------
 
@@ -1561,45 +1393,24 @@ func _host_fruit_spend_flow() -> FruitSpendFlow:
 	# Read at call time: the short card's Get Fruits opens the store on its Fruits tab, Back
 	# coming to the screen it was on. Over the store's own Fruits tab the packs are already
 	# there: the card just closes.
-	flow.get_fruits = func() -> void: if not pollen_store_flow.is_open(): _fruit_store(_fruit_screen())
+	flow.get_fruits = func() -> void: if not pollen_store_flow.is_open(): pollen_store_flow.show_store(_fruit_screen(), "fruits")
 	pollen_play_flow.fruit_spends = flow
 	return flow
 
-## An internal child, like StoreFlow. Back returns where it opened (_fruits_page_back).
+## An internal child, like StoreFlow. Its Back goes through the menu back history (menu_back).
 func _host_fruits_page_flow() -> FruitsPageFlow:
-	var flow := FruitsPageFlow.new(self)
+	var flow := _new_fruits_page_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.spend = fruit_spend_flow
-	flow.back_requested.connect(_fruits_page_back.bind(flow))
+	flow.back_requested.connect(menu_back.back.bind(MenuBack.FRUITS))
 	flow.chip_source = func() -> Control: return pollen_play_flow.chip(PollenPlayFlow.FROM_FRUITS)
 	flow.chip_state = pollen_play_flow.chip_state
-	flow.store_route = _fruit_store
-	flow.orchard_route = func(from: String) -> void:
-		# Back to a Wardrobe that opened the page keeps the Wardrobe's own Back.
-		wardrobe_flow.show_orchard(wardrobe_flow.return_to if _back_leads_to(from, "wardrobe") else from)
+	flow.store_route = func(from: String) -> void: pollen_store_flow.show_store(from, "fruits")
+	flow.orchard_route = func(from: String) -> void: wardrobe_flow.show_orchard(from)
 	flow.orchard_ready = func() -> bool: return wardrobe_flow.available()
-	flow.pollen_route = func(from: String) -> void:
-		if _back_leads_to(from, "pollen"): pollen_play_flow.reopen()
-		else: pollen_play_flow.open_from_fruits()
+	flow.pollen_route = func(_from: String) -> void: pollen_play_flow.open_from_fruits()
 	flow.pollen_ready = func() -> bool: return pollen_play_flow.available()
-	# The chip on the Fruits page sends its Pollen half and plus through the same routes as the page's own buttons.
-	pollen_play_flow.fruits_page_route = func(to: String) -> void:
-		if to == "store": _fruit_store("fruits")
-		else: flow.pollen_route.call("fruits")
 	return flow
-
-## The store on its Fruits tab over the screen `from`. When `from` was opened by
-## the store (its Back leads there), the store opens with its own Back kept, so
-## the two screens never send each other Back in a loop.
-func _fruit_store(from: String) -> void:
-	pollen_store_flow.show_store(pollen_store_flow.return_to if _back_leads_to(from, "store") else from, "fruits")
-
-## Whether the Fruit screen `from` ("fruits" or "pollen") goes Back to `screen`.
-func _back_leads_to(from: String, screen: String) -> bool:
-	match from:
-		"fruits": return fruits_page_flow.return_to == screen
-		"pollen": return pollen_play_flow.return_to == screen
-	return false
 
 ## An internal child: each Fruit goal paid away from its result card, said once (service in _process).
 func _host_fruit_unlock_toasts() -> FruitUnlockToasts:
@@ -1608,45 +1419,24 @@ func _host_fruit_unlock_toasts() -> FruitUnlockToasts:
 	flow.open_page = func(_from: String) -> void: show_fruits_page(_fruit_screen())
 	return flow
 
-## The screen up now, as the Fruit screens name where Back goes: the Fruits page,
-## the Pollen page, the Wardrobe, the store, or Home.
+## The screen up now, as the back history names it: the Fruits page, the
+## Pollen page, the Wardrobe, the store, Settings, or Home.
 func _fruit_screen() -> String:
-	if fruits_page_flow.is_open(): return "fruits"
-	if pollen_play_flow.is_open(): return "pollen"
-	if wardrobe_flow.is_open(): return "wardrobe"
-	if pollen_store_flow.is_open(): return "store"
-	return "home"
+	if fruits_page_flow.is_open(): return MenuBack.FRUITS
+	if pollen_play_flow.is_open(): return MenuBack.POLLEN
+	if wardrobe_flow.is_open(): return MenuBack.WARDROBE
+	if pollen_store_flow.is_open(): return MenuBack.STORE
+	if mode == SettingsFlow.MODE_SETTINGS: return MenuBack.SETTINGS
+	return MenuBack.HOME
 
-## The Fruits page, its Back going to `from` ("home", "pollen", "wardrobe" or
-## "store"). From a screen the Fruits page itself opened, it goes
-## Back there instead, so the two never send each other Back in a loop.
+## The Fruits page over the screen `from` ("home", "pollen", "wardrobe" or
+## "store"); the back history keeps Back from looping.
 func show_fruits_page(from: String) -> void:
-	var opener := {"pollen": pollen_play_flow.return_to, "wardrobe": wardrobe_flow.return_to, "store": pollen_store_flow.return_to}
-	if str(opener.get(from, "")) == "fruits":
-		reopen_fruits_page()
-		return
 	fruits_page_flow.open(from)
-
-## The Fruits page again with the Back it had (a screen it opened went Back), or Home while it cannot open.
-func reopen_fruits_page() -> void:
-	fruits_page_flow.reopen()
-	if not fruits_page_flow.is_open(): _show_home()
 
 ## Turn Fruits into Pollen over the screen up now (the store's Fruits tab).
 func show_fruit_convert() -> void:
 	fruit_spend_flow.convert(overlay)
-
-## The Fruits page's Back, to where it opened (its return_to).
-func _fruits_page_back(page: FruitsPageFlow) -> void:
-	match page.return_to:
-		"wardrobe": _back_to_wardrobe()
-		"pollen":
-			pollen_play_flow.reopen()
-			if not pollen_play_flow.is_open(): _show_home()
-		"store":
-			if pollen_store_flow.available(): pollen_store_flow.reopen()
-			else: _pollen_store_back(pollen_store_flow)
-		_: _show_home()
 
 # End of Fruits page and play -----------------------------------------------
 
@@ -1669,20 +1459,6 @@ func _host_journey_flow() -> JourneyFlow:
 	var flow := JourneyFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
-
-## An internal child, like JourneyFlow.
-func _host_earlier_islands_flow() -> EarlierIslandsFlow:
-	var flow := EarlierIslandsFlow.new(self)
-	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	return flow
-
-## What services/face_packs.gd reads: the faces the signed-in player's server
-## takes (RelayOnlineSession.face_version), their wardrobe as it last said and
-## the reaction slots shown on this phone; {} while signed out.
-func _face_packs_state() -> Dictionary:
-	var scope:=_names_scope()
-	if scope.is_empty(): return {}
-	return {"version": relay_session.face_version() if relay_session!=null else 0, "view": Wardrobe.shared().view(scope.server,scope.owner), "slots": Wardrobe.shared().effective_slots(scope.server,scope.owner)}
 
 ## The server and player that key the names and friends this phone keeps, or {}.
 func _names_scope() -> Dictionary:
@@ -1729,7 +1505,7 @@ func _customer_info_changed(_payload: Dictionary) -> void:
 	# store reports on every launch and resume, mostly with nothing new, and a
 	# redraw frees the card under a finger, so only a change in access redraws,
 	# after any tap in progress.
-	if mode in [JourneyFlow.MODE_JOURNEY,JourneyFlow.MODE_EARLIER_ISLANDS]:
+	if mode==JourneyFlow.MODE_JOURNEY:
 		await journey_flow.access_changed()
 	elif mode==RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open():
 		room_hub_flow.redraw_chapters()
@@ -1823,15 +1599,10 @@ func _return_to_room_hub(notice: String = "", refresh: bool = true) -> void:
 	if duels_flow.return_instead(notice): return
 	room_hub_flow.open_hub(notice,refresh)
 
-## The server removed a room from the hub: this device forgets its share, its
-## alert and, for a legacy room with nothing unsent, its saved copy.
+## The server removed a room from the hub: this device forgets its share and its alert.
 func forget_removed_room(version: int, room_id: String) -> void:
 	if friend_room_events != null: friend_room_events.forget({"api_version":version,"room_id":room_id})
 	if friend_share_target.get("api_version") == version and friend_share_target.get("room_id") == room_id: friend_share_target = {}
-	var saved: Dictionary = saves.data.get("room",{})
-	if version == 1 and saved.get("room_id") == room_id and saves.data.get("pending_turn",{}).is_empty() and saves.data.get("room_draft",{}).is_empty():
-		saves.update_values({"room":{}})
-		if active_room.get("room_id") == room_id: active_room = {}
 
 func _friend_display_name(friend: String) -> String:
 	## One place to turn a friend's or room partner's player id into the name
@@ -1842,14 +1613,9 @@ func _friend_display_name(friend: String) -> String:
 	if friend_nicknames == null: return FriendNicknames.FALLBACK
 	return friend_nicknames.display_name(str(api.base_url),str(api.player_id),friend)
 
-## What a hub tap waits for: work its online flow refuses during (_relay_available).
-func _online_flow_idle() -> bool:
-	return not submission_in_flight and not foreground_refresh_running
-
-## ... plus the room session, for taps that open or make a chapter room. A saved
-## legacy turn is not transient; the room flow opens it (_relay_available).
+## What a hub tap that opens or makes a chapter room waits for: the room session.
 func _room_session_idle() -> bool:
-	return _online_flow_idle() and (relay_session == null or not relay_session.busy())
+	return relay_session == null or not relay_session.busy()
 
 ## Duels from Home's row, while the server has them on (presentation/duels/duels_flow.gd).
 ## The row can show from the public switch alone, so the tap reads this
@@ -1861,12 +1627,13 @@ func _show_duels(report: Callable = Callable()) -> void:
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
 	var current := func() -> bool: return view == store_view_generation and lifecycle == lifecycle_generation and not application_backgrounded and not duels_flow.is_open() and not friends_flow.is_open()
-	if not _relay_available(report) or not await _ensure_identity(report): return
+	if not await _ensure_identity(report): return
 	if not current.call(): return
 	ensure_relay_session()
 	if relay_session.capabilities.is_empty() or not duels_flow.supported():
 		# A busy session would refuse the read and drop what it knows: the tap says so instead.
-		if relay_session.busy():
+		# A capabilities read out (Home's launch read) is no refusal: the read below takes its answer.
+		if session_busy():
 			_report(report,PlayerCopy.ROOMS_API_DA75E6F7A674)
 			return
 		var session: RefCounted = relay_session
@@ -1886,7 +1653,7 @@ func _show_friends(report: Callable = Callable()) -> void:
 	var from_home := mode == "home"
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
-	if not _relay_available(report) or not await _ensure_identity(report): return
+	if not await _ensure_identity(report): return
 	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or friends_flow.is_open(): return
 	# Friends is a full-screen takeover. Release the room hub so it cannot sit
 	# behind the Friends layer and intercept input while Friends is open.
@@ -1905,9 +1672,6 @@ func _current_room_share_allowed(target: Dictionary) -> bool:
 	if target.api_version == 2:
 		if mode != "relay_online" or not is_instance_valid(relay_child) or relay_session == null or relay_session.coordinator == null or relay_child.journey != relay_session.coordinator: return false
 		room = relay_session.coordinator.snapshot()
-	elif target.api_version == 1:
-		if mode != LegacyRoomFlow.MODE_ROOM: return false
-		room = active_room
 	return room.get("room_id") == target.room_id and room.get("host_id") == api.player_id
 
 func _room_share_changed(target: Dictionary) -> void:
@@ -1971,7 +1735,6 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	# Recovery/deletion clear authority; ordinary identity loading only holds it.
 	Purchases.suspend_session(clear_notifications)
 	friend_share_target = {}
-	var had_redo_screen := legacy_room_flow.invalidate_identity()
 	_keepsake_identity.clear()
 	if friends_client != null: friends_client.invalidate()
 	if friend_room_events != null: friend_room_events.invalidate()
@@ -1995,7 +1758,6 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	# Recovery or deletion drops an unopened invite link with the old account.
 	if clear_notifications: invite_link_pending = ""
 	lifecycle_generation += 1
-	foreground_response = {}
 	relay_identity_epoch += 1
 	relay_lobby_flow.cancel()
 	if relay_session != null:
@@ -2012,20 +1774,6 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if is_instance_valid(photo_transfer_child):
 		if photo_transfer_child.has_method("identity_invalidated"): photo_transfer_child.identity_invalidated()
 		elif photo_transfer_child.has_method("invalidate"): photo_transfer_child.invalidate()
-	# The room hub needs a ready identity, so a stale redo panel returns Home.
-	if had_redo_screen and mode == LegacyRoomFlow.MODE_REDO: _show_home()
-
-## Whether an online action may start. A request still out refuses with its
-## reason (report). An unsent turn refuses by opening it (turn_flow.show_unsent_turn),
-## so the player always has a way back to online play.
-func _relay_available(report: Callable = Callable()) -> bool:
-	if submission_in_flight or foreground_refresh_running:
-		_report(report,PlayerCopy.MAIN_8184DEB41266)
-		return false
-	if not saves.data.get("pending_turn",{}).is_empty():
-		turn_flow.show_unsent_turn(report)
-		return false
-	return true
 
 ## A room flow that stopped before drawing anything (the caller already left
 ## the hub or Friends) returns to the hub instead of leaving a bare screen.
@@ -2043,18 +1791,13 @@ func _friend_events() -> FriendRoomEventsClient:
 	return friend_room_events as FriendRoomEventsClient
 
 func _enter_online_relay() -> void:
-	if not legacy_room_flow.navigation_ready(): return
 	if relay_session == null or relay_session.coordinator == null or relay_session.busy() or is_instance_valid(relay_child):
 		return
 	lifecycle_generation += 1
-	foreground_refresh_queued = false
-	foreground_response = {}
-	running = false
 	_yield_keepsake_check()
 	room_hub_flow.release()
 	mode = "relay_online"
 	friend_share_target = {"api_version":2,"room_id":relay_session.coordinator.snapshot().room_id}
-	room_play = false
 	_set_world_visible(false)
 	ui.visible = false
 	soundscape.set_covered(true)
@@ -2151,41 +1894,6 @@ func _ensure_identity(report: Callable = Callable()) -> bool:
 	_follow_identity()
 	return true
 
-func _room_simulation_version() -> int:
-	return TurnState.simulation_version({},role,active_room) if room_play else 0
-
-## Starts this player's turn in the open legacy room, resuming the draft saved
-## for its revision. The room page's Play your turn checks first
-## (legacy_room_flow.play_turn).
-func _start_room_turn() -> void:
-	room_play=true
-	level_index=int(active_room.level_index)
-	current_level=Levels.get_level(str(active_room.level_id))
-	role=str(active_room.active_role)
-	attempt=LocalSave.normalize_attempt(active_room.get("recordings",{}))
-	var local: Dictionary=saves.data.get("room_draft",{})
-	if local.get("room_id","")==active_room.room_id and int(local.get("revision",-1))==int(active_room.revision):
-		attempt.draft=local.get("attempt",{}).get("draft",{})
-	earlier_islands_flow.prepare_turn()
-
-func _watch_room_replay() -> void:
-	room_play=true
-	level_index=int(active_room.level_index)
-	current_level=Levels.get_level(str(active_room.level_id))
-	attempt=LocalSave.normalize_attempt(active_room.get("recordings",{}))
-	earlier_islands_flow.preview(attempt.b,true)
-
-## Legacy room writes (a turn, its check, Next island, a fork, a reaction) run
-## one at a time: submission_in_flight holds while one is out, so a second tap
-## meanwhile does nothing and other flows wait for it. Returns the work's
-## result; nothing when another write is already out.
-func _one_room_write(work: Callable) -> Variant:
-	if submission_in_flight: return {"ok": false, "status": 0, "code": "request_busy", "ignored": true}
-	submission_in_flight = true
-	var result: Variant = await work.call()
-	submission_in_flight = false
-	return result
-
 func _scroll_list(card: VBoxContainer, scrolling: bool=true) -> VBoxContainer:
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal=Control.SIZE_EXPAND_FILL
@@ -2222,7 +1930,7 @@ func _sync_world_processing() -> void:
 	else:
 		_suspended_world_id = 0
 
-## Friends, the room hub, Safety and Redo requests are opaque full-screen layers, and full pages
+## Friends, the room hub and Safety are opaque full-screen layers, and full pages
 ## (chapters, Replays, Together) sit behind a 0.9 shade. Behind all of them the
 ## 3D Home world was still drawn (some 400 draw calls) and run every frame.
 ## Behind an opaque layer it is simply not drawn or run. Behind a page shade a
@@ -2250,7 +1958,7 @@ func _service_world_cover() -> void:
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
 	# A shared replay draws its own world, even over Friends (a leaderboard run) or Duels (the other pair's run).
-	var covered := not is_instance_valid(shared_replay_child) and (friends_flow.is_open() or duels_flow.is_open() or room_hub_flow.is_open() or settings_flow.is_open() or is_instance_valid(safety_screen) or legacy_room_flow.redo_open() or (shade != null and _backdrop_ready))
+	var covered := not is_instance_valid(shared_replay_child) and (friends_flow.is_open() or duels_flow.is_open() or room_hub_flow.is_open() or settings_flow.is_open() or is_instance_valid(safety_screen) or (shade != null and _backdrop_ready))
 	if not covered and _backdrop_still != null:
 		_backdrop_still = null
 		_backdrop_key = []
@@ -2260,15 +1968,14 @@ func _service_world_cover() -> void:
 	_sync_world_processing()
 
 ## How often this screen needs drawing (services/frame_policy.gd): chapters
-## and replays answer for themselves; play, the completion moment and a
-## chapter's loading card need full rate; every menu, card and page is calm
+## and replays answer for themselves; a chapter's loading card needs full
+## rate; every menu, card and page is calm
 ## (touching the screen, Home's camera included, brings full rate back).
 func frame_demand() -> String:
 	if not capture_path.is_empty(): return Frames.ACTIVE
 	if is_instance_valid(relay_child): return relay_child.frame_demand() if relay_child.has_method("frame_demand") else Frames.ACTIVE
 	if is_instance_valid(_chapter_opening): return Frames.ACTIVE
 	if is_instance_valid(shared_replay_child): return Frames.ACTIVE if shared_replay_child.get("mode") in ["replay", "bloom"] else Frames.CALM
-	if running or mode == "completion": return Frames.ACTIVE
 	# A keepsake playing its tap at Home moves for a few seconds, then settles.
 	if mode == "home" and is_instance_valid(home_stage_view) and home_stage_view.keepsake_playing(): return Frames.ACTIVE
 	return Frames.CALM
@@ -2348,11 +2055,6 @@ func _place_still(shade: ColorRect, texture: Texture2D) -> void:
 	shade.get_parent().move_child(still, shade.get_index())
 	_backdrop_ready = true
 
-func _foreground_refresh_safe() -> bool:
-	# A paused rehearsal is still active work. Do not swap its source recording,
-	# revision or review screen behind the player's back.
-	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home",RoomHubFlow.MODE_ROOMS,LegacyRoomFlow.MODE_ROOM,JourneyFlow.MODE_JOURNEY,ReplaysFlow.MODE_COLLECTION,SettingsFlow.MODE_SETTINGS,"saved"]
-
 func _background_application() -> void:
 	if application_backgrounded:
 		return
@@ -2361,16 +2063,6 @@ func _background_application() -> void:
 	if is_instance_valid(soundscape):
 		soundscape.set_backgrounded(true)
 	lifecycle_generation+=1
-	foreground_response={}
-	action_pressed=false
-	if is_instance_valid(stick):
-		stick.release()
-	if running:
-		earlier_islands_flow.pause()
-	else:
-		# Covers the narrow interval between finishing a live turn and presenting
-		# review. Preview and menu modes do not create or overwrite drafts.
-		earlier_islands_flow.save_draft()
 
 func _resume_application() -> void:
 	# Android may deliver more than one resume/focus notification. A single
@@ -2385,8 +2077,6 @@ func _resume_application() -> void:
 		# transfer) keeps it covered: that is set_covered's, not this.
 		soundscape.set_backgrounded(false)
 	lifecycle_generation+=1
-	foreground_response={}
-	foreground_refresh_queued=true
 	if app_status != null and app_status.due(): _check_app_status()
 	if pollen_client != null: pollen_client.flush()
 	_refresh_home_pollen()
@@ -2427,9 +2117,9 @@ func _update_gate_active() -> bool:
 ## Online entry points ask first: while gated they show the update screen instead.
 func _online_gated() -> bool:
 	if not _update_gate_active(): return false
-	# A full-screen child (a room, a replay, Photo transfer, Safety, a redo request)
+	# A full-screen child (a room, a replay, Photo transfer, Safety)
 	# keeps its own Back; the screen then waits for Home instead of drawing beneath it.
-	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open():
+	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen):
 		_toast(PlayerCopy.UPDATE_REQUIRED_ERROR)
 		_request_update_gate()
 		return true
@@ -2455,8 +2145,8 @@ func _service_update_gate() -> void:
 ## a Home button, and no walk or pinch on the island in Explore. Online entries
 ## still ask _online_gated, which shows the update screen at once.
 func _home_free_for_card() -> bool:
-	if mode != "home" or application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or friends_flow.is_open() or room_hub_flow.is_open(): return false
-	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open(): return false
+	if mode != "home" or application_backgrounded or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or friends_flow.is_open() or room_hub_flow.is_open(): return false
+	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen): return false
 	if is_instance_valid(_whats_new_card) or _top_modal() != null or TouchInput.press_held(overlay): return false
 	return not (is_instance_valid(home_stage_view) and home_stage_view.is_exploring())
 
@@ -2517,9 +2207,6 @@ func _view_leaderboard(board: String) -> void:
 	if friends_flow.is_open(): friends_flow.open_leaderboards(LeaderboardRuns.chapter_of(board))
 
 func _show_update_gate() -> void:
-	running=false
-	room_play=false
-	hud.visible=false
 	mode="update_gate"
 	# Friends is a layer above the overlay: close it so the screen is never hidden.
 	friends_flow.close()
@@ -2552,102 +2239,6 @@ func _on_update_required() -> void:
 	_request_update_gate()
 	_check_app_status()
 
-func _service_foreground_refresh() -> void:
-	if not _foreground_refresh_safe() or foreground_refresh_running:
-		return
-	if not foreground_response.is_empty():
-		var deferred := foreground_response
-		foreground_response={}
-		if int(deferred.get("generation",-1))==lifecycle_generation and str(deferred.get("context",""))==_foreground_room_context(str(deferred.room_id)):
-			_apply_foreground_response(deferred.response,str(deferred.room_id))
-	if api==null or identity_loading or identity_busy:
-		return
-	if not api.configured() or identity_restart_required or api.player_id.is_empty() or api.device_token.is_empty():
-		foreground_refresh_queued=false
-		return
-	var pending: Dictionary=saves.data.get("pending_turn",{})
-	var room_id := str(saves.data.get("room",{}).get("room_id",""))
-	if not pending.is_empty() and turn_flow.pending_owned(pending):
-		room_id=str(pending.get("room_id",""))
-	if room_id.is_empty():
-		foreground_refresh_queued=false
-		foreground_schedule.bind("",Time.get_ticks_msec())
-		return
-	var now := Time.get_ticks_msec()
-	var context := _foreground_room_context(room_id)
-	foreground_schedule.bind(context,now)
-	if foreground_refresh_queued:
-		foreground_schedule.request_now(now)
-		foreground_refresh_queued=false
-	elif mode not in [LegacyRoomFlow.MODE_ROOM,RoomHubFlow.MODE_ROOMS]:
-		return
-	var ticket: Dictionary=foreground_schedule.begin_if_due(now,true,false)
-	if ticket.is_empty():
-		return
-	foreground_refresh_running=true
-	var generation := lifecycle_generation
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
-	foreground_refresh_running=false
-	var current := context==_foreground_room_context(room_id)
-	# A room that reads the same as last time waits longer before the next read.
-	var changed: bool = not response.get("ok",false) or foreground_schedule.changed(response.get("data"))
-	foreground_schedule.complete(ticket,Time.get_ticks_msec(),response.get("ok",false),int(response.get("retry_after_ms",0)),response.get("status",0) in [401,403,404,410],changed)
-	if generation!=lifecycle_generation or not current:
-		return
-	if not _foreground_refresh_safe():
-		foreground_response={"response":response,"room_id":room_id,"generation":generation,"context":context}
-		return
-	_apply_foreground_response(response,room_id)
-
-func _foreground_room_context(room_id: String) -> String:
-	return JSON.stringify([api.player_id,_token_digest(),relay_identity_epoch,lifecycle_generation,room_id])
-
-func _apply_foreground_response(response: Dictionary, requested_room: String) -> void:
-	if not response.get("ok",false):
-		if mode in [LegacyRoomFlow.MODE_ROOM,RoomHubFlow.MODE_ROOMS]:
-			_toast(str(response.get("error",PlayerCopy.MAIN_076E60DB25EC)))
-		return
-	var incoming: Variant=response.get("data",{})
-	if incoming is Dictionary:
-		incoming=incoming.get("room",incoming)
-	if not incoming is Dictionary or str(incoming.get("room_id",""))!=requested_room or Levels.get_level(str(incoming.get("level_id",""))).is_empty():
-		return
-	if not legacy_room_flow.navigation_ready(requested_room,false): return
-	var displayed: bool=str(active_room.get("room_id",""))==requested_room
-	var remembered: bool=str(saves.data.get("room",{}).get("room_id",""))==requested_room
-	var pending: Dictionary=saves.data.get("pending_turn",{})
-	var confirmed: bool=TurnState.pending_status(pending,incoming)=="accepted"
-	if not displayed and not remembered and not confirmed:
-		return
-	var known_revision := -1
-	if displayed:
-		known_revision=maxi(known_revision,int(active_room.get("revision",-1)))
-	if remembered:
-		known_revision=maxi(known_revision,int(saves.data.room.get("revision",-1)))
-	if int(incoming.get("revision",-1))<known_revision:
-		return
-	var changes: Dictionary={}
-	if remembered and saves.data.room!=incoming:
-		changes["room"]=incoming.duplicate(true)
-	var erased: Array=["pending_turn","room_draft"] if confirmed else []
-	if not changes.is_empty() or not erased.is_empty():
-		if not saves.update_values(changes,erased):
-			_toast(saves.last_error)
-			return
-	if displayed:
-		var changed: bool=active_room!=incoming
-		_notice_room_reactions(active_room,incoming)
-		if not TurnState.my_turn(active_room,api.player_id) and TurnState.my_turn(incoming,api.player_id):
-			_toast(PlayerCopy.MAIN_09164F93CEA2)
-		active_room=incoming.duplicate(true)
-		if mode==LegacyRoomFlow.MODE_ROOM and changed:
-			legacy_room_flow.redraw_when_free(requested_room)
-	if confirmed:
-		_toast(PlayerCopy.MAIN_A917FC21E486)
-	# An unmatched pending request stays queued for explicit reconciliation.
-	# Returning to the app never starts or retries a POST automatically.
-	if mode == LegacyRoomFlow.MODE_ROOM: legacy_room_flow.refresh_redo()
-
 ## A flow's reason for stopping goes where its caller shows reasons: Home's
 ## toast by default, the hub's notice (RoomHubFlow.message) for a hub tap.
 func _report(report: Callable, text: String) -> void:
@@ -2659,16 +2250,13 @@ func _toast(text: String) -> void:
 
 func _process(delta: float) -> void:
 	_service_world_cover()
-	replays_flow.service_collection_replay()
 	replays_flow.service_solo_collection()
 	replays_flow.service_shared_replays()
 	_service_home_keepsakes(delta)
 	_sync_presence()
 	_sync_live()
-	earlier_islands_flow.advance_completion_moment(delta)
-	_service_foreground_refresh()
 	if is_instance_valid(turn_notifications):
-		turn_notifications.service(Time.get_ticks_msec(), not application_backgrounded, not submission_in_flight and not foreground_refresh_running and not running and (relay_session == null or not relay_session.busy()))
+		turn_notifications.service(Time.get_ticks_msec(), not application_backgrounded, (relay_session == null or not relay_session.busy()))
 		notification_flow.service_route()
 	_service_invite_link()
 	notification_flow.service_friends()
@@ -2701,7 +2289,7 @@ func _service_home_keepsakes(delta: float) -> void:
 	# before it has been freed, which both take the first frames.
 	if _keepsakes_reconcile_frame >= 0 and Engine.get_process_frames() > _keepsakes_reconcile_frame and not _home_settling():
 		_keepsakes_reconcile_frame = -1
-		home_keepsakes.reconcile_solo(saves.data.get("replays", {}))
+		home_keepsakes.reconcile_solo()
 		if shared_replays != null: home_keepsakes.reconcile_friend(shared_replays)
 	_keepsake_poll += delta
 	if _keepsake_poll < 0.15: return
@@ -2750,7 +2338,7 @@ func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
 	# input and Back/close behavior. Never let both screens process Back.
 	# Checks what first: other notifications arrive before the flows exist and after they are freed.
-	if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or friends_flow.is_open() or duels_flow.is_open() or legacy_room_flow.redo_open()):
+	if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or friends_flow.is_open() or duels_flow.is_open()):
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		# Before anything else: shown recovery details hide before the app switcher's picture.
@@ -2762,21 +2350,15 @@ func _notification(what: int) -> void:
 		_resume_application()
 		if is_instance_valid(account_flow): account_flow.application_resumed()
 		redo_home_card.read_soon()
-	elif what==NOTIFICATION_APPLICATION_FOCUS_OUT and running:
-		# A notification shade or another app over a turn pauses it, as in a chapter.
-		earlier_islands_flow.pause()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		# The update screen has no Back: the player updates or picks Play Solo.
 		if account_flow.holds_back() or mode == "update_gate": return
 		if _close_top_modal(): return
 		if is_instance_valid(_whats_new_card): _whats_new_card.close()
-		elif mode == ReplaysFlow.MODE_COLLECTION_LOADING: replays_flow.show_collection()
-		elif mode in ["confirm_retry", "confirm_restart", ReplaysFlow.MODE_CONFIRM_DELETE]:
+		elif mode == ReplaysFlow.MODE_CONFIRM_DELETE:
 			if _retry_cancel.is_valid(): _retry_cancel.call()
 		# Together replays: Android Back goes where their on-screen Back goes.
 		elif mode in [ReplaysFlow.MODE_SHARED_REPLAYS, ReplaysFlow.MODE_SHARED_MEMORIES] and not is_instance_valid(shared_replay_child): _show_home()
-		elif running or mode=="completion":
-			earlier_islands_flow.pause()
 		elif mode==SettingsFlow.MODE_LICENSE_TEXT:
 			settings_flow.show_licenses()
 		elif mode == StoreFlow.MODE_TESTER_ACCESS:
@@ -2791,10 +2373,6 @@ func _notification(what: int) -> void:
 		else:
 			_back_on_screen()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
-		if not earlier_islands_flow.save_draft():
-			earlier_islands_flow.pause()
-			_toast(PlayerCopy.MAIN_A3FDAA4A9D35)
-			return
 		get_tree().quit()
 
 func _setup_turn_notifications() -> void:
@@ -2817,17 +2395,6 @@ func _token_digest() -> String:
 ## The online session, created on first use.
 func ensure_relay_session() -> void:
 	if relay_session == null: relay_session = _new_relay_session()
-
-## The open legacy room is read again at the next foreground refresh.
-func queue_foreground_refresh() -> void:
-	foreground_refresh_queued = true
-
-## An explicit read of the legacy room supersedes the foreground refresh: a queued
-## read and a held answer are dropped, and one still out is ignored when it returns.
-func supersede_foreground_refresh() -> void:
-	foreground_refresh_queued=false
-	foreground_response={}
-	lifecycle_generation+=1
 
 ## Once a session, on Home: a turn that still waits for its photo because After You closed
 ## while the camera was open. Its room offers that photo again. When the camera closed it
@@ -2878,17 +2445,18 @@ func _photo_resume_context() -> Array:
 	return [str(_relay_identity().player_id), relay_identity_epoch, lifecycle_generation, store_view_generation]
 
 func _photo_resume_safe() -> bool:
-	if mode != "home" or application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
+	if mode != "home" or application_backgrounded or identity_loading or identity_busy or is_instance_valid(relay_child) or saves.read_only: return false
 	if is_instance_valid(_whats_new_card) or _top_modal() != null: return false # One Home card at a time; this one waits.
 	if _update_gate_active(): return false # The room cannot open until this build is updated.
-	if not _relay_identity().ready or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
-	if relay_session != null and (relay_session.busy() or not relay_session.can_leave_for_legacy() or (relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty())): return false
-	return legacy_room_flow.navigation_ready("", false)
+	if not _relay_identity().ready: return false
+	return relay_session == null or not (relay_session.busy() or not relay_session.can_leave() or (relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty()))
 
 ## True once the room is open. `automatic`: no tap asked for it, so a refusal says nothing,
 ## the caller asks on Home instead, and anything the player did meanwhile wins.
 func _open_photo_resume_room(room_id: String, automatic: bool = false) -> bool:
 	if _online_gated(): return false
+	# A tap during a capabilities read waits for it; an automatic open asks on Home instead.
+	if not automatic and not await until_capabilities_read(): return false
 	if not _photo_resume_safe():
 		if not automatic: _toast(PlayerCopy.MAIN_BE8E691311EE)
 		return false
@@ -2932,15 +2500,14 @@ func _invite_link_received(result: Dictionary) -> void:
 
 ## True while the player is in the middle of something a link must not interrupt.
 func _invite_link_occupied() -> bool:
-	if running or mode not in INVITE_LINK_MODES: return true
-	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open(): return true
-	if not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return true
+	if mode not in INVITE_LINK_MODES: return true
+	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen): return true
 	if relay_session != null and relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty(): return true
 	return false
 
 ## Short-lived work (requests, refreshes, identity reads) that only delays the link.
 func _invite_link_settling() -> bool:
-	if application_backgrounded or submission_in_flight or foreground_refresh_running or identity_loading or identity_busy: return true
+	if application_backgrounded or identity_loading or identity_busy: return true
 	if identity_read_state in [IdentityReadState.UNCHECKED, IdentityReadState.LOADING]: return true
 	return relay_session != null and relay_session.busy()
 
@@ -2950,8 +2517,7 @@ func _invite_link_safe() -> bool:
 	if saves.read_only or _invite_link_settling() or _invite_link_occupied(): return false
 	if not _relay_identity().ready: return false
 	if mode == FriendsFlow.MODE_FRIENDS and not friends_flow.is_open(): return false
-	if not legacy_room_flow.navigation_ready("", false): return false
-	return relay_session == null or relay_session.can_leave_for_legacy()
+	return relay_session == null or relay_session.can_leave()
 
 func _service_invite_link() -> void:
 	if invite_link_pending.is_empty(): return
@@ -2991,53 +2557,27 @@ func _service_invite_link() -> void:
 	invite_link_retry_ms = Time.get_ticks_msec() + INVITE_LINK_RETRY_MS
 	if invite_link_attempts >= INVITE_LINK_ATTEMPTS: invite_link_pending = ""
 
-func _room_safety() -> void:
-	if active_room.is_empty() or not _relay_identity().ready: return
-	var peer: Variant = active_room.get("guest_id") if active_room.get("host_id") == api.player_id else active_room.get("host_id")
-	if not Safety.Store.id(peer): return
-	_open_safety({"room_family": "legacy", "room_id": active_room.room_id, "peer_id": peer}, "room")
-
-func _open_safety(context: Dictionary = {}, return_to: String = "settings") -> void:
-	if is_instance_valid(safety_screen): return
-	if submission_in_flight or foreground_refresh_running or (relay_session != null and relay_session.busy()):
+func _open_safety(return_to: String = "settings") -> void:
+	if is_instance_valid(safety_screen) or not await until_capabilities_read() or is_instance_valid(safety_screen): return
+	if session_busy():
 		_toast(PlayerCopy.MAIN_8D6F750820DC)
 		return
 	lifecycle_generation += 1
-	foreground_refresh_queued = false
-	foreground_response = {}
 	safety_return = return_to
 	mode = "safety"
-	running = false
 	ui.visible = false
-	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity, null, Callable(), _room_context_factory()), context, _close_safety, _blocked_safety.bind(str(context.get("room_id",""))))
+	safety_screen = SafetyScreen.new(Safety.new(api, _relay_identity, null, Callable(), _room_context_factory()), {}, _close_safety, _blocked_safety)
 	add_child(safety_screen)
 
 func _close_safety() -> void:
 	safety_screen = null
 	ui.visible = true
-	if safety_return == "room" and not active_room.is_empty(): legacy_room_flow.show_room()
-	elif safety_return == "account": settings_flow.show_settings(SettingsFlow.ACCOUNT)
+	if safety_return == "account": settings_flow.show_settings(SettingsFlow.ACCOUNT)
 	else: settings_flow.show_settings(SettingsFlow.ABOUT)
 
-## room_id is the earlier-island room the block came from; only such a room
-## can be blocked from here.
-func _blocked_safety(room_id: String = "") -> void:
+func _blocked_safety() -> void:
 	safety_screen = null
 	ui.visible = true
-	running = false
-	# The server leaves the blocked room out of the hub. This phone forgets it as
-	# a removed room would be and stops showing it.
-	if not room_id.is_empty():
-		active_room = {}
-		# The server has confirmed the block, so nothing saved for this room can
-		# ever be sent: an unsent turn is kept like a held turn, a turn left part
-		# way is dropped, and online play reopens.
-		var pending: Dictionary = Typed.as_dict(saves.data.get("pending_turn")).duplicate(true)
-		if str(pending.get("room_id","")) == room_id and turn_flow.pending_owned(pending):
-			turn_flow.keep_held_turn(turn_flow.reject_pending(pending),{})
-		if str(Typed.as_dict(saves.data.get("room_draft")).get("room_id","")) == room_id and not saves.update_values({},["room_draft"]): _toast(saves.last_error)
-		forget_removed_room(1,room_id)
-		room_hub_flow.hide_room(1,room_id)
 	_return_to_room_hub()
 
 
@@ -3063,7 +2603,7 @@ func _store_owned() -> bool:
 	return purchases.has_entitlement() and not _switched_off()
 
 ## True on an iOS build that sells nothing: every paid surface (chapter cards,
-## earlier islands, the Full Journey offer, hosting access) is left out, never
+## the Full Journey offer, hosting access) is left out, never
 ## shown locked. The one rule is Purchases.paid_content_hidden, and on an
 ## iPhone that sells, the server saying it takes no App Store purchases
 ## (services/store_support.gd hides_paid), read when each screen is drawn.
@@ -3126,9 +2666,6 @@ func _sync_presence() -> void:
 	if is_instance_valid(relay_child) and relay_session != null:
 		family = "v2"
 		room = relay_session.last_room()
-	elif not active_room.is_empty() and (mode == LegacyRoomFlow.MODE_ROOM or (room_play and mode in ["ready", "play", "preview", "review", "paused", "saved", "completion"])):
-		family = "v1"
-		room = str(active_room.get("room_id", ""))
 	if family == "v2" and not RoomPartnerNames.presence_shown(room):
 		# A public duel's room never shows its partner's presence, so it reads none (the server answers it unread too).
 		friend_presence.monitor_room("", "")
@@ -3138,20 +2675,6 @@ func _sync_presence() -> void:
 		friend_presence.monitor_room(family,room,context,true)
 	else:
 		friend_presence.monitor_room(family,room)
-	if is_instance_valid(presence_hud) and (presence_hud.room_id != room or presence_hud.family != family):
-		presence_hud.queue_free()
-		presence_hud = null
-	if family == "v1" and not room.is_empty() and not is_instance_valid(presence_hud):
-		presence_hud = PresenceBadge.new()
-		presence_hud.configure(friend_presence, family, room)
-		hud.add_child(presence_hud)
-		presence_hud.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-		presence_hud.offset_left = -270
-		presence_hud.offset_right = -36
-		presence_hud.offset_top = 88
-		presence_hud.offset_bottom = 112
-		presence_hud.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	if is_instance_valid(presence_hud): presence_hud.visible = family == "v1" and room_play
 
 func _exit_tree() -> void:
 	# The next scene draws 3D in this same root viewport.
@@ -3170,12 +2693,6 @@ func _exit_tree() -> void:
 	# The room view ends here; foreground presence continues in standalone scenes.
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 
-func _camera_exploration_active() -> bool:
-	return not application_backgrounded and mode in ["play", "preview", "completion"] and not overlay.visible
-
-func _camera_exploration_allowed(point: Vector2) -> bool:
-	return not world.CameraExploration.ui_blocks(ui, point)
-
 ## The identity-bound factory for chapter-room photo, presence, safety and
 ## replay requests. Without an online identity every target it gives is held.
 ## Shared replays always use the current one.
@@ -3186,18 +2703,29 @@ func _room_context_factory() -> RefCounted:
 	if shared_replays != null: shared_replays.configure_context_factory(factory)
 	return factory
 
+## The room session busy with more than a capabilities read: what a tap refuses
+## on. A read alone (Home's launch or resume read, services/capabilities_refresh.gd,
+## or a screen's) is waited for instead (until_capabilities_read).
+func session_busy() -> bool:
+	return relay_session != null and relay_session.busy() and not (relay_session.has_method("reading_capabilities_only") and relay_session.reading_capabilities_only())
+
+## A tap that finds a capabilities read out, even from a screen already left,
+## waits for it to land and then goes on, so first taps register. False when the
+## player moved on or the session changed meanwhile.
+func until_capabilities_read() -> bool:
+	var session: RefCounted = relay_session
+	if session == null or not session.has_method("until_capabilities_read"): return true
+	var asked := [store_view_generation, lifecycle_generation, mode]
+	await session.until_capabilities_read()
+	return relay_session == session and not application_backgrounded and asked == [store_view_generation, lifecycle_generation, mode]
+
 func _prepare_ordinary_navigation(report: Callable = Callable()) -> bool:
 	if _relay_identity().ready: _room_context_factory()
 	if relay_session == null:
 		_report(report,PlayerCopy.MAIN_21155817127A)
 		return false
 	var session: RefCounted = relay_session
-	# A capabilities read still out, even from a screen already left, is a read:
-	# navigation waits for it rather than refusing.
-	if session.has_method("until_capabilities_read"):
-		var asked := [store_view_generation, lifecycle_generation, mode]
-		await session.until_capabilities_read()
-		if relay_session != session or application_backgrounded or asked != [store_view_generation, lifecycle_generation, mode]: return false
+	if not await until_capabilities_read(): return false
 	# The session refuses while busy (a replay save can outlive its screen) and has no reason of its own to give.
 	if session.busy():
 		_report(report,PlayerCopy.ROOMS_API_DA75E6F7A674)

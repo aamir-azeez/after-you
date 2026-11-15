@@ -8,7 +8,6 @@ extends RefCounted
 ## place at most; the heart stays outside the slots. The slots exist only while
 ## the server keeps them (the view's "reactions": FACE_SINGLES on).
 const ReactionCatalog = preload("res://services/reaction_catalog.gd")
-const FacePacks = preload("res://services/face_packs.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 
@@ -26,6 +25,25 @@ static func kept(view: Dictionary) -> bool:
 ## How many places are open (FREE_SLOTS to SLOT_COUNT).
 static func open_count(view: Dictionary) -> int:
 	return clampi(int(view.get("reaction_slots", FREE_SLOTS)), FREE_SLOTS, SLOT_COUNT)
+
+## The open places of `slots` in order ("" for an empty one): what every faces
+## card offers (services/face_packs.gd slots), the same places the Wardrobe's
+## slot row shows open; [] while the server keeps no slots.
+static func open_places(view: Dictionary, slots: Array) -> Array:
+	if not kept(view) or slots.size() != SLOT_COUNT: return []
+	return slots.slice(0, open_count(view))
+
+## The reaction faces the player owns: the wardrobe's `faces` while the server
+## sends them, else the faces of each owned pack.
+static func owned_faces(view: Variant) -> Array:
+	if not view is Dictionary: return []
+	if view.get("faces") is Array: return (view.faces as Array).duplicate()
+	var faces: Array = []
+	var packs: Variant = view.get("packs")
+	if packs is Array:
+		for pack: String in ReactionCatalog.PACKS:
+			if pack in packs: faces.append_array(ReactionCatalog.PACKS[pack])
+	return faces
 
 ## The next reaction slot item to buy, or "" once every place is open.
 static func next_unlock(view: Dictionary) -> String:
@@ -52,7 +70,7 @@ static func placed(slots: Array, face: String, index: int) -> Array:
 ## (false), in_slot (its place in `slots`, or -1), moving, face (true)}.
 ## `selling`: the shop shows, so prices do.
 static func faces(view: Dictionary, slots: Array, selling: bool) -> Array:
-	var owned := FacePacks.owned_faces(view)
+	var owned := owned_faces(view)
 	var offered: Array = view.get("offered", [])
 	var result: Array = []
 	for face: String in ReactionCatalog.collection():
@@ -64,6 +82,11 @@ static func faces(view: Dictionary, slots: Array, selling: bool) -> Array:
 		result.append({"id": face, "name": ReactionCatalog.face_name(face), "tier": FREE_TIER if free else Catalog.tier(face), "slot": "reaction",
 			"price": int(sale.get("price", 0)), "currency": "pollen", "owned": mine, "sold": sold, "worn": false, "locked": false, "unlock_name": "", "earn": "",
 			"in_slot": slots.find(face), "moving": Catalog.moving(face), "face": true})
+	# Shop order: the everyday faces, then up the face tiers, collection order within a tier.
+	var listed := result.map(func(entry: Dictionary) -> String: return entry.id)
+	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var ranks := [Catalog.tier_rank(a.tier), Catalog.tier_rank(b.tier)]
+		return ranks[0] < ranks[1] if ranks[0] != ranks[1] else listed.find(a.id) < listed.find(b.id))
 	return result
 
 ## The next reaction slot as a Wardrobe entry (bought like an item), or {} when

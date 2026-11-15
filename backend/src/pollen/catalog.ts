@@ -30,14 +30,17 @@ import { faceSinglesOn } from "./features";
  * - packs: reaction packs at `pack_price`, each listing its faces. Every pack face of the end reactions
  *   (v2/end-reactions.ts PACK_FACES) belongs to exactly one pack, and a pack holds nothing else, so the
  *   face a turn may carry and the pack that owns it can never drift apart. An owned pack owns its faces
- *   (ownedFaces). A pack stops selling once any of its faces sells on its own (offeredPacks).
+ *   (ownedFaces). A pack stops selling once any of its faces sells on its own, or is retired (offeredPacks).
+ * - retired (optional): items taken out of the game for good (the faces not fit for it, 2026-11-14). A retired
+ *   item is never released, whatever CONFIG lists, so it is never sold or offered; its code stays reserved. Who
+ *   owns one keeps it (an older app may still send it in a turn) and is paid its price back once (retired.ts).
  */
 export type CatalogItem = { code: number; slot: string; tier: string; unlock: string; set: string; released: boolean };
 export type CatalogPack = { released: boolean; faces: readonly string[] };
 export type Catalog = {
   schema_version: 1; slots: readonly string[]; unworn_slots: readonly string[]; tier_prices: Readonly<Record<string, number>>; tier_currency: Readonly<Record<string, "fruits">>;
   set_discount_percent: number; set_round_down: Readonly<Record<Currency, number>>; set_min_missing: number; pack_price: number;
-  items: Readonly<Record<string, CatalogItem>>; packs: Readonly<Record<string, CatalogPack>>;
+  items: Readonly<Record<string, CatalogItem>>; packs: Readonly<Record<string, CatalogPack>>; retired?: readonly string[];
 };
 /** What a pip wears: one item id per filled slot. {} is the default look. */
 export type Look = Readonly<Record<string, string>>;
@@ -58,7 +61,8 @@ export function checkedCatalog(value: unknown): Catalog {
   const bad = (what: string): never => { throw new Error(`invalid_pollen_catalog: ${what}`); };
   if (!isObject(value) || value.schema_version !== 1) bad("schema_version");
   const v = value as Record<string, unknown>;
-  if (!exact(v, ["schema_version", "slots", "unworn_slots", "tier_prices", "tier_currency", "set_discount_percent", "set_round_down", "set_min_missing", "pack_price", "items", "packs"])) bad("fields");
+  const fields = ["schema_version", "slots", "unworn_slots", "tier_prices", "tier_currency", "set_discount_percent", "set_round_down", "set_min_missing", "pack_price", "items", "packs"];
+  if (!exact(v, Object.hasOwn(v, "retired") ? [...fields, "retired"] : fields)) bad("fields");
   if (!Array.isArray(v.slots) || !v.slots.length || !v.slots.every(slot => typeof slot === "string" && ITEM_ID_PATTERN.test(slot)) || new Set(v.slots).size !== v.slots.length) bad("slots");
   if (!Array.isArray(v.unworn_slots) || !v.unworn_slots.every(slot => typeof slot === "string" && ITEM_ID_PATTERN.test(slot) && !(v.slots as string[]).includes(slot)) ||
     new Set(v.unworn_slots).size !== v.unworn_slots.length || ![REACTION_SLOT, UNLOCK_SLOT].every(slot => (v.unworn_slots as string[]).includes(slot))) bad("unworn_slots");
@@ -95,6 +99,9 @@ export function checkedCatalog(value: unknown): Catalog {
     }
   }
   if (packed.size !== PACK_FACES.length) bad("pack faces");
+  // A retired item is a known item never released by the build, each named once.
+  if (Object.hasOwn(v, "retired") && (!Array.isArray(v.retired) || new Set(v.retired).size !== v.retired.length ||
+    !v.retired.every(id => typeof id === "string" && Object.hasOwn(v.items as object, id) && (v.items as Record<string, CatalogItem>)[id].released === false))) bad("retired");
   // The reaction faces sold are exactly the faces a turn may carry beyond the everyday ones, so the two never drift apart.
   const faces: readonly string[] = [...PACK_FACES, ...SINGLE_FACES];
   // A catalogue with no reaction faces (a test fixture) sells none; the real one sells every one (test/face-packs.test.ts).
@@ -169,7 +176,7 @@ export const FRUITS_OFFERED_TAG = offeredTag(CATALOG, true);
  * from their own env (catalogFor), never passing it between them.
  */
 export function releasedCatalog(released: ReadonlySet<number>, base: Catalog = CATALOG, faces = true): Catalog {
-  const ids = Object.keys(base.items).filter(id => !base.items[id].released && released.has(base.items[id].code) && (faces || !isFaceItem(id, base)));
+  const ids = Object.keys(base.items).filter(id => !base.items[id].released && released.has(base.items[id].code) && (faces || !isFaceItem(id, base)) && !isRetired(id, base));
   if (!ids.length) return base;
   const items = { ...base.items };
   for (const id of ids) items[id] = Object.freeze({ ...items[id], released: true });
@@ -215,9 +222,13 @@ export function featuredItem(env: ServerVars, catalog: Catalog): string | undefi
   const id = code === null ? undefined : itemOfCode(code, catalog);
   return id !== undefined && sold(id, catalog) && itemCurrency(id, catalog) === "pollen" && catalog.slots.includes(catalog.items[id].slot) ? id : undefined;
 }
-/** The packs sold now: released, and none of their faces sold on its own (a face's own sale ends its pack's). */
+/** The packs sold now: released, and none of their faces sold on its own (a face's own sale ends its pack's) or retired. */
 export function offeredPacks(catalog: Catalog = CATALOG): string[] {
-  return Object.keys(catalog.packs).filter(id => catalog.packs[id].released && !catalog.packs[id].faces.some(face => sold(face, catalog)));
+  return Object.keys(catalog.packs).filter(id => catalog.packs[id].released && !catalog.packs[id].faces.some(face => sold(face, catalog) || isRetired(face, catalog)));
+}
+/** Whether an item is retired (catalog.json `retired`): never released, sold or offered again. */
+export function isRetired(id: string, catalog: Catalog = CATALOG): boolean {
+  return catalog.retired?.includes(id) ?? false;
 }
 /** Whether an item is a face item (a resting face, a reaction face or a reaction slot), shown only while FACE_SINGLES is on. */
 export function isFaceItem(id: string, catalog: Catalog = CATALOG): boolean {

@@ -10,8 +10,8 @@ extends RefCounted
 ## The sim is deterministic at 30 ticks a second, so the track is the same on
 ## every phone and every try; the live turn reads it by its own tick, so pause,
 ## backgrounding, retries and fast-forward stay in step for free. Each of the
-## recording's own replay_checks (the state hash every second and at the end)
-## must match as the track is built: a run that plays differently on this build
+## recording's own replay_checks (the state hash every second and at the end,
+## or its first bytes in a packed record: core/v2/recording_codec.gd) must match as the track is built: a run that plays differently on this build
 ## shows no ghost, never a wrong one.
 ##
 ## A track is {slot, points, duration_ticks}: `points` holds x, height and z in
@@ -20,6 +20,7 @@ extends RefCounted
 ## (services/worker_reaper.gd). {} when the run can't be played on this build
 ## (rules it does not have, a stage or role it lacks): the race goes on with no ghost.
 const Registry = preload("res://services/chapter_registry.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 ## A turn is never longer than this (the longest chapter turn, with room to spare).
 const MAX_TICKS := 30 * 60 * 10
 
@@ -46,7 +47,7 @@ static func build(chapter_key: String, pair: Dictionary, role: String) -> Dictio
 		var state: Dictionary = sim.step(input)
 		if not _note(points, state, slot): return {}
 		var tick := points.size() / 3 - 1
-		if checks.has(tick) and checks[tick] != str(sim.state_hash()): return {}
+		if checks.has(tick) and not RecordingCodec.check_matches(checks[tick], str(sim.state_hash())): return {}
 		if bool(state.get("finished", false)): break
 	if str(sim.state_hash()) != str(recording.get("final_state_hash", "")): return {}
 	return {"slot": slot, "points": points, "duration_ticks": points.size() / 3 - 1}
@@ -54,9 +55,7 @@ static func build(chapter_key: String, pair: Dictionary, role: String) -> Dictio
 ## The recording's replay_checks by tick, or {} when it has none this build reads.
 static func _checks(recording: Dictionary) -> Dictionary:
 	var checks: Dictionary = {}
-	var listed: Variant = recording.get("replay_checks")
-	if not listed is Array: return checks
-	for item: Variant in listed:
+	for item: Variant in RecordingCodec.checks(recording):
 		if item is Dictionary and _number(item.get("tick")) and item.get("state_hash") is String: checks[int(item.tick)] = item.state_hash
 	return checks
 

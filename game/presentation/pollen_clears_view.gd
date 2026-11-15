@@ -24,7 +24,7 @@ const ROW_SIZE := Parts.ROW_SIZE
 ## Fills `column` from {history (services/pollen_history.gd), full_journey
 ## (bool: the build names Full Journey)}.
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
-	Parts.heading(column, PlayerCopy.POLLEN_CLEARS_TITLE, PlayerCopy.POLLEN_CLEARS_NOTE, title_font)
+	Parts.heading(column, PlayerCopy.POLLEN_CLEARS_TITLE, title_font)
 	var clears: Array = model.get("history", {}).get("first_clears", [])
 	if not clears.is_empty(): column.add_child(_summary(clears, title_font))
 	for index in range(clears.size()):

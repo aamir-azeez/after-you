@@ -81,7 +81,6 @@ class FakeToast extends RefCounted:
 
 class Host extends Node:
 	var toast := FakeToast.new()
-	var running := false
 	var relay_child: Node3D = null
 	var application_backgrounded := false
 	var mode := "home"
@@ -488,11 +487,8 @@ func _toasts() -> void:
 	var opened := []
 	toasts.open_page = func(from: String) -> void: opened.append(from)
 	host.add_child(toasts)
-	host.running = true
-	_check(toasts.service() == "", "Nothing while a turn is played")
-	host.running = false
 	host.relay_child = Node3D.new()
-	_check(toasts.service() == "", "nor while a room is open")
+	_check(toasts.service() == "", "Nothing while a room is open")
 	host.relay_child.free()
 	host.relay_child = null
 	_check(toasts.service() == "First time beating Our run: +10 Fruits", "The oldest goal first")

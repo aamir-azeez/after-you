@@ -8,9 +8,8 @@ func _initialize() -> void:
 	for key: String in Registry.keys():
 		if key not in expected:
 			expected.append(key)
-	expected.append_array(["legacy-first-light", "legacy-long-way-home", "legacy-patient-garden", "legacy-rising-together", "legacy-across-the-blue", "legacy-lantern-crossing", "legacy-two-beats", "legacy-after-you"])
 	var found := Catalog.keys()
-	assert(found == expected, "Thumbnail catalog covers Lighthouse, all registry chapters, and the selectable earlier islands")
+	assert(found == expected, "Thumbnail catalog covers Lighthouse and all registry chapters")
 	assert(Catalog.entry("unknown-chapter").is_empty(), "Unknown chapters have no thumbnail entry")
 	for key: String in expected:
 		var item := Catalog.entry(key)

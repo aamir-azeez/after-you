@@ -42,10 +42,6 @@ func _open(size: Vector2i, paths: Dictionary) -> Array:
 	app.application_backgrounded = false
 	app.replays_flow.solo_replay_index = Index.new(directory + "/index.json")
 	app.replays_flow.solo_replay_visibility = Visibility.new(directory + "/visibility.json")
-	# Layout-only earlier-island rows (never played) plus real chapter attempts.
-	var replays := {}
-	for index in range(4): replays[Levels.get_level(index).id] = {"b": {"layout_fixture": true}}
-	app.saves.data.replays = replays
 	app.replays_flow.solo_replays = Solo.new(paths, "")
 	app.replays_flow.show_collection()
 	await _finish_scan(app)
@@ -58,7 +54,7 @@ func _screen(size: Vector2i, paths: Dictionary) -> void:
 	var app: Node = opened[1]
 	var wide: bool = app.ui.size.x >= ReplaysFlow.REPLAY_SPLIT_MIN_WIDTH
 	var count := _rows(app).size()
-	_check(count >= 6, "%s: earlier-island and chapter rows are listed (%d)" % [size, count])
+	_check(count >= 3, "%s: the chapter attempts are listed (%d)" % [size, count])
 	if wide:
 		for index in range(count):
 			for spot: String in ["art", "caption", "middle"]:
@@ -111,6 +107,8 @@ func _drag_from_card(app: Node, viewport: SubViewport, size: Vector2i) -> void:
 	var scroll: ScrollContainer = app._bounded_card_scroll
 	scroll.scroll_vertical = 0
 	await _frames(2)
+	# Three attempts may all fit: a drag can only scroll a list longer than its view.
+	if scroll.get_v_scroll_bar().max_value <= scroll.size.y: return
 	var card: Control = _card_of(_rows(app)[2])
 	var start := _bottom_point(card, "caption")
 	var selected := str(app.replays_flow._selected_solo_attempt.get("key", ""))

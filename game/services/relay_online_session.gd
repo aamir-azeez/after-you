@@ -35,6 +35,7 @@ const TurnLooks = preload("res://services/turn_looks.gd")
 const OwnLook = preload("res://services/own_look.gd")
 const ServerSwitches = preload("res://services/server_switches.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
+const FacePacks = preload("res://services/face_packs.gd")
 ## Every rules version this build can replay, for a server that allows at most
 ## 8 entries (every server before room level 2): 10 = the tide rules of
 ## turn-of-the-tide@2. Saved joins keep their exact body: each array ever sent
@@ -83,6 +84,8 @@ var _opening := false
 ## A screen's capabilities read is out or waiting (load_capabilities with `still`):
 ## a read, not work, so navigation waits for it.
 var _reading_capabilities := false
+## Any capabilities read is out (load_capabilities): a second asker waits for it.
+var _capabilities_out := false
 var _retiring_selection := false
 var _auxiliary_factory: RefCounted
 var photo_store: RefCounted = PhotoStore.new()
@@ -142,6 +145,7 @@ func invalidate_identity() -> void:
 	_busy = false
 	_opening = false
 	_reading_capabilities = false
+	_capabilities_out = false
 	_retiring_selection = false
 
 func busy() -> bool:
@@ -460,9 +464,22 @@ static func verified_invitation(room: Dictionary, owner: String) -> String:
 ## waiting when it fails is dropped and changes nothing here, and one already
 ## out is only a read (reading_capabilities_only), so a screen that closed
 ## never holds the session busy (Friends' first read after launch).
+## A read asked while another is out (the launch read, services/capabilities_refresh.gd)
+## waits for that one and takes its answer, never a busy refusal.
 func load_capabilities(still: Callable = Callable()) -> bool:
 	if not _ready():
 		return false
+	if _capabilities_out:
+		var tree := Engine.get_main_loop() as SceneTree
+		while _capabilities_out and tree != null: await tree.process_frame
+		return not capabilities.is_empty()
+	var generation := _generation
+	_capabilities_out = true
+	var loaded := await _load_capabilities(still)
+	if generation == _generation: _capabilities_out = false
+	return loaded
+
+func _load_capabilities(still: Callable) -> bool:
 	_room_chapters.clear()
 	_room_summaries.clear()
 	var generation := _generation
@@ -483,9 +500,12 @@ func load_capabilities(still: Callable = Callable()) -> bool:
 		return false
 	capabilities = data.duplicate(true)
 	RoomsApi.compressed_supported = Typed.equal(capabilities.get("compressed_rooms_version"), 1.0)
+	RoomsApi.packed_supported = Typed.equal(capabilities.get("packed_recordings_version"), 1.0)
 	_supported_chapters.assign(checked.chapters)
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
+	# The faces this server takes, for every faces card wherever it shows (services/face_packs.gd).
+	if not scope.is_empty(): FacePacks.note_version(str(scope.server), str(scope.owner), face_version())
 	# Home's rows that follow the server's public switches keep this answer too (services/server_switches.gd).
 	if not scope.is_empty(): ServerSwitches.shared().note(str(scope.server), {"duels": duels_supported(), "leaderboards": leaderboards_supported(), "hard_mode": hard_mode_supported(), "leaderboards_platform": leaderboards_platform_required(), "public_duels": public_duels_supported()})
 	# Only an iPhone asks whether the server takes App Store purchases (services/store_support.gd), noted
@@ -586,9 +606,10 @@ func room_title(room_id: String) -> String:
 func chapter_key() -> String:
 	return coordinator.chapter_key() if _ready() and coordinator != null else ""
 
-func can_leave_for_legacy() -> bool:
-	# A legacy join must not bypass a durable chapter request after restart.
-	# This is a local scope read only; it never probes another join endpoint.
+## Whether another screen may take over now: a durable chapter request kept
+## over a restart must finish first. A local scope read only; it never probes
+## another join endpoint.
+func can_leave() -> bool:
 	if not _ready() or busy():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_78B4A09B905D
 		return false

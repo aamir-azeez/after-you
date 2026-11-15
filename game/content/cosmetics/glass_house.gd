@@ -12,8 +12,6 @@ const DATA := {
 	"released": false,
 	## Clearing The Conservatory first, as the catalogue themes it.
 	"unlock": "conservatory",
-	## It stands above the head.
-	"tall": true,
 	## The leaf grows clear beside it.
 	"leaf_mode": "pokes_through",
 	"leaf_max": "medium",

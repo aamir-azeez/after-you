@@ -74,6 +74,8 @@ func _make_stage() -> Node:
 	view.size_2d_override_stretch = true
 	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	view.set("oversampling_override", float(_size.y) / BASE_HEIGHT)
+	# A SubViewport keeps its own 2D filter; draw with the game's (mipmapped icons).
+	view.canvas_item_default_texture_filter = root.canvas_item_default_texture_filter
 	root.add_child(view)
 	return view
 

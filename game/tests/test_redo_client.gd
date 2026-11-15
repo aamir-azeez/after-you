@@ -70,17 +70,12 @@ class Api:
 			room.revision += 1
 			room.active_role = "a"
 			var result: Dictionary = {}
-			if family=="relay":
-				room.branch += 1
-				room.recording_a = null
-				var hashed := body.duplicate(true)
-				hashed.operation="fork"
-				var receipt := {"schema_version":2,"room_id":ROOM,"idempotency_key":body.idempotency_key,"request_hash":Canonical.digest(hashed),"operation":"fork","accepted_revision":room.revision,"branch":room.branch,"stage_index":room.stage_index,"stage_id":room.stage_id,"checkpoint_hash":room.checkpoint.checkpoint_hash,"turn_id":null,"recording_hash":null,"pair_id":null}
-				result={"receipt":receipt,"room":room.duplicate(true)}
-			else:
-				room.attempt += 1
-				room.recordings={"a":null,"b":null}
-				result=room.duplicate(true)
+			room.branch += 1
+			room.recording_a = null
+			var hashed := body.duplicate(true)
+			hashed.operation="fork"
+			var receipt := {"schema_version":2,"room_id":ROOM,"idempotency_key":body.idempotency_key,"request_hash":Canonical.digest(hashed),"operation":"fork","accepted_revision":room.revision,"branch":room.branch,"stage_index":room.stage_index,"stage_id":room.stage_id,"checkpoint_hash":room.checkpoint.checkpoint_hash,"turn_id":null,"recording_hash":null,"pair_id":null}
+			result={"receipt":receipt,"room":room.duplicate(true)}
 			receipts[body.idempotency_key]=result.duplicate(true)
 			return {"ok":true,"data":result}
 		return {"ok":false,"code":"not_found"}
@@ -95,11 +90,10 @@ func _check(value: bool, label: String) -> void:
 		push_error(label)
 func _room(family: String) -> Dictionary:
 	var room := {"room_id":ROOM,"revision":2,"host_id":HOST,"guest_id":GUEST,"first_player_id":HOST,"active_role":"b"}
-	if family=="relay": room.merge({"branch":0,"stage_index":0,"stage_id":"first-stage","recording_a":{"recording_hash":"a".repeat(64)},"checkpoint":{"checkpoint_hash":"c".repeat(64)}})
-	else: room.merge({"attempt":0,"level_index":0,"recordings":{"a":{"final_state_hash":"a".repeat(64)},"b":null}})
+	room.merge({"branch":0,"stage_index":0,"stage_id":"first-stage","recording_a":{"recording_hash":"a".repeat(64)},"checkpoint":{"checkpoint_hash":"c".repeat(64)}})
 	return room
 func _run() -> void:
-	for family: String in ["relay","legacy"]: await _flow(family)
+	await _flow("relay")
 	await _identity_and_conflict()
 	_disk_scope_cleanup()
 	_wrong_types()
@@ -136,7 +130,7 @@ func _flow(family: String) -> void:
 	_check(not first.bind_room(family,other),family+" navigation cannot hide an uncertain acceptance")
 	first=Client.new(api,identity.current,storage)
 	_check(first.bind_room(family,api.room) and Canonical.same(first.pending(),pending),family+" accepted-source change still restores pending key")
-	if family=="relay": api.enabled=false
+	api.enabled=false
 	_check(await first.retry(family!="relay") and first.accepted and first.pending().is_empty() and api.receipts.size()==1,family+" cold acceptance retry reconciles old source without a second fork, including a paused chapter service")
 	_check(not first.can_accept(),family+" accepted result requires verified gameplay refresh before more actions")
 	api.queue_free()
@@ -203,15 +197,10 @@ func _disk_scope_cleanup() -> void:
 ## A wrongly typed field in a room, a redo reply or a saved redo journal is
 ## refused like any other wrong value.
 func _wrong_types() -> void:
-	for family: String in ["relay","legacy"]:
+	for family: String in ["relay"]:
 		var room := _room(family)
 		var source := Client.source_for(family,room)
 		_check(not source.is_empty(),"The exact room has a redo source: "+family)
-		if family == "legacy":
-			for odd: Variant in ["1", [1], true]:
-				var changed := room.duplicate(true)
-				changed.recordings = odd
-				_check(Client.source_for(family,changed).is_empty(),"A legacy room whose recordings are not a dictionary has no redo source")
 		for variant: Dictionary in WrongTypes.variants(room, 1):
 			if variant.path == "active_role":
 				_check(Client.source_for(family,variant.value).is_empty(),"A room with a wrongly typed role has no redo source: "+family)

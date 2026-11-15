@@ -58,8 +58,6 @@ export const FLAG_VARS = Object.freeze({
   pollenBundles: "POLLEN_BUNDLES",
   /** Pollen bundles on the App Store (pollen/bundle-settle.ts): the same claim route, wallet read part and its own capability for iPhone, once the App Store's four products are in bundles.json. Needs POLLEN_REFUNDS, not POLLEN_BUNDLES, so each store switches on and off by itself. Set only through FEATURES. */
   pollenBundlesAppStore: "POLLEN_BUNDLES_APP_STORE",
-  /** App Store sandbox Pollen bundles for any player (pollen/bundle-settle.ts), so App Review sees a sandbox purchase pay: read only by a claim that finds nothing new in production. Needs POLLEN_BUNDLES_APP_STORE. Set only through FEATURES. */
-  pollenSandboxAppStore: "POLLEN_SANDBOX_APP_STORE",
   /** Fruits, the rarer second currency (pollen/fruits.ts): the wallet read's Fruits part, Orchard prices, turning Fruits into Pollen, Sunshine, achievements, the grant's Fruits and its capability. Fruit packs also need that store's bundle flag. Needs POLLEN_SHOP. Off, nothing Fruit is written or shown. Gated, older apps see none of it (features.ts). */
   fruits: "FRUITS",
   /** Duel energy (pollen/energy.ts): 1 energy to start or join a duel, the meter on the wallet read and the start and join replies, the Fruit refill and the duels capability field. Needs DUELS. Gate it (config.ts feature_min_version) to the first app that shows the meter, or raise every minimum to it in the same CONFIG edit. */
@@ -82,6 +80,8 @@ export const FLAG_VARS = Object.freeze({
   publicDuels: "PUBLIC_DUELS",
   /** Compressed rooms (v2/row-codec.ts, v2/turn-wire.ts): standalone rooms write their room, turn and pair rows deflated, and phones that ask are told they may send deflated turns and read deflated room replies. Rooms read both row forms whatever this says, so before its first flip the Worker may roll back as before; the first flip is a rollback floor, since older code cannot read a deflated row. */
   compressedRooms: "COMPRESSED_ROOMS",
+  /** Packed recordings (v2/packed-rooms.ts, v2/recording-codec.ts): phones that ask are told they may record packed, and a room both members create or join that way takes packed turns for good. Rooms read and check both forms whatever this says, so before its first flip the Worker may roll back as before; the first flip is a rollback floor, since older code refuses a packed turn and cannot check a checkpoint that nests one. */
+  packedRecordings: "PACKED_RECORDINGS",
   /** Pauses the replay time limit on finished rooms (v2/replay-expiry.ts), which is on unless CONFIG lists this: replays no phone saved go REPLAY_KEEP_MS (a year) after the room finished. */
   replayExpiryPaused: "REPLAY_EXPIRY_PAUSED",
 } as const);

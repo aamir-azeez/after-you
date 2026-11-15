@@ -143,7 +143,6 @@ func _test_screen(app: Node, size: Vector2i, insets: Vector4, name: String) -> v
 	for page: Control in [WardrobePage.new(false), PollenStorePage.new(), PollenPlayPage.new()]:
 		await _check_page(app, page, safe, name)
 	await _check_duel_pages(safe, name)
-	await _check_hud(app, safe, name)
 	app._show_home()
 	await _settle()
 
@@ -226,18 +225,6 @@ func _check_duel_page(page: CanvasLayer, safe: Rect2, name: String) -> void:
 	var scroll := page.root.find_child(page.page_name() + "Scroll", true, false) as ScrollContainer
 	_check(scroll != null and scroll.get_v_scroll_bar().max_value <= scroll.size.y + 0.5, "%s: %s fits without scrolling" % [name, page.page_name()])
 	_check_inside(page.root, safe, "%s %s" % [name, page.page_name()])
-
-## The chapter HUD: every control inside the safe area and none on another.
-func _check_hud(app: Node, safe: Rect2, name: String) -> void:
-	app._start_practice(0)
-	app._close_overlay()
-	app.running = false
-	await _settle()
-	var controls: Array[Control] = [app.stick, app.interact_button, app.finish_button, app.timer_label, app.progress, app.hint_label]
-	for control: Control in controls:
-		_check(safe.encloses(control.get_global_rect()), "%s: the HUD's %s stays in the safe area" % [name, control.name])
-	_check(not app.stick.get_global_rect().intersects(app.interact_button.get_global_rect()) and not app.interact_button.get_global_rect().intersects(app.finish_button.get_global_rect()), name + ": the HUD's touch targets stay apart")
-	_check(app.hint_label.get_line_count() == app.hint_label.get_visible_line_count(), name + ": every line of the hint shows")
 
 ## Unfolding the Duo resizes the window: the root scale follows with no extra call.
 func _test_fold(app: Node) -> void:

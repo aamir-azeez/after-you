@@ -16,15 +16,13 @@ extends Node
 ## a test can swap a service):
 ## - services: api, saves, secrets, turn_notifications,
 ##   hosting_notification_preferences, relay_session
-## - screens: mode, running, relay_child, toast, ui
-## - state: application_backgrounded, submission_in_flight, identity_loading,
-##   identity_busy, identity_read_state, IdentityReadState,
-##   foreground_refresh_running, relay_identity_epoch, lifecycle_generation
+## - screens: mode, relay_child, toast, ui
+## - state: application_backgrounded, identity_loading, identity_busy,
+##   identity_read_state, IdentityReadState, relay_identity_epoch,
+##   lifecycle_generation
 ## - rules: _relay_identity, _token_digest, _await_secret,
 ##   _update_gate_active, _friend_display_name
-## - entry points: legacy_room_flow (navigation_ready, show_saved_room),
-##   ensure_relay_session, queue_foreground_refresh,
-##   _show_friends, _show_home, friends_flow (is_open, hosting_hint, refresh),
+## - entry points: ensure_relay_session, _show_friends, _show_home, friends_flow (is_open, hosting_hint, refresh),
 ##   _enter_online_relay, _request_update_gate, settings_flow (is_open,
 ##   refresh: Settings redraws its notification rows when the service changes),
 ##   _friends_client, INVITE_LINK_TTL_MS
@@ -41,7 +39,6 @@ const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const FriendsClient = preload("res://services/friends_client.gd")
 const Toast = preload("res://presentation/toast.gd")
-const Levels = preload("res://core/levels.gd")
 const Typed = preload("res://services/typed_values.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
@@ -196,10 +193,8 @@ func foreground_hint(route: Dictionary) -> void:
 		elif is_instance_valid(host.relay_child): host.relay_child.notification_deferred(message)
 		else: _friends_news(message)
 		return
-	if route.room_family == "relay" and is_instance_valid(host.relay_child):
+	if is_instance_valid(host.relay_child):
 		host.relay_child.notification_room_hint(route.room_id)
-	elif route.room_family == "legacy" and str(host.saves.data.get("room", {}).get("room_id", "")) == route.room_id:
-		host.queue_foreground_refresh()
 	# The ordinary refresh schedulers enforce mode, identity, busy and cooldown
 	# guards. Receiving a hint never reconciles a POST or changes the open room.
 
@@ -213,20 +208,18 @@ func hosting_view_ready(_events: Array) -> void:
 ## True when a tapped alert may change the screen now.
 func route_safe(route: Dictionary) -> bool:
 	# Home for monthly Pollen; never from the lobby, whose own Back closes it.
-	if route.get("kind") == TurnNotifications.POLLEN_KIND: return host.mode != RelayLobbyFlow.MODE_LOBBY and _can_leave(false, "") and host.turn_notifications.accepts(route)
-	if not _can_leave(route.get("kind") == "friend_room_available", str(route.room_id) if route.room_family == "legacy" else ""): return false
+	if route.get("kind") == TurnNotifications.POLLEN_KIND: return host.mode != RelayLobbyFlow.MODE_LOBBY and _can_leave(false) and host.turn_notifications.accepts(route)
+	if not _can_leave(route.get("kind") == "friend_room_available"): return false
 	return host.turn_notifications.accepts(route)
 
-## True when nothing in progress stops leaving this screen: no play, request,
-## identity work, open room, unsent turn or draft. Friends may stay up only when
-## `friends_ok`; `legacy_room` is the earlier-island room about to open, if any.
-func _can_leave(friends_ok: bool, legacy_room: String) -> bool:
-	if host.application_backgrounded or host.running or host.submission_in_flight or host.identity_loading or host.identity_busy or host.foreground_refresh_running or is_instance_valid(host.relay_child) or host.saves.read_only: return false
+## True when nothing in progress stops leaving this screen: no request,
+## identity work, open room or draft. Friends may stay up only when `friends_ok`.
+func _can_leave(friends_ok: bool) -> bool:
+	if host.application_backgrounded or host.identity_loading or host.identity_busy or is_instance_valid(host.relay_child) or host.saves.read_only: return false
 	if host.mode not in host.NOTIFICATION_ROUTE_MODES and not (host.mode == "friends" and friends_ok): return false
-	if not host._relay_identity().ready or not host.saves.data.get("pending_turn", {}).is_empty() or not host.saves.data.get("room_draft", {}).is_empty(): return false
-	if not host.legacy_room_flow.navigation_ready(legacy_room,false): return false
+	if not host._relay_identity().ready: return false
 	if host.relay_session != null:
-		if host.relay_session.busy() or not host.relay_session.can_leave_for_legacy(): return false
+		if host.relay_session.busy() or not host.relay_session.can_leave(): return false
 		if host.relay_session.coordinator != null and not host.relay_session.coordinator.draft().is_empty(): return false
 	return true
 
@@ -295,7 +288,7 @@ func _service_view() -> void:
 	if host.friends_flow.is_open() or Time.get_ticks_msec() >= int(_view_wanted.until) or _view_wanted.identity != _identity_key():
 		_view_wanted = {}
 		return
-	if not _can_leave(true, ""): return
+	if not _can_leave(true): return
 	_view_wanted = {}
 	_view_opening = true
 	await host._show_friends()
@@ -358,7 +351,7 @@ func _open_route(route: Dictionary) -> void:
 		else: await host._show_friends()
 		return
 	var context := _route_context()
-	var path := ("/v1/rooms/" if route.room_family == "legacy" else "/v2/rooms/") + str(route.room_id)
+	var path := "/v2/rooms/" + str(route.room_id)
 	var response: Dictionary = await host.api.request_json(HTTPClient.METHOD_GET, path)
 	# The user may tap a newer room notification while the network is waiting.
 	# Check the native selection again before applying this older response.
@@ -377,36 +370,26 @@ func _open_route(route: Dictionary) -> void:
 		host.turn_notifications.acknowledge_route(route.event_id)
 		host._toast(PlayerCopy.MAIN_310F42091578)
 		return
-	if route.room_family == "legacy":
-		if Levels.get_level(str(room.get("level_id", ""))).is_empty():
-			host.turn_notifications.acknowledge_route(route.event_id)
-			host._toast(PlayerCopy.MAIN_6DE42F59590C)
-			return
-		if not host.legacy_room_flow.show_saved_room(room, route.get("kind") == "redo_requested"):
-			route_retry_ms = Time.get_ticks_msec() + 15000
-			host._toast(PlayerCopy.MAIN_22017C43B345)
-			return
-	else:
-		if not Typed.equal(room.get("api_version"), 2) or ChapterRegistry.resolve(room).is_empty():
-			host.turn_notifications.acknowledge_route(route.event_id)
-			host._toast(PlayerCopy.MAIN_F4F6AF4420A6)
-			return
-		host.ensure_relay_session()
-		if host.relay_session.capabilities.is_empty():
-			var loaded: bool = await host.relay_session.load_lobby()
-			if not _route_current(route, context): return
-			if not loaded:
-				route_retry_ms = Time.get_ticks_msec() + 15000
-				host._toast(PlayerCopy.MAIN_571E92F64ED1)
-				return
-		var opened: bool = await host.relay_session.open_room(route.room_id)
-		await host.turn_notifications.refresh_pending_route()
+	if not Typed.equal(room.get("api_version"), 2) or ChapterRegistry.resolve(room).is_empty():
+		host.turn_notifications.acknowledge_route(route.event_id)
+		host._toast(PlayerCopy.MAIN_F4F6AF4420A6)
+		return
+	host.ensure_relay_session()
+	if host.relay_session.capabilities.is_empty():
+		var loaded: bool = await host.relay_session.load_lobby()
 		if not _route_current(route, context): return
-		if not opened:
+		if not loaded:
 			route_retry_ms = Time.get_ticks_msec() + 15000
-			host._toast(PlayerCopy.MAIN_BE8E691311EE)
+			host._toast(PlayerCopy.MAIN_571E92F64ED1)
 			return
-		host._enter_online_relay()
+	var opened: bool = await host.relay_session.open_room(route.room_id)
+	await host.turn_notifications.refresh_pending_route()
+	if not _route_current(route, context): return
+	if not opened:
+		route_retry_ms = Time.get_ticks_msec() + 15000
+		host._toast(PlayerCopy.MAIN_BE8E691311EE)
+		return
+	host._enter_online_relay()
 	host.turn_notifications.acknowledge_route(route.event_id)
 
 func _owned_room(room: Variant, route: Dictionary) -> bool:

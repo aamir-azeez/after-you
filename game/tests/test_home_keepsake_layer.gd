@@ -16,7 +16,7 @@ const States = preload("res://services/home_keepsake_states.gd")
 const Card = preload("res://presentation/keepsakes/keepsake_card.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
-const Levels = preload("res://core/levels.gd")
+const HomeLayout = preload("res://presentation/home_layout.gd")
 const Main = preload("res://main.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
@@ -77,7 +77,7 @@ func _home(size: Vector2i, items: Array[Dictionary], hard: Dictionary = {}, toge
 	root.add_child(viewport)
 	var world := World.new()
 	viewport.add_child(world)
-	world.load_level(Levels.get_level("first-light"))
+	world.load_level(HomeLayout.LEVEL)
 	world.set_process(false)
 	var stage := Stage.new()
 	var theme_source := Main.new()
@@ -99,7 +99,7 @@ func _close(home: Dictionary) -> void:
 	home.viewport.free()
 	await process_frame
 
-## The ledger marks for every stage of a chapter (or an earlier island).
+## The ledger marks for every stage of a chapter.
 func _cleared(level: String, solo: bool, friend: bool, into: Array[Dictionary] = []) -> Array[Dictionary]:
 	for item: Dictionary in Catalog.all():
 		if item.family != level: continue
@@ -296,8 +296,8 @@ func _check_isles() -> void:
 
 ## In Explore a step sets a keepsake off: walking into its trigger plays it
 ## once (again only after walking out), walking through the arch rings it, a
-## ride carries the pip and lands it on open ground, the house and the lantern
-## path are walked in and out of; a still pip, a wandering pip and an unearned
+## ride carries the pip and lands it on open ground, the house is walked in
+## and out of; a still pip, a wandering pip and an unearned
 ## keepsake set nothing off; and every keepsake settles back to rest with
 ## nothing left running.
 func _check_triggers() -> void:
@@ -399,15 +399,15 @@ func _check_triggers() -> void:
 	# New marks while the pip is inside: the rebuilt house is walked on into, quietly.
 	var heard: Array = []
 	stage.play_cue = func(cue: String, _variant: int) -> void: heard.append(cue)
-	var fewer := _everything()
-	fewer = fewer.filter(func(item: Dictionary) -> bool: return item.family != "earlier")
-	stage.set_keepsakes(fewer)
+	var fewer := _all_hard()
+	fewer.erase("first-steps@1")
+	stage.set_hard(fewer, true)
 	await _settle(layer)
 	var rebuilt: Dictionary = layer.parts_of("a-house-for-two")
 	var rebuilt_cut: Node3D = rebuilt.cutaway
 	_check(rebuilt_cut != cut and layer.staying() == "a-house-for-two" and rebuilt_cut.find_children("*", "MeshInstance3D", true, false).all(func(mesh: Node) -> bool: return mesh.get_meta("cutaway", false)), "A rebuild while the pip is inside keeps it inside the new house")
 	_check(heard.is_empty(), "and plays no sound again: %s" % [heard])
-	stage.set_keepsakes(_everything())
+	stage.set_hard(_all_hard(), true)
 	await _settle(layer)
 	house = layer.parts_of("a-house-for-two")
 	cut = house.cutaway
@@ -420,15 +420,6 @@ func _check_triggers() -> void:
 	await process_frame
 	_check(layer.staying().is_empty() and prop.get_node_or_null("Visit") == null and not cut.find_children("*", "MeshInstance3D", true, false).any(func(mesh: Node) -> bool: return mesh.get_meta("cutaway", false)), "Leaving Explore inside the house puts it back")
 	stage._explore_button.pressed.emit()
-	# The Lantern Walk: a lit lantern glows over the pip on the stones.
-	var walk: Transform3D = layer.slot_transform("earlier")
-	layer.walked(far, walk * Vector3(-1.2, 0, 0), spirit)
-	var visit: Node3D = layer.prop_node("earlier").get_node_or_null("Visit")
-	_check(layer.staying() == "earlier" and visit != null and (visit.get_node("Glow") as Node3D).visible, "Walking the stones lights the lantern over the pip")
-	layer.walked(walk * Vector3(-1.2, 0, 0), walk * Vector3(1.2, 0, 0), spirit)
-	_check((visit.get_node("Glow") as Node3D).position.x > 0.5, "and the glow follows the pip along the line")
-	layer.walked(walk * Vector3(1.2, 0, 0), far, spirit)
-	_check(layer.staying().is_empty(), "Walking off the stones leaves the Lantern Walk")
 	# Settled: nothing left made, moving or running.
 	var until := Time.get_ticks_msec() + 3000
 	while layer.playing() and Time.get_ticks_msec() < until: await process_frame
@@ -637,14 +628,13 @@ func _check_play() -> void:
 	# A state change during a tap waits for it to end.
 	var builds: int = layer.builds
 	stage.play_keepsake("the-wishing-well")
-	var some: Array[Dictionary] = _cleared("first-steps", true, false)
-	stage.set_keepsakes(some)
+	stage.set_hard({}, true)
 	await create_timer(1.0).timeout
 	_check(layer.builds == builds and stage.keepsake_playing(), "A rebuild waits while a keepsake plays")
 	await _settle(layer)
 	_check(layer.builds == builds + 1 and not stage.keepsake_playing(), "and comes once the tap has ended")
 	# Leaving Home mid tap leaves no Tween behind.
-	stage.set_keepsakes(_everything())
+	stage.set_hard(_all_hard(), true)
 	await _settle(layer)
 	stage.play_keepsake("sleeping-lighthouse")
 	await create_timer(0.3).timeout

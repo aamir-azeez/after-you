@@ -22,7 +22,7 @@ extends RefCounted
 ##   their own Full Journey lock, store and tester code routing. A join asks
 ##   it too: the host's Full Journey covers the guest, as it always has.
 ## - open() adds Full Journey: what a duel, which has no host to cover it, asks.
-## - Earlier islands, keys outside the chain and replays are never gated.
+## - Keys outside the chain and replays are never gated.
 ## - While the keepsake ledger is held (unreadable) or still being rebuilt from
 ##   the journals, its marks may be missing: the caller asks unsettled(), so
 ##   nothing is locked and a join carries no header, as an older build's.

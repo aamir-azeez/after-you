@@ -855,7 +855,6 @@ func _add_room_card(room: Dictionary) -> void:
 	remove.icon = REMOVE_ICON
 	remove.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	remove.expand_icon = true
-	remove.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	remove.add_theme_constant_override("icon_max_width",22)
 	remove.custom_minimum_size = Vector2(50,50)
 	remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -898,7 +897,7 @@ func _removal(room: Dictionary) -> String:
 	var status := str(room.get("status",""))
 	if status == "completed": return ""
 	if status == "unavailable": return "hide"
-	if Typed.as_int(room.get("api_version")) not in [1,2] or not client.confirmed(room): return ""
+	if Typed.as_int(room.get("api_version")) != 2 or not client.confirmed(room): return ""
 	if status == "closed": return "leave"
 	return "close" if status in ACTIVE_STATUSES else ""
 
@@ -909,7 +908,7 @@ func _removal_label(removal: String) -> String:
 ## the server offers it for a room its latest list confirmed.
 func _menu_rows(room: Dictionary) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = [{"id": "hide", "title": PlayerCopy.ROOM_HIDE, "detail": PlayerCopy.ROOM_HIDE_DETAIL, "icon": HIDE_ICON}]
-	if _leave_finished and int(room.get("api_version",0)) in [1,2] and client != null and client.has_method("confirmed") and client.confirmed(room):
+	if _leave_finished and int(room.get("api_version",0)) == 2 and client != null and client.has_method("confirmed") and client.confirmed(room):
 		rows.append({"id": "leave_finished", "title": PlayerCopy.ROOM_LEAVE, "detail": PlayerCopy.ROOM_LEAVE_DETAIL, "icon": LEAVE_ICON, "tone": "danger"})
 	var partner: Dictionary = partner_friend.call(room) if partner_friend.is_valid() else {}
 	match str(partner.get("state", "")):
@@ -929,7 +928,6 @@ func _menu_button(room: Dictionary, beside: Button) -> Button:
 	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	button.expand_icon = true
-	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	button.add_theme_constant_override("icon_max_width",24)
 	button.custom_minimum_size = Vector2(beside.custom_minimum_size.y,beside.custom_minimum_size.y)
 	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
