@@ -1,4 +1,5 @@
 extends RefCounted
+const CarriedItems = preload("res://core/physical/carried_items.gd")
 ## Pure selectors and terminal-route predicates for authored simulation7.
 ## No shared mutable state: all dictionaries belong to a single simulation.
 ## `open`: open controls (runtime.gd OPEN_RULES_VERSION), where a pad holds for
@@ -20,6 +21,8 @@ static func predicate(value: Dictionary, stage: Dictionary, players: Dictionary,
 		for pad: Dictionary in stage.get("pressure_pads", []):
 			if pad.id == value.pad_id: return held(players, pad, open)
 		return false
+	# Rules 16's carried items and floats (core/physical/carried_items.gd).
+	if CarriedItems.is_term(value): return CarriedItems.holds(value, mechanisms)
 	return value.is_empty()
 
 static func near(player: Dictionary, target: Dictionary) -> bool:

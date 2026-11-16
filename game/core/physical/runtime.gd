@@ -183,6 +183,7 @@ func _tick(input: Dictionary = {}) -> void:
 	_after_move()
 	_refresh_routes()
 	if (not _objective or _open_turns()) and bool(frame.action) and not _held: _interact()
+	_after_interact()
 	_held = bool(frame.action)
 	_refresh_routes()
 	for route_id: String in _routes:
@@ -247,20 +248,22 @@ func _move(frame: Dictionary) -> void:
 	var steps := maxi(absi(delta.x), absi(delta.y))
 	var walked := Vector2i.ZERO
 	var cells := _navigation_cells()
+	var routes := _walk_routes(active_slot)
 	for index in range(1, steps + 1):
 		var next := Vector2i(roundi(float(delta.x * index) / steps), roundi(float(delta.y * index) / steps))
 		var unit := next - walked
 		walked = next
-		if _try_move(unit, cells): continue
-		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells)
-		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells)
+		if _try_move(unit, cells, routes): continue
+		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells, routes)
+		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells, routes)
 
 ## cells: this definition's floor index (_navigation_cells()), fetched once per move.
-func _try_move(delta: Vector2i, cells: Dictionary) -> bool:
+## routes: the crossings the walker may step on (_walk_routes()), likewise.
+func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary) -> bool:
 	var previous: Dictionary = _players[active_slot]
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
-	var position := Navigation.at(level, _routes, _mechanisms.levers, previous, x, z, active_slot, PLAYER_RADIUS, true, cells)
+	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, active_slot, PLAYER_RADIUS, true, cells)
 	if position.is_empty(): return false
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
@@ -557,7 +560,7 @@ func _part_done() -> bool:
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot
-	return not Navigation.at(level, _routes, _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells()).is_empty()
+	return not Navigation.at(level, _walk_routes(selected), _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells()).is_empty()
 
 func export_recording() -> Dictionary:
 	if tick == 0 or level.is_empty(): return {}
@@ -652,6 +655,18 @@ func _proof_engine() -> RefCounted:
 	return null
 
 func _reset_mechanics() -> void:
+	pass
+
+## The crossings slot's pip may step onto this tick: the open ones, less any
+## a facade's rules keep it off (rules 16: a pip carrying an item never climbs
+## a crossing that needs both hands). Never changes the routes themselves.
+func _walk_routes(_slot: String) -> Dictionary:
+	return _routes
+
+## After the live pip's press, before the routes are worked out again: a
+## facade whose things move on a press (rules 16's current) moves them here.
+## Published rules have none.
+func _after_interact() -> void:
 	pass
 
 ## After a tick's routes are final, before readiness and completion: a facade

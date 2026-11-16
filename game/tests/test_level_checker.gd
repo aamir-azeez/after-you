@@ -549,7 +549,8 @@ static func _goal_holds(graph: RefCounted, stage: Dictionary, checkpoint: Dictio
 		if not found.floors[slot].has(str(goal.get("surface_id", ""))): return false
 		if ring and not graph.can_stand_at(goal, slot, found.open, journey): return false
 	var when: Dictionary = stage.get("goal_policy", {}).get("when", {})
-	return when.is_empty() or graph.gate_can_hold({"when": when}, stage, found.settable, checkpoint.get("mechanisms", {}), journey, found.floors)
+	# Rules 16: an item carried at the goal is carried on the goal's floor (level_graph.gd with_items).
+	return when.is_empty() or graph.gate_can_hold(graph.with_items({"when": when, "surface_id": str(goal.get("surface_id", ""))}, found.settable), stage, found.settable, checkpoint.get("mechanisms", {}), journey, found.floors)
 
 ## Whether a pip's start (a checkpoint player) stands at `goal`: its floor, within its radius.
 static func _starts_at(player: Dictionary, goal: Dictionary) -> bool:

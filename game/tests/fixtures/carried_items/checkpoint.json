@@ -1,0 +1,457 @@
+{
+  "checkpoint_hash": "2a735d830a6fda81be3fa7aadffad99dcadf9b356d9ee90ef9f494caca64acee",
+  "completed_stage_id": "hand-up",
+  "definition_hash": "2a9dea7880937018ac9d744fac0592c51a5feddcdfdc5db0a6d08e525d9a3c52",
+  "level_id": "carry-witness",
+  "level_version": 1.0,
+  "mechanisms": {
+    "controls": {
+      "current": "south"
+    },
+    "items": {
+      "pipsport": {
+        "height": 0.0,
+        "holder": "p1",
+        "spot": "",
+        "surface_id": "",
+        "x": 0.0,
+        "z": 0.0
+      },
+      "raft": {
+        "height": 0.0,
+        "holder": "",
+        "spot": "mooring",
+        "surface_id": "",
+        "x": -160.0,
+        "z": 160.0
+      }
+    },
+    "latched_bridges": [],
+    "levers": {},
+    "props": {}
+  },
+  "next_stage_id": "drift",
+  "players": {
+    "p0": {
+      "height": 48.0,
+      "surface_id": "loft",
+      "x": 220.0,
+      "z": 0.0
+    },
+    "p1": {
+      "height": 48.0,
+      "surface_id": "loft",
+      "x": 250.0,
+      "z": 0.0
+    }
+  },
+  "previous_checkpoint_hash": "add10b736d72d16a7f96d4f7a8c2e7085863f2ff842f7d977a117828ca3fd86d",
+  "proof": {
+    "checkpoint": {
+      "a_recording_hash": "",
+      "b_recording_hash": "",
+      "checkpoint_hash": "add10b736d72d16a7f96d4f7a8c2e7085863f2ff842f7d977a117828ca3fd86d",
+      "completed_stage_id": "",
+      "definition_hash": "2a9dea7880937018ac9d744fac0592c51a5feddcdfdc5db0a6d08e525d9a3c52",
+      "level_id": "carry-witness",
+      "level_version": 1.0,
+      "mechanisms": {
+        "controls": {
+          "current": "south"
+        },
+        "items": {
+          "pipsport": {
+            "height": 0.0,
+            "holder": "",
+            "spot": "post",
+            "surface_id": "dock",
+            "x": -350.0,
+            "z": 80.0
+          },
+          "raft": {
+            "height": 0.0,
+            "holder": "",
+            "spot": "mooring",
+            "surface_id": "",
+            "x": -160.0,
+            "z": 160.0
+          }
+        },
+        "latched_bridges": [],
+        "levers": {},
+        "props": {}
+      },
+      "next_stage_id": "hand-up",
+      "players": {
+        "p0": {
+          "height": 0.0,
+          "surface_id": "dock",
+          "x": -300.0,
+          "z": 0.0
+        },
+        "p1": {
+          "height": 48.0,
+          "surface_id": "loft",
+          "x": 250.0,
+          "z": 0.0
+        }
+      },
+      "previous_checkpoint_hash": "",
+      "proof": {},
+      "schema_version": 7.0,
+      "stage_index": 0.0
+    },
+    "turns": [
+      {
+        "actions": [
+          {
+            "action": false,
+            "ticks": 6.0,
+            "x": -100.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": -25.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 7.0,
+            "x": 0.0,
+            "z": 100.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": 50.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "action": true,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 7.0,
+            "x": 0.0,
+            "z": -100.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": -50.0
+          },
+          {
+            "action": false,
+            "ticks": 27.0,
+            "x": 100.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 50.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 10.0,
+            "x": 0.0,
+            "z": 0.0
+          }
+        ],
+        "catch_assistance": true,
+        "checkpoint_hash": "add10b736d72d16a7f96d4f7a8c2e7085863f2ff842f7d977a117828ca3fd86d",
+        "completed": false,
+        "definition_hash": "2a9dea7880937018ac9d744fac0592c51a5feddcdfdc5db0a6d08e525d9a3c52",
+        "duration_ticks": 63.0,
+        "final_state_hash": "59cdada91f05c5e5012f26768a137285482e88829081d609af810806fa52798b",
+        "level_id": "carry-witness",
+        "level_version": 1.0,
+        "outcome": {
+          "objective_complete": false,
+          "source_ready": true
+        },
+        "player_slot": "p0",
+        "recording_hash": "d3a4f17d6eb4ad64baab3b2662144006425a766f5c0e9dacb6ac151a8b3d1575",
+        "replay_checks": [
+          {
+            "state_hash": "862f2723b6e6e43c8a1f39577000857d6c54029f440440d4da2d0a8a1fc92e0a",
+            "tick": 30.0
+          },
+          {
+            "state_hash": "36bf319b4dd309f97dbe37d7525735bf9a87b67a705fedb5ea9c2eb550b254be",
+            "tick": 60.0
+          },
+          {
+            "state_hash": "59cdada91f05c5e5012f26768a137285482e88829081d609af810806fa52798b",
+            "tick": 63.0
+          }
+        ],
+        "role": "a",
+        "schema_version": 7.0,
+        "simulation_version": 16.0,
+        "source_recording_hash": "",
+        "stage_id": "hand-up",
+        "stage_version": 1.0,
+        "tick_rate": 30.0
+      },
+      {
+        "actions": [
+          {
+            "action": false,
+            "ticks": 27.0,
+            "x": -100.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": -50.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 172.0,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 27.0,
+            "x": 100.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 50.0,
+            "z": 0.0
+          }
+        ],
+        "catch_assistance": true,
+        "checkpoint_hash": "add10b736d72d16a7f96d4f7a8c2e7085863f2ff842f7d977a117828ca3fd86d",
+        "completed": false,
+        "definition_hash": "2a9dea7880937018ac9d744fac0592c51a5feddcdfdc5db0a6d08e525d9a3c52",
+        "duration_ticks": 228.0,
+        "final_state_hash": "d29f90132e2fdf8a4c32168fc2868e6dbf5b4b6c8b463fe5284add728c1a0c6f",
+        "level_id": "carry-witness",
+        "level_version": 1.0,
+        "outcome": {
+          "objective_complete": false,
+          "source_ready": true
+        },
+        "player_slot": "p1",
+        "recording_hash": "5e2b9d4c70605d27a8b7a82310dbda922c3388a93b650c5edc62ded2d0d88709",
+        "replay_checks": [
+          {
+            "state_hash": "caf73b5cd1b3d3fb498c0e81509e7ae831e23dfcdc5b37b0af020c9201088376",
+            "tick": 30.0
+          },
+          {
+            "state_hash": "cbe56c35351ecccef9af16141cb021cb08a389e66c88c8136db8dda4a07c5e07",
+            "tick": 60.0
+          },
+          {
+            "state_hash": "ef2a329f64dd4dd58f317b876b750275d469929c0bdfdef053129a2d6b21e009",
+            "tick": 90.0
+          },
+          {
+            "state_hash": "bf7bbb68c3033b664cb8c7fb05e2f04e2a9699b4cd2cbb23b2177dd021825a49",
+            "tick": 120.0
+          },
+          {
+            "state_hash": "78b03aaced838b39271c722b62891845c6aebf8532036cc17ea94b95415b5b6a",
+            "tick": 150.0
+          },
+          {
+            "state_hash": "a2890545c8bb31a0a5201b65818f3d68c0c4456d666bb39a79f6b9175d22a114",
+            "tick": 180.0
+          },
+          {
+            "state_hash": "30aa59bbbaf7efddb122a76217404ec83c927c6a31510ff1b197a6d0016e5907",
+            "tick": 210.0
+          },
+          {
+            "state_hash": "d29f90132e2fdf8a4c32168fc2868e6dbf5b4b6c8b463fe5284add728c1a0c6f",
+            "tick": 228.0
+          }
+        ],
+        "role": "b",
+        "schema_version": 7.0,
+        "simulation_version": 16.0,
+        "source_recording_hash": "d3a4f17d6eb4ad64baab3b2662144006425a766f5c0e9dacb6ac151a8b3d1575",
+        "stage_id": "hand-up",
+        "stage_version": 1.0,
+        "tick_rate": 30.0
+      },
+      {
+        "actions": [
+          {
+            "action": false,
+            "ticks": 6.0,
+            "x": -100.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": -25.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 7.0,
+            "x": 0.0,
+            "z": 100.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": 50.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "action": true,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 7.0,
+            "x": 0.0,
+            "z": -100.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": -50.0
+          },
+          {
+            "action": false,
+            "ticks": 27.0,
+            "x": 100.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 50.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "action": true,
+            "ticks": 1.0,
+            "x": 0.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 43.0,
+            "x": 100.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 1.0,
+            "x": 75.0,
+            "z": 0.0
+          },
+          {
+            "action": false,
+            "ticks": 129.0,
+            "x": 0.0,
+            "z": 0.0
+          }
+        ],
+        "catch_assistance": true,
+        "checkpoint_hash": "add10b736d72d16a7f96d4f7a8c2e7085863f2ff842f7d977a117828ca3fd86d",
+        "completed": true,
+        "definition_hash": "2a9dea7880937018ac9d744fac0592c51a5feddcdfdc5db0a6d08e525d9a3c52",
+        "duration_ticks": 228.0,
+        "final_state_hash": "94e5614d2b8289c7104e262cc01aaf300c27de3f3caaa7e051a7b4ef01cefb2d",
+        "level_id": "carry-witness",
+        "level_version": 1.0,
+        "outcome": {
+          "objective_complete": true,
+          "source_ready": true
+        },
+        "player_slot": "p0",
+        "recording_hash": "20b2e03e76a306814f53394ac145aab621a9d7556470be8d81bc441beebca695",
+        "replay_checks": [
+          {
+            "state_hash": "79458b75fd5caf25a043eacdc8ffba3261cf1c207135616304f50944553c8b49",
+            "tick": 30.0
+          },
+          {
+            "state_hash": "b03a1b3765a02b481b051c7bc88f4ba2eeb5fc1919e31641e0dde7ec92fd96c8",
+            "tick": 60.0
+          },
+          {
+            "state_hash": "051d85cf1e81f569647772b6f3de8244c49adb7e1d7afad8118df591b874fd5f",
+            "tick": 90.0
+          },
+          {
+            "state_hash": "1de63e3649387803536f161949713571c3968031344d4bc0070047d7eed79d29",
+            "tick": 120.0
+          },
+          {
+            "state_hash": "ac103c6af8dc3505bb04abc40dec3347737251ecead97769d9885e4aa71a7220",
+            "tick": 150.0
+          },
+          {
+            "state_hash": "e715d3eb1aa03b0b0f1696e13e8b04a7005e6e9416d438311f3c3b65e53f88aa",
+            "tick": 180.0
+          },
+          {
+            "state_hash": "571452ce14fc1d0b7f7fd4454456962d4815af8c15b9c5e9fbe6960af43dd0ba",
+            "tick": 210.0
+          },
+          {
+            "state_hash": "94e5614d2b8289c7104e262cc01aaf300c27de3f3caaa7e051a7b4ef01cefb2d",
+            "tick": 228.0
+          }
+        ],
+        "role": "b",
+        "schema_version": 7.0,
+        "simulation_version": 16.0,
+        "source_recording_hash": "5e2b9d4c70605d27a8b7a82310dbda922c3388a93b650c5edc62ded2d0d88709",
+        "stage_id": "hand-up",
+        "stage_version": 1.0,
+        "tick_rate": 30.0
+      }
+    ]
+  },
+  "schema_version": 8.0,
+  "stage_index": 1.0,
+  "turn_hashes": [
+    "d3a4f17d6eb4ad64baab3b2662144006425a766f5c0e9dacb6ac151a8b3d1575",
+    "5e2b9d4c70605d27a8b7a82310dbda922c3388a93b650c5edc62ded2d0d88709",
+    "20b2e03e76a306814f53394ac145aab621a9d7556470be8d81bc441beebca695"
+  ]
+}

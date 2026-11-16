@@ -3,6 +3,7 @@ import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import { openTurns, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, recordingBytes, turnSlot } from "./open-turns";
+import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -61,6 +62,9 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
 
 function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
+  // Rules 16's carried items (protocol-items.ts): only a definition that lists them keeps mechanisms.items.
+  checkItemDefinition(definition as unknown as ItemDefinition);
+  const withItems = declaresItems(definition);
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [7, 8];
@@ -109,7 +113,8 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.a) === canonicalJson(a) && canonicalJson(proof.b) === canonicalJson(b), "checkpoint_proof_mismatch");
     }
     const mechanisms = object(c.mechanisms), prior = object(object(previous).mechanisms);
-    exact(mechanisms, ["latched_bridges", "props", "levers", "controls"]); exact(object(mechanisms.props), []);
+    exact(mechanisms, ["latched_bridges", "props", "levers", "controls", ...(withItems ? ["items"] : [])]); exact(object(mechanisms.props), []);
+    const items = withItems ? checkItems(mechanisms.items, definition as unknown as ItemDefinition) : {};
     // Controls by id: a control repeated in both stages (the same entry) is
     // listed once, may change while its stage plays, and is held otherwise.
     const controls = object(mechanisms.controls), priorControls = object(prior.controls);
@@ -149,6 +154,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       if (value.lever_id) return levers[value.lever_id] === true;
       if (value.signal_id) return light[value.signal_id] === true;
       if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
+      if (isItemTerm(value)) return itemHolds(value, items);
       return true;
     }
     for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
@@ -196,3 +202,5 @@ export const turnOfTheTideV3: ChapterAdapter = adapter(tideV3Definition, tideV3I
 /** Open controls (12): Conservatory@1 with the court's two forks on a balcony only the first player reaches,
  * and the first turn ending at the court-wait spot on the court. Unreleased. */
 export const conservatoryV2 = adapter(conservatoryV2Definition, conservatoryV2Initial, CONSERVATORY_V2_HASH);
+/** A journey adapter for any definition and its first checkpoint: the witness tests (test/carried-items.test.ts) build theirs with it. */
+export const journeyAdapter = adapter;

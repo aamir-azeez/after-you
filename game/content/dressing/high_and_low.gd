@@ -17,6 +17,8 @@ const DATA := {
 	"pad": "plain",
 	"goal": "bell",
 	"lift": "plain",
+	"carried_item": "parcel",
+	"current": "ripples",
 	"bridges": "timber",
 	"props": {"*": [
 		# Shore: a planted bank behind and to the left, flowers along the front.
