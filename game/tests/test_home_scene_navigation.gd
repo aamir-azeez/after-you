@@ -98,9 +98,22 @@ func _test_round_trip() -> void:
 	_check(old_app.get_ref() == null and old_world.get_ref() == null and old_stage.get_ref() == null,
 		"Opening the chapter frees the actual prior Main, World and HomeStage")
 	var chapter: Node = current_scene
+	# The chapter frames its camera at the end of its staged build: read it then.
+	var deadline := Time.get_ticks_msec() + 20000
+	while chapter._world_building and Time.get_ticks_msec() < deadline:
+		await process_frame
+	if chapter._world_building:
+		_check(false, "The chapter finishes building")
+		return
+	# The ready card frames closer on the spirits, keeping the offsets the
+	# world's own framing gives its camera: framing it again keeps them.
+	var camera: Camera3D = chapter.world.camera
+	var framed := Vector2(camera.h_offset, camera.v_offset)
+	chapter.world._frame_camera()
 	_check(chapter.world.camera_exploration.pan == Vector2.ZERO and chapter.world.camera_exploration.zoom_ratio == 1.0
-		and chapter.world.camera.h_offset == 0.0 and chapter.world.camera.v_offset == 0.0,
+		and Vector2(camera.h_offset, camera.v_offset) == framed,
 		"The chapter starts with its authored camera instead of inherited home exploration")
+	camera = null
 	var old_chapter: WeakRef = weakref(chapter)
 	chapter._leave()
 	chapter = null
