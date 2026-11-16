@@ -212,7 +212,7 @@ const WRITES := {
 	"res://services/pollen_client.gd": [2, "unkeyed: each claim names its room and recording, which pay once"],
 	"res://services/redo_client.gd": [2, "keyed: fork and redo"],
 	"res://services/relay_online_session.gd": [1, "keyed: room create and duel rooms"],
-	"res://services/relay_room_coordinator.gd": [1, "keyed: turns and stage moves"],
+	"res://services/relay_room_coordinator.gd": [4, "keyed: turns and stage moves; open turns copies (want, send back, ack) are keyed by recording hash and repeat safely"],
 	"res://services/replay_transfer.gd": [2, "unkeyed: ack and restore name their manifest"],
 	"res://services/safety_client.gd": [6, "keyed: reports; terms, room block, Friends row block, unblock and a public duel unblock set a state"],
 	"res://services/tester_access.gd": [1, "unkeyed: redeeming a code again keeps one grant"],

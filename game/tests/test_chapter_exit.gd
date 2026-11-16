@@ -5,6 +5,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const StopRequest = preload("res://services/stop_request.gd")
 const LogWatch = preload("res://tests/log_watch.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 ## Errors leaving a chapter must never log: a store wired twice when Main is
 ## built again, a missing file read as damaged JSON, and the room camera read
 ## after it left the tree.
@@ -66,10 +67,14 @@ func _snapshot(api: FakeApi, owner: String) -> Dictionary:
 		# using the registry's preferred rules. Keep its original recording pin.
 		value["simulation_version"] = int(fixtures["relay-a"].simulation_version)
 	# Open turns (core/physical/open_turns.gd): the room says how far its stage has gone, no passes yet.
+	# Fingerprints (services/open_turn_store.gd): turn 1 comes as its fingerprint, and in full as the newest.
 	if OpenTurns.rules(int(value.get("simulation_version", level.get("simulation_version", 0)))):
 		var stage_index := int(value.stage_index)
 		var done: bool = stage_index >= level.stages.size()
-		value["open_turns"] = {"turn": 0 if done else (1 if value.recording_a == null else 2), "cap": 0 if done else OpenTurns.cap(level.stages[stage_index]), "must_finish": false, "pass_bytes": 0, "passes": []}
+		var first: Variant = value.recording_a
+		value["open_turns"] = {"turn": 0 if done else (1 if first == null else 2), "cap": 0 if done else OpenTurns.cap(level.stages[stage_index]), "must_finish": false, "pass_bytes": 0,
+			"turn_hashes": [first.recording_hash] if first is Dictionary else [], "newest": first, "closing": null}
+		if first is Dictionary: value.recording_a = OpenTurnStore.strip(first)
 	return value
 
 func _open_case(key: String) -> Dictionary:

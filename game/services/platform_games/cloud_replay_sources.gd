@@ -13,6 +13,9 @@ extends RefCounted
 ## photo transfer's own checks of its JPEG, size and hash). Another player's items are kept in the
 ## slot, untouched. Photos deleted here are never sent.
 ## Items that no longer fit the slot are counted for the backup-limit notice (backup_limit.gd).
+## Open turns rooms' own turn copies (services/open_turn_store.gd) go as room items keyed
+## "room/<owner>/turns/<room>/s<stage>-<recording hash>", so builds that do not know them leave
+## them in the slot; restore keeps a turn only when it hashes to its name.
 const Bundle = preload("res://services/platform_games/cloud_replay_bundle.gd")
 const HistoryStore = preload("res://services/history_store.gd")
 const DuelTheirRun = preload("res://services/duel_their_run.gd")
@@ -22,11 +25,14 @@ const BlobCodec = preload("res://services/blob_codec.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const BackupLimit = preload("res://services/backup_limit.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 
 const DUEL_NAME := "^(ghost-)?[a-f0-9]{32}\\.json$"
 const SHARED_NAME := "^[a-f0-9]{64}\\.json$"
 const SERVER := "^[a-f0-9]{16}$"
 const PHOTO_ENTRY := "^[a-f0-9]{64}\\.json$"
+const TURN_FILE := "^s[0-7]-[a-f0-9]{64}$"
+const TURNS := "turns"
 
 var slot := 0
 ## Tests: where the files are, the owner id and the backup-limit file.
@@ -80,6 +86,10 @@ static func listing(base: String, player: String) -> Array:
 			var folder := history.path_join(server).path_join(player).path_join(room)
 			for name: String in _files(folder):
 				if name.ends_with(".bin"): out.append(["room/%s/%s/%s/%s" % [player, server, room, name.trim_suffix(".bin")], folder.path_join(name)])
+	var copies := OpenTurnStore.new(player, "", base.path_join("open-turns"))
+	for room: String in _folders(base.path_join("open-turns").path_join(player)):
+		copies.room_id = room
+		for held: Dictionary in copies.held(): out.append(["room/%s/%s/%s/s%d-%s" % [player, TURNS, room, held.stage_index, held.recording_hash], held.path])
 	var duels := base.path_join("duel_runs").path_join(player)
 	for name: String in _files(duels):
 		if _matches(name, DUEL_NAME): out.append(["duel/%s/%s" % [player, name], duels.path_join(name)])
@@ -121,7 +131,13 @@ static func gather(base: String, player: String, slot_index: int) -> Dictionary:
 		if Bundle.slot_of(key) != slot_index: continue
 		var at := FileAccess.get_modified_time(path)
 		var kind := key.get_slice("/", 0)
-		if kind == "room":
+		if kind == "room" and key.get_slice("/", 2) == TURNS:
+			var text := FileAccess.get_file_as_string(path) if _size(path) <= OpenTurnStore.MAX_TURN_BYTES else ""
+			var record: Variant = JSON.parse_string(text) if not text.is_empty() else null
+			var named := key.get_slice("/", 4).get_slice("-", 1)
+			if OpenTurnStore.full(record) and record.recording_hash == named and OpenTurnStore.hash_ok(record):
+				items[key] = {"kind": kind, "owner": player, "rev": 0, "at": at, "digest": named, "data": text, "meta": {}}
+		elif kind == "room":
 			var folder := path.get_base_dir()
 			var room := folder.get_file()
 			if not indexes.has(folder): indexes[folder] = HistoryStore.index_in(folder, room)
@@ -182,6 +198,10 @@ func settled() -> void:
 func restore(history: RefCounted, key: String, item: Dictionary, player: String) -> bool:
 	var parts := key.split("/")
 	var meta: Dictionary = item.meta
+	if item.kind == "room" and parts.size() == 5 and parts[1] == player and parts[2] == TURNS and Typed.valid_id(parts[3]) and _matches(parts[4], TURN_FILE):
+		var record: Variant = JSON.parse_string(str(item.data))
+		if not OpenTurnStore.full(record) or record.recording_hash != parts[4].get_slice("-", 1) or record.recording_hash != item.digest: return false
+		return OpenTurnStore.new(player, parts[3], root.path_join("open-turns")).keep_turn(int(parts[4].substr(1, 1)), record)
 	if item.kind == "room" and parts.size() == 5 and parts[1] == player and _matches(parts[2], SERVER) and str(meta.get("server")) == parts[2] and str(meta.get("room")) == parts[3]:
 		var record := {"position": int(meta.get("position", -1)), "link": meta.get("link"), "digest": item.digest, "byte_length": int(meta.get("byte_length", 0))}
 		if parts[4] != "%d-%s" % [record.position, str(record.link).left(16)]: return false
@@ -226,7 +246,7 @@ static func _size(path: String) -> int:
 ## Compiles every pattern on the main thread, so the worker only reads the cache.
 static func warm() -> void:
 	Bundle.warm()
-	for pattern: String in [DUEL_NAME, SHARED_NAME, SERVER, PHOTO_ENTRY]: _matches("", pattern)
+	for pattern: String in [DUEL_NAME, SHARED_NAME, SERVER, PHOTO_ENTRY, TURN_FILE]: _matches("", pattern)
 
 static func _matches(text: String, pattern: String) -> bool:
 	return Bundle._matches(text, pattern)

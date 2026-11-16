@@ -7,6 +7,7 @@ const Runtime = preload("res://core/physical/runtime.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
+const KnownCheckpoints = preload("res://core/physical/known_checkpoints.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const COMFORT_VERSION := 8
@@ -173,6 +174,8 @@ func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: i
 	var open := OpenTurns.rules(_version)
 	if depth > clampi(definition.stages.size(), 2, MAX_STAGES) or not _integer(checkpoint.get("stage_index")) or int(checkpoint.stage_index) < 0 or int(checkpoint.stage_index) > definition.stages.size(): return _invalid("Malformed stage checkpoint.")
 	if checkpoint.stage_index == 0: return {"valid":true,"error":""} if Canonical.same(checkpoint, _catalog.initial_checkpoint(definition)) else _invalid("The initial checkpoint does not match.")
+	# Open turns fingerprints: a flat checkpoint (no proof) is checked by hash, against the ones proved here (known_checkpoints.gd).
+	if open and not checkpoint.has("proof"): return _flat_checkpoint(definition, checkpoint)
 	if not _exact_keys(checkpoint, OpenTurns.CHECKPOINT_KEYS if open else CHECKPOINT_KEYS): return _invalid("Malformed stage checkpoint.")
 	if not checkpoint.proof is Dictionary or not _exact_keys(checkpoint.proof, ["checkpoint", "turns"] if open else ["checkpoint", "a", "b"]): return _invalid("Missing checkpoint proof.")
 	var proof: Dictionary = checkpoint.proof
@@ -183,7 +186,17 @@ func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: i
 	var pair := _verify_turns(definition, proof.checkpoint, turns)
 	if not pair.valid: return pair
 	var derived: Dictionary = _build_checkpoint(definition, proof.checkpoint, turns[0], turns[-1], pair.snapshot, turns.slice(1, turns.size() - 1))
-	return {"valid":true,"error":""} if Canonical.same(checkpoint, derived) else _invalid("The checkpoint does not match its proof.")
+	if not Canonical.same(checkpoint, derived): return _invalid("The checkpoint does not match its proof.")
+	if open: KnownCheckpoints.keep(str(checkpoint.checkpoint_hash))
+	return {"valid":true,"error":""}
+
+## Open turns: a checkpoint without its proof, valid when its hash is its own and
+## this phone proved it before (from its turns, or nested).
+func _flat_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictionary:
+	var keys: Array = OpenTurns.CHECKPOINT_KEYS.filter(func(key: String) -> bool: return key != "proof")
+	if not _exact_keys(checkpoint, keys) or not checkpoint.turn_hashes is Array or checkpoint.turn_hashes.size() < 2: return _invalid("Malformed stage checkpoint.")
+	if checkpoint.definition_hash != Canonical.digest(definition) or _catalog.checkpoint_hash(checkpoint) != checkpoint.checkpoint_hash: return _invalid("Invalid checkpoint chain.")
+	return {"valid":true,"error":""} if KnownCheckpoints.known(str(checkpoint.checkpoint_hash)) else _invalid("The checkpoint is not proved here.")
 
 ## `passes`: open turns only, the stage's turns between `first` and `second`.
 func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, passes: Array = []) -> Dictionary:
@@ -192,7 +205,9 @@ func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dict
 	var turns: Array = [first] + passes + [second]
 	var pair := _verify_turns(definition, previous, turns)
 	if not pair.valid: return pair
-	return {"valid":true,"error":"","checkpoint":_build_checkpoint(definition, previous, first, second, pair.snapshot, passes)}
+	var built := _build_checkpoint(definition, previous, first, second, pair.snapshot, passes)
+	if OpenTurns.rules(_version): KnownCheckpoints.keep(str(built.checkpoint_hash))
+	return {"valid":true,"error":"","checkpoint":built}
 
 ## A published stage's two turns (_verify_turns).
 func _verify_pair(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
