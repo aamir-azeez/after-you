@@ -6,7 +6,7 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint } from "../src/v2/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
-import { DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, mustFinish, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, mustFinish, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
 import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
 import { conservatoryV2, longWayHomeV2, longWayHomeV3, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
@@ -18,7 +18,7 @@ import setEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-th
 import slackA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-a.json";
 import slackB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-b.json";
 import slackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-checkpoint.json";
-import { scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
+import { physicalAccepted, scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
 import tideV2Definition from "../src/v2/turn-of-the-tide-v2.json";
 import { withConfig } from "./config";
 
@@ -196,6 +196,29 @@ describe("open turns: rules and bounds", () => {
     // Past the stage's cap.
     const capped = await chain(0, start, adapter.open_turns!.caps[0] - 1);
     await expect(validate(capped.checkpoint, start, capped.turns)).rejects.toMatchObject({ code: "checkpoint_recording_mismatch" });
+  });
+});
+
+describe("open turns: a first turn ended early", () => {
+  it("takes a first turn whose own part is not done on open turns only, and the next turn closes the stage over it", async () => {
+    const start = initial();
+    const early = await hashed({ ...structuredClone(setA as Rec), checkpoint_hash: start.checkpoint_hash, outcome: { ...(setA as Rec).outcome, source_ready: false } });
+    const closingTurn = await later(setB as Rec, setA.player_slot, 2, early, true, start.checkpoint_hash);
+    const turns = [early, await hashed({ ...closingTurn, outcome: { ...closingTurn.outcome, source_ready: false } })];
+    const checkpoint = await closing(setEnd as Rec, start, turns);
+    expect(openAccepted(early as ChapterRecording)).toBe(true);
+    expect(await validate(checkpoint, start, turns)).toEqual(checkpoint);
+    // Older rules (13 and before) keep asking a first turn for its part.
+    expect(physicalAccepted({ ...early, simulation_version: 13 } as ChapterRecording)).toBe(false);
+    expect(physicalAccepted({ ...(setA as Rec), simulation_version: 13 } as ChapterRecording)).toBe(true);
+    // A first turn still never finishes the stage.
+    expect(openAccepted({ ...early, completed: true, outcome: { ...early.outcome, objective_complete: true } } as ChapterRecording)).toBe(false);
+    // In a room: the early first turn is taken, and the friend's turn over it closes the stage.
+    const { room: joined, first, second } = await room();
+    const one = await send(joined, first, early);
+    expect(one.room).toMatchObject({ active_role: "b", active_player_id: second.player_id });
+    const two = await send(one.room, second, turns[1], checkpoint);
+    expect(two.room).toMatchObject({ stage_index: 1, checkpoint });
   });
 });
 

@@ -20,7 +20,17 @@ extends SceneTree
 ##   save's cap;
 ## - a published two turn stage still proves the published way;
 ## - the turn dots (presentation/kit/turn_dots.gd) ring the last turn: the cap's
-##   once it is next, this one when the room says it must finish.
+##   once it is next, this one when the room says it must finish;
+## - Finish while the memory still plays (relay_preview.gd _end_turn_early):
+##   the pip dozes and stands still, played out live, fast-forwarded or
+##   skipped; the memory's later presses still land, the turn is byte for byte
+##   the one a still pip records and passes as before, a turn that must finish
+##   hands the controls back, and with both pips at the goal at the memory's end
+##   the stage completes;
+## - a first turn may end at any time, its own part done or not (its outcome
+##   says which), replays exactly and is the next turn's memory; the same turn
+##   on the tide rules before open turns (13) may not be saved;
+## - open turns show no bell: no Bell card and no bell hint on Tide@3.
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
@@ -33,11 +43,43 @@ const Collection = preload("res://services/shared_replay_collection.gd")
 const TraceStore = preload("res://services/memory_trace_store.gd")
 const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
+const MemoryWait = preload("res://presentation/memory_wait.gd")
+const Joystick = preload("res://presentation/joystick.gd")
+const ChapterControls = preload("res://presentation/chapter_controls.gd")
 const TRACES := "user://open-turns-test-traces"
 const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
 var checks := 0
 var failures := 0
+
+## The chapter screen with its saves, review and turn check left out: it
+## notes how the turn ended.
+class Screen extends "res://relay_preview.gd":
+	var ended := ""
+	func _persist_draft(_after_retry: String = "play", _periodic: bool = false) -> bool: return true
+	func _take_review() -> void: review = sim.export_recording()
+	func _start_turn_check() -> void: pass
+	func _begin_completion(_from_replay: bool) -> void:
+		ended = "complete"
+		running = false
+	func _after_visible_wait(_work: Callable) -> void: ended = "passed"
+
+class ScreenWorld extends Node3D:
+	var dozes := 0
+	var wakes := 0
+	func present(_state: Dictionary, _immediate: bool = false) -> void: pass
+	func show_memory_wait(_live: String, _memory: String, _immediate: bool = false) -> void: dozes += 1
+	func wake_from_memory_wait(_live: String, _reduced: bool) -> void: wakes += 1
+	func end_memory_wait(_live: String) -> void: pass
+
+class ScreenControls extends CanvasLayer:
+	var held := false
+	func update_state(_title: String, _remaining: float, _state: Dictionary, _live: bool) -> void: pass
+	func show_memory_wait(_text: String, _ratio: float, _skipping: bool = false) -> void: pass
+	func hide_memory_wait() -> void: pass
+	func fast_forward_held() -> bool: return held
+	func dim_stick(_dim: bool) -> void: pass
+	func show_tries(_tries: int) -> void: pass
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -49,6 +91,8 @@ func _run() -> void:
 	_ten_turns()
 	_published()
 	_dots()
+	_end_early()
+	_early_first_turn()
 	print("OPEN TURNS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -360,3 +404,152 @@ func _check(okay: bool, label: String) -> void:
 	if not okay:
 		failures += 1
 		push_error("FAIL " + label)
+
+## Finish while the memory still plays, through the chapter screen.
+func _end_early() -> void:
+	var level := Registry.definition(TIDE)
+	var start := Registry.initial_checkpoint(TIDE)
+	var a := _fixture("turn-of-the-tide-v3-set-the-tide-a.json")
+	var still := MemoryWait.STILL_INPUT
+	var first := Simulation.new()
+	first.reset(level, STAGE, start, {}, "a")
+	_check(not first.can_end_early() and not first.snapshot().can_end_early, "A first turn has no memory to play out")
+	for frame: Dictionary in Simulation.expand_recording_inputs(a): first.step(frame)
+	var memory_end: Dictionary = first.snapshot().controls
+	# The pip stands still from the start and ends its turn early; it records what a pip standing there would.
+	var reference := Simulation.new()
+	reference.reset(level, STAGE, start, a, "b")
+	while int(reference.tick) < int(a.duration_ticks): reference.step(still)
+	reference.pass_turn()
+	var expected: Dictionary = _json(reference.export_recording())
+	var press := 10
+	for way: String in ["play", "fast_forward", "skip"]:
+		var sim := Simulation.new()
+		sim.reset(level, STAGE, start, a, "b")
+		var run := _screen(sim, a)
+		var screen: Screen = run.screen
+		for _tick in range(press): screen.advance_input(still)
+		var at_press: Dictionary = sim.snapshot().controls.duplicate()
+		_check(sim.snapshot().can_end_early and not sim.can_pass(), "Finish is there while the memory plays: " + way)
+		screen._finish()
+		_check(screen.running and screen.memory_wait.waiting() and run.world.dozes > 0 and int(sim.tick) == press, "The pip dozes where it stands while the memory plays on: " + way)
+		# A stick pushed and the action pressed meanwhile move nothing.
+		screen.stick.value = Vector2(1, 0)
+		screen.action_pressed = true
+		if way == "fast_forward": run.controls.held = true
+		if way == "skip": screen._skip_memory_wait()
+		var guard := 0
+		while screen.running and guard < 4000:
+			screen._physics_process(1.0 / 30.0)
+			guard += 1
+		var recording: Dictionary = _json(sim.export_recording())
+		_check(screen.ended == "passed" and sim.passed and int(sim.tick) == int(a.duration_ticks) and run.world.wakes == 1, "The pip wakes as the memory ends and the turn passes: %s (%s, tick %d)" % [way, screen.ended, int(sim.tick)])
+		_check(Canonical.same(recording, expected), "The turn is the one a pip standing still until the memory ended records: " + way)
+		_check(sim.snapshot().controls == memory_end and memory_end != at_press, "The memory's later presses still land: " + way)
+		var checked := Simulation.verify_recording(level, recording, start, a)
+		_check(checked.valid and checked.get("ready", false), "It replays exactly and may be the next memory: %s (%s)" % [way, str(checked.get("error", ""))])
+		_free_screen(run)
+	# A turn the room says must finish: once the memory is over the pip has its controls back.
+	var last := Simulation.new()
+	last.reset(level, STAGE, start, a, "b")
+	last.pass_allowed = false
+	var held := _screen(last, a)
+	held.screen._finish()
+	var steps := 0
+	while held.screen.memory_wait.waiting() and steps < 4000:
+		held.screen._physics_process(1.0 / 30.0)
+		steps += 1
+	_check(held.screen.running and not last.passed and not last.finished and not held.screen._standing_still(), "A turn that must finish gets its controls back once the memory is over")
+	_free_screen(held)
+	_end_early_at_goal(level, start, a)
+	var controls := ChapterControls.new()
+	root.add_child(controls)
+	controls.update_state("", 30.0, {"can_end_early": true, "duration_ticks": 900}, true)
+	_check(not controls.finish_button.disabled and controls.finish_button.visible, "Finish is offered while the memory plays")
+	controls.update_state("", 30.0, {"duration_ticks": 900}, true)
+	_check(controls.finish_button.disabled, "Without a way to end, Finish waits as before")
+	controls.free()
+
+## Turn 4 over the first pip standing at the goal: the second pip reaches the
+## goal, ends its turn while the memory still plays, and the stage completes
+## as the memory ends with both pips there.
+func _end_early_at_goal(level: Dictionary, start: Dictionary, a: Dictionary) -> void:
+	var b_frames: Array = Simulation.expand_recording_inputs(_fixture("turn-of-the-tide-v3-set-the-tide-b.json"))
+	var two := Simulation.new()
+	two.reset(level, STAGE, start, a, "b")
+	while int(two.tick) < int(a.duration_ticks): two.step(b_frames[two.tick] if int(two.tick) < b_frames.size() else {})
+	two.pass_turn()
+	var pass_two: Dictionary = _json(two.export_recording())
+	var three := Simulation.new()
+	three.reset(level, STAGE, start, pass_two, "b", 0, [a])
+	Witness._play(three, Witness.routes(TIDE)[STAGE].turns[2])
+	while int(three.tick) < int(pass_two.duration_ticks) + 300: three.step({})
+	three.pass_turn()
+	var pass_three: Dictionary = _json(three.export_recording())
+	var four := Simulation.new()
+	_check(four.reset(level, STAGE, start, pass_three, "b", 0, [a, pass_two]), "Turn 4 starts over turn 3 (%s)" % four.error)
+	var run := _screen(four, pass_three)
+	var screen: Screen = run.screen
+	while not four._at_goal(four.active_slot) and int(four.tick) < b_frames.size() and not four.finished: screen.advance_input(b_frames[four.tick])
+	_check(four._at_goal(four.active_slot) and int(four.tick) < int(pass_three.duration_ticks) and four.can_end_early(), "The second pip reaches the goal while the memory still plays (tick %d of %d)" % [int(four.tick), int(pass_three.duration_ticks)])
+	screen._finish()
+	screen._skip_memory_wait()
+	var guard := 0
+	while screen.running and guard < 4000:
+		screen._physics_process(1.0 / 30.0)
+		guard += 1
+	_check(screen.ended == "complete" and four.complete and int(four.tick) == int(pass_three.duration_ticks) and run.world.wakes == 1, "Both pips at the goal as the memory ends complete the stage (%s, tick %d)" % [screen.ended, int(four.tick)])
+	var closing: Dictionary = _json(four.export_recording())
+	_check(Simulation.derive_checkpoint(level, start, a, closing, [pass_two, pass_three]).valid, "The closing turn proves the stage")
+	_free_screen(run)
+
+func _screen(sim: RefCounted, prior: Dictionary) -> Dictionary:
+	var screen := Screen.new()
+	screen.memory_wait.skip_budget_usec = 1 << 40
+	var controls := ScreenControls.new()
+	var world := ScreenWorld.new()
+	screen.chapter_key = TIDE
+	screen.chapter = Registry.descriptor(TIDE)
+	screen.definition = Registry.definition(TIDE)
+	screen.checkpoint = Registry.initial_checkpoint(TIDE).duplicate()
+	screen.settings = {"sound": false, "haptics": false, "reduced_motion": false, "skip_waits": false}
+	screen.controls = controls
+	screen.world = world
+	screen.stick = Joystick.new()
+	screen.sim = sim
+	screen.role = "b"
+	screen.mode = "play"
+	screen.running = true
+	screen._begin_memory_wait("b", prior)
+	return {"screen": screen, "controls": controls, "world": world}
+
+func _free_screen(run: Dictionary) -> void:
+	run.screen.stick.free()
+	for part: String in ["controls", "world", "screen"]: run[part].free()
+
+## A first turn ended before its part is done, on open turns only.
+func _early_first_turn() -> void:
+	var level := Registry.definition(TIDE)
+	var start := Registry.initial_checkpoint(TIDE)
+	var frames: Array = Simulation.expand_recording_inputs(_fixture("turn-of-the-tide-v3-set-the-tide-a.json"))
+	var one := Simulation.new()
+	one.reset(level, STAGE, start, {}, "a")
+	for tick in range(20): one.step(frames[tick])
+	var state: Dictionary = one.snapshot()
+	_check(one.can_commit() and state.can_commit and not state.outcome.source_ready and not state.part_done and int(state.objective_display.current) == 0, "A first turn may end at any time; its part is not done yet and its card and ready cues say so")
+	var older := Simulation.new()
+	older.reset(level, STAGE, start, {}, "a")
+	for tick in range(20): older.step(frames[tick])
+	older.simulation_version = 13
+	_check(not older.can_commit(), "On the tide rules before open turns (13) the same turn may not be saved")
+	var early: Dictionary = _json(one.export_recording())
+	var checked := Simulation.verify_recording(level, early, start)
+	_check(checked.valid and checked.get("ready", false) and early.outcome.source_ready == false and early.completed == false, "It replays exactly and may be a memory (%s)" % str(checked.get("error", "")))
+	var two := Simulation.new()
+	_check(two.reset(level, STAGE, start, early, "b"), "The next turn plays over it (%s)" % two.error)
+	_check(two.snapshot().objective_display.is_empty() and Registry.stage_presentation(TIDE, level.stages[0]).get("hint_b") == "", "Open turns show no Bell card and no bell hint")
+	while int(two.tick) < int(early.duration_ticks): two.step({})
+	two.pass_turn()
+	var pass_two: Dictionary = _json(two.export_recording())
+	var checked_two := Simulation.verify_recording(level, pass_two, start, early)
+	_check(two.passed and checked_two.valid and checked_two.get("ready", false), "Its pass over the early first turn verifies (%s)" % str(checked_two.get("error", "")))
