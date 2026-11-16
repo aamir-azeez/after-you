@@ -1563,7 +1563,7 @@ const START_OVER_CANCEL := "Cancel"
 # Solo chapters' Start over card (presentation/redo_flow.gd), in place of the room's line.
 const SOLO_START_OVER_BODY := "The chapter goes back to the first stage. A copy of this attempt stays in Replays on this device."
 
-const HOUSE_SUMMARY := "Our first evening in the new house, and we still haven't agreed who gets the top shelf. My friend's jumper is already on the stairs."
+const HOUSE_SUMMARY := "Our first evening in the new house, and we still haven't agreed who gets the top shelf. My friend has already hung a painting up there. It's upside down."
 const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."
 const HOUSE_OPEN_HINT_B := "Go to the bell in the loft."
 const HOUSE_BELOW_HINT_A := "Look for a way down and retrieve the ball."
