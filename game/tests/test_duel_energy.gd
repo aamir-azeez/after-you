@@ -335,7 +335,7 @@ func _lobby() -> void:
 	store.clock = clock.now
 	store.set_enabled(SERVER, ME, true)
 	store.note_view(SERVER, ME, {"energy": part(3, 5, clock.ms + 960000, clock.ms)})
-	var lobby := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_challenge_in()], "limits": {"friend": 10, "ghost": 3}}
+	var lobby := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_challenge_in()], "limits": {"friend": 30, "ghost": 30}}
 	for on: bool in [true, false]:
 		var screen := DuelsScreen.new()
 		screen.me = ME
@@ -606,7 +606,7 @@ func _offline(online: Online) -> void:
 	screen.name_of = func(_id: Variant) -> String: return ""
 	screen.energy_cost = true
 	root.add_child(screen)
-	screen.show_lobby({"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_challenge_in()], "limits": {"friend": 10, "ghost": 3}})
+	screen.show_lobby({"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_challenge_in()], "limits": {"friend": 30, "ghost": 30}})
 	await _frames(2)
 	_check(_held(screen.root.find_child("DuelsStart", true, false)) and _held(screen.root.find_child("Accept", true, false)), "Offline: Start a duel and Accept grey")
 	# Send challenge, with a pair and a chapter picked.

@@ -290,7 +290,7 @@ func _client() -> void:
 	var api := FakeApi.new()
 	root.add_child(api)
 	var lobby := {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null},
-		"duels": [_wire("running", {"sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), _wire().sides[1]]})], "limits": {"friend": 10, "ghost": 3}}
+		"duels": [_wire("running", {"sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), _wire().sides[1]]})], "limits": {"friend": 30, "ghost": 30}}
 	api.replies["GET /v1/duels"] = {"ok": true, "data": lobby}
 	var client := Client.new(api, ME, SAVE_PATH)
 	var answer: Dictionary = await client.lobby()
@@ -557,7 +557,7 @@ func _picker_states(page: CanvasLayer) -> void:
 	_check(waiting != null and waiting.disabled and waiting.text == PlayerCopy.RACE_PICK_WAITING, "a run waiting for its check is greyed, Being checked")
 	picker.show_board(rows, {}, true, 3, 1470)
 	await process_frame
-	_check(picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return button.disabled) and _has_text(picker, PlayerCopy.DUELS_RACE_LIMIT % 3), "three races going grey every row under the limit line")
+	_check(picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return button.disabled) and _has_text(picker, PlayerCopy.DUELS_LIMIT % 3), "a full limit greys every row under the limit line")
 	picker.show_board([], {}, false, 3, 1470)
 	await process_frame
 	var ours: Button = picker.find_child("RacePickerOurRun", true, false)

@@ -90,7 +90,7 @@ func _spots() -> void:
 	_check(Spots.greyed(row, Spots.PARTY, {"partner_on": true, "partner_rules": null}) == "" and Spots.greyed(row, Spots.ALONE, {"partner_rules": false}) == "", "Only a clear no greys, and only a party join")
 	_check(ListPage.reason_text(Spots.PARTNER_RULES, "Maya", 10) == PlayerCopy.PUBLIC_PARTNER_RULES % "Maya", "The greyed line is the approved partner rules line")
 	_check(Spots.greyed(row, Spots.ALONE, {"chapter_open": false}) == Spots.CHAPTER, "A chapter you can't play greys it")
-	_check(Spots.greyed(row, Spots.ALONE, {"at_limit": true}) == Spots.LIMIT, "Ten duels going greys it")
+	_check(Spots.greyed(row, Spots.ALONE, {"at_limit": true}) == Spots.LIMIT, "A full limit greys it")
 	var mine := row.duplicate(true)
 	mine.mine = true
 	_check(Spots.greyed(mine, Spots.ALONE, {"chapter_open": false}) == Spots.MINE, "A duel you're in says so first")

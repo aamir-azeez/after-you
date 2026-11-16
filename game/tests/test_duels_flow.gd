@@ -307,20 +307,20 @@ func _run() -> void:
 	challenged = keys.call("/v1/duels/challenge")
 	_check(challenged.size() == 6 and challenged[4] != challenged[3] and challenged[5] != challenged[4], "a refusal from the server settles its key too: %s" % [challenged])
 	# The limit line names the number the lobby reported, or the server's own before any lobby said one.
-	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.FRIEND_LIMIT and Client.FRIEND_LIMIT == 10, "a challenge past the limit says how many duels a party may have: %s" % main.toasts.back())
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.DUEL_LIMIT and Client.DUEL_LIMIT == 30, "a challenge past the limit says how many duels a party may have: %s" % main.toasts.back())
 	api.replies["POST /v1/duels/ghost"] = {"ok": false, "status": 409, "code": "duel_limit_reached"}
 	await flow._race(asked, Registry.FIRST_STEPS, "developer", null)
-	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % Client.GHOST_LIMIT and Client.GHOST_LIMIT == 3, "a race past its own limit says races, with its own number: %s" % main.toasts.back())
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.DUEL_LIMIT, "a race past the limit names the same shared number: %s" % main.toasts.back())
 	var kept_lobby: Dictionary = api.replies["GET /v1/duels"]
-	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 7, "ghost": 2}}}
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 7, "ghost": 7}}}
 	await flow.client().lobby()
 	await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
 	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % 7, "the server's number wins over the phone's: %s" % main.toasts.back())
 	await flow._race(asked, Registry.FIRST_STEPS, "developer", null)
-	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % 2, "and for races too: %s" % main.toasts.back())
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % 7, "and for races too: %s" % main.toasts.back())
 	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": "lots", "ghost": -1}}}
 	await flow.client().lobby()
-	_check(flow.client().limit("friend") == Client.FRIEND_LIMIT and flow.client().limit("ghost") == Client.GHOST_LIMIT, "a limit this build cannot read falls back to the server's own")
+	_check(flow.client().limit() == Client.DUEL_LIMIT, "a limit this build cannot read falls back to the server's own")
 	api.replies["GET /v1/duels"] = kept_lobby
 	api.replies.erase("POST /v1/duels/ghost")
 	asked.close()
@@ -1024,23 +1024,23 @@ func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	await _frames(10)
 	_check(main.toasts.back() == PlayerCopy.RACE_PICK_LEFT and reads.call() == before + 1, "a run that left the top 10 says so and the board is read again: %s" % main.toasts.back())
 	_check(is_instance_valid(picker) and picker.find_children("LeaderboardRace", "Button", true, false).size() == 1, "the picker shows the board as it is now")
-	# Three races going: every Race greys before a tap, under the lobby's limit line.
+	# Two races and a friend duel going fill a shared limit of three: every Race greys before a tap, under the lobby's limit line.
 	var kept_lobby: Dictionary = api.replies["GET /v1/duels"]
 	var going: Array = []
 	for index in range(3):
-		var race := _server_view("ghost", {})
+		var race := _server_view("ghost" if index < 2 else "friend", {})
 		race.duel_id = str(index).repeat(32)
 		going.append(race)
-	var lobby := {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": going}
+	var lobby := {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": going, "limits": {"friend": 3, "ghost": 3}}
 	api.replies["GET /v1/duels"] = {"ok": true, "data": lobby}
 	await flow.client().lobby()
-	_check(flow.client().ghost_races_full(), "three ghost races going fill the pair's limit")
+	_check(flow.client().at_limit(), "ghost races and friend duels count together against one limit")
 	await flow._fill_picker(page, picker, Registry.FIRST_STEPS, false)
 	var greyed: Array = picker.find_children("LeaderboardRace", "Button", true, false)
 	_check(not greyed.is_empty() and greyed.all(func(button: Button) -> bool: return button.disabled) and picker.find_child("RacePickerLimit", true, false) != null, "at the limit every Race greys under the limit line")
 	var one_done: Dictionary = lobby.duplicate(true)
 	one_done.duels[0].sides[0].finished = true
-	_check(Client.ghost_races_going(Client.valid_lobby(one_done)) == 2, "a race whose own side finished no longer counts, as on the server")
+	_check(Client.duels_going(Client.valid_lobby(one_done)) == 2, "a race whose own side finished no longer counts, as on the server")
 	# Opened at the limit, the picker reads the lobby once first: an old lobby never greys rows the server would race.
 	var lobby_reads := func() -> int: return api.requests.filter(func(item: Array) -> bool: return item[0] == "GET" and item[1] == "/v1/duels").size()
 	api.replies["GET /v1/duels"] = kept_lobby
@@ -1049,12 +1049,12 @@ func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	var asked_lobby: int = lobby_reads.call()
 	await flow._open_picker(page, Registry.FIRST_STEPS, null)
 	picker = page.root.find_child("RacePicker", true, false)
-	_check(lobby_reads.call() == asked_lobby + 1 and not flow.client().ghost_races_full() and picker != null and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return not button.disabled), "a picker opened at the limit reads the lobby once and races what the server allows")
+	_check(lobby_reads.call() == asked_lobby + 1 and not flow.client().at_limit() and picker != null and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return not button.disabled), "a picker opened at the limit reads the lobby once and races what the server allows")
 	# The server says the limit is reached after all: the toast, and the rows grey.
 	api.replies["POST /v1/duels/ghost"] = {"ok": false, "status": 409, "code": "duel_limit_reached"}
 	(picker.find_children("LeaderboardRace", "Button", true, false)[0] as Button).pressed.emit()
 	await _frames(10)
-	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % Client.GHOST_LIMIT and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return button.disabled), "a race refused at the limit says so and greys every row")
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.DUEL_LIMIT and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return button.disabled), "a race refused at the limit says so and greys every row")
 	api.replies.erase("POST /v1/duels/ghost")
 	# Closed while its board read is out: nothing writes to the gone sheet.
 	page.go_back()

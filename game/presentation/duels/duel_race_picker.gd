@@ -10,8 +10,8 @@ extends VBoxContainer
 ## Greyed, untappable rows:
 ## - a run of this player's still waiting for its check stands at the place it
 ##   would get, with the clock and "Being checked": the server can't race it yet;
-## - every row while the pair has its limit of ghost races going, with the
-##   lobby's limit line above them (services/duels_client.gd ghost_races_full).
+## - every row while the pair has its limit of duels going, races included, with
+##   the lobby's limit line above them (services/duels_client.gd at_limit).
 ## An empty board says so with the board's own line and offers Our run when
 ## the chapter has one.
 ##
@@ -84,16 +84,12 @@ func _build(sheet: Control, line: String) -> void:
 	_banner = VBoxContainer.new()
 	add_child(_banner)
 	add_child(Rows.header(compact, Rows.race_trailing(compact)))
-	_scroll = ScrollContainer.new()
-	_scroll.name = "RacePickerScroll"
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	ThemeRules.touch_scroll(_scroll)
-	add_child(_scroll)
-	_list = VBoxContainer.new()
+	_list = Kit.scrolling_list(self, ROW_GAP, "RacePickerScroll")
 	_list.name = "RacePickerRows"
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", ROW_GAP)
-	_scroll.add_child(_list)
+	_scroll = Kit.list_scroll(_list)
+	# As tall as its rows (_fit), not the sheet's whole height.
+	_scroll.size_flags_vertical = Control.SIZE_FILL
+	_list.size_flags_vertical = Control.SIZE_FILL
 	show_loading()
 
 func show_loading() -> void:
@@ -131,10 +127,10 @@ func _clear() -> void:
 	Kit.clear(_banner)
 	Kit.clear(_list)
 
-## The lobby's limit line, with "races" (PlayerCopy.DUELS_RACE_LIMIT), on a quiet bar.
+## The lobby's limit line (PlayerCopy.DUELS_LIMIT), on a quiet bar.
 func _limit_line(limit: int) -> Control:
 	var bar := Kit.panel("RacePickerLimit", Rows.HEADER_FILL, Rows.ROW_EDGE, 10, 8.0)
-	bar.add_child(Kit.wrapped(PlayerCopy.DUELS_RACE_LIMIT % limit, 17, UiTokens.CREAM))
+	bar.add_child(Kit.wrapped(PlayerCopy.DUELS_LIMIT % limit, 17, UiTokens.CREAM))
 	return bar
 
 ## Our run on an empty board that has one, so the sheet offers a race.

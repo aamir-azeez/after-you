@@ -385,11 +385,10 @@ func _open_chapters() -> Array:
 		result.append(key)
 	return result
 
-## `kind`: what was asked, "friend" (a challenge or an accept) or "ghost" (a race), for the limit line.
-func _toast_failure(answer: Dictionary, kind: String = "friend") -> void:
+func _toast_failure(answer: Dictionary) -> void:
 	var code := str(answer.get("code", ""))
 	if code == "duel_limit_reached":
-		host._toast((PlayerCopy.DUELS_RACE_LIMIT if kind == "ghost" else PlayerCopy.DUELS_LIMIT) % client().limit(kind))
+		host._toast(PlayerCopy.DUELS_LIMIT % client().limit())
 		return
 	host._toast(PlayerCopy.DUELS_FRIEND_NO_PARTNER if code == "opponent_party_required" else PlayerCopy.DUELS_NO_PARTY if code == "party_required" else PlayerCopy.DUELS_ACTION_FAILED)
 
@@ -516,7 +515,7 @@ func _open_picker(page: CanvasLayer, chapter: String, opener: Control) -> void:
 	picker.race_requested.connect(_picker_race.bind(page, chapter, picker))
 	# Every row would grey from a lobby read that may be old, and a greyed row
 	# can't be tapped for the server to say otherwise: read the lobby once first.
-	if client().ghost_races_full():
+	if client().at_limit():
 		var answer: Dictionary = await client().lobby()
 		if is_open() and answer.get("ok", false) and screen is DuelsScreen: screen.show_lobby(answer.lobby)
 	await _fill_picker(page, picker, chapter, false)
@@ -528,7 +527,7 @@ func _picker_race(source: String, entry_id: Variant, control: Control, page: Can
 		if is_instance_valid(picker): await _race(page, chapter, source, entry_id, picker, control))
 
 ## Reads the chapter's board (`fresh`: past the phone's minute) and redraws the
-## picker; `full`: the server just said the pair has its limit of races going.
+## picker; `full`: the server just said the pair has its limit of duels going.
 func _fill_picker(page: CanvasLayer, picker: Variant, chapter: String, fresh: bool, full: bool = false) -> void:
 	var board := Runs.board_key(chapter)
 	var boards: RefCounted = LeaderboardClient.shared(host.api, str(host.api.player_id))
@@ -538,7 +537,7 @@ func _fill_picker(page: CanvasLayer, picker: Variant, chapter: String, fresh: bo
 		picker.show_failed()
 		return
 	var shown := Rows.shown(boards, str(host.api.player_id), board, answer.view)
-	picker.show_board(shown.rows, shown.mine_by_id, full or client().ghost_races_full(), client().limit("ghost"), page.developer_ticks(chapter))
+	picker.show_board(shown.rows, shown.mine_by_id, full or client().at_limit(), client().limit(), page.developer_ticks(chapter))
 
 ## The partner's name at the start of a line (duel energy's "Maya is waiting for energy"), or "" with no pair.
 func _partner_label() -> String:
@@ -566,7 +565,7 @@ func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant
 			host._toast(PlayerCopy.RACE_PICK_LEFT)
 			_fill_picker(page, picker, chapter, true)
 			return
-		_toast_failure(answer, "ghost")
+		_toast_failure(answer)
 		if on_picker and code == "duel_limit_reached": _fill_picker(page, picker, chapter, false, true)
 		return
 	page.close()

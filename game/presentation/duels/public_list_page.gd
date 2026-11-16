@@ -16,6 +16,7 @@ const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 const Spots = preload("res://services/public_duel_spots.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
 const Seats = preload("res://presentation/duels/public_seats.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -46,7 +47,7 @@ var boards: Array = []
 ## (row) -> {chapter_open, partner_on, partner_rules, at_limit}: what the phone knows that greys a row.
 var known: Callable
 ## The shared limit, for its greyed line.
-var limit := 10
+var limit := DuelsClient.DUEL_LIMIT
 ## Whether starting and joining cost energy (services/duel_energy.gd): the cost chips show only then.
 var energy_cost := false
 var _rows: Array = []
@@ -153,17 +154,9 @@ func _build() -> void:
 	var panel := Kit.panel("PublicListPanel", Kit.PANEL_FILL, Kit.PANEL_EDGE, 18, 10.0)
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_child(panel)
-	_scroll = ScrollContainer.new()
-	_scroll.name = "PublicListScroll"
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	ThemeRules.touch_scroll(_scroll)
-	panel.add_child(_scroll)
-	_list = VBoxContainer.new()
+	_list = Kit.scrolling_list(panel, 8, "PublicListScroll")
 	_list.name = "PublicRows"
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 8)
-	_scroll.add_child(_list)
+	_scroll = Kit.list_scroll(_list)
 	_render_filters()
 	_render_list()
 

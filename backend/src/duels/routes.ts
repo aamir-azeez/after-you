@@ -17,7 +17,7 @@ import { blankSide, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, side
 import type { DuelAction, FinishProof } from "./store";
 import { mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
 import type { MemberState } from "../leaderboards/member";
-import { CHALLENGE_TTL_MS, PARTY_ACTIONS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, RESULT_SHOWN_MS } from "./rules";
+import { CHALLENGE_TTL_MS, PARTY_ACTIONS, MAX_DUELS_PER_PAIR, MAX_RECENT_DUELS, RESULT_SHOWN_MS } from "./rules";
 import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
@@ -171,14 +171,24 @@ export async function addRefs(env: Env, players: readonly string[], ref: DuelRef
   await pooled([...new Set(players)], BOARD_CONCURRENCY, async id => { await party(env, id).partyApply(id, { kind: "add_duels", refs: [ref], ...(final.length ? { final } : {}) }, now); });
 }
 
-/** Open public duels among `duels` holding any of `players`: they share the friend duels' limit of 10. */
-function openPublicWith(duels: readonly Duel[], players: readonly string[]): number {
-  return duels.filter(duel => duel.public && isOpen(duel) && duel.sides.some(side => side?.members.some(id => id !== null && players.includes(id)))).length;
+/**
+ * The duels counted against the one limit (rules.ts MAX_DUELS_PER_PAIR), each once: open friend duels of the pair, ghost
+ * races of the pair still being played (a finished run waiting for its check holds no slot), and open public duels any
+ * of `players` is in. The pair is `keys` (pair-accounts.ts samePair) when given, else any side holding one of `players`
+ * (public-routes.ts, which reads no pair keys). `waiting: false` leaves out friend challenges not yet accepted, for an
+ * accept, which turns one of them into a running duel and adds nothing.
+ */
+export function openDuels(duels: readonly Duel[], players: readonly string[], keys?: PairKeys, waiting = true): number {
+  const holds = (side: Side | null) => side !== null && (keys ? samePair(side, keys) : side.members.some(id => id !== null && players.includes(id)));
+  return duels.filter(duel => isOpen(duel) && (
+    duel.public ? duel.sides.some(side => side?.members.some(id => id !== null && players.includes(id)))
+      : duel.kind === "ghost" ? duel.sides[0].finished_ms === null && holds(duel.sides[0])
+        : (waiting || duel.status === "running") && duel.sides.some(holds))).length;
 }
 
-/** Open friend duels (or ghost races still being played: a finished run waiting for its check holds no slot) of the pair `keys` (pair-accounts.ts samePair) among `duels`. */
-function openFor(duels: readonly Duel[], keys: PairKeys, kind: Duel["kind"]): number {
-  return duels.filter(duel => duel.kind === kind && isOpen(duel) && (kind === "friend" || duel.sides[0].finished_ms === null) && duel.sides.some(side => side !== null && samePair(side, keys))).length;
+/** The hard cap against spam (rules.ts MAX_RECENT_DUELS): duels of every kind started in the last CHALLENGE_TTL_MS, from the player's own pointers. */
+export function recentStarts(refs: readonly DuelRef[], now: number): number {
+  return refs.filter(ref => now - ref.at < CHALLENGE_TTL_MS).length;
 }
 
 /**
@@ -251,7 +261,8 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
     party: { partner: pair.partner, intact: pair.intact, invites_in: pair.state.invites_in.map(invite => invite.from), invite_out: pair.state.invite_out?.to ?? null,
       ...(shownLooks && pair.partner ? { partner_look: servedLook(pair.looks[1]) } : {}) },
     duels: shown.map(duel => viewFor(duel, player, shownLooks)).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms),
-    limits: { friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR },
+    // One limit; 0.8.1 and 0.8.2 phones read it per kind, so both keys carry it.
+    limits: { friend: MAX_DUELS_PER_PAIR, ghost: MAX_DUELS_PER_PAIR },
     ...hintsField(env), ...publicLobby(env, player, pair.members, pair.intact, duels)
   };
 }
@@ -346,13 +357,14 @@ async function challenge(env: Env, reach: Reach, player: string, input: unknown,
   if (!theirs.intact || !theirs.partner) throw new ApiError(409, "opponent_party_required");
   const a = [player, mine.partner] as [string, string], b = [friend, theirs.partner] as [string, string];
   if (a.some(id => b.includes(id))) throw new ApiError(409, "same_party");
-  // A pair already holding many recent duels takes no more, so its open ones never drop off its list.
-  if (theirs.state.duels.filter(ref => now - ref.at < CHALLENGE_TTL_MS).length >= MAX_RECENT_DUELS) throw new ApiError(409, "opponent_busy");
+  // A pair already holding many recent duels takes no more, so its open ones never drop off its list; nor does one start more.
+  if (recentStarts(theirs.state.duels, now) >= MAX_RECENT_DUELS) throw new ApiError(409, "opponent_busy");
+  if (recentStarts(mine.state.duels, now) >= MAX_RECENT_DUELS) throw new ApiError(409, "duel_limit_reached");
   // While the platform rule is on a pair is also its two platform accounts (leaderboards/pair-accounts.ts).
   const [aKeys, bKeys] = await duelPairKeys(env, [a, b]);
   const { duels } = await duelsOf(env, mine.state.duels, player);
-  // One limit of 10, friend and public together (rules.ts): the pair's friend duels and the public duels either of them is in.
-  if (openFor(duels, aKeys, "friend") + openPublicWith(duels, a) >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
+  // One limit for every kind (rules.ts MAX_DUELS_PER_PAIR).
+  if (openDuels(duels, a, aKeys) >= MAX_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
   if (duels.some(duel => duel.kind === "friend" && isOpen(duel) && duel.board === key && duel.sides.some(side => side !== null && samePair(side, bKeys)))) throw new ApiError(409, "duel_already_open");
   const known = await knownAcross(env, a, b);
   // Each side starts in the looks its members' party rows keep (read above); turns bring their room's looks.
@@ -407,9 +419,10 @@ async function ghostRace(env: Env, reach: Reach, player: string, input: unknown,
     // board row already shows anyone, naming no account. Kept whatever RACE_GHOST says; older code reads it as extra.
     ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: null, ...(top.replay_hash ? { replay_hash: top.replay_hash } : {}), ...(shownLooks && top.looks ? { looks: top.looks } : {}) };
   }
+  if (recentStarts(mine.state.duels, now) >= MAX_RECENT_DUELS) throw new ApiError(409, "duel_limit_reached");
   const a = [player, mine.partner] as [string, string], [aKeys] = await duelPairKeys(env, [a]);
   const { duels } = await duelsOf(env, mine.state.duels, player);
-  if (openFor(duels, aKeys, "ghost") >= MAX_GHOST_RACES_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
+  if (openDuels(duels, a, aKeys) >= MAX_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
   const { value: made, energy } = await withEnergy(env, reach, player, a, duelId, async () => {
     const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
       a: blankSide(a, aKeys.pair_key, shownLooks ? mine.looks : undefined, aKeys.account_key), ghost }, now), plays);
@@ -436,7 +449,7 @@ async function duelAction(env: Env, reach: Reach, player: string, key: string, d
       intact = pair.intact && pair.partner === partner;
       if (intact) {
         const { duels } = await duelsOf(env, pair.state.duels.filter(ref => ref.duel_id !== duelId), player);
-        if (duels.filter(item => item.kind === "friend" && item.status === "running" && item.sides.some(side => side !== null && samePair(side, duel.sides[1]!))).length + openPublicWith(duels, [player, partner]) >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
+        if (openDuels(duels, [player, partner], duel.sides[1]!, false) >= MAX_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
       }
     }
     // The accepting pair pays 1 energy each; a refused accept gives it back (energy-charge.ts).

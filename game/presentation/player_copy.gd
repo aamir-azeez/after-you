@@ -1103,7 +1103,6 @@ const DUELS_SEE_RESULT := "See result"
 const DUELS_WAITING_ANSWER := "Waiting for an answer"
 ## The limit lines take the number the lobby read reports (services/duels_client.gd limit()).
 const DUELS_LIMIT := "Your party has %d duels going. Finish one to start another."
-const DUELS_RACE_LIMIT := "Your party has %d races going. Finish one to start another."
 const DUELS_ACTION_FAILED := "That did not go through. Try again in a moment."
 const DUELS_ALREADY_OPEN := "You already have a duel with them on this chapter."
 const DUELS_CHAPTER_CLOSED := "You both need this chapter open to duel on it."

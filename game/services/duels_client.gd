@@ -52,10 +52,9 @@ const MAX_DUELS := 64
 const STATUSES := ["challenged", "running", "decided", "declined", "withdrawn", "expired", "pair_gone", "unfinished"]
 const CHECKS := ["none", "waiting", "passed", "failed", "error"]
 const OUTCOMES := ["won", "lost", "draw", "none"]
-## The duel limits when no lobby was read yet: the server's own (backend duels/rules.ts
-## MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR), which every lobby read reports.
-const FRIEND_LIMIT := 10
-const GHOST_LIMIT := 3
+## The duel limit when no lobby was read yet: the server's own (backend duels/rules.ts
+## MAX_DUELS_PER_PAIR), one for every kind, which every lobby read reports.
+const DUEL_LIMIT := 30
 
 var _api: Node
 var _owner: String
@@ -110,24 +109,28 @@ func last_lobby() -> Dictionary:
 func lobby_sent_ms() -> int:
 	return _lobby_sent_ms
 
-## How many duels of `kind` ("friend" or "ghost") a pair may have going, as the last lobby read said.
-func limit(kind: String) -> int:
-	return int(_lobby.get("limits", {}).get(kind, GHOST_LIMIT if kind == "ghost" else FRIEND_LIMIT))
+## How many duels of every kind together a pair may have going, as the last lobby read said.
+func limit() -> int:
+	return int(_lobby.get("limit", DUEL_LIMIT))
 
-## Whether the pair already has as many ghost races going as it may (limit("ghost")),
-## counted as the server counts them (backend duels/routes.ts openFor): open races
-## of the current pair whose own side has not finished. From the last lobby read
-## (no request), so the race picker greys its rows before a tap.
-func ghost_races_full() -> bool:
-	return ghost_races_going(_lobby) >= limit("ghost")
+## Whether the pair already has as many duels going as it may (limit()), counted as
+## the server counts them (backend duels/routes.ts openDuels). From the last lobby
+## read (no request), so the race picker greys its rows before a tap.
+func at_limit() -> bool:
+	return duels_going(_lobby) >= limit()
 
-static func ghost_races_going(lobby: Dictionary) -> int:
+## Open duels counted against the limit: every public duel, the current pair's friend
+## duels (challenges sent or got too), and its ghost races whose own side has not finished.
+static func duels_going(lobby: Dictionary) -> int:
 	var partner: Variant = lobby.get("party", {}).get("partner")
 	var going := 0
 	for view: Dictionary in lobby.get("duels", []):
-		if view.kind != "ghost" or not view.status in ["challenged", "running"]: continue
+		if not view.status in ["challenged", "running"]: continue
+		if view.has("public"):
+			going += 1
+			continue
 		var own: Variant = view.sides[view.mine]
-		if own is Dictionary and not own.finished and (partner == null or partner in own.members): going += 1
+		if own is Dictionary and (view.kind != "ghost" or not own.finished) and (partner == null or partner in own.members): going += 1
 	return going
 
 ## {ok, boards: [{board, developer, top}]}, kept a minute.
@@ -459,9 +462,8 @@ static func valid_lobby(value: Variant) -> Dictionary:
 		if view.is_empty(): return {}
 		duels.append(view)
 	if duels.size() > MAX_DUELS: return {}
-	var limits: Variant = value.get("limits")
 	var kept := {"party": {"partner": partner, "intact": party.intact, "invites_in": party.invites_in.duplicate(), "invite_out": out, "partner_look": _look(party.get("partner_look"))}, "duels": duels,
-		"limits": {"friend": _limit(limits, "friend", FRIEND_LIMIT), "ghost": _limit(limits, "ghost", GHOST_LIMIT)}}
+		"limit": _limit(value.get("limits"))}
 	var public := _public_part(value.get("public"))
 	if not public.is_empty(): kept["public"] = public
 	return kept
@@ -478,9 +480,10 @@ static func _public_part(value: Variant) -> Dictionary:
 	return {"on": value.on, "show_name": value.show_name, "partner_on": partner if partner is bool else null, "paused": value.paused, "running": int(value.running),
 		"rules": rules if rules is bool else null, "partner_rules": partner_rules if partner_rules is bool else null}
 
-static func _limit(limits: Variant, kind: String, fallback: int) -> int:
-	var value: Variant = limits.get(kind) if limits is Dictionary else null
-	return int(value) if Typed.whole_number(value) and int(value) > 0 else fallback
+## The one limit, from `limits` (both kinds carry it, for 0.8.1 and 0.8.2 phones), or DUEL_LIMIT.
+static func _limit(limits: Variant) -> int:
+	var value: Variant = limits.get("friend") if limits is Dictionary else null
+	return int(value) if Typed.whole_number(value) and int(value) > 0 else DUEL_LIMIT
 
 ## One duel as the server sent it (backend duels/model.ts DuelView), or {}.
 static func valid_view(value: Variant) -> Dictionary:
