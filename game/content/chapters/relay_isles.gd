@@ -16,6 +16,8 @@ const DATA := {
 		"checkpoint_title": PlayerCopy.CHAPTER_REGISTRY_94722E207A11,
 		"checkpoint_text": PlayerCopy.CHAPTER_REGISTRY_2ED96CFB54FE,
 	},
+	"letter": {"stamp": "bench", "address": [PlayerCopy.LETTER_BENCH, PlayerCopy.LETTER_BENCH_LINE],
+		"postmark": PlayerCopy.LETTER_POST_ISLAND, "signoff": PlayerCopy.LETTER_BACK_IN_A_BIT},
 	"thumbnail": "res://assets/chapter_thumbnails/relay-isles.png",
 	"turn_intro": [PlayerCopy.RELAY_PREVIEW_2B224F3B19B0, PlayerCopy.RELAY_PREVIEW_5BED71BD3E00],
 	"keepsakes": [

@@ -14,6 +14,8 @@ const DATA := {
 		"checkpoint_title": PlayerCopy.CHAPTER_REGISTRY_6C521D717CA5,
 		"checkpoint_text": PlayerCopy.CHAPTER_REGISTRY_DA6530899780,
 	},
+	"letter": {"stamp": "teacup", "address": [PlayerCopy.LETTER_COTTAGE, PlayerCopy.LETTER_COTTAGE_LINE],
+		"postmark": PlayerCopy.LETTER_POST_MEADOW, "signoff": PlayerCopy.LETTER_SEE_YOU_SOON},
 	"thumbnail": "res://assets/chapter_thumbnails/first-steps.png",
 	# Scenery and piece looks: a cottage garden with a timber rope lift.
 	"dressing": "res://content/dressing/first_steps.gd",

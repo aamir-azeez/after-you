@@ -35,6 +35,13 @@ const OPTIONAL := {
 	"turn_intro": [],
 	## The chapter's keepsake ledger places in order: {stage_id, title}.
 	"keepsakes": [],
+	## The letter About this chapter shows (presentation/letter/letter_view.gd):
+	## {"stamp": a kind of presentation/letter/stamp_art.gd KINDS, "address":
+	## [place, the line under it], "postmark": the post office's name,
+	## "signoff"}, words as PlayerCopy constants. The letter itself is the
+	## copy's summary. {} uses the letter of the first version of the same level
+	## that has one, so only a version that tells its own story declares one.
+	"letter": {},
 	## The chapter's keepsake on Home, on its offered version only (one per
 	## level id): {"builder": a presentation/keepsakes/ script, "island": the
 	## island it stands on ("left" or "right", the Home islands, or a keepsake

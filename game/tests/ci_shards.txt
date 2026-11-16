@@ -176,6 +176,7 @@ leaderboard_celebration 1
 leaderboard_replay_check 3
 leaderboard_screen 3
 leaderboard_watch 1
+letter_view 1
 level_checker 3
 level_tools 2
 level_view 2
@@ -233,6 +234,7 @@ online_staged_open 2
 online_unlocks 2
 open_controls 1
 open_turns 1
+open_turns_room 2
 optional_photo_capture 1
 outfit 2
 owner_marks 3
