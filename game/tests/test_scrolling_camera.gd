@@ -6,8 +6,13 @@ var failures := 0
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
-	var keys := Registry.keys().filter(func(key: String) -> bool: return Registry.is_cooperative(key))
-	_check(not keys.is_empty(), "The registry lists cooperative chapters to check")
+	# Every chapter whose world follows the live spirit (island_world's follow camera).
+	var keys := Registry.keys().filter(func(key: String) -> bool:
+		var probe: Node3D = Registry.world_script(key).new()
+		var follows: bool = probe._uses_scrolling_camera()
+		probe.free()
+		return follows)
+	_check(keys.size() > 1 and Registry.RELAY in keys, "The registry lists scrolling chapters to check, Relay among them")
 	for key: String in keys:
 		var viewport := SubViewport.new()
 		viewport.size = Vector2i(1280,720)

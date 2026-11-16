@@ -78,7 +78,7 @@ static func _family_world(family: String) -> String:
 ## Every moment of one stage; returns the sheet's groups.
 func _stage(world: Node3D, shots: RefCounted, stage: Dictionary, folder: String) -> Array:
 	await world.show_stage(stage)
-	if world.has_method("present_history"): world.present_history(shots.checkpoint)
+	world.present_history(shots.checkpoint)
 	var base: Dictionary = shots.snapshot()
 	if base.is_empty():
 		print("NOTE %s: the engine has no such stage" % stage.id)

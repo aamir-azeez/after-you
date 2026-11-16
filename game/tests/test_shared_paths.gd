@@ -61,7 +61,8 @@ extends SceneTree
 ##     must stay in CI, check every built stage's marks and pair tags.
 ## (t) route barriers: presentation/kit/route_barriers.gd alone draws the gates, stair
 ##     chains, zone ropes and locks, from each stage's owned crossings, stairs, zones and
-##     controls, kept by cooperative_world alone; a chapter whose world draws closed
+##     controls, kept by island_world alone (cooperative_world builds them with the
+##     descriptor's stair gates); a chapter whose world draws closed
 ##     stairs itself says so in its descriptor ("stair_gates": false), the look is the
 ##     dressing's "barrier" slot, and a world that skips a stair itself
 ##     (route_barriers.skip()) or picks the look in code (_barrier_style) is in
@@ -332,12 +333,15 @@ const OWNER_MARK_OVERRIDES := {
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
 const PAIR_TAG_OVERRIDES := {
+	"res://presentation/island_world.gd": "holds the default hooks every world answers (_pair_control_anchor, _pair_keep_clear), which the route barriers and floor spots ask of any world",
 	"res://presentation/tide_world.gd": "the tide wheel shows on the gauges and the second spirit's stubs on their mouth marks (skip); the sea key's tile stands on its sign (tag); gate tiles start at a stub's mouth and keep clear of the gauges and mouth marks (hooks)",
 	"res://presentation/journey_world.gd": "a control without a floor of its own stands on the highest island under it (_pair_control_anchor)",
 }
-## (t) The route barriers kit and the one world script that keeps it.
+## (t) The route barriers kit and the base worlds that keep it: island_world
+## keeps every world's, cooperative_world skips the closed stairs a chapter's
+## descriptor says its world draws ("stair_gates").
 const ROUTE_BARRIERS := "res://presentation/kit/route_barriers.gd"
-const ROUTE_BARRIERS_OWNER := "res://presentation/cooperative_world.gd"
+const ROUTE_BARRIERS_OWNERS := ["res://presentation/island_world.gd", "res://presentation/cooperative_world.gd"]
 ## Worlds that leave a closed stair's chain out themselves (route_barriers.skip();
 ## a whole chapter says it in its descriptor's "stair_gates" instead) or pick
 ## the "barrier" look in code rather than in their dressing (_barrier_style), with why.
@@ -909,8 +913,8 @@ func _route_barriers() -> void:
 		var source: String = _sources[path]
 		if path == ROUTE_BARRIERS: continue
 		var alias := _alias(source, ROUTE_BARRIERS)
-		_check(path == ROUTE_BARRIERS_OWNER or _found("\\b(?:RouteBarriers" + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps route barriers of its own: worlds share cooperative_world's route_barriers" % path)
-		if path != ROUTE_BARRIERS_OWNER and (_found("\\broute_barriers\\.skip\\(", source) > 0 or _found("\\bfunc\\s+_barrier_style\\(", source) > 0):
+		_check(path in ROUTE_BARRIERS_OWNERS or _found("\\b(?:RouteBarriers" + ("|" + alias if not alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps route barriers of its own: worlds share island_world's route_barriers" % path)
+		if path not in ROUTE_BARRIERS_OWNERS and (_found("\\broute_barriers\\.skip\\(", source) > 0 or _found("\\bfunc\\s+_barrier_style\\(", source) > 0):
 			overrides[path] = true
 			_check(ROUTE_BARRIER_OVERRIDES.has(path), "%s overrides the route barriers its stage gives: add it to ROUTE_BARRIER_OVERRIDES with why" % path)
 		if path.begins_with("res://tests/") or path.begins_with("res://services/"): continue

@@ -290,7 +290,7 @@ func _mount(viewport: SubViewport, world: Node3D, reduced: bool) -> void:
 
 func _history(world: Node3D, stage: Dictionary, checkpoint: Dictionary) -> void:
 	if world.has_method("show_stage"): world.show_stage(stage)
-	if world.has_method("present_history"): world.present_history(checkpoint)
+	world.present_history(checkpoint)
 
 func _sim(key: String, engine: Script, level: Dictionary, checkpoint: Dictionary, record: Dictionary, prior: Dictionary) -> RefCounted:
 	var sim: RefCounted = engine.new()
@@ -389,6 +389,8 @@ func _fingerprint(world: Node3D, key: String, reduced: bool, scenario: String) -
 	var camera: Camera3D = world.get("camera")
 	var story: Dictionary = {}
 	for field: String in ["_follow_center", "_view_center", "_view_size", "_follow_size"]:
+		# The follow camera's state counts only in a world whose camera follows.
+		if field.begins_with("_follow") and not world._uses_scrolling_camera(): continue
 		if field in world: story[field] = _value(world.get(field), 0)
 	if _collect:
 		lines.sort()

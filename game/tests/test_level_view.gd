@@ -68,11 +68,16 @@ func _run() -> void:
 	print("LEVEL VIEW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-## The chapters this suite walks; a split suite narrows it. Only the
-## cooperative and journey worlds follow a pip with their camera and draw
-## bubbles and route barriers; the others show every island at once.
+## The chapters this suite walks; a split suite narrows it: every chapter
+## whose world follows a pip with its camera (island_world's follow camera:
+## the cooperative and journey worlds and Relay). First Steps and the
+## Lighthouse room frame every island at once.
 func _keys() -> Array[String]:
-	return Registry.keys().filter(func(key: String) -> bool: return Registry.is_cooperative(key))
+	return Registry.keys().filter(func(key: String) -> bool:
+		var world: Node3D = Registry.world_script(key).new()
+		var follows: bool = world._uses_scrolling_camera()
+		world.free()
+		return follows)
 
 func _check(ok: bool, message: String) -> void:
 	checks += 1
@@ -98,11 +103,12 @@ func _chapter(viewport: SubViewport, key: String) -> void:
 	world.set_process(false)
 	world.configure_camera_exploration(func() -> bool: return false, func(_point: Vector2) -> bool: return false)
 	await world.load_level(level)
-	var ends := _route_ends(level)
 	for item: Dictionary in Stages.stages(key, level):
 		var view: Dictionary = item.view
 		var where := "%s %s" % [key, view.stage_id]
+		_check(not item.checkpoint.is_empty(), "%s: the stage opens from a saved checkpoint" % where)
 		if item.checkpoint.is_empty(): continue
+		var ends := _route_ends(view)
 		await world.show_stage(item.stage)
 		world.present_history(item.opening)
 		_barriers(world, where, view, item.checkpoint, ends)
@@ -210,18 +216,27 @@ func _unexplained(where: String, view: Dictionary, placed: Dictionary, skips: Di
 		if report: _expect(built >= wanted, "%s zone %s rope" % [where, zone.get("id", "")], "%s: the zone %s refuses %s along %d stretches of its edge and only %d show a rope" % [where, zone.get("id", ""), other, wanted, built])
 	return seen if report else count
 
+## Crossing ends found so far, by the stage floors they were read from.
+var _ends_by_floors: Dictionary = {}
+
 ## Each crossing's ends as the engine walks them: route id -> {floor id: true},
-## the floors a pip can step to from it once no crossing has an owner.
-static func _route_ends(level: Dictionary) -> Dictionary:
-	var bare := level.duplicate(true)
+## the floors a pip can step to from it once no crossing has an owner. Read
+## from the stage's plan (its floors, as the level checker reads them), so
+## every family is walked alike.
+func _route_ends(view: Dictionary) -> Dictionary:
+	var bare: Dictionary = {}
+	for field: String in ["islands", "bridges", "stairs", "drops", "obstacles", "access_zones"]: bare[field] = view.get(field, []).duplicate(true)
 	for kind: String in ["bridges", "stairs"]:
 		for route: Dictionary in bare.get(kind, []): route.erase("owner_slot")
+	var id := JSON.stringify(bare)
+	if _ends_by_floors.has(id): return _ends_by_floors[id]
 	var graph: RefCounted = LevelGraph.new(bare)
 	var ends: Dictionary = {}
 	for pair: String in graph.build("p0"):
 		var sides := pair.split(">")
 		for index in range(2):
 			if graph.route_bit.has(sides[index]): (ends.get_or_add(sides[index], {}) as Dictionary)[sides[1 - index]] = true
+	_ends_by_floors[id] = ends
 	return ends
 
 ## Whether two bubble boxes overlap by more than a touch.

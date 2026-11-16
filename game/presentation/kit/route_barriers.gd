@@ -163,8 +163,10 @@ var _ring_radius: Dictionary = {}
 func _init(world: Node3D = null) -> void:
 	_world = world
 
-## A new stage: what was built before goes (its node went with the terrain).
+## A new stage: what was built before goes (with the terrain, or here when
+## the world keeps its terrain across stages).
 func clear() -> void:
+	if is_instance_valid(_node) and not _node.is_queued_for_deletion(): _node.queue_free()
 	_skips.clear()
 	_layout = {}
 	_node = null
