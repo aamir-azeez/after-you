@@ -120,12 +120,16 @@ var play_cue: Callable
 ## () -> void: a light tap of the phone, when Settings' Haptics is on (Main:
 ## the soundscape's tap_haptic).
 var play_haptic: Callable
-## (face: String) -> void: a reaction's pop (Main: the soundscape's play_reaction).
-var play_reaction: Callable
+## The reactions' pop and tap (Main's soundscape), as in a turn.
+var soundscape: Node
 ## Explore's action button: the nearby keepsake's own words.
 var _explore_action: Button
 ## The React pill (presentation/run_reactions.gd): the player's own pip reacts.
 var _react: Button
+## The chapters' reaction player (presentation/run_reaction_player.gd): one
+## live track per Home visit, on Home's own clock in turn ticks.
+var _reactions: RefCounted
+var _react_seconds := 0.0
 ## The card's measured status height and count size, per width.
 var _box_fit: Dictionary = {}
 ## Only the free chapters' keepsakes (configure()).
@@ -805,6 +809,7 @@ func _process(delta: float) -> void:
 		_cancel_gesture()
 		return
 	var step := clampf(delta,0.0,0.05)
+	_step_reactions(step)
 	# Same clock as the spirits' own greeting, so the debounce ends with it.
 	_greeting_left = maxf(0.0,_greeting_left-step)
 	# Home's own refresh can turn part of the menu back on (the Full Journey
@@ -928,24 +933,39 @@ func _create_explore_controls() -> void:
 	add_child(_explore_action)
 
 ## Reactions on Home: the chapters' React pill and faces card with the player's
-## own reaction slots, the same faces and bubble as in a turn
-## (RunReactionPlayer.show_on) on the player's pip. Kept on this phone only:
-## nothing is sent or saved but the last face the pill shows.
+## own reaction slots, played by the chapters' reaction player on the player's
+## pip, so a face, its bubble, its pop, the cooldown and the cap are a turn's.
+## Kept on this phone only: nothing is sent or saved but the last face the pill shows.
 func _create_reactions() -> void:
 	if not _actors.has("a"): return
+	var settings := {"reduced_motion": _world.reduced_motion}
+	_reactions = RunReactionPlayer.new()
+	_reactions.world = _world
+	_reactions.hud = self
+	_reactions.soundscape = soundscape
+	_reactions.settings = settings
+	_reactions.actor_keys = {"p0": "a"}
+	_reactions.begin("p0")
 	_react = RunReactions.new()
 	_react.name = "HomeReactions"
 	_react.context = {"local": true}
-	_react.settings = {"reduced_motion": _world.reduced_motion}
-	_react.reacted.connect(react)
+	_react.settings = settings
+	_react.reacted.connect(_react_on_home)
 	add_child(_react)
 
-## The player's pip on Home makes `face`, with its bubble and pop.
-func react(face: String) -> void:
-	if not is_instance_valid(_world) or not _actors.has("a"): return
-	RunReactionPlayer.show_on(_actors.a, _world.camera, self, face, "peach", {"reduced_motion": _world.reduced_motion})
-	if play_reaction.is_valid(): play_reaction.call(face)
-	if play_haptic.is_valid(): play_haptic.call()
+## A face tapped on Home: the player's pip makes it now, as in a turn.
+func _react_on_home(face: String) -> void:
+	var tick := _react_tick()
+	if _reactions.react(tick, face): _reactions.show_pill(_react, tick)
+
+## Home's clock in turn ticks, run only while Home is active.
+func _react_tick() -> int:
+	return int(_react_seconds * RunReactionPlayer.Track.TICK_RATE)
+
+func _step_reactions(step: float) -> void:
+	if _reactions == null: return
+	_react_seconds += step
+	_reactions.show_pill(_react, _react_tick())
 
 func is_exploring() -> bool:
 	return _exploring

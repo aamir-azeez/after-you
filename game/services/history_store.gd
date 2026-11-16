@@ -60,7 +60,10 @@ func room_directory(server_key: String, owner: String, room_id: String) -> Strin
 
 ## position -> {position, link, digest, byte_length, file}; empty when the room has none or its index is unreadable.
 func index(server_key: String, owner: String, room_id: String) -> Dictionary:
-	var directory := room_directory(server_key, owner, room_id)
+	return index_in(room_directory(server_key, owner, room_id), room_id)
+
+## The same for a room folder as found on disk (history/<server key's first 16>/<owner>/<room>).
+static func index_in(directory: String, room_id: String) -> Dictionary:
 	if directory.is_empty() or not FileAccess.file_exists(directory.path_join("index.json")): return {}
 	var file := FileAccess.open(directory.path_join("index.json"), FileAccess.READ)
 	if file == null or file.get_length() > MAX_INDEX_BYTES: return {}
@@ -95,13 +98,24 @@ func read_attempt(server_key: String, owner: String, room_id: String, position: 
 ## Writes the attempt durably, reads it back, checks it, and only then records it
 ## in the room's index. A false return means the server must not be told we have it.
 func save(server_key: String, owner: String, room_id: String, record: Dictionary, tagged: PackedByteArray) -> bool:
-	var directory := room_directory(server_key, owner, room_id)
+	return _save_in(room_directory(server_key, owner, room_id), room_id, record, tagged)
+
+## A Saved Games copy of an attempt this phone no longer has (services/platform_games/cloud_replay_sources.gd):
+## saved like a download, checked against its record first, never over a different attempt at the
+## same place. history_sync.gd still checks its chain link against the server's list before use.
+func restore(server_folder: String, owner: String, room_id: String, record: Dictionary, tagged: PackedByteArray) -> bool:
+	if not RegEx.create_from_string("^[a-f0-9]{16}$").search(server_folder) or not _id(owner) or not _id(room_id): return false
+	var directory := root.path_join(server_folder).path_join(owner).path_join(room_id)
+	if index_in(directory, room_id).has(int(record.get("position", -1))): return true
+	return _save_in(directory, room_id, record, tagged)
+
+func _save_in(directory: String, room_id: String, record: Dictionary, tagged: PackedByteArray) -> bool:
 	if directory.is_empty() or verified_bytes(tagged, record).is_empty(): return false
 	var position := int(record.position)
 	var name := _file_name(position, record.link)
 	var path := directory.path_join(name)
 	if not NativeFiles.write(path, tagged) or FileAccess.get_file_as_bytes(path) != tagged: return false
-	var entries := index(server_key, owner, room_id)
+	var entries := index_in(directory, room_id)
 	var previous: Dictionary = entries.get(position, {})
 	entries[position] = {"position": position, "link": record.link, "digest": record.digest, "byte_length": int(record.byte_length), "file": name}
 	if not _write_index(directory, room_id, entries): return false
@@ -109,7 +123,7 @@ func save(server_key: String, owner: String, room_id: String, record: Dictionary
 	if not previous.is_empty() and previous.file != name: DirAccess.remove_absolute(directory.path_join(previous.file))
 	return true
 
-func _write_index(directory: String, room_id: String, entries: Dictionary) -> bool:
+static func _write_index(directory: String, room_id: String, entries: Dictionary) -> bool:
 	var positions := entries.keys()
 	positions.sort()
 	var attempts: Array = positions.map(func(position: int) -> Dictionary: return entries[position])

@@ -1,5 +1,7 @@
 extends RefCounted
-## Keeps one Saved Games slot and this phone's progress joined (see cloud_save_bundle.gd).
+## Keeps one Saved Games slot and this phone's side of it joined: the progress slot
+## (cloud_save_bundle.gd, cloud_save_sources.gd), and each replay slot (cloud_replay_bundle.gd,
+## cloud_replay_sources.gd) with its own codec, slot name and bookkeeping keys.
 ##
 ## When: never per frame or per tap. note() marks progress as possibly changed and waits
 ## DEBOUNCE_MS for things to settle (a chapter finished, Settings closed); flush() runs as soon as
@@ -24,6 +26,11 @@ const MAX_RESOLVE_ROUNDS := 3
 
 ## The slot's description in the platform's saved games list.
 var description := ""
+var slot := SLOT
+## decode, merge, encode, fingerprint, adds_to and warm, as cloud_save_bundle.gd has them.
+var codec: GDScript = Bundle
+## Prefix of this slot's keys in the platform games state ("" for the progress slot).
+var key_prefix := ""
 var busy := false
 var last_code := ""
 ## Tests set this to drive time.
@@ -36,11 +43,14 @@ var _force := false
 var _failures := 0
 
 ## sources: ready(), at_home(), stamp(), collect() and apply(merged) (see cloud_save_sources.gd).
-func _init(provider: RefCounted, sources: RefCounted, state: RefCounted) -> void:
+func _init(provider: RefCounted, sources: RefCounted, state: RefCounted, slot_name: String = SLOT, slot_codec: GDScript = Bundle, prefix: String = "") -> void:
 	_provider = provider
 	_sources = sources
 	_state = state
-	Bundle.warm()
+	slot = slot_name
+	codec = slot_codec
+	key_prefix = prefix
+	codec.warm()
 	# Workers start later; the reaper is in the tree before any can be running at quit.
 	Reaper.ensure()
 
@@ -50,7 +60,7 @@ func set_sources(sources: RefCounted) -> void:
 ## Progress may have changed: sync after a quiet moment.
 func note() -> void:
 	_due_at = int(clock_ms.call()) + DEBOUNCE_MS
-	if _state != null: _state.set_cloud({"dirty": true})
+	if _state != null: _state.set_cloud({key_prefix + "dirty": true})
 
 ## Sync as soon as possible. pull: also read the cloud when nothing changed here (another phone
 ## may have played); a pull also ends a wait for the next sign-in.
@@ -63,6 +73,10 @@ func flush(pull: bool = false) -> void:
 func stop() -> void:
 	_due_at = -1
 	_force = false
+
+## Whether this slot ever finished a run on this install (a replay slot pulls only until it has).
+func synced_once() -> bool:
+	return _state != null and _state.cloud(key_prefix + "source_stamp") != null
 
 func due() -> bool:
 	return _due_at >= 0 and int(clock_ms.call()) >= _due_at and not busy
@@ -79,7 +93,7 @@ func run() -> Dictionary:
 		return _later("not_ready", DEBOUNCE_MS)
 	_due_at = -1
 	var stamp: String = sources.stamp()
-	if not _force and stamp == str(_state.cloud("source_stamp", "")) and not bool(_state.cloud("dirty", true)):
+	if not _force and stamp == str(_state.cloud(key_prefix + "source_stamp", "")) and not bool(_state.cloud(key_prefix + "dirty", true)):
 		return {"ok": true, "wrote": false, "applied": false}
 	var forced := _force
 	_force = false
@@ -115,13 +129,14 @@ static func _offload(work: Callable) -> Variant:
 func _sync(sources: RefCounted, stamp: String) -> Dictionary:
 	var local: Dictionary = await sources.collect()
 	if local.is_empty(): return {"ok": false, "code": "not_ready"}
-	var opened: Dictionary = await _provider.snapshot_open(SLOT)
+	var opened: Dictionary = await _provider.snapshot_open(slot)
+	var codec_script := codec
 	if not opened.ok: return opened
 	var handle: String = opened.handle
 	var first_bytes: PackedByteArray = opened.data
 	var joined: Dictionary = await _offload(func() -> Dictionary:
-		var copy := Bundle.decode(first_bytes)
-		return {"cloud": copy, "merged": Bundle.merge(local, copy) if not copy.is_empty() else {}})
+		var copy: Dictionary = codec_script.decode(first_bytes)
+		return {"cloud": copy, "merged": codec_script.merge(local, copy) if not copy.is_empty() else {}})
 	var cloud: Dictionary = joined.cloud
 	if cloud.is_empty():
 		await _provider.snapshot_discard(handle)
@@ -132,10 +147,10 @@ func _sync(sources: RefCounted, stamp: String) -> Dictionary:
 		var conflict_data: PackedByteArray = opened.conflict.data
 		var held := merged
 		var resolved: Dictionary = await _offload(func() -> Dictionary:
-			var other := Bundle.decode(conflict_data)
+			var other: Dictionary = codec_script.decode(conflict_data)
 			if other.is_empty(): return {}
-			var next := Bundle.merge(held, other)
-			return {"merged": next, "bytes": Bundle.encode(next)})
+			var next: Dictionary = codec_script.merge(held, other)
+			return {"merged": next, "bytes": codec_script.encode(next)})
 		if resolved.is_empty():
 			# Never resolve over a copy this build cannot read: leave the conflict for a newer build.
 			await _provider.snapshot_discard(handle)
@@ -151,8 +166,8 @@ func _sync(sources: RefCounted, stamp: String) -> Dictionary:
 		var next_bytes: PackedByteArray = opened.data
 		var held_next := merged
 		var again: Dictionary = await _offload(func() -> Dictionary:
-			var copy := Bundle.decode(next_bytes)
-			return {"cloud": copy, "merged": Bundle.merge(held_next, copy) if not copy.is_empty() else {}})
+			var copy: Dictionary = codec_script.decode(next_bytes)
+			return {"cloud": copy, "merged": codec_script.merge(held_next, copy) if not copy.is_empty() else {}})
 		cloud = again.cloud
 		if cloud.is_empty():
 			await _provider.snapshot_discard(handle)
@@ -162,8 +177,8 @@ func _sync(sources: RefCounted, stamp: String) -> Dictionary:
 	var final_cloud := cloud
 	var resolved_any := rounds > 0
 	var plan: Dictionary = await _offload(func() -> Dictionary:
-		var writes := resolved_any or Bundle.fingerprint(final_merged) != Bundle.fingerprint(final_cloud)
-		return {"adds": Bundle.adds_to(final_merged, local), "writes": writes, "bytes": Bundle.encode(final_merged) if writes else PackedByteArray()})
+		var writes: bool = resolved_any or codec_script.fingerprint(final_merged) != codec_script.fingerprint(final_cloud)
+		return {"adds": codec_script.adds_to(final_merged, local), "writes": writes, "bytes": codec_script.encode(final_merged) if writes else PackedByteArray()})
 	# Progress saved while this run waited is not in `local`: apply nothing over it now, still write
 	# the joined copy (it holds nothing older than the cloud had), and come back for the rest.
 	var changed_meanwhile: bool = sources != _sources or not sources.ready() or sources.stamp() != stamp
@@ -179,6 +194,7 @@ func _sync(sources: RefCounted, stamp: String) -> Dictionary:
 	else:
 		await _provider.snapshot_discard(handle)
 	var settled: bool = not changed_meanwhile and (applied or not plan.adds)
-	_state.set_cloud({"source_stamp": after if settled else stamp, "dirty": not settled})
+	_state.set_cloud({key_prefix + "source_stamp": after if settled else stamp, key_prefix + "dirty": not settled})
 	if not settled: return {"ok": false, "code": "changed", "wrote": wrote, "applied": applied}
+	if sources.has_method("settled"): sources.settled()
 	return {"ok": true, "wrote": wrote, "applied": applied}

@@ -1397,6 +1397,11 @@ const PLATFORM_GAMES_OFFER_TITLE := "Use your friend code from your other phone?
 const PLATFORM_GAMES_USE_IT := "Use it"
 const PLATFORM_GAMES_NOT_NOW := "Not now"
 const PLATFORM_GAMES_OFFER_NOTE := "This account has a friend code from another phone."
+## Once, when newer replays no longer fit a backup (services/backup_limit.gd); again only when more stop fitting.
+const BACKUP_FULL_TITLE := "Backup is full"
+const BACKUP_FULL_BODY := "Some replays are not backed up because the space is full."
+const BACKUP_FULL_OPEN := "Open replays"
+const BACKUP_FULL_OK := "OK"
 ## A Settings button: link this phone's friend code to the signed-in account again.
 const PLATFORM_GAMES_LINK := "Link"
 ## A toast: the friend code was unlinked or deleted on the other phone before Use it.

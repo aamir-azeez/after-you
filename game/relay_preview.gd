@@ -2587,7 +2587,7 @@ func _update_run_pill(tick: int) -> void:
 	if not is_instance_valid(run_reactions): return
 	var shown: bool = mode == "play" and not run_player.live_slot.is_empty()
 	if run_reactions.visible != shown: run_reactions.visible = shown
-	if shown: run_reactions.show_cooldown(run_player.live.cooldown(tick), run_player.live.full())
+	if shown: run_player.show_pill(run_reactions, tick)
 
 ## The player tapped a face: their spirit makes it now, recorded on this tick.
 func _react_in_run(face: String) -> void:

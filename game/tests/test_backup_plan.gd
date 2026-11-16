@@ -1,8 +1,9 @@
 extends SceneTree
-## Android backup plan: priority order, newest first within a group, kept room
-## history before shared replays, and nothing device-bound, photo-related, temporary or oversized.
+## Android backup plan: priority order, newest first within a group, small per-run files
+## before journals, kept room history and duel runs before shared replays, and nothing device-bound, photo-related, temporary or oversized.
 
 const Plan = preload("res://services/backup_plan.gd")
+const DUEL := "duel_runs/PPPPPPPPPPPPPPPPPPPPPP/0123456789abcdef0123456789abcdef"
 
 var checks := 0
 var failures := 0
@@ -30,13 +31,16 @@ func _run() -> void:
 	for path: String in ["relay-journey-v2.json.attempt-0a1b.json", "shared-replays/old.json", room + "/index.json", room + "/0-0123456789abcdef.bin",
 		"journey.json", "home-keepsakes-v1.json", "relay-journey-v2.json", "first-steps-journey-v1.json", "relay-journey-v2.json.backup", "relay-journey-v2.json.tmp",
 		"relay-online/0123.json", "photo-library/p.jpg", "photo-transfer/t.json", "safety/s.json", "turn-photos/x.json", "shared-replays/old.json.backup",
-		"hard-mode-v1.json", "relay-journey-v2-hard-runs.json", "relay-journey-v2-hard-runs.json.backup"]:
+		"hard-mode-v1.json", "relay-journey-v2-hard-runs.json", "relay-journey-v2-hard-runs.json.backup",
+		"turn_looks.json", "end-reactions.json", "run-reactions.json", "leaderboard-runs.json", "platform-games-v1.json", "wardrobe.json",
+		DUEL + ".json", DUEL + ".json.tmp", DUEL + ".json.backup", DUEL + ".json.unreadable-0a1b"]:
 		_file(root, path)
 	_file(root, "shared-replays/huge.json", Plan.MAX_SHARED_FILE + 1)
 	var paths: Array = Plan.entries(root).map(func(item: Dictionary) -> String: return item.path)
-	_check(paths == ["journey.json", "home-keepsakes-v1.json", "hard-mode-v1.json", "first-steps-journey-v1.json", "relay-journey-v2.json", room + "/index.json", room + "/0-0123456789abcdef.bin",
-		"shared-replays/old.json", "relay-journey-v2.json.attempt-0a1b.json", "relay-journey-v2-hard-runs.json"], "Settings and hard marks, journals, kept room history, shared replays, attempt archives, then hard runs: %s" % [paths])
-	_check(not paths.any(func(path: String) -> bool: return path.begins_with("relay-online/") or path.begins_with("photo") or path.begins_with("safety/") or path.begins_with("turn-photos/") or path.ends_with(".tmp") or path.ends_with(".backup")), "Device-bound, photo, safety and temporary files are never listed")
+	_check(paths == ["journey.json", "home-keepsakes-v1.json", "hard-mode-v1.json", "turn_looks.json", "end-reactions.json", "run-reactions.json", "leaderboard-runs.json",
+		"first-steps-journey-v1.json", "relay-journey-v2.json", room + "/index.json", room + "/0-0123456789abcdef.bin", DUEL + ".json",
+		"shared-replays/old.json", "relay-journey-v2.json.attempt-0a1b.json", "relay-journey-v2-hard-runs.json"], "Settings, hard marks and the small per-run files, journals, kept room history, duel runs, shared replays, attempt archives, then hard runs: %s" % [paths])
+	_check(not paths.any(func(path: String) -> bool: return path.begins_with("relay-online/") or path.begins_with("photo") or path.begins_with("safety/") or path.begins_with("turn-photos/") or path.ends_with(".tmp") or path.ends_with(".backup") or path.contains(".unreadable-") or path in ["platform-games-v1.json", "wardrobe.json"]), "Device-bound, photo, safety, temporary, platform bookkeeping and server cache files are never listed")
 	_check(not paths.has("shared-replays/huge.json"), "A replay file over 20 MiB is skipped whole, never cut")
 	_check(Plan.write(root), "The plan is written for the backup agent")
 	var lines := FileAccess.get_file_as_string(root.path_join(Plan.PLAN)).split("\n", false)
