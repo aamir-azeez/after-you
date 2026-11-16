@@ -547,11 +547,13 @@ func snapshot() -> Dictionary:
 		"objective_done":_objective,"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
 		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
 	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
-	# part_done: a first turn may be saved before its part is done, so the screen reads this, not can_commit, for "ready".
-	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed,"part_done":_part_done() if role == "a" else can_commit()})
+	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed})
 	return state
 
 func _objective_display() -> Dictionary:
+	# Open turns: a first turn shows no count of its own part, so nothing tells
+	# the pip when its part is done (owner, 2026-11-16).
+	if role == "a" and _open_turns(): return {}
 	if role == "a":
 		if stage.source_policy.kind == "offer_ball":
 			return {"label":"Ball handoff","current":1 if _part_done() else 0,"required":1}
