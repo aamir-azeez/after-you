@@ -179,6 +179,34 @@ NSString *const AYPollenKind = @"pollen_monthly";
 	return [data copy];
 }
 
++ (NSArray<NSString *> *)backupExcludedFolders {
+	return @[ @"relay-online", @"photo-transfer", @"safety", @"photo-library", @"turn-photos", @"photo-capture-resume", @"cloud-save-staging", @"logs", @"shader_cache" ];
+}
+
++ (NSArray<NSString *> *)backupExcludedFiles {
+	return @[ @"platform-games-v1.json", @"platform-boards-v1.json" ];
+}
+
++ (void)applyBackupRulesAt:(NSURL *)root {
+	NSFileManager *files = [NSFileManager defaultManager];
+	if (![files createDirectoryAtURL:root withIntermediateDirectories:YES attributes:nil error:nil]) {
+		return;
+	}
+	[root setResourceValue:@NO forKey:NSURLIsExcludedFromBackupKey error:nil];
+	for (NSString *name in [self backupExcludedFolders]) {
+		NSURL *folder = [root URLByAppendingPathComponent:name isDirectory:YES];
+		if ([files createDirectoryAtURL:folder withIntermediateDirectories:YES attributes:nil error:nil]) {
+			[folder setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
+		}
+	}
+	for (NSString *name in [self backupExcludedFiles]) {
+		NSURL *file = [root URLByAppendingPathComponent:name isDirectory:NO];
+		if ([files fileExistsAtPath:file.path]) {
+			[file setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
+		}
+	}
+}
+
 + (BOOL)validFirebaseOptions:(NSDictionary *)options bundleId:(NSString *)bundleId {
 	id appId = options[@"GOOGLE_APP_ID"];
 	id apiKey = options[@"API_KEY"];

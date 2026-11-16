@@ -38,6 +38,17 @@ extern NSString *const AYPollenKind;
 /// dot, dash and underscore, at most 96 characters, or nil.
 + (nullable NSString *)exportFileName:(NSString *)name;
 
+/// What iCloud backup leaves out of the game's user files, relative to that folder: the same
+/// folders Android's backup rules exclude (after_you_full_backup_rules.xml: device-bound room
+/// state, photos, safety data, cloud save staging), Godot's own caches, and this phone's platform
+/// games bookkeeping (it names the identity linked on this phone). Credentials are in the Keychain.
++ (NSArray<NSString *> *)backupExcludedFolders;
++ (NSArray<NSString *> *)backupExcludedFiles;
+/// Lets iCloud back up the user folder (clearing the whole-folder exclusion older builds set) and
+/// marks only the excluded items. Folders are made first so their mark holds; files are marked
+/// when present and again on every call, as a rewrite replaces the file and drops its mark.
++ (void)applyBackupRulesAt:(NSURL *)root;
+
 /// Public Firebase configuration from GoogleService-Info.plist, checked like Android's.
 + (BOOL)validFirebaseOptions:(NSDictionary *)options bundleId:(NSString *)bundleId;
 

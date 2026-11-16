@@ -39,6 +39,8 @@ const NativeProvider = preload("res://services/platform_games/native_games_provi
 const LinkClient = preload("res://services/platform_games/platform_link_client.gd")
 const State = preload("res://services/platform_games/platform_games_state.gd")
 const CloudSync = preload("res://services/platform_games/cloud_save_sync.gd")
+const ReplayBundle = preload("res://services/platform_games/cloud_replay_bundle.gd")
+const BackupLimit = preload("res://services/backup_limit.gd")
 const NativeBridge = preload("res://services/native_bridge.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -95,6 +97,8 @@ var link_code := ""
 var busy := false
 var state: RefCounted
 var cloud: RefCounted
+## One sync a replay slot (cloud_replay_bundle.gd), run one at a time after the progress slot.
+var replays: Array = []
 var _player_key := ""
 var _account: RefCounted
 var _links: RefCounted
@@ -151,7 +155,30 @@ func _open_state(path: String) -> void:
 	state = State.new(path)
 	cloud = CloudSync.new(provider, null, state)
 	cloud.description = PlayerCopy.PLATFORM_GAMES_SAVE_DESCRIPTION
-	if _account != null: cloud.set_sources(_account.cloud_sources())
+	replays = []
+	for index: int in ReplayBundle.SLOTS:
+		var sync: RefCounted = CloudSync.new(provider, null, state, ReplayBundle.slot_name(index), ReplayBundle, "r%d_" % (index + 1))
+		sync.description = PlayerCopy.PLATFORM_GAMES_SAVE_DESCRIPTION
+		replays.append(sync)
+	_set_cloud_sources(_account)
+
+func _set_cloud_sources(account: RefCounted) -> void:
+	if cloud == null: return
+	cloud.set_sources(account.cloud_sources() if account != null else null)
+	var replay_sources := account != null and account.has_method("replay_sources")
+	for index: int in replays.size(): replays[index].set_sources(account.replay_sources(index) if replay_sources else null)
+
+## Sync soon. pull: also read the cloud; a replay slot pulls only until it first synced on this
+## install (a new phone or a reinstall), so later launches never download every slot again.
+func _cloud_flush(pull: bool = false) -> void:
+	if cloud == null: return
+	cloud.flush(pull)
+	for sync: RefCounted in replays: sync.flush(pull and not sync.synced_once())
+
+func _cloud_stop() -> void:
+	if cloud == null: return
+	cloud.stop()
+	for sync: RefCounted in replays: sync.stop()
 
 ## Tests: a provider and a state file of their own (and a board file beside it), and no automatic start.
 func configure(test_provider: RefCounted, state_path: String) -> void:
@@ -203,7 +230,7 @@ func start() -> void:
 func attach(account: RefCounted) -> void:
 	_account = account
 	_links = LinkClient.new(account.api())
-	if cloud != null: cloud.set_sources(account.cloud_sources())
+	_set_cloud_sources(account)
 	changed.emit()
 	if _interrupted: start.call_deferred()
 
@@ -211,7 +238,7 @@ func detach(account: RefCounted) -> void:
 	if _account != account: return
 	_account = null
 	_links = null
-	if cloud != null: cloud.set_sources(null)
+	_set_cloud_sources(null)
 	if _running or busy:
 		# Requests that went through Main's api or secure store never answer now.
 		_generation += 1
@@ -452,7 +479,7 @@ func _authenticate(interactive: bool, generation: int) -> void:
 		if interactive and sign_in_code.is_empty() and kind() == GamesProvider.GAME_CENTER: sign_in_code = "cancelled"
 		_player_key = ""
 		link_state = LINK_NONE
-		if cloud != null: cloud.stop()
+		_cloud_stop()
 	changed.emit()
 
 func _on_account_changed() -> void:
@@ -461,7 +488,7 @@ func _on_account_changed() -> void:
 	link_state = LINK_NONE
 	sign_in = SignIn.SIGNED_OUT
 	offer_declined = false
-	if cloud != null: cloud.stop()
+	_cloud_stop()
 	changed.emit()
 	if not _running: await start()
 
@@ -472,11 +499,11 @@ func _after_sign_in(capability: Dictionary, generation: int) -> void:
 	if _account.identity_state() == "missing":
 		await _offer_for_new_phone(capability, generation)
 		# Every launch pulls the account's saved games, before any chapter here is started.
-		if generation == _generation and cloud != null: cloud.flush(true)
+		if generation == _generation and cloud != null: _cloud_flush(true)
 		return
 	if _account.identity_state() != "ready": return
 	await _reconcile_link(capability, generation)
-	if generation == _generation and cloud != null: cloud.flush(true)
+	if generation == _generation and cloud != null: _cloud_flush(true)
 
 func _reconcile_link(capability: Dictionary, generation: int) -> void:
 	var held: Dictionary = state.link(kind())
@@ -519,7 +546,7 @@ func _link(capability: Dictionary, replace: bool, generation: int) -> void:
 		# The server turned the feature off since the last capability read.
 		state.forget_capability()
 		link_state = LINK_NONE
-		if cloud != null: cloud.stop()
+		_cloud_stop()
 	else:
 		link_state = LINK_ERROR
 		link_code = str(answer.get("code", "failed"))
@@ -587,7 +614,7 @@ func accept_offer() -> void:
 		# The identity is ready now: read the real capability, then pull the cloud copy.
 		state.forget_capability()
 		await _capability()
-		if generation == _generation and cloud != null: cloud.flush(true)
+		if generation == _generation and cloud != null: _cloud_flush(true)
 	elif int(answer.get("status", 0)) == 404:
 		# The link went away meanwhile (unlinked or erased on the other phone).
 		state.remember_restore_probe(_player_key)
@@ -729,11 +756,21 @@ func _process(delta: float) -> void:
 	_poll_left -= delta
 	if _poll_left > 0.0: return
 	_poll_left = 1.0
-	if _cloud_allowed() and cloud.due(): cloud.poll()
+	if not _cloud_allowed(): return
+	if cloud.due(): cloud.poll()
+	elif not cloud.busy and not replays.any(func(sync: RefCounted) -> bool: return sync.busy):
+		for sync: RefCounted in replays:
+			if sync.due():
+				_poll_replay(sync)
+				return
+
+func _poll_replay(sync: RefCounted) -> void:
+	await sync.poll()
+	if BackupLimit.due(): changed.emit()
 
 func _notification(what: int) -> void:
 	# The run itself waits for frames, so it finishes on resume; the dirty flag also survives a kill.
-	if what == NOTIFICATION_APPLICATION_PAUSED and _cloud_allowed(): cloud.flush()
+	if what == NOTIFICATION_APPLICATION_PAUSED and _cloud_allowed(): _cloud_flush()
 	elif what == NOTIFICATION_APPLICATION_RESUMED: post_boards_soon()
 
 ## Achievements are not used yet; this forwards to the provider when they are.

@@ -22,7 +22,10 @@ class AfterYouBackupAgent : BackupAgent() {
         val root = filesDir
         val planFile = File(root, BackupPolicy.PLAN)
         val plan = if (planFile.isFile && planFile.length() <= BackupPolicy.MAX_PLAN_BYTES) planFile.readText() else null
-        for (file in BackupPolicy.select(root, plan, data.quota)) fullBackupFile(file, data)
+        val chosen = BackupPolicy.select(root, plan, data.quota)
+        for (file in chosen) fullBackupFile(file, data)
+        // The game tells the player once when newer replays stop fitting (game/services/backup_limit.gd).
+        BackupPolicy.writeLeftOut(root, BackupPolicy.candidates(root, plan).size - chosen.size)
     }
 
     // Full backup only (android:fullBackupOnly="true"); there is no key-value data.
