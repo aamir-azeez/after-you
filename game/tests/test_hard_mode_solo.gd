@@ -106,7 +106,7 @@ func _label_text(app: Node3D, name: String) -> String:
 
 func _no_retry(app: Node3D, where: String) -> void:
 	var texts := _visible_texts(app.overlay)
-	for banned: String in ["Retry", "Restart chapter", PlayerCopy.SOLO_REDO_ACTION, "Ask for redo"]:
+	for banned: String in ["Retry", PlayerCopy.REDO_PLAY_AGAIN, PlayerCopy.START_OVER_ASK, "Ask for redo"]:
 		_check(banned not in texts, "%s offers no %s (%s)" % [where, banned, ", ".join(texts)])
 
 func _nothing_to_retry_and_second_start() -> void:

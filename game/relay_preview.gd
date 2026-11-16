@@ -39,7 +39,6 @@ const RedoClient = preload("res://services/redo_client.gd")
 const RaceGhostView = preload("res://presentation/race_ghost_view.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const RedoFlow = preload("res://presentation/redo_flow.gd")
-const SoloRedoOffer = preload("res://presentation/solo_redo_offer.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
@@ -781,19 +780,23 @@ func _show_ready() -> void:
 	if invited and not joined:
 		body += "\n\nInvitation: " + ShareCodes.display(ShareCodes.ROOM, online_session.invitation_code())
 	var title: String = hard_flow.heading(_turn_title(int(checkpoint.stage_index), role))
-	var compact: bool = online_session != null and _room_panel_fits()
+	var compact: bool = _room_panel_fits()
 	var facts := _room_facts()
 	# A friend's start over request leads the page (redo_flow.gd): its rows follow.
 	var start_over_asked: bool = online_session != null and _room_fact("start_over_answer", "", {})
 	if start_over_asked: title = PlayerCopy.START_OVER_ASKED_FOR % FriendNicknames.sentence_start(_waiting_partner_name(journey.snapshot()))
+	var news := {} if start_over_asked else _turn_news()
 	if compact:
-		var hint := PlayerCopy.START_OVER_LINE if start_over_asked else PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]), online_session == null)
+		var hint: String = PlayerCopy.START_OVER_LINE if start_over_asked else PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]), online_session == null) + hard_flow.ready_note()
 		var panel := _ordinary_room_card(title,hint)
 		_set_room_state(RoomActions.panel_state("ready", facts))
-		_add_friend_strip(panel, joined)
+		# A solo chapter has no friend strip: the panel opens on what just happened.
+		if online_session != null: _add_friend_strip(panel, joined)
+		_add_news(RoomPageBuilder.group(panel, 4), news)
 		_add_room_panel_actions(panel, facts)
 	else:
 		var card := _plain_card(title,body)
+		_add_news(card, news, true)
 		# Before a friend joins, the invitation heading already states that status.
 		if _presence_available() and (joined or not invited): card.add_child(_presence_badge())
 		_set_room_state("ready_card")
@@ -845,23 +848,21 @@ func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 		# Turn alerts can be offered and are still off.
 		"notifications": return _notifications_available() and not turn_notification_status.call().get("registered", false)
 		"alerts": return _notifications_available()
-		# A finished chapter always has its replays; otherwise finished pairs
-		# online, or archived attempts solo.
-		"watchable": return mode == "complete" or (not _pairs().is_empty() if online_session != null else not journey.archived_attempts().is_empty())
-		"restart": return _local_restart_available()
+		# A finished chapter always has its replays; otherwise finished pairs,
+		# or solo an archived attempt.
+		"watchable": return mode == "complete" or not _pairs().is_empty() or (online_session == null and not journey.archived_attempts().is_empty())
 		"redo": return _redo_offered()
 		"redo_accept": return online_session != null and online_session.redo_client().can_accept()
 		"redo_ask": return redo_flow.can_ask()
 		"redo_answered": return not redo_flow.answer().is_empty()
 		"redo_unsettled": return redo_flow.unsettled()
-		# Play my turn again before the friend has it, and start over (redo_flow.gd).
-		"redo_self": return _bound_redo() and redo_flow.can_replace()
+		# Play my turn again before the friend has it (solo, after any save), and start over (redo_flow.gd).
+		"redo_self": return (online_session == null or _bound_redo()) and redo_flow.can_replace()
 		"replacing": return redo_flow.replacing()
-		"start_over_ask": return _bound_redo() and redo_flow.can_ask_start_over()
+		"start_over_ask": return (online_session == null or _bound_redo()) and redo_flow.can_ask_start_over()
 		"start_over_answer": return _bound_redo() and redo_flow.can_answer_start_over()
 		"start_over_answered": return _bound_redo() and not redo_flow.start_over_line().is_empty()
 		"my_turn": return journey.my_turn()
-		"solo_redo": return not _solo_redo_plan().is_empty()
 		"photo": return not _recent_photo_receipt().is_empty()
 		"about": return not _waiting_details_stage().is_empty()
 		"safety": return _safety_available()
@@ -908,12 +909,9 @@ func _room_action_hooks() -> Dictionary:
 		"start_over_status": {"widget": _add_start_over_status},
 		"start_over_agree": {"run": _start_over_agree, "drawn": _track_start_over_agree},
 		"start_over_keep": {"run": _start_over_keep, "drawn": _track_start_over_keep},
-		"solo_redo": {"run": _confirm_solo_redo},
 		"photo": {"run": _offer_recent_photo},
-		"checkpoints": {"run": _choose_local_checkpoint},
 		"hard_again": {"run": _hard_again},
 		"new_room": {"run": _create_another_room, "drawn": _track_new_room_button},
-		"restart": {"run": _confirm_restart_chapter},
 		"add_friend": {"run": _add_partner_friend},
 		"friend_requested": {"run": _partner_friend_requested},
 		"about": {"run": _show_waiting_details},
@@ -931,12 +929,13 @@ func _room_action_handler(id: String) -> Callable:
 	var run: Callable = _room_action_hooks()[id].run.bindv(row.get("bind", []))
 	return run.bind(_recent_photo_receipt()) if row.get("with_receipt", false) else run
 
-## A plain table row as the shared action button or a plain card button.
-func _room_action_button(id: String, facts: Callable, cream: bool = false) -> Button:
+## A plain table row as the shared action button or a plain card button, cream
+## when its slot's look (or, where the look leaves it, the row) says so.
+func _room_action_button(id: String, facts: Callable, cream: bool) -> Button:
 	var row: Dictionary = RoomActions.ACTIONS[id]
 	var run := _room_action_handler(id)
 	if row.has("button"): return _action_button(str(row.button), run)
-	return _button(RoomActions.label(id, facts), run, cream or row.get("primary", false))
+	return _button(RoomActions.label(id, facts), run, cream)
 
 ## One slot of a room state, in the table's order and its slot's look.
 func _add_room_actions(parent: Container, state: String, slot: String, facts: Callable) -> void:
@@ -951,7 +950,7 @@ func _add_room_panel_actions(card: VBoxContainer, facts: Callable) -> void:
 	# The divider sets the turn's actions apart; an invitation that leads the
 	# panel's actions (a cream Share) stays one block with the code above it.
 	var primary := RoomActions.shown(state, "primary", facts)
-	if primary.is_empty() or RoomActions.ACTIONS[primary[0]].get("section", "") != "invite": card.add_child(HSeparator.new())
+	if card.get_child_count() > 0 and (primary.is_empty() or RoomActions.ACTIONS[primary[0]].get("section", "") != "invite"): card.add_child(HSeparator.new())
 	_add_room_actions(card, state, "primary", facts)
 	_add_room_actions(card, state, "turn", facts)
 	var line := HBoxContainer.new()
@@ -959,6 +958,8 @@ func _add_room_panel_actions(card: VBoxContainer, facts: Callable) -> void:
 	line.add_theme_constant_override("separation", 10)
 	card.add_child(line)
 	_add_room_actions(line, state, "pair", facts)
+	# A page with nothing on its last line keeps no gap for it.
+	line.visible = line.get_child_count() > 0
 	_add_room_actions(_room_ready_panel.header, state, "header", facts)
 
 ## Adds one table row when it applies, drawn in `look` (RoomActions.look), and
@@ -969,6 +970,7 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 	if not RoomActions.applies(id, facts, _room_state): return null
 	var row: Dictionary = RoomActions.ACTIONS[id]
 	var hooks: Dictionary = _room_action_hooks()[id]
+	var cream: bool = look.get("cream", row.get("primary", false))
 	if look.get("heading", false) and row.get("heading", false):
 		var divider := HSeparator.new()
 		divider.name = "RoomRowDivider"
@@ -981,11 +983,11 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 	if hooks.has("widget"):
 		button = hooks.widget.call(parent, id, facts, look)
 	else:
-		button = _room_action_button(id, facts, look.get("cream", false))
+		button = _room_action_button(id, facts, cream)
 		parent.add_child(button)
 	if button == null: return null
 	if look.get("icon_only", false): RoomPageBuilder.icon_button(button, row.icon, button.text, true)
-	elif look.get("icon", false): RoomPageBuilder.panel_row_look(button, RoomActions.icon(id), look.get("cream", false) or row.get("primary", false))
+	elif look.get("icon", false): RoomPageBuilder.panel_row_look(button, RoomActions.icon(id), cream)
 	if look.get("icon", false) and row.get("alert", false): RoomPageBuilder.alert_outline(button)
 	if row.get("danger", false): ControlTheme.danger(button, RoomActions.icon(id))
 	if look.has("height"): button.custom_minimum_size.y = look.height
@@ -1072,6 +1074,41 @@ func _room_panel_fits() -> bool:
 	# Wide screens use the side panel; narrow ones keep the centred card.
 	return ui.size.x >= 880
 
+## What just happened, heading the turn's panel (or card): the turn played
+## again, the stage just kept, or this player's saved turn. Read from the saved
+## journey or room, so it stays across redraws and reopening. {} when nothing
+## leads the turn. A friend's room states its own saved turn on its waiting page.
+func _turn_news() -> Dictionary:
+	if redo_flow.replacing(): return {"heading": PlayerCopy.REDO_AGAIN_NOTE}
+	if journey.chapter_complete(): return {}
+	if online_session == null:
+		if journey.role() == "b": return {"heading": WAITING_TURN_SAVED}
+		if not journey.pairs().is_empty(): return {"heading": str(chapter.checkpoint_title), "sub": str(chapter.checkpoint_text)}
+		return {}
+	var room: Dictionary = journey.snapshot()
+	if str(room.get("active_role", "")) == "a" and int(room.get("stage_index", 0)) > 0: return {"heading": str(chapter.checkpoint_title), "sub": str(chapter.checkpoint_text)}
+	return {}
+
+## The news's heading and line on a panel's top group, or (`card`) leading a
+## centred card. On the panel a divider follows (_add_room_panel_actions); with
+## no news the empty group goes, and nothing stands above the first row.
+func _add_news(parent: VBoxContainer, news: Dictionary, card: bool = false) -> void:
+	if news.is_empty():
+		if not card and parent.get_child_count() == 0:
+			parent.get_parent().remove_child(parent)
+			parent.queue_free()
+		return
+	var before := parent.get_child_count()
+	var heading := _label(str(news.heading), 30)
+	heading.name = "TurnNewsHeading"
+	heading.add_theme_font_override("font", title_font)
+	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	parent.add_child(heading)
+	RoomPageBuilder.waiting_lines(parent, str(news.get("sub", "")), "", PackedStringArray())
+	if news.get("pollen", true): _add_pollen_line(parent)
+	if not card: return
+	for index in range(parent.get_child_count() - before): parent.move_child(parent.get_child(before + index), index)
+
 func _ordinary_room_card(title: String, hint: String) -> VBoxContainer:
 	_plain_card("", "")
 	# The ordinary card's deferred width constraints must not own this layout.
@@ -1095,7 +1132,7 @@ func _ordinary_room_card(title: String, hint: String) -> VBoxContainer:
 ## Frames the scene beside the room panel: the whole chapter, then eased in
 ## closer on the spirits (WaitFraming) while waiting or before recording.
 func _frame_ready_world() -> void:
-	if _room_camera.is_empty() or not is_instance_valid(_room_ready_panel) or mode not in ["ready", "online_waiting"]: return
+	if _room_camera.is_empty() or not is_instance_valid(_room_ready_panel) or mode not in ["ready", "online_waiting", "complete"]: return
 	var target: Rect2 = _room_ready_panel.scene_space.get_global_rect()
 	if target.size.x < 80 or target.size.y < 60: return
 	var camera: Camera3D = world.camera
@@ -1148,6 +1185,9 @@ func _restore_ready_world() -> void:
 		camera.keep_aspect = _room_camera.keep_aspect
 		camera.h_offset = _room_camera.h_offset
 		camera.v_offset = _room_camera.v_offset
+		# A world that frames its own view (a stage built after the panel took
+		# the camera, a following view) frames it again from where it stands now.
+		if world.has_method("_frame_camera") and world.is_inside_tree(): world._frame_camera()
 	_room_framed = false
 	_room_camera.clear()
 
@@ -1386,6 +1426,10 @@ func _show_online_waiting() -> void:
 	elif pending.is_empty() and redo_flow.can_answer_start_over():
 		heading = PlayerCopy.START_OVER_ASKED_FOR % FriendNicknames.sentence_start(partner)
 		subline = PlayerCopy.START_OVER_LINE
+	# A stage just kept leads the page, with whose turn is next under it.
+	elif not saved and partner_present and not _turn_news().is_empty():
+		heading = str(_turn_news().heading)
+		subline = whose
 	notification_hint = null
 	notification_offer = null
 	_waiting_notify_section = false
@@ -1564,9 +1608,17 @@ func _add_redo_action(card: VBoxContainer) -> void:
 	_add_redo_actions_to(card)
 
 ## The redo actions this room or journal offers now, into any row or column.
-func _add_redo_actions_to(parent: Container) -> void:
+func _add_redo_actions_to(parent: Container, ids: Array = RoomActions.REDO_ACTIONS) -> void:
 	var facts := _room_facts()
-	for id: String in RoomActions.REDO_ACTIONS: _add_room_action(parent, id, facts)
+	for id: String in ids: _add_room_action(parent, id, facts)
+
+## A solo turn played again, kept as it was, or a chapter started over: the
+## screen's turn starts afresh (redo_flow.gd).
+func _solo_turn_changed() -> void:
+	_restart_tries()
+	_fresh_live = {}
+	review = {}
+	replay_pair_index = -1
 
 ## Whether this online room offers a redo button now. Reading it binds the
 ## room's redo client.
@@ -1595,7 +1647,8 @@ func _track_redo_keep(button: Button) -> void:
 
 func _track_redo_button(button: Button, id: String) -> void:
 	_redo_buttons[id] = button
-	RedoFlow.hold(button)
+	# A solo chapter's rows need no server.
+	if online_session != null: RedoFlow.hold(button)
 
 ## A friend's request leads the page: the first time one shows, the player is
 ## asked once about redo alerts.
@@ -1727,83 +1780,6 @@ func _restore_paused_draft() -> void:
 	_add_safety_flag()
 	_add_redo_action(card)
 	card.add_child(_action_button("back", _leave))
-
-## Solo "Redo my previous turn": each tap takes back one saved turn through
-## the journey's own plan. Online rooms keep the request flow above.
-const SOLO_REDO_MODES := ["ready", "review", "paused", "checkpoint", "complete"]
-
-func _solo_redo_plan() -> Dictionary:
-	if online_session != null or _solo_replay_only or _solo_replay_context_error: return {}
-	if journey == null or not journey.has_method("redo_plan") or journey.read_only or mode not in SOLO_REDO_MODES: return {}
-	return journey.redo_plan()
-
-func _confirm_solo_redo() -> void:
-	if backgrounded or running: return
-	var plan := _solo_redo_plan()
-	var copy := SoloRedoOffer.confirm_copy(plan)
-	if copy.is_empty(): return
-	var previous_mode := mode
-	var saved_journey: RefCounted = journey
-	var saved_review := review.duplicate(true)
-	var key := chapter_key
-	mode = "confirm_solo_redo"
-	var card := _card(str(copy.title), str(copy.body))
-	var card_reference: WeakRef = weakref(card)
-	var current := func() -> bool:
-		var current_card: Variant = card_reference.get_ref()
-		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_solo_redo" and not backgrounded and not running and online_session == null and chapter_key == key and journey == saved_journey and review == saved_review and not journey.read_only and journey.redo_plan() == plan
-	card.add_child(_button(str(copy.confirm), func():
-		if current.call(): _run_solo_redo(plan, previous_mode)))
-	_retry_cancel = func():
-		if current.call(): _return_from_solo_redo(previous_mode)
-	card.add_child(_action_button("cancel", _retry_cancel))
-
-## Cancel puts back the card the offer came from, without saving anything.
-func _return_from_solo_redo(previous_mode: String) -> void:
-	match previous_mode:
-		"review": _show_review()
-		"checkpoint": _after_accept()
-		"complete": _show_completed()
-		"paused":
-			# The paused turn is still this screen's simulation; Resume goes on from it.
-			mode = "paused"
-			var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
-			card.add_child(_action_button("resume", _start_play))
-			card.add_child(_action_button("retry", _begin))
-			_add_safety_flag()
-			_add_redo_action(card)
-			card.add_child(_action_button("back", _leave))
-		_: _show_ready()
-
-func _run_solo_redo(plan: Dictionary, previous_mode: String = "ready") -> void:
-	if online_session != null or journey == null or not journey.has_method("redo_previous"): return
-	# A first turn's review may be setting up the turn after it. That turn
-	# belongs to the journey being taken back, so the reaper joins its worker.
-	_drop_prefetch()
-	var work := func():
-		if not journey.redo_previous(plan):
-			# The journey is unchanged; put back the card the player came from.
-			var reason: String = journey.last_error
-			_return_from_solo_redo(previous_mode)
-			_note_refusal(reason)
-			return
-		_restart_tries()
-		_fresh_live = {}
-		review = {}
-		replay_pair_index = -1
-		_show_ready()
-	# Reopening a stage replays the kept chain on this thread, and so can
-	# setting up the next turn; say so first, as Save turn does.
-	var slow: bool = plan.get("kind") == "stage" or (journey.has_method("expected_wait_usec") and journey.expected_wait_usec() >= VISIBLE_WAIT_USEC)
-	if backgrounded or not is_processing() or not slow:
-		work.call()
-		return
-	mode = "turn_wait"
-	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, "")
-	for line: Node in card.get_children():
-		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
-	_wait_then = work
-	_wait_frames = 0
 
 ## A refused redo or retry leaves the journey as it was, so its reason goes on
 ## the card the player is back on instead of a card with only Back.
@@ -2662,7 +2638,6 @@ func _show_review() -> void:
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
 	card.add_child(_action_button("retry", _retry_review))
 	_add_redo_action(card)
-	_add_room_action(card, "restart")
 	card.add_child(_action_button("leave_draft", _leave))
 
 
@@ -2704,7 +2679,7 @@ func _show_ending_card(ending: Dictionary) -> void:
 		line.add_theme_constant_override("separation", 10)
 		card.add_child(line)
 		for id: String in ids:
-			if id == "redo": _add_redo_actions_to(line)
+			if id == "redo": _add_redo_actions_to(line, RoomActions.ENDING_REDO_ACTIONS)
 			elif actions.has(id): line.add_child(_action_button(id, actions[id]))
 		for button: Node in line.get_children():
 			if button is Control: (button as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2746,46 +2721,6 @@ func _retry_review(paused_over: String = "") -> void:
 		if from_pause: _show_paused(paused_over)
 		else: _show_review()
 	card.add_child(_action_button("cancel",_retry_cancel))
-
-
-func _local_restart_available() -> bool:
-	return online_session == null and journey != null and not journey.read_only and not journey.chapter_complete() and journey.restart_upgrades_rules()
-
-func _confirm_restart_chapter() -> void:
-	if mode not in ["ready", "review"] or backgrounded or running or not _local_restart_available(): return
-	var previous_mode := mode
-	var saved_journey: RefCounted = journey
-	var saved_sim: RefCounted = sim
-	var saved_hash: String = sim.state_hash()
-	var saved_checkpoint: Dictionary = journey.checkpoint()
-	var saved_pairs: Array = journey.pairs()
-	var saved_prior: Dictionary = journey.prior_recording()
-	var saved_draft: Dictionary = journey.draft()
-	var saved_review := review.duplicate(true)
-	var key := chapter_key
-	var generation := online_request_generation
-	if journey.read_only: return
-	mode = "confirm_restart_chapter"
-	var card := _card("Restart chapter?", "")
-	var card_reference: WeakRef = weakref(card)
-	var current := func() -> bool:
-		var current_card: Variant = card_reference.get_ref()
-		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_restart_chapter" and not backgrounded and not running and online_session == null and online_request_generation == generation and chapter_key == key and journey == saved_journey and sim == saved_sim and sim.state_hash() == saved_hash and review == saved_review and _local_restart_available() and journey.checkpoint() == saved_checkpoint and journey.pairs() == saved_pairs and journey.prior_recording() == saved_prior and journey.draft() == saved_draft and not journey.read_only
-	card.add_child(_button("Restart chapter", func():
-		if not current.call(): return
-		if journey.fork_from_stage(0):
-			_restart_tries()
-			_show_ready()
-			return
-		var reason: String = journey.last_error
-		if previous_mode == "review": _show_review()
-		else: _show_ready()
-		_note_refusal(reason)))
-	_retry_cancel = func():
-		if not current.call(): return
-		if previous_mode == "review": _show_review()
-		else: _show_ready()
-	card.add_child(_action_button("cancel", _retry_cancel))
 
 
 func _accept() -> void:
@@ -2905,16 +2840,9 @@ func _wear_dropped(item: String) -> void:
 		actions.get_parent().add_child(failed)
 		actions.get_parent().move_child(failed, actions.get_index())
 
+## A kept stage heads the next turn's panel (_turn_news), as a saved turn does.
 func _after_turn_saved() -> void:
-	if role == "b" and not journey.chapter_complete():
-		mode = "checkpoint"
-		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
-		_add_pollen_line(card)
-		card.add_child(_action_button("continue", func(): _after_visible_wait(_show_ready)))
-		_add_room_action(card, "solo_redo")
-		card.add_child(_action_button("back", _leave))
-	else:
-		_after_visible_wait(_show_ready)
+	_after_visible_wait(_show_ready)
 
 
 ## Checking a turn (solo or a room's) and setting up the next one replay saved
@@ -3248,14 +3176,31 @@ func _show_completed() -> void:
 	mode = "complete"
 	if finished_now: _ring_bell_sound()
 	if hard_flow.complete(): return
-	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
+	# Wide screens: the room page's panel, its heading and line, then the
+	# rows; narrow ones keep the centred card, as every turn does.
+	var compact := _room_panel_fits()
+	var card: VBoxContainer
+	var top: VBoxContainer
+	if compact:
+		card = _ordinary_room_card("", "")
+		# A room's end keeps its friend strip, as every room page does.
+		if online_session != null: _add_friend_strip(card, journey.snapshot().get("guest_id") != null)
+		top = RoomPageBuilder.group(card, 4)
+		_add_news(top, {"heading": PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, "sub": str(chapter.completion_text), "pollen": false})
+	else:
+		card = _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + ("\n\n" + PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else ""))
+		top = card
 	# The turn that finished the chapter earned here, with its first clear.
-	_add_end_pollen(card)
+	_add_end_pollen(top)
 	if online_session != null and board_line.is_valid() and journey != null and journey.has_method("snapshot"):
 		var line: Variant = board_line.call(journey.snapshot(), chapter_key)
-		if line is Control: card.add_child(line)
+		if line is Control: top.add_child(line)
+	EndReactionScreen.attach_completed(_end_reaction_context(), top)
+	if compact:
+		_set_room_state("complete_panel")
+		_add_room_panel_actions(card, _room_facts())
+		return
 	_set_room_state("complete")
-	EndReactionScreen.attach_completed(_end_reaction_context(), card)
 	_add_room_actions(card, "complete", "turn", _room_facts())
 
 ## The player's worn Bell sound (services/outfit.gd bell_sound), once per
@@ -3324,26 +3269,6 @@ func _started_final_turn(last: Dictionary) -> bool:
 
 func _holds_final_turn(last: Dictionary, simulation: RefCounted) -> bool:
 	return simulation != null and str(simulation.get("error")).is_empty() and simulation.get("role") == "b" and Canonical.same(simulation.export_recording(), last.get("b", {})) and str(journey.checkpoint().get("next_stage_id", "x")).is_empty()
-
-func _choose_local_checkpoint() -> void:
-	if online_session != null: return
-	mode = "choose_checkpoint"
-	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_F87CE3CA6999, PlayerCopy.LIGHTHOUSE_PREVIEW_8C7F45D78BE8)
-	for index in range(journey.pairs().size()):
-		card.add_child(_button("%s · %d / %d" % [Registry.descriptor(chapter_key).title, index + 1, definition.stages.size()], func(): _confirm_local_checkpoint(index)))
-	card.add_child(_action_button("back", _show_ready))
-
-func _confirm_local_checkpoint(index: int) -> void:
-	if online_session != null: return
-	mode = "confirm_checkpoint"
-	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA, PlayerCopy.LIGHTHOUSE_PREVIEW_64EA954F32D2)
-	card.add_child(_action_button("retry", func():
-		var done: bool = journey.fork_from_stage(index)
-		var reason: String = journey.last_error
-		if done: _restart_tries()
-		_show_ready()
-		if not done: _note_refusal(reason)))
-	card.add_child(_action_button("cancel", _show_ready))
 
 func _show_local_replays() -> void:
 	if online_session != null: return
@@ -3563,7 +3488,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			_request_action()
 		elif event.physical_keycode == KEY_ESCAPE:
 			if _photo_back(): return
-			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
+			if mode == "confirm_retry":
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			else: _pause() if running or mode in ["bloom", "drowning"] else _leave()
 
@@ -3683,7 +3608,7 @@ func _notification(what: int) -> void:
 		if what == NOTIFICATION_WM_GO_BACK_REQUEST and _photo_back(): return
 		_finish_ready_due()
 		if is_instance_valid(stick):
-			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
+			if mode == "confirm_retry":
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			else: _pause() if running or mode in ["bloom", "drowning"] else _leave()
 

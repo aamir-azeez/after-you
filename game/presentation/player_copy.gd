@@ -1500,17 +1500,8 @@ const START_OVER_CONFIRM_TITLE := "Start over?"
 const START_OVER_CONFIRM_BODY := "The room goes back to the first stage for both of you. Every turn played so far is removed."
 const START_OVER_CONFIRM := "Start over"
 const START_OVER_CANCEL := "Cancel"
-# Solo chapters: take back the last saved turn, one turn per tap.
-const SOLO_REDO_ACTION := "Redo my previous turn"
-const SOLO_REDO_FIRST_TURN_TITLE := "Record your path again?"
-const SOLO_REDO_FIRST_TURN_CONFIRM := "Record it again"
-const SOLO_REDO_FIRST_TURN_BODY := "This clears the path you saved for this stage, so you can record it again."
-const SOLO_REDO_PASS_BODY := "This clears your last turn on this stage, so you can play it again. The turns before it stay."
-const SOLO_REDO_KEEPS_EARLIER := "Earlier stages stay as they are."
-const SOLO_REDO_STAGE_TITLE := "Go back to stage %d?"
-const SOLO_REDO_STAGE_CONFIRM := "Go back to stage %d"
-const SOLO_REDO_STAGE_BODY := "You'll follow the recording on that stage again. A copy of this attempt stays in Replays on this device."
-const SOLO_REDO_DROPS_DRAFT := "Your unsaved turn will be lost."
+# Solo chapters' Start over card (presentation/redo_flow.gd), in place of the room's line.
+const SOLO_START_OVER_BODY := "The chapter goes back to the first stage. A copy of this attempt stays in Replays on this device."
 
 const HOUSE_SUMMARY := "A house with a workshop, a loft and a sunroom."
 const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."
@@ -2091,7 +2082,6 @@ const RELAY_PREVIEW_8D42D9E99BAF := "You left a path. I carried it on."
 # Relay chapter — show completed
 const RELAY_PREVIEW_FF18C2378950 := "Your shared chapter is confirmed in the room."
 # Relay chapter — show completed
-const RELAY_PREVIEW_7DECA1CF83C7 := "This is a solo preview of the bigger journey."
 # Relay chapter — pause
 const RELAY_PREVIEW_50922961D853 := "This device retains your saved checkpoint and rehearsal."
 # Relay chapter — show save problem
@@ -3459,7 +3449,6 @@ const TEXT := {
 	"relay_preview.da6ba2478fe5": RELAY_PREVIEW_DA6BA2478FE5,
 	"relay_preview.8d42d9e99baf": RELAY_PREVIEW_8D42D9E99BAF,
 	"relay_preview.ff18c2378950": RELAY_PREVIEW_FF18C2378950,
-	"relay_preview.7deca1cf83c7": RELAY_PREVIEW_7DECA1CF83C7,
 	"relay_preview.50922961d853": RELAY_PREVIEW_50922961D853,
 	"relay_preview.761d2317cf80": RELAY_PREVIEW_761D2317CF80,
 	"beam_field.d1d0a898da7f": BEAM_FIELD_D1D0A898DA7F,

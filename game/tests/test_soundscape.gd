@@ -33,6 +33,22 @@ class FakeWorld:
 	func _process(_delta: float) -> void:
 		pass
 
+## A world with an island camera (island_world.gd's pose) and the places its
+## sounds come from, by anchor (Soundscape.source_anchor).
+class PlacedWorld:
+	extends Node3D
+	var camera: Camera3D
+	var points := {}
+	func _ready() -> void:
+		camera = Camera3D.new()
+		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+		camera.size = 14.4
+		camera.position = Vector3(10, 13, 15)
+		add_child(camera)
+		camera.look_at(Vector3.ZERO)
+	func sound_point(anchor: String) -> Variant:
+		return points.get(anchor)
+
 class Tuned:
 	extends Probe
 	var clock := 0
@@ -263,6 +279,62 @@ func _sequence(seed_value: int, stage: String) -> Array:
 			trace.append([probe.reunion_voice.pitch_scale, probe.reunion_voice.volume_db])
 	probe.queue_free()
 	return trace
+
+## Directional sound: one listener on the camera's view. A cue left of the
+## focus is heard on the left, a far one is quieter, and the same turn plays
+## the same cues at the same pitches and gains with or without a world to
+## place them (only pan and fade follow the camera).
+func _check_directional() -> void:
+	var world := PlacedWorld.new()
+	root.add_child(world)
+	var view := world.camera.global_basis.orthonormalized()
+	# The camera looks at the origin, on the ground: that is its focus.
+	world.points = {"spirit:a": -view.x * 3.0, "spirit:b": view.x * 20.0, "control:west": Vector3.ZERO}
+	var placed := _tuned(4)
+	var plain := _tuned(4)
+	placed.listen_to(world)
+	await process_frame
+	var extent := world.camera.size * 0.5
+	var ear := placed.listener.global_transform
+	_check(ear.basis.is_equal_approx(view) and ear.origin.is_equal_approx(view.z * float(SoundCues.PLACE.back) * extent) and placed.listener.is_current(), "The one listener is turned with the camera, set back from its focus")
+	var turn := [["seed_thrown", "a|seed_thrown"], ["seed_caught", "b|seed_caught"], ["lever_pulled", "lever:west|lever:west"], ["island_bloomed", ""]]
+	var heard := {}
+	for probe: Tuned in [placed, plain]:
+		probe.begin_turn("the-wishing-well@1", "go-on-ahead")
+		var cues: Array = []
+		for event: Array in turn:
+			probe.consume_turn_events([event[0]], [event[1]], false)
+			var index := (probe.next_voice + probe.voices.size() - 1) % probe.voices.size()
+			var voice: Node = probe.cue_slots[index]
+			var side: float = placed.listener.to_local(voice.global_position).x if voice is Node3D else 0.0
+			cues.append([voice.stream, voice.pitch_scale, voice.volume_db, side, voice is AudioStreamPlayer3D])
+		probe.play_footstep("a")
+		var step: Node = probe.step_slots[(probe.next_step - 1) % 3]
+		cues.append([step.stream, step.pitch_scale, step.volume_db, placed.listener.to_local(step.global_position).x if step is Node3D else 0.0])
+		heard[probe] = cues
+	var near: Array = heard[placed]
+	var flat: Array = heard[plain]
+	var same := true
+	for index in range(near.size()): same = same and near[index][0] == flat[index][0] and near[index][0] != null and is_equal_approx(near[index][1], flat[index][1])
+	_check(same, "The same turn plays the same cues at the same pitches whether or not the camera places them")
+	var level := float(SoundCues.PLACE.level_db)
+	_check(near[0][3] < -0.5 and is_equal_approx(near[0][2], flat[0][2] + level), "A cue left of the camera's focus pans left, unfaded near the centre")
+	_check(near[1][3] > 0.5 and is_equal_approx(near[1][2], flat[1][2] + level + float(SoundCues.PLACE.fade_db)), "A cue far from the focus is quieter, by no more than the gentle fade")
+	_check(absf(near[2][3]) < 0.001 and is_equal_approx(near[2][2], flat[2][2] + level), "A lever at the focus is heard in the middle")
+	_check(near[0][4] and near[1][4] and near[2][4] and not near[3][4] and is_equal_approx(near[3][2], flat[3][2]), "A cue with no place plays on the plain voices as before")
+	_check(near[4][3] < -0.5 and is_equal_approx(near[4][2], flat[4][2] + level), "A pip's step is heard from where it walks")
+	# What following the camera costs: a moving camera, every frame.
+	var started := Time.get_ticks_usec()
+	for frame in range(1000):
+		world.camera.position.x += 0.001
+		placed.follow_camera()
+	var follow_usec := float(Time.get_ticks_usec() - started) / 1000.0
+	started = Time.get_ticks_usec()
+	for cue in range(1000): placed._place("spirit:a")
+	print("AFTER YOU SOUNDSCAPE: following the camera %.2f us a frame, placing a cue %.2f us" % [follow_usec, float(Time.get_ticks_usec() - started) / 1000.0])
+	_check(placed.listener.global_position.distance_to(ear.origin + Vector3(1.0, 0.0, 0.0)) < 0.01, "The listener follows the camera as it moves")
+	for node: Node in [placed, plain, world]: node.queue_free()
+	await process_frame
 
 ## A turn as [kind, cue or spirit, live role]: throws, a catch, footsteps and bridges.
 func _turn_script() -> Array:
@@ -1148,6 +1220,7 @@ func _run() -> void:
 	await _check_fixed_cues()
 	await _check_button_ticks()
 	await _check_covered()
+	await _check_directional()
 	sound.queue_free()
 	await process_frame
 	# Let the audio thread consume its queued stop commands before shutting down.

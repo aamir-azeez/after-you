@@ -2,7 +2,7 @@ extends SceneTree
 ## The Pollen line after a turn on the real room screens (relay_preview.gd,
 ## presentation/pollen_result_line.gd), with a real room session against a fake
 ## server whose turn replies carry Pollen credits:
-## - it lays out on one row in the checkpoint card, the waiting panel and the
+## - it lays out on one row in the Turn saved card, the waiting panel and the
 ##   chapter's end card, measured at the logical sizes of 1280x720, 1600x738
 ##   and 800x360 phones (canvas_items, expand, 1280x720 base), inside each
 ##   screen's scroll container; a long line wraps by words, never by letters;
@@ -339,7 +339,7 @@ func _room_flow() -> void:
 	_check(host.mode == "online_waiting" and _line(host) == null, "Reopening the room never shows the same credit again")
 	await _close(host)
 
-	# The guest's B: the checkpoint card shows its credit.
+	# The guest's B: the Turn saved card shows its credit.
 	var guest := await _open(api, store, GUEST)
 	_check(guest.mode == "ready" and guest.role == "b", "The guest follows the host's first turn")
 	var worn: Array = []
@@ -360,7 +360,7 @@ func _room_flow() -> void:
 	_press(guest, "TurnSavedWear")
 	_press(guest, "TurnSavedWear")
 	await _settle()
-	_check(worn == ["daisy"] and guest.mode == "checkpoint" and _line(guest) == null, "Wear it wears the new item once, however often it is tapped, and goes on to the checkpoint card, with no second line: " + str(worn))
+	_check(worn == ["daisy"] and guest.mode in ["ready", "online_waiting"] and guest.overlay.find_child("TurnNewsHeading", true, false) != null and _line(guest) == null, "Wear it wears the new item once, however often it is tapped, and goes on to the kept stage's page, with no second line: " + str(worn))
 	# A wear that does not go through says so; Done still goes on.
 	wear_works[0] = false
 	guest._show_turn_saved()
@@ -372,7 +372,7 @@ func _room_flow() -> void:
 	_check(guest.mode == "turn_saved" and _label_texts(guest).has(PlayerCopy.POLLEN_WEAR_FAILED) and wear.disabled and not done.disabled, "A failed wear stays on the card and says so, with Done to go on")
 	_press(guest, "TurnSavedDone")
 	await _settle()
-	_check(guest.mode == "checkpoint", "Done goes on after a failed wear")
+	_check(guest.mode in ["ready", "online_waiting"], "Done goes on after a failed wear")
 	guest._show_ready()
 	_check(guest.mode == "ready" and guest.role == "a", "Continue starts the guest's next turn")
 

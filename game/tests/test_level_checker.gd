@@ -1,8 +1,8 @@
 extends SceneTree
 ## The level checker, from the definitions and the dressing alone (no world):
-## every stage of every chapter laid out as floors and crossings, published or
-## not (superseded versions included), and a failure names the chapter, the
-## stage and the spot.
+## every stage of every chapter as its family lays it out (floors, crossings
+## and spots, services/level_layout.gd), published or not (superseded versions
+## included), and a failure names the chapter, the stage and the spot.
 ##  - Reach (tests/level_graph.gd): a floor no stage lets either pip reach;
 ##    on a stage, a control, lever or pad its owner cannot reach and stand
 ##    on, and a ring goal its pip cannot reach. The graph over-approximates
@@ -43,7 +43,6 @@ extends SceneTree
 ## tests/test_level_view.gd. KNOWN lists what fails on purpose, with why; an
 ## entry that stops failing fails the suite, so the list never goes stale.
 const Registry = preload("res://services/chapter_registry.gd")
-const Families = preload("res://services/chapter_families.gd")
 const Index = preload("res://content/chapters/index.gd")
 const LevelGraph = preload("res://tests/level_graph.gd")
 const Stages = preload("res://tests/level_tools/level_stages.gd")
@@ -53,10 +52,7 @@ const Props = preload("res://presentation/kit/props.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
-## Two props stand in each other when their footprints share more than this
-## much of the smaller one's (and their heights meet): touching leaves and a
-## lamp beside a crate are fine, one crate inside another is not.
-const PROP_SHARE := 0.3
+const PropRules = preload("res://presentation/kit/prop_rules.gd")
 ## Known failures: {failure id: why it is left}. Published worlds never change
 ## to clear one; a new chapter fixes its own.
 const KNOWN := {
@@ -243,6 +239,28 @@ const KNOWN_OWNERSHIP := [
 	"turn-of-the-tide@2 slack-water selector lock p0",
 	"turn-of-the-tide@2 slack-water selector basin p0",
 ]
+## Published spots the checker first read once their families were laid out
+## (services/level_layout.gd): each is owned by its engine's own rule (only
+## the pip whose part it is works the plate, pad or mirror; only the second
+## pip rides First Steps' lift), and nothing in its world shows why.
+const LAID_OUT_WHY := "published before the ownership rule, owned by its engine's own rule; first read by the checker when its family was laid out (2026-11-15)"
+const KNOWN_LAID_OUT := [
+	"first-steps@1 a-little-lift crossing little-lift p0",
+	"first-steps@1 a-little-lift pad lift-power p1",
+	"relay-isles@2 relay pad west-control p1",
+	"relay-isles@2 relay pad relay-control p0",
+	"relay-isles@2 garden pad west-control p1",
+	"relay-isles@2 garden pad relay-control p0",
+	"sleeping-lighthouse@2 borrowed-light selector harbour-mirror p0",
+	"sleeping-lighthouse@2 borrowed-light pad source-pad p1",
+	"sleeping-lighthouse@2 missing-piece selector court-mirror p0",
+	"sleeping-lighthouse@2 two-promises selector upper-mirror p1",
+	"sleeping-lighthouse@2 two-promises selector south-mirror p0",
+	"sleeping-lighthouse@2 after-the-first-bell selector south-selector p0",
+	"sleeping-lighthouse@2 a-welcome-left-on selector beacon-upper-mirror p0",
+	"sleeping-lighthouse@2 a-welcome-left-on selector beacon-lower-mirror p1",
+	"sleeping-lighthouse@2 a-welcome-left-on pad beacon-hold p0",
+]
 var checks := 0
 var failures := 0
 var _found: Dictionary = {}
@@ -256,9 +274,9 @@ func _run() -> void:
 	var covered := 0
 	var skipped: Array[String] = []
 	for key: String in Registry.keys():
-		if not Stages.floor_chapter(key):
+		if not Stages.laid_out(key):
 			skipped.append(key)
-			_check(Stages.NOT_FLOOR_FAMILIES.has(str(Index.data(key).family)), "%s: a chapter with no floors to check names its family in NOT_FLOOR_FAMILIES" % key)
+			_check(false, "%s: its family %s lays out no stages (services/chapter_families.gd \"layout\"), so no level tool reads it" % [key, Index.data(key).family])
 			continue
 		var started := Time.get_ticks_msec()
 		_reach(key)
@@ -268,13 +286,13 @@ func _run() -> void:
 		_props(key)
 		covered += 1
 		print("LEVEL CHECKER: %s in %d ms" % [key, Time.get_ticks_msec() - started])
-	_check(covered >= 8, "The checker walks every floor chapter (%d)" % covered)
-	for family: String in Stages.NOT_FLOOR_FAMILIES:
-		_check(Families.row(family).get("cooperative", true) == false, "%s is listed as having no floors, and is no floor family" % family)
+	_check(covered >= 11, "The checker walks every chapter (%d)" % covered)
 	for id: String in KNOWN:
 		_check(_found.has(id), "Known failure still fails, or comes off the list: %s (%s)" % [id, KNOWN[id]])
 	for id: String in KNOWN_OWNERSHIP:
 		_check(_found.has(id), "Known failure still fails, or comes off the list: %s (%s)" % [id, OWNERSHIP_WHY])
+	for id: String in KNOWN_LAID_OUT:
+		_check(_found.has(id), "Known failure still fails, or comes off the list: %s (%s)" % [id, LAID_OUT_WHY])
 	_check(_owned_seen > 50, "The ownership rule meets the published one-pip spots, so it can fail (%d)" % _owned_seen)
 	_needs_both_rule()
 	print("LEVEL CHECKER: %d chapters, skipped %s" % [covered, skipped])
@@ -288,13 +306,13 @@ func _check(ok: bool, message: String) -> void:
 		push_error(message)
 		print("FAIL: " + message)
 
-## A spot that must hold: it fails unless KNOWN (or KNOWN_OWNERSHIP) lists its id.
+## A spot that must hold: it fails unless KNOWN (or KNOWN_OWNERSHIP, KNOWN_LAID_OUT) lists its id.
 func _expect(ok: bool, id: String, message: String) -> void:
 	if not ok:
 		_found[id] = true
 		var carried := _carried_ownership(id)
-		if KNOWN.has(id) or KNOWN_OWNERSHIP.has(id) or not carried.is_empty():
-			print("KNOWN: %s (%s)" % [message, KNOWN.get(id, OWNERSHIP_WHY if carried.is_empty() else "as %s" % carried)])
+		if KNOWN.has(id) or KNOWN_OWNERSHIP.has(id) or KNOWN_LAID_OUT.has(id) or not carried.is_empty():
+			print("KNOWN: %s (%s)" % [message, KNOWN.get(id, LAID_OUT_WHY if KNOWN_LAID_OUT.has(id) else OWNERSHIP_WHY if carried.is_empty() else "as %s" % carried)])
 			ok = true
 		else: print("FAILURE ID: %s" % id)
 	_check(ok, message)
@@ -317,25 +335,14 @@ static func _carried_ownership(id: String) -> String:
 ## Fails each owned crossing, zone and control the other pip can reach on its
 ## stage: an end of the crossing, the zone's floor, the control's floor.
 func _ownership(key: String) -> void:
-	var level := Registry.definition(key)
 	var journey := Registry.is_journey(key)
-	var graph: RefCounted = LevelGraph.new(level)
-	# The floors each crossing joins, with no owners: the edges a pip could
-	# step if ownership were no rule at all.
-	var bare := level.duplicate(true)
-	for kind: String in ["bridges", "stairs"]:
-		for route: Dictionary in bare.get(kind, []): route.erase("owner_slot")
-	var physical: RefCounted = LevelGraph.new(bare)
-	var ends: Dictionary = {}
-	for pair: String in physical.build("p0"):
-		var sides := pair.split(">")
-		for index in range(2):
-			if physical.route_bit.has(sides[index]): (ends.get_or_add(sides[index], {}) as Dictionary)[sides[1 - index]] = true
-	for item: Dictionary in Stages.stages(key, level):
+	var open := OpenControls.pinned(Registry.definition(key))
+	for item: Dictionary in _stages_of(key):
 		if item.checkpoint.is_empty(): continue
 		var stage: Dictionary = item.view
 		var where := "%s %s" % [key, stage.stage_id]
-		var found: Dictionary = graph.reach(stage, item.checkpoint, journey)
+		var found: Dictionary = _graph(stage).reach(stage, item.checkpoint, journey)
+		var ends := _route_ends(stage)
 		for kind: String in ["bridges", "stairs"]:
 			for route: Dictionary in stage.get(kind, []):
 				var owner := str(route.get("owner_slot", ""))
@@ -348,7 +355,6 @@ func _ownership(key: String) -> void:
 			if owner.is_empty(): continue
 			var other := "p1" if owner == "p0" else "p0"
 			_owned(not found.floors[other].has(str(zone.surface_id)), "%s zone %s %s" % [where, zone.id, other], "%s: %s reaches %s, the floor of the zone %s that only %s may enter" % [where, other, zone.surface_id, zone.id, owner])
-		var open := OpenControls.pinned(level)
 		for kind: String in ["controls", "levers", "pressure_pads"]:
 			for entity: Dictionary in stage.get(kind, []):
 				var owner := str(entity.get("owner_slot", ""))
@@ -363,6 +369,42 @@ func _ownership(key: String) -> void:
 				if surface.is_empty(): continue
 				var other := "p1" if owner == "p0" else "p0"
 				_owned(not found.floors[other].has(surface), "%s %s %s %s" % [where, _kind_name(kind), entity.id, other], "%s: %s reaches %s, the floor of the %s %s that only %s may work; put it where only its pip goes" % [where, other, surface, _kind_name(kind), entity.id, owner])
+
+## The level graph of a plan's floors and crossings, built once per distinct
+## set of them (a chapter's stages usually share one).
+var _graphs: Dictionary = {}
+## Each chapter's stages (level_stages.gd), read once.
+var _stages: Dictionary = {}
+
+func _stages_of(key: String) -> Array:
+	if not _stages.has(key): _stages[key] = Stages.stages(key)
+	return _stages[key]
+
+func _graph(plan: Dictionary, owned: bool = true) -> RefCounted:
+	var floors: Dictionary = {}
+	for field: String in ["islands", "bridges", "stairs", "drops", "obstacles", "access_zones"]:
+		floors[field] = plan.get(field, []).duplicate(true)
+	if not owned:
+		for kind: String in ["bridges", "stairs"]:
+			for route: Dictionary in floors[kind]: route.erase("owner_slot")
+	var id := JSON.stringify(floors)
+	if not _graphs.has(id): _graphs[id] = LevelGraph.new(floors)
+	return _graphs[id]
+
+## The floors each crossing of `plan` joins, with no owners: the edges a pip
+## could step if ownership were no rule at all. Route id -> {floor id: true}.
+var _ends: Dictionary = {}
+
+func _route_ends(plan: Dictionary) -> Dictionary:
+	var physical: RefCounted = _graph(plan, false)
+	if not _ends.has(physical):
+		var ends: Dictionary = {}
+		for pair: String in physical.build("p0"):
+			var sides := pair.split(">")
+			for index in range(2):
+				if physical.route_bit.has(sides[index]): (ends.get_or_add(sides[index], {}) as Dictionary)[sides[1 - index]] = true
+		_ends[physical] = ends
+	return _ends[physical]
 
 ## The floor a control stands on: its own, else the island under it at its height.
 static func _control_floor(stage: Dictionary, entity: Dictionary) -> String:
@@ -381,20 +423,21 @@ func _owned(ok: bool, id: String, message: String) -> void:
 # --- Reach ----------------------------------------------------------------------
 
 func _reach(key: String) -> void:
-	var level := Registry.definition(key)
-	var graph: RefCounted = LevelGraph.new(level)
 	var journey := Registry.is_journey(key)
+	var open := OpenControls.pinned(Registry.definition(key))
 	var seen: Dictionary = {}
-	for item: Dictionary in Stages.stages(key, level):
+	var floors: Dictionary = {}
+	for item: Dictionary in _stages_of(key):
 		var stage: Dictionary = item.view
 		var where := "%s %s" % [key, stage.stage_id]
+		for island: Dictionary in stage.get("islands", []): floors[str(island.id)] = island
 		if item.checkpoint.is_empty():
 			_check(false, "%s: no checkpoint to open from (write the chapter's fixtures)" % where)
 			continue
+		var graph := _graph(stage)
 		var found: Dictionary = graph.reach(stage, item.checkpoint, journey)
 		for slot: String in found.floors:
 			for id: String in found.floors[slot]: seen[id] = true
-		var open := OpenControls.pinned(level)
 		for kind: String in ["controls", "levers", "pressure_pads"]:
 			for entity: Dictionary in stage.get(kind, []):
 				if open: _stand_either(graph, found, entity, where, kind, journey)
@@ -406,8 +449,8 @@ func _reach(key: String) -> void:
 			else:
 				var surface := str(goal.get("surface_id", ""))
 				_expect(found.floors.p0.has(surface) or found.floors.p1.has(surface), "%s goal %s" % [where, goal.id], "%s: neither pip reaches the goal %s's floor %s at %s" % [where, goal.id, surface, _cm(goal.position_cm)])
-	for island: Dictionary in level.islands:
-		_expect(seen.has(str(island.id)), "%s floor %s" % [key, island.id], "%s: no stage lets either pip reach the floor %s (%s)" % [key, island.id, _rect(island.rect_cm)])
+	for id: String in floors:
+		_expect(seen.has(id), "%s floor %s" % [key, id], "%s: no stage lets either pip reach the floor %s (%s)" % [key, id, _rect(floors[id].rect_cm)])
 
 ## The pip that works the entity (its owner; a goal's ringer) reaches its
 ## floor and can stand within its radius. The engines let only the owner work
@@ -451,10 +494,10 @@ func _needs_both(key: String) -> void:
 	if not OpenControls.pinned(level): return
 	var turns := OpenTurns.pinned(level)
 	var journey := Registry.is_journey(key)
-	var graph: RefCounted = LevelGraph.new(level)
-	for item: Dictionary in Stages.stages(key, level):
+	for item: Dictionary in _stages_of(key):
 		if item.checkpoint.is_empty(): continue
 		var stage: Dictionary = item.view
+		var graph := _graph(stage)
 		var where := "%s %s" % [key, stage.stage_id]
 		if turns:
 			_expect(OpenTurns.cap_valid(item.stage), "%s turn cap" % where, "%s: its turn_cap (%s) is not a whole number of turns from %d to %d" % [where, item.stage.get("turn_cap", OpenTurns.DEFAULT_CAP), OpenTurns.MIN_CAP, OpenTurns.MAX_CAP])
@@ -524,12 +567,11 @@ func _kept_crossings(key: String) -> void:
 			var opened := level.duplicate(true)
 			for other: Dictionary in opened.get(kind, []):
 				if str(other.id) == str(route.id): other.erase("owner_slot")
-			var graph: RefCounted = LevelGraph.new(opened)
 			var needed := false
 			for item: Dictionary in Stages.stages(key, opened):
 				if item.checkpoint.is_empty(): continue
 				for solo: String in (["p0", "p1"] if turns else [""]):
-					needed = needed or solo_finish(graph, item.view, item.checkpoint, journey, solo)
+					needed = needed or solo_finish(_graph(item.view), item.view, item.checkpoint, journey, solo)
 			_expect(needed, "%s kept %s" % [key, route.id], "%s: the %s %s stays %s's only, but open to both pips no stage could be finished by one pip alone; open it" % [key, kind.trim_suffix("s"), route.id, route.owner_slot])
 
 ## The probes can fail: Conservatory@1's first stage on open controls, its
@@ -540,10 +582,10 @@ func _kept_crossings(key: String) -> void:
 func _needs_both_rule() -> void:
 	var opened: Dictionary = OpenControls.pin(Registry.definition("conservatory@1").duplicate(true))
 	var stage: Dictionary = Stages.stages("conservatory@1", opened)[0]
-	_check(solo_finish(LevelGraph.new(opened), stage.view, Stages.starts_checkpoint(opened), true), "On open controls Conservatory@1's first stage can be finished by the second pip alone, so the probe can fail")
+	_check(solo_finish(_graph(stage.view), stage.view, Stages.starts_checkpoint(opened), true), "On open controls Conservatory@1's first stage can be finished by the second pip alone, so the probe can fail")
 	var home := Registry.definition("long-way-home@3")
-	var path: Dictionary = Stages.stages("long-way-home@3", home)[0]
-	var graph: RefCounted = LevelGraph.new(home)
+	var path: Dictionary = _stages_of("long-way-home@3")[0]
+	var graph := _graph(path.view)
 	var first := str(path.view.get("first_player_slot", "p0"))
 	var second := "p1" if first == "p0" else "p0"
 	_check(OpenTurns.pinned(home) and solvable(graph, path.view, path.checkpoint, true) and not solo_finish(graph, path.view, path.checkpoint, true, second), "Long Way Home@3's first stage on open turns is solvable and the second pip never finishes it alone")
@@ -554,9 +596,10 @@ func _needs_both_rule() -> void:
 	var dark: Dictionary = path.view.duplicate(true)
 	dark.goal_policy = {"kind": "ring", "when": {"control_id": "path-selector", "value": "nowhere"}}
 	_check(not solvable(graph, dark, path.checkpoint, true), "A goal whose light no selector gives is unsolvable, so the solvable probe can fail")
-	var place: Dictionary = Stages.stages("long-way-home@3", home)[1].view.duplicate(true)
+	var later: Dictionary = _stages_of("long-way-home@3")[1]
+	var place: Dictionary = later.view.duplicate(true)
 	place.goal_policy = {"kind": "ring", "when": {"pad_id": "near-window"}}
-	_check(not solvable(graph, place, Stages.stages("long-way-home@3", home)[1].checkpoint, true), "A goal lit only while someone holds a pad away from it is unsolvable: both pips stand at the goal")
+	_check(not solvable(_graph(later.view), place, later.checkpoint, true), "A goal lit only while someone holds a pad away from it is unsolvable: both pips stand at the goal")
 	_check(OpenTurns.cap_valid({"turn_cap": 10}) and OpenTurns.cap_valid({"turn_cap": 11}) and not OpenTurns.cap_valid({"turn_cap": 22}) and not OpenTurns.cap_valid({"turn_cap": 1}) and OpenTurns.cap_valid({}), "A cap is a whole number from 2 to 20; a stage with none gets 10")
 
 # --- Props ----------------------------------------------------------------------
@@ -564,25 +607,21 @@ func _needs_both_rule() -> void:
 func _props(key: String) -> void:
 	var data := Dressing.for_key(key)
 	if data.get("props", {}).is_empty(): return
-	var level := Registry.definition(key)
-	var heights: Dictionary = {}
-	for island: Dictionary in level.islands: heights[str(island.id)] = float(island.get("height_cm", 0)) / 100.0
-	for stage: Dictionary in level.stages:
-		var where := "%s %s" % [key, stage.id]
+	for item: Dictionary in _stages_of(key):
+		var where := "%s %s" % [key, item.stage.id]
+		var heights := PropRules.heights(item.view)
 		var solid: Array = []
-		for spec: Dictionary in Props.expand(Dressing.stage_props(data, str(stage.id))):
-			var extent := Props.extent(spec)
-			if bool(extent.flat) or str(spec.get("kind", "")) == "bank": continue
-			var base := float(heights.get(str(spec.get("surface", "")), 0.0)) + float(extent.base)
-			solid.append({"spec": spec, "rect": extent.rect, "round": _round(spec), "low": base, "high": base + float(extent.height)})
+		for spec: Dictionary in Props.expand(Dressing.stage_props(data, str(item.stage.id))):
+			var piece := PropRules.solid(spec, heights)
+			if not piece.is_empty(): solid.append(piece.merged({"spec": spec}))
 		for a in range(solid.size()):
 			for b in range(a + 1, solid.size()):
 				var one: Dictionary = solid[a]
 				var two: Dictionary = solid[b]
 				if one.high <= two.low + 0.01 or two.high <= one.low + 0.01: continue
-				var share := _share(one, two)
+				var share := PropRules.share(one, two)
 				var id := "%s props %s and %s" % [where, _prop(one.spec), _prop(two.spec)]
-				_expect(share <= PROP_SHARE, id, "%s: the %s and the %s stand in each other (%d%% of the smaller)" % [where, _prop(one.spec), _prop(two.spec), roundi(share * 100.0)])
+				_expect(share <= PropRules.PROP_SHARE, id, "%s: the %s and the %s stand in each other (%d%% of the smaller)" % [where, _prop(one.spec), _prop(two.spec), roundi(share * 100.0)])
 
 ## The prop rule on small cases, so it can fail at all.
 func _share_rule() -> void:
@@ -590,38 +629,8 @@ func _share_rule() -> void:
 	var inside := {"rect": Rect2(-0.1, -0.1, 0.2, 0.4), "round": false}
 	var beside := {"rect": Rect2(0.15, -0.2, 0.4, 0.4), "round": true}
 	var apart := {"rect": Rect2(1.0, 1.0, 0.4, 0.4), "round": true}
-	_check(_share(crate, crate) > 0.99 and _share(crate, inside) > PROP_SHARE, "Two props in one place, or one inside another, stand in each other")
-	_check(_share(crate, beside) <= PROP_SHARE and _share(crate, apart) == 0.0, "Props that only touch, or stand apart, pass")
-
-## Round kinds keep a circle footprint; boxes and lines keep their rectangle.
-static func _round(spec: Dictionary) -> bool:
-	return str(spec.get("kind", "")) not in ["bench", "cottage", "rug", "path", "planter", "boat", "lobster_pot", "shelf", "frame", "fence", "hedge", "wall"]
-
-## How much of the smaller footprint the two share, from 0 to 1 (a circle is
-## sampled on a 9 by 9 grid over its square).
-static func _share(one: Dictionary, two: Dictionary) -> float:
-	var small: Dictionary = one if _area(one) <= _area(two) else two
-	var large: Dictionary = two if small == one else one
-	if not (small.rect as Rect2).intersects(large.rect): return 0.0
-	var inside := 0
-	var total := 0
-	var rect: Rect2 = small.rect
-	for i in range(9):
-		for j in range(9):
-			var point := rect.position + rect.size * Vector2((float(i) + 0.5) / 9.0, (float(j) + 0.5) / 9.0)
-			if not _covers(small, point): continue
-			total += 1
-			if _covers(large, point): inside += 1
-	return float(inside) / float(maxi(total, 1))
-
-static func _covers(item: Dictionary, point: Vector2) -> bool:
-	var rect: Rect2 = item.rect
-	if not item.round: return rect.has_point(point)
-	return point.distance_to(rect.get_center()) <= rect.size.x * 0.5
-
-static func _area(item: Dictionary) -> float:
-	var rect: Rect2 = item.rect
-	return rect.get_area() * (PI / 4.0 if item.round else 1.0)
+	_check(PropRules.share(crate, crate) > 0.99 and PropRules.share(crate, inside) > PropRules.PROP_SHARE, "Two props in one place, or one inside another, stand in each other")
+	_check(PropRules.share(crate, beside) <= PropRules.PROP_SHARE and PropRules.share(crate, apart) == 0.0, "Props that only touch, or stand apart, pass")
 
 static func _prop(spec: Dictionary) -> String:
 	return "%s at %s" % [spec.get("kind", "?"), _cm(spec.get("at", spec.get("from", [0, 0])))]

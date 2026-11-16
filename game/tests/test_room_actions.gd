@@ -18,8 +18,8 @@ const GOLDEN := {
 	"ready_panel": {
 		"header": ["refresh"],
 		"primary": ["start_over_agree", "resume", "record"],
-		"turn": ["start_over_keep", "redo_self_keep", "redo", "redo_status", "start_over", "start_over_status", "redo_retry"],
-		"pair": ["room_options"],
+		"turn": ["start_over_keep", "redo_self_keep", "redo_self", "redo", "redo_status", "start_over", "start_over_status", "redo_retry"],
+		"pair": ["room_options", "local_replays"],
 		"options": ["share", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"ready_panel_invite": {
@@ -54,19 +54,27 @@ const GOLDEN := {
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
-		"turn": ["start_over_agree", "start_over_keep", "redo_self_keep", "resume", "record", "redo", "redo_status", "start_over", "start_over_status", "redo_retry", "refresh", "local_replays", "restart", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["start_over_agree", "start_over_keep", "redo_self_keep", "resume", "record", "redo_self", "redo", "redo_status", "start_over", "start_over_status", "redo_retry", "refresh", "local_replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"waiting_card": {
 		"invite": ["copy_code"],
 		"turn": ["check_saved", "keep_held", "redo_play", "redo_keep", "start_over_agree", "start_over_keep", "redo_self", "start_over", "start_over_status", "redo_retry", "alerts", "notify", "refresh", "share"],
 		"more": ["replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
+	"complete_panel": {
+		"primary": ["hard_again", "new_room"],
+		"turn": ["redo_self", "start_over"],
+		"pair": ["replays", "local_replays", "room_options"],
+		"options": ["photo", "add_friend", "friend_requested", "safety"],
+	},
 	"complete": {
-		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["hard_again", "redo_self", "start_over", "replays", "local_replays", "new_room", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 }
 const PANEL_SLOTS := ["header", "status", "invite", "primary", "turn", "pair", "options"]
 const CARD_SLOTS := ["invite", "turn", "more"]
+## A panel's drawn rows in screen order (the header's icons and Room options' sheet aside).
+const PANEL_ROWS := ["invite", "primary", "turn", "pair"]
 
 var checks := 0
 var failures := 0
@@ -132,12 +140,13 @@ func _layout() -> void:
 	_check(RoomActions.SECTIONS.partner.title == "Friends" and RoomActions.ACTIONS.add_friend.section == "partner" and RoomActions.ACTIONS.friend_requested.section == "partner", "Add friend and Request sent sit under Room partner")
 	_check([RoomActions.SECTIONS.invite.title, RoomActions.SECTIONS.turns.title, RoomActions.SECTIONS.chapter.title, RoomActions.SECTIONS.safety.title] == ["Invite", "Turns", "Chapter", "Safety"], "The owner's section headings")
 	_check(RoomActions.SECTIONS.safety.get("danger", false) and RoomActions.SECTIONS.values().filter(func(section: Dictionary): return section.get("danger", false)).size() == 1, "Only Safety is drawn in the warning colour")
-	_check(RoomActions.REDO_ACTIONS == ["redo", "redo_status", "redo_retry", "solo_redo"], "Pause and review cards add the redo rows")
+	_check(RoomActions.REDO_ACTIONS == ["redo", "redo_status", "redo_retry"], "Pause and review cards add the room's redo rows, as the room's cards do")
 	# The looks that were screen code: the taller cream Record, the icon rows,
 	# the invitation field and Share's line, and the Notifications heading.
 	var record := RoomActions.look("ready_panel", "primary", false)
 	_check(record.cream and record.icon and record.height == 64 and RoomActions.look("ready_panel", "primary", true).height == 54, "A panel's primary rows are cream, with an icon, 64 tall (54 on a short screen)")
 	_check(RoomActions.look("waiting_panel", "pair", false).fill and RoomActions.look("ready_panel", "turn", false).height == 52 and RoomActions.look("ready_panel", "header", false).icon_only, "Outlined panel rows are 52 tall, the last line's rows share it, and the header is icon only")
+	_check(not RoomActions.look("ready_panel", "turn", false).cream and not RoomActions.look("complete_panel", "pair", false).cream and not RoomActions.look("ready_card", "turn", false).has("cream"), "Turn and pair rows stay outlined under the cream Record; a card row keeps its own look")
 	_check(RoomActions.look("ready_panel_invite", "invite", false).field == 56 and RoomActions.look("ready_panel_invite", "invite", true).field == 50 and not RoomActions.look("ready_panel_invite", "invite", false).has("line"), "The panel's invitation field is 56 tall (50 short) and Share has no line under it")
 	var card := RoomActions.look("waiting_card", "turn", true)
 	_check(card.height == 50 and card.field == 52 and card.line and card.heading and not card.has("icon"), "Every card slot draws plain 50 tall rows, the 52 field, Share's line and the Notifications heading")
@@ -156,11 +165,18 @@ func _facts() -> void:
 		return false
 	_check(RoomActions.shown("ready_card", "turn", none) == ["record", "back"], "With no facts the ready card is Record and Back")
 	_check(not read.has("pending") and not read.has("watchable"), "Facts after a failed one are not read")
-	var solo := _facts_from({"solo": true, "restart": true, "solo_redo": true})
-	_check(RoomActions.shown("ready_card", "turn", solo) == ["record", "restart", "solo_redo", "back"], "A solo second turn: Record, Restart chapter, Redo, Back")
-	solo = _facts_from({"solo": true, "watchable": true, "solo_redo": true, "draft": true})
-	_check(RoomActions.shown("ready_card", "turn", solo) == ["resume", "record", "local_replays", "solo_redo", "back"], "A solo draft with an archived attempt adds Resume and Replays")
-	_check(RoomActions.shown("complete", "turn", solo) == ["local_replays", "checkpoints", "solo_redo", "back"], "A finished solo chapter: Replays, Retry, Redo, Back")
+	var solo := _facts_from({"solo": true, "redo_self": true, "start_over_ask": true})
+	_check(RoomActions.panel_state("ready", solo) == "ready_panel", "A solo turn is the room's my turn column")
+	_check(RoomActions.shown("ready_panel", "primary", solo) == ["record"] and RoomActions.shown("ready_panel", "turn", solo) == ["redo_self", "start_over"] and RoomActions.shown("ready_panel", "pair", solo).is_empty(), "A solo saved turn: Record, Play my turn again, Start over")
+	_check(RoomActions.shown("ready_card", "turn", solo) == ["record", "redo_self", "start_over", "back"], "Its narrow card: Record, Play my turn again, Start over, Back")
+	_check(RoomActions.shown("ready_panel", "turn", _facts_from({"solo": true, "replacing": true})) == ["redo_self_keep"], "A turn played again: Keep it as it is")
+	solo = _facts_from({"solo": true, "watchable": true, "redo_self": true, "start_over_ask": true, "draft": true})
+	_check(RoomActions.shown("ready_card", "turn", solo) == ["resume", "record", "redo_self", "start_over", "local_replays", "back"], "A solo draft with a kept stage adds Resume and Replays")
+	_check(RoomActions.shown("ready_panel", "pair", solo) == ["local_replays"], "On the panel Replays has the last line")
+	_check(RoomActions.shown("complete_panel", "turn", solo) == ["redo_self", "start_over"] and RoomActions.shown("complete_panel", "pair", solo) == ["local_replays"] and RoomActions.shown("complete_panel", "primary", solo).is_empty(), "A finished solo chapter: Play my turn again, Start over, Replays")
+	_check(RoomActions.shown("complete", "turn", solo) == ["redo_self", "start_over", "local_replays", "back"], "Its narrow card adds Back")
+	var hard_solo := _facts_from({"solo": true, "hard": true, "redo_self": true, "start_over_ask": true})
+	_check(RoomActions.shown("ready_panel", "turn", hard_solo).is_empty() and RoomActions.shown("complete", "turn", hard_solo) == ["hard_again", "back"], "A hard run offers neither")
 	var host := _facts_from({"online": true, "invited": true, "share": true, "my_turn": true, "photo": true, "about": true, "options": true})
 	_check(RoomActions.panel_state("ready", host) == "ready_panel_invite", "A host before the friend joins is on the invite column")
 	_check(RoomActions.shown("ready_panel_invite", "invite", host) == ["copy_code", "share"], "A host before the friend joins copies the code and shares inline")
@@ -219,15 +235,15 @@ func _facts() -> void:
 
 ## Labels come from the shared buttons or the row.
 func _labels() -> void:
-	_check(RoomActions.label("record") == "Record" and RoomActions.label("refresh") == "Refresh" and RoomActions.label("checkpoints") == "Retry", "Shared buttons keep their own labels")
+	_check(RoomActions.label("record") == "Record" and RoomActions.label("refresh") == "Refresh", "Shared buttons keep their own labels")
 	_check(RoomActions.label("share") == "Share current room" and RoomActions.SHARE_SCOPE == "All friends", "Share keeps its labels")
-	_check(RoomActions.label("solo_redo") == PlayerCopy.SOLO_REDO_ACTION, "Solo redo keeps its label")
+	_check(RoomActions.label("redo_self") == "Play my turn again" and RoomActions.label("start_over") == "Start over", "Solo and rooms share Play my turn again and Start over")
 	_check(RoomActions.label("redo") == "Ask for a redo" and RoomActions.label("redo_play") == "Play my turn again" and RoomActions.label("redo_keep") == "Keep it as it is" and RoomActions.label("redo_retry") == "Retry request", "The redo rows' labels")
 	for path: String in ["res://presentation/friends_screen.gd"]:
 		var text := FileAccess.get_file_as_string(path)
 		_check(not text.contains("\"Share current room\"") and not text.contains("\"All friends\"") and not text.contains("\"Ask for a redo\"") and not text.contains("\"Play my turn again\""), "Uses the table's Share and redo labels: " + path)
 
-## The solo relay chapter's cards draw the table's rows, in order.
+## The solo relay chapter's panel draws the table's rows, in order.
 func _solo_cards() -> void:
 	var path := "user://room-actions-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
 	paths.append(path)
@@ -240,16 +256,16 @@ func _solo_cards() -> void:
 	app.set_process(false)
 	app.set_physics_process(false)
 	for frame in range(3): await process_frame
-	_check(_texts(app) == ["Record", "Restart chapter", "Back"], "The older rules' first turn: Record, Restart chapter, Back: " + str(_texts(app)))
-	_check(_texts(app) == _table_texts(app, "ready_card", ["turn"]), "The first ready card is exactly the table's rows")
+	_check(_texts(app) == ["Record", "Start over"], "The older rules' first turn: Record, Start over: " + str(_texts(app)))
+	_check(_texts(app) == _table_texts(app, "ready_panel", PANEL_ROWS), "The first panel is exactly the table's rows")
 	_check(app.journey.accept_recording(_fixture("relay-a")), "The first turn is saved")
 	app._show_ready()
-	_check(_texts(app) == ["Record", "Restart chapter", PlayerCopy.SOLO_REDO_ACTION, "Back"], "The second turn's card follows the table: " + str(_texts(app)))
-	_check(_texts(app) == _table_texts(app, "ready_card", ["turn"]), "The ready card is exactly the table's rows")
+	_check(_texts(app) == ["Record", PlayerCopy.REDO_PLAY_AGAIN, "Start over"], "The second turn's panel follows the table: " + str(_texts(app)))
+	_check(_texts(app) == _table_texts(app, "ready_panel", PANEL_ROWS), "The panel is exactly the table's rows")
 	for name: String in ["relay-b", "garden-a", "garden-b"]: _check(app.journey.accept_recording(_fixture(name)), "Saved " + name)
 	app._show_ready()
-	_check(app.mode == "complete" and _texts(app) == ["Replays", "Retry", PlayerCopy.SOLO_REDO_ACTION, "Back"], "The finished card follows the table: " + str(_texts(app)))
-	_check(_texts(app) == _table_texts(app, "complete", ["turn"]), "The finished card is exactly the table's rows")
+	_check(app.mode == "complete" and _texts(app) == [PlayerCopy.REDO_PLAY_AGAIN, "Start over", "Replays"], "The finished panel follows the table: " + str(_texts(app)))
+	_check(_texts(app) == _table_texts(app, "complete_panel", PANEL_ROWS), "The finished panel is exactly the table's rows")
 	app.queue_free()
 	for frame in range(3): await process_frame
 
@@ -261,7 +277,8 @@ func _table_texts(app: Node, state: String, slots: Array) -> Array:
 	return texts
 
 func _texts(app: Node) -> Array:
-	return app.overlay.find_children("*", "Button", true, false).filter(func(button: Button): return button.is_visible_in_tree()).map(func(button: Button): return button.text)
+	# The panel's Back is an icon alone.
+	return app.overlay.find_children("*", "Button", true, false).filter(func(button: Button): return button.is_visible_in_tree() and not button.text.is_empty()).map(func(button: Button): return button.text)
 
 func _facts_from(values: Dictionary) -> Callable:
 	return func(name: String, _state: String) -> bool: return values.get(name, false)

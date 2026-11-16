@@ -100,6 +100,7 @@ func load_data() -> void:
 	_loaded = true
 	_live_simulation = null
 	_draft_replay_verified = true
+	_replace = {}
 	_verified_turns.clear()
 	last_error = ""
 	read_only = false
@@ -270,6 +271,11 @@ func save_draft(recording: Dictionary) -> bool:
 			return false
 	var next := _state.duplicate(true)
 	next.draft = recording.duplicate(true)
+	if replacing():
+		_keep_replacing_draft(next)
+		_draft_replay_verified = true
+		_live_simulation = null
+		return true
 	# Accepted evidence and checkpoint are unchanged and already verified.
 	# Avoid replaying the same candidate twice inside a single explicit save.
 	var saved := _write_verified_state(next, _checkpoint)
@@ -370,6 +376,9 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 	## written is skipped: the next one holds everything this one would.
 	if periodic and _draft_writer != null and _draft_writer.is_alive():
 		return true
+	# A turn played again keeps its draft in memory, saved on pause only.
+	if periodic and replacing():
+		return true
 	if not finish_live_draft_save():
 		return false
 
@@ -388,6 +397,10 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 	if not built.ok:
 		last_error = str(built.error)
 		return false
+	if replacing():
+		_keep_replacing_draft(built.next)
+		_draft_replay_verified = false
+		return true
 	var saved := _write_verified_state(built.next, _checkpoint)
 	if saved:
 		_draft_replay_verified = false
@@ -503,8 +516,14 @@ func accept_recording(recording: Dictionary) -> bool:
 	if not verdict.valid:
 		last_error = str(verdict.error)
 		return false
+	# A turn played again replaces the saved one here. A reopened stage keeps
+	# the attempt it replaces as an archive first, as a checkpoint retry does.
+	if replacing() and _replace.plan.kind == "stage":
+		last_error = Archive.save(_path, "relay", _replace.state, MAX_SAVE_BYTES, MAX_ARCHIVED_ATTEMPTS)
+		if not last_error.is_empty(): return false
 	var saved := _write_verified_state(next, verdict.checkpoint)
 	if saved:
+		_replace = {}
 		_live_simulation = null
 		_draft_replay_verified = true
 	return saved
@@ -693,9 +712,6 @@ func can_restart() -> bool:
 func simulation_version() -> int:
 	return int(_state.simulation_version) if _loaded and not read_only else -1
 
-func restart_upgrades_rules() -> bool:
-	return can_restart() and _restart_rules_version() != Registry.preferred_rules(_chapter_key)
-
 func _restart_rules_version() -> int:
 	var preferred := Registry.preferred_rules(_chapter_key)
 	var current := simulation_version()
@@ -707,6 +723,7 @@ func _restart_rules_version() -> int:
 	return current
 
 func fork_from_stage(index: int) -> bool:
+	end_replace()
 	finish_live_draft_save()
 	_ensure_loaded()
 	if read_only: return false
@@ -734,13 +751,13 @@ func fork_from_stage(index: int) -> bool:
 	_draft_replay_verified = true
 	return true
 
-## Solo "Redo my previous turn": what one step back would take back, for the
-## offer only. Like can_restart it never loads or writes. "first_turn" clears
-## this stage's accepted first turn; "pass" (open turns) clears the stage's
-## latest pass, so the turn before it is the memory again; "stage" reopens the
-## last saved stage at its closing turn, with its earlier turns restored. {}
-## before any turn is saved.
-## The remaining fields let redo_previous refuse an offer that went stale.
+## Solo Play my turn again: what one step back would take back, for the
+## offer only. Like can_restart it never loads or writes. "first_turn" plays
+## this stage's accepted first turn again; "pass" (open turns) plays the
+## stage's latest pass again, so the turn before it is the memory; "stage"
+## reopens the last saved stage at its closing turn, with its earlier turns
+## restored. {} before any turn is saved.
+## The remaining fields let begin_replace refuse an offer that went stale.
 ## A stage is not offered while the archive has no room for the attempt it
 ## would keep.
 func redo_plan() -> Dictionary:
@@ -755,14 +772,19 @@ func redo_plan() -> Dictionary:
 	return {"kind": kind, "stage_index": count if first_turn else count - 1, "pairs": count,
 		"checkpoint": str(_checkpoint.get("checkpoint_hash", "")), "turn": str(taken.get("recording_hash", "")), "drops_draft": not _state.draft.is_empty()}
 
-## Takes back exactly the turn redo_plan() named, and only while it still names
-## it. Rules, earlier pairs and keepsakes stay as they are. Reopening a stage
-## keeps the attempt it replaces as an archive first, as a checkpoint retry
-## does; a failed check, archive or write leaves the journey as it was.
-func redo_previous(expected: Dictionary) -> bool:
+## Play my turn again (presentation/redo_flow.gd), solo, as a room's
+## coordinator plays it: while it lasts this journey stands, in memory only,
+## where exactly the turn redo_plan() named is taken back. Its drafts stay in
+## memory too. The turn saved next replaces the taken-back one in one write
+## (accept_recording); Keep it as it is (end_replace), leaving or a reload ends
+## it and the saved turn stays as it was. Rules, earlier pairs and keepsakes
+## never change here.
+var _replace: Dictionary = {}
+
+func begin_replace(expected: Dictionary) -> bool:
 	finish_live_draft_save()
 	_ensure_loaded()
-	if read_only: return false
+	if read_only or replacing(): return false
 	var plan := redo_plan()
 	if plan.is_empty() or plan != expected:
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_66C3BEF32753
@@ -794,13 +816,31 @@ func redo_previous(expected: Dictionary) -> bool:
 	if not checked.valid:
 		last_error = str(checked.error)
 		return false
-	if plan.kind == "stage":
-		last_error = Archive.save(_path, "relay", _state, MAX_SAVE_BYTES, MAX_ARCHIVED_ATTEMPTS)
-		if not last_error.is_empty(): return false
-	if not _write_verified_state(next, checked.checkpoint): return false
+	_replace = {"plan": plan, "state": _state, "checkpoint": _checkpoint, "draft_verified": _draft_replay_verified}
+	_state = next
+	_checkpoint = checked.checkpoint.duplicate(true)
 	_live_simulation = null
 	_draft_replay_verified = true
+	last_error = ""
 	return true
+
+## Keep it as it is: back to the saved turn, as it was before Play my turn again.
+func end_replace() -> void:
+	if _replace.is_empty(): return
+	finish_live_draft_save()
+	_state = _replace.state
+	_checkpoint = _replace.checkpoint
+	_draft_replay_verified = _replace.draft_verified
+	_replace = {}
+	_live_simulation = null
+
+func replacing() -> bool:
+	return not _replace.is_empty()
+
+## A draft played while replacing stays in memory with the turn it would replace.
+func _keep_replacing_draft(next: Dictionary) -> void:
+	_state = next
+	last_error = ""
 
 func archived_attempts() -> Array[Dictionary]:
 	_ensure_loaded()

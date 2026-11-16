@@ -4,7 +4,7 @@ extends SceneTree
 ## as it shuts. The turn then ends on the world showing the spirit go under
 ## (camera, face, ring, bubbles), then the ending's beat (badge and line over
 ## the dimmed world), then the drowned card (turn_endings.gd): the line as its
-## title, Retry first, Preview beside Redo my previous turn, Back, and no
+## title, Retry first, Preview beside Play my turn again, Back, and no
 ## Save turn. The redo really asks to go back, Back during the beat lands on
 ## the card, and nothing of the drowned turn is kept.
 const KEY := "turn-of-the-tide@2"
@@ -119,18 +119,18 @@ func _run() -> void:
 	print("REVIEW CARD ", texts)
 	var title: Node = screen.find_child("EndingTitle", true, false)
 	_check(title is Label and (title as Label).text == PlayerCopy.JOURNEY_DROWNED_YOU and screen.find_child("EndingBand", true, false) != null, "The card's title is the line, in its band: " + PlayerCopy.JOURNEY_DROWNED_YOU)
-	for want: String in ["Retry", "Preview", PlayerCopy.SOLO_REDO_ACTION, "Back"]:
+	for want: String in ["Retry", "Preview", PlayerCopy.REDO_PLAY_AGAIN, "Back"]:
 		_check(texts.has(want), "The drowned turn's card offers " + want)
 	var retry := _button(screen, "Retry")
 	_check(retry != null and retry.get_meta("action_id", "") == "try_again", "Retry is the card's primary button")
 	_check(_button(screen, "Save turn") == null and not texts.has(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5), "Save turn and the usual review title are not there")
 	var preview_row: Node = _button(screen, "Preview").get_parent() if _button(screen, "Preview") != null else null
-	_check(preview_row is HBoxContainer and _button(screen, PlayerCopy.SOLO_REDO_ACTION) != null and _button(screen, PlayerCopy.SOLO_REDO_ACTION).get_parent() == preview_row, "Preview and Redo my previous turn sit side by side")
-	var redo := _button(screen, PlayerCopy.SOLO_REDO_ACTION)
+	_check(preview_row is HBoxContainer and _button(screen, PlayerCopy.REDO_PLAY_AGAIN) != null and _button(screen, PlayerCopy.REDO_PLAY_AGAIN).get_parent() == preview_row, "Preview and Play my turn again sit side by side")
+	var redo := _button(screen, PlayerCopy.REDO_PLAY_AGAIN)
 	if redo != null:
 		redo.pressed.emit()
 		var after := _texts(screen)
-		_check(after.any(func(text: String) -> bool: return text.begins_with("Record your path again") or text.begins_with("Go back to stage") or text == PlayerCopy.SOLO_REDO_FIRST_TURN_TITLE), "Redo my previous turn asks to go back (%s)" % str(after))
+		_check(screen.journey.replacing() and screen.role == "a" and after.has(PlayerCopy.REDO_KEEP), "Play my turn again reopens the path before it, with Keep it as it is (%s)" % str(after))
 	root.remove_child(screen)
 	screen.free()
 	await _memory_line(level, initial)

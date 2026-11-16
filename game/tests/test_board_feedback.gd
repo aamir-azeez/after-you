@@ -17,6 +17,7 @@ const Client = preload("res://services/leaderboard_client.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
 const Screen = preload("res://presentation/leaderboard_screen.gd")
 const Celebration = preload("res://presentation/leaderboard_celebration.gd")
+const Toast = preload("res://presentation/toast.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Storage = preload("res://services/local_save.gd")
@@ -73,22 +74,22 @@ class FakeSound extends Node:
 	var cues: Array = []
 	func play_fixed_cue(key: String, _variant: int = 0) -> void: cues.append(key)
 
-## The parts of a room's screen (relay_preview.gd) the flow reads: its ui, its soundscape and leave().
+## The parts of a room's screen (relay_preview.gd) the flow reads: its ui and its soundscape.
 class FakeRoom extends Node:
 	var ui := Control.new()
 	var soundscape := FakeSound.new()
 	var card := VBoxContainer.new()
 	var host: Node
-	var stays := false
 	func _init() -> void:
 		ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		add_child(ui)
 		ui.add_child(card)
 		add_child(soundscape)
-	func leave() -> bool:
-		if stays: return false
-		host.relay_child = null
-		return true
+
+## Friends may open once no room is up (notification_flow.gd friends_ready).
+class FakeNotifications extends RefCounted:
+	var host: Node
+	func friends_ready() -> bool: return not is_instance_valid(host.relay_child)
 
 ## The parts of Main presentation/board_feedback_flow.gd reads.
 class FakeHost extends Node:
@@ -100,6 +101,11 @@ class FakeHost extends Node:
 	var free_for_card := true
 	var toasts: Array = []
 	var boards_viewed: Array = []
+	var toast := Toast.new()
+	var notification_flow := FakeNotifications.new()
+	func _init() -> void:
+		notification_flow.host = self
+		add_child(toast)
 	func _home_free_for_card() -> bool: return free_for_card
 	func _view_leaderboard(board: String) -> void: boards_viewed.append(board)
 	func _home_settling() -> bool: return false
@@ -455,16 +461,14 @@ func _end_of_run_celebration() -> void:
 	shown = room.ui.find_child(Celebration.NODE_NAME, false, false)
 	_check(shown != null and shown.placing.entry_id == kept_entry and shown.placing.rank == 1 and room.soundscape.cues.back() == "ui_first", "the board this phone kept places it first straight away")
 	_check(shown != null and shown.placing.gold_leaf and shown.get("_gold"), "a waiting first place is celebrated with the Gold leaf, as the board shows it here")
-	room.stays = true
 	shown.find_child("CelebrationViewBoard", true, false).pressed.emit()
-	_check(host.boards_viewed.is_empty() and host.relay_child == room, "a room that can't close yet keeps the player in it")
-	room.stays = false
+	_check(host.boards_viewed.is_empty() and host.relay_child == room, "View board keeps the player in the room")
 	await _frames(5)
 	_check(not Celebration.showing(room.ui), "the card's own read after it celebrates nothing more")
 	Placings.use_shared(Placings.new(PLACINGS_PATH))
 	_check(Placings.shared().was_shown(OWNER, kept_entry), "shown survives a restart")
 	line.queue_free()
-	# View board leaves the room, then opens the board.
+	# View board keeps the room and its card; the board opens once the room is left.
 	_fresh_runs()
 	var view_room := "C3C3C3C3C3C3C3C3C3C3C3"
 	Client.shared(host.api, OWNER)._views.clear()
@@ -474,7 +478,13 @@ func _end_of_run_celebration() -> void:
 	shown = room.ui.find_child(Celebration.NODE_NAME, false, false)
 	_check(shown != null and shown.placing.rank == 1, "a run placing first celebrates")
 	if shown != null: shown.find_child("CelebrationViewBoard", true, false).pressed.emit()
-	_check(host.boards_viewed == [LIGHTHOUSE_BOARD] and host.relay_child == null, "View board leaves the room, then opens its board: %s" % [host.boards_viewed])
+	await _frames(2)
+	_check(host.boards_viewed.is_empty() and host.relay_child == room and is_instance_valid(line) and line.is_inside_tree(), "View board never closes the room under its result card: %s" % [host.boards_viewed])
+	host.relay_child = null
+	await _frames(2)
+	_check(host.boards_viewed == [LIGHTHOUSE_BOARD], "and opens its board once the room is left: %s" % [host.boards_viewed])
+	await _frames(2)
+	_check(host.boards_viewed.size() == 1, "once")
 	host.relay_child = room
 	line.queue_free()
 	await _frames(1)
