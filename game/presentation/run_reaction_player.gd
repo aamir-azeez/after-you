@@ -4,7 +4,9 @@ extends RefCounted
 ## live, on retry and in its replays, and the shared replay view. It records the
 ## live turn's own reactions and plays recorded tracks back on their spirits, at
 ## the tick each was made, so the friend's memory, a retry and a replay make
-## the same face, bubble and sound. Presentation only: it reads ticks and never
+## the same face, bubble and sound. Home holds one too (presentation/home_stage.gd)
+## for the player's own pip on Home's own clock, so its React pill keeps a
+## turn's cooldown and cap. Presentation only: it reads ticks and never
 ## touches the simulation, its recording, timers or goal credit.
 ##
 ## A reaction shows as the spirit's face for FACE_SECONDS (SpiritVisual's timed
@@ -17,6 +19,7 @@ extends RefCounted
 ##   play(recording, track, caption)  a recorded turn stepped alongside it
 ##   step(tick)                       after each shown tick
 ##   react(tick, face)                the player's own reaction now
+##   show_pill(pill, tick)            the React pill's cooldown on that tick
 const Track = preload("res://services/run_reaction_track.gd")
 const Catalog = preload("res://services/reaction_catalog.gd")
 const Look = preload("res://presentation/spirit_look.gd")
@@ -31,6 +34,9 @@ var settings: Dictionary = {}
 ## The live turn's own track, and the slot of the spirit it belongs to.
 var live := Track.new()
 var live_slot := ""
+## A world that keys its pips by role (Home's island: "a", "b") maps each slot
+## to its key in world.actors; a chapter world keys them by slot.
+var actor_keys: Dictionary = {}
 ## Recorded turns being played: {slot, track, cursor, caption}.
 var _runs: Array = []
 
@@ -63,17 +69,21 @@ func react(tick: int, face: String) -> bool:
 	if is_instance_valid(soundscape) and soundscape.has_method("tap_haptic"): soundscape.tap_haptic()
 	return true
 
+## The React pill (presentation/run_reactions.gd) on `tick`: the cooldown still
+## ahead, and greyed once the live track is full.
+func show_pill(pill: Control, tick: int) -> void:
+	if is_instance_valid(pill): pill.show_cooldown(live.cooldown(tick), live.full())
+
 ## Shows the reaction at `index` of `track` on the spirit in `slot`.
 func show_reaction(slot: String, track: Array, index: int, caption: String = "") -> void:
 	var face := str(track[index].get("id", ""))
 	if not Catalog.is_face(face) or not is_instance_valid(world): return
 	var actors: Variant = world.get("actors")
-	show_on(actors.get(slot) if actors is Dictionary else null, world.get("camera"), hud, face, str(Look.SLOT_COLOR_NAMES.get(slot, "peach")), settings, caption)
+	show_on(actors.get(actor_keys.get(slot, slot)) if actors is Dictionary else null, world.get("camera"), hud, face, str(Look.SLOT_COLOR_NAMES.get(slot, "peach")), settings, caption)
 	if is_instance_valid(soundscape) and soundscape.has_method("play_run_reaction"): soundscape.play_run_reaction(slot, track, index)
 
 ## A reaction on one spirit: its face for FACE_SECONDS and the bubble just above
-## its name, following it. Every screen that shows a reaction on a pip calls
-## this (a chapter's turn here, Home's own pip in presentation/home_stage.gd).
+## its name, following it.
 static func show_on(actor: Variant, camera: Variant, hud: Control, face: String, color: String, settings: Dictionary, caption: String = "") -> void:
 	if not Catalog.is_face(face) or not is_instance_valid(actor) or not actor is Node3D: return
 	if actor.has_method("show_expression"): actor.show_expression(Catalog.spirit_expression(face), Track.FACE_SECONDS)
