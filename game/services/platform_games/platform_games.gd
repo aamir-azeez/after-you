@@ -29,11 +29,14 @@ extends Node
 ##    It runs a few seconds after sign-in, a finished chapter (note_progress), the app coming back,
 ##    a board read or the name choice changing (services/leaderboard_client.gd LISTENERS); one post
 ##    at a time, every failure silent and tried again at the next of those moments.
+## 7. Achievements on the platform (unlock_achievements): every achievement the server paid this
+##    player (services/fruit_wallet.gd paid_ids) is unlocked there, through the ids in
+##    platform_achievement_ids.gd, once per platform account (platform_board_store.gd keeps which).
+##    It runs at the same moments as the boards and when the kept Fruits change, while the server
+##    offers the platform and the player is signed in; every failure silent and tried again later.
 ## Every call is async with a timeout; every failure leaves the game as it was. Main is freed
 ## while a solo chapter is open: detach() abandons work that ran through Main, and the next
 ## attach() starts again from the top.
-##
-## Achievements: the provider interface has them, nothing uses them yet.
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
 const NativeProvider = preload("res://services/platform_games/native_games_provider.gd")
 const LinkClient = preload("res://services/platform_games/platform_link_client.gd")
@@ -45,11 +48,13 @@ const NativeBridge = preload("res://services/native_bridge.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BoardIds = preload("res://services/platform_games/platform_board_ids.gd")
+const AchievementIds = preload("res://services/platform_games/platform_achievement_ids.gd")
 ## Loaded on first use, never with this autoload: they bring the chapter registry with them.
 const BOARD_POLICY := "res://services/platform_games/platform_boards.gd"
 const BOARD_STORE := "res://services/platform_games/platform_board_store.gd"
 const LEADERBOARD_CLIENT := "res://services/leaderboard_client.gd"
 const RUNS := "res://services/leaderboard_runs.gd"
+const FRUIT_WALLET := "res://services/fruit_wallet.gd"
 ## The group services/leaderboard_client.gd tells after a board read or a name choice (its LISTENERS).
 const LEADERBOARD_LISTENERS := "leaderboard_listeners"
 
@@ -86,6 +91,8 @@ const NAME_SHEET_WAIT_MS := 125000
 const BOARD_POST_DELAY_S := 3.0
 ## After the platform's board screen opened, another tap does nothing for this long.
 const BOARD_SHOW_GAP_MS := 1500
+## Answers that end a pass of board posts or achievement unlocks; the rest waits for the next moment.
+const STOP_CODES := ["signed_out", "offline", "unavailable", "not_configured", "timeout"]
 
 var provider: RefCounted
 var sign_in := SignIn.UNAVAILABLE
@@ -126,6 +133,12 @@ var _boards_again := false
 var _board_showing := false
 var _board_shown_at := -BOARD_SHOW_GAP_MS
 var _board_store_path := "user://platform-boards-v1.json"
+## Achievement unlocks, one pass at a time, as for the boards.
+var _unlocks_queued := false
+var _unlocking := false
+var _unlocks_again := false
+## Our achievement id to its platform ids (tests put in their own).
+var achievement_ids: Dictionary = AchievementIds.ACHIEVEMENTS
 
 ## The service, or null (a tree without the autoload, such as a tool script).
 static func shared(tree: SceneTree) -> Node:
@@ -145,6 +158,9 @@ func _native_present() -> bool:
 func _prepare() -> void:
 	if state == null: _open_state(State.PATH)
 	if not provider.account_changed.is_connected(_on_account_changed): provider.account_changed.connect(_on_account_changed)
+	# A newly paid achievement, or the first read of the paid ones, goes to the platform.
+	var fruits: RefCounted = load(FRUIT_WALLET).shared()
+	if not fruits.changed.is_connected(_on_fruits_changed): fruits.changed.connect(_on_fruits_changed)
 
 func _build_provider() -> RefCounted:
 	var native := NativeBridge.singleton("games")
@@ -239,6 +255,7 @@ func start() -> void:
 	if generation == _generation:
 		_running = false
 		post_boards_soon()
+		unlock_achievements_soon()
 
 # ---- Main's side ---------------------------------------------------------------------------
 
@@ -479,6 +496,7 @@ func sign_in_now() -> void:
 	if generation == _generation:
 		_running = false
 		post_boards_soon()
+		unlock_achievements_soon()
 
 func _authenticate(interactive: bool, generation: int) -> void:
 	sign_in = SignIn.CHECKING
@@ -758,6 +776,7 @@ func _cloud_allowed() -> bool:
 ## Progress may have changed (a chapter finished, Settings closed): sync after a quiet moment.
 func note_progress() -> void:
 	post_boards_soon()
+	unlock_achievements_soon()
 	if _cloud_allowed(): cloud.note()
 	elif signed_in() and state != null and state.capability().is_empty() and not _running and _account != null and _account.identity_state() == "ready":
 		# The daily answer expired in a long session: ask again, then sync.
@@ -789,12 +808,54 @@ func _poll_replay(sync: RefCounted) -> void:
 func _notification(what: int) -> void:
 	# The run itself waits for frames, so it finishes on resume; the dirty flag also survives a kill.
 	if what == NOTIFICATION_APPLICATION_PAUSED and _cloud_allowed(): _cloud_flush()
-	elif what == NOTIFICATION_APPLICATION_RESUMED: post_boards_soon()
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		post_boards_soon()
+		unlock_achievements_soon()
 
-## Achievements are not used yet; this forwards to the provider when they are.
-func unlock_achievement(id: String) -> Dictionary:
-	if provider == null: return {"ok": false, "code": "unavailable"}
-	return await provider.unlock_achievement(id)
+# ---- Achievements on the platform -----------------------------------------------------------
+
+func _on_fruits_changed(_server: String, owner: String) -> void:
+	if _account != null and owner == _account.player_id(): unlock_achievements_soon()
+
+## Unlocks what is owed a few seconds from now; repeated asks meanwhile make one pass.
+func unlock_achievements_soon() -> void:
+	if _unlocks_queued or not offered() or not is_inside_tree(): return
+	_unlocks_queued = true
+	await get_tree().create_timer(BOARD_POST_DELAY_S).timeout
+	_unlocks_queued = false
+	await unlock_achievements()
+
+## One pass: every achievement paid to this player that the platform has and this platform
+## account has not confirmed, unlocked one at a time. A pass asked for while one runs follows it.
+func unlock_achievements() -> void:
+	if _unlocking:
+		_unlocks_again = true
+		return
+	_unlocking = true
+	await _unlock_achievements_once()
+	while _unlocks_again and is_inside_tree():
+		_unlocks_again = false
+		await _unlock_achievements_once()
+	_unlocking = false
+
+func _unlock_achievements_once() -> void:
+	if not offered() or not signed_in() or _account == null or _account.identity_state() != "ready": return
+	var owner: String = _account.player_id()
+	var api: Node = _account.api()
+	if owner.is_empty() or api == null: return
+	var platform := kind()
+	var store := _boards_store()
+	var account: String = store.account(platform, _player_key)
+	var done: Array = store.unlocked_for(account)
+	var generation := _generation
+	for achievement: String in load(FRUIT_WALLET).shared().paid_ids(str(api.base_url), owner):
+		var id := AchievementIds.id(achievement, platform, achievement_ids)
+		if id.is_empty() or id in done: continue
+		# Main left, the account changed or signed out: the rest waits for the next moment.
+		if generation != _generation or not signed_in() or store.account(kind(), _player_key) != account or _account == null: return
+		var answer: Dictionary = await provider.unlock_achievement(id)
+		if answer.get("ok", false): store.remember_unlocked(account, id)
+		elif str(answer.get("code", "")) in STOP_CODES: return
 
 # ---- Chapter times on the platform leaderboards ----------------------------------------------
 
@@ -878,7 +939,7 @@ func _post_boards_once() -> void:
 		if generation != _generation or not signed_in() or store.account(kind(), _player_key) != account or _account == null: return
 		var answer: Dictionary = await provider.submit_score(BoardIds.id(board, platform), policy.score(platform, int(due[board])))
 		if answer.get("ok", false): store.remember_posted(account, board, int(due[board]))
-		elif str(answer.get("code", "")) in ["signed_out", "offline", "unavailable", "not_configured", "timeout"]: return
+		elif str(answer.get("code", "")) in STOP_CODES: return
 
 ## Read again for each pass (a few a session, one small file), so an erasure that cleared the
 ## verdicts (services/deleted_identity_stores.gd) is never written back from memory.

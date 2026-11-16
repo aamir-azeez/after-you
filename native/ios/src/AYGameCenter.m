@@ -447,6 +447,32 @@
 	}];
 }
 
+#pragma mark - Achievements
+
+- (void)unlockAchievement:(NSString *)achievement requestId:(NSString *)requestId {
+	if (![self begin:requestId]) {
+		return;
+	}
+	if (![AYGamesPolicy validLeaderboardId:achievement]) {
+		[self fail:requestId operation:@"unlock_achievement" code:@"failed"];
+		return;
+	}
+	if (![self available] || ![GKLocalPlayer localPlayer].isAuthenticated) {
+		[self fail:requestId operation:@"unlock_achievement" code:[self available] ? @"signed_out" : @"unavailable"];
+		return;
+	}
+	GKAchievement *earned = [[GKAchievement alloc] initWithIdentifier:achievement];
+	earned.percentComplete = 100.0;
+	earned.showsCompletionBanner = YES;
+	[GKAchievement reportAchievements:@[ earned ] withCompletionHandler:^(NSError *_Nullable error) {
+		if (error != nil) {
+			[self fail:requestId operation:@"unlock_achievement" code:[self codeFor:error]];
+		} else {
+			[self succeed:requestId operation:@"unlock_achievement" payload:@{ @"unlocked" : @YES }];
+		}
+	}];
+}
+
 - (void)gameCenterViewControllerDidFinish:(GKGameCenterViewController *)gameCenterViewController {
 	[gameCenterViewController dismissViewControllerAnimated:YES completion:nil];
 }

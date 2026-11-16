@@ -115,7 +115,8 @@ static func _stage(chapter_key: String, level: Dictionary, stage_id: String, che
 				if b.finished or b.can_pass(): break
 				b.step({})
 			if problem.is_empty() and b.error.is_empty() and b.can_pass(): b.pass_turn()
-		result.b_ticks = int(b.tick)
+		# The longest later turn, for the turn time report.
+		result.b_ticks = maxi(int(result.b_ticks), int(b.tick))
 		if not problem.is_empty() or not b.error.is_empty() or (last and (not b.complete or not b.can_commit())) or (not last and not b.passed):
 			result.error = "turn %d did not %s at tick %d: %s (%s)" % [index + 1, "finish the stage" if last else "pass", b.tick, " ".join([problem, b.error, b.commit_reason()]).strip_edges(), _where(b)]
 			return result

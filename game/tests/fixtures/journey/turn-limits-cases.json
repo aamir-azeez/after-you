@@ -1,5 +1,5 @@
 {
-	"about": "Declared turn_limits read by both runtime.gd turn_ticks and backend turnLimits. valid false: the definition is refused. a and b: ticks for each role when valid.",
+	"about": "Declared turn_limits read by both runtime.gd turn_ticks and backend turnLimits. valid false: the definition is refused. Equal turns are valid only on the open turns rules (14 and 15). a and b: ticks for each role when valid.",
 	"cases": [
 		{"label": "absent", "simulation_version": 9, "valid": true, "a": 900, "b": 1200},
 		{"label": "tide", "simulation_version": 9, "turn_limits": {"a_ticks": 2700, "b_ticks": 3000}, "valid": true, "a": 2700, "b": 3000},
@@ -11,6 +11,15 @@
 		{"label": "over the ceiling", "simulation_version": 9, "turn_limits": {"a_ticks": 2700, "b_ticks": 9001}, "valid": false},
 		{"label": "equal", "simulation_version": 9, "turn_limits": {"a_ticks": 10, "b_ticks": 10}, "valid": false},
 		{"label": "receiver shorter", "simulation_version": 9, "turn_limits": {"a_ticks": 20, "b_ticks": 10}, "valid": false},
+		{"label": "equal on open turns", "simulation_version": 14, "turn_limits": {"a_ticks": 2730, "b_ticks": 2730}, "valid": true, "a": 2730, "b": 2730},
+		{"label": "equal on open turns with the tide", "simulation_version": 15, "turn_limits": {"a_ticks": 1800, "b_ticks": 1800}, "valid": true, "a": 1800, "b": 1800},
+		{"label": "equal ceiling on open turns", "simulation_version": 14, "turn_limits": {"a_ticks": 9000, "b_ticks": 9000}, "valid": true, "a": 9000, "b": 9000},
+		{"label": "longer second turn on open turns", "simulation_version": 14, "turn_limits": {"a_ticks": 2700, "b_ticks": 3000}, "valid": true, "a": 2700, "b": 3000},
+		{"label": "equal on open controls", "simulation_version": 12, "turn_limits": {"a_ticks": 10, "b_ticks": 10}, "valid": false},
+		{"label": "equal on open controls with the tide", "simulation_version": 13, "turn_limits": {"a_ticks": 10, "b_ticks": 10}, "valid": false},
+		{"label": "equal on the tide rules", "simulation_version": 10, "turn_limits": {"a_ticks": 10, "b_ticks": 10}, "valid": false},
+		{"label": "receiver shorter on open turns", "simulation_version": 14, "turn_limits": {"a_ticks": 20, "b_ticks": 10}, "valid": false},
+		{"label": "equal over the ceiling on open turns", "simulation_version": 15, "turn_limits": {"a_ticks": 9001, "b_ticks": 9001}, "valid": false},
 		{"label": "zero", "simulation_version": 9, "turn_limits": {"a_ticks": 0, "b_ticks": 10}, "valid": false},
 		{"label": "negative", "simulation_version": 9, "turn_limits": {"a_ticks": -1, "b_ticks": 10}, "valid": false},
 		{"label": "a missing", "simulation_version": 9, "turn_limits": {"b_ticks": 10}, "valid": false},

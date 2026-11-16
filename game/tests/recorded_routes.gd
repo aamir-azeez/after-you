@@ -22,17 +22,21 @@ static func from_recording(recording: Dictionary) -> Array:
 		steps.append(["input", int(run.ticks), int(run.x), int(run.z), bool(run.action)])
 	return steps
 
-## A stage's route entry from its recorded pair: both turns' inputs, the rules
+## A stage's route entry from its recorded pair: both turns' inputs (on open
+## turns, a pair with "passes" gives every turn in order as "turns"), the rules
 ## when they are not the chapter's preferred ones (a run from an earlier version
 ## on rules this chapter cannot play takes the chapter's own), and the turns
-## played with Forgiving catches off.
+## played with Forgiving catches off ("b" for any later turn).
 static func stage_route(chapter_key: String, pair: Dictionary) -> Dictionary:
+	var passes: Array = pair.get("passes", [])
+	var later: Array = passes + [pair.b]
 	var route := {"a": from_recording(pair.a), "b": from_recording(pair.b)}
+	if not passes.is_empty(): route = {"turns": ([pair.a] + later).map(func(turn: Dictionary) -> Array: return from_recording(turn))}
 	var rules := int(pair.a.get("simulation_version", 0))
 	if rules != Registry.preferred_rules(chapter_key) and rules in Registry.supported_rules(chapter_key): route["rules"] = rules
 	var unassisted: Array = []
-	for role: String in ["a", "b"]:
-		if not bool(pair[role].get("catch_assistance", true)): unassisted.append(role)
+	if not bool(pair.a.get("catch_assistance", true)): unassisted.append("a")
+	if later.any(func(turn: Dictionary) -> bool: return not bool(turn.get("catch_assistance", true))): unassisted.append("b")
 	if not unassisted.is_empty(): route["no_catch_assistance"] = unassisted
 	return route
 
@@ -54,7 +58,9 @@ static func read_source(path: String, problem: Array) -> Variant:
 	return parsed
 
 ## Every distinct recorded pair of `level_id` anywhere in `value`, by stage id:
-## {stage id: [pair, ...]}.
+## {stage id: [pair, ...]}. An open turns stage (core/physical/open_turns.gd)
+## that took more than two turns comes as {"a", "b", "passes"}: from a
+## checkpoint proof's "turns" or a solo save's pair with its passes.
 static func pairs_by_stage(value: Variant, level_id: String) -> Dictionary:
 	var found: Dictionary = {}
 	var seen: Dictionary = {}
@@ -67,14 +73,31 @@ static func _collect(value: Variant, level_id: String, found: Dictionary, seen: 
 		for item: Variant in value: _collect(item, level_id, found, seen, depth + 1)
 		return
 	if not value is Dictionary: return
-	if _is_pair(value) and str(value.a.get("level_id")) == level_id:
-		var mark := str(value.a.get("recording_hash")) + str(value.b.get("recording_hash"))
+	var turns := _turns(value)
+	if not turns.is_empty() and str(turns[0].get("level_id")) == level_id:
+		var mark := "".join(PackedStringArray(turns.map(func(turn: Dictionary) -> String: return str(turn.get("recording_hash")))))
 		if not seen.has(mark):
 			seen[mark] = true
-			var stage_id := str(value.a.get("stage_id"))
+			var stage_id := str(turns[0].get("stage_id"))
 			if not found.has(stage_id): found[stage_id] = []
-			found[stage_id].append({"a": value.a, "b": value.b})
+			var pair := {"a": turns[0], "b": turns[-1]}
+			if turns.size() > 2: pair.passes = turns.slice(1, turns.size() - 1)
+			found[stage_id].append(pair)
 	for item: Variant in value.values(): _collect(item, level_id, found, seen, depth + 1)
+
+## A stage's turns in order when `value` holds them: a pair, a pair with its
+## passes, or an open turns checkpoint proof's "turns"; else [].
+static func _turns(value: Dictionary) -> Array:
+	if _is_pair(value): return [value.a, value.b]
+	var turns: Array = []
+	if value.get("turns") is Array: turns = value.turns
+	elif value.get("a") is Dictionary and value.get("b") is Dictionary and value.get("passes") is Array: turns = [value.a] + value.passes + [value.b]
+	if turns.size() < 2 or not turns.all(func(turn: Variant) -> bool: return turn is Dictionary and turn.get("actions") is Array): return []
+	if turns[0].get("role") != "a": return []
+	for index in range(1, turns.size()):
+		var turn: Dictionary = turns[index]
+		if turn.get("role") != "b" or turn.get("stage_id") != turns[0].get("stage_id") or str(turn.get("source_recording_hash")) != str(turns[index - 1].get("recording_hash")): return []
+	return turns
 
 static func _is_pair(value: Dictionary) -> bool:
 	var a: Variant = value.get("a")

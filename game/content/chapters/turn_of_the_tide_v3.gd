@@ -21,7 +21,8 @@ const DATA := {
 		"set-the-tide": {
 			"title": PlayerCopy.TURN_OF_THE_TIDE_SET_TITLE,
 			"hint_a": PlayerCopy.TURN_OF_THE_TIDE_SET_HINT_A,
-			"hint_b": PlayerCopy.TURN_OF_THE_TIDE_SET_HINT_B,
+			# Open turns have no bell to ring, so the later turns show no line; the goal's beacon marks the place.
+			"hint_b": "",
 		},
 		"slack-water": {
 			"title": PlayerCopy.TURN_OF_THE_TIDE_SLACK_TITLE,

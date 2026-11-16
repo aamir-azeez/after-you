@@ -13,12 +13,14 @@ extends SceneTree
 ##
 ## The report: {"ok", "error", "key", "source", "imported", "notes", "routes"
 ## (import only), "stages": [{"id", "ok", "error", "a_ticks", "b_ticks",
-## "msec"}], "limits": {"a", "b"} (ticks the definition allows), "msec"}.
+## "msec"}], "limits": {"a", "b"} (ticks the definition allows), "open_stages"
+## (an open turns chapter's stage count, else 0), "msec"}.
 const Witness = preload("res://tests/chapter_witness.gd")
 const Recorded = preload("res://tests/recorded_routes.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Golden = preload("res://tests/golden_support.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -50,12 +52,13 @@ func _arguments() -> Dictionary:
 func _report(args: Dictionary) -> Dictionary:
 	var started := Time.get_ticks_msec()
 	var key := str(args.get("key", ""))
-	var report := {"ok": false, "error": "", "key": key, "source": "", "imported": [], "notes": [], "stages": [], "limits": {}, "msec": 0}
+	var report := {"ok": false, "error": "", "key": key, "source": "", "imported": [], "notes": [], "stages": [], "limits": {}, "open_stages": 0, "msec": 0}
 	var level := Registry.definition(key)
 	if level.is_empty():
 		report.error = "%s is not a registered chapter" % key
 		return report
 	report.limits = _limits(key, level)
+	report.open_stages = level.stages.size() if OpenTurns.pinned(level) else 0
 	var routes: Dictionary
 	match str(args.get("mode", "")):
 		"import":
@@ -76,13 +79,15 @@ func _report(args: Dictionary) -> Dictionary:
 	report.msec = Time.get_ticks_msec() - started
 	return report
 
-## Ticks the definition gives each turn, read from its engine (0 when its family has no turn_ticks).
+## Ticks the definition gives each turn, read from its engine (0 when its family
+## has no turn_ticks). On open turns every turn has the second turn's limit.
 func _limits(key: String, level: Dictionary) -> Dictionary:
 	var engine: RefCounted = Registry.simulation_script(key).new()
 	var rules := Registry.preferred_rules(key)
 	var result := {}
 	for role: String in ["a", "b"]:
-		result[role] = int(engine.turn_ticks(level, rules, role)) if engine.has_method("turn_ticks") else 0
+		var turn_role := "b" if OpenTurns.pinned(level) else role
+		result[role] = int(engine.turn_ticks(level, rules, turn_role)) if engine.has_method("turn_ticks") else 0
 	return result
 
 func _imported(key: String, level: Dictionary, source: String, only: String, report: Dictionary) -> Dictionary:

@@ -239,6 +239,7 @@ piece_styles 2
 pip_avatar 3
 pip_outfit 10
 plant_animation 2
+platform_achievements 5
 platform_boards 8
 platform_games_bundle 1
 platform_games_cloud 3
