@@ -10,7 +10,7 @@ import type { PairLooks } from "./run-looks";
 import { cachedView, storeView } from "./view-cache";
 import { mightPlace } from "./view";
 import { ownerId } from "../owner";
-import { beatsOurRun, ourRunTicks } from "./our-run";
+import { beatsOurRun } from "./our-run";
 
 /**
  * After an accepted turn (v2/routes.ts): when it finished a together run that
@@ -62,7 +62,7 @@ export async function postRun(env: Env, run: LeaderboardRun): Promise<PostOutcom
   const cached = await cachedView(run.board);
   if (cached && (cached.checking.includes(run.entry_id) || cached.top.some(row => row.entry_id === run.entry_id))) return { status: "listed" };
   const owner = ownerId(env);
-  if (cached && !mightPlace(cached, run.ticks, TOP_PLACES) && !beatsOurRun(owner, run.members, run.ticks, ourRunTicks(run.board, cached, true))) return { status: "skipped" };
+  if (cached && !mightPlace(cached, run.ticks, TOP_PLACES) && !beatsOurRun(owner, run.members, run.ticks, cached.our_run?.ticks ?? null)) return { status: "skipped" };
   if (platformRequiredOn(env)) {
     const accounts = await pairAccounts(env, run.members);
     if (accounts.account_key === undefined) return { status: "platform_required", unlinked: accounts.unlinked };

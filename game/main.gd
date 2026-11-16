@@ -723,8 +723,7 @@ func _show_home() -> void:
 	_set_home_hard(home_stage)
 	home_stage.play_cue = soundscape.play_fixed_cue
 	home_stage.play_haptic = soundscape.tap_haptic
-	# A face picked on Home pops like a picked end reaction, one pitch per face.
-	home_stage.play_reaction = func(face: String) -> void: soundscape.play_reaction(["home", face])
+	home_stage.soundscape = soundscape
 	overlay.add_child(home_stage)
 	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
 	var menu := HomeMenu.new()

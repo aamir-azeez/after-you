@@ -25,7 +25,7 @@ import { validSplits } from "./ticks";
  *   (`check` "none").
  * - ghost: pair 0 races a recorded time (`ghost`); side 1 is null. Decided the
  *   moment the pair finishes, with no check, except, while checks are on, a
- *   finish faster than the developers' ghost: that run waits for the replay
+ *   finish faster than Our run: that run waits for the replay
  *   check like a friend run (awaitsCheck), since its win pays a first time
  *   bonus (pollen/duel-pay.ts creditGhostWin). A run that fails it ends the
  *   race with no result. Checks turned off settle a run still waiting as
@@ -80,7 +80,7 @@ export type Side = {
   /**
    * True when the finished run counted without the replay check it would have waited for, since duel run checks were
    * off (DUEL_RUN_CHECKS): its `check` reads "none", or "passed" when it was waiting as they went off (waiveChecks).
-   * What tells such a win over the developers' ghost, which pays, from a race decided before that bonus existed.
+   * What tells such a win over Our run, which pays, from a race decided before that bonus existed.
    */
   waived?: true;
   /** What each member wears, in `members` order ({} for the default); absent while neither wears anything known. */
@@ -89,7 +89,7 @@ export type Side = {
   left_by?: number;
 };
 /** `looks`: a board run's pair looks as its row showed them when the race began (leaderboards/run-looks.ts). */
-/** `replay_hash`: a board run's replay as its row named it when the race began (absent on races made before it was kept, and on the developers' run). */
+/** `replay_hash`: a board run's replay as its row named it when the race began (absent on races made before it was kept, and on the run an older app shipped as Our run, duels/legacy-shipped-our-run.ts). */
 /** `splits`: the run's time after each turn, from its kept replay or the developers' table (absent on races made before it, or when the replay was gone). */
 export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null; replay_hash?: string; looks?: Look[]; splits?: number[] };
 export type ResultReason = "faster" | "draw" | "left" | "failed_check" | "unchecked" | "stalled" | "erased" | "nobody_joined";
@@ -188,8 +188,8 @@ export function players(duel: Duel): string[] {
 
 /**
  * Whether a side's finished run waits for the replay check before the duel is decided: only while duel run
- * checks are on (`checks`, the DUEL_RUN_CHECKS flag), every friend run and a run faster than the developers'
- * ghost, the only ghost win that pays.
+ * checks are on (`checks`, the DUEL_RUN_CHECKS flag), every friend run and a run faster than Our run, the
+ * only ghost win that pays.
  */
 export function awaitsCheck(duel: Duel, ticks: number, checks: boolean): boolean {
   return checks && (duel.kind === "friend" || (duel.ghost?.source === "developer" && ticks < duel.ghost.ticks));

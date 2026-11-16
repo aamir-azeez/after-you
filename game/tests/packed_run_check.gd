@@ -1,5 +1,5 @@
 extends RefCounted
-## A developer run (content/dev_ghosts.json) played again packed
+## A whole run (tests/fixtures/whole_runs.json) played again packed
 ## (core/v2/recording_codec.gd), shared by test_recording_codec.gd and
 ## test_recording_codec_runs.gd. A turn replays from the packed run's own chain
 ## and each stage's checkpoint is derived from its packed turns, which verifies

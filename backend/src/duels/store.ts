@@ -20,7 +20,7 @@ import { dropReceipt, keepReceipt, type PayoutShown } from "./payout-receipt";
  * - duels: one row per duel (model.ts), the newest MAX_BOARD_DUELS kept;
  *   settled ones go first past it.
  * - duel_proofs: a finished run's final checkpoint (a friend run, or a ghost
- *   race run faster than the developers' ghost) in the shared blob format
+ *   race run faster than Our run) in the shared blob format
  *   (blob-codec.ts: deflate, its canonical length and SHA-256), while the
  *   replay job has not judged it (at most MAX_DUEL_PROOFS). Only while duel
  *   run checks are on (`checks`, DUEL_RUN_CHECKS): off, nothing is encoded or

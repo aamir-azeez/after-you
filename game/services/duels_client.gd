@@ -175,7 +175,7 @@ func challenge(friend: String, board: String, key: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, PREFIX + "/challenge", {"schema_version": 1, "idempotency_key": key, "friend": friend, "board": board})
 	return _duel_answer(response)
 
-## A ghost race on `board` against a board run (`entry_id`) or the developers' time ("developer").
+## A ghost race on `board` against a board run (`entry_id`) or Our run ("developer").
 func race_ghost(board: String, source: String, entry_id: Variant, key: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, PREFIX + "/ghost", {"schema_version": 1, "idempotency_key": key, "board": board, "source": source, "entry_id": entry_id})
 	return _duel_answer(response)

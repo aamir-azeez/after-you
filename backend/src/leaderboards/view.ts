@@ -13,7 +13,7 @@ import type { OurRunView } from "./our-run";
  *   look, also on a hidden-name row (run-looks.ts). Left out while looks are off.
  * - checking: opaque ids of runs waiting for the replay check or a person.
  *   A member works out their own run's id (run.ts entryId) to find it here.
- * - `our_run`: the owner's run that is Our run here (our-run.ts), left out while the shipped run is.
+ * - `our_run`: the owner's run that is Our run here (our-run.ts), left out while there is none.
  *   GET .../replay/<entry_id> serves its replay too.
  */
 export type BoardRow = { rank: number; entry_id: string; ticks: number; finished_on: string; names: string[] | null; gold_leaf: boolean; replay_hash: string | null; looks?: PairLooks };
