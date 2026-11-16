@@ -3,7 +3,8 @@ which recorded turns run close to their limit.
 
 A definition's "turn_limits" {"a_ticks", "b_ticks"} must satisfy the rules
 (game/core/physical/runtime.gd: 1 <= a < b <= MAX_DECLARED_TURN_TICKS, or
-a <= b on open turns, where every turn has the same limit) and the server,
+a <= b <= MAX_OPEN_TURN_TICKS on open turns, where every turn has the same
+limit) and the server,
 which grows a chapter's stored bounds with its turns and refuses to load a
 chapter whose widest pair outgrows a room row (backend/src/v2/
 protocol-physical-recording.ts scaledLimits and checkTurnBounds) or, on open
@@ -51,6 +52,7 @@ class Rules:
         runtime = root / "game/core/physical/runtime.gd"
         self.tick_rate = _constant(runtime, r"^const TICK_RATE := (\d+)$", "TICK_RATE")
         self.rule_cap = _constant(runtime, r"^const MAX_DECLARED_TURN_TICKS := (\d+)$", "MAX_DECLARED_TURN_TICKS")
+        self.open_rule_cap = _constant(runtime, r"^const MAX_OPEN_TURN_TICKS := (\d+)$", "MAX_OPEN_TURN_TICKS")
         self.grace = _constant(runtime, r"^const RECEIVER_GRACE_TICKS := (\d+)$", "RECEIVER_GRACE_TICKS")
         v2 = root / "backend/src/v2"
         recording = v2 / "protocol-physical-recording.ts"
@@ -99,6 +101,7 @@ class Rules:
                 raise ToolError(f"{open_turns.as_posix()} changed how it bounds open turns ({expected}); update scripts/chapter_tools/turn_limits.py")
         top = self.rule_cap // self.tick_rate * self.tick_rate
         self.whole_seconds = range(self.tick_rate, top + 1, self.tick_rate)
+        self.open_whole_seconds = range(self.tick_rate, self.open_rule_cap // self.tick_rate * self.tick_rate + 1, self.tick_rate)
         # The longest whole-second turn each role may have: the factor is the larger of the two roles', so each cap holds on its own and together.
         self.cap_a = max((t for t in self.whole_seconds if self.server_fits(t, 1) and t < self.rule_cap), default=0)
         self.cap_b = max((t for t in self.whole_seconds if self.server_fits(1, t)), default=0)
@@ -133,7 +136,7 @@ class Rules:
 
     def cap_open(self, stages: int) -> int:
         """The longest whole-second turn, one for every turn, an open turns chapter of `stages` stages may have (0: none fits)."""
-        return max((t for t in self.whole_seconds if self.open_fits(t, t, stages)), default=0)
+        return max((t for t in self.open_whole_seconds if self.open_fits(t, t, stages)), default=0)
 
     def problems(self, a: int, b: int, open_stages: int = 0) -> list[str]:
         """Why the rules or the server would refuse turn_limits {a, b} (ticks); [] when both accept.
@@ -143,7 +146,9 @@ class Rules:
             result.append(f"the second turn may not be shorter than the first: got A {self.seconds(a)}, B {self.seconds(b)}")
         elif not open_stages and (a < 1 or b <= a):
             result.append(f"the second turn must be longer than the first (the receiver waits out the first turn): got A {self.seconds(a)}, B {self.seconds(b)}")
-        if b > self.rule_cap or a > self.rule_cap:
+        if open_stages and (b > self.open_rule_cap or a > self.open_rule_cap):
+            result.append(f"an open turn may last at most {self.seconds(self.open_rule_cap)} (MAX_OPEN_TURN_TICKS {self.open_rule_cap})")
+        elif not open_stages and (b > self.rule_cap or a > self.rule_cap):
             result.append(f"a turn may last at most {self.seconds(self.rule_cap)} (MAX_DECLARED_TURN_TICKS {self.rule_cap})")
         if open_stages and not self.open_fits(a, b, open_stages):
             result.append(f"the server cannot store turns that long: at most {self.seconds(self.cap_open(open_stages))} a turn fits {open_stages} open turns stages "

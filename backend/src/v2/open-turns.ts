@@ -22,6 +22,12 @@ import { checkBytes, checkTicks } from "./recording-codec";
  * This file is the one place these rules live on the server; core/physical/open_turns.gd mirrors them on the phone.
  */
 export const DEFAULT_TURN_CAP = 10;
+/**
+ * The longest turn these rules take: ten minutes, where older rules stop at 9,000 ticks. Every turn is packed, and
+ * the widest one this long is about 82,000 characters, under MAX_PACKED_CHARS (131,072) with room to spare
+ * (game/core/physical/runtime.gd MAX_OPEN_TURN_TICKS mirrors it).
+ */
+export const MAX_OPEN_TURN_TICKS = 18_000;
 export const MIN_TURN_CAP = 2;
 export const MAX_TURN_CAP = 20;
 export const TURN_LETTERS = "abcdefghijklmnopqrst";
