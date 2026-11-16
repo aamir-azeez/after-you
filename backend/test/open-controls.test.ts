@@ -132,8 +132,8 @@ describe("open controls (rules 12 and 13)", () => {
     // Long Way Home@3's homecoming ends with both players at the second window; one of them away is refused.
     const chain = CHAINS[0], first = await stageOne(chain), [a, b, c] = await records(chain, 1);
     const end = structuredClone(flat(homePlaceEnd)) as Record<string, any>;
-    expect(end.players.p0).toMatchObject({ x: 1408, z: 96, surface_id: "home-room" });
-    expect(end.players.p1).toMatchObject({ x: 1408, z: 96, surface_id: "home-room" });
+    expect(end.players.p0).toMatchObject({ x: 1408, z: 108, surface_id: "home-room" });
+    expect(end.players.p1).toMatchObject({ x: 1408, z: 72, surface_id: "home-room" });
     const away = structuredClone(end); away.players.p1 = { ...away.players.p1, x: 1200, z: 32 };
     await expect(checkpointV2(await rehash(away), first, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
   });
