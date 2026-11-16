@@ -1,0 +1,509 @@
+extends SceneTree
+## Rules 16's carried items and currents (core/physical/carried_items.gd) on
+## the witness level (tests/carried_items_level.gd), through the real journey
+## engine and its proof:
+## - the rules number, the shapes, the predicate terms, and published
+##   checkpoints that keep their four mechanisms;
+## - pick up, put down, and a carrier refused at the both-hands ladder while an
+##   empty pip climbs it;
+## - stage 1 over four turns: the memory carries what it carried, the live pip
+##   hands it up the ladder to the memory, the stage closes with it carried, and
+##   the closing checkpoint verifies again (and fails with the holder changed);
+## - the replay sees it gone (the live pip took it first), a same tick tie (the
+##   memory goes first), a memory's give in reach and out of reach, a memory
+##   handed the item that climbs the ladder (it puts it down first), and a take
+##   on a memory's last tick never repeated after it ends;
+## - every turn replays exactly, and plays the same from its kept trace as
+##   simulated;
+## - the item rides into the next stage unless the stage places it;
+## - the current: a live wheel turn moves each float one leg (the raft opens
+##   the ferry), a held board stops a leg, the memory's turn moves it in the
+##   live world, and an item set down on a leg's start with the wheel right
+##   moves at once;
+## - the server's witness files (tests/fixtures/carried_items/, read by backend/test/carried-items.test.ts) are what
+##   this suite derives; `-- --write` writes them again.
+const Simulation = preload("res://core/journey/simulation.gd")
+const Proof = preload("res://core/physical/two_pair_proof.gd")
+const CarriedItems = preload("res://core/physical/carried_items.gd")
+const OpenControls = preload("res://core/physical/open_controls.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const Seven = preload("res://core/journey/seven_mechanisms.gd")
+const Canonical = preload("res://core/v2/canonical.gd")
+const MemoryTrace = preload("res://core/physical/memory_trace.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const Level = preload("res://tests/carried_items_level.gd")
+const RULES := OpenControls.PIECES_RULES_VERSION
+const SERVER_FIXTURES := "res://tests/fixtures/carried_items/"
+const POST := [-350, 60]
+const FOOT := [-130, 0]
+const TOP := [30, 0]
+var checks := 0
+var failures := 0
+var level: Dictionary
+var start: Dictionary
+var proof: RefCounted
+
+func _initialize() -> void: _run.call_deferred()
+
+func _run() -> void:
+	level = Level.definition()
+	start = Level.initial_checkpoint(level)
+	proof = Proof.new(Level, Simulation, RULES, Simulation.CURRENT_SIMULATION_VERSION)
+	_rules()
+	_hands()
+	var stage_one := _hand_up()
+	_gone_and_tie()
+	_ladder_drop()
+	_last_tick()
+	if not stage_one.is_empty():
+		_next_stage(stage_one)
+		_current(stage_one)
+		_server_files(stage_one)
+	print("CARRIED ITEMS: %d checks, %d failures" % [checks, failures])
+	quit(1 if failures else 0)
+
+# --- Rules and shapes -------------------------------------------------------------
+
+func _rules() -> void:
+	_check(CarriedItems.on(RULES) and OpenTurns.rules(RULES) and OpenControls.pinned(level) and RULES in OpenControls.TIDE_RULES, "Rules 16 play the new pieces on open turns, open controls and the tide")
+	_check(Simulation._record_version({"simulation_version": RULES}) == RULES and Simulation.rules_allowed(level, RULES) and not Simulation.rules_allowed(level, 15), "A rules 16 record reads as 16, and the witness plays only 16")
+	_check(CarriedItems.problems(level).is_empty(), "The witness level is sound (%s)" % str(CarriedItems.problems(level)))
+	var bad := level.duplicate(true)
+	bad.items[0].at = "nowhere"
+	bad.stages[1].current_legs[0].value = "east"
+	bad.simulation_version = 15
+	var found := CarriedItems.problems(bad)
+	_check(found.size() == 3, "Problems name a start at no spot, a leg on a value no selector shows, and items off rules 16 (%s)" % str(found))
+	_check(start.mechanisms.items.pipsport == {"holder": "", "spot": "post", "x": -350, "z": 80, "height": 0, "surface_id": "dock"} and start.mechanisms.items.raft.spot == "mooring", "The first checkpoint holds each item where it starts")
+	for key: String in ["long-way-home@3", "turn-of-the-tide@3"]:
+		_check(not Registry.initial_checkpoint(key).mechanisms.has("items"), "%s keeps its four mechanisms" % key)
+	var mechanisms := {"items": {"pipsport": CarriedItems.held("p1"), "raft": CarriedItems.at_spot(CarriedItems.spot(level, "berth"))}}
+	_check(Seven.predicate({"item_id": "pipsport", "carried": true}, {}, {}, mechanisms) and not Seven.predicate({"item_id": "pipsport", "spot_id": "post"}, {}, {}, mechanisms), "Carried holds while a pip has it, not a spot")
+	_check(Seven.predicate({"item_id": "raft", "spot_id": "berth"}, {}, {}, mechanisms) and not Seven.predicate({"item_id": "raft", "carried": true}, {}, {}, mechanisms) and not Seven.predicate({"item_id": "lost", "carried": true}, {}, {}, mechanisms), "A float at its spot holds; an unknown item never does")
+	# A rules 15 level that lists items plays without them.
+	var older := level.duplicate(true)
+	older.simulation_version = 15
+	var sim := _sim(older, "hand-up", start)
+	_go(sim, POST)
+	_check(str(sim.context_action().id) == "", "On rules 15 an item offers nothing")
+
+func _hands() -> void:
+	var sim := _sim(level, "hand-up", start)
+	_go(sim, POST)
+	_check(sim.context_action().id == "take" and sim.context_action().label == "Pick up", "By the post box the pip may pick the pipsport up")
+	_tap(sim)
+	_check(sim.snapshot().players.p0.carrying == "pipsport" and "item_taken:pipsport" in sim.snapshot().events, "Picked up, it rides on the pip's back")
+	_go(sim, [-250, 0])
+	_check(sim.context_action().id == "put", "Away from the other pip, a carrier may put it down")
+	_tap(sim)
+	var state: Dictionary = sim._mechanisms.items.pipsport
+	_check(state.holder == "" and state.spot == "" and state.surface_id == "dock" and state.x == -250, "Put down loose, it rests at the pip's feet")
+	_tap(sim)
+	_check(sim._mechanisms.items.pipsport.holder == "p0", "And is picked up again")
+	_go(sim, FOOT)
+	_go(sim, TOP)
+	_check(str(sim._players.p0.surface_id) == "dock" and int(sim._players.p0.x) < -90, "A carrier never climbs the both-hands ladder (stopped at %s)" % sim._players.p0.x)
+	var empty := _sim(level, "hand-up", start)
+	_go(empty, FOOT)
+	_go(empty, TOP)
+	_check(str(empty._players.p0.surface_id) == "loft", "An empty pip climbs the same ladder")
+
+# --- Stage 1 over four turns ---------------------------------------------------------
+
+## A: p0 fetches the pipsport and waits at the ladder's foot. B: p1 waits at
+## the top, then walks to the goal and passes. C: p0 fetches it again, hands it
+## up to the memory and climbs after it; both at the goal close the stage.
+func _hand_up() -> Dictionary:
+	var a_sim := _sim(level, "hand-up", start)
+	_go(a_sim, POST)
+	var take_a := _tap(a_sim)
+	_go(a_sim, [-350, 0])
+	_go(a_sim, FOOT)
+	_still(a_sim, 10)
+	_check(a_sim.context_action().id == "put", "Turn 1 offers no hand over with the other pip far off")
+	var a := _record(a_sim)
+	var b_sim := _sim(level, "hand-up", start, a)
+	_go(b_sim, TOP)
+	_until(b_sim, take_a + 1)
+	_check(b_sim._mechanisms.items.pipsport.holder == "p0" and b_sim.snapshot().players.p0.carrying == "pipsport", "The memory carries what it carried")
+	_check(str(b_sim.context_action().id) == "", "The live pip cannot take the item from the memory")
+	_until(b_sim, 200)
+	_go(b_sim, [250, 0])
+	_until(b_sim, int(a.duration_ticks))
+	_check(b_sim.can_pass(), "Turn 2 passes once its memory is over (%s)" % b_sim.commit_reason())
+	b_sim.pass_turn()
+	var b := _record(b_sim)
+	var c_sim := _sim(level, "hand-up", start, b, [a])
+	_go(c_sim, POST)
+	_tap(c_sim)
+	_go(c_sim, [-350, 0])
+	_go(c_sim, FOOT)
+	_check(c_sim.context_action().id == "give" and int(c_sim.tick) < 200, "At the foot the carrier may hand it up to the memory at the top (tick %d)" % c_sim.tick)
+	var give_c := _tap(c_sim)
+	_check(c_sim._mechanisms.items.pipsport.holder == "p1" and "item_given:pipsport" in c_sim.snapshot().events, "Handed up, the memory holds it")
+	_go(c_sim, TOP)
+	_go(c_sim, [220, 0])
+	_check(str(c_sim._players.p0.surface_id) == "loft", "With empty hands the pip climbs after it")
+	_settle(c_sim)
+	_check(c_sim.complete, "Both pips at the goal with the pipsport carried close the stage (%s)" % c_sim.commit_reason())
+	var c := _record(c_sim)
+	for pair: Array in [[a, {}, []], [b, a, []], [c, b, [a]]]:
+		var checked: Dictionary = proof._verify_raw(level, pair[0], start, pair[1], pair[2])
+		_check(checked.valid, "Turn %s replays exactly (%s)" % [pair[0].role, checked.get("error", "")])
+	# The same turn, its memories simulated rather than played from their traces.
+	MemoryTrace.enabled = false
+	var again := _sim(level, "hand-up", start, b, [a])
+	_replay(again, c)
+	MemoryTrace.enabled = true
+	_check(Canonical.same(_record(again), c), "A turn plays the same from its memory's trace as simulated")
+	var derived: Dictionary = proof.derive_checkpoint(level, start, a, c, [b])
+	_check(derived.valid, "The stage's checkpoint derives (%s)" % derived.get("error", ""))
+	if not derived.valid: return {}
+	var checkpoint: Dictionary = _json(derived.checkpoint)
+	_check(checkpoint.mechanisms.items.pipsport.holder == "p1" and proof.verify_checkpoint(level, checkpoint).valid, "The closing checkpoint holds the pipsport on p1's back and verifies again")
+	var tampered: Dictionary = checkpoint.duplicate(true)
+	tampered.mechanisms.items.pipsport.holder = "p0"
+	tampered.checkpoint_hash = Level.checkpoint_hash(tampered)
+	_check(not proof.verify_checkpoint(level, tampered).valid, "A checkpoint with the holder changed does not verify")
+	_memory_gives(a, b, c, give_c)
+	return {"a": a, "b": b, "c": c, "checkpoint": checkpoint}
+
+## Turn 4 over C: p1 out of reach at the give, then within it.
+func _memory_gives(a: Dictionary, b: Dictionary, c: Dictionary, give_c: int) -> void:
+	var away := _sim(level, "hand-up", start, c, [a, b])
+	_until(away, give_c + 1)
+	var state: Dictionary = away._mechanisms.items.pipsport
+	_check(state.holder == "" and state.surface_id == "dock" and state.spot == "", "A memory's give with nobody in reach puts the item down at its feet")
+	var near := _sim(level, "hand-up", start, c, [a, b])
+	_go(near, TOP)
+	_until(near, give_c + 1)
+	_check(near._mechanisms.items.pipsport.holder == "p1", "A memory's give with the live pip at the top hands it over")
+
+# --- The replay sees it gone --------------------------------------------------------
+
+func _late_take() -> Dictionary:
+	var sim := _sim(level, "hand-up", start)
+	_still(sim, 150)
+	_go(sim, POST)
+	var take := _tap(sim)
+	_still(sim, 20)
+	return {"record": _record(sim), "take": take}
+
+func _gone_and_tie() -> void:
+	var late := _late_take()
+	var a: Dictionary = late.record
+	var sim := _sim(level, "hand-up", start, a)
+	_go(sim, TOP)
+	_go(sim, FOOT)
+	_go(sim, [-350, 0])
+	_go(sim, POST)
+	_check(int(sim.tick) < int(late.take), "The live pip reaches the post box first (%d < %d)" % [sim.tick, late.take])
+	_tap(sim)
+	_until(sim, int(a.duration_ticks))
+	_check(sim._mechanisms.items.pipsport.holder == "p1" and sim.snapshot().players.p0.carrying == "", "The live pip took it first, so the memory's pick up finds nothing")
+	_go(sim, FOOT)
+	_go(sim, TOP)
+	_check(str(sim._players.p1.surface_id) == "dock", "Loaded, the live pip cannot climb back up")
+	var tie := _sim(level, "hand-up", start, a)
+	_go(tie, TOP)
+	_go(tie, FOOT)
+	_go(tie, [-350, 0])
+	_go(tie, POST)
+	_until(tie, int(late.take))
+	tie.step({"interact": true})
+	_check(tie._mechanisms.items.pipsport.holder == "p0", "On the same tick the memory's pick up lands first")
+	_until(tie, int(a.duration_ticks))
+	var tied: Dictionary = proof._verify_raw(level, _record(tie), start, a)
+	_check(tied.valid, "The tie replays exactly (%s)" % tied.get("error", ""))
+
+## A: p0 waits, then climbs. B: p1 fetches the pipsport and hands it to the
+## waiting memory, which then reaches the ladder loaded and puts it down first.
+func _ladder_drop() -> void:
+	var a_sim := _sim(level, "hand-up", start)
+	_go(a_sim, [-200, 0])
+	_until(a_sim, 170)
+	_go(a_sim, FOOT)
+	_go(a_sim, TOP)
+	_check(str(a_sim._players.p0.surface_id) == "loft", "Turn 1 climbs with empty hands")
+	var a := _record(a_sim)
+	var sim := _sim(level, "hand-up", start, a)
+	_go(sim, TOP)
+	_go(sim, FOOT)
+	_go(sim, [-350, 0])
+	_go(sim, POST)
+	_tap(sim)
+	_go(sim, [-350, 0])
+	_go(sim, [-240, 0])
+	_check(sim.context_action().id == "give" and int(sim.tick) < 170, "The live pip may hand it to the waiting memory (tick %d)" % sim.tick)
+	_tap(sim)
+	_check(sim._mechanisms.items.pipsport.holder == "p0", "The memory now holds it")
+	var dropped := false
+	while int(sim.tick) < int(a.duration_ticks) and not sim.finished:
+		sim.step({})
+		if "item_dropped:pipsport" in sim.snapshot().events: dropped = true
+	var state: Dictionary = sim._mechanisms.items.pipsport
+	_check(dropped and state.holder == "" and state.surface_id == "dock" and int(state.x) < -90 and str(sim._players.p0.surface_id) == "loft", "A loaded memory puts it down before it climbs the ladder (%s)" % str(state))
+
+## A ends with a put on its last tick. Once it is over, the live pip hands
+## the item back to the still memory, which keeps it: a memory's last act
+## never repeats.
+func _last_tick() -> void:
+	var a_sim := _sim(level, "hand-up", start)
+	_still(a_sim, 150)
+	_go(a_sim, POST)
+	_tap(a_sim)
+	_go(a_sim, [-300, 60])
+	a_sim.step({})
+	a_sim.step({"interact": true})
+	var a := _record(a_sim)
+	_check(a_sim._mechanisms.items.pipsport.holder == "", "Turn 1 ends putting the pipsport down")
+	var sim := _sim(level, "hand-up", start, a)
+	_go(sim, TOP)
+	_go(sim, FOOT)
+	_go(sim, [-250, 0])
+	_until(sim, int(a.duration_ticks) + 2)
+	_check(sim._mechanisms.items.pipsport.holder == "" and sim._mechanisms.items.pipsport.surface_id == "dock", "The memory's own put lands in the live world")
+	_go(sim, [-300, 30])
+	_tap(sim)
+	_check(sim._mechanisms.items.pipsport.holder == "p1" and sim.context_action().id == "give", "The live pip picks it up beside the still memory")
+	_tap(sim)
+	_still(sim, 20)
+	_check(sim._mechanisms.items.pipsport.holder == "p0", "Handed to the finished memory, it keeps it: a memory's last put never repeats")
+
+# --- Stage 2: the item rides on, and the current -----------------------------------
+
+func _next_stage(one: Dictionary) -> void:
+	var checkpoint: Dictionary = one.checkpoint
+	var sim := _sim(level, "drift", checkpoint)
+	_check(sim._mechanisms.items.pipsport.spot == "eddy" and sim.snapshot().players.p1.carrying == "", "A stage's item_starts places the item afresh")
+	var kept := level.duplicate(true)
+	kept.stages[1].erase("item_starts")
+	var carried := _sim(kept, "drift", checkpoint)
+	_check(carried.snapshot().players.p1.carrying == "pipsport" and carried._mechanisms.items.raft.spot == "mooring", "Otherwise the item rides into the next stage as the last one left it")
+
+func _current(one: Dictionary) -> void:
+	var checkpoint: Dictionary = one.checkpoint
+	var a_sim := _sim(level, "drift", checkpoint)
+	_check(not a_sim._routes.ferry, "The ferry stays shut while the raft is at its mooring")
+	_go(a_sim, TOP)
+	_go(a_sim, FOOT)
+	_go(a_sim, [-350, -60])
+	var turn := _tap(a_sim)
+	var items: Dictionary = a_sim._mechanisms.items
+	_check(a_sim._mechanisms.controls.current == "north" and items.raft.spot == "berth" and items.pipsport.spot == "landing" and a_sim._routes.ferry, "Turned north, the current takes the raft to its berth (the ferry opens) and the pipsport to the landing")
+	_tap(a_sim)
+	_tap(a_sim)
+	_check(a_sim._mechanisms.controls.current == "north" and a_sim._mechanisms.items.pipsport.spot == "landing", "One leg per turn: nothing leaves the landing or the berth")
+	var a := _record(a_sim)
+	var b_sim := _sim(level, "drift", checkpoint, a)
+	_until(b_sim, turn)
+	_check(b_sim._mechanisms.items.pipsport.spot == "eddy", "Before the memory turns the wheel the pipsport bobs in the eddy")
+	_until(b_sim, turn + 1)
+	_check(b_sim._mechanisms.items.pipsport.spot == "landing" and b_sim._mechanisms.items.raft.spot == "berth", "The memory's turn of the wheel moves both in the live world")
+	_check(proof._verify_raw(level, a, checkpoint, {}).valid, "The current's turn replays exactly")
+	# The sluice board, held, stops the pipsport's leg; the raft still goes.
+	var held: Dictionary = checkpoint.duplicate(true)
+	held.players.p1 = {"x": -350, "z": 300, "height": 0, "surface_id": "quay"}
+	var stop := _sim(level, "drift", held)
+	_go(stop, TOP)
+	_go(stop, FOOT)
+	_go(stop, [-350, -60])
+	_tap(stop)
+	_check(stop._mechanisms.items.raft.spot == "berth" and stop._mechanisms.items.pipsport.spot == "eddy", "Someone on the sluice board stops the pipsport's leg")
+	_tap(stop)
+	_tap(stop)
+	_check(stop._mechanisms.items.pipsport.spot == "eddy", "And keeps stopping it while held")
+	# Turn 2: the live pip on the board lets go once the memory has turned the wheel north.
+	var stop_a := _record(stop)
+	var release := _sim(level, "drift", held, stop_a)
+	_until(release, int(stop_a.duration_ticks))
+	_check(release._mechanisms.controls.current == "north" and release._mechanisms.items.pipsport.spot == "eddy", "The live pip holds the board through the memory's turns")
+	_go(release, [-250, 300])
+	_check(release._mechanisms.items.pipsport.spot == "landing", "Let go of the board, the pipsport drifts on with the water still running north")
+	# A leg that needs the raft at its berth waits for it, then goes.
+	var waits := level.duplicate(true)
+	waits.stages[1].current_legs[1].erase("stop")
+	waits.stages[1].current_legs[1]["when"] = {"item_id": "raft", "spot_id": "berth"}
+	var gate := _sim(waits, "drift", checkpoint)
+	_go(gate, TOP)
+	_go(gate, FOOT)
+	_go(gate, [-350, -60])
+	gate.step({})
+	gate.step({"interact": true})
+	_check(gate._mechanisms.items.raft.spot == "berth" and gate._mechanisms.items.pipsport.spot == "eddy", "The tick the wheel turns, the raft reaches its berth first")
+	gate.step({})
+	_check(gate._mechanisms.items.pipsport.spot == "landing", "Once the leg's need holds, the pipsport goes on without another turn")
+	# Resting on a leg's start with the wheel already right, it drifts at once;
+	# set down there with the wheel right, it drifts at once again.
+	var back := level.duplicate(true)
+	back.stages[1].item_starts = {"pipsport": "landing"}
+	back.stages[1].current_legs = [{"from": "landing", "to": "eddy", "control_id": "current", "value": "north"}, {"from": "eddy", "to": "landing", "control_id": "current", "value": "north"}]
+	var quay: Dictionary = checkpoint.duplicate(true)
+	quay.players.p0 = {"x": -160, "z": 280, "height": 0, "surface_id": "quay"}
+	quay.mechanisms.controls.current = "north"
+	var lift := _sim(back, "drift", quay)
+	lift.step({})
+	_check(lift._mechanisms.items.pipsport.spot == "eddy", "With the wheel already north it leaves the landing on the first tick")
+	_still(lift, 5)
+	_check(lift._mechanisms.items.pipsport.spot == "eddy", "One leg per turn: the eddy's leg back on the same value waits for the wheel")
+	back.stages[1].item_starts = {"pipsport": "p0"}
+	var carried := _sim(back, "drift", quay)
+	_tap(carried)
+	_check(carried._mechanisms.items.pipsport.spot == "eddy" and "item_drifted:pipsport" in carried.snapshot().events, "Set down on the landing with the wheel north, it rides the current at once")
+	_two_ways(checkpoint, held)
+	_pan(checkpoint)
+	_wound(checkpoint)
+	_hatch()
+
+## One wheel value, two ways: to the landing while someone holds the sluice
+## board, else on to the berth (the reeds).
+func _two_ways(checkpoint: Dictionary, held: Dictionary) -> void:
+	var forked := level.duplicate(true)
+	forked.stages[1].current_legs = [
+		{"from": "eddy", "to": "landing", "control_id": "current", "value": "north", "when": {"pad_id": "sluice-board"}},
+		{"from": "eddy", "to": "berth", "control_id": "current", "value": "north"},
+	]
+	for case: Array in [[checkpoint, "berth", "With nobody on the board the pipsport takes the other way"], [held, "landing", "With the board held it comes to the landing"]]:
+		var sim := _sim(forked, "drift", case[0])
+		_go(sim, TOP)
+		_go(sim, FOOT)
+		_go(sim, [-350, -60])
+		_tap(sim)
+		_check(sim._mechanisms.items.pipsport.spot == case[1], case[2])
+
+## A pan (train/new-pieces-b's pan block): held by a pip on it or the
+## pipsport resting in it.
+func _pan(checkpoint: Dictionary) -> void:
+	var panned := level.duplicate(true)
+	panned.item_spots.append({"id": "pan", "surface_id": "dock", "position_cm": [-200, 60], "height_cm": 0})
+	panned.stages[1].pressure_pads.append({"id": "pan", "surface_id": "dock", "position_cm": [-200, 60], "height_cm": 0, "radius_cm": 28})
+	panned.stages[1].item_starts = {"pipsport": "post"}
+	var weight := {"any": [{"pad_id": "pan"}, {"item_id": "pipsport", "spot_id": "pan"}]}
+	var sim := _sim(panned, "drift", checkpoint)
+	_go(sim, TOP)
+	_go(sim, FOOT)
+	_go(sim, [-350, 0])
+	_go(sim, POST)
+	_tap(sim)
+	_go(sim, [-350, 0])
+	_go(sim, [-200, 0])
+	var holds := func() -> bool: return Seven.predicate(weight, sim.stage, sim._players, sim._mechanisms, {}, true)
+	_check(not holds.call(), "An empty pan holds nothing")
+	_go(sim, [-200, 60])
+	_check(holds.call(), "A pip in the pan weighs it down")
+	_tap(sim)
+	_go(sim, [-200, -40])
+	_check(sim._mechanisms.items.pipsport.spot == "pan" and holds.call(), "The pipsport left in the pan weighs it down by itself")
+
+## A leg with no wheel: a sack lift wound while someone stands on the winding board.
+func _wound(checkpoint: Dictionary) -> void:
+	var wound := level.duplicate(true)
+	wound.stages[1].item_starts = {"pipsport": "landing"}
+	wound.stages[1].current_legs = [{"from": "landing", "to": "eddy", "when": {"pad_id": "sluice-board"}}]
+	_check(CarriedItems.problems(wound).is_empty(), "A leg with no wheel and a when is sound")
+	var free := _sim(wound, "drift", checkpoint)
+	_still(free, 3)
+	_check(free._mechanisms.items.pipsport.spot == "landing", "Nobody on the winding board, the lift stays down")
+	var on: Dictionary = checkpoint.duplicate(true)
+	on.players.p1 = {"x": -350, "z": 300, "height": 0, "surface_id": "quay"}
+	var turning := _sim(wound, "drift", on)
+	turning.step({})
+	_check(turning._mechanisms.items.pipsport.spot == "eddy", "Someone on the winding board winds it along")
+	var bad := wound.duplicate(true)
+	bad.stages[1].current_legs[0].erase("when")
+	_check(not CarriedItems.problems(bad).is_empty(), "A leg with neither a wheel nor a when is refused")
+
+## A hand up needs its crossing open: a bolted trapdoor stops it.
+func _hatch() -> void:
+	var bolted := level.duplicate(true)
+	bolted.stages[0].levers = [{"id": "bolt", "surface_id": "loft", "position_cm": [100, -80], "height_cm": 48, "radius_cm": 28}]
+	bolted.stages[0].gates = [{"route_id": "ladder", "when": {"lever_id": "bolt"}}]
+	bolted.stages[0].item_starts = {"pipsport": "p0"}
+	var below: Dictionary = start.duplicate(true)
+	below.players.p0 = {"x": FOOT[0], "z": FOOT[1], "height": 0, "surface_id": "dock"}
+	below.players.p1 = {"x": TOP[0], "z": TOP[1], "height": 48, "surface_id": "loft"}
+	var shut := _sim(bolted, "hand-up", below)
+	shut.step({})
+	_check(shut.context_action().id == "put", "With the trapdoor bolted the pipsport cannot be handed up")
+	below.mechanisms.levers = {"bolt": true}
+	var open := _sim(bolted, "hand-up", below)
+	open.step({})
+	_check(open.context_action().id == "give", "Unbolted, it can be handed up")
+	_check(CarriedItems.can_hand(level, {"ladder": true}, below.players.p0, below.players.p1, {"ladder": true}) and not CarriedItems.can_hand(level, {"ladder": true}, below.players.p0, below.players.p1, {}), "can_hand asks the crossing to be open")
+
+# --- The server's witness ----------------------------------------------------------
+
+func _server_files(one: Dictionary) -> void:
+	var files := {"definition.json": level, "initial.json": start, "a.json": one.a, "b.json": one.b, "c.json": one.c, "checkpoint.json": one.checkpoint}
+	var write := "--write" in OS.get_cmdline_user_args()
+	var dir := SERVER_FIXTURES
+	if write: DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
+	for name: String in files:
+		var path := dir.path_join(name)
+		var text := JSON.stringify(_json(files[name]), "  ", false) + "\n"
+		if write:
+			var file := FileAccess.open(path, FileAccess.WRITE)
+			file.store_string(text)
+			file.close()
+		var kept := FileAccess.get_file_as_string(path)
+		_check(JSON.parse_string(kept) != null and Canonical.same(JSON.parse_string(kept), _json(files[name])), "The server's witness %s is this suite's (-- --write to write it)" % name)
+
+# --- Helpers -----------------------------------------------------------------------
+
+func _sim(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary = {}, chain: Array = []) -> RefCounted:
+	var sim := Simulation.new()
+	sim.simulation_version = int(definition.simulation_version)
+	sim._reset_trusted(definition, stage_id, checkpoint, prior, "a" if prior.is_empty() else "b", chain)
+	return sim
+
+## Walks the live pip to `target`, x first then z; stops when it stops moving.
+func _go(sim: RefCounted, target: Array) -> void:
+	for axis: String in ["x", "z"]:
+		var stuck := 0
+		for _step in range(400):
+			if sim.finished: return
+			var player: Dictionary = sim._players[sim.active_slot]
+			var distance := int(target[0 if axis == "x" else 1]) - int(player[axis])
+			if absi(distance) <= 1: break
+			var before := Vector2i(int(player.x), int(player.z))
+			sim.step({"move_" + axis: clampf(float(distance) / 8.0, -1.0, 1.0)})
+			var after: Dictionary = sim._players[sim.active_slot]
+			stuck = stuck + 1 if Vector2i(int(after.x), int(after.z)) == before else 0
+			if stuck >= 3: break
+
+## A press: a still tick, then the button. Returns the tick it pressed on.
+func _tap(sim: RefCounted) -> int:
+	sim.step({})
+	var at := int(sim.tick)
+	sim.step({"interact": true})
+	return at
+
+func _still(sim: RefCounted, count: int) -> void:
+	for _step in range(count):
+		if sim.finished: return
+		sim.step({})
+
+func _until(sim: RefCounted, at: int) -> void:
+	while int(sim.tick) < at and not sim.finished: sim.step({})
+
+## Stands still until the stage completes or the turn ends.
+func _settle(sim: RefCounted) -> void:
+	for _step in range(1300):
+		if sim.finished: return
+		sim.step({})
+
+func _replay(sim: RefCounted, record: Dictionary) -> void:
+	for input: Dictionary in Simulation.expand_recording_inputs(record): sim.step(input)
+
+func _record(sim: RefCounted) -> Dictionary:
+	return _json(sim.export_recording())
+
+func _json(value: Variant) -> Variant:
+	return JSON.parse_string(JSON.stringify(value))
+
+func _check(ok: bool, message: String) -> void:
+	checks += 1
+	if not ok:
+		failures += 1
+		push_error(message)
+		print("FAIL: " + message)

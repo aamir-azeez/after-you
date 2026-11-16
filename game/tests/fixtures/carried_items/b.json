@@ -1,0 +1,89 @@
+{
+  "actions": [
+    {
+      "action": false,
+      "ticks": 27.0,
+      "x": -100.0,
+      "z": 0.0
+    },
+    {
+      "action": false,
+      "ticks": 1.0,
+      "x": -50.0,
+      "z": 0.0
+    },
+    {
+      "action": false,
+      "ticks": 172.0,
+      "x": 0.0,
+      "z": 0.0
+    },
+    {
+      "action": false,
+      "ticks": 27.0,
+      "x": 100.0,
+      "z": 0.0
+    },
+    {
+      "action": false,
+      "ticks": 1.0,
+      "x": 50.0,
+      "z": 0.0
+    }
+  ],
+  "catch_assistance": true,
+  "checkpoint_hash": "add10b736d72d16a7f96d4f7a8c2e7085863f2ff842f7d977a117828ca3fd86d",
+  "completed": false,
+  "definition_hash": "2a9dea7880937018ac9d744fac0592c51a5feddcdfdc5db0a6d08e525d9a3c52",
+  "duration_ticks": 228.0,
+  "final_state_hash": "d29f90132e2fdf8a4c32168fc2868e6dbf5b4b6c8b463fe5284add728c1a0c6f",
+  "level_id": "carry-witness",
+  "level_version": 1.0,
+  "outcome": {
+    "objective_complete": false,
+    "source_ready": true
+  },
+  "player_slot": "p1",
+  "recording_hash": "5e2b9d4c70605d27a8b7a82310dbda922c3388a93b650c5edc62ded2d0d88709",
+  "replay_checks": [
+    {
+      "state_hash": "caf73b5cd1b3d3fb498c0e81509e7ae831e23dfcdc5b37b0af020c9201088376",
+      "tick": 30.0
+    },
+    {
+      "state_hash": "cbe56c35351ecccef9af16141cb021cb08a389e66c88c8136db8dda4a07c5e07",
+      "tick": 60.0
+    },
+    {
+      "state_hash": "ef2a329f64dd4dd58f317b876b750275d469929c0bdfdef053129a2d6b21e009",
+      "tick": 90.0
+    },
+    {
+      "state_hash": "bf7bbb68c3033b664cb8c7fb05e2f04e2a9699b4cd2cbb23b2177dd021825a49",
+      "tick": 120.0
+    },
+    {
+      "state_hash": "78b03aaced838b39271c722b62891845c6aebf8532036cc17ea94b95415b5b6a",
+      "tick": 150.0
+    },
+    {
+      "state_hash": "a2890545c8bb31a0a5201b65818f3d68c0c4456d666bb39a79f6b9175d22a114",
+      "tick": 180.0
+    },
+    {
+      "state_hash": "30aa59bbbaf7efddb122a76217404ec83c927c6a31510ff1b197a6d0016e5907",
+      "tick": 210.0
+    },
+    {
+      "state_hash": "d29f90132e2fdf8a4c32168fc2868e6dbf5b4b6c8b463fe5284add728c1a0c6f",
+      "tick": 228.0
+    }
+  ],
+  "role": "b",
+  "schema_version": 7.0,
+  "simulation_version": 16.0,
+  "source_recording_hash": "d3a4f17d6eb4ad64baab3b2662144006425a766f5c0e9dacb6ac151a8b3d1575",
+  "stage_id": "hand-up",
+  "stage_version": 1.0,
+  "tick_rate": 30.0
+}

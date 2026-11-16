@@ -28,6 +28,9 @@ campaign_replay_context 2
 campaign_safety_context 2
 campaign_store 2
 capabilities_refresh 3
+carried_items 2
+carried_items_checker 2
+carried_items_world 2
 carried_light 1
 changelog 3
 chapter_access 2

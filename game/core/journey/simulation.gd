@@ -5,6 +5,7 @@ const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const BeamField = preload("res://core/beam_field.gd")
+const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CURRENT_SIMULATION_VERSION := 7
 const COMFORT_VERSION := 8
 ## Comfort rules under a new number, as in the cooperative ruleset. Only a
@@ -36,6 +37,16 @@ var _closing: Dictionary = {}
 ## Tide rules: {"slot", "route", "tick"} once a spirit has drowned.
 var _drowned: Dictionary = {}
 var _ready_branch := ""
+## Rules 16's carried items and currents (core/physical/carried_items.gd),
+## set at reset: whether they play, the items in order, the crossings that
+## need both hands, each item's last leg ("control=value": it takes no other
+## leg on that wheel value until the wheel turns or a pip handles it) and where
+## the memory last stood off a both-hands crossing.
+var _carrying := false
+var _item_order: Array = []
+var _hands: Dictionary = {}
+var _legs_taken: Dictionary = {}
+var _memory_floor: Dictionary = {}
 var _optics: Dictionary = {"segments":[],"signals":{}}
 ## Fixed once a reset sets the level and stage (_reset_mechanics): every
 ## bridge and stair in order, and each gate's route with its condition (null
@@ -87,6 +98,7 @@ static func _record_version(record: Dictionary) -> int:
 		if declared == OPEN_TIDE_RULES_VERSION: return OPEN_TIDE_RULES_VERSION
 		if declared == OpenControls.OPEN_TURNS_RULES_VERSION: return OpenControls.OPEN_TURNS_RULES_VERSION
 		if declared == OpenControls.OPEN_TURNS_TIDE_RULES_VERSION: return OpenControls.OPEN_TURNS_TIDE_RULES_VERSION
+		if declared == OpenControls.PIECES_RULES_VERSION: return OpenControls.PIECES_RULES_VERSION
 	return CURRENT_SIMULATION_VERSION
 
 static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary = {}) -> int:
@@ -98,6 +110,7 @@ static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary =
 	return pinned if pinned > 0 else CURRENT_SIMULATION_VERSION
 
 func _reset_mechanics() -> void:
+	_reset_items()
 	_route_defs = level.get("bridges", []) + level.get("stairs", [])
 	_gate_plan = []
 	for gate: Dictionary in stage.get("gates", []):
@@ -121,6 +134,7 @@ func _advance_source() -> void:
 		elif control.owner_slot == first_player_slot:
 			_mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
 	_ready_branch = _source._ready_branch
+	if _carrying: _replay_memory_items()
 
 func _refresh_routes() -> void:
 	_refresh_optics()
@@ -247,6 +261,7 @@ func context_action() -> Dictionary:
 	if inherited.id == "ring" and level.id == "turn-of-the-tide" and stage.id == "slack-water": inherited.label = "Light lantern"
 	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_players,_mechanisms,_optics.signals,_open_controls()):
 		inherited.enabled = false
+	if _carrying and str(inherited.id).is_empty(): return _item_action()
 	return inherited
 
 func _objective_display() -> Dictionary:
@@ -269,6 +284,9 @@ func commit_reason() -> String:
 
 func _interact() -> void:
 	var action := context_action()
+	if _carrying and action.id in CarriedItems.ACTS:
+		_item_act(action)
+		return
 	if action.id != "selector":
 		super._interact()
 		return
@@ -335,6 +353,9 @@ func snapshot() -> Dictionary:
 			for id: String in _closing: closing[id] = int(_closing[id]) - tick
 			value.route_progress["closing"]=closing
 			value["drowned"]=_drowned.duplicate()
+		# Rules 16: what each pip carries on its back.
+		if _carrying:
+			for slot: String in value.players: value.players[slot]["carrying"]=CarriedItems.held_by(_mechanisms.items,slot)
 	return value
 
 func _state_body() -> Dictionary:
@@ -364,3 +385,121 @@ static func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) ->
 ## `passes`: open turns only, the stage's turns between `first` and `second`.
 static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, passes: Array = []) -> Dictionary:
 	return _proof(_record_version(first)).derive_checkpoint(definition,previous,first,second,passes)
+
+# --- Rules 16: carried items and currents (core/physical/carried_items.gd) ---
+
+## Sets the items up for this stage: its item_starts over the checkpoint's.
+func _reset_items() -> void:
+	_carrying = CarriedItems.on(simulation_version) and CarriedItems.declared(level)
+	_item_order = []
+	_hands = {}
+	_legs_taken = {}
+	_memory_floor = {}
+	if not _carrying: return
+	if not _mechanisms.get("items") is Dictionary: _mechanisms["items"] = CarriedItems.initial(level)
+	var starts: Dictionary = stage.get("item_starts", {})
+	for id: Variant in starts: _mechanisms.items[str(id)] = CarriedItems.placed(level, str(starts[id]))
+	_item_order = _mechanisms.items.keys()
+	_item_order.sort()
+	_hands = CarriedItems.hands_routes(level)
+
+## A pip carrying an item never steps onto a crossing that needs both hands.
+func _walk_routes(slot: String) -> Dictionary:
+	if _hands.is_empty() or CarriedItems.held_by(_mechanisms.items, slot).is_empty(): return _routes
+	var routes := _routes.duplicate()
+	for id: String in _hands: routes[id] = false
+	return routes
+
+## What an item offers the live pip here: hand over, put down or pick up.
+func _item_action() -> Dictionary:
+	var player: Dictionary = _players[active_slot]
+	var other := _other(active_slot)
+	var items: Dictionary = _mechanisms.items
+	var mine := CarriedItems.held_by(items, active_slot)
+	if not mine.is_empty():
+		if CarriedItems.held_by(items, other).is_empty() and CarriedItems.can_hand(level, _hands, player, _players[other], _routes): return _action("give", CarriedItems.LABELS.give, true, mine)
+		if not CarriedItems.lay(level, player).is_empty(): return _action("put", CarriedItems.LABELS.put, true, mine)
+		return _action("", "", false, "")
+	if _hands.has(str(player.surface_id)): return _action("", "", false, "")
+	for id: String in _item_order:
+		if CarriedItems.carriable(CarriedItems.item(level, id)) and CarriedItems.can_pick(player, items[id]): return _action("take", CarriedItems.LABELS.take, true, id)
+	return _action("", "", false, "")
+
+## The live pip's press on an item; a later turn replays it from _own_toggles.
+func _item_act(action: Dictionary) -> void:
+	var id := str(action.target_id)
+	match str(action.id):
+		"take": _take(id, active_slot)
+		"put": _put(id, _players[active_slot])
+		"give": _give(id, _other(active_slot))
+	(_own_toggles.get_or_add("items", {}) as Dictionary)[id] = str(action.id)
+
+func _take(id: String, slot: String) -> void:
+	_mechanisms.items[id] = CarriedItems.held(slot)
+	_legs_taken.erase(id)
+	_events.append("item_taken:" + id)
+
+func _give(id: String, slot: String) -> void:
+	_mechanisms.items[id] = CarriedItems.held(slot)
+	_legs_taken.erase(id)
+	_events.append("item_given:" + id)
+
+## Puts item `id` down where `at` (a player) stands; false off an island.
+func _put(id: String, at: Dictionary) -> bool:
+	var rest := CarriedItems.lay(level, at)
+	if rest.is_empty(): return false
+	_mechanisms.items[id] = rest
+	_legs_taken.erase(id)
+	_events.append("item_put:" + id)
+	return true
+
+## The memory's own take, put and give, on the ticks it did them, against the
+## live state (header of carried_items.gd), then the both-hands rule for it.
+func _replay_memory_items() -> void:
+	var memory: Dictionary = _players[memory_slot]
+	var items: Dictionary = _mechanisms.items
+	if tick < _prior_frames.size():
+		var acts: Dictionary = _source._own_toggles.get("items", {})
+		var ids := acts.keys()
+		ids.sort()
+		for id: Variant in ids:
+			if not items.has(id): continue
+			var held: bool = str(items[id].holder) == memory_slot
+			match str(acts[id]):
+				"take":
+					if CarriedItems.held_by(items, memory_slot).is_empty() and not _hands.has(str(memory.surface_id)) and CarriedItems.carriable(CarriedItems.item(level, str(id))) and CarriedItems.can_pick(memory, items[id]): _take(str(id), memory_slot)
+				"put":
+					if held: _put(str(id), memory)
+				"give":
+					if held and CarriedItems.held_by(items, active_slot).is_empty() and CarriedItems.can_hand(level, _hands, memory, _players[active_slot], _routes): _give(str(id), active_slot)
+					elif held: _put(str(id), memory)
+	if not _hands.has(str(memory.surface_id)):
+		_memory_floor = memory.duplicate()
+		return
+	var loaded := CarriedItems.held_by(items, memory_slot)
+	if not loaded.is_empty() and not _memory_floor.is_empty() and _put(loaded, _memory_floor): _events.append("item_dropped:" + loaded)
+
+## The current: an item resting at a leg's start moves along it while its
+## wheel shows the leg's value, `when` holds and `stop` does not; then it
+## takes no other leg on that wheel value until the wheel turns or a pip
+## handles it, so it moves one leg per turn of the wheel and never two a tick.
+func _after_interact() -> void:
+	if not _carrying: return
+	var legs: Array = stage.get("current_legs", [])
+	for id: String in _item_order:
+		var state: Dictionary = _mechanisms.items[id]
+		if _legs_taken.has(id):
+			var taken: PackedStringArray = str(_legs_taken[id]).split("=", true, 1)
+			if str(_mechanisms.controls.get(taken[0], "")) != taken[1]: _legs_taken.erase(id)
+		if legs.is_empty() or not str(state.holder).is_empty() or str(state.spot).is_empty(): continue
+		for leg: Dictionary in legs:
+			if str(leg.from) != str(state.spot): continue
+			# A leg with no wheel goes while its `when` holds (a winding board).
+			var turned := "%s=%s" % [leg.control_id, leg.value] if leg.has("control_id") else ""
+			if not turned.is_empty() and (str(_mechanisms.controls.get(str(leg.control_id), "")) != str(leg.value) or str(_legs_taken.get(id, "")) == turned): continue
+			if leg.has("when") and not Seven.predicate(leg.when, stage, _players, _mechanisms, _optics.signals, _open_controls()): continue
+			if leg.has("stop") and Seven.predicate(leg.stop, stage, _players, _mechanisms, _optics.signals, _open_controls()): continue
+			_mechanisms.items[id] = CarriedItems.at_spot(CarriedItems.spot(level, str(leg.to)))
+			if not turned.is_empty(): _legs_taken[id] = turned
+			_events.append("item_drifted:" + id)
+			break
