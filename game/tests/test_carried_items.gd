@@ -313,19 +313,43 @@ func _current(one: Dictionary) -> void:
 	_tap(stop)
 	_tap(stop)
 	_check(stop._mechanisms.items.pipsport.spot == "eddy", "And keeps stopping it while held")
-	# Set down on a leg's start with the wheel already right, it moves at once.
+	# Turn 2: the live pip on the board lets go once the memory has turned the wheel north.
+	var stop_a := _record(stop)
+	var release := _sim(level, "drift", held, stop_a)
+	_until(release, int(stop_a.duration_ticks))
+	_check(release._mechanisms.controls.current == "north" and release._mechanisms.items.pipsport.spot == "eddy", "The live pip holds the board through the memory's turns")
+	_go(release, [-250, 300])
+	_check(release._mechanisms.items.pipsport.spot == "landing", "Let go of the board, the pipsport drifts on with the water still running north")
+	# A leg that needs the raft at its berth waits for it, then goes.
+	var waits := level.duplicate(true)
+	waits.stages[1].current_legs[1].erase("stop")
+	waits.stages[1].current_legs[1]["when"] = {"item_id": "raft", "spot_id": "berth"}
+	var gate := _sim(waits, "drift", checkpoint)
+	_go(gate, TOP)
+	_go(gate, FOOT)
+	_go(gate, [-350, -60])
+	gate.step({})
+	gate.step({"interact": true})
+	_check(gate._mechanisms.items.raft.spot == "berth" and gate._mechanisms.items.pipsport.spot == "eddy", "The tick the wheel turns, the raft reaches its berth first")
+	gate.step({})
+	_check(gate._mechanisms.items.pipsport.spot == "landing", "Once the leg's need holds, the pipsport goes on without another turn")
+	# Resting on a leg's start with the wheel already right, it drifts at once;
+	# set down there with the wheel right, it drifts at once again.
 	var back := level.duplicate(true)
 	back.stages[1].item_starts = {"pipsport": "landing"}
-	back.stages[1].current_legs = [{"from": "landing", "to": "eddy", "control_id": "current", "value": "north"}]
+	back.stages[1].current_legs = [{"from": "landing", "to": "eddy", "control_id": "current", "value": "north"}, {"from": "eddy", "to": "landing", "control_id": "current", "value": "north"}]
 	var quay: Dictionary = checkpoint.duplicate(true)
 	quay.players.p0 = {"x": -160, "z": 280, "height": 0, "surface_id": "quay"}
 	quay.mechanisms.controls.current = "north"
 	var lift := _sim(back, "drift", quay)
+	lift.step({})
+	_check(lift._mechanisms.items.pipsport.spot == "eddy", "With the wheel already north it leaves the landing on the first tick")
 	_still(lift, 5)
-	_check(lift._mechanisms.items.pipsport.spot == "landing", "Resting on the leg's start, it waits for a turn of the wheel")
-	_tap(lift)
-	_tap(lift)
-	_check(lift._mechanisms.items.pipsport.spot == "eddy" and "item_drifted:pipsport" in lift.snapshot().events, "Set back down there, it rides the current at once")
+	_check(lift._mechanisms.items.pipsport.spot == "eddy", "One leg per turn: the eddy's leg back on the same value waits for the wheel")
+	back.stages[1].item_starts = {"pipsport": "p0"}
+	var carried := _sim(back, "drift", quay)
+	_tap(carried)
+	_check(carried._mechanisms.items.pipsport.spot == "eddy" and "item_drifted:pipsport" in carried.snapshot().events, "Set down on the landing with the wheel north, it rides the current at once")
 
 # --- The server's witness ----------------------------------------------------------
 

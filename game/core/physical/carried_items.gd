@@ -18,12 +18,15 @@ extends RefCounted
 ##   "item_starts": {item id: spot id or "p0"/"p1"}: where the item is when the
 ##       stage starts; otherwise where the stage before left it.
 ##   "current_legs": [{"from", "to", "control_id", "value", "when"?, "stop"?}]:
-##       the current. On a tick its control turns to `value`, an item resting at
-##       spot `from` moves to spot `to`: one leg per turn of the wheel, never
-##       two legs in one tick. `when` must hold and `stop` must not (both
-##       Seven.predicate trees: a held water-gate board stops it). An item set
-##       down on `from` while the control already shows `value` moves at once
-##       (anything put on a lift's hook goes up while its wheel is right).
+##       the current. An item resting at spot `from` moves to spot `to` on any
+##       tick its control shows `value`, `when` holds and `stop` does not (both
+##       Seven.predicate trees: a held water-gate board stops it, and it drifts
+##       on once the board is let go or a gate the leg needs opens). Then it
+##       takes no other leg on that same value until the wheel turns or a pip
+##       handles it: one leg per turn of the wheel, never two legs a tick.
+##       So an item put on a lift's hook with its wheel right goes up at once,
+##       and one resting at a leg's start with the wheel already right drifts
+##       on the stage's first tick (as the design solver's start settle does).
 ##
 ## The state: mechanisms.items {id: {"holder", "spot", "x", "z", "height",
 ## "surface_id"}}, in the checkpoint like controls, so it rides into the next

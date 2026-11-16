@@ -39,14 +39,13 @@ var _drowned: Dictionary = {}
 var _ready_branch := ""
 ## Rules 16's carried items and currents (core/physical/carried_items.gd),
 ## set at reset: whether they play, the items in order, the crossings that
-## need both hands, the controls as the last tick left them (a current moves
-## on a turn), the items set down this tick (they may ride a current at once)
-## and where the memory last stood off a both-hands crossing.
+## need both hands, each item's last leg ("control=value": it takes no other
+## leg on that wheel value until the wheel turns or a pip handles it) and where
+## the memory last stood off a both-hands crossing.
 var _carrying := false
 var _item_order: Array = []
 var _hands: Dictionary = {}
-var _seen_controls: Dictionary = {}
-var _fresh: Dictionary = {}
+var _legs_taken: Dictionary = {}
 var _memory_floor: Dictionary = {}
 var _optics: Dictionary = {"segments":[],"signals":{}}
 ## Fixed once a reset sets the level and stage (_reset_mechanics): every
@@ -394,8 +393,7 @@ func _reset_items() -> void:
 	_carrying = CarriedItems.on(simulation_version) and CarriedItems.declared(level)
 	_item_order = []
 	_hands = {}
-	_seen_controls = {}
-	_fresh = {}
+	_legs_taken = {}
 	_memory_floor = {}
 	if not _carrying: return
 	if not _mechanisms.get("items") is Dictionary: _mechanisms["items"] = CarriedItems.initial(level)
@@ -404,7 +402,6 @@ func _reset_items() -> void:
 	_item_order = _mechanisms.items.keys()
 	_item_order.sort()
 	_hands = CarriedItems.hands_routes(level)
-	_seen_controls = _mechanisms.controls.duplicate()
 
 ## A pip carrying an item never steps onto a crossing that needs both hands.
 func _walk_routes(slot: String) -> Dictionary:
@@ -439,10 +436,12 @@ func _item_act(action: Dictionary) -> void:
 
 func _take(id: String, slot: String) -> void:
 	_mechanisms.items[id] = CarriedItems.held(slot)
+	_legs_taken.erase(id)
 	_events.append("item_taken:" + id)
 
 func _give(id: String, slot: String) -> void:
 	_mechanisms.items[id] = CarriedItems.held(slot)
+	_legs_taken.erase(id)
 	_events.append("item_given:" + id)
 
 ## Puts item `id` down where `at` (a player) stands; false off an island.
@@ -450,7 +449,7 @@ func _put(id: String, at: Dictionary) -> bool:
 	var rest := CarriedItems.lay(level, at)
 	if rest.is_empty(): return false
 	_mechanisms.items[id] = rest
-	_fresh[id] = true
+	_legs_taken.erase(id)
 	_events.append("item_put:" + id)
 	return true
 
@@ -480,24 +479,26 @@ func _replay_memory_items() -> void:
 	var loaded := CarriedItems.held_by(items, memory_slot)
 	if not loaded.is_empty() and not _memory_floor.is_empty() and _put(loaded, _memory_floor): _events.append("item_dropped:" + loaded)
 
-## The current: an item resting at a leg's start moves one leg on the tick
-## its control turns to the leg's value, or at once when it was just set down
-## there with the control already showing it; `when` holds and `stop` does not.
+## The current: an item resting at a leg's start moves along it while its
+## wheel shows the leg's value, `when` holds and `stop` does not; then it
+## takes no other leg on that wheel value until the wheel turns or a pip
+## handles it, so it moves one leg per turn of the wheel and never two a tick.
 func _after_interact() -> void:
 	if not _carrying: return
 	var legs: Array = stage.get("current_legs", [])
 	for id: String in _item_order:
 		var state: Dictionary = _mechanisms.items[id]
+		if _legs_taken.has(id):
+			var taken: PackedStringArray = str(_legs_taken[id]).split("=", true, 1)
+			if str(_mechanisms.controls.get(taken[0], "")) != taken[1]: _legs_taken.erase(id)
 		if legs.is_empty() or not str(state.holder).is_empty() or str(state.spot).is_empty(): continue
 		for leg: Dictionary in legs:
 			if str(leg.from) != str(state.spot): continue
-			var control := str(leg.control_id)
-			var now := str(_mechanisms.controls.get(control, ""))
-			if now != str(leg.value) or (not _fresh.has(id) and str(_seen_controls.get(control, "")) == now): continue
+			var turned := "%s=%s" % [leg.control_id, leg.value]
+			if str(_mechanisms.controls.get(str(leg.control_id), "")) != str(leg.value) or str(_legs_taken.get(id, "")) == turned: continue
 			if leg.has("when") and not Seven.predicate(leg.when, stage, _players, _mechanisms, _optics.signals, _open_controls()): continue
 			if leg.has("stop") and Seven.predicate(leg.stop, stage, _players, _mechanisms, _optics.signals, _open_controls()): continue
 			_mechanisms.items[id] = CarriedItems.at_spot(CarriedItems.spot(level, str(leg.to)))
+			_legs_taken[id] = turned
 			_events.append("item_drifted:" + id)
 			break
-	_fresh = {}
-	_seen_controls = _mechanisms.controls.duplicate()
