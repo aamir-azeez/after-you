@@ -4,8 +4,9 @@ extends SceneTree
 ## Buy and room links all go through) offers it first. "Not now" makes nothing and the next tap
 ## asks again; an account with no friend code, or a server without the feature, makes one as
 ## before; a check that cannot reach the server makes nothing yet; two taps at once make one.
-## Recover identity on a phone that has a friend code asks to keep its recovery details first, and
-## a restored friend code's purchases are read again once the store is set up for it.
+## Recover identity on a phone that has a friend code asks to keep its recovery details first, a
+## restored friend code's purchases are read again once the store is set up for it, and a friend
+## code an iPhone reinstall kept is checked with the server once before it is used.
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Service = preload("res://services/platform_games/platform_games.gd")
@@ -43,12 +44,16 @@ class Secrets extends Node:
 	signal completed(id: String, operation: String, payload: Dictionary)
 	signal failed(id: String, operation: String, code: String)
 	var values: Dictionary = {}
+	## Names an earlier install left (the iPhone Keychain reads them "kept" after a reinstall).
+	var kept: Array = []
 	var count := 0
 	func is_available() -> bool: return true
 	func get_secret(name: String) -> String:
 		count += 1
 		var id := "s-%d" % count
-		_emit.call_deferred(id, "get", {"found": true, "value": values[name]} if values.has(name) else {"found": false, "value": null})
+		var payload := {"found": true, "value": values[name]} if values.has(name) else {"found": false, "value": null}
+		if values.has(name) and name in kept: payload.kept = true
+		_emit.call_deferred(id, "get", payload)
 		return id
 	func put_secret(name: String, value: String) -> String:
 		count += 1
@@ -58,6 +63,7 @@ class Secrets extends Node:
 	func remove_secret(name: String) -> String:
 		count += 1
 		values.erase(name)
+		kept.erase(name)
 		_emit.call_deferred("s-%d" % count, "remove", {"removed": true})
 		return "s-%d" % count
 	func _emit(id: String, operation: String, payload: Dictionary) -> void: completed.emit(id, operation, payload)
@@ -147,6 +153,7 @@ func _run() -> void:
 	await _feature_off_creates(app, api, secrets)
 	await _recover_asks_to_keep_code(app)
 	await _purchase_sync_after_restore()
+	await _kept_identity_after_reinstall(app, api, secrets)
 
 	var flow: Node = app.platform_games_flow
 	if flow.service != null:
@@ -280,6 +287,57 @@ func _recover_asks_to_keep_code(app: Node) -> void:
 	app.identity_data = {}
 	account.show_recovery_form()
 	_check(app.mode == AccountFlow.MODE_RECOVERY_FORM, "A phone with no friend code goes straight to the form")
+
+## A launch whose secure storage holds an identity from before a reinstall (the iPhone Keychain).
+func _launch_with_kept(app: Node, api: Api, secrets: Secrets, kept: bool, answer: Dictionary) -> void:
+	var flow: Node = app.platform_games_flow
+	if flow.service != null:
+		flow.detach()
+		flow.service.queue_free()
+		flow.service = null
+	secrets.values = {"player_identity": JSON.stringify({"player_id": OWN_PLAYER, "device_token": "synthetic-device-token", "recovery_code": OWN_CODE})}
+	secrets.kept = ["player_identity"] if kept else []
+	app.identity_busy = false
+	app.identity_restart_required = false
+	app.deleted_identity_owner = ""
+	app.identity_data = {}
+	app.identity_read_state = Main.IdentityReadState.UNCHECKED
+	api.player_id = ""
+	api.device_token = ""
+	api.calls.clear()
+	api.answers = {"/v1/identity": [answer, _new_identity()]}
+	app._load_saved_identity()
+	await _until(func() -> bool: return not app.identity_loading)
+
+func _gets(api: Api) -> int:
+	return api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/identity" and call.method == HTTPClient.METHOD_GET).size()
+
+## A reinstall keeps its friend code (iPhone Keychain): the server confirms it once, then it is used.
+## One erased elsewhere is forgotten and the phone starts fresh; an unanswered check is used and asked
+## again next launch. Deleting the identity removes it from secure storage, so no reinstall brings it back.
+func _kept_identity_after_reinstall(app: Node, api: Api, secrets: Secrets) -> void:
+	await _launch_with_kept(app, api, secrets, true, {"ok": true, "status": 200, "data": {"player_id": OWN_PLAYER}})
+	_check(app.identity_read_state == Main.IdentityReadState.LOADED and api.player_id == OWN_PLAYER and _gets(api) == 1, "A kept friend code is checked once with the server, then used")
+	var result: Array = []
+	_tap(app, result, [])
+	await _until(func() -> bool: return not result.is_empty())
+	_check(result == [true] and api.posts("/v1/identity") == 0 and _gets(api) == 1, "and online taps use it with no new friend code and no second check")
+	await _launch_with_kept(app, api, secrets, false, {"ok": true, "status": 200, "data": {"player_id": OWN_PLAYER}})
+	_check(app.identity_read_state == Main.IdentityReadState.LOADED and _gets(api) == 0, "An ordinary launch never checks it")
+
+	await _launch_with_kept(app, api, secrets, true, {"ok": false, "status": 401, "code": "invalid_auth", "data": {}})
+	_check(app.identity_read_state == Main.IdentityReadState.MISSING and api.player_id.is_empty() and not secrets.values.has("player_identity"), "One erased elsewhere is forgotten, so the phone starts as a fresh install")
+
+	await _launch_with_kept(app, api, secrets, true, {"ok": false, "status": 0, "code": "connection_interrupted"})
+	_check(app.identity_read_state == Main.IdentityReadState.LOADED and api.player_id == OWN_PLAYER and app.saves.data.get(Main.KEPT_IDENTITY_UNCHECKED) == OWN_PLAYER, "No answer: it is used, and noted to be checked again")
+	await _launch_with_kept(app, api, secrets, false, {"ok": true, "status": 200, "data": {"player_id": OWN_PLAYER}})
+	_check(_gets(api) == 1 and not app.saves.data.has(Main.KEPT_IDENTITY_UNCHECKED), "The next launch checks it and clears the note")
+
+	api.answers["/v1/identity"] = [{"ok": true, "status": 200, "data": {"deleted": true}}]
+	api.answers["/v1/identity/deletion-ack"] = [{"ok": true, "status": 200, "data": {"schema_version": 1, "acknowledged": true}}]
+	await app.account_flow.delete_identity()
+	await _until(func() -> bool: return not secrets.values.has("player_identity"))
+	_check(not secrets.values.has("player_identity") and not "player_identity" in secrets.kept, "Deleting the identity removes it from secure storage, so a reinstall never brings it back")
 
 func _shows(node: Node, text: String) -> bool:
 	if node is LineEdit and node.text == text: return true

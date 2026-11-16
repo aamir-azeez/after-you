@@ -110,6 +110,8 @@ const INVITE_LINK_MODES := ["home", RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRI
 ## Screens a tapped notification may leave to open its room (Friends too, for a hosting alert).
 const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, JourneyFlow.MODE_JOURNEY, ReplaysFlow.MODE_COLLECTION, RelayLobbyFlow.MODE_LOBBY]
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
+## The save's note of a kept identity whose check could not reach the server: its player id.
+const KEPT_IDENTITY_UNCHECKED := "kept_identity_unchecked"
 const PhotoResumePrompt = preload("res://presentation/photo_resume_prompt.gd")
 const NativeFiles = preload("res://services/native_files.gd")
 const HistoryStore = preload("res://services/history_store.gd")
@@ -1580,6 +1582,11 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 			identity_read_state=IdentityReadState.MISSING
 		elif payload.get("found") is bool and payload.found==true and payload.get("value") is String:
 			var identity: Variant=LocalSave.parse_json(payload.value)
+			if identity is Dictionary and identity.get("player_id") is String and identity.get("device_token") is String and not identity.player_id.is_empty() and not identity.device_token.is_empty() and _kept_identity_unchecked(payload,identity):
+				# An iPhone reinstall kept it in the Keychain: the server says it still exists first.
+				secret_results.erase(id)
+				_check_kept_identity(identity)
+				return
 			if identity is Dictionary and identity.get("player_id") is String and identity.get("device_token") is String and not identity.player_id.is_empty() and not identity.device_token.is_empty():
 				identity_read_state=IdentityReadState.LOADED
 				identity_data=identity
@@ -1597,6 +1604,43 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 	if id in [identity_request,recovery_read_request]:
 		settings_flow.refresh()
 		_follow_identity()
+
+## An identity an earlier install left in the iPhone Keychain (the store reads it "kept"), or one
+## whose check could not reach the server last time, is checked once before it is used.
+func _kept_identity_unchecked(payload: Dictionary, identity: Dictionary) -> bool:
+	return Typed.equal(payload.get("kept"), true) or Typed.equal(saves.data.get(KEPT_IDENTITY_UNCHECKED), identity.player_id)
+
+## One GET /v1/identity with the kept credentials, before anything else uses them. Still there:
+## used as it is. Gone (erased from another phone or the web): forgotten here, so this phone starts
+## as a fresh install and the platform restore or a new friend code follows. No answer: used, and
+## checked again on the next launch.
+func _check_kept_identity(identity: Dictionary) -> void:
+	identity_loading=true
+	identity_read_state=IdentityReadState.LOADING
+	api.player_id=identity.player_id
+	api.device_token=identity.device_token
+	var response: Dictionary={"ok":false,"status":0}
+	if api.configured(): response=await api.request_json(HTTPClient.METHOD_GET,"/v1/identity")
+	if not response.get("ok",false) and int(response.get("status",0))==401:
+		var removed: Dictionary=await _await_secret(secrets.remove_secret("player_identity"))
+		api.player_id=""
+		api.device_token=""
+		identity_loading=false
+		identity_read_state=IdentityReadState.MISSING if removed.get("ok",false) and Typed.equal(removed.get("payload",{}).get("removed"),true) else IdentityReadState.FAILED
+		if saves.data.has(KEPT_IDENTITY_UNCHECKED): saves.update_values({},[KEPT_IDENTITY_UNCHECKED])
+	else:
+		var checked: bool=response.get("ok",false) and response.get("data") is Dictionary and Typed.equal(response.data.get("player_id"),identity.player_id)
+		if checked and saves.data.has(KEPT_IDENTITY_UNCHECKED): saves.update_values({},[KEPT_IDENTITY_UNCHECKED])
+		elif not checked and not Typed.equal(saves.data.get(KEPT_IDENTITY_UNCHECKED),identity.player_id): saves.update_values({KEPT_IDENTITY_UNCHECKED:identity.player_id})
+		identity_loading=false
+		identity_read_state=IdentityReadState.LOADED
+		identity_data=identity
+		if saves.data.has(DeletedPhotos.MARKER_KEY):
+			identity_restart_required=true
+			deleted_identity_owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
+		store_flow.configure_purchases()
+	settings_flow.refresh()
+	_follow_identity()
 
 func _secret_failed(id: String, _operation: String, code: String) -> void:
 	secret_results[id]={"ok":false,"code":code}

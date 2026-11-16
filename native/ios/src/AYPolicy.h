@@ -10,6 +10,10 @@ extern NSString *const AYPollenKind;
 @interface AYPolicy : NSObject
 
 + (BOOL)validStorageName:(NSString *)name;
+// The identity's own secrets, kept in the Keychain when the app is removed and installed again:
+// the identity, and a recovery or platform restore still waiting for its answer (it may hold the
+// only copy of new credentials). Everything else starts fresh with the install.
++ (BOOL)keptAcrossReinstall:(NSString *)name;
 + (BOOL)validStorageValue:(NSString *)value;
 + (nullable NSString *)recoveryTextForPlayer:(NSString *)playerId code:(NSString *)recoveryCode;
 

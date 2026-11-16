@@ -8,6 +8,8 @@
 	NSString *_service;
 	NSURL *_marker;
 	BOOL _installChecked;
+	// Names this launch found kept from an earlier install (AYPolicy keptAcrossReinstall).
+	NSMutableSet<NSString *> *_kept;
 }
 
 - (instancetype)initWithService:(NSString *)service markerDirectory:(NSURL *)markerDirectory {
@@ -15,6 +17,7 @@
 	if (self) {
 		_service = [service copy];
 		_marker = [markerDirectory URLByAppendingPathComponent:@"keychain-install-v1"];
+		_kept = [NSMutableSet set];
 	}
 	return self;
 }
@@ -29,7 +32,11 @@
 
 // Keychain items outlive an uninstall on iOS, while the Android store and the game's save
 // do not. A marker file in the app container (removed on uninstall, excluded from backup)
-// tells a fresh install apart, so stale credentials never meet a fresh save.
+// tells a fresh install apart: the identity's own secrets stay (AYPolicy keptAcrossReinstall),
+// so a reinstall keeps its friend code, and every other item starts fresh. The items stay in
+// this app's own Keychain group, this device only, never synced or shared with other apps;
+// deleting the identity removes them. A kept identity is read with "kept", and the game checks
+// it with the server once before using it.
 - (BOOL)prepareInstall {
 	if (_installChecked) {
 		return YES;
@@ -39,10 +46,28 @@
 		NSDictionary *all = @{
 			(__bridge id)kSecClass : (__bridge id)kSecClassGenericPassword,
 			(__bridge id)kSecAttrService : _service,
+			(__bridge id)kSecReturnAttributes : @YES,
+			(__bridge id)kSecMatchLimit : (__bridge id)kSecMatchLimitAll,
 		};
-		OSStatus status = SecItemDelete((__bridge CFDictionaryRef)all);
+		CFTypeRef found = NULL;
+		OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)all, &found);
 		if (status != errSecSuccess && status != errSecItemNotFound) {
 			return NO;
+		}
+		NSArray *items = status == errSecSuccess ? (__bridge_transfer NSArray *)found : @[];
+		for (NSDictionary *item in items) {
+			NSString *name = item[(__bridge id)kSecAttrAccount];
+			if (![name isKindOfClass:[NSString class]]) {
+				continue;
+			}
+			if ([AYPolicy keptAcrossReinstall:name]) {
+				[_kept addObject:name];
+				continue;
+			}
+			OSStatus removed = SecItemDelete((__bridge CFDictionaryRef)[self queryFor:name]);
+			if (removed != errSecSuccess && removed != errSecItemNotFound) {
+				return NO;
+			}
 		}
 		NSURL *directory = _marker.URLByDeletingLastPathComponent;
 		if (![files createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:nil]) {
@@ -76,6 +101,8 @@
 		if (status != errSecSuccess) {
 			return NO;
 		}
+		// A value written by this install is no longer the kept one.
+		[_kept removeObject:name];
 		// Never acknowledge a new identity until the stored value reads back exactly.
 		BOOL found = NO;
 		BOOL failed = NO;
@@ -109,6 +136,12 @@
 	return value;
 }
 
+- (BOOL)keptName:(NSString *)name {
+	@synchronized(self) {
+		return [_kept containsObject:name];
+	}
+}
+
 - (NSString *)getName:(NSString *)name found:(BOOL *)found failed:(BOOL *)failed {
 	@synchronized(self) {
 		*found = NO;
@@ -130,6 +163,7 @@
 		if (status != errSecSuccess && status != errSecItemNotFound) {
 			return NO;
 		}
+		[_kept removeObject:name];
 		// A failed delete must stay retryable, so confirm the item is really gone.
 		BOOL found = NO;
 		BOOL failed = NO;
