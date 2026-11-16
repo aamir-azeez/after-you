@@ -51,20 +51,20 @@ export async function pairKey(a: string, b: string): Promise<string> {
  */
 export function walkRun(checkpoint: CheckpointV2): { ticks: number; assisted: boolean; simulation_version: number; mixed: boolean; turns: number[] } | null {
   let current: CheckpointV2 = checkpoint, ticks = 0, simulation = -1, assisted = false, mixed = false;
-  // Walked from the last stage back: each stage's two turns go in front, so `turns` ends in play order.
+  // Walked from the last stage back: each stage's turns go in front, so `turns` ends in play order.
   const turns: number[] = [];
   if (!Number.isSafeInteger(checkpoint.stage_index) || checkpoint.stage_index < 0) return null;
   for (let index = checkpoint.stage_index; index > 0; index--) {
     const proof = nestedProof(current);
     if (!proof || current.stage_index !== index) return null;
-    for (const turn of [proof.a, proof.b]) {
+    for (const turn of proof.turns) {
       if (!Number.isSafeInteger(turn.duration_ticks) || turn.duration_ticks < 1) return null;
       if (turn.catch_assistance !== false) assisted = true;
       if (simulation === -1) simulation = turn.simulation_version;
       if (turn.simulation_version !== simulation) mixed = true;
       ticks += turn.duration_ticks;
     }
-    turns.unshift(proof.a.duration_ticks, proof.b.duration_ticks);
+    turns.unshift(...proof.turns.map(turn => turn.duration_ticks));
     current = proof.previous;
   }
   return current.stage_index === 0 && Number.isSafeInteger(ticks) ? { ticks, assisted, simulation_version: simulation, mixed, turns } : null;
@@ -102,7 +102,8 @@ export async function roomRun(room: RoomSnapshotV2, handed?: unknown, encode?: (
   const host = room.host_id, guest = room.guest_id;
   if (!guest || guest === host) return null;
   let stages: number;
-  try { stages = chapter(room).stages.length; } catch { return null; }
+  // Open turns (v2/open-turns.ts) post no runs until boards compare them fairly (time, then turns).
+  try { const selected = chapter(room); if (selected.open_turns) return null; stages = selected.stages.length; } catch { return null; }
   const timed = runTicks(room.checkpoint, stages);
   const finished_ms = Date.parse(room.updated_at);
   if (!timed || !Number.isFinite(finished_ms)) return null;

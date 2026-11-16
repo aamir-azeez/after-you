@@ -1,6 +1,7 @@
 import { ApiError, canonicalJson, digest } from "../protocol";
 import type { ChapterKey } from "./chapter-types";
 import { checkpointAt, nestedProof } from "./checkpoint-chain";
+import { TURN_LETTERS, turnId, turnNumber } from "./open-turns";
 import type { CheckpointV2, RecordingV2 } from "./protocol";
 import type { PairFacts, TurnFacts } from "./replay-transfer";
 import type { PairV2 } from "./room";
@@ -14,6 +15,8 @@ import { parseRow, type RowData } from "./row-codec";
 export type AttemptBlob = ChapterKey & {
   format: "after-you.attempt"; format_version: 1; room_id: string; position: number; branch: number;
   checkpoint: CheckpointV2 | null; open_turn: RecordingV2 | null; rows: { turns: TurnFacts[]; pairs: PairFacts[] };
+  /** Open turns (open-turns.ts): the open stage's passes after its first turn, in order; only when there are any. */
+  open_passes?: RecordingV2[];
 };
 export type AttemptRoom = ChapterKey & { room_id: string };
 export const ZERO_LINK = "0".repeat(64);
@@ -45,17 +48,23 @@ export function blobFromRows(room: AttemptRoom, branch: number, allTurns: TurnRo
   const pairs = pairRows.map(row => parseRow<PairV2>(row.data)).sort((a, b) => a.stage_index - b.stage_index);
   const recordings = new Map(turnRows.map(row => [row.turn_id, parseRow<RecordingV2>(row.data)]));
   const checkpoint = pairs.at(-1)?.checkpoint ?? null;
+  // Each pair's turns, by their letters (open turns can hold more than a and b; open-turns.ts).
+  const paired = new Set<string>();
   pairs.forEach((pair, index) => {
-    const a = recordings.get(`t${branch}-${pair.stage_index}-a`), b = recordings.get(`t${branch}-${pair.stage_index}-b`);
-    need(pair.branch === branch && (index === 0 || pair.stage_index === pairs[index - 1].stage_index + 1) && a && b);
+    need(pair.branch === branch && (index === 0 || pair.stage_index === pairs[index - 1].stage_index + 1));
     need(canonicalJson(checkpointAt(checkpoint!, pair.stage_index + 1)) === canonicalJson(pair.checkpoint));
-    need(canonicalJson(pair.a) === canonicalJson(a) && canonicalJson(pair.b) === canonicalJson(b));
+    const proof = nestedProof(pair.checkpoint); need(proof);
+    proof.turns.forEach((turn, at) => {
+      const id = turnId(branch, pair.stage_index, at + 1); need(canonicalJson(recordings.get(id)) === canonicalJson(turn)); paired.add(id);
+    });
+    need(canonicalJson(pair.a) === canonicalJson(proof.a) && canonicalJson(pair.b) === canonicalJson(proof.b));
   });
-  const paired = new Set(pairs.flatMap(pair => [`t${branch}-${pair.stage_index}-a`, `t${branch}-${pair.stage_index}-b`]));
-  const open = turnRows.filter(row => !paired.has(row.turn_id));
-  need(open.length <= 1 && open.every(row => row.turn_id.endsWith("-a") && (!pairs.length || stageOf(row.turn_id) === pairs.at(-1)!.stage_index + 1)));
+  // The open stage's turns: its first, then any passes, one stage after the last pair.
+  const open = turnRows.filter(row => !paired.has(row.turn_id)).sort((x, y) => turnNumber(x.turn_id) - turnNumber(y.turn_id));
+  need(open.every((row, at) => turnNumber(row.turn_id) === at + 1 && stageOf(row.turn_id) === stageOf(open[0].turn_id) && (!pairs.length || stageOf(row.turn_id) === pairs.at(-1)!.stage_index + 1)));
+  const passes = open.slice(1).map(row => recordings.get(row.turn_id)!);
   return { format: "after-you.attempt", format_version: 1, room_id: room.room_id, level_id: room.level_id, level_version: room.level_version, definition_hash: room.definition_hash,
-    position: branch, branch, checkpoint, open_turn: open.length ? recordings.get(open[0].turn_id)! : null,
+    position: branch, branch, checkpoint, open_turn: open.length ? recordings.get(open[0].turn_id)! : null, ...(passes.length ? { open_passes: passes } : {}),
     rows: { turns: turnRows.map(row => ({ turn_id: row.turn_id, player_id: row.player_id, accepted_revision: row.accepted_revision, recording_hash: recordings.get(row.turn_id)!.recording_hash })),
       pairs: pairs.map(pair => ({ pair_id: pair.pair_id, branch: pair.branch, stage_index: pair.stage_index, a_hash: pair.a.recording_hash, b_hash: pair.b.recording_hash, checkpoint_hash: pair.checkpoint.checkpoint_hash })) } };
 }
@@ -80,9 +89,13 @@ export function attemptRows(blob: AttemptBlob): { pairs: Map<string, PairV2>; tu
     const checkpoint = checkpointAt(blob.checkpoint!, facts.stage_index + 1), proof = nestedProof(checkpoint);
     need(proof && checkpoint.checkpoint_hash === facts.checkpoint_hash && proof.a.recording_hash === facts.a_hash && proof.b.recording_hash === facts.b_hash);
     pairs.set(facts.pair_id, { pair_id: facts.pair_id, branch: facts.branch, stage_index: facts.stage_index, a: proof.a, b: proof.b, checkpoint });
-    turns.set(`t${facts.branch}-${facts.stage_index}-a`, proof.a); turns.set(`t${facts.branch}-${facts.stage_index}-b`, proof.b);
+    proof.turns.forEach((turn, at) => turns.set(turnId(facts.branch, facts.stage_index, at + 1), turn));
   }
-  if (blob.open_turn) turns.set(blob.rows.turns.find(turn => !turns.has(turn.turn_id))!.turn_id, blob.open_turn);
+  // The open stage: its first turn, then its passes (open turns), each under its letter.
+  if (blob.open_turn) {
+    const first = blob.rows.turns.find(turn => !turns.has(turn.turn_id) && turn.turn_id.endsWith("-a"))!.turn_id, prefix = first.slice(0, -1);
+    [blob.open_turn, ...(blob.open_passes ?? [])].forEach((turn, at) => turns.set(prefix + TURN_LETTERS[at], turn));
+  } else need(!blob.open_passes);
   for (const facts of blob.rows.turns) need(turns.get(facts.turn_id)?.recording_hash === facts.recording_hash);
   need(turns.size === blob.rows.turns.length);
   return { pairs, turns };

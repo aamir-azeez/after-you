@@ -8,6 +8,7 @@ extends RefCounted
 ## Coordinates stay the definition's centimetres (x across, z down the page).
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const LevelGraph = preload("res://tests/level_graph.gd")
+const Stages = preload("res://tests/level_tools/level_stages.gd")
 
 ## The plan of `view` (a stage's plan, services/level_layout.gd). `checkpoint`
 ## (in the plan's terms, level_stages.gd floor_checkpoint) places the pips
@@ -23,6 +24,7 @@ static func build(level: Dictionary, view: Dictionary, checkpoint: Dictionary, j
 		"stage_title": str(authored.get("title", str(view.get("stage_id", "")).replace("-", " ").capitalize())),
 		"stage_index": stage_index,
 		"stage_count": level.get("stages", []).size(),
+		"turns": Stages.turns_label(level, authored),
 		"floors": [], "crossings": [], "drops": [], "obstacles": [], "zones": [],
 		"controls": [], "pairs": [], "goal": {}, "starts": [], "first_slot": str(view.get("first_player_slot", "p0")),
 	}

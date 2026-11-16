@@ -23,12 +23,13 @@ static func from_recording(recording: Dictionary) -> Array:
 	return steps
 
 ## A stage's route entry from its recorded pair: both turns' inputs, the rules
-## when they are not the chapter's preferred ones, and the turns played with
-## Forgiving catches off.
+## when they are not the chapter's preferred ones (a run from an earlier version
+## on rules this chapter cannot play takes the chapter's own), and the turns
+## played with Forgiving catches off.
 static func stage_route(chapter_key: String, pair: Dictionary) -> Dictionary:
 	var route := {"a": from_recording(pair.a), "b": from_recording(pair.b)}
 	var rules := int(pair.a.get("simulation_version", 0))
-	if rules != Registry.preferred_rules(chapter_key): route["rules"] = rules
+	if rules != Registry.preferred_rules(chapter_key) and rules in Registry.supported_rules(chapter_key): route["rules"] = rules
 	var unassisted: Array = []
 	for role: String in ["a", "b"]:
 		if not bool(pair[role].get("catch_assistance", true)): unassisted.append(role)

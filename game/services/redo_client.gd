@@ -1,5 +1,6 @@
 extends RefCounted
 ## Explicit room controls. An uncertain acceptance retains its exact fork key.
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Journal = preload("res://services/relay_online_store.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -347,9 +348,13 @@ static func valid_journal(value: Dictionary, owner: String, family: String, room
 
 static func source_for(family: String, room: Dictionary) -> Dictionary:
 	if family != "relay" or not Typed.equal(room.get("active_role"), "b") or not _id(room.get("host_id")) or not _id(room.get("guest_id")) or room.get("first_player_id") not in [room.get("host_id"),room.get("guest_id")]: return {}
-	var a: Variant = room.get("recording_a")
-	if not a is Dictionary: return {}
-	var source := {"room_id":room.get("room_id"),"revision":room.get("revision"),"branch":room.get("branch"),"stage_index":room.get("stage_index"),"a_hash":a.get("recording_hash"),"first_player_id":room.first_player_id,"second_player_id":room.guest_id if room.first_player_id==room.get("host_id") else room.get("host_id")}
+	# The source names the stage's latest turn (open turns: its latest pass), who played it and who plays next.
+	var a: Variant = OpenTurns.memory(room).prior
+	if not a is Dictionary or a.is_empty(): return {}
+	# Before open turns the latest is always the first turn, so the stage's second player is next.
+	var next: Variant = room.get("active_player_id") if room.has("open_turns") else (room.guest_id if room.first_player_id==room.get("host_id") else room.get("host_id"))
+	if next not in [room.get("host_id"), room.get("guest_id")]: return {}
+	var source := {"room_id":room.get("room_id"),"revision":room.get("revision"),"branch":room.get("branch"),"stage_index":room.get("stage_index"),"a_hash":a.get("recording_hash"),"first_player_id":room.guest_id if next==room.get("host_id") else room.get("host_id"),"second_player_id":next}
 	return source if _valid_source(source) else {}
 ## The start over source `player` would ask with on this room (backend startOverSource): a relay
 ## room in play with both members, something to undo, and the live checkpoint; else {}.

@@ -22,6 +22,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
@@ -42,8 +43,11 @@ const FacePacks = preload("res://services/face_packs.gd")
 ## stays listed in _valid_index.
 const JOIN_SIMULATION_VERSIONS := [2, 4, 5, 6, 7, 8, 9, 10]
 ## Rules sent only to a server that answered room level 2 and accepts the
-## longer list: 11 = sleeping-lighthouse@2, and chapters with more than two stages.
-const ROOM_LEVEL_JOIN_VERSIONS := [11]
+## longer list: 11 = sleeping-lighthouse@2, and chapters with more than two
+## stages; 12 and 13 = open controls (comfort and tide rules with controls for
+## either pip, core/journey/simulation.gd); 14 and 15 = open controls with open
+## turns (core/physical/open_turns.gd).
+const ROOM_LEVEL_JOIN_VERSIONS := [11, 12, 13, 14, 15]
 
 class RedoStorage:
 	extends RefCounted
@@ -1099,8 +1103,12 @@ func chapter_pairs() -> Array:
 	for _index_value in range(RoomStages.count(Registry.definition(chapter))):
 		if checkpoint.get("stage_index", 0) == 0:
 			break
-		var proof: Dictionary = checkpoint.proof
-		pairs.push_front({"a": proof.a.duplicate(true), "b": proof.b.duplicate(true)})
+		# Open turns: a stage's record carries its passes between the first and closing turn.
+		var turns := OpenTurns.proof_turns(checkpoint.proof)
+		if turns.is_empty(): return []
+		var pair := {"a": turns[0].duplicate(true), "b": turns[-1].duplicate(true)}
+		if turns.size() > 2: pair["passes"] = turns.slice(1, turns.size() - 1).duplicate(true)
+		pairs.push_front(pair)
 		checkpoint = Registry.previous_checkpoint(chapter, checkpoint)
 	return pairs
 
@@ -1206,10 +1214,12 @@ func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 	if not PhotoController._turn("t" + pair_id.substr(1) + "-a") or int(pair_id.get_slice("-", 1)) != index:
 		return []
 	var result: Array = []
+	# Open turns: the closing turn's id has its number's letter (b with no passes).
+	var closing := OpenTurns.turn_id(int(pair_id.substr(1).get_slice("-", 0)), index, 2 + pair.get("passes", []).size())
 	for role: String in ["a", "b"]:
 		var recording: Dictionary = pair[role]
 		var player: String = str(room.host_id if recording.player_slot == "p0" else room.guest_id)
-		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-" + role, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
+		result.append({"room_id": room.room_id, "turn_id": "t" + pair_id.substr(1) + "-a" if role == "a" else closing, "recording_hash": recording.recording_hash, "owner_player_id": player, "own": player == _owner, "role": role, "player_slot": recording.player_slot})
 	return result
 
 func _call(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray(), caller_still: Callable = Callable()) -> Dictionary:
@@ -1374,7 +1384,7 @@ func _valid_index(value: Dictionary) -> bool:
 		if duel_room and (hard_room or not DuelsClient.valid_room_ask(body.duel)): return false
 		return body.size() == (5 if optional_pin else 4) + int(hard_room) + int(duel_room) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Typed.whole_number(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
-	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Typed.same(body.supported_simulation_versions, [2, 4, 5]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9, 11]) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Typed.same(body.supported_simulation_versions, [2, 4, 5]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9, 11]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9, 10, 11]) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
 	if fallback.is_empty() and response.get("code") == "host_unlock_required":

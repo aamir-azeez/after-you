@@ -4,6 +4,9 @@ extends RefCounted
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Controls = preload("res://core/first_steps/simulation.gd")
+const OpenControls = preload("res://core/physical/open_controls.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
@@ -16,6 +19,14 @@ const RECEIVER_GRACE_TICKS := 300
 ## it, so a packet cannot change it. Without it the published caps apply.
 const FIRST_TURN_LIMITS_VERSION := 9
 const MAX_DECLARED_TURN_TICKS := 9000
+## Open controls (a facade's _open_controls()): a pad holds for either pip, and
+## either pip works any lever, switch or selector, so the controls carry no
+## owner_slot. In the second turn the memory's toggles replay as toggles: a
+## control takes the memory's value only on a tick where the memory changed it,
+## and keeps the live pip's otherwise. On a tick where both change it, the
+## memory's lands first and the live pip's press then turns it from there.
+## The numbers live in open_controls.gd; this one both facades share.
+const OPEN_RULES_VERSION := OpenControls.OPEN_RULES_VERSION
 const RECORD_KEYS := Controls.RECORD_KEYS
 const OUTCOME_KEYS := ["source_ready", "objective_complete"]
 const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"]
@@ -31,6 +42,14 @@ var finished := false
 var complete := false
 var error := ""
 var catch_assistance := true
+## Open turns (open_turns.gd): this turn's number in its stage (1 for a first
+## turn), the slot its memory plays, and whether this turn may pass once its
+## memory is over (the caller clears it when the room says the turn must
+## finish the stage). `passed` once it did.
+var turn_number := 1
+var memory_slot := "p0"
+var pass_allowed := true
+var passed := false
 ## Export the packed form (core/v2/recording_codec.gd): set for a live turn in a
 ## packed room, and from the record itself whenever one is replayed.
 var packed_recordings := false
@@ -51,13 +70,24 @@ var _offer_tick := -1
 var _claimed := false
 var _objective := false
 var _comfort_entries: Dictionary = {}
+## Open controls, second turn: the lever and control ids the memory changed this
+## tick ({"levers": {id: true}, "controls": {id: true}}).
+var _source_toggles: Dictionary = {"levers": {}, "controls": {}}
+## Open turns: what the live pip itself turned this tick ({"levers": {id:
+## true}, "controls": {id: true}}) and whether it rang. A later turn whose
+## memory is itself a later turn takes only these from it, never what the
+## memory's own memory did, so a pip's earlier turn never acts against its
+## live play.
+var _own_toggles: Dictionary = {"levers": {}, "controls": {}}
 ## The digest of `level`, worked out on first use after a reset (level is set
 ## only by a reset, to its own deep copy, and never changed after): the state
 ## hash, the recording and the navigation index read it instead of digesting
 ## the whole definition again. "" until first used.
 var _definition_hash := ""
 
-func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", _rules_version: int = 0) -> bool:
+## `chain`: open turns only, the stage's turns before `prior_a` (the memory),
+## oldest first; the memory replays over them as it was played.
+func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", _rules_version: int = 0, chain: Array = []) -> bool:
 	level = {}
 	_definition_hash = ""
 	stage = {}
@@ -72,21 +102,29 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 	if current_role == "a" and not prior_a.is_empty():
 		error = "The first turn cannot contain a partner recording."
 		return false
+	if current_role == "a" and not chain.is_empty():
+		error = "The first turn cannot contain a partner recording."
+		return false
 	if current_role == "b":
-		var prior_check: Dictionary = _proof_engine()._verify_raw(definition, prior_a, checkpoint, {})
-		if not prior_check.valid or prior_a.get("role") != "a" or not prior_check.get("snapshot", {}).get("can_commit", false):
+		var prior_check: Dictionary = _proof_engine()._verify_raw(definition, prior_a, checkpoint, chain.back() if not chain.is_empty() else {}, chain.slice(0, maxi(0, chain.size() - 1)))
+		if not prior_check.valid or prior_a.get("role") != ("a" if chain.is_empty() else "b") or not prior_check.get("ready", prior_check.get("snapshot", {}).get("can_commit", false)):
 			error = "The partner recording is not ready."
 			return false
-	_reset_trusted(definition, stage_id, checkpoint, prior_a, current_role)
+	_reset_trusted(definition, stage_id, checkpoint, prior_a, current_role, chain)
 	return true
 
-func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String) -> void:
+func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String, chain: Array = []) -> void:
 	level = definition.duplicate(true)
 	_definition_hash = ""
 	stage = stage_by_id(level, stage_id)
 	role = current_role
 	first_player_slot = stage.first_player_slot
-	active_slot = first_player_slot if role == "a" else _other(first_player_slot)
+	# Odd turns are the first pip's, even turns the other's: before open turns, a then b.
+	turn_number = 1 if role == "a" else chain.size() + 2
+	active_slot = OpenTurns.slot(first_player_slot, turn_number)
+	memory_slot = _other(active_slot)
+	pass_allowed = true
+	passed = false
 	_checkpoint = checkpoint.duplicate(true)
 	_prior = prior_a.duplicate(true)
 	_players = checkpoint.players.duplicate(true)
@@ -102,6 +140,8 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_claimed = false
 	_objective = false
 	_comfort_entries = {}
+	_source_toggles = {"levers": {}, "controls": {}}
+	_own_toggles = {"levers": {}, "controls": {}}
 	tick = 0
 	finished = false
 	complete = false
@@ -109,28 +149,40 @@ func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictio
 	_prior_frames = expand_recording_inputs(prior_a)
 	_source = null
 	_reset_mechanics()
-	if role == "b":
+	# Open turns: the memory plays back what it did when it was checked (memory_trace.gd), so a turn costs one simulation however deep its memories nest.
+	var trace: Dictionary = _proof_engine().memory_trace(definition, prior_a, checkpoint, chain) if role == "b" and _open_turns() else {}
+	if not trace.is_empty():
+		_source = MemoryTrace.Playback.new(trace)
+	elif role == "b":
+		# The memory replays in its own world: a first turn alone, or a later turn over its own memory.
 		_source = _new_simulation()
 		_source.simulation_version = simulation_version
 		_source.catch_assistance = bool(prior_a.catch_assistance)
-		_source._reset_trusted(definition, stage_id, checkpoint, {}, "a")
+		_source._reset_trusted(definition, stage_id, checkpoint, chain.back() if not chain.is_empty() else {}, "a" if chain.is_empty() else "b", chain.slice(0, maxi(0, chain.size() - 1)))
 	_refresh_routes()
 
 func step(input: Dictionary = {}) -> Dictionary:
-	if finished or not error.is_empty() or level.is_empty(): return snapshot()
+	_tick(input)
+	return snapshot()
+
+## One tick without building a snapshot: what a memory and a check play.
+func _tick(input: Dictionary = {}) -> void:
+	if finished or not error.is_empty() or level.is_empty(): return
 	if not Controls._valid_input(input):
 		error = "Unsupported control input."
-		return snapshot()
+		return
 	_events = []
+	_own_toggles = {"levers": {}, "controls": {}}
 	var previous_routes := _routes.duplicate()
 	var frame := quantize_input(input)
 	_append_frame(frame)
 	if role == "b": _advance_source()
 	_refresh_routes()
-	if not _objective: _move(frame)
+	# Open turns: both pips at the goal is a state, not a bell, so nothing freezes.
+	if not _objective or _open_turns(): _move(frame)
 	_after_move()
 	_refresh_routes()
-	if not _objective and bool(frame.action) and not _held: _interact()
+	if (not _objective or _open_turns()) and bool(frame.action) and not _held: _interact()
 	_held = bool(frame.action)
 	_refresh_routes()
 	for route_id: String in _routes:
@@ -138,6 +190,8 @@ func step(input: Dictionary = {}) -> Dictionary:
 	_check_hazards()
 	if role == "a": _update_source_readiness()
 	if role == "b" and stage.goal_policy.kind == "ball_home": _check_ball_home()
+	# Open turns: the goal holds while both pips stand at it (open_turns.gd).
+	if role == "b" and _open_turns(): _objective = _at_goal(active_slot) and _at_goal(memory_slot)
 	tick += 1
 	# Only a hazard (_check_hazards) can have ended the turn before this point.
 	if role == "b" and _objective and tick >= int(_prior.duration_ticks) and not finished and _may_complete():
@@ -152,19 +206,39 @@ func step(input: Dictionary = {}) -> Dictionary:
 		finished = true
 		_events.append("turn_finished")
 	if tick % TICK_RATE == 0 or finished: _checks.append({"tick":tick,"state_hash":state_hash()})
-	return snapshot()
 
 func _advance_source() -> void:
-	if tick < _prior_frames.size(): _source.step(_prior_frames[tick])
-	_players[first_player_slot] = _source._players[first_player_slot].duplicate(true)
+	var open := _open_controls()
+	# Open turns: a memory that is itself a later turn hands over only its own pip's presses.
+	var nested: bool = _source.role == "b"
+	var before: Dictionary = _source_values() if open and not nested else {}
+	var stepped := tick < _prior_frames.size()
+	if stepped: _source._tick(_prior_frames[tick])
+	_players[memory_slot] = _source._players[memory_slot].duplicate(true)
+	if open: _source_toggles = (_source._own_toggles.duplicate(true) if stepped else {"levers": {}, "controls": {}}) if nested else _changed_since(before)
 	for lever: Dictionary in stage.get("levers", []):
-		if lever.owner_slot == first_player_slot and _source._mechanisms.levers.has(lever.id):
+		if open:
+			if _source_toggles.levers.has(lever.id): _mechanisms.levers[lever.id] = _source._mechanisms.levers[lever.id]
+		elif lever.owner_slot == first_player_slot and _source._mechanisms.levers.has(lever.id):
 			_mechanisms.levers[lever.id] = _source._mechanisms.levers[lever.id]
 	if not _claimed:
 		_mechanisms.props = _source._mechanisms.props.duplicate(true)
 	_offer_tick = _source._offer_tick
 	_hold_ticks = _source._hold_ticks
 	_hold_start = _source._hold_start
+
+## Open controls: the memory's lever and control values before its tick.
+func _source_values() -> Dictionary:
+	return {"levers": _source._mechanisms.get("levers", {}).duplicate(), "controls": _source._mechanisms.get("controls", {}).duplicate()}
+
+## Open controls: the ids whose value the memory changed since `before`.
+func _changed_since(before: Dictionary) -> Dictionary:
+	var changed: Dictionary = {"levers": {}, "controls": {}}
+	for kind: String in changed:
+		var now: Dictionary = _source._mechanisms.get(kind, {})
+		for id: Variant in now:
+			if not before[kind].has(id) or before[kind][id] != now[id]: changed[kind][id] = true
+	return changed
 
 func _move(frame: Dictionary) -> void:
 	var direction := Vector2(float(frame.x), float(frame.z)).limit_length(100.0)
@@ -227,7 +301,9 @@ func _refresh_routes() -> void:
 		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or enabled
 
 func _pad_active(pad: Dictionary) -> bool:
-	return not pad.is_empty() and _near_entity(_players[pad.owner_slot], pad)
+	if pad.is_empty(): return false
+	if _open_controls(): return _near_entity(_players.p0, pad) or _near_entity(_players.p1, pad)
+	return _near_entity(_players[pad.owner_slot], pad)
 
 func _ball_at(target: Dictionary, prop_id: String) -> bool:
 	if target.is_empty() or not _mechanisms.props.has(prop_id): return false
@@ -256,6 +332,7 @@ func _interact() -> void:
 	match str(action.id):
 		"lever":
 			_mechanisms.levers[action.target_id] = not bool(_mechanisms.levers.get(action.target_id, false))
+			_own_toggles.levers[action.target_id] = true
 			_events.append("lever")
 		"ring":
 			_objective = true
@@ -280,9 +357,10 @@ func context_action() -> Dictionary:
 	if level.is_empty(): return _action("", "", false, "")
 	var player: Dictionary = _players[active_slot]
 	for lever: Dictionary in stage.get("levers", []):
-		if lever.owner_slot == active_slot and _near_entity(player, lever):
+		if (_open_controls() or lever.owner_slot == active_slot) and _near_entity(player, lever):
 			return _action("lever", "Pull lever", true, lever.id)
-	if role == "b" and stage.goal_policy.kind == "ring" and _near_entity(player, stage.goal):
+	# Open turns: no bell; both pips standing at the goal finish the stage.
+	if role == "b" and stage.goal_policy.kind == "ring" and not _open_turns() and _near_entity(player, stage.goal):
 		return _action("ring", "Ring bell", true, stage.goal.id)
 	if stage.source_policy.kind == "offer_ball":
 		var ball: Dictionary = _mechanisms.props[stage.source_policy.prop_id]
@@ -331,8 +409,28 @@ func can_commit() -> bool:
 func receiver_deadline() -> int:
 	return turn_ticks(level, simulation_version, "b")
 
+## Open turns: every turn has the second turn's limit.
 func duration_limit() -> int:
-	return turn_ticks(level, simulation_version, role)
+	return turn_ticks(level, simulation_version, "b" if _open_turns() else role)
+
+## Open turns: whether the live pip may pass now. The memory has played out,
+## the stage is not done, the room lets this turn pass (pass_allowed) and the
+## facade's rules agree (_may_pass).
+func can_pass() -> bool:
+	return _open_turns() and role == "b" and pass_allowed and error.is_empty() and not finished and not complete and tick >= int(_prior.get("duration_ticks", 0)) and _may_pass()
+
+## Open turns: ends this turn as a pass. The recording is the turn so far,
+## unfinished; play goes to the other pip.
+func pass_turn() -> Dictionary:
+	if not can_pass(): return snapshot()
+	passed = true
+	finished = true
+	_events = ["turn_passed"]
+	return snapshot()
+
+## Open turns: whether `slot`'s pip stands at the goal now, where it holds.
+func _at_goal(slot: String) -> bool:
+	return stage.goal_policy.kind == "ring" and _near_entity(_players[slot], stage.goal)
 
 ## The longest turn `turn_role` may record under `version` in `definition`.
 ## Published: 900 ticks, and 1,200 for a comfort receiver. A definition that
@@ -397,7 +495,7 @@ func commit_reason() -> String:
 func snapshot() -> Dictionary:
 	if level.is_empty(): return {"error":error,"can_commit":false,"finished":false,"complete":false}
 	var players := _players.duplicate(true)
-	for slot: String in players: players[slot].merge({"ghost":role == "b" and slot == first_player_slot,"holding":false})
+	for slot: String in players: players[slot].merge({"ghost":role == "b" and slot == memory_slot,"holding":false})
 	var pads: Dictionary = {}
 	for pad: Dictionary in stage.get("pressure_pads", []): pads[pad.id] = _pad_active(pad)
 	for pad: Dictionary in stage.get("ball_pads", []): pads[pad.id] = _ball_at(pad, pad.prop_id)
@@ -411,12 +509,15 @@ func snapshot() -> Dictionary:
 			var radius := PLAYER_RADIUS + int(_entity(level.props,id).radius_cm) + 2
 			if int(actor.height) != int(ball.height) or Vector2i(actor.x,actor.z).distance_squared_to(Vector2i(ball.x,ball.z)) > radius * radius: controller = ""
 		ball["controller_slot"] = controller
-	return {"schema_version":_schema_version(),"stage_id":stage.id,"role":role,"active_slot":active_slot,"first_player_slot":first_player_slot,
+	var state := {"schema_version":_schema_version(),"stage_id":stage.id,"role":role,"active_slot":active_slot,"first_player_slot":first_player_slot,
 		"tick":tick,"time_seconds":float(tick)/TICK_RATE,"duration_ticks":duration_limit(),"complete":complete,"finished":finished,"can_commit":can_commit(),
 		"commit_reason":commit_reason(),"error":error,"message":str(stage.get("hint_"+role,"")),"players":players,"mechanisms":_mechanisms.duplicate(true),
 		"bridges":_routes.duplicate(),"props":displayed_props,"levers":_mechanisms.levers.duplicate(),"hold_pads":pads,
 		"objective_done":_objective,"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
 		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
+	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
+	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"passed":passed})
+	return state
 
 func _objective_display() -> Dictionary:
 	if role == "a":
@@ -512,6 +613,12 @@ func _comfort_rules() -> bool:
 func _schema_version() -> int:
 	return 6
 
+## Open turns: what a later turn reads of this one while it plays as its
+## memory (_advance_source and the facades' overrides), in MemoryTrace order.
+## Values the engine changes in place are copied; the rest are replaced each tick.
+func _memory_frame() -> Array:
+	return [_players[active_slot].duplicate(), _mechanisms.duplicate(true), _own_toggles, _offer_tick, _hold_ticks, _hold_start, ""]
+
 func _new_simulation() -> RefCounted:
 	assert(false, "A physical simulation needs its sealed facade factory.")
 	return null
@@ -528,6 +635,19 @@ func _reset_mechanics() -> void:
 ## `finished` here. Published rules have none.
 func _check_hazards() -> void:
 	pass
+
+## Whether this facade plays open controls (OPEN_RULES_VERSION). Published
+## rules never do.
+func _open_controls() -> bool:
+	return false
+
+## Whether these rules play open turns (open_turns.gd, 14 and 15).
+func _open_turns() -> bool:
+	return simulation_version in OpenTurns.RULES
+
+## Whether the facade's rules let a turn pass now. Published rules have no passes.
+func _may_pass() -> bool:
+	return true
 
 ## Whether the stage may complete this tick. Published rules always may.
 func _may_complete() -> bool:

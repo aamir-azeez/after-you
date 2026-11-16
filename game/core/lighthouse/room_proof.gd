@@ -27,11 +27,11 @@ func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: i
 	if result.valid: _remember(key)
 	return result
 
-func _verify_pair(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
+func _verify_turns(definition: Dictionary, previous: Dictionary, turns: Array) -> Dictionary:
 	Memo.mutex.lock()
 	Memo.pair_replays += 1
 	Memo.mutex.unlock()
-	return super._verify_pair(definition, previous, first, second)
+	return super._verify_turns(definition, previous, turns)
 
 static func _known(key: String) -> bool:
 	Memo.mutex.lock()

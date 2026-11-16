@@ -18,6 +18,9 @@ extends SceneTree
 ## Each cooperative or journey turn is replayed through its own engine from
 ## the checkpoint it was played from, found among the same files or the
 ## chapter's first; a turn whose checkpoint is missing reports its time only.
+## On open turns (core/physical/open_turns.gd) a stage also says its cap, the
+## turns each finished run took (a recording's "turn", else 1 for the first
+## and 2 for a later one) and how many turns passed it back.
 ## Lives under tests/ so it never ships in the game.
 
 const Registry = preload("res://services/chapter_registry.gd")
@@ -25,6 +28,8 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const HistoryStore = preload("res://services/history_store.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const StageCatalog = preload("res://core/journey/stage_catalog.gd")
+const Stages = preload("res://tests/level_tools/level_stages.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const TICK_RATE := 30.0
 ## A file larger than this is skipped, not read.
 const MAX_FILE_BYTES := 8 * 1024 * 1024
@@ -78,9 +83,10 @@ static func _save_folder(path: String) -> bool:
 		if plain.contains(mark + "/"): return true
 	return false
 
-## {"stages": {"<key> / <stage>": {"a": role, "b": role}}, "turns": n,
-## "replayed": n, "notes": [...]}; a role is {"turns", "seconds", "tries",
-## "drowned", "closing", "unfinished", "still": {"seconds", "where", "turn"}}.
+## {"stages": {"<key> / <stage>": {"a": role, "b": role, "open": open}},
+## "turns": n, "replayed": n, "notes": [...]}; a role is {"turns", "seconds",
+## "tries", "drowned", "closing", "unfinished", "still": {"seconds", "where",
+## "turn"}}; open (open turns only) is {"label", "cap", "finished_in": [turns], "passes"}.
 static func report(input: String) -> Dictionary:
 	var found := collect(input)
 	var stages: Dictionary = {}
@@ -97,6 +103,7 @@ static func report(input: String) -> Dictionary:
 		if not stages[name].has(role): stages[name][role] = {"turns": 0, "seconds": [], "tries": 0, "tries_known": 0, "drowned": 0, "closing": 0, "unfinished": 0, "still": {"seconds": 0.0, "where": "", "turn": ""}}
 		var row: Dictionary = stages[name][role]
 		row.turns += 1
+		_count_turn(key, recording, stages[name])
 		row.seconds.append(snappedf(float(recording.duration_ticks) / TICK_RATE, 0.1))
 		var tries := int(found.tries.get(hash, 0))
 		if tries > 0:
@@ -113,6 +120,19 @@ static func report(input: String) -> Dictionary:
 		if float(played.still.seconds) > float(row.still.seconds):
 			row.still = {"seconds": played.still.seconds, "where": played.still.where, "turn": hash.left(8)}
 	return {"stages": stages, "turns": hashes.size(), "replayed": replayed, "notes": notes, "files": found.files, "blobs": found.blobs}
+
+## Open turns: the stage's cap, and the turn a run finished on or a pass.
+static func _count_turn(key: String, recording: Dictionary, stage: Dictionary) -> void:
+	if key.is_empty(): return
+	var level := Registry.definition(key)
+	if not OpenTurns.pinned(level): return
+	var authored: Dictionary = {}
+	for item: Dictionary in level.stages:
+		if str(item.id) == str(recording.stage_id): authored = item
+	var open: Dictionary = stage.get_or_add("open", {"label": Stages.turns_label(level, authored), "cap": OpenTurns.cap(authored), "finished_in": [], "passes": 0})
+	if str(recording.role) != "b": return
+	if bool(recording.get("completed", false)): open.finished_in.append(int(recording.get("turn", 2)))
+	else: open.passes += 1
 
 ## Every recording and checkpoint in the folder, by hash, and its try counts.
 static func collect(input: String) -> Dictionary:
@@ -244,6 +264,11 @@ static func text(made: Dictionary) -> String:
 	for name: String in names:
 		lines.append("")
 		lines.append(name)
+		if made.stages[name].has("open"):
+			var open: Dictionary = made.stages[name].open
+			var finished: Array = open.finished_in.duplicate()
+			finished.sort()
+			lines.append("  open turns, %s: finished in %s; %d passed back" % [open.label, ", ".join(finished.map(func(turns: int) -> String: return str(turns))) + " turns" if not finished.is_empty() else "no saved run", open.passes])
 		for role: String in ["a", "b"]:
 			if not made.stages[name].has(role): continue
 			var row: Dictionary = made.stages[name][role]

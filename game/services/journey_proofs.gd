@@ -26,6 +26,11 @@ const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
 const LighthouseSimulation = preload("res://core/lighthouse/room_simulation.gd")
 const LighthouseProof = preload("res://core/lighthouse/room_proof.gd")
 const Typed = preload("res://services/typed_values.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const TraceStore = preload("res://services/memory_trace_store.gd")
+## Open turns' checked turns and memory traces (core/physical/memory_trace.gd), beside the proofs.
+const TRACES := "open-turn-traces"
 
 ## One small file per chapter, never a journal.
 const DIRECTORY := "user://journey-proofs"
@@ -184,9 +189,9 @@ static func remember(journey: RefCounted, value: Variant, checkpoint: Dictionary
 
 ## A draft's rehearsal from a checkpoint this journey has proven: its own
 ## replay (and its partner turn's), without the chain behind the checkpoint.
-static func rehearse(journey: RefCounted, draft: Dictionary, checkpoint: Dictionary, prior_a: Dictionary) -> Dictionary:
+static func rehearse(journey: RefCounted, draft: Dictionary, checkpoint: Dictionary, prior_a: Dictionary, chain: Array = []) -> Dictionary:
 	var family: Script = journey._simulation
-	if _runtime_family(family): return family._proof(family._record_version(draft))._verify_raw(journey._level, draft, checkpoint, prior_a)
+	if _runtime_family(family): return family._proof(family._record_version(draft))._verify_raw(journey._level, draft, checkpoint, prior_a, chain)
 	return family.verify_recording(journey._level, draft, checkpoint, prior_a)
 
 
@@ -197,7 +202,9 @@ static func rehearse(journey: RefCounted, draft: Dictionary, checkpoint: Diction
 ## refusal, goes through the family's own reset.
 static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 	var chapter := str(job.chapter)
-	if not _trusted_setup(job) or simulation.get_script() != job.family: return Registry.reset_simulation(simulation, chapter, job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), job.saved)
+	# Open turns: the turns under the memory (a solo journal's passes).
+	var chain: Array = job.get("chain", [])
+	if not _trusted_setup(job) or simulation.get_script() != job.family: return Registry.reset_simulation(simulation, chapter, job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), job.saved, chain)
 	var level: Dictionary = job.level
 	var stage := str(job.stage)
 	var checkpoint: Dictionary = job.checkpoint
@@ -213,10 +220,11 @@ static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 	var fits: bool = role in ["a", "b"] and not stage.is_empty() and stage == checkpoint.get("next_stage_id") and not (role == "a" and not prior.is_empty())
 	if allowed and fits:
 		simulation.simulation_version = rules
-		simulation._reset_trusted(level, stage, checkpoint, prior, role)
+		if chain.is_empty(): simulation._reset_trusted(level, stage, checkpoint, prior, role)
+		else: simulation._reset_trusted(level, stage, checkpoint, prior, role, chain)
 		# The facade reports a stage requirement it refuses; the full reset names it.
 		if not lighthouse or str(simulation.get("error")).is_empty(): return true
-	return Registry.reset_simulation(simulation, chapter, level, stage, checkpoint, prior, role, saved)
+	return Registry.reset_simulation(simulation, chapter, level, stage, checkpoint, prior, role, saved, chain)
 
 ## Whether reset_live may take job's checkpoint and partner turn as proven:
 ## a journey's job (proven) under the shared runtime rules.
@@ -243,7 +251,7 @@ static func _prove(journey: RefCounted, value: Variant, cancelled: Callable = Ca
 		if cancelled.is_valid() and cancelled.call(): return {}
 		var pair: Variant = value.pairs[index]
 		if not pair is Dictionary or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: return {}
-		var stage_key := "|".join(PackedStringArray([str(PROOF_VERSION), str(journey._chapter_key), str(Registry.supported_rules(str(journey._chapter_key))), str(derived.get("checkpoint_hash", "")), Canonical.digest(pair.a), Canonical.digest(pair.b)]))
+		var stage_key := "|".join(PackedStringArray([str(PROOF_VERSION), str(journey._chapter_key), str(Registry.supported_rules(str(journey._chapter_key))), str(derived.get("checkpoint_hash", "")), Canonical.digest(OpenTurns.pair_turns(pair))]))
 		_mutex.lock()
 		var known: Variant = _stages.get(stage_key)
 		_mutex.unlock()
@@ -253,14 +261,15 @@ static func _prove(journey: RefCounted, value: Variant, cancelled: Callable = Ca
 		var engine: RefCounted = family._proof(family._record_version(pair.a))
 		if index == 0:
 			# The first stage starts from the start checkpoint: the public path.
-			var first_stage: Dictionary = engine.derive_checkpoint(level, derived, pair.a, pair.b)
+			var first_stage: Dictionary = CheckpointPairs.derive(engine, level, derived, pair)
 			if not first_stage.get("valid", false): return {}
 			derived = first_stage.checkpoint
 		else:
 			# derive_checkpoint, without proving again the checkpoint just built.
-			var check: Dictionary = engine._verify_pair(level, derived, pair.a, pair.b)
+			var turns := OpenTurns.pair_turns(pair)
+			var check: Dictionary = engine._verify_turns(level, derived, turns)
 			if not check.get("valid", false): return {}
-			derived = engine._build_checkpoint(level, derived, pair.a, pair.b, check.snapshot)
+			derived = engine._build_checkpoint(level, derived, pair.a, pair.b, check.snapshot, turns.slice(1, turns.size() - 1))
 		_mutex.lock()
 		_stages[stage_key] = derived.duplicate(true)
 		while _stages.size() > STAGES_KEPT: _stages.erase(_stages.keys()[0])
@@ -304,6 +313,14 @@ static func prepare_memo(chapter: String) -> void:
 		LighthouseProof.load_index(path)
 		_memo_sizes[path] = LighthouseProof.memo_size()
 	_mutex.unlock()
+
+## Open turns: checked turns persist beside the proofs, so a restart plays a
+## stage's latest memory back instead of replaying every turn before it.
+static func prepare_traces() -> void:
+	_mutex.lock()
+	var folder := directory.path_join(TRACES)
+	_mutex.unlock()
+	TraceStore.attach(folder)
 
 ## Writes the memo when it holds checkpoints the file does not; small (128 KiB at most).
 static func save_memo(chapter: String) -> void:

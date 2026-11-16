@@ -17,6 +17,8 @@ export const ROOM_INBOX_CLOSED_HEADER = "X-AfterYou-Room-Inbox";
 export const ROOM_INBOX_LEAVE_HEADER = "X-AfterYou-Room-Leave";
 /** Clients that show redo requests on Home send this ("1"); with X-AfterYou-Redo-Extras: 1 start over requests too; a room in play with a current request then carries `redo`. */
 export const ROOM_INBOX_REDO_HEADER = "X-AfterYou-Room-Redo";
+/** Clients that draw an open turns room's turn dots on the room list send this ("1"); such a room in play then carries `open_turns`. */
+export const ROOM_INBOX_OPEN_TURNS_HEADER = "X-AfterYou-Open-Turns";
 /** 0 (no redo), 1, or 2 with X-AfterYou-Redo-Extras: 1 (start over requests too). */
 export function redoInboxVersion(header: string | null, extras: string | null): number { return header !== "1" ? 0 : extras === "1" ? 2 : 1; }
 /**
@@ -41,6 +43,8 @@ export type RoomInboxEntry = {
   partner_name?: string | null;
   /** Only for clients that send ROOM_INBOX_REDO_HEADER: the room's current redo request (InboxRedo). */
   redo?: InboxRedo;
+  /** Only for clients that send ROOM_INBOX_OPEN_TURNS_HEADER, on an open turns room in play (v2/open-turns.ts): the turn being played and the stage's cap. */
+  open_turns?: { turn: number; cap: number };
 };
 export type RoomInboxProjection = Omit<RoomInboxEntry, "family" | "api_version">;
 
@@ -90,18 +94,20 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
 export function relayInboxProjection(storage: DurableObjectStorage, player: string, names = false): Outcome<RoomInboxProjection> {
   const row = storage.sql.exec<{
     room_id: string; revision: number; stage_index: number; branch: number; level_id: string; level_version: number;
-    definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; checkpoint_hash: string | null; packed_checkpoint: string | null; updated_at: string;
-  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash,CASE WHEN json_type(data,'$.checkpoint')='text' THEN json_extract(data,'$.checkpoint') END AS packed_checkpoint,json_extract(data,'$.updated_at') AS updated_at FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
+    definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; checkpoint_hash: string | null; packed_checkpoint: string | null; updated_at: string; passes: number | null;
+  }>("SELECT json_extract(data,'$.room_id') AS room_id,json_extract(data,'$.revision') AS revision,json_extract(data,'$.stage_index') AS stage_index,json_extract(data,'$.branch') AS branch,json_extract(data,'$.level_id') AS level_id,json_extract(data,'$.level_version') AS level_version,json_extract(data,'$.definition_hash') AS definition_hash,json_extract(data,'$.host_id') AS host_id,json_extract(data,'$.guest_id') AS guest_id,json_extract(data,'$.a_turn_id') AS a_turn_id,json_extract(data,'$.checkpoint.checkpoint_hash') AS checkpoint_hash,CASE WHEN json_type(data,'$.checkpoint')='text' THEN json_extract(data,'$.checkpoint') END AS packed_checkpoint,json_extract(data,'$.updated_at') AS updated_at,json_array_length(data,'$.open_stage.passes') AS passes FROM room WHERE id=1 AND json_extract(data,'$.deleted') IS NOT 1").toArray()[0];
   if (!row && closedRoom(storage)) return fail(410, "room_closed");
   if (!row || !isMember(storage, row, player)) return fail(404, "room_not_found");
-  let active: string | null = null;
+  let active: string | null = null, open: { turn: number; cap: number } | undefined;
   try {
     const selected = chapter({ level_id: row.level_id, level_version: row.level_version, definition_hash: row.definition_hash });
     const stage = selected.stages[row.stage_index];
     if (stage) {
       const first = stage.first_player_slot === "p0" ? row.host_id : row.guest_id;
       const second = stage.first_player_slot === "p0" ? row.guest_id : row.host_id;
-      active = row.a_turn_id ? second : first;
+      // Open turns (v2/open-turns.ts): each pass hands the next turn back across, so an odd count of passes is the first player's.
+      active = row.a_turn_id && (row.passes ?? 0) % 2 === 0 ? second : first;
+      if (selected.open_turns && row.guest_id) open = { turn: row.a_turn_id ? 2 + (row.passes ?? 0) : 1, cap: selected.open_turns.caps[row.stage_index] };
     }
   } catch { return fail(409, "unsupported_chapter"); }
   const activity = remoteRoomActivity(storage, player);
@@ -114,6 +120,7 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     // The stored request must name this exact revision; a redo shows only while the second turn is unplayed (inboxRedo).
     // A compressed room's checkpoint hash is unpacked only once a request names this position (v2/row-codec.ts).
     ...(row.guest_id ? inboxRedo(storage, player, row, () => checkpointHash(row)) : {}),
+    ...(open ? { open_turns: open } : {}),
     // A public duel's room: the Worker shows the partner's stand-in, never their id (duels/public-mask.ts).
     ...duelMasks(duelLink(storage), row)
   });
@@ -162,9 +169,9 @@ export type InboxSource = () => Promise<Outcome<RoomInboxProjection> | null> | O
  * whose pair is blocked in either direction is left out (null). partner_left
  * is kept only with showLeft, partner_reaction only with showReactions (a pack face as its everyday
  * stand-in unless facePacks: v2/end-reactions.ts shownFace), and with showNames every
- * entry carries partner_name, checked again against the name rules (an index row may be a day old). `redo` is kept only with showRedo (1: redo requests, 2: start over requests too).
+ * entry carries partner_name, checked again against the name rules (an index row may be a day old). `redo` is kept only with showRedo (1: redo requests, 2: start over requests too), `open_turns` only with showOpenTurns.
  */
-export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false, facePacks: FaceVersion = 0, showRedo = 0): Promise<RoomInboxEntry | null> {
+export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false, facePacks: FaceVersion = 0, showRedo = 0, showOpenTurns = false): Promise<RoomInboxEntry | null> {
   const version = roomLinkVersion(link);
   const named = (entry: RoomInboxEntry, name: unknown = null): RoomInboxEntry => showNames ? { ...entry, partner_name: shownName(name) } : entry;
   if (version !== 1 && version !== 2) return named(fallback(link));
@@ -172,11 +179,12 @@ export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed
     const result = await source();
     if (!result) return named(fallback(link));
     if (!result.ok) return named(fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable"));
-    const { partner_left, partner_reaction, partner_name, redo, ...value } = result.value;
+    const { partner_left, partner_reaction, partner_name, redo, open_turns, ...value } = result.value;
     if (await blocked(value.membership.host_id!, value.membership.guest_id)) return null;
     return named({ ...value, family: version === 1 ? "legacy" : "relay", api_version: version, ...(showLeft && partner_left ? { partner_left } : {}),
       ...(showReactions && partner_reaction !== undefined ? { partner_reaction: shownFace(partner_reaction, facePacks) } : {}),
-      ...(redo !== undefined && (showRedo >= 2 || (showRedo === 1 && !redo.state.startsWith("start_over_"))) ? { redo } : {}) }, partner_name);
+      ...(redo !== undefined && (showRedo >= 2 || (showRedo === 1 && !redo.state.startsWith("start_over_"))) ? { redo } : {}),
+      ...(showOpenTurns && open_turns !== undefined ? { open_turns } : {}) }, partner_name);
   } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return named(fallback(link)); }
 }
 

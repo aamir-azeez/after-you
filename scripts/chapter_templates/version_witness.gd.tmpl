@@ -1,10 +1,14 @@
 extends "res://tests/chapter_witness.gd"
 ## {{KEY}} played through with real inputs: its recorded routes
 ## (tests/routes/{{KEY}}.json, written by scripts/chapter_recording.py) once it
-## has them, until then its family's witness ({{FAMILY_WITNESS}}), which picks
-## each stage's routes by stage id.
+## has them, until then {{EARLIER}}'s routes file if it has one, else its
+## family's witness ({{FAMILY_WITNESS}}), which picks each stage's routes by
+## stage id.
 const KEY := "{{KEY}}"
+const EARLIER := "{{EARLIER}}"
 const FamilyWitness = preload("{{FAMILY_WITNESS}}")
 
 func chapter() -> Dictionary:
-	return super() if not routes(KEY).is_empty() else FamilyWitness.chapter(KEY)
+	if not routes(KEY).is_empty(): return super()
+	if not routes(EARLIER).is_empty(): return play(KEY, routes(EARLIER))
+	return FamilyWitness.chapter(KEY)

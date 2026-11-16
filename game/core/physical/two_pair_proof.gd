@@ -4,6 +4,8 @@ extends RefCounted
 const Controls = preload("res://core/first_steps/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
@@ -21,6 +23,9 @@ var _catalog: Script
 var _factory: Script
 var _version: int
 var _schema: int
+## Open turns: the turns this proof already replayed, by recording hash, so a
+## stage's chain replays each turn once however deep it nests.
+var _replayed: Dictionary = {}
 
 func _init(catalog: Script, factory: Script, version: int, schema: int = -1) -> void:
 	_catalog = catalog
@@ -42,28 +47,74 @@ func recording_hash(recording: Dictionary) -> String:
 func _other(slot: String) -> String:
 	return "p1" if slot == "p0" else "p0"
 
-func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary = {}) -> Dictionary:
+## `chain`: open turns only, the stage's turns before `prior_a`, oldest first.
+func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary = {}, chain: Array = []) -> Dictionary:
 	var check := verify_checkpoint(definition, checkpoint)
-	return _verify_raw(definition, record, checkpoint, prior_a) if check.valid else check
+	return _verify_raw(definition, record, checkpoint, prior_a, chain) if check.valid else check
 
-func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary) -> Dictionary:
+## A turn replayed over its memory (`prior_a`, which replays over `chain`).
+## "ready": whether it may be a memory: a first turn that can be saved, or an
+## open turns pass that waited out its own memory and did not finish the stage.
+## Open turns keep each exact replay's result and memory trace (memory_trace.gd):
+## a turn checked once is not simulated again, and `simulate` forces the run
+## when its trace is wanted.
+func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary, chain: Array = [], simulate: bool = false) -> Dictionary:
 	var reason := recording_error(definition, record, checkpoint)
 	if not reason.is_empty(): return _invalid(reason)
+	var open := OpenTurns.rules(_version)
+	var id := MemoryTrace.key(_factory, _version, record) if open else ""
 	if record.role == "b":
-		if prior_a.get("role") != "a" or record.source_recording_hash != prior_a.get("recording_hash", ""): return _invalid("The partner recording does not match.")
-		var first_check := _verify_raw(definition, prior_a, checkpoint, {})
-		if not first_check.valid or not first_check.snapshot.can_commit: return _invalid("The partner recording is not ready.")
-	elif not prior_a.is_empty() or not str(record.source_recording_hash).is_empty(): return _invalid("Unexpected partner recording.")
+		if prior_a.get("role") != ("a" if chain.is_empty() else "b") or (not chain.is_empty() and not open) or record.source_recording_hash != prior_a.get("recording_hash", ""): return _invalid("The partner recording does not match.")
+		var turn := chain.size() + 2
+		var selected := stage_by_id(definition, str(record.stage_id))
+		if open and (record.player_slot != OpenTurns.slot(str(selected.first_player_slot), turn) or turn > OpenTurns.cap(selected) or int(record.duration_ticks) < int(prior_a.get("duration_ticks", 0))): return _invalid("Incorrect player identity.")
+		# A kept result covers the memory it was checked over; the memory given must be that one.
+		var kept := MemoryTrace.check(id) if open and not simulate else {}
+		if not kept.is_empty() and recording_hash(prior_a) == prior_a.recording_hash: return kept
+		var first_check := _replayed_turn(definition, prior_a, checkpoint, chain)
+		if not first_check.valid or not first_check.ready: return _invalid("The partner recording is not ready.")
+	elif not prior_a.is_empty() or not chain.is_empty() or not str(record.source_recording_hash).is_empty(): return _invalid("Unexpected partner recording.")
+	elif open and not simulate:
+		var kept := MemoryTrace.check(id)
+		if not kept.is_empty(): return kept
 	var simulation: RefCounted = _factory.new()
 	simulation.simulation_version = _version
 	simulation.catch_assistance = record.catch_assistance
 	simulation.packed_recordings = RecordingCodec.is_packed(record)
-	simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role)
+	# Only open turns pass a chain: other facades (the Lighthouse room's) keep five arguments.
+	if chain.is_empty(): simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role)
+	else: simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role, chain)
+	var frames: Array = []
+	if open: MemoryTrace.record(frames, simulation)
+	# Runtime engines tick without building a snapshot each tick; the Lighthouse room's steps.
+	var lean: bool = simulation.has_method("_tick")
 	for input: Dictionary in expand_recording_inputs(record):
 		if simulation.finished: return _invalid("The recording continues after the turn ended.")
-		simulation.step(input)
+		if lean: simulation._tick(input)
+		else: simulation.step(input)
+		if open: MemoryTrace.record(frames, simulation)
 	if not Canonical.same(simulation.export_recording(), record): return _invalid("The recording did not replay exactly.")
-	return {"valid":true,"error":"","snapshot":simulation.snapshot()}
+	var state: Dictionary = simulation.snapshot()
+	var ready: bool = state.can_commit if record.role == "a" else open and not state.complete and int(record.duration_ticks) >= int(prior_a.get("duration_ticks", 0))
+	var result := {"valid":true,"error":"","snapshot":state,"ready":ready}
+	if open: MemoryTrace.keep(id, result, frames, str(record.player_slot), str(record.role))
+	return result
+
+## Open turns: the trace `record` plays back as a memory over `chain` (the
+## turns before it), checked once and kept; {} when it does not replay exactly.
+func memory_trace(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, chain: Array) -> Dictionary:
+	if not MemoryTrace.enabled: return {}
+	var id := MemoryTrace.key(_factory, _version, record)
+	var found := MemoryTrace.trace(id)
+	if not found.is_empty(): return found
+	var checked := _verify_raw(definition, record, checkpoint, chain.back() if not chain.is_empty() else {}, chain.slice(0, maxi(0, chain.size() - 1)), true)
+	return MemoryTrace.trace(id) if checked.valid else {}
+
+## _verify_raw once per recording hash in this proof (open turns chains).
+func _replayed_turn(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, chain: Array) -> Dictionary:
+	var key := "%s|%s|%d" % [str(record.get("recording_hash", "")), str(checkpoint.get("checkpoint_hash", "")), chain.size()]
+	if not _replayed.has(key): _replayed[key] = _verify_raw(definition, record, checkpoint, chain.back() if not chain.is_empty() else {}, chain.slice(0, maxi(0, chain.size() - 1)))
+	return _replayed[key]
 
 func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dictionary) -> String:
 	if not _exact_keys(record, RecordingCodec.keys_for(record, RECORD_KEYS)): return "Malformed recording."
@@ -74,8 +125,10 @@ func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dic
 	if record.level_id != definition.get("id") or record.definition_hash != Canonical.digest(definition) or record.checkpoint_hash != checkpoint.get("checkpoint_hash") or record.stage_id != checkpoint.get("next_stage_id"): return "Recording checkpoint mismatch."
 	var selected: Dictionary = stage_by_id(definition, str(record.stage_id))
 	if selected.is_empty() or record.role not in ["a", "b"]: return "Unknown recording stage."
-	if record.player_slot != (selected.first_player_slot if record.role == "a" else _other(selected.first_player_slot)): return "Incorrect player identity."
-	var limit: int = Runtime.turn_ticks(definition, _version, str(record.role))
+	# Open turns: a later turn is either pip's, as its place in the stage says (_verify_raw checks it).
+	var open := OpenTurns.rules(_version)
+	if record.player_slot != (selected.first_player_slot if record.role == "a" else _other(selected.first_player_slot)) and not (open and record.role == "b" and record.player_slot in ["p0", "p1"]): return "Incorrect player identity."
+	var limit: int = Runtime.turn_ticks(definition, _version, "b" if open else str(record.role))
 	if not _integer(record.tick_rate) or int(record.tick_rate) != TICK_RATE or not _integer(record.duration_ticks) or int(record.duration_ticks) < 1 or int(record.duration_ticks) > limit: return "Invalid recording duration."
 	if not record.catch_assistance is bool or not record.completed is bool or not record.outcome is Dictionary or not _exact_keys(record.outcome, OUTCOME_KEYS): return "Invalid recording outcome."
 	for key: String in OUTCOME_KEYS:
@@ -116,32 +169,47 @@ func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictio
 	return _verify_checkpoint(definition, checkpoint, 0)
 
 func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: int) -> Dictionary:
-	if depth > clampi(definition.stages.size(), 2, MAX_STAGES) or not _exact_keys(checkpoint, CHECKPOINT_KEYS) or not _integer(checkpoint.get("stage_index")) or int(checkpoint.stage_index) < 0 or int(checkpoint.stage_index) > definition.stages.size(): return _invalid("Malformed stage checkpoint.")
+	# Open turns nest every turn of a stage (schema 8, open_turns.gd); published checkpoints nest a and b.
+	var open := OpenTurns.rules(_version)
+	if depth > clampi(definition.stages.size(), 2, MAX_STAGES) or not _integer(checkpoint.get("stage_index")) or int(checkpoint.stage_index) < 0 or int(checkpoint.stage_index) > definition.stages.size(): return _invalid("Malformed stage checkpoint.")
 	if checkpoint.stage_index == 0: return {"valid":true,"error":""} if Canonical.same(checkpoint, _catalog.initial_checkpoint(definition)) else _invalid("The initial checkpoint does not match.")
-	if not checkpoint.proof is Dictionary or not _exact_keys(checkpoint.proof, ["checkpoint", "a", "b"]): return _invalid("Missing checkpoint proof.")
+	if not _exact_keys(checkpoint, OpenTurns.CHECKPOINT_KEYS if open else CHECKPOINT_KEYS): return _invalid("Malformed stage checkpoint.")
+	if not checkpoint.proof is Dictionary or not _exact_keys(checkpoint.proof, ["checkpoint", "turns"] if open else ["checkpoint", "a", "b"]): return _invalid("Missing checkpoint proof.")
 	var proof: Dictionary = checkpoint.proof
-	if not proof.checkpoint is Dictionary or not proof.a is Dictionary or not proof.b is Dictionary or not _integer(proof.checkpoint.get("stage_index")) or int(proof.checkpoint.stage_index) != int(checkpoint.stage_index) - 1: return _invalid("Invalid checkpoint chain.")
+	var turns: Array = proof.turns if open and proof.turns is Array else [proof.get("a"), proof.get("b")]
+	if not proof.checkpoint is Dictionary or turns.size() < 2 or turns.any(func(turn: Variant) -> bool: return not turn is Dictionary) or not _integer(proof.checkpoint.get("stage_index")) or int(proof.checkpoint.stage_index) != int(checkpoint.stage_index) - 1: return _invalid("Invalid checkpoint chain.")
 	var prior_check := _verify_checkpoint(definition, proof.checkpoint, depth + 1)
 	if not prior_check.valid: return prior_check
-	var pair := _verify_pair(definition, proof.checkpoint, proof.a, proof.b)
+	var pair := _verify_turns(definition, proof.checkpoint, turns)
 	if not pair.valid: return pair
-	var derived: Dictionary = _build_checkpoint(definition, proof.checkpoint, proof.a, proof.b, pair.snapshot)
+	var derived: Dictionary = _build_checkpoint(definition, proof.checkpoint, turns[0], turns[-1], pair.snapshot, turns.slice(1, turns.size() - 1))
 	return {"valid":true,"error":""} if Canonical.same(checkpoint, derived) else _invalid("The checkpoint does not match its proof.")
 
-func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
+## `passes`: open turns only, the stage's turns between `first` and `second`.
+func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, passes: Array = []) -> Dictionary:
 	var check := verify_checkpoint(definition, previous)
 	if not check.valid: return check
-	var pair := _verify_pair(definition, previous, first, second)
+	var turns: Array = [first] + passes + [second]
+	var pair := _verify_turns(definition, previous, turns)
 	if not pair.valid: return pair
-	return {"valid":true,"error":"","checkpoint":_build_checkpoint(definition, previous, first, second, pair.snapshot)}
+	return {"valid":true,"error":"","checkpoint":_build_checkpoint(definition, previous, first, second, pair.snapshot, passes)}
 
+## A published stage's two turns (_verify_turns).
 func _verify_pair(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
-	if first.get("role") != "a" or second.get("role") != "b": return _invalid("A stage needs both turns in order.")
-	var check := _verify_raw(definition, second, previous, first)
+	return _verify_turns(definition, previous, [first, second])
+
+## A stage's turns in order: a first turn, then later turns that each replay
+## over the one before, the last one completing the stage (only open turns
+## have passes between).
+func _verify_turns(definition: Dictionary, previous: Dictionary, turns: Array) -> Dictionary:
+	if turns.size() < 2 or turns[0].get("role") != "a" or turns.slice(1).any(func(turn: Dictionary) -> bool: return turn.get("role") != "b") or (turns.size() > 2 and not OpenTurns.rules(_version)): return _invalid("A stage needs both turns in order.")
+	var check := _verify_raw(definition, turns[-1], previous, turns[-2], turns.slice(0, turns.size() - 2))
 	if not check.valid or not check.get("snapshot", {}).get("complete", false): return _invalid("The pair has not completed this stage.")
 	return check
 
-func _build_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, state: Dictionary) -> Dictionary:
+## `passes`: open turns only, the stage's turns between `first` and `second`.
+func _build_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, state: Dictionary, passes: Array = []) -> Dictionary:
+	var turns: Array = [first] + passes + [second]
 	var index := int(previous.stage_index) + 1
 	var players: Dictionary = {}
 	for slot: String in ["p0", "p1"]:
@@ -150,6 +218,13 @@ func _build_checkpoint(definition: Dictionary, previous: Dictionary, first: Dict
 		"completed_stage_id":str(second.stage_id),"next_stage_id":str(definition.stages[index].id) if index < definition.stages.size() else "","players":players,
 		"mechanisms":state.mechanisms.duplicate(true),"previous_checkpoint_hash":previous.checkpoint_hash,"a_recording_hash":first.recording_hash,"b_recording_hash":second.recording_hash,
 		"proof":{"checkpoint":previous.duplicate(true),"a":first.duplicate(true),"b":second.duplicate(true)}}
+	if OpenTurns.rules(_version):
+		# Open turns: every turn of the stage, in order, in place of a and b.
+		checkpoint.erase("a_recording_hash")
+		checkpoint.erase("b_recording_hash")
+		checkpoint.schema_version = OpenTurns.CHECKPOINT_SCHEMA
+		checkpoint["turn_hashes"] = turns.map(func(turn: Dictionary) -> String: return str(turn.recording_hash))
+		checkpoint.proof = {"checkpoint":previous.duplicate(true),"turns":turns.duplicate(true)}
 	checkpoint["checkpoint_hash"] = _catalog.checkpoint_hash(checkpoint)
 	return checkpoint
 
