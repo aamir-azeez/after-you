@@ -239,8 +239,7 @@ async function winBonus(env: Env, player: string, duel: Duel, settled: readonly 
 }
 
 /**
- * The lobby. Requests: 1 (own party) + 1 (partner, when named) + 1 per board holding a duel + a wallet credit per new win + 1 write when pointers change
- * + 1 per pip beside you in a running friend or public duel who is not your party partner (withGiveUpCaps), usually none.
+ * The lobby. Requests: 1 (own party) + 1 (partner, when named) + 1 per board holding a duel + a wallet credit per new win + 1 write when pointers change.
  * While looks are on, `party.partner_look` is the partner's look from the row already read ({} for the default).
  */
 async function lobby(env: Env, player: string, now: number, look?: Look): Promise<unknown> {
@@ -263,7 +262,7 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
     schema_version: 1,
     party: { partner: pair.partner, intact: pair.intact, invites_in: pair.state.invites_in.map(invite => invite.from), invite_out: pair.state.invite_out?.to ?? null,
       ...(shownLooks && pair.partner ? { partner_look: servedLook(pair.looks[1]) } : {}) },
-    duels: await withGiveUpCaps(env, player, pair, shown, now, shownLooks),
+    duels: withGiveUpCaps(player, pair, shown, now, shownLooks),
     // One limit; 0.8.1 and 0.8.2 phones read it per kind, so both keys carry it.
     limits: { friend: MAX_DUELS_PER_PAIR, ghost: MAX_DUELS_PER_PAIR },
     ...hintsField(env), ...publicLobby(env, player, pair.members, pair.intact, duels)
@@ -275,21 +274,19 @@ const membersOf = (side: Side): string[] => side.members.filter((id): id is stri
 
 /**
  * The lobby's duel views, newest first, each running friend or public duel whose Give up would count (asking, or
- * agreeing with the other pip's ask: model.ts giveUpCounts) carrying the
- * give up cap (party.ts giveUpFreeAt) as `again_in_ms` while at it. The rows of this player and their party partner
- * came with the lobby's own reads; only a pip beside them who is neither (an earlier party, a public partner) is read,
- * once each.
+ * agreeing with the other pip's ask: model.ts giveUpCounts) carrying the give up cap (party.ts giveUpFreeAt) as
+ * `again_in_ms` while at it, from the party rows the lobby already read: this player's and their party partner's. No
+ * other row is read (owner, 2026-11-16): a pip beside you who is neither (an earlier party, a public partner) counts
+ * only through the give up route, whose refusal (give_up_capped) greys the button on the phone.
  */
-async function withGiveUpCaps(env: Env, player: string, pair: { state: PartyState; partner: string | null; partnerState?: PartyState }, duels: readonly Duel[], now: number, looks: boolean): Promise<DuelView[]> {
+function withGiveUpCaps(player: string, pair: { state: PartyState; partner: string | null; partnerState?: PartyState }, duels: readonly Duel[], now: number, looks: boolean): DuelView[] {
   const rows = new Map<string, PartyState>([[player, pair.state]]);
   if (pair.partner && pair.partnerState) rows.set(pair.partner, pair.partnerState);
-  const capped = duels.filter(duel => { const mine = sideOf(duel, player); return mine >= 0 && giveUpCounts(duel, mine as 0 | 1, player); });
-  const missing = [...new Set(capped.flatMap(duel => membersOf(duel.sides[sideOf(duel, player) as 0 | 1]!)).filter(id => !rows.has(id)))];
-  for (const [id, state] of await pooled(missing, BOARD_CONCURRENCY, async id => [id, await party(env, id).partyRead(now)] as const)) rows.set(id, state);
   return duels.map(duel => {
     const view = viewFor(duel, player, looks, now);
-    if (!view || !capped.includes(duel)) return view;
-    const free = giveUpFreeAt(membersOf(duel.sides[view.mine]!).map(id => rows.get(id)!), now);
+    const mine = sideOf(duel, player);
+    if (!view || mine < 0 || !giveUpCounts(duel, mine as 0 | 1, player)) return view;
+    const free = giveUpFreeAt(membersOf(duel.sides[view.mine]!).flatMap(id => rows.get(id) ?? []), now);
     const own = view.sides[view.mine]!;
     if (free !== null && free > now && own.give_up) own.give_up.again_in_ms = free - now;
     return view;

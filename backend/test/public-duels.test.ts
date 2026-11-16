@@ -644,6 +644,28 @@ describe("public duels", () => {
     expect((await detail(p1, second)).duel.status).toBe("running");
   });
 
+  it("read no stranger's party row on the lobby for the give up cap: a tap past it is refused with when it frees up", async () => {
+    const [poster, lone, p1, p2] = await Promise.all([player(), player(), player(), player()]);
+    await partner(p1, p2);
+    const now = Date.now();
+    // The stranger beside the poster gave up three duels this week.
+    for (const index of [1, 2, 3]) await env.LEADERBOARD_MEMBERS.getByName(lone.player_id).partyApply(lone.player_id, { kind: "give_up", duel_id: String(index).padStart(32, "0"), at: now - index * 1000 }, now);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    const room = await ok<RoomSnapshotV2>(openRoom(poster, posted));
+    await ok(join(lone, posted));
+    await ok(call("/v2/rooms/join", "POST", lone, { invite_code: room.invite_code }));
+    await ok(join(p1, posted, "party"));
+    const read = await countAllRequests(env, async () => ok<{ duels: DuelView[] }>(call("/v1/duels", "GET", poster)));
+    // Only the poster's own row (they have no party): no extra read, so the lobby cannot know the stranger's cap.
+    expect(read.calls.filter(name => name.startsWith("LEADERBOARD_MEMBERS"))).toEqual(["LEADERBOARD_MEMBERS.publicRead"]);
+    expect(read.value.duels.find(item => item.duel_id === posted.duel_id)!.sides[0].give_up).toEqual({ mode: "ask", asked: null, asked_at: null });
+    const refused = await call(`/v1/duels/${RELAY}/${posted.duel_id}/give-up`, "POST", poster, { schema_version: 1, answering: null });
+    expect(refused.status).toBe(409);
+    const body = await refused.json<{ error: { code: string; again_in_ms: number } }>();
+    expect(body.error.code).toBe("give_up_capped");
+    expect(body.error.again_in_ms).toBeGreaterThan(6 * 86_400_000);
+  });
+
   it("share one limit of 30 with friend duels and ghost races: posts past it are refused, and so is a friend challenge or a race", async () => {
     const [a1, a2, b1, b2] = await Promise.all([player(), player(), player(), player()]);
     await partner(a1, a2); await partner(b1, b2); await befriend(a1, b1);
