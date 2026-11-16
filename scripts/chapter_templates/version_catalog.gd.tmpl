@@ -1,19 +1,23 @@
 extends RefCounted
-## {{KEY}}: {{EARLIER}}'s definition as version {{VERSION}}, pinned to the open
-## controls (core/physical/open_controls.gd: 13 after the tide rules, else 12),
-## so it never shares a record with an earlier version, and its controls carry
-## no owner. Its words are the descriptor's copy and
-## stage_copy, never the definition's, and its turn limits are the development
-## ones (content/chapters/index.gd DEVELOPMENT_TURN_LIMITS) until play sets them
-## (scripts/chapter_turn_limits.py).
+## {{KEY}}: {{EARLIER}}'s definition as version {{VERSION}}, pinned to open
+## turns (core/physical/open_turns.gd: 15 after the tide rules, else 14), so it
+## never shares a record with an earlier version, its controls carry no owner,
+## and a stage passes back and forth until both pips end a turn at its goal, up
+## to its cap. Its words are the descriptor's copy and stage_copy, never the
+## definition's, and its turn limits are the development ones
+## (content/chapters/index.gd DEVELOPMENT_TURN_LIMITS, the same for every turn)
+## until play sets them (scripts/chapter_turn_limits.py).
 const Earlier = preload("{{EARLIER_SCRIPT}}")
-const OpenControls = preload("res://core/physical/open_controls.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const WORDS := ["title", "subtitle", "hint_a", "hint_b"]
+## Turns a stage may take, by stage id: a stage left out keeps its earlier cap,
+## or 10. The owner sets 20 on hard stages.
+const CAPS := {}
 
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.{{EARLIER_CALL}}.duplicate(true)
 	level.version = {{VERSION}}
-	OpenControls.pin(level)
+	OpenTurns.pin(level, CAPS)
 	level.turn_limits = {{DEV_TURN_LIMITS}}
 	for field: String in WORDS:
 		level.erase(field)

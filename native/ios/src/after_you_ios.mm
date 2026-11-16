@@ -211,6 +211,7 @@ void AfterYouIOS::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("games_snapshot_discard", "handle", "request_id"), &AfterYouIOS::games_snapshot_discard);
 	ClassDB::bind_method(D_METHOD("games_submit_score", "board", "score", "request_id"), &AfterYouIOS::games_submit_score);
 	ClassDB::bind_method(D_METHOD("games_show_board", "board", "request_id"), &AfterYouIOS::games_show_board);
+	ClassDB::bind_method(D_METHOD("games_unlock_achievement", "achievement", "request_id"), &AfterYouIOS::games_unlock_achievement);
 
 	PropertyInfo id_info(Variant::STRING, "request_id");
 	PropertyInfo operation_info(Variant::STRING, "operation");
@@ -498,4 +499,8 @@ void AfterYouIOS::games_submit_score(const String &p_board, int64_t p_score, con
 
 void AfterYouIOS::games_show_board(const String &p_board, const String &p_request_id) {
 	[[AYGameCenter shared] showBoard:ay_ns(p_board) requestId:ay_ns(p_request_id)];
+}
+
+void AfterYouIOS::games_unlock_achievement(const String &p_achievement, const String &p_request_id) {
+	[[AYGameCenter shared] unlockAchievement:ay_ns(p_achievement) requestId:ay_ns(p_request_id)];
 }

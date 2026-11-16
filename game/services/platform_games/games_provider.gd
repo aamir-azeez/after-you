@@ -62,8 +62,8 @@ func snapshot_resolve(_handle: String, _data: PackedByteArray) -> Dictionary:
 func snapshot_discard(_handle: String) -> Dictionary:
 	return {"ok": false, "code": "unavailable"}
 
-## Achievements: the interface is ready, but After You defines and unlocks none yet (owner
-## decision). Every provider answers not_enabled until that changes.
+## One platform achievement unlocked (`id` is the platform's own id, platform_achievement_ids.gd):
+## {"ok"} or a code. The platforms ignore an achievement already unlocked.
 func unlock_achievement(_id: String) -> Dictionary:
 	return {"ok": false, "code": "not_enabled"}
 

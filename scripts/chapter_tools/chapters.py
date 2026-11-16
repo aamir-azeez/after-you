@@ -119,10 +119,14 @@ def routes_text(routes: dict, stage_order: list[str]) -> str:
     for stage in [s for s in stage_order if s in routes] + sorted(s for s in routes if s not in stage_order):
         entry = plain(routes[stage])
         fields = []
-        for name in ("a", "b"):
+        # An open turns stage that took more than two turns lists them all in order as "turns".
+        for name in ("a", "b") if "turns" not in entry else ():
             steps = ",\n".join("\t\t\t" + json.dumps(step) for step in entry.get(name, []))
             fields.append(f'\t\t"{name}": [\n{steps}\n\t\t]')
-        fields += [f"\t\t{json.dumps(name)}: {json.dumps(value)}" for name, value in entry.items() if name not in ("a", "b")]
+        if "turns" in entry:
+            turns = ",\n".join("\t\t\t[\n" + ",\n".join("\t\t\t\t" + json.dumps(step) for step in turn) + "\n\t\t\t]" for turn in entry["turns"])
+            fields.append(f'\t\t"turns": [\n{turns}\n\t\t]')
+        fields += [f"\t\t{json.dumps(name)}: {json.dumps(value)}" for name, value in entry.items() if name not in ("a", "b", "turns")]
         blocks.append(f"\t{json.dumps(stage)}: {{\n" + ",\n".join(fields) + "\n\t}")
     return "{\n" + ",\n".join(blocks) + "\n}\n"
 

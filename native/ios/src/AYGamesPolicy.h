@@ -12,6 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (BOOL)validSnapshotName:(NSString *)name;
 + (BOOL)validHandle:(NSString *)handle;
 /// A Game Center leaderboard id ("afteryou.first_steps.v1"): letters, digits, dots and underscores, 1 to 100.
+/// A Game Center id we chose, for a leaderboard or an achievement alike.
 + (BOOL)validLeaderboardId:(NSString *)board;
 /// A chapter time in hundredths of a second, above 0 and at most a day.
 + (BOOL)validScore:(int64_t)score;

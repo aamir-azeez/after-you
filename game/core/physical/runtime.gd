@@ -454,20 +454,23 @@ func _at_goal(slot: String) -> bool:
 static func turn_ticks(definition: Dictionary, version: int, turn_role: String) -> int:
 	var published := MAX_TICKS + RECEIVER_GRACE_TICKS if version >= COMFORT_SIMULATION_VERSION and turn_role == "b" else MAX_TICKS
 	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return published
-	return int(_declared_turns(definition.turn_limits).get(turn_role if turn_role == "b" else "a", published))
+	return int(_declared_turns(definition.turn_limits, version).get(turn_role if turn_role == "b" else "a", published))
 
 ## False only when rules `version` read a turn_limits field that breaks the
 ## backend's turnLimits rules: a_ticks and b_ticks both whole numbers with
-## 1 <= a < b <= 9,000 (the receiver waits out the first turn).
+## 1 <= a < b <= 9,000 (the receiver waits out the first turn). On open turns
+## (open_controls.gd OPEN_TURNS_RULES) every turn plays alongside its memory
+## and has the same limit, so a may equal b there: 1 <= a <= b <= 9,000.
 static func turn_limits_valid(definition: Dictionary, version: int) -> bool:
 	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return true
-	return not _declared_turns(definition.turn_limits).is_empty()
+	return not _declared_turns(definition.turn_limits, version).is_empty()
 
-static func _declared_turns(limits: Variant) -> Dictionary:
+static func _declared_turns(limits: Variant, version: int) -> Dictionary:
 	if not limits is Dictionary: return {}
 	var a: Variant = limits.get("a_ticks")
 	var b: Variant = limits.get("b_ticks")
-	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b <= a or b > MAX_DECLARED_TURN_TICKS: return {}
+	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b > MAX_DECLARED_TURN_TICKS: return {}
+	if b < a or (b == a and version not in OpenControls.OPEN_TURNS_RULES): return {}
 	return {"a": int(a), "b": int(b)}
 
 static func _whole_ticks(value: Variant) -> bool:

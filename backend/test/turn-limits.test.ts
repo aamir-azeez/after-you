@@ -27,6 +27,15 @@ describe("declared turn limits", () => {
       expect(() => turnLimits({ simulation_version: 9, turn_limits: bad })).toThrow("invalid turn_limits");
   });
 
+  it("may be equal on the open turns rules only, where every turn has the same limit", () => {
+    for (const version of [14, 15]) {
+      expect(turnLimits({ simulation_version: version, turn_limits: { a_ticks: 2730, b_ticks: 2730 } })).toEqual({ a_ticks: 2730, b_ticks: 2730 });
+      expect(() => turnLimits({ simulation_version: version, turn_limits: { a_ticks: 2730, b_ticks: 2700 } })).toThrow("invalid turn_limits");
+    }
+    for (const version of [9, 10, 12, 13])
+      expect(() => turnLimits({ simulation_version: version, turn_limits: { a_ticks: 2730, b_ticks: 2730 } })).toThrow("invalid turn_limits");
+  });
+
   it("follow the table test_turn_of_the_tide.gd also reads", () => {
     expect(cases.cases.length).toBeGreaterThanOrEqual(20);
     for (const item of cases.cases as { label: string; simulation_version: number; turn_limits?: unknown; valid: boolean; a?: number; b?: number }[]) {

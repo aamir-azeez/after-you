@@ -164,6 +164,13 @@ internal class PlayGamesBridge(
         client.showBoard(boardId) { shown, status -> if (shown) success(ticket, JSONObject().put("shown", true)) else failStatus(ticket, status) }
     }
 
+    /** One achievement the server paid this player; the game unlocks each once per account. */
+    fun unlockAchievement(achievementId: String, id: String) = call(id, "unlock_achievement", PlayGamesPolicy.QUIET_TIMEOUT_MS) { ticket ->
+        if (!PlayGamesPolicy.validLeaderboardId(achievementId)) { fail(ticket, "failed"); return@call }
+        if (!client.available()) { fail(ticket, "unavailable"); return@call }
+        client.unlockAchievement(achievementId) { unlocked, status -> if (unlocked) success(ticket, JSONObject().put("unlocked", true)) else failStatus(ticket, status) }
+    }
+
     private fun encode(bytes: ByteArray): String = if (bytes.isEmpty()) "" else Base64.encodeToString(bytes, Base64.NO_WRAP)
     private fun decode(value: String): ByteArray? {
         if (!PlayGamesPolicy.validBase64Length(value)) return null
