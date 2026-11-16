@@ -41,7 +41,7 @@ const PURCHASE_KINDS := ["bundle", "bundlerefund"]
 ## Pollen kinds that Fruits move: Fruits made into Pollen, and Pollen taken back after a Fruit refund.
 const EXCHANGE_KINDS := ["convert", "reclaim"]
 ## The Fruit line kinds (backend fruit ledger lines).
-const FRUIT_KINDS := ["grant", "grantrefund", "welcome", "welcomerefund", "bundle", "bundlerefund", "ach", "convert", "reclaim"]
+const FRUIT_KINDS := ["grant", "grantrefund", "welcome", "welcomerefund", "bundle", "bundlerefund", "ach", "convert", "reclaim", "level"]
 ## Fruit kinds that add (amount above 0); every other kind takes away (amount below 0).
 const FRUIT_ADDS := ["grant", "welcome", "bundle", "ach"]
 const ID_PATTERN := "^[a-z0-9_]{1,40}$"

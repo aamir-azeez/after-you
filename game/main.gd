@@ -963,17 +963,18 @@ var _unlocks_kept: Array = []
 func _chapter_unlocks() -> Dictionary:
 	# A tester's switched view (services/tester_switches.gd) does not wait on the ledger.
 	var view: String = TesterSwitches.shared().keepsakes()
-	if view.is_empty() and (home_keepsakes.read_only or home_keepsakes.backfill_pending()): return ChapterUnlocks.unsettled(_full_journey_access())
+	var fruit_levels := _fruit_levels()
+	if view.is_empty() and (home_keepsakes.read_only or home_keepsakes.backfill_pending()): return ChapterUnlocks.unsettled(_full_journey_access(), fruit_levels)
 	var earned := _keepsake_earned()
 	var rooms: Dictionary = room_hub_flow.known_rooms()
-	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access(), TesterSwitches.shared().generation]
+	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access(), TesterSwitches.shared().generation, hash(fruit_levels)]
 	if _unlocks_kept.size() == 2 and _unlocks_kept[0] == stamp: return _unlocks_kept[1]
 	# A fresh view opens what its own marks open, and the chapters of rooms and duels the player
 	# is in, so a friend waiting on a turn is never locked out. Journals and finished rooms from
 	# before open nothing more.
 	var fresh: bool = view == TesterSwitches.FRESH
 	# A duel's room is an ordinary room, so a duel's clear is among rooms.finished.
-	var progress := ChapterUnlocks.progress(earned, _hard_marks(), ChapterUnlocks.touched(rooms.chapters, not fresh), stamp[3], [] if fresh else rooms.finished)
+	var progress := ChapterUnlocks.progress(earned, _hard_marks(), ChapterUnlocks.touched(rooms.chapters, not fresh), stamp[3], [] if fresh else rooms.finished, fruit_levels)
 	_unlocks_kept = [stamp, progress]
 	return progress
 
@@ -1401,7 +1402,14 @@ func _host_fruit_spend_flow() -> FruitSpendFlow:
 	# there: the card just closes.
 	flow.get_fruits = func() -> void: if not pollen_store_flow.is_open(): pollen_store_flow.show_store(_fruit_screen(), "fruits")
 	pollen_play_flow.fruit_spends = flow
+	flow.spent.connect(_fruit_spent)
 	return flow
+
+## A Fruit spend went through: a chapter it opened draws the cards that show it again.
+func _fruit_spent(kind: String) -> void:
+	if kind != WardrobeClient.LEVEL: return
+	journey_flow.levels_changed()
+	if room_hub_flow.is_open(): room_hub_flow.redraw_locks()
 
 ## An internal child, like StoreFlow. Its Back goes through the menu back history (menu_back).
 func _host_fruits_page_flow() -> FruitsPageFlow:
@@ -1489,6 +1497,15 @@ func _host_journey_flow() -> JourneyFlow:
 	var flow := JourneyFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
+
+## Levels opened with Fruits for services/chapter_unlocks.gd progress: {"on":
+## the server sells them now, "open": the level ids paid for}, from the Fruits
+## this phone keeps (services/fruit_wallet.gd); {} while signed out.
+func _fruit_levels() -> Dictionary:
+	var scope := _names_scope()
+	if scope.is_empty(): return {}
+	var fruits: RefCounted = wardrobe_client().fruits
+	return {"on": fruits.level_unlocks_on(scope.server, scope.owner), "open": fruits.opened_levels(scope.server, scope.owner)}
 
 ## The server and player that key the names and friends this phone keeps, or {}.
 func _names_scope() -> Dictionary:

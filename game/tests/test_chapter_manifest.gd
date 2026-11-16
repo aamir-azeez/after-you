@@ -78,6 +78,8 @@ func _row(key: String) -> Dictionary:
 		"max_branches": int(server.max_branches),
 		## Whether the game offers Hard on it: the server's Every Hard list (backend/src/pollen/earned.ts) is pinned to these.
 		"hard": HardMode.eligible(key),
+		## The Fruits a free player pays once to open it (descriptor "unlock"): the server's LEVEL_PRICES (backend/src/pollen/level-unlocks.ts) is pinned to these.
+		"unlock_fruits": int((data.get("unlock", {}) as Dictionary).get("fruits", 0)),
 		"definition_fixture": fixtures[0],
 		"initial_fixture": fixtures[1],
 	}

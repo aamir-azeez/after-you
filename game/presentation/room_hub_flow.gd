@@ -14,7 +14,7 @@ extends Node
 ## - identity and access: _relay_identity, _ensure_identity, _tester_context,
 ##   _tester_checks_enabled, _load_cached_tester, _hosting_lock_reason,
 ##   _paid_content_hidden, _online_gated, _friend_display_name, _chapter_marks,
-##   _chapter_unlocks
+##   _chapter_unlocks, fruit_spend_flow (unlock_level, for a chapter its Fruit price locks)
 ## Main's chapter unlocks read known_rooms(), from the same room list client
 ## the hub draws (rooms_client()).
 ## - screen: mode, ui, overlay, store_view_generation, lifecycle_generation,
@@ -601,6 +601,14 @@ func _host_room(chapter_key: String, visibility: String, source: Control = null)
 	var unlocks: Dictionary = host._chapter_unlocks()
 	if not ChapterUnlocks.reached(chapter_key, unlocks):
 		message(ChapterUnlocks.reason(chapter_key, unlocks))
+		return
+	# A chapter its Fruit price locks: the price while the server sells levels
+	# (presentation/fruit_spend_flow.gd), else the Full Journey hosting lock.
+	if ChapterUnlocks.fruit_locked(chapter_key, unlocks):
+		if ChapterUnlocks.fruit_offered(chapter_key, unlocks): host.fruit_spend_flow.unlock_level(chapter_key, host.overlay, source)
+		else:
+			_leave()
+			hosting_locked_requested.emit(chapter_key)
 		return
 	var reason: String = host._hosting_lock_reason()
 	if ChapterRegistry.descriptor(chapter_key).get("premium",false) and not reason.is_empty():
