@@ -4,6 +4,8 @@ const CarriedItems = preload("res://core/physical/carried_items.gd")
 ## No shared mutable state: all dictionaries belong to a single simulation.
 ## `open`: open controls (runtime.gd OPEN_RULES_VERSION), where a pad holds for
 ## either pip; otherwise only for its owner_slot.
+## `{"not": child}` holds while its child does not (rules 16,
+## core/physical/pieces_rules.gd; no published definition has one).
 
 static func predicate(value: Dictionary, stage: Dictionary, players: Dictionary, mechanisms: Dictionary, signals: Dictionary = {}, open: bool = false) -> bool:
 	if value.has("all"):
@@ -14,6 +16,7 @@ static func predicate(value: Dictionary, stage: Dictionary, players: Dictionary,
 		for child: Dictionary in value.any:
 			if predicate(child, stage, players, mechanisms, signals, open): return true
 		return false
+	if value.has("not"): return value["not"] is Dictionary and not predicate(value["not"], stage, players, mechanisms, signals, open)
 	if value.has("control_id"): return str(mechanisms.controls.get(value.control_id, "")) == str(value.value)
 	if value.has("lever_id"): return bool(mechanisms.levers.get(value.lever_id, false))
 	if value.has("signal_id"): return bool(signals.get(value.signal_id, false))

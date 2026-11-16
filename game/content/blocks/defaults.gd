@@ -36,6 +36,32 @@ const BLOCKS := {
 	"lever": {"cues": ["lever_pulled"]},
 	"selector": {"cues": ["switch_set"]},
 	"raw": {"cues": []},
+	# The new pieces (rules 16). Their words wait for the owner's text pass, so
+	# a stage of them writes its own stage copy.
+	"fog_lantern": {"cues": ["lever_pulled", "bridge_closed"]},
+	"crank_bridge": {"cues": ["bridge_opened"]},
+	"weight_pan": {"cues": ["bridge_opened"]},
+	"platform": {"cues": ["bridge_opened"]},
+	"weight_lift": {"cues": ["bridge_opened"]},
+	"rope_raft": {"cues": ["switch_set", "bridge_opened"]},
+	"sinking_stones": {"cues": []},
+	"rope_ladder": {"cues": []},
+	"wheel_ride": {"cues": ["bridge_opened"]},
+	"falls_path": {"cues": ["lever_pulled", "bridge_opened"]},
+}
+## The look a new piece's block gives the pieces and crossings it places when
+## they name no "style" of their own: {block: {field: style}} (content/
+## dressing/prop_styles.gd SLOTS; a crossing's is its "deck"). A pin in the
+## descriptor still wins.
+const BLOCK_STYLES := {
+	"fog_lantern": {"lever": "lantern"},
+	"crank_bridge": {"lever": "winch", "pads": "crank_board", "routes": "rope"},
+	"weight_pan": {"pad": "pan"},
+	"sinking_stones": {"stones": "stones"},
+	"weight_lift": {"pads": "pan", "top_pads": "pan"},
+	"rope_raft": {"selector": "rope_wheel"},
+	"wheel_ride": {"stairs": "wheel"},
+	"falls_path": {"routes": "falls_path"},
 }
 ## Fields a block may give a piece, read here only: never part of the
 ## expanded definition, so a style never changes a hash.
@@ -91,6 +117,17 @@ static func styles(source: Dictionary) -> Dictionary:
 	var result: Dictionary = {}
 	for spec: Dictionary in _pieces(source):
 		if spec.has("style"): result[str(spec.id)] = str(spec.style)
+	# A new piece's block names the look of what it places (BLOCK_STYLES).
+	for stage: Dictionary in source.get("stages", []):
+		for block: Dictionary in stage.get("blocks", []):
+			var looks: Dictionary = BLOCK_STYLES.get(str(block.get("block", "")), {})
+			for field: String in looks:
+				var given: Variant = block.get(field)
+				# A block's routes map each crossing to its value: the crossings are the keys.
+				if given is Dictionary and not given.has("id"): given = given.keys()
+				for piece: Variant in (given if given is Array else [given]):
+					var id := str(piece.id) if piece is Dictionary else str(piece) if piece != null else ""
+					if not id.is_empty() and not result.has(id): result[id] = str(looks[field])
 	return result
 
 ## {selector id: its values in order} for selector blocks marked as water.
@@ -106,7 +143,7 @@ static func _controls(source: Dictionary) -> Array:
 
 ## Every pad, lever, selector and bell placed by a block, standalone or inline.
 static func _pieces(source: Dictionary) -> Array:
-	return _placed(source, ["pad", "lever", "selector", "ring_bell"], ["pad", "lever", "second_lever", "selector", "matches"])
+	return _placed(source, ["pad", "lever", "selector", "ring_bell"], ["pad", "lever", "second_lever", "selector", "matches", "pads", "top_pads"])
 
 ## Blocks named `blocks` themselves, and the inline pieces in `fields` of any block.
 static func _placed(source: Dictionary, blocks: Array, fields: Array) -> Array:
@@ -116,6 +153,7 @@ static func _placed(source: Dictionary, blocks: Array, fields: Array) -> Array:
 			if str(block.get("block", "")) in blocks: found.append(block)
 			for field: String in fields:
 				if block.get(field) is Dictionary: found.append(block[field])
+				elif block.get(field) is Array: found.append_array(block[field].filter(func(item: Variant) -> bool: return item is Dictionary))
 	return found
 
 ## `defaults` with `given` over it, key by key.

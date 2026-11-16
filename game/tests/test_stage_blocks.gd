@@ -8,6 +8,7 @@ extends SceneTree
 ## changes: the catalogs never see these rewrites.
 const Blocks = preload("res://core/blocks/stage_blocks.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PiecesWitness = preload("res://tests/pieces_witness.gd")
 const Cooperative = preload("res://core/cooperative/stage_catalog.gd")
 const CooperativeSim = preload("res://core/cooperative/simulation.gd")
 const Journey = preload("res://core/journey/stage_catalog.gd")
@@ -54,10 +55,12 @@ func _prove(name: String, published: Dictionary, source: Dictionary, folder: Str
 	_check(not JSON.stringify(built).contains("\"blocks\""), "%s keeps no block list after expanding" % name)
 	_check(Canonical.same(Blocks.expand(source), built) and Canonical.same(source, _copy(source)), "%s expands the same every time and leaves its source alone" % name)
 
-## Every block is used by some rewrite in every family that plays it.
+## Every block is used by some rewrite in every family that plays it. The new
+## pieces' blocks (rules 16) have no published chapter yet: their witness
+## level (tests/pieces_witness.gd) uses each, and test_pieces plays it.
 func _check_coverage() -> void:
 	var used := {"cooperative": {}, "journey": {}}
-	for source: Dictionary in [_high_and_low(), _house(), _tide(), _long_way_home(), _long_way_home_v2(), _conservatory()]:
+	for source: Dictionary in [_high_and_low(), _house(), _tide(), _long_way_home(), _long_way_home_v2(), _conservatory(), PiecesWitness.source()]:
 		for stage: Dictionary in source.stages:
 			for block: Dictionary in stage.get("blocks", []): used[Blocks.family_of(source)][str(block.block)] = true
 	for family: String in Blocks.FAMILY_BLOCKS:

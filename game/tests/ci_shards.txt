@@ -249,6 +249,8 @@ photo_transfer_client 2
 photo_transfer_screen 1
 physical_runtime 3
 piece_styles 3
+pieces 1
+pieces_world 2
 pip_avatar 1
 pip_outfit 1
 plant_animation 1

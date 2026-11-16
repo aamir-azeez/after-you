@@ -27,6 +27,8 @@
 		"bolt_shot",
 		"bolt_drawn",
 		"valve_turned",
+		"lantern_lit",
+		"lantern_out",
 		"barrier_rattle",
 		"control_locked",
 		"drip",
