@@ -6,9 +6,9 @@
 			"id": "west-boards",
 			"rect_cm": [
 				300,
-				40,
+				-160,
 				600,
-				136
+				-64
 			],
 			"to_surface": "middle"
 		},
@@ -18,9 +18,9 @@
 			"id": "reed-stones",
 			"rect_cm": [
 				300,
-				180,
+				-20,
 				600,
-				276
+				76
 			],
 			"to_surface": "middle"
 		},
@@ -30,9 +30,9 @@
 			"id": "high-boards",
 			"rect_cm": [
 				300,
-				-220,
+				-420,
 				1200,
-				-124
+				-324
 			],
 			"to_surface": "jetty"
 		},
@@ -42,9 +42,9 @@
 			"id": "low-boards",
 			"rect_cm": [
 				700,
-				300,
+				100,
 				796,
-				600
+				250
 			],
 			"to_surface": "boat-steps"
 		},
@@ -54,9 +54,9 @@
 			"id": "middle-jetty",
 			"rect_cm": [
 				900,
-				100,
+				-100,
 				1200,
-				196
+				-4
 			],
 			"to_surface": "jetty"
 		},
@@ -66,9 +66,9 @@
 			"id": "raft-boat",
 			"rect_cm": [
 				900,
-				700,
+				300,
 				980,
-				780
+				380
 			],
 			"to_surface": "jetty"
 		},
@@ -78,9 +78,9 @@
 			"id": "raft-jetty",
 			"rect_cm": [
 				1300,
-				300,
+				150,
 				1380,
-				380
+				230
 			],
 			"to_surface": "jetty"
 		},
@@ -90,9 +90,9 @@
 			"id": "over-to-dock",
 			"rect_cm": [
 				1500,
-				-250,
+				-50,
 				1700,
-				-154
+				46
 			],
 			"to_surface": "dock"
 		},
@@ -101,34 +101,34 @@
 			"height_cm": 0,
 			"id": "plank",
 			"rect_cm": [
-				2200,
-				200,
-				2400,
-				296
+				2100,
+				300,
+				2700,
+				396
 			],
 			"to_surface": "bank"
 		},
 		{
-			"from_surface": "north",
+			"from_surface": "dock",
 			"height_cm": 0,
 			"id": "north-boards",
 			"rect_cm": [
-				2104,
-				-600,
+				2100,
+				-400,
 				2200,
-				-300
+				-304
 			],
-			"to_surface": "dock"
+			"to_surface": "north"
 		},
 		{
 			"from_surface": "north",
 			"height_cm": 0,
 			"id": "stair",
 			"rect_cm": [
-				2404,
-				-600,
-				2500,
-				-300
+				2600,
+				-400,
+				2700,
+				-304
 			],
 			"to_surface": "landing"
 		},
@@ -137,10 +137,10 @@
 			"height_cm": 0,
 			"id": "bank-landing",
 			"rect_cm": [
-				2500,
-				0,
-				2596,
-				100
+				2800,
+				-150,
+				2896,
+				150
 			],
 			"to_surface": "bank"
 		},
@@ -149,10 +149,10 @@
 			"height_cm": 0,
 			"id": "swirl-stones",
 			"rect_cm": [
-				2700,
-				200,
-				2900,
-				296
+				3000,
+				250,
+				3200,
+				346
 			],
 			"to_surface": "reeds"
 		},
@@ -161,34 +161,34 @@
 			"height_cm": 0,
 			"id": "bend-boards",
 			"rect_cm": [
-				2500,
-				-800,
-				2700,
-				-704
+				2350,
+				-200,
+				2446,
+				-50
 			],
 			"to_surface": "bend"
 		},
 		{
-			"from_surface": "landing-3",
+			"from_surface": "landing",
 			"height_cm": 0,
 			"id": "over-to-landing",
 			"rect_cm": [
-				2200,
-				-1200,
-				2296,
-				-900
+				3000,
+				-400,
+				3100,
+				-304
 			],
-			"to_surface": "north"
+			"to_surface": "landing-3"
 		},
 		{
 			"from_surface": "landing-3",
 			"height_cm": 0,
 			"id": "lift-low",
 			"rect_cm": [
-				2400,
-				-1460,
-				2600,
-				-1360
+				3400,
+				-400,
+				3600,
+				-300
 			],
 			"to_surface": "stilts"
 		},
@@ -197,10 +197,10 @@
 			"height_cm": 96,
 			"id": "lift-high",
 			"rect_cm": [
-				2400,
-				-1460,
-				2600,
-				-1360
+				3400,
+				-400,
+				3600,
+				-300
 			],
 			"to_surface": "stilts"
 		},
@@ -209,24 +209,24 @@
 			"height_cm": 96,
 			"id": "stilts-jetty",
 			"rect_cm": [
-				2900,
-				-1400,
-				3100,
-				-1304
+				3900,
+				-400,
+				4100,
+				-304
 			],
 			"to_surface": "jetty-3"
 		},
 		{
-			"from_surface": "office",
+			"from_surface": "jetty-3",
 			"height_cm": 96,
 			"id": "door",
 			"rect_cm": [
-				3200,
-				-1600,
-				3296,
-				-1500
+				4200,
+				-50,
+				4296,
+				150
 			],
-			"to_surface": "jetty-3"
+			"to_surface": "office"
 		}
 	],
 	"closing_ticks": 30,
@@ -238,9 +238,9 @@
 			"id": "path",
 			"rect_cm": [
 				0,
-				-300,
+				-450,
 				300,
-				300
+				150
 			]
 		},
 		{
@@ -248,9 +248,9 @@
 			"id": "middle",
 			"rect_cm": [
 				600,
-				0,
+				-200,
 				900,
-				300
+				100
 			]
 		},
 		{
@@ -258,9 +258,9 @@
 			"id": "boat-steps",
 			"rect_cm": [
 				600,
-				600,
+				250,
 				900,
-				900
+				450
 			]
 		},
 		{
@@ -268,9 +268,9 @@
 			"id": "jetty",
 			"rect_cm": [
 				1200,
-				-300,
+				-450,
 				1500,
-				300
+				150
 			]
 		},
 		{
@@ -278,99 +278,99 @@
 			"id": "dock",
 			"rect_cm": [
 				1700,
-				-300,
-				2200,
-				300
+				-450,
+				2100,
+				450
 			]
 		},
 		{
 			"height_cm": 0,
 			"id": "north",
 			"rect_cm": [
-				2100,
-				-900,
-				2500,
-				-600
-			]
-		},
-		{
-			"height_cm": 0,
-			"id": "landing",
-			"rect_cm": [
-				2400,
-				-300,
-				2700,
-				0
-			]
-		},
-		{
-			"height_cm": 0,
-			"id": "bank",
-			"rect_cm": [
-				2400,
-				100,
-				2700,
-				400
-			]
-		},
-		{
-			"height_cm": 0,
-			"id": "reeds",
-			"rect_cm": [
-				2900,
-				100,
-				3200,
-				400
+				2200,
+				-450,
+				2600,
+				-200
 			]
 		},
 		{
 			"height_cm": 0,
 			"id": "bend",
 			"rect_cm": [
+				2250,
+				-50,
+				2550,
+				100
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "landing",
+			"rect_cm": [
 				2700,
-				-900,
+				-450,
 				3000,
-				-600
+				-150
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "bank",
+			"rect_cm": [
+				2700,
+				150,
+				3000,
+				450
+			]
+		},
+		{
+			"height_cm": 0,
+			"id": "reeds",
+			"rect_cm": [
+				3200,
+				150,
+				3500,
+				450
 			]
 		},
 		{
 			"height_cm": 0,
 			"id": "landing-3",
 			"rect_cm": [
-				2100,
-				-1500,
-				2400,
-				-1200
+				3100,
+				-450,
+				3400,
+				-50
 			]
 		},
 		{
 			"height_cm": 96,
 			"id": "stilts",
 			"rect_cm": [
-				2600,
-				-1500,
-				2900,
-				-1200
+				3600,
+				-450,
+				3900,
+				-50
 			]
 		},
 		{
 			"height_cm": 96,
 			"id": "jetty-3",
 			"rect_cm": [
-				3100,
-				-1500,
-				3400,
-				-1200
+				4100,
+				-450,
+				4400,
+				-50
 			]
 		},
 		{
 			"height_cm": 96,
 			"id": "office",
 			"rect_cm": [
-				3100,
-				-1900,
-				3400,
-				-1600
+				4100,
+				150,
+				4400,
+				450
 			]
 		}
 	],
@@ -379,8 +379,8 @@
 			"height_cm": 0,
 			"id": "channel",
 			"position_cm": [
-				2300,
-				-120
+				2170,
+				40
 			],
 			"surface_id": ""
 		},
@@ -388,8 +388,8 @@
 			"height_cm": 0,
 			"id": "bend",
 			"position_cm": [
-				2760,
-				-660
+				2400,
+				50
 			],
 			"surface_id": "bend"
 		},
@@ -397,8 +397,8 @@
 			"height_cm": 0,
 			"id": "landing",
 			"position_cm": [
-				2640,
-				-240
+				2940,
+				-410
 			],
 			"surface_id": "landing"
 		},
@@ -406,8 +406,8 @@
 			"height_cm": 0,
 			"id": "reeds",
 			"position_cm": [
-				2960,
-				140
+				3260,
+				190
 			],
 			"surface_id": "reeds"
 		},
@@ -415,8 +415,8 @@
 			"height_cm": 0,
 			"id": "pan",
 			"position_cm": [
-				2140,
-				-1460
+				3140,
+				-90
 			],
 			"surface_id": "landing-3"
 		},
@@ -424,8 +424,8 @@
 			"height_cm": 96,
 			"id": "top-pan",
 			"position_cm": [
-				2860,
-				-1460
+				3860,
+				-90
 			],
 			"surface_id": "stilts"
 		},
@@ -433,8 +433,8 @@
 			"height_cm": 96,
 			"id": "desk",
 			"position_cm": [
-				3140,
-				-1840
+				4140,
+				410
 			],
 			"surface_id": "office"
 		}
@@ -460,7 +460,7 @@
 					"kind": "selector",
 					"position_cm": [
 						1440,
-						240
+						90
 					],
 					"radius_cm": 28,
 					"surface_id": "jetty",
@@ -530,7 +530,7 @@
 				"owner_slot": "p1",
 				"position_cm": [
 					1350,
-					-100
+					-300
 				],
 				"radius_cm": 48,
 				"surface_id": "jetty"
@@ -549,7 +549,7 @@
 					"id": "east",
 					"position_cm": [
 						60,
-						240
+						90
 					],
 					"radius_cm": 28,
 					"surface_id": "path"
@@ -559,7 +559,7 @@
 					"id": "west",
 					"position_cm": [
 						640,
-						840
+						420
 					],
 					"radius_cm": 28,
 					"surface_id": "boat-steps"
@@ -569,7 +569,7 @@
 					"id": "high",
 					"position_cm": [
 						660,
-						60
+						-160
 					],
 					"radius_cm": 28,
 					"surface_id": "middle"
@@ -579,7 +579,7 @@
 					"id": "lantern",
 					"position_cm": [
 						840,
-						60
+						-160
 					],
 					"radius_cm": 28,
 					"surface_id": "middle"
@@ -599,7 +599,7 @@
 			"receiver_route_cm": [
 				[
 					1350,
-					-100
+					-300
 				]
 			],
 			"source_policy": {
@@ -619,7 +619,7 @@
 					"kind": "selector",
 					"position_cm": [
 						1760,
-						240
+						400
 					],
 					"radius_cm": 28,
 					"surface_id": "dock",
@@ -702,8 +702,8 @@
 				"id": "catch-goal",
 				"owner_slot": "p1",
 				"position_cm": [
-					2300,
-					-750
+					2400,
+					-350
 				],
 				"radius_cm": 48,
 				"surface_id": "north"
@@ -733,7 +733,7 @@
 					"id": "stair-lever",
 					"position_cm": [
 						1760,
-						-240
+						-400
 					],
 					"radius_cm": 28,
 					"surface_id": "dock"
@@ -742,8 +742,8 @@
 					"height_cm": 0,
 					"id": "boards-lever",
 					"position_cm": [
-						2640,
-						-60
+						2940,
+						-200
 					],
 					"radius_cm": 28,
 					"surface_id": "landing"
@@ -752,8 +752,8 @@
 					"height_cm": 0,
 					"id": "north-lantern",
 					"position_cm": [
-						2440,
-						-840
+						2560,
+						-240
 					],
 					"radius_cm": 28,
 					"surface_id": "north"
@@ -764,8 +764,8 @@
 					"height_cm": 0,
 					"id": "plank-board",
 					"position_cm": [
-						1900,
-						-240
+						1950,
+						-150
 					],
 					"radius_cm": 32,
 					"surface_id": "dock"
@@ -774,8 +774,8 @@
 					"height_cm": 0,
 					"id": "water-gate",
 					"position_cm": [
-						3140,
-						340
+						3440,
+						400
 					],
 					"radius_cm": 32,
 					"surface_id": "reeds"
@@ -784,8 +784,8 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					2300,
-					-750
+					2400,
+					-350
 				]
 			],
 			"source_policy": {
@@ -801,6 +801,9 @@
 			"entry_latch_routes": [],
 			"first_player_slot": "p1",
 			"gates": [
+				{
+					"route_id": "stair"
+				},
 				{
 					"route_id": "over-to-landing"
 				},
@@ -900,8 +903,8 @@
 				"id": "home-goal",
 				"owner_slot": "p1",
 				"position_cm": [
-					3160,
-					-1260
+					4160,
+					-300
 				],
 				"radius_cm": 48,
 				"surface_id": "jetty-3"
@@ -930,8 +933,8 @@
 					"height_cm": 96,
 					"id": "home-lantern",
 					"position_cm": [
-						3360,
-						-1840
+						4360,
+						410
 					],
 					"radius_cm": 28,
 					"surface_id": "office"
@@ -951,8 +954,8 @@
 					"height_cm": 0,
 					"id": "pan",
 					"position_cm": [
-						2140,
-						-1460
+						3140,
+						-90
 					],
 					"radius_cm": 32,
 					"surface_id": "landing-3"
@@ -961,8 +964,8 @@
 					"height_cm": 96,
 					"id": "top-pan",
 					"position_cm": [
-						2860,
-						-1460
+						3860,
+						-90
 					],
 					"radius_cm": 32,
 					"surface_id": "stilts"
@@ -971,8 +974,8 @@
 					"height_cm": 96,
 					"id": "step",
 					"position_cm": [
-						3360,
-						-1240
+						4360,
+						-410
 					],
 					"radius_cm": 32,
 					"surface_id": "jetty-3"
@@ -981,8 +984,8 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					3160,
-					-1260
+					4160,
+					-300
 				]
 			],
 			"source_policy": {
@@ -1002,10 +1005,10 @@
 			"id": "rope-ladder",
 			"one_way": "up",
 			"rect_cm": [
-				2400,
-				-1290,
-				2600,
-				-1210
+				3400,
+				-180,
+				3600,
+				-100
 			],
 			"to_height_cm": 96,
 			"to_surface": "stilts"
@@ -1016,7 +1019,7 @@
 			"height_cm": 0,
 			"position_cm": [
 				150,
-				150
+				-50
 			],
 			"surface_id": "path"
 		},
@@ -1024,7 +1027,7 @@
 			"height_cm": 0,
 			"position_cm": [
 				750,
-				760
+				360
 			],
 			"surface_id": "boat-steps"
 		}

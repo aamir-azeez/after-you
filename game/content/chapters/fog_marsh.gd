@@ -14,6 +14,10 @@ const DATA := {
 		"summary": PlayerCopy.FOG_MARSH_SUMMARY,
 		"completion": PlayerCopy.FOG_MARSH_COMPLETION,
 	},
+	# The envelope About this chapter shows (presentation/letter/letter_view.gd):
+	# placeholder words until the owner's text.
+	"letter": {"stamp": "lantern", "address": [PlayerCopy.FOG_MARSH_LETTER_PLACE, PlayerCopy.FOG_MARSH_LETTER_PLACE_LINE],
+		"postmark": PlayerCopy.FOG_MARSH_LETTER_POSTMARK, "signoff": PlayerCopy.LETTER_SEE_YOU_SOON},
 	"stage_copy": {
 		"where-the-stream-went": {
 			"title": PlayerCopy.FOG_MARSH_STAGE_1_TITLE,

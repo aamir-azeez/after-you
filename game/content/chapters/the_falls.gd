@@ -14,6 +14,10 @@ const DATA := {
 		"summary": PlayerCopy.THE_FALLS_SUMMARY,
 		"completion": PlayerCopy.THE_FALLS_COMPLETION,
 	},
+	# The envelope About this chapter shows (presentation/letter/letter_view.gd):
+	# placeholder words until the owner's text.
+	"letter": {"stamp": "waterfall", "address": [PlayerCopy.THE_FALLS_LETTER_PLACE, PlayerCopy.THE_FALLS_LETTER_PLACE_LINE],
+		"postmark": PlayerCopy.THE_FALLS_LETTER_POSTMARK, "signoff": PlayerCopy.LETTER_SEE_YOU_SOON},
 	"stage_copy": {
 		"foot-of-the-falls": {
 			"title": PlayerCopy.THE_FALLS_STAGE_1_TITLE,

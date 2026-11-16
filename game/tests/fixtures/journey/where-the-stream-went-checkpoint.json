@@ -1,7 +1,7 @@
 {
-	"checkpoint_hash": "2c9a8ef901408c851a66b2f82974eeac0594a86ea6edfc4ee89a4c37bd2c23b5",
+	"checkpoint_hash": "0fa9c57f4c4e82b323ab9300b4345f07741e505910c66596b35e7e2f32455844",
 	"completed_stage_id": "where-the-stream-went",
-	"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+	"definition_hash": "90bf20fb2828ab7136c9f2f8fa44e9962b14c6c8dc7467cfef0c4e9eca74fe23",
 	"level_id": "fog-marsh",
 	"level_version": 1,
 	"mechanisms": {
@@ -15,8 +15,8 @@
 				"holder": "",
 				"spot": "channel",
 				"surface_id": "",
-				"x": 2300.0,
-				"z": -120.0
+				"x": 2170.0,
+				"z": 40.0
 			}
 		},
 		"latched_bridges": [],
@@ -33,23 +33,23 @@
 			"height": 0,
 			"surface_id": "jetty",
 			"x": 1350,
-			"z": -52
+			"z": -252
 		},
 		"p1": {
 			"height": 0,
 			"surface_id": "jetty",
 			"x": 1350,
-			"z": -100
+			"z": -300
 		}
 	},
-	"previous_checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+	"previous_checkpoint_hash": "a625ca5b71a46863f3651ebbb1b36f0c21ddd301f6164c253a581d0243e0fd1b",
 	"proof": {
 		"checkpoint": {
 			"a_recording_hash": "",
 			"b_recording_hash": "",
-			"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+			"checkpoint_hash": "a625ca5b71a46863f3651ebbb1b36f0c21ddd301f6164c253a581d0243e0fd1b",
 			"completed_stage_id": "",
-			"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+			"definition_hash": "90bf20fb2828ab7136c9f2f8fa44e9962b14c6c8dc7467cfef0c4e9eca74fe23",
 			"level_id": "fog-marsh",
 			"level_version": 1.0,
 			"mechanisms": {
@@ -63,8 +63,8 @@
 						"holder": "",
 						"spot": "channel",
 						"surface_id": "",
-						"x": 2300.0,
-						"z": -120.0
+						"x": 2170.0,
+						"z": 40.0
 					}
 				},
 				"latched_bridges": [],
@@ -77,13 +77,13 @@
 					"height": 0.0,
 					"surface_id": "path",
 					"x": 150.0,
-					"z": 150.0
+					"z": -50.0
 				},
 				"p1": {
 					"height": 0.0,
 					"surface_id": "boat-steps",
 					"x": 750.0,
-					"z": 760.0
+					"z": 360.0
 				}
 			},
 			"previous_checkpoint_hash": "",
@@ -94,20 +94,20 @@
 		"turns": [
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+				"checkpoint_hash": "a625ca5b71a46863f3651ebbb1b36f0c21ddd301f6164c253a581d0243e0fd1b",
 				"completed": false,
-				"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
-				"duration_ticks": 69.0,
-				"final_state_hash": "3e0d23cc1a11f5e0889d7f7e884620c7f41f160712cbcef553e72759214bd293",
+				"definition_hash": "90bf20fb2828ab7136c9f2f8fa44e9962b14c6c8dc7467cfef0c4e9eca74fe23",
+				"duration_ticks": 81.0,
+				"final_state_hash": "a1d259c9d8b4dc673434b64ae4ad86315938b5441e78c3e24a712d6fc0b6b3f5",
 				"level_id": "fog-marsh",
 				"level_version": 1.0,
 				"outcome": {
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "AQoWnAAC5wAQAGQCAEsCAAADAAAgAJwCAM44ZAACMgDf6jOyrw77irDmIAilftIf",
+				"packed": "AQkWnAAC5wAeAGQCAAADAAAsAJwCALU4ZAACMgDRZW6aKZap5YxRNONxeU5H",
 				"player_slot": "p0",
-				"recording_hash": "f30cf4c2a45d0de79be94d5914b46ecf4e93e2eb0a76c2c42921eca85442836d",
+				"recording_hash": "a02a6f9fdde1d948f1b8cf535fa1db224b793f5a6194f22fd15c9be8c8dbcbca",
 				"role": "a",
 				"schema_version": 7.0,
 				"simulation_version": 16.0,
@@ -118,48 +118,48 @@
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+				"checkpoint_hash": "a625ca5b71a46863f3651ebbb1b36f0c21ddd301f6164c253a581d0243e0fd1b",
 				"completed": false,
-				"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
-				"duration_ticks": 230.0,
-				"final_state_hash": "5d5a921fe804afd8568a206380f70558f69a581330e99c685d5b9384897d709f",
+				"definition_hash": "90bf20fb2828ab7136c9f2f8fa44e9962b14c6c8dc7467cfef0c4e9eca74fe23",
+				"duration_ticks": 199.0,
+				"final_state_hash": "1b708de04cf6b5f7fc69f703696378730bdbc4bc549c8bcc69df29cb25f51c7e",
 				"level_id": "fog-marsh",
 				"level_version": 1.0,
 				"outcome": {
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "AQ8anAACtQAOAGQCADICAAADAAAaZAACMgCOAQCcAgDnGACcAgC1lgFkAAIZAD4AnH0HC0B1bRR8skG3ktUOaS58LDq1mZV2vRBd58IuC+htBRgGCQW9844QqWVsp5D9DZhDqQSQVoZYeoLnDtRE4gpJYoSkLJJ4y8i+rBUA4N08",
+				"packed": "AQwanAACtQAKAGQCAAADAAAaZAACMgBwAJwCAM6WAWQAAhkAPgCc3Kwxnu3aOjqbYBGeunolKC17WUOcjzsP+lJQZAsmqvdzwudogjCAnWz/tmvPiE/8zFq6RHHQZBpCc5/qqimDXpK9gkBPYNcN",
 				"player_slot": "p1",
-				"recording_hash": "b02476764e09582420206b953fc604a752c9e0bb089164eb9e3fa3c275404551",
+				"recording_hash": "5922810fc230c3b08def0bf7512dbe2f64f186460d0f334babf7685e42df426d",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 16.0,
-				"source_recording_hash": "f30cf4c2a45d0de79be94d5914b46ecf4e93e2eb0a76c2c42921eca85442836d",
+				"source_recording_hash": "a02a6f9fdde1d948f1b8cf535fa1db224b793f5a6194f22fd15c9be8c8dbcbca",
 				"stage_id": "where-the-stream-went",
 				"stage_version": 1.0,
 				"tick_rate": 30.0
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+				"checkpoint_hash": "a625ca5b71a46863f3651ebbb1b36f0c21ddd301f6164c253a581d0243e0fd1b",
 				"completed": true,
-				"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
-				"duration_ticks": 239.0,
-				"final_state_hash": "cae415da63595354b69ed8fc4c4234da16b69bb97859ff85fca06169be3b38b3",
+				"definition_hash": "90bf20fb2828ab7136c9f2f8fa44e9962b14c6c8dc7467cfef0c4e9eca74fe23",
+				"duration_ticks": 256.0,
+				"final_state_hash": "cde0f130370bb6550a0e6831065935bb01d6f8dde384ff8dd14820ca68d780f7",
 				"level_id": "fog-marsh",
 				"level_version": 1.0,
 				"outcome": {
 					"objective_complete": true,
 					"source_ready": true
 				},
-				"packed": "ARMWnAAC5wAQAGQCAEsCAAADAAAgAJwCAM44ZAACMgCKAWQAAgCcAgAAAwAAEABkAgAyfmQAAksAMgCcPFmL4ymUHukJseOySU8x6tfHOnZ5MKmi7UraZS6lAVcHbyNJP6ruAprfdX2JEZAaZAvQds4aJMxM+dlt1aEgdxQKPRw3736x5fKxhV/23tM=",
+				"packed": "ARIWnAAC5wAeAGQCAAADAAAsAJwCALU4ZAACMgCKAWQABgCcAgDOAgAAAwAAFgBkfmQAAksAMgCckBtCZn9PezmpLl4+iXLZFiMxi72I/X/+xeWFnozIwvQwvuH25U/oO2Ak5RYbt9b6UNf9J+ZNGMhQCvPOkXzygoWNDsjRL1C61gPWvEHcJt2q0DTmpLo3gw==",
 				"player_slot": "p0",
-				"recording_hash": "ffec2fb62bbc191cb842e354d1babd1da8f2aecfcca22a7adec234d0b70c6cbf",
+				"recording_hash": "55e2ce83523594a138ce9cc63b695163a1d003649464f8402a6e2aebd00ec2dc",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 16.0,
-				"source_recording_hash": "b02476764e09582420206b953fc604a752c9e0bb089164eb9e3fa3c275404551",
+				"source_recording_hash": "5922810fc230c3b08def0bf7512dbe2f64f186460d0f334babf7685e42df426d",
 				"stage_id": "where-the-stream-went",
 				"stage_version": 1.0,
 				"tick_rate": 30.0
@@ -169,8 +169,8 @@
 	"schema_version": 8,
 	"stage_index": 1,
 	"turn_hashes": [
-		"f30cf4c2a45d0de79be94d5914b46ecf4e93e2eb0a76c2c42921eca85442836d",
-		"b02476764e09582420206b953fc604a752c9e0bb089164eb9e3fa3c275404551",
-		"ffec2fb62bbc191cb842e354d1babd1da8f2aecfcca22a7adec234d0b70c6cbf"
+		"a02a6f9fdde1d948f1b8cf535fa1db224b793f5a6194f22fd15c9be8c8dbcbca",
+		"5922810fc230c3b08def0bf7512dbe2f64f186460d0f334babf7685e42df426d",
+		"55e2ce83523594a138ce9cc63b695163a1d003649464f8402a6e2aebd00ec2dc"
 	]
 }

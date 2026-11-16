@@ -1461,6 +1461,12 @@ const FOLLOW_INSET := 4.0
 ## while a stage plays: FOLLOW_INSET inside the floors' west and east ends,
 ## on the z axis.
 func _follow_limits() -> Array[Vector2]:
+	return _floors_follow_limits()
+
+## FOLLOW_INSET inside the floors' west and east ends, on the z axis: the
+## default limits, also for a world whose family keeps a fixed band but whose
+## chapter runs longer (a long journey strip).
+func _floors_follow_limits() -> Array[Vector2]:
 	var floors := _floors_rect()
 	return [Vector2(floors.position.x + FOLLOW_INSET, 0.0), Vector2(floors.end.x - FOLLOW_INSET, 0.0)]
 
