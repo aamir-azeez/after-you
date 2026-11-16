@@ -74,6 +74,11 @@ func note_progress() -> void:
 	var platform := games()
 	if platform != null: platform.note_progress()
 
+## The identity is being erased: its replays and photos leave the Saved Games slots too.
+func erase_backups(owner: String) -> void:
+	var platform := games()
+	if platform != null: await platform.erase_backups(owner)
+
 ## The identity was erased: the server dropped its links; drop this phone's record too.
 func forget_identity() -> void:
 	var platform := games()

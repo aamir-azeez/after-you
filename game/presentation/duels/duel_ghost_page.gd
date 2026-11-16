@@ -1,6 +1,6 @@
 extends "res://presentation/duels/duel_page_base.gd"
-## Race a recorded run: one row per chapter open to you, with our own run
-## (the developers' time) and the chapter's leaderboard button, the shared
+## Race a recorded run: one row per chapter open to you, with Our run (the
+## owner's own run, only where there is one) and the chapter's leaderboard button, the shared
 ## trophy and "Top 10" (race-picker board 1B). The button opens the top 10
 ## picker (duel_race_picker.gd) through the flow (picker_requested), and is
 ## greyed while the board has no times ("No times yet"); /v1/duels/ghosts only

@@ -7,7 +7,7 @@ extends RefCounted
 ## A source is any file holding a chapter's recorded pairs: a recording pair
 ## {"a", "b"}, anything with "pairs" (a solo journey save), a checkpoint whose
 ## proof chain holds every stage's pair (a run's final checkpoint, as replays
-## and the developers' ghosts keep it), or any of these in the shared blob
+## keep it), or any of these in the shared blob
 ## format (services/blob_codec.gd: an encoding byte, then the canonical bytes
 ## raw or deflated).
 const BlobCodec = preload("res://services/blob_codec.gd")

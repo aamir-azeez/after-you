@@ -287,7 +287,7 @@ describe("duel state machine", () => {
     expect(decide(left, T0 + 2)).toBe(false);
   });
 
-  it("a run faster than the developers' ghost waits for the check, which decides it; a slower one is decided at once", () => {
+  it("a run faster than Our run waits for the check, which decides it; a slower one is decided at once", () => {
     const finished = (check?: "passed" | "failed" | "error", ticks = 2999) => {
       const race = ghost(3000, T0, "developer");
       claimRoom(race, A2, { room_id: "rg", invite_code: "ig" }, T0);
@@ -310,7 +310,7 @@ describe("duel state machine", () => {
       expect(slow.sides[0].check).toBe("none");
       expect(slow.status).toBe("decided");
     }
-    // Only the developers' ghost and friend duels ask for the check, and only while duel run checks are on.
+    // Only Our run and friend duels ask for the check, and only while duel run checks are on.
     expect(awaitsCheck(ghost(3000), 1, true)).toBe(false);
     expect(awaitsCheck(ghost(3000, T0, "developer"), 3000, true)).toBe(false);
     expect(awaitsCheck(friend(), 999_999, true)).toBe(true);
@@ -536,7 +536,7 @@ describe("duel run checks off", () => {
     expect(viewFor(left, A1)!.result).toMatchObject({ outcome: "won", reason: "left" });
   });
 
-  it("decide a race faster than the developers' ghost at once, marked as counted without its check; other races as before", () => {
+  it("decide a race faster than Our run at once, marked as counted without its check; other races as before", () => {
     const race = ghost(3000, T0, "developer");
     claimRoom(race, A2, { room_id: "rg", invite_code: "ig" }, T0);
     off(race, note("rg", 5, 2999, true), T0 + 10);

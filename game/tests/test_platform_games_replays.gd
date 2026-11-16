@@ -13,6 +13,7 @@ const DuelTheirRun = preload("res://services/duel_their_run.gd")
 const SharedReplayStore = preload("res://services/shared_replay_store.gd")
 const BlobCodec = preload("res://services/blob_codec.gd")
 const BackupLimit = preload("res://services/backup_limit.gd")
+const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 
 const OWNER := "PPPPPPPPPPPPPPPPPPPPPP"
 const OTHER := "QQQQQQQQQQQQQQQQQQQQQQ"
@@ -97,6 +98,11 @@ func _round_trip(dir: String) -> void:
 	var scope := "shared-replays:%s:index" % OWNER
 	_check(SharedReplayStore.new(phone.path_join("shared-replays")).save_scope(scope, {"schema_version": 1, "rooms": ["one"]}), "A shared replay file")
 	_check(SharedReplayStore.new(phone.path_join("shared-replays")).save_scope("shared-replays:%s:index" % OTHER, {"schema_version": 1, "rooms": ["theirs"]}), "Another player's shared file on the same phone")
+	var image := Image.create(20, 16, false, Image.FORMAT_RGB8)
+	image.fill(Color.CYAN)
+	var jpeg := image.save_jpg_to_buffer(0.8)
+	var photo := {"schema_version": 1, "turn_id": "t0-0-a", "owner_player_id": OTHER, "recording_hash": "e".repeat(64), "photo_revision": 1, "sha256": PhotoLibrary._digest(jpeg), "width": 20, "height": 16, "byte_length": jpeg.size(), "updated_at": "2026-11-15T12:00:00.000Z"}
+	_check(PhotoLibrary.new(phone.path_join("photo-library")).store_cache(OWNER, ROOM, photo, jpeg).get("ok", false), "A friend's turn photo in this player's library")
 	var slots := Slots.new()
 	var state := State.new(dir.path_join("state.json"))
 	var up := 0
@@ -112,7 +118,8 @@ func _round_trip(dir: String) -> void:
 		_check(outcome.ok, "Slot %d syncs: %s" % [index + 1, outcome])
 		up += Bundle.decode(slots.data.get(Bundle.slot_name(index), PackedByteArray())).items.size()
 		_check(sync.synced_once() and not (await sync.run()).get("wrote", true), "A slot with nothing new does no work")
-	_check(up == 3 and slots.commits == slots.data.size(), "This player's attempt, duel run and shared file go up, each once, and nothing of another player's")
+	_check(up == 4 and slots.commits == slots.data.size(), "This player's attempt, duel run, shared file and photo go up, each once, and nothing of another player's")
+	_check(slots.data.keys().filter(func(name: String) -> bool: return name.begins_with(Bundle.PHOTO_SLOT_PREFIX)).size() == 1, "The photo goes to a photo slot")
 	# The phone that sent them deletes one: it is not sent back down to it.
 	var room_slot := Bundle.slot_of("room/%s/%s/%s/0-%s" % [OWNER, SERVER.left(16), ROOM, "f".repeat(16)])
 	_check(HistoryStore.new(phone.path_join("history")).erase_room(SERVER, OWNER, ROOM), "Start over drops the room's attempts here")
@@ -136,6 +143,8 @@ func _round_trip(dir: String) -> void:
 	_check(duel is Dictionary and duel.digest == kept.digest and BlobCodec.verified(Marshalls.base64_to_raw(duel.body), int(duel.byte_length), duel.digest, 1 << 20) == run, "The duel run is back and decodes to its digest")
 	var shared := SharedReplayStore.new(fresh.path_join("shared-replays")).load_scope(scope)
 	_check(shared.get("ok", false) and shared.get("found", false) and shared.value.rooms == ["one"], "The shared replay file is back and loads")
+	var photo_back := PhotoLibrary.new(fresh.path_join("photo-library")).read_cache(OWNER, ROOM, {"turn_id": photo.turn_id, "recording_hash": photo.recording_hash})
+	_check(photo_back.get("found", false) and photo_back.get("bytes") == jpeg, "The photo is back in the library, checked like a transferred one")
 	_check(not FileAccess.file_exists(fresh.path_join("shared-replays").path_join(("shared-replays:%s:index" % OTHER).sha256_text() + ".json")), "Another player's file never comes down")
 	# Restore runs once per player here: a replay deleted on this phone stays deleted.
 	_check(SharedReplayStore.new(fresh.path_join("shared-replays")).remove_scope(scope), "The player deletes the shared replay")

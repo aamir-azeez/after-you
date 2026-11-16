@@ -16,9 +16,10 @@ extends Button
 ## written once the pill hides (the turn ended or paused), so a tap in play
 ## writes no file.
 ##
-## The chapter controls dock it (ChapterControls.dock_beside_finish). Nothing
-## runs per frame: the screen calls show_cooldown() as its turn is stepped, and
-## the pill only redraws when what it shows changes.
+## The chapter controls dock it (ChapterControls.dock_beside_finish), and Home
+## shows it beside Explore with the same rules. Nothing runs per frame: the
+## screen's reaction player calls show_cooldown() (show_pill) as its turn, or
+## Home's clock, is stepped, and the pill only redraws when what it shows changes.
 const EndReactions = preload("res://presentation/end_reactions.gd")
 const Store = preload("res://services/end_reaction_store.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")

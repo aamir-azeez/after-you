@@ -1,7 +1,7 @@
 extends RefCounted
-## This phone's side of one replay slot (cloud_replay_bundle.gd), for cloud_save_sync.gd: the
-## current player's kept room history attempts, shared replay files and friend duel runs whose
-## keys go to this slot. Built by Main's platform games flow; lives only while Main does.
+## This phone's side of one replay or photo slot (cloud_replay_bundle.gd), for cloud_save_sync.gd:
+## the current player's kept room history attempts, shared replay files, friend duel runs and photo
+## library entries whose keys go to this slot. Built by Main's platform games flow; lives only while Main does.
 ##
 ## Restore runs once per player on this install (a new phone, a reinstall, or an identity brought
 ## back here), so a replay deleted or started over on this phone never comes back from the slot.
@@ -9,12 +9,15 @@ extends RefCounted
 ## owner after the owner's own checks, as if it had just been downloaded (HistoryStore.restore
 ## checks length and SHA-256, and history_sync.gd still checks the chain link against the server
 ## before use; a duel run must decode to its digest; a shared replay file must be the envelope
-## its name and scope say, for this player). Another player's items are kept in the slot, untouched.
+## its name and scope say, for this player; a photo goes through TurnPhotoLibrary.import_entry, the
+## photo transfer's own checks of its JPEG, size and hash). Another player's items are kept in the
+## slot, untouched. Photos deleted here are never sent.
 ## Items that no longer fit the slot are counted for the backup-limit notice (backup_limit.gd).
 const Bundle = preload("res://services/platform_games/cloud_replay_bundle.gd")
 const HistoryStore = preload("res://services/history_store.gd")
 const DuelTheirRun = preload("res://services/duel_their_run.gd")
 const SharedReplayStore = preload("res://services/shared_replay_store.gd")
+const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const BlobCodec = preload("res://services/blob_codec.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const BackupLimit = preload("res://services/backup_limit.gd")
@@ -23,6 +26,7 @@ const Typed = preload("res://services/typed_values.gd")
 const DUEL_NAME := "^(ghost-)?[a-f0-9]{32}\\.json$"
 const SHARED_NAME := "^[a-f0-9]{64}\\.json$"
 const SERVER := "^[a-f0-9]{16}$"
+const PHOTO_ENTRY := "^[a-f0-9]{64}\\.json$"
 
 var slot := 0
 ## Tests: where the files are, the owner id and the backup-limit file.
@@ -82,6 +86,9 @@ static func listing(base: String, player: String) -> Array:
 	var shared := base.path_join("shared-replays")
 	for name: String in _files(shared):
 		if _matches(name, SHARED_NAME): out.append(["shared/" + name, shared.path_join(name)])
+	var photos := base.path_join("photo-library").path_join(player.sha256_text()).path_join("entries")
+	for name: String in _files(photos):
+		if _matches(name, PHOTO_ENTRY): out.append(["photo/%s/%s" % [player, name.trim_suffix(".json")], photos.path_join(name)])
 	return out
 
 ## This slot's bundle: the newest of this player's items that fit. Files are read on a worker.
@@ -128,6 +135,11 @@ static func gather(base: String, player: String, slot_index: int) -> Dictionary:
 			var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 			if parsed is Dictionary and parsed.get("digest") is String and Bundle._matches(parsed.digest, Bundle.DIGEST) and Typed.whole_number(parsed.get("byte_length")) and parsed.get("body") is String:
 				items[key] = {"kind": kind, "owner": player, "rev": 0, "at": at, "digest": parsed.digest, "data": parsed.body, "meta": {"byte_length": int(parsed.byte_length), "acked": parsed.get("acked") == true}}
+		elif kind == "photo":
+			var exported: Dictionary = PhotoLibrary.new(base.path_join("photo-library")).export_entry(player, key.get_slice("/", 2))
+			if exported.get("ok", false) and not exported.entry.deleted:
+				var created := int(Time.get_unix_time_from_datetime_string(str(exported.entry.created_at).left(19)))
+				items[key] = {"kind": kind, "owner": player, "rev": int(exported.entry.photo_revision), "at": maxi(0, created), "digest": exported.entry.sha256, "data": JSON.stringify(exported.entry), "meta": {}}
 		elif _size(path) <= SharedReplayStore.MAX_TRANSFER_BYTES:
 			var text := FileAccess.get_file_as_string(path)
 			var parsed: Variant = JSON.parse_string(text)
@@ -178,6 +190,12 @@ func restore(history: RefCounted, key: String, item: Dictionary, player: String)
 		var length := int(meta.get("byte_length", 0))
 		if BlobCodec.verified(Marshalls.base64_to_raw(item.data), length, item.digest, DuelTheirRun.LeaderboardReplay.MAX_CANONICAL_BYTES).is_empty(): return false
 		return DuelTheirRun.restore(player, parts[2], {"digest": item.digest, "byte_length": length, "body": item.data, "acked": meta.get("acked") == true}, root.path_join("duel_runs"))
+	if item.kind == "photo" and parts.size() == 3 and parts[1] == player:
+		var entry: Variant = JSON.parse_string(item.data)
+		if not entry is Dictionary or entry.get("entry_id") != parts[2] or entry.get("sha256") != item.digest or entry.get("deleted") != false: return false
+		var library := PhotoLibrary.new(root.path_join("photo-library"))
+		if library.export_entry(player, parts[2]).get("ok", false): return true
+		return library.import_entry(player, entry).get("ok", false)
 	if item.kind == "shared" and parts.size() == 2 and _matches(parts[1], SHARED_NAME):
 		var text: String = item.data
 		var parsed: Variant = JSON.parse_string(text)
@@ -208,7 +226,7 @@ static func _size(path: String) -> int:
 ## Compiles every pattern on the main thread, so the worker only reads the cache.
 static func warm() -> void:
 	Bundle.warm()
-	for pattern: String in [DUEL_NAME, SHARED_NAME, SERVER]: _matches("", pattern)
+	for pattern: String in [DUEL_NAME, SHARED_NAME, SERVER, PHOTO_ENTRY]: _matches("", pattern)
 
 static func _matches(text: String, pattern: String) -> bool:
 	return Bundle._matches(text, pattern)

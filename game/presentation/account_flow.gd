@@ -646,6 +646,8 @@ func clear_deleted_identity() -> void:
 		deletion_cleanup_busy=false
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_35527882CDA5)
 		return
+	# Best effort: the deleted player's replays and photos leave Play Games or Game Center saved games.
+	await host.platform_games_flow.erase_backups(owner)
 	if not host.saves.update_values({"room":{}},["pending_turn","room_draft"]):
 		deletion_cleanup_busy=false
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_949AD8CB8BF2)

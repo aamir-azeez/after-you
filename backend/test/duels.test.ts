@@ -8,7 +8,7 @@ import { canonicalJson, digest } from "../src/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { boardKeys } from "../src/leaderboards/boards";
-import { developerGhost, developerGhostSplits } from "../src/duels/developer-ghosts";
+import { legacyShippedSplits, legacyShippedTicks } from "../src/duels/legacy-shipped-our-run";
 import { deriveJobToken } from "../src/leaderboards/job-token";
 import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
@@ -524,20 +524,34 @@ describe("duel erasure", () => {
   });
 });
 
+// Requests here send no X-AfterYou-Our-Run header, so a race against Our run is an older app's: the run it shipped
+// (LEGACY, src/duels/legacy-shipped-our-run.ts; leaderboards.test.ts "Our run" races the owner's run).
 describe("ghost races", () => {
+  it("offer an app that plays Our run none while the owner has no run on the board, and refuse a race against it", async () => {
+    const { a1, a2 } = await pairs();
+    const HEADER = { "X-AfterYou-Our-Run": "1" };
+    const ghosts = await ok<{ boards: { board: string; developer: number | null }[] }>(call("/v1/duels/ghosts", "GET", a1, undefined, ON, HEADER));
+    expect(ghosts.boards.every(item => item.developer === null)).toBe(true);
+    const refused = await call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }, ON, HEADER);
+    expect(refused.status).toBe(404);
+    expect(await errorCode(refused)).toBe("ghost_not_found");
+    expect((await lobby(a1)).duels).toEqual([]);
+    expect((await lobby(a2)).duels).toEqual([]);
+  });
+
   it("race a recorded time and are decided the moment the pair finishes, paying like normal turns", async () => {
     const { a1, a2 } = await pairs();
     const ghosts = await ok<{ boards: { board: string; developer: number | null; top: unknown[] }[] }>(call("/v1/duels/ghosts", "GET", a1));
-    expect(ghosts.boards.find(item => item.board === RELAY)!.developer).toBe(developerGhost(RELAY));
+    expect(ghosts.boards.find(item => item.board === RELAY)!.developer).toBe(legacyShippedTicks(RELAY));
     const started = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
-    expect(started).toMatchObject({ kind: "ghost", status: "running", ghost: { source: "developer", ticks: developerGhost(RELAY) } });
+    expect(started).toMatchObject({ kind: "ghost", status: "running", ghost: { source: "developer", ticks: legacyShippedTicks(RELAY) } });
     const room = await ok<RoomSnapshotV2>(openRoom(a2, started));
     const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a1, { invite_code: room.invite_code }));
     const run = await relayRun(0);
     const replies = await play(joined, [a2, a1], run);
     expect((replies[0].pollen as { turn: Any }).turn).not.toHaveProperty("duel");
     const done = (await lobby(a1)).duels[0];
-    const ghostTicks = developerGhost(RELAY)!;
+    const ghostTicks = legacyShippedTicks(RELAY)!;
     expect(done).toMatchObject({ status: "decided", result: { outcome: run.ticks < ghostTicks ? "won" : run.ticks > ghostTicks ? "lost" : "draw" } });
     expect((await detail(a1, started)).win_bonus).toBeUndefined();
   });
@@ -564,7 +578,7 @@ describe("ghost races", () => {
   it("give the recorded run's time after each turn: Our run's from its table, a board run's from its kept replay, and none for a race made before", async () => {
     const { a1, a2 } = await pairs();
     const ours = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
-    expect(ours.ghost!.splits).toEqual(developerGhostSplits(RELAY));
+    expect(ours.ghost!.splits).toEqual(legacyShippedSplits(RELAY));
     expect(ours.ghost!.splits).toHaveLength(ours.steps);
     // A finished run ranks on the board, and a race against it times the run turn by turn.
     const run = await relayRun(0);
@@ -593,9 +607,9 @@ describe("ghost races", () => {
 });
 
 describe("the first win over Our run", () => {
-  const OURS = developerGhost(RELAY)!;
+  const OURS = legacyShippedTicks(RELAY)!;
   const race = async (who: Account) => (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", who, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
-  /** Starts a race against the developers' ghost and plays it through with `slower` ticks against the fixtures' run. */
+  /** Starts a race against Our run (an older app's, so the shipped run) and plays it through with `slower` ticks against the fixtures' run. */
   async function played(host: Account, guest: Account, slower: number, duel?: DuelView) {
     const started = duel ?? await race(host);
     const room = await ok<RoomSnapshotV2>(openRoom(host, started));
@@ -1203,7 +1217,7 @@ describe("duel looks", () => {
     expect(sideLooks(seen)).toEqual([[{ hat: "daisy" }, { body: "tide" }], [{ hat: "straw_hat" }, {}]]);
   }, 60_000);
 
-  it("race a board run in the looks its row shows, and the developers' run in the default", async () => {
+  it("race a board run in the looks its row shows, and an older app's shipped Our run in the default", async () => {
     const { a1, a2 } = await pairs(true);
     await wear(a1, { hat: "daisy" });
     const first = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }, LOOKS))).duel;
@@ -1217,7 +1231,7 @@ describe("duel looks", () => {
     expect(top.length).toBeGreaterThan(0);
     const raced = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "board", entry_id: top[0].entry_id }, LOOKS))).duel;
     expect(raced.ghost!.looks).toEqual([{ hat: "daisy" }, {}]);
-    // The race keeps the run's replay_hash as the board row names it (the race ghost), and the developers' run has none.
+    // The race keeps the run's replay_hash as the board row names it (the race ghost), and the shipped Our run has none.
     const row = (await ok<{ top: { entry_id: string; replay_hash: string | null }[] }>(call(`/v1/leaderboards/${RELAY}`, "GET", a1, undefined, LOOKS))).top.find(item => item.entry_id === top[0].entry_id)!;
     expect(row.replay_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(raced.ghost!.replay_hash).toBe(row.replay_hash);
