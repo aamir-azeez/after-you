@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+	"completed": false,
+	"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+	"duration_ticks": 230,
+	"final_state_hash": "5d5a921fe804afd8568a206380f70558f69a581330e99c685d5b9384897d709f",
+	"level_id": "fog-marsh",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AQ8anAACtQAOAGQCADICAAADAAAaZAACMgCOAQCcAgDnGACcAgC1lgFkAAIZAD4AnH0HC0B1bRR8skG3ktUOaS58LDq1mZV2vRBd58IuC+htBRgGCQW9844QqWVsp5D9DZhDqQSQVoZYeoLnDtRE4gpJYoSkLJJ4y8i+rBUA4N08",
+	"player_slot": "p1",
+	"recording_hash": "b02476764e09582420206b953fc604a752c9e0bb089164eb9e3fa3c275404551",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "f30cf4c2a45d0de79be94d5914b46ecf4e93e2eb0a76c2c42921eca85442836d",
+	"stage_id": "where-the-stream-went",
+	"stage_version": 1,
+	"tick_rate": 30
+}

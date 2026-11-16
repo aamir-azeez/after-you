@@ -84,6 +84,26 @@
 				8
 			]
 		},
+		"fog-marsh@1": {
+			"definition_fixture": "journey/fog-marsh-definition.json",
+			"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+			"family": "journey",
+			"flag": "FOG_MARSH_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+			"initial_fixture": "journey/fog-marsh-initial-checkpoint.json",
+			"key": "fog-marsh@1",
+			"level_id": "fog-marsh",
+			"level_version": 1,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 3,
+			"supported_simulation_versions": [
+				16
+			]
+		},
 		"high-and-low@1": {
 			"definition_fixture": "cooperative/high-and-low-definition.json",
 			"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
@@ -228,6 +248,26 @@
 				11
 			]
 		},
+		"the-falls@1": {
+			"definition_fixture": "journey/the-falls-definition.json",
+			"definition_hash": "b26a65daa8ab5d57ddae4cf67263557078549f4e67c827624b0e5b7db2e9eb23",
+			"family": "journey",
+			"flag": "THE_FALLS_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "8937782b98fc1f0b5a62aa04fd0f950c817d4c323779480a06293f62f878854b",
+			"initial_fixture": "journey/the-falls-initial-checkpoint.json",
+			"key": "the-falls@1",
+			"level_id": "the-falls",
+			"level_version": 1,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 4,
+			"supported_simulation_versions": [
+				16
+			]
+		},
 		"the-wishing-well@1": {
 			"definition_fixture": "cooperative/the-wishing-well-definition.json",
 			"definition_hash": "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94",
@@ -324,6 +364,8 @@
 		"turn-of-the-tide@2",
 		"long-way-home@3",
 		"turn-of-the-tide@3",
-		"conservatory@2"
+		"conservatory@2",
+		"the-falls@1",
+		"fog-marsh@1"
 	]
 }

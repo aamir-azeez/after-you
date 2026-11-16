@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "8937782b98fc1f0b5a62aa04fd0f950c817d4c323779480a06293f62f878854b",
+	"completed": false,
+	"definition_hash": "b26a65daa8ab5d57ddae4cf67263557078549f4e67c827624b0e5b7db2e9eb23",
+	"duration_ticks": 550,
+	"final_state_hash": "871dafe5946fe48049e568464d8bf3301a2e1e63818375c50b26c1879809c203",
+	"level_id": "the-falls",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "AREQnAACtQAQAJwCALUCAAADAAAQAGQCADIyZADAAQAAUmQAHgBkAgAZ2AQAACCcADQAnAIA5x64k2N+G8Ry78WeUy33SOt/VStyUcROSy+jRHREcTvzmqoSlPYthTWbImvFI3Q4LEWnrgqavWuqQ7bYKgjMdKdKq8veUbUNEmb1R0epO3GjqUvWMJ+wwtZzzdxfMvBVrSUAURpoR9RzL4i7SY2Riu5vzKwDoJiTBPLjpDws2JSOWG9dPR+/70Qc7S6Py8uwQEohxdlKkU4x0T0xMnDgtcTAih6eZ/dg8zTTCP+OZ41D/1/OIBe+UbcHOYd1AyfzIsJJFIvwl7PDXXCt5CW3wvO8xcXGDd0WIg==",
+	"player_slot": "p0",
+	"recording_hash": "327a89dfb5ea863e0b7921e7903a32965eebdb1307dcaa34acd519432d50e82e",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "f0d26a77ac7d97354c14ede11953d9d6778d9681d6cba2160a9441330ae111c6",
+	"stage_id": "foot-of-the-falls",
+	"stage_version": 1,
+	"tick_rate": 30
+}

@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "0fed487d950d2c7a368a5b659a6a384128022c14f68021e404ba5aaa52245e1e",
+	"completed": true,
+	"definition_hash": "b26a65daa8ab5d57ddae4cf67263557078549f4e67c827624b0e5b7db2e9eb23",
+	"duration_ticks": 560,
+	"final_state_hash": "2c56d114b0a7da243a535cbf1ec3fb492604ca0c2ca823bc7056d788d0b346ae",
+	"level_id": "the-falls",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "ARUWAGSCAWQAPgCcAgDnVGQAAjIADACcAgDnlgFkAEgAZAIAMvABAABIAJwCAM5unAAC5wBMAJwCAM4yZAACGQAYAJxnP2e3z9ZGG5Fn7fAg69Fu084/XFT3T/WKbsvEAjCnhmTojd54VIz+S6xhd2IxEuykOJmyqH3MOdfo8Ngy7tGxpeGw0IKIZnyAGo545ujYO9NBLMlYVDAkuilfiPzly5uKokFDchR3CTVGa4nVOg90B9rDjqSipBvbp47qF2iB0q0sn9uKPG5LGQ1C3pS28s5CxUDWCXykKEgYI7KDmyNsNTVkt5v/U8r15669O4mXzEg0cQHfB223l2Dl6X+wUO+5wqDa/iEbQP1Z75CX6jz7VMzW7L5eMQo=",
+	"player_slot": "p0",
+	"recording_hash": "ca48b0040cd4c76162d6657249218bc4a55f4b05715cbed036ecc35698b069cb",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "382d769e7310ca68545bdda93379c768928adc16aca4cda83a7481c546f460b4",
+	"stage_id": "the-old-mill",
+	"stage_version": 1,
+	"tick_rate": 30
+}

@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "387f00035354656df76f42f1a8eae46f5d50ad5179e67932b4eeff21e5998fe3",
+	"completed": false,
+	"definition_hash": "b26a65daa8ab5d57ddae4cf67263557078549f4e67c827624b0e5b7db2e9eb23",
+	"duration_ticks": 378,
+	"final_state_hash": "1cdc8c24fedd3be03f00644610fd0239679ba0e8a7164f157b420e7919b911bf",
+	"level_id": "the-falls",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "ARAMnAACAOeGAWQAAjIAMABkwAIAACycAALOAAIAAAMAAAIAAAMAAD4AnAIA53ZkAAImAG+xO+eq7QpEGKSO4d7Zq6DCLSyg2FxnuugVZ17Xx37uZquJ/metoWspsm19Rw6ZLdzkAMX20QiSOLrmabOJeSEM1dv66P7HZHs8CrifZfm7fckFCUpo84e//mVGOZFLSp5aNpmVBFvUm+cUHab4MPSge0lCWWaqWFxhKJB48Y9vp76NAsEiPFedwp55ORWFuA==",
+	"player_slot": "p0",
+	"recording_hash": "1724ab38eda6b6d9e5a756dee04b47b81c09ceec630d8d2725b0eb3939b6385b",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "423d329bc9d0e0c37530a221ab6e21c2c0d7058037e5f7f17bee353b7130cfc8",
+	"stage_id": "the-last-stones",
+	"stage_version": 1,
+	"tick_rate": 30
+}

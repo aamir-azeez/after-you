@@ -51,5 +51,5 @@ const DATA := {
 		},
 		"sounds": {"base": "garden_opened", "together": "lift_ready", "hard": "bell_rung", "top": "island_bloomed"},
 	},
-	"server": {"flag": "FOG_MARSH_CHAPTER_ENABLED", "max_branches": 32},
+	"server": {"flag": "FOG_MARSH_CHAPTER_ENABLED", "max_branches": 7},
 }

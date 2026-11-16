@@ -21,6 +21,10 @@ import tideV3Definition from "./turn-of-the-tide-v3.json";
 import tideV3Initial from "./turn-of-the-tide-v3-initial.json";
 import conservatoryV2Definition from "./conservatory-v2.json";
 import conservatoryV2Initial from "./conservatory-v2-initial.json";
+import theFallsDefinition from "./the-falls.json";
+import theFallsInitial from "./the-falls-initial.json";
+import fogMarshDefinition from "./fog-marsh.json";
+import fogMarshInitial from "./fog-marsh-initial.json";
 
 export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
 export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
@@ -30,9 +34,11 @@ export const TURN_OF_THE_TIDE_V2_HASH = "1f88aabb592fbf14640b50dd0644755d6afe522
 export const LONG_WAY_HOME_V3_HASH = "947e69e3ccc80d81f285b0434536a00cb3a08aeea890e64539e8643b09dc3909";
 export const TURN_OF_THE_TIDE_V3_HASH = "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba";
 export const CONSERVATORY_V2_HASH = "945bb314eb10738736122839400a4570ceeec33f33e68426e789f13d3bc11108";
+export const THE_FALLS_HASH = "b26a65daa8ab5d57ddae4cf67263557078549f4e67c827624b0e5b7db2e9eb23";
+export const FOG_MARSH_HASH = "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
-export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
+export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string; item_id?: string; carried?: boolean; spot_id?: string };
 type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
@@ -222,5 +228,9 @@ export const turnOfTheTideV3: ChapterAdapter = adapter(tideV3Definition, tideV3I
 /** Open controls (12): Conservatory@1 with the court's two forks on a balcony only the first player reaches,
  * and the first turn ending at the court-wait spot on the court. Unreleased. */
 export const conservatoryV2 = adapter(conservatoryV2Definition, conservatoryV2Initial, CONSERVATORY_V2_HASH);
+/** The new pieces with carried items (16): four stages carrying the pipsport up the falls. Unreleased. */
+export const theFalls = adapter(theFallsDefinition, theFallsInitial, THE_FALLS_HASH);
+/** The new pieces with carried items (16): three stages catching the pipsport in the marsh and carrying it home. Unreleased. */
+export const fogMarsh = adapter(fogMarshDefinition, fogMarshInitial, FOG_MARSH_HASH);
 /** A journey adapter for any definition and its first checkpoint: the witness tests (test/carried-items.test.ts) build theirs with it. */
 export const journeyAdapter = adapter;

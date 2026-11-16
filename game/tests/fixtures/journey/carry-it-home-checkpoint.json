@@ -1,0 +1,441 @@
+{
+	"checkpoint_hash": "0ddfcacb3a01b0fbf1c1294ec6a5794e192e42e5bfff9a154a62adcd770da4d1",
+	"completed_stage_id": "carry-it-home",
+	"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+	"level_id": "fog-marsh",
+	"level_version": 1,
+	"mechanisms": {
+		"controls": {
+			"current": "SOUTH",
+			"rope": "BOAT"
+		},
+		"items": {
+			"pipsport": {
+				"height": 96,
+				"holder": "",
+				"spot": "desk",
+				"surface_id": "office",
+				"x": 3140,
+				"z": -1840
+			}
+		},
+		"latched_bridges": [],
+		"levers": {
+			"boards-lever": true,
+			"east": true,
+			"home-lantern": true,
+			"lantern": true,
+			"north-lantern": true,
+			"stair-lever": true,
+			"west": true
+		},
+		"props": {}
+	},
+	"next_stage_id": "",
+	"players": {
+		"p0": {
+			"height": 96,
+			"surface_id": "jetty-3",
+			"x": 3160,
+			"z": -1260
+		},
+		"p1": {
+			"height": 96,
+			"surface_id": "jetty-3",
+			"x": 3160,
+			"z": -1260
+		}
+	},
+	"previous_checkpoint_hash": "0a95e01993a0a99dee05ee49cced42f482641a2114a767fe829687a6a2050467",
+	"proof": {
+		"checkpoint": {
+			"checkpoint_hash": "0a95e01993a0a99dee05ee49cced42f482641a2114a767fe829687a6a2050467",
+			"completed_stage_id": "catch-the-pipsport",
+			"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+			"level_id": "fog-marsh",
+			"level_version": 1.0,
+			"mechanisms": {
+				"controls": {
+					"current": "SOUTH",
+					"rope": "BOAT"
+				},
+				"items": {
+					"pipsport": {
+						"height": 0.0,
+						"holder": "p0",
+						"spot": "",
+						"surface_id": "",
+						"x": 0.0,
+						"z": 0.0
+					}
+				},
+				"latched_bridges": [],
+				"levers": {
+					"boards-lever": true,
+					"east": true,
+					"lantern": true,
+					"north-lantern": true,
+					"stair-lever": true,
+					"west": true
+				},
+				"props": {}
+			},
+			"next_stage_id": "carry-it-home",
+			"players": {
+				"p0": {
+					"height": 0.0,
+					"surface_id": "north",
+					"x": 2300.0,
+					"z": -750.0
+				},
+				"p1": {
+					"height": 0.0,
+					"surface_id": "north",
+					"x": 2300.0,
+					"z": -750.0
+				}
+			},
+			"previous_checkpoint_hash": "2c9a8ef901408c851a66b2f82974eeac0594a86ea6edfc4ee89a4c37bd2c23b5",
+			"proof": {
+				"checkpoint": {
+					"checkpoint_hash": "2c9a8ef901408c851a66b2f82974eeac0594a86ea6edfc4ee89a4c37bd2c23b5",
+					"completed_stage_id": "where-the-stream-went",
+					"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+					"level_id": "fog-marsh",
+					"level_version": 1.0,
+					"mechanisms": {
+						"controls": {
+							"current": "SOUTH",
+							"rope": "BOAT"
+						},
+						"items": {
+							"pipsport": {
+								"height": 0.0,
+								"holder": "",
+								"spot": "channel",
+								"surface_id": "",
+								"x": 2300.0,
+								"z": -120.0
+							}
+						},
+						"latched_bridges": [],
+						"levers": {
+							"east": true,
+							"lantern": true,
+							"west": true
+						},
+						"props": {}
+					},
+					"next_stage_id": "catch-the-pipsport",
+					"players": {
+						"p0": {
+							"height": 0.0,
+							"surface_id": "jetty",
+							"x": 1350.0,
+							"z": -52.0
+						},
+						"p1": {
+							"height": 0.0,
+							"surface_id": "jetty",
+							"x": 1350.0,
+							"z": -100.0
+						}
+					},
+					"previous_checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+					"proof": {
+						"checkpoint": {
+							"a_recording_hash": "",
+							"b_recording_hash": "",
+							"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+							"completed_stage_id": "",
+							"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+							"level_id": "fog-marsh",
+							"level_version": 1.0,
+							"mechanisms": {
+								"controls": {
+									"current": "SOUTH",
+									"rope": "BOAT"
+								},
+								"items": {
+									"pipsport": {
+										"height": 0.0,
+										"holder": "",
+										"spot": "channel",
+										"surface_id": "",
+										"x": 2300.0,
+										"z": -120.0
+									}
+								},
+								"latched_bridges": [],
+								"levers": {},
+								"props": {}
+							},
+							"next_stage_id": "where-the-stream-went",
+							"players": {
+								"p0": {
+									"height": 0.0,
+									"surface_id": "path",
+									"x": 150.0,
+									"z": 150.0
+								},
+								"p1": {
+									"height": 0.0,
+									"surface_id": "boat-steps",
+									"x": 750.0,
+									"z": 760.0
+								}
+							},
+							"previous_checkpoint_hash": "",
+							"proof": {},
+							"schema_version": 7.0,
+							"stage_index": 0.0
+						},
+						"turns": [
+							{
+								"catch_assistance": true,
+								"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+								"completed": false,
+								"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+								"duration_ticks": 69.0,
+								"final_state_hash": "3e0d23cc1a11f5e0889d7f7e884620c7f41f160712cbcef553e72759214bd293",
+								"level_id": "fog-marsh",
+								"level_version": 1.0,
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"packed": "AQoWnAAC5wAQAGQCAEsCAAADAAAgAJwCAM44ZAACMgDf6jOyrw77irDmIAilftIf",
+								"player_slot": "p0",
+								"recording_hash": "f30cf4c2a45d0de79be94d5914b46ecf4e93e2eb0a76c2c42921eca85442836d",
+								"role": "a",
+								"schema_version": 7.0,
+								"simulation_version": 16.0,
+								"source_recording_hash": "",
+								"stage_id": "where-the-stream-went",
+								"stage_version": 1.0,
+								"tick_rate": 30.0
+							},
+							{
+								"catch_assistance": true,
+								"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+								"completed": false,
+								"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+								"duration_ticks": 230.0,
+								"final_state_hash": "5d5a921fe804afd8568a206380f70558f69a581330e99c685d5b9384897d709f",
+								"level_id": "fog-marsh",
+								"level_version": 1.0,
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"packed": "AQ8anAACtQAOAGQCADICAAADAAAaZAACMgCOAQCcAgDnGACcAgC1lgFkAAIZAD4AnH0HC0B1bRR8skG3ktUOaS58LDq1mZV2vRBd58IuC+htBRgGCQW9844QqWVsp5D9DZhDqQSQVoZYeoLnDtRE4gpJYoSkLJJ4y8i+rBUA4N08",
+								"player_slot": "p1",
+								"recording_hash": "b02476764e09582420206b953fc604a752c9e0bb089164eb9e3fa3c275404551",
+								"role": "b",
+								"schema_version": 7.0,
+								"simulation_version": 16.0,
+								"source_recording_hash": "f30cf4c2a45d0de79be94d5914b46ecf4e93e2eb0a76c2c42921eca85442836d",
+								"stage_id": "where-the-stream-went",
+								"stage_version": 1.0,
+								"tick_rate": 30.0
+							},
+							{
+								"catch_assistance": true,
+								"checkpoint_hash": "eb6521a39ce0007421cd673111404e56be64395b5a247a4886968793ad071123",
+								"completed": true,
+								"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+								"duration_ticks": 239.0,
+								"final_state_hash": "cae415da63595354b69ed8fc4c4234da16b69bb97859ff85fca06169be3b38b3",
+								"level_id": "fog-marsh",
+								"level_version": 1.0,
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"packed": "ARMWnAAC5wAQAGQCAEsCAAADAAAgAJwCAM44ZAACMgCKAWQAAgCcAgAAAwAAEABkAgAyfmQAAksAMgCcPFmL4ymUHukJseOySU8x6tfHOnZ5MKmi7UraZS6lAVcHbyNJP6ruAprfdX2JEZAaZAvQds4aJMxM+dlt1aEgdxQKPRw3736x5fKxhV/23tM=",
+								"player_slot": "p0",
+								"recording_hash": "ffec2fb62bbc191cb842e354d1babd1da8f2aecfcca22a7adec234d0b70c6cbf",
+								"role": "b",
+								"schema_version": 7.0,
+								"simulation_version": 16.0,
+								"source_recording_hash": "b02476764e09582420206b953fc604a752c9e0bb089164eb9e3fa3c275404551",
+								"stage_id": "where-the-stream-went",
+								"stage_version": 1.0,
+								"tick_rate": 30.0
+							}
+						]
+					},
+					"schema_version": 8.0,
+					"stage_index": 1.0,
+					"turn_hashes": [
+						"f30cf4c2a45d0de79be94d5914b46ecf4e93e2eb0a76c2c42921eca85442836d",
+						"b02476764e09582420206b953fc604a752c9e0bb089164eb9e3fa3c275404551",
+						"ffec2fb62bbc191cb842e354d1babd1da8f2aecfcca22a7adec234d0b70c6cbf"
+					]
+				},
+				"turns": [
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "2c9a8ef901408c851a66b2f82974eeac0594a86ea6edfc4ee89a4c37bd2c23b5",
+						"completed": false,
+						"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+						"duration_ticks": 453.0,
+						"final_state_hash": "947d1aea1bcc578f26766464cd5d2a6cbecaef5390a04dedd6f91bee675a32cf",
+						"level_id": "fog-marsh",
+						"level_version": 1.0,
+						"outcome": {
+							"objective_complete": false,
+							"source_ready": true
+						},
+						"packed": "ARMYAJwCALWIAWQAAksACACcAgC16AIAACKcAALOAHIAZAIAMgIAAAMAAAIAAAMAAG4AnAIAAAMAAGJkACxU3EOFGcOfXFG3ZMXxlZvqvMowwLxw7u/5e+KgwWillF6nanGEw+qpPhxBR3ZNCSowFRP65GH6fn3V6ZK7HntObZdnch/bo4VliDZXgKwJHEnjEf0v4TPf78rFL7+KXLxGmgtjDYhZuTzCfQOFVNOUeJ8fByEYorSUrGntoZP1XR6nC01KkpoXsowPYlRhR3Wnfn55FnNJx/hJSe+b58e9tcppduanWlwSAixNWvZV5U6JZ+F0yY8s0Lc5pd3/4Q==",
+						"player_slot": "p1",
+						"recording_hash": "b14cb6cf74e538a0255f22d7ca0b7e23ad286d0deb6c12447ebafd0407385a10",
+						"role": "a",
+						"schema_version": 7.0,
+						"simulation_version": 16.0,
+						"source_recording_hash": "",
+						"stage_id": "catch-the-pipsport",
+						"stage_version": 1.0,
+						"tick_rate": 30.0
+					},
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "2c9a8ef901408c851a66b2f82974eeac0594a86ea6edfc4ee89a4c37bd2c23b5",
+						"completed": false,
+						"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+						"duration_ticks": 663.0,
+						"final_state_hash": "744dbf1a923f272cb6102952b1ca25277ae34f741da8e533a28fdb2ddde1678a",
+						"level_id": "fog-marsh",
+						"level_version": 1.0,
+						"outcome": {
+							"objective_complete": false,
+							"source_ready": true
+						},
+						"packed": "ASEkAJwCALW6AWQAAksAcABkAgAZhAJkABYAZAIAMngAABYAnAIAzpQBnABMAJwCAM4SZAACAAADAAAEZAACMgAsAJwCAM4CAAADAAAunAACzgCQAQCcAgDOAgAAAwAAJpwAEABkAgBLNl0Ugm0PVmX8PYUh5Y1XNXN/tHUFV25oYK0ZxY7CPauVhXh0tz7QIcO0nVfh/eXRfwYGrDn8RooHiw7/jDkXG21M20DMyLwCVuSzhHAtQaXkGKe81JK73Kb0Bn/8EQvkY7JEJdowG4NiTISQERwdUy6+itW70mo/P4YmbwYbYaIjjXqMtA9dtR+gDUd7UZ4iJdn+SqBRlhziFDdgssAOrucepESaTihQ33d3BEi4GZ0GYZzbqyCIR3uXC8muqlhXbTi5qyBpkKnkuipAOVY8EV0/HoeUlX1kxMeBYbPWNC+wjE5BWI/TaPJ+f33iWGHJNihBubY1Auq1CH7V7VC5VGN+afxx+ja88E4UbKt9X9U=",
+						"player_slot": "p0",
+						"recording_hash": "be22f1398b8aa14c008fa8114e22d6b85e07e285af043c8317ac60c83d5cf469",
+						"role": "b",
+						"schema_version": 7.0,
+						"simulation_version": 16.0,
+						"source_recording_hash": "b14cb6cf74e538a0255f22d7ca0b7e23ad286d0deb6c12447ebafd0407385a10",
+						"stage_id": "catch-the-pipsport",
+						"stage_version": 1.0,
+						"tick_rate": 30.0
+					},
+					{
+						"catch_assistance": true,
+						"checkpoint_hash": "2c9a8ef901408c851a66b2f82974eeac0594a86ea6edfc4ee89a4c37bd2c23b5",
+						"completed": true,
+						"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+						"duration_ticks": 663.0,
+						"final_state_hash": "aafd6b5b6933b4e9fd0727d1bb1e83f930fdcd6a202b44b138e6e0c8b8803fde",
+						"level_id": "fog-marsh",
+						"level_version": 1.0,
+						"outcome": {
+							"objective_complete": true,
+							"source_ready": true
+						},
+						"packed": "ARkYAJwCALWIAWQAAksACACcAgC16AIAACKcAALOAHIAZAIAMgIAAAMAAAIAAAMAAG4AnAIAAAMAAGJkAIwBAACEAQCcAgDnJGQAAjIAbAAA2dhW4HNp8wELG0hGvT1LClT+qJV99Bg11dqJgavbaPbWVUqxv91uto8AgtDxRo3a6JrH5VbYMaX4aP4mnCuT0Q/lyAthDuOTvvSSdiXPY45ymY1+4w1jNHlRbK+qcHzQ5E5zwcMDLvgmmfRPTZFX+9VlS5zQ79tobrJwt6e6VSMFGNJ1VqlWXZHtHA/HkdPZEnSPa1hy9obggg1thtJezroG0hYfJWUqUBiSx8Ohu/v7kkztAdRMPht8O8JHtBsH0tvzDxdyahBAF/yosBX15b8rr88s/YdVyCQQj23ixlDxbQRKZ/6Lrwi8dC4SwDzlfPdr4gZdTvOfgogNvL+0M4tXJBj4SkWH8iyu/oCf3uQ=",
+						"player_slot": "p1",
+						"recording_hash": "53c301cc155bdc8efe4558242a2b5a3d9962647d657f8b5e0abe426c0a4068f5",
+						"role": "b",
+						"schema_version": 7.0,
+						"simulation_version": 16.0,
+						"source_recording_hash": "be22f1398b8aa14c008fa8114e22d6b85e07e285af043c8317ac60c83d5cf469",
+						"stage_id": "catch-the-pipsport",
+						"stage_version": 1.0,
+						"tick_rate": 30.0
+					}
+				]
+			},
+			"schema_version": 8.0,
+			"stage_index": 2.0,
+			"turn_hashes": [
+				"b14cb6cf74e538a0255f22d7ca0b7e23ad286d0deb6c12447ebafd0407385a10",
+				"be22f1398b8aa14c008fa8114e22d6b85e07e285af043c8317ac60c83d5cf469",
+				"53c301cc155bdc8efe4558242a2b5a3d9962647d657f8b5e0abe426c0a4068f5"
+			]
+		},
+		"turns": [
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "0a95e01993a0a99dee05ee49cced42f482641a2114a767fe829687a6a2050467",
+				"completed": false,
+				"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+				"duration_ticks": 90.0,
+				"final_state_hash": "a896a826d8a3b26eb5ebfd27387124eef4329b312ae2a508f27e12c134cb198b",
+				"level_id": "fog-marsh",
+				"level_version": 1.0,
+				"outcome": {
+					"objective_complete": false,
+					"source_ready": true
+				},
+				"packed": "AQQMnAACzgCkAQCcAgDOcGlzJsED0zexNXVFXFVwPw==",
+				"player_slot": "p1",
+				"recording_hash": "9832368719f2cc77879f915a24125f28fd2c881eb13d13903eca86a99fe4c8d5",
+				"role": "a",
+				"schema_version": 7.0,
+				"simulation_version": 16.0,
+				"source_recording_hash": "",
+				"stage_id": "carry-it-home",
+				"stage_version": 1.0,
+				"tick_rate": 30.0
+			},
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "0a95e01993a0a99dee05ee49cced42f482641a2114a767fe829687a6a2050467",
+				"completed": false,
+				"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+				"duration_ticks": 855.0,
+				"final_state_hash": "3db75bc3a96fd2097d8700334f96c4b0616e88903e35ddf2e35e92a900e5e732",
+				"level_id": "fog-marsh",
+				"level_version": 1.0,
+				"outcome": {
+					"objective_complete": false,
+					"source_ready": true
+				},
+				"packed": "ARQMnAACzgDIAQAAsAEAnAIAtRqcAALOAKwCAAA0AGQCABmMAWQAGACcAgC1pAFkAAIyABwAZIgEAAAynAAEAJwCAM5cg22wb8XzyLSInDmH0Q0HtWhDEmtGsNjVnt2kF82r7TpQfkjSVTlCktrhFIK4NubJSqYaazYlD9mwrNLU0xr2pK0uXLnwM+ULiPRjDdO66Aums2Zc2BQ1tlGs3mYzjQd7k1ZyVPrfBe6/nXNglLyX/UeOFy51LjJMvkH/YGx85/F8jHjW2DTiFVKB8LHBxljVh/8JUl+TbYj/vYL8qHtrBF2qCKFOlRUih2tYmshiYHunlH91KSbiaPwqS1qU/l9LqHTGFuMxv6hQHGNiF4WgFZs6f7MMc9Um5OYkuNTQU+R9ImnUKVbisFlDalpUad/fpPbWbyr1MkHbYAyxJJYKDKVfG+dpZ4Tvv7TkcEPb+nUXD2CQ2EekfAUKyE1qss1yVJBEreyeqZsPy69G8vbwNSMCPV63wFXknPT/skCHFGCK8DInnd+Q8InUDn2oUsEEiE9fIxQ7yQ==",
+				"player_slot": "p0",
+				"recording_hash": "f38c0f7d64497aa95b9a3e841bf00f9f74ab5e508848f9af732d6f8791ae4cd5",
+				"role": "b",
+				"schema_version": 7.0,
+				"simulation_version": 16.0,
+				"source_recording_hash": "9832368719f2cc77879f915a24125f28fd2c881eb13d13903eca86a99fe4c8d5",
+				"stage_id": "carry-it-home",
+				"stage_version": 1.0,
+				"tick_rate": 30.0
+			},
+			{
+				"catch_assistance": true,
+				"checkpoint_hash": "0a95e01993a0a99dee05ee49cced42f482641a2114a767fe829687a6a2050467",
+				"completed": true,
+				"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+				"duration_ticks": 855.0,
+				"final_state_hash": "f5d09920c73c46bb6860fdd0869a3e970c6e52dc8d62717152fbb4e9251a808c",
+				"level_id": "fog-marsh",
+				"level_version": 1.0,
+				"outcome": {
+					"objective_complete": true,
+					"source_ready": true
+				},
+				"packed": "ARwMnAACzgCkAQCcAgDOPmQAAjIAyAEAADJkAA4AZAIAGYgBZAACMgCIBAAAegCcGpwAAs4AAgAAAwAAMmQAAgAAAwAAFpwAAs4AhgEAZAIAMhacAAoAZI4BAADGxLBTBo1U1zrCe/jr+PAiF8fG0xXGgY4aNR74WfWpLUHovQEjgNnZshKGviQE3OZoE9wLzI/bIu79BHTZP62Qld5G/CpyjdLYrsKBGCC7LqoENQbWkfgBsbexoIbcoox3x837cT4qDb/yqf1+KR+l1YVCXuRe1LbsA2byBdGPxNeR/abvMbIMXi09MrwRB62H/hKCeTn49gZCOB3wgvVdBarD1zJkhWz35OHV8CyPbGtLHzCvmfEfydHX0fRrt87SN521bdbI7L9WFODExOgoNrx4eSdXDLYJ9bEic22Fw8VHEP0s6a93KDW+iThPizU6eswjHF5DofyFvi0RuGAcUPHsyHtBI/LNIPBwB4SzVPKy9EnmR9/HZ1C1J184G9PE/0dEaLUgT0Yoie8Z6QEIrt5QX++h9PUGQ6AQSQNCUe8vua+e9j804sLiTNBSc+5snVMiIAI1qg==",
+				"player_slot": "p1",
+				"recording_hash": "eb156c7ad92202121d1803797bb88e35a92fbc088aaff7987807caa5eeb0806b",
+				"role": "b",
+				"schema_version": 7.0,
+				"simulation_version": 16.0,
+				"source_recording_hash": "f38c0f7d64497aa95b9a3e841bf00f9f74ab5e508848f9af732d6f8791ae4cd5",
+				"stage_id": "carry-it-home",
+				"stage_version": 1.0,
+				"tick_rate": 30.0
+			}
+		]
+	},
+	"schema_version": 8,
+	"stage_index": 3,
+	"turn_hashes": [
+		"9832368719f2cc77879f915a24125f28fd2c881eb13d13903eca86a99fe4c8d5",
+		"f38c0f7d64497aa95b9a3e841bf00f9f74ab5e508848f9af732d6f8791ae4cd5",
+		"eb156c7ad92202121d1803797bb88e35a92fbc088aaff7987807caa5eeb0806b"
+	]
+}

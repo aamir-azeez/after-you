@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "2c9a8ef901408c851a66b2f82974eeac0594a86ea6edfc4ee89a4c37bd2c23b5",
+	"completed": true,
+	"definition_hash": "f2ec763f77af57a5d768c616e183485d48f20e09b810f0afd2a43d608c19ac1c",
+	"duration_ticks": 663,
+	"final_state_hash": "aafd6b5b6933b4e9fd0727d1bb1e83f930fdcd6a202b44b138e6e0c8b8803fde",
+	"level_id": "fog-marsh",
+	"level_version": 1,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "ARkYAJwCALWIAWQAAksACACcAgC16AIAACKcAALOAHIAZAIAMgIAAAMAAAIAAAMAAG4AnAIAAAMAAGJkAIwBAACEAQCcAgDnJGQAAjIAbAAA2dhW4HNp8wELG0hGvT1LClT+qJV99Bg11dqJgavbaPbWVUqxv91uto8AgtDxRo3a6JrH5VbYMaX4aP4mnCuT0Q/lyAthDuOTvvSSdiXPY45ymY1+4w1jNHlRbK+qcHzQ5E5zwcMDLvgmmfRPTZFX+9VlS5zQ79tobrJwt6e6VSMFGNJ1VqlWXZHtHA/HkdPZEnSPa1hy9obggg1thtJezroG0hYfJWUqUBiSx8Ohu/v7kkztAdRMPht8O8JHtBsH0tvzDxdyahBAF/yosBX15b8rr88s/YdVyCQQj23ixlDxbQRKZ/6Lrwi8dC4SwDzlfPdr4gZdTvOfgogNvL+0M4tXJBj4SkWH8iyu/oCf3uQ=",
+	"player_slot": "p1",
+	"recording_hash": "53c301cc155bdc8efe4558242a2b5a3d9962647d657f8b5e0abe426c0a4068f5",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "be22f1398b8aa14c008fa8114e22d6b85e07e285af043c8317ac60c83d5cf469",
+	"stage_id": "catch-the-pipsport",
+	"stage_version": 1,
+	"tick_rate": 30
+}
