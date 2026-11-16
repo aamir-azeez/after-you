@@ -79,12 +79,13 @@ static func slipped(tries: int) -> bool:
 	return tries > 1
 
 ## Why a finished turn ends the run, from its verified check ({valid,
-## snapshot}): "drowned", "failed_turn" (it cannot be kept, so the only way on
-## would be a retry), or "" when the turn can be kept.
-static func failure(verified: Dictionary) -> String:
+## snapshot, ready}) and its recording: "drowned", "failed_turn" (it cannot be
+## kept, so the only way on would be a retry), or "" when the turn can be kept
+## (OpenTurns.keepable: under open turns a pass is kept too).
+static func failure(verified: Dictionary, recording: Dictionary = {}) -> String:
 	var snapshot: Variant = verified.get("snapshot", {})
 	if snapshot is Dictionary and snapshot.get("drowned") is Dictionary and not snapshot.drowned.is_empty(): return "drowned"
-	if not bool(verified.get("valid", false)) or not snapshot is Dictionary or not bool(snapshot.get("can_commit", false)): return "failed_turn"
+	if not OpenTurns.keepable(verified, recording): return "failed_turn"
 	return ""
 
 

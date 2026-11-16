@@ -77,6 +77,15 @@ static func proof_turns(proof: Variant) -> Array:
 		return turns if turns.size() >= 2 and turns.all(func(turn: Variant) -> bool: return turn is Dictionary) else []
 	return [proof.a, proof.b] if proof.get("a") is Dictionary and proof.get("b") is Dictionary else []
 
+## Whether a finished turn may be saved, from its check ({valid, snapshot,
+## ready}) and its recording: it can commit, or under open turns it is a pass
+## that may be the friend's memory (a later turn that did not finish the stage).
+## The one rule for the review card and for Hard mode (hard_mode.gd failure).
+static func keepable(verified: Dictionary, recording: Dictionary) -> bool:
+	var snapshot: Variant = verified.get("snapshot", {})
+	var passing: bool = recording.get("role") == "b" and recording.get("completed") == false and bool(verified.get("ready", false))
+	return bool(verified.get("valid", false)) and snapshot is Dictionary and (bool(snapshot.get("can_commit", false)) or passing)
+
 ## Whether `turns` is a stage's later turns as a record keeps them: one at
 ## least, at most a cap's worth, each a turn.
 static func turns_valid(turns: Variant) -> bool:

@@ -238,9 +238,19 @@ func _hard_runs() -> void:
 	var slip: Dictionary = _json(four.export_recording())
 	var journal := Journey.new(HardMode.journal_path(TIDE), null, TIDE)
 	journal.load_data()
-	_check(journal.accept_recording(a) and journal.accept_recording(turn_two) and journal.accept_recording(turn_three) and hashes.call(journal.memory_chain()) == hashes.call([a, turn_two]), "A hard run's journal holds turn 1 and two passes, the memory over both (%s)" % journal.last_error)
 	var run: RefCounted = HardRun.solo(TIDE, HARD_MARKS)
-	_check(run.fail_solo(journal, TurnTries.new(HARD_TRIES), "failed_turn", slip, TIDE) and journal.pairs().is_empty() and journal.passes().is_empty(), "A slip on turn 4 ends the run and starts it again")
+	var tries := TurnTries.new(HARD_TRIES)
+	_check(journal.accept_recording(a), "A hard run keeps turn 1 (%s)" % journal.last_error)
+	# Each pass is a turn the run keeps (the review's own check), and each next turn starts as a first try.
+	var slots: Array = []
+	for turn: Dictionary in [turn_two, turn_three]:
+		var slot := TurnTries.slot_for(journal, run.tries_key(TIDE), false)
+		_check(slot not in slots and tries.start(slot) == 1 and not run.slipped(tries.count(slot)), "Turn %d starts as its own first try" % (slots.size() + 2))
+		slots.append(slot)
+		_check(run.failure(journal.verify_turn(turn), turn).is_empty() and not run.failure(journal.verify_turn(turn), {}).is_empty(), "A pass is kept in a hard run, where a later turn that cannot pass would not be (turn %d)" % (slots.size() + 1))
+		_check(journal.accept_recording(turn), "The journal keeps the pass (%s)" % journal.last_error)
+	_check(hashes.call(journal.memory_chain()) == hashes.call([a, turn_two]) and journal.prior_recording().get("recording_hash") == turn_three.recording_hash, "Turn 4 plays over turn 3, which nests turns 1 and 2")
+	_check(run.fail_solo(journal, tries, "failed_turn", slip, TIDE) and journal.pairs().is_empty() and journal.passes().is_empty(), "A slip on turn 4 ends the run and starts it again")
 	HardMode.wait_writes()
 	var kept: Array[Dictionary] = HardMode.runs(TIDE)
 	var slipped: Dictionary = kept[0] if kept.size() == 1 else {}

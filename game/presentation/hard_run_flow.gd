@@ -93,7 +93,7 @@ func resume_failed() -> bool:
 ## _show_review: a turn the run cannot keep ends it. True when it did.
 func verdict(verified: Dictionary, review: Dictionary) -> bool:
 	if not on(): return false
-	var reason: String = host.hard.failure(verified)
+	var reason: String = host.hard.failure(verified, review)
 	if reason.is_empty(): return false
 	fail(reason, review)
 	return true

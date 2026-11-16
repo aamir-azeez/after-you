@@ -79,7 +79,7 @@ func tries_key(screen_key: String) -> String:
 
 func offers(action_id: String) -> bool: return HardMode.offers(action_id)
 func slipped(tries: int) -> bool: return HardMode.slipped(tries)
-func failure(verified: Dictionary) -> String: return HardMode.failure(verified)
+func failure(verified: Dictionary, recording: Dictionary = {}) -> String: return HardMode.failure(verified, recording)
 
 
 # Solo ------------------------------------------------------------------------

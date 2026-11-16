@@ -2662,8 +2662,7 @@ func _show_review() -> void:
 		_show_ending_card(ending)
 		return
 	# Open turns: a pass is saved too, when its check says it may be the friend's memory.
-	var passing: bool = review.get("role") == "b" and review.get("completed") == false and bool(verified.get("ready", false))
-	var can_save := bool(verified.get("valid", false)) and (bool(verified.get("snapshot", {}).get("can_commit", false)) or passing)
+	var can_save := OpenTurns.keepable(verified, review)
 	if can_save: _start_prefetch()
 	var explanation: String = hard_flow.review_body(PlayerCopy.RELAY_PREVIEW_B9074234FC11)
 	if not can_save:
