@@ -10,7 +10,7 @@ import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetCachedListings } from "../src/duels/public-list";
 import { spotFor, type JoinAs } from "../src/duels/public";
 import { DIRECTORY_NAME } from "../src/duels/directory";
-import { PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "../src/duels/rules";
+import { MAX_DUELS_PER_PAIR, PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "../src/duels/rules";
 import type { Duel, DuelView } from "../src/duels/model";
 import { POLLEN_CLIENT, configJson } from "./config";
 import { countAllRequests } from "./meter";
@@ -616,14 +616,16 @@ describe("public duels", () => {
     expect((await detail(p1, posted)).duel.status).toBe("running");
   });
 
-  it("share one limit of 10 with friend duels: posts past it are refused, and so is a friend challenge", async () => {
+  it("share one limit of 30 with friend duels and ghost races: posts past it are refused, and so is a friend challenge or a race", async () => {
     const [a1, a2, b1, b2] = await Promise.all([player(), player(), player(), player()]);
     await partner(a1, a2); await partner(b1, b2); await befriend(a1, b1);
-    for (let index = 0; index < 10; index++) await ok(post(a1, "alone", crypto.randomUUID(), UNLIMITED));
-    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a1))).public).toMatchObject({ running: 10 });
+    for (let index = 0; index < MAX_DUELS_PER_PAIR; index++) await ok(post(a1, "alone", crypto.randomUUID(), UNLIMITED));
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a1))).public).toMatchObject({ running: MAX_DUELS_PER_PAIR });
     expect((await errorOf(post(a1, "alone", crypto.randomUUID(), UNLIMITED))).code).toBe("duel_limit_reached");
     const challenge = call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY });
     expect((await errorOf(challenge)).code).toBe("duel_limit_reached");
+    const race = call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null });
+    expect((await errorOf(race)).code).toBe("duel_limit_reached");
   });
 
   it("keep the directory's rows only while listed, and drop an erased player's rows", async () => {

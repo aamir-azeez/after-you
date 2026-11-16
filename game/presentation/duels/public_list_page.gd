@@ -16,6 +16,7 @@ const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const EnergyChip = preload("res://presentation/kit/energy_chip.gd")
 const Spots = preload("res://services/public_duel_spots.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
 const Seats = preload("res://presentation/duels/public_seats.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -46,7 +47,7 @@ var boards: Array = []
 ## (row) -> {chapter_open, partner_on, partner_rules, at_limit}: what the phone knows that greys a row.
 var known: Callable
 ## The shared limit, for its greyed line.
-var limit := 10
+var limit := DuelsClient.DUEL_LIMIT
 ## Whether starting and joining cost energy (services/duel_energy.gd): the cost chips show only then.
 var energy_cost := false
 var _rows: Array = []

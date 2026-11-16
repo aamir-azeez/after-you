@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
-import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "../src/duels/rules";
+import { CHALLENGE_TTL_MS, MAX_DUELS_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "../src/duels/rules";
 import { applyParty, blankParty, noteLook } from "../src/duels/party";
 import { replaySplits, runProgress, validSplits } from "../src/duels/ticks";
 import { claimSeats, newPublicDuel, publicWaitingSlot } from "../src/duels/public";
@@ -707,12 +707,14 @@ describe("duel looks", () => {
 });
 
 describe("duel limits", () => {
-  it("let a pair have 10 duels going, under the week's cap and the pointers each player keeps", () => {
-    expect(MAX_FRIEND_DUELS_PER_PAIR).toBe(10);
-    expect(MAX_RECENT_DUELS).toBeGreaterThan(MAX_FRIEND_DUELS_PER_PAIR);
+  it("let a pair have 30 duels going, under the week's cap and the pointers each player keeps", () => {
+    expect(MAX_DUELS_PER_PAIR).toBe(30);
+    expect(MAX_RECENT_DUELS).toBeGreaterThan(MAX_DUELS_PER_PAIR);
     expect(MAX_RECENT_DUELS).toBeLessThan(MAX_MEMBER_DUELS);
-    // Every open friend duel and ghost race, with room left for a week of result tiles.
-    expect(MAX_MEMBER_DUELS).toBeGreaterThanOrEqual(MAX_FRIEND_DUELS_PER_PAIR + MAX_GHOST_RACES_PER_PAIR + 20);
+    // Every open duel of any kind, with room left for a week of result tiles.
+    expect(MAX_MEMBER_DUELS).toBeGreaterThanOrEqual(MAX_DUELS_PER_PAIR + 20);
+    // 0.8.1 and 0.8.2 phones refuse a lobby listing more than 64 duels (game/services/duels_client.gd MAX_DUELS).
+    expect(MAX_MEMBER_DUELS).toBeLessThanOrEqual(64);
   });
 
   it("keep the newest MAX_MEMBER_DUELS pointers, dropping the oldest", () => {

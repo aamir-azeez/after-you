@@ -292,7 +292,7 @@ func _show_list() -> void:
 	page.boards = _boards()
 	page.scope = _scope if _scope == "all" or page.boards.any(func(board: Array) -> bool: return board[0] == _scope) else "all"
 	page.sort = _sort
-	page.limit = flow.client().limit("friend")
+	page.limit = flow.client().limit()
 	page.energy_cost = flow.energy().shown()
 	page.known = _known
 	page.refresh_requested.connect(func() -> void: _read(page, 0, true))
@@ -335,7 +335,7 @@ func _known(row: Dictionary) -> Dictionary:
 	var public := _public()
 	var chapter := Runs.chapter_of(str(row.board))
 	return {"chapter_open": not chapter.is_empty() and ChapterUnlocks.open(chapter, host()._chapter_unlocks()),
-		"partner_on": public.get("partner_on") != false, "partner_rules": public.get("partner_rules"), "at_limit": int(public.get("running", 0)) >= flow.client().limit("friend")}
+		"partner_on": public.get("partner_on") != false, "partner_rules": public.get("partner_rules"), "at_limit": int(public.get("running", 0)) >= flow.client().limit()}
 
 ## What the lobby says of your partner for a party post or join (Spots.partner_reason).
 func _partner_known() -> Dictionary:
@@ -350,7 +350,7 @@ func partner_waiting() -> bool:
 func partner_text() -> String:
 	var partner := _partner()
 	if partner.is_empty(): return ""
-	return ListPage.reason_text(Spots.partner_reason(_partner_known()), str(partner.name), flow.client().limit("friend"))
+	return ListPage.reason_text(Spots.partner_reason(_partner_known()), str(partner.name), flow.client().limit())
 
 ## Whether a lobby hint should read the lobby while `page` covers it: the list or Start a duel,
 ## while the partner greys a party post or join there (the hint may say they accepted the rules).
@@ -499,7 +499,7 @@ func _failure_text(answer: Dictionary) -> String:
 		"public_paused": return PlayerCopy.PUBLIC_PAUSED
 		"public_list_full": return PlayerCopy.PUBLIC_LIST_FULL
 		"terms_acceptance_required": return PlayerCopy.PUBLIC_RULES_FIRST
-		"duel_limit_reached": return PlayerCopy.DUELS_LIMIT % flow.client().limit("friend")
+		"duel_limit_reached": return PlayerCopy.DUELS_LIMIT % flow.client().limit()
 		"party_required": return PlayerCopy.DUELS_NO_PARTY
 		"chapter_creation_disabled": return PlayerCopy.DUELS_CHAPTER_CLOSED
 		"duel_not_found", "duel_not_running": return PlayerCopy.PUBLIC_GONE

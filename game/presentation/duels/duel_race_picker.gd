@@ -10,8 +10,8 @@ extends VBoxContainer
 ## Greyed, untappable rows:
 ## - a run of this player's still waiting for its check stands at the place it
 ##   would get, with the clock and "Being checked": the server can't race it yet;
-## - every row while the pair has its limit of ghost races going, with the
-##   lobby's limit line above them (services/duels_client.gd ghost_races_full).
+## - every row while the pair has its limit of duels going, races included, with
+##   the lobby's limit line above them (services/duels_client.gd at_limit).
 ## An empty board says so with the board's own line and offers Our run when
 ## the chapter has one.
 ##
@@ -131,10 +131,10 @@ func _clear() -> void:
 	Kit.clear(_banner)
 	Kit.clear(_list)
 
-## The lobby's limit line, with "races" (PlayerCopy.DUELS_RACE_LIMIT), on a quiet bar.
+## The lobby's limit line (PlayerCopy.DUELS_LIMIT), on a quiet bar.
 func _limit_line(limit: int) -> Control:
 	var bar := Kit.panel("RacePickerLimit", Rows.HEADER_FILL, Rows.ROW_EDGE, 10, 8.0)
-	bar.add_child(Kit.wrapped(PlayerCopy.DUELS_RACE_LIMIT % limit, 17, UiTokens.CREAM))
+	bar.add_child(Kit.wrapped(PlayerCopy.DUELS_LIMIT % limit, 17, UiTokens.CREAM))
 	return bar
 
 ## Our run on an empty board that has one, so the sheet offers a race.
