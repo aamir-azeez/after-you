@@ -22,7 +22,9 @@ extends RefCounted
 ##               gate opens only when an earlier stage kept it
 ##   "controls", "levers", "pressure_pads": the spots a pip works, each with
 ##               position_cm, radius_cm, surface_id and its owner_slot (the pip
-##               the engine lets work it; none on open controls)
+##               the engine lets work it; none on open controls); "live":
+##               false on a spot that does nothing this stage (a Relay plate
+##               another stage names), left out otherwise
 ##   "goal" {id, position_cm, radius_cm, surface_id} and "goal_policy" {kind}
 ##   "starts":   {slot: [x, z] or {position_cm, surface_id, height_cm}}
 ## A family keeps its other fields (drops, obstacles, access_zones, sockets,
