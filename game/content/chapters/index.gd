@@ -143,6 +143,8 @@ const CHAPTERS := [
 	preload("res://content/chapters/long_way_home_v3.gd"),
 	preload("res://content/chapters/turn_of_the_tide_v3.gd"),
 	preload("res://content/chapters/conservatory_v2.gd"),
+	preload("res://content/chapters/the_falls.gd"),
+	preload("res://content/chapters/fog_marsh.gd"),
 ]
 
 ## Worked out once when this file loads, then only read (workers read it too).

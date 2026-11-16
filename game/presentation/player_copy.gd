@@ -4122,3 +4122,35 @@ const FORMAT_TOKENS := {
 	"photo_transfer_client.c62607e0ec74": ["%d"],
 	"photo_transfer_client.40a26ced3e51": ["%d"],
 }
+
+# The Falls (the-falls@1): placeholder copy from scripts/new_chapter.py.
+const THE_FALLS_TITLE := "The Falls"
+const THE_FALLS_SUMMARY := "TODO copy: The Falls summary"
+const THE_FALLS_COMPLETION := "TODO copy: The Falls completion"
+const THE_FALLS_STAGE_1_TITLE := "TODO copy: The Falls, stage 1"
+const THE_FALLS_STAGE_1_HINT_A := "TODO copy: The Falls, stage 1, first turn"
+const THE_FALLS_STAGE_1_HINT_B := "TODO copy: The Falls, stage 1, second turn"
+const THE_FALLS_STAGE_2_TITLE := "TODO copy: The Falls, stage 2"
+const THE_FALLS_STAGE_2_HINT_A := "TODO copy: The Falls, stage 2, first turn"
+const THE_FALLS_STAGE_2_HINT_B := "TODO copy: The Falls, stage 2, second turn"
+const THE_FALLS_KEEPSAKE_NAME := "TODO copy: The Falls keepsake name"
+const THE_FALLS_KEEPSAKE_ACTION := "TODO copy: The Falls keepsake action"
+const THE_FALLS_KEEPSAKE_TOGETHER := "TODO copy: The Falls keepsake together"
+const THE_FALLS_KEEPSAKE_HARD := "TODO copy: The Falls keepsake hard"
+const THE_FALLS_KEEPSAKE_TOP := "TODO copy: The Falls keepsake top"
+
+# Fog Marsh (fog-marsh@1): placeholder copy from scripts/new_chapter.py.
+const FOG_MARSH_TITLE := "Fog Marsh"
+const FOG_MARSH_SUMMARY := "TODO copy: Fog Marsh summary"
+const FOG_MARSH_COMPLETION := "TODO copy: Fog Marsh completion"
+const FOG_MARSH_STAGE_1_TITLE := "TODO copy: Fog Marsh, stage 1"
+const FOG_MARSH_STAGE_1_HINT_A := "TODO copy: Fog Marsh, stage 1, first turn"
+const FOG_MARSH_STAGE_1_HINT_B := "TODO copy: Fog Marsh, stage 1, second turn"
+const FOG_MARSH_STAGE_2_TITLE := "TODO copy: Fog Marsh, stage 2"
+const FOG_MARSH_STAGE_2_HINT_A := "TODO copy: Fog Marsh, stage 2, first turn"
+const FOG_MARSH_STAGE_2_HINT_B := "TODO copy: Fog Marsh, stage 2, second turn"
+const FOG_MARSH_KEEPSAKE_NAME := "TODO copy: Fog Marsh keepsake name"
+const FOG_MARSH_KEEPSAKE_ACTION := "TODO copy: Fog Marsh keepsake action"
+const FOG_MARSH_KEEPSAKE_TOGETHER := "TODO copy: Fog Marsh keepsake together"
+const FOG_MARSH_KEEPSAKE_HARD := "TODO copy: Fog Marsh keepsake hard"
+const FOG_MARSH_KEEPSAKE_TOP := "TODO copy: Fog Marsh keepsake top"

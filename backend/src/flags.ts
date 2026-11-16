@@ -92,6 +92,10 @@ export const FLAG_VARS = Object.freeze({
   turnOfTheTideV3Chapter: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED",
   /** Creating Conservatory@2 rooms (conservatory@2, open controls), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
   conservatoryV2Chapter: "CONSERVATORY_V2_CHAPTER_ENABLED",
+  /** Creating The Falls rooms (the-falls@1), read through the CHAPTERS table in v2/chapters.ts. */
+  theFallsChapter: "THE_FALLS_CHAPTER_ENABLED",
+  /** Creating Fog Marsh rooms (fog-marsh@1), read through the CHAPTERS table in v2/chapters.ts. */
+  fogMarshChapter: "FOG_MARSH_CHAPTER_ENABLED",
 } as const);
 
 /**
