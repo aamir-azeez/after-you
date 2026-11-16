@@ -75,6 +75,7 @@ export function gateHolds(value: Predicate, state: { controls: Record<string, un
   if (value.lever_id) return levers[value.lever_id] === true;
   if (value.signal_id) return light[value.signal_id] === true;
   if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
+  if (isItemTerm(value)) return state.items ? itemHolds(value, state.items) : false;
   return true;
 }
 

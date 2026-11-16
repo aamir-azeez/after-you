@@ -1,72 +1,4 @@
 {
-  "actions": [
-    {
-      "action": false,
-      "ticks": 6.0,
-      "x": -100.0,
-      "z": 0.0
-    },
-    {
-      "action": false,
-      "ticks": 1.0,
-      "x": -25.0,
-      "z": 0.0
-    },
-    {
-      "action": false,
-      "ticks": 7.0,
-      "x": 0.0,
-      "z": 100.0
-    },
-    {
-      "action": false,
-      "ticks": 1.0,
-      "x": 0.0,
-      "z": 50.0
-    },
-    {
-      "action": false,
-      "ticks": 1.0,
-      "x": 0.0,
-      "z": 0.0
-    },
-    {
-      "action": true,
-      "ticks": 1.0,
-      "x": 0.0,
-      "z": 0.0
-    },
-    {
-      "action": false,
-      "ticks": 7.0,
-      "x": 0.0,
-      "z": -100.0
-    },
-    {
-      "action": false,
-      "ticks": 1.0,
-      "x": 0.0,
-      "z": -50.0
-    },
-    {
-      "action": false,
-      "ticks": 27.0,
-      "x": 100.0,
-      "z": 0.0
-    },
-    {
-      "action": false,
-      "ticks": 1.0,
-      "x": 50.0,
-      "z": 0.0
-    },
-    {
-      "action": false,
-      "ticks": 10.0,
-      "x": 0.0,
-      "z": 0.0
-    }
-  ],
   "catch_assistance": true,
   "checkpoint_hash": "add10b736d72d16a7f96d4f7a8c2e7085863f2ff842f7d977a117828ca3fd86d",
   "completed": false,
@@ -79,22 +11,9 @@
     "objective_complete": false,
     "source_ready": true
   },
+  "packed": "AQsMnAAC5wAOAGQCADICAAADAAAOAJwCAM42ZAACMgAUAACGLycjtubkPDa/MZtN0wn5",
   "player_slot": "p0",
-  "recording_hash": "d3a4f17d6eb4ad64baab3b2662144006425a766f5c0e9dacb6ac151a8b3d1575",
-  "replay_checks": [
-    {
-      "state_hash": "862f2723b6e6e43c8a1f39577000857d6c54029f440440d4da2d0a8a1fc92e0a",
-      "tick": 30.0
-    },
-    {
-      "state_hash": "36bf319b4dd309f97dbe37d7525735bf9a87b67a705fedb5ea9c2eb550b254be",
-      "tick": 60.0
-    },
-    {
-      "state_hash": "59cdada91f05c5e5012f26768a137285482e88829081d609af810806fa52798b",
-      "tick": 63.0
-    }
-  ],
+  "recording_hash": "f12decdce5f680bd10ef0bb203ca128c432c4594daf378fc7cf4214f999437f9",
   "role": "a",
   "schema_version": 7.0,
   "simulation_version": 16.0,
