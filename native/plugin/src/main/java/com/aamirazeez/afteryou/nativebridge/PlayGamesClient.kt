@@ -31,6 +31,8 @@ internal interface GamesClient {
     fun submitScore(boardId: String, score: Long, done: (Boolean, Int?) -> Unit)
     /** Opens Play Games' own screen of one leaderboard, all time, public. Answers once it is started. */
     fun showBoard(boardId: String, done: (Boolean, Int?) -> Unit)
+    /** Unlocks one achievement; Play Games ignores one already unlocked. */
+    fun unlockAchievement(achievementId: String, done: (Boolean, Int?) -> Unit)
 }
 
 /**
@@ -152,5 +154,13 @@ internal class GooglePlayGamesClient(private val activity: Activity, private val
                 if (intent == null) { done(false, status(result.exception)); return@addOnCompleteListener }
                 try { activity.startActivityForResult(intent, PlayGamesPolicy.SHOW_BOARD_REQUEST); done(true, null) } catch (_: Exception) { done(false, null) }
             }
+    }
+
+    override fun unlockAchievement(achievementId: String, done: (Boolean, Int?) -> Unit) {
+        if (!ready()) { done(false, 10); return }
+        // Immediate, so a failure is known now and the game tries again at its next moment.
+        PlayGames.getAchievementsClient(activity).unlockImmediate(achievementId).addOnCompleteListener(worker) { result ->
+            done(result.isSuccessful, status(result.exception))
+        }
     }
 }

@@ -54,4 +54,5 @@ public:
 	void games_snapshot_discard(const godot::String &p_handle, const godot::String &p_request_id);
 	void games_submit_score(const godot::String &p_board, int64_t p_score, const godot::String &p_request_id);
 	void games_show_board(const godot::String &p_board, const godot::String &p_request_id);
+	void games_unlock_achievement(const godot::String &p_achievement, const godot::String &p_request_id);
 };

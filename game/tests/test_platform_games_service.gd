@@ -274,7 +274,8 @@ func _run() -> void:
 	root.add_child(inert)
 	_check(inert.sign_in == Service.SignIn.UNAVAILABLE and inert.state == null and not inert.offered(), "Without a platform service the autoload stays inert")
 	_check(not FileAccess.file_exists("user://platform-games-v1.json"), "The inert service writes no file")
-	_check((await inert.unlock_achievement("any")).code == "not_enabled" and (await GamesProvider.new().submit_score("any", 1)).code == "not_enabled" and (await GamesProvider.new().show_board("any")).code == "not_enabled", "Achievements are only an interface, and the desktop provider has no boards")
+	await inert.unlock_achievements()
+	_check((await GamesProvider.new().unlock_achievement("any")).code == "not_enabled" and (await GamesProvider.new().submit_score("any", 1)).code == "not_enabled" and (await GamesProvider.new().show_board("any")).code == "not_enabled", "The desktop provider has no achievements and no boards")
 	inert.queue_free()
 
 	# First link on a phone with its own identity.

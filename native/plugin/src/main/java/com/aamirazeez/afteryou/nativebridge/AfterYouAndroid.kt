@@ -623,6 +623,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     @UsedByGodot fun games_snapshot_discard(handle: String, requestId: String) = gamesCall(requestId, "snapshot_discard") { it.snapshotDiscard(handle, requestId) }
     @UsedByGodot fun games_submit_score(boardId: String, score: Long, requestId: String) = gamesCall(requestId, "submit_score") { it.submitScore(boardId, score, requestId) }
     @UsedByGodot fun games_show_board(boardId: String, requestId: String) = gamesCall(requestId, "show_board") { it.showBoard(boardId, requestId) }
+    @UsedByGodot fun games_unlock_achievement(achievementId: String, requestId: String) = gamesCall(requestId, "unlock_achievement") { it.unlockAchievement(achievementId, requestId) }
 
     override fun onMainRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         notificationBridge?.permissionResult(requestCode, permissions)

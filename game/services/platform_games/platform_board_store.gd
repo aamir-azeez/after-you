@@ -6,23 +6,30 @@ extends RefCounted
 ## - posted: the best time (hundredths) posted on each board, per platform account
 ##   ("<kind>:<player_key>", the one-way key the provider gives), so a time goes up once per new
 ##   best and a new account, or a new phone, posts its bests again.
-## Losing the file costs at most one repeated post per board (the platforms keep each player's
-## best anyway) and verdicts worked out again on the next board reads. Written whole with
-## services/atomic_file.gd, only when something changed.
+## - unlocked: the platform achievement ids (platform_achievement_ids.gd) this platform account
+##   confirmed, so each goes once per account; a new account, or a new phone, unlocks them again.
+## Losing the file costs at most one repeated post per board and one repeated unlock per
+## achievement (the platforms keep each player's best and ignore a repeated unlock), and verdicts
+## worked out again on the next board reads. Written whole with services/atomic_file.gd, only
+## when something changed.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Policy = preload("res://services/platform_games/platform_boards.gd")
+## Platform ids as the native provider accepts them.
+const Native = preload("res://services/platform_games/native_games_provider.gd")
 
 const PATH := "user://platform-boards-v1.json"
 const MAX_JUDGED := 512
 const MAX_ACCOUNTS := 8
 const MAX_BOARDS := 64
+const MAX_ACHIEVEMENTS := 64
 const ENTRY := "^[a-f0-9]{32}$"
 const ACCOUNT := "^(play_games|game_center):[a-f0-9]{64}$"
 
 var path := PATH
 var judged: Dictionary = {}
 var posted: Dictionary = {}
+var unlocked: Dictionary = {}
 
 func _init(file_path: String = PATH) -> void:
 	path = file_path
@@ -67,13 +74,27 @@ func remember_posted(account_key: String, board: String, hundredths: int) -> boo
 	while posted.size() > MAX_ACCOUNTS: posted.erase(posted.keys()[0])
 	return _save()
 
+## The platform achievement ids this account confirmed.
+func unlocked_for(account_key: String) -> Array:
+	return (unlocked.get(account_key, []) as Array).duplicate()
+
+func remember_unlocked(account_key: String, achievement: String) -> bool:
+	var mine: Array = unlocked.get(account_key, [])
+	if achievement in mine: return true
+	mine.append(achievement)
+	unlocked.erase(account_key)
+	unlocked[account_key] = mine.slice(maxi(0, mine.size() - MAX_ACHIEVEMENTS))
+	while unlocked.size() > MAX_ACCOUNTS: unlocked.erase(unlocked.keys()[0])
+	return _save()
+
 func _save() -> bool:
-	return AtomicFile.write_text(path, JSON.stringify({"schema_version": 1, "judged": judged, "posted": posted}))
+	return AtomicFile.write_text(path, JSON.stringify({"schema_version": 1, "judged": judged, "posted": posted, "unlocked": unlocked}))
 
 ## Reads what passes the shapes above; anything else is left out, never trusted.
 func _load() -> void:
 	judged = {}
 	posted = {}
+	unlocked = {}
 	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:
 		return value is Dictionary and Typed.equal(value.get("schema_version"), 1) and value.get("judged") is Dictionary and value.get("posted") is Dictionary)
 	if not parsed is Dictionary: return
@@ -90,3 +111,15 @@ func _load() -> void:
 			if board is String and board.length() <= 64 and Typed.whole_number(boards[board]) and int(boards[board]) > 0: kept[board] = int(boards[board])
 		posted[key] = kept
 	while posted.size() > MAX_ACCOUNTS: posted.erase(posted.keys()[0])
+	# Files from before achievements have no "unlocked".
+	var held: Variant = parsed.get("unlocked")
+	if not held is Dictionary: return
+	var platform_id := RegEx.create_from_string(Native.BOARD_ID)
+	for key: Variant in held:
+		var ids: Variant = held[key]
+		if not key is String or account_shape.search(key) == null or not ids is Array or ids.size() > MAX_ACHIEVEMENTS: continue
+		var kept: Array = []
+		for id: Variant in ids:
+			if id is String and platform_id.search(id) != null and not id in kept: kept.append(id)
+		unlocked[key] = kept
+	while unlocked.size() > MAX_ACCOUNTS: unlocked.erase(unlocked.keys()[0])

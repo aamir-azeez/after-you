@@ -345,6 +345,13 @@ static func _set_sunshine(scope: Dictionary, left: int) -> bool:
 
 # --- Unlocks ---------------------------------------------------------------
 
+## Every achievement id this phone knows was paid, oldest first, those learned on the
+## first read too (services/platform_games/platform_games.gd unlocks them on the platform).
+func paid_ids(server: String, owner: String) -> Array[String]:
+	var ids: Array[String] = []
+	ids.assign(_scope(server, owner).get("paid", []))
+	return ids
+
 ## Achievements paid and not shown yet, oldest first: [{id, fruits}].
 func unlocks(server: String, owner: String) -> Array:
 	var scope := _scope(server, owner)

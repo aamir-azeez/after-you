@@ -37,6 +37,8 @@ typedef void (^AYGamesAccountChanged)(NSString *payloadJson);
 - (void)submitScore:(NSString *)board score:(int64_t)score requestId:(NSString *)requestId;
 /// Game Center's own screen of one leaderboard, all time, everyone: {"shown": true} once it is on screen.
 - (void)showBoard:(NSString *)board requestId:(NSString *)requestId;
+/// One achievement at 100 percent: {"unlocked": true}. Game Center ignores one already earned.
+- (void)unlockAchievement:(NSString *)achievement requestId:(NSString *)requestId;
 
 @end
 
