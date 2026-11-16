@@ -2336,7 +2336,7 @@ const SHARED_REPLAY_VIEW_FBCF70672D83 := "Your account changed. Before opening t
 # Shared replay — show error
 const SHARED_REPLAY_VIEW_B81950FA86BB := "Your saved replay is kept"
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
-const CHAPTER_REGISTRY_49A82D1B1B0C := "The little cottage on the loft has been empty all winter, and today we're moving in. Right after breakfast, my friend says. We're on our second pot of tea."
+const CHAPTER_REGISTRY_49A82D1B1B0C := "The little cottage up top has been empty all winter, and today we're moving in. Right after breakfast, my friend says. We're on our second pot of tea."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
 const CHAPTER_REGISTRY_F78F85CE3DE5 := "Three islands in a row and one bench, and my friend got to it first. The cottage at the far end looks lovely from here. I suppose I'll go and check."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
@@ -3149,7 +3149,7 @@ const OBJECTIVE_PANEL_E08FF54FB4F9 := "%d / %d"
 const LIGHTHOUSE_PREVIEW_DDC41A9DE09F := "Ready to finish"
 
 const COOPERATIVE_HIGH_SUMMARY := "I like it up on the deck in the breeze. My friend says the grass down below is warmer, and we've been shouting about it across the meadow all afternoon."
-const COOPERATIVE_ROLLING_SUMMARY := "It's a short walk home across the meadow, except I brought the ball. It's been in the hedge twice already, and my friend says that's my fault both times."
+const COOPERATIVE_ROLLING_SUMMARY := "It's a short walk home across the meadow, and my friend has stopped to say hello to every bee. We set off after lunch."
 const COOPERATIVE_CHECKPOINT := "Your friend can carry on from here."
 const COOPERATIVE_COMPLETION := "Your progress is saved."
 const COOPERATIVE_HOST_ACCESS := "Full Journey is only required for the host.\nA friend may join by invitation."
