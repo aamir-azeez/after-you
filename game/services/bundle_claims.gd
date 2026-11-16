@@ -136,6 +136,14 @@ func claim() -> Dictionary:
 	if not pending(): mark_pending()
 	return await _send(context)
 
+## One claim with no waiting mark: a friend code just came back to this phone, so a purchase
+## RevenueCat moved to it is paid now, and nothing keeps asking when there is none.
+func claim_once() -> Dictionary:
+	var context := scope()
+	if context.is_empty(): return {"ok": false, "code": "pollen_bundles_disabled", "credited": [], "refunded": []}
+	if _sending: return await answered
+	return await _send(context)
+
 ## Sends a waiting claim, if any. Safe to call at any time.
 func flush() -> void:
 	if _sending or not pending(): return

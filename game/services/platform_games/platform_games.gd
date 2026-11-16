@@ -11,9 +11,11 @@ extends Node
 ## 2. A quiet sign-in check (the platform signs in by itself).
 ## 3. It links the account to this phone's friend identity. On a phone that has no identity yet
 ##    (a reinstall, or a second phone), it checks whether the account has a friend code and asks
-##    the player with one tap before bringing it back ("Not now" is not asked again this session;
-##    Settings keeps a way to do it later). A phone that has its own identity and meets an account
-##    linked elsewhere asks which to keep (platform_games_flow.gd).
+##    the player with one tap before bringing it back ("Not now" is not asked again at Home this
+##    session; Settings keeps a way to do it later). Every online tap on such a phone asks first
+##    (before_new_identity), so no new friend code is made while the account's own could come back.
+##    A phone that has its own identity and meets an account linked elsewhere asks which to keep
+##    (platform_games_flow.gd).
 ## 4. Cloud save: progress is joined with a Saved Games slot after meaningful moments. It needs a
 ##    signed-in account and the server's offer, not a friend link, so solo players get it too.
 ## 5. The gamer name, for the name prompt only (name_offered, ensure_started, player_name): offered whenever the
@@ -65,6 +67,10 @@ const LINK_ERROR := "error"
 
 ## The first step waits this long after launch, so it never touches the first frames.
 const START_DELAY_MS := 4000
+## How long an online tap on a phone with no friend code waits for the account check.
+const NEW_IDENTITY_WAIT_MS := 12000
+## Check failures that only mean "not reachable now": no new friend code is made on them.
+const WAIT_CODES := ["offline", "timeout", "rate_limited", "busy"]
 ## How long the service waits for Main to finish loading an identity before giving up for now.
 const ACCOUNT_WAIT_MS := 60000
 ## A player who asked for the gamer name waits this long for a quiet check already under way
@@ -99,8 +105,11 @@ var _running := false
 var _generation := 0
 ## A pipeline was cut short by Main leaving; the next attach starts again.
 var _interrupted := false
-## The player said "Not now" to bringing a friend code back: not asked again this session.
+## The player said "Not now" to bringing a friend code back: Home does not ask again this session
+## (an online tap still does).
 var offer_declined := false
+## The start pipeline ran at least once (the launch timer then has nothing left to do).
+var _launched := false
 ## A capability read outside the start pipeline is in flight (one at a time).
 var _offer_reading := false
 ## Platform board posting: a pass is waiting for its delay, one is running, another was asked meanwhile.
@@ -152,16 +161,26 @@ func configure(test_provider: RefCounted, state_path: String) -> void:
 
 func _start_later() -> void:
 	await get_tree().create_timer(START_DELAY_MS / 1000.0).timeout
-	if provider == null: provider = _build_provider()
-	if not provider.available(): return
-	_prepare()
-	changed.emit()
+	# An online tap may have started it already (before_new_identity).
+	if _launched or not _ensure_provider(): return
 	await start()
+
+## The platform provider, built now if the launch timer has not built it yet. False on a phone or
+## build without one.
+func _ensure_provider() -> bool:
+	if provider == null:
+		if not _native_present(): return false
+		provider = _build_provider()
+		if provider.available():
+			_prepare()
+			changed.emit()
+	return provider.available() and state != null
 
 ## Offered? then quiet sign-in, link or restore, and a cloud pull. Safe to call again.
 func start() -> void:
 	if _running or provider == null or not provider.available() or state == null: return
 	_running = true
+	_launched = true
 	_interrupted = false
 	var generation := _generation
 	set_process(true)
@@ -249,9 +268,45 @@ func linked() -> bool:
 func waiting_for_choice() -> bool:
 	return link_state in [LINK_CONFLICT, LINK_OTHER]
 
-## A friend code is waiting to be brought back, and the player has not said "Not now" this session.
+## A friend code is waiting to be brought back, and the player has not said "Not now" this session
+## (Home's own prompt).
 func offer_pending() -> bool:
-	return link_state == LINK_OFFER and not offer_declined and not busy and _account != null and _account.identity_state() == "missing"
+	return offer_waiting() and not offer_declined
+
+## The account's friend code is waiting to be brought back to this phone, which has none, whatever
+## the player said at Home: online taps ask again, and Settings offers no new friend code meanwhile.
+func offer_waiting() -> bool:
+	return link_state == LINK_OFFER and not busy and _account != null and _account.identity_state() == "missing"
+
+## An online tap on a phone with no friend code asks this before one is made, so a friend code the
+## account already has is offered first and never silently replaced by a new one. It starts the
+## check at once when the launch timer has not run it yet, or runs it again when it could not reach
+## the server, and waits for it (at most NEW_IDENTITY_WAIT_MS).
+## "create": nothing can come back (no platform here, the server does not offer it, signed out, no
+## friend code on the account); "offer": the account has one, ask the player; "restored": a yes
+## given earlier finished meanwhile; "wait": the check could not finish, so nothing is made now.
+func before_new_identity() -> String:
+	if not _ensure_provider() or _account == null: return "create"
+	if _account.identity_state() != "missing": return "restored" if _account.identity_state() == "ready" else "wait"
+	if not _running and not busy and _check_unsettled(): start()
+	var deadline := Time.get_ticks_msec() + NEW_IDENTITY_WAIT_MS
+	while is_inside_tree() and (_running or busy) and Time.get_ticks_msec() < deadline:
+		await get_tree().create_timer(0.1).timeout
+	if _account == null: return "wait"
+	if _account.identity_state() == "ready": return "restored"
+	if _running or busy or _account.identity_state() != "missing": return "wait"
+	if link_state == LINK_OFFER: return "offer"
+	# The probe could not tell whether the server offers it.
+	if state.capability().is_empty(): return "wait"
+	if not offered(): return "create"
+	if sign_in == SignIn.SIGNED_OUT and sign_in_code == "offline": return "wait"
+	if link_state == LINK_ERROR and link_code in WAIT_CODES: return "wait"
+	return "create"
+
+## The account check never ran, or ended without an answer worth keeping.
+func _check_unsettled() -> bool:
+	if sign_in == SignIn.UNAVAILABLE or state.capability().is_empty() or link_state == LINK_ERROR: return true
+	return sign_in == SignIn.SIGNED_OUT and sign_in_code == "offline"
 
 ## The player's gamer name, read only now (the player picked "Use my Play Games name" or
 ## "Use my Game Center name"): {"ok", "name"} or a code. The player asked for it, so it signs in
@@ -540,7 +595,8 @@ func retry() -> void:
 	if link_state in [LINK_ERROR, LINK_NONE]: link_state = LINK_NONE
 	await start()
 
-## "Not now": this phone stays a fresh install, and nothing asks again until the next launch.
+## "Not now": this phone stays a fresh install, and Home does not ask again until the next launch
+## (the next online tap asks again, before_new_identity).
 func decline_offer() -> void:
 	if link_state != LINK_OFFER: return
 	offer_declined = true

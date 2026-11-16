@@ -1408,6 +1408,12 @@ const PLATFORM_GAMES_USE_HERE := "Use this account here"
 const PLATFORM_GAMES_UNLINK_NOTE := "Your friend code and progress come back when you sign in on a new phone."
 const PLATFORM_GAMES_UNLINK := "Unlink"
 const PLATFORM_GAMES_TRY_AGAIN := "Try again"
+## An online tap after "Not now" on a phone whose account has a friend code (%s: Play Games or Game Center).
+const PLATFORM_GAMES_BRING_BACK_FIRST := "Bring back your friend code from %s to play online."
+const PLATFORM_GAMES_BACK := "Back"
+const PLATFORM_GAMES_KEEP_THIS_TITLE := "Keep this phone's friend code?"
+## %s: Play Games or Game Center.
+const PLATFORM_GAMES_KEEP_THIS_WARNING := "%s then opens this one. The other friend code, with its Pollen, Fruits and friends, comes back only with its own recovery code."
 # Optional turn photo card (the polaroid). The camera, the photo and sending it to the turn.
 const PHOTO_ASK_TITLE := "Add a photo to this turn?"
 const PHOTO_ASK_LINE := "Your friend sees it above your " + CREATURE + " when they watch the replay."
@@ -1913,6 +1919,10 @@ const RECOVERY_DISCARD_FAILED := "This device could not remove the saved recover
 const RECOVERY_DISCARD_UNUSABLE_NOTE := "The recovery request saved on this device can't be finished."
 # Toast: the phone's screen lock was cancelled, so the recovery code is not shown or copied.
 const RECOVERY_LOCKED := "Your recovery details stay hidden until you use your screen lock."
+## Recover identity on a phone that already has a friend code: its recovery details first.
+const RECOVERY_KEEP_TITLE := "Keep this phone's recovery code"
+const RECOVERY_KEEP_BODY := "Recovering replaces the friend code on this phone. Keep its recovery details first, or you can't come back to it."
+const RECOVERY_KEEP_CONFIRM := "I kept it"
 # Recovery storage failure — heading / label
 const MAIN_4156CE133C4E := "Leave this recovery window open."
 # Recovery storage failure — body text

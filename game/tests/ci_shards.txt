@@ -147,6 +147,7 @@ house 1
 house_world 3
 hub_exits 3
 hud_efficiency 2
+identity_restore_first 1
 inset_button 3
 intro_comfort 2
 invite_links 1

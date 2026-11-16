@@ -6,8 +6,12 @@ extends Node
 ## Host contract (read at call time): api, secrets, saves, home_keepsakes, config, mode,
 ## identity_read_state, IdentityReadState, identity_data, identity_loading, identity_busy,
 ## identity_restart_required, pending_recovery, deleted_identity_owner, _await_secret,
-## _apply_settings, _toast, _tester_checks_enabled, tester_access, store_flow, settings_flow,
-## account_flow (copy_recovery_details, the one guarded copy; _finish_identity_change).
+## _apply_settings, _toast, _report, _follow_identity, _tester_checks_enabled, tester_access,
+## store_flow (configure_purchases, sync_after_restore), settings_flow, account_flow
+## (keep_recovery_details and recovery_kept, the one guarded copy; _finish_identity_change).
+##
+## A phone with no friend code asks before_new_identity on every online tap (Main._ensure_identity):
+## the account's own friend code is offered first, in the same pop-up Home shows.
 ##
 ## Restoring an identity uses the recovery code's safety: the next device token and recovery
 ## code are made here, kept in secure storage before the request, and the server only rotates
@@ -31,12 +35,14 @@ var host: Node
 var service: Node
 var _account: Account
 var _detail: WeakRef = weakref(null)
-## The identity whose recovery details this flow saw copied: "Use the linked one" waits for it,
-## so the friend code this phone leaves behind is never lost.
-var _copied_player := ""
-var _copy_busy := false
 var _offer_modal: Control
 var _offer_retry := false
+## "Use it" was tapped and the friend code is on its way here.
+var _restoring := false
+
+## The pop-up closed: true for "Use it".
+signal _offer_answered(accepted: bool)
+signal _restore_finished
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -91,10 +97,16 @@ func offered() -> bool:
 	var platform := games()
 	return platform != null and platform.offered()
 
+## This account's friend code waits to come back to this phone (no new one is offered meanwhile).
+func offer_waiting() -> bool:
+	var platform := games()
+	return platform != null and platform.offer_waiting()
+
 # ---- "Use your friend code from your other phone?" ----------------------------------------
 
-## One tap before a friend code comes to a phone that has none. Shown only at Home with no other
-## pop-up open (it waits for one), once a session: closing it in any way counts as "Not now".
+## One tap before a friend code comes to a phone that has none. Shown by itself only at Home with no
+## other pop-up open (it waits for one), once a session: closing it in any way counts as "Not now".
+## An online tap asks again (before_new_identity) in the same pop-up.
 func _maybe_offer() -> void:
 	var platform := games()
 	if platform == null: return
@@ -110,14 +122,50 @@ func _maybe_offer() -> void:
 			_offer_retry = false
 			if is_instance_valid(host): _maybe_offer()
 		return
-	_offer_modal = InGameModal.open(host.ui, "PlatformRestoreModal", PlayerCopy.PLATFORM_GAMES_OFFER_TITLE)
+	_open_offer(platform)
+
+## The one restore pop-up, for Home and for an online tap alike.
+func _open_offer(platform: Node) -> void:
+	if is_instance_valid(_offer_modal): return
+	var modal: Control = InGameModal.open(host.ui, "PlatformRestoreModal", PlayerCopy.PLATFORM_GAMES_OFFER_TITLE)
+	_offer_modal = modal
 	var accepted := [false]
-	_offer_modal.add_actions(PlayerCopy.PLATFORM_GAMES_USE_IT, func() -> void:
+	modal.add_actions(PlayerCopy.PLATFORM_GAMES_USE_IT, func() -> void:
 		accepted[0] = true
-		_offer_modal.close()
-		platform.accept_offer(), PlayerCopy.PLATFORM_GAMES_NOT_NOW)
-	_offer_modal.closed.connect(func() -> void:
-		if not accepted[0]: platform.decline_offer())
+		# Started before the close, so a tap waiting on the answer finds it under way.
+		_accept(platform)
+		modal.close(), PlayerCopy.PLATFORM_GAMES_NOT_NOW)
+	modal.closed.connect(func() -> void:
+		if not accepted[0]: platform.decline_offer()
+		_offer_answered.emit(accepted[0]))
+
+func _accept(platform: Node) -> void:
+	if _restoring: return
+	_restoring = true
+	await platform.accept_offer()
+	_restoring = false
+	_restore_finished.emit()
+
+## Main._ensure_identity asks this right before it would make a new friend code. "create": go on and
+## make one; "restored": the account's own friend code is on this phone now; "stop": make nothing
+## (the player said "Not now", or the check could not finish), and `report` has said why.
+func before_new_identity(report: Callable = Callable()) -> String:
+	var platform := games()
+	if platform == null: return "create"
+	var answer: String = await platform.before_new_identity()
+	if answer == "offer":
+		_open_offer(platform)
+		var accepted: bool = await _offer_answered
+		while _restoring: await _restore_finished
+		if identity_state() == "ready": return "restored"
+		if not accepted:
+			host._report(report, PlayerCopy.PLATFORM_GAMES_BRING_BACK_FIRST % platform.display_name())
+			return "stop"
+		# The restore failed (its own state says why in Settings): nothing is made now.
+		host._report(report, PlayerCopy.PLATFORM_GAMES_TRY_LATER)
+		return "stop"
+	if answer == "wait": host._report(report, PlayerCopy.PLATFORM_GAMES_TRY_LATER)
+	return answer if answer in ["create", "restored"] else "stop"
 
 func _modal_open() -> bool:
 	for child: Node in host.ui.get_children():
@@ -156,7 +204,7 @@ func _fill(detail: VBoxContainer) -> void:
 	elif platform.link_state == PlatformGames.LINK_CONFLICT:
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_CHOOSE_TITLE, true))
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_CHOOSE_BODY))
-		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_KEEP_THIS, platform.keep_this_phone))
+		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_KEEP_THIS, _confirm_keep_this_phone))
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_USE_LINKED_NOTE))
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_COPY_RECOVERY, _copy_recovery))
 		var use_linked := SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_LINKED, platform.use_linked_progress)
@@ -164,7 +212,7 @@ func _fill(detail: VBoxContainer) -> void:
 		items.append(use_linked)
 	elif platform.link_state == PlatformGames.LINK_OTHER:
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_OTHER_NOTE))
-		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_HERE, platform.keep_this_phone))
+		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_HERE, _confirm_use_here))
 	elif platform.link_state == PlatformGames.LINK_OFFER:
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_OFFER_TITLE, true))
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_IT, platform.accept_offer))
@@ -185,20 +233,35 @@ static func _set_items(detail: VBoxContainer, items: Array) -> void:
 	for item: Control in items: detail.add_child(item)
 	detail.visible = not items.is_empty()
 
+## "Keep this phone's" leaves the other friend code with no way back through this account: said
+## plainly, confirmed once.
+func _confirm_keep_this_phone() -> void:
+	var platform := games()
+	if platform == null or platform.busy or platform.link_state != PlatformGames.LINK_CONFLICT: return
+	var modal: Control = InGameModal.open(host.ui, "PlatformKeepThisModal", PlayerCopy.PLATFORM_GAMES_KEEP_THIS_TITLE)
+	modal.label(PlayerCopy.PLATFORM_GAMES_KEEP_THIS_WARNING % platform.display_name())
+	modal.add_actions(PlayerCopy.PLATFORM_GAMES_KEEP_THIS, func() -> void:
+		modal.close()
+		platform.keep_this_phone(), PlayerCopy.PLATFORM_GAMES_BACK, true)
+
+## "Use this account here" keeps every friend code (this one only changes accounts): one confirm.
+func _confirm_use_here() -> void:
+	var platform := games()
+	if platform == null or platform.busy or platform.link_state != PlatformGames.LINK_OTHER: return
+	var modal: Control = InGameModal.open(host.ui, "PlatformUseHereModal", PlayerCopy.PLATFORM_GAMES_USE_HERE)
+	modal.label(PlayerCopy.PLATFORM_GAMES_OTHER_NOTE)
+	modal.add_actions(PlayerCopy.PLATFORM_GAMES_USE_HERE, func() -> void:
+		modal.close()
+		platform.keep_this_phone(), PlayerCopy.PLATFORM_GAMES_BACK)
+
+## Whether this phone's recovery details were kept (account_flow holds the one record).
 func recovery_copied() -> bool:
-	return host != null and not _copied_player.is_empty() and _copied_player == str(host.identity_data.get("player_id", ""))
+	return host != null and host.account_flow.recovery_kept()
 
 ## Copies this phone's recovery details through account_flow's one copy (the screen lock
 ## first, and its checks and notes); only a confirmed copy unlocks "Use the linked one".
 func _copy_recovery() -> void:
-	if _copy_busy: return
-	var player := str(host.identity_data.get("player_id", ""))
-	_copy_busy = true
-	var copied: bool = await host.account_flow.copy_recovery_details(player, str(host.identity_data.get("recovery_code", "")))
-	_copy_busy = false
-	if copied:
-		_copied_player = player
-		_on_changed()
+	if await host.account_flow.keep_recovery_details(): _on_changed()
 
 # ---- Main's side of the service ------------------------------------------------------------
 
@@ -248,6 +311,8 @@ func restore_identity(provider: String, get_credential: Callable, restart: bool)
 	await host._await_secret(host.secrets.remove_secret(PENDING_SECRET))
 	host.identity_data = identity
 	host.identity_busy = false
+	# Its purchases are read again once the store is set up for it, here or after the restart.
+	host.store_flow.sync_after_restore(identity.player_id)
 	if restart:
 		host.account_flow._finish_identity_change()
 	else:
@@ -256,6 +321,8 @@ func restore_identity(provider: String, get_credential: Callable, restart: bool)
 		host.api.device_token = identity.device_token
 		host.store_flow.configure_purchases()
 		host.settings_flow.refresh()
+		# The wallet, Fruits and wardrobe of the friend code that came back are read now.
+		host._follow_identity()
 	return {"ok": true, "player_id": identity.player_id}
 
 ## The saved proposal for this provider, or a new one saved before use. {} when storage fails.

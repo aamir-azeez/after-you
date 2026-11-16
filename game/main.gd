@@ -1901,6 +1901,19 @@ func _ensure_identity(report: Callable = Callable()) -> bool:
 	if identity_read_state!=IdentityReadState.MISSING:
 		_report(report,PlayerCopy.MAIN_F0A53024D858)
 		return false
+	# A friend code this Play Games or Game Center account already has comes back first; no new one
+	# is made while it could (presentation/platform_games_flow.gd before_new_identity).
+	var before: String = await platform_games_flow.before_new_identity(report)
+	if before == "stop": return false
+	# Another tap made or brought one meanwhile: it is the one, never a second.
+	var wait_until := Time.get_ticks_msec()+10000
+	while identity_busy and Time.get_ticks_msec()<wait_until:
+		await get_tree().process_frame
+	if not api.player_id.is_empty() and not api.device_token.is_empty():
+		return true
+	if before == "restored" or identity_busy or identity_restart_required or identity_read_state!=IdentityReadState.MISSING:
+		_report(report,PlayerCopy.MAIN_21155817127A)
+		return false
 	identity_busy=true
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/identity")
 	if not response.ok:

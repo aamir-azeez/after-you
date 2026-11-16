@@ -158,6 +158,37 @@ func _prompt_flow() -> void:
 		host.queue_free()
 		await process_frame
 
+## "Keep this phone's" says plainly what happens to the other friend code and changes nothing until confirmed.
+func _keep_this_confirm() -> void:
+	var host := FakeHost.new()
+	root.add_child(host)
+	var flow: Node = Flow.new(host)
+	host.add_child(flow)
+	var api := FakeApi.new()
+	root.add_child(api)
+	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)], "/v1/platform/link": [_ok({"schema_version": 1, "provider": "play_games", "status": "conflict", "changed": false}), _ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": true})]}
+	var service := _service(FakeProvider.new(), api, _account(api), "keep-confirm")
+	flow.service = service
+	await service.start()
+	flow._confirm_keep_this_phone()
+	var modal: Node = host.ui.get_node_or_null("PlatformKeepThisModal")
+	_check(modal != null and api.calls.size() == 2 and service.link_state == Service.LINK_CONFLICT, "Keep this phone's asks first and changes nothing yet")
+	if modal != null:
+		_check(modal.find_child("ModalCancel", true, false).text == PlayerCopy.PLATFORM_GAMES_BACK, "with a way back")
+		modal.find_child("ModalCancel", true, false).pressed.emit()
+		for _frame in range(5): await process_frame
+		_check(service.link_state == Service.LINK_CONFLICT and api.calls.size() == 2, "Back keeps both friend codes as they are")
+		flow._confirm_keep_this_phone()
+		modal = host.ui.get_node_or_null("PlatformKeepThisModal")
+		_check(modal != null, "It asks again on the next tap")
+		if modal != null: modal.find_child("ModalConfirm", true, false).pressed.emit()
+		for _frame in range(20): await process_frame
+		_check(service.linked() and api.calls[-1].body.get("replace") == true, "Confirming keeps this phone's")
+	service.queue_free()
+	api.queue_free()
+	host.queue_free()
+	await process_frame
+
 func _run() -> void:
 	_root_dir = "user://platform-games-service-test-%d" % Time.get_ticks_usec()
 	DirAccess.make_dir_recursive_absolute(_root_dir)
@@ -416,6 +447,7 @@ func _run() -> void:
 	changing.queue_free()
 
 	await _prompt_flow()
+	await _keep_this_confirm()
 
 	await process_frame
 	api.queue_free()
