@@ -19,6 +19,8 @@ const TouchInput = preload("res://presentation/touch_input.gd")
 const PlatformGames = preload("res://services/platform_games/platform_games.gd")
 const LinkClient = preload("res://services/platform_games/platform_link_client.gd")
 const Sources = preload("res://services/platform_games/cloud_save_sources.gd")
+const ReplaySources = preload("res://services/platform_games/cloud_replay_sources.gd")
+const BackupLimit = preload("res://services/backup_limit.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Typed = preload("res://services/typed_values.gd")
@@ -37,6 +39,7 @@ var _copied_player := ""
 var _copy_busy := false
 var _offer_modal: Control
 var _offer_retry := false
+var _limit_modal: Control
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -56,7 +59,9 @@ func attach() -> void:
 	if not platform.notice.is_connected(_on_notice): platform.notice.connect(_on_notice)
 	if host.settings_flow.has_signal("closed") and not host.settings_flow.closed.is_connected(note_progress): host.settings_flow.closed.connect(note_progress)
 	platform.note_progress()
+	BackupLimit.note_phone()
 	_maybe_offer()
+	_maybe_backup_limit()
 
 func detach() -> void:
 	var platform := games()
@@ -81,6 +86,7 @@ func _on_changed() -> void:
 	if host == null or not is_instance_valid(host): return
 	host.settings_flow.refresh()
 	_maybe_offer()
+	_maybe_backup_limit()
 	var detail: Variant = _detail.get_ref()
 	if detail is VBoxContainer and is_instance_valid(detail) and detail.visible:
 		TouchInput.redraw_when_released(detail, func() -> bool: return is_instance_valid(detail) and detail.visible, func() -> void: _fill(detail))
@@ -118,6 +124,19 @@ func _maybe_offer() -> void:
 		platform.accept_offer(), PlayerCopy.PLATFORM_GAMES_NOT_NOW)
 	_offer_modal.closed.connect(func() -> void:
 		if not accepted[0]: platform.decline_offer())
+
+# ---- "Backup is full" ------------------------------------------------------------------------
+
+## Some newer replays no longer fit a backup: say so once at Home, with no other pop-up open (it
+## waits for the next Home moment). Open replays and OK both count as seen, until more stop fitting.
+func _maybe_backup_limit() -> void:
+	if not BackupLimit.due() or is_instance_valid(_limit_modal) or is_instance_valid(_offer_modal): return
+	if host.mode != "home" or _modal_open() or is_instance_valid(host.get("_chapter_opening")) or host.get("application_backgrounded") == true: return
+	_limit_modal = InGameModal.open(host.ui, "BackupLimitModal", PlayerCopy.BACKUP_FULL_TITLE, PlayerCopy.BACKUP_FULL_BODY)
+	_limit_modal.closed.connect(func() -> void: BackupLimit.acknowledge())
+	_limit_modal.add_actions(PlayerCopy.BACKUP_FULL_OPEN, func() -> void:
+		_limit_modal.close()
+		host.replays_flow.show_collection(), PlayerCopy.BACKUP_FULL_OK)
 
 func _modal_open() -> bool:
 	for child: Node in host.ui.get_children():
@@ -288,6 +307,9 @@ func cloud_sources() -> RefCounted:
 	if platform == null or platform.state == null: return null
 	return Sources.new(host, platform.state)
 
+func replay_sources(index: int) -> RefCounted:
+	return ReplaySources.new(host, index)
+
 ## What the service holds of Main: this flow, reached weakly so a freed Main is never kept alive.
 class Account extends RefCounted:
 	var _flow: WeakRef
@@ -317,6 +339,9 @@ class Account extends RefCounted:
 	func cloud_sources() -> RefCounted:
 		var flow := _flow_node()
 		return flow.cloud_sources() if flow != null else null
+	func replay_sources(index: int) -> RefCounted:
+		var flow := _flow_node()
+		return flow.replay_sources(index) if flow != null else null
 	func has_pending_restore(provider: String) -> bool:
 		var flow := _flow_node()
 		if flow == null: return false

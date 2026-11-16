@@ -14,6 +14,8 @@ object BackupPolicy {
     const val HEADER = "after-you-backup-plan 1"
     const val MARGIN = 2L * 1024 * 1024
     const val MAX_PLAN_BYTES = 512 * 1024
+    /** How many planned files the last backup left out; never itself in the plan. */
+    const val LEFT_OUT = "backup-left-out.txt"
     const val MAX_ENTRIES = 4096
     /** Each file in the backup's tar stream: a 512-byte header, padding to 512 bytes, and room for a long-path header. */
     const val PER_FILE_OVERHEAD = 2048L
@@ -28,10 +30,24 @@ object BackupPolicy {
     /** Cloud backups only when they are end-to-end encrypted; a cable or Wi-Fi transfer to a new phone always. */
     fun allowed(transportFlags: Int): Boolean = transportFlags and (CLIENT_SIDE_ENCRYPTION or DEVICE_TO_DEVICE) != 0
 
+    /** Every file the plan (or the fallback) names that exists, in order. */
+    fun candidates(root: File, plan: String?): List<File> = parse(root, plan) ?: fallback(root)
+
+    fun writeLeftOut(root: File, count: Int) {
+        val target = File(root, LEFT_OUT)
+        val temporary = File(root, "$LEFT_OUT.tmp")
+        try {
+            temporary.writeText(maxOf(0, count).toString())
+            if (!temporary.renameTo(target)) temporary.delete()
+        } catch (_: IOException) {
+            temporary.delete()
+        }
+    }
+
     fun select(root: File, plan: String?, quota: Long): List<File> {
         val budget = quota - MARGIN
         if (budget <= 0) return emptyList()
-        val candidates = parse(root, plan) ?: fallback(root)
+        val candidates = candidates(root, plan)
         val chosen = mutableListOf<File>()
         var total = 0L
         for (file in candidates) {

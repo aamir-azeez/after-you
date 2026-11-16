@@ -51,6 +51,21 @@ static func keep(owner: String, duel_id: String, kept: Dictionary, ghost: bool =
 	_prune(folder)
 	return true
 
+## A Saved Games copy of a kept run this phone lacks (cloud_replay_sources.gd checks it decodes to
+## its digest first): `file` is its name here (<duel_id>.json or ghost-<duel_id>.json). Never over a
+## run already kept. True once this phone has it.
+static func restore(owner: String, file: String, kept: Dictionary, root: String = ROOT) -> bool:
+	var duel_id := file.trim_prefix(GHOST_PREFIX).trim_suffix(".json")
+	if not _matches(duel_id, DUEL_ID) or not file.ends_with(".json") or not Typed.valid_id(owner): return false
+	var folder := root.path_join(owner)
+	var path := folder.path_join(file)
+	for candidate: String in AtomicFile.read_candidates(path):
+		if FileAccess.file_exists(candidate): return true
+	DirAccess.make_dir_recursive_absolute(folder)
+	if not AtomicFile.write_text(path, JSON.stringify({"digest": kept.digest, "byte_length": kept.byte_length, "body": kept.body, "acked": kept.get("acked") == true})): return false
+	_prune(folder)
+	return true
+
 ## Drops the run kept for `duel_id` (one that no longer decodes, so the next tap fetches it again).
 static func forget(owner: String, duel_id: String, ghost: bool = false) -> void:
 	if _matches(duel_id, DUEL_ID) and Typed.valid_id(owner): _remove(_path(owner, duel_id, ghost))
