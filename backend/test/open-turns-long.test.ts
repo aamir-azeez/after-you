@@ -48,8 +48,9 @@ const FLAGS = { NOTIFICATIONS_ENABLED: "false" };
 const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 const TICKS = MAX_OPEN_TURN_TICKS;
 /** The widest packed turn: a new stick every tick, every check (the server never replays, so stand-in hashes). */
-const PACKED = packRecording(Array.from({ length: TICKS }, (_, i) => ({ ticks: 1, x: i % 2 ? -100 : 100, z: -100, action: i % 3 === 0 })),
-  checkTicks(TICKS).map(tick => ({ tick, state_hash: "f".repeat(64) })), TICKS);
+const widestPacked = (ticks: number) => packRecording(Array.from({ length: ticks }, (_, i) => ({ ticks: 1, x: i % 2 ? -100 : 100, z: -100, action: i % 3 === 0 })),
+  checkTicks(ticks).map(tick => ({ tick, state_hash: "f".repeat(64) })), ticks);
+const PACKED = widestPacked(TICKS);
 let address = 0;
 function request(path: string, method: string, who?: Account, body?: unknown, headers: Record<string, string> = {}): Request {
   return new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.16." + (++address % 250),
@@ -58,18 +59,19 @@ function request(path: string, method: string, who?: Account, body?: unknown, he
 async function json<T>(response: Response | Promise<Response>, status = 200): Promise<T> {
   const result = await response, text = await result.text(); expect(result.status, text).toBe(status); return JSON.parse(text) as T;
 }
-const call = (path: string, method = "GET", who?: Account, body?: unknown, headers: Record<string, string> = {}) => worker.fetch(request(path, method, who, body, headers), withConfig({ ...env, ...FLAGS }));
+const call = (path: string, method = "GET", who?: Account, body?: unknown, headers: Record<string, string> = {}, vars: Rec = {}) => worker.fetch(request(path, method, who, body, headers), withConfig({ ...env, ...FLAGS, ...vars }));
 const account = () => json<Account>(call("/v1/identity", "POST", undefined, {}), 201);
 const stages = () => chapter(FIVE).stages as unknown as Rec[];
 async function sealed(body: Rec): Promise<Rec> { const { checkpoint_hash: _old, ...rest } = body; void _old; return { ...rest, checkpoint_hash: await digest(canonicalJson(rest)) }; }
 
 /** Turn `n` of stage `index`, ten minutes long, over `memory` (none for turn 1), closing the stage or not. */
-async function turn(index: number, n: number, checkpointHash: string, memory: Rec | null, closes: boolean): Promise<Rec> {
+/** `ticks`: shorter turns for the run a phone posts (a board takes runs up to its proof bound); never assisted, so the run can rank. */
+async function turn(index: number, n: number, checkpointHash: string, memory: Rec | null, closes: boolean, ticks = TICKS): Promise<Rec> {
   const stage = stages()[index], fixture = (index % 2 ? slackA : setA) as Rec;
   const { actions: _a, replay_checks: _c, recording_hash: _h, ...header } = structuredClone(fixture); void _a; void _c; void _h;
   const body = { ...header, level_version: FIVE.level_version, definition_hash: FIVE.definition_hash, stage_id: stage.id, checkpoint_hash: checkpointHash,
-    role: n === 1 ? "a" : "b", player_slot: turnSlot(stage.first_player_slot, n), duration_ticks: TICKS, source_recording_hash: memory ? memory.recording_hash : "",
-    completed: n > 1 && closes, outcome: { source_ready: true, objective_complete: n > 1 && closes }, final_state_hash: (await digest(`${index}-${n}`)), packed: PACKED };
+    role: n === 1 ? "a" : "b", player_slot: turnSlot(stage.first_player_slot, n), duration_ticks: ticks, source_recording_hash: memory ? memory.recording_hash : "", catch_assistance: false,
+    completed: n > 1 && closes, outcome: { source_ready: true, objective_complete: n > 1 && closes }, final_state_hash: (await digest(`${index}-${n}`)), packed: ticks === TICKS ? PACKED : widestPacked(ticks) };
   return { ...body, recording_hash: await digest(canonicalJson(body)) };
 }
 /** The flat checkpoint closing stage `index`: the fixture's end, both pips at its goal, this stage's controls and levers over the ones before. */
@@ -160,4 +162,41 @@ describe("open turns fingerprints at their widest", () => {
     expect(written.acknowledging_poll.slice(0, -1).every(rows => rows === 1)).toBe(true);
     expect(written.quiet_poll.slice(0, -1).every(rows => rows === 0)).toBe(true);
   }, 180_000);
+  it("takes an open turns run a phone posts from its own copy only when it is exactly the room's, and posts it again harmlessly", async () => {
+    const host = await account(), guest = await account(), BOARDS = { features: ["LEADERBOARDS"] }, TICKS_POSTED = 300;
+    const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...FIVE, idempotency_key: crypto.randomUUID() }));
+    let room = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }));
+    let nested = room.checkpoint as Rec;
+    for (const index of [0, 1, 2, 3, 4]) {
+      const turns: Rec[] = [], start = room.checkpoint as Rec, count = index === 1 ? 3 : 2;
+      for (let n = 1; n <= count; n++) {
+        const recording = await turn(index, n, start.checkpoint_hash, turns.at(-1) ?? null, n === count, TICKS_POSTED);
+        const next = n === count ? await closing(index, start, [...turns, recording]) : undefined;
+        room = (await json<MutationV2>(call(`/v2/rooms/${room.room_id}/turns`, "POST", recording.player_slot === "p0" ? host : guest,
+          { base_revision: room.revision, branch: room.branch, idempotency_key: crypto.randomUUID(), recording, ...(next ? { checkpoint: next } : {}) }))).room;
+        turns.push(recording);
+      }
+      // The phone nests each stage's turns again under the room's own flat checkpoint.
+      nested = { ...(room.checkpoint as Rec), proof: { checkpoint: nested, turns } };
+    }
+    expect(room).toMatchObject({ active_role: "complete" });
+    const post = (body: unknown, who = host) => json<Rec>(call(`/v1/leaderboards/post/${room.room_id}`, "POST", who, body, {}, BOARDS));
+    const counting = countingEnv(withConfig({ ...env, ...FLAGS, ...BOARDS }));
+    const first = await json<Rec>(worker.fetch(request(`/v1/leaderboards/post/${room.room_id}`, "POST", host, { schema_version: 1, checkpoint: nested }), counting.env));
+    expect(first).toEqual({ schema_version: 1, status: "posted" });
+    // One room request checks it; the board takes it.
+    expect(counting.calls.filter(name => name.startsWith("ROOMS_V2."))).toEqual(["ROOMS_V2.postedRun"]);
+    expect(await post({ schema_version: 1, checkpoint: nested }, guest)).toEqual({ schema_version: 1, status: "posted" });
+    const board = await json<Rec>(call(`/v1/leaderboards/${FIVE.level_id}@${FIVE.level_version}`, "GET", undefined, undefined, {}, BOARDS));
+    expect(board.checking ?? board).toBeDefined();
+    // A changed turn, a changed stage checkpoint or a missing stage is not this room's run.
+    const changedTurn = structuredClone(nested); changedTurn.proof.turns[0].duration_ticks++;
+    const changedStage = structuredClone(nested); changedStage.proof.checkpoint.players.p0.x++;
+    const shortChain = structuredClone(nested); shortChain.proof.checkpoint = shortChain.proof.checkpoint.proof.checkpoint;
+    for (const value of [changedTurn, changedStage, shortChain]) expect((await call(`/v1/leaderboards/post/${room.room_id}`, "POST", host, { schema_version: 1, checkpoint: value }, {}, BOARDS)).status).toBe(422);
+    // Somebody else's post, and a post with the leaderboards off, go nowhere.
+    const stranger = await account();
+    expect((await call(`/v1/leaderboards/post/${room.room_id}`, "POST", stranger, { schema_version: 1, checkpoint: nested }, {}, BOARDS)).status).toBe(404);
+    expect((await call(`/v1/leaderboards/post/${room.room_id}`, "POST", host, { schema_version: 1, checkpoint: nested })).status).toBe(404);
+  }, 120_000);
 });

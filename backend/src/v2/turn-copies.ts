@@ -16,8 +16,8 @@ import type { RecordingV2 } from "./protocol";
  * member, and one row per copy sent back (in the turn row's stored form, row-codec.ts storedTurn). No revision moves.
  * Operator snapshots leave both out and a restore drops them, as for turn tries: they only carry turns between phones.
  */
-export const TURN_WANTS = { name: "turn_wants", schema: "CREATE TABLE turn_wants (player_id TEXT PRIMARY KEY, hashes TEXT NOT NULL)" } as const;
-export const TURN_COPIES = { name: "turn_copies", schema: "CREATE TABLE turn_copies (recording_hash TEXT PRIMARY KEY, data BLOB NOT NULL)" } as const;
+export const TURN_WANTS = { name: "turn_wants", schema: "CREATE TABLE turn_wants (player_id TEXT PRIMARY KEY, hashes TEXT NOT NULL) WITHOUT ROWID" } as const;
+export const TURN_COPIES = { name: "turn_copies", schema: "CREATE TABLE turn_copies (recording_hash TEXT PRIMARY KEY, data BLOB NOT NULL) WITHOUT ROWID" } as const;
 /** Most hashes one ask names: every turn a room holds. */
 export const MAX_ASKED = 128;
 /** Most copies one send-back carries, and the most bytes of copies one answer carries (a phone asks again for the rest). */
