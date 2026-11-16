@@ -27,6 +27,8 @@ internal interface GamesClient {
     fun resolve(opened: OpenedSnapshot, bytes: ByteArray, done: (OpenedSnapshot?, Int?) -> Unit)
     fun commit(opened: OpenedSnapshot, bytes: ByteArray, description: String, done: (Boolean, Int?) -> Unit)
     fun discard(opened: OpenedSnapshot, done: (Boolean) -> Unit)
+    /** Removes one Saved Games slot by name (account deletion); a slot that is not there counts as removed. */
+    fun delete(name: String, done: (Boolean, Int?) -> Unit)
     /** A chapter time on one leaderboard (milliseconds on a Time board). */
     fun submitScore(boardId: String, score: Long, done: (Boolean, Int?) -> Unit)
     /** Opens Play Games' own screen of one leaderboard, all time, public. Answers once it is started. */
@@ -133,6 +135,18 @@ internal class GooglePlayGamesClient(private val activity: Activity, private val
         val snapshot = opened.snapshot as? Snapshot
         if (snapshot == null || !ready()) { done(false); return }
         snapshots().discardAndClose(snapshot).addOnCompleteListener(worker) { result -> done(result.isSuccessful) }
+    }
+
+    override fun delete(name: String, done: (Boolean, Int?) -> Unit) {
+        if (!ready()) { done(false, 10); return }
+        // Fresh from the server, so a slot another phone made is found too.
+        snapshots().load(true).addOnCompleteListener(worker) { listed ->
+            if (!listed.isSuccessful) { done(false, status(listed.exception)); return@addOnCompleteListener }
+            val buffer = listed.result?.get()
+            val metadata = try { buffer?.firstOrNull { it.uniqueName == name }?.freeze() } catch (_: Exception) { null } finally { buffer?.release() }
+            if (metadata == null) { done(true, null); return@addOnCompleteListener }
+            snapshots().delete(metadata).addOnCompleteListener(worker) { deleted -> done(deleted.isSuccessful, status(deleted.exception)) }
+        }
     }
 
     override fun submitScore(boardId: String, score: Long, done: (Boolean, Int?) -> Unit) {

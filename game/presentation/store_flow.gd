@@ -406,7 +406,7 @@ func _load_store(force_refresh: bool = false) -> void:
 	_show_store_status(PlayerCopy.MAIN_DD823B20A782)
 	store_read_request=""
 	var view: int = host.store_view_generation
-	if not await host._ensure_identity():
+	if not await host._ensure_identity(Callable(), false):
 		if host.mode == MODE_PAYWALL and view == host.store_view_generation:
 			_show_store_problem(PlayerCopy.MAIN_5FE98B59E6BA)
 		return
@@ -454,7 +454,7 @@ func restore_purchases() -> void:
 	store_action_pending=true
 	var view: int = host.store_view_generation
 	store_restore_view=view
-	if not await host._ensure_identity():
+	if not await host._ensure_identity(Callable(), false):
 		store_action_pending=false
 		return
 	if view!=host.store_view_generation:
@@ -598,7 +598,7 @@ func show_tester_access() -> void:
 	card.add_child(host._paragraph(PlayerCopy.MAIN_BA73581A5C04,620))
 	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
 	var view: int = host.store_view_generation
-	if not await host._ensure_identity():
+	if not await host._ensure_identity(Callable(), false):
 		if host.mode == MODE_TESTER_ACCESS and view == host.store_view_generation: _tester_form(PlayerCopy.for_platform(PlayerCopy.MAIN_B39BBA0B04B0,PlayerCopy.MAIN_B39BBA0B04B0_IOS))
 		return
 	await host._load_cached_tester()

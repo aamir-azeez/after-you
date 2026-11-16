@@ -1917,7 +1917,14 @@ func _deliver_then_refresh_hub() -> void:
 	await replays_flow.deliver_completed_replay()
 	if room_hub_flow.is_open() and mode == RoomHubFlow.MODE_ROOMS: room_hub_flow.refresh()
 
-func _ensure_identity(report: Callable = Callable()) -> bool:
+## A friend code on this phone, made or brought back if needed. `platform`: also the server's
+## platform account rule (platform_games_flow.gd require_platform) for an online tap; the identity's
+## own screens, the Full Journey store and tester codes pass false (the server never gates them).
+func _ensure_identity(report: Callable = Callable(), platform: bool = true) -> bool:
+	if not await _ensure_friend_code(report): return false
+	return not platform or await platform_games_flow.require_platform(report)
+
+func _ensure_friend_code(report: Callable = Callable()) -> bool:
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
 		_report(report,PlayerCopy.MAIN_A9AD59F7E952)
 		return false

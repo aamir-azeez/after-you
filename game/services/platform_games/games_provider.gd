@@ -62,6 +62,10 @@ func snapshot_resolve(_handle: String, _data: PackedByteArray) -> Dictionary:
 func snapshot_discard(_handle: String) -> Dictionary:
 	return {"ok": false, "code": "unavailable"}
 
+## Removes one of this game's slots by name (account deletion); {"ok"} also when it was not there.
+func snapshot_delete(_name: String) -> Dictionary:
+	return {"ok": false, "code": "unavailable"}
+
 ## Achievements: the interface is ready, but After You defines and unlocks none yet (owner
 ## decision). Every provider answers not_enabled until that changes.
 func unlock_achievement(_id: String) -> Dictionary:

@@ -28,6 +28,9 @@ class FakeHost extends Node:
 		add_child(ui)
 		add_child(settings_flow)
 	func _toast(text: String) -> void: toasts.append(text)
+	func _report(report: Callable, text: String) -> void:
+		if report.is_valid(): report.call(text)
+		else: toasts.append(text)
 
 class FakeProvider extends "res://services/platform_games/games_provider.gd":
 	var auth: Dictionary = {"ok": true, "signed_in": true, "player_key": "a".repeat(64)}
@@ -42,6 +45,10 @@ class FakeProvider extends "res://services/platform_games/games_provider.gd":
 	func server_credential(web_client_id: String) -> Dictionary:
 		credential_calls.append(web_client_id)
 		return credential.duplicate(true)
+	var deleted: Array = []
+	func snapshot_delete(name: String) -> Dictionary:
+		deleted.append(name)
+		return {"ok": true}
 
 class FakeApi extends Node:
 	signal never
@@ -187,6 +194,97 @@ func _keep_this_confirm() -> void:
 	service.queue_free()
 	api.queue_free()
 	host.queue_free()
+	await process_frame
+
+## REQUIRE_PLATFORM: an online tap goes on only linked (or exempt, or while the rule is off); signed
+## out it asks once, and Sign in links and lets the tap through; a build that cannot sign in says so.
+func _platform_rule() -> void:
+	var required := CAPABILITY.duplicate()
+	required.platform_required_version = 1
+	required.platform_linked = false
+	var linked_answer := _ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": false})
+	var cases := [["off", CAPABILITY, {"ok": true, "signed_in": false}, "pass"], ["signed out", required, {"ok": true, "signed_in": false}, "sign_in"],
+		["exempt", required.merged({"platform_exempt": true}), {"ok": true, "signed_in": false}, "pass"], ["no Play Games here", required, {"ok": false, "code": "not_configured"}, "unavailable"]]
+	for row: Array in cases:
+		var api := FakeApi.new()
+		root.add_child(api)
+		api.answers = {"/v2/capabilities": [_ok(row[1])]}
+		var provider := FakeProvider.new()
+		provider.auth = row[2]
+		var service := _service(provider, api, _account(api), "rule-%d" % checks)
+		await service.start()
+		_check(await service.platform_gate() == row[3], "Platform rule, %s: %s" % [row[0], row[3]])
+		service.queue_free()
+		api.queue_free()
+	# A link held from an older build is sent once more while the rule is on, which marks it.
+	var api := FakeApi.new()
+	root.add_child(api)
+	api.answers = {"/v2/capabilities": [_ok(required)], "/v1/platform/link": [linked_answer]}
+	var account := _account(api)
+	var path := _root_dir.path_join("rule-held.json")
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"schema_version": 1, "capability": {}, "links": {"play_games": {"player_key": "a".repeat(64), "player_id": account.player}}, "cloud": {}, "restore_probe": {}}))
+	file.close()
+	var held := Service.new()
+	held.configure(FakeProvider.new(), path)
+	root.add_child(held)
+	held.attach(account)
+	await held.start()
+	_check(api.calls.any(func(call: Dictionary) -> bool: return call.path == "/v1/platform/link") and held.linked() and held.state.link("play_games").get("marked") == true, "A link from an older build goes to the server once, and is marked")
+	_check(await held.platform_gate() == "pass", "and online taps go on")
+	held.queue_free()
+	# The ask at the tap: Sign in signs in, links and lets the tap through.
+	var host := FakeHost.new()
+	root.add_child(host)
+	var flow: Node = Flow.new(host)
+	host.add_child(flow)
+	api.calls.clear()
+	api.answers = {"/v2/capabilities": [_ok(required)], "/v1/platform/link": [linked_answer]}
+	var provider := FakeProvider.new()
+	provider.auth = {"ok": true, "signed_in": false}
+	var service := _service(provider, api, _account(api), "rule-ask")
+	flow.service = service
+	await service.start()
+	var result: Array = []
+	var tap := func() -> void: result.append(await flow.require_platform())
+	tap.call()
+	for _frame in range(5): await process_frame
+	var modal: Node = host.ui.get_node_or_null("PlatformSignInModal")
+	_check(modal != null and result.is_empty(), "Signed out, the tap asks to sign in")
+	if modal != null:
+		provider.auth = {"ok": true, "signed_in": true, "player_key": "a".repeat(64)}
+		modal.find_child("ModalConfirm", true, false).pressed.emit()
+		for _frame in range(40):
+			if not result.is_empty(): break
+			await process_frame
+		_check(result == [true] and provider.auth_calls == [false, true] and service.linked(), "Sign in shows the sheet, links, and the tap goes on")
+	service.queue_free()
+	api.queue_free()
+	host.queue_free()
+	await process_frame
+
+## Deleting the identity removes this game's Saved Games slots from a signed-in account (progress and
+## the six replay slots); signed out, none can be removed, so the next sync writes them again without it.
+func _deletion_removes_saves() -> void:
+	var api := FakeApi.new()
+	root.add_child(api)
+	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)], "/v1/platform/link": [_ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": true})]}
+	var provider := FakeProvider.new()
+	var service := _service(provider, api, _account(api), "delete-saves")
+	await service.start()
+	await service.forget_identity()
+	_check(provider.deleted == ["after-you-progress", "after-you-history-1", "after-you-history-2", "after-you-history-3", "after-you-history-4", "after-you-history-5", "after-you-history-6"], "Deletion removes the progress slot and every replay slot")
+	_check(service.state.cloud("dirty") == false and service.link_state == Service.LINK_NONE and service.state.link("play_games").is_empty(), "and nothing is written back")
+	service.queue_free()
+	var signed_out := FakeProvider.new()
+	signed_out.auth = {"ok": true, "signed_in": false}
+	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)]}
+	var quiet := _service(signed_out, api, _account(api), "delete-saves-signed-out")
+	await quiet.start()
+	await quiet.forget_identity()
+	_check(signed_out.deleted.is_empty() and quiet.state.cloud("dirty") == true, "Signed out: nothing removed, and the next sync rewrites the slots without the identity")
+	quiet.queue_free()
+	api.queue_free()
 	await process_frame
 
 func _run() -> void:
@@ -448,6 +546,8 @@ func _run() -> void:
 
 	await _prompt_flow()
 	await _keep_this_confirm()
+	await _deletion_removes_saves()
+	await _platform_rule()
 
 	await process_frame
 	api.queue_free()

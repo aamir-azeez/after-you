@@ -125,7 +125,7 @@ func _back_to_account() -> void:
 	settings_requested.emit()
 
 func create_identity() -> void:
-	if await host._ensure_identity(): _back_to_account()
+	if await host._ensure_identity(Callable(), false): _back_to_account()
 
 func open_photo_transfer() -> void:
 	photo_transfer_requested.emit()
@@ -585,7 +585,7 @@ func discard_pending_recovery() -> void:
 	while host.identity_loading and Time.get_ticks_msec()<deadline:
 		await host.get_tree().process_frame
 	if host.identity_read_state==host.IdentityReadState.MISSING:
-		await host._ensure_identity()
+		await host._ensure_identity(Callable(), false)
 	recovery_discard_busy=false
 	if host.mode==MODE_RECOVERY_DISCARD: _back_to_account()
 
@@ -659,7 +659,7 @@ func confirm_delete_identity(message: String="") -> void:
 	card.add_child(host._back_button("Keep my identity",_back_to_account,false))
 
 func delete_identity() -> void:
-	if host.identity_busy or not await host._ensure_identity():
+	if host.identity_busy or not await host._ensure_identity(Callable(), false):
 		return
 	host._invalidate_relay_identity()
 	host.identity_busy = true
@@ -751,10 +751,12 @@ func clear_deleted_identity() -> void:
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_3820D398892A)
 		return
 	host.identity_data={}
-	host.platform_games_flow.forget_identity()
+	await host.platform_games_flow.forget_identity()
 	# The stores every player of this phone shares forget only this player. One
 	# that cannot write now finishes on the next launch (services/deleted_identity_stores.gd).
 	DeletedStores.new().forget(owner, host.api.base_url, host.friend_nicknames)
+	# Android's backup list is written again now, so the next backup names none of the removed files.
+	if host.has_method("_write_backup_plan"): host._write_backup_plan()
 	host.identity_read_state=host.IdentityReadState.MISSING
 	host.api.player_id=""
 	host.api.device_token=""

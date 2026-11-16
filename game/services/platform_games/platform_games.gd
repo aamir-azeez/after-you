@@ -21,6 +21,8 @@ extends Node
 ## 5. The gamer name, for the name prompt only (name_offered, ensure_started, player_name): offered whenever the
 ##    server offers the platform and its account can be had, and signed in on the player's tap
 ##    when the quiet check did not (Play Games may want its own sheet on a phone).
+## 5b. While the server requires a platform account for online writes (REQUIRE_PLATFORM, backend
+##    platform-gate.ts), platform_gate() tells an online tap whether it may go on.
 ## 6. Chapter times on the platform leaderboards (post_boards, show_board), while the server offers
 ##    them (PLATFORM_BOARDS, `boards` in the capability): platform_boards.gd decides what goes up,
 ##    platform_board_ids.gd says where, platform_board_store.gd remembers what went up per account.
@@ -67,6 +69,10 @@ const LINK_ERROR := "error"
 
 ## The first step waits this long after launch, so it never touches the first frames.
 const START_DELAY_MS := 4000
+## The replay slots beside the progress slot (services/platform_games/cloud_replay_bundle.gd on
+## train/backups: SLOT_PREFIX and SLOTS), named here so account deletion removes them too.
+const HISTORY_SLOT_PREFIX := "after-you-history-"
+const HISTORY_SLOTS := 6
 ## How long an online tap on a phone with no friend code waits for the account check.
 const NEW_IDENTITY_WAIT_MS := 12000
 ## Check failures that only mean "not reachable now": no new friend code is made on them.
@@ -478,7 +484,10 @@ func _after_sign_in(capability: Dictionary, generation: int) -> void:
 
 func _reconcile_link(capability: Dictionary, generation: int) -> void:
 	var held: Dictionary = state.link(kind())
-	if held.get("player_key") == _player_key and held.get("player_id") == _account.player_id():
+	# While the rule is on, a link the server has not marked (held from an older build, or moved away
+	# since) goes to the server once more; the answer marks it.
+	var counted: bool = not platform_required() or (held.get("marked") == true and capability.get("server_linked") != false)
+	if held.get("player_key") == _player_key and held.get("player_id") == _account.player_id() and counted:
 		link_state = LINK_LINKED
 		changed.emit()
 		return
@@ -588,6 +597,34 @@ func accept_offer() -> void:
 		notice.emit(PlayerCopy.PLATFORM_GAMES_NO_LINK)
 		changed.emit()
 
+## REQUIRE_PLATFORM is on for this app and this player is not exempt (a tester).
+func platform_required() -> bool:
+	if state == null: return false
+	var held: Dictionary = state.capability()
+	return held.get("required") == true and held.get("exempt") != true
+
+## An online tap with a friend code, while the server may require a platform account: "pass" (go
+## on: not required, exempt, linked, or no platform service here at all), "sign_in" (ask the player
+## to sign in), "choose" (this account opens another friend code: Settings' choice first),
+## "unavailable" (this build or phone cannot sign in), "wait" (the check could not finish now).
+## The server enforces the rule on its own; this only lets the tap say why before it goes out.
+func platform_gate() -> String:
+	if provider == null or not provider.available() or state == null or _account == null or _account.identity_state() != "ready": return "pass"
+	if not _running and not busy and (sign_in == SignIn.UNAVAILABLE or state.capability().is_empty()): start()
+	var deadline := Time.get_ticks_msec() + NEW_IDENTITY_WAIT_MS
+	while is_inside_tree() and (_running or busy) and Time.get_ticks_msec() < deadline:
+		await get_tree().create_timer(0.1).timeout
+	if _running or busy: return "wait"
+	if not platform_required(): return "pass"
+	if linked(): return "pass"
+	if sign_in_code in ["unavailable", "not_configured"]: return "unavailable"
+	if not signed_in(): return "sign_in"
+	if waiting_for_choice(): return "choose"
+	# Signed in but not linked yet (an error earlier, or a link the server has not marked): link now.
+	await _link(state.capability(), false, _generation)
+	if linked(): return "pass"
+	return "choose" if waiting_for_choice() else "wait"
+
 ## Settings' Link / Try again: start over, and check this account again even if it had no
 ## friend code earlier today (one may have been linked since).
 func retry() -> void:
@@ -650,13 +687,28 @@ func unlink() -> void:
 		link_code = str(answer.get("code", "failed"))
 	changed.emit()
 
-## After the identity is erased: the server already removed the link; forget it here too.
+## After the identity is erased: the server already removed the link; forget it here too, and
+## remove this game's Saved Games slots from the signed-in account (solo progress and replays), so
+## nothing of it stays in the player's Google or Apple account. Slots that could not be removed
+## now (signed out, offline) are written again without the identity at the next sync.
 func forget_identity() -> void:
-	if state != null:
-		state.forget_link(kind())
-		state.set_cloud({"dirty": true})
+	if state != null: state.forget_link(kind())
 	link_state = LINK_NONE
+	var gone := await delete_saved_games()
+	if state != null: state.set_cloud({"dirty": not gone})
 	changed.emit()
+
+## Every slot this game keeps on the signed-in account, removed; true when each is gone (or was
+## never there). The sync stops first, so it never writes one back meanwhile.
+func delete_saved_games() -> bool:
+	if provider == null or not provider.available() or not signed_in(): return false
+	if cloud != null: cloud.stop()
+	var names: Array = [CloudSync.SLOT]
+	for index in range(HISTORY_SLOTS): names.append(HISTORY_SLOT_PREFIX + str(index + 1))
+	# The first failure stops the rest (offline, signed out meanwhile), so deletion never waits long.
+	for name: String in names:
+		if not (await provider.snapshot_delete(name)).get("ok", false): return false
+	return true
 
 # ---- Cloud save ------------------------------------------------------------------------------
 

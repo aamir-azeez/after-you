@@ -26,6 +26,7 @@ const Sources = preload("res://services/platform_games/cloud_save_sources.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Typed = preload("res://services/typed_values.gd")
+const ClientIdentity = preload("res://services/client_identity.gd")
 
 const PENDING_SECRET := "platform_restore_pending"
 const WEB_CLIENT_ID := "^[0-9]{6,20}-[a-z0-9]{8,64}\\.apps\\.googleusercontent\\.com$"
@@ -75,10 +76,13 @@ func note_progress() -> void:
 	var platform := games()
 	if platform != null: platform.note_progress()
 
-## The identity was erased: the server dropped its links; drop this phone's record too.
+## The identity was erased: the server dropped its links; drop this phone's record too, the
+## account's Saved Games slots, and a platform restore still waiting in secure storage (kept across
+## an iPhone reinstall otherwise).
 func forget_identity() -> void:
+	await host._await_secret(host.secrets.remove_secret(PENDING_SECRET))
 	var platform := games()
-	if platform != null: platform.forget_identity()
+	if platform != null: await platform.forget_identity()
 
 func _on_notice(text: String) -> void:
 	if host != null and is_instance_valid(host): host._toast(text)
@@ -237,6 +241,47 @@ static func _set_items(detail: VBoxContainer, items: Array) -> void:
 		child.queue_free()
 	for item: Control in items: detail.add_child(item)
 	detail.visible = not items.is_empty()
+
+## The server's platform rule in front of an online tap (Main._ensure_identity): true to go on.
+## Not signed in, it asks once with Sign in and Not now; a build that cannot sign in (the GitHub
+## APK) points to the store version; solo play never comes here.
+func require_platform(report: Callable = Callable()) -> bool:
+	var platform := games()
+	if platform == null: return true
+	match await platform.platform_gate():
+		"pass": return true
+		"unavailable":
+			host._report(report, PlayerCopy.PLATFORM_GAMES_STORE_ONLINE if ClientIdentity.channel() == ClientIdentity.GITHUB else PlayerCopy.PLATFORM_GAMES_UNAVAILABLE)
+			return false
+		"choose":
+			host._report(report, PlayerCopy.PLATFORM_GAMES_CONFLICT_NOTICE % platform.display_name())
+			return false
+		"wait":
+			host._report(report, PlayerCopy.PLATFORM_GAMES_TRY_LATER)
+			return false
+	if not await _ask_sign_in(platform): return false
+	await platform.sign_in_now()
+	if platform.linked(): return true
+	if platform.waiting_for_choice(): host._report(report, PlayerCopy.PLATFORM_GAMES_CONFLICT_NOTICE % platform.display_name())
+	elif platform.sign_in_code == "offline": host._report(report, PlayerCopy.PLATFORM_GAMES_OFFLINE)
+	elif platform.signed_in(): host._report(report, PlayerCopy.PLATFORM_GAMES_TRY_LATER)
+	return false
+
+signal _sign_in_answered(accepted: bool)
+var _sign_in_modal: Control
+
+## One ask at a time: taps that arrive meanwhile share its answer.
+func _ask_sign_in(platform: Node) -> bool:
+	if not is_instance_valid(_sign_in_modal) or _sign_in_modal.is_queued_for_deletion():
+		var modal: Control = InGameModal.open(host.ui, "PlatformSignInModal", PlayerCopy.PLATFORM_GAMES_SIGN_IN_TITLE)
+		_sign_in_modal = modal
+		modal.label(PlayerCopy.PLATFORM_GAMES_SIGN_IN_BODY % platform.display_name())
+		var accepted := [false]
+		modal.add_actions(PlayerCopy.PLATFORM_GAMES_SIGN_IN, func() -> void:
+			accepted[0] = true
+			modal.close(), PlayerCopy.PLATFORM_GAMES_NOT_NOW)
+		modal.closed.connect(func() -> void: _sign_in_answered.emit(accepted[0]))
+	return await _sign_in_answered
 
 ## "Keep this phone's" leaves the other friend code with no way back through this account: said
 ## plainly, confirmed once.

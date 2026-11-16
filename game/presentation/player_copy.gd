@@ -1411,6 +1411,11 @@ const PLATFORM_GAMES_TRY_AGAIN := "Try again"
 ## An online tap after "Not now" on a phone whose account has a friend code (%s: Play Games or Game Center).
 const PLATFORM_GAMES_BRING_BACK_FIRST := "Bring back your friend code from %s to play online."
 const PLATFORM_GAMES_BACK := "Back"
+## An online tap while the server requires a platform account and the player is not signed in (%s: Play Games or Game Center).
+const PLATFORM_GAMES_SIGN_IN_TITLE := "Sign in to play online"
+const PLATFORM_GAMES_SIGN_IN_BODY := "Online play needs your %s account. Solo play works without it."
+## The GitHub APK, which cannot sign in to Play Games, while online play needs it.
+const PLATFORM_GAMES_STORE_ONLINE := "Get After You from Google Play to play online. Solo play works here."
 const PLATFORM_GAMES_KEEP_THIS_TITLE := "Keep this phone's friend code?"
 ## %s: Play Games or Game Center.
 const PLATFORM_GAMES_KEEP_THIS_WARNING := "%s then opens this one. The other friend code, with its Pollen, Fruits and friends, comes back only with its own recovery code."

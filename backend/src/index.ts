@@ -41,6 +41,7 @@ export { PhotoTransfer, PhotoTransferBudget } from "./photo-transfer";
 export { Player } from "./player";
 export { PlatformLinks } from "./platform-links";
 import { routePlatform, routePlatformRestore } from "./platform-routes";
+import { PLATFORM_REQUIRED, gatedWrite, platformExempt, platformRequired, wantsPlatform } from "./platform-gate";
 export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
 export { LeaderboardBoard } from "./leaderboards/board";
@@ -70,7 +71,7 @@ const ROOM_ROUTE = /^\/v[12]\/rooms\/([A-Za-z0-9_-]{22})(?:\/(?!leave(?:\/|$))|$
  * While looks are on, a turn, room creation and joining learn the look the player wears the same way (`memberLook`), as do the duel routes that keep it (looksDuelRoute).
  * A turn from a phone that sends faces beyond the everyday ones learns the faces the player owns the same way (`facePacks`, v2/face-packs.ts).
  */
-async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string; memberName?: string | null; pollen?: PollenMember; pollenView?: WalletView | HistoryView; memberLook?: Look; facePacks?: string[] }> {
+async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string; memberName?: string | null; pollen?: PollenMember; pollenView?: WalletView | HistoryView; memberLook?: Look; facePacks?: string[]; platformLinked: boolean }> {
   const id = request.headers.get("X-Player-Id");
   if (!id || !ID_PATTERN.test(id)) throw new ApiError(401, "invalid_auth");
   const value = request.headers.get("Authorization");
@@ -84,14 +85,16 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   const memberRoute = pollenMemberRoute(request, path, env), view = pollenAuthView(request, path, env), looks = looksMemberRoute(request, path, env) || looksDuelRoute(request, path, env);
   // The public duel list learns the reader's safety token from the same call (safety.ts ownBlocks).
   const listing = publicListRoute(request, path);
-  const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look; owned_faces?: string[] } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks, facePacksTurnRoute(request, path))
+  const access: { authorized: boolean; linked: boolean; platform?: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look; owned_faces?: string[] } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks, facePacksTurnRoute(request, path))
     : namesRoomRoute(request, path, env) || memberRoute || looks || listing ? await player.authorizeNamed(hash, memberRoute, looks, listing) : view !== null ? await player.authorizeWallet(hash, view, walletMode(request, env), grantHint(request), fruitsFor(request, env), energyFor(request, env), clientReach(request))
-    : { authorized: await player.authorize(hash, deleting), linked: true };
+    : wantsPlatform(request, path, env) ? await player.authorizeAccess(hash, deleting) : { authorized: await player.authorize(hash, deleting), linked: true };
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   await limitPlayer(env, id);
   if (!access.linked) throw new ApiError(404, "room_not_found");
+  // The platform account rule (platform-gate.ts): the mark rides on the identity read above. Wallet reads never carry it and are never gated.
+  if (gatedWrite(request, path) && platformRequired(request, env) && access.platform !== true && !platformExempt(env, id)) throw new ApiError(403, PLATFORM_REQUIRED);
   return { playerId: id, safetyToken: access.safety_token, memberName: flags.displayNames(env) ? access.display_name : undefined, pollen: pollenMember(access), pollenView: access.pollen, memberLook: looks ? memberLookOf(access) : undefined,
-    facePacks: Array.isArray(access.owned_faces) ? access.owned_faces : undefined };
+    facePacks: Array.isArray(access.owned_faces) ? access.owned_faces : undefined, platformLinked: access.platform === true };
 }
 async function ensurePremium(snapshot: RoomSnapshot, nextLevel: boolean, env: Env): Promise<void> {
   if (snapshot.level_index + (nextLevel ? 1 : 0) < 3) return;
@@ -147,7 +150,7 @@ export default {
         if (Object.keys(input).length !== 1 || input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
         return result(await env.SAFETY_PROFILES.getByName(owner).acknowledgeDeletion(owner, await digest(authorization.slice(7))));
       }
-      const { playerId, safetyToken, memberName, pollen, pollenView, memberLook, facePacks } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
+      const { playerId, safetyToken, memberName, pollen, pollenView, memberLook, facePacks, platformLinked } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
       await limitCostlyRoute(request, path, playerId, env);
       // Absent unless a platform games flag is on: the paths then answer 404 as before.
@@ -235,7 +238,7 @@ export default {
         return json(checked);
       }
       // A public duel's room shows a phone its partner's stand-in, never their id (duels/public-mask.ts).
-      if (path.startsWith("/v2/")) return await maskedResponse(await routeV2(request, path, playerId, env, safetyToken, memberName, pollen, memberLook, facePacks), playerId);
+      if (path.startsWith("/v2/")) return await maskedResponse(await routeV2(request, path, playerId, env, safetyToken, memberName, pollen, memberLook, facePacks, platformLinked), playerId);
       if (path === "/v1/rooms" && request.method === "GET") {
         const page = await indexedLegacyRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next);
       }
