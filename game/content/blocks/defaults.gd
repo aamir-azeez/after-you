@@ -39,14 +39,15 @@ const BLOCKS := {
 	# The new pieces (rules 16). Their words wait for the owner's text pass, so
 	# a stage of them writes its own stage copy.
 	"fog_lantern": {"cues": ["lever_pulled", "bridge_closed"]},
-	"crank_bridge": {"cues": ["lever_pulled", "bridge_opened"]},
-	"dam_bridge": {"cues": ["switch_set", "bridge_opened"]},
+	"crank_bridge": {"cues": ["bridge_opened"]},
+	"weight_pan": {"cues": ["bridge_opened"]},
 	"platform": {"cues": ["bridge_opened"]},
 	"weight_lift": {"cues": ["bridge_opened"]},
-	"sack_lift": {"cues": ["lever_pulled", "bridge_opened"]},
 	"rope_raft": {"cues": ["switch_set", "bridge_opened"]},
 	"sinking_stones": {"cues": []},
 	"rope_ladder": {"cues": []},
+	"wheel_ride": {"cues": ["bridge_opened"]},
+	"falls_path": {"cues": ["lever_pulled", "bridge_opened"]},
 }
 ## The look a new piece's block gives the pieces and crossings it places when
 ## they name no "style" of their own: {block: {field: style}} (content/
@@ -54,12 +55,13 @@ const BLOCKS := {
 ## descriptor still wins.
 const BLOCK_STYLES := {
 	"fog_lantern": {"lever": "lantern"},
-	"crank_bridge": {"lever": "winch", "routes": "rope"},
-	"dam_bridge": {"routes": "dam"},
+	"crank_bridge": {"lever": "winch", "pads": "crank_board", "routes": "rope"},
+	"weight_pan": {"pad": "pan"},
 	"sinking_stones": {"stones": "stones"},
 	"weight_lift": {"pads": "pan", "top_pads": "pan"},
-	"sack_lift": {"lever": "winch"},
-	"rope_raft": {"selector": "pull_rope"},
+	"rope_raft": {"selector": "rope_wheel"},
+	"wheel_ride": {"stairs": "wheel"},
+	"falls_path": {"routes": "falls_path"},
 }
 ## Fields a block may give a piece, read here only: never part of the
 ## expanded definition, so a style never changes a hash.

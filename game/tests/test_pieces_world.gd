@@ -50,7 +50,8 @@ func _marsh() -> void:
 	_check(pieces != null and pieces._platforms.size() == 2 and pieces._platforms[0].lift and not pieces._platforms[1].lift, "The lift and the raft are each one piece")
 	_check(pieces.deck_style("lift-low") == "" and pieces.deck_style("raft-south") == "" and not world._hangs_pulley({"id": "raft-north"}), "Their stops lay no deck of their own and hang no pulley")
 	_check(pieces.deck_style("boards") == "plank" and world._hangs_pulley({"id": "boards"}), "The lantern's low boards are plain planks")
-	_check(world._lever_pieces.lantern.style == "lantern" and world.pad_pieces.pan.style == "pan" and world.pad_pieces["top-pan"].style == "pan" and world._lever_pieces.rope.style == "pull_rope", "The lantern, the pans and the pull rope come in their own looks")
+	_check(world._lever_pieces.lantern.style == "lantern" and world.pad_pieces.pan.style == "pan" and world.pad_pieces["top-pan"].style == "pan" and world._lever_pieces.rope.style == "rope_wheel", "The lantern, the pans and the rope wheel come in their own looks")
+	_check(pieces._fills.size() == 1 and not pieces._fills[0].node.visible, "The lift's pan can fill with the lantern's water, dry while it is out")
 	_check(pieces._ladders.has("ladder") and world.terrain.find_child("RopeLadder_rope", true, false) != null, "The one way stair is a rope ladder")
 	# Fog: on floors only, clear of crossings, stairs, controls and the goal.
 	var fog: RefCounted = pieces.fog
@@ -72,6 +73,7 @@ func _marsh() -> void:
 	sim.step({})
 	world.present(sim.snapshot(), true)
 	_check(shown > 0 and _shown_near(fog, Vector2(8.0, 3.0)) == 0, "Lit, the lantern clears the fog round it (%d puffs before)" % shown)
+	_check(pieces._fills[0].node.visible, "Lit, its pump fills the lift's pan")
 	# The ladder: hung while a pip is at its foot, rolled up otherwise.
 	var ladder: RefCounted = pieces._ladders.ladder.piece
 	_check(not ladder._hung.visible and ladder._rolled.visible, "With nobody at its foot the ladder is pulled up")
@@ -97,8 +99,18 @@ func _marsh() -> void:
 func _falls() -> void:
 	var world := await _world("falls")
 	var pieces: RefCounted = world.new_pieces
-	_check(pieces.deck_style("span") == "rope" and pieces.deck_style("dam") == "dam" and pieces.deck_style("s1") == "stones", "The rope bridge, the dam and the stones lay their own decks")
-	_check(not world._hangs_pulley({"id": "span"}) and pieces._platforms.size() == 2 and pieces._platforms[0].lift and not pieces._platforms[1].lift, "No pulley on them; the sack lift is a lift and the punt a raft")
+	_check(pieces.deck_style("span") == "rope" and pieces.deck_style("behind") == "falls_path" and pieces.deck_style("s1") == "stones", "The rope bridge, the path behind the falls and the stones lay their own decks")
+	_check(not world._hangs_pulley({"id": "span"}) and pieces._platforms.size() == 1 and not pieces._platforms[0].lift, "No pulley on them; the punt is a raft")
+	_check(pieces._curtains.has("behind") and pieces._curtains.behind.visible, "The falls' water hangs over the path while the water gate is shut")
+	_check(pieces._ladders.wheel.wheel and world.pad_pieces["gate-board"].style == "board" and world.pad_pieces.crank.style == "crank_board", "The wheel ride, the gate board and the crank boards come in their own looks")
+	var held := _sim("falls", {"p0": {"x": 250, "z": 1520, "surface_id": "bank", "height": 0}})
+	world.reduced_motion = false
+	world.present(held.snapshot(), false)
+	_check(pieces._ladders.wheel.piece.moving(), "The board held, the wheel turns")
+	var opened := _sim("falls", {"p0": {"x": 700, "z": 1250, "surface_id": "far", "height": 0}})
+	opened.step({"interact": true})
+	world.present(opened.snapshot(), true)
+	_check(not pieces._curtains.behind.visible, "With the water gate pulled the path is dry and clear")
 	_check(pieces.fog == null, "No lantern, no fog")
 	world.queue_free()
 	await process_frame

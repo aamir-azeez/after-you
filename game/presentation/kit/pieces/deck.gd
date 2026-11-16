@@ -9,22 +9,23 @@ extends RefCounted
 ##   "rope": a rope bridge (rules 16's crank_bridge block). Thin slats that sag
 ##       a little in the middle on two foot ropes, a rope handrail each side on
 ##       posts at both ends. Wound in (shut), nothing spans the gap.
-##   "dam": a dam bridge (dam_bridge). A stone dam wall down into the water
-##       under a plank walk with a coping each side: the planks are only laid
-##       while the water behind stands at its level.
+##   "falls_path": the path behind a waterfall (falls_path). Wet flagstones
+##       with a mossy lip, laid while the water gate holds the falls back;
+##       while the falls run, the world hangs their water over it
+##       (kit/new_pieces.gd), so the closed path shows why.
 ##   "stones": sinking stones (sinking_stones). Round flat stones, wet at the
 ##       rim, laid across the gap one per pip's step. Under water (shut) they
 ##       are gone.
 ## Every part stays inside the crossing's rectangle and at or under its walk,
 ## except the handrails, which stand on its long edges.
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
-const STYLES := ["rope", "dam", "stones"]
+const STYLES := ["rope", "stones", "falls_path"]
 const ROPE := Color("c9b48a")
 const SLAT := Color("a98a64")
 const SAG := 0.05
 const RAIL_HEIGHT := 0.5
-const DAM_STONE := Color("8f8a7e")
-const DAM_DEPTH := 1.1
+const FLAG := Color("8a8f8a")
+const MOSS := Color("6f8f5a")
 const STONE := Color("9a9890")
 const STONE_WET := Color("6f746f")
 const STONE_STEP := 0.34
@@ -48,13 +49,13 @@ static func lay(style: String, deck: Node3D, width: float, depth: float, across_
 				for end: float in [low, high]: Parts.box(Vector3(0.05, RAIL_HEIGHT + 0.1, 0.05), Parts.TIMBER_DARK, _on(across_x, end, RAIL_HEIGHT * 0.5 - 0.05, edge), deck)
 				Parts.box(_along(across_x, length, 0.025), ROPE, _on(across_x, middle, RAIL_HEIGHT - SAG, edge), deck)
 				Parts.box(_along(across_x, length, 0.02), ROPE, _on(across_x, middle, -0.04 - SAG * 0.5, edge * 0.9), deck)
-		"dam":
-			Parts.box(_along(across_x, length, span, DAM_DEPTH), DAM_STONE, _on(across_x, middle, -0.08 - DAM_DEPTH * 0.5, 0.0), deck)
-			for side: int in [-1, 1]: Parts.box(_along(across_x, length, 0.06, 0.06), DAM_STONE.lightened(0.12), _on(across_x, middle, -0.03, float(side) * (span * 0.5 - 0.03)), deck)
-			for index in range(4):
-				var along := low + (float(index) + 0.5) * length / 4.0
-				var size := Vector3(length / 4.0 - 0.02, 0.05, span - 0.14) if across_x else Vector3(span - 0.14, 0.05, length / 4.0 - 0.02)
-				Parts.box(size, Parts.TIMBER_LIGHT.darkened(0.05 * float(index % 2)), _on(across_x, along, -0.025, 0.0), deck)
+		"falls_path":
+			var count := maxi(2, roundi(length / 0.4))
+			for index in range(count):
+				var along := low + (float(index) + 0.5) * length / float(count)
+				var size := Vector3(length / float(count) - 0.03, 0.08, span - 0.06) if across_x else Vector3(span - 0.06, 0.08, length / float(count) - 0.03)
+				Parts.box(size, FLAG.darkened(0.08 * float(index % 2)), _on(across_x, along, -0.04, 0.0), deck)
+			Parts.box(_along(across_x, length, 0.05, 0.04), MOSS, _on(across_x, middle, -0.015, span * 0.5 - 0.025), deck)
 		"stones":
 			var count := maxi(1, roundi(length / STONE_STEP))
 			var radius := minf(span * 0.45, length / float(count) * 0.48)

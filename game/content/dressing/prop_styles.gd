@@ -107,15 +107,16 @@ const SLOTS := {
 	# each built by its kit under presentation/kit/pieces/. A piece behaves the
 	# same in every style; only its look changes.
 	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}, "lantern": {}},
-	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}, "pull_rope": {}},
-	"pad": {"plain": {}, "stand_spot": {}, "pan": {}},
+	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}, "rope_wheel": {}},
+	"pad": {"plain": {}, "stand_spot": {}, "pan": {}, "board": {}, "crank_board": {}},
 	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}},
 	"lift": {"plain": {}, "rope_tower": {}},
-	# The new pieces' looks (rules 16): a crossing's deck, a rope raft, a pull-up
-	# rope ladder, the fog round a lit lantern and a spillway made a waterfall.
-	"deck": {"plank": {}, "rope": {}, "dam": {}, "stones": {}},
+	# The new pieces' looks (rules 16): a crossing's deck, a rope raft, a stair
+	# ridden up only (a pull-up rope ladder or a turning wheel), the fog round a
+	# lit lantern and a spillway made a waterfall.
+	"deck": {"plank": {}, "rope": {}, "stones": {}, "falls_path": {}},
 	"raft": {"logs": {}},
-	"ladder": {"rope": {}},
+	"ladder": {"rope": {}, "wheel": {}},
 	"fog": {"mist": {}, "none": {}},
 	"spillway": {"trickle": {}, "falls": {}},
 }
