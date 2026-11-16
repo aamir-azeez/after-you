@@ -8,8 +8,11 @@ what it leaves there:
   line gains its key), and only the shared files that list chapters change;
 - ci_shards.txt stays sorted;
 - the placeholder thumbnail is the one test_chapter_descriptors.gd recognises;
-- content/chapters/index.gd's development turn limits are the longest the
-  rules and the server accept (scripts/chapter_tools/turn_limits.py).
+- content/chapters/index.gd's development turn limits are one limit for
+  every turn, the longest the rules and the server accept for two open turns
+  stages (scripts/chapter_tools/turn_limits.py);
+- the journey chapter and the new version pin open turns, the cooperative
+  chapter the open controls.
 With a Godot binary (--godot, or the GODOT environment variable) it then
 imports the copy, writes the new chapters' fixtures, manifest rows and backend
 copies with scripts/chapter_fixtures.py, checks that only the manifest golden
@@ -18,7 +21,7 @@ descriptor, registry, manifest, thumbnail, Home, shard, scrolling camera, fold
 and Lighthouse release suites, which each read every registered chapter. Then
 the journey chapter's own run becomes its routes (scripts/chapter_recording.py)
 with every fixture unchanged, replays (scripts/chapter_recheck.py), and gets
-turn limits of its own (scripts/chapter_turn_limits.py). Each Godot process
+turn limits of its own, equal on open turns (scripts/chapter_turn_limits.py). Each Godot process
 runs headless with its own user data folders.
 
 The copy's game folder comes from --game (default: this repository's game/),
@@ -146,8 +149,14 @@ def check_scaffold(repo: Path, before: dict[str, bytes]) -> list[str]:
     descriptors = (ROOT / "game/tests/test_chapter_descriptors.gd").read_text(encoding="utf-8")
     rules = Rules(ROOT)
     index = (ROOT / "game/content/chapters/index.gd").read_text(encoding="utf-8")
-    check(f'const DEVELOPMENT_TURN_LIMITS := {{"a_ticks": {rules.cap_a}, "b_ticks": {rules.cap_b}}}' in index,
-          f"index.gd's development turn limits are the longest the rules and the server accept: A {rules.cap_a}, B {rules.cap_b} ticks")
+    turn = rules.cap_open(2)
+    check(f'const DEVELOPMENT_TURN_LIMITS := {{"a_ticks": {turn}, "b_ticks": {turn}}}' in index,
+          f"index.gd's development turn limits are the longest turn the rules and the server accept for two open turns stages: {turn} ticks each")
+    pins = {"scaffold-test-coop@1": "OpenControls.pin(", "scaffold-test-journey@1": "OpenTurns.pin(", "conservatory@3": "OpenTurns.pin("}
+    for key, pin in pins.items():
+        stem = key.split("@")[0].replace("-", "_") + ("" if key.endswith("@1") else "_v" + key.split("@")[1])
+        family = "cooperative" if "coop" in key else "journey"
+        check(pin in after.get(f"game/core/{family}/{stem}_catalog.gd", b"").decode("utf-8"), f"{key}'s catalog pins with {pin}...)")
     placeholder = hashlib.sha256((Path(__file__).resolve().parent / "chapter_templates/placeholder-thumbnail.png").read_bytes()).hexdigest()
     check(f'PLACEHOLDER_THUMBNAIL_SHA256 := "{placeholder}"' in descriptors, "test_chapter_descriptors.gd knows the placeholder thumbnail")
     return suites
@@ -206,20 +215,23 @@ def check_recordings(binary: str, repo: Path) -> None:
     print("CHAPTER RECORDING: " + log.strip().replace("\n", "\n  "))
     rules = Rules(ROOT)
     # Each turn is shown against the development limit it was played under.
-    check(ok and f"updated game/tests/routes/{JOURNEY}.json" in log and "suggested turn_limits" in log and f" of {rules.seconds(rules.cap_a)} (" in log,
+    check(ok and f"updated game/tests/routes/{JOURNEY}.json" in log and "suggested turn_limits" in log and f" of {rules.seconds(rules.cap_open(2))} (" in log,
           f"chapter_recording.py takes {JOURNEY}'s run: " + log[-2000:])
     routes = json.loads((repo / f"game/tests/routes/{JOURNEY}.json").read_text(encoding="utf-8"))
-    check(all(step[0] == "input" for stage in routes.values() for role in ("a", "b") for step in stage[role]), "The recorded routes are input runs")
+    # Open turns: a stage that took more than two turns lists them all as "turns".
+    turns = [turn for stage in routes.values() for turn in stage.get("turns", [stage.get("a", []), stage.get("b", [])])]
+    check(all(stage.get("turns") for stage in routes.values()), "The open turns run's three turn stages come back as turns")
+    check(all(turn and step[0] == "input" for turn in turns for step in turn), "The recorded routes are input runs")
     now = {path: data for path, data in snapshot(repo).items() if path.startswith("game/tests/fixtures/")}
     check(now == fixtures, "Routes from the chapter's own run write the same fixtures: " + ", ".join(sorted(p for p in set(now) | set(fixtures) if now.get(p) != fixtures.get(p))))
     ok, log = tool(binary, repo, "chapter_recheck.py", ["--key", JOURNEY])
     check(ok and "2 of 2 stages finish" in log, "chapter_recheck.py replays the recorded routes: " + log[-1500:])
     ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "200", "--b-seconds", "250"])
     check(not ok and "server cannot store" in log, "chapter_turn_limits.py refuses turns past the server's bound: " + log[-1500:])
-    ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "60", "--b-seconds", "90"])
+    ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "60", "--b-seconds", "60"])
     definition = json.loads((repo / "game/tests/fixtures/journey/scaffold-test-journey-definition.json").read_text(encoding="utf-8"))
-    check(ok and definition.get("turn_limits") == {"a_ticks": 1800, "b_ticks": 2700} and "updated backend/src/v2/scaffold-test-journey.json" in log,
-          "chapter_turn_limits.py writes the limits and rewrites the fixtures and backend copies: " + log[-2000:])
+    check(ok and definition.get("simulation_version") == 14 and definition.get("turn_limits") == {"a_ticks": 1800, "b_ticks": 1800} and "updated backend/src/v2/scaffold-test-journey.json" in log,
+          "chapter_turn_limits.py writes equal open turns limits and rewrites the fixtures and backend copies: " + log[-2000:])
 
 
 def copy_game(source: Path, target: Path) -> None:

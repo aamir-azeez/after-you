@@ -1,7 +1,8 @@
 extends SceneTree
 ## Open turns (core/physical/open_turns.gd) on Turn of the Tide@3's Set the
 ## Tide, played with the native fixture inputs:
-## - every turn has the second turn's limit; ids and pips follow turn order;
+## - every turn has the second turn's limit, and a level may declare equal
+##   limits (refused on the rules before open turns); ids and pips follow turn order;
 ## - turn 2 may pass once its memory is over, and the pass replays exactly and
 ##   is ready to be a memory; the room's must_finish takes the pass away;
 ## - turn 3 is the first pip's again, over turn 2 (which nests turn 1): the
@@ -57,6 +58,15 @@ func _rules() -> void:
 	var first := Simulation.new()
 	first.reset(level, STAGE, Registry.initial_checkpoint(TIDE), {}, "a")
 	_check(first.duration_limit() == Simulation.turn_ticks(level, 15, "b"), "A first turn has the second turn's limit")
+	# Every open turn has the same limit, so a level may declare one number for both.
+	var equal: Dictionary = level.duplicate(true)
+	equal.turn_limits = {"a_ticks": 2730, "b_ticks": 2730}
+	_check(Simulation.rules_allowed(equal, 15) and Simulation.turn_ticks(equal, 15, "a") == 2730 and Simulation.turn_ticks(equal, 15, "b") == 2730, "Open turns take equal turn limits")
+	var closed: Dictionary = equal.duplicate(true)
+	closed.simulation_version = 13
+	var longer: Dictionary = closed.duplicate(true)
+	longer.turn_limits = {"a_ticks": 2700, "b_ticks": 3000}
+	_check(not Simulation.rules_allowed(closed, 13) and Simulation.rules_allowed(longer, 13), "Rules before open turns still need the longer second turn")
 
 func _chain() -> void:
 	var level := Registry.definition(TIDE)

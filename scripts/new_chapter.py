@@ -9,13 +9,20 @@ test_chapter_descriptors refuses for a released chapter.
     python scripts/new_chapter.py --version-of conservatory@1 --shard 2
 
 --version-of makes the next version of a registered chapter. Its catalog reads
-the earlier definition and gives it the new version on the open controls
-(core/physical/open_controls.gd, owners off its controls); the world, the
+the earlier definition and gives it the new version on open turns
+(core/physical/open_turns.gd: open controls with no owners, and a stage passing
+back and forth until both pips end a turn at its goal, each stage's cap kept
+or 10) and the development turn limits, one for every turn; the world, the
 thumbnail, the copy, the Home places and the Home keepsake stay the earlier
 version's, and the earlier version's descriptor is left as it is. A chapter
 has exactly one Home keepsake, on the version nothing supersedes: releasing
 the new version (superseded_by on the earlier one) moves the earlier
 descriptor's "home_keepsake" to it, and test_chapter_descriptors says so.
+
+A new journey chapter is on open turns too, each stage's cap 10 (the owner
+sets 20 on a hard stage), with the development turn limits. A new cooperative
+chapter stays on the open controls: the cooperative server adapter
+(backend/src/v2/protocol-cooperative.ts) takes only two turns a stage.
 
 A new chapter gets its Home keepsake: the descriptor's "home_keepsake" field,
 a placeholder builder in game/presentation/keepsakes/ (from
