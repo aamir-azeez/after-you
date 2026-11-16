@@ -46,7 +46,7 @@ func _saved_turn() -> void:
 	_check(app.mode == "ready" and _panel(app) != null and _texts(app) == ["Record", OVER], "An older-rules chapter's first page has the panel with Record and Start over: " + str(_texts(app)))
 	_check(app.overlay.find_child("TurnNewsHeading", true, false) == null, "Nothing has happened yet, so no heading leads the panel")
 	await _play(app, _fixture("relay-a"))
-	_check(_texts(app).filter(func(text: String) -> bool: return text != "React") == ["Preview", "Save turn", "Retry", "Back"], "The review card matches the room's: " + str(_texts(app)))
+	_check(_texts(app).filter(func(text: String) -> bool: return text != "React") == ["Preview", "Retry", "Save turn", "Back"], "The review card matches the room's, Retry above Save turn: " + str(_texts(app)))
 	await _tap(app, "Save turn")
 	_check(app.mode == "ready" and app.role == "b" and _heading(app) == SAVED, "After Save turn the panel says Your turn is saved")
 	_check(_texts(app) == ["Record", AGAIN, OVER], "Record, Play my turn again and Start over, in the room's order: " + str(_texts(app)))
