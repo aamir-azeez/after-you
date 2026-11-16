@@ -1,0 +1,304 @@
+{
+  "bridges": [
+    {
+      "from_surface": "dock",
+      "height_cm": 0.0,
+      "id": "ferry",
+      "rect_cm": [
+        -290.0,
+        120.0,
+        -210.0,
+        200.0
+      ],
+      "to_surface": "quay"
+    }
+  ],
+  "drops": [],
+  "id": "carry-witness",
+  "islands": [
+    {
+      "height_cm": 0.0,
+      "id": "dock",
+      "rect_cm": [
+        -400.0,
+        -120.0,
+        -100.0,
+        120.0
+      ]
+    },
+    {
+      "height_cm": 48.0,
+      "id": "loft",
+      "rect_cm": [
+        0.0,
+        -120.0,
+        400.0,
+        120.0
+      ]
+    },
+    {
+      "height_cm": 0.0,
+      "id": "quay",
+      "rect_cm": [
+        -400.0,
+        200.0,
+        -100.0,
+        360.0
+      ]
+    }
+  ],
+  "item_spots": [
+    {
+      "height_cm": 0.0,
+      "id": "post",
+      "position_cm": [
+        -350.0,
+        80.0
+      ],
+      "surface_id": "dock"
+    },
+    {
+      "height_cm": 48.0,
+      "id": "desk",
+      "position_cm": [
+        320.0,
+        80.0
+      ],
+      "surface_id": "loft"
+    },
+    {
+      "height_cm": 0.0,
+      "id": "landing",
+      "position_cm": [
+        -160.0,
+        300.0
+      ],
+      "surface_id": "quay"
+    },
+    {
+      "height_cm": 0.0,
+      "id": "eddy",
+      "position_cm": [
+        -40.0,
+        300.0
+      ],
+      "surface_id": ""
+    },
+    {
+      "height_cm": 0.0,
+      "id": "mooring",
+      "position_cm": [
+        -160.0,
+        160.0
+      ],
+      "surface_id": ""
+    },
+    {
+      "height_cm": 0.0,
+      "id": "berth",
+      "position_cm": [
+        -250.0,
+        160.0
+      ],
+      "surface_id": ""
+    }
+  ],
+  "items": [
+    {
+      "at": "post",
+      "id": "pipsport"
+    },
+    {
+      "at": "mooring",
+      "carry": false,
+      "id": "raft"
+    }
+  ],
+  "premium": false,
+  "props": [],
+  "schema_version": 7.0,
+  "simulation_version": 16.0,
+  "stages": [
+    {
+      "ball_pads": [],
+      "controls": [],
+      "entry_latch_routes": [],
+      "first_player_slot": "p0",
+      "gates": [
+        {
+          "route_id": "ladder"
+        }
+      ],
+      "goal": {
+        "height_cm": 48.0,
+        "id": "loft-goal",
+        "position_cm": [
+          250.0,
+          0.0
+        ],
+        "radius_cm": 48.0,
+        "surface_id": "loft"
+      },
+      "goal_policy": {
+        "kind": "ring",
+        "when": {
+          "carried": true,
+          "item_id": "pipsport"
+        }
+      },
+      "id": "hand-up",
+      "kind": "journey",
+      "levers": [],
+      "pressure_pads": [],
+      "receiver_action_ticks": 0.0,
+      "receiver_route_cm": [
+        [
+          250.0,
+          0.0
+        ]
+      ],
+      "source_policy": {
+        "kind": "route_endpoint",
+        "when": {}
+      },
+      "turn_cap": 10.0,
+      "version": 1.0
+    },
+    {
+      "ball_pads": [],
+      "controls": [
+        {
+          "height_cm": 0.0,
+          "id": "current",
+          "initial": "south",
+          "kind": "selector",
+          "position_cm": [
+            -350.0,
+            -80.0
+          ],
+          "radius_cm": 28.0,
+          "surface_id": "dock",
+          "values": [
+            "south",
+            "north"
+          ]
+        }
+      ],
+      "current_legs": [
+        {
+          "control_id": "current",
+          "from": "mooring",
+          "to": "berth",
+          "value": "north"
+        },
+        {
+          "control_id": "current",
+          "from": "eddy",
+          "stop": {
+            "pad_id": "sluice-board"
+          },
+          "to": "landing",
+          "value": "north"
+        }
+      ],
+      "entry_latch_routes": [],
+      "first_player_slot": "p0",
+      "gates": [
+        {
+          "route_id": "ladder"
+        },
+        {
+          "route_id": "ferry",
+          "when": {
+            "item_id": "raft",
+            "spot_id": "berth"
+          }
+        }
+      ],
+      "goal": {
+        "height_cm": 0.0,
+        "id": "dock-goal",
+        "position_cm": [
+          -250.0,
+          0.0
+        ],
+        "radius_cm": 48.0,
+        "surface_id": "dock"
+      },
+      "goal_policy": {
+        "kind": "ring",
+        "when": {
+          "item_id": "pipsport",
+          "spot_id": "post"
+        }
+      },
+      "id": "drift",
+      "item_starts": {
+        "pipsport": "eddy"
+      },
+      "kind": "journey",
+      "levers": [],
+      "pressure_pads": [
+        {
+          "height_cm": 0.0,
+          "id": "sluice-board",
+          "position_cm": [
+            -350.0,
+            300.0
+          ],
+          "radius_cm": 28.0,
+          "surface_id": "quay"
+        }
+      ],
+      "receiver_action_ticks": 0.0,
+      "receiver_route_cm": [
+        [
+          -250.0,
+          0.0
+        ]
+      ],
+      "source_policy": {
+        "kind": "route_endpoint",
+        "when": {}
+      },
+      "turn_cap": 10.0,
+      "version": 1.0
+    }
+  ],
+  "stairs": [
+    {
+      "axis": "x",
+      "from_height_cm": 0.0,
+      "from_surface": "dock",
+      "hands": true,
+      "id": "ladder",
+      "rect_cm": [
+        -100.0,
+        -32.0,
+        0.0,
+        32.0
+      ],
+      "to_height_cm": 48.0,
+      "to_surface": "loft"
+    }
+  ],
+  "starts": {
+    "p0": {
+      "height_cm": 0.0,
+      "position_cm": [
+        -300.0,
+        0.0
+      ],
+      "surface_id": "dock"
+    },
+    "p1": {
+      "height_cm": 48.0,
+      "position_cm": [
+        250.0,
+        0.0
+      ],
+      "surface_id": "loft"
+    }
+  },
+  "version": 1.0
+}

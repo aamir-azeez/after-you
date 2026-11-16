@@ -30,6 +30,11 @@ extends RefCounted
 ## values through the engine's own BeamField, where reach otherwise counts a
 ## beam signal as always lit.
 ##
+## The new pieces (rules 16, core/physical/pieces_rules.gd): a gate may hold
+## while a lever is off ("not"), so a settable lever a gate reads is tried
+## both ways, and a pad both held and not (as before). A moving platform's
+## stops are joined by ride edges, each needing both stops: a pip on one stop
+## rides to every other. A one way stair's direction comes from Navigation.
 ## A walking pip (reach's `walker`): the other pip works every control, lever
 ## and pad while this one only walks. The walker goes wherever the crossings
 ## open, but works nothing and stands on no pad. The presser cannot hold a pad
@@ -41,9 +46,12 @@ const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const BeamField = preload("res://core/beam_field.gd")
+const CarriedItems = preload("res://core/physical/carried_items.gd")
 const RADIUS := 12
 const WALK := 28
 const LATERAL_STEP := 8
+## A choice in gate_can_hold that sets a lever rather than a control.
+const LEVER_CHOICE := "lever:"
 
 var level: Dictionary
 var surfaces: Array = []          # [{id, rect, kind, height|stair}]
@@ -117,6 +125,12 @@ func build(slot: String, open_all: bool = false) -> Dictionary:
 		var to := int(index[drop.destination_surface])
 		if _probe_drop(drop, from, to, slot, all_routes, levers):
 			found["%s>%s" % [drop.surface_id, drop.destination_surface]] = [bits_of([drop.surface_id, drop.destination_surface]), lever]
+	# Rules 16: riding a moving platform from any of its stops to any other.
+	for stage: Dictionary in level.get("stages", []):
+		for platform: Dictionary in stage.get("platforms", []):
+			for from: Variant in platform.get("stops", []):
+				for to: Variant in platform.get("stops", []):
+					if from != to and index.has(str(from)) and index.has(str(to)): found["%s>%s" % [from, to]] = [bits_of([str(from), str(to)]), ""]
 	if not open_all:
 		pairs[slot] = found
 		var lists: Array = []
@@ -227,13 +241,14 @@ func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool, frozen: Str
 			floors[slot] = {start: true} if slot == frozen else _walkable_from(slot, start, routes, settable)
 		var before := JSON.stringify(settable)
 		settable = _settable(stage, mechanisms, floors)
+		_reach_items(stage, checkpoint, floors, open, settable)
 		for gate: Dictionary in stage.get("gates", []):
 			var route := str(gate.get("route_id", ""))
 			if not route_bit.has(route): continue
-			if not open.has(route) and gate_can_hold(gate, stage, settable, mechanisms, journey, floors): open[route] = true
+			if not open.has(route) and gate_can_hold(with_items(gate, settable), stage, settable, mechanisms, journey, floors): open[route] = true
 			if walker.is_empty() or own.has(route) or not open.has(route): continue
 			_beside = route
-			if gate_can_hold(gate, stage, settable, mechanisms, journey, floors): own[route] = true
+			if gate_can_hold(with_items(gate, settable), stage, settable, mechanisms, journey, floors): own[route] = true
 			_beside = ""
 		if open.size() + own.size() == size and JSON.stringify(settable) == before: break
 	return {"floors": floors, "open": open, "settable": settable, "own": own if not walker.is_empty() else open}
@@ -302,12 +317,14 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 		# A ball pad holds once the ball is pushed there: always possible here.
 		return true
 	var when: Dictionary = gate.get("when", {})
-	var references: Dictionary = {"controls": {}, "pads": {}, "signals": {}}
+	var references: Dictionary = {"controls": {}, "pads": {}, "signals": {}, "levers": {}}
 	_references(when, references)
-	# Levers only ever count while on, so a settable one is simply on.
+	# A settable lever is simply on, unless a gate holds only while one is off
+	# (rules 16's "not"): then each settable lever it reads is tried both ways.
 	var levers: Dictionary = mechanisms.get("levers", {}).duplicate()
+	var negated := _negates(when)
 	for lever: Dictionary in stage.get("levers", []):
-		if settable.has(lever.id): levers[lever.id] = true
+		if settable.has(lever.id) and not (negated and references.levers.has(str(lever.id))): levers[lever.id] = true
 	var signals: Dictionary = {}
 	for id: String in references.signals: signals[id] = true
 	var choices: Array = []
@@ -319,12 +336,17 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 	for id: String in references.controls:
 		var values: Variant = settable.get(id, [""])
 		choices.append([id, values if values is Array else [""]])
+	if negated:
+		for id: String in references.levers:
+			if settable.has(id): choices.append([LEVER_CHOICE + id, [true, false]])
 	var pads: Array = references.pads.keys().filter(func(id: String) -> bool: return settable.has(id))
 	return _any_assignment(when, stage, choices, 0, {}, levers, signals, _pad_placings(stage, pads, floors))
 
 func _references(value: Dictionary, found: Dictionary) -> void:
 	for key: String in ["all", "any"]:
 		for child: Dictionary in value.get(key, []): _references(child, found)
+	if value.get("not") is Dictionary: _references(value["not"], found)
+	if value.has("lever_id") and found.has("levers"): found.levers[str(value.lever_id)] = true
 	if value.has("control_id"): found.controls[str(value.control_id)] = true
 	if value.has("pad_id"): found.pads[str(value.pad_id)] = true
 	if value.has("signal_id"): found.signals[str(value.signal_id)] = true
@@ -333,8 +355,10 @@ func _references(value: Dictionary, found: Dictionary) -> void:
 ## placing of the settable pads, through the engine's own predicate.
 func _any_assignment(when: Dictionary, stage: Dictionary, choices: Array, at: int, controls: Dictionary, levers: Dictionary, signals: Dictionary, placings: Array) -> bool:
 	if at < choices.size():
+		var id := str(choices[at][0])
 		for value: Variant in choices[at][1]:
-			controls[choices[at][0]] = str(value)
+			if id.begins_with(LEVER_CHOICE): levers[id.trim_prefix(LEVER_CHOICE)] = value
+			else: controls[id] = str(value)
 			if _any_assignment(when, stage, choices, at + 1, controls, levers, signals, placings): return true
 		return false
 	var mechanisms := {"controls": controls, "levers": levers}
@@ -372,6 +396,13 @@ func _pad_placings(stage: Dictionary, pads: Array, floors: Dictionary = {}) -> A
 		for p1: Dictionary in by_slot.p1: result.append({"p0": p0, "p1": p1})
 	return result
 
+## Whether a gate tree holds anywhere only while something is off (rules 16).
+static func _negates(when: Dictionary) -> bool:
+	if when.has("not"): return true
+	for key: String in ["all", "any"]:
+		for child: Variant in when.get(key, []):
+			if child is Dictionary and _negates(child): return true
+	return false
 ## Whether the frozen or walking probe lights beams exactly.
 func _exact_beams() -> bool:
 	return not _frozen.is_empty() or not _walker.is_empty()
@@ -405,3 +436,129 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: b
 		if found.is_empty() or str(found.surface_id) != surface: continue
 		if not journey or Seven.near({"x": spot.x, "z": spot.y, "height": int(found.height), "surface_id": surface}, entity): return true
 	return false
+
+# ---------------------------------------------------------------- items
+
+## Rules 16's carried items and currents (core/physical/carried_items.gd), as
+## part of reach: for each item of `stage` (a plan, which carries the level's
+## items and item spots and the stage's current legs), the floors a pip could
+## hold it on and the item spots it could rest at, written into `settable` as
+## "item:<id>": {"carried": [floors], "spots": [spot ids]}. A pip that reaches
+## a floor the item rests on may pick it up; a carrier walks every open
+## crossing but those needing both hands; across one of those it is handed up
+## when some pip reaches the far end; it rests at an item spot on any floor it
+## is carried to; a current leg carries it on once the leg's selector can show
+## the leg's value (`when` and `stop` are not judged: an over-approximation).
+## A hand up across a both-hands crossing needs both pips, one at each end.
+## Picking up, putting down and handing over are work, like a press: the
+## walking pip (the strict one-pip probe) does none of them. An item it starts
+## holding goes wherever it walks off both-hands crossings, and stays on its back.
+## The frozen pip (the solo probe) handles nothing, but an item it starts
+## holding stays carried on its floor; it is never handed anything (it could
+## take one only where it stands, which the probe leaves out).
+func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary, open: Dictionary, settable: Dictionary) -> void:
+	if stage.get("items", []).is_empty(): return
+	var mechanisms: Dictionary = checkpoint.get("mechanisms", {})
+	var players: Dictionary = checkpoint.get("players", {})
+	var actors: Dictionary = floors.duplicate()
+	if not _frozen.is_empty(): actors[_frozen.slot] = {}
+	if not _walker.is_empty(): actors[_walker] = {}
+	var hands := CarriedItems.hands_routes(stage)
+	var walk: Dictionary = open.duplicate()
+	for id: String in hands: walk.erase(id)
+	var starts: Dictionary = stage.get("item_starts", {})
+	for item: Dictionary in stage.items:
+		var id := str(item.id)
+		var state: Dictionary = CarriedItems.placed(stage, str(starts[id])) if starts.has(id) else mechanisms.get("items", {}).get(id, CarriedItems.placed(stage, str(item.get("at", ""))))
+		var carried: Dictionary = {}
+		var lying: Dictionary = {}
+		var spots: Dictionary = {}
+		if not str(state.get("holder", "")).is_empty():
+			var at := str(players.get(str(state.holder), {}).get("surface_id", ""))
+			carried[at] = true
+			# The walker keeps what it holds: carried where it walks, never put down or handed on.
+			if str(state.holder) == _walker:
+				for reached: String in _walkable_from(_walker, at, walk, settable): carried[reached] = true
+				var kept := carried.keys().filter(func(floor: String) -> bool: return not floor.is_empty())
+				kept.sort()
+				settable["item:" + id] = {"carried": kept, "spots": []}
+				continue
+		elif not str(state.get("spot", "")).is_empty(): spots[str(state.spot)] = true
+		if not str(state.get("surface_id", "")).is_empty(): lying[str(state.surface_id)] = true
+		var carry := CarriedItems.carriable(item)
+		while true:
+			var size := carried.size() + lying.size() + spots.size()
+			for floor: String in lying:
+				if carry and (actors.p0.has(floor) or actors.p1.has(floor)): carried[floor] = true
+			for floor: String in carried.keys():
+				for slot: String in ["p0", "p1"]:
+					if actors[slot].has(floor):
+						for reached: String in _walkable_from(slot, floor, walk, settable): carried[reached] = true
+				for route: String in hands:
+					if not open.has(route): continue
+					var ends := _route_floors(route)
+					if not ends.has(floor): continue
+					# A hand up needs two pips: one at this end, the other at the far end.
+					for other: String in ends:
+						if (actors.p0.has(floor) and actors.p1.has(other)) or (actors.p1.has(floor) and actors.p0.has(other)): carried[other] = true
+			for place: Dictionary in stage.get("item_spots", []):
+				if carry and carried.has(str(place.get("surface_id", ""))): spots[str(place.id)] = true
+			for leg: Dictionary in stage.get("current_legs", []):
+				var values: Variant = settable.get(str(leg.get("control_id", "")), [])
+				if spots.has(str(leg.from)) and (not leg.has("control_id") or (values is Array and str(leg.value) in values.map(func(v: Variant) -> String: return str(v)))):
+					spots[str(leg.to)] = true
+					var to := str(CarriedItems.spot(stage, str(leg.to)).get("surface_id", ""))
+					if not to.is_empty(): lying[to] = true
+			if carried.size() + lying.size() + spots.size() == size: break
+		var carried_list := carried.keys().filter(func(floor: String) -> bool: return not floor.is_empty())
+		carried_list.sort()
+		var spot_list := spots.keys()
+		spot_list.sort()
+		settable["item:" + id] = {"carried": carried_list, "spots": spot_list}
+
+## The floors a crossing joins, by the slots' edges.
+func _route_floors(route: String) -> Dictionary:
+	var ends: Dictionary = {}
+	for slot: String in pairs:
+		for key: String in pairs[slot]:
+			var sides := key.split(">")
+			if sides[0] == route and not route_bit.has(sides[1]): ends[sides[1]] = true
+			if sides[1] == route and not route_bit.has(sides[0]): ends[sides[0]] = true
+	return ends
+
+## `gate` with its item terms judged by reach (_reach_items in `settable`):
+## each becomes always true where it could hold, else never. "carried" holds
+## on any floor a pip could hold the item, or only on the gate's own
+## "surface_id" when it names one (the goal: the carrier stands there).
+func with_items(gate: Dictionary, settable: Dictionary) -> Dictionary:
+	var when: Variant = gate.get("when", {})
+	if not when is Dictionary or not _has_item_term(when): return gate
+	var judged := gate.duplicate()
+	judged.when = _judge_items(when, settable, str(gate.get("surface_id", "")))
+	return judged
+
+func _has_item_term(value: Dictionary) -> bool:
+	if CarriedItems.is_term(value): return true
+	for child: Variant in value.values():
+		if child is Dictionary and _has_item_term(child): return true
+		if child is Array and child.any(func(entry: Variant) -> bool: return entry is Dictionary and _has_item_term(entry)): return true
+	return false
+
+## Under a "not" (rules 16, train/new-pieces-b) an item term may always be
+## false (the item is elsewhere), so it becomes never there and the "not" holds.
+func _judge_items(value: Dictionary, settable: Dictionary, at: String, negated: bool = false) -> Dictionary:
+	if CarriedItems.is_term(value):
+		if negated: return {"control_id": "@item", "value": "never"}
+		var reach: Dictionary = settable.get("item:" + str(value.item_id), {"carried": [], "spots": []})
+		var can := false
+		if value.has("carried"): can = not bool(value.carried) or (not reach.carried.is_empty() and (at.is_empty() or at in reach.carried))
+		elif value.has("spot_id"): can = str(value.spot_id) in reach.spots
+		return {} if can else {"control_id": "@item", "value": "never"}
+	var judged: Dictionary = {}
+	for key: Variant in value:
+		var child: Variant = value[key]
+		var under := negated != (str(key) == "not")
+		if child is Dictionary: judged[key] = _judge_items(child, settable, at, under)
+		elif child is Array: judged[key] = child.map(func(entry: Variant) -> Variant: return _judge_items(entry, settable, at, under) if entry is Dictionary else entry)
+		else: judged[key] = child
+	return judged

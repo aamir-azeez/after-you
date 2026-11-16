@@ -280,7 +280,10 @@ def add_copy(plan: Plan, const: str, title: str, key: str, stage_copy: bool) -> 
     block = ["", f"# {title} ({key}): placeholder copy from scripts/new_chapter.py.",
              f'const {const}_TITLE := "{title}"',
              f'const {const}_SUMMARY := "TODO copy: {title} summary"',
-             f'const {const}_COMPLETION := "TODO copy: {title} completion"']
+             f'const {const}_COMPLETION := "TODO copy: {title} completion"',
+             f'const {const}_LETTER_PLACE := "TODO copy: {title} letter place"',
+             f'const {const}_LETTER_PLACE_LINE := "TODO copy: {title} letter place, line under it"',
+             f'const {const}_LETTER_POSTMARK := "TODO copy: {title} postmark"']
     for stage in (1, 2):
         block.append(f'const {const}_STAGE_{stage}_TITLE := "TODO copy: {title}, stage {stage}"')
         if stage_copy:
@@ -309,7 +312,11 @@ def descriptor(values: dict[str, str], stage_copy: bool) -> str:
              f'\t\t"title": PlayerCopy.{v["CONST"]}_TITLE,',
              f'\t\t"summary": PlayerCopy.{v["CONST"]}_SUMMARY,',
              f'\t\t"completion": PlayerCopy.{v["CONST"]}_COMPLETION,',
-             "\t},"]
+             "\t},",
+             # The envelope About this chapter shows (presentation/letter/letter_view.gd):
+             # a stamp the art draws until the level gets its own, and placeholder words.
+             f'\t"letter": {{"stamp": "{LETTER_STAMP}", "address": [PlayerCopy.{v["CONST"]}_LETTER_PLACE, PlayerCopy.{v["CONST"]}_LETTER_PLACE_LINE],',
+             f'\t\t"postmark": PlayerCopy.{v["CONST"]}_LETTER_POSTMARK, "signoff": PlayerCopy.LETTER_SEE_YOU_SOON}},']
     stages = [v["STAGE_1"], v["STAGE_2"]]
     if stage_copy:
         lines.append('\t"stage_copy": {')
@@ -330,6 +337,9 @@ def descriptor(values: dict[str, str], stage_copy: bool) -> str:
     return "\n".join(lines)
 
 
+# The stamp a new chapter's envelope wears until it gets its own
+# (presentation/letter/stamp_art.gd KINDS).
+LETTER_STAMP = "teacup"
 # The cues a placeholder keepsake plays, one per beat (services/sound_cues.gd CUES).
 KEEPSAKE_SOUNDS = {"base": "garden_opened", "together": "lift_ready", "hard": "bell_rung", "top": "island_bloomed"}
 KEEPSAKE_COPY = ("NAME", "ACTION", "TOGETHER", "HARD", "TOP")

@@ -6,7 +6,7 @@ extends Control
 ## and the card shrinks as a whole if a screen is ever smaller than that.
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PhotoDate = preload("res://presentation/photo_date.gd")
-## A pen script subset to the characters a date needs (assets/fonts/pen-date-OFL.txt).
+## The pen hand, a Latin subset of Nanum Pen Script (assets/fonts/pen-date-OFL.txt).
 const DATE_FONT = preload("res://assets/fonts/pen-date.ttf")
 const DATE_INK := Color("5b5246")
 const DATE_SIZE := 42

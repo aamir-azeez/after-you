@@ -24,7 +24,7 @@ const Styles = preload("res://content/dressing/prop_styles.gd")
 ## The descriptor field holding the pins.
 const PINS := "piece_styles"
 ## The piece slots, each a LOOK_SLOTS entry of prop_styles.gd.
-const SLOTS := ["lever", "selector", "pad", "goal", "lift"]
+const SLOTS := ["lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "carried_item", "current"]
 
 ## The style of piece `id` in slot `slot` for a chapter `descriptor` (or {})
 ## and its resolved `dressing` (DressingCatalog.for_key, or {}).
@@ -34,6 +34,12 @@ static func style(slot: String, id: String, descriptor: Dictionary, dressing: Di
 	var pick := str(dressing.get(slot, ""))
 	if Styles.has_style(slot, pick): return pick
 	return str(Styles.DEFAULT_PICKS[slot])
+
+## Piece id's pinned style in slot, or "" when the descriptor pins none
+## the slot offers (a world then picks its own default, as a raft for a float).
+static func pinned_style(slot: String, id: String, descriptor: Dictionary) -> String:
+	var pin := str(descriptor.get(PINS, {}).get(id, ""))
+	return pin if Styles.has_style(slot, pin) else ""
 
 ## The slot a placed control fills: a selector's, else a lever's.
 static func control_slot(control: Dictionary) -> String:

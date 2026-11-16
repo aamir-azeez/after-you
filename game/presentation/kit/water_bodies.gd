@@ -803,6 +803,9 @@ func build_locks(bake_path: String) -> void:
 	WaterLocks.load_runs(stage_plan, bake_path)
 	await host._build_step()
 	locks = WaterLocks.new()
+	# The dressing's spillway look ("falls" makes each spillway a waterfall).
+	var dressing: Variant = host.get("dressing")
+	if dressing is Dictionary: locks.spill_style = str(dressing.get("spillway", "trickle"))
 	locks.build(stage_plan, host.terrain)
 
 ## This stage's water for the locks kit: every floor, sunken crossing (a pit

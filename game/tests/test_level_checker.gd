@@ -41,6 +41,11 @@ extends SceneTree
 ##    each pip a part only it can reach: floor behind a crossing the other
 ##    opens, or a pad away from the crossing it holds, so the pip on it cannot
 ##    walk that crossing too. Published chapters are not on open turns.
+##  - The new pieces (rules 16, core/physical/pieces_rules.gd): a chapter
+##    using any (platforms, sinking stones, a one way stair, a "not" gate)
+##    pins 16, and every piece is sound (PiecesRules.problems: stops of one
+##    size each with its gate, stones and stops that are bridges). The new
+##    pieces' own rules and their witness are tests/test_pieces.gd's.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
 ##    each other on a stage. Props against routes, pads, levers, goals and
 ##    starts, and the camera's view of them, are tests/test_dressing_lint.gd's.
@@ -59,6 +64,8 @@ const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
+const PiecesRules = preload("res://core/physical/pieces_rules.gd")
+const PiecesWitness = preload("res://tests/pieces_witness.gd")
 ## Known failures: {failure id: why it is left}. Published worlds never change
 ## to clear one; a new chapter fixes its own.
 const KNOWN := {
@@ -290,6 +297,7 @@ func _run() -> void:
 		_needs_both(key)
 		_kept_crossings(key)
 		_props(key)
+		_pieces(key, Registry.definition(key))
 		covered += 1
 		print("LEVEL CHECKER: %s in %d ms" % [key, Time.get_ticks_msec() - started])
 	_check(covered >= 11, "The checker walks every chapter (%d)" % covered)
@@ -301,6 +309,7 @@ func _run() -> void:
 		_check(_found.has(id), "Known failure still fails, or comes off the list: %s (%s)" % [id, LAID_OUT_WHY])
 	_check(_owned_seen > 50, "The ownership rule meets the published one-pip spots, so it can fail (%d)" % _owned_seen)
 	_needs_both_rule()
+	_pieces_rule()
 	print("LEVEL CHECKER: %d chapters, skipped %s" % [covered, skipped])
 	print("LEVEL CHECKER: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -576,7 +585,8 @@ static func _goal_holds(graph: RefCounted, stage: Dictionary, checkpoint: Dictio
 		if not found.floors[slot].has(str(goal.get("surface_id", ""))): return false
 		if ring and not graph.can_stand_at(goal, slot, found.open, journey): return false
 	var when: Dictionary = stage.get("goal_policy", {}).get("when", {})
-	return when.is_empty() or graph.gate_can_hold({"when": when}, stage, found.settable, checkpoint.get("mechanisms", {}), journey, found.floors)
+	# Rules 16: an item carried at the goal is carried on the goal's floor (level_graph.gd with_items).
+	return when.is_empty() or graph.gate_can_hold(graph.with_items({"when": when, "surface_id": str(goal.get("surface_id", ""))}, found.settable), stage, found.settable, checkpoint.get("mechanisms", {}), journey, found.floors)
 
 ## Whether a pip's start (a checkpoint player) stands at `goal`: its floor, within its radius.
 static func _starts_at(player: Dictionary, goal: Dictionary) -> bool:
@@ -684,3 +694,20 @@ static func _cm(at: Array) -> String:
 
 static func _rect(r: Array) -> String:
 	return "(%d, %d) to (%d, %d) cm" % [int(r[0]), int(r[1]), int(r[2]), int(r[3])]
+
+## The new pieces (rules 16) in `definition`: used only on rules 16, and sound.
+func _pieces(key: String, definition: Dictionary) -> void:
+	var used := PiecesRules.uses(definition)
+	if used.is_empty(): return
+	_check(PiecesRules.pinned(definition), "%s uses the new pieces (%s) without pinning their rules (16)" % [key, ", ".join(used)])
+	for problem: String in PiecesRules.problems(definition): _check(false, "%s: %s" % [key, problem])
+
+## The pieces check can fail: the witness passes it, a copy on 15 does not.
+func _pieces_rule() -> void:
+	var witness := PiecesWitness.definition()
+	var before := failures
+	_pieces("pieces-witness@1", witness)
+	_check(failures == before, "The pieces' witness pins 16 and its pieces are sound")
+	var unpinned := witness.duplicate(true)
+	unpinned.simulation_version = 15
+	_check(not PiecesRules.pinned(unpinned) and not PiecesRules.uses(unpinned).is_empty(), "A level using the pieces on 15 would be named")
