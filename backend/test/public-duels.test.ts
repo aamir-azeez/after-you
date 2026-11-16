@@ -10,7 +10,7 @@ import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetCachedListings } from "../src/duels/public-list";
 import { spotFor, type JoinAs } from "../src/duels/public";
 import { DIRECTORY_NAME } from "../src/duels/directory";
-import { MAX_DUELS_PER_PAIR, PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "../src/duels/rules";
+import { MAX_DUELS_PER_PAIR, MAX_RECENT_DUELS, PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "../src/duels/rules";
 import type { Duel, DuelView } from "../src/duels/model";
 import { POLLEN_CLIENT, configJson } from "./config";
 import { countAllRequests } from "./meter";
@@ -626,6 +626,13 @@ describe("public duels", () => {
     expect((await errorOf(challenge)).code).toBe("duel_limit_reached");
     const race = call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null });
     expect((await errorOf(race)).code).toBe("duel_limit_reached");
+  });
+
+  it("refuse a post from a player who started the most duels this week", async () => {
+    const a1 = await player(), now = Date.now();
+    const refs = Array.from({ length: MAX_RECENT_DUELS }, (_, index) => ({ duel_id: index.toString(16).padStart(32, "c"), board: RELAY, at: now }));
+    await env.LEADERBOARD_MEMBERS.getByName(a1.player_id).partyApply(a1.player_id, { kind: "add_duels", refs }, now);
+    expect((await errorOf(post(a1, "alone", crypto.randomUUID(), UNLIMITED))).code).toBe("duel_limit_reached");
   });
 
   it("keep the directory's rows only while listed, and drop an erased player's rows", async () => {
