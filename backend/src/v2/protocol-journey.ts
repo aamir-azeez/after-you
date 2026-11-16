@@ -2,7 +2,8 @@ import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import { openTurns, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
-import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, recordingBytes, turnSlot } from "./open-turns";
+import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, packedRecordingBytes, recordingBytes, turnSlot } from "./open-turns";
+import { isPacked } from "./recording-codec";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -73,12 +74,15 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // Longer turns, when the definition declares them, carry bounds grown to fit.
   const turns = turnLimits(definition);
   let limits = turns ? scaledLimits(turns) : undefined;
-  // Open turns: a stage's turns stay under its budget, and the checkpoint and turn body bounds grow to hold every stage of them.
-  const openLimits = open ? openTurnLimits(definition.stages, (limits ?? COMFORT_RECORDING).recording_bytes!, maxBranches!) : undefined;
-  if (openLimits) { const base = limits ?? COMFORT_RECORDING; limits = { ...base, ...openBodyLimits(openLimits, definition.stages.length, base.recording_values!) }; maxBranches = openLimits.branches; }
+  // Open turns: every turn packed and as long as the second turn limit; a stage's turns stay under its budget, and the
+  // checkpoint and turn body bounds grow to hold every stage of them.
+  const openLimits = open ? openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches!) : undefined;
+  if (openLimits) { limits = { ...(limits ?? COMFORT_RECORDING), ...openBodyLimits(openLimits, definition.stages.length) }; maxBranches = openLimits.branches; }
   if (limits) checkTurnBounds(limits, maxBranches);
-  const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
-  const isAccepted = open ? (r: ChapterRecording) => openAccepted(r, accepted) : accepted;
+  const parsed = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
+  // Open turns take packed turns only (open-turns.ts), before any other check.
+  const recording = open ? (value: unknown) => { need(value !== null && typeof value === "object" && isPacked(value), "packed_recording_required"); return parsed(value); } : parsed;
+  const isAccepted = open ? openAccepted : accepted;
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
     const c = object(value); exact(c, open ? OPEN_CHECKPOINT_KEYS : CHECKPOINT_KEYS);

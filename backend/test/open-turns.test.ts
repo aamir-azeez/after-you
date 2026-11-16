@@ -6,9 +6,8 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint } from "../src/v2/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
-import { DEFAULT_TURN_CAP, OPEN_TURN_ID_PATTERN, mustFinish, openTurnLimits, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
-import { packRecording } from "../src/v2/recording-codec";
-import { PACKED_HEADER } from "../src/v2/packed-rooms";
+import { DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, mustFinish, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
 import { conservatoryV2, longWayHomeV2, longWayHomeV3, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -19,14 +18,15 @@ import setEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-th
 import slackA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-a.json";
 import slackB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-b.json";
 import slackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-checkpoint.json";
-import { scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
+import { physicalAccepted, scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
 import tideV2Definition from "../src/v2/turn-of-the-tide-v2.json";
 import { withConfig } from "./config";
 
 /**
  * Open turns (v2/open-turns.ts) on Turn of the Tide@3 (rules 15, free). The server never simulates, so the chains
  * here are built from the native two-turn fixtures: a pass is the fixture's second turn not finished, a later turn
- * swaps the pip and chains its source, and every record and checkpoint is hashed again.
+ * swaps the pip and chains its source, and every record and checkpoint is hashed again. Every turn goes packed
+ * (v2/recording-codec.ts), as an open turns room takes no other form.
  */
 type Account = { player_id: string; device_token: string };
 type Rec = Record<string, any>;
@@ -35,26 +35,43 @@ const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 const adapter = turnOfTheTideV3;
 const key = () => crypto.randomUUID();
 let address = 0;
-/** Packed recordings (v2/packed-rooms.ts) on for the packed room test only. */
-let packedOn = false;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.15." + (++address % 250),
-    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, ...FLAGS, ...(packedOn ? { PACKED_RECORDINGS: "true" } : {}) }));
+    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, ...FLAGS }));
 }
 async function json<T>(response: Promise<Response>, status = 200): Promise<T> {
   const result = await response, text = await result.text();
   expect(result.status, text).toBe(status); return JSON.parse(text) as T;
 }
 const account = () => json<Account>(call("/v1/identity", "POST", undefined, {}), 201);
-async function hashed(record: Rec): Promise<Rec> { const { recording_hash: _old, ...body } = record; void _old; return { ...body, recording_hash: await digest(canonicalJson(body)) }; }
+/** `record` hashed again, packed first when it is in the JSON form; checks the fixture lacks (a longer turn) take a stand-in hash, as the server never replays. */
+async function hashed(record: Rec): Promise<Rec> {
+  const { recording_hash: _old, ...body } = record; void _old;
+  if (Array.isArray(body.actions)) {
+    const { actions, replay_checks, ...rest } = body, known = new Map((replay_checks as Rec[]).map(check => [check.tick, check.state_hash]));
+    const checks = checkTicks(body.duration_ticks).map(tick => ({ tick, state_hash: tick === body.duration_ticks ? body.final_state_hash : known.get(tick) ?? "0".repeat(64) }));
+    return hashed({ ...rest, packed: packRecording(actions, checks, body.duration_ticks) });
+  }
+  return { ...body, recording_hash: await digest(canonicalJson(body)) };
+}
+/** `record` exactly as it is, hashed again in the JSON form. */
+async function hashedJson(record: Rec): Promise<Rec> { const { recording_hash: _old, ...body } = record; void _old; return { ...body, recording_hash: await digest(canonicalJson(body)) }; }
+/** A packed fixture's runs and checks listed again (short check hashes stay short). */
+function listed(record: Rec): { actions: Rec[]; replay_checks: Rec[] } {
+  return unpackRecording(record.packed, record.duration_ticks, record.final_state_hash, record.duration_ticks) as { actions: Rec[]; replay_checks: Rec[] };
+}
+/** A packed fixture in the JSON form, hashed again: what an app that records JSON would send. */
+async function jsonForm(record: Rec): Promise<Rec> { return hashedJson({ ...bare(record), ...listed(record) }); }
+/** `record` without its packed runs and checks. */
+function bare(record: Rec): Rec { const { packed: _packed, ...rest } = structuredClone(record); void _packed; return rest; }
 async function sealed(checkpoint: Rec): Promise<Rec> { const { checkpoint_hash: _old, proof, ...body } = checkpoint; void _old; return { ...body, checkpoint_hash: await digest(canonicalJson(body)), proof }; }
 const other = (slot: string) => slot === "p0" ? "p1" : "p0";
 
 /** A later turn: the fixture's second turn, played by the pip turn `n` belongs to, over `memory`, closing the stage or not. */
 async function later(fixtureB: Rec, first: string, n: number, memory: Rec, closes: boolean, checkpointHash: string, extraTicks = 0): Promise<Rec> {
   return hashed({ ...structuredClone(fixtureB), checkpoint_hash: checkpointHash, player_slot: turnSlot(first, n), source_recording_hash: memory.recording_hash,
-    duration_ticks: fixtureB.duration_ticks + extraTicks, actions: [...structuredClone(fixtureB.actions), ...(extraTicks ? [{ ticks: extraTicks, x: 0, z: 0, action: false }] : [])],
-    replay_checks: extraTicks ? [...fixtureB.replay_checks.slice(0, -1), { tick: fixtureB.duration_ticks + extraTicks, state_hash: fixtureB.final_state_hash }] : fixtureB.replay_checks,
+    duration_ticks: fixtureB.duration_ticks + extraTicks, actions: [...listed(fixtureB).actions, ...(extraTicks ? [{ ticks: extraTicks, x: 0, z: 0, action: false }] : [])],
+    replay_checks: extraTicks ? [...listed(fixtureB).replay_checks.slice(0, -1), { tick: fixtureB.duration_ticks + extraTicks, state_hash: fixtureB.final_state_hash }] : listed(fixtureB).replay_checks,
     completed: closes, outcome: { ...fixtureB.outcome, objective_complete: closes } });
 }
 /** The schema 8 checkpoint that closes a stage with `turns`, from the fixture's own end state with both pips where its goal pip ended. */
@@ -89,12 +106,7 @@ const send = (room: RoomSnapshotV2, who: Account, recording: Rec, checkpoint?: R
 const read = (room: RoomSnapshotV2, who: Account) => json<RoomSnapshotV2>(call(`/v2/rooms/${room.room_id}`, "GET", who));
 const failure = async (response: Promise<Response>, status: number, code: string) => { const result = await response; expect(result.status).toBe(status); expect(await result.json()).toMatchObject({ error: { code } }); };
 
-afterEach(async () => { packedOn = false; await reset(); vi.restoreAllMocks(); });
-/** `record` in the packed form (v2/recording-codec.ts) over `source`, hashed again. */
-async function packedForm(record: Rec, source: string): Promise<Rec> {
-  const { actions, replay_checks, ...rest } = structuredClone(record);
-  return hashed({ ...rest, source_recording_hash: source, packed: packRecording(actions, replay_checks, record.duration_ticks) });
-}
+afterEach(async () => { await reset(); vi.restoreAllMocks(); });
 
 describe("open turns: rules and bounds", () => {
   it("gives only the open controls chapters open turns, with a cap a stage and a budget that fits the row and the archive", () => {
@@ -121,6 +133,28 @@ describe("open turns: rules and bounds", () => {
     expect(() => openTurnLimits([{ turn_cap: 1 }], 65_536, 7)).toThrow("invalid turn_cap");
     expect(() => openTurnLimits([{ turn_cap: 21 }], 65_536, 7)).toThrow("invalid turn_cap");
     expect(() => openTurnLimits([{ turn_cap: 9 }], 65_536, 7)).not.toThrow();
+  });
+  it("sizes every bound by the widest packed turn: a new stick every tick, at most the bound", async () => {
+    // Turn of the Tide@3's turns: 3,000 ticks each.
+    const ticks = 3000;
+    expect(adapter.open_turns!.recording_bytes).toBe(packedRecordingBytes(ticks));
+    expect(adapter.limits!.recording_values).toBe(PACKED_RECORDING_VALUES);
+    // Every field of the header at its widest the parser allows, every run one tick, every stick at its far end.
+    const actions = Array.from({ length: ticks }, (_, i) => ({ ticks: 1, x: i % 2 ? -100 : 100, z: -100, action: i % 3 === 0 }));
+    const widest = await hashed({ ...structuredClone(setB), duration_ticks: ticks, actions, replay_checks: [], source_recording_hash: "f".repeat(64), checkpoint_hash: "f".repeat(64), final_state_hash: "f".repeat(64),
+      catch_assistance: false, completed: false, outcome: { source_ready: true, objective_complete: false } });
+    expect(recordingBytes(widest as ChapterRecording)).toBeLessThanOrEqual(packedRecordingBytes(ticks));
+    expect(recordingBytes(widest as ChapterRecording)).toBeGreaterThan(packedRecordingBytes(ticks) - 2_048);
+    expect(await adapter.recording(widest)).toEqual(widest);
+    // The longest open turn, ten minutes, packs well inside the packed string bound every room shares (a third to spare).
+    const longest = Array.from({ length: MAX_OPEN_TURN_TICKS }, (_, i) => ({ ticks: 1, x: i % 2 ? -100 : 100, z: -100, action: false }));
+    expect(packRecording(longest, checkTicks(MAX_OPEN_TURN_TICKS).map(tick => ({ tick, state_hash: "f".repeat(64) })), MAX_OPEN_TURN_TICKS).length * 1.5).toBeLessThan(MAX_PACKED_CHARS);
+    expect(turnLimits({ simulation_version: 15, turn_limits: { a_ticks: MAX_OPEN_TURN_TICKS, b_ticks: MAX_OPEN_TURN_TICKS } })).toEqual({ a_ticks: MAX_OPEN_TURN_TICKS, b_ticks: MAX_OPEN_TURN_TICKS });
+    expect(() => turnLimits({ simulation_version: 15, turn_limits: { a_ticks: 9000, b_ticks: MAX_OPEN_TURN_TICKS + 1 } })).toThrow("invalid turn_limits");
+    expect(() => turnLimits({ simulation_version: 13, turn_limits: { a_ticks: 9000, b_ticks: 9001 } })).toThrow("invalid turn_limits");
+    expect(() => openTurnLimits([{}, {}, {}, {}], packedRecordingBytes(MAX_OPEN_TURN_TICKS), 7)).not.toThrow();
+    // Under a ninth of the same JSON turn's bytes, the header allowance included.
+    expect(packedRecordingBytes(3000) * 9).toBeLessThan(recordingBytes(await hashedJson({ ...bare(setB), duration_ticks: 3000, actions, replay_checks: checkTicks(3000).map(tick => ({ tick, state_hash: "f".repeat(64) })) }) as ChapterRecording));
   });
   it("names turns by letter, a and b first, and gives odd turns to the stage's first pip", () => {
     expect([1, 2, 3, 20].map(n => turnId(3, 1, n))).toEqual(["t3-1-a", "t3-1-b", "t3-1-c", "t3-1-t"]);
@@ -162,6 +196,29 @@ describe("open turns: rules and bounds", () => {
     // Past the stage's cap.
     const capped = await chain(0, start, adapter.open_turns!.caps[0] - 1);
     await expect(validate(capped.checkpoint, start, capped.turns)).rejects.toMatchObject({ code: "checkpoint_recording_mismatch" });
+  });
+});
+
+describe("open turns: a first turn ended early", () => {
+  it("takes a first turn whose own part is not done on open turns only, and the next turn closes the stage over it", async () => {
+    const start = initial();
+    const early = await hashed({ ...structuredClone(setA as Rec), checkpoint_hash: start.checkpoint_hash, outcome: { ...(setA as Rec).outcome, source_ready: false } });
+    const closingTurn = await later(setB as Rec, setA.player_slot, 2, early, true, start.checkpoint_hash);
+    const turns = [early, await hashed({ ...closingTurn, outcome: { ...closingTurn.outcome, source_ready: false } })];
+    const checkpoint = await closing(setEnd as Rec, start, turns);
+    expect(openAccepted(early as ChapterRecording)).toBe(true);
+    expect(await validate(checkpoint, start, turns)).toEqual(checkpoint);
+    // Older rules (13 and before) keep asking a first turn for its part.
+    expect(physicalAccepted({ ...early, simulation_version: 13 } as ChapterRecording)).toBe(false);
+    expect(physicalAccepted({ ...(setA as Rec), simulation_version: 13 } as ChapterRecording)).toBe(true);
+    // A first turn still never finishes the stage.
+    expect(openAccepted({ ...early, completed: true, outcome: { ...early.outcome, objective_complete: true } } as ChapterRecording)).toBe(false);
+    // In a room: the early first turn is taken, and the friend's turn over it closes the stage.
+    const { room: joined, first, second } = await room();
+    const one = await send(joined, first, early);
+    expect(one.room).toMatchObject({ active_role: "b", active_player_id: second.player_id });
+    const two = await send(one.room, second, turns[1], checkpoint);
+    expect(two.room).toMatchObject({ stage_index: 1, checkpoint });
   });
 });
 
@@ -378,34 +435,16 @@ describe("open turns: snapshot restore", () => {
   });
 });
 
-describe("open turns: a packed room", () => {
-  it("takes a JSON first turn, then packed passes and a packed closing turn whose checkpoint nests both forms", async () => {
-    packedOn = true;
-    const asks = { [PACKED_HEADER]: "1" }, host = await account(), guest = await account();
-    const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }, asks));
-    const joined = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }, asks));
-    expect((await json<Rec>(call(`/v2/rooms/${joined.room_id}`, "GET", host, undefined, asks))).packed_recordings).toBe(true);
-    const first = setA.player_slot === "p0" ? host : guest, second = first === host ? guest : host, start = initial(), open = adapter.open_turns!;
-    // Turn 1 as JSON (a phone that sent it before it heard the room was packed), every later turn packed over the one before.
-    const turns: Rec[] = [await hashed({ ...structuredClone(setA), checkpoint_hash: start.checkpoint_hash })];
-    for (let n = 2; n <= 4; n++) turns.push(await packedForm(await later(setB as Rec, setA.player_slot, n, turns.at(-1)!, n === 4, start.checkpoint_hash), turns.at(-1)!.recording_hash));
-    const checkpoint = await closing(setEnd as Rec, start, turns);
-    expect(await validate(checkpoint, start, turns)).toEqual(checkpoint);
-    const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]), three = await send(two.room, first, turns[2]);
-    expect(three.room.open_turns!.passes).toEqual([turns[1], turns[2]]);
-    // The stage's budget counts each turn in the form it came in.
-    expect(three.room.open_turns!.pass_bytes).toBe(open.stage_bytes - open.recording_bytes - turns.slice(0, 3).reduce((sum, turn) => sum + recordingBytes(turn as ChapterRecording), 0));
-    expect(recordingBytes(turns[1] as ChapterRecording)).toBeLessThan(recordingBytes(await later(setB as Rec, setA.player_slot, 2, turns[0], false, start.checkpoint_hash) as ChapterRecording));
-    const four = await send(three.room, second, turns[3], checkpoint);
-    expect(four.receipt).toMatchObject({ turn_id: "t0-0-d", pair_id: "p0-0" });
-    const pair = await json<Rec>(call(`/v2/rooms/${joined.room_id}/pairs/p0-0`, "GET", first));
-    expect(pair.checkpoint.proof.turns).toEqual(turns);
-    expect(pair.checkpoint.proof.turns.map((turn: Rec) => "packed" in turn)).toEqual([false, true, true, true]);
-  });
-  it("refuses a packed pass in a room whose members did not both ask", async () => {
+describe("open turns: packed turns only", () => {
+  it("takes packed turns with the packed recordings switch off and says nothing of it, and refuses a JSON turn", async () => {
     const { room: joined, first, second } = await room(), start = initial();
-    const one = await send(joined, first, await hashed({ ...structuredClone(setA), checkpoint_hash: start.checkpoint_hash }));
-    const pass = await packedForm(await later(setB as Rec, setA.player_slot, 2, one.room.recording_a as Rec, false, start.checkpoint_hash), (one.room.recording_a as Rec).recording_hash);
-    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", second, { base_revision: one.room.revision, branch: 0, idempotency_key: key(), recording: pass }), 422, "packed_recording_not_allowed");
+    expect(joined).not.toHaveProperty("packed_recordings");
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: joined.revision, branch: 0, idempotency_key: key(), recording: await jsonForm({ ...structuredClone(setA), checkpoint_hash: start.checkpoint_hash }) }), 422, "packed_recording_required");
+    const { turns, checkpoint } = await chain(0, start, 1);
+    expect(turns.every(turn => "packed" in turn)).toBe(true);
+    const one = await send(joined, first, turns[0]);
+    const two = await send(one.room, second, turns[1]);
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: two.room.revision, branch: 0, idempotency_key: key(), recording: await jsonForm({ ...structuredClone(setB), checkpoint_hash: start.checkpoint_hash, player_slot: setA.player_slot, source_recording_hash: turns[1].recording_hash }), checkpoint }), 422, "packed_recording_required");
+    expect((await send(two.room, first, turns[2], checkpoint)).receipt).toMatchObject({ turn_id: "t0-0-c", pair_id: "p0-0" });
   });
 });

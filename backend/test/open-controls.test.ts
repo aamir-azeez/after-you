@@ -38,6 +38,7 @@ import roomsReturnA from "../../game/tests/fixtures/journey/conservatory-v2-the-
 import roomsReturnB from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-b.json";
 import roomsReturnC from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-c.json";
 import roomsReturnEnd from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-checkpoint.json";
+import { unpackRecording } from "../src/v2/recording-codec";
 import bundledHome from "../src/v2/long-way-home-v3.json";
 import bundledHomeInitial from "../src/v2/long-way-home-v3-initial.json";
 import bundledTide from "../src/v2/turn-of-the-tide-v3.json";
@@ -118,6 +119,11 @@ describe("open controls (rules 12 and 13)", () => {
         previous = await checkpointV2(chain.stages[index][3], previous, a, c, [b]);
         expect(previous).toEqual(chain.stages[index][3]);
       }
+      // Its turns are packed, as open turns always record; the same turn as JSON is refused.
+      const { packed, ...rest } = chain.stages[0][0] as Record<string, any>;
+      expect(typeof packed).toBe("string");
+      const json = { ...rest, ...unpackRecording(packed, rest.duration_ticks, rest.final_state_hash, rest.duration_ticks) };
+      await expect(recordingV2(json, chain.adapter.key)).rejects.toMatchObject({ code: "packed_recording_required" });
     });
   }
   it("ends an open turns stage only with both players at its goal", async () => {
