@@ -11,8 +11,21 @@ const COMFORT_VERSION := 8
 ## earlier chapter accepts them. Older clients never advertised 9, so the server
 ## refuses them before they take a seat in such a room.
 const COMFORT_ALIAS_VERSION := 9
+## Open controls (runtime.gd OPEN_RULES_VERSION, 12): the comfort rules with a
+## pad held by either pip and every lever worked by either. Only a definition
+## that pins 12 plays them. A stage then completes only with every one of its
+## levers on, as the server's checkpoint asks of every cooperative stage.
 
-func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0) -> bool:
+func _open_controls() -> bool:
+	return simulation_version in [OPEN_RULES_VERSION, OpenControls.OPEN_TURNS_RULES_VERSION]
+
+func _may_complete() -> bool:
+	if not _open_controls(): return true
+	for lever: Dictionary in stage.get("levers", []):
+		if not bool(_mechanisms.levers.get(lever.id, false)): return false
+	return true
+
+func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0, chain: Array = []) -> bool:
 	if rules_version == 0:
 		rules_version = _record_version(prior_a) if current_role == "b" else _checkpoint_version(checkpoint, definition)
 	if not rules_allowed(definition, rules_version):
@@ -22,7 +35,7 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 	if current_role == "b" and prior_a.get("simulation_version") != rules_version:
 		error = "Unsupported recording version."
 		return false
-	return super.reset(definition, stage_id, checkpoint, prior_a, current_role)
+	return super.reset(definition, stage_id, checkpoint, prior_a, current_role, rules_version, chain)
 
 func _new_simulation() -> RefCounted:
 	return AfterYouCooperativeSimulation.new()
@@ -48,16 +61,21 @@ static func _record_version(record: Dictionary) -> int:
 	if declared is int or declared is float:
 		if declared == COMFORT_VERSION: return COMFORT_VERSION
 		if declared == COMFORT_ALIAS_VERSION: return COMFORT_ALIAS_VERSION
+		if declared == OPEN_RULES_VERSION: return OPEN_RULES_VERSION
+		if declared == OpenControls.OPEN_TURNS_RULES_VERSION: return OpenControls.OPEN_TURNS_RULES_VERSION
 	return CURRENT_SIMULATION_VERSION
 
 static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary = {}) -> int:
 	var proof: Variant = checkpoint.get("proof", {})
 	if proof is Dictionary and proof.get("a", {}) is Dictionary and not proof.get("a", {}).is_empty(): return _record_version(proof.a)
+	# Open turns nest a stage's turns as a list (core/physical/open_turns.gd).
+	if proof is Dictionary and proof.get("turns") is Array and not proof.turns.is_empty() and proof.turns[0] is Dictionary: return _record_version(proof.turns[0])
 	var pinned := pinned_rules(definition)
 	return pinned if pinned > 0 else CURRENT_SIMULATION_VERSION
 
-static func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary = {}) -> Dictionary:
-	return _proof(_record_version(record)).verify_recording(definition, record, checkpoint, prior_a)
+## `chain`: open turns only, the stage's turns before `prior_a`, oldest first.
+static func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary = {}, chain: Array = []) -> Dictionary:
+	return _proof(_record_version(record)).verify_recording(definition, record, checkpoint, prior_a, chain)
 
 static func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary) -> Dictionary:
 	return _proof(_record_version(record))._verify_raw(definition, record, checkpoint, prior_a)
@@ -71,8 +89,9 @@ static func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) ->
 static func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: int) -> Dictionary:
 	return _proof(_checkpoint_version(checkpoint, definition))._verify_checkpoint(definition, checkpoint, depth)
 
-static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
-	return _proof(_record_version(first)).derive_checkpoint(definition, previous, first, second)
+## `passes`: open turns only, the stage's turns between `first` and `second`.
+static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, passes: Array = []) -> Dictionary:
+	return _proof(_record_version(first)).derive_checkpoint(definition, previous, first, second, passes)
 
 static func _verify_pair(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
 	return _proof(_record_version(first))._verify_pair(definition, previous, first, second)

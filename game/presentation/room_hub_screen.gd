@@ -25,6 +25,7 @@ const FOLD_CLOSED_ICON = preload("res://assets/ui/social/chevron-right.svg")
 const FOLD_OPEN_ICON = preload("res://assets/ui/social/chevron-down.svg")
 const Typed = preload("res://services/typed_values.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
+const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const WARM := Color("f4d77b")
@@ -1093,27 +1094,38 @@ func _ask_remove(room: Dictionary, removal: String, opener: Control) -> void:
 
 ## The status chip, and beside it the friend's end-of-run face on their latest
 ## turn when the room list brought one (presentation/end_reactions.gd).
+## An open turns room in play (core/physical/open_turns.gd) adds its turn dots
+## (kit/turn_dots.gd), which shrink to fit the row before the buttons.
 func _status_line(room: Dictionary, status: String) -> Control:
-	var chip := _status_chip(status)
+	var open: Variant = room.get("open_turns")
+	var dots: Dictionary = TurnDots.view(open, str(open.get("first_slot", ""))) if open is Dictionary and status in ["your_turn","waiting_for_their_turn"] else {}
+	var chip := _status_chip(status, PlayerCopy.OPEN_TURNS_THEIR_TURN if not dots.is_empty() and status == "waiting_for_their_turn" else "")
 	var reaction: Variant = room.get("partner_reaction")
-	if not reaction is Dictionary: return chip
+	if not reaction is Dictionary and dots.is_empty(): return chip
 	var line := HBoxContainer.new()
 	line.name = "StatusLine"
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_theme_constant_override("separation",10)
 	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(chip)
-	EndReactions.attach(line, {"friend": {"face": str(reaction.get("face","")), "color": str(reaction.get("color","mint")), "name": _friend(room)}, "compact": true})
+	if not dots.is_empty():
+		var row := TurnDots.new(20.0)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.custom_minimum_size.y = 26.0
+		row.show_turns(dots)
+		line.add_child(row)
+	if reaction is Dictionary: EndReactions.attach(line, {"friend": {"face": str(reaction.get("face","")), "color": str(reaction.get("color","mint")), "name": _friend(room)}, "compact": true})
 	return line
 
-func _status_chip(status: String) -> PanelContainer:
+func _status_chip(status: String, text: String = "") -> PanelContainer:
 	var turn := status == "your_turn"
 	var chip := PanelContainer.new()
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	chip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	chip.add_theme_stylebox_override("panel",ThemeRules.padded(ThemeRules.rounded(Color("2f5d52") if turn else Color("234c44"),9,Color("6f9a8c") if turn else Color.TRANSPARENT),10.0,3.0))
 	var label := Label.new()
-	label.text = _status_label(status)
+	label.text = text if not text.is_empty() else _status_label(status)
 	label.add_theme_font_size_override("font_size",18)
 	label.add_theme_color_override("font_color",CREAM if turn else Color("a6d9c4"))
 	chip.add_child(label)

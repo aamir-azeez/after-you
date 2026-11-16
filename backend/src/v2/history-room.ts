@@ -1,5 +1,6 @@
 import { ApiError, HASH_PATTERN, canonicalJson, integer, object, text } from "../protocol";
 import { checkpointAt, nestedProof } from "./checkpoint-chain";
+import { stageTurnIds, turnId } from "./open-turns";
 import { ZERO_LINK, attemptBlob, attemptLink, attemptRows, blobBytes, isStub, type AttemptBlob, type AttemptRoom } from "./history-blob";
 import { bytesDigest, decodeBlob, encodeBlob } from "../blob-codec";
 import { bothSupport, finishedAttempts, historyMembers, historyChain, persistChain, storedAttempts, writeAttempt, type AttemptRecord } from "./history";
@@ -121,7 +122,7 @@ function rebuildLineage(storage: DurableObjectStorage, room: RoomStateV2, compre
     const checkpoint = checkpointAt(room.checkpoint, stage + 1), proof = nestedProof(checkpoint), branch = Number(id.slice(1).split("-")[0]);
     need(proof, 409, "history_rows_inconsistent");
     rebuildFrom(storage, new Map([[id, { pair_id: id, branch, stage_index: stage, a: proof.a, b: proof.b, checkpoint }]]),
-      new Map([[`t${branch}-${stage}-a`, proof.a], [`t${branch}-${stage}-b`, proof.b]]), compress);
+      new Map(proof.turns.map((turn, at) => [turnId(branch, stage, at + 1), turn])), compress);
   }
 }
 /**
@@ -184,12 +185,13 @@ function offloadAttempt(storage: DurableObjectStorage, room: HistoryRoom, record
   } else stubReleased(storage, room);
   return next;
 }
-/** Rows the live lineage still reads: its completed pairs with their turns, and the open first turn. */
+/** Rows the live lineage still reads: its completed pairs with their turns (every letter an open turns stage may use), and the open stage's turns. */
 export function liveReferences(room: HistoryRoom): Set<string> {
   const ids = new Set<string>();
   if (archived(room)) return ids;
-  for (const id of room.completed_pair_ids) { const [branch, stage] = id.slice(1).split("-"); ids.add(id).add(`t${branch}-${stage}-a`).add(`t${branch}-${stage}-b`); }
+  for (const id of room.completed_pair_ids) { const [branch, stage] = id.slice(1).split("-"); ids.add(id); for (const turn of stageTurnIds(Number(branch), Number(stage))) ids.add(turn); }
   if (room.a_turn_id) ids.add(room.a_turn_id);
+  for (const pass of room.open_stage?.passes ?? []) ids.add(pass.turn_id);
   return ids;
 }
 /** Every row of an offloaded attempt that nothing live reads is a stub; call after anything that moves the lineage. */

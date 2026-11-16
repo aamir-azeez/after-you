@@ -2,7 +2,10 @@ extends SceneTree
 ## One chapter opened through its own solo scene with a real journal: every
 ## stage and role builds the descriptor's world, plays its witness's recorded
 ## inputs through the chapter controls, stays committable and leaves the
-## definition unchanged; the last turn completes the chapter.
+## definition unchanged; the last turn completes the chapter. On open turns
+## (core/physical/open_turns.gd) the solo journal (services/relay_journey.gd)
+## takes no passes yet, so only the first stage's first turn plays here; the
+## chapter suite plays every turn.
 ##
 ## A chapter's world suite (tests/test_<chapter>_world.gd) extends this file and
 ## declares Witness, its witness script (chapter_witness.gd).
@@ -10,6 +13,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 var checks := 0
 var failures := 0
 var key := ""
@@ -27,8 +31,9 @@ func _run() -> void:
 	_check(evidence.error.is_empty(), "Every stage plays through with real inputs: " + str(evidence.error))
 	if evidence.error.is_empty():
 		var level: Dictionary = evidence.definition
-		for index in range(level.stages.size()):
-			for role: String in ["a", "b"]:
+		var open := OpenTurns.pinned(level)
+		for index in range(1 if open else level.stages.size()):
+			for role: String in (["a"] if open else ["a", "b"]):
 				await _turn(level, evidence, index, role)
 	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)

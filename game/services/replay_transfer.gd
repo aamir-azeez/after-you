@@ -9,6 +9,7 @@ const Store = preload("res://services/shared_replay_store.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const MAX_ARCHIVE_BYTES := 16 * 1024 * 1024
 const MAX_INTEGER := 9007199254740991
 const ROOM_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint_hash", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at"]
@@ -223,22 +224,23 @@ static func _manifest_valid(value: Variant, owner: String, room_id: String) -> b
 	if not value.turns is Array or value.turns.size() < 2 * stages or value.turns.size() > 128 or not value.pairs is Array or value.pairs.size() < stages or value.pairs.size() > 64: return false
 	var turns: Dictionary = {}
 	var revisions: Dictionary = {}
+	# Open turns name later turns c, d ...; a turn's letter says whose it was.
+	var open := OpenTurns.pinned(level)
 	for item: Variant in value.turns:
-		if not item is Dictionary or not _exact(item, ["turn_id", "player_id", "accepted_revision", "recording_hash"]) or not Coordinator._pattern(item.turn_id, RoomStages.TURN_ID) or not RoomStages.within(int(item.turn_id.get_slice("-", 1)), level) or turns.has(item.turn_id) or not _hash(item.recording_hash) or not _integer(item.accepted_revision, 1, int(room.revision)) or revisions.has(item.accepted_revision): return false
+		if not item is Dictionary or not _exact(item, ["turn_id", "player_id", "accepted_revision", "recording_hash"]) or not Coordinator._pattern(item.turn_id, RoomStages.OPEN_TURN_ID if open else RoomStages.TURN_ID) or not RoomStages.within(int(item.turn_id.get_slice("-", 1)), level) or turns.has(item.turn_id) or not _hash(item.recording_hash) or not _integer(item.accepted_revision, 1, int(room.revision)) or not _revision_free(revisions, item, open): return false
 		var id: String = item.turn_id
 		if int(id.substr(1).get_slice("-", 0)) > room.branch: return false
 		var stage: Dictionary = level.stages[int(id.get_slice("-", 1))]
-		var first: String = room.host_id if stage.first_player_slot == "p0" else room.guest_id
-		var second: String = room.guest_id if first == room.host_id else room.host_id
-		if not Typed.equal(item.player_id, (first if id.ends_with("-a") else second)): return false
+		if not Typed.equal(item.player_id, room.host_id if OpenTurns.slot(str(stage.first_player_slot), OpenTurns.number(id)) == "p0" else room.guest_id): return false
 		turns[id] = item
-		revisions[item.accepted_revision] = true
+		revisions[item.accepted_revision] = item
 	var pairs: Dictionary = {}
 	for item: Variant in value.pairs:
 		if not item is Dictionary or not _exact(item, ["pair_id", "branch", "stage_index", "a_hash", "b_hash", "checkpoint_hash"]) or not _integer(item.branch, 0, int(room.branch)) or not RoomStages.within(item.stage_index, level) or not Typed.equal(item.pair_id, "p%d-%d" % [item.branch, item.stage_index]) or pairs.has(item.pair_id) or not _hash(item.checkpoint_hash): return false
 		var stem := "t%d-%d-" % [item.branch, item.stage_index]
-		if not Typed.equal(turns.get(stem + "a", {}).get("recording_hash"), item.a_hash) or not Typed.equal(turns.get(stem + "b", {}).get("recording_hash"), item.b_hash): return false
-		if turns[stem + "a"].accepted_revision >= turns[stem + "b"].accepted_revision: return false
+		var closing := _closing(turns, stem)
+		if not Typed.equal(turns.get(stem + "a", {}).get("recording_hash"), item.a_hash) or OpenTurns.number(closing) < 2 or not Typed.equal(turns[closing].get("recording_hash"), item.b_hash): return false
+		if turns[stem + "a"].accepted_revision >= turns[closing].accepted_revision: return false
 		pairs[item.pair_id] = item
 	if not room.completed_pair_ids is Array or room.completed_pair_ids.size() != stages: return false
 	for index in range(stages):
@@ -249,7 +251,8 @@ static func _manifest_valid(value: Variant, owner: String, room_id: String) -> b
 		var index := int(id.get_slice("-", 1))
 		var pair_id := "p%d-%d" % [branch, index]
 		if branch == room.branch and room.completed_pair_ids[index] != pair_id: return false
-		if id.ends_with("-b") and not pairs.has(pair_id): return false
+		# An open turns pass may be left on a branch a fork left behind.
+		if not open and id.ends_with("-b") and not pairs.has(pair_id): return false
 	return true
 
 static func verify_archive(archive: Variant, manifest: Dictionary, owner: String, room_id: String) -> Dictionary:
@@ -264,6 +267,7 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 	if not Typed.same(metadata, manifest.room): return _failure("replay_archive_mismatch")
 	var chapter := Registry.resolve(room)
 	var level := Registry.definition(chapter)
+	var open := OpenTurns.pinned(level)
 	var engine := Registry.simulation_script(chapter)
 	var native_room := _metadata(room, chapter)
 	var checkpoints: Dictionary = {}
@@ -288,11 +292,16 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 		var entry := {"schema_version": 1, "room": native_room, "pair": pair}
 		if not Typed.same(facts, manifest.pairs[index]) or not Collection.verify_entry(entry, owner): return _failure("invalid_replay_pair")
 		var stem := "t%d-%d-" % [pair.branch, pair.stage_index]
-		if not Typed.same(turns[stem + "a"].recording, pair.a) or not Typed.same(turns[stem + "b"].recording, pair.b): return _failure("replay_archive_mismatch")
+		var closing := _closing(turns, stem)
+		# Every turn the stage's checkpoint nests is the branch's turn of that number (a and b before open turns).
+		var nested_turns := OpenTurns.proof_turns(pair.checkpoint.get("proof"))
+		if (open and nested_turns.size() != OpenTurns.number(closing)) or not Typed.same(turns[stem + "a"].recording, pair.a) or not Typed.same(turns[closing].recording, pair.b): return _failure("replay_archive_mismatch")
+		for n in range(2, nested_turns.size()):
+			if not Typed.same(turns[stem + OpenTurns.LETTERS[n - 1]].recording, nested_turns[n - 1]): return _failure("replay_archive_mismatch")
 		if checkpoints.has(pair.checkpoint.checkpoint_hash) and not Typed.same(checkpoints[pair.checkpoint.checkpoint_hash], pair.checkpoint): return _failure("replay_checkpoint_conflict")
 		checkpoints[pair.checkpoint.checkpoint_hash] = pair.checkpoint
 		if not checkpoint_context.has(pair.checkpoint.checkpoint_hash): checkpoint_context[pair.checkpoint.checkpoint_hash] = []
-		checkpoint_context[pair.checkpoint.checkpoint_hash].append({"branch": pair.branch, "revision": turns[stem + "b"].accepted_revision})
+		checkpoint_context[pair.checkpoint.checkpoint_hash].append({"branch": pair.branch, "revision": turns[closing].accepted_revision})
 		pairs[pair.pair_id] = pair
 		output.append(entry.duplicate(true))
 	# The final checkpoint nests every completed pair's checkpoint, one stage back at a time.
@@ -305,21 +314,44 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 		var record: Dictionary = item.recording
 		var id: String = item.turn_id
 		var stage_index := int(id.get_slice("-", 1))
-		var role := id.get_slice("-", 2)
+		var number := OpenTurns.number(id)
+		var role := "a" if number == 1 else "b"
 		var source: Variant = checkpoints.get(record.get("checkpoint_hash"))
 		if not source is Dictionary or not Typed.equal(source.stage_index, stage_index) or not Typed.equal(record.get("stage_id"), level.stages[stage_index].id) or not Typed.equal(record.get("role"), role) or not Typed.equal(record.get("simulation_version"), room.get("simulation_version", level.simulation_version)): return _failure("invalid_replay_turn")
 		if stage_index > 0:
 			var branch := int(id.substr(1).get_slice("-", 0))
 			var contexts: Array = checkpoint_context.get(record.checkpoint_hash, [])
 			if not contexts.any(func(value: Dictionary): return value.branch <= branch and value.revision < item.accepted_revision): return _failure("invalid_replay_turn_history")
-		var prior: Dictionary = {}
-		if role == "b":
-			var pair_id := "p" + id.substr(1).trim_suffix("-b")
-			if not pairs.has(pair_id): return _failure("invalid_replay_turn")
-			prior = turns[id.trim_suffix("-b") + "-a"].recording
-		var checked: Dictionary = engine.verify_recording(level, record, source, prior)
-		if not checked.get("valid", false) or not checked.get("snapshot", {}).get("can_commit", false): return _failure("invalid_replay_turn")
+		# A later turn plays over the turn before it, which nests the ones before that (open turns).
+		var stem := id.left(id.length() - 1)
+		var earlier: Array = []
+		for n in range(1, number):
+			if not turns.has(stem + OpenTurns.LETTERS[n - 1]): return _failure("invalid_replay_turn")
+			earlier.append(turns[stem + OpenTurns.LETTERS[n - 1]].recording)
+		if role == "b" and not open and not pairs.has("p" + id.substr(1).trim_suffix("-b")): return _failure("invalid_replay_turn")
+		var prior: Dictionary = earlier.pop_back() if not earlier.is_empty() else {}
+		var checked: Dictionary = engine.verify_recording(level, record, source, prior, earlier) if not earlier.is_empty() else engine.verify_recording(level, record, source, prior)
+		# A pass is ready to be a memory; every other turn can be saved.
+		if not checked.get("valid", false) or not (checked.get("snapshot", {}).get("can_commit", false) or (open and checked.get("ready", false))): return _failure("invalid_replay_turn")
 	return {"ok": true, "entries": output}
+
+## Whether `item`'s accepted revision is its own: no other turn has it, or
+## (open turns) the turn is a copy a self redo made of that turn onto a later
+## branch, with the same stage, number, record and player.
+static func _revision_free(revisions: Dictionary, item: Dictionary, open: bool) -> bool:
+	var other: Variant = revisions.get(item.accepted_revision)
+	if other == null: return true
+	if not open: return false
+	var id: String = item.turn_id
+	var was: String = other.turn_id
+	return id.get_slice("-", 1) == was.get_slice("-", 1) and id.get_slice("-", 2) == was.get_slice("-", 2) and id.get_slice("-", 0) != was.get_slice("-", 0) and Typed.equal(item.recording_hash, other.recording_hash) and Typed.equal(item.player_id, other.player_id)
+
+## The stage's closing turn on a branch: the highest lettered of `stem`'s turns (b before open turns); "" when none.
+static func _closing(turns: Dictionary, stem: String) -> String:
+	var found := ""
+	for id: String in turns:
+		if id.begins_with(stem) and OpenTurns.number(id) > OpenTurns.number(found): found = id
+	return found
 
 static func _metadata(room: Dictionary, chapter: String) -> Dictionary:
 	return {"family": "chapter", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": chapter, "title": RoomChapterTitle.title(chapter)}
