@@ -34,6 +34,7 @@ var _alive := true
 var _modal: Control
 ## A screen of another kind over this page that takes Back itself (hold_back), while it is up.
 var _back_holder: Node
+var _page_scroll: ScrollContainer
 
 func _ready() -> void:
 	layer = stack_layer
@@ -96,6 +97,7 @@ func _ready() -> void:
 	ThemeRules.touch_scroll(scroll)
 	SettingsKit.style_scroll(scroll, false)
 	layout.add_child(scroll)
+	_page_scroll = scroll
 	body = VBoxContainer.new()
 	body.name = page_name() + "Body"
 	# Filling the scroll's height while it fits, so a panel that takes the rest of the page still does.
@@ -144,6 +146,9 @@ func _layout() -> void:
 		compact = now_compact
 		Kit.clear(body)
 		_build()
+		# A page whose lists scroll on their own (Kit.scrolling_list) does not scroll as well: never a scroll inside a scroll.
+		var lists := body.find_children("*", "ScrollContainer", true, false).any(func(scroll: ScrollContainer) -> bool: return scroll.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED)
+		_page_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED if lists else ScrollContainer.SCROLL_MODE_AUTO
 
 func close() -> void:
 	if not _alive: return

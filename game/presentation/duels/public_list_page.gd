@@ -154,17 +154,9 @@ func _build() -> void:
 	var panel := Kit.panel("PublicListPanel", Kit.PANEL_FILL, Kit.PANEL_EDGE, 18, 10.0)
 	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_child(panel)
-	_scroll = ScrollContainer.new()
-	_scroll.name = "PublicListScroll"
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	ThemeRules.touch_scroll(_scroll)
-	panel.add_child(_scroll)
-	_list = VBoxContainer.new()
+	_list = Kit.scrolling_list(panel, 8, "PublicListScroll")
 	_list.name = "PublicRows"
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 8)
-	_scroll.add_child(_list)
+	_scroll = Kit.list_scroll(_list)
 	_render_filters()
 	_render_list()
 

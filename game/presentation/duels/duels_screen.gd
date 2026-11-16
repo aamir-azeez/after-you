@@ -154,16 +154,8 @@ func _build() -> void:
 	left_column.add_theme_constant_override("separation", 10)
 	left.add_child(left_column)
 	left_column.add_child(Kit.text(PlayerCopy.DUELS_OPEN, 28 if compact else 32, UiTokens.CREAM, true))
-	var open_scroll := ScrollContainer.new()
-	open_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	open_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	ThemeRules.touch_scroll(open_scroll)
-	left_column.add_child(open_scroll)
-	_open_list = VBoxContainer.new()
+	_open_list = Kit.scrolling_list(left_column, 10)
 	_open_list.name = "DuelsOpenList"
-	_open_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_open_list.add_theme_constant_override("separation", 10)
-	open_scroll.add_child(_open_list)
 	left_column.add_child(_public_entry())
 	left_column.add_child(_ghost_row())
 	var right := Kit.panel("DuelsYours")

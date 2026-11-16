@@ -20,6 +20,7 @@ const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const Dots = preload("res://presentation/duels/duel_dots.gd")
 const Outfit = preload("res://services/outfit.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
+const PageFrame = preload("res://presentation/kit/page_frame.gd")
 const BACKGROUND := Color("123936")
 const PANEL_FILL := Color("163f3b")
 const PANEL_EDGE := Color("2d5a53")
@@ -53,6 +54,24 @@ static func wrapped(value: String, font_size: int, ink: Color = UiTokens.SOFT, h
 	var label := text(value, font_size, ink, heading)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return label
+
+## A list that scrolls on its own inside `parent`, as every duel list does: the shared
+## scrolling column (kit/page_frame.gd scrolling: its bar only while the list is longer
+## than its room, with room kept beside it then), a drag anywhere scrolls it
+## (control_theme.gd touch_scroll), and the pages' quiet bar (settings_kit.gd). The page
+## around it then stops scrolling (duel_page_base.gd), so a list never scrolls inside a
+## scrolling page. Returns the list's column; its ScrollContainer is named `scroll_name`.
+static func scrolling_list(parent: Control, separation: int, scroll_name: String = "") -> VBoxContainer:
+	var column := PageFrame.scrolling(parent, separation)
+	var scroll := column.get_parent().get_parent() as ScrollContainer
+	if not scroll_name.is_empty(): scroll.name = scroll_name
+	ThemeRules.touch_scroll(scroll)
+	SettingsKit.style_scroll(scroll, false)
+	return column
+
+## The ScrollContainer around a list scrolling_list() made.
+static func list_scroll(column: Control) -> ScrollContainer:
+	return column.get_parent().get_parent() as ScrollContainer
 
 static func panel(node_name: String, fill: Color = PANEL_FILL, edge: Color = PANEL_EDGE, radius: int = 18, pad: float = 14.0) -> PanelContainer:
 	var box := PanelContainer.new()

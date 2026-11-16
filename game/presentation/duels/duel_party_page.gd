@@ -49,16 +49,8 @@ func _build() -> void:
 	lower.add_child(column)
 	column.add_child(Kit.text(PlayerCopy.DUELS_PARTY_INVITE, 28, UiTokens.CREAM, true))
 	column.add_child(Kit.text(PlayerCopy.DUELS_PARTY_FRIENDS_ONLY, 17, UiTokens.SOFT))
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	ThemeRules.touch_scroll(scroll)
-	column.add_child(scroll)
-	_list = VBoxContainer.new()
+	_list = Kit.scrolling_list(column, 8)
 	_list.name = "DuelPartyList"
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 8)
-	scroll.add_child(_list)
 	_render()
 
 func _render() -> void:

@@ -84,16 +84,12 @@ func _build(sheet: Control, line: String) -> void:
 	_banner = VBoxContainer.new()
 	add_child(_banner)
 	add_child(Rows.header(compact, Rows.race_trailing(compact)))
-	_scroll = ScrollContainer.new()
-	_scroll.name = "RacePickerScroll"
-	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	ThemeRules.touch_scroll(_scroll)
-	add_child(_scroll)
-	_list = VBoxContainer.new()
+	_list = Kit.scrolling_list(self, ROW_GAP, "RacePickerScroll")
 	_list.name = "RacePickerRows"
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", ROW_GAP)
-	_scroll.add_child(_list)
+	_scroll = Kit.list_scroll(_list)
+	# As tall as its rows (_fit), not the sheet's whole height.
+	_scroll.size_flags_vertical = Control.SIZE_FILL
+	_list.size_flags_vertical = Control.SIZE_FILL
 	show_loading()
 
 func show_loading() -> void:

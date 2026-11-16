@@ -58,14 +58,7 @@ func _build() -> void:
 	var box := Kit.panel("DuelGhostList")
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_child(box)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	ThemeRules.touch_scroll(scroll)
-	box.add_child(scroll)
-	_list = VBoxContainer.new()
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 10)
-	scroll.add_child(_list)
+	_list = Kit.scrolling_list(box, 10)
 	_render()
 
 func _render() -> void:

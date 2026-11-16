@@ -84,16 +84,7 @@ func _column(parent: Control, heading: String, node_name: String, ratio: float) 
 	column.add_theme_constant_override("separation", 10)
 	box.add_child(column)
 	column.add_child(Kit.text(heading, 28, UiTokens.CREAM, true))
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	ThemeRules.touch_scroll(scroll)
-	column.add_child(scroll)
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list.add_theme_constant_override("separation", 8)
-	scroll.add_child(list)
-	return list
+	return Kit.scrolling_list(column, 8)
 
 func _render() -> void:
 	_render_friends()
