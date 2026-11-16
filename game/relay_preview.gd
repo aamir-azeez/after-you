@@ -1353,12 +1353,11 @@ func _waiting_details_stage() -> Dictionary:
 	return _simulation.stage_by_id(definition, str(room.get("stage_id", "")))
 
 
+## About this chapter: the chapter's own line. The turn's hint stays on the turn card.
 func _show_waiting_details() -> void:
-	var item := _waiting_details_stage()
-	if item.is_empty(): return
-	var room: Dictionary = journey.snapshot()
+	if _waiting_details_stage().is_empty(): return
 	mode = "room_details"
-	var details := _card(str(chapter.title), _chapter_body(int(room.stage_index), "a" if _viewer_is_first(room) else "b", item))
+	var details := _card(str(chapter.title), str(chapter.summary))
 	details.add_child(_action_button("back", _show_ready))
 
 

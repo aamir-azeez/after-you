@@ -12,7 +12,7 @@ const DATA := {
 	"continues_earlier": ["res://services/lighthouse_migration.gd", "continuing_scene"],
 	"leads_picker": true,
 	"copy": {
-		"summary": PlayerCopy.LIGHTHOUSE_PREVIEW_D440E74DF0F5,
+		"summary": PlayerCopy.LIGHTHOUSE_SUMMARY,
 		"completion": PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED,
 	},
 	"thumbnail": "res://assets/paid_levels/sleeping-lighthouse.png",

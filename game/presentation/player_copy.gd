@@ -1563,7 +1563,7 @@ const START_OVER_CANCEL := "Cancel"
 # Solo chapters' Start over card (presentation/redo_flow.gd), in place of the room's line.
 const SOLO_START_OVER_BODY := "The chapter goes back to the first stage. A copy of this attempt stays in Replays on this device."
 
-const HOUSE_SUMMARY := "A house with a workshop, a loft and a sunroom."
+const HOUSE_SUMMARY := "Our first evening in the new house, and we still haven't agreed who gets the top shelf. My friend's jumper is already on the stairs."
 const HOUSE_OPEN_HINT_A := "There's more than one way through the workshop."
 const HOUSE_OPEN_HINT_B := "Go to the bell in the loft."
 const HOUSE_BELOW_HINT_A := "Look for a way down and retrieve the ball."
@@ -1572,7 +1572,9 @@ const HOUSE_COMPLETION := "The shutters are open."
 
 # Reviewed intact in late-chapter-copy-approved.json before definition pinning.
 const CONSERVATORY_TITLE := "Conservatory"
-const CONSERVATORY_SUMMARY := "Light the way through the conservatory and open a path back to the garden."
+const CONSERVATORY_SUMMARY := "Somebody was meant to water the ferns this week, and I'm sure it was my friend. My friend is just as sure it was me. Meanwhile the hanging baskets drip on whoever stands underneath."
+# conservatory@2 (open turns) has its own line.
+const CONSERVATORY_V2_SUMMARY := "There's a new deck up among the hanging baskets, and my friend naps there every afternoon. I can hear the snoring from the garden."
 const CONSERVATORY_COMPLETION := "Both lights are able to reach the garden."
 const CONSERVATORY_ABOVE_TITLE := "A Light Above"
 const CONSERVATORY_ABOVE_HINT_A := "Point the light at the top steps."
@@ -1581,7 +1583,9 @@ const CONSERVATORY_RETURNS_TITLE := "The Way Light Returns"
 const CONSERVATORY_RETURNS_HINT_A := "Leave the lower crossing lit and wait in the garden."
 const CONSERVATORY_RETURNS_HINT_B := "Open the return shutter and bring both lights to the garden."
 const LONG_WAY_HOME_TITLE := "Long Way Home"
-const LONG_WAY_HOME_SUMMARY := "Leave a path for your friend and go back home together."
+const LONG_WAY_HOME_SUMMARY := "My friend went out this morning and still isn't back. I've been standing at the door since the fireflies came out. Just getting some air."
+# long-way-home@3 (open turns) has its own line.
+const LONG_WAY_HOME_V3_SUMMARY := "It's getting dark on the wooden path, and my friend says they know a shortcut. They knew a shortcut last week too."
 const LONG_WAY_HOME_COMPLETION := "You're both at home."
 const LONG_WAY_HOME_PATH_TITLE := "The Path You Leave"
 const LONG_WAY_HOME_PATH_HINT_A := "Leave a trail for your friend and then go to the garden on your own."
@@ -1593,7 +1597,7 @@ const LONG_WAY_HOME_V2_PLACE_HINT_A := "Wait at the porch window or light the ha
 const LONG_WAY_HOME_V2_PLACE_HINT_B := "Follow the trail they left behind. Match the gate to the lamp and light the second window."
 # The Wishing Well. Session Desk Level 1 output, accepted verbatim before definition pinning.
 const WISHING_WELL_TITLE := "The Wishing Well"
-const WISHING_WELL_SUMMARY := "One of you is holding the rope at the bottom of the well, while the other climbs. Then they come back for you."
+const WISHING_WELL_SUMMARY := "We each tossed a coin in the well, and my friend keeps asking what I wished for. I'm not telling. Up the cliff, the cottage windows are coming on one by one."
 const WISHING_WELL_COMPLETION := "You're both out of the well."
 const WISHING_WELL_AHEAD_TITLE := "Go On Ahead"
 const WISHING_WELL_AHEAD_HINT_A := "Hop down and hold the rope."
@@ -1603,7 +1607,9 @@ const WISHING_WELL_BACK_HINT_A := "They're still holding on. Bring the ladder do
 const WISHING_WELL_BACK_HINT_B := "Get out of the well and sound the bell."
 
 const TURN_OF_THE_TIDE_TITLE := "Turn of the Tide"
-const TURN_OF_THE_TIDE_SUMMARY := "Adjust the harbour tide so that your friend can reach the bell. Then your friend sets the sea, and you find the way across."
+const TURN_OF_THE_TIDE_SUMMARY := "The boats came in hours ago and we're still on the sand, counting crabs in the rock pools. I make it eleven. My friend makes it nine and says I counted the same crab twice."
+# turn-of-the-tide@3 (open turns) has its own line.
+const TURN_OF_THE_TIDE_V3_SUMMARY := "There's an old boat lying on its side up the beach, and I've already moved in. My friend has questions about a house with no roof."
 const TURN_OF_THE_TIDE_COMPLETION := "The harbour lantern is alight."
 const TURN_OF_THE_TIDE_SET_TITLE := "Set the Tide"
 const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide for your friend and wait on a step by the wheel."
@@ -1686,6 +1692,8 @@ const LIGHTHOUSE_PREVIEW_EDEB09A271C8 := "Your saved light is kept"
 const LIGHTHOUSE_PREVIEW_8215C097B885 := "Check your Full Journey purchase to continue. Your saved progress is kept."
 # Lighthouse chapter — show ready
 const LIGHTHOUSE_PREVIEW_D440E74DF0F5 := "A dark lighthouse stands across the water."
+# sleeping-lighthouse@2's chapter line (About this chapter).
+const LIGHTHOUSE_SUMMARY := "The striped lighthouse over the water has been dark all year. I'm fairly sure it's haunted. My friend packed a picnic anyway."
 # Lighthouse chapter — show ready
 const LIGHTHOUSE_PREVIEW_CE1F31A96F44 := "A lens is missing."
 # Lighthouse chapter — show ready
@@ -2328,9 +2336,9 @@ const SHARED_REPLAY_VIEW_FBCF70672D83 := "Your account changed. Before opening t
 # Shared replay — show error
 const SHARED_REPLAY_VIEW_B81950FA86BB := "Your saved replay is kept"
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
-const CHAPTER_REGISTRY_49A82D1B1B0C := "Turn on the real lift, then share a seed and open the garden."
+const CHAPTER_REGISTRY_49A82D1B1B0C := "The little cottage on the loft has been empty all winter, and today we're moving in. Right after breakfast, my friend says. We're on our second pot of tea."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
-const CHAPTER_REGISTRY_F78F85CE3DE5 := "Two recorded handoffs between three islands."
+const CHAPTER_REGISTRY_F78F85CE3DE5 := "Three islands in a row and one bench, and my friend got to it first. The cottage at the far end looks lovely from here. I suppose I'll go and check."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
 const CHAPTER_REGISTRY_6C521D717CA5 := "A way up, safely kept."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
@@ -3140,8 +3148,8 @@ const OBJECTIVE_PANEL_E08FF54FB4F9 := "%d / %d"
 # Compact objective readiness label.
 const LIGHTHOUSE_PREVIEW_DDC41A9DE09F := "Ready to finish"
 
-const COOPERATIVE_HIGH_SUMMARY := "Explore the high paths and the islands below."
-const COOPERATIVE_ROLLING_SUMMARY := "Pass a ball around, open the crossings and navigate around the garden."
+const COOPERATIVE_HIGH_SUMMARY := "I like it up on the deck in the breeze. My friend says the grass down below is warmer, and we've been shouting about it across the meadow all afternoon."
+const COOPERATIVE_ROLLING_SUMMARY := "It's a short walk home across the meadow, except I brought the ball. It's been in the hedge twice already, and my friend says that's my fault both times."
 const COOPERATIVE_CHECKPOINT := "Your friend can carry on from here."
 const COOPERATIVE_COMPLETION := "Your progress is saved."
 const COOPERATIVE_HOST_ACCESS := "Full Journey is only required for the host.\nA friend may join by invitation."

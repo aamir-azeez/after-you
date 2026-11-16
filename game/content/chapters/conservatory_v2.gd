@@ -12,7 +12,7 @@ const DATA := {
 	"released": false,
 	"copy": {
 		"title": PlayerCopy.CONSERVATORY_TITLE,
-		"summary": PlayerCopy.CONSERVATORY_SUMMARY,
+		"summary": PlayerCopy.CONSERVATORY_V2_SUMMARY,
 		"completion": PlayerCopy.CONSERVATORY_COMPLETION,
 	},
 	"stage_copy": {

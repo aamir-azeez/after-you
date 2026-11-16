@@ -14,7 +14,7 @@ const DATA := {
 	"prewarm_world": true,
 	"copy": {
 		"title": PlayerCopy.TURN_OF_THE_TIDE_TITLE,
-		"summary": PlayerCopy.TURN_OF_THE_TIDE_SUMMARY,
+		"summary": PlayerCopy.TURN_OF_THE_TIDE_V3_SUMMARY,
 		"completion": PlayerCopy.TURN_OF_THE_TIDE_COMPLETION,
 	},
 	"stage_copy": {

@@ -12,7 +12,7 @@ const DATA := {
 	"released": false,
 	"copy": {
 		"title": PlayerCopy.LONG_WAY_HOME_TITLE,
-		"summary": PlayerCopy.LONG_WAY_HOME_SUMMARY,
+		"summary": PlayerCopy.LONG_WAY_HOME_V3_SUMMARY,
 		"completion": PlayerCopy.LONG_WAY_HOME_COMPLETION,
 	},
 	"stage_copy": {
