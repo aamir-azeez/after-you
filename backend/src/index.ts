@@ -15,7 +15,7 @@ import { DISPLAY_NAME_PATH, displayNamesShown, friendLinkCode, namesRoomRoute, r
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
 import { LIVE_PATH, forwardLiveUpgrade } from "./live";
-import { energyFor, fruitsFor, grantHint, paidUntil, pollenAuthView, pollenEarning, pollenRoute, pollenMember, pollenMemberRoute, pollenTurnRoute, routePollen, walletMode } from "./pollen/routes";
+import { energyFor, fruitsFor, grantHint, levelsFor, paidUntil, pollenAuthView, pollenEarning, pollenRoute, pollenMember, pollenMemberRoute, pollenTurnRoute, routePollen, walletMode } from "./pollen/routes";
 import type { PollenMember } from "./pollen/turn-facts";
 import type { HistoryView, WalletView } from "./pollen/wallet";
 import { looksDuelRoute, looksMemberRoute, memberLookOf } from "./pollen/looks-routes";
@@ -86,7 +86,7 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   // The public duel list learns the reader's safety token from the same call (safety.ts ownBlocks).
   const listing = publicListRoute(request, path);
   const access: { authorized: boolean; linked: boolean; platform?: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look; owned_faces?: string[] } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks, facePacksTurnRoute(request, path))
-    : namesRoomRoute(request, path, env) || memberRoute || looks || listing ? await player.authorizeNamed(hash, memberRoute, looks, listing) : view !== null ? await player.authorizeWallet(hash, view, walletMode(request, env), grantHint(request), fruitsFor(request, env), energyFor(request, env), clientReach(request))
+    : namesRoomRoute(request, path, env) || memberRoute || looks || listing ? await player.authorizeNamed(hash, memberRoute, looks, listing) : view !== null ? await player.authorizeWallet(hash, view, walletMode(request, env), grantHint(request), fruitsFor(request, env), energyFor(request, env), clientReach(request), levelsFor(request, env))
     : wantsPlatform(request, path, env) ? await player.authorizeAccess(hash, deleting) : { authorized: await player.authorize(hash, deleting), linked: true };
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   await limitPlayer(env, id);

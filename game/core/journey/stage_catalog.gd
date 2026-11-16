@@ -1,6 +1,7 @@
 extends RefCounted
 ## Pinned authored chapters for the separate simulation7 ruleset.
 const Canonical = preload("res://core/v2/canonical.gd")
+const CarriedItems = preload("res://core/physical/carried_items.gd")
 const Home = preload("res://core/journey/long_way_home_catalog.gd")
 const Conservatory = preload("res://core/journey/conservatory_catalog.gd")
 const Tide = preload("res://core/journey/turn_of_the_tide_catalog.gd")
@@ -51,6 +52,8 @@ static func initial_checkpoint(level: Dictionary) -> Dictionary:
 	var checkpoint: Dictionary={"schema_version":7,"level_id":level.id,"level_version":level.version,"definition_hash":Canonical.digest(level),"stage_index":0,
 		"completed_stage_id":"","next_stage_id":level.stages[0].id,"players":players,"mechanisms":{"latched_bridges":[],"props":{},"levers":{},"controls":controls},
 		"previous_checkpoint_hash":"","a_recording_hash":"","b_recording_hash":"","proof":{}}
+	# Rules 16's carried items ride in the mechanisms, only where a level declares them.
+	if CarriedItems.declared(level): checkpoint.mechanisms["items"]=CarriedItems.initial(level)
 	checkpoint["checkpoint_hash"]=checkpoint_hash(checkpoint)
 	return checkpoint
 

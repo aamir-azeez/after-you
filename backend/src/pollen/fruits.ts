@@ -14,13 +14,13 @@ import raw from "./fruits.json";
  * - achievements: one-time goals in display order (achievements.ts). `goal` 0 means every chapter the rates know.
  */
 export type Ladder = { first: number; step: number; every: number; top: number };
-export type Track = "together_clears" | "hard_clears" | "every_hard" | "duel_wins" | "ghost_wins" | "public_duels" | "top_ten_ribbon" | "gold_leaf" | "keepsakes" | "keepsakes_best";
+export type Track = "together_clears" | "hard_clears" | "every_hard" | "duel_wins" | "ghost_wins" | "public_duels" | "public_wins" | "top_ten_ribbon" | "gold_leaf" | "keepsakes" | "keepsakes_best";
 export type Achievement = { id: string; fruits: number; track: Track; goal: number };
 export type FruitRules = {
   schema_version: 1; grant: Ladder & { welcome: number }; convert: { pollen_per_fruit: number; step: number };
   sunshine: { price: number; turns: number }; achievements: readonly Achievement[];
 };
-export const TRACKS: readonly Track[] = Object.freeze(["together_clears", "hard_clears", "every_hard", "duel_wins", "ghost_wins", "public_duels", "top_ten_ribbon", "gold_leaf", "keepsakes", "keepsakes_best"]);
+export const TRACKS: readonly Track[] = Object.freeze(["together_clears", "hard_clears", "every_hard", "duel_wins", "ghost_wins", "public_duels", "public_wins", "top_ten_ribbon", "gold_leaf", "keepsakes", "keepsakes_best"]);
 /** Tracks nothing can move yet: the keepsakes goals wait for keepsakes round 2. Listed, never paid. */
 export const DORMANT_TRACKS: ReadonlySet<Track> = new Set(["keepsakes", "keepsakes_best"]);
 

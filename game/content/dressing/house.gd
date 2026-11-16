@@ -21,6 +21,8 @@ const DATA := {
 	"ladder": "rope",
 	"fog": "mist",
 	"spillway": "trickle",
+	"carried_item": "parcel",
+	"current": "ripples",
 	"props": {"*": [
 		{"kind": "rug", "at": [-520, 0], "surface": "foyer", "width": 80, "depth": 60, "color": "b5654a"},
 		{"kind": "shelf", "at": [-520, -240], "surface": "foyer", "y": 120, "wall": true},

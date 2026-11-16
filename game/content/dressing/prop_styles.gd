@@ -119,18 +119,22 @@ const SLOTS := {
 	"ladder": {"rope": {}, "wheel": {}},
 	"fog": {"mist": {}, "none": {}},
 	"spillway": {"trickle": {}, "falls": {}},
+	# Rules 16's carried items and floats (kit/pieces/carried_item.gd) and the
+	# current that carries them (kit/pieces/current.gd).
+	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}},
+	"current": {"ripples": {}, "chevrons": {}},
 }
 
 ## Slots that pick a kit piece's look rather than a prop to stand: the resolved
 ## dressing carries the pick as a field of the same name ("tag": "stone_tile").
-const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "fog", "spillway"]
+const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "fog", "spillway", "carried_item", "current"]
 
 ## The pick for a slot that neither the theme nor the level names.
 const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
 	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
-	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle",
+	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle", "carried_item": "parcel", "current": "ripples",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line

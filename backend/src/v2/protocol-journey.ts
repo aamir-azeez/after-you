@@ -4,6 +4,7 @@ import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scale
 import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, packedRecordingBytes, turnSlot } from "./open-turns";
 import { isPacked } from "./recording-codec";
+import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -65,7 +66,7 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
 /** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 16),
  * a selector's value, a lever on, a beam signal lit, a pad held (by either pip on open controls). */
 export function gateHolds(value: Predicate, state: { controls: Record<string, unknown>; levers: Record<string, unknown>; light: Record<string, boolean>;
-  players: Record<string, unknown>; stage: Pick<Stage, "pressure_pads">; open: boolean }): boolean {
+  players: Record<string, unknown>; stage: Pick<Stage, "pressure_pads">; open: boolean; items?: Parameters<typeof itemHolds>[1] }): boolean {
   const { controls, levers, light, players, stage, open } = state, holds = (child: Predicate): boolean => gateHolds(child, state);
   if (value.all) return value.all.every(holds);
   if (value.any) return value.any.some(holds);
@@ -74,6 +75,7 @@ export function gateHolds(value: Predicate, state: { controls: Record<string, un
   if (value.lever_id) return levers[value.lever_id] === true;
   if (value.signal_id) return light[value.signal_id] === true;
   if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
+  if (isItemTerm(value)) return itemHolds(value, state.items ?? {});
   return true;
 }
 
@@ -83,9 +85,12 @@ export function sunkTogether(stage: Pick<Stage, "sinking">, players: Record<stri
   return p0 === p1 && (stage.sinking ?? []).includes(String(p0));
 }
 
-/** Builds a journey chapter from its definition (every chapter below; test/open-turns-long.test.ts builds a five stage open turns chapter with it). */
+/** Builds a journey chapter from its definition (every chapter below; test/open-turns-long.test.ts builds a five stage open turns chapter with it, and test/carried-items.test.ts its witnesses). */
 export function journeyAdapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
+  // Rules 16's carried items (protocol-items.ts): only a definition that lists them keeps mechanisms.items.
+  checkItemDefinition(definition as unknown as ItemDefinition);
+  const withItems = declaresItems(definition);
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [7, 8];
@@ -135,7 +140,8 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
       need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.a) === canonicalJson(a) && canonicalJson(proof.b) === canonicalJson(b), "checkpoint_proof_mismatch");
     }
     const mechanisms = object(c.mechanisms), prior = object(object(previous).mechanisms);
-    exact(mechanisms, ["latched_bridges", "props", "levers", "controls"]); exact(object(mechanisms.props), []);
+    exact(mechanisms, ["latched_bridges", "props", "levers", "controls", ...(withItems ? ["items"] : [])]); exact(object(mechanisms.props), []);
+    const items = withItems ? checkItems(mechanisms.items, definition as unknown as ItemDefinition) : {};
     // Controls by id: a control repeated in both stages (the same entry) is
     // listed once, may change while its stage plays, and is held otherwise.
     const controls = object(mechanisms.controls), priorControls = object(prior.controls);
@@ -168,7 +174,7 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
       need(height === expectedHeight, "checkpoint_surface_mismatch");
     }
     const source = object(players[stage.first_player_slot]), receiver = object(players[stage.first_player_slot === "p0" ? "p1" : "p0"]), light = signals(controls);
-    const predicate = (value: Predicate = {}): boolean => gateHolds(value, { controls, levers, light, players, stage, open });
+    const predicate = (value: Predicate = {}): boolean => gateHolds(value, { controls, levers, light, players, stage, open, items });
     for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
     if (piecesRules(definition.simulation_version)) need(!sunkTogether(stage, players), "checkpoint_surface_mismatch");
     if (openLimits) {

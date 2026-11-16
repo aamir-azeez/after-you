@@ -266,6 +266,15 @@ export function heldState(duel: Duel, seat: number): HeldState {
   return state.full_once ? { paid: true } : { paid: false, reason: "nobody_joined" };
 }
 
+/**
+ * Whether a public duel was played to its end with neither side giving up (the Fruits goal public_duel_first,
+ * pollen/achievements.ts): both runs finished and compared ("faster" or "draw"). A give up, a stall, a blocked partner's
+ * leave, a failed check or an empty spot ends it some other way.
+ */
+export function finishedPublic(duel: Duel): boolean {
+  return !!duel.public && duel.status === "decided" && (duel.result?.reason === "faster" || duel.result?.reason === "draw") && !duel.sides.some(side => side?.gave_up);
+}
+
 /** Whether `viewer` may see `id`: their own, or one they already know (their party, a friend). */
 export function publicKnown(duel: Duel, viewer: string, id: string): boolean {
   return id === viewer || duel.known.includes(knownKey(viewer, id));

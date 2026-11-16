@@ -23,7 +23,8 @@ extends RefCounted
 ## through services/wallet_reply.gd note_spend: `balance` stays the Pollen
 ## balance, `fruit_balance` the Fruit one, `sunshine_left` the Sunshine turns.
 ## A duel energy refill (refill_energy(), Fruits too) keeps the receipt's
-## `energy` meter in services/duel_energy.gd the same way.
+## `energy` meter in services/duel_energy.gd the same way, and opening a level
+## (unlock_level(), Fruits too) keeps the level open in services/fruit_wallet.gd.
 ##
 ## Wearing works offline (services/wardrobe.gd pending): wear() puts the look on
 ## this phone at once, with its revision and key fixed then, and sync() sends
@@ -50,12 +51,14 @@ const EQUIP_PATH := "/v1/pollen/equip"
 ## Sends of one action that got no answer before it gives up (the next tap starts a new one).
 const MAX_SENDS := 3
 ## Answers after which the phone reads the wardrobe again, because what it showed was out of date.
-const STALE := ["already_owned", "pollen_price_changed", "not_for_sale", "not_owned", "pollen_locked", "fruits_short", "fruits_blocked", "sunshine_active", "energy_full"]
+const STALE := ["already_owned", "pollen_price_changed", "not_for_sale", "not_owned", "pollen_locked", "fruits_short", "fruits_blocked", "sunshine_active", "energy_full", "level_free", "level_unlocks_disabled"]
 ## The spend kinds that turn Fruits into Pollen, and that buy Sunshine (the server's spend route).
 const CONVERT := "convert"
 const SUNSHINE := "sunshine"
 ## The spend kind and id that fill the duel energy meter for Fruits.
 const ENERGY := "energy"
+## The spend kind that opens a level for Fruits (id: the level id).
+const LEVEL := "level"
 ## Equip refusals that will not pass: the look put on goes. Anything else
 ## (rate limits, a token problem, an update needed, a server error) keeps it.
 const FINAL_REFUSALS := ["invalid_pollen_equip", "not_owned", "identity_absent"]
@@ -152,6 +155,17 @@ func refill_energy() -> Dictionary:
 	if not context.is_empty(): price = int(energy.meter(str(context.server), str(context.owner)).get("refill_fruits", 0))
 	if not context.is_empty() and price <= 0: return {"ok": false, "code": "invalid_pollen_spend", "receipt": {}}
 	return await _spend(ENERGY, ENERGY, price, true)
+
+## Opens level `level_id` for `price` Fruits, the price its card showed (the
+## descriptor's "unlock", which the server's table is pinned to). {ok, code,
+## receipt}; refused "already_owned" once it is open (the wallet is read again
+## and shows it open), "level_free" with Full Journey, and
+## "level_unlocks_disabled" while the server does not sell levels.
+func unlock_level(level_id: String, price: int) -> Dictionary:
+	var context := scope()
+	if not context.is_empty() and not fruits.level_unlocks_on(str(context.server), str(context.owner)): return {"ok": false, "code": "level_unlocks_disabled", "receipt": {}}
+	if price <= 0 or not FruitWallet.valid_level(level_id): return {"ok": false, "code": "invalid_pollen_spend", "receipt": {}}
+	return await _spend(LEVEL, level_id, price, true)
 
 ## One spend: never queued (it needs an answer, so offline it is refused), one
 ## key for every send of it, the receipt kept in every store it feeds.
