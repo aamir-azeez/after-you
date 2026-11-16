@@ -19,6 +19,12 @@ const RECEIVER_GRACE_TICKS := 300
 ## it, so a packet cannot change it. Without it the published caps apply.
 const FIRST_TURN_LIMITS_VERSION := 9
 const MAX_DECLARED_TURN_TICKS := 9000
+## Open turns (open_turns.gd: 14 and 15) take turns up to ten minutes. Every
+## open turn goes packed (core/v2/recording_codec.gd): the widest one this long
+## is about 82,000 packed characters, under RecordingCodec.MAX_PACKED_CHARS
+## (131,072) with room to spare, and its check replays about a sixth of its own
+## length on a slow phone. The server's mirror is open-turns.ts MAX_OPEN_TURN_TICKS.
+const MAX_OPEN_TURN_TICKS := 18000
 ## Open controls (a facade's _open_controls()): a pad holds for either pip, and
 ## either pip works any lever, switch or selector, so the controls carry no
 ## owner_slot. In the second turn the memory's toggles replay as toggles: a
@@ -51,7 +57,9 @@ var memory_slot := "p0"
 var pass_allowed := true
 var passed := false
 ## Export the packed form (core/v2/recording_codec.gd): set for a live turn in a
-## packed room, and from the record itself whenever one is replayed.
+## packed room, and from the record itself whenever one is replayed. Open turns
+## (open_turns.gd) always export packed, in rooms and solo alike: the server
+## takes no other form there, and a stage of many long turns stays small.
 var packed_recordings := false
 var _checkpoint: Dictionary = {}
 var _prior: Dictionary = {}
@@ -460,7 +468,8 @@ static func turn_ticks(definition: Dictionary, version: int, turn_role: String) 
 ## backend's turnLimits rules: a_ticks and b_ticks both whole numbers with
 ## 1 <= a < b <= 9,000 (the receiver waits out the first turn). On open turns
 ## (open_controls.gd OPEN_TURNS_RULES) every turn plays alongside its memory
-## and has the same limit, so a may equal b there: 1 <= a <= b <= 9,000.
+## and has the same limit, so a may equal b there, and turns go up to
+## MAX_OPEN_TURN_TICKS: 1 <= a <= b <= 18,000.
 static func turn_limits_valid(definition: Dictionary, version: int) -> bool:
 	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return true
 	return not _declared_turns(definition.turn_limits, version).is_empty()
@@ -469,7 +478,8 @@ static func _declared_turns(limits: Variant, version: int) -> Dictionary:
 	if not limits is Dictionary: return {}
 	var a: Variant = limits.get("a_ticks")
 	var b: Variant = limits.get("b_ticks")
-	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b > MAX_DECLARED_TURN_TICKS: return {}
+	var ceiling := MAX_OPEN_TURN_TICKS if version in OpenControls.OPEN_TURNS_RULES else MAX_DECLARED_TURN_TICKS
+	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b > ceiling: return {}
 	if b < a or (b == a and version not in OpenControls.OPEN_TURNS_RULES): return {}
 	return {"a": int(a), "b": int(b)}
 
@@ -567,7 +577,7 @@ func export_recording() -> Dictionary:
 		"stage_id":stage.id,"stage_version":stage.version,"checkpoint_hash":_checkpoint.checkpoint_hash,"role":role,"player_slot":active_slot,"tick_rate":TICK_RATE,
 		"duration_ticks":tick,"catch_assistance":catch_assistance,"actions":_actions.duplicate(true),"replay_checks":checks,"final_state_hash":state_hash(),
 		"completed":complete,"outcome":_outcome(),"source_recording_hash":str(_prior.get("recording_hash", "")) if role == "b" else ""}
-	if packed_recordings: record = RecordingCodec.packed_form(record)
+	if packed_recordings or _open_turns(): record = RecordingCodec.packed_form(record)
 	record["recording_hash"] = recording_hash(record)
 	return record
 

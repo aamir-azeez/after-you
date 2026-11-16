@@ -2,7 +2,8 @@ import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
-import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, recordingBytes, turnSlot } from "./open-turns";
+import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, packedRecordingBytes, recordingBytes, turnSlot } from "./open-turns";
+import { isPacked } from "./recording-codec";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -25,9 +26,9 @@ export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea8
 export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
 export const TURN_OF_THE_TIDE_HASH = "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a";
 export const TURN_OF_THE_TIDE_V2_HASH = "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43";
-export const LONG_WAY_HOME_V3_HASH = "81e6342e5f80158ca6cf6c9e02a61cc2baa7e24c63e23603561db50fd1311ddc";
-export const TURN_OF_THE_TIDE_V3_HASH = "4604f025d89fba1bcd024be1d60ffefd65d50f189b3993399c4d12b9f2a0a21c";
-export const CONSERVATORY_V2_HASH = "90e49a79c3aae874c960cdd73605a12d58f5221878fceb57a224d83e18fbdcbb";
+export const LONG_WAY_HOME_V3_HASH = "947e69e3ccc80d81f285b0434536a00cb3a08aeea890e64539e8643b09dc3909";
+export const TURN_OF_THE_TIDE_V3_HASH = "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba";
+export const CONSERVATORY_V2_HASH = "945bb314eb10738736122839400a4570ceeec33f33e68426e789f13d3bc11108";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
@@ -96,11 +97,14 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // Longer turns, when the definition declares them, carry bounds grown to fit.
   const turns = turnLimits(definition);
   let limits = turns ? scaledLimits(turns) : undefined;
-  // Open turns: a stage's turns stay under its budget, and the checkpoint and turn body bounds grow to hold every stage of them.
-  const openLimits = open ? openTurnLimits(definition.stages, (limits ?? COMFORT_RECORDING).recording_bytes!, maxBranches!) : undefined;
-  if (openLimits) { const base = limits ?? COMFORT_RECORDING; limits = { ...base, ...openBodyLimits(openLimits, definition.stages.length, base.recording_values!) }; maxBranches = openLimits.branches; }
+  // Open turns: every turn packed and as long as the second turn limit; a stage's turns stay under its budget, and the
+  // checkpoint and turn body bounds grow to hold every stage of them.
+  const openLimits = open ? openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches!) : undefined;
+  if (openLimits) { limits = { ...(limits ?? COMFORT_RECORDING), ...openBodyLimits(openLimits, definition.stages.length) }; maxBranches = openLimits.branches; }
   if (limits) checkTurnBounds(limits, maxBranches);
-  const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
+  const parsed = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
+  // Open turns take packed turns only (open-turns.ts), before any other check.
+  const recording = open ? (value: unknown) => { need(value !== null && typeof value === "object" && isPacked(value), "packed_recording_required"); return parsed(value); } : parsed;
   const isAccepted = open ? openAccepted : accepted;
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);

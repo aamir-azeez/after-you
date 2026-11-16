@@ -3,6 +3,7 @@ import { boundedValue, exact, MAX_CHECKPOINT_BYTES, MAX_RECORDING_BYTES, MAX_V2_
 import { comfortRules, openTurns, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { MAX_ROW_BYTES } from "./row-bound";
 import { isPacked, packedKeys, unpackRecording } from "./recording-codec";
+import { MAX_OPEN_TURN_TICKS } from "./open-turns";
 
 const RECORD_KEYS = ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "stage_id", "stage_version", "checkpoint_hash", "role", "player_slot", "tick_rate", "duration_ticks", "catch_assistance", "actions", "replay_checks", "final_state_hash", "completed", "outcome", "source_recording_hash", "recording_hash"];
 const PACKED_KEYS = packedKeys(RECORD_KEYS);
@@ -19,9 +20,9 @@ export function turnLimits(definition: { simulation_version?: number; turn_limit
   if (definition.turn_limits === undefined || !(typeof definition.simulation_version === "number" && definition.simulation_version >= 9)) return undefined;
   const { a_ticks, b_ticks } = (definition.turn_limits ?? {}) as Record<string, unknown>;
   // The receiver waits out the recorded first turn, so it needs the longer cap. Open turns (open-turns.ts) play every
-  // turn alongside its memory with the same limit, so there the two may be equal.
-  const shortestB = openTurns(definition.simulation_version) ? (a_ticks as number) : (a_ticks as number) + 1;
-  if (!Number.isSafeInteger(a_ticks) || !Number.isSafeInteger(b_ticks) || (a_ticks as number) < 1 || (b_ticks as number) < shortestB || (b_ticks as number) > 9_000) throw new Error("invalid turn_limits");
+  // turn alongside its memory with the same limit, so there the two may be equal, and turns may be longer.
+  const open = openTurns(definition.simulation_version), shortestB = open ? (a_ticks as number) : (a_ticks as number) + 1;
+  if (!Number.isSafeInteger(a_ticks) || !Number.isSafeInteger(b_ticks) || (a_ticks as number) < 1 || (b_ticks as number) < shortestB || (b_ticks as number) > (open ? MAX_OPEN_TURN_TICKS : 9_000)) throw new Error("invalid turn_limits");
   return { a_ticks: a_ticks as number, b_ticks: b_ticks as number };
 }
 /** The published comfort bounds grown by how much longer the turns are. */

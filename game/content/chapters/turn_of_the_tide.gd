@@ -15,6 +15,8 @@ const DATA := {
 		"summary": PlayerCopy.TURN_OF_THE_TIDE_SUMMARY,
 		"completion": PlayerCopy.TURN_OF_THE_TIDE_COMPLETION,
 	},
+	"letter": {"stamp": "crab", "address": [PlayerCopy.LETTER_ROCK_POOLS, PlayerCopy.LETTER_ROCK_POOLS_LINE],
+		"postmark": PlayerCopy.LETTER_POST_HARBOUR, "signoff": PlayerCopy.LETTER_BACK_IN_A_BIT},
 	"stage_copy": {
 		"set-the-tide": {
 			"title": PlayerCopy.TURN_OF_THE_TIDE_SET_TITLE,
