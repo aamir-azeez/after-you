@@ -283,8 +283,9 @@ func offer_waiting() -> bool:
 ## check at once when the launch timer has not run it yet, or runs it again when it could not reach
 ## the server, and waits for it (at most NEW_IDENTITY_WAIT_MS).
 ## "create": nothing can come back (no platform here, the server does not offer it, signed out, no
-## friend code on the account); "offer": the account has one, ask the player; "restored": a yes
-## given earlier finished meanwhile; "wait": the check could not finish, so nothing is made now.
+## friend code on the account; or another tap is making one, which Main then waits for); "offer":
+## the account has one, ask the player; "restored": a yes given earlier finished meanwhile; "wait":
+## the check could not finish, so nothing is made now.
 func before_new_identity() -> String:
 	if not _ensure_provider() or _account == null: return "create"
 	if _account.identity_state() != "missing": return "restored" if _account.identity_state() == "ready" else "wait"
@@ -292,9 +293,11 @@ func before_new_identity() -> String:
 	var deadline := Time.get_ticks_msec() + NEW_IDENTITY_WAIT_MS
 	while is_inside_tree() and (_running or busy) and Time.get_ticks_msec() < deadline:
 		await get_tree().create_timer(0.1).timeout
-	if _account == null: return "wait"
+	if _account == null or _running or busy: return "wait"
 	if _account.identity_state() == "ready": return "restored"
-	if _running or busy or _account.identity_state() != "missing": return "wait"
+	# Another tap is making or reading a friend code right now: Main waits for it and uses it.
+	if _account.identity_state() == "busy": return "create"
+	if _account.identity_state() != "missing": return "wait"
 	if link_state == LINK_OFFER: return "offer"
 	# The probe could not tell whether the server offers it.
 	if state.capability().is_empty(): return "wait"

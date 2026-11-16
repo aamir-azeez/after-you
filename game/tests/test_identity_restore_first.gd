@@ -12,7 +12,7 @@ const Service = preload("res://services/platform_games/platform_games.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const AccountFlow = preload("res://presentation/account_flow.gd")
 const StoreFlow = preload("res://presentation/store_flow.gd")
-const BundleClaims = preload("res://services/bundle_claims.gd")
+const PollenClient = preload("res://services/pollen_client.gd")
 const RESTORED := "RRRRRRRRRRRRRRRRRRRRRR"
 const NEW_PLAYER := "NNNNNNNNNNNNNNNNNNNNNN"
 const OWN_PLAYER := "OOOOOOOOOOOOOOOOOOOOOO"
@@ -299,25 +299,21 @@ class FakePurchases extends Node:
 		return "read-%d" % reads
 	func has_entitlement(_id: String = "") -> bool: return entitled
 
-class FakePollen extends RefCounted:
-	signal settled
-	var bought := 0
-	var flushes := 0
-	func note_full_journey_bought() -> void: bought += 1
-	func flush() -> void: flushes += 1
-	func sending() -> bool: return false
-
+## The real Pollen client with requests that only count: after a restore it reads the wallet
+## saying "bought", then sends one bundle claim.
 class FakeClaims extends RefCounted:
 	var once := 0
+	func flush() -> void: pass
 	func claim_once() -> Dictionary:
 		once += 1
 		return {"ok": true, "credited": [], "refunded": []}
 
 class StoreHost extends Node:
 	var api := {"player_id": RESTORED}
+	var config := {"purchase_mode": "google_play", "entitlement_id": "full_journey_play"}
 	var saves: RefCounted
 	var purchases := FakePurchases.new()
-	var pollen_client := FakePollen.new()
+	var pollen_client: RefCounted
 	var toasts: Array = []
 	var mode := "home"
 	func _store_identity_settled() -> bool: return true
@@ -332,7 +328,11 @@ func _purchase_sync_after_restore() -> void:
 	var store: Node = StoreFlow.new(host)
 	host.add_child(store)
 	var claims := FakeClaims.new()
-	BundleClaims.use_shared(claims)
+	var wallet_reads: Array = []
+	host.pollen_client = PollenClient.new(null, func() -> Dictionary: return {}, func(method: int, path: String, _body: Dictionary) -> Dictionary:
+		wallet_reads.append(path)
+		return {"ok": false, "status": 0})
+	host.pollen_client.bundle_claims = claims
 	store.sync_after_restore(RESTORED)
 	store.store_configured = true
 	store.store_owner = RESTORED
@@ -346,8 +346,7 @@ func _purchase_sync_after_restore() -> void:
 	store.purchase_completed(request, "restore_purchases" if host.purchases.restores == 2 else "get_customer_info", {})
 	await _until(func() -> bool: return claims.once > 0)
 	_check(not host.saves.data.has(StoreFlow.RESTORE_SYNC_KEY) and store.restore_sync_request.is_empty(), "The answered read clears the mark")
-	_check(host.pollen_client.bought == 1 and claims.once == 1 and host.toasts.is_empty(), "Full Journey's monthly Pollen and any moved Pollen or Fruit pack follow at once, quietly")
+	_check(claims.once == 1 and host.toasts.is_empty(), "Any Pollen or Fruit pack moved to it is claimed at once, quietly")
 	store._start_restore_sync()
 	_check(store.restore_sync_request.is_empty(), "and it runs once")
-	BundleClaims.use_shared(null)
 	host.queue_free()

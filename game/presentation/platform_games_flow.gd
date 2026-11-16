@@ -126,7 +126,7 @@ func _maybe_offer() -> void:
 
 ## The one restore pop-up, for Home and for an online tap alike.
 func _open_offer(platform: Node) -> void:
-	if is_instance_valid(_offer_modal): return
+	if is_instance_valid(_offer_modal) and not _offer_modal.is_queued_for_deletion(): return
 	var modal: Control = InGameModal.open(host.ui, "PlatformRestoreModal", PlayerCopy.PLATFORM_GAMES_OFFER_TITLE)
 	_offer_modal = modal
 	var accepted := [false]
@@ -152,7 +152,12 @@ func _accept(platform: Node) -> void:
 func before_new_identity(report: Callable = Callable()) -> String:
 	var platform := games()
 	if platform == null: return "create"
+	var declined_before: bool = platform.offer_declined
 	var answer: String = await platform.before_new_identity()
+	if answer == "offer" and platform.offer_declined and not declined_before:
+		# Home's pop-up was answered "Not now" while this tap waited for the check: that answer counts.
+		host._report(report, PlayerCopy.PLATFORM_GAMES_BRING_BACK_FIRST % platform.display_name())
+		return "stop"
 	if answer == "offer":
 		_open_offer(platform)
 		var accepted: bool = await _offer_answered

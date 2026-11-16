@@ -225,7 +225,7 @@ const SEND := "(?:request_json(?:_with_headers)?|_request|_net|_call|_mutation|_
 const RECOVERY_GUARD := "res://services/recovery_guard.gd"
 const RECOVERY_SURFACES := {
 	"res://presentation/account_flow.gd": "shows, copies and imports it through its guard",
-	"res://presentation/platform_games_flow.gd": "copies it through account_flow.copy_recovery_details",
+	"res://presentation/platform_games_flow.gd": "copies it through account_flow.keep_recovery_details (copy_recovery_details)",
 }
 
 ## (l) The one leaderboard icon, and each screen that shows it with where.
@@ -770,7 +770,7 @@ func _recovery() -> void:
 			_check(false, "%s reads the recovery code on a screen: show and copy it through account_flow's guard (services/recovery_guard.gd), then add it to RECOVERY_SURFACES" % path)
 			continue
 		seen[path] = true
-		_check(source.contains("guard.") or source.contains("copy_recovery_details("), "%s is in RECOVERY_SURFACES but goes through no guard" % path)
+		_check(source.contains("guard.") or source.contains("copy_recovery_details(") or source.contains("keep_recovery_details("), "%s is in RECOVERY_SURFACES but goes through no guard" % path)
 	for path: String in RECOVERY_SURFACES:
 		_check(seen.has(path), "RECOVERY_SURFACES names %s, which no longer reads the code: delete it" % path)
 

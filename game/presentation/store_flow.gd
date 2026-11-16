@@ -38,7 +38,6 @@ const TesterSwitches = preload("res://services/tester_switches.gd")
 const BenefitPanel = preload("res://presentation/kit/benefit_panel.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
 const DuelEnergy = preload("res://services/duel_energy.gd")
-const BundleClaims = preload("res://services/bundle_claims.gd")
 ## The save's mark for a friend code that came back (Play Games / Game Center or recovery) whose
 ## purchases are read again once the store is set up for it: its player id.
 const RESTORE_SYNC_KEY := "restore_purchase_sync"
@@ -496,12 +495,7 @@ func _finish_restore_sync(succeeded: bool) -> void:
 	if not succeeded: return
 	host.saves.update_values({}, [RESTORE_SYNC_KEY])
 	var pollen: Variant = host.get("pollen_client")
-	if pollen is RefCounted:
-		if host.purchases.has_entitlement(): pollen.note_full_journey_bought()
-		else: pollen.flush()
-		# The wallet read says whether packs sell to this player; the claim waits for it.
-		if pollen.sending(): await pollen.settled
-	await BundleClaims.shared().claim_once()
+	if pollen is RefCounted: await pollen.after_restore(host.purchases.has_entitlement())
 
 func purchase_completed(id: String, operation: String, payload: Dictionary) -> void:
 	if not _play_store_enabled(): return
