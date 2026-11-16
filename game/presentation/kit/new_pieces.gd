@@ -16,7 +16,7 @@ extends RefCounted
 ##   - water in a weight lift's pan while a lantern its lift reads burns (the
 ##     lantern pump fills the pan);
 ##   - the fog round lantern levers (kit/fog.gd, the dressing's "fog" pick).
-## The lantern lever, the weight pan and the pull rope are ordinary lever, pad
+## The lantern lever, the weight pans, the boards and the rope wheel are ordinary lever, pad
 ## and selector styles the world builds itself.
 ## Presentation only: nothing here feeds the simulation.
 const Deck = preload("res://presentation/kit/pieces/deck.gd")

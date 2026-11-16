@@ -62,6 +62,8 @@ extends RefCounted
 ##   sinking_stones        J  "stones" that hold one pip each, open while
 ##                            "when" holds (always without one)
 ##   rope_ladder           J  "stairs" climbed up only, always hung
+## Ladders, the wheel ride and rope bridges also say "hands": true (both
+## hands needed: a pip carrying an item never steps on).
 ##   wheel_ride            J  "stairs" ridden up only, on a big wheel that
 ##                            turns while "when" holds
 ##   falls_path            J  "routes" behind a waterfall, dry while "lever"
@@ -280,7 +282,9 @@ static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, famil
 			var held: Array = []
 			if block.has("lever"): held.append({"lever_id": _place(level, stage, block.lever, "levers", "lever", family)})
 			for pad: Variant in block.get("pads", []): held.append({"pad_id": _place(level, stage, pad, "pressure_pads", "pad", family)})
-			for route: String in block.routes: _add(level, stage, "gates", {"route_id": route, "when": _any_of(held)})
+			for route: String in block.routes:
+				_add(level, stage, "gates", {"route_id": route, "when": _any_of(held)})
+				_needs_hands(level, route)
 		"weight_pan":
 			var heavy := _pan(level, stage, block.pad, block.get("items", []), family)
 			for route: String in block.routes: _add(level, stage, "gates", {"route_id": route, "when": heavy.duplicate(true)})
@@ -310,7 +314,9 @@ static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, famil
 		"rope_ladder", "wheel_ride":
 			for id: Variant in block.stairs:
 				for stair: Dictionary in level.get("stairs", []):
-					if stair.id == str(id): stair["one_way"] = "up"
+					if stair.id == str(id):
+						stair["one_way"] = "up"
+						stair["hands"] = true
 				_add(level, stage, "gates", {"route_id": str(id), "when": block.when.duplicate(true)} if block.has("when") and not block.when.is_empty() else {"route_id": str(id)})
 		"falls_path":
 			var water_gate := _place(level, stage, block.lever, "levers", "lever", family)
@@ -353,6 +359,12 @@ static func _value(control: String, value: Variant) -> Dictionary:
 
 static func _any_of(terms: Array) -> Dictionary:
 	return terms[0] if terms.size() == 1 else {"any": terms}
+
+## A rope bridge needs both hands (carried items: a pip holding something
+## never steps onto a "hands" crossing).
+static func _needs_hands(level: Dictionary, route: String) -> void:
+	for bridge: Dictionary in level.get("bridges", []):
+		if bridge.id == route: bridge["hands"] = true
 
 ## A pan (rules 16): the pad held by a pip, or any of `items` resting at the
 ## spot of the pan's own id. Places an inline pad.

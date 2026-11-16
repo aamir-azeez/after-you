@@ -13,7 +13,9 @@ extends SceneTree
 ## - the pull-up ladder: climbed to the stilts, never come down;
 ## - sinking stones: one pip stands on a stone, the second pushes it under,
 ##   the one that stepped on last (live or memory) named;
-## - the dam bridge and the crank rope bridge open by their selector and lever;
+## - a crank board at either end holds the rope bridge; the water gate dries
+##   the path behind the falls; the wheel ride carries a pip up while the gate
+##   board is held, never down; a pan holds the footbridge down;
 ## - the level graph: rides reach the stilts, a lantern that could be out
 ##   leaves the boards dry, and the ladder runs one way.
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -72,6 +74,7 @@ func _blocks() -> void:
 	_check(falls.sinking == ["s1", "s2"] and _gate(falls, "s1") == {"control_id": "pool", "value": "LOW"}, "The stones sink one at a time and stand dry at LOW")
 	_check(_gate(falls, "behind") == {"lever_id": "water-gate"} and _gate(falls, "span") == {"any": [{"pad_id": "crank"}, {"pad_id": "east-crank"}]}, "The water gate dries the path behind the falls; either crank board holds the rope bridge")
 	_check(_gate(falls, "wheel") == {"pad_id": "gate-board"} and _stair("wheel").get("one_way") == "up", "The wheel ride turns while the gate board is held, up only")
+	_check(_stair("wheel").get("hands") == true and _stair("ladder").get("hands") == true and level.bridges.filter(func(bridge: Dictionary) -> bool: return bridge.get("hands", false)).map(func(bridge: Dictionary) -> String: return bridge.id) == ["span"], "Ladders, the wheel ride and the rope bridge need both hands")
 	_check(_gate(falls, "foot") == {"any": [{"pad_id": "foot-pan"}, {"item_id": "pipsport", "spot_id": "foot-pan"}]}, "The footbridge is down while its pan holds a pip or the pipsport")
 	_check(falls.platforms == [{"id": "punt", "stops": ["punt-a", "punt-b"]}], "A plain platform names its own stops")
 	var styles := BlockDefaults.styles(source)
