@@ -58,8 +58,7 @@ func _census(key: String, definition: Dictionary, index: int) -> void:
 	_mount(viewport, world, false)
 	world.load_level(definition)
 	var stage: Dictionary = definition.stages[index]
-	if world.has_method("show_stage"): world.show_stage(stage)
-	else: world.present_stage(stage)
+	world.show_stage(stage)
 	for _frame in range(3): await process_frame
 	if world._folds_static_scenery(): world._fold_static_scenery()
 	var label := "%s stage %d" % [key, index + 1]

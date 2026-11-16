@@ -103,14 +103,26 @@ var _keep_clear: Array[Rect2] = []
 var _placed: Array[Dictionary] = []
 ## Each placed mark's node when the kit drew it under the terrain (else null).
 var _nodes: Array = []
+## Every node the kit drew this stage, taken down by clear().
+var _made: Array[Node] = []
 
 func _init(world: Node3D = null) -> void:
 	_world = world
 
-## A new stage: what was marked before goes (its nodes went with the terrain).
+## A new stage: what was marked before goes, its nodes too (a world that keeps
+## its terrain between stages keeps no stale mark).
 func clear() -> void:
+	for node: Node in _made:
+		if not is_instance_valid(node): continue
+		if node.get_parent() != null: node.get_parent().remove_child(node)
+		node.queue_free()
+	_made.clear()
 	_placed.clear()
 	_nodes.clear()
+
+## The nodes the kit drew this stage.
+func made() -> Array[Node]:
+	return _made.duplicate()
 
 ## Marks keep `edge` clear of `rect` (terrain space, x and z): scenery at a
 ## mark's height.
@@ -291,7 +303,7 @@ func _zone(slot: String, id: String, rect_cm: Array, floor_y: float, parent: Nod
 			if room.has_point(Vector2(at.x, at.z)): at.x = room.position.x if at.x < room.get_center().x else room.end.x
 		_put(slot, &"zone", id, at, parent, [])
 	var edge := Primitives.cached_box(Vector3(float(rect_cm[2] - rect_cm[0]) / 100.0 - 0.01, ZONE_EDGE.y, ZONE_EDGE.z))
-	Primitives.mesh_node(edge, Primitives.shared_material(color(slot)), Vector3(float(rect_cm[0] + rect_cm[2]) / 200.0, floor_y + ZONE_EDGE_LIFT, float(rect_cm[1]) / 100.0), parent)
+	_made.append(Primitives.mesh_node(edge, Primitives.shared_material(color(slot)), Vector3(float(rect_cm[0] + rect_cm[2]) / 200.0, floor_y + ZONE_EDGE_LIFT, float(rect_cm[1]) / 100.0), parent))
 
 ## Records a mark another kit piece drew itself (a stand spot's), for placed();
 ## build() then leaves `id` be.
@@ -307,6 +319,7 @@ func placed() -> Array[Dictionary]:
 
 func _put(slot: String, kind: StringName, id: String, at: Vector3, parent: Node3D, clash: Array) -> void:
 	var node := shape(slot, at, parent)
+	_made.append(node)
 	record(slot, kind, id, at, parent, clash)
 	if _world != null and parent == _world.get("terrain"): _nodes[-1] = node
 

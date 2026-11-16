@@ -5,8 +5,6 @@ const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
-## Matching gate tags come from the world kit (ownership marks: OwnerMark).
-const PairTags = preload("res://presentation/kit/pair_tags.gd")
 ## Pads, levers and selectors in their styles (content/dressing/piece_styles.gd).
 const PadPiece = preload("res://presentation/kit/pieces/pad.gd")
 const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
@@ -17,8 +15,6 @@ const GLANCE_TO := 1.6
 const GLANCE_BACK := 0.6
 var chapter_definition: Dictionary = {}
 var _physical_pads: Dictionary = {}
-## Pad id -> its piece (kit/pieces/pad.gd); _physical_pads holds its rim.
-var _pad_pieces: Dictionary = {}
 ## Cables and ropes laid on the floors this stage (_floor_cable).
 var _floor_cables: Array = []
 var _physical_levers: Dictionary = {}
@@ -37,10 +33,8 @@ var _glance_left := 0.0
 var _glance_target := Vector3.ZERO
 ## Tests may stand in a descriptor; otherwise the chapter's own.
 var descriptor_override: Dictionary = {}
-## The shown stage's ownership marks (kit/owner_mark.gd).
-var owner_marks := OwnerMark.new(self)
-## The shown stage's pair tags (kit/pair_tags.gd), from its control-to-gate wiring.
-var pair_tags := PairTags.new(self)
+## Ball id -> radius (m), for the barriers' lock rings (_build_barrier_extras).
+var _ball_radii: Dictionary = {}
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -58,7 +52,7 @@ func show_stage(stage: Dictionary) -> void:
 	_goal_beacon = null
 	_glance_left = 0.0
 	_physical_pads.clear()
-	_pad_pieces.clear()
+	pad_pieces.clear()
 	_floor_cables.clear()
 	_physical_levers.clear()
 	_lever_pieces.clear()
@@ -68,9 +62,8 @@ func show_stage(stage: Dictionary) -> void:
 	_weights.clear()
 	_hatches.clear()
 	_upper_islands.clear()
-	owner_marks.clear()
-	pair_tags.clear()
-	route_barriers.clear()
+	_ball_radii.clear()
+	_clear_stage_marks()
 	# These are presentation defaults for the shared Lighthouse builder.
 	_configure_shared_view(view)
 	var physical_props: Array = view.get("props", []).duplicate(true)
@@ -147,17 +140,12 @@ func show_stage(stage: Dictionary) -> void:
 	# stair itself says so in its descriptor ("stair_gates": false).
 	if not bool(_descriptor().get("stair_gates", true)):
 		for stair: Dictionary in view.get("stairs", []): route_barriers.skip(str(stair.id), "the descriptor's stair_gates is false")
-	route_barriers.build(view)
-	var radii: Dictionary = {}
-	for prop: Dictionary in physical_props: radii[str(prop.id)] = float(prop.radius_cm) / 100.0
-	route_barriers.build_rings(_physical_balls, radii, terrain)
+	for prop: Dictionary in physical_props: _ball_radii[str(prop.id)] = float(prop.radius_cm) / 100.0
 	# The tags lay themselves out when first shown, after every world's own
 	# building is done, clear of all of it (the ball's cradle included).
 	var tag_view := view.duplicate()
 	tag_view["goal"] = goal
-	# Every owned thing's mark, placed clear of the stage and of each other.
-	owner_marks.build(tag_view)
-	pair_tags.prepare(tag_view)
+	_build_stage_marks(view, tag_view)
 	await _build_step()
 	if _has_completion_garden(stage_id):
 		garden = Node3D.new()
@@ -232,9 +220,7 @@ func _static_keep() -> Array:
 	var keep := super._static_keep()
 	if is_instance_valid(_goal_beacon): keep.append(_goal_beacon)
 	# The parts of a piece that move, light or change stay whole; the rest folds.
-	for piece: RefCounted in _lever_pieces.values() + _pad_pieces.values(): keep.append_array(piece.moving_parts())
-	# The barriers' mesh shows and wiggles piece by piece; the ball rings follow the balls.
-	keep.append_array(route_barriers.moving_nodes())
+	for piece: RefCounted in _lever_pieces.values(): keep.append_array(piece.moving_parts())
 	return keep
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -260,6 +246,11 @@ func _uses_lower_cutaway() -> bool:
 ## the Lighthouse's fit-all frame the spirits were tiny).
 func _uses_scrolling_camera() -> bool:
 	return true
+
+## The physical chapters scroll their camera's centre between x -3.2 and 12,
+## on the z axis.
+func _follow_limits() -> Array[Vector2]:
+	return [Vector2(-3.2, 0.0), Vector2(12.0, 0.0)]
 
 func _shore(island: Dictionary, color: Color) -> void:
 	var original := terrain
@@ -357,11 +348,6 @@ func _build_bridge(definition: Dictionary) -> void:
 	_weights[definition.id] = weight
 	weight.set_meta("rest_y", weight.position.y)
 
-## Whether an owned crossing gets an ownership mark at each end. A world that
-## shows its owner some other way says no, so no mark is made only to be freed.
-func _marks_route_owner(_definition: Dictionary) -> bool:
-	return true
-
 ## Whether a crossing gets the fixed pulley and suspended weight that show
 ## where a missing crossing goes (they are _weights). A world that shows it
 ## some other way says no.
@@ -413,13 +399,13 @@ func _seated(_pad_id: String) -> bool:
 	return false
 
 ## A pressure pad or a ball pad (heavy, always plain) in its style
-## (kit/pieces/pad.gd); a stand spot records its owner's mark.
+## (kit/pieces/pad.gd), in pad_pieces (island_world's), whose stand spots
+## record their owner's marks with the stage's (_build_stage_marks).
 func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	var style := "plain" if heavy else _piece_style("pad", str(pad.id))
 	var piece: RefCounted = PadPiece.build(style, _at(pad), float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "heavy": heavy, "id": str(pad.id)})
-	_pad_pieces[pad.id] = piece
+	pad_pieces[pad.id] = piece
 	_physical_pads[pad.id] = piece.rim
-	if piece.spot != null: owner_marks.record(str(pad.owner_slot), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
 
 ## A valve's dial marks for a selector (kit/pieces/selector.gd): per value,
 ## how many bands; one each by default.
@@ -492,33 +478,16 @@ func _shares_floor(a: Vector3, b: Vector3) -> bool:
 func _gate_link_color(_mechanism: Dictionary) -> Color:
 	return Color("b6a480")
 
-func _surface_height(id: String) -> float:
-	for island: Dictionary in chapter_definition.get("islands", []):
-		if island.id == id: return float(island.get("height_cm", 0)) / 100.0
-	return 0.0
+## The chapter's floors, whichever stage is shown.
+func _route_islands() -> Array:
+	return chapter_definition.get("islands", [])
+
+## The lock ring round each rolling ball, beside the stage's barriers.
+func _build_barrier_extras() -> void:
+	route_barriers.build_rings(_physical_balls, _ball_radii, terrain)
 
 func _at(value: Dictionary) -> Vector3:
 	return point(value.position_cm) + Vector3(0, _surface_height(str(value.get("surface_id", ""))), 0)
-
-## A light receiver's lamp post, for its pair tag's plaque (kit/pair_tags.gd):
-## {top (the height its lamp head sits at), radius}.
-func _pair_receiver_post(_receiver: Dictionary) -> Dictionary:
-	return {"top": _beam_height(), "radius": RECEIVER_POST}
-
-## Where an owned stair's mark wants to sit (kit/owner_mark.gd): before its
-## foot, stepping away from it, or past its head when the foot has no room.
-func _mark_stair(stair: Dictionary) -> Dictionary:
-	var r: Array = stair.rect_cm
-	var along_x: bool = stair.axis == "x"
-	var entrance := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(0, float(stair.from_height_cm) / 100.0, 0)
-	var top := point([r[2], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[3]]) + Vector3(0, float(stair.get("to_height_cm", stair.from_height_cm)) / 100.0, 0)
-	var reach := float(OwnerMark.KINDS[&"stair"].reach)
-	return {"anchor": entrance, "away": Vector3.LEFT if along_x else Vector3.FORWARD, "kind": &"stair", "head": top + (Vector3.RIGHT if along_x else Vector3.BACK) * reach}
-
-## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd):
-## its style says (kit/pieces/goal.gd MARKED).
-func _marks_goal(goal: Dictionary) -> bool:
-	return _piece_style("goal", str(goal.get("id", ""))) in GoalPiece.MARKED
 
 ## The cables and ropes this stage lays on its floors: {rect, y, what} each
 ## (_floor_cable). Ownership marks keep off them.
@@ -533,20 +502,6 @@ func _floor_cable(from: Vector3, to: Vector3, width: float, color: Color) -> Mes
 		var high := Vector2(maxf(from.x, to.x), maxf(from.z, to.z))
 		_floor_cables.append({"rect": Rect2(low, high - low).grow(width * 0.5), "y": minf(from.y, to.y), "what": "a cable"})
 	return _bar_between(from, to, width, color, terrain)
-
-## The floor points a gate's pair tags go by, nearest first: before a
-## crossing's west end (its end mark's place) then past its east end; a
-## stair's foot then its head.
-func _pair_gate_anchors(route: Dictionary) -> Array:
-	var r: Array = route.rect_cm
-	if route.has("axis"):
-		var along_x: bool = str(route.get("axis", "x")) == "x"
-		var foot := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(-0.24 if along_x else 0.0, float(route.from_height_cm) / 100.0, 0.0 if along_x else -0.24)
-		var head := point([r[2], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[3]]) + Vector3(0.24 if along_x else 0.0, float(route.get("to_height_cm", route.from_height_cm)) / 100.0, 0.0 if along_x else 0.24)
-		return [foot, head]
-	var height := Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0, 0)
-	var ends := OwnerMark.route_ends_of(route, chapter_definition.get("islands", []))
-	return [ends[0] + height, ends[1] + height]
 
 ## Only the kept crossings (island_world's), never the Lighthouse's
 ## remembered mechanisms.
@@ -592,12 +547,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _physical_pads:
 		var pressed: bool = state.get("hold_pads", {}).get(id, false)
 		_glow(_physical_pads[id], LIGHT_COLOR, 1.0 if pressed else 0.0)
-		if _pad_pieces.has(id): _pad_pieces[id].set_held(pressed)
-	route_barriers.set_reduced_motion(reduced_motion)
-	# A new push into a barrier (the snapshot's "refused") bumps the spirit back.
-	for event: Variant in route_barriers.present(state):
-		var slot := str(event.get("slot", "")) if event is Dictionary else ""
-		if actors.has(slot): actors[slot].play_bump(reduced_motion)
+		if pad_pieces.has(id): pad_pieces[id].set_held(pressed)
+	_present_barriers(state)
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)
 	if is_instance_valid(_goal_beacon): _goal_beacon.present(state)
@@ -612,7 +563,6 @@ func _below_raised(raised: Node3D, player: Dictionary) -> bool:
 func _advance_camera(delta: float) -> void:
 	for id: String in _lever_pieces:
 		if _lever_pieces[id].moving(): _lever_pieces[id].advance(delta)
-	if route_barriers.moving(): route_barriers.advance(delta)
 	if _uses_scrolling_camera():
 		# Authored framing advances once per rendered frame. Snapshot delivery
 		# and pinch zoom must never feed back into the follow state.

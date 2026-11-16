@@ -323,6 +323,9 @@ func _build_ui() -> void:
 	action_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	action_button.position = Vector2(-240, -178)
 	action_button.size = Vector2(210, 64)
+	# A long prompt with a pair chip grows the button toward the middle of the
+	# screen, never past its edge.
+	action_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	# The controls a run is played with make its own cues: no tick over them.
 	ButtonTicks.quiet(action_button)
 	hud.add_child(action_button)
@@ -363,6 +366,7 @@ func _build_ui() -> void:
 	if settings.get("left_handed", false):
 		_anchor_rect(stick, Control.PRESET_BOTTOM_RIGHT, Rect2(-200, -218, Joystick.HIT_SIZE, Joystick.HIT_SIZE))
 		_anchor_rect(action_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
+		action_button.grow_horizontal = Control.GROW_DIRECTION_END
 		_anchor_rect(finish_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))
 		_anchor_rect(fast_forward_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
 		_anchor_rect(skip_wait_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))

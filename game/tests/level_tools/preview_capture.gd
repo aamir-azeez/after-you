@@ -94,7 +94,7 @@ func _stage(world: Node3D, shots: RefCounted, stage: Dictionary, folder: String)
 		for slot: String in ["p0", "p1"]:
 			frames.append(await _take(world, shots.snapshot({"live": slot}), folder, "start-%s" % _pip(slot), "%s pip's start%s" % [_pip(slot).capitalize(), ", plays first" if slot == str(stage.first_player_slot) else ""]))
 		groups.append({"heading": "Starting views", "frames": frames})
-	if "faint" in _only and "pair_tags" in world:
+	if "faint" in _only:
 		groups.append({"heading": "Pair tags, no pip near", "frames": [await _faint(world, shots.snapshot(shots.away({}, AWAY)), folder)]})
 	var spots: Array = shots.spots()
 	for kind: Array in [["selector", "Selectors at each value"], ["lever", "Levers: a pip near, then pulled"], ["pad", "Pads: a pip near, then held"], ["goal", "The goal"]]:

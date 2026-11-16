@@ -324,12 +324,10 @@ func _json(value: Dictionary) -> Dictionary:
 func _write_fixtures() -> void:
 	var documents := {"a-little-lift-a": first_a, "a-little-lift-b": first_b, "lift-checkpoint": checkpoint,
 		"a-place-to-grow-a": second_a, "a-place-to-grow-b": second_b, "final-checkpoint": final_checkpoint}
+	# scripts/chapter_fixtures.py runs this and refuses any change to a
+	# released chapter's fixtures, so writing the same bytes again is safe.
 	for name: String in documents:
 		var path := "res://tests/fixtures/first_steps/" + name + ".json"
-		if FileAccess.file_exists(path):
-			push_error("Refusing to overwrite fixture: " + name)
-			failures += 1
-			return
 		var file := FileAccess.open(path, FileAccess.WRITE)
 		file.store_string(JSON.stringify(documents[name], "\t"))
 		file.close()

@@ -72,11 +72,10 @@ func _skips(layout: Dictionary, options: Dictionary) -> Dictionary:
 	holder.add_child(world)
 	world.set_process(false)
 	var result: Dictionary = {}
-	if "pair_tags" in world:
-		await world.load_level(layout.level)
-		for stage: Dictionary in layout.level.stages:
-			await world.show_stage(stage)
-			result[str(stage.id)] = world.pair_tags.skips()
+	await world.load_level(layout.level)
+	for stage: Dictionary in layout.level.stages:
+		await world.show_stage(stage)
+		result[str(stage.id)] = world.pair_tags.skips()
 	holder.queue_free()
 	await process_frame
 	return result

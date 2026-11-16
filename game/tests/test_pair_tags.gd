@@ -25,6 +25,8 @@ extends SceneTree
 ## chapter, the stage and what clashed.
 const Registry = preload("res://services/chapter_registry.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+## Each stage as its family lays it out, as its world builds it.
+const Layout = preload("res://services/level_layout.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
@@ -65,9 +67,6 @@ func _run() -> void:
 	var stages := 0
 	for key: String in Registry.keys():
 		var world: Node3D = Registry.world_script(key).new()
-		if not "pair_tags" in world:
-			world.free()
-			continue
 		root.add_child(world)
 		world.set_process(false)
 		var level := Registry.definition(key)
@@ -75,7 +74,7 @@ func _run() -> void:
 		world.load_level(level)
 		for stage: Dictionary in level.stages:
 			world.show_stage(stage)
-			tagged += _stage(world, key, CooperativeCatalog.stage_definition(level, str(stage.id)))
+			tagged += _stage(world, key, Layout.for_key(key, str(stage.id), level))
 			stages += 1
 		# The frame follows the level's tag style: the harbour's plaque on the tide.
 		var style := str(world.dressing.get("tag", PairTags.DEFAULT_FRAME))

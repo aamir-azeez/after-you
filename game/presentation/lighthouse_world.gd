@@ -32,15 +32,13 @@ var _wake := false
 var _view_center := Vector3(-3.8, 0.1, 0)
 var _view_size := 7.5
 ## From the third stage the archipelago is too wide to fit with readable
-## spirits: the camera follows the active spirit at the scrolling chapters'
-## size (same angle, so the stick maps the same) until the stage is solved,
-## when it shows the whole archipelago again.
-const FOLLOW_SIZE := 9.2
+## spirits: the follow camera (island_world's) takes the active spirit until
+## the stage is solved, when it shows the whole archipelago again.
 const FOLLOW_FROM_STAGE := 2
+## The follow camera's centre stays this far (metres, x then z) inside the
+## floors.
+const FOLLOW_MARGIN := Vector2(3.0, 0.6)
 var _stage_follow := false
-var _follow_slot := "p0"
-var _follow_point := Vector3.ZERO
-var _follow_bounds := Rect2()
 var _decks: Dictionary = {}
 var _mirror_nodes: Dictionary = {}
 var _source_nodes: Dictionary = {}
@@ -174,11 +172,8 @@ func load_level(definition: Dictionary) -> void:
 		_view_center = point([(bounds[0] + bounds[2]) / 2.0, (bounds[1] + bounds[3]) / 2.0])
 		_view_size = maxf(7.5, float(bounds[3] - bounds[1]) / 100.0 * 0.85 + 3.0)
 	_stage_follow = _follows_stage(str(definition.get("stage_id", "")))
-	_follow_bounds = Rect2()
 	for island: Dictionary in definition.islands:
 		var bounds: Array = island.rect_cm
-		var rect := Rect2(Vector2(float(bounds[0]), float(bounds[1])) / 100.0, Vector2(float(bounds[2] - bounds[0]), float(bounds[3] - bounds[1])) / 100.0)
-		_follow_bounds = rect if _follow_bounds.size == Vector2.ZERO else _follow_bounds.merge(rect)
 		for x in [bounds[0], bounds[2]]:
 			for z in [bounds[1], bounds[3]]:
 				for height in [-1.65, 1.65]:
@@ -509,6 +504,16 @@ func _build_bell(goal: Dictionary) -> void:
 	_bell_ring = _goal_piece.ring
 	_court_light = _goal_piece.light
 
+## Whether an owned goal's cradle carries its owner's mark (kit/owner_mark.gd):
+## its style says (kit/pieces/goal.gd MARKED).
+func _marks_goal(goal: Dictionary) -> bool:
+	return _piece_style("goal", str(goal.get("id", ""))) in GoalPiece.MARKED
+
+## A light receiver's lamp post, for its pair tag's plaque (kit/pair_tags.gd):
+## {top (the height its lamp head sits at), radius}.
+func _pair_receiver_post(_receiver: Dictionary) -> Dictionary:
+	return {"top": _beam_height(), "radius": RECEIVER_POST}
+
 ## A piece's style (content/dressing/piece_styles.gd): the dressing's pick here;
 ## a chapter world pins pieces from its descriptor too.
 func _piece_style(slot: String, id: String) -> String:
@@ -743,8 +748,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_props(state, immediate)
 	_present_beacon(state)
 	_wake = bool(state.objective_done)
-	_follow_slot = str(state.get("active_slot", _follow_slot))
-	if immediate and _follows_view(): _follow_point = _follow_target()
+	_present_follow(state, immediate)
 	_present_celebration(immediate)
 	if _goal_piece != null and is_instance_valid(_bell): _goal_piece.set_lit(_wake, immediate or reduced_motion)
 	_present_beams(state.optics.segments)
@@ -805,25 +809,20 @@ func _follows_stage(stage_id: String) -> bool:
 	return StageCatalog.STAGE_IDS.find(stage_id) >= FOLLOW_FROM_STAGE
 
 ## The camera follows the active spirit now (not the whole-archipelago frame).
-func _follows_view() -> bool:
-	return _stage_follow and not _wake and actors.has(_follow_slot)
+func _uses_scrolling_camera() -> bool:
+	return _stage_follow and not _wake and actors.has(_active_player)
 
-func _follow_target() -> Vector3:
-	var at: Vector3 = actors[_camera_slot(_follow_slot)].position
-	var low := _follow_bounds.position + Vector2(3.0, 0.6)
-	var high := _follow_bounds.end - Vector2(3.0, 0.6)
-	return Vector3(clampf(at.x, low.x, maxf(low.x, high.x)), 0.1, clampf(at.z, low.y, maxf(low.y, high.y)))
+## Inside the floors by FOLLOW_MARGIN, across x and z.
+func _follow_limits() -> Array[Vector2]:
+	var floors := _floors_rect()
+	var low := floors.position + FOLLOW_MARGIN
+	return [low, (floors.end - FOLLOW_MARGIN).max(low)]
 
 func _frame_camera() -> void:
 	if not is_instance_valid(camera):
 		return
-	if _follows_view():
-		camera.position = _follow_point + ViewFit.CAMERA_FROM
-		camera.look_at(to_global(_follow_point))
-		camera.keep_aspect = Camera3D.KEEP_HEIGHT
-		camera.size = ViewFit.viewport(FOLLOW_SIZE, self)
-		camera.h_offset = 0.0
-		camera.v_offset = 0.0
+	if _uses_scrolling_camera():
+		_frame_follow()
 		return
 	# A higher, less oblique view keeps the short mirror-to-receiver segment
 	# visible behind the mirror face without moving either optical endpoint.
@@ -850,17 +849,20 @@ func _frame_camera() -> void:
 	camera.h_offset = (minimum.x + maximum.x) / 2.0
 	camera.v_offset = (minimum.y + maximum.y) / 2.0 - camera.size * 0.015
 
+## The whole-archipelago frame holds still; the follow camera eases.
 func _advance_camera(delta: float) -> void:
-	if _follows_view():
-		var weight := 1.0 if reduced_motion else 1.0 - exp(-6.0 * maxf(delta, 0.0))
-		_follow_point = _follow_point.lerp(_follow_target(), weight)
-	_frame_camera()
+	if _uses_scrolling_camera(): super._advance_camera(delta)
+	else: _frame_camera()
 
 ## A waiting spirit leans on the bell (or the goal standing in for it).
 func _doze_anchors() -> Array[Node3D]:
 	var anchors := super._doze_anchors()
 	if is_instance_valid(_bell): anchors.append(_bell)
 	return anchors
+
+## Every stage builds the terrain again, so its marks fold with it.
+func _marks_fold() -> bool:
+	return true
 
 ## The physical chapters on this world name their own key (_chapter_key).
 func _fold_key() -> String:
