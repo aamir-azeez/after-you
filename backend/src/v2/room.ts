@@ -19,13 +19,14 @@ import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archiv
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { compressRows, parseRoom, parseRow, storedRoom, storedRow, storedTurn, type RowData } from "./row-codec";
-import { decodeTurnBody, encodeReply, exactTurnFields, type RoomReply, type TurnBody } from "./turn-wire";
+import { MAX_TURN_BODY_BYTES, decodeTurnBody, encodeReply, exactTurnFields, type RoomReply, type TurnBody } from "./turn-wire";
 import { requireOwnedFaces } from "./face-packs";
 import { isTester } from "../test-codes";
-import { finishedRun, type LeaderboardRun } from "../leaderboards/run";
+import { finishedRun, openRoomRun, roomRun, type LeaderboardRun } from "../leaderboards/run";
 import { encodeProof, type EncodedProof } from "../leaderboards/proofs";
 import { roomNote, type DuelNote } from "../duels/turn-hook";
 import { clearTurnTries, parseTries, recordTries, turnTriesView, type TurnTriesView } from "./turn-tries";
+import { acknowledgeCopies, askCopies, clearTurnCopies, dropDeliveredCopies, keepCopies, parseAsked, parseSent, wantedBy } from "./turn-copies";
 import { clearEndReactions, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView, type FaceVersion } from "./end-reactions";
 import { clearRunReactions, eraseRunReactionsOf, parseRunReactions, partnerTrack, recordRunReactions, runReactionsView, withinTurn, type RunReactionsView } from "./run-reactions";
 import { HardMemo, clearHard, failuresView, initializeHard, parseReset, priorReset, recordFailure, type Failure, type HardFailures, type HardRun, type Slip } from "./hard-mode";
@@ -86,7 +87,7 @@ export type OpenStage = { passes: { turn_id: string; recording_hash: string }[] 
  * pass may take (the widest turn), every turn of the stage by hash, the stage's latest turn in full (the memory the next
  * turn plays over), and the last closing turn in full while the member who did not play it has not acknowledged it.
  */
-export type OpenTurnsView = { turn: number; cap: number; must_finish: boolean; pass_bytes: number; turn_hashes: string[]; newest: RecordingV2 | null; closing: RecordingV2 | null };
+export type OpenTurnsView = { turn: number; cap: number; must_finish: boolean; pass_bytes: number; turn_hashes: string[]; newest: RecordingV2 | null; closing: RecordingV2 | null; wanted: string[] };
 export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   api_version: 2; invite_code?: string; hard?: HardRun; active_role: "a" | "b" | "complete";
   /** Only in a duel's room (duels/room-link.ts): its turns never use Forgiving catches, so the phone records none. */
@@ -139,8 +140,8 @@ export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean; looks
 type BesideFields = { end_reactions?: EndReactionsView; partner_name?: string | null; run_reactions?: RunReactionsView; partner_look?: Look; turn_looks?: Record<string, Look>; packed_recordings?: true };
 /** The revision and branch a polling member already holds (X-AfterYou-Known-Room). */
 export type KnownRoom = { revision: number; branch: number };
-/** The small poll reply when nothing changed since the member's known revision and branch. */
-export type RoomUnchangedV2 = { schema_version: 1; unchanged: true; revision: number; branch: number; updated_at: string };
+/** The small poll reply when nothing changed since the member's known revision and branch; `wanted` (open turns only, when any): open_turns.wanted. */
+export type RoomUnchangedV2 = { schema_version: 1; unchanged: true; revision: number; branch: number; updated_at: string; wanted?: string[] };
 /** A conditional poll's reply; `redo` only for a client that asked for it (X-AfterYou-Poll-Redo). */
 export type PolledRoomV2 = (RoomSnapshotV2 | RoomUnchangedV2) & { redo?: RedoState | RedoStateV2 };
 export type PairV2 = { pair_id: string; branch: number; stage_index: number; a: RecordingV2; b: RecordingV2; checkpoint: CheckpointV2 };
@@ -183,7 +184,7 @@ export class RoomV2 extends DurableObject<Env> {
   // Binding-only maintenance methods; never exposed by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportRoomV2(this.ctx, sourceCommit)); }
   async restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> {
-    this.hard.forget(); this.fingerprinted.clear();
+    this.hard.forget(); this.fingerprinted.clear(); this.copiesAbsent = false;
     try { return await snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
     finally { this.hard.forget(); this.fingerprinted.clear(); }
   }
@@ -419,14 +420,76 @@ export class RoomV2 extends DurableObject<Env> {
     return turnSlot(stage.first_player_slot, this.nextTurn(state)) === "p0" ? state.host_id : guest;
   }
   /** What an open turns member reads beside the room (OpenTurnsView); `first` is the stage's turn 1 as stored, already read. */
-  private openView(state: RoomStateV2, first: RecordingV2 | null): OpenTurnsView | undefined {
+  private openView(state: RoomStateV2, first: RecordingV2 | null, player?: string): OpenTurnsView | undefined {
     const open = chapter(state).open_turns; if (!open) return undefined;
     const stage = state.stage_index, complete = stage >= open.caps.length, turn = complete ? 0 : this.nextTurn(state);
     const passes = state.open_stage?.passes ?? [], latest = passes.at(-1);
     const closing = this.closingTurn(state);
     return { turn, cap: complete ? 0 : open.caps[stage], must_finish: !complete && mustFinish(open, stage, turn), pass_bytes: complete ? 0 : open.recording_bytes,
       turn_hashes: first ? [first.recording_hash, ...passes.map(pass => pass.recording_hash)] : [], newest: latest ? this.turn(latest.turn_id) : first,
-      closing: closing ? this.turn(closing.turn_id) : null };
+      closing: closing ? this.turn(closing.turn_id) : null, wanted: player === undefined ? [] : this.wanted(state, player) };
+  }
+  /** The unchanged poll's `wanted`: only on open turns, only when the other member asked for turns this phone may hold. */
+  private wantedField(state: RoomStateV2, player: string): { wanted?: string[] } {
+    if (!chapter(state).open_turns) return {};
+    const wanted = this.wanted(state, player);
+    return wanted.length ? { wanted } : {};
+  }
+  /** Whether this instance knows the room has no turn send-back tables (turn-copies.ts), so a poll reads nothing for them. */
+  private copiesAbsent = false;
+  /** The turns the other member asked for that `player`'s phone may send back (turn-copies.ts wantedBy); [] almost always. */
+  private wanted(state: RoomStateV2, player: string): string[] {
+    if (this.copiesAbsent) return [];
+    const wanted = wantedBy(this.ctx.storage, this.partnerOf(state, player));
+    if (wanted === null) { this.copiesAbsent = true; return []; }
+    return wanted;
+  }
+  /**
+   * Turn send-back (turn-copies.ts; WIRE.md section 9), one request each, after the pair gate: "want" asks for turns
+   * by hash, "send" brings the other member's wanted turns back from this phone (a turn body, turn-wire.ts), "ack" says
+   * this phone holds them again. Open turns rooms only, standalone only; no revision moves.
+   */
+  async turnCopies(player: string, action: "want" | "send" | "ack", body: unknown, safetyToken?: string): Promise<Outcome<unknown>> {
+    try {
+      const gate = await this.pairGate(player, undefined, safetyToken); if (!gate.ok) return gate;
+      const boundary = campaignBoundaryGuard(this.ctx.storage, "turn_copies_standalone_only"); if (boundary) return boundary;
+      const state = this.read();
+      if (!state || !this.member(state, player)) return this.unavailable(player);
+      if (!chapter(state).open_turns) return fail(409, "open_turns_only");
+      const other = this.partnerOf(state, player);
+      if (action === "send") {
+        const sent = parseSent(await decodeTurnBody(body as TurnBody, MAX_TURN_BODY_BYTES)), records: RecordingV2[] = [];
+        // Each a whole packed turn of this chapter whose hash it carries; anything else refuses the whole request.
+        for (const value of sent) records.push(await recordingV2(value, state));
+        return ok(this.ctx.storage.transactionSync(() => keepCopies(this.ctx.storage, other, records, this.compress())));
+      }
+      const hashes = parseAsked(body);
+      const answer = this.ctx.storage.transactionSync(() => action === "want" ? askCopies(this.ctx.storage, player, hashes) : acknowledgeCopies(this.ctx.storage, player, other, hashes));
+      if (action === "want") this.copiesAbsent = false;
+      return ok(answer);
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  /**
+   * A finished open turns room's run as `player`'s phone sends it from its own copy (WIRE.md section 10): a turn body
+   * holding `{ schema_version: 1, checkpoint }`, the final checkpoint with every stage's turns nested again. It is a run
+   * only when it is exactly this room's: each stage's checkpoint is its pair row's, each turn hashes to that checkpoint's
+   * turn_hashes (every turn checked whole), and the chain ends at the chapter's start (leaderboards/run.ts openRoomRun).
+   * Null when it is not a run a board takes. Reads the lineage's pair rows; writes nothing.
+   */
+  async postedRun(player: string, body: TurnBody, looks: boolean): Promise<Outcome<{ run: LeaderboardRun | null }>> {
+    try {
+      const state = this.read();
+      if (!state || !this.member(state, player)) return this.unavailable(player);
+      const selected = chapter(state);
+      if (!selected.open_turns) return fail(409, "open_turns_only");
+      if (state.stage_index !== selected.stages.length || !state.guest_id) return ok({ run: null });
+      const input = object(await decodeTurnBody(body, MAX_TURN_BODY_BYTES)); exact(input, ["schema_version", "checkpoint"]);
+      if (input.schema_version !== 1) return fail(422, "invalid_run");
+      const lineage = state.completed_pair_ids.map(id => this.pairCheckpoint(id));
+      const nested = await openRoomRun(input.checkpoint, lineage, initialCheckpoint(state), value => recordingV2(value, state));
+      if (!nested) return fail(422, "run_mismatch");
+      return ok({ run: await roomRun({ ...this.view(state, player, false), checkpoint: nested }, looks ? pairLooks(this.ctx.storage, state.host_id, state.guest_id) : undefined, encodeProof, true) });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   /** Closing turns this instance already knows are fingerprints (`<turn id>:<hash>`): a fingerprint never turns full again, so polls skip the row. */
   private readonly fingerprinted = new Set<string>();
@@ -543,7 +606,7 @@ export class RoomV2 extends DurableObject<Env> {
     const hard = this.hard.run(this.ctx.storage), link = duelLink(this.ctx.storage);
     const recordingA = state.a_turn_id ? this.turn(state.a_turn_id) : null;
     // A commit's own check reads no open turns view: it hands nothing to the phone, and the view reads the full turns.
-    const open = note ? this.openView(state, recordingA) : undefined;
+    const open = note ? this.openView(state, recordingA, player) : undefined;
     // Odd turns are the first player's, even turns the other's; before open turns that is a then b.
     const active = !stage ? null : this.nextTurn(state) % 2 === 1 ? first : second;
     // Every read that hands the latest turn to the member who plays next passes here: from then on it is never replaced (replaceLatestTurn).
@@ -594,7 +657,7 @@ export class RoomV2 extends DurableObject<Env> {
     storage.sql.exec("DELETE FROM photos"); storage.sql.exec("DELETE FROM photo_operations"); clearDelivery(storage);
     clearPairReactions(storage);
     clearAttempts(storage);
-    clearTurnTries(storage); clearEndReactions(storage); clearRunReactions(storage);
+    clearTurnTries(storage); clearEndReactions(storage); clearRunReactions(storage); clearTurnCopies(storage); this.copiesAbsent = true;
     clearRedoRequests(storage, runFrom);
   }
   /** Goes back to `stageIndex` on a new branch, keeping every earlier attempt; the caller moves the revision. */
@@ -755,7 +818,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (known.branch === state.value.branch && chapter(state.value).open_turns) this.ctx.storage.transactionSync(() => this.acknowledgeClosing(state.value, player, known.revision));
       // Faces and tracks only move with a turn, which moves the revision, so the small reply never needs them; names are left out of it too.
       const reply: RoomSnapshotV2 | RoomUnchangedV2 = state.value.revision === known.revision && state.value.branch === known.branch
-        ? { schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at }
+        ? { schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at, ...this.wantedField(state.value, player) }
         : this.withBeside(this.view(state.value, player), state.value, player, beside);
       if (!redoVersion) return ok(reply);
       const source = this.redoSource(state.value);
@@ -1230,6 +1293,8 @@ export class RoomV2 extends DurableObject<Env> {
         this.insertTurn(turn_id, player, state.revision, recording);
         // Open turns: this turn was played over the stage's latest, so both phones hold that one; it keeps only its fingerprint.
         if (open && memory) this.toFingerprint(memory.turn_id, memory.recording);
+        // Copies sent back and already handed over go too (turn-copies.ts).
+        if (open && !this.copiesAbsent) dropDeliveredCopies(this.ctx.storage);
         if (context === undefined) recordTries(this.ctx.storage, turn_id, recording.recording_hash, tries);
         if (context === undefined) recordEndReaction(this.ctx.storage, turn_id, recording.recording_hash, player, face);
         if (context === undefined) recordRunReactions(this.ctx.storage, turn_id, recording.recording_hash, player, track);
@@ -1537,6 +1602,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearReplayTransfer(this.ctx.storage);
     clearHistory(this.ctx.storage);
     clearTurnTries(this.ctx.storage);
+    clearTurnCopies(this.ctx.storage); this.copiesAbsent = true;
     clearEndReactions(this.ctx.storage);
     clearRunReactions(this.ctx.storage);
     clearMemberNames(this.ctx.storage);
