@@ -9,6 +9,7 @@ extends RefCounted
 ## over its level (content/dressing/placement.gd stage_view()). A prop's
 ## footing (footing()) is its kit extent (kit/props.gd) raised onto its surface.
 const Props = preload("res://presentation/kit/props.gd")
+const Look = preload("res://presentation/spirit_look.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
 const LevelLayout = preload("res://services/level_layout.gd")
 
@@ -29,6 +30,20 @@ const TRIM_LIP := 0.06
 ## Two props whose footprints share more of the smaller one than this stand
 ## in each other.
 const PROP_SHARE := 0.3
+## A spot a pip stands inside to take, place or hold something (a seed
+## pedestal, socket, nest or cradle, a pad or plate, a goal, a seed landing)
+## is drawn so standing in it looks natural: a low step-on base with the thing
+## it holds floating or on a slim stand (kit/pieces/socket.gd stand()). No body
+## wider than SMALL_STAND reaches into a pip there (stands_in()): from STEP_ON
+## over the spot's floor to the top of its head (STEP_HEAD; a lantern or bell
+## hung above it is fine), within the spot's radius less MARGIN. STEP_ON
+## clears every pad and plate rim already shipped (8 to 12 cm, the Lighthouse
+## cradles' and plates' rings).
+const STEP_ON := 0.15
+const STEP_HEAD := Look.HEAD_CENTER.y + Look.HEAD_HALF.y
+const SMALL_STAND := 0.18
+## The view lists whose spots a pip stands inside.
+const STAND_IN := ["sockets", "props", "plates", "plate", "pressure_pads", "ball_pads", "hold_pads", "goals", "goal", "landing"]
 ## Kinds whose footprint is a rectangle; every other kind is judged as a circle.
 const SQUARE_KINDS := ["bench", "cottage", "rug", "path", "planter", "boat", "lobster_pot", "shelf", "frame", "fence", "hedge", "wall"]
 
@@ -171,3 +186,35 @@ static func _covers_point(item: Dictionary, point: Vector2) -> bool:
 static func _area(item: Dictionary) -> float:
 	var area: Rect2 = item.rect
 	return area.get_area() * (PI / 4.0 if item.round else 1.0)
+
+## The spots a pip stands inside (LevelLayout.spots of the STAND_IN kinds):
+## {at, radius, y, kind, id}. A solid one (core/solid_footprint.gd) is reached
+## from beside, never stood in, so it is left out.
+static func stand_spots(view: Dictionary) -> Array:
+	var found: Array = []
+	for spot: Dictionary in LevelLayout.spots(view):
+		if str(spot.kind) not in STAND_IN or bool(spot.solid): continue
+		found.append({"at": Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0, "radius": float(spot.radius_cm) / 100.0, "y": float(spot.height_cm) / 100.0, "kind": str(spot.kind), "id": str(spot.id)})
+	return found
+
+## A body with this outline (convex, x and z) from `bottom` to `top` stands
+## where a pip must stand in `spot` (stand_spots()).
+static func stands_in(outline: PackedVector2Array, bottom: float, top: float, spot: Dictionary) -> bool:
+	var y := float(spot.y)
+	if top - y <= STEP_ON + 0.005 or bottom - y >= STEP_HEAD: return false
+	var width := _bounds(outline).size
+	if maxf(width.x, width.y) <= SMALL_STAND: return false
+	return _outside(outline, spot.at) < float(spot.radius) - MARGIN
+
+static func _bounds(outline: PackedVector2Array) -> Rect2:
+	var area := Rect2(outline[0], Vector2.ZERO)
+	for point: Vector2 in outline: area = area.expand(point)
+	return area
+
+## How far `point` lies outside a convex outline (0 inside).
+static func _outside(outline: PackedVector2Array, point: Vector2) -> float:
+	if Geometry2D.is_point_in_polygon(point, outline): return 0.0
+	var best := INF
+	for index in range(outline.size()):
+		best = minf(best, point.distance_to(Geometry2D.get_closest_point_to_segment(point, outline[index], outline[(index + 1) % outline.size()])))
+	return best

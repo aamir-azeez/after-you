@@ -438,7 +438,7 @@ func load_level(level: Dictionary) -> void:
 	garden.position=goal
 	terrain.add_child(garden)
 	goal_ring = SocketKit.garden(garden,0.48,Color("dce2b3"))
-	_create_garden()
+	_create_garden(SocketKit.PLANTER + 0.02)
 	for role in ["a","b"]:
 		var actor := _create_spirit(GOLD if role=="a" else TEAL)
 		actor.position=point(level.starts[role])
@@ -672,7 +672,9 @@ func _create_spirit(color: Color, slot_id: String = "") -> Node3D:
 		if spirit.visible: _reunion_pending=true)
 	return spirit
 
-func _create_garden() -> void:
+## `leaf_height`: where the four leaves sit, just over the planter's drum
+## (a SocketKit planter's is SocketKit.PLANTER).
+func _create_garden(leaf_height: float = 0.16) -> void:
 	# Four leaves make availability readable without relying on color or bloom.
 	# Everything stays under the existing planter root, including on a lift.
 	_garden_stable_pose = -1
@@ -693,7 +695,7 @@ func _create_garden() -> void:
 	for index in range(4):
 		var angle := PI / 4.0 + float(index) * TAU / 4.0
 		var radial := Node3D.new()
-		radial.position = Vector3(sin(angle) * 0.33, 0.16, cos(angle) * 0.33) / unstretch
+		radial.position = Vector3(sin(angle) * 0.33, leaf_height, cos(angle) * 0.33) / unstretch
 		radial.rotation.y = angle
 		garden_activation.add_child(radial)
 		var petal := Node3D.new()
