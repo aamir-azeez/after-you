@@ -20,8 +20,9 @@ extends RefCounted
 ##
 ## The Way Light Returns is @1's but for its return shutter: a pad in the
 ## lower room rather than a lever, so the shutter stays up only while someone
-## stands on it, away from both returns. One spirit holds it while the other
-## turns the final mirror and comes back.
+## stands on it, away from both returns: it holds the room return, and a
+## second plate on the court holds the court return. One spirit holds a plate
+## while the other turns the final mirror and comes back, by either door.
 const Earlier = preload("res://core/journey/conservatory_catalog.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
@@ -35,6 +36,7 @@ const START := [-416, -224]
 const BOLT := {"id": "hatch-bolt", "position_cm": [-584, -48], "radius_cm": 28, "surface_id": "court", "height_cm": 0}
 const HATCH := {"id": "balcony-hatch", "rect_cm": [-504, -24, -464, 24], "surface_id": BALCONY, "destination_surface": "court", "height_cm": 0, "requires_lever": "hatch-bolt"}
 const SHUTTER := {"id": "return-shutter", "position_cm": [400, 224], "radius_cm": 28, "surface_id": "lower-room", "height_cm": 0}
+const COURT_SHUTTER := {"id": "court-shutter", "position_cm": [-304, 272], "radius_cm": 28, "surface_id": "court", "height_cm": 0}
 ## No crossing is kept owned: a stage ends with both pips at its goal, so no
 ## pip finishes alone whatever it can reach (tests/test_level_checker.gd).
 const OWNED := []
@@ -73,6 +75,7 @@ static func definition() -> Dictionary:
 	var returns: Dictionary = level.stages[1]
 	returns.levers = returns.levers.filter(func(lever: Dictionary) -> bool: return lever.id != SHUTTER.id)
 	returns.pressure_pads.append(SHUTTER.duplicate(true))
+	returns.pressure_pads.append(COURT_SHUTTER.duplicate(true))
 	for gate: Dictionary in returns.gates:
-		if gate.get("when", {}) == {"lever_id": SHUTTER.id}: gate.when = {"pad_id": SHUTTER.id}
+		if gate.get("when", {}) == {"lever_id": SHUTTER.id}: gate.when = {"pad_id": COURT_SHUTTER.id if gate.route_id == "court-return" else SHUTTER.id}
 	return level

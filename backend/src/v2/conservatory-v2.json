@@ -593,7 +593,7 @@
 				{
 					"route_id": "court-return",
 					"when": {
-						"pad_id": "return-shutter"
+						"pad_id": "court-shutter"
 					}
 				},
 				{
@@ -733,6 +733,16 @@
 					],
 					"radius_cm": 28,
 					"surface_id": "lower-room"
+				},
+				{
+					"height_cm": 0,
+					"id": "court-shutter",
+					"position_cm": [
+						-304,
+						272
+					],
+					"radius_cm": 28,
+					"surface_id": "court"
 				}
 			],
 			"receiver_action_ticks": 3,
