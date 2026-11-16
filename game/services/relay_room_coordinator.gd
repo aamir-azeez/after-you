@@ -580,8 +580,10 @@ func _note_packed(response: Dictionary) -> void:
 	if response.get("packed_recordings") == true and RoomsApi.packed_supported: _packed_room = true
 
 ## Whether this phone records the room's turns packed (core/v2/recording_codec.gd).
+## An open turns room always is (core/physical/open_turns.gd): only apps that
+## read packed turns play those rules, so the server takes no other form.
 func packed_room() -> bool:
-	return _packed_room and RoomsApi.packed_supported
+	return (_packed_room and RoomsApi.packed_supported) or OpenTurns.pinned(_level)
 
 func _note_partner_name(response: Dictionary) -> void:
 	if not response.has("partner_name") or not partner_name_sink.is_valid() or _state.is_empty(): return

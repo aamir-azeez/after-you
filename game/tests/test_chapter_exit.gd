@@ -5,6 +5,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const StopRequest = preload("res://services/stop_request.gd")
 const LogWatch = preload("res://tests/log_watch.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 ## Errors leaving a chapter must never log: a store wired twice when Main is
 ## built again, a missing file read as damaged JSON, and the room camera read
 ## after it left the tree.
@@ -184,7 +185,9 @@ func _leave_during_submission(key: String, lose_reply: bool) -> void:
 		_check(Canonical.same(session.coordinator.pending().get("body", {}), pending.body), "A lost acknowledgement retains the identical request and idempotency key: " + key)
 		_check(await session.coordinator.reconcile() and session.coordinator.pending().is_empty(), "Explicit receipt checking recovers the acknowledgement after exit: " + key)
 	else:
-		_check(session.coordinator.pending().is_empty() and session.coordinator.last_receipt().recording_hash == fixtures["relay-a"].recording_hash, "A validated acknowledgement persists after the presentation is gone: " + key)
+		# Open turns rooms record packed (core/physical/open_turns.gd), so the turn is the fixture's packed form.
+		var sent: String = Canonical.digest(RecordingCodec.packed_form(fixtures["relay-a"])) if OpenTurns.pinned(Registry.definition(key)) else str(fixtures["relay-a"].recording_hash)
+		_check(session.coordinator.pending().is_empty() and session.coordinator.last_receipt().recording_hash == sent, "A validated acknowledgement persists after the presentation is gone: " + key)
 	_check(_post_count(api) == 1 and Canonical.digest(scene.app.saves.data) == solo_before, "Receipt recovery never resubmits or changes the solo journey: " + key)
 	await RoomEntry.enter(self, scene.app)
 	_check(scene.app.relay_child != null and scene.app.relay_child.mode == "online_waiting", "Reopening shows the confirmed next-player state: " + key)

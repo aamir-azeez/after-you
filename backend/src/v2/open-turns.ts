@@ -1,6 +1,7 @@
 import { canonicalJson } from "../protocol";
 import type { ChapterRecording, Slot } from "./chapter-types";
 import { MAX_REPLAY_ARCHIVE_BYTES, MAX_ROW_BYTES } from "./row-bound";
+import { checkBytes, checkTicks } from "./recording-codec";
 
 /**
  * Open turns: the open turns rules (14 and 15, chapter-types.ts OPEN_TURNS_RULES, open controls with open turns) play a stage in as many
@@ -15,6 +16,8 @@ import { MAX_REPLAY_ARCHIVE_BYTES, MAX_ROW_BYTES } from "./row-bound";
  * finish the stage (`must_finish`), so the phone retries it like a second turn.
  *
  * Every turn has the same time limit: the level's second turn limit (turn_limits.b_ticks, or the published 1,200).
+ * Every turn is packed (recording-codec.ts) whatever PACKED_RECORDINGS says: only apps that read packed turns play
+ * these rules, so a JSON turn is refused and the bounds below are sized by the widest packed turn.
  * Turn ids keep a letter for the turn's number, so the first two keep today's ids: t<branch>-<stage>-a, -b, -c ...
  * This file is the one place these rules live on the server; core/physical/open_turns.gd mirrors them on the phone.
  */
@@ -49,6 +52,23 @@ export function stageTurnCap(stage: { turn_cap?: unknown }): number {
   return stage.turn_cap as number;
 }
 
+/** A packed turn's header fields (ids, hashes, outcome) beside its `packed` string: the widest real header is under 900 bytes. */
+const PACKED_HEADER_BYTES = 2_048;
+/** The values a packed turn holds: its header fields and outcome, with room to spare. */
+export const PACKED_RECORDING_VALUES = 64;
+/** A stage's own checkpoint fields (players, mechanisms, hashes) as values, beside the turns it nests. */
+const STAGE_OVERHEAD_VALUES = 4_096;
+/**
+ * The widest packed turn `ticks` ticks long, as canonical JSON: a new stick every tick (three bytes a run), the run
+ * count, every replay check (recording-codec.ts), base64, and the header. About 4.6 bytes a tick against about 47
+ * for a JSON turn.
+ */
+export function packedRecordingBytes(ticks: number): number {
+  let raw = 1 + Math.max(1, Math.ceil(Math.log2(ticks + 1) / 7)) + 3 * ticks;
+  for (const tick of checkTicks(ticks)) raw += checkBytes(tick, ticks);
+  return PACKED_HEADER_BYTES + 4 * Math.ceil(raw / 3);
+}
+
 /** Room a stage keeps for passes beyond its widest first and closing turns, or the chapter gives up branches for it. */
 const PASS_FLOOR_BYTES = 98_304;
 /** The widest turn body the Worker copies within its 10 ms (twice, at 4 ns a byte: test/compressed-rooms.test.ts). */
@@ -73,12 +93,13 @@ export function openTurnLimits(stages: readonly { turn_cap?: unknown }[], record
   }
   throw new Error("open turns outgrow the room row bound");
 }
-/** The checkpoint and turn body bounds an open turns chapter needs: every stage at its budget, then the closing turn. */
-export function openBodyLimits(open: OpenTurns, stages: number, recordingValues: number): { checkpoint_bytes: number; checkpoint_values: number; turn_body_bytes: number; turn_body_values: number } {
+/** The recording, checkpoint and turn body bounds an open turns chapter needs: packed turns, every stage at its budget, then the closing turn. */
+export function openBodyLimits(open: OpenTurns, stages: number): { recording_bytes: number; recording_values: number; checkpoint_bytes: number; checkpoint_values: number; turn_body_bytes: number; turn_body_values: number } {
   const checkpointBytes = stages * (open.stage_bytes + STAGE_OVERHEAD_BYTES);
-  // Values grow with bytes as a recording's do; one more recording's worth covers the stage fields.
-  const checkpointValues = Math.ceil(checkpointBytes / open.recording_bytes * recordingValues) + recordingValues;
-  return { checkpoint_bytes: checkpointBytes, checkpoint_values: checkpointValues, turn_body_bytes: checkpointBytes + open.recording_bytes + ENVELOPE_BYTES, turn_body_values: checkpointValues + recordingValues + 1_000 };
+  // Every stage's turns, up to the widest cap, and its own fields.
+  const checkpointValues = stages * (Math.max(...open.caps) * PACKED_RECORDING_VALUES + STAGE_OVERHEAD_VALUES);
+  return { recording_bytes: open.recording_bytes, recording_values: PACKED_RECORDING_VALUES, checkpoint_bytes: checkpointBytes, checkpoint_values: checkpointValues,
+    turn_body_bytes: checkpointBytes + open.recording_bytes + ENVELOPE_BYTES, turn_body_values: checkpointValues + PACKED_RECORDING_VALUES + 1_000 };
 }
 
 /** The slot that plays turn `turn` (1 based) of a stage whose first player is `first`. */

@@ -38,6 +38,7 @@ import roomsReturnA from "../../game/tests/fixtures/journey/conservatory-v2-the-
 import roomsReturnB from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-b.json";
 import roomsReturnC from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-c.json";
 import roomsReturnEnd from "../../game/tests/fixtures/journey/conservatory-v2-the-way-light-returns-checkpoint.json";
+import { packRecording } from "../src/v2/recording-codec";
 import bundledHome from "../src/v2/long-way-home-v3.json";
 import bundledHomeInitial from "../src/v2/long-way-home-v3-initial.json";
 import bundledTide from "../src/v2/turn-of-the-tide-v3.json";
@@ -76,13 +77,36 @@ async function rehash(input: Record<string, unknown>): Promise<Record<string, un
   const body = { ...input }; delete body.checkpoint_hash; delete body.proof;
   return { ...input, checkpoint_hash: await digest(canonicalJson(body)) };
 }
+type Rec = Record<string, any>;
+/**
+ * Open turns rooms take packed turns only (v2/open-turns.ts): the native chain with every turn packed, each turn's
+ * source and checkpoint chained again and every hash taken again.
+ */
+const packedChains = new Map<Chain, [Rec, Rec, Rec, Rec][]>();
+async function packed(chain: Chain): Promise<[Rec, Rec, Rec, Rec][]> {
+  if (packedChains.has(chain)) return packedChains.get(chain)!;
+  let previous = initialCheckpoint(chain.adapter.key) as unknown as Rec;
+  const stages: [Rec, Rec, Rec, Rec][] = [];
+  for (const [a, b, c, end] of chain.stages as Rec[][]) {
+    const turns: Rec[] = [];
+    for (const turn of [a, b, c]) {
+      const { actions, replay_checks, recording_hash: _old, ...rest } = structuredClone(turn); void _old;
+      const body = { ...rest, checkpoint_hash: previous.checkpoint_hash, ...(turns.length ? { source_recording_hash: turns.at(-1)!.recording_hash } : {}), packed: packRecording(actions, replay_checks, turn.duration_ticks) };
+      turns.push({ ...body, recording_hash: await digest(canonicalJson(body)) });
+    }
+    const checkpoint = await rehash({ ...structuredClone(end), previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash), proof: { checkpoint: previous, turns } });
+    stages.push([turns[0], turns[1], turns[2], checkpoint]); previous = checkpoint;
+  }
+  packedChains.set(chain, stages);
+  return stages;
+}
 async function records(chain: Chain, index: number): Promise<[ChapterRecording, ChapterRecording, ChapterRecording]> {
-  const [a, b, c] = chain.stages[index];
+  const [a, b, c] = (await packed(chain))[index];
   return [await recordingV2(a, chain.adapter.key) as ChapterRecording, await recordingV2(b, chain.adapter.key) as ChapterRecording, await recordingV2(c, chain.adapter.key) as ChapterRecording];
 }
 async function stageOne(chain: Chain): Promise<ChapterCheckpoint> {
   const [a, b, c] = await records(chain, 0);
-  return checkpointV2(chain.stages[0][3], initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b]);
+  return checkpointV2((await packed(chain))[0][3], initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b]);
 }
 afterEach(async () => { await reset(); });
 
@@ -110,20 +134,23 @@ describe("open controls (rules 12 and 13)", () => {
       for (const stage of (chain.definition as { stages: Record<string, { owner_slot?: string }[]>[] }).stages)
         for (const kind of ["controls", "levers", "pressure_pads"]) for (const item of stage[kind] ?? []) expect(item, `${kind} ${JSON.stringify(item)}`).not.toHaveProperty("owner_slot");
     });
-    it(`${chain.name}: accepts the native chain`, async () => {
+    it(`${chain.name}: accepts the native chain, packed`, async () => {
       let previous = initialCheckpoint(chain.adapter.key) as ChapterCheckpoint;
+      const stages = await packed(chain);
       for (let index = 0; index < chain.stages.length; index++) {
         const [a, b, c] = await records(chain, index);
         expect(acceptedRecording(a) && acceptedRecording(b) && acceptedRecording(c)).toBe(true);
-        previous = await checkpointV2(chain.stages[index][3], previous, a, c, [b]);
-        expect(previous).toEqual(chain.stages[index][3]);
+        previous = await checkpointV2(stages[index][3], previous, a, c, [b]);
+        expect(previous).toEqual(stages[index][3]);
       }
+      // The native JSON turns themselves are refused: open turns rooms take packed turns only.
+      await expect(recordingV2(chain.stages[0][0], chain.adapter.key)).rejects.toMatchObject({ code: "packed_recording_required" });
     });
   }
   it("ends an open turns stage only with both players at its goal", async () => {
     // Long Way Home@3's homecoming ends with both players at the second window; one of them away is refused.
     const chain = CHAINS[0], first = await stageOne(chain), [a, b, c] = await records(chain, 1);
-    const end = structuredClone(homePlaceEnd) as Record<string, any>;
+    const end = structuredClone((await packed(chain))[1][3]);
     expect(end.players.p0).toMatchObject({ x: 1408, z: 96, surface_id: "home-room" });
     expect(end.players.p1).toMatchObject({ x: 1408, z: 96, surface_id: "home-room" });
     const away = structuredClone(end); away.players.p1 = { ...away.players.p1, x: 1200, z: 32 };
@@ -131,7 +158,7 @@ describe("open controls (rules 12 and 13)", () => {
   });
   it("keeps the tide rules on 15: no route latches", async () => {
     const chain = CHAINS[1], [a, b, c] = await records(chain, 0);
-    const kept = structuredClone(tideSetEnd) as Record<string, any>; kept.mechanisms.latched_bridges = [kept.players.p0.surface_id];
+    const kept = structuredClone((await packed(chain))[0][3]); kept.mechanisms.latched_bridges = [kept.players.p0.surface_id];
     await expect(checkpointV2(await rehash(kept), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_mechanism_mismatch" });
   });
   it("refuses a guest whose client never offered the open rules, and plays a room to completion", async () => {
@@ -148,7 +175,7 @@ describe("open controls (rules 12 and 13)", () => {
       const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT }, flags);
       expect(joined.status, chain.name).toBe(200);
       // Each stage: the first turn, a pass, then the first player's closing turn with both at the goal.
-      const [[setA, setB, setC, setEnd], [nextA, nextB, nextC, nextEnd]] = chain.stages;
+      const [[setA, setB, setC, setEnd], [nextA, nextB, nextC, nextEnd]] = await packed(chain);
       const first = (setA as { player_slot: string }).player_slot === "p0" ? host : guest, second = first === host ? guest : host;
       const one = await submit(await joined.json<RoomSnapshotV2>(), first, setA, undefined, flags), two = await submit(one.room, second, setB, undefined, flags);
       const three = await submit(two.room, first, setC, setEnd, flags);
