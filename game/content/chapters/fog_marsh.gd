@@ -25,11 +25,17 @@ const DATA := {
 			"hint_a": PlayerCopy.FOG_MARSH_STAGE_2_HINT_A,
 			"hint_b": PlayerCopy.FOG_MARSH_STAGE_2_HINT_B,
 		},
+		"carry-it-home": {
+			"title": PlayerCopy.FOG_MARSH_STAGE_3_TITLE,
+			"hint_a": PlayerCopy.FOG_MARSH_STAGE_3_HINT_A,
+			"hint_b": PlayerCopy.FOG_MARSH_STAGE_3_HINT_B,
+		},
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/fog-marsh.png",
 	"keepsakes": [
 		{"stage_id": "where-the-stream-went", "title": PlayerCopy.FOG_MARSH_STAGE_1_TITLE},
 		{"stage_id": "catch-the-pipsport", "title": PlayerCopy.FOG_MARSH_STAGE_2_TITLE},
+		{"stage_id": "carry-it-home", "title": PlayerCopy.FOG_MARSH_STAGE_3_TITLE},
 	],
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {

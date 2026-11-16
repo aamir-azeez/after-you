@@ -452,15 +452,18 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: b
 ## is carried to; a current leg carries it on once the leg's selector can show
 ## the leg's value (`when` and `stop` are not judged: an over-approximation).
 ## A hand up across a both-hands crossing needs both pips, one at each end.
-## The frozen pip (the solo probe) handles nothing, but an item it starts
-## holding stays carried on its floor; it is never handed anything (it could
-## take one only where it stands, which the probe leaves out).
+## The frozen pip (the solo probe) and the walker (the both-pips probe) handle
+## nothing, but an item one starts holding stays carried on its start floor;
+## it is never handed anything. So the presser makes every pipsport move, as
+## the design solver's strict one pip test asks.
 func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary, open: Dictionary, settable: Dictionary) -> void:
 	if stage.get("items", []).is_empty(): return
 	var mechanisms: Dictionary = checkpoint.get("mechanisms", {})
 	var players: Dictionary = checkpoint.get("players", {})
 	var actors: Dictionary = floors.duplicate()
 	if not _frozen.is_empty(): actors[_frozen.slot] = {}
+	# The walker only walks: every pick up, put down and hand over is the presser's.
+	if not _walker.is_empty(): actors[_walker] = {}
 	var hands := CarriedItems.hands_routes(stage)
 	var walk: Dictionary = open.duplicate()
 	for id: String in hands: walk.erase(id)

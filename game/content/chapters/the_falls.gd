@@ -25,11 +25,23 @@ const DATA := {
 			"hint_a": PlayerCopy.THE_FALLS_STAGE_2_HINT_A,
 			"hint_b": PlayerCopy.THE_FALLS_STAGE_2_HINT_B,
 		},
+		"behind-the-falls": {
+			"title": PlayerCopy.THE_FALLS_STAGE_3_TITLE,
+			"hint_a": PlayerCopy.THE_FALLS_STAGE_3_HINT_A,
+			"hint_b": PlayerCopy.THE_FALLS_STAGE_3_HINT_B,
+		},
+		"the-last-stones": {
+			"title": PlayerCopy.THE_FALLS_STAGE_4_TITLE,
+			"hint_a": PlayerCopy.THE_FALLS_STAGE_4_HINT_A,
+			"hint_b": PlayerCopy.THE_FALLS_STAGE_4_HINT_B,
+		},
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/the-falls.png",
 	"keepsakes": [
 		{"stage_id": "foot-of-the-falls", "title": PlayerCopy.THE_FALLS_STAGE_1_TITLE},
 		{"stage_id": "the-old-mill", "title": PlayerCopy.THE_FALLS_STAGE_2_TITLE},
+		{"stage_id": "behind-the-falls", "title": PlayerCopy.THE_FALLS_STAGE_3_TITLE},
+		{"stage_id": "the-last-stones", "title": PlayerCopy.THE_FALLS_STAGE_4_TITLE},
 	],
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
