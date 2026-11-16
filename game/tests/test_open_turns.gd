@@ -24,7 +24,11 @@ extends SceneTree
 ##   skipped; the memory's later presses still land, the turn is byte for byte
 ##   the one a still pip records and passes as before, a turn that must finish
 ##   hands the controls back, and with both pips at the goal at the memory's end
-##   the stage completes. A first turn has no memory and keeps its own part.
+##   the stage completes;
+## - a first turn may end at any time, its own part done or not (its outcome
+##   says which), replays exactly and is the next turn's memory; the same turn
+##   on the tide rules before open turns (13) may not be saved;
+## - open turns show no bell: no Bell card and no bell hint on Tide@3.
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
@@ -85,6 +89,7 @@ func _run() -> void:
 	_published()
 	_dots()
 	_end_early()
+	_early_first_turn()
 	print("OPEN TURNS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -360,7 +365,7 @@ func _end_early() -> void:
 	var still := MemoryWait.STILL_INPUT
 	var first := Simulation.new()
 	first.reset(level, STAGE, start, {}, "a")
-	_check(not first.can_end_early() and not first.snapshot().can_end_early, "A first turn has no memory to play out: it ends once its part is done")
+	_check(not first.can_end_early() and not first.snapshot().can_end_early, "A first turn has no memory to play out")
 	for frame: Dictionary in Simulation.expand_recording_inputs(a): first.step(frame)
 	var memory_end: Dictionary = first.snapshot().controls
 	# The pip stands still from the start and ends its turn early; it records what a pip standing there would.
@@ -473,3 +478,30 @@ func _screen(sim: RefCounted, prior: Dictionary) -> Dictionary:
 func _free_screen(run: Dictionary) -> void:
 	run.screen.stick.free()
 	for part: String in ["controls", "world", "screen"]: run[part].free()
+
+## A first turn ended before its part is done, on open turns only.
+func _early_first_turn() -> void:
+	var level := Registry.definition(TIDE)
+	var start := Registry.initial_checkpoint(TIDE)
+	var frames: Array = Simulation.expand_recording_inputs(_fixture("turn-of-the-tide-v3-set-the-tide-a.json"))
+	var one := Simulation.new()
+	one.reset(level, STAGE, start, {}, "a")
+	for tick in range(20): one.step(frames[tick])
+	var state: Dictionary = one.snapshot()
+	_check(one.can_commit() and state.can_commit and not state.outcome.source_ready and int(state.objective_display.current) == 0, "A first turn may end at any time; its part is not done yet and its card says so")
+	var older := Simulation.new()
+	older.reset(level, STAGE, start, {}, "a")
+	for tick in range(20): older.step(frames[tick])
+	older.simulation_version = 13
+	_check(not older.can_commit(), "On the tide rules before open turns (13) the same turn may not be saved")
+	var early: Dictionary = _json(one.export_recording())
+	var checked := Simulation.verify_recording(level, early, start)
+	_check(checked.valid and checked.get("ready", false) and early.outcome.source_ready == false and early.completed == false, "It replays exactly and may be a memory (%s)" % str(checked.get("error", "")))
+	var two := Simulation.new()
+	_check(two.reset(level, STAGE, start, early, "b"), "The next turn plays over it (%s)" % two.error)
+	_check(two.snapshot().objective_display.is_empty() and Registry.stage_presentation(TIDE, level.stages[0]).get("hint_b") == "", "Open turns show no Bell card and no bell hint")
+	while int(two.tick) < int(early.duration_ticks): two.step({})
+	two.pass_turn()
+	var pass_two: Dictionary = _json(two.export_recording())
+	var checked_two := Simulation.verify_recording(level, pass_two, start, early)
+	_check(two.passed and checked_two.valid and checked_two.get("ready", false), "Its pass over the early first turn verifies (%s)" % str(checked_two.get("error", "")))

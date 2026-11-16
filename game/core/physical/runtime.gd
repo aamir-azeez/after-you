@@ -397,6 +397,13 @@ func source_budget_ticks() -> int:
 func can_commit() -> bool:
 	if level.is_empty() or not error.is_empty() or tick == 0: return false
 	if role == "b": return complete
+	# Open turns: a first turn may end at any time, its own part done or not
+	# (owner, 2026-11-16); its outcome still says whether it was (_source_ready).
+	return _open_turns() or _source_ready()
+
+## A first turn's own part is done, with time left for the turn after it: what
+## a first turn needs before it may be saved, except under open turns.
+func _source_ready() -> bool:
 	if stage.source_policy.kind == "offer_ball":
 		return _offer_tick >= 0 and maxi(_offer_tick, tick if _comfort_rules() else _offer_tick) + source_budget_ticks() < receiver_deadline() and bool(_mechanisms.levers.get(stage.source_policy.lever_id, false))
 	if _comfort_rules():
@@ -530,14 +537,19 @@ func snapshot() -> Dictionary:
 func _objective_display() -> Dictionary:
 	if role == "a":
 		if stage.source_policy.kind == "offer_ball":
-			return {"label":"Ball handoff","current":1 if can_commit() else 0,"required":1}
+			return {"label":"Ball handoff","current":1 if _part_done() else 0,"required":1}
 		if _comfort_rules() and stage.source_policy.has("minimum_hold_ticks"):
 			return {"label":"Hold","current":float(_hold_ticks)/TICK_RATE,"required":float(stage.source_policy.minimum_hold_ticks)/TICK_RATE,"unit":"seconds","detail":commit_reason()}
-		return {"label":"Crossing ready","current":1 if can_commit() else 0,"required":1}
+		return {"label":"Crossing ready","current":1 if _part_done() else 0,"required":1}
 	return {"label":"Ball home" if stage.goal_policy.kind == "ball_home" else "Bell","current":1 if _objective else 0,"required":1}
 
 func _outcome() -> Dictionary:
-	return {"source_ready":can_commit() if role == "a" else bool(_prior.get("outcome", {}).get("source_ready", false)),"objective_complete":complete}
+	return {"source_ready":_part_done() if role == "a" else bool(_prior.get("outcome", {}).get("source_ready", false)),"objective_complete":complete}
+
+## A first turn may be saved and its own part is done: before open turns, the
+## same as can_commit.
+func _part_done() -> bool:
+	return can_commit() and _source_ready()
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot

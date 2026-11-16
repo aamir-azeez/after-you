@@ -78,7 +78,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   if (openLimits) { const base = limits ?? COMFORT_RECORDING; limits = { ...base, ...openBodyLimits(openLimits, definition.stages.length, base.recording_values!) }; maxBranches = openLimits.branches; }
   if (limits) checkTurnBounds(limits, maxBranches);
   const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
-  const isAccepted = open ? (r: ChapterRecording) => openAccepted(r, accepted) : accepted;
+  const isAccepted = open ? openAccepted : accepted;
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
     const c = object(value); exact(c, open ? OPEN_CHECKPOINT_KEYS : CHECKPOINT_KEYS);
