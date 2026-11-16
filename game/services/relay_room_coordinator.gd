@@ -580,6 +580,7 @@ func _note_packed(response: Dictionary) -> void:
 	if response.get("packed_recordings") == true and RoomsApi.packed_supported: _packed_room = true
 
 ## Whether this phone records the room's turns packed (core/v2/recording_codec.gd).
+## Open turns record packed whatever this says (core/physical/runtime.gd).
 func packed_room() -> bool:
 	return _packed_room and RoomsApi.packed_supported
 

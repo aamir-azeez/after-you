@@ -1,192 +1,23 @@
 {
-	"actions": [
-		{
-			"action": false,
-			"ticks": 90,
-			"x": 0,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 12,
-			"x": 100,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 0,
-			"z": 100
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 0,
-			"z": 50
-		},
-		{
-			"action": false,
-			"ticks": 29,
-			"x": 0,
-			"z": 100
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 0,
-			"z": 50
-		},
-		{
-			"action": false,
-			"ticks": 6,
-			"x": 100,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 75,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 0,
-			"z": 0
-		},
-		{
-			"action": true,
-			"ticks": 1,
-			"x": 0,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 6,
-			"x": -100,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": -75,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 28,
-			"x": 0,
-			"z": -100
-		},
-		{
-			"action": false,
-			"ticks": 26,
-			"x": 100,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 75,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 0,
-			"z": 0
-		},
-		{
-			"action": true,
-			"ticks": 1,
-			"x": 0,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 57,
-			"x": 100,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 25,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 14,
-			"x": 0,
-			"z": -100
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 0,
-			"z": -50
-		}
-	],
 	"catch_assistance": true,
-	"checkpoint_hash": "b7ff825b9f4f785d2a071e38c116325721b060610f8a46ddeb0952a2b5a67ed4",
+	"checkpoint_hash": "fb597f4ec0ed597f0093ed2069dad093eefd87bc0984d832839032a308c66f3d",
 	"completed": false,
-	"definition_hash": "947e69e3ccc80d81f285b0434536a00cb3a08aeea890e64539e8643b09dc3909",
-	"duration_ticks": 280,
-	"final_state_hash": "2552730ab0fab7192a2e7445324102345b04dbad7c78365bf13626d5e4b08ddc",
+	"definition_hash": "81e6342e5f80158ca6cf6c9e02a61cc2baa7e24c63e23603561db50fd1311ddc",
+	"duration_ticks": 225,
+	"final_state_hash": "5a0a71a40ea3be424b985a0c82ea7487e2e0773903d86b81e97cb858c99bbda8",
 	"level_id": "long-way-home",
 	"level_version": 3,
 	"outcome": {
 		"objective_complete": false,
 		"source_ready": true
 	},
+	"packed": "AQoYZACkAQBkAgAyEGQAAgAAAwAAWGQALACcQGQALACcIu5F3kn3rFaN1CW4zIcz1peQMkhfTl5ppeaX6Eed3OaAy6rvezKNQA6c75ePFBsPeb+BcLthMDmWzyPUhElFA9yUf1T0wJh6WdBMwC+9Tiw=",
 	"player_slot": "p0",
-	"recording_hash": "80212f42d83f9b0b280262c9b0ce8401a35824c0d8d98d74a06aadcaede0ee88",
-	"replay_checks": [
-		{
-			"state_hash": "040b7984ecbdda68bcdfacea380ebc39814c1ae1608e401169a6db82eab86bbc",
-			"tick": 30
-		},
-		{
-			"state_hash": "0b8d42f626a2cbe30d86200cd8b8d5a52ac3dee46af3e580876fc96cf83252c7",
-			"tick": 60
-		},
-		{
-			"state_hash": "c59e19cf6110bcc0890bb7ae8a6c4ba721b8c2781d1fcf8a70557c08350cac9a",
-			"tick": 90
-		},
-		{
-			"state_hash": "118cf54d681f0cbc88039216e25060b9f655d3627188470d5da31328d03ad850",
-			"tick": 120
-		},
-		{
-			"state_hash": "48fe9c420d8d681ac33939ec73708edfebe7ef75dfc1cc4938c650c84fad3a79",
-			"tick": 150
-		},
-		{
-			"state_hash": "29fdc9df62f5ebea719d7beb9d5a71ac97c03b55442e6edbdcefc1799ea4a3d0",
-			"tick": 180
-		},
-		{
-			"state_hash": "6465d467341fb2b88f0ee0b3d12282cdf5be62ae75ef628e4bc370f4e0b82c7a",
-			"tick": 210
-		},
-		{
-			"state_hash": "02e05345771a27abbf1cc43abfc58fc448d6463d87d72ffc3a248826473b58cb",
-			"tick": 240
-		},
-		{
-			"state_hash": "eea7b4f3d4e9a404587cebb0116ab4caa5c3c49faecda171edcdd637c994a815",
-			"tick": 270
-		},
-		{
-			"state_hash": "2552730ab0fab7192a2e7445324102345b04dbad7c78365bf13626d5e4b08ddc",
-			"tick": 280
-		}
-	],
+	"recording_hash": "dbffdb292a3a5573f0078eb500b6b594c27af30ea6e7de05936fa4f8ced9c7a7",
 	"role": "b",
 	"schema_version": 7,
 	"simulation_version": 14,
-	"source_recording_hash": "eb6ee71291046f6e734aa6cf3ccbced1dffd118eda0d42a1fbb63ccb35c571ba",
+	"source_recording_hash": "a4ba6f247d1df2e4b7005899dce13fd9b498960598c41e8f65f849e4dfdd2cca",
 	"stage_id": "a-place-beside-you",
 	"stage_version": 1,
 	"tick_rate": 30

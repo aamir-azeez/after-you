@@ -9,8 +9,8 @@ what it leaves there:
 - ci_shards.txt stays sorted;
 - the placeholder thumbnail is the one test_chapter_descriptors.gd recognises;
 - content/chapters/index.gd's development turn limits are one limit for
-  every turn, the longest the rules and the server accept for two open turns
-  stages (scripts/chapter_tools/turn_limits.py);
+  every turn that the rules and the server accept for two open turns stages
+  (scripts/chapter_tools/turn_limits.py);
 - the journey chapter and the new version pin open turns, the cooperative
   chapter the open controls.
 With a Godot binary (--godot, or the GODOT environment variable) it then
@@ -149,9 +149,10 @@ def check_scaffold(repo: Path, before: dict[str, bytes]) -> list[str]:
     descriptors = (ROOT / "game/tests/test_chapter_descriptors.gd").read_text(encoding="utf-8")
     rules = Rules(ROOT)
     index = (ROOT / "game/content/chapters/index.gd").read_text(encoding="utf-8")
-    turn = rules.cap_open(2)
-    check(f'const DEVELOPMENT_TURN_LIMITS := {{"a_ticks": {turn}, "b_ticks": {turn}}}' in index,
-          f"index.gd's development turn limits are the longest turn the rules and the server accept for two open turns stages: {turn} ticks each")
+    found = re.search(r'^const DEVELOPMENT_TURN_LIMITS := \{"a_ticks": (\d+), "b_ticks": (\d+)\}$', index, re.M)
+    turn = int(found.group(1)) if found and found.group(1) == found.group(2) else 0
+    check(0 < turn <= rules.cap_open(2) and not rules.problems(turn, turn, 2),
+          f"index.gd's development turn limits are one length the rules and the server accept for two open turns stages: {turn} ticks each")
     pins = {"scaffold-test-coop@1": "OpenControls.pin(", "scaffold-test-journey@1": "OpenTurns.pin(", "conservatory@3": "OpenTurns.pin("}
     for key, pin in pins.items():
         stem = key.split("@")[0].replace("-", "_") + ("" if key.endswith("@1") else "_v" + key.split("@")[1])
@@ -215,7 +216,8 @@ def check_recordings(binary: str, repo: Path) -> None:
     print("CHAPTER RECORDING: " + log.strip().replace("\n", "\n  "))
     rules = Rules(ROOT)
     # Each turn is shown against the development limit it was played under.
-    check(ok and f"updated game/tests/routes/{JOURNEY}.json" in log and "suggested turn_limits" in log and f" of {rules.seconds(rules.cap_open(2))} (" in log,
+    development = re.search(r'^const DEVELOPMENT_TURN_LIMITS := \{"a_ticks": (\d+),', (ROOT / "game/content/chapters/index.gd").read_text(encoding="utf-8"), re.M)
+    check(ok and development and f"updated game/tests/routes/{JOURNEY}.json" in log and "suggested turn_limits" in log and f" of {rules.seconds(int(development.group(1)))} (" in log,
           f"chapter_recording.py takes {JOURNEY}'s run: " + log[-2000:])
     routes = json.loads((repo / f"game/tests/routes/{JOURNEY}.json").read_text(encoding="utf-8"))
     # Open turns: a stage that took more than two turns lists them all as "turns".
@@ -226,8 +228,9 @@ def check_recordings(binary: str, repo: Path) -> None:
     check(now == fixtures, "Routes from the chapter's own run write the same fixtures: " + ", ".join(sorted(p for p in set(now) | set(fixtures) if now.get(p) != fixtures.get(p))))
     ok, log = tool(binary, repo, "chapter_recheck.py", ["--key", JOURNEY])
     check(ok and "2 of 2 stages finish" in log, "chapter_recheck.py replays the recorded routes: " + log[-1500:])
-    ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "200", "--b-seconds", "250"])
-    check(not ok and "server cannot store" in log, "chapter_turn_limits.py refuses turns past the server's bound: " + log[-1500:])
+    past = rules.cap_open(2) // rules.tick_rate + 1
+    ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", str(past), "--b-seconds", str(past)])
+    check(not ok and ("server cannot store" in log or "may last at most" in log), "chapter_turn_limits.py refuses turns past the longest the rules and the server take: " + log[-1500:])
     ok, log = tool(binary, repo, "chapter_turn_limits.py", ["--key", JOURNEY, "--a-seconds", "60", "--b-seconds", "60"])
     definition = json.loads((repo / "game/tests/fixtures/journey/scaffold-test-journey-definition.json").read_text(encoding="utf-8"))
     check(ok and definition.get("simulation_version") == 14 and definition.get("turn_limits") == {"a_ticks": 1800, "b_ticks": 1800} and "updated backend/src/v2/scaffold-test-journey.json" in log,

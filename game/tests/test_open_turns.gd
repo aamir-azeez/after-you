@@ -12,11 +12,12 @@ extends SceneTree
 ## - turn 4 plays the second pip's route over it and closes the stage with both
 ##   pips at the goal, and the checkpoint nests all four turns (schema 8),
 ##   checked again from scratch;
-## - in a packed room every later turn records packed (core/v2/recording_codec.gd)
-##   and plays as the next memory, kept or simulated, and the closing checkpoint
-##   nests both forms;
+## - every turn records packed (core/v2/recording_codec.gd), in rooms and solo,
+##   whatever the room says, and plays as the next memory, kept or simulated;
 ## - a solo journal's "Redo my previous turn" takes back its latest pass, and
-##   reopening a stage brings its passes back;
+##   reopening a stage brings its passes back; it keeps every turn packed, so a
+##   run of every stage at its cap of the longest turns stays well under the
+##   save's cap;
 ## - a published two turn stage still proves the published way;
 ## - the turn dots (presentation/kit/turn_dots.gd) ring the last turn: the cap's
 ##   once it is next, this one when the room says it must finish;
@@ -86,6 +87,7 @@ func _run() -> void:
 	_rules()
 	_chain()
 	_packed_chain()
+	_solo_size()
 	_ten_turns()
 	_published()
 	_dots()
@@ -180,6 +182,7 @@ func _chain() -> void:
 	_check(journal.begin_replace(journal.redo_plan()) and journal.accept_recording(pass_three) and not journal.replacing() and journal.passes().size() == 2, "The turn saved next replaces it (%s)" % journal.last_error)
 	_check(Journey.new(path, null, TIDE).passes().size() == 2 and Journey.new(path, null, TIDE).prior_recording().get("recording_hash") == pass_three.recording_hash, "The replaced pass survives a reload")
 	_check(journal.accept_recording(closing) and journal.passes().is_empty() and journal.pairs()[0].get("passes", []).size() == 2 and Canonical.same(journal.checkpoint(), checkpoint), "The closing turn ends the stage with its passes in the pair (%s)" % journal.last_error)
+	_check(OpenTurns.pair_turns(Journey.new(path, null, TIDE).pairs()[0]).all(func(turn: Dictionary) -> bool: return RecordingCodec.is_packed(turn)), "The saved journal keeps every turn packed")
 	# Reopening the stage brings its passes back, so the closing turn plays over turn 3 again.
 	var reopen := journal.redo_plan()
 	_check(reopen.get("kind") == "stage" and journal.begin_replace(reopen) and journal.passes().size() == 2 and journal.prior_recording().get("recording_hash") == pass_three.recording_hash, "Playing the closing turn again reopens the stage with its passes (%s)" % journal.last_error)
@@ -199,10 +202,10 @@ func _chain() -> void:
 	shuffled.proof.turns = [a, pass_three, pass_two, closing]
 	_check(not Simulation.verify_checkpoint(level, shuffled).valid, "Turns out of order are refused")
 
-## The same four turns in a packed room: turn 1 went before the room knew it
-## was packed, so it stays JSON; every later turn records packed, replays
-## exactly, plays as the next memory from its kept trace or simulated, and the
-## closing checkpoint nests both forms and plays back in the replay view.
+## The same four turns as the engine records them with nothing set: packed
+## (open turns always are, runtime.gd), each replaying exactly and playing as
+## the next memory from its kept trace or simulated; the closing checkpoint
+## nests them packed and plays back in the replay view.
 func _packed_chain() -> void:
 	var level := Registry.definition(TIDE)
 	var start := Registry.initial_checkpoint(TIDE)
@@ -211,14 +214,12 @@ func _packed_chain() -> void:
 	MemoryTrace.clear()
 	var two := Simulation.new()
 	two.reset(level, STAGE, start, a, "b")
-	two.packed_recordings = true
 	while int(two.tick) < int(a.duration_ticks): two.step(b_frames[two.tick] if int(two.tick) < b_frames.size() else {})
 	two.pass_turn()
 	var pass_two: Dictionary = _json(two.export_recording())
-	_check(RecordingCodec.is_packed(pass_two) and Simulation.verify_recording(level, pass_two, start, a).get("ready", false), "A pass in a packed room records packed and may be a memory")
+	_check(RecordingCodec.is_packed(a) and RecordingCodec.is_packed(pass_two) and Simulation.verify_recording(level, pass_two, start, a).get("ready", false), "Turn 1 and a pass record packed with nothing set, and the pass may be a memory")
 	var three := Simulation.new()
 	_check(three.reset(level, STAGE, start, pass_two, "b", 0, [a]), "Turn 3 starts over a packed pass (%s)" % three.error)
-	three.packed_recordings = true
 	Witness._play(three, Witness.routes(TIDE)[STAGE].turns[2])
 	while int(three.tick) < int(pass_two.duration_ticks): three.step({})
 	three.pass_turn()
@@ -231,23 +232,60 @@ func _packed_chain() -> void:
 		MemoryTrace.enabled = traced
 		var four := Simulation.new()
 		_check(four.reset(level, STAGE, start, pass_three, "b", 0, [a, pass_two]), "Turn 4 starts over the packed passes (%s)" % four.error)
-		four.packed_recordings = true
 		while not four.finished: four.step(b_frames[four.tick] if int(four.tick) < b_frames.size() else {})
 		var record: Dictionary = _json(four.export_recording())
 		_check(four.complete and (closing.is_empty() or Canonical.same(record, closing)), "The packed closing turn finishes the same whether its memories play from traces or not")
 		closing = record
 	MemoryTrace.enabled = true
 	var derived := Simulation.derive_checkpoint(level, start, a, closing, [pass_two, pass_three])
-	_check(derived.valid and derived.checkpoint.proof.turns.map(func(turn: Dictionary) -> bool: return RecordingCodec.is_packed(turn)) == [false, true, true, true], "The closing checkpoint nests turn 1 as JSON and the rest packed (%s)" % str(derived.get("error", "")))
+	_check(derived.valid and derived.checkpoint.proof.turns.all(func(turn: Dictionary) -> bool: return RecordingCodec.is_packed(turn)), "The closing checkpoint nests every turn packed (%s)" % str(derived.get("error", "")))
 	if not derived.valid: return
 	MemoryTrace.clear()
-	_check(Simulation.verify_checkpoint(level, derived.checkpoint).valid, "The mixed checkpoint proves from scratch")
+	_check(Simulation.verify_checkpoint(level, derived.checkpoint).valid, "The packed checkpoint proves from scratch")
 	# The replay view plays each later turn over the one before it (shared_replay_view.gd).
 	var turns := OpenTurns.pair_turns(CheckpointPairs.pair(TIDE, derived.checkpoint, 0, 0))
 	var sim := Simulation.new()
 	_check(Registry.reset_simulation(sim, TIDE, level, STAGE, start, turns[2], "b", turns[3], turns.slice(0, 2)), "The replay starts the closing turn over its packed memories (%s)" % sim.error)
 	for input: Dictionary in Simulation.expand_recording_inputs(turns[3]): sim.step(input)
 	_check(Canonical.same(_json(sim.export_recording()), closing), "and plays it back byte for byte, packed")
+
+## A solo run of every open turns chapter with each stage at its cap and every
+## turn its widest at the chapter's limit (a new stick every tick): saved as
+## the journal saves it (attempt_archive.gd), it stays under half the save's cap,
+## where the same run in JSON would not fit at all.
+func _solo_size() -> void:
+	for key: String in ["turn-of-the-tide@3", "long-way-home@3", "conservatory@2"]:
+		var level := Registry.definition(key)
+		var rules := Registry.preferred_rules(key)
+		var ticks := Simulation.turn_ticks(level, rules, "b")
+		var actions: Array = []
+		for tick in ticks: actions.append({"ticks": 1, "x": 100 if tick % 2 else -100, "z": -100, "action": tick % 3 == 0})
+		var checks: Array = []
+		for tick in range(RecordingCodec.CHECK_EVERY, ticks, RecordingCodec.CHECK_EVERY): checks.append({"tick": tick, "state_hash": "f".repeat(64)})
+		checks.append({"tick": ticks, "state_hash": "f".repeat(64)})
+		var pairs: Array = []
+		var json_pairs: Array = []
+		var turns := 0
+		for stage: Dictionary in level.stages:
+			var list: Array = []
+			for n in range(1, OpenTurns.cap(stage) + 1):
+				var record := {"schema_version": 7, "simulation_version": rules, "level_id": level.id, "level_version": level.version, "definition_hash": "f".repeat(64), "stage_id": stage.id,
+					"stage_version": 1, "checkpoint_hash": "f".repeat(64), "role": "a" if n == 1 else "b", "player_slot": OpenTurns.slot(str(stage.first_player_slot), n), "tick_rate": 30,
+					"duration_ticks": ticks, "catch_assistance": false, "actions": actions, "replay_checks": checks, "final_state_hash": "f".repeat(64), "completed": n == OpenTurns.cap(stage),
+					"outcome": {"source_ready": true, "objective_complete": n == OpenTurns.cap(stage)}, "source_recording_hash": "" if n == 1 else "f".repeat(64), "recording_hash": "f".repeat(64)}
+				list.append(record)
+			turns += list.size()
+			var packed: Array = []
+			for record: Dictionary in list:
+				var form := RecordingCodec.packed_form(record)
+				form["recording_hash"] = "f".repeat(64)
+				packed.append(form)
+			pairs.append({"a": packed[0], "b": packed[-1], "passes": packed.slice(1, packed.size() - 1)})
+			json_pairs.append({"a": list[0], "b": list[-1], "passes": list.slice(1, list.size() - 1)})
+		var bytes := JSON.stringify(Canonical.normalized({"archive_version": 1, "relay": {"pairs": pairs, "a": {}, "draft": {}}})).to_utf8_buffer().size()
+		var json_bytes := JSON.stringify(Canonical.normalized({"archive_version": 1, "relay": {"pairs": json_pairs, "a": {}, "draft": {}}})).to_utf8_buffer().size()
+		print("OPEN TURNS: a solo %s run of %d turns of %d ticks at their widest saves %d bytes packed, %d as JSON (cap %d)" % [key, turns, ticks, bytes, json_bytes, Journey.MAX_SAVE_BYTES])
+		_check(bytes * 2 < Journey.MAX_SAVE_BYTES, "A solo %s run of every stage at its cap of the widest turns stays under half the save's cap packed" % key)
 
 ## Ten turns of passes, each pip's own route again: every one replays and
 ## may be a memory, and one check of the latest covers the chain. Memories

@@ -299,7 +299,7 @@
 			"key": "turn-of-the-tide@3",
 			"level_id": "turn-of-the-tide",
 			"level_version": 3,
-			"max_branches": 5,
+			"max_branches": 7,
 			"premium": false,
 			"recording_version": 7,
 			"simulation_version": 15,
