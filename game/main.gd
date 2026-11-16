@@ -1920,11 +1920,13 @@ func _deliver_then_refresh_hub() -> void:
 ## A friend code on this phone, made or brought back if needed. `platform`: also the server's
 ## platform account rule (platform_games_flow.gd require_platform) for an online tap; the identity's
 ## own screens, the Full Journey store and tester codes pass false (the server never gates them).
-func _ensure_identity(report: Callable = Callable(), platform: bool = true) -> bool:
-	if not await _ensure_friend_code(report): return false
+## `always`: Restore purchases, which must always work, still offers the Play Games / Game Center
+## friend code first, but a "Not now" (or none to bring back) makes a new one instead of stopping.
+func _ensure_identity(report: Callable = Callable(), platform: bool = true, always: bool = false) -> bool:
+	if not await _ensure_friend_code(report, always): return false
 	return not platform or await platform_games_flow.require_platform(report)
 
-func _ensure_friend_code(report: Callable = Callable()) -> bool:
+func _ensure_friend_code(report: Callable = Callable(), always: bool = false) -> bool:
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
 		_report(report,PlayerCopy.MAIN_A9AD59F7E952)
 		return false
@@ -1954,8 +1956,9 @@ func _ensure_friend_code(report: Callable = Callable()) -> bool:
 		return false
 	# A friend code this Play Games or Game Center account already has comes back first; no new one
 	# is made while it could (presentation/platform_games_flow.gd before_new_identity).
-	var before: String = await platform_games_flow.before_new_identity(report)
-	if before == "stop": return false
+	var quiet: Callable = func(_text: String) -> void: pass
+	var before: String = await platform_games_flow.before_new_identity(quiet if always else report)
+	if before == "stop" and not always: return false
 	# Another tap made or brought one meanwhile: it is the one, never a second.
 	var wait_until := Time.get_ticks_msec()+10000
 	while identity_busy and Time.get_ticks_msec()<wait_until:

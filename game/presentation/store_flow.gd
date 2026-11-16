@@ -454,7 +454,7 @@ func restore_purchases() -> void:
 	store_action_pending=true
 	var view: int = host.store_view_generation
 	store_restore_view=view
-	if not await host._ensure_identity(Callable(), false):
+	if not await host._ensure_identity(Callable(), false, true):
 		store_action_pending=false
 		return
 	if view!=host.store_view_generation:

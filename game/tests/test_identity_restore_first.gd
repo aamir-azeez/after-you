@@ -2,7 +2,7 @@ extends SceneTree
 ## A fresh install never makes a new friend code while its Play Games or Game Center account
 ## already has one: the first online tap (Main._ensure_identity, which Rooms, Restore purchases,
 ## Buy and room links all go through) offers it first. "Not now" makes nothing and the next tap
-## asks again; an account with no friend code, or a server without the feature, makes one as
+## asks again, except Restore purchases, which always goes on; an account with no friend code, or a server without the feature, makes one as
 ## before; a check that cannot reach the server makes nothing yet; two taps at once make one.
 ## Recover identity on a phone that has a friend code asks to keep its recovery details first, a
 ## restored friend code's purchases are read again once the store is set up for it, and a friend
@@ -153,6 +153,7 @@ func _run() -> void:
 	await _feature_off_creates(app, api, secrets)
 	await _recover_asks_to_keep_code(app)
 	await _purchase_sync_after_restore()
+	await _restore_purchases_after_not_now(app, api, secrets)
 	await _kept_identity_after_reinstall(app, api, secrets)
 
 	var flow: Node = app.platform_games_flow
@@ -344,6 +345,56 @@ func _shows(node: Node, text: String) -> bool:
 	for child: Node in node.get_children():
 		if _shows(child, text): return true
 	return false
+
+## The store a Restore purchases tap drives: set up once for a player, then one restore.
+class RestoreStore extends Node:
+	var configured_for := ""
+	var restores := 0
+	func configure_store(_key: String, player: String, _mode: String) -> String:
+		configured_for = player
+		return "configure-1"
+	func restore() -> String:
+		restores += 1
+		return "restore-%d" % restores
+	func has_entitlement(_id: String = "") -> bool: return false
+
+## Restore purchases must always work (App Review 3.1.1): on a fresh install it offers the friend
+## code first, and after "Not now" it makes one, quietly, then restores and reads purchases.
+func _restore_purchases_after_not_now(app: Node, api: Api, secrets: Secrets) -> void:
+	await _fresh(app, api, secrets, "restore-not-now")
+	api.answers = {"/v1/platform/restore": [_probe_on(), _linked(true), _restored()], "/v1/identity": [_new_identity()]}
+	var config: Dictionary = app.config.duplicate(true)
+	app.config["revenuecat_public_key"] = "test_synthetic_key"
+	app.config["purchase_mode"] = "google_play"
+	app.config["entitlement_id"] = "full_journey_play"
+	var real_store: Node = app.purchases
+	var store := RestoreStore.new()
+	app.add_child(store)
+	app.purchases = store
+	var flow: Node = app.store_flow
+	flow.store_configured = false
+	flow.store_configure_request = ""
+	flow.store_action_pending = false
+	app.toast.dismiss()
+	flow.restore_purchases()
+	var modal := await _modal(app)
+	_check(modal != null and api.posts("/v1/identity") == 0, "Restore purchases offers the Play Games friend code first")
+	if modal != null:
+		modal.find_child("ModalCancel", true, false).pressed.emit()
+		await _until(func() -> bool: return flow.restore_requested or not flow.store_action_pending)
+		_check(api.posts("/v1/identity") == 1 and api.player_id == NEW_PLAYER and store.configured_for == NEW_PLAYER, "Not now still makes a friend code and sets the store up for it")
+		_check(app.toast.take_plain() != PlayerCopy.PLATFORM_GAMES_BRING_BACK_FIRST % "Play Games", "with no word about bringing the friend code back first")
+		flow.purchase_completed("configure-1", "configure", {})
+		_check(store.restores == 1 and flow.store_action_pending, "and the restore runs")
+		flow.purchase_completed("restore-1", "restore_purchases", {})
+		_check(not flow.store_action_pending, "then finishes")
+	app.purchases = real_store
+	store.queue_free()
+	app.config = config
+	flow.store_configured = false
+	flow.store_configure_request = ""
+	flow.store_action_pending = false
+	flow.restore_requested = false
 
 class FakePurchases extends Node:
 	var restores := 0
