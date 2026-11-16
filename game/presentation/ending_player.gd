@@ -80,8 +80,12 @@ func start(world: Node3D, data: Dictionary, snapshot: Dictionary, overlay: Contr
 func duration() -> float:
 	return float(compiled.get("duration", 0.0))
 
+## A frame moves the scene on by at most this (seconds), so a hitch or the app
+## coming back never jumps a must-watch scene to its end unseen.
+const LONGEST_FRAME := 0.1
+
 func _process(delta: float) -> void:
-	if playing: advance(delta)
+	if playing: advance(minf(delta, LONGEST_FRAME))
 
 ## Moves the scene on by `delta` seconds (the frame's, or a test's).
 func advance(delta: float) -> void:

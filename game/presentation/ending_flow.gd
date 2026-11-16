@@ -21,6 +21,7 @@ var _player: Node
 var _then: Callable
 var _mode_before := ""
 var _snapshot: Dictionary = {}
+var _auto_played := false
 
 func _init(screen: Node) -> void:
 	host = screen
@@ -44,6 +45,13 @@ func offered() -> bool:
 
 func playing() -> bool:
 	return is_instance_valid(_player) and _player.playing
+
+## The scene by itself, after the last turn: once per screen, however often its
+## card is drawn again. False when it does not play (see play()).
+func play_once(then: Callable) -> bool:
+	if _auto_played: return false
+	_auto_played = play(then)
+	return _auto_played
 
 ## Plays the scene, then calls `then`. False (and `then` is not called) when
 ## there is nothing to play: the caller goes on at once.

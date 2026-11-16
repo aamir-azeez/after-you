@@ -3212,7 +3212,7 @@ func _show_completed() -> void:
 		world.present(sim.snapshot(), true)
 	mode = "complete"
 	# A chapter finished just now plays its ending first, then its card.
-	if finished_now and ending_flow.play(_draw_completed.bind(true)): return
+	if finished_now and ending_flow.play_once(_draw_completed.bind(true)): return
 	_draw_completed(finished_now)
 
 ## The finished chapter's card (after its ending scene, when it has one).

@@ -8,9 +8,9 @@ extends RefCounted
 ## the same at any frame rate and a skip is state(duration).
 ##
 ## A scene file declares `const DATA := {...}`:
-##   "cast":   {"holds": a prop id of the final snapshot, "fallback": a slot}.
-##             The pip holding that prop is "carrier" (else the fallback slot's
-##             pip), the other pip is "other".
+##   "cast":   {"holds": a carried item id (core/physical/carried_items.gd),
+##             "fallback": a slot}. The pip carrying it in the final snapshot
+##             is "carrier" (else the fallback slot's pip), the other "other".
 ##   "origin": "pips" (the pips' midpoint) or a world anchor name (a world's
 ##             ending_anchor(name), when it has one). Every point is metres
 ##             [x, y, z] from it.
@@ -95,14 +95,16 @@ static func _check_step(step: Variant, props: Dictionary) -> String:
 			if str(step.get("text", "")).is_empty() or float(step.get("for", 0.0)) <= 0.0: return "a caption needs text and for"
 	return ""
 
-## The slot each role plays: {"carrier": slot, "other": slot}. The carrier holds
-## the cast's prop in `snapshot` (a journey snapshot's props[id].holder_slot),
-## else it is the fallback slot.
+## The slot each role plays: {"carrier": slot, "other": slot}. The carrier
+## carries the cast's item in `snapshot` (a journey snapshot's
+## players[slot].carrying, rules 16), else it is the fallback slot.
 static func cast(data: Dictionary, snapshot: Dictionary) -> Dictionary:
 	var spec: Dictionary = data.get("cast", {})
-	var prop: Variant = snapshot.get("props", {}).get(str(spec.get("holds", "")), {})
-	var holder := str(prop.get("holder_slot", "")) if prop is Dictionary else ""
-	var carrier := holder if holder in ["p0", "p1"] else str(spec.get("fallback", "p0"))
+	var carrier := str(spec.get("fallback", "p0"))
+	var players: Variant = snapshot.get("players", {})
+	for slot: String in ["p0", "p1"]:
+		var player: Variant = players.get(slot, {}) if players is Dictionary else {}
+		if player is Dictionary and not str(spec.get("holds", "")).is_empty() and str(player.get("carrying", "")) == str(spec.get("holds", "")): carrier = slot
 	return {"carrier": carrier, "other": "p1" if carrier == "p0" else "p0"}
 
 ## The scene as keyframes. `at`: where things stand when it starts, in the

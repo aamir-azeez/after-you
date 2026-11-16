@@ -52,6 +52,7 @@ func _run() -> void:
 		_frame_rates(setup, name)
 		_skips(setup, name)
 	_handover(setup)
+	_long_frame(setup)
 	await _flow(setup)
 	_seen_store()
 	setup.world.free()
@@ -108,8 +109,8 @@ func _start_at() -> Dictionary:
 ## The carrier is the pipsport's holder in the final snapshot, else the fallback.
 func _cast() -> void:
 	var data := _data("the_falls")
-	_check(EndingScene.cast(data, {"props": {"pipsport": {"holder_slot": "p1"}}}) == {"carrier": "p1", "other": "p0"}, "Teal carrying the pipsport is the one who slips")
-	_check(EndingScene.cast(data, {"props": {"pipsport": {"holder_slot": "p0"}}}) == {"carrier": "p0", "other": "p1"}, "Gold carrying it is the one who slips")
+	_check(EndingScene.cast(data, {"players": {"p0": {"carrying": ""}, "p1": {"carrying": "pipsport"}}}) == {"carrier": "p1", "other": "p0"}, "Teal carrying the pipsport is the one who slips")
+	_check(EndingScene.cast(data, {"players": {"p0": {"carrying": "pipsport"}, "p1": {"carrying": ""}}}) == {"carrier": "p0", "other": "p1"}, "Gold carrying it is the one who slips")
 	_check(EndingScene.cast(data, {}) == {"carrier": "p0", "other": "p1"}, "With no pipsport held, the fallback slot carries")
 
 func _world() -> Dictionary:
@@ -167,6 +168,14 @@ func _end_places(player: Node) -> Array:
 	var now := EndingScene.state(player.compiled, player.duration())
 	return [now.actors.carrier.position.snapped(Vector3.ONE * 0.0001), now.actors.other.position.snapped(Vector3.ONE * 0.0001), now.camera.center.snapped(Vector3.ONE * 0.0001)]
 
+## A long frame moves a scene on by at most a tenth of a second.
+func _long_frame(setup: Dictionary) -> void:
+	var player := _player(setup, _data("fog_marsh"), false)
+	player.set_process(true)
+	player._process(30.0)
+	_check(player.playing and is_equal_approx(player.t, EndingPlayer.LONGEST_FRAME), "A hitch never jumps a must-watch scene to its end")
+	_done(setup, player)
+
 ## A must-watch scene refuses a skip and holds taps; a seen one skips to the
 ## very end it would have played to.
 func _skips(setup: Dictionary, name: String) -> void:
@@ -222,10 +231,11 @@ func _flow(setup: Dictionary) -> void:
 	flow.seen = EndingSeen.new(directory.path_join("seen.json"))
 	var calls: Array = []
 	_check(flow.offered(), "A chapter with an ending offers it on its card")
-	_check(flow.play(func() -> void: calls.append("card")), "A finished chapter plays its ending")
+	_check(flow.play_once(func() -> void: calls.append("card")), "A finished chapter plays its ending")
 	_check(host.mode == EndingFlow.MODE and not flow._player.skippable, "The first viewing is a must-watch")
 	_check(flow.back() and calls == ["card"] and host.mode == "complete" and not flow.seen.seen("the-falls"), "Back ends it at once and shows the card, still unseen")
 	await process_frame
+	_check(not flow.play_once(func() -> void: calls.append("card")) and calls == ["card"], "A card drawn again does not start the ending by itself again")
 	_check(flow.play(func() -> void: calls.append("card")), "The ending plays again from the card")
 	while flow.playing(): flow._player.advance(0.25)
 	_check(calls == ["card", "card"] and flow.seen.seen("the-falls"), "Watched to the end, it is seen")
