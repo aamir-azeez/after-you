@@ -128,6 +128,10 @@ const CUES := {
 	# Bell sound items (content/cosmetics/ "sound"): the player's result screen
 	# plays the worn one once, quietly, at one pitch.
 	"bell_wood_chime": {"clip": WOOD_CHIME, "range": Vector2(0.0, 0.0), "db": -9.0, "fixed": true},
+	# Ending scenes (services/ending_scene.gd): a pip's splash into a pool, low
+	# and full, and a stamp's thunk on a desk, the bolt low and dull.
+	"ending_splash": {"clip": WELL_PLUNK, "range": Vector2(-6.0, -6.0), "db": -1.0, "fixed": true},
+	"ending_stamp": {"clip": BOLT, "range": Vector2(-5.0, -5.0), "db": -2.0, "fixed": true},
 }
 
 ## A lever or selector style that is a machine (presentation/kit/pieces/

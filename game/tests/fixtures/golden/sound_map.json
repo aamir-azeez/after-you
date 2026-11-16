@@ -40,7 +40,9 @@
 		"ui_third",
 		"ui_second",
 		"ui_first",
-		"bell_wood_chime"
+		"bell_wood_chime",
+		"ending_splash",
+		"ending_stamp"
 	],
 	"chapters": {
 		"a-house-for-two@1": {

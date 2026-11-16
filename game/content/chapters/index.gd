@@ -114,6 +114,10 @@ const OPTIONAL := {
 	## default stage copy, piece styles and water levels fill whichever of
 	## those this descriptor leaves out (content/blocks/defaults.gd).
 	"block_source": [],
+	## The chapter's ending scene: a file name under content/endings/ (its
+	## format is in services/ending_scene.gd), played in this world after its
+	## last turn (presentation/ending_flow.gd). "" for none.
+	"ending": "",
 }
 ## The turn lengths a chapter has while it is built (scripts/new_chapter.py
 ## writes them into a new journey definition and every new version, all on

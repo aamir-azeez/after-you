@@ -82,6 +82,7 @@ duels 3
 duels_flow 1
 empty_state 2
 end_reactions 2
+ending_scenes 3
 explore_room 1
 face_packs 3
 face_recipes 2

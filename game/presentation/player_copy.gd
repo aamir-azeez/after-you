@@ -758,6 +758,10 @@ const HARD_NEW_ROOM := "New hard room"
 const HARD_COMPLETE_TITLE := "Hard run done"
 const HARD_COMPLETE_BODY := "%s, start to finish, in one go."
 const HARD_AGAIN := "Play Hard again"
+# Ending scenes (services/ending_scene.gd): the finished chapter's row that plays
+# its ending again, and the line under Fog Marsh's rocket.
+const ENDING_WATCH := "Watch the ending"
+const ENDING_NEXT_SPACE := "Next: Space"
 # Replays, and the room list's tag for a hard room.
 const HARD_REPLAYS_HEADING := "Hard runs"
 const HARD_REPLAYS_SUBTITLE := "Slips and finished runs"
