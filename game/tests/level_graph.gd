@@ -30,6 +30,11 @@ extends RefCounted
 ## values through the engine's own BeamField, where reach otherwise counts a
 ## beam signal as always lit.
 ##
+## The new pieces (rules 16, core/physical/pieces_rules.gd): a gate may hold
+## while a lever is off ("not"), so a settable lever a gate reads is tried
+## both ways, and a pad both held and not (as before). A moving platform's
+## stops are joined by ride edges, each needing both stops: a pip on one stop
+## rides to every other. A one way stair's direction comes from Navigation.
 ## A walking pip (reach's `walker`): the other pip works every control, lever
 ## and pad while this one only walks. The walker goes wherever the crossings
 ## open, but works nothing and stands on no pad. The presser cannot hold a pad
@@ -37,12 +42,6 @@ extends RefCounted
 ## a gate counts only the pads within a step of that crossing (where standing
 ## on the pad could already put it on the crossing); for the walker every pad
 ## the presser reaches counts. Beams are lit exactly, as for a frozen pip.
-##
-## The new pieces (rules 16, core/physical/pieces_rules.gd): a gate may hold
-## while a lever is off ("not"), so a settable lever a gate reads is tried
-## both ways, and a pad both held and not (as before). A moving platform's
-## stops are joined by ride edges, each needing both stops: a pip on one stop
-## rides to every other. A one way stair's direction comes from Navigation.
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
@@ -397,6 +396,13 @@ func _pad_placings(stage: Dictionary, pads: Array, floors: Dictionary = {}) -> A
 		for p1: Dictionary in by_slot.p1: result.append({"p0": p0, "p1": p1})
 	return result
 
+## Whether a gate tree holds anywhere only while something is off (rules 16).
+static func _negates(when: Dictionary) -> bool:
+	if when.has("not"): return true
+	for key: String in ["all", "any"]:
+		for child: Variant in when.get(key, []):
+			if child is Dictionary and _negates(child): return true
+	return false
 ## Whether the frozen or walking probe lights beams exactly.
 func _exact_beams() -> bool:
 	return not _frozen.is_empty() or not _walker.is_empty()
@@ -409,14 +415,6 @@ func _pad_beside(pad: Dictionary, route: String) -> bool:
 	var at := Vector2(float(pad.position_cm[0]), float(pad.position_cm[1]))
 	var nearest := Vector2(clampf(at.x, float(r[0]), float(r[2])), clampf(at.y, float(r[1]), float(r[3])))
 	return at.distance_to(nearest) <= float(int(pad.get("radius_cm", 28)) + RADIUS + 2)
-
-## Whether a gate tree holds anywhere only while something is off (rules 16).
-static func _negates(when: Dictionary) -> bool:
-	if when.has("not"): return true
-	for key: String in ["all", "any"]:
-		for child: Variant in when.get(key, []):
-			if child is Dictionary and _negates(child): return true
-	return false
 
 ## Whether `slot` can stand within `entity`'s radius on its surface with
 ## `open` routes: the engine's own walker test at the centre and at points
@@ -452,17 +450,18 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: b
 ## is carried to; a current leg carries it on once the leg's selector can show
 ## the leg's value (`when` and `stop` are not judged: an over-approximation).
 ## A hand up across a both-hands crossing needs both pips, one at each end.
-## The frozen pip (the solo probe) and the walker (the both-pips probe) handle
-## nothing, but an item one starts holding stays carried on its start floor;
-## it is never handed anything. So the presser makes every pipsport move, as
-## the design solver's strict one pip test asks.
+## Picking up, putting down and handing over are work, like a press: the
+## walking pip (the strict one-pip probe) does none of them. An item it starts
+## holding goes wherever it walks off both-hands crossings, and stays on its back.
+## The frozen pip (the solo probe) handles nothing, but an item it starts
+## holding stays carried on its floor; it is never handed anything (it could
+## take one only where it stands, which the probe leaves out).
 func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary, open: Dictionary, settable: Dictionary) -> void:
 	if stage.get("items", []).is_empty(): return
 	var mechanisms: Dictionary = checkpoint.get("mechanisms", {})
 	var players: Dictionary = checkpoint.get("players", {})
 	var actors: Dictionary = floors.duplicate()
 	if not _frozen.is_empty(): actors[_frozen.slot] = {}
-	# The walker only walks: every pick up, put down and hand over is the presser's.
 	if not _walker.is_empty(): actors[_walker] = {}
 	var hands := CarriedItems.hands_routes(stage)
 	var walk: Dictionary = open.duplicate()
@@ -475,7 +474,15 @@ func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary,
 		var lying: Dictionary = {}
 		var spots: Dictionary = {}
 		if not str(state.get("holder", "")).is_empty():
-			carried[str(players.get(str(state.holder), {}).get("surface_id", ""))] = true
+			var at := str(players.get(str(state.holder), {}).get("surface_id", ""))
+			carried[at] = true
+			# The walker keeps what it holds: carried where it walks, never put down or handed on.
+			if str(state.holder) == _walker:
+				for reached: String in _walkable_from(_walker, at, walk, settable): carried[reached] = true
+				var kept := carried.keys().filter(func(floor: String) -> bool: return not floor.is_empty())
+				kept.sort()
+				settable["item:" + id] = {"carried": kept, "spots": []}
+				continue
 		elif not str(state.get("spot", "")).is_empty(): spots[str(state.spot)] = true
 		if not str(state.get("surface_id", "")).is_empty(): lying[str(state.surface_id)] = true
 		var carry := CarriedItems.carriable(item)

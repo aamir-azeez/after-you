@@ -381,7 +381,7 @@ func _build_bridge(definition: Dictionary) -> void:
 ## where a missing crossing goes (they are _weights). A world that shows it
 ## some other way says no.
 func _hangs_pulley(definition: Dictionary) -> bool:
-	# A new piece's deck (a rope, a dam, stones, a platform) is its own cause.
+	# A new piece's deck (a rope, stones, the path behind the falls, a platform) is its own cause.
 	return new_pieces == null or not new_pieces.lays(definition)
 
 ## A new piece lays its own deck (kit/new_pieces.gd); every other crossing

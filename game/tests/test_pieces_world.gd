@@ -8,8 +8,9 @@ extends SceneTree
 ##   and the weight pans in their styles; fog lying only on floors, clear of
 ##   every crossing, stair, control and the goal, cleared round the lantern
 ##   once it is lit;
-## - the falls: the rope bridge, the dam and the stones in their deck styles,
-##   the sack lift as a lift;
+## - the falls: the rope bridge, the stones and the path behind the falls in
+##   their deck styles, the falls' water over the path while it is shut, the
+##   wheel ride turning while its board is held, boards and crank boards;
 ## - every snapshot the engine makes shows: the raft eases to the stop its
 ##   rope opens, the lift to its height.
 const Simulation = preload("res://core/journey/simulation.gd")

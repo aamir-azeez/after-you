@@ -5,8 +5,8 @@ const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const BeamField = preload("res://core/beam_field.gd")
-const CarriedItems = preload("res://core/physical/carried_items.gd")
 const PiecesRules = preload("res://core/physical/pieces_rules.gd")
+const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CURRENT_SIMULATION_VERSION := 7
 const COMFORT_VERSION := 8
 ## Comfort rules under a new number, as in the cooperative ruleset. Only a

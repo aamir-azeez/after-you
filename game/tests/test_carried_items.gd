@@ -453,6 +453,8 @@ func _server_files(one: Dictionary) -> void:
 func _sim(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary = {}, chain: Array = []) -> RefCounted:
 	var sim := Simulation.new()
 	sim.simulation_version = int(definition.simulation_version)
+	# Open turns rooms record packed (core/v2/recording_codec.gd), as the server asks.
+	sim.packed_recordings = true
 	sim._reset_trusted(definition, stage_id, checkpoint, prior, "a" if prior.is_empty() else "b", chain)
 	return sim
 

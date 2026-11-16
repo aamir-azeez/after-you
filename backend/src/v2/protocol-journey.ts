@@ -4,7 +4,7 @@ import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scale
 import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, packedRecordingBytes, recordingBytes, turnSlot } from "./open-turns";
 import { isPacked } from "./recording-codec";
-import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition, type ItemState } from "./protocol-items";
+import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -72,7 +72,7 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
 /** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 16),
  * a selector's value, a lever on, a beam signal lit, a pad held (by either pip on open controls). */
 export function gateHolds(value: Predicate, state: { controls: Record<string, unknown>; levers: Record<string, unknown>; light: Record<string, boolean>;
-  players: Record<string, unknown>; stage: Pick<Stage, "pressure_pads">; open: boolean; items?: Record<string, ItemState> }): boolean {
+  players: Record<string, unknown>; stage: Pick<Stage, "pressure_pads">; open: boolean; items?: Parameters<typeof itemHolds>[1] }): boolean {
   const { controls, levers, light, players, stage, open } = state, holds = (child: Predicate): boolean => gateHolds(child, state);
   if (value.all) return value.all.every(holds);
   if (value.any) return value.any.some(holds);
@@ -81,7 +81,7 @@ export function gateHolds(value: Predicate, state: { controls: Record<string, un
   if (value.lever_id) return levers[value.lever_id] === true;
   if (value.signal_id) return light[value.signal_id] === true;
   if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
-  if (isItemTerm(value)) return state.items ? itemHolds(value, state.items) : false;
+  if (isItemTerm(value)) return itemHolds(value, state.items ?? {});
   return true;
 }
 

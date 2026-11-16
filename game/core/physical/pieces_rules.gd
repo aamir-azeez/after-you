@@ -10,12 +10,13 @@ extends RefCounted
 ##   stands at the stop whose gate holds (where it stood when none or several
 ##   do). When it moves, the live pip standing on the old stop rides to the
 ##   same spot on the new one; a memory left there drowns, as on any shut
-##   crossing. Stops never close slowly. The weight lift, the sack lift and the
-##   rope raft are platforms (core/blocks/stage_blocks.gd).
+##   crossing. Stops never close slowly. The weight lift and the raft on a
+##   rope wheel are platforms (core/blocks/stage_blocks.gd).
 ## - Sinking stones, the stage's "sinking": [bridge ids]: a stone holds one
 ##   pip; the second to step on pushes it under and the turn ends drowned.
-## - Pull-up rope ladders, a stair with "one_way": "up"
-##   (core/cooperative/navigation.gd): a pip may climb it but never go down it.
+## - One way stairs, a stair with "one_way": "up" (the pull-up rope ladder
+##   and the wheel ride; core/cooperative/navigation.gd): a pip may climb one
+##   but never go down it.
 ## The carried pipsport (train/new-pieces-carry) adds to these same rules.
 ## Shared by the engine, the catalogs, the blocks and the level tools; it
 ## preloads only open_turns.gd, so a catalog may preload it.
