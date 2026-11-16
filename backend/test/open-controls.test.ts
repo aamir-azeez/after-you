@@ -94,7 +94,9 @@ async function packed(chain: Chain): Promise<[Rec, Rec, Rec, Rec][]> {
       const body = { ...rest, checkpoint_hash: previous.checkpoint_hash, ...(turns.length ? { source_recording_hash: turns.at(-1)!.recording_hash } : {}), packed: packRecording(actions, replay_checks, turn.duration_ticks) };
       turns.push({ ...body, recording_hash: await digest(canonicalJson(body)) });
     }
-    const checkpoint = await rehash({ ...structuredClone(end), previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash), proof: { checkpoint: previous, turns } });
+    // Open turns checkpoints nest no proof (v2/open-turns.ts fingerprints); the hash never covered it.
+    const { proof: _proof, ...flat } = structuredClone(end) as Rec; void _proof;
+    const checkpoint = await rehash({ ...flat, previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash) });
     stages.push([turns[0], turns[1], turns[2], checkpoint]); previous = checkpoint;
   }
   packedChains.set(chain, stages);

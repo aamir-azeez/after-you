@@ -2,7 +2,7 @@ import { campaignStoragePresent, validateCampaignStorage } from "./campaign-stor
 import type { CampaignDefinitionResolver } from "./campaign-protocol";
 import { canonicalJson, digest, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, isObject } from "../protocol";
 import { SnapshotError } from "../snapshot";
-import { RELAY_KEY, acceptedRecording, chapter, checkpointV2, recordingV2, type CheckpointV2, type RecordingV2 } from "./protocol";
+import { RELAY_KEY, acceptedRecording, chapter, checkpointV2, recordingV2, storedRecordingV2, type CheckpointV2, type RecordingV2 } from "./protocol";
 import { sameChapter } from "./chapters";
 import { LEGACY_ROOM_V2_TABLES, METADATA_SCHEMA, ROOM_V2_TABLES, ROOM_V2_REACTION_TABLES, initializePairReactions, initializePhotoDelivery, ROOM_V2_DELIVERY_TABLES, ROOM_V2_CAMPAIGN_TABLES, ROOM_V2_CAMPAIGN_JOIN_TABLES, ROOM_V2_TRANSFER_TABLES, ROOM_V2_HISTORY_TABLES, initializeReplayTransfer, initializeHistory } from "./storage-schema";
 import { validateCompactedReplay, validateTransfer } from "./replay-transfer";
@@ -24,7 +24,7 @@ import { clearMemberNames, isMemberNamesTable } from "../display-names";
 
 import { MAX_ROW_BYTES } from "./row-bound";
 import { nestedProof } from "./checkpoint-chain";
-import { OPEN_TURN_ID_PATTERN, recordingBytes, turnId, turnNumber, turnSlot } from "./open-turns";
+import { OPEN_TURN_ID_PATTERN, fingerprint, isFingerprint, turnId, turnNumber, turnSlot } from "./open-turns";
 import { plainRow, type RowData } from "./row-codec";
 import { MAX_ATTEMPT_BYTES, ZERO_LINK, attemptLink, blobBytes, blobFromRows } from "./history-blob";
 import { bytesDigest } from "../blob-codec";
@@ -208,8 +208,9 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
       need(state.guest_id !== null && row.player_id === (slot === "p0" ? state.host_id : state.guest_id));
       turns.set(row.turn_id, { recording: { recording_hash: data.recording_hash }, full: null, row }); continue;
     }
+    // Open turns: a stored turn may be its fingerprint (open-turns.ts), whose header is checked as a turn's is.
     let recording: RecordingV2;
-    try { recording = await recordingV2(data, selected.key); } catch { throw new SnapshotError("invalid_snapshot_recording"); }
+    try { recording = open ? await storedRecordingV2(data, selected.key) : await recordingV2(data, selected.key); } catch { throw new SnapshotError("invalid_snapshot_recording"); }
     need(recording.simulation_version === simulationVersion, "snapshot_simulation_mismatch");
     need(recording.stage_id === selected.stages[Number(index)].id && recording.role === role && (!open || recording.player_slot === slot));
     need(row.player_id === (recording.player_slot === "p0" ? state.host_id : state.guest_id) && row.player_id !== null);
@@ -245,7 +246,7 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
     const proof = nestedProof(checkpoint); need(proof, "invalid_snapshot_checkpoint");
     const previous = await nested(proof.previous);
     try {
-      // Every turn of the stage, in play order: a and b, or an open turns stage's first, passes and closing turn.
+      // Every turn of the stage, in play order: a and b.
       const all: RecordingV2[] = [];
       for (const turn of proof.turns) all.push(await recordingV2(turn, chapterKey));
       need(all.every(turn => acceptedRecording(turn)), "invalid_snapshot_checkpoint");
@@ -268,13 +269,23 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
       need(known.stage_index === pair.stage_index + 1); checkpoints.set(hash, known);
       pairs.set(row.pair_id, { a: a.recording, b: b.recording, checkpoint: known, stub: true }); continue;
     }
-    need(a.full && b.full && same(pair.a, a.full) && same(pair.b, b.full));
+    // Open turns: a pair holds its first and closing turns as fingerprints.
+    need(a.full && b.full && same(pair.a, open ? fingerprint(a.full) : a.full) && same(pair.b, open ? fingerprint(b.full) : b.full));
     const known = checkpoints.get(a.full.checkpoint_hash);
     // An open turns closing turn chains over the stage's last pass (stageChain); checkpointV2 binds them all.
     need(known && known.stage_index === pair.stage_index && b.full.checkpoint_hash === known.checkpoint_hash && (open !== undefined || (b.full.source_recording_hash === a.full.recording_hash && b.full.duration_ticks >= a.full.duration_ticks)));
     const passes = chain.slice(1, -1).map(turn => turn.full);
     need(passes.every(turn => turn !== null), "snapshot_live_stub");
     let previous = known.full;
+    if (!previous && open) {
+      // Open turns nest nothing: a checkpoint whose predecessor is only a hash (an offloaded attempt's) is checked by its hashes alone.
+      const flat = exact(pair.checkpoint, ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash"]);
+      const { checkpoint_hash: hash, ...body } = flat;
+      need(flat.stage_index === pair.stage_index + 1 && flat.previous_checkpoint_hash === known.checkpoint_hash && same(flat.turn_hashes, chain.map(turn => turn.recording.recording_hash)) &&
+        text(hash, HASH_PATTERN) && await digest(canonicalJson(body)) === hash, "invalid_snapshot_checkpoint");
+      const entry = { checkpoint_hash: hash, stage_index: pair.stage_index + 1, full: flat as unknown as CheckpointV2 };
+      checkpoints.set(hash, entry); pairs.set(row.pair_id, { a: a.full, b: b.full, checkpoint: entry, stub: false }); continue;
+    }
     if (!previous) {
       need(isObject(pair.checkpoint)); const proof = nestedProof(pair.checkpoint as unknown as CheckpointV2);
       need(proof && proof.previous.checkpoint_hash === known.checkpoint_hash, "invalid_snapshot_checkpoint");
@@ -301,18 +312,18 @@ async function content(copied: Table[], version=5, resolver: CampaignDefinitionR
   const activeId = `t${state.branch}-${state.stage_index}-a`;
   need(state.a_turn_id === (state.stage_index < stages && turns.has(activeId) ? activeId : null));
   if (state.a_turn_id !== null) { const active = turns.get(String(state.a_turn_id)); need(active?.full && active.full.checkpoint_hash === current.checkpoint_hash, "snapshot_live_stub"); }
-  // Open turns: while the stage has its turn 1, open_stage lists every later turn of it in order, and their bytes with turn 1's.
+  // Open turns: while the stage has its turn 1, open_stage lists every later turn of it in order; the latest is held in full.
   const stageIds = new Set<string>();
   if (open) {
     need((state.open_stage === undefined) === (state.a_turn_id === null), "snapshot_open_stage_mismatch");
     if (state.open_stage !== undefined) {
-      const kept = exact(state.open_stage, ["passes", "bytes"]), chain = stageChain(state.branch, state.stage_index);
-      need(Array.isArray(kept.passes) && kept.passes.length <= open.caps[Number(state.stage_index)] - 2 && chain.length === kept.passes.length + 1 && integer(kept.bytes, open.stage_bytes), "snapshot_open_stage_mismatch");
+      const kept = exact(state.open_stage, ["passes"]), chain = stageChain(state.branch, state.stage_index);
+      need(Array.isArray(kept.passes) && kept.passes.length <= open.caps[Number(state.stage_index)] - 2 && chain.length === kept.passes.length + 1, "snapshot_open_stage_mismatch");
       kept.passes.forEach((raw, i) => {
         const pass = exact(raw, ["turn_id", "recording_hash"]), turn = chain[i + 1];
         need(pass.turn_id === turnId(Number(state.branch), Number(state.stage_index), i + 2) && pass.recording_hash === turn.recording.recording_hash && turn.full && !turn.full.completed, "snapshot_open_stage_mismatch");
       });
-      need(chain.every(turn => turn.full) && kept.bytes === chain.reduce((sum, turn) => sum + recordingBytes(turn.full!), 0), "snapshot_open_stage_mismatch");
+      need(chain.every(turn => turn.full) && !isFingerprint(chain.at(-1)!.full!), "snapshot_open_stage_mismatch");
       for (const turn of chain) stageIds.add(String(turn.row.turn_id));
     }
   }

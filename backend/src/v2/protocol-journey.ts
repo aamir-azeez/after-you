@@ -2,7 +2,7 @@ import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import { openTurns, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
-import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, packedRecordingBytes, recordingBytes, turnSlot } from "./open-turns";
+import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, packedRecordingBytes, turnSlot } from "./open-turns";
 import { isPacked } from "./recording-codec";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
@@ -38,8 +38,8 @@ type Stage = { id: string; version: number; first_player_slot: string; turn_cap?
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
 type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
-/** Open turns (open-turns.ts): every turn of the stage, in order, in place of the a and b hashes. */
-const OPEN_CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash", "proof"];
+/** Open turns (open-turns.ts): every turn of the stage by hash, in order, in place of the a and b hashes; no proof nests in it. */
+const OPEN_CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash"];
 /** Open turns on a definition with no turn_limits: the published comfort recording bounds. */
 const COMFORT_RECORDING: Readonly<ChapterLimits> = { recording_bytes: 65_536, recording_values: 24_000, checkpoint_bytes: MAX_CHECKPOINT_BYTES, checkpoint_values: 24_000, turn_body_bytes: 0, turn_body_values: 0 };
 /** Open turns chapters keep seven branches, so their widest replay archive fits (open-turns.ts openTurnLimits). */
@@ -60,7 +60,8 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
     "second-light": controls["final-mirror"] === "slash" };
 }
 
-function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
+/** Builds a journey chapter from its definition (every chapter below; test/open-turns-long.test.ts builds a five stage open turns chapter with it). */
+export function journeyAdapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
@@ -74,14 +75,13 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // Longer turns, when the definition declares them, carry bounds grown to fit.
   const turns = turnLimits(definition);
   let limits = turns ? scaledLimits(turns) : undefined;
-  // Open turns: every turn packed and as long as the second turn limit; a stage's turns stay under its budget, and the
-  // checkpoint and turn body bounds grow to hold every stage of them.
+  // Open turns: every turn packed and as long as the second turn limit; the checkpoint is flat, so no bound grows with the stages.
   const openLimits = open ? openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches!) : undefined;
-  if (openLimits) { limits = { ...(limits ?? COMFORT_RECORDING), ...openBodyLimits(openLimits, definition.stages.length) }; maxBranches = openLimits.branches; }
+  if (openLimits) { limits = { ...(limits ?? COMFORT_RECORDING), ...openBodyLimits(openLimits) }; maxBranches = openLimits.branches; }
   if (limits) checkTurnBounds(limits, maxBranches);
   const parsed = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
-  // Open turns take packed turns only (open-turns.ts), before any other check.
-  const recording = open ? (value: unknown) => { need(value !== null && typeof value === "object" && isPacked(value), "packed_recording_required"); return parsed(value); } : parsed;
+  // Open turns take packed turns only (open-turns.ts), before any other check; a stored row may be a turn's fingerprint.
+  const recording = open ? (value: unknown, stored = false) => { if (!stored) need(value !== null && typeof value === "object" && isPacked(value), "packed_recording_required"); return parsed(value, stored); } : parsed;
   const isAccepted = open ? (r: ChapterRecording) => openAccepted(r, accepted) : accepted;
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
@@ -90,24 +90,23 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
     need(c.schema_version === (open ? OPEN_CHECKPOINT_SCHEMA : 7) && c.stage_index === index && stage && index <= definition.stages.length && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
     // The first turn, any passes in order, then the closing turn: each over the one before it, from this stage's start.
+    // Open turns: the turns before the closing one are the room's stored rows, usually fingerprints; every check below reads header fields only.
     const all = [a, ...passes, b];
     need(supported.includes(a.simulation_version) && all.every(turn => turn.simulation_version === a.simulation_version) && a.role === "a" && all.slice(1).every(turn => turn.role === "b") &&
       all.every((turn, i) => isAccepted(turn) && (i === 0 || turn.completed === (i === all.length - 1))) && (open || passes.length === 0), "checkpoint_recording_mismatch");
-    if (previous.stage_index > 0) {
+    // Open turns nest no earlier stage: the room checks every turn's rules version against its own.
+    if (previous.stage_index > 0 && !open) {
       const prior = object(object(previous).proof);
-      need(object(open ? (prior.turns as unknown[] | undefined)?.[0] : prior.a).simulation_version === a.simulation_version, "checkpoint_recording_mismatch");
+      need(object(prior.a).simulation_version === a.simulation_version, "checkpoint_recording_mismatch");
     }
     need(c.previous_checkpoint_hash === previous.checkpoint_hash && all.every((turn, i) => turn.checkpoint_hash === previous.checkpoint_hash && turn.stage_id === stage.id &&
       (i === 0 || turn.source_recording_hash === all[i - 1].recording_hash)), "checkpoint_source_mismatch");
-    const proof = object(c.proof);
     if (openLimits) {
-      // Open turns: the next pip each turn, never shorter than its memory, within the stage's cap and budget.
-      need(all.length <= openLimits.caps[index - 1] && all.every((turn, i) => turn.player_slot === turnSlot(stage.first_player_slot, i + 1) && (i === 0 || turn.duration_ticks >= all[i - 1].duration_ticks)) &&
-        all.reduce((sum, turn) => sum + recordingBytes(turn), 0) <= openLimits.stage_bytes, "checkpoint_recording_mismatch");
+      // Open turns: the next pip each turn, never shorter than its memory, within the stage's cap; the turns by hash, no proof.
+      need(all.length <= openLimits.caps[index - 1] && all.every((turn, i) => turn.player_slot === turnSlot(stage.first_player_slot, i + 1) && (i === 0 || turn.duration_ticks >= all[i - 1].duration_ticks)), "checkpoint_recording_mismatch");
       need(canonicalJson(c.turn_hashes) === canonicalJson(all.map(turn => turn.recording_hash)), "checkpoint_source_mismatch");
-      exact(proof, ["checkpoint", "turns"]);
-      need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.turns) === canonicalJson(all), "checkpoint_proof_mismatch");
     } else {
+      const proof = object(c.proof);
       need(c.a_recording_hash === a.recording_hash && c.b_recording_hash === b.recording_hash, "checkpoint_source_mismatch");
       exact(proof, ["checkpoint", "a", "b"]);
       need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.a) === canonicalJson(a) && canonicalJson(proof.b) === canonicalJson(b), "checkpoint_proof_mismatch");
@@ -181,22 +180,22 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted: isAccepted, ...(limits ? { limits } : {}), ...(maxBranches === undefined ? {} : { max_branches: maxBranches }),
     ...(openLimits ? { open_turns: openLimits } : {}) };
 }
-export const conservatory = adapter(conservatoryDefinition, conservatoryInitial, CONSERVATORY_HASH);
-export const longWayHome = adapter(homeDefinition, homeInitial, LONG_WAY_HOME_HASH);
+export const conservatory = journeyAdapter(conservatoryDefinition, conservatoryInitial, CONSERVATORY_HASH);
+export const longWayHome = journeyAdapter(homeDefinition, homeInitial, LONG_WAY_HOME_HASH);
 /** The harder finale. Pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
-export const longWayHomeV2 = adapter(homeV2Definition, homeV2Initial, LONG_WAY_HOME_V2_HASH);
+export const longWayHomeV2 = journeyAdapter(homeV2Definition, homeV2Initial, LONG_WAY_HOME_V2_HASH);
 /** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join.
  * Seven branches keep its widest replay archive and room snapshot under their caps. */
-export const turnOfTheTide: ChapterAdapter = adapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH, 7);
+export const turnOfTheTide: ChapterAdapter = journeyAdapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH, 7);
 /** Free; pinned to tide rules (10) by its definition, so guests whose client never offered 10 are refused on join.
  * No route latches: a stub a player ends on must be open on the end state.
  * Seven branches, as @1, keep its widest replay archive and room snapshot under their caps. */
-export const turnOfTheTideV2: ChapterAdapter = adapter(tideV2Definition, tideV2Initial, TURN_OF_THE_TIDE_V2_HASH, 7);
+export const turnOfTheTideV2: ChapterAdapter = journeyAdapter(tideV2Definition, tideV2Initial, TURN_OF_THE_TIDE_V2_HASH, 7);
 /** Open controls (12): Long Way Home@2 with every pad, lever and selector worked by either player. Unreleased. */
-export const longWayHomeV3 = adapter(homeV3Definition, homeV3Initial, LONG_WAY_HOME_V3_HASH);
+export const longWayHomeV3 = journeyAdapter(homeV3Definition, homeV3Initial, LONG_WAY_HOME_V3_HASH);
 /** Open controls on the tide rules (13): Turn of the Tide@2 with every control worked by either player.
  * Seven branches, as @1 and @2. Unreleased. */
-export const turnOfTheTideV3: ChapterAdapter = adapter(tideV3Definition, tideV3Initial, TURN_OF_THE_TIDE_V3_HASH, 7);
+export const turnOfTheTideV3: ChapterAdapter = journeyAdapter(tideV3Definition, tideV3Initial, TURN_OF_THE_TIDE_V3_HASH, 7);
 /** Open controls (12): Conservatory@1 with the court's two forks on a balcony only the first player reaches,
  * and the first turn ending at the court-wait spot on the court. Unreleased. */
-export const conservatoryV2 = adapter(conservatoryV2Definition, conservatoryV2Initial, CONSERVATORY_V2_HASH);
+export const conservatoryV2 = journeyAdapter(conservatoryV2Definition, conservatoryV2Initial, CONSERVATORY_V2_HASH);

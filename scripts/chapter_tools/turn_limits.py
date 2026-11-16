@@ -8,11 +8,12 @@ limit) and the server,
 which grows a chapter's stored bounds with its turns and refuses to load a
 chapter whose widest pair outgrows a room row (backend/src/v2/
 protocol-physical-recording.ts scaledLimits and checkTurnBounds) or, on open
-turns, whose stages' turns cannot keep even one branch (backend/src/v2/
-open-turns.ts openTurnLimits, which depends on the number of stages and sizes
-every open turn by the widest packed recording, packedRecordingBytes). Both are
-read from their sources here, and a change to the server's formula stops these
-scripts until this file follows it.
+turns, whose widest turn outgrows a row, the Worker's body or the rows a room
+holds (backend/src/v2/open-turns.ts openTurnLimits, which sizes every open turn
+by the widest packed recording, packedRecordingBytes; earlier turns are kept as
+fingerprints, so the number of stages no longer matters). Both are read from
+their sources here, and a change to the server's formula stops these scripts
+until this file follows it.
 
 Turn times are generous, for exploring, not racing: a suggestion doubles the
 longest played turn, rounds up to whole 5 seconds and never goes under a
@@ -73,9 +74,12 @@ class Rules:
         # Open turns: open-turns.ts openTurnLimits and openBodyLimits, with protocol-journey.ts OPEN_TURNS_BRANCHES.
         open_turns = v2 / "open-turns.ts"
         self.open_envelope_bytes = _constant(open_turns, r"^const ENVELOPE_BYTES = ([\d_]+);$", "ENVELOPE_BYTES")
-        self.stage_overhead_bytes = _constant(open_turns, r"^const STAGE_OVERHEAD_BYTES = ([\d_]+);$", "STAGE_OVERHEAD_BYTES")
-        self.pass_floor_bytes = _constant(open_turns, r"^const PASS_FLOOR_BYTES = ([\d_]+);$", "PASS_FLOOR_BYTES")
+        self.open_checkpoint_bytes = _constant(open_turns, r"^const CHECKPOINT_BYTES = ([\d_]+);$", "CHECKPOINT_BYTES")
         self.worker_body_bytes = _constant(open_turns, r"^const MAX_WORKER_BODY_BYTES = ([\d_]+);$", "MAX_WORKER_BODY_BYTES")
+        found = re.search(r"^export const MAX_ROOM_TURNS = (\d+), MAX_ROOM_PAIRS = (\d+);$", (v2 / "row-bound.ts").read_text(encoding="utf-8"), re.M)
+        if not found:
+            raise ToolError(f"{(v2 / 'row-bound.ts').as_posix()} no longer declares MAX_ROOM_TURNS and MAX_ROOM_PAIRS; update scripts/chapter_tools/turn_limits.py")
+        self.room_turns, self.room_pairs = (int(group) for group in found.groups())
         self.archive_bytes = _constant(v2 / "row-bound.ts", r"^export const MAX_REPLAY_ARCHIVE_BYTES = ([\d_ *]+);$", "MAX_REPLAY_ARCHIVE_BYTES")
         self.open_branches = _constant(v2 / "protocol-journey.ts", r"^const OPEN_TURNS_BRANCHES = (\d+);$", "OPEN_TURNS_BRANCHES")
         # Open turns are always packed: open-turns.ts packedRecordingBytes, with recording-codec.ts's checks.
@@ -90,10 +94,9 @@ class Rules:
             raise ToolError(f"{(v2 / 'protocol-journey.ts').as_posix()} changed how it sizes open turns; update scripts/chapter_tools/turn_limits.py")
         source = open_turns.read_text(encoding="utf-8")
         # The formula mirrored by open_fits(); any change to it must change this file too.
-        for expected in ("const row = Math.min(Math.floor((MAX_ROW_BYTES - ENVELOPE_BYTES - 2 * recordingBytes) / n), Math.floor((MAX_WORKER_BODY_BYTES - ENVELOPE_BYTES - recordingBytes) / n)) - STAGE_OVERHEAD_BYTES;",
-                         "const archive = (branches: number) => Math.floor((MAX_REPLAY_ARCHIVE_BYTES / branches - n * (2 * recordingBytes + ENVELOPE_BYTES) - pairs * STAGE_OVERHEAD_BYTES) / (n + pairs));",
-                         "if (stageBytes >= 2 * recordingBytes + PASS_FLOOR_BYTES) return",
-                         "const checkpointBytes = stages * (open.stage_bytes + STAGE_OVERHEAD_BYTES);",
+        for expected in ("if (recordingBytes + ENVELOPE_BYTES > MAX_ROW_BYTES || recordingBytes + CHECKPOINT_BYTES + ENVELOPE_BYTES > MAX_WORKER_BODY_BYTES) throw",
+                         "const held = MAX_ROOM_TURNS * (PACKED_HEADER_BYTES + ENVELOPE_BYTES) + MAX_ROOM_PAIRS * (2 * PACKED_HEADER_BYTES + CHECKPOINT_BYTES + ENVELOPE_BYTES);",
+                         "if (held + branches * 2 * recordingBytes <= MAX_REPLAY_ARCHIVE_BYTES) return",
                          "let raw = 1 + Math.max(1, Math.ceil(Math.log2(ticks + 1) / 7)) + 3 * ticks;",
                          "for (const tick of checkTicks(ticks)) raw += checkBytes(tick, ticks);",
                          "return PACKED_HEADER_BYTES + 4 * Math.ceil(raw / 3);"):
@@ -119,20 +122,16 @@ class Rules:
         return self.packed_header_bytes + 4 * math.ceil(raw / 3)
 
     def open_fits(self, a: int, b: int, stages: int) -> bool:
-        """Whether an open turns chapter of `stages` stages with turn_limits {a, b} loads: some branch count from
-        OPEN_TURNS_BRANCHES down leaves each stage its widest first and closing turns and the passes floor, and the
-        closing pair row (every stage at its budget) fits."""
+        """Whether an open turns chapter with turn_limits {a, b} loads (any number of `stages`: earlier turns are kept as
+        fingerprints, so nothing nests): its widest turn fits a row and, with a flat checkpoint, the Worker's body, and
+        some branch count from OPEN_TURNS_BRANCHES down keeps every row a room may hold inside the archive."""
         # Every open turn has the second turn's limit (b), recorded packed.
         recording = self.packed_bytes(max(a, b))
-        pairs = stages * (stages + 1) // 2
-        row = min((self.row_bytes - self.open_envelope_bytes - 2 * recording) // stages,
-                  (self.worker_body_bytes - self.open_envelope_bytes - recording) // stages) - self.stage_overhead_bytes
-        for branches in range(self.open_branches, 0, -1):
-            archive = math.floor((self.archive_bytes / branches - stages * (2 * recording + self.open_envelope_bytes) - pairs * self.stage_overhead_bytes) / (stages + pairs))
-            stage_bytes = min(row, archive)
-            if stage_bytes >= 2 * recording + self.pass_floor_bytes:
-                return stages * (stage_bytes + self.stage_overhead_bytes) + 2 * recording + self.envelope_bytes <= self.row_bytes
-        return False
+        if recording + self.open_envelope_bytes > self.row_bytes or recording + self.open_checkpoint_bytes + self.open_envelope_bytes > self.worker_body_bytes:
+            return False
+        held = (self.room_turns * (self.packed_header_bytes + self.open_envelope_bytes)
+                + self.room_pairs * (2 * self.packed_header_bytes + self.open_checkpoint_bytes + self.open_envelope_bytes))
+        return any(held + branches * 2 * recording <= self.archive_bytes for branches in range(self.open_branches, 0, -1))
 
     def cap_open(self, stages: int) -> int:
         """The longest whole-second turn, one for every turn, an open turns chapter of `stages` stages may have (0: none fits)."""

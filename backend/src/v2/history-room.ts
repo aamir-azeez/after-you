@@ -11,7 +11,7 @@ import type { RecordingV2 } from "./protocol";
 import { historyPresent, initializeHistory } from "./storage-schema";
 import { duelLink, duelMasks } from "../duels/room-link";
 import { anyDeparture } from "../room-departure";
-import { parseRow, storedRoom, storedRow, type RowData } from "./row-codec";
+import { parseRow, storedRoom, storedRow, storedTurn, type RowData } from "./row-codec";
 
 /** A live room, or a finished one whose replays left the server. */
 export type HistoryRoom = RoomStateV2 | TransferredRoom;
@@ -107,7 +107,7 @@ function rebuildFrom(storage: DurableObjectStorage, pairs: Map<string, PairV2>, 
   for (const [id, recording] of turns) {
     const row = storage.sql.exec<{ data: RowData }>("SELECT data FROM turns WHERE turn_id=?", id).toArray()[0];
     need(row && parseRow<RecordingV2>(row.data).recording_hash === recording.recording_hash, 409, "history_rows_inconsistent");
-    if (isStub(row.data)) storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", storedRow(recording, compress), id);
+    if (isStub(row.data)) storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", storedTurn(recording, compress), id);
   }
   for (const [id, pair] of pairs) {
     const row = storage.sql.exec<{ data: RowData }>("SELECT data FROM pairs WHERE pair_id=?", id).toArray()[0];
@@ -116,8 +116,13 @@ function rebuildFrom(storage: DurableObjectStorage, pairs: Map<string, PairV2>, 
   }
 }
 
-/** Rows the restored lineage reads come out of its final checkpoint, which nests every stage once. */
+/**
+ * Rows the restored lineage reads come out of its final checkpoint, which nests every stage once. Open turns nest
+ * nothing: their lineage rows on other branches were never stubbed (liveReferences), and the attempt's own come back
+ * from its blob.
+ */
 function rebuildLineage(storage: DurableObjectStorage, room: RoomStateV2, compress: boolean): void {
+  if (chapter(room).open_turns) return;
   for (const [stage, id] of room.completed_pair_ids.entries()) {
     const checkpoint = checkpointAt(room.checkpoint, stage + 1), proof = nestedProof(checkpoint), branch = Number(id.slice(1).split("-")[0]);
     need(proof, 409, "history_rows_inconsistent");
@@ -188,8 +193,10 @@ function offloadAttempt(storage: DurableObjectStorage, room: HistoryRoom, record
 /** Rows the live lineage still reads: its completed pairs with their turns (every letter an open turns stage may use), and the open stage's turns. */
 export function liveReferences(room: HistoryRoom): Set<string> {
   const ids = new Set<string>();
-  if (archived(room)) return ids;
+  // An open turns room whose last attempt left keeps its lineage's rows: its checkpoint nests no earlier stage to rebuild them from (rebuildLineage).
+  if (archived(room) && !(room.replay_transfer_version === 2 && chapter(room).open_turns)) return ids;
   for (const id of room.completed_pair_ids) { const [branch, stage] = id.slice(1).split("-"); ids.add(id); for (const turn of stageTurnIds(Number(branch), Number(stage))) ids.add(turn); }
+  if (archived(room)) return ids;
   if (room.a_turn_id) ids.add(room.a_turn_id);
   for (const pass of room.open_stage?.passes ?? []) ids.add(pass.turn_id);
   return ids;
