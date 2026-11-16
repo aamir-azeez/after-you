@@ -488,8 +488,8 @@ func _screen(size: Vector2i, insets: Vector4, name: String) -> void:
 		won.win_bonus = {"amount": 0, "counted": false, "reason": "same_pair", "goal_reason": "same_pair"}
 		lobby.open_overlay(won)
 		await _settle()
-		var line := won.root.find_child("DuelGoalLine", true, false) as Label
-		_check((line != null and line.text == PlayerCopy.PUBLIC_WIN_NOT_COUNTED) if fruits else line == null, "%s: the goals line shows only while Fruits show (%s)" % [name, fruits])
+		var line := won.root.find_child("DuelResultLine", true, false) as Label
+		_check(line != null and line.text.ends_with(PlayerCopy.PUBLIC_WIN_NOT_COUNTED) == fruits, "%s: the goals line shows only while Fruits show (%s)" % [name, fruits])
 		won.close()
 		await _settle()
 	lobby.close()
