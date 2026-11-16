@@ -15,6 +15,17 @@ const OWNED := []
 ## Turns a stage may take: the first stage teaches the path, ten; the ending's
 ## two windows and the porch take more arguing, twenty.
 const CAPS := {"the-path-you-leave": 10, "a-place-beside-you": 20}
+## Both pips work a control on every stage (the owner, 2026-11-16; the
+## checker's "presses alone" probe, tests/test_level_checker.gd). The Path
+## You Leave: the friend's crossing has a gate at the bank end too, worked by
+## a lever on the bank, so the first pip turns the path selector on the
+## landing and the second opens its own gate. A Place Beside You: the window
+## lights only with the porch shutter down as well as the lamp and the gate
+## matching, and the porch is reached only while someone stands at the near
+## window inside, so one pip holds the window while the other lowers the
+## shutter.
+const BANK_GATE := {"id": "bank-gate", "position_cm": [-320, 336], "radius_cm": 28, "surface_id": "partner-bank", "height_cm": 0}
+const MATCHED := {"any": [{"all": [{"control_id": "hall-lamp", "value": "rose"}, {"control_id": "walk-gate", "value": "rose"}]}, {"all": [{"control_id": "hall-lamp", "value": "moss"}, {"control_id": "walk-gate", "value": "moss"}]}]}
 
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition_v2().duplicate(true)
@@ -24,4 +35,9 @@ static func definition() -> Dictionary:
 	for field: String in WORDS:
 		level.erase(field)
 		for stage: Dictionary in level.stages: stage.erase(field)
+	var path: Dictionary = level.stages[0]
+	path.levers.append(BANK_GATE.duplicate(true))
+	for gate: Dictionary in path.gates:
+		if gate.route_id == "friend-crossing": gate.when.all.append({"lever_id": BANK_GATE.id})
+	level.stages[1].goal_policy.when = {"all": [{"control_id": "porch-shutter", "value": "down"}, MATCHED.duplicate(true)]}
 	return level

@@ -72,6 +72,7 @@
 				-464,
 				24
 			],
+			"requires_lever": "hatch-bolt",
 			"surface_id": "fork-balcony"
 		}
 	],
@@ -347,7 +348,18 @@
 			},
 			"id": "a-light-above",
 			"kind": "signal_route",
-			"levers": [],
+			"levers": [
+				{
+					"height_cm": 0,
+					"id": "hatch-bolt",
+					"position_cm": [
+						-584,
+						-48
+					],
+					"radius_cm": 28,
+					"surface_id": "court"
+				}
+			],
 			"optical_field": {
 				"blockers": [],
 				"bounds_cm": [
@@ -497,15 +509,15 @@
 			],
 			"source_policy": {
 				"endpoint": {
-					"height_cm": 0,
-					"id": "court-wait",
+					"height_cm": 160,
+					"id": "hatch-wait",
 					"owner_slot": "p0",
 					"position_cm": [
-						-336,
-						-352
+						-432,
+						-64
 					],
 					"radius_cm": 40,
-					"surface_id": "court"
+					"surface_id": "fork-balcony"
 				},
 				"kind": "signal_route",
 				"when": {
@@ -581,13 +593,13 @@
 				{
 					"route_id": "court-return",
 					"when": {
-						"lever_id": "return-shutter"
+						"pad_id": "return-shutter"
 					}
 				},
 				{
 					"route_id": "room-return",
 					"when": {
-						"lever_id": "return-shutter"
+						"pad_id": "return-shutter"
 					}
 				}
 			],
@@ -617,18 +629,7 @@
 			},
 			"id": "the-way-light-returns",
 			"kind": "signal_route",
-			"levers": [
-				{
-					"height_cm": 0,
-					"id": "return-shutter",
-					"position_cm": [
-						352,
-						64
-					],
-					"radius_cm": 28,
-					"surface_id": "lower-room"
-				}
-			],
+			"levers": [],
 			"optical_field": {
 				"blockers": [],
 				"bounds_cm": [
@@ -722,7 +723,18 @@
 				],
 				"schema_version": 1
 			},
-			"pressure_pads": [],
+			"pressure_pads": [
+				{
+					"height_cm": 0,
+					"id": "return-shutter",
+					"position_cm": [
+						400,
+						224
+					],
+					"radius_cm": 28,
+					"surface_id": "lower-room"
+				}
+			],
 			"receiver_action_ticks": 3,
 			"receiver_route_cm": [
 				[

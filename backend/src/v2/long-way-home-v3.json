@@ -294,6 +294,9 @@
 							{
 								"control_id": "return-selector",
 								"value": "bank"
+							},
+							{
+								"lever_id": "bank-gate"
 							}
 						]
 					}
@@ -334,7 +337,18 @@
 			},
 			"id": "the-path-you-leave",
 			"kind": "route_endpoint",
-			"levers": [],
+			"levers": [
+				{
+					"height_cm": 0,
+					"id": "bank-gate",
+					"position_cm": [
+						-320,
+						336
+					],
+					"radius_cm": 28,
+					"surface_id": "partner-bank"
+				}
+			],
 			"pressure_pads": [],
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
@@ -533,17 +547,10 @@
 			"goal_policy": {
 				"kind": "ring",
 				"when": {
-					"any": [
+					"all": [
 						{
-							"all": [
-								{
-									"pad_id": "near-window"
-								},
-								{
-									"control_id": "porch-shutter",
-									"value": "up"
-								}
-							]
+							"control_id": "porch-shutter",
+							"value": "down"
 						},
 						{
 							"any": [
