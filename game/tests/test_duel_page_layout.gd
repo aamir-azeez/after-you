@@ -73,10 +73,11 @@ func _run() -> void:
 
 ## A running duel as the server sends it, with this phone's side as `own` says.
 static func _duel(kind: String, own: Dictionary) -> Dictionary:
-	var side := {"members": [ME, MAYA], "you": true, "steps": 6, "ticks": 1620, "turn": 0, "finished": false, "left": false, "check": "none", "room_id": "RRRRRRRRRRRRRRRRRRRRRR", "invite_code": "abcdefabcdefabcdefab", "hosting": true}
+	var side := {"members": [ME, MAYA], "you": true, "steps": 6, "ticks": 1620, "turn": 0, "finished": false, "left": false, "check": "none", "room_id": "RRRRRRRRRRRRRRRRRRRRRR", "invite_code": "abcdefabcdefabcdefab", "hosting": true,
+		"give_up": {"mode": "ask", "asked": null, "asked_at": null}}
 	side.merge(own, true)
 	var wire := {"schema_version": 1, "duel_id": "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0", "kind": kind, "board": BOARD, "status": "running", "steps": 12,
-		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "result": null, "eligible": true,
+		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "result": null, "eligible": true, "ends_in_ms": 29 * 86_400_000,
 		"sides": [side, {"members": [FINN, null], "you": false, "steps": 4, "ticks": 1380, "turn": 1, "finished": false, "left": false, "check": "none"}]}
 	if kind == "ghost":
 		wire.sides[1] = null
@@ -89,7 +90,9 @@ func _test_screen(size: Vector2i, insets: Vector4, name: String) -> void:
 	SafeArea.poll(self)
 	await _settle()
 	var safe := SafeArea.rect(root)
-	var states := {"your turn": {}, "waiting": {"turn": 1}, "finished": {"finished": true, "steps": 12, "turn": null}, "left": {"left": true}}
+	# Give up's cards too (board forfeit-finished A5, A6): your ask waiting, and your friend's question, the tallest card.
+	var states := {"your turn": {}, "waiting": {"turn": 1}, "finished": {"finished": true, "steps": 12, "turn": null}, "left": {"left": true},
+		"you asked": {"give_up": {"mode": "ask", "asked": 0, "asked_at": 5}}, "asked you": {"turn": 1, "give_up": {"mode": "ask", "asked": 1, "asked_at": 5}}}
 	# Short names, and a partner with the longest name the game shows (services/display_names.gd MAX_LENGTH).
 	for partner: String in ["Maya", "Alexandra Marigold"]:
 		var lobby := DuelsScreen.new()
@@ -133,8 +136,12 @@ func _check_page(page: CanvasLayer, safe: Rect2, context: String) -> void:
 	if not scrolls: _check(view.grow(0.5).encloses(card.get_global_rect()), "%s: a page that fits shows the whole turn card above the bottom spacing" % context)
 	# With short names every phone and tablet fits without scrolling; a long name may scroll.
 	if not context.ends_with("Marigold"): _check(not scrolls, "%s: the page fits without scrolling (%.0f of %.0f)" % [context, scroll.get_v_scroll_bar().max_value, scroll.size.y])
-	var leave := page.root.find_child("DuelLeave", true, false) as Control
-	var lowest: Control = leave if leave != null else card
+	# The lowest control on the card: Give up, your ask's box, or Keep playing on your friend's question.
+	var lowest: Control = card
+	for last: String in ["DuelGiveUp", "DuelGiveUpAsked", "DuelGiveUpKeep"]:
+		var found := page.root.find_child(last, true, false) as Control
+		if found != null: lowest = found
+	if context.contains(" your turn,") or context.contains(" waiting,"): _check(lowest.name == "DuelGiveUp", "%s: a running duel offers Give up" % context)
 	scroll.ensure_control_visible(lowest)
 	await _settle()
 	_check(view.grow(0.5).encloses(lowest.get_global_rect()), "%s: scrolled to, %s shows whole above the bottom spacing" % [context, lowest.name])
@@ -194,9 +201,9 @@ func _check_inside(node: Node, safe: Rect2, context: String) -> void:
 static func _duel_wire(kind: String, id: String, status: String = "running") -> Dictionary:
 	var decided := status == "decided"
 	var wire := {"schema_version": 1, "duel_id": id.repeat(16), "kind": kind, "board": BOARD, "status": status, "steps": 12,
-		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "eligible": true,
+		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "eligible": true, "ends_in_ms": null if decided else 29 * 86_400_000,
 		"result": {"outcome": "won", "reason": "faster", "margin_ticks": 720, "decided_ms": 9} if decided else null,
-		"sides": [{"members": [ME, MAYA], "you": true, "steps": 12 if decided else 6, "ticks": 3240, "turn": null if decided else 0, "finished": decided, "left": false, "check": "passed" if decided else "none", "room_id": "RRRRRRRRRRRRRRRRRRRRRR", "invite_code": "abcdefabcdefabcdefab", "hosting": true},
+		"sides": [{"members": [ME, MAYA], "you": true, "steps": 12 if decided else 6, "ticks": 3240, "turn": null if decided else 0, "finished": decided, "left": false, "check": "passed" if decided else "none", "room_id": "RRRRRRRRRRRRRRRRRRRRRR", "invite_code": "abcdefabcdefabcdefab", "hosting": true}.merged({} if decided else {"give_up": {"mode": "ask", "asked": null, "asked_at": null}}),
 			{"members": [FINN, null], "you": false, "steps": 12 if decided else 4, "ticks": 3960, "turn": null if decided else 1, "finished": decided, "left": false, "check": "passed" if decided else "none"}]}
 	if kind == "ghost":
 		wire.sides[1] = null

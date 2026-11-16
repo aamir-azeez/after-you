@@ -16,6 +16,9 @@ const LeaderboardRows = preload("res://presentation/leaderboard_rows.gd")
 const Breakdown = preload("res://presentation/pollen_breakdown.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const TICK_RATE := Runs.TICK_RATE
+const HOUR_MS := 3_600_000
+const DAY_MS := 24 * HOUR_MS
+const WEEK_MS := 7 * DAY_MS
 ## Whether a stranger's pip wears the look the server sent (the leaderboard rows do);
 ## false draws every stranger plain. The one place that decides it (stranger_look).
 const STRANGER_LOOKS := true
@@ -53,12 +56,12 @@ static func _name(id: Variant, _own_side: bool, name_of: Callable) -> String:
 	if id == null or not name_of.is_valid(): return ""
 	return str(name_of.call(id))
 
-## Whose turn a side shows: "Your turn", "Maya's turn", "Waiting for Noor", "Finished", "Left", or "".
+## Whose turn a side shows: "Your turn", "Maya's turn", "Waiting for Noor", "Finished", "Gave up", or "".
 ## A public duel's side with open seats says "Nobody yet" or "Waiting for a partner" instead.
 static func turn_line(view: Dictionary, index: int, name_of: Callable) -> String:
 	if index == 1 and view.kind == "ghost": return PlayerCopy.DUEL_RECORDED
 	var side: Dictionary = view.sides[index]
-	if side.left: return PlayerCopy.DUEL_LEFT
+	if side.left: return PlayerCopy.DUEL_GAVE_UP
 	if side.finished: return PlayerCopy.DUEL_FINISHED
 	if view.status != "running": return ""
 	if is_public(view):
@@ -215,9 +218,79 @@ static func action(view: Dictionary, me: String) -> String:
 		"running": return "play" if your_turn(view, me) else "open"
 		_: return "result"
 
-## Where a duel belongs on the lobby: "challenge" (waiting for an answer), "duel" (running or over).
+## Where a duel belongs on the lobby: "challenge" (Open duels, waiting for an answer), "going" (the
+## Going tab's tiles), "finished" (the Finished tab's result tiles: won, lost, a draw or no result) or
+## "not_played" (the Finished tab's challenges that never started: said not now, no answer in a week,
+## taken back, a pair split up).
 static func section(view: Dictionary) -> String:
-	return "challenge" if view.status == "challenged" else "duel"
+	match view.status:
+		"challenged": return "challenge"
+		"running": return "going"
+		"decided", "unfinished": return "finished"
+	return "not_played"
+
+## Why a challenge never started, under its card on the Finished tab.
+static func not_played_line(view: Dictionary) -> String:
+	match view.status:
+		"declined": return PlayerCopy.DUELS_NOT_PLAYED_YOU_SAID if int(view.mine) == 1 else PlayerCopy.DUELS_NOT_PLAYED_SAID
+		"expired": return PlayerCopy.DUELS_NOT_PLAYED_NO_ANSWER
+		"withdrawn": return PlayerCopy.DUELS_NOT_PLAYED_YOU_TOOK if int(view.mine) == 0 else PlayerCopy.DUELS_NOT_PLAYED_TAKEN
+	return PlayerCopy.DUELS_NOT_PLAYED_SPLIT
+
+## How long until an open duel ends by itself (services/duels_client.gd `ends_at`) at `now` (ticks): ms, or -1 for none.
+static func time_left_ms(view: Dictionary, now: int) -> int:
+	var ends_at := int(view.get("ends_at", -1))
+	return -1 if ends_at < 0 or not view.status in ["challenged", "running"] else maxi(0, ends_at - now)
+
+## A time left as its tag says it, always rounded down: weeks from 7 days, then days, then hours under a day, never under 1 hour.
+static func time_left_text(ms: int) -> String:
+	if ms >= WEEK_MS:
+		var weeks := ms / WEEK_MS
+		return PlayerCopy.DUEL_TIME_LEFT_WEEK if weeks == 1 else PlayerCopy.DUEL_TIME_LEFT_WEEKS % weeks
+	if ms >= DAY_MS:
+		var days := ms / DAY_MS
+		return PlayerCopy.DUEL_TIME_LEFT_DAY if days == 1 else PlayerCopy.DUEL_TIME_LEFT_DAYS % days
+	var hours := maxi(1, ms / HOUR_MS)
+	return PlayerCopy.DUEL_TIME_LEFT_HOUR if hours == 1 else PlayerCopy.DUEL_TIME_LEFT_HOURS % hours
+
+## Whether a time left shows coral: under a day.
+static func time_left_urgent(ms: int) -> bool:
+	return ms < DAY_MS
+
+## What Give up shows on this player's own side (backend duels/model.ts giveUp), at `now` (ticks):
+## {mode "ask" | "leave", asked "" | "you" | "friend", asked_at, again_ms (-1 while under the cap)},
+## or {} when there is none to show (over, finished, a public seat with nobody beside, or a server
+## without Give up).
+static func give_up(view: Dictionary, me: String, now: int) -> Dictionary:
+	var own: Variant = view.sides[view.mine]
+	if view.status != "running" or not own is Dictionary or not own.has("give_up") or own.give_up.mode == "none" or own.finished or own.left: return {}
+	var held: Dictionary = own.give_up
+	var asked := ""
+	if int(held.asked) >= 0: asked = "you" if own.members[int(held.asked)] == me or bool(seat(view, view.mine, int(held.asked)).get("you", false)) else "friend"
+	# A ghost race never counts toward the cap.
+	var again := -1 if view.kind == "ghost" or int(held.again_at) < 0 else int(held.again_at) - now
+	return {"mode": held.mode, "asked": asked, "asked_at": int(held.asked_at), "again_ms": again if again > 0 else -1}
+
+## Give up greyed at the cap: "Give up again in 2 days", rounded up, so it is never too soon.
+static func give_up_again_text(ms: int) -> String:
+	var days := maxi(1, ceili(float(ms) / DAY_MS))
+	return PlayerCopy.GIVE_UP_AGAIN_DAY if days == 1 else PlayerCopy.GIVE_UP_AGAIN_DAYS % days
+
+## The friend beside you who answers a give up: their name, a stranger's shown name, or "" for a
+## stranger who shows none.
+static func give_up_friend(view: Dictionary, me: String, name_of: Callable) -> String:
+	if not is_public(view): return partner_name(view, me, name_of)
+	for slot in range(2):
+		var held := seat(view, view.mine, slot)
+		if held.get("you", false) or held.get("open", false): continue
+		return _seat_shown(view, view.mine, slot, name_of)
+	return ""
+
+## The other pair as a give up names them: "Finn and Noor", or "" when the duel names nobody there.
+static func other_pair_names(view: Dictionary, name_of: Callable) -> String:
+	var title := pair_title(view, 1 - int(view.mine), name_of)
+	if title == PlayerCopy.DUEL_THEIR_PAIR or title == LeaderboardRows.pair_title({}) or title.contains(PlayerCopy.PUBLIC_A_PLAYER): return ""
+	return title.replace(" + ", " and ")
 
 ## Whether the other pair's run can be watched (backend duels/routes.ts their-run): a friend
 ## duel whose other pair finished, once it is over for this pair (their own run finished or
@@ -226,11 +299,6 @@ static func their_run_ready(view: Dictionary) -> bool:
 	if view.get("kind") != "friend" or view.sides.size() < 2 or view.sides[1 - int(view.mine)].is_empty(): return false
 	var own: Dictionary = view.sides[view.mine]
 	return bool(view.sides[1 - int(view.mine)].get("finished", false)) and (view.status != "running" or own.get("finished", false) or own.get("left", false))
-
-## Shown on the lobby: open challenges and duels, and results. Declined, withdrawn,
-## expired and dissolved challenges fade without a word.
-static func shown(view: Dictionary) -> bool:
-	return not view.status in ["declined", "withdrawn", "expired", "pair_gone"]
 
 ## The result page's title: "You and Maya won", "Finn and Noor won", "A draw", or "No result".
 static func result_title(view: Dictionary, name_of: Callable) -> String:
@@ -254,8 +322,8 @@ static func result_cue(view: Dictionary) -> String:
 	var result: Variant = view.get("result")
 	return "ui_first" if result is Dictionary and result.get("outcome") == "won" else ""
 
-## The line under the result's cards.
-static func result_line(view: Dictionary) -> String:
+## The line under the result's cards. `name_of` names the pair that gave up for the winners.
+static func result_line(view: Dictionary, name_of: Callable = Callable()) -> String:
 	var result: Variant = view.result
 	if not result is Dictionary: return checking_line(view)
 	match result.reason:
@@ -264,9 +332,11 @@ static func result_line(view: Dictionary) -> String:
 			return PlayerCopy.DUEL_FASTER % margin if result.outcome == "won" else PlayerCopy.DUEL_SLOWER % margin
 		"draw": return PlayerCopy.DUEL_SAME_TIME
 		"left":
-			# Only a ghost race's own pair can leave it; a friend duel names the pair that left.
-			if view.kind == "ghost": return PlayerCopy.DUEL_RESULT_YOU_LEFT_RACE
-			return PlayerCopy.DUEL_RESULT_YOU_LEFT if result.outcome == "lost" else PlayerCopy.DUEL_RESULT_LEFT
+			# A side ends this way when its pips gave up (backend duels/model.ts giveUp): a race is your own pair's.
+			if view.kind == "ghost": return PlayerCopy.DUEL_RESULT_GAVE_UP_RACE
+			if result.outcome == "lost": return PlayerCopy.DUEL_RESULT_GAVE_UP
+			var names := other_pair_names(view, name_of)
+			return PlayerCopy.DUEL_RESULT_OTHER_GAVE_UP if names.is_empty() else PlayerCopy.DUEL_RESULT_THEY_GAVE_UP % names
 		"failed_check": return PlayerCopy.DUEL_RESULT_CHECK
 		"stalled": return PlayerCopy.DUEL_RESULT_STALLED
 		"nobody_joined": return PlayerCopy.PUBLIC_RESULT_NOBODY

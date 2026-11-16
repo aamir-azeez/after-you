@@ -4,8 +4,12 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## - Open duels: challenges to your pair with Accept and Not now, and the ones
 ##   you sent, waiting; then Public duels (while the server has them, board 1A)
 ##   and Race a recorded run;
-## - Your duels: running duels and ghost races as tiles with both pairs' dots
-##   and times, and finished ones as result tiles.
+## - Your duels, in two tabs (board forfeit-finished A1, A2), each counting its tiles:
+##   Going, running duels and ghost races as tiles with both pairs' dots and
+##   times; Finished, result tiles for the week they show, then Not played, the
+##   challenges that never started, faded. The lobby opens on Going.
+## Every challenge and running tile wears its time left tag on its picture
+## (Kit.time_tag), coral under a day.
 ## Start a duel sits in the header. While the server charges duel energy
 ## (board-10-energy-lobby), the energy meter (energy_meter.gd pill, made by the
 ## flow) stands beside the title in place of the quiet line, and Start a duel,
@@ -73,6 +77,9 @@ var _overlay: CanvasLayer
 var _gate: BusyTapGate
 var _public_row: Button
 var _public_note: Label
+## The Your duels tab shown: "going" or "finished". A new lobby page opens on Going.
+var _tab := "going"
+var _tab_row: HBoxContainer
 
 func page_name() -> String: return "DuelsScreen"
 func title_text() -> String: return PlayerCopy.DUELS_TITLE
@@ -164,7 +171,10 @@ func _build() -> void:
 	var right_column := VBoxContainer.new()
 	right_column.add_theme_constant_override("separation", 10)
 	right.add_child(right_column)
-	right_column.add_child(Kit.text(PlayerCopy.DUELS_YOURS, 28 if compact else 32, UiTokens.CREAM, true))
+	_tab_row = HBoxContainer.new()
+	_tab_row.name = "DuelsTabs"
+	_tab_row.add_theme_constant_override("separation", 10)
+	right_column.add_child(_tab_row)
 	var tile_scroll := ScrollContainer.new()
 	tile_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	tile_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -191,33 +201,69 @@ func _render() -> void:
 	Kit.clear(_empty)
 	_empty.visible = false
 	_tile_scroll.visible = true
+	var sections := {"challenge": [], "going": [], "finished": [], "not_played": []}
+	if _state == "ready":
+		for view: Dictionary in _lobby.duels: sections[DuelModel.section(view)].append(view)
+	_render_tabs(sections.going.size(), sections.finished.size() + sections.not_played.size())
 	if _state != "ready":
 		_open_list.add_child(Kit.wrapped(PlayerCopy.DUELS_LOADING if _state == "loading" else PlayerCopy.DUELS_FAILED, 18))
 		return
-	var open: Array = []
-	var running: Array = []
-	for view: Dictionary in _lobby.duels:
-		if not DuelModel.shown(view): continue
-		if DuelModel.section(view) == "challenge": open.append(view)
-		else: running.append(view)
+	var open: Array = sections.challenge
 	# Challenges to you first, then the ones you sent.
 	open.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.mine > b.mine)
 	for view: Dictionary in open: _open_list.add_child(_challenge_card(view))
 	# No challenge: the column's own small empty art, above the Race a recorded run card and never over it.
 	if open.is_empty(): ThemeRules.empty_state(_open_list, OPEN_EMPTY_ART, "", PlayerCopy.DUELS_NO_OPEN)
-	# Your move first, then running, then results.
-	var order := func(view: Dictionary) -> int: return 0 if DuelModel.action(view, me) == "play" else 1 if view.status == "running" else 2
-	running.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return order.call(a) < order.call(b) or (order.call(a) == order.call(b) and a.updated_ms > b.updated_ms))
-	for view: Dictionary in running: _tiles.add_child(_tile(view))
-	if running.is_empty() and open.is_empty():
+	if _lobby.duels.is_empty():
 		# Nothing at all yet: the hand drawn empty art every list uses (presentation/empty_state.gd).
 		_tile_scroll.visible = false
 		_empty.visible = true
 		ThemeRules.empty_state(_empty, empty_art, PlayerCopy.DUELS_EMPTY_TITLE, PlayerCopy.DUELS_NO_DUELS)
-	elif running.is_empty():
-		var empty := Kit.wrapped(PlayerCopy.DUELS_NO_DUELS, 18)
+		return
+	var tiles: Array = sections.going if _tab == "going" else sections.finished
+	# Going: your move first, then the newest. Finished: the newest first.
+	var order := func(view: Dictionary) -> int: return 0 if DuelModel.action(view, me) == "play" else 1
+	tiles.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return order.call(a) < order.call(b) or (order.call(a) == order.call(b) and a.updated_ms > b.updated_ms))
+	for view: Dictionary in tiles: _tiles.add_child(_tile(view))
+	if _tab == "finished" and not sections.not_played.is_empty(): _tiles.add_child(_not_played(sections.not_played))
+	elif tiles.is_empty():
+		var empty := Kit.wrapped(PlayerCopy.DUELS_NO_DUELS if _tab == "going" else PlayerCopy.DUELS_NO_FINISHED, 18)
 		empty.custom_minimum_size.x = 420
 		_tiles.add_child(empty)
+
+## The Going and Finished tabs, the game's own (ThemeRules selected_tab, outlined_tab), each with its count.
+func _render_tabs(going: int, finished: int) -> void:
+	Kit.clear(_tab_row)
+	for tab: String in ["going", "finished"]:
+		var button := Button.new()
+		button.name = "DuelsTab_" + tab
+		button.text = (PlayerCopy.DUELS_GOING if tab == "going" else PlayerCopy.DUELS_FINISHED) % (going if tab == "going" else finished)
+		button.custom_minimum_size = Vector2(140, 42 if compact else 48)
+		button.add_theme_font_size_override("font_size", 20 if compact else 22)
+		if tab == _tab: ThemeRules.selected_tab(button)
+		else: ThemeRules.outlined_tab(button)
+		button.pressed.connect(func() -> void: show_tab(tab))
+		_tab_row.add_child(button)
+
+## Shows the Going or Finished tab, from its start.
+func show_tab(tab: String) -> void:
+	if tab == _tab or not tab in ["going", "finished"]: return
+	_tab = tab
+	if is_instance_valid(_tiles):
+		_render()
+		_tile_scroll.scroll_horizontal = 0
+
+## The Finished tab's challenges that never started, faded, after the result tiles: a list that scrolls on its own.
+func _not_played(views: Array) -> Control:
+	var stack := VBoxContainer.new()
+	stack.name = "DuelsNotPlayed"
+	stack.custom_minimum_size.x = 280
+	stack.add_theme_constant_override("separation", 10)
+	stack.add_child(Kit.text(PlayerCopy.DUELS_NOT_PLAYED, 20, UiTokens.SOFT, true))
+	var list := Kit.scrolling_list(stack, 10)
+	views.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.updated_ms > b.updated_ms)
+	for view: Dictionary in views: list.add_child(_challenge_card(view))
+	return stack
 
 func _render_party() -> void:
 	Kit.clear(_party_box)
@@ -273,13 +319,20 @@ func _named_pip(label: String, color: Color, own: bool, full_journey: bool = fal
 		column.add_child(tag)
 	return column
 
-## A challenge: the chapter, the other pair and its buttons.
+## A challenge: the chapter with its time left, the other pair and its buttons. One that never
+## started (the Finished tab's Not played) is faded, with no picture, and says why instead.
 func _challenge_card(view: Dictionary) -> Control:
-	var card := Kit.panel("Challenge_" + str(view.duel_id).left(8), Kit.CARD_FILL, Kit.PANEL_EDGE, 14, 10.0)
+	var played_out := DuelModel.section(view) == "not_played"
+	var card := Kit.panel(("NotPlayed_" if played_out else "Challenge_") + str(view.duel_id).left(8), Kit.CARD_FILL, Kit.PANEL_EDGE, 14, 10.0)
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
 	card.add_child(line)
-	line.add_child(Kit.picture(view.chapter, Vector2(118, 96) if not compact else Vector2(96, 84)))
+	if played_out: card.modulate = Color(1, 1, 1, 0.78)
+	else:
+		var picture := Kit.picture(view.chapter, Vector2(118, 96) if not compact else Vector2(96, 84))
+		var tag := Kit.time_tag(view, Time.get_ticks_msec(), 14)
+		if tag != null: Kit.on_picture(picture, tag)
+		line.add_child(picture)
 	var column := VBoxContainer.new()
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_theme_constant_override("separation", 4)
@@ -295,7 +348,11 @@ func _challenge_card(view: Dictionary) -> Control:
 	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pair.add_child(who)
 	column.add_child(pair)
-	if view.mine == 1:
+	if played_out:
+		var why := Kit.text(DuelModel.not_played_line(view), 16, UiTokens.SOFT)
+		why.name = "NotPlayedLine"
+		column.add_child(why)
+	elif view.mine == 1:
 		var buttons := HBoxContainer.new()
 		buttons.add_theme_constant_override("separation", 8)
 		var accept := Kit.button(PlayerCopy.DUELS_ACCEPT, Callable(), true, 46)
@@ -334,11 +391,15 @@ func _tile(view: Dictionary) -> Control:
 	var picture := Kit.picture(view.chapter, Vector2(TILE_WIDTH - 20.0, 106 if compact else 132))
 	picture.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(picture)
-	# A public duel's small tag on its picture (board 5C).
-	if DuelModel.is_public(view):
-		var tag := Seats.tag(12)
-		tag.position = Vector2(8, 8)
-		picture.add_child(tag)
+	# The time left tag, then a public duel's small tag (board 5C), along the picture's top.
+	var tags := HBoxContainer.new()
+	tags.add_theme_constant_override("separation", 6)
+	tags.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var left := Kit.time_tag(view, Time.get_ticks_msec(), 15)
+	if left != null: tags.add_child(left)
+	if DuelModel.is_public(view): tags.add_child(Seats.tag(12))
+	if tags.get_child_count() > 0: Kit.on_picture(picture, tags)
+	else: tags.free()
 	var title := Kit.text(_chapter_title(view.chapter), 22, UiTokens.CREAM, true)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS

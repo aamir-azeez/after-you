@@ -248,7 +248,8 @@ func _leave() -> void:
 	var client: RefCounted = DuelsClient.new(api, "", "user://test-public-duels.json")
 	client._lobby = {"party": {}, "duels": [DuelsClient.valid_view(_public_view())], "limits": {}}
 	api.answer = {"ok": true, "status": 200, "data": {"schema_version": 1, "duel": null, "left": true}}
-	var answer: Dictionary = await client.act(BOARD, "c".repeat(32), "leave")
+	# Give up on a seat never entered gives it back (backend duels/public.ts giveUpMode "leave").
+	var answer: Dictionary = await client.give_up(BOARD, "c".repeat(32), -1)
 	_check(answer.ok and answer.left and (answer.duel as Dictionary).is_empty(), "A seat given back answers left with no duel")
 	_check(client.last_lobby().duels.is_empty(), "and the duel leaves the kept lobby")
 	var post := PublicClient.new(api, client)

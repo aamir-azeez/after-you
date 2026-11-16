@@ -13,9 +13,9 @@ import { pollenEarning } from "../pollen/routes";
 import { RATES } from "../pollen/rates";
 import type { DuelRoomPay, DuelWin, DuelWinAnswer } from "../pollen/duel-pay";
 import { CHAPTERS, creatable } from "../v2/chapters";
-import { blankSide, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type Side, type SideRoom } from "./model";
+import { blankSide, giveUpModeOf, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type Side, type SideRoom } from "./model";
 import type { DuelAction, FinishProof } from "./store";
-import { mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
+import { giveUpFreeAt, mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
 import type { MemberState } from "../leaderboards/member";
 import { CHALLENGE_TTL_MS, PARTY_ACTIONS, MAX_DUELS_PER_PAIR, MAX_RECENT_DUELS, RESULT_SHOWN_MS } from "./rules";
 import { duelsOn, roomNote } from "./turn-hook";
@@ -45,7 +45,9 @@ import { lastingAnswer, receiptOf, type PayoutShown } from "./payout-receipt";
  * - GET  /v1/room-inbox's first page carries the party invites waiting (inboxDuelInvites), for Home's notice.
  * - POST /v1/duels/challenge, POST /v1/duels/ghost
  * - GET  /v1/duels/<board>/<duel_id>: one duel, with what it paid this player.
- * - POST /v1/duels/<board>/<duel_id>/{accept,decline,leave,sync}
+ * - POST /v1/duels/<board>/<duel_id>/{accept,decline,give-up,keep-playing,sync}, and leave, which a running duel takes
+ *   as give-up (0.8.1 and 0.8.2 phones' Leave duel; giveUpRoute)
+ * Every duel view carries `ends_in_ms` while open (model.ts endsAt), and the lobby's running ones the give up cap.
  * A duel's rooms are made through POST /v2/rooms with a `duel` field
  * (prepareDuelRoom below), so every room rule still applies there.
  * While looks are on (POLLEN_LOOKS), every duel view carries each side's looks
@@ -56,7 +58,7 @@ export const DUELS_PREFIX = "/v1/duels";
 export const DUELS_HEADER = "X-AfterYou-Duels";
 const PUBLIC_PREFIX = "/v1/duels/public";
 const BOARD = "([a-z0-9-]{1,48}@[1-9][0-9]{0,3})", DUEL_ID = "([a-f0-9]{32})";
-const DUEL_PATH = new RegExp(`^/v1/duels/${BOARD}/${DUEL_ID}(?:/(accept|decline|leave|sync|their-run|their-run/ack))?$`);
+const DUEL_PATH = new RegExp(`^/v1/duels/${BOARD}/${DUEL_ID}(?:/(accept|decline|leave|give-up|keep-playing|sync|their-run|their-run/ack))?$`);
 const PARTY_PATH = new RegExp(`^/v1/duels/party/(${PARTY_ACTIONS.join("|")})$`);
 const BOARD_CONCURRENCY = 4;
 const GHOSTS_SHOWN = 3;
@@ -144,7 +146,7 @@ async function friends(env: Env, a: string, b: string): Promise<boolean> {
  * them (party.ts `look`), the player's first. `look`: the caller's own look from auth(), kept in their row when it
  * changed. Requests: 1, or 2 with a partner.
  */
-async function pairOf(env: Env, player: string, now: number, look?: Look): Promise<{ state: PartyState; partner: string | null; intact: boolean; looks: [Look | undefined, Look | undefined]; members?: (MemberState | null)[] }> {
+async function pairOf(env: Env, player: string, now: number, look?: Look): Promise<{ state: PartyState; partner: string | null; intact: boolean; looks: [Look | undefined, Look | undefined]; members?: (MemberState | null)[]; partnerState?: PartyState }> {
   // While public duels are on, the same request also brings each player's settings (their switch, pause): no request added.
   const open = publicDuelsOn(env);
   const read = async (id: string, worn?: Look): Promise<{ party: PartyState; member: MemberState | null }> =>
@@ -152,7 +154,7 @@ async function pairOf(env: Env, player: string, now: number, look?: Look): Promi
   const mine = await read(player, look), state = mine.party;
   if (!state.partner) return { state, partner: null, intact: false, looks: [state.look, undefined], ...(open ? { members: [mine.member, null] } : {}) };
   const theirs = await read(state.partner);
-  return { state, partner: state.partner, intact: mutual(player, state, state.partner, theirs.party), looks: [state.look, theirs.party.look], ...(open ? { members: [mine.member, theirs.member] } : {}) };
+  return { state, partner: state.partner, intact: mutual(player, state, state.partner, theirs.party), looks: [state.look, theirs.party.look], partnerState: theirs.party, ...(open ? { members: [mine.member, theirs.member] } : {}) };
 }
 
 /** The duels `player`'s pointers name, settled now, read one request per board. */
@@ -237,7 +239,8 @@ async function winBonus(env: Env, player: string, duel: Duel, settled: readonly 
 }
 
 /**
- * The lobby. Requests: 1 (own party) + 1 (partner, when named) + 1 per board holding a duel + a wallet credit per new win + 1 write when pointers change.
+ * The lobby. Requests: 1 (own party) + 1 (partner, when named) + 1 per board holding a duel + a wallet credit per new win + 1 write when pointers change
+ * + 1 per pip beside you in a running friend or public duel who is not your party partner (withGiveUpCaps), usually none.
  * While looks are on, `party.partner_look` is the partner's look from the row already read ({} for the default).
  */
 async function lobby(env: Env, player: string, now: number, look?: Look): Promise<unknown> {
@@ -260,11 +263,72 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
     schema_version: 1,
     party: { partner: pair.partner, intact: pair.intact, invites_in: pair.state.invites_in.map(invite => invite.from), invite_out: pair.state.invite_out?.to ?? null,
       ...(shownLooks && pair.partner ? { partner_look: servedLook(pair.looks[1]) } : {}) },
-    duels: shown.map(duel => viewFor(duel, player, shownLooks)).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms),
+    duels: await withGiveUpCaps(env, player, pair, shown, now, shownLooks),
     // One limit; 0.8.1 and 0.8.2 phones read it per kind, so both keys carry it.
     limits: { friend: MAX_DUELS_PER_PAIR, ghost: MAX_DUELS_PER_PAIR },
     ...hintsField(env), ...publicLobby(env, player, pair.members, pair.intact, duels)
   };
+}
+
+/** The players a side still names. */
+const membersOf = (side: Side): string[] => side.members.filter((id): id is string => id !== null);
+
+/**
+ * The lobby's duel views, newest first, each running friend or public duel whose pair may ask to give up carrying the
+ * give up cap (party.ts giveUpFreeAt) as `again_in_ms` while at it. The rows of this player and their party partner
+ * came with the lobby's own reads; only a pip beside them who is neither (an earlier party, a public partner) is read,
+ * once each.
+ */
+async function withGiveUpCaps(env: Env, player: string, pair: { state: PartyState; partner: string | null; partnerState?: PartyState }, duels: readonly Duel[], now: number, looks: boolean): Promise<DuelView[]> {
+  const rows = new Map<string, PartyState>([[player, pair.state]]);
+  if (pair.partner && pair.partnerState) rows.set(pair.partner, pair.partnerState);
+  const capped = duels.filter(duel => { const mine = sideOf(duel, player); return duel.kind === "friend" && mine >= 0 && giveUpModeOf(duel, mine as 0 | 1, player) === "ask"; });
+  const missing = [...new Set(capped.flatMap(duel => membersOf(duel.sides[sideOf(duel, player) as 0 | 1]!)).filter(id => !rows.has(id)))];
+  for (const [id, state] of await pooled(missing, BOARD_CONCURRENCY, async id => [id, await party(env, id).partyRead(now)] as const)) rows.set(id, state);
+  return duels.map(duel => {
+    const view = viewFor(duel, player, looks, now);
+    if (!view || !capped.includes(duel)) return view;
+    const free = giveUpFreeAt(membersOf(duel.sides[view.mine]!).map(id => rows.get(id)!), now);
+    const own = view.sides[view.mine]!;
+    if (free !== null && free > now && own.give_up) own.give_up.again_in_ms = free - now;
+    return view;
+  }).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms);
+}
+
+/**
+ * Give up (model.ts giveUp): an ask, or the agree when `answering` names the other pip's ask; also a phone's old
+ * "leave" on a running duel, which is the ask (or the agree when the other pip asked), so one pip never ends a side.
+ * A friend or public duel is held to the cap (rules.ts MAX_GIVE_UPS): both pips' party rows are read first (2
+ * requests) and an ask or agree past it is refused as give_up_capped with `again_in_ms`; once the side gave up, each
+ * pip's row counts it (countGiveUp). A ghost race counts nothing. Requests: the board read and act, plus those.
+ */
+async function giveUpRoute(env: Env, player: string, key: string, duel: Duel, answering: number | null, now: number): Promise<unknown> {
+  const mine = sideOf(duel, player) as 0 | 1;
+  if (duel.kind === "friend" && giveUpModeOf(duel, mine, player) === "ask") {
+    const free = giveUpFreeAt(await pooled(membersOf(duel.sides[mine]!), 2, id => party(env, id).partyRead(now)), now);
+    if (free !== null && now < free) throw new ApiError(409, "give_up_capped", { again_in_ms: free - now });
+  }
+  const answer = unwrap(await duelsAt(env, key).act(duel.duel_id, { kind: "give_up", player, answering }));
+  await countGiveUp(env, answer.duel, mine, now);
+  // A public seat given back before entering its room: the player is no longer in the duel (public.ts).
+  const view = viewFor(answer.duel, player, looksOn(env), now);
+  return view ? { schema_version: 1, duel: view } : { schema_version: 1, duel: null, left: true };
+}
+
+/** A friend or public side that gave up counts once on each pip's party row (party.ts give_up); a repeat writes nothing. */
+async function countGiveUp(env: Env, duel: Duel, index: 0 | 1, now: number): Promise<void> {
+  const side = duel.sides[index];
+  if (duel.kind !== "friend" || !side?.gave_up) return;
+  const at = duel.result?.decided_ms ?? now;
+  await pooled(membersOf(side), 2, async id => { await party(env, id).partyApply(id, { kind: "give_up", duel_id: duel.duel_id, at }, now); });
+}
+
+/** A give up answer's `answering`: the ask it names, or null for an ask (keep-playing must name one). */
+function answeringOf(input: unknown, required: boolean): number | null {
+  const value = fields(input, ["answering"]).answering;
+  if (value === null && !required) return null;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new ApiError(400, "invalid_duel_request");
+  return value;
 }
 
 /**
@@ -351,7 +415,7 @@ async function challenge(env: Env, reach: Reach, player: string, input: unknown,
   const mine = await pairOf(env, player, now, look);
   // A retried challenge answers the duel it made.
   const held = mine.state.duels.find(ref => ref.duel_id === duelId);
-  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, shownLooks) }; }
+  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, shownLooks, now) }; }
   if (!mine.intact || !mine.partner) throw new ApiError(409, "party_required");
   const theirs = await pairOf(env, friend, now);
   if (!theirs.intact || !theirs.partner) throw new ApiError(409, "opponent_party_required");
@@ -379,7 +443,7 @@ async function challenge(env: Env, reach: Reach, player: string, input: unknown,
   await addRefs(env, [...a, ...b], { duel_id: duelId, board: key, at: now }, now, duels);
   // Only now does every lobby list it.
   await announceLobby(env, [...a, ...b].filter(id => id !== player), made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player, shownLooks), ...(energy ? { energy } : {}) };
+  return { schema_version: 1, duel: viewFor(made, player, shownLooks, now), ...(energy ? { energy } : {}) };
 }
 
 async function ghostRace(env: Env, reach: Reach, player: string, input: unknown, now: number, look?: Look, plays = false): Promise<unknown> {
@@ -391,7 +455,7 @@ async function ghostRace(env: Env, reach: Reach, player: string, input: unknown,
   const duelId = (await digest(`after-you ghost v1\n${player}\n${body.idempotency_key}`)).slice(0, 32);
   const mine = await pairOf(env, player, now, look);
   const held = mine.state.duels.find(ref => ref.duel_id === duelId);
-  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, shownLooks) }; }
+  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, shownLooks, now) }; }
   if (!mine.intact || !mine.partner) throw new ApiError(409, "party_required");
   let ghost: Ghost;
   if (body.source === "developer") {
@@ -431,7 +495,7 @@ async function ghostRace(env: Env, reach: Reach, player: string, input: unknown,
   });
   await addRefs(env, a, { duel_id: duelId, board: key, at: now }, now, duels);
   await announceLobby(env, [mine.partner], made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player, shownLooks), ...(energy ? { energy } : {}) };
+  return { schema_version: 1, duel: viewFor(made, player, shownLooks, now), ...(energy ? { energy } : {}) };
 }
 
 async function duelAction(env: Env, reach: Reach, player: string, key: string, duelId: string, action: string | undefined, input: unknown, now: number): Promise<unknown> {
@@ -439,8 +503,15 @@ async function duelAction(env: Env, reach: Reach, player: string, key: string, d
   const [duel] = await duelsAt(env, key).read([duelId], player);
   const mine = duel ? sideOf(duel, player) : -1;
   if (!duel || mine < 0) throw new ApiError(404, "duel_not_found");
-  if (action === undefined) return duelDetail(env, player, duel);
+  if (action === undefined) return duelDetail(env, player, duel, now);
+  if (action === "give-up") return giveUpRoute(env, player, key, duel, answeringOf(input, false), now);
+  if (action === "keep-playing") {
+    const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: "keep_playing", player, answering: answeringOf(input, true)! }));
+    return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks, now) };
+  }
   fields(input, []);
+  // A running duel's leave, from a 0.8.1 or 0.8.2 phone: the ask to give up, held to the same cap.
+  if (action === "leave" && duel.status === "running") return giveUpRoute(env, player, key, duel, null, now);
   if (action === "accept") {
     const partner = duel.sides[1]!.members.find(id => id !== player) ?? null;
     let intact = false;
@@ -456,12 +527,12 @@ async function duelAction(env: Env, reach: Reach, player: string, key: string, d
     const payers = duel.status === "challenged" ? duel.sides[1]!.members.filter((id): id is string => typeof id === "string") : [];
     const { value: answer, energy } = payers.length ? await withEnergy(env, reach, player, payers, duelId, async () => unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact })))
       : { value: unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact })), energy: null };
-    return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks), ...(energy ? { energy } : {}) };
+    return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks, now), ...(energy ? { energy } : {}) };
   }
   if (action === "decline" || action === "leave") {
     const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: action, player }));
     // A public seat left before entering goes back on the list: the leaver is no longer in the duel (public.ts).
-    const view = viewFor(answer.duel, player, shownLooks);
+    const view = viewFor(answer.duel, player, shownLooks, now);
     return view ? { schema_version: 1, duel: view } : { schema_version: 1, duel: null, left: true };
   }
   // sync: the phone saw its room ahead of the duel; note the room as it is now.
@@ -471,10 +542,10 @@ async function duelAction(env: Env, reach: Reach, player: string, key: string, d
     const link = snapshot.ok ? await env.ROOMS_V2.getByName(room.room_id).duelLinkOf() : null;
     if (snapshot.ok && link?.duel_id === duelId) {
       const made = await roomNote(snapshot.value, link);
-      if (made) { const noted = await duelsAt(env, key).progress(duelId, made.note, made.proof, player); if (noted.ok) return { schema_version: 1, duel: viewFor(noted.value, player, shownLooks) }; }
+      if (made) { const noted = await duelsAt(env, key).progress(duelId, made.note, made.proof, player); if (noted.ok) return { schema_version: 1, duel: viewFor(noted.value, player, shownLooks, now) }; }
     }
   }
-  return { schema_version: 1, duel: viewFor(duel, player, shownLooks) };
+  return { schema_version: 1, duel: viewFor(duel, player, shownLooks, now) };
 }
 
 /**
@@ -484,8 +555,8 @@ async function duelAction(env: Env, reach: Reach, player: string, key: string, d
  * board's write of the receipt (payout-receipt.ts) once what they show can no longer change; a read after
  * that answers from the receipt the board read brought, so it is the sign-in and the board read only.
  */
-async function duelDetail(env: Env, player: string, duel: Duel): Promise<unknown> {
-  const view = viewFor(duel, player, looksOn(env))!;
+async function duelDetail(env: Env, player: string, duel: Duel, now: number): Promise<unknown> {
+  const view = viewFor(duel, player, looksOn(env), now)!;
   const earning = isFinal(duel) && pollenEarning(env);
   const kept = earning ? receiptOf(duel, player) : null;
   if (kept) return { schema_version: 1, duel: view, ...kept, ...hintsField(env) };

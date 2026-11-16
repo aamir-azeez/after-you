@@ -122,10 +122,11 @@ func _model() -> void:
 	var failed_check := Client.valid_view(_wire("decided", {"kind": "ghost", "ghost": ours, "sides": [_wire().sides[0], null], "result": {"outcome": "lost", "reason": "failed_check", "margin_ticks": null}}))
 	_check(DuelModel.result_title(failed_check, _name_of) == PlayerCopy.DUEL_NO_RESULT, "a run that failed its check never says the recorded run was faster")
 	var left_race := Client.valid_view(_wire("unfinished", {"kind": "ghost", "ghost": ours, "sides": [_wire().sides[0].merged({"left": true}, true), null], "result": {"outcome": "none", "reason": "left", "margin_ticks": null}}))
-	_check(DuelModel.result_line(left_race) == PlayerCopy.DUEL_RESULT_YOU_LEFT_RACE, "leaving a race against a recorded run says you left it")
+	_check(DuelModel.result_line(left_race) == PlayerCopy.DUEL_RESULT_GAVE_UP_RACE, "a race given up says you gave it up")
 	var they_left := Client.valid_view(_wire("decided", {"result": {"outcome": "won", "reason": "left", "margin_ticks": null}}))
 	var we_left := Client.valid_view(_wire("decided", {"result": {"outcome": "lost", "reason": "left", "margin_ticks": null}}))
-	_check(DuelModel.result_line(they_left) == PlayerCopy.DUEL_RESULT_LEFT and DuelModel.result_line(we_left) == PlayerCopy.DUEL_RESULT_YOU_LEFT, "a friend duel names the pair that left")
+	_check(DuelModel.result_line(they_left) == PlayerCopy.DUEL_RESULT_OTHER_GAVE_UP and DuelModel.result_line(we_left) == PlayerCopy.DUEL_RESULT_GAVE_UP, "a pair that gave up: yours, or the other pair")
+	_check(DuelModel.result_line(they_left, _name_of) == PlayerCopy.DUEL_RESULT_THEY_GAVE_UP % DuelModel.other_pair_names(they_left, _name_of) and not DuelModel.other_pair_names(they_left, _name_of).is_empty(), "the winners name the pair that gave up: " + DuelModel.result_line(they_left, _name_of))
 	# Answers this build cannot read are refused whole.
 	_check(Client.valid_view(_wire("bogus")).is_empty() and Client.valid_view(_wire("running", {"duel_id": "x"})).is_empty() and Client.valid_view(_wire("running", {"sides": []})).is_empty(), "malformed duels are refused")
 	_check(Client.valid_lobby({"schema_version": 1, "party": {"partner": "short", "intact": true, "invites_in": [], "invite_out": null}, "duels": []}).is_empty(), "a malformed party is refused")
@@ -357,7 +358,7 @@ func _pages() -> void:
 	lobby.show_lobby(lobby_data)
 	await process_frame
 	var tiles: Node = lobby.find_child("DuelsTiles", true, false)
-	_check(tiles.get_child_count() == 2, "running duels and results are tiles; a declined challenge fades: %d" % tiles.get_child_count())
+	_check(tiles.get_child_count() == 1, "Going: the running duel is a tile: %d" % tiles.get_child_count())
 	_check(str(tiles.get_child(0).name).begins_with("Tile_d0") and tiles.get_child(0).find_child("TileAction", true, false).text == PlayerCopy.DUELS_PLAY, "your move comes first, with Play")
 	_check(_has_text(tiles.get_child(0), "1:48.0") and _has_text(tiles.get_child(0), "1:32.0"), "a tile shows both pairs' times")
 	var open: Node = lobby.find_child("DuelsOpenList", true, false)
@@ -372,8 +373,13 @@ func _pages() -> void:
 	var seen: Array = []
 	lobby.duel_action.connect(func(view: Dictionary, action: String, _control: Control) -> void: seen.append(action))
 	(open.find_child("Accept", true, false) as Button).pressed.emit()
-	(tiles.get_child(1).find_child("TileAction", true, false) as Button).pressed.emit()
-	_check(seen == ["accept", "result"], "taps say what they are: %s" % [seen])
+	(tiles.get_child(0).find_child("TileAction", true, false) as Button).pressed.emit()
+	# Finished: the result is a tile, then the declined challenge under Not played.
+	lobby.show_tab("finished")
+	tiles = lobby.find_child("DuelsTiles", true, false)
+	_check(tiles.get_child_count() == 2 and str(tiles.get_child(0).name).begins_with("Tile_d2") and tiles.get_child(1).find_child("NotPlayed_d3d3d3d3", true, false) != null, "Finished: the result's tile, then the declined challenge, faded")
+	(tiles.get_child(0).find_child("TileAction", true, false) as Button).pressed.emit()
+	_check(seen == ["accept", "play", "result"], "taps say what they are: %s" % [seen])
 	# A page over the lobby closes first on Back.
 	var page := DuelPage.new()
 	page.me = ME

@@ -190,11 +190,12 @@ func hold_modal(modal: Control) -> void:
 	if not Kit.showing(_modal): _modal = modal
 	elif modal != _modal: modal.queue_free()
 
-## Opens a question card over this page.
-func ask(node_name: String, title: String, line: String, confirm_text: String, confirm: Callable, cancel_text: String) -> void:
+## Opens a question card over this page. `destructive`: the confirm is the coral one and the cream
+## cancel keeps things as they are (Keep playing), so the confirm never takes the focus.
+func ask(node_name: String, title: String, line: String, confirm_text: String, confirm: Callable, cancel_text: String, destructive: bool = false) -> void:
 	if sheet(node_name, title) == null: return
 	_modal.label(line)
 	var send: Button = _modal.add_actions(confirm_text, func() -> void:
 		_modal.close(false)
-		confirm.call(), cancel_text)
-	send.grab_focus()
+		confirm.call(), cancel_text, destructive)
+	if not destructive: send.grab_focus()

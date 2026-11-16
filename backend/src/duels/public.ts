@@ -3,7 +3,7 @@ import { shownName } from "../display-names";
 import { servedLook } from "../leaderboards/run-looks";
 import type { Look } from "../pollen/catalog";
 import type { ChapterKey } from "../v2/chapter-types";
-import { conclude, decide, isFinal, knownKey, lastActivity, wearLooks, type Duel, type SeatView, type Side } from "./model";
+import { decide, giveUp, isFinal, knownKey, lastActivity, wearLooks, type Deadline, type Duel, type GiveUpMode, type SeatView, type Side } from "./model";
 import { MAX_PUBLIC_DUEL_MS, PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "./rules";
 
 /**
@@ -16,7 +16,11 @@ import { MAX_PUBLIC_DUEL_MS, PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "./rules";
  * goes back on the list when they leave. Labels are the player's shown name, kept only when they chose to show it
  * ("Show my name", leaderboards/member.ts), checked again whenever they are served; null draws as "A player".
  *
- * Time rules, read lazily like every duel's (publicSettle): open spots stay listed PUBLIC_OPEN_MS, and a duel that
+ * Give up (model.ts giveUp): whoever holds the seat beside you answers, friend or stranger, and both seats of a side
+ * that gave up forfeit their held extra, as a leaver's does. A side whose seat beside is open has no Give up: it ends
+ * by itself (nobody_joined). A seat never entered is still given back at once (publicLeave).
+ *
+ * Time rules, read lazily like every duel's (publicDeadlines): open spots stay listed PUBLIC_OPEN_MS, and a duel that
  * still has one then ends as nobody_joined; a duel nobody played for PUBLIC_STALL_MS, or older than
  * MAX_PUBLIC_DUEL_MS, ends as stalled.
  *
@@ -140,6 +144,8 @@ function dropPlayer(duel: Duel, seat: number, now: number): void {
   side.members[seat & 1] = null;
   if (side.turn === player) side.turn = null;
   if (side.room?.host === player) side.room.host = null;
+  // The seat beside changes hands: an ask either of them made has nobody to answer it now.
+  delete side.give_up;
   duel.known = duel.known.filter(key => !key.split("|").includes(player));
   if (duel.starter === player) duel.starter = null;
   duel.updated_ms = now;
@@ -161,21 +167,39 @@ function endSide(duel: Duel, seat: number, now: number, blocked: boolean): void 
 }
 
 /**
- * Leave, by seat (PLAN 5). The last player in it withdraws the duel. A seat whose player never entered the room
- * goes back on the list. After entering, the player's side ends as left and they forfeit their held extra, unless
- * the leave is a block of their own partner (`blocked`), which costs neither of them.
+ * Leave, by seat (PLAN 5). A seat whose player never entered the room goes back on the list, or, held by the last
+ * player in the duel, withdraws it. After entering, only a block of your own partner (`blocked`) ends the side alone,
+ * costing neither of you the held extra; any other leave is the ask to give up (model.ts giveUp).
  */
 export function publicLeave(duel: Duel, player: string, now: number, blocked: boolean): Outcome<Duel> {
   if (isFinal(duel)) return ok(duel);
   const seat = seatOf(duel, player), side = sideOfSeat(duel, seat), state = duel.public!;
   if (side.finished_ms !== null) return fail(409, "duel_finished_for_you");
-  // The last player in it withdraws it and keeps their seat, so the duel still reads as theirs.
-  if (seated(duel).length === 1) { duel.status = "withdrawn"; duel.updated_ms = now; return ok(duel); }
-  if (!state.seats[seat].entered) { freeSeat(duel, seat, now); return ok(duel); }
+  if (!state.seats[seat].entered) {
+    // The last player in it withdraws it and keeps their seat, so the duel still reads as theirs.
+    if (seated(duel).length === 1) { duel.status = "withdrawn"; duel.updated_ms = now; }
+    else freeSeat(duel, seat, now);
+    return ok(duel);
+  }
   if (side.left) return ok(duel);
+  if (!blocked) return giveUp(duel, player, now, null);
   endSide(duel, seat, now, blocked);
   decide(duel, now);
   return ok(duel);
+}
+
+/** A public seat's Give up (model.ts giveUpModeOf): given back at once before entering, else asked of the seat beside, while someone holds it. */
+export function giveUpMode(duel: Duel, player: string): GiveUpMode {
+  const seat = seatOf(duel, player);
+  if (seat < 0) return "none";
+  if (!duel.public!.seats[seat].entered) return "leave";
+  return holder(duel, seat ^ 1) === null ? "none" : "ask";
+}
+
+/** A side whose pips agreed to give up: both its seats forfeit their held extra (heldState says "left"). */
+export function forfeitSide(duel: Duel, index: 0 | 1): void {
+  const state = duel.public!;
+  state.forfeit = [...new Set([...(state.forfeit ?? []), index * 2, index * 2 + 1])].sort();
 }
 
 /**
@@ -202,14 +226,12 @@ export function publicForget(duel: Duel, player: string, now: number): boolean {
   return true;
 }
 
-/** The time rules of a public duel (model.ts settle). Returns whether it changed. */
-export function publicSettle(duel: Duel, now: number): boolean {
-  if (duel.status !== "running") return false;
-  if (decide(duel, now)) return true;
+/** The time rules of a public duel (model.ts deadlines), first to apply first: a spot still open, no turn for a while, too old. */
+export function publicDeadlines(duel: Duel): Deadline[] {
+  if (duel.status !== "running") return [];
   const state = duel.public!;
-  if (now >= state.open_until_ms && openSeats(duel).some(Boolean)) return conclude(duel, null, "nobody_joined", now, null);
-  if (now - lastActivity(duel) >= PUBLIC_STALL_MS || now - state.posted_ms >= MAX_PUBLIC_DUEL_MS) return conclude(duel, null, "stalled", now, null);
-  return false;
+  return [...(openSeats(duel).some(Boolean) ? [{ at: state.open_until_ms, ends: "nobody_joined" as const }] : []),
+    { at: lastActivity(duel) + PUBLIC_STALL_MS, ends: "stalled" }, { at: state.posted_ms + MAX_PUBLIC_DUEL_MS, ends: "stalled" }];
 }
 
 /** On a stall: the seat whose turn it was on each side still playing, who stopped (PLAN 10). */
@@ -238,7 +260,7 @@ export function heldState(duel: Duel, seat: number): HeldState {
   if (duel.status === "withdrawn") return { paid: false, reason: "withdrawn" };
   const state = duel.public!, result = duel.result;
   if (result?.forfeit?.includes(seat) || state.forfeit?.includes(seat)) {
-    if (duel.sides.some(side => side?.left_by === seat)) return { paid: false, reason: "left" };
+    if (duel.sides.some(side => side?.left_by === seat) || duel.sides[seat >> 1]?.gave_up) return { paid: false, reason: "left" };
     return { paid: false, reason: result?.reason === "stalled" ? "stopped" : "erased" };
   }
   return state.full_once ? { paid: true } : { paid: false, reason: "nobody_joined" };

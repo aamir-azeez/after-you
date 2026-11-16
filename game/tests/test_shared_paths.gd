@@ -199,7 +199,7 @@ const WRITES := {
 	"res://services/bundle_claims.gd": [1, "unkeyed: claims every purchase the store reports; each purchase token pays once"],
 	"res://services/deleted_identity_ack.gd": [1, "unkeyed: an acknowledgement"],
 	"res://services/display_name_client.gd": [2, "unkeyed: PUT sets the whole name"],
-	"res://services/duels_client.gd": [5, "keyed: challenge and ghost race, one key per tap; answers, acks and party moves name what they change"],
+	"res://services/duels_client.gd": [6, "keyed: challenge and ghost race, one key per tap; answers, acks and party moves name what they change; give up and keep playing name the ask they answer"],
 	"res://services/public_duels_client.gd": [4, "keyed: a public post, join and report each carry their attempt's key; the switch sets a state; block and Add friend name a seat and end the same when repeated"],
 	"res://services/friend_presence.gd": [2, "unkeyed: sets online or offline"],
 	"res://services/friend_room_events_client.gd": [3, "unkeyed: the publication keeps its own id across launches; acks and alert switches set a state"],

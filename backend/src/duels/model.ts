@@ -1,7 +1,7 @@
 import { fail, ok, type Outcome } from "../protocol";
 import type { ChapterKey } from "../v2/chapter-types";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "./rules";
-import { enterSeat, openSeats, publicForget, publicKnown, publicLeave, publicSeatsView, publicSettle, publicView, publicWaitingSlot, stallForfeits, type PublicState } from "./public";
+import { enterSeat, forfeitSide, giveUpMode, openSeats, publicDeadlines, publicForget, publicKnown, publicLeave, publicSeatsView, publicView, publicWaitingSlot, stallForfeits, type PublicState } from "./public";
 import { keptLook, servedLook } from "../leaderboards/run-looks";
 import type { Look } from "../pollen/catalog";
 import type { PayoutReceipt } from "./payout-receipt";
@@ -30,6 +30,13 @@ import { validSplits } from "./ticks";
  *   bonus (pollen/duel-pay.ts creditGhostWin). A run that fails it ends the
  *   race with no result. Checks turned off settle a run still waiting as
  *   passed (waiveChecks).
+ *
+ * Give up (giveUp, owner 2026-11-16): one pip of a side asks (`give_up`), the other agrees, and the duel ends at once:
+ * the other pair wins a friend or public duel (reason "left", so no win bonus, which pays only "faster"), a ghost race
+ * ends with no result. One pip never ends a side alone: a phone's old "leave" on a running duel is the ask too
+ * (leave), and the only solo ways out left are a challenge's Not now or taking it back, giving back a public seat
+ * before entering its room, blocking your own public partner (public.ts) and account erasure (forgetPlayer). The cap
+ * (rules.ts MAX_GIVE_UPS) is the route's, on the pips' own party rows (routes.ts).
  *
  * Time rules are read lazily (settle): a challenge fades after
  * CHALLENGE_TTL_MS, and a running duel nobody has played for STALL_MS ends
@@ -87,6 +94,10 @@ export type Side = {
   looks?: Look[];
   /** Public duels only: the seat (0 to 3) whose player left after entering the room, which ended this side (duels/public.ts). */
   left_by?: number;
+  /** A member asked to give up (giveUp) and waits for the other: who, and when (the ask an answer names). */
+  give_up?: { by: string; at: number };
+  /** The side ended by both its pips agreeing to give up: their party rows count it (routes.ts). */
+  gave_up?: true;
 };
 /** `looks`: a board run's pair looks as its row showed them when the race began (leaderboards/run-looks.ts). */
 /** `replay_hash`: a board run's replay as its row named it when the race began (absent on races made before it was kept, and on the run an older app shipped as Our run, duels/legacy-shipped-our-run.ts). */
@@ -201,21 +212,35 @@ export function score(duel: Duel, index: 0 | 1): number {
   return duel.sides[index]!.ticks;
 }
 
-/** Applies the time rules. Returns whether the duel changed. */
-export function settle(duel: Duel, now: number): boolean {
-  if (duel.public) return publicSettle(duel, now);
-  if (duel.status === "challenged") {
-    if (now - duel.created_ms < CHALLENGE_TTL_MS) return false;
-    duel.status = "expired";
-    duel.updated_ms = now;
-    return true;
-  }
-  if (duel.status !== "running") return false;
-  if (decide(duel, now)) return true;
+/** A time rule's moment, and how the duel ends then: a challenge fades, a running duel ends with no result. */
+export type Deadline = { at: number; ends: "expired" | "stalled" | "nobody_joined" };
+/**
+ * The time rules of an open duel, the one place they are worked out: settle applies the first that has passed (in
+ * this order), and the phone is shown the earliest (endsAt). Empty once the duel is over. A challenge fades
+ * CHALLENGE_TTL_MS after it was sent; a running duel ends STALL_MS after the last turn by anyone, or, while no room was
+ * claimed, the unclaimed limits after the accept; a public duel has its own (public.ts publicDeadlines).
+ */
+export function deadlines(duel: Duel): Deadline[] {
+  if (duel.public) return publicDeadlines(duel);
+  if (duel.status === "challenged") return [{ at: duel.created_ms + CHALLENGE_TTL_MS, ends: "expired" }];
+  if (duel.status !== "running") return [];
   const unclaimed = duel.sides.every(side => side === null || side.room === null);
   const limit = !unclaimed ? STALL_MS : duel.kind === "ghost" ? UNCLAIMED_RACE_MS : UNCLAIMED_DUEL_MS;
-  if (now - (unclaimed ? Math.max(lastActivity(duel), UNCLAIMED_SINCE_MS) : lastActivity(duel)) < limit) return false;
-  return conclude(duel, null, "stalled", now, null);
+  return [{ at: (unclaimed ? Math.max(lastActivity(duel), UNCLAIMED_SINCE_MS) : lastActivity(duel)) + limit, ends: "stalled" }];
+}
+/** When the open duel ends by itself if nothing changes, or null once it is over. */
+export function endsAt(duel: Duel): number | null {
+  const all = deadlines(duel);
+  return all.length ? Math.min(...all.map(item => item.at)) : null;
+}
+
+/** Applies the time rules. Returns whether the duel changed. */
+export function settle(duel: Duel, now: number): boolean {
+  if (duel.status === "running" && decide(duel, now)) return true;
+  const due = deadlines(duel).find(item => now >= item.at);
+  if (!due) return false;
+  if (due.ends === "expired") { duel.status = "expired"; duel.updated_ms = now; return true; }
+  return conclude(duel, null, due.ends, now, null);
 }
 
 export function lastActivity(duel: Duel): number {
@@ -345,6 +370,8 @@ export function progress(duel: Duel, note: ProgressNote, now: number, checks: bo
   const looks = note.looks;
   if (looks) wearLooks(side, id => Object.hasOwn(looks, id) ? looks[id] : undefined);
   if (note.complete) {
+    // A pair that finished has nothing left to give up.
+    delete side.give_up;
     side.finished_ms = note.at_ms;
     side.entry_id = note.entry_id;
     side.check = awaitsCheck(duel, side.ticks, checks) ? "waiting" : "none";
@@ -382,9 +409,9 @@ export function verdict(duel: Duel, entryId: string, check: "passed" | "failed" 
 }
 
 /**
- * A member's pair leaves: before an answer it is a decline (or taking a
- * challenge back); while running it hands the other pair the win once its run
- * passes. Turned off once the pair has finished.
+ * A member's "leave" (a 0.8.1 or 0.8.2 phone's Leave duel, a public block): before an answer it is a decline (or
+ * taking a challenge back); a public seat goes as public.ts publicLeave says; any other running duel is the ask to give
+ * up (giveUp), or the agreement when the other pip asked, so one pip never ends a side alone.
  */
 export function leave(duel: Duel, player: string, now: number, blocked = false): Outcome<Duel> {
   const index = sideOf(duel, player);
@@ -392,16 +419,72 @@ export function leave(duel: Duel, player: string, now: number, blocked = false):
   settle(duel, now);
   if (duel.public) return publicLeave(duel, player, now, blocked);
   if (duel.status === "challenged") return decline(duel, player, now);
+  return giveUp(duel, player, now, null);
+}
+
+/**
+ * What a side's Give up does for its own pips (served on the view, viewFor): "ask" the other pip; "leave" at once (a
+ * public seat whose player never entered its room, given back to the list); or "none" (over, finished, or a public side
+ * whose seat beside is open: it ends by itself, public.ts publicDeadlines).
+ */
+export type GiveUpMode = "ask" | "leave" | "none";
+export function giveUpModeOf(duel: Duel, index: 0 | 1, player: string): GiveUpMode {
+  const side = duel.sides[index];
+  if (duel.status !== "running" || !side || side.left || side.finished_ms !== null) return "none";
+  return duel.public ? giveUpMode(duel, player) : "ask";
+}
+
+/**
+ * Give up, by one pip of a running side. With nothing asked yet (or the ask its own), it asks; when the other pip
+ * asked, it agrees and the duel ends at once (endByGiveUp). `answering`: the ask a phone's agree names (its `at`), or
+ * null for an ask, which also agrees with one the other pip made meanwhile: both asked. An agree whose ask was taken
+ * back is refused (give_up_taken_back), so a stale tap never asks in its place. Repeats answer the same. A public
+ * seat never entered goes back to the list (publicLeave).
+ */
+export function giveUp(duel: Duel, player: string, now: number, answering: number | null): Outcome<Duel> {
+  const index = sideOf(duel, player);
+  if (index < 0) return fail(403, "duel_not_yours");
+  settle(duel, now);
   if (isFinal(duel)) return ok(duel);
+  if (duel.status !== "running") return fail(409, "challenge_" + duel.status);
   const side = duel.sides[index as 0 | 1]!;
   if (side.finished_ms !== null) return fail(409, "duel_finished_for_you");
-  if (!side.left) {
-    side.left = true;
-    side.turn = null;
-    duel.updated_ms = now;
-    decide(duel, now);
-  }
+  const mode = giveUpModeOf(duel, index as 0 | 1, player);
+  if (mode === "leave") return publicLeave(duel, player, now, false);
+  if (mode === "none") return fail(409, "give_up_alone");
+  const asked = side.give_up;
+  if (asked && asked.by !== player) { endByGiveUp(duel, index as 0 | 1, now); return ok(duel); }
+  if (answering !== null) return fail(409, "give_up_taken_back");
+  if (!asked) { side.give_up = { by: player, at: now }; duel.updated_ms = now; }
   return ok(duel);
+}
+
+/**
+ * Keep playing: the asker takes their ask back, or the other pip says no. Only the ask it names (`answering`, its
+ * `at`) goes, so a stale tap never clears a later ask. Repeats answer the same.
+ */
+export function keepPlaying(duel: Duel, player: string, now: number, answering: number): Outcome<Duel> {
+  const index = sideOf(duel, player);
+  if (index < 0) return fail(403, "duel_not_yours");
+  settle(duel, now);
+  const side = duel.sides[index as 0 | 1]!;
+  if (duel.status === "running" && side.give_up?.at === answering) { delete side.give_up; duel.updated_ms = now; }
+  return ok(duel);
+}
+
+/**
+ * Both pips agreed: the side has left. A friend or public duel goes to the other pair at once (reason "left", which
+ * pays no win bonus: routes.ts winBonus and public-routes.ts settlePublic pay only "faster"), and a public side's two
+ * seats forfeit their held extra; a ghost race ends with no result.
+ */
+function endByGiveUp(duel: Duel, index: 0 | 1, now: number): void {
+  const side = duel.sides[index]!;
+  side.left = true;
+  side.gave_up = true;
+  side.turn = null;
+  delete side.give_up;
+  if (duel.public) forfeitSide(duel, index);
+  conclude(duel, duel.kind === "ghost" ? null : (1 - index) as 0 | 1, "left", now, null);
 }
 
 /** Account erasure: the player's id goes everywhere; an open duel ends unfinished. Returns whether it changed. */
@@ -432,13 +515,15 @@ export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
  * time and whose turn it is that both duel pages show. `rooms[i]` goes only to side i, whose members open or
  * join that room. A repeated or older turn moves nothing, so it tells nobody.
  */
-export type Milestone = { shared: string; rooms: (string | null)[] };
+export type Milestone = { shared: string; rooms: (string | null)[]; asks: (number | null)[] };
 export function milestone(duel: Duel): Milestone {
   return {
     // A public duel's seats are news too (one taken or given back), told to everyone in it; a friend duel's milestone is as before.
     shared: JSON.stringify([duel.status, duel.accepted_ms, duel.sides.map(side => side && [side.finished_ms !== null, side.left, side.check, side.steps, side.ticks, side.turn]),
       ...(duel.public ? [openSeats(duel)] : [])]),
-    rooms: duel.sides.map(side => side?.room?.room_id ?? null)
+    rooms: duel.sides.map(side => side?.room?.room_id ?? null),
+    // A give up asked or taken back is news to that side only: the other pair never hears of it.
+    asks: duel.sides.map(side => side?.give_up?.at ?? null)
   };
 }
 
@@ -451,7 +536,7 @@ export function newsRecipients(before: Milestone | null, duel: Duel, actor: stri
   const now = milestone(duel), told = new Set<string>();
   const members = (side: Side | null): string[] => ((side?.members ?? []) as (string | null)[]).filter((id): id is string => id !== null);
   if (!before || before.shared !== now.shared) for (const id of players(duel)) told.add(id);
-  else duel.sides.forEach((side, index) => { if (before.rooms[index] !== now.rooms[index]) for (const id of members(side)) told.add(id); });
+  else duel.sides.forEach((side, index) => { if (before.rooms[index] !== now.rooms[index] || before.asks[index] !== now.asks[index]) for (const id of members(side)) told.add(id); });
   if (actor) told.delete(actor);
   if (covered) told.delete(covered);
   return [...told];
@@ -471,6 +556,12 @@ export type SideView = {
   seats?: SeatView[];
   /** The time after each step played, when the side's notes brought them (Side.splits). */
   splits?: number[];
+  /**
+   * Own side of a running duel only: what Give up does (GiveUpMode), the slot of the pip who asked and their ask's
+   * `at` (an answer names it), or nulls. `again_in_ms`: while the pair is at its give up cap, how long until it may
+   * give up again (only on the lobby, which already reads the pips' party rows: routes.ts withGiveUpCap).
+   */
+  give_up?: { mode: GiveUpMode; asked: number | null; asked_at: number | null; again_in_ms?: number };
 };
 export type SeatView = { open: boolean; you: boolean; label: string | null };
 export type DuelView = {
@@ -480,10 +571,15 @@ export type DuelView = {
   result: { outcome: "won" | "lost" | "draw" | "none"; reason: ResultReason; margin_ticks: number | null; decided_ms: number } | null;
   eligible: boolean | null;
   public?: { posted_ms: number; open_until_ms: number; seats_open: number };
+  /** While open, with the server's clock (`now`): how long until it ends by itself if nothing changes (endsAt). */
+  ends_in_ms?: number;
 };
 
-/** `looks`: whether looks are on (POLLEN_LOOKS); off, a view carries none, as before looks. */
-export function viewFor(duel: Duel, viewer: string, looks = false): DuelView | null {
+/**
+ * `looks`: whether looks are on (POLLEN_LOOKS); off, a view carries none, as before looks. `now`: the server's clock,
+ * for an open duel's `ends_in_ms` (left out without it).
+ */
+export function viewFor(duel: Duel, viewer: string, looks = false, now?: number): DuelView | null {
   const mine = sideOf(duel, viewer);
   if (mine < 0) return null;
   const known = new Set(duel.known);
@@ -497,8 +593,10 @@ export function viewFor(duel: Duel, viewer: string, looks = false): DuelView | n
       ...(own ? { room_id: side.room?.room_id ?? null, invite_code: side.room?.invite_code ?? null, hosting: side.room?.host === viewer } : {}),
       ...(looks ? { looks: pairShown(side.looks) } : {}), ...(duel.public ? { seats: publicSeatsView(duel, index, viewer) } : {}),
       // Only splits that still fit the side's steps and time (a side last noted by older code may hold stale ones).
-      ...(validSplits(side.splits, side.steps, side.ticks) ? { splits: [...side.splits] } : {}) };
+      ...(validSplits(side.splits, side.steps, side.ticks) ? { splits: [...side.splits] } : {}),
+      ...(own && duel.status === "running" ? { give_up: giveUpView(duel, side, index, viewer) } : {}) };
   };
+  const ends = now === undefined ? null : endsAt(duel);
   const result = duel.result;
   const outcome = !result ? null : result.winner === null ? (result.reason === "draw" ? "draw" : "none") : result.winner === mine ? "won" : "lost";
   return {
@@ -506,8 +604,14 @@ export function viewFor(duel: Duel, viewer: string, looks = false): DuelView | n
     created_ms: duel.created_ms, accepted_ms: duel.accepted_ms, updated_ms: duel.updated_ms, mine: mine as 0 | 1,
     sides: [sideView(duel.sides[0], 0), duel.sides[1] ? sideView(duel.sides[1], 1) : null], ghost: ghostView(duel.ghost, looks),
     result: result && outcome ? { outcome, reason: result.reason, margin_ticks: result.margin_ticks, decided_ms: result.decided_ms } : null,
-    eligible: duel.eligible, ...(duel.public ? { public: publicView(duel) } : {})
+    eligible: duel.eligible, ...(duel.public ? { public: publicView(duel) } : {}), ...(ends !== null ? { ends_in_ms: Math.max(0, ends - now!) } : {})
   };
+}
+
+/** The viewer's own side's Give up, by slot: never an id, so a stranger beside you stays one. */
+function giveUpView(duel: Duel, side: Side, index: 0 | 1, viewer: string): NonNullable<SideView["give_up"]> {
+  const ask = side.give_up, slot = ask ? side.members.indexOf(ask.by) : -1;
+  return { mode: giveUpModeOf(duel, index, viewer), asked: slot < 0 ? null : slot, asked_at: slot < 0 ? null : ask!.at };
 }
 
 /** Two looks as a view serves them, each checked again on the way out ({} for the default or anything else). */

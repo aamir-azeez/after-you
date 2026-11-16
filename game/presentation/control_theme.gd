@@ -4,6 +4,9 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const INK := UiTokens.INK
 const CREAM := UiTokens.CREAM
 const DANGER_INK := Color("503a37")
+## The coral of Back and destructive actions (danger), and of anything that must read as urgent beside them.
+const DANGER_FILL := Color("e9b3aa")
+const DANGER_EDGE := Color("bd8982")
 ## The soft warning colour: Back's fill, an alert row's edge, Safety's label.
 const CORAL := Color("e9b3aa")
 const CHECK_ICON := preload("res://assets/ui/check.svg")
@@ -476,11 +479,11 @@ static func danger(button: Button, icon: Texture2D = null) -> void:
 	var inset := 12.0 if icon_only else 20.0
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
 		var disabled := state == "disabled"
-		var fill := Color("755b58") if disabled else Color("e9b3aa")
+		var fill := Color("755b58") if disabled else DANGER_FILL
 		if state == "hover": fill = Color("f2c2b8")
 		if state in ["pressed","hover_pressed"]: fill = Color("d99a92")
 		var foreground := Color("b8aaa5") if disabled else DANGER_INK
-		button.add_theme_stylebox_override(state,padded(rounded(fill,14,Color("bd8982") if not disabled else Color("786a66")),inset,8.0))
+		button.add_theme_stylebox_override(state,padded(rounded(fill,14,DANGER_EDGE if not disabled else Color("786a66")),inset,8.0))
 		button.add_theme_color_override("font_color" if state == "normal" else "font_"+state+"_color",foreground)
 		button.add_theme_color_override("icon_"+state+"_color",foreground)
 	button.add_theme_stylebox_override("focus",padded(rounded(Color.TRANSPARENT,14,Color("f5d1c9")),inset,8.0))

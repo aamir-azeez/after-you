@@ -73,6 +73,7 @@ display_names 3
 dressing_lint 1
 dressing_mixes 1
 duel_energy 3
+duel_give_up 2
 duel_looks 1
 duel_page_layout 3
 duel_play_order 3

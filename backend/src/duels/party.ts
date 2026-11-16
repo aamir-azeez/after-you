@@ -1,5 +1,5 @@
 import { fail, ok, type Outcome } from "../protocol";
-import { MAX_MEMBER_DUELS, MAX_PARTY_INVITES, PARTY_INVITE_TTL_MS } from "./rules";
+import { GIVE_UP_WINDOW_MS, MAX_GIVE_UPS, MAX_MEMBER_DUELS, MAX_PARTY_INVITES, PARTY_INVITE_TTL_MS } from "./rules";
 import { keptLook } from "../leaderboards/run-looks";
 import { lookText, type Look } from "../pollen/catalog";
 
@@ -32,6 +32,8 @@ export type PartyState = {
   settled: string[];
   /** The player's own look as of their latest duel read; absent for the default. */
   look?: Look;
+  /** Friend and public duels this player gave up with their pair (model.ts giveUp), within GIVE_UP_WINDOW_MS: the cap (giveUpFreeAt). */
+  give_ups?: { duel_id: string; at: number }[];
 };
 export type PartyOp =
   | { kind: "invite"; to: string }
@@ -45,7 +47,9 @@ export type PartyOp =
   /** `final`: duel ids the caller just read as over; past MAX_MEMBER_DUELS their pointers go first, oldest first. */
   | { kind: "add_duels"; refs: DuelRef[]; final?: string[] }
   | { kind: "drop_duels"; ids: string[] }
-  | { kind: "settle_wins"; ids: string[] };
+  | { kind: "settle_wins"; ids: string[] }
+  /** The player's pair gave up `duel_id` at `at`; a repeat for the same duel counts once. */
+  | { kind: "give_up"; duel_id: string; at: number };
 /**
  * `previous`: the partner this op replaced or removed, whose own row should be told.
  * `withdrawn`: the friend a new invite replaced, whose invite should go from their own row.
@@ -122,6 +126,12 @@ export function applyParty(state: PartyState, owner: string, op: PartyOp, now: n
     case "settle_wins":
       state.settled = [...new Set([...state.settled, ...op.ids])].slice(-MAX_MEMBER_DUELS * 2);
       break;
+    case "give_up": {
+      const kept = (state.give_ups ?? []).filter(item => now - item.at < GIVE_UP_WINDOW_MS && item.duel_id !== op.duel_id);
+      const held = (state.give_ups ?? []).find(item => item.duel_id === op.duel_id);
+      state.give_ups = [...kept, held ?? { duel_id: op.duel_id, at: op.at }].sort((a, b) => a.at - b.at).slice(-MAX_GIVE_UPS * 2);
+      break;
+    }
   }
   return ok({ state, previous, ...(withdrawn ? { withdrawn } : {}) });
 }
@@ -132,6 +142,19 @@ export function noteLook(state: PartyState, look: Look): boolean {
   if ((kept && lookText(kept)) === (held && lookText(held))) return false;
   if (kept) state.look = kept; else delete state.look;
   return true;
+}
+
+/**
+ * When a pair whose pips' rows are `states` may give up again: null while every pip is under MAX_GIVE_UPS in the last
+ * GIVE_UP_WINDOW_MS, else the moment the last of them is back under it (its oldest counted give up leaves the window).
+ */
+export function giveUpFreeAt(states: readonly PartyState[], now: number): number | null {
+  let free: number | null = null;
+  for (const state of states) {
+    const times = (state.give_ups ?? []).map(item => item.at).filter(at => now - at < GIVE_UP_WINDOW_MS).sort((a, b) => a - b);
+    if (times.length >= MAX_GIVE_UPS) free = Math.max(free ?? 0, times[times.length - MAX_GIVE_UPS] + GIVE_UP_WINDOW_MS);
+  }
+  return free;
 }
 
 /** Whether two rows name each other: a party that counts. */

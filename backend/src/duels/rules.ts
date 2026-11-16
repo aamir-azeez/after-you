@@ -21,9 +21,17 @@ export const PARTY_ACTIONS = ["invite", "accept", "dismiss", "cancel", "leave"] 
  * game/services/duels_client.gd DUEL_LIMIT is only its fallback and stays in step.
  */
 export const MAX_DUELS_PER_PAIR = 30;
-/** A challenge nobody answers fades after this long, with no countdown shown. */
+/** A challenge nobody answers fades after this long. Every open duel's phone shows how long is left (model.ts endsAt). */
 export const CHALLENGE_TTL_MS = 7 * 86_400_000;
-/** A running duel with no turn from anyone for this long ends unfinished: no win and no loss. */
+/**
+ * Give ups (model.ts giveUp) a pip may take part in within GIVE_UP_WINDOW_MS, friend and public duels together; ghost
+ * races do not count. Counted per pip on their own party row (party.ts give_ups), so a new party does not reset it, and
+ * a pair may give up only while both its pips are under it (owner, 2026-11-16).
+ */
+export const MAX_GIVE_UPS = 3;
+/** As long as a challenge waits (CHALLENGE_TTL_MS). */
+export const GIVE_UP_WINDOW_MS = CHALLENGE_TTL_MS;
+/** A running duel with no turn from anyone for this long ends unfinished: no win and no loss. Any turn starts it again. */
 export const STALL_MS = 30 * 86_400_000;
 /** A side's room claim whose room never appeared may be taken over by the partner after this long. */
 export const ROOM_CLAIM_TAKEOVER_MS = 120_000;
@@ -62,7 +70,7 @@ export const UNCLAIMED_RACE_MS = 2 * 86_400_000;
 /**
  * An accepted friend duel in which neither pair opened its room ends unfinished this long after the accept. The
  * accepting player taps it on the lobby, whose tile then offers Play (duels_flow.gd _on_duel_action), and the sending
- * pair hears of it within a minute (lobby read, or a hint), but nothing pushes it and no deadline shows, so three days
+ * pair hears of it within a minute (lobby read, or a hint), but nothing pushes it, so three days
  * leave room for a pair that accepts on Friday to play on Sunday. Once either pair taps Play the duel runs to STALL_MS.
  */
 export const UNCLAIMED_DUEL_MS = 3 * 86_400_000;

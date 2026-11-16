@@ -43,6 +43,10 @@ const NO_DUELS = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "POLLE
 const RELAY = "relay-isles@2";
 const RELAY_KEY = { level_id: "relay-isles", level_version: 2, definition_hash: CHAPTERS[0].adapter.key.definition_hash };
 const DAY = 86_400_000;
+/** A give up's requests (duels/routes.ts giveUpRoute), measured 2026-11-16: sign-in, board read, both pips' rows (the cap), the board's act; hints only while live hints are on. */
+const GIVE_UP_ASK_CALLS = ["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_BOARDS.duelAct"];
+/** The agree adds each pip's count on their own row (one row written each). */
+const GIVE_UP_AGREE_CALLS = [...GIVE_UP_ASK_CALLS, "LEADERBOARD_MEMBERS.partyApply", "LEADERBOARD_MEMBERS.partyApply"];
 let address = 0;
 
 async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
@@ -346,14 +350,12 @@ describe("friend duels", () => {
     // A second win against the same pair the same week counts at 0.
     const again = await ok<{ duel: DuelView }>(challenge(a1, b1));
     await ok(call(`/v1/duels/${RELAY}/${again.duel.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
+    // The other pair gives up (an old phone's leave asks, the friend agrees): it ends at once.
     await ok(call(`/v1/duels/${RELAY}/${again.duel.duel_id}/leave`, "POST", b1, { schema_version: 1 }));
-    const replay = await ok<RoomSnapshotV2>(openRoom(a1, again.duel));
-    const secondJoined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: replay.invite_code }));
-    await play(secondJoined, [a1, a2], fast);
-    await verdicts((await job()).entries, () => true);
+    await ok(call(`/v1/duels/${RELAY}/${again.duel.duel_id}/give-up`, "POST", b2, { schema_version: 1, answering: null }));
     const repeat = await detail(a1, again.duel);
     expect(repeat.duel.result).toMatchObject({ outcome: "won", reason: "left" });
-    // A win the other pair handed over by leaving pays no bonus: only a win where both runs passed does.
+    // A win the other pair handed over by giving up pays no bonus: only a win where both runs passed does.
     expect(repeat.win_bonus).toBeUndefined();
   }, 60_000);
 
@@ -529,16 +531,111 @@ describe("friend duels", () => {
     expect(entries[0]).not.toHaveProperty("duel");
   });
 
-  it("let a pair that left hand the win to the other once its run passes, and end at erasure", async () => {
+  it("take an old phone's leave on a running duel as the ask to give up, and end at erasure", async () => {
     const { a1, a2, b1, b2 } = await pairs(true);
     const sent = (await ok<{ duel: DuelView }>(challenge(a1, b1))).duel;
     await ok(call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
-    expect((await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${sent.duel_id}/leave`, "POST", b2, { schema_version: 1 }))).duel.sides[1]!.left).toBe(true);
+    const asked = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${sent.duel_id}/leave`, "POST", b2, { schema_version: 1 }))).duel;
+    expect(asked).toMatchObject({ status: "running", sides: [{}, { left: false, give_up: { mode: "ask", asked: 1 } }] });
     expect((await call("/v1/identity", "DELETE", a2)).status).toBe(200);
     const after = (await lobby(a1));
     expect(after.party).toMatchObject({ partner: null });
     expect(after.duels[0]).toMatchObject({ status: "unfinished", result: { outcome: "none", reason: "erased" } });
   });
+});
+
+describe("give up", () => {
+  const giveUp = (account: Account, duel: DuelView, answering: number | null, vars = ON, target: Env = env) =>
+    call(`/v1/duels/${RELAY}/${duel.duel_id}/give-up`, "POST", account, { schema_version: 1, answering }, vars, {}, target);
+  const keepPlaying = (account: Account, duel: DuelView, answering: number) =>
+    call(`/v1/duels/${RELAY}/${duel.duel_id}/keep-playing`, "POST", account, { schema_version: 1, answering });
+  const giveUps = async (account: Account) => (await env.LEADERBOARD_MEMBERS.getByName(account.player_id).partyRead(Date.now())).give_ups ?? [];
+  async function accepted(a1: Account, b1: Account): Promise<DuelView> {
+    const duel = (await ok<{ duel: DuelView }>(challenge(a1, b1))).duel;
+    await ok(call(`/v1/duels/${RELAY}/${duel.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
+    return duel;
+  }
+
+  it("end a friend duel at once once both pips agree, with no win bonus, counted on both pips' rows, at a measured cost", async () => {
+    const { a1, a2, b1, b2 } = await pairs();
+    const duel = await accepted(a1, b1);
+    // The ask: the board read, both pips' party rows (the cap), the board's act and the partner's hint.
+    const asked = await countAllRequests(env, target => ok<{ duel: DuelView }>(giveUp(b1, duel, null, ON, target)));
+    expect(asked.value.duel).toMatchObject({ status: "running", sides: [{}, { give_up: { mode: "ask", asked: 0 } }] });
+    expect(asked.calls).toEqual(GIVE_UP_ASK_CALLS);
+    const ask = asked.value.duel.sides[1]!.give_up!;
+    // The friend sees it on the lobby; the other pair never does.
+    const theirs = (await lobby(b2)).duels.find(view => view.duel_id === duel.duel_id)!;
+    expect(theirs.sides[1]!.give_up).toEqual({ mode: "ask", asked: 0, asked_at: ask.asked_at });
+    expect(theirs.ends_in_ms).toBeGreaterThan(0);
+    const other = (await lobby(a1)).duels.find(view => view.duel_id === duel.duel_id)!;
+    expect(other.sides[1]!.give_up).toBeUndefined();
+    expect(other.sides[0].give_up).toEqual({ mode: "ask", asked: null, asked_at: null });
+    // The agree ends it: the other pair wins, and each pip's row counts it once.
+    const agreed = await countAllRequests(env, target => ok<{ duel: DuelView }>(giveUp(b2, duel, ask.asked_at, ON, target)));
+    expect(agreed.value.duel).toMatchObject({ status: "decided", result: { outcome: "lost", reason: "left" } });
+    expect(agreed.value.duel.ends_in_ms).toBeUndefined();
+    expect(agreed.calls).toEqual(GIVE_UP_AGREE_CALLS);
+    expect((await giveUps(b1)).map(item => item.duel_id)).toEqual([duel.duel_id]);
+    expect((await giveUps(b2)).map(item => item.duel_id)).toEqual([duel.duel_id]);
+    expect(await giveUps(a1)).toEqual([]);
+    // A repeat answers the same and counts nothing more.
+    await ok(giveUp(b2, duel, ask.asked_at));
+    expect(await giveUps(b2)).toHaveLength(1);
+    // The winners' read pays no win bonus and never asks the wallet for one.
+    const won = await countAllRequests(env, target => ok<{ duel: DuelView; win_bonus?: Any }>(call(`/v1/duels/${RELAY}/${duel.duel_id}`, "GET", a1, undefined, ON, {}, target)));
+    expect(won.value.duel.result).toMatchObject({ outcome: "won", reason: "left" });
+    expect(won.value.win_bonus).toBeUndefined();
+    expect(won.calls.filter(name => /creditDuelWin|creditGhostWin/.test(name))).toEqual([]);
+    expect((await lobby(a2)).duels.find(view => view.duel_id === duel.duel_id)!.result).toMatchObject({ outcome: "won", reason: "left" });
+  }, 60_000);
+
+  it("take an ask back or say keep playing only for the ask named, and refuse an agree whose ask went", async () => {
+    const { a1, b1, b2 } = await pairs();
+    const duel = await accepted(a1, b1);
+    const ask = (await ok<{ duel: DuelView }>(giveUp(b1, duel, null))).duel.sides[1]!.give_up!;
+    expect((await ok<{ duel: DuelView }>(keepPlaying(b2, duel, ask.asked_at! - 1))).duel.sides[1]!.give_up!.asked).toBe(0);
+    expect((await ok<{ duel: DuelView }>(keepPlaying(b2, duel, ask.asked_at!))).duel.sides[1]!.give_up).toEqual({ mode: "ask", asked: null, asked_at: null });
+    const refused = await giveUp(b2, duel, ask.asked_at);
+    expect(refused.status).toBe(409);
+    expect(await errorCode(refused)).toBe("give_up_taken_back");
+    expect((await detail(b1, duel)).duel).toMatchObject({ status: "running", sides: [{}, { give_up: { asked: null } }] });
+    // A bad answer is refused before anything is read.
+    expect((await call(`/v1/duels/${RELAY}/${duel.duel_id}/keep-playing`, "POST", b1, { schema_version: 1, answering: null })).status).toBe(400);
+  });
+
+  it("hold each pip to three give ups a week, whatever their party, and count none for a ghost race", async () => {
+    const { a1, b1, b2 } = await pairs();
+    const now = Date.now();
+    // B1 gave up three duels this week, with any party.
+    for (const index of [1, 2, 3]) await env.LEADERBOARD_MEMBERS.getByName(b1.player_id).partyApply(b1.player_id, { kind: "give_up", duel_id: String(index).padStart(32, "0"), at: now - index * 1000 }, now);
+    const duel = await accepted(a1, b1);
+    // Both pips see it greyed, with how long until one frees up: the oldest leaves the week.
+    for (const pip of [b1, b2]) {
+      const view = (await lobby(pip)).duels.find(item => item.duel_id === duel.duel_id)!;
+      const again = view.sides[1]!.give_up!.again_in_ms!;
+      expect(again).toBeGreaterThan(7 * DAY - 3000 - 60_000);
+      expect(again).toBeLessThanOrEqual(7 * DAY - 3000);
+    }
+    for (const pip of [b1, b2]) {
+      const refused = await giveUp(pip, duel, null);
+      expect(refused.status).toBe(409);
+      const body = await refused.json<{ error: { code: string; again_in_ms: number } }>();
+      expect(body.error.code).toBe("give_up_capped");
+      expect(body.error.again_in_ms).toBeGreaterThan(0);
+    }
+    // So is an old phone's leave, and the duel goes on.
+    expect((await call(`/v1/duels/${RELAY}/${duel.duel_id}/leave`, "POST", b2, { schema_version: 1 })).status).toBe(409);
+    expect((await detail(b1, duel)).duel).toMatchObject({ status: "running", sides: [{}, { left: false, give_up: { asked: null } }] });
+    // A ghost race is never held to it and adds nothing to it.
+    const race = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", b1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
+    const raceAsk = (await ok<{ duel: DuelView }>(giveUp(b1, race, null))).duel.sides[0].give_up!;
+    expect(raceAsk.again_in_ms).toBeUndefined();
+    const over = (await ok<{ duel: DuelView }>(giveUp(b2, race, raceAsk.asked_at))).duel;
+    expect(over).toMatchObject({ status: "unfinished", result: { outcome: "none", reason: "left" } });
+    expect(await giveUps(b2)).toEqual([]);
+    expect(await giveUps(b1)).toHaveLength(3);
+  }, 60_000);
 });
 
 describe("duel erasure", () => {
@@ -1165,10 +1262,13 @@ describe("duel hints", () => {
     const [who, recording, checkpoint] = run.turns[run.turns.length - 1];
     const finisher = hosting[who];
     await step(sockets, () => ok(call("/v2/rooms/" + joined.room_id + "/turns", "POST", finisher, turn(current, recording, checkpoint))), allBut(finisher));
-    await step(sockets, () => ok(call(path(duel, "leave"), "POST", b2, { schema_version: 1 })), { a1: 1, a2: 1, b1: 1, b2: 0 });
-    // The check result has no actor: all four hear the duel end.
-    const ended = await step(sockets, async () => verdicts((await job()).entries, () => true), { a1: 1, a2: 1, b1: 1, b2: 1 });
-    expect((await detail(a1, duel)).duel).toMatchObject({ status: "decided", updated_ms: ended.a1[0].at });
+    // The check result has no actor: all four hear it.
+    await step(sockets, async () => verdicts((await job()).entries, () => true), { a1: 1, a2: 1, b1: 1, b2: 1 });
+    // An ask to give up is news to the asker's partner only (an old phone's leave is the ask).
+    await step(sockets, () => ok(call(path(duel, "leave"), "POST", b2, { schema_version: 1 })), { a1: 0, a2: 0, b1: 1, b2: 0 });
+    // The agree ends the duel: everyone but the pip who agreed hears it.
+    const ended = await step(sockets, () => ok(call(path(duel, "give-up"), "POST", b1, { schema_version: 1, answering: null })), { a1: 1, a2: 1, b1: 0, b2: 1 });
+    expect((await detail(a1, duel)).duel).toMatchObject({ status: "decided", result: { outcome: "won", reason: "left" }, updated_ms: ended.a1[0].at });
   }, 60_000);
 
   it("tell the partner of a new ghost race, and cost one Player request per player told, writing no row", async () => {

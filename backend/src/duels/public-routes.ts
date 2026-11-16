@@ -139,7 +139,7 @@ async function post(env: Env, reach: Reach, player: string, input: unknown, now:
   const duelId = (await digest(`after-you public duel v1\n${player}\n${key}`)).slice(0, 32);
   const team = await joiners(env, player, as, now, look);
   const held = team.rows[0].party.duels.find(ref => ref.duel_id === duelId);
-  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, looksOn(env)) }; }
+  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, looksOn(env), now) }; }
   await underLimit(env, team.players, team.rows, player, now);
   const labels = await Promise.all(team.players.map((id, index) => labelOf(env, id, team.rows[index].member)));
   const duel = newPublicDuel({ duel_id: duelId, board, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, players: team.players, labels,
@@ -151,7 +151,7 @@ async function post(env: Env, reach: Reach, player: string, input: unknown, now:
   await addPublicRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
   forgetListings();
   await announceLobby(env, team.players.filter(id => id !== player), made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player, looksOn(env)), ...(energy ? { energy } : {}) };
+  return { schema_version: 1, duel: viewFor(made, player, looksOn(env), now), ...(energy ? { energy } : {}) };
 }
 
 /**
@@ -167,7 +167,7 @@ async function join(env: Env, reach: Reach, player: string, board: string, duelI
   const at = duelsAt(env, board);
   const [current] = await at.read([duelId], player);
   if (!current?.public) throw new ApiError(404, "duel_not_found");
-  if (seatOf(current, player) >= 0) return { schema_version: 1, duel: viewFor(current, player, looksOn(env)) };
+  if (seatOf(current, player) >= 0) return { schema_version: 1, duel: viewFor(current, player, looksOn(env), now) };
   const team = await joiners(env, player, as, now, look);
   const avoid = team.avoid;
   // The seated players' own blocks of the joiners, which a block made before public duels did not note on the joiners' rows.
@@ -198,7 +198,7 @@ async function join(env: Env, reach: Reach, player: string, board: string, duelI
   // "A partner joined": every player already in the duel hears of it, besides the board's own news of the change.
   await announceLobby(env, seated(duel).filter(id => !team.players.includes(id) && id !== player), duel.updated_ms, duelId);
   if (team.players.length === 2) await announceLobby(env, [team.players[1]], duel.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(duel, player, looksOn(env)), ...(energy ? { energy } : {}) };
+  return { schema_version: 1, duel: viewFor(duel, player, looksOn(env), now), ...(energy ? { energy } : {}) };
 }
 /** A join the board refused, carried out of withEnergy (which gives the energy back) to the route's own answer. */
 class RefusedJoin extends Error {
