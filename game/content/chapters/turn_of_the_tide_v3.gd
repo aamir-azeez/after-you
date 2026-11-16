@@ -14,9 +14,11 @@ const DATA := {
 	"prewarm_world": true,
 	"copy": {
 		"title": PlayerCopy.TURN_OF_THE_TIDE_TITLE,
-		"summary": PlayerCopy.TURN_OF_THE_TIDE_SUMMARY,
+		"summary": PlayerCopy.TURN_OF_THE_TIDE_V3_SUMMARY,
 		"completion": PlayerCopy.TURN_OF_THE_TIDE_COMPLETION,
 	},
+	"letter": {"stamp": "boat", "address": [PlayerCopy.LETTER_OLD_BOAT, PlayerCopy.LETTER_OLD_BOAT_LINE],
+		"postmark": PlayerCopy.LETTER_POST_HARBOUR, "signoff": PlayerCopy.LETTER_WRITE_BACK_SOON},
 	"stage_copy": {
 		"set-the-tide": {
 			"title": PlayerCopy.TURN_OF_THE_TIDE_SET_TITLE,
@@ -47,8 +49,8 @@ const DATA := {
 	# valves the pip turns.
 	# The chains, bars and water wheels are machines, and the mole's goal is its
 	# harbour lantern; every other piece takes the dressing's pick.
-	"piece_styles": {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve",
+	"piece_styles": {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "stone-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve",
 		"harbour-lantern": "harbour_lantern"},
-	"lever_actions": {"boom-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "punt-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "gate-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR, "sea-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR},
-	"server": {"flag": "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", "max_branches": 5},
+	"lever_actions": {"boom-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "punt-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "gate-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR, "sea-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR, "stone-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR},
+	"server": {"flag": "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", "max_branches": 7},
 }

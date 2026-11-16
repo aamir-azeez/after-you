@@ -1,4 +1,4 @@
-After You Date Pen is a subset of Nanum Pen Script with only the digits and letters a date needs. It is renamed because the licence below reserves the Nanum names.
+After You Pen is a subset of Nanum Pen Script (google/fonts, ofl/nanumpenscript) with Latin letters, digits and punctuation, curly quotes included: the photo dates and the chapter letters. It is renamed because the licence below reserves the Nanum names.
 
 Copyright (c) 2010, NHN Corporation (http://www.nhncorp.com),
 with Reserved Font Name Nanum, Naver Nanum, NanumGothic, Naver 

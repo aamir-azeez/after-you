@@ -101,6 +101,10 @@ const CUES := {
 	"bolt_shot": {"clip": BOLT, "range": Vector2(-1.0, 1.5), "priority": 2},
 	"bolt_drawn": {"clip": BOLT, "range": Vector2(-4.0, -2.0), "priority": 2},
 	"valve_turned": {"clip": VALVE, "range": Vector2(-1.5, 1.5), "db": -1.0, "priority": 2},
+	# The fog lantern's pump (rules 16): a slosh as it is lit and its pump
+	# starts, lower as it is put out.
+	"lantern_lit": {"clip": SLOSH, "range": Vector2(-0.5, 1.5), "db": -2.0, "priority": 2},
+	"lantern_out": {"clip": SLOSH, "range": Vector2(-4.0, -2.0), "db": -3.0, "priority": 2},
 	# A pip pushing into a barrier it may not pass (presentation/barrier_refusals.gd):
 	# the gate's soft rattle, the winch's pawl high and quiet; and a control it
 	# may not work: a dull clunk, the bolt low and muffled.
@@ -128,6 +132,10 @@ const CUES := {
 	# Bell sound items (content/cosmetics/ "sound"): the player's result screen
 	# plays the worn one once, quietly, at one pitch.
 	"bell_wood_chime": {"clip": WOOD_CHIME, "range": Vector2(0.0, 0.0), "db": -9.0, "fixed": true},
+	# Ending scenes (services/ending_scene.gd): a pip's splash into a pool, low
+	# and full, and a stamp's thunk on a desk, the bolt low and dull.
+	"ending_splash": {"clip": WELL_PLUNK, "range": Vector2(-6.0, -6.0), "db": -1.0, "fixed": true},
+	"ending_stamp": {"clip": BOLT, "range": Vector2(-5.0, -5.0), "db": -2.0, "fixed": true},
 }
 
 ## A lever or selector style that is a machine (presentation/kit/pieces/
@@ -139,6 +147,7 @@ const LOOK_CUES := {
 	"winch": ["winch_wound", "winch_unwound"],
 	"bolt": ["bolt_shot", "bolt_drawn"],
 	"valve": ["valve_turned", "valve_turned"],
+	"lantern": ["lantern_lit", "lantern_out"],
 }
 
 ## A spirit's foot contacts: each spirit alternates the clips; the step's

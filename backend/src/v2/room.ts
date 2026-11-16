@@ -1102,7 +1102,8 @@ export class RoomV2 extends DurableObject<Env> {
       // Only open turns take a later turn without a checkpoint (exactTurnFields); elsewhere it is the missing field it always was.
       if (raw.role === "b" && input.checkpoint === undefined && !chapter(observed).open_turns) return fail(400, "unexpected_fields");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
-      if (isPacked(recording) && !packedRoom(this.ctx.storage)) return fail(422, "packed_recording_not_allowed");
+      // Open turns rooms take only packed turns (open-turns.ts); elsewhere a packed turn needs a packed room.
+      if (isPacked(recording) && !packedRoom(this.ctx.storage) && !chapter(observed).open_turns) return fail(422, "packed_recording_not_allowed");
       if (recording.simulation_version !== (observed.simulation_version ?? chapter(observed).simulation_version)) return fail(422, "unsupported_simulation_version");
       const open = chapter(observed).open_turns;
       if (replaces !== undefined && ((recording.role !== "a" && !open) || context !== undefined)) return fail(409, "self_redo_unavailable");

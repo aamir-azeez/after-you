@@ -9,6 +9,8 @@ const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
 const PadPiece = preload("res://presentation/kit/pieces/pad.gd")
 const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
 const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
+## The new pieces' looks (rules 16): decks, platforms, ladders and fog.
+const NewPieces = preload("res://presentation/kit/new_pieces.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
 ## looking, then this long easing back to the spirit.
 const GLANCE_TO := 1.6
@@ -35,6 +37,8 @@ var _glance_target := Vector3.ZERO
 var descriptor_override: Dictionary = {}
 ## Ball id -> radius (m), for the barriers' lock rings (_build_barrier_extras).
 var _ball_radii: Dictionary = {}
+## This stage's new pieces' looks (kit/new_pieces.gd), or null before a stage.
+var new_pieces: RefCounted
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -66,6 +70,7 @@ func show_stage(stage: Dictionary) -> void:
 	_clear_stage_marks()
 	# These are presentation defaults for the shared Lighthouse builder.
 	_configure_shared_view(view)
+	new_pieces = NewPieces.new(self, view)
 	var physical_props: Array = view.get("props", []).duplicate(true)
 	view["props"] = []
 	var goal: Dictionary = view.goal.duplicate(true)
@@ -88,6 +93,10 @@ func show_stage(stage: Dictionary) -> void:
 	for lever: Dictionary in view.get("levers", []):
 		_build_lever(lever)
 		await _build_step()
+	var lanterns: Dictionary = {}
+	for lever: Dictionary in view.get("levers", []):
+		if _piece_style("lever", str(lever.id)) == "lantern": lanterns[str(lever.id)] = _at(lever)
+	new_pieces.build(lanterns)
 	for obstacle: Dictionary in view.get("obstacles", []):
 		_build_obstacle(obstacle)
 	await _build_step()
@@ -221,6 +230,7 @@ func _static_keep() -> Array:
 	if is_instance_valid(_goal_beacon): keep.append(_goal_beacon)
 	# The parts of a piece that move, light or change stay whole; the rest folds.
 	for piece: RefCounted in _lever_pieces.values(): keep.append_array(piece.moving_parts())
+	if new_pieces != null: keep.append_array(new_pieces.moving_nodes())
 	return keep
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -370,10 +380,21 @@ func _build_bridge(definition: Dictionary) -> void:
 ## Whether a crossing gets the fixed pulley and suspended weight that show
 ## where a missing crossing goes (they are _weights). A world that shows it
 ## some other way says no.
-func _hangs_pulley(_definition: Dictionary) -> bool:
-	return true
+func _hangs_pulley(definition: Dictionary) -> bool:
+	# A new piece's deck (a rope, stones, the path behind the falls, a platform) is its own cause.
+	return new_pieces == null or not new_pieces.lays(definition)
+
+## A new piece lays its own deck (kit/new_pieces.gd); every other crossing
+## keeps the Lighthouse planks.
+func _lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float) -> void:
+	if new_pieces != null and new_pieces.lays(definition): new_pieces.lay_deck(definition, deck, width, depth, across_x, low, high)
+	else: super._lay_deck(definition, deck, width, depth, across_x, low, high)
 
 func _build_stair(stair: Dictionary) -> void:
+	# A one way stair is a pull-up rope ladder (rules 16).
+	if stair.has("one_way") and new_pieces != null:
+		new_pieces.build_ladder(stair)
+		return
 	var r: Array = stair.rect_cm
 	var from_height := float(stair.from_height_cm) / 100.0
 	var rise := float(stair.to_height_cm - stair.from_height_cm) / 100.0
@@ -585,6 +606,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)
 	if is_instance_valid(_goal_beacon): _goal_beacon.present(state)
+	if new_pieces != null: new_pieces.present(state, immediate or reduced_motion)
 	if immediate: _snap_follow()
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
@@ -594,6 +616,7 @@ func _below_raised(raised: Node3D, player: Dictionary) -> bool:
 	return Cutaway.below_raised(raised, player)
 
 func _advance_camera(delta: float) -> void:
+	if new_pieces != null and new_pieces.moving(): new_pieces.advance(delta)
 	for id: String in _lever_pieces:
 		if _lever_pieces[id].moving(): _lever_pieces[id].advance(delta)
 	if _uses_scrolling_camera():

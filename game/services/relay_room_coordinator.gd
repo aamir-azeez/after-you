@@ -580,6 +580,7 @@ func _note_packed(response: Dictionary) -> void:
 	if response.get("packed_recordings") == true and RoomsApi.packed_supported: _packed_room = true
 
 ## Whether this phone records the room's turns packed (core/v2/recording_codec.gd).
+## Open turns record packed whatever this says (core/physical/runtime.gd).
 func packed_room() -> bool:
 	return _packed_room and RoomsApi.packed_supported
 
@@ -1440,7 +1441,9 @@ func _valid_pending(value: Variant) -> bool:
 		return false
 	var body: Dictionary = value.body
 	var keys := ["base_revision", "idempotency_key", "branch", "recording"] if value.operation == "turns" else ["base_revision", "idempotency_key", "branch", "stage_index"]
-	if Typed.equal(value.operation, "turns") and body.get("recording") is Dictionary and Typed.equal(body.recording.get("role"), "b"):
+	# Open turns: a pass is a later turn that does not finish the stage, so it carries no checkpoint.
+	var passing: bool = Typed.equal(value.operation, "turns") and body.get("recording") is Dictionary and Typed.equal(body.recording.get("role"), "b") and body.recording.get("completed") == false and value.origin.get("open_turns") is Dictionary
+	if Typed.equal(value.operation, "turns") and body.get("recording") is Dictionary and Typed.equal(body.recording.get("role"), "b") and not passing:
 		keys.append("checkpoint")
 	if Typed.equal(value.operation, "turns") and body.has("tries"):
 		if not Typed.whole_number(body.tries) or int(body.tries) < 1 or int(body.tries) > TurnTries.MAX_TRIES: return false
@@ -1459,9 +1462,9 @@ func _valid_pending(value: Variant) -> bool:
 	if value.operation == "fork":
 		return RoomStages.within(body.stage_index, Registry.definition(Registry.resolve(value.origin))) and body.stage_index <= value.origin.stage_index and (body.stage_index < value.origin.stage_index or value.origin.a_turn_id != null)
 	var checked := _verify_recording(body.recording, value.origin)
-	if not checked.valid or not checked.get("snapshot", {}).get("can_commit", false):
+	if not checked.valid or not (checked.get("snapshot", {}).get("can_commit", false) or (passing and checked.get("ready", false))):
 		return false
-	if body.recording.role == "a":
+	if body.recording.role == "a" or passing:
 		return true
 	var derived: Dictionary = _derived_checkpoint(value.origin, body.recording)
 	return derived.valid and Typed.same(derived.get("checkpoint", {}), body.checkpoint)
@@ -1486,9 +1489,14 @@ func _valid_receipt(value: Variant, request: Dictionary) -> bool:
 		var recording: Dictionary = request.body.recording
 		# A replaced first turn goes back to the start of its stage on a new branch first.
 		if request.body.has("replaces"): branch += 1
-		if not Typed.equal(value.turn_id, "t%d-%d-%s" % [branch, index, recording.role]) or not Typed.equal(value.recording_hash, recording.recording_hash) or not Typed.equal(value.pair_id, ("p%d-%d" % [branch, index] if recording.role == "b" else null)):
+		# Open turns: a turn's id has its number's letter (a, b, c ...), the server's turnId.
+		var letter := str(recording.role)
+		var view: Variant = request.origin.get("open_turns")
+		if view is Dictionary and _range(view.get("turn"), 1, OpenTurns.MAX_CAP): letter = OpenTurns.LETTERS[int(view.turn) - 1]
+		if not Typed.equal(value.turn_id, "t%d-%d-%s" % [branch, index, letter]) or not Typed.equal(value.recording_hash, recording.recording_hash) or not Typed.equal(value.pair_id, ("p%d-%d" % [branch, index] if request.body.has("checkpoint") else null)):
 			return false
-		if recording.role == "b":
+		# Open turns: a pass closes no stage, so the room keeps its checkpoint.
+		if request.body.has("checkpoint"):
 			expected_checkpoint = request.body.checkpoint.checkpoint_hash
 	return Typed.equal(value.branch, branch) and Typed.equal(value.stage_index, index) and Typed.equal(value.stage_id, Registry.definition(Registry.resolve(request.origin)).stages[index].id) and Typed.equal(value.checkpoint_hash, expected_checkpoint)
 

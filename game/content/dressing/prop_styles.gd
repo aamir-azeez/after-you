@@ -106,23 +106,35 @@ const SLOTS := {
 	# Not props: the puzzle pieces' looks (content/dressing/piece_styles.gd),
 	# each built by its kit under presentation/kit/pieces/. A piece behaves the
 	# same in every style; only its look changes.
-	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}},
-	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}},
-	"pad": {"plain": {}, "stand_spot": {}},
+	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}, "lantern": {}},
+	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}, "rope_wheel": {}},
+	"pad": {"plain": {}, "stand_spot": {}, "pan": {}, "board": {}, "crank_board": {}},
 	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}},
 	"lift": {"plain": {}, "rope_tower": {}},
+	# The new pieces' looks (rules 16): a crossing's deck, a rope raft, a stair
+	# ridden up only (a pull-up rope ladder or a turning wheel), the fog round a
+	# lit lantern and a spillway made a waterfall.
+	"deck": {"plank": {}, "rope": {}, "stones": {}, "falls_path": {}},
+	"raft": {"logs": {}},
+	"ladder": {"rope": {}, "wheel": {}},
+	"fog": {"mist": {}, "none": {}},
+	"spillway": {"trickle": {}, "falls": {}},
+	# Rules 16's carried items and floats (kit/pieces/carried_item.gd) and the
+	# current that carries them (kit/pieces/current.gd).
+	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}},
+	"current": {"ripples": {}, "chevrons": {}},
 }
 
 ## Slots that pick a kit piece's look rather than a prop to stand: the resolved
 ## dressing carries the pick as a field of the same name ("tag": "stone_tile").
-const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal", "lift"]
+const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "fog", "spillway", "carried_item", "current"]
 
 ## The pick for a slot that neither the theme nor the level names.
 const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
 	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
-	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain",
+	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle", "carried_item": "parcel", "current": "ripples",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line

@@ -19,6 +19,12 @@ const RECEIVER_GRACE_TICKS := 300
 ## it, so a packet cannot change it. Without it the published caps apply.
 const FIRST_TURN_LIMITS_VERSION := 9
 const MAX_DECLARED_TURN_TICKS := 9000
+## Open turns (open_turns.gd: 14 and 15) take turns up to ten minutes. Every
+## open turn goes packed (core/v2/recording_codec.gd): the widest one this long
+## is about 82,000 packed characters, under RecordingCodec.MAX_PACKED_CHARS
+## (131,072) with room to spare, and its check replays about a sixth of its own
+## length on a slow phone. The server's mirror is open-turns.ts MAX_OPEN_TURN_TICKS.
+const MAX_OPEN_TURN_TICKS := 18000
 ## Open controls (a facade's _open_controls()): a pad holds for either pip, and
 ## either pip works any lever, switch or selector, so the controls carry no
 ## owner_slot. In the second turn the memory's toggles replay as toggles: a
@@ -51,7 +57,9 @@ var memory_slot := "p0"
 var pass_allowed := true
 var passed := false
 ## Export the packed form (core/v2/recording_codec.gd): set for a live turn in a
-## packed room, and from the record itself whenever one is replayed.
+## packed room, and from the record itself whenever one is replayed. Open turns
+## (open_turns.gd) always export packed, in rooms and solo alike: the server
+## takes no other form there, and a stage of many long turns stays small.
 var packed_recordings := false
 var _checkpoint: Dictionary = {}
 var _prior: Dictionary = {}
@@ -183,6 +191,7 @@ func _tick(input: Dictionary = {}) -> void:
 	_after_move()
 	_refresh_routes()
 	if (not _objective or _open_turns()) and bool(frame.action) and not _held: _interact()
+	_after_interact()
 	_held = bool(frame.action)
 	_refresh_routes()
 	for route_id: String in _routes:
@@ -247,20 +256,22 @@ func _move(frame: Dictionary) -> void:
 	var steps := maxi(absi(delta.x), absi(delta.y))
 	var walked := Vector2i.ZERO
 	var cells := _navigation_cells()
+	var routes := _walk_routes(active_slot)
 	for index in range(1, steps + 1):
 		var next := Vector2i(roundi(float(delta.x * index) / steps), roundi(float(delta.y * index) / steps))
 		var unit := next - walked
 		walked = next
-		if _try_move(unit, cells): continue
-		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells)
-		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells)
+		if _try_move(unit, cells, routes): continue
+		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells, routes)
+		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells, routes)
 
 ## cells: this definition's floor index (_navigation_cells()), fetched once per move.
-func _try_move(delta: Vector2i, cells: Dictionary) -> bool:
+## routes: the crossings the walker may step on (_walk_routes()), likewise.
+func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary) -> bool:
 	var previous: Dictionary = _players[active_slot]
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
-	var position := Navigation.at(level, _routes, _mechanisms.levers, previous, x, z, active_slot, PLAYER_RADIUS, true, cells)
+	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, active_slot, PLAYER_RADIUS, true, cells)
 	if position.is_empty(): return false
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
@@ -460,7 +471,8 @@ static func turn_ticks(definition: Dictionary, version: int, turn_role: String) 
 ## backend's turnLimits rules: a_ticks and b_ticks both whole numbers with
 ## 1 <= a < b <= 9,000 (the receiver waits out the first turn). On open turns
 ## (open_controls.gd OPEN_TURNS_RULES) every turn plays alongside its memory
-## and has the same limit, so a may equal b there: 1 <= a <= b <= 9,000.
+## and has the same limit, so a may equal b there, and turns go up to
+## MAX_OPEN_TURN_TICKS: 1 <= a <= b <= 18,000.
 static func turn_limits_valid(definition: Dictionary, version: int) -> bool:
 	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return true
 	return not _declared_turns(definition.turn_limits, version).is_empty()
@@ -469,7 +481,8 @@ static func _declared_turns(limits: Variant, version: int) -> Dictionary:
 	if not limits is Dictionary: return {}
 	var a: Variant = limits.get("a_ticks")
 	var b: Variant = limits.get("b_ticks")
-	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b > MAX_DECLARED_TURN_TICKS: return {}
+	var ceiling := MAX_OPEN_TURN_TICKS if version in OpenControls.OPEN_TURNS_RULES else MAX_DECLARED_TURN_TICKS
+	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b > ceiling: return {}
 	if b < a or (b == a and version not in OpenControls.OPEN_TURNS_RULES): return {}
 	return {"a": int(a), "b": int(b)}
 
@@ -557,7 +570,7 @@ func _part_done() -> bool:
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot
-	return not Navigation.at(level, _routes, _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells()).is_empty()
+	return not Navigation.at(level, _walk_routes(selected), _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells()).is_empty()
 
 func export_recording() -> Dictionary:
 	if tick == 0 or level.is_empty(): return {}
@@ -567,7 +580,7 @@ func export_recording() -> Dictionary:
 		"stage_id":stage.id,"stage_version":stage.version,"checkpoint_hash":_checkpoint.checkpoint_hash,"role":role,"player_slot":active_slot,"tick_rate":TICK_RATE,
 		"duration_ticks":tick,"catch_assistance":catch_assistance,"actions":_actions.duplicate(true),"replay_checks":checks,"final_state_hash":state_hash(),
 		"completed":complete,"outcome":_outcome(),"source_recording_hash":str(_prior.get("recording_hash", "")) if role == "b" else ""}
-	if packed_recordings: record = RecordingCodec.packed_form(record)
+	if packed_recordings or _open_turns(): record = RecordingCodec.packed_form(record)
 	record["recording_hash"] = recording_hash(record)
 	return record
 
@@ -652,6 +665,18 @@ func _proof_engine() -> RefCounted:
 	return null
 
 func _reset_mechanics() -> void:
+	pass
+
+## The crossings slot's pip may step onto this tick: the open ones, less any
+## a facade's rules keep it off (rules 16: a pip carrying an item never climbs
+## a crossing that needs both hands). Never changes the routes themselves.
+func _walk_routes(_slot: String) -> Dictionary:
+	return _routes
+
+## After the live pip's press, before the routes are worked out again: a
+## facade whose things move on a press (rules 16's current) moves them here.
+## Published rules have none.
+func _after_interact() -> void:
 	pass
 
 ## After a tick's routes are final, before readiness and completion: a facade

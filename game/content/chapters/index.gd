@@ -41,6 +41,13 @@ const OPTIONAL := {
 	"turn_intro": [],
 	## The chapter's keepsake ledger places in order: {stage_id, title}.
 	"keepsakes": [],
+	## The letter About this chapter shows (presentation/letter/letter_view.gd):
+	## {"stamp": a kind of presentation/letter/stamp_art.gd KINDS, "address":
+	## [place, the line under it], "postmark": the post office's name,
+	## "signoff"}, words as PlayerCopy constants. The letter itself is the
+	## copy's summary. {} uses the letter of the first version of the same level
+	## that has one, so only a version that tells its own story declares one.
+	"letter": {},
 	## The chapter's keepsake on Home, on its offered version only (one per
 	## level id): {"builder": a presentation/keepsakes/ script, "island": the
 	## island it stands on ("left" or "right", the Home islands, or a keepsake
@@ -120,12 +127,16 @@ const OPTIONAL := {
 	## default stage copy, piece styles and water levels fill whichever of
 	## those this descriptor leaves out (content/blocks/defaults.gd).
 	"block_source": [],
+	## The chapter's ending scene: a file name under content/endings/ (its
+	## format is in services/ending_scene.gd), played in this world after its
+	## last turn (presentation/ending_flow.gd). "" for none.
+	"ending": "",
 }
 ## The turn lengths a chapter has while it is built (scripts/new_chapter.py
 ## writes them into a new journey definition and every new version, all on
-## open turns): one limit for every turn, the longest whole-second turn the
-## rules and the server accept for two open turns stages (91 s;
-## scripts/chapter_tools/turn_limits.py cap_open works it out). Play sets the
+## open turns): one limit for every turn, 91 s, which the rules and the
+## server accept for two open turns stages and more (packed turns lift the
+## server's cap; scripts/chapter_tools/turn_limits.py cap_open). Play sets the
 ## real ones (scripts/chapter_turn_limits.py), and test_chapter_descriptors
 ## fails a released chapter still on these.
 const DEVELOPMENT_TURN_LIMITS := {"a_ticks": 2730, "b_ticks": 2730}
