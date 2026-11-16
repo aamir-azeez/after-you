@@ -129,7 +129,7 @@ func send() -> Dictionary:
 
 ## The room's failures this phone has not seen, oldest first, when it holds
 ## more than seen(): {"ok", "list"}. Each is {by, stage_index, role, reason,
-## at, number, slip: null or {recording, checkpoint, prior}}. Marks them seen
+## at, number, slip: null or HardMode.kept_slip's fields}. Marks them seen
 ## once read. {"ok": false} when the read failed.
 func read_failures(room: Dictionary) -> Dictionary:
 	var hard: Variant = room.get("hard")
@@ -168,7 +168,7 @@ static func valid_failure(item: Variant, room: Dictionary) -> bool:
 	summary.erase("number")
 	if not valid_last(summary, room): return false
 	var slip: Variant = item.get("slip")
-	return slip == null or (slip is Dictionary and slip.size() == 3 and slip.get("recording") is Dictionary and slip.get("checkpoint") is Dictionary and (slip.get("prior") == null or slip.get("prior") is Dictionary))
+	return slip == null or (slip is Dictionary and HardMode.slip_fields_valid(slip) and slip.get("recording") is Dictionary and slip.get("checkpoint") is Dictionary and (slip.get("prior") is Dictionary or (slip.get("prior") == null and not slip.has(HardMode.CHAIN))))
 
 ## Who slipped, where and how: {by, stage_index, role, reason, at}.
 static func valid_last(item: Variant, room: Dictionary) -> bool:

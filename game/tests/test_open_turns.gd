@@ -52,6 +52,9 @@ const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
 var checks := 0
 var failures := 0
+## _chain's stage: turn 1, two passes, the closing turn, and its checkpoint.
+var _stage: Array = []
+var _stage_checkpoint: Dictionary = {}
 
 ## The chapter screen with its saves, review and turn check left out: it
 ## notes how the turn ended.
@@ -87,6 +90,7 @@ func _initialize() -> void: _run.call_deferred()
 func _run() -> void:
 	_rules()
 	_chain()
+	await _hard_runs()
 	_packed_chain()
 	_solo_size()
 	_solo_worst_case()
@@ -164,6 +168,8 @@ func _chain() -> void:
 	_check(derived.valid, "The closing checkpoint derives (%s)" % str(derived.get("error", "")))
 	if not derived.valid: return
 	var checkpoint: Dictionary = derived.checkpoint
+	_stage = [a, pass_two, pass_three, closing]
+	_stage_checkpoint = checkpoint
 	_check(int(checkpoint.schema_version) == OpenTurns.CHECKPOINT_SCHEMA and checkpoint.turn_hashes == [a.recording_hash, pass_two.recording_hash, pass_three.recording_hash, closing.recording_hash] and checkpoint.proof.turns.size() == 4 and not checkpoint.has("a_recording_hash"), "It nests all four turns in order (schema 8)")
 	MemoryTrace.clear()
 	_check(Simulation.verify_checkpoint(level, checkpoint).valid, "The four turn checkpoint proves from scratch")
@@ -203,6 +209,119 @@ func _chain() -> void:
 	var shuffled: Dictionary = checkpoint.duplicate(true)
 	shuffled.proof.turns = [a, pass_three, pass_two, closing]
 	_check(not Simulation.verify_checkpoint(level, shuffled).valid, "Turns out of order are refused")
+
+## Hard runs (services/hard_mode.gd) on open turns, with _chain's four turns:
+## a slip on turn 4 is kept with turn 3 as its memory and turns 1 and 2 under
+## it, and replays over them; a finished stage is kept with its passes and
+## replays; turns that do not chain are refused when watched, and shapes a
+## run never has are refused when kept. A two-turn slip keeps its three fields.
+const HardRun = preload("res://services/hard_run.gd")
+const TurnTries = preload("res://services/turn_tries.gd")
+const Index = preload("res://content/chapters/index.gd")
+const HARD_MARKS := "user://open-turns-hard-marks.json"
+const HARD_TRIES := "user://open-turns-hard-tries.json"
+func _hard_runs() -> void:
+	if _stage.size() < 4: return
+	var level := Registry.definition(TIDE)
+	var start := Registry.initial_checkpoint(TIDE)
+	var a: Dictionary = _stage[0]
+	var turn_two: Dictionary = _stage[1]
+	var turn_three: Dictionary = _stage[2]
+	var closing: Dictionary = _stage[3]
+	_clear_hard()
+	var hashes := func(turns: Array) -> Array: return turns.map(func(turn: Dictionary) -> String: return str(turn.recording_hash))
+	# Turn 4 slips a second in, over turn 3 and the turns under it.
+	var four := Simulation.new()
+	four.reset(level, STAGE, start, turn_three, "b", 0, [a, turn_two])
+	var frames: Array = Simulation.expand_recording_inputs(closing)
+	for tick in 30: four.step(frames[tick])
+	var slip: Dictionary = _json(four.export_recording())
+	var journal := Journey.new(HardMode.journal_path(TIDE), null, TIDE)
+	journal.load_data()
+	_check(journal.accept_recording(a) and journal.accept_recording(turn_two) and journal.accept_recording(turn_three) and hashes.call(journal.memory_chain()) == hashes.call([a, turn_two]), "A hard run's journal holds turn 1 and two passes, the memory over both (%s)" % journal.last_error)
+	var run: RefCounted = HardRun.solo(TIDE, HARD_MARKS)
+	_check(run.fail_solo(journal, TurnTries.new(HARD_TRIES), "failed_turn", slip, TIDE) and journal.pairs().is_empty() and journal.passes().is_empty(), "A slip on turn 4 ends the run and starts it again")
+	HardMode.wait_writes()
+	var kept: Array[Dictionary] = HardMode.runs(TIDE)
+	var slipped: Dictionary = kept[0] if kept.size() == 1 else {}
+	_check(not slipped.is_empty() and slipped.slip.prior.get("recording_hash") == turn_three.recording_hash and hashes.call(slipped.slip.get(HardMode.CHAIN, [])) == hashes.call([a, turn_two]) and slipped.role == "b", "The slip is kept with turn 3 as its memory and turns 1 and 2 under it")
+	if slipped.is_empty(): return
+	var part: Dictionary = HardMode.watch_pairs(slipped)[0]
+	var turns := OpenTurns.pair_turns(part)
+	_check(hashes.call(turns) == hashes.call([a, turn_two, turn_three, slip]) and Canonical.same(part.start, start), "Watching it plays the slip from its checkpoint over every turn before it")
+	var sim := Simulation.new()
+	_check(Registry.reset_simulation(sim, TIDE, level, STAGE, part.start, turns[-2], "b", turns[-1], turns.slice(0, turns.size() - 2)), "The slip starts over its kept memories (%s)" % sim.error)
+	for input: Dictionary in Simulation.expand_recording_inputs(slip): sim.step(input)
+	_check(Canonical.same(_json(sim.export_recording()), slip), "and plays back byte for byte")
+	var viewer: Node = await _hard_viewer({"chapter_key": TIDE, "kind": "watch", "run": slipped})
+	_check(viewer.mode == "replay" and viewer.replay_pair_index == 0 and viewer.sim.get("role") == "b", "The chapter screen opens the kept slip in its replay (%s)" % viewer.mode)
+	var ticks := 0
+	while viewer.mode == "replay" and ticks < 2000 and viewer.replay_cursor < viewer.replay_frames.size():
+		viewer.advance_input({})
+		ticks += 1
+	_check(viewer.replay_cursor == viewer.replay_frames.size() and viewer.replay_frames.size() == int(slip.duration_ticks), "and plays it up to the slip")
+	await _close_hard_viewer(viewer)
+	# A finished stage: kept with its passes, and its closing turn replays over them.
+	_check(journal.accept_recording(a) and journal.accept_recording(turn_two) and journal.accept_recording(turn_three) and journal.accept_recording(closing), "The run plays the stage again in four turns (%s)" % journal.last_error)
+	run.complete_solo(journal)
+	HardMode.wait_writes()
+	var done: Array = HardMode.runs(TIDE).filter(func(item: Dictionary) -> bool: return item.kind == HardMode.COMPLETE)
+	var whole: Dictionary = done[0] if done.size() == 1 else {}
+	_check(not whole.is_empty() and whole.pairs[0].get("passes", []).size() == 2 and HardMode.new(HARD_MARKS).completed(TIDE, HardMode.SOLO), "A finished run is kept with the stage's passes and marked")
+	if whole.is_empty(): return
+	_check(int(HardMode.summary(whole).parts) == 1 and HardMode.runs(TIDE).size() == 2, "It lists as one part beside the slip")
+	_check(Canonical.same(CheckpointPairs.derive(Simulation, level, start, HardMode.watch_pairs(whole)[0]).get("checkpoint"), _stage_checkpoint), "Its stage derives the same checkpoint when watched")
+	viewer = await _hard_viewer({"chapter_key": TIDE, "kind": "watch", "id": str(whole.id)})
+	_check(viewer.mode == "replay" and viewer.replay_frames.size() == int(closing.duration_ticks) and viewer.sim.get("role") == "b", "The chapter screen replays the closing turn over its passes (%s)" % viewer.mode)
+	await _close_hard_viewer(viewer)
+	# Turns that do not chain are refused when watched.
+	var shuffled: Dictionary = whole.duplicate(true)
+	shuffled.pairs[0].passes = [turn_three, turn_two]
+	_check(HardMode.valid_run(shuffled) and not CheckpointPairs.derive(Simulation, level, start, HardMode.watch_pairs(shuffled)[0]).get("valid", false), "Passes out of order are refused when watched")
+	var gap: Dictionary = slipped.duplicate(true)
+	gap.slip[HardMode.CHAIN] = [turn_two]
+	var broken: Dictionary = HardMode.watch_pairs(gap)[0]
+	var broken_turns := OpenTurns.pair_turns(broken)
+	_check(not Registry.reset_simulation(Simulation.new(), TIDE, level, STAGE, broken.start, broken_turns[-2], "b", broken_turns[-1], broken_turns.slice(0, broken_turns.size() - 2)), "A slip missing a turn under its memory does not replay")
+	# Shapes a run never has are refused.
+	for bad: Variant in [[], [7], [turn_two, "x"]]:
+		var odd: Dictionary = whole.duplicate(true)
+		odd.pairs[0].passes = bad
+		_check(not HardMode.valid_run(odd) and not HardMode.save_run(odd), "A stage with passes %s is refused" % str(bad).left(24))
+	var extra: Dictionary = whole.duplicate(true)
+	extra.pairs[0].more = [turn_two]
+	_check(not HardMode.valid_run(extra), "A stage with another field is refused")
+	for bad: Variant in [[], [3], "x"]:
+		var odd: Dictionary = slipped.duplicate(true)
+		odd.slip[HardMode.CHAIN] = bad
+		_check(not HardMode.valid_run(odd), "A slip with chain %s is refused" % str(bad))
+	var first_turn: Dictionary = slipped.duplicate(true)
+	first_turn.slip.prior = {}
+	_check(not HardMode.valid_run(first_turn), "A chain under no memory is refused")
+	# A two-turn slip (and a first turn) keeps exactly its three fields.
+	_check(HardMode.kept_slip(slip, start, a).keys() == ["recording", "checkpoint", "prior"] and HardMode.kept_slip(slip, start, {}, [a]).size() == 3 and HardMode.kept_slip(slip, start, turn_three, [a, turn_two]).size() == 4, "Only a slip over a pass keeps a chain")
+	_clear_hard()
+
+func _hard_viewer(request: Dictionary) -> Node:
+	HardMode.hand_over(request)
+	var viewer: Node = load(Index.data(TIDE).scene).instantiate()
+	viewer.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
+	root.add_child(viewer)
+	viewer.set_physics_process(false)
+	viewer.set_process(false)
+	await process_frame
+	return viewer
+
+func _close_hard_viewer(viewer: Node) -> void:
+	viewer.set_block_signals(true)
+	viewer._leaving = true
+	viewer.queue_free()
+	await process_frame
+
+func _clear_hard() -> void:
+	HardMode.wait_writes()
+	for path: String in [HardMode.journal_path(TIDE), HardMode.runs_path(TIDE), HardMode.INDEX_PATH, HARD_MARKS, HARD_TRIES]:
+		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 
 ## The same four turns as the engine records them with nothing set: packed
 ## (open turns always are, runtime.gd), each replaying exactly and playing as

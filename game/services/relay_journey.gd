@@ -218,6 +218,13 @@ func passes() -> Array:
 	return [] if read_only else _state.get(PASSES, []).duplicate(true)
 
 
+## Open turns: the turns under prior_recording(), oldest first ([] until a
+## stage has a pass).
+func memory_chain() -> Array:
+	_ensure_loaded()
+	return [] if read_only else _chain(_state).duplicate(true)
+
+
 ## The turn the next later turn plays over: the latest pass, else the first turn.
 static func _memory(state: Dictionary) -> Dictionary:
 	var held: Array = state.get(PASSES, [])
@@ -888,7 +895,7 @@ func _adopt_written(next: Dictionary, derived_checkpoint: Dictionary) -> void:
 ## checked from it is not replayed again; all structural and version rules
 ## still run. Only accept passes it, for pairs it has just proven.
 func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
-	if not value is Dictionary or not (_exact_keys(value, STATE_KEYS) or (_exact_keys(value, STATE_KEYS + [PASSES]) and value.passes is Array and not value.passes.is_empty() and value.passes.all(func(turn: Variant) -> bool: return turn is Dictionary))):
+	if not value is Dictionary or not (_exact_keys(value, STATE_KEYS) or (_exact_keys(value, STATE_KEYS + [PASSES]) and OpenTurns.turns_valid(value.passes))):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
 	if not Typed.equal(value.schema_version, _level.schema_version) or not Typed.whole_number(value.simulation_version) or int(value.simulation_version) not in Registry.supported_rules(_chapter_key) or not Typed.equal(value.level_id, _level.id) or not Typed.equal(value.level_version, _level.version) or not Typed.equal(value.definition_hash, Canonical.digest(_level)):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD)
@@ -898,7 +905,7 @@ func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 	var proven: bool = not trusted.is_empty() and int(trusted.get("pairs", -1)) == value.pairs.size()
 	for pair: Variant in value.pairs:
 		# Open turns: a stage's record may carry its passes too (relay_online_session.gd chapter_pairs).
-		if not pair is Dictionary or not (_exact_keys(pair, ["a", "b"]) or (_exact_keys(pair, ["a", "b", "passes"]) and pair.passes is Array and not pair.passes.is_empty() and pair.passes.all(func(turn: Variant) -> bool: return turn is Dictionary))) or not pair.a is Dictionary or not pair.b is Dictionary:
+		if not OpenTurns.record_valid(pair):
 			return _invalid("Malformed completed pair.")
 		if _chapter_key != Registry.FIRST_STEPS and (not Typed.equal(pair.a.get("simulation_version"), value.simulation_version) or not Typed.equal(pair.b.get("simulation_version"), value.simulation_version)): return _invalid("Unsupported recording version.")
 		if proven: continue

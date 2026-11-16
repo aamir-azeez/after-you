@@ -348,12 +348,10 @@ describe("open turns: a friend room", () => {
     // The partner's poll that picks the pass up writes only its seen note.
     expect(poll.rows.written).toBeLessThanOrEqual(1);
   });
-  it("is refused to old apps, hard runs and duels", async () => {
+  it("is refused to old apps", async () => {
     const host = await account(), oldGuest = await account();
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }));
     await failure(call("/v2/rooms/join", "POST", oldGuest, { invite_code: made.invite_code, supported_simulation_versions: [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] }), 422, "unsupported_simulation_version");
-    const stub = env.ROOMS_V2.getByName("open-turns-hard");
-    expect(await stub.initialize("open-turns-hard", host.player_id, "A".repeat(20), adapter.key, undefined, "hard")).toMatchObject({ ok: false, code: "open_turns_friend_rooms_only" });
   });
   it("keeps a published room's replies and stored room free of open turns fields", async () => {
     const host = await account();
@@ -364,6 +362,75 @@ describe("open turns: a friend room", () => {
       expect(data).not.toContain("open_stage");
     });
     expect(chapter(turnOfTheTideV2.key).open_turns).toBeUndefined();
+  });
+});
+
+describe("open turns: a hard room", () => {
+  const HARD = { "X-AfterYou-Hard-Mode": "1" };
+  type Reset = { room: RoomSnapshotV2; failure: Rec };
+  type Slips = { failures: number; list: (Rec & { slip: Rec | null })[] };
+  async function hardRoom(): Promise<{ room: RoomSnapshotV2; first: Account; second: Account }> {
+    const host = await account(), guest = await account();
+    const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key(), mode: "hard" }));
+    const joined = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }, HARD));
+    const first = setA.player_slot === "p0" ? host : guest;
+    return { room: joined, first, second: first === host ? guest : host };
+  }
+  const slipped = (room: RoomSnapshotV2, who: Account, slip: Rec) => json<Reset>(call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
+    { base_revision: room.revision, branch: room.branch, idempotency_key: key(), reason: "failed_turn", stage_index: room.stage_index, role: room.active_role, slip }));
+  const slips = (room: RoomSnapshotV2, who: Account, seen = 0) => json<Slips>(call(`/v2/rooms/${room.room_id}/hard/${seen}`, "GET", who));
+
+  it("plays a stage in several turns, keeps a slip over a pass with the turns under it, and starts again with no passes", async () => {
+    const { room: joined, first, second } = await hardRoom();
+    expect(joined.hard).toEqual({ schema_version: 1, failures: 0, over: false, last: null });
+    const { turns, checkpoint } = await chain(0, initial(), 2);
+    const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]), three = await send(two.room, first, turns[2]);
+    expect(three.room.open_turns).toMatchObject({ turn: 4, passes: [turns[1], turns[2]] });
+    // The second pip slips on turn 4: the room keeps it with its memory (turn 3) and the turns under it.
+    const slip = await later(setB as Rec, setA.player_slot, 4, turns[2], false, initial().checkpoint_hash, 9);
+    const reset = await slipped(three.room, second, slip);
+    expect(reset.room).toMatchObject({ branch: 1, stage_index: 0, a_turn_id: null, active_role: "a", active_player_id: first.player_id });
+    expect(reset.room.open_turns).toMatchObject({ turn: 1, passes: [] });
+    expect(reset.failure).toMatchObject({ by: second.player_id, stage_index: 0, role: "b", reason: "failed_turn" });
+    const kept = await slips(joined, first);
+    expect(kept.list[0].slip).toEqual({ recording: slip, checkpoint: initial(), prior: turns[2], chain: [turns[0], turns[1]] });
+    // A slip on turn 2 keeps its memory alone, as a two-turn room does.
+    const again = await send(reset.room, first, turns[0]);
+    const early = await slipped(again.room, second, turns[1]);
+    expect((await slips(joined, first, 1)).list[0].slip).toEqual({ recording: turns[1], checkpoint: initial(), prior: turns[0] });
+    // The run after it plays the whole chapter, passes and all, and finishes.
+    let current = (await send(early.room, first, turns[0])).room;
+    current = (await send(current, second, turns[1])).room;
+    current = (await send(current, first, turns[2])).room;
+    current = (await send(current, second, turns[3], checkpoint)).room;
+    expect(current).toMatchObject({ stage_index: 1, branch: 2, hard: { failures: 2, over: false } });
+    const next = await chain(1, checkpoint, 0), slackFirst = slackA.player_slot === setA.player_slot ? first : second;
+    current = (await send(current, slackFirst, next.turns[0])).room;
+    current = (await send(current, slackFirst === first ? second : first, next.turns[1], next.checkpoint)).room;
+    expect(current.active_role).toBe("complete");
+  });
+  it("takes only first tries and never plays a turn again", async () => {
+    const { room: joined, first, second } = await hardRoom();
+    const { turns } = await chain(0, initial(), 2);
+    const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]);
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: two.room.revision, branch: two.room.branch, idempotency_key: key(), recording: turns[2], tries: 2 }), 409, "hard_run_retry");
+    const three = await send(two.room, first, turns[2]);
+    const again = await later(setB as Rec, setA.player_slot, 3, turns[1], false, initial().checkpoint_hash, 15);
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: three.room.revision, branch: three.room.branch, idempotency_key: key(), recording: again, replaces: turns[2].recording_hash }), 409, "hard_run_no_redo");
+  });
+  it("ends the run when the room cannot hold another one with every stage at its cap", async () => {
+    const { room: joined, first, second } = await hardRoom();
+    const { turns } = await chain(0, initial(), 1);
+    const caps = adapter.open_turns!.caps.reduce((sum, cap) => sum + cap, 0);
+    // Two turns a stage would still fit; a whole run at every stage's cap would not.
+    const filler = 128 - caps;
+    expect(filler + 1 + 2 * adapter.stages.length).toBeLessThanOrEqual(128);
+    await runInDurableObject(env.ROOMS_V2.getByName(joined.room_id), (_, ctx) => {
+      for (let n = 0; n < filler; n++) ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", `x${n}`, first.player_id, 0, "{}");
+    });
+    const one = await send(joined, first, turns[0]);
+    const reset = await slipped(one.room, second, turns[1]);
+    expect(reset.room).toMatchObject({ branch: 0, a_turn_id: one.room.a_turn_id, hard: { failures: 1, over: true } });
   });
 });
 
