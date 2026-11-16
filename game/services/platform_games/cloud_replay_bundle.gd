@@ -1,11 +1,12 @@
 extends RefCounted
 ## Saved Games slots for the replays only phones keep in full: kept room history attempts, shared
-## replay files and friend duel runs (the server keeps their hashes once both phones have them).
+## replay files and friend duel runs (the server keeps their hashes once both phones have them),
+## and, in slots of their own after those, the photo library (turn photos taken or received).
 ## Read and written by cloud_save_sync.gd like the progress slot; cloud_replay_sources.gd is the
 ## phone's side.
 ##
 ## Items are keyed by what they are ("room/<owner>/<server>/<room>/<place>-<link>",
-## "shared/<file>", "duel/<owner>/<file>"), and each key always goes to the same slot
+## "shared/<file>", "duel/<owner>/<file>", "photo/<owner>/<entry>"), and each key always goes to the same slot
 ## (slot_of), so a slot changes only when its own items do. A slot is one JSON bundle in the
 ## replay blob format (an SHA-256 of the canonical bytes, then BlobCodec's deflate body).
 ##
@@ -19,9 +20,13 @@ const Typed = preload("res://services/typed_values.gd")
 const SCHEMA_VERSION := 1
 const MAGIC := "AYR1"
 const SLOT_PREFIX := "after-you-history-"
-## Six slots of at most 2.9 MB each: about 17 MB of replays, well within the player's own
-## Google Drive or iCloud space (Saved Games has no per-game total beyond that).
-const SLOTS := 6
+const PHOTO_SLOT_PREFIX := "after-you-photos-"
+## Six replay slots and four photo slots of at most 2.9 MB each: about 17 MB of replays and
+## 11 MB of photos (a new photo is about 10 KB, at most 24 KB), within the player's own Google
+## Drive or iCloud space (Saved Games has no per-game total beyond that) and quick to restore.
+const HISTORY_SLOTS := 6
+const PHOTO_SLOTS := 4
+const SLOTS := HISTORY_SLOTS + PHOTO_SLOTS
 ## Saved Games allows 3 MiB a slot (Play Games' guaranteed minimum).
 const MAX_BYTES := 2_900_000
 ## The JSON kept per slot. Deflate never grows it by more than a few bytes per 16 KB, so the slot
@@ -31,8 +36,8 @@ const BUDGET := 2_800_000
 const ITEM_OVERHEAD := 512
 const MAX_ITEMS := 4096
 const ITEM_KEYS := ["kind", "owner", "rev", "at", "digest", "data", "meta"]
-const KINDS := ["room", "shared", "duel"]
-const KEY := "^(room|shared|duel)(/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,79}){1,5}$"
+const KINDS := ["room", "shared", "duel", "photo"]
+const KEY := "^(room|shared|duel|photo)(/[A-Za-z0-9_-][A-Za-z0-9_.-]{0,79}){1,5}$"
 const DIGEST := "^[a-f0-9]{64}$"
 static var _patterns: Dictionary = {}
 
@@ -41,11 +46,12 @@ static func warm() -> void:
 	for pattern: String in [KEY, DIGEST]: _matches("", pattern)
 
 static func slot_name(index: int) -> String:
-	return SLOT_PREFIX + str(index + 1)
+	return SLOT_PREFIX + str(index + 1) if index < HISTORY_SLOTS else PHOTO_SLOT_PREFIX + str(index - HISTORY_SLOTS + 1)
 
-## The slot an item key always goes to.
+## The slot an item key always goes to: photos only in the photo slots, the rest in the history slots.
 static func slot_of(key: String) -> int:
-	return key.sha256_text().left(8).hex_to_int() % SLOTS
+	var hashed := key.sha256_text().left(8).hex_to_int()
+	return HISTORY_SLOTS + hashed % PHOTO_SLOTS if key.begins_with("photo/") else hashed % HISTORY_SLOTS
 
 static func empty() -> Dictionary:
 	return {"schema_version": SCHEMA_VERSION, "items": {}}

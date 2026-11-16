@@ -141,6 +141,11 @@ func _show_pair_chip(state: Dictionary, interactive: bool) -> void:
 	pair_chip.show_chip(chip)
 	var room: Texture2D = _chip_room if pair_chip.visible and action_button.visible else null
 	if action_button.icon != room: action_button.icon = room
+	_place_pair_chip()
+
+## Puts the chip in the room the button leaves at its left end, again
+## whenever the button moves or grows (a long prompt grows it).
+func _place_pair_chip() -> void:
 	if not pair_chip.visible: return
 	var left := action_button.get_theme_stylebox("normal").get_margin(SIDE_LEFT)
 	pair_chip.position = action_button.position + Vector2(left - 6.0, (action_button.size.y - pair_chip.size.y) * 0.5)
@@ -367,6 +372,9 @@ func _build_ui() -> void:
 	action_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	action_button.position = Vector2(-240, -178)
 	action_button.size = Vector2(210, 64)
+	# A long prompt with a pair chip grows the button toward the middle of the
+	# screen, never past its edge.
+	action_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	# The controls a run is played with make its own cues: no tick over them.
 	ButtonTicks.quiet(action_button)
 	hud.add_child(action_button)
@@ -374,6 +382,7 @@ func _build_ui() -> void:
 	action_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	pair_chip = PairChip.new()
 	hud.add_child(pair_chip)
+	action_button.item_rect_changed.connect(_place_pair_chip)
 	finish_button = button_for("finish", func(): finish_requested.emit())
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	finish_button.position = Vector2(-240, -100)
@@ -407,6 +416,7 @@ func _build_ui() -> void:
 	if settings.get("left_handed", false):
 		_anchor_rect(stick, Control.PRESET_BOTTOM_RIGHT, Rect2(-200, -218, Joystick.HIT_SIZE, Joystick.HIT_SIZE))
 		_anchor_rect(action_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
+		action_button.grow_horizontal = Control.GROW_DIRECTION_END
 		_anchor_rect(finish_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))
 		_anchor_rect(fast_forward_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
 		_anchor_rect(skip_wait_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -100, 210, 54))

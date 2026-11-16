@@ -7,6 +7,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Catalog = preload("res://core/lighthouse/room_catalog.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
 ## One room's widest Lighthouse receiver turn body is about 388 KB.
@@ -55,7 +56,6 @@ func _chapter(key: String, with_stages: bool) -> Dictionary:
 func _caps(level: int, extra_unknown: int = 0) -> Dictionary:
 	var chapters: Array = []
 	for key: String in Registry.keys():
-		if key == Registry.FIRST_STEPS: continue
 		if level < 2 and Registry.descriptor(key).stage_count != 2: continue
 		chapters.append(_chapter(key, level >= 2))
 	for index in range(extra_unknown):
@@ -113,22 +113,27 @@ func _join_body(capabilities: Dictionary) -> Dictionary:
 	api.queue_free()
 	return body
 
+## The Lighthouse owns only its own rules (11) in the join lists: whatever else
+## the shared lists hold (services/relay_online_session.gd) is theirs, so a
+## rules version another chapter adds leaves this suite as it is.
 func _join_lists() -> void:
+	var short: Array = Session.JOIN_SIMULATION_VERSIONS
+	var longer: Array = Session.JOIN_SIMULATION_VERSIONS + Session.ROOM_LEVEL_JOIN_VERSIONS
+	_check(short.size() <= 8 and Catalog.RULES not in short and Catalog.RULES in Session.ROOM_LEVEL_JOIN_VERSIONS, "The short join list keeps to 8 rules without the Lighthouse's; the room-level list carries them")
 	var old: Dictionary = await _join_body(_caps(1))
-	var versions: Array = old.get("supported_simulation_versions", [])
-	_check(Canonical.same(versions, [2, 4, 5, 6, 7, 8, 9, 10]) and versions.size() <= 8 and 11 not in versions, "An old server gets today's join list, at most 8 rules, with the tide rules (10) and no 11")
+	_check(Canonical.same(old.get("supported_simulation_versions", []), short), "An old server gets the short join list, without the Lighthouse's rules")
 	var level_two: Dictionary = await _join_body(_caps(2))
-	_check(Canonical.same(level_two.get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]), "A room-level-2 server gets the list with rules 10, 11, the open controls (12, 13) and open turns (14, 15)")
+	_check(Canonical.same(level_two.get("supported_simulation_versions"), longer), "A room-level-2 server gets the longer list, with the Lighthouse's rules")
 	var tight := _caps(2)
-	tight.max_join_versions = 13
-	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]), "Thirteen allowed entries fit the longer list")
-	tight.max_join_versions = 12
-	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10]), "Twelve allowed entries keep the short list")
+	tight.max_join_versions = longer.size()
+	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), longer), "Exactly enough allowed entries fit the longer list")
+	tight.max_join_versions = maxi(longer.size() - 1, 8)
+	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), short), "One entry too few keeps the short list")
 	tight.max_join_versions = 8
-	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10]), "Eight allowed entries keep the short list")
+	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), short), "Eight allowed entries keep the short list")
 	var made := _session({})
 	var session: RefCounted = made[0]
-	_check(Canonical.same(session.join_versions(), [2, 4, 5, 6, 7, 8, 9, 10]), "Before any capability answer the list stays today's")
+	_check(Canonical.same(session.join_versions(), short), "Before any capability answer the list stays the short one")
 	made[1].queue_free()
 
 ## Real HTTP on loopback: the room level header goes only with the capability

@@ -38,6 +38,8 @@ const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 const LevelLayout = preload("res://services/level_layout.gd")
 ## Gates, stair chains, zone ropes and locks: why a pip is refused.
 const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
+## The lettered tiles that tie a control to the gates it works.
+const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const FIREFLY := Color("ffe9a8")
 ## This chapter's scenery data (content/dressing); empty keeps the plain world.
 var dressing: Dictionary = {}
@@ -343,7 +345,7 @@ func present_stage(stage: Dictionary) -> void:
 	var id := str(stage.get("id", ""))
 	var kept := (not _built_stage_id.is_empty() and id == _built_stage_id) or _shows_as_built(id)
 	_built_stage_id = ""
-	if not kept and has_method("show_stage"): call("show_stage", stage)
+	if not kept: show_stage(stage)
 
 ## Whether stage_id is the stage this world shows, still as its last build
 ## left it: nothing has been presented on it since but one opening state, so
@@ -1100,9 +1102,21 @@ var _fold_job: Dictionary = {}
 
 ## Nodes whose children are looked up or walked one by one after the build;
 ## they and everything under them stay as built. The planter's cylinders give
-## the planting animation its soil height (plant_animation.gd).
+## the planting animation its soil height (plant_animation.gd). The route
+## barriers' mesh shows and wiggles piece by piece, the ball rings follow the
+## balls, and a pad's lit parts change.
 func _static_keep() -> Array:
-	return [garden]
+	var keep: Array = [garden] + route_barriers.moving_nodes()
+	for piece: RefCounted in pad_pieces.values(): keep += piece.moving_parts()
+	if not _marks_fold(): keep += owner_marks.made() + pair_tags.made()
+	return keep
+
+## Whether the stage's ownership marks and pair tags fold with the scenery:
+## only where the terrain is built again with every stage. A world that keeps
+## its terrain between stages keeps them whole, so the next stage takes them
+## down (_clear_stage_marks).
+func _marks_fold() -> bool:
+	return false
 
 ## Held nodes that are held only to be found: they never move, hide, fade or
 ## recolour, so their plain leaves fold with the scenery around them
@@ -1188,6 +1202,7 @@ func _process(delta: float) -> void:
 	_move_bridge(weight)
 	for piece: RefCounted in crossing_pieces.values():
 		if piece.moving(): piece.advance(delta)
+	if route_barriers.moving(): route_barriers.advance(delta)
 	_advance_garden_bloom(delta)
 	if not reduced_motion:
 		for i in range(motes.size()):
@@ -1260,7 +1275,13 @@ func note_motion(kind: String, id: String, direction: int, animated: bool = true
 	else: _mechanism_motion[id] = direction
 	mechanism_moving.emit(kind, id, direction)
 
+## A scrolling world eases its follow camera; Home and the older islands ease
+## toward their own framing.
 func _advance_camera(delta: float) -> void:
+	if _uses_scrolling_camera():
+		_ease_follow(delta)
+		_frame_camera()
+		return
 	if is_instance_valid(camera) and not (home_view and home_presentation_owner!=0):
 		var desired_size := 15.7 if home_view else 14.4
 		camera.size=lerpf(camera.size,ViewFit.viewport(desired_size,self),delta*2)
@@ -1368,6 +1389,11 @@ var displayed_stage_id := ""
 ## was given.
 var _latched_bridge_ids: Array = []
 
+## Shows one stage of the chapter: a staged world builds it, its barriers,
+## marks and tags with it. Home and the older islands have none.
+func show_stage(_stage: Dictionary) -> void:
+	pass
+
 ## Supply the checkpoint already verified by the chapter's coordinator (play,
 ## memories, replays and the level tools all call it before presenting).
 ## Remembered state is a landmark only: it adds no controls or collision. By
@@ -1406,8 +1432,8 @@ func _uses_scrolling_camera() -> bool:
 func _focus_point() -> Vector3:
 	return actors[_camera_slot(_active_player)].position
 
-## Where the follow camera looks: the focus, kept from scrolling past the
-## world's west end; over a finished stage, between both spirits and the
+## Where the follow camera looks: the focus, kept inside _follow_limits()
+## while a stage plays; over a finished stage, between both spirits and the
 ## garden.
 func _camera_center() -> Vector3:
 	var target := _focus_point()
@@ -1419,16 +1445,47 @@ func _camera_center() -> Vector3:
 			right = maxf(right, actor.position.x)
 		if is_instance_valid(garden): right = maxf(right, garden.position.x + 1.0)
 		target.x = (left + right) * 0.5
+		target.z = 0
 	else:
-		target.x = clampf(target.x, -3.2, 12.0)
-	target.z = 0
+		var limits := _follow_limits()
+		target.x = clampf(target.x, limits[0].x, limits[1].x)
+		target.z = clampf(target.z, limits[0].y, limits[1].y)
 	target.y = 0
 	return target
 
-## Puts the follow camera on its spirit at once (an immediate present).
+## The follow camera's centre stays this far (metres) inside the floors'
+## west and east ends while a stage plays.
+const FOLLOW_INSET := 4.0
+
+## The lowest and highest centre (x, z in metres) the follow camera takes
+## while a stage plays: FOLLOW_INSET inside the floors' west and east ends,
+## on the z axis.
+func _follow_limits() -> Array[Vector2]:
+	var floors := _floors_rect()
+	return [Vector2(floors.position.x + FOLLOW_INSET, 0.0), Vector2(floors.end.x - FOLLOW_INSET, 0.0)]
+
+## The level's floors together (metres, x and z).
+func _floors_rect() -> Rect2:
+	var found := Rect2()
+	for island: Dictionary in current_level.get("islands", []):
+		var r: Array = island.rect_cm
+		var rect := Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
+		found = rect if found.size == Vector2.ZERO else found.merge(rect)
+	return found
+
+## The follow camera takes the snapshot's live spirit, and eases out over a
+## finished stage; an immediate present puts it there at once.
+func _present_follow(state: Dictionary, immediate: bool) -> void:
+	_active_player = str(state.get("active_slot", _active_player))
+	_completion_view = bool(state.get("complete", false))
+	if immediate and _uses_scrolling_camera(): _snap_follow()
+
+## Puts the follow camera on its spirit at once (an immediate present), the
+## motes with it, so a kept world and one built again show the same.
 func _snap_follow() -> void:
 	if actors.has(_active_player): _follow_center = _camera_center()
 	_follow_size = SCROLL_DONE_SIZE if _completion_view else SCROLL_SIZE
+	_follow_motes()
 	_frame_camera()
 
 ## Eases the follow camera toward its spirit, once per rendered frame:
@@ -1484,6 +1541,112 @@ func _pair_keep_clear() -> Array:
 ## The floor point a pair tag's control stands on (kit/pair_tags.gd).
 func _pair_control_anchor(entity: Dictionary) -> Vector3:
 	return _at(entity)
+
+## The shown stage's ownership marks (kit/owner_mark.gd) and pair tags
+## (kit/pair_tags.gd, from its control-to-gate wiring): every world keeps
+## them here, beside its route barriers.
+var owner_marks := OwnerMark.new(self)
+var pair_tags := PairTags.new(self)
+
+## Takes down the shown stage's barriers, marks and tags (another is coming).
+func _clear_stage_marks() -> void:
+	owner_marks.clear()
+	pair_tags.clear()
+	route_barriers.clear()
+
+## Puts up the shown stage's route barriers, ownership marks and pair tags
+## from its plan (services/level_layout.gd), once the world's own scenery
+## stands: the barriers, then what the world adds beside them
+## (_build_barrier_extras), then the marks and the tags, which keep clear of
+## all of it. `tag_view` is the plan the marks and tags read where it differs.
+## A stand spot pad already wears its owner's mark (kit/stand_spot.gd); a pad
+## either pip holds (open controls) has no owner to mark.
+func _build_stage_marks(view: Dictionary, tag_view: Dictionary = {}) -> void:
+	route_barriers.build(view)
+	_build_barrier_extras()
+	var tagged := view if tag_view.is_empty() else tag_view
+	for pad: Dictionary in tagged.get("pressure_pads", []):
+		var piece: Variant = pad_pieces.get(str(pad.id))
+		if piece != null and piece.spot != null and pad.has("owner_slot"): owner_marks.record(str(pad.get("owner_slot", "")), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
+	owner_marks.build(tagged)
+	pair_tags.prepare(tagged)
+
+## What a world adds beside its route barriers before the marks are placed
+## (cooperative_world's ball rings). Nothing by default.
+func _build_barrier_extras() -> void:
+	pass
+
+## Shows the snapshot on the stage's pair tags and route barriers, in the
+## shared terms they read (_marks_state).
+func _present_stage_marks(state: Dictionary) -> void:
+	var shared := _marks_state(state)
+	pair_tags.present(shared)
+	_present_barriers(shared)
+
+## The snapshot in the terms the barriers and tags read: "bridges" (route id
+## -> open) and "hold_pads" (pad id -> held). A family whose engine names
+## them otherwise adds them here.
+func _marks_state(state: Dictionary) -> Dictionary:
+	return state
+
+## Shows the snapshot on the route barriers; a new push into one (the
+## snapshot's "refused") bumps the spirit back.
+func _present_barriers(state: Dictionary) -> void:
+	route_barriers.set_reduced_motion(reduced_motion)
+	for event: Variant in route_barriers.present(state):
+		var slot := str(event.get("slot", "")) if event is Dictionary else ""
+		if actors.has(slot): actors[slot].play_bump(reduced_motion)
+
+# Where the marks and tags go (kit/owner_mark.gd, kit/pair_tags.gd ask these).
+
+## The floors a crossing's ends are read against: the level's own.
+func _route_islands() -> Array:
+	return current_level.get("islands", [])
+
+## A floor's walking height (metres) by its id; 0 for none.
+func _surface_height(id: String) -> float:
+	for island: Dictionary in _route_islands():
+		if island.id == id: return float(island.get("height_cm", 0)) / 100.0
+	return 0.0
+
+## The cables and ropes the stage lays on its floors ({rect, y, what} each),
+## which ownership marks keep off. None by default.
+func floor_cables() -> Array:
+	return []
+
+## Whether an owned crossing gets an ownership mark at each end. A world that
+## shows its owner some other way says no, so no mark is made only to be freed.
+func _marks_route_owner(_definition: Dictionary) -> bool:
+	return true
+
+## Whether an owned goal carries its owner's mark; a world whose goal piece
+## wears one says so.
+func _marks_goal(_goal: Dictionary) -> bool:
+	return false
+
+## Where an owned stair's mark wants to sit (kit/owner_mark.gd): before its
+## foot, stepping away from it, or past its head when the foot has no room.
+func _mark_stair(stair: Dictionary) -> Dictionary:
+	var r: Array = stair.rect_cm
+	var along_x: bool = stair.axis == "x"
+	var entrance := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(0, float(stair.from_height_cm) / 100.0, 0)
+	var top := point([r[2], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[3]]) + Vector3(0, float(stair.get("to_height_cm", stair.from_height_cm)) / 100.0, 0)
+	var reach := float(OwnerMark.KINDS[&"stair"].reach)
+	return {"anchor": entrance, "away": Vector3.LEFT if along_x else Vector3.FORWARD, "kind": &"stair", "head": top + (Vector3.RIGHT if along_x else Vector3.BACK) * reach}
+
+## The floor points a gate's pair tags go by, nearest first: before a
+## crossing's west end (its end mark's place) then past its east end; a
+## stair's foot then its head.
+func _pair_gate_anchors(route: Dictionary) -> Array:
+	var r: Array = route.rect_cm
+	if route.has("axis"):
+		var along_x: bool = str(route.get("axis", "x")) == "x"
+		var foot := point([r[0], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[1]]) + Vector3(-0.24 if along_x else 0.0, float(route.from_height_cm) / 100.0, 0.0 if along_x else -0.24)
+		var head := point([r[2], (r[1] + r[3]) * 0.5] if along_x else [(r[0] + r[2]) * 0.5, r[3]]) + Vector3(0.24 if along_x else 0.0, float(route.get("to_height_cm", route.from_height_cm)) / 100.0, 0.0 if along_x else 0.24)
+		return [foot, head]
+	var height := Vector3(0, float(route.get("height_cm", route.get("from_height_cm", 0))) / 100.0, 0)
+	var ends := OwnerMark.route_ends_of(route, _route_islands())
+	return [ends[0] + height, ends[1] + height]
 
 ## The pad pieces by id (_build_pad), for present() to light.
 var pad_pieces: Dictionary = {}

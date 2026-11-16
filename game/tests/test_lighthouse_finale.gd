@@ -224,8 +224,8 @@ func _capture(label: String) -> void:
 	_check(int(screen.presentation_state().get("tick", -1)) == tick and Canonical.same(screen.presentation_state(), observed_state), "Observing a rendered frame does not insert an extra input or change the verified displayed state")
 	# While the stage is unsolved the camera follows the active spirit; once it
 	# is solved the whole authored world is framed again.
-	var following: bool = screen.world._follows_view()
-	var points: Array = [screen.world.actors[screen.world._follow_slot].position] if following else screen.world._frame_points
+	var following: bool = screen.world._uses_scrolling_camera()
+	var points: Array = [screen.world.actors[screen.world._active_player].position] if following else screen.world._frame_points
 	for point: Vector3 in points:
 		var uv: Vector2 = screen.world.camera.unproject_position(screen.world.to_global(point)) / root.get_visible_rect().size
 		if uv.x < 0.05 or uv.x > 0.95 or uv.y < 0.14 or uv.y > 0.87:

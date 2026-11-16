@@ -194,6 +194,9 @@ var _material: ShaderMaterial
 ## The plaques' material: the same states, a stronger faint.
 var _plaque_material: ShaderMaterial
 var _node: MeshInstance3D
+## Every node the kit drew this stage (the tiles, signs' tiles and plaques),
+## taken down by clear().
+var _made: Array[Node] = []
 var _states := PackedVector2Array()
 var _next := PackedVector2Array()
 ## The stage waiting to be laid out (prepare()), until it is first shown or read.
@@ -204,8 +207,14 @@ var _frame: StringName = DEFAULT_FRAME
 func _init(world: Node3D = null) -> void:
 	_world = world
 
-## A new stage: its overrides, pairs and tiles start over (the nodes went with the terrain).
+## A new stage: its overrides, pairs and tiles start over, their nodes taken
+## down (a world that keeps its terrain between stages keeps no stale tile).
 func clear() -> void:
+	for node: Node in _made:
+		if not is_instance_valid(node): continue
+		if node.get_parent() != null: node.get_parent().remove_child(node)
+		node.queue_free()
+	_made.clear()
 	_skips.clear()
 	_signs.clear()
 	_pairs.clear()
@@ -216,6 +225,10 @@ func clear() -> void:
 	_node = null
 	_states = PackedVector2Array()
 	_view = {}
+
+## The nodes the kit drew this stage.
+func made() -> Array[Node]:
+	return _made.duplicate()
 
 ## Leaves out control `control_id` (every gate when `gate_id` is ""), or every
 ## control of gate `gate_id` when `control_id` is "".
@@ -378,6 +391,7 @@ func build(view: Dictionary) -> void:
 		# several heights is still only flat tiles to code that looks for scenery.
 		_node.set_meta(StaticBatch.PARTS_META, _rows.map(func(row: Dictionary) -> Array: return [Transform3D(Basis.IDENTITY, row.at), AABB(Vector3(-(row.rect as Rect2).size.x * 0.5, 0, -TAG * 0.5), Vector3((row.rect as Rect2).size.x, LIFT, TAG))]))
 		_world.get("terrain").add_child(_node)
+		_made.append(_node)
 	for sign: Dictionary in _signs:
 		var pair := _pair(str(sign.control))
 		if pair.is_empty() or not is_instance_valid(sign.parent): continue
@@ -389,6 +403,7 @@ func build(view: Dictionary) -> void:
 		node.material_override = _material
 		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		(sign.parent as Node3D).add_child(node)
+		_made.append(node)
 	if not plaqued.is_empty(): _plaque_material = _look(PLAQUE_FAINT_ALPHA)
 	for pair: Dictionary in plaqued: _plaque(pair)
 
@@ -423,6 +438,7 @@ func _plaque(pair: Dictionary) -> void:
 	# Its arm points toward the camera across the floor.
 	mount.rotation.y = atan2(facing.x, facing.z)
 	_world.get("terrain").add_child(mount)
+	_made.append(mount)
 	Primitives.mesh_node(Primitives.cached_box(Vector3(0.035, 0.035, out)), Primitives.shared_material(PLAQUE_METAL.darkened(0.15)), Vector3(0, 0, out * 0.5), mount)
 	Primitives.mesh_node(Primitives.cached_shape(Primitives.cylinder_mesh(radius + 0.025, 0.06)), Primitives.shared_material(PLAQUE_METAL.darkened(0.25)), Vector3(0, 0.07, 0), mount)
 	var plate := Node3D.new()

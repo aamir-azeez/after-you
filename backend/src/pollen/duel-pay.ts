@@ -13,7 +13,7 @@ import { applyLedger, ledgerLines, walletBalance, type LedgerEntry } from "./wal
  * a repeat answers the same and the order of a week's wins never changes. Pruned with turn claims;
  * a win older than the turn claim window is refused, so a pruned line can never pay twice.
  *
- * The ghost bonus: each player of a pair that beats the developers' ghost on a board gets
+ * The ghost bonus: each player of a pair that beats Our run on a board gets
  * rates.duels.ghost_win_bonus the first time, as the ledger line `ghostwin:<board>`, kept for good,
  * with no room boost, no premium and no bloom. The line names the race that paid it: that race
  * answers the same again, and any later win on the board answers 0 with "board_paid", writing nothing.
@@ -84,7 +84,7 @@ export function creditDuelWin(storage: DurableObjectStorage, win: DuelWin, now: 
   }, (detail, amount) => ({ amount, reason: detail.reason }), options.fresh);
 }
 
-/** The first win over the developers' ghost on a board. Never pruned (wallet.ts prunes only turns and duel wins), so it pays once for good. */
+/** The first win over Our run on a board. Never pruned (wallet.ts prunes only turns and duel wins), so it pays once for good. */
 export function creditGhostWin(storage: DurableObjectStorage, win: GhostWin, now: number, active: () => boolean, rates: Rates = RATES, options: CreditOptions = {}): Outcome<DuelWinAnswer> {
   const key = GHOST_PREFIX + win.board;
   return creditOnce(storage, key, now, active, rates,

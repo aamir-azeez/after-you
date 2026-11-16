@@ -61,8 +61,9 @@ extends SceneTree
 ##     must stay in CI, check every built stage's marks and pair tags.
 ## (t) route barriers: presentation/kit/route_barriers.gd alone draws the gates, stair
 ##     chains, zone ropes and locks, from each stage's owned crossings, stairs, zones and
-##     controls, kept by island_world alone (cooperative_world builds them with the
-##     descriptor's stair gates); a chapter whose world draws closed
+##     controls, kept by island_world alone with the stage's ownership marks and pair
+##     tags (_build_stage_marks: every world's stage build ends in it); a chapter whose
+##     world draws closed
 ##     stairs itself says so in its descriptor ("stair_gates": false), the look is the
 ##     dressing's "barrier" slot, and a world that skips a stair itself
 ##     (route_barriers.skip()) or picks the look in code (_barrier_style) is in
@@ -254,7 +255,6 @@ const DUEL_TIME_SURFACES := {
 const RAW_DUEL_TIME_EXEMPT := {
 	"res://services/duel_model.gd": "the shared path itself (lane, steps, ticks)",
 	"res://presentation/duels/public_sheets.gd": "a public list row's steps, to word the join sheet; list rows carry no times",
-	"res://services/race_ghost.gd": "the developers' run is picked by the race's ghost ticks, never shown as a time",
 }
 ## A side's or the ghost's time or steps read straight off a duel view.
 const RAW_DUEL_TIME := "\\.(?:sides\\[[^\\]]+\\]|ghost)\\.(?:ticks|steps)\\b|\\.(?:sides\\[[^\\]]+\\]|ghost)\\.get\\(\"(?:ticks|steps|splits)\""
@@ -323,30 +323,33 @@ const PLAYER_COPY := "res://presentation/player_copy.gd"
 ## (t) The ownership mark and gate tag kits, and the scripts that place them with what they mark.
 const OWNER_MARK := "res://presentation/kit/owner_mark.gd"
 const PAIR_TAGS := "res://presentation/kit/pair_tags.gd"
-## The one script that keeps a world's pair tags (pair_tags).
-const PAIR_TAGS_OWNER := "res://presentation/cooperative_world.gd"
+## The one script that keeps a world's pair tags (pair_tags) and ownership
+## marks (owner_marks), and builds them for every stage (_build_stage_marks).
+const PAIR_TAGS_OWNER := "res://presentation/island_world.gd"
 ## Ownership marks come from each stage's owner_slots (owner_marks.build); the
 ## scripts that override them, with why: a mark drawn by hand (mark, record,
 ## keep_clear) or a world hook (_mark_stair, _marks_goal).
 const OWNER_MARK_OVERRIDES := {
-	"res://presentation/cooperative_world.gd": "builds the marks (build), records a stand spot's own mark (record), and holds the default hooks",
+	"res://presentation/island_world.gd": "builds every stage's marks (build), records a stand spot's own mark (record), and holds the default hooks (_mark_stair, _marks_goal)",
+	"res://presentation/lighthouse_world.gd": "a goal whose style wears a mark carries its owner's (_marks_goal)",
 	"res://presentation/wishing_well_world.gd": "the bucket's mark rides the bucket (mark); folding stairs and the rope ladder have their own feet (_mark_stair); the ladder top's mark steps east of a bell frame that hides it (_mark_stair); marks keep off the notch (keep_clear)",
 	"res://presentation/kit/stand_spot.gd": "the mark on a stand spot's disc (OwnerMark.spot)",
 }
 const PAIR_TAG_OVERRIDES := {
-	"res://presentation/island_world.gd": "holds the default hooks every world answers (_pair_control_anchor, _pair_keep_clear), which the route barriers and floor spots ask of any world",
 	"res://presentation/tide_world.gd": "the tide wheel shows on the gauges and the second spirit's stubs on their mouth marks (skip); the sea key's tile stands on its sign (tag); gate tiles start at a stub's mouth and keep clear of the gauges and mouth marks (hooks)",
 	"res://presentation/journey_world.gd": "a control without a floor of its own stands on the highest island under it (_pair_control_anchor)",
 }
 ## (t) The route barriers kit and the base worlds that keep it: island_world
-## keeps every world's, cooperative_world skips the closed stairs a chapter's
-## descriptor says its world draws ("stair_gates").
+## keeps and builds every world's, cooperative_world skips the closed stairs a
+## chapter's descriptor says its world draws ("stair_gates").
 const ROUTE_BARRIERS := "res://presentation/kit/route_barriers.gd"
 const ROUTE_BARRIERS_OWNERS := ["res://presentation/island_world.gd", "res://presentation/cooperative_world.gd"]
 ## Worlds that leave a closed stair's chain out themselves (route_barriers.skip();
 ## a whole chapter says it in its descriptor's "stair_gates" instead) or pick
 ## the "barrier" look in code rather than in their dressing (_barrier_style), with why.
-const ROUTE_BARRIER_OVERRIDES := {}
+const ROUTE_BARRIER_OVERRIDES := {
+	"res://presentation/first_steps_world.gd": "the lift is a stair the engine runs, not one that opens: its car shows whether it runs, so it wears no chain (skip)",
+}
 ## Scripts that work out a chapter turn's sounds, which run each tick through
 ## the refusal finder first.
 const TURN_SOUND_SCREENS := ["res://relay_preview.gd", "res://presentation/shared_replay_view.gd"]
@@ -947,7 +950,7 @@ func _level_hints() -> void:
 		var tags_alias := _alias(source, PAIR_TAGS)
 		# A world inherits its parent's alias, so the kit's usual name counts too.
 		_check(_found("\\.tally\\(", source) == 0, "%s draws a tally tag: pair tags come from the stage's wiring through presentation/kit/pair_tags.gd" % path)
-		_check(path == PAIR_TAGS_OWNER or _found("\\b(?:PairTags" + ("|" + tags_alias if not tags_alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps pair tags of its own: worlds share cooperative_world's pair_tags, which the sweep checks" % path)
+		_check(path == PAIR_TAGS_OWNER or _found("\\b(?:PairTags" + ("|" + tags_alias if not tags_alias.is_empty() else "") + ")\\.new\\(", source) == 0, "%s keeps pair tags of its own: worlds share island_world's pair_tags, which the sweep checks" % path)
 		if _found("\\bpair_tags\\.(?:skip|tag)\\(", source) > 0 or (path != PAIR_TAGS_OWNER and _found("\\bfunc\\s+_pair_(?:control_anchor|gate_anchors|keep_clear)\\(", source) > 0):
 			tags[path] = true
 			_check(PAIR_TAG_OVERRIDES.has(path), "%s overrides the pair tags its wiring gives: add it to PAIR_TAG_OVERRIDES with why" % path)

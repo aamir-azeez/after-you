@@ -175,6 +175,24 @@ func _cloud_flush(pull: bool = false) -> void:
 	cloud.flush(pull)
 	for sync: RefCounted in replays: sync.flush(pull and not sync.synced_once())
 
+## Account deletion: takes the deleted player's items out of every replay and photo slot. Best
+## effort: signed out, offline or a slot in conflict leaves them in the player's own account.
+func erase_backups(owner: String) -> void:
+	if provider == null or not provider.available() or not signed_in() or owner.length() != 22: return
+	_cloud_stop()
+	for index: int in ReplayBundle.SLOTS:
+		var opened: Dictionary = await provider.snapshot_open(ReplayBundle.slot_name(index))
+		if not opened.get("ok", false): return
+		var held := ReplayBundle.decode(opened.data)
+		var kept := {}
+		for key: String in held.get("items", {}):
+			if held.items[key].owner != owner: kept[key] = held.items[key]
+		if opened.has("conflict") or held.is_empty() or kept.size() == held.items.size():
+			await provider.snapshot_discard(opened.handle)
+			continue
+		held.items = kept
+		await provider.snapshot_commit(opened.handle, ReplayBundle.encode(held), PlayerCopy.PLATFORM_GAMES_SAVE_DESCRIPTION)
+
 func _cloud_stop() -> void:
 	if cloud == null: return
 	cloud.stop()

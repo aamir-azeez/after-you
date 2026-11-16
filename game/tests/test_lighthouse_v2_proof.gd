@@ -3,7 +3,8 @@ extends SceneTree
 ## chapter. Replays the frozen six-stage solo inputs through the facade, checks
 ## the shared record and checkpoint shape, rebuilds the committed v2 fixture,
 ## refuses tampering at every depth, and checks the verified-checkpoint memo.
-## AFTER_YOU_WRITE_LIGHTHOUSE_V2=<absolute path> rewrites the fixture.
+## With --write-fixtures it writes the fixture (scripts/chapter_fixtures.py
+## runs it so; a released chapter's fixture must come out unchanged).
 const Native = preload("res://core/lighthouse/borrowed_light.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Catalog = preload("res://core/lighthouse/room_catalog.gd")
@@ -120,10 +121,9 @@ func _play_chain() -> void:
 func _fixture_checks() -> void:
 	var data := {"definition": level, "initial": checkpoints[0], "pairs": [], "checkpoints": checkpoints}
 	for item: Dictionary in chain: data.pairs.append({"a": item.a, "b": item.b})
-	var out := OS.get_environment("AFTER_YOU_WRITE_LIGHTHOUSE_V2")
-	if not out.is_empty():
-		var file := FileAccess.open(out, FileAccess.WRITE)
-		_check(file != null, "fixture export opens " + out)
+	if "--write-fixtures" in OS.get_cmdline_user_args():
+		var file := FileAccess.open(FIXTURE, FileAccess.WRITE)
+		_check(file != null, "fixture export opens " + FIXTURE)
 		if file:
 			file.store_string(JSON.stringify(Canonical.normalized(data)))
 			file.close()

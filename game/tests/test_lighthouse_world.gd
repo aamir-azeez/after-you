@@ -191,8 +191,8 @@ func _frame(label: String) -> void:
 		# so the stick maps the same) until the stage is solved; it must keep
 		# that spirit clear of the header and caption. Otherwise the whole
 		# authored archipelago fits.
-		var following: bool = screen.world._follows_view()
-		var points: Array = [screen.world.actors[screen.world._follow_slot].position] if following else screen.world._frame_points
+		var following: bool = screen.world._uses_scrolling_camera()
+		var points: Array = [screen.world.actors[screen.world._active_player].position] if following else screen.world._frame_points
 		for point: Vector3 in points:
 			var pixel: Vector2 = screen.world.camera.unproject_position(screen.world.to_global(point))
 			var uv := pixel / viewport

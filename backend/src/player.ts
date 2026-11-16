@@ -507,7 +507,7 @@ export class Player extends DurableObject<Env> {
   creditDuelWin(owner: string, win: DuelWin): Outcome<DuelWinAnswer> {
     return creditDuelWin(this.ctx.storage, win, Date.now(), this.pollenActive(owner), RATES, this.fruitMoment({ duel_win: true }));
   }
-  /** Binding only: the first win over the developers' ghost on a board, once per board (pollen/duel-pay.ts). */
+  /** Binding only: the first win over Our run on a board, once per board (pollen/duel-pay.ts). */
   creditGhostWin(owner: string, win: GhostWin): Outcome<DuelWinAnswer> {
     return creditGhostWin(this.ctx.storage, win, Date.now(), this.pollenActive(owner), RATES, this.fruitMoment({}));
   }

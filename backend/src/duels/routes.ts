@@ -21,8 +21,8 @@ import { CHALLENGE_TTL_MS, PARTY_ACTIONS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_R
 import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
-import { developerGhost, developerGhostSplits } from "./developer-ghosts";
-import { ourRunTicks, playsOurRun } from "../leaderboards/our-run";
+import { legacyShippedGhost, legacyShippedTicks } from "./legacy-shipped-our-run";
+import { playsOurRun } from "../leaderboards/our-run";
 import { announceLobby, hintsField } from "./news";
 import { blobBase64 } from "../blob-codec";
 import { looksOn } from "../pollen/features";
@@ -37,10 +37,10 @@ import { lastingAnswer, receiptOf, type PayoutShown } from "./payout-receipt";
  * are on (turn-hook.ts duelsOn), after auth():
  * - GET  /v1/duels: the lobby. The party, invites, and every duel this player
  *   is in, read from the boards their pointers name (one request per board).
- *   It also pays a won friend duel's win bonus, or a first win over the
- *   developers' ghost, the first time it sees one.
+ *   It also pays a won friend duel's win bonus, or a first win over Our
+ *   run, the first time it sees one.
  * - GET  /v1/duels/ghosts: each chapter's recorded times to race, from the
- *   board views (cached, so usually no request) and the developers' ghosts.
+ *   board views (cached, so usually no request): its top runs and Our run.
  * - POST /v1/duels/party/{invite,accept,dismiss,cancel,leave}
  * - GET  /v1/room-inbox's first page carries the party invites waiting (inboxDuelInvites), for Home's notice.
  * - POST /v1/duels/challenge, POST /v1/duels/ghost
@@ -117,8 +117,12 @@ export function duelsAt(env: Env, key: string) {
   return {
     /** `reader`: whose read this is; a duel it settles (an expiry, a stall) is news to the others only. */
     read: async (ids: string[], reader?: string) => (await stub.duelRead(ids, reader)) as unknown as Duel[],
-    /** `ourRun`: an app that plays a kept Our run asked (leaderboards/our-run.ts). */
-    create: async (duel: Duel, ourRun = false) => (await stub.duelCreate(duel, ourRun)) as unknown as Duel | null,
+    /** `ourRun`: an app that plays a kept Our run asked (leaderboards/our-run.ts); its race against Our run is refused while the board keeps none. */
+    create: async (duel: Duel, ourRun = false) => {
+      const made = await stub.duelCreate(duel, ourRun);
+      if (made === "ghost_not_found") throw new ApiError(404, "ghost_not_found");
+      return made as unknown as Duel | null;
+    },
     act: async (id: string, action: DuelAction) => (await stub.duelAct(id, action)) as unknown as Outcome<{ duel: Duel; room?: SideRoom }>,
     progress: async (id: string, note: ProgressNote, proof?: FinishProof, actor?: string) => (await stub.duelProgress(id, note, proof, actor)) as unknown as Outcome<Duel>,
     /** A player's label or list pause on the public duels named (duels/public-routes.ts). */
@@ -194,7 +198,7 @@ type WinAsk = { answer: DuelWinAnswer | null; asked: boolean; final: boolean };
 const NOTHING_DUE: WinAsk = { answer: null, asked: false, final: true };
 /**
  * The bonus a decided duel owes `player`, once per player (pollen/duel-pay.ts): a won friend duel's
- * win bonus, or the first win over the developers' ghost on its board. No account rule (dropped 2026-10-31). Asked of the
+ * win bonus, or the first win over Our run on its board. No account rule (dropped 2026-10-31). Asked of the
  * wallet only while `settled` (the party row's, and the duels whose row keeps the player's receipt) does not name it.
  */
 async function winBonus(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<WinAsk> {
@@ -205,7 +209,7 @@ async function winBonus(env: Env, player: string, duel: Duel, settled: readonly 
   // awaitsCheck), as they finished while off: never one the other pair left or failed.
   if (!pollenEarning(env) || duel.status !== "decided" || duel.result?.winner !== mine || duel.result.reason !== "faster") return NOTHING_DUE;
   const friend = duel.kind === "friend";
-  // A ghost race pays only against the developers' ghost, on a run the check passed or that counted without it while duel
+  // A ghost race pays only against Our run, on a run the check passed or that counted without it while duel
   // run checks were off (model.ts Side.waived), never one decided before the bonus existed; a rate of 0 writes nothing.
   const run = duel.sides[0];
   const ghost = duel.kind === "ghost" && duel.ghost?.source === "developer" && (run.check === "passed" || run.waived === true) && RATES.duels.ghost_win_bonus > 0;
@@ -253,14 +257,15 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
 }
 
 /**
- * Each board's times to race: its top runs from the view (cached when it can be) and Our run: for an app that plays
- * it (`plays`), the owner's run the view names, else the shipped one (leaderboards/our-run.ts).
+ * Each board's times to race: its top runs from the view (cached when it can be) and Our run (`developer`, null for
+ * none): for an app that plays it (`plays`), the owner's run the view names (leaderboards/our-run.ts).
  */
 async function ghosts(env: Env, plays: boolean): Promise<unknown> {
   const boards = await pooled([...boardKeys()], BOARD_CONCURRENCY, async key => {
     let view = await cachedView(key);
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
-    return { board: key, developer: ourRunTicks(key, view, plays), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
+    // LEGACY: an app without the header gets the run it shipped (legacy-shipped-our-run.ts).
+    return { board: key, developer: plays ? view.our_run?.ticks ?? null : legacyShippedTicks(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
   });
   return { schema_version: 1, boards };
 }
@@ -378,12 +383,18 @@ async function ghostRace(env: Env, reach: Reach, player: string, input: unknown,
   if (!mine.intact || !mine.partner) throw new ApiError(409, "party_required");
   let ghost: Ghost;
   if (body.source === "developer") {
-    const ticks = developerGhost(key);
-    if (ticks === null || body.entry_id !== null) throw new ApiError(404, "ghost_not_found");
-    // Its time after each turn, so a phone can set it beside the pair's after the same number of turns. For an app that
-    // plays it (`plays`), the board swaps in the owner's run when it keeps one as Our run (leaderboards/board.ts duelCreate).
-    const splits = developerGhostSplits(key);
-    ghost = { source: "developer", entry_id: null, rank: null, ticks, names: null, ...(splits && splits.length === row.adapter.stages.length * 2 ? { splits } : {}) };
+    if (body.entry_id !== null) throw new ApiError(404, "ghost_not_found");
+    // Our run: the owner's run the board keeps, or none to race. The board races the run it keeps when the race is made
+    // (leaderboards/board.ts duelCreate), its time after each turn with it, and refuses while it keeps none.
+    let found: Ghost | null = null;
+    if (plays) {
+      let view = await cachedView(key);
+      if (!view) { view = await board(env, key).view(key); await storeView(view); }
+      const our = view.our_run;
+      if (our) found = { source: "developer", entry_id: our.entry_id, rank: null, ticks: our.ticks, names: null, replay_hash: our.replay_hash };
+    } else found = legacyShippedGhost(key, row.adapter.stages.length * 2); // LEGACY: an app without the header races the run it shipped.
+    if (!found) throw new ApiError(404, "ghost_not_found");
+    ghost = found;
   } else {
     if (typeof body.entry_id !== "string" || !/^[a-f0-9]{32}$/.test(body.entry_id)) throw new ApiError(400, "invalid_duel_request");
     let view = await cachedView(key);
@@ -455,7 +466,7 @@ async function duelAction(env: Env, reach: Reach, player: string, key: string, d
 
 /**
  * One duel, with this player's pay from it once it is over: `win_bonus` on a friend duel, `ghost_bonus`
- * on the ghost race that paid the first win over the developers' ghost on its board, and nothing on a
+ * on the ghost race that paid the first win over Our run on its board, and nothing on a
  * later win there. Requests: the board read, plus 1 or 2 on the player's own wallet when over, and the
  * board's write of the receipt (payout-receipt.ts) once what they show can no longer change; a read after
  * that answers from the receipt the board read brought, so it is the sign-in and the board read only.
