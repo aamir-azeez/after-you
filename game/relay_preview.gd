@@ -6,6 +6,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal closed
 
 const Registry = preload("res://services/chapter_registry.gd")
+const LetterView = preload("res://presentation/letter/letter_view.gd")
 const ForgivingCatches = preload("res://services/forgiving_catches.gd")
 const SlotLooks = preload("res://presentation/slot_looks.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -706,6 +707,15 @@ func _photo_overlay() -> Control:
 	return overlay
 
 func _plain_card(title: String, body: String) -> VBoxContainer:
+	_leave_room_page()
+	var card: VBoxContainer=controls.card(title,body)
+	modal_shade=controls.modal_shade
+	_show_deferred_notes.call_deferred()
+	return card
+
+## What every card does to the room page first: the live world and its
+## panel stop, and the turn's state is let go.
+func _leave_room_page() -> void:
 	_end_glance()
 	if is_instance_valid(world) and world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(false)
 	_restore_ready_world()
@@ -716,10 +726,6 @@ func _plain_card(title: String, body: String) -> VBoxContainer:
 	if is_instance_valid(reaction_strip) and mode == "replay": _safety_photos = reaction_strip.report_targets()
 	running=false
 	action_pressed=false
-	var card: VBoxContainer=controls.card(title,body)
-	modal_shade=controls.modal_shade
-	_show_deferred_notes.call_deferred()
-	return card
 
 func _presence_available() -> bool:
 	return is_instance_valid(friend_presence) and online_session != null and RoomPartnerNames.presence_shown(str(journey.snapshot().get("room_id", "")) if journey != null else "")
@@ -1358,13 +1364,16 @@ func _waiting_details_stage() -> Dictionary:
 	return _simulation.stage_by_id(definition, str(room.get("stage_id", "")))
 
 
+## About this chapter: the chapter's letter in its envelope
+## (presentation/letter/letter_view.gd). The turn's hint stays on the turn card.
 func _show_waiting_details() -> void:
-	var item := _waiting_details_stage()
-	if item.is_empty(): return
-	var room: Dictionary = journey.snapshot()
+	if _waiting_details_stage().is_empty(): return
 	mode = "room_details"
-	var details := _card(str(chapter.title), _chapter_body(int(room.stage_index), "a" if _viewer_is_first(room) else "b", item))
-	details.add_child(_action_button("back", _show_ready))
+	_leave_room_page()
+	var letter := LetterView.new()
+	controls.show_card_layer(letter)
+	modal_shade = controls.modal_shade
+	letter.configure(str(chapter.title), Registry.letter(chapter_key), controls.title_font, bool(settings.get("reduced_motion", false)), _action_button("back", _show_ready))
 
 
 func _share_available() -> bool:

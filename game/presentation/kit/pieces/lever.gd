@@ -12,6 +12,10 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "bolt": a sliding bolt. A round iron bolt with a knob lies in two staples
 ##       on a timber block. Pulled, it slides home into the iron catch; let go,
 ##       it draws back.
+##   "lantern": the fog lantern pump (rules 16's fog_lantern block). A lantern
+##       hangs from the arm of a timber post over a squat iron pump; pulled,
+##       the pump handle comes down and the lantern glows, let go it goes dark.
+##       The world clears the fog round a lit one (kit/fog.gd).
 ##
 ## A handle style's anchor is its tilting pivot (the knob at journey_world
 ## KNOB); a machine's is a fixed point anchor_lift() over its spot. A machine
@@ -23,7 +27,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 
 ## Styles that tilt a handle, and machines that move their own parts.
 const HANDLES := ["plain", "brass"]
-const MACHINES := ["winch", "bolt"]
+const MACHINES := ["winch", "bolt", "lantern"]
 const REACH := 0.28
 const EAST_SIDE := 0.16
 const PULL_SECONDS := 0.45
@@ -34,7 +38,7 @@ const HOUSING := Color("728788")
 ## Where a bubble's tail lands on each machine (its top on its axis, m over
 ## its spot), and how far over its anchor that is: journey_world's knob point
 ## (KNOB 0.4 over the anchor) plus KNOB_RADIUS (0.09).
-const TOPS := {"winch": 0.63, "bolt": 0.63}
+const TOPS := {"winch": 0.63, "bolt": 0.63, "lantern": 0.90}
 const KNOB_REACH := 0.49
 ## Winch: drum height and its coil's radius, slack and wound; turns of the crank.
 const DRUM_Y := 0.50
@@ -46,6 +50,13 @@ const LINKS := 7
 ## Bolt: its centre drawn back and slid home (x, m).
 const BOLT_BACK := 0.02
 const BOLT_HOME := -0.10
+## Lantern: its glass, how bright it burns lit, and the pump handle's tilt
+## (radians about z) let go and pulled.
+const LANTERN_GLASS := Color("f6d488")
+const LANTERN_DARK := Color("6b6252")
+const LANTERN_GLOW := 1.4
+const PUMP_UP := 0.55
+const PUMP_DOWN := -0.25
 
 var _shown := 0.0
 var _target := 0.0
@@ -54,6 +65,8 @@ var _drum: Node3D
 var _coil: Node3D
 var _links: Array[MeshInstance3D] = []
 var _bolt: Node3D
+var _glass: MeshInstance3D
+var _pump: Node3D
 
 ## A lever in `style` on the spot `at` (parent space) under `parent`, shown let
 ## go. `options`: "owner" ("p0"/"p1") colours its knob. An unknown style is plain.
@@ -93,6 +106,7 @@ func moving_parts() -> Array[Node3D]:
 			parts.append_array([_drum, _crank])
 			for link: MeshInstance3D in _links: parts.append(link)
 		"bolt": parts.append(_bolt)
+		"lantern": parts.append_array([_glass, _pump])
 		_: parts.append(anchor)
 	return parts
 
@@ -112,6 +126,7 @@ func _make(lever_style: String, at: Vector3, parent: Node3D, knob: Color) -> voi
 	match lever_style:
 		"winch": _make_winch(knob)
 		"bolt": _make_bolt(knob)
+		"lantern": _make_lantern(knob)
 		_: _make_handle(knob)
 	_pose()
 
@@ -173,6 +188,24 @@ func _make_bolt(knob: Color) -> void:
 	Parts.box(Vector3(0.02, 0.07, 0.02), Parts.IRON, Vector3(0.09, 0.04, 0), _bolt)
 	Parts.ball(0.036, knob, Vector3(0.09, 0.085, 0), _bolt)
 
+func _make_lantern(knob: Color) -> void:
+	Parts.disc(0.15, 0.07, Parts.STONE, Vector3(0, 0.035, 0), root)
+	# The pump: a squat iron barrel on the base, its handle on a pivot.
+	Parts.disc(0.07, 0.22, Parts.IRON, Vector3(0.04, 0.18, 0), root)
+	Parts.disc(0.085, 0.03, Parts.IRON_LIGHT, Vector3(0.04, 0.305, 0), root)
+	_pump = Node3D.new()
+	_pump.position = Vector3(0.04, 0.33, 0)
+	root.add_child(_pump)
+	Parts.box(Vector3(0.20, 0.025, 0.025), Parts.IRON, Vector3(-0.10, 0, 0), _pump)
+	Parts.ball(0.03, knob, Vector3(-0.20, 0, 0), _pump)
+	# The post and its arm, the lantern hanging east of the post.
+	Parts.box(Vector3(0.05, 0.86, 0.05), Parts.TIMBER_DARK, Vector3(-0.09, 0.47, -0.06), root)
+	Parts.box(Vector3(0.24, 0.04, 0.04), Parts.TIMBER, Vector3(0.01, 0.88, -0.06), root)
+	Parts.box(Vector3(0.012, 0.08, 0.012), Parts.IRON, Vector3(0.09, 0.82, -0.06), root)
+	Parts.disc(0.06, 0.03, Parts.BRASS, Vector3(0.09, 0.765, -0.06), root, 0.035)
+	_glass = Parts.box(Vector3(0.085, 0.12, 0.085), LANTERN_DARK, Vector3(0.09, 0.69, -0.06), root)
+	Parts.box(Vector3(0.10, 0.02, 0.10), Parts.BRASS, Vector3(0.09, 0.62, -0.06), root)
+
 ## Places every moving part for the shown pose.
 func _pose() -> void:
 	if style in HANDLES:
@@ -196,5 +229,10 @@ func _pose() -> void:
 			var across := Vector3(1, 0, 0) if index % 2 == 0 else along.cross(Vector3(1, 0, 0)).normalized()
 			_links[index].basis = Basis(along * 1.5, across, along.cross(across).normalized())
 			_links[index].position = at
+	elif style == "lantern":
+		_pump.rotation.z = lerpf(PUMP_UP, PUMP_DOWN, t)
+		var lit := t >= 0.5
+		Parts.Primitives.own_material(_glass).albedo_color = LANTERN_GLASS if lit else LANTERN_DARK
+		Parts.glow(_glass, LANTERN_GLASS, LANTERN_GLOW * t if lit else 0.0)
 	elif is_instance_valid(_bolt):
 		_bolt.position.x = lerpf(BOLT_BACK, BOLT_HOME, t)

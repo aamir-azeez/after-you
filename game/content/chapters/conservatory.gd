@@ -13,6 +13,8 @@ const DATA := {
 		"summary": PlayerCopy.CONSERVATORY_SUMMARY,
 		"completion": PlayerCopy.CONSERVATORY_COMPLETION,
 	},
+	"letter": {"stamp": "fern", "address": [PlayerCopy.LETTER_GLASSHOUSE, PlayerCopy.LETTER_GLASSHOUSE_LINE],
+		"postmark": PlayerCopy.LETTER_POST_GARDEN, "signoff": PlayerCopy.LETTER_WRITE_BACK_SOON},
 	"stage_copy": {
 		"a-light-above": {
 			"title": PlayerCopy.CONSERVATORY_ABOVE_TITLE,

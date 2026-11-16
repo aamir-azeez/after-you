@@ -1,8 +1,10 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
-import { openTurns, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
-import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, recordingBytes, turnSlot } from "./open-turns";
+import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
+import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, packedRecordingBytes, recordingBytes, turnSlot } from "./open-turns";
+import { isPacked } from "./recording-codec";
+import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
 import homeDefinition from "./long-way-home.json";
@@ -25,15 +27,17 @@ export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea8
 export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
 export const TURN_OF_THE_TIDE_HASH = "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a";
 export const TURN_OF_THE_TIDE_V2_HASH = "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43";
-export const LONG_WAY_HOME_V3_HASH = "81e6342e5f80158ca6cf6c9e02a61cc2baa7e24c63e23603561db50fd1311ddc";
-export const TURN_OF_THE_TIDE_V3_HASH = "4604f025d89fba1bcd024be1d60ffefd65d50f189b3993399c4d12b9f2a0a21c";
-export const CONSERVATORY_V2_HASH = "90e49a79c3aae874c960cdd73605a12d58f5221878fceb57a224d83e18fbdcbb";
+export const LONG_WAY_HOME_V3_HASH = "947e69e3ccc80d81f285b0434536a00cb3a08aeea890e64539e8643b09dc3909";
+export const TURN_OF_THE_TIDE_V3_HASH = "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba";
+export const CONSERVATORY_V2_HASH = "945bb314eb10738736122839400a4570ceeec33f33e68426e789f13d3bc11108";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
-type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
-type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
+export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
+export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
 type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
+  /** Rules 16 (chapter-types.ts PIECES_RULES): stones that hold one pip; platform stops are plain gated crossings. */
+  sinking?: string[];
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
 type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
@@ -59,8 +63,33 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
     "second-light": controls["final-mirror"] === "slash" };
 }
 
+/** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 16),
+ * a selector's value, a lever on, a beam signal lit, a pad held (by either pip on open controls). */
+export function gateHolds(value: Predicate, state: { controls: Record<string, unknown>; levers: Record<string, unknown>; light: Record<string, boolean>;
+  players: Record<string, unknown>; stage: Pick<Stage, "pressure_pads">; open: boolean; items?: Parameters<typeof itemHolds>[1] }): boolean {
+  const { controls, levers, light, players, stage, open } = state, holds = (child: Predicate): boolean => gateHolds(child, state);
+  if (value.all) return value.all.every(holds);
+  if (value.any) return value.any.some(holds);
+  if (value.not) return !holds(value.not);
+  if (value.control_id) return controls[value.control_id] === value.value;
+  if (value.lever_id) return levers[value.lever_id] === true;
+  if (value.signal_id) return light[value.signal_id] === true;
+  if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
+  if (isItemTerm(value)) return itemHolds(value, state.items ?? {});
+  return true;
+}
+
+/** Rules 16: both pips on one sinking stone, which sinks it, so no stage ends that way. */
+export function sunkTogether(stage: Pick<Stage, "sinking">, players: Record<string, unknown>): boolean {
+  const p0 = object(players.p0).surface_id, p1 = object(players.p1).surface_id;
+  return p0 === p1 && (stage.sinking ?? []).includes(String(p0));
+}
+
 function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
   const key = Object.freeze({ level_id: definition.id, level_version: definition.version, definition_hash: definitionHash });
+  // Rules 16's carried items (protocol-items.ts): only a definition that lists them keeps mechanisms.items.
+  checkItemDefinition(definition as unknown as ItemDefinition);
+  const withItems = declaresItems(definition);
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [7, 8];
@@ -73,11 +102,14 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // Longer turns, when the definition declares them, carry bounds grown to fit.
   const turns = turnLimits(definition);
   let limits = turns ? scaledLimits(turns) : undefined;
-  // Open turns: a stage's turns stay under its budget, and the checkpoint and turn body bounds grow to hold every stage of them.
-  const openLimits = open ? openTurnLimits(definition.stages, (limits ?? COMFORT_RECORDING).recording_bytes!, maxBranches!) : undefined;
-  if (openLimits) { const base = limits ?? COMFORT_RECORDING; limits = { ...base, ...openBodyLimits(openLimits, definition.stages.length, base.recording_values!) }; maxBranches = openLimits.branches; }
+  // Open turns: every turn packed and as long as the second turn limit; a stage's turns stay under its budget, and the
+  // checkpoint and turn body bounds grow to hold every stage of them.
+  const openLimits = open ? openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches!) : undefined;
+  if (openLimits) { limits = { ...(limits ?? COMFORT_RECORDING), ...openBodyLimits(openLimits, definition.stages.length) }; maxBranches = openLimits.branches; }
   if (limits) checkTurnBounds(limits, maxBranches);
-  const recording = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
+  const parsed = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
+  // Open turns take packed turns only (open-turns.ts), before any other check.
+  const recording = open ? (value: unknown) => { need(value !== null && typeof value === "object" && isPacked(value), "packed_recording_required"); return parsed(value); } : parsed;
   const isAccepted = open ? openAccepted : accepted;
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
@@ -109,7 +141,8 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       need(canonicalJson(proof.checkpoint) === canonicalJson(previous) && canonicalJson(proof.a) === canonicalJson(a) && canonicalJson(proof.b) === canonicalJson(b), "checkpoint_proof_mismatch");
     }
     const mechanisms = object(c.mechanisms), prior = object(object(previous).mechanisms);
-    exact(mechanisms, ["latched_bridges", "props", "levers", "controls"]); exact(object(mechanisms.props), []);
+    exact(mechanisms, ["latched_bridges", "props", "levers", "controls", ...(withItems ? ["items"] : [])]); exact(object(mechanisms.props), []);
+    const items = withItems ? checkItems(mechanisms.items, definition as unknown as ItemDefinition) : {};
     // Controls by id: a control repeated in both stages (the same entry) is
     // listed once, may change while its stage plays, and is held otherwise.
     const controls = object(mechanisms.controls), priorControls = object(prior.controls);
@@ -142,16 +175,9 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       need(height === expectedHeight, "checkpoint_surface_mismatch");
     }
     const source = object(players[stage.first_player_slot]), receiver = object(players[stage.first_player_slot === "p0" ? "p1" : "p0"]), light = signals(controls);
-    function predicate(value: Predicate = {}): boolean {
-      if (value.all) return value.all.every(predicate);
-      if (value.any) return value.any.some(predicate);
-      if (value.control_id) return controls[value.control_id] === value.value;
-      if (value.lever_id) return levers[value.lever_id] === true;
-      if (value.signal_id) return light[value.signal_id] === true;
-      if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
-      return true;
-    }
+    const predicate = (value: Predicate = {}): boolean => gateHolds(value, { controls, levers, light, players, stage, open, items });
     for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
+    if (piecesRules(definition.simulation_version)) need(!sunkTogether(stage, players), "checkpoint_surface_mismatch");
     if (openLimits) {
       // Open turns: the stage ends only with both pips in its goal area and its objective holding (open-turns.ts openStageEnds).
       need(openStageEnds(slot => near(object(players[slot]), stage.goal), predicate(stage.goal_policy.when)), "checkpoint_goal_mismatch");
@@ -196,3 +222,5 @@ export const turnOfTheTideV3: ChapterAdapter = adapter(tideV3Definition, tideV3I
 /** Open controls (12): Conservatory@1 with the court's two forks on a balcony only the first player reaches,
  * and the first turn ending at the court-wait spot on the court. Unreleased. */
 export const conservatoryV2 = adapter(conservatoryV2Definition, conservatoryV2Initial, CONSERVATORY_V2_HASH);
+/** A journey adapter for any definition and its first checkpoint: the witness tests (test/carried-items.test.ts) build theirs with it. */
+export const journeyAdapter = adapter;

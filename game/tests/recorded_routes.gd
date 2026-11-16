@@ -11,14 +11,16 @@ extends RefCounted
 ## format (services/blob_codec.gd: an encoding byte, then the canonical bytes
 ## raw or deflated).
 const BlobCodec = preload("res://services/blob_codec.gd")
+const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 ## The largest source read, as a stored room attempt (history_store.gd).
 const MAX_SOURCE_BYTES := 4 * 1024 * 1024
 
-## The steps that replay `recording`'s inputs exactly.
+## The steps that replay `recording`'s inputs exactly, from either form (open
+## turns record packed: core/v2/recording_codec.gd).
 static func from_recording(recording: Dictionary) -> Array:
 	var steps: Array = []
-	for run: Dictionary in recording.get("actions", []):
+	for run: Dictionary in RecordingCodec.actions(recording):
 		steps.append(["input", int(run.ticks), int(run.x), int(run.z), bool(run.action)])
 	return steps
 
@@ -92,7 +94,7 @@ static func _turns(value: Dictionary) -> Array:
 	var turns: Array = []
 	if value.get("turns") is Array: turns = value.turns
 	elif value.get("a") is Dictionary and value.get("b") is Dictionary and value.get("passes") is Array: turns = [value.a] + value.passes + [value.b]
-	if turns.size() < 2 or not turns.all(func(turn: Variant) -> bool: return turn is Dictionary and turn.get("actions") is Array): return []
+	if turns.size() < 2 or not turns.all(func(turn: Variant) -> bool: return turn is Dictionary and _recorded(turn)): return []
 	if turns[0].get("role") != "a": return []
 	for index in range(1, turns.size()):
 		var turn: Dictionary = turns[index]
@@ -102,5 +104,9 @@ static func _turns(value: Dictionary) -> Array:
 static func _is_pair(value: Dictionary) -> bool:
 	var a: Variant = value.get("a")
 	var b: Variant = value.get("b")
-	return a is Dictionary and b is Dictionary and a.get("role") == "a" and b.get("role") == "b" and a.get("actions") is Array and b.get("actions") is Array \
+	return a is Dictionary and b is Dictionary and a.get("role") == "a" and b.get("role") == "b" and _recorded(a) and _recorded(b) \
 		and a.get("stage_id") == b.get("stage_id") and str(b.get("source_recording_hash")) == str(a.get("recording_hash"))
+
+## Whether `turn` carries its inputs, listed or packed.
+static func _recorded(turn: Dictionary) -> bool:
+	return turn.get("actions") is Array or RecordingCodec.is_packed(turn)
