@@ -108,7 +108,7 @@ func _play_and_save(device: Node) -> void:
 	await h.play_turn(device)
 	h.save_turn(device)
 
-## The guest finishes stage 1 and leaves at the checkpoint card.
+## The guest finishes stage 1 and leaves from the next stage's page, the kept stage heading it.
 func _leave_at_stage_boundary() -> void:
 	await _begin("leave at the stage boundary")
 	var room: String = await h.hosted_and_joined()
@@ -116,8 +116,8 @@ func _leave_at_stage_boundary() -> void:
 	await h.step("guest notices", func(): h.nudge(guest))
 	await h.step("guest plays and saves stage 1 B", _play_and_save.bind(guest))
 	await h.step("guest skips the photo", _skip_photo.bind(guest))
-	h.check(guest.child() != null and guest.child().mode == "checkpoint", "the guest is at the stage checkpoint")
-	await h.step("guest leaves at the checkpoint", func(): h.press(guest, "back"))
+	h.check(guest.child() != null and guest.child().mode in ["ready", "online_waiting"] and guest.child().overlay.find_child("TurnNewsHeading", true, false) != null, "the guest is on the next stage's page, the kept stage heading it")
+	await h.step("guest leaves from the page", func(): h.press(guest, "back"))
 	h.check(guest.hub() != null, "the guest is at the hub")
 	await h.step("guest refreshes", func(): h.nudge(guest))
 	await h.step("guest continues the room", func(): h.open_room_card(guest, room))
@@ -127,7 +127,7 @@ func _leave_at_stage_boundary() -> void:
 
 func _skip_photo(device: Node) -> void:
 	var child: Node = device.child()
-	if child == null or child.mode == "checkpoint": return
+	if child == null or child.mode in ["ready", "online_waiting"]: return
 	for text: String in ["Skip", "Keep playing"]:
 		if h.press(device, text): return
 

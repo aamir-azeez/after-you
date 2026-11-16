@@ -66,29 +66,27 @@ const ACTIONS := {
 	"redo_status": {"text": ASK_FOR_REDO, "when": ["!hard", "redo", "redo_answered"]},
 	# A request or answer whose reply was lost: its recovery screen (redo_screen.gd).
 	"redo_retry": {"text": RETRY_REQUEST, "icon": preload("res://assets/ui/retry.svg"), "alert": true, "when": ["redo_unsettled"]},
-	"solo_redo": {"text": PlayerCopy.SOLO_REDO_ACTION, "when": ["!hard", "solo_redo"]},
-	# Play my turn again while the friend has not fetched it (redo_flow.gd replace); while it
-	# plays, Keep it as it is goes back to the saved turn.
+	# Play my turn again while the friend has not fetched it, or solo any time after a save
+	# (redo_flow.gd replace); while it plays, Keep it as it is goes back to the saved turn.
 	"redo_self": {"text": PLAY_AGAIN, "primary": true, "icon": preload("res://assets/ui/play.svg"), "when": ["!hard", "redo_self"]},
 	"redo_self_keep": {"text": KEEP_TURN, "when": ["replacing"]},
 	# Start over (redo_flow.gd): either player asks; then the row says what became of it
-	# (start_over_status), and the friend asked agrees or keeps playing.
+	# (start_over_status), and the friend asked agrees or keeps playing. Solo, it asks
+	# itself and the chapter goes back to its first stage.
 	"start_over": {"text": PlayerCopy.START_OVER_ASK, "icon": RETRY_ICON, "danger": true, "when": ["!hard", "start_over_ask"]},
 	"start_over_status": {"text": PlayerCopy.START_OVER_ASK, "when": ["!hard", "start_over_answered"]},
 	"start_over_agree": {"text": PlayerCopy.START_OVER_AGREE, "primary": true, "icon": RETRY_ICON, "danger": true, "when": ["!hard", "start_over_answer"]},
 	"start_over_keep": {"text": PlayerCopy.START_OVER_KEEP, "when": ["!hard", "start_over_answer"]},
-	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "with_receipt": true, "when": ["photo"]},
-	"checkpoints": {"button": "retry", "when": ["!hard", "solo"]},
+	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "with_receipt": true, "when": ["online", "photo"]},
 	# A finished solo hard run starts again from its first stage (services/hard_mode.gd).
 	"hard_again": {"text": PlayerCopy.HARD_AGAIN, "primary": true, "when": ["hard", "solo"]},
 	"new_room": {"text": "New room", "primary": true, "when": ["online"]},
-	"restart": {"text": "Restart chapter", "primary": true, "when": ["!hard", "restart"]},
 	# A room partner who is not a friend yet: the ordinary friend request
 	# (services/partner_friends.gd), then "Request sent" until they answer.
 	"add_friend": {"text": PlayerCopy.ROOM_ADD_FRIEND, "icon": preload("res://assets/ui/social/plus.svg"), "section": "partner", "when": ["online", "partner_addable"]},
 	"friend_requested": {"text": PlayerCopy.ROOM_FRIEND_REQUESTED, "icon": preload("res://assets/ui/check.svg"), "section": "partner", "when": ["online", "partner_requested"]},
-	"about": {"text": "About this chapter", "icon": preload("res://assets/ui/social/info.svg"), "section": "chapter", "when": ["about"]},
-	"safety": {"text": PlayerCopy.REPORT_OR_BLOCK, "icon": Icons.REPORT, "section": "safety", "when": ["safety"]},
+	"about": {"text": "About this chapter", "icon": preload("res://assets/ui/social/info.svg"), "section": "chapter", "when": ["online", "about"]},
+	"safety": {"text": PlayerCopy.REPORT_OR_BLOCK, "icon": Icons.REPORT, "section": "safety", "when": ["online", "safety"]},
 	"room_options": {"text": "Room options", "icon": preload("res://assets/ui/room/dots.svg"), "when": ["options"]},
 	"your_rooms": {"text": "Your rooms", "icon": preload("res://assets/ui/room/door-exit.svg"), "when": []},
 	"back": {"button": "back", "when": []},
@@ -107,7 +105,7 @@ const SECTIONS := {
 ## How a slot draws its rows. Every card slot draws "card"; a panel slot draws
 ## its own. Pairs are [normal, short screen].
 ##   icon: the row's icon beside its label; icon_only: the icon alone;
-##   cream: the primary look; height: the row's height; field, field_font and
+##   cream: the primary look (a slot without it takes the row's primary); height: the row's height; field, field_font and
 ##   copy_width: the invitation code field's height, text size and its Copy
 ##   button's width; fill: rows share the line's width; line and heading: the
 ##   row's line and heading (ACTIONS) show.
@@ -117,8 +115,8 @@ const LOOKS := {
 	"status": {},
 	"invite": {"icon": true, "height": [64, 54], "field": [56, 50], "field_font": [18, 18], "copy_width": [124, 124]},
 	"primary": {"icon": true, "cream": true, "height": [64, 54]},
-	"turn": {"icon": true, "height": [52, 52]},
-	"pair": {"icon": true, "fill": true, "height": [52, 52]},
+	"turn": {"icon": true, "cream": false, "height": [52, 52]},
+	"pair": {"icon": true, "cream": false, "fill": true, "height": [52, 52]},
 }
 
 ## state: {slot: action ids in screen order}. A state is drawn slot by slot.
@@ -127,17 +125,18 @@ const LOOKS := {
 ##   heading; invite: under the friend strip; primary: the cream actions;
 ##   turn: outlined rows; pair: the last line, whose rows share it; options:
 ##   the Room options sheet.
-## A panel state is one column of the owner's mapping: my turn, my turn before
-## the friend joins, waiting, waiting before the friend joins, and a sent turn
-## with no receipt yet (panel_state picks it).
-## Card states are the centred card (solo chapters, and online rooms on a
-## narrow screen) and use invite, turn and, after the sync status line, more.
+## A panel state is one column of the owner's mapping: my turn (a solo
+## chapter's too), my turn before the friend joins, waiting, waiting before the
+## friend joins, a sent turn with no receipt yet (panel_state picks it), and the
+## finished chapter.
+## Card states are the centred card (any room or solo chapter on a narrow
+## screen) and use invite, turn and, after the sync status line, more.
 const LAYOUT := {
 	"ready_panel": {
 		"header": ["refresh"],
 		"primary": ["start_over_agree", "resume", "record"],
-		"turn": ["start_over_keep", "redo_self_keep", "redo", "redo_status", "start_over", "start_over_status", "redo_retry"],
-		"pair": ["room_options"],
+		"turn": ["start_over_keep", "redo_self_keep", "redo_self", "redo", "redo_status", "start_over", "start_over_status", "redo_retry"],
+		"pair": ["room_options", "local_replays"],
 		"options": ["share", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"ready_panel_invite": {
@@ -172,20 +171,29 @@ const LAYOUT := {
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
-		"turn": ["start_over_agree", "start_over_keep", "redo_self_keep", "resume", "record", "redo", "redo_status", "start_over", "start_over_status", "redo_retry", "refresh", "local_replays", "restart", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["start_over_agree", "start_over_keep", "redo_self_keep", "resume", "record", "redo_self", "redo", "redo_status", "start_over", "start_over_status", "redo_retry", "refresh", "local_replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"waiting_card": {
 		"invite": ["copy_code"],
 		"turn": ["check_saved", "keep_held", "redo_play", "redo_keep", "start_over_agree", "start_over_keep", "redo_self", "start_over", "start_over_status", "redo_retry", "alerts", "notify", "refresh", "share"],
 		"more": ["replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
+	"complete_panel": {
+		"primary": ["hard_again", "new_room"],
+		"turn": ["redo_self", "start_over"],
+		"pair": ["replays", "local_replays", "room_options"],
+		"options": ["photo", "add_friend", "friend_requested", "safety"],
+	},
 	"complete": {
-		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["hard_again", "redo_self", "start_over", "replays", "local_replays", "new_room", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 }
 
 ## Cards outside the room panel (pause, review) add these rows when they apply.
-const REDO_ACTIONS := ["redo", "redo_status", "redo_retry", "solo_redo"]
+const REDO_ACTIONS := ["redo", "redo_status", "redo_retry"]
+## A turn ending's card (a turn that cannot be kept) adds them too, and solo
+## Play my turn again: the turn before it may be what has to change.
+const ENDING_REDO_ACTIONS := REDO_ACTIONS + ["redo_self"]
 
 ## The wide panel's state for a room screen, "ready" or "waiting".
 static func panel_state(screen: String, fact: Callable) -> String:

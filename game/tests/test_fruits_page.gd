@@ -74,7 +74,7 @@ class FakeToast extends RefCounted:
 	var up := false
 	var action := Callable()
 	func showing() -> bool: return up
-	func post(line: String, _icon: Texture2D = null, _text: String = "", act: Callable = Callable()) -> void:
+	func post(line: String, _icon: Variant = null, _text: String = "", act: Callable = Callable(), _ready: Callable = Callable()) -> void:
 		lines.append(line)
 		action = act
 		up = true
@@ -93,6 +93,7 @@ class Host extends Node:
 		overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		add_child(overlay)
 	func _names_scope() -> Dictionary: return {"server": SERVER, "owner": ME}
+	func in_play() -> bool: return is_instance_valid(relay_child)
 	func _toast(text: String) -> void: said.append(text)
 	func _clear_overlay() -> void:
 		for child: Node in overlay.get_children():

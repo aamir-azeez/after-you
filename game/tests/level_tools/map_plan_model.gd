@@ -9,8 +9,8 @@ extends RefCounted
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const LevelGraph = preload("res://tests/level_graph.gd")
 
-## The plan of `view` (a stage merged over its level, as
-## CooperativeCatalog.stage_definition gives it). `checkpoint` places the pips
+## The plan of `view` (a stage's plan, services/level_layout.gd). `checkpoint`
+## (in the plan's terms, level_stages.gd floor_checkpoint) places the pips
 ## and the crossings kept from earlier ({} draws no starts and marks no
 ## reach); `skips` are the world's pair_tags.skips() (none without a world).
 static func build(level: Dictionary, view: Dictionary, checkpoint: Dictionary, journey: bool, skips: Array = []) -> Dictionary:
@@ -87,7 +87,7 @@ static func build(level: Dictionary, view: Dictionary, checkpoint: Dictionary, j
 ## checkpoint: nothing is marked out of reach).
 static func _reach(level: Dictionary, view: Dictionary, checkpoint: Dictionary, journey: bool) -> Dictionary:
 	if checkpoint.is_empty() or checkpoint.get("players", {}).is_empty(): return {}
-	var found: Dictionary = LevelGraph.new(level).reach(view, checkpoint, journey)
+	var found: Dictionary = LevelGraph.new(view).reach(view, checkpoint, journey)
 	var result: Dictionary = {}
 	for slot: String in found.floors:
 		for id: String in found.floors[slot]: result[id] = true

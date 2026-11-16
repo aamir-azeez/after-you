@@ -25,7 +25,7 @@ extends Node
 ## - entry points: ensure_relay_session, _show_friends, _show_home, friends_flow (is_open, hosting_hint, refresh),
 ##   _enter_online_relay, _request_update_gate, settings_flow (is_open,
 ##   refresh: Settings redraws its notification rows when the service changes),
-##   _friends_client, INVITE_LINK_TTL_MS
+##   _friends_client, INVITE_LINK_TTL_MS, in_play
 ## - modes: NOTIFICATION_ROUTE_MODES (the screens a tap may leave)
 ## - card kit: _paragraph, _button, _toast
 ## It also calls two private members, as Main did: RelayOnline._room_gone and
@@ -57,8 +57,6 @@ var _offer: Button
 ## A live friends hint came while Friends was closed; one list read is owed.
 var _friends_hint := false
 var _friends_reading := false
-## View was tapped where Friends cannot open yet: {identity, until}.
-var _view_wanted: Dictionary = {}
 var _view_opening := false
 
 func _init(main: Node = null) -> void:
@@ -215,7 +213,7 @@ func route_safe(route: Dictionary) -> bool:
 ## True when nothing in progress stops leaving this screen: no request,
 ## identity work, open room or draft. Friends may stay up only when `friends_ok`.
 func _can_leave(friends_ok: bool) -> bool:
-	if host.application_backgrounded or host.identity_loading or host.identity_busy or is_instance_valid(host.relay_child) or host.saves.read_only: return false
+	if host.application_backgrounded or host.identity_loading or host.identity_busy or host.in_play() or host.saves.read_only: return false
 	if host.mode not in host.NOTIFICATION_ROUTE_MODES and not (host.mode == "friends" and friends_ok): return false
 	if not host._relay_identity().ready: return false
 	if host.relay_session != null:
@@ -233,12 +231,12 @@ func friends_notice(text: String, news: bool) -> void:
 func _friends_news(text: String) -> void:
 	if text.is_empty(): return
 	if is_instance_valid(host.relay_child): host.relay_child.notification_deferred(text)
-	elif is_instance_valid(host.toast): host.toast.post(text, Toast.FRIENDS_ICON, PlayerCopy.FRIENDS_VIEW, view_friends.bind(_identity_key()))
+	elif is_instance_valid(host.toast): host.toast.post(text, Toast.FRIENDS_ICON, PlayerCopy.FRIENDS_VIEW, view_friends.bind(_identity_key()), friends_ready)
 
-## The signed-in player changed: their friends news and a waiting View go.
+## The signed-in player changed: their friends news and a waiting View go
+## (every pop-up's kept View with them, presentation/toast.gd drop_actions).
 func forget_friends_news() -> void:
 	_friends_hint = false
-	_view_wanted = {}
 	if is_instance_valid(host.toast): host.toast.drop_actions()
 
 ## The live socket says the friends list changed. Friends reads its own hints.
@@ -252,9 +250,8 @@ func friends_hint(early: bool) -> void:
 	if client != null: client.hint(false)
 	_friends_hint = true
 
-## Main calls this every frame: a waiting View, then an owed friends read.
+## Main calls this every frame: an owed friends read.
 func service_friends() -> void:
-	_service_view()
 	if not _friends_hint or _friends_reading: return
 	if host.friends_flow.is_open():
 		_friends_hint = false
@@ -275,21 +272,15 @@ func service_friends() -> void:
 	# With no earlier page, a waiting request or room is the news the hint is about.
 	_friends_news(FriendsClient.change_notice(before if not before.is_empty() else {"friends": []}, client.view()))
 
-## View on the pop-up: Friends opens now when leaving this screen is safe, or
-## quietly once it is, within Main.INVITE_LINK_TTL_MS. A View from another
-## identity does nothing.
-func view_friends(identity: String) -> void:
-	if identity.is_empty() or identity != _identity_key(): return
-	_view_wanted = {"identity": identity, "until": Time.get_ticks_msec() + host.INVITE_LINK_TTL_MS}
-	_service_view()
+## Whether a pop-up's View may open Friends now (the pop-up keeps a View
+## tapped while it may not, presentation/toast.gd when_free).
+func friends_ready() -> bool:
+	return _can_leave(true)
 
-func _service_view() -> void:
-	if _view_wanted.is_empty() or _view_opening: return
-	if host.friends_flow.is_open() or Time.get_ticks_msec() >= int(_view_wanted.until) or _view_wanted.identity != _identity_key():
-		_view_wanted = {}
-		return
-	if not _can_leave(true): return
-	_view_wanted = {}
+## View on the pop-up, run once leaving this screen is safe (friends_ready):
+## Friends opens. A View from another identity, or with Friends up, does nothing.
+func view_friends(identity: String) -> void:
+	if identity.is_empty() or identity != _identity_key() or host.friends_flow.is_open() or _view_opening: return
 	_view_opening = true
 	await host._show_friends()
 	_view_opening = false

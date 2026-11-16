@@ -269,11 +269,11 @@ func _celebrate(run: Dictionary, view: Dictionary, line: Control) -> void:
 	# The room's own soundscape: Main's is quiet under it.
 	Soundscape.play_on(room, shown.cue())
 
-## View board from a room's celebration: the room closes, then the board opens
-## as from Home. A room that does not close yet (a save still going) stays.
+## View board from a room's celebration: the room and its result card stay;
+## the board opens as from Home once the player leaves the room, kept by the
+## pop-up as any View is (presentation/toast.gd when_free).
 func _view_board(board: String) -> void:
-	if is_instance_valid(host.relay_child) and not host.relay_child.leave(): return
-	host._view_leaderboard(board)
+	host.toast.when_free(host._view_leaderboard.bind(board), host.notification_flow.friends_ready)
 
 ## Turns Forgiving catches off on this phone and in the open room; true when
 ## saved. A failed save says so, as Settings does.

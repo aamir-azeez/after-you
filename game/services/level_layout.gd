@@ -70,8 +70,10 @@ static func walking_areas(plan: Dictionary) -> Array:
 
 ## Every placed thing of `plan` a pip works, carries or stands at: each entry
 ## anywhere in it with a position_cm, as {id, kind (the list or field it
-## sits in), position_cm, radius_cm, surface_id, height_cm}, then each start
-## (kind "start"). Floors and crossings are walking_areas().
+## sits in), position_cm, radius_cm, surface_id, height_cm (its own when it
+## has one, as a raised pad does, else its floor's), solid (it gives a solid
+## footprint, core/solid_footprint.gd)}, then each start (kind "start").
+## Floors and crossings are walking_areas().
 static func spots(plan: Dictionary) -> Array:
 	var heights: Dictionary = {}
 	for island: Dictionary in plan.get("islands", []): heights[str(island.id)] = int(island.get("height_cm", 0))
@@ -82,14 +84,14 @@ static func spots(plan: Dictionary) -> Array:
 		for slot: String in starts:
 			var start: Variant = starts[slot]
 			var surface := str(start.get("surface_id", "")) if start is Dictionary else ""
-			found.append({"id": slot, "kind": "start", "position_cm": start.position_cm if start is Dictionary else start, "radius_cm": SPOT_RADIUS_CM, "surface_id": surface, "height_cm": int(heights.get(surface, 0))})
+			found.append({"id": slot, "kind": "start", "position_cm": start.position_cm if start is Dictionary else start, "radius_cm": SPOT_RADIUS_CM, "surface_id": surface, "height_cm": int(heights.get(surface, 0)), "solid": false})
 	return found
 
 static func _collect(value: Variant, heights: Dictionary, found: Array, kind: String) -> void:
 	if value is Dictionary:
 		if value.get("position_cm") is Array and value.position_cm.size() == 2:
 			var surface := str(value.get("surface_id", ""))
-			found.append({"id": str(value.get("id", "")), "kind": kind, "position_cm": value.position_cm, "radius_cm": int(value.get("radius_cm", SPOT_RADIUS_CM)), "surface_id": surface, "height_cm": int(heights.get(surface, 0))})
+			found.append({"id": str(value.get("id", "")), "kind": kind, "position_cm": value.position_cm, "radius_cm": int(value.get("radius_cm", SPOT_RADIUS_CM)), "surface_id": surface, "height_cm": int(value.get("height_cm", heights.get(surface, 0))), "solid": value.has("solid")})
 		for child: Variant in value:
 			if str(child) != "starts": _collect(value[child], heights, found, str(child))
 	elif value is Array:

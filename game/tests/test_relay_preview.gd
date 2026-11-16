@@ -120,7 +120,7 @@ func _run() -> void:
 		app._accept()
 		_check(app.mode != "error", "Explicit Save accepts the verified draft: " + name)
 		if name == "relay-b":
-			_check(app.mode == "checkpoint" and app.journey.stage_id() == "garden", "A midpoint checkpoint needs explicit Continue")
+			_check(app.mode == "ready" and app.journey.stage_id() == "garden" and app.overlay.find_child("TurnNewsHeading", true, false) != null, "A kept stage heads the next turn's page")
 			var reopened := Journey.new(path)
 			reopened.load_data()
 			_check(not reopened.read_only and reopened.stage_id() == "garden", "Checkpoint is actually durable on reopening")
@@ -146,14 +146,14 @@ func _run() -> void:
 	_check(app.journey.pairs().size() == 2, "Watching the chapter does not append or overwrite recorded pairs")
 	_check(Canonical.same(_save_bytes(path), before_collection), "Whole-chapter replay and completed view write no save-generation bytes")
 	var old_state: Dictionary = app.journey._state.duplicate(true)
-	_press(app, "Retry")
-	_check(app.mode == "choose_checkpoint", "Completed chapters offer Retry without discarding the replay")
-	app._confirm_local_checkpoint(0)
-	_press(app, "Cancel")
-	_check(app.mode == "complete" and Canonical.same(_save_bytes(path), before_collection), "Cancelling Retry preserves completed progress")
-	app._confirm_local_checkpoint(0)
-	_press(app, "Retry")
-	_check(app.mode == "ready" and app.journey.pairs().is_empty() and app.journey.stage_id() == "relay", "Confirmed Retry starts a fresh playable chapter")
+	_press(app, "Start over")
+	_press_in(app.ui.find_child("StartOverConfirm", true, false), "Cancel")
+	await process_frame
+	_check(app.mode == "complete" and Canonical.same(_save_bytes(path), before_collection), "Cancelling Start over preserves completed progress")
+	_press(app, "Start over")
+	_press_in(app.ui.find_child("StartOverConfirm", true, false), "Start over")
+	await process_frame
+	_check(app.mode == "ready" and app.journey.pairs().is_empty() and app.journey.stage_id() == "relay", "Confirmed Start over starts a fresh playable chapter")
 	var archive := path + ".attempt-" + Canonical.digest(old_state) + ".json"
 	paths.append(archive)
 	var after_retry := _save_bytes(path)
@@ -281,6 +281,13 @@ func _press(app: Node3D, text: String) -> void:
 		# Exercise the actual connected button callable; do not substitute its
 		# internal operation directly. Touch geometry belongs to native QA.
 		button.pressed.emit()
+
+
+## Presses a button inside one card (a modal over the page).
+func _press_in(card: Node, text: String) -> void:
+	var button := _find_button(card, text) if card != null else null
+	_check(button != null, "The card offers " + text)
+	if button != null: button.pressed.emit()
 
 
 func _find_button(node: Node, text: String) -> Button:

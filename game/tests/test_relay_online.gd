@@ -536,7 +536,7 @@ func _real_ui_flow() -> void:
 	await _check_option_round_trip(preview,"ready","guest's turn")
 	_check(preview.overlay.find_child("RelayCopyStatus",true,false)==null,"Guest presentation never offers host-only invitation copy")
 	await _play(preview,"relay-b")
-	_check(preview.mode=="checkpoint" and preview.journey.stage_id()=="garden","Online B advances the verified checkpoint and stops at explicit Continue")
+	_check(preview.mode in ["ready","online_waiting"] and preview.journey.stage_id()=="garden" and preview.overlay.find_child("TurnNewsHeading",true,false)!=null,"Online B advances the verified checkpoint, and the kept stage heads the next page")
 	preview._show_ready()
 	_check(preview.role=="a" and preview.journey.snapshot().player_slot=="p1","Next stage alternates roles while keeping guest's physical spirit")
 	await _play(preview,"garden-a")

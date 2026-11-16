@@ -12,7 +12,7 @@ extends RefCounted
 ##   var shots := StageShots.new(key, level, stage_id, checkpoint)
 ##   world.present(shots.snapshot(shots.beside({}, lever, "p0")), true)
 const Registry = preload("res://services/chapter_registry.gd")
-const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+const Layout = preload("res://services/level_layout.gd")
 ## Where beside a control a pip stands (cm), first that fits its floor: near
 ## enough to show its pair (PairTags.NEAR_CM is 120), clear of the control.
 const BESIDE := [[-45, 35], [45, 35], [0, 50], [-50, 0], [50, 0], [0, -50]]
@@ -23,7 +23,7 @@ var key: String
 var level: Dictionary
 var stage_id: String
 var checkpoint: Dictionary
-## The stage merged over its level, as the worlds read it.
+## The stage's plan (services/level_layout.gd), in its family's terms.
 var view: Dictionary
 
 func _init(chapter_key: String, definition: Dictionary, stage: String, start: Dictionary) -> void:
@@ -31,7 +31,7 @@ func _init(chapter_key: String, definition: Dictionary, stage: String, start: Di
 	level = definition
 	stage_id = stage
 	checkpoint = start
-	view = CooperativeCatalog.stage_definition(definition, stage)
+	view = Layout.plan(Layout.family_of(chapter_key), definition, stage)
 
 ## The engine's snapshot for `edits` over the opening checkpoint; {} when the
 ## engine has no such stage. The live pip ("live") is the one the camera

@@ -191,9 +191,10 @@ func _solo_seams() -> void:
 	await process_frame
 	_check(app._live_tries == 2, "The second turn counts its own retries")
 	app._pause()
-	app._run_solo_redo(app.journey.redo_plan(), "paused")
+	app._show_ready()
+	await app._redo_self()
 	await process_frame
-	_check(app.journey.role() == "a" and app._live_tries == 2, "Redo takes back the first turn")
+	_check(app.journey.role() == "a" and app.journey.replacing() and app._live_tries == 2, "Play my turn again reopens the first turn")
 	app._begin()
 	await process_frame
 	_check(app._live_tries == 1 and app.turn_tries.tries(saved_hash) == 4, "The redone turn starts a new count and the old one keeps its own")

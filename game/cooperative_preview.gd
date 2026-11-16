@@ -135,17 +135,14 @@ func _show_local_replays() -> void:
 func _watch_local_pairs(pairs: Array) -> void:
 	if _access_allowed(): super._watch_local_pairs(pairs)
 
-func _choose_local_checkpoint() -> void:
-	if _access_allowed(): super._choose_local_checkpoint()
+func _redo_self() -> void:
+	if _access_allowed(): await super._redo_self()
 
-func _confirm_local_checkpoint(index: int) -> void:
-	if _access_allowed(): super._confirm_local_checkpoint(index)
+func _redo_self_keep() -> void:
+	if _access_allowed(): await super._redo_self_keep()
 
-func _confirm_solo_redo() -> void:
-	if _access_allowed(): super._confirm_solo_redo()
-
-func _run_solo_redo(plan: Dictionary, previous_mode: String = "ready") -> void:
-	if _access_allowed(): super._run_solo_redo(plan, previous_mode)
+func _start_over_ask() -> void:
+	if _access_allowed(): super._start_over_ask()
 
 func _accept() -> void:
 	if _access_allowed(): await super._accept()

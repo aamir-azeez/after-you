@@ -42,7 +42,7 @@ func _run() -> void:
 	_check(app.mode == "ready" and app.stage.id == "a-little-lift", "A new preview begins at the first relay stage")
 	var audio_errors := ReunionAudio.chapter(app)
 	_check(audio_errors.is_empty(), "First Steps reunion audio: " + str(audio_errors))
-	_check(app.world.island_visuals.size() == 2 and app.world.actors.size() == 2 and is_equal_approx(app.world.island_visuals.loft.position.y,1.6) and is_equal_approx(app.world.lift.position.y,0.0), "Distinct ground and1.6m loft plus real low lift and stable spirit slots are built")
+	_check(app.world._surface_nodes.size() == 2 and app.world.actors.size() == 2 and is_equal_approx(app.world._surface_nodes.loft.position.y,1.6) and is_equal_approx(app.world.lift.position.y,0.0), "Distinct ground and1.6m loft plus real low lift and stable spirit slots are built")
 	for size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 720)]:
 		viewport.size = size
 		await process_frame
@@ -100,7 +100,7 @@ func _run() -> void:
 		app._accept()
 		_check(app.mode != "error", "Explicit Save accepts the verified draft: " + name)
 		if name == "a-little-lift-b":
-			_check(app.mode == "checkpoint" and app.journey.stage_id() == "a-place-to-grow", "A midpoint checkpoint needs explicit Continue")
+			_check(app.mode == "ready" and app.journey.stage_id() == "a-place-to-grow", "A kept stage goes on to the next stage's page")
 			var reopened := _journey(path)
 			reopened.load_data()
 			_check(not reopened.read_only and reopened.stage_id() == "a-place-to-grow", "Checkpoint is actually durable on reopening")
@@ -274,7 +274,7 @@ func _heard_throws(app: Node, inputs: Array) -> Array:
 		var index: int = sound.next_voice
 		app.advance_input(input)
 		while index != sound.next_voice:
-			var voice: AudioStreamPlayer = sound.voices[index]
+			var voice: Node = sound.cue_slots[index]
 			if voice.stream == sound.CLIPS.seed_thrown: heard.append([voice.pitch_scale, voice.volume_db])
 			index = (index + 1) % sound.voices.size()
 	sound.configure(app.settings)

@@ -107,6 +107,7 @@ friends_navigation 9
 friends_offline 1
 friends_screen 6
 friends_screen_robust 2
+fruit_unlock_toasts 10
 fruit_wallet 5
 fruits_page 4
 full_journey_board 8
@@ -300,7 +301,6 @@ replay_transfer 33
 replay_transfer_delivery 7
 replay_transfer_session 14
 request_queue 0
-restart_chapter_ui 6
 resume_child_sound 7
 review_access 1
 rolling_offer 6

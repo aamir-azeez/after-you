@@ -2,6 +2,9 @@ extends Node
 ## Presentation-only sound. Consume events once per simulation step, never snapshot.
 ## In a recorded turn, pitch and gain derive from the event identity
 ## (chapter, stage, cause, kind, ordinal). Home meetups stay random.
+## Where a turn's cue or a step is heard (pan and fade only) comes from the
+## listened world's camera and the piece or pip that caused it, after its
+## identity is set, so placing never changes which cue plays or its pitch.
 
 const PlatformSupport = preload("res://services/platform_support.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
@@ -84,6 +87,26 @@ var _hold := PackedInt32Array()
 var _held_cues: Array[Dictionary] = []
 ## Bells and other ringing tails: never taken by a burst of short cues.
 var long_voice: AudioStreamPlayer
+## The same voices for a turn's cue or step the world can place
+## (SoundCues.PLACE): heard from where it happened through `listener`. They
+## share the plain voices' turns (next_voice, next_step) and frame cap.
+var world_voices: Array[AudioStreamPlayer3D] = []
+var world_long_voice: AudioStreamPlayer3D
+var world_step_voices: Array[AudioStreamPlayer3D] = []
+## The voice each turn of the cue and step pools last played on, plain or
+## world: what slot n of next_voice or next_step sounds like.
+var cue_slots: Array[Node] = []
+var step_slots: Array[Node] = []
+## The one listener: at the listened world camera's focus, turned with the
+## camera and set back by PLACE.back (follow_camera). With no camera in view
+## nothing is placed and every sound plays as before.
+var listener: AudioListener3D
+var _view := Transform3D()
+var _view_size := -1.0
+var _view_focus := Vector3.ZERO
+var _view_extent := 0.0
+## Where the cue being voiced now is heard ({at, db}); null: unplaced.
+var _placing: Variant = null
 var max_cues_per_frame := MAX_CUES_PER_FRAME
 var _cue_frame := -1
 var _frame_cues := 0
@@ -143,6 +166,16 @@ func _ready() -> void:
 		voices.append(voice)
 	long_voice = AudioStreamPlayer.new()
 	add_child(long_voice)
+	for i in range(CUE_VOICES): world_voices.append(_world_voice())
+	cue_slots.assign(voices)
+	step_slots.assign(step_voices)
+	world_long_voice = _world_voice()
+	for i in range(step_voices.size()): world_step_voices.append(_world_voice())
+	listener = AudioListener3D.new()
+	add_child(listener)
+	# The listener follows the camera after every world has moved it this frame.
+	process_priority = 1000
+	set_process(_view_camera() != null)
 	for i in range(LOOP_VOICES):
 		var voice := AudioStreamPlayer.new()
 		add_child(voice)
@@ -213,6 +246,9 @@ func listen_to(world: Node3D, place: String = "") -> void:
 	if is_instance_valid(world) and world.has_signal("mechanism_moving"):
 		world.mechanism_moving.connect(_on_mechanism_moving)
 	_sync_loops()
+	_view_size = -1.0
+	if is_inside_tree(): set_process(_view_camera() != null)
+	follow_camera()
 
 ## Starts a recorded turn: call wherever its simulation resets to tick zero.
 func begin_turn(chapter: String, stage: String) -> void:
@@ -242,6 +278,23 @@ static func event_source(event: String, live_role: String) -> String:
 	if event in SECOND_SPIRIT_EVENTS: return "b|" + event
 	return live_role + "|" + event
 
+## The piece a named cause sounds from (island_world sound_anchors): its
+## kind of anchor. Rattles and locked controls sound from the pip that pushed.
+const ANCHOR_KINDS := {"lever": "control", "selector": "control", "route": "control", "water": "control",
+	"mirror": "mirror", "bridge_open": "bridge", "bridge_opened": "bridge", "closing": "bridge"}
+
+## Where a source (event_source, chapter_sound_map.gd) is heard from, for the
+## world's sound_point: "<kind>:<id>" for a piece, "spirit:<role or slot>" for
+## the pip that caused it, "" for nowhere in particular.
+static func source_anchor(source: String) -> String:
+	var cause := source.get_slice("|", 0)
+	var head := cause.get_slice(":", 0)
+	var id := cause.get_slice(":", 1)
+	if ANCHOR_KINDS.has(head): return "%s:%s" % [ANCHOR_KINDS[head], id]
+	if head in ["rattle", "locked"]: return "spirit:" + cause.get_slice(":", 2)
+	if head == "drowned": return "spirit:" + id
+	return "" if cause.is_empty() or cause.contains(":") else "spirit:" + cause
+
 ## Plays one tick of a recorded turn; sources[i] comes from event_source.
 ## Cues at the `hold` indices get their identity now but wait for
 ## release_held_cues().
@@ -258,8 +311,9 @@ func note_turn_events(events: Array, sources: Array, hold: PackedInt32Array = Pa
 	for index in range(events.size()):
 		var key := str(events[index])
 		if not CLIPS.has(key): continue
-		var cue := _cue_variation(key, _source_at(sources, index))
-		if index in hold: _held_cues.append({"key": key, "step": cue.step, "gain": cue.gain, "live": false})
+		var source := _source_at(sources, index)
+		var cue := _cue_variation(key, source)
+		if index in hold: _held_cues.append({"key": key, "step": cue.step, "gain": cue.gain, "live": false, "source": source})
 
 ## Sounds every held cue in the order it was held, at its own pitch.
 func release_held_cues() -> int:
@@ -269,7 +323,7 @@ func release_held_cues() -> int:
 		var keys: Array = []
 		for cue: Dictionary in held: keys.append(str(cue.key))
 		_plan_cues(keys)
-	for cue: Dictionary in held: _play_cue(str(cue.key), float(cue.step), float(cue.gain), bool(cue.live))
+	for cue: Dictionary in held: _play_placed(str(cue.key), float(cue.step), float(cue.gain), bool(cue.live), str(cue.get("source", "")))
 	_plan.clear()
 	return held.size()
 
@@ -288,12 +342,20 @@ func consume_events(events: Array, live_play: bool) -> void:
 		if not CLIPS.has(key):
 			continue
 		# Identity advances even when muted, so unmuting keeps later pitches.
-		var cue := _cue_variation(key, _source_at(sources, index))
+		var source := _source_at(sources, index)
+		var cue := _cue_variation(key, source)
 		if index in _hold:
-			_held_cues.append({"key": key, "step": cue.step, "gain": cue.gain, "live": live_play})
+			_held_cues.append({"key": key, "step": cue.step, "gain": cue.gain, "live": live_play, "source": source})
 			continue
-		_play_cue(key, float(cue.step), float(cue.gain), live_play)
+		_play_placed(key, float(cue.step), float(cue.gain), live_play, source)
 	_plan.clear()
+
+## Plays a turn's cue where its source happened, once its identity is set:
+## the place moves only its pan and fade, never which cue or its pitch.
+func _play_placed(key: String, step: float, gain: float, live_play: bool, source: String) -> void:
+	_placing = _place(source_anchor(source))
+	_play_cue(key, step, gain, live_play)
+	_placing = null
 
 ## Plans a batch whose cues (not held) outnumber the room left in this frame.
 ## Only such a batch allocates; any other leaves the plan empty.
@@ -440,14 +502,17 @@ func play_footstep(spirit: String = "") -> void:
 	_step_detunes[spirit] = detune
 	if not sound_enabled or _hushed() or step_voices.is_empty():
 		return
-	var voice := step_voices[next_step % step_voices.size()]
+	# Heard where the spirit is; the step's identity above never reads it.
+	var placed: Variant = _place("spirit:" + spirit) if not spirit.is_empty() else null
+	var voice: Node = step_voices[next_step % step_voices.size()] if placed == null else _at(world_step_voices[next_step % world_step_voices.size()], placed)
 	# Each spirit alternates its own two contacts; the second spirit starts on
 	# the other one, so both stepping together still use both samples.
 	voice.stream=FOOTSTEPS[(ordinal + (1 if spirit in ["p1", "b"] else 0)) % FOOTSTEPS.size()]
 	voice.pitch_scale = semitones_to_pitch(detune)
 	var span: Vector2 = SoundCues.FOOTSTEPS.gain
-	voice.volume_db = STEP_DB + lerpf(span.x, span.y, identity_unit(id + ["gain"]))
+	voice.volume_db = STEP_DB + lerpf(span.x, span.y, identity_unit(id + ["gain"])) + (float(placed.db) if placed != null else 0.0)
 	voice.play()
+	step_slots[next_step % step_slots.size()] = voice
 	next_step+=1
 
 ## `keep_cues`: one-shot cues already sounding finish (covering, not backgrounding).
@@ -456,8 +521,13 @@ func _stop_effects(keep_cues: bool = false) -> void:
 	if not keep_cues:
 		for voice in voices:
 			voice.stop()
+		for voice in world_voices:
+			voice.stop()
 		if is_instance_valid(long_voice): long_voice.stop()
+		if is_instance_valid(world_long_voice): world_long_voice.stop()
 	for voice in step_voices:
+		voice.stop()
+	for voice in world_step_voices:
 		voice.stop()
 	if is_instance_valid(call_voice): call_voice.stop()
 
@@ -487,6 +557,7 @@ func play_reunion() -> void:
 func play_reaction(identity: Array) -> void:
 	if not sound_enabled or _hushed() or voices.is_empty() or not _frame_allows_cue(): return
 	var voice := voices[next_voice]
+	cue_slots[next_voice] = voice
 	next_voice = (next_voice + 1) % voices.size()
 	voice.stream = SoundCues.REACTION.clip
 	voice.pitch_scale = semitones_to_pitch(reaction_pitch(identity))
@@ -516,14 +587,92 @@ static func play_on(host: Object, key: String) -> void:
 	if is_instance_valid(soundscape) and soundscape is Node and soundscape.has_method("play_fixed_cue"): soundscape.play_fixed_cue(key)
 
 ## Sounds one cue on its voice at `step` semitones and `gain` dB.
+## A turn's cue the world placed (_placing) plays on the world voice of the
+## same turn, from where it happened.
 func _voice_cue(key: String, step: float, gain: float) -> void:
 	var cue: Dictionary = SoundCues.CUES[key]
-	var voice: AudioStreamPlayer = long_voice if cue.get("voice", "") == "long" else voices[next_voice]
+	var long: bool = cue.get("voice", "") == "long"
+	var voice: Node
+	if _placing == null: voice = long_voice if long else voices[next_voice]
+	else: voice = _at(world_long_voice if long else world_voices[next_voice], _placing)
 	voice.stream = cue.clip
 	voice.pitch_scale = semitones_to_pitch(step)
-	voice.volume_db = CUE_DB + float(cue.get("db", 0.0)) + gain
+	voice.volume_db = CUE_DB + float(cue.get("db", 0.0)) + gain + (float(_placing.db) if _placing != null else 0.0)
 	voice.play()
-	if voice != long_voice: next_voice = (next_voice + 1) % voices.size()
+	if not long:
+		cue_slots[next_voice] = voice
+		next_voice = (next_voice + 1) % voices.size()
+
+# --- Placing: one listener on the camera's view (SoundCues.PLACE) -------------
+
+## A voice for placed sounds: its level is the soundscape's (fade_db), never
+## the engine's distance model, so only pan comes from the 3D mix.
+func _world_voice() -> AudioStreamPlayer3D:
+	var voice := AudioStreamPlayer3D.new()
+	voice.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
+	voice.attenuation_filter_cutoff_hz = 20500.0
+	add_child(voice)
+	return voice
+
+static func _at(voice: AudioStreamPlayer3D, placed: Dictionary) -> AudioStreamPlayer3D:
+	voice.position = placed.at
+	return voice
+
+## The listened world's camera, if it shows one.
+func _view_camera() -> Camera3D:
+	var camera: Variant = _world.get("camera") if is_instance_valid(_world) else null
+	return camera if is_instance_valid(camera) and camera is Camera3D and (camera as Camera3D).is_inside_tree() else null
+
+func _process(_delta: float) -> void:
+	follow_camera()
+
+## Puts the listener on the listened camera's view: the centre of what it
+## shows, turned as it is. Only a changed view moves it; a soundscape that is
+## heard takes the viewport's one listener back from a closed screen's.
+func follow_camera() -> void:
+	var camera := _view_camera()
+	if camera == null or not is_instance_valid(listener) or not listener.is_inside_tree():
+		_view_extent = 0.0
+		_view_size = -1.0
+		return
+	var view := camera.get_camera_transform()
+	if view != _view or camera.size != _view_size:
+		_view = view
+		_view_size = camera.size
+		_view_extent = view_extent(camera)
+		_view_focus = view_focus(view, _view_extent)
+		listener.global_transform = Transform3D(view.basis.orthonormalized(), _view_focus + view.basis.z.normalized() * float(SoundCues.PLACE.back) * _view_extent)
+	if sound_enabled and not _hushed() and not listener.is_current(): listener.make_current()
+
+## Half the height an island camera (orthogonal) shows, in metres: what a
+## sound's distance from the focus is counted in. Any other camera places
+## nothing (0).
+static func view_extent(camera: Camera3D) -> float:
+	return camera.size * 0.5 if camera.projection == Camera3D.PROJECTION_ORTHOGONAL else 0.0
+
+## Where a view's centre meets the ground (height 0), else a point
+## `extent` ahead of it.
+static func view_focus(view: Transform3D, extent: float) -> Vector3:
+	var ahead := -view.basis.z.normalized()
+	var hit: Variant = Plane(Vector3.UP, 0.0).intersects_ray(view.origin, ahead)
+	return hit if hit is Vector3 else view.origin + ahead * extent
+
+## The fade of a sound at `at` through a view (basis, focus, extent): none
+## near the centre of the screen, down to PLACE.fade_db towards its edges.
+## Depth along the view never counts, so a high pip mid-screen is near.
+static func fade_db(view: Basis, focus: Vector3, extent: float, at: Vector3) -> float:
+	var local := view.orthonormalized().inverse() * (at - focus)
+	var off := Vector2(local.x, local.y).length() / maxf(extent, 0.01)
+	var place: Dictionary = SoundCues.PLACE
+	return lerpf(0.0, float(place.fade_db), clampf((off - float(place.near)) / (float(place.far) - float(place.near)), 0.0, 1.0))
+
+## Where an anchor (source_anchor) is heard: {at, db}, or null when nothing
+## is in view or the world cannot place it (it plays unplaced, as before).
+func _place(anchor: String) -> Variant:
+	if anchor.is_empty() or _view_extent <= 0.0 or not is_instance_valid(_world) or not _world.has_method("sound_point"): return null
+	var at: Variant = _world.sound_point(anchor)
+	if not at is Vector3: return null
+	return {"at": at, "db": float(SoundCues.PLACE.level_db) + fade_db(_view.basis, _view_focus, _view_extent, at)}
 
 ## Variant 0 is the cue's one pitch (its identity keeps the "keepsake" salt,
 ## so every keepsake beat keeps the pitch it always had). Variant n walks on
@@ -553,6 +702,7 @@ static func reaction_gain(identity: Array) -> float:
 func play_run_reaction(slot: String, track: Array, index: int) -> void:
 	if index < 0 or index >= track.size() or not sound_enabled or _hushed() or voices.is_empty() or not _frame_allows_cue(): return
 	var voice := voices[next_voice]
+	cue_slots[next_voice] = voice
 	next_voice = (next_voice + 1) % voices.size()
 	voice.stream = SoundCues.REACTION.clip
 	voice.pitch_scale = semitones_to_pitch(run_reaction_pitch(turn_chapter, turn_stage, slot, track, index))
