@@ -14,6 +14,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
 const HardMode = preload("res://services/hard_mode.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 
 class Slot extends "res://services/platform_games/games_provider.gd":
 	var data := PackedByteArray()
@@ -336,6 +337,29 @@ func _sources_apply(dir: String) -> void:
 	adopted.load_data()
 	_check(FileAccess.file_exists(house_target) and not adopted.read_only and adopted.pairs().size() == 1, "The adopted journal loads with its finished stage")
 	adopted = null
+	_check(state.cloud("journals_known", []) == [house_name], "Once every cloud journal is through, the local journals count as reconciled")
+	# Newest wins per chapter: a day-old journal a phone backup restored (not reconciled on this
+	# install yet) gives way to the cloud's later copy; a reconciled one never does.
+	var stale_path := dir.path_join("adopted").path_join("stale-" + house_name)
+	_check(Retained.seed(stale_path, Registry.HOUSE), "A restored house journal with no finished stage")
+	var stale_text := FileAccess.get_file_as_string(stale_path)
+	_check(Sources.newer_journal(envelope, JSON.parse_string(stale_text)) and not Sources.newer_journal(JSON.parse_string(stale_text), envelope), "More finished stages at a later revision is newer, never the other way round")
+	DirAccess.remove_absolute(house_target)
+	AtomicFile.write_text(house_target, stale_text)
+	state.set_cloud({"journals_known": []})
+	_check(await sources.apply(Bundle.merge(await sources.collect(), cloud_copy)), "The newer cloud journal applies in one run")
+	var replaced := RelayJourney.new(house_target, null, Registry.HOUSE)
+	replaced.load_data()
+	_check(not replaced.read_only and replaced.pairs().size() == 1 and FileAccess.get_file_as_string(house_target + ".backup") == stale_text, "The restored journal is replaced by the newer one and kept as its backup")
+	replaced = null
+	DirAccess.remove_absolute(house_target)
+	DirAccess.remove_absolute(house_target + ".backup")
+	AtomicFile.write_text(house_target, stale_text)
+	_check(await sources.apply(Bundle.merge(await sources.collect(), cloud_copy)) and FileAccess.get_file_as_string(house_target) == stale_text, "A reconciled journal with local progress is never replaced")
+	var defaults_state: RefCounted = State.new(dir.path_join("never-synced-state.json"))
+	var restored_settings: RefCounted = Sources.new(host, defaults_state)
+	_check(restored_settings.settings_stamp({"sound": false, "haptics": false}) == 0, "Settings a phone backup restored, never synced here, have stamp 0, so a newer choice elsewhere wins")
+	_check(restored_settings.settings_stamp({"sound": true, "haptics": false}) > 0, "A change after that is stamped now")
 	source = null
 	for folder: String in [dir.path_join("adopted")]:
 		for name: String in DirAccess.get_files_at(folder): DirAccess.remove_absolute(folder.path_join(name))

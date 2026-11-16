@@ -251,6 +251,7 @@ plant_animation 1
 platform_boards 3
 platform_games_bundle 2
 platform_games_cloud 2
+platform_games_replays 1
 platform_games_service 2
 platform_name_choice 3
 player_copy 3

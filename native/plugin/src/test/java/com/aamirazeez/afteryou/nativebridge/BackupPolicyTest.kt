@@ -32,6 +32,17 @@ class BackupPolicyTest {
         assertEquals(3, BackupPolicy.select(root, plan("journey.json", "history/s/o/r/0-a.bin", "shared-replays/x.json"), 25 * mb).size)
     }
 
+    @Test fun recordsHowManyPlannedFilesWereLeftOut() {
+        val root = folder.newFolder("left-out")
+        file(root, "journey.json", 1000)
+        file(root, "history/s/o/r/0-a.bin", 1000)
+        val plan = plan("journey.json", "history/s/o/r/0-a.bin", "missing.json")
+        val chosen = BackupPolicy.select(root, plan, BackupPolicy.MARGIN + BackupPolicy.cost(1000) + 10)
+        BackupPolicy.writeLeftOut(root, BackupPolicy.candidates(root, plan).size - chosen.size)
+        assertEquals("1", File(root, BackupPolicy.LEFT_OUT).readText())
+        assertFalse(File(root, BackupPolicy.LEFT_OUT + ".tmp").exists())
+    }
+
     @Test fun countsEachFilesTarOverheadSoManySmallFilesStillFit() {
         val root = folder.newFolder("many")
         val paths = (0 until 600).map { "history/aaaaaaaaaaaaaaaa/HHHHHHHHHHHHHHHHHHHHHH/RRRRRRRRRRRRRRRRRRRRRR/$it-0123456789abcdef.bin" }
