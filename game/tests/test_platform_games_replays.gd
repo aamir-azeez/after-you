@@ -100,26 +100,36 @@ func _round_trip(dir: String) -> void:
 	var slots := Slots.new()
 	var state := State.new(dir.path_join("state.json"))
 	var up := 0
+	var phone_syncs: Array = []
 	for index: int in Bundle.SLOTS:
-		var sources := Sources.new(null, index)
+		var sources := Sources.new(null, index, state)
 		sources.root = phone
 		sources.owner_override = OWNER
 		sources.limit_path = dir.path_join("limit-up.json")
 		var sync := Sync.new(slots, sources, state, Bundle.slot_name(index), Bundle, "r%d_" % (index + 1))
+		phone_syncs.append(sync)
 		var outcome: Dictionary = await sync.run()
 		_check(outcome.ok, "Slot %d syncs: %s" % [index + 1, outcome])
 		up += Bundle.decode(slots.data.get(Bundle.slot_name(index), PackedByteArray())).items.size()
 		_check(sync.synced_once() and not (await sync.run()).get("wrote", true), "A slot with nothing new does no work")
 	_check(up == 3 and slots.commits == slots.data.size(), "This player's attempt, duel run and shared file go up, each once, and nothing of another player's")
+	# The phone that sent them deletes one: it is not sent back down to it.
+	var room_slot := Bundle.slot_of("room/%s/%s/%s/0-%s" % [OWNER, SERVER.left(16), ROOM, "f".repeat(16)])
+	_check(HistoryStore.new(phone.path_join("history")).erase_room(SERVER, OWNER, ROOM), "Start over drops the room's attempts here")
+	phone_syncs[room_slot].flush(true)
+	await phone_syncs[room_slot].run()
+	_check(HistoryStore.new(phone.path_join("history")).read_attempt(SERVER, OWNER, ROOM, 0).get("code") == "history_missing", "and the slot does not put them back")
 	# An empty phone pulls every slot and gets them back through their owners.
 	var fresh := dir.path_join("fresh")
 	var fresh_state := State.new(dir.path_join("fresh-state.json"))
+	var fresh_syncs: Array = []
 	for index: int in Bundle.SLOTS:
-		var sources := Sources.new(null, index)
+		var sources := Sources.new(null, index, fresh_state)
 		sources.root = fresh
 		sources.owner_override = OWNER
 		sources.limit_path = dir.path_join("limit-down.json")
-		await Sync.new(slots, sources, fresh_state, Bundle.slot_name(index), Bundle, "r%d_" % (index + 1)).run()
+		fresh_syncs.append(Sync.new(slots, sources, fresh_state, Bundle.slot_name(index), Bundle, "r%d_" % (index + 1)))
+		await fresh_syncs[index].run()
 	_check(HistoryStore.new(fresh.path_join("history")).read_attempt(SERVER, OWNER, ROOM, 0).get("bytes") == bytes, "The room attempt is back and reads exactly")
 	var duel_text := FileAccess.get_file_as_string(fresh.path_join("duel_runs").path_join(OWNER).path_join(DUEL + ".json"))
 	var duel: Variant = JSON.parse_string(duel_text)
@@ -127,6 +137,12 @@ func _round_trip(dir: String) -> void:
 	var shared := SharedReplayStore.new(fresh.path_join("shared-replays")).load_scope(scope)
 	_check(shared.get("ok", false) and shared.get("found", false) and shared.value.rooms == ["one"], "The shared replay file is back and loads")
 	_check(not FileAccess.file_exists(fresh.path_join("shared-replays").path_join(("shared-replays:%s:index" % OTHER).sha256_text() + ".json")), "Another player's file never comes down")
+	# Restore runs once per player here: a replay deleted on this phone stays deleted.
+	_check(SharedReplayStore.new(fresh.path_join("shared-replays")).remove_scope(scope), "The player deletes the shared replay")
+	var shared_slot := Bundle.slot_of("shared/" + scope.sha256_text() + ".json")
+	fresh_syncs[shared_slot].flush(true)
+	await fresh_syncs[shared_slot].run()
+	_check(not SharedReplayStore.new(fresh.path_join("shared-replays")).load_scope(scope).get("found", true), "and it does not come back from the slot")
 	# Tampered items are never written.
 	var bad := dir.path_join("bad")
 	var sources := Sources.new(null, 0)

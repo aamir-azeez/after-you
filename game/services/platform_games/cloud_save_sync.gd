@@ -196,4 +196,5 @@ func _sync(sources: RefCounted, stamp: String) -> Dictionary:
 	var settled: bool = not changed_meanwhile and (applied or not plan.adds)
 	_state.set_cloud({key_prefix + "source_stamp": after if settled else stamp, key_prefix + "dirty": not settled})
 	if not settled: return {"ok": false, "code": "changed", "wrote": wrote, "applied": applied}
+	if sources.has_method("settled"): sources.settled()
 	return {"ok": true, "wrote": wrote, "applied": applied}

@@ -3,7 +3,9 @@ extends RefCounted
 ## current player's kept room history attempts, shared replay files and friend duel runs whose
 ## keys go to this slot. Built by Main's platform games flow; lives only while Main does.
 ##
-## Restore merges by key and never overwrites: an item this phone lacks is written through its
+## Restore runs once per player on this install (a new phone, a reinstall, or an identity brought
+## back here), so a replay deleted or started over on this phone never comes back from the slot.
+## It merges by key and never overwrites: an item this phone lacks is written through its
 ## owner after the owner's own checks, as if it had just been downloaded (HistoryStore.restore
 ## checks length and SHA-256, and history_sync.gd still checks the chain link against the server
 ## before use; a duel run must decode to its digest; a shared replay file must be the envelope
@@ -28,10 +30,14 @@ var root := "user://"
 var owner_override := ""
 var limit_path := BackupLimit.PATH
 var _host: WeakRef
+var _state: RefCounted
+var _wrote_shared := false
 
-func _init(host: Node, slot_index: int) -> void:
+## state: the platform games state, which remembers the player this slot was restored for.
+func _init(host: Node, slot_index: int, state: RefCounted = null) -> void:
 	_host = weakref(host)
 	slot = slot_index
+	_state = state
 
 func _main() -> Node:
 	var host: Variant = _host.get_ref()
@@ -135,16 +141,30 @@ static func _shared_owner(value: Dictionary, file_name: String) -> String:
 	if not scope is String or scope.sha256_text() + ".json" != file_name: return ""
 	return scope.get_slice(":", 1)
 
-## Writes what this phone lacks of the current player's items. True: anything that failed its
-## check is left in the slot and never written here.
+## The first time for this player here, writes what this phone lacks of their items. True:
+## anything that failed its check is left in the slot and never written here.
 func apply(merged: Dictionary) -> bool:
 	var player := owner()
 	if player.is_empty() or not at_home(): return false
+	var restored_key := "r%d_restored_for" % (slot + 1)
+	if _state != null and _state.cloud(restored_key) == player: return true
 	var history := HistoryStore.new(root.path_join("history"))
+	_wrote_shared = false
 	for key: String in merged.get("items", {}):
 		var item: Dictionary = merged.items[key]
 		if item.owner == player and Bundle.slot_of(key) == slot: restore(history, key, item, player)
+	settled()
+	# The shared replay collection keeps its index in memory: it reads the restored files afresh.
+	var host := _main()
+	var collection: Variant = host.get("shared_replays") if host != null else null
+	if _wrote_shared and collection is Object and collection.has_method("invalidate_identity"): collection.invalidate_identity()
 	return true
+
+## A run finished with this phone and the slot joined: from now on nothing is restored here for
+## this player, whatever the slot holds that the phone has let go.
+func settled() -> void:
+	var player := owner()
+	if _state != null and not player.is_empty(): _state.set_cloud({"r%d_restored_for" % (slot + 1): player})
 
 ## One item through its owner's checks; true once this phone has it.
 func restore(history: RefCounted, key: String, item: Dictionary, player: String) -> bool:
@@ -168,7 +188,8 @@ func restore(history: RefCounted, key: String, item: Dictionary, player: String)
 		for candidate: String in AtomicFile.read_candidates(path):
 			if FileAccess.file_exists(candidate): return true
 		DirAccess.make_dir_recursive_absolute(path.get_base_dir())
-		return AtomicFile.write_text(path, text)
+		_wrote_shared = AtomicFile.write_text(path, text) or _wrote_shared
+		return _wrote_shared
 	return false
 
 static func _files(path: String) -> Array:

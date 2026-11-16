@@ -308,7 +308,8 @@ func cloud_sources() -> RefCounted:
 	return Sources.new(host, platform.state)
 
 func replay_sources(index: int) -> RefCounted:
-	return ReplaySources.new(host, index)
+	var platform := games()
+	return ReplaySources.new(host, index, platform.state if platform != null else null)
 
 ## What the service holds of Main: this flow, reached weakly so a freed Main is never kept alive.
 class Account extends RefCounted:

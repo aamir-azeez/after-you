@@ -1393,7 +1393,7 @@ const PLATFORM_GAMES_NOT_NOW := "Not now"
 const PLATFORM_GAMES_OFFER_NOTE := "This account has a friend code from another phone."
 ## Once, when newer replays no longer fit a backup (services/backup_limit.gd); again only when more stop fitting.
 const BACKUP_FULL_TITLE := "Backup is full"
-const BACKUP_FULL_BODY := "Some newer replays are not backed up because the space is full."
+const BACKUP_FULL_BODY := "Some replays are not backed up because the space is full."
 const BACKUP_FULL_OPEN := "Open replays"
 const BACKUP_FULL_OK := "OK"
 ## A Settings button: link this phone's friend code to the signed-in account again.
