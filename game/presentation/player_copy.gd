@@ -526,7 +526,7 @@ const FRUITS_PAGE_BACK := "Back"
 const FRUITS_PAGE_LOADING := "Loading your Fruits…"
 const FRUITS_PAGE_OFFLINE := "Your Fruits did not load. Try again in a moment."
 const FRUITS_PAGE_RETRY := "Try again"
-## The goals card: its title, and the link that opens every goal ("All 15 goals, 340 Fruits in all") or closes them again.
+## The goals card: its title, and the link that opens every goal ("All 22 goals, 660 Fruits in all") or closes them again.
 const FRUIT_GOALS_TITLE := "Fruits for playing together"
 const FRUIT_GOALS_ALL := "All %d goals, %s Fruits in all"
 const FRUIT_GOALS_FEWER := "Fewer goals"
@@ -545,6 +545,13 @@ const FRUIT_GOALS := {
 	"ghost_first": "First time beating Our run",
 	"ghost_five": "Beat Our run on five boards",
 	"public_duel_first": "First public duel finished",
+	"public_win_first": "First public duel win",
+	"public_win_five": "Five public duel wins",
+	"public_win_ten": "Ten public duel wins",
+	"public_win_twenty_five": "25 public duel wins",
+	"public_win_fifty": "50 public duel wins",
+	"public_win_hundred": "100 public duel wins",
+	"public_win_two_hundred": "200 public duel wins",
 	"top_ten": "First Top 10 ribbon",
 	"gold_leaf": "Gold leaf",
 	"keepsake_first": "First keepsake upgraded",

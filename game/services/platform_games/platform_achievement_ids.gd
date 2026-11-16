@@ -21,6 +21,13 @@ const ACHIEVEMENTS := {
 	"ghost_first": {"game_center": "", "play_games": ""},
 	"ghost_five": {"game_center": "", "play_games": ""},
 	"public_duel_first": {"game_center": "", "play_games": ""},
+	"public_win_first": {"game_center": "", "play_games": ""},
+	"public_win_five": {"game_center": "", "play_games": ""},
+	"public_win_ten": {"game_center": "", "play_games": ""},
+	"public_win_twenty_five": {"game_center": "", "play_games": ""},
+	"public_win_fifty": {"game_center": "", "play_games": ""},
+	"public_win_hundred": {"game_center": "", "play_games": ""},
+	"public_win_two_hundred": {"game_center": "", "play_games": ""},
 	"top_ten": {"game_center": "", "play_games": ""},
 	"gold_leaf": {"game_center": "", "play_games": ""},
 }
