@@ -522,7 +522,9 @@ func _build_lever(lever: Dictionary) -> void:
 	if lever.get("kind", "") == "selector": return
 	# Levers toggle, so a lamp beside the handle says plainly whether it is on.
 	var lamp := _status_lamp(_at(lever) + Vector3(0.24, 0, 0), LEVER_LAMP, "LeverLamp_" + str(lever.id))
-	_lever_lamps[lever.id] = {"lamp": lamp, "color": GOLD if lever.owner_slot == "p0" else TEAL}
+	# Open controls: a lever either pip works has no owner, so its lamp lights cream.
+	var owner := str(lever.get("owner_slot", ""))
+	_lever_lamps[lever.id] = {"lamp": lamp, "color": CREAM if owner.is_empty() else GOLD if owner == "p0" else TEAL}
 
 ## A lamp that says a state (_lamp() lights it): the kit lamp post
 ## (kit/props.gd) at `at`, `size` times its height, standing on its own
@@ -632,7 +634,7 @@ func _pair_gate_anchors(route: Dictionary) -> Array:
 	return [_route_anchor(route) - Vector3(0, 0.025, 0), ends[1]]
 
 ## Pair tags keep clear of the gauges and mouth marks built at the routes,
-## and of the route barriers.
+## the route barriers and the crossings' glowing deck edges.
 func _pair_keep_clear() -> Array:
 	var found: Array = super._pair_keep_clear()
 	for gauge: Dictionary in _gauges.values(): found.append({"centre": Vector2(gauge.post.position.x, gauge.post.position.z), "radius": 0.12, "what": "gauge " + str(gauge.post.name)})
@@ -640,6 +642,25 @@ func _pair_keep_clear() -> Array:
 	for entry: Dictionary in _post_marks.values(): marks.append_array(entry.bands)
 	for planks: Array in _dry_marks.values(): marks.append_array(planks)
 	for mark: Node3D in marks: found.append({"centre": Vector2(mark.position.x, mark.position.z), "radius": 0.16, "y": mark.position.y, "what": str(mark.name)})
+	found.append_array(_deck_edge_strips())
+	return found
+
+## The two glowing edges each crossing's deck lays (_lay_deck "OpenEdge"), as
+## things to keep clear of: where they meet a floor, a tile beside them would
+## lie under them.
+func _deck_edge_strips() -> Array:
+	var found: Array = []
+	for route: Dictionary in current_level.get("bridges", []):
+		if not _decks.has(str(route.id)): continue
+		var r: Array = route.rect_cm
+		var width := float(r[2] - r[0]) / 100.0
+		var depth := float(r[3] - r[1]) / 100.0
+		var across_x := width >= depth
+		var centre := Vector2(float(r[0] + r[2]) * 0.005, float(r[1] + r[3]) * 0.005)
+		var half := Vector2(width * 0.5, 0.0175) if across_x else Vector2(0.0175, depth * 0.5)
+		for side in [-1, 1]:
+			var at := centre + (Vector2(0, side * (depth / 2.0 - 0.025)) if across_x else Vector2(side * (width / 2.0 - 0.025), 0))
+			found.append({"rect": Rect2(at - half, half * 2.0), "y": float(route.get("height_cm", 0)) / 100.0, "what": "the edge of " + str(route.id)})
 	return found
 
 func _route_color(id: String) -> Color:

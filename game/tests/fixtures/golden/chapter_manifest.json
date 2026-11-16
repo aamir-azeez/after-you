@@ -42,6 +42,26 @@
 				8
 			]
 		},
+		"conservatory@2": {
+			"definition_fixture": "journey/conservatory-v2-definition.json",
+			"definition_hash": "90e49a79c3aae874c960cdd73605a12d58f5221878fceb57a224d83e18fbdcbb",
+			"family": "journey",
+			"flag": "CONSERVATORY_V2_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "98c563f39efe4a824457244febc1a899d3ac6d491a3fd3275aaf16d40573d7dd",
+			"initial_fixture": "journey/conservatory-v2-initial-checkpoint.json",
+			"key": "conservatory@2",
+			"level_id": "conservatory",
+			"level_version": 2,
+			"max_branches": 7,
+			"premium": true,
+			"recording_version": 7,
+			"simulation_version": 14,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				14
+			]
+		},
 		"first-steps@1": {
 			"definition_fixture": "first_steps/definition.json",
 			"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
@@ -124,6 +144,26 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				9
+			]
+		},
+		"long-way-home@3": {
+			"definition_fixture": "journey/long-way-home-v3-definition.json",
+			"definition_hash": "81e6342e5f80158ca6cf6c9e02a61cc2baa7e24c63e23603561db50fd1311ddc",
+			"family": "journey",
+			"flag": "LONG_WAY_HOME_V3_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "cdda955a82e3cc02b7b8348f9af99cd431ac525473e09b410ff8f0ea7f80e465",
+			"initial_fixture": "journey/long-way-home-v3-initial-checkpoint.json",
+			"key": "long-way-home@3",
+			"level_id": "long-way-home",
+			"level_version": 3,
+			"max_branches": 7,
+			"premium": true,
+			"recording_version": 7,
+			"simulation_version": 14,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				14
 			]
 		},
 		"relay-isles@2": {
@@ -247,6 +287,26 @@
 			"supported_simulation_versions": [
 				10
 			]
+		},
+		"turn-of-the-tide@3": {
+			"definition_fixture": "journey/turn-of-the-tide-v3-definition.json",
+			"definition_hash": "4604f025d89fba1bcd024be1d60ffefd65d50f189b3993399c4d12b9f2a0a21c",
+			"family": "journey",
+			"flag": "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "504a7b0cf7b0f7e6bdff21fa2ae81aefa626a70a6ad39480ff8d98cf5b27d958",
+			"initial_fixture": "journey/turn-of-the-tide-v3-initial-checkpoint.json",
+			"key": "turn-of-the-tide@3",
+			"level_id": "turn-of-the-tide",
+			"level_version": 3,
+			"max_branches": 5,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 15,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				15
+			]
 		}
 	},
 	"keys": [
@@ -261,6 +321,9 @@
 		"long-way-home@2",
 		"turn-of-the-tide@1",
 		"sleeping-lighthouse@2",
-		"turn-of-the-tide@2"
+		"turn-of-the-tide@2",
+		"long-way-home@3",
+		"turn-of-the-tide@3",
+		"conservatory@2"
 	]
 }

@@ -1,7 +1,8 @@
 extends SceneTree
 ## The developers' ghost runs (content/dev_ghosts.json, made by
 ## tests/dev_ghost_recorder.gd) that duels' ghost races time. Every chapter a
-## duel can be played on has one; each is a whole run with Forgiving catches off
+## duel can be played on (a released one: an unreleased chapter gets its board,
+## backend leaderboards/boards.ts, when it ships) has one; each is a whole run with Forgiving catches off
 ## on every turn, at the rules a new room plays, that passes the leaderboard
 ## replay check from its blob body with exactly its stored time; and recording
 ## it again gives the same bytes (checked on the Relay Isles, whose receivers
@@ -33,13 +34,12 @@ func _run() -> void:
 	if parsed is Dictionary and parsed.get("ghosts") is Array:
 		for row: Variant in parsed.ghosts:
 			if row is Dictionary: rows[str(row.get("board", ""))] = row
-	var boards: Array = []
-	for key: String in Registry.keys(): boards.append(key)
+	var boards: Array = _boards()
 	var listed := rows.keys()
 	listed.sort()
 	boards.sort()
 	_check(listed == boards, "Every chapter a duel can be played on has exactly one ghost: %s" % [listed])
-	for key: String in Registry.keys():
+	for key: String in boards:
 		if rows.has(key): _check_ghost(key, rows[key])
 	print("DEV GHOSTS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -75,7 +75,7 @@ func _check_ghost(key: String, row: Dictionary) -> void:
 
 func _write() -> void:
 	var ghosts: Array = []
-	for key: String in Registry.keys():
+	for key: String in _boards():
 		var recorded := Recorder.record(key)
 		_check(recorded.error.is_empty(), "Recorded %s: %s" % [key, recorded.error])
 		print("DEV GHOST %s rules %d ticks %d presses %d %s" % [key, recorded.rules, recorded.ticks, recorded.presses, recorded.error])
@@ -86,3 +86,7 @@ func _write() -> void:
 	file.store_string(JSON.stringify({"schema_version": 1, "ghosts": ghosts}, "\t", false) + "\n")
 	file.close()
 	print("DEV GHOSTS WRITTEN " + Recorder.MANIFEST)
+
+## The chapters a duel can be played on: every released one.
+static func _boards() -> Array:
+	return Registry.keys().filter(func(key: String) -> bool: return key not in Registry.UNRELEASED)

@@ -49,7 +49,7 @@ func _run() -> void:
 			for prop: Dictionary in drawer.plan.props.props: drawer.plan.bounds = (drawer.plan.bounds as Rect2).merge(prop.rect)
 		var image: Image = await Kit.render(self, drawer, drawer.canvas_size())
 		Kit.save(image, out, "%s-%s-map.png" % [layout.name, stage.id])
-		frames.append({"image": image, "caption": "Stage %d: %s" % [index + 1, stage.get("title", stage.id)]})
+		frames.append({"image": image, "caption": Stages.with_turns("Stage %d: %s" % [index + 1, stage.get("title", stage.id)], level, stage)})
 	if frames.size() > 1:
 		var sheet: Control = Sheet.new()
 		sheet.title = "%s: flat map plans" % level.get("title", layout.name)

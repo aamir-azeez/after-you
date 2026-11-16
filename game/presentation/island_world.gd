@@ -1557,14 +1557,15 @@ func _clear_stage_marks() -> void:
 ## stands: the barriers, then what the world adds beside them
 ## (_build_barrier_extras), then the marks and the tags, which keep clear of
 ## all of it. `tag_view` is the plan the marks and tags read where it differs.
-## A stand spot pad already wears its owner's mark (kit/stand_spot.gd).
+## A stand spot pad already wears its owner's mark (kit/stand_spot.gd); a pad
+## either pip holds (open controls) has no owner to mark.
 func _build_stage_marks(view: Dictionary, tag_view: Dictionary = {}) -> void:
 	route_barriers.build(view)
 	_build_barrier_extras()
 	var tagged := view if tag_view.is_empty() else tag_view
 	for pad: Dictionary in tagged.get("pressure_pads", []):
 		var piece: Variant = pad_pieces.get(str(pad.id))
-		if piece != null and piece.spot != null: owner_marks.record(str(pad.get("owner_slot", "")), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
+		if piece != null and piece.spot != null and pad.has("owner_slot"): owner_marks.record(str(pad.get("owner_slot", "")), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
 	owner_marks.build(tagged)
 	pair_tags.prepare(tagged)
 

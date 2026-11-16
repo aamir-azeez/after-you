@@ -3,7 +3,8 @@ extends SceneTree
 ## the system temp folder from fixtures and freshly played turns, and removes
 ## by its exact name afterwards: published Tide turns with their checkpoints,
 ## a Tide @2 second turn that drowns on the sand bar, a room history blob and
-## a try count. It never reads or writes this game's own save folder.
+## a try count. It never reads or writes this game's own save folder. An open
+## turns stage's cap, finishing turn and passes are counted from turns alone.
 const Report = preload("res://tests/playtest_report.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
@@ -38,6 +39,7 @@ func _run() -> void:
 	var made := Report.report(input)
 	_check(_listing(input) == before, "The report leaves its folder exactly as it found it")
 	_check_rows(made, hashes)
+	_open_turns()
 	_save(input.path_join("turn-tries.json.tmp"), "{ damaged")
 	_save(input.path_join("turn-tries.json"), "{ damaged")
 	var damaged := _listing(input)
@@ -117,6 +119,18 @@ func _check_rows(made: Dictionary, hashes: Dictionary) -> void:
 	_check(made.notes.any(func(note: String) -> bool: return note.contains("relay-isles") and note.contains("time only")), "Turns of a family not replayed here still report their time")
 	_check(not made.notes.any(func(note: String) -> bool: return note.contains("turn-of-the-tide")), "Every Tide turn replays: %s" % [made.notes])
 	_check(int(made.replayed) == 6, "Six Tide turns replay (%d)" % made.replayed)
+
+## Open turns: a run of four turns on Slack Water @3, two passed back.
+func _open_turns() -> void:
+	var row: Dictionary = {}
+	for turn: Dictionary in [{"role": "a", "turn": 1}, {"role": "b", "turn": 2, "completed": false}, {"role": "b", "turn": 3, "completed": false}, {"role": "b", "turn": 4, "completed": true}]:
+		Report._count_turn("turn-of-the-tide@3", turn.merged({"stage_id": "slack-water"}), row)
+	_check(row.get("open", {}) == {"label": "up to 20 turns", "cap": 20, "finished_in": [4], "passes": 2}, "An open turns stage counts its cap, the turn it finished on and its passes: %s" % row.get("open", {}))
+	var two: Dictionary = {}
+	Report._count_turn("turn-of-the-tide@2", {"role": "b", "stage_id": "slack-water", "completed": true}, two)
+	_check(not two.has("open"), "A two turn stage counts no open turns")
+	var shown := Report.text({"turns": 4, "files": 0, "blobs": 0, "replayed": 0, "notes": [], "stages": {"turn-of-the-tide@3 / slack-water": row}})
+	_check(shown.contains("open turns, up to 20 turns: finished in 4 turns; 2 passed back"), "The printed report says the stage's turns: %s" % shown)
 
 func _save(path: String, text: String) -> void:
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())

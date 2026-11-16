@@ -11,6 +11,8 @@ const MAX_STAGES := 8
 const DIGIT := "[0-7]"
 ## A turn id with any branch 0-31.
 const TURN_ID := "^t(?:[0-9]|[12][0-9]|3[01])-" + DIGIT + "-[ab]$"
+## Open turns (core/physical/open_turns.gd): later turns go on by letter.
+const OPEN_TURN_ID := "^t(?:[0-9]|[12][0-9]|3[01])-" + DIGIT + "-[a-t]$"
 
 ## The chapter's own stage count; 0 for an unknown (empty) definition.
 static func count(level: Dictionary) -> int:

@@ -58,7 +58,7 @@ func _run() -> void:
 		var frames := await _stage(world, Shots.new(key, level, str(stage.id), checkpoint), stage, str(options.out).path_join(str(stage.id)))
 		if frames.is_empty(): continue
 		var sheet: Control = Sheet.new()
-		sheet.title = "%s, stage %d: %s" % [level.get("title", layout.name), index + 1, stage.get("title", stage.id)]
+		sheet.title = Stages.with_turns("%s, stage %d: %s" % [level.get("title", layout.name), index + 1, stage.get("title", stage.id)], level, stage)
 		sheet.note = "Rendered by the game at 800x360. Gold and teal are the two pips; letters are the pair tags."
 		sheet.groups = frames
 		sheet.columns = 3

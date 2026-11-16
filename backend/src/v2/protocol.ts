@@ -18,9 +18,11 @@ export async function recordingV2(value: unknown, expected?: ChapterKey): Promis
   if (expected && !sameChapter(adapter.key, chapter(expected).key)) throw new ApiError(422, "recording_chapter_mismatch");
   return adapter.recording(value);
 }
-export async function checkpointV2(value: unknown, previous: CheckpointV2, a: RecordingV2, b: RecordingV2): Promise<CheckpointV2> {
+/** `passes`: an open turns stage's turns between the first and the closing one (open-turns.ts). */
+export async function checkpointV2(value: unknown, previous: CheckpointV2, a: RecordingV2, b: RecordingV2, passes: readonly RecordingV2[] = []): Promise<CheckpointV2> {
   const adapter = chapter(previous);
-  if (![value, a, b].every(item => sameChapter(adapter.key, chapter(item).key))) throw new ApiError(422, "checkpoint_chapter_mismatch");
-  return adapter.checkpoint(value, previous, a, b);
+  if (![value, a, b, ...passes].every(item => sameChapter(adapter.key, chapter(item).key))) throw new ApiError(422, "checkpoint_chapter_mismatch");
+  if (passes.length && !adapter.open_turns) throw new ApiError(422, "checkpoint_recording_mismatch");
+  return passes.length ? adapter.checkpoint(value, previous, a, b, passes) : adapter.checkpoint(value, previous, a, b);
 }
 export function acceptedRecording(recording: RecordingV2): boolean { return chapter(recording).accepted(recording); }

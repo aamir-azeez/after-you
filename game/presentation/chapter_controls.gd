@@ -20,6 +20,7 @@ const MemoryWaitBar = preload("res://presentation/memory_wait_bar.gd")
 const FastForwardBadge = preload("res://presentation/fast_forward_badge.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
 const ButtonTicks = preload("res://presentation/button_ticks.gd")
+const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const PairChip = preload("res://presentation/kit/pair_chip.gd")
 const Icons = preload("res://presentation/kit/icons.gd")
 const CREAM := Color("eceddb")
@@ -45,6 +46,10 @@ var hint_label: Label
 var progress_label: Label
 var objective_panel: PanelContainer
 var turn_progress: SeedTimerBar
+## Open turns (core/physical/open_turns.gd): the stage's turns as dots under the timer,
+## and on the turn that must finish the stage the coral Last turn pill under them.
+var turn_dots: TurnDots
+var last_turn_pill: TryPill
 var title_font: Font
 var modal_shade: ColorRect
 var modal_scroll: ScrollContainer
@@ -75,6 +80,14 @@ var _view_world: Node
 var _docked_width := 0.0
 ## A docked control keeps this far from the buttons.
 const DOCK_GAP := 20.0
+## The turn dots' row under the timer: its top and height, the width its dots
+## take (the timer's track) unless a long stage needs DOTS_MIN_STEP a turn.
+const DOTS_TOP := 94.0
+const DOTS_HEIGHT := 30.0
+const DOTS_WIDTH := 284.0
+const DOTS_MIN_STEP := 18.0
+## Reset view's top with no turn dots.
+const RESET_VIEW_TOP := 92.0
 
 func _ready() -> void:
 	_build_ui()
@@ -109,7 +122,8 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	var action: Dictionary = state.get("context_action", {})
 	action_button.text = PlayerCopy.from_canonical(str(action.get("label", "Interact")))
 	action_button.disabled = not bool(action.get("enabled", false))
-	finish_button.disabled = not bool(state.get("can_commit", false))
+	# Open turns (core/physical/open_turns.gd): a later turn may also end as a pass once its memory is over.
+	finish_button.disabled = not (bool(state.get("can_commit", false)) or bool(state.get("can_pass", false)))
 	stick.visible = interactive
 	action_button.visible = interactive and not action_button.text.is_empty() and not _memory_wait
 	finish_button.visible = interactive and not _memory_wait
@@ -175,6 +189,28 @@ func dim_stick(dim: bool) -> void:
 ## True while a finger or the mouse holds Fast-forward.
 func fast_forward_held() -> bool:
 	return _memory_wait and fast_forward_button.held()
+
+## Open turns: `view` (kit/turn_dots.gd view(), {} for none) under the timer,
+## and the Last turn pill with the player's pip in `own_color` while `view` says
+## this turn must finish the stage. Cheap to call every tick: an unchanged view
+## changes nothing. Reset view moves below them.
+func show_turns(view: Dictionary, own_color: Color) -> void:
+	if not turn_dots.show_turns(view): return
+	var bottom := RESET_VIEW_TOP
+	last_turn_pill.visible = false
+	if not view.is_empty():
+		var cap := int(view.cap)
+		turn_dots.max_step = clampf(DOTS_WIDTH / float(cap), DOTS_MIN_STEP, DOTS_WIDTH / 10.0)
+		var width := turn_dots.natural_width()
+		_anchor_rect(turn_dots, Control.PRESET_CENTER_TOP, Rect2(-width * 0.5, DOTS_TOP, width, DOTS_HEIGHT))
+		bottom = DOTS_TOP + DOTS_HEIGHT + 8.0
+		last_turn_pill.show_last_turn(bool(view.get("edge", false)), own_color)
+		if last_turn_pill.visible:
+			var pill := last_turn_pill.get_combined_minimum_size()
+			# Under the dots' end, where the ringed dot is.
+			_anchor_rect(last_turn_pill, Control.PRESET_CENTER_TOP, Rect2(width * 0.5 - pill.x, bottom - 2.0, pill.x, pill.y))
+			bottom += pill.y + 6.0
+	_anchor_rect(reset_view_button, Control.PRESET_CENTER_TOP, Rect2(-58, bottom, 116, 36))
 
 ## The turn's try count; the pill shows from the second try on.
 ## `text`: a hard run's line in place of the count (presentation/try_pill.gd).
@@ -291,6 +327,14 @@ func _build_ui() -> void:
 	hud.add_child(turn_progress)
 	_anchor_rect(turn_progress, Control.PRESET_CENTER_TOP, Rect2(-160, 24, 320, SeedTimerBar.MIN_SIZE.y))
 	timer_label = turn_progress.label
+	turn_dots = TurnDots.new()
+	turn_dots.centered = true
+	turn_dots.visible = false
+	hud.add_child(turn_dots)
+	last_turn_pill = TryPill.new(16)
+	last_turn_pill.name = "LastTurnPill"
+	last_turn_pill.visible = false
+	hud.add_child(last_turn_pill)
 	objective_panel = ObjectivePanel.new()
 	hud.add_child(objective_panel)
 	_anchor_rect(objective_panel, Control.PRESET_TOP_RIGHT, Rect2(-248, 124, 224, 0))
@@ -308,7 +352,7 @@ func _build_ui() -> void:
 	reset_view_button.pressed.connect(_reset_view)
 	reset_view_button.visible = false
 	reset_view_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	reset_view_button.position = Vector2(-58, 92)
+	reset_view_button.position = Vector2(-58, RESET_VIEW_TOP)
 	reset_view_button.size = Vector2(116, 36)
 	hud.add_child(reset_view_button)
 	hint_label = _label("", 21)

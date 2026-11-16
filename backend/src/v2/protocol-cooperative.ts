@@ -1,7 +1,7 @@
 import { physicalRecording, physicalAccepted as accepted } from "./protocol-physical-recording";
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
-import { comfortRules, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
+import { comfortRules, openControls, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
 import highDefinition from "./high-and-low.json";
 import highInitial from "./high-and-low-initial.json";
 import rollingDefinition from "./rolling-home.json";
@@ -75,7 +75,9 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     // A pushed ball reaches its cradle before the player behind it does.
     if (stage.goal_policy.kind !== "ball_home") need(inside(second, stage.goal), "checkpoint_goal_mismatch");
     if (stage.source_policy.kind === "hold_switch") {
-      const pad = stage.pressure_pads.find(pad => pad.id === stage.source_policy.pad_id)!; need(inside(first, pad), "checkpoint_source_position_mismatch");
+      // Open controls (12): the pad holds for either player.
+      const pad = stage.pressure_pads.find(pad => pad.id === stage.source_policy.pad_id)!;
+      need(inside(first, pad) || (openControls(a.simulation_version) && inside(second, pad)), "checkpoint_source_position_mismatch");
     }
     const props = object(mechanisms.props); exact(props, definition.props.map(prop => prop.id));
     for (const definitionProp of definition.props) {
