@@ -57,7 +57,9 @@ var memory_slot := "p0"
 var pass_allowed := true
 var passed := false
 ## Export the packed form (core/v2/recording_codec.gd): set for a live turn in a
-## packed room, and from the record itself whenever one is replayed.
+## packed room, and from the record itself whenever one is replayed. Open turns
+## (open_turns.gd) always export packed, in rooms and solo alike: the server
+## takes no other form there, and a stage of many long turns stays small.
 var packed_recordings := false
 var _checkpoint: Dictionary = {}
 var _prior: Dictionary = {}
@@ -554,7 +556,7 @@ func export_recording() -> Dictionary:
 		"stage_id":stage.id,"stage_version":stage.version,"checkpoint_hash":_checkpoint.checkpoint_hash,"role":role,"player_slot":active_slot,"tick_rate":TICK_RATE,
 		"duration_ticks":tick,"catch_assistance":catch_assistance,"actions":_actions.duplicate(true),"replay_checks":checks,"final_state_hash":state_hash(),
 		"completed":complete,"outcome":_outcome(),"source_recording_hash":str(_prior.get("recording_hash", "")) if role == "b" else ""}
-	if packed_recordings: record = RecordingCodec.packed_form(record)
+	if packed_recordings or _open_turns(): record = RecordingCodec.packed_form(record)
 	record["recording_hash"] = recording_hash(record)
 	return record
 
