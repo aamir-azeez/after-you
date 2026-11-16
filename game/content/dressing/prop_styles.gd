@@ -111,18 +111,25 @@ const SLOTS := {
 	"pad": {"plain": {}, "stand_spot": {}, "pan": {}},
 	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}},
 	"lift": {"plain": {}, "rope_tower": {}},
+	# The new pieces' looks (rules 16): a crossing's deck, a rope raft, a pull-up
+	# rope ladder, the fog round a lit lantern and a spillway made a waterfall.
+	"deck": {"plank": {}, "rope": {}, "dam": {}, "stones": {}},
+	"raft": {"logs": {}},
+	"ladder": {"rope": {}},
+	"fog": {"mist": {}, "none": {}},
+	"spillway": {"trickle": {}, "falls": {}},
 }
 
 ## Slots that pick a kit piece's look rather than a prop to stand: the resolved
 ## dressing carries the pick as a field of the same name ("tag": "stone_tile").
-const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal", "lift"]
+const LOOK_SLOTS := ["tag", "barrier", "lever", "selector", "pad", "goal", "lift", "deck", "raft", "ladder", "fog", "spillway"]
 
 ## The pick for a slot that neither the theme nor the level names.
 const DEFAULT_PICKS := {
 	"lamp": "lantern", "tree": "orchard", "shrub": "flowering", "trim": "flowers", "scatter": "tufts",
 	"bank": "meadow", "fence": "hedge", "railing": "picket", "bench": "bench", "path": "stones",
 	"clutter": "crates", "landmark": "cottage", "wall_hanging": "shelf", "tag": "painted_tile", "barrier": "rope",
-	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain",
+	"lever": "plain", "selector": "plain", "pad": "plain", "goal": "bell", "lift": "plain", "deck": "plank", "raft": "logs", "ladder": "rope", "fog": "mist", "spillway": "trickle",
 }
 
 ## Kinds drawn along "from" to "to" by themselves; any other kind given a line

@@ -1,0 +1,139 @@
+extends RefCounted
+## World kit: how a stage's new pieces (rules 16, core/physical/pieces_rules.gd)
+## look, all read from the stage plan, so a level author writes nothing for
+## them. cooperative_world hosts one per stage (the journey worlds' base):
+##   - each crossing's deck in its "deck" style (kit/pieces/deck.gd): a crank
+##     bridge's rope, a dam bridge's dam, sinking stones (the default for a
+##     stage's "sinking" crossings); "plank" leaves the world's own deck;
+##   - each moving platform as one piece riding between its stops, whose own
+##     decks stay empty: a lift (kit/pieces/lift.gd, "lift" style) where its
+##     stops share a rectangle at two heights, else a raft (kit/pieces/raft.gd,
+##     "raft" style); it eases to the stop the snapshot opens;
+##   - each one way stair as a pull-up rope ladder (kit/pieces/rope_ladder.gd,
+##     "ladder" style), hung while a pip is at its foot or on it, rolled up at
+##     its head otherwise;
+##   - the fog round lantern levers (kit/fog.gd, the dressing's "fog" pick).
+## The lantern lever, the weight pan and the pull rope are ordinary lever, pad
+## and selector styles the world builds itself.
+## Presentation only: nothing here feeds the simulation.
+const Deck = preload("res://presentation/kit/pieces/deck.gd")
+const Raft = preload("res://presentation/kit/pieces/raft.gd")
+const Lift = preload("res://presentation/kit/pieces/lift.gd")
+const RopeLadder = preload("res://presentation/kit/pieces/rope_ladder.gd")
+const Fog = preload("res://presentation/kit/fog.gd")
+## A lift's ride, metres a second.
+const LIFT_RATE := 0.8
+## How near a stair's foot (m) a pip lets its ladder down.
+const FOOT_REACH := 0.8
+
+var _world: Node3D
+var _view: Dictionary
+## Stop crossing id -> true; stones id -> true.
+var _stops: Dictionary = {}
+var _stones: Dictionary = {}
+## [{"piece", "stops": [ids], "heights": [m], "lift": bool, "shown": m, "target": m}]
+var _platforms: Array = []
+## Stair id -> {"piece", "rect" (m), "foot" (m)}.
+var _ladders: Dictionary = {}
+var fog: RefCounted
+
+func _init(world: Node3D, view: Dictionary) -> void:
+	_world = world
+	_view = view
+	for platform: Dictionary in view.get("platforms", []):
+		for id: Variant in platform.get("stops", []): _stops[str(id)] = true
+	for id: Variant in view.get("sinking", []): _stones[str(id)] = true
+
+## The deck style of crossing `id`: "" for a platform's stop (the platform
+## piece draws it), else its "deck" pick, sinking stones by default.
+func deck_style(id: String) -> String:
+	if _stops.has(id): return ""
+	var style: String = _world._piece_style("deck", id)
+	return "stones" if style == "plank" and _stones.has(id) else style
+
+## Whether this kit lays crossing `definition`'s deck (the world lays plank).
+func lays(definition: Dictionary) -> bool:
+	return deck_style(str(definition.id)) != "plank"
+
+func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float) -> void:
+	var style := deck_style(str(definition.id))
+	if not style.is_empty(): Deck.lay(style, deck, width, depth, across_x, low, high)
+
+## A one way stair's ladder, in place of the world's treads.
+func build_ladder(stair: Dictionary) -> void:
+	var rect := _rect(stair.rect_cm)
+	var foot := float(stair.from_height_cm) / 100.0
+	var head := float(stair.to_height_cm) / 100.0
+	var rising := head >= foot
+	var piece: RefCounted = RopeLadder.build(_world._piece_style("ladder", str(stair.id)), rect, minf(foot, head), maxf(foot, head), str(stair.axis) == "x", rising, _world.terrain)
+	var foot_at := rect.get_center()
+	var half := (rect.size.x if str(stair.axis) == "x" else rect.size.y) * 0.5 * (-1.0 if rising else 1.0)
+	if str(stair.axis) == "x": foot_at.x += half
+	else: foot_at.y += half
+	_ladders[str(stair.id)] = {"piece": piece, "rect": rect, "foot": foot_at, "low": minf(foot, head), "high": maxf(foot, head)}
+
+## The platforms and the fog, once the stage's crossings and levers stand.
+func build(lantern_spots: Dictionary) -> void:
+	var bridges: Dictionary = {}
+	for bridge: Dictionary in _view.get("bridges", []): bridges[str(bridge.id)] = bridge
+	for platform: Dictionary in _view.get("platforms", []):
+		var stops: Array = Array(platform.stops).map(func(id: Variant) -> Dictionary: return bridges[str(id)])
+		var rect := _rect(stops[0].rect_cm)
+		var heights: Array = stops.map(func(stop: Dictionary) -> float: return float(stop.get("height_cm", 0)) / 100.0)
+		var lift: bool = stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)
+		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "lift": lift, "shown": heights[0], "target": heights[0]}
+		if lift:
+			entry.piece = Lift.build(_world._piece_style("lift", str(platform.id)), rect, heights.min(), heights.max(), _world.terrain)
+			entry.piece.set_height(heights[0])
+		else:
+			var centres: Array[Vector3] = []
+			for index in range(stops.size()): centres.append(Vector3(_rect(stops[index].rect_cm).get_center().x, heights[index], _rect(stops[index].rect_cm).get_center().y))
+			entry.piece = Raft.build(_world._piece_style("raft", str(platform.id)), centres, rect.size, _world.terrain)
+		_platforms.append(entry)
+	fog = Fog.build(str(_world.dressing.get("fog", "mist")) if not _world.dressing.is_empty() else "mist", _view, lantern_spots, _world.terrain)
+
+## Each snapshot: platforms toward their open stop, ladders hung or rolled,
+## the fog cleared round lit lanterns.
+func present(state: Dictionary, immediate: bool) -> void:
+	var routes: Dictionary = state.get("bridges", {})
+	for entry: Dictionary in _platforms:
+		var index: int = entry.stops.find_custom(func(id: String) -> bool: return bool(routes.get(id, false)))
+		if index < 0: continue
+		if entry.lift:
+			entry.target = float(entry.heights[index])
+			if immediate:
+				entry.shown = entry.target
+				entry.piece.set_height(entry.shown)
+		else: entry.piece.set_value(index, immediate)
+	for id: String in _ladders:
+		var ladder: Dictionary = _ladders[id]
+		var hung := false
+		for player: Variant in state.get("players", {}).values():
+			if not player is Dictionary: continue
+			var at := Vector2(float(player.x), float(player.z)) / 100.0
+			var height := float(player.get("height", 0)) / 100.0
+			if str(player.get("surface_id", "")) == id or (at.distance_to(ladder.foot) < FOOT_REACH and height < float(ladder.low) + 0.2): hung = true
+		ladder.piece.set_pulled(not hung, immediate)
+	if fog != null: fog.present(state.get("levers", {}))
+
+func moving() -> bool:
+	return _platforms.any(func(entry: Dictionary) -> bool: return entry.piece.moving() if not entry.lift else not is_equal_approx(float(entry.shown), float(entry.target)))
+
+func advance(delta: float) -> void:
+	for entry: Dictionary in _platforms:
+		if not entry.lift:
+			if entry.piece.moving(): entry.piece.advance(delta)
+		elif not is_equal_approx(float(entry.shown), float(entry.target)):
+			entry.shown = move_toward(float(entry.shown), float(entry.target), maxf(delta, 0.0) * LIFT_RATE)
+			entry.piece.set_height(entry.shown)
+
+## Every node that moves or changes after the build, kept whole by the static fold.
+func moving_nodes() -> Array:
+	var nodes: Array = []
+	for entry: Dictionary in _platforms: nodes.append_array(entry.piece.moving_parts())
+	for ladder: Dictionary in _ladders.values(): nodes.append_array(ladder.piece.moving_parts())
+	if fog != null: nodes.append(fog.node)
+	return nodes
+
+static func _rect(cm: Array) -> Rect2:
+	return Rect2(float(cm[0]) / 100.0, float(cm[1]) / 100.0, float(int(cm[2]) - int(cm[0])) / 100.0, float(int(cm[3]) - int(cm[1])) / 100.0)

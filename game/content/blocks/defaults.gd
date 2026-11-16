@@ -48,12 +48,15 @@ const BLOCKS := {
 	"sinking_stones": {"cues": []},
 	"rope_ladder": {"cues": []},
 }
-## The look a new piece's block gives the pieces it places when they name no
-## "style" of their own: {block: {field: style}} (content/dressing/prop_styles.gd
-## SLOTS). A pin in the descriptor still wins.
+## The look a new piece's block gives the pieces and crossings it places when
+## they name no "style" of their own: {block: {field: style}} (content/
+## dressing/prop_styles.gd SLOTS; a crossing's is its "deck"). A pin in the
+## descriptor still wins.
 const BLOCK_STYLES := {
 	"fog_lantern": {"lever": "lantern"},
-	"crank_bridge": {"lever": "winch"},
+	"crank_bridge": {"lever": "winch", "routes": "rope"},
+	"dam_bridge": {"routes": "dam"},
+	"sinking_stones": {"stones": "stones"},
 	"weight_lift": {"pads": "pan", "top_pads": "pan"},
 	"sack_lift": {"lever": "winch"},
 	"rope_raft": {"selector": "pull_rope"},
@@ -118,6 +121,8 @@ static func styles(source: Dictionary) -> Dictionary:
 			var looks: Dictionary = BLOCK_STYLES.get(str(block.get("block", "")), {})
 			for field: String in looks:
 				var given: Variant = block.get(field)
+				# A block's routes map each crossing to its value: the crossings are the keys.
+				if given is Dictionary and not given.has("id"): given = given.keys()
 				for piece: Variant in (given if given is Array else [given]):
 					var id := str(piece.id) if piece is Dictionary else str(piece) if piece != null else ""
 					if not id.is_empty() and not result.has(id): result[id] = str(looks[field])

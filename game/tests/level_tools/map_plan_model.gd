@@ -76,6 +76,20 @@ static func build(level: Dictionary, view: Dictionary, checkpoint: Dictionary, j
 		for route: Dictionary in pair.gates:
 			var asked: Array = pair.values.get(str(route.id), [])
 			routes[str(route.id)].get_or_add("unlettered", []).append(str(pair.control) + ("" if asked.is_empty() else " " + "/".join(asked)))
+	# The new pieces (rules 16), named by their crossings: a platform's stops,
+	# the sinking stones, a pull-up ladder, and a crossing a control floods.
+	for platform: Dictionary in view.get("platforms", []):
+		for stop: Variant in platform.get("stops", []):
+			if routes.has(str(stop)): routes[str(stop)].get_or_add("unlettered", []).append("%s stop" % platform.id)
+	for stone: Variant in view.get("sinking", []):
+		if routes.has(str(stone)): routes[str(stone)].get_or_add("unlettered", []).append("sinks under two")
+	for stair: Dictionary in view.get("stairs", []):
+		if stair.has("one_way") and routes.has(str(stair.id)): routes[str(stair.id)].get_or_add("unlettered", []).append("ladder: up only")
+	for gate: Dictionary in view.get("gates", []):
+		var when: Dictionary = gate.get("when", {})
+		for term: Dictionary in [when] + when.get("all", []):
+			if term.get("not") is Dictionary and term["not"].has("lever_id") and routes.has(str(gate.route_id)):
+				routes[str(gate.route_id)].get_or_add("unlettered", []).append("flooded while %s is on" % term["not"].lever_id)
 	var goal: Dictionary = view.get("goal", {})
 	if not goal.is_empty():
 		plan.goal = {"id": str(goal.id), "at": _point(goal.position_cm), "radius": float(goal.get("radius_cm", 28)), "owner": str(goal.get("owner_slot", "")), "kind": str(view.get("goal_policy", {}).get("kind", "ring"))}
