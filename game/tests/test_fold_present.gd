@@ -106,7 +106,7 @@ func _world(key: String, entry: Dictionary) -> Node3D:
 	else:
 		world.load_level(Registry.definition(key))
 		if world.has_method("show_stage"): world.show_stage(entry.stage)
-	if world.has_method("present_history"): world.present_history(entry.checkpoint)
+	world.present_history(entry.checkpoint)
 	return world
 
 ## Every named node, and every piece the terrain draws (tests/fold_look.gd).

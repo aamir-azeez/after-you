@@ -163,8 +163,10 @@ var _ring_radius: Dictionary = {}
 func _init(world: Node3D = null) -> void:
 	_world = world
 
-## A new stage: what was built before goes (its node went with the terrain).
+## A new stage: what was built before goes (with the terrain, or here when
+## the world keeps its terrain across stages).
 func clear() -> void:
+	if is_instance_valid(_node) and not _node.is_queued_for_deletion(): _node.queue_free()
 	_skips.clear()
 	_layout = {}
 	_node = null
@@ -198,8 +200,8 @@ func set_reduced_motion(on: bool) -> void:
 ##    into the crossing), half (half its width, m), rect (the crossing, m),
 ##    low and high (its height range, cm), slot}.
 ## spans: one per stretch of zone edge: {zone, owner, a, b (Vector3 ends, m), slot}.
-## locks: one per owned control: {id, kind (&"lever", &"selector", &"pad"),
-##   owner, entity, slot}.
+## locks: one per owned control that is live this stage (not "live": false in
+##   the plan): {id, kind (&"lever", &"selector", &"pad"), owner, entity, slot}.
 static func layout(view: Dictionary, skips: Dictionary = {}) -> Dictionary:
 	var floors := floors_of(view)
 	var mouths: Array = []
@@ -224,7 +226,7 @@ static func layout(view: Dictionary, skips: Dictionary = {}) -> Dictionary:
 	for entry: Array in [["levers", &"lever"], ["controls", &"selector"], ["pressure_pads", &"pad"]]:
 		for entity: Dictionary in view.get(entry[0], []):
 			var owner := _owner(entity)
-			if owner.is_empty() or not entity.has("position_cm"): continue
+			if owner.is_empty() or not entity.has("position_cm") or not bool(entity.get("live", true)): continue
 			var kind: StringName = entry[1]
 			if kind == &"lever" and str(entity.get("kind", "")) == "selector": kind = &"selector"
 			locks.append({"id": str(entity.id), "kind": kind, "owner": owner, "entity": entity, "slot": slot})

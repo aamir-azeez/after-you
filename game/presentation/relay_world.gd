@@ -1,14 +1,16 @@
 extends "res://presentation/island_world.gd"
 ## A view of the v2 surface graph. Walkability and checkpoint state stay in core.
-## Scenery and grounds come from the chapter's dressing (island_world's host);
-## the plates are pads in the style they resolve to (island_world's pad build).
+## Floors, the plates (pads in the style they resolve to), the crossings (the
+## bridge kit), the scenery and the seed's throw all come from island_world's
+## shared build; this world adds the relay nest and the garden planter. Its
+## camera follows the live spirit as every scrolling chapter's does.
 
-var bridge_visuals: Dictionary = {}
-var bridge_targets: Dictionary = {}
+## The follow camera's centre stays this far (metres) inside the
+## archipelago's west and east ends.
+const FOLLOW_INSET := 4.0
+
 var socket_visuals: Dictionary = {}
 var actor_badges: Dictionary = {}
-var active_landing: Vector3 = Vector3.ZERO
-var view_center := Vector3.ZERO
 
 
 func load_level(definition: Dictionary) -> void:
@@ -16,6 +18,7 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition
+	displayed_stage_id = ""
 	pad_pieces.clear()
 	if is_instance_valid(terrain):
 		remove_child(terrain)
@@ -26,8 +29,6 @@ func load_level(definition: Dictionary) -> void:
 	actors.clear()
 	actor_targets.clear()
 	bridge_parts.clear()
-	bridge_visuals.clear()
-	bridge_targets.clear()
 	socket_visuals.clear()
 	actor_badges.clear()
 	flowers.clear()
@@ -38,25 +39,8 @@ func load_level(definition: Dictionary) -> void:
 	garden_state = "closed"
 	bloomed = false
 	home_view = false
-	# Floors, the plates and any scenery the chapter's dressing gives.
+	# Floors, the plates, the scenery and the crossings.
 	await _build_island_ground(definition)
-	for bridge: Dictionary in definition.bridges:
-		var rect: Array = bridge.rect_cm
-		var width := float(rect[2] - rect[0]) / 100.0
-		var depth := float(rect[3] - rect[1]) / 100.0
-		var root := Node3D.new()
-		root.name = str(bridge.id)
-		root.position = Vector3(float(rect[0] + rect[2]) / 200.0, -0.6, float(rect[1] + rect[3]) / 200.0)
-		terrain.add_child(root)
-		for index in range(7):
-			var x := -width / 2.0 + (float(index) + 0.5) * width / 7.0
-			var plank := box(Vector3(width / 7.0 - 0.012, 0.10, depth), Color("c4b090"), Vector3(x, -0.06, 0), root)
-			for side in [-1, 1]:
-				cylinder(0.035, 0.3, Color("8b7964"), Vector3(0, 0.19, side * (depth / 2.0 - 0.06)), plank)
-		bridge_visuals[bridge.id] = root
-		mark_sound("bridge:%s" % bridge.id, root)
-		bridge_targets[bridge.id] = false
-		await _build_step()
 	for item: Dictionary in definition.sockets:
 		var at := point(item.position_cm)
 		var socket := Node3D.new()
@@ -80,28 +64,18 @@ func load_level(definition: Dictionary) -> void:
 		actor_targets[slot] = Vector3.ZERO
 		actor_badges[slot] = Badges.make(spirit)
 		await _build_step()
-	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
-	var seed_material := seed.material_override as StandardMaterial3D
-	seed_material.emission_enabled = true
-	seed_material.emission = Color("e6b767")
-	seed_material.emission_energy_multiplier = 1.2
-	landing_marker = Node3D.new()
-	landing_marker.name = "ActiveLanding"
-	terrain.add_child(landing_marker)
-	SocketKit.landing(landing_marker)
-	camera.position = Vector3(8, 14, 19)
-	camera.look_at(Vector3.ZERO)
-	camera.size = ViewFit.viewport(12.0, self)
-	camera.h_offset = 0.0
+	_build_seed_throw("ActiveLanding")
+	_follow_center = Vector3.ZERO
+	_frame_camera()
 
 
 func show_stage(stage: Dictionary) -> void:
 	reset_camera_exploration()
-	show_keepsake_landmark(str(stage.get("id", "")))
-	active_landing = point(stage.get("landing_cm", [0, 0]))
-	landing_marker.position = active_landing
-	# Both gaps remain visible. The checkpoint changes the goal, not the world.
-	view_center = Vector3.ZERO
+	displayed_stage_id = str(stage.get("id", ""))
+	show_keepsake_landmark(displayed_stage_id)
+	landing_marker.position = point(stage.get("landing_cm", [0, 0]))
+	route_barriers.clear()
+	route_barriers.build(LevelLayout.for_key(_chapter_key(), displayed_stage_id, current_level))
 
 
 func present(state: Dictionary, immediate: bool = false) -> void:
@@ -117,15 +91,17 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		# A sees where the waiting partner is. B sees the earlier spirit moving.
 		actors[slot].visible = true
 		actor_badges[slot].text = _role_badge_text(state, slot)
-	for id: String in bridge_visuals:
-		bridge_targets[id] = bool(state.bridges.get(id, false))
-		if immediate:
-			bridge_visuals[id].position.y = 0.0 if bridge_targets[id] else -0.65
+	_present_crossings(state.bridges, immediate)
+	# A plate stays lit while its crossing is open.
 	for bridge: Dictionary in current_level.bridges:
-		pad_pieces[bridge.plate_id].set_held(bridge_targets[bridge.id])
+		pad_pieces[bridge.plate_id].set_held(bool(state.bridges.get(bridge.id, false)))
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 	_present_garden(true, garden_complete, immediate)
+	route_barriers.present(state)
+	_active_player = str(state.get("active_slot", _active_player))
+	_completion_view = bool(state.get("complete", false))
+	if immediate: _snap_follow()
 
 
 func _chapter_key() -> String:
@@ -144,13 +120,22 @@ func _static_keep() -> Array:
 	for id: String in pad_pieces: keep += pad_pieces[id].moving_parts()
 	return keep
 
-func _process(delta: float) -> void:
-	# Reuse character gait, garden animation and motes; no legacy bridge is present.
-	super._process(delta)
-	var weight := minf(delta * 12.0, 1.0)
-	for id: String in bridge_visuals:
-		var target_y := 0.0 if bridge_targets[id] else -0.65
-		bridge_visuals[id].position.y = lerpf(bridge_visuals[id].position.y, target_y, weight)
-	if is_instance_valid(camera):
-		camera.size = ViewFit.viewport(12.0, self)
-		camera.h_offset = 0.0
+func _uses_scrolling_camera() -> bool:
+	return true
+
+## Kept between the archipelago's ends while a stage plays.
+func _camera_center() -> Vector3:
+	var target := super._camera_center()
+	if not _completion_view and actors.has(_camera_slot(_active_player)):
+		var low := INF
+		var high := -INF
+		for island: Dictionary in current_level.get("islands", []):
+			low = minf(low, float(island.rect_cm[0]) / 100.0)
+			high = maxf(high, float(island.rect_cm[2]) / 100.0)
+		target.x = clampf(_focus_point().x, low + FOLLOW_INSET, high - FOLLOW_INSET)
+	return target
+
+func _advance_camera(delta: float) -> void:
+	if route_barriers.moving(): route_barriers.advance(delta)
+	_ease_follow(delta)
+	_frame_camera()

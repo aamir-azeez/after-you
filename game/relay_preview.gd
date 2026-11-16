@@ -2059,7 +2059,7 @@ func _live_fingerprint(simulation: RefCounted) -> Dictionary:
 
 func _present_stage_history(authored: Dictionary, verified_checkpoint: Dictionary) -> void:
 	world.present_stage(authored)
-	if world.has_method("present_history"): world.present_history(verified_checkpoint)
+	world.present_history(verified_checkpoint)
 
 
 func _start_play() -> void:

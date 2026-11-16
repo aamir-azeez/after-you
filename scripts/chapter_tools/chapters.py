@@ -20,6 +20,7 @@ FIXTURE_WRITERS = {
     "turn-of-the-tide@1": ("turn_of_the_tide", "env"),
     "the-wishing-well@1": ("wishing_well", "argument"),
     "a-house-for-two@1": ("house", "argument"),
+    "relay-isles@2": ("simulation_v2", "argument"),
 }
 ## Backend copies named otherwise than backend/src/v2/<level id>[-v<N>].json and -initial.json.
 BACKEND_FILES = {

@@ -39,7 +39,7 @@ func _run() -> void:
 	app.set_process(false)
 	await process_frame
 	_check(app.mode == "ready" and app.stage.id == "relay", "A new preview begins at the first relay stage")
-	_check(app.world.bridge_visuals.size() == 2 and app.world.actors.size() == 2, "Both bridge views and stable player slots are built")
+	_check(app.world.crossing_pieces.size() == 2 and app.world.actors.size() == 2, "Both bridge views and stable player slots are built")
 	var audio_errors := ReunionAudio.chapter(app)
 	_check(audio_errors.is_empty(), "Relay reunion audio: " + str(audio_errors))
 	for size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 720)]:

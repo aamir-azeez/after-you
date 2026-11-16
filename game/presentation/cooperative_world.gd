@@ -11,14 +11,11 @@ const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const PadPiece = preload("res://presentation/kit/pieces/pad.gd")
 const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
 const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
-## Gates, stair chains, zone ropes and locks: why a pip is refused.
-const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
 ## looking, then this long easing back to the spirit.
 const GLANCE_TO := 1.6
 const GLANCE_BACK := 0.6
 var chapter_definition: Dictionary = {}
-var displayed_stage_id := ""
 var _physical_pads: Dictionary = {}
 ## Pad id -> its piece (kit/pieces/pad.gd); _physical_pads holds its rim.
 var _pad_pieces: Dictionary = {}
@@ -34,10 +31,6 @@ var _ball_materials: Dictionary = {}
 var _weights: Dictionary = {}
 var _hatches: Dictionary = {}
 var _upper_islands: Array[Node3D] = []
-var _active_player := "p0"
-var _follow_center := Vector3.ZERO
-var _follow_size := 9.2
-var _completion_view := false
 ## Where the live spirit's turn ends (descriptor "goal_beacon"), or null.
 var _goal_beacon: GoalBeacon
 var _glance_left := 0.0
@@ -48,9 +41,6 @@ var descriptor_override: Dictionary = {}
 var owner_marks := OwnerMark.new(self)
 ## The shown stage's pair tags (kit/pair_tags.gd), from its control-to-gate wiring.
 var pair_tags := PairTags.new(self)
-## The shown stage's route barriers (kit/route_barriers.gd), from its owned
-## crossings, stairs, zones and controls.
-var route_barriers := RouteBarriers.new(self)
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -232,11 +222,10 @@ func glancing() -> bool:
 func end_glance() -> void:
 	_glance_left = 0.0
 
-## What the follow camera centres on: the live spirit, or the goal while the
-## opening glance looks at it.
+## The goal while the opening glance looks at it, else the live spirit.
 func _focus_point() -> Vector3:
 	if _glance_left > GLANCE_BACK: return _glance_target
-	return actors[_camera_slot(_active_player)].position
+	return super._focus_point()
 
 ## The beacon shows and hides with play and changes nothing, so it never folds.
 func _static_keep() -> Array:
@@ -267,9 +256,8 @@ func _has_completion_garden(stage_id: String) -> bool:
 func _uses_lower_cutaway() -> bool:
 	return displayed_stage_id == "down-and-around"
 
-## Every physical chapter scrolls with a follow camera (in the Lighthouse's
-## fit-all frame the spirits were tiny). The camera angle, and so the stick, is
-## the Lighthouse's.
+## Every physical chapter scrolls with the follow camera (island_world's; in
+## the Lighthouse's fit-all frame the spirits were tiny).
 func _uses_scrolling_camera() -> bool:
 	return true
 
@@ -546,10 +534,6 @@ func _surface_height(id: String) -> float:
 func _at(value: Dictionary) -> Vector3:
 	return point(value.position_cm) + Vector3(0, _surface_height(str(value.get("surface_id", ""))), 0)
 
-## The floor point a pair tag's control stands on (kit/pair_tags.gd).
-func _pair_control_anchor(entity: Dictionary) -> Vector3:
-	return _at(entity)
-
 ## A light receiver's lamp post, for its pair tag's plaque (kit/pair_tags.gd):
 ## {top (the height its lamp head sits at), radius}.
 func _pair_receiver_post(_receiver: Dictionary) -> Dictionary:
@@ -569,18 +553,6 @@ func _mark_stair(stair: Dictionary) -> Dictionary:
 ## its style says (kit/pieces/goal.gd MARKED).
 func _marks_goal(goal: Dictionary) -> bool:
 	return _piece_style("goal", str(goal.get("id", ""))) in GoalPiece.MARKED
-
-## Scenery of the world's own that pair tags and ownership marks keep clear
-## of (kit/pair_tags.gd, kit/owner_mark.gd): the route barriers by default.
-## A world that adds its own appends to this.
-func _pair_keep_clear() -> Array:
-	return route_barriers.discs()
-
-## The level's route barrier look (kit/route_barriers.gd): its dressing's
-## "barrier" look slot pick (content/dressing/prop_styles.gd), or "" for the
-## default.
-func _barrier_style() -> String:
-	return str(dressing.get("barrier", ""))
 
 ## The cables and ropes this stage lays on its floors: {rect, y, what} each
 ## (_floor_cable). Ownership marks keep off them.
@@ -610,8 +582,10 @@ func _pair_gate_anchors(route: Dictionary) -> Array:
 	var ends := OwnerMark.route_ends_of(route, chapter_definition.get("islands", []))
 	return [ends[0] + height, ends[1] + height]
 
+## Only the kept crossings (island_world's), never the Lighthouse's
+## remembered mechanisms.
 func present_history(checkpoint: Dictionary) -> void:
-	_latched_bridge_ids = checkpoint.get("mechanisms", {}).get("latched_bridges", []).duplicate()
+	_latched_bridge_ids = kept_crossings(checkpoint)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	if state.get("stage_id", "") != displayed_stage_id:
@@ -661,32 +635,13 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)
 	if is_instance_valid(_goal_beacon): _goal_beacon.present(state)
-	if immediate:
-		if actors.has(_active_player): _follow_center = _camera_center()
-		_follow_size = 10.6 if _completion_view else 9.2
-		_frame_camera()
+	if immediate: _snap_follow()
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	return _uses_lower_cutaway() and _below_raised(raised,state.players[_active_player])
 
 func _below_raised(raised: Node3D, player: Dictionary) -> bool:
 	return Cutaway.below_raised(raised, player)
-
-func _camera_center() -> Vector3:
-	var target := _focus_point()
-	if _completion_view:
-		var left := target.x
-		var right := target.x
-		for actor: Node3D in actors.values():
-			left = minf(left, actor.position.x)
-			right = maxf(right, actor.position.x)
-		if is_instance_valid(garden): right = maxf(right, garden.position.x + 1.0)
-		target.x = (left + right) * 0.5
-	else:
-		target.x = clampf(target.x, -3.2, 12.0)
-	target.z = 0
-	target.y = 0
-	return target
 
 func _advance_camera(delta: float) -> void:
 	for id: String in _lever_pieces:
@@ -695,33 +650,16 @@ func _advance_camera(delta: float) -> void:
 	if _uses_scrolling_camera():
 		# Authored framing advances once per rendered frame. Snapshot delivery
 		# and pinch zoom must never feed back into the follow state.
-		var rate := 8.0
+		var rate := FOLLOW_RATE
 		if _glance_left > 0.0:
 			_glance_left = maxf(_glance_left - delta, 0.0)
 			rate = 3.5 if _glance_left > GLANCE_BACK else 6.0
-		var weight := 1.0 if reduced_motion else 1.0 - exp(-rate * maxf(delta, 0.0))
-		if actors.has(_active_player): _follow_center = _follow_center.lerp(_camera_center(), weight)
-		_follow_size = lerpf(_follow_size, 10.6 if _completion_view else 9.2, weight)
-		_follow_motes()
+		_ease_follow(delta, rate)
 	_frame_camera()
 	if is_instance_valid(_goal_beacon): _goal_beacon.follow(camera)
-
-## Motes are authored around the origin; a scrolling camera carries them along
-## so the far end of a long chapter keeps its drifting specks. Each mote keeps
-## its own spot on a repeating 23 m strip, so nothing slides with the view.
-func _follow_motes() -> void:
-	for mote: MeshInstance3D in motes:
-		if not mote.has_meta("rest_x"): mote.set_meta("rest_x", mote.position.x)
-		mote.position.x = _follow_center.x + wrapf(float(mote.get_meta("rest_x")) - _follow_center.x, -11.5, 11.5)
 
 func _frame_camera() -> void:
 	if not _uses_scrolling_camera():
 		super._frame_camera()
 		return
-	if not is_instance_valid(camera): return
-	camera.position = _follow_center + ViewFit.CAMERA_FROM
-	camera.look_at(to_global(_follow_center))
-	camera.keep_aspect = Camera3D.KEEP_HEIGHT
-	camera.size = ViewFit.viewport(_follow_size, self)
-	camera.h_offset = 0
-	camera.v_offset = 0.2
+	_frame_follow()

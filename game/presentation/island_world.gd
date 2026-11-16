@@ -32,8 +32,12 @@ const Surfaces = preload("res://presentation/kit/surfaces.gd")
 ## A piece's style (content/dressing/piece_styles.gd) and the pad kit.
 const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+## A crossing that rises as it opens and sinks as it shuts (kit/pieces/bridge.gd).
+const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
 const LevelLayout = preload("res://services/level_layout.gd")
+## Gates, stair chains, zone ropes and locks: why a pip is refused.
+const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 const FIREFLY := Color("ffe9a8")
 ## This chapter's scenery data (content/dressing); empty keeps the plain world.
 var dressing: Dictionary = {}
@@ -1182,6 +1186,8 @@ func _process(delta: float) -> void:
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
 	_move_bridge(weight)
+	for piece: RefCounted in crossing_pieces.values():
+		if piece.moving(): piece.advance(delta)
 	_advance_garden_bloom(delta)
 	if not reduced_motion:
 		for i in range(motes.size()):
@@ -1354,20 +1360,175 @@ func _doze_anchor(actor: Node3D) -> Variant:
 			best = at
 	return best
 
+# --- What earlier stages left (the checkpoint the shown stage opened from) ---
+
+## The stage this world shows (show_stage), "" before one.
+var displayed_stage_id := ""
+## The crossings earlier stages left kept, from the checkpoint present_history
+## was given.
+var _latched_bridge_ids: Array = []
+
+## Supply the checkpoint already verified by the chapter's coordinator (play,
+## memories, replays and the level tools all call it before presenting).
+## Remembered state is a landmark only: it adds no controls or collision. By
+## default it notes the crossings kept; a world that draws more of the past
+## (the Lighthouse's mirrors) extends it.
+func present_history(checkpoint: Dictionary) -> void:
+	_latched_bridge_ids = kept_crossings(checkpoint)
+
+## The crossings a checkpoint keeps: its mechanisms' latched_bridges, or the
+## top-level list an island family's checkpoint holds them in.
+static func kept_crossings(checkpoint: Dictionary) -> Array:
+	var mechanisms: Variant = checkpoint.get("mechanisms")
+	if mechanisms is Dictionary and mechanisms.has("latched_bridges"): return Array(mechanisms.latched_bridges).duplicate()
+	return Array(checkpoint.get("latched_bridges", [])).duplicate()
+
+# --- The follow camera (the scrolling chapters) ---
+
+## A scrolling world's camera follows the live spirit (or the memory it waits
+## for, _camera_slot) at SCROLL_SIZE, and eases out to SCROLL_DONE_SIZE over a
+## finished stage. Every scrolling world looks from ViewFit.CAMERA_FROM, so
+## the stick maps alike in all of them.
+const SCROLL_SIZE := 9.2
+const SCROLL_DONE_SIZE := 10.6
+## How fast the camera closes on the spirit: 1 - e^(-rate t) of the way.
+const FOLLOW_RATE := 8.0
+var _active_player := "p0"
+var _follow_center := Vector3.ZERO
+var _follow_size := SCROLL_SIZE
+var _completion_view := false
+
+## Whether this world's camera follows the live spirit (else its own framing).
+func _uses_scrolling_camera() -> bool:
+	return false
+
+## What the follow camera centres on: the live spirit, or the memory it waits for.
+func _focus_point() -> Vector3:
+	return actors[_camera_slot(_active_player)].position
+
+## Where the follow camera looks: the focus, kept from scrolling past the
+## world's west end; over a finished stage, between both spirits and the
+## garden.
+func _camera_center() -> Vector3:
+	var target := _focus_point()
+	if _completion_view:
+		var left := target.x
+		var right := target.x
+		for actor: Node3D in actors.values():
+			left = minf(left, actor.position.x)
+			right = maxf(right, actor.position.x)
+		if is_instance_valid(garden): right = maxf(right, garden.position.x + 1.0)
+		target.x = (left + right) * 0.5
+	else:
+		target.x = clampf(target.x, -3.2, 12.0)
+	target.z = 0
+	target.y = 0
+	return target
+
+## Puts the follow camera on its spirit at once (an immediate present).
+func _snap_follow() -> void:
+	if actors.has(_active_player): _follow_center = _camera_center()
+	_follow_size = SCROLL_DONE_SIZE if _completion_view else SCROLL_SIZE
+	_frame_camera()
+
+## Eases the follow camera toward its spirit, once per rendered frame:
+## snapshot delivery and pinch zoom never feed back into it.
+func _ease_follow(delta: float, rate: float = FOLLOW_RATE) -> void:
+	var weight := 1.0 if reduced_motion else 1.0 - exp(-rate * maxf(delta, 0.0))
+	if actors.has(_active_player): _follow_center = _follow_center.lerp(_camera_center(), weight)
+	_follow_size = lerpf(_follow_size, SCROLL_DONE_SIZE if _completion_view else SCROLL_SIZE, weight)
+	_follow_motes()
+
+## Motes are authored around the origin; a scrolling camera carries them along
+## so the far end of a long chapter keeps its drifting specks. Each mote keeps
+## its own spot on a repeating 23 m strip, so nothing slides with the view.
+func _follow_motes() -> void:
+	for mote: MeshInstance3D in motes:
+		if not mote.has_meta("rest_x"): mote.set_meta("rest_x", mote.position.x)
+		mote.position.x = _follow_center.x + wrapf(float(mote.get_meta("rest_x")) - _follow_center.x, -11.5, 11.5)
+
+## Frames the view: a scrolling world over its follow point (_frame_follow);
+## the others frame themselves.
+func _frame_camera() -> void:
+	if _uses_scrolling_camera(): _frame_follow()
+
+## The camera over the follow point, at the follow size.
+func _frame_follow() -> void:
+	if not is_instance_valid(camera): return
+	camera.position = _follow_center + ViewFit.CAMERA_FROM
+	camera.look_at(to_global(_follow_center))
+	camera.keep_aspect = Camera3D.KEEP_HEIGHT
+	camera.size = ViewFit.viewport(_follow_size, self)
+	camera.h_offset = 0
+	camera.v_offset = 0.2
+
 # --- The island build: floors, pads and scenery from the definition ---
+
+## The shown stage's route barriers (kit/route_barriers.gd), from its owned
+## crossings, stairs, zones and controls: every world keeps them here.
+var route_barriers := RouteBarriers.new(self)
+
+## The level's route barrier look (kit/route_barriers.gd): its dressing's
+## "barrier" look slot pick (content/dressing/prop_styles.gd), or "" for the
+## default.
+func _barrier_style() -> String:
+	return str(dressing.get("barrier", ""))
+
+## Scenery of the world's own that pair tags, ownership marks and route
+## barriers keep clear of (kit/pair_tags.gd, kit/owner_mark.gd,
+## kit/floor_spots.gd): the route barriers by default. A world that adds its
+## own appends to this.
+func _pair_keep_clear() -> Array:
+	return route_barriers.discs()
+
+## The floor point a pair tag's control stands on (kit/pair_tags.gd).
+func _pair_control_anchor(entity: Dictionary) -> Vector3:
+	return _at(entity)
 
 ## The pad pieces by id (_build_pad), for present() to light.
 var pad_pieces: Dictionary = {}
+## The crossing pieces by id (_build_crossings), for present() to open.
+var crossing_pieces: Dictionary = {}
 
 ## What every island world builds from its definition and dressing alone: the
-## chapter's dressing, its floors (_build_floors), its pads (_build_pads) and
-## its scenery (_build_dressing). A staged build gets the frame back between
-## pieces. Await it.
+## chapter's dressing, its floors (_build_floors), its pads (_build_pads), its
+## scenery (_build_dressing) and its crossings (_build_crossings). A staged
+## build gets the frame back between pieces. Await it.
 func _build_island_ground(definition: Dictionary) -> void:
 	_load_dressing()
 	await _build_floors(definition.get("islands", []))
 	await _build_pads(_layout_pads())
 	await _build_dressing()
+	await _build_crossings(definition.get("bridges", []))
+
+## Each crossing of the definition as the bridge kit draws it, shut until
+## present() opens it (crossing_pieces); its sounds come from its root, which
+## that also holds, so the static fold batches the planks under it.
+func _build_crossings(bridges: Array) -> void:
+	crossing_pieces.clear()
+	for bridge: Dictionary in bridges:
+		var piece: RefCounted = BridgeKit.build(bridge, terrain)
+		crossing_pieces[str(bridge.id)] = piece
+		mark_sound("bridge:%s" % bridge.id, piece.root)
+		await _build_step()
+
+## Opens each crossing the snapshot's bridges hold open.
+func _present_crossings(bridges: Dictionary, immediate: bool) -> void:
+	for id: String in crossing_pieces: crossing_pieces[id].set_open(bool(bridges.get(id, false)), immediate)
+
+## The seed an island family throws (seed_visual.gd, glowing warm; its flight
+## is _present_seed's) and the ring where it lands (SocketKit.landing), named
+## `landing_name`, both under the terrain.
+func _build_seed_throw(landing_name: String) -> void:
+	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
+	var glow := seed.material_override as StandardMaterial3D
+	glow.emission_enabled = true
+	glow.emission = Color("e6b767")
+	glow.emission_energy_multiplier = 1.2
+	landing_marker = Node3D.new()
+	landing_marker.name = landing_name
+	terrain.add_child(landing_marker)
+	SocketKit.landing(landing_marker)
 
 ## Each floor in the dressing's ground style (kit/surfaces.gd), else as this
 ## world's plain floor (_plain_floor), under its floor root (_floor_root),
@@ -1428,6 +1589,10 @@ func _build_pads(pads: Array) -> void:
 func _build_pad(pad: Dictionary, at: Vector3) -> Variant:
 	var style := PieceStyles.style("pad", str(pad.id), ChapterIndex.data(_chapter_key()), dressing)
 	return PadKit.build(style, at, float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "id": str(pad.id)})
+
+## A placed thing's spot on its floor (its walking height), in metres.
+func _at(value: Dictionary) -> Vector3:
+	return _floor_point(value.position_cm, str(value.get("surface_id", "")))
 
 ## A spot on a floor of the level (its walking height), in metres.
 func _floor_point(position_cm: Array, surface: String) -> Vector3:

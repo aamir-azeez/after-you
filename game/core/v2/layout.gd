@@ -22,7 +22,11 @@ static func plan(level: Dictionary, stage_id: String) -> Dictionary:
 			flat["height_cm"] = int(bridge.get("height_cm", 0))
 			return flat),
 		"gates": [{"route_id": str(stage.bridge_id), "pad_id": str(stage.plate_id)}],
-		"pressure_pads": level.plates.map(func(item: Dictionary) -> Dictionary: return Layout.placed(item, islands, str(users.get(str(item.id), "")))),
+		# Only the stage's own plate does anything this stage.
+		"pressure_pads": level.plates.map(func(item: Dictionary) -> Dictionary:
+			var pad := Layout.placed(item, islands, str(users.get(str(item.id), "")))
+			if str(item.id) != str(stage.plate_id): pad["live"] = false
+			return pad),
 		"sockets": level.sockets.duplicate(true),
 		"landing": {"id": "seed-landing", "position_cm": stage.landing_cm.duplicate(), "radius_cm": 65, "surface_id": str(stage.landing_surface)},
 		"goal_policy": {"kind": "ring"},

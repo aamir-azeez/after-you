@@ -214,7 +214,6 @@ func _check_coplanar_worlds() -> void:
 				_check(false, "A body stands where a pip must stand in %s %s: %s" % [key, stage_id, fault.line])
 			# Remembered mirrors are swept turned both ways.
 			for orientation: String in (["slash", "backslash"] if _lighthouse_like(key) and LightCatalog.STAGE_IDS.find(stage_id) > 0 else ["slash"]):
-				if not world.has_method("present_history"): break
 				world.present_history(history_checkpoint(world, key, stage_id, orientation))
 				_check(_shown_stage(world) == stage_id, "The remembered sweep stays on its stage: %s %s (shows %s)" % [key, stage_id, _shown_stage(world)])
 				if _lighthouse_like(key) and LightCatalog.STAGE_IDS.find(stage_id) > 0:
