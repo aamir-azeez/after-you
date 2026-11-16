@@ -1,7 +1,7 @@
 {
-	"checkpoint_hash": "f931acfaadcf56321dd0474ae2df26c925b1861837829dd5ebf843332b6d9f40",
+	"checkpoint_hash": "8833c57137769d711cdfd4fb2b4754109895d05a286374a596dd830a7270b5ab",
 	"completed_stage_id": "slack-water",
-	"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+	"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 	"level_id": "turn-of-the-tide",
 	"level_version": 3,
 	"mechanisms": {
@@ -41,12 +41,12 @@
 			"z": 22
 		}
 	},
-	"previous_checkpoint_hash": "70072b8bf676282ec7871d341235d944c2036aef19e62d0171a702d0d5cc178d",
+	"previous_checkpoint_hash": "438873d61b712f5094860b2085c7c3186032413f0468258b4d5d783ba3142afd",
 	"proof": {
 		"checkpoint": {
-			"checkpoint_hash": "70072b8bf676282ec7871d341235d944c2036aef19e62d0171a702d0d5cc178d",
+			"checkpoint_hash": "438873d61b712f5094860b2085c7c3186032413f0468258b4d5d783ba3142afd",
 			"completed_stage_id": "set-the-tide",
-			"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+			"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 			"level_id": "turn-of-the-tide",
 			"level_version": 3.0,
 			"mechanisms": {
@@ -81,14 +81,14 @@
 					"z": 0.0
 				}
 			},
-			"previous_checkpoint_hash": "c40010ac43adca125bcd7f5d2507d60fb09949de7bea76d9aef8408b4540fef4",
+			"previous_checkpoint_hash": "241c809ba257ce6af4904ca6cd559633106d7cb0095b4237cc6562da636d5da3",
 			"proof": {
 				"checkpoint": {
 					"a_recording_hash": "",
 					"b_recording_hash": "",
-					"checkpoint_hash": "c40010ac43adca125bcd7f5d2507d60fb09949de7bea76d9aef8408b4540fef4",
+					"checkpoint_hash": "241c809ba257ce6af4904ca6cd559633106d7cb0095b4237cc6562da636d5da3",
 					"completed_stage_id": "",
-					"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+					"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 					"level_id": "turn-of-the-tide",
 					"level_version": 3.0,
 					"mechanisms": {
@@ -126,20 +126,20 @@
 				"turns": [
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "c40010ac43adca125bcd7f5d2507d60fb09949de7bea76d9aef8408b4540fef4",
+						"checkpoint_hash": "241c809ba257ce6af4904ca6cd559633106d7cb0095b4237cc6562da636d5da3",
 						"completed": false,
-						"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+						"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 						"duration_ticks": 577.0,
-						"final_state_hash": "b2963a94b819d3c478916c4d9ed7d6363a6f7477875739cf23f1b56ab725ef80",
+						"final_state_hash": "5a5c70e49c732c42219e9009d11ed1330633afe80c52de0f907bce8c1c4c4bd9",
 						"level_id": "turn-of-the-tide",
 						"level_version": 3.0,
 						"outcome": {
 							"objective_complete": false,
 							"source_ready": true
 						},
-						"packed": "ARUQAGRoZACiAQCcAgDOGGQACgCcAgAAAwAAAgAAAwAA4AFkABgAnAIAzgIAAAMAABQAZAIAAAMAAMABnAAmAJzAAgAATXYPXPSF+205SQd4SrmHqUpV+P0KQymo7GAIBdmgcptMW4qRa9CqItkYOtCUV4tMe1UptKd670oQkxaC59Z9eKAUExMiJNq4u/3QKylWumFBaUGMjhhGYNtVyZm4kcuhM2i0Tbz0BEQPizQBOgtcINUZPEOMS4z3ZzsnvhTSTX4JYCtlj4sm+TCgDeotVDVWFYly5qaVaCABC4/Ke/II+O7n0XKzevSkoN88G1psAtYgjwF9xqENhTYwWbR73x2vPsYMrbPm+1QpGXwbzrcQFNInWyhBqggbwOnSp4+ezS4=",
+						"packed": "ARYQAGRoZACiAQCcAgDOGGQACgCcAgAAAwAAAgAAAwAA0AFkABgAnAIAzgIAAAMAABBkABQAZAIAAAMAAMABnAAmAJzAAgAAVqeqGH/4pZB4XQLKQZwO21GCg5qA5cBaTdoeEcuKezErub5AxOMXcNHIG+W9kEJOWyTsZbeSazW1TgTtaRFgtVb4IkyHdyuDWZx82IbK3m++uYNTnndVGDi2ieQkSy364MEJTw9W9fQB6YNVEuL40GJmDydFFXdT0VGMU+DJwbsOf3y7RxPizgprDASU5IPo/6ohiVBUcO0q4UzN6S6vBtYvf2lvJ1glne2T6DFjVRdMWF3uHWqQOfoNaxIHKm3aaMDXQileJzdxyUNJKAn7o9N17OcVS9zg4+97FlTts6g=",
 						"player_slot": "p0",
-						"recording_hash": "4e78f6bb8cc35bdaeac8dcaf2ffbc69a3d72e00e5fa52de5afc44658dbbac285",
+						"recording_hash": "d6216f200c0580dcd66d4e14d86bb7d9a775e0eae7d2426e82e2a0522661447c",
 						"role": "a",
 						"schema_version": 7.0,
 						"simulation_version": 15.0,
@@ -150,48 +150,48 @@
 					},
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "c40010ac43adca125bcd7f5d2507d60fb09949de7bea76d9aef8408b4540fef4",
+						"checkpoint_hash": "241c809ba257ce6af4904ca6cd559633106d7cb0095b4237cc6562da636d5da3",
 						"completed": false,
-						"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+						"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 						"duration_ticks": 606.0,
-						"final_state_hash": "54ab1e1dc2a53792346e89ccf04e64ef543a60f90d075be829d19cd104500c6f",
+						"final_state_hash": "219014e1ae7c8acefaab5ebac44422fa4c2394e29f877eb2786081fba89780f7",
 						"level_id": "turn-of-the-tide",
 						"level_version": 3.0,
 						"outcome": {
 							"objective_complete": false,
 							"source_ready": true
 						},
-						"packed": "ARQEAJx4ZACsAgAACpwAtAEAnJABZAACMgC4AWQAAjIANgBkAgAyDJwAKABkAgAyAgAAAwAAeAAADmQAAjIAEACcj/xzw4+UezXc4azgU4gH/t115TBr+oK++OV+KmF3OyiQNbfEC+AA+tlgGhab3ubNpiTx7702jWaK1fM9lmCexXioHu+PISNjG8BX3vcQuswn4+U5Gq/zA1Jsrcbye74VxeBIpfX4yAYzG+caMEPY8Eq/pmM7i5dR9JB72FdKOQpzirZelzDf6uCikk8YTRvKSZwmALUTWTLIP6ilaUqNnLl4g4wJeyI3+cY4BraYF7Ceql4HG5zhU8iEhJDXDSY6EEnOO6Krcd6gxVLYmkE3WluD/fLnPO2JeiSVke6sCUnuqilZ3z8aN/JARVBttWX70IZNzFh1jXXYW1RoDXKvZQ==",
+						"packed": "ARQEAJx4ZACsAgAACpwAtAEAnJABZAACMgC4AWQAAjIANgBkAgAyDJwAKABkAgAyAgAAAwAAeAAADmQAAjIAEACcrcJronkin/rcWR/K4/t4QTz90hdgpP94cqgfdl++hQUYSX9buigF7D7a+rxq3jx9uJ+Waldg6RhAYlBYc1P/wVSdzArsp+DLb5fVUd4yF1hYojg9ipklGn+ZqhOHcaygfdFEkG28T+f/NNuK9hdV7yz8NulVqcf7QXLRIhTQsP1pUPp0JUkMDTBmtkD77uYcra/TwSZihhwtVd1pjr7aiyrTrgf1ko3YepATtgYw9Au9HV0exz6D2SbZb3dsjHERC6nxoMTVScWs72lJbUiPSWE6R8ihUM6Nv0cYmzNJseJ8wheEo4AvHqqt6GsgmiSY/905FHn7ibfVHEKTENsWcQ==",
 						"player_slot": "p1",
-						"recording_hash": "82c55926d6a7841d2d60686903778f6c3dd8f4cc076165a4166dbc483f255b2d",
+						"recording_hash": "92c10a7fd022da5daca6a70e21ed4589e8436d780a0b12795412db3d85503439",
 						"role": "b",
 						"schema_version": 7.0,
 						"simulation_version": 15.0,
-						"source_recording_hash": "4e78f6bb8cc35bdaeac8dcaf2ffbc69a3d72e00e5fa52de5afc44658dbbac285",
+						"source_recording_hash": "d6216f200c0580dcd66d4e14d86bb7d9a775e0eae7d2426e82e2a0522661447c",
 						"stage_id": "set-the-tide",
 						"stage_version": 1.0,
 						"tick_rate": 30.0
 					},
 					{
 						"catch_assistance": true,
-						"checkpoint_hash": "c40010ac43adca125bcd7f5d2507d60fb09949de7bea76d9aef8408b4540fef4",
+						"checkpoint_hash": "241c809ba257ce6af4904ca6cd559633106d7cb0095b4237cc6562da636d5da3",
 						"completed": true,
-						"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+						"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 						"duration_ticks": 861.0,
-						"final_state_hash": "96b94c7fa86071fd989dc553ff589332053a44dd68df4398a6ec387c0fba8f6a",
+						"final_state_hash": "50a46b88e37d1aa0b04688303deaa97138d606bae4202a94bf86f2af5b2903b7",
 						"level_id": "turn-of-the-tide",
 						"level_version": 3.0,
 						"outcome": {
 							"objective_complete": true,
 							"source_ready": true
 						},
-						"packed": "ASwQAGRoZACiAQCcAgDOGGQACgCcAgAAAwAAAgAAAwAA4AFkABgAnAIAzgIAAAMAABQAZAIAAAMAAMABnAAmAJzAAgAAHABkIJwADgBkAgAyAgAAAwAAAgAAAwAAGJwAVABkAgAymAFkABIAZAIAAAMAAAQAnAIAziZkAAIAAAMAAI4BZAACMgAIAJw5nw5mZ9DxxSGei95y4+ukN/0zfTDPKgFMVGZouMkgtrhDx19b2bGtdaSpKwVIYYXEtgEy7flgHQUPIPrA0FEV9eG3J/dOpYoeJb0iybUiAgbfDZwKvRwBdbKT6aFNlrzDzEKuJwUopCH6Q6AkqTy1uIbz0XeBe8L0LBEEZ3kQoLizSkcqeIS0U9RLFkvtH72PuTQcttW9MJDny4miqfE6htoveUcTDti9vtlSOJMNZRIFPqRHT/X9MJp/7dYT8WkityMDwrgY/DN4wpiOnfSHjqErQcKznXESituMroXgNxriNJxj5jwtKabYN/tbgc48bKrHfEIKN4Hb0AgrALrnYhLB0Mltl/u6gjupdYtZcoptoSCUVrCOZaJOtBec0mjQ3cGWNgGnZe6ARr79PeE7BiKJmEiuxcWB2xqv3l35omk9uoigaUQA4wUNzwxs9nxSgqN82oVhKA==",
+						"packed": "AS0QAGRoZACiAQCcAgDOGGQACgCcAgAAAwAAAgAAAwAA0AFkABgAnAIAzgIAAAMAABBkABQAZAIAAAMAAMABnAAmAJzAAgAAHABkIJwADgBkAgAyAgAAAwAAAgAAAwAAGJwAVABkAgAymAFkABIAZAIAAAMAAAQAnAIAziZkAAIAAAMAAI4BZAACMgAIAJxRt8MVh2QHNgjdNkCSa0kghIbHyffPTTB6788iDxO2Yv6SaO3T90ET7gKppnOkACstK8Yt5uENA7wSK9SXQWpLDNBo1aNj6TRwFuQnIrs72N14JQzW+G/2lVbTns8BgucAyIakSpQ0drc2KbZBsBRs6CYBBd4VvJIQdo0ZsHptHLjS3K0hvd2hyhuq5GY7kHCkxbFvSLP2WswNB1YRZhLixLHrBDaEwMWmUlmPG7E6zcyRiJTs4M2fUBdC3roBvz9Pbf+fF1f3lod3sWNp+OjJm2wZvdNxopKTCNGwPHx6sB1i1sb/NFTMDVOCHsSS2Mot3v+7ntmlP84y+hj2b+8W/2El/kOdak3hx80CpmpGZSComutqJZ8tb0pjFEP2xKNRkQxvegPWVWowKjS+aHew67sZWVYtPT8ZqHHEOI6Pl5N/sPoKz6aGNPwv1COft5aUaG2fqc0tHQ==",
 						"player_slot": "p0",
-						"recording_hash": "5c92143b4dbfb6f2970ba53772ca3e761787965224fd49f42ea4902d4eff1503",
+						"recording_hash": "e9cb63cf1c7efc76eaf4c7f10d708b58e2add8494e8744549eb16aa3fec7c0b5",
 						"role": "b",
 						"schema_version": 7.0,
 						"simulation_version": 15.0,
-						"source_recording_hash": "82c55926d6a7841d2d60686903778f6c3dd8f4cc076165a4166dbc483f255b2d",
+						"source_recording_hash": "92c10a7fd022da5daca6a70e21ed4589e8436d780a0b12795412db3d85503439",
 						"stage_id": "set-the-tide",
 						"stage_version": 1.0,
 						"tick_rate": 30.0
@@ -201,28 +201,28 @@
 			"schema_version": 8.0,
 			"stage_index": 1.0,
 			"turn_hashes": [
-				"4e78f6bb8cc35bdaeac8dcaf2ffbc69a3d72e00e5fa52de5afc44658dbbac285",
-				"82c55926d6a7841d2d60686903778f6c3dd8f4cc076165a4166dbc483f255b2d",
-				"5c92143b4dbfb6f2970ba53772ca3e761787965224fd49f42ea4902d4eff1503"
+				"d6216f200c0580dcd66d4e14d86bb7d9a775e0eae7d2426e82e2a0522661447c",
+				"92c10a7fd022da5daca6a70e21ed4589e8436d780a0b12795412db3d85503439",
+				"e9cb63cf1c7efc76eaf4c7f10d708b58e2add8494e8744549eb16aa3fec7c0b5"
 			]
 		},
 		"turns": [
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "70072b8bf676282ec7871d341235d944c2036aef19e62d0171a702d0d5cc178d",
+				"checkpoint_hash": "438873d61b712f5094860b2085c7c3186032413f0468258b4d5d783ba3142afd",
 				"completed": false,
-				"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+				"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 				"duration_ticks": 557.0,
-				"final_state_hash": "f6dcec5911920b94f25c9314af494e7091d2d90aad4cef7441203a2b23b58f6e",
+				"final_state_hash": "79f08072f401cfa70360a108bf8dc98c84172beb6d297f81908968e71313194b",
 				"level_id": "turn-of-the-tide",
 				"level_version": 3.0,
 				"outcome": {
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "ASUCnAACzgAMAGQCADKSAZwAAgAAAwAAoAKcAALOAC6cADQAnAIAAAMAAA4AZExkAAIyAJgBAGQCADICAAADAACAAQCcIpwADACcAgDnAgAAAwAAAgAAAwAABpwAAs4ADACcAgDnDgCcAgAAAwAATgBkAgAyBe/Q+MsFx4IAVaHTVeF+lszUemAg5ksoy0DaB4p2iT4jw8gWjOz/s32XZfyjLM++/BAthbhp8zcI9RJlF7mdxO/KZPviEqLyZAHauBBGQBBQRZ9zNNU+iT0VgESWLYuB4UPh4O6NcUF6VF9LvuNIUDJSqTw3YwqdSHkE3znMGiIkZPHoNoaTB9tNFfx4sn1cNecGKB72WX1jHRiDweTRKEciX4tdmq0f6GnW4KJp27oivkEgzr224K+4yjIIsFIhNyqJjWwQ1MjJE22DBoQoP7UO902vkMsU",
+				"packed": "ASUCnAACzgAMAGQCADKSAZwAAgAAAwAAoAKcAALOAC6cADQAnAIAAAMAAA4AZExkAAIyAJgBAGQCADICAAADAACAAQCcDpwADACcAgDnAgAAAwAAAgAAAwAAGpwAAs4ADACcAgDnDgCcAgAAAwAATgBkAgAy0TgfuL1sS4YquwGDTcd+6L2hSqhkpjBcNczpiVOZ07LnSypRSPgT07beHTUz69ayj3CDoxRD1Zeb+CCcnworNC7XCvlnZTjxNFTdyJMBoZCylU/C/b10xZsEkuikk9sSDl8ZQ9WI9z46mEWFFntgdYwMBv6kvMF1ejlG+bW7R8O0xCWlcq36ecCYJVZKiS1VkbKHHZ+LC7RQPd9pkXNkdsyqcIHjnKCsj4nyxKRx6foza1GGQDfeS1f0Gm8FHed760wxPZwcRgwamQh3UWtT1m/kXqcV+wYy",
 				"player_slot": "p1",
-				"recording_hash": "f44b3d70c5403bab2ac1ff7e6547124e0f667ca9a4250aacb1dbc95403addbaf",
+				"recording_hash": "d8fe85ab35c365a2736ab076bc3d11ba0870205c4a5528f92379b9d6ef044e28",
 				"role": "a",
 				"schema_version": 7.0,
 				"simulation_version": 15.0,
@@ -233,48 +233,48 @@
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "70072b8bf676282ec7871d341235d944c2036aef19e62d0171a702d0d5cc178d",
+				"checkpoint_hash": "438873d61b712f5094860b2085c7c3186032413f0468258b4d5d783ba3142afd",
 				"completed": false,
-				"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+				"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 				"duration_ticks": 827.0,
-				"final_state_hash": "22ac06c2be15e6a3ae457cc85442667e2d259306a7b4f187f5e1e048716b02ec",
+				"final_state_hash": "3444e96300b335ec9fbd0d47ee99ad3679ac13c987f6f969f7d6a823d917d43d",
 				"level_id": "turn-of-the-tide",
 				"level_version": 3.0,
 				"outcome": {
 					"objective_complete": false,
 					"source_ready": true
 				},
-				"packed": "ARo8AAAIAGSOAZwAAs4AvgGcAFgAnAicADQAnAIAzgIAAAMAACoAZAIAMhxkAAIAAAMAANgEAACEApwAaABkAgAyEmQAAgAAAwAADJwAAs4AFACcqlGEFwmbQpw7oiR1wRp7fbqjVzd7BJ0/xTXOCEkFQBhuxfQmI/JCN2uIpD9V8EhaJdeYqqAlIcK5wXafspgJfossbOyjZAryxhGjZ8j5rjpM7kAQTFioBNG3OGLENnZneUPEIjgK0AOyBmpQoOngZ6SXomOg2BejS2lH6vV+KqanslX5X/1WH51RzIpvC0wEejDsILcWO0yt8TggvbsqyirN3yZnWTakMGnRX0sk3Ie3RDFYISw9UbgQZQPDCwjcYYZgg4kHNnAT588op+vi777Rz4MuiPzlzFCqzzxN9jnArM2oPWejSmgofMY5f2Mzuyk2pbtYXTf+53PbEA27Zw6I8Z26TfldkIkWllwfvQHMM4eMeAlOws8Ms1N0+vCePBfM8pl7jh2qEsEIgeNHB9ok6utwE2kkjEjrxp8LvFe0gkMH5nJFpJ1aOrC9u4gn",
+				"packed": "ARo8AAAIAGSOAZwAAs4AvgGcAFgAnAicADQAnAIAzgIAAAMAACoAZAIAMhxkAAIAAAMAANgEAACEApwAaABkAgAyEmQAAgAAAwAADJwAAs4AFACcyPzbScBFNi+f1vIjvpZ1IEW2obX9R3sdhihrR2ghdwHYItHKTz69cNiqXXYANq3OLEo16UMOH1nNKQ2LuMhWLPXr6gKC0AgcH2TNaCP6KjCOkbLcQpyEgjMkr7cab+eXJfZWMKMMe5O55Xx6YcqEBYldpGXaTUyrnxnCFNAnyIq6MsP9NwCIlsjj1Ovwuc9gtt1SJ3K1tpFGT+81j1KC/3NXx0vU5xzh4Zk86a0xH3dnbEQZGmkju/UADZuEOm18DjhgrZ/9GCOS/hjeSG+78z6pHb6qlZJ7GQ/sptpiS0+nm1z+XLQeeICZnXh3JQCdxLR5ENVVm0f5wSrJwmnOy6R4NPnTxWr27pPanRH+qlnK9KunChvvBY0RKbjoS//v3H5WGRbpvaO9skRy16dh440/pOmDwEcLxI2bdx0FkZvmYqdYJwyXcj3l1WpJQ3Cr",
 				"player_slot": "p0",
-				"recording_hash": "1aaf40bcea9c9a217b34bd96c9fea50f39009aa2960337cb2e8e0ca05f4b0870",
+				"recording_hash": "148292b79c53d416d7d643b7245b444fec10889f2f33ee56a1534ffba392e89c",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 15.0,
-				"source_recording_hash": "f44b3d70c5403bab2ac1ff7e6547124e0f667ca9a4250aacb1dbc95403addbaf",
+				"source_recording_hash": "d8fe85ab35c365a2736ab076bc3d11ba0870205c4a5528f92379b9d6ef044e28",
 				"stage_id": "slack-water",
 				"stage_version": 1.0,
 				"tick_rate": 30.0
 			},
 			{
 				"catch_assistance": true,
-				"checkpoint_hash": "70072b8bf676282ec7871d341235d944c2036aef19e62d0171a702d0d5cc178d",
+				"checkpoint_hash": "438873d61b712f5094860b2085c7c3186032413f0468258b4d5d783ba3142afd",
 				"completed": true,
-				"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+				"definition_hash": "a54c0e23a8a4a4dee1bcc78f0b09fdad79d04edd9c7cb194d9ef72a40d0cfef0",
 				"duration_ticks": 1042.0,
-				"final_state_hash": "918f9522081cf09c3ded98f06cc07f07c7045c2f820a71f2ec89b1b3d46be3b7",
+				"final_state_hash": "be381d808b995f5d0c2223e2267eb059b36de56d339356a27d0ab99ba906ba1e",
 				"level_id": "turn-of-the-tide",
 				"level_version": 3.0,
 				"outcome": {
 					"objective_complete": true,
 					"source_ready": true
 				},
-				"packed": "ATcCnAACzgAMAGQCADKSAZwAAgAAAwAAoAKcAALOAC6cADQAnAIAAAMAAA4AZExkAAIyAJgBAGQCADICAAADAACAAQCcIpwADACcAgDnAgAAAwAAAgAAAwAABpwAAs4ADACcAgDnDgCcAgAAAwAATgBkAgAy6AIAAA4AnAIAzihkAAIyAGQAnFhkAAoAnAIAAAMAAAIAAAMAABScAFwAZAIAGeQBnAACzgACAJym5q2UGxu87iZzpEkNJUrlORF0OOqOycjyxYKA70fQPRQo3ZvV8HO2wVEidieKn4uBjNY/Kf+Xw9mI1+0WNVxHheW6unbfCa6iQcsYu8ECxjKcG84ZvLLgr3rcigsCeggjQThtQIaSU44aWGDt+yGOt2VWqH9rQfqRaNrYGG/nny5M4WO8bxR+RwWmgG1xf6w/fZ9NzxYnmGXGDv2cpSskjPHf8hk2/51E0GRV+e+GTJGlNqEg2JRzoxldIo/v/xAuF/J450F0NscKSM4XoqLjOoJkNAMKIU8hv1/YmpVOZui7ZVzURYj80ZbbvcDwQShyjl0atycXiAr/ZwUgOST5WAy8Mhmqp3fxFw4UcltY9ZAF94JU/Kzh1RRS2izrVdfgn2ZrKXzDfZ2hQhA+uiTwZL/iiSsUeLcaRykqIiOz4oz/cKnewTRjTweWq7e1bMeK+E4M7cPxppg1QC8Rc+ifd8/axTU28S8Po2Ypb1EoQREEpPus8ZEuGbldEtZrA/C7Qzm2VcVr7oHynPe5rohx0Dq2GyBpWwT8dYg5HcEnjA==",
+				"packed": "ATcCnAACzgAMAGQCADKSAZwAAgAAAwAAoAKcAALOAC6cADQAnAIAAAMAAA4AZExkAAIyAJgBAGQCADICAAADAACAAQCcDpwADACcAgDnAgAAAwAAAgAAAwAAGpwAAs4ADACcAgDnDgCcAgAAAwAATgBkAgAy6AIAAA4AnAIAzihkAAIyAGQAnFhkAAoAnAIAAAMAAAIAAAMAABScAFwAZAIAGeQBnAACzgACAJxTHv87Jw3CXqbKSo25SFHohYtIZgOxa8IT8hFw92JNImcCvjtQpYNB4Oo+T7vfD4u1Gkf1YznrV+L5iq9AK/PeeydKdD1uJWU0KKY5FoC5NBlGHFyG9SzT7ijUFJIoD3Pdz1FmrMEl29Tc0URMtLMfP4nUWTDYM1pJwTvWzE0lA8nhAILUyGkqTx+JeTMCMSRDVIycqLHMKfAAB3wbmD+xVhAYh90pdMaYc8cJPySd3114F2zwF3h9gY4WqkDTAppR6I0H2qBFViA/AmDXKSmwQwHgcToSyhFsvfyHxolkHHn+g8TSfTYABfddYlwooUHPL79sQr2wlQyisPSVuDYX6kly8cKlItvrJ+oAJd1HyL5tSjVpoa4dKQn309M6KAAGAqqg3p2s3eMSjn4JtzpNt/JhuTvzieMT434wzqUE5dpEAsrOwqqd3hBSNx4sexStHmK5v4ACgra5bFJQrOZp4sQAxeJH7bYkB/4Qf1nMuTONbalq+hs1UTHIJtTAXPXLZxfzvB5vK2vGAwa1WLaNnUy0IsB3ngM0+Y6OiIZ/2w==",
 				"player_slot": "p1",
-				"recording_hash": "61f60a2a75514b8b9b7c6cdca23f6a00c962729881e7dc238cac70fde9ba52a2",
+				"recording_hash": "7eba740b86c5f517fcc2d00533e3d18a4a19bcddfaf5d9f36a8c2bdef3adac10",
 				"role": "b",
 				"schema_version": 7.0,
 				"simulation_version": 15.0,
-				"source_recording_hash": "1aaf40bcea9c9a217b34bd96c9fea50f39009aa2960337cb2e8e0ca05f4b0870",
+				"source_recording_hash": "148292b79c53d416d7d643b7245b444fec10889f2f33ee56a1534ffba392e89c",
 				"stage_id": "slack-water",
 				"stage_version": 1.0,
 				"tick_rate": 30.0
@@ -284,8 +284,8 @@
 	"schema_version": 8,
 	"stage_index": 2,
 	"turn_hashes": [
-		"f44b3d70c5403bab2ac1ff7e6547124e0f667ca9a4250aacb1dbc95403addbaf",
-		"1aaf40bcea9c9a217b34bd96c9fea50f39009aa2960337cb2e8e0ca05f4b0870",
-		"61f60a2a75514b8b9b7c6cdca23f6a00c962729881e7dc238cac70fde9ba52a2"
+		"d8fe85ab35c365a2736ab076bc3d11ba0870205c4a5528f92379b9d6ef044e28",
+		"148292b79c53d416d7d643b7245b444fec10889f2f33ee56a1534ffba392e89c",
+		"7eba740b86c5f517fcc2d00533e3d18a4a19bcddfaf5d9f36a8c2bdef3adac10"
 	]
 }
