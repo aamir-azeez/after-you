@@ -63,6 +63,7 @@ func _closed_then_open(screen: String, area: Vector2) -> void:
 	var overflows: bool = view.scroll.get_v_scroll_bar().max_value > view.scroll.size.y
 	# The phone's short canvas scrolls this letter; the Duo's taller one shows it whole.
 	_check(overflows == (screen == "phone"), "A long letter scrolls under the title only where it runs past the card (%s)" % screen)
+	_check(view.scroll.get_v_scroll_bar().visible == overflows, "The scroll bar shows only when the letter scrolls (%s)" % screen)
 	var tag_before: Vector2 = view.back_button.global_position
 	view.scroll.scroll_vertical = 200
 	await process_frame

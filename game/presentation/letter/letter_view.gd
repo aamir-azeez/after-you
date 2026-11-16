@@ -40,6 +40,8 @@ const PAPER_TILT := 1.2
 const TAG_TILT := -4.0
 ## The share of the envelope left showing as the pocket under the open letter.
 const POCKET := 0.24
+## The paper's blank margin under the sign-off, which may sit in the pocket.
+const PAPER_FOOT := 34.0
 
 var envelope: Envelope
 var pocket: Pocket
@@ -196,8 +198,9 @@ func _place() -> void:
 	var side := maxf(16.0, (stage.x - width * 1.04) * 0.5)
 	for edge: String in ["left", "right"]: _paper_holder.add_theme_constant_override("margin_" + edge, int(side))
 	_paper_holder.add_theme_constant_override("margin_top", 8)
-	# The letter's end can be scrolled up past the pocket.
-	_paper_holder.add_theme_constant_override("margin_bottom", int(envelope_size.y * POCKET + 12.0))
+	# The letter's last words clear the pocket; only the paper's blank foot
+	# tucks into it, so a letter that fits never shows a scroll bar.
+	_paper_holder.add_theme_constant_override("margin_bottom", int(maxf(0.0, envelope_size.y * POCKET - PAPER_FOOT)))
 	back_button.position = Vector2(4.0, stage.y - back_button.get_combined_minimum_size().y - 10.0)
 
 ## The paper as wide as its frame and as tall as its words, the frame as tall
@@ -228,7 +231,7 @@ func _build_paper(letter: Dictionary) -> PanelContainer:
 	look.content_margin_left = 40
 	look.content_margin_right = 40
 	look.content_margin_top = 30
-	look.content_margin_bottom = 34
+	look.content_margin_bottom = PAPER_FOOT
 	sheet.add_theme_stylebox_override("panel", look)
 	sheet.rotation_degrees = PAPER_TILT
 	var lines := VBoxContainer.new()
