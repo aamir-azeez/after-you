@@ -131,7 +131,7 @@ describe("open controls (rules 12 and 13)", () => {
   it("ends an open turns stage only with both players at its goal", async () => {
     // Long Way Home@3's homecoming ends with both players at the second window; one of them away is refused.
     const chain = CHAINS[0], first = await stageOne(chain), [a, b, c] = await records(chain, 1);
-    const end = structuredClone(homePlaceEnd) as Record<string, any>;
+    const end = structuredClone(flat(homePlaceEnd)) as Record<string, any>;
     expect(end.players.p0).toMatchObject({ x: 1408, z: 96, surface_id: "home-room" });
     expect(end.players.p1).toMatchObject({ x: 1408, z: 96, surface_id: "home-room" });
     const away = structuredClone(end); away.players.p1 = { ...away.players.p1, x: 1200, z: 32 };
@@ -139,7 +139,7 @@ describe("open controls (rules 12 and 13)", () => {
   });
   it("keeps the tide rules on 15: no route latches", async () => {
     const chain = CHAINS[1], [a, b, c] = await records(chain, 0);
-    const kept = structuredClone(tideSetEnd) as Record<string, any>; kept.mechanisms.latched_bridges = [kept.players.p0.surface_id];
+    const kept = structuredClone(flat(tideSetEnd)) as Record<string, any>; kept.mechanisms.latched_bridges = [kept.players.p0.surface_id];
     await expect(checkpointV2(await rehash(kept), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_mechanism_mismatch" });
   });
   it("refuses a guest whose client never offered the open rules, and plays a room to completion", async () => {
