@@ -49,8 +49,8 @@ const DATA := {
 	# valves the pip turns.
 	# The chains, bars and water wheels are machines, and the mole's goal is its
 	# harbour lantern; every other piece takes the dressing's pick.
-	"piece_styles": {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve",
+	"piece_styles": {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "stone-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve",
 		"harbour-lantern": "harbour_lantern"},
-	"lever_actions": {"boom-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "punt-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "gate-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR, "sea-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR},
+	"lever_actions": {"boom-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "punt-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "gate-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR, "sea-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR, "stone-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR},
 	"server": {"flag": "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", "max_branches": 7},
 }

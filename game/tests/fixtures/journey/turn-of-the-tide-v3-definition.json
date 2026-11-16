@@ -676,6 +676,9 @@
 							{
 								"control_id": "winch",
 								"value": "slip"
+							},
+							{
+								"pad_id": "wheel-step-pad"
 							}
 						]
 					}
@@ -690,6 +693,9 @@
 							},
 							{
 								"lever_id": "sluice"
+							},
+							{
+								"lever_id": "stone-bar"
 							}
 						]
 					}
@@ -818,6 +824,16 @@
 					],
 					"radius_cm": 28,
 					"surface_id": "e-quay"
+				},
+				{
+					"height_cm": 48,
+					"id": "stone-bar",
+					"position_cm": [
+						1400,
+						88
+					],
+					"radius_cm": 28,
+					"surface_id": "r-terrace"
 				}
 			],
 			"pressure_pads": [
@@ -1087,6 +1103,9 @@
 							{
 								"control_id": "tide",
 								"value": "high"
+							},
+							{
+								"pad_id": "boom-post-pad"
 							}
 						]
 					}
@@ -1245,6 +1264,9 @@
 							{
 								"control_id": "tide",
 								"value": "half"
+							},
+							{
+								"pad_id": "punt-post-pad"
 							}
 						]
 					}
@@ -1527,14 +1549,14 @@
 					"surface_id": "quay-step"
 				},
 				{
-					"height_cm": 96,
+					"height_cm": 48,
 					"id": "sea-key",
 					"position_cm": [
-						320,
-						-512
+						-768,
+						80
 					],
 					"radius_cm": 28,
-					"surface_id": "bollard-step"
+					"surface_id": "mole-terrace"
 				}
 			],
 			"pressure_pads": [
