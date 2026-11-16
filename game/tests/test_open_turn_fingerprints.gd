@@ -22,9 +22,10 @@ const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const KnownCheckpoints = preload("res://core/physical/known_checkpoints.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const BlobCodec = preload("res://services/blob_codec.gd")
 const Witness = preload("res://tests/chapter_witness.gd")
 const Server = preload("res://tests/open_turns_server.gd")
+const Runs = preload("res://services/leaderboard_runs.gd")
+const ReplayCheck = preload("res://tests/leaderboard_replay_check.gd")
 const TIDE := "turn-of-the-tide@3"
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
@@ -151,9 +152,22 @@ func _room_plays_through() -> Dictionary:
 	MemoryTrace.clear()
 	KnownCheckpoints.clear()
 	_check(Registry.simulation_script(TIDE).verify_checkpoint(level, whole).valid, "The rebuilt run checks from scratch, as the board's replay job checks it")
-	var run: Dictionary = phones[HOST].store().run_blob(TIDE)
-	var bytes := BlobCodec.verified(Marshalls.base64_to_raw(str(run.get("body", ""))), int(run.get("byte_length", 0)), str(run.get("digest", "")), 4 * 1024 * 1024)
-	_check(not bytes.is_empty() and Canonical.same(JSON.parse_string(bytes.get_string_from_utf8()), whole), "The posted run is the phone's nested copy in the blob format")
+	# The posted run as the room checks it (WIRE.md section 10): each stage less its proof is the room's
+	# own checkpoint, its turns hash to turn_hashes in order, and the chain ends at the initial checkpoint.
+	var run: Dictionary = phones[HOST].store().final_run(TIDE)
+	var stage: Dictionary = run
+	var bare := run.duplicate(true)
+	bare.erase("proof")
+	var chained := Canonical.same(run, whole) and Canonical.same(bare, flat)
+	while chained and int(stage.get("stage_index", 0)) > 0:
+		chained = OpenTurns.proof_turns(stage.proof).map(func(turn: Dictionary) -> String: return turn.recording_hash) == stage.turn_hashes and stage.previous_checkpoint_hash == stage.proof.checkpoint.checkpoint_hash
+		stage = stage.proof.checkpoint
+	_check(chained and stage.checkpoint_hash == Registry.initial_checkpoint(TIDE).checkpoint_hash, "The posted run is the phone's nested copy, chained to the room's checkpoints and the initial one")
+	var timed := Runs.run_time(TIDE, run)
+	var descriptor := Registry.descriptor(TIDE)
+	var verdict := ReplayCheck.check({"chapter": {"level_id": descriptor.level_id, "level_version": descriptor.level_version, "definition_hash": descriptor.definition_hash}, "checkpoint": run, "ticks": timed.get("ticks", -1)})
+	# The witness turns play with catch assistance on, so the job reads the open turns proof through to them and stops there.
+	_check(not timed.is_empty() and (verdict.valid and verdict.measured_ticks == timed.ticks if not timed.assisted else verdict.reason == "assisted_run"), "The board's replay job reads the posted run's open turns (%s)" % verdict.reason)
 	return {"server": server, "phones": phones, "turns": played_turns}
 
 func _reinstall_recovers(played: Dictionary) -> void:

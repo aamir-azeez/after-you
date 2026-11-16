@@ -45,6 +45,10 @@ const OPEN_VIEW_KEYS := ["turn", "cap", "must_finish", "pass_bytes", "turn_hashe
 const EARLIER_STAGES := "earlier-stages"
 ## Turns one send-back request carries (WIRE.md section 9).
 const SEND_BACK_TURNS := 16
+## JSON bytes one send-back carries: the smallest turn body any server route
+## takes (backend src/v2/protocol-relay.ts MAX_V2_BODY_BYTES) less room for the
+## envelope. A wider turn goes alone; it came in a turn body of its own.
+const SEND_BACK_BYTES := 327680 - 1024
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -938,8 +942,9 @@ func recover_turns() -> bool:
 	var stages := _turn_stages(view)
 	var response := await _request(HTTPClient.METHOD_POST, _room_path() + "/turn-copies/want", {"schema_version": 1, "recording_hashes": wanted.slice(0, 128)})
 	if response.get("ignored", false): return false
-	# A server without turn send-back yet (WIRE.md section 9 waits for the owner) leaves the room waiting.
-	if not response.get("ok", false): return _error("turns_missing", PlayerCopy.OPEN_TURNS_MISSING)
+	if not response.get("ok", false):
+		_network_error(response)
+		return false
 	var data: Variant = response.get("data")
 	var kept: Array = []
 	if data is Dictionary and data.get("copies") is Array:
@@ -1006,8 +1011,18 @@ func _send_back_wanted(view: Variant) -> void:
 	for wanted: Variant in view.open_turns.wanted:
 		var found: Dictionary = _turns.find_turn(str(wanted))
 		if not found.is_empty(): turns.append(found.record)
-	for start in range(0, turns.size(), SEND_BACK_TURNS):
-		var sent := await _request(HTTPClient.METHOD_POST, _room_path() + "/turn-copies", {"schema_version": 1, "turns": turns.slice(start, start + SEND_BACK_TURNS)})
+	# Batches stay within the turn body bound: up to SEND_BACK_TURNS records and SEND_BACK_BYTES, a wider turn alone.
+	var batches: Array = []
+	var bytes := 0
+	for record: Dictionary in turns:
+		var size := JSON.stringify(record).to_utf8_buffer().size()
+		if batches.is_empty() or batches[-1].size() == SEND_BACK_TURNS or bytes + size > SEND_BACK_BYTES:
+			batches.append([])
+			bytes = 0
+		batches[-1].append(record)
+		bytes += size
+	for batch: Array in batches:
+		var sent := await _request(HTTPClient.METHOD_POST, _room_path() + "/turn-copies", {"schema_version": 1, "turns": batch})
 		if not sent.get("ok", false): return
 
 func _prepare_pending(operation: String, body: Dictionary) -> bool:

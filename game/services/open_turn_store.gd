@@ -17,7 +17,6 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const KnownCheckpoints = preload("res://core/physical/known_checkpoints.gd")
-const BlobCodec = preload("res://services/blob_codec.gd")
 const ROOT := "user://open-turns"
 const TURN_SUFFIX := ".turn.json"
 const CHECKPOINT_SUFFIX := ".checkpoint.json"
@@ -307,17 +306,13 @@ func keep_final(value: Dictionary) -> bool:
 	if directory().is_empty() or not keep_checkpoint(value): return false
 	return AtomicFile.write_text(directory().path_join(FINAL), JSON.stringify({"checkpoint_hash": value.checkpoint_hash}))
 
-## The finished run as a phone would post it (WIRE.md section 10, waiting for
-## the owner; the server posts no open turns runs yet): the final checkpoint
-## nesting every stage, from this phone's copies, in the shared blob format
-## (services/blob_codec.gd): {byte_length, digest, body}. {} when it is not here.
-func run_blob(chapter_key: String) -> Dictionary:
+## The finished run as the server takes it from a phone (WIRE.md section 10):
+## the final checkpoint nesting every stage, from this phone's copies. {} when
+## it is not here.
+func final_run(chapter_key: String) -> Dictionary:
 	var named := _read(directory().path_join(FINAL), 1024) if not directory().is_empty() else {}
 	var last := checkpoint(str(named.get("checkpoint_hash", "")))
-	var whole := nested(chapter_key, last) if not last.is_empty() else {}
-	if whole.is_empty(): return {}
-	var bytes := JSON.stringify(Canonical.normalized(whole), "", true, true).to_utf8_buffer()
-	return {"byte_length": bytes.size(), "digest": BlobCodec.digest(bytes), "body": Marshalls.raw_to_base64(BlobCodec.encode(bytes))}
+	return nested(chapter_key, last) if not last.is_empty() else {}
 
 ## Removes every copy `owner_id` keeps (an erased identity): its known layout
 ## only, folder by folder, never a generic recursive delete.
