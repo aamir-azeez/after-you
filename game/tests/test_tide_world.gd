@@ -47,6 +47,7 @@ func _run() -> void:
 	_keepsakes()
 	_sound(level)
 	_open_crossings_dry()
+	_ramp_waits_for_pad()
 	var scene: PackedScene = load("res://turn_of_the_tide.tscn")
 	var state := scene.get_state()
 	var key := ""
@@ -761,6 +762,29 @@ func _plain_pads(level: Dictionary) -> void:
 		_check(ring != null and is_equal_approx(ring.outer_radius, float(pad.radius_cm) / 100.0 + 0.025), "Pinned plain, a pad keeps its plain ring: " + str(pad.id))
 	world.queue_free()
 	await process_frame
+
+## Turn of the Tide@3's slipway also needs someone on the wheel step: its
+## ramp stays raised, a crossing plainly shut, until the pad is held, so a
+## lowered ramp is always a way across.
+func _ramp_waits_for_pad() -> void:
+	var key := "turn-of-the-tide@3"
+	var level := Registry.definition(key)
+	var start := Registry.initial_checkpoint(key)
+	var world := _world(level, 0, start)
+	var lowered: Array = []
+	for held: bool in [false, true]:
+		var opening := start.duplicate(true)
+		opening.mechanisms.controls.merge({"tide": "low", "winch": "slip"}, true)
+		opening.mechanisms.get_or_add("levers", {})["sluice"] = true
+		if held: opening.players.p0 = {"x": 192, "z": -512, "height": 96, "surface_id": "wheel-step"}
+		var sim := Simulation.new()
+		sim.simulation_version = 15
+		sim._reset_trusted(level, "set-the-tide", opening, {}, "a")
+		var state: Dictionary = sim.snapshot()
+		world.present(state, true)
+		lowered.append([bool(state.hold_pads.get("wheel-step-pad", false)), bool(state.bridges.get("slipway", false)), is_zero_approx(world._ramps.slipway.rotation.z)])
+	_check(lowered == [[false, false, false], [true, true, true]], "Tide@3: at low tide with the winch at slip the ramp stays raised until someone holds the wheel step, and lies down once they do: %s" % [lowered])
+	world.queue_free()
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:
 	# A trusted reset opens the turn without the proof's catalog check; every

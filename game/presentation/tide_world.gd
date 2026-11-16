@@ -972,13 +972,22 @@ func _build_ramps() -> void:
 		hinge.set_meta("target", RAMP_RAISED)
 		_ramps[id] = hinge
 
-## Where each ramp heads from the snapshot's controls.
-func _aim_ramps(controls: Dictionary, immediate: bool) -> void:
+## Where each ramp heads from the snapshot's controls and held pads. A ramp
+## whose gate on this stage also needs a pad held stays raised until someone
+## stands on that pad, so a lowered ramp is always a way across.
+func _aim_ramps(controls: Dictionary, held: Dictionary, immediate: bool) -> void:
 	for id: String in _ramps:
 		var hinge: Node3D = _ramps[id]
-		var lowered := str(controls.get(str(_ramp_on[id][0]), "")) == str(_ramp_on[id][1])
+		var lowered := str(controls.get(str(_ramp_on[id][0]), "")) == str(_ramp_on[id][1]) and _ramp_pads_held(id, held)
 		hinge.set_meta("target", 0.0 if lowered else RAMP_RAISED)
 		if immediate or reduced_motion: hinge.rotation.z = float(hinge.get_meta("target"))
+
+## Whether every pad the stage's gate on `route_id` names is held.
+func _ramp_pads_held(route_id: String, held: Dictionary) -> bool:
+	var when: Dictionary = _gate_for(route_id).get("when", {})
+	for term: Dictionary in [when] + when.get("all", []):
+		if term.has("pad_id") and not bool(held.get(str(term.pad_id), false)): return false
+	return true
 
 func _swing_ramps(delta: float) -> void:
 	for hinge: Node3D in _ramps.values():
@@ -1133,7 +1142,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		# The valve turned itself with the journey switches.
 		wheel.wheel.set_meta("value", str(controls.get(id, "")))
 	_follow_knobs()
-	_aim_ramps(controls, immediate)
+	_aim_ramps(controls, state.get("hold_pads", {}), immediate)
 	waters.present_controls(controls, immediate)
 	for id: String in _gauges:
 		var gauge: Dictionary = _gauges[id]
