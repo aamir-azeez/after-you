@@ -11,6 +11,7 @@ const Catalog = preload("res://services/cosmetic_catalog.gd")
 const RunReactions = preload("res://presentation/run_reactions.gd")
 const RunReactionPlayer = preload("res://presentation/run_reaction_player.gd")
 const Track = preload("res://services/run_reaction_track.gd")
+const EndReactions = preload("res://presentation/end_reactions.gd")
 
 ## Stands in for the Wardrobe in the real app: on, and where it was opened from.
 class WardrobeStub extends "res://presentation/wardrobe_flow.gd":
@@ -1005,6 +1006,9 @@ func _test_rapid_reactions() -> void:
 	for index in range(1, track.size()): spaced = spaced and int(track[index].tick) - int(track[index-1].tick) >= Track.COOLDOWN_TICKS
 	_check(same, "Rapid taps on Home make the same track and pill as the same taps in a turn")
 	_check(track.size() == Track.MAX_PER_TURN and spaced, "Home keeps a turn's cooldown between faces and its cap: %s" % [track])
+	# No frame ran in the loop, so every bubble shown is still there: one per face kept, none for a refused tap.
+	var bubbles := stage.get_children().filter(func(node: Node) -> bool: return node is EndReactions.Bubble)
+	_check(bubbles.size() == track.size(), "Each face Home keeps shows one bubble over its pip, and refused taps show none: %d" % bubbles.size())
 	_check(refused_in_cooldown and home.disabled and home.modulate.a < 1.0, "Home's faces card stays shut while the cooldown runs, and the pill rests once the cap is reached")
 	viewport.free()
 	await process_frame
