@@ -56,10 +56,12 @@ func _turn(level: Dictionary, evidence: Dictionary, index: int, role: String) ->
 	screen.set_physics_process(false)
 	screen.set_process(false)
 	# A chapter of more than two stages loads its journal on a worker behind
-	# a card (relay_preview.gd _loads_threaded); the screen joins it itself.
+	# a card (relay_preview.gd _loads_threaded), joined from its _process,
+	# which this suite holds still: join it here as that would.
 	for _frame in range(600):
 		if screen.mode != "loading": break
 		await process_frame
+		screen._poll_journal_load()
 	_check(screen.chapter_key == key and screen.mode == "ready", "The solo scene opens %s ready to play: %s/%s" % [key, id, role])
 	_check(is_instance_valid(screen.world) and screen.world.get_script() == Registry.world_script(key), "The scene builds the descriptor's world")
 	if is_instance_valid(screen.world): screen.world.set_process(false)

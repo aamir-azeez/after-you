@@ -39,7 +39,6 @@ const DATA := {
 	"keepsakes": [
 		{"stage_id": "where-the-stream-went", "title": PlayerCopy.FOG_MARSH_STAGE_1_TITLE},
 		{"stage_id": "catch-the-pipsport", "title": PlayerCopy.FOG_MARSH_STAGE_2_TITLE},
-		{"stage_id": "carry-it-home", "title": PlayerCopy.FOG_MARSH_STAGE_3_TITLE},
 	],
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
