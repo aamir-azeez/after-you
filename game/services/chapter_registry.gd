@@ -140,11 +140,21 @@ static func _descriptor(key: String) -> Dictionary:
 		"checkpoint_title": words.get("checkpoint_title", ""), "checkpoint_text": words.get("checkpoint_text", ""),
 		"completion_text": words.get("completion", "")}
 
-## The chapter's story line with its *emphasis* markup, for About this
-## chapter (presentation/emphasis.gd draws it). The descriptor's summary is
-## the same line as plain text. "" if unknown.
-static func summary_markup(key: String) -> String:
-	return str(_words(key).get("summary", "")) if Index.keys().has(key) else ""
+## The chapter's letter for About this chapter: {"greeting", "body" (the
+## summary with its *emphasis* markup), "signoff", "address", "postmark",
+## "stamp"}, from its descriptor's "letter" or, without one, the first version
+## of the same level that has one. {} if unknown.
+static func letter(key: String) -> Dictionary:
+	if not Index.keys().has(key): return {}
+	var envelope: Dictionary = _chapter(key).letter
+	if envelope.is_empty():
+		for other: String in Index.keys():
+			if other.get_slice("@", 0) == key.get_slice("@", 0) and not _chapter(other).letter.is_empty():
+				envelope = _chapter(other).letter
+				break
+	return {"greeting": PlayerCopy.LETTER_GREETING, "body": str(_words(key).get("summary", "")),
+		"signoff": str(envelope.get("signoff", "")), "address": envelope.get("address", []).duplicate(),
+		"postmark": str(envelope.get("postmark", "")), "stamp": str(envelope.get("stamp", ""))}
 
 ## A chapter's words: its descriptor's copy over its family's checkpoint copy.
 static func _words(key: String) -> Dictionary:

@@ -15,6 +15,8 @@ const DATA := {
 		"summary": PlayerCopy.LIGHTHOUSE_SUMMARY,
 		"completion": PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED,
 	},
+	"letter": {"stamp": "lighthouse", "address": [PlayerCopy.LETTER_LIGHTHOUSE, PlayerCopy.LETTER_LIGHTHOUSE_LINE],
+		"postmark": PlayerCopy.LETTER_POST_HARBOUR, "signoff": PlayerCopy.LETTER_SEE_YOU_SOON},
 	"thumbnail": "res://assets/paid_levels/sleeping-lighthouse.png",
 	"beds": ["water_far", "shore"],
 	# The chapter's keepsake on Home (presentation/keepsakes/).

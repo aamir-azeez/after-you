@@ -15,6 +15,8 @@ const DATA := {
 		"summary": PlayerCopy.CONSERVATORY_V2_SUMMARY,
 		"completion": PlayerCopy.CONSERVATORY_COMPLETION,
 	},
+	"letter": {"stamp": "basket", "address": [PlayerCopy.LETTER_NEW_DECK, PlayerCopy.LETTER_NEW_DECK_LINE],
+		"postmark": PlayerCopy.LETTER_POST_GARDEN, "signoff": PlayerCopy.LETTER_SEE_YOU_SOON},
 	"stage_copy": {
 		"a-light-above": {
 			"title": PlayerCopy.CONSERVATORY_ABOVE_TITLE,

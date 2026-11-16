@@ -171,6 +171,7 @@ leaderboard_celebration 1
 leaderboard_replay_check 3
 leaderboard_screen 3
 leaderboard_watch 1
+letter_view 1
 level_checker 3
 level_tools 2
 level_view 2
