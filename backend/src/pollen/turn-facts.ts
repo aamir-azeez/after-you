@@ -49,7 +49,7 @@ export function validTurnFacts(value: unknown): value is TurnFacts {
   if (duel && value.duel !== true || held && (value.duel_held !== true || !duel)) return false;
   if (Object.keys(value).length !== KEYS.length + Number(duel) + Number(held) || !KEYS.every(key => Object.hasOwn(value, key))) return false;
   return value.schema_version === 1 && typeof value.room_id === "string" && ID_PATTERN.test(value.room_id) && typeof value.recording_hash === "string" && HASH_PATTERN.test(value.recording_hash) &&
-    typeof value.turn_id === "string" && /^t[0-9]{1,2}-[0-9]{1,2}-[ab]$/.test(value.turn_id) && typeof value.player_id === "string" && ID_PATTERN.test(value.player_id) &&
+    typeof value.turn_id === "string" && /^t[0-9]{1,2}-[0-9]{1,2}-[a-t]$/.test(value.turn_id) && typeof value.player_id === "string" && ID_PATTERN.test(value.player_id) &&
     count(value.accepted_at, 1) && typeof value.week === "string" && ISO_WEEK_PATTERN.test(value.week) && value.week === isoWeek(value.accepted_at) &&
     typeof value.level_id === "string" && /^[a-z0-9-]{1,64}$/.test(value.level_id) && typeof value.stage_id === "string" && /^[a-z0-9-]{1,64}$/.test(value.stage_id) &&
     (value.role === "a" || value.role === "b") && count(value.ticks) && (value.tries === null || count(value.tries, 1, 999)) &&

@@ -51,7 +51,7 @@ JOURNEY = "scaffold-test-journey@1"
 RUNS = [
     ("scaffold-test-coop@1", ["--key", "scaffold-test-coop@1", "--family", "cooperative", "--title", "Scaffold Test Coop", "--shard", "1"]),
     ("scaffold-test-journey@1", ["--key", "scaffold-test-journey@1", "--family", "journey", "--title", "Scaffold Test Journey", "--shard", "2", "--premium"]),
-    ("conservatory@2", ["--version-of", "conservatory@1", "--shard", "3"]),
+    ("conservatory@3", ["--version-of", "conservatory@2", "--shard", "3"]),
 ]
 REFUSED = [
     ["--version-of", "high-and-low@1", "--shard", "1"],

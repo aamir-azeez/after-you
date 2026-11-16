@@ -10,6 +10,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Families = preload("res://services/chapter_families.gd")
 const Layout = preload("res://services/level_layout.gd")
 const Golden = preload("res://tests/golden_support.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 
 ## Whether the level tools can read the chapter: its family lays its stages
 ## out (services/chapter_families.gd "layout"). The checker fails a
@@ -70,6 +71,17 @@ static func floor_checkpoint(checkpoint: Dictionary) -> Dictionary:
 	var mechanisms: Dictionary = checkpoint.get("mechanisms", {}).duplicate(true)
 	if not mechanisms.has("latched_bridges"): mechanisms["latched_bridges"] = checkpoint.get("latched_bridges", []).duplicate()
 	return {"players": players, "mechanisms": mechanisms}
+
+## How many turns `stage` (as authored) may take on open turns, in words
+## ("up to 10 turns"), or "" on the two-turn rules. The map, the preview and
+## the playtest report all say it this way.
+static func turns_label(level: Dictionary, stage: Dictionary) -> String:
+	return "up to %d turns" % OpenTurns.cap(stage) if OpenTurns.pinned(level) else ""
+
+## `text` with `stage`'s turns after it, when it has open turns.
+static func with_turns(text: String, level: Dictionary, stage: Dictionary) -> String:
+	var turns := turns_label(level, stage)
+	return text if turns.is_empty() else "%s, %s" % [text, turns]
 
 ## A stand-in first checkpoint from the definition's own starts, for a layout
 ## no chapter has registered yet (players on their start floors, nothing kept).

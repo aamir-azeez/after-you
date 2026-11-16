@@ -33,6 +33,8 @@ const FacePacks = preload("res://services/face_packs.gd")
 ## turn goes again without its pack faces (_resend_without_pack_faces).
 const FACE_PACK_REFUSALS := {403: ["face_pack_not_owned"], 400: ["invalid_end_reaction", "invalid_run_reactions"]}
 const HardRoomClient = preload("res://services/hard_room_client.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -46,8 +48,9 @@ const JOURNAL_NODES_PER_TWO_STAGES := 140000
 const MAX_PAIR_BYTES := 2097152
 const MAX_PAIR_NODES := 220000
 ## Highest room rules number this build understands (9 = comfort alias,
-## 11 = sleeping-lighthouse@2). A room is still held to its chapter's own rules.
-const MAX_SIMULATION_VERSION := 11
+## 11 = sleeping-lighthouse@2, 12 and 13 = open controls). A room is still held
+## to its chapter's own rules.
+const MAX_SIMULATION_VERSION := 15
 const MAX_HELD := 4
 const STATE_KEYS := ["schema_version", "api_version", "owner_player_id", "room_id", "snapshot", "draft", "held_drafts", "pending", "last_receipt", "auth_required"]
 const SNAPSHOT_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at", "api_version", "active_role", "first_player_id", "active_player_id", "player_slot", "stage_id", "recording_a", "validation"]
@@ -264,6 +267,7 @@ func _sync_chapter() -> void:
 	_chapter_key = Registry.resolve(_state.get("snapshot"))
 	# A chapter whose proof remembers verified checkpoints keeps them for restarts.
 	Proofs.save_memo(_chapter_key)
+	Proofs.prepare_traces()
 	_level = Registry.definition(_chapter_key)
 	_simulation = Registry.simulation_script(_chapter_key)
 
@@ -277,12 +281,22 @@ var _replace: Dictionary = {}
 func begin_replace() -> bool:
 	if not finish_live_draft_save() or not _guard() or _state.auth_required or read_only or _busy != 0 or _remote_hold or not _state.pending.is_empty(): return false
 	var room: Dictionary = _state.snapshot
-	if room.is_empty() or not Typed.equal(room.get("active_role"), "b") or not Typed.equal(room.get("first_player_id"), _owner) or not room.get("recording_a") is Dictionary: return false
+	# The latest turn is this player's: their first turn, or (open turns) their latest pass.
+	if room.is_empty() or not Typed.equal(room.get("active_role"), "b") or Typed.equal(room.get("active_player_id"), _owner) or not room.get("recording_a") is Dictionary: return false
+	var latest: Dictionary = OpenTurns.memory(room).prior
+	if not Typed.equal(latest.get("player_slot"), room.get("player_slot")): return false
 	var before := room.duplicate(true)
-	before.active_role = "a"
 	before.active_player_id = _owner
-	before.a_turn_id = null
-	before.recording_a = null
+	var passes: Array = before.open_turns.passes if before.get("open_turns") is Dictionary else []
+	if passes.is_empty():
+		before.active_role = "a"
+		before.a_turn_id = null
+		before.recording_a = null
+	else:
+		passes.pop_back()
+		before.open_turns.turn = int(before.open_turns.turn) - 1
+		before.open_turns.must_finish = false
+	if before.get("open_turns") is Dictionary and passes.is_empty() and before.recording_a == null: before.open_turns.turn = 1
 	if not _valid_snapshot(before): return false
 	_retire_live()
 	_replace = {"origin": room.duplicate(true), "room": before}
@@ -352,9 +366,23 @@ func stage_id() -> String:
 	return str(snapshot().get("stage_id", ""))
 
 
+## The memory the next turn replays: the stage's latest turn (open turns), or its first.
 func prior_recording() -> Dictionary:
-	var first: Variant = snapshot().get("recording_a")
-	return first.duplicate(true) if first is Dictionary else {}
+	return OpenTurns.memory(snapshot()).prior.duplicate(true)
+
+## Open turns: the stage's turns before the memory, oldest first ([] before open turns).
+func memory_chain() -> Array:
+	return OpenTurns.memory(snapshot()).chain.duplicate(true)
+
+## Open turns: the room's turn count view ({} before open turns): turn, cap,
+## must_finish, the viewer's player_slot and the stage_index. Cheap enough for
+## every tick of the turn HUD (kit/turn_dots.gd): it copies none of the room's turns.
+func open_turns() -> Dictionary:
+	if not _guard() or _state.auth_required: return {}
+	var room: Dictionary = _room_now()
+	var value: Variant = room.get("open_turns")
+	if not value is Dictionary: return {}
+	return {"turn": int(value.get("turn", 0)), "cap": int(value.get("cap", 0)), "must_finish": bool(value.get("must_finish", false)), "player_slot": str(room.get("player_slot", "")), "stage_index": int(room.get("stage_index", -1))}
 
 
 func chapter_complete() -> bool:
@@ -399,15 +427,18 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 		_error("rehearsal_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_D879B5A3D87C)
 		return null
 	var room: Dictionary = _room_now()
-	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
+	var memory := OpenTurns.memory(room)
+	var prior: Dictionary = memory.prior
 	var simulation: RefCounted = _simulation.new()
 	var saved: Dictionary = draft() if resume_draft else {}
 	if saved.is_empty():
 		saved = {"simulation_version": int(room.get("simulation_version", _level.simulation_version))}
 	if read_only: return null
-	if not Registry.reset_simulation(simulation, _chapter_key, _level, room.stage_id, room.checkpoint, prior, room.active_role, saved):
+	if not Registry.reset_simulation(simulation, _chapter_key, _level, room.stage_id, room.checkpoint, prior, room.active_role, saved, memory.chain):
 		_error("invalid_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_8F47C70FEFCA)
 		return null
+	# Open turns: the turn the room says must finish the stage offers no pass.
+	if room.get("open_turns") is Dictionary and "pass_allowed" in simulation: simulation.pass_allowed = not bool(room.open_turns.get("must_finish", false))
 	if "packed_recordings" in simulation: simulation.packed_recordings = packed_room()
 	_live_simulation = weakref(simulation)
 	_live_context = {"generation": _generation, "owner": _owner, "epoch": _epoch, "room": _room,
@@ -436,7 +467,7 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 	if not is_same(simulation.get("level"), _live_context.level_ref) or not is_same(simulation.get("_checkpoint"), _live_context.checkpoint_ref) or not is_same(simulation.get("_prior"), _live_context.prior_ref):
 		return _error("reset_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_53B70FA2233F)
 	var room: Dictionary = _room_now()
-	var prior: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
+	var prior: Dictionary = OpenTurns.memory(room).prior
 	# A periodic capture is checked, exported and written on the worker: all of
 	# that grows with the turn's recording, and on the main thread it hitched
 	# once a second, more as the turn went on.
@@ -637,10 +668,15 @@ func commit(recording: Dictionary, tries: int = 0, face: String = "", track: Arr
 		# A failed check is not kept, so it is used here rather than made again.
 		if result is Dictionary and adopt_turn_check(job, result): checked = result.checked
 	if checked.is_empty(): checked = _verify_recording(recording, _room_now())
-	if not checked.valid or not checked.get("snapshot", {}).get("can_commit", false):
+	# Open turns: a pass is saved unfinished, once its memory is over, unless this turn must finish the stage.
+	var open: Variant = _room_now().get("open_turns")
+	var passing: bool = recording.get("role") == "b" and recording.get("completed") == false and open is Dictionary
+	if passing and (bool(open.get("must_finish", false)) or JSON.stringify(recording).to_utf8_buffer().size() > int(open.get("pass_bytes", 0))):
+		return _error("incomplete_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_D74CA6BA0A5A)
+	if not checked.valid or not (checked.get("snapshot", {}).get("can_commit", false) or (passing and checked.get("ready", false))):
 		return _error("incomplete_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_D74CA6BA0A5A)
 	var body := {"base_revision": _room_now().revision, "idempotency_key": _new_key(), "branch": _room_now().branch, "recording": recording.duplicate(true)}
-	if recording.role == "b":
+	if recording.role == "b" and not passing:
 		var derived: Dictionary = _derived_checkpoint(_room_now(), recording)
 		if not derived.valid:
 			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
@@ -650,7 +686,7 @@ func commit(recording: Dictionary, tries: int = 0, face: String = "", track: Arr
 	if EndReactionStore.is_face(face) and FacePacks.can_pick(face): body["end_reaction"] = face
 	var reactions := RunReactionTrack.parse(track, int(recording.get("duration_ticks", 0))).filter(func(entry: Dictionary) -> bool: return FacePacks.can_pick(str(entry.id)))
 	if not reactions.is_empty(): body["run_reactions"] = reactions
-	if replacing(): body["replaces"] = str(_replace.origin.recording_a.recording_hash)
+	if replacing(): body["replaces"] = str(OpenTurns.memory(_replace.origin).prior.recording_hash)
 	if not _prepare_pending("turns", body):
 		return false
 	# The pending turn now carries the replacement; a refusal keeps it as any refused turn.
@@ -767,7 +803,7 @@ func fetch_pair(pair_id: String) -> Dictionary:
 	if not proof is Dictionary or Registry.previous_checkpoint(_chapter_key, pair.checkpoint).is_empty() or not pair.a is Dictionary or not pair.b is Dictionary:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_806EA219BFEC)
 		return {}
-	var derived: Dictionary = _simulation.derive_checkpoint(_level, Registry.previous_checkpoint(_chapter_key, pair.checkpoint), pair.a, pair.b)
+	var derived: Dictionary = CheckpointPairs.derive(_simulation, _level, Registry.previous_checkpoint(_chapter_key, pair.checkpoint), pair)
 	if not derived.valid or not Typed.same(derived.get("checkpoint", {}), pair.checkpoint) or pair.stage_index != int(pair.checkpoint.stage_index) - 1 or pair_id != "p%d-%d" % [int(pair.branch), int(pair.stage_index)]:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_35B4466C889C)
 		return {}
@@ -925,7 +961,7 @@ func _accept_receipt(value: Variant) -> bool:
 	var completed_chapter := ""
 	var completed_count := 0
 	var retired_proof: Dictionary = {}
-	if _state.pending.operation == "turns" and _state.pending.body.recording.role == "b":
+	if _state.pending.operation == "turns" and _state.pending.body.recording.role == "b" and _state.pending.body.has("checkpoint"):
 		# A receipt can arrive after a partner has already forked. Its exact
 		# accepted native-verified B proof still earns the completed prefix.
 		completed_chapter = Registry.resolve(_state.pending.origin)
@@ -1202,6 +1238,12 @@ func _valid_snapshot(value: Variant) -> bool:
 	if value.has("simulation_version"):
 		keys.append("simulation_version")
 		if not _range(value.simulation_version, 1, MAX_SIMULATION_VERSION) or int(value.simulation_version) not in Registry.supported_rules(chapter): return false
+	# Open turns (core/physical/open_turns.gd): exactly the chapters that play them say how far the stage has gone.
+	var open: bool = OpenTurns.rules(int(value.get("simulation_version", level.get("simulation_version", 0))))
+	if open:
+		keys.append("open_turns")
+		var view: Variant = value.get("open_turns")
+		if not view is Dictionary or not _exact(view, ["turn", "cap", "must_finish", "pass_bytes", "passes"]) or not _range(view.turn, 0, OpenTurns.MAX_CAP) or not _range(view.cap, 0, OpenTurns.MAX_CAP) or not view.must_finish is bool or not _range(view.pass_bytes, 0, MAX_BYTES) or not view.passes is Array: return false
 	if not _exact(value, keys) or not Typed.equal(value.api_version, 2) or not Typed.equal(value.schema_version, 2) or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or not Typed.equal(value.validation, "structural_client_replay_required") or not Typed.equal(value.room_id, _room):
 		return false
 	if not Typed.valid_id(value.host_id) or (value.guest_id != null and (not Typed.valid_id(value.guest_id) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
@@ -1224,19 +1266,30 @@ func _valid_snapshot(value: Variant) -> bool:
 	if not Typed.equal(value.player_slot, ("p0" if Typed.equal(value.host_id, _owner) else "p1")) or (Typed.equal(value.host_id, _owner) and (not value.has("invite_code") or not _pattern(value.invite_code, "^[A-F0-9]{20}$"))) or (not Typed.equal(value.host_id, _owner) and value.has("invite_code")):
 		return false
 	if index == stages:
-		return Typed.equal(value.stage_id, "") and Typed.equal(value.active_role, "complete") and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null
+		return Typed.equal(value.stage_id, "") and Typed.equal(value.active_role, "complete") and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null and (not open or (Typed.equal(value.open_turns.turn, 0) and value.open_turns.passes.is_empty()))
 	var stage: Dictionary = level.stages[index]
 	var first: Variant = value.host_id if stage.first_player_slot == "p0" else value.guest_id
 	var second: Variant = value.guest_id if stage.first_player_slot == "p0" else value.host_id
 	if not Typed.equal(value.stage_id, stage.id) or not Typed.equal(value.first_player_id, first):
 		return false
+	# Open turns: the passes the room holds, each the next pip's, each replaying over the one before.
+	var passes: Array = value.open_turns.passes if open else []
+	var turn := 1 if value.recording_a == null else 2 + passes.size()
+	if open and (not Typed.equal(value.open_turns.turn, turn) or not Typed.equal(value.open_turns.cap, OpenTurns.cap(stage)) or turn > OpenTurns.cap(stage)): return false
 	if value.recording_a == null:
-		return value.a_turn_id == null and Typed.equal(value.active_role, "a") and Typed.equal(value.active_player_id, first)
-	if not value.recording_a is Dictionary or not Typed.equal(value.a_turn_id, "t%d-%d-a" % [int(value.branch), index]) or not Typed.equal(value.active_role, "b") or not Typed.equal(value.active_player_id, second):
+		return value.a_turn_id == null and passes.is_empty() and Typed.equal(value.active_role, "a") and Typed.equal(value.active_player_id, first)
+	if not value.recording_a is Dictionary or not Typed.equal(value.a_turn_id, "t%d-%d-a" % [int(value.branch), index]) or not Typed.equal(value.active_role, "b") or not Typed.equal(value.active_player_id, first if turn % 2 == 1 else second):
 		return false
 	if not Typed.equal(value.recording_a.get("simulation_version"), value.get("simulation_version", level.simulation_version)): return false
 	var verified: Dictionary = _checked_turn(chapter, value.checkpoint, {}, value.recording_a)
-	return Typed.equal(value.recording_a.get("role"), "a") and verified.valid and verified.get("snapshot", {}).get("can_commit", false)
+	if not Typed.equal(value.recording_a.get("role"), "a") or not verified.valid or not verified.get("snapshot", {}).get("can_commit", false): return false
+	if passes.is_empty(): return true
+	# The latest pass's check replays every earlier pass as its memory, each required ready, so one check covers them all.
+	for later: Variant in passes:
+		if not later is Dictionary or not Typed.equal(later.get("role"), "b"): return false
+	var turns: Array = [value.recording_a] + passes
+	var checked: Dictionary = _checked_turn(chapter, value.checkpoint, turns[-2], turns[-1], turns.slice(0, turns.size() - 2))
+	return checked.get("valid", false) and checked.get("ready", false)
 
 
 func _valid_draft(value: Variant) -> bool:
@@ -1249,18 +1302,20 @@ func _verify_recording(recording: Variant, origin: Dictionary) -> Dictionary:
 	var chapter := Registry.resolve(origin)
 	if chapter.is_empty(): return {"valid": false}
 	if not Typed.equal(recording.get("simulation_version"), origin.get("simulation_version", Registry.definition(chapter).simulation_version)): return {"valid": false}
-	return _checked_turn(chapter, origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {}, recording)
+	var memory := OpenTurns.memory(origin)
+	return _checked_turn(chapter, origin.checkpoint, memory.prior, recording, memory.chain)
 
 
 ## engine.verify_recording(level, recording, checkpoint, prior) for this
 ## chapter, made once per exact inputs: a check is a pure replay, so the same
 ## inputs give the same answer. A valid one is kept (_proven_turns).
-func _checked_turn(chapter: String, checkpoint: Dictionary, prior: Dictionary, recording: Dictionary) -> Dictionary:
-	var key := _turn_key(chapter, checkpoint, prior, recording)
+## `chain`: open turns only, the stage's turns before `prior`.
+func _checked_turn(chapter: String, checkpoint: Dictionary, prior: Dictionary, recording: Dictionary, chain: Array = []) -> Dictionary:
+	var key := _turn_key(chapter, checkpoint, prior, recording, chain)
 	var known: Dictionary = _proven_turns.get(key, {})
 	if not known.is_empty(): return known.checked.duplicate(true)
 	var started := Time.get_ticks_usec()
-	var checked: Dictionary = Registry.simulation_script(chapter).verify_recording(Registry.definition(chapter), recording, checkpoint, prior)
+	var checked: Dictionary = Registry.simulation_script(chapter).verify_recording(Registry.definition(chapter), recording, checkpoint, prior, chain) if not chain.is_empty() else Registry.simulation_script(chapter).verify_recording(Registry.definition(chapter), recording, checkpoint, prior)
 	_note_check_time(Time.get_ticks_usec() - started, recording, prior)
 	_remember_turn(key, checked, {})
 	return checked
@@ -1270,18 +1325,22 @@ func _checked_turn(chapter: String, checkpoint: Dictionary, prior: Dictionary, r
 ## exact inputs, like _checked_turn.
 func _derived_checkpoint(origin: Dictionary, recording: Dictionary) -> Dictionary:
 	var chapter := Registry.resolve(origin)
-	var prior: Dictionary = origin.recording_a if origin.get("recording_a") is Dictionary else {}
-	var known: Dictionary = _proven_turns.get(_turn_key(chapter, origin.checkpoint, prior, recording), {})
+	var memory := OpenTurns.memory(origin)
+	var known: Dictionary = _proven_turns.get(_turn_key(chapter, origin.checkpoint, memory.prior, recording, memory.chain), {})
 	if not known.get("derived", {}).is_empty(): return known.derived.duplicate(true)
-	var derived: Dictionary = Registry.simulation_script(chapter).derive_checkpoint(Registry.definition(chapter), origin.checkpoint, origin.recording_a, recording)
+	# Open turns: the passes between the first turn and this one are in the checkpoint too.
+	var passes: Array = (memory.chain + [memory.prior]).slice(1)
+	var derived: Dictionary = Registry.simulation_script(chapter).derive_checkpoint(Registry.definition(chapter), origin.checkpoint, origin.recording_a, recording, passes) if not passes.is_empty() else Registry.simulation_script(chapter).derive_checkpoint(Registry.definition(chapter), origin.checkpoint, origin.recording_a, recording)
 	if not known.is_empty() and derived.get("valid", false): known.derived = derived.duplicate(true)
 	return derived
 
 
 ## Every input a turn check reads: the chapter, its starting checkpoint, the
 ## partner's first turn ({} for none) and the turn, each by its whole content.
-static func _turn_key(chapter: String, checkpoint: Dictionary, prior: Dictionary, recording: Dictionary) -> String:
-	return "|".join(PackedStringArray([chapter, Canonical.digest(checkpoint), Canonical.digest(prior), Canonical.digest(recording)]))
+static func _turn_key(chapter: String, checkpoint: Dictionary, prior: Dictionary, recording: Dictionary, chain: Array = []) -> String:
+	var parts := PackedStringArray([chapter, Canonical.digest(checkpoint), Canonical.digest(prior), Canonical.digest(recording)])
+	if not chain.is_empty(): parts.append(Canonical.digest(chain))
+	return "|".join(parts)
 
 
 func _remember_turn(key: String, checked: Dictionary, derived: Dictionary) -> void:
@@ -1307,15 +1366,18 @@ func turn_check_job(recording: Dictionary) -> Dictionary:
 	if not _bounded(recording) or not Typed.equal(origin.active_player_id, _owner) or not Typed.equal(recording.get("role"), origin.active_role) or Typed.equal(origin.active_role, "complete"): return {}
 	var chapter := Registry.resolve(origin)
 	if chapter.is_empty() or not Typed.equal(recording.get("simulation_version"), origin.get("simulation_version", Registry.definition(chapter).simulation_version)): return {}
-	var prior: Dictionary = origin.recording_a if origin.recording_a is Dictionary else {}
-	var key := _turn_key(chapter, origin.checkpoint, prior, recording)
-	var second: bool = recording.role == "b"
+	var memory := OpenTurns.memory(origin)
+	var prior: Dictionary = memory.prior
+	var key := _turn_key(chapter, origin.checkpoint, prior, recording, memory.chain)
+	# Open turns: a pass derives no checkpoint.
+	var second: bool = recording.role == "b" and recording.get("completed") != false
 	var known: Dictionary = _proven_turns.get(key, {})
 	if not known.is_empty() and (not second or not known.derived.is_empty()): return {}
 	# The checkpoint's proofs are remembered across threads (the room's proof memo).
 	Proofs.prepare_memo(chapter)
 	return {"key": key, "family": Registry.simulation_script(chapter), "level": Registry.definition(chapter), "checkpoint": origin.checkpoint.duplicate(true),
-		"prior": prior.duplicate(true), "recording": recording.duplicate(true), "second": second}
+		"prior": prior.duplicate(true), "chain": memory.chain.duplicate(true), "first": origin.recording_a.duplicate(true) if origin.recording_a is Dictionary else {},
+		"recording": recording.duplicate(true), "second": second}
 
 
 ## The static worker that runs turn_check_job()'s job.
@@ -1328,10 +1390,13 @@ func turn_check_runner() -> Callable:
 static func run_turn_check(job: Dictionary) -> Dictionary:
 	var started := Time.get_ticks_usec()
 	var family: Script = job.family
-	var checked: Dictionary = family.verify_recording(job.level, job.recording, job.checkpoint, job.prior)
+	var chain: Array = job.get("chain", [])
+	var checked: Dictionary = family.verify_recording(job.level, job.recording, job.checkpoint, job.prior, chain) if not chain.is_empty() else family.verify_recording(job.level, job.recording, job.checkpoint, job.prior)
 	var derived: Dictionary = {}
 	if job.second and checked.get("valid", false) and checked.get("snapshot", {}).get("can_commit", false):
-		derived = family.derive_checkpoint(job.level, job.checkpoint, job.prior, job.recording)
+		# Open turns: the turns between the first and this one go in its checkpoint.
+		var passes: Array = (chain + [job.prior]).slice(1)
+		derived = family.derive_checkpoint(job.level, job.checkpoint, job.first, job.recording, passes) if not passes.is_empty() else family.derive_checkpoint(job.level, job.checkpoint, job.prior, job.recording)
 	return {"checked": checked, "derived": derived, "usec": Time.get_ticks_usec() - started}
 
 
@@ -1340,8 +1405,9 @@ static func run_turn_check(job: Dictionary) -> Dictionary:
 func adopt_turn_check(job: Dictionary, result: Dictionary) -> bool:
 	if job.is_empty() or not result.get("checked") is Dictionary or not _guard() or _room_now().is_empty(): return false
 	var origin: Dictionary = _room_now()
-	var prior: Dictionary = origin.recording_a if origin.recording_a is Dictionary else {}
-	if _turn_key(Registry.resolve(origin), origin.checkpoint, prior, job.recording) != str(job.key): return false
+	var memory := OpenTurns.memory(origin)
+	var prior: Dictionary = memory.prior
+	if _turn_key(Registry.resolve(origin), origin.checkpoint, prior, job.recording, memory.chain) != str(job.key): return false
 	_note_check_time(int(result.get("usec", 0)), job.recording, prior)
 	_remember_turn(str(job.key), result.checked, result.get("derived", {}) if result.get("derived") is Dictionary else {})
 	return true
@@ -1352,7 +1418,8 @@ func adopt_turn_check(job: Dictionary, result: Dictionary) -> bool:
 func verify_turn(recording: Dictionary) -> Dictionary:
 	if not _guard() or _room_now().is_empty() or Typed.equal(_room_now().active_role, "complete"): return {"valid": false}
 	var origin: Dictionary = _room_now()
-	return _checked_turn(Registry.resolve(origin), origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {}, recording)
+	var memory := OpenTurns.memory(origin)
+	return _checked_turn(Registry.resolve(origin), origin.checkpoint, memory.prior, recording, memory.chain)
 
 
 ## How long checking this turn should take here (the last check's time per
@@ -1430,7 +1497,7 @@ func _same_context(first: Dictionary, second: Dictionary) -> bool:
 	for name: String in ["room_id", "branch", "stage_id", "definition_hash", "simulation_version", "active_role", "active_player_id"]:
 		if first.get(name) != second.get(name):
 			return false
-	return Typed.same(first.checkpoint, second.checkpoint) and Typed.same(first.recording_a, second.recording_a)
+	return Typed.same(first.checkpoint, second.checkpoint) and Typed.same(first.recording_a, second.recording_a) and Typed.same(first.get("open_turns"), second.get("open_turns"))
 
 
 func _guard() -> bool:
@@ -1613,7 +1680,7 @@ func playback_context() -> Dictionary:
 			"simulation_version":room.get("simulation_version",_level.get("simulation_version")),
 			"host_id":room.host_id,"guest_id":room.guest_id,"player_slot":room.player_slot,
 			"checkpoint_hash":room.checkpoint.checkpoint_hash,
-			"recording_hash":room.recording_a.get("recording_hash","") if room.recording_a is Dictionary else ""}}
+			"recording_hash":OpenTurns.memory(room).prior.get("recording_hash","")}}
 
 func verify_room_snapshot(value: Variant) -> bool:
 	# A navigation probe can use the complete native validator without accepting

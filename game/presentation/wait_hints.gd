@@ -260,7 +260,9 @@ static func term_id(term: Dictionary) -> String:
 
 func _pad_held(players: Dictionary, pad_id: String) -> bool:
 	for pad: Dictionary in _stage.get("pressure_pads", []):
-		if str(pad.id) == pad_id: return players.has(pad.owner_slot) and Seven.near(players[pad.owner_slot], pad)
+		if str(pad.id) == pad_id:
+			var owner := str(pad.get("owner_slot", ""))
+			return players.has(owner) and Seven.near(players[owner], pad)
 	return false
 
 ## Dictionaries compare by value; anything else (absent) only to itself.

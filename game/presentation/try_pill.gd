@@ -7,11 +7,15 @@ extends PanelContainer
 ## check mark in place of the retry mark (the retry count concept). In play the
 ## same pill also says Sunshine is on for the turn (show_sunshine: the line sun,
 ## kit/sun_mark.gd, and "Sunshine ×2", Fruits board 7).
+## On an open turns stage's last turn (show_last_turn) it is the coral "Last turn"
+## pill under the turn dots, with the player's own pip in its room colour.
 ## Presentation only; the counts come from services/turn_tries.gd.
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const SunMark = preload("res://presentation/kit/sun_mark.gd")
+const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const OwnLook = preload("res://services/own_look.gd")
 const ICON := preload("res://assets/ui/retry.svg")
 const MUTED := Color("9dbeb4")
 ## The First try chip's fill: the kit's mint.
@@ -80,6 +84,25 @@ func show_sunshine(on: bool) -> void:
 		var sun := SunMark.make(float(_font_size + 1), SunMark.LINE, ControlTheme.INK)
 		_icon.get_parent().add_child(sun)
 		_icon.get_parent().move_child(sun, 0)
+
+## The pill on the turn that must finish an open turns stage: coral, the
+## player's pip in `color` (its slot's colour in the room) wearing their look,
+## and "Last turn". Built once; later calls only show or hide it.
+func show_last_turn(on: bool, color: Color) -> void:
+	visible = on
+	if not on or label.text == PlayerCopy.OPEN_TURNS_LAST_TURN: return
+	var radius := int(float(_font_size) * 0.95)
+	add_theme_stylebox_override("panel", ControlTheme.padded(ControlTheme.rounded(ControlTheme.CORAL, radius, Color(ControlTheme.INK, 0.25)), float(_font_size) * 0.55, float(_font_size) * 0.22))
+	label.text = PlayerCopy.OPEN_TURNS_LAST_TURN
+	_icon.visible = false
+	var pip := PipAvatar.new(true, color, Vector2.ONE * float(_font_size + 9), true)
+	pip.name = "LastTurnPip"
+	pip.outfit = OwnLook.outfit()
+	pip.custom_minimum_size = Vector2.ONE * float(_font_size + 9)
+	pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_icon.get_parent().add_child(pip)
+	_icon.get_parent().move_child(pip, 0)
 
 ## A Replays pill for one turn: who played it and how many tries it took, or
 ## the First try chip when it took one. Hidden when no count was kept (a turn
