@@ -29,6 +29,14 @@ extends RefCounted
 ## The probe also lights beams exactly: each settable mirror at each of its
 ## values through the engine's own BeamField, where reach otherwise counts a
 ## beam signal as always lit.
+##
+## A walking pip (reach's `walker`): the other pip works every control, lever
+## and pad while this one only walks. The walker goes wherever the crossings
+## open, but works nothing and stands on no pad. The presser cannot hold a pad
+## and walk a crossing that pad opens at the same time, so for its own walking
+## a gate counts only the pads within a step of that crossing (where standing
+## on the pad could already put it on the crossing); for the walker every pad
+## the presser reaches counts. Beams are lit exactly, as for a frozen pip.
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
@@ -47,6 +55,8 @@ var pairs: Dictionary = {}        # slot -> {"a>b": [bits, lever]}
 var reverse: Dictionary = {}      # slot -> Array (per surface) of [from, required bits, lever]
 var open_controls := false        # the definition pins open controls
 var _frozen: Dictionary = {}      # reach's frozen pip: {"slot", "at": player} or {}
+var _walker := ""                 # reach's walking pip, or ""
+var _beside := ""                 # while judging a gate for the presser's own walking: its route
 
 func _init(definition: Dictionary) -> void:
 	level = definition
@@ -195,31 +205,40 @@ func _probe_drop(drop: Dictionary, from: int, to: int, slot: String, routes: Dic
 ## engine's gate rule. Returns {"floors": {slot: {surface id: true}}, "open":
 ## {route id: true}, "settable": {id: [values] or true}}: the fixed point
 ## described at the top. Builds the slots' edges on first use.
-func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool, frozen: String = "") -> Dictionary:
+## With `walker`, that pip only walks and the other works everything (top);
+## the result's "own" holds the routes open for the presser's own walking.
+func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool, frozen: String = "", walker: String = "") -> Dictionary:
 	for slot: String in ["p0", "p1"]:
 		if not edges.has(slot): build(slot)
 	var mechanisms: Dictionary = checkpoint.get("mechanisms", {})
 	_frozen = {} if frozen.is_empty() else {"slot": frozen, "at": checkpoint.get("players", {}).get(frozen, {})}
+	_walker = walker
 	var open: Dictionary = {}
 	for id: Variant in mechanisms.get("latched_bridges", []): open[str(id)] = true
+	var own: Dictionary = open.duplicate()
 	var floors: Dictionary = {"p0": {}, "p1": {}}
 	var settable: Dictionary = _settable(stage, mechanisms, floors)
 	# Floors, what is settable and what is open only ever grow, so this ends.
 	while true:
-		var size := open.size()
+		var size := open.size() + own.size()
 		for slot: String in ["p0", "p1"]:
 			var player: Dictionary = checkpoint.get("players", {}).get(slot, {})
 			var start := str(player.get("surface_id", ""))
-			floors[slot] = {start: true} if slot == frozen else _walkable_from(slot, start, open, settable)
+			var routes := own if not walker.is_empty() and slot != walker else open
+			floors[slot] = {start: true} if slot == frozen else _walkable_from(slot, start, routes, settable)
 		var before := JSON.stringify(settable)
 		settable = _settable(stage, mechanisms, floors)
 		_reach_items(stage, checkpoint, floors, open, settable)
 		for gate: Dictionary in stage.get("gates", []):
 			var route := str(gate.get("route_id", ""))
-			if open.has(route) or not route_bit.has(route): continue
-			if gate_can_hold(with_items(gate, settable), stage, settable, mechanisms, journey, floors): open[route] = true
-		if open.size() == size and JSON.stringify(settable) == before: break
-	return {"floors": floors, "open": open, "settable": settable}
+			if not route_bit.has(route): continue
+			if not open.has(route) and gate_can_hold(with_items(gate, settable), stage, settable, mechanisms, journey, floors): open[route] = true
+			if walker.is_empty() or own.has(route) or not open.has(route): continue
+			_beside = route
+			if gate_can_hold(with_items(gate, settable), stage, settable, mechanisms, journey, floors): own[route] = true
+			_beside = ""
+		if open.size() + own.size() == size and JSON.stringify(settable) == before: break
+	return {"floors": floors, "open": open, "settable": settable, "own": own if not walker.is_empty() else open}
 
 ## Surfaces `slot` walks to from `start` with `open` routes; a drop needs its
 ## lever settable on.
@@ -268,9 +287,9 @@ func _settable(stage: Dictionary, mechanisms: Dictionary, floors: Dictionary) ->
 ## open controls either pip.
 func _reached(item: Dictionary, floors: Dictionary) -> bool:
 	var surface := str(item.get("surface_id", ""))
-	if not _frozen.is_empty():
+	for still: String in ([_frozen.slot] if not _frozen.is_empty() else []) + ([_walker] if not _walker.is_empty() else []):
 		floors = floors.duplicate()
-		floors[_frozen.slot] = {}
+		floors[still] = {}
 	if not open_controls: return floors.get(str(item.get("owner_slot", "")), {}).has(surface)
 	return floors.get("p0", {}).has(surface) or floors.get("p1", {}).has(surface)
 
@@ -295,7 +314,7 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 	for id: String in references.signals: signals[id] = true
 	var choices: Array = []
 	# The frozen probe lights beams exactly, so every settable mirror is a choice.
-	var exact: bool = not _frozen.is_empty() and stage.has("optical_field") and not references.signals.is_empty()
+	var exact: bool = _exact_beams() and stage.has("optical_field") and not references.signals.is_empty()
 	if exact:
 		for control: Dictionary in stage.get("controls", []):
 			if str(control.get("kind", "")) == "mirror" and not references.controls.has(str(control.id)): references.controls[str(control.id)] = true
@@ -321,7 +340,7 @@ func _any_assignment(when: Dictionary, stage: Dictionary, choices: Array, at: in
 			if _any_assignment(when, stage, choices, at + 1, controls, levers, signals, placings): return true
 		return false
 	var mechanisms := {"controls": controls, "levers": levers}
-	if not _frozen.is_empty() and stage.has("optical_field") and not signals.is_empty():
+	if _exact_beams() and stage.has("optical_field") and not signals.is_empty():
 		var overrides: Dictionary = {}
 		for control: Dictionary in stage.get("controls", []):
 			if str(control.get("kind", "")) == "mirror": overrides[control.id] = {"orientation": str(controls.get(str(control.id), control.get("initial", "")))}
@@ -345,12 +364,28 @@ func _pad_placings(stage: Dictionary, pads: Array, floors: Dictionary = {}) -> A
 			continue
 		for slot: String in by_slot:
 			if not _frozen.is_empty() and slot == _frozen.slot: continue
+			# The walker stands on no pad; for the presser's own walking only a
+			# pad beside the crossing counts.
+			if slot == _walker or (not _beside.is_empty() and not _pad_beside(pad, _beside)): continue
 			if floors.is_empty() or floors.get(slot, {}).has(str(pad.surface_id)): by_slot[slot].append(spot)
 	if not _frozen.is_empty(): by_slot[_frozen.slot] = [_frozen.at]
 	var result: Array = []
 	for p0: Dictionary in by_slot.p0:
 		for p1: Dictionary in by_slot.p1: result.append({"p0": p0, "p1": p1})
 	return result
+
+## Whether the frozen or walking probe lights beams exactly.
+func _exact_beams() -> bool:
+	return not _frozen.is_empty() or not _walker.is_empty()
+
+## Whether a pip holding `pad` could already touch `route`'s rect: within the
+## pad's radius and a pip's (the engine latches a crossing a pip's edge enters).
+func _pad_beside(pad: Dictionary, route: String) -> bool:
+	if not index.has(route): return false
+	var r: Array = surfaces[int(index[route])].rect
+	var at := Vector2(float(pad.position_cm[0]), float(pad.position_cm[1]))
+	var nearest := Vector2(clampf(at.x, float(r[0]), float(r[2])), clampf(at.y, float(r[1]), float(r[3])))
+	return at.distance_to(nearest) <= float(int(pad.get("radius_cm", 28)) + RADIUS + 2)
 
 ## Whether `slot` can stand within `entity`'s radius on its surface with
 ## `open` routes: the engine's own walker test at the centre and at points
@@ -386,6 +421,9 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: b
 ## is carried to; a current leg carries it on once the leg's selector can show
 ## the leg's value (`when` and `stop` are not judged: an over-approximation).
 ## A hand up across a both-hands crossing needs both pips, one at each end.
+## Picking up, putting down and handing over are work, like a press: the
+## walking pip (the strict one-pip probe) does none of them. An item it starts
+## holding goes wherever it walks off both-hands crossings, and stays on its back.
 ## The frozen pip (the solo probe) handles nothing, but an item it starts
 ## holding stays carried on its floor; it is never handed anything (it could
 ## take one only where it stands, which the probe leaves out).
@@ -395,6 +433,7 @@ func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary,
 	var players: Dictionary = checkpoint.get("players", {})
 	var actors: Dictionary = floors.duplicate()
 	if not _frozen.is_empty(): actors[_frozen.slot] = {}
+	if not _walker.is_empty(): actors[_walker] = {}
 	var hands := CarriedItems.hands_routes(stage)
 	var walk: Dictionary = open.duplicate()
 	for id: String in hands: walk.erase(id)
@@ -406,7 +445,15 @@ func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary,
 		var lying: Dictionary = {}
 		var spots: Dictionary = {}
 		if not str(state.get("holder", "")).is_empty():
-			carried[str(players.get(str(state.holder), {}).get("surface_id", ""))] = true
+			var at := str(players.get(str(state.holder), {}).get("surface_id", ""))
+			carried[at] = true
+			# The walker keeps what it holds: carried where it walks, never put down or handed on.
+			if str(state.holder) == _walker:
+				for reached: String in _walkable_from(_walker, at, walk, settable): carried[reached] = true
+				var kept := carried.keys().filter(func(floor: String) -> bool: return not floor.is_empty())
+				kept.sort()
+				settable["item:" + id] = {"carried": kept, "spots": []}
+				continue
 		elif not str(state.get("spot", "")).is_empty(): spots[str(state.spot)] = true
 		if not str(state.get("surface_id", "")).is_empty(): lying[str(state.surface_id)] = true
 		var carry := CarriedItems.carriable(item)

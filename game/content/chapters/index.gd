@@ -117,9 +117,9 @@ const OPTIONAL := {
 }
 ## The turn lengths a chapter has while it is built (scripts/new_chapter.py
 ## writes them into a new journey definition and every new version, all on
-## open turns): one limit for every turn, the longest whole-second turn the
-## rules and the server accept for two open turns stages (91 s;
-## scripts/chapter_tools/turn_limits.py cap_open works it out). Play sets the
+## open turns): one limit for every turn, 91 s, which the rules and the
+## server accept for two open turns stages and more (packed turns lift the
+## server's cap; scripts/chapter_tools/turn_limits.py cap_open). Play sets the
 ## real ones (scripts/chapter_turn_limits.py), and test_chapter_descriptors
 ## fails a released chapter still on these.
 const DEVELOPMENT_TURN_LIMITS := {"a_ticks": 2730, "b_ticks": 2730}

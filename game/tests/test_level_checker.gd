@@ -35,6 +35,12 @@ extends SceneTree
 ##    with its light able to hold (an over-approximation; the chapter suite's
 ##    witness, played within the cap, is the proof). Each cap is a whole
 ##    number from 2 to 20. Owned crossings need a reason the solo probe sees.
+##    And both pips must work something (the owner, 2026-11-16): a stage
+##    fails if one pip could finish it working every control, lever and pad
+##    itself while the other only walks along (level_graph.gd's walker). Give
+##    each pip a part only it can reach: floor behind a crossing the other
+##    opens, or a pad away from the crossing it holds, so the pip on it cannot
+##    walk that crossing too. Published chapters are not on open turns.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
 ##    each other on a stage. Props against routes, pads, levers, goals and
 ##    starts, and the camera's view of them, are tests/test_dressing_lint.gd's.
@@ -506,6 +512,7 @@ func _needs_both(key: String) -> void:
 			for slot: String in ["p0", "p1"]:
 				var other := "p1" if slot == "p0" else "p0"
 				_expect(not solo_finish(graph, stage, item.checkpoint, journey, slot), "%s alone %s" % [where, slot], "%s: %s starts at the goal, so %s finishes alone while it does nothing; start it away from the goal" % [where, other, slot])
+				_expect(not presses_alone(graph, stage, item.checkpoint, journey, slot), "%s presses alone %s" % [where, slot], "%s: %s can finish it working every control, lever and pad itself while %s only walks; give %s a part only it reaches (floor behind a crossing %s opens, or a pad away from the crossing it holds)" % [where, slot, other, other, slot])
 			_expect(solvable(graph, stage, item.checkpoint, journey), "%s solvable" % where, "%s: the two pips can never both stand at the goal %s with its light holding" % [where, stage.get("goal", {}).get("id", "")])
 		else:
 			_expect(not solo_finish(graph, stage, item.checkpoint, journey), "%s alone" % where, "%s: with the first pip standing still, the second still reaches the goal with it lit; give the first pip a part only it can play" % where)
@@ -536,9 +543,29 @@ static func solvable(graph: RefCounted, stage: Dictionary, checkpoint: Dictionar
 	var goal: Dictionary = stage.get("goal", {})
 	if goal.is_empty(): return false
 	var found: Dictionary = graph.reach(stage, checkpoint, journey)
+	return _goal_holds(graph, _at_goal(stage), checkpoint, journey, found, ["p0", "p1"])
+
+## Open turns: whether `presser` could finish `stage` working every control,
+## lever and pad itself while the other pip only walks (level_graph.gd's
+## walker): both reach the goal and stand at it, the presser by the crossings
+## it opens for its own walking, and the light can hold. An over-approximation,
+## so a stage it clears needs both pips to work something.
+static func presses_alone(graph: RefCounted, stage: Dictionary, checkpoint: Dictionary, journey: bool, presser: String) -> bool:
+	if stage.get("goal", {}).is_empty(): return false
+	var walker := "p1" if presser == "p0" else "p0"
+	var found: Dictionary = graph.reach(stage, checkpoint, journey, "", walker)
+	var own: Dictionary = found.duplicate()
+	own.open = found.own
+	var there := _at_goal(stage)
+	return _goal_holds(graph, there, checkpoint, journey, found, [walker]) and _goal_holds(graph, there, checkpoint, journey, own, [presser])
+
+## `stage` with only the pads a pip standing at the goal could hold: both
+## pips stand at the goal when a stage of open turns ends.
+static func _at_goal(stage: Dictionary) -> Dictionary:
+	var goal: Dictionary = stage.goal
 	var there: Dictionary = stage.duplicate(true)
 	there.pressure_pads = stage.get("pressure_pads", []).filter(func(pad: Dictionary) -> bool: return str(pad.get("surface_id", "")) == str(goal.get("surface_id", "")) and Vector2(float(pad.position_cm[0]), float(pad.position_cm[1])).distance_to(Vector2(float(goal.position_cm[0]), float(goal.position_cm[1]))) <= float(int(pad.get("radius_cm", 28)) + int(goal.get("radius_cm", 28))))
-	return _goal_holds(graph, there, checkpoint, journey, found, ["p0", "p1"])
+	return there
 
 ## Whether each pip in `slots` reaches the goal's floor and can stand at it, and
 ## the goal's light can hold, with what `found` (a reach) opens.
@@ -603,6 +630,21 @@ func _needs_both_rule() -> void:
 	var place: Dictionary = later.view.duplicate(true)
 	place.goal_policy = {"kind": "ring", "when": {"pad_id": "near-window"}}
 	_check(not solvable(_graph(later.view), place, later.checkpoint, true), "A goal lit only while someone holds a pad away from it is unsolvable: both pips stand at the goal")
+	# Both pips work something: Long Way Home@2's first stage on open turns
+	# lets the first pip turn both selectors while the second only walks over.
+	var older: Dictionary = OpenControls.open_crossings(OpenTurns.pin(Registry.definition("long-way-home@2").duplicate(true), {}), [])
+	var leave: Dictionary = Stages.stages("long-way-home@2", older)[0]
+	_check(presses_alone(_graph(leave.view), leave.view, Stages.starts_checkpoint(older), true, first), "On open turns Long Way Home@2's first stage lets one pip work everything while the other walks, so the both-pips probe can fail")
+	_check(not presses_alone(graph, path.view, path.checkpoint, true, first) and not presses_alone(graph, path.view, path.checkpoint, true, second), "Long Way Home@3's first stage needs both pips: the bank gate is the second pip's")
+	# A pad counts for the presser's own walking only beside the crossing it
+	# holds: Conservatory@2's return shutter moved to the room's west edge
+	# lets the pip on it step onto the return and turn the final mirror itself.
+	var returns: Dictionary = _stages_of("conservatory@2")[1]
+	var beside: Dictionary = returns.view.duplicate(true)
+	for pad: Dictionary in beside.pressure_pads:
+		if pad.id == "return-shutter": pad.position_cm = [340, 56]
+	var lights := _graph(returns.view)
+	_check(not presses_alone(lights, returns.view, returns.checkpoint, true, "p0") and presses_alone(lights, beside, returns.checkpoint, true, "p0"), "A pad holds a crossing for the pip on it only when it stands beside that crossing")
 	_check(OpenTurns.cap_valid({"turn_cap": 10}) and OpenTurns.cap_valid({"turn_cap": 11}) and not OpenTurns.cap_valid({"turn_cap": 22}) and not OpenTurns.cap_valid({"turn_cap": 1}) and OpenTurns.cap_valid({}), "A cap is a whole number from 2 to 20; a stage with none gets 10")
 
 # --- Props ----------------------------------------------------------------------

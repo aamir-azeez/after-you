@@ -1,110 +1,23 @@
 {
-	"actions": [
-		{
-			"action": false,
-			"ticks": 20,
-			"x": -100,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 28,
-			"x": 0,
-			"z": -100
-		},
-		{
-			"action": false,
-			"ticks": 1,
-			"x": 0,
-			"z": 0
-		},
-		{
-			"action": true,
-			"ticks": 1,
-			"x": 0,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 8,
-			"x": 100,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 16,
-			"x": 0,
-			"z": 100
-		},
-		{
-			"action": false,
-			"ticks": 12,
-			"x": 100,
-			"z": 0
-		},
-		{
-			"action": false,
-			"ticks": 155,
-			"x": 0,
-			"z": 0
-		}
-	],
 	"catch_assistance": true,
-	"checkpoint_hash": "0a7a0cc9e7c6ed674fa8ff074430b9b3fce4bdeb6f73ffd255658b2a894b2e19",
+	"checkpoint_hash": "6e914cccc68039514314db29d7d0a94ae50c1ea573c5cdca9499b7e8a2033662",
 	"completed": true,
-	"definition_hash": "90e49a79c3aae874c960cdd73605a12d58f5221878fceb57a224d83e18fbdcbb",
-	"duration_ticks": 241,
-	"final_state_hash": "e703320d4908538c3039f46108d399f01059b47d66fef68168cb03fb9dbe8c9b",
+	"definition_hash": "945bb314eb10738736122839400a4570ceeec33f33e68426e789f13d3bc11108",
+	"duration_ticks": 400,
+	"final_state_hash": "800ca3a3df5b32b6943531d86a0ae7c53ec74cce6fb4da049019270d9e58df18",
 	"level_id": "conservatory",
 	"level_version": 2,
 	"outcome": {
 		"objective_complete": true,
 		"source_ready": true
 	},
+	"packed": "ARQonAA6AJwCAM4CAAADAAAQZAAQAGREnAAQAGRgnAAQAJwCAAADAAAQAGRgZAAMAJxcZAAOAGQCADLoAQAAgDcOkNmBlY6cUjKjm7NrBJ9xrDwUzIPlqqkLizQ786RSnAir42R+Vu1090/99bSqsWNRzPSnOYbZPRbK6t9D/6qbzx7raS1tAhdidZ8Yiq6NS/UMLnPifAWJ9AZZPaj7IniDaleZovvGpvFhFSArO1V4YjXM16E4tAsUmPykWenMUGHyw+akqY/i9y6u3Bp1yrERMGd682Q=",
 	"player_slot": "p1",
-	"recording_hash": "48107aa1373b9a50a2b22d46021b62843a3ae10206f7f94b84cf5632ec1f1302",
-	"replay_checks": [
-		{
-			"state_hash": "44985c9407eb9fa50bfb42b0a33aeb93f1d327f7b74190255ced359130f52f13",
-			"tick": 30
-		},
-		{
-			"state_hash": "a06184adaad24ab1e6cd618bcd3980146900d656d5b640e566e71c8e7b6fa4af",
-			"tick": 60
-		},
-		{
-			"state_hash": "fffcaa8b961d3c5051cdd7d2208373473305c80a5dfa9d7ea9fd29858f85d51c",
-			"tick": 90
-		},
-		{
-			"state_hash": "c913a08c8de482579e1d9d366a1e366cc3be2554febe73b0d10ac4c33da72a17",
-			"tick": 120
-		},
-		{
-			"state_hash": "e686157d51c04f36ba14daebbcc0cd96627c469bb7d3a29f2b11a95271808a45",
-			"tick": 150
-		},
-		{
-			"state_hash": "a144b6547e9a7790fb98f895aa128e416bb948e8000a00fa4ba837b377cec37a",
-			"tick": 180
-		},
-		{
-			"state_hash": "39cfbdb7d9d579c0f339481358000957ae516bee31d0bfe14ea1de7c0576a129",
-			"tick": 210
-		},
-		{
-			"state_hash": "230980072c3fa453233826f6b730e1ff42a1942aa287216116d2d827a625e776",
-			"tick": 240
-		},
-		{
-			"state_hash": "e703320d4908538c3039f46108d399f01059b47d66fef68168cb03fb9dbe8c9b",
-			"tick": 241
-		}
-	],
+	"recording_hash": "41cb4e0e2c1fe6438f60a9f8d1c9f047834b0ee3e1ac7dfb803ac6ea74557701",
 	"role": "b",
 	"schema_version": 7,
 	"simulation_version": 14,
-	"source_recording_hash": "f6ba830886b101ac0bdd5220671e7116cd964bec5c92d94ac96bb06b55a1b451",
+	"source_recording_hash": "64a937e78b9c56f36b9e725273773e0e036e32858e0352808fe22b3d99bee42b",
 	"stage_id": "the-way-light-returns",
 	"stage_version": 1,
 	"tick_rate": 30
