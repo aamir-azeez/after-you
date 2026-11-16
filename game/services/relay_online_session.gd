@@ -1095,7 +1095,7 @@ func transport(request: Dictionary) -> Dictionary:
 func chapter_pairs() -> Array:
 	if not _ready() or coordinator == null:
 		return []
-	var checkpoint: Dictionary = coordinator.checkpoint()
+	var checkpoint: Dictionary = coordinator.full_checkpoint()
 	var pairs: Array = []
 	# The coordinator already replay-verifies this exact bounded proof chain,
 	# one nested proof per completed stage of its chapter.

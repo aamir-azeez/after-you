@@ -102,13 +102,10 @@ static func number(id: String) -> int:
 static func turn_id(branch: int, stage_index: int, turn: int) -> String:
 	return "t%d-%d-%s" % [branch, stage_index, LETTERS[turn - 1]]
 
-## The memory a turn on `room` (a room snapshot) replays, and the stage's turns
-## before it, oldest first: turn 1 (recording_a), then the passes the room
-## holds (open_turns.passes). Before open turns: recording_a alone, or nothing.
+## The memory a turn on `room` (a room snapshot before open turns) replays:
+## its first turn (recording_a), or nothing. An open turns room's view names
+## its turns by hash and carries only the newest in full; the phone plays them
+## from its own copies (services/relay_room_coordinator.gd _memory).
 static func memory(room: Dictionary) -> Dictionary:
 	var first: Variant = room.get("recording_a")
-	if not first is Dictionary: return {"prior": {}, "chain": []}
-	var turns: Array = [first]
-	var open: Variant = room.get("open_turns")
-	if open is Dictionary and open.get("passes") is Array: turns.append_array(open.passes)
-	return {"prior": turns[-1], "chain": turns.slice(0, turns.size() - 1)}
+	return {"prior": first, "chain": []} if first is Dictionary else {"prior": {}, "chain": []}

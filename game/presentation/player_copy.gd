@@ -2617,6 +2617,8 @@ const RELAY_ROOM_COORDINATOR_44F9E57FF773 := "The returned room is older than th
 const RELAY_ROOM_COORDINATOR_666CD1F2C6F9 := "Two different states used the same room revision."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)
 const RELAY_ROOM_COORDINATOR_97B931D8DEE0 := "The room has an unsupported format or failed native replay verification."
+## Open turns: this phone lost earlier turns of the room and gets them back from the friend's phone.
+const OPEN_TURNS_MISSING := "Getting your earlier turns back from your friend's phone."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)
 const RELAY_ROOM_COORDINATOR_FE7E854E465F := "An older room response was rejected."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)

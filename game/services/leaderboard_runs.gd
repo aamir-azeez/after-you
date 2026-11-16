@@ -22,6 +22,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const PATH := "user://leaderboard-runs.json"
 const MAX_RUNS := 128
 const TICK_RATE := 30
@@ -66,8 +68,10 @@ static func run_time(chapter_key: String, checkpoint: Dictionary) -> Dictionary:
 	for index in range(stages, 0, -1):
 		var proof: Variant = current.get("proof")
 		if not Typed.equal(current.get("stage_index"), index) or not proof is Dictionary: return {}
-		for role: String in ["a", "b"]:
-			var turn: Variant = proof.get(role)
+		# Every turn of the stage: a and b, or every open turn (core/physical/open_turns.gd).
+		var turns := OpenTurns.proof_turns(proof)
+		if turns.is_empty(): return {}
+		for turn: Variant in turns:
 			if not turn is Dictionary or not Typed.whole_number(turn.get("duration_ticks")): return {}
 			ticks += int(turn.duration_ticks)
 			assisted = assisted or not Typed.equal(turn.get("catch_assistance"), false)
@@ -80,7 +84,8 @@ static func note(owner: String, snapshot: Dictionary, chapter_key: String) -> vo
 	if not snapshot.get("guest_id") is String or snapshot.get("guest_id") == snapshot.get("host_id"): return
 	if not snapshot.get("checkpoint") is Dictionary or not snapshot.get("room_id") is String or not Typed.whole_number(snapshot.get("branch")): return
 	var board := board_key(chapter_key)
-	var time := run_time(chapter_key, snapshot.checkpoint)
+	# Open turns fingerprints: the checkpoint is flat on the server; this phone's copies nest it.
+	var time := run_time(chapter_key, OpenTurnStore.nested_for(owner, snapshot.room_id, chapter_key, snapshot.checkpoint))
 	if board.is_empty() or time.is_empty(): return
 	var id := entry_id(snapshot.room_id, int(snapshot.branch))
 	var partner: Variant = snapshot.guest_id if snapshot.get("host_id") == owner else snapshot.get("host_id")

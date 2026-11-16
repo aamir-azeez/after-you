@@ -349,7 +349,8 @@ static func valid_journal(value: Dictionary, owner: String, family: String, room
 static func source_for(family: String, room: Dictionary) -> Dictionary:
 	if family != "relay" or not Typed.equal(room.get("active_role"), "b") or not _id(room.get("host_id")) or not _id(room.get("guest_id")) or room.get("first_player_id") not in [room.get("host_id"),room.get("guest_id")]: return {}
 	# The source names the stage's latest turn (open turns: its latest pass), who played it and who plays next.
-	var a: Variant = OpenTurns.memory(room).prior
+	var view: Variant = room.get("open_turns")
+	var a: Variant = view.get("newest") if view is Dictionary and view.has("newest") else OpenTurns.memory(room).prior
 	if not a is Dictionary or a.is_empty(): return {}
 	# Before open turns the latest is always the first turn, so the stage's second player is next.
 	var next: Variant = room.get("active_player_id") if room.has("open_turns") else (room.guest_id if room.first_player_id==room.get("host_id") else room.get("host_id"))
@@ -369,6 +370,8 @@ static func first_stage(room: Dictionary) -> Dictionary:
 	var chapter := Registry.resolve(room)
 	if chapter.is_empty() or not room.get("checkpoint") is Dictionary: return {}
 	var checkpoint: Dictionary = room.checkpoint
+	# Open turns fingerprints: a flat checkpoint nests nothing; every chain starts at the chapter's first.
+	if not checkpoint.has("proof") and int(checkpoint.get("stage_index", 0)) > 0: checkpoint = Registry.initial_checkpoint(chapter)
 	while int(checkpoint.get("stage_index", 0)) > 0:
 		checkpoint = Registry.previous_checkpoint(chapter, checkpoint)
 		if checkpoint.is_empty(): return {}
