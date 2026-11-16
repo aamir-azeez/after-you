@@ -397,6 +397,13 @@ func source_budget_ticks() -> int:
 func can_commit() -> bool:
 	if level.is_empty() or not error.is_empty() or tick == 0: return false
 	if role == "b": return complete
+	# Open turns: a first turn may end at any time, its own part done or not
+	# (owner, 2026-11-16); its outcome still says whether it was (_source_ready).
+	return _open_turns() or _source_ready()
+
+## A first turn's own part is done, with time left for the turn after it: what
+## a first turn needs before it may be saved, except under open turns.
+func _source_ready() -> bool:
 	if stage.source_policy.kind == "offer_ball":
 		return _offer_tick >= 0 and maxi(_offer_tick, tick if _comfort_rules() else _offer_tick) + source_budget_ticks() < receiver_deadline() and bool(_mechanisms.levers.get(stage.source_policy.lever_id, false))
 	if _comfort_rules():
@@ -419,6 +426,14 @@ func duration_limit() -> int:
 func can_pass() -> bool:
 	return _open_turns() and role == "b" and pass_allowed and error.is_empty() and not finished and not complete and tick >= int(_prior.get("duration_ticks", 0)) and _may_pass()
 
+## Open turns: whether the live pip may end this turn now, while its memory
+## still plays. The screen then plays the rest of the memory with the pip
+## standing still (still ticks, recorded as any other), so the turn is the one
+## a pip standing there until the memory ended would record; then it passes
+## (can_pass) or the stage completes.
+func can_end_early() -> bool:
+	return _open_turns() and role == "b" and error.is_empty() and not finished and not complete and tick < int(_prior.get("duration_ticks", 0))
+
 ## Open turns: ends this turn as a pass. The recording is the turn so far,
 ## unfinished; play goes to the other pip.
 func pass_turn() -> Dictionary:
@@ -439,20 +454,23 @@ func _at_goal(slot: String) -> bool:
 static func turn_ticks(definition: Dictionary, version: int, turn_role: String) -> int:
 	var published := MAX_TICKS + RECEIVER_GRACE_TICKS if version >= COMFORT_SIMULATION_VERSION and turn_role == "b" else MAX_TICKS
 	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return published
-	return int(_declared_turns(definition.turn_limits).get(turn_role if turn_role == "b" else "a", published))
+	return int(_declared_turns(definition.turn_limits, version).get(turn_role if turn_role == "b" else "a", published))
 
 ## False only when rules `version` read a turn_limits field that breaks the
 ## backend's turnLimits rules: a_ticks and b_ticks both whole numbers with
-## 1 <= a < b <= 9,000 (the receiver waits out the first turn).
+## 1 <= a < b <= 9,000 (the receiver waits out the first turn). On open turns
+## (open_controls.gd OPEN_TURNS_RULES) every turn plays alongside its memory
+## and has the same limit, so a may equal b there: 1 <= a <= b <= 9,000.
 static func turn_limits_valid(definition: Dictionary, version: int) -> bool:
 	if version < FIRST_TURN_LIMITS_VERSION or not definition.has("turn_limits"): return true
-	return not _declared_turns(definition.turn_limits).is_empty()
+	return not _declared_turns(definition.turn_limits, version).is_empty()
 
-static func _declared_turns(limits: Variant) -> Dictionary:
+static func _declared_turns(limits: Variant, version: int) -> Dictionary:
 	if not limits is Dictionary: return {}
 	var a: Variant = limits.get("a_ticks")
 	var b: Variant = limits.get("b_ticks")
-	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b <= a or b > MAX_DECLARED_TURN_TICKS: return {}
+	if not _whole_ticks(a) or not _whole_ticks(b) or a < 1 or b > MAX_DECLARED_TURN_TICKS: return {}
+	if b < a or (b == a and version not in OpenControls.OPEN_TURNS_RULES): return {}
 	return {"a": int(a), "b": int(b)}
 
 static func _whole_ticks(value: Variant) -> bool:
@@ -516,20 +534,26 @@ func snapshot() -> Dictionary:
 		"objective_done":_objective,"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
 		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
 	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
-	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"passed":passed})
+	# part_done: a first turn may be saved before its part is done, so the screen reads this, not can_commit, for "ready".
+	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed,"part_done":_part_done() if role == "a" else can_commit()})
 	return state
 
 func _objective_display() -> Dictionary:
 	if role == "a":
 		if stage.source_policy.kind == "offer_ball":
-			return {"label":"Ball handoff","current":1 if can_commit() else 0,"required":1}
+			return {"label":"Ball handoff","current":1 if _part_done() else 0,"required":1}
 		if _comfort_rules() and stage.source_policy.has("minimum_hold_ticks"):
 			return {"label":"Hold","current":float(_hold_ticks)/TICK_RATE,"required":float(stage.source_policy.minimum_hold_ticks)/TICK_RATE,"unit":"seconds","detail":commit_reason()}
-		return {"label":"Crossing ready","current":1 if can_commit() else 0,"required":1}
+		return {"label":"Crossing ready","current":1 if _part_done() else 0,"required":1}
 	return {"label":"Ball home" if stage.goal_policy.kind == "ball_home" else "Bell","current":1 if _objective else 0,"required":1}
 
 func _outcome() -> Dictionary:
-	return {"source_ready":can_commit() if role == "a" else bool(_prior.get("outcome", {}).get("source_ready", false)),"objective_complete":complete}
+	return {"source_ready":_part_done() if role == "a" else bool(_prior.get("outcome", {}).get("source_ready", false)),"objective_complete":complete}
+
+## A first turn may be saved and its own part is done: before open turns, the
+## same as can_commit.
+func _part_done() -> bool:
+	return can_commit() and _source_ready()
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot

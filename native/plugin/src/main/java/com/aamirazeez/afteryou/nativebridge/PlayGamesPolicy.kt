@@ -36,6 +36,7 @@ internal object PlayGamesPolicy {
     fun validWebClientId(value: String): Boolean = WEB_CLIENT_ID.matches(value)
     fun validSnapshotName(value: String): Boolean = SNAPSHOT_NAME.matches(value)
     fun validHandle(value: String): Boolean = HANDLE.matches(value)
+    /** A Play Console id ("CgkI..."), for a leaderboard or an achievement alike. */
     fun validLeaderboardId(value: String): Boolean = LEADERBOARD_ID.matches(value)
     fun validScore(value: Long): Boolean = value in 1..MAX_SCORE
     fun validDescription(value: String): Boolean = value.length <= MAX_DESCRIPTION && value.none { it.isISOControl() }

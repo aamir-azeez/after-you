@@ -1,6 +1,6 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object, text } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES, MAX_RECORDING_BYTES, MAX_V2_BODY_BYTES } from "./protocol-relay";
-import { comfortRules, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
+import { comfortRules, openTurns, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { MAX_ROW_BYTES } from "./row-bound";
 import { isPacked, packedKeys, unpackRecording } from "./recording-codec";
 
@@ -18,8 +18,10 @@ export type TurnLimits = { a_ticks: number; b_ticks: number };
 export function turnLimits(definition: { simulation_version?: number; turn_limits?: unknown }): TurnLimits | undefined {
   if (definition.turn_limits === undefined || !(typeof definition.simulation_version === "number" && definition.simulation_version >= 9)) return undefined;
   const { a_ticks, b_ticks } = (definition.turn_limits ?? {}) as Record<string, unknown>;
-  // The receiver waits out the recorded first turn, so it needs the longer cap.
-  if (!Number.isSafeInteger(a_ticks) || !Number.isSafeInteger(b_ticks) || (a_ticks as number) < 1 || (b_ticks as number) <= (a_ticks as number) || (b_ticks as number) > 9_000) throw new Error("invalid turn_limits");
+  // The receiver waits out the recorded first turn, so it needs the longer cap. Open turns (open-turns.ts) play every
+  // turn alongside its memory with the same limit, so there the two may be equal.
+  const shortestB = openTurns(definition.simulation_version) ? (a_ticks as number) : (a_ticks as number) + 1;
+  if (!Number.isSafeInteger(a_ticks) || !Number.isSafeInteger(b_ticks) || (a_ticks as number) < 1 || (b_ticks as number) < shortestB || (b_ticks as number) > 9_000) throw new Error("invalid turn_limits");
   return { a_ticks: a_ticks as number, b_ticks: b_ticks as number };
 }
 /** The published comfort bounds grown by how much longer the turns are. */
