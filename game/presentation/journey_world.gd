@@ -734,8 +734,8 @@ func _build_items(stage: Dictionary) -> void:
 		_item_pieces[id] = CarriedItemKit.build(look, at, terrain, {"id": id})
 	var legs: Array = []
 	for leg: Dictionary in view.get("current_legs", []):
-		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.control_id), "value": str(leg.value)})
-	if not legs.is_empty(): _current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].control_id)), legs, terrain)
+		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", ""))})
+	if not legs.is_empty(): _current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].get("control_id", ""))), legs, terrain)
 	var hands := CarriedItems.hands_routes(view)
 	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
 		if hands.has(str(route.id)): _ladder_rungs(route)

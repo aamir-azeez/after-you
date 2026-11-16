@@ -417,7 +417,7 @@ func _item_action() -> Dictionary:
 	var items: Dictionary = _mechanisms.items
 	var mine := CarriedItems.held_by(items, active_slot)
 	if not mine.is_empty():
-		if CarriedItems.held_by(items, other).is_empty() and CarriedItems.can_hand(level, _hands, player, _players[other]): return _action("give", CarriedItems.LABELS.give, true, mine)
+		if CarriedItems.held_by(items, other).is_empty() and CarriedItems.can_hand(level, _hands, player, _players[other], _routes): return _action("give", CarriedItems.LABELS.give, true, mine)
 		if not CarriedItems.lay(level, player).is_empty(): return _action("put", CarriedItems.LABELS.put, true, mine)
 		return _action("", "", false, "")
 	if _hands.has(str(player.surface_id)): return _action("", "", false, "")
@@ -471,7 +471,7 @@ func _replay_memory_items() -> void:
 				"put":
 					if held: _put(str(id), memory)
 				"give":
-					if held and CarriedItems.held_by(items, active_slot).is_empty() and CarriedItems.can_hand(level, _hands, memory, _players[active_slot]): _give(str(id), active_slot)
+					if held and CarriedItems.held_by(items, active_slot).is_empty() and CarriedItems.can_hand(level, _hands, memory, _players[active_slot], _routes): _give(str(id), active_slot)
 					elif held: _put(str(id), memory)
 	if not _hands.has(str(memory.surface_id)):
 		_memory_floor = memory.duplicate()
@@ -494,11 +494,12 @@ func _after_interact() -> void:
 		if legs.is_empty() or not str(state.holder).is_empty() or str(state.spot).is_empty(): continue
 		for leg: Dictionary in legs:
 			if str(leg.from) != str(state.spot): continue
-			var turned := "%s=%s" % [leg.control_id, leg.value]
-			if str(_mechanisms.controls.get(str(leg.control_id), "")) != str(leg.value) or str(_legs_taken.get(id, "")) == turned: continue
+			# A leg with no wheel goes while its `when` holds (a winding board).
+			var turned := "%s=%s" % [leg.control_id, leg.value] if leg.has("control_id") else ""
+			if not turned.is_empty() and (str(_mechanisms.controls.get(str(leg.control_id), "")) != str(leg.value) or str(_legs_taken.get(id, "")) == turned): continue
 			if leg.has("when") and not Seven.predicate(leg.when, stage, _players, _mechanisms, _optics.signals, _open_controls()): continue
 			if leg.has("stop") and Seven.predicate(leg.stop, stage, _players, _mechanisms, _optics.signals, _open_controls()): continue
 			_mechanisms.items[id] = CarriedItems.at_spot(CarriedItems.spot(level, str(leg.to)))
-			_legs_taken[id] = turned
+			if not turned.is_empty(): _legs_taken[id] = turned
 			_events.append("item_drifted:" + id)
 			break

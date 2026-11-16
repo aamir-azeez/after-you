@@ -350,6 +350,86 @@ func _current(one: Dictionary) -> void:
 	var carried := _sim(back, "drift", quay)
 	_tap(carried)
 	_check(carried._mechanisms.items.pipsport.spot == "eddy" and "item_drifted:pipsport" in carried.snapshot().events, "Set down on the landing with the wheel north, it rides the current at once")
+	_two_ways(checkpoint, held)
+	_pan(checkpoint)
+	_wound(checkpoint)
+	_hatch()
+
+## One wheel value, two ways: to the landing while someone holds the sluice
+## board, else on to the berth (the reeds).
+func _two_ways(checkpoint: Dictionary, held: Dictionary) -> void:
+	var forked := level.duplicate(true)
+	forked.stages[1].current_legs = [
+		{"from": "eddy", "to": "landing", "control_id": "current", "value": "north", "when": {"pad_id": "sluice-board"}},
+		{"from": "eddy", "to": "berth", "control_id": "current", "value": "north"},
+	]
+	for case: Array in [[checkpoint, "berth", "With nobody on the board the pipsport takes the other way"], [held, "landing", "With the board held it comes to the landing"]]:
+		var sim := _sim(forked, "drift", case[0])
+		_go(sim, TOP)
+		_go(sim, FOOT)
+		_go(sim, [-350, -60])
+		_tap(sim)
+		_check(sim._mechanisms.items.pipsport.spot == case[1], case[2])
+
+## A pan (train/new-pieces-b's pan block): held by a pip on it or the
+## pipsport resting in it.
+func _pan(checkpoint: Dictionary) -> void:
+	var panned := level.duplicate(true)
+	panned.item_spots.append({"id": "pan", "surface_id": "dock", "position_cm": [-200, 60], "height_cm": 0})
+	panned.stages[1].pressure_pads.append({"id": "pan", "surface_id": "dock", "position_cm": [-200, 60], "height_cm": 0, "radius_cm": 28})
+	panned.stages[1].item_starts = {"pipsport": "post"}
+	var weight := {"any": [{"pad_id": "pan"}, {"item_id": "pipsport", "spot_id": "pan"}]}
+	var sim := _sim(panned, "drift", checkpoint)
+	_go(sim, TOP)
+	_go(sim, FOOT)
+	_go(sim, [-350, 0])
+	_go(sim, POST)
+	_tap(sim)
+	_go(sim, [-350, 0])
+	_go(sim, [-200, 0])
+	var holds := func() -> bool: return Seven.predicate(weight, sim.stage, sim._players, sim._mechanisms, {}, true)
+	_check(not holds.call(), "An empty pan holds nothing")
+	_go(sim, [-200, 60])
+	_check(holds.call(), "A pip in the pan weighs it down")
+	_tap(sim)
+	_go(sim, [-200, -40])
+	_check(sim._mechanisms.items.pipsport.spot == "pan" and holds.call(), "The pipsport left in the pan weighs it down by itself")
+
+## A leg with no wheel: a sack lift wound while someone stands on the winding board.
+func _wound(checkpoint: Dictionary) -> void:
+	var wound := level.duplicate(true)
+	wound.stages[1].item_starts = {"pipsport": "landing"}
+	wound.stages[1].current_legs = [{"from": "landing", "to": "eddy", "when": {"pad_id": "sluice-board"}}]
+	_check(CarriedItems.problems(wound).is_empty(), "A leg with no wheel and a when is sound")
+	var free := _sim(wound, "drift", checkpoint)
+	_still(free, 3)
+	_check(free._mechanisms.items.pipsport.spot == "landing", "Nobody on the winding board, the lift stays down")
+	var on: Dictionary = checkpoint.duplicate(true)
+	on.players.p1 = {"x": -350, "z": 300, "height": 0, "surface_id": "quay"}
+	var turning := _sim(wound, "drift", on)
+	turning.step({})
+	_check(turning._mechanisms.items.pipsport.spot == "eddy", "Someone on the winding board winds it along")
+	var bad := wound.duplicate(true)
+	bad.stages[1].current_legs[0].erase("when")
+	_check(not CarriedItems.problems(bad).is_empty(), "A leg with neither a wheel nor a when is refused")
+
+## A hand up needs its crossing open: a bolted trapdoor stops it.
+func _hatch() -> void:
+	var bolted := level.duplicate(true)
+	bolted.stages[0].levers = [{"id": "bolt", "surface_id": "loft", "position_cm": [100, -80], "height_cm": 48, "radius_cm": 28}]
+	bolted.stages[0].gates = [{"route_id": "ladder", "when": {"lever_id": "bolt"}}]
+	bolted.stages[0].item_starts = {"pipsport": "p0"}
+	var below: Dictionary = start.duplicate(true)
+	below.players.p0 = {"x": FOOT[0], "z": FOOT[1], "height": 0, "surface_id": "dock"}
+	below.players.p1 = {"x": TOP[0], "z": TOP[1], "height": 48, "surface_id": "loft"}
+	var shut := _sim(bolted, "hand-up", below)
+	shut.step({})
+	_check(shut.context_action().id == "put", "With the trapdoor bolted the pipsport cannot be handed up")
+	below.mechanisms.levers = {"bolt": true}
+	var open := _sim(bolted, "hand-up", below)
+	open.step({})
+	_check(open.context_action().id == "give", "Unbolted, it can be handed up")
+	_check(CarriedItems.can_hand(level, {"ladder": true}, below.players.p0, below.players.p1, {"ladder": true}) and not CarriedItems.can_hand(level, {"ladder": true}, below.players.p0, below.players.p1, {}), "can_hand asks the crossing to be open")
 
 # --- The server's witness ----------------------------------------------------------
 

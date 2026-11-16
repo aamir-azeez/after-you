@@ -27,6 +27,13 @@ extends RefCounted
 ##       So an item put on a lift's hook with its wheel right goes up at once,
 ##       and one resting at a leg's start with the wheel already right drifts
 ##       on the stage's first tick (as the design solver's start settle does).
+##       Legs are tried in order and the first that may go is taken, so two
+##       legs from one spot on one value send it one of two ways (one needs a
+##       board held, the next is stopped by it). A leg with no control_id goes
+##       while its `when` holds (a sack lift wound from a winding board).
+##   A pan: a pad that holds while a pip stands on it or an item rests at the
+##       item spot of the same id ({"any": [{"pad_id": id}, {"item_id", "spot_id": id}]},
+##       written by train/new-pieces-b's pan block), so the pipsport is a weight.
 ##
 ## The state: mechanisms.items {id: {"holder", "spot", "x", "z", "height",
 ## "surface_id"}}, in the checkpoint like controls, so it rides into the next
@@ -38,8 +45,9 @@ extends RefCounted
 ## holds one item. Pick up within PICK_REACH_CM on the item's floor and
 ## height. Put down only on an island (snapped to an item spot it stands in).
 ## Hand over to the other pip, live or the memory, when they meet: on one
-## floor within HAND_REACH_CM, or at the two ends of a "hands" crossing (hand
-## it up the ladder). A pip on a "hands" crossing takes nothing.
+## floor within HAND_REACH_CM, or at the two ends of a "hands" crossing while
+## it is open (hand it up the ladder; a shut trapdoor stops the hand up too).
+## A pip on a "hands" crossing takes nothing.
 ## The memory: its own turn's take, put and give replay on the ticks it did
 ## them, against the live state, the memory's going first on a shared tick, as
 ## its control presses do. A take finds nothing if the live pip took the item
@@ -165,11 +173,12 @@ static func can_pick(player: Dictionary, state: Dictionary) -> bool:
 
 ## Whether `giver` can hand an item to `taker`: on one floor within reach, or
 ## at the two ends of one "hands" crossing, neither standing on it.
-static func can_hand(level: Dictionary, hands: Dictionary, giver: Dictionary, taker: Dictionary) -> bool:
+## `routes`: which crossings are open now (a hand up needs its crossing open).
+static func can_hand(level: Dictionary, hands: Dictionary, giver: Dictionary, taker: Dictionary, routes: Dictionary) -> bool:
 	if hands.has(str(giver.surface_id)) or hands.has(str(taker.surface_id)): return false
 	if str(giver.surface_id) == str(taker.surface_id) and _by(giver, taker, HAND_REACH_CM): return true
 	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
-		if not hands.has(str(route.id)): continue
+		if not hands.has(str(route.id)) or not bool(routes.get(str(route.id), false)): continue
 		var ends := route_ends(route)
 		if (_by(giver, ends[0], HAND_REACH_CM) and _by(taker, ends[1], HAND_REACH_CM)) or (_by(giver, ends[1], HAND_REACH_CM) and _by(taker, ends[0], HAND_REACH_CM)): return true
 	return false
@@ -237,7 +246,9 @@ static func problems(level: Dictionary) -> Array:
 				continue
 			if not spots.has(str(leg.get("from", ""))) or not spots.has(str(leg.get("to", ""))) or str(leg.get("from", "")) == str(leg.get("to", "")): found.append("%s: a current leg runs from %s to %s, two different item spots" % [stage.id, leg.get("from", ""), leg.get("to", "")])
 			var control: Dictionary = controls.get(str(leg.get("control_id", "")), {})
-			if control.is_empty() or str(leg.get("value", "")) not in control.get("values", []).map(func(v: Variant) -> String: return str(v)): found.append("%s: a current leg from %s turns on %s=%s, which no selector of the stage shows" % [stage.id, leg.get("from", ""), leg.get("control_id", ""), leg.get("value", "")])
+			if not leg.has("control_id"):
+				if not leg.get("when") is Dictionary: found.append("%s: a current leg from %s with no control_id needs a when" % [stage.id, leg.get("from", "")])
+			elif control.is_empty() or str(leg.get("value", "")) not in control.get("values", []).map(func(v: Variant) -> String: return str(v)): found.append("%s: a current leg from %s turns on %s=%s, which no selector of the stage shows" % [stage.id, leg.get("from", ""), leg.get("control_id", ""), leg.get("value", "")])
 			for key: String in ["when", "stop"]:
 				if leg.has(key) and not leg[key] is Dictionary: found.append("%s: a current leg's %s must be a predicate" % [stage.id, key])
 	return found

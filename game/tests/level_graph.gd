@@ -429,7 +429,7 @@ func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary,
 				if carry and carried.has(str(place.get("surface_id", ""))): spots[str(place.id)] = true
 			for leg: Dictionary in stage.get("current_legs", []):
 				var values: Variant = settable.get(str(leg.get("control_id", "")), [])
-				if spots.has(str(leg.from)) and values is Array and str(leg.value) in values.map(func(v: Variant) -> String: return str(v)):
+				if spots.has(str(leg.from)) and (not leg.has("control_id") or (values is Array and str(leg.value) in values.map(func(v: Variant) -> String: return str(v)))):
 					spots[str(leg.to)] = true
 					var to := str(CarriedItems.spot(stage, str(leg.to)).get("surface_id", ""))
 					if not to.is_empty(): lying[to] = true
@@ -468,8 +468,11 @@ func _has_item_term(value: Dictionary) -> bool:
 		if child is Array and child.any(func(entry: Variant) -> bool: return entry is Dictionary and _has_item_term(entry)): return true
 	return false
 
-func _judge_items(value: Dictionary, settable: Dictionary, at: String) -> Dictionary:
+## Under a "not" (rules 16, train/new-pieces-b) an item term may always be
+## false (the item is elsewhere), so it becomes never there and the "not" holds.
+func _judge_items(value: Dictionary, settable: Dictionary, at: String, negated: bool = false) -> Dictionary:
 	if CarriedItems.is_term(value):
+		if negated: return {"control_id": "@item", "value": "never"}
 		var reach: Dictionary = settable.get("item:" + str(value.item_id), {"carried": [], "spots": []})
 		var can := false
 		if value.has("carried"): can = not bool(value.carried) or (not reach.carried.is_empty() and (at.is_empty() or at in reach.carried))
@@ -478,7 +481,8 @@ func _judge_items(value: Dictionary, settable: Dictionary, at: String) -> Dictio
 	var judged: Dictionary = {}
 	for key: Variant in value:
 		var child: Variant = value[key]
-		if child is Dictionary: judged[key] = _judge_items(child, settable, at)
-		elif child is Array: judged[key] = child.map(func(entry: Variant) -> Variant: return _judge_items(entry, settable, at) if entry is Dictionary else entry)
+		var under := negated != (str(key) == "not")
+		if child is Dictionary: judged[key] = _judge_items(child, settable, at, under)
+		elif child is Array: judged[key] = child.map(func(entry: Variant) -> Variant: return _judge_items(entry, settable, at, under) if entry is Dictionary else entry)
 		else: judged[key] = child
 	return judged
