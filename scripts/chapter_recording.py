@@ -36,8 +36,10 @@ def suggestion_lines(rules: Rules, report: dict) -> list[str]:
     a_played, b_played = recordings.longest(report)
     if not a_played or not b_played:
         return []
-    a, b, notes = rules.suggest(a_played, b_played)
-    return [f"suggested turn_limits: A {rules.seconds(a)}, B {rules.seconds(b)} (longest played A {rules.seconds(a_played)}, B {rules.seconds(b_played)})"] + \
+    open_stages = report.get("open_stages", 0)
+    a, b, notes = rules.suggest(a_played, b_played, open_stages)
+    same = " (open turns: one limit for every turn)" if open_stages else ""
+    return [f"suggested turn_limits: A {rules.seconds(a)}, B {rules.seconds(b)}{same} (longest played A {rules.seconds(a_played)}, B {rules.seconds(b_played)})"] + \
         [f"  {note}" for note in notes] + \
         [f"  set them with: python scripts/chapter_turn_limits.py --key {report['key']} --a-seconds {a // rules.tick_rate} --b-seconds {b // rules.tick_rate}"]
 
