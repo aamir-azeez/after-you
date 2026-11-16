@@ -253,7 +253,6 @@ const DUEL_TIME_SURFACES := {
 const RAW_DUEL_TIME_EXEMPT := {
 	"res://services/duel_model.gd": "the shared path itself (lane, steps, ticks)",
 	"res://presentation/duels/public_sheets.gd": "a public list row's steps, to word the join sheet; list rows carry no times",
-	"res://services/race_ghost.gd": "the developers' run is picked by the race's ghost ticks, never shown as a time",
 }
 ## A side's or the ghost's time or steps read straight off a duel view.
 const RAW_DUEL_TIME := "\\.(?:sides\\[[^\\]]+\\]|ghost)\\.(?:ticks|steps)\\b|\\.(?:sides\\[[^\\]]+\\]|ghost)\\.get\\(\"(?:ticks|steps|splits)\""

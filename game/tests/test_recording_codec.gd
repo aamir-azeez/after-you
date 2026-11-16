@@ -1,6 +1,6 @@
 extends SceneTree
 ## Packed recordings (core/v2/recording_codec.gd): the bytes the server's codec
-## writes too, the one canonical encoding, and one developer run played again
+## writes too, the one canonical encoding, and one whole run played again
 ## packed with every check (tests/packed_run_check.gd). The other chapters' runs
 ## are in test_recording_codec_runs.gd. Synthetic ids only.
 const Codec = preload("res://core/v2/recording_codec.gd")
@@ -22,7 +22,7 @@ func _check(okay: bool, message: String) -> void:
 func _run() -> void:
 	_golden()
 	_canonical_only()
-	var ghosts: Array = JSON.parse_string(FileAccess.get_file_as_string("res://content/dev_ghosts.json")).ghosts
+	var ghosts: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/whole_runs.json")).ghosts
 	var row: Array = ghosts.filter(func(item: Dictionary) -> bool: return item.board == FULL_BOARD)
 	_check(row.size() == 1 and PackedRun.run(row[0], _check, true), "%s plays again packed" % FULL_BOARD)
 	print("AFTER YOU RECORDING CODEC: %d checks, %d failures" % [checks, failures])

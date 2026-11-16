@@ -5,14 +5,11 @@ extends RefCounted
 ##
 ## - Which run: the ghost race played in the room (services/duels_client.gd
 ##   ghost_race, from this session's duel reads; one lobby read when a duel
-##   room has none). A board run is named by the race's `ghost` entry_id and
-##   replay_hash (backend duels/model.ts Ghost). Our run is the developers'
-##   whole run shipped in content/dev_ghosts.json (the server races the same
-##   recording, backend duels/developer-ghosts.ts): no request, and no ghost
-##   when the race's time is not the shipped run's (a later re-record). Once
-##   the owner's run is Our run on the board (backend leaderboards/our-run.ts),
-##   the race names its entry_id and replay_hash like a board run, and it is
-##   fetched and kept the same way.
+##   room has none). The race's `ghost` names the run by entry_id and
+##   replay_hash (backend duels/model.ts Ghost): a board run, or Our run, the
+##   owner's own run on the board (backend leaderboards/our-run.ts), fetched
+##   and kept the same way. A race naming neither (one started by an older
+##   build against the run it shipped) has no ghost.
 ## - A board run's replay: fetched once from the board (services/leaderboard_client.gd
 ##   replay_blob) and kept still encoded and hash-checked in the shared blob
 ##   format, beside a friend duel's other run (services/duel_their_run.gd, as
@@ -24,10 +21,9 @@ extends RefCounted
 ##   role, kept in memory for the race being played only.
 ## - Who and how: the raced player's look from the race (`ghost.looks`, slot
 ##   order) and their name from the board this phone last read, else "" (the
-##   view writes "Recorded run"); Our run as the game ships it in the default
-##   look (`developer`). The owner's run as Our run wears its pair's looks and
-##   shows their names by the board's rule (the board's `our_run`), else reads
-##   Our run.
+##   view writes "Recorded run"). Our run wears its pair's looks and shows
+##   their names by the board's rule (the board's `our_run`), else reads Our
+##   run (`developer`).
 ##
 ## Requests: at most one replay read per race (usually answered from the
 ## server's cache, no Durable Object request), and one board read kept a
@@ -38,8 +34,6 @@ const TheirRun = preload("res://services/duel_their_run.gd")
 const Track = preload("res://services/race_ghost_track.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Outfit = preload("res://services/outfit.gd")
-## The developers' whole runs, one per board, in the shared blob format.
-const DEVELOPER_RUNS := "res://content/dev_ghosts.json"
 
 ## Erasure (owner, 2026-11-03): true keeps playing the raced run from this
 ## phone's copy until the race ends, even after the board stops serving it (an
@@ -83,8 +77,7 @@ func turn(room_id: String, duel_room: bool, chapter_key: String, stage_index: in
 	var race := await _race(room_id, duel_room)
 	var ghost: Variant = race.get("ghost")
 	if not ghost is Dictionary or not race.status in ["running", "challenged"]: return {}
-	var developer: bool = ghost.source == "developer"
-	if not developer and not served(ghost): return {}
+	if not served(ghost): return {}
 	var parts := await _parts_of(race, chapter_key)
 	if stage_index < 0 or stage_index >= parts.size(): return {}
 	var key := "%d|%s" % [stage_index, role]
@@ -96,11 +89,10 @@ func turn(room_id: String, duel_room: bool, chapter_key: String, stage_index: in
 	if track.is_empty(): return {}
 	var index := 1 if str(track.slot) == "p1" else 0
 	var shown := track.duplicate()
-	# A run the server serves (a board run, or the owner's run as Our run) wears its pair's looks and names.
-	var named := served(ghost)
-	shown["look"] = Outfit.from(ghost.looks[index]) if named and ghost.get("looks") is Array and ghost.looks.size() > index else {}
-	shown["name"] = await _name(race, index) if named else ""
-	shown["developer"] = developer and str(shown.name).is_empty()
+	# The raced run wears its pair's looks and names; Our run with no names shown reads Our run.
+	shown["look"] = Outfit.from(ghost.looks[index]) if ghost.get("looks") is Array and ghost.looks.size() > index else {}
+	shown["name"] = await _name(race, index)
+	shown["developer"] = ghost.source == "developer" and str(shown.name).is_empty()
 	return shown
 
 ## Keeps the raced run's replay as soon as a race starts, so a run that leaves
@@ -138,10 +130,8 @@ func _parts_of(race: Dictionary, chapter_key: String) -> Array:
 	if duel_id != _duel_id:
 		_forget_memory()
 		_duel_id = duel_id
-	# Our run as the game ships it, else a run the server serves (a board run, or the owner's run as Our run).
-	var shipped: bool = race.ghost.source == "developer" and not served(race.ghost)
-	# The switch off: a board run plays only while the board still lists it with this replay.
-	if not keep_copy and race.ghost.source != "developer":
+	# The switch off: the run plays only while the board still lists it with this replay.
+	if not keep_copy:
 		var row := await _row(race)
 		if duel_id != _duel_id: return []
 		if row.get("replay_hash") != race.ghost.replay_hash:
@@ -149,16 +139,13 @@ func _parts_of(race: Dictionary, chapter_key: String) -> Array:
 			_duel_id = duel_id
 			return []
 	if not _parts.is_empty(): return _parts
-	var kept: Dictionary
-	if shipped: kept = developer_run(str(race.board), int(race.ghost.ticks))
-	else:
-		kept = TheirRun.kept_run(_owner, duel_id, true) if keep_copy else {}
-		if kept.get("digest", "") != race.ghost.replay_hash: kept = await _fetch(race)
+	var kept: Dictionary = TheirRun.kept_run(_owner, duel_id, true) if keep_copy else {}
+	if kept.get("digest", "") != race.ghost.replay_hash: kept = await _fetch(race)
 	if kept.is_empty() or duel_id != _duel_id: return []
 	var parts: Variant = await Reaper.run(Callable(TheirRun, "parts").bind(kept, chapter_key), true)
 	if duel_id != _duel_id: return []
 	if not parts is Array or parts.is_empty():
-		if not shipped: TheirRun.forget(_owner, duel_id, true)
+		TheirRun.forget(_owner, duel_id, true)
 		return []
 	_parts = parts
 	return _parts
@@ -171,21 +158,9 @@ func _fetch(race: Dictionary) -> Dictionary:
 	if keep_copy: TheirRun.keep(owner, str(race.duel_id), answer.blob, true)
 	return answer.blob
 
-## Whether the race's ghost names a run the server serves (entry_id and replay_hash): a board run, or the owner's run as Our run.
+## Whether the race's ghost names a run the server serves (entry_id and replay_hash): a board run, or Our run.
 static func served(ghost: Dictionary) -> bool:
 	return ghost.get("replay_hash") != null and ghost.get("entry_id") != null
-
-## Our run on `board` as the game ships it ({digest, byte_length, body}, as a kept
-## run), or {} when there is none or its time is not `ticks`, the time the race races.
-static func developer_run(board: String, ticks: int) -> Dictionary:
-	var file: Variant = JSON.parse_string(FileAccess.get_file_as_string(DEVELOPER_RUNS)) if FileAccess.file_exists(DEVELOPER_RUNS) else null
-	var rows: Variant = file.get("ghosts") if file is Dictionary else null
-	if not rows is Array: return {}
-	for row: Variant in rows:
-		if not row is Dictionary or row.get("board") != board: continue
-		if int(row.get("ticks", -1)) != ticks or not row.get("proof_hash") is String or not row.get("body") is String: return {}
-		return {"digest": row.proof_hash, "byte_length": int(row.get("byte_length", 0)), "body": row.body}
-	return {}
 
 ## The raced run's row on the board this phone reads (kept a minute), or {} when it is not listed.
 func _row(race: Dictionary) -> Dictionary:

@@ -66,7 +66,6 @@ damaged_save 1
 deleted_identity_caches 1
 deleted_identity_photo_cleanup 2
 deleted_identity_stores 3
-dev_ghosts 1
 display_name_prompt 2
 display_names 3
 dressing_lint 1

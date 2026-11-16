@@ -3,8 +3,8 @@ extends SceneTree
 ## every chapter's stages and roles, the same on every build of it; the replay
 ## kept from the race's first turn to its end and let go after; the ghost's
 ## look and name; the see-through pip, its faint name and the timer mark.
-## Real whole runs come from content/dev_ghosts.json (the developers'
-## ghosts, each a final checkpoint in the shared blob format). Synthetic ids only.
+## Real whole runs come from tests/fixtures/whole_runs.json (each a final
+## checkpoint in the shared blob format). Synthetic ids only.
 const Track = preload("res://services/race_ghost_track.gd")
 const RaceGhost = preload("res://services/race_ghost.gd")
 const TheirRun = preload("res://services/duel_their_run.gd")
@@ -47,8 +47,8 @@ class FakeWorld extends Node3D:
 
 func _run() -> void:
 	_clear()
-	var ghosts: Array = JSON.parse_string(FileAccess.get_file_as_string("res://content/dev_ghosts.json")).ghosts
-	_check(ghosts.size() >= 12, "the developers' whole runs load: %d" % ghosts.size())
+	var ghosts: Array = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/whole_runs.json")).ghosts
+	_check(ghosts.size() >= 12, "the whole runs load: %d" % ghosts.size())
 	for row: Dictionary in ghosts: _tracks(row)
 	var relay: Dictionary = ghosts.filter(func(row: Dictionary) -> bool: return row.board == "relay-isles@2")[0]
 	await _service(relay)
@@ -122,16 +122,14 @@ func _service(relay: Dictionary) -> void:
 	later.release_ended({"duels": [DuelsClient.valid_view(_race_view(board, "decided", str(relay.proof_hash)))]})
 	_check(TheirRun.kept_run(OWNER, DUEL, true).is_empty(), "the copy goes once the race has ended")
 	await _copies(relay)
-	# Our run plays from the run the game ships, with no request, in the default look.
+	# A race against Our run naming no run (an older build's, against the run it shipped) has no ghost and asks nothing.
 	var ours := _race_view(board, "running", str(relay.proof_hash))
 	ours.ghost = {"source": "developer", "entry_id": null, "rank": null, "ticks": int(relay.ticks), "names": null}
 	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": PARTNER, "intact": true, "invites_in": [], "invite_out": null}, "duels": [ours]}}
 	await DuelsClient.shared(api, OWNER).lobby()
 	var asked := api.requests.size()
-	var developer: Dictionary = await RaceGhost.new(api, OWNER).turn(ROOM, true, chapter, 0, "a")
-	_check(not developer.is_empty() and developer.developer and developer.look == {} and api.requests.size() == asked, "a race against Our run plays the shipped run, asking nothing")
-	_check(RaceGhost.developer_run(board, int(relay.ticks) + 1).is_empty() and RaceGhost.developer_run("no-such-board@1", 1).is_empty(), "a race whose time is not the shipped run's has no ghost")
-	# The owner's run as Our run (backend leaderboards/our-run.ts): the race names its entry and replay, fetched and kept like a board run's, still Our run in the default look.
+	_check((await RaceGhost.new(api, OWNER).turn(ROOM, true, chapter, 0, "a")).is_empty() and api.requests.size() == asked, "a race against Our run that names no run has no ghost, asking nothing")
+	# Our run, the owner's run (backend leaderboards/our-run.ts): the race names its entry and replay, fetched and kept like a board run's, still Our run in the default look.
 	var owners := _race_view(board, "running", str(relay.proof_hash))
 	owners.duel_id = "a".repeat(32)
 	owners.ghost = {"source": "developer", "entry_id": ENTRY, "rank": null, "ticks": int(relay.ticks) - 1, "names": null, "replay_hash": relay.proof_hash}

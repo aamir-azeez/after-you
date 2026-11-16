@@ -12,7 +12,8 @@ extends VBoxContainer
 ##   would get, with the clock and "Being checked": the server can't race it yet;
 ## - every row while the pair has its limit of ghost races going, with the
 ##   lobby's limit line above them (services/duels_client.gd ghost_races_full).
-## An empty board says so with the board's own line and offers Our run.
+## An empty board says so with the board's own line and offers Our run when
+## the chapter has one.
 ##
 ## While duel energy is on (the page's energy_cost), each Race and Our run
 ## wears the cost chip (kit/energy_chip.gd) in place of the flag on a narrow
@@ -136,7 +137,7 @@ func _limit_line(limit: int) -> Control:
 	bar.add_child(Kit.wrapped(PlayerCopy.DUELS_RACE_LIMIT % limit, 17, UiTokens.CREAM))
 	return bar
 
-## Our run on an empty board, so the sheet never ends in nothing to do.
+## Our run on an empty board that has one, so the sheet offers a race.
 func _our_run(ticks: int, full: bool) -> Button:
 	var button := Kit.button("%s  %s" % [PlayerCopy.DUELS_GHOST_DEVELOPERS, DuelModel.time_text(ticks)], Callable(), false, Rows.TARGET)
 	button.name = "RacePickerOurRun"

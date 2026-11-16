@@ -27,7 +27,7 @@ import { FRUIT_PREFIX, addToPurse, currencyOfKey, dropPurse } from "./currency";
  *                                       Every Hard asks for has one, the player earns it (earned.ts)
  *     duelwin:<duel_id>                 a friend duel's win bonus, 0 when past its weekly limits (duel-pay.ts; pruned with turns)
  *     duelextra:<duel_id>               a public duel's held extra, paid at its end, 0 when forfeited (duel-pay.ts; pruned with duel wins)
- *     ghostwin:<board>                  the first win over the developers' ghost on a board (duel-pay.ts; kept)
+ *     ghostwin:<board>                  the first win over Our run on a board (duel-pay.ts; kept)
  *     grant:<anchor>:<n>, grant:lifetime, grantrefund:<anchor>:<n>
  *                                       the monthly grant and its refunds (grant-settle.ts; kept)
  *     bundle:<Play order>, bundlerefund:<Play order>
