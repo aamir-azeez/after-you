@@ -8,6 +8,7 @@ const LetterView = preload("res://presentation/letter/letter_view.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Actions = preload("res://presentation/action_buttons.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const StampArt = preload("res://presentation/letter/stamp_art.gd")
 const SCREENS := {"phone": Vector2(1600, 720), "duo outer": Vector2(1280, 880)}
 ## The letter with *knew* in it, and one that fits without scrolling. The
 ## long letter is that one written out three times.
@@ -32,6 +33,7 @@ func _run() -> void:
 		await _closed_then_open(screen, SCREENS[screen])
 	await _reduced_motion()
 	_pen_has_every_letter()
+	_every_stamp_draws()
 	print("AFTER YOU LETTER VIEW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -98,3 +100,9 @@ func _pen_has_every_letter() -> void:
 			var character := words[i]
 			if character != "*" and not LetterView.PEN.has_char(character.unicode_at(0)) and not missing.contains(character): missing += character
 	_check(missing.is_empty(), "The pen hand has every character the letters use: missing '%s'" % missing)
+
+## Every stamp kind, used or waiting for a level, draws at its size.
+func _every_stamp_draws() -> void:
+	for kind: String in StampArt.KINDS:
+		var stamp := StampArt.texture(kind, 2.0, Color("f0e9d8"))
+		_check(stamp != null and stamp.get_size() == StampArt.SIZE * 2.0, "The %s stamp draws" % kind)
