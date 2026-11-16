@@ -55,6 +55,8 @@ var _queue := RequestQueue.new()
 var connectivity: RefCounted = null
 ## A request came back 426 client_update_required (a route that refuses this build).
 signal update_required
+## A write came back 403 platform_required (backend platform-gate.ts): the platform service checks again.
+signal platform_required
 
 func configured() -> bool:
 	return base_url.begins_with("https://") or (OS.has_feature("debug") and base_url.begins_with("http://127.0.0.1:"))
@@ -159,6 +161,7 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	var code := str(server_error.get("code","connection_interrupted")) if server_error is Dictionary else "connection_interrupted"
 	# A route refusing this build as too old: the app asks /v1/app-status again.
 	if status==426 and code=="client_update_required": update_required.emit()
+	if status==403 and code=="platform_required": platform_required.emit()
 	var result := {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code,method,path),"code":code,"retry_after_ms":retry_after_ms(response[2]),"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
 	# A room's end reactions ride beside its read or turn reply. They leave the
 	# reply here, so the room that is checked and kept is exactly what it was.
@@ -415,6 +418,8 @@ static func error_message(code: String, method: int = HTTPClient.METHOD_GET, pat
 		"not_found":PlayerCopy.ROOMS_API_B0F756999849,
 		"room_finished":"This room has just finished, so it was kept.",
 		"client_update_required":PlayerCopy.UPDATE_REQUIRED_ERROR,
+		# The GitHub APK cannot sign in to Play Games; store builds sign in from the next tap's ask.
+		"platform_required":PlayerCopy.PLATFORM_GAMES_STORE_ONLINE if ClientIdentity.channel()==ClientIdentity.GITHUB else PlayerCopy.for_platform(PlayerCopy.PLATFORM_GAMES_REQUIRED,PlayerCopy.PLATFORM_GAMES_REQUIRED_IOS),
 	}
 	return str(messages[code]) if messages.has(code) else for_route(PlayerCopy.ROOMS_API_1C556A121773,method,path)
 

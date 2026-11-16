@@ -358,7 +358,7 @@ func _cleanup_flow() -> void:
 	api.local_done = func(): return cache.erased >= 2 and secrets.removed.is_empty()
 	await app.account_flow.clear_deleted_identity()
 	_check(api.calls == 1 and api.ack_after_local, "Successful tester-secret removal precedes the server local-cleanup ACK")
-	_check(secrets.removed == ["player_identity"] and app.identity_data.is_empty(), "Identity credentials are forgotten only after tester cleanup and the confirmed server ACK")
+	_check(secrets.removed == ["player_identity", preload("res://presentation/platform_games_flow.gd").PENDING_SECRET] and app.identity_data.is_empty(), "Identity credentials and any waiting platform restore are forgotten only after tester cleanup and the confirmed server ACK")
 	api.local_done = Callable()
 	# The same cleanup rule applies only after an acknowledged credential recovery.
 	app.identity_restart_required = true

@@ -16,7 +16,8 @@ extends SceneTree
 ##   draw call of its own: marks share their colour's batch.
 ## Marks are presentation only; the stage definition is never changed.
 const Registry = preload("res://services/chapter_registry.gd")
-const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
+## Each stage as its family lays it out, as its world builds it.
+const Layout = preload("res://services/level_layout.gd")
 const OwnerMark = preload("res://presentation/kit/owner_mark.gd")
 const FloorSpots = preload("res://presentation/kit/floor_spots.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
@@ -49,9 +50,6 @@ func _run() -> void:
 	var marked := 0
 	for key: String in Registry.keys():
 		var world: Node3D = Registry.world_script(key).new()
-		if not "owner_marks" in world:
-			world.free()
-			continue
 		root.add_child(world)
 		world.set_process(false)
 		var level := Registry.definition(key)
@@ -60,7 +58,7 @@ func _run() -> void:
 		for stage: Dictionary in level.stages:
 			world.show_stage(stage)
 			_check(world.displayed_stage_id == stage.id, "%s builds %s" % [key, stage.id])
-			marked += _stage(world, key, CooperativeCatalog.stage_definition(level, str(stage.id)))
+			marked += _stage(world, key, Layout.for_key(key, str(stage.id), level))
 		_check(Canonical.digest(level) == digest, "%s: marks never change the definition" % key)
 		world.free()
 	_check(marked > 100, "The sweep sees the chapters' marks: %d" % marked)
@@ -226,15 +224,20 @@ func _room(world: Node3D, where: String, view: Dictionary, placed: Array[Diction
 			_check(at.distance_to(ring) >= FloorSpots.HANDOFF_RADIUS + reach, "%s: the %s mark of %s keeps off the handoff ring" % [where, mark.kind, mark.id])
 
 ## Every diamond and ring of the stage is one of the kit's marks, and the
-## static fold leaves none drawing on its own.
+## static fold leaves none drawing on its own where the terrain is built again
+## with every stage; a world that keeps its terrain keeps them whole, so the
+## next stage takes them down (island_world _marks_fold).
 func _drawn(world: Node3D, key: String, where: String, placed: Array[Dictionary], owners: Dictionary) -> void:
 	var drawn := _mark_nodes(world)
 	var expected := placed.filter(func(mark: Dictionary) -> bool: return mark.kind != &"spot")
 	_check(drawn.size() == expected.size(), "%s: every mark on the stage came from the kit (%d drawn, %d placed)" % [where, drawn.size(), expected.size()])
 	# A pad either pip holds (open controls) has no owner, so no mark.
-	var owned_spots: Array = world._pad_pieces.keys().filter(func(id: Variant) -> bool: return world._pad_pieces[id].spot != null and owners.has(str(id)))
+	var owned_spots: Array = world.pad_pieces.keys().filter(func(id: Variant) -> bool: return world.pad_pieces[id].spot != null and owners.has(str(id)))
 	_check(placed.filter(func(mark: Dictionary) -> bool: return mark.kind == &"spot").size() == owned_spots.size(), "%s: each owned stand spot's mark is recorded" % where)
 	StaticBatch.fold(world.terrain, [world], world._fold_options())
+	if not world._marks_fold():
+		_check(_mark_nodes(world).size() == drawn.size(), "%s: the marks stay whole for the next stage to take down" % where)
+		return
 	for node: MeshInstance3D in _mark_nodes(world):
 		# By where it stands across the floor: a bucket may have risen since.
 		var at: Vector3 = world.terrain.to_local(node.global_position)

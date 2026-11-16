@@ -28,6 +28,10 @@ extends Node
 ## settings_requested, which Main opens on Account & recovery.
 ## Main asks holds_back() before Android Back or Escape.
 ##
+## A phone that has a friend code replaces it only after the player kept its recovery details
+## (recovery_kept): Recover identity asks first, and so does Play Games / Game Center's "Use the
+## linked one" (presentation/platform_games_flow.gd).
+##
 ## Recovery codes and device tokens never reach a log or the ordinary save;
 ## their formats live in RecoveryDetails. Every reveal and copy of the code goes
 ## through `guard` (services/recovery_guard.gd): the phone's screen lock first,
@@ -52,6 +56,8 @@ const MODE_ACCOUNT := "account"
 const MODE_ACCOUNT_LOADING := "account_loading"
 const MODE_RECOVERY_DETAILS := "recovery_details"
 const MODE_RECOVERY_FORM := "recovery_form"
+## Recover identity on a phone that has a friend code: keep its recovery details first.
+const MODE_RECOVERY_KEEP := "recovery_keep"
 const MODE_RECOVERY := "recovery"
 ## The warning before a saved recovery is stopped, and the stop itself.
 const MODE_RECOVERY_DISCARD := "recovery_discard"
@@ -84,6 +90,11 @@ var recovery_reveal_busy := false
 ## The Settings box (and its row) showing the details, hidden again on pause.
 var _shown_detail: WeakRef
 var _shown_row: WeakRef
+## The friend code whose recovery details the player kept this session (copied, or shown and
+## confirmed): only it may be replaced by a recovery or a restore.
+var _kept_player := ""
+## The keep step showed the details on screen (its "I kept it" waits for that or a copy).
+var _keep_shown := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -114,7 +125,7 @@ func _back_to_account() -> void:
 	settings_requested.emit()
 
 func create_identity() -> void:
-	if await host._ensure_identity(): _back_to_account()
+	if await host._ensure_identity(Callable(), false): _back_to_account()
 
 func open_photo_transfer() -> void:
 	photo_transfer_requested.emit()
@@ -242,6 +253,7 @@ func application_paused() -> void:
 	if detail is VBoxContainer and detail.visible:
 		_hide_recovery_row(detail, _shown_row.get_ref() if _shown_row != null else null)
 	if host.mode == MODE_RECOVERY_DETAILS: _recovery_details_card(false)
+	if host.mode == MODE_RECOVERY_KEEP: _keep_card(false)
 
 func application_resumed() -> void:
 	guard.resumed()
@@ -318,7 +330,69 @@ func _can_copy_acknowledged_recovery() -> bool:
 	var request: Dictionary=host.pending_recovery.get("request",{})
 	return recovery_acknowledged and not request.is_empty() and host.identity_data.get("player_id")==request.get("player_id") and host.identity_data.get("recovery_code")==request.get("next_recovery_code") and host.identity_data.get("device_token")==request.get("next_device_token")
 
+## Whether this phone's friend code may be replaced: it has none, or its recovery details were kept.
+func recovery_kept() -> bool:
+	var player := str(host.identity_data.get("player_id",""))
+	return host.api.player_id.is_empty() or (not _kept_player.is_empty() and _kept_player == player)
+
+## Copies this phone's recovery details through the one guarded copy; a confirmed copy counts as kept.
+func keep_recovery_details() -> bool:
+	var player := str(host.identity_data.get("player_id",""))
+	var copied := await copy_recovery_details(player,str(host.identity_data.get("recovery_code","")))
+	if copied: _kept_player = player
+	return copied
+
+## Recover identity on a phone that has a friend code: its recovery details first (shown behind the
+## screen lock, or copied), then "I kept it", then the form.
+func show_keep_current_code() -> void:
+	_keep_shown = false
+	_keep_card(false)
+
+## The keep step's card; `shown` puts the details on it (after the screen lock).
+func _keep_card(shown: bool) -> void:
+	host.mode=MODE_RECOVERY_KEEP
+	_keep_shown = _keep_shown or shown
+	var card: VBoxContainer = host._card(680)
+	card.add_child(host._label(PlayerCopy.RECOVERY_KEEP_TITLE,32,CREAM,true))
+	card.add_child(host._paragraph(PlayerCopy.RECOVERY_KEEP_BODY,580))
+	var player := str(host.identity_data.get("player_id",""))
+	var code := str(host.identity_data.get("recovery_code",""))
+	if shown:
+		for entry: Array in [["Identity",player],["Recovery code",code]]:
+			card.add_child(host._label(entry[0],18,MUTED))
+			var field := LineEdit.new()
+			field.text=entry[1]
+			field.editable=false
+			field.custom_minimum_size=Vector2(580,48)
+			card.add_child(field)
+	else:
+		card.add_child(host._button(PlayerCopy.SETTINGS_RECOVERY_DETAILS,_show_kept_code,false))
+	var copy: Button = host._button("Copy recovery details",func():
+		if await keep_recovery_details() and host.mode==MODE_RECOVERY_KEEP: _keep_card(false))
+	copy.disabled=not _copyable(player,code)
+	card.add_child(copy)
+	var kept: Button = host._button(PlayerCopy.RECOVERY_KEEP_CONFIRM,func():
+		if host.mode!=MODE_RECOVERY_KEEP or not (_keep_shown or recovery_kept()): return
+		_kept_player=player
+		show_recovery_form())
+	kept.name="RecoveryKept"
+	kept.disabled=not (_keep_shown or recovery_kept())
+	card.add_child(kept)
+	card.add_child(host._back_button("Back",_back_to_account,false))
+	if shown: guard.protect(card)
+
+func _show_kept_code() -> void:
+	var answer: int = await guard.unlock()
+	if answer != RecoveryGuard.ALLOWED:
+		if answer == RecoveryGuard.REFUSED: host._toast(PlayerCopy.RECOVERY_LOCKED)
+		return
+	if host.mode == MODE_RECOVERY_KEEP: _keep_card(true)
+
 func show_recovery_form() -> void:
+	# A friend code on this phone is replaced only once its recovery details were kept.
+	if host.pending_recovery.is_empty() and not recovery_kept():
+		show_keep_current_code()
+		return
 	host.mode=MODE_RECOVERY_FORM
 	var card: VBoxContainer = host._card()
 	card.add_child(host._label("Welcome back.",34,CREAM,true))
@@ -376,6 +450,9 @@ func recover_identity(player: String, code: String) -> void:
 		host._toast(PlayerCopy.MAIN_45D3B02F91EE)
 		return
 	if host.identity_busy:
+		return
+	if host.pending_recovery.is_empty() and not recovery_kept():
+		show_keep_current_code()
 		return
 	# Empty fields get the same note as mistyped ones, so the tap is never silent.
 	if not Typed.valid_id(player) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN):
@@ -508,7 +585,7 @@ func discard_pending_recovery() -> void:
 	while host.identity_loading and Time.get_ticks_msec()<deadline:
 		await host.get_tree().process_frame
 	if host.identity_read_state==host.IdentityReadState.MISSING:
-		await host._ensure_identity()
+		await host._ensure_identity(Callable(), false)
 	recovery_discard_busy=false
 	if host.mode==MODE_RECOVERY_DISCARD: _back_to_account()
 
@@ -541,6 +618,8 @@ func persist_recovered_identity() -> void:
 		return
 	host.pending_recovery={}
 	recovery_replace_allowed=false
+	# Its purchases are read again once the store is set up for it after the restart.
+	host.store_flow.sync_after_restore(str(host.identity_data.get("player_id","")))
 	_finish_identity_change()
 
 func _show_recovery_storage_failure() -> void:
@@ -580,7 +659,7 @@ func confirm_delete_identity(message: String="") -> void:
 	card.add_child(host._back_button("Keep my identity",_back_to_account,false))
 
 func delete_identity() -> void:
-	if host.identity_busy or not await host._ensure_identity():
+	if host.identity_busy or not await host._ensure_identity(Callable(), false):
 		return
 	host._invalidate_relay_identity()
 	host.identity_busy = true
@@ -674,10 +753,12 @@ func clear_deleted_identity() -> void:
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_3820D398892A)
 		return
 	host.identity_data={}
-	host.platform_games_flow.forget_identity()
+	await host.platform_games_flow.forget_identity()
 	# The stores every player of this phone shares forget only this player. One
 	# that cannot write now finishes on the next launch (services/deleted_identity_stores.gd).
 	DeletedStores.new().forget(owner, host.api.base_url, host.friend_nicknames)
+	# Android's backup list is written again now, so the next backup names none of the removed files.
+	if host.has_method("_write_backup_plan"): host._write_backup_plan()
 	host.identity_read_state=host.IdentityReadState.MISSING
 	host.api.player_id=""
 	host.api.device_token=""

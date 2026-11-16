@@ -28,6 +28,9 @@ class FakeHost extends Node:
 		add_child(ui)
 		add_child(settings_flow)
 	func _toast(text: String) -> void: toasts.append(text)
+	func _report(report: Callable, text: String) -> void:
+		if report.is_valid(): report.call(text)
+		else: toasts.append(text)
 
 class FakeProvider extends "res://services/platform_games/games_provider.gd":
 	var auth: Dictionary = {"ok": true, "signed_in": true, "player_key": "a".repeat(64)}
@@ -157,6 +160,109 @@ func _prompt_flow() -> void:
 		api.queue_free()
 		host.queue_free()
 		await process_frame
+
+## "Keep this phone's" says plainly what happens to the other friend code and changes nothing until confirmed.
+func _keep_this_confirm() -> void:
+	var host := FakeHost.new()
+	root.add_child(host)
+	var flow: Node = Flow.new(host)
+	host.add_child(flow)
+	var api := FakeApi.new()
+	root.add_child(api)
+	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)], "/v1/platform/link": [_ok({"schema_version": 1, "provider": "play_games", "status": "conflict", "changed": false}), _ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": true})]}
+	var service := _service(FakeProvider.new(), api, _account(api), "keep-confirm")
+	flow.service = service
+	await service.start()
+	flow._confirm_keep_this_phone()
+	var modal: Node = host.ui.get_node_or_null("PlatformKeepThisModal")
+	_check(modal != null and api.calls.size() == 2 and service.link_state == Service.LINK_CONFLICT, "Keep this phone's asks first and changes nothing yet")
+	if modal != null:
+		_check(modal.find_child("ModalCancel", true, false).text == PlayerCopy.PLATFORM_GAMES_BACK, "with a way back")
+		modal.find_child("ModalCancel", true, false).pressed.emit()
+		for _frame in range(5): await process_frame
+		_check(service.link_state == Service.LINK_CONFLICT and api.calls.size() == 2, "Back keeps both friend codes as they are")
+		flow._confirm_keep_this_phone()
+		modal = host.ui.get_node_or_null("PlatformKeepThisModal")
+		_check(modal != null, "It asks again on the next tap")
+		if modal != null: modal.find_child("ModalConfirm", true, false).pressed.emit()
+		for _frame in range(20): await process_frame
+		_check(service.linked() and api.calls[-1].body.get("replace") == true, "Confirming keeps this phone's")
+	service.queue_free()
+	api.queue_free()
+	host.queue_free()
+	await process_frame
+
+## REQUIRE_PLATFORM: an online tap goes on only linked (or exempt, or while the rule is off); signed
+## out it asks once, and Sign in links and lets the tap through; a build that cannot sign in says so.
+func _platform_rule() -> void:
+	var required := CAPABILITY.duplicate()
+	required.platform_required_version = 1
+	required.platform_linked = false
+	var linked_answer := _ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": false})
+	var cases := [["off", CAPABILITY, {"ok": true, "signed_in": false}, "pass"], ["signed out", required, {"ok": true, "signed_in": false}, "sign_in"],
+		["exempt", required.merged({"platform_exempt": true}), {"ok": true, "signed_in": false}, "pass"], ["no Play Games here", required, {"ok": false, "code": "not_configured"}, "unavailable"]]
+	for row: Array in cases:
+		var api := FakeApi.new()
+		root.add_child(api)
+		api.answers = {"/v2/capabilities": [_ok(row[1])]}
+		var provider := FakeProvider.new()
+		provider.auth = row[2]
+		var service := _service(provider, api, _account(api), "rule-%d" % checks)
+		await service.start()
+		_check(await service.platform_gate() == row[3], "Platform rule, %s: %s" % [row[0], row[3]])
+		service.queue_free()
+		api.queue_free()
+	# A link held from an older build is sent once more while the rule is on, which marks it.
+	var api := FakeApi.new()
+	root.add_child(api)
+	api.answers = {"/v2/capabilities": [_ok(required)], "/v1/platform/link": [linked_answer]}
+	var account := _account(api)
+	var path := _root_dir.path_join("rule-held.json")
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"schema_version": 1, "capability": {}, "links": {"play_games": {"player_key": "a".repeat(64), "player_id": account.player}}, "cloud": {}, "restore_probe": {}}))
+	file.close()
+	var held := Service.new()
+	held.configure(FakeProvider.new(), path)
+	root.add_child(held)
+	held.attach(account)
+	await held.start()
+	_check(api.calls.any(func(call: Dictionary) -> bool: return call.path == "/v1/platform/link") and held.linked() and held.state.link("play_games").get("marked") == true, "A link from an older build goes to the server once, and is marked")
+	_check(await held.platform_gate() == "pass", "and online taps go on")
+	var links_sent := api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/platform/link").size()
+	await held.start()
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/platform/link").size() == links_sent, "The next launch trusts the marked link: no second link")
+	held.server_refused()
+	_check(held.state.capability().is_empty() and held.state.link("play_games").is_empty() and not held.linked(), "A write refused for want of a platform account: the next tap checks the rule and links again")
+	held.queue_free()
+	# The ask at the tap: Sign in signs in, links and lets the tap through.
+	var host := FakeHost.new()
+	root.add_child(host)
+	var flow: Node = Flow.new(host)
+	host.add_child(flow)
+	api.calls.clear()
+	api.answers = {"/v2/capabilities": [_ok(required)], "/v1/platform/link": [linked_answer]}
+	var provider := FakeProvider.new()
+	provider.auth = {"ok": true, "signed_in": false}
+	var service := _service(provider, api, _account(api), "rule-ask")
+	flow.service = service
+	await service.start()
+	var result: Array = []
+	var tap := func() -> void: result.append(await flow.require_platform())
+	tap.call()
+	for _frame in range(5): await process_frame
+	var modal: Node = host.ui.get_node_or_null("PlatformSignInModal")
+	_check(modal != null and result.is_empty(), "Signed out, the tap asks to sign in")
+	if modal != null:
+		provider.auth = {"ok": true, "signed_in": true, "player_key": "a".repeat(64)}
+		modal.find_child("ModalConfirm", true, false).pressed.emit()
+		for _frame in range(40):
+			if not result.is_empty(): break
+			await process_frame
+		_check(result == [true] and provider.auth_calls == [false, true] and service.linked(), "Sign in shows the sheet, links, and the tap goes on")
+	service.queue_free()
+	api.queue_free()
+	host.queue_free()
+	await process_frame
 
 func _run() -> void:
 	_root_dir = "user://platform-games-service-test-%d" % Time.get_ticks_usec()
@@ -416,6 +522,8 @@ func _run() -> void:
 	changing.queue_free()
 
 	await _prompt_flow()
+	await _keep_this_confirm()
+	await _platform_rule()
 
 	await process_frame
 	api.queue_free()

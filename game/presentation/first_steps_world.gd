@@ -1,6 +1,9 @@
 extends "res://presentation/island_world.gd"
 ## The vertical First Steps world follows its authored surfaces and verified snapshots.
 ## Visual interpolation never decides boarding, arrival, seed ownership or activation.
+## Floors, pads, scenery, the seed's throw, the follow camera and each stage's
+## barriers, marks and tags come from island_world's shared build; this world
+## adds the lift, the seed pedestal, the garden and the loft bell.
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
 const Typed = preload("res://services/typed_values.gd")
 ## The lift's look (content/dressing/piece_styles.gd "lift") and its kit.
@@ -100,10 +103,8 @@ func load_level(definition: Dictionary) -> void:
 		actor_badges[slot] = Badges.make(spirit)
 		await _build_step()
 	_build_seed_throw("SeedLanding")
-	camera.position = Vector3(8, 12, 18)
-	camera.look_at(Vector3(0, 0.9, 0))
-	camera.size = ViewFit.viewport(11.8, self)
-	camera.h_offset = 0.0
+	_follow_center = Vector3.ZERO
+	_frame_camera()
 	_present_garden(false, false, true)
 
 ## The lift in its style (content/dressing/piece_styles.gd "lift"); a
@@ -132,6 +133,10 @@ func show_stage(value: Dictionary) -> void:
 	landing_marker.visible = value.has("landing_cm")
 	if landing_marker.visible:
 		landing_marker.position = _floor_point(value.landing_cm, value.landing_surface)
+	_clear_stage_marks()
+	# The lift car shows itself whether it can run (waiting at the bottom).
+	route_barriers.skip(str(current_level.lift.id), "the lift car shows whether it runs")
+	_build_stage_marks(LevelLayout.for_key(_chapter_key(), displayed_stage_id, current_level))
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	if immediate: reset_camera_exploration()
@@ -155,6 +160,19 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if loft_chime != null: loft_chime.set_rung(rung, immediate or reduced_motion)
 	_present_seed(state.seed, immediate)
 	_present_garden(bool(state.mechanisms.garden_open), bool(state.complete) and state.seed.status == "planted", immediate)
+	_present_stage_marks(state)
+	_present_follow(state, immediate)
+
+## The pads are held as the snapshot's controls say; the lift is the
+## crossing its owner's gates stand at.
+func _marks_state(state: Dictionary) -> Dictionary:
+	var shared := state.duplicate()
+	shared["hold_pads"] = state.get("controls", {})
+	shared["bridges"] = {str(current_level.lift.id): true}
+	return shared
+
+func _uses_scrolling_camera() -> bool:
+	return true
 
 func _chapter_key() -> String:
 	return "first-steps@1"
@@ -172,7 +190,6 @@ func _static_keep() -> Array:
 	var keep := super._static_keep() + [pedestal]
 	if lift_piece != null: keep += lift_piece.moving_parts()
 	if loft_chime != null: keep += loft_chime.moving_parts()
-	for id: String in pad_pieces: keep += pad_pieces[id].moving_parts()
 	return keep
 
 ## The lift is still once it is this close (metres) to its height.
@@ -187,6 +204,3 @@ func _process(delta: float) -> void:
 		lift.position.y = lerpf(lift.position.y, lift_target_height, minf(delta * 14.0, 1.0))
 		if lift_piece != null: lift_piece.set_height(lift.position.y)
 	if loft_chime != null and loft_chime.moving(): loft_chime.advance(delta)
-	if is_instance_valid(camera):
-		camera.size = ViewFit.viewport(11.8, self)
-		camera.h_offset = 0.0

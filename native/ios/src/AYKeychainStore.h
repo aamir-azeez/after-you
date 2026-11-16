@@ -14,6 +14,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)putName:(NSString *)name value:(NSString *)value;
 /// Sets *found; returns nil with *found = NO when absent. Returns nil with *failed = YES on error.
 - (nullable NSString *)getName:(NSString *)name found:(BOOL *)found failed:(BOOL *)failed;
+// Whether `name` holds a value an earlier install left (kept across a reinstall, not written since).
+- (BOOL)keptName:(NSString *)name;
 /// YES when the item is gone afterwards.
 - (BOOL)removeName:(NSString *)name;
 

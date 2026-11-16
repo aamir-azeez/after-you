@@ -202,20 +202,19 @@ func _check_follow_angle() -> void:
 	world.set_process(false)
 	world.load_level(LightCatalog.definition(LightCatalog.STAGE_IDS[0]))
 	var fitted: Basis = world.camera.global_basis
-	_check(not world._follows_view(), "The first Lighthouse stages fit the whole archipelago")
+	_check(not world._uses_scrolling_camera(), "The first Lighthouse stages fit the whole archipelago")
 	world.load_level(LightCatalog.definition(LightCatalog.STAGE_IDS[4]))
 	world.actors.p0.position = Vector3(5.0, 0, 0.5)
-	world._follow_point = world._follow_target()
-	world._frame_camera()
-	_check(world._follows_view() and is_equal_approx(world.camera.size, world.FOLLOW_SIZE), "Later Lighthouse stages follow the active spirit")
+	world._snap_follow()
+	_check(world._uses_scrolling_camera() and is_equal_approx(world.camera.size, world.SCROLL_SIZE), "Later Lighthouse stages follow the active spirit")
 	_check(world.camera.global_basis.is_equal_approx(fitted), "Following never changes the camera angle or the stick mapping")
 	# A taller screen keeps the authored width in view; a phone keeps the size.
 	viewport.size = Vector2i(1280, 960)
 	world._frame_camera()
-	_check(is_equal_approx(world.camera.size, world.FOLLOW_SIZE * 960.0 / 720.0), "A 4:3 tablet follows with the 16:9 width in view")
+	_check(is_equal_approx(world.camera.size, world.SCROLL_SIZE * 960.0 / 720.0), "A 4:3 tablet follows with the 16:9 width in view")
 	viewport.size = Vector2i(1560, 720)
 	world._frame_camera()
-	_check(is_equal_approx(world.camera.size, world.FOLLOW_SIZE), "A phone keeps the authored follow size")
+	_check(is_equal_approx(world.camera.size, world.SCROLL_SIZE), "A phone keeps the authored follow size")
 	viewport.free()
 
 ## One rule for every world camera (kit/view_fit.gd): grow only when narrower than 16:9.

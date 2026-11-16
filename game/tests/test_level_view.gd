@@ -68,16 +68,11 @@ func _run() -> void:
 	print("LEVEL VIEW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-## The chapters this suite walks; a split suite narrows it: every chapter
-## whose world follows a pip with its camera (island_world's follow camera:
-## the cooperative and journey worlds and Relay). First Steps and the
-## Lighthouse room frame every island at once.
+## The chapters this suite walks: every registered chapter (each family lays
+## its stages out; the level checker fails one that does not); a split suite
+## narrows it.
 func _keys() -> Array[String]:
-	return Registry.keys().filter(func(key: String) -> bool:
-		var world: Node3D = Registry.world_script(key).new()
-		var follows: bool = world._uses_scrolling_camera()
-		world.free()
-		return follows)
+	return Registry.keys()
 
 func _check(ok: bool, message: String) -> void:
 	checks += 1

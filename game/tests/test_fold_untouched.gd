@@ -47,7 +47,7 @@ func _chain(key: String) -> Array:
 
 ## A stage and its history, as the solo controllers show them.
 func _history(world: Node3D, stage: Dictionary, checkpoint: Dictionary) -> void:
-	if world.has_method("show_stage"): world.show_stage(stage)
+	world.show_stage(stage)
 	world.present_history(checkpoint)
 
 ## Every processing node under the world, in engine order.

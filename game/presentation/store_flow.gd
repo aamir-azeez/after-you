@@ -4,7 +4,8 @@ extends Node
 ## Main hosts it as a child. The flow keeps its own state and screens, asks Main
 ## to navigate through the signals below, and reads Main only through this host
 ## contract (read at call time, so Main or a test can swap a service):
-## - services: purchases, tester_access, config, api
+## - services: purchases, tester_access, config, api, saves (the restore purchase
+##   mark), pollen_client
 ## - screen: mode, store_view_generation, application_backgrounded,
 ##   identity_restart_required, overlay
 ## - card kit: _card, _label, _paragraph, _button, _style, _screen_shell,
@@ -37,6 +38,9 @@ const TesterSwitches = preload("res://services/tester_switches.gd")
 const BenefitPanel = preload("res://presentation/kit/benefit_panel.gd")
 const FruitWallet = preload("res://services/fruit_wallet.gd")
 const DuelEnergy = preload("res://services/duel_energy.gd")
+## The save's mark for a friend code that came back (Play Games / Game Center or recovery) whose
+## purchases are read again once the store is set up for it: its player id.
+const RESTORE_SYNC_KEY := "restore_purchase_sync"
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
 ## The card's chapter lines sit a size under the paragraphs elsewhere, as board 3 draws them.
@@ -75,6 +79,8 @@ var store_read_request := ""
 var store_read_views: Dictionary = {}
 var store_owner := ""
 var store_restore_view := -1
+## The quiet purchase read after a restore ("" for none).
+var restore_sync_request := ""
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -400,7 +406,7 @@ func _load_store(force_refresh: bool = false) -> void:
 	_show_store_status(PlayerCopy.MAIN_DD823B20A782)
 	store_read_request=""
 	var view: int = host.store_view_generation
-	if not await host._ensure_identity():
+	if not await host._ensure_identity(Callable(), false):
 		if host.mode == MODE_PAYWALL and view == host.store_view_generation:
 			_show_store_problem(PlayerCopy.MAIN_5FE98B59E6BA)
 		return
@@ -448,7 +454,7 @@ func restore_purchases() -> void:
 	store_action_pending=true
 	var view: int = host.store_view_generation
 	store_restore_view=view
-	if not await host._ensure_identity():
+	if not await host._ensure_identity(Callable(), false):
 		store_action_pending=false
 		return
 	if view!=host.store_view_generation:
@@ -463,14 +469,46 @@ func restore_purchases() -> void:
 		restore_requested=true
 		configure_purchases(true)
 
+## A friend code came back to this phone: its purchases are read again, quietly, once the store
+## is set up for it (now, or after the restart a replaced friend code needs). The mark is saved,
+## so a restart or a lost answer still reads them.
+func sync_after_restore(player: String) -> void:
+	if not player.is_empty(): host.saves.update_values({RESTORE_SYNC_KEY: player})
+
+func _restore_sync_due() -> bool:
+	var saves: Variant = host.get("saves")
+	if saves == null: return false
+	var owner: Variant = saves.data.get(RESTORE_SYNC_KEY)
+	return owner is String and not owner.is_empty() and owner == host.api.player_id and identity_ready()
+
+## Android's restore reads the store account's purchases with no sheet, so Full Journey moved to
+## this friend code shows at once; an iPhone's restore may ask for an Apple sign-in, so there only a
+## fresh read goes (Restore purchases stays the player's own tap).
+func _start_restore_sync() -> void:
+	if not restore_sync_request.is_empty() or store_action_pending or not _restore_sync_due(): return
+	restore_sync_request = host.purchases.refresh_customer_info_fresh() if PlatformSupport.is_ios() else host.purchases.restore()
+
+## The quiet read answered: the wallet, Full Journey's monthly Pollen and any Pollen or Fruit pack
+## moved to this friend code follow, through the same reads and claim a purchase uses.
+func _finish_restore_sync(succeeded: bool) -> void:
+	restore_sync_request = ""
+	if not succeeded: return
+	host.saves.update_values({}, [RESTORE_SYNC_KEY])
+	var pollen: Variant = host.get("pollen_client")
+	if pollen is RefCounted: await pollen.after_restore(host.purchases.has_entitlement())
+
 func purchase_completed(id: String, operation: String, payload: Dictionary) -> void:
 	if not _play_store_enabled(): return
+	if not id.is_empty() and id == restore_sync_request:
+		_finish_restore_sync(true)
+		return
 	if operation in ["get_customer_info","get_offerings"] and not _accept_store_read(id): return
 	if operation=="configure":
 		if id!=store_configure_request or id.is_empty(): return
 		store_configure_request=""
 		if host.api.player_id!=store_owner or host.identity_restart_required: return
 		store_configured=true
+		_start_restore_sync()
 		if restore_requested:
 			restore_requested=false
 			if store_restore_view!=host.store_view_generation or not identity_ready():
@@ -508,8 +546,14 @@ func purchase_completed(id: String, operation: String, payload: Dictionary) -> v
 			if host._store_owned(): _show_full_journey_unlocked()
 			elif not purchase_offer.is_empty(): _show_store_offer()
 			else: show_paywall(tester_store_manual)
+		# The player's own Restore did what the quiet read after a restore would.
+		if operation == "restore_purchases" and _restore_sync_due(): _finish_restore_sync(true)
 
 func purchase_failed(id: String,operation: String,_code: String,message: String,cancelled: bool) -> void:
+	# The quiet read stays quiet; its mark asks again on the next launch.
+	if not id.is_empty() and id == restore_sync_request:
+		_finish_restore_sync(false)
+		return
 	# Every offerings read of this flow is tracked; another flow's (the Pollen store's) is its own to report.
 	if operation == "get_offerings" and not store_read_views.has(id): return
 	if operation in ["get_customer_info","get_offerings"] and not _accept_store_read(id): return
@@ -554,7 +598,7 @@ func show_tester_access() -> void:
 	card.add_child(host._paragraph(PlayerCopy.MAIN_BA73581A5C04,620))
 	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))
 	var view: int = host.store_view_generation
-	if not await host._ensure_identity():
+	if not await host._ensure_identity(Callable(), false):
 		if host.mode == MODE_TESTER_ACCESS and view == host.store_view_generation: _tester_form(PlayerCopy.for_platform(PlayerCopy.MAIN_B39BBA0B04B0,PlayerCopy.MAIN_B39BBA0B04B0_IOS))
 		return
 	await host._load_cached_tester()

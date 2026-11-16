@@ -129,12 +129,12 @@ describe("Play Games linking", () => {
     const limited = { ...PLAY_ON, TESTER_CODE_LIMITER: { limit: async ({ key }: { key: string }) => ({ success: !key.startsWith("platform-player:") }) } } as unknown as Env;
     expect((await link(a, "code-a", undefined, limited)).status).toBe(429);
   });
-  it("costs one auth call and one link call, writing one row and its index entry on a first link", async () => {
+  it("costs one auth call, one link call and the player's platform mark, writing one row and its index entry on a first link", async () => {
     const a = await create(); google({ "code-a": "g-player-one" });
     const counted = countingEnv(PLAY_ON);
     const metered = await meterRows({ links: links() }, () => link(a, "code-a", undefined, counted.env));
     expect(metered.value.status).toBe(200);
-    expect(counted.calls).toEqual(["PLAYERS.authorize", "PLAYERS.recoveryMatches", "PLATFORM_LINKS.link"]);
+    expect(counted.calls).toEqual(["PLAYERS.authorize", "PLAYERS.recoveryMatches", "PLATFORM_LINKS.link", "PLAYERS.notePlatformLink"]);
     expect(metered.rows.links.written).toBeLessThanOrEqual(2);
   });
   it("reports a conflict without writing, and moves the link only when the player chose to replace it", async () => {

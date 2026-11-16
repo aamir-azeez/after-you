@@ -46,6 +46,8 @@ int main(void) {
 		check([[AYPolicy inboxValueForURL:[NSURL URLWithString:link]] isEqualToString:link], @"A valid opened URL is passed unchanged");
 
 		check([AYPolicy validStorageName:@"device_token"] && ![AYPolicy validStorageName:@"Device"] && ![AYPolicy validStorageName:@""], @"Storage names follow the Android pattern");
+		check([AYPolicy keptAcrossReinstall:@"player_identity"] && [AYPolicy keptAcrossReinstall:@"recovery_pending"] && [AYPolicy keptAcrossReinstall:@"platform_restore_pending"], @"A reinstall keeps the identity and a recovery or restore still waiting");
+		check(![AYPolicy keptAcrossReinstall:@"notification_binding"] && ![AYPolicy keptAcrossReinstall:@"device_token"] && ![AYPolicy keptAcrossReinstall:@"player_identity2"], @"Every other Keychain item starts fresh with the install");
 		check([AYPolicy validStorageValue:repeat(@"a", 16384)] && ![AYPolicy validStorageValue:repeat(@"a", 16385)], @"Storage values are capped at 16 KiB");
 		NSString *recovery = [AYPolicy recoveryTextForPlayer:repeat(@"i", 22) code:repeat(@"r", 43)];
 		check([recovery isEqualToString:[NSString stringWithFormat:@"After You recovery details\nIdentity: %@\nRecovery code: %@", repeat(@"i", 22), repeat(@"r", 43)]], @"Recovery text matches Android exactly");

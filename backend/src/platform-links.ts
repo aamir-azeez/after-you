@@ -20,7 +20,8 @@ export const PLATFORM_LINKS_OBJECT = "platform-links-v1";
 export const PLATFORM_PROVIDERS = ["play_games", "game_center"] as const;
 export type PlatformProvider = typeof PLATFORM_PROVIDERS[number];
 export type LinkStatus = "linked" | "conflict" | "other_account";
-export type LinkAnswer = { status: LinkStatus; changed: boolean } | { status: "replayed"; changed: false };
+/** `previous`: the player a replace took the account from, who no longer has it (platform-gate.ts). */
+export type LinkAnswer = { status: LinkStatus; changed: boolean; previous?: string } | { status: "replayed"; changed: false };
 
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS platform_links (provider TEXT NOT NULL, external_hash TEXT NOT NULL, player_id TEXT NOT NULL, linked_at INTEGER NOT NULL, PRIMARY KEY (provider, external_hash)) WITHOUT ROWID",
@@ -65,7 +66,7 @@ export class PlatformLinks extends DurableObject<Env> {
       if (current !== null) this.ctx.storage.sql.exec("DELETE FROM platform_links WHERE provider=? AND external_hash=?", provider, externalHash);
       if (mine) this.ctx.storage.sql.exec("DELETE FROM platform_links WHERE player_id=? AND provider=?", playerId, provider);
       this.ctx.storage.sql.exec("INSERT INTO platform_links (provider, external_hash, player_id, linked_at) VALUES (?, ?, ?, ?)", provider, externalHash, playerId, Date.now());
-      return { status: "linked", changed: true };
+      return current !== null ? { status: "linked", changed: true, previous: current } : { status: "linked", changed: true };
     });
   }
   /** The linked player, null when none, or "replayed" for a reused one-time signature. */
@@ -79,6 +80,11 @@ export class PlatformLinks extends DurableObject<Env> {
   /** Drops a link that points at a player who no longer exists (found during a restore). */
   forget(provider: string, externalHash: string, playerId: string): boolean {
     return this.ctx.storage.sql.exec("DELETE FROM platform_links WHERE provider=? AND external_hash=? AND player_id=?", provider, externalHash, playerId).rowsWritten > 0;
+  }
+  /** Whether any provider's account still opens this player (the REQUIRE_PLATFORM mark after an unlink or a move). */
+  linkedAny(playerId: string): boolean {
+    if (!PLAYER.test(playerId)) return false;
+    return this.ctx.storage.sql.exec("SELECT 1 FROM platform_links WHERE player_id=? LIMIT 1", playerId).toArray().length > 0;
   }
   unlink(provider: string, playerId: string): boolean {
     if (!validProvider(provider) || !PLAYER.test(playerId)) throw new Error("invalid_platform_link");

@@ -38,6 +38,10 @@ NSString *const AYPollenKind = @"pollen_monthly";
 	return AYMatches(@"[a-z][a-z0-9_.-]{0,63}", name);
 }
 
++ (BOOL)keptAcrossReinstall:(NSString *)name {
+	return [@[ @"player_identity", @"recovery_pending", @"platform_restore_pending" ] containsObject:name];
+}
+
 + (BOOL)validStorageValue:(NSString *)value {
 	return [value lengthOfBytesUsingEncoding:NSUTF8StringEncoding] <= 16384;
 }

@@ -294,6 +294,10 @@ void AfterYouIOS::secure_get(const String &p_name, const String &p_request_id) {
 		if (failed) {
 			return nil;
 		}
+		// "kept": this value came from an earlier install of the app (a reinstall kept it).
+		if (found && [ay_keychain keptName:name]) {
+			return @{ @"found" : @YES, @"value" : value, @"kept" : @YES };
+		}
 		return @{ @"found" : @(found), @"value" : found ? value : [NSNull null] };
 	});
 }
