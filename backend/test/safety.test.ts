@@ -47,7 +47,9 @@ describe("public policies and authenticated safety", () => {
   });
   it("names the Pollen purchase record, both stores and the duel run copy in the privacy policy", async () => {
     const body = await (await call("/privacy")).text();
-    expect(body).toContain("<p>Effective 3 November 2026.</p>");
+    expect(body).toContain("<p>Effective 15 November 2026.</p>");
+    expect(body).toContain("<p>Your progress, replays and room history can be kept in your own Google Play Games or Game Center account, and in your phone's own backup (Google or iCloud), so they come back if you reinstall or change phones. These copies live in your own account, not on our servers. Replays include your friend's moves from the rooms you played together. Deleting your account in the app also deletes the copies in Play Games or Game Center. A copy in your phone's own backup stays until your phone replaces it.</p>");
+    expect(body).not.toContain("out of iCloud Backup");
     expect(body).toContain("Deleting your online identity deletes them. If you buy Pollen, we keep a record of each purchase (the bundle, its date, its price, and Google Play's order number or the App Store's transaction ID) so we can credit it once and take it back if it is refunded. After you delete your online identity, we still keep each purchase's order number");
     expect(body).toContain("The Play edition uses Google Play and the iPhone edition uses the App Store, each with RevenueCat for purchase validation");
     expect(body).toContain("<p>When duels are on, after a friend duel each pair can watch the other pair's run.");
