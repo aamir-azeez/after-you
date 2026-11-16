@@ -390,6 +390,7 @@ const PIECE_BUILDERS := {
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
 	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), and its crossings as the bridge kit draws them (_build_crossings)",
 	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
+	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms and rope ladders (rules 16) in the styles they resolve to, for cooperative_world",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {
@@ -890,7 +891,7 @@ func _piece_styles() -> void:
 		if path.begins_with("res://tests/") or path.begins_with(PIECE_KITS) or path == PIECE_STYLES: continue
 		var source: String = _sources[path]
 		_check(_found("\"(?:lever_looks|stand_spots)\"|\\.(?:lever_looks|stand_spots)\\b|kit/lever_looks\\.gd", source) == 0, "%s keeps a per-world piece switch: pin or pick a piece style (content/dressing/piece_styles.gd)" % path)
-		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal|lift|bridge)\\.gd\"", source) > 0:
+		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal|lift|bridge|deck|raft|rope_ladder)\\.gd\"", source) > 0:
 			builders[path] = true
 			_check(PIECE_BUILDERS.has(path), "%s builds a piece itself: worlds build pieces through island_world, cooperative_world and lighthouse_world, or add it to PIECE_BUILDERS with why" % path)
 		if _found("\\.get\\(\\s*\"piece_styles\"|\\[\"piece_styles\"\\]|\\.piece_styles\\b|\\bPieceStyles\\.PINS\\b", source) > 0:

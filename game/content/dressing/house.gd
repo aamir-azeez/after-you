@@ -16,6 +16,11 @@ const DATA := {
 	"pad": "plain",
 	"goal": "bell",
 	"lift": "plain",
+	"deck": "plank",
+	"raft": "logs",
+	"ladder": "rope",
+	"fog": "mist",
+	"spillway": "trickle",
 	"props": {"*": [
 		{"kind": "rug", "at": [-520, 0], "surface": "foyer", "width": 80, "depth": 60, "color": "b5654a"},
 		{"kind": "shelf", "at": [-520, -240], "surface": "foyer", "y": 120, "wall": true},

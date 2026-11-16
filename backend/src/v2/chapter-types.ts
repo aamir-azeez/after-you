@@ -45,17 +45,22 @@ export type ChapterAdapter = {
  * chapter pinned to it can refuse 0.5.x guests, which never advertised 9. 10 (tide
  * rules), 12 and 13 (open controls) build on them: same records and bounds, only
  * the checkpoint envelope differs. 11 is the Lighthouse room's own. */
-export const COMFORT_RULES: readonly number[] = [8, 9, 10, 12, 13, 14, 15];
+export const COMFORT_RULES: readonly number[] = [8, 9, 10, 12, 13, 14, 15, 16];
 export function comfortRules(version: unknown): boolean { return typeof version === "number" && COMFORT_RULES.includes(version); }
-/** Tide rules: 10, 13 (tide rules with open controls) and 15 (with open turns too). No route latches. */
-export const TIDE_RULES: readonly number[] = [10, 13, 15];
+/** Tide rules: 10, 13 (tide rules with open controls), 15 (with open turns too) and 16 (15 with the new pieces). No route latches. */
+export const TIDE_RULES: readonly number[] = [10, 13, 15, 16];
 export function tideRules(version: unknown): boolean { return typeof version === "number" && TIDE_RULES.includes(version); }
 /** Open controls: 12 (comfort rules) and 13 (tide rules) with every pad held by
  * either player and every lever, switch or selector worked by either. Older
  * clients never advertised 12 or 13, so a chapter pinned to one refuses them on join. */
-export const OPEN_CONTROLS_RULES: readonly number[] = [12, 13, 14, 15];
+export const OPEN_CONTROLS_RULES: readonly number[] = [12, 13, 14, 15, 16];
 /** Open turns: 14 (12 with open turns) and 15 (13 with open turns). A stage passes
  * back and forth until its goal holds at the end of a turn, up to its turn_cap. */
-export const OPEN_TURNS_RULES: readonly number[] = [14, 15];
+export const OPEN_TURNS_RULES: readonly number[] = [14, 15, 16];
+/** The new pieces of The Falls and Fog Marsh: 16 is 15 plus "not" in gates, moving
+ * platforms, sinking stones and pull-up ladders (game/core/physical/pieces_rules.gd).
+ * None adds a mechanism: the checkpoint keeps its four. */
+export const PIECES_RULES: readonly number[] = [16];
+export function piecesRules(version: unknown): boolean { return typeof version === "number" && PIECES_RULES.includes(version); }
 export function openTurns(version: unknown): boolean { return typeof version === "number" && OPEN_TURNS_RULES.includes(version); }
 export function openControls(version: unknown): boolean { return typeof version === "number" && OPEN_CONTROLS_RULES.includes(version); }
