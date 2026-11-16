@@ -556,6 +556,7 @@ const FRUIT_LINE_GRANT := "Full Journey, month %d"
 const FRUIT_LINE_GRANT_PLAIN := "Full Journey"
 const FRUIT_LINE_WELCOME := "Welcome basket"
 const FRUIT_LINE_CONVERT := "Turned into Pollen"
+const FRUIT_LINE_LEVEL := "Chapter opened"
 const FRUIT_LINE_REFUNDED := "%s, refunded"
 const FRUIT_LINE_DETAIL := "%s · %s"
 ## The Your Fruits card's buttons.
@@ -589,6 +590,8 @@ const FRUIT_CONVERT_DONE := "%s Fruits became %s Pollen."
 const FRUIT_SPEND_ERRORS := {
 	"sunshine_active": "Your Sunshine still has turns left.",
 	"fruits_disabled": "Fruits aren't open right now.",
+	"level_unlocks_disabled": "Opening chapters with Fruits isn't on right now.",
+	"level_free": "Your Full Journey already opens this chapter.",
 }
 ## Pollen that Fruits moved, among the turns on the Pollen page: Fruits turned
 ## into Pollen, and Pollen taken back when refunded Fruits had been turned already.
@@ -713,6 +716,15 @@ const CHAPTER_LOCKED_NOTE := "Finish %s to open this chapter"
 const CHAPTERS_COMING_SOON := "More chapters coming soon."
 const CHAPTER_LOCKED := "Finish %s to open this chapter."
 const CHAPTER_LOCKED_FULL_JOURNEY := "This chapter is part of the Full Journey."
+# A chapter a free player opens once with Fruits (descriptor "unlock",
+# presentation/fruit_spend_flow.gd unlock_level): the card's note (%s the
+# Fruits), the confirm card's title and button (%s the chapter), and the line
+# once it is open.
+const LEVEL_UNLOCK_NOTE := "%s Fruits, or free with Full Journey"
+const LEVEL_UNLOCK_TITLE := "Open %s?"
+const LEVEL_UNLOCK_CONFIRM_NOTE := "Once, and it stays open. Free with Full Journey."
+const LEVEL_UNLOCK_FOR := "Open for"
+const LEVEL_UNLOCK_DONE := "%s is open."
 # Full Journey unlocked before the player reaches it: the chapter before the
 # Lighthouse, then the Lighthouse's own name; and the button to their chapters.
 const FULL_JOURNEY_NOT_REACHED := "Finish %s to reach %s. Your Full Journey chapters open from there, one after another."

@@ -264,7 +264,7 @@ export class Player extends DurableObject<Env> {
     return hint;
   }
   /** `reach`: the reading app (flags.ts Reach), for the release list and face fields; `withFruits` and `withEnergy` are already its answers. */
-  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off", hint: GrantHint = "none", withFruits = false, withEnergy = false, reach: Reach = null): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
+  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off", hint: GrantHint = "none", withFruits = false, withEnergy = false, reach: Reach = null, withLevels = false): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     // Fruits ride the shop's read (an app offered the shop), with their own history lines.
@@ -291,7 +291,7 @@ export class Player extends DurableObject<Env> {
     if (mode === "off") return { authorized: true, linked: true, pollen: read };
     const wardrobe = wardrobeView(this.ctx.storage, mode === "shop", catalogFor(this.env, reach), fruits, faceSinglesOn(this.env, reach));
     // The Fruits part reads in one transaction: its first read may pay what the player's records already earned (achievements.ts).
-    const fruitPart = fruits ? this.fruitsPart(now) : undefined;
+    const fruitPart = fruits ? this.fruitsPart(now, withLevels) : undefined;
     return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), name_price_next: nextNamePriceAfter(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}),
       ...(fruitPart ? { fruits: fruitPart } : {}) } : { ...read, wardrobe } };
   }
@@ -301,8 +301,8 @@ export class Player extends DurableObject<Env> {
     catch (error) { logWarning("retired_refund_failed", { reason: errorCode(error) }); }
   }
   /** The wallet read's Fruits part; a failure never stops the read it rides on (the phone keeps its last copy). */
-  private fruitsPart(now: number): FruitsView | undefined {
-    try { return this.ctx.storage.transactionSync(() => fruitsView(this.ctx.storage, now)); }
+  private fruitsPart(now: number, levels: boolean): FruitsView | undefined {
+    try { return this.ctx.storage.transactionSync(() => fruitsView(this.ctx.storage, now, undefined, levels)); }
     catch (error) { logWarning("fruits_read_failed", { reason: errorCode(error) }); return undefined; }
   }
   /**
@@ -437,10 +437,13 @@ export class Player extends DurableObject<Env> {
    * Binding only: one purchase (POST /v1/pollen/spend, pollen/wardrobe.ts spend). The device is checked
    * again here, in the call that spends, so a recovery that replaced it can never be spent through.
    */
-  pollenSpend(owner: string, deviceHash: string, op: OpKey, request: SpendRequest, expected: number, fruits = false, reach: Reach = null): Outcome<SpendReceipt> {
+  pollenSpend(owner: string, deviceHash: string, op: OpKey, request: SpendRequest, expected: number, fruits = false, reach: Reach = null, levelsOn = false): Outcome<SpendReceipt> {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
-    return spend(this.ctx.storage, op, request, expected, Date.now(), this.pollenActive(owner), catalogFor(this.env, reach), fruits);
+    const now = Date.now();
+    // A level unlock (pollen/level-unlocks.ts) is free with Full Journey, as a room counts it (a tester's switch included).
+    const levels = request.kind === "level" && levelsOn ? { fullJourney: this.roomFullJourneyUntil(identity) > now } : null;
+    return spend(this.ctx.storage, op, request, expected, now, this.pollenActive(owner), catalogFor(this.env, reach), fruits, levels);
   }
   /** Binding only: spends 1 duel energy for a start or join (pollen/energy.ts), once per duel (duels/energy-charge.ts). `started`: only from a meter already used. */
   spendEnergy(owner: string, duelId: string, started = false): Outcome<EnergySpend> {

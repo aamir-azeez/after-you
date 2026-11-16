@@ -60,6 +60,8 @@ export const FLAG_VARS = Object.freeze({
   pollenBundlesAppStore: "POLLEN_BUNDLES_APP_STORE",
   /** Fruits, the rarer second currency (pollen/fruits.ts): the wallet read's Fruits part, Orchard prices, turning Fruits into Pollen, Sunshine, achievements, the grant's Fruits and its capability. Fruit packs also need that store's bundle flag. Needs POLLEN_SHOP. Off, nothing Fruit is written or shown. Gated, older apps see none of it (features.ts). */
   fruits: "FRUITS",
+  /** Opening a level with Fruits (pollen/level-unlocks.ts): the spend route's kind "level", the priced levels and the ones paid for on the wallet read's Fruits part. Off, nothing level is shown or charged, and a priced level stays a Full Journey one on the phone. Needs FRUITS. */
+  levelUnlocks: "LEVEL_UNLOCKS",
   /** Duel energy (pollen/energy.ts): 1 energy to start or join a duel, the meter on the wallet read and the start and join replies, the Fruit refill and the duels capability field. Needs DUELS. Gate it (config.ts feature_min_version) to the first app that shows the meter, or raise every minimum to it in the same CONFIG edit. */
   energy: "ENERGY",
   /** Face cosmetics (pollen/reaction-loadout.ts, v2/face-packs.ts): single reaction faces, resting faces and the reaction slots shown and sold, the loadout on the wardrobe read and equip, and face_packs_version 2 for phones that ask. Needs POLLEN_WARDROBE. Off, nothing face is written or shown and every reply is as before. Gated, older apps get the replies of off. */

@@ -23,6 +23,12 @@ extends RefCounted
 const OPTIONAL := {
 	## false keeps a loadable chapter out of the pickers.
 	"released": true,
+	## {"fruits": n}: a free player opens the chapter once for n Fruits (Full
+	## Journey plays it free), through the Fruits spend
+	## (services/chapter_unlocks.gd, presentation/fruit_spend_flow.gd
+	## unlock_level). The server's price table (backend/src/pollen/
+	## level-unlocks.ts) is pinned to it through the chapter manifest. {} is free.
+	"unlock": {},
 	## The newer version offered in this one's place.
 	"superseded_by": "",
 	## The earlier version whose keepsake places this one earns.
