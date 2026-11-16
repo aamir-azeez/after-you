@@ -78,7 +78,7 @@ const MATERIALS: Array[Dictionary] = [
 ## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.
 const CHAPTERS := {
 	"first-steps@1": {"m": [0, 1, 2, 5, 6, 8, 12], "s": [0, 4], "l": [2]},
-	"relay-isles@2": {"m": [0, 1, 2, 5, 6, 8, 12], "s": [0, 4], "l": [2]},
+	"relay-isles@2": {"m": [0, 1, 2, 5, 6, 8, 12], "s": [0, 4, 16], "l": [2]},
 	"high-and-low@1": {"m": [0, 1, 2, 6, 8, 12, 13], "s": [0, 12, 16], "l": [2]},
 	"rolling-home@1": {"m": [0, 1, 2, 6, 8, 12], "s": [0, 12, 16], "l": [2]},
 	"a-house-for-two@1": {"m": [0, 1, 2, 3, 6, 12, 13], "s": [0, 12, 16], "l": [2]},
