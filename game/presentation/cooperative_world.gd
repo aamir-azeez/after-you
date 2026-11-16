@@ -322,10 +322,29 @@ func _build_obstacle(obstacle: Dictionary) -> void:
 	if str(dressing.get("obstacles", "")) == "flowerbed":
 		_flowerbed(r, at)
 		return
+	if str(dressing.get("obstacles", "")) == "post":
+		_post(r, at)
+		return
 	box(Vector3(float(r[2] - r[0]) / 100.0, 0.35, float(r[3] - r[1]) / 100.0), Color("718b79"), at + Vector3(0, 0.175, 0), terrain)
 	for x in range(int(r[0]) + 18, int(r[2]), 35):
 		var tuft := sphere(0.21, Color("8dad95"), Vector3(float(x) / 100.0, at.y + 0.4, at.z), terrain)
 		tuft.scale = Vector3(0.7, 0.6, 1)
+
+## A timber post exactly on the obstacle's collision rectangle, standing up to
+## the underside of the raised floor over it (its 20 cm deep planks), else
+## 1.2 m: the solid leg of a balcony.
+func _post(r: Array, at: Vector3) -> void:
+	var top := INF
+	for island: Dictionary in current_level.get("islands", []):
+		var o: Array = island.rect_cm
+		var height := float(island.get("height_cm", 0)) / 100.0
+		if height > at.y + 0.5 and o[0] <= r[0] and o[2] >= r[2] and o[1] <= r[1] and o[3] >= r[3]: top = minf(top, height - 0.20)
+	if top == INF: top = at.y + 1.2
+	var size := float(mini(int(r[2] - r[0]), int(r[3] - r[1]))) / 11.0
+	var post := Props.build({"kind": "post", "size": size, "height": int(round((top - at.y) * 100.0))}, terrain, at.y, bool(dressing.get("lit", true)))
+	post.position = Vector3(at.x, at.y, at.z)
+	# An obstacle, not dressing: the dressing lint counts props by this mark.
+	post.remove_meta("dressing_kind")
 
 ## A raised timber flower bed exactly on the obstacle's collision rectangle.
 func _flowerbed(r: Array, at: Vector3) -> void:
@@ -387,20 +406,34 @@ func _build_stair(stair: Dictionary) -> void:
 	# A closed stair's gate (posts, bar and chain at its foot and head) is the
 	# route barriers' (kit/route_barriers.gd).
 
-## Wooden stringers under both sides and a handrail along the far side; the
-## walkable treads stay exactly the authored rectangle.
+## Wooden stringers under both sides and a handrail along the far side, or,
+## when the dressing asks for "stair_rail": "open", along the near side where
+## a raised floor stands against the far one (its side is the wall there;
+## the rail goes on the open drop); the walkable
+## treads stay exactly the authored rectangle.
 func _stair_frame(r: Array, from_height: float, rise: float, along_x: bool) -> void:
 	for side: float in ([float(r[1]) / 100.0 - 0.03, float(r[3]) / 100.0 + 0.03] if along_x else [float(r[0]) / 100.0 - 0.03, float(r[2]) / 100.0 + 0.03]):
 		var start := Vector3(float(r[0]) / 100.0, from_height - 0.10, side) if along_x else Vector3(side, from_height - 0.10, float(r[1]) / 100.0)
 		var finish := Vector3(float(r[2]) / 100.0, from_height + rise - 0.10, side) if along_x else Vector3(side, from_height + rise - 0.10, float(r[3]) / 100.0)
 		Primitives.bar_between(start, finish, 0.07, Primitives.shared_material(Props.TIMBER), terrain)
-	var rail := float(r[1]) / 100.0 - 0.04 if along_x else float(r[0]) / 100.0 - 0.04
+	var walled := str(dressing.get("stair_rail", "")) == "open" and _floor_against_far_side(r, maxf(from_height, from_height + rise), along_x)
+	var rail := (float(r[3]) / 100.0 + 0.04 if walled else float(r[1]) / 100.0 - 0.04) if along_x else (float(r[2]) / 100.0 + 0.04 if walled else float(r[0]) / 100.0 - 0.04)
 	var foot := Vector3(float(r[0]) / 100.0, from_height + 0.62, rail) if along_x else Vector3(rail, from_height + 0.62, float(r[1]) / 100.0)
 	var head := Vector3(float(r[2]) / 100.0, from_height + rise + 0.62, rail) if along_x else Vector3(rail, from_height + rise + 0.62, float(r[3]) / 100.0)
 	Primitives.bar_between(foot, head, 0.04, Primitives.shared_material(Props.TIMBER_DARK), terrain)
 	for t: float in [0.0, 0.5, 1.0]:
 		var top := foot.lerp(head, t)
 		Primitives.mesh_node(Primitives.shared_mesh("box", 0.035, 0.62, 0.035), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
+
+## Whether a floor at the stair's top height runs along its far side (north
+## of an x stair, west of a z one) within 40 cm, overlapping its length.
+func _floor_against_far_side(r: Array, top: float, along_x: bool) -> bool:
+	for island: Dictionary in current_level.get("islands", []):
+		var o: Array = island.rect_cm
+		if float(island.get("height_cm", 0)) / 100.0 < top - 0.1 or top < 0.5: continue
+		if along_x and o[0] < r[2] and o[2] > r[0] and o[3] <= r[1] and o[3] >= r[1] - 40: return true
+		if not along_x and o[1] < r[3] and o[3] > r[1] and o[2] <= r[0] and o[2] >= r[0] - 40: return true
+	return false
 
 ## Whether `entity` is one of the stage's pressure pads drawn as a stand spot.
 func _wears_stand_spot(view: Dictionary, entity: Dictionary) -> bool:
@@ -419,7 +452,8 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	var piece: RefCounted = PadPiece.build(style, _at(pad), float(pad.radius_cm) / 100.0, terrain, {"owner": str(pad.get("owner_slot", "")), "heavy": heavy, "id": str(pad.id)})
 	_pad_pieces[pad.id] = piece
 	_physical_pads[pad.id] = piece.rim
-	if piece.spot != null: owner_marks.record(str(pad.owner_slot), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
+	# A pad either pip holds (open controls) has no owner to mark.
+	if piece.spot != null and pad.has("owner_slot"): owner_marks.record(str(pad.owner_slot), &"spot", str(pad.id), piece.spot.mark.position, piece.spot)
 
 ## A valve's dial marks for a selector (kit/pieces/selector.gd): per value,
 ## how many bands; one each by default.
@@ -429,7 +463,7 @@ func _look_marks(control: Dictionary) -> Array:
 ## A lever or a selector in its style (kit/pieces/lever.gd, selector.gd).
 func _build_lever(lever: Dictionary) -> void:
 	var slot := PieceStyles.control_slot(lever)
-	var options := {"owner": str(lever.owner_slot), "id": str(lever.id), "values": Array(lever.get("values", [])), "marks": _look_marks(lever)}
+	var options := {"owner": str(lever.get("owner_slot", "")), "id": str(lever.id), "values": Array(lever.get("values", [])), "marks": _look_marks(lever)}
 	var kit: Script = SelectorPiece if slot == "selector" else LeverPiece
 	var piece: RefCounted = kit.build(_piece_style(slot, str(lever.id)), _at(lever), terrain, options)
 	_lever_pieces[lever.id] = piece

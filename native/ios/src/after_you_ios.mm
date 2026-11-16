@@ -38,16 +38,17 @@ static NSURL *ay_native_directory() {
 	return [support URLByAppendingPathComponent:@"after-you-native"];
 }
 
-// Android keeps app data out of backups (allowBackup=false, noBackupFilesDir). Match it, so a
-// restored save never arrives on a new phone without its Keychain credentials (ThisDeviceOnly).
-static void ay_exclude_user_data_from_backup() {
+// The game's files go into the player's own iCloud backup, like Android's Auto Backup (on, with
+// AfterYouBackupAgent and the same exclusions): progress, keepsakes, journals and kept replays come
+// back on a new iPhone set up from that backup. Credentials stay in the Keychain (ThisDeviceOnly)
+// and never travel; the identity comes back through Game Center or the recovery code. Applied at
+// launch and each time the app leaves the foreground (see AYPolicy applyBackupRulesAt:).
+static void ay_apply_backup_rules() {
 	NSString *path = ay_ns(OS::get_singleton()->get_user_data_dir());
 	if (path.length == 0) {
 		return;
 	}
-	NSURL *url = [NSURL fileURLWithPath:path isDirectory:YES];
-	[[NSFileManager defaultManager] createDirectoryAtURL:url withIntermediateDirectories:YES attributes:nil error:nil];
-	[url setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
+	[AYPolicy applyBackupRulesAt:[NSURL fileURLWithPath:path isDirectory:YES]];
 }
 
 static UIViewController *ay_top_controller() {
@@ -74,7 +75,7 @@ AfterYouIOS::AfterYouIOS() {
 	ay_storage_queue = dispatch_queue_create("com.aamirazeez.afteryou.secure", DISPATCH_QUEUE_SERIAL);
 	ay_keychain = [[AYKeychainStore alloc] initWithService:@"com.aamirazeez.afteryou.secure" markerDirectory:ay_native_directory()];
 	ay_secure_pending = [NSMutableSet set];
-	ay_exclude_user_data_from_backup();
+	ay_apply_backup_rules();
 
 	// The early hook normally ran before main(); this covers a build where it could not.
 	AYInstallAppHooks();
@@ -151,6 +152,9 @@ AfterYouIOS::AfterYouIOS() {
 	}]];
 	[ay_observers addObject:[center addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
 		[[AYNotifications shared] setResumed:NO];
+	}]];
+	[ay_observers addObject:[center addObserverForName:UIApplicationDidEnterBackgroundNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+		ay_apply_backup_rules();
 	}]];
 	[notifications setResumed:[UIApplication sharedApplication].applicationState == UIApplicationStateActive];
 	// The singleton is created while Godot sets up; its main loop runs from the next turn.

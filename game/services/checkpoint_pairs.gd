@@ -7,6 +7,7 @@ extends RefCounted
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 
 ## Stage `stage`'s pair (0-based) as the replay viewer takes it, or {} when the chain does not hold it.
 static func pair(chapter_key: String, checkpoint: Dictionary, stage: int, branch: int) -> Dictionary:
@@ -33,6 +34,15 @@ static func pairs(chapter_key: String, checkpoint: Dictionary, branch: int) -> A
 
 static func _pair_at(checkpoint: Dictionary, stage: int, branch: int) -> Dictionary:
 	if Typed.as_int(checkpoint.get("stage_index"), -1) != stage + 1 or not checkpoint.get("proof") is Dictionary: return {}
-	var proof: Dictionary = checkpoint.proof
-	if not proof.get("a") is Dictionary or not proof.get("b") is Dictionary: return {}
-	return {"pair_id": "p%d-%d" % [branch, stage], "branch": branch, "stage_index": stage, "a": proof.a.duplicate(true), "b": proof.b.duplicate(true), "checkpoint": checkpoint.duplicate(true)}
+	# Open turns nest every turn of the stage; the pair keeps its first and closing turn, the passes stay in its checkpoint.
+	var turns := OpenTurns.proof_turns(checkpoint.proof)
+	if turns.is_empty(): return {}
+	return {"pair_id": "p%d-%d" % [branch, stage], "branch": branch, "stage_index": stage, "a": turns[0].duplicate(true), "b": turns[-1].duplicate(true), "checkpoint": checkpoint.duplicate(true)}
+
+## `engine` (a facade script or proof) derives the checkpoint after `pair`'s
+## stage from `previous`, its passes included (OpenTurns.pair_turns). Engines
+## without open turns take four arguments.
+static func derive(engine: Variant, definition: Dictionary, previous: Dictionary, pair: Dictionary) -> Dictionary:
+	var turns := OpenTurns.pair_turns(pair)
+	if turns.size() <= 2: return engine.derive_checkpoint(definition, previous, pair.a, pair.b)
+	return engine.derive_checkpoint(definition, previous, pair.a, pair.b, turns.slice(1, turns.size() - 1))

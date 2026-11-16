@@ -1,17 +1,22 @@
 extends RefCounted
 ## The list of files Android backup may copy to the player's own Google account,
 ## in priority order (the backup agent keeps what fits its quota, in this order):
-## 1. settings and keepsakes; 2. chapter journals; 3. kept room history (it may be
-## the only copy anywhere), newest room first; 4. shared replay files (replay
-## transfer v1 rooms' only full copy), newest first; 5. solo attempt archives,
+## 1. settings, keepsakes and the small per-run files (turn looks, end and run
+## reactions, this player's own leaderboard runs); 2. chapter journals; 3. kept
+## room history (it may be the only copy anywhere), newest room first; 4. friend
+## duel runs kept on this phone only, newest first; 5. shared replay files (replay
+## transfer v1 rooms' only full copy), newest first; 6. solo attempt archives,
 ## newest first, then kept hard runs (services/hard_mode.gd), newest first.
+## The agent stops at the first file past its quota, so small files come first.
 ## Never: online room state bound to this device, photo transfers,
 ## safety data, the photo library, temporary or backup generations.
 
 const PLAN := "backup-plan.txt"
 const HEADER := "after-you-backup-plan 1"
-## Hard mode's marks (nothing rebuilds them) and its runs' small index.
-const FIXED := ["journey.json", "home-keepsakes-v1.json", "solo-replay-visibility.json", "friend_nicknames.json", "display_names.json", "hard-mode-v1.json", "hard-runs-v1.json"]
+## Hard mode's marks (nothing rebuilds them) and its runs' small index; then what only this
+## phone keeps of past turns and runs: their looks, end and run reactions, and its own board runs.
+const FIXED := ["journey.json", "home-keepsakes-v1.json", "solo-replay-visibility.json", "friend_nicknames.json", "display_names.json", "hard-mode-v1.json", "hard-runs-v1.json",
+	"turn_looks.json", "end-reactions.json", "run-reactions.json", "leaderboard-runs.json"]
 const MAX_ENTRIES := 4096
 const MAX_SHARED_FILE := 20 * 1024 * 1024
 
@@ -31,6 +36,11 @@ static func entries(root: String = "user://") -> Array:
 	for folder: String in _newest(root, history, "index.json"):
 		_add(result, root, folder.path_join("index.json"))
 		for name: String in _sorted(_files(root.path_join(folder)).filter(func(item: String) -> bool: return item.ends_with(".bin"))): _add(result, root, folder.path_join(name))
+	var duels: Array = []
+	for owner: String in _folders(root.path_join("duel_runs")):
+		for name: String in _files(root.path_join("duel_runs").path_join(owner)):
+			if name.ends_with(".json"): duels.append("duel_runs/%s/%s" % [owner, name])
+	for path: String in _newest(root, duels, ""): _add(result, root, path)
 	var shared: Array = _files(root.path_join("shared-replays")).filter(func(item: String) -> bool: return item.ends_with(".json")).map(func(item: String) -> String: return "shared-replays/" + item)
 	for path: String in _newest(root, shared, ""): _add(result, root, path, MAX_SHARED_FILE)
 	for path: String in _newest(root, names.filter(func(item: String) -> bool: return attempt.search(item) != null), ""): _add(result, root, path)

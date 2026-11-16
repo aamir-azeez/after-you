@@ -4,6 +4,7 @@ extends "res://tests/test_relay_online.gd"
 const Registry = preload("res://services/chapter_registry.gd")
 const StopRequest = preload("res://services/stop_request.gd")
 const LogWatch = preload("res://tests/log_watch.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 ## Errors leaving a chapter must never log: a store wired twice when Main is
 ## built again, a missing file read as damaged JSON, and the room camera read
 ## after it left the tree.
@@ -43,9 +44,18 @@ func _load_chapter(key: String) -> void:
 		# A later version of a chapter keeps its fixtures under its own versioned name.
 		var name: String = level.id if int(level.version) == 1 else "%s-v%d" % [level.id, int(level.version)]
 		var stage := "" if int(level.version) == 1 else name + "-"
-		files = [stage + level.stages[0].id + "-a", stage + level.stages[0].id + "-b", stage + level.stages[1].id + "-a", stage + level.stages[1].id + "-b", name + "-initial-checkpoint", stage + level.stages[0].id + "-checkpoint", name + "-final-checkpoint"]
+		# On open turns a stage's closing turn is its last turn file (-b, -c, ...).
+		files = [stage + level.stages[0].id + "-a", _closing(folder, stage + level.stages[0].id), stage + level.stages[1].id + "-a", _closing(folder, stage + level.stages[1].id), name + "-initial-checkpoint", stage + level.stages[0].id + "-checkpoint", name + "-final-checkpoint"]
 	for index: int in names.size():
 		fixtures[names[index]] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + folder + "/" + files[index] + ".json"))
+
+## A stage's closing turn fixture: its last turn by letter (open_turns.gd LETTERS).
+static func _closing(folder: String, prefix: String) -> String:
+	var last := prefix + "-b"
+	for letter: String in "cdefghijklmnopqrst":
+		if not FileAccess.file_exists("res://tests/fixtures/%s/%s-%s.json" % [folder, prefix, letter]): break
+		last = prefix + "-" + letter
+	return last
 
 func _snapshot(api: FakeApi, owner: String) -> Dictionary:
 	var value := super._snapshot(api, owner)
@@ -55,6 +65,11 @@ func _snapshot(api: FakeApi, owner: String) -> Dictionary:
 		# This room contains retained native fixtures, not a freshly created room
 		# using the registry's preferred rules. Keep its original recording pin.
 		value["simulation_version"] = int(fixtures["relay-a"].simulation_version)
+	# Open turns (core/physical/open_turns.gd): the room says how far its stage has gone, no passes yet.
+	if OpenTurns.rules(int(value.get("simulation_version", level.get("simulation_version", 0)))):
+		var stage_index := int(value.stage_index)
+		var done: bool = stage_index >= level.stages.size()
+		value["open_turns"] = {"turn": 0 if done else (1 if value.recording_a == null else 2), "cap": 0 if done else OpenTurns.cap(level.stages[stage_index]), "must_finish": false, "pass_bytes": 0, "passes": []}
 	return value
 
 func _open_case(key: String) -> Dictionary:

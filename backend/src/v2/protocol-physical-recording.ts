@@ -45,7 +45,7 @@ export function checkTurnBounds(limits: Readonly<ChapterLimits>, maxBranches: nu
 /** Envelope selection comes only from an explicitly registered immutable adapter.
  * This preserves the published six parser and shares no checkpoint semantics. */
 export function physicalRecording(definition: { stages: readonly { id: string; first_player_slot: string }[] }, key: Readonly<ChapterKey>, version: 6 | 7 | 8, supported: readonly number[] = [version], maxTicks = Number.MAX_SAFE_INTEGER,
-  turns?: Readonly<TurnLimits>, limits?: Readonly<ChapterLimits>): (value: unknown) => Promise<ChapterRecording> {
+  turns?: Readonly<TurnLimits>, limits?: Readonly<ChapterLimits>, open = false): (value: unknown) => Promise<ChapterRecording> {
   return async (value: unknown): Promise<ChapterRecording> => {
     const comfort = value !== null && typeof value === "object" && "simulation_version" in value && comfortRules(value.simulation_version) && supported.includes(value.simulation_version as number);
     boundedValue(value, comfort ? limits?.recording_bytes ?? 65_536 : MAX_RECORDING_BYTES, comfort ? limits?.recording_values : undefined);
@@ -54,9 +54,12 @@ export function physicalRecording(definition: { stages: readonly { id: string; f
     need(r.schema_version === version && supported.includes(r.simulation_version as number) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
     const stage = definition.stages.find(stage => stage.id === r.stage_id); need(stage, "unknown_stage");
     need(r.role === "a" || r.role === "b", "invalid_role");
-    need(r.player_slot === (r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0"), "wrong_player_slot");
-    const published = comfortRules(r.simulation_version) && r.role === "b" ? 1200 : MAX_TICKS;
-    const limit = Math.min(turns ? (r.role === "b" ? turns.b_ticks : turns.a_ticks) : published, maxTicks);
+    // Open turns (open-turns.ts): a later turn is either pip's, as its place in the stage says (the room and the checkpoint check it).
+    need(r.player_slot === (r.role === "a" ? stage.first_player_slot : stage.first_player_slot === "p0" ? "p1" : "p0") || open && r.role === "b" && (r.player_slot === "p0" || r.player_slot === "p1"), "wrong_player_slot");
+    // Open turns: every turn has the second turn's limit.
+    const role = open ? "b" : r.role;
+    const published = comfortRules(r.simulation_version) && role === "b" ? 1200 : MAX_TICKS;
+    const limit = Math.min(turns ? (role === "b" ? turns.b_ticks : turns.a_ticks) : published, maxTicks);
     const duration = integer(r.duration_ticks, 1, limit); bool(r.catch_assistance); bool(r.completed);
     for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash"]) text(r[name], HASH_PATTERN);
     need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");

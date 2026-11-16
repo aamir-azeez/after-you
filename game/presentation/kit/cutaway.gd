@@ -5,6 +5,10 @@ extends RefCounted
 
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const FADED_ALPHA := 0.10
+## A mesh a world marks with this meta stays solid while its floor fades,
+## like the beams of the Conservatory's balcony on posts, so a faded deck
+## keeps its timber and never reads as a box.
+const KEEP := "cutaway_keep"
 
 ## Fades (or restores) every mesh under node. Shared scenery materials are
 ## copied first, so fading one floor never fades the same prop elsewhere.
@@ -16,6 +20,7 @@ static func set_faded(node: Node, faded: bool) -> void:
 ## Fades one mesh. Returns false when it already shows that state, in which
 ## case its subtree is already in that state too.
 static func fade_mesh(node: MeshInstance3D, faded: bool) -> bool:
+	if node.get_meta(KEEP, false): return true
 	if node.get_meta("cutaway", false) == faded: return false
 	node.set_meta("cutaway", faded)
 	var mat := Primitives.own_material(node)

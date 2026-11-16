@@ -358,7 +358,9 @@ func _starts() -> void:
 
 func _title(size: Vector2) -> void:
 	_text(str(plan.title), Vector2(MARGIN, 44), 30, INK, HEADING)
-	_text("Stage %d of %d: %s" % [int(plan.stage_index) + 1, int(plan.stage_count), plan.stage_title], Vector2(MARGIN, 70), 18, SOFT_INK, BODY)
+	var stage_line := "Stage %d of %d: %s" % [int(plan.stage_index) + 1, int(plan.stage_count), plan.stage_title]
+	if not str(plan.get("turns", "")).is_empty(): stage_line += ", " + str(plan.turns)
+	_text(stage_line, Vector2(MARGIN, 70), 18, SOFT_INK, BODY)
 	var note := "Flat map plan, drawn from the stage's definition"
 	_text(note, Vector2(size.x - MARGIN - _text_width(note, 13), 44), 13, SOFT_INK, BODY)
 

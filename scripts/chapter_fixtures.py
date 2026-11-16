@@ -74,7 +74,9 @@ def _run_writers(game: Game, chapter: Chapter, staged: dict[str, bytes]) -> tupl
     changes: dict[str, bytes] = {}
     try:
         for relative, data in staged.items():
-            (game.folder / relative.removeprefix("game/")).write_bytes(data)
+            target = game.folder / relative.removeprefix("game/")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
         suite, user_args, env = chapter.writer()
         ok, log = game.script(suite, user_args, "fixtures", env)
         if not ok:

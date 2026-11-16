@@ -6,11 +6,16 @@ extends RefCounted
 ## Safety, kept from the local save rules:
 ## - nothing is collected or applied while a save is held read-only (damaged or newer);
 ## - changes apply only at Home, where no chapter has its journal open;
-## - a cloud journal fills only a chapter this phone has never started, and only after the
+## - a cloud journal fills a chapter this phone has never started, and only after the
 ##   journal class itself has loaded and checked it from a staging copy, so a bad copy can never
-##   put a chapter on hold; a journal with local progress is never replaced. Its unfinished draft
-##   is left behind (it would only be checked when the chapter opens), and a copy that failed the
-##   check is remembered by digest and never checked again.
+##   put a chapter on hold. Its unfinished draft is left behind (it would only be checked when the
+##   chapter opens), and a copy that failed the check is remembered by digest and never checked again;
+## - newest wins per chapter for a journal this install has not reconciled yet (one a phone backup
+##   restored, up to a day old): the cloud copy replaces it, through the same check, when it has more
+##   finished stages and a later save revision (its envelope's generation). Once reconciled, a journal
+##   with local progress is never replaced;
+## - settings this install has never synced (restored from a phone backup with them) have stamp 0,
+##   so any real choice made since on another phone wins.
 const Bundle = preload("res://services/platform_games/cloud_save_bundle.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
@@ -73,21 +78,14 @@ static func _size(path: String) -> int:
 	return length
 
 ## The settings' change stamp: kept while they stay the same, set to now when they change.
-## Untouched defaults on a phone that never synced count as stamp 0 (any real choice wins).
+## Settings on a phone that never synced (defaults, or a phone backup's day-old copy) count as
+## stamp 0, so any real choice wins over them.
 func settings_stamp(values: Dictionary) -> int:
 	var digest := JSON.stringify(values, "", true).sha256_text()
 	if _state.cloud("settings_hash") == digest: return int(_state.cloud("settings_stamp", 0))
-	var stamp := 0
-	if _state.cloud("settings_hash") != null or values != _default_values(): stamp = State.now_ms()
+	var stamp := 0 if _state.cloud("settings_hash") == null else State.now_ms()
 	_state.set_cloud({"settings_hash": digest, "settings_stamp": stamp})
 	return stamp
-
-static func _default_values() -> Dictionary:
-	var out := {}
-	var defaults: Dictionary = LocalSave.defaults().settings
-	for key: String in Bundle.SYNCED_SETTINGS:
-		if defaults.get(key) is bool: out[key] = defaults[key]
-	return out
 
 ## The cloud's settings as this phone takes them: only Bundle.SYNCED_SETTINGS.
 ## A copy from an older build may still carry Forgiving catches; it stays on
@@ -157,21 +155,42 @@ func apply(merged: Dictionary) -> bool:
 	if not HardMode.new(hard_path).adopt(merged.get("hard", {})): return false
 	return _fill_journals(merged.journals)
 
-## Writes cloud journals for chapters this phone has never started. False while some remain.
+## Writes cloud journals for chapters this phone has never started, and newer ones over journals
+## this install has not reconciled yet. False while some remain; once none do, every local journal
+## counts as reconciled.
 func _fill_journals(journals: Dictionary) -> bool:
 	var checked := 0
 	var rejected: Array = _state.cloud("rejected_journals", [])
+	var known: Array = _state.cloud("journals_known", [])
 	for name: String in journals:
 		var target: Dictionary = journal_paths.get(name, {})
-		if target.is_empty() or _exists(target.path): continue
+		if target.is_empty(): continue
+		var replace := _exists(target.path)
+		if replace and (name in known or not newer_journal(journals[name].envelope, _local_envelope(target.path))): continue
 		var digest := JSON.stringify(journals[name].envelope).sha256_text()
 		if digest in rejected: continue
 		if checked >= JOURNALS_PER_RUN: return false
 		checked += 1
-		if not _adopt_journal(target, journals[name]) and not _exists(target.path):
+		if not _adopt_journal(target, journals[name], replace) and (replace or not _exists(target.path)):
 			rejected = (rejected + [digest]).slice(-16)
 			_state.set_cloud({"rejected_journals": rejected})
+	var names: Array = known.duplicate()
+	for name: String in journal_paths:
+		if name not in names and _exists(journal_paths[name].path): names.append(name)
+	names.sort()
+	_state.set_cloud({"journals_known": names})
 	return true
+
+## Whether a cloud journal envelope is newer than the local one: more finished stages and a later
+## save revision (LocalSave's generation, which travels inside the envelope). An unreadable local
+## copy is never replaced here; its own recovery handles it when the chapter opens.
+static func newer_journal(cloud: Variant, local: Variant) -> bool:
+	if not cloud is Dictionary or not local is Dictionary: return false
+	return Bundle.journal_stages(cloud) > Bundle.journal_stages(local) and int(cloud.get("generation", 0)) > int(local.get("generation", 0))
+
+static func _local_envelope(path: String) -> Variant:
+	if _size(path) <= 0 or _size(path) > MAX_JOURNAL_BYTES: return null
+	return JSON.parse_string(FileAccess.get_file_as_string(path))
 
 static func _exists(path: String) -> bool:
 	for candidate: String in AtomicFile.read_candidates(path):
@@ -179,8 +198,9 @@ static func _exists(path: String) -> bool:
 	return false
 
 ## Loads the cloud envelope through RelayJourney from a staging copy; only a journal that loads
-## clean with the same finished stages is written to the real path. Anything else is skipped.
-func _adopt_journal(target: Dictionary, entry: Dictionary) -> bool:
+## clean with the same finished stages is written to the real path (over a stale local copy only
+## when `replace`, keeping it as the file's backup). Anything else is skipped.
+func _adopt_journal(target: Dictionary, entry: Dictionary, replace: bool = false) -> bool:
 	DirAccess.make_dir_recursive_absolute(staging)
 	var staged := staging.path_join(str(target.path).get_file())
 	AtomicFile.remove(staged)
@@ -193,5 +213,5 @@ func _adopt_journal(target: Dictionary, entry: Dictionary) -> bool:
 	var good: bool = not journey.read_only and journey.pairs().size() == int(entry.stages)
 	journey = null
 	AtomicFile.remove(staged)
-	if not good or _exists(target.path): return false
-	return AtomicFile.write_text(target.path, text)
+	if not good or (_exists(target.path) and not replace): return false
+	return AtomicFile.write_text(target.path, text, replace)

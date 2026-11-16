@@ -158,6 +158,12 @@ const SHARED_REPLAY_DELETE_CONFIRM := "Delete this replay from Shared Replays on
 # Try counts (services/turn_tries.gd, presentation/try_pill.gd): the pill in
 # play from the second try on, and one turn's count on a Replays row.
 const TRY_PILL := "Try %d"
+## Open turns (core/physical/open_turns.gd): the coral pill under the turn dots on the turn that must finish the stage.
+const OPEN_TURNS_LAST_TURN := "Last turn"
+## The room page's line under its heading while the friend plays: "Maya's turn", with the turn dots under it.
+const OPEN_TURNS_PARTNER_TURN := "%s's turn"
+## The room list's chip beside the turn dots while the friend plays.
+const OPEN_TURNS_THEIR_TURN := "Their turn"
 const TRY_COUNT := "%s · %d tries"
 ## A Replays turn played on its first try (the retry count concept's chip).
 const TRY_FIRST := "%s · First try"
@@ -1391,6 +1397,11 @@ const PLATFORM_GAMES_OFFER_TITLE := "Use your friend code from your other phone?
 const PLATFORM_GAMES_USE_IT := "Use it"
 const PLATFORM_GAMES_NOT_NOW := "Not now"
 const PLATFORM_GAMES_OFFER_NOTE := "This account has a friend code from another phone."
+## Once, when newer replays no longer fit a backup (services/backup_limit.gd); again only when more stop fitting.
+const BACKUP_FULL_TITLE := "Backup is full"
+const BACKUP_FULL_BODY := "Some replays are not backed up because the space is full."
+const BACKUP_FULL_OPEN := "Open replays"
+const BACKUP_FULL_OK := "OK"
 ## A Settings button: link this phone's friend code to the signed-in account again.
 const PLATFORM_GAMES_LINK := "Link"
 ## A toast: the friend code was unlinked or deleted on the other phone before Use it.

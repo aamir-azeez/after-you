@@ -4,7 +4,9 @@ import type { PairV2, RoomStateV2 } from "./room";
 import { initializeReplayTransfer } from "./storage-schema";
 import { parseRow, storedRoom, storedRow, type RowData } from "./row-codec";
 
-export const MAX_REPLAY_ARCHIVE_BYTES = 16 * 1024 * 1024;
+import { MAX_REPLAY_ARCHIVE_BYTES } from "./row-bound";
+import { OPEN_TURN_ID_PATTERN, turnNumber, turnSlot } from "./open-turns";
+export { MAX_REPLAY_ARCHIVE_BYTES };
 const MAX_REPLAY_ARCHIVE_NODES = 2_000_000;
 const MAX_REPLAY_ARCHIVE_DEPTH = 20;
 type RoomFacts = Omit<RoomStateV2, "checkpoint" | "invite_code"> & { checkpoint_hash: string };
@@ -148,17 +150,19 @@ export function validateTransfer(input: unknown): ReplayTransfer {
   need(Array.isArray(m.turns) && m.turns.length >= 2 * stages && m.turns.length <= 128 && Array.isArray(m.pairs) && m.pairs.length >= stages && m.pairs.length <= 64);
   const turns = new Map<string, Record<string, unknown>>();
   for (const item of m.turns) {
-    const t = object(item); exact(t, ["turn_id", "player_id", "accepted_revision", "recording_hash"]); text(t.turn_id, /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/); need(hash(t.recording_hash));
-    const [branch, index, role] = (t.turn_id as string).slice(1).split("-"); need(Number(branch) <= Number(r.branch) && Number(index) < stages);
-    const first = selected.stages[Number(index)].first_player_slot === "p0" ? r.host_id : r.guest_id;
-    need(t.player_id === (role === "a" ? first : first === r.host_id ? r.guest_id : r.host_id)); integer(t.accepted_revision, 1, Number(r.revision));
+    // Open turns (open-turns.ts) name later turns c, d ...; a turn's letter says whose it was.
+    const t = object(item); exact(t, ["turn_id", "player_id", "accepted_revision", "recording_hash"]); text(t.turn_id, selected.open_turns ? OPEN_TURN_ID_PATTERN : /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[ab]$/); need(hash(t.recording_hash));
+    const [branch, index] = (t.turn_id as string).slice(1).split("-"); need(Number(branch) <= Number(r.branch) && Number(index) < stages);
+    need(t.player_id === (turnSlot(selected.stages[Number(index)].first_player_slot, turnNumber(t.turn_id as string)) === "p0" ? r.host_id : r.guest_id)); integer(t.accepted_revision, 1, Number(r.revision));
     need(!turns.has(t.turn_id as string)); turns.set(t.turn_id as string, t);
   }
   const pairs = new Map<string, Record<string, unknown>>();
   for (const item of m.pairs) {
     const p = object(item); exact(p, ["pair_id", "branch", "stage_index", "a_hash", "b_hash", "checkpoint_hash"]);
     integer(p.branch, 0, Number(r.branch)); integer(p.stage_index, 0, stages - 1); need(p.pair_id === `p${p.branch}-${p.stage_index}` && !pairs.has(String(p.pair_id)) && hash(p.checkpoint_hash));
-    need(turns.get(`t${p.branch}-${p.stage_index}-a`)?.recording_hash === p.a_hash && turns.get(`t${p.branch}-${p.stage_index}-b`)?.recording_hash === p.b_hash);
+    // The closing turn is the stage's last letter: b before open turns.
+    const closing = [...turns.keys()].filter(id => id.startsWith(`t${p.branch}-${p.stage_index}-`)).sort((x, y) => turnNumber(x) - turnNumber(y)).at(-1);
+    need(turns.get(`t${p.branch}-${p.stage_index}-a`)?.recording_hash === p.a_hash && closing !== undefined && turnNumber(closing) >= 2 && turns.get(closing)?.recording_hash === p.b_hash);
     pairs.set(String(p.pair_id), p);
   }
   need(Array.isArray(r.completed_pair_ids) && r.completed_pair_ids.length === stages);
@@ -168,7 +172,8 @@ export function validateTransfer(input: unknown): ReplayTransfer {
   for (const t of turns.values()) {
     const [branch, index, role] = String(t.turn_id).slice(1).split("-");
     if (Number(branch) === r.branch) need(r.completed_pair_ids[Number(index)] === `p${branch}-${index}`);
-    if (role === "b") need(pairs.has(`p${branch}-${index}`));
+    // Before open turns a b always closed its stage; an open turns pass may be left on a branch a fork left behind.
+    if (role === "b" && !selected.open_turns) need(pairs.has(`p${branch}-${index}`));
   }
   need(Array.isArray(value.acked_player_ids) && same(value.acked_player_ids, [r.host_id, r.guest_id].filter(id => (value.acked_player_ids as unknown[]).includes(id))));
   need(value.transferred === (value.acked_player_ids.length === 2));

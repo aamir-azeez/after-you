@@ -17,6 +17,13 @@ const COMFORT_ALIAS_VERSION := 9
 ## crossing then drowns and the turn ends there. A completed stage keeps no
 ## routes for the next one. Only a definition that pins 10 plays them.
 const TIDE_RULES_VERSION := 10
+## Open controls (core/physical/open_controls.gd): the comfort rules (9) with
+## open controls are 12, the tide rules (10) with open controls 13. Only a
+## definition that pins one plays it; every other number keeps owner rules
+## exactly as published.
+const OPEN_TIDE_RULES_VERSION := OpenControls.OPEN_TIDE_RULES_VERSION
+const TIDE_RULES := OpenControls.TIDE_RULES
+const OPEN_RULES := OpenControls.OPEN_RULES
 ## What a drowned turn says (snapshot text; PlayerCopy shows the editable
 ## lines): the player's own spirit, or the memory's.
 const DROWNED_YOU := "Oh no, you drowned! Try again?"
@@ -30,18 +37,24 @@ var _closing: Dictionary = {}
 var _drowned: Dictionary = {}
 var _ready_branch := ""
 var _optics: Dictionary = {"segments":[],"signals":{}}
+## Fixed once a reset sets the level and stage (_reset_mechanics): every
+## bridge and stair in order, and each gate's route with its condition (null
+## when it has none, which always holds). _refresh_routes runs three times a
+## tick, so it reads these instead of building them again.
+var _route_defs: Array = []
+var _gate_plan: Array = []
 
 func _init() -> void:
 	simulation_version = CURRENT_SIMULATION_VERSION
 
-func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0) -> bool:
+func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0, chain: Array = []) -> bool:
 	if rules_version == 0:
 		rules_version = _record_version(prior_a) if current_role == "b" else _checkpoint_version(checkpoint, definition)
 	if not rules_allowed(definition, rules_version) or (current_role == "b" and prior_a.get("simulation_version") != rules_version):
 		error = "Unsupported recording version."
 		return false
 	simulation_version = rules_version
-	return super.reset(definition, stage_id, checkpoint, prior_a, current_role)
+	return super.reset(definition, stage_id, checkpoint, prior_a, current_role, rules_version, chain)
 
 func _schema_version() -> int:
 	return CURRENT_SIMULATION_VERSION
@@ -70,15 +83,26 @@ static func _record_version(record: Dictionary) -> int:
 		if declared == COMFORT_VERSION: return COMFORT_VERSION
 		if declared == COMFORT_ALIAS_VERSION: return COMFORT_ALIAS_VERSION
 		if declared == TIDE_RULES_VERSION: return TIDE_RULES_VERSION
+		if declared == OPEN_RULES_VERSION: return OPEN_RULES_VERSION
+		if declared == OPEN_TIDE_RULES_VERSION: return OPEN_TIDE_RULES_VERSION
+		if declared == OpenControls.OPEN_TURNS_RULES_VERSION: return OpenControls.OPEN_TURNS_RULES_VERSION
+		if declared == OpenControls.OPEN_TURNS_TIDE_RULES_VERSION: return OpenControls.OPEN_TURNS_TIDE_RULES_VERSION
 	return CURRENT_SIMULATION_VERSION
 
 static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary = {}) -> int:
 	var proof: Variant = checkpoint.get("proof", {})
 	if proof is Dictionary and proof.get("a", {}) is Dictionary and not proof.get("a", {}).is_empty(): return _record_version(proof.a)
+	# Open turns nest a stage's turns as a list (open_turns.gd).
+	if proof is Dictionary and proof.get("turns") is Array and not proof.turns.is_empty() and proof.turns[0] is Dictionary: return _record_version(proof.turns[0])
 	var pinned := pinned_rules(definition)
 	return pinned if pinned > 0 else CURRENT_SIMULATION_VERSION
 
 func _reset_mechanics() -> void:
+	_route_defs = level.get("bridges", []) + level.get("stairs", [])
+	_gate_plan = []
+	for gate: Dictionary in stage.get("gates", []):
+		var when: Dictionary = gate.get("when", {})
+		_gate_plan.append([gate.route_id, null if when.is_empty() else when])
 	_entry_latches = {}
 	_closing = {}
 	_drowned = {}
@@ -89,22 +113,30 @@ func _advance_source() -> void:
 	super._advance_source()
 	# A evolves independently. Copy only its declared controls, never B's local
 	# selector, shutter, entry latches, or future changed source ownership.
+	# Open controls: copy a control only on a tick the memory turned it.
+	var open := _open_controls()
 	for control: Dictionary in stage.get("controls", []):
-		if control.owner_slot == first_player_slot:
+		if open:
+			if _source_toggles.controls.has(control.id): _mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
+		elif control.owner_slot == first_player_slot:
 			_mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
 	_ready_branch = _source._ready_branch
 
 func _refresh_routes() -> void:
 	_refresh_optics()
 	var was: Dictionary = _routes.duplicate() if _tide_rules() else {}
-	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
+	for route: Dictionary in _route_defs:
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_entry_latches.get(route.id, false))
-	for gate: Dictionary in stage.get("gates", []):
-		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or Seven.predicate(gate.get("when", {}), stage, _players, _mechanisms, _optics.signals)
+	var open := _open_controls()
+	for gate: Array in _gate_plan:
+		_routes[gate[0]] = bool(_routes.get(gate[0], false)) or gate[1] == null or Seven.predicate(gate[1], stage, _players, _mechanisms, _optics.signals, open)
 	if _tide_rules(): _close_slowly(was)
 
 func _tide_rules() -> bool:
-	return simulation_version >= TIDE_RULES_VERSION
+	return simulation_version in TIDE_RULES
+
+func _open_controls() -> bool:
+	return simulation_version in OPEN_RULES
 
 ## Tide rules: a crossing that was open and whose gate no longer holds keeps
 ## its floor until `closing_ticks` after the tick it started closing, then
@@ -144,10 +176,36 @@ func _on_closing() -> bool:
 	return _tide_rules() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
 
 func _may_complete() -> bool:
-	return not _on_closing()
+	return not _on_closing() and _source_holds()
+
+## Open turns: a turn never passes with a spirit on a closing crossing or drowned.
+func _may_pass() -> bool:
+	return not _on_closing() and _drowned.is_empty()
+
+## Open turns: the goal holds for a pip only while the goal's light holds.
+func _at_goal(slot: String) -> bool:
+	return super._at_goal(slot) and Seven.predicate(stage.goal_policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, _open_controls())
+
+## Open controls: the live pip may undo the first turn's part (a selector its
+## readiness needs, the pad its choice stands on), so a stage completes only
+## while that part still holds on the live state, as the server's checkpoint
+## asks. Owner rules copy the memory's controls, so it always holds there.
+## Open turns have no such part: both pips at the goal is the finish.
+func _source_holds() -> bool:
+	if not _open_controls() or _open_turns(): return true
+	var policy: Dictionary = stage.source_policy
+	if policy.kind == "choice_pad": return not Seven.choice(stage, _players, true).is_empty()
+	if policy.kind in ["route_endpoint", "signal_route"]:
+		return Seven.predicate(policy.get("when", {}), stage, _players, _mechanisms, _optics.signals, true) and (not policy.has("endpoint") or Seven.near(_players[first_player_slot], policy.endpoint))
+	return true
 
 ## Whether this turn may be kept anywhere: a draft, a replay or an upload. A
 ## drowned turn is not (tide rules); the screen still holds it for Preview.
+func _memory_frame() -> Array:
+	var frame := super._memory_frame()
+	frame[MemoryTrace.READY_BRANCH] = _ready_branch
+	return frame
+
 func keeps_draft() -> bool:
 	return _drowned.is_empty()
 
@@ -180,14 +238,14 @@ func _after_move() -> void:
 func context_action() -> Dictionary:
 	if level.is_empty(): return _action("", "", false, "")
 	for control: Dictionary in stage.get("controls", []):
-		if control.owner_slot == active_slot and Seven.near(_players[active_slot],control):
+		if (_open_controls() or control.owner_slot == active_slot) and Seven.near(_players[active_slot],control):
 			return _action("selector", "Turn mirror" if control.kind=="mirror" else "Turn switch", true, control.id)
 	var inherited := super.context_action()
 	if inherited.id == "ring" and level.id == "long-way-home": inherited.label = "Light window"
 	if inherited.id == "ring" and level.id == "conservatory": inherited.label = "Light garden"
 	# Stage one of the harbour keeps its bell; only the second stage is a lantern.
 	if inherited.id == "ring" and level.id == "turn-of-the-tide" and stage.id == "slack-water": inherited.label = "Light lantern"
-	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_players,_mechanisms,_optics.signals):
+	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_players,_mechanisms,_optics.signals,_open_controls()):
 		inherited.enabled = false
 	return inherited
 
@@ -217,6 +275,7 @@ func _interact() -> void:
 	var values: Array = control.values
 	var index := values.find(_mechanisms.controls[control.id])
 	_mechanisms.controls[control.id] = values[(index+1)%values.size()]
+	_own_toggles.controls[control.id] = true
 	_events.append("selector:"+control.id)
 
 func _update_source_readiness() -> void:
@@ -224,9 +283,9 @@ func _update_source_readiness() -> void:
 	var branch := ""
 	if policy.kind in ["route_endpoint","signal_route"]:
 		var endpoint_ok:=not policy.has("endpoint") or Seven.near(_players[first_player_slot],policy.endpoint)
-		if Seven.predicate(policy.when,stage,_players,_mechanisms,_optics.signals) and endpoint_ok: branch="endpoint"
+		if Seven.predicate(policy.when,stage,_players,_mechanisms,_optics.signals,_open_controls()) and endpoint_ok: branch="endpoint"
 	elif policy.kind == "choice_pad":
-		var selected := Seven.choice(stage,_players)
+		var selected := Seven.choice(stage,_players,_open_controls())
 		if not selected.is_empty(): branch=str(selected.id)
 	if branch.is_empty():
 		_hold_start=-1
@@ -242,7 +301,7 @@ func source_budget_ticks() -> int:
 	if level.is_empty(): return MAX_TICKS
 	var selected: Dictionary=stage
 	if stage.source_policy.kind=="choice_pad":
-		selected=Seven.choice(stage,_players)
+		selected=Seven.choice(stage,_players,_open_controls())
 		if selected.is_empty(): return MAX_TICKS
 	var point:=Vector2i(_checkpoint.players[_other(first_player_slot)].x,_checkpoint.players[_other(first_player_slot)].z)
 	var budget:=int(selected.get("receiver_action_ticks",0))+40+(90 if _comfort_rules() else 0)
@@ -286,8 +345,9 @@ func _sorted_latches() -> Array:
 	result.sort()
 	return result
 
-static func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary = {}) -> Dictionary:
-	return _proof(_record_version(record)).verify_recording(definition,record,checkpoint,prior_a)
+## `chain`: open turns only, the stage's turns before `prior_a`, oldest first.
+static func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary = {}, chain: Array = []) -> Dictionary:
+	return _proof(_record_version(record)).verify_recording(definition,record,checkpoint,prior_a,chain)
 
 static func recording_error(definition: Dictionary, record: Dictionary, checkpoint: Dictionary) -> String:
 	return _proof(_record_version(record)).recording_error(definition,record,checkpoint)
@@ -295,5 +355,6 @@ static func recording_error(definition: Dictionary, record: Dictionary, checkpoi
 static func verify_checkpoint(definition: Dictionary, checkpoint: Dictionary) -> Dictionary:
 	return _proof(_checkpoint_version(checkpoint,definition)).verify_checkpoint(definition,checkpoint)
 
-static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
-	return _proof(_record_version(first)).derive_checkpoint(definition,previous,first,second)
+## `passes`: open turns only, the stage's turns between `first` and `second`.
+static func derive_checkpoint(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary, passes: Array = []) -> Dictionary:
+	return _proof(_record_version(first)).derive_checkpoint(definition,previous,first,second,passes)

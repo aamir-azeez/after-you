@@ -30,6 +30,9 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	var depth := float(r[3]-r[1])/100.0
 	var middle := point([(r[0]+r[2])*0.5,(r[1]+r[3])*0.5])
 	surface.name = "Conservatory_"+str(island.id)
+	if _ground_style(str(island.id)) == "deck":
+		_build_balcony(island, surface)
+		return
 	# Floor seams avoid the genuine open hatch; no decorative tile closes it.
 	for x in range(int(r[0])+64,int(r[2]),64):
 		for z in range(int(r[1])+64,int(r[3]),64):
@@ -42,21 +45,97 @@ func _surface_built(island: Dictionary, surface: Node3D) -> void:
 	if island.id not in ["court","gallery","mirror-room"]: return
 	var rear_z := float(r[1])/100.0+0.025
 	var wall_height := 1.45
-	for x in range(int(r[0])+8,int(r[2]),96):
+	# The glass wall and its gable stop where a raised floor stands over the
+	# rear edge (the mirror room's east end under the recovery landing), so
+	# the frame meets that floor's side instead of running into it.
+	var span := _rear_wall_span(island)
+	var wall_width := float(span[1]-span[0])/100.0
+	var wall_middle := float(span[0]+span[1])/200.0
+	var last_post := int(span[0])
+	for x in range(int(span[0])+8,int(span[1]),96):
+		last_post = x
 		box(Vector3(0.045,wall_height,0.045),CONSERVATORY_FRAME,Vector3(float(x)/100,wall_height/2,rear_z),surface)
-		if x+88<r[2]:
+		if x+88<span[1]:
 			var glass := box(Vector3(0.84,0.85,0.014),Color(0.52,0.77,0.72,0.18),Vector3(float(x+44)/100,0.74,rear_z),surface)
 			glass.name = "ConservatoryGlass"
 			glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	box(Vector3(width,0.05,0.05),CONSERVATORY_FRAME,Vector3(middle.x,wall_height,rear_z),surface)
-	box(Vector3(width,0.07,0.06),CONSERVATORY_FRAME,Vector3(middle.x,0.20,rear_z),surface)
+	if span[1]<r[2] and int(span[1])-last_post>30: box(Vector3(0.045,wall_height,0.045),CONSERVATORY_FRAME,Vector3(float(span[1])/100-0.03,wall_height/2,rear_z),surface)
+	box(Vector3(wall_width,0.05,0.05),CONSERVATORY_FRAME,Vector3(wall_middle,wall_height,rear_z),surface)
+	box(Vector3(wall_width,0.07,0.06),CONSERVATORY_FRAME,Vector3(wall_middle,0.20,rear_z),surface)
 	# Roof ends form a glasshouse profile while the whole front and roof stay
 	# open. Rafters hug the rear border and never masquerade as walkable lanes.
-	var peak := Vector3(middle.x,wall_height+0.62,rear_z-0.03)
-	_bar_between(Vector3(float(r[0])/100,wall_height,rear_z),peak,0.045,CONSERVATORY_FRAME,surface)
-	_bar_between(peak,Vector3(float(r[2])/100,wall_height,rear_z),0.045,CONSERVATORY_FRAME,surface)
+	var peak := Vector3(wall_middle,wall_height+0.62*wall_width/width,rear_z-0.03)
+	_bar_between(Vector3(float(span[0])/100,wall_height,rear_z),peak,0.045,CONSERVATORY_FRAME,surface)
+	_bar_between(peak,Vector3(float(span[1])/100,wall_height,rear_z),0.045,CONSERVATORY_FRAME,surface)
 	for side: int in [-1,1]:
 		box(Vector3(0.035,0.16,depth-0.01),CONSERVATORY_FRAME,middle+Vector3(side*(width/2-0.0285),0.08,0),surface)
+
+## A plank balcony over a lower room (a raised floor in the "deck" style): it
+## stands on the level's solid posts (its obstacles, drawn as posts by the
+## dressing), with a stringer each side. When its back comes within 60 cm of
+## the room's back wall, a ledger on the wall's frame carries it and a fern
+## trough fills the gap;
+## otherwise a rail closes it. Rails close its open sides and flower boxes
+## hang off its outer rail. The frame stands on the room below, so it stays
+## solid while the cutaway fades the deck for a pip underneath. The world
+## builds it, not the dressing: it stands over the room's walkable floor,
+## where dressing props may not.
+func _build_balcony(island: Dictionary, surface: Node3D) -> void:
+	var below := _floor_below(island)
+	if below.is_empty(): return
+	var r: Array = island.rect_cm
+	var room: Node3D = _surface_nodes.get(str(below.id), terrain)
+	# The deck's own beams (kit/surfaces.gd, 16 cm deep under its planks) stay
+	# solid in the cutaway with the posts and stringers.
+	for child: Node in surface.get_children():
+		if child is MeshInstance3D and child.mesh is BoxMesh and is_equal_approx((child.mesh as BoxMesh).size.y,0.16) and child.position.y<-0.3: child.set_meta(Cutaway.KEEP,true)
+	var lit := bool(dressing.get("lit", true))
+	# The deck's planks are 20 cm deep; the frame reaches up to them.
+	var under := int(island.height_cm)-20
+	var mid_z := int(r[1]+r[3])/2
+	for x: int in [int(r[0])+4,int(r[2])-4]:
+		_balcony_piece({"kind":"wall","from":[x,r[1]],"to":[x,r[3]],"height":12,"thickness":8,"y":under-22,"color":"7a5c40"},room,lit)
+	var wall_z := int(below.rect_cm[1])
+	var tucked: bool = int(r[1])-wall_z<=60
+	if tucked:
+		_balcony_piece({"kind":"wall","from":[r[0],wall_z+18],"to":[r[2],wall_z+18],"height":12,"thickness":8,"y":under-12,"color":"7a5c40"},room,lit)
+		var trough_z0 := wall_z+17
+		var trough_z1 := int(r[1])-7
+		_balcony_piece({"kind":"planter","at":[(int(r[0])+int(r[2]))/2,(trough_z0+trough_z1)/2],"y":under,"width":int(r[2]-r[0]),"depth":trough_z1-trough_z0,"size":1.1},room,lit)
+	var corners := [[int(r[2])+2,int(r[1])],[int(r[2])+2,int(r[3])+2],[int(r[0])-2,int(r[3])+2],[int(r[0])-2,int(r[1])]]
+	for side in range(4 if not tucked else 3):
+		_balcony_piece({"kind":"fence","from":corners[side],"to":corners[(side+1)%4],"size":1.45},surface,lit)
+	for z: int in [(int(r[1])+mid_z)/2,(mid_z+int(r[3]))/2]:
+		_balcony_piece({"kind":"planter","at":[int(r[2])+14,z],"rot":90,"y":-4,"width":60,"depth":14,"size":0.7},surface,lit)
+
+## One kit prop as a piece of the world's balcony: built like dressing, but
+## not counted as dressing (the lint counts those by their dressing_kind).
+func _balcony_piece(spec: Dictionary, parent: Node3D, lit: bool) -> void:
+	var piece := Props.build(spec, parent, 0.0, lit)
+	piece.remove_meta("dressing_kind")
+	piece.name = "Balcony_"+str(spec.kind)
+
+## The floor this one stands over: the lower island holding its middle.
+func _floor_below(island: Dictionary) -> Dictionary:
+	var r: Array = island.rect_cm
+	var at := Vector2(float(r[0]+r[2])*0.5,float(r[1]+r[3])*0.5)
+	for other: Dictionary in current_level.get("islands",[]):
+		var o: Array = other.rect_cm
+		if other.id != island.id and int(other.get("height_cm",0))<int(island.get("height_cm",0)) and at.x>o[0] and at.x<o[2] and at.y>o[1] and at.y<o[3]: return other
+	return {}
+
+## The rear edge's [x0, x1] in cm, cut back (with a 6 cm gap for its lip) at
+## any floor standing at least 50 cm above this one over that edge.
+func _rear_wall_span(island: Dictionary) -> Array:
+	var r: Array = island.rect_cm
+	var span := [int(r[0]),int(r[2])]
+	for other: Dictionary in current_level.get("islands",[]):
+		var o: Array = other.rect_cm
+		if other.id == island.id or int(other.get("height_cm",0))<int(island.get("height_cm",0))+50: continue
+		if o[1]>r[1] or o[3]<r[1] or o[2]<=span[0] or o[0]>=span[1]: continue
+		if o[0]>span[0] and o[2]>=span[1]: span[1] = int(o[0])-6
+		elif o[2]<span[1] and o[0]<=span[0]: span[0] = int(o[2])+6
+	return span
 
 func _build_receiver(receiver: Dictionary) -> void:
 	var before := terrain.get_child_count()

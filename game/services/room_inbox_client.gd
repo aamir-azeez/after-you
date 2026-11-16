@@ -348,7 +348,27 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 		"remote_activity_sequence":int(value.get("remote_activity_sequence",0)),
 		"activity_at":timestamp,
 		"family":str(value.get("family","unknown")),
-	}.merged({"partner_left":true} if value.get("partner_left") == true else {}).merged(_partner_reaction(value)).merged({"redo":value.redo.duplicate()} if valid_redo(value.get("redo")) else {})
+	}.merged({"partner_left":true} if value.get("partner_left") == true else {}).merged(_partner_reaction(value)).merged({"redo":value.redo.duplicate()} if valid_redo(value.get("redo")) else {}).merged(_open_turns(value))
+
+## An open turns room in play (to clients that send X-AfterYou-Open-Turns): its
+## turn and cap, and the slot that played turn 1, worked out from whose turn
+## it is now, so the room list draws the same turn dots as the room
+## (presentation/kit/turn_dots.gd). {} for any other room.
+static func _open_turns(value: Dictionary) -> Dictionary:
+	var open: Variant = value.get("open_turns")
+	if not valid_open_turns(open) or value.get("status") not in ["your_turn","waiting_for_their_turn"] or not value.get("membership") is Dictionary: return {}
+	var mine := "p0" if value.membership.get("you_are_host") == true else "p1"
+	var playing := mine if value.status == "your_turn" else ("p1" if mine == "p0" else "p0")
+	var first := playing if int(open.turn) % 2 == 1 else ("p1" if playing == "p0" else "p0")
+	return {"open_turns": {"turn": int(open.turn), "cap": int(open.cap), "first_slot": first}}
+
+## The server's open_turns on a room list entry: {turn, cap}, the turn within the cap.
+static func valid_open_turns(value: Variant) -> bool:
+	return value is Dictionary and value.size() == 2 and _nonnegative_integer(value.get("turn")) and _nonnegative_integer(value.get("cap")) and value.turn >= 1 and value.cap >= 2 and value.cap <= 20 and value.turn <= value.cap
+
+## A kept room's open_turns (the mapped shape): {turn, cap, first_slot}.
+static func _valid_kept_open_turns(value: Variant) -> bool:
+	return value is Dictionary and value.size() == 3 and valid_open_turns({"turn": value.get("turn"), "cap": value.get("cap")}) and value.get("first_slot") in ["p0","p1"]
 
 ## A room's current redo request on Home (to clients that send X-AfterYou-Room-Redo):
 ## {state: asked_you | you_asked | kept, stage_index}, or a start over request the same way with a
@@ -376,7 +396,7 @@ func _note_partner_name(value: Dictionary, membership: Dictionary) -> void:
 ## send X-AfterYou-End-Reactions while the server shows them) and partner_name
 ## (to clients that send X-AfterYou-Display-Names while the server shows them).
 static func _optional_keys(value: Dictionary) -> int:
-	return int(value.has("partner_left")) + int(value.has("partner_reaction")) + int(value.has("partner_name")) + int(value.has("redo"))
+	return int(value.has("partner_left")) + int(value.has("partner_reaction")) + int(value.has("partner_name")) + int(value.has("redo")) + int(value.has("open_turns"))
 
 static func room_key(api_version: int, room_id: String) -> String:
 	return str(api_version) + ":" + room_id
@@ -423,6 +443,7 @@ static func valid_server_room(value: Variant) -> bool:
 	if not value is Dictionary or value.size() != 9 + _optional_keys(value) or not Typed.equal(value.get("partner_left",true), true): return false
 	if value.has("partner_reaction") and (not value.partner_reaction is String or value.partner_reaction.length() > 24): return false
 	if value.has("redo") and not valid_redo(value.redo): return false
+	if value.has("open_turns") and not valid_open_turns(value.open_turns): return false
 	# A name is only checked for shape; one that breaks the name rules is ignored later.
 	if value.has("partner_name") and value.partner_name != null and (not value.partner_name is String or value.partner_name.length() > 64): return false
 	if not value.get("room_id") is String or not Presence.valid_id(value.room_id): return false
@@ -453,6 +474,7 @@ static func valid_room(value: Variant) -> bool:
 		var reaction: Variant = value.partner_reaction
 		if not reaction is Dictionary or reaction.size() != 2 or not EndReactionStore.is_face(reaction.get("face")) or reaction.get("color") not in ["peach","mint"]: return false
 	if value.has("redo") and not valid_redo(value.redo): return false
+	if value.has("open_turns") and not _valid_kept_open_turns(value.open_turns): return false
 	if not value.get("api_version") is int and not value.get("api_version") is float: return false
 	if value.api_version not in [1,2] or not Presence.valid_id(value.get("room_id")): return false
 	if not value.get("chapter_key") is String or value.chapter_key.is_empty() or value.chapter_key.length() > 80: return false
