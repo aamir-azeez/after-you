@@ -127,6 +127,11 @@ func _show_pair_chip(state: Dictionary, interactive: bool) -> void:
 	pair_chip.show_chip(chip)
 	var room: Texture2D = _chip_room if pair_chip.visible and action_button.visible else null
 	if action_button.icon != room: action_button.icon = room
+	_place_pair_chip()
+
+## Puts the chip in the room the button leaves at its left end, again
+## whenever the button moves or grows (a long prompt grows it).
+func _place_pair_chip() -> void:
 	if not pair_chip.visible: return
 	var left := action_button.get_theme_stylebox("normal").get_margin(SIDE_LEFT)
 	pair_chip.position = action_button.position + Vector2(left - 6.0, (action_button.size.y - pair_chip.size.y) * 0.5)
@@ -333,6 +338,7 @@ func _build_ui() -> void:
 	action_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	pair_chip = PairChip.new()
 	hud.add_child(pair_chip)
+	action_button.item_rect_changed.connect(_place_pair_chip)
 	finish_button = button_for("finish", func(): finish_requested.emit())
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	finish_button.position = Vector2(-240, -100)
