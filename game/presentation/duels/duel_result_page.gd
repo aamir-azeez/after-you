@@ -6,7 +6,8 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## the wallet credited them, and the win bonus, or on a ghost race the first
 ## win over Our run on the board (services/duel_model.gd pay_lines). The card hides while Pollen is off or nothing was paid. While
 ## the runs are still checked, the cards show the times under "Checking both
-## runs". Watch replay opens the pair's room, which plays its finished run.
+## runs". Watch replay opens the pair's room, which plays its finished run. While Fruits show, a
+## public win the goals did not count says so under the gap (services/duel_model.gd goal_line).
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -36,6 +37,8 @@ var held: Dictionary = {}
 ## Whether this build names Full Journey (services/pollen_surfaces.gd), and shows Pollen at all.
 var show_boost := true
 var show_pollen := true
+## Whether Fruits show (presentation/fruit_spend_flow.gd visible), for the line a public win the goals did not count gets.
+var show_fruits := false
 var _column: VBoxContainer
 var _backdrop: Control
 
@@ -86,6 +89,12 @@ func _render() -> void:
 		var gap := Kit.text(line, 22, UiTokens.SOFT, true)
 		gap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_column.add_child(gap)
+	var goal := DuelModel.goal_line(win_bonus) if show_fruits else ""
+	if not goal.is_empty():
+		var kept := Kit.wrapped(goal, 22, UiTokens.SOFT, true)
+		kept.name = "DuelGoalLine"
+		kept.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_column.add_child(kept)
 	var paid := DuelModel.pay_lines(pay, win_bonus, show_boost, view.kind == "ghost", held)
 	if show_pollen and not paid.lines.is_empty(): _column.add_child(_pollen(paid))
 	if show_pollen and not str(paid.note).is_empty():

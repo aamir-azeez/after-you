@@ -1396,6 +1396,8 @@ const PUBLIC_HELD_LEFT := "Not paid: your pair gave up"
 const PUBLIC_HELD_STOPPED := "Not paid: your side stopped playing"
 const PUBLIC_HELD_NOBODY := "Not paid: nobody joined"
 const PUBLIC_HELD_NOT_PAID := "Not paid"
+## A public duel win past two over the same pair that week, which counts toward no Fruits goal (services/duel_model.gd goal_line).
+const PUBLIC_WIN_NOT_COUNTED := "You've beaten this pair twice this week already, so this win doesn't count toward your goals."
 const PUBLIC_BLOCKED_PLAYER := "A player from a public duel"
 const PUBLIC_UNBLOCK := "Unblock %s"
 const SETTINGS_PUBLIC_DUELS := "Public duels"
