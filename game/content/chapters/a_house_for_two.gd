@@ -12,6 +12,8 @@ const DATA := {
 		"summary": PlayerCopy.HOUSE_SUMMARY,
 		"completion": PlayerCopy.HOUSE_COMPLETION,
 	},
+	"letter": {"stamp": "house", "address": [PlayerCopy.LETTER_NEW_HOUSE, PlayerCopy.LETTER_NEW_HOUSE_LINE],
+		"postmark": PlayerCopy.LETTER_POST_HOUSE, "signoff": PlayerCopy.LETTER_BACK_IN_A_BIT},
 	"thumbnail": "res://assets/paid_levels/a-house-for-two.png",
 	"keepsakes": [
 		{"stage_id": "open-the-house", "title": "Open the House"},

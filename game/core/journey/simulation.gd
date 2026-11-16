@@ -5,6 +5,7 @@ const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const BeamField = preload("res://core/beam_field.gd")
+const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
 const CURRENT_SIMULATION_VERSION := 7
 const COMFORT_VERSION := 8
@@ -54,6 +55,13 @@ var _optics: Dictionary = {"segments":[],"signals":{}}
 ## tick, so it reads these instead of building them again.
 var _route_defs: Array = []
 var _gate_plan: Array = []
+## Rules 16 (core/physical/pieces_rules.gd), fixed at reset: the stage's
+## platforms as [platform, [stop bridges]], every stop id, the sinking stones,
+## and each pip's surface as the tick began (who stepped onto a stone last).
+var _platforms: Array = []
+var _stops: Dictionary = {}
+var _sinking: Array = []
+var _surfaces_before: Dictionary = {}
 
 func _init() -> void:
 	simulation_version = CURRENT_SIMULATION_VERSION
@@ -121,8 +129,23 @@ func _reset_mechanics() -> void:
 	_drowned = {}
 	_ready_branch = ""
 	_optics = {"segments":[],"signals":{}}
+	_platforms = []
+	_stops = {}
+	_sinking = []
+	_surfaces_before = {}
+	if _pieces_rules():
+		var bridges: Dictionary = {}
+		for bridge: Dictionary in level.get("bridges", []): bridges[bridge.id] = bridge
+		for platform: Dictionary in stage.get("platforms", []):
+			var stops: Array = []
+			for id: Variant in platform.stops:
+				stops.append(bridges[str(id)])
+				_stops[str(id)] = true
+			_platforms.append([platform, stops])
+		for id: Variant in stage.get("sinking", []): _sinking.append(str(id))
 
 func _advance_source() -> void:
+	if _pieces_rules(): _surfaces_before = {"p0": str(_players.p0.surface_id), "p1": str(_players.p1.surface_id)}
 	super._advance_source()
 	# A evolves independently. Copy only its declared controls, never B's local
 	# selector, shutter, entry latches, or future changed source ownership.
@@ -144,7 +167,31 @@ func _refresh_routes() -> void:
 	var open := _open_controls()
 	for gate: Array in _gate_plan:
 		_routes[gate[0]] = bool(_routes.get(gate[0], false)) or gate[1] == null or Seven.predicate(gate[1], stage, _players, _mechanisms, _optics.signals, open)
+	if not _platforms.is_empty(): _move_platforms(was)
 	if _tide_rules(): _close_slowly(was)
+
+## Rules 16: each platform stands at the one stop whose gate holds, or where
+## it stood when none or several do (its first stop at the start). When it
+## moves, the live pip on the old stop rides along to the same spot on the new
+## one. A memory is never moved here (its place is its own world's), so one
+## left on a stop that moved away is on a shut crossing and drowns.
+func _move_platforms(was: Dictionary) -> void:
+	for entry: Array in _platforms:
+		var stops: Array = entry[1]
+		var holding: Array = stops.filter(func(stop: Dictionary) -> bool: return bool(_routes.get(stop.id, false)))
+		var before: Dictionary = {}
+		for stop: Dictionary in stops:
+			if bool(was.get(stop.id, false)): before = stop
+		var at: Dictionary = holding[0] if holding.size() == 1 else before if not before.is_empty() else holding[0] if not holding.is_empty() else stops[0]
+		for stop: Dictionary in stops: _routes[stop.id] = stop.id == at.id
+		if before.is_empty() or before.id == at.id: continue
+		var player: Dictionary = _players[active_slot]
+		if str(player.surface_id) != str(before.id): continue
+		player.x = int(player.x) - int(before.rect_cm[0]) + int(at.rect_cm[0])
+		player.z = int(player.z) - int(before.rect_cm[1]) + int(at.rect_cm[1])
+		player.height = int(at.height_cm)
+		player.surface_id = str(at.id)
+		_events.append("rode:" + str(entry[0].id))
 
 func _tide_rules() -> bool:
 	return simulation_version in TIDE_RULES
@@ -152,11 +199,16 @@ func _tide_rules() -> bool:
 func _open_controls() -> bool:
 	return simulation_version in OPEN_RULES
 
+func _pieces_rules() -> bool:
+	return PiecesRules.on(simulation_version)
+
 ## Tide rules: a crossing that was open and whose gate no longer holds keeps
 ## its floor until `closing_ticks` after the tick it started closing, then
 ## shuts. Holding again in the meantime, it simply stays open.
 func _close_slowly(was: Dictionary) -> void:
 	for id: String in _routes:
+		# Rules 16: a platform's stop is wherever the platform stands, at once.
+		if _stops.has(id): continue
 		if _routes[id]:
 			_closing.erase(id)
 		elif _closing.has(id):
@@ -178,6 +230,16 @@ func _check_hazards() -> void:
 			finished = true
 			_events.append("drowned:" + slot)
 			return
+	# Rules 16: a sinking stone holds one pip. The one that stepped on last
+	# pushes it under (the live pip when both stepped on this tick).
+	var stone := str(_players.p0.surface_id)
+	if stone in _sinking and stone == str(_players.p1.surface_id):
+		var slot := active_slot
+		if str(_surfaces_before.get(active_slot, "")) == stone and str(_surfaces_before.get(memory_slot, "")) != stone: slot = memory_slot
+		_drowned = {"slot": slot, "route": stone, "tick": tick}
+		finished = true
+		_events.append("sank:" + stone)
+		_events.append("drowned:" + slot)
 
 func _keeps_routes_at_completion() -> bool:
 	return not _tide_rules()

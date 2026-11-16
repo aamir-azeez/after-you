@@ -19,6 +19,12 @@ extends Node3D
 ## static scenery (nothing holds it); each opening's doors and posts are one
 ## mesh, and the water sheets, under this node.
 ##
+## A spillway's look is the dressing's "spillway" pick (content/dressing/
+## prop_styles.gd), set by the water kit before build(): "trickle" is the thin
+## sheet; "falls" (The Falls, rules 16's waterfall) makes the same spillway a
+## waterfall: a thick sheet, white foam where it lands and a slow mist over
+## the pool below, all shown only while the water falls.
+##
 ## A piece beside a floor or open air stands on the dry side, so the water
 ## ends at its face. A piece between two waters stands on their shared line,
 ## each water ending inside it.
@@ -49,6 +55,12 @@ const CREAM := Color("f3e6c8")
 const STONE := Color("b8a283")
 const COPING := Color("dccaa4")
 const SHEET := Color("cfe7ea")
+## A waterfall's sheet thickness (m), its foam and mist, and how far out from
+## the spillway's face they lie over the pool (m).
+const FALLS_SHEET := 0.06
+const FOAM := Color("f4f8f6")
+const MIST := Color(0.94, 0.97, 0.97, 0.35)
+const FALLS_OUT := 0.22
 ## Door thickness and post width across the run (m).
 const THICKNESS := 0.08
 const POST := 0.12
@@ -110,6 +122,8 @@ var _doors: Array = []
 var _sheets: Array = []
 var _moving := false
 var _levels_seen := 0
+## The spillways' look ("trickle" or "falls"), set before build().
+var spill_style := "trickle"
 
 ## Builds the pieces for `plan` under `parent`: this node and its
 ## "WaterLockStone" sibling. Call once per stage, after find_runs(plan) if the
@@ -491,7 +505,37 @@ func _build_spill(run: Dictionary, stone: Node3D) -> void:
 	sheet.name = "SpillSheet"
 	sheet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	sheet.visible = false
-	_sheets.append({"run": run, "sheet": sheet, "low": INF, "falling": false})
+	var spray: Node3D = null
+	if spill_style == "falls":
+		sheet.scale = Vector3(1, 1, 1)
+		sheet.mesh = Primitives.box_mesh(Vector3(length, 1.0, FALLS_SHEET) if run.along_x else Vector3(FALLS_SHEET, 1.0, length))
+		spray = _falls_spray(length, bool(run.along_x))
+	_sheets.append({"run": run, "sheet": sheet, "spray": spray, "low": INF, "falling": false})
+
+## A waterfall's foam and mist (spill_style "falls"), a row along the run's
+## length centred on its own origin, placed at the pool below each present.
+func _falls_spray(length: float, along_x: bool) -> Node3D:
+	var spray := Node3D.new()
+	spray.name = "FallsSpray"
+	spray.visible = false
+	add_child(spray)
+	var foam := StandardMaterial3D.new()
+	foam.albedo_color = FOAM
+	foam.roughness = 0.9
+	var mist := StandardMaterial3D.new()
+	mist.albedo_color = MIST
+	mist.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mist.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var count := maxi(2, ceili(length / 0.3))
+	for index in range(count):
+		var along := (float(index) + 0.5) / float(count) * length - length * 0.5
+		var at := Vector3(along, 0.02, 0) if along_x else Vector3(0, 0.02, along)
+		var puff := Primitives.mesh_node(Primitives.sphere_mesh(0.16), foam, at, spray)
+		puff.scale = Vector3(1.3, 0.35, 1.0)
+		var cloud := Primitives.mesh_node(Primitives.sphere_mesh(0.32), mist, at + Vector3(0, 0.28 + 0.08 * float(index % 2), 0), spray)
+		cloud.scale = Vector3(1.4, 0.8, 1.4)
+		cloud.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return spray
 
 ## The opening's doors: short timber doors side by side (none wider than
 ## DOOR_WIDTH), each with a small cream knob on its top rail, a capped stone
@@ -657,6 +701,10 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 		var lower_side := toward_b if b < a else -toward_b
 		sheet.position = _on_run(run, _length(run) * 50.0, float(run.lip) - fall * 0.5) + lower_side * (_width(SPILL) * 0.5 + 0.01)
 		sheet.scale = Vector3(1, maxf(fall, 0.01), 1)
+		var spray: Node3D = spill.get("spray")
+		if spray != null:
+			spray.visible = sheet.visible
+			spray.position = _on_run(run, _length(run) * 50.0, low) + lower_side * (_width(SPILL) * 0.5 + FALLS_OUT)
 	if immediate: _settle()
 
 ## Tells the doors where the spirits stand (plan cm) and which walkways can be

@@ -528,25 +528,13 @@ func button(text: String, callback: Callable, primary: bool=true) -> Button:
 
 
 func card(title: String, body: String) -> VBoxContainer:
-	stick.release()
-	hud.visible = false
-	for child in overlay.get_children():
-		overlay.remove_child(child)
-		child.queue_free()
-	overlay.visible = true
-	modal_shade = ColorRect.new()
-	modal_shade.color = Color(0.025, 0.10, 0.10, 0.73)
-	modal_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# Controls respect display cutouts; the dimming backdrop covers the whole
-	# world, including those insets. Otherwise a bright side strip remains.
-	SafeArea.bleed(modal_shade)
-	overlay.add_child(modal_shade)
+	_open_overlay()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size.x = 610
-	panel.add_theme_stylebox_override("panel", _style(Color("163c36")))
+	panel.add_theme_stylebox_override("panel", card_style())
 	center.add_child(panel)
 	var margin := MarginContainer.new()
 	for edge: String in ["left", "top", "right", "bottom"]:
@@ -569,11 +557,40 @@ func card(title: String, body: String) -> VBoxContainer:
 	stack.add_child(heading_label)
 	var paragraph := _label(body, 20)
 	paragraph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	paragraph.custom_minimum_size.x = 550
 	paragraph.add_theme_color_override("font_color", MUTED)
+	paragraph.custom_minimum_size.x = 550
 	stack.add_child(paragraph)
 	_layout_card.call_deferred()
 	return stack
+
+## A whole-screen card of its own (a chapter's letter, presentation/letter/
+## letter_view.gd) over the dimmed world, in place of the plain card.
+func show_card_layer(layer: Control) -> void:
+	_open_overlay()
+	modal_scroll = null
+	modal_stack = null
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(layer)
+
+## The panel look every card shares.
+func card_style() -> StyleBoxFlat:
+	return _style(Color("163c36"))
+
+## Clears the overlay for a card: the HUD hides and the world dims behind it.
+func _open_overlay() -> void:
+	stick.release()
+	hud.visible = false
+	for child in overlay.get_children():
+		overlay.remove_child(child)
+		child.queue_free()
+	overlay.visible = true
+	modal_shade = ColorRect.new()
+	modal_shade.color = Color(0.025, 0.10, 0.10, 0.73)
+	modal_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Controls respect display cutouts; the dimming backdrop covers the whole
+	# world, including those insets. Otherwise a bright side strip remains.
+	SafeArea.bleed(modal_shade)
+	overlay.add_child(modal_shade)
 
 ## Report or block on the current card: the shared flag button (kit/icons.gd)
 ## at the card's top right, beside its title. Returns the button.

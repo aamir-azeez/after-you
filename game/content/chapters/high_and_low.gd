@@ -12,6 +12,8 @@ const DATA := {
 		"summary": PlayerCopy.COOPERATIVE_HIGH_SUMMARY,
 		"completion": PlayerCopy.COOPERATIVE_COMPLETION,
 	},
+	"letter": {"stamp": "daisy", "address": [PlayerCopy.LETTER_DECK, PlayerCopy.LETTER_DECK_LINE],
+		"postmark": PlayerCopy.LETTER_POST_MEADOW, "signoff": PlayerCopy.LETTER_WRITE_BACK_SOON},
 	"thumbnail": "res://assets/chapter_thumbnails/high-and-low.png",
 	"keepsakes": [
 		{"stage_id": "upper-path", "title": "Upper Path"},

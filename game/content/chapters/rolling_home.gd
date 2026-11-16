@@ -12,6 +12,8 @@ const DATA := {
 		"summary": PlayerCopy.COOPERATIVE_ROLLING_SUMMARY,
 		"completion": PlayerCopy.COOPERATIVE_COMPLETION,
 	},
+	"letter": {"stamp": "bee", "address": [PlayerCopy.LETTER_LONG_WAY_ROUND, PlayerCopy.LETTER_LONG_WAY_ROUND_LINE],
+		"postmark": PlayerCopy.LETTER_POST_MEADOW, "signoff": PlayerCopy.LETTER_SEE_YOU_SOON},
 	"thumbnail": "res://assets/paid_levels/rolling-home.png",
 	"keepsakes": [
 		{"stage_id": "weight-of-a-friend", "title": "Weight of a Friend"},

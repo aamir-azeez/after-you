@@ -1,6 +1,9 @@
 extends RefCounted
 ## Integer support queries shared by walkers and pushable props. Height changes
 ## require an authored stair or drop; overlapping islands never act as ladders.
+## A stair with "one_way": "up" (rules 16's pull-up rope ladder,
+## core/physical/pieces_rules.gd) carries a walker only upward: a step whose
+## centre would come down it is refused. No published stair has the field.
 ##
 ## A level's islands, bridges and stairs can be looked up through an index: a
 ## grid of CELL_CM squares, each holding the islands, the bridges and the
@@ -63,6 +66,8 @@ static func _support(level: Dictionary, routes: Dictionary, point: Vector2i, slo
 	for stair: Dictionary in lists[2]:
 		if not bool(routes.get(stair.id, false)) or not _owns(stair, slot) or not inside(point, stair.rect_cm): continue
 		var height := stair_height(stair, point)
+		# The centre's own step (tolerance 2) never comes down a one way stair.
+		if tolerance == 2 and height < old_height and stair.has("one_way"): continue
 		if absi(height - old_height) <= tolerance:
 			return {"surface_id":str(stair.id),"height":height}
 	return {}

@@ -25,6 +25,11 @@ const DATA := {
 	"pad": "stand_spot",
 	"goal": "bell",
 	"lift": "plain",
+	"deck": "plank",
+	"raft": "logs",
+	"ladder": "rope",
+	"fog": "mist",
+	"spillway": "trickle",
 	"carried_item": "parcel",
 	"current": "ripples",
 	# How each crossing is built (tide_world._lay_deck); "stones" stand in
