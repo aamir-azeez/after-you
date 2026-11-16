@@ -11,6 +11,7 @@ signal skip_wait_requested
 
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const Emphasis = preload("res://presentation/emphasis.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const Actions = preload("res://presentation/action_buttons.gd")
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
@@ -567,10 +568,12 @@ func card(title: String, body: String) -> VBoxContainer:
 	heading_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	heading_label.custom_minimum_size.x = 550
 	stack.add_child(heading_label)
-	var paragraph := _label(body, 20)
-	paragraph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# A body with *emphasis* (presentation/emphasis.gd) draws its italics.
+	var paragraph: Control = Emphasis.rich_label(body, ui.theme.default_font, 20, MUTED) if Emphasis.has_markup(body) else _label(body, 20)
+	if paragraph is Label:
+		paragraph.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		paragraph.add_theme_color_override("font_color", MUTED)
 	paragraph.custom_minimum_size.x = 550
-	paragraph.add_theme_color_override("font_color", MUTED)
 	stack.add_child(paragraph)
 	_layout_card.call_deferred()
 	return stack

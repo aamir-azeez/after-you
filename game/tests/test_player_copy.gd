@@ -1,6 +1,7 @@
 extends SceneTree
 ## Presentation changes must never revise the authored recording contract.
 const Copy = preload("res://presentation/player_copy.gd")
+const Emphasis = preload("res://presentation/emphasis.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const First = preload("res://core/first_steps/stage_catalog.gd")
 const Relay = preload("res://core/v2/stage_catalog.gd")
@@ -31,6 +32,8 @@ func _initialize() -> void:
 		for token: RegExMatch in token_pattern.search_all(Copy.text(key)):
 			actual.append(token.get_string())
 		_check(actual == Copy.FORMAT_TOKENS[key], "Ordered format placeholders remain valid: " + key)
+	_check(Emphasis.plain("They *knew* it [x]") == "They knew it [x]" and Emphasis.bbcode("They *knew* it [x]") == "They [i]knew[/i] it [lb]x]", "*word* reads plain or as italics, and a bracket stays a bracket")
+	_check(Emphasis.has_markup("a *b* c") and not Emphasis.has_markup("a * b") and Emphasis.plain("2 * 3") == "2 * 3", "A lone asterisk is not emphasis")
 	print("AFTER YOU PLAYER COPY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

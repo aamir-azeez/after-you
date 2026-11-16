@@ -5,6 +5,7 @@ extends RefCounted
 ## services/chapter_families.gd; every function here reads those.
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Emphasis = preload("res://presentation/emphasis.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
@@ -135,9 +136,15 @@ static func _descriptor(key: String) -> Dictionary:
 		"definition_hash": Canonical.digest(level), "title": words.get("title", level.get("title", "")), "premium": level.get("premium", false),
 		"simulation_version": preferred_rules(key), "recording_version": level.schema_version,
 		"stage_count": level.stages.size(), "local_path": _chapter(key).local_path,
-		"summary": words.get("summary", ""),
+		"summary": Emphasis.plain(str(words.get("summary", ""))),
 		"checkpoint_title": words.get("checkpoint_title", ""), "checkpoint_text": words.get("checkpoint_text", ""),
 		"completion_text": words.get("completion", "")}
+
+## The chapter's story line with its *emphasis* markup, for About this
+## chapter (presentation/emphasis.gd draws it). The descriptor's summary is
+## the same line as plain text. "" if unknown.
+static func summary_markup(key: String) -> String:
+	return str(_words(key).get("summary", "")) if Index.keys().has(key) else ""
 
 ## A chapter's words: its descriptor's copy over its family's checkpoint copy.
 static func _words(key: String) -> Dictionary:

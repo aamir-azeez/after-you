@@ -1357,7 +1357,7 @@ func _waiting_details_stage() -> Dictionary:
 func _show_waiting_details() -> void:
 	if _waiting_details_stage().is_empty(): return
 	mode = "room_details"
-	var details := _card(str(chapter.title), str(chapter.summary))
+	var details := _card(str(chapter.title), Registry.summary_markup(chapter_key))
 	details.add_child(_action_button("back", _show_ready))
 
 

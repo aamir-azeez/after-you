@@ -1585,7 +1585,7 @@ const CONSERVATORY_RETURNS_HINT_B := "Open the return shutter and bring both lig
 const LONG_WAY_HOME_TITLE := "Long Way Home"
 const LONG_WAY_HOME_SUMMARY := "My friend went out this morning and still isn't back. I've been standing at the door since the fireflies came out. Just getting some air."
 # long-way-home@3 (open turns) has its own line.
-const LONG_WAY_HOME_V3_SUMMARY := "It's getting dark on the wooden path, and my friend says they know a shortcut. They knew a shortcut last week too."
+const LONG_WAY_HOME_V3_SUMMARY := "It's getting dark on the wooden path, and my friend says they know a shortcut. They *knew* a shortcut last week too."
 const LONG_WAY_HOME_COMPLETION := "You're both at home."
 const LONG_WAY_HOME_PATH_TITLE := "The Path You Leave"
 const LONG_WAY_HOME_PATH_HINT_A := "Leave a trail for your friend and then go to the garden on your own."
@@ -2336,7 +2336,7 @@ const SHARED_REPLAY_VIEW_FBCF70672D83 := "Your account changed. Before opening t
 # Shared replay — show error
 const SHARED_REPLAY_VIEW_B81950FA86BB := "Your saved replay is kept"
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
-const CHAPTER_REGISTRY_49A82D1B1B0C := "The little cottage up top has been empty all winter, and today we're moving in. Right after breakfast, my friend says. We're on our second pot of tea."
+const CHAPTER_REGISTRY_49A82D1B1B0C := "The little cottage up top has been empty all winter, and today we're moving in. Right after breakfast, my friend says. We're on our second pot of tea on the doorstep."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
 const CHAPTER_REGISTRY_F78F85CE3DE5 := "Three islands in a row and one bench, and my friend got to it first. The cottage at the far end looks lovely from here. I suppose I'll go and check."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)

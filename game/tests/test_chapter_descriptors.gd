@@ -22,6 +22,7 @@ extends SceneTree
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const Emphasis = preload("res://presentation/emphasis.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Golden = preload("res://tests/golden_support.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -307,6 +308,7 @@ func _own_words() -> void:
 	for key: String in Registry.keys():
 		var summary := str(Registry.descriptor(key).get("summary", ""))
 		_check(not summary.is_empty(), "Chapter has its own summary: " + key)
+		_check(not summary.contains("*") and Emphasis.plain(Registry.summary_markup(key)) == summary, "The summary is the story line without its emphasis marks: " + key)
 		var other: String = seen.get(summary, key)
 		_check(other.get_slice("@", 0) == key.get_slice("@", 0), "Chapters %s and %s show the same summary" % [other, key])
 		seen[summary] = key
