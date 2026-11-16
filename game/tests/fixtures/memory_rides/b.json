@@ -1,0 +1,24 @@
+{
+  "catch_assistance": true,
+  "checkpoint_hash": "212618d582a3126d5d876f37c7ba0b2fa810a239109beef7e4d861809d910f74",
+  "completed": true,
+  "definition_hash": "79dabe1c8cd60e4dd19f98f20bbc0dd15d0790481ea5609bb9f219ca0ae07101",
+  "duration_ticks": 240.0,
+  "final_state_hash": "ec335f39d9aa90753902495e408145c6a56645b8dcb5be211914d4d200f85056",
+  "level_id": "ride-witness",
+  "level_version": 1.0,
+  "outcome": {
+    "objective_complete": true,
+    "source_ready": true
+  },
+  "packed": "AQsMAJwCAOeeAgAAAwAAAgAADGQAAhkARgBkPmQAAhkAHACc/ZLa71d3nkqwiFmhmD3i5jJS1eZQ+lSiAM+dEcAjv9FAZdP2JNYEL5NIGLqk7uNgg9sjYhc+bOgPFExOVKnJDK6Gf5LHGSJ18QIZLRN8EY0=",
+  "player_slot": "p1",
+  "recording_hash": "a81280917e90de8cc52fb1c5fe3f00fcaeb67c01531e304c18eefa91ee24a6d8",
+  "role": "b",
+  "schema_version": 7.0,
+  "simulation_version": 16.0,
+  "source_recording_hash": "c57b8e7ec1bab40eebeb1df53fe20e626e2213587bd62db4e20f6536a1890efa",
+  "stage_id": "lift",
+  "stage_version": 1.0,
+  "tick_rate": 30.0
+}
