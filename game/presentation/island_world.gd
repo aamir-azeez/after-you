@@ -32,6 +32,8 @@ const Surfaces = preload("res://presentation/kit/surfaces.gd")
 ## A piece's style (content/dressing/piece_styles.gd) and the pad kit.
 const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 const PadKit = preload("res://presentation/kit/pieces/pad.gd")
+## A crossing that rises as it opens and sinks as it shuts (kit/pieces/bridge.gd).
+const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
 const LevelLayout = preload("res://services/level_layout.gd")
 const FIREFLY := Color("ffe9a8")
@@ -1182,6 +1184,8 @@ func _process(delta: float) -> void:
 	for trail: Node3D in _motion_trails:
 		if is_instance_valid(trail): trail.advance(delta, reduced_motion)
 	_move_bridge(weight)
+	for piece: RefCounted in crossing_pieces.values():
+		if piece.moving(): piece.advance(delta)
 	_advance_garden_bloom(delta)
 	if not reduced_motion:
 		for i in range(motes.size()):
@@ -1354,20 +1358,75 @@ func _doze_anchor(actor: Node3D) -> Variant:
 			best = at
 	return best
 
+# --- What earlier stages left (the checkpoint the shown stage opened from) ---
+
+## The stage this world shows (show_stage), "" before one.
+var displayed_stage_id := ""
+## The crossings earlier stages left kept, from the checkpoint present_history
+## was given.
+var _latched_bridge_ids: Array = []
+
+## Supply the checkpoint already verified by the chapter's coordinator (play,
+## memories, replays and the level tools all call it before presenting).
+## Remembered state is a landmark only: it adds no controls or collision. By
+## default it notes the crossings kept; a world that draws more of the past
+## (the Lighthouse's mirrors) extends it.
+func present_history(checkpoint: Dictionary) -> void:
+	_latched_bridge_ids = kept_crossings(checkpoint)
+
+## The crossings a checkpoint keeps: its mechanisms' latched_bridges, or the
+## top-level list an island family's checkpoint holds them in.
+static func kept_crossings(checkpoint: Dictionary) -> Array:
+	var mechanisms: Variant = checkpoint.get("mechanisms")
+	if mechanisms is Dictionary and mechanisms.has("latched_bridges"): return Array(mechanisms.latched_bridges).duplicate()
+	return Array(checkpoint.get("latched_bridges", [])).duplicate()
+
 # --- The island build: floors, pads and scenery from the definition ---
 
 ## The pad pieces by id (_build_pad), for present() to light.
 var pad_pieces: Dictionary = {}
+## The crossing pieces by id (_build_crossings), for present() to open.
+var crossing_pieces: Dictionary = {}
 
 ## What every island world builds from its definition and dressing alone: the
-## chapter's dressing, its floors (_build_floors), its pads (_build_pads) and
-## its scenery (_build_dressing). A staged build gets the frame back between
-## pieces. Await it.
+## chapter's dressing, its floors (_build_floors), its pads (_build_pads), its
+## scenery (_build_dressing) and its crossings (_build_crossings). A staged
+## build gets the frame back between pieces. Await it.
 func _build_island_ground(definition: Dictionary) -> void:
 	_load_dressing()
 	await _build_floors(definition.get("islands", []))
 	await _build_pads(_layout_pads())
 	await _build_dressing()
+	await _build_crossings(definition.get("bridges", []))
+
+## Each crossing of the definition as the bridge kit draws it, shut until
+## present() opens it (crossing_pieces); its sounds come from its root, which
+## that also holds, so the static fold batches the planks under it.
+func _build_crossings(bridges: Array) -> void:
+	crossing_pieces.clear()
+	for bridge: Dictionary in bridges:
+		var piece: RefCounted = BridgeKit.build(bridge, terrain)
+		crossing_pieces[str(bridge.id)] = piece
+		mark_sound("bridge:%s" % bridge.id, piece.root)
+		await _build_step()
+
+## Opens each crossing the snapshot's bridges hold open.
+func _present_crossings(bridges: Dictionary, immediate: bool) -> void:
+	for id: String in crossing_pieces: crossing_pieces[id].set_open(bool(bridges.get(id, false)), immediate)
+
+## The seed an island family throws (seed_visual.gd, glowing warm; its flight
+## is _present_seed's) and the ring where it lands (SocketKit.landing), named
+## `landing_name`, both under the terrain.
+func _build_seed_throw(landing_name: String) -> void:
+	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
+	var glow := seed.material_override as StandardMaterial3D
+	glow.emission_enabled = true
+	glow.emission = Color("e6b767")
+	glow.emission_energy_multiplier = 1.2
+	landing_marker = Node3D.new()
+	landing_marker.name = landing_name
+	terrain.add_child(landing_marker)
+	SocketKit.landing(landing_marker)
 
 ## Each floor in the dressing's ground style (kit/surfaces.gd), else as this
 ## world's plain floor (_plain_floor), under its floor root (_floor_root),

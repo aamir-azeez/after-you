@@ -49,7 +49,6 @@ var _receiver_cables: Dictionary = {}
 var _prop_nodes: Dictionary = {}
 var _socket_nodes: Dictionary = {}
 var _history_root: Node3D
-var _latched_bridge_ids: Array = []
 var _memory_markers: Dictionary = {}
 var _selector_nodes: Dictionary = {}
 var _frame_points: Array[Vector3] = []
@@ -75,6 +74,7 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition.duplicate(true)
+	displayed_stage_id = str(definition.get("stage_id", ""))
 	_load_dressing()
 	_tower_lamp = null
 	if is_instance_valid(terrain):

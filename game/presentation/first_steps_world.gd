@@ -35,6 +35,7 @@ func load_level(definition: Dictionary) -> void:
 	_reset_seed_pose()
 	_clear_object_trails()
 	current_level = definition.duplicate(true)
+	displayed_stage_id = ""
 	pad_pieces.clear()
 	lift_piece = null
 	loft_chime = null
@@ -98,15 +99,7 @@ func load_level(definition: Dictionary) -> void:
 		actor_targets[slot] = Vector3.ZERO
 		actor_badges[slot] = Badges.make(spirit)
 		await _build_step()
-	seed = SeedVisual.create(self, 0.13, Color("ffda83"), Vector3.ZERO, terrain)
-	var seed_material := seed.material_override as StandardMaterial3D
-	seed_material.emission_enabled = true
-	seed_material.emission = Color("e6b767")
-	seed_material.emission_energy_multiplier = 1.2
-	landing_marker = Node3D.new()
-	landing_marker.name = "SeedLanding"
-	terrain.add_child(landing_marker)
-	SocketKit.landing(landing_marker)
+	_build_seed_throw("SeedLanding")
 	camera.position = Vector3(8, 12, 18)
 	camera.look_at(Vector3(0, 0.9, 0))
 	camera.size = ViewFit.viewport(11.8, self)
@@ -133,7 +126,8 @@ func _descriptor() -> Dictionary:
 
 func show_stage(value: Dictionary) -> void:
 	reset_camera_exploration()
-	show_keepsake_landmark(str(value.get("id", "")))
+	displayed_stage_id = str(value.get("id", ""))
+	show_keepsake_landmark(displayed_stage_id)
 	active_stage = value.duplicate(true)
 	landing_marker.visible = value.has("landing_cm")
 	if landing_marker.visible:

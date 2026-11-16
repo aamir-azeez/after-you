@@ -18,7 +18,6 @@ const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 const GLANCE_TO := 1.6
 const GLANCE_BACK := 0.6
 var chapter_definition: Dictionary = {}
-var displayed_stage_id := ""
 var _physical_pads: Dictionary = {}
 ## Pad id -> its piece (kit/pieces/pad.gd); _physical_pads holds its rim.
 var _pad_pieces: Dictionary = {}
@@ -576,8 +575,10 @@ func _pair_gate_anchors(route: Dictionary) -> Array:
 	var ends := OwnerMark.route_ends_of(route, chapter_definition.get("islands", []))
 	return [ends[0] + height, ends[1] + height]
 
+## Only the kept crossings (island_world's), never the Lighthouse's
+## remembered mechanisms.
 func present_history(checkpoint: Dictionary) -> void:
-	_latched_bridge_ids = checkpoint.get("mechanisms", {}).get("latched_bridges", []).duplicate()
+	_latched_bridge_ids = kept_crossings(checkpoint)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
 	if state.get("stage_id", "") != displayed_stage_id:
