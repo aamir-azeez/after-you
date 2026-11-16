@@ -3,10 +3,12 @@ import { boundedValue, exact, MAX_CHECKPOINT_BYTES, MAX_RECORDING_BYTES, MAX_V2_
 import { comfortRules, openTurns, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { MAX_ROW_BYTES } from "./row-bound";
 import { isPacked, packedKeys, unpackRecording } from "./recording-codec";
-import { MAX_OPEN_TURN_TICKS } from "./open-turns";
+import { MAX_OPEN_TURN_TICKS, isFingerprint } from "./open-turns";
 
 const RECORD_KEYS = ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "stage_id", "stage_version", "checkpoint_hash", "role", "player_slot", "tick_rate", "duration_ticks", "catch_assistance", "actions", "replay_checks", "final_state_hash", "completed", "outcome", "source_recording_hash", "recording_hash"];
 const PACKED_KEYS = packedKeys(RECORD_KEYS);
+/** An open turns fingerprint (open-turns.ts): a packed record without `packed`. */
+const FINGERPRINT_KEYS = PACKED_KEYS.filter(key => key !== "packed");
 const OUTCOMES = ["source_ready", "objective_complete"];
 const MAX_TICKS = 900, MAX_REPLAY_CHECKS = 31;
 function need(value: unknown, code: string): asserts value { if (!value) throw new ApiError(422, code); }
@@ -46,14 +48,16 @@ export function checkTurnBounds(limits: Readonly<ChapterLimits>, maxBranches: nu
 }
 
 /** Envelope selection comes only from an explicitly registered immutable adapter.
- * This preserves the published six parser and shares no checkpoint semantics. */
+ * This preserves the published six parser and shares no checkpoint semantics.
+ * `stored` (open turns only): the record is a stored row, which may be a turn's fingerprint (open-turns.ts); its header
+ * is checked as a turn's is, and its hash, which covers the runs it no longer holds, is taken as stored. */
 export function physicalRecording(definition: { stages: readonly { id: string; first_player_slot: string }[] }, key: Readonly<ChapterKey>, version: 6 | 7 | 8, supported: readonly number[] = [version], maxTicks = Number.MAX_SAFE_INTEGER,
-  turns?: Readonly<TurnLimits>, limits?: Readonly<ChapterLimits>, open = false): (value: unknown) => Promise<ChapterRecording> {
-  return async (value: unknown): Promise<ChapterRecording> => {
+  turns?: Readonly<TurnLimits>, limits?: Readonly<ChapterLimits>, open = false): (value: unknown, stored?: boolean) => Promise<ChapterRecording> {
+  return async (value: unknown, stored = false): Promise<ChapterRecording> => {
     const comfort = value !== null && typeof value === "object" && "simulation_version" in value && comfortRules(value.simulation_version) && supported.includes(value.simulation_version as number);
     boundedValue(value, comfort ? limits?.recording_bytes ?? 65_536 : MAX_RECORDING_BYTES, comfort ? limits?.recording_values : undefined);
     // A packed record (v2/recording-codec.ts) carries its runs and checks as one string; whether the room may take it is the room's call.
-    const r = object(value), packed = isPacked(r); exact(r, packed ? PACKED_KEYS : RECORD_KEYS); need(r.level_id === key.level_id && r.level_version === key.level_version && r.definition_hash === key.definition_hash, "unsupported_chapter");
+    const r = object(value), packed = isPacked(r), print = open && stored && isFingerprint(r); exact(r, print ? FINGERPRINT_KEYS : packed ? PACKED_KEYS : RECORD_KEYS); need(r.level_id === key.level_id && r.level_version === key.level_version && r.definition_hash === key.definition_hash, "unsupported_chapter");
     need(r.schema_version === version && supported.includes(r.simulation_version as number) && r.stage_version === 1 && r.tick_rate === 30, "unsupported_simulation_version");
     const stage = definition.stages.find(stage => stage.id === r.stage_id); need(stage, "unknown_stage");
     need(r.role === "a" || r.role === "b", "invalid_role");
@@ -67,6 +71,7 @@ export function physicalRecording(definition: { stages: readonly { id: string; f
     for (const name of ["checkpoint_hash", "final_state_hash", "recording_hash"]) text(r[name], HASH_PATTERN);
     need(r.role === "a" ? r.source_recording_hash === "" : typeof r.source_recording_hash === "string" && HASH_PATTERN.test(r.source_recording_hash), "invalid_source_hash");
     // Packed runs and checks come back canonical, on the implied check ticks and ending on final_state_hash.
+    if (print) { exact(object(r.outcome), OUTCOMES); Object.values(object(r.outcome)).forEach(bool); return r as ChapterRecording; }
     if (packed) { unpackRecording(r.packed, duration, r.final_state_hash as string, limit); return hashed(r); }
     need(Array.isArray(r.actions) && r.actions.length > 0 && r.actions.length <= limit, "invalid_actions");
     let ticks = 0;

@@ -47,17 +47,19 @@ import bundledRooms from "../src/v2/conservatory-v2.json";
 import bundledRoomsInitial from "../src/v2/conservatory-v2-initial.json";
 import { withConfig } from "./config";
 
+/** A fixture checkpoint as an open turns room takes it: no proof nests in it (v2/open-turns.ts fingerprints), and its hash never covered one. */
+function flat<T extends object>(checkpoint: T): Omit<T, "proof"> { const { proof: _proof, ...rest } = checkpoint as T & { proof?: unknown }; void _proof; return rest; }
 type Account = { player_id: string; device_token: string };
 type Chain = { name: string; adapter: ChapterAdapter; hash: string; rules: number; flag: string; definition: unknown; initial: unknown; bundled: unknown; bundledInitial: unknown;
   /** Each stage's first turn, its second turn (a pass), its closing third turn and its checkpoint (open turns). */
   stages: [unknown, unknown, unknown, unknown][] };
 const CHAINS: Chain[] = [
   { name: "long-way-home@3", adapter: longWayHomeV3, hash: LONG_WAY_HOME_V3_HASH, rules: 14, flag: "LONG_WAY_HOME_V3_CHAPTER_ENABLED", definition: homeDefinition, initial: homeInitial,
-    bundled: bundledHome, bundledInitial: bundledHomeInitial, stages: [[homePathA, homePathB, homePathC, homePathEnd], [homePlaceA, homePlaceB, homePlaceC, homePlaceEnd]] },
+    bundled: bundledHome, bundledInitial: bundledHomeInitial, stages: [[homePathA, homePathB, homePathC, flat(homePathEnd)], [homePlaceA, homePlaceB, homePlaceC, flat(homePlaceEnd)]] },
   { name: "turn-of-the-tide@3", adapter: turnOfTheTideV3, hash: TURN_OF_THE_TIDE_V3_HASH, rules: 15, flag: "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED", definition: tideDefinition, initial: tideInitial,
-    bundled: bundledTide, bundledInitial: bundledTideInitial, stages: [[tideSetA, tideSetB, tideSetC, tideSetEnd], [tideSlackA, tideSlackB, tideSlackC, tideSlackEnd]] },
+    bundled: bundledTide, bundledInitial: bundledTideInitial, stages: [[tideSetA, tideSetB, tideSetC, flat(tideSetEnd)], [tideSlackA, tideSlackB, tideSlackC, flat(tideSlackEnd)]] },
   { name: "conservatory@2", adapter: conservatoryV2, hash: CONSERVATORY_V2_HASH, rules: 14, flag: "CONSERVATORY_V2_CHAPTER_ENABLED", definition: roomsDefinition, initial: roomsInitial,
-    bundled: bundledRooms, bundledInitial: bundledRoomsInitial, stages: [[roomsAboveA, roomsAboveB, roomsAboveC, roomsAboveEnd], [roomsReturnA, roomsReturnB, roomsReturnC, roomsReturnEnd]] },
+    bundled: bundledRooms, bundledInitial: bundledRoomsInitial, stages: [[roomsAboveA, roomsAboveB, roomsAboveC, flat(roomsAboveEnd)], [roomsReturnA, roomsReturnB, roomsReturnC, flat(roomsReturnEnd)]] },
 ];
 // 0.8.1 and older: none of them offers 12 or 13 (11 is the Lighthouse room's).
 const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8, 9, 10], [2, 4, 5, 6, 7, 8, 9, 10, 11], [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -129,7 +131,7 @@ describe("open controls (rules 12 and 13)", () => {
   it("ends an open turns stage only with both players at its goal", async () => {
     // Long Way Home@3's homecoming ends with both players at the second window; one of them away is refused.
     const chain = CHAINS[0], first = await stageOne(chain), [a, b, c] = await records(chain, 1);
-    const end = structuredClone(homePlaceEnd) as Record<string, any>;
+    const end = structuredClone(flat(homePlaceEnd)) as Record<string, any>;
     expect(end.players.p0).toMatchObject({ x: 1408, z: 108, surface_id: "home-room" });
     expect(end.players.p1).toMatchObject({ x: 1408, z: 72, surface_id: "home-room" });
     const away = structuredClone(end); away.players.p1 = { ...away.players.p1, x: 1200, z: 32 };
@@ -137,7 +139,7 @@ describe("open controls (rules 12 and 13)", () => {
   });
   it("keeps the tide rules on 15: no route latches", async () => {
     const chain = CHAINS[1], [a, b, c] = await records(chain, 0);
-    const kept = structuredClone(tideSetEnd) as Record<string, any>; kept.mechanisms.latched_bridges = [kept.players.p0.surface_id];
+    const kept = structuredClone(flat(tideSetEnd)) as Record<string, any>; kept.mechanisms.latched_bridges = [kept.players.p0.surface_id];
     await expect(checkpointV2(await rehash(kept), initialCheckpoint(chain.adapter.key) as ChapterCheckpoint, a, c, [b])).rejects.toMatchObject({ code: "checkpoint_mechanism_mismatch" });
   });
   it("refuses a guest whose client never offered the open rules, and plays a room to completion", async () => {

@@ -228,6 +228,17 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     throw new ApiError(405, "method_not_allowed");
   }
+  // Open turns send-back (v2/turn-copies.ts; WIRE.md section 9): one room request each; the room runs the pair gate.
+  const copiesMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/turn-copies(?:\/(want|ack))?$/);
+  if (copiesMatch) {
+    const [, roomId, action] = copiesMatch;
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "turn_copies_standalone_only");
+    await limitRoomTransfer(env, "copies", playerId, roomId);
+    // Copies go to the room unread, as a turn does (turn-wire.ts); an ask or an acknowledgement is a short list of hashes.
+    const body = action ? await boundedJson(request, 16_384) : await readTurnBody(request);
+    return json(unwrap(await env.ROOMS_V2.getByName(roomId).turnCopies(playerId, action === "want" || action === "ack" ? action : "send", body, safetyToken)));
+  }
   const historyMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/history(?:\/([0-9]{1,2})(?:\/(ack|want))?)?$/);
   if (historyMatch) {
     const [, roomId, item, action] = historyMatch, target = env.ROOMS_V2.getByName(roomId), support = historySupport(request);
