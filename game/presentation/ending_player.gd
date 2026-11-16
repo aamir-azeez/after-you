@@ -40,6 +40,8 @@ var _layer: Control
 var _caption: Label
 var _held: Dictionary = {}
 var _faces: Dictionary = {}
+## The role badges ("You", "Waiting") hidden while the scene plays.
+var _badges: Array[Node3D] = []
 
 ## Starts `data` in `world`, cast from `snapshot` (the final one shown), with
 ## its tap catcher and caption in `overlay` (a full-screen Control) when given.
@@ -58,6 +60,11 @@ func start(world: Node3D, data: Dictionary, snapshot: Dictionary, overlay: Contr
 		exploration.manual = true
 	_held.processing = world.is_processing()
 	world.set_process(false)
+	for slot: String in [slots.carrier, slots.other]:
+		for badge: Node in (actors[slot] as Node).find_children("*", "Label3D", true, false):
+			if badge.has_meta("replay_role_badge") and (badge as Node3D).visible:
+				(badge as Node3D).visible = false
+				_badges.append(badge)
 	if is_instance_valid(camera):
 		_held.camera = {"transform": camera.transform, "size": camera.size, "h_offset": camera.h_offset, "v_offset": camera.v_offset, "keep_aspect": camera.keep_aspect, "projection": camera.projection}
 	var at := {"carrier": _local(actors[slots.carrier]), "other": _local(actors[slots.other])}
@@ -247,6 +254,9 @@ func _end(watched: bool, tell: bool = true) -> void:
 	var exploration: Node = _world.get("camera_exploration")
 	if is_instance_valid(exploration) and _held.has("manual"): exploration.manual = _held.manual
 	_world.set_process(bool(_held.get("processing", true)))
+	for badge: Node3D in _badges:
+		if is_instance_valid(badge): badge.visible = true
+	_badges.clear()
 	if is_instance_valid(_root): _root.queue_free()
 	if is_instance_valid(_layer): _layer.queue_free()
 	_props.clear()

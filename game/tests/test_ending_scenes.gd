@@ -208,11 +208,13 @@ func _handover(setup: Dictionary) -> void:
 	var size := camera.size
 	var player := _player(setup, _data("the_falls"), true)
 	_check(not world.is_processing() and world.camera_exploration.manual, "The scene holds the world's frame and its pan and zoom")
+	_check(player._badges.is_empty() or player._badges.all(func(badge: Node3D) -> bool: return not badge.visible), "The pips' role badges are hidden while the scene plays")
 	_check(world.get_node_or_null("EndingScene") != null and world.get_node("EndingScene").get_child_count() == _data("the_falls").props.size(), "The scene builds its placeholder props when it starts")
 	player.advance(3.0)
 	_check(not camera.transform.is_equal_approx(transform), "The scene moves the world's camera")
 	player.stop()
 	_check(world.is_processing() and not world.camera_exploration.manual, "The world gets its frame back")
+	_check(player._badges.is_empty(), "The role badges come back")
 	_check(camera.transform.is_equal_approx(transform) and is_equal_approx(camera.size, size), "The world gets its camera back")
 	player.free()
 	_check(world.get_node_or_null("EndingScene") == null or world.get_node("EndingScene").is_queued_for_deletion(), "Nothing of the scene stays in the world")
