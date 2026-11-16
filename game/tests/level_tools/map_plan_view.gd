@@ -85,6 +85,7 @@ func _draw() -> void:
 	var busy: bool = plan.pairs.size() > BUSY_PAIRS
 	for line: Array in layout.lines: draw_line(line[0], line[1], Color(line[2], 0.45) if busy else line[2], 1.5 if busy else 2.0, true)
 	_controls()
+	_items()
 	_goal()
 	_starts()
 	for tile: Array in layout.tiles: _tile(tile[0], tile[1])
@@ -353,6 +354,33 @@ func _starts() -> void:
 		draw_arc(centre, 10.0, 0.0, TAU, 24, colour.darkened(0.45), 2.0)
 		draw_circle(centre + Vector2(-3.5, -1.5), 1.6, INK)
 		draw_circle(centre + Vector2(3.5, -1.5), 1.6, INK)
+
+# --- Rules 16: items, currents and both-hands crossings -------------------------------
+
+## Item spots as small squares (dashed on the water), each current leg as an
+## arrow named by its wheel's value (dashed where a board can stop it), each
+## item as a labelled tag where the stage starts it, and "both hands" on
+## every crossing a carrier cannot climb.
+func _items() -> void:
+	for spot: Dictionary in plan.get("item_spots", []):
+		var square := Rect2(at(spot.at) - Vector2(6, 6), Vector2(12, 12))
+		if spot.water: _dashed_rect(square, INK, 1.5)
+		else: draw_rect(square, INK, false, 1.5)
+	for leg: Dictionary in plan.get("legs", []):
+		var from := at(leg.from)
+		var to := at(leg.to)
+		if leg.stop: _dashed_line(from, to, INK, 2.0, 8.0, 5.0)
+		else: draw_line(from, to, INK, 2.0, true)
+		var back := (from - to).normalized() * 12.0
+		draw_line(to, to + back.rotated(0.45), INK, 2.0, true)
+		draw_line(to, to + back.rotated(-0.45), INK, 2.0, true)
+		_text(str(leg.label), (from + to) * 0.5 + Vector2(4, -6), 12, SOFT_INK)
+	for item: Dictionary in plan.get("items", []):
+		var centre := at(item.at) + (Vector2(12, -14) if not str(item.holder).is_empty() else Vector2.ZERO)
+		draw_rect(Rect2(centre - Vector2(7, 9), Vector2(14, 18)), Color("2f3e66") if not item.float else TIMBER)
+		_text(str(item.id), centre + Vector2(10, 4), 12, INK, HEADING)
+	for crossing: Dictionary in plan.crossings:
+		if crossing.get("hands", false): _text("both hands", box(crossing.rect).get_center() + Vector2(-26, 22), 11, INK)
 
 # --- Title and key ------------------------------------------------------------------
 

@@ -35,6 +35,12 @@ static func style(slot: String, id: String, descriptor: Dictionary, dressing: Di
 	if Styles.has_style(slot, pick): return pick
 	return str(Styles.DEFAULT_PICKS[slot])
 
+## Piece id's pinned style in slot, or "" when the descriptor pins none
+## the slot offers (a world then picks its own default, as a raft for a float).
+static func pinned_style(slot: String, id: String, descriptor: Dictionary) -> String:
+	var pin := str(descriptor.get(PINS, {}).get(id, ""))
+	return pin if Styles.has_style(slot, pin) else ""
+
 ## The slot a placed control fills: a selector's, else a lever's.
 static func control_slot(control: Dictionary) -> String:
 	return "selector" if str(control.get("kind", "")) == "selector" else "lever"

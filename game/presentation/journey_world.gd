@@ -5,6 +5,10 @@ const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const CarriedItems = preload("res://core/physical/carried_items.gd")
+const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
+const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
+const ItemParts = preload("res://presentation/kit/pieces/parts.gd")
 ## The soft honey dashes round a crossing a wait hint names.
 const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
@@ -87,6 +91,10 @@ var _stage_built := false
 ## last snapshot position, so it sits only while still.
 var _seats: Array = []
 var _seat_last: Dictionary = {}
+## Rules 16's carried items and floats by id, and the stage's current
+## (kit/pieces/carried_item.gd, current.gd); none on other rules.
+var _item_pieces: Dictionary = {}
+var _current_piece: RefCounted
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -98,6 +106,8 @@ func show_stage(stage: Dictionary) -> void:
 	_wait_marks.clear()
 	_seats.clear()
 	_seat_last.clear()
+	_item_pieces.clear()
+	_current_piece = null
 	_shown_stage = stage
 	_stage_built = false
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
@@ -105,6 +115,7 @@ func show_stage(stage: Dictionary) -> void:
 	await super.show_stage(stage)
 	_stage_built = true
 	_build_seats(stage)
+	_build_items(stage)
 	_build_wait_marks()
 	_sort_bubbles()
 	_placement_due = true
@@ -214,6 +225,9 @@ func _label_bubble(values: Array, at: Vector3, parent: Node3D, shift: float = 0.
 func _process(delta: float) -> void:
 	super._process(delta)
 	_advance_bubbles(delta)
+	if not reduced_motion:
+		for piece: RefCounted in _item_pieces.values():
+			if piece.moving(): piece.advance(delta)
 
 ## A card holds the bob, but Reduce motion turned on still settles it.
 func _idle_card_frame() -> void:
@@ -520,6 +534,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_follow_knobs()
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("part_done",state.get("can_commit",false)) else 0.0)
 	_present_seats(state, immediate)
+	_present_items(state)
 	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()
 	# What a world sets after this (its own levers and wheels) is read by the
 	# next pass, not by the one an immediate present already ran.
@@ -620,6 +635,8 @@ func _hint_anchor(id: String) -> Vector3:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	for mark: Dictionary in _wait_marks.values(): keep.append(mark.dashes)
+	for piece: RefCounted in _item_pieces.values(): keep.append_array(piece.moving_parts())
+	if _current_piece != null: keep.append_array(_current_piece.moving_parts())
 	return keep
 
 ## Soft dashes along a crossing's edges at its deck height: one mesh, shown or
@@ -698,3 +715,70 @@ func _present_seats(state: Dictionary, immediate: bool) -> void:
 			if still and Seven.near(player, seat.pad):
 				if pose != SpiritVisual.SpiritIdle.DOZE: actor.set_pose(SpiritVisual.SpiritIdle.SIT, seat.params, immediate)
 			elif pose == SpiritVisual.SpiritIdle.SIT: actor.set_pose(SpiritVisual.SpiritIdle.REST, {}, true)
+
+# --- Rules 16: carried items, floats, currents and both-hands crossings ---
+
+## Every item of the level in its style (a pin by id, else the dressing's
+## "carried_item" pick; a float nobody carries is a raft unless pinned), the
+## stage's current legs, and the rungs that mark a crossing needing both
+## hands (core/physical/carried_items.gd): a carrier stops at a ladder.
+func _build_items(stage: Dictionary) -> void:
+	var view: Dictionary = CooperativeCatalog.stage_definition(chapter_definition, str(stage.get("id", "")))
+	if view.get("items", []).is_empty(): return
+	var start: Dictionary = CarriedItems.initial(view)
+	for item: Dictionary in view.items:
+		var id := str(item.id)
+		var pin := PieceStyles.pinned_style("carried_item", id, _descriptor())
+		var look := pin if not pin.is_empty() else _piece_style("carried_item", id) if CarriedItems.carriable(item) else "raft"
+		var at := _item_point(start.get(id, {})) if str(start.get(id, {}).get("holder", "")).is_empty() else Vector3.ZERO
+		_item_pieces[id] = CarriedItemKit.build(look, at, terrain, {"id": id})
+	var legs: Array = []
+	for leg: Dictionary in view.get("current_legs", []):
+		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.control_id), "value": str(leg.value)})
+	if not legs.is_empty(): _current_piece = CurrentKit.build(_piece_style("current", str(view.current_legs[0].control_id)), legs, terrain)
+	var hands := CarriedItems.hands_routes(view)
+	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
+		if hands.has(str(route.id)): _ladder_rungs(route)
+
+## Where an item state rests in the terrain's space (on the water when its
+## floor is none).
+func _item_point(state: Dictionary) -> Vector3:
+	if state.is_empty(): return Vector3.ZERO
+	return _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
+
+## Rungs across a both-hands crossing every RUNG_CM along it, at its height
+## there, with a post at each end: plain leaves the static fold batches.
+const RUNG_CM := 14
+func _ladder_rungs(route: Dictionary) -> void:
+	var rect: Array = route.rect_cm
+	var ends := CarriedItems.route_ends(route)
+	var axis := 0 if int(ends[0].x) != int(ends[1].x) else 1
+	var low := int(rect[axis])
+	var high := int(rect[axis + 2])
+	var across := float(int(rect[3 - axis]) - int(rect[1 - axis])) / 100.0
+	var middle := (float(rect[1 - axis]) + float(rect[3 - axis])) / 200.0
+	var at := low + RUNG_CM / 2
+	while at < high:
+		var rise := float(ends[0].height) + float(int(ends[1].height) - int(ends[0].height)) * float(at - low) / float(maxi(1, high - low))
+		var spot := Vector3(float(at) / 100.0, rise / 100.0 + 0.03, middle) if axis == 0 else Vector3(middle, rise / 100.0 + 0.03, float(at) / 100.0)
+		var rung := ItemParts.rod(0.018, across - 0.08, ItemParts.TIMBER_LIGHT, spot, terrain)
+		if axis == 0: rung.rotation = Vector3(PI / 2.0, 0, 0)
+		at += RUNG_CM
+	for end: Dictionary in ends:
+		for side: float in [-1.0, 1.0]:
+			var post := Vector3(float(end.x) / 100.0, float(end.height) / 100.0 + 0.2, middle + side * (across / 2.0 - 0.03)) if axis == 0 else Vector3(middle + side * (across / 2.0 - 0.03), float(end.height) / 100.0 + 0.2, float(end.z) / 100.0)
+			ItemParts.box(Vector3(0.04, 0.4, 0.04), ItemParts.TIMBER, post, terrain)
+
+## Each item where the snapshot has it: on its holder's back, resting at its
+## place, or bobbing on the water; the current's legs lit by their wheels.
+func _present_items(state: Dictionary) -> void:
+	if _item_pieces.is_empty(): return
+	var items: Dictionary = state.get("mechanisms", {}).get("items", {})
+	for id: String in _item_pieces:
+		var item_state: Dictionary = items.get(id, {})
+		if item_state.is_empty(): continue
+		var piece: RefCounted = _item_pieces[id]
+		var holder := str(item_state.holder)
+		if not holder.is_empty() and actors.has(holder): piece.carry(actors[holder])
+		else: piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty())
+	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))
