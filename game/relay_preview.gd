@@ -2587,13 +2587,14 @@ func _show_review() -> void:
 		explanation += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))), online_session == null)
 	var card := _card(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5, explanation)
 	EndReactionScreen.attach_ending(_end_reaction_context(), card, review, true)
+	# Preview, Retry, then the cream Save turn and Back (owner, 2026-11-15).
 	card.add_child(_action_button("preview", _preview_turn))
+	card.add_child(_action_button("retry", _retry_review))
 	var save := _action_button("save", _accept)
 	save.disabled = not can_save or (online_session != null and (not online_session.mutations_enabled() or online_session.busy()))
 	card.add_child(save)
 	if online_session != null and not online_session.mutations_enabled():
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
-	card.add_child(_action_button("retry", _retry_review))
 	_add_redo_action(card)
 	card.add_child(_action_button("leave_draft", _leave))
 
