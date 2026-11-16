@@ -256,7 +256,9 @@ func _packed_chain() -> void:
 ## the journal saves it (attempt_archive.gd), it stays under half the save's cap,
 ## where the same run in JSON would not fit at all.
 func _solo_size() -> void:
-	for key: String in ["turn-of-the-tide@3", "long-way-home@3", "conservatory@2"]:
+	var keys: Array = Registry.keys().filter(func(key: String) -> bool: return OpenTurns.pinned(Registry.definition(key)))
+	_check(TIDE in keys, "Every open turns chapter is sized, Tide@3 among them")
+	for key: String in keys:
 		var level := Registry.definition(key)
 		var rules := Registry.preferred_rules(key)
 		var ticks := Simulation.turn_ticks(level, rules, "b")
