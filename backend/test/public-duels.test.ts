@@ -621,6 +621,17 @@ describe("public duels", () => {
     const after = await boardDuel(posted.duel_id);
     expect([after.status, after.result!.winner, after.result!.reason, after.sides[0].left, after.public!.forfeit]).toEqual(["decided", 1, "left", true, [0, 1]]);
     expect((await detail(p1, posted)).duel.result).toMatchObject({ outcome: "won", reason: "left" });
+    // A seat beside an ask answers it even before entering its room, and both seats give up together.
+    const third = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await ok(openRoom(poster, third));
+    await ok(join(lone, third));
+    await ok(join(p1, third, "party"));
+    const asked3 = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${third.duel_id}/give-up`, "POST", poster, { schema_version: 1, answering: null }))).duel.sides[0].give_up!;
+    const answer = (await detail(lone, third)).duel.sides[0].give_up!;
+    expect(answer).toMatchObject({ mode: "leave", asked: 0, asked_at: asked3.asked_at });
+    await ok(call(`/v1/duels/${RELAY}/${third.duel_id}/give-up`, "POST", lone, { schema_version: 1, answering: answer.asked_at }));
+    const thirdAfter = await boardDuel(third.duel_id);
+    expect([thirdAfter.status, thirdAfter.result!.winner, thirdAfter.public!.forfeit]).toEqual(["decided", 1, [0, 1]]);
     // The poster's account goes in another duel: their id leaves it, which carries on for the other pair.
     const second = (await ok<{ duel: DuelView }>(post(poster))).duel;
     const room2 = await ok<RoomSnapshotV2>(openRoom(poster, second));

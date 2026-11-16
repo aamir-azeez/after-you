@@ -253,7 +253,8 @@ export function conclude(duel: Duel, winner: 0 | 1 | null, reason: ResultReason,
   const forfeit = duel.public ? [...new Set([...(duel.public.forfeit ?? []), ...(reason === "stalled" ? stallForfeits(duel) : [])])].sort() : [];
   duel.status = winner !== null || reason === "draw" ? "decided" : "unfinished";
   duel.result = { winner, reason, decided_ms: now, margin_ticks: margin, ...(forfeit.length ? { forfeit } : {}) };
-  for (const side of duel.sides) if (side) side.turn = null;
+  // An ask to give up means nothing once the duel is over, and it names a player: it goes.
+  for (const side of duel.sides) if (side) { side.turn = null; delete side.give_up; }
   duel.updated_ms = now;
   return true;
 }
@@ -435,6 +436,16 @@ export function giveUpModeOf(duel: Duel, index: 0 | 1, player: string): GiveUpMo
 }
 
 /**
+ * Whether `player`'s Give up now would count toward the cap (rules.ts MAX_GIVE_UPS): a friend or public duel (never a
+ * ghost race) where it asks the other pip or agrees with their ask; not a public seat given back before entering.
+ */
+export function giveUpCounts(duel: Duel, index: 0 | 1, player: string): boolean {
+  const side = duel.sides[index];
+  if (duel.kind !== "friend" || duel.status !== "running" || !side || side.left || side.finished_ms !== null) return false;
+  return giveUpModeOf(duel, index, player) === "ask" || (side.give_up !== undefined && side.give_up.by !== player);
+}
+
+/**
  * Give up, by one pip of a running side. With nothing asked yet (or the ask its own), it asks; when the other pip
  * asked, it agrees and the duel ends at once (endByGiveUp). `answering`: the ask a phone's agree names (its `at`), or
  * null for an ask, which also agrees with one the other pip made meanwhile: both asked. An agree whose ask was taken
@@ -449,11 +460,12 @@ export function giveUp(duel: Duel, player: string, now: number, answering: numbe
   if (duel.status !== "running") return fail(409, "challenge_" + duel.status);
   const side = duel.sides[index as 0 | 1]!;
   if (side.finished_ms !== null) return fail(409, "duel_finished_for_you");
+  // The other pip asked: this agrees, whoever holds the seat beside them (a public seat never entered too).
+  const asked = side.give_up;
+  if (asked && asked.by !== player) { endByGiveUp(duel, index as 0 | 1, now); return ok(duel); }
   const mode = giveUpModeOf(duel, index as 0 | 1, player);
   if (mode === "leave") return publicLeave(duel, player, now, false);
   if (mode === "none") return fail(409, "give_up_alone");
-  const asked = side.give_up;
-  if (asked && asked.by !== player) { endByGiveUp(duel, index as 0 | 1, now); return ok(duel); }
   if (answering !== null) return fail(409, "give_up_taken_back");
   if (!asked) { side.give_up = { by: player, at: now }; duel.updated_ms = now; }
   return ok(duel);
@@ -500,6 +512,7 @@ export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
     side.members = side.members.map(id => id === player ? null : id) as [string | null, string | null];
     if (side.room?.host === player) side.room.host = null;
     if (side.turn === player) side.turn = null;
+    if (side.give_up?.by === player) delete side.give_up;
   }
   if (duel.starter === player) duel.starter = null;
   duel.known = duel.known.filter(key => !key.split("|").includes(player));

@@ -52,6 +52,19 @@ static func fitted(label: Label, least: float = 0.0, most: float = 0.0) -> Label
 	label.custom_minimum_size.x = maxf(least, minf(ceilf(own), most)) if most > 0.0 else least
 	return label
 
+## A one-line heading that fits its place whatever the name in it: the largest font size, from
+## `largest` down to `smallest`, at which its words fit the width it was given.
+static func shrinking(value: String, largest: int, smallest: int, ink: Color = UiTokens.CREAM) -> Label:
+	var label := text(value, largest, ink, true)
+	label.clip_text = true
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.resized.connect(func() -> void:
+		var font := label.get_theme_font("font")
+		var fitting := largest
+		while fitting > smallest and font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitting).x > label.size.x: fitting -= 1
+		if label.get_theme_font_size("font_size") != fitting: label.add_theme_font_size_override("font_size", fitting))
+	return label
+
 static func wrapped(value: String, font_size: int, ink: Color = UiTokens.SOFT, heading: bool = false) -> Label:
 	var label := text(value, font_size, ink, heading)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

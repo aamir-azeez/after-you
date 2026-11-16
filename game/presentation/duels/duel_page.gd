@@ -274,7 +274,9 @@ func _asked_box(asked_at: int) -> Control:
 ## Your friend asked: the card is their question, Give up (coral, greyed at the cap) or Keep playing.
 func _render_asked_you(head: HBoxContainer, words: VBoxContainer, giving: Dictionary) -> void:
 	var friend := _friend()
-	words.add_child(Kit.wrapped(PlayerCopy.GIVE_UP_ASKED_YOU % friend if not friend.is_empty() else PlayerCopy.GIVE_UP_ASKED_YOU_THEM, 32 if compact else 36, UiTokens.CREAM, true))
+	var title := Kit.shrinking(PlayerCopy.GIVE_UP_ASKED_YOU % friend if not friend.is_empty() else PlayerCopy.GIVE_UP_ASKED_YOU_THEM, 32 if compact else 36, 22)
+	title.name = "DuelGiveUpAskedYou"
+	words.add_child(title)
 	words.add_child(Kit.wrapped(_answer_line(), 19))
 	_card.add_child(head)
 	var agree := Button.new()

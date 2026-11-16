@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accept, awaitsCheck, blankSide, claimRoom, deadlines, decide, decline, endsAt, forgetPlayer, giveUp, isOpen, keepPlaying, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
+import { accept, awaitsCheck, blankSide, claimRoom, deadlines, decide, decline, endsAt, forgetPlayer, giveUp, giveUpCounts, isOpen, keepPlaying, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
 import { CHALLENGE_TTL_MS, GIVE_UP_WINDOW_MS, MAX_DUELS_PER_PAIR, MAX_GIVE_UPS, MAX_MEMBER_DUELS, MAX_PUBLIC_DUEL_MS, MAX_RECENT_DUELS, PUBLIC_OPEN_MS, PUBLIC_STALL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "../src/duels/rules";
 import { applyParty, blankParty, giveUpFreeAt, noteLook } from "../src/duels/party";
 import { replaySplits, runProgress, validSplits } from "../src/duels/ticks";
@@ -227,6 +227,33 @@ describe("duel state machine", () => {
     expect(giveUp(duel, A2, T0 + 31, null)).toMatchObject({ ok: false, code: "duel_finished_for_you" });
     expect(leave(duel, A1, T0 + 31)).toMatchObject({ ok: false, code: "duel_finished_for_you" });
     expect(viewFor(duel, A1)!.sides[0].give_up).toEqual({ mode: "none", asked: null, asked_at: null });
+  });
+
+  it("forget an ask with the duel's end and with an erased asker's id", () => {
+    const erased = running();
+    expect(giveUp(erased, A2, T0 + 5, null).ok).toBe(true);
+    expect(forgetPlayer(erased, A2, T0 + 6)).toBe(true);
+    expect(erased.status).toBe("unfinished");
+    expect(JSON.stringify(erased)).not.toContain(A2);
+    const stalled = running();
+    giveUp(stalled, B1, T0 + 5, null);
+    expect(settle(stalled, T0 + 5 + STALL_MS)).toBe(true);
+    expect(stalled.sides[1]!.give_up).toBeUndefined();
+  });
+
+  it("let a public seat beside an ask agree even before entering its room, ending the duel for both seats", () => {
+    const duel = newPublicDuel({ duel_id: "p".repeat(32), board: "relay-isles@2", chapter: CHAPTER, steps: 4, players: [A1], labels: [null], known: [] }, T0);
+    claimSeats(duel, { players: [A2], as: "alone", seat: 1, labels: [null], avoid: [], known: [] }, T0 + 1);
+    claimSeats(duel, { players: [B1, B2], as: "party", seat: null, labels: [null, null], avoid: [], known: [] }, T0 + 2);
+    duel.public!.seats[0].entered = true;
+    // Alone in their seat, A2 would give it back; A1 asks first, so A2's Give up agrees.
+    expect(viewFor(duel, A2)!.sides[0].give_up!.mode).toBe("leave");
+    expect(giveUpCounts(duel, 0, A2)).toBe(false);
+    expect(giveUp(duel, A1, T0 + 3, null).ok).toBe(true);
+    expect(viewFor(duel, A2)!.sides[0].give_up).toEqual({ mode: "leave", asked: 0, asked_at: T0 + 3 });
+    expect(giveUpCounts(duel, 0, A2)).toBe(true);
+    expect(giveUp(duel, A2, T0 + 4, T0 + 3).ok).toBe(true);
+    expect([duel.status, duel.result!.winner, duel.result!.reason, duel.public!.forfeit, duel.sides[0].members]).toEqual(["decided", 1, "left", [0, 1], [A1, A2]]);
   });
 
   it("serves the ask to its own side only, by slot", () => {

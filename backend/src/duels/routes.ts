@@ -13,7 +13,7 @@ import { pollenEarning } from "../pollen/routes";
 import { RATES } from "../pollen/rates";
 import type { DuelRoomPay, DuelWin, DuelWinAnswer } from "../pollen/duel-pay";
 import { CHAPTERS, creatable } from "../v2/chapters";
-import { blankSide, giveUpModeOf, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type Side, type SideRoom } from "./model";
+import { blankSide, giveUpCounts, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type Side, type SideRoom } from "./model";
 import type { DuelAction, FinishProof } from "./store";
 import { giveUpFreeAt, mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
 import type { MemberState } from "../leaderboards/member";
@@ -274,7 +274,8 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
 const membersOf = (side: Side): string[] => side.members.filter((id): id is string => id !== null);
 
 /**
- * The lobby's duel views, newest first, each running friend or public duel whose pair may ask to give up carrying the
+ * The lobby's duel views, newest first, each running friend or public duel whose Give up would count (asking, or
+ * agreeing with the other pip's ask: model.ts giveUpCounts) carrying the
  * give up cap (party.ts giveUpFreeAt) as `again_in_ms` while at it. The rows of this player and their party partner
  * came with the lobby's own reads; only a pip beside them who is neither (an earlier party, a public partner) is read,
  * once each.
@@ -282,7 +283,7 @@ const membersOf = (side: Side): string[] => side.members.filter((id): id is stri
 async function withGiveUpCaps(env: Env, player: string, pair: { state: PartyState; partner: string | null; partnerState?: PartyState }, duels: readonly Duel[], now: number, looks: boolean): Promise<DuelView[]> {
   const rows = new Map<string, PartyState>([[player, pair.state]]);
   if (pair.partner && pair.partnerState) rows.set(pair.partner, pair.partnerState);
-  const capped = duels.filter(duel => { const mine = sideOf(duel, player); return duel.kind === "friend" && mine >= 0 && giveUpModeOf(duel, mine as 0 | 1, player) === "ask"; });
+  const capped = duels.filter(duel => { const mine = sideOf(duel, player); return mine >= 0 && giveUpCounts(duel, mine as 0 | 1, player); });
   const missing = [...new Set(capped.flatMap(duel => membersOf(duel.sides[sideOf(duel, player) as 0 | 1]!)).filter(id => !rows.has(id)))];
   for (const [id, state] of await pooled(missing, BOARD_CONCURRENCY, async id => [id, await party(env, id).partyRead(now)] as const)) rows.set(id, state);
   return duels.map(duel => {
@@ -304,7 +305,7 @@ async function withGiveUpCaps(env: Env, player: string, pair: { state: PartyStat
  */
 async function giveUpRoute(env: Env, player: string, key: string, duel: Duel, answering: number | null, now: number): Promise<unknown> {
   const mine = sideOf(duel, player) as 0 | 1;
-  if (duel.kind === "friend" && giveUpModeOf(duel, mine, player) === "ask") {
+  if (giveUpCounts(duel, mine, player)) {
     const free = giveUpFreeAt(await pooled(membersOf(duel.sides[mine]!), 2, id => party(env, id).partyRead(now)), now);
     if (free !== null && now < free) throw new ApiError(409, "give_up_capped", { again_in_ms: free - now });
   }
