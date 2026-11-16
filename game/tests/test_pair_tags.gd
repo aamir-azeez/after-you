@@ -452,7 +452,8 @@ func _per_gate(tags, where: String, pair: Dictionary, far: Dictionary) -> void:
 
 ## The pop-up's chip for the live pip: the input its action names, a pad of
 ## its own it stands at, nothing when far or at an input with no pair; the
-## other pip's pop-up never names a pad it does not hold; the same snapshot
+## other pip's pop-up never names a pad it does not hold, and names a pad
+## either pip holds (open controls: no owner) as its own; the same snapshot
 ## gives the same chip after any other.
 func _prompts(world: Node3D, where: String, wired: Array[Dictionary]) -> void:
 	var tags = world.pair_tags
@@ -474,7 +475,8 @@ func _prompts(world: Node3D, where: String, wired: Array[Dictionary]) -> void:
 				var other := near.duplicate(true)
 				other.active_slot = "p1" if slot == "p0" else "p0"
 				other.players[other.active_slot] = near.players[slot]
-				_check(tags.prompt(other).get("input", "") != input.id, "%s: the other pip's pop-up never names %s, a pad it does not hold" % [where, input.id])
+				if input.entity.has("owner_slot"): _check(tags.prompt(other).get("input", "") != input.id, "%s: the other pip's pop-up never names %s, a pad it does not hold" % [where, input.id])
+				else: _check(tags.prompt(other).get("input", "") == input.id, "%s: the other pip's pop-up names %s too, a pad either pip holds" % [where, input.id])
 			if owner != pair: continue
 			var lit := near.duplicate(true)
 			_activate(lit, pair)
