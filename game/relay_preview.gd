@@ -2448,7 +2448,8 @@ func _update_hud(state: Dictionary) -> void:
 			title = "%s · %d / %d · %s" % [presentation.title, index+1, definition.stages.size(), turn]
 			display = state.duplicate()
 			display.message = presentation["hint_"+displayed_role]
-	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false):
+	# Open turns: a first turn may be saved before its part is done (part_done).
+	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("part_done",state.get("can_commit",false)):
 		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22
 	display = _name_goal_place(display)

@@ -488,7 +488,7 @@ func _early_first_turn() -> void:
 	one.reset(level, STAGE, start, {}, "a")
 	for tick in range(20): one.step(frames[tick])
 	var state: Dictionary = one.snapshot()
-	_check(one.can_commit() and state.can_commit and not state.outcome.source_ready and int(state.objective_display.current) == 0, "A first turn may end at any time; its part is not done yet and its card says so")
+	_check(one.can_commit() and state.can_commit and not state.outcome.source_ready and not state.part_done and int(state.objective_display.current) == 0, "A first turn may end at any time; its part is not done yet and its card and ready cues say so")
 	var older := Simulation.new()
 	older.reset(level, STAGE, start, {}, "a")
 	for tick in range(20): older.step(frames[tick])

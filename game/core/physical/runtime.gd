@@ -531,7 +531,8 @@ func snapshot() -> Dictionary:
 		"objective_done":_objective,"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
 		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
 	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
-	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed})
+	# part_done: a first turn may be saved before its part is done, so the screen reads this, not can_commit, for "ready".
+	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed,"part_done":_part_done() if role == "a" else can_commit()})
 	return state
 
 func _objective_display() -> Dictionary:
