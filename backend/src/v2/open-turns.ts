@@ -22,6 +22,7 @@ import { checkBytes, checkTicks, isPacked } from "./recording-codec";
  * cap's turn must finish the stage (`must_finish`), so the phone retries it like a second turn.
  *
  * Every turn has the same time limit: the level's second turn limit (turn_limits.b_ticks, or the published 1,200).
+ * A first turn may end at any time, its own part done or not; the turn after it plays over it as usual.
  * Every turn is packed (recording-codec.ts) whatever PACKED_RECORDINGS says: only apps that read packed turns play
  * these rules, so a JSON turn is refused and the bounds below are sized by the widest packed turn.
  * Turn ids keep a letter for the turn's number, so the first two keep today's ids: t<branch>-<stage>-a, -b, -c ...
@@ -144,8 +145,11 @@ export function mustFinish(open: OpenTurns, stage: number, turn: number): boolea
 export function openStageEnds(atGoal: (slot: Slot) => boolean, objective: boolean): boolean {
   return objective && atGoal("p0") && atGoal("p1");
 }
-/** Open turns acceptance: a first turn as before; a later turn either closes the stage or passes without its goal. */
-export function openAccepted(r: ChapterRecording, physical: (r: ChapterRecording) => boolean): boolean {
-  if (r.role === "a" || r.completed) return physical(r);
-  return r.outcome.objective_complete === false;
+/**
+ * Open turns acceptance: a first turn never finishes the stage, and may end at any time, its own part done or not
+ * (owner, 2026-11-16), so no turn of an open stage is asked for source_ready; a later turn either closes the stage
+ * (completed, its goal holding) or passes without it. Older rules keep physicalAccepted, which asks it of every turn.
+ */
+export function openAccepted(r: ChapterRecording): boolean {
+  return r.role === "a" ? !r.completed && r.outcome.objective_complete === false : r.outcome.objective_complete === r.completed;
 }

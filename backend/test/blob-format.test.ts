@@ -28,7 +28,7 @@ const RAW_ALLOWED: Record<string, [number, string]> = {
   "room.ts": [4, "legacy v1 room state, read and written whole"],
   "storage-schema.ts": [1, "operator snapshot export and import of v1 tables as plain rows"],
   "v2/storage-schema.ts": [4, "operator snapshot export and import of v2 tables as plain rows"],
-  "v2/room.ts": [6, "the live room tables (room, turns, pairs) a turn writes; room history offloads finished attempts as blobs later (history-room.ts)"],
+  "v2/room.ts": [7, "the live room tables (room, turns, pairs) a turn writes, and an open turns fingerprint written back as text so SQL tells it from a full turn (open-turns.ts); room history offloads finished attempts as blobs later (history-room.ts)"],
   "v2/history-room.ts": [6, "restoring an offloaded attempt's rows from its decoded blob, and stubbing them when it is offloaded"],
   "v2/replay-transfer.ts": [7, "the replay transfer's own archive and the room rows it stubs and restores"],
   "v2/row-codec.ts": [2, "the stored row codec itself: the JSON it packs into the shared blob format, and the plain text it gives operator snapshots"],

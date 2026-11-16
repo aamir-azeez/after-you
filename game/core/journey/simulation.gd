@@ -254,6 +254,8 @@ func _objective_display() -> Dictionary:
 	if role == "b" and level.id == "long-way-home": value.label = "Window"
 	if role == "b" and level.id == "conservatory": value.label = "Garden light"
 	if role == "b" and level.id == "turn-of-the-tide" and stage.id == "slack-water": value.label = "Lantern"
+	# Open turns have no bell to ring: a bell goal shows no card, and its beacon marks the place.
+	if role == "b" and _open_turns() and value.get("label") == "Bell": return {}
 	return value
 
 ## Snapshot text only. A harbour hold that began too late to leave the partner
@@ -314,6 +316,10 @@ func source_budget_ticks() -> int:
 func can_commit() -> bool:
 	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty() or _on_closing(): return false
 	if role=="b": return complete
+	# Open turns: a first turn may end at any time (runtime.gd can_commit).
+	return _open_turns() or _source_ready()
+
+func _source_ready() -> bool:
 	return not _ready_branch.is_empty() and _hold_start>=0 and _hold_start+source_budget_ticks()<receiver_deadline()
 
 func snapshot() -> Dictionary:

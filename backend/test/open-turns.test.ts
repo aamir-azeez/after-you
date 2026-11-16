@@ -6,8 +6,8 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint } from "../src/v2/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
-import { DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, fingerprint, mustFinish, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
-import { MAX_PACKED_CHARS, checkTicks, packRecording } from "../src/v2/recording-codec";
+import { DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, fingerprint, mustFinish, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
 import { conservatoryV2, longWayHomeV2, longWayHomeV3, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -18,7 +18,7 @@ import setEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-th
 import slackA from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-a.json";
 import slackB from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-b.json";
 import slackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slack-water-checkpoint.json";
-import { scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
+import { physicalAccepted, scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
 import tideV2Definition from "../src/v2/turn-of-the-tide-v2.json";
 import { withConfig } from "./config";
 import { decodeBlob } from "../src/blob-codec";
@@ -57,6 +57,14 @@ async function hashed(record: Rec): Promise<Rec> {
 }
 /** `record` exactly as it is, hashed again in the JSON form. */
 async function hashedJson(record: Rec): Promise<Rec> { const { recording_hash: _old, ...body } = record; void _old; return { ...body, recording_hash: await digest(canonicalJson(body)) }; }
+/** A packed fixture's runs and checks listed again (short check hashes stay short). */
+function listed(record: Rec): { actions: Rec[]; replay_checks: Rec[] } {
+  return unpackRecording(record.packed, record.duration_ticks, record.final_state_hash, record.duration_ticks) as { actions: Rec[]; replay_checks: Rec[] };
+}
+/** A packed fixture in the JSON form, hashed again: what an app that records JSON would send. */
+async function jsonForm(record: Rec): Promise<Rec> { return hashedJson({ ...bare(record), ...listed(record) }); }
+/** `record` without its packed runs and checks. */
+function bare(record: Rec): Rec { const { packed: _packed, ...rest } = structuredClone(record); void _packed; return rest; }
 /** `checkpoint` hashed again; a published checkpoint keeps its proof (never hashed), an open turns one nests none. */
 async function sealed(checkpoint: Rec): Promise<Rec> { const { checkpoint_hash: _old, proof, ...body } = checkpoint; void _old; return { ...body, checkpoint_hash: await digest(canonicalJson(body)), ...(proof ? { proof } : {}) }; }
 /** A turn as the server keeps it once its partner played over it: its record without `packed`. */
@@ -66,8 +74,8 @@ const other = (slot: string) => slot === "p0" ? "p1" : "p0";
 /** A later turn: the fixture's second turn, played by the pip turn `n` belongs to, over `memory`, closing the stage or not. */
 async function later(fixtureB: Rec, first: string, n: number, memory: Rec, closes: boolean, checkpointHash: string, extraTicks = 0): Promise<Rec> {
   return hashed({ ...structuredClone(fixtureB), checkpoint_hash: checkpointHash, player_slot: turnSlot(first, n), source_recording_hash: memory.recording_hash,
-    duration_ticks: fixtureB.duration_ticks + extraTicks, actions: [...structuredClone(fixtureB.actions), ...(extraTicks ? [{ ticks: extraTicks, x: 0, z: 0, action: false }] : [])],
-    replay_checks: extraTicks ? [...fixtureB.replay_checks.slice(0, -1), { tick: fixtureB.duration_ticks + extraTicks, state_hash: fixtureB.final_state_hash }] : fixtureB.replay_checks,
+    duration_ticks: fixtureB.duration_ticks + extraTicks, actions: [...listed(fixtureB).actions, ...(extraTicks ? [{ ticks: extraTicks, x: 0, z: 0, action: false }] : [])],
+    replay_checks: extraTicks ? [...listed(fixtureB).replay_checks.slice(0, -1), { tick: fixtureB.duration_ticks + extraTicks, state_hash: fixtureB.final_state_hash }] : listed(fixtureB).replay_checks,
     completed: closes, outcome: { ...fixtureB.outcome, objective_complete: closes } });
 }
 /** The schema 8 checkpoint that closes a stage with `turns` (by hash, no proof), from the fixture's own end state with both pips where its goal pip ended. */
@@ -157,7 +165,7 @@ describe("open turns: rules and bounds", () => {
     expect(() => turnLimits({ simulation_version: 13, turn_limits: { a_ticks: 9000, b_ticks: 9001 } })).toThrow("invalid turn_limits");
     expect(() => openTurnLimits([{}, {}, {}, {}], packedRecordingBytes(MAX_OPEN_TURN_TICKS), 7)).not.toThrow();
     // Under a ninth of the same JSON turn's bytes, the header allowance included.
-    expect(packedRecordingBytes(3000) * 9).toBeLessThan(recordingBytes(await hashedJson({ ...structuredClone(setB), duration_ticks: 3000, actions, replay_checks: checkTicks(3000).map(tick => ({ tick, state_hash: "f".repeat(64) })) }) as ChapterRecording));
+    expect(packedRecordingBytes(3000) * 9).toBeLessThan(recordingBytes(await hashedJson({ ...bare(setB), duration_ticks: 3000, actions, replay_checks: checkTicks(3000).map(tick => ({ tick, state_hash: "f".repeat(64) })) }) as ChapterRecording));
   });
   it("names turns by letter, a and b first, and gives odd turns to the stage's first pip", () => {
     expect([1, 2, 3, 20].map(n => turnId(3, 1, n))).toEqual(["t3-1-a", "t3-1-b", "t3-1-c", "t3-1-t"]);
@@ -202,6 +210,29 @@ describe("open turns: rules and bounds", () => {
     // Past the stage's cap.
     const capped = await chain(0, start, adapter.open_turns!.caps[0] - 1);
     await expect(validate(capped.checkpoint, start, capped.turns)).rejects.toMatchObject({ code: "checkpoint_recording_mismatch" });
+  });
+});
+
+describe("open turns: a first turn ended early", () => {
+  it("takes a first turn whose own part is not done on open turns only, and the next turn closes the stage over it", async () => {
+    const start = initial();
+    const early = await hashed({ ...structuredClone(setA as Rec), checkpoint_hash: start.checkpoint_hash, outcome: { ...(setA as Rec).outcome, source_ready: false } });
+    const closingTurn = await later(setB as Rec, setA.player_slot, 2, early, true, start.checkpoint_hash);
+    const turns = [early, await hashed({ ...closingTurn, outcome: { ...closingTurn.outcome, source_ready: false } })];
+    const checkpoint = await closing(setEnd as Rec, start, turns);
+    expect(openAccepted(early as ChapterRecording)).toBe(true);
+    expect(await validate(checkpoint, start, turns)).toEqual(checkpoint);
+    // Older rules (13 and before) keep asking a first turn for its part.
+    expect(physicalAccepted({ ...early, simulation_version: 13 } as ChapterRecording)).toBe(false);
+    expect(physicalAccepted({ ...(setA as Rec), simulation_version: 13 } as ChapterRecording)).toBe(true);
+    // A first turn still never finishes the stage.
+    expect(openAccepted({ ...early, completed: true, outcome: { ...early.outcome, objective_complete: true } } as ChapterRecording)).toBe(false);
+    // In a room: the early first turn is taken, and the friend's turn over it closes the stage.
+    const { room: joined, first, second } = await room();
+    const one = await send(joined, first, early);
+    expect(one.room).toMatchObject({ active_role: "b", active_player_id: second.player_id });
+    const two = await send(one.room, second, turns[1], checkpoint);
+    expect(two.room).toMatchObject({ stage_index: 1, checkpoint });
   });
 });
 
@@ -522,12 +553,12 @@ describe("open turns: packed turns only", () => {
   it("takes packed turns with the packed recordings switch off and says nothing of it, and refuses a JSON turn", async () => {
     const { room: joined, first, second } = await room(), start = initial();
     expect(joined).not.toHaveProperty("packed_recordings");
-    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: joined.revision, branch: 0, idempotency_key: key(), recording: await hashedJson({ ...structuredClone(setA), checkpoint_hash: start.checkpoint_hash }) }), 422, "packed_recording_required");
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: joined.revision, branch: 0, idempotency_key: key(), recording: await jsonForm({ ...structuredClone(setA), checkpoint_hash: start.checkpoint_hash }) }), 422, "packed_recording_required");
     const { turns, checkpoint } = await chain(0, start, 1);
     expect(turns.every(turn => "packed" in turn)).toBe(true);
     const one = await send(joined, first, turns[0]);
     const two = await send(one.room, second, turns[1]);
-    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: two.room.revision, branch: 0, idempotency_key: key(), recording: await hashedJson({ ...structuredClone(setB), checkpoint_hash: start.checkpoint_hash, player_slot: setA.player_slot, source_recording_hash: turns[1].recording_hash }), checkpoint }), 422, "packed_recording_required");
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: two.room.revision, branch: 0, idempotency_key: key(), recording: await jsonForm({ ...structuredClone(setB), checkpoint_hash: start.checkpoint_hash, player_slot: setA.player_slot, source_recording_hash: turns[1].recording_hash }), checkpoint }), 422, "packed_recording_required");
     expect((await send(two.room, first, turns[2], checkpoint)).receipt).toMatchObject({ turn_id: "t0-0-c", pair_id: "p0-0" });
   });
 });

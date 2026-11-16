@@ -82,7 +82,7 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
   const parsed = physicalRecording(definition, key, 7, supported, undefined, turns, limits, open);
   // Open turns take packed turns only (open-turns.ts), before any other check; a stored row may be a turn's fingerprint.
   const recording = open ? (value: unknown, stored = false) => { if (!stored) need(value !== null && typeof value === "object" && isPacked(value), "packed_recording_required"); return parsed(value, stored); } : parsed;
-  const isAccepted = open ? (r: ChapterRecording) => openAccepted(r, accepted) : accepted;
+  const isAccepted = open ? openAccepted : accepted;
   async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
     boundedValue(value, limits?.checkpoint_bytes ?? MAX_CHECKPOINT_BYTES, limits?.checkpoint_values);
     const c = object(value); exact(c, open ? OPEN_CHECKPOINT_KEYS : CHECKPOINT_KEYS);
