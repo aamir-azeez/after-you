@@ -88,9 +88,9 @@ afterEach(async () => { await reset(); });
 
 describe("open controls (rules 12 and 13)", () => {
   it("numbers the open rules apart from every published one", () => {
-    expect(COMFORT_RULES).toEqual([8, 9, 10, 12, 13, 14, 15]);
-    expect([9, 10, 11, 12, 13, 14, 15].map(openControls)).toEqual([false, false, false, true, true, true, true]);
-    expect([9, 10, 11, 12, 13, 14, 15].map(tideRules)).toEqual([false, true, false, false, true, false, true]);
+    expect(COMFORT_RULES).toEqual([8, 9, 10, 12, 13, 14, 15, 16]);
+    expect([9, 10, 11, 12, 13, 14, 15, 16].map(openControls)).toEqual([false, false, false, true, true, true, true, true]);
+    expect([9, 10, 11, 12, 13, 14, 15, 16].map(tideRules)).toEqual([false, true, false, false, true, false, true, true]);
     expect(comfortRules(11)).toBe(false);
   });
   for (const chain of CHAINS) {

@@ -46,8 +46,9 @@ const JOIN_SIMULATION_VERSIONS := [2, 4, 5, 6, 7, 8, 9, 10]
 ## longer list: 11 = sleeping-lighthouse@2, and chapters with more than two
 ## stages; 12 and 13 = open controls (comfort and tide rules with controls for
 ## either pip, core/journey/simulation.gd); 14 and 15 = open controls with open
-## turns (core/physical/open_turns.gd).
-const ROOM_LEVEL_JOIN_VERSIONS := [11, 12, 13, 14, 15]
+## turns (core/physical/open_turns.gd); 16 = 15 with the new pieces
+## (core/physical/pieces_rules.gd).
+const ROOM_LEVEL_JOIN_VERSIONS := [11, 12, 13, 14, 15, 16]
 
 class RedoStorage:
 	extends RefCounted

@@ -1,7 +1,7 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { checkTurnBounds, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
-import { openTurns, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
+import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openBodyLimits, openTurnLimits, recordingBytes, turnSlot } from "./open-turns";
 import conservatoryDefinition from "./conservatory.json";
 import conservatoryInitial from "./conservatory-initial.json";
@@ -29,11 +29,13 @@ export const LONG_WAY_HOME_V3_HASH = "81e6342e5f80158ca6cf6c9e02a61cc2baa7e24c63
 export const TURN_OF_THE_TIDE_V3_HASH = "4604f025d89fba1bcd024be1d60ffefd65d50f189b3993399c4d12b9f2a0a21c";
 export const CONSERVATORY_V2_HASH = "90e49a79c3aae874c960cdd73605a12d58f5221878fceb57a224d83e18fbdcbb";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
-type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
-type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
+export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
+export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
 type Control = Marker & { values: string[]; initial: string };
 type Stage = { id: string; version: number; first_player_slot: string; turn_cap?: number; controls: Control[]; levers: Marker[]; pressure_pads: Marker[];
   gates: { route_id: string; when?: Predicate }[]; entry_latch_routes: string[]; goal: Marker; goal_policy: { kind?: string; when?: Predicate };
+  /** Rules 16 (chapter-types.ts PIECES_RULES): stones that hold one pip; platform stops are plain gated crossings. */
+  sinking?: string[];
   source_policy: { kind: string; when?: Predicate; endpoint?: Marker; branches?: { pad_id: string }[] } };
 type Definition = { id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[]; stages: Stage[]; turn_limits?: TurnLimits };
 const CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "a_recording_hash", "b_recording_hash", "checkpoint_hash", "proof"];
@@ -57,6 +59,27 @@ function signals(controls: Record<string, unknown>): Record<string, boolean> {
     "garden-light": controls["gallery-fork"] === "backslash" && controls["garden-return"] === "slash",
     "crossing-light": controls["lower-fork"] === "backslash" && controls["crossing-return"] === "slash",
     "second-light": controls["final-mirror"] === "slash" };
+}
+
+/** A gate tree on an end state, as the client's Seven.predicate: all, any, not (rules 16),
+ * a selector's value, a lever on, a beam signal lit, a pad held (by either pip on open controls). */
+export function gateHolds(value: Predicate, state: { controls: Record<string, unknown>; levers: Record<string, unknown>; light: Record<string, boolean>;
+  players: Record<string, unknown>; stage: Pick<Stage, "pressure_pads">; open: boolean }): boolean {
+  const { controls, levers, light, players, stage, open } = state, holds = (child: Predicate): boolean => gateHolds(child, state);
+  if (value.all) return value.all.every(holds);
+  if (value.any) return value.any.some(holds);
+  if (value.not) return !holds(value.not);
+  if (value.control_id) return controls[value.control_id] === value.value;
+  if (value.lever_id) return levers[value.lever_id] === true;
+  if (value.signal_id) return light[value.signal_id] === true;
+  if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
+  return true;
+}
+
+/** Rules 16: both pips on one sinking stone, which sinks it, so no stage ends that way. */
+export function sunkTogether(stage: Pick<Stage, "sinking">, players: Record<string, unknown>): boolean {
+  const p0 = object(players.p0).surface_id, p1 = object(players.p1).surface_id;
+  return p0 === p1 && (stage.sinking ?? []).includes(String(p0));
 }
 
 function adapter(definition: Definition, initial: ChapterCheckpoint, definitionHash: string, maxBranches?: number): ChapterAdapter {
@@ -142,16 +165,9 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       need(height === expectedHeight, "checkpoint_surface_mismatch");
     }
     const source = object(players[stage.first_player_slot]), receiver = object(players[stage.first_player_slot === "p0" ? "p1" : "p0"]), light = signals(controls);
-    function predicate(value: Predicate = {}): boolean {
-      if (value.all) return value.all.every(predicate);
-      if (value.any) return value.any.some(predicate);
-      if (value.control_id) return controls[value.control_id] === value.value;
-      if (value.lever_id) return levers[value.lever_id] === true;
-      if (value.signal_id) return light[value.signal_id] === true;
-      if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && (open ? near(object(players.p0), pad) || near(object(players.p1), pad) : near(object(players[pad.owner_slot!]), pad)); }
-      return true;
-    }
+    const predicate = (value: Predicate = {}): boolean => gateHolds(value, { controls, levers, light, players, stage, open });
     for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
+    if (piecesRules(definition.simulation_version)) need(!sunkTogether(stage, players), "checkpoint_surface_mismatch");
     if (openLimits) {
       // Open turns: the stage ends only with both pips in its goal area and its objective holding (open-turns.ts openStageEnds).
       need(openStageEnds(slot => near(object(players[slot]), stage.goal), predicate(stage.goal_policy.when)), "checkpoint_goal_mismatch");

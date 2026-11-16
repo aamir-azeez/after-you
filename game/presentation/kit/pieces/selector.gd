@@ -15,6 +15,9 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       of it, a lantern under its beam showing the value's colour.
 ##   "shutter": the plain lever with a shutter board in a frame beside it,
 ##       slid down for the value "down" and up for any other.
+##   "pull_rope": a rope raft's pull rope (rules 16's rope_raft block): the
+##       plain lever beside a mooring post with the rope coiled round it, the
+##       coil wound high for the first value and low for any other.
 ##
 ## Every style stands on its control's own spot. A valve's arrow turns at
 ## VALVE_RATE and snaps on its first value; the rest snap. The world passes
@@ -23,7 +26,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 const Lever = preload("res://presentation/kit/pieces/lever.gd")
 const LEVER_STYLES := ["plain", "brass"]
 ## Styles that stand a prop beside a plain lever.
-const PROPS := ["lamp_post", "gate_arch", "shutter"]
+const PROPS := ["lamp_post", "gate_arch", "shutter", "pull_rope"]
 const REACH := Lever.REACH
 ## Valve: where a bubble's tail lands (its top, m over its spot); its wheel's
 ## height; the sweep of its marks either side of straight back (radians, the
@@ -51,6 +54,12 @@ const ARCH_POSTS := [-0.60, 0.28]
 const SHUTTER_AT := Vector3(0.40, 0, -0.42)
 const SHUTTER_DOWN := 0.30
 const SHUTTER_UP := 0.86
+## Pull rope: the mooring post east and north of the spot, and its coil's
+## height for the first value and any other.
+const ROPE_POST := Vector3(0.40, 0, -0.16)
+const COIL_HIGH := 0.62
+const COIL_LOW := 0.34
+const ROPE := Color("c9b48a")
 
 var _lever: RefCounted
 var _values: Array = []
@@ -61,6 +70,7 @@ var _placed := false
 var _wheel: Node3D
 var _lamp: MeshInstance3D
 var _shutter: Node3D
+var _coil: Node3D
 
 ## A selector in `style` on the spot `at` (parent space) under `parent`.
 ## `options`: "owner" ("p0"/"p1"), "values" (its values in order), "marks"
@@ -87,6 +97,7 @@ func set_value(index: int, immediate: bool = false) -> void:
 		"shutter":
 			_shutter.position.y = SHUTTER_DOWN if value == "down" else SHUTTER_UP
 			_shutter.set_meta("down", value == "down")
+		"pull_rope": _coil.position.y = COIL_HIGH if index == 0 else COIL_LOW
 
 ## The arrow's turn (radians about up) for value `index` of `count`: from
 ## VALVE_SWEEP (the first, west) to -VALVE_SWEEP (the last, east).
@@ -134,6 +145,7 @@ func moving_parts() -> Array[Node3D]:
 	if is_instance_valid(_wheel): parts.append(_wheel)
 	if is_instance_valid(_lamp): parts.append(_lamp)
 	if is_instance_valid(_shutter): parts.append(_shutter)
+	if is_instance_valid(_coil): parts.append(_coil)
 	return parts
 
 func _make(selector_style: String, at: Vector3, parent: Node3D, options: Dictionary) -> void:
@@ -156,6 +168,17 @@ func _make(selector_style: String, at: Vector3, parent: Node3D, options: Diction
 		"lamp_post": _make_lamp_post(str(options.get("id", "")))
 		"gate_arch": _make_gate_arch(str(options.get("id", "")))
 		"shutter": _make_shutter()
+		"pull_rope": _make_pull_rope()
+
+## A mooring post with a coil of rope round it and a cap on top.
+func _make_pull_rope() -> void:
+	Parts.disc(0.09, 0.82, Parts.TIMBER_DARK, ROPE_POST + Vector3(0, 0.41, 0), root, 0.075)
+	Parts.disc(0.10, 0.04, Parts.TIMBER, ROPE_POST + Vector3(0, 0.84, 0), root)
+	_coil = Node3D.new()
+	_coil.name = "RopeCoil"
+	_coil.position = ROPE_POST + Vector3(0, COIL_HIGH, 0)
+	root.add_child(_coil)
+	for turn in range(3): Parts.torus(0.105, 0.018, ROPE, Vector3(0, float(turn) * 0.035, 0), _coil)
 
 ## A post with a glass globe.
 func _make_lamp_post(id: String) -> void:

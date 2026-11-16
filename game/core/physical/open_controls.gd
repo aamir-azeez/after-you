@@ -14,14 +14,17 @@ extends RefCounted
 ## family; 13 the journey's tide rules (10) with open controls. 11 is the
 ## Lighthouse room's, which 0.8.1 already offers on join, so it is skipped.
 ## 14 and 15 are 12 and 13 with open turns (core/physical/open_turns.gd): they
-## keep open controls, and 15 keeps the tide.
+## keep open controls, and 15 keeps the tide. 16 is 15 with the new pieces of
+## The Falls and Fog Marsh (core/physical/pieces_rules.gd): tide, open controls
+## and open turns all hold for it.
 const OPEN_RULES_VERSION := 12
 const OPEN_TIDE_RULES_VERSION := 13
 const OPEN_TURNS_RULES_VERSION := 14
 const OPEN_TURNS_TIDE_RULES_VERSION := 15
-const TIDE_RULES := [10, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION]
-const OPEN_RULES := [OPEN_RULES_VERSION, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION]
-const OPEN_TURNS_RULES := [OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION]
+const PIECES_RULES_VERSION := 16
+const TIDE_RULES := [10, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION]
+const OPEN_RULES := [OPEN_RULES_VERSION, OPEN_TIDE_RULES_VERSION, OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION]
+const OPEN_TURNS_RULES := [OPEN_TURNS_RULES_VERSION, OPEN_TURNS_TIDE_RULES_VERSION, PIECES_RULES_VERSION]
 const KINDS := ["controls", "levers", "pressure_pads"]
 
 ## The open rules that keep `earlier`'s other rules: the tide rules (10) as

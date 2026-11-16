@@ -39,6 +39,28 @@ extends RefCounted
 ##                            "owner"; "when" (J) holds it until then
 ##   raw                 C J  appends its own arrays as written: the escape
 ##                            hatch for one-off wiring between blocks
+## The new pieces (J, rules 16, core/physical/pieces_rules.gd; the level pins
+## them with PiecesRules.pin):
+##   fog_lantern           J  "lever" lights the lantern; its pump floods each
+##                            of "floods" {route: when or {}}: the route holds
+##                            only while its when does and the lantern is out
+##   crank_bridge          J  "lever" (a crank) or "pad" (a windlass board held)
+##                            lays each of "routes" across
+##   dam_bridge            J  "selector" (the water's) opens each of "routes"
+##                            {route: value or [values]}: walkable only while
+##                            the water behind the dam stands there
+##   platform              J  a moving platform "id" whose "stops" {route:
+##                            when} it stands at while that when holds
+##   weight_lift           J  platform "id" at "high" while something heavy
+##                            sits in one of "pads" (or "also" holds) and none
+##                            in "top_pads"; at "low" otherwise
+##   sack_lift             J  platform "id" hoisted to "high" while "lever" is
+##                            on, or "selector" stands at one of "up"
+##   rope_raft             J  platform "id" at the stop "stops" {value: route}
+##                            names for its pull rope "selector"'s value
+##   sinking_stones        J  "stones" that hold one pip each, open while
+##                            "when" holds (always without one)
+##   rope_ladder           J  "stairs" climbed up only, always hung
 
 const COOPERATIVE := "cooperative"
 const JOURNEY := "journey"
@@ -54,11 +76,16 @@ const NEEDS := {
 	"selector_gate": ["selector", "routes"], "match_selectors": ["selector", "matches", "values", "routes"],
 	"weight_pad": ["id", "at", "surface", "ball", "routes"], "one_way_drop": ["id", "rect", "from", "to"],
 	"ring_bell": ["id", "at", "surface", "owner"], "raw": [],
+	"fog_lantern": ["lever", "floods"], "crank_bridge": ["routes"], "dam_bridge": ["selector", "routes"],
+	"platform": ["id", "stops"], "weight_lift": ["id", "low", "high", "pads"], "sack_lift": ["id", "low", "high"],
+	"rope_raft": ["id", "selector", "stops"], "sinking_stones": ["stones"], "rope_ladder": ["stairs"],
 }
+## The new pieces' blocks (rules 16).
+const PIECE_BLOCKS := ["fog_lantern", "crank_bridge", "dam_bridge", "platform", "weight_lift", "sack_lift", "rope_raft", "sinking_stones", "rope_ladder"]
 ## Blocks each family's rules can play.
 const FAMILY_BLOCKS := {
 	COOPERATIVE: ["pad", "lever", "open_route", "hold_door", "relay_lever", "weight_pad", "one_way_drop", "ring_bell", "raw"],
-	JOURNEY: ["pad", "lever", "selector", "open_route", "hold_door", "relay_lever", "selector_gate", "match_selectors", "one_way_drop", "ring_bell", "raw"],
+	JOURNEY: ["pad", "lever", "selector", "open_route", "hold_door", "relay_lever", "selector_gate", "match_selectors", "one_way_drop", "ring_bell", "raw"] + PIECE_BLOCKS,
 }
 
 ## The definition with every stage's "blocks" expanded in place and removed.
@@ -129,9 +156,10 @@ static func _missing(block: Dictionary, family: String) -> Array[String]:
 		var given: Variant = block.get(field)
 		if given is Dictionary: _need(found, kind, field, given, ["id", "at", "surface", "owner", "values", "initial"])
 	if kind == "selector": _need(found, kind, "selector", block, ["values"])
-	if kind == "selector_gate":
-		if not block.routes is Dictionary: found.append("block selector_gate's routes must map each route to its value")
+	if kind in ["selector_gate", "dam_bridge"]:
+		if not block.routes is Dictionary: found.append("block %s's routes must map each route to its value" % kind)
 	elif block.has("routes") and not block.routes is Array: found.append("block %s's routes must be a list" % kind)
+	_piece_missing(found, kind, block)
 	if kind == "match_selectors" and not block.values is Array: found.append("block match_selectors's values must be a list")
 	if block.get("lip") != null: _need(found, kind, "lip", block.lip, ["id", "rect", "owner"])
 	for field: String in ["at", "rect"]:
@@ -141,6 +169,34 @@ static func _missing(block: Dictionary, family: String) -> Array[String]:
 		for field: String in block:
 			if field != "block" and not block[field] is Array: found.append("block raw's %s must be a list" % field)
 	return found
+
+## The new pieces' own shapes (rules 16).
+static func _piece_missing(found: Array[String], kind: String, block: Dictionary) -> void:
+	match kind:
+		"fog_lantern":
+			if not block.floods is Dictionary or block.floods.values().any(func(when: Variant) -> bool: return not when is Dictionary): found.append("block fog_lantern's floods must map each route to a when ({} for none)")
+		"crank_bridge":
+			if block.has("lever") == block.has("pad"): found.append("block crank_bridge needs a lever (a crank) or a pad (a windlass board), not both")
+			if block.get("pad") is Dictionary: _need(found, kind, "pad", block.pad, ["id", "at", "surface", "owner"])
+		"platform":
+			if not block.stops is Dictionary or block.stops.size() < 2 or block.stops.values().any(func(when: Variant) -> bool: return not when is Dictionary): found.append("block platform's stops must map two routes or more to their whens")
+		"weight_lift":
+			for field: String in ["pads", "top_pads"]:
+				if block.has(field) and (not block[field] is Array or block[field].is_empty()): found.append("block weight_lift's %s must be a list of pads" % field)
+				elif block.has(field):
+					for pad: Variant in block[field]:
+						if pad is Dictionary: _need(found, kind, field, pad, ["id", "at", "surface", "owner"])
+			if block.has("also") and not block.also is Dictionary: found.append("block weight_lift's also must be a when")
+		"sack_lift":
+			if block.has("lever") == block.has("selector"): found.append("block sack_lift needs a lever or a selector with up, not both")
+			if block.has("selector") and not block.get("up") is Array: found.append("block sack_lift's up must list the selector's values that hoist it")
+		"rope_raft":
+			if not block.stops is Dictionary or block.stops.size() < 2: found.append("block rope_raft's stops must map two values or more to routes")
+		"sinking_stones":
+			if not block.stones is Array: found.append("block sinking_stones's stones must be a list")
+			if block.has("when") and not block.when is Dictionary: found.append("block sinking_stones's when must be a when")
+		"rope_ladder":
+			if not block.stairs is Array: found.append("block rope_ladder's stairs must be a list")
 
 static func _need(found: Array[String], kind: String, field: String, given: Variant, parts: Array) -> void:
 	if not given is Dictionary:
@@ -198,6 +254,54 @@ static func _emit(level: Dictionary, stage: Dictionary, block: Dictionary, famil
 			stage["goal"] = _point(block, "bell", family)
 			stage["goal_policy"] = {"kind": "ring"}
 			if block.has("when"): stage.goal_policy["when"] = block.when.duplicate(true)
+		"fog_lantern":
+			var lantern := _place(level, stage, block.lever, "levers", "lever", family)
+			var out := {"not": {"lever_id": lantern}}
+			for route: String in block.floods:
+				var when: Dictionary = block.floods[route]
+				_add(level, stage, "gates", {"route_id": route, "when": out.duplicate(true) if when.is_empty() else {"all": [when.duplicate(true), out.duplicate(true)]}})
+		"crank_bridge":
+			var crank := _place(level, stage, block.get("lever", ""), "levers", "lever", family)
+			var windlass := _place(level, stage, block.get("pad", ""), "pressure_pads", "pad", family)
+			for route: String in block.routes: _add(level, stage, "gates", _gate(family, route, {"pad_id": windlass, "lever_id": crank}))
+		"dam_bridge":
+			var water := _place(level, stage, block.selector, "controls", "selector", family)
+			for route: String in block.routes:
+				var values: Array = block.routes[route] if block.routes[route] is Array else [block.routes[route]]
+				_add(level, stage, "gates", {"route_id": route, "when": _any_value(water, values)})
+		"platform":
+			_platform(level, stage, str(block.id), block.stops)
+		"weight_lift":
+			var heavy: Array = []
+			for pad: Variant in block.pads: heavy.append({"pad_id": _place(level, stage, pad, "pressure_pads", "pad", family)})
+			if block.has("also"): heavy.append(block.also.duplicate(true))
+			var up: Dictionary = heavy[0] if heavy.size() == 1 else {"any": heavy}
+			if block.has("top_pads"):
+				var top: Array = []
+				for pad: Variant in block.top_pads: top.append({"pad_id": _place(level, stage, pad, "pressure_pads", "pad", family)})
+				up = {"all": [up, {"not": top[0] if top.size() == 1 else {"any": top}}]}
+			_platform(level, stage, str(block.id), {str(block.low): {"not": up}, str(block.high): up})
+		"sack_lift":
+			var up: Dictionary = {}
+			if block.has("lever"): up = {"lever_id": _place(level, stage, block.lever, "levers", "lever", family)}
+			else: up = _any_value(_place(level, stage, block.selector, "controls", "selector", family), block.up)
+			_platform(level, stage, str(block.id), {str(block.low): {"not": up}, str(block.high): up})
+		"rope_raft":
+			var rope := _place(level, stage, block.selector, "controls", "selector", family)
+			var stops: Dictionary = {}
+			for value: Variant in block.stops: stops[str(block.stops[value])] = _value(rope, value)
+			_platform(level, stage, str(block.id), stops)
+		"sinking_stones":
+			for stone: Variant in block.stones:
+				var gate := {"route_id": str(stone)}
+				if not block.get("when", {}).is_empty(): gate["when"] = block.when.duplicate(true)
+				_add(level, stage, "gates", gate)
+				_add(level, stage, "sinking", str(stone))
+		"rope_ladder":
+			for id: Variant in block.stairs:
+				for stair: Dictionary in level.get("stairs", []):
+					if stair.id == str(id): stair["one_way"] = "up"
+				_add(level, stage, "gates", {"route_id": str(id)})
 		"raw":
 			for field: String in block:
 				if field == "block": continue
@@ -234,6 +338,17 @@ static func _selector(spec: Dictionary) -> Dictionary:
 static func _value(control: String, value: Variant) -> Dictionary:
 	return {"control_id": control, "value": value}
 
+static func _any_value(control: String, values: Array) -> Dictionary:
+	return _value(control, values[0]) if values.size() == 1 else {"any": values.map(func(value: Variant) -> Dictionary: return _value(control, value))}
+
+## A moving platform (rules 16): a gate for each stop, in order, and the
+## stage's "platforms" entry naming them.
+static func _platform(level: Dictionary, stage: Dictionary, id: String, stops: Dictionary) -> void:
+	for route: String in stops:
+		var when: Dictionary = stops[route]
+		_add(level, stage, "gates", {"route_id": route, "when": when.duplicate(true)} if not when.is_empty() else {"route_id": route})
+	_add(level, stage, "platforms", {"id": id, "stops": stops.keys()})
+
 ## One gate in the family's own form. Cooperative gates list every condition,
 ## "" for none, and all must hold; journey gates hold a "when" tree.
 static func _gate(family: String, route: String, needs: Dictionary) -> Dictionary:
@@ -259,5 +374,6 @@ static func _wired(gate: Dictionary, family: String) -> Array:
 
 static func _terms(when: Dictionary, ids: Array) -> void:
 	for child: Dictionary in when.get("all", []) + when.get("any", []): _terms(child, ids)
+	if when.get("not") is Dictionary: _terms(when["not"], ids)
 	for field: String in ["pad_id", "lever_id", "control_id"]:
 		if when.has(field): ids.append(str(when[field]))

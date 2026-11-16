@@ -29,6 +29,12 @@ extends RefCounted
 ## The probe also lights beams exactly: each settable mirror at each of its
 ## values through the engine's own BeamField, where reach otherwise counts a
 ## beam signal as always lit.
+##
+## The new pieces (rules 16, core/physical/pieces_rules.gd): a gate may hold
+## while a lever is off ("not"), so a settable lever a gate reads is tried
+## both ways, and a pad both held and not (as before). A moving platform's
+## stops are joined by ride edges, each needing both stops: a pip on one stop
+## rides to every other. A one way stair's direction comes from Navigation.
 const Navigation = preload("res://core/cooperative/navigation.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
@@ -36,6 +42,8 @@ const BeamField = preload("res://core/beam_field.gd")
 const RADIUS := 12
 const WALK := 28
 const LATERAL_STEP := 8
+## A choice in gate_can_hold that sets a lever rather than a control.
+const LEVER_CHOICE := "lever:"
 
 var level: Dictionary
 var surfaces: Array = []          # [{id, rect, kind, height|stair}]
@@ -107,6 +115,12 @@ func build(slot: String, open_all: bool = false) -> Dictionary:
 		var to := int(index[drop.destination_surface])
 		if _probe_drop(drop, from, to, slot, all_routes, levers):
 			found["%s>%s" % [drop.surface_id, drop.destination_surface]] = [bits_of([drop.surface_id, drop.destination_surface]), lever]
+	# Rules 16: riding a moving platform from any of its stops to any other.
+	for stage: Dictionary in level.get("stages", []):
+		for platform: Dictionary in stage.get("platforms", []):
+			for from: Variant in platform.get("stops", []):
+				for to: Variant in platform.get("stops", []):
+					if from != to and index.has(str(from)) and index.has(str(to)): found["%s>%s" % [from, to]] = [bits_of([str(from), str(to)]), ""]
 	if not open_all:
 		pairs[slot] = found
 		var lists: Array = []
@@ -283,12 +297,14 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 		# A ball pad holds once the ball is pushed there: always possible here.
 		return true
 	var when: Dictionary = gate.get("when", {})
-	var references: Dictionary = {"controls": {}, "pads": {}, "signals": {}}
+	var references: Dictionary = {"controls": {}, "pads": {}, "signals": {}, "levers": {}}
 	_references(when, references)
-	# Levers only ever count while on, so a settable one is simply on.
+	# A settable lever is simply on, unless a gate holds only while one is off
+	# (rules 16's "not"): then each settable lever it reads is tried both ways.
 	var levers: Dictionary = mechanisms.get("levers", {}).duplicate()
+	var negated := _negates(when)
 	for lever: Dictionary in stage.get("levers", []):
-		if settable.has(lever.id): levers[lever.id] = true
+		if settable.has(lever.id) and not (negated and references.levers.has(str(lever.id))): levers[lever.id] = true
 	var signals: Dictionary = {}
 	for id: String in references.signals: signals[id] = true
 	var choices: Array = []
@@ -300,12 +316,17 @@ func gate_can_hold(gate: Dictionary, stage: Dictionary, settable: Dictionary, me
 	for id: String in references.controls:
 		var values: Variant = settable.get(id, [""])
 		choices.append([id, values if values is Array else [""]])
+	if negated:
+		for id: String in references.levers:
+			if settable.has(id): choices.append([LEVER_CHOICE + id, [true, false]])
 	var pads: Array = references.pads.keys().filter(func(id: String) -> bool: return settable.has(id))
 	return _any_assignment(when, stage, choices, 0, {}, levers, signals, _pad_placings(stage, pads, floors))
 
 func _references(value: Dictionary, found: Dictionary) -> void:
 	for key: String in ["all", "any"]:
 		for child: Dictionary in value.get(key, []): _references(child, found)
+	if value.get("not") is Dictionary: _references(value["not"], found)
+	if value.has("lever_id") and found.has("levers"): found.levers[str(value.lever_id)] = true
 	if value.has("control_id"): found.controls[str(value.control_id)] = true
 	if value.has("pad_id"): found.pads[str(value.pad_id)] = true
 	if value.has("signal_id"): found.signals[str(value.signal_id)] = true
@@ -314,8 +335,10 @@ func _references(value: Dictionary, found: Dictionary) -> void:
 ## placing of the settable pads, through the engine's own predicate.
 func _any_assignment(when: Dictionary, stage: Dictionary, choices: Array, at: int, controls: Dictionary, levers: Dictionary, signals: Dictionary, placings: Array) -> bool:
 	if at < choices.size():
+		var id := str(choices[at][0])
 		for value: Variant in choices[at][1]:
-			controls[choices[at][0]] = str(value)
+			if id.begins_with(LEVER_CHOICE): levers[id.trim_prefix(LEVER_CHOICE)] = value
+			else: controls[id] = str(value)
 			if _any_assignment(when, stage, choices, at + 1, controls, levers, signals, placings): return true
 		return false
 	var mechanisms := {"controls": controls, "levers": levers}
@@ -349,6 +372,14 @@ func _pad_placings(stage: Dictionary, pads: Array, floors: Dictionary = {}) -> A
 	for p0: Dictionary in by_slot.p0:
 		for p1: Dictionary in by_slot.p1: result.append({"p0": p0, "p1": p1})
 	return result
+
+## Whether a gate tree holds anywhere only while something is off (rules 16).
+static func _negates(when: Dictionary) -> bool:
+	if when.has("not"): return true
+	for key: String in ["all", "any"]:
+		for child: Variant in when.get(key, []):
+			if child is Dictionary and _negates(child): return true
+	return false
 
 ## Whether `slot` can stand within `entity`'s radius on its surface with
 ## `open` routes: the engine's own walker test at the centre and at points
