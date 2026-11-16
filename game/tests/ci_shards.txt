@@ -28,6 +28,9 @@ campaign_replay_context 2
 campaign_safety_context 2
 campaign_store 2
 capabilities_refresh 3
+carried_items 2
+carried_items_checker 2
+carried_items_world 2
 carried_light 1
 changelog 3
 chapter_access 2
@@ -82,6 +85,7 @@ duels 3
 duels_flow 1
 empty_state 2
 end_reactions 2
+ending_scenes 3
 explore_room 1
 face_packs 3
 face_recipes 2
@@ -171,8 +175,10 @@ leaderboard_celebration 1
 leaderboard_replay_check 3
 leaderboard_screen 3
 leaderboard_watch 1
+letter_view 1
 level_checker 3
 level_tools 2
+level_unlocks 2
 level_view 2
 license_catalog 2
 licenses 3
@@ -228,6 +234,7 @@ online_staged_open 2
 online_unlocks 2
 open_controls 1
 open_turns 1
+open_turns_room 2
 optional_photo_capture 1
 outfit 2
 owner_marks 3
@@ -246,6 +253,8 @@ photo_transfer_client 2
 photo_transfer_screen 1
 physical_runtime 3
 piece_styles 3
+pieces 1
+pieces_world 2
 pip_avatar 1
 pip_outfit 1
 plant_animation 1

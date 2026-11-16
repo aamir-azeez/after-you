@@ -74,7 +74,7 @@ func _font_and_notice() -> void:
 	for character: String in PhotoDate.CHARACTERS:
 		if not font.has_char(character.unicode_at(0)): missing += character
 	_check(missing.is_empty(), "The subset keeps every character a date uses: missing '%s'" % missing)
-	_check(not font.has_char("x".unicode_at(0)) and not font.has_char("Q".unicode_at(0)) and not font.has_char(0xAC00), "Characters a date never uses are dropped")
-	var entry: Array = Catalog.entries().filter(func(item: Dictionary) -> bool: return item.title == "After You Date Pen font (from Nanum Pen Script)")
+	_check(not font.has_char(0xAC00) and not font.has_char(0x3131), "The Korean letters are dropped: the subset keeps Latin text for the dates and chapter letters")
+	var entry: Array = Catalog.entries().filter(func(item: Dictionary) -> bool: return item.title == "After You Pen font (from Nanum Pen Script)")
 	_check(entry.size() == 1 and entry[0].text.contains("SIL OPEN FONT LICENSE Version 1.1"), "The pen font's OFL is in the licence catalog")
-	_check(not font.get_font_name().to_lower().contains("nanum") and font.get_font_name() == "After You Date Pen", "The subset is renamed, as the OFL's reserved Nanum names require")
+	_check(not font.get_font_name().to_lower().contains("nanum") and font.get_font_name() == "After You Pen", "The subset is renamed, as the OFL's reserved Nanum names require")

@@ -14,6 +14,8 @@ const DATA := {
 		"summary": PlayerCopy.LONG_WAY_HOME_SUMMARY,
 		"completion": PlayerCopy.LONG_WAY_HOME_COMPLETION,
 	},
+	"letter": {"stamp": "firefly", "address": [PlayerCopy.LETTER_FRONT_DOOR, PlayerCopy.LETTER_FRONT_DOOR_LINE],
+		"postmark": PlayerCopy.LETTER_POST_LANE, "signoff": PlayerCopy.LETTER_BACK_IN_A_BIT},
 	"stage_copy": {
 		"the-path-you-leave": {
 			"title": PlayerCopy.LONG_WAY_HOME_PATH_TITLE,

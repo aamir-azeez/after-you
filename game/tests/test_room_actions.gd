@@ -63,12 +63,12 @@ const GOLDEN := {
 	},
 	"complete_panel": {
 		"primary": ["hard_again", "new_room"],
-		"turn": ["redo_self", "start_over"],
+		"turn": ["ending", "redo_self", "start_over"],
 		"pair": ["replays", "local_replays", "room_options"],
 		"options": ["photo", "add_friend", "friend_requested", "safety"],
 	},
 	"complete": {
-		"turn": ["hard_again", "redo_self", "start_over", "replays", "local_replays", "new_room", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["hard_again", "ending", "redo_self", "start_over", "replays", "local_replays", "new_room", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 }
 const PANEL_SLOTS := ["header", "status", "invite", "primary", "turn", "pair", "options"]
@@ -175,6 +175,8 @@ func _facts() -> void:
 	_check(RoomActions.shown("ready_panel", "pair", solo) == ["local_replays"], "On the panel Replays has the last line")
 	_check(RoomActions.shown("complete_panel", "turn", solo) == ["redo_self", "start_over"] and RoomActions.shown("complete_panel", "pair", solo) == ["local_replays"] and RoomActions.shown("complete_panel", "primary", solo).is_empty(), "A finished solo chapter: Play my turn again, Start over, Replays")
 	_check(RoomActions.shown("complete", "turn", solo) == ["redo_self", "start_over", "local_replays", "back"], "Its narrow card adds Back")
+	var ended := _facts_from({"solo": true, "ending": true, "redo_self": true})
+	_check(RoomActions.shown("complete_panel", "turn", ended) == ["ending", "redo_self"] and RoomActions.shown("complete", "turn", ended)[0] == "ending", "A finished chapter with an ending scene offers it again first")
 	var hard_solo := _facts_from({"solo": true, "hard": true, "redo_self": true, "start_over_ask": true})
 	_check(RoomActions.shown("ready_panel", "turn", hard_solo).is_empty() and RoomActions.shown("complete", "turn", hard_solo) == ["hard_again", "back"], "A hard run offers neither")
 	var host := _facts_from({"online": true, "invited": true, "share": true, "my_turn": true, "photo": true, "about": true, "options": true})

@@ -17,6 +17,8 @@ const DATA := {
 		"summary": PlayerCopy.WISHING_WELL_SUMMARY,
 		"completion": PlayerCopy.WISHING_WELL_COMPLETION,
 	},
+	"letter": {"stamp": "coin", "address": [PlayerCopy.LETTER_OLD_WELL, PlayerCopy.LETTER_OLD_WELL_LINE],
+		"postmark": PlayerCopy.LETTER_POST_CLIFF, "signoff": PlayerCopy.LETTER_SEE_YOU_SOON},
 	"thumbnail": "res://assets/chapter_thumbnails/the-wishing-well.png",
 	"keepsakes": [
 		{"stage_id": "go-on-ahead", "title": "Go On Ahead"},

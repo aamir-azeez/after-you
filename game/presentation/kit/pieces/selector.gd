@@ -15,6 +15,9 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       of it, a lantern under its beam showing the value's colour.
 ##   "shutter": the plain lever with a shutter board in a frame beside it,
 ##       slid down for the value "down" and up for any other.
+##   "rope_wheel": a raft's rope wheel (rules 16's rope_raft block): the plain
+##       lever beside a spoked wheel on a timber post, rope wound on its drum;
+##       the wheel turns a half turn to each next value.
 ##
 ## Every style stands on its control's own spot. A valve's arrow turns at
 ## VALVE_RATE and snaps on its first value; the rest snap. The world passes
@@ -23,7 +26,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 const Lever = preload("res://presentation/kit/pieces/lever.gd")
 const LEVER_STYLES := ["plain", "brass"]
 ## Styles that stand a prop beside a plain lever.
-const PROPS := ["lamp_post", "gate_arch", "shutter"]
+const PROPS := ["lamp_post", "gate_arch", "shutter", "rope_wheel"]
 const REACH := Lever.REACH
 ## Valve: where a bubble's tail lands (its top, m over its spot); its wheel's
 ## height; the sweep of its marks either side of straight back (radians, the
@@ -51,6 +54,12 @@ const ARCH_POSTS := [-0.60, 0.28]
 const SHUTTER_AT := Vector3(0.40, 0, -0.42)
 const SHUTTER_DOWN := 0.30
 const SHUTTER_UP := 0.86
+## Rope wheel: its post east and north of the spot, the wheel's height and
+## radius, and the rope on its drum.
+const ROPE_POST := Vector3(0.40, 0, -0.16)
+const WHEEL_Y := 0.72
+const WHEEL_R := 0.24
+const ROPE := Color("c9b48a")
 
 var _lever: RefCounted
 var _values: Array = []
@@ -61,6 +70,7 @@ var _placed := false
 var _wheel: Node3D
 var _lamp: MeshInstance3D
 var _shutter: Node3D
+var _rope_wheel: Node3D
 
 ## A selector in `style` on the spot `at` (parent space) under `parent`.
 ## `options`: "owner" ("p0"/"p1"), "values" (its values in order), "marks"
@@ -87,6 +97,7 @@ func set_value(index: int, immediate: bool = false) -> void:
 		"shutter":
 			_shutter.position.y = SHUTTER_DOWN if value == "down" else SHUTTER_UP
 			_shutter.set_meta("down", value == "down")
+		"rope_wheel": _rope_wheel.rotation.z = PI * float(index)
 
 ## The arrow's turn (radians about up) for value `index` of `count`: from
 ## VALVE_SWEEP (the first, west) to -VALVE_SWEEP (the last, east).
@@ -134,6 +145,7 @@ func moving_parts() -> Array[Node3D]:
 	if is_instance_valid(_wheel): parts.append(_wheel)
 	if is_instance_valid(_lamp): parts.append(_lamp)
 	if is_instance_valid(_shutter): parts.append(_shutter)
+	if is_instance_valid(_rope_wheel): parts.append(_rope_wheel)
 	return parts
 
 func _make(selector_style: String, at: Vector3, parent: Node3D, options: Dictionary) -> void:
@@ -156,6 +168,24 @@ func _make(selector_style: String, at: Vector3, parent: Node3D, options: Diction
 		"lamp_post": _make_lamp_post(str(options.get("id", "")))
 		"gate_arch": _make_gate_arch(str(options.get("id", "")))
 		"shutter": _make_shutter()
+		"rope_wheel": _make_rope_wheel()
+
+## A timber post holding a spoked wheel (turning about the north-south axis)
+## with a rope wound on its drum.
+func _make_rope_wheel() -> void:
+	Parts.box(Vector3(0.08, WHEEL_Y + 0.05, 0.08), Parts.TIMBER_DARK, ROPE_POST + Vector3(0, (WHEEL_Y + 0.05) * 0.5, -0.06), root)
+	_rope_wheel = Node3D.new()
+	_rope_wheel.name = "RopeWheel"
+	_rope_wheel.position = ROPE_POST + Vector3(0, WHEEL_Y, 0.02)
+	root.add_child(_rope_wheel)
+	var rim := Parts.torus(WHEEL_R, 0.02, Parts.TIMBER, Vector3.ZERO, _rope_wheel)
+	rim.rotation.x = PI / 2.0
+	for spoke in range(4):
+		var bar := Parts.box(Vector3(0.025, WHEEL_R * 2.0, 0.025), Parts.TIMBER_LIGHT, Vector3.ZERO, _rope_wheel)
+		bar.rotation.z = float(spoke) * PI / 4.0
+	var drum := Parts.disc(0.07, 0.10, ROPE, Vector3(0, 0, 0.04), _rope_wheel)
+	drum.rotation.x = PI / 2.0
+	Parts.ball(0.03, Parts.BRASS, Vector3(WHEEL_R, 0, 0.02), _rope_wheel)
 
 ## A post with a glass globe.
 func _make_lamp_post(id: String) -> void:
