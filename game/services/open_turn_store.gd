@@ -307,7 +307,8 @@ func keep_final(value: Dictionary) -> bool:
 	if directory().is_empty() or not keep_checkpoint(value): return false
 	return AtomicFile.write_text(directory().path_join(FINAL), JSON.stringify({"checkpoint_hash": value.checkpoint_hash}))
 
-## The finished run as the server takes it from a phone: the final checkpoint
+## The finished run as a phone would post it (WIRE.md section 10, waiting for
+## the owner; the server posts no open turns runs yet): the final checkpoint
 ## nesting every stage, from this phone's copies, in the shared blob format
 ## (services/blob_codec.gd): {byte_length, digest, body}. {} when it is not here.
 func run_blob(chapter_key: String) -> Dictionary:

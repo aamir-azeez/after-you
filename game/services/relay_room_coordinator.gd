@@ -938,9 +938,8 @@ func recover_turns() -> bool:
 	var stages := _turn_stages(view)
 	var response := await _request(HTTPClient.METHOD_POST, _room_path() + "/turn-copies/want", {"schema_version": 1, "recording_hashes": wanted.slice(0, 128)})
 	if response.get("ignored", false): return false
-	if not response.get("ok", false):
-		_network_error(response)
-		return false
+	# A server without turn send-back yet (WIRE.md section 9 waits for the owner) leaves the room waiting.
+	if not response.get("ok", false): return _error("turns_missing", PlayerCopy.OPEN_TURNS_MISSING)
 	var data: Variant = response.get("data")
 	var kept: Array = []
 	if data is Dictionary and data.get("copies") is Array:

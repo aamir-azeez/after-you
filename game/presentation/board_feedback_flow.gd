@@ -38,8 +38,6 @@ const BoardStatusLine = preload("res://presentation/board_status_line.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const OpenTurns = preload("res://core/physical/open_turns.gd")
-const Registry = preload("res://services/chapter_registry.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
 const Celebration = preload("res://presentation/leaderboard_celebration.gd")
 const Soundscape = preload("res://services/soundscape.gd")
@@ -91,8 +89,6 @@ func line_for(snapshot: Dictionary, chapter_key: String) -> Control:
 	line.show_status(guess)
 	if gated and _should_post(run, guess, kept): _read_then_post(client, run, str(snapshot.room_id), line)
 	elif client != null and not run.assisted:
-		# Open turns fingerprints: the server keeps only fingerprints, so this phone posts the run (WIRE.md section 10), once.
-		if OpenTurns.pinned(Registry.definition(chapter_key)) and not _asked.has(run.entry_id): _post(client, run, str(snapshot.room_id))
 		# Once the line is on the card, so the room it belongs to is known. A refused run is
 		# never celebrated (BoardStatus.shown_rows leaves it out); the read still says where it stands.
 		# Under the platform rule a run this card did not just post is celebrated only once a read lists it.
@@ -156,7 +152,7 @@ func _post_for_line(client: RefCounted, run: Dictionary, room_id: String, line: 
 func _post(client: RefCounted, run: Dictionary, room_id: String) -> Dictionary:
 	var owner := _owner()
 	_asked[run.entry_id] = true
-	var answer: Dictionary = await client.post_room(room_id, Runs.chapter_of(str(run.get("board", ""))))
+	var answer: Dictionary = await client.post_room(room_id)
 	if not answer.get("ok", false) or owner != _owner(): return answer
 	var who := ""
 	if answer.status == "platform_required": who = Runs.REFUSED_PARTNER if answer.you else Runs.REFUSED_YOU

@@ -23,9 +23,6 @@ const Reaper = preload("res://services/worker_reaper.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
 const Outfit = preload("res://services/outfit.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
-const OpenTurns = preload("res://core/physical/open_turns.gd")
-const OpenTurnStore = preload("res://services/open_turn_store.gd")
-const Registry = preload("res://services/chapter_registry.gd")
 const PREFIX := "/v1/leaderboards/"
 const ME := "/v1/leaderboards/me"
 const POST_PATH := "/v1/leaderboards/post"
@@ -164,15 +161,8 @@ func report(key: String, entry_id: String) -> Dictionary:
 ## "not_placed", "not_postable", "off" (the server has the rule off now) or
 ## "platform_required" with `you` and `partner` (whether each has a link);
 ## {ok: false, code} when it could not ask.
-## `chapter_key`: an open turns chapter's run goes with this phone's own copy of
-## it (WIRE.md section 10), since the server keeps only fingerprints.
-func post_room(room_id: String, chapter_key: String = "") -> Dictionary:
-	var body := {"schema_version": 1, "room_id": room_id}
-	if not chapter_key.is_empty() and OpenTurns.pinned(Registry.definition(chapter_key)):
-		var run := OpenTurnStore.new(_owner, room_id).run_blob(chapter_key)
-		if run.is_empty(): return {"ok": false, "code": "turns_missing"}
-		body["run"] = run
-	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, POST_PATH, body)
+func post_room(room_id: String) -> Dictionary:
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, POST_PATH, {"schema_version": 1, "room_id": room_id})
 	if not response.get("ok", false):
 		if int(response.get("status", 0)) == 404 and str(response.get("code", "")) == "not_found": return {"ok": true, "status": "off"}
 		return {"ok": false, "code": str(response.get("code", ""))}
