@@ -20,6 +20,9 @@ const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const Dots = preload("res://presentation/duels/duel_dots.gd")
 const Outfit = preload("res://services/outfit.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
+const PageFrame = preload("res://presentation/kit/page_frame.gd")
+const DuelModel = preload("res://services/duel_model.gd")
+const CLOCK_ICON = preload("res://assets/ui/social/clock.svg")
 const BACKGROUND := Color("123936")
 const PANEL_FILL := Color("163f3b")
 const PANEL_EDGE := Color("2d5a53")
@@ -49,10 +52,41 @@ static func fitted(label: Label, least: float = 0.0, most: float = 0.0) -> Label
 	label.custom_minimum_size.x = maxf(least, minf(ceilf(own), most)) if most > 0.0 else least
 	return label
 
+## A one-line heading that fits its place whatever the name in it: the largest font size, from
+## `largest` down to `smallest`, at which its words fit the width it was given.
+static func shrinking(value: String, largest: int, smallest: int, ink: Color = UiTokens.CREAM) -> Label:
+	var label := text(value, largest, ink, true)
+	label.clip_text = true
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.resized.connect(func() -> void:
+		var font := label.get_theme_font("font")
+		var fitting := largest
+		while fitting > smallest and font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fitting).x > label.size.x: fitting -= 1
+		if label.get_theme_font_size("font_size") != fitting: label.add_theme_font_size_override("font_size", fitting))
+	return label
+
 static func wrapped(value: String, font_size: int, ink: Color = UiTokens.SOFT, heading: bool = false) -> Label:
 	var label := text(value, font_size, ink, heading)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return label
+
+## A list that scrolls on its own inside `parent`, as every duel list does: the shared
+## scrolling column (kit/page_frame.gd scrolling: its bar only while the list is longer
+## than its room, with room kept beside it then), a drag anywhere scrolls it
+## (control_theme.gd touch_scroll), and the pages' quiet bar (settings_kit.gd). The page
+## around it then stops scrolling (duel_page_base.gd), so a list never scrolls inside a
+## scrolling page. Returns the list's column; its ScrollContainer is named `scroll_name`.
+static func scrolling_list(parent: Control, separation: int, scroll_name: String = "") -> VBoxContainer:
+	var column := PageFrame.scrolling(parent, separation)
+	var scroll := column.get_parent().get_parent() as ScrollContainer
+	if not scroll_name.is_empty(): scroll.name = scroll_name
+	ThemeRules.touch_scroll(scroll)
+	SettingsKit.style_scroll(scroll, false)
+	return column
+
+## The ScrollContainer around a list scrolling_list() made.
+static func list_scroll(column: Control) -> ScrollContainer:
+	return column.get_parent().get_parent() as ScrollContainer
 
 static func panel(node_name: String, fill: Color = PANEL_FILL, edge: Color = PANEL_EDGE, radius: int = 18, pad: float = 14.0) -> PanelContainer:
 	var box := PanelContainer.new()
@@ -132,6 +166,48 @@ static func pill(value: String, lit: bool, font_size: int = 17) -> PanelContaine
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(label)
 	return box
+
+## An open duel's time left tag (services/duel_model.gd time_left_text): the clock and the words, coral
+## under a day. Null when the duel sends no end (over, or a server without it). `now`: this phone's ticks.
+static func time_tag(view: Dictionary, now: int, font_size: int = 15) -> PanelContainer:
+	var left := DuelModel.time_left_ms(view, now)
+	if left < 0: return null
+	var urgent := DuelModel.time_left_urgent(left)
+	var style := ThemeRules.rounded(ThemeRules.DANGER_FILL if urgent else Color(0.055, 0.19, 0.20, 0.88), 10, ThemeRules.DANGER_EDGE if urgent else UiTokens.SECONDARY_BORDER)
+	style.content_margin_left = 8
+	style.content_margin_right = 10
+	style.content_margin_top = 3
+	style.content_margin_bottom = 3
+	var tag := PanelContainer.new()
+	tag.name = "DuelTimeLeft"
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.add_theme_stylebox_override("panel", style)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 5)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tag.add_child(row)
+	var ink: Color = ThemeRules.DANGER_INK if urgent else UiTokens.CREAM
+	var icon := TextureRect.new()
+	icon.texture = CLOCK_ICON
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(font_size + 1, font_size + 1)
+	icon.modulate = ink
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(icon)
+	var words := text(DuelModel.time_left_text(left), font_size, ink, true)
+	words.name = "DuelTimeLeftWords"
+	row.add_child(words)
+	return tag
+
+## Puts `tag` at the top left of a picture (Kit.picture), on a free layer: the picture's frame fills its children.
+static func on_picture(picture: Control, tag: Control, at: Vector2 = Vector2(6, 6)) -> void:
+	var layer := Control.new()
+	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	picture.add_child(layer)
+	layer.add_child(tag)
+	tag.position = at
 
 ## A pair's two still pips in slot order (services/duel_model.gd members and
 ## looks): the member who is `me` is this player's own pip in their own look,

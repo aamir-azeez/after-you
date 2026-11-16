@@ -81,7 +81,7 @@ func _render() -> void:
 		var won: bool = result is Dictionary and ((result.outcome == "won" and index == view.mine) or (result.outcome == "lost" and index != view.mine))
 		cards.add_child(_card(index, won))
 	_column.add_child(cards)
-	var line := DuelModel.result_line(view)
+	var line := DuelModel.result_line(view, name_of)
 	if not line.is_empty():
 		var gap := Kit.text(line, 22, UiTokens.SOFT, true)
 		gap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

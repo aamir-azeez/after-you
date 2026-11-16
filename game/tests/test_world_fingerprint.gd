@@ -289,7 +289,7 @@ func _mount(viewport: SubViewport, world: Node3D, reduced: bool) -> void:
 	world.configure_camera_exploration(func() -> bool: return false, func(_point: Vector2) -> bool: return false)
 
 func _history(world: Node3D, stage: Dictionary, checkpoint: Dictionary) -> void:
-	if world.has_method("show_stage"): world.show_stage(stage)
+	world.show_stage(stage)
 	world.present_history(checkpoint)
 
 func _sim(key: String, engine: Script, level: Dictionary, checkpoint: Dictionary, record: Dictionary, prior: Dictionary) -> RefCounted:

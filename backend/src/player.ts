@@ -56,7 +56,8 @@ import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, close
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 /** `full_journey_off`: a tester's own switch (test-codes.ts): treated as without Full Journey until switched back. Absent otherwise. */
-type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; full_journey_off?: true; recovery_receipt?: RecoveryReceipt; social?: SocialState } & DisplayNameFields;
+/** `platform_linked`: a Play Games or Game Center account opens this player (platform-gate.ts); absent reads as not linked. */
+type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; full_journey_off?: true; recovery_receipt?: RecoveryReceipt; social?: SocialState; platform_linked?: true } & DisplayNameFields;
 type FriendPublicationState = { schema_version: 1; epoch_counter: number; current: FriendPublication | null };
 function isPublicationState(value: unknown): value is FriendPublicationState {
   return isObject(value) && Object.keys(value).length === 3 && value.schema_version === 1 && Number.isSafeInteger(value.epoch_counter) && Number(value.epoch_counter) >= 0 &&
@@ -193,6 +194,20 @@ export class Player extends DurableObject<Env> {
     if (identity && identity.state === "active" && fullJourneyUntil !== undefined) noteFullJourney(this.ctx.storage, fullJourneyUntil, Date.now());
     return identity !== null;
   }
+  /** authorize() plus whether a platform account opens this player (platform-gate.ts), from the same identity read. */
+  authorizeAccess(deviceHash: string, allowDeleting = false): { authorized: boolean; linked: true; platform: boolean } {
+    const identity = this.authorized(deviceHash, allowDeleting);
+    return { authorized: identity !== null, linked: true, platform: identity?.platform_linked === true };
+  }
+  /** Binding only: the platform link route's mark for the REQUIRE_PLATFORM rule, written when a link is made, moved or removed. */
+  notePlatformLink(linked: boolean): boolean {
+    const identity = this.identity();
+    if (!identity || identity.state !== "active" || (identity.platform_linked === true) === linked) return identity !== null;
+    if (linked) identity.platform_linked = true;
+    else delete identity.platform_linked;
+    this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    return true;
+  }
   /** The identity when `deviceHash` is its current device credential, read once for the check and what rides on it. */
   private authorized(deviceHash: string, allowDeleting = false): Identity | null {
     const identity = this.identity();
@@ -203,9 +218,9 @@ export class Player extends DurableObject<Env> {
    * auth() uses it only on the routes that write the name into a room (display-names.ts namesRoomRoute).
    * `pollen`: also the player's Full Journey end (fj_until), for routes that write it into a room while Pollen earning is on.
    */
-  authorizeNamed(deviceHash: string, pollen = false, looks = false, token = false): { authorized: boolean; linked: boolean; display_name?: string | null; fj_until?: number; look?: Look; safety_token?: string } {
+  authorizeNamed(deviceHash: string, pollen = false, looks = false, token = false): { authorized: boolean; linked: boolean; platform?: boolean; display_name?: string | null; fj_until?: number; look?: Look; safety_token?: string } {
     const identity = this.authorized(deviceHash);
-    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks),
+    return identity ? { authorized: true, linked: true, platform: identity.platform_linked === true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks),
       ...(token ? { safety_token: this.safetyToken } : {}) } : { authorized: false, linked: true };
   }
   /** The Full Journey end a room copies for its boost: none while the tester switch has this player as without Full Journey. */
@@ -223,11 +238,11 @@ export class Player extends DurableObject<Env> {
    * `pollen` (a turn while Pollen earning is on) the player's Full Journey end. With `packs` (a turn from
    * a phone that sends faces beyond the everyday ones) also every face the player owns, for v2/face-packs.ts.
    */
-  authorizeRoom(deviceHash: string, roomId: string, pollen = false, looks = false, packs = false): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; look?: Look; owned_faces?: string[] } {
+  authorizeRoom(deviceHash: string, roomId: string, pollen = false, looks = false, packs = false): { authorized: boolean; linked: boolean; platform?: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; look?: Look; owned_faces?: string[] } {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: false };
     const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 || this.storyHeld();
-    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks),
+    return { authorized: true, linked, platform: identity.platform_linked === true, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks),
       ...(packs ? { owned_faces: ownedFaceIds(this.ctx.storage) } : {}) };
   }
   /**
@@ -492,7 +507,7 @@ export class Player extends DurableObject<Env> {
   creditDuelWin(owner: string, win: DuelWin): Outcome<DuelWinAnswer> {
     return creditDuelWin(this.ctx.storage, win, Date.now(), this.pollenActive(owner), RATES, this.fruitMoment({ duel_win: true }));
   }
-  /** Binding only: the first win over the developers' ghost on a board, once per board (pollen/duel-pay.ts). */
+  /** Binding only: the first win over Our run on a board, once per board (pollen/duel-pay.ts). */
   creditGhostWin(owner: string, win: GhostWin): Outcome<DuelWinAnswer> {
     return creditGhostWin(this.ctx.storage, win, Date.now(), this.pollenActive(owner), RATES, this.fruitMoment({}));
   }
@@ -1047,6 +1062,8 @@ export class Player extends DurableObject<Env> {
     identity.device_hash = nextDeviceHash; identity.recovery_hash = nextRecoveryHash;
     if (identity.social) { identity.social.shared_room = null; identity.social.next_refresh_at = 0; }
     identity.recovery_receipt = { previous_recovery_hash: previous, request_hash: requestHash };
+    // Restored through its platform account, so that account opens it (platform-gate.ts).
+    identity.platform_linked = true;
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
       clearRegistrations(this.ctx.storage);
@@ -1325,7 +1342,8 @@ export class Player extends DurableObject<Env> {
 }
 
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
-answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
+answerWhileBlank(Player, { authorize: () => false, authorizeAccess: () => ({ authorized: false, linked: true, platform: false }), notePlatformLink: () => false,
+  authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
   authorizeNamed: () => ({ authorized: false, linked: true }), authorizeWallet: async () => ({ authorized: false, linked: true }),
   creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), creditDuelWin: () => fail(404, "identity_absent"), creditGhostWin: () => fail(404, "identity_absent"), duelRoomPay: () => ({ turns: 0, plain: 0, blooms: 0, duel: 0, duel_percent: 0, boost: 0, boost_percent: 0, total: 0, held: 0 }), settlePublicDuel: () => ({ extra: fail(404, "identity_absent") }), spendEnergy: () => fail(404, "identity_absent"), refundEnergy: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), pollenSpend: () => fail(401, "invalid_auth"), pollenEquip: () => fail(401, "invalid_auth"), pollenBundleClaim: async () => fail(401, "invalid_auth"), noteBoardRewards: () => fail(404, "identity_absent"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,

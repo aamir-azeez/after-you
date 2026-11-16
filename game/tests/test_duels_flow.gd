@@ -307,20 +307,20 @@ func _run() -> void:
 	challenged = keys.call("/v1/duels/challenge")
 	_check(challenged.size() == 6 and challenged[4] != challenged[3] and challenged[5] != challenged[4], "a refusal from the server settles its key too: %s" % [challenged])
 	# The limit line names the number the lobby reported, or the server's own before any lobby said one.
-	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.FRIEND_LIMIT and Client.FRIEND_LIMIT == 10, "a challenge past the limit says how many duels a party may have: %s" % main.toasts.back())
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.DUEL_LIMIT and Client.DUEL_LIMIT == 30, "a challenge past the limit says how many duels a party may have: %s" % main.toasts.back())
 	api.replies["POST /v1/duels/ghost"] = {"ok": false, "status": 409, "code": "duel_limit_reached"}
 	await flow._race(asked, Registry.FIRST_STEPS, "developer", null)
-	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % Client.GHOST_LIMIT and Client.GHOST_LIMIT == 3, "a race past its own limit says races, with its own number: %s" % main.toasts.back())
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.DUEL_LIMIT, "a race past the limit names the same shared number: %s" % main.toasts.back())
 	var kept_lobby: Dictionary = api.replies["GET /v1/duels"]
-	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 7, "ghost": 2}}}
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 7, "ghost": 7}}}
 	await flow.client().lobby()
 	await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
 	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % 7, "the server's number wins over the phone's: %s" % main.toasts.back())
 	await flow._race(asked, Registry.FIRST_STEPS, "developer", null)
-	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % 2, "and for races too: %s" % main.toasts.back())
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % 7, "and for races too: %s" % main.toasts.back())
 	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": "lots", "ghost": -1}}}
 	await flow.client().lobby()
-	_check(flow.client().limit("friend") == Client.FRIEND_LIMIT and flow.client().limit("ghost") == Client.GHOST_LIMIT, "a limit this build cannot read falls back to the server's own")
+	_check(flow.client().limit() == Client.DUEL_LIMIT, "a limit this build cannot read falls back to the server's own")
 	api.replies["GET /v1/duels"] = kept_lobby
 	api.replies.erase("POST /v1/duels/ghost")
 	asked.close()
@@ -340,7 +340,7 @@ func _run() -> void:
 	watch.stop()
 	main.friends = FakeFriends.new()
 	await _polling(main, api, flow)
-	await _leaving(api, flow)
+	await _giving_up(api, flow)
 	await _already_open(main, api, flow)
 	await _hinted(main, api, flow)
 	await _picker(main, api, flow)
@@ -475,25 +475,28 @@ func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow.close()
 	await _frames(2)
 
-## Leave shows at once from the server's answer: the page and the lobby under
-## it say Left, a read that went out before Leave cannot bring the old duel
-## back, and a duel that Leave ended swaps in its result.
-func _leaving(api: FakeApi, flow: Node) -> void:
+## Give up shows at once from the server's answer (board forfeit-finished A3 to A7): the coral
+## Give up asks, the page and the lobby under it show the ask with Take it back, a read that went
+## out before cannot bring the old duel back, Take it back puts Give up back, a refusal at the
+## cap greys it with when it frees up, and an agree that ends the duel swaps in its result. No
+## running duel offers a solo Leave any more.
+func _giving_up(api: FakeApi, flow: Node) -> void:
 	var duel_path := "/v1/duels/%s/%s" % [BOARD, DUEL]
-	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_view({})]}}
+	var offer := {"give_up": {"mode": "ask", "asked": null, "asked_at": null}}
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_view(offer)]}}
 	flow.open()
 	flow.set_process(false)
 	await _frames(3)
-	var running := Client.valid_view(_view({}))
+	var running := Client.valid_view(_view(offer))
 	flow._open_duel(running)
 	await _frames(3)
 	var page: CanvasLayer = flow.screen.overlay()
-	_check(page != null and page.find_child("DuelLeave", true, false) != null, "a running duel offers Leave")
-	var left := _view({"left": true, "turn": null})
-	left.updated_ms = 10
-	api.replies["POST %s/leave" % duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": left}}
-	# Reads of the duel and of the lobby go out before Leave and answer after it, with the older running duel.
-	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _view({})}}
+	_check(page != null and page.find_child("DuelGiveUp", true, false) != null and page.find_child("DuelLeave", true, false) == null, "a running duel offers Give up, never Leave")
+	var asked := _view({"give_up": {"mode": "ask", "asked": 0, "asked_at": 7}})
+	asked.updated_ms = 10
+	api.replies["POST %s/give-up" % duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": asked}}
+	# Reads of the duel and of the lobby go out before Give up and answer after it, with the older duel.
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _view(offer)}}
 	api.delays = {"GET " + duel_path: 8, "GET /v1/duels": 8}
 	var reads := func(path: String) -> int: return api.requests.filter(func(item: Array) -> bool: return item[0] == "GET" and item[1] == path).size()
 	var duel_reads: int = reads.call(duel_path) + 1
@@ -502,26 +505,60 @@ func _leaving(api: FakeApi, flow: Node) -> void:
 	flow._tick(at)
 	flow._tick(at + Clock.DUEL_INTERVAL_MS)
 	flow._refresh()
-	page.leave_requested.emit(running)
+	page.give_up_requested.emit(running, -1)
+	# A second tap while the first is out sends nothing more.
+	page.give_up_requested.emit(running, -1)
 	await _frames(3)
-	_check(page.view.sides[0].left and page.find_child("DuelLeave", true, false) == null and page.find_child("DuelPlay", true, false) == null, "the duel page shows Left at once, with nothing left to play")
+	var sent := api.requests.filter(func(item: Array) -> bool: return item[0] == "POST" and item[1] == duel_path + "/give-up")
+	_check(sent.size() == 1 and sent[0][2] == {"schema_version": 1, "answering": null}, "Give up asks once, naming no ask: %s" % [sent])
+	_check(page.find_child("DuelGiveUpAsked", true, false) != null and page.find_child("DuelGiveUp", true, false) == null and page.find_child("DuelPlay", true, false) != null, "the page shows the ask with Take it back at once, and play goes on")
 	var kept: Dictionary = flow.client().last_lobby()
-	_check(kept.duels.size() == 1 and kept.duels[0].sides[0].left, "the lobby under it keeps the duel as left too")
+	_check(kept.duels.size() == 1 and kept.duels[0].sides[0].give_up.asked == 0, "the lobby under it keeps the ask too")
 	await _frames(10)
 	api.delays = {}
-	kept = flow.client().last_lobby()
-	_check(reads.call(duel_path) == duel_reads and reads.call("/v1/duels") == lobby_reads, "both older reads were out before Leave")
-	_check(page.view.sides[0].left and page.find_child("DuelLeave", true, false) == null, "a duel read that went out before Leave does not bring back the running duel")
-	_check(kept.duels.size() == 1 and kept.duels[0].sides[0].left, "a lobby read that went out before Leave keeps the duel as left")
-	# Leave that ends the duel (the other pair had left, or a ghost race): the result opens at once.
+	_check(reads.call(duel_path) == duel_reads and reads.call("/v1/duels") == lobby_reads, "both older reads were out before Give up")
+	_check(page.find_child("DuelGiveUpAsked", true, false) != null, "a read that went out before Give up does not bring the old duel back")
+	# Take it back names the ask it takes back.
+	var back := _view(offer)
+	back.updated_ms = 11
+	api.replies["POST %s/keep-playing" % duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": back}}
+	(page.find_child("DuelGiveUpTakeBack", true, false) as Button).pressed.emit()
+	await _frames(3)
+	var took := api.requests.filter(func(item: Array) -> bool: return item[1] == duel_path + "/keep-playing")
+	_check(took.size() == 1 and took[0][2] == {"schema_version": 1, "answering": 7}, "Take it back names the ask")
+	_check(page.find_child("DuelGiveUp", true, false) != null and page.find_child("DuelGiveUpAsked", true, false) == null, "Give up is back once the ask is taken back")
+	# At the cap the server refuses: Give up greys with when it frees up, on this copy and the lobby's.
+	api.replies["POST %s/give-up" % duel_path] = {"ok": false, "code": "give_up_capped", "status": 409, "data": {"error": {"code": "give_up_capped", "again_in_ms": 2 * 86_400_000 - 60_000}}}
+	page.give_up_requested.emit(page.view, -1)
+	await _frames(3)
+	var greyed := page.find_child("DuelGiveUp", true, false) as Button
+	_check(greyed != null and greyed.disabled and greyed.text == PlayerCopy.GIVE_UP_AGAIN_DAYS % 2, "at the cap Give up greys: %s" % [greyed.text if greyed else "none"])
+	_check(flow.client().last_lobby().duels[0].sides[0].give_up.again_at > Time.get_ticks_msec(), "the lobby's copy keeps the cap")
+	# Your friend asked: the card is their question; agreeing ends the duel and swaps in its result.
+	var friend_asked := _view({"give_up": {"mode": "ask", "asked": 1, "asked_at": 9}})
+	friend_asked.updated_ms = 12
+	# Every copy the client hands on carries the cap it keeps.
+	page.show_duel(flow.client()._with_cap(Client.valid_view(friend_asked)))
+	await _frames(2)
+	var agree := page.find_child("DuelGiveUpAgree", true, false) as Button
+	_check(agree != null and agree.disabled and page.find_child("DuelGiveUpKeep", true, false) != null and page.find_child("DuelPlay", true, false) == null, "your friend's ask greys its Give up at the cap too, beside Keep playing")
+	friend_asked.updated_ms = 13
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [friend_asked]}}
+	flow.client()._caps.clear()
+	page.show_duel(Client.valid_view(friend_asked))
+	await _frames(2)
+	agree = page.find_child("DuelGiveUpAgree", true, false) as Button
+	_check(agree != null and not agree.disabled and agree.text == PlayerCopy.GIVE_UP, "under the cap your friend's ask offers Give up")
 	var ended := _view({"left": true, "turn": null}, "decided")
 	ended.updated_ms = 20
-	ended.result = {"outcome": "none", "reason": "left"}
-	api.replies["POST %s/leave" % duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": ended}}
+	ended.result = {"outcome": "lost", "reason": "left"}
+	api.replies["POST %s/give-up" % duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": ended}}
 	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": ended}}
-	page.leave_requested.emit(page.view)
+	agree.pressed.emit()
 	await _frames(3)
-	_check(flow.screen.overlay() is ResultPage, "a duel that Leave ended shows its result at once")
+	var agreed := api.requests.filter(func(item: Array) -> bool: return item[1] == duel_path + "/give-up")
+	_check(agreed[-1][2] == {"schema_version": 1, "answering": 9}, "Give up on your friend's ask names it")
+	_check(flow.screen.overlay() is ResultPage, "a duel the agree ended shows its result at once")
 	flow.close()
 	await _frames(2)
 
@@ -1024,23 +1061,23 @@ func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	await _frames(10)
 	_check(main.toasts.back() == PlayerCopy.RACE_PICK_LEFT and reads.call() == before + 1, "a run that left the top 10 says so and the board is read again: %s" % main.toasts.back())
 	_check(is_instance_valid(picker) and picker.find_children("LeaderboardRace", "Button", true, false).size() == 1, "the picker shows the board as it is now")
-	# Three races going: every Race greys before a tap, under the lobby's limit line.
+	# Two races and a friend duel going fill a shared limit of three: every Race greys before a tap, under the lobby's limit line.
 	var kept_lobby: Dictionary = api.replies["GET /v1/duels"]
 	var going: Array = []
 	for index in range(3):
-		var race := _server_view("ghost", {})
+		var race := _server_view("ghost" if index < 2 else "friend", {})
 		race.duel_id = str(index).repeat(32)
 		going.append(race)
-	var lobby := {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": going}
+	var lobby := {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": going, "limits": {"friend": 3, "ghost": 3}}
 	api.replies["GET /v1/duels"] = {"ok": true, "data": lobby}
 	await flow.client().lobby()
-	_check(flow.client().ghost_races_full(), "three ghost races going fill the pair's limit")
+	_check(flow.client().at_limit(), "ghost races and friend duels count together against one limit")
 	await flow._fill_picker(page, picker, Registry.FIRST_STEPS, false)
 	var greyed: Array = picker.find_children("LeaderboardRace", "Button", true, false)
 	_check(not greyed.is_empty() and greyed.all(func(button: Button) -> bool: return button.disabled) and picker.find_child("RacePickerLimit", true, false) != null, "at the limit every Race greys under the limit line")
 	var one_done: Dictionary = lobby.duplicate(true)
 	one_done.duels[0].sides[0].finished = true
-	_check(Client.ghost_races_going(Client.valid_lobby(one_done)) == 2, "a race whose own side finished no longer counts, as on the server")
+	_check(Client.duels_going(Client.valid_lobby(one_done)) == 2, "a race whose own side finished no longer counts, as on the server")
 	# Opened at the limit, the picker reads the lobby once first: an old lobby never greys rows the server would race.
 	var lobby_reads := func() -> int: return api.requests.filter(func(item: Array) -> bool: return item[0] == "GET" and item[1] == "/v1/duels").size()
 	api.replies["GET /v1/duels"] = kept_lobby
@@ -1049,12 +1086,12 @@ func _picker(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	var asked_lobby: int = lobby_reads.call()
 	await flow._open_picker(page, Registry.FIRST_STEPS, null)
 	picker = page.root.find_child("RacePicker", true, false)
-	_check(lobby_reads.call() == asked_lobby + 1 and not flow.client().ghost_races_full() and picker != null and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return not button.disabled), "a picker opened at the limit reads the lobby once and races what the server allows")
+	_check(lobby_reads.call() == asked_lobby + 1 and not flow.client().at_limit() and picker != null and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return not button.disabled), "a picker opened at the limit reads the lobby once and races what the server allows")
 	# The server says the limit is reached after all: the toast, and the rows grey.
 	api.replies["POST /v1/duels/ghost"] = {"ok": false, "status": 409, "code": "duel_limit_reached"}
 	(picker.find_children("LeaderboardRace", "Button", true, false)[0] as Button).pressed.emit()
 	await _frames(10)
-	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % Client.GHOST_LIMIT and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return button.disabled), "a race refused at the limit says so and greys every row")
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.DUEL_LIMIT and picker.find_children("LeaderboardRace", "Button", true, false).all(func(button: Button) -> bool: return button.disabled), "a race refused at the limit says so and greys every row")
 	api.replies.erase("POST /v1/duels/ghost")
 	# Closed while its board read is out: nothing writes to the gone sheet.
 	page.go_back()

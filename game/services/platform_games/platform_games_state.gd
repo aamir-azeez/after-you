@@ -61,7 +61,8 @@ func capability(now: int = now_ms()) -> Dictionary:
 	return held
 
 func remember_capability(answer: Dictionary, now: int = now_ms()) -> void:
-	data.capability = {"checked_ms": now, "play_games": answer.get("play_games") == true, "web_client_id": str(answer.get("web_client_id", "")), "game_center": answer.get("game_center") == true, "boards": answer.get("boards") == true}
+	data.capability = {"checked_ms": now, "play_games": answer.get("play_games") == true, "web_client_id": str(answer.get("web_client_id", "")), "game_center": answer.get("game_center") == true, "boards": answer.get("boards") == true,
+		"required": answer.get("required") == true, "exempt": answer.get("exempt") == true, "server_linked": answer.get("server_linked") == true}
 	save()
 
 func forget_capability() -> void:
@@ -69,14 +70,23 @@ func forget_capability() -> void:
 	data.capability = {}
 	save()
 
-## The link this phone last confirmed for a provider: {"player_key", "player_id"} or {}.
+## The link this phone last confirmed for a provider: {"player_key", "player_id", "marked"} or {}.
+## "marked": the server answered this link itself, so it also counts for REQUIRE_PLATFORM (a link
+## held from an older build is sent once more, which marks it).
 func link(provider: String) -> Dictionary:
 	var held: Variant = data.links.get(provider)
 	return held if held is Dictionary and held.get("player_key") is String and held.get("player_id") is String else {}
 
 func remember_link(provider: String, player_key: String, player_id: String) -> void:
-	if link(provider) == {"player_key": player_key, "player_id": player_id}: return
-	data.links[provider] = {"player_key": player_key, "player_id": player_id}
+	if link(provider) == {"player_key": player_key, "player_id": player_id, "marked": true}: return
+	data.links[provider] = {"player_key": player_key, "player_id": player_id, "marked": true}
+	save()
+
+## The server's REQUIRE_PLATFORM mark for this player, as the capability last said or a link answer
+## since confirmed it.
+func note_server_linked(linked: bool) -> void:
+	if data.capability.is_empty() or data.capability.get("server_linked") == linked: return
+	data.capability.server_linked = linked
 	save()
 
 func forget_link(provider: String) -> void:

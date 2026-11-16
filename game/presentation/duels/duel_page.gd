@@ -5,8 +5,14 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## once both reach the same stage; the chapter's picture; and the card for
 ## your own pair's next move: Play your turn (or View turns while your partner
 ## plays). A ghost race shows the recorded run's whole time on the right.
-## Leave duel sits under the card while your pair has not finished; once your
-## pair left, the card says so and offers nothing more.
+## Give up (board forfeit-finished A3 to A7) sits under the card, coral, while
+## your pair has not finished: both of you must agree (backend duels/model.ts
+## giveUp). Its question asks your friend; once asked, your card says you are
+## waiting, with Take it back; your friend's card becomes the question, Give up
+## or Keep playing, the same shape as Start over in rooms. At the cap it greys
+## with when it frees up, on both cards. A public seat never entered gives its
+## spot back at once instead, and a seat with nobody beside it has none. The
+## time left tag stands beside the title (Kit.time_tag).
 ## The flow (duels_flow.gd) reads the duel again while this page is up and
 ## hands it in through show_duel(); nothing here polls or draws per frame.
 ## A public duel (boards 3 to 6) adds the PUBLIC tag, draws its seats through
@@ -22,7 +28,10 @@ const PollenMoney = preload("res://services/pollen_money.gd")
 
 ## Play your turn or View turns: the flow opens (or makes, or joins) the pair's room.
 signal play_requested(view: Dictionary, control: Control)
-signal leave_requested(view: Dictionary)
+## Give up: the ask, or the agree when `answering` names your friend's ask (-1 to ask).
+signal give_up_requested(view: Dictionary, answering: int)
+## Keep playing: takes back the ask `answering` names, yours or your friend's.
+signal keep_playing_requested(view: Dictionary, answering: int)
 ## A stranger's pip was tapped: side `index`, seat `slot` (public duels only).
 signal stranger_requested(view: Dictionary, index: int, slot: int)
 
@@ -35,7 +44,8 @@ var held: Dictionary = {}:
 		held = value
 		if is_instance_valid(_sides): _render()
 var _sides: HBoxContainer
-var _tag: Control
+## The tags after the subtitle: the time left, and a public duel's PUBLIC.
+var _tags: HBoxContainer
 var _held: Label
 var _note: Label
 var _card: VBoxContainer
@@ -98,7 +108,7 @@ func _build() -> void:
 func _render() -> void:
 	if view.is_empty(): return
 	set_title(_chapter_title(), PlayerCopy.DUEL_IN_PROGRESS)
-	_show_tag()
+	_show_tags()
 	Kit.clear(_sides)
 	for index: int in [view.mine, 1 - view.mine]: _sides.add_child(_side_card(index))
 	var ahead := DuelModel.ahead_line(view)
@@ -176,6 +186,7 @@ static func _time_label(lane: Dictionary) -> String:
 
 func _render_card() -> void:
 	Kit.clear(_card)
+	_card.add_theme_constant_override("separation", 12)
 	var own: Dictionary = view.sides[view.mine]
 	var mine_now := DuelModel.your_turn(view, me)
 	var head := HBoxContainer.new()
@@ -188,11 +199,15 @@ func _render_card() -> void:
 	head.add_child(words)
 	var partner := _partner_name()
 	var open_beside := DuelModel.is_public(view) and partner.is_empty()
+	var giving := DuelModel.give_up(view, me, Time.get_ticks_msec())
 	if own.left:
-		# Your pair left: the duel goes on for the other pair, with nothing left to play here.
-		words.add_child(Kit.text(PlayerCopy.DUEL_LEFT, 40, UiTokens.CREAM, true))
-		words.add_child(Kit.wrapped(PlayerCopy.DUEL_RESULT_YOU_LEFT, 19))
+		# Your side is out: nothing left to play here.
+		words.add_child(Kit.text(PlayerCopy.DUEL_GAVE_UP, 40, UiTokens.CREAM, true))
+		words.add_child(Kit.wrapped(PlayerCopy.DUEL_RESULT_GAVE_UP, 19))
 		_card.add_child(head)
+		return
+	if giving.get("asked") == "friend":
+		_render_asked_you(head, words, giving)
 		return
 	if own.finished:
 		words.add_child(Kit.text(PlayerCopy.DUEL_FINISHED, 40, UiTokens.CREAM, true))
@@ -217,14 +232,91 @@ func _render_card() -> void:
 			Kit.icon_on(turns, ARROW_ICON, false, 26)
 			turns.pressed.connect(func(): play_requested.emit(view, turns))
 			_card.add_child(turns)
-		var leave := Button.new()
-		leave.name = "DuelLeave"
-		leave.text = PlayerCopy.DUEL_LEAVE
-		leave.flat = true
-		leave.custom_minimum_size = Vector2(0, 44)
-		leave.add_theme_color_override("font_color", UiTokens.MUTED)
-		leave.pressed.connect(func(): ask("DuelLeaveModal", PlayerCopy.DUEL_LEAVE_TITLE, PlayerCopy.DUEL_LEAVE_BODY, PlayerCopy.DUEL_LEAVE_CONFIRM, func(): leave_requested.emit(view), PlayerCopy.DUEL_LEAVE_KEEP))
-		_card.add_child(leave)
+		if giving.get("asked") == "you":
+			# Your ask's box is taller than Give up: the card closes up a little so it still fits a phone.
+			_card.add_theme_constant_override("separation", 6)
+			_card.add_child(_asked_box(int(giving.asked_at)))
+		elif not giving.is_empty(): _card.add_child(_give_up_button(giving, 52))
+
+## The coral Give up: its question first (ask), or straight to giving the spot back (a public seat never
+## entered); greyed with when it frees up while the pair is at its cap.
+func _give_up_button(giving: Dictionary, height: float) -> Button:
+	var capped: bool = int(giving.again_ms) > 0 and giving.mode == "ask"
+	var button := Button.new()
+	button.name = "DuelGiveUp"
+	button.text = DuelModel.give_up_again_text(int(giving.again_ms)) if capped else PlayerCopy.GIVE_UP
+	button.custom_minimum_size = Vector2(0, height)
+	button.add_theme_font_size_override("font_size", 22)
+	ThemeRules.danger(button)
+	button.disabled = capped
+	button.pressed.connect(func() -> void:
+		if giving.mode == "leave": ask("DuelGiveUpModal", PlayerCopy.GIVE_UP_TITLE, PlayerCopy.GIVE_UP_SPOT_BODY, PlayerCopy.GIVE_UP, func(): give_up_requested.emit(view, -1), PlayerCopy.GIVE_UP_KEEP, true)
+		else: ask("DuelGiveUpModal", _question_title(), _question_body(), _ask_words(), func(): give_up_requested.emit(view, -1), PlayerCopy.GIVE_UP_KEEP, true))
+	return button
+
+## Your own ask, waiting for your friend: the words and Take it back.
+func _asked_box(asked_at: int) -> Control:
+	var box := Kit.panel("DuelGiveUpAsked", Kit.LANE_FILL, Kit.PANEL_EDGE, 14, 8.0)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	box.add_child(row)
+	var friend := _friend()
+	var words := Kit.wrapped(PlayerCopy.GIVE_UP_ASKED + "\n" + (PlayerCopy.GIVE_UP_WAITING % friend if not friend.is_empty() else PlayerCopy.GIVE_UP_WAITING_THEM), 17 if compact else 18, UiTokens.CREAM)
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(words)
+	var back := Kit.button(PlayerCopy.GIVE_UP_TAKE_BACK, func(): keep_playing_requested.emit(view, asked_at), false, 44 if compact else 48)
+	back.name = "DuelGiveUpTakeBack"
+	back.custom_minimum_size.x = 170 if compact else 190
+	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(back)
+	return box
+
+## Your friend asked: the card is their question, Give up (coral, greyed at the cap) or Keep playing.
+func _render_asked_you(head: HBoxContainer, words: VBoxContainer, giving: Dictionary) -> void:
+	var friend := _friend()
+	var title := Kit.shrinking(PlayerCopy.GIVE_UP_ASKED_YOU % friend if not friend.is_empty() else PlayerCopy.GIVE_UP_ASKED_YOU_THEM, 32 if compact else 36, 22)
+	title.name = "DuelGiveUpAskedYou"
+	words.add_child(title)
+	words.add_child(Kit.wrapped(_answer_line(), 19))
+	_card.add_child(head)
+	var agree := Button.new()
+	agree.name = "DuelGiveUpAgree"
+	var capped := int(giving.again_ms) > 0
+	agree.text = DuelModel.give_up_again_text(int(giving.again_ms)) if capped else PlayerCopy.GIVE_UP
+	agree.custom_minimum_size = Vector2(0, 56 if compact else 64)
+	agree.add_theme_font_size_override("font_size", 24)
+	ThemeRules.danger(agree)
+	agree.disabled = capped
+	agree.pressed.connect(func(): give_up_requested.emit(view, int(giving.asked_at)))
+	_card.add_child(agree)
+	var keep := Kit.button(PlayerCopy.GIVE_UP_KEEP, func(): keep_playing_requested.emit(view, int(giving.asked_at)), false, 52 if compact else 60)
+	keep.name = "DuelGiveUpKeep"
+	_card.add_child(keep)
+
+## The friend beside you who answers a give up, by name, or "" for a stranger who shows none.
+func _friend() -> String:
+	return DuelModel.give_up_friend(view, me, name_of)
+
+func _question_title() -> String:
+	return PlayerCopy.GIVE_UP_TITLE_RACE if view.kind == "ghost" else PlayerCopy.GIVE_UP_TITLE
+
+## "Maya has to agree too. Then Finn and Noor win.", or the race's or a nameless pair's words.
+func _question_body() -> String:
+	var friend := _friend()
+	var who := friend if not friend.is_empty() else PlayerCopy.GIVE_UP_BESIDE
+	if view.kind == "ghost": return PlayerCopy.GIVE_UP_BODY_RACE % who
+	var winners := DuelModel.other_pair_names(view, name_of)
+	return PlayerCopy.GIVE_UP_BODY % [who, winners] if not winners.is_empty() else PlayerCopy.GIVE_UP_BODY_PAIR % who
+
+func _ask_words() -> String:
+	var friend := _friend()
+	return PlayerCopy.GIVE_UP_ASK % friend if not friend.is_empty() else PlayerCopy.GIVE_UP_ASK_THEM
+
+## "If you agree, Finn and Noor win.", or the race's or a nameless pair's words.
+func _answer_line() -> String:
+	if view.kind == "ghost": return PlayerCopy.GIVE_UP_IF_YOU_AGREE_RACE
+	var winners := DuelModel.other_pair_names(view, name_of)
+	return PlayerCopy.GIVE_UP_IF_YOU_AGREE % winners if not winners.is_empty() else PlayerCopy.GIVE_UP_IF_YOU_AGREE_PAIR
 
 ## Your partner's name, "your partner", or "" while a public duel's seat beside you is open.
 func _partner_name() -> String:
@@ -260,18 +352,28 @@ func _public_note() -> String:
 			if not DuelModel.seat(view, other, slot).get("open", true): return PlayerCopy.PUBLIC_NOTE_THEIR_SPOT % DuelModel.seat_name(view, other, slot, name_of)
 	return PlayerCopy.PUBLIC_NOTE_SPOTS
 
-## The PUBLIC tag after the subtitle while the duel is public.
-func _show_tag() -> void:
-	if not DuelModel.is_public(view) or is_instance_valid(_tag) or not is_instance_valid(_subtitle): return
-	_tag = Seats.tag(15)
-	_subtitle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_subtitle.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_header.add_child(_tag)
-	_header.move_child(_tag, _subtitle.get_index() + 1)
-	_header.add_child(spacer)
-	_header.move_child(spacer, _tag.get_index() + 1)
+## After the subtitle: the time left tag (board A3), and the PUBLIC tag while the duel is public.
+func _show_tags() -> void:
+	if not is_instance_valid(_subtitle): return
+	if not is_instance_valid(_tags):
+		_tags = HBoxContainer.new()
+		_tags.name = "DuelHeaderTags"
+		_tags.add_theme_constant_override("separation", 10)
+		_tags.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_tags.alignment = BoxContainer.ALIGNMENT_BEGIN
+		_subtitle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		_subtitle.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+		_header.add_child(_tags)
+		_header.move_child(_tags, _subtitle.get_index() + 1)
+	Kit.clear(_tags)
+	var left := Kit.time_tag(view, Time.get_ticks_msec(), 18)
+	if left != null:
+		left.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_tags.add_child(left)
+	if DuelModel.is_public(view):
+		var tag := Seats.tag(15)
+		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		_tags.add_child(tag)
 
 func _chapter_title() -> String:
 	var key := str(view.get("chapter", ""))

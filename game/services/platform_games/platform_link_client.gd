@@ -21,7 +21,10 @@ func capability() -> Dictionary:
 	var client: Variant = data.get("play_games_web_client_id")
 	var play: bool = Typed.equal(data.get("play_games_version"), 1) and client is String and RegEx.create_from_string(WEB_CLIENT_ID).search(client) != null
 	var game_center := Typed.equal(data.get("game_center_version"), 1)
-	return {"ok": true, "play_games": play, "web_client_id": client if play else "", "game_center": game_center, "boards": (play or game_center) and Typed.equal(data.get("platform_boards_version"), 1)}
+	# REQUIRE_PLATFORM (backend platform-gate.ts): online writes from this app need a link; testers are exempt.
+	var required: bool = (play or game_center) and Typed.equal(data.get("platform_required_version"), 1)
+	return {"ok": true, "play_games": play, "web_client_id": client if play else "", "game_center": game_center, "boards": (play or game_center) and Typed.equal(data.get("platform_boards_version"), 1),
+		"required": required, "exempt": required and Typed.equal(data.get("platform_exempt"), true), "server_linked": required and Typed.equal(data.get("platform_linked"), true)}
 
 ## {"ok", "status": linked | conflict | other_account, "changed"} or {"ok": false, "code"}.
 ## The recovery code proves this phone may set up a restore for its identity (a device token alone may not).

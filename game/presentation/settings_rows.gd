@@ -154,7 +154,8 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"visible_if": func() -> bool: return account.panel_state() == "ready" and RoomsApi.history_supported},
 		{"id": "safety_reports", "online": true, "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_REPORTS, "note": PlayerCopy.SETTINGS_REPORTS_NOTE,
 			"open": account.open_safety, "visible_if": state.call(["ready"])},
-		{"id": "create_identity", "online": true, "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CREATE_IDENTITY, "run": account.create_identity, "visible_if": state.call(["missing"])},
+		# No new friend code is offered while this account's own waits to come back (the Play Games / Game Center row above).
+		{"id": "create_identity", "online": true, "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CREATE_IDENTITY, "run": account.create_identity, "visible_if": func() -> bool: return account.panel_state() == "missing" and not games.offer_waiting()},
 		{"id": "unread_note", "category": ACCOUNT, "kind": INFO, "label": "", "visible_if": state.call(["unread"]),
 			"note": func() -> String: return PlayerCopy.MAIN_3E50EF2B7ECB if account.recovery_start_allowed() else PlayerCopy.UNREAD_CHECK_AGAIN},
 		{"id": "check_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CHECK_IDENTITY, "run": account.retry_saved_identity, "visible_if": state.call(["unread"])},

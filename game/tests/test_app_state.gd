@@ -335,6 +335,8 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app.api.player_id = TEST_SAVED_PLAYER
 	app.api.device_token = TEST_DEVICE_TOKEN
 	app.store_flow.store_owner = TEST_SAVED_PLAYER
+	# The recovery above marked its purchases to be read again; this part starts with none waiting.
+	app.saves.update_values({}, [app.store_flow.RESTORE_SYNC_KEY])
 	var saved: Dictionary = app.saves.data.duplicate(true)
 	app.journey_flow.show_journey()
 	# The chooser card names the chapter once and its play button opens it solo;

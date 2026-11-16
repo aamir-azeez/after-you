@@ -40,7 +40,7 @@ class BackupRulesTest {
         val fixed = Regex("const FIXED := \\[([^\\]]*)\\]").find(source)!!.groupValues[1]
             .split(',').map { it.trim().trim('"') }.filter { it.isNotEmpty() }
         assertTrue(fixed.contains("journey.json"))
-        val sent = fixed + listOf("history", "shared-replays", "turn-of-the-tide-journey-v2.json", "a.attempt-0a.json", "x-hard-runs.json")
+        val sent = fixed + listOf("history", "duel_runs", "shared-replays", "turn-of-the-tide-journey-v2.json", "a.attempt-0a.json", "x-hard-runs.json")
         val excludedFiles = excludes(parse(legacy)).filter { it.startsWith("file:") }.map { it.removePrefix("file:") }
         assertFalse(excludedFiles.contains("."))
         for (path in sent) for (excluded in excludedFiles) {

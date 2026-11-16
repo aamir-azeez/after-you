@@ -68,12 +68,12 @@ damaged_save 1
 deleted_identity_caches 1
 deleted_identity_photo_cleanup 2
 deleted_identity_stores 3
-dev_ghosts 2
 display_name_prompt 2
 display_names 3
 dressing_lint 1
 dressing_mixes 1
 duel_energy 3
+duel_give_up 2
 duel_looks 1
 duel_page_layout 3
 duel_play_order 3
@@ -149,6 +149,7 @@ house 1
 house_world 3
 hub_exits 3
 hud_efficiency 2
+identity_restore_first 1
 inset_button 3
 intro_comfort 2
 invite_links 1
@@ -251,6 +252,7 @@ plant_animation 1
 platform_boards 3
 platform_games_bundle 2
 platform_games_cloud 2
+platform_games_replays 1
 platform_games_service 2
 platform_name_choice 3
 player_copy 3

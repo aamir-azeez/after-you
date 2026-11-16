@@ -627,6 +627,6 @@ func _other_chapters() -> void:
 		else:
 			var level := Registry.definition(key)
 			world.load_level(level)
-			if world.has_method("show_stage"): world.show_stage(level.stages[0])
+			world.show_stage(level.stages[0])
 		_check(world.find_children("WaterLocks", "", true, false).is_empty() and world.find_children("WaterLockStone", "", true, false).is_empty(), "No locks in a chapter without water levels: " + key)
 		world.free()

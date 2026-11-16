@@ -4,6 +4,7 @@ import { json } from "./http";
 import { GAME_CENTER_WINDOW_MS, gameCenterNonceSource, playGamesConfig, verifyGameCenter, verifyPlayGames, type Verified } from "./platform-verify";
 import { PLATFORM_LINKS_OBJECT, type PlatformProvider } from "./platform-links";
 import { limitPlatformLink, limitPlatformRestore } from "./limits";
+import { PLATFORM_HEADER, platformRuleCapability } from "./platform-gate";
 
 /**
  * Platform games accounts (Play Games, Game Center) as a way back to an existing friend identity.
@@ -19,7 +20,7 @@ import { limitPlatformLink, limitPlatformRestore } from "./limits";
  * auth, 401 for restore). A flag that is on without its config answers 503 platform_unavailable.
  * GET /v2/capabilities names a provider only to a client that sends X-AfterYou-Platform-Games: 1.
  */
-export const PLATFORM_HEADER = "X-AfterYou-Platform-Games";
+export { PLATFORM_HEADER };
 export const LINK_PATH = "/v1/platform/link", UNLINK_PATH = "/v1/platform/unlink", RESTORE_PATH = "/v1/platform/restore";
 const MAX_BODY = 8192;
 
@@ -28,10 +29,14 @@ export function providerEnabled(provider: PlatformProvider, env: ServerVars): bo
 }
 export function anyProviderEnabled(env: ServerVars): boolean { return flags.playGames(env) || flags.gameCenter(env); }
 
-/** Capability fields: empty unless a provider is on (and configured) and the client asked. */
-export function platformCapability(request: Request, env: ServerVars): Record<string, number | string> {
+/**
+ * Capability fields: empty unless a provider is on (and configured) and the client asked. While REQUIRE_PLATFORM is
+ * on for this app, also that rule, whether this player's link counts for it (`linked`, from auth()'s identity read) and
+ * whether this player is exempt (platform-gate.ts).
+ */
+export function platformCapability(request: Request, env: ServerVars, playerId = "", linked = false): Record<string, number | string | boolean> {
   if (request.headers.get(PLATFORM_HEADER) !== "1") return {};
-  const out: Record<string, number | string> = {};
+  const out: Record<string, number | string | boolean> = anyProviderEnabled(env) && playerId !== "" ? platformRuleCapability(request, env, playerId, linked) : {};
   const play = flags.playGames(env) ? playGamesConfig(env) : null;
   // The web client id is public: the phone needs it to ask Google for a server auth code.
   if (play) { out.play_games_version = 1; out.play_games_web_client_id = play.clientId; }
@@ -79,7 +84,10 @@ export async function routePlatform(request: Request, path: string, playerId: st
     exactKeys(input, ["schema_version", "provider"]);
     if (input.schema_version !== 1) throw new ApiError(400, "invalid_platform_request");
     const kind = provider(input.provider, env);
-    return json({ schema_version: 1, provider: kind, unlinked: await links.unlink(kind, playerId) });
+    const unlinked = await links.unlink(kind, playerId);
+    // The player keeps the REQUIRE_PLATFORM mark only while another provider's account still opens it.
+    if (unlinked && !(await links.linkedAny(playerId))) await env.PLAYERS.getByName(playerId).notePlatformLink(false);
+    return json({ schema_version: 1, provider: kind, unlinked });
   }
   exactKeys(input, ["schema_version", "provider", "credential", "replace", "recovery_code"]);
   if (input.schema_version !== 1 || (input.replace !== undefined && typeof input.replace !== "boolean")) throw new ApiError(400, "invalid_platform_request");
@@ -92,6 +100,12 @@ export async function routePlatform(request: Request, path: string, playerId: st
   const proof = await prove(kind, input.credential, env);
   const answer = await links.link(kind, proof.externalHash, playerId, input.replace === true, proof.nonce, proof.nonceExpiresAt);
   if (answer.status === "replayed") throw new ApiError(401, "platform_credential_invalid");
+  if (answer.status === "linked") {
+    // The REQUIRE_PLATFORM mark (platform-gate.ts): written here, at link time, never read per request elsewhere.
+    // A link already held marks a player linked before the mark existed.
+    await env.PLAYERS.getByName(playerId).notePlatformLink(true);
+    if (answer.previous !== undefined && answer.previous !== playerId && !(await links.linkedAny(answer.previous))) await env.PLAYERS.getByName(answer.previous).notePlatformLink(false);
+  }
   return json({ schema_version: 1, provider: kind, status: answer.status, changed: answer.changed });
 }
 

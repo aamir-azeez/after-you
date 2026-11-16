@@ -17,7 +17,7 @@ extends Node
 ## each refusal for energy is answered there before the usual line.
 ##
 ## Offline (presentation/offline_hold.gd): Start a duel, Accept, Send challenge and
-## every Race grey on their pages, and each party move, answer, start and leave is
+## every Race grey on their pages, and each party move, answer, start and give up is
 ## refused here before anything is sent, with the reason in the app's pop-up.
 ##
 ## Every duel entry hides while the server says duels are off
@@ -116,6 +116,8 @@ var _paced_lobby: Dictionary = {}
 var _paced_ms := RefreshClock.DUELS_LOBBY_INTERVAL_MS
 ## True while the other pair's run is fetched for one tap.
 var _their_loading := false
+## A Give up or Keep playing out: the next waits for its answer.
+var _giving_up := false
 ## The idempotency key of each challenge or ghost race sent with no answer yet,
 ## by what it asked for. A tap again sends the same key, so after a reply lost
 ## on the way the server answers the duel the first tap made, never a second one.
@@ -385,11 +387,10 @@ func _open_chapters() -> Array:
 		result.append(key)
 	return result
 
-## `kind`: what was asked, "friend" (a challenge or an accept) or "ghost" (a race), for the limit line.
-func _toast_failure(answer: Dictionary, kind: String = "friend") -> void:
+func _toast_failure(answer: Dictionary) -> void:
 	var code := str(answer.get("code", ""))
 	if code == "duel_limit_reached":
-		host._toast((PlayerCopy.DUELS_RACE_LIMIT if kind == "ghost" else PlayerCopy.DUELS_LIMIT) % client().limit(kind))
+		host._toast(PlayerCopy.DUELS_LIMIT % client().limit())
 		return
 	host._toast(PlayerCopy.DUELS_FRIEND_NO_PARTNER if code == "opponent_party_required" else PlayerCopy.DUELS_NO_PARTY if code == "party_required" else PlayerCopy.DUELS_ACTION_FAILED)
 
@@ -516,7 +517,7 @@ func _open_picker(page: CanvasLayer, chapter: String, opener: Control) -> void:
 	picker.race_requested.connect(_picker_race.bind(page, chapter, picker))
 	# Every row would grey from a lobby read that may be old, and a greyed row
 	# can't be tapped for the server to say otherwise: read the lobby once first.
-	if client().ghost_races_full():
+	if client().at_limit():
 		var answer: Dictionary = await client().lobby()
 		if is_open() and answer.get("ok", false) and screen is DuelsScreen: screen.show_lobby(answer.lobby)
 	await _fill_picker(page, picker, chapter, false)
@@ -528,7 +529,7 @@ func _picker_race(source: String, entry_id: Variant, control: Control, page: Can
 		if is_instance_valid(picker): await _race(page, chapter, source, entry_id, picker, control))
 
 ## Reads the chapter's board (`fresh`: past the phone's minute) and redraws the
-## picker; `full`: the server just said the pair has its limit of races going.
+## picker; `full`: the server just said the pair has its limit of duels going.
 func _fill_picker(page: CanvasLayer, picker: Variant, chapter: String, fresh: bool, full: bool = false) -> void:
 	var board := Runs.board_key(chapter)
 	var boards: RefCounted = LeaderboardClient.shared(host.api, str(host.api.player_id))
@@ -538,7 +539,7 @@ func _fill_picker(page: CanvasLayer, picker: Variant, chapter: String, fresh: bo
 		picker.show_failed()
 		return
 	var shown := Rows.shown(boards, str(host.api.player_id), board, answer.view)
-	picker.show_board(shown.rows, shown.mine_by_id, full or client().ghost_races_full(), client().limit("ghost"), page.developer_ticks(chapter))
+	picker.show_board(shown.rows, shown.mine_by_id, full or client().at_limit(), client().limit(), page.developer_ticks(chapter))
 
 ## The partner's name at the start of a line (duel energy's "Maya is waiting for energy"), or "" with no pair.
 func _partner_label() -> String:
@@ -566,7 +567,7 @@ func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant
 			host._toast(PlayerCopy.RACE_PICK_LEFT)
 			_fill_picker(page, picker, chapter, true)
 			return
-		_toast_failure(answer, "ghost")
+		_toast_failure(answer)
 		if on_picker and code == "duel_limit_reached": _fill_picker(page, picker, chapter, false, true)
 		return
 	page.close()
@@ -613,20 +614,8 @@ func _open_duel(view: Dictionary) -> void:
 	page.view = view
 	page.play_requested.connect(func(next: Dictionary, control: Control) -> void: _play(next))
 	page.stranger_requested.connect(func(next: Dictionary, index: int, slot: int) -> void: public().stranger(page, next, index, slot))
-	page.leave_requested.connect(func(next: Dictionary) -> void:
-		if _offline(): return
-		var answer: Dictionary = await client().act(next.board, next.duel_id, "leave")
-		if not answer.get("ok", false):
-			_toast_failure(answer)
-			return
-		# The lobby under the page shows the duel as left too (services/duels_client.gd keeps the answer).
-		if is_open(): screen.show_lobby(client().last_lobby())
-		# A public seat given back before its room was entered: this player is out of the duel.
-		if answer.get("left", false) and (answer.duel as Dictionary).is_empty():
-			if is_instance_valid(page): page.close()
-			_refresh()
-			return
-		_show_duel(page, answer.duel))
+	page.give_up_requested.connect(func(next: Dictionary, answering: int) -> void: _give_up(page, next, answering, true))
+	page.keep_playing_requested.connect(func(next: Dictionary, answering: int) -> void: _give_up(page, next, answering, false))
 	screen.open_overlay(page)
 	# A public duel's page shows the duel extra held so far: its first timed read goes at once and brings it.
 	if view.has("public"):
@@ -639,6 +628,37 @@ func _open_duel(view: Dictionary) -> void:
 		var synced: Dictionary = await client().act(view.board, view.duel_id, "sync")
 		if synced.get("ok", false): _show_duel(page, synced.duel)
 
+## Give up (`giving`) or Keep playing on the open duel's page (backend duels/model.ts giveUp), one at a
+## time. The answer shows at once: the page redraws (your ask, or it taken back), a duel the agree
+## ended swaps in its result, and a public spot given back closes the page. At the cap the page greys
+## Give up (the client keeps the cap the refusal carries); an ask taken back meanwhile says so.
+func _give_up(page: CanvasLayer, view: Dictionary, answering: int, giving: bool) -> void:
+	if _offline() or _giving_up: return
+	_giving_up = true
+	var answer: Dictionary
+	if giving: answer = await client().give_up(view.board, view.duel_id, answering)
+	else: answer = await client().keep_playing(view.board, view.duel_id, answering)
+	_giving_up = false
+	if not is_open(): return
+	# The lobby under the page shows the duel as it is now too (services/duels_client.gd keeps the answer).
+	screen.show_lobby(client().last_lobby())
+	if not answer.get("ok", false):
+		var code := str(answer.get("code", ""))
+		if code == "give_up_capped":
+			if is_instance_valid(page) and page.alive(): page.show_duel(_latest(view))
+			return
+		if code == "give_up_taken_back": host._toast(PlayerCopy.GIVE_UP_TAKEN_BACK)
+		else: _toast_failure(answer)
+		var fresh: Dictionary = await client().duel(view.board, view.duel_id)
+		if fresh.get("ok", false): _show_duel(page, fresh.duel)
+		return
+	# A public seat given back before its room was entered: this player is out of the duel.
+	if answer.get("left", false) and (answer.duel as Dictionary).is_empty():
+		if is_instance_valid(page): page.close()
+		_refresh()
+		return
+	_show_duel(page, answer.duel)
+
 ## One timed read of the open duel; a result swaps in the result page.
 func _read_duel(page: CanvasLayer, ticket: Dictionary) -> void:
 	var answer: Dictionary = await client().duel(page.view.board, page.view.duel_id)
@@ -648,9 +668,9 @@ func _read_duel(page: CanvasLayer, ticket: Dictionary) -> void:
 	if answer.get("ok", false): _show_duel(page, answer.duel)
 
 ## A newer copy of the open duel, from a read or this player's own action
-## (Leave shows at once): a running duel redraws its page, an ended one swaps in
+## (Give up shows at once): a running duel redraws its page, an ended one swaps in
 ## the result page. A copy older than the page's, such as a read that went out
-## before Leave, changes nothing.
+## before Give up, changes nothing.
 func _show_duel(page: CanvasLayer, duel: Dictionary) -> void:
 	if not is_instance_valid(page) or not page.alive() or int(duel.updated_ms) < int(page.view.get("updated_ms", 0)): return
 	# A public duel whose open seat beside you just filled says so, once, quietly.

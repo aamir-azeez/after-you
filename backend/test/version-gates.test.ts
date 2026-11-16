@@ -77,7 +77,7 @@ describe("the gate rule", () => {
   });
   it("parses one version per gated part, closes a malformed gate, and refuses keys it cannot gate", () => {
     const parse = (value: unknown, features: string[] = []) => parseConfig(JSON.stringify({ features, feature_min_version: value }), FLAG_NAMES);
-    const good = parse({ FRUITS: "0.8.1", ENERGY: "0.8.1", FACE_SINGLES: "0.8.1", cosmetics_released: "0.8.1" });
+    const good = parse({ FRUITS: "0.8.1", ENERGY: "0.8.1", FACE_SINGLES: "0.8.1", REQUIRE_PLATFORM: "0.8.1", cosmetics_released: "0.8.1" });
     expect([good.problems, good.unknown]).toEqual([[], []]);
     expect([...good.config.feature_min_version.keys()]).toEqual([...GATED_KEYS]);
     const bad = parse({ FRUITS: "soon" });
@@ -91,7 +91,8 @@ describe("the gate rule", () => {
   });
 
   it("opens a part to apps at the version or newer and to the server's own bookkeeping, and to nothing when malformed", () => {
-    const vars = withConfig(GATED);
+    // Every gated part at once, REQUIRE_PLATFORM too (the other cases here leave it off: platform-gate.test.ts covers it).
+    const vars = withConfig({ ...GATED, feature_min_version: { ...GATED.feature_min_version, REQUIRE_PLATFORM: "0.8.1" } });
     const reaches: [Reach, boolean][] = [[null, false], [version("0.7.9"), false], [version("0.8.0"), false], [version("0.8.1-rc.1"), false],
       [version("0.8.1"), true], [version("0.8.2"), true], [version("1.0.0"), true], [LEDGER, true]];
     for (const [reach, on] of reaches) for (const key of GATED_KEYS) expect(gatedOn(vars, key, reach), `${key} ${JSON.stringify(reach)}`).toBe(on);

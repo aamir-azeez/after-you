@@ -117,7 +117,7 @@ async function reauthorize(request: Request, playerId: string, env: Env, fullJou
  * and `look` the look the caller wears while looks are on (pollen/looks-routes.ts). `facePacks` is the reaction
  * packs the caller owns, on a turn from a phone that sends pack faces (face-packs.ts); a turn's pack face needs its pack.
  */
-export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember, look?: Look, facePacks?: string[]): Promise<Response> {
+export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember, look?: Look, facePacks?: string[], platformLinked = false): Promise<Response> {
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: true, recording_version: 2, simulation_version: 2,
@@ -144,7 +144,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(facePacksWanted(request) ? { face_packs_version: servedFaceVersion(request, env) } : {}),
     ...(hardWanted(request) ? { hard_mode_version: 1 } : {}),
     ...liveCapability(request, env),
-    ...platformCapability(request, env),
+    ...platformCapability(request, env, playerId, platformLinked),
     ...displayNamesCapability(request, env),
     ...pollenCapability(request, env),
     ...storeCapability(request, env),

@@ -4,7 +4,7 @@ import type { CheckpointV2 } from "../v2/protocol";
 import type { ReplayWork } from "../leaderboards/board";
 import { REVIEW_REASONS } from "../leaderboards/rules";
 import type { ChapterKey } from "../v2/chapter-types";
-import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, milestone, newsRecipients, progress, settle, sideOf, verdict, waiveChecks, type Duel, type Milestone, type ProgressNote, type SideRoom } from "./model";
+import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, giveUp, isFinal, keepPlaying, leave, milestone, newsRecipients, progress, settle, sideOf, verdict, waiveChecks, type Duel, type Milestone, type ProgressNote, type SideRoom } from "./model";
 import type { DuelNews } from "./news";
 import { MAX_BOARD_DUELS, MAX_BOARD_PUBLIC, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, MAX_SETTLED_ON_FULL, STALL_MS } from "./rules";
 import { claimSeats, enterSeat, hide, listed, listingOf, relabel, type Listing, type PublicClaim } from "./public";
@@ -20,7 +20,7 @@ import { dropReceipt, keepReceipt, type PayoutShown } from "./payout-receipt";
  * - duels: one row per duel (model.ts), the newest MAX_BOARD_DUELS kept;
  *   settled ones go first past it.
  * - duel_proofs: a finished run's final checkpoint (a friend run, or a ghost
- *   race run faster than the developers' ghost) in the shared blob format
+ *   race run faster than Our run) in the shared blob format
  *   (blob-codec.ts: deflate, its canonical length and SHA-256), while the
  *   replay job has not judged it (at most MAX_DUEL_PROOFS). Only while duel
  *   run checks are on (`checks`, DUEL_RUN_CHECKS): off, nothing is encoded or
@@ -68,6 +68,9 @@ export type DuelAction =
   | { kind: "accept"; player: string; intact: boolean }
   | { kind: "decline"; player: string }
   | { kind: "leave"; player: string; blocked?: boolean }
+  /** Give up (model.ts giveUp): ask, or agree with the ask `answering` names. Keep playing takes the named ask back. */
+  | { kind: "give_up"; player: string; answering: number | null }
+  | { kind: "keep_playing"; player: string; answering: number }
   | { kind: "claim"; player: string; room_id: string; invite_code: string; room_absent: boolean }
   /** Public duels: take a spot from the list (public.ts claimSeats). */
   | { kind: "join"; player: string; claim: PublicClaim }
@@ -167,6 +170,8 @@ export class DuelStore {
       if (action.kind === "accept") answer = accept(duel, action.player, now, action.intact);
       else if (action.kind === "decline") answer = decline(duel, action.player, now);
       else if (action.kind === "leave") answer = leave(duel, action.player, now, action.blocked === true);
+      else if (action.kind === "give_up") answer = giveUp(duel, action.player, now, action.answering);
+      else if (action.kind === "keep_playing") answer = keepPlaying(duel, action.player, now, action.answering);
       else if (action.kind === "join") { settle(duel, now); answer = claimSeats(duel, action.claim, now); }
       else if (action.kind === "enter") { settle(duel, now); answer = enterSeat(duel, action.side, action.player, now); }
       else {

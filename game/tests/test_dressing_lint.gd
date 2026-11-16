@@ -199,7 +199,7 @@ func _check_coplanar_worlds() -> void:
 		var reported: Dictionary = {}
 		for stage_id: String in _stage_ids(key):
 			if key == LIGHTHOUSE: world.load_level(LightCatalog.definition(stage_id))
-			elif world.has_method("show_stage"):
+			else:
 				for stage: Dictionary in Registry.definition(key).stages:
 					if stage.id == stage_id: world.show_stage(stage)
 			var gap := min_gap(world)

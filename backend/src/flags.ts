@@ -64,13 +64,15 @@ export const FLAG_VARS = Object.freeze({
   energy: "ENERGY",
   /** Face cosmetics (pollen/reaction-loadout.ts, v2/face-packs.ts): single reaction faces, resting faces and the reaction slots shown and sold, the loadout on the wardrobe read and equip, and face_packs_version 2 for phones that ask. Needs POLLEN_WARDROBE. Off, nothing face is written or shown and every reply is as before. Gated, older apps get the replies of off. */
   faceSingles: "FACE_SINGLES",
+  /** Online writes need a platform account (platform-gate.ts): a write from a player with no Play Games or Game Center link answers 403 platform_required, and phones that ask learn it from the platform capability. Needs PLAY_GAMES_ENABLED and GAME_CENTER_ENABLED, or players on the other phone can never link. Gated: read only through gatedOn, for the first app that shows the sign-in ask; requests that name no app stay ungated until the gate moves to `features`. */
+  requirePlatform: "REQUIRE_PLATFORM",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
   /** Leaderboard posts need platform accounts (leaderboards/platform-rule.ts): a finished together run enters its board only when both players have a Play Games or Game Center link, and phones learn it from the leaderboards capability. Needs LEADERBOARDS. Keep it off while Game Center is off, or iPhone pairs can never post. */
   leaderboardRequirePlatform: "LEADERBOARD_REQUIRE_PLATFORM",
   /** Duels (duels/): parties, friend challenges, ghost races, the duel premium and win bonus, and their capability. Needs LEADERBOARDS: duels live in the boards. */
   duels: "DUELS",
-  /** Duel run checks (duels/model.ts awaitsCheck): friend duel runs, and ghost race runs faster than the developers' ghost, wait for the board's replay check before the duel is decided. Off (the owner's choice, 2026-11-02), every duel is decided as its runs finish and a run still waiting counts as passed. Needs DUELS. */
+  /** Duel run checks (duels/model.ts awaitsCheck): friend duel runs, and ghost race runs faster than Our run, wait for the board's replay check before the duel is decided. Off (the owner's choice, 2026-11-02), every duel is decided as its runs finish and a run still waiting counts as passed. Needs DUELS. */
   duelRunChecks: "DUEL_RUN_CHECKS",
   /** Chapter times on Google Play Games and Game Center leaderboards (phone side, game/services/platform_games/platform_boards.gd): the platform capability says so with platform_boards_version, and phones post and show the platform boards. Needs LEADERBOARDS and PLAY_GAMES_ENABLED or GAME_CENTER_ENABLED. No server work beside the capability field. */
   platformBoards: "PLATFORM_BOARDS",

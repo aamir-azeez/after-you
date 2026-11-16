@@ -196,6 +196,8 @@ func _test_stop_keeps_device_identity(app: Node, api: Node, storage: StatefulSec
 	await _restart(app,api,storage,{"player_identity":own})
 	_check(app.identity_read_state==Main.IdentityReadState.LOADED and api.player_id=="own-player","The device has its own identity")
 	api.responses=[MISMATCH]
+	# The player kept this phone's recovery details first (test_identity_restore_first covers that step).
+	app.account_flow._kept_player="own-player"
 	await app.account_flow.recover_identity(LOST_PLAYER,LOST_CODE)
 	_check(_find_button(app.overlay,PlayerCopy.RECOVERY_DISCARD)!=null,"A code used by a different request can be stopped too")
 	app.account_flow.confirm_discard_recovery()

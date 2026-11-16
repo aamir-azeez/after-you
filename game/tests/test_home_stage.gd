@@ -8,6 +8,10 @@ const Storage = preload("res://services/local_save.gd")
 const Spirit = preload("res://presentation/spirit_visual.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
+const RunReactions = preload("res://presentation/run_reactions.gd")
+const RunReactionPlayer = preload("res://presentation/run_reaction_player.gd")
+const Track = preload("res://services/run_reaction_track.gd")
+const EndReactions = preload("res://presentation/end_reactions.gd")
 
 ## Stands in for the Wardrobe in the real app: on, and where it was opened from.
 class WardrobeStub extends "res://presentation/wardrobe_flow.gd":
@@ -47,6 +51,8 @@ func _run() -> void:
 	await _test_tall_screen()
 	Stage._retained_view.clear()
 	await _test_own_look()
+	Stage._retained_view.clear()
+	await _test_rapid_reactions()
 	print("AFTER YOU HOME STAGE: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -948,6 +954,65 @@ func _test_tall_screen() -> void:
 ## wardrobe's first read, at once when the look changes (a pending look put
 ## on offline too), only in items the server offers, and Home shown again
 ## keeps the items it already wore. A level built after Home wears nothing.
+## Rapid taps on Home's React pill go through the chapters' reaction player and
+## pill rules: the same taps on a turn's pill, wired as the chapter screen wires
+## it, give the same track and the same pill on every frame.
+func _test_rapid_reactions() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280,720)
+	root.add_child(viewport)
+	var world := World.new()
+	viewport.add_child(world)
+	world.set_process(false)
+	world.load_level(HomeLayout.LEVEL.duplicate(true))
+	var ui := Control.new()
+	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	viewport.add_child(ui)
+	var stage := Stage.new()
+	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stage.configure(world,func() -> bool: return true)
+	ui.add_child(stage)
+	stage.set_process(false)
+	await process_frame
+	await process_frame
+	_check(stage._is_active(), "Home is active for its reactions")
+	var home: Control = stage._react
+	var turn := RunReactionPlayer.new()
+	turn.begin("p0")
+	var pill := RunReactions.new()
+	ui.add_child(pill)
+	var tick := [0]
+	pill.reacted.connect(func(face: String) -> void:
+		if turn.react(tick[0], face): turn.show_pill(pill, tick[0]))
+	var same := true
+	var refused_in_cooldown := true
+	for frame in range(1300):
+		stage._process(0.05)
+		tick[0] = stage._react_tick()
+		turn.show_pill(pill, tick[0])
+		# Five taps in one frame on each pill, every fourth frame, and the faces card.
+		if frame % 4 == 0:
+			for tap in range(5):
+				home.quick.pressed.emit()
+				pill.quick.pressed.emit()
+			home.toggle_faces()
+			pill.toggle_faces()
+			refused_in_cooldown = refused_in_cooldown and (home.can_send() or not home.faces_open())
+			home.close_faces()
+			pill.close_faces()
+		same = same and stage._reactions.live.track() == turn.live.track() and home.disabled == pill.disabled and home.modulate.a == pill.modulate.a
+	var track: Array = stage._reactions.live.track()
+	var spaced := true
+	for index in range(1, track.size()): spaced = spaced and int(track[index].tick) - int(track[index-1].tick) >= Track.COOLDOWN_TICKS
+	_check(same, "Rapid taps on Home make the same track and pill as the same taps in a turn")
+	_check(track.size() == Track.MAX_PER_TURN and spaced, "Home keeps a turn's cooldown between faces and its cap: %s" % [track])
+	# No frame ran in the loop, so every bubble shown is still there: one per face kept, none for a refused tap.
+	var bubbles := stage.get_children().filter(func(node: Node) -> bool: return node is EndReactions.Bubble)
+	_check(bubbles.size() == track.size(), "Each face Home keeps shows one bubble over its pip, and refused taps show none: %d" % bubbles.size())
+	_check(refused_in_cooldown and home.disabled and home.modulate.a < 1.0, "Home's faces card stays shut while the cooldown runs, and the pill rests once the cap is reached")
+	viewport.free()
+	await process_frame
+
 func _test_own_look() -> void:
 	var server := "https://home-look.example.test"
 	var me := "dddddddddddddddddddddd"

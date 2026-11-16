@@ -91,7 +91,7 @@ export function compareVersions(a: Version, b: Version): number {
  * every reader asks per request, and the cosmetics release list. One version for every channel: a build carries the same
  * code on each. A gate is the only switch of its part: listing a gated flag in `features` too is a problem, and the gate wins.
  */
-export const GATED_KEYS = Object.freeze(["FRUITS", "ENERGY", "FACE_SINGLES", "cosmetics_released"] as const);
+export const GATED_KEYS = Object.freeze(["FRUITS", "ENERGY", "FACE_SINGLES", "REQUIRE_PLATFORM", "cosmetics_released"] as const);
 export type GatedKey = typeof GATED_KEYS[number];
 
 export type FriendAliases = { readonly byAlias: ReadonlyMap<string, string>; readonly byId: ReadonlyMap<string, string> };

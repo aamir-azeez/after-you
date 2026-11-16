@@ -168,6 +168,16 @@ func note_full_journey_bought() -> void:
 	_bought[PollenWallet.scope_key(context.server, context.owner)] = {"left": BOUGHT_TRIES, "at": 0}
 	flush()
 
+## A friend code came back to this phone and its store purchases were read again: the wallet is
+## read (saying "bought" when Full Journey came with it), then one bundle claim pays any Pollen or
+## Fruit pack the store moved to it (services/bundle_claims.gd claim_once; the wallet read first
+## says whether packs sell to this player).
+func after_restore(full_journey: bool) -> void:
+	if full_journey: note_full_journey_bought()
+	else: flush()
+	if _sending: await settled
+	if bundle_claims != null: await bundle_claims.claim_once()
+
 func _bought_waiting(context: Dictionary) -> bool:
 	if grant == null or not grant.enabled(context.server, context.owner): return false
 	var waiting: Variant = _bought.get(PollenWallet.scope_key(context.server, context.owner))

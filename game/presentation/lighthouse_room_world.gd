@@ -4,6 +4,8 @@ extends "res://presentation/lighthouse_world.gd"
 ## Lighthouse world draws whichever native stage is shown. Room checkpoints
 ## already carry the native level id, stage index and mechanisms, so remembered
 ## mechanisms come from the verified checkpoint exactly as in the solo screen.
+## Each stage's barriers, ownership marks and pair tags come from its plan
+## (core/lighthouse/layout.gd), as every chapter's do (island_world).
 
 ## The six-stage chapter this world was given, kept for show_stage lookups.
 var chapter_level: Dictionary = {}
@@ -30,7 +32,9 @@ func show_stage(stage: Dictionary) -> void:
 	_as_built_stage = ""
 	var native: Variant = stage.get("native")
 	if not native is Dictionary: return
+	_clear_stage_marks()
 	await super.load_level(native)
+	_build_stage_marks(LevelLayout.for_key(_fold_key(), str(stage.get("id", "")), chapter_level))
 	_as_built_stage = str(stage.get("id", ""))
 	_as_built_state = 0
 	_history_shown = 0
@@ -56,6 +60,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		if not immediate or (_as_built_state != 0 and shown != _as_built_state): _as_built_stage = ""
 		else: _as_built_state = shown
 	super.present(state, immediate)
+	if state.has("players"): _present_stage_marks(state)
 
 func _fold_key() -> String:
 	return "sleeping-lighthouse@2"

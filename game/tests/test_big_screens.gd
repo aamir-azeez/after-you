@@ -171,8 +171,8 @@ func _check_page(app: Node, page: Control, safe: Rect2, name: String) -> void:
 ## A running or decided duel as the server sends it.
 static func _duel(status: String, result: Variant = null) -> Dictionary:
 	return {"schema_version": 1, "duel_id": "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0", "kind": "friend", "board": DUEL_BOARD, "status": status, "steps": 12,
-		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "result": result, "eligible": true, "sides": [
-			{"members": [DUEL_ME, "AAAAAAAAAAAAAAAAAAAAAA"], "you": true, "steps": 12, "ticks": 3240, "turn": 0, "finished": status == "decided", "left": false, "check": "passed" if status == "decided" else "none", "room_id": "RRRRRRRRRRRRRRRRRRRRRR", "invite_code": "abcdefabcdefabcdefab", "hosting": true},
+		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "result": result, "eligible": true, "ends_in_ms": null if status == "decided" else 29 * 86_400_000, "sides": [
+			{"members": [DUEL_ME, "AAAAAAAAAAAAAAAAAAAAAA"], "you": true, "steps": 12, "ticks": 3240, "turn": 0, "finished": status == "decided", "left": false, "check": "passed" if status == "decided" else "none", "room_id": "RRRRRRRRRRRRRRRRRRRRRR", "invite_code": "abcdefabcdefabcdefab", "hosting": true}.merged({} if status == "decided" else {"give_up": {"mode": "ask", "asked": null, "asked_at": null}}),
 			{"members": ["FFFFFFFFFFFFFFFFFFFFFF", null], "you": false, "steps": 12 if status == "decided" else 2, "ticks": 2760, "turn": 1, "finished": status == "decided", "left": false, "check": "passed" if status == "decided" else "none"}]}
 
 ## The duel pages: the lobby, then a duel, Race a recorded run and a result over it.
@@ -186,8 +186,15 @@ func _check_duel_pages(safe: Rect2, name: String) -> void:
 	lobby.show_lobby(DuelsClient.valid_lobby({"schema_version": 1, "party": {"partner": "AAAAAAAAAAAAAAAAAAAAAA", "intact": true, "invites_in": [], "invite_out": null},
 		"duels": [_duel("running"), _duel("decided", {"outcome": "won", "reason": "faster", "margin_ticks": 30, "decided_ms": 9}).merged({"duel_id": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"}, true)]}))
 	await _settle()
-	_check(lobby.find_child("DuelsTiles", true, false).get_child_count() == 2, "%s: the duel lobby shows its duels" % name)
+	# Going holds the running duel, Finished the result (the Your duels tabs): each tab drawn whole on this screen.
+	_check(lobby.find_child("DuelsTiles", true, false).get_child_count() == 1, "%s: the duel lobby shows its duels" % name)
 	_check_duel_page(lobby, safe, name)
+	lobby.show_tab("finished")
+	await _settle()
+	_check(lobby.find_child("DuelsTiles", true, false).get_child_count() == 1, "%s: the Finished tab shows its result" % name)
+	_check_duel_page(lobby, safe, name + ", Finished")
+	lobby.show_tab("going")
+	await _settle()
 	var duel := DuelPage.new()
 	duel.me = DUEL_ME
 	duel.name_of = name_of

@@ -9,7 +9,6 @@ import type { FinishProof } from "./store";
 import type { EncodedProof } from "../leaderboards/proofs";
 import type { CheckpointV2 } from "../v2/protocol";
 import { runProgress } from "./ticks";
-import { developerGhost } from "./developer-ghosts";
 import type { PairLooks } from "../leaderboards/run-looks";
 
 /** Duels run while DUELS and LEADERBOARDS are both on: duels live in the boards, which also run their replay check while DUEL_RUN_CHECKS is on. */
@@ -35,12 +34,10 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink, looks?: Pai
   const note: ProgressNote = { room_id: room.room_id, revision: room.revision, steps: progress.steps, ticks: progress.ticks, splits: progress.splits,
     turn: complete ? null : nextPlayer(room, link), complete, at_ms: at, entry_id: complete ? await entryId(room.room_id, room.branch) : null,
     ...(looks ? { looks: memberLooks(room, looks) } : {}) };
-  // A finish that may wait for the check brings its checkpoint: every friend run, and a ghost race run faster than the
-  // developers' ghost. The board decides (model.ts awaitsCheck, which reads DUEL_RUN_CHECKS in the board's own CONFIG),
-  // and with checks off it neither encodes nor keeps it; this only spares the rest the payload.
-  // The shipped run's time stays right while the owner's run is Our run: that run only ever replaces a slower one.
-  const checked = link.kind === "friend" || progress.ticks < (developerGhost(link.board) ?? 0);
-  const proof = complete && checked ? { ...(encode ? { proof: await encode(room.checkpoint) } : { checkpoint: room.checkpoint }), simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
+  // A finish that may wait for the check brings its checkpoint: every friend run, and a ghost race run faster than Our
+  // run, whose time only the race knows, so every finished run brings it. The board decides (model.ts awaitsCheck, which
+  // reads DUEL_RUN_CHECKS in the board's own CONFIG), and with checks off it neither encodes nor keeps it.
+  const proof = complete ? { ...(encode ? { proof: await encode(room.checkpoint) } : { checkpoint: room.checkpoint }), simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
   return { note, ...(proof ? { proof } : {}) };
 }
 

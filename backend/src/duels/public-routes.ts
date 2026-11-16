@@ -15,16 +15,16 @@ import { creatable } from "../v2/chapters";
 import { termsCovered, termsVersion } from "../public-policy";
 import { SAFETY_REPORT_REASONS, ownBlocks, type SafetyReport } from "../safety";
 import { DUEL_REQUEST_PREFIX, requestFriend } from "../friends-routes";
-import { isFinal, isOpen, knownKey, viewFor, type Duel } from "./model";
+import { isFinal, knownKey, viewFor, type Duel } from "./model";
 import { lastingAnswer, type ShownHeld } from "./payout-receipt";
 import { heldState, holder, listingOf, newPublicDuel, publicKnown, seatOf, seated, type JoinAs } from "./public";
-import { boardOf, chapterRow, duelsAt, duelsOf, fields, party } from "./routes";
+import { boardOf, chapterRow, duelsAt, duelsOf, fields, openDuels, party, recentStarts } from "./routes";
 import { duelsOn } from "./turn-hook";
 import { announceLobby } from "./news";
 import { sendListings } from "./directory";
 import { forgetListings, listings, page, type ListSort } from "./public-list";
 import type { DuelRef, PartyState } from "./party";
-import { MAX_FRIEND_DUELS_PER_PAIR } from "./rules";
+import { MAX_DUELS_PER_PAIR, MAX_RECENT_DUELS } from "./rules";
 
 /**
  * Public duels' routes (PLAN 2 to 8), all absent while PUBLIC_DUELS is off (publicDuelsOn), after auth():
@@ -40,7 +40,7 @@ import { MAX_FRIEND_DUELS_PER_PAIR } from "./rules";
  * Requests (Cloudflare Free plan, PLAN 11): a list page is auth + Member + SafetyProfile (none when this isolate read
  * the reader's own blocks under their current safety token in the last minute, safety.ts ownBlocks) + the directory
  * only when the list cache misses; a post or join adds one SafetyProfile per joiner (the rules and blocks, and a Member write
- * only when its copy of the rules was lost), the boards holding the player's duels (the limit of 10), the board's
+ * only when its copy of the rules was lost), the boards holding the players' duels (the one limit), the board's
  * create or claim, the pointer writes and the hints; the board sends the directory its new listing (1 request, 1 row).
  */
 const PUBLIC_PREFIX = "/v1/duels/public";
@@ -62,12 +62,6 @@ async function labelOf(env: Env, player: string, member: MemberState): Promise<s
   if (!member.show_name) return null;
   try { return shownName(await env.PLAYERS.getByName(player).publicDisplayName(player)); } catch { return null; }
 }
-
-/** Open friend and public duels holding any of `players`: the one limit of 10 (rules.ts). Ghost races keep their own. */
-function running(duels: readonly Duel[], players: readonly string[]): number {
-  return duels.filter(duel => duel.kind === "friend" && isOpen(duel) && players.some(id => seatIn(duel, id))).length;
-}
-const seatIn = (duel: Duel, id: string) => duel.sides.some(side => side?.members.includes(id));
 
 type Team = { players: string[]; rows: Seated[]; looks: (Look | undefined)[];
   /** Everyone the joiners blocked or who blocked them: their own block lists and the rows' `blocked_by`. */
@@ -119,12 +113,13 @@ async function healRules(env: Env, player: string, member: MemberState, version:
   if (!termsCovered(member.rules_version ?? null, version)) await noteRulesAccepted(env, player, version, now);
 }
 
-/** Stops a post or join past the limit of 10, counted over the players' own pointers. */
-async function underLimit(env: Env, players: readonly string[], rows: readonly Seated[], player: string): Promise<void> {
+/** Stops a post or join past the one limit (routes.ts openDuels) or the hard cap on recent starts, counted over the players' own pointers. */
+async function underLimit(env: Env, players: readonly string[], rows: readonly Seated[], player: string, now: number): Promise<void> {
+  if (rows.some(row => recentStarts(row.party.duels, now) >= MAX_RECENT_DUELS)) throw new ApiError(409, "duel_limit_reached");
   const refs = new Map<string, DuelRef>();
   for (const row of rows) for (const ref of row.party.duels) refs.set(ref.duel_id, ref);
   const { duels } = await duelsOf(env, [...refs.values()], player);
-  if (running(duels, players) >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
+  if (openDuels(duels, players) >= MAX_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
 }
 
 function joinAs(value: unknown): JoinAs {
@@ -144,8 +139,8 @@ async function post(env: Env, reach: Reach, player: string, input: unknown, now:
   const duelId = (await digest(`after-you public duel v1\n${player}\n${key}`)).slice(0, 32);
   const team = await joiners(env, player, as, now, look);
   const held = team.rows[0].party.duels.find(ref => ref.duel_id === duelId);
-  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, looksOn(env)) }; }
-  await underLimit(env, team.players, team.rows, player);
+  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, looksOn(env), now) }; }
+  await underLimit(env, team.players, team.rows, player, now);
   const labels = await Promise.all(team.players.map((id, index) => labelOf(env, id, team.rows[index].member)));
   const duel = newPublicDuel({ duel_id: duelId, board, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, players: team.players, labels,
     looks: looksOn(env) ? team.looks : undefined, known: team.players.length === 2 ? [knownKey(team.players[0], team.players[1])] : [] }, now);
@@ -156,7 +151,7 @@ async function post(env: Env, reach: Reach, player: string, input: unknown, now:
   await addPublicRefs(env, team.players, { duel_id: duelId, board, at: now, public: true }, now);
   forgetListings();
   await announceLobby(env, team.players.filter(id => id !== player), made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player, looksOn(env)), ...(energy ? { energy } : {}) };
+  return { schema_version: 1, duel: viewFor(made, player, looksOn(env), now), ...(energy ? { energy } : {}) };
 }
 
 /**
@@ -172,14 +167,14 @@ async function join(env: Env, reach: Reach, player: string, board: string, duelI
   const at = duelsAt(env, board);
   const [current] = await at.read([duelId], player);
   if (!current?.public) throw new ApiError(404, "duel_not_found");
-  if (seatOf(current, player) >= 0) return { schema_version: 1, duel: viewFor(current, player, looksOn(env)) };
+  if (seatOf(current, player) >= 0) return { schema_version: 1, duel: viewFor(current, player, looksOn(env), now) };
   const team = await joiners(env, player, as, now, look);
   const avoid = team.avoid;
   // The seated players' own blocks of the joiners, which a block made before public duels did not note on the joiners' rows.
   const others = seated(current).filter(id => !avoid.has(id));
   const theirs = await pooled(others, 4, async id => (await env.SAFETY_PROFILES.getByName(id).blocks(id)).blocked_players.some(blocked => team.players.includes(blocked)) ? id : null);
   for (const id of theirs) if (id) avoid.add(id);
-  await underLimit(env, team.players, team.rows, player);
+  await underLimit(env, team.players, team.rows, player, now);
   const labels = await Promise.all(team.players.map((id, index) => labelOf(env, id, team.rows[index].member)));
   // Each joiner pays 1 energy while ENERGY is on; a join the board refuses (a spot taken first) gives it back (energy-charge.ts).
   const { value: answer, energy } = await withEnergy(env, reach, player, team.players, duelId, async () => {
@@ -203,7 +198,7 @@ async function join(env: Env, reach: Reach, player: string, board: string, duelI
   // "A partner joined": every player already in the duel hears of it, besides the board's own news of the change.
   await announceLobby(env, seated(duel).filter(id => !team.players.includes(id) && id !== player), duel.updated_ms, duelId);
   if (team.players.length === 2) await announceLobby(env, [team.players[1]], duel.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(duel, player, looksOn(env)), ...(energy ? { energy } : {}) };
+  return { schema_version: 1, duel: viewFor(duel, player, looksOn(env), now), ...(energy ? { energy } : {}) };
 }
 /** A join the board refused, carried out of withEnergy (which gives the energy back) to the route's own answer. */
 class RefusedJoin extends Error {
@@ -425,13 +420,14 @@ export async function routePublicDuels(request: Request, path: string, player: s
 /**
  * The lobby's `public` part while public duels are on: the switches, whether the player and their partner accepted the
  * rules in force (`rules`, `partner_rules`, from the Member rows the party read brings: no request added) and the count
- * toward the limit of 10. Older phones read only the keys they know.
+ * toward the one limit, every kind (routes.ts openDuels). Older phones read only the keys they know, and grey public
+ * rows on `running` against `limits.friend`, which now carries that one limit.
  */
 export function publicLobby(env: Env, player: string, members: readonly (MemberState | null)[] | undefined, intact: boolean, duels: readonly Duel[]): { public?: Record<string, unknown> } {
   if (!publicDuelsOn(env) || !members?.[0]) return {};
   const [mine, theirs] = [members[0], intact ? members[1] ?? null : null];
   return { public: { version: 1, on: publicDuelsChosen(mine), show_name: mine.show_name, partner_on: theirs ? publicOpenTo(theirs) : null, paused: !!mine.public_paused,
-    running: running(duels, [player]), rules: rulesNoted(env, mine), partner_rules: theirs ? rulesNoted(env, theirs) : null } };
+    running: openDuels(duels, [player]), rules: rulesNoted(env, mine), partner_rules: theirs ? rulesNoted(env, theirs) : null } };
 }
 
 /** `final`: every answer is one the wallet will give again (paid, or refused for good), so a read may keep it (payout-receipt.ts). */

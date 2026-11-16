@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
-import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "../src/duels/rules";
-import { applyParty, blankParty, noteLook } from "../src/duels/party";
+import { accept, awaitsCheck, blankSide, claimRoom, deadlines, decide, decline, endsAt, forgetPlayer, giveUp, giveUpCounts, isOpen, keepPlaying, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
+import { CHALLENGE_TTL_MS, GIVE_UP_WINDOW_MS, MAX_DUELS_PER_PAIR, MAX_GIVE_UPS, MAX_MEMBER_DUELS, MAX_PUBLIC_DUEL_MS, MAX_RECENT_DUELS, PUBLIC_OPEN_MS, PUBLIC_STALL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS, UNCLAIMED_DUEL_MS, UNCLAIMED_RACE_MS, UNCLAIMED_SINCE_MS } from "../src/duels/rules";
+import { applyParty, blankParty, giveUpFreeAt, noteLook } from "../src/duels/party";
 import { replaySplits, runProgress, validSplits } from "../src/duels/ticks";
 import { claimSeats, newPublicDuel, publicWaitingSlot } from "../src/duels/public";
 import { encodeBlob } from "../src/blob-codec";
@@ -163,36 +163,108 @@ describe("duel state machine", () => {
     expect(unjudged.result).toMatchObject({ winner: null, reason: "unchecked" });
   });
 
-  it("a pair leaving mid duel hands the other pair the win once its run passes", () => {
+  it("give up ends a duel only once both pips agree, and the other pair wins at once", () => {
     const duel = running();
     progress(duel, note("ra", 3, 500), T0 + 10);
-    expect(leave(duel, B2, T0 + 20).ok).toBe(true);
+    expect(giveUp(duel, B2, T0 + 20, null).ok).toBe(true);
     expect(duel.status).toBe("running");
-    progress(duel, note("ra", 9, 2000, true), T0 + 30);
-    expect(duel.status).toBe("running");
-    verdict(duel, duel.sides[0].entry_id!, "passed", T0 + 40);
-    expect(duel.result).toMatchObject({ winner: 0, reason: "left" });
-    // Leaving again, or after the end, changes nothing.
-    expect(leave(duel, B1, T0 + 50).ok).toBe(true);
+    expect(duel.sides[1]!.give_up).toEqual({ by: B2, at: T0 + 20 });
+    // Asking again keeps the first ask; the other pair has no ask to answer.
+    expect(giveUp(duel, B2, T0 + 21, null).ok).toBe(true);
+    expect(duel.sides[1]!.give_up!.at).toBe(T0 + 20);
+    expect(giveUp(duel, A1, T0 + 22, T0 + 20)).toMatchObject({ ok: false, code: "give_up_taken_back" });
+    expect(duel.sides[0].give_up).toBeUndefined();
+    // The other pip agrees: over now, before the winners finish, with no time to compare.
+    expect(giveUp(duel, B1, T0 + 30, T0 + 20).ok).toBe(true);
+    expect(duel.status).toBe("decided");
+    expect(duel.result).toMatchObject({ winner: 0, reason: "left", decided_ms: T0 + 30, margin_ticks: null });
+    expect(duel.sides[1]).toMatchObject({ left: true, gave_up: true, turn: null });
+    expect(duel.sides[1]!.give_up).toBeUndefined();
+    expect(viewFor(duel, B1)!.result).toMatchObject({ outcome: "lost", reason: "left" });
+    // Again, or after the end, changes nothing.
+    expect(giveUp(duel, B1, T0 + 50, null).ok).toBe(true);
+    expect(leave(duel, A1, T0 + 51).ok).toBe(true);
     expect(duel.result!.winner).toBe(0);
   });
 
-  it("a pair that left changes nothing more, even if its room plays on", () => {
+  it("an old phone's leave on a running duel is the ask, a second leave agrees, and both asking at once agree", () => {
     const duel = running();
-    leave(duel, B1, T0 + 1);
-    progress(duel, note("rb", 9, 100, true), T0 + 2);
-    expect(duel.sides[1]).toMatchObject({ left: true, finished_ms: null, ticks: 0 });
+    expect(leave(duel, B1, T0 + 1).ok).toBe(true);
+    expect(duel.status).toBe("running");
+    expect(duel.sides[1]).toMatchObject({ left: false, give_up: { by: B1, at: T0 + 1 } });
+    // One pip alone never ends the side: its room still counts.
+    expect(progress(duel, note("rb", 2, 100), T0 + 2).ok).toBe(true);
+    expect(duel.sides[1]!.steps).toBe(1);
+    expect(leave(duel, B2, T0 + 3).ok).toBe(true);
+    expect(duel.result).toMatchObject({ winner: 0, reason: "left" });
+    // A side that gave up changes nothing more, even if its room plays on.
+    progress(duel, note("rb", 9, 100, true), T0 + 4);
+    expect(duel.sides[1]).toMatchObject({ left: true, finished_ms: null, steps: 1 });
+    const both = running();
+    expect(giveUp(both, A1, T0 + 1, null).ok).toBe(true);
+    expect(giveUp(both, A2, T0 + 2, null).ok).toBe(true);
+    expect(both.result).toMatchObject({ winner: 1, reason: "left" });
   });
 
-  it("leave is turned off once your own pair finished, and both pairs leaving ends it unfinished", () => {
+  it("keep playing takes back only the ask it names, and a pair that finished has no give up", () => {
     const duel = running();
+    expect(giveUp(duel, A1, T0 + 5, null).ok).toBe(true);
+    // A stale tap naming an older ask leaves this one.
+    expect(keepPlaying(duel, A2, T0 + 6, T0 + 4).ok).toBe(true);
+    expect(duel.sides[0].give_up).toEqual({ by: A1, at: T0 + 5 });
+    expect(keepPlaying(duel, A2, T0 + 7, T0 + 5).ok).toBe(true);
+    expect(duel.sides[0].give_up).toBeUndefined();
+    // An agree that comes after the ask went never asks in its place.
+    expect(giveUp(duel, A2, T0 + 8, T0 + 5)).toMatchObject({ ok: false, code: "give_up_taken_back" });
+    expect(duel.sides[0].give_up).toBeUndefined();
+    expect(giveUp(duel, A1, T0 + 9, null).ok).toBe(true);
+    expect(keepPlaying(duel, A1, T0 + 10, T0 + 9).ok).toBe(true);
+    expect(duel.sides[0].give_up).toBeUndefined();
+    // Finishing clears an ask, and then there is no give up.
+    expect(giveUp(duel, A1, T0 + 11, null).ok).toBe(true);
     progress(duel, note("ra", 9, 2000, true), T0 + 30);
+    expect(duel.sides[0].give_up).toBeUndefined();
+    expect(giveUp(duel, A2, T0 + 31, null)).toMatchObject({ ok: false, code: "duel_finished_for_you" });
     expect(leave(duel, A1, T0 + 31)).toMatchObject({ ok: false, code: "duel_finished_for_you" });
-    const both = running();
-    leave(both, A1, T0 + 1);
-    leave(both, B1, T0 + 2);
-    expect(both.status).toBe("unfinished");
-    expect(both.result!.reason).toBe("left");
+    expect(viewFor(duel, A1)!.sides[0].give_up).toEqual({ mode: "none", asked: null, asked_at: null });
+  });
+
+  it("forget an ask with the duel's end and with an erased asker's id", () => {
+    const erased = running();
+    expect(giveUp(erased, A2, T0 + 5, null).ok).toBe(true);
+    expect(forgetPlayer(erased, A2, T0 + 6)).toBe(true);
+    expect(erased.status).toBe("unfinished");
+    expect(JSON.stringify(erased)).not.toContain(A2);
+    const stalled = running();
+    giveUp(stalled, B1, T0 + 5, null);
+    expect(settle(stalled, T0 + 5 + STALL_MS)).toBe(true);
+    expect(stalled.sides[1]!.give_up).toBeUndefined();
+  });
+
+  it("let a public seat beside an ask agree even before entering its room, ending the duel for both seats", () => {
+    const duel = newPublicDuel({ duel_id: "p".repeat(32), board: "relay-isles@2", chapter: CHAPTER, steps: 4, players: [A1], labels: [null], known: [] }, T0);
+    claimSeats(duel, { players: [A2], as: "alone", seat: 1, labels: [null], avoid: [], known: [] }, T0 + 1);
+    claimSeats(duel, { players: [B1, B2], as: "party", seat: null, labels: [null, null], avoid: [], known: [] }, T0 + 2);
+    duel.public!.seats[0].entered = true;
+    // Alone in their seat, A2 would give it back; A1 asks first, so A2's Give up agrees.
+    expect(viewFor(duel, A2)!.sides[0].give_up!.mode).toBe("leave");
+    expect(giveUpCounts(duel, 0, A2)).toBe(false);
+    expect(giveUp(duel, A1, T0 + 3, null).ok).toBe(true);
+    expect(viewFor(duel, A2)!.sides[0].give_up).toEqual({ mode: "leave", asked: 0, asked_at: T0 + 3 });
+    expect(giveUpCounts(duel, 0, A2)).toBe(true);
+    expect(giveUp(duel, A2, T0 + 4, T0 + 3).ok).toBe(true);
+    expect([duel.status, duel.result!.winner, duel.result!.reason, duel.public!.forfeit, duel.sides[0].members]).toEqual(["decided", 1, "left", [0, 1], [A1, A2]]);
+  });
+
+  it("serves the ask to its own side only, by slot", () => {
+    const duel = running();
+    expect(viewFor(duel, A1)!.sides[0].give_up).toEqual({ mode: "ask", asked: null, asked_at: null });
+    giveUp(duel, A2, T0 + 5, null);
+    expect(viewFor(duel, A1)!.sides[0].give_up).toEqual({ mode: "ask", asked: 1, asked_at: T0 + 5 });
+    expect(viewFor(duel, B1)!.sides[1]!.give_up).toEqual({ mode: "ask", asked: null, asked_at: null });
+    expect(viewFor(duel, B1)!.sides[0].give_up).toBeUndefined();
+    // A challenge or a duel that is over has none.
+    expect(viewFor(friend(), A1)!.sides[0].give_up).toBeUndefined();
   });
 
   it("leaving before an answer is a decline or a withdrawal", () => {
@@ -283,11 +355,16 @@ describe("duel state machine", () => {
     expect(viewFor(tied, A2)!.result!.outcome).toBe("draw");
     const left = ghost();
     leave(left, A1, T0 + 1);
+    expect(left.status).toBe("running");
+    expect(giveUp(left, A2, T0 + 2, T0 + 1).ok).toBe(true);
+    // A race given up ends with no result.
     expect(left.status).toBe("unfinished");
-    expect(decide(left, T0 + 2)).toBe(false);
+    expect(left.result).toMatchObject({ winner: null, reason: "left" });
+    expect(viewFor(left, A1)!.result!.outcome).toBe("none");
+    expect(decide(left, T0 + 3)).toBe(false);
   });
 
-  it("a run faster than the developers' ghost waits for the check, which decides it; a slower one is decided at once", () => {
+  it("a run faster than Our run waits for the check, which decides it; a slower one is decided at once", () => {
     const finished = (check?: "passed" | "failed" | "error", ticks = 2999) => {
       const race = ghost(3000, T0, "developer");
       claimRoom(race, A2, { room_id: "rg", invite_code: "ig" }, T0);
@@ -310,7 +387,7 @@ describe("duel state machine", () => {
       expect(slow.sides[0].check).toBe("none");
       expect(slow.status).toBe("decided");
     }
-    // Only the developers' ghost and friend duels ask for the check, and only while duel run checks are on.
+    // Only Our run and friend duels ask for the check, and only while duel run checks are on.
     expect(awaitsCheck(ghost(3000), 1, true)).toBe(false);
     expect(awaitsCheck(ghost(3000, T0, "developer"), 3000, true)).toBe(false);
     expect(awaitsCheck(friend(), 999_999, true)).toBe(true);
@@ -533,10 +610,11 @@ describe("duel run checks off", () => {
     const left = running();
     off(left, note("ra", 9, 2000, true), T0 + 30);
     expect(leave(left, B1, T0 + 40).ok).toBe(true);
+    expect(leave(left, B2, T0 + 41).ok).toBe(true);
     expect(viewFor(left, A1)!.result).toMatchObject({ outcome: "won", reason: "left" });
   });
 
-  it("decide a race faster than the developers' ghost at once, marked as counted without its check; other races as before", () => {
+  it("decide a race faster than Our run at once, marked as counted without its check; other races as before", () => {
     const race = ghost(3000, T0, "developer");
     claimRoom(race, A2, { room_id: "rg", invite_code: "ig" }, T0);
     off(race, note("rg", 5, 2999, true), T0 + 10);
@@ -613,14 +691,25 @@ describe("duel news", () => {
     expect(progress(duel, note("ra", 4, 400, true), T0 + 6).ok).toBe(true);
     expect(newsRecipients(before, duel, A1).sort()).toEqual([A2, B1, B2].sort());
     before = milestone(duel);
-    expect(leave(duel, B1, T0 + 7).ok).toBe(true);
-    expect(newsRecipients(before, duel, B1).sort()).toEqual([A1, A2, B2].sort());
+    // An ask to give up is news to the asker's partner only; taking it back too.
+    expect(giveUp(duel, B1, T0 + 7, null).ok).toBe(true);
+    expect(newsRecipients(before, duel, B1)).toEqual([B2]);
     before = milestone(duel);
-    expect(verdict(duel, duel.sides[0].entry_id!, "passed", T0 + 8)).toBe(true);
+    expect(keepPlaying(duel, B1, T0 + 7, T0 + 7).ok).toBe(true);
+    expect(newsRecipients(before, duel, B1)).toEqual([B2]);
+    expect(giveUp(duel, B1, T0 + 8, null).ok).toBe(true);
+    before = milestone(duel);
+    // The agree ends the duel: everyone hears it.
+    expect(giveUp(duel, B2, T0 + 9, T0 + 8).ok).toBe(true);
     expect(duel.status).toBe("decided");
-    // A check result has no actor: everyone hears it.
-    expect(newsRecipients(before, duel, null).sort()).toEqual([A1, A2, B1, B2].sort());
+    expect(newsRecipients(before, duel, B2).sort()).toEqual([A1, A2, B1].sort());
     expect(newsRecipients(milestone(duel), duel, null)).toEqual([]);
+    const checked = running();
+    expect(progress(checked, note("ra", 4, 400, true), T0 + 6).ok).toBe(true);
+    before = milestone(checked);
+    expect(verdict(checked, checked.sides[0].entry_id!, "passed", T0 + 8)).toBe(true);
+    // A check result has no actor: everyone hears it.
+    expect(newsRecipients(before, checked, null).sort()).toEqual([A1, A2, B1, B2].sort());
   });
 
   it("tells a ghost race's pair of its turns and check result and an expired challenge's players, and nobody erased", () => {
@@ -707,17 +796,86 @@ describe("duel looks", () => {
 });
 
 describe("duel limits", () => {
-  it("let a pair have 10 duels going, under the week's cap and the pointers each player keeps", () => {
-    expect(MAX_FRIEND_DUELS_PER_PAIR).toBe(10);
-    expect(MAX_RECENT_DUELS).toBeGreaterThan(MAX_FRIEND_DUELS_PER_PAIR);
+  it("let a pair have 30 duels going, under the week's cap and the pointers each player keeps", () => {
+    expect(MAX_DUELS_PER_PAIR).toBe(30);
+    expect(MAX_RECENT_DUELS).toBeGreaterThan(MAX_DUELS_PER_PAIR);
     expect(MAX_RECENT_DUELS).toBeLessThan(MAX_MEMBER_DUELS);
-    // Every open friend duel and ghost race, with room left for a week of result tiles.
-    expect(MAX_MEMBER_DUELS).toBeGreaterThanOrEqual(MAX_FRIEND_DUELS_PER_PAIR + MAX_GHOST_RACES_PER_PAIR + 20);
+    // Every open duel of any kind, with room left for a week of result tiles.
+    expect(MAX_MEMBER_DUELS).toBeGreaterThanOrEqual(MAX_DUELS_PER_PAIR + 20);
+    // 0.8.1 and 0.8.2 phones refuse a lobby listing more than 64 duels (game/services/duels_client.gd MAX_DUELS).
+    expect(MAX_MEMBER_DUELS).toBeLessThanOrEqual(64);
   });
 
   it("keep the newest MAX_MEMBER_DUELS pointers, dropping the oldest", () => {
     const refs = Array.from({ length: MAX_MEMBER_DUELS + 5 }, (_, index) => ({ duel_id: index.toString(16).padStart(32, "0"), board: "relay-isles@2", at: index }));
     const answer = applyParty(blankParty(), "o".repeat(22), { kind: "add_duels", refs }, 0);
     expect(answer.ok && answer.value.state.duels.map(ref => ref.at)).toEqual(refs.slice(5).map(ref => ref.at));
+  });
+});
+
+describe("duel deadlines", () => {
+  /** Settles a copy at `now`: whether it changed. */
+  const settledAt = (duel: Duel, now: number) => settle(structuredClone(duel), now);
+  const cases = (): [string, Duel][] => {
+    const unclaimed = friend();
+    accept(unclaimed, B1, T0 + 10, true);
+    const played = running();
+    progress(played, note("ra", 3, 500), T0 + 5_000);
+    const race = ghost();
+    const listed = newPublicDuel({ duel_id: "p".repeat(32), board: "relay-isles@2", chapter: CHAPTER, steps: 4, players: [A1], labels: [null], known: [] }, T0);
+    const full = newPublicDuel({ duel_id: "q".repeat(32), board: "relay-isles@2", chapter: CHAPTER, steps: 4, players: [A1, A2], labels: [null, null], known: [] }, T0);
+    claimSeats(full, { players: [B1, B2], as: "party", seat: null, labels: [null, null], avoid: [], known: [] }, T0 + 1);
+    return [["challenge", friend()], ["unclaimed duel", unclaimed], ["played duel", played], ["race", race], ["listed public", listed], ["full public", full]];
+  };
+
+  it("settle ends an open duel exactly when its earliest deadline comes, and endsAt is that moment", () => {
+    for (const [name, duel] of cases()) {
+      const end = endsAt(duel);
+      expect(end, name).not.toBeNull();
+      expect(settledAt(duel, end! - 1), name).toBe(false);
+      expect(settledAt(duel, end!), name).toBe(true);
+    }
+  });
+
+  it("names each rule's moment: a challenge's week, a stall, the unclaimed limits, a public duel's open spots, stall and age", () => {
+    const [[, challenge], [, unclaimed], [, played], [, race], [, listed], [, full]] = cases();
+    expect(endsAt(challenge)).toBe(T0 + CHALLENGE_TTL_MS);
+    expect(endsAt(unclaimed)).toBe(T0 + 10 + UNCLAIMED_DUEL_MS);
+    expect(endsAt(played)).toBe(T0 + 3_000 + STALL_MS);
+    expect(endsAt(race)).toBe(T0 + UNCLAIMED_RACE_MS);
+    expect(endsAt(listed)).toBe(T0 + PUBLIC_OPEN_MS);
+    expect(endsAt(full)).toBe(Math.min(T0 + PUBLIC_STALL_MS, T0 + MAX_PUBLIC_DUEL_MS));
+    expect(deadlines(listed).map(item => item.ends)).toEqual(["nobody_joined", "stalled", "stalled"]);
+    expect(viewFor(played, A1, false, T0 + 6_000)!.ends_in_ms).toBe(STALL_MS - 3_000);
+    // Without the server's clock, and once over, a view says nothing of it.
+    expect(viewFor(played, A1)!.ends_in_ms).toBeUndefined();
+    finishBoth(played, 3000, 3100);
+    for (const side of played.sides) verdict(played, side!.entry_id!, "passed", T0 + 61_000);
+    expect(endsAt(played)).toBeNull();
+    expect(viewFor(played, A1, false, T0 + 70_000)!.ends_in_ms).toBeUndefined();
+  });
+});
+
+describe("give up cap", () => {
+  const gaveUp = (times: number[]) => times.reduce((state, at, index) => { applyParty(state, A1, { kind: "give_up", duel_id: String(index).padStart(32, "0"), at }, at); return state; }, blankParty());
+
+  it("counts each pip's give ups in the window, once per duel, and frees the pair when its last capped pip is back under", () => {
+    const now = T0 + GIVE_UP_WINDOW_MS;
+    const under = gaveUp([T0 + 1, T0 + 2]);
+    expect(giveUpFreeAt([under, blankParty()], now)).toBeNull();
+    const capped = gaveUp([T0 + 100, T0 + 200, T0 + 300]);
+    expect(MAX_GIVE_UPS).toBe(3);
+    expect(giveUpFreeAt([blankParty(), capped], T0 + 400)).toBe(T0 + 100 + GIVE_UP_WINDOW_MS);
+    // The oldest leaving the window frees it.
+    expect(giveUpFreeAt([capped], T0 + 100 + GIVE_UP_WINDOW_MS)).toBeNull();
+    const later = gaveUp([T0 + 500, T0 + 600, T0 + 700]);
+    expect(giveUpFreeAt([capped, later], T0 + 800)).toBe(T0 + 500 + GIVE_UP_WINDOW_MS);
+    // The same duel again counts once.
+    const repeated = gaveUp([T0 + 1]);
+    applyParty(repeated, A1, { kind: "give_up", duel_id: "0".repeat(32), at: T0 + 9 }, T0 + 9);
+    expect(repeated.give_ups).toEqual([{ duel_id: "0".repeat(32), at: T0 + 1 }]);
+    // Give ups older than the window go from the row at the next one.
+    const old = gaveUp([T0, T0 + GIVE_UP_WINDOW_MS + 1]);
+    expect(old.give_ups!.map(item => item.at)).toEqual([T0 + GIVE_UP_WINDOW_MS + 1]);
   });
 });

@@ -14,7 +14,7 @@ static func shapes(world: Node3D, stage: Dictionary) -> Array[String]:
 	for pad: Dictionary in stage.get("pressure_pads", []):
 		var id := str(pad.id)
 		var radius := float(pad.radius_cm) / 100.0
-		var spot: StandSpot = world._pad_pieces[id].spot if world._pad_pieces.has(id) else null
+		var spot: StandSpot = world.pad_pieces[id].spot if world.pad_pieces.has(id) else null
 		if spot == null:
 			found.append("Pad %s has a stand spot" % id)
 			continue
@@ -74,7 +74,7 @@ static func held(world: Node3D, stage: Dictionary, state: Dictionary) -> Array[S
 	var found: Array[String] = []
 	for pad: Dictionary in stage.get("pressure_pads", []):
 		var id := str(pad.id)
-		var spot: StandSpot = world._pad_pieces[id].spot if world._pad_pieces.has(id) else null
+		var spot: StandSpot = world.pad_pieces[id].spot if world.pad_pieces.has(id) else null
 		if spot == null: continue
 		var counts := bool(state.get("hold_pads", {}).get(id, false))
 		var look := spot.disc.material_override as StandardMaterial3D

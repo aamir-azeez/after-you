@@ -90,7 +90,7 @@ func _spots() -> void:
 	_check(Spots.greyed(row, Spots.PARTY, {"partner_on": true, "partner_rules": null}) == "" and Spots.greyed(row, Spots.ALONE, {"partner_rules": false}) == "", "Only a clear no greys, and only a party join")
 	_check(ListPage.reason_text(Spots.PARTNER_RULES, "Maya", 10) == PlayerCopy.PUBLIC_PARTNER_RULES % "Maya", "The greyed line is the approved partner rules line")
 	_check(Spots.greyed(row, Spots.ALONE, {"chapter_open": false}) == Spots.CHAPTER, "A chapter you can't play greys it")
-	_check(Spots.greyed(row, Spots.ALONE, {"at_limit": true}) == Spots.LIMIT, "Ten duels going greys it")
+	_check(Spots.greyed(row, Spots.ALONE, {"at_limit": true}) == Spots.LIMIT, "A full limit greys it")
 	var mine := row.duplicate(true)
 	mine.mine = true
 	_check(Spots.greyed(mine, Spots.ALONE, {"chapter_open": false}) == Spots.MINE, "A duel you're in says so first")
@@ -248,7 +248,8 @@ func _leave() -> void:
 	var client: RefCounted = DuelsClient.new(api, "", "user://test-public-duels.json")
 	client._lobby = {"party": {}, "duels": [DuelsClient.valid_view(_public_view())], "limits": {}}
 	api.answer = {"ok": true, "status": 200, "data": {"schema_version": 1, "duel": null, "left": true}}
-	var answer: Dictionary = await client.act(BOARD, "c".repeat(32), "leave")
+	# Give up on a seat never entered gives it back (backend duels/public.ts giveUpMode "leave").
+	var answer: Dictionary = await client.give_up(BOARD, "c".repeat(32), -1)
 	_check(answer.ok and answer.left and (answer.duel as Dictionary).is_empty(), "A seat given back answers left with no duel")
 	_check(client.last_lobby().duels.is_empty(), "and the duel leaves the kept lobby")
 	var post := PublicClient.new(api, client)

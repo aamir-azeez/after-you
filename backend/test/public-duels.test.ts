@@ -10,7 +10,7 @@ import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetCachedListings } from "../src/duels/public-list";
 import { spotFor, type JoinAs } from "../src/duels/public";
 import { DIRECTORY_NAME } from "../src/duels/directory";
-import { PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "../src/duels/rules";
+import { MAX_DUELS_PER_PAIR, MAX_RECENT_DUELS, PUBLIC_OPEN_MS, PUBLIC_STALL_MS } from "../src/duels/rules";
 import type { Duel, DuelView } from "../src/duels/model";
 import { POLLEN_CLIENT, configJson } from "./config";
 import { countAllRequests } from "./meter";
@@ -282,7 +282,7 @@ describe("public duels", () => {
     void loser;
   });
 
-  it("put a seat back on the list when its player leaves before entering, end a side once they entered, and withdraw a duel its last player leaves", async () => {
+  it("put a seat back on the list when its player leaves before entering, withdraw a duel its last player leaves before entering, and give an entered player alone no give up", async () => {
     const [poster, lone] = await Promise.all([player(), player()]);
     const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
     await ok(join(lone, posted));
@@ -290,11 +290,16 @@ describe("public duels", () => {
     expect(await ok<Any>(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", lone, { schema_version: 1 }))).toEqual({ schema_version: 1, duel: null, left: true });
     expect((await ok<{ duels: DuelView[] }>(call("/v1/duels", "GET", lone))).duels).toEqual([]);
     expect((await detail(poster, posted)).duel.public?.seats_open).toBe(3);
-    // The poster opens their room: entered. Leaving now, as the only player left, withdraws the duel.
+    // The poster opens their room: entered. Alone, there is nobody to ask, so no give up: it ends by itself once its spots close.
     await ok(openRoom(poster, (await detail(poster, posted)).duel));
-    const view = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", poster, { schema_version: 1 }))).duel;
+    expect((await errorOf(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", poster, { schema_version: 1 }))).code).toBe("give_up_alone");
+    expect((await detail(poster, posted)).duel).toMatchObject({ status: "running", sides: [{ give_up: { mode: "none", asked: null, asked_at: null } }, {}] });
+    // Before entering, the last player in a duel withdraws it at once.
+    const other = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    expect(other.sides[0].give_up).toEqual({ mode: "leave", asked: null, asked_at: null });
+    const view = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${other.duel_id}/give-up`, "POST", poster, { schema_version: 1, answering: null }))).duel;
     expect(view.status).toBe("withdrawn");
-    expect((await errorOf(join(lone, posted))).code).toBe("spot_taken");
+    expect((await errorOf(join(lone, other))).code).toBe("spot_taken");
   });
 
   it("wait on the other seat after a host played the first turn alone, open or taken, never entering it, in any order", async () => {
@@ -594,7 +599,7 @@ describe("public duels", () => {
     expect((await detail(lone, posted)).held).toEqual({ amount: held, state: "forfeit", reason: "stopped" });
   });
 
-  it("admit a joiner to the side's room only through the board, close a side its entered player left, and carry the duel on past an erasure", async () => {
+  it("admit a joiner to the side's room only through the board, end a duel once the entered seats beside each other give up, and carry one on past an erasure", async () => {
     const [poster, lone, p1, p2, stranger] = await Promise.all([player(), player(), player(), player(), player()]);
     await partner(p1, p2);
     const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
@@ -604,26 +609,80 @@ describe("public duels", () => {
     await ok(join(lone, posted));
     await ok(call("/v2/rooms/join", "POST", lone, { invite_code: room.invite_code }));
     await ok(join(p1, posted, "party"));
-    // The joiner entered: leaving now ends side 0, and its seats never go back on the list.
-    await ok(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", lone, { schema_version: 1 }));
+    // The joiner entered: leaving now is the ask to give up, which the stranger beside them answers.
+    const asked = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${posted.duel_id}/leave`, "POST", lone, { schema_version: 1 }))).duel;
+    expect(asked.sides[0]).toMatchObject({ left: false, give_up: { mode: "ask", asked: 1 } });
+    const ask = (await detail(poster, posted)).duel.sides[0].give_up!;
+    expect(ask).toMatchObject({ mode: "ask", asked: 1 });
+    // The other pair never hears of it.
+    expect((await detail(p1, posted)).duel.sides[0].give_up).toBeUndefined();
+    await ok(call(`/v1/duels/${RELAY}/${posted.duel_id}/give-up`, "POST", poster, { schema_version: 1, answering: ask.asked_at }));
+    // Over at once: the other pair wins, and both seats that gave up forfeit their held extra.
     const after = await boardDuel(posted.duel_id);
-    expect([after.status, after.sides[0].left, after.sides[0].left_by, after.public!.forfeit]).toEqual(["running", true, 1, [1]]);
-    expect((await detail(p1, posted)).duel.public?.seats_open).toBe(0);
-    // The poster's account goes: their id leaves the duel, which carries on for the other pair.
+    expect([after.status, after.result!.winner, after.result!.reason, after.sides[0].left, after.public!.forfeit]).toEqual(["decided", 1, "left", true, [0, 1]]);
+    expect((await detail(p1, posted)).duel.result).toMatchObject({ outcome: "won", reason: "left" });
+    // A seat beside an ask answers it even before entering its room, and both seats give up together.
+    const third = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    await ok(openRoom(poster, third));
+    await ok(join(lone, third));
+    await ok(join(p1, third, "party"));
+    const asked3 = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${third.duel_id}/give-up`, "POST", poster, { schema_version: 1, answering: null }))).duel.sides[0].give_up!;
+    const answer = (await detail(lone, third)).duel.sides[0].give_up!;
+    expect(answer).toMatchObject({ mode: "leave", asked: 0, asked_at: asked3.asked_at });
+    await ok(call(`/v1/duels/${RELAY}/${third.duel_id}/give-up`, "POST", lone, { schema_version: 1, answering: answer.asked_at }));
+    const thirdAfter = await boardDuel(third.duel_id);
+    expect([thirdAfter.status, thirdAfter.result!.winner, thirdAfter.public!.forfeit]).toEqual(["decided", 1, [0, 1]]);
+    // The poster's account goes in another duel: their id leaves it, which carries on for the other pair.
+    const second = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    const room2 = await ok<RoomSnapshotV2>(openRoom(poster, second));
+    await ok(join(lone, second));
+    await ok(call("/v2/rooms/join", "POST", lone, { invite_code: room2.invite_code }));
+    await ok(join(p1, second, "party"));
     await ok(call("/v1/identity", "DELETE", poster));
-    const erased = await boardDuel(posted.duel_id);
+    const erased = await boardDuel(second.duel_id);
     expect(JSON.stringify(erased)).not.toContain(poster.player_id);
-    expect((await detail(p1, posted)).duel.status).toBe("running");
+    expect((await detail(p1, second)).duel.status).toBe("running");
   });
 
-  it("share one limit of 10 with friend duels: posts past it are refused, and so is a friend challenge", async () => {
+  it("read no stranger's party row on the lobby for the give up cap: a tap past it is refused with when it frees up", async () => {
+    const [poster, lone, p1, p2] = await Promise.all([player(), player(), player(), player()]);
+    await partner(p1, p2);
+    const now = Date.now();
+    // The stranger beside the poster gave up three duels this week.
+    for (const index of [1, 2, 3]) await env.LEADERBOARD_MEMBERS.getByName(lone.player_id).partyApply(lone.player_id, { kind: "give_up", duel_id: String(index).padStart(32, "0"), at: now - index * 1000 }, now);
+    const posted = (await ok<{ duel: DuelView }>(post(poster))).duel;
+    const room = await ok<RoomSnapshotV2>(openRoom(poster, posted));
+    await ok(join(lone, posted));
+    await ok(call("/v2/rooms/join", "POST", lone, { invite_code: room.invite_code }));
+    await ok(join(p1, posted, "party"));
+    const read = await countAllRequests(env, async () => ok<{ duels: DuelView[] }>(call("/v1/duels", "GET", poster)));
+    // Only the poster's own row (they have no party): no extra read, so the lobby cannot know the stranger's cap.
+    expect(read.calls.filter(name => name.startsWith("LEADERBOARD_MEMBERS"))).toEqual(["LEADERBOARD_MEMBERS.publicRead"]);
+    expect(read.value.duels.find(item => item.duel_id === posted.duel_id)!.sides[0].give_up).toEqual({ mode: "ask", asked: null, asked_at: null });
+    const refused = await call(`/v1/duels/${RELAY}/${posted.duel_id}/give-up`, "POST", poster, { schema_version: 1, answering: null });
+    expect(refused.status).toBe(409);
+    const body = await refused.json<{ error: { code: string; again_in_ms: number } }>();
+    expect(body.error.code).toBe("give_up_capped");
+    expect(body.error.again_in_ms).toBeGreaterThan(6 * 86_400_000);
+  });
+
+  it("share one limit of 30 with friend duels and ghost races: posts past it are refused, and so is a friend challenge or a race", async () => {
     const [a1, a2, b1, b2] = await Promise.all([player(), player(), player(), player()]);
     await partner(a1, a2); await partner(b1, b2); await befriend(a1, b1);
-    for (let index = 0; index < 10; index++) await ok(post(a1, "alone", crypto.randomUUID(), UNLIMITED));
-    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a1))).public).toMatchObject({ running: 10 });
+    for (let index = 0; index < MAX_DUELS_PER_PAIR; index++) await ok(post(a1, "alone", crypto.randomUUID(), UNLIMITED));
+    expect((await ok<{ public: Any }>(call("/v1/duels", "GET", a1))).public).toMatchObject({ running: MAX_DUELS_PER_PAIR });
     expect((await errorOf(post(a1, "alone", crypto.randomUUID(), UNLIMITED))).code).toBe("duel_limit_reached");
     const challenge = call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY });
     expect((await errorOf(challenge)).code).toBe("duel_limit_reached");
+    const race = call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null });
+    expect((await errorOf(race)).code).toBe("duel_limit_reached");
+  });
+
+  it("refuse a post from a player who started the most duels this week", async () => {
+    const a1 = await player(), now = Date.now();
+    const refs = Array.from({ length: MAX_RECENT_DUELS }, (_, index) => ({ duel_id: index.toString(16).padStart(32, "c"), board: RELAY, at: now }));
+    await env.LEADERBOARD_MEMBERS.getByName(a1.player_id).partyApply(a1.player_id, { kind: "add_duels", refs }, now);
+    expect((await errorOf(post(a1, "alone", crypto.randomUUID(), UNLIMITED))).code).toBe("duel_limit_reached");
   });
 
   it("keep the directory's rows only while listed, and drop an erased player's rows", async () => {

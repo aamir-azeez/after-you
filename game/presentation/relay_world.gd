@@ -3,11 +3,8 @@ extends "res://presentation/island_world.gd"
 ## Floors, the plates (pads in the style they resolve to), the crossings (the
 ## bridge kit), the scenery and the seed's throw all come from island_world's
 ## shared build; this world adds the relay nest and the garden planter. Its
-## camera follows the live spirit as every scrolling chapter's does.
-
-## The follow camera's centre stays this far (metres) inside the
-## archipelago's west and east ends.
-const FOLLOW_INSET := 4.0
+## camera follows the live spirit, and its barriers, marks and tags stand, as
+## every scrolling chapter's do.
 
 var socket_visuals: Dictionary = {}
 var actor_badges: Dictionary = {}
@@ -74,8 +71,8 @@ func show_stage(stage: Dictionary) -> void:
 	displayed_stage_id = str(stage.get("id", ""))
 	show_keepsake_landmark(displayed_stage_id)
 	landing_marker.position = point(stage.get("landing_cm", [0, 0]))
-	route_barriers.clear()
-	route_barriers.build(LevelLayout.for_key(_chapter_key(), displayed_stage_id, current_level))
+	_clear_stage_marks()
+	_build_stage_marks(LevelLayout.for_key(_chapter_key(), displayed_stage_id, current_level))
 
 
 func present(state: Dictionary, immediate: bool = false) -> void:
@@ -98,10 +95,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 	_present_garden(true, garden_complete, immediate)
-	route_barriers.present(state)
-	_active_player = str(state.get("active_slot", _active_player))
-	_completion_view = bool(state.get("complete", false))
-	if immediate: _snap_follow()
+	_present_stage_marks(state)
+	_present_follow(state, immediate)
 
 
 func _chapter_key() -> String:
@@ -116,26 +111,15 @@ func _plain_floor_colour() -> Color:
 
 ## A planted seed finds its socket by name and reads its cylinders.
 func _static_keep() -> Array:
-	var keep: Array = super._static_keep() + socket_visuals.values()
-	for id: String in pad_pieces: keep += pad_pieces[id].moving_parts()
-	return keep
+	return super._static_keep() + socket_visuals.values()
 
 func _uses_scrolling_camera() -> bool:
 	return true
 
-## Kept between the archipelago's ends while a stage plays.
-func _camera_center() -> Vector3:
-	var target := super._camera_center()
-	if not _completion_view and actors.has(_camera_slot(_active_player)):
-		var low := INF
-		var high := -INF
-		for island: Dictionary in current_level.get("islands", []):
-			low = minf(low, float(island.rect_cm[0]) / 100.0)
-			high = maxf(high, float(island.rect_cm[2]) / 100.0)
-		target.x = clampf(_focus_point().x, low + FOLLOW_INSET, high - FOLLOW_INSET)
-	return target
-
-func _advance_camera(delta: float) -> void:
-	if route_barriers.moving(): route_barriers.advance(delta)
-	_ease_follow(delta)
-	_frame_camera()
+## A plate is held while its crossing stands open.
+func _marks_state(state: Dictionary) -> Dictionary:
+	var held: Dictionary = {}
+	for bridge: Dictionary in current_level.bridges: held[str(bridge.plate_id)] = bool(state.get("bridges", {}).get(bridge.id, false))
+	var shared := state.duplicate()
+	shared["hold_pads"] = held
+	return shared

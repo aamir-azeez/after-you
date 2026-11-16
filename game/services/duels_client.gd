@@ -38,6 +38,13 @@ extends RefCounted
 ##   post and join through duel_answer) carries this player's meter after the
 ##   spend, kept through services/wallet_reply.gd note_duel. A start refused as
 ##   energy_empty marks the kept meter empty until the next read.
+## - time left: an open duel's view carries `ends_in_ms` (backend duels/model.ts endsAt),
+##   kept as `ends_at`, this phone's ticks when it ends by itself, or -1 (none sent).
+## - give up (backend duels/model.ts giveUp): a running duel's own side carries `give_up`
+##   {mode ask|leave|none, asked (the slot that asked, -1 for none), asked_at, again_at}. Only a
+##   server that has Give up sends it; without it the page offers none. `again_at` (ticks, -1 for
+##   none) is the pair's give up cap: only the lobby read sends it, so this client keeps it per
+##   duel (_caps) and puts it on every newer copy of that duel, and a give_up_capped refusal sets it.
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -52,10 +59,9 @@ const MAX_DUELS := 64
 const STATUSES := ["challenged", "running", "decided", "declined", "withdrawn", "expired", "pair_gone", "unfinished"]
 const CHECKS := ["none", "waiting", "passed", "failed", "error"]
 const OUTCOMES := ["won", "lost", "draw", "none"]
-## The duel limits when no lobby was read yet: the server's own (backend duels/rules.ts
-## MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR), which every lobby read reports.
-const FRIEND_LIMIT := 10
-const GHOST_LIMIT := 3
+## The duel limit when no lobby was read yet: the server's own (backend duels/rules.ts
+## MAX_DUELS_PER_PAIR), one for every kind, which every lobby read reports.
+const DUEL_LIMIT := 30
 
 var _api: Node
 var _owner: String
@@ -67,6 +73,8 @@ var _ghosts_at := -GHOSTS_KEEP_MS
 var _hints := false
 ## {rooms: {room_id: kind}, rung: {duel_id: true} oldest first} for this player.
 var _saved: Dictionary = {}
+## Each running duel's give up cap as the latest lobby read or refusal said: duel_id -> again_at (ticks).
+var _caps: Dictionary = {}
 ## The ghost races this session read, by the room each is played in (room_id -> the newest view), for the race ghost (services/race_ghost.gd).
 var _ghost_rooms: Dictionary = {}
 
@@ -110,24 +118,28 @@ func last_lobby() -> Dictionary:
 func lobby_sent_ms() -> int:
 	return _lobby_sent_ms
 
-## How many duels of `kind` ("friend" or "ghost") a pair may have going, as the last lobby read said.
-func limit(kind: String) -> int:
-	return int(_lobby.get("limits", {}).get(kind, GHOST_LIMIT if kind == "ghost" else FRIEND_LIMIT))
+## How many duels of every kind together a pair may have going, as the last lobby read said.
+func limit() -> int:
+	return int(_lobby.get("limit", DUEL_LIMIT))
 
-## Whether the pair already has as many ghost races going as it may (limit("ghost")),
-## counted as the server counts them (backend duels/routes.ts openFor): open races
-## of the current pair whose own side has not finished. From the last lobby read
-## (no request), so the race picker greys its rows before a tap.
-func ghost_races_full() -> bool:
-	return ghost_races_going(_lobby) >= limit("ghost")
+## Whether the pair already has as many duels going as it may (limit()), counted as
+## the server counts them (backend duels/routes.ts openDuels). From the last lobby
+## read (no request), so the race picker greys its rows before a tap.
+func at_limit() -> bool:
+	return duels_going(_lobby) >= limit()
 
-static func ghost_races_going(lobby: Dictionary) -> int:
+## Open duels counted against the limit: every public duel, the current pair's friend
+## duels (challenges sent or got too), and its ghost races whose own side has not finished.
+static func duels_going(lobby: Dictionary) -> int:
 	var partner: Variant = lobby.get("party", {}).get("partner")
 	var going := 0
 	for view: Dictionary in lobby.get("duels", []):
-		if view.kind != "ghost" or not view.status in ["challenged", "running"]: continue
+		if not view.status in ["challenged", "running"]: continue
+		if view.has("public"):
+			going += 1
+			continue
 		var own: Variant = view.sides[view.mine]
-		if own is Dictionary and not own.finished and (partner == null or partner in own.members): going += 1
+		if own is Dictionary and (view.kind != "ghost" or not own.finished) and (partner == null or partner in own.members): going += 1
 	return going
 
 ## {ok, boards: [{board, developer, top}]}, kept a minute.
@@ -175,21 +187,60 @@ func challenge(friend: String, board: String, key: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, PREFIX + "/challenge", {"schema_version": 1, "idempotency_key": key, "friend": friend, "board": board})
 	return _duel_answer(response)
 
-## A ghost race on `board` against a board run (`entry_id`) or the developers' time ("developer").
+## A ghost race on `board` against a board run (`entry_id`) or Our run ("developer").
 func race_ghost(board: String, source: String, entry_id: Variant, key: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, PREFIX + "/ghost", {"schema_version": 1, "idempotency_key": key, "board": board, "source": source, "entry_id": entry_id})
 	return _duel_answer(response)
 
-## accept, decline, leave or sync on one duel.
-## A public duel left before its room was entered answers {ok, duel: {}, left: true}: the seat went back
-## on the list and this player is no longer in the duel, so it leaves the kept lobby.
+## accept, decline or sync on one duel. Leaving a running duel is Give up (give_up).
 func act(board: String, duel_id: String, action: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s/%s/%s/%s" % [PREFIX, board, duel_id, action], {"schema_version": 1})
+	return _duel_answer(response)
+
+## Give up on a running duel (backend duels/routes.ts give-up): the ask, or the agree when
+## `answering` names the friend's ask (its asked_at; -1 to ask). A public seat never entered
+## goes back on the list: {ok, duel: {}, left: true}, and this player is no longer in the duel,
+## so it leaves the kept lobby. A refusal at the cap carries `again_at`
+## and greys Give up on every copy this phone keeps.
+func give_up(board: String, duel_id: String, answering: int) -> Dictionary:
+	return await _give_up_call(board, duel_id, "give-up", answering if answering >= 0 else null)
+
+## Keep playing: takes back your own ask, or says no to your friend's, the one `answering` names.
+func keep_playing(board: String, duel_id: String, answering: int) -> Dictionary:
+	return await _give_up_call(board, duel_id, "keep-playing", answering)
+
+func _give_up_call(board: String, duel_id: String, action: String, answering: Variant) -> Dictionary:
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s/%s/%s/%s" % [PREFIX, board, duel_id, action], {"schema_version": 1, "answering": answering})
 	var data: Variant = response.get("data")
-	if action == "leave" and response.get("ok", false) and data is Dictionary and data.get("duel") == null and data.get("left") == true:
+	if response.get("ok", false) and data is Dictionary and data.get("duel") == null and data.get("left") == true:
 		_drop_from_lobby(duel_id)
 		return {"ok": true, "duel": {}, "left": true}
+	if not response.get("ok", false) and str(response.get("code", "")) == "give_up_capped":
+		var error: Variant = data.get("error") if data is Dictionary else null
+		var again: Variant = error.get("again_in_ms") if error is Dictionary else null
+		if Typed.whole_number(again): _note_cap(duel_id, Time.get_ticks_msec() + int(again))
 	return _duel_answer(response)
+
+## Keeps a duel's give up cap and puts it on the kept lobby's copy.
+func _note_cap(duel_id: String, again_at: int) -> void:
+	_caps[duel_id] = again_at
+	var duels: Array = _lobby.get("duels", [])
+	for index in range(duels.size()):
+		if duels[index].duel_id != duel_id: continue
+		var kept := _lobby.duplicate()
+		kept.duels = duels.duplicate()
+		kept.duels[index] = _with_cap(duels[index])
+		_lobby = kept
+		return
+
+## `view` with the cap this client keeps for it, when its own side offers Give up and carries none.
+func _with_cap(view: Dictionary) -> Dictionary:
+	var own: Variant = view.sides[view.mine]
+	if not own is Dictionary or not own.has("give_up") or int(own.give_up.again_at) >= 0 or not _caps.has(view.duel_id): return view
+	if int(_caps[view.duel_id]) <= Time.get_ticks_msec(): return view
+	var copy := view.duplicate(true)
+	copy.sides[copy.mine].give_up.again_at = int(_caps[view.duel_id])
+	return copy
 
 func _drop_from_lobby(duel_id: String) -> void:
 	if _lobby.is_empty(): return
@@ -338,6 +389,7 @@ func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 	WalletReply.note_duel(_server(), _owner, data, DuelEnergy.shared())
 	var view := valid_view(data.get("duel") if data is Dictionary else null)
 	if view.is_empty(): return {"ok": false, "code": "invalid_duels"}
+	view = _with_cap(view)
 	_remember([view])
 	_keep_in_lobby(view)
 	var answer := {"ok": true, "duel": view}
@@ -369,11 +421,17 @@ func _keep_in_lobby(view: Dictionary) -> void:
 ## went out before an action (Leave) answers with older copies of its duels:
 ## the newer copies kept here stay. Duels the server dropped stay dropped.
 func _take(checked: Dictionary, sent_ms: int) -> Dictionary:
+	# The lobby is the read that knows the give up cap: it sets or clears each duel's.
+	for view: Dictionary in checked.duels:
+		var own: Variant = view.sides[view.mine]
+		if not own is Dictionary or not own.has("give_up"): continue
+		if int(own.give_up.again_at) >= 0: _caps[view.duel_id] = int(own.give_up.again_at)
+		else: _caps.erase(view.duel_id)
 	var held: Dictionary = {}
 	for view: Dictionary in _lobby.get("duels", []): held[view.duel_id] = view
 	for index in range(checked.duels.size()):
 		var fresh: Dictionary = checked.duels[index]
-		if held.has(fresh.duel_id) and _older(fresh, held[fresh.duel_id]): checked.duels[index] = held[fresh.duel_id]
+		if held.has(fresh.duel_id) and _older(fresh, held[fresh.duel_id]): checked.duels[index] = _with_cap(held[fresh.duel_id])
 	_lobby = checked
 	_lobby_sent_ms = maxi(_lobby_sent_ms, sent_ms)
 	_remember(checked.duels)
@@ -459,9 +517,8 @@ static func valid_lobby(value: Variant) -> Dictionary:
 		if view.is_empty(): return {}
 		duels.append(view)
 	if duels.size() > MAX_DUELS: return {}
-	var limits: Variant = value.get("limits")
 	var kept := {"party": {"partner": partner, "intact": party.intact, "invites_in": party.invites_in.duplicate(), "invite_out": out, "partner_look": _look(party.get("partner_look"))}, "duels": duels,
-		"limits": {"friend": _limit(limits, "friend", FRIEND_LIMIT), "ghost": _limit(limits, "ghost", GHOST_LIMIT)}}
+		"limit": _limit(value.get("limits"))}
 	var public := _public_part(value.get("public"))
 	if not public.is_empty(): kept["public"] = public
 	return kept
@@ -478,9 +535,10 @@ static func _public_part(value: Variant) -> Dictionary:
 	return {"on": value.on, "show_name": value.show_name, "partner_on": partner if partner is bool else null, "paused": value.paused, "running": int(value.running),
 		"rules": rules if rules is bool else null, "partner_rules": partner_rules if partner_rules is bool else null}
 
-static func _limit(limits: Variant, kind: String, fallback: int) -> int:
-	var value: Variant = limits.get(kind) if limits is Dictionary else null
-	return int(value) if Typed.whole_number(value) and int(value) > 0 else fallback
+## The one limit, from `limits` (both kinds carry it, for 0.8.1 and 0.8.2 phones), or DUEL_LIMIT.
+static func _limit(limits: Variant) -> int:
+	var value: Variant = limits.get("friend") if limits is Dictionary else null
+	return int(value) if Typed.whole_number(value) and int(value) > 0 else DUEL_LIMIT
 
 ## One duel as the server sent it (backend duels/model.ts DuelView), or {}.
 static func valid_view(value: Variant) -> Dictionary:
@@ -513,7 +571,7 @@ static func valid_view(value: Variant) -> Dictionary:
 		kept_result = {"outcome": result.outcome, "reason": result.reason, "margin_ticks": int(result.margin_ticks) if Typed.whole_number(result.get("margin_ticks")) else -1}
 	var kept := {"duel_id": value.duel_id, "chapter": value.board, "board": value.board, "kind": value.kind, "status": value.status, "steps": int(value.steps),
 		"mine": int(mine), "sides": sides, "ghost": kept_ghost, "result": kept_result, "eligible": value.get("eligible") == true,
-		"created_ms": int(value.get("created_ms", 0)), "updated_ms": int(value.get("updated_ms", 0))}
+		"created_ms": int(value.get("created_ms", 0)), "updated_ms": int(value.get("updated_ms", 0)), "ends_at": _ticks_after(value.get("ends_in_ms"))}
 	# A public duel: its list times, and every side's seats (a friend duel has none).
 	var public: Variant = value.get("public")
 	if public != null:
@@ -548,7 +606,17 @@ static func _side(value: Variant) -> Dictionary:
 		side["room_id"] = room if Typed.valid_id(room) else ""
 		side["invite_code"] = invite if invite is String else ""
 		side["hosting"] = value.get("hosting") == true
+		var give_up: Variant = value.get("give_up")
+		if give_up != null:
+			if not give_up is Dictionary or not give_up.get("mode") in ["ask", "leave", "none"]: return {}
+			var asked: Variant = give_up.get("asked")
+			side["give_up"] = {"mode": give_up.mode, "asked": int(asked) if Typed.whole_number(asked) and int(asked) < 2 else -1,
+				"asked_at": int(give_up.asked_at) if Typed.whole_number(give_up.get("asked_at")) else -1, "again_at": _ticks_after(give_up.get("again_in_ms"))}
 	return side
+
+## This phone's ticks `value` milliseconds from now, or -1 when it is not a whole number.
+static func _ticks_after(value: Variant) -> int:
+	return Time.get_ticks_msec() + int(value) if Typed.whole_number(value) and int(value) >= 0 else -1
 
 ## A run's time after each turn (backend duels/ticks.ts): one whole, rising total per turn of `steps`, the last
 ## `ticks`. [] for anything else, or none sent (an older server or race), and the pages then show whole times.

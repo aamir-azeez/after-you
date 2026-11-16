@@ -1,6 +1,6 @@
 extends "res://presentation/duels/duel_page_base.gd"
-## Race a recorded run: one row per chapter open to you, with our own run
-## (the developers' time) and the chapter's leaderboard button, the shared
+## Race a recorded run: one row per chapter open to you, with Our run (the
+## owner's own run, only where there is one) and the chapter's leaderboard button, the shared
 ## trophy and "Top 10" (race-picker board 1B). The button opens the top 10
 ## picker (duel_race_picker.gd) through the flow (picker_requested), and is
 ## greyed while the board has no times ("No times yet"); /v1/duels/ghosts only
@@ -58,14 +58,7 @@ func _build() -> void:
 	var box := Kit.panel("DuelGhostList")
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	body.add_child(box)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	ThemeRules.touch_scroll(scroll)
-	box.add_child(scroll)
-	_list = VBoxContainer.new()
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 10)
-	scroll.add_child(_list)
+	_list = Kit.scrolling_list(box, 10)
 	_render()
 
 func _render() -> void:

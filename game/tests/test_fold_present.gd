@@ -105,7 +105,7 @@ func _world(key: String, entry: Dictionary) -> Node3D:
 		world.load_level(entry.stage)
 	else:
 		world.load_level(Registry.definition(key))
-		if world.has_method("show_stage"): world.show_stage(entry.stage)
+		world.show_stage(entry.stage)
 	world.present_history(entry.checkpoint)
 	return world
 

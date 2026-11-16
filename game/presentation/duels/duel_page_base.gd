@@ -34,6 +34,7 @@ var _alive := true
 var _modal: Control
 ## A screen of another kind over this page that takes Back itself (hold_back), while it is up.
 var _back_holder: Node
+var _page_scroll: ScrollContainer
 
 func _ready() -> void:
 	layer = stack_layer
@@ -96,6 +97,7 @@ func _ready() -> void:
 	ThemeRules.touch_scroll(scroll)
 	SettingsKit.style_scroll(scroll, false)
 	layout.add_child(scroll)
+	_page_scroll = scroll
 	body = VBoxContainer.new()
 	body.name = page_name() + "Body"
 	# Filling the scroll's height while it fits, so a panel that takes the rest of the page still does.
@@ -144,6 +146,9 @@ func _layout() -> void:
 		compact = now_compact
 		Kit.clear(body)
 		_build()
+		# A page whose lists scroll on their own (Kit.scrolling_list) does not scroll as well: never a scroll inside a scroll.
+		var lists := body.find_children("*", "ScrollContainer", true, false).any(func(scroll: ScrollContainer) -> bool: return scroll.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED)
+		_page_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED if lists else ScrollContainer.SCROLL_MODE_AUTO
 
 func close() -> void:
 	if not _alive: return
@@ -185,11 +190,12 @@ func hold_modal(modal: Control) -> void:
 	if not Kit.showing(_modal): _modal = modal
 	elif modal != _modal: modal.queue_free()
 
-## Opens a question card over this page.
-func ask(node_name: String, title: String, line: String, confirm_text: String, confirm: Callable, cancel_text: String) -> void:
+## Opens a question card over this page. `destructive`: the confirm is the coral one and the cream
+## cancel keeps things as they are (Keep playing), so the confirm never takes the focus.
+func ask(node_name: String, title: String, line: String, confirm_text: String, confirm: Callable, cancel_text: String, destructive: bool = false) -> void:
 	if sheet(node_name, title) == null: return
 	_modal.label(line)
 	var send: Button = _modal.add_actions(confirm_text, func() -> void:
 		_modal.close(false)
-		confirm.call(), cancel_text)
-	send.grab_focus()
+		confirm.call(), cancel_text, destructive)
+	if not destructive: send.grab_focus()

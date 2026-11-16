@@ -6,24 +6,32 @@
  * ticks of every turn on the finishing branch, as the Fastest pair board counts
  * them. Every turn is unassisted: a duel's room refuses Forgiving catches
  * (v2/room.ts), and the replay check fails an assisted run. A ghost race is one pair against a
- * recorded time; while duel run checks are on (DUEL_RUN_CHECKS, off by default), a run faster than the
- * developers' ghost is checked too (model.ts awaitsCheck).
+ * recorded time; while duel run checks are on (DUEL_RUN_CHECKS, off by default), a run faster than
+ * Our run is checked too (model.ts awaitsCheck).
  * Pay is in pollen/ (POLLEN-RULES.md "Duels and ghost races").
  */
 
 /** The party actions, POST /v1/duels/party/<action> (routes.ts; pollen/looks-routes.ts keeps the caller's look on each). */
 export const PARTY_ACTIONS = ["invite", "accept", "dismiss", "cancel", "leave"] as const;
 /**
- * Friend duels a pair may have waiting or running at once (challenges it sent or got count too). Ghost races do not count.
- * Plenty for normal play, too few for spam (owner, 2026-11-02). The lobby reports it (routes.ts `limits.friend`), so the
- * phone's limit line follows; game/services/duels_client.gd FRIEND_LIMIT is only its fallback and stays in step.
+ * Duels a pair may have going at once, every kind together (owner, 2026-11-15): friend duels waiting or running
+ * (challenges it sent or got count too), the public duels either player is in, and ghost races still being played (a
+ * race whose run finished and waits for its check holds no slot). routes.ts openDuels counts them. The lobby reports it
+ * (routes.ts `limits`, as both `friend` and `ghost` for 0.8.1 and 0.8.2 phones), so the phone's limit line follows;
+ * game/services/duels_client.gd DUEL_LIMIT is only its fallback and stays in step.
  */
-export const MAX_FRIEND_DUELS_PER_PAIR = 10;
-/** Ghost races a pair may have running at once. */
-export const MAX_GHOST_RACES_PER_PAIR = 3;
-/** A challenge nobody answers fades after this long, with no countdown shown. */
+export const MAX_DUELS_PER_PAIR = 30;
+/** A challenge nobody answers fades after this long. Every open duel's phone shows how long is left (model.ts endsAt). */
 export const CHALLENGE_TTL_MS = 7 * 86_400_000;
-/** A running duel with no turn from anyone for this long ends unfinished: no win and no loss. */
+/**
+ * Give ups (model.ts giveUp) a pip may take part in within GIVE_UP_WINDOW_MS, friend and public duels together; ghost
+ * races do not count. Counted per pip on their own party row (party.ts give_ups), so a new party does not reset it, and
+ * a pair may give up only while both its pips are under it (owner, 2026-11-16).
+ */
+export const MAX_GIVE_UPS = 3;
+/** As long as a challenge waits (CHALLENGE_TTL_MS). */
+export const GIVE_UP_WINDOW_MS = CHALLENGE_TTL_MS;
+/** A running duel with no turn from anyone for this long ends unfinished: no win and no loss. Any turn starts it again. */
 export const STALL_MS = 30 * 86_400_000;
 /** A side's room claim whose room never appeared may be taken over by the partner after this long. */
 export const ROOM_CLAIM_TAKEOVER_MS = 120_000;
@@ -32,15 +40,20 @@ export const PARTY_INVITE_TTL_MS = 7 * 86_400_000;
 /** Party invites a player may hold at once; the oldest goes past it. */
 export const MAX_PARTY_INVITES = 8;
 /**
- * Duel pointers kept per player, the oldest going first past it: room for the open friend duels and ghost races and a
- * week of result tiles. MAX_RECENT_DUELS keeps the open ones well inside it.
+ * Duel pointers kept per player, the oldest going first past it: room for the open duels of every kind and a week of
+ * result tiles. MAX_RECENT_DUELS keeps the open ones well inside it. At most 64: 0.8.1 and 0.8.2 phones refuse a lobby
+ * listing more (game/services/duels_client.gd MAX_DUELS).
  */
-export const MAX_MEMBER_DUELS = 40;
-/** A player holding this many duels started in the last CHALLENGE_TTL_MS takes no new challenge. Above MAX_FRIEND_DUELS_PER_PAIR, so a busy pair still reaches its limit. */
-export const MAX_RECENT_DUELS = 30;
+export const MAX_MEMBER_DUELS = 60;
+/**
+ * The hard cap against spam: a player holding this many duels of any kind started in the last CHALLENGE_TTL_MS starts
+ * or joins no more, and takes no new challenge (routes.ts recentStarts). Above MAX_DUELS_PER_PAIR, so a busy pair still
+ * reaches its limit.
+ */
+export const MAX_RECENT_DUELS = 40;
 /** A decided duel stays on the lobby this long, as a result tile. */
 export const RESULT_SHOWN_MS = 7 * 86_400_000;
-/** Raw duel runs waiting for the replay check, per board, while duel run checks are on (DUEL_RUN_CHECKS): a friend duel's run, or a ghost race's beating the developers' ghost, is checked before its win counts. */
+/** Raw duel runs waiting for the replay check, per board, while duel run checks are on (DUEL_RUN_CHECKS): a friend duel's run, or a ghost race's beating Our run, is checked before its win counts. */
 export const MAX_DUEL_PROOFS = 64;
 /** Duel records kept per board, newest first; settled ones go first past it. */
 export const MAX_BOARD_DUELS = 512;
@@ -57,7 +70,7 @@ export const UNCLAIMED_RACE_MS = 2 * 86_400_000;
 /**
  * An accepted friend duel in which neither pair opened its room ends unfinished this long after the accept. The
  * accepting player taps it on the lobby, whose tile then offers Play (duels_flow.gd _on_duel_action), and the sending
- * pair hears of it within a minute (lobby read, or a hint), but nothing pushes it and no deadline shows, so three days
+ * pair hears of it within a minute (lobby read, or a hint), but nothing pushes it, so three days
  * leave room for a pair that accepts on Friday to play on Sunday. Once either pair taps Play the duel runs to STALL_MS.
  */
 export const UNCLAIMED_DUEL_MS = 3 * 86_400_000;

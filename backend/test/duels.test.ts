@@ -8,13 +8,13 @@ import { canonicalJson, digest } from "../src/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { boardKeys } from "../src/leaderboards/boards";
-import { developerGhost, developerGhostSplits } from "../src/duels/developer-ghosts";
+import { legacyShippedSplits, legacyShippedTicks } from "../src/duels/legacy-shipped-our-run";
 import { deriveJobToken } from "../src/leaderboards/job-token";
 import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
 import { accept, blankSide, newFriendDuel, newGhostRace, type DuelView } from "../src/duels/model";
 import { DuelStore } from "../src/duels/store";
-import { MAX_BOARD_DUELS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, MAX_SETTLED_ON_FULL, STALL_MS, UNCLAIMED_RACE_MS } from "../src/duels/rules";
+import { MAX_BOARD_DUELS, MAX_DUELS_PER_PAIR, MAX_RECENT_DUELS, MAX_SETTLED_ON_FULL, STALL_MS, UNCLAIMED_RACE_MS } from "../src/duels/rules";
 import { pairKey } from "../src/leaderboards/run";
 import gameDuelsClient from "../../game/services/duels_client.gd?raw";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
@@ -43,6 +43,10 @@ const NO_DUELS = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "POLLE
 const RELAY = "relay-isles@2";
 const RELAY_KEY = { level_id: "relay-isles", level_version: 2, definition_hash: CHAPTERS[0].adapter.key.definition_hash };
 const DAY = 86_400_000;
+/** A give up's requests (duels/routes.ts giveUpRoute), measured 2026-11-16: sign-in, board read, both pips' rows (the cap), the board's act; hints only while live hints are on. */
+const GIVE_UP_ASK_CALLS = ["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_BOARDS.duelAct"];
+/** The agree adds each pip's count on their own row (one row written each). */
+const GIVE_UP_AGREE_CALLS = [...GIVE_UP_ASK_CALLS, "LEADERBOARD_MEMBERS.partyApply", "LEADERBOARD_MEMBERS.partyApply"];
 let address = 0;
 
 async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
@@ -346,14 +350,12 @@ describe("friend duels", () => {
     // A second win against the same pair the same week counts at 0.
     const again = await ok<{ duel: DuelView }>(challenge(a1, b1));
     await ok(call(`/v1/duels/${RELAY}/${again.duel.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
+    // The other pair gives up (an old phone's leave asks, the friend agrees): it ends at once.
     await ok(call(`/v1/duels/${RELAY}/${again.duel.duel_id}/leave`, "POST", b1, { schema_version: 1 }));
-    const replay = await ok<RoomSnapshotV2>(openRoom(a1, again.duel));
-    const secondJoined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: replay.invite_code }));
-    await play(secondJoined, [a1, a2], fast);
-    await verdicts((await job()).entries, () => true);
+    await ok(call(`/v1/duels/${RELAY}/${again.duel.duel_id}/give-up`, "POST", b2, { schema_version: 1, answering: null }));
     const repeat = await detail(a1, again.duel);
     expect(repeat.duel.result).toMatchObject({ outcome: "won", reason: "left" });
-    // A win the other pair handed over by leaving pays no bonus: only a win where both runs passed does.
+    // A win the other pair handed over by giving up pays no bonus: only a win where both runs passed does.
     expect(repeat.win_bonus).toBeUndefined();
   }, 60_000);
 
@@ -442,8 +444,8 @@ describe("friend duels", () => {
     expect(declined.duel.status).toBe("declined");
     expect((await call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 })).status).toBe(409);
     // The pair already has all but two of its duels going: two more go out, and the next is refused.
-    expect(MAX_FRIEND_DUELS_PER_PAIR).toBe(10);
-    await seedDuels([a1, a2], MAX_FRIEND_DUELS_PER_PAIR - 2);
+    expect(MAX_DUELS_PER_PAIR).toBe(30);
+    await seedDuels([a1, a2], MAX_DUELS_PER_PAIR - 2);
     const boards = CHAPTERS.slice(1, 4).map(boardOfRow);
     const answers: Response[] = [];
     for (const key of boards) answers.push(await call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: key }));
@@ -451,14 +453,44 @@ describe("friend duels", () => {
     expect(await errorCode(answers[2])).toBe("duel_limit_reached");
     // The lobby says the number, so the phone's limit line follows the server.
     const read = await ok<Lobby & { limits: Any }>(call("/v1/duels", "GET", a1));
-    expect(read.limits).toEqual({ friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR });
-    expect(read.duels.filter(duel => duel.status === "running" || duel.status === "challenged")).toHaveLength(MAX_FRIEND_DUELS_PER_PAIR);
+    expect(read.limits).toEqual({ friend: MAX_DUELS_PER_PAIR, ghost: MAX_DUELS_PER_PAIR });
+    expect(read.duels.filter(duel => duel.status === "running" || duel.status === "challenged")).toHaveLength(MAX_DUELS_PER_PAIR);
+  });
+
+  it("count friend duels and ghost races against one limit, and refuse the next of either kind", async () => {
+    const { a1, a2, b1 } = await pairs();
+    const members = [a1.player_id, a2.player_id] as [string, string], key = await pairKey(...members), now = Date.now();
+    await seedDuels([a1, a2], MAX_DUELS_PER_PAIR - 10);
+    // Nine races still being played, and one whose run finished and waits for its check, which holds no slot.
+    const refs = Array.from({ length: 10 }, (_, index) => ({ duel_id: (index + 1).toString(16).padStart(32, "e"), board: RELAY, at: now }));
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (board: LeaderboardBoard) => {
+      for (const [index, ref] of refs.entries()) {
+        const race = newGhostRace({ duel_id: ref.duel_id, board: RELAY, chapter: RELAY_KEY, steps: 4, starter: members[0], a: blankSide(members, key),
+          ghost: { source: "board", entry_id: "e".repeat(32), rank: 1, ticks: 9_000, names: null } }, now);
+        if (index === 0) Object.assign(race.sides[0], { finished_ms: now, check: "waiting" });
+        await board.duelCreate(race);
+      }
+    });
+    for (const id of members) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs }, now);
+    const race = () => call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null });
+    expect((await race()).status).toBe(200);
+    expect(await errorCode(await race())).toBe("duel_limit_reached");
+    expect(await errorCode(await call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: boardOfRow(CHAPTERS[1]) }))).toBe("duel_limit_reached");
+  });
+
+  it("refuse a player who started the most duels this week another duel of any kind", async () => {
+    const { a1, b1 } = await pairs();
+    const now = Date.now();
+    const refs = Array.from({ length: MAX_RECENT_DUELS }, (_, index) => ({ duel_id: index.toString(16).padStart(32, "c"), board: RELAY, at: now }));
+    await env.LEADERBOARD_MEMBERS.getByName(a1.player_id).partyApply(a1.player_id, { kind: "add_duels", refs }, now);
+    expect(await errorCode(await call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).toBe("duel_limit_reached");
+    expect(await errorCode(await call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY }))).toBe("duel_limit_reached");
   });
 
   it("take an accept up to the limit of running duels and refuse the one past it", async () => {
     const { a1, b1, b2 } = await pairs();
     const sent = await Promise.all(CHAPTERS.slice(1, 3).map(async row => (await ok<{ duel: DuelView }>(call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: boardOfRow(row) }))).duel));
-    await seedDuels([b1, b2], MAX_FRIEND_DUELS_PER_PAIR - 1);
+    await seedDuels([b1, b2], MAX_DUELS_PER_PAIR - 1);
     const first = await call(`/v1/duels/${sent[0].board}/${sent[0].duel_id}/accept`, "POST", b1, { schema_version: 1 });
     expect(first.status).toBe(200);
     const second = await call(`/v1/duels/${sent[1].board}/${sent[1].duel_id}/accept`, "POST", b2, { schema_version: 1 });
@@ -468,7 +500,7 @@ describe("friend duels", () => {
 
   it("refuse a challenge to a player who started the most duels this week, which stays above the limit", async () => {
     const { a1, b1 } = await pairs();
-    expect(MAX_RECENT_DUELS).toBe(30);
+    expect(MAX_RECENT_DUELS).toBe(40);
     const now = Date.now();
     const refs = Array.from({ length: MAX_RECENT_DUELS - 1 }, (_, index) => ({ duel_id: index.toString(16).padStart(32, "a"), board: RELAY, at: now }));
     await env.LEADERBOARD_MEMBERS.getByName(b1.player_id).partyApply(b1.player_id, { kind: "add_duels", refs }, now);
@@ -480,10 +512,8 @@ describe("friend duels", () => {
     expect(await errorCode(answers[1])).toBe("opponent_busy");
   });
 
-  it("keep the phone's fallback limits in step with the server's", () => {
-    const limit = (name: string) => Number(new RegExp(`^const ${name} := (\\d+)\\s*$`, "m").exec(gameDuelsClient)?.[1]);
-    expect(limit("FRIEND_LIMIT")).toBe(MAX_FRIEND_DUELS_PER_PAIR);
-    expect(limit("GHOST_LIMIT")).toBe(MAX_GHOST_RACES_PER_PAIR);
+  it("keep the phone's fallback limit in step with the server's", () => {
+    expect(Number(/^const DUEL_LIMIT := (\d+)\s*$/m.exec(gameDuelsClient)?.[1])).toBe(MAX_DUELS_PER_PAIR);
   });
 
   it("post an unassisted duel run to the Fastest pair board with its raw time", async () => {
@@ -501,16 +531,111 @@ describe("friend duels", () => {
     expect(entries[0]).not.toHaveProperty("duel");
   });
 
-  it("let a pair that left hand the win to the other once its run passes, and end at erasure", async () => {
+  it("take an old phone's leave on a running duel as the ask to give up, and end at erasure", async () => {
     const { a1, a2, b1, b2 } = await pairs(true);
     const sent = (await ok<{ duel: DuelView }>(challenge(a1, b1))).duel;
     await ok(call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
-    expect((await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${sent.duel_id}/leave`, "POST", b2, { schema_version: 1 }))).duel.sides[1]!.left).toBe(true);
+    const asked = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${sent.duel_id}/leave`, "POST", b2, { schema_version: 1 }))).duel;
+    expect(asked).toMatchObject({ status: "running", sides: [{}, { left: false, give_up: { mode: "ask", asked: 1 } }] });
     expect((await call("/v1/identity", "DELETE", a2)).status).toBe(200);
     const after = (await lobby(a1));
     expect(after.party).toMatchObject({ partner: null });
     expect(after.duels[0]).toMatchObject({ status: "unfinished", result: { outcome: "none", reason: "erased" } });
   });
+});
+
+describe("give up", () => {
+  const giveUp = (account: Account, duel: DuelView, answering: number | null, vars = ON, target: Env = env) =>
+    call(`/v1/duels/${RELAY}/${duel.duel_id}/give-up`, "POST", account, { schema_version: 1, answering }, vars, {}, target);
+  const keepPlaying = (account: Account, duel: DuelView, answering: number) =>
+    call(`/v1/duels/${RELAY}/${duel.duel_id}/keep-playing`, "POST", account, { schema_version: 1, answering });
+  const giveUps = async (account: Account) => (await env.LEADERBOARD_MEMBERS.getByName(account.player_id).partyRead(Date.now())).give_ups ?? [];
+  async function accepted(a1: Account, b1: Account): Promise<DuelView> {
+    const duel = (await ok<{ duel: DuelView }>(challenge(a1, b1))).duel;
+    await ok(call(`/v1/duels/${RELAY}/${duel.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
+    return duel;
+  }
+
+  it("end a friend duel at once once both pips agree, with no win bonus, counted on both pips' rows, at a measured cost", async () => {
+    const { a1, a2, b1, b2 } = await pairs();
+    const duel = await accepted(a1, b1);
+    // The ask: the board read, both pips' party rows (the cap), the board's act and the partner's hint.
+    const asked = await countAllRequests(env, target => ok<{ duel: DuelView }>(giveUp(b1, duel, null, ON, target)));
+    expect(asked.value.duel).toMatchObject({ status: "running", sides: [{}, { give_up: { mode: "ask", asked: 0 } }] });
+    expect(asked.calls).toEqual(GIVE_UP_ASK_CALLS);
+    const ask = asked.value.duel.sides[1]!.give_up!;
+    // The friend sees it on the lobby; the other pair never does.
+    const theirs = (await lobby(b2)).duels.find(view => view.duel_id === duel.duel_id)!;
+    expect(theirs.sides[1]!.give_up).toEqual({ mode: "ask", asked: 0, asked_at: ask.asked_at });
+    expect(theirs.ends_in_ms).toBeGreaterThan(0);
+    const other = (await lobby(a1)).duels.find(view => view.duel_id === duel.duel_id)!;
+    expect(other.sides[1]!.give_up).toBeUndefined();
+    expect(other.sides[0].give_up).toEqual({ mode: "ask", asked: null, asked_at: null });
+    // The agree ends it: the other pair wins, and each pip's row counts it once.
+    const agreed = await countAllRequests(env, target => ok<{ duel: DuelView }>(giveUp(b2, duel, ask.asked_at, ON, target)));
+    expect(agreed.value.duel).toMatchObject({ status: "decided", result: { outcome: "lost", reason: "left" } });
+    expect(agreed.value.duel.ends_in_ms).toBeUndefined();
+    expect(agreed.calls).toEqual(GIVE_UP_AGREE_CALLS);
+    expect((await giveUps(b1)).map(item => item.duel_id)).toEqual([duel.duel_id]);
+    expect((await giveUps(b2)).map(item => item.duel_id)).toEqual([duel.duel_id]);
+    expect(await giveUps(a1)).toEqual([]);
+    // A repeat answers the same and counts nothing more.
+    await ok(giveUp(b2, duel, ask.asked_at));
+    expect(await giveUps(b2)).toHaveLength(1);
+    // The winners' read pays no win bonus and never asks the wallet for one.
+    const won = await countAllRequests(env, target => ok<{ duel: DuelView; win_bonus?: Any }>(call(`/v1/duels/${RELAY}/${duel.duel_id}`, "GET", a1, undefined, ON, {}, target)));
+    expect(won.value.duel.result).toMatchObject({ outcome: "won", reason: "left" });
+    expect(won.value.win_bonus).toBeUndefined();
+    expect(won.calls.filter(name => /creditDuelWin|creditGhostWin/.test(name))).toEqual([]);
+    expect((await lobby(a2)).duels.find(view => view.duel_id === duel.duel_id)!.result).toMatchObject({ outcome: "won", reason: "left" });
+  }, 60_000);
+
+  it("take an ask back or say keep playing only for the ask named, and refuse an agree whose ask went", async () => {
+    const { a1, b1, b2 } = await pairs();
+    const duel = await accepted(a1, b1);
+    const ask = (await ok<{ duel: DuelView }>(giveUp(b1, duel, null))).duel.sides[1]!.give_up!;
+    expect((await ok<{ duel: DuelView }>(keepPlaying(b2, duel, ask.asked_at! - 1))).duel.sides[1]!.give_up!.asked).toBe(0);
+    expect((await ok<{ duel: DuelView }>(keepPlaying(b2, duel, ask.asked_at!))).duel.sides[1]!.give_up).toEqual({ mode: "ask", asked: null, asked_at: null });
+    const refused = await giveUp(b2, duel, ask.asked_at);
+    expect(refused.status).toBe(409);
+    expect(await errorCode(refused)).toBe("give_up_taken_back");
+    expect((await detail(b1, duel)).duel).toMatchObject({ status: "running", sides: [{}, { give_up: { asked: null } }] });
+    // A bad answer is refused before anything is read.
+    expect((await call(`/v1/duels/${RELAY}/${duel.duel_id}/keep-playing`, "POST", b1, { schema_version: 1, answering: null })).status).toBe(400);
+  });
+
+  it("hold each pip to three give ups a week, whatever their party, and count none for a ghost race", async () => {
+    const { a1, b1, b2 } = await pairs();
+    const now = Date.now();
+    // B1 gave up three duels this week, with any party.
+    for (const index of [1, 2, 3]) await env.LEADERBOARD_MEMBERS.getByName(b1.player_id).partyApply(b1.player_id, { kind: "give_up", duel_id: String(index).padStart(32, "0"), at: now - index * 1000 }, now);
+    const duel = await accepted(a1, b1);
+    // Both pips see it greyed, with how long until one frees up: the oldest leaves the week.
+    for (const pip of [b1, b2]) {
+      const view = (await lobby(pip)).duels.find(item => item.duel_id === duel.duel_id)!;
+      const again = view.sides[1]!.give_up!.again_in_ms!;
+      expect(again).toBeGreaterThan(7 * DAY - 3000 - 60_000);
+      expect(again).toBeLessThanOrEqual(7 * DAY - 3000);
+    }
+    for (const pip of [b1, b2]) {
+      const refused = await giveUp(pip, duel, null);
+      expect(refused.status).toBe(409);
+      const body = await refused.json<{ error: { code: string; again_in_ms: number } }>();
+      expect(body.error.code).toBe("give_up_capped");
+      expect(body.error.again_in_ms).toBeGreaterThan(0);
+    }
+    // So is an old phone's leave, and the duel goes on.
+    expect((await call(`/v1/duels/${RELAY}/${duel.duel_id}/leave`, "POST", b2, { schema_version: 1 })).status).toBe(409);
+    expect((await detail(b1, duel)).duel).toMatchObject({ status: "running", sides: [{}, { left: false, give_up: { asked: null } }] });
+    // A ghost race is never held to it and adds nothing to it.
+    const race = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", b1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
+    const raceAsk = (await ok<{ duel: DuelView }>(giveUp(b1, race, null))).duel.sides[0].give_up!;
+    expect(raceAsk.again_in_ms).toBeUndefined();
+    const over = (await ok<{ duel: DuelView }>(giveUp(b2, race, raceAsk.asked_at))).duel;
+    expect(over).toMatchObject({ status: "unfinished", result: { outcome: "none", reason: "left" } });
+    expect(await giveUps(b2)).toEqual([]);
+    expect(await giveUps(b1)).toHaveLength(3);
+  }, 60_000);
 });
 
 describe("duel erasure", () => {
@@ -524,20 +649,34 @@ describe("duel erasure", () => {
   });
 });
 
+// Requests here send no X-AfterYou-Our-Run header, so a race against Our run is an older app's: the run it shipped
+// (LEGACY, src/duels/legacy-shipped-our-run.ts; leaderboards.test.ts "Our run" races the owner's run).
 describe("ghost races", () => {
+  it("offer an app that plays Our run none while the owner has no run on the board, and refuse a race against it", async () => {
+    const { a1, a2 } = await pairs();
+    const HEADER = { "X-AfterYou-Our-Run": "1" };
+    const ghosts = await ok<{ boards: { board: string; developer: number | null }[] }>(call("/v1/duels/ghosts", "GET", a1, undefined, ON, HEADER));
+    expect(ghosts.boards.every(item => item.developer === null)).toBe(true);
+    const refused = await call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }, ON, HEADER);
+    expect(refused.status).toBe(404);
+    expect(await errorCode(refused)).toBe("ghost_not_found");
+    expect((await lobby(a1)).duels).toEqual([]);
+    expect((await lobby(a2)).duels).toEqual([]);
+  });
+
   it("race a recorded time and are decided the moment the pair finishes, paying like normal turns", async () => {
     const { a1, a2 } = await pairs();
     const ghosts = await ok<{ boards: { board: string; developer: number | null; top: unknown[] }[] }>(call("/v1/duels/ghosts", "GET", a1));
-    expect(ghosts.boards.find(item => item.board === RELAY)!.developer).toBe(developerGhost(RELAY));
+    expect(ghosts.boards.find(item => item.board === RELAY)!.developer).toBe(legacyShippedTicks(RELAY));
     const started = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
-    expect(started).toMatchObject({ kind: "ghost", status: "running", ghost: { source: "developer", ticks: developerGhost(RELAY) } });
+    expect(started).toMatchObject({ kind: "ghost", status: "running", ghost: { source: "developer", ticks: legacyShippedTicks(RELAY) } });
     const room = await ok<RoomSnapshotV2>(openRoom(a2, started));
     const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a1, { invite_code: room.invite_code }));
     const run = await relayRun(0);
     const replies = await play(joined, [a2, a1], run);
     expect((replies[0].pollen as { turn: Any }).turn).not.toHaveProperty("duel");
     const done = (await lobby(a1)).duels[0];
-    const ghostTicks = developerGhost(RELAY)!;
+    const ghostTicks = legacyShippedTicks(RELAY)!;
     expect(done).toMatchObject({ status: "decided", result: { outcome: run.ticks < ghostTicks ? "won" : run.ticks > ghostTicks ? "lost" : "draw" } });
     expect((await detail(a1, started)).win_bonus).toBeUndefined();
   });
@@ -564,7 +703,7 @@ describe("ghost races", () => {
   it("give the recorded run's time after each turn: Our run's from its table, a board run's from its kept replay, and none for a race made before", async () => {
     const { a1, a2 } = await pairs();
     const ours = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
-    expect(ours.ghost!.splits).toEqual(developerGhostSplits(RELAY));
+    expect(ours.ghost!.splits).toEqual(legacyShippedSplits(RELAY));
     expect(ours.ghost!.splits).toHaveLength(ours.steps);
     // A finished run ranks on the board, and a race against it times the run turn by turn.
     const run = await relayRun(0);
@@ -593,9 +732,9 @@ describe("ghost races", () => {
 });
 
 describe("the first win over Our run", () => {
-  const OURS = developerGhost(RELAY)!;
+  const OURS = legacyShippedTicks(RELAY)!;
   const race = async (who: Account) => (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", who, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
-  /** Starts a race against the developers' ghost and plays it through with `slower` ticks against the fixtures' run. */
+  /** Starts a race against Our run (an older app's, so the shipped run) and plays it through with `slower` ticks against the fixtures' run. */
   async function played(host: Account, guest: Account, slower: number, duel?: DuelView) {
     const started = duel ?? await race(host);
     const room = await ok<RoomSnapshotV2>(openRoom(host, started));
@@ -1123,10 +1262,13 @@ describe("duel hints", () => {
     const [who, recording, checkpoint] = run.turns[run.turns.length - 1];
     const finisher = hosting[who];
     await step(sockets, () => ok(call("/v2/rooms/" + joined.room_id + "/turns", "POST", finisher, turn(current, recording, checkpoint))), allBut(finisher));
-    await step(sockets, () => ok(call(path(duel, "leave"), "POST", b2, { schema_version: 1 })), { a1: 1, a2: 1, b1: 1, b2: 0 });
-    // The check result has no actor: all four hear the duel end.
-    const ended = await step(sockets, async () => verdicts((await job()).entries, () => true), { a1: 1, a2: 1, b1: 1, b2: 1 });
-    expect((await detail(a1, duel)).duel).toMatchObject({ status: "decided", updated_ms: ended.a1[0].at });
+    // The check result has no actor: all four hear it.
+    await step(sockets, async () => verdicts((await job()).entries, () => true), { a1: 1, a2: 1, b1: 1, b2: 1 });
+    // An ask to give up is news to the asker's partner only (an old phone's leave is the ask).
+    await step(sockets, () => ok(call(path(duel, "leave"), "POST", b2, { schema_version: 1 })), { a1: 0, a2: 0, b1: 1, b2: 0 });
+    // The agree ends the duel: everyone but the pip who agreed hears it.
+    const ended = await step(sockets, () => ok(call(path(duel, "give-up"), "POST", b1, { schema_version: 1, answering: null })), { a1: 1, a2: 1, b1: 0, b2: 1 });
+    expect((await detail(a1, duel)).duel).toMatchObject({ status: "decided", result: { outcome: "won", reason: "left" }, updated_ms: ended.a1[0].at });
   }, 60_000);
 
   it("tell the partner of a new ghost race, and cost one Player request per player told, writing no row", async () => {
@@ -1203,7 +1345,7 @@ describe("duel looks", () => {
     expect(sideLooks(seen)).toEqual([[{ hat: "daisy" }, { body: "tide" }], [{ hat: "straw_hat" }, {}]]);
   }, 60_000);
 
-  it("race a board run in the looks its row shows, and the developers' run in the default", async () => {
+  it("race a board run in the looks its row shows, and an older app's shipped Our run in the default", async () => {
     const { a1, a2 } = await pairs(true);
     await wear(a1, { hat: "daisy" });
     const first = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }, LOOKS))).duel;
@@ -1217,7 +1359,7 @@ describe("duel looks", () => {
     expect(top.length).toBeGreaterThan(0);
     const raced = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "board", entry_id: top[0].entry_id }, LOOKS))).duel;
     expect(raced.ghost!.looks).toEqual([{ hat: "daisy" }, {}]);
-    // The race keeps the run's replay_hash as the board row names it (the race ghost), and the developers' run has none.
+    // The race keeps the run's replay_hash as the board row names it (the race ghost), and the shipped Our run has none.
     const row = (await ok<{ top: { entry_id: string; replay_hash: string | null }[] }>(call(`/v1/leaderboards/${RELAY}`, "GET", a1, undefined, LOOKS))).top.find(item => item.entry_id === top[0].entry_id)!;
     expect(row.replay_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(raced.ghost!.replay_hash).toBe(row.replay_hash);

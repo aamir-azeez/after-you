@@ -74,7 +74,7 @@ func _built_stages(key: String) -> void:
 	_mount(viewport, world, false)
 	world.load_level(Registry.definition(key))
 	for stage: Dictionary in Registry.definition(key).get("stages", []):
-		if world.has_method("show_stage"): world.show_stage(stage)
+		world.show_stage(stage)
 		_frames(world, 30)
 		_fingerprint(world, key, false, str(stage.get("id", "")))
 	viewport.free()

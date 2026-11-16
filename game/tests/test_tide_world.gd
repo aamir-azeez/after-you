@@ -755,7 +755,7 @@ func _plain_pads(level: Dictionary) -> void:
 	world.set_process(false)
 	world.load_level(level)
 	world.show_stage(level.stages[0])
-	_check(world._pad_pieces.values().all(func(piece: RefCounted) -> bool: return piece.spot == null) and world.terrain.find_children("StandSpot*", "", true, false).is_empty(), "Pinned plain, no pad wears a stand spot")
+	_check(world.pad_pieces.values().all(func(piece: RefCounted) -> bool: return piece.spot == null) and world.terrain.find_children("StandSpot*", "", true, false).is_empty(), "Pinned plain, no pad wears a stand spot")
 	for pad: Dictionary in level.stages[0].pressure_pads:
 		var ring := (world._physical_pads[pad.id] as MeshInstance3D).mesh as TorusMesh
 		_check(ring != null and is_equal_approx(ring.outer_radius, float(pad.radius_cm) / 100.0 + 0.025), "Pinned plain, a pad keeps its plain ring: " + str(pad.id))

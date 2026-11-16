@@ -46,6 +46,8 @@ int main(void) {
 		check([[AYPolicy inboxValueForURL:[NSURL URLWithString:link]] isEqualToString:link], @"A valid opened URL is passed unchanged");
 
 		check([AYPolicy validStorageName:@"device_token"] && ![AYPolicy validStorageName:@"Device"] && ![AYPolicy validStorageName:@""], @"Storage names follow the Android pattern");
+		check([AYPolicy keptAcrossReinstall:@"player_identity"] && [AYPolicy keptAcrossReinstall:@"recovery_pending"] && [AYPolicy keptAcrossReinstall:@"platform_restore_pending"], @"A reinstall keeps the identity and a recovery or restore still waiting");
+		check(![AYPolicy keptAcrossReinstall:@"notification_binding"] && ![AYPolicy keptAcrossReinstall:@"device_token"] && ![AYPolicy keptAcrossReinstall:@"player_identity2"], @"Every other Keychain item starts fresh with the install");
 		check([AYPolicy validStorageValue:repeat(@"a", 16384)] && ![AYPolicy validStorageValue:repeat(@"a", 16385)], @"Storage values are capped at 16 KiB");
 		NSString *recovery = [AYPolicy recoveryTextForPlayer:repeat(@"i", 22) code:repeat(@"r", 43)];
 		check([recovery isEqualToString:[NSString stringWithFormat:@"After You recovery details\nIdentity: %@\nRecovery code: %@", repeat(@"i", 22), repeat(@"r", 43)]], @"Recovery text matches Android exactly");
@@ -173,6 +175,33 @@ int main(void) {
 		check([AYGamesPolicy decodeSnapshot:@""].length == 0 && [[AYGamesPolicy decodeSnapshot:@"QVlDMQ=="] isEqualToData:[@"AYC1" dataUsingEncoding:NSUTF8StringEncoding]], @"Slot bytes decode from base64");
 		check([AYGamesPolicy validPlayerName:@"Synthetic Player"] && [AYGamesPolicy validPlayerName:repeat(@"x", 64)] && ![AYGamesPolicy validPlayerName:repeat(@"x", 65)] && ![AYGamesPolicy validPlayerName:@""] && ![AYGamesPolicy validPlayerName:nil], @"The Game Center alias is only bounded, 1 to 64 UTF-16 units");
 		check([AYGamesPolicy decodeSnapshot:@"not base64!"] == nil && [AYGamesPolicy decodeSnapshot:repeat(@"A", 4 * 1024 * 1024 + 8)] == nil, @"Bad or oversized slot text is refused");
+
+		// iCloud backup: the user folder is backed up (an older build's whole-folder mark is cleared),
+		// and only the excluded items are left out, matching Android's backup rules.
+		NSURL *backupRoot = [[NSURL fileURLWithPath:NSTemporaryDirectory() isDirectory:YES] URLByAppendingPathComponent:[NSUUID UUID].UUIDString isDirectory:YES];
+		[[NSFileManager defaultManager] createDirectoryAtURL:backupRoot withIntermediateDirectories:YES attributes:nil error:nil];
+		[backupRoot setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
+		for (NSString *name in @[ @"journey.json", @"platform-games-v1.json" ]) {
+			[[NSData data] writeToURL:[backupRoot URLByAppendingPathComponent:name] atomically:YES];
+		}
+		[AYPolicy applyBackupRulesAt:backupRoot];
+		BOOL (^excluded)(NSString *) = ^BOOL(NSString *name) {
+			NSURL *url = name.length ? [NSURL fileURLWithPath:[backupRoot.path stringByAppendingPathComponent:name]] : [NSURL fileURLWithPath:backupRoot.path isDirectory:YES];
+			NSNumber *value = nil;
+			[url getResourceValue:&value forKey:NSURLIsExcludedFromBackupKey error:nil];
+			return value.boolValue;
+		};
+		check(!excluded(@"") && !excluded(@"journey.json"), @"The user folder and its saves are backed up again");
+		check(excluded(@"platform-games-v1.json") && excluded(@"relay-online") && excluded(@"photo-library") && excluded(@"cloud-save-staging"), @"Platform bookkeeping, device-bound room state, photos and staging stay out");
+		NSString *rules = [NSString stringWithContentsOfFile:@"native/plugin/src/main/res/xml/after_you_full_backup_rules.xml" encoding:NSUTF8StringEncoding error:nil];
+		NSRegularExpression *fileRule = [NSRegularExpression regularExpressionWithPattern:@"domain=\"file\" path=\"([^\"]+)\"" options:0 error:nil];
+		NSArray<NSTextCheckingResult *> *androidFolders = rules ? [fileRule matchesInString:rules options:0 range:NSMakeRange(0, rules.length)] : @[];
+		check(androidFolders.count > 0, @"Android's backup rules are readable from the repository root");
+		for (NSTextCheckingResult *match in androidFolders) {
+			NSString *folder = [rules substringWithRange:[match rangeAtIndex:1]];
+			check([[AYPolicy backupExcludedFolders] containsObject:folder] && excluded(folder), [NSString stringWithFormat:@"iCloud backup excludes %@ as Android does", folder]);
+		}
+		[[NSFileManager defaultManager] removeItemAtURL:backupRoot error:nil];
 
 		printf("AFTER YOU iOS POLICY: %d checks, %d failures\n", checks, failures);
 	}
