@@ -2163,6 +2163,10 @@ func _physics_process(_delta: float) -> void:
 		input = replay_frames[replay_cursor]
 	elif _fast_forward_wait():
 		return
+	elif _standing_still():
+		# Open turns: the pip ended its turn early and stands still while the memory plays out.
+		input = MemoryWait.STILL_INPUT
+		action_pressed = false
 	else:
 		var move: Vector2 = stick.value
 		var keyboard := Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)), float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
@@ -2206,6 +2210,9 @@ func advance_input(input: Dictionary) -> void:
 			_begin_drown_beat()
 		else:
 			_finish()
+	elif mode == "play" and memory_wait.ended_early() and not memory_wait.waiting() and sim.can_pass():
+		# Open turns: the memory the pip ended its turn beside is over and the stage still open: the turn passes.
+		_finish()
 
 ## A spirit drowned (journey tide rules): the world shows it going under for
 ## DROWN_BEAT_FRAMES physics frames, then the ending's beat (turn_endings.gd:
@@ -2383,9 +2390,29 @@ func _fast_forward_wait() -> bool:
 		if not reached.is_empty(): _update_hud(reached)
 		return true
 	var holding: bool = mode == "play" and memory_wait.waiting() and controls.fast_forward_held()
-	controls.dim_stick(holding)
+	controls.dim_stick(holding or _standing_still())
 	if holding: _wait().fast_forward_tick(advance_input, _playing_turn)
 	return holding
+
+## Open turns: the pip ended its turn early (_end_turn_early) and stands
+## still while the memory plays out, and after it while a pass may still come
+## (a tide crossing closing under a pip). On a turn that must finish the stage
+## the pip has its controls back once the memory is over.
+func _standing_still() -> bool:
+	return mode == "play" and memory_wait.ended_early() and (memory_wait.waiting() or sim.get("pass_allowed") == true)
+
+## Open turns: Finish while the memory still plays. The pip dozes where it
+## stands, the wait runs with its Fast-forward and Skip to end, and the turn
+## is the one a pip standing there until the memory ended records: it passes
+## then, or the stage completes as when both pips reach the goal. The draft is
+## saved first, as for Skip to end.
+func _end_turn_early() -> void:
+	if not running or backgrounded or mode != "play" or memory_wait.waiting() or _room_context_lost: return
+	if not _persist_draft(): return
+	action_pressed = false
+	var state: Dictionary = sim.snapshot()
+	_wait().end_early(state)
+	_update_hud(state)
 
 func _playing_turn() -> bool:
 	return running and mode == "play" and not backgrounded
@@ -2479,6 +2506,9 @@ func _persist_draft(after_retry: String = "play", periodic: bool = false) -> boo
 
 
 func _finish() -> void:
+	if mode == "play" and sim.has_method("can_end_early") and sim.can_end_early():
+		_end_turn_early()
+		return
 	_hide_race_ghost()
 	if mode == "moment":
 		_continue_final_moment()

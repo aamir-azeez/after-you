@@ -122,8 +122,8 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	var action: Dictionary = state.get("context_action", {})
 	action_button.text = PlayerCopy.from_canonical(str(action.get("label", "Interact")))
 	action_button.disabled = not bool(action.get("enabled", false))
-	# Open turns (core/physical/open_turns.gd): a later turn may also end as a pass once its memory is over.
-	finish_button.disabled = not (bool(state.get("can_commit", false)) or bool(state.get("can_pass", false)))
+	# Open turns (core/physical/open_turns.gd): a later turn may end at any time; it passes once its memory is over.
+	finish_button.disabled = not (bool(state.get("can_commit", false)) or bool(state.get("can_pass", false)) or bool(state.get("can_end_early", false)))
 	stick.visible = interactive
 	action_button.visible = interactive and not action_button.text.is_empty() and not _memory_wait
 	finish_button.visible = interactive and not _memory_wait

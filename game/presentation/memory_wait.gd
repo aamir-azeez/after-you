@@ -76,6 +76,10 @@ var _ring_after_present := false
 ## Set once a wait has happened in this turn (tests and captures read it).
 var waited := false
 var rings_released := 0
+## Open turns: the live pip ended its turn while the memory still played
+## (end_early), at `_early_tick`. It waits as a pip early to its goal does.
+var _ended_early := false
+var _early_tick := -1
 ## Skip to end is under way (see skip_tick).
 var skipping := false
 ## The player's Always skip waits: the screen presses its own Skip to end as
@@ -109,6 +113,8 @@ func begin(role: String, prior_ticks: int) -> void:
 	waited = false
 	rings_released = 0
 	skipping = false
+	_ended_early = false
+	_early_tick = -1
 	if is_instance_valid(soundscape) and soundscape.has_method("drop_held_cues"): soundscape.drop_held_cues()
 	_release_world()
 
@@ -127,6 +133,25 @@ static func skip_waits(settings: Dictionary) -> bool:
 func auto_skip_due() -> bool:
 	return auto_skip and _waiting and not skipping
 
+## Open turns: the live pip ended its turn at `state` while the memory still
+## plays. It dozes where it stands and the wait runs (Fast-forward, Skip to
+## end) as for a pip early to its goal, until the memory is over.
+func end_early(state: Dictionary) -> void:
+	if _role != "b" or _waiting or state.is_empty(): return
+	_tick = int(state.get("tick", _tick))
+	_last_state = state
+	_find_keys(state)
+	if _tick >= _prior_end or bool(state.get("finished", false)): return
+	_ended_early = true
+	_early_tick = _tick
+	waited = true
+	_waiting = true
+	_apply_wait()
+
+## Open turns: whether this turn was ended early (end_early); set until the next begin.
+func ended_early() -> bool:
+	return _ended_early
+
 ## True while the live spirit is done and the memory still plays.
 func waiting() -> bool:
 	return _waiting
@@ -137,7 +162,7 @@ func remaining_seconds() -> float:
 
 func remaining_ratio() -> float:
 	if not _waiting: return 0.0
-	var span := _prior_end - _objective_tick
+	var span := _prior_end - (_early_tick if _ended_early else _objective_tick)
 	return clampf(float(_prior_end - _tick) / float(maxi(1, span)), 0.0, 1.0)
 
 ## The last tick before the memory ends; a skip steps silently up to here.
@@ -265,18 +290,27 @@ func _observe(state: Dictionary, sounds: Dictionary) -> PackedInt32Array:
 			_holding = true
 			hold.append_array(_ring_indices(sounds))
 	var was_waiting := _waiting
-	_waiting = done and not complete and not bool(state.get("finished", false)) and _tick < _prior_end
-	if _holding and complete and not _arrived:
+	_waiting = (done or _ended_early) and not complete and not bool(state.get("finished", false)) and _tick < _prior_end
+	if (_holding or _ended_early) and complete and not _arrived:
 		# The memory ended: the spirit wakes, and this tick's cues (the bloom)
 		# follow the ring rather than sounding over the startle.
 		_arrived = true
 		_arrival_age = 0.0
-		for index in range(sounds.get("cues", []).size()): hold.append(index)
+		if _holding:
+			for index in range(sounds.get("cues", []).size()): hold.append(index)
 		_wake()
+		# An early end with nothing held: the camera goes back once awake.
+		if not _holding: _release_world()
 		if reduced_motion: _ring_after_present = true
 	elif _holding and not complete and bool(state.get("finished", false)):
 		# The turn ran out with the memory still playing: nothing to wait for.
 		_ring_after_present = true
+	elif _ended_early and was_waiting and not _waiting and not _arrived and not bool(state.get("finished", false)):
+		# The memory is over and the stage still open: the pip wakes and the turn passes.
+		_arrived = true
+		_wake()
+		if _holding: _ring()
+		else: _release_world()
 	# Arrival hands over to the wake; the world lets go after the ring.
 	if _waiting or (was_waiting and not _arrived): _apply_wait()
 	return hold

@@ -419,6 +419,14 @@ func duration_limit() -> int:
 func can_pass() -> bool:
 	return _open_turns() and role == "b" and pass_allowed and error.is_empty() and not finished and not complete and tick >= int(_prior.get("duration_ticks", 0)) and _may_pass()
 
+## Open turns: whether the live pip may end this turn now, while its memory
+## still plays. The screen then plays the rest of the memory with the pip
+## standing still (still ticks, recorded as any other), so the turn is the one
+## a pip standing there until the memory ended would record; then it passes
+## (can_pass) or the stage completes.
+func can_end_early() -> bool:
+	return _open_turns() and role == "b" and error.is_empty() and not finished and not complete and tick < int(_prior.get("duration_ticks", 0))
+
 ## Open turns: ends this turn as a pass. The recording is the turn so far,
 ## unfinished; play goes to the other pip.
 func pass_turn() -> Dictionary:
@@ -516,7 +524,7 @@ func snapshot() -> Dictionary:
 		"objective_done":_objective,"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
 		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
 	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
-	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"passed":passed})
+	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed})
 	return state
 
 func _objective_display() -> Dictionary:
