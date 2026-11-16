@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.1",
+      "date": "2026-10-22",
+      "highlights": [{"icon": "people", "text": "React during your turn, and your friend sees it"}, {"icon": "picture", "text": "Play on a tablet, either side up in landscape"}, {"icon": "tap", "text": "What you type shows large above the keyboard"}, {"icon": "leaf", "text": "Chapter pictures load smoothly in rooms and Replays"}, {"icon": "star", "text": "Earlier versions lists every release"}, {"icon": "key", "text": "A stricter filter for names and nicknames"}]
+    },
+    {
       "version": "0.7.0",
       "date": "2026-10-20",
       "highlights": [{"icon": "star", "text": "Hard mode: play a whole chapter with no retries"}, {"icon": "home", "text": "A new Home, and the spirits are pips now"}, {"icon": "leaf", "text": "Chapters and screens open much faster"}, {"icon": "link", "text": "Rooms and Friends update almost at once"}, {"icon": "people", "text": "Give your pip a name, and add room partners as friends"}, {"icon": "spark", "text": "Turn of the Tide is harder, and the water rises"}, {"icon": "tap", "text": "See your tries and react when a run ends"}, {"icon": "sun", "text": "Settings is one page, with a 30 or 60 fps choice"}]
