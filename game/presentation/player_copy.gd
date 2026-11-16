@@ -1421,6 +1421,9 @@ const PLATFORM_GAMES_BACK := "Back"
 const PLATFORM_GAMES_SIGN_IN_TITLE := "Sign in to play online"
 const PLATFORM_GAMES_SIGN_IN_BODY := "Online play needs your %s account. Solo play works without it."
 ## The GitHub APK, which cannot sign in to Play Games, while online play needs it.
+## A write the server refused for want of a platform account (backend platform-gate.ts).
+const PLATFORM_GAMES_REQUIRED := "Sign in to Play Games to play online."
+const PLATFORM_GAMES_REQUIRED_IOS := "Sign in to Game Center to play online."
 const PLATFORM_GAMES_STORE_ONLINE := "Get After You from Google Play to play online. Solo play works here."
 const PLATFORM_GAMES_KEEP_THIS_TITLE := "Keep this phone's friend code?"
 ## %s: Play Games or Game Center.

@@ -33,8 +33,6 @@ typedef void (^AYGamesAccountChanged)(NSString *payloadJson);
 - (void)snapshotCommit:(NSString *)handle data:(NSString *)base64 description:(NSString *)description requestId:(NSString *)requestId;
 - (void)snapshotResolve:(NSString *)handle data:(NSString *)base64 requestId:(NSString *)requestId;
 - (void)snapshotDiscard:(NSString *)handle requestId:(NSString *)requestId;
-/// Account deletion: removes one of this game's saved games by name: {"deleted": true}, also when it was not there.
-- (void)snapshotDelete:(NSString *)name requestId:(NSString *)requestId;
 /// A chapter time (hundredths of a second) on one classic leaderboard: {"submitted": true}.
 - (void)submitScore:(NSString *)board score:(int64_t)score requestId:(NSString *)requestId;
 /// Game Center's own screen of one leaderboard, all time, everyone: {"shown": true} once it is on screen.

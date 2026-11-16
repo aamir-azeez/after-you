@@ -397,23 +397,6 @@
 	[self succeed:requestId operation:@"snapshot_discard" payload:@{ @"discarded" : @(held) }];
 }
 
-- (void)snapshotDelete:(NSString *)name requestId:(NSString *)requestId {
-	if (![self begin:requestId]) {
-		return;
-	}
-	if (![self available] || ![GKLocalPlayer localPlayer].isAuthenticated || ![AYGamesPolicy validSnapshotName:name]) {
-		[self fail:requestId operation:@"snapshot_delete" code:@"unavailable"];
-		return;
-	}
-	[[GKLocalPlayer localPlayer] deleteSavedGamesWithName:name completionHandler:^(NSError *_Nullable error) {
-		if (error != nil) {
-			[self fail:requestId operation:@"snapshot_delete" code:[self codeFor:error]];
-			return;
-		}
-		[self succeed:requestId operation:@"snapshot_delete" payload:@{ @"deleted" : @YES }];
-	}];
-}
-
 #pragma mark - Leaderboards
 
 - (void)submitScore:(NSString *)board score:(int64_t)score requestId:(NSString *)requestId {

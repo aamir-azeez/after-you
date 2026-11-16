@@ -82,6 +82,13 @@ func remember_link(provider: String, player_key: String, player_id: String) -> v
 	data.links[provider] = {"player_key": player_key, "player_id": player_id, "marked": true}
 	save()
 
+## The server's REQUIRE_PLATFORM mark for this player, as the capability last said or a link answer
+## since confirmed it.
+func note_server_linked(linked: bool) -> void:
+	if data.capability.is_empty() or data.capability.get("server_linked") == linked: return
+	data.capability.server_linked = linked
+	save()
+
 func forget_link(provider: String) -> void:
 	if not data.links.has(provider): return
 	data.links.erase(provider)

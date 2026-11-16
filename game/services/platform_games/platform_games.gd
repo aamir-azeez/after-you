@@ -69,10 +69,6 @@ const LINK_ERROR := "error"
 
 ## The first step waits this long after launch, so it never touches the first frames.
 const START_DELAY_MS := 4000
-## The replay slots beside the progress slot (services/platform_games/cloud_replay_bundle.gd on
-## train/backups: SLOT_PREFIX and SLOTS), named here so account deletion removes them too.
-const HISTORY_SLOT_PREFIX := "after-you-history-"
-const HISTORY_SLOTS := 6
 ## How long an online tap on a phone with no friend code waits for the account check.
 const NEW_IDENTITY_WAIT_MS := 12000
 ## Check failures that only mean "not reachable now": no new friend code is made on them.
@@ -512,6 +508,8 @@ func _link(capability: Dictionary, replace: bool, generation: int) -> void:
 			"linked":
 				link_state = LINK_LINKED
 				state.remember_link(kind(), _player_key, player)
+				# The server marked it just now: the day's capability stops asking for it again.
+				state.note_server_linked(true)
 			"conflict":
 				link_state = LINK_CONFLICT
 				notice.emit(PlayerCopy.PLATFORM_GAMES_CONFLICT_NOTICE % display_name())
@@ -610,6 +608,8 @@ func platform_required() -> bool:
 ## The server enforces the rule on its own; this only lets the tap say why before it goes out.
 func platform_gate() -> String:
 	if provider == null or not provider.available() or state == null or _account == null or _account.identity_state() != "ready": return "pass"
+	# A day's answer that does not ask for it: nothing to wait for.
+	if not state.capability().is_empty() and not platform_required(): return "pass"
 	if not _running and not busy and (sign_in == SignIn.UNAVAILABLE or state.capability().is_empty()): start()
 	var deadline := Time.get_ticks_msec() + NEW_IDENTITY_WAIT_MS
 	while is_inside_tree() and (_running or busy) and Time.get_ticks_msec() < deadline:
@@ -624,6 +624,16 @@ func platform_gate() -> String:
 	await _link(state.capability(), false, _generation)
 	if linked(): return "pass"
 	return "choose" if waiting_for_choice() else "wait"
+
+## A write came back 403 platform_required: the day's capability and the server's mark on the held
+## link are out of date, so the next tap reads the rule again and sends the link once more.
+func server_refused() -> void:
+	if state == null: return
+	state.forget_capability()
+	var held: Dictionary = state.link(kind())
+	if not held.is_empty(): state.forget_link(kind())
+	if link_state == LINK_LINKED: link_state = LINK_NONE
+	changed.emit()
 
 ## Settings' Link / Try again: start over, and check this account again even if it had no
 ## friend code earlier today (one may have been linked since).
@@ -687,28 +697,13 @@ func unlink() -> void:
 		link_code = str(answer.get("code", "failed"))
 	changed.emit()
 
-## After the identity is erased: the server already removed the link; forget it here too, and
-## remove this game's Saved Games slots from the signed-in account (solo progress and replays), so
-## nothing of it stays in the player's Google or Apple account. Slots that could not be removed
-## now (signed out, offline) are written again without the identity at the next sync.
+## After the identity is erased: the server already removed the link; forget it here too.
 func forget_identity() -> void:
-	if state != null: state.forget_link(kind())
+	if state != null:
+		state.forget_link(kind())
+		state.set_cloud({"dirty": true})
 	link_state = LINK_NONE
-	var gone := await delete_saved_games()
-	if state != null: state.set_cloud({"dirty": not gone})
 	changed.emit()
-
-## Every slot this game keeps on the signed-in account, removed; true when each is gone (or was
-## never there). The sync stops first, so it never writes one back meanwhile.
-func delete_saved_games() -> bool:
-	if provider == null or not provider.available() or not signed_in(): return false
-	if cloud != null: cloud.stop()
-	var names: Array = [CloudSync.SLOT]
-	for index in range(HISTORY_SLOTS): names.append(HISTORY_SLOT_PREFIX + str(index + 1))
-	# The first failure stops the rest (offline, signed out meanwhile), so deletion never waits long.
-	for name: String in names:
-		if not (await provider.snapshot_delete(name)).get("ok", false): return false
-	return true
 
 # ---- Cloud save ------------------------------------------------------------------------------
 

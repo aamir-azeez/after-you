@@ -476,6 +476,7 @@ func _ready() -> void:
 	app_status.connectivity = Connectivity.shared()
 	add_child(app_status)
 	if api.has_signal("update_required"): api.update_required.connect(_on_update_required)
+	if api.has_signal("platform_required"): api.platform_required.connect(platform_games_flow.server_refused)
 	_check_app_status()
 	if not saves.last_error.is_empty():
 		_toast(saves.last_error)

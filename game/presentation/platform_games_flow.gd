@@ -76,13 +76,12 @@ func note_progress() -> void:
 	var platform := games()
 	if platform != null: platform.note_progress()
 
-## The identity was erased: the server dropped its links; drop this phone's record too, the
-## account's Saved Games slots, and a platform restore still waiting in secure storage (kept across
-## an iPhone reinstall otherwise).
+## The identity was erased: the server dropped its links; drop this phone's record too, and a
+## platform restore still waiting in secure storage (an iPhone reinstall keeps it otherwise).
 func forget_identity() -> void:
 	await host._await_secret(host.secrets.remove_secret(PENDING_SECRET))
 	var platform := games()
-	if platform != null: await platform.forget_identity()
+	if platform != null: platform.forget_identity()
 
 func _on_notice(text: String) -> void:
 	if host != null and is_instance_valid(host): host._toast(text)
@@ -242,12 +241,21 @@ static func _set_items(detail: VBoxContainer, items: Array) -> void:
 	for item: Control in items: detail.add_child(item)
 	detail.visible = not items.is_empty()
 
+## The server refused a write for want of a platform account: the next tap checks afresh.
+func server_refused() -> void:
+	var platform := games()
+	if platform != null: platform.server_refused()
+
 ## The server's platform rule in front of an online tap (Main._ensure_identity): true to go on.
 ## Not signed in, it asks once with Sign in and Not now; a build that cannot sign in (the GitHub
 ## APK) points to the store version; solo play never comes here.
 func require_platform(report: Callable = Callable()) -> bool:
 	var platform := games()
 	if platform == null: return true
+	# The GitHub APK's signing key is not one Play Games knows: it points to the store version at once.
+	if ClientIdentity.channel() == ClientIdentity.GITHUB and platform.platform_required():
+		host._report(report, PlayerCopy.PLATFORM_GAMES_STORE_ONLINE)
+		return false
 	match await platform.platform_gate():
 		"pass": return true
 		"unavailable":

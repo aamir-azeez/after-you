@@ -6,7 +6,7 @@ extends "res://services/platform_games/games_provider.gd"
 ## name arrives only from player_name(), which the game asks for when the player picks it.
 const Typed = preload("res://services/typed_values.gd")
 
-const OPERATIONS := ["status", "sign_in", "credential", "player_name", "snapshot_open", "snapshot_commit", "snapshot_resolve", "snapshot_discard", "snapshot_delete", "submit_score", "show_board"]
+const OPERATIONS := ["status", "sign_in", "credential", "player_name", "snapshot_open", "snapshot_commit", "snapshot_resolve", "snapshot_discard", "submit_score", "show_board"]
 ## Quiet checks and server credentials answer in seconds; the plugin gives up a little earlier.
 const QUIET_TIMEOUT_MS := 15000
 ## The sign-in sheet waits for the player.
@@ -146,11 +146,6 @@ func snapshot_resolve(handle: String, data: PackedByteArray) -> Dictionary:
 func snapshot_discard(handle: String) -> Dictionary:
 	var answer := await _call("snapshot_discard", [handle], QUIET_TIMEOUT_MS)
 	return {"ok": true} if answer.ok else answer
-
-func snapshot_delete(name: String) -> Dictionary:
-	var answer := await _call("snapshot_delete", [name], SNAPSHOT_TIMEOUT_MS)
-	if not answer.ok: return answer
-	return {"ok": true} if Typed.equal(answer.data.get("deleted"), true) else {"ok": false, "code": "failed"}
 
 func submit_score(board: String, score: int) -> Dictionary:
 	if not _matches(board, BOARD_ID) or score < 1 or score > MAX_SCORE: return {"ok": false, "code": "failed"}

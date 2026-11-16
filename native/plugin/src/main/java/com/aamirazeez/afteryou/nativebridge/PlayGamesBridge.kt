@@ -150,12 +150,6 @@ internal class PlayGamesBridge(
         client.discard(opened) { discarded -> success(ticket, JSONObject().put("discarded", discarded)) }
     }
 
-    /** Account deletion: removes one of this game's Saved Games slots. {"deleted": true}, also when it was not there. */
-    fun snapshotDelete(name: String, id: String) = call(id, "snapshot_delete", PlayGamesPolicy.SNAPSHOT_TIMEOUT_MS) { ticket ->
-        if (!PlayGamesPolicy.validSnapshotName(name)) { fail(ticket, "failed"); return@call }
-        client.delete(name) { deleted, status -> if (deleted) success(ticket, JSONObject().put("deleted", true)) else failStatus(ticket, status) }
-    }
-
     /** A chapter time (milliseconds) on one Play Games leaderboard; the game posts only a new best. */
     fun submitScore(boardId: String, score: Long, id: String) = call(id, "submit_score", PlayGamesPolicy.QUIET_TIMEOUT_MS) { ticket ->
         if (!PlayGamesPolicy.validLeaderboardId(boardId) || !PlayGamesPolicy.validScore(score)) { fail(ticket, "failed"); return@call }

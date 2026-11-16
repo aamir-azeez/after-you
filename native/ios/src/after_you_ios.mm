@@ -205,7 +205,6 @@ void AfterYouIOS::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("games_snapshot_commit", "handle", "data", "description", "request_id"), &AfterYouIOS::games_snapshot_commit);
 	ClassDB::bind_method(D_METHOD("games_snapshot_resolve", "handle", "data", "request_id"), &AfterYouIOS::games_snapshot_resolve);
 	ClassDB::bind_method(D_METHOD("games_snapshot_discard", "handle", "request_id"), &AfterYouIOS::games_snapshot_discard);
-	ClassDB::bind_method(D_METHOD("games_snapshot_delete", "name", "request_id"), &AfterYouIOS::games_snapshot_delete);
 	ClassDB::bind_method(D_METHOD("games_submit_score", "board", "score", "request_id"), &AfterYouIOS::games_submit_score);
 	ClassDB::bind_method(D_METHOD("games_show_board", "board", "request_id"), &AfterYouIOS::games_show_board);
 
@@ -487,10 +486,6 @@ void AfterYouIOS::games_snapshot_resolve(const String &p_handle, const String &p
 
 void AfterYouIOS::games_snapshot_discard(const String &p_handle, const String &p_request_id) {
 	[[AYGameCenter shared] snapshotDiscard:ay_ns(p_handle) requestId:ay_ns(p_request_id)];
-}
-
-void AfterYouIOS::games_snapshot_delete(const String &p_name, const String &p_request_id) {
-	[[AYGameCenter shared] snapshotDelete:ay_ns(p_name) requestId:ay_ns(p_request_id)];
 }
 
 void AfterYouIOS::games_submit_score(const String &p_board, int64_t p_score, const String &p_request_id) {
