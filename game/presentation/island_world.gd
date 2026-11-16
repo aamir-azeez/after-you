@@ -1480,10 +1480,12 @@ func _present_follow(state: Dictionary, immediate: bool) -> void:
 	_completion_view = bool(state.get("complete", false))
 	if immediate and _uses_scrolling_camera(): _snap_follow()
 
-## Puts the follow camera on its spirit at once (an immediate present).
+## Puts the follow camera on its spirit at once (an immediate present), the
+## motes with it, so a kept world and one built again show the same.
 func _snap_follow() -> void:
 	if actors.has(_active_player): _follow_center = _camera_center()
 	_follow_size = SCROLL_DONE_SIZE if _completion_view else SCROLL_SIZE
+	_follow_motes()
 	_frame_camera()
 
 ## Eases the follow camera toward its spirit, once per rendered frame:
