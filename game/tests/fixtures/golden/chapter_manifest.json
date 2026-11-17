@@ -19,7 +19,8 @@
 			"supported_simulation_versions": [
 				6,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"conservatory@1": {
 			"definition_fixture": "journey/conservatory-definition.json",
@@ -40,15 +41,16 @@
 			"supported_simulation_versions": [
 				7,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"conservatory@2": {
 			"definition_fixture": "journey/conservatory-v2-definition.json",
-			"definition_hash": "945bb314eb10738736122839400a4570ceeec33f33e68426e789f13d3bc11108",
+			"definition_hash": "96499f4766718124c64380b6a9ab0452b5e7dde69f2f026b7d932b64cca2ca08",
 			"family": "journey",
 			"flag": "CONSERVATORY_V2_CHAPTER_ENABLED",
 			"hard": false,
-			"initial_checkpoint_hash": "87b3ed71613a03633fd574d4fef0aaae22678308c83469ce9f43820ff7163a97",
+			"initial_checkpoint_hash": "9c438ce5c13298ab4964b81cd05efcc5e9dee4a996aa8213ae336365dc37df17",
 			"initial_fixture": "journey/conservatory-v2-initial-checkpoint.json",
 			"key": "conservatory@2",
 			"level_id": "conservatory",
@@ -60,7 +62,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				14
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"first-steps@1": {
 			"definition_fixture": "first_steps/definition.json",
@@ -82,7 +85,8 @@
 				4,
 				5,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"high-and-low@1": {
 			"definition_fixture": "cooperative/high-and-low-definition.json",
@@ -103,7 +107,8 @@
 			"supported_simulation_versions": [
 				6,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"long-way-home@1": {
 			"definition_fixture": "journey/long-way-home-definition.json",
@@ -124,7 +129,8 @@
 			"supported_simulation_versions": [
 				7,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"long-way-home@2": {
 			"definition_fixture": "journey/long-way-home-v2-definition.json",
@@ -144,15 +150,16 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				9
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"long-way-home@3": {
 			"definition_fixture": "journey/long-way-home-v3-definition.json",
-			"definition_hash": "947e69e3ccc80d81f285b0434536a00cb3a08aeea890e64539e8643b09dc3909",
+			"definition_hash": "f840dd829fdb1285b2553cf3d0d5bf0d41a00387721c6678fcee9fc1e0348b81",
 			"family": "journey",
 			"flag": "LONG_WAY_HOME_V3_CHAPTER_ENABLED",
 			"hard": false,
-			"initial_checkpoint_hash": "fff4c047a48255ddedd1b568993a33a9437d198357a090e32695ce8533d1e080",
+			"initial_checkpoint_hash": "87ce097b0f104807bd91c18928b23fb08d7a1e1c219d005911d7f38238bad0af",
 			"initial_fixture": "journey/long-way-home-v3-initial-checkpoint.json",
 			"key": "long-way-home@3",
 			"level_id": "long-way-home",
@@ -164,7 +171,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				14
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"relay-isles@2": {
 			"definition_fixture": "v2/definition.json",
@@ -185,7 +193,8 @@
 			"supported_simulation_versions": [
 				2,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"rolling-home@1": {
 			"definition_fixture": "cooperative/rolling-home-definition.json",
@@ -206,7 +215,8 @@
 			"supported_simulation_versions": [
 				6,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"sleeping-lighthouse@2": {
 			"definition_fixture": "lighthouse/sleeping-lighthouse-v2-definition.json",
@@ -226,7 +236,8 @@
 			"stage_count": 6,
 			"supported_simulation_versions": [
 				11
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"the-wishing-well@1": {
 			"definition_fixture": "cooperative/the-wishing-well-definition.json",
@@ -246,7 +257,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				9
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"turn-of-the-tide@1": {
 			"definition_fixture": "journey/turn-of-the-tide-definition.json",
@@ -266,7 +278,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				9
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"turn-of-the-tide@2": {
 			"definition_fixture": "journey/turn-of-the-tide-v2-definition.json",
@@ -286,15 +299,16 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				10
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"turn-of-the-tide@3": {
 			"definition_fixture": "journey/turn-of-the-tide-v3-definition.json",
-			"definition_hash": "a93734375dd0ce54291e9a1504f24adbc37f3413389ec195e53ce0dc4bc860ba",
+			"definition_hash": "71a7eb45f220aeacefe3d982318f507698999196a11a23041430ac33726e29c1",
 			"family": "journey",
 			"flag": "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED",
 			"hard": false,
-			"initial_checkpoint_hash": "c40010ac43adca125bcd7f5d2507d60fb09949de7bea76d9aef8408b4540fef4",
+			"initial_checkpoint_hash": "e4a032b94b35545bbdcaeb9f5a3f55f181b369734a736ba5f0e264dd15cbedc5",
 			"initial_fixture": "journey/turn-of-the-tide-v3-initial-checkpoint.json",
 			"key": "turn-of-the-tide@3",
 			"level_id": "turn-of-the-tide",
@@ -306,7 +320,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				15
-			]
+			],
+			"unlock_fruits": 0
 		}
 	},
 	"keys": [

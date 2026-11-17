@@ -8,7 +8,11 @@ type Proof = { checkpoint?: unknown; previous_checkpoint?: unknown; a?: unknown;
  * canonically equal (relay under `previous_checkpoint`, the others under
  * `checkpoint`), so the live checkpoint carries every earlier stage of its lineage.
  */
-/** `turns`: every turn of the stage in play order; a and b are its first and its closing turn (open turns nest them all, open-turns.ts). */
+/**
+ * `turns`: every turn of the stage in play order; a and b are its first and its closing turn. A room's open turns
+ * checkpoint nests nothing (open-turns.ts fingerprints), so this is null for it; a run a phone posts from its own copy
+ * nests every turn (leaderboards/run.ts openRoomRun).
+ */
 export function nestedProof(checkpoint: CheckpointV2): { previous: CheckpointV2; a: RecordingV2; b: RecordingV2; turns: RecordingV2[] } | null {
   const proof = (checkpoint as CheckpointV2 & { proof?: Proof }).proof;
   if (!isObject(proof)) return null;

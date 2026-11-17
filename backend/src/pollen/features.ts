@@ -47,6 +47,8 @@ export function anyBundlesOn(env: ServerVars): boolean { return bundlesOn(env) |
 export function fruitsOn(env: ServerVars, reach: Reach): boolean { return shopOn(env) && gatedOn(env, FLAG_VARS.fruits, reach); }
 /** Fruit packs sell in a store while Fruits are on, that store's bundles sell, and its four Fruit products are set up (bundles.ts storeReady). */
 export function fruitPacksOn(env: ServerVars, reach: Reach): boolean { return fruitsOn(env, reach) && bundlesOn(env) && PLAY_FRUIT_PACKS_READY; }
+/** Opening a level with Fruits (pollen/level-unlocks.ts) needs Fruits, which it spends. */
+export function levelUnlocksOn(env: ServerVars, reach: Reach): boolean { return fruitsOn(env, reach) && flags.levelUnlocks(env); }
 /** Duel energy (pollen/energy.ts) needs duels, whose starts and joins spend it. Its Fruit refill also needs Fruits. */
 export function energyOn(env: ServerVars, reach: Reach): boolean { return gatedOn(env, FLAG_VARS.energy, reach) && flags.duels(env) && flags.leaderboards(env); }
 export function appStoreFruitPacksOn(env: ServerVars, reach: Reach): boolean { return fruitsOn(env, reach) && appStoreBundlesOn(env) && APP_STORE_FRUIT_PACKS_READY; }

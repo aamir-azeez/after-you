@@ -100,6 +100,9 @@ func _model() -> void:
 	var quiet := DuelModel.pay_lines(pay, {}, false)
 	_check(quiet.total == 1071 and quiet.lines.size() == 2, "where Full Journey is not named, the boost folds into the turns line")
 	_check(DuelModel.pay_lines({}, {"amount": 0, "counted": false, "reason": "same_pair"}).lines[0][0] == PlayerCopy.DUEL_PAY_WIN_SAME, "a win that did not count says why")
+	# A public win's goals line, from the server's answers: the second win over a pair that week, the third, and the next week.
+	var goals: Array = [{"amount": 0, "counted": false, "reason": "same_pair"}, {"amount": 0, "counted": false, "reason": "same_pair", "goal_reason": "same_pair"}, {"amount": 250, "counted": true}]
+	_check(goals.map(func(answer: Dictionary) -> String: return DuelModel.goal_line(Client._bonus(answer))) == ["", PlayerCopy.PUBLIC_WIN_NOT_COUNTED, ""], "only a win past two over the same pair a week says it counts toward no goal")
 	var ghost := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0], null]}))
 	_check(not ghost.is_empty() and DuelModel.pair_title(ghost, 1, _name_of) == PlayerCopy.DUEL_GHOST_PAIR and DuelModel.lane(ghost, 1).ticks == 3000 and DuelModel.lane(ghost, 1).played == 12, "a ghost race with no splits shows the recorded run's whole time")
 	var ghost_checking := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), null]}))

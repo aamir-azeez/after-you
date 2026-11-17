@@ -48,7 +48,10 @@ extends SceneTree
 ##    size each with its gate, stones and stops that are bridges). The new
 ##    pieces' own rules and their witness are tests/test_pieces.gd's.
 ##  - Props (content/dressing, kit/props.gd extents): two props standing in
-##    each other on a stage. Props against routes, pads, levers, goals and
+##    each other on a stage, and two controls drawn into each other: a lever,
+##    selector, pad or goal and what its world builds beside it (Tide's lever
+##    lamps), each swept up its height toward the camera
+##    (kit/prop_rules.gd control_bodies). Props against routes, pads, levers, goals and
 ##    starts, and the camera's view of them, are tests/test_dressing_lint.gd's.
 ##    Scenery a world builds in code is not dressing and is not covered here.
 ## The bubbles and the camera's framing need a built world:
@@ -72,6 +75,15 @@ const PiecesWitness = preload("res://tests/pieces_witness.gd")
 const KNOWN := {
 	"high-and-low@1 upper-path props hedge at (-690, -200) cm and signpost at (-700, 230) cm": "the shore's signpost stands at the hedge's front end on purpose, its post beside the leaves and its boards above them (seen in the 800x360 preview)",
 	"high-and-low@1 down-and-around props hedge at (-690, -200) cm and signpost at (-700, 230) cm": "the same signpost and hedge on the second stage",
+	"turn-of-the-tide@1 set-the-tide controls line and gangway": "published before the control overlap rule (2026-11-16); @3 moved the line lever, published worlds stay",
+	"turn-of-the-tide@1 slack-water controls basin and gate-bar": "published before the control overlap rule (2026-11-16): the basin valve stands in front of the gate bar's catwalk",
+	"turn-of-the-tide@2 set-the-tide controls line and gangway": "published before the control overlap rule (2026-11-16); @3 moved the line lever, published worlds stay",
+	"turn-of-the-tide@2 slack-water controls basin and gate-bar": "published before the control overlap rule (2026-11-16): the basin valve stands in front of the gate bar's catwalk",
+	"relay-isles@2 relay controls relay-control and relay-socket": "published: the relay's button stands beside the socket it fills, read as one machine",
+	"relay-isles@2 garden controls relay-control and relay-socket": "published: the relay's button stands beside the socket it fills, read as one machine",
+	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-upper-mirror and beacon-hold": "published: the beacon's mirrors stand close round its tower on purpose",
+	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-lower-mirror and tower-projector": "published: the beacon's mirrors stand close round its tower on purpose",
+	"sleeping-lighthouse@2 a-welcome-left-on controls beacon-lower-mirror and beacon-crest": "published: the beacon's mirrors stand close round its tower on purpose",
 }
 ## Published one-pip spots the other pip can reach, each shown by the route
 ## barriers (a gate, a stair's chain, a zone's rope or a lock) rather than
@@ -285,6 +297,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	_share_rule()
+	_controls_rule()
 	var covered := 0
 	var skipped: Array[String] = []
 	for key: String in Registry.keys():
@@ -298,6 +311,7 @@ func _run() -> void:
 		_needs_both(key)
 		_kept_crossings(key)
 		_props(key)
+		_controls_apart(key)
 		_pieces(key, Registry.definition(key))
 		covered += 1
 		print("LEVEL CHECKER: %s in %d ms" % [key, Time.get_ticks_msec() - started])
@@ -678,6 +692,36 @@ func _props(key: String) -> void:
 				var share := PropRules.share(one, two)
 				var id := "%s props %s and %s" % [where, _prop(one.spec), _prop(two.spec)]
 				_expect(share <= PropRules.PROP_SHARE, id, "%s: the %s and the %s stand in each other (%d%% of the smaller)" % [where, _prop(one.spec), _prop(two.spec), roundi(share * 100.0)])
+
+## Two controls of a stage whose bodies draw into each other on screen (a
+## lever's knob over the housing of the lever behind it). Dressing props are
+## _props'; controls and the pieces a world builds beside them are never
+## dressing, so this is where they meet.
+func _controls_apart(key: String) -> void:
+	var world: Script = Registry.world_script(key)
+	var extras := Callable()
+	if world != null and world.get_script_method_list().any(func(method: Dictionary) -> bool: return method.name == "control_extras"):
+		extras = func(spot: Dictionary) -> Array: return world.call("control_extras", spot)
+	for item: Dictionary in _stages_of(key):
+		var bodies := PropRules.control_bodies(item.view, extras)
+		for a in range(bodies.size()):
+			for b in range(a + 1, bodies.size()):
+				var one: Dictionary = bodies[a]
+				var two: Dictionary = bodies[b]
+				if one.id == two.id or not PropRules.bodies_touch(one, two): continue
+				var id := "%s %s controls %s and %s" % [key, item.stage.id, one.id, two.id]
+				_expect(false, id, "%s %s: the %s at %s and the %s at %s draw into each other on screen" % [key, item.stage.id, one.id, _cm([one.at.x * 100.0, one.at.y * 100.0]), two.id, _cm([two.at.x * 100.0, two.at.y * 100.0])])
+
+## The control rule on small cases: Tide@3's line and gangway as they stood
+## (97 cm apart, the gangway's lamp in front of the line) draw into each
+## other; side by side on one row, or on different floors, they do not.
+func _controls_rule() -> void:
+	var back := {"id": "back", "at": Vector2(10.88, -4.48), "radius": 0.28, "top": PropRules.CONTROL_TOP, "y": 0.96}
+	var front := {"id": "front", "at": Vector2(11.04, -3.52), "radius": 0.28, "top": PropRules.CONTROL_TOP, "y": 0.96}
+	var beside := front.merged({"at": Vector2(11.88, -4.48)}, true)
+	var below := front.merged({"y": 0.48}, true)
+	_check(PropRules.bodies_touch(back, front), "A lever just in front of another draws its knob over the other's housing")
+	_check(not PropRules.bodies_touch(back, beside) and not PropRules.bodies_touch(back, below), "Levers side by side, or on different floors, stay apart")
 
 ## The prop rule on small cases, so it can fail at all.
 func _share_rule() -> void:

@@ -218,6 +218,7 @@ online_scenarios_edges 56
 online_scenarios_more 33
 online_staged_open 19
 online_unlocks 10
+open_hints 20
 optional_photo_capture 1
 outfit 1
 owner_marks 5

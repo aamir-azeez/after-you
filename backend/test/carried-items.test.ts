@@ -8,7 +8,7 @@ import initial from "../../game/tests/fixtures/carried_items/initial.json";
 import a from "../../game/tests/fixtures/carried_items/a.json";
 import b from "../../game/tests/fixtures/carried_items/b.json";
 import c from "../../game/tests/fixtures/carried_items/c.json";
-import closing from "../../game/tests/fixtures/carried_items/checkpoint.json";
+import nested from "../../game/tests/fixtures/carried_items/checkpoint.json";
 import setEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-checkpoint.json";
 import rideDefinition from "../../game/tests/fixtures/item_rides/definition.json";
 import rideInitial from "../../game/tests/fixtures/item_rides/initial.json";
@@ -23,8 +23,10 @@ import rideEnd from "../../game/tests/fixtures/item_rides/checkpoint.json";
  */
 type Json = Record<string, any>;
 const clone = <T>(value: T): T => structuredClone(value);
+/** The closing checkpoint as the phone sends it: its own copy less the nested proof (open turns fingerprints, flat). */
+const { proof: _nestedProof, ...closing } = nested as Json; void _nestedProof;
 async function rehash(checkpoint: Json): Promise<ChapterCheckpoint> {
-  const { checkpoint_hash: _hash, proof: _proof, ...body } = checkpoint; void _hash; void _proof;
+  const { checkpoint_hash: _hash, ...body } = checkpoint; void _hash;
   return { ...checkpoint, checkpoint_hash: await digest(canonicalJson(body)) } as ChapterCheckpoint;
 }
 async function witness() {

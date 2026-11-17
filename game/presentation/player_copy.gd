@@ -526,7 +526,7 @@ const FRUITS_PAGE_BACK := "Back"
 const FRUITS_PAGE_LOADING := "Loading your Fruits…"
 const FRUITS_PAGE_OFFLINE := "Your Fruits did not load. Try again in a moment."
 const FRUITS_PAGE_RETRY := "Try again"
-## The goals card: its title, and the link that opens every goal ("All 15 goals, 340 Fruits in all") or closes them again.
+## The goals card: its title, and the link that opens every goal ("All 22 goals, 660 Fruits in all") or closes them again.
 const FRUIT_GOALS_TITLE := "Fruits for playing together"
 const FRUIT_GOALS_ALL := "All %d goals, %s Fruits in all"
 const FRUIT_GOALS_FEWER := "Fewer goals"
@@ -545,6 +545,13 @@ const FRUIT_GOALS := {
 	"ghost_first": "First time beating Our run",
 	"ghost_five": "Beat Our run on five boards",
 	"public_duel_first": "First public duel finished",
+	"public_win_first": "First public duel win",
+	"public_win_five": "Five public duel wins",
+	"public_win_ten": "Ten public duel wins",
+	"public_win_twenty_five": "25 public duel wins",
+	"public_win_fifty": "50 public duel wins",
+	"public_win_hundred": "100 public duel wins",
+	"public_win_two_hundred": "200 public duel wins",
 	"top_ten": "First Top 10 ribbon",
 	"gold_leaf": "Gold leaf",
 	"keepsake_first": "First keepsake upgraded",
@@ -556,6 +563,7 @@ const FRUIT_LINE_GRANT := "Full Journey, month %d"
 const FRUIT_LINE_GRANT_PLAIN := "Full Journey"
 const FRUIT_LINE_WELCOME := "Welcome basket"
 const FRUIT_LINE_CONVERT := "Turned into Pollen"
+const FRUIT_LINE_LEVEL := "Chapter opened"
 const FRUIT_LINE_REFUNDED := "%s, refunded"
 const FRUIT_LINE_DETAIL := "%s · %s"
 ## The Your Fruits card's buttons.
@@ -589,6 +597,8 @@ const FRUIT_CONVERT_DONE := "%s Fruits became %s Pollen."
 const FRUIT_SPEND_ERRORS := {
 	"sunshine_active": "Your Sunshine still has turns left.",
 	"fruits_disabled": "Fruits aren't open right now.",
+	"level_unlocks_disabled": "Opening chapters with Fruits isn't on right now.",
+	"level_free": "Your Full Journey already opens this chapter.",
 }
 ## Pollen that Fruits moved, among the turns on the Pollen page: Fruits turned
 ## into Pollen, and Pollen taken back when refunded Fruits had been turned already.
@@ -713,6 +723,15 @@ const CHAPTER_LOCKED_NOTE := "Finish %s to open this chapter"
 const CHAPTERS_COMING_SOON := "More chapters coming soon."
 const CHAPTER_LOCKED := "Finish %s to open this chapter."
 const CHAPTER_LOCKED_FULL_JOURNEY := "This chapter is part of the Full Journey."
+# A chapter a free player opens once with Fruits (descriptor "unlock",
+# presentation/fruit_spend_flow.gd unlock_level): the card's note (%s the
+# Fruits), the confirm card's title and button (%s the chapter), and the line
+# once it is open.
+const LEVEL_UNLOCK_NOTE := "%s Fruits, or free with Full Journey"
+const LEVEL_UNLOCK_TITLE := "Open %s?"
+const LEVEL_UNLOCK_CONFIRM_NOTE := "Once, and it stays open. Free with Full Journey."
+const LEVEL_UNLOCK_FOR := "Open for"
+const LEVEL_UNLOCK_DONE := "%s is open."
 # Full Journey unlocked before the player reaches it: the chapter before the
 # Lighthouse, then the Lighthouse's own name; and the button to their chapters.
 const FULL_JOURNEY_NOT_REACHED := "Finish %s to reach %s. Your Full Journey chapters open from there, one after another."
@@ -758,6 +777,10 @@ const HARD_NEW_ROOM := "New hard room"
 const HARD_COMPLETE_TITLE := "Hard run done"
 const HARD_COMPLETE_BODY := "%s, start to finish, in one go."
 const HARD_AGAIN := "Play Hard again"
+# Ending scenes (services/ending_scene.gd): the finished chapter's row that plays
+# its ending again, and the line under Fog Marsh's rocket.
+const ENDING_WATCH := "Watch the ending"
+const ENDING_NEXT_SPACE := "Next: Space"
 # Replays, and the room list's tag for a hard room.
 const HARD_REPLAYS_HEADING := "Hard runs"
 const HARD_REPLAYS_SUBTITLE := "Slips and finished runs"
@@ -1389,6 +1412,8 @@ const PUBLIC_HELD_LEFT := "Not paid: your pair gave up"
 const PUBLIC_HELD_STOPPED := "Not paid: your side stopped playing"
 const PUBLIC_HELD_NOBODY := "Not paid: nobody joined"
 const PUBLIC_HELD_NOT_PAID := "Not paid"
+## A public duel win past two over the same pair that week, which counts toward no Fruits goal (services/duel_model.gd goal_line).
+const PUBLIC_WIN_NOT_COUNTED := "You've beaten this pair twice this week already, so this win doesn't count toward your goals."
 const PUBLIC_BLOCKED_PLAYER := "A player from a public duel"
 const PUBLIC_UNBLOCK := "Unblock %s"
 const SETTINGS_PUBLIC_DUELS := "Public duels"
@@ -2667,6 +2692,8 @@ const RELAY_ROOM_COORDINATOR_44F9E57FF773 := "The returned room is older than th
 const RELAY_ROOM_COORDINATOR_666CD1F2C6F9 := "Two different states used the same room revision."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)
 const RELAY_ROOM_COORDINATOR_97B931D8DEE0 := "The room has an unsupported format or failed native replay verification."
+## Open turns: this phone lost earlier turns of the room and gets them back from the friend's phone.
+const OPEN_TURNS_MISSING := "Getting your earlier turns back from your friend's phone."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)
 const RELAY_ROOM_COORDINATOR_FE7E854E465F := "An older room response was rejected."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)

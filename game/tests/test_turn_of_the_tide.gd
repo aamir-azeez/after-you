@@ -5,8 +5,9 @@ extends SceneTree
 ## HALF and HIGH ways: test_turn_of_the_tide_ways. Stage-1 hybrids and
 ## misplays: test_turn_of_the_tide_history. Commit, budget and latch limits:
 ## test_turn_of_the_tide_limits. Graph witnesses: test_turn_of_the_tide_reach.
-## The definition sets longer turns (2,700 ticks for A, 3,000 for B); every
-## other chapter keeps the published 900 and 1,200.
+## The definition sets longer turns (2,700 ticks for A, 3,000 for B), and so
+## does @2; @3 and the other open turns levels read the limits they declare
+## under their own rules; every other chapter keeps the published 900 and 1,200.
 ##
 ## Tick figures from an independent axis-walk model are upper bounds and are
 ## asserted as such; exact figures (budgets, presses) are asserted exactly.
@@ -24,6 +25,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const CoopCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
+const OpenControls = preload("res://core/physical/open_controls.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Storage = preload("res://services/local_save.gd")
 const Archive = preload("res://services/attempt_archive.gd")
@@ -169,7 +171,9 @@ func _latest(start: Dictionary) -> void:
 	exported["latest"] = pair
 
 ## The definition's turn lengths, read by the runtime, its snapshot and the
-## proof; no other chapter sets any, and no rules before 9 read them.
+## proof. The published Tide versions keep them; an open turns level reads the
+## limits it declares under its own rules; no other chapter sets any, and no
+## rules before 9 read them.
 func _turn_limits(first: Dictionary) -> void:
 	_check(Canonical.same(level.get("turn_limits"), {"a_ticks": A_TICKS, "b_ticks": B_TICKS}) and B_TICKS > A_TICKS, "The definition sets 2,700 ticks for A and a longer 3,000 for B")
 	var definitions: Dictionary = {}
@@ -177,14 +181,24 @@ func _turn_limits(first: Dictionary) -> void:
 	for key: String in CoopCatalog.KEYS: definitions[key] = CoopCatalog.definition(key)
 	for key: String in definitions:
 		var definition: Dictionary = definitions[key]
-		# Every version of the chapter keeps its longer turns.
-		var tide := str(definition.get("id", "")) == "turn-of-the-tide"
-		_check(definition.has("turn_limits") == tide, "%s %s turn limits" % [key, "sets" if tide else "sets no"])
-		for version: int in [6, 7, 8, 9]:
+		var pinned := Simulation.pinned_rules(definition)
+		var open := pinned in OpenControls.OPEN_TURNS_RULES
+		# The published Tide versions keep their longer turns.
+		var published_tide := key in ["turn-of-the-tide@1", "turn-of-the-tide@2"]
+		if published_tide: _check(Canonical.same(definition.get("turn_limits"), level.turn_limits), "%s keeps 2,700 and 3,000 ticks" % key)
+		else: _check(not definition.has("turn_limits") or open, "%s sets turn limits only on open turns rules (rules %d)" % [key, pinned])
+		var declared: Dictionary = definition.get("turn_limits", {})
+		for version: int in [6, 7, 8, 9, pinned]:
+			if version < 6: continue
 			for turn_role: String in ["a", "b"]:
 				var published := 1200 if version >= 8 and turn_role == "b" else 900
-				var expected := (A_TICKS if turn_role == "a" else B_TICKS) if tide and version >= 9 else published
+				# Rules 9 and on read declared limits; before open turns only a longer second turn.
+				var reads := not declared.is_empty() and version >= 9 and (version == pinned or int(declared.a_ticks) < int(declared.b_ticks))
+				var expected: int = int(declared.get(turn_role + "_ticks")) if reads else published
 				_check(Runtime.turn_ticks(definition, version, turn_role) == expected, "%s rules %d %s: %d ticks (got %d)" % [key, version, turn_role, expected, Runtime.turn_ticks(definition, version, turn_role)])
+		# One equal limit for every turn is open turns only: rules 9 refuses it and keeps 900 and 1,200.
+		if open and not declared.is_empty() and int(declared.a_ticks) == int(declared.b_ticks):
+			_check(not Runtime.turn_limits_valid(definition, RULES) and not Simulation.rules_allowed(definition, RULES), "%s: rules 9 refuses its equal turn limits" % key)
 	var a := Simulation.new()
 	_check(a.reset(level, Witness.SET, initial, {}, "a") and a.duration_limit() == A_TICKS and int(a.snapshot().duration_ticks) == A_TICKS and a.receiver_deadline() == B_TICKS, "A's snapshot shows 2,700 ticks (90 s); its partner's deadline is 3,000")
 	while not a.finished and a.tick <= B_TICKS: a.step({})

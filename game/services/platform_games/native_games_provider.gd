@@ -12,7 +12,8 @@ const QUIET_TIMEOUT_MS := 15000
 ## The sign-in sheet waits for the player.
 const SIGN_IN_TIMEOUT_MS := 120000
 const SNAPSHOT_TIMEOUT_MS := 30000
-const MAX_PAYLOAD := 4_400_000
+## A slot opened in conflict sends both copies, each up to the plugins' 3 MiB in base64.
+const MAX_PAYLOAD := 8_500_000
 const HANDLE := "^[a-f0-9]{32}$"
 const PLAYER_KEY := "^[a-f0-9]{64}$"
 ## Play Console ids ("CgkI...") and Game Center ids ("afteryou.first_steps.v1"), as the plugins accept them,

@@ -11,20 +11,22 @@ import { ApiError, IDEMPOTENCY_PATTERN, canonicalJson, digest, equalHash, fail, 
 import { MAX_V2_BODY_BYTES, RELAY_KEY, acceptedRecording, chapter, boundedTurnValue, checkpointV2, exact, initialCheckpoint, recordingV2, type CheckpointV2, type RecordingV2, type Slot } from "./protocol";
 import { sameChapter } from "./chapters";
 import { checkpointAt } from "./checkpoint-chain";
-import { mustFinish, passRoom, recordingBytes, turnId, turnSlot } from "./open-turns";
+import { MAX_ROOM_PAIRS, MAX_ROOM_TURNS } from "./row-bound";
+import { fingerprint, isFingerprint, mustFinish, turnId, turnSlot } from "./open-turns";
 import { isStub } from "./history-blob";
 import { clearAttempts, clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, type HistorySupport } from "./history";
 import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
-import { compressRows, parseRoom, parseRow, storedRoom, storedRow, type RowData } from "./row-codec";
-import { decodeTurnBody, encodeReply, exactTurnFields, type RoomReply, type TurnBody } from "./turn-wire";
+import { compressRows, parseRoom, parseRow, storedRoom, storedRow, storedTurn, type RowData } from "./row-codec";
+import { MAX_TURN_BODY_BYTES, decodeTurnBody, encodeReply, exactTurnFields, type RoomReply, type TurnBody } from "./turn-wire";
 import { requireOwnedFaces } from "./face-packs";
 import { isTester } from "../test-codes";
-import { finishedRun, type LeaderboardRun } from "../leaderboards/run";
+import { finishedRun, openRoomRun, roomRun, type LeaderboardRun } from "../leaderboards/run";
 import { encodeProof, type EncodedProof } from "../leaderboards/proofs";
 import { roomNote, type DuelNote } from "../duels/turn-hook";
 import { clearTurnTries, parseTries, recordTries, turnTriesView, type TurnTriesView } from "./turn-tries";
+import { acknowledgeCopies, askCopies, clearTurnCopies, dropDeliveredCopies, keepCopies, parseAsked, parseSent, wantedBy } from "./turn-copies";
 import { clearEndReactions, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView, type FaceVersion } from "./end-reactions";
 import { clearRunReactions, eraseRunReactionsOf, parseRunReactions, partnerTrack, recordRunReactions, runReactionsView, withinTurn, type RunReactionsView } from "./run-reactions";
 import { HardMemo, clearHard, failuresView, initializeHard, parseReset, priorReset, recordFailure, type Failure, type HardFailures, type HardRun, type Slip } from "./hard-mode";
@@ -74,17 +76,18 @@ export type RoomStateV2 = {
   checkpoint: CheckpointV2; a_turn_id: string | null; completed_pair_ids: string[];
   invite_code: string; invite_expires_at: string; created_at: string; updated_at: string;
   simulation_version?: number;
-  /** Open turns (open-turns.ts), only while a stage of an open turns chapter has its first turn: the passes after it and the stage's bytes so far. */
+  /** Open turns (open-turns.ts), only while a stage of an open turns chapter has its first turn: the passes after it. */
   open_stage?: OpenStage;
 };
-/** The current stage's passes in order (turn 2 on) and the bytes of every turn it holds, turn 1 included. */
-export type OpenStage = { passes: { turn_id: string; recording_hash: string }[]; bytes: number };
+/** The current stage's passes in order (turn 2 on). */
+export type OpenStage = { passes: { turn_id: string; recording_hash: string }[] };
 /**
- * What a member of an open turns room reads beside it: the next turn's number (0 once the chapter is complete), the
- * stage's cap, whether that turn must close the stage, the bytes a pass may take, and the stage's passes so far in
- * order (turns 2 on; turn 1 is recording_a), so the room alone holds every memory the next turn replays.
+ * What a member of an open turns room reads beside it (claude-20261011/open-turns-fingerprints/WIRE.md): the next
+ * turn's number (0 once the chapter is complete), the stage's cap, whether that turn must close the stage, the bytes a
+ * pass may take (the widest turn), every turn of the stage by hash, the stage's latest turn in full (the memory the next
+ * turn plays over), and the last closing turn in full while the member who did not play it has not acknowledged it.
  */
-export type OpenTurnsView = { turn: number; cap: number; must_finish: boolean; pass_bytes: number; passes: RecordingV2[] };
+export type OpenTurnsView = { turn: number; cap: number; must_finish: boolean; pass_bytes: number; turn_hashes: string[]; newest: RecordingV2 | null; closing: RecordingV2 | null; wanted: string[] };
 export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   api_version: 2; invite_code?: string; hard?: HardRun; active_role: "a" | "b" | "complete";
   /** Only in a duel's room (duels/room-link.ts): its turns never use Forgiving catches, so the phone records none. */
@@ -137,8 +140,8 @@ export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean; looks
 type BesideFields = { end_reactions?: EndReactionsView; partner_name?: string | null; run_reactions?: RunReactionsView; partner_look?: Look; turn_looks?: Record<string, Look>; packed_recordings?: true };
 /** The revision and branch a polling member already holds (X-AfterYou-Known-Room). */
 export type KnownRoom = { revision: number; branch: number };
-/** The small poll reply when nothing changed since the member's known revision and branch. */
-export type RoomUnchangedV2 = { schema_version: 1; unchanged: true; revision: number; branch: number; updated_at: string };
+/** The small poll reply when nothing changed since the member's known revision and branch; `wanted` (open turns only, when any): open_turns.wanted. */
+export type RoomUnchangedV2 = { schema_version: 1; unchanged: true; revision: number; branch: number; updated_at: string; wanted?: string[] };
 /** A conditional poll's reply; `redo` only for a client that asked for it (X-AfterYou-Poll-Redo). */
 export type PolledRoomV2 = (RoomSnapshotV2 | RoomUnchangedV2) & { redo?: RedoState | RedoStateV2 };
 export type PairV2 = { pair_id: string; branch: number; stage_index: number; a: RecordingV2; b: RecordingV2; checkpoint: CheckpointV2 };
@@ -165,7 +168,7 @@ export type TurnHooks = {
 /** A turn's reply, already written, with its hooks; or, for a premium turn the room could not admit, the host the route must check (`age`: the room's memory of it). */
 export type TurnAnswer = { reply: RoomReply; hooks: TurnHooks } | { access: { host_id: string; age: number | null } };
 type StoredTurn = { data: RowData; player_id: string; accepted_revision: number };
-const MAX_TURNS = 128, MAX_PAIRS = 64, MAX_BRANCHES = 32, MAX_OPERATIONS = 256;
+const MAX_TURNS = MAX_ROOM_TURNS, MAX_PAIRS = MAX_ROOM_PAIRS, MAX_BRANCHES = 32, MAX_OPERATIONS = 256;
 
 /** A separate SQLite namespace. This coordinator does not execute game physics. */
 export class RoomV2 extends DurableObject<Env> {
@@ -181,9 +184,9 @@ export class RoomV2 extends DurableObject<Env> {
   // Binding-only maintenance methods; never exposed by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportRoomV2(this.ctx, sourceCommit)); }
   async restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> {
-    this.hard.forget();
+    this.hard.forget(); this.fingerprinted.clear(); this.copiesAbsent = false;
     try { return await snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
-    finally { this.hard.forget(); }
+    finally { this.hard.forget(); this.fingerprinted.clear(); }
   }
   /** Whether this object holds a hard room (v2/hard-mode.ts); read at most once per object. */
   private readonly hard = new HardMemo();
@@ -416,12 +419,115 @@ export class RoomV2 extends DurableObject<Env> {
     const stage = chapter(state).stages[state.stage_index]; if (!stage) return null;
     return turnSlot(stage.first_player_slot, this.nextTurn(state)) === "p0" ? state.host_id : guest;
   }
-  /** What an open turns member reads beside the room (OpenTurnsView). */
-  private openView(state: RoomStateV2): OpenTurnsView | undefined {
+  /** What an open turns member reads beside the room (OpenTurnsView); `first` is the stage's turn 1 as stored, already read. */
+  private openView(state: RoomStateV2, first: RecordingV2 | null, player?: string): OpenTurnsView | undefined {
     const open = chapter(state).open_turns; if (!open) return undefined;
-    const stage = state.stage_index, complete = stage >= open.caps.length, turn = complete ? 0 : this.nextTurn(state), used = state.open_stage?.bytes ?? 0;
-    return { turn, cap: complete ? 0 : open.caps[stage], must_finish: !complete && mustFinish(open, stage, turn, used), pass_bytes: complete ? 0 : Math.max(0, passRoom(open, used)),
-      passes: (state.open_stage?.passes ?? []).map(pass => this.turn(pass.turn_id)) };
+    const stage = state.stage_index, complete = stage >= open.caps.length, turn = complete ? 0 : this.nextTurn(state);
+    const passes = state.open_stage?.passes ?? [], latest = passes.at(-1);
+    const closing = this.closingTurn(state);
+    return { turn, cap: complete ? 0 : open.caps[stage], must_finish: !complete && mustFinish(open, stage, turn), pass_bytes: complete ? 0 : open.recording_bytes,
+      turn_hashes: first ? [first.recording_hash, ...passes.map(pass => pass.recording_hash)] : [], newest: latest ? this.turn(latest.turn_id) : first,
+      closing: closing ? this.turn(closing.turn_id) : null, wanted: player === undefined ? [] : this.wanted(state, player) };
+  }
+  /** The unchanged poll's `wanted`: only on open turns, only when the other member asked for turns this phone may hold. */
+  private wantedField(state: RoomStateV2, player: string): { wanted?: string[] } {
+    if (!chapter(state).open_turns) return {};
+    const wanted = this.wanted(state, player);
+    return wanted.length ? { wanted } : {};
+  }
+  /** Whether this instance knows the room has no turn send-back tables (turn-copies.ts), so a poll reads nothing for them. */
+  private copiesAbsent = false;
+  /** The turns the other member asked for that `player`'s phone may send back (turn-copies.ts wantedBy); [] almost always. */
+  private wanted(state: RoomStateV2, player: string): string[] {
+    if (this.copiesAbsent) return [];
+    const wanted = wantedBy(this.ctx.storage, this.partnerOf(state, player));
+    if (wanted === null) { this.copiesAbsent = true; return []; }
+    return wanted;
+  }
+  /**
+   * Turn send-back (turn-copies.ts; WIRE.md section 9), one request each, after the pair gate: "want" asks for turns
+   * by hash, "send" brings the other member's wanted turns back from this phone (a turn body, turn-wire.ts), "ack" says
+   * this phone holds them again. Open turns rooms only, standalone only; no revision moves.
+   */
+  async turnCopies(player: string, action: "want" | "send" | "ack", body: unknown, safetyToken?: string): Promise<Outcome<unknown>> {
+    try {
+      const gate = await this.pairGate(player, undefined, safetyToken); if (!gate.ok) return gate;
+      const boundary = campaignBoundaryGuard(this.ctx.storage, "turn_copies_standalone_only"); if (boundary) return boundary;
+      const state = this.read();
+      if (!state || !this.member(state, player)) return this.unavailable(player);
+      if (!chapter(state).open_turns) return fail(409, "open_turns_only");
+      const other = this.partnerOf(state, player);
+      if (action === "send") {
+        const sent = parseSent(await decodeTurnBody(body as TurnBody, MAX_TURN_BODY_BYTES)), records: RecordingV2[] = [];
+        // Each a whole packed turn of this chapter whose hash it carries; anything else refuses the whole request.
+        for (const value of sent) records.push(await recordingV2(value, state));
+        return ok(this.ctx.storage.transactionSync(() => keepCopies(this.ctx.storage, other, records, this.compress())));
+      }
+      const hashes = parseAsked(body);
+      const answer = this.ctx.storage.transactionSync(() => action === "want" ? askCopies(this.ctx.storage, player, hashes) : acknowledgeCopies(this.ctx.storage, player, other, hashes));
+      if (action === "want") this.copiesAbsent = false;
+      return ok(answer);
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  /**
+   * A finished open turns room's run as `player`'s phone sends it from its own copy (WIRE.md section 10): a turn body
+   * holding `{ schema_version: 1, checkpoint }`, the final checkpoint with every stage's turns nested again. It is a run
+   * only when it is exactly this room's: each stage's checkpoint is its pair row's, each turn hashes to that checkpoint's
+   * turn_hashes (every turn checked whole), and the chain ends at the chapter's start (leaderboards/run.ts openRoomRun).
+   * Null when it is not a run a board takes. Reads the lineage's pair rows; writes nothing.
+   */
+  async postedRun(player: string, body: TurnBody, looks: boolean): Promise<Outcome<{ run: LeaderboardRun | null }>> {
+    try {
+      const state = this.read();
+      if (!state || !this.member(state, player)) return this.unavailable(player);
+      const selected = chapter(state);
+      if (!selected.open_turns) return fail(409, "open_turns_only");
+      if (state.stage_index !== selected.stages.length || !state.guest_id) return ok({ run: null });
+      const input = object(await decodeTurnBody(body, MAX_TURN_BODY_BYTES)); exact(input, ["schema_version", "checkpoint"]);
+      if (input.schema_version !== 1) return fail(422, "invalid_run");
+      const lineage = state.completed_pair_ids.map(id => this.pairCheckpoint(id));
+      const nested = await openRoomRun(input.checkpoint, lineage, initialCheckpoint(state), value => recordingV2(value, state));
+      if (!nested) return fail(422, "run_mismatch");
+      return ok({ run: await roomRun({ ...this.view(state, player, false), checkpoint: nested }, looks ? pairLooks(this.ctx.storage, state.host_id, state.guest_id) : undefined, encodeProof, true) });
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  /** Closing turns this instance already knows are fingerprints (`<turn id>:<hash>`): a fingerprint never turns full again, so polls skip the row. */
+  private readonly fingerprinted = new Set<string>();
+  /**
+   * Open turns: the lineage's last closing turn while its row is still full (the member who did not play it has not
+   * acknowledged it), with who played it and when; null otherwise. Reads one row's small columns, once per instance
+   * after the room learns it is a fingerprint. A fingerprint is always stored as text, so the row's own type says.
+   */
+  private closingTurn(state: RoomStateV2): { turn_id: string; player_id: string; accepted_revision: number; memo: string } | null {
+    if (!state.completed_pair_ids.length || !chapter(state).open_turns) return null;
+    const [branch, stage] = state.completed_pair_ids.at(-1)!.slice(1).split("-").map(Number), hashes = state.checkpoint.turn_hashes ?? [];
+    if (hashes.length < 2) return null;
+    const turn_id = turnId(branch, stage, hashes.length), memo = `${turn_id}:${hashes.at(-1)}`;
+    if (this.fingerprinted.has(memo)) return null;
+    const row = this.ctx.storage.sql.exec<{ player_id: string; accepted_revision: number; full: number }>(
+      "SELECT player_id,accepted_revision,(typeof(data)='blob' OR instr(data,'\"packed\":')>0) AS full FROM turns WHERE turn_id=?", turn_id).toArray()[0];
+    if (!row?.full) { this.fingerprinted.add(memo); return null; }
+    return { turn_id, player_id: row.player_id, accepted_revision: row.accepted_revision, memo };
+  }
+  /**
+   * The member who did not play the lineage's last closing turn holds it once they name a revision at or past it (their
+   * poll's known room, or their next turn's base revision): its row becomes its fingerprint. One row write, no revision.
+   */
+  private acknowledgeClosing(state: RoomStateV2, player: string, revision: number): void {
+    const closing = this.closingTurn(state);
+    if (!closing || closing.player_id === player || revision < closing.accepted_revision) return;
+    this.toFingerprint(closing.turn_id, this.turn(closing.turn_id));
+    this.fingerprinted.add(closing.memo);
+  }
+  /** A stored turn becomes its fingerprint (open-turns.ts), kept as text. */
+  private toFingerprint(id: string, recording: RecordingV2): void {
+    if (!isFingerprint(recording)) this.ctx.storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", storedTurn(fingerprint(recording), false), id);
+  }
+  /** The checkpoint a lineage pair reached, read from its row: open turns checkpoints nest nothing, so an earlier stage's comes from its pair. */
+  private pairCheckpoint(pairId: string): CheckpointV2 {
+    const row = this.ctx.storage.sql.exec<{ data: RowData }>("SELECT data FROM pairs WHERE pair_id=?", pairId).toArray()[0];
+    if (!row || isStub(row.data)) throw new ApiError(500, "checkpoint_chain_broken");
+    return parseRow<PairV2>(row.data).checkpoint;
   }
   redo(player: string, value?: unknown, deviceHash?: string): Promise<Outcome<RedoState>> { return this.redoInternal(player, value, deviceHash); }
   /**
@@ -499,7 +605,8 @@ export class RoomV2 extends DurableObject<Env> {
     const second = !stage ? null : stage.first_player_slot === "p0" ? state.guest_id : state.host_id;
     const hard = this.hard.run(this.ctx.storage), link = duelLink(this.ctx.storage);
     const recordingA = state.a_turn_id ? this.turn(state.a_turn_id) : null;
-    const open = this.openView(state);
+    // A commit's own check reads no open turns view: it hands nothing to the phone, and the view reads the full turns.
+    const open = note ? this.openView(state, recordingA, player) : undefined;
     // Odd turns are the first player's, even turns the other's; before open turns that is a then b.
     const active = !stage ? null : this.nextTurn(state) % 2 === 1 ? first : second;
     // Every read that hands the latest turn to the member who plays next passes here: from then on it is never replaced (replaceLatestTurn).
@@ -510,7 +617,8 @@ export class RoomV2 extends DurableObject<Env> {
       active_role: !stage ? "complete" : state.a_turn_id ? "b" : "a", first_player_id: first,
       active_player_id: active,
       player_slot: player === state.host_id ? "p0" : "p1", stage_id: stage?.id ?? "",
-      recording_a: recordingA, validation: "structural_client_replay_required", ...(open ? { open_turns: open } : {}) };
+      // Open turns: turn 1 only as its fingerprint; the full turns are open_turns.newest and open_turns.closing.
+      recording_a: open && recordingA ? fingerprint(recordingA) : recordingA, validation: "structural_client_replay_required", ...(open ? { open_turns: open } : {}) };
   }
   /** The seen note for a standalone room's first turn (redo-control.ts noteTurnSeen); a Story room keeps none. */
   private noteSeen(turnId: string, aHash: string): void {
@@ -549,13 +657,14 @@ export class RoomV2 extends DurableObject<Env> {
     storage.sql.exec("DELETE FROM photos"); storage.sql.exec("DELETE FROM photo_operations"); clearDelivery(storage);
     clearPairReactions(storage);
     clearAttempts(storage);
-    clearTurnTries(storage); clearEndReactions(storage); clearRunReactions(storage);
+    clearTurnTries(storage); clearEndReactions(storage); clearRunReactions(storage); clearTurnCopies(storage); this.copiesAbsent = true;
     clearRedoRequests(storage, runFrom);
   }
   /** Goes back to `stageIndex` on a new branch, keeping every earlier attempt; the caller moves the revision. */
   private rewind(state: RoomStateV2, stageIndex: number): void {
-    // Every checkpoint nests its predecessor exactly, so the fork point comes from the live checkpoint.
-    state.checkpoint = stageIndex === 0 ? initialCheckpoint(state) : checkpointAt(state.checkpoint, stageIndex);
+    // Every checkpoint nests its predecessor exactly, so the fork point comes from the live checkpoint; an open turns
+    // checkpoint nests nothing, so it comes from the lineage's pair row.
+    state.checkpoint = stageIndex === 0 ? initialCheckpoint(state) : chapter(state).open_turns ? this.pairCheckpoint(state.completed_pair_ids[stageIndex - 1]) : checkpointAt(state.checkpoint, stageIndex);
     state.completed_pair_ids = state.completed_pair_ids.slice(0, stageIndex); state.a_turn_id = null; delete state.open_stage;
     state.stage_index = stageIndex; state.branch++;
   }
@@ -589,9 +698,9 @@ export class RoomV2 extends DurableObject<Env> {
     stubReleased(this.ctx.storage, state);
     return null;
   }
-  /** One accepted turn's row, in its stored form (row-codec.ts); one past MAX_ROW_BYTES throws turn_too_large. */
+  /** One accepted turn's row, in its stored form (row-codec.ts; a fingerprint always as text); one past MAX_ROW_BYTES throws turn_too_large. */
   private insertTurn(id: string, player: string, revision: number, recording: RecordingV2): void {
-    this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", id, player, revision, storedRow(recording, this.compress()));
+    this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", id, player, revision, storedTurn(recording, this.compress()));
   }
   /** Room in the turns table for the turns a replacement copies onto its new branch (`quick`: the poll's answer, no row read). */
   private copyRoom(state: RoomStateV2, quick = false): boolean {
@@ -602,15 +711,13 @@ export class RoomV2 extends DurableObject<Env> {
   private copyTurns(state: RoomStateV2, kept: { turn_id: string; recording_hash: string }[]): void {
     if (!kept.length) return;
     const passes: OpenStage["passes"] = [];
-    let bytes = 0;
     kept.forEach((turn, index) => {
       const row = this.ctx.storage.sql.exec<StoredTurn>("SELECT data,player_id,accepted_revision FROM turns WHERE turn_id=?", turn.turn_id).one();
       const id = turnId(state.branch, state.stage_index, index + 1), recording = parseRow<RecordingV2>(row.data);
       this.insertTurn(id, row.player_id, row.accepted_revision, recording);
-      bytes += recordingBytes(recording);
       if (index === 0) state.a_turn_id = id; else passes.push({ turn_id: id, recording_hash: turn.recording_hash });
     });
-    state.open_stage = { passes, bytes };
+    state.open_stage = { passes };
   }
   private partnerOf(state: { host_id: string; guest_id: string | null }, player: string): string | null {
     return player === state.host_id ? state.guest_id : state.host_id;
@@ -649,8 +756,8 @@ export class RoomV2 extends DurableObject<Env> {
     if (existing && existing.simulation_version !== simulationVersion) return fail(409, "idempotency_simulation_mismatch");
     if (existing && (this.hard.run(this.ctx.storage) !== null) !== (mode === "hard")) return fail(409, "idempotency_mode_mismatch");
     if (duel && (mode === "hard" || !duel.members.includes(host))) return fail(422, "invalid_duel_room");
-    // Open turns (open-turns.ts) play in friend rooms only for now: hard runs reserve two turns a stage, and duels compare turns.
-    if (selected.open_turns && (mode === "hard" || duel)) return fail(422, "open_turns_friend_rooms_only");
+    // Open turns (open-turns.ts) play in friend and hard rooms; duels compare turns, so not in duels.
+    if (selected.open_turns && duel) return fail(422, "open_turns_friend_rooms_only");
     if (existing && !sameDuelLink(duelLink(this.ctx.storage), duel)) return fail(409, "idempotency_duel_mismatch");
     if (existing && (existing.host_id !== host || !equalHash(existing.invite_code, invite))) return fail(409, "room_exists");
     // A host who left reads the room as gone, even through their own create retry.
@@ -707,9 +814,11 @@ export class RoomV2 extends DurableObject<Env> {
       const state = this.polledState(player, undefined, history);
       if (!state.ok) return state;
       this.armOnRead(undefined, state.value);
+      // Open turns: a member that names this branch at or past the last closing turn holds it (acknowledgeClosing).
+      if (known.branch === state.value.branch && chapter(state.value).open_turns) this.ctx.storage.transactionSync(() => this.acknowledgeClosing(state.value, player, known.revision));
       // Faces and tracks only move with a turn, which moves the revision, so the small reply never needs them; names are left out of it too.
       const reply: RoomSnapshotV2 | RoomUnchangedV2 = state.value.revision === known.revision && state.value.branch === known.branch
-        ? { schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at }
+        ? { schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at, ...this.wantedField(state.value, player) }
         : this.withBeside(this.view(state.value, player), state.value, player, beside);
       if (!redoVersion) return ok(reply);
       const source = this.redoSource(state.value);
@@ -1141,12 +1250,15 @@ export class RoomV2 extends DurableObject<Env> {
         const prior = this.retry(state, player, key, hash); if (prior) return prior;
         const writeGuard = campaignHttpAccessGuard(this.ctx.storage, access, true); if (writeGuard) return writeGuard;
         if (state.revision !== revision || state.branch !== branch) return fail(409, "stale_revision");
+        // Open turns: the partner's turn names a revision past the last closing turn, so their phone holds it.
+        if (open) this.acknowledgeClosing(state, player, revision);
         // A replacement first goes back to the start of this stage on a new branch (with the turns before it); the turn below takes its place.
         let turnBranch = branch;
         if (replaces !== undefined) { const refused = this.replaceLatestTurn(state, player, replaces); if (refused) return refused; turnBranch = state.branch; }
         if (recording.simulation_version !== (state.simulation_version ?? chapter(state).simulation_version)) return fail(422, "unsupported_simulation_version");
         const current = this.view(state, player, false);
         if (current.active_player_id !== player || current.active_role !== recording.role) return fail(409, "wrong_turn");
+        let memory: { turn_id: string; recording: RecordingV2 } | null = null;
         // A hard room takes only first tries, and nothing once its run is over.
         if (current.hard?.over) return fail(409, "hard_run_over");
         if (current.hard && tries !== undefined && tries > 1) return fail(409, "hard_run_retry");
@@ -1156,14 +1268,15 @@ export class RoomV2 extends DurableObject<Env> {
           if (!acceptedRecording(recording)) return fail(422, "incomplete_first_turn");
         } else {
           // The memory: the stage's latest turn (before open turns, always its first).
-          const turns = this.stageTurns(state), memory = this.turn(turns.at(-1)!.turn_id);
-          if (recording.source_recording_hash !== memory.recording_hash || recording.duration_ticks < memory.duration_ticks) return fail(409, "source_recording_mismatch");
+          const turns = this.stageTurns(state);
+          memory = { turn_id: turns.at(-1)!.turn_id, recording: this.turn(turns.at(-1)!.turn_id) };
+          const { recording: memoryRecording } = memory;
+          if (recording.source_recording_hash !== memoryRecording.recording_hash || recording.duration_ticks < memoryRecording.duration_ticks) return fail(409, "source_recording_mismatch");
           if (open && recording.player_slot !== current.player_slot) return fail(409, "wrong_turn");
           if (pass) {
             if (!acceptedRecording(recording)) return fail(422, "incomplete_second_turn");
-            // The cap's turn, or one past the budget, must finish the stage.
-            const used = state.open_stage?.bytes ?? 0;
-            if (mustFinish(open!, state.stage_index, turns.length + 1, used) || recordingBytes(recording) > passRoom(open!, used)) return fail(409, "turn_must_finish");
+            // The cap's turn must finish the stage.
+            if (mustFinish(open!, state.stage_index, turns.length + 1)) return fail(409, "turn_must_finish");
           } else {
             const hashes = open ? checkpoint?.turn_hashes ?? [] : [checkpoint?.a_recording_hash];
             if (!acceptedRecording(recording) || !checkpoint || checkpoint.previous_checkpoint_hash !== state.checkpoint.checkpoint_hash ||
@@ -1178,6 +1291,10 @@ export class RoomV2 extends DurableObject<Env> {
         // Each row is written in its stored form and measured; one past MAX_ROW_BYTES throws turn_too_large and the transaction keeps nothing.
         const compress = this.compress();
         this.insertTurn(turn_id, player, state.revision, recording);
+        // Open turns: this turn was played over the stage's latest, so both phones hold that one; it keeps only its fingerprint.
+        if (open && memory) this.toFingerprint(memory.turn_id, memory.recording);
+        // Copies sent back and already handed over go too (turn-copies.ts).
+        if (open && !this.copiesAbsent) dropDeliveredCopies(this.ctx.storage);
         if (context === undefined) recordTries(this.ctx.storage, turn_id, recording.recording_hash, tries);
         if (context === undefined) recordEndReaction(this.ctx.storage, turn_id, recording.recording_hash, player, face);
         if (context === undefined) recordRunReactions(this.ctx.storage, turn_id, recording.recording_hash, player, track);
@@ -1185,12 +1302,13 @@ export class RoomV2 extends DurableObject<Env> {
         if (context === undefined) { recordMemberLook(this.ctx.storage, player, look); recordTurnLook(this.ctx.storage, recording.recording_hash, player, look); }
         if (recording.role === "a") {
           state.a_turn_id = turn_id;
-          if (open) state.open_stage = { passes: [], bytes: recordingBytes(recording) };
+          if (open) state.open_stage = { passes: [] };
         } else if (pass) {
-          const stage = state.open_stage ?? { passes: [], bytes: 0 };
-          state.open_stage = { passes: [...stage.passes, { turn_id, recording_hash: recording.recording_hash }], bytes: stage.bytes + recordingBytes(recording) };
+          state.open_stage = { passes: [...(state.open_stage?.passes ?? []), { turn_id, recording_hash: recording.recording_hash }] };
         } else {
-          const pair: PairV2 = { pair_id: pair_id!, branch: turnBranch, stage_index, a: this.turn(state.a_turn_id!), b: recording, checkpoint: checkpoint! };
+          // Open turns: the pair holds its first and closing turns as fingerprints; the closing turn's row stays full until acknowledged.
+          const first = this.turn(state.a_turn_id!);
+          const pair: PairV2 = { pair_id: pair_id!, branch: turnBranch, stage_index, a: open ? fingerprint(first) : first, b: open ? fingerprint(recording) : recording, checkpoint: checkpoint! };
           this.ctx.storage.sql.exec("INSERT INTO pairs VALUES (?,?)", pair_id, storedRow(pair, compress));
           state.completed_pair_ids.push(pair_id!); state.checkpoint = checkpoint!; state.stage_index++; state.a_turn_id = null; delete state.open_stage;
         }
@@ -1302,7 +1420,8 @@ export class RoomV2 extends DurableObject<Env> {
    * goes back to its first stage on a new branch (a fork) when it has
    * anything to undo, or only moves its revision when the slip was the first
    * turn, and records who slipped with the slip's recording, checkpoint and
-   * first turn. When the room has no space left for a whole new run it keeps
+   * memory (under open turns with the turns under it, which the phone sends:
+   * a chain that does not match drops the slip). When the room has no space left for a whole new run it keeps
    * the slip and ends the run (over) instead. A resend answers the same.
    */
   async hardReset(player: string, value: unknown): Promise<Outcome<{ room: RoomSnapshotV2; failure: Failure }>> {
@@ -1316,7 +1435,14 @@ export class RoomV2 extends DurableObject<Env> {
       // A slip that does not check is dropped, never the reset: the room must start again.
       let slipRecording: RecordingV2 | null = null;
       if (input.slip !== undefined) { try { slipRecording = await recordingV2(input.slip, observed); } catch { slipRecording = null; } }
-      if (slipRecording && isPacked(slipRecording) && !packedRoom(this.ctx.storage)) slipRecording = null;
+      // Open turns rooms take only packed turns, so their slips are packed too.
+      if (slipRecording && isPacked(slipRecording) && !packedRoom(this.ctx.storage) && !chapter(observed).open_turns) slipRecording = null;
+      // Open turns: the turns under the slip's memory, from the phone's copy (the room holds them as fingerprints),
+      // each a whole packed turn whose hash is its own; matched to the stage's turns below.
+      let chainRecordings: RecordingV2[] = [];
+      if (slipRecording && input.chain !== undefined) {
+        try { for (const turn of input.chain) chainRecordings.push(await recordingV2(turn, observed)); } catch { slipRecording = null; chainRecordings = []; }
+      }
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       return this.indexed(await this.ctx.storage.transaction(async () => {
         const state = this.read();
@@ -1330,15 +1456,21 @@ export class RoomV2 extends DurableObject<Env> {
         if (current.hard?.over) return fail(409, "hard_run_over");
         if (current.active_player_id !== player) return fail(409, "hard_not_your_turn");
         if (input.stage_index !== state.stage_index || input.role !== current.active_role) return fail(409, "stale_revision");
-        const slip: Slip | null = slipRecording && slipRecording.stage_id === current.stage_id && slipRecording.role === input.role && slipRecording.checkpoint_hash === state.checkpoint.checkpoint_hash
-          ? { recording: slipRecording, checkpoint: state.checkpoint, prior: input.role === "b" && state.a_turn_id ? this.turn(state.a_turn_id) : null } : null;
+        // The slip's memory is the stage's latest turn, held in full; under open turns a later one also keeps the turns
+        // before it (chain), which the phone sent: they must be exactly the stage's turns under the memory, in order.
+        const stageTurns = input.role === "b" ? this.stageTurns(state) : [];
+        const prior = stageTurns.length ? this.turn(stageTurns.at(-1)!.turn_id) : null;
+        const under = stageTurns.slice(0, -1).map(turn => turn.recording_hash);
+        const chained = chainRecordings.length === under.length && chainRecordings.every((turn, i) => turn.recording_hash === under[i]);
+        const slip: Slip | null = slipRecording && chained && !(prior && isFingerprint(prior)) && slipRecording.stage_id === current.stage_id && slipRecording.role === input.role && slipRecording.checkpoint_hash === state.checkpoint.checkpoint_hash
+          ? { recording: slipRecording, checkpoint: state.checkpoint, prior, ...(chainRecordings.length ? { chain: chainRecordings } : {}) } : null;
         const failure: Failure = { by: player, stage_index: state.stage_index, role: input.role, reason: input.reason, at: new Date().toISOString() };
         const progress = state.stage_index > 0 || state.a_turn_id !== null;
         // Only a reset with progress to undo needs a branch; a first-turn slip always fits.
         const room = !progress || this.hardRunSpace(state);
         if (progress && room) {
           state.checkpoint = initialCheckpoint(state);
-          state.completed_pair_ids = []; state.a_turn_id = null; state.stage_index = 0; state.branch++;
+          state.completed_pair_ids = []; state.a_turn_id = null; delete state.open_stage; state.stage_index = 0; state.branch++;
         }
         state.revision++;
         this.write(state);
@@ -1358,14 +1490,16 @@ export class RoomV2 extends DurableObject<Env> {
   /**
    * Whether a hard room can hold one more whole run after this one: a branch
    * to fork to under the room's and chapter's limits, and turns, pairs and
-   * receipts for every stage of it.
+   * receipts for every stage of it (two turns a stage, or under open turns
+   * each stage's cap, the most a stage can take).
    */
   private hardRunSpace(state: RoomStateV2): boolean {
     const count = (table: string) => this.ctx.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one().n;
-    const stages = chapter(state).stages.length;
+    const stages = chapter(state).stages.length, open = chapter(state).open_turns;
+    const turns = open ? open.caps.reduce((sum, cap) => sum + cap, 0) : 2 * stages;
     const held = state.branch + 2 - offloadedCount(this.ctx.storage);
     return state.branch + 1 < MAX_BRANCHES && held <= Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES) &&
-      count("turns") + 2 * stages <= MAX_TURNS && count("pairs") + stages <= MAX_PAIRS && count("operations") + 2 * stages <= MAX_OPERATIONS;
+      count("turns") + turns <= MAX_TURNS && count("pairs") + stages <= MAX_PAIRS && count("operations") + turns <= MAX_OPERATIONS;
   }
   /** A hard room's kept slips for its members (GET .../hard). */
   hardFailures(player: string, since = 0): Promise<Outcome<HardFailures>> {
@@ -1484,6 +1618,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearReplayTransfer(this.ctx.storage);
     clearHistory(this.ctx.storage);
     clearTurnTries(this.ctx.storage);
+    clearTurnCopies(this.ctx.storage); this.copiesAbsent = true;
     clearEndReactions(this.ctx.storage);
     clearRunReactions(this.ctx.storage);
     clearMemberNames(this.ctx.storage);

@@ -1,7 +1,8 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
 import type { Reach, ServerVars } from "../flags";
 import { bearerDigest } from "../http";
-import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
+import { anyBundlesOn, appStoreBundlesOn, appStoreFruitPacksOn, bundlesOn, earningOn, energyOn, fruitPacksOn, fruitsOn, grantOn, itemBloomsOn, levelUnlocksOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
+import { LEVEL_ID_PATTERN } from "./level-unlocks";
 import { ITEM_ID_PATTERN, featuredCodeFor, offeredTagFor, type Look } from "./catalog";
 import { withoutFaces } from "./reaction-loadout";
 import { servedFaceVersion } from "../v2/face-packs";
@@ -145,6 +146,8 @@ function featuredCapability(env: ServerVars, reach: Reach): { pollen_featured_co
 }
 /** Whether this request's wallet read carries duel energy (features.ts energyOn): any app that asks for Pollen while ENERGY is on for it; older apps ignore it. */
 export function energyFor(request: Request, env: ServerVars): boolean { return energyOn(env, clientReach(request)); }
+/** Whether this request's wallet read carries the Fruit level prices and unlocks (features.ts levelUnlocksOn), for an app offered the shop. */
+export function levelsFor(request: Request, env: ServerVars): boolean { return pollenShopClient(request) && levelUnlocksOn(env, clientReach(request)); }
 /** Whether this request gets Fruits (features.ts fruitsOn), for an app offered the shop. */
 export function fruitsFor(request: Request, env: ServerVars): boolean { return pollenShopClient(request) && fruitsOn(env, clientReach(request)); }
 /**
@@ -303,12 +306,15 @@ export async function routePollen(request: Request, path: string, playerId: stri
   return { schema_version: 1, results: pollenReplyClient(request) ? results.map(result => result.status === "credited" ? { ...result, receipt: receiptFor(request, env, result.receipt) } : result) : results.map(result => { const { receipt: _, ...rest } = result as Record<string, unknown>; return rest; }) };
 }
 
-/** "convert" (id: the Fruit count) and "sunshine" (id "sunshine") are Fruit spends (pollen/fruit-ops.ts), refused while Fruits are off. */
-const SPEND_KINDS = ["item", "set", "pack", "convert", "sunshine", "energy"] as const;
+/**
+ * "convert" (id: the Fruit count), "sunshine" (id "sunshine"), "energy" and "level" (id: the level id) are Fruit spends
+ * (pollen/fruit-ops.ts, energy.ts, level-unlocks.ts), refused while Fruits are off; "level" also while LEVEL_UNLOCKS is.
+ */
+const SPEND_KINDS = ["item", "set", "pack", "convert", "sunshine", "energy", "level"] as const;
 /**
  * POST /v1/pollen/equip (POLLEN_WARDROBE) and /spend (POLLEN_SHOP), after auth(). The body is hashed here, as room
  * operations are, so the Player's spend or equip runs in one synchronous transaction.
- * - spend {schema_version: 1, idempotency_key, kind: "item" | "set" | "pack", id, expected_cost}:
+ * - spend {schema_version: 1, idempotency_key, kind: "item" | "set" | "pack" | a Fruit kind, id, expected_cost}:
  *   `expected_cost` is what the confirm sheet showed (spend.ts charge).
  * - equip {schema_version: 1, idempotency_key, revision, look, reactions?}: `look` is the whole look to wear;
  *   `reactions`, only while FACE_SINGLES is on, the reaction slots kept beside it (reaction-loadout.ts).
@@ -324,13 +330,14 @@ async function routeWardrobe(request: Request, path: string, playerId: string, e
   const op = { key: input.idempotency_key, hash: await digest(canonicalJson({ operation: spend ? "spend" : "equip", ...input })) };
   const player = env.PLAYERS.getByName(playerId), device = await bearerDigest(request);
   if (spend) {
-    if (!SPEND_KINDS.includes(input.kind as typeof SPEND_KINDS[number]) || typeof input.id !== "string" || !ITEM_ID_PATTERN.test(input.id) ||
+    if (!SPEND_KINDS.includes(input.kind as typeof SPEND_KINDS[number]) || typeof input.id !== "string" || !(input.kind === "level" ? LEVEL_ID_PATTERN : ITEM_ID_PATTERN).test(input.id) ||
       typeof input.expected_cost !== "number" || !Number.isSafeInteger(input.expected_cost) || input.expected_cost < 0) throw new ApiError(400, code);
     const kind = input.kind as typeof SPEND_KINDS[number];
     const reach = clientReach(request), fruits = fruitsOn(env, reach);
-    if ((kind === "convert" || kind === "sunshine" || kind === "energy") && !fruits) throw new ApiError(503, "fruits_disabled");
+    if ((kind === "convert" || kind === "sunshine" || kind === "energy" || kind === "level") && !fruits) throw new ApiError(503, "fruits_disabled");
+    if (kind === "level" && !levelUnlocksOn(env, reach)) throw new ApiError(503, "level_unlocks_disabled");
     if (kind === "energy" && !energyOn(env, reach)) throw new ApiError(503, "energy_disabled");
-    return unwrap(await player.pollenSpend(playerId, device, op, { kind, id: input.id }, input.expected_cost, fruits, reach));
+    return unwrap(await player.pollenSpend(playerId, device, op, { kind, id: input.id }, input.expected_cost, fruits, reach, kind === "level"));
   }
   if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1 || !isObject(input.look)) throw new ApiError(400, code);
   const faces = servedFaceVersion(request, env) >= FACE_SINGLES_VERSION;

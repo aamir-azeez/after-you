@@ -39,11 +39,13 @@ describe("new pieces (rules 16)", () => {
     const [a, b] = [rideA, rideB] as unknown as ChapterRecording[];
     expect(adapter.simulation_version).toBe(16);
     for (const turn of [a, b]) expect(await adapter.recording(turn)).toBeTruthy();
-    expect(await adapter.checkpoint(rideEnd, adapter.initial(), a, b, [])).toEqual(rideEnd);
+    // The server's schema 8 checkpoint carries no proof (the hash never covered it).
+    const { proof: _proof, ...flat } = structuredClone(rideEnd) as Record<string, any>; void _proof;
+    expect(await adapter.checkpoint(flat, adapter.initial(), a, b, [])).toEqual(flat);
     // Left below where its own world kept it, the memory stands on the lift's shut low stop.
-    const { checkpoint_hash: _hash, proof: _proof, ...body } = structuredClone(rideEnd) as Record<string, any>; void _hash; void _proof;
+    const { checkpoint_hash: _hash, ...body } = structuredClone(flat); void _hash;
     body.players.p0 = { x: 450, z: 200, height: 0, surface_id: "lift-low" };
-    const below = { ...body, proof: rideEnd.proof, checkpoint_hash: await digest(canonicalJson(body)) } as unknown as ChapterCheckpoint;
+    const below = { ...body, checkpoint_hash: await digest(canonicalJson(body)) } as unknown as ChapterCheckpoint;
     await expect(adapter.checkpoint(below, adapter.initial(), a, b, [])).rejects.toMatchObject({ code: "checkpoint_surface_mismatch" });
   });
 

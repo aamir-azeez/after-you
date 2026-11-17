@@ -1,5 +1,6 @@
 import { ApiError, IDEMPOTENCY_PATTERN, integer, object, text } from "../protocol";
 import { exact } from "./protocol-relay";
+import { MAX_TURN_CAP } from "./open-turns";
 
 /**
  * Hard rooms: a chapter played whole by two friends with no retries. The phone
@@ -33,15 +34,24 @@ export const REASONS = ["retry", "failed_turn", "drowned"] as const;
 export type Reason = typeof REASONS[number];
 /** Who slipped, where and how, as a view shows the last one. */
 export type Failure = { by: string; stage_index: number; role: "a" | "b"; reason: Reason; at: string };
-/** A kept slip: the turn's recording, the checkpoint it was played from and its first turn (role b). */
-export type Slip = { recording: unknown; checkpoint: unknown; prior: unknown | null };
+/**
+ * A kept slip: the turn's recording, the checkpoint it was played from and its memory (role b: the stage's latest
+ * turn). Under open turns a slip over a pass also keeps the turns under that memory, oldest first (chain, whole
+ * records the phone sent and the room matched to its fingerprints), so it replays; a two-turn slip never has one.
+ */
+export type Slip = { recording: unknown; checkpoint: unknown; prior: unknown | null; chain?: unknown[] };
 export type HardRun = { schema_version: 1; failures: number; over: boolean; last: Failure | null };
 /** A kept slip as read: its number among the room's slips (1 for the first), who slipped and the slip. */
 export type KeptFailure = Failure & { number: number; slip: Slip | null };
 export type HardFailures = { schema_version: 1; failures: number; list: KeptFailure[] };
 /** Bytes of slips one read returns; older slips past it come without their recording. */
 export const READ_SLIP_BYTES = 3_000_000;
-export type ResetInput = { base_revision: number; branch: number; idempotency_key: string; reason: Reason; stage_index: number; role: "a" | "b"; slip?: Record<string, unknown> };
+/**
+ * A reset as sent. Under open turns the server keeps earlier turns only as fingerprints (open-turns.ts), so a slip
+ * over a pass also brings the turns under its memory from the phone's own copy (`chain`, oldest first, only with a
+ * slip); the room checks them against the turns it holds (room.ts hardReset).
+ */
+export type ResetInput = { base_revision: number; branch: number; idempotency_key: string; reason: Reason; stage_index: number; role: "a" | "b"; slip?: Record<string, unknown>; chain?: Record<string, unknown>[] };
 
 export function hardWanted(request: Request): boolean { return request.headers.get(HARD_MODE_HEADER) === "1"; }
 
@@ -61,13 +71,17 @@ export function parseSince(item: string | undefined): number {
 
 export function parseReset(value: unknown, stages: number): ResetInput {
   const input = object(value);
-  exact(input, ["base_revision", "branch", "idempotency_key", "reason", "stage_index", "role", ...(input.slip === undefined ? [] : ["slip"])]);
+  exact(input, ["base_revision", "branch", "idempotency_key", "reason", "stage_index", "role", ...(input.slip === undefined ? [] : ["slip"]),
+    ...(input.slip === undefined || input.chain === undefined ? [] : ["chain"])]);
   if (!REASONS.includes(input.reason as Reason)) throw new ApiError(422, "invalid_reason");
   if (input.role !== "a" && input.role !== "b") throw new ApiError(422, "invalid_role");
+  // A stage's turns under its latest: one at least, fewer than the widest cap.
+  if (input.chain !== undefined && (!Array.isArray(input.chain) || input.chain.length < 1 || input.chain.length >= MAX_TURN_CAP)) throw new ApiError(422, "invalid_chain");
   return { base_revision: integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch: integer(input.branch, 0, 31),
     idempotency_key: text(input.idempotency_key, IDEMPOTENCY_PATTERN), reason: input.reason as Reason,
     stage_index: integer(input.stage_index, 0, Math.max(0, stages - 1)), role: input.role,
-    ...(input.slip === undefined ? {} : { slip: object(input.slip) }) };
+    ...(input.slip === undefined ? {} : { slip: object(input.slip) }),
+    ...(input.chain === undefined ? {} : { chain: (input.chain as unknown[]).map(turn => object(turn)) }) };
 }
 
 /** Its own query text, so row meters can tell it from other features' table lookups. */

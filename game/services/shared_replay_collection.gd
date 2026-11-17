@@ -20,6 +20,7 @@ const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
@@ -277,8 +278,9 @@ static func _verify_local_room(job: Dictionary) -> Dictionary:
 		if not room.is_empty():
 			var chapter := Registry.resolve(room)
 			var metadata := {"family": "chapter", "room_id": room.room_id, "host_id": room.host_id, "guest_id": room.guest_id, "chapter_key": chapter, "title": RoomChapterTitle.title(chapter)}
-			var checkpoint: Dictionary = room.checkpoint
-			for index in range(room.completed_pair_ids.size() - 1, -1, -1):
+			# Open turns fingerprints: the server keeps the checkpoint flat; this phone's copies nest it.
+			var checkpoint: Dictionary = checker.full_checkpoint()
+			for index in range(room.completed_pair_ids.size() - 1 if not checkpoint.is_empty() else -1, -1, -1):
 				# Open turns: the first and closing turn; the passes stay in the checkpoint.
 				var turns := OpenTurns.proof_turns(checkpoint.proof)
 				if turns.is_empty(): return {"ok": false}
@@ -711,8 +713,9 @@ func _remember_room(snapshot: Dictionary, verified: bool = false, cache_pairs: b
 	LeaderboardRuns.note(_owner, snapshot, room.chapter_key)
 	if not cache_pairs: return true
 	if not snapshot.get("completed_pair_ids", []).is_empty():
-		var checkpoint: Dictionary = snapshot.checkpoint
-		for index in range(snapshot.completed_pair_ids.size() - 1, -1, -1):
+		# Open turns fingerprints: the server keeps the checkpoint flat; this phone's copies nest it.
+		var checkpoint: Dictionary = OpenTurnStore.nested_for(_owner, str(snapshot.get("room_id", "")), room.chapter_key, snapshot.checkpoint)
+		for index in range(snapshot.completed_pair_ids.size() - 1 if not checkpoint.is_empty() else -1, -1, -1):
 			var turns := OpenTurns.proof_turns(checkpoint.proof)
 			if turns.is_empty(): return false
 			var id: String = snapshot.completed_pair_ids[index]

@@ -18,6 +18,12 @@ export async function recordingV2(value: unknown, expected?: ChapterKey): Promis
   if (expected && !sameChapter(adapter.key, chapter(expected).key)) throw new ApiError(422, "recording_chapter_mismatch");
   return adapter.recording(value);
 }
+/** A stored turn row read back: on open turns it may be a turn's fingerprint (open-turns.ts), whose header is checked as a turn's is. */
+export async function storedRecordingV2(value: unknown, expected: ChapterKey): Promise<RecordingV2> {
+  const adapter = chapter(value);
+  if (!sameChapter(adapter.key, chapter(expected).key)) throw new ApiError(422, "recording_chapter_mismatch");
+  return adapter.recording(value, true);
+}
 /** `passes`: an open turns stage's turns between the first and the closing one (open-turns.ts). */
 export async function checkpointV2(value: unknown, previous: CheckpointV2, a: RecordingV2, b: RecordingV2, passes: readonly RecordingV2[] = []): Promise<CheckpointV2> {
   const adapter = chapter(previous);
