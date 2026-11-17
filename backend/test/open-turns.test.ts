@@ -135,8 +135,8 @@ describe("open turns: rules and bounds", () => {
     expect(() => openTurnLimits([{ turn_cap: 9 }], 65_536, 7)).not.toThrow();
   });
   it("sizes every bound by the widest packed turn: a new stick every tick, at most the bound", async () => {
-    // Turn of the Tide@3's turns: 3,000 ticks each.
-    const ticks = 3000;
+    // Turn of the Tide@3's development turns: 3,600 ticks each.
+    const ticks = 3600;
     expect(adapter.open_turns!.recording_bytes).toBe(packedRecordingBytes(ticks));
     expect(adapter.limits!.recording_values).toBe(PACKED_RECORDING_VALUES);
     // Every field of the header at its widest the parser allows, every run one tick, every stick at its far end.
