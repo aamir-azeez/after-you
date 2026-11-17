@@ -870,6 +870,24 @@ func _ramp_big_change() -> void:
 	world.present(states.slip)
 	_check(buzzes.size() == 3 and not rig.shaking(), "Under Reduce motion the ramp snaps without a shake, and still buzzes")
 	world.queue_free()
+	# Published Tide@1 leaves its ramp out (its pinned sounds would move): the
+	# winch still swings it, with no shake, buzz or sound of its own.
+	var first_key := "turn-of-the-tide@1"
+	var first := Registry.definition(first_key)
+	var first_start := Registry.initial_checkpoint(first_key)
+	var still: Dictionary = _sim(first, "set-the-tide", first_start).snapshot()
+	var wound: Dictionary = still.duplicate(true)
+	wound.controls.winch = "slip"
+	var old := _world(first, 0, first_start)
+	old.reduced_motion = false
+	var old_buzzes: Array = []
+	old.big_change_haptic = func(ms: int, amplitude: float) -> void: old_buzzes.append([ms, amplitude])
+	old.present(still, true)
+	old.present(wound)
+	_check(is_zero_approx(float(old._ramps.slipway.get_meta("target"))) and old_buzzes.is_empty() and not old.camera_exploration.shaking(), "Tide@1: the winch lowers the ramp with no shake or buzz")
+	var old_seen := SoundMap.remember(still, first_key)
+	_check(not SoundMap.cues(first_key, wound, old_seen).cues.has("bridge_opened"), "Tide@1: the ramp lowering plays no crossing sound of its own")
+	old.queue_free()
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:
 	# A trusted reset opens the turn without the proof's catalog check; every

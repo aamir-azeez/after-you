@@ -35,6 +35,10 @@ func set_open(on: bool, immediate: bool = false) -> void:
 	_target = _rest + (0.0 if on else SUNK)
 	if immediate: root.position.y = _target
 
+## Whether the crossing is open or opening.
+func is_open() -> bool:
+	return is_equal_approx(_target, _rest)
+
 func moving() -> bool:
 	return not is_equal_approx(root.position.y, _target)
 

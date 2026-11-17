@@ -1696,9 +1696,14 @@ func _build_crossings(bridges: Array) -> void:
 		mark_sound("bridge:%s" % bridge.id, piece.root)
 		await _build_step()
 
-## Opens each crossing the snapshot's bridges hold open.
+## Opens each crossing the snapshot's bridges hold open. One that starts to
+## rise or sink is a "crossing" big change (kit/big_change.gd), off unless a
+## chapter turns it on.
 func _present_crossings(bridges: Dictionary, immediate: bool) -> void:
-	for id: String in crossing_pieces: crossing_pieces[id].set_open(bool(bridges.get(id, false)), immediate)
+	for id: String in crossing_pieces:
+		var open := bool(bridges.get(id, false))
+		if not immediate and open != crossing_pieces[id].is_open(): note_big_change("crossing", BigChange.SECONDS)
+		crossing_pieces[id].set_open(open, immediate)
 
 ## The seed an island family throws (seed_visual.gd, glowing warm; its flight
 ## is _present_seed's) and the ring where it lands (SocketKit.landing), named

@@ -15,18 +15,21 @@ extends RefCounted
 const Index = preload("res://content/chapters/index.gd")
 const NO_BLOCK := {}
 const KINDS := {
-	# Island worlds' classic drawbridge (island_world present).
+	# The classic island drawbridge (island_world present, the classic level
+	# loader's bridge).
 	"drawbridge": true,
 	# A winch's ramp over moving water (kit/ramp_rules.gd, tide_world).
 	"ramp": true,
+	# The kit crossings that rise and sink with a held plate (kit/pieces/
+	# bridge.gd, Relay Isles): reported, but off, since they move at every
+	# step on or off a plate.
+	"crossing": false,
 	# Pieces that could use it, off until their world reports them: the lift
-	# and the well's bucket, a water level rising or falling, the sea and lock
-	# gates (which snap today), and the kit crossings that rise and sink
-	# (kit/pieces/bridge.gd).
+	# and the well's bucket, a water level rising or falling, and the sea and
+	# lock gates (which snap today).
 	"lift": false,
 	"water_level": false,
 	"gate": false,
-	"crossing": false,
 }
 ## The shake: its size as a share of the view's height (so it is the same on
 ## any screen and zoom), how many times a second it sways, and the most it
