@@ -22,8 +22,9 @@ extends SceneTree
 ##   moves at once;
 ## - items ride platforms (tests/item_ride_witness.gd): put down on a raft by
 ##   the memory, the live pip's pull carries it over the water and it is picked
-##   up at the far stop; put down on a lift, the pan sends it up (it weighs no
-##   pan itself), it is picked up at the top, put back and rides down again;
+##   up at the far stop; put down in the lift's pan it alone sends the lift
+##   up; put down on the lift, the pan sends it up (it weighs no pan itself),
+##   it is picked up at the top, put back and rides down again;
 ##   both turns replay exactly, from a trace or simulated, and the stage's
 ##   checkpoint (the pipsport resting on the lift) derives and verifies;
 ## - the server's witness files (tests/fixtures/carried_items/ and
@@ -476,6 +477,12 @@ func _lift_ride() -> void:
 	var begin := RideWitness.initial_checkpoint(ride)
 	var ride_proof := Proof.new(RideWitness, Simulation, RULES, Simulation.CURRENT_SIMULATION_VERSION)
 	_check(CarriedItems.problems(ride).is_empty() and PiecesRules.problems(ride).is_empty(), "The item ride witness is sound")
+	# Put down in the bottom pan, the pipsport alone is the weight that sends the lift up.
+	var weighed := _sim(ride, "home", begin)
+	_go(weighed, RideWitness.PAN)
+	_tap(weighed)
+	_go(weighed, [200, 200])
+	_check(weighed._mechanisms.items.pipsport.spot == "pan" and bool(weighed._routes["lift-high"]), "The pipsport alone in the bottom pan still sends the lift up")
 	# Turn 1: p0 puts the pipsport on the lift, stands in the pan, then climbs to the lamp.
 	var a_sim := _sim(ride, "home", begin)
 	_go(a_sim, [450, 200])
