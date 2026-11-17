@@ -161,7 +161,10 @@ func _other_pages(lobby: CanvasLayer, safe: Rect2, name: String) -> void:
 	result.name_of = lobby.name_of
 	result.view = DuelsClient.valid_view(_duel_wire("friend", "d3", "decided"))
 	result.pay = {"turns": 6, "plain": 600, "blooms": 120, "duel": 300, "duel_percent": 50, "boost": 60, "boost_percent": 10, "total": 1080}
-	result.win_bonus = {"amount": 250, "counted": true, "reason": ""}
+	# The fullest result: every pay line, and the goals line a third public win over a pair gets (a public duel's
+	# premium is held, so its paid duel extra takes the premium's row).
+	result.show_fruits = true
+	result.win_bonus = {"amount": 250, "counted": true, "reason": "", "goal_reason": "same_pair"}
 	var party := PartyPage.new()
 	party.name_of = lobby.name_of
 	party.party = {"partner": MAYA, "intact": true, "invites_in": [FINN], "invite_out": null}

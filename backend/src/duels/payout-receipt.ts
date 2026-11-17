@@ -1,4 +1,4 @@
-import type { BonusReason, DuelRoomPay } from "../pollen/duel-pay";
+import type { BonusReason, DuelRoomPay, GoalReason } from "../pollen/duel-pay";
 import { isFinal, type Duel } from "./model";
 import { seatOf, type HeldState } from "./public";
 
@@ -17,7 +17,8 @@ import { seatOf, type HeldState } from "./public";
  * Never in a view or a listing: views and listings pick their own fields.
  */
 export const RECEIPT_VERSION = 1;
-export type ShownBonus = { amount: number; counted: boolean; reason?: BonusReason };
+/** `goal_reason`: a public duel win the farming guard kept from the Fruits goals (pollen/duel-pay.ts). */
+export type ShownBonus = { amount: number; counted: boolean; reason?: BonusReason; goal_reason?: GoalReason };
 /** A public duel's held extra as the duel page shows it (public-routes.ts publicDetail). */
 export type ShownHeld = { amount: number; state: "running" | "paid" | "forfeit"; reason?: HeldState["reason"] };
 /** The pay part of a duel read (duels/routes.ts duelDetail), as the phone gets it. */

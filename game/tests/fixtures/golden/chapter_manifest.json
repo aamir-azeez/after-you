@@ -19,7 +19,8 @@
 			"supported_simulation_versions": [
 				6,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"conservatory@1": {
 			"definition_fixture": "journey/conservatory-definition.json",
@@ -40,7 +41,8 @@
 			"supported_simulation_versions": [
 				7,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"conservatory@2": {
 			"definition_fixture": "journey/conservatory-v2-definition.json",
@@ -60,7 +62,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				14
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"first-steps@1": {
 			"definition_fixture": "first_steps/definition.json",
@@ -82,7 +85,8 @@
 				4,
 				5,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"high-and-low@1": {
 			"definition_fixture": "cooperative/high-and-low-definition.json",
@@ -103,7 +107,8 @@
 			"supported_simulation_versions": [
 				6,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"long-way-home@1": {
 			"definition_fixture": "journey/long-way-home-definition.json",
@@ -124,7 +129,8 @@
 			"supported_simulation_versions": [
 				7,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"long-way-home@2": {
 			"definition_fixture": "journey/long-way-home-v2-definition.json",
@@ -144,7 +150,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				9
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"long-way-home@3": {
 			"definition_fixture": "journey/long-way-home-v3-definition.json",
@@ -164,7 +171,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				14
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"relay-isles@2": {
 			"definition_fixture": "v2/definition.json",
@@ -185,7 +193,8 @@
 			"supported_simulation_versions": [
 				2,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"rolling-home@1": {
 			"definition_fixture": "cooperative/rolling-home-definition.json",
@@ -206,7 +215,8 @@
 			"supported_simulation_versions": [
 				6,
 				8
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"sleeping-lighthouse@2": {
 			"definition_fixture": "lighthouse/sleeping-lighthouse-v2-definition.json",
@@ -226,7 +236,8 @@
 			"stage_count": 6,
 			"supported_simulation_versions": [
 				11
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"the-wishing-well@1": {
 			"definition_fixture": "cooperative/the-wishing-well-definition.json",
@@ -246,7 +257,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				9
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"turn-of-the-tide@1": {
 			"definition_fixture": "journey/turn-of-the-tide-definition.json",
@@ -266,7 +278,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				9
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"turn-of-the-tide@2": {
 			"definition_fixture": "journey/turn-of-the-tide-v2-definition.json",
@@ -286,7 +299,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				10
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"turn-of-the-tide@3": {
 			"definition_fixture": "journey/turn-of-the-tide-v3-definition.json",
@@ -306,7 +320,8 @@
 			"stage_count": 2,
 			"supported_simulation_versions": [
 				15
-			]
+			],
+			"unlock_fruits": 0
 		}
 	},
 	"keys": [

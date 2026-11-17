@@ -23,6 +23,12 @@ extends RefCounted
 const OPTIONAL := {
 	## false keeps a loadable chapter out of the pickers.
 	"released": true,
+	## {"fruits": n}: a free player opens the chapter once for n Fruits (Full
+	## Journey plays it free), through the Fruits spend
+	## (services/chapter_unlocks.gd, presentation/fruit_spend_flow.gd
+	## unlock_level). The server's price table (backend/src/pollen/
+	## level-unlocks.ts) is pinned to it through the chapter manifest. {} is free.
+	"unlock": {},
 	## The newer version offered in this one's place.
 	"superseded_by": "",
 	## The earlier version whose keepsake places this one earns.
@@ -125,6 +131,10 @@ const OPTIONAL := {
 	## default stage copy, piece styles and water levels fill whichever of
 	## those this descriptor leaves out (content/blocks/defaults.gd).
 	"block_source": [],
+	## The chapter's ending scene: a file name under content/endings/ (its
+	## format is in services/ending_scene.gd), played in this world after its
+	## last turn (presentation/ending_flow.gd). "" for none.
+	"ending": "",
 }
 ## The turn lengths a chapter has while it is built (scripts/new_chapter.py
 ## writes them into a new journey definition and every new version, all on

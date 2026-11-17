@@ -26,6 +26,11 @@ extends RefCounted
 ##   read of a scope only learns what was paid before, so a new install or a
 ##   second phone never opens with a row of old toasts; a receipt's `paid` list
 ##   is always news. A late read never takes back a paid achievement.
+## - opened: the level ids this player opened with Fruits (the part's `levels`
+##   open list while LEVEL_UNLOCKS is on, and each "level" spend receipt). It
+##   only grows: a late read or one without the list never closes a level paid
+##   for. The part's `levels` ({prices, open}) says the server sells levels now
+##   (level_unlocks_on); services/chapter_unlocks.gd reads both.
 ##
 ## Replies may land out of order; the newest one noted stands, as for Pollen.
 ## Every value read from the file or a server reply is checked; anything that
@@ -43,6 +48,8 @@ const MAX_ACHIEVEMENTS := 32
 ## Paid ids remembered, and toasts kept waiting.
 const MAX_PAID := 64
 const MAX_UNLOCKS := 16
+## Levels a part may price, and levels remembered open: well past any chapter list.
+const MAX_LEVELS := 64
 const MAX_TIME := 8640000000000000
 const MAX_AMOUNT := 1000000
 
@@ -112,7 +119,28 @@ static func checked_part(value: Variant) -> Dictionary:
 	if not grant.is_empty(): kept["grant"] = grant
 	var ladder := checked_ladder(value.get("ladder"))
 	if not ladder.is_empty(): kept["ladder"] = ladder
+	var levels := checked_levels(value.get("levels"))
+	if not levels.is_empty(): kept["levels"] = levels
 	return kept
+
+static func valid_level(value: Variant) -> bool:
+	return value is String and _level.search(value) != null
+
+## The levels sold for Fruits as kept ({prices: {level id: Fruits}, open:
+## [level ids paid for]}), or {} when the part is off the contract.
+static func checked_levels(value: Variant) -> Dictionary:
+	if not value is Dictionary or not value.get("prices") is Dictionary or not value.get("open") is Array: return {}
+	if value.prices.size() > MAX_LEVELS or value.open.size() > MAX_LEVELS: return {}
+	var prices := {}
+	for level: Variant in value.prices:
+		if not valid_level(level) or not _count(value.prices[level]) or int(value.prices[level]) <= 0: return {}
+		prices[level] = Typed.as_int(value.prices[level])
+	var open: Array = []
+	for level: Variant in value.open:
+		if not valid_level(level): return {}
+		if not level in open: open.append(level)
+	open.sort()
+	return {"prices": prices, "open": open}
 
 ## The Full Journey Fruit ladder as kept ({first, step, every, top, welcome}), or {}:
 ## month n pays min(first + step * floor((n - 1) / every), top), and the welcome basket once.
@@ -171,7 +199,7 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 	var key := scope_key(server, owner)
 	if not _scopes.has(key):
 		if not create: return {}
-		_scopes[key] = {"enabled": false, "packs": false, "part": {}, "paid": [], "unlocks": [], "baseline": false}
+		_scopes[key] = {"enabled": false, "packs": false, "part": {}, "paid": [], "unlocks": [], "baseline": false, "opened": []}
 	return _scopes[key]
 
 ## Whether the server said Fruits are on for this player.
@@ -210,6 +238,7 @@ func note_view(server: String, owner: String, value: Variant) -> bool:
 	if kept.is_empty() and enabled(server, owner): _unkept[scope_key(server, owner)] = true
 	if kept.is_empty() or scope.is_empty(): return false
 	_unkept.erase(scope_key(server, owner))
+	var opened := _open_levels(scope, kept.get("levels", {}).get("open", []))
 	var news := false
 	var first: bool = not bool(scope.baseline)
 	var learned := first
@@ -220,7 +249,7 @@ func note_view(server: String, owner: String, value: Variant) -> bool:
 		# The first read learns what was paid before; after it, a newly paid one is news.
 		if not first: news = _add_unlock(scope, row.id, int(row.fruits)) or news
 	scope.baseline = true
-	if scope.part == kept and not learned: return true
+	if scope.part == kept and not learned and not opened: return true
 	scope.part = kept
 	_save()
 	changed.emit(server, owner)
@@ -321,11 +350,12 @@ func note_balance(server: String, owner: String, value: Variant) -> bool:
 	return true
 
 ## A spend receipt (POST /v1/pollen/spend, services/wallet_reply.gd note_spend):
-## its `fruit_balance` and `sunshine_left`, when it has them.
+## its `fruit_balance` and `sunshine_left`, when it has them, and the level a
+## "level" spend opened.
 func note_spend(server: String, owner: String, receipt: Variant) -> bool:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not receipt is Dictionary: return false
-	var noted := false
+	var noted: bool = receipt.get("kind") == "level" and _open_levels(scope, [receipt.get("id")])
 	if _balance(receipt.get("fruit_balance")) and not (scope.part as Dictionary).is_empty():
 		_set_balance(scope, Typed.as_int(receipt.fruit_balance))
 		noted = true
@@ -342,6 +372,27 @@ static func _set_sunshine(scope: Dictionary, left: int) -> bool:
 	if (scope.part as Dictionary).is_empty() or not scope.part.has("sunshine"): return false
 	scope.part.sunshine.left = clampi(left, 0, int(scope.part.sunshine.turns))
 	return true
+
+# --- Levels opened with Fruits ---------------------------------------------
+
+## Whether the server sells levels for Fruits now (the last part had `levels`).
+func level_unlocks_on(server: String, owner: String) -> bool:
+	return enabled(server, owner) and _kept(server, owner).has("levels")
+
+## The level ids this player opened with Fruits, as this phone knows them.
+func opened_levels(server: String, owner: String) -> Array[String]:
+	var ids: Array[String] = []
+	ids.assign(_scope(server, owner).get("opened", []))
+	return ids
+
+## Adds `levels` to the opened ones; whether any was new.
+static func _open_levels(scope: Dictionary, levels: Array) -> bool:
+	var added := false
+	for level: Variant in levels:
+		if valid_level(level) and not level in scope.opened and scope.opened.size() < MAX_LEVELS:
+			scope.opened.append(level)
+			added = true
+	return added
 
 # --- Unlocks ---------------------------------------------------------------
 
@@ -397,7 +448,8 @@ func _load() -> void:
 		var value: Variant = parsed.scopes[key]
 		if not key is String or not key.contains("|") or not value is Dictionary: continue
 		var on: bool = value.get("enabled") == true
-		var scope := {"enabled": on, "packs": on and value.get("packs") == true, "part": {}, "paid": [], "unlocks": [], "baseline": value.get("baseline") == true}
+		var scope := {"enabled": on, "packs": on and value.get("packs") == true, "part": {}, "paid": [], "unlocks": [], "baseline": value.get("baseline") == true, "opened": []}
+		if value.get("opened") is Array: _open_levels(scope, value.opened)
 		var saved: Variant = value.get("part")
 		if saved is Dictionary and not saved.is_empty(): scope.part = checked_part(saved.merged({"schema_version": 1}))
 		# A saved row keeps its derived `paid`; checked_achievement reads only paid_at, so it is set again from the list.
