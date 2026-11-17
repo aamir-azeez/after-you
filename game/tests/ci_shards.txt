@@ -233,6 +233,7 @@ online_scenarios_more 1
 online_staged_open 2
 online_unlocks 2
 open_controls 1
+open_hints 2
 open_turns 1
 open_turns_room 2
 optional_photo_capture 1

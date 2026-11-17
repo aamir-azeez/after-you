@@ -146,14 +146,20 @@ func _reset_mechanics() -> void:
 
 func _advance_source() -> void:
 	if _pieces_rules(): _surfaces_before = {"p0": str(_players.p0.surface_id), "p1": str(_players.p1.surface_id)}
+	# Rules 16: where the memory stood here and in its own world as the tick began.
+	var rides := not _platforms.is_empty()
+	var memory_was: Dictionary = _players[memory_slot].duplicate() if rides else {}
+	var source_was: Dictionary = _source._players[memory_slot].duplicate() if rides else {}
+	var levers_was: Dictionary = _mechanisms.levers.duplicate() if rides else {}
 	super._advance_source()
+	var apart := rides and _place_memory(memory_was, source_was, levers_was)
 	# A evolves independently. Copy only its declared controls, never B's local
 	# selector, shutter, entry latches, or future changed source ownership.
 	# Open controls: copy a control only on a tick the memory turned it.
 	var open := _open_controls()
 	for control: Dictionary in stage.get("controls", []):
 		if open:
-			if _source_toggles.controls.has(control.id): _mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
+			if _source_toggles.controls.has(control.id) and (not apart or Seven.near(_players[memory_slot], control)): _mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
 		elif control.owner_slot == first_player_slot:
 			_mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
 	_ready_branch = _source._ready_branch
@@ -172,9 +178,9 @@ func _refresh_routes() -> void:
 
 ## Rules 16: each platform stands at the one stop whose gate holds, or where
 ## it stood when none or several do (its first stop at the start). When it
-## moves, the live pip on the old stop rides along to the same spot on the new
-## one. A memory is never moved here (its place is its own world's), so one
-## left on a stop that moved away is on a shut crossing and drowns.
+## moves, every pip on the old stop rides along to the same spot on the new
+## one, the live pip and the memory alike (_place_memory keeps the memory
+## there afterwards).
 func _move_platforms(was: Dictionary) -> void:
 	for entry: Array in _platforms:
 		var stops: Array = entry[1]
@@ -185,13 +191,63 @@ func _move_platforms(was: Dictionary) -> void:
 		var at: Dictionary = holding[0] if holding.size() == 1 else before if not before.is_empty() else holding[0] if not holding.is_empty() else stops[0]
 		for stop: Dictionary in stops: _routes[stop.id] = stop.id == at.id
 		if before.is_empty() or before.id == at.id: continue
-		var player: Dictionary = _players[active_slot]
-		if str(player.surface_id) != str(before.id): continue
-		player.x = int(player.x) - int(before.rect_cm[0]) + int(at.rect_cm[0])
-		player.z = int(player.z) - int(before.rect_cm[1]) + int(at.rect_cm[1])
-		player.height = int(at.height_cm)
-		player.surface_id = str(at.id)
-		_events.append("rode:" + str(entry[0].id))
+		var rode := false
+		for slot: String in ["p0", "p1"]:
+			if str(_players[slot].surface_id) != str(before.id): continue
+			_players[slot] = _shifted(_players[slot], before, at)
+			rode = true
+		if rode: _events.append("rode:" + str(entry[0].id))
+
+## `player` moved from platform stop `from` to the same spot on stop `to`.
+static func _shifted(player: Dictionary, from: Dictionary, to: Dictionary) -> Dictionary:
+	var moved := player.duplicate()
+	moved.x = int(player.x) - int(from.rect_cm[0]) + int(to.rect_cm[0])
+	moved.z = int(player.z) - int(from.rect_cm[1]) + int(to.rect_cm[1])
+	moved.height = int(to.height_cm)
+	moved.surface_id = str(to.id)
+	return moved
+
+## Rules 16: a memory rides what moves in this world, not what moved in its
+## own. While it stands where its own world has it, it keeps to that world
+## (super._advance_source copied it), except that a ride there is undone: it
+## stays on the stop it rode from, at the same spot, and this world's platform
+## carries it or not. Once apart, it walks its recorded input from where it
+## stands here, through this world's floors, and works only the levers and
+## controls it stands by here (its picks and puts already ask this world).
+## `memory_was` and `source_was`: the memory here and in its own world as the
+## tick began; `levers_was`: this world's levers then. Returns whether the
+## memory now stands apart from its own world.
+func _place_memory(memory_was: Dictionary, source_was: Dictionary, levers_was: Dictionary) -> bool:
+	var source_now: Dictionary = _players[memory_slot]
+	if _same_spot(memory_was, source_was):
+		var ride := _ride(str(source_was.surface_id), str(source_now.surface_id))
+		if ride.is_empty(): return false
+		_players[memory_slot] = _shifted(source_now, ride[1], ride[0])
+	else:
+		_players[memory_slot] = memory_was
+		if tick < _prior_frames.size(): _move(quantize_input(_prior_frames[tick]), memory_slot)
+	if _same_spot(_players[memory_slot], source_now): return false
+	for id: Variant in _source_toggles.levers.keys():
+		var lever := _entity(stage.get("levers", []), str(id))
+		if not lever.is_empty() and _near_entity(_players[memory_slot], lever): continue
+		if levers_was.has(id): _mechanisms.levers[id] = levers_was[id]
+		else: _mechanisms.levers.erase(id)
+		_source_toggles.levers.erase(id)
+	return true
+
+## The two stops of one platform a pip went between in a tick, [from, to], or [].
+func _ride(from: String, to: String) -> Array:
+	if from == to or not _stops.has(from) or not _stops.has(to): return []
+	for entry: Array in _platforms:
+		var ends: Array = [{}, {}]
+		for stop: Dictionary in entry[1]:
+			if stop.id == from: ends[0] = stop
+			if stop.id == to: ends[1] = stop
+		if not ends[0].is_empty() and not ends[1].is_empty(): return ends
+	return []
+
+static func _same_spot(a: Dictionary, b: Dictionary) -> bool:
+	return int(a.x) == int(b.x) and int(a.z) == int(b.z) and int(a.height) == int(b.height) and str(a.surface_id) == str(b.surface_id)
 
 func _tide_rules() -> bool:
 	return simulation_version in TIDE_RULES

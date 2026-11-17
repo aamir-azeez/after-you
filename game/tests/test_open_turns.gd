@@ -17,7 +17,8 @@ extends SceneTree
 ## - a solo journal's "Redo my previous turn" takes back its latest pass, and
 ##   reopening a stage brings its passes back; it keeps every turn packed, so a
 ##   run of every stage at its cap of the longest turns stays well under the
-##   save's cap;
+##   save's cap, and so does the worst any open level can make at 150 s turns,
+##   which still backs up to the Saved Games slot;
 ## - a published two turn stage still proves the published way;
 ## - the turn dots (presentation/kit/turn_dots.gd) ring the last turn: the cap's
 ##   once it is next, this one when the room says it must finish;
@@ -88,6 +89,7 @@ func _run() -> void:
 	_chain()
 	_packed_chain()
 	_solo_size()
+	_solo_worst_case()
 	_ten_turns()
 	_published()
 	_dots()
@@ -254,7 +256,9 @@ func _packed_chain() -> void:
 ## the journal saves it (attempt_archive.gd), it stays under half the save's cap,
 ## where the same run in JSON would not fit at all.
 func _solo_size() -> void:
-	for key: String in ["turn-of-the-tide@3", "long-way-home@3", "conservatory@2"]:
+	var keys: Array = Registry.keys().filter(func(key: String) -> bool: return OpenTurns.pinned(Registry.definition(key)))
+	_check(TIDE in keys, "Every open turns chapter is sized, Tide@3 among them")
+	for key: String in keys:
 		var level := Registry.definition(key)
 		var rules := Registry.preferred_rules(key)
 		var ticks := Simulation.turn_ticks(level, rules, "b")
@@ -286,6 +290,62 @@ func _solo_size() -> void:
 		var json_bytes := JSON.stringify(Canonical.normalized({"archive_version": 1, "relay": {"pairs": json_pairs, "a": {}, "draft": {}}})).to_utf8_buffer().size()
 		print("OPEN TURNS: a solo %s run of %d turns of %d ticks at their widest saves %d bytes packed, %d as JSON (cap %d)" % [key, turns, ticks, bytes, json_bytes, Journey.MAX_SAVE_BYTES])
 		_check(bytes * 2 < Journey.MAX_SAVE_BYTES, "A solo %s run of every stage at its cap of the widest turns stays under half the save's cap packed" % key)
+
+## The largest solo journal any open turns level can make at WORST_TURN_TICKS:
+## four stages of OpenTurns.MAX_CAP turns plus a draft, every turn its widest
+## with random sticks, presses and hashes (the least a recording compresses).
+## Raw it stays under half the save's cap; a journal at the cap, compressed as
+## this one does, still fits the Saved Games progress slot alone; and a proof
+## or a Hard run as big as two such journals keeps its file.
+const WORST_STAGES := 4
+## 150 s. At 4 x 20 turns about 160 s is the longest that keeps the half-cap
+## margin; 600 s turns (6.7 MB raw, 4.6 MB zstd) fit no Saved Games slot.
+const WORST_TURN_TICKS := 4500
+const Bundle = preload("res://services/platform_games/cloud_save_bundle.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
+const HardMode = preload("res://services/hard_mode.gd")
+func _solo_worst_case() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20261116
+	var hex := func() -> String:
+		var raw := PackedByteArray()
+		for i in 32: raw.append(rng.randi() % 256)
+		return raw.hex_encode()
+	var level := Registry.definition(TIDE)
+	var rules := Registry.preferred_rules(TIDE)
+	var turn := func(stage: int, n: int, last: bool) -> Dictionary:
+		var actions: Array = []
+		var x := 0
+		for tick in WORST_TURN_TICKS:
+			var next := rng.randi_range(-100, 100)
+			x = next if next != x else -next if next != 0 else 1
+			actions.append({"ticks": 1, "x": x, "z": rng.randi_range(-100, 100), "action": rng.randi() % 2 == 0})
+		var checks: Array = []
+		for tick in range(RecordingCodec.CHECK_EVERY, WORST_TURN_TICKS, RecordingCodec.CHECK_EVERY): checks.append({"tick": tick, "state_hash": hex.call()})
+		var final_hash: String = hex.call()
+		checks.append({"tick": WORST_TURN_TICKS, "state_hash": final_hash})
+		var form := RecordingCodec.packed_form({"schema_version": 7, "simulation_version": rules, "level_id": level.id, "level_version": level.version, "definition_hash": hex.call(),
+			"stage_id": "stage-%d" % stage, "stage_version": 1, "checkpoint_hash": hex.call(), "role": "a" if n == 1 else "b", "player_slot": OpenTurns.slot("p0", n), "tick_rate": 30,
+			"duration_ticks": WORST_TURN_TICKS, "catch_assistance": false, "actions": actions, "replay_checks": checks, "final_state_hash": final_hash, "completed": last,
+			"outcome": {"source_ready": true, "objective_complete": last}, "source_recording_hash": "" if n == 1 else hex.call(), "recording_hash": ""})
+		form["recording_hash"] = hex.call()
+		return form
+	var pairs: Array = []
+	for stage in WORST_STAGES:
+		var list: Array = []
+		for n in range(1, OpenTurns.MAX_CAP + 1): list.append(turn.call(stage, n, n == OpenTurns.MAX_CAP))
+		pairs.append({"a": list[0], "b": list[-1], "passes": list.slice(1, list.size() - 1)})
+	var relay := {"schema_version": 2, "simulation_version": rules, "level_id": level.id, "level_version": level.version, "definition_hash": hex.call(), "pairs": pairs, "a": {}, "draft": turn.call(WORST_STAGES, 1, false)}
+	var envelope := {"version": 1, "generation": 1, "settings": {}, "attempts": {}, "completed": {}, "replays": {}, "room": {}, "relay": relay}
+	var raw := JSON.stringify(envelope).to_utf8_buffer()
+	var packed := raw.compress(FileAccess.COMPRESSION_ZSTD).size()
+	var encoded := Bundle.encode(Bundle.collect({}, 0, {}, {"the-falls-journey-v2.json": envelope}))
+	var at_cap := ceili(float(encoded.size()) * Journey.MAX_SAVE_BYTES / raw.size())
+	print("OPEN TURNS: the worst solo journal, %d stages of %d turns of %d ticks, saves %d bytes (%d a turn), %d zstd (%.3f); at the cap of %d it fills the slot to %d of %d" % [WORST_STAGES, OpenTurns.MAX_CAP, WORST_TURN_TICKS, raw.size(), raw.size() / (WORST_STAGES * OpenTurns.MAX_CAP + 1), packed, float(packed) / raw.size(), Journey.MAX_SAVE_BYTES, at_cap, Bundle.MAX_BYTES])
+	_check(raw.size() * 2 < Journey.MAX_SAVE_BYTES, "The worst solo journal stays under half the save's cap")
+	_check(Bundle.journal_stages(Bundle.decode(encoded).get("journals", {}).get("the-falls-journey-v2.json", {}).get("envelope")) == WORST_STAGES, "It backs up whole to the Saved Games progress slot")
+	_check(at_cap <= Bundle.MAX_BYTES, "A journal at the save's cap, as random, still fits the progress slot")
+	_check(Proofs.MAX_FILE_BYTES >= 2 * Journey.MAX_SAVE_BYTES and HardMode.MAX_RUNS_BYTES >= 2 * Journey.MAX_SAVE_BYTES, "A proof file and a Hard runs file hold two journals at the cap")
 
 ## Ten turns of passes, each pip's own route again: every one replays and
 ## may be a memory, and one check of the latest covers the chain. Memories
@@ -536,7 +596,7 @@ func _early_first_turn() -> void:
 	one.reset(level, STAGE, start, {}, "a")
 	for tick in range(20): one.step(frames[tick])
 	var state: Dictionary = one.snapshot()
-	_check(one.can_commit() and state.can_commit and not state.outcome.source_ready and not state.part_done and int(state.objective_display.current) == 0, "A first turn may end at any time; its part is not done yet and its card and ready cues say so")
+	_check(one.can_commit() and state.can_commit and not state.outcome.source_ready and state.objective_display.is_empty(), "A first turn may end at any time; its part is not done yet, and no card counts it")
 	var older := Simulation.new()
 	older.reset(level, STAGE, start, {}, "a")
 	for tick in range(20): older.step(frames[tick])

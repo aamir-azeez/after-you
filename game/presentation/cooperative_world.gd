@@ -5,6 +5,7 @@ const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 ## Pads, levers and selectors in their styles (content/dressing/piece_styles.gd).
 const PadPiece = preload("res://presentation/kit/pieces/pad.gd")
 const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
@@ -179,9 +180,11 @@ func _piece_style(slot: String, id: String) -> String:
 	return PieceStyles.style(slot, id, _descriptor(), dressing)
 
 ## The descriptor's "goal_beacon" marks where each turn of the stage ends
-## (kit/goal_beacon.gd), built hidden: the screen shows it in live play.
+## (kit/goal_beacon.gd), built hidden: the screen shows it in live play. Every
+## open turns chapter gets it as a late guide (GoalBeacon.guide).
 func _build_goal_beacon(view: Dictionary) -> void:
-	if not bool(_descriptor().get("goal_beacon", false)): return
+	var guide := OpenTurns.pinned(chapter_definition)
+	if not guide and not bool(_descriptor().get("goal_beacon", false)): return
 	var spots: Dictionary = {}
 	for role: String in ["a", "b"]:
 		var slot := str(view.first_player_slot) if role == "a" else ("p0" if str(view.first_player_slot) == "p1" else "p1")
@@ -194,13 +197,15 @@ func _build_goal_beacon(view: Dictionary) -> void:
 				if _seated(str(entity.id)): spot["ring"] = false
 			return spot)
 	_goal_beacon = GoalBeacon.new()
+	_goal_beacon.guide = guide
 	terrain.add_child(_goal_beacon)
 	_goal_beacon.build(spots, {"p0": GOLD, "p1": TEAL})
 	_goal_beacon.set_reduced_motion(reduced_motion)
 
-## The screen shows the beacon only while a live turn plays.
-func set_goal_beacon_live(on: bool) -> void:
-	if is_instance_valid(_goal_beacon): _goal_beacon.set_live(on)
+## The screen shows the beacon only while a live turn plays; the open turns
+## guide never shows in a hard run.
+func set_goal_beacon_live(on: bool, hard: bool = false) -> void:
+	if is_instance_valid(_goal_beacon): _goal_beacon.set_live(on and not (hard and _goal_beacon.guide))
 
 ## Starts the turn's opening glance when the goal is off screen: the follow
 ## camera eases to the nearest end spot, looks, and eases back, on this
