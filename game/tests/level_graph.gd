@@ -25,7 +25,9 @@ extends RefCounted
 ## floor, and a pad may be held by either pip.
 ##
 ## A frozen pip (reach's `frozen`): the memory doing nothing. It stays where
-## it starts, works no control or lever, and holds only a pad it starts on.
+## it starts, works no control or lever, and holds only a pad it starts on,
+## except that a platform it starts on may carry it (rules 16: a memory rides
+## too): then it may stand at the same spot on any open stop of that platform.
 ## The probe also lights beams exactly: each settable mirror at each of its
 ## values through the engine's own BeamField, where reach otherwise counts a
 ## beam signal as always lit.
@@ -33,8 +35,8 @@ extends RefCounted
 ## The new pieces (rules 16, core/physical/pieces_rules.gd): a gate may hold
 ## while a lever is off ("not"), so a settable lever a gate reads is tried
 ## both ways, and a pad both held and not (as before). A moving platform's
-## stops are joined by ride edges, each needing both stops: a pip on one stop
-## rides to every other. A one way stair's direction comes from Navigation.
+## stops are joined by ride edges, each needing both stops: a pip on one stop,
+## live or memory, rides to every other. A one way stair's direction comes from Navigation.
 ## A walking pip (reach's `walker`): the other pip works every control, lever
 ## and pad while this one only walks. The walker goes wherever the crossings
 ## open, but works nothing and stands on no pad. The presser cannot hold a pad
@@ -224,7 +226,7 @@ func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool, frozen: Str
 	for slot: String in ["p0", "p1"]:
 		if not edges.has(slot): build(slot)
 	var mechanisms: Dictionary = checkpoint.get("mechanisms", {})
-	_frozen = {} if frozen.is_empty() else {"slot": frozen, "at": checkpoint.get("players", {}).get(frozen, {})}
+	_frozen = {} if frozen.is_empty() else {"slot": frozen, "at": ridden(stage, checkpoint.get("players", {}).get(frozen, {}))}
 	_walker = walker
 	var open: Dictionary = {}
 	for id: Variant in mechanisms.get("latched_bridges", []): open[str(id)] = true
@@ -238,7 +240,7 @@ func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool, frozen: Str
 			var player: Dictionary = checkpoint.get("players", {}).get(slot, {})
 			var start := str(player.get("surface_id", ""))
 			var routes := own if not walker.is_empty() and slot != walker else open
-			floors[slot] = {start: true} if slot == frozen else _walkable_from(slot, start, routes, settable)
+			floors[slot] = _carried(start, routes) if slot == frozen else _walkable_from(slot, start, routes, settable)
 		var before := JSON.stringify(settable)
 		settable = _settable(stage, mechanisms, floors)
 		_reach_items(stage, checkpoint, floors, open, settable)
@@ -252,6 +254,29 @@ func reach(stage: Dictionary, checkpoint: Dictionary, journey: bool, frozen: Str
 			_beside = ""
 		if open.size() + own.size() == size and JSON.stringify(settable) == before: break
 	return {"floors": floors, "open": open, "settable": settable, "own": own if not walker.is_empty() else open}
+
+## The frozen pip's floors: where it starts, and each open stop a platform it
+## starts on could carry it to.
+func _carried(start: String, open: Dictionary) -> Dictionary:
+	var seen: Dictionary = {start: true}
+	for spot: Dictionary in _frozen.at:
+		if open.has(str(spot.get("surface_id", ""))): seen[str(spot.surface_id)] = true
+	return seen
+
+## Rules 16: where a pip standing at `player` on `stage` could be without a
+## step: there, and the same spot on each other stop of a platform it stands
+## on (whoever stands on a stop rides when the platform moves).
+func ridden(stage: Dictionary, player: Dictionary) -> Array:
+	var spots: Array = [player]
+	var surface := str(player.get("surface_id", ""))
+	for platform: Dictionary in stage.get("platforms", []):
+		if surface not in platform.get("stops", []) or not index.has(surface): continue
+		var from: Array = surfaces[int(index[surface])].rect
+		for stop: Variant in platform.stops:
+			if str(stop) == surface or not index.has(str(stop)): continue
+			var to: Dictionary = surfaces[int(index[str(stop)])].item
+			spots.append({"x": int(player.x) - int(from[0]) + int(to.rect_cm[0]), "z": int(player.z) - int(from[1]) + int(to.rect_cm[1]), "height": int(to.height_cm), "surface_id": str(stop)})
+	return spots
 
 ## Surfaces `slot` walks to from `start` with `open` routes; a drop needs its
 ## lever settable on.
@@ -390,7 +415,7 @@ func _pad_placings(stage: Dictionary, pads: Array, floors: Dictionary = {}) -> A
 			# pad beside the crossing counts.
 			if slot == _walker or (not _beside.is_empty() and not _pad_beside(pad, _beside)): continue
 			if floors.is_empty() or floors.get(slot, {}).has(str(pad.surface_id)): by_slot[slot].append(spot)
-	if not _frozen.is_empty(): by_slot[_frozen.slot] = [_frozen.at]
+	if not _frozen.is_empty(): by_slot[_frozen.slot] = _frozen.at
 	var result: Array = []
 	for p0: Dictionary in by_slot.p0:
 		for p1: Dictionary in by_slot.p1: result.append({"p0": p0, "p1": p1})

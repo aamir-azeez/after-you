@@ -29,8 +29,9 @@ extends SceneTree
 ##  - Open turns (core/physical/open_turns.gd, 14 and 15): a stage ends when a
 ##    turn ends with both pips at its goal, its light holding. So no stage may
 ##    be finished by one pip alone across any number of its own turns while
-##    the other does nothing: only a pip that starts at the goal could stand
-##    there doing nothing, and the other would still have to reach it. Each
+##    the other does nothing: only a pip that starts at the goal (or on a
+##    platform that could carry it there, rules 16) could stand there doing
+##    nothing, and the other would still have to reach it. Each
 ##    stage must be solvable: both pips reach the goal's floor and stand at it
 ##    with its light able to hold (an over-approximation; the chapter suite's
 ##    witness, played within the cap, is the proof). Each cap is a whole
@@ -534,13 +535,14 @@ func _needs_both(key: String) -> void:
 ## Whether one pip could finish `stage` alone, the other standing still at its
 ## start. Two turns (the default): the second pip lights the goal itself. Open
 ## turns (`solo`, either pip): the stage ends with both pips at the goal, so
-## the still pip must already start there.
+## the still pip must already start there, or on a platform that could carry
+## it there (rules 16: a memory rides too).
 static func solo_finish(graph: RefCounted, stage: Dictionary, checkpoint: Dictionary, journey: bool, solo: String = "") -> bool:
 	var live := Shots.goal_slot(stage) if solo.is_empty() else solo
 	var still := "p1" if live == "p0" else "p0"
 	var goal: Dictionary = stage.get("goal", {})
 	if goal.is_empty(): return false
-	if not solo.is_empty() and not _starts_at(checkpoint.get("players", {}).get(still, {}), goal): return false
+	if not solo.is_empty() and not graph.ridden(stage, checkpoint.get("players", {}).get(still, {})).any(func(spot: Dictionary) -> bool: return _starts_at(spot, goal)): return false
 	var found: Dictionary = graph.reach(stage, checkpoint, journey, still)
 	return _goal_holds(graph, stage, checkpoint, journey, found, [live])
 

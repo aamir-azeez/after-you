@@ -8,10 +8,13 @@ extends RefCounted
 ## - Moving platforms, the stage's "platforms": [{"id", "stops": [bridge ids]}].
 ##   Each stop is a crossing of one size opened by its own gate; the platform
 ##   stands at the stop whose gate holds (where it stood when none or several
-##   do). When it moves, the live pip standing on the old stop rides to the
-##   same spot on the new one; a memory left there drowns, as on any shut
-##   crossing. Stops never close slowly. The weight lift and the raft on a
-##   rope wheel are platforms (core/blocks/stage_blocks.gd).
+##   do). When it moves, whoever stands on the old stop rides to the same spot
+##   on the new one, the live pip and the memory alike. A memory rides what
+##   moves in the live world, not what moved in its own: once the two part,
+##   it walks its recorded input from where it stands, and works only what it
+##   stands by (core/journey/simulation.gd _place_memory). Stops never close
+##   slowly. The weight lift and the raft on a rope wheel are platforms
+##   (core/blocks/stage_blocks.gd).
 ## - Sinking stones, the stage's "sinking": [bridge ids]: a stone holds one
 ##   pip; the second to step on pushes it under and the turn ends drowned.
 ## - One way stairs, a stair with "one_way": "up" (the pull-up rope ladder

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { COMFORT_RULES, OPEN_TURNS_RULES, PIECES_RULES, openControls, openTurns, piecesRules, tideRules } from "../src/v2/chapter-types";
-import { gateHolds, sunkTogether, type Marker } from "../src/v2/protocol-journey";
+import { canonicalJson, digest } from "../src/protocol";
+import { COMFORT_RULES, OPEN_TURNS_RULES, PIECES_RULES, openControls, openTurns, piecesRules, tideRules, type ChapterCheckpoint, type ChapterRecording } from "../src/v2/chapter-types";
+import { gateHolds, journeyAdapter, sunkTogether, type Marker } from "../src/v2/protocol-journey";
+import rideDefinition from "../../game/tests/fixtures/memory_rides/definition.json";
+import rideInitial from "../../game/tests/fixtures/memory_rides/initial.json";
+import rideA from "../../game/tests/fixtures/memory_rides/a.json";
+import rideB from "../../game/tests/fixtures/memory_rides/b.json";
+import rideEnd from "../../game/tests/fixtures/memory_rides/checkpoint.json";
 
 const pan: Marker = { id: "pan", position_cm: [0, 0], surface_id: "landing", height_cm: 0, radius_cm: 28 };
 const away = { x: 500, z: 500, height: 0, surface_id: "landing" };
@@ -24,6 +30,23 @@ describe("new pieces (rules 16)", () => {
     expect(gateHolds(up, state({}))).toBe(false);
     expect(gateHolds(up, state({}, { x: 0, z: 0, height: 0, surface_id: "landing" }))).toBe(true);
     expect(gateHolds({ not: {} }, state({}))).toBe(false);
+  });
+
+  // The ride witness (game/tests/ride_witness.gd; game/tests/test_pieces.gd writes these files): the winch
+  // carries the memory up the lift, and its walk into the stilts' edge then takes it on to the lamp.
+  it("accepts turns where a lift carries the memory, and the stage they close", async () => {
+    const adapter = journeyAdapter(rideDefinition as any, rideInitial as unknown as ChapterCheckpoint, await digest(canonicalJson(rideDefinition)));
+    const [a, b] = [rideA, rideB] as unknown as ChapterRecording[];
+    expect(adapter.simulation_version).toBe(16);
+    for (const turn of [a, b]) expect(await adapter.recording(turn)).toBeTruthy();
+    // The server's schema 8 checkpoint carries no proof (the hash never covered it).
+    const { proof: _proof, ...flat } = structuredClone(rideEnd) as Record<string, any>; void _proof;
+    expect(await adapter.checkpoint(flat, adapter.initial(), a, b, [])).toEqual(flat);
+    // Left below where its own world kept it, the memory stands on the lift's shut low stop.
+    const { checkpoint_hash: _hash, ...body } = structuredClone(flat); void _hash;
+    body.players.p0 = { x: 450, z: 200, height: 0, surface_id: "lift-low" };
+    const below = { ...body, checkpoint_hash: await digest(canonicalJson(body)) } as unknown as ChapterCheckpoint;
+    await expect(adapter.checkpoint(below, adapter.initial(), a, b, [])).rejects.toMatchObject({ code: "checkpoint_surface_mismatch" });
   });
 
   it("never ends a stage with both pips on one sinking stone", () => {
