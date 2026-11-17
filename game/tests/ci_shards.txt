@@ -447,6 +447,7 @@ wardrobe_offline 1
 watch_all_parts 1
 water_locks 2
 water_locks_bake 2
+water_look 1
 wear_fit 2
 welcome_light 3
 whats_new 2
