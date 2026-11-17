@@ -26,7 +26,7 @@ var session: RefCounted
 var last_run: Dictionary = {}
 ## A failed read of the friend's slips: not tried again on this screen.
 var read_failed := false
-## The slip whose reset this phone owes the room ({reason, slip}), so a reset
+## The slip whose reset this phone owes the room ({reason, slip, chain}), so a reset
 ## the room refused as stale can be queued again from the room as it is now.
 var _owed: Dictionary = {}
 
@@ -133,10 +133,12 @@ func fail_together(reason: String, slip: Dictionary, partner: String, partner_id
 	if current.is_empty(): return false
 	# The slip's memory: the stage's latest turn (open turns: its latest pass, over the turns before it).
 	var later := str(current.get("active_role")) == "b"
-	var kept: Dictionary = {} if slip.is_empty() else HardMode.kept_slip(slip, Typed.as_dict(current.get("checkpoint")), session.coordinator.prior_recording() if later else {}, session.coordinator.memory_chain() if later else [])
+	# This phone's copies of the turns under the memory: the room holds them only as fingerprints, so the reset carries them.
+	var chain: Array = session.coordinator.memory_chain() if later and not slip.is_empty() else []
+	var kept: Dictionary = {} if slip.is_empty() else HardMode.kept_slip(slip, Typed.as_dict(current.get("checkpoint")), session.coordinator.prior_recording() if later else {}, chain)
 	last_run = HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, reason, "you", int(current.get("stage_index", 0)), str(current.get("active_role", "a")), [], kept, partner, str(current.get("room_id", "")), partner_id)
 	HardMode.keep_run(last_run)
-	_owed = {"reason": reason, "slip": slip.duplicate(true)}
+	_owed = {"reason": reason, "slip": slip.duplicate(true), "chain": chain}
 	return requeue()
 
 ## Queues the owed reset again from the room as it is now, when the turn that
@@ -147,7 +149,7 @@ func requeue(tries: RefCounted = null) -> bool:
 	if room_client == null: return false
 	if not room_client.pending().is_empty(): return true
 	if _owed.is_empty() or (tries != null and tries.count(TurnTries.slot_for(session.coordinator, key(), true)) == 0): return false
-	if not room_client.queue_reset(room(), str(_owed.reason), _owed.slip): return false
+	if not room_client.queue_reset(room(), str(_owed.reason), _owed.slip, _owed.get("chain", [])): return false
 	# Never held: a held draft per slip would fill the room's four and stop it.
 	session.coordinator.save_draft({})
 	return true

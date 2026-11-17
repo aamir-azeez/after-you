@@ -386,11 +386,12 @@ describe("open turns: a friend room", () => {
   });
 });
 
+const stub = (room: RoomSnapshotV2) => env.ROOMS_V2.getByName(room.room_id);
+/** The turn rows still held in full (runs and all), in the order they were written. */
+const full = (room: RoomSnapshotV2) => runInDurableObject(stub(room), (_, ctx) => ctx.storage.sql.exec<{ turn_id: string; data: string | ArrayBuffer }>("SELECT turn_id,data FROM turns ORDER BY rowid").toArray()
+  .filter(row => typeof row.data !== "string" || row.data.includes('"packed":')).map(row => row.turn_id));
+
 describe("open turns: fingerprints, history and replays", () => {
-  const stub = (room: RoomSnapshotV2) => env.ROOMS_V2.getByName(room.room_id);
-  /** The turn rows still held in full (runs and all), in the order they were written. */
-  const full = (room: RoomSnapshotV2) => runInDurableObject(stub(room), (_, ctx) => ctx.storage.sql.exec<{ turn_id: string; data: string | ArrayBuffer }>("SELECT turn_id,data FROM turns ORDER BY rowid").toArray()
-    .filter(row => typeof row.data !== "string" || row.data.includes('"packed":')).map(row => row.turn_id));
   const known = (room: { revision: number; branch: number }) => ({ "X-AfterYou-Known-Room": `${room.revision}.${room.branch}` });
   const poll = (room: RoomSnapshotV2, who: Account, at: { revision: number; branch: number } = room) => json<Rec>(call(`/v2/rooms/${room.room_id}`, "GET", who, undefined, known(at)));
   const value = <T>(outcome: { ok: boolean; value?: T; code?: string }): T => { if (!outcome.ok) throw new Error(outcome.code); return outcome.value!; };
@@ -540,24 +541,36 @@ describe("open turns: a hard room", () => {
     const first = setA.player_slot === "p0" ? host : guest;
     return { room: joined, first, second: first === host ? guest : host };
   }
-  const slipped = (room: RoomSnapshotV2, who: Account, slip: Rec) => json<Reset>(call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
-    { base_revision: room.revision, branch: room.branch, idempotency_key: key(), reason: "failed_turn", stage_index: room.stage_index, role: room.active_role, slip }));
+  /** A slip's reset; under open turns a slip over a pass brings the turns under its memory from the phone's copy (`chain`). */
+  const reset = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
+    { base_revision: room.revision, branch: room.branch, idempotency_key: key(), reason: "failed_turn", stage_index: room.stage_index, role: room.active_role, slip, ...(chain ? { chain } : {}) });
+  const slipped = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => json<Reset>(reset(room, who, slip, chain));
   const slips = (room: RoomSnapshotV2, who: Account, seen = 0) => json<Slips>(call(`/v2/rooms/${room.room_id}/hard/${seen}`, "GET", who));
+  /** Stage one's first three turns from `room`: two passes over turn 1, so turns 1 and 2 are fingerprints and turn 3 is full. */
+  async function threeTurns(room: RoomSnapshotV2, first: Account, second: Account, turns: Rec[]): Promise<RoomSnapshotV2> {
+    const one = await send(room, first, turns[0]), two = await send(one.room, second, turns[1]);
+    return (await send(two.room, first, turns[2])).room;
+  }
 
-  it("plays a stage in several turns, keeps a slip over a pass with the turns under it, and starts again with no passes", async () => {
+  it("plays a stage in several turns, keeps a slip over a pass with the turns under it from the phone's copy, and starts again", async () => {
     const { room: joined, first, second } = await hardRoom();
     expect(joined.hard).toEqual({ schema_version: 1, failures: 0, over: false, last: null });
     const { turns, checkpoint } = await chain(0, initial(), 2);
-    const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]), three = await send(two.room, first, turns[2]);
-    expect(three.room.open_turns).toMatchObject({ turn: 4, passes: [turns[1], turns[2]] });
-    // The second pip slips on turn 4: the room keeps it with its memory (turn 3) and the turns under it.
+    const three = await threeTurns(joined, first, second, turns);
+    expect(three.open_turns).toMatchObject({ turn: 4, turn_hashes: turns.slice(0, 3).map(turn => turn.recording_hash), newest: turns[2] });
+    // The room holds turns 1 and 2 only as fingerprints.
+    expect(await full(three)).toEqual([turnId(0, 0, 3)]);
+    // The second pip slips on turn 4 and sends the turns under its memory from its own copy: the room matches them to its
+    // fingerprints and keeps the slip whole, with its memory (turn 3, held in full) and those turns.
     const slip = await later(setB as Rec, setA.player_slot, 4, turns[2], false, initial().checkpoint_hash, 9);
-    const reset = await slipped(three.room, second, slip);
+    const reset = await slipped(three, second, slip, [turns[0], turns[1]]);
     expect(reset.room).toMatchObject({ branch: 1, stage_index: 0, a_turn_id: null, active_role: "a", active_player_id: first.player_id });
-    expect(reset.room.open_turns).toMatchObject({ turn: 1, passes: [] });
+    expect(reset.room.open_turns).toMatchObject({ turn: 1, turn_hashes: [], newest: null });
     expect(reset.failure).toMatchObject({ by: second.player_id, stage_index: 0, role: "b", reason: "failed_turn" });
     const kept = await slips(joined, first);
     expect(kept.list[0].slip).toEqual({ recording: slip, checkpoint: initial(), prior: turns[2], chain: [turns[0], turns[1]] });
+    // The partner's phone replays it from the slip alone, while the turn rows stay fingerprints (the left branch keeps its newest).
+    expect(await full(three)).toEqual([turnId(0, 0, 3)]);
     // A slip on turn 2 keeps its memory alone, as a two-turn room does.
     const again = await send(reset.room, first, turns[0]);
     const early = await slipped(again.room, second, turns[1]);
@@ -572,6 +585,30 @@ describe("open turns: a hard room", () => {
     current = (await send(current, slackFirst, next.turns[0])).room;
     current = (await send(current, slackFirst === first ? second : first, next.turns[1], next.checkpoint)).room;
     expect(current.active_role).toBe("complete");
+  });
+  it("drops a slip whose turns under its memory are not the room's, and still starts the run again", async () => {
+    const { room: joined, first, second } = await hardRoom();
+    const { turns } = await chain(0, initial(), 2);
+    const slip = await later(setB as Rec, setA.player_slot, 4, turns[2], false, initial().checkpoint_hash, 9);
+    // Another turn 2 that checks on its own but is not the one the room took.
+    const otherTwo = await later(setB as Rec, setA.player_slot, 2, turns[0], false, initial().checkpoint_hash, 3);
+    // Missing, out of order, another turn, and a fingerprint where a whole turn belongs (the chapter keeps 7 branches, so 5 resets here).
+    const wrong: (Rec[] | undefined)[] = [undefined, [turns[1], turns[0]], [turns[0], otherTwo], [turns[0], print(turns[1])]];
+    let current = joined;
+    for (const [i, sent] of wrong.entries()) {
+      const done = await slipped(await threeTurns(current, first, second, turns), second, slip, sent);
+      expect(done.room).toMatchObject({ branch: i + 1, stage_index: 0, a_turn_id: null, hard: { failures: i + 1, over: false } });
+      expect((await slips(joined, first, i)).list[0]).toMatchObject({ number: i + 1, by: second.player_id, slip: null });
+      current = done.room;
+    }
+    // A slip on turn 2 has no turns under its memory, so a chain with it is not the room's either.
+    const one = await send(current, first, turns[0]);
+    await slipped(one.room, second, turns[1], [turns[0]]);
+    expect((await slips(joined, first, wrong.length)).list[0].slip).toBeNull();
+    // A chain needs a slip.
+    const two = await read(current, first);
+    await failure(call(`/v2/rooms/${joined.room_id}/hard-reset`, "POST", first, { base_revision: two.revision, branch: two.branch, idempotency_key: key(), reason: "failed_turn",
+      stage_index: two.stage_index, role: two.active_role, chain: [turns[0]] }), 400, "unexpected_fields");
   });
   it("takes only first tries and never plays a turn again", async () => {
     const { room: joined, first, second } = await hardRoom();

@@ -43,7 +43,7 @@ import { leaderboardsCapability } from "../leaderboards/routes";
 import { postFinishedRun, postPreparedRun } from "../leaderboards/submit";
 import { claimDuelRoom, duelsCapability, parseDuelAsk, prepareDuelRoom } from "../duels/routes";
 import { duelsOn, noteDuelTurn, sendDuelNote } from "../duels/turn-hook";
-import { compressedAsked, compressedCapability, exactTurnFields, readTurnBody, replyResponse } from "./turn-wire";
+import { MAX_TURN_BODY_BYTES, compressedAsked, compressedCapability, exactTurnFields, readTurnBody, replyResponse } from "./turn-wire";
 import type { RoomV2, TurnAsk } from "./room";
 import type { LeaderboardRun } from "../leaderboards/run";
 import { sendTurnHints } from "../duels/news";
@@ -302,10 +302,14 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (operation === "hard-reset" && request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
     if (operation === "hard") return json(unwrap(await room.hardFailures(playerId, parseSince(item))));
-    // The slip is a turn's recording: a longer chapter's own turn bound applies, as for turns.
+    // The slip is a turn's recording: a longer chapter's own turn bound applies, as for turns. Under open turns a slip
+    // also carries the turns under its memory (hard-mode.ts chain), so it takes the widest turn body, as a posted run.
     let resetLimit = MAX_V2_BODY_BYTES;
     if (Number(request.headers.get("content-length")) > resetLimit) {
-      try { const probe = await room.snapshot(playerId); if (probe.ok) resetLimit = chapter(probe.value).limits?.turn_body_bytes ?? resetLimit; } catch { /* keep the published bound */ }
+      try {
+        const probe = await room.snapshot(playerId);
+        if (probe.ok) { const selected = chapter(probe.value); resetLimit = selected.open_turns ? MAX_TURN_BODY_BYTES : selected.limits?.turn_body_bytes ?? resetLimit; }
+      } catch { /* keep the published bound */ }
     }
     return json(unwrap(await room.hardReset(playerId, await boundedJson(request, resetLimit))));
   }

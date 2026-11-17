@@ -1420,7 +1420,8 @@ export class RoomV2 extends DurableObject<Env> {
    * goes back to its first stage on a new branch (a fork) when it has
    * anything to undo, or only moves its revision when the slip was the first
    * turn, and records who slipped with the slip's recording, checkpoint and
-   * first turn. When the room has no space left for a whole new run it keeps
+   * memory (under open turns with the turns under it, which the phone sends:
+   * a chain that does not match drops the slip). When the room has no space left for a whole new run it keeps
    * the slip and ends the run (over) instead. A resend answers the same.
    */
   async hardReset(player: string, value: unknown): Promise<Outcome<{ room: RoomSnapshotV2; failure: Failure }>> {
@@ -1436,6 +1437,12 @@ export class RoomV2 extends DurableObject<Env> {
       if (input.slip !== undefined) { try { slipRecording = await recordingV2(input.slip, observed); } catch { slipRecording = null; } }
       // Open turns rooms take only packed turns, so their slips are packed too.
       if (slipRecording && isPacked(slipRecording) && !packedRoom(this.ctx.storage) && !chapter(observed).open_turns) slipRecording = null;
+      // Open turns: the turns under the slip's memory, from the phone's copy (the room holds them as fingerprints),
+      // each a whole packed turn whose hash is its own; matched to the stage's turns below.
+      let chainRecordings: RecordingV2[] = [];
+      if (slipRecording && input.chain !== undefined) {
+        try { for (const turn of input.chain) chainRecordings.push(await recordingV2(turn, observed)); } catch { slipRecording = null; chainRecordings = []; }
+      }
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       return this.indexed(await this.ctx.storage.transaction(async () => {
         const state = this.read();
@@ -1449,11 +1456,14 @@ export class RoomV2 extends DurableObject<Env> {
         if (current.hard?.over) return fail(409, "hard_run_over");
         if (current.active_player_id !== player) return fail(409, "hard_not_your_turn");
         if (input.stage_index !== state.stage_index || input.role !== current.active_role) return fail(409, "stale_revision");
-        // The slip's memory is the stage's latest turn; under open turns a later one nests the turns before it (chain).
+        // The slip's memory is the stage's latest turn, held in full; under open turns a later one also keeps the turns
+        // before it (chain), which the phone sent: they must be exactly the stage's turns under the memory, in order.
         const stageTurns = input.role === "b" ? this.stageTurns(state) : [];
-        const chain = stageTurns.slice(0, -1).map(turn => this.turn(turn.turn_id));
-        const slip: Slip | null = slipRecording && slipRecording.stage_id === current.stage_id && slipRecording.role === input.role && slipRecording.checkpoint_hash === state.checkpoint.checkpoint_hash
-          ? { recording: slipRecording, checkpoint: state.checkpoint, prior: stageTurns.length ? this.turn(stageTurns.at(-1)!.turn_id) : null, ...(chain.length ? { chain } : {}) } : null;
+        const prior = stageTurns.length ? this.turn(stageTurns.at(-1)!.turn_id) : null;
+        const under = stageTurns.slice(0, -1).map(turn => turn.recording_hash);
+        const chained = chainRecordings.length === under.length && chainRecordings.every((turn, i) => turn.recording_hash === under[i]);
+        const slip: Slip | null = slipRecording && chained && !(prior && isFingerprint(prior)) && slipRecording.stage_id === current.stage_id && slipRecording.role === input.role && slipRecording.checkpoint_hash === state.checkpoint.checkpoint_hash
+          ? { recording: slipRecording, checkpoint: state.checkpoint, prior, ...(chainRecordings.length ? { chain: chainRecordings } : {}) } : null;
         const failure: Failure = { by: player, stage_index: state.stage_index, role: input.role, reason: input.reason, at: new Date().toISOString() };
         const progress = state.stage_index > 0 || state.a_turn_id !== null;
         // Only a reset with progress to undo needs a branch; a first-turn slip always fits.

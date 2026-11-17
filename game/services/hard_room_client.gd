@@ -12,7 +12,10 @@ extends RefCounted
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Typed = preload("res://services/typed_values.gd")
 const HardMode = preload("res://services/hard_mode.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const SCOPE := "relay-hard-v1:"
+## The reset body's turns under the slip's memory (open turns), as a kept slip names them.
+const CHAIN := HardMode.CHAIN
 const MAX_FAILURES := 5
 ## Refusals that may pass on their own: the reset waits and is sent again.
 const PASSING := [401, 408, 429]
@@ -76,12 +79,16 @@ func mark_shown(count: int) -> bool:
 	return _persist(next)
 
 ## Keeps the reset of `room` (the snapshot the slip was played on) until it
-## is answered. `slip` is the slipped turn's recording, or {}.
-func queue_reset(room: Dictionary, reason: String, slip: Dictionary) -> bool:
+## is answered. `slip` is the slipped turn's recording, or {}. Under open
+## turns `chain` is this phone's copy of the turns under the slip's memory,
+## oldest first: the room holds them only as fingerprints and checks them by
+## hash (WIRE.md section 11), so the slip replays for the friend.
+func queue_reset(room: Dictionary, reason: String, slip: Dictionary, chain: Array = []) -> bool:
 	if not _current() or not pending().is_empty(): return _fail("request_busy")
 	var body := {"base_revision": int(room.revision), "branch": int(room.branch), "idempotency_key": RoomsApi.new_key(), "reason": reason,
 		"stage_index": int(room.stage_index), "role": str(room.active_role)}
 	if not slip.is_empty(): body.slip = slip.duplicate(true)
+	if not slip.is_empty() and not chain.is_empty(): body[CHAIN] = chain.duplicate(true)
 	var next := _state.duplicate(true)
 	next.pending = body
 	return _persist(next)
@@ -113,6 +120,7 @@ func send() -> Dictionary:
 	if status in [413, 422] and body.has("slip"):
 		var lighter := body.duplicate(true)
 		lighter.erase("slip")
+		lighter.erase(CHAIN)
 		lighter.idempotency_key = RoomsApi.new_key()
 		var retried := _state.duplicate(true)
 		retried.pending = lighter
@@ -195,10 +203,11 @@ static func valid_journal(value: Dictionary, owner: String, room_id: String, ser
 	if body.is_empty(): return true
 	var keys := ["base_revision", "branch", "idempotency_key", "reason", "stage_index", "role"]
 	if body.has("slip"): keys.append("slip")
+	if body.has("slip") and body.has(CHAIN): keys.append(CHAIN)
 	if body.size() != keys.size(): return false
 	for key: String in keys:
 		if not body.has(key): return false
-	return Typed.whole_number(body.base_revision) and Typed.whole_number(body.branch) and Typed.whole_number(body.stage_index) and body.idempotency_key is String and body.reason in HardMode.REASONS and body.role in ["a", "b"] and (not body.has("slip") or body.slip is Dictionary)
+	return Typed.whole_number(body.base_revision) and Typed.whole_number(body.branch) and Typed.whole_number(body.stage_index) and body.idempotency_key is String and body.reason in HardMode.REASONS and body.role in ["a", "b"] and (not body.has("slip") or body.slip is Dictionary) and (not body.has(CHAIN) or OpenTurns.turns_valid(body[CHAIN]))
 
 func _current() -> bool:
 	return not _state.is_empty() and _owner == _player() and not _owner.is_empty()
