@@ -603,7 +603,8 @@ static func _waterfall(root: Node3D, s: float, width: float, height: float) -> v
 	var cheek := WATERFALL_CHEEK * s
 	var deep := WATERFALL_DEPTH * s
 	# The cliff behind the water, and a cheek of stacked blocks each side.
-	_box(Vector3(w + 0.02, h + 0.08 * s, deep * 0.5), CLIFF_DARK, Vector3(0, (h + 0.08 * s) * 0.5, -deep * 0.25), root)
+	# Its back stops short of the cheeks' backs, so turned round no faces meet.
+	_box(Vector3(w + 0.02, h + 0.08 * s, deep * 0.5 - STANDOFF * 2.0), CLIFF_DARK, Vector3(0, (h + 0.08 * s) * 0.5, -deep * 0.25 + STANDOFF), root)
 	for side: float in [-1.0, 1.0]:
 		var y := 0.0
 		var index := 0
@@ -688,7 +689,8 @@ static func _reeds(root: Node3D, s: float, seed: int) -> void:
 		var stalk := _box(Vector3(0.016 * s, tall, 0.016 * s), REED if index % 2 == 0 else REED_DARK, at + Vector3(0, tall * 0.5, 0), root)
 		stalk.rotation = lean
 		if (index + seed) % 2 == 0:
-			var top := stalk.transform * Vector3(0, tall * 0.5 + 0.03 * s, 0)
+			# The head sits just above the stalk's end, so no face of it lies on one of the stalk's.
+			var top := stalk.transform * Vector3(0, tall * 0.5 + 0.057 * s, 0)
 			var head := _box(Vector3(0.034, 0.11, 0.034) * s, CATTAIL, top, root)
 			head.rotation = lean
 	for side: float in [-1.0, 1.0]:

@@ -24,6 +24,8 @@ const ROPE := Color("c9b48a")
 const SLAT := Color("a98a64")
 const SAG := 0.05
 const RAIL_HEIGHT := 0.5
+## How far past a slat's end a foot rope's middle runs (m).
+const FOOT_ROPE_OUT := 0.016
 const FLAG := Color("8a8f8a")
 const MOSS := Color("6f8f5a")
 const STONE := Color("9a9890")
@@ -48,7 +50,9 @@ static func lay(style: String, deck: Node3D, width: float, depth: float, across_
 				var edge := float(side) * (span * 0.5 - 0.03)
 				for end: float in [low, high]: Parts.box(Vector3(0.05, RAIL_HEIGHT + 0.1, 0.05), Parts.TIMBER_DARK, _on(across_x, end, RAIL_HEIGHT * 0.5 - 0.05, edge), deck)
 				Parts.box(_along(across_x, length, 0.025), ROPE, _on(across_x, middle, RAIL_HEIGHT - SAG, edge), deck)
-				Parts.box(_along(across_x, length, 0.02), ROPE, _on(across_x, middle, -0.04 - SAG * 0.5, edge * 0.9), deck)
+				# The foot rope runs just outside the slats' ends, so no face of
+				# it lies on a slat's.
+				Parts.box(_along(across_x, length, 0.02), ROPE, _on(across_x, middle, -0.04 - SAG * 0.5, float(side) * (span * 0.43 + FOOT_ROPE_OUT)), deck)
 		"falls_path":
 			var count := maxi(2, roundi(length / 0.4))
 			for index in range(count):

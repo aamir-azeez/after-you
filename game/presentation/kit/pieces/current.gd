@@ -17,6 +17,12 @@ const SPACING := 0.3
 const INSET := 0.18
 const LIVE := Color("eef6f2")
 const FAINT := Color("8fb3b4")
+## A mark's middle over its leg's floor or water (m): its top clears a pip's
+## ground shadow (SpiritVisual.SHADOW_TOP) where a leg crosses a floor. The
+## bright row stands LIVE_LIFT over the faint one, so the two rows never
+## share a face.
+const MARK_HEIGHT := 0.035
+const LIVE_LIFT := 0.012
 
 ## [{"control", "value", "live": Node3D, "faint": Node3D}] per leg.
 var _legs: Array = []
@@ -39,13 +45,13 @@ func _make(current_style: String, legs: Array, parent: Node3D) -> void:
 			var row := Node3D.new()
 			row.name = "Leg%d_%s" % [index, shade]
 			root.add_child(row)
-			_lay(row, leg.from, leg.to, LIVE if shade == "live" else FAINT)
+			_lay(row, leg.from, leg.to, LIVE if shade == "live" else FAINT, LIVE_LIFT if shade == "live" else 0.0)
 			entry[shade] = row
 		(entry.live as Node3D).visible = false
 		_legs.append(entry)
 
 ## The marks of one leg along `from` to `to`, each turned along the leg.
-func _lay(row: Node3D, from: Vector3, to: Vector3, color: Color) -> void:
+func _lay(row: Node3D, from: Vector3, to: Vector3, color: Color, lift: float) -> void:
 	var flat := Vector3(to.x - from.x, 0, to.z - from.z)
 	var length := flat.length()
 	if length < 0.01: return
@@ -54,7 +60,7 @@ func _lay(row: Node3D, from: Vector3, to: Vector3, color: Color) -> void:
 	var turn := atan2(along.x, along.z)
 	for index in range(count):
 		var t := INSET + (length - 2.0 * INSET) * (float(index) / maxf(1.0, float(count - 1)) if count > 1 else 0.5)
-		var at := from + along * t + Vector3(0, 0.02, 0)
+		var at := from + along * t + Vector3(0, MARK_HEIGHT + lift, 0)
 		var mark := Node3D.new()
 		mark.position = at
 		mark.rotation.y = turn

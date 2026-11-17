@@ -31,7 +31,7 @@ const STYLES := {
 	# Warm honey granite cobbles with a timber edge.
 	"honey_cobble": {"top": Color("a77b45"), "trim": Color("6b4f37"), "skirt": Color("8a6638"), "band": Color("7a5a35"), "rock": Color("8f7f68"), "lines": "xz", "line": Color("8e6636"), "spacing": 0.32},
 	# The Falls: mossy flagstones with a green lip, and pale river stone.
-	"mossy_flags": {"top": Color("939c70"), "trim": Color("7d9460"), "skirt": Color("6f8456"), "band": Color("7c7a66"), "rock": Color("7f7d6c"), "lines": "xz", "line": Color("838d63"), "spacing": 0.6},
+	"mossy_flags": {"top": Color("939c70"), "trim": Color("7d9460"), "skirt": Color("6f8456"), "band": Color("7c7a66"), "rock": Color("7f7d6c"), "lines": "xz", "line": Color("838d63"), "spacing": 0.5},
 	"river_stone": {"top": Color("c4bea8"), "trim": Color("a9a48c"), "skirt": Color("9d987f"), "band": Color("8a8670"), "rock": Color("8a8670"), "lines": "xz", "line": Color("b0aa93"), "spacing": 0.9},
 	# Fog Marsh: pale weathered boardwalk planks, and a reedy mud bank.
 	"boardwalk": {"top": Color("cbbf9f"), "trim": Color("9c8c6c"), "skirt": Color("8a7a5c"), "band": Color("6f6048"), "rock": Color("8a7d63"), "lines": "x", "line": Color("b3a684"), "spacing": 0.3},

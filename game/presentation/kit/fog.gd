@@ -12,7 +12,7 @@ extends RefCounted
 ## hidden. It stays under a pip's knees (TOP). Built once per stage; present()
 ## rewrites the puffs only when a lantern changes.
 const STYLES := ["mist"]
-const COLOR := Color(0.93, 0.95, 0.94, 0.42)
+const COLOR := Color(0.93, 0.95, 0.94, 0.34)
 ## Puffs this far apart (m), this wide, this high over their floor.
 const STEP := 0.85
 const WIDTH := 0.95
@@ -91,8 +91,8 @@ func _make(view: Dictionary, lanterns: Dictionary, parent: Node3D) -> void:
 	var puff := SphereMesh.new()
 	puff.radius = 0.5
 	puff.height = 1.0
-	puff.radial_segments = 10
-	puff.rings = 5
+	puff.radial_segments = 24
+	puff.rings = 10
 	var material := StandardMaterial3D.new()
 	material.albedo_color = COLOR
 	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

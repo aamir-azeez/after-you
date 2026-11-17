@@ -6,7 +6,8 @@ extends RefCounted
 ## pipsport float off downstream into the fog. The helper is the pipsport's
 ## carrier. It plays at the falls past the far bank (the dressing's
 ## "falls_pool" anchor, the falls' foot): the world stands the falls, the pool
-## and the bank; the scene adds only the last stone, the splash and the fog,
+## and the bank; the scene adds only the last stone, the splash and the fog
+## banks the pipsport floats into, out on the pool clear of the far bank,
 ## and the real pipsport in place of the world's.
 
 const DATA := {
@@ -16,7 +17,10 @@ const DATA := {
 		"stone": {"shape": "cylinder", "size": [0.32, 0.4], "color": "a3906f", "at": [-2.2, 0.04, 0.8]},
 		"splash": {"shape": "sphere", "size": [0.5, 1.0], "color": "ffffff", "at": [-1.2, 0.06, 1.1], "shown": false, "alpha": 0.0},
 		"pipsport": {"shape": "item", "style": "pipsport", "at": [-2.9, 1.22, 0.6], "rot": [0, -15, 0]},
-		"fog": {"shape": "box", "size": [3.2, 1.4, 0.3], "color": "eef2f2", "at": [-4.8, 0.76, 3.5], "alpha": 0.0},
+		# Soft banks of fog downstream, out on the pool past the far bank.
+		"fog": {"shape": "sphere", "size": [1.0, 0.5], "color": "eef2f2", "at": [-1.0, 0.35, 5.7], "alpha": 0.0},
+		"fog2": {"shape": "sphere", "size": [0.8, 0.4], "color": "eef2f2", "at": [0.5, 0.32, 5.3], "alpha": 0.0},
+		"fog3": {"shape": "sphere", "size": [1.2, 0.6], "color": "eef2f2", "at": [-0.2, 0.4, 6.4], "alpha": 0.0},
 	},
 	"steps": [
 		{"do": "prop", "id": "pipsport", "follow": "carrier"},
@@ -61,13 +65,15 @@ const DATA := {
 		{"do": "wait", "time": 1.4},
 		# The pipsport floats off downstream into the fog.
 		{"do": "prop", "id": "pipsport", "follow": ""},
-		{"do": "prop", "id": "pipsport", "to": [-4.3, 0.06, 2.9], "time": 3.6, "ease": "linear", "spin": 25.0},
-		{"do": "prop", "id": "fog", "alpha": 0.85, "time": 2.0},
-		{"do": "face", "who": "carrier", "toward": [-4.3, 0.16, 2.9]},
-		{"do": "face", "who": "other", "toward": [-4.3, 0.16, 2.9]},
+		{"do": "prop", "id": "pipsport", "to": [-0.4, 0.06, 5.0], "time": 3.6, "ease": "linear", "spin": 25.0},
+		{"do": "prop", "id": "fog", "alpha": 0.6, "time": 2.0},
+		{"do": "prop", "id": "fog2", "alpha": 0.5, "time": 2.0},
+		{"do": "prop", "id": "fog3", "alpha": 0.6, "time": 2.0},
+		{"do": "face", "who": "carrier", "toward": [-0.4, 0.16, 5.0]},
+		{"do": "face", "who": "other", "toward": [-0.4, 0.16, 5.0]},
 		{"do": "pose", "who": "carrier", "face": "gasp", "for": 2.6},
 		{"do": "pose", "who": "other", "face": "huh", "for": 2.6},
-		{"do": "camera", "at": [-3.2, 0.36, 1.9], "size": 6.0, "time": 2.0},
+		{"do": "camera", "at": [-1.6, 0.36, 3.0], "size": 6.0, "time": 2.0},
 		{"do": "wait", "time": 2.2},
 		{"do": "prop", "id": "pipsport", "alpha": 0.0, "time": 1.2},
 		{"do": "wait", "time": 1.6},

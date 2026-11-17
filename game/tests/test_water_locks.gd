@@ -19,6 +19,7 @@ const WaterData = preload("res://content/water/turn_of_the_tide.gd")
 var HARBOUR_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "harbour")[0].levels
 var SEA_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "sea")[0].levels
 const Registry = preload("res://services/chapter_registry.gd")
+const ChapterIndex = preload("res://content/chapters/index.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -633,7 +634,9 @@ func _unwalkable_mouth() -> void:
 
 func _other_chapters() -> void:
 	for key: String in Registry.keys():
-		if key.begins_with("turn-of-the-tide"): continue
+		# A chapter on the water (its descriptor names a water file) hosts the
+		# kit and its locks, as Tide does.
+		if key.begins_with("turn-of-the-tide") or (key != LIGHTHOUSE and not str(ChapterIndex.data(key).get("water", "")).is_empty()): continue
 		var world: Node3D = LighthouseWorld.new() if key == LIGHTHOUSE else Registry.world_script(key).new()
 		root.add_child(world)
 		world.process_mode = Node.PROCESS_MODE_DISABLED

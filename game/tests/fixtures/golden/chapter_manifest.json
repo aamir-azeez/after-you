@@ -106,7 +106,8 @@
 			"stage_count": 3,
 			"supported_simulation_versions": [
 				16
-			]
+			],
+			"unlock_fruits": 3
 		},
 		"high-and-low@1": {
 			"definition_fixture": "cooperative/high-and-low-definition.json",
@@ -277,7 +278,8 @@
 			"stage_count": 4,
 			"supported_simulation_versions": [
 				16
-			]
+			],
+			"unlock_fruits": 0
 		},
 		"the-wishing-well@1": {
 			"definition_fixture": "cooperative/the-wishing-well-definition.json",

@@ -289,10 +289,16 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 	var goals: Dictionary = {}
 	for stage: Dictionary in level.stages:
 		if stage.get("goal") is Dictionary: goals[str(stage.goal.get("id", ""))] = true
+	# Rules 16's crossings take a deck style, and its one way stairs a ladder.
+	var bridges: Dictionary = {}
+	for route: Dictionary in level.get("bridges", []): bridges[str(route.id)] = true
+	var stairs: Dictionary = {}
+	for route: Dictionary in level.get("stairs", []): stairs[str(route.id)] = true
 	var styles := preload("res://content/dressing/prop_styles.gd")
 	for id: String in data.piece_styles:
 		var style := str(data.piece_styles[id])
 		var suits := (levers.has(id) and styles.has_style("lever", style)) or (selectors.has(id) and styles.has_style("selector", style)) or (pads.has(id) and styles.has_style("pad", style)) or (goals.has(id) and styles.has_style("goal", style))
+		suits = suits or (bridges.has(id) and styles.has_style("deck", style)) or (stairs.has(id) and styles.has_style("ladder", style))
 		_check(suits, "Piece style %s of %s suits its piece: %s" % [id, key, style])
 	# Turn of the Tide's water wheels are valves: no three- or four-way
 	# selector there is left with a plain lever.

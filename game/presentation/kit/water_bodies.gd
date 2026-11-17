@@ -647,7 +647,7 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 			else: runs[-1][1] = t + 2.0
 			t += 4.0
 		for run: Array in runs:
-			if run[2] == "wall": found.append([run, edge, outward, along_x, height])
+			if run[2] == "wall": found.append([_clear_of_mouths(run, mouths), edge, outward, along_x, height])
 		await host._build_step()
 	return found
 
@@ -702,6 +702,17 @@ static func _spans_on_line(rects: Array, along_x: bool, line: float) -> Array:
 		if along_x and line > float(rect[1]) and line < float(rect[3]): spans.append([float(rect[0]), float(rect[2])])
 		elif not along_x and line > float(rect[0]) and line < float(rect[2]): spans.append([float(rect[1]), float(rect[3])])
 	return spans
+
+## A wall run cut back to the edge of any crossing mouth it reaches into. The
+## samples are 4 cm apart, so a mouth whose edge falls on a sample would leave
+## the run up to 2 cm inside the mouth, its end face on the crossing's own.
+static func _clear_of_mouths(run: Array, mouths: Array) -> Array:
+	var cut := run.duplicate()
+	for span: Array in mouths:
+		if cut[0] >= span[1] or cut[1] <= span[0]: continue
+		if cut[0] < span[0]: cut[1] = minf(cut[1], span[0])
+		else: cut[0] = maxf(cut[0], span[1])
+	return cut
 
 static func _in_spans(t: float, spans: Array) -> bool:
 	for span: Array in spans:

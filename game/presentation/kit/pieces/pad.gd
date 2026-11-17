@@ -12,8 +12,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "crank_board": the board with a windlass beside it (a crank board that
 ##       keeps a rope bridge tight): its drum turns over while held.
 ##   "pan": a weight lift's pan (rules 16's weight_lift block): a wide brass
-##       dish on a timber cradle, three chains rising from its rim to a hook
-##       over it. Held (something heavy in it), it sinks down its cradle.
+##       dish on a timber cradle, nothing over it (a pip stands in it). Held
+##       (something heavy in it), it sinks down its cradle.
 ##
 ## A ball pad (heavy) is always plain, gold, with a cream ring at its centre:
 ## no spirit stands on it. The world lights the pad's `rim` while it is held
@@ -22,9 +22,8 @@ const StandSpotKit = preload("res://presentation/kit/stand_spot.gd")
 const STYLES := ["plain", "stand_spot", "pan", "board", "crank_board"]
 ## Board: how far it sinks while held.
 const BOARD_SINK := 0.025
-## Pan: how far the dish sinks while held, and the hook's height over it (m).
+## Pan: how far the dish sinks while held (m).
 const PAN_SINK := 0.06
-const PAN_HOOK := 0.95
 
 ## The ring the world lights while the pad is held.
 var rim: MeshInstance3D
@@ -81,8 +80,8 @@ func _make(pad_style: String, at: Vector3, radius_m: float, parent: Node3D, opti
 	if heavy: Parts.ring(0.16, Parts.CREAM, Vector3(0, 0.06, 0), root)
 
 ## The pan: a timber cradle ring on the floor, the dish in it (its rim the
-## ring the world lights), chains up to the hook over it. Every part stays
-## within the pad's radius, so a spirit standing in it stands in the dish.
+## ring the world lights). Every part stays within the pad's radius and under
+## a step, so a spirit standing in it stands in the dish.
 func _make_pan(at: Vector3, radius_m: float, parent: Node3D, color: Color) -> void:
 	_root("Pad_pan", at, parent)
 	anchor = root
@@ -91,12 +90,6 @@ func _make_pan(at: Vector3, radius_m: float, parent: Node3D, color: Color) -> vo
 	root.add_child(_dish)
 	Parts.disc(radius_m * 0.9, 0.035, Parts.BRASS, Vector3(0, 0.075, 0), _dish, radius_m * 0.96)
 	rim = Parts.ring(radius_m, color, Vector3(0, 0.1, 0), _dish)
-	for turn in range(3):
-		var side := Vector3.FORWARD.rotated(Vector3.UP, TAU * float(turn) / 3.0) * radius_m * 0.82
-		var chain := Parts.box(Vector3(0.012, PAN_HOOK, 0.012), Parts.IRON, side * 0.5 + Vector3(0, 0.1 + PAN_HOOK * 0.5, 0), _dish)
-		# Leaning in from the rim to the hook over the middle.
-		chain.basis = Basis(Vector3(side.z, 0, -side.x).normalized(), -atan2(radius_m * 0.82, PAN_HOOK))
-	Parts.ring(0.04, Parts.IRON, Vector3(0, 0.1 + PAN_HOOK, 0), _dish)
 
 ## A square timber board the pad's size on two bearers, its rim ring lit while
 ## held; a crank board adds a windlass on a frame at its north edge.

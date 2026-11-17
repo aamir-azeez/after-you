@@ -755,6 +755,8 @@ func _item_point(state: Dictionary) -> Vector3:
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
 ## there, with a post at each end: plain leaves the static fold batches.
 const RUNG_CM := 14
+## How far in from the crossing's long edge each end post stands (m).
+const RUNG_POST_IN := 0.075
 func _ladder_rungs(route: Dictionary) -> void:
 	var rect: Array = route.rect_cm
 	var ends := CarriedItems.route_ends(route)
@@ -772,7 +774,8 @@ func _ladder_rungs(route: Dictionary) -> void:
 		at += RUNG_CM
 	for end: Dictionary in ends:
 		for side: float in [-1.0, 1.0]:
-			var post := Vector3(float(end.x) / 100.0, float(end.height) / 100.0 + 0.2, middle + side * (across / 2.0 - 0.03)) if axis == 0 else Vector3(middle + side * (across / 2.0 - 0.03), float(end.height) / 100.0 + 0.2, float(end.z) / 100.0)
+			# In from the crossing's edge, clear of the light strip along it.
+			var post := Vector3(float(end.x) / 100.0, float(end.height) / 100.0 + 0.2, middle + side * (across / 2.0 - RUNG_POST_IN)) if axis == 0 else Vector3(middle + side * (across / 2.0 - RUNG_POST_IN), float(end.height) / 100.0 + 0.2, float(end.z) / 100.0)
 			ItemParts.box(Vector3(0.04, 0.4, 0.04), ItemParts.TIMBER, post, terrain)
 
 ## Each item where the snapshot has it: on its holder's back, resting at its

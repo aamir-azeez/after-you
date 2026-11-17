@@ -10,7 +10,8 @@ const DATA := {
 	"seabed": -0.70,
 	"rate": 0.9,
 	"wall_top": 0.86,
-	"inset": 3,
+	# 4 cm, so no water face ends on a sea wall's water mark where two reaches meet.
+	"inset": 4,
 	"bounds": [-700, -700, 5700, 700],
 	"bodies": [
 		# The mill pool and mill race, round the first two stages: LOW shows
