@@ -1,6 +1,6 @@
 extends Node
-## The two Fruit spends that are not Orchard items: Sunshine (Fruits board 7)
-## and Turn Fruits into Pollen (board 8), from every place that offers them
+## The Fruit spends that are not Orchard items: Sunshine (Fruits board 7),
+## Turn Fruits into Pollen (board 8) and the rest below, from every place that offers them
 ## (the Pollen page's Sunshine card, the Fruits page, the store's Fruits tab).
 ## One path each, so the card, the refusals and the offline hold are the same
 ## wherever the player starts:
@@ -17,6 +17,12 @@ extends Node
 ##   the price, else the short card; Refill sends refill_energy(). Offered only
 ##   below the max (services/duel_energy.gd refill_offered); at the max the
 ##   server's energy_full reads the meter again and says nothing.
+## - unlock_level(): a chapter a free player opens once with Fruits (descriptor
+##   "unlock", services/chapter_unlocks.gd fruit_offered), from its locked card
+##   on Play Solo or Host a room: the same confirm card with the chapter's
+##   picture in the pip's place and a plum "Open for [Fruit] 3", else the short
+##   card; Open sends services/wardrobe_client.gd unlock_level(). Once open,
+##   `spent` says "level" and the page that asked draws its cards again.
 ## A refusal reads as a plain line in the toast (error_line); a short answer
 ## opens the short card with the balance the server gave. Offline, nothing is
 ## sent and the reason shows (presentation/offline_hold.gd). Nothing here
@@ -36,6 +42,8 @@ const ConvertSheet = preload("res://presentation/fruit_convert_sheet.gd")
 const SunMark = preload("res://presentation/kit/sun_mark.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 const SproutMark = preload("res://presentation/kit/sprout_mark.gd")
+const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
+const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 
 const FRUITS := "fruits"
 const SUNSHINE_ID := "sunshine"
@@ -43,6 +51,8 @@ const SUNSHINE_ART := 108.0
 ## The refill card's energy line: its sprouts, and the card's title as the board sets it.
 const ENERGY_SPROUT := 26.0
 const ENERGY_TITLE_SIZE := 34
+## The chapter's picture on its unlock card: the Chapters page's small card picture.
+const LEVEL_ART := Vector2(144, 81)
 
 ## A Fruit spend went through (the pages redraw from the Fruit store as well).
 signal spent(kind: String)
@@ -239,6 +249,53 @@ func _refill(parent: Control, opener: Control) -> void:
 		if price > 0: _short(parent, price, _client().fruits.balance(str(scope.server), str(scope.owner)), opener)
 	# Full already (another phone, or time): the meter is read again and shows it.
 	elif code != "energy_full": _say(error_line(code))
+
+## Opens chapter `key` with Fruits from `parent` (the page its card is on), from `opener`.
+func unlock_level(key: String, parent: Control, opener: Control = null) -> void:
+	if not visible() or OfflineHold.refuse(_say_callable()): return
+	var scope := _scope()
+	var fruits: RefCounted = _client().fruits
+	if not fruits.level_unlocks_on(str(scope.server), str(scope.owner)):
+		_say(error_line("level_unlocks_disabled"))
+		return
+	if fruits.blocked(str(scope.server), str(scope.owner)):
+		_say(error_line("fruits_blocked"))
+		return
+	var price := ChapterUnlocks.price(key)
+	if price <= 0: return
+	var balance: int = fruits.balance(str(scope.server), str(scope.owner))
+	_close_sheet()
+	if balance < price:
+		_short(parent, price, balance, opener)
+		return
+	var title := ChapterUnlocks.title(key)
+	var art := ChapterPicker.thumbnail(key, LEVEL_ART, 12)
+	art.name = "LevelUnlockArt"
+	var modal: Control = Sheets.confirm_of(parent, {"title": PlayerCopy.LEVEL_UNLOCK_TITLE % title, "note": PlayerCopy.LEVEL_UNLOCK_CONFIRM_NOTE,
+		"art": art, "item_name": title, "cost": price, "balance": balance, "currency": FRUITS, "action": PlayerCopy.LEVEL_UNLOCK_FOR, "opener": opener,
+		"buy": func() -> void: _unlock(key, parent, opener)})
+	modal.find_child("WardrobeConfirmBuy", true, false).name = "LevelUnlockConfirm"
+	_sheet = weakref(modal)
+
+func _unlock(key: String, parent: Control, opener: Control) -> void:
+	_close_sheet()
+	if _client().busy():
+		_say(error_line("busy"))
+		return
+	var answer: Dictionary = await _client().unlock_level(key.get_slice("@", 0), ChapterUnlocks.price(key))
+	var code := str(answer.get("code", ""))
+	if answer.get("ok", false) or code == "already_owned":
+		# Open already (another phone, or a send whose answer was lost): the wallet was read again and keeps it open.
+		if answer.get("ok", false): Soundscape.play_on(host, "ui_bought")
+		_say(PlayerCopy.LEVEL_UNLOCK_DONE % ChapterUnlocks.title(key))
+		spent.emit(WardrobeClient.LEVEL)
+	elif code == "fruits_short" and is_instance_valid(parent) and parent.is_inside_tree():
+		var scope := _scope()
+		_short(parent, ChapterUnlocks.price(key), _client().fruits.balance(str(scope.server), str(scope.owner)), opener)
+	else:
+		_say(error_line(code))
+		# Full Journey opens it already, or the server stopped selling levels: the cards are drawn again from what it said.
+		if code in ["level_free", "level_unlocks_disabled"]: spent.emit(WardrobeClient.LEVEL)
 
 ## The shared short-of-Fruits card for `cost` against `balance`, with Get Fruits while packs sell.
 func _short(parent: Control, cost: int, balance: int, opener: Control) -> void:

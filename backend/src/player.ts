@@ -27,7 +27,7 @@ import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 import { entitlementFresh, type EntitlementMemo } from "./entitlement";
 import { MemoryBudget } from "./limits";
-import { switchApplies } from "./test-codes";
+import { isTester, switchApplies } from "./test-codes";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_EXTEND_WITHIN_MS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceChangeBudget, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type FruitHooks, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
@@ -36,7 +36,7 @@ import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedFaceIds, ow
 import { dropEarned, validEarnedItems } from "./pollen/earned";
 import { anyBundlesOn, faceSinglesOn, fruitsOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, type WardrobeMode } from "./pollen/features";
 import { fruitHistoryView, fruitsView, type FruitsView } from "./pollen/fruits-view";
-import { settleAchievements, settleStartedAchievements, type Moment } from "./pollen/achievements";
+import { duelMoment, settleAchievements, settleStartedAchievements, type Moment } from "./pollen/achievements";
 import { spendSunshineTurn } from "./pollen/fruit-ops";
 import { energyView, refundEnergy, spendEnergy, type EnergySpend, type EnergyView } from "./pollen/energy";
 import { knownBoard } from "./leaderboards/boards";
@@ -264,7 +264,7 @@ export class Player extends DurableObject<Env> {
     return hint;
   }
   /** `reach`: the reading app (flags.ts Reach), for the release list and face fields; `withFruits` and `withEnergy` are already its answers. */
-  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off", hint: GrantHint = "none", withFruits = false, withEnergy = false, reach: Reach = null): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
+  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off", hint: GrantHint = "none", withFruits = false, withEnergy = false, reach: Reach = null, withLevels = false): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     // Fruits ride the shop's read (an app offered the shop), with their own history lines.
@@ -291,7 +291,7 @@ export class Player extends DurableObject<Env> {
     if (mode === "off") return { authorized: true, linked: true, pollen: read };
     const wardrobe = wardrobeView(this.ctx.storage, mode === "shop", catalogFor(this.env, reach), fruits, faceSinglesOn(this.env, reach));
     // The Fruits part reads in one transaction: its first read may pay what the player's records already earned (achievements.ts).
-    const fruitPart = fruits ? this.fruitsPart(now) : undefined;
+    const fruitPart = fruits ? this.fruitsPart(now, withLevels) : undefined;
     return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), name_price_next: nextNamePriceAfter(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}),
       ...(fruitPart ? { fruits: fruitPart } : {}) } : { ...read, wardrobe } };
   }
@@ -301,8 +301,8 @@ export class Player extends DurableObject<Env> {
     catch (error) { logWarning("retired_refund_failed", { reason: errorCode(error) }); }
   }
   /** The wallet read's Fruits part; a failure never stops the read it rides on (the phone keeps its last copy). */
-  private fruitsPart(now: number): FruitsView | undefined {
-    try { return this.ctx.storage.transactionSync(() => fruitsView(this.ctx.storage, now)); }
+  private fruitsPart(now: number, levels: boolean): FruitsView | undefined {
+    try { return this.ctx.storage.transactionSync(() => fruitsView(this.ctx.storage, now, undefined, levels)); }
     catch (error) { logWarning("fruits_read_failed", { reason: errorCode(error) }); return undefined; }
   }
   /**
@@ -323,11 +323,10 @@ export class Player extends DurableObject<Env> {
   private ledgerAchievements(): (storage: DurableObjectStorage, now: number, moment?: Moment) => ReturnType<typeof settleAchievements> {
     return gated(this.env, FLAG_VARS.fruits) ? settleStartedAchievements : (storage, now, moment) => settleAchievements(storage, now, moment);
   }
-  /** The duel credits' achievement moment, while Fruits are on for any app (bookkeeping: no app sees it). */
+  /** The duel credits' achievement moment (achievements.ts duelMoment), while Fruits are on for any app (bookkeeping: no app sees it). */
   private fruitMoment(moment: Moment): CreditOptions {
-    // A friend duel win counts only when it paid (never past the weekly limits or against the same pair again).
     const settle = this.ledgerAchievements();
-    return fruitsOn(this.env, LEDGER) ? { fresh: (storage, paid) => { settle(storage, Date.now(), moment.duel_win && !paid ? { ...moment, duel_win: false } : moment); } } : {};
+    return fruitsOn(this.env, LEDGER) ? { fresh: (storage, paid, counts) => { settle(storage, Date.now(), duelMoment(moment, paid, counts)); } } : {};
   }
   /** The daily bundle refund check (pollen/bundle-settle.ts); a failure never stops the wallet read it rides on. */
   private async checkBundles(owner: string): Promise<void> {
@@ -437,10 +436,13 @@ export class Player extends DurableObject<Env> {
    * Binding only: one purchase (POST /v1/pollen/spend, pollen/wardrobe.ts spend). The device is checked
    * again here, in the call that spends, so a recovery that replaced it can never be spent through.
    */
-  pollenSpend(owner: string, deviceHash: string, op: OpKey, request: SpendRequest, expected: number, fruits = false, reach: Reach = null): Outcome<SpendReceipt> {
+  pollenSpend(owner: string, deviceHash: string, op: OpKey, request: SpendRequest, expected: number, fruits = false, reach: Reach = null, levelsOn = false): Outcome<SpendReceipt> {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
-    return spend(this.ctx.storage, op, request, expected, Date.now(), this.pollenActive(owner), catalogFor(this.env, reach), fruits);
+    const now = Date.now();
+    // A level unlock (pollen/level-unlocks.ts) is free with Full Journey, as a room counts it (a tester's switch included).
+    const levels = request.kind === "level" && levelsOn ? { fullJourney: this.roomFullJourneyUntil(identity) > now } : null;
+    return spend(this.ctx.storage, op, request, expected, now, this.pollenActive(owner), catalogFor(this.env, reach), fruits, levels);
   }
   /** Binding only: spends 1 duel energy for a start or join (pollen/energy.ts), once per duel (duels/energy-charge.ts). `started`: only from a meter already used. */
   spendEnergy(owner: string, duelId: string, started = false): Outcome<EnergySpend> {
@@ -519,9 +521,9 @@ export class Player extends DurableObject<Env> {
    */
   settlePublicDuel(owner: string, extra: DuelExtra, win?: DuelWin): { extra: Outcome<DuelExtraAnswer>; win?: Outcome<DuelWinAnswer> } {
     const active = this.pollenActive(owner), now = Date.now();
-    // A public duel's win never counts as a friend duel win; finishing one is its own achievement.
+    // A public duel's win never counts as a friend duel win: it counts toward the public wins, and finishing one is its own goal.
     return { extra: creditDuelExtra(this.ctx.storage, extra, now, active, RATES, this.fruitMoment({ public_duel: true })),
-      ...(win ? { win: creditDuelWin(this.ctx.storage, win, now, active, RATES, { ...this.fruitMoment({}), public: true }) } : {}) };
+      ...(win ? { win: creditDuelWin(this.ctx.storage, win, now, active, RATES, { ...this.fruitMoment({ public_win: true }), public: true, trusted: isTester(this.env, owner) }) } : {}) };
   }
   /**
    * Story rooms are not linked one by one, and the Story drain releases a player's v3 links but keeps the

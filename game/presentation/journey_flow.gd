@@ -14,7 +14,8 @@ extends Node
 ##   _chapter_unlocks, _full_journey_access, _paid_content_hidden
 ## - screen: mode, ui, overlay, _screen_shell, _card, _scroll_list,
 ##   _button, _back_button, _label, _paragraph, _toast, _show_home
-## - chapter opens: _open_premium_chapter, _open_chapter_preview
+## - chapter opens: _open_premium_chapter, _open_chapter_preview, and
+##   fruit_spend_flow.unlock_level for a chapter its Fruit price locks
 ## Main opens it through show_journey() (Home's Play Solo, StoreFlow's and
 ## RoomHubFlow's journey requests and the update screen's Play Solo) and
 ## refreshes it through refresh_marks() and access_changed().
@@ -86,11 +87,17 @@ func show_journey() -> void:
 
 ## Runs a Play Solo card's play button: the chapter's solo scene, through the
 ## premium gate when the chapter is premium. A chapter the chain has not
-## reached says which chapter opens it (services/chapter_unlocks.gd).
+## reached says which chapter opens it (services/chapter_unlocks.gd). One its
+## Fruit price locks offers the price while the server sells levels, and is a
+## Full Journey chapter while it does not.
 func open_solo_chapter(key: String) -> void:
 	var unlocks: Dictionary = host._chapter_unlocks()
 	if not ChapterUnlocks.reached(key, unlocks):
 		host._toast(ChapterUnlocks.reason(key, unlocks))
+		return
+	if ChapterUnlocks.fruit_locked(key, unlocks):
+		if ChapterUnlocks.fruit_offered(key, unlocks): host.fruit_spend_flow.unlock_level(key, host.overlay, _opener(key))
+		else: host._open_premium_chapter(ChapterRegistry.open_scene(key))
 		return
 	if hard and host.mode == MODE_JOURNEY:
 		_open_hard_chapter(key)
@@ -98,6 +105,19 @@ func open_solo_chapter(key: String) -> void:
 	if not own_solo_card(key): return
 	if ChapterRegistry.descriptor(key).premium: host._open_premium_chapter(ChapterRegistry.open_scene(key))
 	else: host._open_chapter_preview(ChapterRegistry.open_scene(key))
+
+## The card's play button for `key`, the confirm card's opener (focus returns to it).
+func _opener(key: String) -> Control:
+	var card: Control = picker.card_for(key) if is_instance_valid(picker) else null
+	return card.find_child("ChapterOpen", true, false) as Control if card != null else null
+
+## A chapter was opened with Fruits (Main, from fruit_spend_flow's `spent`):
+## the page is drawn again when a card's lock changed, after any tap in progress.
+func levels_changed() -> void:
+	if host.mode != MODE_JOURNEY or not is_instance_valid(picker): return
+	if _locked(entries(_grid_access_drawn,hard)) == _locks_drawn: return
+	var drawn := picker
+	await TouchInput.redraw_when_released(host.overlay,func() -> bool: return host.mode == MODE_JOURNEY and picker == drawn,show_journey)
 
 ## Every chapter with a solo screen has its own Solo card.
 static func own_solo_card(key: String) -> bool:

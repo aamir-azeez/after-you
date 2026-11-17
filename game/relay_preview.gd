@@ -74,6 +74,7 @@ const SpiritLook = preload("res://presentation/spirit_look.gd")
 const TurnDots = preload("res://presentation/kit/turn_dots.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardRunFlow = preload("res://presentation/hard_run_flow.gd")
+const EndingFlow = preload("res://presentation/ending_flow.gd")
 const RoomRefreshFlow = preload("res://presentation/room_refresh_flow.gd")
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
@@ -167,6 +168,8 @@ var _replay_hold := 0
 ## and how the screen shows it (presentation/hard_run_flow.gd).
 var hard: RefCounted = null
 var hard_flow: RefCounted = HardRunFlow.new(self)
+## The chapter's ending scene, played before the card of a chapter finished just now.
+var ending_flow: RefCounted = EndingFlow.new(self)
 var refresh_flow: RefCounted = RoomRefreshFlow.new(self)
 var _live_tries := 0
 ## A start whose try is still to be counted, at its first tick (see _begin).
@@ -842,6 +845,7 @@ func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 		"online": return online_session != null
 		"solo": return online_session == null
 		"hard": return _hard_on()
+		"ending": return mode == "complete" and ending_flow.offered()
 		# A hard run with a saved draft goes on only from it.
 		"resume_only": return _hard_on() and _room_fact("draft", state, known)
 		"invited": return online_session != null and not online_session.invitation_code().is_empty()
@@ -917,6 +921,7 @@ func _room_action_hooks() -> Dictionary:
 		"start_over_keep": {"run": _start_over_keep, "drawn": _track_start_over_keep},
 		"photo": {"run": _offer_recent_photo},
 		"hard_again": {"run": _hard_again},
+		"ending": {"run": _watch_ending},
 		"new_room": {"run": _create_another_room, "drawn": _track_new_room_button},
 		"add_friend": {"run": _add_partner_friend},
 		"friend_requested": {"run": _partner_friend_requested},
@@ -3215,6 +3220,12 @@ func _show_completed() -> void:
 		_present_stage_history(definition.stages[-1],start)
 		world.present(sim.snapshot(), true)
 	mode = "complete"
+	# A chapter finished just now plays its ending first, then its card.
+	if finished_now and ending_flow.play_once(_draw_completed.bind(true)): return
+	_draw_completed(finished_now)
+
+## The finished chapter's card (after its ending scene, when it has one).
+func _draw_completed(finished_now: bool) -> void:
 	if finished_now: _ring_bell_sound()
 	if hard_flow.complete(): return
 	# Wide screens: the room page's panel, its heading and line, then the
@@ -3243,6 +3254,10 @@ func _show_completed() -> void:
 		return
 	_set_room_state("complete")
 	_add_room_actions(card, "complete", "turn", _room_facts())
+
+## The finished chapter's Watch the ending: its scene again, then the card.
+func _watch_ending() -> void:
+	if mode == "complete": ending_flow.play(_draw_completed.bind(false))
 
 ## The player's worn Bell sound (services/outfit.gd bell_sound), once per
 ## visit to this screen, BELL_AFTER seconds after the end card of a chapter
@@ -3647,6 +3662,7 @@ func _notification(what: int) -> void:
 			run_reactions.close_faces()
 			return
 		if what == NOTIFICATION_WM_GO_BACK_REQUEST and _photo_back(): return
+		if what == NOTIFICATION_WM_GO_BACK_REQUEST and ending_flow.back(): return
 		_finish_ready_due()
 		if is_instance_valid(stick):
 			if mode == "confirm_retry":
