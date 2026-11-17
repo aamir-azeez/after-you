@@ -250,7 +250,7 @@ func _second_stage(level: Dictionary) -> void:
 	# The winch is no control here; the LOW history left it on slip.
 	_check(state.controls.winch == "slip" and world._ramps.slipway.rotation.z == 0.0, "In Slack Water the ramp lies where the first stage left the winch")
 	# Read off the gates: the one crossing that needs a water value and the winch.
-	_check(world._ramp_on == {"slipway": ["winch", "slip"]}, "Only the slipway is a ramp, lowered by the winch at slip: %s" % [world._ramp_on])
+	_check(world._ramp_on == {"slipway": ["winch", "slip", "tide"]}, "Only the slipway is a ramp, lowered by the winch at slip, in the tide's water: %s" % [world._ramp_on])
 	_check(world._route_color("sea-key") == world.GOLD and world._route_color("lock") == world.TEAL and world._route_color("basin") == world.TEAL, "Gate links take their owner's colour from the definition")
 	for lever: Dictionary in level.stages[1].levers:
 		var lift: float = world._lever_pieces[lever.id].anchor_lift()
@@ -763,9 +763,10 @@ func _plain_pads(level: Dictionary) -> void:
 	world.queue_free()
 	await process_frame
 
-## Turn of the Tide@3's slipway also needs someone on the wheel step: its
-## ramp stays raised, a crossing plainly shut, until the pad is held, so a
-## lowered ramp is always a way across.
+## Turn of the Tide@3's slipway also needs someone on the wheel step: over
+## dry ground its ramp stays raised, a crossing plainly shut, until the pad is
+## held, so a lowered ramp out of the water is always a way across. Over the
+## water the winch lowers it under the surface.
 func _ramp_waits_for_pad() -> void:
 	var key := "turn-of-the-tide@3"
 	var level := Registry.definition(key)
@@ -784,6 +785,20 @@ func _ramp_waits_for_pad() -> void:
 		world.present(state, true)
 		lowered.append([bool(state.hold_pads.get("wheel-step-pad", false)), bool(state.bridges.get("slipway", false)), is_zero_approx(world._ramps.slipway.rotation.z)])
 	_check(lowered == [[false, false, false], [true, true, true]], "Tide@3: at low tide with the winch at slip the ramp stays raised until someone holds the wheel step, and lies down once they do: %s" % [lowered])
+	# Over half or high water the winch lowers it all the same, under the
+	# water, where the shut crossing shows it is no way across.
+	var drowned: Array = []
+	for tide: String in ["half", "high"]:
+		for winch: String in ["stowed", "slip"]:
+			var opening := start.duplicate(true)
+			opening.mechanisms.controls.merge({"tide": tide, "winch": winch}, true)
+			var sim := Simulation.new()
+			sim.simulation_version = 15
+			sim._reset_trusted(level, "set-the-tide", opening, {}, "a")
+			var state: Dictionary = sim.snapshot()
+			world.present(state, true)
+			drowned.append([bool(state.bridges.get("slipway", false)), is_zero_approx(world._ramps.slipway.rotation.z)])
+	_check(drowned == [[false, false], [false, true], [false, false], [false, true]], "Tide@3: over half and high water the winch at slip lowers the ramp under the water, still no way across: %s" % [drowned])
 	world.queue_free()
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:

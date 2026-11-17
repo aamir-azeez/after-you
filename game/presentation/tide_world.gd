@@ -33,6 +33,8 @@ const CHAMBER_WALL_TOP := 0.74
 ## The status lamps' sizes (kit/props.gd lamp_post, 1.45 m at size 1): beside
 ## a lever, on the chamber's inner corners, and at each harbour mouth.
 const LEVER_LAMP := 0.62
+## How far east of its lever a lever's lamp stands (metres).
+const LEVER_LAMP_SHIFT := 0.24
 const CHAMBER_LAMP := 0.45
 const MOUTH_LAMP := 0.9
 const SPOUT := Color(0.80, 0.93, 0.95, 0.86)
@@ -96,7 +98,8 @@ var _spirits := PackedVector2Array()
 var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
 ## Ramps built for the shown stage: crossing id -> its hinge (Node3D, meta
-## "target"), and what lowers each: crossing id -> [selector id, value].
+## "target"), and what lowers each: crossing id -> [selector id, value,
+## the water selector its gate names].
 var _ramps: Dictionary = {}
 var _ramp_on: Dictionary = {}
 ## Each control, lever and pad of the chapter by id -> its owner slot.
@@ -521,10 +524,18 @@ func _build_lever(lever: Dictionary) -> void:
 	super._build_lever(lever)
 	if lever.get("kind", "") == "selector": return
 	# Levers toggle, so a lamp beside the handle says plainly whether it is on.
-	var lamp := _status_lamp(_at(lever) + Vector3(0.24, 0, 0), LEVER_LAMP, "LeverLamp_" + str(lever.id))
+	var lamp := _status_lamp(_at(lever) + Vector3(LEVER_LAMP_SHIFT, 0, 0), LEVER_LAMP, "LeverLamp_" + str(lever.id))
 	# Open controls: a lever either pip works has no owner, so its lamp lights cream.
 	var owner := str(lever.get("owner_slot", ""))
 	_lever_lamps[lever.id] = {"lamp": lamp, "color": CREAM if owner.is_empty() else GOLD if owner == "p0" else TEAL}
+
+## What this world stands beside a control, for the level checker's controls
+## drawn into each other (presentation/kit/prop_rules.gd control_bodies): a
+## lever's lamp.
+static func control_extras(spot: Dictionary) -> Array:
+	if str(spot.get("kind", "")) != "levers": return []
+	var lamp := Props.extent({"kind": "lamp_post", "size": LEVER_LAMP})
+	return [{"offset": Vector2(LEVER_LAMP_SHIFT, 0.0), "radius": (lamp.rect as Rect2).size.x * 0.5, "top": float(lamp.height)}]
 
 ## A lamp that says a state (_lamp() lights it): the kit lamp post
 ## (kit/props.gd) at `at`, `size` times its height, standing on its own
@@ -926,7 +937,7 @@ func _build_boats() -> void:
 ## stage, needs a water value and another selector's value lies flat in it as
 ## a ramp at that value, at any water; raised, it stands up out of the water.
 ## It follows the snapshot's selector value, so it moves the moment the winch
-## is turned. Crossing id -> [selector id, value].
+## is turned. Crossing id -> [selector id, value, water selector id].
 func _ramp_selectors() -> Dictionary:
 	var water_selectors: Array = waters.water.get("bodies", []).map(func(body: Dictionary) -> String: return str(body.selector))
 	var found := {}
@@ -935,14 +946,14 @@ func _ramp_selectors() -> Dictionary:
 			var route := _route(str(gate.route_id))
 			if route.is_empty() or route.has("axis") or _is_stub(route) or found.has(str(route.id)): continue
 			var when: Dictionary = gate.get("when", {})
-			var wet := false
+			var wet := ""
 			var other: Array = []
 			for term: Dictionary in [when] + when.get("all", []):
 				var control := str(term.get("control_id", ""))
 				if control.is_empty(): continue
-				if control in water_selectors: wet = true
+				if control in water_selectors: wet = control
 				elif other.is_empty(): other = [control, str(term.get("value", ""))]
-			if wet and not other.is_empty(): found[str(route.id)] = other
+			if not wet.is_empty() and not other.is_empty(): found[str(route.id)] = other + [wet]
 	return found
 
 ## Each ramp crossing (_ramp_selectors) gets a timber ramp on a hinge at its
@@ -972,15 +983,30 @@ func _build_ramps() -> void:
 		hinge.set_meta("target", RAMP_RAISED)
 		_ramps[id] = hinge
 
-## Where each ramp heads from the snapshot's controls and held pads. A ramp
-## whose gate on this stage also needs a pad held stays raised until someone
-## stands on that pad, so a lowered ramp is always a way across.
+## Where each ramp heads from the snapshot's controls and held pads. Its
+## winch lowers it whatever the water. A ramp whose gate on this stage also
+## needs a pad held stays raised over dry ground until someone stands on that
+## pad, so a lowered ramp out of the water is always a way across; while the
+## water stands over its deck nobody can hold that pad (the step's own gate
+## needs the water low), so it lies down under the water, plainly no way across.
 func _aim_ramps(controls: Dictionary, held: Dictionary, immediate: bool) -> void:
 	for id: String in _ramps:
 		var hinge: Node3D = _ramps[id]
-		var lowered := str(controls.get(str(_ramp_on[id][0]), "")) == str(_ramp_on[id][1]) and _ramp_pads_held(id, held)
+		var wound := str(controls.get(str(_ramp_on[id][0]), "")) == str(_ramp_on[id][1])
+		var lowered := wound and (_ramp_pads_held(id, held) or _ramp_under_water(id, controls))
 		hinge.set_meta("target", 0.0 if lowered else RAMP_RAISED)
 		if immediate or reduced_motion: hinge.rotation.z = float(hinge.get_meta("target"))
+
+## Whether the water the ramp's gate names stands over its deck at the
+## snapshot's value of that water's selector.
+func _ramp_under_water(route_id: String, controls: Dictionary) -> bool:
+	var selector := str(_ramp_on[route_id][2])
+	for body: Dictionary in waters.water.get("bodies", []):
+		if str(body.selector) != selector: continue
+		var levels: Dictionary = body.get("levels", {})
+		var value := str(controls.get(selector, body.get("rest", "")))
+		return levels.has(value) and float(levels[value]) > float(_route(route_id).get("height_cm", 0)) / 100.0
+	return false
 
 ## Whether every pad the stage's gate on `route_id` names is held.
 func _ramp_pads_held(route_id: String, held: Dictionary) -> bool:
