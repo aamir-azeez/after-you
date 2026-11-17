@@ -42,6 +42,11 @@ const EDGE_MIP := 1
 const MAP_MARGIN := 0.32
 ## Thin things (a post, a pile) count at least this wide, so they keep a band.
 const THINNEST := 0.10
+## Where a ring source looks for open water, in steps of Looks.RING_REACH.
+const AROUND: Array[Vector2] = [Vector2.ZERO, Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1),
+	Vector2(0.7, 0.7), Vector2(-0.7, 0.7), Vector2(0.7, -0.7), Vector2(-0.7, -0.7)]
+## Meshes looked at between two build steps while finding what stands in the water.
+const MESHES_PER_STEP := 400
 ## A round thing marks only its rim, this wide (metres).
 const RIM := 0.04
 ## Anything wider than this both ways is a floor or a whole-stage mesh, not
@@ -187,10 +192,11 @@ func _pick_map(entry: Dictionary, level: float) -> void:
 	sheet.set_shader_parameter(EDGE_RECT, map.rect)
 
 ## The edge maps of every body at each of its levels, and the lamps the glints
-## warm by. Call once the walls that hold the water stand. Await it.
-func build_edges(roots: Dictionary) -> void:
+## warm by. Call once the walls that hold the water stand; `skip` are nodes
+## of the water's own (the bodies' roots, the walled stubs' floods). Await it.
+func build_edges(roots: Dictionary, skip: Array = []) -> void:
 	if bodies.is_empty(): return
-	var standing := _standing_boxes(roots)
+	var standing: Array = await _standing_boxes(roots.values() + skip)
 	await host._build_step()
 	for id: String in bodies:
 		var root: Node3D = roots.get(id)
@@ -215,7 +221,9 @@ func build_edges(roots: Dictionary) -> void:
 				(rounds if item[1] else solids).append(_at_least(foot, THINNEST))
 			var key := [&"water_edges", wet, rect, solids, rounds]
 			if not done.has(key):
-				if not DefinitionGeometry.has(key): DefinitionGeometry.keep(key, _edge_map(rect, wet, solids, rounds))
+				if not DefinitionGeometry.has(key):
+					DefinitionGeometry.keep(key, _edge_map(rect, wet, solids, rounds))
+					await host._build_step()
 				done[key] = DefinitionGeometry.kept(key)
 			entry.maps[value] = done[key]
 		entry.shown = ""
@@ -227,8 +235,8 @@ func build_edges(roots: Dictionary) -> void:
 func advance(delta: float) -> void:
 	if bodies.is_empty() or host.reduced_motion or delta <= 0.0: return
 	clock += delta
-	for entry: Dictionary in bodies.values():
-		for material: ShaderMaterial in entry.materials: material.set_shader_parameter(CLOCK, clock)
+	for id: String in bodies:
+		for material: ShaderMaterial in bodies[id].materials: material.set_shader_parameter(CLOCK, clock)
 
 ## Each snapshot: the graphics quality, how warm the light makes the glints,
 ## and where rings spread.
@@ -295,10 +303,8 @@ func _at_water(plan: Vector2, y: float, height: float) -> bool:
 		if not entry.rings or str(entry.shown).is_empty(): continue
 		if absf(y - float(entry.level)) > height: continue
 		var map: Dictionary = entry.maps[entry.shown]
-		var reach := Looks.RING_REACH
-		for offset: Vector2 in [Vector2.ZERO, Vector2(reach, 0), Vector2(-reach, 0), Vector2(0, reach), Vector2(0, -reach),
-				Vector2(reach, reach) * 0.7, Vector2(-reach, reach) * 0.7, Vector2(reach, -reach) * 0.7, Vector2(-reach, -reach) * 0.7]:
-			if _solid_at(map, plan + offset) < 0.5: return true
+		for offset: Vector2 in AROUND:
+			if _solid_at(map, plan + offset * Looks.RING_REACH) < 0.5: return true
 	return false
 
 ## The share of solid ground at a point of a map (1 off the map).
@@ -420,23 +426,26 @@ static func _at_least(rect: Rect2, size: float) -> Rect2:
 
 ## Every shown mesh under the terrain that is not water (terrain space), for
 ## the edge maps: what crosses a level stands in the water there. Each is
-## [box, round (a cylinder or a sphere)].
-func _standing_boxes(roots: Dictionary) -> Array:
+## [box, round (a cylinder or a sphere)]. Await it.
+func _standing_boxes(water_nodes: Array) -> Array:
 	var found: Array = []
 	var terrain: Node3D = host.terrain
 	var into: Transform3D = terrain.global_transform.affine_inverse()
 	var skip := {}
-	for root: Variant in roots.values():
-		if root is Node3D: skip[root] = true
+	for node: Variant in water_nodes:
+		if node is Node3D: skip[node] = true
 	for entry: Dictionary in bodies.values():
 		if entry.bed != null: skip[entry.bed] = true
+	var seen := 0
 	for node: Node in terrain.find_children("*", "MeshInstance3D", true, false):
+		seen += 1
+		if seen % MESHES_PER_STEP == 0: await host._build_step()
 		var mesh := node as MeshInstance3D
 		if mesh.mesh == null: continue
 		var shown := true
 		var walk: Node = mesh
 		while walk != terrain and walk != null:
-			if skip.has(walk) or (walk is Node3D and not (walk as Node3D).visible) or str(walk.name).begins_with("FloodedStub"):
+			if skip.has(walk) or (walk is Node3D and not (walk as Node3D).visible):
 				shown = false
 				break
 			walk = walk.get_parent()

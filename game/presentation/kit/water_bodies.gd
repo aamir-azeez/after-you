@@ -484,12 +484,15 @@ func pace_closing(closing: Dictionary) -> void:
 		elif root.has_meta("rate"): root.remove_meta("rate")
 
 ## Moves every body toward its target, then the doors against the water shown
-## this frame. Returns whether any water flowed. Only work that moves: water
-## at rest with its doors still does none.
+## this frame, and the look's clock. Returns whether any water flowed. Water
+## at rest with its doors still only moves its ripples' clock (one float a
+## body), and nothing here allocates.
 func advance(delta: float) -> bool:
 	var flowing := false
-	for root: Node3D in bodies.values():
-		if not is_instance_valid(root): continue
+	for id: String in bodies:
+		var held: Variant = bodies[id]
+		if not is_instance_valid(held): continue
+		var root: Node3D = held
 		var target := float(root.get_meta("target"))
 		var shown := float(root.get_meta("shown"))
 		if not is_equal_approx(shown, target):
@@ -831,7 +834,9 @@ func build_locks(bake_path: String) -> void:
 	locks.build(stage_plan, host.terrain)
 	await host._build_step()
 	# Everything that holds the water or stands in it is built: the foam's edges.
-	await look.build_edges(bodies)
+	var flooded: Array = []
+	for flood: Dictionary in floods.values(): flooded.append(flood.node)
+	await look.build_edges(bodies, flooded)
 
 ## This stage's water for the locks kit: every floor, sunken crossing (a pit
 ## sealed by its walls, dry in every state but a walled stub's, flooded with
