@@ -519,10 +519,10 @@ func _water_icon(id: String, at: Vector3, tint: Color) -> Node3D:
 
 ## Every lever and selector takes its style (the dressing's brass, or a pinned
 ## machine); a lever also carries a lamp that says whether it is on, whatever
-## its style.
+## its style, unless the descriptor's "lever_lamps" leaves that to its look.
 func _build_lever(lever: Dictionary) -> void:
 	super._build_lever(lever)
-	if lever.get("kind", "") == "selector": return
+	if lever.get("kind", "") == "selector" or not bool(_descriptor().get("lever_lamps", true)): return
 	# Levers toggle, so a lamp beside the handle says plainly whether it is on.
 	var lamp := _status_lamp(_at(lever) + Vector3(LEVER_LAMP_SHIFT, 0, 0), LEVER_LAMP, "LeverLamp_" + str(lever.id))
 	# Open controls: a lever either pip works has no owner, so its lamp lights cream.

@@ -16,6 +16,14 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       hangs from the arm of a timber post over a squat iron pump; pulled,
 ##       the pump handle comes down and the lantern glows, let go it goes dark.
 ##       The world clears the fog round a lit one (kit/fog.gd).
+##   "crank": the winch built squat and low, its drum bare of chain let go and
+##       wound fat with it pulled, so the drum says which at a glance.
+##   "rope": a mooring rope on a tall post. Let go, it hangs slack down the
+##       post into a big coil at its foot; pulled, it runs taut and straight
+##       from the post's head across to an iron cleat, the coil drawn small.
+##   "water_gate": a timber gate in a little stone channel, lifted by a wheel
+##       on its frame. Let go, the gate is down and the water behind it lies
+##       still; pulled, the wheel turns, the gate rises and water runs out under it.
 ##
 ## A handle style's anchor is its tilting pivot (the knob at journey_world
 ## KNOB); a machine's is a fixed point anchor_lift() over its spot. A machine
@@ -27,7 +35,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 
 ## Styles that tilt a handle, and machines that move their own parts.
 const HANDLES := ["plain", "brass"]
-const MACHINES := ["winch", "bolt", "lantern"]
+const MACHINES := ["winch", "bolt", "lantern", "crank", "rope", "water_gate"]
 const REACH := 0.28
 const EAST_SIDE := 0.16
 const PULL_SECONDS := 0.45
@@ -38,13 +46,17 @@ const HOUSING := Color("728788")
 ## Where a bubble's tail lands on each machine (its top on its axis, m over
 ## its spot), and how far over its anchor that is: journey_world's knob point
 ## (KNOB 0.4 over the anchor) plus KNOB_RADIUS (0.09).
-const TOPS := {"winch": 0.63, "bolt": 0.63, "lantern": 0.90}
+const TOPS := {"winch": 0.63, "bolt": 0.63, "lantern": 0.90, "crank": 0.45, "rope": 0.84, "water_gate": 0.71}
 const KNOB_REACH := 0.49
-## Winch: drum height and its coil's radius, slack and wound; turns of the crank.
-const DRUM_Y := 0.50
+## Winch and crank: the drum's height, its frame posts' height, its flanges'
+## radius, its coil's radius let go and pulled, and whether the drum shows
+## bare (no coil) let go; turns of the crank. A coil stays 0.05 or more
+## across, so its bands stand 3 mm off it (the dressing lint's coplanar rule).
+const WINCHES := {
+	"winch": {"drum_y": 0.50, "posts": 0.60, "flange": 0.085, "coil": [0.052, 0.078]},
+	"crank": {"drum_y": 0.30, "posts": 0.42, "flange": 0.11, "coil": [0.05, 0.10], "bare": true},
+}
 const DRUM_X := -0.03
-const COIL_SLACK := 0.052
-const COIL_WOUND := 0.078
 const CRANK_TURNS := 1.5
 const LINKS := 7
 ## Bolt: its centre drawn back and slid home (x, m).
@@ -57,6 +69,34 @@ const LANTERN_DARK := Color("6b6252")
 const LANTERN_GLOW := 1.4
 const PUMP_UP := 0.55
 const PUMP_DOWN := -0.25
+## Rope: its colour and thickness, the post's spot and height, where the rope
+## leaves the post's head, the cleat across from the post (north and east, so
+## the taut rope runs well off upright on screen), and the coil at the foot.
+const ROPE := Color("ead7a4")
+const ROPE_RADIUS := 0.025
+const ROPE_SEGMENTS := 12
+const ROPE_POST := Vector3(-0.22, 0, 0.10)
+const ROPE_POST_HEIGHT := 0.80
+const ROPE_HEAD := Vector3(-0.165, 0.70, 0.10)
+const CLEAT := Vector3(0.10, 0, -0.10)
+const COIL_AT := Vector3(-0.06, 0, 0.15)
+const COIL_RADIUS := 0.075
+## Gate: the channel's walls and the piers in them (x of each middle), its
+## stone and bed, the gate's travel, the wheel's height and radius, and its
+## water still and running.
+const GATE_WALLS := [-0.21, 0.09]
+const GATE_PIERS := [-0.205, 0.085]
+const GATE_X := -0.06
+const GATE_STONE := Color("b9a585")
+const GATE_BED := Color("6b5e4e")
+const GATE_DOWN := 0.035
+const GATE_LIFT := 0.13
+const GATE_WHEEL_Y := 0.58
+const GATE_WHEEL_R := 0.11
+const GATE_WHEEL_TURNS := 1.25
+const STILL_WATER := Color("4f8fb5")
+const RUNNING_WATER := Color("7cc4d6")
+const FOAM := Color("eef6f4")
 
 var _shown := 0.0
 var _target := 0.0
@@ -67,6 +107,11 @@ var _links: Array[MeshInstance3D] = []
 var _bolt: Node3D
 var _glass: MeshInstance3D
 var _pump: Node3D
+var _rope: Array[MeshInstance3D] = []
+var _rope_coil: Node3D
+var _gate: Node3D
+var _wheel: Node3D
+var _flow: Node3D
 
 ## A lever in `style` on the spot `at` (parent space) under `parent`, shown let
 ## go. `options`: "owner" ("p0"/"p1") colours its knob. An unknown style is plain.
@@ -102,9 +147,13 @@ func anchor_lift() -> float:
 func moving_parts() -> Array[Node3D]:
 	var parts: Array[Node3D] = []
 	match style:
-		"winch":
+		"winch", "crank":
 			parts.append_array([_drum, _crank])
 			for link: MeshInstance3D in _links: parts.append(link)
+		"rope":
+			parts.append(_rope_coil)
+			for piece: MeshInstance3D in _rope: parts.append(piece)
+		"water_gate": parts.append_array([_gate, _wheel, _flow])
 		"bolt": parts.append(_bolt)
 		"lantern": parts.append_array([_glass, _pump])
 		_: parts.append(anchor)
@@ -124,7 +173,9 @@ func _make(lever_style: String, at: Vector3, parent: Node3D, knob: Color) -> voi
 	anchor.position = at + Vector3(0, anchor_lift(), 0)
 	parent.add_child(anchor)
 	match lever_style:
-		"winch": _make_winch(knob)
+		"winch", "crank": _make_winch(knob)
+		"rope": _make_rope()
+		"water_gate": _make_water_gate(knob)
 		"bolt": _make_bolt(knob)
 		"lantern": _make_lantern(knob)
 		_: _make_handle(knob)
@@ -141,17 +192,19 @@ static func _link(parent: Node3D) -> MeshInstance3D:
 	return Parts.torus(0.0175, 0.0065, Parts.IRON, Vector3.ZERO, parent, 8, 5)
 
 func _make_winch(knob: Color) -> void:
+	var drum_y: float = WINCHES[style].drum_y
+	var posts: float = WINCHES[style].posts
 	Parts.box(Vector3(0.36, 0.05, 0.22), Parts.TIMBER, Vector3(DRUM_X, 0.025, 0), root)
 	for x: float in [-0.14, 0.11]:
-		Parts.box(Vector3(0.05, 0.60, 0.07), Parts.TIMBER_DARK, Vector3(x, 0.30, 0), root)
-		Parts.box(Vector3(0.07, 0.03, 0.09), Parts.BRASS, Vector3(x, 0.615, 0), root)
+		Parts.box(Vector3(0.05, posts, 0.07), Parts.TIMBER_DARK, Vector3(x, posts * 0.5, 0), root)
+		Parts.box(Vector3(0.07, 0.03, 0.09), Parts.BRASS, Vector3(x, posts + 0.015, 0), root)
 	# Every face stands a centimetre or more off its neighbours' (the dressing
 	# lint's coplanar rule): the axle ends inside the east post and the crank.
-	Parts.rod(0.016, 0.30, Parts.IRON, Vector3(DRUM_X - 0.005, DRUM_Y, 0), root)
+	Parts.rod(0.016, 0.30, Parts.IRON, Vector3(DRUM_X - 0.005, drum_y, 0), root)
 	_drum = Node3D.new()
-	_drum.position = Vector3(DRUM_X, DRUM_Y, 0)
+	_drum.position = Vector3(DRUM_X, drum_y, 0)
 	root.add_child(_drum)
-	for x: float in [-0.07, 0.07]: Parts.rod(0.085, 0.018, Parts.IRON, Vector3(x, 0, 0), _drum)
+	for x: float in [-0.07, 0.07]: Parts.rod(float(WINCHES[style].flange), 0.018, Parts.IRON, Vector3(x, 0, 0), _drum)
 	# A brass stud on the east flange shows the drum turning.
 	Parts.box(Vector3(0.024, 0.026, 0.026), Parts.BRASS, Vector3(0.095, 0.06, 0), _drum)
 	# The chain wound on the drum: a coil of unit radius, scaled across the
@@ -161,7 +214,7 @@ func _make_winch(knob: Color) -> void:
 	Parts.rod(1.0, 0.11, Parts.IRON_LIGHT, Vector3.ZERO, _coil)
 	for index in range(4): Parts.rod(1.07, 0.012, Parts.IRON, Vector3(-0.04 + float(index) * 0.0267, 0, 0), _coil)
 	_crank = Node3D.new()
-	_crank.position = Vector3(-0.18, DRUM_Y, 0)
+	_crank.position = Vector3(-0.18, drum_y, 0)
 	root.add_child(_crank)
 	Parts.box(Vector3(0.025, 0.12, 0.03), Parts.IRON, Vector3(0, 0.05, 0), _crank)
 	Parts.rod(0.016, 0.04, Parts.IRON, Vector3(-0.02, 0.11, 0), _crank)
@@ -212,14 +265,15 @@ func _pose() -> void:
 		anchor.rotation.z = -TILT if _shown >= 0.5 else TILT
 		return
 	var t := smoothstep(0.0, 1.0, _shown)
-	if style == "winch":
+	if WINCHES.has(style):
 		var turn := -t * CRANK_TURNS * TAU
 		_crank.rotation.x = turn
 		_drum.rotation.x = turn
-		var coil := lerpf(COIL_SLACK, COIL_WOUND, t)
+		var coil := lerpf(WINCHES[style].coil[0], WINCHES[style].coil[1], t)
 		_coil.scale = Vector3(1.0, coil, coil)
+		if WINCHES[style].has("bare"): _coil.visible = t > 0.0
 		# Off the drum's front, down to the hawse: a slack loop let go, taut pulled.
-		var from := Vector3(DRUM_X, DRUM_Y - coil * 0.3, coil)
+		var from := Vector3(DRUM_X, float(WINCHES[style].drum_y) - coil * 0.3, coil)
 		var to := Vector3(DRUM_X, 0.07, 0.075)
 		var bend := (from + to) * 0.5 + Vector3(0, -0.06, 0.13).lerp(Vector3.ZERO, t)
 		for index in range(LINKS):
@@ -229,6 +283,21 @@ func _pose() -> void:
 			var across := Vector3(1, 0, 0) if index % 2 == 0 else along.cross(Vector3(1, 0, 0)).normalized()
 			_links[index].basis = Basis(along * 1.5, across, along.cross(across).normalized())
 			_links[index].position = at
+	elif style == "rope":
+		# From the post's head to the cleat: hanging down the post into the
+		# coil let go, a straight line pulled.
+		var to := (COIL_AT + Vector3(-0.05, 0.09, 0)).lerp(CLEAT + Vector3(0, 0.07, 0), t)
+		var bend := Vector3(-0.15, 0.02, 0.12).lerp((ROPE_HEAD + to) * 0.5, t)
+		_lay(_rope, ROPE_HEAD, bend, to, 1.15)
+		var wound := lerpf(1.0, 0.45, t)
+		_rope_coil.scale = Vector3(wound, 1.0, wound)
+	elif style == "water_gate":
+		_gate.position.y = GATE_DOWN + GATE_LIFT * t
+		_wheel.rotation.z = -t * GATE_WHEEL_TURNS * TAU
+		# Let go, the water is hidden at its full height, so no face of it lies
+		# on the bed; as the gate rises it swells up from a third.
+		_flow.visible = t > 0.0
+		_flow.scale = Vector3(1.0, lerpf(0.3, 1.0, t) if t > 0.0 else 1.0, 1.0)
 	elif style == "lantern":
 		_pump.rotation.z = lerpf(PUMP_UP, PUMP_DOWN, t)
 		var lit := t >= 0.5
@@ -236,3 +305,74 @@ func _pose() -> void:
 		Parts.glow(_glass, LANTERN_GLASS, LANTERN_GLOW * t if lit else 0.0)
 	elif is_instance_valid(_bolt):
 		_bolt.position.x = lerpf(BOLT_BACK, BOLT_HOME, t)
+
+## Lays `pieces` end to end along the curve from `from` over `bend` to `to`,
+## each `overlap` times its share so the joints close.
+func _lay(pieces: Array[MeshInstance3D], from: Vector3, bend: Vector3, to: Vector3, overlap: float) -> void:
+	var count := pieces.size()
+	var last := from
+	for index in range(count):
+		var s := float(index + 1) / float(count)
+		var next := from.lerp(bend, s).lerp(bend.lerp(to, s), s)
+		var along := next - last
+		var length := maxf(along.length(), 0.001)
+		var up := along / length
+		var side := Vector3(0, 0, 1) if absf(up.z) < 0.9 else Vector3(1, 0, 0)
+		side = (side - up * up.dot(side)).normalized()
+		pieces[index].basis = Basis(side, up * length * overlap, side.cross(up))
+		pieces[index].position = (last + next) * 0.5
+		last = next
+
+## A tall post with the rope lashed at its head, an iron cleat on the floor
+## across from it and the rope's coil at the post's foot; the rope's pieces
+## are laid by _pose.
+func _make_rope() -> void:
+	Parts.box(Vector3(0.09, ROPE_POST_HEIGHT, 0.09), Parts.TIMBER_DARK, ROPE_POST + Vector3(0, ROPE_POST_HEIGHT * 0.5, 0), root)
+	Parts.box(Vector3(0.11, 0.04, 0.11), Parts.TIMBER_LIGHT, ROPE_POST + Vector3(0, ROPE_POST_HEIGHT + 0.02, 0), root)
+	Parts.box(Vector3(0.10, 0.05, 0.10), ROPE, ROPE_POST + Vector3(0, ROPE_HEAD.y, 0), root)
+	Parts.box(Vector3(0.04, 0.04, 0.05), Parts.IRON, CLEAT + Vector3(0, 0.02, 0), root)
+	Parts.box(Vector3(0.10, 0.025, 0.035), Parts.IRON, CLEAT + Vector3(0, 0.0525, 0), root)
+	_rope_coil = Node3D.new()
+	_rope_coil.position = COIL_AT
+	root.add_child(_rope_coil)
+	for turn in range(3): Parts.torus(COIL_RADIUS - 0.012 * float(turn), ROPE_RADIUS, ROPE, Vector3(0, ROPE_RADIUS + 0.03 * float(turn), 0), _rope_coil, 14, 6)
+	for index in range(ROPE_SEGMENTS): _rope.append(Parts.disc(ROPE_RADIUS, 1.0, ROPE, Vector3.ZERO, root, -1.0, 6))
+
+## A little stone channel across the spot, a timber gate between two piers,
+## a beam over them with the wheel's housing, the wheel facing the camera,
+## still water behind the gate and running water before it.
+func _make_water_gate(knob: Color) -> void:
+	# Faces of different looks stand a centimetre or more apart (the dressing
+	# lint's coplanar rule).
+	Parts.box(Vector3(0.24, 0.03, 0.51), GATE_BED, Vector3(GATE_X, 0.015, 0.0), root)
+	Parts.box(Vector3(0.38, 0.17, 0.04), GATE_STONE, Vector3(GATE_X, 0.085, -0.255), root)
+	for x: float in GATE_WALLS: Parts.box(Vector3(0.08, 0.18, 0.50), GATE_STONE, Vector3(x, 0.09, 0.0), root)
+	for x: float in GATE_PIERS: Parts.box(Vector3(0.11, 0.40, 0.12), GATE_STONE.darkened(0.08), Vector3(x, 0.20, 0.0), root)
+	Parts.box(Vector3(0.42, 0.06, 0.10), Parts.TIMBER, Vector3(GATE_X, 0.41, 0.0), root)
+	Parts.box(Vector3(0.09, 0.12, 0.09), Parts.IRON, Vector3(GATE_X, 0.49, 0.0), root)
+	# The pool behind the gate, lying still below the walls' tops. The gate is
+	# low and the beam high, so the camera sees the pool between them.
+	Parts.box(Vector3(0.20, 0.12, 0.20), STILL_WATER, Vector3(GATE_X, 0.09, -0.125), root)
+	_gate = Node3D.new()
+	_gate.position = Vector3(GATE_X, GATE_DOWN, 0.0)
+	root.add_child(_gate)
+	Parts.box(Vector3(0.17, 0.18, 0.04), Parts.TIMBER, Vector3(0, 0.09, 0), _gate)
+	for y: float in [0.045, 0.135]: Parts.box(Vector3(0.16, 0.025, 0.012), Parts.IRON, Vector3(0, y, 0.026), _gate)
+	# Running water: a sheet out from under the gate, foam where it leaves.
+	_flow = Node3D.new()
+	_flow.position = Vector3(GATE_X, 0.03, 0.0)
+	root.add_child(_flow)
+	Parts.box(Vector3(0.20, 0.05, 0.225), RUNNING_WATER, Vector3(0, 0.025, 0.1375), _flow)
+	Parts.box(Vector3(0.15, 0.05, 0.04), FOAM, Vector3(0, 0.035, 0.045), _flow)
+	for x: float in [-0.06, 0.0, 0.06]: Parts.box(Vector3(0.016, 0.04, 0.14), FOAM, Vector3(x, 0.035, 0.17), _flow)
+	_wheel = Node3D.new()
+	_wheel.position = Vector3(GATE_X, GATE_WHEEL_Y, 0.075)
+	root.add_child(_wheel)
+	var rim := Parts.torus(GATE_WHEEL_R, 0.018, Parts.IRON, Vector3.ZERO, _wheel)
+	rim.rotation.x = PI / 2.0
+	for spoke in range(2):
+		var bar := Parts.box(Vector3(0.022, GATE_WHEEL_R * 2.0, 0.02), Parts.IRON_LIGHT, Vector3.ZERO, _wheel)
+		bar.rotation.z = float(spoke) * PI / 2.0
+	var hub := Parts.disc(0.03, 0.04, Parts.BRASS, Vector3.ZERO, _wheel)
+	hub.rotation.x = PI / 2.0
+	Parts.ball(0.03, knob, Vector3(GATE_WHEEL_R, 0, 0.025), _wheel)

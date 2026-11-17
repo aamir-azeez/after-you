@@ -106,7 +106,7 @@ const SLOTS := {
 	# Not props: the puzzle pieces' looks (content/dressing/piece_styles.gd),
 	# each built by its kit under presentation/kit/pieces/. A piece behaves the
 	# same in every style; only its look changes.
-	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}, "lantern": {}},
+	"lever": {"plain": {}, "brass": {}, "winch": {}, "bolt": {}, "lantern": {}, "crank": {}, "rope": {}, "water_gate": {}},
 	"selector": {"plain": {}, "brass": {}, "valve": {}, "lamp_post": {}, "gate_arch": {}, "shutter": {}, "rope_wheel": {}},
 	"pad": {"plain": {}, "stand_spot": {}, "pan": {}, "board": {}, "crank_board": {}},
 	"goal": {"bell": {}, "harbour_lantern": {}, "crest": {}, "window": {}, "walled_window": {}},

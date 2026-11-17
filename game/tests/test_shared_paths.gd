@@ -401,7 +401,7 @@ const PIN_READERS := {
 const PIECE_OVERRIDES := {
 	"res://presentation/wishing_well_world.gd": "the well floor's pad is the bucket the well's winch lowers and raises on its rope (_build_physical_pad): it moves with the well's rig, so it stays with it; every other pad comes from the kit",
 	"res://presentation/journey_world.gd": "a selector's value bubble over its lever (_build_selector)",
-	"res://presentation/tide_world.gd": "a valve's water sign (_build_selector) and every lever's on lamp (_build_lever)",
+	"res://presentation/tide_world.gd": "a valve's water sign (_build_selector) and each lever's on lamp while the descriptor keeps \"lever_lamps\" (_build_lever)",
 	"res://presentation/long_way_home_world.gd": "the porch and garden pads' word labels and the cables to the greeting window (_build_physical_pad)",
 }
 ## The base builders the overrides extend.

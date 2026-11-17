@@ -27,6 +27,8 @@
 		"bolt_shot",
 		"bolt_drawn",
 		"valve_turned",
+		"rope_hauled",
+		"rope_slacked",
 		"lantern_lit",
 		"lantern_out",
 		"barrier_rattle",

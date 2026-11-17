@@ -99,6 +99,10 @@ const OPTIONAL := {
 	## "goal"), over the dressing's and theme's pick for its slot
 	## (content/dressing/piece_styles.gd). Visual only.
 	"piece_styles": {},
+	## true stands a small lamp beside each lever that lights while it is on,
+	## in a world that marks levers so (presentation/tide_world.gd); false
+	## leaves each lever's own look to show it.
+	"lever_lamps": true,
 	## {lever id: the action button's words at that lever}, where they differ
 	## from the simulation's own ("Pull lever"). PlayerCopy constants.
 	"lever_actions": {},
