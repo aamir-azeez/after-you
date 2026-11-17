@@ -181,6 +181,7 @@ func _prepare_replay() -> void:
 	_display_title = str(Collection.summary(entry).title)
 	world = Registry.world_script(entry.room.chapter_key).new()
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
+	world.big_change_shake = bool(settings.get("haptics", true))
 	world.fold_over_frames = true
 	add_child(world)
 	GraphicsPolicy.apply(world, settings)
@@ -306,7 +307,7 @@ func _start_part() -> void:
 	_frames = engine.expand_recording_inputs(watched)
 	# The same identities as the original turn, so its sounds match.
 	soundscape.begin_turn(str(entry.room.chapter_key), str(watched.stage_id))
-	_sound_seen = ChapterSoundMap.remember(sim.snapshot())
+	_sound_seen = ChapterSoundMap.remember(sim.snapshot(), str(entry.room.chapter_key))
 	_refusals.begin(str(entry.room.chapter_key), definition, sim.snapshot(), memory)
 	sim.catch_assistance = bool(watched.get("catch_assistance", true))
 	memory_wait.begin("b", MemoryWait.prior_ticks(memory))

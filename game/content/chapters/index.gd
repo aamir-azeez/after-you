@@ -79,6 +79,11 @@ const OPTIONAL := {
 	## {selector control id: [its values, low to high]}: controls whose value is
 	## a water level. Turning one plays the water rising or falling.
 	"water_levels": {},
+	## {piece kind: bool}: turns a big change kind (presentation/kit/
+	## big_change.gd KINDS: its sound, the view's shake and the phone's buzz)
+	## on or off for this chapter alone. A published version keeps a kind off
+	## where its sound would change the version's pinned sounds.
+	"big_change": {},
 	## Background layers (services/sound_cues.gd LOOPS or CALLS) under the shared ambience
 	## while this chapter's world is on screen.
 	"beds": [],

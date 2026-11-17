@@ -106,7 +106,8 @@ def write_like(path: Path, data: bytes) -> bool:
 
 
 def routes_text(routes: dict, stage_order: list[str]) -> str:
-    """A routes file: stages in the chapter's order, one step a line, whole numbers as integers."""
+    """A routes file: stages in the chapter's order, one step a line, whole numbers as integers.
+    A stage's other designed solutions ("solutions", game/tests/chapter_witness.gd) come last, one step a line too."""
     def plain(value):
         if isinstance(value, float) and value.is_integer():
             return int(value)
@@ -116,7 +117,7 @@ def routes_text(routes: dict, stage_order: list[str]) -> str:
             return {key: plain(item) for key, item in value.items()}
         return value
     blocks = []
-    for stage in [s for s in stage_order if s in routes] + sorted(s for s in routes if s not in stage_order):
+    for stage in [s for s in stage_order if s in routes] + sorted(s for s in routes if s not in stage_order and s != "solutions"):
         entry = plain(routes[stage])
         fields = []
         # An open turns stage that took more than two turns lists them all in order as "turns".
@@ -128,6 +129,14 @@ def routes_text(routes: dict, stage_order: list[str]) -> str:
             fields.append(f'\t\t"turns": [\n{turns}\n\t\t]')
         fields += [f"\t\t{json.dumps(name)}: {json.dumps(value)}" for name, value in entry.items() if name not in ("a", "b", "turns")]
         blocks.append(f"\t{json.dumps(stage)}: {{\n" + ",\n".join(fields) + "\n\t}")
+    if "solutions" in routes:
+        def turn_lines(turn: list) -> str:
+            return "\t\t\t\t\t[\n" + ",\n".join("\t\t\t\t\t\t" + json.dumps(step) for step in turn) + "\n\t\t\t\t\t]"
+        stages = []
+        for stage, listed in plain(routes["solutions"]).items():
+            ways = [f'\t\t\t{{"name": {json.dumps(way.get("name", ""))}, "turns": [\n' + ",\n".join(turn_lines(turn) for turn in way.get("turns", [])) + "\n\t\t\t]}" for way in listed]
+            stages.append(f"\t\t{json.dumps(stage)}: [\n" + ",\n".join(ways) + "\n\t\t]")
+        blocks.append('\t"solutions": {\n' + ",\n".join(stages) + "\n\t}")
     return "{\n" + ",\n".join(blocks) + "\n}\n"
 
 

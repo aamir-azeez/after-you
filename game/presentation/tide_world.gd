@@ -9,6 +9,7 @@ extends "res://presentation/water_world.gd"
 ## from the chapter's water block, content/water/turn_of_the_tide.gd) is the
 ## water world's (presentation/water_world.gd); Tide adds its chamber, sea
 ## gates, spout, foreshore, boats, ramps, gauges and lamps through its hooks.
+const RampRules = preload("res://presentation/kit/ramp_rules.gd")
 ## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
 const RAMP_RAISED := 0.95
 const RAMP_RATE := 1.6
@@ -877,34 +878,11 @@ func _build_boats() -> void:
 		_boats.append(boat)
 		waters.ride(str(spec.water), _float_boat.bind(boat), true)
 
-## A winch's ramp: a crossing (never a stub or a stair) whose gate, in any
-## stage, needs a water value and another selector's value lies flat in it as
-## a ramp at that value, at any water; raised, it stands up out of the water.
-## It follows the snapshot's selector value, so it moves the moment the winch
-## is turned. Crossing id -> [selector id, value, water selector id].
-func _ramp_selectors() -> Dictionary:
-	var water_selectors: Array = waters.water.get("bodies", []).map(func(body: Dictionary) -> String: return str(body.selector))
-	var found := {}
-	for stage: Dictionary in chapter_definition.get("stages", []):
-		for gate: Dictionary in stage.get("gates", []):
-			var route := _route(str(gate.route_id))
-			if route.is_empty() or route.has("axis") or _is_stub(route) or found.has(str(route.id)): continue
-			var when: Dictionary = gate.get("when", {})
-			var wet := ""
-			var other: Array = []
-			for term: Dictionary in [when] + when.get("all", []):
-				var control := str(term.get("control_id", ""))
-				if control.is_empty(): continue
-				if control in water_selectors: wet = control
-				elif other.is_empty(): other = [control, str(term.get("value", ""))]
-			if not wet.is_empty() and not other.is_empty(): found[str(route.id)] = other + [wet]
-	return found
-
-## Each ramp crossing (_ramp_selectors) gets a timber ramp on a hinge at its
+## Each ramp crossing (kit/ramp_rules.gd) gets a timber ramp on a hinge at its
 ## west end, with a winch drum on two posts beside the hinge. It starts raised;
-## present() sets where it heads.
+## present() sets where it heads. Its sounds come from its hinge.
 func _build_ramps() -> void:
-	_ramp_on = _ramp_selectors()
+	_ramp_on = RampRules.ramps(chapter_definition, waters.water)
 	for id: String in _ramp_on:
 		var route := _route(id)
 		var r: Array = route.rect_cm
@@ -926,38 +904,21 @@ func _build_ramps() -> void:
 		hinge.rotation.z = RAMP_RAISED
 		hinge.set_meta("target", RAMP_RAISED)
 		_ramps[id] = hinge
+		mark_sound("bridge:%s" % id, hinge)
 
-## Where each ramp heads from the snapshot's controls and held pads. Its
-## winch lowers it whatever the water. A ramp whose gate on this stage also
-## needs a pad held stays raised over dry ground until someone stands on that
-## pad, so a lowered ramp out of the water is always a way across; while the
-## water stands over its deck nobody can hold that pad (the step's own gate
-## needs the water low), so it lies down under the water, plainly no way across.
+## Where each ramp heads from the snapshot's controls and held pads, by the
+## shared ramp rules (kit/ramp_rules.gd), which the sound map hears too. A ramp
+## that starts to move is a big change (island_world note_big_change) for as
+## long as it swings.
 func _aim_ramps(controls: Dictionary, held: Dictionary, immediate: bool) -> void:
 	for id: String in _ramps:
 		var hinge: Node3D = _ramps[id]
-		var wound := str(controls.get(str(_ramp_on[id][0]), "")) == str(_ramp_on[id][1])
-		var lowered := wound and (_ramp_pads_held(id, held) or _ramp_under_water(id, controls))
-		hinge.set_meta("target", 0.0 if lowered else RAMP_RAISED)
-		if immediate or reduced_motion: hinge.rotation.z = float(hinge.get_meta("target"))
-
-## Whether the water the ramp's gate names stands over its deck at the
-## snapshot's value of that water's selector.
-func _ramp_under_water(route_id: String, controls: Dictionary) -> bool:
-	var selector := str(_ramp_on[route_id][2])
-	for body: Dictionary in waters.water.get("bodies", []):
-		if str(body.selector) != selector: continue
-		var levels: Dictionary = body.get("levels", {})
-		var value := str(controls.get(selector, body.get("rest", "")))
-		return levels.has(value) and float(levels[value]) > float(_route(route_id).get("height_cm", 0)) / 100.0
-	return false
-
-## Whether every pad the stage's gate on `route_id` names is held.
-func _ramp_pads_held(route_id: String, held: Dictionary) -> bool:
-	var when: Dictionary = _gate_for(route_id).get("when", {})
-	for term: Dictionary in [when] + when.get("all", []):
-		if term.has("pad_id") and not bool(held.get(str(term.pad_id), false)): return false
-	return true
+		var lowered := RampRules.lowered(id, _ramp_on[id], chapter_definition, current_level, waters.water, controls, held)
+		var target := 0.0 if lowered else RAMP_RAISED
+		var was := float(hinge.get_meta("target"))
+		hinge.set_meta("target", target)
+		if not immediate and not is_equal_approx(was, target): note_big_change("ramp", absf(target - hinge.rotation.z) / RAMP_RATE)
+		if immediate or reduced_motion: hinge.rotation.z = target
 
 func _swing_ramps(delta: float) -> void:
 	for hinge: Node3D in _ramps.values():

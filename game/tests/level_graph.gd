@@ -473,7 +473,9 @@ func can_stand_at(entity: Dictionary, slot: String, open: Dictionary, journey: b
 ## crossing but those needing both hands; across one of those it is handed up
 ## when some pip reaches the far end; it rests at an item spot on any floor it
 ## is carried to; a current leg carries it on once the leg's selector can show
-## the leg's value (`when` and `stop` are not judged: an over-approximation).
+## the leg's value (`when` and `stop` are not judged: an over-approximation);
+## put down on a moving platform's stop, or lying there, it rides to each of
+## the platform's other open stops, where a pip may pick it up again.
 ## A hand up across a both-hands crossing needs both pips, one at each end.
 ## Picking up, putting down and handing over are work, like a press: the
 ## walking pip (the strict one-pip probe) does none of them. An item it starts
@@ -526,6 +528,12 @@ func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary,
 					# A hand up needs two pips: one at this end, the other at the far end.
 					for other: String in ends:
 						if (actors.p0.has(floor) and actors.p1.has(other)) or (actors.p1.has(floor) and actors.p0.has(other)): carried[other] = true
+			# Put down on a platform's stop by a pip that works items, or lying there, it rides to every other open stop.
+			for platform: Dictionary in stage.get("platforms", []):
+				var stops: Array = platform.get("stops", []).map(func(stop: Variant) -> String: return str(stop))
+				if not stops.any(func(stop: String) -> bool: return lying.has(stop) or (carry and carried.has(stop) and (actors.p0.has(stop) or actors.p1.has(stop)))): continue
+				for stop: String in stops:
+					if open.has(stop): lying[stop] = true
 			for place: Dictionary in stage.get("item_spots", []):
 				if carry and carried.has(str(place.get("surface_id", ""))): spots[str(place.id)] = true
 			for leg: Dictionary in stage.get("current_legs", []):

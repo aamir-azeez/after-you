@@ -10,7 +10,7 @@ class Probe:
 	extends "res://services/soundscape.gd"
 	var pulses: Array[int] = []
 	var last_key := ""
-	func _emit_haptic(duration_ms: int) -> void:
+	func _emit_haptic(duration_ms: int, _amplitude: float = -1.0) -> void:
 		pulses.append(duration_ms)
 	func _play_cue(key: String, step: float, gain: float, live_play: bool) -> void:
 		super(key, step, gain, live_play)
@@ -1175,7 +1175,12 @@ func _run() -> void:
 	_check(absf(sound.step_voices[0].volume_db - Soundscape.STEP_DB) <= Soundscape.STEP_JITTER_DB + 0.001 and Soundscape.STEP_DB == -23.0 and sound.step_voices[0].stream.get_length() <= 0.11, "The original overlapping mix uses the short revised clips")
 	sound.consume_events(["seed_caught","island_bloomed"],true)
 	_check(sound.next_voice==2 and sound.pulses.is_empty(),"Disabling haptics leaves audible gameplay feedback enabled")
+	sound.haptic(22, 0.35)
+	_check(sound.pulses.is_empty(),"A big change never buzzes with Haptics off")
 	sound.configure({"sound":true,"haptics":true})
+	sound.haptic(22, 0.35)
+	_check(sound.pulses==[22],"A big change buzzes once with Haptics on")
+	sound.pulses.clear()
 	sound.consume_events(["seed_caught","island_bloomed"],false)
 	_check(sound.next_voice==4 and sound.pulses.is_empty(),"Replay events play sound without vibrating the device")
 	sound.set_backgrounded(true)

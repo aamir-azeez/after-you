@@ -489,9 +489,15 @@ const TAP_HAPTIC_MS := 12
 func tap_haptic() -> void:
 	if haptics_enabled and not _hushed(): _emit_haptic(TAP_HAPTIC_MS)
 
-func _emit_haptic(duration_ms: int) -> void:
+## A big change's buzz (presentation/kit/big_change.gd), when haptics are on.
+func haptic(duration_ms: int, amplitude: float) -> void:
+	if haptics_enabled and not _hushed(): _emit_haptic(duration_ms, amplitude)
+
+## Only a phone buzzes. mplitude (0 to 1) softens it where the phone can;
+## -1 is the phone's own strength.
+func _emit_haptic(duration_ms: int, amplitude: float = -1.0) -> void:
 	if PlatformSupport.is_phone():
-		Input.vibrate_handheld(duration_ms)
+		Input.vibrate_handheld(duration_ms, amplitude)
 
 ## One contact of a spirit's foot; `spirit` is its slot or role in this world.
 func play_footstep(spirit: String = "") -> void:
