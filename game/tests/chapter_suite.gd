@@ -3,7 +3,9 @@ extends SceneTree
 ## catalog knows it, it plays only the rules its definition pins (9 or later), every stage plays through with real
 ## inputs (its witness), and every recording and checkpoint verifies on its own.
 ## On open turns (core/physical/open_turns.gd) each stage's witness finishes
-## within the stage's turn cap.
+## within the stage's turn cap. Each other designed solution the routes list
+## (chapter_witness.gd "solutions") plays through too, from the checkpoint the
+## witness reached before its stage, within the cap, to a checkpoint that verifies.
 ## With --write-fixtures it also writes the definition, the checkpoints and the
 ## recorded pairs where its family keeps them (golden_support.gd
 ## fixture_prefixes), which the manifest and integration suites read.
@@ -33,6 +35,7 @@ func _run() -> void:
 	_check(evidence.error.is_empty(), "Every stage plays through with real inputs: " + str(evidence.error))
 	if evidence.error.is_empty():
 		_verify(key, level, evidence)
+		_solutions(witness, key, level, evidence)
 		if failures == 0 and "--write-fixtures" in OS.get_cmdline_user_args(): _write_fixtures(key, level, evidence)
 	print("%s: %d checks, %d failures" % [key.to_upper(), checks, failures])
 	quit(1 if failures else 0)
@@ -59,6 +62,27 @@ func _verify(key: String, level: Dictionary, evidence: Dictionary) -> void:
 		var rows: Array = evidence.get("stages", [])
 		var turns := int(rows[index].get("turns", 2)) if index < rows.size() else 2
 		_check(turns >= 2 and turns <= OpenTurns.cap(stage), "%s: its witness finishes in %d turns, within its cap of %d" % [stage.id, turns, OpenTurns.cap(stage)])
+
+## The routes' other solutions by stage, each played from the witness's checkpoint before its stage.
+func _solutions(witness: RefCounted, key: String, level: Dictionary, evidence: Dictionary) -> void:
+	var listed: Variant = witness.routes(key).get("solutions", {})
+	_check(listed is Dictionary, "The routes' solutions map stage ids to lists of routes")
+	if not listed is Dictionary: return
+	var ids: Array = level.stages.map(func(stage: Dictionary) -> String: return stage.id)
+	for stage_id: Variant in listed:
+		_check(str(stage_id) in ids and listed[stage_id] is Array, "The routes list solutions for a stage of %s: %s" % [key, stage_id])
+	var simulation: Script = Registry.simulation_script(key)
+	for index in range(level.stages.size()):
+		var stage: Dictionary = level.stages[index]
+		var routes: Variant = listed.get(stage.id, [])
+		if not routes is Array: continue
+		for route: Variant in routes:
+			var name := str(route.get("name", "")) if route is Dictionary else ""
+			var played: Dictionary = witness._stage(key, level, stage.id, evidence.checkpoints[index], route)
+			_check(played.error.is_empty(), "%s: the solution %s plays through: %s" % [stage.id, name, played.error])
+			if not played.error.is_empty(): continue
+			_check(not OpenTurns.pinned(level) or played.turns.size() <= OpenTurns.cap(stage), "%s: the solution %s finishes in %d turns, within its cap of %d" % [stage.id, name, played.turns.size(), OpenTurns.cap(stage)])
+			_check(simulation.verify_checkpoint(level, _json(played.checkpoint)).valid, "%s: the solution %s ends on a checkpoint that verifies" % [stage.id, name])
 
 func _write_fixtures(key: String, level: Dictionary, evidence: Dictionary) -> void:
 	var names := Golden.fixture_prefixes(key)

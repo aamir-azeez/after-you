@@ -16,6 +16,11 @@ extends RefCounted
 ## later one over the turn before it (which nests the rest); every later turn
 ## but the last passes once its memory is over, and the last finishes the
 ## stage. {"a", "b"} is the same as two turns.
+## The routes may also list a stage's other designed solutions, each a route
+## of the same kind with a "name": {"solutions": {stage id: [route, ...]}}.
+## play() never reads them (the witness is one route per stage); the
+## chapter's suite (chapter_suite.gd) plays each from the witness's checkpoint
+## before its stage.
 ## A witness may instead override chapter().
 const Registry = preload("res://services/chapter_registry.gd")
 const Walk = preload("res://tests/cooperative_witness.gd")
