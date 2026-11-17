@@ -329,7 +329,7 @@ describe("achievements", () => {
     /** A public win the way Player.settlePublicDuel credits it: once per duel, its moment from duelMoment. */
     const win = (storage: DurableObjectStorage, duel: string, opponent: string, at: number, trusted = false) =>
       value(creditDuelWin(storage, { duel_id: duel, opponent, decided_ms: at }, at, () => true, RATES,
-        { fresh: (s, paid, repeat) => { settleAchievements(s, at, duelMoment({ public_win: true }, paid, repeat, trusted)); }, public: true }));
+        { fresh: (s, paid, counts) => { settleAchievements(s, at, duelMoment({ public_win: true }, paid, counts)); }, public: true, trusted }));
     const finish = (storage: DurableObjectStorage, duel: string, finished: boolean, paid = true) =>
       value(creditDuelExtra(storage, { duel_id: duel, room_id: null, decided_ms: MONDAY, paid, finished }, MONDAY, () => true, RATES,
         { fresh: s => { settleAchievements(s, MONDAY, { public_duel: true }); } }));
@@ -364,21 +364,32 @@ describe("achievements", () => {
         expect(achievementsView(storage).find(item => item.id === "public_win_first")).toMatchObject({ fruits: 10, goal: 1, progress: 0, live: true });
       });
     });
-    it("count each public win once, past the weekly Pollen limit too, one per opposing pair a week, and pay all seven win goals by 200", async () => {
+    it("count each public win once, past the weekly Pollen limit too, two per opposing pair a week, and pay all seven win goals by 200", async () => {
       await inPlayer(storage => {
         settleAchievements(storage, MONDAY);
         const count = () => purse(storage, "count:public_wins").balance;
         expect(win(storage, "p-0", "pair-0", MONDAY).amount).toBe(250);
         expect(publicLines(storage)).toEqual([["public_win_first", 10]]);
-        // A retry of the same duel, and a second win over the same pair that week, count nothing.
+        // A retry of the same duel counts nothing.
         win(storage, "p-0", "pair-0", MONDAY);
-        win(storage, "p-repeat", "pair-0", MONDAY);
         expect(count()).toBe(1);
-        // A tester's repeat counts.
-        win(storage, "p-tester", "pair-0", MONDAY, true);
+        // The second win over the same pair that week counts (no Pollen bonus, but toward the goals), the third doesn't and says why.
+        expect(win(storage, "p-second", "pair-0", MONDAY)).toMatchObject({ amount: 0, reason: "same_pair" });
+        expect(win(storage, "p-second", "pair-0", MONDAY).goal_reason).toBeUndefined();
         expect(count()).toBe(2);
+        expect(win(storage, "p-third", "pair-0", MONDAY + DAY)).toMatchObject({ amount: 0, reason: "same_pair", goal_reason: "same_pair" });
+        expect(count()).toBe(2);
+        // A retry of the third answers the same reason and still counts nothing.
+        expect(win(storage, "p-third", "pair-0", MONDAY + DAY).goal_reason).toBe("same_pair");
+        expect(count()).toBe(2);
+        // A new week counts again.
+        expect(win(storage, "p-next-week", "pair-0", MONDAY + WEEK).goal_reason).toBeUndefined();
+        expect(count()).toBe(3);
+        // A tester's third counts, with no reason.
+        expect(win(storage, "p-tester", "pair-0", MONDAY, true).goal_reason).toBeUndefined();
+        expect(count()).toBe(4);
         // The week pays Pollen for three wins, yet every win over a new pair counts.
-        for (let n = 1; n <= 198; n++) win(storage, "p-" + n, "pair-" + n, MONDAY + Math.floor(n / 60) * WEEK);
+        for (let n = 1; n <= 196; n++) win(storage, "p-" + n, "pair-" + n, MONDAY + Math.floor(n / 60) * WEEK);
         expect(count()).toBe(200);
         expect(publicLines(storage).sort()).toEqual([["public_win_fifty", 50], ["public_win_first", 10], ["public_win_five", 20], ["public_win_hundred", 75],
           ["public_win_ten", 30], ["public_win_twenty_five", 40], ["public_win_two_hundred", 100]]);
@@ -390,32 +401,42 @@ describe("achievements", () => {
     });
     it("start the public wins once from the wins still kept, for a player swept before, without counting the moment's own win twice", async () => {
       await inPlayer(storage => {
-        // Kept before this goal: two public wins (one a repeat over the same pair), an older public win known by its held
-        // extra, and a friend win, with the first sweep done.
+        // Kept before this goal: three public wins over the same pair one week (two count), an older public win known by its
+        // held extra, and a friend win, with the first sweep done.
         const line = (key: string, amount: number, detail: Record<string, unknown>) => ({ key, kind: key.split(":")[0], amount, detail });
         applyLedger(storage, [line("duelwin:a", 250, { duel_id: "a", week: 1, opponent: "x", public: true }), line("duelwin:b", 0, { duel_id: "b", week: 1, opponent: "x", reason: "same_pair", public: true }),
+          line("duelwin:b2", 0, { duel_id: "b2", week: 1, opponent: "x", reason: "same_pair", public: true }), line("duelwin:b3", 0, { duel_id: "b3", week: 2, opponent: "x", public: true }),
           line("duelwin:c", 250, { duel_id: "c", week: 1, opponent: "y" }), line("duelextra:c", 40, { duel_id: "c", room_id: "r", held: 40 }), line("duelwin:d", 250, { duel_id: "d", week: 1, opponent: "z" })], MONDAY);
         setPurse(storage, "swept", { balance: 1, earned: MONDAY - DAY });
         // A new public win lands now: the catch up counts its line, and its moment adds nothing more.
         win(storage, "e", "w", MONDAY);
-        expect(purse(storage, "count:public_wins").balance).toBe(3);
+        expect(purse(storage, "count:public_wins").balance).toBe(5);
         expect(purse(storage, "swept")).toEqual({ balance: 2, earned: MONDAY - DAY });
         // The friend counter is left as the first sweep set it.
         expect(purse(storage, "count:duel_wins").balance).toBe(0);
-        expect(publicLines(storage)).toEqual([["public_win_first", 10]]);
+        expect(publicLines(storage)).toEqual([["public_win_first", 10], ["public_win_five", 20]]);
         settleAchievements(storage, MONDAY);
         win(storage, "f", "v", MONDAY);
-        expect(purse(storage, "count:public_wins").balance).toBe(4);
+        expect(purse(storage, "count:public_wins").balance).toBe(6);
       });
     });
-    it("read a duel's moment: a friend win only when paid, a public win unless a repeat, a tester's always", () => {
-      const read = (moment: Moment, paid: boolean, repeat?: boolean, trusted?: boolean) => { const next = duelMoment(moment, paid, repeat, trusted); return [!!next.duel_win, !!next.public_win]; };
+    it("read a duel's moment: a friend win only when paid, a public win unless the farming guard held it back", () => {
+      const read = (moment: Moment, paid: boolean, counts?: boolean) => { const next = duelMoment(moment, paid, counts); return [!!next.duel_win, !!next.public_win]; };
       expect(read({ duel_win: true }, true)).toEqual([true, false]);
       expect(read({ duel_win: true }, false)).toEqual([false, false]);
-      expect(read({ public_win: true }, false, false)).toEqual([false, true]);
-      expect(read({ public_win: true }, true, true)).toEqual([false, false]);
-      expect(read({ public_win: true }, false, true, true)).toEqual([false, true]);
+      expect(read({ public_win: true }, false, true)).toEqual([false, true]);
+      expect(read({ public_win: true }, true, false)).toEqual([false, false]);
       expect(read({}, true)).toEqual([false, false]);
+    });
+    it("hold a public win back only past two over the same pair a week, and never a friend duel's", async () => {
+      await inPlayer(storage => {
+        const plain = (duel: string, opponent: string, options: { public?: boolean; trusted?: boolean }) => value(creditDuelWin(storage, { duel_id: duel, opponent, decided_ms: MONDAY }, MONDAY, () => true, RATES, options));
+        expect([1, 2, 3].map(n => plain("f-" + n, "pair-f", {}).goal_reason)).toEqual([undefined, undefined, undefined]);
+        expect([1, 2, 3].map(n => plain("p-" + n, "pair-p", { public: true }).goal_reason)).toEqual([undefined, undefined, "same_pair"]);
+        // A friend win over the pair counts as one of the week's two.
+        plain("m-1", "pair-m", {});
+        expect([1, 2].map(n => plain("m-p" + n, "pair-m", { public: true }).goal_reason)).toEqual([undefined, "same_pair"]);
+      });
     });
   });
   it("mark a chapter finished together on a turn, so a clear made solo before still counts once it is played together", async () => {
