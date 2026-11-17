@@ -335,7 +335,6 @@ func _build_bridge(definition: Dictionary) -> void:
 	var lift := float(definition.get("height_cm", 0)) / 100.0
 	for index in range(before, terrain.get_child_count()):
 		terrain.get_child(index).position.y += lift
-	if _weights.has(definition.id): _weights[definition.id].set_meta("rest_y", _weights[definition.id].position.y)
 	var r: Array = definition.rect_cm
 	var deck: Node3D = _decks.get(definition.id)
 	for side: int in [-1, 1]:
@@ -417,20 +416,23 @@ func _build_gate_links(view: Dictionary) -> void:
 		match [str(gate.route_id), str(gate.get("lever_id", "")), str(gate.get("pad_id", ""))]:
 			["cliff-steps", "garden-gate", ""]:
 				# Gate cable from the winch's back edge along the grass to the folded steps.
-				_rope_path([Vector3(-11.04, 0.04, 1.80), Vector3(-11.04, 0.04, 1.62), Vector3(-12.16, 0.04, 1.62)])
+				_rope_path(str(gate.route_id), [Vector3(-11.04, 0.04, 1.80), Vector3(-11.04, 0.04, 1.62), Vector3(-12.16, 0.04, 1.62)])
 			["long-stair", "", "bucket-rope"]:
 				# The bucket rope runs over the windlass and west to the long stair's hinge.
-				_rope_path([Vector3(11.25, cliff + 0.66, -0.27), Vector3(11.10, cliff + 0.03, -0.27), Vector3(9.76, cliff + 0.03, -0.27), Vector3(9.76, cliff + 0.03, -0.18)])
+				_rope_path(str(gate.route_id), [Vector3(11.25, cliff + 0.66, -0.27), Vector3(11.10, cliff + 0.03, -0.27), Vector3(9.76, cliff + 0.03, -0.27), Vector3(9.76, cliff + 0.03, -0.18)])
 			["rope-walk-west", "", "still-holding"]:
-				_rope_path([Vector3(11.95, cliff + 0.66, -0.27), Vector3(12.10, cliff + 0.03, -0.27), Vector3(12.10, cliff + 0.03, -1.12), Vector3(12.32, cliff + 0.03, -1.12)])
+				_rope_path(str(gate.route_id), [Vector3(11.95, cliff + 0.66, -0.27), Vector3(12.10, cliff + 0.03, -0.27), Vector3(12.10, cliff + 0.03, -1.12), Vector3(12.32, cliff + 0.03, -1.12)])
 			["rope-walk-east", "", "still-holding"]:
-				_rope_path([Vector3(13.76, cliff + 0.03, -1.10), Vector3(14.24, cliff + 0.03, -1.10)])
+				_rope_path(str(gate.route_id), [Vector3(13.76, cliff + 0.03, -1.10), Vector3(14.24, cliff + 0.03, -1.10)])
 			["well-ladder", "winch-lever", ""]:
 				# The winch rope weaves past both drums to the rolled ladder.
 				# It runs under the tower step's disc, never level with its top.
-				_rope_path([Vector3(27.52, tower + 0.03, -1.44), Vector3(27.52, tower + 0.03, -1.24), Vector3(21.00, tower + 0.03, -1.24), Vector3(21.00, tower + 0.03, -0.56), Vector3(16.10, tower + 0.03, -0.56), Vector3(16.10, tower + 0.03, 0.16), Vector3(15.74, tower + 0.10, 0.16)])
+				_rope_path(str(gate.route_id), [Vector3(27.52, tower + 0.03, -1.44), Vector3(27.52, tower + 0.03, -1.24), Vector3(21.00, tower + 0.03, -1.24), Vector3(21.00, tower + 0.03, -0.56), Vector3(16.10, tower + 0.03, -0.56), Vector3(16.10, tower + 0.03, 0.16), Vector3(15.74, tower + 0.10, 0.16)])
 
-func _rope_path(points: Array) -> void:
+## A gate link's rope along `points` to crossing `route_id`, which then needs
+## no pulley (cooperative_world _hangs_pulley).
+func _rope_path(route_id: String, points: Array) -> void:
+	_cabled[route_id] = true
 	for index in range(points.size() - 1):
 		_floor_cable(points[index], points[index + 1], 0.022, ROPE)
 

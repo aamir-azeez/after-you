@@ -24,6 +24,7 @@ const DATA := {
 	"spillway": "trickle",
 	"carried_item": "parcel",
 	"current": "ripples",
+	"pulley": "lantern_hook",
 	"bridges": "timber",
 	"props": {"*": [
 		# Shore: a planted bank behind and to the left, flowers along the front.
