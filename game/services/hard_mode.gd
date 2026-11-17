@@ -23,6 +23,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 const MARKS_PATH := "user://hard-mode-v1.json"
 const INDEX_PATH := "user://hard-runs-v1.json"
 const MAX_INDEX_BYTES := 262144
@@ -47,6 +48,9 @@ const MAX_FAILED := 5
 const MAX_RUNS_BYTES := 8388608
 const MAX_MARKS_BYTES := 16384
 const MAX_STAGES := 64
+## Open turns: a slip on a stage's third turn or later also keeps the turns
+## under its memory, oldest first, so the slip replays over them.
+const CHAIN := "chain"
 
 static var _launch: Dictionary = {}
 ## Hears every Hard play recorded in the phone's own marks file (offered key, mode), done before or
@@ -75,12 +79,13 @@ static func slipped(tries: int) -> bool:
 	return tries > 1
 
 ## Why a finished turn ends the run, from its verified check ({valid,
-## snapshot}): "drowned", "failed_turn" (it cannot be kept, so the only way on
-## would be a retry), or "" when the turn can be kept.
-static func failure(verified: Dictionary) -> String:
+## snapshot, ready}) and its recording: "drowned", "failed_turn" (it cannot be
+## kept, so the only way on would be a retry), or "" when the turn can be kept
+## (OpenTurns.keepable: under open turns a pass is kept too).
+static func failure(verified: Dictionary, recording: Dictionary = {}) -> String:
 	var snapshot: Variant = verified.get("snapshot", {})
 	if snapshot is Dictionary and snapshot.get("drowned") is Dictionary and not snapshot.drowned.is_empty(): return "drowned"
-	if not bool(verified.get("valid", false)) or not snapshot is Dictionary or not bool(snapshot.get("can_commit", false)): return "failed_turn"
+	if not OpenTurns.keepable(verified, recording): return "failed_turn"
 	return ""
 
 
@@ -287,11 +292,26 @@ static func clear_journal(journey: RefCounted) -> bool:
 
 # Runs ----------------------------------------------------------------------
 
+## A slipped turn as a run keeps it: its recording, the checkpoint it was
+## played from, its memory ({} on a first turn) and, under open turns, the
+## turns under that memory (`chain`, kept only when there are any, so a
+## two-turn slip keeps its three fields).
+static func kept_slip(recording: Dictionary, checkpoint: Dictionary, prior: Dictionary, chain: Array = []) -> Dictionary:
+	var kept := {"recording": recording.duplicate(true), "checkpoint": checkpoint.duplicate(true), "prior": prior.duplicate(true)}
+	if not chain.is_empty() and not prior.is_empty(): kept[CHAIN] = chain.duplicate(true)
+	return kept
+
+## Whether a slip's fields beside recording, checkpoint and prior are its own:
+## none, or a chain of turns (OpenTurns.turns_valid).
+static func slip_fields_valid(slip: Dictionary) -> bool:
+	return slip.size() == 3 + int(slip.has(CHAIN)) and (not slip.has(CHAIN) or OpenTurns.turns_valid(slip[CHAIN]))
+
 ## A run as kept: {id, mode, kind, reason, by ("you", "friend" or "" when
 ## finished), friend (their name then), chapter_key, stage_index, role, at,
-## room_id, pairs (the stages done before, solo), slip ({} or {recording,
-## checkpoint, prior})}, and friend_id (their player id) when the room had a
-## friend, so screens name them as they are called now (hard_mode_view.gd).
+## room_id, pairs (the stages done before, solo: {a, b}, or with their passes
+## under open turns), slip ({} or kept_slip())}, and friend_id (their player
+## id) when the room had a friend, so screens name them as they are called now
+## (hard_mode_view.gd).
 static func run_record(chapter_key: String, mode: String, kind: String, reason: String, by: String, stage_index: int, role: String, pairs: Array, slip: Dictionary, friend: String = "", room_id: String = "", friend_id: String = "") -> Dictionary:
 	var at := int(Time.get_unix_time_from_system())
 	var record := {"id": "", "mode": mode, "kind": kind, "reason": reason, "by": by, "friend": friend.left(64), "chapter_key": chapter_key,
@@ -488,9 +508,9 @@ static func valid_run(run: Dictionary) -> bool:
 	if not Typed.whole_number(run.get("stage_index")) or int(run.stage_index) < 0 or int(run.stage_index) > MAX_STAGES or run.get("role") not in ["a", "b", ""] or not Typed.whole_number(run.get("at")): return false
 	if not run.get("pairs") is Array or run.pairs.size() > MAX_STAGES or not run.get("slip") is Dictionary: return false
 	for pair: Variant in run.pairs:
-		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: return false
+		if not OpenTurns.record_valid(pair): return false
 	var slip: Dictionary = run.slip
-	return slip.is_empty() or (slip.size() == 3 and slip.get("recording") is Dictionary and not slip.recording.is_empty() and slip.get("checkpoint") is Dictionary and not slip.checkpoint.is_empty() and slip.get("prior") is Dictionary)
+	return slip.is_empty() or (slip_fields_valid(slip) and slip.get("recording") is Dictionary and not slip.recording.is_empty() and slip.get("checkpoint") is Dictionary and not slip.checkpoint.is_empty() and slip.get("prior") is Dictionary and (not slip.has(CHAIN) or not slip.prior.is_empty()))
 
 static func _player_id(value: Variant) -> bool:
 	return Typed.valid_id(value)
@@ -523,9 +543,15 @@ static func drop() -> void:
 
 ## What a watch shows, as the chapter screen's replay collection: the stages
 ## done before the slip, then the slip itself from its own checkpoint, beside
-## its first turn's memory ({"a", "b", "start"}).
+## its memory ({"a", "b", "start"}). Under open turns a slip over a pass plays
+## over every turn before it, as a stage's passes do ({"a", "passes", "b",
+## "start"}: OpenTurns.pair_turns).
 static func watch_pairs(run: Dictionary) -> Array:
 	var pairs: Array = run.get("pairs", []).duplicate(true)
 	var slip: Dictionary = run.get("slip", {})
-	if not slip.is_empty(): pairs.append({"a": slip.prior.duplicate(true), "b": slip.recording.duplicate(true), "start": slip.checkpoint.duplicate(true)})
+	if slip.is_empty(): return pairs
+	var turns: Array = slip.get(CHAIN, []) + [slip.prior]
+	var part := {"a": turns[0].duplicate(true), "b": slip.recording.duplicate(true), "start": slip.checkpoint.duplicate(true)}
+	if turns.size() > 1: part.passes = turns.slice(1).duplicate(true)
+	pairs.append(part)
 	return pairs

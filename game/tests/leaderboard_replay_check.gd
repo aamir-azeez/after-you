@@ -23,6 +23,7 @@ extends RefCounted
 const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
 const BlobCodec = preload("res://services/blob_codec.gd")
+const OpenTurns = preload("res://core/physical/open_turns.gd")
 ## A stored run's checkpoint is at most this long (backend board.ts MAX_PROOF_CHARS, duels/rules.ts MAX_DUEL_PROOF_CHARS).
 const MAX_CHECKPOINT_BYTES := 1_900_000
 
@@ -46,8 +47,10 @@ static func check(entry: Dictionary) -> Dictionary:
 	for index in range(stages, 0, -1):
 		var proof: Variant = current.get("proof")
 		if not Typed.equal(current.get("stage_index"), index) or not proof is Dictionary: return _result(false, measured, "broken_chain")
-		for role: String in ["a", "b"]:
-			var turn: Variant = proof.get(role)
+		# Every turn of the stage: a and b, or every open turn (core/physical/open_turns.gd).
+		var turns := OpenTurns.proof_turns(proof)
+		if turns.is_empty(): return _result(false, measured, "broken_chain")
+		for turn: Variant in turns:
 			if not turn is Dictionary or not Typed.whole_number(turn.get("duration_ticks")): return _result(false, measured, "broken_chain")
 			if not Typed.equal(turn.get("catch_assistance"), false): return _result(false, measured, "assisted_run")
 			measured += int(turn.duration_ticks)

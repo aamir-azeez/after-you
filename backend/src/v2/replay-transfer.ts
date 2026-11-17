@@ -2,10 +2,10 @@ import { ApiError, canonicalJson, digest, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_
 import { chapter, exact, type RecordingV2 } from "./protocol";
 import type { PairV2, RoomStateV2 } from "./room";
 import { initializeReplayTransfer } from "./storage-schema";
-import { parseRow, storedRoom, storedRow, type RowData } from "./row-codec";
+import { parseRow, storedRoom, storedRow, storedTurn, type RowData } from "./row-codec";
 
 import { MAX_REPLAY_ARCHIVE_BYTES } from "./row-bound";
-import { OPEN_TURN_ID_PATTERN, turnNumber, turnSlot } from "./open-turns";
+import { OPEN_TURN_ID_PATTERN, fingerprint, turnId, turnNumber, turnSlot } from "./open-turns";
 export { MAX_REPLAY_ARCHIVE_BYTES };
 const MAX_REPLAY_ARCHIVE_NODES = 2_000_000;
 const MAX_REPLAY_ARCHIVE_DEPTH = 20;
@@ -45,8 +45,10 @@ export function captureReplay(storage: DurableObjectStorage, room: RoomStateV2):
   const turns = storage.sql.exec<{ turn_id: string; player_id: string; accepted_revision: number; data: RowData }>("SELECT turn_id,player_id,accepted_revision,data FROM turns ORDER BY rowid LIMIT 129").toArray();
   const pairs = storage.sql.exec<{ data: RowData }>("SELECT data FROM pairs ORDER BY rowid LIMIT 65").toArray();
   need(turns.length <= 128 && pairs.length <= 64);
+  // Open turns (open-turns.ts): every turn as its fingerprint, whatever its row holds, so the archive's bytes never move once the room is finished.
+  const open = chapter(room).open_turns !== undefined;
   const value: ReplayArchive = { schema_version: 1, room: safe,
-    turns: turns.map(({ data, ...facts }) => ({ ...facts, recording: parseRow<RecordingV2>(data) })), pairs: pairs.map(row => parseRow<PairV2>(row.data)) };
+    turns: turns.map(({ data, ...facts }) => { const recording = parseRow<RecordingV2>(data); return { ...facts, recording: open ? fingerprint(recording) : recording }; }), pairs: pairs.map(row => parseRow<PairV2>(row.data)) };
   need(new TextEncoder().encode(canonicalJson(value)).byteLength <= MAX_REPLAY_ARCHIVE_BYTES, "replay_archive_too_large");
   return value;
 }
@@ -129,7 +131,7 @@ export function restoreReplay(storage: DurableObjectStorage, tombstone: Transfer
   // A restore cannot roll back photo uploads/deletions, reactions, or any retry receipt.
   const { replay_transfer_version: _version, checkpoint_hash: _hash, ...metadata } = tombstone; void _version; void _hash;
   storage.sql.exec("UPDATE room SET data=? WHERE id=1", storedRoom({ ...metadata, checkpoint: archive.room.checkpoint }, compress));
-  for (const turn of archive.turns) storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", storedRow(turn.recording, compress), turn.turn_id);
+  for (const turn of archive.turns) storage.sql.exec("UPDATE turns SET data=? WHERE turn_id=?", storedTurn(turn.recording, compress), turn.turn_id);
   for (const pair of archive.pairs) storage.sql.exec("UPDATE pairs SET data=? WHERE pair_id=?", storedRow(pair, compress), pair.pair_id);
   const next: ReplayTransfer = { ...transfer, manifest: { ...transfer.manifest, epoch: transfer.manifest.epoch + 1 }, acked_player_ids: [], transferred: false };
   writeTransfer(storage, next);
@@ -180,7 +182,7 @@ export function validateTransfer(input: unknown): ReplayTransfer {
   return value as ReplayTransfer;
 }
 export function validateCompactedReplay(rows: Row[][], raw: Record<string, unknown>, transfer: ReplayTransfer) {
-  const m = transfer.manifest;
+  const m = transfer.manifest, open = chapter(m.room).open_turns !== undefined;
   need(transfer.transferred && raw.replay_transfer_version === 1);
   const { invite_code, replay_transfer_version: _version, ...safe } = raw; void _version;
   text(invite_code, /^[A-F0-9]{20}$/); need(same(safe, m.room));
@@ -199,10 +201,22 @@ export function validateCompactedReplay(rows: Row[][], raw: Record<string, unkno
     if (r.operation === "turns") {
       const t = m.turns.find(t => t.turn_id === r.turn_id); need(t && t.player_id === owner && t.accepted_revision === r.accepted_revision && t.recording_hash === r.recording_hash && !seen.has(t.turn_id)); seen.add(t.turn_id);
       need(t.turn_id.startsWith(`t${r.branch}-${r.stage_index}-`));
-      if (t.turn_id.endsWith("-a")) need(r.pair_id === null && checkpoints.get(String(r.checkpoint_hash)) === r.stage_index);
-      else { const p = m.pairs.find(p => p.pair_id === r.pair_id); need(p && p.pair_id === `p${r.branch}-${r.stage_index}` && p.checkpoint_hash === r.checkpoint_hash); }
+      // Open turns: a pass is receipted as a first turn is (no pair, the stage's checkpoint); only the closing turn names the pair.
+      if (open ? r.pair_id === null : t.turn_id.endsWith("-a")) need(r.pair_id === null && checkpoints.get(String(r.checkpoint_hash)) === r.stage_index);
+      else { const p = m.pairs.find(p => p.pair_id === r.pair_id); need(p && p.pair_id === `p${r.branch}-${r.stage_index}` && p.checkpoint_hash === r.checkpoint_hash && (!open || p.b_hash === r.recording_hash)); }
     } else need(r.operation === "fork" && Number(r.branch) > 0 && r.turn_id === null && r.recording_hash === null && r.pair_id === null && checkpoints.get(String(r.checkpoint_hash)) === r.stage_index);
   }
-  need(seen.size === turns.length, "snapshot_missing_receipt");
+  // Open turns: playing a turn again copies the stage's turns before it onto the new branch with no receipt of their own
+  // (room.ts copyTurns): each is the same turn one branch back, they lead their stage, and a turn follows them.
+  let copies = 0;
+  if (open) for (const t of m.turns) {
+    if (seen.has(t.turn_id)) continue;
+    const [branch, index] = t.turn_id.slice(1).split("-").map(Number), n = turnNumber(t.turn_id), at = (b: number, k: number) => m.turns.find(other => other.turn_id === turnId(b, index, k));
+    const source = branch > 0 ? at(branch - 1, n) : undefined;
+    need(source && source.recording_hash === t.recording_hash && source.player_id === t.player_id && source.accepted_revision === t.accepted_revision &&
+      (n === 1 || !seen.has(turnId(branch, index, n - 1))) && at(branch, n + 1) !== undefined, "snapshot_missing_receipt");
+    copies++;
+  }
+  need(seen.size + copies === turns.length, "snapshot_missing_receipt");
   return { state: m.room, turns: new Map(m.turns.map(t => [t.turn_id, { recording: { recording_hash: t.recording_hash }, row: { player_id: t.player_id } }])), pairs: new Map(m.pairs.map(p => [p.pair_id, { a: { recording_hash: p.a_hash }, b: { recording_hash: p.b_hash } }])) };
 }

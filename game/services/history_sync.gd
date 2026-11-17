@@ -16,6 +16,7 @@ const Reaper = preload("res://services/worker_reaper.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
 const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 
 const ATTEMPT_KEYS := ["position", "branch", "digest", "link", "byte_length", "last_stage", "state", "acked_by_you", "partner_acked", "wanted_by_partner", "pair_ids"]
 
@@ -70,7 +71,8 @@ static func check_download(tagged: PackedByteArray, record: Dictionary, previous
 	var bytes := Store.verified_bytes(tagged, record)
 	if bytes.is_empty(): return {}
 	var blob: Variant = JSON.parse_string(bytes.get_string_from_utf8())
-	if not blob is Dictionary or not Typed.equal(blob.get("format"), "after-you.attempt") or not Typed.equal(blob.get("format_version"), 1.0) or not Typed.equal(blob.get("room_id"), room_id) or not Typed.equal(blob.get("position"), float(record.position)): return {}
+	# Format 2 is an open turns room's (WIRE.md section 6): flat checkpoints and its turns as the server held them.
+	if not blob is Dictionary or not Typed.equal(blob.get("format"), "after-you.attempt") or not blob.get("format_version") in [1.0, 2.0] or not Typed.equal(blob.get("room_id"), room_id) or not Typed.equal(blob.get("position"), float(record.position)): return {}
 	if Store.link(blob, int(record.position), previous_link, record.digest, int(record.byte_length)) != record.link: return {}
 	return blob
 
@@ -203,6 +205,23 @@ func local_pair(server_key: String, owner: String, room_id: String, chapter_key:
 	if not loaded.get("ok", false): return {}
 	var blob: Variant = JSON.parse_string(loaded.bytes.get_string_from_utf8())
 	if not blob is Dictionary or not blob.get("checkpoint") is Dictionary or not Typed.equal(blob.get("room_id"), room_id): return {}
-	var pair := CheckpointPairs.pair(chapter_key, blob.checkpoint, stage, position)
+	var checkpoint: Dictionary = blob.checkpoint
+	if Typed.equal(blob.get("format_version"), 2.0): checkpoint = _open_checkpoint(owner, room_id, chapter_key, blob, stage)
+	if checkpoint.is_empty(): return {}
+	var pair := CheckpointPairs.pair(chapter_key, checkpoint, stage, position)
 	if not pair.is_empty(): pair.pair_id = pair_id
 	return pair
+
+## Open turns fingerprints (format 2): stage `stage`'s flat checkpoint from the
+## attempt, nested from this phone's copies, which first keep every turn the
+## attempt still holds in full. {} when this phone lacks a turn.
+static func _open_checkpoint(owner: String, room_id: String, chapter_key: String, blob: Dictionary, stage: int) -> Dictionary:
+	var copies := OpenTurnStore.new(owner, room_id)
+	var flats: Array = blob.get("checkpoints", []) if blob.get("checkpoints") is Array else []
+	for item: Variant in flats:
+		if not item is Dictionary or not item.get("turn_hashes") is Array: continue
+		for turn: Variant in blob.get("turns", []):
+			if OpenTurnStore.full(turn) and turn.recording_hash in item.turn_hashes: copies.keep_turn(Typed.as_int(item.get("stage_index"), 0) - 1, turn)
+	for item: Variant in flats:
+		if item is Dictionary and Typed.as_int(item.get("stage_index"), -1) == stage + 1: return copies.nested(chapter_key, item)
+	return {}

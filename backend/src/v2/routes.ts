@@ -43,7 +43,7 @@ import { leaderboardsCapability } from "../leaderboards/routes";
 import { postFinishedRun, postPreparedRun } from "../leaderboards/submit";
 import { claimDuelRoom, duelsCapability, parseDuelAsk, prepareDuelRoom } from "../duels/routes";
 import { duelsOn, noteDuelTurn, sendDuelNote } from "../duels/turn-hook";
-import { compressedAsked, compressedCapability, exactTurnFields, readTurnBody, replyResponse } from "./turn-wire";
+import { MAX_TURN_BODY_BYTES, compressedAsked, compressedCapability, exactTurnFields, readTurnBody, replyResponse } from "./turn-wire";
 import type { RoomV2, TurnAsk } from "./room";
 import type { LeaderboardRun } from "../leaderboards/run";
 import { sendTurnHints } from "../duels/news";
@@ -228,6 +228,17 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     throw new ApiError(405, "method_not_allowed");
   }
+  // Open turns send-back (v2/turn-copies.ts; WIRE.md section 9): one room request each; the room runs the pair gate.
+  const copiesMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/turn-copies(?:\/(want|ack))?$/);
+  if (copiesMatch) {
+    const [, roomId, action] = copiesMatch;
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "turn_copies_standalone_only");
+    await limitRoomTransfer(env, "copies", playerId, roomId);
+    // Copies go to the room unread, as a turn does (turn-wire.ts); an ask or an acknowledgement is a short list of hashes.
+    const body = action ? await boundedJson(request, 16_384) : await readTurnBody(request);
+    return json(unwrap(await env.ROOMS_V2.getByName(roomId).turnCopies(playerId, action === "want" || action === "ack" ? action : "send", body, safetyToken)));
+  }
   const historyMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/history(?:\/([0-9]{1,2})(?:\/(ack|want))?)?$/);
   if (historyMatch) {
     const [, roomId, item, action] = historyMatch, target = env.ROOMS_V2.getByName(roomId), support = historySupport(request);
@@ -291,10 +302,14 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (operation === "hard-reset" && request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
     if (operation === "hard") return json(unwrap(await room.hardFailures(playerId, parseSince(item))));
-    // The slip is a turn's recording: a longer chapter's own turn bound applies, as for turns.
+    // The slip is a turn's recording: a longer chapter's own turn bound applies, as for turns. Under open turns a slip
+    // also carries the turns under its memory (hard-mode.ts chain), so it takes the widest turn body, as a posted run.
     let resetLimit = MAX_V2_BODY_BYTES;
     if (Number(request.headers.get("content-length")) > resetLimit) {
-      try { const probe = await room.snapshot(playerId); if (probe.ok) resetLimit = chapter(probe.value).limits?.turn_body_bytes ?? resetLimit; } catch { /* keep the published bound */ }
+      try {
+        const probe = await room.snapshot(playerId);
+        if (probe.ok) { const selected = chapter(probe.value); resetLimit = selected.open_turns ? MAX_TURN_BODY_BYTES : selected.limits?.turn_body_bytes ?? resetLimit; }
+      } catch { /* keep the published bound */ }
     }
     return json(unwrap(await room.hardReset(playerId, await boundedJson(request, resetLimit))));
   }

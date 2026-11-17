@@ -10,6 +10,7 @@ const RoomStages = preload("res://services/room_stages.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Typed = preload("res://services/typed_values.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const MAX_ARCHIVE_BYTES := 16 * 1024 * 1024
 const MAX_INTEGER := 9007199254740991
 const ROOM_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint_hash", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at"]
@@ -256,9 +257,15 @@ static func _manifest_valid(value: Variant, owner: String, room_id: String) -> b
 	return true
 
 static func verify_archive(archive: Variant, manifest: Dictionary, owner: String, room_id: String) -> Dictionary:
-	# Pure worker: no files, identity observations, transport or shared writers.
+	# Pure worker: no identity observations, transport or shared writers. It
+	# reads only this phone's own open turns copies (services/open_turn_store.gd).
 	if not _manifest_valid(manifest, owner, room_id) or not Coordinator._bounded_nodes(archive, MAX_ARCHIVE_BYTES, 2000000) or not archive is Dictionary or not _exact(archive, ["schema_version", "room", "turns", "pairs"]) or not Typed.equal(archive.schema_version, 1) or not archive.room is Dictionary or not archive.turns is Array or not archive.pairs is Array: return _failure("invalid_replay_archive")
 	if Canonical.digest(archive) != manifest.archive_hash or archive.turns.size() != manifest.turns.size() or archive.pairs.size() != manifest.pairs.size(): return _failure("replay_archive_mismatch")
+	# Open turns fingerprints (WIRE.md section 7): the archive's earlier turns are
+	# fingerprints and its checkpoints flat; this phone's copies fill them first.
+	if OpenTurns.pinned(Registry.definition(Registry.resolve(archive.room))):
+		archive = _with_copies(archive, owner, room_id, Registry.resolve(archive.room))
+		if archive.is_empty(): return _failure("turns_missing")
 	var room: Dictionary = archive.room
 	var metadata := room.duplicate()
 	var checkpoint: Variant = metadata.get("checkpoint")
@@ -338,6 +345,33 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 ## Whether `item`'s accepted revision is its own: no other turn has it, or
 ## (open turns) the turn is a copy a self redo made of that turn onto a later
 ## branch, with the same stage, number, record and player.
+## `archive` with every fingerprint turn and flat checkpoint filled from
+## `owner`'s copies of the room; {} when any is missing here.
+static func _with_copies(archive: Dictionary, owner: String, room_id: String, chapter: String) -> Dictionary:
+	var store := OpenTurnStore.new(owner, room_id)
+	var result: Dictionary = archive.duplicate(true)
+	var full := {}
+	for item: Variant in result.turns:
+		if not item is Dictionary or not item.get("recording") is Dictionary: return {}
+		var recording: Dictionary = item.recording
+		if OpenTurnStore.fingerprint(recording):
+			var found: Dictionary = store.find_turn(str(recording.recording_hash))
+			if found.is_empty() or not OpenTurnStore.matches(found.record, recording): return {}
+			item.recording = found.record
+		full[str(item.recording.get("recording_hash", ""))] = item.recording
+	for pair: Variant in result.pairs:
+		if not pair is Dictionary or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary or not pair.get("checkpoint") is Dictionary: return {}
+		for role: String in ["a", "b"]:
+			if OpenTurnStore.fingerprint(pair[role]):
+				if not full.has(pair[role].recording_hash): return {}
+				pair[role] = full[pair[role].recording_hash].duplicate(true)
+		pair.checkpoint = store.nested(chapter, pair.checkpoint)
+		if pair.checkpoint.is_empty(): return {}
+	if result.room.get("checkpoint") is Dictionary:
+		result.room.checkpoint = store.nested(chapter, result.room.checkpoint)
+		if result.room.checkpoint.is_empty(): return {}
+	return result
+
 static func _revision_free(revisions: Dictionary, item: Dictionary, open: bool) -> bool:
 	var other: Variant = revisions.get(item.accepted_revision)
 	if other == null: return true

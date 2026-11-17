@@ -62,11 +62,15 @@ const VALVE_MARK_REACH := 0.275
 ## Every selector's speech bubble points at its lever, like every chapter's.
 ## A wheel's bubble sits this far sideways on screen (metres; the kit clamps a
 ## shift to the farthest its tail still meets the body), clear of its valve's
-## sign: the tide's and the chamber's to the left; the sea's centred, so once
-## it has risen over the gate-bar and sea-bar levers it stays clear of jetty-1's
-## gauge, with or without a spirit at its lever. Whatever a bubble would still
-## cover, it rises over (_clear_scenery); its tail stays on its lever.
-const BUBBLE_SHIFTS := {"tide": -4.0, "chamber": -4.0, "basin": 0.1}
+## sign: the tide's and the chamber's to the left. The sea's keeps one spot on
+## screen wherever its valve stands (BASIN_BUBBLE_CM), so once it has risen over
+## the gate-bar and sea-bar levers it stays clear of jetty-1's gauge and of the
+## tide's bubble, with or without a spirit at its lever. Whatever a bubble would
+## still cover, it rises over (_clear_scenery); its tail stays on its lever.
+const BUBBLE_SHIFTS := {"tide": -4.0, "chamber": -4.0}
+## Where the sea's bubble stands, east to west (cm): 10 cm east of its valve's
+## first spot.
+const BASIN_BUBBLE_CM := -302
 ## A bubble rises over a gauge's head, another control's valve, another
 ## lever's knob or a pad once it covers more than this share of it (the share the journey worlds
 ## allow over a spirit).
@@ -495,6 +499,7 @@ func _look_marks(control: Dictionary) -> Array:
 	return control.get("values", []).map(func(value: Variant) -> int: return _water_mark(str(value)))
 
 func _selector_bubble_shift(control: Dictionary) -> float:
+	if control.id == "basin": return float(BASIN_BUBBLE_CM - int(control.position_cm[0])) / 100.0
 	return float(BUBBLE_SHIFTS.get(control.id, 0.0))
 
 ## A small upright sign on a valve's post: a wave for the harbour tide, a

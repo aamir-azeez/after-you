@@ -69,6 +69,11 @@ export function storedRow(value: unknown, compress: boolean): RowData {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
+/** A turn row: a turn with its runs as storedRow writes it, and an open turns fingerprint (no runs, open-turns.ts) always as text, so SQL tells the two apart. */
+export function storedTurn(recording: object, compress: boolean): RowData {
+  return storedRow(recording, compress && (Object.hasOwn(recording, "packed") || Object.hasOwn(recording, "actions")));
+}
+
 /** A room row's value with its checkpoint as stored; a packed one is read back. Tombstones and markers pass through. */
 export function parseRoom(data: string): Record<string, unknown> {
   const value = JSON.parse(data) as Record<string, unknown>;

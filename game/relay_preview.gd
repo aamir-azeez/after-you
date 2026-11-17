@@ -2465,13 +2465,13 @@ func _update_hud(state: Dictionary) -> void:
 			title = "%s · %d / %d · %s" % [presentation.title, index+1, definition.stages.size(), turn]
 			display = state.duplicate()
 			display.message = presentation["hint_"+displayed_role]
-	# Open turns: a first turn may be saved before its part is done (part_done).
-	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("part_done",state.get("can_commit",false)):
+	# Open turns never say a turn is ready: the pips find that out themselves (owner, 2026-11-16).
+	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false) and not OpenTurns.pinned(definition):
 		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22
 	display = _name_goal_place(display)
 	display = _name_lever_action(display)
-	if is_instance_valid(world) and world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(mode == "play")
+	if is_instance_valid(world) and world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(mode == "play", hard != null)
 	_update_memory_wait_hud()
 	if turn.is_empty(): title = title.trim_suffix(" · ")
 	if controls.has_method("show_turns"): controls.show_turns(open, _own_room_color())
@@ -2670,8 +2670,7 @@ func _show_review() -> void:
 		_show_ending_card(ending)
 		return
 	# Open turns: a pass is saved too, when its check says it may be the friend's memory.
-	var passing: bool = review.get("role") == "b" and review.get("completed") == false and bool(verified.get("ready", false))
-	var can_save := bool(verified.get("valid", false)) and (bool(verified.get("snapshot", {}).get("can_commit", false)) or passing)
+	var can_save := OpenTurns.keepable(verified, review)
 	if can_save: _start_prefetch()
 	var explanation: String = hard_flow.review_body(PlayerCopy.RELAY_PREVIEW_B9074234FC11)
 	if not can_save:

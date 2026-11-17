@@ -787,5 +787,9 @@
 			"surface_id": "partner-bank"
 		}
 	},
+	"turn_limits": {
+		"a_ticks": 3600,
+		"b_ticks": 3600
+	},
 	"version": 3
 }
