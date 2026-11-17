@@ -1,0 +1,24 @@
+{
+  "catch_assistance": true,
+  "checkpoint_hash": "3a1b45ec23071229786b841b1a5ef293dece0032d146bd96bdfe611f1603110b",
+  "completed": true,
+  "definition_hash": "f4c5ae4b9b1ba742fb4b33a3baca27f2360e723e6f87d01c31bff157182e2527",
+  "duration_ticks": 547.0,
+  "final_state_hash": "d17fdc7f0b7961cbd62e100fcd0943efeadd08e1df2a15236f1c4e751d2966ef",
+  "level_id": "item-ride-witness",
+  "level_version": 1.0,
+  "outcome": {
+    "objective_complete": true,
+    "source_ready": true
+  },
+  "packed": "AQ4YAGQCADKSAgAAPJwAAgAAAwAAImQAAjIAIpwAAs4AAgAAAwAAPGQA0gQAABtaF5llphyVDLg1RbR1pB+3si33T2vPzmAXqiO/7WLjgjDMEAJ7Zq/1eq3tBBAqetqkLGPGD8MN7XvMw/21DbJMKIKylclDVurb1rxnsuaW1T7dvFLmONC0zBQ7KjMeG9LeOyavBloVAohtalP7XB0tGmL/gkV6kHzGXYeCKaWpy7/0n9tLrHh4PlRrBF9tbCwRRYeH82G0xA09lIk4SloMJsNFcaJa9HNeGsa0fWYvSg0BpK3LNqdeesS2We1fDmWdgK11A14u8ZDkicRy3wg7JG1xIO4V8g==",
+  "player_slot": "p1",
+  "recording_hash": "16992341ad0dba39d3a1ff9c78d6d7bbff14c681606005deca8f88bbbf45b206",
+  "role": "b",
+  "schema_version": 7.0,
+  "simulation_version": 16.0,
+  "source_recording_hash": "56dab238240ad89e63fb3f49cb8d8f7fbe5ba3952e3991445da0ee3779424fa8",
+  "stage_id": "home",
+  "stage_version": 1.0,
+  "tick_rate": 30.0
+}

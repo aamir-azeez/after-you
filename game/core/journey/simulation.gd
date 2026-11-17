@@ -180,7 +180,7 @@ func _refresh_routes() -> void:
 ## it stood when none or several do (its first stop at the start). When it
 ## moves, every pip on the old stop rides along to the same spot on the new
 ## one, the live pip and the memory alike (_place_memory keeps the memory
-## there afterwards).
+## there afterwards), and so does every item put down on it.
 func _move_platforms(was: Dictionary) -> void:
 	for entry: Array in _platforms:
 		var stops: Array = entry[1]
@@ -196,9 +196,15 @@ func _move_platforms(was: Dictionary) -> void:
 			if str(_players[slot].surface_id) != str(before.id): continue
 			_players[slot] = _shifted(_players[slot], before, at)
 			rode = true
+		for id: String in _item_order:
+			var item: Dictionary = _mechanisms.items[id]
+			if not str(item.holder).is_empty() or str(item.surface_id) != str(before.id): continue
+			_mechanisms.items[id] = _shifted(item, before, at)
+			rode = true
 		if rode: _events.append("rode:" + str(entry[0].id))
 
-## `player` moved from platform stop `from` to the same spot on stop `to`.
+## `player` (a pip, or an item resting loose) moved from platform stop `from`
+## to the same spot on stop `to`.
 static func _shifted(player: Dictionary, from: Dictionary, to: Dictionary) -> Dictionary:
 	var moved := player.duplicate()
 	moved.x = int(player.x) - int(from.rect_cm[0]) + int(to.rect_cm[0])
@@ -536,7 +542,7 @@ func _item_action() -> Dictionary:
 	var mine := CarriedItems.held_by(items, active_slot)
 	if not mine.is_empty():
 		if CarriedItems.held_by(items, other).is_empty() and CarriedItems.can_hand(level, _hands, player, _players[other], _routes): return _action("give", CarriedItems.LABELS.give, true, mine)
-		if not CarriedItems.lay(level, player).is_empty(): return _action("put", CarriedItems.LABELS.put, true, mine)
+		if not CarriedItems.lay(level, player, _standing_stops()).is_empty(): return _action("put", CarriedItems.LABELS.put, true, mine)
 		return _action("", "", false, "")
 	if _hands.has(str(player.surface_id)): return _action("", "", false, "")
 	for id: String in _item_order:
@@ -562,14 +568,22 @@ func _give(id: String, slot: String) -> void:
 	_legs_taken.erase(id)
 	_events.append("item_given:" + id)
 
-## Puts item `id` down where `at` (a player) stands; false off an island.
+## Puts item `id` down where `at` (a player) stands; false off an island or
+## a platform's standing stop.
 func _put(id: String, at: Dictionary) -> bool:
-	var rest := CarriedItems.lay(level, at)
+	var rest := CarriedItems.lay(level, at, _standing_stops())
 	if rest.is_empty(): return false
 	_mechanisms.items[id] = rest
 	_legs_taken.erase(id)
 	_events.append("item_put:" + id)
 	return true
+
+## The stops the stage's platforms stand at now, by id (an item may rest there).
+func _standing_stops() -> Dictionary:
+	var standing: Dictionary = {}
+	for id: String in _stops:
+		if bool(_routes.get(id, false)): standing[id] = true
+	return standing
 
 ## The memory's own take, put and give, on the ticks it did them, against the
 ## live state (header of carried_items.gd), then the both-hands rule for it.

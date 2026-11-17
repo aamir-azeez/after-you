@@ -10,6 +10,11 @@ import b from "../../game/tests/fixtures/carried_items/b.json";
 import c from "../../game/tests/fixtures/carried_items/c.json";
 import closing from "../../game/tests/fixtures/carried_items/checkpoint.json";
 import setEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-set-the-tide-checkpoint.json";
+import rideDefinition from "../../game/tests/fixtures/item_rides/definition.json";
+import rideInitial from "../../game/tests/fixtures/item_rides/initial.json";
+import rideA from "../../game/tests/fixtures/item_rides/a.json";
+import rideB from "../../game/tests/fixtures/item_rides/b.json";
+import rideEnd from "../../game/tests/fixtures/item_rides/checkpoint.json";
 
 /**
  * Carried items (rules 16, src/v2/protocol-items.ts) on the phone's witness level
@@ -62,6 +67,26 @@ describe("carried items", () => {
     await expect(turnOfTheTideV3.checkpoint(await rehash(value), tideStart, proof.turns[0], proof.turns.at(-1), proof.turns.slice(1, -1))).rejects.toMatchObject({ code: "unexpected_fields" });
     const older = { ...clone(definition), simulation_version: 15 };
     expect(() => journeyAdapter(older as any, initial as unknown as ChapterCheckpoint, "0".repeat(64))).toThrow("rules 16");
+  });
+
+  // The item ride witness (game/tests/item_ride_witness.gd; game/tests/test_carried_items.gd writes these files):
+  // the memory's pipsport rides the lift up, is taken at the top, put back, and rides down again.
+  it("accepts turns where a lift carries the pipsport, and the stage they close with it resting on the lift", async () => {
+    const adapter = journeyAdapter(rideDefinition as any, rideInitial as unknown as ChapterCheckpoint, await digest(canonicalJson(rideDefinition)));
+    const [rideFirst, rideLast] = [rideA, rideB] as unknown as ChapterRecording[];
+    expect(adapter.simulation_version).toBe(16);
+    for (const turn of [rideFirst, rideLast]) expect(await adapter.recording(turn)).toBeTruthy();
+    expect(await adapter.checkpoint(rideEnd, adapter.initial(), rideFirst, rideLast, [])).toEqual(rideEnd);
+    const moved = async (state: Json) => {
+      const value: Json = clone(rideEnd);
+      value.mechanisms.items.pipsport = state;
+      return adapter.checkpoint(await rehash(value), adapter.initial(), rideFirst, rideLast, []);
+    };
+    // On either stop of the lift, at the stop's height; never on it at the wrong height, nor on a crossing that is no platform's.
+    expect(await moved({ holder: "", spot: "", x: 460, z: 200, height: 96, surface_id: "lift-high" })).toBeTruthy();
+    await expect(moved({ holder: "", spot: "", x: 460, z: 200, height: 96, surface_id: "lift-low" })).rejects.toMatchObject({ code: "checkpoint_item_mismatch" });
+    await expect(moved({ holder: "", spot: "", x: 450, z: 380, height: 48, surface_id: "ladder" })).rejects.toMatchObject({ code: "checkpoint_item_mismatch" });
+    await expect(moved({ holder: "", spot: "", x: 600, z: 200, height: 0, surface_id: "lift-low" })).rejects.toMatchObject({ code: "checkpoint_item_mismatch" });
   });
 
   it("reads the item terms as the phone does", () => {

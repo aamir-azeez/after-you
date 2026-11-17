@@ -20,11 +20,19 @@ extends SceneTree
 ##   the ferry), a held board stops a leg, the memory's turn moves it in the
 ##   live world, and an item set down on a leg's start with the wheel right
 ##   moves at once;
-## - the server's witness files (tests/fixtures/carried_items/, read by backend/test/carried-items.test.ts) are what
-##   this suite derives; `-- --write` writes them again.
+## - items ride platforms (tests/item_ride_witness.gd): put down on a raft by
+##   the memory, the live pip's pull carries it over the water and it is picked
+##   up at the far stop; put down on a lift, the pan sends it up (it weighs no
+##   pan itself), it is picked up at the top, put back and rides down again;
+##   both turns replay exactly, from a trace or simulated, and the stage's
+##   checkpoint (the pipsport resting on the lift) derives and verifies;
+## - the server's witness files (tests/fixtures/carried_items/ and
+##   tests/fixtures/item_rides/, read by backend/test/carried-items.test.ts) are
+##   what this suite derives; `-- --write` writes them again.
 const Simulation = preload("res://core/journey/simulation.gd")
 const Proof = preload("res://core/physical/two_pair_proof.gd")
 const CarriedItems = preload("res://core/physical/carried_items.gd")
+const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
@@ -32,8 +40,10 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Level = preload("res://tests/carried_items_level.gd")
+const RideWitness = preload("res://tests/item_ride_witness.gd")
 const RULES := OpenControls.PIECES_RULES_VERSION
 const SERVER_FIXTURES := "res://tests/fixtures/carried_items/"
+const RIDE_FIXTURES := "res://tests/fixtures/item_rides/"
 const POST := [-350, 60]
 const FOOT := [-130, 0]
 const TOP := [30, 0]
@@ -59,6 +69,8 @@ func _run() -> void:
 		_next_stage(stage_one)
 		_current(stage_one)
 		_server_files(stage_one)
+	_raft_ride()
+	_lift_ride()
 	print("CARRIED ITEMS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -431,12 +443,97 @@ func _hatch() -> void:
 	_check(open.context_action().id == "give", "Unbolted, it can be handed up")
 	_check(CarriedItems.can_hand(level, {"ladder": true}, below.players.p0, below.players.p1, {"ladder": true}) and not CarriedItems.can_hand(level, {"ladder": true}, below.players.p0, below.players.p1, {}), "can_hand asks the crossing to be open")
 
+# --- Items ride platforms (core/journey/simulation.gd _move_platforms) -------------
+
+## The memory puts the pipsport down on the raft; the live pip's pull carries it over.
+func _raft_ride() -> void:
+	var ride := RideWitness.definition()
+	var shore := RideWitness.initial_checkpoint(ride)
+	shore.players.p1 = {"x": 300, "z": 880, "height": 0, "surface_id": "isle"}
+	var a_sim := _sim(ride, "home", shore)
+	_go(a_sim, [200, 440])
+	_check(a_sim._players.p0.surface_id == "raft-north" and a_sim.context_action().id == "put", "On the raft the carrier may put the pipsport down")
+	var put := _tap(a_sim)
+	var state: Dictionary = a_sim._mechanisms.items.pipsport
+	_check(state.holder == "" and state.surface_id == "raft-north" and int(state.x) == 200 and int(state.z) == 440, "Put down on the raft, it rests at the pip's feet: %s" % [state])
+	_go(a_sim, [200, 300])
+	_still(a_sim, 10)
+	var b_sim := _sim(ride, "home", shore, _record(a_sim))
+	_until(b_sim, put + 2)
+	_check(b_sim._mechanisms.items.pipsport.surface_id == "raft-north", "The memory puts it down on the raft in the live world")
+	_tap(b_sim)
+	state = b_sim._mechanisms.items.pipsport
+	_check(b_sim._mechanisms.controls.rope == "SOUTH" and state.surface_id == "raft-south" and int(state.z) == 660 and int(state.x) == 200 and "rode:raft" in b_sim._events, "The live pip's pull carries it over the water: %s" % [state])
+	_go(b_sim, [200, 690])
+	_check(b_sim._players.p1.surface_id == "raft-south" and b_sim.context_action().id == "take", "At the far stop it may be picked up again")
+	_tap(b_sim)
+	_check(b_sim._mechanisms.items.pipsport.holder == "p1", "And it is")
+
+## The lift witness through the real proof: the memory's put rides up, is
+## taken at the top, put back, and rides down when the memory leaves the pan.
+func _lift_ride() -> void:
+	var ride := RideWitness.definition()
+	var begin := RideWitness.initial_checkpoint(ride)
+	var ride_proof := Proof.new(RideWitness, Simulation, RULES, Simulation.CURRENT_SIMULATION_VERSION)
+	_check(CarriedItems.problems(ride).is_empty() and PiecesRules.problems(ride).is_empty(), "The item ride witness is sound")
+	# Turn 1: p0 puts the pipsport on the lift, stands in the pan, then climbs to the lamp.
+	var a_sim := _sim(ride, "home", begin)
+	_go(a_sim, [450, 200])
+	_tap(a_sim)
+	_check(a_sim._mechanisms.items.pipsport.surface_id == "lift-low", "Put down on the lift")
+	_go(a_sim, RideWitness.PAN)
+	var state: Dictionary = a_sim._mechanisms.items.pipsport
+	_check(bool(a_sim._routes["lift-high"]) and state.surface_id == "lift-high" and int(state.height) == 96 and int(state.x) == 450, "Weight in the pan sends the lift up with the pipsport on it: %s" % [state])
+	_until(a_sim, 400)
+	_go(a_sim, [60, 350])
+	_check(a_sim._mechanisms.items.pipsport.surface_id == "lift-low" and not bool(a_sim._routes["lift-high"]), "Out of the pan, the lift comes down with it: the pipsport on the lift weighs no pan")
+	_go(a_sim, [600, 350])
+	_go(a_sim, RideWitness.LAMP)
+	_check(a_sim._players.p0.surface_id == "stilts", "The empty pip climbs the rope ladder")
+	_still(a_sim, 10)
+	var a := _record(a_sim)
+	# Turn 2: p1 takes it off the lift at the top, puts it back, and it rides down.
+	var b_sim := _sim(ride, "home", begin, a)
+	_go(b_sim, [700, 200])
+	_until(b_sim, 150)
+	_go(b_sim, [460, 200])
+	_check(b_sim._players.p1.surface_id == "lift-high" and b_sim.context_action().id == "take", "The memory's put rode up: the live pip may pick it up at the top")
+	_tap(b_sim)
+	_check(b_sim._mechanisms.items.pipsport.holder == "p1", "And takes it")
+	_go(b_sim, [600, 200])
+	_go(b_sim, [460, 200])
+	_check(b_sim.context_action().id == "put", "Back on the lift it may put it down again")
+	_tap(b_sim)
+	_go(b_sim, RideWitness.LAMP)
+	_until(b_sim, 420)
+	state = b_sim._mechanisms.items.pipsport
+	_check(state.surface_id == "lift-low" and int(state.height) == 0 and int(state.x) == 460 and int(state.z) == 200, "The memory leaves the pan and the lift takes the pipsport down: %s" % [state])
+	_settle(b_sim)
+	_check(b_sim.complete, "Both pips at the lamp close the stage (%s)" % b_sim.commit_reason())
+	var b := _record(b_sim)
+	for pair: Array in [[a, {}], [b, a]]:
+		var checked: Dictionary = ride_proof._verify_raw(ride, pair[0], begin, pair[1])
+		_check(checked.valid, "Item ride turn %s replays exactly (%s)" % [pair[0].role, checked.get("error", "")])
+	MemoryTrace.enabled = false
+	var again := _sim(ride, "home", begin, a)
+	_replay(again, b)
+	MemoryTrace.enabled = true
+	_check(Canonical.same(_record(again), b), "Item ride turn 2 plays the same from its memory's trace as simulated")
+	var derived: Dictionary = ride_proof.derive_checkpoint(ride, begin, a, b, [])
+	_check(derived.valid, "The item ride checkpoint derives (%s)" % derived.get("error", ""))
+	if not derived.valid: return
+	var checkpoint: Dictionary = _json(derived.checkpoint)
+	_check(checkpoint.mechanisms.items.pipsport.surface_id == "lift-low" and ride_proof.verify_checkpoint(ride, checkpoint).valid, "It rests on the lift in the closing checkpoint, which verifies again")
+	_write_files(RIDE_FIXTURES, {"definition.json": ride, "initial.json": begin, "a.json": a, "b.json": b, "checkpoint.json": checkpoint})
+
 # --- The server's witness ----------------------------------------------------------
 
 func _server_files(one: Dictionary) -> void:
-	var files := {"definition.json": level, "initial.json": start, "a.json": one.a, "b.json": one.b, "c.json": one.c, "checkpoint.json": one.checkpoint}
+	_write_files(SERVER_FIXTURES, {"definition.json": level, "initial.json": start, "a.json": one.a, "b.json": one.b, "c.json": one.c, "checkpoint.json": one.checkpoint})
+
+## Checks the server's copy in `dir` is `files`; `-- --write` writes it first.
+func _write_files(dir: String, files: Dictionary) -> void:
 	var write := "--write" in OS.get_cmdline_user_args()
-	var dir := SERVER_FIXTURES
 	if write: DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(dir))
 	for name: String in files:
 		var path := dir.path_join(name)
