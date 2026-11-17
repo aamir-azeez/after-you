@@ -187,6 +187,44 @@ static func _area(item: Dictionary) -> float:
 	var area: Rect2 = item.rect
 	return area.get_area() * (PI / 4.0 if item.round else 1.0)
 
+## Controls drawn into each other (the level checker): every lever and
+## selector stands CONTROL_TOP tall over its spot (kit/pieces/lever.gd's knob
+## over its housing), every pad, plate, socket and goal lies flat, each as
+## wide as its reach (radius_cm). A world adds what it builds beside a control
+## (control_extras(spot) on its script: [{offset, radius, top}], metres, such as
+## Tide's lamp beside each lever). Two bodies on one floor draw into each other
+## when, each swept up its height along the camera's VIEW, they come nearer
+## than their radii: the front one's top then stands over the back one's base.
+const CONTROL_TOP := 0.6
+const TALL_CONTROLS := ["levers", "controls"]
+const FLAT_CONTROLS := ["pressure_pads", "ball_pads", "hold_pads", "plates", "plate", "sockets", "goal", "goals"]
+
+## The bodies of `view`'s controls: {id, at, radius, top, y}; `extras` is the
+## world script's control_extras (an invalid Callable adds none).
+static func control_bodies(view: Dictionary, extras: Callable = Callable()) -> Array:
+	var found: Array = []
+	for spot: Dictionary in LevelLayout.spots(view):
+		var kind := str(spot.kind)
+		if kind not in TALL_CONTROLS and kind not in FLAT_CONTROLS: continue
+		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
+		var y := float(spot.height_cm) / 100.0
+		found.append({"id": str(spot.id), "at": at, "radius": float(spot.radius_cm) / 100.0, "top": CONTROL_TOP if kind in TALL_CONTROLS else 0.0, "y": y})
+		if not extras.is_valid(): continue
+		for extra: Dictionary in extras.call(spot):
+			found.append({"id": str(spot.id), "at": at + (extra.offset as Vector2), "radius": float(extra.radius), "top": float(extra.top), "y": y})
+	return found
+
+## Whether two control bodies (control_bodies) draw into each other.
+static func bodies_touch(one: Dictionary, two: Dictionary) -> bool:
+	if absf(float(one.y) - float(two.y)) > 0.01: return false
+	var gap := _segments_apart(one.at, one.at + VIEW * float(one.top), two.at, two.at + VIEW * float(two.top))
+	return gap < float(one.radius) + float(two.radius)
+
+## The shortest distance between segments a0-a1 and b0-b1.
+static func _segments_apart(a0: Vector2, a1: Vector2, b0: Vector2, b1: Vector2) -> float:
+	var pair := Geometry2D.get_closest_points_between_segments(a0, a1, b0, b1)
+	return pair[0].distance_to(pair[1])
+
 ## The spots a pip stands inside (LevelLayout.spots of the STAND_IN kinds):
 ## {at, radius, y, kind, id}. A solid one (core/solid_footprint.gd) is reached
 ## from beside, never stood in, so it is left out.

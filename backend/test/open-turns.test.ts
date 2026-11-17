@@ -6,7 +6,7 @@ import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint } from "../src/v2/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import { MAX_ROW_BYTES, MAX_REPLAY_ARCHIVE_BYTES } from "../src/v2/row-bound";
-import { DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, mustFinish, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
+import { DEFAULT_TURN_CAP, MAX_OPEN_TURN_TICKS, OPEN_TURN_ID_PATTERN, PACKED_RECORDING_VALUES, fingerprint, mustFinish, openAccepted, openTurnLimits, packedRecordingBytes, recordingBytes, turnId, turnNumber, turnSlot } from "../src/v2/open-turns";
 import { MAX_PACKED_CHARS, checkTicks, packRecording, unpackRecording } from "../src/v2/recording-codec";
 import { conservatoryV2, fogMarsh, longWayHomeV2, longWayHomeV3, theFalls, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
@@ -21,6 +21,8 @@ import slackEnd from "../../game/tests/fixtures/journey/turn-of-the-tide-v3-slac
 import { physicalAccepted, scaledLimits, turnLimits } from "../src/v2/protocol-physical-recording";
 import tideV2Definition from "../src/v2/turn-of-the-tide-v2.json";
 import { withConfig } from "./config";
+import { decodeBlob } from "../src/blob-codec";
+import { countingEnv, meterRows } from "./meter";
 
 /**
  * Open turns (v2/open-turns.ts) on Turn of the Tide@3 (rules 15, free). The server never simulates, so the chains
@@ -64,7 +66,10 @@ function listed(record: Rec): { actions: Rec[]; replay_checks: Rec[] } {
 async function jsonForm(record: Rec): Promise<Rec> { return hashedJson({ ...bare(record), ...listed(record) }); }
 /** `record` without its packed runs and checks. */
 function bare(record: Rec): Rec { const { packed: _packed, ...rest } = structuredClone(record); void _packed; return rest; }
-async function sealed(checkpoint: Rec): Promise<Rec> { const { checkpoint_hash: _old, proof, ...body } = checkpoint; void _old; return { ...body, checkpoint_hash: await digest(canonicalJson(body)), proof }; }
+/** `checkpoint` hashed again; a published checkpoint keeps its proof (never hashed), an open turns one nests none. */
+async function sealed(checkpoint: Rec): Promise<Rec> { const { checkpoint_hash: _old, proof, ...body } = checkpoint; void _old; return { ...body, checkpoint_hash: await digest(canonicalJson(body)), ...(proof ? { proof } : {}) }; }
+/** A turn as the server keeps it once its partner played over it: its record without `packed`. */
+const print = (turn: Rec) => fingerprint(turn as ChapterRecording) as Rec;
 const other = (slot: string) => slot === "p0" ? "p1" : "p0";
 
 /** A later turn: the fixture's second turn, played by the pip turn `n` belongs to, over `memory`, closing the stage or not. */
@@ -74,13 +79,13 @@ async function later(fixtureB: Rec, first: string, n: number, memory: Rec, close
     replay_checks: extraTicks ? [...listed(fixtureB).replay_checks.slice(0, -1), { tick: fixtureB.duration_ticks + extraTicks, state_hash: fixtureB.final_state_hash }] : listed(fixtureB).replay_checks,
     completed: closes, outcome: { ...fixtureB.outcome, objective_complete: closes } });
 }
-/** The schema 8 checkpoint that closes a stage with `turns`, from the fixture's own end state with both pips where its goal pip ended. */
+/** The schema 8 checkpoint that closes a stage with `turns` (by hash, no proof), from the fixture's own end state with both pips where its goal pip ended. */
 async function closing(fixtureEnd: Rec, previous: Rec, turns: Rec[], together = true): Promise<Rec> {
-  const { a_recording_hash: _a, b_recording_hash: _b, ...rest } = structuredClone(fixtureEnd); void _a; void _b;
+  const { a_recording_hash: _a, b_recording_hash: _b, proof: _proof, ...rest } = structuredClone(fixtureEnd); void _a; void _b; void _proof;
   const goalPip = rest.players[other(turns[0].player_slot)];
   // Apart: the first pip back where the stage started it, away from the goal.
   rest.players = together ? { p0: { ...goalPip }, p1: { ...goalPip } } : { ...rest.players, [turns[0].player_slot]: structuredClone(previous.players[turns[0].player_slot]) };
-  return sealed({ ...rest, schema_version: 8, previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash), proof: { checkpoint: previous, turns } });
+  return sealed({ ...rest, schema_version: 8, previous_checkpoint_hash: previous.checkpoint_hash, turn_hashes: turns.map(turn => turn.recording_hash) });
 }
 /** A stage's chain: turn 1 and `passes` passes, then the closing turn and its checkpoint. */
 async function chain(stage: 0 | 1, previous: Rec, passes: number): Promise<{ turns: Rec[]; checkpoint: Rec }> {
@@ -109,24 +114,31 @@ const failure = async (response: Promise<Response>, status: number, code: string
 afterEach(async () => { await reset(); vi.restoreAllMocks(); });
 
 describe("open turns: rules and bounds", () => {
-  it("gives only the open controls chapters open turns, with a cap a stage and a budget that fits the row and the archive", () => {
+  it("gives only the open controls chapters open turns, with a cap a stage and bounds that never grow with the stages", () => {
     for (const row of CHAPTERS) {
       const open = row.adapter.open_turns;
       expect(open !== undefined, row.adapter.key.level_id + "@" + row.adapter.key.level_version).toBe([longWayHomeV3, turnOfTheTideV3, conservatoryV2, theFalls, fogMarsh].includes(row.adapter));
       if (!open) continue;
       expect(open.caps).toEqual(row.adapter.stages.map(stage => (stage as { turn_cap?: number }).turn_cap ?? DEFAULT_TURN_CAP));
       expect(row.adapter.max_branches).toBe(open.branches);
-      expect(open.stage_bytes).toBeGreaterThanOrEqual(2 * open.recording_bytes + 98_304);
-      const limits = row.adapter.limits!, stages = row.adapter.stages.length;
-      // The closing turn's body stays inside the Worker's 10 ms (test/compressed-rooms.test.ts).
-      expect(limits.turn_body_bytes).toBeLessThanOrEqual(1_250_000);
-      // The closing pair row: every stage's turns nested in the checkpoint, and two recordings.
+      expect(open.branches).toBe(7);
+      expect(open).not.toHaveProperty("stage_bytes");
+      const limits = row.adapter.limits!;
+      // The closing turn's body (one recording and a flat checkpoint) stays far inside the Worker's 10 ms (test/compressed-rooms.test.ts).
+      expect(limits.turn_body_bytes).toBe(open.recording_bytes + 2 * 16_384);
+      expect(limits.turn_body_bytes).toBeLessThanOrEqual(1_250_000 / 4);
+      // A flat checkpoint, whatever the stage; a pair row holds it and two fingerprints.
+      expect(limits.checkpoint_bytes).toBe(16_384);
       expect(limits.checkpoint_bytes + 2 * limits.recording_bytes! + 16_384).toBeLessThanOrEqual(MAX_ROW_BYTES);
-      expect(stages * open.stage_bytes).toBeLessThanOrEqual(limits.checkpoint_bytes);
-      // Seven branches of turn rows and pair rows at their widest stay under the archive.
-      expect(open.branches * (stages * open.stage_bytes + (stages * (stages + 1) / 2) * (open.stage_bytes + 16_384) + stages * (2 * open.recording_bytes + 16_384))).toBeLessThanOrEqual(MAX_REPLAY_ARCHIVE_BYTES);
-      expect(limits.turn_body_bytes).toBeGreaterThan(limits.checkpoint_bytes + open.recording_bytes);
+      // Every row a room may hold: 128 turn rows and 64 pair rows as fingerprints, and two full turns a branch.
+      expect(128 * (2_048 + 16_384) + 64 * (2 * 2_048 + 2 * 16_384) + open.branches * 2 * open.recording_bytes).toBeLessThanOrEqual(MAX_REPLAY_ARCHIVE_BYTES);
     }
+    // Eight stages (the most a room's ids name) at the rules' longest turn take the same bounds as one: nothing nests.
+    const widest = packedRecordingBytes(MAX_OPEN_TURN_TICKS);
+    expect(openTurnLimits(Array.from({ length: 8 }, () => ({ turn_cap: 20 })), widest, 7)).toMatchObject({ recording_bytes: widest, branches: 7 });
+    expect(openTurnLimits([{}], widest, 7)).toMatchObject({ recording_bytes: widest, branches: 7 });
+    // The packed string bound every room shares sets the longest turn now: it still fits a row and a body with room to spare.
+    expect(() => openTurnLimits([{}, {}, {}, {}, {}], 2_048 + MAX_PACKED_CHARS, 7)).not.toThrow();
     // The published chapters' bounds are exactly what they were.
     expect(longWayHomeV2.limits).toBeUndefined();
     expect(turnOfTheTideV2.limits).toEqual(scaledLimits(turnLimits(tideV2Definition)!));
@@ -135,8 +147,8 @@ describe("open turns: rules and bounds", () => {
     expect(() => openTurnLimits([{ turn_cap: 9 }], 65_536, 7)).not.toThrow();
   });
   it("sizes every bound by the widest packed turn: a new stick every tick, at most the bound", async () => {
-    // Turn of the Tide@3's turns: 3,000 ticks each.
-    const ticks = 3000;
+    // Turn of the Tide@3's development turns: 3,600 ticks each.
+    const ticks = 3600;
     expect(adapter.open_turns!.recording_bytes).toBe(packedRecordingBytes(ticks));
     expect(adapter.limits!.recording_values).toBe(PACKED_RECORDING_VALUES);
     // Every field of the header at its widest the parser allows, every run one tick, every stick at its far end.
@@ -162,14 +174,17 @@ describe("open turns: rules and bounds", () => {
     expect(OPEN_TURN_ID_PATTERN.test("t31-7-t") && !OPEN_TURN_ID_PATTERN.test("t3-1-u")).toBe(true);
     expect([1, 2, 3, 4].map(n => turnSlot("p1", n))).toEqual(["p1", "p0", "p1", "p0"]);
     const open = adapter.open_turns!;
-    expect(mustFinish(open, 0, 1, 0)).toBe(false);
-    expect(mustFinish(open, 0, open.caps[0] - 1, 0)).toBe(false);
-    expect(mustFinish(open, 0, open.caps[0], 0)).toBe(true);
-    expect(mustFinish(open, 0, 3, open.stage_bytes - open.recording_bytes)).toBe(true);
+    expect(mustFinish(open, 0, 1)).toBe(false);
+    expect(mustFinish(open, 0, open.caps[0] - 1)).toBe(false);
+    expect(mustFinish(open, 0, open.caps[0])).toBe(true);
   });
-  it("checks a stage's whole chain: order, pips, memories, lengths and its proof", async () => {
+  it("checks a stage's whole chain by its turns' fingerprints: order, pips, memories, lengths, and no proof", async () => {
     const start = initial(), { turns, checkpoint } = await chain(0, start, 2);
     expect(await validate(checkpoint, start, turns)).toEqual(checkpoint);
+    // The room holds every turn before the closing one as its fingerprint; the chain checks the same.
+    expect(await validate(checkpoint, start, [...turns.slice(0, -1).map(print), turns.at(-1)!])).toEqual(checkpoint);
+    // A checkpoint that still nests its turns is refused, though its hash is the same.
+    await expect(validate({ ...checkpoint, proof: { checkpoint: start, turns } }, start, turns)).rejects.toMatchObject({ code: "unexpected_fields" });
     // The stage ends only with both pips in its goal area.
     await expect(validate(await closing(setEnd as Rec, start, turns, false), start, turns)).rejects.toMatchObject({ code: "checkpoint_goal_mismatch" });
     // Two turns are a chain too, in the same shape.
@@ -225,7 +240,7 @@ describe("open turns: a first turn ended early", () => {
 describe("open turns: a friend room", () => {
   it("plays a stage in four turns and the next in two, each turn the other pip's, with whose turn and how many are left", async () => {
     const { room: joined, first, second } = await room();
-    expect(joined.open_turns).toEqual({ turn: 1, cap: adapter.open_turns!.caps[0], must_finish: false, pass_bytes: adapter.open_turns!.stage_bytes - adapter.open_turns!.recording_bytes, passes: [] });
+    expect(joined.open_turns).toEqual({ turn: 1, cap: adapter.open_turns!.caps[0], must_finish: false, pass_bytes: adapter.open_turns!.recording_bytes, turn_hashes: [], newest: null, closing: null, wanted: [] });
     const { turns, checkpoint } = await chain(0, initial(), 2);
     const one = await send(joined, first, turns[0]);
     expect(one.receipt.turn_id).toBe(`t0-0-a`);
@@ -234,8 +249,10 @@ describe("open turns: a friend room", () => {
     await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", second, { base_revision: one.room.revision, branch: 0, idempotency_key: key(), recording: turns[1], checkpoint }), 422, "pass_with_checkpoint");
     const two = await send(one.room, second, turns[1]);
     expect(two.receipt).toMatchObject({ turn_id: "t0-0-b", pair_id: null });
-    expect(two.room).toMatchObject({ stage_index: 0, active_role: "b", active_player_id: first.player_id, recording_a: turns[0] });
-    expect(two.room.open_turns).toMatchObject({ turn: 3, passes: [turns[1]] });
+    // Turn 1 only as its fingerprint now; the newest turn in full is the memory the next turn plays over.
+    expect(two.room).toMatchObject({ stage_index: 0, active_role: "b", active_player_id: first.player_id, recording_a: print(turns[0]) });
+    expect(two.room.recording_a).not.toHaveProperty("packed");
+    expect(two.room.open_turns).toMatchObject({ turn: 3, turn_hashes: [turns[0].recording_hash, turns[1].recording_hash], newest: turns[1], closing: null });
     expect(two.room).not.toHaveProperty("open_stage");
     // The wrong pip, or a memory that is not the latest turn.
     await send(two.room, second, turns[2], undefined, {}, 409);
@@ -243,20 +260,21 @@ describe("open turns: a friend room", () => {
     const three = await send(two.room, first, turns[2]);
     expect(three.receipt.turn_id).toBe("t0-0-c");
     expect(three.room).toMatchObject({ active_player_id: second.player_id });
-    // The room alone holds every memory the next turn replays.
-    expect((await read(three.room, second)).open_turns!.passes).toEqual([turns[1], turns[2]]);
+    // The room holds the memory the next turn replays, and every earlier turn by hash.
+    expect((await read(three.room, second)).open_turns).toMatchObject({ turn_hashes: turns.slice(0, 3).map(turn => turn.recording_hash), newest: turns[2] });
     const four = await send(three.room, second, turns[3], checkpoint);
     expect(four.receipt).toMatchObject({ turn_id: "t0-0-d", pair_id: "p0-0" });
     expect(four.room).toMatchObject({ stage_index: 1, checkpoint, a_turn_id: null, active_role: "a" });
-    expect(four.room.open_turns).toMatchObject({ turn: 1, passes: [] });
+    expect(four.room.checkpoint).not.toHaveProperty("proof");
+    expect(four.room.open_turns).toMatchObject({ turn: 1, turn_hashes: [], newest: null, closing: turns[3] });
     // Stage two closes in two turns, as before open turns.
     const next = await chain(1, checkpoint, 0), slackFirst = slackA.player_slot === setA.player_slot ? first : second, slackSecond = slackFirst === first ? second : first;
     const five = await send(four.room, slackFirst, next.turns[0]), six = await send(five.room, slackSecond, next.turns[1], next.checkpoint);
     expect(six.room).toMatchObject({ stage_index: 2, active_role: "complete", active_player_id: null, checkpoint: next.checkpoint });
-    expect(six.room.open_turns).toMatchObject({ turn: 0, cap: 0, must_finish: false });
-    // Its pair row and history hold every turn of the stage.
+    expect(six.room.open_turns).toMatchObject({ turn: 0, cap: 0, must_finish: false, turn_hashes: [], newest: null, closing: next.turns[1] });
+    // Its pair row holds the first and closing turns as fingerprints and the flat checkpoint that names every turn.
     const pair = await json<Rec>(call(`/v2/rooms/${joined.room_id}/pairs/p0-0`, "GET", first));
-    expect(pair.a).toEqual(turns[0]); expect(pair.b).toEqual(turns[3]); expect(pair.checkpoint.proof.turns).toEqual(turns);
+    expect(pair.a).toEqual(print(turns[0])); expect(pair.b).toEqual(print(turns[3])); expect(pair.checkpoint).toEqual(checkpoint);
   });
   it("makes the cap's turn finish the stage", async () => {
     const { room: joined, first, second } = await room();
@@ -297,8 +315,8 @@ describe("open turns: a friend room", () => {
     const again = await later(setB as Rec, setA.player_slot, 3, turns[1], false, initial().checkpoint_hash, 15);
     const replaced = await send(three.room, first, again, undefined, { replaces: turns[2].recording_hash });
     expect(replaced.receipt).toMatchObject({ branch: 1, turn_id: "t1-0-c" });
-    expect(replaced.room).toMatchObject({ a_turn_id: "t1-0-a", recording_a: turns[0] });
-    expect(replaced.room.open_turns!.passes).toEqual([turns[1], again]);
+    expect(replaced.room).toMatchObject({ a_turn_id: "t1-0-a", recording_a: print(turns[0]) });
+    expect(replaced.room.open_turns).toMatchObject({ turn_hashes: [turns[0], turns[1], again].map(turn => turn.recording_hash), newest: again });
     // Once the friend's phone has read it, it stays.
     const seen = await read(replaced.room, second);
     expect(seen.active_player_id).toBe(second.player_id);
@@ -320,16 +338,16 @@ describe("open turns: a friend room", () => {
     expect(asked.request?.status).toBe("pending");
     const forked = await json<MutationV2>(call(`/v2/rooms/${joined.room_id}/fork`, "POST", first, { base_revision: three.room.revision, branch: 0, stage_index: 0, idempotency_key: key(), redo_request_id: asked.request!.request_id }));
     expect(forked.room).toMatchObject({ branch: 1, stage_index: 0, a_turn_id: null, active_player_id: first.player_id });
-    expect(forked.room.open_turns).toMatchObject({ turn: 1, passes: [] });
+    expect(forked.room.open_turns).toMatchObject({ turn: 1, turn_hashes: [], newest: null });
     // Played again to turn three, then started over by agreement.
     const again = await send(forked.room, first, turns[0]), twice = await send(again.room, second, turns[1]);
     const over = { room_id: joined.room_id, revision: twice.room.revision, branch: twice.room.branch, stage_index: 0, a_hash: twice.room.checkpoint.checkpoint_hash, first_player_id: second.player_id, second_player_id: first.player_id };
     const request = await json<RedoStateV2>(call(path, "POST", first, { action: "request", source: over }));
     const wiped = await json<MutationV2>(call(`/v2/rooms/${joined.room_id}/fork`, "POST", second, { base_revision: twice.room.revision, branch: twice.room.branch, stage_index: 0, idempotency_key: key(), redo_request_id: request.request!.request_id }));
     expect(wiped.room).toMatchObject({ stage_index: 0, a_turn_id: null });
-    expect(wiped.room.open_turns!.passes).toEqual([]);
+    expect(wiped.room.open_turns).toMatchObject({ turn_hashes: [], newest: null, closing: null, wanted: [] });
   });
-  it("writes as few rows for a pass as for a first turn, and reads what it writes", async () => {
+  it("writes one more row a later turn (its memory becomes a fingerprint) and one on the poll that acknowledges a closing turn", async () => {
     const { room: joined, first, second } = await room();
     const { turns, checkpoint } = await chain(0, initial(), 1);
     const cursors: { rowsRead: number; rowsWritten: number }[] = [];
@@ -342,18 +360,19 @@ describe("open turns: a friend room", () => {
     const pass = await metered(() => send(one.value.room, second, turns[1]));
     const poll = await metered(() => read(pass.value.room, first));
     const close = await metered(() => send(poll.value, first, turns[2], checkpoint));
-    // A pass writes its turn row, the room, its receipt and the turn's side rows, about as a first turn does (measured 7, 10, 9).
-    expect(pass.rows.written).toBeLessThanOrEqual(one.rows.written + 4);
-    expect(close.rows.written).toBeLessThanOrEqual(one.rows.written + 4);
-    // The partner's poll that picks the pass up writes only its seen note.
-    expect(poll.rows.written).toBeLessThanOrEqual(1);
+    const known = (room: RoomSnapshotV2) => ({ "X-AfterYou-Known-Room": `${room.revision}.${room.branch}` });
+    const quiet = await metered(() => json<Rec>(call(`/v2/rooms/${joined.room_id}`, "GET", first, undefined, known(close.value.room))));
+    const ack = await metered(() => json<Rec>(call(`/v2/rooms/${joined.room_id}`, "GET", second, undefined, known(close.value.room))));
+    const after = await metered(() => json<Rec>(call(`/v2/rooms/${joined.room_id}`, "GET", second, undefined, known(close.value.room))));
+    expect([quiet.value, ack.value, after.value].every(reply => reply.unchanged === true)).toBe(true);
+    // Before fingerprints: 7, 10, 1 and 9. A pass and a closing turn now also turn the turn before them into its fingerprint
+    // (one row each); the partner's poll that acknowledges the closing turn writes that one row; every other poll none.
+    expect([one, pass, poll, close, quiet, ack, after].map(step => step.rows.written)).toEqual([7, 11, 1, 10, 0, 1, 0]);
   });
-  it("is refused to old apps, hard runs and duels", async () => {
+  it("is refused to old apps", async () => {
     const host = await account(), oldGuest = await account();
     const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }));
     await failure(call("/v2/rooms/join", "POST", oldGuest, { invite_code: made.invite_code, supported_simulation_versions: [2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] }), 422, "unsupported_simulation_version");
-    const stub = env.ROOMS_V2.getByName("open-turns-hard");
-    expect(await stub.initialize("open-turns-hard", host.player_id, "A".repeat(20), adapter.key, undefined, "hard")).toMatchObject({ ok: false, code: "open_turns_friend_rooms_only" });
   });
   it("keeps a published room's replies and stored room free of open turns fields", async () => {
     const host = await account();
@@ -364,6 +383,255 @@ describe("open turns: a friend room", () => {
       expect(data).not.toContain("open_stage");
     });
     expect(chapter(turnOfTheTideV2.key).open_turns).toBeUndefined();
+  });
+});
+
+const stub = (room: RoomSnapshotV2) => env.ROOMS_V2.getByName(room.room_id);
+/** The turn rows still held in full (runs and all), in the order they were written. */
+const full = (room: RoomSnapshotV2) => runInDurableObject(stub(room), (_, ctx) => ctx.storage.sql.exec<{ turn_id: string; data: string | ArrayBuffer }>("SELECT turn_id,data FROM turns ORDER BY rowid").toArray()
+  .filter(row => typeof row.data !== "string" || row.data.includes('"packed":')).map(row => row.turn_id));
+
+describe("open turns: fingerprints, history and replays", () => {
+  const known = (room: { revision: number; branch: number }) => ({ "X-AfterYou-Known-Room": `${room.revision}.${room.branch}` });
+  const poll = (room: RoomSnapshotV2, who: Account, at: { revision: number; branch: number } = room) => json<Rec>(call(`/v2/rooms/${room.room_id}`, "GET", who, undefined, known(at)));
+  const value = <T>(outcome: { ok: boolean; value?: T; code?: string }): T => { if (!outcome.ok) throw new Error(outcome.code); return outcome.value!; };
+  /** Both stages: the first with `passes` passes, the second closed in two; each turn the pip its number says. */
+  async function finished(passes = 2) {
+    const made = await room(), { first, second } = made;
+    const one = await chain(0, initial(), passes), two = await chain(1, one.checkpoint, 1);
+    const slackFirst = slackA.player_slot === setA.player_slot ? first : second, slackSecond = slackFirst === first ? second : first;
+    let current = made.room;
+    for (const [i, turn] of one.turns.entries()) current = (await send(current, i % 2 ? second : first, turn, i === one.turns.length - 1 ? one.checkpoint : undefined)).room;
+    for (const [i, turn] of two.turns.entries()) current = (await send(current, i % 2 ? slackSecond : slackFirst, turn, i === two.turns.length - 1 ? two.checkpoint : undefined)).room;
+    return { ...made, room: current, one, two, slackFirst, slackSecond };
+  }
+
+  it("keeps the closing turn full until the member who did not play it names its revision, on a poll or with their next turn", async () => {
+    const { room: joined, first, second } = await room();
+    const one = await chain(0, initial(), 1);
+    let current = joined;
+    for (const [i, turn] of one.turns.entries()) {
+      current = (await send(current, i % 2 ? second : first, turn, i === one.turns.length - 1 ? one.checkpoint : undefined)).room;
+      // Turn k becomes its fingerprint as turn k+1 is taken: only the newest is full.
+      expect(await full(current)).toEqual([turnId(0, 0, i + 1)]);
+    }
+    const closer = first, partner = second;
+    // The closer's own poll, the partner's plain read and a poll naming an older revision all leave it full.
+    expect(await poll(current, closer)).toMatchObject({ unchanged: true });
+    expect((await read(current, partner)).open_turns!.closing).toEqual(one.turns[2]);
+    expect((await poll(current, partner, { revision: current.revision - 1, branch: current.branch })).open_turns.closing).toEqual(one.turns[2]);
+    expect(await full(current)).toEqual(["t0-0-c"]);
+    // The partner's poll at its revision: the row keeps its fingerprint, the revision stays, and the view no longer carries it.
+    expect(await poll(current, partner)).toMatchObject({ unchanged: true, revision: current.revision });
+    expect(await full(current)).toEqual([]);
+    expect((await read(current, closer)).open_turns).toMatchObject({ closing: null, newest: null, turn_hashes: [] });
+    const pair = await json<Rec>(call(`/v2/rooms/${joined.room_id}/pairs/p0-0`, "GET", partner));
+    expect(pair).toMatchObject({ a: print(one.turns[0]), b: print(one.turns[2]), checkpoint: one.checkpoint });
+    // Stage two: the partner's next turn acknowledges the closing turn it played over, with no poll at all.
+    const two = await chain(1, one.checkpoint, 1), slackFirst = slackA.player_slot === setA.player_slot ? first : second, slackSecond = slackFirst === first ? second : first;
+    for (const [i, turn] of two.turns.entries()) {
+      current = (await send(current, i % 2 ? slackSecond : slackFirst, turn, i === two.turns.length - 1 ? two.checkpoint : undefined)).room;
+      if (i === 0) expect(await full(current)).toEqual(["t0-1-a"]);
+    }
+    const lastCloser = two.turns.length % 2 ? slackFirst : slackSecond, lastPartner = lastCloser === first ? second : first;
+    expect(await full(current)).toEqual(["t0-1-c"]);
+    expect(current.open_turns).toMatchObject({ turn: 0, closing: two.turns[2] });
+    // The final turn waits for the partner's poll as every closing turn does.
+    expect(await poll(current, lastPartner)).toMatchObject({ unchanged: true });
+    expect(await full(current)).toEqual([]);
+  });
+
+  it("sends turns back to a phone that lost them: it asks, the partner's next poll names them, the partner's phone sends them", async () => {
+    const { room: joined, second, first } = await room();
+    const one = await chain(0, initial(), 2);
+    let current = joined;
+    for (const [i, turn] of one.turns.entries()) current = (await send(current, i % 2 ? second : first, turn, i === one.turns.length - 1 ? one.checkpoint : undefined)).room;
+    const path = `/v2/rooms/${joined.room_id}/turn-copies`, hashes = one.turns.map(turn => turn.recording_hash);
+    const copies = (who: Account, action: string, body: unknown, status = 200) => json<Rec>(call(path + action, "POST", who, body), status);
+    const rows = () => runInDurableObject(stub(current), (_, ctx) => ({ wants: ctx.storage.sql.exec("SELECT * FROM turn_wants").toArray().length, copies: ctx.storage.sql.exec("SELECT * FROM turn_copies").toArray().length }));
+    // Nobody asked yet: polls carry no `wanted` and read no send-back table.
+    expect(await poll(current, second)).toEqual({ schema_version: 1, unchanged: true, revision: current.revision, branch: current.branch, updated_at: current.updated_at });
+    // The closer's partner lost every turn of the stage: the closing turn is still full, so it comes back at once; the rest are wanted.
+    const asked = await copies(first, "/want", { schema_version: 1, recording_hashes: hashes });
+    expect(asked).toEqual({ schema_version: 1, copies: [one.turns[3]], more: false });
+    const wanted = hashes.slice(0, 3).sort();
+    expect(await poll(current, second)).toMatchObject({ unchanged: true, wanted });
+    expect((await read(current, second)).open_turns!.wanted).toEqual(wanted);
+    expect((await read(current, first)).open_turns!.wanted).toEqual([]);
+    // The partner's phone sends them: only wanted turns of this room, each a whole turn whose hash is its own.
+    const changed = { ...one.turns[0], final_state_hash: "0".repeat(64) };
+    await failure(call(path, "POST", second, { schema_version: 1, turns: [changed] }), 422, "recording_hash_mismatch");
+    const counting = countingEnv(withConfig({ ...env, ...FLAGS }));
+    const sent = await meterRows({ room: stub(current) }, () => json<Rec>(worker.fetch(new Request(`https://after-you.test${path}`, { method: "POST",
+      headers: { "Content-Type": "application/json", "X-Player-Id": second.player_id, Authorization: "Bearer " + second.device_token }, body: JSON.stringify({ schema_version: 1, turns: one.turns }) }), counting.env)));
+    expect(sent.value).toEqual({ schema_version: 1, kept: hashes.slice(0, 3) });
+    expect(counting.calls.filter(name => name.startsWith("ROOMS_V2."))).toEqual(["ROOMS_V2.turnCopies"]);
+    expect(sent.rows.room.written).toBe(3);
+    expect(await copies(second, "", { schema_version: 1, turns: one.turns })).toEqual({ schema_version: 1, kept: hashes.slice(0, 3) });
+    expect(await poll(current, second)).not.toHaveProperty("wanted");
+    // The asking phone asks again and has them all; its acknowledgement drops the copies.
+    const again = await meterRows({ room: stub(current) }, () => copies(first, "/want", { schema_version: 1, recording_hashes: hashes }));
+    expect(again.value).toEqual({ schema_version: 1, copies: one.turns, more: false });
+    expect(again.rows.room.written).toBe(1);
+    expect(await rows()).toEqual({ wants: 0, copies: 3 });
+    const acked = await meterRows({ room: stub(current) }, () => copies(first, "/ack", { schema_version: 1, recording_hashes: hashes }));
+    expect(acked.value).toEqual({ schema_version: 1, acknowledged: hashes });
+    expect(await rows()).toEqual({ wants: 0, copies: 0 });
+    console.log("turn send-back rows written:", JSON.stringify({ send: sent.rows.room.written, ask_delivering: again.rows.room.written, ack: acked.rows.room.written }));
+    // A copy handed over and never acknowledged goes with the room's next turn.
+    expect(await copies(first, "/want", { schema_version: 1, recording_hashes: [hashes[0]] })).toMatchObject({ copies: [] });
+    await copies(second, "", { schema_version: 1, turns: [one.turns[0]] });
+    expect((await copies(first, "/want", { schema_version: 1, recording_hashes: [hashes[0]] })).copies).toEqual([one.turns[0]]);
+    const two = await chain(1, one.checkpoint, 1), slackFirst = slackA.player_slot === setA.player_slot ? first : second;
+    current = (await send(current, slackFirst, two.turns[0])).room;
+    expect(await rows()).toEqual({ wants: 0, copies: 0 });
+    // Only turns of this room, and only in an open turns room.
+    await failure(call(path + "/want", "POST", first, { schema_version: 1, recording_hashes: ["0".repeat(64)] }), 422, "turn_not_in_room");
+    const host = await account(), published = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...turnOfTheTideV2.key, idempotency_key: key() }));
+    await failure(call(`/v2/rooms/${published.room_id}/turn-copies/want`, "POST", host, { schema_version: 1, recording_hashes: hashes }), 409, "open_turns_only");
+  });
+  it("keeps a finished room's history: fingerprints in its attempt, offloaded and sent back, then a fork from its pair row", async () => {
+    const { room: done, first, second, one } = await finished();
+    const host = done.host_id, guest = done.guest_id!, room = stub(done);
+    for (const who of [first, second]) await poll(done, who);
+    const view = value(await room.history(host, 1)); value(await room.history(guest, 1));
+    expect(view.attempts).toHaveLength(1);
+    const bytes = value(await room.historyAttempt(guest, 0, 1));
+    const blob = JSON.parse(new TextDecoder().decode((await decodeBlob(bytes, view.attempts[0].byte_length))!)) as Rec;
+    // The attempt lists every turn as its fingerprint and each pair's flat checkpoint, so its bytes never move.
+    expect(blob).toMatchObject({ format: "after-you.attempt", format_version: 2, checkpoint: done.checkpoint, checkpoints: [one.checkpoint, done.checkpoint] });
+    expect(blob.turns).toHaveLength(7); expect(blob.turns.every((turn: Rec) => !("packed" in turn))).toBe(true);
+    expect(blob).not.toHaveProperty("open_turn");
+    const before = value(await room.snapshot(host));
+    for (const player of [host, guest]) value(await room.acknowledgeHistory(player, 0, { schema_version: 1, link: view.attempts[0].link }, 1));
+    expect(await room.snapshot(host)).toMatchObject({ ok: false, code: "replay_transferred" });
+    // Sent back, the room is as it was, and a fork goes back to stage two from its first pair's checkpoint.
+    expect(value(await room.uploadHistory(guest, 0, bytes, 1)).attempts[0]).toMatchObject({ state: "held" });
+    expect(value(await room.snapshot(host))).toEqual(before);
+    const forked = value(await room.fork(host, { base_revision: before.revision, branch: before.branch, stage_index: 1, idempotency_key: key() })).room;
+    expect(forked).toMatchObject({ branch: 1, stage_index: 1, checkpoint: one.checkpoint, completed_pair_ids: ["p0-0"] });
+    expect(value(await room.history(host, 1)).attempts).toHaveLength(1);
+  });
+
+  it("transfers a finished room's replays with every turn as its fingerprint, exports it compacted and restores it", async () => {
+    const { room: done } = await finished(), host = done.host_id, guest = done.guest_id!, room = stub(done);
+    const state = value(await room.snapshot(host));
+    const offered = value(await room.replayTransfer(host));
+    expect(offered.archive!.turns.every(turn => !("packed" in turn.recording))).toBe(true);
+    expect(offered.archive!.room.checkpoint).toEqual(done.checkpoint);
+    const ack = { schema_version: 1, epoch: offered.manifest.epoch, archive_hash: offered.manifest.archive_hash };
+    for (const player of [host, guest]) value(await room.acknowledgeReplayTransfer(player, ack));
+    // A transferred room with passes exports and restores (each pass has its receipt, and no pair).
+    const compacted = await room.exportSnapshot("d".repeat(40));
+    expect(await env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId()).restoreSnapshot(value(compacted), done.room_id)).toMatchObject({ ok: true });
+    value(await room.restoreReplayTransfer(guest, { ...ack, archive: offered.archive }));
+    // Back from its fingerprints: the same room, less the final turn the partner had not acknowledged yet.
+    expect(value(await room.snapshot(host))).toEqual({ ...state, open_turns: { ...state.open_turns, closing: null } });
+  });
+});
+
+describe("open turns: a hard room", () => {
+  const HARD = { "X-AfterYou-Hard-Mode": "1" };
+  type Reset = { room: RoomSnapshotV2; failure: Rec };
+  type Slips = { failures: number; list: (Rec & { slip: Rec | null })[] };
+  async function hardRoom(): Promise<{ room: RoomSnapshotV2; first: Account; second: Account }> {
+    const host = await account(), guest = await account();
+    const made = await json<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key(), mode: "hard" }));
+    const joined = await json<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: made.invite_code, supported_simulation_versions: NEW_CLIENT }, HARD));
+    const first = setA.player_slot === "p0" ? host : guest;
+    return { room: joined, first, second: first === host ? guest : host };
+  }
+  /** A slip's reset; under open turns a slip over a pass brings the turns under its memory from the phone's copy (`chain`). */
+  const reset = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => call(`/v2/rooms/${room.room_id}/hard-reset`, "POST", who,
+    { base_revision: room.revision, branch: room.branch, idempotency_key: key(), reason: "failed_turn", stage_index: room.stage_index, role: room.active_role, slip, ...(chain ? { chain } : {}) });
+  const slipped = (room: RoomSnapshotV2, who: Account, slip: Rec, chain?: Rec[]) => json<Reset>(reset(room, who, slip, chain));
+  const slips = (room: RoomSnapshotV2, who: Account, seen = 0) => json<Slips>(call(`/v2/rooms/${room.room_id}/hard/${seen}`, "GET", who));
+  /** Stage one's first three turns from `room`: two passes over turn 1, so turns 1 and 2 are fingerprints and turn 3 is full. */
+  async function threeTurns(room: RoomSnapshotV2, first: Account, second: Account, turns: Rec[]): Promise<RoomSnapshotV2> {
+    const one = await send(room, first, turns[0]), two = await send(one.room, second, turns[1]);
+    return (await send(two.room, first, turns[2])).room;
+  }
+
+  it("plays a stage in several turns, keeps a slip over a pass with the turns under it from the phone's copy, and starts again", async () => {
+    const { room: joined, first, second } = await hardRoom();
+    expect(joined.hard).toEqual({ schema_version: 1, failures: 0, over: false, last: null });
+    const { turns, checkpoint } = await chain(0, initial(), 2);
+    const three = await threeTurns(joined, first, second, turns);
+    expect(three.open_turns).toMatchObject({ turn: 4, turn_hashes: turns.slice(0, 3).map(turn => turn.recording_hash), newest: turns[2] });
+    // The room holds turns 1 and 2 only as fingerprints.
+    expect(await full(three)).toEqual([turnId(0, 0, 3)]);
+    // The second pip slips on turn 4 and sends the turns under its memory from its own copy: the room matches them to its
+    // fingerprints and keeps the slip whole, with its memory (turn 3, held in full) and those turns.
+    const slip = await later(setB as Rec, setA.player_slot, 4, turns[2], false, initial().checkpoint_hash, 9);
+    const reset = await slipped(three, second, slip, [turns[0], turns[1]]);
+    expect(reset.room).toMatchObject({ branch: 1, stage_index: 0, a_turn_id: null, active_role: "a", active_player_id: first.player_id });
+    expect(reset.room.open_turns).toMatchObject({ turn: 1, turn_hashes: [], newest: null });
+    expect(reset.failure).toMatchObject({ by: second.player_id, stage_index: 0, role: "b", reason: "failed_turn" });
+    const kept = await slips(joined, first);
+    expect(kept.list[0].slip).toEqual({ recording: slip, checkpoint: initial(), prior: turns[2], chain: [turns[0], turns[1]] });
+    // The partner's phone replays it from the slip alone, while the turn rows stay fingerprints (the left branch keeps its newest).
+    expect(await full(three)).toEqual([turnId(0, 0, 3)]);
+    // A slip on turn 2 keeps its memory alone, as a two-turn room does.
+    const again = await send(reset.room, first, turns[0]);
+    const early = await slipped(again.room, second, turns[1]);
+    expect((await slips(joined, first, 1)).list[0].slip).toEqual({ recording: turns[1], checkpoint: initial(), prior: turns[0] });
+    // The run after it plays the whole chapter, passes and all, and finishes.
+    let current = (await send(early.room, first, turns[0])).room;
+    current = (await send(current, second, turns[1])).room;
+    current = (await send(current, first, turns[2])).room;
+    current = (await send(current, second, turns[3], checkpoint)).room;
+    expect(current).toMatchObject({ stage_index: 1, branch: 2, hard: { failures: 2, over: false } });
+    const next = await chain(1, checkpoint, 0), slackFirst = slackA.player_slot === setA.player_slot ? first : second;
+    current = (await send(current, slackFirst, next.turns[0])).room;
+    current = (await send(current, slackFirst === first ? second : first, next.turns[1], next.checkpoint)).room;
+    expect(current.active_role).toBe("complete");
+  });
+  it("drops a slip whose turns under its memory are not the room's, and still starts the run again", async () => {
+    const { room: joined, first, second } = await hardRoom();
+    const { turns } = await chain(0, initial(), 2);
+    const slip = await later(setB as Rec, setA.player_slot, 4, turns[2], false, initial().checkpoint_hash, 9);
+    // Another turn 2 that checks on its own but is not the one the room took.
+    const otherTwo = await later(setB as Rec, setA.player_slot, 2, turns[0], false, initial().checkpoint_hash, 3);
+    // Missing, out of order, another turn, and a fingerprint where a whole turn belongs (the chapter keeps 7 branches, so 5 resets here).
+    const wrong: (Rec[] | undefined)[] = [undefined, [turns[1], turns[0]], [turns[0], otherTwo], [turns[0], print(turns[1])]];
+    let current = joined;
+    for (const [i, sent] of wrong.entries()) {
+      const done = await slipped(await threeTurns(current, first, second, turns), second, slip, sent);
+      expect(done.room).toMatchObject({ branch: i + 1, stage_index: 0, a_turn_id: null, hard: { failures: i + 1, over: false } });
+      expect((await slips(joined, first, i)).list[0]).toMatchObject({ number: i + 1, by: second.player_id, slip: null });
+      current = done.room;
+    }
+    // A slip on turn 2 has no turns under its memory, so a chain with it is not the room's either.
+    const one = await send(current, first, turns[0]);
+    await slipped(one.room, second, turns[1], [turns[0]]);
+    expect((await slips(joined, first, wrong.length)).list[0].slip).toBeNull();
+    // A chain needs a slip.
+    const two = await read(current, first);
+    await failure(call(`/v2/rooms/${joined.room_id}/hard-reset`, "POST", first, { base_revision: two.revision, branch: two.branch, idempotency_key: key(), reason: "failed_turn",
+      stage_index: two.stage_index, role: two.active_role, chain: [turns[0]] }), 400, "unexpected_fields");
+  });
+  it("takes only first tries and never plays a turn again", async () => {
+    const { room: joined, first, second } = await hardRoom();
+    const { turns } = await chain(0, initial(), 2);
+    const one = await send(joined, first, turns[0]), two = await send(one.room, second, turns[1]);
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: two.room.revision, branch: two.room.branch, idempotency_key: key(), recording: turns[2], tries: 2 }), 409, "hard_run_retry");
+    const three = await send(two.room, first, turns[2]);
+    const again = await later(setB as Rec, setA.player_slot, 3, turns[1], false, initial().checkpoint_hash, 15);
+    await failure(call(`/v2/rooms/${joined.room_id}/turns`, "POST", first, { base_revision: three.room.revision, branch: three.room.branch, idempotency_key: key(), recording: again, replaces: turns[2].recording_hash }), 409, "hard_run_no_redo");
+  });
+  it("ends the run when the room cannot hold another one with every stage at its cap", async () => {
+    const { room: joined, first, second } = await hardRoom();
+    const { turns } = await chain(0, initial(), 1);
+    const caps = adapter.open_turns!.caps.reduce((sum, cap) => sum + cap, 0);
+    // Two turns a stage would still fit; a whole run at every stage's cap would not.
+    const filler = 128 - caps;
+    expect(filler + 1 + 2 * adapter.stages.length).toBeLessThanOrEqual(128);
+    await runInDurableObject(env.ROOMS_V2.getByName(joined.room_id), (_, ctx) => {
+      for (let n = 0; n < filler; n++) ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", `x${n}`, first.player_id, 0, "{}");
+    });
+    const one = await send(joined, first, turns[0]);
+    const reset = await slipped(one.room, second, turns[1]);
+    expect(reset.room).toMatchObject({ branch: 0, a_turn_id: one.room.a_turn_id, hard: { failures: 1, over: true } });
   });
 });
 
@@ -397,7 +665,7 @@ describe("open turns: snapshot restore", () => {
     expect(JSON.parse(roomRow(archive).data).open_stage.passes.map((pass: Rec) => pass.turn_id)).toEqual(["t0-0-b", "t0-0-c"]);
     for (const change of [
       (state: Rec) => { state.open_stage.passes[1].recording_hash = turns[1].recording_hash; },
-      (state: Rec) => { state.open_stage.bytes++; },
+      (state: Rec) => { state.open_stage.passes[0].turn_id = "t0-0-c"; },
       (state: Rec) => { state.open_stage.passes.pop(); },
       (state: Rec) => { delete state.open_stage; },
     ]) expect(await restore(joined.room_id, await tampered(archive, change))).toMatchObject({ ok: false, code: "snapshot_open_stage_mismatch" });

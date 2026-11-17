@@ -656,7 +656,7 @@ static func _held(value: Variant) -> Dictionary:
 
 static func _bonus(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.whole_number(value.get("amount")) or not value.get("counted") is bool: return {}
-	return {"amount": int(value.amount), "counted": value.counted, "reason": str(value.get("reason", ""))}
+	return {"amount": int(value.amount), "counted": value.counted, "reason": str(value.get("reason", "")), "goal_reason": str(value.get("goal_reason", ""))}
 
 static func _id(value: Variant) -> bool:
 	return Typed.valid_id(value)

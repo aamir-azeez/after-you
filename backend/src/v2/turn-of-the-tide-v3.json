@@ -809,7 +809,7 @@
 					"height_cm": 96,
 					"id": "line",
 					"position_cm": [
-						1088,
+						1024,
 						-448
 					],
 					"radius_cm": 28,
@@ -999,7 +999,7 @@
 					"initial": "shut",
 					"kind": "selector",
 					"position_cm": [
-						-312,
+						-232,
 						-64
 					],
 					"radius_cm": 28,
@@ -1889,8 +1889,8 @@
 		}
 	},
 	"turn_limits": {
-		"a_ticks": 2700,
-		"b_ticks": 3000
+		"a_ticks": 3600,
+		"b_ticks": 3600
 	},
 	"version": 3
 }

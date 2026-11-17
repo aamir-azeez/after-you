@@ -1,6 +1,7 @@
 import { FRUIT_PREFIX, purse, setPurse } from "./currency";
 import { DORMANT_TRACKS, FRUIT_RULES, goalOf, type Achievement, type FruitRules, type Track } from "./fruits";
 import { applyLedger, inLedger, ledgerLine, ledgerLines, type FruitsReceipt, type LedgerEntry } from "./wallet";
+import { pairGoalWins } from "./duel-pay";
 import { earnedItems } from "./earned";
 import { RATES, type Rates } from "./rates";
 
@@ -16,8 +17,8 @@ import { RATES, type Rates } from "./rates";
  * - duel_wins, public_duels and public_wins: purse counters ("count:…"), since their own lines are pruned after 35 days. The
  *   sweep starts them from the lines still kept; after it, a friend duel win that paid adds one to duel_wins when its line
  *   is first written; a public duel finished with neither side giving up (duels/public.ts finishedPublic) sets public_duels
- *   to at least 1; a public duel won adds one to public_wins when its win line is first written, unless it is a repeat
- *   win over the same pair that week (duel-pay.ts creditDuelWin; a tester's repeat counts too).
+ *   to at least 1; a public duel won adds one to public_wins when its win line is first written, unless the farming guard
+ *   held it back: past two wins over the same pair that week (duel-pay.ts creditDuelWin PAIR_GOAL_WINS; a tester's counts).
  * - keepsakes, keepsakes_best: dormant until keepsakes round 2 (listed, never paid).
  * settle() runs inside the caller's transaction at each of those moments, and at most once per player as the sweep on the
  * first Fruits read or moment (purse "swept" 1). Its second step (swept 2) starts public_wins from the public duel wins
@@ -53,7 +54,7 @@ function sweep(storage: DurableObjectStorage, now: number, rates: Rates): { frie
   const extras = ledgerLines(storage, "duelextra:", 512);
   const publicIds = new Set(extras.map(line => line.detail.duel_id));
   const wins = ledgerLines(storage, "duelwin:", 512), isPublic = (line: { detail: Record<string, unknown> }) => !!line.detail.public || publicIds.has(line.detail.duel_id);
-  const found: [Counter, number][] = [[COUNTERS.public_wins, wins.filter(line => isPublic(line) && line.detail.reason !== "same_pair").length]];
+  const found: [Counter, number][] = [[COUNTERS.public_wins, pairGoalWins(wins.filter(isPublic).map(line => line.detail))]];
   const first = done.balance < 1;
   if (first) {
     const levels = new Set([...ledgerLines(storage, "clear:", 256), ...ledgerLines(storage, "hardclear:", 256)].map(line => line.detail.level_id).filter((level): level is string => typeof level === "string"));
@@ -88,11 +89,11 @@ function progress(storage: DurableObjectStorage, rates: Rates): Record<Track, nu
 
 /**
  * A duel win's moment once its line is first written (duel-pay.ts CreditOptions.fresh): a friend duel win counts only when
- * it paid (never past the weekly limits or against the same pair again); a public duel win counts unless the week already
- * held a win over the same pair (the farming guard: one per opposing pair a week), except for a tester (`trusted`).
+ * it paid (never past the weekly limits or against the same pair again); a public duel win counts unless the farming guard
+ * held it back (`counts` false: past two wins over the same pair that week, never a tester's).
  */
-export function duelMoment(moment: Moment, paid: boolean, repeat = false, trusted = false): Moment {
-  return { ...moment, duel_win: !!moment.duel_win && paid, public_win: !!moment.public_win && (!repeat || trusted) };
+export function duelMoment(moment: Moment, paid: boolean, counts = true): Moment {
+  return { ...moment, duel_win: !!moment.duel_win && paid, public_win: !!moment.public_win && counts };
 }
 
 /**

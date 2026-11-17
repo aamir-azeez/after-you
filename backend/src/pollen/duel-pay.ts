@@ -12,6 +12,9 @@ import { applyLedger, ledgerLines, walletBalance, type LedgerEntry } from "./wal
  * opposing pair that week. A win past either limit still writes its line, at 0 with the reason, so
  * a repeat answers the same and the order of a week's wins never changes. Pruned with turn claims;
  * a win older than the turn claim window is refused, so a pruned line can never pay twice.
+ * A public duel win also carries the Fruits goals' farming guard (pollen/achievements.ts public_wins): past
+ * PAIR_GOAL_WINS wins over the same opposing pair that week it counts toward no goal, and its line keeps
+ * `goal_reason` "same_pair" so every read answers the same; a tester's always counts.
  *
  * The ghost bonus: each player of a pair that beats Our run on a board gets
  * rates.duels.ghost_win_bonus the first time, as the ledger line `ghostwin:<board>`, kept for good,
@@ -32,7 +35,11 @@ import { applyLedger, ledgerLines, walletBalance, type LedgerEntry } from "./wal
 export type DuelWin = { duel_id: string; opponent: string; decided_ms: number; opponent_pair?: string };
 export type GhostWin = { duel_id: string; board: string };
 export type BonusReason = "weekly_cap" | "same_pair" | "board_paid";
-export type DuelWinAnswer = { amount: number; counted: boolean; reason?: BonusReason; balance: number };
+/** `goal_reason`: why a public duel win counts toward no Fruits goal (the farming guard), absent when it counts. */
+export type GoalReason = "same_pair";
+export type DuelWinAnswer = { amount: number; counted: boolean; reason?: BonusReason; goal_reason?: GoalReason; balance: number };
+/** Public duel wins over one opposing pair in a week that count toward the Fruits goals. */
+export const PAIR_GOAL_WINS = 2;
 /** `held`: the duel premium the turns hold for the end of a public duel (absent from `total`). */
 export type DuelRoomPay = { turns: number; plain: number; blooms: number; duel: number; duel_percent: number; boost: number; boost_percent: number; total: number; held: number };
 /**
@@ -47,7 +54,7 @@ const WIN_PREFIX = "duelwin:";
 const GHOST_PREFIX = "ghostwin:";
 const MAX_WEEK_LINES = 256;
 const REASONS: readonly unknown[] = ["weekly_cap", "same_pair", "board_paid"];
-type Held = { amount: number; reason?: unknown };
+type Held = { amount: number; reason?: unknown; goal_reason?: unknown };
 
 /**
  * One bonus line, at most once, in one transaction: a held line answers through `held`, and only a
@@ -58,25 +65,26 @@ function creditOnce(storage: DurableObjectStorage, key: string, now: number, act
   return storage.transactionSync((): Outcome<DuelWinAnswer> => {
     if (!active()) return fail(404, "identity_absent");
     const prior = ledgerLines(storage, key, 1).find(line => line.key === key);
-    if (prior) { const seen = held(prior.detail, prior.amount); return ok(answer(seen.amount, seen.reason, walletBalance(storage, now, rates))); }
+    if (prior) { const seen = held(prior.detail, prior.amount); return ok(answer(seen.amount, seen.reason, walletBalance(storage, now, rates), seen.goal_reason)); }
     const entry = price();
     if (!entry.ok) return entry;
     applyLedger(storage, [entry.value], now, rates);
     fresh?.(storage, entry.value.amount > 0);
-    return ok(answer(entry.value.amount, entry.value.detail.reason, walletBalance(storage, now, rates)));
+    return ok(answer(entry.value.amount, entry.value.detail.reason, walletBalance(storage, now, rates), entry.value.detail.goal_reason));
   });
 }
 
 /**
- * `fresh`: run inside the transaction once the line is first written, told whether it paid and, for a win, whether the week
- * already held a win over the same pair, paid or not (achievements.ts, while Fruits are on: a friend duel win counts only
- * when it paid; a public duel win counts unless it is such a repeat);
- * `public`: a public duel's win, kept on the line so it never counts as a friend duel win.
+ * `fresh`: run inside the transaction once the line is first written, told whether it paid and, for a win, whether it counts
+ * toward the goals (achievements.ts, while Fruits are on: a friend duel win counts only when it paid; a public duel win
+ * counts unless the farming guard held it back);
+ * `public`: a public duel's win, kept on the line so it never counts as a friend duel win;
+ * `trusted`: a tester's public win, which the farming guard never holds back.
  */
-export type CreditOptions = { fresh?: (storage: DurableObjectStorage, paid: boolean, repeat?: boolean) => void; public?: boolean };
+export type CreditOptions = { fresh?: (storage: DurableObjectStorage, paid: boolean, counts?: boolean) => void; public?: boolean; trusted?: boolean };
 export function creditDuelWin(storage: DurableObjectStorage, win: DuelWin, now: number, active: () => boolean, rates: Rates = RATES, options: CreditOptions = {}): Outcome<DuelWinAnswer> {
   const key = WIN_PREFIX + win.duel_id;
-  let repeat = false;
+  let counts = true;
   const fresh = options.fresh;
   return creditOnce(storage, key, now, active, rates, () => {
     if (now - win.decided_ms > rates.claims.turn_claim_days * DAY_MS) return fail(410, "duel_win_expired");
@@ -85,11 +93,12 @@ export function creditDuelWin(storage: DurableObjectStorage, win: DuelWin, now: 
     const lines = weekLines.filter(line => line.amount > 0);
     const theirs = samePairKeys(weekLines.map(line => line.detail), win.opponent_pair ? [win.opponent, win.opponent_pair] : [win.opponent]);
     const met = lines.some(line => keysOf(line.detail).some(id => theirs.has(id)));
-    // Any earlier win over the same pair that week, paid or held back, makes this one a repeat.
-    repeat = weekLines.some(line => keysOf(line.detail).some(id => theirs.has(id)));
+    // The farming guard: every earlier win over the same pair that week, paid or held back, is one of its PAIR_GOAL_WINS.
+    counts = !options.public || !!options.trusted || weekLines.filter(line => keysOf(line.detail).some(id => theirs.has(id))).length < PAIR_GOAL_WINS;
     const reason = lines.length >= rates.duels.wins_per_week ? "weekly_cap" : met ? "same_pair" : undefined;
-    return ok({ key, kind: "duelwin", amount: reason ? 0 : rates.duels.win_bonus, detail: { duel_id: win.duel_id, week, opponent: win.opponent, ...(win.opponent_pair ? { opponent_pair: win.opponent_pair } : {}), ...(reason ? { reason } : {}), ...(options.public ? { public: true } : {}) } });
-  }, (detail, amount) => ({ amount, reason: detail.reason }), fresh && ((storage, paid) => fresh(storage, paid, repeat)));
+    return ok({ key, kind: "duelwin", amount: reason ? 0 : rates.duels.win_bonus, detail: { duel_id: win.duel_id, week, opponent: win.opponent, ...(win.opponent_pair ? { opponent_pair: win.opponent_pair } : {}), ...(reason ? { reason } : {}),
+      ...(options.public ? { public: true } : {}), ...(counts ? {} : { goal_reason: "same_pair" }) } });
+  }, (detail, amount) => ({ amount, reason: detail.reason, goal_reason: detail.goal_reason }), fresh && ((storage, paid) => fresh(storage, paid, counts)));
 }
 
 /** The first win over Our run on a board. Never pruned (wallet.ts prunes only turns and duel wins), so it pays once for good. */
@@ -122,6 +131,27 @@ function samePairKeys(details: readonly Record<string, unknown>[], start: readon
   return keys;
 }
 
+/**
+ * How many of the public duel wins `details` name count toward the goals by the farming guard: at most PAIR_GOAL_WINS over
+ * each opposing pair a week, whatever their order (achievements.ts sweep, for lines kept from before the guard was on them).
+ */
+export function pairGoalWins(details: readonly Record<string, unknown>[]): number {
+  const weeks = new Map<unknown, Record<string, unknown>[]>();
+  for (const detail of details) { const week = weeks.get(detail.week); if (week) week.push(detail); else weeks.set(detail.week, [detail]); }
+  let total = 0;
+  for (const week of weeks.values()) {
+    const left = new Set(week);
+    for (const detail of week) {
+      if (!left.has(detail)) continue;
+      const theirs = samePairKeys(week, keysOf(detail));
+      const pair = week.filter(other => left.has(other) && keysOf(other).some(id => theirs.has(id)));
+      for (const other of pair) left.delete(other);
+      total += Math.min(pair.length, PAIR_GOAL_WINS);
+    }
+  }
+  return total;
+}
+
 /** A public duel's held extra, once per player per duel (EXTRA_PREFIX). A repeat answers the line as written. */
 export function creditDuelExtra(storage: DurableObjectStorage, extra: DuelExtra, now: number, active: () => boolean, rates: Rates = RATES, options: CreditOptions = {}): Outcome<DuelExtraAnswer> {
   const key = EXTRA_PREFIX + extra.duel_id;
@@ -146,8 +176,8 @@ function extraAnswer(amount: number, detail: Record<string, unknown>, balance: n
   return { amount, held, paid: detail.reason === undefined, ...(typeof detail.reason === "string" ? { reason: detail.reason } : {}), balance };
 }
 
-function answer(amount: number, reason: unknown, balance: number): DuelWinAnswer {
-  return { amount, counted: amount > 0, ...(REASONS.includes(reason) ? { reason: reason as BonusReason } : {}), balance };
+function answer(amount: number, reason: unknown, balance: number, goal?: unknown): DuelWinAnswer {
+  return { amount, counted: amount > 0, ...(REASONS.includes(reason) ? { reason: reason as BonusReason } : {}), ...(goal === "same_pair" ? { goal_reason: goal } : {}), balance };
 }
 
 /** What the player's turns in `roomId` paid, read from their turn claims. Reads only. */

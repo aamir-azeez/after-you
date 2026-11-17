@@ -30,7 +30,7 @@ extends Node
 ## this host contract (read at call time):
 ## - services: api, config, relay_session, ensure_relay_session,
 ##   _friends_client, _friend_display_name, pollen_client and fruit_spend_flow
-##   (duel energy's wallet read and refill)
+##   (duel energy's wallet read and refill, and whether a result shows its Fruits goals line)
 ## - screen: mode, ui, application_backgrounded, _toast, _online_gated,
 ##   _ensure_identity
 ## - chapters: _chapter_unlocks, _full_journey_access, _paid_content_hidden
@@ -712,6 +712,8 @@ func _open_result(view: Dictionary) -> void:
 	page.name_of = _name_of
 	page.show_boost = _surfaces().full_journey_visible()
 	page.show_pollen = _surfaces().earning_visible() and host.relay_session != null and host.relay_session.pollen_supported()
+	var spends: Variant = host.get("fruit_spend_flow")
+	page.show_fruits = spends is Node and spends.visible()
 	page.view = view
 	page.watch_requested.connect(func(next: Dictionary, control: Control) -> void: _play(next))
 	page.their_run_requested.connect(func(next: Dictionary, _control: Control) -> void: _watch_theirs(page, next))

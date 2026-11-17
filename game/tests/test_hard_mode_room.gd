@@ -47,6 +47,20 @@ class SessionStub extends RefCounted:
 	var room_client: RefCounted
 	func hard_client() -> RefCounted: return room_client
 
+## An open turns room's coordinator as hard_run.gd reads it on a slip: the
+## room, and this phone's copies of the stage's turns (the memory and the turns
+## under it, relay_room_coordinator.gd _memory).
+class OpenCoordinatorStub extends RefCounted:
+	var room: Dictionary = {}
+	var prior: Dictionary = {}
+	var chain: Array = []
+	func snapshot() -> Dictionary: return room.duplicate(true)
+	func hard_view() -> Variant: return room.get("hard")
+	func chapter_key() -> String: return "relay-isles@2"
+	func prior_recording() -> Dictionary: return prior.duplicate(true)
+	func memory_chain() -> Array: return chain.duplicate(true)
+	func save_draft(_draft: Dictionary) -> bool: return true
+
 var _paths: Array[String] = []
 
 func _run() -> void:
@@ -54,6 +68,7 @@ func _run() -> void:
 		fixtures[name] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))
 	await _hard_view()
 	await _reset_journal()
+	await _open_turns_chain()
 	await _slips_never_held()
 	await _stale_turn_after_reset()
 	await _friend_reads_once()
@@ -149,6 +164,47 @@ func _reset_journal() -> void:
 	_check(reloaded.shown() == 2 and reloaded.seen() == 2, "This phone's own slip counts as seen and shown")
 	api.player_id = GUEST
 	_check(reloaded.pending().is_empty() and not reloaded.bind(ROOM), "Another identity never sees or sends this player's reset")
+	api.queue_free()
+
+## Open turns: the room holds the turns under a slip's memory only as
+## fingerprints, so the reset carries this phone's copies of them (chain), kept
+## and resent with it, and dropped with the slip when it is too big.
+func _open_turns_chain() -> void:
+	var api := FakeApi.new()
+	root.add_child(api)
+	var store := MemoryStore.new()
+	var stub := SessionStub.new()
+	stub.room_client = HardRoomClient.new(api, _identity, store)
+	var coordinator := OpenCoordinatorStub.new()
+	coordinator.room = _hard(_snapshot(HOST, 0, true, 5))
+	coordinator.prior = fixtures["relay-a"]
+	coordinator.chain = [fixtures["relay-a"], fixtures["garden-a"]]
+	stub.coordinator = coordinator
+	var run: RefCounted = HardRun.for_room(stub, _path("chain-marks"))
+	_check(stub.room_client.bind(ROOM) and run.fail_together("failed_turn", fixtures["relay-b"], "Sam"), "A slip over a pass queues its reset")
+	var body: Dictionary = stub.room_client.pending()
+	var hashes := func(turns: Array) -> Array: return turns.map(func(turn: Dictionary) -> String: return str(turn.recording_hash))
+	_check(body.slip.recording_hash == fixtures["relay-b"].recording_hash and hashes.call(body.get(HardMode.CHAIN, [])) == hashes.call(coordinator.chain), "The reset carries this phone's copies of the turns under the slip's memory, oldest first")
+	_check(hashes.call(run.last_run.slip.get(HardMode.CHAIN, [])) == hashes.call(coordinator.chain), "and the run kept here holds them too")
+	var reloaded := HardRoomClient.new(api, _identity, store)
+	_check(reloaded.bind(ROOM) and Typed.same(reloaded.pending(), body), "The kept reset survives the app closing, chain and all")
+	api.answers.append({"ok": false, "status": 413, "code": "payload_too_large"})
+	api.answers.append(func(request: Dictionary) -> Dictionary: return _reset_answer(request, _snapshot(HOST, 0, false, 6, 1), 1))
+	var answer: Dictionary = await reloaded.send()
+	_check(answer.ok and not api.calls[-1].body.has("slip") and not api.calls[-1].body.has(HardMode.CHAIN), "A slip too big goes again without its slip and its chain")
+	# Missing copies, a first turn, and no slip: no chain.
+	var bare := HardRoomClient.new(api, _identity, MemoryStore.new())
+	_check(bare.bind(ROOM) and bare.queue_reset(coordinator.room, "failed_turn", fixtures["relay-b"], []) and not bare.pending().has(HardMode.CHAIN), "With no copies of the turns under it the reset carries the slip alone")
+	bare = HardRoomClient.new(api, _identity, MemoryStore.new())
+	_check(bare.bind(ROOM) and bare.queue_reset(coordinator.room, "retry", {}, coordinator.chain) and bare.pending().keys().size() == 6, "A reset with no slip carries no chain")
+	var journal: Dictionary = store.values.values()[0].duplicate(true)
+	journal.pending = body.duplicate(true)
+	journal.pending.erase("slip")
+	_check(not HardRoomClient.valid_journal(journal, HOST, ROOM, str(journal.server_hash)), "A kept reset with a chain and no slip is refused")
+	# The run kept here is not the later checks' business.
+	HardMode.wait_writes()
+	for path: String in [HardMode.runs_path(KEY), HardMode.INDEX_PATH]:
+		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 	api.queue_free()
 
 func _coordinator_with_draft(boundary: Boundary, room: Dictionary):

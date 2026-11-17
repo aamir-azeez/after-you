@@ -1412,6 +1412,8 @@ const PUBLIC_HELD_LEFT := "Not paid: your pair gave up"
 const PUBLIC_HELD_STOPPED := "Not paid: your side stopped playing"
 const PUBLIC_HELD_NOBODY := "Not paid: nobody joined"
 const PUBLIC_HELD_NOT_PAID := "Not paid"
+## A public duel win past two over the same pair that week, which counts toward no Fruits goal (services/duel_model.gd goal_line).
+const PUBLIC_WIN_NOT_COUNTED := "You've beaten this pair twice this week already, so this win doesn't count toward your goals."
 const PUBLIC_BLOCKED_PLAYER := "A player from a public duel"
 const PUBLIC_UNBLOCK := "Unblock %s"
 const SETTINGS_PUBLIC_DUELS := "Public duels"
@@ -2690,6 +2692,8 @@ const RELAY_ROOM_COORDINATOR_44F9E57FF773 := "The returned room is older than th
 const RELAY_ROOM_COORDINATOR_666CD1F2C6F9 := "Two different states used the same room revision."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)
 const RELAY_ROOM_COORDINATOR_97B931D8DEE0 := "The room has an unsupported format or failed native replay verification."
+## Open turns: this phone lost earlier turns of the room and gets them back from the friend's phone.
+const OPEN_TURNS_MISSING := "Getting your earlier turns back from your friend's phone."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)
 const RELAY_ROOM_COORDINATOR_FE7E854E465F := "An older room response was rejected."
 # Shared chapter rehearsal, room and save errors — Status or error (accept snapshot)

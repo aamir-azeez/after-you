@@ -532,7 +532,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		_lever_pieces[id].set_value(chosen, immediate or reduced_motion)
 		(switch.bubble as LabelBubble).highlight(chosen)
 	_follow_knobs()
-	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("part_done",state.get("can_commit",false)) else 0.0)
+	# Open turns never light the spot when a turn is ready (owner, 2026-11-16).
+	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) and not OpenTurns.pinned(chapter_definition) else 0.0)
 	_present_seats(state, immediate)
 	_present_items(state)
 	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()

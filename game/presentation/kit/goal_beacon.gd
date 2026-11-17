@@ -3,6 +3,14 @@ extends Node3D
 ## descriptor's "goal_beacon" (content/chapters/index.gd); cooperative_world
 ## builds it for each stage and feeds it the snapshot and the camera.
 ##
+## On open turns (core/physical/open_turns.gd) every chapter gets it as a guide
+## (`guide`): it shows only once the live turn has played GUIDE_AFTER_TICKS
+## without the live spirit coming near one of its end spots, so a pip that
+## finds its way never sees it, and a spot found first keeps it hidden for the
+## rest of that try. Only a finished stage hides it again, so it never says a
+## turn's part is done. A hard run never shows it (cooperative_world
+## set_goal_beacon_live).
+##
 ## Each end spot gets a beacon: a ring on the floor, a mast with a lamp and a
 ## pennant in the spirit's colour. On a pad drawn as a stand spot
 ## (kit/stand_spot.gd) the ring breathes inside the spot, never past where the
@@ -52,6 +60,16 @@ const SAFE := Rect2(0.06, 0.22, 0.74, 0.46)
 const POINTER_RADIUS := 30.0
 ## A spot counts as on screen when its lamp is this far inside the view (px).
 const ON_SCREEN_MARGIN := 24.0
+## The open turns guide waits this many ticks of the live turn (30 s at 30 a
+## second) before it shows.
+const GUIDE_AFTER_TICKS := 900
+## The guide's state this try: still waiting, the spirit found a spot first,
+## or showing.
+enum {WAITING, FOUND, GUIDING}
+
+## Whether this beacon is the open turns guide (set before build()).
+var guide := false
+var _guide := WAITING
 
 ## The spots by role: {"a": [{"at": Vector3, "surface": String, "slot": String}], "b": [...]};
 ## a spot on a stand spot also has "inside", the spot's radius in metres, and
@@ -177,20 +195,19 @@ func set_reduced_motion(on: bool) -> void:
 	if not _last_state.is_empty(): present(_last_state)
 
 ## The snapshot's role and open floors light the right beacons. A turn that is
-## ready (or done) hides them.
+## ready (or done) hides them; the open turns guide hides only when the stage
+## is complete, and shows only once it is due (_follow_guide).
 func present(state: Dictionary) -> void:
-	_last_state = state
 	var role := str(state.get("role", ""))
-	var done := bool(state.get("can_commit", false)) or bool(state.get("complete", false))
-	var shown: bool = _live and not done and _beacons.has(role) and not _beacons[role].is_empty()
+	if guide: _follow_guide(state, role)
+	_last_state = state
+	var done := (bool(state.get("finished", false)) if guide else bool(state.get("can_commit", false))) or bool(state.get("complete", false))
+	var shown: bool = _live and not done and (not guide or _guide == GUIDING) and _beacons.has(role) and not _beacons[role].is_empty()
 	var open: Array[bool] = []
 	var near: Array[bool] = []
 	if shown:
-		var player: Dictionary = state.get("players", {}).get(str(state.get("active_slot", "")), {})
-		for spot: Dictionary in _spots[role]:
-			open.append(bool(state.get("bridges", {}).get(spot.surface, true)))
-			var at: Vector3 = spot.at
-			near.append(not player.is_empty() and Vector2(float(player.x) - at.x * 100.0, float(player.z) - at.z * 100.0).length() < NEAR_CM)
+		near = _near(state, role)
+		for spot: Dictionary in _spots[role]: open.append(bool(state.get("bridges", {}).get(spot.surface, true)))
 	var key := "%s|%s|%s|%s" % [shown, role, open, near]
 	if key == _shown_key: return
 	_shown_key = key
@@ -213,6 +230,25 @@ func present(state: Dictionary) -> void:
 				look.set_shader_parameter("motion", 1.0 if open[index] and not _reduced else 0.0)
 				(beacon.nodes[piece] as Node3D).visible = bool(beacon.ring) if piece == RING else not near[index]
 	if not shown: _pointer.visible = false
+
+## The open turns guide: a new try or turn (its tick went back, or its role
+## changed) waits again; a waiting guide is found when the live spirit nears a
+## spot, else shows once the turn has played GUIDE_AFTER_TICKS.
+func _follow_guide(state: Dictionary, role: String) -> void:
+	var tick := int(state.get("tick", 0))
+	if tick < int(_last_state.get("tick", 0)) or role != str(_last_state.get("role", role)): _guide = WAITING
+	if _guide != WAITING or not _live or not _spots.has(role): return
+	if true in _near(state, role): _guide = FOUND
+	elif tick >= GUIDE_AFTER_TICKS: _guide = GUIDING
+
+## Per spot of `role`, whether the live spirit stands within NEAR_CM of it.
+func _near(state: Dictionary, role: String) -> Array[bool]:
+	var near: Array[bool] = []
+	var player: Dictionary = state.get("players", {}).get(str(state.get("active_slot", "")), {})
+	for spot: Dictionary in _spots[role]:
+		var at: Vector3 = spot.at
+		near.append(not player.is_empty() and Vector2(float(player.x) - at.x * 100.0, float(player.z) - at.z * 100.0).length() < NEAR_CM)
+	return near
 
 ## Places the pointer for `camera`; returns at once when nothing it reads has
 ## changed since the last call.
