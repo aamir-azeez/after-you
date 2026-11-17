@@ -14,7 +14,7 @@ extends SceneTree
 ##   each refusal read as a plain line;
 ## - the Fruits page: goals in the server's order (paid with their place and
 ##   "+10", the rest with their amount and steps, the keepsake goals greyed),
-##   the first few until the link opens all ("All 15 goals, 340 Fruits in all"),
+##   the first few until the link opens all ("All 22 goals, 660 Fruits in all"),
 ##   the newest Fruit lines named, the buttons that show (Get Fruits only while
 ##   packs sell), the page closed while Fruits are hidden, and every card inside
 ##   the screen at 1561x720 (the 1600x738 phone) and 1600x720 (800x360);
@@ -47,8 +47,9 @@ const ROOM := "rrrrrrrrrrrrrrrrrrrrrr"
 const HASH := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 const SIZES := [Vector2i(1561, 720), Vector2i(1600, 720)]
 const IDS := ["together_first", "together_five", "together_all", "hard_first", "hard_five", "hard_all", "duel_win_first", "duel_win_ten",
-	"ghost_first", "ghost_five", "public_duel_first", "top_ten", "gold_leaf", "keepsake_first", "keepsake_all"]
-const PAYS := [10, 10, 20, 10, 10, 40, 10, 10, 10, 10, 10, 50, 100, 10, 30]
+	"ghost_first", "ghost_five", "public_duel_first", "public_win_first", "public_win_five", "public_win_ten", "public_win_twenty_five",
+	"public_win_fifty", "public_win_hundred", "public_win_two_hundred", "top_ten", "gold_leaf", "keepsake_first", "keepsake_all"]
+const PAYS := [10, 10, 20, 10, 10, 40, 10, 10, 10, 10, 5, 10, 20, 30, 40, 50, 75, 100, 50, 100, 10, 30]
 
 var checks := 0
 var failures := 0
@@ -416,11 +417,11 @@ func _page() -> void:
 	_check(five.find_child("FruitGoalAmount", true, false) != null and five.find_child("FruitGoalSteps", true, false).filled() == 3 and five.find_child("FruitGoalSteps", true, false).goal == 5, "A goal to reach shows its amount and 3 of 5 steps")
 	_check(page.find_child("FruitGoal_hard_first", true, false).find_child("FruitGoalSteps", true, false) == null, "A paid goal shows no steps")
 	var link: Button = page.find_child("FruitGoalsAll", true, false)
-	_check(link != null and link.accessibility_name == "All 15 goals, 340 Fruits in all", "The link names the server's count and sum: %s" % [link.accessibility_name if link != null else ""])
+	_check(link != null and link.accessibility_name == "All 22 goals, 660 Fruits in all", "The link names the server's count and sum: %s" % [link.accessibility_name if link != null else ""])
 	link.pressed.emit()
 	await process_frame
 	page = host.overlay.find_child("FruitsPage", true, false)
-	_check(page.find_children("FruitGoal_*", "HBoxContainer", true, false).size() == 15, "It opens every goal")
+	_check(page.find_children("FruitGoal_*", "HBoxContainer", true, false).size() == IDS.size(), "It opens every goal")
 	var keepsake: Control = page.find_child("FruitGoal_keepsake_all", true, false)
 	_check(keepsake.modulate.a < 0.5 and keepsake.find_child("FruitGoalSteps", true, false) == null, "A goal not counted yet is greyed, with no steps")
 	var lines: Array = page.find_children("FruitLine*", "HBoxContainer", true, false).map(func(row: Node) -> String: return (row.get_child(0).get_child(0) as Label).text)

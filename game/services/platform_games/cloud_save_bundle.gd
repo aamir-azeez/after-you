@@ -25,7 +25,8 @@ const SCHEMA_VERSION := 1
 const MAGIC := "AYC1"
 ## Saved Games allows 3 MiB a slot; this leaves room for the header and Google's own limit checks.
 const MAX_BYTES := 2_900_000
-## Larger than any real bundle; a decompressed size above this is refused.
+## Larger than any real bundle; a decompressed size above this is refused, and
+## encode drops journals until it fits.
 const MAX_JSON_BYTES := 24_000_000
 ## Settings that follow a player between phones. Graphics, frame rate and notification
 ## switches belong to the device (and to its system permission), so they stay local.
@@ -160,7 +161,7 @@ static func encode(bundle: Dictionary) -> PackedByteArray:
 		size.encode_u32(0, raw.size())
 		out.append_array(size)
 		out.append_array(packed)
-		if out.size() <= MAX_BYTES or order.is_empty(): return out
+		if (out.size() <= MAX_BYTES and raw.size() <= MAX_JSON_BYTES) or order.is_empty(): return out
 		working.journals.erase(order.pop_front())
 	return PackedByteArray()
 
