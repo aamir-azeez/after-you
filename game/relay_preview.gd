@@ -363,6 +363,9 @@ func _ready() -> void:
 		if running and mode in ["play", "replay"]: soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
+	# A big change buzzes only in the player's own turn (theirs or their memory's).
+	world.big_change_haptic = func(duration_ms: int) -> void:
+		if running and mode == "play": soundscape.haptic(duration_ms)
 	soundscape.listen_to(world)
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
 	# Solo pips are built in the player's look, so the ready card shows it too.
@@ -2332,7 +2335,7 @@ func _turn_sounds(state: Dictionary, input: Dictionary = MemoryWait.STILL_INPUT)
 ## The simulation is back at tick zero: its cues restart their identities.
 func _begin_sound_turn() -> void:
 	var state: Dictionary = sim.snapshot()
-	_sound_seen = ChapterSoundMap.remember(state)
+	_sound_seen = ChapterSoundMap.remember(state, chapter_key)
 	if is_instance_valid(soundscape): soundscape.begin_turn(chapter_key, str(state.get("stage_id", "")))
 
 ## Steps a saved draft silently, still counting its cues for the sound identity.

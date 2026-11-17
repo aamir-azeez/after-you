@@ -37,6 +37,8 @@ const DATA := {
 	],
 	"dressing": "res://content/dressing/turn_of_the_tide.gd",
 	"water": "res://content/water/turn_of_the_tide.gd",
+	# Published: its pinned sounds keep the ramp silent (kit/ramp_rules.gd).
+	"ramp_sounds": false,
 	# Each turn's end spots (the steps, posts, bell and lantern) carry a beacon.
 	"goal_beacon": true,
 	"water_levels": {"tide": ["low", "half", "high"], "basin": ["shut", "low", "half", "high"], "chamber": ["low", "half", "high"]},

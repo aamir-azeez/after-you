@@ -489,6 +489,10 @@ const TAP_HAPTIC_MS := 12
 func tap_haptic() -> void:
 	if haptics_enabled and not _hushed(): _emit_haptic(TAP_HAPTIC_MS)
 
+## A big change's buzz (presentation/kit/big_change.gd), when haptics are on.
+func haptic(duration_ms: int) -> void:
+	if haptics_enabled and not _hushed(): _emit_haptic(duration_ms)
+
 func _emit_haptic(duration_ms: int) -> void:
 	if PlatformSupport.is_phone():
 		Input.vibrate_handheld(duration_ms)

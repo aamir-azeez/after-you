@@ -36,6 +36,8 @@ const PadKit = preload("res://presentation/kit/pieces/pad.gd")
 const BridgeKit = preload("res://presentation/kit/pieces/bridge.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
 const LevelLayout = preload("res://services/level_layout.gd")
+## A piece's move players should notice: the view's shake and the phone's buzz.
+const BigChange = preload("res://presentation/kit/big_change.gd")
 ## Gates, stair chains, zone ropes and locks: why a pip is refused.
 const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 ## The lettered tiles that tie a control to the gates it works.
@@ -893,8 +895,10 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 			actors[role].reset_motion()
 		actors[role].visible=not (role=="b" and snapshot.role=="a")
 	_present_seed(snapshot.seed,immediate)
+	var was_ready := bridge_ready
 	bridge_ready=bool(snapshot.bridge_open)
 	if immediate: _settle_bridge()
+	elif bridge_ready != was_ready: note_big_change("drawbridge", "drawbridge", BigChange.SECONDS)
 	Primitives.own_material(plate).albedo_color=Color("f5d990") if snapshot.plate_active else Color("b5a06e")
 	_present_garden(bool(snapshot.get("gate_open", false)) and bool(snapshot.get("lift_ready", false)), bool(snapshot.complete), immediate)
 
@@ -1274,6 +1278,20 @@ func note_motion(kind: String, id: String, direction: int, animated: bool = true
 	if direction == 0: _mechanism_motion.erase(id)
 	else: _mechanism_motion[id] = direction
 	mechanism_moving.emit(kind, id, direction)
+
+## The screen's buzz for a big change (Callable(duration_ms)): set only by a
+## screen playing its own turn, live or with its memory, so a replay never
+## buzzes; unset, nothing buzzes.
+var big_change_haptic: Callable
+
+## A piece of a big change kind (kit/big_change.gd) started to move for
+## `seconds`: the view shakes for that long, unless Reduce motion is on, and
+## the screen's buzz plays. Call it when the piece's pose changes, never on an
+## immediate present (a reset, a retry's first frame or a jump).
+func note_big_change(kind: String, _id: String, seconds: float) -> void:
+	if not BigChange.is_big(kind): return
+	if not reduced_motion and seconds > 0.0 and is_instance_valid(camera_exploration): camera_exploration.shake(seconds)
+	if big_change_haptic.is_valid(): big_change_haptic.call(BigChange.HAPTIC_MS)
 
 ## A scrolling world eases its follow camera; Home and the older islands ease
 ## toward their own framing.

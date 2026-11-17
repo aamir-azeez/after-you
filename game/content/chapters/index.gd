@@ -73,6 +73,10 @@ const OPTIONAL := {
 	## {selector control id: [its values, low to high]}: controls whose value is
 	## a water level. Turning one plays the water rising or falling.
 	"water_levels": {},
+	## Ramps its world draws over moving water (presentation/kit/ramp_rules.gd)
+	## sound as their crossing opening or closing whenever they are seen to
+	## move. Off only where that would change a published version's pinned sounds.
+	"ramp_sounds": true,
 	## Background layers (services/sound_cues.gd LOOPS or CALLS) under the shared ambience
 	## while this chapter's world is on screen.
 	"beds": [],

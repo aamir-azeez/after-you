@@ -1,6 +1,8 @@
 extends Node
 signal frame_applied
-## Presentation-only pan/zoom. Owners provide the authored frame and UI policy.
+## Presentation-only pan/zoom, and the shake a big change gives the view
+## (shake(), kit/big_change.gd). Owners provide the authored frame and UI policy.
+const BigChange = preload("res://presentation/kit/big_change.gd")
 const RETURN_DELAY := 5.0
 const RETURN_DURATION := 0.7
 const SYNTHETIC_MOUSE := -1
@@ -27,6 +29,9 @@ var _return_pan := Vector2.ZERO
 var _returning := false
 var _foreground := true
 var _frame: Dictionary = {}
+## The shake running now: seconds into it, and how long it lasts (0: none).
+var _shake_age := 0.0
+var _shake_seconds := 0.0
 
 func _ready() -> void:
 	# Worlds finish their authored framing before this child composes offsets.
@@ -163,7 +168,22 @@ func apply_frame() -> void:
 	var authored_size := camera.size
 	camera.size = authored_size * zoom_ratio
 	apply_pan(camera, authored_size)
+	# Like the pan, on top of the authored frame, so restore_frame takes it off.
+	var sway := BigChange.offset(_shake_age, _shake_seconds) * authored_size
+	if sway != Vector2.ZERO: camera.position += camera.basis.x * sway.x + camera.basis.y * sway.y
 	frame_applied.emit()
+
+## Shakes the view a little for `seconds` (at most the shake's max_seconds);
+## one already running goes on to whichever ends later. The world checks
+## Reduce motion before it asks.
+func shake(seconds: float) -> void:
+	var length := minf(seconds, float(BigChange.SHAKE.max_seconds))
+	if length > _shake_seconds - _shake_age:
+		_shake_age = 0.0
+		_shake_seconds = length
+
+func shaking() -> bool:
+	return _shake_age < _shake_seconds
 
 func apply_pan(target: Camera3D, authored_size: float) -> void:
 	# Translation in the camera plane never changes walking orientation.
@@ -173,8 +193,10 @@ func _process(delta: float) -> void:
 	if manual: return
 	if not is_active():
 		cancel_gesture()
+		_shake_seconds = 0.0
 		return
 	advance(delta, reduced_motion.is_valid() and reduced_motion.call() == true)
+	if shaking(): _shake_age += maxf(0.0, delta)
 	apply_frame()
 
 func _notification(what: int) -> void:

@@ -48,6 +48,7 @@ func _run() -> void:
 	_sound(level)
 	_open_crossings_dry()
 	_ramp_waits_for_pad()
+	_ramp_big_change()
 	var scene: PackedScene = load("res://turn_of_the_tide.tscn")
 	var state := scene.get_state()
 	var key := ""
@@ -799,6 +800,50 @@ func _ramp_waits_for_pad() -> void:
 			world.present(state, true)
 			drowned.append([bool(state.bridges.get("slipway", false)), is_zero_approx(world._ramps.slipway.rotation.z)])
 	_check(drowned == [[false, false], [false, true], [false, false], [false, true]], "Tide@3: over half and high water the winch at slip lowers the ramp under the water, still no way across: %s" % [drowned])
+	world.queue_free()
+
+## A ramp seen to move is a big change wherever it is drawn: the shared sound
+## map plays its crossing's cue (named by the crossing, so the same pitch live,
+## as the memory, on a retry and in a replay) once, even where the crossing's
+## own event already sounds; the world shakes the view for the swing, unless
+## Reduce motion is on, and buzzes through the screen's haptic; an immediate
+## present does neither.
+func _ramp_big_change() -> void:
+	var key := "turn-of-the-tide@3"
+	var level := Registry.definition(key)
+	var start := Registry.initial_checkpoint(key)
+	var states := {}
+	for winch: String in ["stowed", "slip"]:
+		var opening := start.duplicate(true)
+		opening.mechanisms.controls.merge({"tide": "half", "winch": winch}, true)
+		var sim := Simulation.new()
+		sim.simulation_version = 15
+		sim._reset_trusted(level, "set-the-tide", opening, {}, "a")
+		states[winch] = sim.snapshot()
+	var seen := SoundMap.remember(states.stowed, key)
+	var lowered := SoundMap.cues(key, states.slip, seen)
+	var raised := SoundMap.cues(key, states.stowed, seen)
+	_check(lowered.cues.count("bridge_opened") == 1 and lowered.sources[lowered.cues.find("bridge_opened")] == "bridge_opened:slipway|bridge_opened:slipway", "Tide@3: the ramp lowering under half water plays its crossing's opening cue, named by the crossing: %s" % [lowered])
+	_check(raised.cues.count("bridge_closed") == 1 and raised.sources[raised.cues.find("bridge_closed")] == "bridge_opened:slipway|bridge_closed", "Tide@3: the ramp rising plays its crossing's closing cue: %s" % [raised])
+	var opened: Dictionary = states.slip.duplicate(true)
+	opened.events = ["bridge_opened:slipway"]
+	var again := SoundMap.remember(states.stowed, key)
+	_check(SoundMap.cues(key, opened, again).cues.count("bridge_opened") == 1, "A ramp lowering as its crossing opens sounds once")
+	var world := _world(level, 0, start)
+	world.reduced_motion = false
+	var buzzes: Array = []
+	world.big_change_haptic = func(ms: int) -> void: buzzes.append(ms)
+	var rig: Node = world.camera_exploration
+	world.present(states.stowed, true)
+	_check(buzzes.is_empty() and not rig.shaking(), "An immediate present neither shakes nor buzzes")
+	world.present(states.slip)
+	_check(buzzes == [world.BigChange.HAPTIC_MS] and rig.shaking() and is_equal_approx(rig._shake_seconds, world.RAMP_RAISED / world.RAMP_RATE), "The ramp starting to swing shakes the view for the swing and buzzes once: %s %s" % [buzzes, rig._shake_seconds])
+	world.present(states.slip)
+	_check(buzzes.size() == 1, "A ramp already on its way gives no second big change")
+	rig._shake_seconds = 0.0
+	world.reduced_motion = true
+	world.present(states.stowed)
+	_check(buzzes.size() == 2 and not rig.shaking(), "Under Reduce motion the ramp snaps without a shake, and still buzzes")
 	world.queue_free()
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:

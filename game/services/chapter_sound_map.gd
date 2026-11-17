@@ -27,6 +27,9 @@ const DressingCatalog = preload("res://content/dressing/catalog.gd")
 ## steps, and the engine calls a fall of more than 2 cm in one step a drop.
 const Runtime = preload("res://core/physical/runtime.gd")
 const DROP_FALL_CM := 2 * Runtime.MOVE_PER_TICK
+## Which crossings a world with moving water shows as ramps, and whether each
+## lies down: heard as the crossing's own cues when it is seen to move.
+const RampRules = preload("res://presentation/kit/ramp_rules.gd")
 
 ## Cues for the physical and journey chapters' own events.
 const PHYSICAL := {
@@ -61,10 +64,13 @@ const NONE := []
 const UNSET := {"levers": false}
 const NO_TURNS := [[], []]
 
-## A fresh per-turn memory from the snapshot at tick zero.
-static func remember(state: Dictionary) -> Dictionary:
+## A fresh per-turn memory from the snapshot at tick zero. With the chapter's
+## key it also remembers how its ramps lie, so a ramp that moves on the first
+## tick sounds; without one the ramps are learned on the first tick.
+static func remember(state: Dictionary, chapter_key: String = "") -> Dictionary:
 	var seen := {}
 	_track(seen, state)
+	if not chapter_key.is_empty(): seen["ramps"] = _ramp_poses(chapter_key, state)
 	return seen
 
 ## {cues, sources} for one tick; unmapped events pass through and stay silent
@@ -83,12 +89,13 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	var props := _changed(seen, "props", state) if cooperative else NONE
 	var closed: Array = _bridge_changes(seen, state)[1]
 	var ghost_drop := _ghost_dropped(seen, state) if cooperative else false
+	var ramps := _ramp_changes(chapter_key, seen, state)
 	var events: Array = state.get("events", [])
 	# Pushes into a barrier and controls a pip may not work, as the screen's
 	# refusal finder (presentation/barrier_refusals.gd) put them in the snapshot.
 	var refused: Array = state.get("refused", NONE)
 	var locked: Array = state.get("locked", NONE)
-	if events.is_empty() and levers.is_empty() and controls.is_empty() and props.is_empty() and closed.is_empty() and not ghost_drop and refused.is_empty() and locked.is_empty(): return NO_CUES
+	if events.is_empty() and levers.is_empty() and controls.is_empty() and props.is_empty() and closed.is_empty() and not ghost_drop and refused.is_empty() and locked.is_empty() and ramps == NO_TURNS: return NO_CUES
 	var chapter := Index.data(chapter_key)
 	var overrides: Dictionary = chapter.get("sound_cues", NO_TABLE)
 	var dressing := DressingCatalog.for_key(chapter_key)
@@ -137,6 +144,12 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	# Crossings the water just covered go under with the water's own sound.
 	if not water_moved:
 		for id: String in closed: _add(out, "bridge_closed", "bridge_opened:%s|bridge_closed" % id)
+		# A ramp seen lowering or rising sounds as its crossing opening or
+		# closing, named the same, unless its crossing's own cue already did.
+		for id: String in ramps[0]:
+			if not events.has("bridge_opened:" + id): _add(out, "bridge_opened", Soundscape.event_source("bridge_opened:" + id, role))
+		for id: String in ramps[1]:
+			if not closed.has(id): _add(out, "bridge_closed", "bridge_opened:%s|bridge_closed" % id)
 	return out
 
 ## The Lighthouse's ticks. Its engine says only "bridge_open" and
@@ -250,6 +263,39 @@ static func _bridge_changes(seen: Dictionary, state: Dictionary) -> Array:
 			closed.append(str(id))
 		before[id] = open
 	return NO_TURNS if opened.is_empty() and closed.is_empty() else [opened, closed]
+
+## [lowered, raised]: ramps (kit/ramp_rules.gd) that lay down or stood up
+## since the last tick. Ramps first seen are only remembered. Updates `seen`.
+static func _ramp_changes(chapter_key: String, seen: Dictionary, state: Dictionary) -> Array:
+	var now := _ramp_poses(chapter_key, state)
+	if now.is_empty(): return NO_TURNS
+	if not seen.has("ramps"):
+		seen["ramps"] = now
+		return NO_TURNS
+	var before: Dictionary = seen.ramps
+	var lowered: Array = NONE
+	var raised: Array = NONE
+	for id: String in now:
+		if not before.has(id) or bool(before[id]) == bool(now[id]): continue
+		if now[id]:
+			if lowered.is_read_only(): lowered = []
+			lowered.append(id)
+		else:
+			if raised.is_read_only(): raised = []
+			raised.append(id)
+	seen["ramps"] = now
+	return NO_TURNS if lowered.is_empty() and raised.is_empty() else [lowered, raised]
+
+## How the chapter's ramps lie in `state`; {} for a chapter with none or
+## whose descriptor turns "ramp_sounds" off. The chapter's definition and
+## water are read once per key.
+static func _ramp_poses(chapter_key: String, state: Dictionary) -> Dictionary:
+	if not RampRules.knows(chapter_key):
+		var chapter := Index.data(chapter_key)
+		var path := str(chapter.get("water", "")) if bool(chapter.get("ramp_sounds", true)) else ""
+		if path.is_empty(): RampRules.learn(chapter_key, NO_TABLE, NO_TABLE)
+		else: RampRules.learn(chapter_key, Registry.definition(chapter_key), load(path).DATA)
+	return RampRules.poses(chapter_key, state)
 
 ## The memory spirit fell further since the last tick than any walk can
 ## (DROP_FALL_CM): the drop its engine plays only for the live spirit.

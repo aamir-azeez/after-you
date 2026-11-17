@@ -21,8 +21,40 @@ func _check(ok: bool, message: String) -> void:
 func _run() -> void:
 	await _test_gestures()
 	await _test_worlds()
+	_test_shake()
 	print("AFTER YOU CAMERA EXPLORATION: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## A big change's shake (kit/big_change.gd) sways the applied frame a little,
+## off the authored frame like the pan, so restoring takes it off exactly and
+## nothing drifts; it ends after its seconds, and a longer move runs on.
+func _test_shake() -> void:
+	var camera := Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 12.0
+	root.add_child(camera)
+	var authored := camera.transform
+	var rig := Exploration.new()
+	rig.manual = true
+	rig.camera = camera
+	root.add_child(rig)
+	rig.shake(0.5)
+	rig._shake_age = 0.1
+	rig.apply_frame()
+	var sway := camera.position.distance_to(authored.origin)
+	_check(sway > 0.0 and sway < 12.0 * Exploration.BigChange.SHAKE.size * 1.2, "A shake sways the view by a small share of its height: %s" % sway)
+	rig.restore_frame()
+	_check(camera.transform == authored, "Restoring the frame takes the shake off exactly")
+	rig.shake(0.2)
+	_check(is_equal_approx(rig._shake_seconds, 0.5) and is_equal_approx(rig._shake_age, 0.1), "A shorter move leaves the running shake as it is")
+	rig.shake(9.0)
+	_check(is_equal_approx(rig._shake_seconds, Exploration.BigChange.SHAKE.max_seconds), "A shake never runs past its longest")
+	rig._shake_age = rig._shake_seconds
+	rig.apply_frame()
+	_check(not rig.shaking() and camera.position == authored.origin, "A spent shake leaves the view still")
+	rig.restore_frame()
+	rig.queue_free()
+	camera.queue_free()
 
 func _event(rig: Node, index: int, point: Vector2, pressed: bool) -> void:
 	var event := InputEventScreenTouch.new()
