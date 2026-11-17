@@ -740,6 +740,11 @@ func _build_items(stage: Dictionary) -> void:
 	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
 		if hands.has(str(route.id)): _ladder_rungs(route)
 
+## The node drawing item `id` (on its carrier's back or where it rests), or
+## null: an ending scene hides it while its own stands in for it.
+func item_node(id: String) -> Node3D:
+	return _item_pieces[id].root if _item_pieces.has(id) else null
+
 ## Where an item state rests in the terrain's space (on the water when its
 ## floor is none).
 func _item_point(state: Dictionary) -> Vector3:

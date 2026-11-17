@@ -29,6 +29,9 @@ extends RefCounted
 ##   occupy(spirits, routes)    each snapshot: walls fade, doors dip
 ##   advance(delta)             each frame: water, then doors, then fading walls
 ## A staged build gives the frame back through the world's _build_step.
+## The world presentation/water_world.gd makes these calls; a world on the
+## water extends it. A body whose "selector" is "" is still water: it rests at
+## its one level whatever the controls show.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")

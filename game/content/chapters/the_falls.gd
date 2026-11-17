@@ -59,5 +59,14 @@ const DATA := {
 		},
 		"sounds": {"base": "garden_opened", "together": "lift_ready", "hard": "bell_rung", "top": "island_bloomed"},
 	},
+	"dressing": "res://content/dressing/the_falls.gd",
+	"water": "res://content/water/the_falls.gd",
+	"water_levels": {"pool": ["LOW", "HIGH"], "stream": ["LOW", "MID", "HIGH"]},
+	"beds": ["water_near"],
+	"ending": "the_falls",
+	# Each block's own looks (content/blocks/defaults.gd), and the pieces no
+	# block styles: the stepping stones, and water wheels as valves.
+	"block_source": ["res://core/journey/the_falls_catalog.gd", "source"],
+	"piece_styles": {"stones": "stones", "pool": "valve", "stream": "valve"},
 	"server": {"flag": "THE_FALLS_CHAPTER_ENABLED", "max_branches": 7},
 }

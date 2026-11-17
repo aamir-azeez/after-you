@@ -17,8 +17,11 @@ extends RefCounted
 ##   "props":  {id: {"shape": box|sphere|cylinder|cone, "size": [x, y, z] for a
 ##             box, [radius, height] for the others, "color", "at", "shown"
 ##             (true), "alpha" (1), "glow" (0), "rot": degrees [x, y, z]}}:
-##             placeholder props built when the scene starts and freed when it
-##             ends, for scenery a world does not have yet.
+##             props built when the scene starts and freed when it ends, for
+##             what the world does not stand itself. "shape": "item" with a
+##             "style" (kit/pieces/carried_item.gd) and no size is the real
+##             carried item's look; while the scene plays, the world's own item
+##             of the cast's "holds" is hidden, so the scene's stands in for it.
 ##   "steps":  in order. Each starts at the cursor; only "wait" moves the
 ##             cursor on, so the steps between two waits run together.
 ##     wait:    {"time"}
@@ -41,7 +44,7 @@ const SpiritLook = preload("res://presentation/spirit_look.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 
 const ROLES := ["carrier", "other"]
-const SHAPES := ["box", "sphere", "cylinder", "cone"]
+const SHAPES := ["box", "sphere", "cylinder", "cone", "item"]
 const EASES := ["inout", "in", "out", "linear"]
 const STEPS := ["wait", "move", "face", "pose", "camera", "sound", "prop", "caption"]
 ## A prop riding on a pip sits this high over the pip's feet (its carried seed's height).
@@ -59,7 +62,9 @@ static func check(data: Dictionary) -> String:
 		var prop: Variant = props[id]
 		if not prop is Dictionary or str(prop.get("shape", "")) not in SHAPES: return "prop %s needs a shape" % id
 		if not _point(prop.get("at", [0, 0, 0])) is Vector3: return "prop %s needs a point" % id
-		if not prop.get("size") is Array or (prop.size as Array).size() != (3 if prop.shape == "box" else 2): return "prop %s has the wrong size" % id
+		if prop.shape == "item":
+			if str(prop.get("style", "")).is_empty(): return "item prop %s needs a style" % id
+		elif not prop.get("size") is Array or (prop.size as Array).size() != (3 if prop.shape == "box" else 2): return "prop %s has the wrong size" % id
 	var steps: Variant = data.get("steps", [])
 	if not steps is Array or (steps as Array).is_empty(): return "a scene needs steps"
 	for index in range((steps as Array).size()):

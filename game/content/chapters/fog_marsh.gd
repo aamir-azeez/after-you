@@ -54,5 +54,14 @@ const DATA := {
 		},
 		"sounds": {"base": "garden_opened", "together": "lift_ready", "hard": "bell_rung", "top": "island_bloomed"},
 	},
+	"unlock": {"fruits": 3},
+	"dressing": "res://content/dressing/fog_marsh.gd",
+	"water": "res://content/water/fog_marsh.gd",
+	"beds": ["water_far"],
+	"ending": "fog_marsh",
+	# Each block's own looks (content/blocks/defaults.gd), and the pieces no
+	# block styles: the stepping stones, and the post office lantern.
+	"block_source": ["res://core/journey/fog_marsh_catalog.gd", "source"],
+	"piece_styles": {"reed-stones": "stones", "swirl-stones": "stones", "home-lantern": "lantern"},
 	"server": {"flag": "FOG_MARSH_CHAPTER_ENABLED", "max_branches": 7},
 }

@@ -1843,6 +1843,18 @@ func _advance_fireflies() -> void:
 		var phase := time * 0.7 + float(index) * 1.9
 		fly.position = rest + Vector3(sin(phase) * 0.18, sin(phase * 1.3) * 0.08, cos(phase * 0.8) * 0.12)
 
+## Where the dressing prop whose "anchor" is `anchor_name` stands (its foot,
+## in the world's space): an ending scene's origin (services/ending_scene.gd).
+## null when the shown stage's dressing names none.
+func ending_anchor(anchor_name: String) -> Variant:
+	for spec: Dictionary in DressingCatalog.stage_props(dressing, _dressing_stage_id()):
+		if str(spec.get("anchor", "")) != anchor_name or not spec.has("at"): continue
+		var surface := str(spec.get("surface", ""))
+		var base := (_surface_nodes[surface] as Node3D).position.y if _surface_nodes.has(surface) else _surface_base(surface)
+		var at := Vector3(float(spec.at[0]) / 100.0, base + float(spec.get("y", 0)) / 100.0, float(spec.at[1]) / 100.0)
+		return to_local(terrain.to_global(at))
+	return null
+
 ## A built dressing prop, for a world that wakes a part of it later.
 func _dressed_prop(_prop: Node3D) -> void:
 	pass

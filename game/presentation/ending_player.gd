@@ -18,6 +18,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 
 signal finished(watched: bool)
 
@@ -42,6 +43,10 @@ var _held: Dictionary = {}
 var _faces: Dictionary = {}
 ## The role badges ("You", "Waiting") hidden while the scene plays.
 var _badges: Array[Node3D] = []
+## The world's own carried item, hidden while the scene's stands in for it.
+var _hidden_items: Array[Node3D] = []
+## An item prop's meshes by prop id, faded through each mesh's transparency.
+var _item_meshes: Dictionary = {}
 
 ## Starts `data` in `world`, cast from `snapshot` (the final one shown), with
 ## its tap catcher and caption in `overlay` (a full-screen Control) when given.
@@ -65,6 +70,12 @@ func start(world: Node3D, data: Dictionary, snapshot: Dictionary, overlay: Contr
 			if badge.has_meta("replay_role_badge") and (badge as Node3D).visible:
 				(badge as Node3D).visible = false
 				_badges.append(badge)
+	var holds := str(data.get("cast", {}).get("holds", ""))
+	if not holds.is_empty() and world.has_method("item_node"):
+		var item: Variant = world.call("item_node", holds)
+		if item is Node3D and (item as Node3D).visible:
+			(item as Node3D).visible = false
+			_hidden_items.append(item)
 	if is_instance_valid(camera):
 		_held.camera = {"transform": camera.transform, "size": camera.size, "h_offset": camera.h_offset, "v_offset": camera.v_offset, "keep_aspect": camera.keep_aspect, "projection": camera.projection}
 	var at := {"carrier": _local(actors[slots.carrier]), "other": _local(actors[slots.other])}
@@ -169,6 +180,7 @@ func _apply(now: Dictionary, delta: float, immediate: bool) -> void:
 		node.position = prop.position
 		node.rotation.y = float(node.get_meta("yaw", 0.0)) + float(prop.spin)
 		if _materials.has(id): (_materials[id] as StandardMaterial3D).albedo_color.a = clampf(float(prop.alpha), 0.0, 1.0)
+		for mesh: GeometryInstance3D in _item_meshes.get(id, []): mesh.transparency = 1.0 - clampf(float(prop.alpha), 0.0, 1.0)
 	if is_instance_valid(_caption):
 		_caption.text = str(now.caption)
 		_caption.visible = not _caption.text.is_empty()
@@ -181,6 +193,9 @@ func _build_props(specs: Dictionary) -> void:
 	_world.add_child(_root)
 	for id: String in specs:
 		var spec: Dictionary = specs[id]
+		if str(spec.shape) == "item":
+			_build_item(id, spec)
+			continue
 		var size: Array = spec.size
 		var mesh: Mesh
 		match str(spec.shape):
@@ -203,6 +218,18 @@ func _build_props(specs: Dictionary) -> void:
 		node.rotation_degrees = Vector3(float(turn[0]), float(turn[1]), float(turn[2]))
 		node.set_meta("yaw", node.rotation.y)
 		_props[id] = node
+
+## The real carried item's look (kit/pieces/carried_item.gd) as prop `id`.
+func _build_item(id: String, spec: Dictionary) -> void:
+	var piece: RefCounted = CarriedItemKit.build(str(spec.style), Vector3.ZERO, _root, {"id": id})
+	var node: Node3D = piece.root
+	node.name = id
+	node.set_meta("ending_prop", id)
+	var turn: Array = spec.get("rot", [0, 0, 0])
+	node.rotation_degrees = Vector3(float(turn[0]), float(turn[1]), float(turn[2]))
+	node.set_meta("yaw", node.rotation.y)
+	_props[id] = node
+	if _fades(id, spec): _item_meshes[id] = node.find_children("*", "GeometryInstance3D", true, false)
 
 func _fades(id: String, spec: Dictionary) -> bool:
 	if float(spec.get("alpha", 1.0)) < 1.0: return true
@@ -257,6 +284,10 @@ func _end(watched: bool, tell: bool = true) -> void:
 	for badge: Node3D in _badges:
 		if is_instance_valid(badge): badge.visible = true
 	_badges.clear()
+	for item: Node3D in _hidden_items:
+		if is_instance_valid(item): item.visible = true
+	_hidden_items.clear()
+	_item_meshes.clear()
 	if is_instance_valid(_root): _root.queue_free()
 	if is_instance_valid(_layer): _layer.queue_free()
 	_props.clear()

@@ -30,6 +30,10 @@ const PRESETS := {
 	"meadow": {"sky": Color("1c4744"), "ambient": Color("e3e2c8"), "ambient_energy": 0.34, "sun": Color("fff0cb"), "sun_energy": 0.72, "bounce": Color("a6c4b0"), "bounce_energy": 0.24, "mote": Color("efe2b0")},
 	# Golden hour: lamps and windows glow, the sky is a warm plum dusk.
 	"golden": {"sky": Color("2f2a40"), "ambient": Color("d8ccc0"), "ambient_energy": 0.40, "sun": Color("f7ddc2"), "sun_energy": 0.68, "bounce": Color("9b97c6"), "bounce_energy": 0.28, "mote": Color("f2c98e")},
+	# The Falls: a cool green day in the spray, deep green behind the cliffs.
+	"spray": {"sky": Color("1f3a33"), "ambient": Color("d4e3d4"), "ambient_energy": 0.36, "sun": Color("fff3d6"), "sun_energy": 0.70, "bounce": Color("9fc2b8"), "bounce_energy": 0.26, "mote": Color("e8f2ee")},
+	# Fog Marsh: soft and pale under the fog, a low sun and a high ambient.
+	"fog": {"sky": Color("3b4847"), "ambient": Color("e2e6dc"), "ambient_energy": 0.46, "sun": Color("f2eedc"), "sun_energy": 0.54, "bounce": Color("b7c4bc"), "bounce_energy": 0.30, "mote": Color("f2f0e2")},
 }
 
 static func preset(name: String) -> Dictionary:

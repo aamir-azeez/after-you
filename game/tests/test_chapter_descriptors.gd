@@ -121,7 +121,8 @@ func _families() -> void:
 ## A water file (presentation/kit/water_bodies.gd) builds from data alone, so
 ## a typo here would fail deep in a build or leave water still: every field is
 ## present and well formed, each body's control is a selector of the chapter
-## whose values the descriptor's "water_levels" lists in the same order, its
+## whose values the descriptor's "water_levels" lists in the same order (or
+## none, for still water at one level), its
 ## rest value is one of its levels, the marks name the first body's levels and
 ## every pier is an island.
 func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dictionary) -> void:
@@ -141,6 +142,10 @@ func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dicti
 		var selector := str(body.get("selector", ""))
 		_check(not levels.is_empty() and levels.has(str(body.get("rest", ""))) and body.get("color") is Color and not body.get("rects", []).is_empty(), "Water body %s of %s has levels, a rest among them, a colour and rectangles" % [id, key])
 		for rect: Variant in body.get("rects", []): _check(rect is Array and rect.size() == 4 and rect[0] < rect[2] and rect[1] < rect[3], "Water body %s of %s has whole rectangles" % [id, key])
+		# A body with no selector is still water: it rests at its one level.
+		if selector.is_empty():
+			_check(levels.size() == 1, "Still water body %s of %s has one level" % [id, key])
+			continue
 		_check(selectors.has(selector), "Water body %s of %s follows a selector of the chapter: %s" % [id, key, selector])
 		_same(data.water_levels.get(selector, []), levels.keys(), "%s's water_levels lists water body %s's values in its order" % [key, id])
 	var all: Array = block.get("bodies", [])
