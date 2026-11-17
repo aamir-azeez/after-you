@@ -16,7 +16,7 @@ const DATA := {
 			"levels": {"still": -0.10}, "color": Color(0.33, 0.47, 0.44, 0.86)},
 	],
 	"marks": {"still": Color("5b6248")},
-	"stone": Color("8f8a74"),
+	"stone": Color("7d6a50"),
 	"coping": Color("b9b39a"),
 	"pit_floor": Color("6a6656"),
 	"plinth": Color("7d7864"),

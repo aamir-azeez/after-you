@@ -190,6 +190,11 @@ func advance(delta: float) -> void:
 			entry.shown = move_toward(float(entry.shown), float(entry.target), maxf(delta, 0.0) * LIFT_RATE)
 			entry.piece.set_height(entry.shown)
 
+## The fog's slow drift at `seconds` on the world's clock (each frame unless
+## motion is reduced).
+func drift(seconds: float) -> void:
+	if fog != null: fog.drift(seconds)
+
 ## Every node that moves or changes after the build, kept whole by the static fold.
 func moving_nodes() -> Array:
 	var nodes: Array = []

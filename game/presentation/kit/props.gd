@@ -11,6 +11,7 @@ extends RefCounted
 ## row) take "from" and "to" instead of "at".
 
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const SoftMist = preload("res://presentation/kit/soft_mist.gd")
 
 const TIMBER := Color("8a6b4e")
 const TIMBER_LIGHT := Color("b08a62")
@@ -92,11 +93,15 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"shelf": half = Vector2(0.45, 0.1) * s; height = 0.5 * s
 		"frame": half = Vector2(0.22, 0.03) * s; height = 0.3 * s
 		"shells": radius = 0.15 * s; height = 0.02
-		"waterfall": half = Vector2(float(spec.get("width", 120)) / 200.0 + WATERFALL_CHEEK, WATERFALL_DEPTH * 0.5) * s; height = (float(spec.get("height", 260)) / 100.0 + 0.13) * s
+		"waterfall": half = Vector2(float(spec.get("width", 120)) / 200.0 + WATERFALL_CHEEK, WATERFALL_DEPTH * 0.5 + MIST_REACH) * s; height = (float(spec.get("height", 260)) / 100.0 + 0.13) * s
 		"mill_wheel": half = Vector2(MILL_WHEEL_RADIUS + 0.12, 0.25) * s; height = (MILL_WHEEL_RADIUS * 2.0 + 0.2) * s
 		"post_box": radius = 0.2 * s; height = 1.19 * s
 		"reeds": radius = 0.16 * s; height = 0.78 * s
 		"stamp_desk": half = Vector2(0.38, 0.24) * s; height = 0.74 * s
+		"washing_line": half = Vector2(0.76, 0.1) * s; height = 1.02 * s
+		"fishing_rod": half = Vector2(0.14, 0.46) * s; height = 0.9 * s
+		"rope_coil": radius = 0.17 * s; height = 0.08 * s
+		"light_pool": radius = float(spec.get("radius", 80)) / 100.0 * s; height = 0.0
 		"fence", "hedge", "wall", "stone_wall":
 			var from := _point(spec.from)
 			var to := _point(spec.to)
@@ -168,7 +173,7 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		"bush": _bush(root, s, spec.get("flowers", true))
 		"flowers": _flowers(root, s)
 		"tuft": _tuft(root, s)
-		"rock": _rock(root, s)
+		"rock": _rock(root, s, bool(spec.get("moss", false)))
 		"lantern": _lantern(root, s, lit)
 		"lamp_post": _lamp_post(root, s, lit)
 		"bench": _bench(root, s)
@@ -195,11 +200,15 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		"bank": _bank(root, spec)
 		"stone_wall": _stone_wall(root, _point(spec.from), _point(spec.to))
 		"shells": _shells(root, s, int(absf(float(spec.at[0]) * 7.0 + float(spec.at[1]) * 3.0)))
-		"waterfall": _waterfall(root, s, float(spec.get("width", 120)) / 100.0, float(spec.get("height", 260)) / 100.0)
+		"waterfall": _waterfall(root, s, float(spec.get("width", 120)) / 100.0, float(spec.get("height", 260)) / 100.0, float(spec.get("foot", 0)) / 100.0)
 		"mill_wheel": _mill_wheel(root, s)
 		"post_box": _post_box(root, s)
 		"reeds": _reeds(root, s, int(absf(float(spec.at[0]) * 3.0 + float(spec.at[1]) * 7.0)))
 		"stamp_desk": _stamp_desk(root, s)
+		"washing_line": _washing_line(root, s)
+		"fishing_rod": _fishing_rod(root, s)
+		"rope_coil": _rope_coil(root, s)
+		"light_pool": _light_pool(root, s, float(spec.get("radius", 80)) / 100.0)
 		"wall": _wall(root, _point(spec.from), _point(spec.to), float(spec.get("height", 120)) / 100.0, float(spec.get("thickness", 12)) / 100.0, spec.get("color", "efe2c4"))
 		_:
 			root.free()
@@ -256,9 +265,13 @@ static func _tuft(root: Node3D, s: float) -> void:
 		var blade := _box(Vector3(0.022, 0.08 + j * 0.03, 0.03) * s, Color("6f9a64"), Vector3((j - 1) * 0.035 * s, (0.04 + j * 0.012) * s, 0), root)
 		blade.rotation.z = (j - 1) * 0.3
 
-static func _rock(root: Node3D, s: float) -> void:
+## A rock and a pebble; a mossy one (moss) wears a green cushion on top.
+static func _rock(root: Node3D, s: float, moss: bool = false) -> void:
 	_ball(0.22 * s, STONE_DARK, Vector3(0, 0.07 * s, 0), root, Vector3(1.3, 0.62, 1.0))
 	_ball(0.12 * s, STONE, Vector3(0.18 * s, 0.05 * s, 0.08 * s), root, Vector3(1.2, 0.6, 1.0))
+	if moss:
+		_ball(0.17 * s, MOSS, Vector3(-0.03 * s, 0.15 * s, -0.02 * s), root, Vector3(1.35, 0.32, 1.0))
+		_ball(0.07 * s, MOSS.lightened(0.12), Vector3(0.17 * s, 0.09 * s, 0.07 * s), root, Vector3(1.3, 0.35, 1.0))
 
 static func _lantern(root: Node3D, s: float, lit: bool) -> void:
 	var h := 0.85 * s
@@ -590,14 +603,19 @@ const CLIFF_DARK := Color("666b5d")
 const MOSS := Color("6f8f5a")
 const FALLING := Color(0.80, 0.91, 0.94, 0.82)
 const FOAM := Color("f4f8f8")
-const SPRAY := Color(0.94, 0.97, 0.97, 0.38)
+const SPRAY := Color(0.97, 0.99, 0.99, 0.9)
+## How far the foam and mist reach out over the pool past the cliff's face (m
+## at size 1); the extent's depth covers it on both sides.
+const MIST_REACH := 0.8
 
 ## A tall waterfall facing the camera (+z): a mossy stone cliff `width` plus
 ## both cheeks wide and `height` tall, its water falling down the middle into
 ## white foam, with a soft spray over the foot. The water and the spray are
 ## one translucent look each; the stone, moss, streaks and foam are plain
-## leaves the static fold batches. Stand it with its foot at the water.
-static func _waterfall(root: Node3D, s: float, width: float, height: float) -> void:
+## leaves the static fold batches. Stand it with its foot at the water; where
+## the water rises and falls, stand it at the low level and give "foot" (cm)
+## up to the usual one, where a second heap of foam and the spray sit.
+static func _waterfall(root: Node3D, s: float, width: float, height: float, foot: float = 0.0) -> void:
 	var w := width * s
 	var h := height * s
 	var cheek := WATERFALL_CHEEK * s
@@ -612,8 +630,9 @@ static func _waterfall(root: Node3D, s: float, width: float, height: float) -> v
 			var tall := minf(h - y, (0.42 + 0.16 * float((index * 5 + int(side + 1.0)) % 3)) * s)
 			var inset := 0.03 * s * float(index % 2)
 			_box(Vector3(cheek - inset, tall - STANDOFF, deep - inset * 2.0), CLIFF if index % 2 == 0 else CLIFF.lightened(0.06), Vector3(side * (w * 0.5 + cheek * 0.5 + STANDOFF), y + tall * 0.5, 0), root)
-			# A tuft of moss on every other ledge.
-			if index % 2 == 1: _ball(0.11 * s, MOSS, Vector3(side * (w * 0.5 + cheek * 0.45 + STANDOFF), y + tall + 0.01 * s, deep * 0.32), root, Vector3(1.4, 0.45, 0.9))
+			# A cushion of moss on every ledge, and a little more on every other.
+			_ball((0.11 + 0.03 * float(index % 2)) * s, MOSS if index % 2 else MOSS.lightened(0.1), Vector3(side * (w * 0.5 + cheek * 0.45 + STANDOFF), y + tall + 0.01 * s, deep * 0.32), root, Vector3(1.4, 0.45, 0.9))
+			if index % 2 == 1: _ball(0.08 * s, MOSS.darkened(0.08), Vector3(side * (w * 0.5 + cheek * 0.75), y + tall * 0.55, deep * 0.5 + 0.02 * s), root, Vector3(1.0, 1.3, 0.5))
 			y += tall
 			index += 1
 	# The lip the water pours over, and moss along its top.
@@ -628,38 +647,66 @@ static func _waterfall(root: Node3D, s: float, width: float, height: float) -> v
 		var x := (float(index) + 0.5) / float(streaks) * w - w * 0.5
 		var long := h * (0.35 + 0.2 * float(index % 3))
 		_box(Vector3(0.025 * s, long, 0.012 * s), FOAM, Vector3(x, h - long * 0.5 - h * 0.08 * float(index % 4), deep * 0.5 + STANDOFF), root)
-	var puffs := maxi(3, roundi(w / 0.18) + 2)
-	for index in range(puffs):
-		var x := ((float(index) + 0.5) / float(puffs) - 0.5) * (w + cheek)
-		_ball((0.13 + 0.04 * float(index % 3)) * s, FOAM, Vector3(x, 0.02 * s, deep * 0.5 + 0.06 * s * float(index % 2)), root, Vector3(1.4, 0.5, 1.0))
-	var mist := Primitives.fresh_material(SPRAY, 1.0)
-	mist.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mist.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# A heap of white foam at the foot, two rows spreading out onto the pool.
+	# A foot above the base (foot, m) is where the pool usually stands: the
+	# foam lies there too, and the spray rises from it.
+	var puffs := maxi(4, roundi((w + cheek) / 0.16) + 2)
+	for level: float in ([0.0, foot] if foot > 0.0 else [0.0]):
+		for row in range(2):
+			for index in range(puffs - row):
+				var x := ((float(index) + 0.5 + 0.5 * float(row)) / float(puffs) - 0.5) * (w + cheek * (0.2 + 0.3 * float(row)))
+				var r := (0.12 + 0.045 * float((index + row) % 3)) * s
+				_ball(r, FOAM if (index + row) % 3 else FOAM.darkened(0.04), Vector3(x, level + 0.02 * s, deep * 0.5 + (0.05 + 0.2 * float(row) + 0.04 * float(index % 2)) * s), root, Vector3(1.4, 0.55, 1.0))
+	# Soft spray rising off the foot, and mist lying out over the pool: one
+	# see-through mesh (kit/soft_mist.gd), all of it within the prop's extent.
+	var blots: Array = []
+	var front := deep * 0.5
+	# Billows of spray all along the foot, out over the cheeks too, so they
+	# show against the stone and not only on the white water; a few more
+	# rising above them.
+	var reach := w * 0.5 + cheek - 0.42 * s
+	var billows := maxi(4, roundi((reach * 2.0) / (0.42 * s)) + 1)
+	for index in range(billows):
+		var x := -reach + reach * 2.0 * float(index) / float(billows - 1)
+		blots.append([Vector3(x, foot + (0.22 + 0.12 * float(index % 3)) * s, front + (0.22 + 0.08 * float(index % 2)) * s), Vector2(0.84, 0.66 + 0.1 * float(index % 2)) * s, "front"])
 	for index in range(3):
-		var cloud := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.32 * s), mist, Vector3((float(index) - 1.0) * w * 0.4, 0.3 * s + 0.08 * s * float(index % 2), deep * 0.5 + 0.18 * s), root)
-		cloud.scale = Vector3(1.8, 0.8, 1.2)
-		cloud.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var x := (float(index) - 1.0) * minf(w * 0.32, reach)
+		blots.append([Vector3(x, foot + (0.75 + 0.15 * float(index % 2)) * s, front + 0.12 * s), Vector2(0.84, 0.7) * s, "front"])
+	for index in range(3):
+		var x := (float(index) - 1.0) * w * 0.3
+		blots.append([Vector3(x, foot + 0.12 * s, front + MIST_REACH * s * 0.5), Vector2(w * 0.45 + cheek * 0.8, MIST_REACH * s * 0.95), "up"])
+	SoftMist.build(blots, SPRAY, root)
 
 ## A mill wheel's radius (m at size 1).
 const MILL_WHEEL_RADIUS := 0.62
 
+## Radians a second a turning mill wheel goes round: a slow, steady turn.
+const MILL_WHEEL_SPIN := -0.45
+
 ## A timber mill wheel on its axle, facing the camera (+z): a rim of planks,
 ## three spokes across, a paddle at every rim plank and a post each side
-## under the axle. Still: it shows the mill, it turns nothing.
+## under the axle. The wheel itself is one node, "Spin", whose meta "spin" is
+## its turn rate: the world turns it (presentation/water_world.gd); the posts
+## stand still.
 static func _mill_wheel(root: Node3D, s: float) -> void:
 	var r := MILL_WHEEL_RADIUS * s
 	var hub := Vector3(0, r + 0.08 * s, 0)
+	var wheel := Node3D.new()
+	wheel.name = "Spin"
+	wheel.position = hub
+	wheel.set_meta("spin", MILL_WHEEL_SPIN)
+	root.add_child(wheel)
 	var planks := 12
 	for index in range(planks):
 		var a := float(index) / float(planks) * TAU
-		var rim := _box(Vector3(r * TAU / float(planks) + 0.01 * s, 0.06 * s, 0.16 * s), TIMBER, hub + Vector3(cos(a), sin(a), 0) * r, root)
+		var rim := _box(Vector3(r * TAU / float(planks) + 0.01 * s, 0.06 * s, 0.16 * s), TIMBER, Vector3(cos(a), sin(a), 0) * r, wheel)
 		rim.rotation.z = a + PI * 0.5
-		var paddle := _box(Vector3(0.03 * s, 0.17 * s, 0.24 * s), TIMBER_LIGHT, hub + Vector3(cos(a), sin(a), 0) * (r + 0.08 * s), root)
+		var paddle := _box(Vector3(0.03 * s, 0.17 * s, 0.24 * s), TIMBER_LIGHT, Vector3(cos(a), sin(a), 0) * (r + 0.08 * s), wheel)
 		paddle.rotation.z = a
 	for index in range(3):
-		var spoke := _box(Vector3(r * 2.0 - 0.06 * s, 0.05 * s, 0.05 * s), TIMBER_DARK, hub, root)
+		var spoke := _box(Vector3(r * 2.0 - 0.06 * s, 0.05 * s, 0.05 * s), TIMBER_DARK, Vector3.ZERO, wheel)
 		spoke.rotation.z = float(index) / 3.0 * PI + 0.2
-	var axle := _rod(0.09 * s, 0.34 * s, TIMBER_DARK, hub, root)
+	var axle := _rod(0.09 * s, 0.34 * s, TIMBER_DARK, Vector3.ZERO, wheel)
 	axle.rotation.x = PI * 0.5
 	for side: float in [-1.0, 1.0]:
 		_box(Vector3(0.08 * s, hub.y - 0.08 * s, 0.08 * s), TIMBER_DARK, Vector3(0, (hub.y - 0.08 * s) * 0.5, side * 0.21 * s), root)
@@ -707,3 +754,51 @@ static func _stamp_desk(root: Node3D, s: float) -> void:
 	_box(Vector3(0.14, 0.02, 0.1) * s, Color("b0473c"), Vector3(0.18 * s, 0.695 * s + STANDOFF, 0.04 * s), root)
 	var forms := _box(Vector3(0.2, 0.03, 0.26) * s, PICKET, Vector3(-0.22 * s, 0.7 * s + STANDOFF, -0.02 * s), root)
 	forms.rotation.y = 0.12
+
+# --- Lived-in touches: a washing line, a fishing rod, a coil of rope, and the
+# warm pool a lantern throws on the boards ---
+
+const CLOTHS := [Color("f4ecd8"), Color("a9c6d8"), Color("e6aaa0"), Color("b7c99a")]
+const LAMP_POOL := Color(1.0, 0.78, 0.45, 0.42)
+
+## Two posts and a line between them along x, with four cloths pegged on it.
+## Each cloth hangs below the line, so no face of one meets the line's.
+static func _washing_line(root: Node3D, s: float) -> void:
+	for x: float in [-0.7, 0.7]: _box(Vector3(0.05, 1.0, 0.05) * s, TIMBER_DARK, Vector3(x * s, 0.5 * s, 0), root)
+	_box(Vector3(1.4, 0.012, 0.012) * s, ROPE, Vector3(0, 0.95 * s, 0), root)
+	var x := -0.52
+	for index in range(CLOTHS.size()):
+		var wide := 0.2 + 0.05 * float(index % 2)
+		var tall := 0.22 + 0.07 * float((index + 1) % 3)
+		_box(Vector3(wide, tall, 0.02) * s, CLOTHS[index], Vector3((x + wide * 0.5) * s, (0.935 - tall * 0.5) * s, 0), root)
+		x += wide + 0.05
+
+## A rod propped on a forked stick, leaning out along -z over the water, its
+## line hanging from the tip to a red float, and a little bucket at its butt.
+static func _fishing_rod(root: Node3D, s: float) -> void:
+	for side: float in [-1.0, 1.0]:
+		var stick := _box(Vector3(0.025, 0.32, 0.025) * s, TIMBER_DARK, Vector3(side * 0.035 * s, 0.15 * s, 0.05 * s), root)
+		stick.rotation.z = side * 0.25
+	var butt := Vector3(0, 0.06, 0.4) * s
+	var tip := Vector3(0, 0.86, -0.44) * s
+	var rod := _box(Vector3(0.022 * s, butt.distance_to(tip), 0.022 * s), TIMBER, (butt + tip) * 0.5, root)
+	rod.rotation.x = atan2(tip.z - butt.z, tip.y - butt.y)
+	_rod(0.004 * s, 0.96 * s, Color("e8e2d0"), Vector3(0, 0.38 * s, tip.z), root)
+	_ball(0.035 * s, Color("c0483c"), Vector3(0, -0.1 * s, tip.z), root)
+	Primitives.mesh_node(Primitives.shared_mesh("cylinder", 0.07 * s, 0.12 * s, 0.06 * s), _m(Color("7f8a8a")), Vector3(0.09 * s, 0.06 * s, 0.32 * s), root)
+
+## Three loops of rope lying in a low heap.
+static func _rope_coil(root: Node3D, s: float) -> void:
+	for loop in range(3):
+		var coil := MeshInstance3D.new()
+		coil.mesh = Primitives.ring_mesh((0.13 - 0.025 * float(loop)) * s)
+		coil.material_override = _m(ROPE if loop % 2 == 0 else ROPE.darkened(0.12))
+		coil.position = Vector3(0.01 * float(loop) * s, (0.015 + 0.022 * float(loop)) * s, 0)
+		root.add_child(coil)
+
+## The warm light a lantern throws on the ground: a soft see-through glow,
+## `radius` m (at size 1) round its foot, just over the floor and under a
+## pip's shadow's reach (kit/soft_mist.gd).
+static func _light_pool(root: Node3D, s: float, radius: float) -> void:
+	var across := radius * 2.0 * s
+	SoftMist.build([[Vector3(0, 0.035, 0), Vector2(across, across), "up"]], LAMP_POOL, root, true)

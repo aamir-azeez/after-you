@@ -25,9 +25,14 @@ var waters := WaterBodies.new(self)
 ## Where the spirits stand (plan cm), refilled each snapshot for the locks and
 ## the wall fade.
 var _water_spirits := PackedVector2Array()
+## Dressing parts that turn on their own (a kit prop's "Spin" node, whose
+## meta "spin" is radians a second, as a mill wheel's): held here, so the
+## static fold batches each under itself and it still turns.
+var _spinning: Array[Node3D] = []
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
+	_spinning.clear()
 	_forget_stage()
 	waters.start(stage, _water_block(), _standing_routes(stage))
 	await super.show_stage(stage)
@@ -176,7 +181,16 @@ func _advance_camera(delta: float) -> void:
 func _advance_water(delta: float) -> void:
 	waters.advance(delta)
 	waters.advance_fade(delta)
-	if not reduced_motion: waters.bob()
+	if not reduced_motion:
+		waters.bob()
+		# From the world's clock, so a frame shows the same turn however it is reached.
+		for part: Node3D in _spinning:
+			if is_instance_valid(part): part.rotation.z = time * float(part.get_meta("spin"))
+
+func _dressed_prop(prop: Node3D) -> void:
+	super._dressed_prop(prop)
+	var part := prop.get_node_or_null("Spin") as Node3D
+	if part != null and part.has_meta("spin"): _spinning.append(part)
 
 ## The water and the floods move with the snapshot, so they stay whole.
 func _static_keep() -> Array:

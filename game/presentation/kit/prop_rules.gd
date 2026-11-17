@@ -45,7 +45,7 @@ const SMALL_STAND := 0.18
 ## The view lists whose spots a pip stands inside.
 const STAND_IN := ["sockets", "props", "plates", "plate", "pressure_pads", "ball_pads", "hold_pads", "goals", "goal", "landing"]
 ## Kinds whose footprint is a rectangle; every other kind is judged as a circle.
-const SQUARE_KINDS := ["bench", "cottage", "rug", "path", "planter", "boat", "lobster_pot", "shelf", "frame", "fence", "hedge", "wall"]
+const SQUARE_KINDS := ["bench", "cottage", "rug", "path", "planter", "boat", "lobster_pot", "shelf", "frame", "fence", "hedge", "wall", "washing_line", "fishing_rod"]
 
 static func rect(r: Array) -> Rect2:
 	return Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)
