@@ -16,20 +16,25 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       hangs from the arm of a timber post over a squat iron pump; pulled,
 ##       the pump handle comes down and the lantern glows, let go it goes dark.
 ##       The world clears the fog round a lit one (kit/fog.gd).
-##   "crank": the winch built squat and low, its drum bare of chain let go and
-##       wound fat with it pulled, so the drum says which at a glance.
+##   "crank": the winch built squat and low, with a big drum and a stout
+##       handle, its drum bare of chain let go and wound fat with it pulled,
+##       so the drum says which at a glance.
 ##   "rope": a mooring rope on a tall post. Let go, it hangs slack down the
 ##       post into a big coil at its foot; pulled, it runs taut and straight
 ##       from the post's head across to an iron cleat, the coil paid out to one turn.
-##   "water_gate": a timber gate in a little stone channel, lifted by a wheel
-##       on its frame. Let go, the gate is down and the water behind it lies
+##   "water_gate": a timber gate in a little stone channel, lifted by a big
+##       wheel on its frame. Let go, the gate is down and the water behind it lies
 ##       still; pulled, the wheel turns, the gate rises and water runs out under it.
 ##
 ## A handle style's anchor is its tilting pivot (the knob at journey_world
 ## KNOB); a machine's is a fixed point anchor_lift() over its spot. A machine
-## stands inside its control's reach (REACH every way, the 28 cm interaction
-## radius) and keeps its east side no further than the plain housing
-## (EAST_SIDE), so a lamp or mark a world stands beside a lever stays clear.
+## is drawn inside its control's reach (REACH every way, the 28 cm interaction
+## radius) with its east side no further than the plain housing (EAST_SIDE),
+## then stands SIZES times that (1 unless named) so it reads at a glance on a
+## phone. At 1 a lamp or mark a world stands beside a lever stays clear; a
+## bigger machine is for a chapter whose levers show their own state (no
+## lamps), and body() is what the level checker and the dressing lint judge
+## it by.
 ## A machine eases over PULL_SECONDS; a handle snaps. Every part's place
 ## follows from the shown value alone, and no frame allocates.
 
@@ -38,6 +43,9 @@ const HANDLES := ["plain", "brass"]
 const MACHINES := ["winch", "bolt", "lantern", "crank", "rope", "water_gate"]
 const REACH := 0.28
 const EAST_SIDE := 0.16
+## How many times its drawn size a machine stands (the owner, 2026-11-17: the
+## crank and the water gate read too small at phone size).
+const SIZES := {"crank": 1.6, "water_gate": 1.5}
 const PULL_SECONDS := 0.45
 ## A handle's tilt (radians about z): pulled, and let go.
 const TILT := 0.6
@@ -45,16 +53,22 @@ const TILT := 0.6
 const HOUSING := Color("728788")
 ## Where a bubble's tail lands on each machine (its top on its axis, m over
 ## its spot), and how far over its anchor that is: journey_world's knob point
-## (KNOB 0.4 over the anchor) plus KNOB_RADIUS (0.09).
-const TOPS := {"winch": 0.63, "bolt": 0.63, "lantern": 0.90, "crank": 0.45, "rope": 0.84, "water_gate": 0.71}
+## (KNOB 0.4 over the anchor) plus KNOB_RADIUS (0.09). Drawn size, before SIZES.
+const TOPS := {"winch": 0.63, "bolt": 0.63, "lantern": 0.90, "crank": 0.46, "rope": 0.84, "water_gate": 0.75}
 const KNOB_REACH := 0.49
 ## Winch and crank: the drum's height, its frame posts' height, its flanges'
-## radius, its coil's radius let go and pulled, and whether the drum shows
-## bare (no coil) let go; turns of the crank. A coil stays 0.05 or more
-## across, so its bands stand 3 mm off it (the dressing lint's coplanar rule).
+## radius and thickness, its coil's radius let go and pulled, its length and
+## its bands' radius (times the coil's), and whether the drum shows bare (no
+## coil) let go; the handle: its x, its arm's size and middle, its stub's
+## radius and height, and its knob's radius. Turns of the crank. A coil stays
+## 0.05 or more across, so its bands stand 3 mm or more off it (the dressing
+## lint's coplanar rule).
 const WINCHES := {
-	"winch": {"drum_y": 0.50, "posts": 0.60, "flange": 0.085, "coil": [0.052, 0.078]},
-	"crank": {"drum_y": 0.30, "posts": 0.42, "flange": 0.11, "coil": [0.05, 0.10], "bare": true},
+	"winch": {"drum_y": 0.50, "posts": 0.60, "flange": 0.085, "rim": 0.018, "coil": [0.052, 0.078], "coil_length": 0.11, "band": 1.07,
+		"handle": {"x": -0.18, "arm": Vector3(0.025, 0.12, 0.03), "arm_y": 0.05, "stub": 0.016, "grip_y": 0.11, "knob": 0.032}},
+	# Its handle's arm stands a centimetre off the west post.
+	"crank": {"drum_y": 0.30, "posts": 0.42, "flange": 0.14, "rim": 0.024, "coil": [0.06, 0.12], "coil_length": 0.10, "band": 1.1, "bare": true,
+		"handle": {"x": -0.191, "arm": Vector3(0.032, 0.13, 0.037), "arm_y": 0.055, "stub": 0.019, "grip_y": 0.115, "knob": 0.042}},
 }
 const DRUM_X := -0.03
 const CRANK_TURNS := 1.5
@@ -94,8 +108,8 @@ const GATE_STONE := Color("b9a585")
 const GATE_BED := Color("6b5e4e")
 const GATE_DOWN := 0.035
 const GATE_LIFT := 0.13
-const GATE_WHEEL_Y := 0.58
-const GATE_WHEEL_R := 0.11
+const GATE_WHEEL_Y := 0.60
+const GATE_WHEEL_R := 0.13
 const GATE_WHEEL_TURNS := 1.25
 const STILL_WATER := Color("4f8fb5")
 const RUNNING_WATER := Color("7cc4d6")
@@ -145,7 +159,19 @@ func advance(delta: float) -> void:
 
 ## How high a machine's anchor stands over its spot (a handle's pivot: 0.2).
 func anchor_lift() -> float:
-	return float(TOPS[style]) - KNOB_REACH if TOPS.has(style) else 0.2
+	return float(TOPS[style]) * size_of(style) - KNOB_REACH if TOPS.has(style) else 0.2
+
+## How many times its drawn size a style stands.
+static func size_of(lever_style: String) -> float:
+	return float(SIZES.get(lever_style, 1.0))
+
+## What a style stands as on screen, for the level checker and the dressing
+## lint (kit/prop_rules.gd): its reach and its top over the spot (m). Empty
+## for a style at its drawn size, which its control's own reach covers.
+static func body(lever_style: String) -> Dictionary:
+	var size := size_of(lever_style)
+	if is_equal_approx(size, 1.0): return {}
+	return {"radius": REACH * size, "top": float(TOPS.get(lever_style, 0.0)) * size}
 
 func moving_parts() -> Array[Node3D]:
 	var parts: Array[Node3D] = []
@@ -182,6 +208,7 @@ func _make(lever_style: String, at: Vector3, parent: Node3D, knob: Color) -> voi
 		"bolt": _make_bolt(knob)
 		"lantern": _make_lantern(knob)
 		_: _make_handle(knob)
+	root.scale = Vector3.ONE * size_of(lever_style)
 	_pose()
 
 func _make_handle(knob: Color) -> void:
@@ -195,8 +222,9 @@ static func _link(parent: Node3D) -> MeshInstance3D:
 	return Parts.torus(0.0175, 0.0065, Parts.IRON, Vector3.ZERO, parent, 8, 5)
 
 func _make_winch(knob: Color) -> void:
-	var drum_y: float = WINCHES[style].drum_y
-	var posts: float = WINCHES[style].posts
+	var shape: Dictionary = WINCHES[style]
+	var drum_y: float = shape.drum_y
+	var posts: float = shape.posts
 	Parts.box(Vector3(0.36, 0.05, 0.22), Parts.TIMBER, Vector3(DRUM_X, 0.025, 0), root)
 	for x: float in [-0.14, 0.11]:
 		Parts.box(Vector3(0.05, posts, 0.07), Parts.TIMBER_DARK, Vector3(x, posts * 0.5, 0), root)
@@ -207,21 +235,22 @@ func _make_winch(knob: Color) -> void:
 	_drum = Node3D.new()
 	_drum.position = Vector3(DRUM_X, drum_y, 0)
 	root.add_child(_drum)
-	for x: float in [-0.07, 0.07]: Parts.rod(float(WINCHES[style].flange), 0.018, Parts.IRON, Vector3(x, 0, 0), _drum)
+	for x: float in [-0.07, 0.07]: Parts.rod(float(shape.flange), float(shape.rim), Parts.IRON, Vector3(x, 0, 0), _drum)
 	# A brass stud on the east flange shows the drum turning.
 	Parts.box(Vector3(0.024, 0.026, 0.026), Parts.BRASS, Vector3(0.095, 0.06, 0), _drum)
 	# The chain wound on the drum: a coil of unit radius, scaled across the
 	# axle (never along it) as it fills, banded where the turns lie.
 	_coil = Node3D.new()
 	_drum.add_child(_coil)
-	Parts.rod(1.0, 0.11, Parts.IRON_LIGHT, Vector3.ZERO, _coil)
-	for index in range(4): Parts.rod(1.07, 0.012, Parts.IRON, Vector3(-0.04 + float(index) * 0.0267, 0, 0), _coil)
+	Parts.rod(1.0, float(shape.coil_length), Parts.IRON_LIGHT, Vector3.ZERO, _coil)
+	for index in range(4): Parts.rod(float(shape.band), 0.012, Parts.IRON, Vector3(-0.04 + float(index) * 0.0267, 0, 0), _coil)
+	var handle: Dictionary = shape.handle
 	_crank = Node3D.new()
-	_crank.position = Vector3(-0.18, drum_y, 0)
+	_crank.position = Vector3(float(handle.x), drum_y, 0)
 	root.add_child(_crank)
-	Parts.box(Vector3(0.025, 0.12, 0.03), Parts.IRON, Vector3(0, 0.05, 0), _crank)
-	Parts.rod(0.016, 0.04, Parts.IRON, Vector3(-0.02, 0.11, 0), _crank)
-	Parts.ball(0.032, knob, Vector3(-0.04, 0.11, 0), _crank)
+	Parts.box(handle.arm, Parts.IRON, Vector3(0, float(handle.arm_y), 0), _crank)
+	Parts.rod(float(handle.stub), 0.04, Parts.IRON, Vector3(-0.02, float(handle.grip_y), 0), _crank)
+	Parts.ball(float(handle.knob), knob, Vector3(-0.04, float(handle.grip_y), 0), _crank)
 	# The hawse the chain runs down through, in the sill's front.
 	var hawse := _link(root)
 	hawse.position = Vector3(DRUM_X, 0.055, 0.075)
@@ -349,7 +378,7 @@ func _make_water_gate(knob: Color) -> void:
 	# Faces of different looks stand a centimetre or more apart (the dressing
 	# lint's coplanar rule).
 	Parts.box(Vector3(0.24, 0.03, 0.51), GATE_BED, Vector3(GATE_X, 0.015, 0.0), root)
-	Parts.box(Vector3(0.38, 0.17, 0.04), GATE_STONE, Vector3(GATE_X, 0.085, -0.255), root)
+	Parts.box(Vector3(0.36, 0.17, 0.04), GATE_STONE, Vector3(GATE_X, 0.085, -0.255), root)
 	for x: float in GATE_WALLS: Parts.box(Vector3(0.08, 0.18, 0.50), GATE_STONE, Vector3(x, 0.09, 0.0), root)
 	for x: float in GATE_PIERS: Parts.box(Vector3(0.11, 0.40, 0.12), GATE_STONE.darkened(0.08), Vector3(x, 0.20, GATE_Z), root)
 	Parts.box(Vector3(0.42, 0.06, 0.10), Parts.TIMBER, Vector3(GATE_X, 0.41, GATE_Z), root)
@@ -369,15 +398,17 @@ func _make_water_gate(knob: Color) -> void:
 	var run := 0.225 - GATE_Z
 	Parts.box(Vector3(0.20, 0.05, run), RUNNING_WATER, Vector3(0, 0.025, 0.025 + run * 0.5), _flow)
 	Parts.box(Vector3(0.15, 0.05, 0.03), FOAM, Vector3(0, 0.035, 0.05), _flow)
-	for x: float in [-0.06, 0.0, 0.06]: Parts.box(Vector3(0.016, 0.04, run - 0.055), FOAM, Vector3(x, 0.035, 0.07 + (run - 0.055) * 0.5), _flow)
+	for x: float in [-0.06, 0.0, 0.06]: Parts.box(Vector3(0.016, 0.04, run - 0.055), FOAM, Vector3(x, 0.05, 0.07 + (run - 0.055) * 0.5), _flow)
 	_wheel = Node3D.new()
 	_wheel.position = Vector3(GATE_X, GATE_WHEEL_Y, GATE_Z + 0.075)
 	root.add_child(_wheel)
-	var rim := Parts.torus(GATE_WHEEL_R, 0.018, Parts.IRON, Vector3.ZERO, _wheel)
+	var rim := Parts.torus(GATE_WHEEL_R, 0.022, Parts.IRON, Vector3.ZERO, _wheel, 24)
 	rim.rotation.x = PI / 2.0
-	for spoke in range(2):
-		var bar := Parts.box(Vector3(0.022, GATE_WHEEL_R * 2.0, 0.02), Parts.IRON_LIGHT, Vector3.ZERO, _wheel)
-		bar.rotation.z = float(spoke) * PI / 2.0
-	var hub := Parts.disc(0.03, 0.04, Parts.BRASS, Vector3.ZERO, _wheel)
+	# Four spokes, the second pair a centimetre behind the first so no two
+	# fronts share a plane.
+	for spoke in range(4):
+		var bar := Parts.box(Vector3(0.026, GATE_WHEEL_R * 2.0, 0.02), Parts.IRON_LIGHT, Vector3(0, 0, -0.01 * float(spoke % 2)), _wheel)
+		bar.rotation.z = float(spoke) * PI / 4.0
+	var hub := Parts.disc(0.04, 0.05, Parts.BRASS, Vector3.ZERO, _wheel)
 	hub.rotation.x = PI / 2.0
-	Parts.ball(0.03, knob, Vector3(GATE_WHEEL_R, 0, 0.025), _wheel)
+	Parts.ball(0.038, knob, Vector3(GATE_WHEEL_R, 0, 0.03), _wheel)

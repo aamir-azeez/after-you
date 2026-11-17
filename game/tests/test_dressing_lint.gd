@@ -135,7 +135,8 @@ static func show_dressed_stage(world: Node3D, key: String, stage_id: String) -> 
 func _lint(key: String, stage_id: String, view: Dictionary, data: Dictionary) -> void:
 	var heights := PropRules.heights(view)
 	var spaces := PropRules.walkable(view)
-	var controls := PropRules.places(view, heights)
+	var descriptor: Dictionary = {} if key == LIGHTHOUSE else ChapterIndex.data(key)
+	var controls := PropRules.places(view, heights, PropRules.sized_levers(view, descriptor, data))
 	for spec: Dictionary in Props.expand(Catalog.stage_props(data, stage_id)):
 		var label := "%s %s %s at %s" % [key, stage_id, spec.get("kind", "?"), spec.get("at", spec.get("from", spec.get("rect", "")))]
 		if not _check(_known(spec), "Dressing prop kind exists: " + label): continue

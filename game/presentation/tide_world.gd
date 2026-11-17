@@ -537,9 +537,9 @@ func _build_lever(lever: Dictionary) -> void:
 
 ## What this world stands beside a control, for the level checker's controls
 ## drawn into each other (presentation/kit/prop_rules.gd control_bodies): a
-## lever's lamp.
-static func control_extras(spot: Dictionary) -> Array:
-	if str(spot.get("kind", "")) != "levers": return []
+## lever's lamp, unless the chapter `descriptor` stands none ("lever_lamps").
+static func control_extras(spot: Dictionary, descriptor: Dictionary = {}) -> Array:
+	if str(spot.get("kind", "")) != "levers" or not bool(descriptor.get("lever_lamps", true)): return []
 	var lamp := Props.extent({"kind": "lamp_post", "size": LEVER_LAMP})
 	return [{"offset": Vector2(LEVER_LAMP_SHIFT, 0.0), "radius": (lamp.rect as Rect2).size.x * 0.5, "top": float(lamp.height)}]
 

@@ -12,6 +12,8 @@ const Props = preload("res://presentation/kit/props.gd")
 const Look = preload("res://presentation/spirit_look.gd")
 ## Each family's floors, crossings and spots (services/level_layout.gd).
 const LevelLayout = preload("res://services/level_layout.gd")
+const Lever = preload("res://presentation/kit/pieces/lever.gd")
+const PieceStyles = preload("res://content/dressing/piece_styles.gd")
 
 ## A spirit's height: a prop shares a walking space it reaches into up to this
 ## far above the floor.
@@ -63,23 +65,38 @@ static func walkable(view: Dictionary) -> Array:
 	return LevelLayout.walking_areas(view).map(func(area: Dictionary) -> Dictionary:
 		return {"rect": rect(area.rect_cm), "y": float(area.height_cm) / 100.0, "rise": float(area.rise_cm) / 100.0, "name": "%s %s" % [names[area.kind], area.id], "id": str(area.id)})
 
+## The levers of `view` whose look stands bigger than their reach
+## (kit/pieces/lever.gd SIZES), for a chapter `descriptor` and its resolved
+## `dressing`: {lever id: {radius, top}} (m). The lint, the prop check and the
+## level checker judge them at that size.
+static func sized_levers(view: Dictionary, descriptor: Dictionary, dressing: Dictionary) -> Dictionary:
+	var found: Dictionary = {}
+	for spot: Dictionary in LevelLayout.spots(view):
+		if str(spot.kind) != "levers": continue
+		var body := Lever.body(PieceStyles.style("lever", str(spot.id), descriptor, dressing))
+		if not body.is_empty(): found[str(spot.id)] = body
+	return found
+
 ## Interactive places (LevelLayout.spots: pads, levers, switches, goals,
-## optics, starts) and drops, each as {rect, y, name}.
-static func places(view: Dictionary, floor_heights: Dictionary) -> Array:
+## optics, starts) and drops, each as {rect, y, name}; a lever in `sized`
+## (sized_levers) as wide as its look.
+static func places(view: Dictionary, floor_heights: Dictionary, sized: Dictionary = {}) -> Array:
 	var found: Array = []
 	var starts: Array = []
 	for spot: Dictionary in LevelLayout.spots(view):
 		var radius := float(spot.radius_cm) / 100.0
+		if spot.kind == "levers" and sized.has(str(spot.id)): radius = maxf(radius, float(sized[str(spot.id)].radius))
 		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
 		(starts if spot.kind == "start" else found).append({"rect": Rect2(at - Vector2.ONE * radius, Vector2.ONE * radius * 2.0), "y": float(spot.height_cm) / 100.0, "name": "%s %s" % [spot.kind, spot.id]})
 	for drop: Dictionary in view.get("drops", []):
 		found.append({"rect": rect(drop.rect_cm), "y": float(floor_heights.get(str(drop.get("surface_id", "")), 0.0)), "name": "drop " + str(drop.get("id", ""))})
 	return found + starts
 
-## Everything a stage's props are judged against, worked out once per stage.
-static func scene(view: Dictionary) -> Dictionary:
+## Everything a stage's props are judged against, worked out once per stage
+## (`sized`: sized_levers).
+static func scene(view: Dictionary, sized: Dictionary = {}) -> Dictionary:
 	var floor_heights := heights(view)
-	return {"heights": floor_heights, "spaces": walkable(view), "places": places(view, floor_heights)}
+	return {"heights": floor_heights, "spaces": walkable(view), "places": places(view, floor_heights, sized)}
 
 ## Where a prop stands: {rect (footprint), inner, base, top, ground (its
 ## surface's height), flat, wall}.
@@ -190,8 +207,9 @@ static func _area(item: Dictionary) -> float:
 ## Controls drawn into each other (the level checker): every lever and
 ## selector stands CONTROL_TOP tall over its spot (kit/pieces/lever.gd's knob
 ## over its housing), every pad, plate, socket and goal lies flat, each as
-## wide as its reach (radius_cm). A world adds what it builds beside a control
-## (control_extras(spot) on its script: [{offset, radius, top}], metres, such as
+## wide as its reach (radius_cm); a lever whose look stands bigger
+## (sized_levers) as wide and tall as that. A world adds what it builds beside a control
+## (control_extras(spot, descriptor) on its script: [{offset, radius, top}], metres, such as
 ## Tide's lamp beside each lever). Two bodies on one floor draw into each other
 ## when, each swept up its height along the camera's VIEW, they come nearer
 ## than their radii: the front one's top then stands over the back one's base.
@@ -200,15 +218,18 @@ const TALL_CONTROLS := ["levers", "controls"]
 const FLAT_CONTROLS := ["pressure_pads", "ball_pads", "hold_pads", "plates", "plate", "sockets", "goal", "goals"]
 
 ## The bodies of `view`'s controls: {id, at, radius, top, y}; `extras` is the
-## world script's control_extras (an invalid Callable adds none).
-static func control_bodies(view: Dictionary, extras: Callable = Callable()) -> Array:
+## world script's control_extras (an invalid Callable adds none), `sized` is
+## sized_levers.
+static func control_bodies(view: Dictionary, extras: Callable = Callable(), sized: Dictionary = {}) -> Array:
 	var found: Array = []
 	for spot: Dictionary in LevelLayout.spots(view):
 		var kind := str(spot.kind)
 		if kind not in TALL_CONTROLS and kind not in FLAT_CONTROLS: continue
 		var at := Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0
 		var y := float(spot.height_cm) / 100.0
-		found.append({"id": str(spot.id), "at": at, "radius": float(spot.radius_cm) / 100.0, "top": CONTROL_TOP if kind in TALL_CONTROLS else 0.0, "y": y})
+		var body: Dictionary = {"radius": float(spot.radius_cm) / 100.0, "top": CONTROL_TOP if kind in TALL_CONTROLS else 0.0}
+		if kind == "levers" and sized.has(str(spot.id)): body = {"radius": maxf(body.radius, float(sized[str(spot.id)].radius)), "top": maxf(body.top, float(sized[str(spot.id)].top))}
+		found.append({"id": str(spot.id), "at": at, "radius": body.radius, "top": body.top, "y": y})
 		if not extras.is_valid(): continue
 		for extra: Dictionary in extras.call(spot):
 			found.append({"id": str(spot.id), "at": at + (extra.offset as Vector2), "radius": float(extra.radius), "top": float(extra.top), "y": y})

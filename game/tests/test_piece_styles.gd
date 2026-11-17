@@ -118,7 +118,8 @@ func _check_machines(holder: Node3D) -> void:
 		var look: RefCounted = Lever.build(style, AT, holder)
 		var built := _pose(look.root)
 		var top := _top(look.root)
-		_check(_inside(look.root, Lever.EAST_SIDE), "The %s stays inside its lever's reach" % style)
+		var size := Lever.size_of(style)
+		_check(_inside(look.root, Lever.EAST_SIDE, size), "The %s stays inside its lever's reach, %.1f times over" % [style, size])
 		var tail: float = look.anchor.position.y + Lever.KNOB_REACH - look.root.position.y
 		_check(absf(tail - top) < 0.03, "The %s's anchor puts a bubble's tail on its top (%.3f, %.3f)" % [style, tail, top])
 		look.set_pulled(true)
@@ -128,7 +129,7 @@ func _check_machines(holder: Node3D) -> void:
 		_check(not look.moving() and look.shown() == 1.0 and eased != built, "The %s's pull plays out and rests pulled" % style)
 		var snapped: RefCounted = Lever.build(style, AT, holder)
 		snapped.set_pulled(true, true)
-		_check(_pose(snapped.root) == eased and _inside(snapped.root, Lever.EAST_SIDE), "An eased and a snapped %s pull end in the same pose, inside its reach" % style)
+		_check(_pose(snapped.root) == eased and _inside(snapped.root, Lever.EAST_SIDE, size), "An eased and a snapped %s pull end in the same pose, inside its reach" % style)
 		look.set_pulled(false, true)
 		_check(_pose(look.root) == built, "Let go, the %s is back as it was built" % style)
 
@@ -204,18 +205,24 @@ func _meshes(node: Node) -> int:
 	return node.find_children("*", "MeshInstance3D", true, false).size()
 
 ## Every mesh under `node` inside the 28 cm reach of its spot, east no further
-## than `east`, and nothing below its floor.
-func _inside(node: Node3D, east: float) -> bool:
+## than `east`, both `size` times over (a machine's SIZES), and nothing below
+## its floor. Measured from the spot, so a scaled root counts.
+func _inside(node: Node3D, east: float, size: float = 1.0) -> bool:
+	var reach := Lever.REACH * size
 	for mesh: Node in node.find_children("*", "MeshInstance3D", true, false):
-		var box: AABB = node.global_transform.affine_inverse() * (mesh as MeshInstance3D).global_transform * (mesh as MeshInstance3D).get_aabb()
-		if box.position.x < -Lever.REACH - 0.001 or box.end.x > east + 0.001 or absf(box.position.z) > Lever.REACH or absf(box.end.z) > Lever.REACH or box.position.y < -0.001: return false
+		var box: AABB = _from_spot(node) * (mesh as MeshInstance3D).global_transform * (mesh as MeshInstance3D).get_aabb()
+		if box.position.x < -reach - 0.001 or box.end.x > east * size + 0.001 or absf(box.position.z) > reach or absf(box.end.z) > reach or box.position.y < -0.001: return false
 	return true
 
 func _top(node: Node3D) -> float:
 	var top := -INF
 	for mesh: Node in node.find_children("*", "MeshInstance3D", true, false):
-		top = maxf(top, (node.global_transform.affine_inverse() * (mesh as MeshInstance3D).global_transform * (mesh as MeshInstance3D).get_aabb()).end.y)
+		top = maxf(top, (_from_spot(node) * (mesh as MeshInstance3D).global_transform * (mesh as MeshInstance3D).get_aabb()).end.y)
 	return top
+
+## World space to a piece's spot, unscaled.
+static func _from_spot(node: Node3D) -> Transform3D:
+	return Transform3D(Basis(), node.global_position).affine_inverse()
 
 ## Every mesh's transform under `node`, rounded to 0.1 mm.
 func _pose(node: Node3D) -> Array:

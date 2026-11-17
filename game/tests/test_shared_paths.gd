@@ -344,6 +344,7 @@ const OWNER_MARK_OVERRIDES := {
 const PAIR_TAG_OVERRIDES := {
 	"res://presentation/tide_world.gd": "the tide wheel shows on the gauges and the second spirit's stubs on their mouth marks (skip); the sea key's tile stands on its sign (tag); gate tiles start at a stub's mouth and keep clear of the gauges and mouth marks (hooks)",
 	"res://presentation/journey_world.gd": "a control without a floor of its own stands on the highest island under it (_pair_control_anchor)",
+	"res://presentation/cooperative_world.gd": "tiles keep clear of a lever whose look stands bigger than its reach, and of what it hides on screen (_pair_keep_clear)",
 }
 ## (t) The route barriers kit and the base worlds that keep it: island_world
 ## keeps and builds every world's, cooperative_world skips the closed stairs a
@@ -397,6 +398,7 @@ const PIECE_BUILDERS := {
 	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), and its crossings as the bridge kit draws them (_build_crossings)",
 	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
 	"res://presentation/kit/new_pieces.gd": "builds the new pieces' decks, moving platforms and rope ladders (rules 16) in the styles they resolve to, for cooperative_world",
+	"res://presentation/kit/prop_rules.gd": "builds none: reads how big a lever's look stands (lever.gd body) so the lint, the prop check and the level checker judge a bigger machine at its size",
 }
 ## Scripts that read a descriptor's pins themselves, with why.
 const PIN_READERS := {

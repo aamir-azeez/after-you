@@ -699,11 +699,13 @@ func _props(key: String) -> void:
 ## dressing, so this is where they meet.
 func _controls_apart(key: String) -> void:
 	var world: Script = Registry.world_script(key)
+	var descriptor := Index.data(key)
+	var dressing := Dressing.for_key(key)
 	var extras := Callable()
 	if world != null and world.get_script_method_list().any(func(method: Dictionary) -> bool: return method.name == "control_extras"):
-		extras = func(spot: Dictionary) -> Array: return world.call("control_extras", spot)
+		extras = func(spot: Dictionary) -> Array: return world.call("control_extras", spot, descriptor)
 	for item: Dictionary in _stages_of(key):
-		var bodies := PropRules.control_bodies(item.view, extras)
+		var bodies := PropRules.control_bodies(item.view, extras, PropRules.sized_levers(item.view, descriptor, dressing))
 		for a in range(bodies.size()):
 			for b in range(a + 1, bodies.size()):
 				var one: Dictionary = bodies[a]

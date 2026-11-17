@@ -9,6 +9,7 @@ const OpenTurns = preload("res://core/physical/open_turns.gd")
 ## Pads, levers and selectors in their styles (content/dressing/piece_styles.gd).
 const PadPiece = preload("res://presentation/kit/pieces/pad.gd")
 const LeverPiece = preload("res://presentation/kit/pieces/lever.gd")
+const PropRules = preload("res://presentation/kit/prop_rules.gd")
 const SelectorPiece = preload("res://presentation/kit/pieces/selector.gd")
 ## The new pieces' looks (rules 16): decks, platforms, ladders and fog.
 const NewPieces = preload("res://presentation/kit/new_pieces.gd")
@@ -480,6 +481,20 @@ func _build_lever(lever: Dictionary) -> void:
 	_lever_pieces[lever.id] = piece
 	_physical_levers[lever.id] = piece.anchor
 	mark_sound("control:%s" % lever.id, piece.anchor)
+
+## Pair tags and ownership marks also keep clear of a lever whose look stands
+## bigger than its reach (kit/pieces/lever.gd body): its disc, swept up its
+## height toward the camera, so no tile lies under it or behind it on screen.
+func _pair_keep_clear() -> Array:
+	var found: Array = super._pair_keep_clear()
+	for id: String in _lever_pieces:
+		var piece: RefCounted = _lever_pieces[id]
+		var body := LeverPiece.body(piece.style)
+		if body.is_empty(): continue
+		var at: Vector3 = piece.root.position
+		for step in range(3):
+			found.append({"centre": Vector2(at.x, at.z) + PropRules.VIEW * float(body.top) * float(step) * 0.5, "radius": float(body.radius), "y": at.y, "what": "lever " + id})
+	return found
 
 ## Gate links: cables this wide, their centres this high.
 const LINK_WIDTH := 0.025

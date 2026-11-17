@@ -14,6 +14,7 @@ const Catalog = preload("res://content/dressing/catalog.gd")
 const Placement = preload("res://content/dressing/placement.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const PropRules = preload("res://presentation/kit/prop_rules.gd")
+const ChapterIndex = preload("res://content/chapters/index.gd")
 const Lint = preload("res://tests/test_dressing_lint.gd")
 const Kit = preload("res://tests/level_tools/render_kit.gd")
 ## The probes for where props may stand: a lamp post for anything tall, low
@@ -56,7 +57,8 @@ func _run() -> void:
 static func check(key: String, stage_id: String, data: Dictionary = {}) -> Dictionary:
 	var dressing := data if not data.is_empty() else Catalog.for_key(key)
 	var view := Placement.stage_view(key, stage_id)
-	var stage := PropRules.scene(view)
+	var descriptor: Dictionary = {} if key == Lint.LIGHTHOUSE else ChapterIndex.data(key)
+	var stage := PropRules.scene(view, PropRules.sized_levers(view, descriptor, dressing))
 	var props: Array = []
 	var solids: Array = []
 	for spec: Dictionary in Props.expand(Catalog.stage_props(dressing, stage_id)):
