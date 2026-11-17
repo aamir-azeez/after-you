@@ -304,11 +304,11 @@
 		},
 		"turn-of-the-tide@3": {
 			"definition_fixture": "journey/turn-of-the-tide-v3-definition.json",
-			"definition_hash": "48dd88fac6da187026965cfe5c9e46bdc80994f0aad8277021c7381eaffc909d",
+			"definition_hash": "71a7eb45f220aeacefe3d982318f507698999196a11a23041430ac33726e29c1",
 			"family": "journey",
 			"flag": "TURN_OF_THE_TIDE_V3_CHAPTER_ENABLED",
 			"hard": false,
-			"initial_checkpoint_hash": "4b8e942d73260685c0ddcb7e76c9cf6b024bffce39adb1dd98dd7bceea8bf353",
+			"initial_checkpoint_hash": "e4a032b94b35545bbdcaeb9f5a3f55f181b369734a736ba5f0e264dd15cbedc5",
 			"initial_fixture": "journey/turn-of-the-tide-v3-initial-checkpoint.json",
 			"key": "turn-of-the-tide@3",
 			"level_id": "turn-of-the-tide",
