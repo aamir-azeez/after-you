@@ -181,6 +181,7 @@ func _prepare_replay() -> void:
 	_display_title = str(Collection.summary(entry).title)
 	world = Registry.world_script(entry.room.chapter_key).new()
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
+	world.big_change_shake = bool(settings.get("haptics", true))
 	world.fold_over_frames = true
 	add_child(world)
 	GraphicsPolicy.apply(world, settings)

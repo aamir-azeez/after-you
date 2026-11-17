@@ -175,7 +175,7 @@ func apply_frame() -> void:
 
 ## Shakes the view a little for `seconds` (at most the shake's max_seconds);
 ## one already running goes on to whichever ends later. The world checks
-## Reduce motion before it asks.
+## Haptics and Reduce motion before it asks.
 func shake(seconds: float) -> void:
 	var length := minf(seconds, float(BigChange.SHAKE.max_seconds))
 	if length > _shake_seconds - _shake_age:

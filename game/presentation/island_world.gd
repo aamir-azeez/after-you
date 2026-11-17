@@ -898,7 +898,7 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	var was_ready := bridge_ready
 	bridge_ready=bool(snapshot.bridge_open)
 	if immediate: _settle_bridge()
-	elif bridge_ready != was_ready: note_big_change("drawbridge", "drawbridge", BigChange.SECONDS)
+	elif bridge_ready != was_ready: note_big_change("drawbridge", BigChange.SECONDS)
 	Primitives.own_material(plate).albedo_color=Color("f5d990") if snapshot.plate_active else Color("b5a06e")
 	_present_garden(bool(snapshot.get("gate_open", false)) and bool(snapshot.get("lift_ready", false)), bool(snapshot.complete), immediate)
 
@@ -1279,19 +1279,22 @@ func note_motion(kind: String, id: String, direction: int, animated: bool = true
 	else: _mechanism_motion[id] = direction
 	mechanism_moving.emit(kind, id, direction)
 
-## The screen's buzz for a big change (Callable(duration_ms)): set only by a
-## screen playing its own turn, live or with its memory, so a replay never
+## The screen's buzz for a big change (Callable(ms, amplitude)): set only by
+## a screen playing its own turn, live or with its memory, so a replay never
 ## buzzes; unset, nothing buzzes.
 var big_change_haptic: Callable
+## The Haptics setting, which a big change's shake follows like its buzz.
+var big_change_shake := true
 
 ## A piece of a big change kind (kit/big_change.gd) started to move for
-## `seconds`: the view shakes for that long, unless Reduce motion is on, and
-## the screen's buzz plays. Call it when the piece's pose changes, never on an
-## immediate present (a reset, a retry's first frame or a jump).
-func note_big_change(kind: String, _id: String, seconds: float) -> void:
-	if not BigChange.is_big(kind): return
-	if not reduced_motion and seconds > 0.0 and is_instance_valid(camera_exploration): camera_exploration.shake(seconds)
-	if big_change_haptic.is_valid(): big_change_haptic.call(BigChange.HAPTIC_MS)
+## `seconds`: the view shakes for that long, unless Haptics is off or Reduce
+## motion on, and the screen's buzz plays. Call it when the piece's pose
+## changes, never on an immediate present (a reset, a retry's first frame or
+## a jump), wherever the piece is: off screen too.
+func note_big_change(kind: String, seconds: float) -> void:
+	if not BigChange.is_big(kind, _chapter_key()): return
+	if big_change_shake and not reduced_motion and seconds > 0.0 and is_instance_valid(camera_exploration): camera_exploration.shake(seconds)
+	if big_change_haptic.is_valid(): big_change_haptic.call(int(BigChange.HAPTIC.ms), float(BigChange.HAPTIC.amplitude))
 
 ## A scrolling world eases its follow camera; Home and the older islands ease
 ## toward their own framing.

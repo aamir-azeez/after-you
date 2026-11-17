@@ -3,22 +3,30 @@ extends RefCounted
 ## even off screen. While it moves the view shakes a little (the camera kit,
 ## presentation/camera_exploration.gd shake()), and a move the player's own
 ## turn caused (theirs or their memory's, never a replay's) gives the phone a
-## short soft buzz through the soundscape's haptics, which the Haptics setting
-## turns off. Its sound is the shared sound map's (services/chapter_sound_map.gd),
-## never this file's: a cue's pitch must follow the recorded tick, and a world
-## only sees the ticks it shows.
+## short soft buzz through the soundscape's haptics. The Haptics setting turns
+## off both, and Reduce motion the shake. Its sound is the shared sound map's
+## (services/chapter_sound_map.gd), never this file's: a cue's pitch must
+## follow the recorded tick, and a world only sees the ticks it shows.
 ##
 ## A world reports a piece that starts to move with note_big_change(kind, id,
-## seconds) (presentation/island_world.gd); the kinds below turn it on.
-## Pieces that could join later, each one line here once their world reports
-## it: the lift, the well's bucket, ladder and folds, water levels, the sea
-## gates (which snap today) and the new pieces' crossings that rise and sink
-## (kit/pieces/bridge.gd).
+## seconds) (presentation/island_world.gd). KINDS says which kinds are on; a
+## chapter's descriptor "big_change" block ({kind: bool}, content/chapters/
+## index.gd) turns a kind on or off for that chapter alone.
+const Index = preload("res://content/chapters/index.gd")
+const NO_BLOCK := {}
 const KINDS := {
-	# Island worlds' classic drawbridge (island_world _move_bridge).
+	# Island worlds' classic drawbridge (island_world present).
 	"drawbridge": true,
 	# A winch's ramp over moving water (kit/ramp_rules.gd, tide_world).
 	"ramp": true,
+	# Pieces that could use it, off until their world reports them: the lift
+	# and the well's bucket, a water level rising or falling, the sea and lock
+	# gates (which snap today), and the kit crossings that rise and sink
+	# (kit/pieces/bridge.gd).
+	"lift": false,
+	"water_level": false,
+	"gate": false,
+	"crossing": false,
 }
 ## The shake: its size as a share of the view's height (so it is the same on
 ## any screen and zoom), how many times a second it sways, and the most it
@@ -27,11 +35,15 @@ const KINDS := {
 const SHAKE := {"size": 0.0035, "hz": 11.0, "max_seconds": 1.5, "ease_in": 0.06}
 ## A move with no length of its own (a drawbridge that eases into place).
 const SECONDS := 0.4
-## The buzz, short and soft to match the shake.
-const HAPTIC_MS := 22
+## The buzz, short and soft to match the shake: its length and its strength
+## (0 to 1, where the phone can set one).
+const HAPTIC := {"ms": 22, "amplitude": 0.35}
 
-static func is_big(kind: String) -> bool:
-	return bool(KINDS.get(kind, false))
+## Whether pieces of `kind` are a big change in chapter `chapter_key` (a
+## place with no descriptor, like Home or the Lighthouse @1, keeps KINDS).
+static func is_big(kind: String, chapter_key: String = "") -> bool:
+	var chapter: Dictionary = Index.data(chapter_key).get("big_change", NO_BLOCK) if not chapter_key.is_empty() else NO_BLOCK
+	return bool(chapter.get(kind, KINDS.get(kind, false)))
 
 ## The shake's offset in the camera's plane (x across, y up), as shares of
 ## the view's height, `age` seconds into a shake `seconds` long. Zero outside it.

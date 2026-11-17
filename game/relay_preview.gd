@@ -367,10 +367,11 @@ func _ready() -> void:
 	world.reunion.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	# A big change buzzes only in the player's own turn (theirs or their memory's).
-	world.big_change_haptic = func(duration_ms: int) -> void:
-		if running and mode == "play": soundscape.haptic(duration_ms)
+	world.big_change_haptic = func(duration_ms: int, amplitude: float) -> void:
+		if running and mode == "play": soundscape.haptic(duration_ms, amplitude)
 	soundscape.listen_to(world)
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
+	world.big_change_shake = bool(settings.get("haptics", true))
 	# Solo pips are built in the player's look, so the ready card shows it too.
 	if online_session == null: _dress([])
 	if staged and OpeningCard.covering():

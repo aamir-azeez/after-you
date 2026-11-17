@@ -978,7 +978,7 @@ func _aim_ramps(controls: Dictionary, held: Dictionary, immediate: bool) -> void
 		var target := 0.0 if lowered else RAMP_RAISED
 		var was := float(hinge.get_meta("target"))
 		hinge.set_meta("target", target)
-		if not immediate and not is_equal_approx(was, target): note_big_change("ramp", id, absf(target - hinge.rotation.z) / RAMP_RATE)
+		if not immediate and not is_equal_approx(was, target): note_big_change("ramp", absf(target - hinge.rotation.z) / RAMP_RATE)
 		if immediate or reduced_motion: hinge.rotation.z = target
 
 func _swing_ramps(delta: float) -> void:

@@ -30,6 +30,7 @@ const DROP_FALL_CM := 2 * Runtime.MOVE_PER_TICK
 ## Which crossings a world with moving water shows as ramps, and whether each
 ## lies down: heard as the crossing's own cues when it is seen to move.
 const RampRules = preload("res://presentation/kit/ramp_rules.gd")
+const BigChange = preload("res://presentation/kit/big_change.gd")
 
 ## Cues for the physical and journey chapters' own events.
 const PHYSICAL := {
@@ -144,12 +145,13 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	# Crossings the water just covered go under with the water's own sound.
 	if not water_moved:
 		for id: String in closed: _add(out, "bridge_closed", "bridge_opened:%s|bridge_closed" % id)
-		# A ramp seen lowering or rising sounds as its crossing opening or
-		# closing, named the same, unless its crossing's own cue already did.
-		for id: String in ramps[0]:
-			if not events.has("bridge_opened:" + id): _add(out, "bridge_opened", Soundscape.event_source("bridge_opened:" + id, role))
-		for id: String in ramps[1]:
-			if not closed.has(id): _add(out, "bridge_closed", "bridge_opened:%s|bridge_closed" % id)
+	# A ramp is a big change (presentation/kit/big_change.gd): seen lowering or
+	# rising, even as the water moves it, it sounds as its crossing opening or
+	# closing, named the same, unless its crossing's own cue already did.
+	for id: String in ramps[0]:
+		if not events.has("bridge_opened:" + id): _add(out, "bridge_opened", Soundscape.event_source("bridge_opened:" + id, role))
+	for id: String in ramps[1]:
+		if water_moved or not closed.has(id): _add(out, "bridge_closed", "bridge_opened:%s|bridge_closed" % id)
 	return out
 
 ## The Lighthouse's ticks. Its engine says only "bridge_open" and
@@ -287,12 +289,12 @@ static func _ramp_changes(chapter_key: String, seen: Dictionary, state: Dictiona
 	return NO_TURNS if lowered.is_empty() and raised.is_empty() else [lowered, raised]
 
 ## How the chapter's ramps lie in `state`; {} for a chapter with none or
-## whose descriptor turns "ramp_sounds" off. The chapter's definition and
-## water are read once per key.
+## where ramps are no big change (kit/big_change.gd). The chapter's
+## definition and water are read once per key.
 static func _ramp_poses(chapter_key: String, state: Dictionary) -> Dictionary:
 	if not RampRules.knows(chapter_key):
 		var chapter := Index.data(chapter_key)
-		var path := str(chapter.get("water", "")) if bool(chapter.get("ramp_sounds", true)) else ""
+		var path := str(chapter.get("water", "")) if BigChange.is_big("ramp", chapter_key) else ""
 		if path.is_empty(): RampRules.learn(chapter_key, NO_TABLE, NO_TABLE)
 		else: RampRules.learn(chapter_key, Registry.definition(chapter_key), load(path).DATA)
 	return RampRules.poses(chapter_key, state)

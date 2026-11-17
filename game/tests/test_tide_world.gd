@@ -22,6 +22,7 @@ const Props = preload("res://presentation/kit/props.gd")
 const Lint = preload("res://tests/test_dressing_lint.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const SoundMap = preload("res://services/chapter_sound_map.gd")
+const BigChange = preload("res://presentation/kit/big_change.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const JourneyWorld = preload("res://presentation/journey_world.gd")
@@ -806,8 +807,8 @@ func _ramp_waits_for_pad() -> void:
 ## map plays its crossing's cue (named by the crossing, so the same pitch live,
 ## as the memory, on a retry and in a replay) once, even where the crossing's
 ## own event already sounds; the world shakes the view for the swing, unless
-## Reduce motion is on, and buzzes through the screen's haptic; an immediate
-## present does neither.
+## Haptics is off or Reduce motion on, and buzzes through the screen's haptic;
+## an immediate present does neither.
 func _ramp_big_change() -> void:
 	var key := "turn-of-the-tide@3"
 	var level := Registry.definition(key)
@@ -829,21 +830,45 @@ func _ramp_big_change() -> void:
 	opened.events = ["bridge_opened:slipway"]
 	var again := SoundMap.remember(states.stowed, key)
 	_check(SoundMap.cues(key, opened, again).cues.count("bridge_opened") == 1, "A ramp lowering as its crossing opens sounds once")
+	# The tide rising over the deck lays the wound ramp down: the water's own
+	# sound and the ramp's both play.
+	var dry := start.duplicate(true)
+	dry.mechanisms.controls.merge({"tide": "low", "winch": "slip"}, true)
+	var low := Simulation.new()
+	low.simulation_version = 15
+	low._reset_trusted(level, "set-the-tide", dry, {}, "a")
+	var tide_seen := SoundMap.remember(low.snapshot(), key)
+	var flooded := SoundMap.cues(key, states.slip, tide_seen)
+	_check(flooded.cues.has("water_rise") and flooded.cues.count("bridge_opened") == 1, "Tide@3: the tide rising over the wound ramp plays the water and the ramp lying down: %s" % [flooded])
+	_check(BigChange.is_big("ramp", key) and BigChange.is_big("drawbridge") and not BigChange.is_big("lift", key), "Ramps and drawbridges are big changes by default; the other pieces wait")
 	var world := _world(level, 0, start)
 	world.reduced_motion = false
 	var buzzes: Array = []
-	world.big_change_haptic = func(ms: int) -> void: buzzes.append(ms)
+	world.big_change_haptic = func(ms: int, amplitude: float) -> void: buzzes.append([ms, amplitude])
 	var rig: Node = world.camera_exploration
 	world.present(states.stowed, true)
 	_check(buzzes.is_empty() and not rig.shaking(), "An immediate present neither shakes nor buzzes")
 	world.present(states.slip)
-	_check(buzzes == [world.BigChange.HAPTIC_MS] and rig.shaking() and is_equal_approx(rig._shake_seconds, world.RAMP_RAISED / world.RAMP_RATE), "The ramp starting to swing shakes the view for the swing and buzzes once: %s %s" % [buzzes, rig._shake_seconds])
+	var swing: float = world.RAMP_RAISED / world.RAMP_RATE
+	_check(buzzes == [[BigChange.HAPTIC.ms, BigChange.HAPTIC.amplitude]] and rig.shaking() and is_equal_approx(rig._shake_seconds, swing), "The ramp starting to swing shakes the view for the swing and buzzes once, softly: %s %s" % [buzzes, rig._shake_seconds])
 	world.present(states.slip)
 	_check(buzzes.size() == 1, "A ramp already on its way gives no second big change")
-	rig._shake_seconds = 0.0
-	world.reduced_motion = true
+	# Real frames of the camera kit: the view sways off its frame, then settles
+	# back exactly once the swing is over.
+	rig.active = func() -> bool: return true
+	rig._process(0.1)
+	var framed: Transform3D = rig._frame.transform
+	_check(rig.camera.position != framed.origin, "A frame during the swing sways the view")
+	rig._process(swing)
+	_check(not rig.shaking() and rig.camera.position == framed.origin, "The view settles back on its frame when the swing ends")
+	rig.restore_frame()
+	world.big_change_shake = false
 	world.present(states.stowed)
-	_check(buzzes.size() == 2 and not rig.shaking(), "Under Reduce motion the ramp snaps without a shake, and still buzzes")
+	_check(buzzes.size() == 2 and not rig.shaking(), "With Haptics off the ramp swings without a shake (the soundscape drops its buzz)")
+	world.big_change_shake = true
+	world.reduced_motion = true
+	world.present(states.slip)
+	_check(buzzes.size() == 3 and not rig.shaking(), "Under Reduce motion the ramp snaps without a shake, and still buzzes")
 	world.queue_free()
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:
