@@ -81,12 +81,15 @@ const ROPE_HEAD := Vector3(-0.165, 0.70, 0.10)
 const CLEAT := Vector3(0.10, 0, -0.10)
 const COIL_AT := Vector3(-0.06, 0, 0.15)
 const COIL_RADIUS := 0.075
-## Gate: the channel's walls and the piers in them (x of each middle), its
-## stone and bed, the gate's travel, the wheel's height and radius, and its
-## water still and running.
+## Gate: the channel's walls and the piers in them (x of each middle), the
+## gate's line across the channel (south of the middle, so the pool it holds
+## back shows past the beam and wheel from the game camera), its stone and
+## bed, the gate's travel, the wheel's height and radius, and its water still
+## and running.
 const GATE_WALLS := [-0.21, 0.09]
 const GATE_PIERS := [-0.205, 0.085]
 const GATE_X := -0.06
+const GATE_Z := 0.10
 const GATE_STONE := Color("b9a585")
 const GATE_BED := Color("6b5e4e")
 const GATE_DOWN := 0.035
@@ -347,26 +350,27 @@ func _make_water_gate(knob: Color) -> void:
 	Parts.box(Vector3(0.24, 0.03, 0.51), GATE_BED, Vector3(GATE_X, 0.015, 0.0), root)
 	Parts.box(Vector3(0.38, 0.17, 0.04), GATE_STONE, Vector3(GATE_X, 0.085, -0.255), root)
 	for x: float in GATE_WALLS: Parts.box(Vector3(0.08, 0.18, 0.50), GATE_STONE, Vector3(x, 0.09, 0.0), root)
-	for x: float in GATE_PIERS: Parts.box(Vector3(0.11, 0.40, 0.12), GATE_STONE.darkened(0.08), Vector3(x, 0.20, 0.0), root)
-	Parts.box(Vector3(0.42, 0.06, 0.10), Parts.TIMBER, Vector3(GATE_X, 0.41, 0.0), root)
-	Parts.box(Vector3(0.09, 0.12, 0.09), Parts.IRON, Vector3(GATE_X, 0.49, 0.0), root)
-	# The pool behind the gate, lying still below the walls' tops. The gate is
-	# low and the beam high, so the camera sees the pool between them.
-	Parts.box(Vector3(0.20, 0.12, 0.20), STILL_WATER, Vector3(GATE_X, 0.09, -0.125), root)
+	for x: float in GATE_PIERS: Parts.box(Vector3(0.11, 0.40, 0.12), GATE_STONE.darkened(0.08), Vector3(x, 0.20, GATE_Z), root)
+	Parts.box(Vector3(0.42, 0.06, 0.10), Parts.TIMBER, Vector3(GATE_X, 0.41, GATE_Z), root)
+	Parts.box(Vector3(0.09, 0.12, 0.09), Parts.IRON, Vector3(GATE_X, 0.49, GATE_Z), root)
+	# The pool the gate holds back, lying still below the walls' tops from the
+	# back wall to the gate.
+	Parts.box(Vector3(0.20, 0.12, 0.215 + GATE_Z), STILL_WATER, Vector3(GATE_X, 0.09, (GATE_Z - 0.245) * 0.5), root)
 	_gate = Node3D.new()
-	_gate.position = Vector3(GATE_X, GATE_DOWN, 0.0)
+	_gate.position = Vector3(GATE_X, GATE_DOWN, GATE_Z)
 	root.add_child(_gate)
 	Parts.box(Vector3(0.17, 0.18, 0.04), Parts.TIMBER, Vector3(0, 0.09, 0), _gate)
 	for y: float in [0.045, 0.135]: Parts.box(Vector3(0.16, 0.025, 0.012), Parts.IRON, Vector3(0, y, 0.026), _gate)
 	# Running water: a sheet out from under the gate, foam where it leaves.
 	_flow = Node3D.new()
-	_flow.position = Vector3(GATE_X, 0.03, 0.0)
+	_flow.position = Vector3(GATE_X, 0.03, GATE_Z)
 	root.add_child(_flow)
-	Parts.box(Vector3(0.20, 0.05, 0.225), RUNNING_WATER, Vector3(0, 0.025, 0.1375), _flow)
-	Parts.box(Vector3(0.15, 0.05, 0.04), FOAM, Vector3(0, 0.035, 0.045), _flow)
-	for x: float in [-0.06, 0.0, 0.06]: Parts.box(Vector3(0.016, 0.04, 0.14), FOAM, Vector3(x, 0.035, 0.17), _flow)
+	var run := 0.225 - GATE_Z
+	Parts.box(Vector3(0.20, 0.05, run), RUNNING_WATER, Vector3(0, 0.025, 0.025 + run * 0.5), _flow)
+	Parts.box(Vector3(0.15, 0.05, 0.03), FOAM, Vector3(0, 0.035, 0.05), _flow)
+	for x: float in [-0.06, 0.0, 0.06]: Parts.box(Vector3(0.016, 0.04, run - 0.055), FOAM, Vector3(x, 0.035, 0.07 + (run - 0.055) * 0.5), _flow)
 	_wheel = Node3D.new()
-	_wheel.position = Vector3(GATE_X, GATE_WHEEL_Y, 0.075)
+	_wheel.position = Vector3(GATE_X, GATE_WHEEL_Y, GATE_Z + 0.075)
 	root.add_child(_wheel)
 	var rim := Parts.torus(GATE_WHEEL_R, 0.018, Parts.IRON, Vector3.ZERO, _wheel)
 	rim.rotation.x = PI / 2.0
