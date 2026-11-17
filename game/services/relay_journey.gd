@@ -17,7 +17,11 @@ const Proofs = preload("res://services/journey_proofs.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const PATH := "user://relay-journey-v2.json"
-const MAX_SAVE_BYTES := 1048576
+## A chapter's journal, its backup and each archived attempt, raw. The Saved
+## Games progress slot sets it (cloud_save_bundle.gd MAX_BYTES): a journal this
+## big with the most random recordings still fits the slot after zstd (about
+## 0.69 of raw, at most 0.75 for base64). test_open_turns.gd checks it.
+const MAX_SAVE_BYTES := 3670016
 const MAX_ARCHIVED_ATTEMPTS := 32
 const STATE_KEYS := ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "pairs", "a", "draft"]
 ## Open turns: a state may also hold "passes", the current stage's later turns

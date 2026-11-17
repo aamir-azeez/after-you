@@ -1,0 +1,224 @@
+{
+  "bridges": [
+    {
+      "from_surface": "landing",
+      "height_cm": 0.0,
+      "id": "lift-low",
+      "rect_cm": [
+        400.0,
+        150.0,
+        500.0,
+        250.0
+      ],
+      "to_surface": "stilts"
+    },
+    {
+      "from_surface": "landing",
+      "height_cm": 96.0,
+      "id": "lift-high",
+      "rect_cm": [
+        400.0,
+        150.0,
+        500.0,
+        250.0
+      ],
+      "to_surface": "stilts"
+    }
+  ],
+  "closing_ticks": 30.0,
+  "id": "ride-witness",
+  "islands": [
+    {
+      "height_cm": 0.0,
+      "id": "landing",
+      "rect_cm": [
+        0.0,
+        0.0,
+        400.0,
+        400.0
+      ]
+    },
+    {
+      "height_cm": 96.0,
+      "id": "stilts",
+      "rect_cm": [
+        500.0,
+        0.0,
+        900.0,
+        400.0
+      ]
+    }
+  ],
+  "premium": false,
+  "props": [],
+  "schema_version": 7.0,
+  "simulation_version": 16.0,
+  "stages": [
+    {
+      "ball_pads": [],
+      "controls": [],
+      "entry_latch_routes": [],
+      "first_player_slot": "p0",
+      "gates": [
+        {
+          "route_id": "lift-low",
+          "when": {
+            "not": {
+              "any": [
+                {
+                  "pad_id": "pan"
+                },
+                {
+                  "any": [
+                    {
+                      "lever_id": "winch"
+                    },
+                    {
+                      "lever_id": "crank"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "route_id": "lift-high",
+          "when": {
+            "any": [
+              {
+                "pad_id": "pan"
+              },
+              {
+                "any": [
+                  {
+                    "lever_id": "winch"
+                  },
+                  {
+                    "lever_id": "crank"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "route_id": "ladder"
+        }
+      ],
+      "goal": {
+        "height_cm": 96.0,
+        "id": "lamp",
+        "owner_slot": "p1",
+        "position_cm": [
+          600.0,
+          200.0
+        ],
+        "radius_cm": 40.0,
+        "surface_id": "stilts"
+      },
+      "goal_policy": {
+        "kind": "ring"
+      },
+      "id": "lift",
+      "kind": "route_endpoint",
+      "levers": [
+        {
+          "height_cm": 0.0,
+          "id": "winch",
+          "position_cm": [
+            300.0,
+            60.0
+          ],
+          "radius_cm": 28.0,
+          "surface_id": "landing"
+        },
+        {
+          "height_cm": 0.0,
+          "id": "crank",
+          "position_cm": [
+            450.0,
+            200.0
+          ],
+          "radius_cm": 28.0,
+          "surface_id": "lift-low"
+        }
+      ],
+      "platforms": [
+        {
+          "id": "lift",
+          "stops": [
+            "lift-low",
+            "lift-high"
+          ]
+        }
+      ],
+      "pressure_pads": [
+        {
+          "height_cm": 0.0,
+          "id": "pan",
+          "position_cm": [
+            60.0,
+            60.0
+          ],
+          "radius_cm": 32.0,
+          "surface_id": "landing"
+        }
+      ],
+      "receiver_action_ticks": 2.0,
+      "receiver_route_cm": [
+        [
+          600.0,
+          200.0
+        ]
+      ],
+      "source_policy": {
+        "kind": "route_endpoint",
+        "when": {}
+      },
+      "turn_cap": 4.0,
+      "version": 1.0
+    }
+  ],
+  "stairs": [
+    {
+      "axis": "x",
+      "from_height_cm": 0.0,
+      "from_surface": "landing",
+      "hands": true,
+      "id": "ladder",
+      "one_way": "up",
+      "rect_cm": [
+        400.0,
+        300.0,
+        500.0,
+        400.0
+      ],
+      "to_height_cm": 96.0,
+      "to_surface": "stilts"
+    }
+  ],
+  "starts": {
+    "p0": {
+      "height_cm": 0.0,
+      "position_cm": [
+        200.0,
+        200.0
+      ],
+      "surface_id": "landing"
+    },
+    "p1": {
+      "height_cm": 0.0,
+      "position_cm": [
+        300.0,
+        120.0
+      ],
+      "surface_id": "landing"
+    }
+  },
+  "turn_limits": {
+    "a_ticks": 1200.0,
+    "b_ticks": 1200.0
+  },
+  "version": 1.0
+}

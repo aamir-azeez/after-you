@@ -78,7 +78,7 @@ static func line(entry: Dictionary, index: int = 0) -> Control:
 	return row
 
 ## What a Fruit line was: "Full Journey, month 3", a goal's name, a pack's name,
-## "Turned into Pollen", or any of them ", refunded".
+## "Turned into Pollen", "Chapter opened" (its chapter in the detail), or any of them ", refunded".
 static func name_of(entry: Dictionary) -> String:
 	var kind := str(entry.get("kind", ""))
 	var base := kind.trim_suffix("refund")
@@ -89,6 +89,7 @@ static func name_of(entry: Dictionary) -> String:
 		"bundle": named = Bundles.display_name(str(entry.get("bundle", "")))
 		"ach": named = str(PlayerCopy.FRUIT_GOALS.get(str(entry.get("id", "")), ""))
 		"convert": named = PlayerCopy.FRUIT_LINE_CONVERT
+		"level": named = PlayerCopy.FRUIT_LINE_LEVEL
 	if named.is_empty(): named = PlayerCopy.FRUITS_PAGE_TITLE
 	return PlayerCopy.FRUIT_LINE_REFUNDED % named if kind.ends_with("refund") else named
 

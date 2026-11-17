@@ -178,6 +178,7 @@ leaderboard_watch 1
 letter_view 1
 level_checker 3
 level_tools 2
+level_unlocks 2
 level_view 2
 license_catalog 2
 licenses 3

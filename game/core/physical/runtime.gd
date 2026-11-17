@@ -249,29 +249,34 @@ func _changed_since(before: Dictionary) -> Dictionary:
 			if not before[kind].has(id) or before[kind][id] != now[id]: changed[kind][id] = true
 	return changed
 
-func _move(frame: Dictionary) -> void:
+## `slot`: the live pip unless named. A facade walks its memory with it too
+## (rules 16: a memory a platform carried off its own world's path).
+func _move(frame: Dictionary, slot: String = "") -> void:
+	if slot.is_empty(): slot = active_slot
 	var direction := Vector2(float(frame.x), float(frame.z)).limit_length(100.0)
 	var delta := Vector2i(roundi(direction.x * MOVE_PER_TICK / 100.0), roundi(direction.y * MOVE_PER_TICK / 100.0))
 	if delta == Vector2i.ZERO: return
 	var steps := maxi(absi(delta.x), absi(delta.y))
 	var walked := Vector2i.ZERO
 	var cells := _navigation_cells()
-	var routes := _walk_routes(active_slot)
+	var routes := _walk_routes(slot)
 	for index in range(1, steps + 1):
 		var next := Vector2i(roundi(float(delta.x * index) / steps), roundi(float(delta.y * index) / steps))
 		var unit := next - walked
 		walked = next
-		if _try_move(unit, cells, routes): continue
-		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells, routes)
-		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells, routes)
+		if _try_move(unit, cells, routes, slot): continue
+		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells, routes, slot)
+		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells, routes, slot)
 
 ## cells: this definition's floor index (_navigation_cells()), fetched once per move.
 ## routes: the crossings the walker may step on (_walk_routes()), likewise.
-func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary) -> bool:
-	var previous: Dictionary = _players[active_slot]
+## Only the live pip pushes a prop; a memory walked here stops at one.
+func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: String = "") -> bool:
+	if slot.is_empty(): slot = active_slot
+	var previous: Dictionary = _players[slot]
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
-	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, active_slot, PLAYER_RADIUS, true, cells)
+	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
 	if position.is_empty(): return false
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
@@ -284,15 +289,15 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary) -> bool:
 			var old_distance := Vector2i(previous.x,previous.z).distance_squared_to(Vector2i(ball.x,ball.z))
 			var new_distance := Vector2i(x,z).distance_squared_to(Vector2i(ball.x,ball.z))
 			if old_distance < separation * separation and new_distance > old_distance: continue
-		if not _can_push(ball): return false
+		if slot != active_slot or not _can_push(ball): return false
 		var moved := Navigation.at(level, _routes, _mechanisms.levers, ball, int(ball.x) + delta.x, int(ball.z) + delta.y, active_slot, int(prop.radius_cm), false, cells)
 		if moved.is_empty(): return false
 		var replacement := ball.duplicate(true)
 		replacement.merge(moved, true)
 		pushed[prop.id] = replacement
 	for id: String in pushed: _mechanisms.props[id] = pushed[id]
-	_players[active_slot] = position
-	if int(previous.height) > int(position.height) + 2: _events.append("drop")
+	_players[slot] = position
+	if slot == active_slot and int(previous.height) > int(position.height) + 2: _events.append("drop")
 	return true
 
 func _can_push(ball: Dictionary) -> bool:

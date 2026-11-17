@@ -5,6 +5,7 @@ import { DEFAULT_SLOTS, openSlots, slotsAllowed, validSlots } from "./reaction-l
 import { purse } from "./currency";
 import { buySunshine, convertFruits, payFruits } from "./fruit-ops";
 import { refillEnergy, type EnergyView } from "./energy";
+import { LEVEL_PRICES, unlockLevel } from "./level-unlocks";
 import { charge, quote, setCost, type SpendRequest } from "./spend";
 import { chapterCleared, payFromWallet, walletBalance } from "./wallet";
 import { boardSource, earnedItems, setEarned } from "./earned";
@@ -32,9 +33,14 @@ import { boardSource, earnedItems, setEarned } from "./earned";
  */
 export type OpKey = { key: string; hash: string };
 /**
+ * A level unlock's terms for this spend (level-unlocks.ts): `fullJourney` the player has Full Journey now, `prices` the
+ * price table (tests pass their own). Absent while LEVEL_UNLOCKS is off for the app, so kind "level" is refused.
+ */
+export type LevelTerms = { fullJourney: boolean; prices?: Readonly<Record<string, number>> };
+/**
  * `balance` is always the Pollen balance. `currency`: what the spend cost, "fruits" for an Orchard item, a conversion or
  * Sunshine (absent on receipts kept before Fruits, read as Pollen), with `fruit_balance` after it; `pollen`: what a
- * conversion added; `sunshine_left`: the Sunshine turns a purchase gave.
+ * conversion added; `sunshine_left`: the Sunshine turns a purchase gave. A level unlock ("level") names the level in `id`.
  */
 export type SpendReceipt = { schema_version: 1; op: "spend"; kind: SpendRequest["kind"]; id: string; pieces: string[]; cost: number; balance: number;
   currency?: "pollen" | "fruits"; fruit_balance?: number; pollen?: number; sunshine_left?: number; energy?: EnergyView };
@@ -156,12 +162,12 @@ export function validOpKey(op: OpKey): boolean { return IDEMPOTENCY_PATTERN.test
  * balance and the cost the phone showed (`expected`), then paid, owned and receipted together.
  * `active` re-checks the identity inside the transaction.
  */
-export function spend(storage: DurableObjectStorage, op: OpKey, request: SpendRequest, expected: number, now: number, active: () => boolean, catalog: Catalog = CATALOG, fruits = false): Outcome<SpendReceipt> {
+export function spend(storage: DurableObjectStorage, op: OpKey, request: SpendRequest, expected: number, now: number, active: () => boolean, catalog: Catalog = CATALOG, fruits = false, levels: LevelTerms | null = null): Outcome<SpendReceipt> {
   if (!validOpKey(op)) return fail(400, "invalid_pollen_spend");
   return storage.transactionSync((): Outcome<SpendReceipt> => {
     if (!active()) return fail(404, "identity_absent");
     const prior = priorOp<SpendReceipt>(storage, op); if (prior) return prior;
-    if (request.kind === "convert" || request.kind === "sunshine" || request.kind === "energy") return fruitSpend(storage, op, request, expected, now, fruits);
+    if (request.kind === "convert" || request.kind === "sunshine" || request.kind === "energy" || request.kind === "level") return fruitSpend(storage, op, request, expected, now, fruits, levels);
     const items = owned(storage);
     // A face owned in a pack is owned: it is never sold again on its own.
     const quoted = quote(request, { owned: new Set([...items.keys(), ...ownedFaces(items.keys(), catalog)]), cleared: level => chapterCleared(storage, level) }, catalog, fruits);
@@ -180,12 +186,20 @@ export function spend(storage: DurableObjectStorage, op: OpKey, request: SpendRe
   });
 }
 
-/** Turning Fruits into Pollen ("convert", `id` the Fruit count), buying Sunshine ("sunshine") and refilling duel energy ("energy"), receipted like any spend (fruit-ops.ts, energy.ts). */
-function fruitSpend(storage: DurableObjectStorage, op: OpKey, request: SpendRequest, expected: number, now: number, fruits: boolean): Outcome<SpendReceipt> {
+/**
+ * Turning Fruits into Pollen ("convert", `id` the Fruit count), buying Sunshine ("sunshine"), refilling duel energy
+ * ("energy") and opening a level ("level", `id` the level id), receipted like any spend (fruit-ops.ts, energy.ts, level-unlocks.ts).
+ */
+function fruitSpend(storage: DurableObjectStorage, op: OpKey, request: SpendRequest, expected: number, now: number, fruits: boolean, levels: LevelTerms | null): Outcome<SpendReceipt> {
   if (!fruits) return fail(503, "fruits_disabled");
   const base = { schema_version: 1 as const, op: "spend" as const, kind: request.kind, id: request.id, pieces: [], currency: "fruits" as const };
   let receipt: SpendReceipt;
-  if (request.kind === "convert") {
+  if (request.kind === "level") {
+    if (!levels) return fail(503, "level_unlocks_disabled");
+    const done = unlockLevel(storage, request.id, expected, now, levels.fullJourney, levels.prices ?? LEVEL_PRICES);
+    if (!done.ok) return done;
+    receipt = { ...base, cost: done.value.cost, balance: walletBalance(storage, now), fruit_balance: done.value.fruit_balance };
+  } else if (request.kind === "convert") {
     if (!/^[1-9][0-9]{0,6}$/.test(request.id)) return fail(400, "invalid_pollen_spend");
     const done = convertFruits(storage, op.key, Number(request.id), expected, now);
     if (!done.ok) return done;

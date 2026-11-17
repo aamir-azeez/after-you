@@ -22,6 +22,13 @@ extends RefCounted
 ##   their own Full Journey lock, store and tester code routing. A join asks
 ##   it too: the host's Full Journey covers the guest, as it always has.
 ## - open() adds Full Journey: what a duel, which has no host to cover it, asks.
+## - A chapter with a Fruit price (descriptor "unlock": {"fruits": n}) is
+##   open to a free player once they paid it (the server's record, kept by
+##   services/fruit_wallet.gd opened_levels) and always with Full Journey
+##   (fruit_locked). While the server does not sell levels (`fruit_levels.on`
+##   false) it stays a Full Journey chapter: its card says so and nothing is
+##   offered. Play Solo and Host a room offer the spend (fruit_offered);
+##   a join is covered by the host, as Full Journey is.
 ## - Keys outside the chain and replays are never gated.
 ## - While the keepsake ledger is held (unreadable) or still being rebuilt from
 ##   the journals, its marks may be missing: the caller asks unsettled(), so
@@ -34,6 +41,7 @@ const Index = preload("res://content/chapters/index.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const KeepsakeStates = preload("res://services/home_keepsake_states.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PollenMoney = preload("res://services/pollen_money.gd")
 ## The request header a join carries: the level ids open to the joiner. The
 ## room refuses a guest whose list leaves out its chapter (backend v2 room
 ## join, chapter_not_open). A server without the check ignores it.
@@ -47,6 +55,9 @@ static var _premium: Dictionary = {}
 static var _sources: Dictionary = {}
 ## Level id (a key before "@", how keepsakes join a chapter) -> chain key.
 static var _by_level: Dictionary = {}
+## {level id: Fruits} in place of the descriptors' prices; tests set their own
+## (no registered chapter has a price yet).
+static var prices_override: Dictionary = {}
 
 ## The chain in order. A copy.
 static func chain() -> Array[String]:
@@ -67,7 +78,9 @@ static func chain_key(key: String) -> String:
 ## `finished_elsewhere` chapter keys cleared where the keepsake marks do not
 ## show it yet: a finished room whose places this phone has not taken (a
 ## partner's last turn), and a duel's clear.
-static func progress(earned: Array, hard: Dictionary = {}, touched_keys: Dictionary = {}, full_journey: bool = false, finished_elsewhere: Array = []) -> Dictionary:
+## `fruit_levels`: {"on": the server sells levels for Fruits, "open": the level
+## ids this player paid for} (services/fruit_wallet.gd).
+static func progress(earned: Array, hard: Dictionary = {}, touched_keys: Dictionary = {}, full_journey: bool = false, finished_elsewhere: Array = [], fruit_levels: Dictionary = {}) -> Dictionary:
 	_build()
 	var frontier := -1
 	var opened := {}
@@ -82,13 +95,13 @@ static func progress(earned: Array, hard: Dictionary = {}, touched_keys: Diction
 	for key: Variant in touched_keys:
 		var counted := chain_key(str(key))
 		if not counted.is_empty(): opened[counted] = true
-	return {"frontier": frontier, "touched": opened, "full_journey": full_journey}
+	return {"frontier": frontier, "touched": opened, "full_journey": full_journey, "fruit_levels": fruit_levels}
 
 ## Progress while the keepsake marks cannot be trusted yet: every chapter
 ## reached, Full Journey as given, and no join header.
-static func unsettled(full_journey: bool = false) -> Dictionary:
+static func unsettled(full_journey: bool = false, fruit_levels: Dictionary = {}) -> Dictionary:
 	_build()
-	return {"frontier": _chain.size(), "touched": {}, "full_journey": full_journey, "unsettled": true}
+	return {"frontier": _chain.size(), "touched": {}, "full_journey": full_journey, "unsettled": true, "fruit_levels": fruit_levels}
 
 ## Whether the chain has reached the chapter for this player. Full Journey is
 ## not asked here.
@@ -100,21 +113,45 @@ static func reached(key: String, state: Dictionary) -> bool:
 ## Whether the player can play the chapter now, in any mode: solo, with a
 ## friend or in a duel.
 static func open(key: String, state: Dictionary) -> bool:
-	return reached(key, state) and (not _premium.get(chain_key(key), false) or bool(state.get("full_journey", false)))
+	return reached(key, state) and (not _premium.get(chain_key(key), false) or bool(state.get("full_journey", false))) and not fruit_locked(key, state)
+
+## The Fruits a free player pays once to open the chapter (its offered
+## version's descriptor "unlock"), or 0 when it has no price.
+static func price(key: String) -> int:
+	if prices_override.has(key.get_slice("@", 0)): return int(prices_override[key.get_slice("@", 0)])
+	var counted := chain_key(key)
+	var unlock: Variant = Index.data(counted if not counted.is_empty() else key).get("unlock", {})
+	return int(unlock.get("fruits", 0)) if unlock is Dictionary else 0
+
+## Whether the chapter's Fruit price still stands between the player and it:
+## it has one, they have no Full Journey and have not paid it.
+static func fruit_locked(key: String, state: Dictionary) -> bool:
+	if price(key) <= 0 or bool(state.get("full_journey", false)): return false
+	var paid: Variant = (state.get("fruit_levels", {}) as Dictionary).get("open", [])
+	return not (paid is Array and key.get_slice("@", 0) in paid)
+
+## Whether a tap on the chapter offers its Fruit price: it is reached, locked
+## by its price, and the server sells levels now.
+static func fruit_offered(key: String, state: Dictionary) -> bool:
+	return reached(key, state) and fruit_locked(key, state) and bool((state.get("fruit_levels", {}) as Dictionary).get("on", false))
 
 ## Why the chapter is not open, as a sentence; "" when it is. `note` gives the
 ## short form a chapter card shows.
 static func reason(key: String, state: Dictionary, note: bool = false) -> String:
 	if not reached(key, state):
 		return (PlayerCopy.CHAPTER_LOCKED_NOTE if note else PlayerCopy.CHAPTER_LOCKED) % title(opens_after(key))
-	return "" if open(key, state) else PlayerCopy.CHAPTER_LOCKED_FULL_JOURNEY
+	if open(key, state): return ""
+	if fruit_offered(key, state): return PlayerCopy.LEVEL_UNLOCK_NOTE % PollenMoney.grouped(price(key))
+	return PlayerCopy.CHAPTER_LOCKED_FULL_JOURNEY
 
 ## Locks a picker entry (ChapterPicker.entry) the chain has not reached: its
 ## card shows the lock and the short reason, and "unlock_reason" carries the
 ## sentence for a tap. True when it locked it.
+## A chapter reached but locked by its Fruit price is locked the same way, its
+## note the price while the server sells levels.
 static func lock_entry(item: Dictionary, state: Dictionary) -> bool:
 	var key := str(item.get("key", ""))
-	if reached(key, state): return false
+	if reached(key, state) and not fruit_locked(key, state): return false
 	item.locked = true
 	item.note = reason(key, state, true)
 	item.unlock_reason = reason(key, state)

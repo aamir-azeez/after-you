@@ -397,6 +397,11 @@ static func pay_lines(pay: Dictionary, bonus: Dictionary, with_boost: bool = tru
 	for line: Array in lines: total += int(line[1])
 	return {"lines": lines, "total": total, "note": note, "note_amount": int(held.get("amount", 0)) if not note.is_empty() else 0}
 
+## Why a public duel win counts toward no Fruits goal (services/duels_client.gd `goal_reason`, the
+## server's farming guard: past two wins over the same pair a week), else "".
+static func goal_line(bonus: Dictionary) -> String:
+	return PlayerCopy.PUBLIC_WIN_NOT_COUNTED if bonus.get("goal_reason", "") == "same_pair" else ""
+
 ## Why a public duel's held extra was not paid.
 static func held_note(reason: String) -> String:
 	match reason:
