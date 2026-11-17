@@ -96,7 +96,7 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"mill_wheel": half = Vector2(MILL_WHEEL_RADIUS + 0.12, 0.25) * s; height = (MILL_WHEEL_RADIUS * 2.0 + 0.2) * s
 		"post_box": radius = 0.2 * s; height = 1.19 * s
 		"reeds": radius = 0.16 * s; height = 0.78 * s
-		"stamp_desk": half = Vector2(0.38, 0.24) * s; height = 0.86 * s
+		"stamp_desk": half = Vector2(0.38, 0.24) * s; height = 0.74 * s
 		"fence", "hedge", "wall", "stone_wall":
 			var from := _point(spec.from)
 			var to := _point(spec.to)
@@ -697,16 +697,13 @@ static func _reeds(root: Node3D, s: float, seed: int) -> void:
 		var blade := _box(Vector3(0.05, 0.36, 0.008) * s, REED_DARK, Vector3(side * 0.05 * s, 0.17 * s, 0.02 * s), root)
 		blade.rotation = Vector3(0, side * 0.6, side * 0.35)
 
-## A small timber desk with the post office's stamp, its red ink pad and a
-## stack of forms.
+## A small timber desk with the post office's red ink pad and a stack of
+## forms. The stamp itself is Fog Marsh's ending's own, which comes down on it.
 static func _stamp_desk(root: Node3D, s: float) -> void:
 	_box(Vector3(0.72, 0.05, 0.44) * s, TIMBER_LIGHT, Vector3(0, 0.66 * s, 0), root)
 	for x: float in [-0.31, 0.31]:
 		for z: float in [-0.18, 0.18]: _box(Vector3(0.05, 0.625, 0.05) * s, TIMBER, Vector3(x * s, 0.3125 * s, z * s), root)
 	_box(Vector3(0.66, 0.16, 0.03) * s, TIMBER, Vector3(0, 0.55 * s, -0.15 * s), root)
 	_box(Vector3(0.14, 0.02, 0.1) * s, Color("b0473c"), Vector3(0.18 * s, 0.695 * s + STANDOFF, 0.04 * s), root)
-	_rod(0.035 * s, 0.05 * s, TIMBER_DARK, Vector3(-0.02 * s, 0.71 * s + STANDOFF, 0.05 * s), root)
-	_rod(0.012 * s, 0.06 * s, TIMBER_DARK, Vector3(-0.02 * s, 0.765 * s + STANDOFF, 0.05 * s), root)
-	_ball(0.04 * s, TIMBER_LIGHT.darkened(0.2), Vector3(-0.02 * s, 0.81 * s + STANDOFF, 0.05 * s), root)
 	var forms := _box(Vector3(0.2, 0.03, 0.26) * s, PICKET, Vector3(-0.22 * s, 0.7 * s + STANDOFF, -0.02 * s), root)
 	forms.rotation.y = 0.12

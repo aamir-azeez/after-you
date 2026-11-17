@@ -7,8 +7,8 @@ extends RefCounted
 ##       (a MultiMesh). A lit lantern clears every puff within CLEAR of it.
 ##
 ## Fog is only drawing. It lies on floors alone, never on a crossing, a stair
-## or water, and keeps KEEP clear of every crossing's and stair's rectangle
-## and of every control, pad and goal, so no gate, gap, stair or water is ever
+## or water, and keeps every puff's edge KEEP clear of every crossing's and
+## stair's rectangle and of every control, pad and goal, so no gate, gap, stair or water is ever
 ## hidden. It stays under a pip's knees (TOP). Built once per stage; present()
 ## rewrites the puffs only when a lantern changes.
 const STYLES := ["mist"]
@@ -72,7 +72,8 @@ func _make(view: Dictionary, lanterns: Dictionary, parent: Node3D) -> void:
 		for spot: Dictionary in view.get(field, []): spots.append(spot)
 	if view.has("goal"): spots.append(view.goal)
 	for island: Dictionary in view.get("islands", []):
-		var floor := _rect(island.rect_cm).grow(-0.3)
+		var whole := _rect(island.rect_cm)
+		var floor := whole.grow(-0.3)
 		var y := float(island.get("height_cm", 0)) / 100.0
 		var x := floor.position.x
 		var row := 0
@@ -80,9 +81,14 @@ func _make(view: Dictionary, lanterns: Dictionary, parent: Node3D) -> void:
 			var z := floor.position.y + (STEP * 0.5 if row % 2 else 0.0)
 			while z <= floor.end.y:
 				var at := Vector2(x, z)
-				if not keep.any(func(rect: Rect2) -> bool: return rect.has_point(at)) and not spots.any(func(spot: Dictionary) -> bool: return at.distance_to(Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0) < float(spot.get("radius_cm", 28)) / 100.0 + KEEP):
-					var size := WIDTH * (0.8 + 0.4 * fposmod(sin(x * 12.9898 + z * 78.233) * 43758.5453, 1.0))
-					_puffs.append(Transform3D(Basis().scaled(Vector3(size, TOP, size)), Vector3(x, y + TOP * 0.45, z)))
+				# The whole puff, not just its middle, stays on its floor and
+				# KEEP clear of every crossing, stair and spot.
+				var size := WIDTH * (0.8 + 0.4 * fposmod(sin(x * 12.9898 + z * 78.233) * 43758.5453, 1.0))
+				var reach := size * 0.5
+				var clear := whole.grow(-reach).has_point(at)
+				clear = clear and not keep.any(func(rect: Rect2) -> bool: return rect.grow(reach).has_point(at))
+				clear = clear and not spots.any(func(spot: Dictionary) -> bool: return at.distance_to(Vector2(float(spot.position_cm[0]), float(spot.position_cm[1])) / 100.0) < float(spot.get("radius_cm", 28)) / 100.0 + KEEP + reach)
+				if clear: _puffs.append(Transform3D(Basis().scaled(Vector3(size, TOP, size)), Vector3(x, y + TOP * 0.45, z)))
 				z += STEP
 			x += STEP * 0.87
 			row += 1
