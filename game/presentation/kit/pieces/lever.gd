@@ -20,7 +20,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       wound fat with it pulled, so the drum says which at a glance.
 ##   "rope": a mooring rope on a tall post. Let go, it hangs slack down the
 ##       post into a big coil at its foot; pulled, it runs taut and straight
-##       from the post's head across to an iron cleat, the coil drawn small.
+##       from the post's head across to an iron cleat, the coil paid out to one turn.
 ##   "water_gate": a timber gate in a little stone channel, lifted by a wheel
 ##       on its frame. Let go, the gate is down and the water behind it lies
 ##       still; pulled, the wheel turns, the gate rises and water runs out under it.
@@ -292,8 +292,9 @@ func _pose() -> void:
 		var to := (COIL_AT + Vector3(-0.05, 0.09, 0)).lerp(CLEAT + Vector3(0, 0.07, 0), t)
 		var bend := Vector3(-0.15, 0.02, 0.12).lerp((ROPE_HEAD + to) * 0.5, t)
 		_lay(_rope, ROPE_HEAD, bend, to, 1.15)
-		var wound := lerpf(1.0, 0.45, t)
-		_rope_coil.scale = Vector3(wound, 1.0, wound)
+		# The coil pays out from the top: one turn is left lying pulled.
+		var turns := _rope_coil.get_children()
+		for index in range(1, turns.size()): turns[index].visible = t < 1.0 - float(index) / float(turns.size())
 	elif style == "water_gate":
 		_gate.position.y = GATE_DOWN + GATE_LIFT * t
 		_wheel.rotation.z = -t * GATE_WHEEL_TURNS * TAU
