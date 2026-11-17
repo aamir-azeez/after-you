@@ -756,8 +756,8 @@ export class RoomV2 extends DurableObject<Env> {
     if (existing && existing.simulation_version !== simulationVersion) return fail(409, "idempotency_simulation_mismatch");
     if (existing && (this.hard.run(this.ctx.storage) !== null) !== (mode === "hard")) return fail(409, "idempotency_mode_mismatch");
     if (duel && (mode === "hard" || !duel.members.includes(host))) return fail(422, "invalid_duel_room");
-    // Open turns (open-turns.ts) play in friend rooms only for now: hard runs reserve two turns a stage, and duels compare turns.
-    if (selected.open_turns && (mode === "hard" || duel)) return fail(422, "open_turns_friend_rooms_only");
+    // Open turns (open-turns.ts) play in friend and hard rooms; duels compare turns, so not in duels.
+    if (selected.open_turns && duel) return fail(422, "open_turns_friend_rooms_only");
     if (existing && !sameDuelLink(duelLink(this.ctx.storage), duel)) return fail(409, "idempotency_duel_mismatch");
     if (existing && (existing.host_id !== host || !equalHash(existing.invite_code, invite))) return fail(409, "room_exists");
     // A host who left reads the room as gone, even through their own create retry.
@@ -1434,7 +1434,8 @@ export class RoomV2 extends DurableObject<Env> {
       // A slip that does not check is dropped, never the reset: the room must start again.
       let slipRecording: RecordingV2 | null = null;
       if (input.slip !== undefined) { try { slipRecording = await recordingV2(input.slip, observed); } catch { slipRecording = null; } }
-      if (slipRecording && isPacked(slipRecording) && !packedRoom(this.ctx.storage)) slipRecording = null;
+      // Open turns rooms take only packed turns, so their slips are packed too.
+      if (slipRecording && isPacked(slipRecording) && !packedRoom(this.ctx.storage) && !chapter(observed).open_turns) slipRecording = null;
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       return this.indexed(await this.ctx.storage.transaction(async () => {
         const state = this.read();
@@ -1448,15 +1449,18 @@ export class RoomV2 extends DurableObject<Env> {
         if (current.hard?.over) return fail(409, "hard_run_over");
         if (current.active_player_id !== player) return fail(409, "hard_not_your_turn");
         if (input.stage_index !== state.stage_index || input.role !== current.active_role) return fail(409, "stale_revision");
+        // The slip's memory is the stage's latest turn; under open turns a later one nests the turns before it (chain).
+        const stageTurns = input.role === "b" ? this.stageTurns(state) : [];
+        const chain = stageTurns.slice(0, -1).map(turn => this.turn(turn.turn_id));
         const slip: Slip | null = slipRecording && slipRecording.stage_id === current.stage_id && slipRecording.role === input.role && slipRecording.checkpoint_hash === state.checkpoint.checkpoint_hash
-          ? { recording: slipRecording, checkpoint: state.checkpoint, prior: input.role === "b" && state.a_turn_id ? this.turn(state.a_turn_id) : null } : null;
+          ? { recording: slipRecording, checkpoint: state.checkpoint, prior: stageTurns.length ? this.turn(stageTurns.at(-1)!.turn_id) : null, ...(chain.length ? { chain } : {}) } : null;
         const failure: Failure = { by: player, stage_index: state.stage_index, role: input.role, reason: input.reason, at: new Date().toISOString() };
         const progress = state.stage_index > 0 || state.a_turn_id !== null;
         // Only a reset with progress to undo needs a branch; a first-turn slip always fits.
         const room = !progress || this.hardRunSpace(state);
         if (progress && room) {
           state.checkpoint = initialCheckpoint(state);
-          state.completed_pair_ids = []; state.a_turn_id = null; state.stage_index = 0; state.branch++;
+          state.completed_pair_ids = []; state.a_turn_id = null; delete state.open_stage; state.stage_index = 0; state.branch++;
         }
         state.revision++;
         this.write(state);
@@ -1476,14 +1480,16 @@ export class RoomV2 extends DurableObject<Env> {
   /**
    * Whether a hard room can hold one more whole run after this one: a branch
    * to fork to under the room's and chapter's limits, and turns, pairs and
-   * receipts for every stage of it.
+   * receipts for every stage of it (two turns a stage, or under open turns
+   * each stage's cap, the most a stage can take).
    */
   private hardRunSpace(state: RoomStateV2): boolean {
     const count = (table: string) => this.ctx.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one().n;
-    const stages = chapter(state).stages.length;
+    const stages = chapter(state).stages.length, open = chapter(state).open_turns;
+    const turns = open ? open.caps.reduce((sum, cap) => sum + cap, 0) : 2 * stages;
     const held = state.branch + 2 - offloadedCount(this.ctx.storage);
     return state.branch + 1 < MAX_BRANCHES && held <= Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES) &&
-      count("turns") + 2 * stages <= MAX_TURNS && count("pairs") + stages <= MAX_PAIRS && count("operations") + 2 * stages <= MAX_OPERATIONS;
+      count("turns") + turns <= MAX_TURNS && count("pairs") + stages <= MAX_PAIRS && count("operations") + turns <= MAX_OPERATIONS;
   }
   /** A hard room's kept slips for its members (GET .../hard). */
   hardFailures(player: string, since = 0): Promise<Outcome<HardFailures>> {

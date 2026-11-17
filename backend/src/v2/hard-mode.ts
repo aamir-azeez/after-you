@@ -33,8 +33,12 @@ export const REASONS = ["retry", "failed_turn", "drowned"] as const;
 export type Reason = typeof REASONS[number];
 /** Who slipped, where and how, as a view shows the last one. */
 export type Failure = { by: string; stage_index: number; role: "a" | "b"; reason: Reason; at: string };
-/** A kept slip: the turn's recording, the checkpoint it was played from and its first turn (role b). */
-export type Slip = { recording: unknown; checkpoint: unknown; prior: unknown | null };
+/**
+ * A kept slip: the turn's recording, the checkpoint it was played from and its memory (role b: the stage's latest
+ * turn). Under open turns a slip over a pass also keeps the turns under that memory, oldest first (chain), so it
+ * replays; a two-turn slip never has one.
+ */
+export type Slip = { recording: unknown; checkpoint: unknown; prior: unknown | null; chain?: unknown[] };
 export type HardRun = { schema_version: 1; failures: number; over: boolean; last: Failure | null };
 /** A kept slip as read: its number among the room's slips (1 for the first), who slipped and the slip. */
 export type KeptFailure = Failure & { number: number; slip: Slip | null };

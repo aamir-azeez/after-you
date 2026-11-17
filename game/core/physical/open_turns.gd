@@ -77,6 +77,27 @@ static func proof_turns(proof: Variant) -> Array:
 		return turns if turns.size() >= 2 and turns.all(func(turn: Variant) -> bool: return turn is Dictionary) else []
 	return [proof.a, proof.b] if proof.get("a") is Dictionary and proof.get("b") is Dictionary else []
 
+## Whether a finished turn may be saved, from its check ({valid, snapshot,
+## ready}) and its recording: it can commit, or under open turns it is a pass
+## that may be the friend's memory (a later turn that did not finish the stage).
+## The one rule for the review card and for Hard mode (hard_mode.gd failure).
+static func keepable(verified: Dictionary, recording: Dictionary) -> bool:
+	var snapshot: Variant = verified.get("snapshot", {})
+	var passing: bool = recording.get("role") == "b" and recording.get("completed") == false and bool(verified.get("ready", false))
+	return bool(verified.get("valid", false)) and snapshot is Dictionary and (bool(snapshot.get("can_commit", false)) or passing)
+
+## Whether `turns` is a stage's later turns as a record keeps them: one at
+## least, at most a cap's worth, each a turn.
+static func turns_valid(turns: Variant) -> bool:
+	return turns is Array and not turns.is_empty() and turns.size() <= MAX_CAP and turns.all(func(turn: Variant) -> bool: return turn is Dictionary)
+
+## Whether `pair` is a completed stage as a journal or a kept hard run holds
+## it: {a, b}, or under open turns {a, b, passes}. The one shape check for
+## both (relay_journey.gd, hard_mode.gd).
+static func record_valid(pair: Variant) -> bool:
+	if not pair is Dictionary or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: return false
+	return pair.size() == 2 or (pair.size() == 3 and turns_valid(pair.get("passes")))
+
 ## A completed pair's turns in play order: its first turn, its passes (from its
 ## checkpoint's proof, or a local record's own "passes"), its closing turn.
 static func pair_turns(pair: Dictionary) -> Array:
