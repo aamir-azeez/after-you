@@ -6,6 +6,7 @@ const Safety = preload("res://services/safety_store.gd")
 const Photos = preload("res://services/deleted_identity_photo_cleanup.gd")
 const History = preload("res://services/history_store.gd")
 const TheirRuns = preload("res://services/duel_their_run.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
 const MAX_FILES := 4096
 var relay_directory := "user://relay-online"
 var shared_directory := "user://shared-replays"
@@ -14,6 +15,8 @@ var safety_directory := "user://safety"
 var history_directory := History.ROOT
 ## Other pairs' duel runs sit in one folder per identity too (services/duel_their_run.gd).
 var duel_runs_directory := TheirRuns.ROOT
+## Open turns rooms' own turn copies, one folder per identity (services/open_turn_store.gd).
+var open_turns_directory := OpenTurnStore.ROOT
 
 func erase_owner(owner: String) -> Dictionary:
 	if not Photos.valid_owner(owner): return {"ok": false, "error": "invalid_owner"}
@@ -29,6 +32,7 @@ func erase_owner(owner: String) -> Dictionary:
 	# A race ghost read still out must not write the erased player's copy back (services/race_ghost.gd).
 	load("res://services/race_ghost.gd").clear_owner(owner)
 	if not TheirRuns.erase_owner(owner, duel_runs_directory): return {"ok": false, "error": "cache_cleanup_unfinished"}
+	if not OpenTurnStore.erase_owner(owner, open_turns_directory): return {"ok": false, "error": "cache_cleanup_unfinished"}
 	if not Safety.new(safety_directory).erase(owner): return {"ok": false, "error": "safety_cleanup_unfinished"}
 	return {"ok": true}
 

@@ -83,6 +83,12 @@ extends SceneTree
 ##     them by default (project.godot canvas_textures/default_texture_filter), so
 ##     an icon drawn far smaller than its source stays whole; no control sets its
 ##     own mipmap filter.
+## (w) turn guides: on open turns nothing says a turn's part is done. The ready line
+##     (PlayerCopy.MAIN_1AAC5BE95E22) has one reader, relay_preview.gd, which skips it
+##     on open turns; no script reads a "part_done" key; and only cooperative_world
+##     builds presentation/kit/goal_beacon.gd, the late guide every open turns chapter
+##     gets with no code of its own. test_open_hints.gd, which must stay in CI, checks
+##     them on every open turns chapter.
 ##
 ## Every allow-list entry says why. An entry that no longer matches anything
 ## fails, so the lists shrink as code moves. KNOWN_FAILURES holds the checks
@@ -212,7 +218,7 @@ const WRITES := {
 	"res://services/pollen_client.gd": [2, "unkeyed: each claim names its room and recording, which pay once"],
 	"res://services/redo_client.gd": [2, "keyed: fork and redo"],
 	"res://services/relay_online_session.gd": [1, "keyed: room create and duel rooms"],
-	"res://services/relay_room_coordinator.gd": [1, "keyed: turns and stage moves"],
+	"res://services/relay_room_coordinator.gd": [4, "keyed: turns and stage moves; open turns copies (want, send back, ack) are keyed by recording hash and repeat safely"],
 	"res://services/replay_transfer.gd": [2, "unkeyed: ack and restore name their manifest"],
 	"res://services/safety_client.gd": [6, "keyed: reports; terms, room block, Friends row block, unblock and a public duel unblock set a state"],
 	"res://services/tester_access.gd": [1, "unkeyed: redeeming a code again keeps one grant"],
@@ -408,7 +414,12 @@ const PIECE_OVERRIDES := {
 const PIECE_BASES := ["res://presentation/island_world.gd", "res://presentation/lighthouse_world.gd", "res://presentation/cooperative_world.gd"]
 
 ## Suites that guard a shared path on their own and must stay in CI.
-const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles"]
+const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints"]
+## (w) The one reader of the ready line, and the one builder of the goal beacon.
+const READY_LINE := "MAIN_1AAC5BE95E22"
+const READY_LINE_READER := "res://relay_preview.gd"
+const GOAL_BEACON := "res://presentation/kit/goal_beacon.gd"
+const GOAL_BEACON_BUILDER := "res://presentation/cooperative_world.gd"
 
 ## Scripts that name the wallet read only to add request headers, never reading its reply:
 ## rooms_api.gd adds the face version header (backend v2/face-packs.ts), so a wardrobe read
@@ -448,6 +459,7 @@ func _initialize() -> void:
 	_route_barriers()
 	_piece_styles()
 	_ui_icons()
+	_turn_guides()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -1042,6 +1054,20 @@ func _ui_icons() -> void:
 		_check(settings.contains("mipmaps/generate=true"), "%s imports with mipmaps: commit %s.import with mipmaps/generate=true" % [path, path.get_file()])
 	for path: String in _sources:
 		_check(_found("\\btexture_filter\\s*=\\s*(?:CanvasItem\\.)?TEXTURE_FILTER_LINEAR_WITH_MIPMAPS", _sources[path]) == 0, "%s sets its own mipmap filter, which is the 2D default now: delete the line" % path)
+
+# (w) Turn guides -------------------------------------------------------------
+
+func _turn_guides() -> void:
+	var readers := []
+	for path: String in _sources:
+		var source: String = _sources[path]
+		if path != PLAYER_COPY and _found("\\b" + READY_LINE + "\\b", source) > 0: readers.append(path)
+		_check(_found("[\"']part_done[\"']|\\.part_done\\b", source) == 0, "%s reads a part_done key: on open turns nothing says a turn's part is done" % path)
+		var beacon := _alias(source, GOAL_BEACON)
+		_check(path in [GOAL_BEACON, GOAL_BEACON_BUILDER] or beacon.is_empty() or _found("\\b" + beacon + "\\.new\\(", source) == 0, "%s builds the goal beacon itself: cooperative_world builds it for every chapter that has one" % path)
+	_check(readers == [READY_LINE_READER], "Only %s shows the ready line: %s" % [READY_LINE_READER, readers])
+	_check(_found("\\bOpenTurns\\.pinned\\(", str(_sources.get(READY_LINE_READER, ""))) > 0, "%s skips the ready line on open turns (OpenTurns.pinned)" % READY_LINE_READER)
+	_check(_found("\\bOpenTurns\\.pinned\\(", str(_sources.get(GOAL_BEACON_BUILDER, ""))) > 0, "%s builds the guide for every open turns chapter (OpenTurns.pinned)" % GOAL_BEACON_BUILDER)
 
 func _suites() -> void:
 	var shards := {}

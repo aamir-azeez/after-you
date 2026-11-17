@@ -1,11 +1,11 @@
-import { digest } from "../protocol";
+import { canonicalJson, digest, isObject } from "../protocol";
 import { chapter } from "../v2/chapters";
 import { nestedProof } from "../v2/checkpoint-chain";
 import type { ChapterKey } from "../v2/chapter-types";
-import type { CheckpointV2 } from "../v2/protocol";
+import type { CheckpointV2, RecordingV2 } from "../v2/protocol";
 import type { EncodedProof } from "./proofs";
 import type { MutationV2, RoomSnapshotV2 } from "../v2/room";
-import { boardKey } from "./boards";
+import { boardKey, knownBoard } from "./boards";
 import { boardLooksOf, type PairLooks } from "./run-looks";
 
 /** A finished together run as a board receives it. Never sent to a phone: it names both players. */
@@ -97,13 +97,17 @@ export async function finishedRun(mutation: MutationV2, context: unknown, handed
  * turn, a fork or a join (v2/room.ts write), so while it is still complete its `updated_at` is when its final turn
  * was accepted. Used by finishedRun and by a member posting the room's run again (routes.ts POST_PATH).
  */
-export async function roomRun(room: RoomSnapshotV2, handed?: unknown, encode?: (checkpoint: CheckpointV2) => Promise<EncodedProof>): Promise<LeaderboardRun | null> {
+/**
+ * `posted`: an open turns room's run, its checkpoint nested again from a phone's own copy and checked by the room
+ * (openRoomRun; v2/room.ts postedRun). The room alone holds only fingerprints of an open turns run, so it never posts
+ * one from a turn; only a phone's post does, and only to a board this server knows.
+ */
+export async function roomRun(room: RoomSnapshotV2, handed?: unknown, encode?: (checkpoint: CheckpointV2) => Promise<EncodedProof>, posted = false): Promise<LeaderboardRun | null> {
   if (room.active_role !== "complete") return null;
   const host = room.host_id, guest = room.guest_id;
   if (!guest || guest === host) return null;
   let stages: number;
-  // Open turns (v2/open-turns.ts) post no runs until boards compare them fairly (time, then turns).
-  try { const selected = chapter(room); if (selected.open_turns) return null; stages = selected.stages.length; } catch { return null; }
+  try { const selected = chapter(room); if (!!selected.open_turns !== posted || (posted && !knownBoard(boardKey(room)))) return null; stages = selected.stages.length; } catch { return null; }
   const timed = runTicks(room.checkpoint, stages);
   const finished_ms = Date.parse(room.updated_at);
   if (!timed || !Number.isFinite(finished_ms)) return null;
@@ -114,4 +118,24 @@ export async function roomRun(room: RoomSnapshotV2, handed?: unknown, encode?: (
     chapter: { level_id: room.level_id, level_version: room.level_version, definition_hash: room.definition_hash },
     simulation_version: timed.simulation_version, ...(encode ? { proof: await encode(room.checkpoint) } : { checkpoint: room.checkpoint }), ...(looks ? { looks } : {})
   };
+}
+
+/**
+ * An open turns run as a phone posts it (WIRE.md section 10): `value`, the room's final checkpoint with every stage's
+ * turns nested again (`proof: { checkpoint, turns }`), is a run only when each stage's checkpoint, less its proof, is
+ * exactly the room's stored one (`lineage`, its pair rows in stage order), each turn passes `parse` (a whole packed turn
+ * whose hash is its own) and hashes to that checkpoint's turn_hashes in order, and the chain ends at the chapter's
+ * `initial` checkpoint. Answers the nested checkpoint, or null.
+ */
+export async function openRoomRun(value: unknown, lineage: readonly CheckpointV2[], initial: CheckpointV2, parse: (turn: unknown) => Promise<RecordingV2>): Promise<CheckpointV2 | null> {
+  if (!lineage.length) return null;
+  let current: unknown = value;
+  for (let index = lineage.length; index > 0; index--) {
+    if (!isObject(current)) return null;
+    const { proof, ...flat } = current, stored = lineage[index - 1], hashes = stored.turn_hashes ?? [];
+    if (canonicalJson(flat) !== canonicalJson(stored) || !isObject(proof) || Object.keys(proof).length !== 2 || !Array.isArray(proof.turns) || proof.turns.length !== hashes.length) return null;
+    for (const [at, turn] of proof.turns.entries()) if ((await parse(turn)).recording_hash !== hashes[at]) return null;
+    current = proof.checkpoint;
+  }
+  return canonicalJson(current) === canonicalJson(initial) ? value as CheckpointV2 : null;
 }

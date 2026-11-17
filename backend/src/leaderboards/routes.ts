@@ -8,7 +8,8 @@ import { serveReplay } from "./replays";
 import { publicView } from "./view";
 import { looksOn } from "../pollen/features";
 import { platformRequiredOn } from "./platform-rule";
-import { roomRun } from "./run";
+import { roomRun, type LeaderboardRun } from "./run";
+import { readTurnBody, type TurnBody } from "../v2/turn-wire";
 import { postRun } from "./submit";
 import { limitBoardRead } from "../limits";
 
@@ -24,7 +25,10 @@ import { limitBoardRead } from "../limits";
  * - POST /v1/leaderboards/<board>/entries/<entry>/report;
  * - POST /v1/leaderboards/post, only while the platform rule is on
  *   (platform-rule.ts): a member of a finished together room posts its run,
- *   or learns who still needs a platform account (postRoomRun).
+ *   or learns who still needs a platform account (postRoomRun);
+ * - POST /v1/leaderboards/post/<room id>: a member of a finished open turns
+ *   room posts its run from the phone's own copy (postOpenRun), whatever the
+ *   platform rule says, since no turn of such a room posts one.
  */
 export const LEADERBOARDS_PREFIX = "/v1/leaderboards/";
 export const LEADERBOARDS_HEADER = "X-AfterYou-Leaderboards";
@@ -33,6 +37,7 @@ const REPLAY_PATH = /^\/v1\/leaderboards\/([a-z0-9-]{1,48}@[1-9][0-9]{0,3})\/rep
 const REPORT_PATH = /^\/v1\/leaderboards\/([a-z0-9-]{1,48}@[1-9][0-9]{0,3})\/entries\/([a-f0-9]{32})\/report$/;
 const ME_PATH = "/v1/leaderboards/me";
 export const POST_PATH = "/v1/leaderboards/post";
+const POST_ROOM_PATH = /^\/v1\/leaderboards\/post\/([a-zA-Z0-9_-]{22})$/;
 
 /**
  * `leaderboards_version: 1` on /v2/capabilities for a phone that asks while the flag is on, with
@@ -75,6 +80,11 @@ export async function routeLeaderboards(request: Request, path: string, playerId
     if (!isObject(input) || Object.keys(input).length !== 2 || input.schema_version !== 1) throw new ApiError(400, "invalid_leaderboard_request");
     return postRoomRun(env, playerId, text(input.room_id, ID_PATTERN));
   }
+  const posted = POST_ROOM_PATH.exec(path);
+  if (posted) {
+    if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    return postOpenRun(env, playerId, posted[1], await readTurnBody(request));
+  }
   const report = REPORT_PATH.exec(path);
   if (report) {
     if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
@@ -106,7 +116,20 @@ export async function routeLeaderboards(request: Request, path: string, playerId
  */
 async function postRoomRun(env: Env, playerId: string, roomId: string): Promise<unknown> {
   const { board_looks, ...room } = unwrap(await env.ROOMS_V2.getByName(roomId).boardSnapshot(playerId, looksOn(env)));
-  const run = await roomRun(room, board_looks);
+  return answerPost(env, playerId, await roomRun(room, board_looks));
+}
+/**
+ * POST_ROOM_PATH (claude-20261011/open-turns-fingerprints/WIRE.md section 10): the body (a turn body, turn-wire.ts,
+ * so the Worker never parses it) holds `{ schema_version: 1, checkpoint }`, the room's final checkpoint with every
+ * stage's turns nested again from the phone's copy. The room checks it against its own stored fingerprints and pair
+ * checkpoints and encodes it (RoomV2.postedRun); then it is posted as any run, with the same answers as postRoomRun.
+ * Requests (beside auth): 1 room request, then as postRoomRun. Retried posts answer "posted" from the board.
+ */
+async function postOpenRun(env: Env, playerId: string, roomId: string, body: TurnBody): Promise<unknown> {
+  // RPC loses the members tuple's length; the room built it as a LeaderboardRun.
+  return answerPost(env, playerId, unwrap(await env.ROOMS_V2.getByName(roomId).postedRun(playerId, body, looksOn(env))).run as LeaderboardRun | null);
+}
+async function answerPost(env: Env, playerId: string, run: LeaderboardRun | null): Promise<unknown> {
   if (!run) return { schema_version: 1, status: "not_postable" };
   const outcome = await postRun(env, run);
   if (outcome.status === "platform_required") {

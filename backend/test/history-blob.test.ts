@@ -102,7 +102,7 @@ describe("attempt blobs and the attempt hash chain", () => {
     }
     await inRoom(room, storage => {
       const open = attemptBlob(storage, key, 1)!;
-      expect(open.checkpoint).toBeNull(); expect(open.open_turn?.recording_hash).toBe(chain.stages[1].a.recording_hash);
+      expect(open.checkpoint).toBeNull(); expect((open as { open_turn: { recording_hash: string } | null }).open_turn?.recording_hash).toBe(chain.stages[1].a.recording_hash);
       expect(attemptRows(open).turns.get("t1-1-a")?.recording_hash).toBe(chain.stages[1].a.recording_hash);
       expect(attemptBlob(storage, key, 2)).toMatchObject({ checkpoint: null, open_turn: null, rows: { turns: [], pairs: [] } });
       storage.sql.exec("UPDATE turns SET data=? WHERE turn_id='t0-0-a'", JSON.stringify({ recording_hash: chain.stages[0].a.recording_hash }));

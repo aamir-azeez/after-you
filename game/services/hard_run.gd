@@ -26,7 +26,7 @@ var session: RefCounted
 var last_run: Dictionary = {}
 ## A failed read of the friend's slips: not tried again on this screen.
 var read_failed := false
-## The slip whose reset this phone owes the room ({reason, slip}), so a reset
+## The slip whose reset this phone owes the room ({reason, slip, chain}), so a reset
 ## the room refused as stale can be queued again from the room as it is now.
 var _owed: Dictionary = {}
 
@@ -79,7 +79,7 @@ func tries_key(screen_key: String) -> String:
 
 func offers(action_id: String) -> bool: return HardMode.offers(action_id)
 func slipped(tries: int) -> bool: return HardMode.slipped(tries)
-func failure(verified: Dictionary) -> String: return HardMode.failure(verified)
+func failure(verified: Dictionary, recording: Dictionary = {}) -> String: return HardMode.failure(verified, recording)
 
 
 # Solo ------------------------------------------------------------------------
@@ -89,7 +89,7 @@ func failure(verified: Dictionary) -> String: return HardMode.failure(verified)
 ## when the journal could not be started again; restart_solo tries again.
 func fail_solo(journey: RefCounted, tries: RefCounted, reason: String, slip: Dictionary, screen_key: String) -> bool:
 	var recording: Dictionary = slip if not slip.is_empty() else (journey.draft() if journey.has_draft() else {})
-	var kept: Dictionary = {} if recording.is_empty() else {"recording": recording.duplicate(true), "checkpoint": journey.checkpoint(), "prior": journey.prior_recording()}
+	var kept: Dictionary = {} if recording.is_empty() else HardMode.kept_slip(recording, journey.checkpoint(), journey.prior_recording(), journey.memory_chain())
 	last_run = HardMode.run_record(chapter_key, HardMode.SOLO, HardMode.FAILED, reason, "you", int(journey.checkpoint().get("stage_index", 0)), str(journey.role()), journey.pairs(), kept)
 	# Keeping the slip is for laughs; the restart never waits on it.
 	HardMode.keep_run(last_run)
@@ -131,11 +131,14 @@ func client() -> RefCounted:
 func fail_together(reason: String, slip: Dictionary, partner: String, partner_id: String = "") -> bool:
 	var current := room()
 	if current.is_empty(): return false
-	var prior: Variant = current.get("recording_a")
-	var kept: Dictionary = {} if slip.is_empty() else {"recording": slip.duplicate(true), "checkpoint": Typed.as_dict(current.get("checkpoint")), "prior": prior.duplicate(true) if prior is Dictionary and str(current.get("active_role")) == "b" else {}}
+	# The slip's memory: the stage's latest turn (open turns: its latest pass, over the turns before it).
+	var later := str(current.get("active_role")) == "b"
+	# This phone's copies of the turns under the memory: the room holds them only as fingerprints, so the reset carries them.
+	var chain: Array = session.coordinator.memory_chain() if later and not slip.is_empty() else []
+	var kept: Dictionary = {} if slip.is_empty() else HardMode.kept_slip(slip, Typed.as_dict(current.get("checkpoint")), session.coordinator.prior_recording() if later else {}, chain)
 	last_run = HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, reason, "you", int(current.get("stage_index", 0)), str(current.get("active_role", "a")), [], kept, partner, str(current.get("room_id", "")), partner_id)
 	HardMode.keep_run(last_run)
-	_owed = {"reason": reason, "slip": slip.duplicate(true)}
+	_owed = {"reason": reason, "slip": slip.duplicate(true), "chain": chain}
 	return requeue()
 
 ## Queues the owed reset again from the room as it is now, when the turn that
@@ -146,7 +149,7 @@ func requeue(tries: RefCounted = null) -> bool:
 	if room_client == null: return false
 	if not room_client.pending().is_empty(): return true
 	if _owed.is_empty() or (tries != null and tries.count(TurnTries.slot_for(session.coordinator, key(), true)) == 0): return false
-	if not room_client.queue_reset(room(), str(_owed.reason), _owed.slip): return false
+	if not room_client.queue_reset(room(), str(_owed.reason), _owed.slip, _owed.get("chain", [])): return false
 	# Never held: a held draft per slip would fill the room's four and stop it.
 	session.coordinator.save_draft({})
 	return true
@@ -215,7 +218,7 @@ func take_in_failures(partner: String, partner_id: String = "") -> Array:
 	for item: Dictionary in read.list:
 		if Typed.equal(item.by, me): continue
 		var slip: Variant = item.get("slip")
-		var shown: Dictionary = {} if not slip is Dictionary else {"recording": slip.recording, "checkpoint": slip.checkpoint, "prior": slip.prior if slip.get("prior") is Dictionary else {}}
+		var shown: Dictionary = {} if not slip is Dictionary else HardMode.kept_slip(slip.recording, slip.checkpoint, slip.prior if slip.get("prior") is Dictionary else {}, slip.get(HardMode.CHAIN, []))
 		var record := HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, str(item.reason), "friend", int(item.stage_index), str(item.role), [], shown, partner, str(current.get("room_id", "")), partner_id)
 		record.at = int(Time.get_unix_time_from_datetime_string(str(item.at)))
 		HardMode.keep_run(record)

@@ -74,8 +74,8 @@ export function limitPlatformLink(env: Env, player: string): Promise<void> { ret
 export function limitPhotoTransfer(env: Env, owner: string, acknowledgement: boolean): Promise<void> {
   return check(acknowledgement ? env.PHOTO_ACK_LIMITER : env.PHOTO_TRANSFER_LIMITER, owner + ":transfer", "photo_transfer_rate_limited");
 }
-const ROOM_SCOPES = { photo: ["", "photo_ack_rate_limited"], replay: ["replay:", "replay_transfer_rate_limited"], history: ["history:", "history_rate_limited"] } as const;
-/** A room's photo acknowledgements, replay transfer and history uploads, per player and room. */
+const ROOM_SCOPES = { photo: ["", "photo_ack_rate_limited"], replay: ["replay:", "replay_transfer_rate_limited"], history: ["history:", "history_rate_limited"], copies: ["copies:", "turn_copies_rate_limited"] } as const;
+/** A room's photo acknowledgements, replay transfer, history uploads and turn send-back (v2/turn-copies.ts), per player and room. */
 export function limitRoomTransfer(env: Env, kind: keyof typeof ROOM_SCOPES, player: string, room: string): Promise<void> {
   const [scope, code] = ROOM_SCOPES[kind];
   return check(env.PHOTO_ACK_LIMITER, scope + player + ":" + room, code);
@@ -105,6 +105,8 @@ export const COSTLY_ROUTES = Object.freeze([
   { kind: "public-duel-seat", method: "POST", path: /^\/v1\/duels\/public\/[a-z0-9-]{1,48}@[1-9][0-9]{0,3}\/[a-f0-9]{32}\/(?:block|report|friend)$/ },
   { kind: "public-duel-switch", method: "PUT", path: /^\/v1\/duels\/public\/me$/ },
   { kind: "report", method: "POST", path: /^\/v1\/safety\/report$/ },
+  // An open turns run a phone posts from its own copy (leaderboards/routes.ts): the room checks every turn, then the board.
+  { kind: "leaderboard-post", method: "POST", path: /^\/v1\/leaderboards\/post\/[a-zA-Z0-9_-]{22}$/ },
   { kind: "block", method: "POST", path: /^\/v1\/safety\/(?:block|blocks\/[A-Za-z0-9_-]{22})$/ }
 ] as const);
 /**

@@ -14,7 +14,8 @@ const LighthouseStages = preload("res://core/lighthouse/stage_catalog.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Index = preload("res://services/solo_replay_index.gd")
-const MAX_SAVE_BYTES := 2097152
+## The larger of the two journals' caps: it reads both and their archives.
+const MAX_SAVE_BYTES := RelayJourney.MAX_SAVE_BYTES if RelayJourney.MAX_SAVE_BYTES > LighthouseJourney.MAX_SAVE_BYTES else LighthouseJourney.MAX_SAVE_BYTES
 const MAX_ARCHIVED_ATTEMPTS := 32
 ## Main-thread budget per advance for sources that need no worker: missing
 ## files and bytes that already passed a check.

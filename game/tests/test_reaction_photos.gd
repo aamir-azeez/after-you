@@ -355,6 +355,9 @@ class PairCoordinator:
 		return room.duplicate(true)
 	func checkpoint() -> Dictionary:
 		return start.duplicate(true)
+	# Already nested with its proof, so the room coordinator returns it as is.
+	func full_checkpoint() -> Dictionary:
+		return checkpoint()
 	func invalidate_identity() -> void:
 		invalidated = true
 

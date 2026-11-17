@@ -16,7 +16,7 @@ export type JsonChapterRecording = ChapterRecording & { actions: NonNullable<Cha
 export type ChapterCheckpoint = ChapterKey & {
   schema_version: number; stage_index: number; completed_stage_id: string; next_stage_id: string;
   previous_checkpoint_hash: string; a_recording_hash: string; b_recording_hash: string; checkpoint_hash: string;
-  /** Open turns (open-turns.ts, schema 8) name every turn of the stage here in place of the a and b hashes. */
+  /** Open turns (open-turns.ts, schema 8) name every turn of the stage here in place of the a and b hashes, and nest no proof. */
   turn_hashes?: string[];
 };
 export type ChapterLimits = { checkpoint_bytes: number; checkpoint_values: number; turn_body_bytes: number; turn_body_values: number; recording_bytes?: number; recording_values?: number };
@@ -32,10 +32,11 @@ export type ChapterAdapter = {
   limits?: Readonly<ChapterLimits>;
   /** Fewer forks than the published 32, for chapters whose replay archive would outgrow its cap. */
   max_branches?: number;
-  /** Open turns (open-turns.ts): the stages' turn caps and byte budget. Absent: two turns a stage, as published. */
+  /** Open turns (open-turns.ts): the stages' turn caps and the widest turn. Absent: two turns a stage, as published. */
   open_turns?: OpenTurns;
   initial(): ChapterCheckpoint;
-  recording(value: unknown): Promise<ChapterRecording>;
+  /** `stored`: a stored row, which on open turns may be a turn's fingerprint (open-turns.ts). */
+  recording(value: unknown, stored?: boolean): Promise<ChapterRecording>;
   /** `passes`: an open turns stage's turns between its first and its closing turn, in order. */
   checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes?: readonly ChapterRecording[]): Promise<ChapterCheckpoint>;
   accepted(recording: ChapterRecording): boolean;

@@ -17,7 +17,8 @@ extends SceneTree
 ## - a solo journal's "Redo my previous turn" takes back its latest pass, and
 ##   reopening a stage brings its passes back; it keeps every turn packed, so a
 ##   run of every stage at its cap of the longest turns stays well under the
-##   save's cap;
+##   save's cap, and so does the worst any open level can make at 150 s turns,
+##   which still backs up to the Saved Games slot;
 ## - a published two turn stage still proves the published way;
 ## - the turn dots (presentation/kit/turn_dots.gd) ring the last turn: the cap's
 ##   once it is next, this one when the room says it must finish;
@@ -51,6 +52,9 @@ const TIDE := "turn-of-the-tide@3"
 const STAGE := "set-the-tide"
 var checks := 0
 var failures := 0
+## _chain's stage: turn 1, two passes, the closing turn, and its checkpoint.
+var _stage: Array = []
+var _stage_checkpoint: Dictionary = {}
 
 ## The chapter screen with its saves, review and turn check left out: it
 ## notes how the turn ended.
@@ -86,8 +90,10 @@ func _initialize() -> void: _run.call_deferred()
 func _run() -> void:
 	_rules()
 	_chain()
+	await _hard_runs()
 	_packed_chain()
 	_solo_size()
+	_solo_worst_case()
 	_ten_turns()
 	_published()
 	_dots()
@@ -162,6 +168,8 @@ func _chain() -> void:
 	_check(derived.valid, "The closing checkpoint derives (%s)" % str(derived.get("error", "")))
 	if not derived.valid: return
 	var checkpoint: Dictionary = derived.checkpoint
+	_stage = [a, pass_two, pass_three, closing]
+	_stage_checkpoint = checkpoint
 	_check(int(checkpoint.schema_version) == OpenTurns.CHECKPOINT_SCHEMA and checkpoint.turn_hashes == [a.recording_hash, pass_two.recording_hash, pass_three.recording_hash, closing.recording_hash] and checkpoint.proof.turns.size() == 4 and not checkpoint.has("a_recording_hash"), "It nests all four turns in order (schema 8)")
 	MemoryTrace.clear()
 	_check(Simulation.verify_checkpoint(level, checkpoint).valid, "The four turn checkpoint proves from scratch")
@@ -201,6 +209,129 @@ func _chain() -> void:
 	var shuffled: Dictionary = checkpoint.duplicate(true)
 	shuffled.proof.turns = [a, pass_three, pass_two, closing]
 	_check(not Simulation.verify_checkpoint(level, shuffled).valid, "Turns out of order are refused")
+
+## Hard runs (services/hard_mode.gd) on open turns, with _chain's four turns:
+## a slip on turn 4 is kept with turn 3 as its memory and turns 1 and 2 under
+## it, and replays over them; a finished stage is kept with its passes and
+## replays; turns that do not chain are refused when watched, and shapes a
+## run never has are refused when kept. A two-turn slip keeps its three fields.
+const HardRun = preload("res://services/hard_run.gd")
+const TurnTries = preload("res://services/turn_tries.gd")
+const Index = preload("res://content/chapters/index.gd")
+const HARD_MARKS := "user://open-turns-hard-marks.json"
+const HARD_TRIES := "user://open-turns-hard-tries.json"
+func _hard_runs() -> void:
+	if _stage.size() < 4: return
+	var level := Registry.definition(TIDE)
+	var start := Registry.initial_checkpoint(TIDE)
+	var a: Dictionary = _stage[0]
+	var turn_two: Dictionary = _stage[1]
+	var turn_three: Dictionary = _stage[2]
+	var closing: Dictionary = _stage[3]
+	_clear_hard()
+	var hashes := func(turns: Array) -> Array: return turns.map(func(turn: Dictionary) -> String: return str(turn.recording_hash))
+	# Turn 4 slips a second in, over turn 3 and the turns under it.
+	var four := Simulation.new()
+	four.reset(level, STAGE, start, turn_three, "b", 0, [a, turn_two])
+	var frames: Array = Simulation.expand_recording_inputs(closing)
+	for tick in 30: four.step(frames[tick])
+	var slip: Dictionary = _json(four.export_recording())
+	var journal := Journey.new(HardMode.journal_path(TIDE), null, TIDE)
+	journal.load_data()
+	var run: RefCounted = HardRun.solo(TIDE, HARD_MARKS)
+	var tries := TurnTries.new(HARD_TRIES)
+	_check(journal.accept_recording(a), "A hard run keeps turn 1 (%s)" % journal.last_error)
+	# Each pass is a turn the run keeps (the review's own check), and each next turn starts as a first try.
+	var slots: Array = []
+	for turn: Dictionary in [turn_two, turn_three]:
+		var slot := TurnTries.slot_for(journal, run.tries_key(TIDE), false)
+		_check(slot not in slots and tries.start(slot) == 1 and not run.slipped(tries.count(slot)), "Turn %d starts as its own first try" % (slots.size() + 2))
+		slots.append(slot)
+		_check(run.failure(journal.verify_turn(turn), turn).is_empty() and not run.failure(journal.verify_turn(turn), {}).is_empty(), "A pass is kept in a hard run, where a later turn that cannot pass would not be (turn %d)" % (slots.size() + 1))
+		_check(journal.accept_recording(turn), "The journal keeps the pass (%s)" % journal.last_error)
+	_check(hashes.call(journal.memory_chain()) == hashes.call([a, turn_two]) and journal.prior_recording().get("recording_hash") == turn_three.recording_hash, "Turn 4 plays over turn 3, which nests turns 1 and 2")
+	_check(run.fail_solo(journal, tries, "failed_turn", slip, TIDE) and journal.pairs().is_empty() and journal.passes().is_empty(), "A slip on turn 4 ends the run and starts it again")
+	HardMode.wait_writes()
+	var kept: Array[Dictionary] = HardMode.runs(TIDE)
+	var slipped: Dictionary = kept[0] if kept.size() == 1 else {}
+	_check(not slipped.is_empty() and slipped.slip.prior.get("recording_hash") == turn_three.recording_hash and hashes.call(slipped.slip.get(HardMode.CHAIN, [])) == hashes.call([a, turn_two]) and slipped.role == "b", "The slip is kept with turn 3 as its memory and turns 1 and 2 under it")
+	if slipped.is_empty(): return
+	var part: Dictionary = HardMode.watch_pairs(slipped)[0]
+	var turns := OpenTurns.pair_turns(part)
+	_check(hashes.call(turns) == hashes.call([a, turn_two, turn_three, slip]) and Canonical.same(part.start, start), "Watching it plays the slip from its checkpoint over every turn before it")
+	var sim := Simulation.new()
+	_check(Registry.reset_simulation(sim, TIDE, level, STAGE, part.start, turns[-2], "b", turns[-1], turns.slice(0, turns.size() - 2)), "The slip starts over its kept memories (%s)" % sim.error)
+	for input: Dictionary in Simulation.expand_recording_inputs(slip): sim.step(input)
+	_check(Canonical.same(_json(sim.export_recording()), slip), "and plays back byte for byte")
+	var viewer: Node = await _hard_viewer({"chapter_key": TIDE, "kind": "watch", "run": slipped})
+	_check(viewer.mode == "replay" and viewer.replay_pair_index == 0 and viewer.sim.get("role") == "b", "The chapter screen opens the kept slip in its replay (%s)" % viewer.mode)
+	var ticks := 0
+	while viewer.mode == "replay" and ticks < 2000 and viewer.replay_cursor < viewer.replay_frames.size():
+		viewer.advance_input({})
+		ticks += 1
+	_check(viewer.replay_cursor == viewer.replay_frames.size() and viewer.replay_frames.size() == int(slip.duration_ticks), "and plays it up to the slip")
+	await _close_hard_viewer(viewer)
+	# A finished stage: kept with its passes, and its closing turn replays over them.
+	_check(journal.accept_recording(a) and journal.accept_recording(turn_two) and journal.accept_recording(turn_three) and journal.accept_recording(closing), "The run plays the stage again in four turns (%s)" % journal.last_error)
+	run.complete_solo(journal)
+	HardMode.wait_writes()
+	var done: Array = HardMode.runs(TIDE).filter(func(item: Dictionary) -> bool: return item.kind == HardMode.COMPLETE)
+	var whole: Dictionary = done[0] if done.size() == 1 else {}
+	_check(not whole.is_empty() and whole.pairs[0].get("passes", []).size() == 2 and HardMode.new(HARD_MARKS).completed(TIDE, HardMode.SOLO), "A finished run is kept with the stage's passes and marked")
+	if whole.is_empty(): return
+	_check(int(HardMode.summary(whole).parts) == 1 and HardMode.runs(TIDE).size() == 2, "It lists as one part beside the slip")
+	_check(Canonical.same(CheckpointPairs.derive(Simulation, level, start, HardMode.watch_pairs(whole)[0]).get("checkpoint"), _stage_checkpoint), "Its stage derives the same checkpoint when watched")
+	viewer = await _hard_viewer({"chapter_key": TIDE, "kind": "watch", "id": str(whole.id)})
+	_check(viewer.mode == "replay" and viewer.replay_frames.size() == int(closing.duration_ticks) and viewer.sim.get("role") == "b", "The chapter screen replays the closing turn over its passes (%s)" % viewer.mode)
+	await _close_hard_viewer(viewer)
+	# Turns that do not chain are refused when watched.
+	var shuffled: Dictionary = whole.duplicate(true)
+	shuffled.pairs[0].passes = [turn_three, turn_two]
+	_check(HardMode.valid_run(shuffled) and not CheckpointPairs.derive(Simulation, level, start, HardMode.watch_pairs(shuffled)[0]).get("valid", false), "Passes out of order are refused when watched")
+	var gap: Dictionary = slipped.duplicate(true)
+	gap.slip[HardMode.CHAIN] = [turn_two]
+	var broken: Dictionary = HardMode.watch_pairs(gap)[0]
+	var broken_turns := OpenTurns.pair_turns(broken)
+	_check(not Registry.reset_simulation(Simulation.new(), TIDE, level, STAGE, broken.start, broken_turns[-2], "b", broken_turns[-1], broken_turns.slice(0, broken_turns.size() - 2)), "A slip missing a turn under its memory does not replay")
+	# Shapes a run never has are refused.
+	for bad: Variant in [[], [7], [turn_two, "x"]]:
+		var odd: Dictionary = whole.duplicate(true)
+		odd.pairs[0].passes = bad
+		_check(not HardMode.valid_run(odd) and not HardMode.save_run(odd), "A stage with passes %s is refused" % str(bad).left(24))
+	var extra: Dictionary = whole.duplicate(true)
+	extra.pairs[0].more = [turn_two]
+	_check(not HardMode.valid_run(extra), "A stage with another field is refused")
+	for bad: Variant in [[], [3], "x"]:
+		var odd: Dictionary = slipped.duplicate(true)
+		odd.slip[HardMode.CHAIN] = bad
+		_check(not HardMode.valid_run(odd), "A slip with chain %s is refused" % str(bad))
+	var first_turn: Dictionary = slipped.duplicate(true)
+	first_turn.slip.prior = {}
+	_check(not HardMode.valid_run(first_turn), "A chain under no memory is refused")
+	# A two-turn slip (and a first turn) keeps exactly its three fields.
+	_check(HardMode.kept_slip(slip, start, a).keys() == ["recording", "checkpoint", "prior"] and HardMode.kept_slip(slip, start, {}, [a]).size() == 3 and HardMode.kept_slip(slip, start, turn_three, [a, turn_two]).size() == 4, "Only a slip over a pass keeps a chain")
+	_clear_hard()
+
+func _hard_viewer(request: Dictionary) -> Node:
+	HardMode.hand_over(request)
+	var viewer: Node = load(Index.data(TIDE).scene).instantiate()
+	viewer.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
+	root.add_child(viewer)
+	viewer.set_physics_process(false)
+	viewer.set_process(false)
+	await process_frame
+	return viewer
+
+func _close_hard_viewer(viewer: Node) -> void:
+	viewer.set_block_signals(true)
+	viewer._leaving = true
+	viewer.queue_free()
+	await process_frame
+
+func _clear_hard() -> void:
+	HardMode.wait_writes()
+	for path: String in [HardMode.journal_path(TIDE), HardMode.runs_path(TIDE), HardMode.INDEX_PATH, HARD_MARKS, HARD_TRIES]:
+		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 
 ## The same four turns as the engine records them with nothing set: packed
 ## (open turns always are, runtime.gd), each replaying exactly and playing as
@@ -254,7 +385,9 @@ func _packed_chain() -> void:
 ## the journal saves it (attempt_archive.gd), it stays under half the save's cap,
 ## where the same run in JSON would not fit at all.
 func _solo_size() -> void:
-	for key: String in ["turn-of-the-tide@3", "long-way-home@3", "conservatory@2"]:
+	var keys: Array = Registry.keys().filter(func(key: String) -> bool: return OpenTurns.pinned(Registry.definition(key)))
+	_check(TIDE in keys, "Every open turns chapter is sized, Tide@3 among them")
+	for key: String in keys:
 		var level := Registry.definition(key)
 		var rules := Registry.preferred_rules(key)
 		var ticks := Simulation.turn_ticks(level, rules, "b")
@@ -286,6 +419,62 @@ func _solo_size() -> void:
 		var json_bytes := JSON.stringify(Canonical.normalized({"archive_version": 1, "relay": {"pairs": json_pairs, "a": {}, "draft": {}}})).to_utf8_buffer().size()
 		print("OPEN TURNS: a solo %s run of %d turns of %d ticks at their widest saves %d bytes packed, %d as JSON (cap %d)" % [key, turns, ticks, bytes, json_bytes, Journey.MAX_SAVE_BYTES])
 		_check(bytes * 2 < Journey.MAX_SAVE_BYTES, "A solo %s run of every stage at its cap of the widest turns stays under half the save's cap packed" % key)
+
+## The largest solo journal any open turns level can make at WORST_TURN_TICKS:
+## four stages of OpenTurns.MAX_CAP turns plus a draft, every turn its widest
+## with random sticks, presses and hashes (the least a recording compresses).
+## Raw it stays under half the save's cap; a journal at the cap, compressed as
+## this one does, still fits the Saved Games progress slot alone; and a proof
+## or a Hard run as big as two such journals keeps its file.
+const WORST_STAGES := 4
+## 150 s. At 4 x 20 turns about 160 s is the longest that keeps the half-cap
+## margin; 600 s turns (6.7 MB raw, 4.6 MB zstd) fit no Saved Games slot.
+const WORST_TURN_TICKS := 4500
+const Bundle = preload("res://services/platform_games/cloud_save_bundle.gd")
+const Proofs = preload("res://services/journey_proofs.gd")
+const HardMode = preload("res://services/hard_mode.gd")
+func _solo_worst_case() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20261116
+	var hex := func() -> String:
+		var raw := PackedByteArray()
+		for i in 32: raw.append(rng.randi() % 256)
+		return raw.hex_encode()
+	var level := Registry.definition(TIDE)
+	var rules := Registry.preferred_rules(TIDE)
+	var turn := func(stage: int, n: int, last: bool) -> Dictionary:
+		var actions: Array = []
+		var x := 0
+		for tick in WORST_TURN_TICKS:
+			var next := rng.randi_range(-100, 100)
+			x = next if next != x else -next if next != 0 else 1
+			actions.append({"ticks": 1, "x": x, "z": rng.randi_range(-100, 100), "action": rng.randi() % 2 == 0})
+		var checks: Array = []
+		for tick in range(RecordingCodec.CHECK_EVERY, WORST_TURN_TICKS, RecordingCodec.CHECK_EVERY): checks.append({"tick": tick, "state_hash": hex.call()})
+		var final_hash: String = hex.call()
+		checks.append({"tick": WORST_TURN_TICKS, "state_hash": final_hash})
+		var form := RecordingCodec.packed_form({"schema_version": 7, "simulation_version": rules, "level_id": level.id, "level_version": level.version, "definition_hash": hex.call(),
+			"stage_id": "stage-%d" % stage, "stage_version": 1, "checkpoint_hash": hex.call(), "role": "a" if n == 1 else "b", "player_slot": OpenTurns.slot("p0", n), "tick_rate": 30,
+			"duration_ticks": WORST_TURN_TICKS, "catch_assistance": false, "actions": actions, "replay_checks": checks, "final_state_hash": final_hash, "completed": last,
+			"outcome": {"source_ready": true, "objective_complete": last}, "source_recording_hash": "" if n == 1 else hex.call(), "recording_hash": ""})
+		form["recording_hash"] = hex.call()
+		return form
+	var pairs: Array = []
+	for stage in WORST_STAGES:
+		var list: Array = []
+		for n in range(1, OpenTurns.MAX_CAP + 1): list.append(turn.call(stage, n, n == OpenTurns.MAX_CAP))
+		pairs.append({"a": list[0], "b": list[-1], "passes": list.slice(1, list.size() - 1)})
+	var relay := {"schema_version": 2, "simulation_version": rules, "level_id": level.id, "level_version": level.version, "definition_hash": hex.call(), "pairs": pairs, "a": {}, "draft": turn.call(WORST_STAGES, 1, false)}
+	var envelope := {"version": 1, "generation": 1, "settings": {}, "attempts": {}, "completed": {}, "replays": {}, "room": {}, "relay": relay}
+	var raw := JSON.stringify(envelope).to_utf8_buffer()
+	var packed := raw.compress(FileAccess.COMPRESSION_ZSTD).size()
+	var encoded := Bundle.encode(Bundle.collect({}, 0, {}, {"the-falls-journey-v2.json": envelope}))
+	var at_cap := ceili(float(encoded.size()) * Journey.MAX_SAVE_BYTES / raw.size())
+	print("OPEN TURNS: the worst solo journal, %d stages of %d turns of %d ticks, saves %d bytes (%d a turn), %d zstd (%.3f); at the cap of %d it fills the slot to %d of %d" % [WORST_STAGES, OpenTurns.MAX_CAP, WORST_TURN_TICKS, raw.size(), raw.size() / (WORST_STAGES * OpenTurns.MAX_CAP + 1), packed, float(packed) / raw.size(), Journey.MAX_SAVE_BYTES, at_cap, Bundle.MAX_BYTES])
+	_check(raw.size() * 2 < Journey.MAX_SAVE_BYTES, "The worst solo journal stays under half the save's cap")
+	_check(Bundle.journal_stages(Bundle.decode(encoded).get("journals", {}).get("the-falls-journey-v2.json", {}).get("envelope")) == WORST_STAGES, "It backs up whole to the Saved Games progress slot")
+	_check(at_cap <= Bundle.MAX_BYTES, "A journal at the save's cap, as random, still fits the progress slot")
+	_check(Proofs.MAX_FILE_BYTES >= 2 * Journey.MAX_SAVE_BYTES and HardMode.MAX_RUNS_BYTES >= 2 * Journey.MAX_SAVE_BYTES, "A proof file and a Hard runs file hold two journals at the cap")
 
 ## Ten turns of passes, each pip's own route again: every one replays and
 ## may be a memory, and one check of the latest covers the chain. Memories
@@ -536,7 +725,7 @@ func _early_first_turn() -> void:
 	one.reset(level, STAGE, start, {}, "a")
 	for tick in range(20): one.step(frames[tick])
 	var state: Dictionary = one.snapshot()
-	_check(one.can_commit() and state.can_commit and not state.outcome.source_ready and not state.part_done and int(state.objective_display.current) == 0, "A first turn may end at any time; its part is not done yet and its card and ready cues say so")
+	_check(one.can_commit() and state.can_commit and not state.outcome.source_ready and state.objective_display.is_empty(), "A first turn may end at any time; its part is not done yet, and no card counts it")
 	var older := Simulation.new()
 	older.reset(level, STAGE, start, {}, "a")
 	for tick in range(20): older.step(frames[tick])

@@ -35,6 +35,20 @@ const FACE_PACK_REFUSALS := {403: ["face_pack_not_owned"], 400: ["invalid_end_re
 const HardRoomClient = preload("res://services/hard_room_client.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
+const OpenTurnStore = preload("res://services/open_turn_store.gd")
+const KnownCheckpoints = preload("res://core/physical/known_checkpoints.gd")
+## Open turns fingerprints (WIRE.md section 4): an open turns room's view. Earlier
+## turns of the stage are hashes, the newest and a closing turn come in full, and
+## this phone plays and checks over its own copies (services/open_turn_store.gd).
+const OPEN_VIEW_KEYS := ["turn", "cap", "must_finish", "pass_bytes", "turn_hashes", "newest", "closing"]
+## In _missing_turns: the room's earlier stages are not proved here and their pair rows are wanted.
+const EARLIER_STAGES := "earlier-stages"
+## Turns one send-back request carries (WIRE.md section 9).
+const SEND_BACK_TURNS := 16
+## JSON bytes one send-back carries: the smallest turn body any server route
+## takes (backend src/v2/protocol-relay.ts MAX_V2_BODY_BYTES) less room for the
+## envelope. A wider turn goes alone; it came in a turn body of its own.
+const SEND_BACK_BYTES := 327680 - 1024
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -126,6 +140,14 @@ var _verified: Dictionary = {}
 var _last_check_usec := 0
 var _last_check_ticks := 0
 const CHECK_USEC_PER_TICK := 1000
+## Open turns fingerprints: this room's turn copies, and what its last view
+## needs that this phone lacks: turns by hash, and (a phone that lost its
+## copies) the room's earlier flat checkpoints, read once from its pair rows.
+var turn_store_root := OpenTurnStore.ROOT
+var _turns: RefCounted
+var _missing_turns: Array = []
+var _unproved: Dictionary = {}
+var _earlier_checkpoints: Array = []
 
 class DraftWrite:
 	extends RefCounted
@@ -198,6 +220,10 @@ func invalidate_identity() -> void:
 	_proven_turns.clear()
 	_verified = {}
 	_replace = {}
+	_turns = null
+	_missing_turns = []
+	_unproved = {}
+	_earlier_checkpoints = []
 	_state = {}
 	_owner = ""
 	_epoch = -1
@@ -229,6 +255,11 @@ func bind_room(room_id: String) -> bool:
 	if room_id != _room: _packed_room = false
 	_room = room_id
 	_scope = "relay-room-v2:" + _owner + ":" + _room
+	_turns = OpenTurnStore.new(_owner, _room, turn_store_root)
+	_turns.trust_all()
+	_missing_turns = []
+	_unproved = {}
+	_earlier_checkpoints = []
 	_clear_chapter()
 	_state = _empty_state()
 	_replace = {}
@@ -283,20 +314,38 @@ func begin_replace() -> bool:
 	var room: Dictionary = _state.snapshot
 	# The latest turn is this player's: their first turn, or (open turns) their latest pass.
 	if room.is_empty() or not Typed.equal(room.get("active_role"), "b") or Typed.equal(room.get("active_player_id"), _owner) or not room.get("recording_a") is Dictionary: return false
-	var latest: Dictionary = OpenTurns.memory(room).prior
+	var latest: Dictionary = _memory(room).prior
 	if not Typed.equal(latest.get("player_slot"), room.get("player_slot")): return false
 	var before := room.duplicate(true)
 	before.active_player_id = _owner
-	var passes: Array = before.open_turns.passes if before.get("open_turns") is Dictionary else []
-	if passes.is_empty():
+	if _open_view(room): return _begin_open_replace(room, before)
+	before.active_role = "a"
+	before.a_turn_id = null
+	before.recording_a = null
+	if not _valid_snapshot(before): return false
+	_retire_live()
+	_replace = {"origin": room.duplicate(true), "room": before}
+	return true
+
+## begin_replace on an open turns room's view: its latest turn goes, and the
+## one before it is the newest again, from this phone's copies.
+func _begin_open_replace(room: Dictionary, before: Dictionary) -> bool:
+	var view: Dictionary = before.open_turns
+	view.turn_hashes.pop_back()
+	view.must_finish = false
+	view.erase("wanted")
+	view.closing = null
+	if view.turn_hashes.is_empty():
 		before.active_role = "a"
 		before.a_turn_id = null
 		before.recording_a = null
+		view.newest = null
+		view.turn = 1
 	else:
-		passes.pop_back()
-		before.open_turns.turn = int(before.open_turns.turn) - 1
-		before.open_turns.must_finish = false
-	if before.get("open_turns") is Dictionary and passes.is_empty() and before.recording_a == null: before.open_turns.turn = 1
+		var newest: Dictionary = _turns.turn(int(room.stage_index), str(view.turn_hashes[-1])) if _turns != null else {}
+		if newest.is_empty(): return false
+		view.newest = newest
+		view.turn = view.turn_hashes.size() + 1
 	if not _valid_snapshot(before): return false
 	_retire_live()
 	_replace = {"origin": room.duplicate(true), "room": before}
@@ -325,6 +374,40 @@ func replacing() -> bool:
 ## The room a turn is played on: the real one, or the one before this player's saved first turn.
 func _room_now() -> Dictionary:
 	return _replace.room if replacing() else _state.get("snapshot", {})
+
+## Whether `room` is an open turns room as the server sends it (WIRE.md section 4).
+static func _open_view(room: Variant) -> bool:
+	return room is Dictionary and room.get("open_turns") is Dictionary and room.open_turns.has("turn_hashes")
+
+## The memory a turn on `room` plays over: {prior, chain, first} as
+## OpenTurns.memory gives them, with the stage's first turn. An open turns
+## room's turns come from this phone's copies and the newest turn its view
+## carries; while any is missing all three are empty and "missing" names them.
+func _memory(room: Dictionary) -> Dictionary:
+	if not _open_view(room):
+		var memory := OpenTurns.memory(room)
+		memory["first"] = room.recording_a if room.get("recording_a") is Dictionary else {}
+		return memory
+	if _turns == null: return {"prior": {}, "chain": [], "first": {}, "missing": []}
+	var found: Dictionary = _turns.stage_turns(room)
+	var turns: Array = found.turns
+	if turns.is_empty(): return {"prior": {}, "chain": [], "first": {}, "missing": found.missing}
+	return {"prior": turns[-1], "chain": turns.slice(0, turns.size() - 1), "first": turns[0], "missing": []}
+
+## A room view with what may change without a new revision left out: the closing
+## turn goes back to its fingerprint once acknowledged, and the turns the partner
+## wants come and go (WIRE.md sections 3 and 9).
+static func _comparable(room: Variant) -> Variant:
+	if not _open_view(room): return room
+	var value: Dictionary = room.duplicate(true)
+	value.open_turns.erase("closing")
+	value.open_turns.erase("wanted")
+	return value
+
+## The checkpoint before `checkpoint`: from its proof, or this phone's proved copies (open turns fingerprints).
+func _previous_checkpoint(chapter: String, value: Dictionary) -> Dictionary:
+	if value.get("proof") is Dictionary or _turns == null: return Registry.previous_checkpoint(chapter, value)
+	return _turns.previous(chapter, value)
 
 
 func busy() -> bool:
@@ -358,6 +441,16 @@ func checkpoint() -> Dictionary:
 	return snapshot().get("checkpoint", {}).duplicate(true)
 
 
+## The room's checkpoint nesting every completed stage (each stage's proof
+## {checkpoint, turns}), for replays and posted runs. An open turns room's
+## checkpoint is flat on the server, so it is rebuilt from this phone's copies
+## ({} while any is missing here).
+func full_checkpoint() -> Dictionary:
+	var value := checkpoint()
+	if value.is_empty() or value.has("proof") or _turns == null: return value
+	return _turns.nested(_chapter_key, value)
+
+
 func role() -> String:
 	return str(snapshot().get("active_role", ""))
 
@@ -368,11 +461,11 @@ func stage_id() -> String:
 
 ## The memory the next turn replays: the stage's latest turn (open turns), or its first.
 func prior_recording() -> Dictionary:
-	return OpenTurns.memory(snapshot()).prior.duplicate(true)
+	return _memory(snapshot()).prior.duplicate(true)
 
 ## Open turns: the stage's turns before the memory, oldest first ([] before open turns).
 func memory_chain() -> Array:
-	return OpenTurns.memory(snapshot()).chain.duplicate(true)
+	return _memory(snapshot()).chain.duplicate(true)
 
 ## Open turns: the room's turn count view ({} before open turns): turn, cap,
 ## must_finish, the viewer's player_slot and the stage_index. Cheap enough for
@@ -427,7 +520,7 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 		_error("rehearsal_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_D879B5A3D87C)
 		return null
 	var room: Dictionary = _room_now()
-	var memory := OpenTurns.memory(room)
+	var memory := _memory(room)
 	var prior: Dictionary = memory.prior
 	var simulation: RefCounted = _simulation.new()
 	var saved: Dictionary = draft() if resume_draft else {}
@@ -467,7 +560,7 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 	if not is_same(simulation.get("level"), _live_context.level_ref) or not is_same(simulation.get("_checkpoint"), _live_context.checkpoint_ref) or not is_same(simulation.get("_prior"), _live_context.prior_ref):
 		return _error("reset_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_53B70FA2233F)
 	var room: Dictionary = _room_now()
-	var prior: Dictionary = OpenTurns.memory(room).prior
+	var prior: Dictionary = _memory(room).prior
 	# A periodic capture is checked, exported and written on the worker: all of
 	# that grows with the turn's recording, and on the main thread it hitched
 	# once a second, more as the turn went on.
@@ -549,7 +642,10 @@ func refresh() -> bool:
 			if _ordinary_room_gone(status, str(response.get("code", ""))) and _state.draft.is_empty() and _state.pending.is_empty() and str(_state.snapshot.get("active_role", "")) != "complete": _gone = true
 		return _network_error(response)
 	var accepted := _accept_snapshot(response.get("data"))
+	# Open turns fingerprints: turns this phone lost come back first (recover_turns).
+	if not accepted and last_code == "turns_missing": accepted = await recover_turns()
 	if accepted:
+		await _send_back_wanted(response.get("data"))
 		_note_redo(response)
 		_note_end_reactions(response)
 		_note_partner_name(response)
@@ -677,17 +773,23 @@ func commit(recording: Dictionary, tries: int = 0, face: String = "", track: Arr
 	if not checked.valid or not (checked.get("snapshot", {}).get("can_commit", false) or (passing and checked.get("ready", false))):
 		return _error("incomplete_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_D74CA6BA0A5A)
 	var body := {"base_revision": _room_now().revision, "idempotency_key": _new_key(), "branch": _room_now().branch, "recording": recording.duplicate(true)}
+	var open_view := _open_view(_room_now())
 	if recording.role == "b" and not passing:
 		var derived: Dictionary = _derived_checkpoint(_room_now(), recording)
 		if not derived.valid:
 			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
-		body["checkpoint"] = derived.checkpoint
+		# Open turns fingerprints: the checkpoint goes flat; this phone keeps it proved.
+		body["checkpoint"] = KnownCheckpoints.flat(derived.checkpoint) if open_view else derived.checkpoint
+		if open_view and not _turns.keep_checkpoint(derived.checkpoint): return _error("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C)
+	# Open turns fingerprints: this upload tells the server both phones hold the
+	# turns it plays over, so they and this turn are on this phone's disk first.
+	if open_view and not _keep_own_turns(_room_now(), recording): return _error("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C)
 	if tries > 0: body["tries"] = mini(tries, TurnTries.MAX_TRIES)
 	# A pack face goes only while it can be picked now (services/face_packs.gd).
 	if EndReactionStore.is_face(face) and FacePacks.can_pick(face): body["end_reaction"] = face
 	var reactions := RunReactionTrack.parse(track, int(recording.get("duration_ticks", 0))).filter(func(entry: Dictionary) -> bool: return FacePacks.can_pick(str(entry.id)))
 	if not reactions.is_empty(): body["run_reactions"] = reactions
-	if replacing(): body["replaces"] = str(OpenTurns.memory(_replace.origin).prior.recording_hash)
+	if replacing(): body["replaces"] = str(_memory(_replace.origin).prior.recording_hash)
 	if not _prepare_pending("turns", body):
 		return false
 	# The pending turn now carries the replacement; a refusal keeps it as any refused turn.
@@ -800,6 +902,11 @@ func fetch_pair(pair_id: String) -> Dictionary:
 	if not _pair_bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or not Typed.equal(pair.pair_id, pair_id) or not _range(pair.branch, 0, 31) or not RoomStages.within(pair.stage_index, _level) or not pair.checkpoint is Dictionary:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_E6C7811105B3)
 		return {}
+	# Open turns fingerprints: the row holds fingerprints and a flat checkpoint; this phone's copies fill it.
+	if OpenTurns.pinned(_level) and _turns != null and not pair.checkpoint.has("proof"): pair = _turns.pair(_chapter_key, pair)
+	if pair.is_empty():
+		_error("turns_missing", PlayerCopy.OPEN_TURNS_MISSING)
+		return {}
 	var proof: Variant = pair.checkpoint.get("proof")
 	if not proof is Dictionary or Registry.previous_checkpoint(_chapter_key, pair.checkpoint).is_empty() or not pair.a is Dictionary or not pair.b is Dictionary:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_806EA219BFEC)
@@ -811,6 +918,112 @@ func fetch_pair(pair_id: String) -> Dictionary:
 	_clear_error()
 	return pair.duplicate(true)
 
+
+## Open turns fingerprints: the turns the last room view needs that this phone
+## lacks, by hash ([] when it lacks none).
+func missing_turns() -> Array:
+	return _missing_turns.filter(func(item: Variant) -> bool: return item != EARLIER_STAGES)
+
+## Open turns fingerprints: gets back what the last room view needs and this
+## phone lost (a reinstall, a new phone), then takes that view. When its
+## earlier stages were never proved here, their pair rows first (each flat
+## checkpoint names its stage's turns); then the partner's copies through the
+## server (WIRE.md section 9): what the server holds in full comes back at once,
+## the rest once the partner's phone sends them back on its next poll. A Play
+## Games or Game Center backup has already put back what it held
+## (services/platform_games/cloud_replay_sources.gd). True once the view is taken.
+func recover_turns() -> bool:
+	if _unproved.is_empty() or _turns == null or not _guard(): return false
+	var view: Dictionary = _unproved.duplicate(true)
+	if EARLIER_STAGES in _missing_turns and not await _read_earlier_checkpoints(view): return false
+	if _valid_snapshot(view): return _accept_snapshot(view)
+	var wanted := missing_turns()
+	if wanted.is_empty(): return false
+	var stages := _turn_stages(view)
+	var response := await _request(HTTPClient.METHOD_POST, _room_path() + "/turn-copies/want", {"schema_version": 1, "recording_hashes": wanted.slice(0, 128)})
+	if response.get("ignored", false): return false
+	if not response.get("ok", false):
+		_network_error(response)
+		return false
+	var data: Variant = response.get("data")
+	var kept: Array = []
+	if data is Dictionary and data.get("copies") is Array:
+		for copy: Variant in data.copies:
+			if not OpenTurnStore.full(copy) or not copy.recording_hash in wanted or not stages.has(copy.recording_hash): continue
+			if _turns.keep_turn(int(stages[copy.recording_hash]), copy): kept.append(copy.recording_hash)
+	if not kept.is_empty():
+		var acked := await _request(HTTPClient.METHOD_POST, _room_path() + "/turn-copies/ack", {"schema_version": 1, "recording_hashes": kept})
+		if acked.get("ignored", false): return false
+	_unproved = view
+	if not _valid_snapshot(view):
+		_unproved = view
+		return _error("turns_missing", PlayerCopy.OPEN_TURNS_MISSING)
+	return _accept_snapshot(view)
+
+## Which stage each turn the view or its earlier checkpoints name plays: {hash: stage index}.
+func _turn_stages(view: Dictionary) -> Dictionary:
+	var stages := {}
+	for value: Dictionary in _earlier_checkpoints + [view.checkpoint]:
+		for wanted: Variant in value.get("turn_hashes", []): stages[str(wanted)] = int(value.stage_index) - 1
+	for wanted: Variant in view.open_turns.turn_hashes: stages[str(wanted)] = int(view.stage_index)
+	return stages
+
+## The flat checkpoints of the stages before `view`'s own, from its pair rows,
+## each linked to the one before by hash and the last to the view's checkpoint.
+func _read_earlier_checkpoints(view: Dictionary) -> bool:
+	var stage := int(view.checkpoint.get("stage_index", 0))
+	# A reinstalled phone has no chapter bound until it takes the room: the view names it.
+	var chapter := Registry.resolve(view)
+	var chain: Array = []
+	for offset in range(stage - 1):
+		var row := await _pair_row(str(view.completed_pair_ids[offset]), Registry.definition(chapter))
+		if row.is_empty(): return false
+		chain.append(row.checkpoint)
+	for index in range(chain.size()):
+		var expected: String = Registry.initial_checkpoint(chapter).checkpoint_hash if index == 0 else chain[index - 1].checkpoint_hash
+		if int(chain[index].get("stage_index", -1)) != index + 1 or chain[index].get("previous_checkpoint_hash") != expected: return _error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_35B4466C889C)
+	if not chain.is_empty() and view.checkpoint.get("previous_checkpoint_hash") != chain[-1].checkpoint_hash: return _error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_35B4466C889C)
+	_earlier_checkpoints = chain
+	return true
+
+## A pair row as the server keeps it, its shape checked only ({} on failure).
+func _pair_row(pair_id: String, level: Dictionary) -> Dictionary:
+	if not _pattern(pair_id, "^p[0-9]{1,2}-" + RoomStages.DIGIT + "$") or not RoomStages.within(int(pair_id.get_slice("-", 1)), level):
+		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_C3C090053E04)
+		return {}
+	var response := await _request(HTTPClient.METHOD_GET, _room_path() + "/pairs/" + pair_id)
+	if response.get("ignored", false): return {}
+	if not response.get("ok", false):
+		_network_error(response)
+		return {}
+	var pair: Variant = response.get("data")
+	if not _pair_bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or not Typed.equal(pair.pair_id, pair_id) or not _range(pair.branch, 0, 31) or not RoomStages.within(pair.stage_index, level) or not pair.checkpoint is Dictionary or pair_id != "p%d-%d" % [int(pair.branch), int(pair.stage_index)] or Typed.as_int(pair.checkpoint.get("stage_index"), -1) != int(pair.stage_index) + 1:
+		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_E6C7811105B3)
+		return {}
+	return pair
+
+## Open turns fingerprints: sends back, from this phone's copies, the turns the
+## partner's phone asked for (the view's open_turns.wanted, WIRE.md section 9).
+## Best effort: a failure waits for the next poll and never stops play.
+func _send_back_wanted(view: Variant) -> void:
+	if not _open_view(view) or not view.open_turns.get("wanted") is Array or view.open_turns.wanted.is_empty() or _turns == null: return
+	var turns: Array = []
+	for wanted: Variant in view.open_turns.wanted:
+		var found: Dictionary = _turns.find_turn(str(wanted))
+		if not found.is_empty(): turns.append(found.record)
+	# Batches stay within the turn body bound: up to SEND_BACK_TURNS records and SEND_BACK_BYTES, a wider turn alone.
+	var batches: Array = []
+	var bytes := 0
+	for record: Dictionary in turns:
+		var size := JSON.stringify(record).to_utf8_buffer().size()
+		if batches.is_empty() or batches[-1].size() == SEND_BACK_TURNS or bytes + size > SEND_BACK_BYTES:
+			batches.append([])
+			bytes = 0
+		batches[-1].append(record)
+		bytes += size
+	for batch: Array in batches:
+		var sent := await _request(HTTPClient.METHOD_POST, _room_path() + "/turn-copies", {"schema_version": 1, "turns": batch})
+		if not sent.get("ok", false): return
 
 func _prepare_pending(operation: String, body: Dictionary) -> bool:
 	var next := _state.duplicate(true)
@@ -863,6 +1076,35 @@ func _accept_sent(response: Dictionary) -> bool:
 		# The turn's Pollen credit (rooms_api.gd takes it out of the reply), or none to claim later.
 		if turn and not recording_hash.is_empty() and pollen_sink.is_valid(): pollen_sink.call(_room, recording_hash, response.get("pollen"), chapter_complete())
 	return accepted
+
+## The pending closing turn's checkpoint with its proof (an open turns body carries it flat).
+func _pending_checkpoint() -> Dictionary:
+	var body: Dictionary = _state.pending.body
+	if body.checkpoint.has("proof") or not _open_view(_state.pending.origin): return body.checkpoint.duplicate(true)
+	var derived := _derived_checkpoint(_state.pending.origin, body.recording)
+	return derived.checkpoint.duplicate(true) if derived.get("valid", false) else body.checkpoint.duplicate(true)
+
+## Open turns fingerprints: `recording` and every turn of `room`'s stage it
+## plays over, kept on this phone. False when any cannot be.
+func _keep_own_turns(room: Dictionary, recording: Dictionary) -> bool:
+	if _turns == null: return false
+	var stage := int(room.stage_index)
+	for wanted: Variant in room.open_turns.turn_hashes:
+		if not _turns.has_turn(stage, str(wanted)) and not (OpenTurnStore.full(room.open_turns.newest) and room.open_turns.newest.recording_hash == wanted and _turns.keep_turn(stage, room.open_turns.newest)): return false
+	return _turns.keep_turn(stage, recording)
+
+## Open turns fingerprints: the full turns an accepted room view carries (its
+## newest, and a closing turn), kept before the view is, so the poll that
+## acknowledges them never runs ahead of this phone's copy.
+func _keep_view_turns(room: Dictionary) -> bool:
+	if not _open_view(room) or _turns == null: return true
+	var view: Dictionary = room.open_turns
+	if OpenTurnStore.full(view.newest) and not _turns.keep_turn(int(room.stage_index), view.newest): return false
+	var closing_stage := int(room.checkpoint.get("stage_index", 0)) - 1
+	if OpenTurnStore.full(view.closing) and closing_stage >= 0 and not _turns.keep_turn(closing_stage, view.closing): return false
+	# A finished room: its final checkpoint, for the run this phone posts (WIRE.md section 10).
+	if Typed.equal(room.get("active_role"), "complete") and not _turns.keep_final(room.checkpoint): return false
+	return true
 
 ## Whether the turn waiting to send carries a pack face, as its end reaction
 ## or in its run reactions.
@@ -970,14 +1212,15 @@ func _accept_receipt(value: Variant) -> bool:
 		if int(value.room.branch) != int(_state.pending.origin.branch) or (not _state.snapshot.is_empty() and int(_state.snapshot.branch) != int(_state.pending.origin.branch)):
 			retired_proof = {"owner": _owner, "epoch": _epoch, "origin": _state.pending.origin.duplicate(true), "receipt": value.receipt.duplicate(true),
 				"pair": {"pair_id": value.receipt.pair_id, "branch": value.receipt.branch, "stage_index": value.receipt.stage_index,
-					"a": _state.pending.origin.recording_a.duplicate(true), "b": _state.pending.body.recording.duplicate(true), "checkpoint": _state.pending.body.checkpoint.duplicate(true)}}
+					"a": _memory(_state.pending.origin).first.duplicate(true), "b": _state.pending.body.recording.duplicate(true), "checkpoint": _pending_checkpoint()}}
 	var next := _state.duplicate(true)
 	# A later response can confirm the old receipt without rolling back a newer
 	# already-verified snapshot obtained by a previous refresh.
 	if next.snapshot.is_empty() or int(value.room.revision) >= int(next.snapshot.revision):
-		if not next.snapshot.is_empty() and int(value.room.revision) == int(next.snapshot.revision) and not Typed.same(value.room, next.snapshot):
+		if not next.snapshot.is_empty() and int(value.room.revision) == int(next.snapshot.revision) and not Typed.same(_comparable(value.room), _comparable(next.snapshot)):
 			return _error("snapshot_conflict", PlayerCopy.RELAY_ROOM_COORDINATOR_666CD1F2C6F9)
 		next.snapshot = value.room.duplicate(true)
+		if not _keep_view_turns(value.room): return _error("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C)
 	next.last_receipt = value.receipt.duplicate(true)
 	next.pending = {}
 	next.draft = {}
@@ -1001,19 +1244,25 @@ func _accept_snapshot(value: Variant) -> bool:
 	# already passed full verification when it was accepted or loaded, so an
 	# identical copy skips the checkpoint and recording re-simulation.
 	var guarded := _guard()
-	var identical: bool = guarded and not _state.snapshot.is_empty() and Typed.same(value, _state.snapshot)
+	# Open turns: a closing turn acknowledged, or a want, changes the view without a new revision.
+	var identical: bool = guarded and not _state.snapshot.is_empty() and Typed.same(_comparable(value), _comparable(_state.snapshot))
 	if not guarded or (not identical and not _take_verified(value) and not _valid_snapshot(value)):
+		# Open turns fingerprints: a view this phone cannot check yet for want of its own copies.
+		if guarded and not _missing_turns.is_empty():
+			_unproved = value.duplicate(true)
+			return _error("turns_missing", PlayerCopy.OPEN_TURNS_MISSING)
 		_remote_hold = true
 		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_97B931D8DEE0)
+	_unproved = {}
 	if not _state.snapshot.is_empty():
 		if int(value.revision) < int(_state.snapshot.revision) or int(value.branch) < int(_state.snapshot.branch):
 			return _error("stale_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_FE7E854E465F)
-		if int(value.revision) == int(_state.snapshot.revision) and not Typed.same(value, _state.snapshot):
+		if int(value.revision) == int(_state.snapshot.revision) and not Typed.same(_comparable(value), _comparable(_state.snapshot)):
 			return _error("snapshot_conflict", PlayerCopy.RELAY_ROOM_COORDINATOR_666CD1F2C6F9)
 		# An identical GET confirms availability without producing another save
 		# generation. Its stored copy passed full native verification and revision checks.
 		# Auth recovery must persist; a receipt must separately resolve pending.
-		if Typed.same(value, _state.snapshot) and not _state.auth_required:
+		if identical and not _state.auth_required:
 			_remote_hold = false
 			_gone = false
 			_clear_error()
@@ -1030,6 +1279,7 @@ func _accept_snapshot(value: Variant) -> bool:
 		next.draft = {}
 	next.snapshot = value.duplicate(true)
 	next.auth_required = false
+	if not _keep_view_turns(value): return _error("storage_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_66CFB3646B2C)
 	var saved := _persist(next)
 	if saved:
 		_remote_hold = false
@@ -1219,6 +1469,7 @@ func _valid_state(value: Variant) -> bool:
 
 
 func _valid_snapshot(value: Variant) -> bool:
+	_missing_turns = []
 	if not _bounded(value) or not value is Dictionary:
 		return false
 	var chapter := Registry.resolve(value)
@@ -1243,8 +1494,7 @@ func _valid_snapshot(value: Variant) -> bool:
 	var open: bool = OpenTurns.rules(int(value.get("simulation_version", level.get("simulation_version", 0))))
 	if open:
 		keys.append("open_turns")
-		var view: Variant = value.get("open_turns")
-		if not view is Dictionary or not _exact(view, ["turn", "cap", "must_finish", "pass_bytes", "passes"]) or not _range(view.turn, 0, OpenTurns.MAX_CAP) or not _range(view.cap, 0, OpenTurns.MAX_CAP) or not view.must_finish is bool or not _range(view.pass_bytes, 0, MAX_BYTES) or not view.passes is Array: return false
+		if not _valid_open_view(value.get("open_turns")): return false
 	if not _exact(value, keys) or not Typed.equal(value.api_version, 2) or not Typed.equal(value.schema_version, 2) or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or not Typed.equal(value.validation, "structural_client_replay_required") or not Typed.equal(value.room_id, _room):
 		return false
 	if not Typed.valid_id(value.host_id) or (value.guest_id != null and (not Typed.valid_id(value.guest_id) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
@@ -1254,6 +1504,9 @@ func _valid_snapshot(value: Variant) -> bool:
 	if not _range(value.revision, 0, 9007199254740991) or not _range(value.branch, 0, 31) or not _range(value.stage_index, 0, stages):
 		return false
 	var index := int(value.stage_index)
+	# Open turns fingerprints: a flat checkpoint this phone has not proved yet is proved from its turns first.
+	if open and value.checkpoint is Dictionary and not _learn_checkpoint(chapter, level, engine, value):
+		return false
 	if not value.checkpoint is Dictionary or not engine.verify_checkpoint(level, value.checkpoint).valid or value.checkpoint.stage_index != index:
 		return false
 	if not value.completed_pair_ids is Array or value.completed_pair_ids.size() != index or (index > 0 and value.guest_id == null):
@@ -1267,31 +1520,74 @@ func _valid_snapshot(value: Variant) -> bool:
 	if not Typed.equal(value.player_slot, ("p0" if Typed.equal(value.host_id, _owner) else "p1")) or (Typed.equal(value.host_id, _owner) and (not value.has("invite_code") or not _pattern(value.invite_code, "^[A-F0-9]{20}$"))) or (not Typed.equal(value.host_id, _owner) and value.has("invite_code")):
 		return false
 	if index == stages:
-		return Typed.equal(value.stage_id, "") and Typed.equal(value.active_role, "complete") and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null and (not open or (Typed.equal(value.open_turns.turn, 0) and value.open_turns.passes.is_empty()))
+		return Typed.equal(value.stage_id, "") and Typed.equal(value.active_role, "complete") and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null and (not open or (Typed.equal(value.open_turns.turn, 0) and value.open_turns.turn_hashes.is_empty() and value.open_turns.newest == null))
 	var stage: Dictionary = level.stages[index]
 	var first: Variant = value.host_id if stage.first_player_slot == "p0" else value.guest_id
 	var second: Variant = value.guest_id if stage.first_player_slot == "p0" else value.host_id
 	if not Typed.equal(value.stage_id, stage.id) or not Typed.equal(value.first_player_id, first):
 		return false
-	# Open turns: the passes the room holds, each the next pip's, each replaying over the one before.
-	var passes: Array = value.open_turns.passes if open else []
+	# Open turns: the stage's turns so far (WIRE.md section 4), each the next
+	# pip's, each replaying over the one before, from this phone's copies.
+	var hashes: Array = value.open_turns.turn_hashes if open else []
+	if open and ((value.recording_a == null) != hashes.is_empty() or (value.open_turns.newest == null) != hashes.is_empty()): return false
+	if open and not hashes.is_empty() and (not OpenTurnStore.fingerprint(value.recording_a) or value.recording_a.recording_hash != hashes[0] or value.open_turns.newest.recording_hash != hashes[-1]): return false
+	var stage_turns: Array = []
+	if open and not hashes.is_empty():
+		var memory := _memory(value)
+		if memory.first.is_empty():
+			_missing_turns = memory.get("missing", [])
+			return false
+		stage_turns = memory.chain + [memory.prior]
+	var opening: Variant = stage_turns[0] if open and not stage_turns.is_empty() else value.recording_a
+	var passes: Array = stage_turns.slice(1) if open else []
 	var turn := 1 if value.recording_a == null else 2 + passes.size()
 	if open and (not Typed.equal(value.open_turns.turn, turn) or not Typed.equal(value.open_turns.cap, OpenTurns.cap(stage)) or turn > OpenTurns.cap(stage)): return false
 	if value.recording_a == null:
 		return value.a_turn_id == null and passes.is_empty() and Typed.equal(value.active_role, "a") and Typed.equal(value.active_player_id, first)
 	if not value.recording_a is Dictionary or not Typed.equal(value.a_turn_id, "t%d-%d-a" % [int(value.branch), index]) or not Typed.equal(value.active_role, "b") or not Typed.equal(value.active_player_id, first if turn % 2 == 1 else second):
 		return false
-	if not Typed.equal(value.recording_a.get("simulation_version"), value.get("simulation_version", level.simulation_version)): return false
-	var verified: Dictionary = _checked_turn(chapter, value.checkpoint, {}, value.recording_a)
-	if not Typed.equal(value.recording_a.get("role"), "a") or not verified.valid or not verified.get("snapshot", {}).get("can_commit", false): return false
+	if not Typed.equal(opening.get("simulation_version"), value.get("simulation_version", level.simulation_version)): return false
+	var verified: Dictionary = _checked_turn(chapter, value.checkpoint, {}, opening)
+	if not Typed.equal(opening.get("role"), "a") or not verified.valid or not verified.get("snapshot", {}).get("can_commit", false): return false
 	if passes.is_empty(): return true
 	# The latest pass's check replays every earlier pass as its memory, each required ready, so one check covers them all.
 	for later: Variant in passes:
 		if not later is Dictionary or not Typed.equal(later.get("role"), "b"): return false
-	var turns: Array = [value.recording_a] + passes
+	var turns: Array = [opening] + passes
 	var checked: Dictionary = _checked_turn(chapter, value.checkpoint, turns[-2], turns[-1], turns.slice(0, turns.size() - 2))
 	return checked.get("valid", false) and checked.get("ready", false)
 
+
+## An open turns room's view (WIRE.md section 4, and its section 9 wants).
+static func _valid_open_view(view: Variant) -> bool:
+	if not view is Dictionary or not (_exact(view, OPEN_VIEW_KEYS) or _exact(view, OPEN_VIEW_KEYS + ["wanted"])): return false
+	if not _range(view.turn, 0, OpenTurns.MAX_CAP) or not _range(view.cap, 0, OpenTurns.MAX_CAP) or not view.must_finish is bool or not _range(view.pass_bytes, 0, MAX_BYTES): return false
+	if not _hashes(view.turn_hashes, OpenTurns.MAX_CAP) or (view.has("wanted") and not _hashes(view.wanted, 128)): return false
+	return (view.newest == null or OpenTurnStore.full(view.newest)) and (view.closing == null or OpenTurnStore.full(view.closing))
+
+static func _hashes(value: Variant, maximum: int) -> bool:
+	return value is Array and value.size() <= maximum and value.all(func(item: Variant) -> bool: return _pattern(item, "^[a-f0-9]{64}$"))
+
+## Open turns fingerprints: proves `room`'s flat checkpoint when this phone has
+## not yet (its closing turn comes in the view, the rest from this phone's
+## copies, the stage before by hash). A phone that lost its copies proves the
+## room's earlier stages too, from the flat checkpoints recover_turns read from
+## the pair rows. False with _missing_turns set when something is missing here.
+func _learn_checkpoint(chapter: String, level: Dictionary, engine: Script, room: Dictionary) -> bool:
+	var value: Dictionary = room.checkpoint
+	if value.has("proof") or _turns == null or int(value.get("stage_index", 0)) < 1: return true
+	var wanted := str(value.get("checkpoint_hash", ""))
+	if not _turns.checkpoint(wanted).is_empty(): return true
+	if KnownCheckpoints.known(wanted): return _turns.keep_checkpoint(value)
+	var chain: Array = _earlier_checkpoints.filter(func(item: Dictionary) -> bool: return int(item.stage_index) < int(value.stage_index)) + [value]
+	# A stage before this one never proved here, and its pair rows not read yet: recover_turns reads them first.
+	if int(chain[0].stage_index) > 1 and _turns.previous(chapter, chain[0]).is_empty():
+		_missing_turns = [EARLIER_STAGES]
+		return false
+	var learned: Dictionary = _turns.learn_chain(engine, level, chapter, chain, room.open_turns.get("closing"))
+	if learned.valid: return true
+	_missing_turns = learned.get("missing", [])
+	return false
 
 func _valid_draft(value: Variant) -> bool:
 	return value is Dictionary and (value.is_empty() or (_exact(value, ["origin", "recording"]) and _valid_snapshot(value.origin) and _valid_recording(value.recording, value.origin)))
@@ -1303,7 +1599,7 @@ func _verify_recording(recording: Variant, origin: Dictionary) -> Dictionary:
 	var chapter := Registry.resolve(origin)
 	if chapter.is_empty(): return {"valid": false}
 	if not Typed.equal(recording.get("simulation_version"), origin.get("simulation_version", Registry.definition(chapter).simulation_version)): return {"valid": false}
-	var memory := OpenTurns.memory(origin)
+	var memory := _memory(origin)
 	return _checked_turn(chapter, origin.checkpoint, memory.prior, recording, memory.chain)
 
 
@@ -1326,12 +1622,12 @@ func _checked_turn(chapter: String, checkpoint: Dictionary, prior: Dictionary, r
 ## exact inputs, like _checked_turn.
 func _derived_checkpoint(origin: Dictionary, recording: Dictionary) -> Dictionary:
 	var chapter := Registry.resolve(origin)
-	var memory := OpenTurns.memory(origin)
+	var memory := _memory(origin)
 	var known: Dictionary = _proven_turns.get(_turn_key(chapter, origin.checkpoint, memory.prior, recording, memory.chain), {})
 	if not known.get("derived", {}).is_empty(): return known.derived.duplicate(true)
 	# Open turns: the passes between the first turn and this one are in the checkpoint too.
 	var passes: Array = (memory.chain + [memory.prior]).slice(1)
-	var derived: Dictionary = Registry.simulation_script(chapter).derive_checkpoint(Registry.definition(chapter), origin.checkpoint, origin.recording_a, recording, passes) if not passes.is_empty() else Registry.simulation_script(chapter).derive_checkpoint(Registry.definition(chapter), origin.checkpoint, origin.recording_a, recording)
+	var derived: Dictionary = Registry.simulation_script(chapter).derive_checkpoint(Registry.definition(chapter), origin.checkpoint, memory.first, recording, passes) if not passes.is_empty() else Registry.simulation_script(chapter).derive_checkpoint(Registry.definition(chapter), origin.checkpoint, memory.first, recording)
 	if not known.is_empty() and derived.get("valid", false): known.derived = derived.duplicate(true)
 	return derived
 
@@ -1367,7 +1663,7 @@ func turn_check_job(recording: Dictionary) -> Dictionary:
 	if not _bounded(recording) or not Typed.equal(origin.active_player_id, _owner) or not Typed.equal(recording.get("role"), origin.active_role) or Typed.equal(origin.active_role, "complete"): return {}
 	var chapter := Registry.resolve(origin)
 	if chapter.is_empty() or not Typed.equal(recording.get("simulation_version"), origin.get("simulation_version", Registry.definition(chapter).simulation_version)): return {}
-	var memory := OpenTurns.memory(origin)
+	var memory := _memory(origin)
 	var prior: Dictionary = memory.prior
 	var key := _turn_key(chapter, origin.checkpoint, prior, recording, memory.chain)
 	# Open turns: a pass derives no checkpoint.
@@ -1377,7 +1673,7 @@ func turn_check_job(recording: Dictionary) -> Dictionary:
 	# The checkpoint's proofs are remembered across threads (the room's proof memo).
 	Proofs.prepare_memo(chapter)
 	return {"key": key, "family": Registry.simulation_script(chapter), "level": Registry.definition(chapter), "checkpoint": origin.checkpoint.duplicate(true),
-		"prior": prior.duplicate(true), "chain": memory.chain.duplicate(true), "first": origin.recording_a.duplicate(true) if origin.recording_a is Dictionary else {},
+		"prior": prior.duplicate(true), "chain": memory.chain.duplicate(true), "first": memory.first.duplicate(true),
 		"recording": recording.duplicate(true), "second": second}
 
 
@@ -1406,7 +1702,7 @@ static func run_turn_check(job: Dictionary) -> Dictionary:
 func adopt_turn_check(job: Dictionary, result: Dictionary) -> bool:
 	if job.is_empty() or not result.get("checked") is Dictionary or not _guard() or _room_now().is_empty(): return false
 	var origin: Dictionary = _room_now()
-	var memory := OpenTurns.memory(origin)
+	var memory := _memory(origin)
 	var prior: Dictionary = memory.prior
 	if _turn_key(Registry.resolve(origin), origin.checkpoint, prior, job.recording, memory.chain) != str(job.key): return false
 	_note_check_time(int(result.get("usec", 0)), job.recording, prior)
@@ -1419,7 +1715,7 @@ func adopt_turn_check(job: Dictionary, result: Dictionary) -> bool:
 func verify_turn(recording: Dictionary) -> Dictionary:
 	if not _guard() or _room_now().is_empty() or Typed.equal(_room_now().active_role, "complete"): return {"valid": false}
 	var origin: Dictionary = _room_now()
-	var memory := OpenTurns.memory(origin)
+	var memory := _memory(origin)
 	return _checked_turn(Registry.resolve(origin), origin.checkpoint, memory.prior, recording, memory.chain)
 
 
@@ -1467,7 +1763,8 @@ func _valid_pending(value: Variant) -> bool:
 	if body.recording.role == "a" or passing:
 		return true
 	var derived: Dictionary = _derived_checkpoint(value.origin, body.recording)
-	return derived.valid and Typed.same(derived.get("checkpoint", {}), body.checkpoint)
+	var expected: Dictionary = derived.get("checkpoint", {})
+	return derived.valid and Typed.same(KnownCheckpoints.flat(expected) if _open_view(value.origin) else expected, body.checkpoint)
 
 
 func _valid_receipt(value: Variant, request: Dictionary) -> bool:
@@ -1481,7 +1778,8 @@ func _valid_receipt(value: Variant, request: Dictionary) -> bool:
 		index = int(request.body.stage_index)
 		var source: Dictionary = request.origin.checkpoint
 		while int(source.stage_index) > index:
-			source = Registry.previous_checkpoint(Registry.resolve(request.origin), source)
+			source = _previous_checkpoint(Registry.resolve(request.origin), source)
+			if source.is_empty(): return false
 		expected_checkpoint = source.checkpoint_hash
 		if value.turn_id != null or value.recording_hash != null or value.pair_id != null:
 			return false
@@ -1505,7 +1803,7 @@ func _same_context(first: Dictionary, second: Dictionary) -> bool:
 	for name: String in ["room_id", "branch", "stage_id", "definition_hash", "simulation_version", "active_role", "active_player_id"]:
 		if first.get(name) != second.get(name):
 			return false
-	return Typed.same(first.checkpoint, second.checkpoint) and Typed.same(first.recording_a, second.recording_a) and Typed.same(first.get("open_turns"), second.get("open_turns"))
+	return Typed.same(first.checkpoint, second.checkpoint) and Typed.same(first.recording_a, second.recording_a) and Typed.same(_comparable(first).get("open_turns"), _comparable(second).get("open_turns"))
 
 
 func _guard() -> bool:
@@ -1688,7 +1986,7 @@ func playback_context() -> Dictionary:
 			"simulation_version":room.get("simulation_version",_level.get("simulation_version")),
 			"host_id":room.host_id,"guest_id":room.guest_id,"player_slot":room.player_slot,
 			"checkpoint_hash":room.checkpoint.checkpoint_hash,
-			"recording_hash":OpenTurns.memory(room).prior.get("recording_hash","")}}
+			"recording_hash":(room.open_turns.newest.get("recording_hash","") if room.open_turns.newest is Dictionary else "") if _open_view(room) else OpenTurns.memory(room).prior.get("recording_hash","")}}
 
 func verify_room_snapshot(value: Variant) -> bool:
 	# A navigation probe can use the complete native validator without accepting

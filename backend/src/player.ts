@@ -323,13 +323,10 @@ export class Player extends DurableObject<Env> {
   private ledgerAchievements(): (storage: DurableObjectStorage, now: number, moment?: Moment) => ReturnType<typeof settleAchievements> {
     return gated(this.env, FLAG_VARS.fruits) ? settleStartedAchievements : (storage, now, moment) => settleAchievements(storage, now, moment);
   }
-  /**
-   * The duel credits' achievement moment (achievements.ts duelMoment), while Fruits are on for any app (bookkeeping: no app
-   * sees it). `trusted`: a tester, whose repeat public wins count too.
-   */
-  private fruitMoment(moment: Moment, trusted = false): CreditOptions {
+  /** The duel credits' achievement moment (achievements.ts duelMoment), while Fruits are on for any app (bookkeeping: no app sees it). */
+  private fruitMoment(moment: Moment): CreditOptions {
     const settle = this.ledgerAchievements();
-    return fruitsOn(this.env, LEDGER) ? { fresh: (storage, paid, repeat) => { settle(storage, Date.now(), duelMoment(moment, paid, repeat, trusted)); } } : {};
+    return fruitsOn(this.env, LEDGER) ? { fresh: (storage, paid, counts) => { settle(storage, Date.now(), duelMoment(moment, paid, counts)); } } : {};
   }
   /** The daily bundle refund check (pollen/bundle-settle.ts); a failure never stops the wallet read it rides on. */
   private async checkBundles(owner: string): Promise<void> {
@@ -526,7 +523,7 @@ export class Player extends DurableObject<Env> {
     const active = this.pollenActive(owner), now = Date.now();
     // A public duel's win never counts as a friend duel win: it counts toward the public wins, and finishing one is its own goal.
     return { extra: creditDuelExtra(this.ctx.storage, extra, now, active, RATES, this.fruitMoment({ public_duel: true })),
-      ...(win ? { win: creditDuelWin(this.ctx.storage, win, now, active, RATES, { ...this.fruitMoment({ public_win: true }, isTester(this.env, owner)), public: true }) } : {}) };
+      ...(win ? { win: creditDuelWin(this.ctx.storage, win, now, active, RATES, { ...this.fruitMoment({ public_win: true }), public: true, trusted: isTester(this.env, owner) }) } : {}) };
   }
   /**
    * Story rooms are not linked one by one, and the Story drain releases a player's v3 links but keeps the

@@ -17,7 +17,11 @@ const Proofs = preload("res://services/journey_proofs.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const PATH := "user://relay-journey-v2.json"
-const MAX_SAVE_BYTES := 1048576
+## A chapter's journal, its backup and each archived attempt, raw. The Saved
+## Games progress slot sets it (cloud_save_bundle.gd MAX_BYTES): a journal this
+## big with the most random recordings still fits the slot after zstd (about
+## 0.69 of raw, at most 0.75 for base64). test_open_turns.gd checks it.
+const MAX_SAVE_BYTES := 3670016
 const MAX_ARCHIVED_ATTEMPTS := 32
 const STATE_KEYS := ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "pairs", "a", "draft"]
 ## Open turns: a state may also hold "passes", the current stage's later turns
@@ -212,6 +216,13 @@ func prior_recording() -> Dictionary:
 func passes() -> Array:
 	_ensure_loaded()
 	return [] if read_only else _state.get(PASSES, []).duplicate(true)
+
+
+## Open turns: the turns under prior_recording(), oldest first ([] until a
+## stage has a pass).
+func memory_chain() -> Array:
+	_ensure_loaded()
+	return [] if read_only else _chain(_state).duplicate(true)
 
 
 ## The turn the next later turn plays over: the latest pass, else the first turn.
@@ -884,7 +895,7 @@ func _adopt_written(next: Dictionary, derived_checkpoint: Dictionary) -> void:
 ## checked from it is not replayed again; all structural and version rules
 ## still run. Only accept passes it, for pairs it has just proven.
 func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
-	if not value is Dictionary or not (_exact_keys(value, STATE_KEYS) or (_exact_keys(value, STATE_KEYS + [PASSES]) and value.passes is Array and not value.passes.is_empty() and value.passes.all(func(turn: Variant) -> bool: return turn is Dictionary))):
+	if not value is Dictionary or not (_exact_keys(value, STATE_KEYS) or (_exact_keys(value, STATE_KEYS + [PASSES]) and OpenTurns.turns_valid(value.passes))):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
 	if not Typed.equal(value.schema_version, _level.schema_version) or not Typed.whole_number(value.simulation_version) or int(value.simulation_version) not in Registry.supported_rules(_chapter_key) or not Typed.equal(value.level_id, _level.id) or not Typed.equal(value.level_version, _level.version) or not Typed.equal(value.definition_hash, Canonical.digest(_level)):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD)
@@ -894,7 +905,7 @@ func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 	var proven: bool = not trusted.is_empty() and int(trusted.get("pairs", -1)) == value.pairs.size()
 	for pair: Variant in value.pairs:
 		# Open turns: a stage's record may carry its passes too (relay_online_session.gd chapter_pairs).
-		if not pair is Dictionary or not (_exact_keys(pair, ["a", "b"]) or (_exact_keys(pair, ["a", "b", "passes"]) and pair.passes is Array and not pair.passes.is_empty() and pair.passes.all(func(turn: Variant) -> bool: return turn is Dictionary))) or not pair.a is Dictionary or not pair.b is Dictionary:
+		if not OpenTurns.record_valid(pair):
 			return _invalid("Malformed completed pair.")
 		if _chapter_key != Registry.FIRST_STEPS and (not Typed.equal(pair.a.get("simulation_version"), value.simulation_version) or not Typed.equal(pair.b.get("simulation_version"), value.simulation_version)): return _invalid("Unsupported recording version.")
 		if proven: continue
