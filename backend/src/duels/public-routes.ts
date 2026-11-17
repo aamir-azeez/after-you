@@ -17,7 +17,7 @@ import { SAFETY_REPORT_REASONS, ownBlocks, type SafetyReport } from "../safety";
 import { DUEL_REQUEST_PREFIX, requestFriend } from "../friends-routes";
 import { isFinal, knownKey, viewFor, type Duel } from "./model";
 import { lastingAnswer, type ShownHeld } from "./payout-receipt";
-import { heldState, holder, listingOf, newPublicDuel, publicKnown, seatOf, seated, type JoinAs } from "./public";
+import { finishedPublic, heldState, holder, listingOf, newPublicDuel, publicKnown, seatOf, seated, type JoinAs } from "./public";
 import { boardOf, chapterRow, duelsAt, duelsOf, fields, openDuels, party, recentStarts } from "./routes";
 import { duelsOn } from "./turn-hook";
 import { announceLobby } from "./news";
@@ -449,7 +449,7 @@ export async function settlePublic(env: Env, player: string, duel: Duel, settled
     win = { duel_id: duel.duel_id, opponent: other[0] && other[1] ? await pairKey(other[0], other[1]) : `public:${duel.duel_id}`, decided_ms: decided };
   }
   try {
-    const answer = await env.PLAYERS.getByName(player).settlePublicDuel(player, { duel_id: duel.duel_id, room_id: duel.sides[mine]!.room?.room_id ?? null, decided_ms: decided, paid: state.paid, ...(state.reason ? { reason: state.reason } : {}) }, win);
+    const answer = await env.PLAYERS.getByName(player).settlePublicDuel(player, { duel_id: duel.duel_id, room_id: duel.sides[mine]!.room?.room_id ?? null, decided_ms: decided, paid: state.paid, ...(state.reason ? { reason: state.reason } : {}), finished: finishedPublic(duel) }, win);
     const extra = answer.extra.ok ? answer.extra.value : null, paid = answer.win?.ok ? answer.win.value : null;
     // A final refusal (an old end, no identity) is settled too, so it is never asked again.
     if (!answer.extra.ok && answer.extra.status >= 500) return null;

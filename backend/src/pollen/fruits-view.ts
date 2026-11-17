@@ -5,6 +5,7 @@ import { hasBundles } from "./bundle-settle";
 import { achievementsView, settleAchievements, type AchievementView } from "./achievements";
 import { fruitGrantView, type FruitGrantView } from "./grant-settle";
 import { fruitHistory, type FruitEntry } from "./fruit-ops";
+import { levelsView, type LevelsView } from "./level-unlocks";
 
 /**
  * What GET /v1/pollen adds while Fruits are on (`fruits`), and the history's Fruit lines (`fruit_entries`). Every number
@@ -20,10 +21,12 @@ export type FruitsView = {
   /** The Full Journey Fruit ladder for everyone (the Full Journey card shows it before a player subscribes). */
   ladder: { first: number; step: number; every: number; top: number; welcome: number };
   grant?: FruitGrantView;
+  /** While LEVEL_UNLOCKS is on for the app: the levels sold for Fruits and the ones this player opened (level-unlocks.ts). */
+  levels?: LevelsView;
 };
 
-/** The wallet read's Fruits part. The caller runs it inside a transaction (the sweep may write). */
-export function fruitsView(storage: DurableObjectStorage, now: number, rules: FruitRules = FRUIT_RULES): FruitsView {
+/** The wallet read's Fruits part. The caller runs it inside a transaction (the sweep may write). `levels`: LEVEL_UNLOCKS is on for the app. */
+export function fruitsView(storage: DurableObjectStorage, now: number, rules: FruitRules = FRUIT_RULES, levels = false): FruitsView {
   settleAchievements(storage, now, {}, rules);
   const fruits = purse(storage, "fruits"), percent = BUNDLES.first_bonus_percent.fruits, grant = fruitGrantView(storage, rules);
   return {
@@ -33,7 +36,8 @@ export function fruitsView(storage: DurableObjectStorage, now: number, rules: Fr
     first_pack_gift: percent > 0 && !hasBundles(storage, "fruits"), first_pack_percent: percent,
     achievements: achievementsView(storage, rules),
     ladder: { ...rules.grant },
-    ...(grant ? { grant } : {})
+    ...(grant ? { grant } : {}),
+    ...(levels ? { levels: levelsView(storage) } : {})
   };
 }
 

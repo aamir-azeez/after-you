@@ -565,7 +565,7 @@ async function duelDetail(env: Env, player: string, duel: Duel, now: number): Pr
     if (duel.public) { settledNow = await settlePublic(env, player, duel, [], true); bonus = settledNow?.win ?? null; asked = true; final = settledNow?.final ?? false; }
     else ({ answer: bonus, asked, final } = await winBonus(env, player, duel, [], true));
   }
-  const won = bonus ? { amount: bonus.amount, counted: bonus.counted, ...(bonus.reason ? { reason: bonus.reason } : {}) } : null;
+  const won = bonus ? { amount: bonus.amount, counted: bonus.counted, ...(bonus.reason ? { reason: bonus.reason } : {}), ...(bonus.goal_reason ? { goal_reason: bonus.goal_reason } : {}) } : null;
   const shown: PayoutShown = { ...(pay ? { pay } : {}), ...(won && duel.kind === "friend" ? { win_bonus: won } : {}), ...(won?.counted && duel.kind === "ghost" ? { ghost_bonus: won } : {}),
     ...await publicDetail(env, player, duel, settledNow) };
   // Kept once nothing shown can change and a later read would ask something again. A side whose room never finished its

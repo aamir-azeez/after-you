@@ -96,7 +96,7 @@ export function payFruits(storage: DurableObjectStorage, price: number): number 
 export type FruitEntry = { kind: string; amount: number; at: number; id?: string; level_id?: string; step?: number; bundle?: string; order?: string; store?: "app_store"; usd_cents?: number };
 export const FRUIT_HISTORY_LIMIT = 50;
 const KINDS: Readonly<Record<string, string>> = Object.freeze({ fruitgrant: "grant", fruitgrantrefund: "grantrefund", fruitwelcome: "welcome", fruitwelcomerefund: "welcomerefund",
-  fruitbundle: "bundle", fruitbundlerefund: "bundlerefund", fruitach: "ach", fruitconvert: "convert" });
+  fruitbundle: "bundle", fruitbundlerefund: "bundlerefund", fruitach: "ach", fruitconvert: "convert", fruitlevel: "level" });
 
 /** The newest Fruit lines, newest first: one read of the Fruit key range. */
 export function fruitHistory(storage: DurableObjectStorage): FruitEntry[] {

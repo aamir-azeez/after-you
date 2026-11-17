@@ -39,7 +39,10 @@ const SCHEMA := 1
 const PROOF_VERSION := 1
 ## The current save, its backup and a write in progress, with room to spare.
 const ENTRIES_PER_CHAPTER := 4
-const MAX_FILE_BYTES := 2097152
+## A proof's checkpoint nests every earlier one, so it is as big as the
+## journal's turns: room for two at relay_journey.gd MAX_SAVE_BYTES (more than
+## this keeps the newest only). test_open_turns.gd checks it.
+const MAX_FILE_BYTES := 8388608
 
 static var directory := DIRECTORY
 static var _mutex := Mutex.new()

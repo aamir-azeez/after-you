@@ -80,6 +80,8 @@ const ACTIONS := {
 	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "with_receipt": true, "when": ["online", "photo"]},
 	# A finished solo hard run starts again from its first stage (services/hard_mode.gd).
 	"hard_again": {"text": PlayerCopy.HARD_AGAIN, "primary": true, "when": ["hard", "solo"]},
+	# A finished chapter with an ending scene plays it again (presentation/ending_flow.gd).
+	"ending": {"text": PlayerCopy.ENDING_WATCH, "icon": preload("res://assets/ui/play.svg"), "when": ["ending"]},
 	"new_room": {"text": "New room", "primary": true, "when": ["online"]},
 	# A room partner who is not a friend yet: the ordinary friend request
 	# (services/partner_friends.gd), then "Request sent" until they answer.
@@ -180,12 +182,12 @@ const LAYOUT := {
 	},
 	"complete_panel": {
 		"primary": ["hard_again", "new_room"],
-		"turn": ["redo_self", "start_over"],
+		"turn": ["ending", "redo_self", "start_over"],
 		"pair": ["replays", "local_replays", "room_options"],
 		"options": ["photo", "add_friend", "friend_requested", "safety"],
 	},
 	"complete": {
-		"turn": ["hard_again", "redo_self", "start_over", "replays", "local_replays", "new_room", "add_friend", "friend_requested", "safety", "photo", "back"],
+		"turn": ["hard_again", "ending", "redo_self", "start_over", "replays", "local_replays", "new_room", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 }
 

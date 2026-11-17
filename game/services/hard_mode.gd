@@ -42,7 +42,9 @@ const REASONS := ["retry", "failed_turn", "drowned"]
 const FAILED := "failed"
 const COMPLETE := "complete"
 const MAX_FAILED := 5
-const MAX_RUNS_BYTES := 2097152
+## A run holds a whole journal's turns: room for two at relay_journey.gd
+## MAX_SAVE_BYTES. test_open_turns.gd checks it.
+const MAX_RUNS_BYTES := 8388608
 const MAX_MARKS_BYTES := 16384
 const MAX_STAGES := 64
 

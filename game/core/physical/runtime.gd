@@ -249,29 +249,34 @@ func _changed_since(before: Dictionary) -> Dictionary:
 			if not before[kind].has(id) or before[kind][id] != now[id]: changed[kind][id] = true
 	return changed
 
-func _move(frame: Dictionary) -> void:
+## `slot`: the live pip unless named. A facade walks its memory with it too
+## (rules 16: a memory a platform carried off its own world's path).
+func _move(frame: Dictionary, slot: String = "") -> void:
+	if slot.is_empty(): slot = active_slot
 	var direction := Vector2(float(frame.x), float(frame.z)).limit_length(100.0)
 	var delta := Vector2i(roundi(direction.x * MOVE_PER_TICK / 100.0), roundi(direction.y * MOVE_PER_TICK / 100.0))
 	if delta == Vector2i.ZERO: return
 	var steps := maxi(absi(delta.x), absi(delta.y))
 	var walked := Vector2i.ZERO
 	var cells := _navigation_cells()
-	var routes := _walk_routes(active_slot)
+	var routes := _walk_routes(slot)
 	for index in range(1, steps + 1):
 		var next := Vector2i(roundi(float(delta.x * index) / steps), roundi(float(delta.y * index) / steps))
 		var unit := next - walked
 		walked = next
-		if _try_move(unit, cells, routes): continue
-		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells, routes)
-		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells, routes)
+		if _try_move(unit, cells, routes, slot): continue
+		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells, routes, slot)
+		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells, routes, slot)
 
 ## cells: this definition's floor index (_navigation_cells()), fetched once per move.
 ## routes: the crossings the walker may step on (_walk_routes()), likewise.
-func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary) -> bool:
-	var previous: Dictionary = _players[active_slot]
+## Only the live pip pushes a prop; a memory walked here stops at one.
+func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: String = "") -> bool:
+	if slot.is_empty(): slot = active_slot
+	var previous: Dictionary = _players[slot]
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
-	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, active_slot, PLAYER_RADIUS, true, cells)
+	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
 	if position.is_empty(): return false
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
@@ -284,15 +289,15 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary) -> bool:
 			var old_distance := Vector2i(previous.x,previous.z).distance_squared_to(Vector2i(ball.x,ball.z))
 			var new_distance := Vector2i(x,z).distance_squared_to(Vector2i(ball.x,ball.z))
 			if old_distance < separation * separation and new_distance > old_distance: continue
-		if not _can_push(ball): return false
+		if slot != active_slot or not _can_push(ball): return false
 		var moved := Navigation.at(level, _routes, _mechanisms.levers, ball, int(ball.x) + delta.x, int(ball.z) + delta.y, active_slot, int(prop.radius_cm), false, cells)
 		if moved.is_empty(): return false
 		var replacement := ball.duplicate(true)
 		replacement.merge(moved, true)
 		pushed[prop.id] = replacement
 	for id: String in pushed: _mechanisms.props[id] = pushed[id]
-	_players[active_slot] = position
-	if int(previous.height) > int(position.height) + 2: _events.append("drop")
+	_players[slot] = position
+	if slot == active_slot and int(previous.height) > int(position.height) + 2: _events.append("drop")
 	return true
 
 func _can_push(ball: Dictionary) -> bool:
@@ -547,11 +552,13 @@ func snapshot() -> Dictionary:
 		"objective_done":_objective,"route_progress":{"kept_bridges":_mechanisms.latched_bridges.duplicate()},"source_hold_ticks":_hold_ticks,"offer_tick":_offer_tick,
 		"outcome":_outcome(),"events":_events.duplicate(),"context_action":context_action(),"objective_display":_objective_display(),"optics":{"segments":[],"signals":{}},"beacon":_objective}
 	# Open turns only, so a published chapter's snapshot stays byte for byte as it was.
-	# part_done: a first turn may be saved before its part is done, so the screen reads this, not can_commit, for "ready".
-	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed,"part_done":_part_done() if role == "a" else can_commit()})
+	if _open_turns(): state.merge({"turn_number":turn_number,"can_pass":can_pass(),"can_end_early":can_end_early(),"passed":passed})
 	return state
 
 func _objective_display() -> Dictionary:
+	# Open turns: a first turn shows no count of its own part, so nothing tells
+	# the pip when its part is done (owner, 2026-11-16).
+	if role == "a" and _open_turns(): return {}
 	if role == "a":
 		if stage.source_policy.kind == "offer_ball":
 			return {"label":"Ball handoff","current":1 if _part_done() else 0,"required":1}
