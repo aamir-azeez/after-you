@@ -107,8 +107,12 @@ func _ready() -> void:
 		if running and mode in ["play", "replay"]: soundscape.play_footstep(spirit))
 	world.reunion.connect(func():
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
+	# A big change buzzes only in the player's own turn (theirs or their memory's).
+	world.big_change_haptic = func(duration_ms: int, amplitude: float) -> void:
+		if running and mode == "play": soundscape.haptic(duration_ms, amplitude)
 	soundscape.listen_to(world)
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
+	world.big_change_shake = bool(settings.get("haptics", true))
 	# Both solo pips are the player's, in their look, on every stage this world builds.
 	world.wear_slots(SlotLooks.solo())
 	controls = Controls.new()

@@ -102,7 +102,7 @@ func _turn(key: String, level: Dictionary, stage: Dictionary, role: String) -> D
 		return {"trace": [], "cues": [], "ticks": 0}
 	var sound := CueRecorder.new()
 	sound.begin_turn(key, str(record.stage_id))
-	var seen := ChapterSoundMap.remember(sim.snapshot())
+	var seen := ChapterSoundMap.remember(sim.snapshot(), key)
 	var trace: Array = []
 	var cues: Array = []
 	var tick := 0

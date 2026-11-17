@@ -1180,6 +1180,7 @@ func _apply_settings() -> void:
 	if is_instance_valid(friend_presence): friend_presence.set_enabled(bool(saves.data.settings.get("share_online_status", true)))
 	soundscape.configure(saves.data.settings)
 	world.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
+	world.big_change_shake=bool(saves.data.settings.get("haptics",true))
 
 ## An internal child: it leaves Main's own child order alone.
 func _host_store_flow() -> StoreFlow:
