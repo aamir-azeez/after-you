@@ -5,7 +5,8 @@ extends SceneTree
 ## - each item in its style (a pin by id, the slot's default, a float as a raft),
 ##   every style of both slots built (kit/pieces/carried_item.gd, current.gd);
 ## - picked up, the item rides on the carrier's back; put down, it rests at its
-##   place; a float rests on the water;
+##   place; a float rests on the water by the float rule (kit/floats.gd): its
+##   keel its draft under the surface, its deck clear of it;
 ## - the both-hands ladder wears rungs, so a carrier's stop has its cause;
 ## - the current's legs are bright while their wheel shows their value;
 ## - what moves is kept whole by the static fold.
@@ -13,6 +14,7 @@ const World = preload("res://presentation/journey_world.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const Level = preload("res://tests/carried_items_level.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
+const Floats = preload("res://presentation/kit/floats.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
 var checks := 0
@@ -56,6 +58,8 @@ func _world() -> void:
 	world.present(sim.snapshot(), true)
 	_check(pieces.pipsport.root.get_parent() == world.terrain and pieces.pipsport.root.position.is_equal_approx(world._at({"position_cm": [-350, 80], "surface_id": "dock"})), "At first the pipsport rests in the post box")
 	_check(pieces.raft.root.get_parent() == world.terrain and pieces.raft.moving(), "The raft floats at its mooring")
+	var surface: float = world._item_point(sim.snapshot().mechanisms.items.raft).y
+	_check(is_equal_approx(pieces.raft.root.position.y, surface - float(Floats.kind("raft").draft)), "The raft sits its draft deep, its deck over the water")
 	_walk(sim, [-350, 60])
 	sim.step({})
 	sim.step({"interact": true})

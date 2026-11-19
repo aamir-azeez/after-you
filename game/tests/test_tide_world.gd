@@ -14,6 +14,7 @@ const World = preload("res://presentation/tide_world.gd")
 ## Turn of the Tide's water block (kit/water_bodies.gd) and its levels.
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const WaterData = preload("res://content/water/turn_of_the_tide.gd")
+const Floats = preload("res://presentation/kit/floats.gd")
 var HARBOUR_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "harbour")[0].levels
 var SEA_LEVELS: Dictionary = WaterData.DATA.bodies.filter(func(body: Dictionary) -> bool: return body.id == "sea")[0].levels
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
@@ -197,8 +198,23 @@ func _first_stage(level: Dictionary) -> void:
 		_check(world._gauges[id].icon is Label3D and world._gauges[id].icon.fixed_size and world._gauges[id].bands[0].mesh.top_radius >= 0.1, "A gauge carries large bands and a wave sign that keeps its size: " + id)
 	# Boats ride the harbour.
 	_check(world._boats.size() == 3, "Three rowboats moor in the channels")
+	# The float rule (kit/floats.gd): each kind keeps its floor over the water
+	# all through its bob, and a boat sits its draft deep at every level.
+	for kind: String in Floats.KINDS: _check(Floats.keeps_rule(kind) and Floats.least_freeboard(kind) >= 0.0, "A " + kind + " keeps its keel wet and its floor dry through its bob")
+	var rowboat: Dictionary = Floats.kind("rowboat")
 	for boat: Node3D in world._boats:
-		_check(absf(boat.position.y - (HARBOUR_LEVELS.half - 0.02)) < 0.03, "A moored boat rides the harbour at half water")
+		_check(absf(boat.position.y - (HARBOUR_LEVELS.half - float(rowboat.draft))) <= float(rowboat.bob) + 0.0001, "A moored boat rides the harbour at half water, its draft deep")
+		var lowest := INF
+		var floor_top := -INF
+		for mesh: Node in boat.find_children("*", "MeshInstance3D", true, false):
+			var box: AABB = (mesh as MeshInstance3D).transform * (mesh as MeshInstance3D).get_aabb()
+			lowest = minf(lowest, box.position.y)
+			if mesh.name == "BoatFloor": floor_top = box.end.y
+		_check(absf(lowest) < 0.0001 and floor_top >= float(rowboat.floor), "A moored boat's keel is at its origin and its floorboards stand on its solid hull")
+	for tide: String in ["low", "high"]:
+		world.waters.set_level("harbour", float(HARBOUR_LEVELS[tide]), true)
+		_check(world._boats.all(func(boat: Node3D) -> bool: return absf(boat.position.y - (float(HARBOUR_LEVELS[tide]) - float(rowboat.draft))) <= float(rowboat.bob) + 0.0001), "Every moored boat sits its draft deep at " + tide + " water")
+	world.waters.set_level("harbour", float(HARBOUR_LEVELS.half), true)
 	# The spout and the sluice lamp follow the lever.
 	_check(not world._spout.visible and not world._lever_lamps.sluice.lamp.get_meta("lit"), "The spout is dry while the sluice is off")
 	sim._mechanisms.levers["sluice"] = true
