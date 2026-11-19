@@ -109,7 +109,7 @@ func _backdrop_motion(world: Node3D, name: String) -> void:
 	world.reduced_motion = false
 	world.advance_backdrop(0.25)
 	_check(is_equal_approx(float(material.get_shader_parameter(Backdrop.CLOCK)), float(held) + 0.25) and material.get_shader_parameter(Backdrop.SHOOTING) == 1.0, name + ": the backdrop moves by the world's time")
-	Backdrop.advance(world.environment, 1.0, null, Vector2.ZERO, false)
+	Backdrop.advance(world.environment, 1.0, null, null, false)
 
 func _policy() -> void:
 	# The 3D picture is at most 1080 lines tall on Low and Balanced alike, so Low

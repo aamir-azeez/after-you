@@ -15,7 +15,8 @@ uniform int accent_kind = 0;
 uniform float clock = 0.0;
 // Camera offset in screen heights; each layer shifts by its own share.
 uniform vec2 parallax = vec2(0.0);
-uniform float aspect = 1.7778;
+// The 3D picture's size in pixels; FRAGCOORD is read against it.
+uniform vec2 buffer_size = vec2(1920.0, 1080.0);
 // 0 on Low: half the faint stars, no far islands, no edge lights.
 uniform float detail = 1.0;
 // 0 under Reduce motion: no shooting star.
@@ -57,7 +58,9 @@ float far_island(vec2 p, vec2 c, float w) {
 
 void sky() {
 	// Screen heights from the centre, y down.
-	vec2 p = vec2((SCREEN_UV.x - 0.5) * aspect, SCREEN_UV.y - 0.5);
+	float aspect = buffer_size.x / buffer_size.y;
+	vec2 p = (FRAGCOORD.xy - 0.5 * buffer_size) / buffer_size.y;
+	p.y = -p.y;
 	vec2 shift = vec2(parallax.x, -parallax.y);
 	vec3 col = sky_color;
 
@@ -69,7 +72,7 @@ void sky() {
 		for (int i = 0; i < 3; i++) {
 			float fi = float(i);
 			float x = mod(q.x - (fi * 0.87 - 0.9) + tile * 0.5, tile) - tile * 0.5;
-			vec2 at = vec2(0.0, 0.24 + 0.09 * hash11(fi + 3.0) + 0.006 * sin(clock * 0.21 + fi * 2.0));
+			vec2 at = vec2(0.0, (i == 1 ? -0.36 : 0.24) + 0.09 * hash11(fi + 3.0) + 0.006 * sin(clock * 0.21 + fi * 2.0));
 			shape = max(shape, far_island(vec2(x, q.y), at, 0.07 + 0.05 * hash11(fi + 7.0)));
 		}
 		col = mix(col, far_color, shape * 0.55);

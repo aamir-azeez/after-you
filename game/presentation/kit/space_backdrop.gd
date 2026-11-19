@@ -11,6 +11,7 @@ extends RefCounted
 ## the world's own time, so it is the same at any frame rate, stops while the
 ## world is paused or out of the tree, and holds still under Reduce motion.
 
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const SHADER := preload("res://presentation/kit/space_backdrop.gdshader")
 ## Accent kinds the shader draws round the view's edges.
 const ACCENTS := {"none": 0, "petals": 1, "fireflies": 2, "dust": 3}
@@ -24,9 +25,16 @@ const ACCENT := &"accent_color"
 const ACCENT_KIND := &"accent_kind"
 const CLOCK := &"clock"
 const PARALLAX := &"parallax"
-const ASPECT := &"aspect"
+const BUFFER := &"buffer_size"
 const DETAIL := &"detail"
 const SHOOTING := &"shooting"
+
+## The 3D picture's size in pixels: the window's or the SubViewport's own
+## pixels at the view's 3D scale. Zero without a view.
+static func buffer_size(view: Viewport) -> Vector2:
+	if view == null: return Vector2.ZERO
+	var pixels := Vector2((view as SubViewport).size) if view is SubViewport else Vector2((view as Window).size) if view is Window else view.get_visible_rect().size
+	return (pixels * minf(view.scaling_3d_scale, 1.0)).round()
 
 ## A world's Environment: flat ambient colour, linear tone mapping and this sky.
 ## Reflections stay off, so the sky never renders a radiance map.
@@ -72,15 +80,14 @@ static func detailed(env: Environment) -> bool:
 ## Moves the backdrop to `clock` (seconds) and shifts it with the camera. The
 ## view's shape and the camera are read here, so a resize, a rotation or a
 ## world with no camera yet are all safe. Writes only what changed.
-static func advance(env: Environment, clock: float, camera: Camera3D, view_size: Vector2, reduced_motion: bool) -> void:
+static func advance(env: Environment, clock: float, camera: Camera3D, view: Viewport, reduced_motion: bool) -> void:
 	var material := _material(env)
 	if material == null: return
 	if not reduced_motion: material.set_shader_parameter(CLOCK, fposmod(clock, CLOCK_WRAP))
 	var shooting := 0.0 if reduced_motion else 1.0
 	if material.get_shader_parameter(SHOOTING) != shooting: material.set_shader_parameter(SHOOTING, shooting)
-	if view_size.y > 0.0:
-		var aspect := view_size.x / view_size.y
-		if material.get_shader_parameter(ASPECT) != aspect: material.set_shader_parameter(ASPECT, aspect)
+	var size := buffer_size(view)
+	if size.y > 0.0 and material.get_shader_parameter(BUFFER) != size: material.set_shader_parameter(BUFFER, size)
 	if is_instance_valid(camera) and camera.is_inside_tree() and camera.size > 0.0:
 		var basis := camera.global_basis
 		var at := camera.global_position

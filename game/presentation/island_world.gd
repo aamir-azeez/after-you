@@ -1838,7 +1838,7 @@ func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
 ## under Reduce motion) and shifts it with the camera.
 func advance_backdrop(delta: float) -> void:
 	if not reduced_motion: _backdrop_clock += delta
-	SpaceBackdrop.advance(environment, _backdrop_clock, camera, get_viewport().get_visible_rect().size if is_inside_tree() else Vector2.ZERO, reduced_motion)
+	SpaceBackdrop.advance(environment, _backdrop_clock, camera, get_viewport() if is_inside_tree() else null, reduced_motion)
 
 func _advance_fireflies() -> void:
 	if reduced_motion: return
