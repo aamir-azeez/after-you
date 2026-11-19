@@ -22,8 +22,10 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## stands inside its control's reach (REACH every way, the 28 cm interaction
 ## radius) and keeps its east side no further than the plain housing
 ## (EAST_SIDE), so a lamp or mark a world stands beside a lever stays clear.
-## A machine eases over PULL_SECONDS; a handle snaps. Every part's place
-## follows from the shown value alone, and no frame allocates.
+## A machine eases over PULL_SECONDS; a handle snaps. Either then overshoots
+## its stop a little and settles (HANDLE_OVER, MACHINE_OVER) unless the call
+## was immediate. Every part's place follows from the shown value and that
+## overshoot alone, and no frame allocates.
 
 ## Styles that tilt a handle, and machines that move their own parts.
 const HANDLES := ["plain", "brass"]
@@ -35,6 +37,10 @@ const EAST_SIDE := 0.16
 const PULL_SECONDS := 0.45
 ## A handle's tilt (radians about z): pulled, and let go.
 const TILT := 0.6
+## How far past its stop a thrown handle swings (radians), and a machine's
+## parts run (a share of their whole travel), before settling.
+const HANDLE_OVER := 0.12
+const MACHINE_OVER := 0.05
 ## The plain housing's stone.
 const HOUSING := Color("728788")
 ## Where a bubble's tail lands on each machine (its top on its axis, m over
@@ -62,6 +68,9 @@ const PUMP_DOWN := -0.25
 
 var _shown := 0.0
 var _target := 0.0
+## The overshoot past the stop now, in the shown value's units (a handle's
+## in radians).
+var _over := 0.0
 var _crank: Node3D
 var _drum: Node3D
 var _coil: Node3D
@@ -79,23 +88,38 @@ static func build(lever_style: String, at: Vector3, parent: Node3D, options: Dic
 
 ## Shows the lever pulled or let go: eased from here, or at once.
 func set_pulled(pulled: bool, immediate: bool = false) -> void:
-	_target = 1.0 if pulled else 0.0
+	var target := 1.0 if pulled else 0.0
+	var thrown := target != _target
+	_target = target
+	if thrown or immediate:
+		_stop_arrival()
+		_over = 0.0
 	if immediate or style in HANDLES:
+		var was := _shown
 		_shown = _target
+		if not immediate and was != _shown: _arrive(-HANDLE_OVER if pulled else HANDLE_OVER)
 		_pose()
 
 ## A handle shown as a selector's switch: over to the pulled side at the
 ## first value, back for any other (or none).
-func set_value(index: int, _immediate: bool = false) -> void:
-	if style in HANDLES: set_pulled(index == 0, true)
+func set_value(index: int, immediate: bool = false) -> void:
+	if style in HANDLES: set_pulled(index == 0, immediate)
 
 func moving() -> bool:
-	return _shown != _target
+	return _shown != _target or _arriving()
 
 func advance(delta: float) -> void:
 	if not moving(): return
-	_shown = move_toward(_shown, _target, maxf(delta, 0.0) / PULL_SECONDS)
+	if _shown != _target:
+		_shown = move_toward(_shown, _target, maxf(delta, 0.0) / PULL_SECONDS)
+		if _shown == _target: _arrive(MACHINE_OVER if _target > 0.5 else -MACHINE_OVER)
+	else:
+		_over = _arrival_step(delta)
 	_pose()
+
+func anchor_rest() -> Transform3D:
+	if style not in HANDLES: return anchor.transform
+	return Transform3D(Basis(Vector3.BACK, -TILT if _shown >= 0.5 else TILT), anchor.position)
 
 ## How high a machine's anchor stands over its spot (a handle's pivot: 0.2).
 func anchor_lift() -> float:
@@ -210,9 +234,9 @@ func _make_lantern(knob: Color) -> void:
 ## Places every moving part for the shown pose.
 func _pose() -> void:
 	if style in HANDLES:
-		anchor.rotation.z = -TILT if _shown >= 0.5 else TILT
+		anchor.rotation.z = (-TILT if _shown >= 0.5 else TILT) + _over
 		return
-	var t := smoothstep(0.0, 1.0, _shown)
+	var t := smoothstep(0.0, 1.0, _shown) + _over
 	if style == "winch":
 		var turn := -t * CRANK_TURNS * TAU
 		_crank.rotation.x = turn

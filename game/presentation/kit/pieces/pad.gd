@@ -15,6 +15,10 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       dish on a timber cradle, three chains rising from its rim to a hook
 ##       over it. Held (something heavy in it), it sinks down its cradle.
 ##
+## Pressed, the part that sinks (a plain pad's ring, a stand spot, a board or
+## a dish) dips DIP further and springs back to its held place (Motion.arrival),
+## unless the call was immediate (a seek, a retry, reduced motion).
+##
 ## A ball pad (heavy) is always plain, gold, with a cream ring at its centre:
 ## no spirit stands on it. The world lights the pad's `rim` while it is held
 ## (the snapshot's hold_pads, the simulation's own rule).
@@ -25,6 +29,8 @@ const BOARD_SINK := 0.025
 ## Pan: how far the dish sinks while held, and the hook's height over it (m).
 const PAN_SINK := 0.06
 const PAN_HOOK := 0.95
+## How much further a pressed pad dips before it springs back (m).
+const DIP := 0.01
 
 ## The ring the world lights while the pad is held.
 var rim: MeshInstance3D
@@ -33,6 +39,9 @@ var spot: StandSpotKit
 ## A pan's dish or a board's top, which sinks while held; a crank board's drum.
 var _dish: Node3D
 var _drum: Node3D
+var _held := false
+## The dipping part's held height, which its dip springs back to.
+var _dip_rest := 0.0
 
 ## A pad in `style` on the spot `at` (parent space) under `parent`, `radius_m`
 ## across. `options`: "owner" ("p0"/"p1"), "heavy" (a ball pad), "id" (names
@@ -43,10 +52,31 @@ static func build(pad_style: String, at: Vector3, radius_m: float, parent: Node3
 	piece._make("plain" if heavy or pad_style not in STYLES else pad_style, at, radius_m, parent, options, heavy)
 	return piece
 
-func set_held(on: bool) -> void:
+func set_held(on: bool, immediate: bool = false) -> void:
+	if on == _held and not immediate: return
+	var pressed := on and not _held
+	_held = on
+	if _arriving(): _dip(0.0)
+	_stop_arrival()
 	if spot != null: spot.set_held(on)
 	if _dish != null: _dish.position.y = -(PAN_SINK if style == "pan" else BOARD_SINK) if on else 0.0
 	if _drum != null: _drum.rotation.x = PI * 0.5 if on else 0.0
+	_dip_rest = _dipping().position.y
+	if pressed and not immediate: _arrive(-DIP)
+
+func moving() -> bool:
+	return _arriving()
+
+func advance(delta: float) -> void:
+	_dip(_arrival_step(delta))
+
+## The part a press dips: a board or dish, a stand spot, else the ring.
+func _dipping() -> Node3D:
+	if _dish != null: return _dish
+	return spot if spot != null else rim
+
+func _dip(offset: float) -> void:
+	_dipping().position.y = _dip_rest + offset
 
 func moving_parts() -> Array[Node3D]:
 	var parts: Array[Node3D] = [rim]
