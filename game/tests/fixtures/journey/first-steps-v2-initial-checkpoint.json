@@ -1,21 +1,21 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "da76732121156db5db7a580620f8e265be5680d42d1087d0cb8c75cd448cc7a1",
+	"checkpoint_hash": "853784fec0f5d35275cd1727a0ed265de4dfeef43a08084d615345dd69e67116",
 	"completed_stage_id": "",
-	"definition_hash": "24ef2a181a1851d8c3dbb35fb7c222965f5c999bf20d802acc94dbc3d96f411c",
+	"definition_hash": "12cbcd0d89a440e6d81889441382d1a86136b58579ce872ff308bbf5f1621840",
 	"level_id": "first-steps",
 	"level_version": 2,
 	"mechanisms": {
 		"controls": {},
 		"items": {
 			"seed": {
-				"height": 160,
+				"height": 0,
 				"holder": "",
-				"spot": "seed-pedestal",
-				"surface_id": "loft",
-				"x": 230,
-				"z": -90
+				"spot": "away",
+				"surface_id": "",
+				"x": 0,
+				"z": 0
 			}
 		},
 		"latched_bridges": [],

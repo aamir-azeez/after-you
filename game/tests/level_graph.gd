@@ -501,6 +501,8 @@ func _reach_items(stage: Dictionary, checkpoint: Dictionary, floors: Dictionary,
 	for item: Dictionary in stage.items:
 		var id := str(item.id)
 		var state: Dictionary = CarriedItems.placed(stage, str(starts[id])) if starts.has(id) else mechanisms.get("items", {}).get(id, CarriedItems.placed(stage, str(item.get("at", ""))))
+		# Away: not in the level this stage, so no one reaches it.
+		if CarriedItems.is_away(state): continue
 		var carried: Dictionary = {}
 		var lying: Dictionary = {}
 		var spots: Dictionary = {}

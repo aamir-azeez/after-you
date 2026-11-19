@@ -6,7 +6,8 @@ import { piecesRules } from "./chapter-types";
  * Carried items and currents (rules 16, chapter-types.ts PIECES_RULES; the phone's
  * rules are game/core/physical/carried_items.gd). A definition may list "items"
  * ({id, at, carry?}) and "item_spots" ({id, surface_id, position_cm, height_cm});
- * its checkpoints then hold mechanisms.items {id: {holder, spot, x, z, height, surface_id}}.
+ * its checkpoints then hold mechanisms.items {id: {holder, spot, x, z, height, surface_id}}. An item "at" (or a
+ * stage's item_starts) AWAY is not in the level: spot "away", the rest empty; no one sees or takes it.
  * Held: holder "p0"/"p1", spot "", x, z, height 0 and surface_id "". Resting: holder "",
  * at an item spot (its place exactly) or loose (spot ""): on an island, or on a stop of a
  * stage's moving platform (a lift, a raft), which carries it as it carries a pip; on its floor at its height.
@@ -26,6 +27,8 @@ type ItemSpot = { id: string; surface_id: string; position_cm: number[]; height_
 type ItemEntry = { id: string; at: string; carry?: boolean };
 export type ItemDefinition = { simulation_version: number; islands: Island[]; bridges: Island[]; stages: Platformed[]; items?: ItemEntry[]; item_spots?: ItemSpot[] };
 const STATE_KEYS = ["holder", "spot", "x", "z", "height", "surface_id"] as const;
+/** The place of an item not in the level (carried_items.gd AWAY); no item spot takes the name. */
+export const AWAY = "away";
 
 function need(value: unknown, code = "checkpoint_item_mismatch"): asserts value { if (!value) throw new ApiError(422, code); }
 
@@ -41,6 +44,7 @@ export function checkItemDefinition(definition: ItemDefinition): void {
   if (!piecesRules(definition.simulation_version)) throw new Error("A definition with items must pin rules 16");
   const spots = new Set((definition.item_spots ?? []).map(spot => spot.id)), ids = new Set(definition.items!.map(item => item.id));
   if (spots.size !== (definition.item_spots ?? []).length || ids.size !== definition.items!.length) throw new Error("Item and item spot ids must be distinct");
+  if (["p0", "p1", AWAY].some(name => spots.has(name))) throw new Error(`No item spot may be named p0, p1 or ${AWAY}`);
   // Throws (the phone's carried_items.gd problems()): from a mark on an island, to an item spot on a floor, whole ticks and cm.
   const islands = new Set(definition.islands.map(island => island.id));
   for (const stage of definition.stages) for (const thrown of stage.throws ?? []) {
@@ -66,6 +70,8 @@ export function checkItems(value: unknown, definition: ItemDefinition): Record<s
       need((state.holder === "p0" || state.holder === "p1") && entry.carry !== false && !holders.has(state.holder));
       need(state.spot === "" && x === 0 && z === 0 && height === 0 && state.surface_id === "");
       holders.add(state.holder);
+    } else if (state.spot === AWAY) {
+      need(x === 0 && z === 0 && height === 0 && state.surface_id === "");
     } else if (state.spot !== "") {
       const spot = (definition.item_spots ?? []).find(found => found.id === state.spot);
       need(spot && spot.position_cm[0] === x && spot.position_cm[1] === z && (spot.height_cm ?? 0) === height && spot.surface_id === state.surface_id);

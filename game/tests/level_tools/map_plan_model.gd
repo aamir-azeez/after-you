@@ -119,7 +119,7 @@ static func _items(view: Dictionary, checkpoint: Dictionary, plan: Dictionary) -
 	for item: Dictionary in view.get("items", []):
 		var id := str(item.id)
 		var state: Dictionary = CarriedItems.placed(view, str(starts[id])) if starts.has(id) else states.get(id, {})
-		if state.is_empty(): continue
+		if state.is_empty() or CarriedItems.is_away(state): continue
 		var holder := str(state.holder)
 		var player: Dictionary = checkpoint.get("players", {}).get(holder, {})
 		var at := Vector2(float(player.get("x", 0)), float(player.get("z", 0))) if not holder.is_empty() else Vector2(float(state.x), float(state.z))

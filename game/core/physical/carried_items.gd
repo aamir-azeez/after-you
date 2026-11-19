@@ -7,16 +7,18 @@ extends RefCounted
 ## The definition (all optional):
 ##   "items": [{"id", "at", "carry"}]: things a pip can carry ("carry" true,
 ##       the default: the pipsport) or that only float ("carry": false: a
-##       raft). "at" is where it starts: an item spot id, or "p0"/"p1" on that
-##       pip's back. Looks come from the "carried_item" piece slot.
+##       raft). "at" is where it starts: an item spot id, "p0"/"p1" on that
+##       pip's back, or "away": not in the level yet, so nothing shows and
+##       nobody takes it until a stage's item_starts puts it somewhere. Looks
+##       come from the "carried_item" piece slot.
 ##   "item_spots": [{"id", "surface_id", "position_cm", "height_cm",
 ##       "radius_cm"?}]: named places an item rests (a post box, a stamp desk,
 ##       a hook) or floats ("surface_id": "": out on the water, out of reach).
 ##   a bridge or stair with "hands": true (a ladder, a rope bridge): it needs
 ##       both hands, so a pip carrying an item never steps onto it.
 ## Each stage (optional):
-##   "item_starts": {item id: spot id or "p0"/"p1"}: where the item is when the
-##       stage starts; otherwise where the stage before left it.
+##   "item_starts": {item id: spot id, "p0"/"p1" or "away"}: where the item is
+##       when the stage starts; otherwise where the stage before left it.
 ##   "current_legs": [{"from", "to", "control_id", "value", "when"?, "stop"?}]:
 ##       the current. An item resting at spot `from` moves to spot `to` on any
 ##       tick its control shows `value`, `when` holds and `stop` does not (both
@@ -37,7 +39,8 @@ extends RefCounted
 ##
 ## The state: mechanisms.items {id: {"holder", "spot", "x", "z", "height",
 ## "surface_id"}}, in the checkpoint like controls, so it rides into the next
-## stage. Held: holder "p0"/"p1", the rest empty. Resting: holder "", at a spot
+## stage. Held: holder "p0"/"p1", the rest empty. Away: spot "away", the rest
+## empty. Resting: holder "", at a spot
 ## (spot id and its place) or loose where it was put down (spot ""): on an
 ## island, or on a platform's stop (pieces_rules.gd), which carries it to the
 ## same spot on the next stop when it moves, as it carries a pip
@@ -109,6 +112,8 @@ const THROW_LIFT_CM := 75
 const THROW_ARC_CM := 150
 const CATCH_WINDOW_TICKS := 15
 const STATE_KEYS := ["holder", "spot", "x", "z", "height", "surface_id"]
+## The place of an item not in the level (yet, or any more): no spot may take the name.
+const AWAY := "away"
 
 ## Whether rules `version` play carried items and currents.
 static func on(version: int) -> bool:
@@ -126,9 +131,18 @@ static func held(slot: String) -> Dictionary:
 static func at_spot(spot: Dictionary) -> Dictionary:
 	return {"holder": "", "spot": str(spot.id), "x": int(spot.position_cm[0]), "z": int(spot.position_cm[1]), "height": int(spot.get("height_cm", 0)), "surface_id": str(spot.get("surface_id", ""))}
 
-## The state of an item placed at `place`: a slot, or an item spot id ({} if neither).
+## The state of an item that is not in the level (AWAY).
+static func away() -> Dictionary:
+	return {"holder": "", "spot": AWAY, "x": 0, "z": 0, "height": 0, "surface_id": ""}
+
+## Whether `state` is an item that is not in the level.
+static func is_away(state: Dictionary) -> bool:
+	return str(state.get("spot", "")) == AWAY
+
+## The state of an item placed at `place`: a slot, AWAY, or an item spot id ({} if none).
 static func placed(level: Dictionary, place: String) -> Dictionary:
 	if place in ["p0", "p1"]: return held(place)
+	if place == AWAY: return away()
 	var found := spot(level, place)
 	return {} if found.is_empty() else at_spot(found)
 
@@ -293,7 +307,7 @@ static func problems(level: Dictionary) -> Array:
 			found.append("an item spot needs an id and a position_cm")
 			continue
 		var surface := str(place.get("surface_id", ""))
-		if spots.has(str(place.id)) or str(place.id) in ["p0", "p1"]: found.append("item spot %s is named twice or as a pip" % place.id)
+		if spots.has(str(place.id)) or str(place.id) in ["p0", "p1", AWAY]: found.append("item spot %s is named twice, as a pip or %s" % [place.id, AWAY])
 		if not surface.is_empty() and not islands.has(surface): found.append("item spot %s stands on %s, which is not an island" % [place.id, surface])
 		spots[str(place.id)] = place
 	var ids: Dictionary = {}
@@ -304,7 +318,7 @@ static func problems(level: Dictionary) -> Array:
 		if ids.has(str(entry.id)): found.append("item %s is listed twice" % entry.id)
 		ids[str(entry.id)] = entry
 		var at := str(entry.get("at", ""))
-		if not spots.has(at) and not (at in ["p0", "p1"] and carriable(entry)): found.append("item %s starts at %s, no item spot%s" % [entry.id, at, "" if carriable(entry) else " (a float never rides a pip)"])
+		if not spots.has(at) and at != AWAY and not (at in ["p0", "p1"] and carriable(entry)): found.append("item %s starts at %s, no item spot%s" % [entry.id, at, "" if carriable(entry) else " (a float never rides a pip)"])
 	var held_at_start: Dictionary = {}
 	for entry: Dictionary in ids.values():
 		if str(entry.get("at", "")) in ["p0", "p1"]:

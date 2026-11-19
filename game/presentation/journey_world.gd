@@ -797,6 +797,9 @@ func _present_items(state: Dictionary) -> void:
 		var item_state: Dictionary = items.get(id, {})
 		if item_state.is_empty(): continue
 		var piece: RefCounted = _item_pieces[id]
+		# Away (carried_items.gd): not in the level, so nothing shows.
+		piece.root.visible = not CarriedItems.is_away(item_state)
+		if not piece.root.visible: continue
 		var holder := str(item_state.holder)
 		if not holder.is_empty() and actors.has(holder): piece.carry(actors[holder])
 		else: piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not CarriedItems.in_flight(item_state))

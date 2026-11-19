@@ -44,10 +44,20 @@ describe("item throws", () => {
   it("accepts every turn and both closing checkpoints, the seed planted at the end", async () => {
     for (const turn of [...lift, ...grow]) expect(await firstStepsV2.recording(turn)).toBeTruthy();
     const afterLift = flat(liftEnd) as ChapterCheckpoint;
+    // No seed in the lift stage: it is away until the garden stage puts it on the pedestal.
+    const away = { holder: "", spot: "away", x: 0, z: 0, height: 0, surface_id: "" };
+    expect((firstStepsV2.initial() as Json).mechanisms.items.seed).toEqual(away);
+    expect((afterLift as Json).mechanisms.items.seed).toEqual(away);
     expect(await firstStepsV2.checkpoint(afterLift, firstStepsV2.initial(), lift[0], lift[2], [lift[1]])).toEqual(afterLift);
     const end = flat(growEnd) as ChapterCheckpoint;
     expect((end as Json).mechanisms.items.seed).toMatchObject({ holder: "", spot: "garden" });
     expect(await firstStepsV2.checkpoint(end, afterLift, grow[0], grow[2], [grow[1]])).toEqual(end);
+  });
+
+  it("never takes an away seed with a place", async () => {
+    const value = structuredClone(flat(liftEnd));
+    value.mechanisms.items.seed = { holder: "", spot: "away", x: 230, z: -90, height: 160, surface_id: "loft" };
+    await expect(firstStepsV2.checkpoint(await rehash(value), firstStepsV2.initial(), lift[0], lift[2], [lift[1]])).rejects.toMatchObject({ code: "checkpoint_item_mismatch" });
   });
 
   it("never takes a checkpoint with the seed in the air", async () => {

@@ -88,7 +88,7 @@
 	],
 	"items": [
 		{
-			"at": "seed-pedestal",
+			"at": "away",
 			"id": "seed"
 		}
 	],
@@ -147,9 +147,6 @@
 				"kind": "ring"
 			},
 			"id": "a-little-lift",
-			"item_starts": {
-				"seed": "seed-pedestal"
-			},
 			"kind": "route_endpoint",
 			"levers": [],
 			"platforms": [

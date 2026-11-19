@@ -11,8 +11,9 @@ extends RefCounted
 ##     shore or the winch spot on the loft, and at the shore otherwise, and
 ##     whoever stands on it rides. So one pip sends the other up from the
 ##     shore, and the one upstairs winds it back up for the other: both ring
-##     the loft bell together.
-##   2 a-place-to-grow: the seed rests on the stone pedestal on the loft. The
+##     the loft bell together. No seed yet: it is away (carried_items.gd),
+##     so nothing shows that no one may take.
+##   2 a-place-to-grow: the seed appears on the stone pedestal on the loft. The
 ##     pedestal is solid (core/solid_footprint.gd): pips walk round it and take
 ##     the seed from beside it, on any side. The garden lamp on the shore lights
 ##     once the seed rests in the garden planter beside it; both pips meet
@@ -47,7 +48,8 @@ static func source() -> Dictionary:
 		"turn_limits": {"a_ticks":1800,"b_ticks":1800},
 		"starts": {"p0": {"position_cm": [-420, -130], "height_cm": 0, "surface_id": "shore"}, "p1": {"position_cm": [-230, 0], "height_cm": 0, "surface_id": "shore"}},
 		"props": [], "drops": [],
-		"items": [{"id": "seed", "at": "seed-pedestal"}],
+		# Away until the garden stage puts it on the pedestal.
+		"items": [{"id": "seed", "at": "away"}],
 		# The pedestal keeps @1's place and size: its drum (28 cm) is solid, and a
 		# pip takes the seed from up to 20 cm off the drum's edge, on any side.
 		"item_spots": [
@@ -64,7 +66,6 @@ static func source() -> Dictionary:
 ## Both start on the shore; the bell is on the loft.
 static func _lift() -> Dictionary:
 	var stage := _stage("a-little-lift", "p0", BELL)
-	stage.item_starts = {"seed": "seed-pedestal"}
 	stage.blocks = [_weight_lift(), {"block": "ring_bell", "id": "loft-bell", "at": BELL, "surface": "loft", "owner": "p1", "height": LOFT, "radius": 36}]
 	return stage
 
