@@ -585,7 +585,7 @@ func present_turn_paths(history: Dictionary) -> void:
 
 ## One tick of the turn shown, presented or stepped silently (memory_wait.gd).
 func note_tick(state: Dictionary) -> void:
-	if not state.has("players"): return
+	if not state.has("players") or new_pieces == null or new_pieces.cover == null: return
 	var change := turn_paths.note(state)
 	if new_pieces != null and (change.rewound or change.from_points < turn_paths.live_points.size() or change.from_levers < turn_paths.live_levers.size()):
 		new_pieces.paths_changed(change)

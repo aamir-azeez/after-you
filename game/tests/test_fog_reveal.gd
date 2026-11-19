@@ -3,7 +3,8 @@ extends SceneTree
 ## recorded history (kit/turn_paths.gd), so every way of showing a turn shows
 ## the same, on Fog Marsh's witness routes (Catch the Pipsport's turns):
 ## - an earlier turn read from its kept memory trace, the same turn simulated
-##   again (no trace kept) and the squares kept on disk (a restart) are the same;
+##   again (no trace kept) and the squares kept on disk (a restart) are the same,
+##   and a turn with no inputs or from another stage is left out;
 ## - the history holds both starts, every earlier turn's path and the lantern
 ##   the second turn lit, and nothing of the turn being played;
 ## - a cover built again mid-turn paints the same mask as the one that watched
@@ -72,6 +73,11 @@ func _paths(evidence: Dictionary) -> void:
 	_check(restarted.points == kept.points and restarted.levers == kept.levers and DirAccess.get_files_at(folder).size() == 2, "after a restart the kept files give the same, one file a turn")
 	for name: String in DirAccess.get_files_at(folder): DirAccess.remove_absolute(folder.path_join(name))
 	DirAccess.remove_absolute(folder)
+	var stripped: Dictionary = turns[1].duplicate()
+	stripped.erase("packed")
+	stripped.erase("actions")
+	var odd := TurnPaths.of(sim, stripped, [evidence.pairs[0].turns[1]])
+	_check(odd.points.size() <= 6 and odd.levers.is_empty(), "a turn with no inputs or from another stage is left out: only the starts")
 	var first := TurnPaths.of(sim, {}, [])
 	_check(first.points.size() in [3, 6] and first.levers.is_empty(), "a stage's first turn has only the starts")
 	# The second turn, played live over the first.

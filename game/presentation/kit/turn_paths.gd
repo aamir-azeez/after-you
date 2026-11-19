@@ -49,8 +49,12 @@ static func of(sim: RefCounted, prior: Dictionary, chain: Array) -> Dictionary:
 	var seen := {}
 	for slot: String in checkpoint.get("players", {}):
 		_add(out.points, seen, checkpoint.players[slot])
-	var turns: Array = chain.duplicate()
-	if not prior.is_empty(): turns.append(prior)
+	# Only this stage's full turns from this checkpoint, and none on a stage's first
+	# turn: anything else (a fingerprint with no inputs, another stage's turn) is left out.
+	var turns: Array = []
+	if str(sim.get("role")) == "b":
+		for record: Variant in chain + [prior]:
+			if _usable(record, sim, checkpoint): turns.append(record)
 	for index in range(turns.size()):
 		var walked := _turn(sim, checkpoint, turns, index)
 		var points: PackedInt32Array = walked.points
@@ -58,6 +62,11 @@ static func of(sim: RefCounted, prior: Dictionary, chain: Array) -> Dictionary:
 			_add(out.points, seen, {"x": points[at], "z": points[at + 1], "height": points[at + 2]})
 		out.levers.merge(walked.levers)
 	return out
+
+## A full recorded turn of sim's stage from its checkpoint.
+static func _usable(record: Variant, sim: RefCounted, checkpoint: Dictionary) -> bool:
+	if not record is Dictionary or record.is_empty() or not (record.has("packed") or record.has("actions")): return false
+	return str(record.get("stage_id", "")) == str(sim.stage.get("id", "")) and str(record.get("checkpoint_hash", "")) == str(checkpoint.get("checkpoint_hash", ""))
 
 ## One earlier turn's squares and levers, kept per recording.
 static func _turn(sim: RefCounted, checkpoint: Dictionary, turns: Array, index: int) -> Dictionary:
