@@ -255,7 +255,7 @@ func _check_upgrades(stage: Node3D, entry: Dictionary, builder: RefCounted) -> v
 ## shared ride moves draw it (keepsake_anim.gd hop_leg and slide_leg): one hop
 ## per step that clears every riser and lands on a step's top, the ladder hops
 ## out in front of the tower's face and over its edge onto its top on Hard,
-## the slide along the chute's own bars, each leg starting where the last ended,
+## the slide along the chute's own points (the slide model is built on them), each leg starting where the last ended,
 ## and the last landing on the grass, all inside the base beat.
 func _check_giant_steps_ride() -> void:
 	var Steps: GDScript = load("res://presentation/keepsakes/giant_steps.gd")
@@ -298,7 +298,7 @@ func _check_giant_steps_ride() -> void:
 			_check(joined, "%s: each leg starts where the last one ended" % label)
 			_check(clear, "%s: every hop clears the risers and the tower" % label)
 			_check(on_tops, "%s: every hop lands on a step's top, and the ladder hops a pip's width out from the tower" % label)
-			_check(on_chute, "%s: the sit stays on the top and the slide follows the chute's bars" % label)
+			_check(on_chute, "%s: the sit stays on the top and the slide follows the chute's points" % label)
 			_check(absf(last.y) < 0.001 and last.distance_to(points.landing) < 0.001, "%s: lands on the grass past the chute" % label)
 			_check(total <= float(builder.beats(state)[0].time) + 0.001 and float(builder.beats(state)[0].time) <= Builder.BASE_MAX, "%s fits its base beat: %.2f" % [label, total])
 		# In front the pip rides and its hooks run; beside or behind the steps the
