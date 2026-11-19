@@ -19,6 +19,9 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## a wall or floor edge laid on whole centimetres: nothing z-fights at any zoom.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
+const Models = preload("res://presentation/kit/models.gd")
+## The weights, modelled in Blender (tools/blender/models/pulley_weights.py).
+const WEIGHTS := "res://assets/models/pulley_weights.glb"
 const STYLES := ["lantern_hook", "theme_hanger", "little_roof"]
 ## The weight's centre: out from the post and over its foot (m).
 const ROPE_X := 0.14
@@ -176,38 +179,19 @@ func _arc(centre: Vector2, radius: float, from: float, to: float, thick: float, 
 
 # --- Weights (weight space: its centre at the origin) ---
 
-## A lantern: a cap, glass with corner posts, a cone roof and a hanging ring.
+## A lantern: a base, corner posts, a cone roof and a hanging ring, with its
+## glass apart so it can glow while laid.
 func _lantern(cap: Color) -> void:
-	Parts.box(Vector3(0.16, 0.04, 0.16), cap, Vector3(0, -0.08, 0), weight)
-	_glass = Parts.box(Vector3(0.13, 0.144, 0.13), LAMP_OFF, Vector3(0, 0.008, 0), weight)
-	for sx: float in [-1.0, 1.0]:
-		for sz: float in [-1.0, 1.0]:
-			Parts.box(Vector3(0.022, 0.15, 0.022), cap.darkened(0.2), Vector3(sx * 0.065, 0.01, sz * 0.065), weight)
-	Parts.disc(0.11, 0.07, cap, Vector3(0, 0.112, 0), weight, 0.03, 12)
-	var ring := Parts.torus(0.025, 0.006, IRON, Vector3(0, 0.17, 0), weight, 12, 4)
-	ring.rotation.x = PI * 0.5
+	Models.still(WEIGHTS, "weight_lantern", {"cap": cap, "post": cap.darkened(0.2), "iron": IRON}, weight)
+	_glass = Models.moving(WEIGHTS, "weight_lantern_glass", {"glass": LAMP_OFF}, weight)
 	_hang = 0.15
 
 ## An anchor: a brass ring, a stock, a shank, curved arms and two flukes.
 func _anchor() -> void:
-	var ring := Parts.torus(0.03, 0.009, BRASS, Vector3(0, 0.16, 0), weight, 12, 4)
-	ring.rotation.x = PI * 0.5
-	Parts.box(Vector3(0.20, 0.04, 0.05), NAVY, Vector3(0, 0.105, 0), weight)
-	Parts.box(Vector3(0.045, 0.30, 0.045), NAVY, Vector3.ZERO, weight)
-	var from := PI * 1.05
-	var to := PI * 1.95
-	_arc(Vector2(0, -0.04), 0.12, from, to, 0.05, 0.05, NAVY, 5, weight)
-	for angle: float in [from, to]:
-		Parts.ball(0.04, NAVY, Vector3(0.12 * cos(angle), -0.04 + 0.12 * sin(angle) + 0.03, 0), weight)
+	Models.still(WEIGHTS, "weight_anchor", {"brass": BRASS, "navy": NAVY}, weight)
 	_hang = 0.17
 
-## A flour sack: a round body, a neck tied with red, a knot and a patch.
+## A flour sack: a soft round body, a neck tied with red, a knot and a patch.
 func _sack() -> void:
-	var bottom := -0.11
-	Parts.disc(0.12, 0.176, SACK, Vector3(0, bottom + 0.088, 0), weight, 0.085, 16)
-	Parts.disc(0.04, 0.05, SACK.darkened(0.05), Vector3(0, bottom + 0.197, 0), weight, 0.035, 10)
-	Parts.disc(0.046, 0.022, RED, Vector3(0, bottom + 0.178, 0), weight, -1.0, 10)
-	var knot := Parts.ball(0.05, SACK, Vector3(0, bottom + 0.23, 0), weight)
-	knot.scale.y = 0.7
-	Parts.ball(0.03, SACK.darkened(0.2), Vector3(-0.03, bottom + 0.077, 0.10), weight)
+	Models.still(WEIGHTS, "weight_sack", {"sack": SACK, "tie": RED, "patch": SACK.darkened(0.2)}, weight)
 	_hang = 0.08
