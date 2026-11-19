@@ -1880,9 +1880,14 @@ func _ground_style(island_id: String) -> String:
 func _build_dressing() -> void:
 	var specs := Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id()))
 	var lit := bool(dressing.get("lit", true))
+	# Lamp light on the ground draws where this world's look says (under a fog cover).
+	var glow_order: Variant = Look.preset(str(dressing.get("look", ""))).get("glow_order")
 	var anchors: Array[Vector3] = []
 	for spec: Dictionary in specs:
 		await _build_step()
+		if glow_order != null:
+			spec = spec.duplicate()
+			spec["glow_order"] = glow_order
 		if not GraphicsPolicy.detail_dressing(_motion_quality) and bool(spec.get("detail", false)): continue
 		var surface := str(spec.get("surface", ""))
 		var parent: Node3D = _surface_nodes.get(surface, terrain)

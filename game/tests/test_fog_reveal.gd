@@ -1,0 +1,99 @@
+extends SceneTree
+## The fog cover's cleared fog (kit/fog_cover.gd) comes only from the stage's
+## recorded history (kit/turn_paths.gd), so every way of showing a turn shows
+## the same, on Fog Marsh's witness routes (Catch the Pipsport's turns):
+## - an earlier turn read from its kept memory trace and the same turn simulated
+##   again (no trace kept) give the same squares and lit levers;
+## - the history holds both starts, every earlier turn's path and the lantern
+##   the second turn lit, and nothing of the turn being played;
+## - a cover built again mid-turn paints the same mask as the one that watched
+##   every tick, and going back to tick 0 (a retry) paints the history's mask
+##   again, whatever the turn had opened;
+## - the turn being played opens more as its pip walks.
+const Witness = preload("res://tests/fog_marsh_witness.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const TurnPaths = preload("res://presentation/kit/turn_paths.gd")
+const FogCover = preload("res://presentation/kit/fog_cover.gd")
+const MemoryTrace = preload("res://core/physical/memory_trace.gd")
+const KEY := "fog-marsh@1"
+const STAGE := 1
+
+var checks := 0
+var failures := 0
+
+func _initialize() -> void:
+	_run.call_deferred()
+
+func _check(ok: bool, message: String) -> void:
+	checks += 1
+	if not ok:
+		failures += 1
+		push_error("FAIL: " + message)
+		print("FAIL: " + message)
+
+func _run() -> void:
+	var evidence: Dictionary = Witness.new().chapter()
+	_check(evidence.error.is_empty(), "the witness routes play: " + str(evidence.error))
+	if evidence.error.is_empty(): _paths(evidence)
+	print("FOG REVEAL: %d checks, %d failures" % [checks, failures])
+	quit(1 if failures else 0)
+
+func _sim(evidence: Dictionary, turn: int) -> RefCounted:
+	var level: Dictionary = evidence.definition
+	var turns: Array = evidence.pairs[STAGE].turns
+	var sim: RefCounted = Registry.simulation_script(KEY).new()
+	var ok := Registry.reset_simulation(sim, KEY, level, level.stages[STAGE].id, evidence.checkpoints[STAGE], turns[turn - 2], "b", {}, turns.slice(0, turn - 2))
+	_check(ok, "turn %d starts: %s" % [turn, sim.error])
+	return sim
+
+func _paths(evidence: Dictionary) -> void:
+	var level: Dictionary = evidence.definition
+	var turns: Array = evidence.pairs[STAGE].turns
+	_check(turns.size() >= 3, "Catch the Pipsport takes three turns")
+	var sim := _sim(evidence, 3)
+	TurnPaths.forget()
+	var kept := TurnPaths.of(sim, turns[1], [turns[0]])
+	TurnPaths.forget()
+	MemoryTrace.enabled = false
+	var again := TurnPaths.of(sim, turns[1], [turns[0]])
+	MemoryTrace.enabled = true
+	_check(kept.points.size() > 300 and kept.points == again.points, "a kept trace and the turn simulated again give the same squares (%d, %d)" % [kept.points.size() / 3, again.points.size() / 3])
+	_check(kept.levers == again.levers and kept.levers.has("north-lantern") and kept.levers.has("boards-lever"), "and the same lit levers: %s" % [kept.levers.keys()])
+	var first := TurnPaths.of(sim, {}, [])
+	_check(first.points.size() in [3, 6] and first.levers.is_empty(), "a stage's first turn has only the starts")
+	# The second turn, played live over the first.
+	var paths := TurnPaths.new()
+	paths.set_history(TurnPaths.of(sim, turns[0], []))
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var lanterns := {}
+	for lever: Dictionary in level.stages[STAGE].levers:
+		if str(lever.id) == "north-lantern": lanterns[lever.id] = Vector3(float(lever.position_cm[0]) / 100.0, 0.0, float(lever.position_cm[1]) / 100.0)
+	var watching: RefCounted = FogCover.build("fog", level.islands, [], lanterns, holder)
+	_check(watching != null, "the fog look has a cover")
+	if watching == null:
+		holder.free()
+		return
+	watching.show_paths(paths)
+	var history_mask: PackedByteArray = watching.mask_bytes().duplicate()
+	var history_stamps: int = watching.stamp_count()
+	var live := _sim(evidence, 2)
+	var clock := 0.0
+	var inputs: Array = live.expand_recording_inputs(turns[1])
+	var half := inputs.size() / 2
+	for index in range(half):
+		var state: Dictionary = live.step(inputs[index])
+		watching.paths_changed(paths.note(state))
+		clock += 1.0 / 30.0
+		watching.advance(1.0 / 30.0, clock)
+	for _frame in range(200):
+		clock += 0.1
+		watching.advance(0.1, clock)
+	_check(watching.stamp_count() > history_stamps, "the turn being played opens more as its pip walks (%d stamps, %d before)" % [watching.stamp_count(), history_stamps])
+	var built: RefCounted = FogCover.build("fog", level.islands, [], lanterns, holder)
+	built.show_paths(paths)
+	_check(built.mask_bytes() == watching.mask_bytes(), "a cover built again mid-turn paints the same mask as the one that watched every tick")
+	watching.paths_changed(paths.note(_sim(evidence, 2).snapshot()))
+	_check(watching.mask_bytes() == history_mask and paths.live_points.is_empty(), "back at tick 0 (a retry) the mask is the history's again")
+	_check(built.mask_bytes() != history_mask, "and the walked turn had opened more than the history")
+	holder.free()

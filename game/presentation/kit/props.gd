@@ -97,6 +97,11 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"shells": radius = 0.15 * s; height = 0.02
 		"waterfall": return _falls_extent(spec, s)
 		"mill_wheel": half = Vector2(MILL_WHEEL_RADIUS + 0.12, 0.25) * s; height = (MILL_WHEEL_RADIUS * 2.0 + 0.2) * s
+		"windmill": radius = 1.3 * s; height = 5.45 * s
+		"stilt_hut": half = Vector2(1.15, 1.3) * s; height = 3.65 * s
+		"sunken_boat": half = Vector2(1.25, 0.5) * s; height = 0.62 * s
+		"dead_tree": radius = 0.85 * s; height = 3.5 * s
+		"reed_bed": radius = 0.7 * s; height = 1.47 * s
 		"post_box": radius = 0.2 * s; height = 1.19 * s
 		"reeds": radius = 0.16 * s; height = 0.78 * s
 		"stamp_desk": half = Vector2(0.38, 0.24) * s; height = 0.74 * s
@@ -204,13 +209,18 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		"shells": _shells(root, s, int(absf(float(spec.at[0]) * 7.0 + float(spec.at[1]) * 3.0)))
 		"waterfall": _waterfall(root, s, spec)
 		"mill_wheel": _mill_wheel(root, s)
+		"windmill": _windmill(root, s)
+		"stilt_hut": Models.still(LANDMARKS + "stilt_hut.glb", "stilt_hut", LANDMARK_COLORS, root).scale = Vector3.ONE * s
+		"sunken_boat": Models.still(LANDMARKS + "sunken_boat.glb", "sunken_boat", LANDMARK_COLORS, root).scale = Vector3.ONE * s
+		"dead_tree": Models.still(LANDMARKS + "dead_tree.glb", "dead_tree_b" if int(spec.get("variant", 0)) % 2 else "dead_tree_a", LANDMARK_COLORS, root).scale = Vector3.ONE * s
+		"reed_bed": Models.still(LANDMARKS + "reed_bed.glb", "reed_bed", LANDMARK_COLORS, root).scale = Vector3.ONE * s
 		"post_box": _post_box(root, s)
 		"reeds": _reeds(root, s, int(absf(float(spec.at[0]) * 3.0 + float(spec.at[1]) * 7.0)))
 		"stamp_desk": _stamp_desk(root, s)
 		"washing_line": _washing_line(root, s)
 		"fishing_rod": _fishing_rod(root, s)
 		"rope_coil": _rope_coil(root, s)
-		"light_pool": _light_pool(root, s, float(spec.get("radius", 80)) / 100.0)
+		"light_pool": _light_pool(root, s, float(spec.get("radius", 80)) / 100.0, int(spec.get("glow_order", SoftMist.GLOW_ORDER)))
 		"wall": _wall(root, _point(spec.from), _point(spec.to), float(spec.get("height", 120)) / 100.0, float(spec.get("thickness", 12)) / 100.0, spec.get("color", "efe2c4"))
 		_:
 			root.free()
@@ -819,8 +829,29 @@ static func _mill_wheel(root: Node3D, s: float) -> void:
 	root.add_child(wheel)
 	Models.moving(MILL_MODEL, "mill_rim", MILL_COLORS, wheel, false).scale = Vector3.ONE * s
 
-## A red post box on a timber post: a slot across its front and a little
-## pitched roof.
+## Landmarks out in the water, modelled in Blender (tools/blender/models/
+## marsh_windmill.py, stilt_hut.py, sunken_boat.py, dead_tree.py, reed_bed.py):
+## an old leaning windmill whose sails turn slowly (its "Spin" node, as the
+## mill wheel's), a fisher's hut on stilts with a warm window, a rowboat half
+## sunk, bare dead trees (variant 0 or 1) and clumps of tall reeds. Each stands
+## with its origin on the water line, so tall ones stand up out of a fog cover.
+const LANDMARKS := "res://assets/models/"
+const LANDMARK_COLORS := {"wood": Color("6b5a48"), "wood_dark": Color("43362b"), "bark": Color("4a443b"), "roof": Color("5d4f43"), "stone": Color("7a7d72"),
+	"reed": Color("8a8a56"), "reed_head": Color("5d4a33"), "sail": Color("c9c1ad"), "oar": Color("7d6650"),
+	"window": {"color": Color("ffd27a"), "glow": Color("ffc46a"), "energy": 1.6}}
+const WINDMILL_SPIN := 0.22
+
+static func _windmill(root: Node3D, s: float) -> void:
+	var path := LANDMARKS + "marsh_windmill.glb"
+	Models.still(path, "marsh_windmill", LANDMARK_COLORS, root).scale = Vector3.ONE * s
+	var sails := Node3D.new()
+	sails.name = "Spin"
+	sails.position = Models.transform(path, "marsh_windmill_sails").origin * s
+	sails.set_meta("spin", WINDMILL_SPIN)
+	root.add_child(sails)
+	Models.moving(path, "marsh_windmill_sails", LANDMARK_COLORS, sails, false).scale = Vector3.ONE * s
+
+## A red post box on a timber post: a slot across its front and a little## pitched roof.
 static func _post_box(root: Node3D, s: float) -> void:
 	_box(Vector3(0.07, 0.71, 0.07) * s, TIMBER_DARK, Vector3(0, 0.355 * s, 0), root)
 	_box(Vector3(0.3, 0.34, 0.24) * s, Color("c0483c"), Vector3(0, 0.89 * s, 0), root)
@@ -906,7 +937,8 @@ static func _rope_coil(root: Node3D, s: float) -> void:
 
 ## The warm light a lantern throws on the ground: a soft see-through glow,
 ## `radius` m (at size 1) round its foot, just over the floor and under a
-## pip's shadow's reach (kit/soft_mist.gd).
-static func _light_pool(root: Node3D, s: float, radius: float) -> void:
+## pip's shadow's reach (kit/soft_mist.gd), drawn in the world look's
+## "glow_order" (under a fog cover there, so it never shows as a white patch).
+static func _light_pool(root: Node3D, s: float, radius: float, order: int) -> void:
 	var across := radius * 2.0 * s
-	SoftMist.build([[Vector3(0, 0.035, 0), Vector2(across, across), "up"]], LAMP_POOL, root, true)
+	SoftMist.build([[Vector3(0, 0.035, 0), Vector2(across, across), "up"]], LAMP_POOL, root, true, order)
