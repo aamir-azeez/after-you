@@ -12,7 +12,8 @@ extends RefCounted
 ## Shot like a short film: letterbox bars slide in, the camera pushes in on the
 ## last stone, the slip has a little lurch first and a white splash flash, then
 ## the camera drifts round after the pipsport as the screen cools into the fog;
-## the bars and the wash leave together so the world comes back without a jump.
+## the bars and the wash leave together as the camera glides back to the
+## game's own view, so the world comes back without a jump.
 
 const DATA := {
 	"cast": {"holds": "pipsport", "fallback": "p0"},
@@ -90,8 +91,9 @@ const DATA := {
 		{"do": "wait", "time": 2.2},
 		{"do": "prop", "id": "pipsport", "alpha": 0.0, "time": 1.2},
 		{"do": "wait", "time": 0.8},
-		# The bars and the wash leave together.
+		# The bars and the wash leave together as the camera glides home.
 		{"do": "bars", "show": false, "time": 0.8},
+		{"do": "camera", "home": true, "time": 0.8},
 		{"do": "tint", "color": "dfe9ea", "alpha": 0.0, "time": 0.8},
 		{"do": "wait", "time": 0.8},
 	],
