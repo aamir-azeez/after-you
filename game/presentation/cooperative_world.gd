@@ -381,15 +381,20 @@ func _flowerbed(r: Array, at: Vector3) -> void:
 ## (kit/pieces/pulley.gd), at its west end on the camera's side and at its
 ## deck's height. Its weight hangs while the crossing is gone and drops while
 ## it is laid, so the post shows where a missing crossing goes. Built after
-## the gate links, which say which crossings a cable already explains.
+## the gate links, which say which crossings a cable already explains. The
+## post is told the floors at its foot, so what lies there stays on them.
 func _hang_pulleys(view: Dictionary) -> void:
+	var floors: Array = RouteBarriers.floors_of(view).filter(func(f: Dictionary) -> bool: return not f.crossing)
 	for definition: Dictionary in view.get("bridges", []):
 		if not _hangs_pulley(definition): continue
 		var id := str(definition.id)
 		var rect: Array = definition.rect_cm
 		var deck: Node3D = _decks.get(definition.id)
 		var post := point([rect[0], rect[3]]) + Vector3(0.05, deck.position.y if deck != null else 0.0, 0.15)
-		var piece: RefCounted = PulleyPiece.build(_piece_style("pulley", id), post, terrain)
+		var ground: Array[Rect2] = []
+		for f: Dictionary in floors:
+			if absf(float(f.y) - post.y) < 0.02: ground.append(Rect2((f.rect as Rect2).position - Vector2(post.x, post.z), (f.rect as Rect2).size))
+		var piece: RefCounted = PulleyPiece.build(_piece_style("pulley", id), post, terrain, ground)
 		_pulleys[id] = piece
 		_weights[id] = piece.weight
 		piece.weight.set_meta("rest_y", piece.weight.position.y)

@@ -6,8 +6,9 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "lantern_hook": a timber crook post with leaves climbing it and a little
 ##       wheel under its hook; a leafy lantern hangs from it and glows while
 ##       the crossing is laid.
-##   "theme_hanger": a white post with red bands, a curled arm with a brass
-##       wheel and a rope coil at its foot; an anchor hangs from it.
+##   "theme_hanger": a white post with red bands and a curled arm with a brass
+##       wheel; an anchor hangs from it, and a rope coil lies beside its foot,
+##       away from the crossing, where the floor has room for it.
 ##   "little_roof": a timber post on a stone foot under a little pitched roof,
 ##       its wheel under the eaves; a flour sack hangs from it.
 ##
@@ -46,6 +47,17 @@ const IRON := Color("4d4a52")
 const NAVY := Color("46607a")
 const RED := Color("c8644c")
 const SACK := Color("d9c08f")
+## A hanger's rope coil: the spot it lies nearest to, beside the post's foot,
+## off the crossing and toward the camera (post space x, z), its rings' radii
+## and the rope's.
+const COIL_AT := Vector2(-0.235, 0.15)
+const COIL_RINGS := [0.07, 0.05, 0.03]
+const COIL_ROPE := 0.015
+## The coil keeps this far inside its floor's edges, clear of the parapets,
+## copings and crossing walls that stand along them (m).
+const COIL_EDGE := 0.10
+## How far the coil may slide from COIL_AT to fit and still sit by its post (m).
+const COIL_SLIDE := 0.2
 
 ## The weight, a held container its world moves (set its rest_y there).
 var weight: Node3D
@@ -58,11 +70,27 @@ var _rope_top := 1.0
 var _hang := 0.1
 
 ## A pulley post in `pulley_style` on the spot `at` (parent space) under
-## `parent`; an unknown style builds the first.
-static func build(pulley_style: String, at: Vector3, parent: Node3D) -> RefCounted:
+## `parent`; an unknown style builds the first. `ground` holds the floors at
+## its foot's height (post space x, z); what lies at the foot is laid only
+## wholly on one of them.
+static func build(pulley_style: String, at: Vector3, parent: Node3D, ground: Array[Rect2] = []) -> RefCounted:
 	var piece: RefCounted = load("res://presentation/kit/pieces/pulley.gd").new()
-	piece._make(pulley_style if pulley_style in STYLES else STYLES[0], at, parent)
+	piece._make(pulley_style if pulley_style in STYLES else STYLES[0], at, parent, ground)
 	return piece
+
+## Where a hanger's coil lies (post space x, z): the spot nearest COIL_AT, at
+## most COIL_SLIDE from it, where it stays COIL_EDGE inside one of the floors
+## `ground` and clear of the post; Vector2.INF when none has room.
+static func coil_spot(ground: Array[Rect2]) -> Vector2:
+	var reach: float = COIL_RINGS[0] + COIL_ROPE
+	var best := Vector2.INF
+	for area: Rect2 in ground:
+		var room := area.grow(-(reach + COIL_EDGE))
+		if room.size.x < 0.0 or room.size.y < 0.0: continue
+		var spot := COIL_AT.clamp(room.position, room.end)
+		var slide := spot.distance_to(COIL_AT)
+		if slide <= COIL_SLIDE and spot.length() >= reach + 0.08 and slide < best.distance_to(COIL_AT): best = spot
+	return best
 
 ## The rope runs down to wherever the weight hangs now; a lantern glows only
 ## while its crossing is laid.
@@ -82,7 +110,7 @@ func moving_parts() -> Array[Node3D]:
 func anchor_lift() -> float:
 	return _rope_top
 
-func _make(pulley_style: String, at: Vector3, parent: Node3D) -> void:
+func _make(pulley_style: String, at: Vector3, parent: Node3D, ground: Array[Rect2]) -> void:
 	style = pulley_style
 	_root("Pulley_" + pulley_style, at, parent)
 	anchor = root
@@ -91,7 +119,7 @@ func _make(pulley_style: String, at: Vector3, parent: Node3D) -> void:
 	weight.position = Vector3(ROPE_X, REST_Y, 0)
 	root.add_child(weight)
 	match pulley_style:
-		"theme_hanger": _make_hanger()
+		"theme_hanger": _make_hanger(ground)
 		"little_roof": _make_roof()
 		_: _make_hook()
 	match str(Styles.style("pulley", pulley_style).get("weight", "")):
@@ -117,11 +145,14 @@ func _make_hook() -> void:
 	_wheel(Vector3(ROPE_X, top - 0.02, 0), 0.045)
 	_rope_top = top - 0.02
 
-## A white post with red bands, a curled arm and a rope coil at its foot.
-func _make_hanger() -> void:
+## A white post with red bands, a curled arm and a rope coil beside its foot.
+func _make_hanger(ground: Array[Rect2]) -> void:
 	var top := 1.10
-	for k in range(3):
-		Parts.torus([0.16, 0.12, 0.08][k], 0.0175, ROPE.darkened(0.1 - 0.05 * k), Vector3(-0.06, 0.03 + 0.02 * k, 0.16), root, 24, 6)
+	var coil := coil_spot(ground)
+	if coil.is_finite():
+		for k in range(COIL_RINGS.size()):
+			var ring := Parts.torus(COIL_RINGS[k], COIL_ROPE, ROPE.darkened(0.1 - 0.05 * k), Vector3(coil.x, 0.03 + 0.02 * k, coil.y), root, 20 - 4 * k, 6)
+			ring.name = "Coil"
 	Parts.box(Vector3(0.096, top, 0.096), PLASTER, Vector3(0, top * 0.5 - 0.005, 0), root)
 	for y: float in [0.25, 0.75]: Parts.box(Vector3(0.122, 0.07, 0.122), RED, Vector3(0, y, 0), root)
 	_arc(Vector2(0.07, top - 0.02), 0.08, 0.0, PI, 0.05, 0.05, PLASTER, 5)

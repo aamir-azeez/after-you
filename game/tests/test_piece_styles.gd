@@ -114,6 +114,11 @@ func _check_every_style(holder: Node3D) -> void:
 			var glass: MeshInstance3D = post._glass
 			if glass != null: _check((glass.material_override as StandardMaterial3D).emission_enabled == laid, "Pulley %s's lantern glows only while laid" % style)
 	_check(Pulley.build("teapot", AT, holder).style == Pulley.STYLES[0] and Pulley.build("lantern_hook", AT, holder)._glass != null and Pulley.build("little_roof", AT, holder)._glass == null, "An unknown pulley builds the first style; only the lantern has a glass")
+	# A hanger lays its coil only wholly on a floor by its foot: a roomy floor, then one whose edge runs too close.
+	var roomy: Array[Rect2] = [Rect2(-2.0, -2.0, 1.95, 2.5)]
+	var narrow: Array[Rect2] = [Rect2(-2.0, -2.0, 1.95, 2.1)]
+	var coils := func(ground: Array[Rect2]) -> Array: return Pulley.build("theme_hanger", AT, holder, ground).root.find_children("Coil*", "", false, false)
+	_check(coils.call(roomy).size() == Pulley.COIL_RINGS.size() and coils.call(narrow).is_empty() and coils.call([] as Array[Rect2]).is_empty(), "A hanger lays its rope coil only where a floor at its foot holds it clear of the edges")
 
 ## A handle snaps; a machine stands inside its lever's reach, its anchor puts
 ## a bubble's tail on its top, and a pull eases over PULL_SECONDS to the pose
