@@ -35,6 +35,7 @@ func _run() -> void:
 	_only_its_own_pushes()
 	_same_tick()
 	_ball_home()
+	_kept_under_the_ball()
 	_trace_or_simulated()
 	print("SHARED BALL: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -144,6 +145,19 @@ func _ball_home() -> void:
 	var lone := _turn(away, _repeat(EAST, 10))
 	var waiting := _turn(away, _repeat(IDLE, 12), lone.record)
 	_check(str(waiting.path[-1][2]) == "fitted" and not waiting.sim.complete, "With one pip off the cradle's floor the ball home does not end the stage")
+
+## A stage's end keeps a crossing the ball rests on, though nothing holds it
+## any more, so the next stage never opens with the ball on a crossing that is
+## down (the server refuses a ball on a crossing it does not keep).
+func _kept_under_the_ball() -> void:
+	var bell: Dictionary = Registry.definition(KEY).stages[0].goal
+	var at: Array = [int(bell.position_cm[0]), int(bell.position_cm[1]), "far-bank"]
+	var opening := _placed({"p0": at, "p1": at}, [-160, 0, "shore-middle"])
+	var first := _turn(opening, _repeat(IDLE, 3))
+	var closing := _turn(opening, _repeat(IDLE, 5), first.record)
+	var kept: Array = closing.sim._mechanisms.latched_bridges
+	_check(closing.sim.complete and not bool(closing.sim._routes.get("shore-middle", true)), "The stage ends with both pips at the bell and the shore bridge down under the ball")
+	_check("shore-middle" in kept and "middle-far" not in kept, "Its end keeps the crossing under the ball, and only that one (%s)" % [kept])
 
 ## A later turn plays the same with its memory's kept trace as with the memory
 ## simulated again.
