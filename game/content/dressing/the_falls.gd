@@ -12,7 +12,7 @@ const DATA := {
 	# PROTOTYPE: the close follow camera (island_world._follow_data): a view
 	# 5.4 m tall that follows the pip across and up the tiers, pinching out
 	# to at most today's view (5.8 x 1.6 = 9.3 m).
-	"camera": {"follow": {"size": 5.8, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.6], "pan": [1.0, 0.7]}},
+	"camera": {"follow": {"size": 5.8, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.6], "pan": [1.0, 0.7], "from": [6.0, 12.0, 20.0]}},
 	"fireflies": 0,
 	"ground": {"*": "mossy_flags",
 		"beach": "river_stone", "isle": "river_stone", "bank": "river_stone", "rock": "river_stone", "big": "river_stone",

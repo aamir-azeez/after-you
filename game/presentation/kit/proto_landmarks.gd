@@ -72,7 +72,7 @@ static func falls(world: Node3D) -> void:
 			var size := 3.4 + 0.9 * fposmod(float(index) * 0.618, 1.0)
 			var part := "falls_cheek_left" if index % 2 == 0 else "falls_cheek_right"
 			var rock: Node3D = Models.still(Props.FALLS_MODEL, part, Props.FALLS_COLORS, holder)
-			rock.position = Vector3(x, level - 0.4, -9.6 - 1.4 * fposmod(float(index) * 0.37, 1.0))
+			rock.position = Vector3(x, level - 0.4, -8.4 - 1.0 * fposmod(float(index) * 0.37, 1.0))
 			rock.scale = Vector3.ONE * size
 			rock.rotation.y = 0.35 * (fposmod(float(index) * 0.73, 1.0) - 0.5)
 		x += 3.6
