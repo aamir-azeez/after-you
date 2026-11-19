@@ -137,8 +137,8 @@
 				"id": "loft-bell",
 				"owner_slot": "p1",
 				"position_cm": [
-					230,
-					0
+					400,
+					-40
 				],
 				"radius_cm": 36,
 				"surface_id": "loft"
@@ -186,8 +186,8 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					230,
-					0
+					400,
+					-40
 				]
 			],
 			"source_policy": {

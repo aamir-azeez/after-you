@@ -33,7 +33,10 @@ const PiecesRules = preload("res://core/physical/pieces_rules.gd")
 ## Turns a stage may take: the first teaches the lift, ten; the ending, twenty.
 const CAPS := {"a-little-lift": 10, "a-place-to-grow": 20}
 const LOFT := 160
-const BELL := [230, 0]
+## The loft bell stands right of the pedestal, so its frame never hides the
+## pedestal or the seed in the game camera's view, its ring clear of the
+## pedestal's solid circle and the throw mark.
+const BELL := [400, -40]
 const LAMP := [-450, 130]
 
 static func definition() -> Dictionary:
