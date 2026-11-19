@@ -13,12 +13,15 @@ import wellDefinition from "./the-wishing-well.json";
 import wellInitial from "./the-wishing-well-initial.json";
 import highV2Definition from "./high-and-low-v2.json";
 import highV2Initial from "./high-and-low-v2-initial.json";
+import wellV2Definition from "./the-wishing-well-v2.json";
+import wellV2Initial from "./the-wishing-well-v2-initial.json";
 
 export const HIGH_AND_LOW_HASH = "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956";
 export const ROLLING_HOME_HASH = "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87";
 export const HOUSE_HASH = "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867";
 export const WISHING_WELL_HASH = "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94";
 export const HIGH_AND_LOW_V2_HASH = "87bb4afc25b939b1754940f952e54fc4698786762b1b1e13022f7556ac0fdc5f";
+export const WISHING_WELL_V2_HASH = "bc277e6200e0e588b08b16b40b02ff7bc92d1c0f51822c56974190e7ab1bcfd9";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
@@ -147,3 +150,5 @@ export const houseForTwo = adapter(houseDefinition, houseInitial, HOUSE_HASH);
 export const wishingWell = adapter(wellDefinition, wellInitial, WISHING_WELL_HASH);
 /** Open turns (14): High and Low@1 with a lever atop the stair and one in the garden, so both players end at each bell. Unreleased. */
 export const highAndLowV2 = adapter(highV2Definition, highV2Initial, HIGH_AND_LOW_V2_HASH);
+/** Open turns (14): the Wishing Well with both players at each bell, no owned crossing, and held steps at the garden gate and the rope ladder. Unreleased. */
+export const wishingWellV2 = adapter(wellV2Definition, wellV2Initial, WISHING_WELL_V2_HASH);

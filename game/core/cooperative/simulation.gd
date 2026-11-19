@@ -27,6 +27,16 @@ func _may_complete() -> bool:
 		if not bool(_mechanisms.levers.get(lever.id, false)): return false
 	return true
 
+## Open turns (14): a stage keeps open past its end only the crossings its
+## gates hold on the end state, not one the closing pip merely stood on (a
+## comfort entry): either pip may play the closing turn, so what it happened
+## to walk last must not open the next stage. Earlier rules keep them all.
+func _kept_open(route_id: String) -> bool:
+	if not _open_turns(): return true
+	for gate: Dictionary in stage.get("gates", []):
+		if str(gate.route_id) == route_id and _gate_open(gate): return true
+	return false
+
 func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = 0, chain: Array = []) -> bool:
 	if rules_version == 0:
 		rules_version = _record_version(prior_a) if current_role == "b" else _checkpoint_version(checkpoint, definition)
