@@ -13,6 +13,7 @@ extends RefCounted
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SoftMist = preload("res://presentation/kit/soft_mist.gd")
 const Models = preload("res://presentation/kit/models.gd")
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
 
 const TIMBER := Color("8a6b4e")
 const TIMBER_LIGHT := Color("b08a62")
@@ -94,7 +95,7 @@ static func extent(spec: Dictionary) -> Dictionary:
 		"shelf": half = Vector2(0.45, 0.1) * s; height = 0.5 * s
 		"frame": half = Vector2(0.22, 0.03) * s; height = 0.3 * s
 		"shells": radius = 0.15 * s; height = 0.02
-		"waterfall": half = Vector2(float(spec.get("width", 120)) / 200.0 + WATERFALL_CHEEK, WATERFALL_DEPTH * 0.5 + MIST_REACH) * s; height = (float(spec.get("height", 260)) / 100.0 + 0.13) * s
+		"waterfall": return _falls_extent(spec, s)
 		"mill_wheel": half = Vector2(MILL_WHEEL_RADIUS + 0.12, 0.25) * s; height = (MILL_WHEEL_RADIUS * 2.0 + 0.2) * s
 		"post_box": radius = 0.2 * s; height = 1.19 * s
 		"reeds": radius = 0.16 * s; height = 0.78 * s
@@ -201,7 +202,7 @@ static func build(spec: Dictionary, parent: Node3D, base_y: float, lit: bool) ->
 		"bank": _bank(root, spec)
 		"stone_wall": _stone_wall(root, _point(spec.from), _point(spec.to))
 		"shells": _shells(root, s, int(absf(float(spec.at[0]) * 7.0 + float(spec.at[1]) * 3.0)))
-		"waterfall": _waterfall(root, s, float(spec.get("width", 120)) / 100.0, float(spec.get("height", 260)) / 100.0, float(spec.get("foot", 0)) / 100.0)
+		"waterfall": _waterfall(root, s, spec)
 		"mill_wheel": _mill_wheel(root, s)
 		"post_box": _post_box(root, s)
 		"reeds": _reeds(root, s, int(absf(float(spec.at[0]) * 3.0 + float(spec.at[1]) * 7.0)))
@@ -595,88 +596,204 @@ static func _clam(holder: Node3D, s: float, color: Color) -> void:
 
 # --- The Falls and Fog Marsh (rules 16's scenery) ---
 
-## A waterfall's cliff reaches this far past each side of its water (m at
-## size 1), and the cliff is this deep front to back.
-const WATERFALL_CHEEK := 0.42
-const WATERFALL_DEPTH := 0.7
 const CLIFF := Color("7d8272")
 const CLIFF_DARK := Color("666b5d")
 const MOSS := Color("6f8f5a")
-const FALLING := Color(0.80, 0.91, 0.94, 0.82)
-const FOAM := Color("f4f8f8")
 const SPRAY := Color(0.97, 0.99, 0.99, 0.9)
-## How far the foam and mist reach out over the pool past the cliff's face (m
-## at size 1); the extent's depth covers it on both sides.
-const MIST_REACH := 0.8
 
-## A tall waterfall facing the camera (+z): a mossy stone cliff `width` plus
-## both cheeks wide and `height` tall, its water falling down the middle into
-## white foam, with a soft spray over the foot. The water and the spray are
-## one translucent look each; the stone, moss, streaks and foam are plain
-## leaves the static fold batches. Stand it with its foot at the water; where
-## the water rises and falls, stand it at the low level and give "foot" (cm)
-## up to the usual one, where a second heap of foam and the spray sit.
-static func _waterfall(root: Node3D, s: float, width: float, height: float, foot: float = 0.0) -> void:
-	var w := width * s
-	var h := height * s
-	var cheek := WATERFALL_CHEEK * s
-	var deep := WATERFALL_DEPTH * s
-	# The cliff behind the water, and a cheek of stacked blocks each side.
-	# Its back stops short of the cheeks' backs, so turned round no faces meet.
-	_box(Vector3(w + 0.02, h + 0.08 * s, deep * 0.5 - STANDOFF * 2.0), CLIFF_DARK, Vector3(0, (h + 0.08 * s) * 0.5, -deep * 0.25 + STANDOFF), root)
-	for side: float in [-1.0, 1.0]:
-		var y := 0.0
-		var index := 0
-		while y < h - 0.01:
-			var tall := minf(h - y, (0.42 + 0.16 * float((index * 5 + int(side + 1.0)) % 3)) * s)
-			var inset := 0.03 * s * float(index % 2)
-			_box(Vector3(cheek - inset, tall - STANDOFF, deep - inset * 2.0), CLIFF if index % 2 == 0 else CLIFF.lightened(0.06), Vector3(side * (w * 0.5 + cheek * 0.5 + STANDOFF), y + tall * 0.5, 0), root)
-			# A cushion of moss on every ledge, and a little more on every other.
-			_ball((0.11 + 0.03 * float(index % 2)) * s, MOSS if index % 2 else MOSS.lightened(0.1), Vector3(side * (w * 0.5 + cheek * 0.45 + STANDOFF), y + tall + 0.01 * s, deep * 0.32), root, Vector3(1.4, 0.45, 0.9))
-			if index % 2 == 1: _ball(0.08 * s, MOSS.darkened(0.08), Vector3(side * (w * 0.5 + cheek * 0.75), y + tall * 0.55, deep * 0.5 + 0.02 * s), root, Vector3(1.0, 1.3, 0.5))
-			y += tall
-			index += 1
-	# The lip the water pours over, and moss along its top.
-	_box(Vector3(w + cheek * 2.0 + 0.04 * s, 0.1 * s, deep + 0.04 * s), CLIFF.darkened(0.08), Vector3(0, h + 0.05 * s + STANDOFF, 0), root)
-	_box(Vector3(w + cheek * 2.0 + 0.06 * s, 0.03 * s, deep * 0.5), MOSS, Vector3(0, h + 0.115 * s + STANDOFF * 2.0, deep * 0.12), root)
-	# The falling water, its pale streaks, the foam at its foot and the spray.
-	var water := Primitives.mesh_node(Primitives.shared_mesh("box", w, h, 0.06 * s), Primitives.fresh_material(FALLING, 0.2), Vector3(0, h * 0.5, deep * 0.5 - 0.04 * s), root)
-	(water.material_override as StandardMaterial3D).transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var streaks := maxi(3, roundi(w / 0.14))
-	for index in range(streaks):
-		var x := (float(index) + 0.5) / float(streaks) * w - w * 0.5
-		var long := h * (0.35 + 0.2 * float(index % 3))
-		_box(Vector3(0.025 * s, long, 0.012 * s), FOAM, Vector3(x, h - long * 0.5 - h * 0.08 * float(index % 4), deep * 0.5 + STANDOFF), root)
-	# A heap of white foam at the foot, two rows spreading out onto the pool.
-	# A foot above the base (foot, m) is where the pool usually stands: the
-	# foam lies there too, and the spray rises from it.
-	var puffs := maxi(4, roundi((w + cheek) / 0.16) + 2)
-	for level: float in ([0.0, foot] if foot > 0.0 else [0.0]):
-		for row in range(2):
-			for index in range(puffs - row):
-				var x := ((float(index) + 0.5 + 0.5 * float(row)) / float(puffs) - 0.5) * (w + cheek * (0.2 + 0.3 * float(row)))
-				var r := (0.12 + 0.045 * float((index + row) % 3)) * s
-				_ball(r, FOAM if (index + row) % 3 else FOAM.darkened(0.04), Vector3(x, level + 0.02 * s, deep * 0.5 + (0.05 + 0.2 * float(row) + 0.04 * float(index % 2)) * s), root, Vector3(1.4, 0.55, 1.0))
-	# Soft spray rising off the foot, and mist lying out over the pool: one
-	# see-through mesh (kit/soft_mist.gd), all of it within the prop's extent.
+## A waterfall, its rock modelled in Blender (tools/blender/models/falls_cliff.py)
+## a tier at a time: each tier a drop of FALLS_TIER m in the model, scaled to
+## its share of the fall's height, standing a lip's depth behind the one below,
+## so a tall fall steps back and up in tiers. The cliff parts are still and fold
+## with the scenery; the water is one mesh in kit/falls_water.gdshader ("Flow",
+## its clock moved by the world); the spray is one soft mist mesh.
+const FALLS_MODEL := "res://assets/models/falls_cliff.glb"
+const FALLS_COLORS := {"stone": CLIFF, "stone_light": Color("8d9180"), "stone_dark": CLIFF_DARK, "moss": MOSS, "moss_dark": Color("5d7a4c")}
+const FALLS_WATER := preload("res://presentation/kit/falls_water.gdshader")
+## The model's tier (m): a drop this tall, its lip this deep (the next tier's
+## step back), its cheeks and banks reaching this far past the water's edges,
+## the top's banks running this far back, the lip's top this high over the
+## tier's foot, and the water's plane this far out in front of the lip.
+const FALLS_TIER := 2.0
+const FALLS_LIP := 0.9
+const FALLS_CHEEK := 1.45
+const FALLS_BANKS := 3.0
+const FALLS_LIP_TOP := 2.03
+const FALLS_SHEET := 0.14
+## How far the foam, the pool's rocks and the spray reach out over the pool in
+## front of the lowest lip (m at size 1); the cliff stands behind it.
+const FALLS_FRONT := 1.0
+## Each tier's share of the height, lowest first: the lowest is the tallest.
+const FALLS_SHARES := [1.15, 1.0, 0.9, 0.85, 0.8]
+
+static var _falls_look: ShaderMaterial
+
+## A waterfall's tiers at size 1, lowest first: {y, z (its lip's front), k
+## (the model's scale), h (its drop)}. "height" (cm) is the whole drop and
+## "tiers" how many steps it takes (default: one per 2.6 m).
+static func falls_tiers(spec: Dictionary) -> Array:
+	var height := float(spec.get("height", 260)) / 100.0
+	var count := clampi(int(spec.get("tiers", ceili(height / 2.6))), 1, FALLS_SHARES.size())
+	var total := 0.0
+	for index in range(count): total += float(FALLS_SHARES[index])
+	var tiers: Array = []
+	var y := 0.0
+	var z := 0.0
+	for index in range(count):
+		var h := height * float(FALLS_SHARES[index]) / total
+		var k := h / FALLS_TIER
+		tiers.append({"y": y, "z": z, "k": k, "h": h})
+		y += h
+		z -= FALLS_LIP * k
+	return tiers
+
+## A waterfall's footprint before it turns (m at size 1, x across, y toward
+## the camera, from its "at"), and its height.
+static func _falls_box(spec: Dictionary) -> Array:
+	var tiers := falls_tiers(spec)
+	var water := float(spec.get("width", 120)) / 100.0
+	var half := 0.0
+	var back := 0.0
+	var top: Dictionary = tiers.back()
+	var cheek := float(spec.get("cheek", 1.0))
+	for tier: Dictionary in tiers:
+		half = maxf(half, water * 0.5 + FALLS_CHEEK * cheek * float(tier.k))
+		back = maxf(back, -float(tier.z) + 1.6 * float(tier.k))
+	back = maxf(back, -float(top.z) + (FALLS_LIP + FALLS_BANKS) * float(top.k))
+	return [Rect2(-half, -back, half * 2.0, back + FALLS_FRONT), float(top.y) + (FALLS_LIP_TOP + 0.45) * float(top.k)]
+
+## A waterfall's extent: its footprint turned by "rot" (quarter turns) round "at".
+static func _falls_extent(spec: Dictionary, s: float) -> Dictionary:
+	var box := _falls_box(spec)
+	var rect: Rect2 = box[0]
+	var turn := deg_to_rad(float(spec.get("rot", 0)))
+	var turned := Rect2()
+	for index in range(4):
+		var corner := Vector2(rect.position.x if index % 2 == 0 else rect.end.x, rect.position.y if index < 2 else rect.end.y) * s
+		var point := Vector2(corner.x * cos(turn) + corner.y * sin(turn), -corner.x * sin(turn) + corner.y * cos(turn))
+		turned = Rect2(point, Vector2.ZERO) if index == 0 else turned.expand(point)
+	var at := _point(spec.get("at", [0, 0]))
+	return {"rect": Rect2(at + turned.position, turned.size), "height": float(box[1]) * s, "base": float(spec.get("y", 0)) / 100.0, "flat": false, "wall": false}
+
+## A tall waterfall facing the camera (+z), its foot at the prop's place: the
+## front of its lowest lip, middle, at the pool's low level. "width" (cm) is
+## the water's; the cheeks reach out past it and the drop steps back in tiers.
+## Where the water rises and falls, stand it at the low level and give "foot"
+## (cm) up to the usual one: a second ring of foam lies there and the spray
+## rises from it. "cheek" narrows the rock beside the water (1 is the model's).
+static func _waterfall(root: Node3D, s: float, spec: Dictionary) -> void:
+	var w := float(spec.get("width", 120)) / 100.0 * s
+	var narrow := float(spec.get("cheek", 1.0))
+	var foot := float(spec.get("foot", 0)) / 100.0
+	var tiers := falls_tiers(spec)
+	var water := SurfaceTool.new()
+	water.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var blots: Array = []
-	var front := deep * 0.5
-	# Billows of spray all along the foot, out over the cheeks too, so they
-	# show against the stone and not only on the white water; a few more
-	# rising above them.
-	var reach := w * 0.5 + cheek - 0.42 * s
-	var billows := maxi(4, roundi((reach * 2.0) / (0.42 * s)) + 1)
+	for index in range(tiers.size()):
+		var tier: Dictionary = tiers[index]
+		var k := float(tier.k) * s
+		var at := Vector3(0, float(tier.y) * s, float(tier.z) * s)
+		var wall := Models.still(FALLS_MODEL, "falls_back", FALLS_COLORS, root)
+		wall.position = at
+		wall.scale = Vector3(w / FALLS_TIER, k, k)
+		for side: String in ["left", "right"]:
+			var cheek := Models.still(FALLS_MODEL, "falls_cheek_" + side, FALLS_COLORS, root)
+			cheek.position = at + Vector3((-0.5 if side == "left" else 0.5) * w, 0, 0)
+			cheek.scale = Vector3(k * narrow, k, k)
+		# The water: flat over the lip from its back, then down to the foot.
+		var lip := at.y + FALLS_LIP_TOP * k
+		var flat_from := at.z - FALLS_LIP * k * 0.85
+		if index == tiers.size() - 1: flat_from = at.z - (FALLS_LIP + FALLS_BANKS * 0.85) * k
+		var plane := at.z + FALLS_SHEET * k
+		_falls_strip(water, w + 0.12 * k, [Vector3(0, lip + 0.02 * k, flat_from), Vector3(0, lip + 0.025 * k, at.z + 0.02 * k), Vector3(0, lip - 0.12 * k, at.z + 0.1 * k), Vector3(0, lip - 0.42 * k, plane), Vector3(0, at.y, plane + 0.03 * k)], [0.0, 0.0, 0.6, 1.0, 1.0])
+		# Foam and a puff of spray where it lands on the lip below; the pool's
+		# own foam and spray come after.
+		if index > 0:
+			_falls_foam(water, Vector3(0, at.y + 0.03 * k, plane + 0.12 * k), Vector2(w * 0.5 + 0.3 * k, 0.32 * k))
+			for side: float in [-1.0, 1.0]:
+				blots.append([Vector3(side * w * 0.22, at.y + 0.3 * k, plane + 0.25 * k), Vector2(w * 0.55 + 0.4 * k, 0.75 * k), "front"])
+	# The stream's bed and banks above the top lip.
+	var top: Dictionary = tiers.back()
+	var kt := float(top.k) * s
+	var crown := Vector3(0, float(top.y) * s + FALLS_LIP_TOP * kt, float(top.z) * s - FALLS_LIP * kt)
+	var bed := Models.still(FALLS_MODEL, "falls_bed", FALLS_COLORS, root)
+	bed.position = crown
+	bed.scale = Vector3(w / FALLS_TIER, kt, kt)
+	for side: String in ["left", "right"]:
+		var bank := Models.still(FALLS_MODEL, "falls_bank_" + side, FALLS_COLORS, root)
+		bank.position = crown + Vector3((-0.5 if side == "left" else 0.5) * w, 0, FALLS_LIP * kt)
+		bank.scale = Vector3(kt * narrow, kt, kt)
+	# Boulders in the pool at the foot, and the churning foam ring there (at
+	# the low level and at the usual one).
+	var k0 := float(tiers[0].k) * s
+	for side: String in ["left", "right"]:
+		var rocks := Models.still(FALLS_MODEL, "falls_rocks_" + side, FALLS_COLORS, root)
+		rocks.position = Vector3((-0.5 if side == "left" else 0.5) * w, maxf(foot - 0.06, 0.0), 0)
+		rocks.scale = Vector3(narrow, 1.0, 1.0) * minf(float(tiers[0].k), 1.0) * s
+	var front := FALLS_FRONT * s
+	var plane0 := FALLS_SHEET * k0
+	for level: float in ([0.0, foot] if foot > 0.0 else [0.0]):
+		_falls_foam(water, Vector3(0, level + 0.025 * s, plane0), Vector2(w * 0.5 + 0.55 * s, front - plane0 - 0.02 * s))
+	var flow := MeshInstance3D.new()
+	flow.name = "Flow"
+	flow.mesh = water.commit()
+	flow.material_override = _falls_material()
+	flow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	flow.set_meta("flow", true)
+	root.add_child(flow)
+	# Spray billowing up off the foot all along it, out over the cheeks too,
+	# a few higher clouds over the middle, and mist lying out on the pool.
+	var reach := w * 0.5 + maxf(FALLS_CHEEK * narrow * k0 - 0.56 * s, 0.0)
+	var billows := maxi(4, roundi(reach * 2.0 / (0.5 * s)) + 1)
 	for index in range(billows):
 		var x := -reach + reach * 2.0 * float(index) / float(billows - 1)
-		blots.append([Vector3(x, foot + (0.22 + 0.12 * float(index % 3)) * s, front + (0.22 + 0.08 * float(index % 2)) * s), Vector2(0.84, 0.66 + 0.1 * float(index % 2)) * s, "front"])
-	for index in range(3):
-		var x := (float(index) - 1.0) * minf(w * 0.32, reach)
-		blots.append([Vector3(x, foot + (0.75 + 0.15 * float(index % 2)) * s, front + 0.12 * s), Vector2(0.84, 0.7) * s, "front"])
+		blots.append([Vector3(x, foot + (0.32 + 0.14 * float(index % 3)) * s, plane0 + (0.28 + 0.1 * float(index % 2)) * s), Vector2(1.1, 0.85 + 0.12 * float(index % 2)) * s, "front"])
 	for index in range(3):
 		var x := (float(index) - 1.0) * w * 0.3
-		blots.append([Vector3(x, foot + 0.12 * s, front + MIST_REACH * s * 0.5), Vector2(w * 0.45 + cheek * 0.8, MIST_REACH * s * 0.95), "up"])
+		blots.append([Vector3(x, foot + (1.0 + 0.3 * float(index % 2)) * s, plane0 + 0.2 * s), Vector2(1.3, 1.05) * s, "front"])
+		blots.append([Vector3(x, foot + 0.14 * s, plane0 + 0.42 * s), Vector2(w * 0.42 + 0.9 * s, 0.75 * s), "up"])
 	SoftMist.build(blots, SPRAY, root)
+
+## Running water down `points` (one row each, `w` across), `falling` (0 flat,
+## 1 falling) per row: UV.x across, UV.y metres along, UV2 width and length.
+static func _falls_strip(surface: SurfaceTool, w: float, points: Array, falling: Array) -> void:
+	var along: Array = [0.0]
+	for index in range(1, points.size()): along.append(float(along.back()) + (points[index] as Vector3).distance_to(points[index - 1]))
+	var length := float(along.back())
+	for index in range(points.size() - 1):
+		var corners := []
+		for row: int in [index, index + 1]:
+			for edge: float in [0.0, 1.0]:
+				corners.append([(points[row] as Vector3) + Vector3((edge - 0.5) * w, 0, 0), Vector2(edge, float(along[row])), float(falling[row])])
+		for corner: int in [0, 1, 3, 0, 3, 2]:
+			surface.set_color(Color(1.0, corners[corner][2], 0, 1))
+			surface.set_uv(corners[corner][1])
+			surface.set_uv2(Vector2(w, length))
+			surface.set_normal(Vector3.BACK)
+			surface.add_vertex(corners[corner][0])
+
+## Foam lying flat round `centre`, `half` (m) across and out.
+static func _falls_foam(surface: SurfaceTool, centre: Vector3, half: Vector2) -> void:
+	var corners := [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]
+	for corner: int in [0, 1, 2, 0, 2, 3]:
+		var spot: Vector2 = corners[corner]
+		surface.set_color(Color(0, 0, 0, 1))
+		surface.set_uv(spot)
+		surface.set_uv2(half)
+		surface.set_normal(Vector3.UP)
+		surface.add_vertex(centre + Vector3(spot.x * half.x, 0, spot.y * half.y))
+
+## Every waterfall's water shares one look; its clock is set by the world.
+static func _falls_material() -> ShaderMaterial:
+	if _falls_look != null: return _falls_look
+	_falls_look = ShaderMaterial.new()
+	_falls_look.shader = FALLS_WATER
+	SessionRelease.on_exit(Callable(load("res://presentation/kit/props.gd"), "release_falls"))
+	return _falls_look
+
+## Lets go of the falls' look (SessionRelease, at shutdown).
+static func release_falls() -> void:
+	_falls_look = null
 
 ## A mill wheel's radius (m at size 1).
 const MILL_WHEEL_RADIUS := 0.62
