@@ -34,7 +34,18 @@ extends RefCounted
 ##              round the point over the time (a slow circle; it stays turned)};
 ##              {"home": true, "time", "ease"} glides back to the game's own
 ##              view (where the camera stood when the scene began, unturned),
-##              so the world comes back without a jump
+##              so the world comes back without a jump;
+##              {"who": a role, "track": true, "size", "time", "ease"} glides to
+##              that pip and keeps following it through its moves until the
+##              next camera step;
+##              {"frame": a list of roles or points, "margin": metres round
+##              them (1), "time", "ease"} picks the centre and size that fit
+##              them all on the screen it plays on, narrow or wide (a role is
+##              its pip, feet to leaf, where it stands when the step begins)
+##     shake:   {"amount": 1 is a big change's shake (kit/big_change.gd), "for":
+##              seconds, at most its max_seconds}: a short sway of the view for
+##              a splash or a slam. The Haptics and Reduce motion settings turn
+##              it off, as they do a big change's
 ##     bars:    {"show": true or false, "time", "ease"}: letterbox bars slide in
 ##              or out (each 10% of the screen's height), for the film feel
 ##     tint:    {"color": hex, "alpha": 0..1, "time", "ease"}: the screen washes
@@ -53,13 +64,21 @@ const SoundCues = preload("res://services/sound_cues.gd")
 const Motion = preload("res://presentation/kit/motion.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
+const BigChange = preload("res://presentation/kit/big_change.gd")
 
 const ROLES := ["carrier", "other"]
 const SHAPES := ["box", "sphere", "cylinder", "cone", "model"]
 const EASES := Motion.EASES
-const STEPS := ["wait", "move", "face", "pose", "camera", "sound", "prop", "caption", "bars", "tint"]
+const STEPS := ["wait", "move", "face", "pose", "camera", "sound", "prop", "caption", "bars", "tint", "shake"]
 ## A prop riding on a pip sits this high over the pip's feet (its carried seed's height).
 const FOLLOW_LIFT := 1.06
+## A framed camera's margin round what it frames when the step names none, and
+## the least view height it ever picks (metres).
+const FRAME_MARGIN := 1.0
+const FRAME_LEAST := 1.0
+## The most a shake may be, as times a big change's.
+const SHAKE_MOST := 4.0
 ## How long a scene may last at most (seconds).
 const LONGEST := 40.0
 
@@ -102,6 +121,14 @@ static func _check_step(step: Variant, props: Dictionary) -> String:
 			if step.has("rest") and not SpiritIdle.has_pose(StringName(str(step.rest))): return "unknown rest %s" % step.rest
 		"camera":
 			if bool(step.get("home", false)): return ""
+			if step.has("frame"):
+				if step.has("who") or step.has("at") or step.has("size") or step.has("track"): return "a frame works out its own place and size"
+				if not step.frame is Array or (step.frame as Array).is_empty(): return "a frame needs roles or points"
+				for item: Variant in step.frame:
+					if not (str(item) in ROLES or _point(item) is Vector3): return "a frame takes roles or points"
+				if float(step.get("margin", FRAME_MARGIN)) < 0.0: return "a frame's margin is never negative"
+				return ""
+			if step.has("track") and (not step.track is bool or (step.track and not step.has("who"))): return "a track needs who and track true"
 			if not (step.has("who") or _point(step.get("at")) is Vector3) or float(step.get("size", 0.0)) <= 0.0: return "a camera needs a place and a size"
 		"sound":
 			if not SoundCues.is_fixed(str(step.get("cue", ""))): return "sound %s is not a fixed cue" % step.get("cue", "")
@@ -115,6 +142,10 @@ static func _check_step(step: Variant, props: Dictionary) -> String:
 			if not step.get("show") is bool: return "bars need show true or false"
 		"tint":
 			if not Color.html_is_valid(str(step.get("color", ""))) or float(step.get("alpha", -1.0)) < 0.0 or float(step.get("alpha", 0.0)) > 1.0: return "a tint needs a colour and an alpha from 0 to 1"
+		"shake":
+			var amount := float(step.get("amount", 1.0))
+			var length := float(step.get("for", 0.0))
+			if amount <= 0.0 or amount > SHAKE_MOST or length <= 0.0 or length > float(BigChange.SHAKE.max_seconds): return "a shake needs an amount up to %d and for up to %.1f s" % [int(SHAKE_MOST), float(BigChange.SHAKE.max_seconds)]
 	return ""
 
 ## The slot each role plays: {"carrier": slot, "other": slot}. The carrier
@@ -131,13 +162,15 @@ static func cast(data: Dictionary, snapshot: Dictionary) -> Dictionary:
 
 ## The scene as keyframes. `at`: where things stand when it starts, in the
 ## world's own space: "carrier" and "other" (the pips), "origin" (the scene's
-## origin), "camera" (the point the camera looks at) and "camera_size".
+## origin), "camera" (the point the camera looks at), "camera_size" and
+## "aspect" (the view's width over its height; 16:9 when not given).
 static func compile(data: Dictionary, at: Dictionary) -> Dictionary:
 	var origin: Vector3 = at.origin
 	var actors := {}
 	for role: String in ROLES:
 		actors[role] = {"start": at[role], "moves": [], "faces": [], "rests": [], "wobbles": [], "bobs": [], "facings": []}
-	var camera := {"start": at.camera, "moves": [], "start_size": float(at.camera_size), "sizes": [], "orbits": []}
+	var camera := {"start": at.camera, "moves": [], "start_size": float(at.camera_size), "sizes": [], "orbits": [], "shakes": []}
+	var aspect := float(at.get("aspect", ViewFit.BASE.x / ViewFit.BASE.y))
 	var screen := {"bars": [], "tints": [], "tint_colors": []}
 	var props := {}
 	for id: String in data.get("props", {}):
@@ -170,12 +203,30 @@ static func compile(data: Dictionary, at: Dictionary) -> Dictionary:
 					if step.has(kind): compiled.events.append({"at": cursor, "kind": kind, "who": str(step.who), "time": float(step[kind]) if kind == "hop" else 0.0})
 			"camera":
 				var home := bool(step.get("home", false))
-				var target: Vector3 = camera.start if home else (position_of(compiled, str(step.who), cursor) if step.has("who") else origin + _point(step.at))
-				_append(camera.moves, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": target}, _track(camera.moves, camera.start, cursor))
-				_append(camera.sizes, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": float(camera.start_size) if home else float(step.size)}, _track(camera.sizes, camera.start_size, cursor))
 				if step.has("orbit") or home:
 					var turned: float = _track(camera.orbits, 0.0, cursor)
 					_append(camera.orbits, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": 0.0 if home else turned + float(step.orbit)}, turned)
+				var move := {"at": cursor, "time": time, "ease": ease, "arc": 0.0}
+				var size: float = float(camera.start_size) if home else float(step.get("size", 0.0))
+				if home: move.to = camera.start
+				elif step.has("frame"):
+					var points: Array = []
+					for item: Variant in step.frame:
+						if str(item) in ROLES: points.append_array([position_of(compiled, str(item), cursor), position_of(compiled, str(item), cursor) + Vector3.UP * FOLLOW_LIFT])
+						else: points.append(origin + _point(item))
+					var fitted := frame(points, float(step.get("margin", FRAME_MARGIN)), _track(camera.orbits, 0.0, cursor + time), aspect)
+					move.to = fitted.center
+					size = fitted.size
+				elif bool(step.get("track", false)):
+					move.to = Vector3.ZERO
+					move.track = str(step.who)
+				else: move.to = position_of(compiled, str(step.who), cursor) if step.has("who") else origin + _point(step.at)
+				_append(camera.moves, move, camera_center(compiled, cursor))
+				_append(camera.sizes, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": size}, _track(camera.sizes, camera.start_size, cursor))
+			"shake":
+				var length := minf(float(step["for"]), float(BigChange.SHAKE.max_seconds))
+				camera.shakes.append({"at": cursor, "for": length, "amount": float(step.get("amount", 1.0))})
+				ends = maxf(ends, cursor + length)
 			"bars":
 				_append(screen.bars, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": 1.0 if bool(step.show) else 0.0}, _track(screen.bars, 0.0, cursor))
 			"tint":
@@ -237,6 +288,51 @@ static func position_of(compiled: Dictionary, role: String, t: float) -> Vector3
 	var actor: Dictionary = compiled.actors[role]
 	return _track(actor.moves, actor.start, t)
 
+## Where the camera looks at `t`: its newest move from where it stood, and a
+## tracking move eases onto its pip and then follows it exactly.
+static func camera_center(compiled: Dictionary, t: float) -> Vector3:
+	var camera: Dictionary = compiled.camera
+	var found: Variant = _latest(camera.moves, t)
+	if found == null: return camera.start
+	if not found.has("track"): return _segment(found, t)
+	var time := float(found.time)
+	var u := 1.0 if time <= 0.0 else clampf((t - float(found.at)) / time, 0.0, 1.0)
+	return (found.from as Vector3).lerp(position_of(compiled, str(found.track), t), _eased(found.ease, u))
+
+## The camera's centre and size (a KEEP_HEIGHT size, before ViewFit grows it)
+## that fit `points` with `margin` metres round them in a view turned `orbit`
+## degrees, `aspect` wide per unit of height. Once ViewFit has grown the size
+## for that screen, the view fits them exactly on its tighter side.
+static func frame(points: Array, margin: float, orbit: float, aspect: float) -> Dictionary:
+	var axes := view_axes(orbit)
+	var low := Vector2(INF, INF)
+	var high := Vector2(-INF, -INF)
+	var mean := Vector3.ZERO
+	for point: Vector3 in points:
+		var flat := Vector2(axes.x.dot(point), axes.y.dot(point))
+		low = Vector2(minf(low.x, flat.x), minf(low.y, flat.y))
+		high = Vector2(maxf(high.x, flat.x), maxf(high.y, flat.y))
+		mean += point / points.size()
+	var middle := (low + high) * 0.5
+	var center: Vector3 = mean + axes.x * (middle.x - axes.x.dot(mean)) + axes.y * (middle.y - axes.y.dot(mean))
+	var span := high - low + Vector2.ONE * margin * 2.0
+	var shown := maxf(FRAME_LEAST, maxf(span.y, span.x / maxf(aspect, 0.01)))
+	return {"center": center, "size": shown / ViewFit.fit(1.0, aspect)}
+
+## The camera's own axes in a view turned `orbit` degrees: x across the
+## screen, y up it (as look_at builds them from ViewFit.CAMERA_FROM).
+static func view_axes(orbit: float) -> Basis:
+	var back := (Basis(Vector3.UP, deg_to_rad(orbit)) * ViewFit.CAMERA_FROM).normalized()
+	var across := Vector3.UP.cross(back).normalized()
+	return Basis(across, back.cross(across), back)
+
+## The shake's sway at `t` (kit/big_change.gd offset(): x across, y up, as
+## shares of the view's height), zero when none is running.
+static func shake_at(compiled: Dictionary, t: float) -> Vector2:
+	var found: Variant = _latest(compiled.camera.get("shakes", []), t)
+	if found == null: return Vector2.ZERO
+	return BigChange.offset(t - float(found.at), float(found["for"])) * float(found.amount)
+
 static func prop_position(compiled: Dictionary, id: String, t: float) -> Vector3:
 	var prop: Dictionary = compiled.props[id]
 	var found: Variant = null
@@ -264,7 +360,7 @@ static func _wave(items: Array, t: float) -> float:
 ## Everything at `t` (clamped to the scene): per role its "position",
 ## "carried" (moved without walking), "face" (&"" for none), "rest", "lean"
 ## (Vector3 for set_ride_pose), "facing" (radians, or null to follow its walk);
-## the camera's "center" and "size"; per prop "position", "shown", "alpha",
+## the camera's "center", "size", "orbit" and "shake" (shake_at); per prop "position", "shown", "alpha",
 ## "spin" (radians about y); and the "caption" ("" for none).
 static func state(compiled: Dictionary, t: float) -> Dictionary:
 	t = clampf(t, 0.0, float(compiled.duration))
@@ -284,8 +380,8 @@ static func state(compiled: Dictionary, t: float) -> Dictionary:
 		result.actors[role] = {"position": position_of(compiled, role, t) + Vector3.UP * _wave(actor.bobs, t),
 			"carried": walking and bool(move.carried), "face": face.face if face != null and t < float(face.until) else &"",
 			"rest": rest.rest if rest != null else SpiritIdle.REST, "lean": Vector3(0, 0, _wave(actor.wobbles, t)), "facing": facing}
-	result.camera = {"center": _track(compiled.camera.moves, compiled.camera.start, t), "size": _track(compiled.camera.sizes, compiled.camera.start_size, t),
-		"orbit": _track(compiled.camera.get("orbits", []), 0.0, t)}
+	result.camera = {"center": camera_center(compiled, t), "size": _track(compiled.camera.sizes, compiled.camera.start_size, t),
+		"orbit": _track(compiled.camera.get("orbits", []), 0.0, t), "shake": shake_at(compiled, t)}
 	var screen: Dictionary = compiled.get("screen", {})
 	var tint: Variant = _latest(screen.get("tint_colors", []), t)
 	result.screen = {"bars": _track(screen.get("bars", []), 0.0, t), "tint": tint.color if tint != null else Color.BLACK, "tint_alpha": _track(screen.get("tints", []), 0.0, t)}
