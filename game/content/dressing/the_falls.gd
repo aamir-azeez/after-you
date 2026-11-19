@@ -16,9 +16,9 @@ const DATA := {
 	# that follows the pip across, in depth and up the tiers, from a lower
 	# angle than the game's (the same yaw), pinching out to at most 9.3 m.
 	"camera": {"follow": {"size": 5.8, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.6], "pan": [1.0, 0.7], "from": [6.0, 12.0, 20.0]}},
-	# The gorge (kit/gorge.gd): its rock wall 2.7 m behind the floors' back
+	# The gorge (kit/gorge.gd): rock under the raised pools, its wall 2.7 m behind the floors' back
 	# edge, open where each falls pours through, and the rainbows.
-	"gorge": {
+	"gorge": {"base": true,
 		"wall": {"from": -1300, "to": 14790, "front": -900, "rise": 500,
 			"open": [[-900, -300], [3150, 3700], [7800, 8960], [10300, 10820], [13740, 14290]]},
 		"rainbows": [{"at": [8380, 690, -880], "radius": 380}, {"at": [3420, 300, -880], "radius": 210}, {"at": [-600, 140, -400], "radius": 200}]},

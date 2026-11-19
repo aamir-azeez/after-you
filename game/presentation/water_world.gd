@@ -129,13 +129,15 @@ func _deck_walls(island: Dictionary, raised: Node3D) -> void:
 	wall.name = str(island.id) + "Wall"
 	# One weathered course on the face toward the camera, just under the deck.
 	box(Vector3(size.x - 0.012, 0.03, 0.02), color.darkened(0.18), Vector3(wall.position.x, -0.34, float(r[3]) / 100.0 - 0.005), raised)
-	# Block courses down the face, and the water marks round every face.
+	# Block courses down the face (the water block's "courses" apart, 0.28 m by
+	# default; 0 for plain rock faces), and the water marks round every face.
+	var course := float(waters.water.get("courses", 0.28))
 	var y := -0.62
-	while y > bottom + 0.08:
+	while course > 0.0 and y > bottom + 0.08:
 		var clear := true
 		for level: float in waters.mark_levels().values(): clear = clear and absf(height + y - level) > 0.06
 		if clear: box(Vector3(size.x + 0.016, 0.012, size.z + 0.016), color.darkened(0.10), Vector3(wall.position.x, y, wall.position.z), raised).name = "WallCourse"
-		y -= 0.28
+		y -= course
 	waters.mark_bands(Vector3(wall.position.x, 0, wall.position.z) + Vector3(0, height, 0), Vector2(size.x, size.z), bed, height - 0.20, raised, height)
 
 func _surface_height(id: String) -> float:
