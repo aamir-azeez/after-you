@@ -1,9 +1,9 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "cf10e133354056d880a19ec3743d8ccf547601ba6028707c0faf82477d7b0cc1",
+	"checkpoint_hash": "e5f89e2c658358cac15e89f4a19278c05ada9b294ce18cd22ff980263a7777ad",
 	"completed_stage_id": "",
-	"definition_hash": "e4ac2cb5347635cef7d0b57d348a9b57f4205f229422ed92c80c561bcd081af4",
+	"definition_hash": "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b",
 	"level_id": "the-falls",
 	"level_version": 1,
 	"mechanisms": {
@@ -17,8 +17,8 @@
 				"holder": "",
 				"spot": "post",
 				"surface_id": "isle",
-				"x": 440,
-				"z": 310
+				"x": 1584,
+				"z": 434
 			}
 		},
 		"latched_bridges": [],
@@ -28,16 +28,16 @@
 	"next_stage_id": "foot-of-the-falls",
 	"players": {
 		"p0": {
-			"height": 48,
+			"height": 120,
 			"surface_id": "mill",
-			"x": 150,
-			"z": -200
+			"x": 390,
+			"z": -280
 		},
 		"p1": {
 			"height": 0,
 			"surface_id": "beach",
-			"x": 150,
-			"z": 200
+			"x": 390,
+			"z": 280
 		}
 	},
 	"previous_checkpoint_hash": "",

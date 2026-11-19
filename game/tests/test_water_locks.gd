@@ -114,8 +114,9 @@ func _small_plans() -> void:
 	spill.present({"west": 0.3, "east": 0.3}, true)
 	_check(sheet != null and not sheet.visible, "No water falls while both sides stand under the lip")
 	holder.free()
-	# The same spillway in the "falls" look (rules 16's waterfall): a thicker
-	# sheet, and foam and mist on the pool below, only while water falls.
+	# The same spillway in the "falls" look (rules 16's waterfall): water
+	# pouring over the lip and landing in foam, and mist on the pool below,
+	# only while water falls.
 	var falls: WaterLocks = WaterLocks.new()
 	falls.spill_style = "falls"
 	var pool := Node3D.new()
@@ -124,8 +125,8 @@ func _small_plans() -> void:
 	var spray := falls.find_child("FallsSpray", true, false) as Node3D
 	var thick := falls.find_child("SpillSheet", true, false) as MeshInstance3D
 	falls.present(apart, true)
-	_check(spray != null and spray.visible and spray.get_child_count() >= 4 and (thick.mesh as BoxMesh).size.z + (thick.mesh as BoxMesh).size.x > 0.06, "A waterfall foams and mists over the pool while water falls")
-	_check(spray != null and is_equal_approx(spray.position.y, 0.2), "Its foam lies on the lower water")
+	_check(spray != null and spray.visible and spray.get_child_count() >= 2 and thick.visible and thick.mesh is ArrayMesh, "A waterfall pours over its lip and mists over the pool while water falls")
+	_check(absf(thick.position.y + thick.get_aabb().position.y - 0.2) < 0.05, "Its pour lands in foam on the lower water")
 	falls.present({"west": 0.3, "east": 0.3}, true)
 	_check(spray != null and not spray.visible, "No foam or mist while no water falls")
 	pool.free()

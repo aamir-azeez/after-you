@@ -12,27 +12,27 @@ const DATA := {
 	"wall_top": 0.86,
 	# 4 cm, so no water face ends on a sea wall's water mark where two reaches meet.
 	"inset": 4,
-	# PROTOTYPE (train/falls-rethink-proto): one body per tier of the climb,
-	# on the spread map (core/journey/proto_spread.gd: open water 5 times wider
-	# in x, 1.4 times in z, heights 2.5 times plus each tier's base), so the water steps down
-	# the gorge through a pour at every tier's lip. The window is the water's
-	# own outline, so no wall closes it off from the camera.
-	"bounds": [-1300, -800, 13800, 800],
+	# One body per tier of the climb, each with its own pebbled bed ("bed",
+	# metres) about 0.6 to 0.7 m under its lowest level, so the water steps down
+	# the gorge through a pour at every tier's lip and a high pool is not water
+	# down to the mill pool's floor. The window is the water's own outline, so
+	# no wall closes it off from the camera.
+	"bounds": [-1300, -800, 14790, 800],
 	"bodies": [
 		{"id": "pool", "node": "MillPool", "selector": "pool", "rest": "HIGH",
-			"rects": [[-1300, -800, 1800, 800]],
+			"rects": [[-1300, -800, 2820, 800]], "bed": -0.70,
 			"levels": {"LOW": -0.36, "HIGH": -0.06}, "color": Color(0.27, 0.47, 0.50, 0.84)},
 		{"id": "race", "node": "MillRace", "selector": "", "rest": "still",
-			"rects": [[1800, -800, 4300, 800]],
-			"levels": {"still": 1.85}, "color": Color(0.27, 0.47, 0.50, 0.84)},
+			"rects": [[2820, -800, 5970, 800]], "bed": 0.85,
+			"levels": {"still": 1.45}, "color": Color(0.27, 0.47, 0.50, 0.84)},
 		{"id": "gorge", "node": "GorgeWater", "selector": "", "rest": "still",
-			"rects": [[4300, -800, 8650, 800]],
-			"levels": {"still": 5.05}, "color": Color(0.25, 0.45, 0.49, 0.86)},
+			"rects": [[5970, -800, 10080, 800]], "bed": 4.25,
+			"levels": {"still": 4.85}, "color": Color(0.25, 0.45, 0.49, 0.86)},
 		{"id": "stream", "node": "UpperStream", "selector": "stream", "rest": "HIGH",
-			"rects": [[8650, -800, 11560, 800]],
-			"levels": {"LOW": 7.75, "MID": 8.25, "HIGH": 8.80}, "color": Color(0.28, 0.50, 0.52, 0.84)},
+			"rects": [[10080, -800, 12550, 800]], "bed": 7.10,
+			"levels": {"LOW": 7.75, "MID": 8.25, "HIGH": 8.65}, "color": Color(0.28, 0.50, 0.52, 0.84)},
 		{"id": "top", "node": "TopPool", "selector": "", "rest": "still",
-			"rects": [[11560, -800, 13800, 800]],
+			"rects": [[12550, -800, 14790, 800]], "bed": 8.35,
 			"levels": {"still": 9.00}, "color": Color(0.30, 0.52, 0.55, 0.84)},
 	],
 	"marks": {"LOW": Color("4d5b40"), "HIGH": Color("5f6a4c")},

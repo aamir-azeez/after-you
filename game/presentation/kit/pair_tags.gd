@@ -431,7 +431,7 @@ func _look(faint: Vector3) -> ShaderMaterial:
 func _plaque(pair: Dictionary) -> void:
 	var post: Dictionary = _world.call(&"_pair_receiver_post", pair.entity)
 	var foot: Vector3 = pair.anchor
-	var facing := ViewFit.CAMERA_FROM.normalized()
+	var facing: Vector3 = (_world.call(&"camera_from") if _world.has_method(&"camera_from") else ViewFit.CAMERA_FROM).normalized()
 	var lean := atan2(Vector2(facing.x, facing.z).length(), facing.y)
 	var side := TAG * PLAQUE_SCALE * PLAQUE_MARGIN
 	var radius := float(post.radius)

@@ -11,8 +11,8 @@ extends RefCounted
 ##       posts at both ends. Wound in (shut), nothing spans the gap.
 ##   "falls_path": the path behind a waterfall (falls_path). Wet flagstones
 ##       with a mossy lip, laid while the water gate holds the falls back;
-##       while the falls run, the world hangs their water over it
-##       (kit/new_pieces.gd), so the closed path shows why.
+##       while the falls run, their water pours over it off a rock lip
+##       (kit/pieces/falls_curtain.gd), so the closed path shows why.
 ##   "stones": sinking stones (sinking_stones). Round flat stones, wet at the
 ##       rim, laid across the gap one per pip's step. Under water (shut) they
 ##       are gone.

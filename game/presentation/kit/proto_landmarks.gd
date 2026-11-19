@@ -5,9 +5,6 @@ extends RefCounted
 ##   marsh(): landmarks looming half seen out of the fog (a sunken boat, an
 ##            old leaning windmill, a hut on stilts, dead trees, reed beds),
 ##            paled toward the fog the higher they stand.
-##   falls(): solid rock under each raised reach so the tiers read as cliff,
-##            a long band of the Blender cliff's rock along the gorge's back,
-##            and rainbows in the spray of the great falls.
 ## World metres on the spread maps (core/journey/proto_spread.gd).
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SoftMist = preload("res://presentation/kit/soft_mist.gd")
@@ -19,7 +16,6 @@ const BARK := Color("4a443b")
 const ROOF := Color("6e5a48")
 const REED := Color("8a8a56")
 const REED_HEAD := Color("5d4a33")
-const CLIFF := Color("6c7262")
 
 static func marsh(root: Node3D) -> void:
 	var holder := Node3D.new()
@@ -34,52 +30,6 @@ static func marsh(root: Node3D) -> void:
 		_dead_tree(holder, at, int(at.x) % 3)
 	for at: Vector3 in [Vector3(4, 0, 7.4), Vector3(23, 0, -8.2), Vector3(35, 0, 8.0), Vector3(52, 0, -8.0), Vector3(80, 0, 7.6), Vector3(87, 0, 5.9), Vector3(91, 0, 8.1), Vector3(99, 0, -8.0)]:
 		_reeds(holder, at, 22)
-
-static func falls(world: Node3D) -> void:
-	var root: Node3D = world.terrain
-	var holder := Node3D.new()
-	holder.name = "ProtoRainbows"
-	root.add_child(holder)
-	# Solid rock under every raised reach, up to just under its water: the
-	# tiers read as cliff, each pour falls down a rock face, and nothing
-	# shows through nine metres of clear water. (The full build gives each
-	# reach its own bed in the water kit.)
-	var seabed: float = world.waters.seabed()
-	for body: Dictionary in world.waters.water.get("bodies", []):
-		var low := INF
-		for level: Variant in body.levels.values(): low = minf(low, float(level))
-		if low < 0.5: continue
-		for r: Array in body.rects:
-			var size := Vector3((float(r[2]) - float(r[0])) / 100.0, low - 0.3 - seabed, (float(r[3]) - float(r[1])) / 100.0)
-			var centre := Vector3((float(r[0]) + float(r[2])) / 200.0, seabed + size.y * 0.5, (float(r[1]) + float(r[3])) / 200.0)
-			Primitives.mesh_node(Primitives.box_mesh(size), Primitives.shared_material(CLIFF), centre, holder).name = "TierRock"	# The gorge's back wall: one long band of the falls' layered, mossy rock
-	# (the Blender cliff's cheeks, big) behind every tier, standing on each
-	# reach's water, open where the great falls pour through it.
-	var Models: Script = load("res://presentation/kit/models.gd")
-	var Props: Script = load("res://presentation/kit/props.gd")
-	var gaps := [Vector2(52.0, 72.0), Vector2(22.5, 29.5), Vector2(99.5, 110.5)]
-	var x := -12.0
-	var index := 0
-	while x < 138.0:
-		var open := gaps.any(func(g: Vector2) -> bool: return x > g.x and x < g.y)
-		if not open:
-			var level := 0.0
-			for body: Dictionary in world.waters.water.get("bodies", []):
-				for r: Array in body.rects:
-					if x * 100.0 >= float(r[0]) and x * 100.0 < float(r[2]):
-						level = 99.0
-						for v: Variant in body.levels.values(): level = minf(level, float(v))
-			var size := 3.4 + 0.9 * fposmod(float(index) * 0.618, 1.0)
-			var part := "falls_cheek_left" if index % 2 == 0 else "falls_cheek_right"
-			var rock: Node3D = Models.still(Props.FALLS_MODEL, part, Props.FALLS_COLORS, holder)
-			rock.position = Vector3(x, level - 0.4, -8.4 - 1.0 * fposmod(float(index) * 0.37, 1.0))
-			rock.scale = Vector3.ONE * size
-			rock.rotation.y = 0.35 * (fposmod(float(index) * 0.73, 1.0) - 0.5)
-		x += 3.6
-		index += 1	# Rainbows hang in the spray in front of the great falls and the mill falls.
-	_rainbow(holder, Vector3(62.0, 5.6, -14.0), 6.5)
-	_rainbow(holder, Vector3(26.0, 2.2, -11.8), 3.2)
-	_rainbow(holder, Vector3(-6.0, -0.2, -3.4), 2.4)
 
 ## A dark silhouette colour, paled toward the fog only where it stands above the fog's sheets (m).
 static func _faded(color: Color, y: float) -> Color:
@@ -175,40 +125,3 @@ static func _reeds(parent: Node3D, at: Vector3, count: int) -> void:
 		reed.scale = Vector3(1, tall, 1)
 		reed.rotation.z = 0.12 * sin(angle * 3.0)
 		Primitives.mesh_node(head, Primitives.shared_material(REED_HEAD), p + Vector3(0.12 * sin(angle * 3.0) * tall, tall - 0.05, 0), bed)
-
-## A soft rainbow arc of `radius` (m) standing in the spray, facing the camera.
-static func _rainbow(parent: Node3D, centre: Vector3, radius: float) -> void:
-	var tool := SurfaceTool.new()
-	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var bands := [Color(0.95, 0.42, 0.38), Color(0.98, 0.72, 0.36), Color(0.98, 0.93, 0.48), Color(0.52, 0.86, 0.52), Color(0.45, 0.66, 0.95), Color(0.62, 0.48, 0.88)]
-	var width := radius * 0.035
-	var segments := 28
-	for band in range(bands.size()):
-		var r0 := radius - width * band
-		var r1 := r0 - width
-		var color: Color = bands[band]
-		for index in range(segments):
-			var a0 := PI * (0.1 + 0.8 * float(index) / segments)
-			var a1 := PI * (0.1 + 0.8 * float(index + 1) / segments)
-			var fade0 := sin((float(index) / segments) * PI) * 0.42
-			var fade1 := sin((float(index + 1) / segments) * PI) * 0.42
-			var quad := [Vector3(cos(a0) * r0, sin(a0) * r0, 0), Vector3(cos(a1) * r0, sin(a1) * r0, 0), Vector3(cos(a1) * r1, sin(a1) * r1, 0), Vector3(cos(a0) * r1, sin(a0) * r1, 0)]
-			var fades := [fade0, fade1, fade1, fade0]
-			for corner: int in [0, 1, 2, 0, 2, 3]:
-				tool.set_color(Color(color.r, color.g, color.b, fades[corner]))
-				tool.add_vertex(quad[corner])
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.render_priority = 2
-	var arc := MeshInstance3D.new()
-	arc.mesh = tool.commit()
-	arc.material_override = mat
-	arc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	arc.position = centre
-	# Face the camera's view (ViewFit.CAMERA_FROM is (3, 13, 10)): turned to it
-	# across, and tipped back so the arc stands up on screen.
-	arc.rotation = Vector3(-0.35, atan2(3.0, 10.0), 0)
-	parent.add_child(arc)

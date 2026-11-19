@@ -99,6 +99,8 @@ static var _found: Dictionary = {}
 ## Opening meshes and the door look, kept for the session; they go before
 ## the renderer stops (release_cached), not when this script is freed.
 static var _opening_meshes: Dictionary = {}
+## Pour meshes by Vector2(width, drop), m (_pour_mesh).
+static var _pours: Dictionary = {}
 static var _door_material_cache: StandardMaterial3D
 
 ## The pieces, in build order: {"kind", "a", "b", "along_x", "line", "from",
@@ -115,6 +117,8 @@ var frames := 0
 var _kinds: Dictionary = {}
 var _heights: Dictionary = {}
 var _seabed := 0.0
+## Each water body's own floor (m), from the plan's "beds" (WaterBodies.bed).
+var _beds: Dictionary = {}
 ## Per opening: {"run", "door": its MeshInstance3D, "y": target top, "up":
 ## whether the levels want it up, "low": its sunk top, "dipped": whether a
 ## spirit stands in its mouth, "easing": whether it travels at DIP_TRAVEL}
@@ -132,6 +136,7 @@ var spill_style := "trickle"
 func build(plan: Dictionary, parent: Node3D) -> void:
 	name = "WaterLocks"
 	_seabed = float(plan.seabed)
+	_beds = plan.get("beds", {})
 	for area: Dictionary in plan.areas:
 		_kinds[str(area.id)] = str(area.kind)
 		_heights[str(area.id)] = float(area.get("height", 0.0))
@@ -498,9 +503,10 @@ func _build_wall(run: Dictionary, top: float, stone: Node3D) -> void:
 	_stone_box(run, top, top + 0.045, _width(WALL) + 0.05, COPING, "LockWallCoping", stone)
 
 ## A stone lip just under the higher water, and a thin sheet falling from it
-## to the lower side.
+## to the lower side. A "falls" spillway between two pools with their own beds
+## is a step of the gorge's rock instead (_build_step).
 func _build_spill(run: Dictionary, stone: Node3D) -> void:
-	_stone_box(run, float(run.base), float(run.lip), _width(SPILL), STONE, "Spillway", stone)
+	if spill_style != "falls" or not _build_step(run, stone): _stone_box(run, float(run.base), float(run.lip), _width(SPILL), STONE, "Spillway", stone)
 	var length := _length(run) - 0.04
 	var sheet := Primitives.mesh_node(Primitives.box_mesh(Vector3(length, 1.0, 0.012) if run.along_x else Vector3(0.012, 1.0, length)), Primitives.shared_material(SHEET, 0.3), Vector3.ZERO, self)
 	sheet.name = "SpillSheet"
@@ -521,10 +527,38 @@ func _build_spill(run: Dictionary, stone: Node3D) -> void:
 
 ## Below this drop (m) a spillway is a short run of rapids, not a pour.
 const RAPIDS_BELOW := 0.35
+## The rock a pool's lip stands on: the gorge rock's step (kit/gorge.gd's
+## model), 2 m wide and 1 m tall as modelled, tiled along the run.
+const STEP_MODEL := "res://assets/models/gorge_rock.glb"
+const STEP_WIDE := 2.0
+
+## The rock face under a "falls" spillway between two pools on their own beds
+## (the water kit's "bed"): from the lower pool's bed up to the lip, facing the
+## lower pool, so the pour falls down rock and no water side shows under it.
+## False (nothing built) when the two pools share a bed.
+func _build_step(run: Dictionary, stone: Node3D) -> bool:
+	var a := float(_beds.get(str(run.a), _seabed))
+	var b := float(_beds.get(str(run.b), _seabed))
+	if is_equal_approx(a, b): return false
+	var Models: Script = load("res://presentation/kit/models.gd")
+	var Props: Script = load("res://presentation/kit/props.gd")
+	var foot := minf(a, b)
+	var toward_b := Vector3(0, 0, 1) if run.along_x else Vector3(1, 0, 0)
+	var lower_side := toward_b if b < a else -toward_b
+	var length := _length(run)
+	var count := maxi(1, roundi(length / STEP_WIDE))
+	for index in range(count):
+		var rock: Node3D = Models.still(STEP_MODEL, "tier_step", Props.FALLS_COLORS, stone)
+		rock.name = "SpillStep"
+		rock.position = _on_run(run, (float(index) + 0.5) * length / float(count) * 100.0, float(run.lip)) + lower_side * (_width(SPILL) * 0.5)
+		rock.basis = Basis.looking_at(-lower_side, Vector3.UP).scaled(Vector3(length / float(count) / STEP_WIDE * 1.04, maxf(float(run.lip) - foot, 0.1), 1.0))
+	return true
 
 ## A pour `length` wide falling `fall` (m) from its lip at 0 toward +z, in the
 ## falls' running-water format (kit/props.gd _falls_strip and _falls_foam).
 static func _pour_mesh(length: float, fall: float) -> ArrayMesh:
+	var key := Vector2(snappedf(length, 0.01), snappedf(fall, 0.01))
+	if _pours.has(key): return _pours[key]
 	var Props: Script = load("res://presentation/kit/props.gd")
 	var tool := SurfaceTool.new()
 	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -537,19 +571,23 @@ static func _pour_mesh(length: float, fall: float) -> ArrayMesh:
 		falling = [0.0, 0.35, 0.9, 0.75, 0.3]
 		reach = 0.9
 	else:
-		# A pour: flat to the lip, rolling over it, then curving out as it drops.
-		points = [Vector3(0, 0.03, -0.6), Vector3(0, 0.03, -0.02), Vector3(0, -0.04, 0.09)]
-		falling = [0.0, 0.0, 0.5]
-		var throw := 0.22 + 0.16 * sqrt(fall)
-		for step in range(1, 7):
-			var t := float(step) / 6.0
-			points.append(Vector3(0, -fall * t, 0.09 + throw * sqrt(t)))
+		# A pour: flat to the lip, rolling over its round edge, then thrown out
+		# and curving down as it falls (a parabola: out as the root of the drop),
+		# so even a tall drop reads as water arcing off a lip, not a chute.
+		points = [Vector3(0, 0.03, -0.6), Vector3(0, 0.03, -0.04), Vector3(0, 0.0, 0.06), Vector3(0, -0.07, 0.14)]
+		falling = [0.0, 0.0, 0.3, 0.6]
+		var throw := 0.35 + 0.32 * sqrt(fall)
+		for step in range(1, 9):
+			var t := float(step) / 8.0
+			points.append(Vector3(0, -0.07 - (fall - 0.07) * t, 0.14 + throw * sqrt(t)))
 			falling.append(1.0)
-		reach = 0.09 + throw
+		reach = 0.14 + throw
 	Props._falls_strip(tool, length, points, falling)
 	var foam_out := 0.3 + 0.25 * minf(fall, 2.0)
 	Props._falls_foam(tool, Vector3(0, -fall + 0.03, reach + foam_out * 0.5), Vector2(length * 0.5 + 0.15, foam_out))
-	return tool.commit()
+	if _pours.is_empty(): SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
+	_pours[key] = tool.commit()
+	return _pours[key]
 
 ## A waterfall's foam and mist (spill_style "falls"), a row along the run's
 ## length centred on its own origin, placed at the pool below each present.
@@ -615,10 +653,11 @@ static func _door_material() -> StandardMaterial3D:
 		SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
 	return _door_material_cache
 
-## Lets go of the kept opening meshes and door look (SessionRelease calls
+## Lets go of the kept opening meshes, pours and door look (SessionRelease calls
 ## this at shutdown).
 static func release_cached() -> void:
 	_opening_meshes.clear()
+	_pours.clear()
 	_door_material_cache = null
 
 ## One opening (top at y 0, hanging down `height`, centred on x 0 along x):

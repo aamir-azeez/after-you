@@ -262,11 +262,11 @@
 		},
 		"the-falls@1": {
 			"definition_fixture": "journey/the-falls-definition.json",
-			"definition_hash": "e4ac2cb5347635cef7d0b57d348a9b57f4205f229422ed92c80c561bcd081af4",
+			"definition_hash": "31c50a815a1a8c70a62c67234854ed36cbeb4044c871da0ca5bac49058cf7f8b",
 			"family": "journey",
 			"flag": "THE_FALLS_CHAPTER_ENABLED",
 			"hard": false,
-			"initial_checkpoint_hash": "cf10e133354056d880a19ec3743d8ccf547601ba6028707c0faf82477d7b0cc1",
+			"initial_checkpoint_hash": "e5f89e2c658358cac15e89f4a19278c05ada9b294ce18cd22ff980263a7777ad",
 			"initial_fixture": "journey/the-falls-initial-checkpoint.json",
 			"key": "the-falls@1",
 			"level_id": "the-falls",

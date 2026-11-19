@@ -337,7 +337,7 @@ func _stage(world: Node3D, key: String, view: Dictionary) -> int:
 		_check(basis.y.z > 0.9 and (-basis.z).y > 0.9, "%s: the sign's tile faces the camera with its letter upright" % where)
 	# Each receiver's letter on one plaque on its own post, facing the camera,
 	# its letter upright, lit for every gate the receiver works.
-	var facing := PairTags.ViewFit.CAMERA_FROM.normalized()
+	var facing: Vector3 = world.camera_from().normalized() if world.has_method("camera_from") else PairTags.ViewFit.CAMERA_FROM.normalized()
 	for pair: Dictionary in wired:
 		if pair.group != PairTags.PLAQUED: continue
 		var plaques: Array = world.terrain.find_children("PairTagPlaque_" + str(pair.control), "Node3D", false, false)

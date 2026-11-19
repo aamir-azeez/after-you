@@ -446,7 +446,7 @@ static func _path(node: MeshInstance3D, world: Node3D) -> String:
 	var parent := node.get_parent()
 	var size: Vector3 = (node.mesh as BoxMesh).size if node.mesh is BoxMesh else Vector3((node.mesh as CylinderMesh).bottom_radius, (node.mesh as CylinderMesh).height, (node.mesh as CylinderMesh).top_radius) if node.mesh is CylinderMesh else node.mesh.get_aabb().size
 	var at := (world.global_transform.affine_inverse() * node.global_transform).origin
-	return "%s/%s %s %.3fx%.3fx%.3f #%s at (%.2f, %.3f, %.2f)" % [_label(parent) if parent != world.terrain else "", _label(node), "box" if node.mesh is BoxMesh else "cylinder" if node.mesh is CylinderMesh else "mesh", size.x, size.y, size.z, (node.material_override as StandardMaterial3D).albedo_color.to_html(false), at.x, at.y, at.z]
+	return "%s/%s %s %.3fx%.3fx%.3f #%s at (%.2f, %.3f, %.2f)" % [_label(parent) if parent != world.terrain else "", _label(node), "box" if node.mesh is BoxMesh else "cylinder" if node.mesh is CylinderMesh else "mesh", size.x, size.y, size.z, (node.material_override as StandardMaterial3D).albedo_color.to_html(false) if node.material_override is StandardMaterial3D else "shader", at.x, at.y, at.z]
 
 ## A mesh's opaque look ("" for a see-through one, which writes no depth).
 static func _look(node: MeshInstance3D) -> String:

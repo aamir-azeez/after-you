@@ -82,7 +82,9 @@ const NUDGE := 0.03
 ## its anchor's card within this height (metres on screen).
 const NECK := 0.05
 ## The journey worlds' camera offset, used to lay out pills before a camera
-## exists (see cooperative_world._frame_camera).
+## exists (see cooperative_world._frame_camera). A world whose level stands
+## its camera elsewhere (camera_from(), kit/view_fit.gd: a lower follow angle)
+## gives its bubbles that view instead (`view`); the static helpers take it too.
 const VIEW := Vector3(3, 13, 10)
 ## The body's z scale carries the tail's sideways offset (the quad is flat,
 ## so z scale is otherwise unused): scale.z = TAIL_CODE + offset in metres.
@@ -211,6 +213,8 @@ var anchor := Vector3.ZERO
 var _right := Vector3.RIGHT
 var _up := Vector3.UP
 var _forward := Vector3.FORWARD
+## The view this bubble lays out on: its world's camera_from(), else VIEW.
+var view := VIEW
 ## How far the body is raised to clear a spirit (metres); the tail stretches.
 var lift := 0.0
 ## How far the body slides sideways on screen (metres, screen right) to stand
@@ -302,7 +306,8 @@ func _build(parent: Node3D, at: Vector3, options: Array, shown: Array[String], s
 	anchor = at
 	values = options.duplicate()
 	parent.add_child(self)
-	_axes_from(VIEW)
+	view = world_view(parent)
+	_axes_from(view)
 	var font := shared_font()
 	var sizes: Array[Vector2] = []
 	var total := -GAP
@@ -321,7 +326,7 @@ func _build(parent: Node3D, at: Vector3, options: Array, shown: Array[String], s
 	body = MeshInstance3D.new()
 	body.name = "BubbleBody"
 	body.mesh = _shared_body_mesh()
-	body.material_override = body_material(false, false)
+	body.material_override = body_material(false, false, view)
 	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# The quad's bounds hold the settled tail; a stretched one reaches further.
 	body.extra_cull_margin = MAX_TAIL
@@ -481,13 +486,13 @@ func tail_tip(camera: Camera3D) -> Vector2:
 func plane_rect(settled: bool = false) -> Rect2:
 	var center := body.global_position
 	if settled and get_parent() is Node3D: center -= global_position - (get_parent() as Node3D).global_position
-	var at := plane_point(center)
+	var at := plane_point(center, view)
 	return Rect2(at.x - body.scale.x * 0.5, at.y - body.scale.y * 0.5 + TAIL * 0.5, body.scale.x, body.scale.y)
 
 ## Where the tail's tip lands on the journey view plane, as the shader draws
 ## it: the anchor's point, however the body is lifted or bobbing.
 func plane_tail() -> Vector2:
-	return plane_point(body.global_position) + Vector2(body.scale.z - TAIL_CODE, _tip_drop())
+	return plane_point(body.global_position, view) + Vector2(body.scale.z - TAIL_CODE, _tip_drop())
 
 ## Everything the bubble covers on the view plane: plane_rect grown to hold
 ## the whole tail down to its tip, which stays on the anchor either way.
@@ -540,24 +545,24 @@ static func _parts(a: Vector2, b: Vector2, c: Vector2, axis: Vector2, box: Rect2
 ## How far a point lies behind the upright card through `anchor` (metres
 ## along the journey view; negative: in front), where both meet on screen:
 ## the card is the plane a tail stands on (world up and screen right).
-static func behind_card(point: Vector3, anchor: Vector3) -> float:
-	var forward := -VIEW.normalized()
+static func behind_card(point: Vector3, anchor: Vector3, view: Vector3 = VIEW) -> float:
+	var forward := -view.normalized()
 	var normal := forward.cross(Vector3.UP).normalized().cross(Vector3.UP)
 	return (point - anchor).dot(normal) / forward.dot(normal)
 
 ## How much nearer the camera a point on an upright card lies per metre it
 ## stands higher on screen.
-static func card_slope() -> float:
-	return VIEW.normalized().y / screen_up().y
+static func card_slope(view: Vector3 = VIEW) -> float:
+	return view.normalized().y / screen_up(view).y
 
 ## A world point on the journey view plane (see plane_rect).
-static func plane_point(world: Vector3) -> Vector2:
-	var right := (-VIEW.normalized()).cross(Vector3.UP).normalized()
-	return Vector2(world.dot(right), -world.dot(screen_up()))
+static func plane_point(world: Vector3, view: Vector3 = VIEW) -> Vector2:
+	var right := (-view.normalized()).cross(Vector3.UP).normalized()
+	return Vector2(world.dot(right), -world.dot(screen_up(view)))
 
 ## The journey camera's screen-up direction in world space.
-static func screen_up() -> Vector3:
-	var forward := -VIEW.normalized()
+static func screen_up(view: Vector3 = VIEW) -> Vector3:
+	var forward := -view.normalized()
 	var right := forward.cross(Vector3.UP).normalized()
 	return right.cross(forward).normalized()
 
@@ -570,7 +575,7 @@ func sync() -> void:
 	if labels.is_empty() or not is_instance_valid(body): return
 	# The fixed journey view, never the live camera: placement must not depend
 	# on the viewport, the platform or how many frames ran before framing.
-	_axes_from(VIEW)
+	_axes_from(view)
 	var row := 0.0
 	for label: Label3D in labels:
 		row += (label.get_meta("backing") as Node3D).position.dot(_up)
@@ -601,12 +606,20 @@ func sync() -> void:
 	var light := true
 	for label: Label3D in labels:
 		if label.modulate.get_luminance() <= 0.55: light = false
-	var material := body_material(light, labels[0].no_depth_test)
+	var material := body_material(light, labels[0].no_depth_test, view)
 	if body.material_override != material: body.material_override = material
 
 func _onto_row(node: Node3D, row: float) -> void:
 	var off := row - node.position.dot(_up)
 	if absf(off) > 0.002 and absf(_up.z) > 0.1: node.position.z += off / _up.z
+
+## The view of the world `node` stands in: the first ancestor that says where
+## its camera stands (camera_from()), else VIEW.
+static func world_view(node: Node) -> Vector3:
+	while node != null:
+		if node.has_method(&"camera_from"): return node.call(&"camera_from")
+		node = node.get_parent()
+	return VIEW
 
 func _axes_from(offset: Vector3) -> void:
 	_forward = -offset.normalized()
@@ -636,8 +649,9 @@ static func _release_at_exit() -> void:
 ## One of four shared body materials: cream or deep teal, and drawn over
 ## scenery or depth tested. Over-scenery bodies sit just under the
 ## pills of worlds that draw pills over scenery (render priority 3 and up).
-static func body_material(light_text: bool, over: bool) -> ShaderMaterial:
-	var key := int(light_text) * 2 + int(over)
+static func body_material(light_text: bool, over: bool, view: Vector3 = VIEW) -> ShaderMaterial:
+	var key: Variant = int(light_text) * 2 + int(over)
+	if view != VIEW: key = [key, view]
 	var cached: ShaderMaterial = _bodies.get(key)
 	if cached != null: return cached
 	var shader: Shader = _shaders.get(over)
@@ -655,7 +669,7 @@ static func body_material(light_text: bool, over: bool) -> ShaderMaterial:
 	cached.set_shader_parameter("radius", RADIUS)
 	cached.set_shader_parameter("tail", TAIL)
 	cached.set_shader_parameter("tail_code", TAIL_CODE)
-	cached.set_shader_parameter("card_slope", card_slope())
+	cached.set_shader_parameter("card_slope", card_slope(view))
 	cached.set_shader_parameter("neck", NECK)
 	cached.render_priority = 2 if over else 0
 	_bodies[key] = cached

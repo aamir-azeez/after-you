@@ -2,13 +2,13 @@
 	"bridges": [
 		{
 			"from_surface": "mill",
-			"height_cm": 48,
+			"height_cm": 120,
 			"id": "footbridge",
 			"rect_cm": [
-				300,
-				-250,
-				400,
-				-154
+				780,
+				-350,
+				1480,
+				-216
 			],
 			"to_surface": "ledge"
 		},
@@ -17,133 +17,157 @@
 			"height_cm": 0,
 			"id": "stones",
 			"rect_cm": [
-				300,
-				150,
-				400,
-				246
+				780,
+				210,
+				1480,
+				344
 			],
 			"to_surface": "isle"
 		},
 		{
 			"from_surface": "yard",
-			"height_cm": 48,
+			"height_cm": 320,
 			"id": "walkway",
 			"rect_cm": [
-				1600,
-				-50,
-				1700,
-				46
+				4920,
+				-70,
+				5120,
+				64
 			],
 			"to_surface": "deck"
 		},
 		{
 			"from_surface": "wtop",
 			"hands": true,
-			"height_cm": 144,
+			"height_cm": 810,
 			"id": "rope-bridge",
 			"rect_cm": [
-				2800,
-				-350,
-				3200,
-				-254
+				7380,
+				-471,
+				9380,
+				-375
 			],
 			"to_surface": "etop"
 		},
 		{
 			"from_surface": "wledge",
-			"height_cm": 48,
+			"height_cm": 570,
 			"id": "behind",
 			"rect_cm": [
-				2400,
-				250,
-				3200,
-				346
+				6670,
+				369,
+				9380,
+				465
 			],
 			"to_surface": "eledge"
 		},
 		{
 			"from_surface": "look",
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "log",
 			"rect_cm": [
-				3700,
-				-50,
-				3796,
-				150
+				10504,
+				-70,
+				10600,
+				210
 			],
 			"to_surface": "ledge-4"
 		},
 		{
 			"from_surface": "look",
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "s1",
 			"rect_cm": [
-				3900,
-				-350,
-				3980,
-				-270
+				10780,
+				-490,
+				10960,
+				-378
 			],
 			"to_surface": "rock"
 		},
 		{
 			"from_surface": "look",
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "s2",
 			"rect_cm": [
-				3980,
-				-350,
-				4060,
-				-270
+				10960,
+				-490,
+				11140,
+				-378
+			],
+			"to_surface": "rock"
+		},
+		{
+			"from_surface": "look",
+			"height_cm": 940,
+			"id": "s3",
+			"rect_cm": [
+				11140,
+				-490,
+				11320,
+				-378
+			],
+			"to_surface": "rock"
+		},
+		{
+			"from_surface": "look",
+			"height_cm": 940,
+			"id": "s4",
+			"rect_cm": [
+				11320,
+				-490,
+				11500,
+				-378
 			],
 			"to_surface": "rock"
 		},
 		{
 			"from_surface": "rock",
 			"hands": true,
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "leap",
 			"rect_cm": [
-				4160,
-				-350,
-				4260,
-				-270
+				11650,
+				-490,
+				11790,
+				-378
 			],
 			"to_surface": "big"
 		},
 		{
 			"from_surface": "ledge-4",
 			"hands": true,
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "rope-span",
 			"rect_cm": [
-				3900,
-				200,
-				4260,
-				296
+				10780,
+				299,
+				11790,
+				395
 			],
 			"to_surface": "big"
 		},
 		{
 			"from_surface": "ledge-4",
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "middle-steps",
 			"rect_cm": [
-				3900,
-				350,
-				4260,
-				446
+				10780,
+				509,
+				11790,
+				605
 			],
 			"to_surface": "big"
 		},
 		{
 			"from_surface": "big",
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "far-gate",
 			"rect_cm": [
-				4600,
-				-300,
-				4700,
-				-204
+				12300,
+				-420,
+				12800,
+				-286
 			],
 			"to_surface": "far"
 		}
@@ -153,33 +177,33 @@
 	"id": "the-falls",
 	"islands": [
 		{
-			"height_cm": 48,
+			"height_cm": 120,
 			"id": "mill",
 			"rect_cm": [
 				0,
-				-350,
-				300,
-				-50
+				-490,
+				780,
+				-70
 			]
 		},
 		{
-			"height_cm": 48,
+			"height_cm": 120,
 			"id": "ledge",
 			"rect_cm": [
-				400,
-				-350,
-				800,
-				-50
+				1480,
+				-490,
+				2520,
+				-70
 			]
 		},
 		{
 			"height_cm": 0,
 			"id": "isle",
 			"rect_cm": [
-				400,
-				50,
-				800,
-				350
+				1480,
+				70,
+				2520,
+				490
 			]
 		},
 		{
@@ -187,138 +211,138 @@
 			"id": "beach",
 			"rect_cm": [
 				0,
-				50,
-				300,
-				350
+				70,
+				780,
+				490
 			]
 		},
 		{
-			"height_cm": 0,
+			"height_cm": 200,
 			"id": "bank",
 			"rect_cm": [
-				900,
-				-250,
-				1200,
-				450
+				3120,
+				-350,
+				3720,
+				630
 			]
 		},
 		{
-			"height_cm": 48,
+			"height_cm": 320,
 			"id": "yard",
 			"rect_cm": [
-				1300,
-				-150,
-				1600,
-				150
+				4320,
+				-210,
+				4920,
+				210
 			]
 		},
 		{
-			"height_cm": 48,
+			"height_cm": 320,
 			"id": "deck",
 			"rect_cm": [
-				1700,
-				-150,
-				2000,
-				450
+				5120,
+				-210,
+				5720,
+				630
 			]
 		},
 		{
-			"height_cm": 96,
+			"height_cm": 440,
 			"id": "loft",
 			"rect_cm": [
-				1300,
-				-450,
-				2000,
-				-250
+				4320,
+				-630,
+				5720,
+				-350
 			]
 		},
 		{
-			"height_cm": 48,
+			"height_cm": 570,
 			"id": "wledge",
 			"rect_cm": [
-				2100,
-				-450,
-				2400,
-				450
+				6220,
+				-630,
+				6670,
+				630
 			]
 		},
 		{
-			"height_cm": 144,
+			"height_cm": 810,
 			"id": "wtop",
 			"rect_cm": [
-				2500,
-				-450,
-				2800,
-				-150
+				6930,
+				-630,
+				7380,
+				-210
 			]
 		},
 		{
-			"height_cm": 144,
+			"height_cm": 810,
 			"id": "etop",
 			"rect_cm": [
-				3200,
-				-450,
-				3500,
-				-150
+				9380,
+				-630,
+				9830,
+				-210
 			]
 		},
 		{
-			"height_cm": 48,
+			"height_cm": 570,
 			"id": "eledge",
 			"rect_cm": [
-				3200,
-				150,
-				3500,
-				450
+				9380,
+				210,
+				9830,
+				630
 			]
 		},
 		{
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "look",
 			"rect_cm": [
-				3600,
-				-450,
-				3900,
-				-50
+				10330,
+				-630,
+				10780,
+				-70
 			]
 		},
 		{
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "ledge-4",
 			"rect_cm": [
-				3600,
-				150,
-				3900,
-				450
+				10330,
+				210,
+				10780,
+				630
 			]
 		},
 		{
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "rock",
 			"rect_cm": [
-				4060,
-				-450,
-				4160,
-				-170
+				11500,
+				-630,
+				11650,
+				-238
 			]
 		},
 		{
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "big",
 			"rect_cm": [
-				4260,
-				-450,
-				4600,
-				450
+				11790,
+				-630,
+				12300,
+				630
 			]
 		},
 		{
-			"height_cm": 96,
+			"height_cm": 940,
 			"id": "far",
 			"rect_cm": [
-				4700,
-				-450,
-				5000,
+				12800,
+				-630,
+				13250,
 				0
 			]
 		}
@@ -328,8 +352,8 @@
 			"height_cm": 0,
 			"id": "post",
 			"position_cm": [
-				440,
-				310
+				1584,
+				434
 			],
 			"surface_id": "isle"
 		},
@@ -337,8 +361,8 @@
 			"height_cm": 0,
 			"id": "pan",
 			"position_cm": [
-				760,
-				310
+				2416,
+				434
 			],
 			"surface_id": "isle"
 		},
@@ -346,53 +370,53 @@
 			"height_cm": 0,
 			"id": "bucket",
 			"position_cm": [
-				760,
-				90
+				2416,
+				126
 			],
 			"surface_id": "isle"
 		},
 		{
-			"height_cm": 48,
+			"height_cm": 120,
 			"id": "bucket-top",
 			"position_cm": [
-				740,
-				-290
+				2364,
+				-406
 			],
 			"surface_id": "ledge"
 		},
 		{
-			"height_cm": 48,
+			"height_cm": 320,
 			"id": "hook",
 			"position_cm": [
-				1340,
-				110
+				4400,
+				154
 			],
 			"surface_id": "yard"
 		},
 		{
-			"height_cm": 96,
+			"height_cm": 440,
 			"id": "sack-top",
 			"position_cm": [
-				1340,
-				-410
+				4400,
+				-574
 			],
 			"surface_id": "loft"
 		},
 		{
-			"height_cm": 144,
+			"height_cm": 810,
 			"id": "basket",
 			"position_cm": [
-				2760,
-				-410
+				7320,
+				-574
 			],
 			"surface_id": "wtop"
 		},
 		{
-			"height_cm": 144,
+			"height_cm": 810,
 			"id": "basket-end",
 			"position_cm": [
-				3240,
-				-410
+				9440,
+				-574
 			],
 			"surface_id": "etop"
 		}
@@ -412,13 +436,13 @@
 			"ball_pads": [],
 			"controls": [
 				{
-					"height_cm": 48,
+					"height_cm": 120,
 					"id": "pool",
 					"initial": "HIGH",
 					"kind": "selector",
 					"position_cm": [
-						80,
-						-290
+						208,
+						-406
 					],
 					"radius_cm": 28,
 					"surface_id": "mill",
@@ -465,12 +489,12 @@
 				}
 			],
 			"goal": {
-				"height_cm": 48,
+				"height_cm": 120,
 				"id": "foot-goal",
 				"owner_slot": "p1",
 				"position_cm": [
-					480,
-					-290
+					1688,
+					-406
 				],
 				"radius_cm": 48,
 				"surface_id": "ledge"
@@ -493,8 +517,8 @@
 					"height_cm": 0,
 					"id": "pan",
 					"position_cm": [
-						760,
-						310
+						2416,
+						434
 					],
 					"radius_cm": 32,
 					"surface_id": "isle"
@@ -503,8 +527,8 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					480,
-					-290
+					1688,
+					-406
 				]
 			],
 			"source_policy": {
@@ -570,12 +594,12 @@
 				}
 			],
 			"goal": {
-				"height_cm": 96,
+				"height_cm": 440,
 				"id": "mill-goal",
 				"owner_slot": "p1",
 				"position_cm": [
-					1700,
-					-350
+					5120,
+					-490
 				],
 				"radius_cm": 48,
 				"surface_id": "loft"
@@ -594,11 +618,11 @@
 			"kind": "route_endpoint",
 			"levers": [
 				{
-					"height_cm": 96,
+					"height_cm": 440,
 					"id": "hatch",
 					"position_cm": [
-						1580,
-						-410
+						4880,
+						-574
 					],
 					"radius_cm": 28,
 					"surface_id": "loft"
@@ -606,21 +630,21 @@
 			],
 			"pressure_pads": [
 				{
-					"height_cm": 48,
+					"height_cm": 320,
 					"id": "gate-board",
 					"position_cm": [
-						1940,
-						400
+						5600,
+						560
 					],
 					"radius_cm": 32,
 					"surface_id": "deck"
 				},
 				{
-					"height_cm": 96,
+					"height_cm": 440,
 					"id": "winding-board",
 					"position_cm": [
-						1920,
-						-410
+						5560,
+						-574
 					],
 					"radius_cm": 32,
 					"surface_id": "loft"
@@ -629,8 +653,8 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					1700,
-					-350
+					5120,
+					-490
 				]
 			],
 			"source_policy": {
@@ -685,12 +709,12 @@
 				}
 			],
 			"goal": {
-				"height_cm": 144,
+				"height_cm": 810,
 				"id": "behind-goal",
 				"owner_slot": "p1",
 				"position_cm": [
-					3340,
-					-300
+					9590,
+					-420
 				],
 				"radius_cm": 48,
 				"surface_id": "etop"
@@ -709,11 +733,11 @@
 			"kind": "route_endpoint",
 			"levers": [
 				{
-					"height_cm": 144,
+					"height_cm": 810,
 					"id": "water-gate",
 					"position_cm": [
-						3460,
-						-200
+						9770,
+						-280
 					],
 					"radius_cm": 28,
 					"surface_id": "etop"
@@ -721,21 +745,21 @@
 			],
 			"pressure_pads": [
 				{
-					"height_cm": 144,
+					"height_cm": 810,
 					"id": "crank",
 					"position_cm": [
-						2540,
-						-200
+						6990,
+						-280
 					],
 					"radius_cm": 32,
 					"surface_id": "wtop"
 				},
 				{
-					"height_cm": 144,
+					"height_cm": 810,
 					"id": "east-crank",
 					"position_cm": [
-						3460,
-						-410
+						9770,
+						-574
 					],
 					"radius_cm": 32,
 					"surface_id": "etop"
@@ -744,8 +768,8 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					3340,
-					-300
+					9590,
+					-420
 				]
 			],
 			"source_policy": {
@@ -759,13 +783,13 @@
 			"ball_pads": [],
 			"controls": [
 				{
-					"height_cm": 96,
+					"height_cm": 940,
 					"id": "stream",
 					"initial": "HIGH",
 					"kind": "selector",
 					"position_cm": [
-						3660,
-						-100
+						10420,
+						-140
 					],
 					"radius_cm": 28,
 					"surface_id": "look",
@@ -814,6 +838,20 @@
 					}
 				},
 				{
+					"route_id": "s3",
+					"when": {
+						"control_id": "stream",
+						"value": "LOW"
+					}
+				},
+				{
+					"route_id": "s4",
+					"when": {
+						"control_id": "stream",
+						"value": "LOW"
+					}
+				},
+				{
 					"route_id": "rope-span",
 					"when": {
 						"pad_id": "look-crank"
@@ -834,12 +872,12 @@
 				}
 			],
 			"goal": {
-				"height_cm": 96,
+				"height_cm": 940,
 				"id": "stones-goal",
 				"owner_slot": "p1",
 				"position_cm": [
-					4850,
-					-150
+					13025,
+					-210
 				],
 				"radius_cm": 48,
 				"surface_id": "far"
@@ -858,11 +896,11 @@
 			"kind": "route_endpoint",
 			"levers": [
 				{
-					"height_cm": 96,
+					"height_cm": 940,
 					"id": "bar",
 					"position_cm": [
-						4940,
-						-410
+						13160,
+						-574
 					],
 					"radius_cm": 28,
 					"surface_id": "far"
@@ -870,21 +908,21 @@
 			],
 			"pressure_pads": [
 				{
-					"height_cm": 96,
+					"height_cm": 940,
 					"id": "look-crank",
 					"position_cm": [
-						3860,
-						-100
+						10720,
+						-140
 					],
 					"radius_cm": 32,
 					"surface_id": "look"
 				},
 				{
-					"height_cm": 96,
+					"height_cm": 940,
 					"id": "gate-step",
 					"position_cm": [
-						4560,
-						400
+						12240,
+						560
 					],
 					"radius_cm": 32,
 					"surface_id": "big"
@@ -893,13 +931,15 @@
 			"receiver_action_ticks": 2,
 			"receiver_route_cm": [
 				[
-					4850,
-					-150
+					13025,
+					-210
 				]
 			],
 			"sinking": [
 				"s1",
-				"s2"
+				"s2",
+				"s3",
+				"s4"
 			],
 			"source_policy": {
 				"kind": "route_endpoint",
@@ -912,164 +952,164 @@
 	"stairs": [
 		{
 			"axis": "z",
-			"from_height_cm": 48,
+			"from_height_cm": 120,
 			"from_surface": "ledge",
 			"hands": true,
 			"id": "ladder",
 			"rect_cm": [
-				560,
-				-50,
-				656,
-				50
+				1896,
+				-70,
+				2146,
+				70
 			],
 			"to_height_cm": 0,
 			"to_surface": "isle"
 		},
 		{
 			"axis": "x",
-			"from_height_cm": 48,
+			"from_height_cm": 120,
 			"from_surface": "ledge",
 			"id": "down-to-bank",
 			"rect_cm": [
-				800,
-				-250,
-				900,
-				-154
+				2520,
+				-350,
+				3120,
+				-216
 			],
-			"to_height_cm": 0,
+			"to_height_cm": 200,
 			"to_surface": "bank"
 		},
 		{
 			"axis": "x",
-			"from_height_cm": 0,
+			"from_height_cm": 200,
 			"from_surface": "bank",
 			"id": "mill-steps",
 			"rect_cm": [
-				1200,
-				-100,
-				1300,
-				-4
+				3720,
+				-140,
+				4320,
+				-6
 			],
-			"to_height_cm": 48,
+			"to_height_cm": 320,
 			"to_surface": "yard"
 		},
 		{
 			"axis": "x",
-			"from_height_cm": 0,
+			"from_height_cm": 200,
 			"from_surface": "bank",
 			"id": "riverbed",
 			"rect_cm": [
-				1200,
-				300,
-				1700,
-				396
+				3720,
+				439,
+				5120,
+				535
 			],
-			"to_height_cm": 48,
+			"to_height_cm": 320,
 			"to_surface": "deck"
 		},
 		{
 			"axis": "z",
-			"from_height_cm": 96,
+			"from_height_cm": 440,
 			"from_surface": "loft",
 			"hands": true,
 			"id": "wheel",
 			"one_way": "up",
 			"rect_cm": [
-				1850,
-				-250,
-				1946,
-				-150
+				5420,
+				-350,
+				5612,
+				-210
 			],
-			"to_height_cm": 48,
+			"to_height_cm": 320,
 			"to_surface": "deck"
 		},
 		{
 			"axis": "z",
-			"from_height_cm": 96,
+			"from_height_cm": 440,
 			"from_surface": "loft",
 			"hands": true,
 			"id": "attic-ladder",
 			"rect_cm": [
-				1450,
-				-250,
-				1546,
-				-150
+				4620,
+				-350,
+				4812,
+				-210
 			],
-			"to_height_cm": 48,
+			"to_height_cm": 320,
 			"to_surface": "yard"
 		},
 		{
 			"axis": "x",
-			"from_height_cm": 96,
+			"from_height_cm": 440,
 			"from_surface": "loft",
 			"id": "down-to-ledge",
 			"rect_cm": [
-				2000,
-				-400,
-				2100,
-				-304
+				5720,
+				-560,
+				6220,
+				-426
 			],
-			"to_height_cm": 48,
+			"to_height_cm": 570,
 			"to_surface": "wledge"
 		},
 		{
 			"axis": "x",
-			"from_height_cm": 48,
+			"from_height_cm": 570,
 			"from_surface": "wledge",
 			"hands": true,
 			"id": "west-ladder",
 			"rect_cm": [
-				2400,
-				-350,
-				2500,
-				-254
+				6670,
+				-490,
+				6930,
+				-356
 			],
-			"to_height_cm": 144,
+			"to_height_cm": 810,
 			"to_surface": "wtop"
 		},
 		{
 			"axis": "z",
-			"from_height_cm": 144,
+			"from_height_cm": 810,
 			"from_surface": "etop",
 			"id": "spray-steps",
 			"rect_cm": [
-				3300,
-				-150,
-				3396,
-				150
+				9554,
+				-210,
+				9650,
+				210
 			],
-			"to_height_cm": 48,
+			"to_height_cm": 570,
 			"to_surface": "eledge"
 		},
 		{
 			"axis": "x",
-			"from_height_cm": 144,
+			"from_height_cm": 810,
 			"from_surface": "etop",
 			"id": "down-to-lookout",
 			"rect_cm": [
-				3500,
-				-350,
-				3600,
-				-254
+				9830,
+				-490,
+				10330,
+				-356
 			],
-			"to_height_cm": 96,
+			"to_height_cm": 940,
 			"to_surface": "look"
 		}
 	],
 	"starts": {
 		"p0": {
-			"height_cm": 48,
+			"height_cm": 120,
 			"position_cm": [
-				150,
-				-200
+				390,
+				-280
 			],
 			"surface_id": "mill"
 		},
 		"p1": {
 			"height_cm": 0,
 			"position_cm": [
-				150,
-				200
+				390,
+				280
 			],
 			"surface_id": "beach"
 		}
