@@ -43,11 +43,14 @@ const HANDLE_OVER := 0.12
 const MACHINE_OVER := 0.05
 ## The plain housing's stone.
 const HOUSING := Color("728788")
+## The handle's knob, the model's "knob" slot (lever_handle in MODEL, its
+## origin the pivot): its centre over the pivot and its radius, m.
+const KNOB_CENTRE := 0.3969
+const KNOB_RADIUS := 0.0877
 ## Where a bubble's tail lands on each machine (its top on its axis, m over
-## its spot), and how far over its anchor that is: journey_world's knob point
-## (KNOB 0.4 over the anchor) plus KNOB_RADIUS (0.09).
+## its spot), and how far over its anchor that is: the knob's top.
 const TOPS := {"winch": 0.63, "bolt": 0.63, "lantern": 0.90}
-const KNOB_REACH := 0.49
+const KNOB_REACH := KNOB_CENTRE + KNOB_RADIUS
 ## Winch: drum height and its coil's radius, slack and wound; turns of the crank.
 const DRUM_Y := 0.50
 const DRUM_X := -0.03

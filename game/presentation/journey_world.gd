@@ -14,10 +14,10 @@ const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
 ## lever's knob; the tail's tip itself lands on the knob's top (_knob_top).
 const LEVER_TOP := Vector3(0,0.80,0)
-## A lever's knob (cooperative_world._build_lever): its centre in the pivot's
-## space, and its radius.
-const KNOB := Vector3(0,0.40,0)
-const KNOB_RADIUS := 0.09
+## A lever's knob (kit/pieces/lever.gd): its centre in the pivot's space, and
+## its radius.
+const KNOB := Vector3(0,LeverPiece.KNOB_CENTRE,0)
+const KNOB_RADIUS := LeverPiece.KNOB_RADIUS
 ## A spirit's height on screen with its badge, and half its width, in metres.
 const SPIRIT_TOP := 1.75
 const SPIRIT_HALF_WIDTH := 0.42
