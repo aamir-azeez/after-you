@@ -7,8 +7,10 @@ extends RefCounted
 ## never show inside it.
 ##
 ## Each float's builder lays its keel at its node's origin (y 0) and takes its
-## numbers here; nothing sets a float's height by hand. Per kind, metres above
-## the keel:
+## numbers here rather than setting its height by hand (the dressing's "boat"
+## props and the Lighthouse keepsake's pond boat still stand where placed).
+## The heave moves the freeboard by `bob` either way against the flat water;
+## the floor stays dry through it. Per kind, metres above the keel:
 ##   draft: where still water meets the hull
 ##   bob:   how far it heaves either way (none under Reduce motion), at
 ##          `rate` radians a second

@@ -420,8 +420,7 @@ static func _wet(x: float, z: float, regions: Array, holes: Array) -> bool:
 ## the next start(). A rider that `sways` (a boat bobbing) is also called by
 ## bob() each frame the world animates. A rider that floats on it (a boat)
 ## passes its node as `floats`, so rings spread from it. A rider is placed at
-## its body's shown level at once, so it never waits for the water to move
-## (a stage that opens at its rest level under Reduce motion).
+## its body's shown level at once, before any present.
 func ride(body: String, follow: Callable, sways: bool = false, floats: Node3D = null) -> void:
 	_riders.append([body, follow, sways])
 	if floats != null: look.ripple_from(floats)
