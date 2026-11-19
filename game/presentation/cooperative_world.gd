@@ -623,6 +623,7 @@ func _below_raised(raised: Node3D, player: Dictionary) -> bool:
 func _advance_camera(delta: float) -> void:
 	if new_pieces != null and new_pieces.moving(): new_pieces.advance(delta)
 	if new_pieces != null and not reduced_motion: new_pieces.drift(time)
+	if new_pieces != null and actors.has(_active_player): new_pieces.follow((actors[_active_player] as Node3D).global_position + Vector3(0, 0.25, 0))
 	for id: String in _lever_pieces:
 		if _lever_pieces[id].moving(): _lever_pieces[id].advance(delta)
 	if _uses_scrolling_camera():
