@@ -38,6 +38,7 @@ func _run() -> void:
 	_turns()
 	_landings()
 	_carried()
+	_carried_turns()
 	print("MOTION: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -244,3 +245,34 @@ func _carried() -> void:
 		_check(values[0].distance_to(values[1]) < 0.005 and values[1].distance_to(values[2]) < 0.005, "the parcel %.1f s after stopping is the same at 30, 60 and 120 fps: %s" % [mark, values])
 	var still := _carry_at(60, true)
 	_check(not still.moved, "Reduce motion keeps the parcel still")
+
+## A pipsport carried while the pip walks each of the four ways in turn: it is
+## on the pip's back, behind it, once the pip has turned and while it walks,
+## and again once it stands and the sway has settled.
+func _carried_turns() -> void:
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	var ground := Node3D.new()
+	root.add_child(ground)
+	var piece: RefCounted = CarriedItemKit.build("pipsport", Vector3.ZERO, ground)
+	piece.carry(spirit)
+	var rest: Transform3D = piece.root.transform
+	var dt := 1.0 / 60.0
+	var behind := func(way: Vector3) -> float:
+		var off: Vector3 = piece.root.global_position - spirit.global_position
+		return Vector2(off.x, off.z).normalized().dot(-Vector2(way.x, way.z))
+	for way: Vector3 in [Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]:
+		# Walk until the facing has caught up with the way (a fixed bound keeps it finite).
+		var frames := 0
+		spirit.advance_motion(way * 2.0 * dt, dt, false)
+		while absf(angle_difference(spirit.facing.rotation.y, spirit.facing_target)) > 0.0001 and frames < 600:
+			spirit.advance_motion(way * 2.0 * dt, dt, false)
+			frames += 1
+		var walking: float = behind.call(way)
+		for _frame in range(120): spirit.advance_motion(Vector3.ZERO, dt, false)
+		var standing: float = behind.call(way)
+		var off: Vector3 = piece.root.global_position - spirit.global_position
+		var settled: bool = piece.root.transform == rest and Vector2(off.x, off.z).length() > 0.19
+		_check(frames < 600 and walking > 0.99 and standing > 0.999 and settled, "walking %s the pipsport rides behind the pip: %.4f walking, %.4f standing, at %s" % [way, walking, standing, off])
+	ground.free()
+	spirit.free()

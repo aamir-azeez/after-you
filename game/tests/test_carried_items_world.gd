@@ -60,7 +60,7 @@ func _world() -> void:
 	sim.step({})
 	sim.step({"interact": true})
 	world.present(sim.snapshot(), true)
-	_check(world.actors.has("p0") and pieces.pipsport.root.get_parent() == world.actors.p0 and pieces.pipsport.root.position == CarriedItemKit.BACK, "Picked up, it rides on the carrier's back")
+	_check(world.actors.has("p0") and pieces.pipsport.root.get_parent() == world.actors.p0.facing and pieces.pipsport.root.position == CarriedItemKit.BACK, "Picked up, it rides on the carrier's back")
 	_walk(sim, [-250, 0])
 	sim.step({})
 	sim.step({"interact": true})

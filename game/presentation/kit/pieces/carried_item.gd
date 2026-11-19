@@ -8,12 +8,13 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "raft": a few lashed planks, for a float nobody carries.
 ##
 ## The world shows each snapshot's item state (journey_world _present_items):
-## on a spirit's back (carry: the root rides under the spirit, so it follows
-## every step), resting at its place (rest), or bobbing on the water (rest with
+## on a spirit's back (carry: the root rides under the spirit's facing pivot,
+## so it follows every step and turn), resting at its place (rest), or bobbing on the water (rest with
 ## `floating`, advance() each frame while motion is not reduced). The root is
 ## the only part that changes, so it is the one moving part.
 const STYLES := ["parcel", "pipsport", "raft"]
-## Where an item sits on a spirit's back, in the spirit's own space.
+## Where an item sits on a spirit's back, in its facing pivot's space (the pip
+## faces +Z there).
 const BACK := Vector3(0.0, 0.62, -0.2)
 ## How far a float bobs, and how fast.
 const BOB_M := 0.025
@@ -51,14 +52,16 @@ func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary)
 			Parts.box(Vector3(0.232, 0.152, 0.025), Parts.CREAM, Vector3(0, 0.07, 0), root)
 			Parts.box(Vector3(0.025, 0.164, 0.192), Parts.CREAM, Vector3(0, 0.07, 0), root)
 
-## On `actor`'s back: it rides under the spirit from now on.
+## On `actor`'s back: it rides under the spirit from now on, behind it
+## whichever way it faces.
 func carry(actor: Node3D) -> void:
 	_floating = false
-	if root.get_parent() != actor: root.reparent(actor, false)
 	var turn := Vector3(-PI / 2.0 if style == "pipsport" else 0.0, 0.0, 0.0)
-	# A pip sways it with its stride and its stop (spirit_visual.gd hang_on_back).
+	# A pip hangs it under its facing pivot and sways it with its stride and its
+	# stop (spirit_visual.gd hang_on_back).
 	if actor.has_method("hang_on_back"): actor.hang_on_back(root, BACK, turn)
 	else:
+		if root.get_parent() != actor: root.reparent(actor, false)
 		root.position = BACK
 		root.rotation = turn
 
