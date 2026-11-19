@@ -153,7 +153,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if immediate: lift.position.y = lift_target_height
 	if lift_piece != null: lift_piece.set_height(lift.position.y)
 	for id: String in pad_pieces:
-		pad_pieces[id].set_held(bool(state.controls.get(id, false)))
+		pad_pieces[id].set_held(bool(state.controls.get(id, false)), immediate or reduced_motion)
 	# A bell rung while the friend's memory still plays rings when it ends.
 	var rung := bool(state.mechanisms.loft_open) and not bool(state.get("ring_held", false))
 	bell_ring.visible = not rung
