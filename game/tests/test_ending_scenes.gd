@@ -7,7 +7,9 @@ extends SceneTree
 ## its frame, camera and processing back with nothing of the scene left in it.
 ## The "back" and "bounce" eases start at 0 and end at 1 (back runs past it,
 ## bounce never does), and a Blender model prop (shape "model") checks, builds
-## as its painted part at its scale, fades and moves like any prop.
+## as its painted part at its scale, fades and moves like any prop. Letterbox
+## bars slide in and out, a tint washes the screen, the camera circles its
+## point and stays turned, and bad bars or tints are refused.
 const EndingScene = preload("res://services/ending_scene.gd")
 const EndingSeen = preload("res://services/ending_seen.gd")
 const EndingPlayer = preload("res://presentation/ending_player.gd")
@@ -56,6 +58,7 @@ func _run() -> void:
 		_skips(setup, name)
 	_handover(setup)
 	_kit(setup)
+	_screen(setup)
 	_long_frame(setup)
 	await _flow(setup)
 	_seen_store()
@@ -305,3 +308,34 @@ func _kit(setup: Dictionary) -> void:
 		var placed: Vector3 = EndingScene.prop_position(player.compiled, "wheel", player.t)
 		_check((wheel as MeshInstance3D).position.distance_to(placed) < 0.01 and placed.distance_to(start) > 0.9, "the model prop moves like any prop")
 	_done(setup, player)
+
+## Letterbox bars, a colour wash and a slow camera circle.
+func _screen(setup: Dictionary) -> void:
+	var data := {"cast": {"fallback": "p0"}, "steps": [
+		{"do": "bars", "show": true, "time": 0.5}, {"do": "tint", "color": "ffcc88", "alpha": 0.4, "time": 0.5},
+		{"do": "camera", "at": [0, 0, 0], "size": 8.0, "time": 1.0, "orbit": 30}, {"do": "wait", "time": 1.0},
+		{"do": "bars", "show": false, "time": 0.5}, {"do": "tint", "color": "000000", "alpha": 1.0, "time": 0.5}, {"do": "wait", "time": 0.5}]}
+	_check(EndingScene.check(data).is_empty(), "a scene with bars, a tint and an orbit checks: %s" % EndingScene.check(data))
+	var compiled := EndingScene.compile(data, _start_at())
+	var mid := EndingScene.state(compiled, 0.25)
+	var held := EndingScene.state(compiled, 0.9)
+	var end := EndingScene.state(compiled, float(compiled.duration))
+	_check(float(mid.screen.bars) > 0.1 and float(mid.screen.bars) < 0.9 and is_equal_approx(float(held.screen.bars), 1.0) and is_equal_approx(float(end.screen.bars), 0.0), "the bars slide in, stay, then slide out")
+	_check(is_equal_approx(float(held.screen.tint_alpha), 0.4) and held.screen.tint == Color("ffcc88") and is_equal_approx(float(end.screen.tint_alpha), 1.0) and end.screen.tint == Color.BLACK, "the tint washes warm, then fades to black")
+	_check(float(held.camera.orbit) > 25.0 and is_equal_approx(float(end.camera.orbit), 30.0) and float(mid.camera.orbit) > 0.0, "the camera circles 30 degrees and stays turned")
+	for bad: Dictionary in [{"do": "bars", "time": 0.5}, {"do": "tint", "color": "nope", "alpha": 0.5}, {"do": "tint", "color": "ffffff", "alpha": 2.0}]:
+		_check(not EndingScene.check({"cast": {"fallback": "p0"}, "steps": [bad, {"do": "wait", "time": 1.0}]}).is_empty(), "a bad %s step is refused" % bad.do)
+	var overlay := Control.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(overlay)
+	var player: Node = EndingPlayer.new()
+	player.skippable = true
+	root.add_child(player)
+	player.set_process(false)
+	_check(player.start(setup.world, data, setup.sim.snapshot(), overlay), "the screen scene starts")
+	player.advance(1.0)
+	var top: ColorRect = player._bars[0]
+	_check(top.visible and is_equal_approx(top.anchor_bottom, player.BAR_SHARE), "the top bar covers its share of the screen")
+	_check(player._tint.visible and is_equal_approx(player._tint.color.a, 0.4), "the wash is drawn at its alpha")
+	_done(setup, player)
+	overlay.free()

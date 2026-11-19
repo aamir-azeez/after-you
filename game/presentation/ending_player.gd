@@ -39,6 +39,12 @@ var _props: Dictionary = {}
 var _materials: Dictionary = {}
 var _layer: Control
 var _caption: Label
+## The screen layer's letterbox bars and colour wash (EndingScene "bars", "tint").
+var _bars: Array[ColorRect] = []
+var _tint: ColorRect
+## How much of the screen's height each bar covers when fully in.
+const BAR_SHARE := 0.1
+const BAR_COLOR := Color(0.03, 0.04, 0.05)
 var _held: Dictionary = {}
 var _faces: Dictionary = {}
 ## The role badges ("You", "Waiting") hidden while the scene plays.
@@ -157,7 +163,7 @@ func _apply(now: Dictionary, delta: float, immediate: bool) -> void:
 	if is_instance_valid(camera):
 		var center: Vector3 = now.camera.center
 		camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-		camera.position = center + ViewFit.CAMERA_FROM
+		camera.position = center + Basis(Vector3.UP, deg_to_rad(float(now.camera.get("orbit", 0.0)))) * ViewFit.CAMERA_FROM
 		camera.look_at(_world.to_global(center))
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
 		camera.size = ViewFit.viewport(float(now.camera.size), _world)
@@ -170,6 +176,16 @@ func _apply(now: Dictionary, delta: float, immediate: bool) -> void:
 		node.position = prop.position
 		node.rotation.y = float(node.get_meta("yaw", 0.0)) + float(prop.spin)
 		if _materials.has(id): (_materials[id] as StandardMaterial3D).albedo_color.a = clampf(float(prop.alpha), 0.0, 1.0)
+	var screen: Dictionary = now.get("screen", {})
+	if is_instance_valid(_tint):
+		var wash: Color = screen.get("tint", Color.BLACK)
+		_tint.color = Color(wash.r, wash.g, wash.b, clampf(float(screen.get("tint_alpha", 0.0)), 0.0, 1.0))
+		_tint.visible = _tint.color.a > 0.001
+	var bars := clampf(float(screen.get("bars", 0.0)), 0.0, 1.0) * BAR_SHARE
+	if _bars.size() == 2:
+		_bars[0].anchor_bottom = bars
+		_bars[1].anchor_top = 1.0 - bars
+		for bar: ColorRect in _bars: bar.visible = bars > 0.0001
 	if is_instance_valid(_caption):
 		_caption.text = str(now.caption)
 		_caption.visible = not _caption.text.is_empty()
@@ -240,6 +256,25 @@ func _build_layer(overlay: Control) -> void:
 	_layer.gui_input.connect(_tapped)
 	overlay.add_child(_layer)
 	overlay.visible = true
+	# Under the caption: the colour wash, then the bars over it.
+	_tint = ColorRect.new()
+	_tint.name = "Tint"
+	_tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tint.visible = false
+	_layer.add_child(_tint)
+	for edge: String in ["Top", "Bottom"]:
+		var bar := ColorRect.new()
+		bar.name = edge + "Bar"
+		bar.color = BAR_COLOR
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.anchor_left = 0.0
+		bar.anchor_right = 1.0
+		bar.anchor_top = 0.0 if edge == "Top" else 1.0
+		bar.anchor_bottom = 0.0 if edge == "Top" else 1.0
+		bar.visible = false
+		_layer.add_child(bar)
+		_bars.append(bar)
 	_caption = Label.new()
 	_caption.name = "Caption"
 	_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

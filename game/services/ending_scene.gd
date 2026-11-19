@@ -30,7 +30,12 @@ extends RefCounted
 ##              "wobble": {"amp": radians, "rate": per second, "for"},
 ##              "bob": {"amp": metres, "rate": per second, "for"}}
 ##     camera:  {"at": a point, or "who": a role, "size": metres of view
-##              height, "time", "ease"}
+##              height, "time", "ease", "orbit": degrees the view turns
+##              round the point over the time (a slow circle; it stays turned)}
+##     bars:    {"show": true or false, "time", "ease"}: letterbox bars slide in
+##              or out (each 10% of the screen's height), for the film feel
+##     tint:    {"color": hex, "alpha": 0..1, "time", "ease"}: the screen washes
+##              toward a colour (warm glow, cool fog, black to fade out)
 ##     sound:   {"cue": a fixed cue of services/sound_cues.gd, "variant"}
 ##     prop:    {"id", "to", "time", "ease", "arc", "show", "alpha",
 ##              "follow": a role it rides on ("" lets go), "spin": degrees a second}
@@ -42,13 +47,14 @@ extends RefCounted
 ##   {"shape": "model", "model": res path, "part": name, "colors": {slot: hex},
 ##    "scale": 1, "at", "rot", "alpha"}; it needs no "size".
 const SoundCues = preload("res://services/sound_cues.gd")
+const Motion = preload("res://presentation/kit/motion.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 
 const ROLES := ["carrier", "other"]
 const SHAPES := ["box", "sphere", "cylinder", "cone", "model"]
-const EASES := ["inout", "in", "out", "linear", "back", "bounce"]
-const STEPS := ["wait", "move", "face", "pose", "camera", "sound", "prop", "caption"]
+const EASES := Motion.EASES
+const STEPS := ["wait", "move", "face", "pose", "camera", "sound", "prop", "caption", "bars", "tint"]
 ## A prop riding on a pip sits this high over the pip's feet (its carried seed's height).
 const FOLLOW_LIFT := 1.06
 ## How long a scene may last at most (seconds).
@@ -101,6 +107,10 @@ static func _check_step(step: Variant, props: Dictionary) -> String:
 			if step.has("follow") and str(step.follow) not in ROLES + [""]: return "unknown follow %s" % step.follow
 		"caption":
 			if str(step.get("text", "")).is_empty() or float(step.get("for", 0.0)) <= 0.0: return "a caption needs text and for"
+		"bars":
+			if not step.get("show") is bool: return "bars need show true or false"
+		"tint":
+			if not Color.html_is_valid(str(step.get("color", ""))) or float(step.get("alpha", -1.0)) < 0.0 or float(step.get("alpha", 0.0)) > 1.0: return "a tint needs a colour and an alpha from 0 to 1"
 	return ""
 
 ## The slot each role plays: {"carrier": slot, "other": slot}. The carrier
@@ -123,13 +133,14 @@ static func compile(data: Dictionary, at: Dictionary) -> Dictionary:
 	var actors := {}
 	for role: String in ROLES:
 		actors[role] = {"start": at[role], "moves": [], "faces": [], "rests": [], "wobbles": [], "bobs": [], "facings": []}
-	var camera := {"start": at.camera, "moves": [], "start_size": float(at.camera_size), "sizes": []}
+	var camera := {"start": at.camera, "moves": [], "start_size": float(at.camera_size), "sizes": [], "orbits": []}
+	var screen := {"bars": [], "tints": [], "tint_colors": []}
 	var props := {}
 	for id: String in data.get("props", {}):
 		var spec: Dictionary = data.props[id]
 		props[id] = {"start": origin + _point(spec.get("at", [0, 0, 0])), "moves": [], "start_alpha": float(spec.get("alpha", 1.0)), "alphas": [],
 			"shows": [[-1.0, bool(spec.get("shown", true))]], "spins": []}
-	var compiled := {"actors": actors, "camera": camera, "props": props, "events": [], "captions": [], "duration": 0.0}
+	var compiled := {"actors": actors, "camera": camera, "props": props, "screen": screen, "events": [], "captions": [], "duration": 0.0}
 	var cursor := 0.0
 	var ends := 0.0
 	for step: Dictionary in data.get("steps", []):
@@ -157,6 +168,14 @@ static func compile(data: Dictionary, at: Dictionary) -> Dictionary:
 				var target: Vector3 = position_of(compiled, str(step.who), cursor) if step.has("who") else origin + _point(step.at)
 				_append(camera.moves, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": target}, _track(camera.moves, camera.start, cursor))
 				_append(camera.sizes, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": float(step.size)}, _track(camera.sizes, camera.start_size, cursor))
+				if step.has("orbit"):
+					var turned: float = _track(camera.orbits, 0.0, cursor)
+					_append(camera.orbits, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": turned + float(step.orbit)}, turned)
+			"bars":
+				_append(screen.bars, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": 1.0 if bool(step.show) else 0.0}, _track(screen.bars, 0.0, cursor))
+			"tint":
+				screen.tint_colors.append({"at": cursor, "color": Color(str(step.color))})
+				_append(screen.tints, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": float(step.alpha)}, _track(screen.tints, 0.0, cursor))
 			"sound":
 				compiled.events.append({"at": cursor, "kind": "sound", "cue": str(step.cue), "variant": int(step.get("variant", 0))})
 			"prop":
@@ -187,32 +206,9 @@ static func _point(value: Variant) -> Variant:
 		if not (part is int or part is float): return null
 	return Vector3(float(value[0]), float(value[1]), float(value[2]))
 
-## Out-bounce: falls to the end and bounces three times, smaller each time.
-static func _bounce(u: float) -> float:
-	var n := 7.5625
-	var d := 2.75
-	if u < 1.0 / d: return n * u * u
-	if u < 2.0 / d:
-		u -= 1.5 / d
-		return n * u * u + 0.75
-	if u < 2.5 / d:
-		u -= 2.25 / d
-		return n * u * u + 0.9375
-	u -= 2.625 / d
-	return n * u * u + 0.984375
-
+## Every ease is the shared motion kit's (kit/motion.gd).
 static func _eased(ease: String, u: float) -> float:
-	match ease:
-		"linear": return u
-		"in": return u * u
-		"out": return 1.0 - (1.0 - u) * (1.0 - u)
-		"back":
-			# Out-back: about 10% past the end, then settles on it.
-			var k := 1.70158
-			var v := u - 1.0
-			return 1.0 + (k + 1.0) * v * v * v + k * v * v
-		"bounce": return _bounce(u)
-	return u * u * (3.0 - 2.0 * u)
+	return Motion.ease(ease, u)
 
 ## The value of a keyframe track at `t`: the newest segment begun by then, from
 ## where the track stood when it began.
@@ -267,7 +263,7 @@ static func _wave(items: Array, t: float) -> float:
 ## "spin" (radians about y); and the "caption" ("" for none).
 static func state(compiled: Dictionary, t: float) -> Dictionary:
 	t = clampf(t, 0.0, float(compiled.duration))
-	var result := {"actors": {}, "props": {}, "camera": {}, "caption": ""}
+	var result := {"actors": {}, "props": {}, "camera": {}, "screen": {}, "caption": ""}
 	for role: String in ROLES:
 		var actor: Dictionary = compiled.actors[role]
 		var face: Variant = _latest(actor.faces, t)
@@ -283,7 +279,11 @@ static func state(compiled: Dictionary, t: float) -> Dictionary:
 		result.actors[role] = {"position": position_of(compiled, role, t) + Vector3.UP * _wave(actor.bobs, t),
 			"carried": walking and bool(move.carried), "face": face.face if face != null and t < float(face.until) else &"",
 			"rest": rest.rest if rest != null else SpiritIdle.REST, "lean": Vector3(0, 0, _wave(actor.wobbles, t)), "facing": facing}
-	result.camera = {"center": _track(compiled.camera.moves, compiled.camera.start, t), "size": _track(compiled.camera.sizes, compiled.camera.start_size, t)}
+	result.camera = {"center": _track(compiled.camera.moves, compiled.camera.start, t), "size": _track(compiled.camera.sizes, compiled.camera.start_size, t),
+		"orbit": _track(compiled.camera.get("orbits", []), 0.0, t)}
+	var screen: Dictionary = compiled.get("screen", {})
+	var tint: Variant = _latest(screen.get("tint_colors", []), t)
+	result.screen = {"bars": _track(screen.get("bars", []), 0.0, t), "tint": tint.color if tint != null else Color.BLACK, "tint_alpha": _track(screen.get("tints", []), 0.0, t)}
 	for id: String in compiled.props:
 		var prop: Dictionary = compiled.props[id]
 		var shown := false
