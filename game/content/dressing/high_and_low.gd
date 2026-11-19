@@ -24,6 +24,7 @@ const DATA := {
 	"spillway": "trickle",
 	"carried_item": "parcel",
 	"current": "ripples",
+	"pulley": "lantern_hook",
 	"seabed": "sand",
 	"bridges": "timber",
 	"props": {"*": [

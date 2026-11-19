@@ -62,6 +62,7 @@ func _stage(level: Dictionary, index: int, role: String) -> void:
 	screen.world.set_process(false)
 	_check(screen.world.get_script() == World and screen.mode == "ready", "Real chapter admission selects the cutaway house")
 	_check(screen.world._house_windows.size() == 5, "All connected rooms have their identifiable windows")
+	if id == "open-the-house": _check(not screen.world._pulleys.has("workshop-entry") and screen.world._pulleys.has("workshop-return") and screen.world._pulleys["workshop-return"].style == "little_roof", "The cabled workshop entry hangs no pulley; the return keeps the house's little roof post")
 	if index > 0:
 		_check(is_instance_valid(screen.world._house_memories) and screen.world._house_memories.get_child_count() > 0, "Returning through the house retains visible earlier plate and latch marks")
 	screen._begin()

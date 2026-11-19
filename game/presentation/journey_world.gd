@@ -487,6 +487,7 @@ func _build_gate_links(view: Dictionary) -> void:
 				if elbow.distance_to(end)<=0.01: elbow = stop
 				if start.distance_to(elbow)>0.01: _bar_between(start,elbow,0.016,color.darkened(0.25),terrain)
 				if elbow.distance_to(stop)>0.01: _bar_between(elbow,stop,0.016,color.darkened(0.25),terrain)
+				_cabled[str(route.id)] = true
 
 func _route_color(id: String) -> Color:
 	return GOLD if id in ["path-selector","high-light","crossing-light","near-window"] else TEAL

@@ -366,9 +366,7 @@ const FLAT_DIAMONDS := {
 	"res://presentation/kit/pieces/selector.gd": [1, "a valve wheel's pointer head"],
 }
 ## Rings the size of the second spirit's mark drawn outside the kit: how many, and why.
-const MARK_SIZED_RINGS := {
-	"res://presentation/cooperative_world.gd": [1, "the pulley's gold wheel over a missing crossing"],
-}
+const MARK_SIZED_RINGS := {}
 
 ## (s) The one falling effect kit, its shader, and each script that uses it with what for.
 const FALL_EFFECT := "res://presentation/kit/fall_effect.gd"
@@ -392,7 +390,7 @@ const PIECE_STYLES := "res://content/dressing/piece_styles.gd"
 const PIECE_KITS := "res://presentation/kit/pieces/"
 ## Scripts that preload a piece kit, with why.
 const PIECE_BUILDERS := {
-	"res://presentation/cooperative_world.gd": "builds every pad, lever and selector in the style its piece resolves to",
+	"res://presentation/cooperative_world.gd": "builds every pad, lever, selector and pulley post in the style its piece resolves to",
 	"res://presentation/lighthouse_world.gd": "builds every goal in the style it resolves to",
 	"res://presentation/island_world.gd": "builds every island world's pads from its family's layout in the style each resolves to (_build_pad), and its crossings as the bridge kit draws them (_build_crossings)",
 	"res://presentation/first_steps_world.gd": "builds its lift in the style it resolves to (lift); its loft bell is the kit bell on its own post and arm",
@@ -903,7 +901,7 @@ func _piece_styles() -> void:
 		if path.begins_with("res://tests/") or path.begins_with(PIECE_KITS) or path == PIECE_STYLES: continue
 		var source: String = _sources[path]
 		_check(_found("\"(?:lever_looks|stand_spots)\"|\\.(?:lever_looks|stand_spots)\\b|kit/lever_looks\\.gd", source) == 0, "%s keeps a per-world piece switch: pin or pick a piece style (content/dressing/piece_styles.gd)" % path)
-		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal|lift|bridge|deck|raft|rope_ladder)\\.gd\"", source) > 0:
+		if _found("(?:pre)?load\\(\\s*\"" + PIECE_KITS + "(?:lever|selector|pad|goal|lift|bridge|deck|raft|rope_ladder|pulley)\\.gd\"", source) > 0:
 			builders[path] = true
 			_check(PIECE_BUILDERS.has(path), "%s builds a piece itself: worlds build pieces through island_world, cooperative_world and lighthouse_world, or add it to PIECE_BUILDERS with why" % path)
 		if _found("\\.get\\(\\s*\"piece_styles\"|\\[\"piece_styles\"\\]|\\.piece_styles\\b|\\bPieceStyles\\.PINS\\b", source) > 0:
