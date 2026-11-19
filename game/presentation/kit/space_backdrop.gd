@@ -34,6 +34,9 @@ const BUFFER := &"buffer_size"
 const DETAIL := &"detail"
 const SHOOTING := &"shooting"
 const LAYOUT := &"layout_seed"
+const ACCENT_LIGHTS := &"accents"
+## Edge lights the accent draws (the shader's ACCENT_LIGHTS).
+const ACCENT_COUNT := 7
 ## Metres of camera pan that shift a layer of share 1 by one screen height. A
 ## fixed span, not the camera's size, so zooming never slides the sky.
 const PAN_SPAN := 10.0
@@ -45,6 +48,34 @@ const HOME := "home"
 ## on every visit and every device (String.hash is fixed).
 static func layout_seed(key: String) -> float:
 	return float(key.get_slice("@", 0).hash() & 0xFFFF) / 65536.0
+
+## The edge lights at `clock` on a view `aspect` wide: where each sits round
+## the view's edge (screen heights from the centre, y down), a petal's turn and
+## its brightness. Worked out here once a frame rather than for every pixel.
+static func accent_lights(kind: int, clock: float, aspect: float) -> PackedVector4Array:
+	var lights := PackedVector4Array()
+	for i in range(ACCENT_COUNT):
+		var a := i * 0.8976 + _hash(i + 1.0) * 0.5
+		var home := Vector2(cos(a) * aspect * 0.44, sin(a) * 0.4)
+		match kind:
+			1:
+				# Petals drift sideways, sway and turn.
+				var x := fposmod(home.x + clock * 0.012 + aspect * 0.5, aspect) - aspect * 0.5
+				lights.append(Vector4(x, home.y + 0.02 * sin(clock * 0.6 + i), clock * 0.8 + i, 0.55))
+			2:
+				# Fireflies wander and pulse.
+				var at := home + 0.025 * Vector2(sin(clock * 0.5 + i * 1.9), sin(clock * 0.65 + i * 2.3))
+				lights.append(Vector4(at.x, at.y, 0.0, 0.55 + 0.45 * sin(clock * 1.3 + i * 2.1)))
+			_:
+				# Dust floats slowly up.
+				lights.append(Vector4(home.x + 0.01 * sin(clock * 0.3 + i), fposmod(home.y - clock * 0.006 + 0.5, 1.0) - 0.5, 0.0, 0.4))
+	return lights
+
+static func _hash(p: float) -> float:
+	p = fposmod(p * 0.1031, 1.0)
+	p *= p + 33.33
+	p *= p + p
+	return fposmod(p, 1.0)
 
 ## Lays out the far islands and wisps for a place (layout_seed).
 static func set_layout(env: Environment, key: String) -> void:
@@ -122,6 +153,11 @@ static func advance(env: Environment, clock: float, camera: Camera3D, view: View
 	if material.get_shader_parameter(SHOOTING) != shooting: material.set_shader_parameter(SHOOTING, shooting)
 	var size := buffer_size(view)
 	if size.y > 0.0 and material.get_shader_parameter(BUFFER) != size: material.set_shader_parameter(BUFFER, size)
+	var kind := int(material.get_shader_parameter(ACCENT_KIND))
+	var shown_size: Variant = material.get_shader_parameter(BUFFER)
+	if kind > 0 and detailed(env) and shown_size is Vector2 and (shown_size as Vector2).y > 0.0:
+		var lights := accent_lights(kind, float(material.get_shader_parameter(CLOCK)), (shown_size as Vector2).x / (shown_size as Vector2).y)
+		if material.get_shader_parameter(ACCENT_LIGHTS) != lights: material.set_shader_parameter(ACCENT_LIGHTS, lights)
 	var shown := view.get_camera_3d() if view != null else null
 	if is_instance_valid(shown): camera = shown
 	if is_instance_valid(camera) and camera.is_inside_tree():

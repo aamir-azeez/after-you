@@ -15,6 +15,8 @@ uniform vec3 far_color : source_color = vec3(0.12, 0.3, 0.3);
 uniform vec3 accent_color : source_color = vec3(1.0, 0.91, 0.66);
 // 0 none, 1 petals, 2 fireflies, 3 dust in the light.
 uniform int accent_kind = 0;
+// Each edge light this frame: where (screen heights), a petal's turn, brightness.
+uniform vec4 accents[7];
 uniform float clock = 0.0;
 // Camera pan in PAN_SPAN units (kit/space_backdrop.gd); each layer shifts by
 // its own share of it, all less than the world's.
@@ -34,6 +36,7 @@ const float SHOOT_LENGTH = 0.8;
 const float FAR_TILE = 3.0;
 const int FAR_SLOTS = 4;
 const int WISPS = 3;
+const int ACCENT_LIGHTS = 7;
 
 vec3 hash32(vec2 p) {
 	vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
@@ -140,41 +143,23 @@ void sky() {
 		}
 		col = mix(col, star_color, clamp(light, 0.0, 1.0));
 
-		// A few lights round the edges of the view, in the look's accent.
+		// A few lights round the edges of the view, in the look's accent, each
+		// placed once a frame (SpaceBackdrop.advance) and drawn only near it.
 		if (detail > 0.5 && accent_kind > 0) {
+			float size = accent_kind == 1 ? 0.0055 : (accent_kind == 2 ? 0.0035 : 0.0025);
+			float reach = accent_kind == 2 ? 0.03 : size * 1.5;
+			vec2 near = p + shift * 0.3;
 			float glow = 0.0;
-			for (int i = 0; i < 7; i++) {
-				float fi = float(i);
-				float a = fi * 0.8976 + hash11(fi + 1.0) * 0.5;
-				vec2 home = vec2(cos(a) * aspect * 0.44, sin(a) * 0.4);
-				vec2 at;
-				float size;
-				float bright;
+			for (int i = 0; i < ACCENT_LIGHTS; i++) {
+				vec2 d = near - accents[i].xy;
+				if (abs(d.x) > reach || abs(d.y) > reach) continue;
 				if (accent_kind == 1) {
-					// Petals drift sideways and sway.
-					float x = mod(home.x + clock * 0.012 + aspect * 0.5, aspect) - aspect * 0.5;
-					at = vec2(x, home.y + 0.02 * sin(clock * 0.6 + fi));
-					size = 0.0055;
-					bright = 0.55;
-				} else if (accent_kind == 2) {
-					// Fireflies wander and pulse.
-					at = home + 0.025 * vec2(sin(clock * 0.5 + fi * 1.9), sin(clock * 0.65 + fi * 2.3));
-					size = 0.0035;
-					bright = 0.55 + 0.45 * sin(clock * 1.3 + fi * 2.1);
-				} else {
-					// Dust floats slowly up.
-					float y = mod(home.y - clock * 0.006 + 0.5, 1.0) - 0.5;
-					at = vec2(home.x + 0.01 * sin(clock * 0.3 + fi), y);
-					size = 0.0025;
-					bright = 0.4;
-				}
-				vec2 d = p + shift * 0.3 - at;
-				if (accent_kind == 1) {
-					float r = clock * 0.8 + fi;
+					// A petal turns as it drifts.
+					float r = accents[i].z;
 					d = mat2(vec2(cos(r), sin(r)), vec2(-sin(r), cos(r))) * d * vec2(1.0, 1.9);
 				}
 				float dist = length(d);
-				glow += bright * ((1.0 - smoothstep(size * 0.6, size, dist)) + (accent_kind == 2 ? exp(-dist * dist * 9000.0) * 0.35 : 0.0));
+				glow += accents[i].w * ((1.0 - smoothstep(size * 0.6, size, dist)) + (accent_kind == 2 ? exp(-dist * dist * 9000.0) * 0.35 : 0.0));
 			}
 			col = mix(col, accent_color, clamp(glow, 0.0, 1.0));
 		}
