@@ -49,7 +49,9 @@ void fragment() {
 		float glint = step(0.993, hash12(floor(vec2(across * 26.0, along * 9.0)))) * falling;
 		float bright = clamp(streak * 0.85 + white * 0.75 + glint, 0.0, 1.0);
 		col = mix(water_color.rgb * mix(0.92, 1.0, falling), foam_color.rgb, bright);
-		alpha = mix(water_color.a, 1.0, bright * 0.9) * soft;
+		// Faded in where it starts, so the stream above the top lip comes from
+		// the banks rather than ending square.
+		alpha = mix(water_color.a, 1.0, bright * 0.9) * soft * smoothstep(0.0, 0.8, UV.y);
 	} else {
 		vec2 half_m = UV2;
 		vec2 p = UV * half_m;
