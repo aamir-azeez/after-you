@@ -4,7 +4,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##
 ##   "plain": a grey stone housing and a cream handle whose knob is the owner's
 ##       colour; the handle tilts over when pulled.
-##   "brass": the plain lever in a warm brass housing under a timber collar.
+##   "brass": the plain lever in a warm brass housing on a timber foot band.
 ##   "winch": a hand winch. A crank on a timber frame turns an iron drum; the
 ##       chain runs off the drum down through a hawse ring in the sill. Pulled,
 ##       the crank turns over, the drum fills with chain and the chain comes up
@@ -27,6 +27,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 
 ## Styles that tilt a handle, and machines that move their own parts.
 const HANDLES := ["plain", "brass"]
+const Models = preload("res://presentation/kit/models.gd")
+const MODEL := "res://assets/models/lever.glb"
 const MACHINES := ["winch", "bolt", "lantern"]
 const REACH := 0.28
 const EAST_SIDE := 0.16
@@ -131,10 +133,9 @@ func _make(lever_style: String, at: Vector3, parent: Node3D, knob: Color) -> voi
 	_pose()
 
 func _make_handle(knob: Color) -> void:
-	Parts.cylinder(0.18, 0.2, Parts.BRASS if style == "brass" else HOUSING, Vector3(0, 0.1, 0), root)
-	if style == "brass": Parts.cylinder(0.19, 0.04, Parts.TIMBER, Vector3(0, 0.19, 0), root)
-	Parts.box(Vector3(0.055, 0.40, 0.055), Parts.CREAM, Vector3(0, 0.2, 0), anchor)
-	Parts.sphere(0.09, knob, Vector3(0, 0.4, 0), anchor)
+	var brass := style == "brass"
+	Models.still(MODEL, "lever_base", {"housing": Parts.BRASS if brass else HOUSING, "band": Parts.TIMBER if brass else HOUSING.darkened(0.2), "slit": (Parts.BRASS if brass else HOUSING).darkened(0.45)}, root)
+	Models.moving(MODEL, "lever_handle", {"handle": Parts.CREAM, "knob": knob}, anchor, false)
 
 ## One chain link (a flattened ring), cached by the kit like every shape.
 static func _link(parent: Node3D) -> MeshInstance3D:
