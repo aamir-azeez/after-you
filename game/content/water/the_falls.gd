@@ -36,7 +36,9 @@ const DATA := {
 			"levels": {"still": 9.00}, "color": Color(0.30, 0.52, 0.55, 0.84)},
 	],
 	"marks": {"LOW": Color("4d5b40"), "HIGH": Color("5f6a4c")},
-	"stone": Color("9a9a88"),
+	# The floors stand on the gorge's rock: plain rock faces, no block courses.
+	"stone": Color("7f8371"),
+	"courses": 0,
 	"coping": Color("c9c6b0"),
 	"pit_floor": Color("6f6f60"),
 	"plinth": Color("8a8a78"),

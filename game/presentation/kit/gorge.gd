@@ -9,6 +9,10 @@ extends RefCounted
 ##       pool behind it (WaterBodies.bed_at) and rising `rise` above the
 ##       highest floor near it, so every tier has rock behind it; left open
 ##       where a waterfall pours through (`open`).
+##   "base": true
+##       solid rock under every pool that has its own bed above the block's
+##       seabed (the water kit's "bed"), from the seabed up to that bed, so a
+##       climb of pools stands on rock seen from any zoom, not on hollow water.
 ##   "rainbows": [{"at": [x_cm, y_cm, z_cm], "radius": cm}]
 ##       soft arcs in a falls' spray, turned to face the world's camera
 ##       (camera_from), so they read from the level's own angle.
@@ -34,6 +38,7 @@ static func build(world: Node3D, data: Dictionary) -> void:
 	holder.name = "Gorge"
 	world.terrain.add_child(holder)
 	if data.has("wall"): _wall(world, data.wall, holder)
+	if bool(data.get("base", false)): _base(world, holder)
 	for rainbow: Dictionary in data.get("rainbows", []):
 		var at: Array = rainbow.at
 		_rainbow(holder, Vector3(float(at[0]), float(at[1]), float(at[2])) / 100.0, float(rainbow.radius) / 100.0, world.camera_from())
@@ -56,6 +61,18 @@ static func _wall(world: Node3D, wall: Dictionary, holder: Node3D) -> void:
 			rock.scale = Vector3(wide / WALL_WIDE, maxf(top - foot, 1.0) / WALL_TALL, 1.0)
 		x += wide
 		index += 1
+
+## Rock from the seabed up to each raised pool's own bed, under its rects.
+static func _base(world: Node3D, holder: Node3D) -> void:
+	var seabed: float = world.waters.seabed()
+	var Primitives: Script = load("res://presentation/kit/primitives.gd")
+	for body: Dictionary in world.waters.water.get("bodies", []):
+		var bed := float(body.get("bed", seabed))
+		if bed <= seabed + 0.05: continue
+		for r: Array in body.get("rects", []):
+			var size := Vector3(float(r[2] - r[0]) / 100.0, bed - 0.02 - seabed, float(r[3] - r[1]) / 100.0)
+			var at := Vector3(float(r[0] + r[2]) / 200.0, seabed + size.y * 0.5, float(r[1] + r[3]) / 200.0)
+			Primitives.mesh_node(Primitives.box_mesh(size), Primitives.shared_material(Props.FALLS_COLORS.stone_dark), at, holder).name = "PoolBase"
 
 ## The highest floor (m) within a stretch of wall either side of `x` (m).
 static func _floor_top(world: Node3D, x: float) -> float:
