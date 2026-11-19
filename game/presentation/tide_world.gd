@@ -187,11 +187,11 @@ func show_stage(stage: Dictionary) -> void:
 	await waters.build_walls()
 	await _build_step()
 	_build_chamber()
-	# The parapets and the chamber's walls now stand: a coil behind one goes.
-	drop_unseen_coils(waters.walls)
 	await _build_step()
 	_build_sea_gates()
 	await waters.build_locks(WaterLocks.bake_path(_chapter_key(), displayed_stage_id))
+	# Every wall now stands: a coil behind one goes.
+	drop_unseen_coils(waters.standing_walls())
 	await _build_step()
 	_build_mouth_lamps()
 	await _build_step()

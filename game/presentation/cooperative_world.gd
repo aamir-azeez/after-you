@@ -400,7 +400,7 @@ func _hang_pulleys(view: Dictionary) -> void:
 		piece.weight.set_meta("rest_y", piece.weight.position.y)
 
 ## A world that builds walls in front of its pulley posts after them gives
-## them here (terrain space, kit/water_bodies.gd walls): a post's coil the
+## them here (terrain space, kit/water_bodies.gd standing_walls): a post's coil the
 ## camera cannot see past them is left out (kit/pieces/pulley.gd).
 func drop_unseen_coils(blockers: Array[AABB]) -> void:
 	for piece: RefCounted in _pulleys.values(): piece.drop_unseen(blockers)
