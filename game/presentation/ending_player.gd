@@ -19,6 +19,7 @@ const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const Models = preload("res://presentation/kit/models.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
 
 signal finished(watched: bool)
 
@@ -263,6 +264,7 @@ func _build_layer(overlay: Control) -> void:
 	_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tint.visible = false
 	_layer.add_child(_tint)
+	SafeArea.bleed(_tint)
 	for edge: String in ["Top", "Bottom"]:
 		var bar := ColorRect.new()
 		bar.name = edge + "Bar"
