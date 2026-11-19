@@ -3,12 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-path="res://.godot/imported/pulley_weights.glb-0.scn"
+uid="uid://by4awsnqvymku"
+path="res://.godot/imported/pulley_weights.glb-98ebb57df8b555b29570bd0c41719ef8.scn"
 
 [deps]
 
 source_file="res://assets/models/pulley_weights.glb"
-dest_files=["res://.godot/imported/pulley_weights.glb-0.scn"]
+dest_files=["res://.godot/imported/pulley_weights.glb-98ebb57df8b555b29570bd0c41719ef8.scn"]
 
 [params]
 
