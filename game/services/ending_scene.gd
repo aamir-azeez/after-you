@@ -34,7 +34,10 @@ extends RefCounted
 ##              "bob": {"amp": metres, "rate": per second, "for"}}
 ##     camera:  {"at": a point, or "who": a role, "size": metres of view
 ##              height, "time", "ease", "orbit": degrees the view turns
-##              round the point over the time (a slow circle; it stays turned)}
+##              round the point over the time (a slow circle; it stays turned)};
+##              {"home": true, "time", "ease"} glides back to the game's own
+##              view (where the camera stood when the scene began, unturned),
+##              so the world comes back without a jump
 ##     bars:    {"show": true or false, "time", "ease"}: letterbox bars slide in
 ##              or out (each 10% of the screen's height), for the film feel
 ##     tint:    {"color": hex, "alpha": 0..1, "time", "ease"}: the screen washes
@@ -103,6 +106,7 @@ static func _check_step(step: Variant, props: Dictionary) -> String:
 			if step.has("face") and not SpiritLook.has(StringName(str(step.face))): return "unknown face %s" % step.face
 			if step.has("rest") and not SpiritIdle.has_pose(StringName(str(step.rest))): return "unknown rest %s" % step.rest
 		"camera":
+			if bool(step.get("home", false)): return ""
 			if not (step.has("who") or _point(step.get("at")) is Vector3) or float(step.get("size", 0.0)) <= 0.0: return "a camera needs a place and a size"
 		"sound":
 			if not SoundCues.is_fixed(str(step.get("cue", ""))): return "sound %s is not a fixed cue" % step.get("cue", "")
@@ -170,12 +174,13 @@ static func compile(data: Dictionary, at: Dictionary) -> Dictionary:
 				for kind: String in ["hop", "wake", "bump", "cheer"]:
 					if step.has(kind): compiled.events.append({"at": cursor, "kind": kind, "who": str(step.who), "time": float(step[kind]) if kind == "hop" else 0.0})
 			"camera":
-				var target: Vector3 = position_of(compiled, str(step.who), cursor) if step.has("who") else origin + _point(step.at)
+				var home := bool(step.get("home", false))
+				var target: Vector3 = camera.start if home else (position_of(compiled, str(step.who), cursor) if step.has("who") else origin + _point(step.at))
 				_append(camera.moves, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": target}, _track(camera.moves, camera.start, cursor))
-				_append(camera.sizes, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": float(step.size)}, _track(camera.sizes, camera.start_size, cursor))
-				if step.has("orbit"):
+				_append(camera.sizes, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": float(camera.start_size) if home else float(step.size)}, _track(camera.sizes, camera.start_size, cursor))
+				if step.has("orbit") or home:
 					var turned: float = _track(camera.orbits, 0.0, cursor)
-					_append(camera.orbits, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": turned + float(step.orbit)}, turned)
+					_append(camera.orbits, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": 0.0 if home else turned + float(step.orbit)}, turned)
 			"bars":
 				_append(screen.bars, {"at": cursor, "time": time, "ease": ease, "arc": 0.0, "to": 1.0 if bool(step.show) else 0.0}, _track(screen.bars, 0.0, cursor))
 			"tint":
