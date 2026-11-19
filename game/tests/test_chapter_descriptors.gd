@@ -31,6 +31,7 @@ const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const Keepsakes = preload("res://services/home_keepsake_catalog.gd")
 const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
+const Looks = preload("res://content/water/looks.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
 const Props = preload("res://presentation/kit/props.gd")
@@ -122,9 +123,10 @@ func _families() -> void:
 ## a typo here would fail deep in a build or leave water still: every field is
 ## present and well formed, each body's control is a selector of the chapter
 ## whose values the descriptor's "water_levels" lists in the same order (or
-## none, for still water at one level), its
-## rest value is one of its levels, the marks name the first body's levels and
-## every pier is an island.
+## none, for still water at one level), its rest value is one of its levels, the
+## marks name the first body's levels, every pier is an island, and the look's
+## switches (the block's "look" and a body's own, content/water/looks.gd SWITCHES)
+## are known names set true or false.
 func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dictionary) -> void:
 	for field: String in ["seabed", "rate", "wall_top", "inset", "bounds", "bodies", "marks", "stone", "coping", "pit_floor", "plinth", "fender", "piers"]:
 		_check(block.has(field), "Water block of %s has %s" % [key, field])
@@ -148,12 +150,18 @@ func _water_block(key: String, data: Dictionary, block: Dictionary, level: Dicti
 			continue
 		_check(selectors.has(selector), "Water body %s of %s follows a selector of the chapter: %s" % [id, key, selector])
 		_same(data.water_levels.get(selector, []), levels.keys(), "%s's water_levels lists water body %s's values in its order" % [key, id])
+		for field: String in Looks.SWITCHES:
+			_check(not body.has(field) or body[field] is bool, "Water body %s of %s switches %s with true or false" % [id, key, field])
 	var all: Array = block.get("bodies", [])
 	_check(not all.is_empty(), "Water block of %s has at least one body" % key)
 	var first: Dictionary = all[0] if not all.is_empty() else {}
 	for value: String in block.get("marks", {}): _check(first.get("levels", {}).has(value), "Water marks of %s name the first body's levels: %s" % [key, value])
 	var islands: Array = level.get("islands", []).map(func(island: Dictionary) -> String: return str(island.id))
 	for pier: String in block.get("piers", []): _check(pier in islands, "Water piers of %s are islands: %s" % [key, pier])
+	var asked: Variant = block.get("look", {})
+	_check(asked is Dictionary, "Water look of %s is a dictionary of switches" % key)
+	if asked is Dictionary:
+		for field: Variant in asked: _check(Looks.SWITCHES.has(field) and asked[field] is bool, "Water look of %s switches a known add-on with true or false: %s" % [key, field])
 
 func _chapter(key: String, data: Dictionary) -> void:
 	var family := Families.row(str(data.get("family")))

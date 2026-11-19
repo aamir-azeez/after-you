@@ -44,6 +44,16 @@ static func detail_dressing(quality: Variant) -> bool:
 static func fill_light(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
+## The water's second ripple layer and its wider foam read
+## (presentation/kit/water_look.gd); Low keeps one layer, the foam, the
+## seabed and the glints.
+static func water_detail(quality: Variant) -> bool:
+	return normalize(quality) != "low"
+
+## How many spots on screen spread rings on the water at once.
+static func water_rings(quality: Variant) -> int:
+	return 4 if normalize(quality) == "low" else 8
+
 ## The pools of light under the Wishing Well's lit lanterns; the glowing lamps
 ## themselves stay.
 static func lantern_lights(quality: Variant) -> bool:

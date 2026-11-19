@@ -195,6 +195,14 @@ func relight(look: String) -> void:
 	_look = look
 	Look.apply(self, look, GraphicsPolicy.fill_light(_motion_quality))
 
+## The kit/look.gd preset the world is lit with now.
+func look_name() -> String:
+	return _look
+
+## The graphics quality the world draws at now (GraphicsPolicy.QUALITIES).
+func graphics_quality() -> String:
+	return _motion_quality
+
 func apply_graphics_quality(quality: String) -> void:
 	_motion_quality = GraphicsPolicy.normalize(quality)
 	for trail: Node3D in _motion_trails:

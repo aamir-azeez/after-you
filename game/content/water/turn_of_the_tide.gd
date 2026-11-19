@@ -25,7 +25,9 @@ const DATA := {
 		# each end of the mouth where the sea gates stand.
 		{"id": "sea", "node": "OuterSea", "selector": "basin", "rest": "shut",
 			"rects": [[-2400, -640, -960, 640], [-960, -480, -704, 480], [-704, -560, -512, 560]],
-			"levels": {"shut": -0.06, "low": -0.22, "half": 0.24, "high": 0.70}, "color": Color(0.21, 0.37, 0.44, 0.88)},
+			"levels": {"shut": -0.06, "low": -0.22, "half": 0.24, "high": 0.70}, "color": Color(0.21, 0.37, 0.44, 0.88),
+			# Open sea: it reads deep, so it shows no seabed (content/water/looks.gd).
+			"floor": false},
 		{"id": "chamber", "node": "ChamberWater", "selector": "chamber", "rest": "half", "basin": true,
 			"rects": [[-640, -128, -576, 128]],
 			"levels": {"low": -0.22, "half": 0.24, "high": 0.70}, "color": Color(0.28, 0.46, 0.50, 0.84)},
