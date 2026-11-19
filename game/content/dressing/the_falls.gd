@@ -21,13 +21,14 @@ const DATA := {
 	"carried_item": "pipsport",
 	"current": "ripples",
 	"props": {"*": [
-		# The falls: the tall one at the foot of the stream behind the mill
-		# pool, the one in the gorge behind the rope bridge, and a last one
+		# The falls: the tall one at the foot of the stream west of the mill
+		# pool, the one in the gorge behind the rope bridge, and the grandest
 		# past the far bank where the ending's pool is. Each stands with its
-		# foot in its reach of the stream, behind or beside the floors.
-		{"slot": "landmark", "style": "waterfall", "at": [-220, -300], "width": 240, "height": 560, "y": -36, "foot": 30},
-		{"slot": "landmark", "style": "waterfall", "at": [3000, -492], "width": 190, "height": 400, "y": 22},
-		{"slot": "landmark", "style": "waterfall", "at": [5250, -260], "width": 140, "height": 220, "y": 80, "anchor": "falls_pool"},
+		# foot (its lowest lip) in its reach of the stream and grows back and
+		# up in tiers behind the floors, clear of the camera's view of them.
+		{"slot": "landmark", "style": "waterfall", "at": [-300, -330], "width": 260, "height": 640, "tiers": 3, "cheek": 0.85, "y": -36, "foot": 30},
+		{"slot": "landmark", "style": "waterfall", "at": [3015, -462], "width": 180, "height": 520, "tiers": 3, "cheek": 0.55, "y": 22},
+		{"slot": "landmark", "style": "waterfall", "at": [5380, -360], "width": 300, "height": 700, "tiers": 3, "cheek": 0.75, "y": 80, "anchor": "falls_pool"},
 		# The mill's big wheel turning behind the mill, in the pool it sets.
 		{"slot": "landmark", "style": "mill", "at": [215, -432], "y": -36, "size": 1.35},
 		# The red post box the pipsport starts in, on the little island's west
