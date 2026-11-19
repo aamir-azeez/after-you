@@ -14,7 +14,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## structure stays outside the walkable rectangle, under the deck or high over
 ## the floor (the winch's line), and the
 ## cage's rails are low (RAIL) so a rider's face stays in view. Every moving
-## part follows the shown height alone (set_height).
+## part follows the shown height alone (set_height), plus the small bob past
+## its stop (OVER, Motion.arrival) its host starts with arrive() as a ride ends.
 const STYLES := ["plain", "rope_tower"]
 const RAIL := 0.32
 ## The hook block over the deck, and the tower top over the upper floor (m).
@@ -34,6 +35,9 @@ const DRIVE_ROPE := 0.06
 ## rope, never behind the pip.
 const WINCH_SIZE := 1.35
 const WINCH_OFFSET := 0.66
+## How far past its stop the deck bobs as a ride ends (m): a centimetre, so
+## a rider's feet stay on it.
+const OVER := 0.012
 
 var _bottom := 0.0
 var _top := 1.0
@@ -41,6 +45,8 @@ var _rope: Node3D
 var _wheels: Array[Node3D] = []
 var _drum: Node3D
 var _parts: Array[Node3D] = []
+var _height := 0.0
+var _over := 0.0
 
 ## A lift in `style` over `rect` (metres, x and z in parent space), riding
 ## from `bottom` to `top`. `options`: "drive" (Vector3, the power spot a
@@ -52,6 +58,28 @@ static func build(lift_style: String, rect: Rect2, bottom: float, top: float, pa
 
 ## Shows the deck at `height` (m, parent space).
 func set_height(height: float) -> void:
+	if height != _height:
+		_stop_arrival()
+		_over = 0.0
+	_height = height
+	_place(height + _over)
+
+## The ride has ended going `direction` (up positive): the deck bobs past its
+## stop and settles. 0 ends any bob at once.
+func arrive(direction: float) -> void:
+	_stop_arrival()
+	_over = 0.0
+	_arrive(OVER * signf(direction))
+	_place(_height)
+
+func moving() -> bool:
+	return _arriving()
+
+func advance(delta: float) -> void:
+	_over = _arrival_step(delta)
+	_place(_height + _over)
+
+func _place(height: float) -> void:
 	root.position.y = height
 	if style != "rope_tower": return
 	var hook := height + HOOK_OVER

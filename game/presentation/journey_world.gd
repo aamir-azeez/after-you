@@ -196,7 +196,9 @@ func _follow_knobs() -> void:
 ## The top of a selector lever's knob (terrain space), as the lever now tilts:
 ## where its bubble's tail lands.
 func _knob_top(id: String) -> Vector3:
-	return (_physical_levers[id] as Node3D).transform*KNOB+Vector3(0,KNOB_RADIUS,0)
+	var piece: RefCounted = _lever_pieces.get(id)
+	var at: Transform3D = piece.anchor_rest() if piece != null else (_physical_levers[id] as Node3D).transform
+	return at*KNOB+Vector3(0,KNOB_RADIUS,0)
 
 ## A named place (a pad, a door): the same bubble with one word, its tail
 ## pointing down at `at`.
