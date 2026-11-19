@@ -35,14 +35,19 @@ extends RefCounted
 ##     prop:    {"id", "to", "time", "ease", "arc", "show", "alpha",
 ##              "follow": a role it rides on ("" lets go), "spin": degrees a second}
 ##     caption: {"text": a PlayerCopy line, "for"}
-## Times are seconds. "ease" is "inout" (default), "in", "out" or "linear".
+## Times are seconds. "ease" is "inout" (default), "in", "out", "linear",
+## "back" (runs a little past and settles: a landing, a pop into place) or
+## "bounce" (drops and bounces to rest: something let fall).
+## A prop of shape "model" is a part of a Blender model (kit/models.gd):
+##   {"shape": "model", "model": res path, "part": name, "colors": {slot: hex},
+##    "scale": 1, "at", "rot", "alpha"}; it needs no "size".
 const SoundCues = preload("res://services/sound_cues.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 
 const ROLES := ["carrier", "other"]
-const SHAPES := ["box", "sphere", "cylinder", "cone"]
-const EASES := ["inout", "in", "out", "linear"]
+const SHAPES := ["box", "sphere", "cylinder", "cone", "model"]
+const EASES := ["inout", "in", "out", "linear", "back", "bounce"]
 const STEPS := ["wait", "move", "face", "pose", "camera", "sound", "prop", "caption"]
 ## A prop riding on a pip sits this high over the pip's feet (its carried seed's height).
 const FOLLOW_LIFT := 1.06
@@ -59,6 +64,9 @@ static func check(data: Dictionary) -> String:
 		var prop: Variant = props[id]
 		if not prop is Dictionary or str(prop.get("shape", "")) not in SHAPES: return "prop %s needs a shape" % id
 		if not _point(prop.get("at", [0, 0, 0])) is Vector3: return "prop %s needs a point" % id
+		if prop.shape == "model":
+			if not ResourceLoader.exists(str(prop.get("model", ""))) or str(prop.get("part", "")).is_empty() or not prop.get("colors", {}) is Dictionary: return "model prop %s needs a model, a part and colours" % id
+			continue
 		if not prop.get("size") is Array or (prop.size as Array).size() != (3 if prop.shape == "box" else 2): return "prop %s has the wrong size" % id
 	var steps: Variant = data.get("steps", [])
 	if not steps is Array or (steps as Array).is_empty(): return "a scene needs steps"
@@ -179,11 +187,31 @@ static func _point(value: Variant) -> Variant:
 		if not (part is int or part is float): return null
 	return Vector3(float(value[0]), float(value[1]), float(value[2]))
 
+## Out-bounce: falls to the end and bounces three times, smaller each time.
+static func _bounce(u: float) -> float:
+	var n := 7.5625
+	var d := 2.75
+	if u < 1.0 / d: return n * u * u
+	if u < 2.0 / d:
+		u -= 1.5 / d
+		return n * u * u + 0.75
+	if u < 2.5 / d:
+		u -= 2.25 / d
+		return n * u * u + 0.9375
+	u -= 2.625 / d
+	return n * u * u + 0.984375
+
 static func _eased(ease: String, u: float) -> float:
 	match ease:
 		"linear": return u
 		"in": return u * u
 		"out": return 1.0 - (1.0 - u) * (1.0 - u)
+		"back":
+			# Out-back: about 10% past the end, then settles on it.
+			var k := 1.70158
+			var v := u - 1.0
+			return 1.0 + (k + 1.0) * v * v * v + k * v * v
+		"bounce": return _bounce(u)
 	return u * u * (3.0 - 2.0 * u)
 
 ## The value of a keyframe track at `t`: the newest segment begun by then, from

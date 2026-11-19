@@ -18,6 +18,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const Models = preload("res://presentation/kit/models.gd")
 
 signal finished(watched: bool)
 
@@ -181,6 +182,9 @@ func _build_props(specs: Dictionary) -> void:
 	_world.add_child(_root)
 	for id: String in specs:
 		var spec: Dictionary = specs[id]
+		if str(spec.shape) == "model":
+			_props[id] = _model_prop(id, spec)
+			continue
 		var size: Array = spec.size
 		var mesh: Mesh
 		match str(spec.shape):
@@ -203,6 +207,26 @@ func _build_props(specs: Dictionary) -> void:
 		node.rotation_degrees = Vector3(float(turn[0]), float(turn[1]), float(turn[2]))
 		node.set_meta("yaw", node.rotation.y)
 		_props[id] = node
+
+## A model prop (EndingScene: shape "model"): the part as one painted mesh,
+## its own see-through copy of the palette look when it fades.
+func _model_prop(id: String, spec: Dictionary) -> Node3D:
+	var colors: Dictionary = {}
+	for slot: String in spec.get("colors", {}): colors[slot] = Color(str(spec.colors[slot]))
+	var node := Models.moving(str(spec.model), str(spec.part), colors, _root, false)
+	node.name = id
+	node.set_meta("ending_prop", id)
+	node.scale = Vector3.ONE * float(spec.get("scale", 1.0))
+	if _fades(id, spec):
+		var material := (node.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
+		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		material.remove_meta(Primitives.SHARED_META)
+		node.material_override = material
+		_materials[id] = material
+	var turn: Array = spec.get("rot", [0, 0, 0])
+	node.rotation_degrees = Vector3(float(turn[0]), float(turn[1]), float(turn[2]))
+	node.set_meta("yaw", node.rotation.y)
+	return node
 
 func _fades(id: String, spec: Dictionary) -> bool:
 	if float(spec.get("alpha", 1.0)) < 1.0: return true
