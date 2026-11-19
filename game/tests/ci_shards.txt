@@ -212,6 +212,7 @@ long_way_home_versions 3
 memory_wait 3
 menu_back 1
 missing_piece 3
+models 2
 name_filter 3
 navigation_index 1
 object_motion_trail 1
