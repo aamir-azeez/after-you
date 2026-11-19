@@ -48,6 +48,11 @@ uniform float pocket_full = 3.0;
 uniform float haze = 0.12;
 uniform vec4 spots[16];
 uniform int spot_count = 0;
+// PROTOTYPE: where the fog has been pushed back for good (reveal()): one
+// soft mask over the floors, sampled at the ground this pixel looks at.
+uniform sampler2D reveal_map : filter_linear, repeat_disable;
+uniform vec4 reveal_rect = vec4(0.0, 0.0, 1.0, 1.0);
+uniform float reveal_floor = 0.0;
 varying vec3 world_at;
 varying vec3 layer;
 
@@ -74,6 +79,9 @@ void fragment() {
 		float reach = spots[i].w;
 		open = min(open, mix(haze, 1.0, smoothstep(reach * 0.55, reach, distance(at, sight(spots[i].xyz, back)))));
 	}
+	vec2 ground = at - (world_at.y - reveal_floor) * back.xz / back.y;
+	float shown = texture(reveal_map, (ground - reveal_rect.xy) * reveal_rect.zw).r;
+	open = min(open, mix(1.0, haze * 1.5, shown));
 	vec2 edge = min(SCREEN_UV, vec2(1.0) - SCREEN_UV);
 	float wash = (1.0 - smoothstep(0.0, 0.22, min(edge.x * VIEWPORT_SIZE.x / VIEWPORT_SIZE.y, edge.y))) * edge_wash * layer.b;
 	ALBEDO = tint.rgb;
@@ -105,7 +113,10 @@ static func build(look_name: String, floors: Array, spots: Array, lanterns: Dict
 ## Thins the fog round the lanterns the snapshot's `levers` show lit.
 func present(levers: Dictionary) -> void:
 	var lit: Dictionary = {}
-	for id: String in _lanterns: lit[id] = bool(levers.get(id, false))
+	# PROTOTYPE: a lantern once lit stays lit (and keeps its clearing).
+	for id: String in _lanterns: lit[id] = bool(levers.get(id, false)) or bool(_lit.get(id, false))
+	for id: String in lit:
+		if lit[id] and not _lit.get(id, false): _lit_at[id] = _clock
 	if lit == _lit: return
 	_lit = lit
 	for id: String in _lanterns:
@@ -117,6 +128,68 @@ func present(levers: Dictionary) -> void:
 ## The pocket round the played pip's drawn spirit (global m).
 func follow(at: Vector3) -> void:
 	_material.set_shader_parameter("pocket", at)
+
+# --- PROTOTYPE: the fog pushed back for good ---
+## Metres per mask pixel; how far round a pip's path the fog stays open, and
+## how far a lit lantern pushes it back (growing over LANTERN_GROW seconds).
+const REVEAL_CELL := 0.4
+const PATH_RADIUS := 2.2
+const LANTERN_REACH := 5.5
+const LANTERN_GROW := 1.8
+var _reveal: Image
+var _reveal_texture: ImageTexture
+var _reveal_rect := Rect2()
+var _painted: Array[Vector2] = []
+var _lit_at: Dictionary = {}
+var _clock := 0.0
+var _dirty := false
+
+func _make_reveal(bounds: Rect2, floor_y: float) -> void:
+	_reveal_rect = bounds
+	var size := Vector2i(ceili(bounds.size.x / REVEAL_CELL), ceili(bounds.size.y / REVEAL_CELL))
+	_reveal = Image.create(size.x, size.y, false, Image.FORMAT_L8)
+	_reveal_texture = ImageTexture.create_from_image(_reveal)
+	_material.set_shader_parameter("reveal_map", _reveal_texture)
+	_material.set_shader_parameter("reveal_rect", Vector4(bounds.position.x, bounds.position.y, 1.0 / bounds.size.x, 1.0 / bounds.size.y))
+	_material.set_shader_parameter("reveal_floor", floor_y)
+
+## Opens the fog for good round every spirit drawn (the live pip and the
+## memory alike, global m), and grows each lit lantern's clearing. Called each
+## frame with the world's clock; it paints only when a spirit has moved on.
+func reveal(spirits: Array, clock: float) -> void:
+	if _reveal == null: return
+	_clock = clock
+	for at: Vector3 in spirits:
+		var here := Vector2(at.x, at.z)
+		var near := false
+		for done: Vector2 in _painted:
+			if done.distance_squared_to(here) < 0.09: near = true
+		if near: continue
+		_painted.append(here)
+		if _painted.size() > 64: _painted.pop_front()
+		_paint(here, PATH_RADIUS)
+	for id: String in _lit_at.keys():
+		var grown := clampf((clock - float(_lit_at[id])) / LANTERN_GROW, 0.0, 1.0)
+		var spot: Vector4 = _spots[_lanterns[id]]
+		_paint(Vector2(spot.x, spot.z), lerpf(SPOT_RADIUS, LANTERN_REACH, smoothstep(0.0, 1.0, grown)))
+		if grown >= 1.0: _lit_at.erase(id)
+	if _dirty:
+		_reveal_texture.update(_reveal)
+		_dirty = false
+
+## A soft disc of open fog (it only ever opens more).
+func _paint(at: Vector2, radius: float) -> void:
+	var c := (at - _reveal_rect.position) / REVEAL_CELL
+	var r := radius / REVEAL_CELL
+	var size := _reveal.get_size()
+	for y in range(maxi(0, floori(c.y - r)), mini(size.y, ceili(c.y + r) + 1)):
+		for x in range(maxi(0, floori(c.x - r)), mini(size.x, ceili(c.x + r) + 1)):
+			var d := Vector2(x + 0.5, y + 0.5).distance_to(c) / r
+			if d >= 1.0: continue
+			var value := 1.0 - smoothstep(0.55, 1.0, d)
+			if value > _reveal.get_pixel(x, y).r + 0.02:
+				_reveal.set_pixel(x, y, Color(value, value, value))
+				_dirty = true
 
 ## The drift at `seconds` on the world's clock.
 func drift(seconds: float) -> void:
@@ -167,6 +240,7 @@ func _make(cover: Dictionary, floors: Array, spots: Array, lanterns: Dictionary,
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	node.extra_cull_margin = 4.0
 	parent.add_child(node)
+	_make_reveal(bounds, top)
 
 func _send_spots() -> void:
 	var padded: Array[Vector4] = _spots.duplicate()

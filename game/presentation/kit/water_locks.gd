@@ -45,6 +45,7 @@ extends Node3D
 ##   "seabed", "wall_top"          the water floor and the height walls reach
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const SoftMist = preload("res://presentation/kit/soft_mist.gd")
 const SCRIPT_PATH := "res://presentation/kit/water_locks.gd"
 const DOOR := "door"
 const SPILL := "spill"
@@ -507,10 +508,48 @@ func _build_spill(run: Dictionary, stone: Node3D) -> void:
 	sheet.visible = false
 	var spray: Node3D = null
 	if spill_style == "falls":
-		sheet.scale = Vector3(1, 1, 1)
-		sheet.mesh = Primitives.box_mesh(Vector3(length, 1.0, FALLS_SHEET) if run.along_x else Vector3(FALLS_SHEET, 1.0, length))
-		spray = _falls_spray(length, bool(run.along_x))
+		# PROTOTYPE: a pour, not a pane. The sheet is rebuilt for each drop
+		# (_pour_mesh): water rolling over a rounded lip, curving out as it
+		# falls and landing in foam, or a short run of rapids where the drop
+		# is small. It shares the falls' running-water look (kit/props.gd).
+		sheet.material_override = load("res://presentation/kit/props.gd")._falls_material()
+		spray = Node3D.new()
+		spray.name = "FallsSpray"
+		spray.visible = false
+		add_child(spray)
 	_sheets.append({"run": run, "sheet": sheet, "spray": spray, "low": INF, "falling": false})
+
+## Below this drop (m) a spillway is a short run of rapids, not a pour.
+const RAPIDS_BELOW := 0.35
+
+## A pour `length` wide falling `fall` (m) from its lip at 0 toward +z, in the
+## falls' running-water format (kit/props.gd _falls_strip and _falls_foam).
+static func _pour_mesh(length: float, fall: float) -> ArrayMesh:
+	var Props: Script = load("res://presentation/kit/props.gd")
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var points: Array = []
+	var falling: Array = []
+	var reach := 0.0
+	if fall < RAPIDS_BELOW:
+		# Rapids: the water speeds over a low step and runs on in a churn.
+		points = [Vector3(0, 0.02, -0.5), Vector3(0, 0.02, 0), Vector3(0, -fall * 0.55, 0.16), Vector3(0, -fall + 0.02, 0.42), Vector3(0, -fall + 0.02, 0.9)]
+		falling = [0.0, 0.35, 0.9, 0.75, 0.3]
+		reach = 0.9
+	else:
+		# A pour: flat to the lip, rolling over it, then curving out as it drops.
+		points = [Vector3(0, 0.03, -0.6), Vector3(0, 0.03, -0.02), Vector3(0, -0.04, 0.09)]
+		falling = [0.0, 0.0, 0.5]
+		var throw := 0.22 + 0.16 * sqrt(fall)
+		for step in range(1, 7):
+			var t := float(step) / 6.0
+			points.append(Vector3(0, -fall * t, 0.09 + throw * sqrt(t)))
+			falling.append(1.0)
+		reach = 0.09 + throw
+	Props._falls_strip(tool, length, points, falling)
+	var foam_out := 0.3 + 0.25 * minf(fall, 2.0)
+	Props._falls_foam(tool, Vector3(0, -fall + 0.03, reach + foam_out * 0.5), Vector2(length * 0.5 + 0.15, foam_out))
+	return tool.commit()
 
 ## A waterfall's foam and mist (spill_style "falls"), a row along the run's
 ## length centred on its own origin, placed at the pool below each present.
@@ -699,9 +738,27 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 		sheet.visible = falling and fall > LEVEL
 		var toward_b := Vector3(0, 0, 1) if run.along_x else Vector3(1, 0, 0)
 		var lower_side := toward_b if b < a else -toward_b
+		var spray: Node3D = spill.get("spray")
+		if spill_style == "falls":
+			# The pour from the lip's edge toward the lower water.
+			sheet.mesh = _pour_mesh(_length(run) - 0.04, fall)
+			sheet.position = _on_run(run, _length(run) * 50.0, float(run.lip)) + lower_side * (_width(SPILL) * 0.5)
+			if not run.along_x: sheet.basis = Basis(Vector3.UP, PI * 0.5 if lower_side.x > 0.0 else -PI * 0.5)
+			else: sheet.basis = Basis() if lower_side.z > 0.0 else Basis(Vector3.UP, PI)
+			if spray != null:
+				for child: Node in spray.get_children(): child.free()
+				spray.visible = sheet.visible and fall >= RAPIDS_BELOW
+				spray.transform = sheet.transform
+				var blots: Array = []
+				var length := _length(run)
+				var count := maxi(2, ceili(length / 1.2))
+				for index in range(count):
+					var x := ((float(index) + 0.5) / float(count) - 0.5) * length
+					blots.append([Vector3(x, -fall + 0.35 + 0.1 * float(index % 2), 0.55), Vector2(1.3, 0.9) * minf(1.0 + fall * 0.25, 1.8), "front"])
+				SoftMist.build(blots, Color(0.97, 0.99, 0.99, 0.55), spray)
+			continue
 		sheet.position = _on_run(run, _length(run) * 50.0, float(run.lip) - fall * 0.5) + lower_side * (_width(SPILL) * 0.5 + 0.01)
 		sheet.scale = Vector3(1, maxf(fall, 0.01), 1)
-		var spray: Node3D = spill.get("spray")
 		if spray != null:
 			spray.visible = sheet.visible
 			spray.position = _on_run(run, _length(run) * 50.0, low) + lower_side * (_width(SPILL) * 0.5 + FALLS_OUT)

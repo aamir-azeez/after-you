@@ -39,6 +39,9 @@ static func definition() -> Dictionary:
 	return PiecesRules.pin(StageBlocks.expand(source()), CAPS)
 
 static func source() -> Dictionary:
+	return _proto(_plain())
+
+static func _plain() -> Dictionary:
 	return {"schema_version": 7, "simulation_version": 9, "id": "the-falls", "version": 1, "premium": false, "closing_ticks": 30,
 		"turn_limits": {"a_ticks": 3600, "b_ticks": 3600},
 		"starts": {"p0": {"position_cm": [150, -200], "height_cm": 48, "surface_id": "mill"}, "p1": {"position_cm": [150, 200], "height_cm": 0, "surface_id": "beach"}},
@@ -153,3 +156,13 @@ static func _stair(id: String, rect: Array, axis: String, from: String, to: Stri
 	var stair := {"id": id, "rect_cm": rect, "axis": axis, "from_surface": from, "to_surface": to, "from_height_cm": low, "to_height_cm": high}
 	if hands: stair["hands"] = true
 	return stair
+
+## PROTOTYPE (train/falls-rethink-proto): floors spread 2.6 times apart along x
+## and 1.5 across (growing only a little), each stage on its own tier up the gorge (the mill at the
+## foot, the path behind the falls higher, the last stones at the lip), with
+## heights inside a stage 2.5 times taller. core/journey/proto_spread.gd.
+const ProtoSpread = preload("res://core/journey/proto_spread.gd")
+const PROTO_TIERS := [[900, 200], [2100, 450], [3600, 700]]
+
+static func _proto(plain: Dictionary) -> Dictionary:
+	return ProtoSpread.apply(plain, Vector2(2.6, 1.5), Vector2(1.2, 1.15), 2.5, PROTO_TIERS)

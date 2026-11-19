@@ -9,3 +9,10 @@ extends "res://presentation/water_world.gd"
 ## of its floors.
 func _follow_limits() -> Array[Vector2]:
 	return _floors_follow_limits()
+
+## PROTOTYPE (train/falls-rethink-proto): rainbows in the spray.
+const ProtoLandmarks = preload("res://presentation/kit/proto_landmarks.gd")
+
+func _build_water_scenery() -> void:
+	super._build_water_scenery()
+	ProtoLandmarks.falls(terrain)
