@@ -60,7 +60,6 @@ void sky() {
 	// Screen heights from the centre, y down.
 	float aspect = buffer_size.x / buffer_size.y;
 	vec2 p = (FRAGCOORD.xy - 0.5 * buffer_size) / buffer_size.y;
-	p.y = -p.y;
 	vec2 shift = vec2(parallax.x, -parallax.y);
 	vec3 col = sky_color;
 
