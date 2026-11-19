@@ -90,11 +90,11 @@
 		},
 		"fog-marsh@1": {
 			"definition_fixture": "journey/fog-marsh-definition.json",
-			"definition_hash": "ed98f45aee92fe2ff5350351bbc3a404a3cef1433f724384d9ba8d96acc107c3",
+			"definition_hash": "0cdfc1875835b016d69e446e9818f89a2bc6ab18664ad1acf6d9546e8994a5cd",
 			"family": "journey",
 			"flag": "FOG_MARSH_CHAPTER_ENABLED",
 			"hard": false,
-			"initial_checkpoint_hash": "bfa69e2ce82f52f7ba35d0716f34994a925b48cccfcd72baa87bf5525fafb171",
+			"initial_checkpoint_hash": "2a26845d634218e9724f2c5b914581629e406d241f52aec475d09a9ed99d4197",
 			"initial_fixture": "journey/fog-marsh-initial-checkpoint.json",
 			"key": "fog-marsh@1",
 			"level_id": "fog-marsh",

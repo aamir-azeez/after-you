@@ -2,8 +2,8 @@ extends SceneTree
 ## The fog cover's cleared fog (kit/fog_cover.gd) comes only from the stage's
 ## recorded history (kit/turn_paths.gd), so every way of showing a turn shows
 ## the same, on Fog Marsh's witness routes (Catch the Pipsport's turns):
-## - an earlier turn read from its kept memory trace and the same turn simulated
-##   again (no trace kept) give the same squares and lit levers;
+## - an earlier turn read from its kept memory trace, the same turn simulated
+##   again (no trace kept) and the squares kept on disk (a restart) are the same;
 ## - the history holds both starts, every earlier turn's path and the lantern
 ##   the second turn lit, and nothing of the turn being played;
 ## - a cover built again mid-turn paints the same mask as the one that watched
@@ -15,6 +15,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const TurnPaths = preload("res://presentation/kit/turn_paths.gd")
 const FogCover = preload("res://presentation/kit/fog_cover.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
+const PathsStore = preload("res://services/turn_paths_store.gd")
 const KEY := "fog-marsh@1"
 const STAGE := 1
 
@@ -59,6 +60,18 @@ func _paths(evidence: Dictionary) -> void:
 	MemoryTrace.enabled = true
 	_check(kept.points.size() > 300 and kept.points == again.points, "a kept trace and the turn simulated again give the same squares (%d, %d)" % [kept.points.size() / 3, again.points.size() / 3])
 	_check(kept.levers == again.levers and kept.levers.has("north-lantern") and kept.levers.has("boards-lever"), "and the same lit levers: %s" % [kept.levers.keys()])
+	var folder := "user://fog-reveal-%d" % Time.get_ticks_usec()
+	PathsStore.attach(folder)
+	TurnPaths.forget()
+	TurnPaths.of(sim, turns[1], [turns[0]])
+	TurnPaths.forget()
+	MemoryTrace.enabled = false
+	var restarted := TurnPaths.of(sim, turns[1], [turns[0]])
+	MemoryTrace.enabled = true
+	PathsStore.detach()
+	_check(restarted.points == kept.points and restarted.levers == kept.levers and DirAccess.get_files_at(folder).size() == 2, "after a restart the kept files give the same, one file a turn")
+	for name: String in DirAccess.get_files_at(folder): DirAccess.remove_absolute(folder.path_join(name))
+	DirAccess.remove_absolute(folder)
 	var first := TurnPaths.of(sim, {}, [])
 	_check(first.points.size() in [3, 6] and first.levers.is_empty(), "a stage's first turn has only the starts")
 	# The second turn, played live over the first.
