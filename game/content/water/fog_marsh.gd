@@ -9,10 +9,10 @@ const DATA := {
 	"rate": 0.9,
 	"wall_top": 0.0,
 	"inset": 3,
-	"bounds": [-700, -700, 5100, 700],
+	"bounds": [-1300, -760, 12200, 760],
 	"bodies": [
 		{"id": "marsh", "node": "MarshWater", "selector": "", "rest": "still",
-			"rects": [[-500, -520, 4900, 520]],
+			"rects": [[-1300, -760, 12200, 760]],
 			"levels": {"still": -0.10}, "color": Color(0.33, 0.47, 0.44, 0.86)},
 	],
 	"marks": {"still": Color("5b6248")},

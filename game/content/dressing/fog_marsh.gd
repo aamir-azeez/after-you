@@ -7,12 +7,17 @@ extends RefCounted
 const DATA := {
 	"theme": "harbour",
 	"look": "fog",
-	"fireflies": 8,
+	"seabed": "mud",
+	# PROTOTYPE: the close follow camera (island_world._follow_data).
+	"camera": {"follow": {"size": 6.2, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.5], "pan": [1.0, 0.7]}},
+	"fireflies": 30,
 	"ground": {"*": "boardwalk", "path": "reed_bank", "reeds": "reed_bank", "bank": "reed_bank", "office": "timber"},
 	"picks": {"lamp": "lantern", "shrub": "green", "bank": "moss", "fence": "picket", "trim": "flowers", "clutter": "barrel"},
 	"tag": "wooden_plaque",
 	"pad": "stand_spot",
-	"fog": "mist",
+	# PROTOTYPE: the cover (kit/fog_cover.gd) is the whole fog now; the old low
+	# banks drew over it as white patches.
+	"fog": "none",
 	"carried_item": "pipsport",
 	"current": "chevrons",
 	"props": {"*": [

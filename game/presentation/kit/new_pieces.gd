@@ -213,6 +213,10 @@ func drift(seconds: float) -> void:
 func follow(at: Vector3) -> void:
 	if cover != null: cover.follow(at)
 
+## PROTOTYPE: the cover opened for good round every drawn spirit (global m).
+func reveal(spirits: Array, clock: float) -> void:
+	if cover != null: cover.reveal(spirits, clock)
+
 ## Every node that moves or changes after the build, kept whole by the static fold.
 func moving_nodes() -> Array:
 	var nodes: Array = []
