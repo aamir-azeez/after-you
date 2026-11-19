@@ -118,8 +118,7 @@ describe("open turns: rules and bounds", () => {
   it("gives only the open controls chapters open turns, with a cap a stage and bounds that never grow with the stages", () => {
     for (const row of CHAPTERS) {
       const open = row.adapter.open_turns;
-import { conservatoryV2, longWayHomeV2, longWayHomeV3, turnOfTheTideV2, turnOfTheTideV3 } from "../src/v2/protocol-journey";
-import { highAndLowV2, wishingWellV2 } from "../src/v2/protocol-cooperative";
+      expect(open !== undefined, row.adapter.key.level_id + "@" + row.adapter.key.level_version).toBe([longWayHomeV3, turnOfTheTideV3, conservatoryV2, highAndLowV2, wishingWellV2, firstStepsV2].includes(row.adapter));
       if (!open) continue;
       expect(open.caps).toEqual(row.adapter.stages.map(stage => (stage as { turn_cap?: number }).turn_cap ?? DEFAULT_TURN_CAP));
       expect(row.adapter.max_branches).toBe(open.branches);
