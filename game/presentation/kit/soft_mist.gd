@@ -10,13 +10,19 @@ extends RefCounted
 
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 
+## Where haze draws among the see-through things: after them (water, a falls'
+## sheet), so a haze in front of them is never painted over by them. A glow
+## may be given another order (a look's "glow_order", kit/look.gd).
+const GLOW_ORDER := 1
+
 static var _looks: Dictionary = {}
 static var _texture: GradientTexture2D
 
 ## The haze look in `color` (its alpha is the middle's). `instanced`: a
 ## MultiMesh's per-blot colours tint it. `glow`: added on top, as light is.
-static func look(color: Color, instanced: bool = false, glow: bool = false) -> StandardMaterial3D:
-	var key := "%s|%s|%s" % [color.to_html(), instanced, glow]
+## `order`: its render priority (GLOW_ORDER unless a world's look says).
+static func look(color: Color, instanced: bool = false, glow: bool = false, order: int = GLOW_ORDER) -> StandardMaterial3D:
+	var key := "%s|%s|%s|%d" % [color.to_html(), instanced, glow, order]
 	if _looks.has(key): return _looks[key]
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
@@ -25,9 +31,7 @@ static func look(color: Color, instanced: bool = false, glow: bool = false) -> S
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.vertex_color_use_as_albedo = instanced
-	# Drawn after the other see-through things (water, a falls' sheet), so a
-	# haze in front of them is never painted over by them.
-	mat.render_priority = 1
+	mat.render_priority = order
 	if glow: mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	_looks[key] = mat
 	SessionRelease.on_exit(Callable(load("res://presentation/kit/soft_mist.gd"), "release"))
@@ -74,11 +78,11 @@ static func cluster(blots: Array) -> ArrayMesh:
 	return surface.commit()
 
 ## A cluster of blots in `color` under `parent`, casting no shadow.
-static func build(blots: Array, color: Color, parent: Node3D, glow: bool = false) -> MeshInstance3D:
+static func build(blots: Array, color: Color, parent: Node3D, glow: bool = false, order: int = GLOW_ORDER) -> MeshInstance3D:
 	var node := MeshInstance3D.new()
 	node.name = "SoftMist"
 	node.mesh = cluster(blots)
-	node.material_override = look(color, false, glow)
+	node.material_override = look(color, false, glow, order)
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(node)
 	return node

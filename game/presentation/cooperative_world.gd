@@ -40,7 +40,10 @@ var descriptor_override: Dictionary = {}
 var _ball_radii: Dictionary = {}
 ## This stage's new pieces' looks (kit/new_pieces.gd), or null before a stage.
 var new_pieces: RefCounted
-
+## Where the stage's pips have been (kit/turn_paths.gd), for a fog cover that
+## stays open where they walked; it outlives a stage's rebuilt pieces.
+const TurnPaths = preload("res://presentation/kit/turn_paths.gd")
+var turn_paths := TurnPaths.new()
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
 	displayed_stage_id = ""
@@ -98,6 +101,8 @@ func show_stage(stage: Dictionary) -> void:
 	for lever: Dictionary in view.get("levers", []):
 		if _piece_style("lever", str(lever.id)) == "lantern": lanterns[str(lever.id)] = _at(lever)
 	new_pieces.build(lanterns)
+	new_pieces.set_quality(graphics_quality())
+	new_pieces.show_paths(turn_paths)
 	for obstacle: Dictionary in view.get("obstacles", []):
 		_build_obstacle(obstacle)
 	await _build_step()
@@ -567,11 +572,34 @@ func _floor_cable(from: Vector3, to: Vector3, width: float, color: Color) -> Mes
 func present_history(checkpoint: Dictionary) -> void:
 	_latched_bridge_ids = kept_crossings(checkpoint)
 
+## Whether this world keeps where the stage's pips have been (its look has a
+## fog cover): the screen then hands it each turn's history.
+func wants_turn_paths() -> bool:
+	return not Look.preset(str(DressingCatalog.for_key(_chapter_key()).get("look", ""))).get("cover", {}).is_empty()
+
+## A turn's history (TurnPaths.of, at its reset): the cover opens where the
+## stage has been, all of it at once.
+func present_turn_paths(history: Dictionary) -> void:
+	turn_paths.set_history(history)
+	if new_pieces != null: new_pieces.show_paths(turn_paths)
+
+## One tick of the turn shown, presented or stepped silently (memory_wait.gd).
+func note_tick(state: Dictionary) -> void:
+	if not state.has("players"): return
+	var change := turn_paths.note(state)
+	if new_pieces != null and (change.rewound or change.from_points < turn_paths.live_points.size() or change.from_levers < turn_paths.live_levers.size()):
+		new_pieces.paths_changed(change)
+
+func apply_graphics_quality(quality: String) -> void:
+	super.apply_graphics_quality(quality)
+	if new_pieces != null: new_pieces.set_quality(graphics_quality())
+
 func present(state: Dictionary, immediate: bool = false) -> void:
 	if state.get("stage_id", "") != displayed_stage_id:
 		for authored: Dictionary in chapter_definition.get("stages", []):
 			if authored.id == state.get("stage_id", ""): show_stage(authored)
 	if not state.has("players"): return
+	note_tick(state)
 	_active_player = str(state.active_slot)
 	_completion_view = bool(state.get("complete", false))
 	for raised: Node3D in _upper_islands:
@@ -624,7 +652,7 @@ func _advance_camera(delta: float) -> void:
 	if new_pieces != null and new_pieces.moving(): new_pieces.advance(delta)
 	if new_pieces != null and not reduced_motion: new_pieces.drift(time)
 	if new_pieces != null and actors.has(_active_player): new_pieces.follow((actors[_active_player] as Node3D).global_position + Vector3(0, 0.25, 0))
-	if new_pieces != null: new_pieces.reveal(actors.values().map(func(actor: Node3D) -> Vector3: return actor.global_position), time)
+	if new_pieces != null: new_pieces.advance_cover(delta, time)
 	for id: String in _lever_pieces:
 		if _lever_pieces[id].moving(): _lever_pieces[id].advance(delta)
 	if _uses_scrolling_camera():

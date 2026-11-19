@@ -103,6 +103,7 @@ first_steps_ui 1
 first_steps_world 2
 fog_marsh 2
 fog_marsh_world 2
+fog_reveal 2
 fold_present 2
 fold_untouched 1
 frame_policy 1
