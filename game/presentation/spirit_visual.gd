@@ -5,6 +5,7 @@ extends Node3D
 ## are painted on the head (spirit_face.gd).
 
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
+const Motion = preload("res://presentation/kit/motion.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/spirit_look.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
@@ -44,6 +45,14 @@ const SETTLE_SWING := 0.065
 const EYE_REST: Array[Vector3] = [Vector3(-Look.EYE_X,Look.EYE_Y,0.3), Vector3(Look.EYE_X,Look.EYE_Y,0.3)]
 ## How fast a new pose (set_pose) eases in: about half a second.
 const POSE_BLEND_RATE := 6.0
+## Starting off: a quick crouch (START_CROUCH seconds), then a small stretch.
+## Stopping: the body squashes, wobbles and settles, and the head nods so the
+## leaf and any hat swing on after it (kit/motion.gd settle). A stop counts only
+## after a real walk (motion_blend past STOP_FROM).
+const START_CROUCH := 0.11
+const START_STRETCH := 0.14
+const STOP_FROM := 0.3
+const MOTION_EVENT_END := 1.2
 ## The startled wake (play_wake) and the moment in it when the goal rings:
 ## just after the hop lands (presentation/memory_wait.gd reads this).
 const WAKE_DURATION := SpiritIdle.WAKE_DURATION
@@ -93,6 +102,10 @@ var ground_shadow: MeshInstance3D
 var stride_phase := 0.0
 var step_phase := 0.0
 var motion_blend := 0.0
+## Seconds since this spirit last set off and last stopped (kit/motion.gd).
+var start_age := MOTION_EVENT_END
+var stop_age := MOTION_EVENT_END
+var _walking := false
 var facing_target := 0.0
 ## Where the world's recorded movement has the spirit now, in its parent's
 ## space (a world sets it each frame, from the simulation's tick positions,
@@ -273,6 +286,9 @@ func reset_motion() -> void:
 	stride_phase=0.0
 	step_phase=0.0
 	motion_blend=0.0
+	start_age=MOTION_EVENT_END
+	stop_age=MOTION_EVENT_END
+	_walking=false
 	throw_age=THROW_DURATION
 	release_age=RELEASE_SETTLE_DURATION
 	reunion_age=REUNION_DURATION
@@ -488,6 +504,12 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		# Reduced motion changes the pose, not the player's sound preference.
 		if contacts>0 or landed: stepped.emit()
 		return
+	start_age=minf(MOTION_EVENT_END,start_age+delta)
+	stop_age=minf(MOTION_EVENT_END,stop_age+delta)
+	var walking := speed>0.025
+	if walking and not _walking: start_age=0.0
+	elif _walking and not walking and motion_blend>=STOP_FROM: stop_age=0.0
+	_walking=walking
 	var target_blend := clampf(speed/WALK_SPEED,0.0,1.0) if speed>0.025 else 0.0
 	motion_blend=lerpf(motion_blend,target_blend,1.0-exp(-12.0*delta))
 	if target_blend==0.0 and motion_blend<0.001:
@@ -581,6 +603,13 @@ func _apply_pose(amount: float) -> void:
 		upper_body.position.z-=jolt*0.04
 		upper_body.rotation.x-=jolt*0.3
 		squash+=jolt*0.1
+	var nod := 0.0
+	if not _reduced_motion:
+		squash+=Motion.kick(start_age,START_CROUCH)*0.1-Motion.kick(start_age-START_CROUCH,START_STRETCH)*0.06
+		# Past MOTION_EVENT_END the wobble is far below a pixel: rest is exact.
+		if stop_age<MOTION_EVENT_END:
+			squash+=Motion.settle(stop_age,0.09,2.6,7.0)
+			nod=Motion.settle(stop_age,0.14,2.2,5.5)
 	upper_body.scale=Vector3(1.0+squash*0.45,1.0-squash,1.0+squash*0.45)
 	var settle := 0.0
 	if release_age>=0.0 and release_age<RELEASE_SETTLE_DURATION and not _reduced_motion:
@@ -604,10 +633,11 @@ func _apply_pose(amount: float) -> void:
 		_leaf_lift.y=_wearing.leaf_lift
 	head.position=HEAD_CENTER+rise
 	face.position=HEAD_CENTER+rise
-	head.rotation=Vector3(0,rest.head_yaw,tilt)
-	face.rotation=Vector3(0,rest.head_yaw,tilt)
-	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.BACK,tilt)*(SPROUT_REST+_leaf_lift-HEAD_CENTER)
-	sprout.rotation=Vector3(0,rest.head_yaw,SPROUT_LEAN+tilt+step*LEAF_STEP_ROLL*amount+settle*LEAF_SETTLE+rest.sprout_roll)
+	head.rotation=Vector3(nod,rest.head_yaw,tilt)
+	face.rotation=Vector3(nod,rest.head_yaw,tilt)
+	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.RIGHT,nod)*Basis(Vector3.BACK,tilt)*(SPROUT_REST+_leaf_lift-HEAD_CENTER)
+	# The leaf swings on past the head's nod: it lags, then catches up.
+	sprout.rotation=Vector3(nod*1.6-(Motion.settle(stop_age-0.08,0.1,2.2,5.0) if stop_age<MOTION_EVENT_END and not _reduced_motion else 0.0),rest.head_yaw,SPROUT_LEAN+tilt+step*LEAF_STEP_ROLL*amount+settle*LEAF_SETTLE+rest.sprout_roll)
 	# A glance adds to the eyes' attention, up to the reach that attention has:
 	# glancing toward a partner off to one side turns the head, not the eyes.
 	var look := (_look+rest.look).clamp(-Vector2.ONE,Vector2.ONE)
