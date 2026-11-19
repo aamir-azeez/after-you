@@ -45,6 +45,15 @@ func _build_spot(spot: Dictionary) -> void:
 	cylinder(CAP.x, CAP.y, CREAM, Vector3(0, DRUM_HEIGHT + CAP.y * 0.5 - 0.01, 0), root)
 	ring(0.31, GOLD, Vector3(0, PEDESTAL_TOP + 0.005, 0), root)
 
+## Pair tags and ownership marks keep off the dressing's stone path up to the
+## lift (content/dressing/first_steps.gd), shared with @1's world: a tile at
+## the lift's entrance would lie under its stone.
+func _pair_keep_clear() -> Array:
+	var found: Array = super._pair_keep_clear()
+	for spec: Dictionary in Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id())):
+		if str(spec.get("kind", "")) == "path": found.append({"rect": Props.extent(spec).rect, "what": "the stone path"})
+	return found
+
 ## An item resting at a spot sits on its pedestal or in its planter's soil.
 func _item_point(state: Dictionary) -> Vector3:
 	var at := super._item_point(state)
