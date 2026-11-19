@@ -93,7 +93,7 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 		var Props: Script = load("res://presentation/kit/props.gd")
 		var tool := SurfaceTool.new()
 		tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var lip := 3.2
+		var lip := 1.3
 		var back := -deep * 0.5 - 0.35
 		var points := [Vector3(0, lip, back - 0.8), Vector3(0, lip, back), Vector3(0, lip - 0.25, back + 0.22)]
 		var falling := [0.0, 0.0, 0.6]
@@ -111,7 +111,7 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 		flow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		curtain.add_child(flow)
 		# The rock lip the water pours off, overhanging the path's back edge.
-		var rock := Parts.box(Vector3(span + 0.6, 0.5, 1.4), Color("6f7466"), Vector3(0, lip - 0.2, back - 0.7), curtain)
+		var rock := Parts.box(Vector3(span + 0.4, 0.28, 0.5), Color("6f7466"), Vector3(0, lip - 0.1, back - 0.2), curtain)
 		rock.name = "CurtainLip"
 		SoftMist.build([[Vector3(-span * 0.25, 0.6, deep * 0.5 + 0.6), Vector2(span * 0.5, 1.0), "front"], [Vector3(span * 0.25, 0.7, deep * 0.5 + 0.6), Vector2(span * 0.5, 1.1), "front"]], Color(0.97, 0.99, 0.99, 0.5), curtain)
 		_curtains[str(definition.id)] = curtain

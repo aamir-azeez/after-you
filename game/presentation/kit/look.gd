@@ -38,7 +38,7 @@ const PRESETS := {
 	# Its "cover" is the thick fog over the whole stage (kit/fog_cover.gd):
 	# the fog's colour, how thick it lies and how much it thickens at the edges.
 	# Its sky is the fog's own pale grey, so no dark shows past the marsh.
-	"fog": {"cover": {"color": Color("d3dad4"), "density": 0.86, "edge": 0.6}, "sky": Color("cbd1ca"), "ambient": Color("e2e6dc"), "ambient_energy": 0.46, "sun": Color("f2eedc"), "sun_energy": 0.54, "bounce": Color("b7c4bc"), "bounce_energy": 0.30, "mote": Color("f2f0e2")},
+	"fog": {"cover": {"color": Color("d3dad4"), "density": 0.74, "edge": 0.6}, "sky": Color("cbd1ca"), "ambient": Color("e2e6dc"), "ambient_energy": 0.46, "sun": Color("f2eedc"), "sun_energy": 0.54, "bounce": Color("b7c4bc"), "bounce_energy": 0.30, "mote": Color("f2f0e2")},
 }
 
 static func preset(name: String) -> Dictionary:

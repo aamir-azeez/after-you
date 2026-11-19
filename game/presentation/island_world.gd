@@ -1463,6 +1463,10 @@ var _completion_view := false
 ##   inset  [x, z] metres the centre stays inside the floors' ends
 ##   zoom   [closest, farthest] pinch limits, times size
 ##   pan    [x, z] how far a drag may push the view, times size
+##   from   [x, y, z] where the camera stands from the point it looks at (else
+##          ViewFit.CAMERA_FROM): the same yaw, a lower pitch looks up a cliff;
+##          stand it far enough back that low fog and tall tiers stay past the
+##          orthographic camera's near plane
 func _follow_data() -> Dictionary:
 	var data: Variant = dressing.get("camera", {})
 	return data.get("follow", {}) if data is Dictionary else {}
@@ -1585,7 +1589,10 @@ func _frame_camera() -> void:
 ## The camera over the follow point, at the follow size.
 func _frame_follow() -> void:
 	if not is_instance_valid(camera): return
-	camera.position = _follow_center + ViewFit.CAMERA_FROM
+	var from := ViewFit.CAMERA_FROM
+	var data := _follow_data()
+	if data.has("from"): from = Vector3(float(data.from[0]), float(data.from[1]), float(data.from[2]))
+	camera.position = _follow_center + from
 	camera.look_at(to_global(_follow_center))
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	camera.size = ViewFit.viewport(_follow_size, self)

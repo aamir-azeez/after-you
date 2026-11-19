@@ -21,7 +21,7 @@ const Look = preload("res://presentation/kit/look.gd")
 ## The sheets' heights over the stage's highest floor (m), and how far past
 ## its floors they reach (m), past any camera's view.
 const LAYERS := [1.5, 2.3]
-const MARGIN := 16.0
+const MARGIN := 40.0
 ## The pocket round the played pip: clear within POCKET_CLEAR (m), full fog
 ## from POCKET_FULL.
 const POCKET_CLEAR := 1.2
@@ -143,6 +143,7 @@ var _painted: Array[Vector2] = []
 var _lit_at: Dictionary = {}
 var _clock := 0.0
 var _dirty := false
+var _glows_under := false
 
 func _make_reveal(bounds: Rect2, floor_y: float) -> void:
 	_reveal_rect = bounds
@@ -158,6 +159,14 @@ func _make_reveal(bounds: Rect2, floor_y: float) -> void:
 ## frame with the world's clock; it paints only when a spirit has moved on.
 func reveal(spirits: Array, clock: float) -> void:
 	if _reveal == null: return
+	if not _glows_under:
+		# PROTOTYPE: lamp light on the ground (soft_mist glows, drawn after
+		# other see-through things) lies under the fog, not over it as a
+		# white patch. The full build gives glows their own order per world.
+		_glows_under = true
+		var SoftMist: Script = load("res://presentation/kit/soft_mist.gd")
+		for key: String in SoftMist._looks:
+			if key.ends_with("|true"): (SoftMist._looks[key] as StandardMaterial3D).render_priority = -2
 	_clock = clock
 	for at: Vector3 in spirits:
 		var here := Vector2(at.x, at.z)
