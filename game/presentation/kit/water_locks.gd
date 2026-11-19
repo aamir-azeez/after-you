@@ -546,7 +546,7 @@ func _build_step(run: Dictionary, stone: Node3D) -> bool:
 	var toward_b := Vector3(0, 0, 1) if run.along_x else Vector3(1, 0, 0)
 	var lower_side := toward_b if b < a else -toward_b
 	var length := _length(run)
-	var count := maxi(1, roundi(length / STEP_WIDE))
+	var count := maxi(1, roundi(length / (STEP_WIDE * 1.5)))
 	for index in range(count):
 		var rock: Node3D = Models.still(STEP_MODEL, "tier_step", Props.FALLS_COLORS, stone)
 		rock.name = "SpillStep"

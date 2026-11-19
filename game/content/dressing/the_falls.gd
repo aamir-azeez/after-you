@@ -20,7 +20,7 @@ const DATA := {
 	# edge, open where each falls pours through, and the rainbows.
 	"gorge": {
 		"wall": {"from": -1300, "to": 14790, "front": -900, "rise": 500,
-			"open": [[-900, -300], [3150, 3700], [6280, 6620], [7800, 8960], [10300, 10820], [13740, 14290]]},
+			"open": [[-900, -300], [3150, 3700], [7800, 8960], [10300, 10820], [13740, 14290]]},
 		"rainbows": [{"at": [8380, 690, -880], "radius": 380}, {"at": [3420, 300, -880], "radius": 210}, {"at": [-600, 140, -400], "radius": 200}]},
 	"fireflies": 0,
 	"ground": {"*": "mossy_flags",
@@ -36,15 +36,14 @@ const DATA := {
 	"current": "ripples",
 	"props": {"*": [
 		# The falls, each pouring through the gorge wall into its own pool:
-		# west of the mill pool, behind the bank into the mill race, behind the
-		# west ledge, the great falls behind the rope bridge (its foot in the
+		# west of the mill pool, behind the bank into the mill race, the great
+		# falls behind the rope bridge (its foot in the
 		# gorge pool, so it shows behind the bridge mid-play), behind the
 		# lookout, and past the far bank where the ending's pool is.
-		{"slot": "landmark", "style": "waterfall", "at": [-600, -470], "width": 300, "height": 900, "tiers": 3, "cheek": 0.85, "y": -36, "foot": 30},
-		{"slot": "landmark", "style": "waterfall", "at": [3420, -950], "width": 380, "height": 1400, "tiers": 3, "cheek": 1.0, "y": 145},
-		{"slot": "landmark", "style": "waterfall", "at": [6450, -950], "width": 240, "height": 900, "tiers": 3, "cheek": 0.7, "y": 485},
-		{"slot": "landmark", "style": "waterfall", "at": [8380, -1000], "width": 900, "height": 2200, "tiers": 4, "cheek": 1.4, "y": 485},
-		{"slot": "landmark", "style": "waterfall", "at": [10560, -1000], "width": 420, "height": 1500, "tiers": 4, "cheek": 1.1, "y": 865},
+		{"slot": "landmark", "style": "waterfall", "at": [-600, -470], "width": 300, "height": 900, "tiers": 2, "cheek": 0.85, "y": -36, "foot": 30},
+		{"slot": "landmark", "style": "waterfall", "at": [3420, -950], "width": 380, "height": 1400, "tiers": 2, "cheek": 1.0, "y": 145},
+		{"slot": "landmark", "style": "waterfall", "at": [8380, -1000], "width": 900, "height": 2200, "tiers": 3, "cheek": 1.4, "y": 485},
+		{"slot": "landmark", "style": "waterfall", "at": [10560, -1000], "width": 420, "height": 1500, "tiers": 2, "cheek": 1.1, "y": 865},
 		{"slot": "landmark", "style": "waterfall", "at": [14010, -500], "width": 340, "height": 1100, "tiers": 3, "cheek": 0.75, "y": 900, "anchor": "falls_pool"},
 		# The mill's big wheel turning behind the mill, in the pool it sets.
 		{"slot": "landmark", "style": "mill", "at": [558, -605], "y": -36, "size": 1.35},
@@ -52,24 +51,27 @@ const DATA := {
 		# side, where it hides only water.
 		{"kind": "post_box", "floor": "isle", "edge": "left", "along": 0.12, "size": 1.3},
 		# Ferns and moss along the backs of the ledges, mossy rocks by the water.
+		# The climb's floors run two to three times longer, so the ferns stand
+		# about three times as far apart as before: as many on screen, and the
+		# stage stays inside the scenery budget (test_world_looks).
 		{"slot": "bank", "floor": "ledge", "edge": "back", "depth": 40, "height": 8, "gap": 12},
-		{"slot": "shrub", "style": "wild_fern", "floor": "ledge", "edge": "back", "spacing": 85, "size": 1.15},
+		{"slot": "shrub", "style": "wild_fern", "floor": "ledge", "edge": "back", "spacing": 260, "size": 1.15},
 		{"slot": "bank", "floor": "loft", "edge": "back", "depth": 40, "height": 8, "gap": 12},
-		{"slot": "shrub", "style": "wild_fern", "floor": "loft", "edge": "back", "spacing": 95, "size": 1.15},
-		{"slot": "shrub", "style": "wild_fern", "floor": "mill", "edge": "left", "spacing": 80, "size": 1.15},
-		{"slot": "shrub", "style": "wild_fern", "floor": "wledge", "edge": "left", "spacing": 100, "size": 1.15},
+		{"slot": "shrub", "style": "wild_fern", "floor": "loft", "edge": "back", "spacing": 280, "size": 1.15},
+		{"slot": "shrub", "style": "wild_fern", "floor": "mill", "edge": "left", "spacing": 240, "size": 1.15},
+		{"slot": "shrub", "style": "wild_fern", "floor": "wledge", "edge": "left", "spacing": 300, "size": 1.15},
 		{"slot": "bank", "floor": "wtop", "edge": "back", "depth": 40, "height": 8, "gap": 12},
-		{"slot": "shrub", "style": "wild_fern", "floor": "wtop", "edge": "back", "spacing": 80, "size": 1.15},
+		{"slot": "shrub", "style": "wild_fern", "floor": "wtop", "edge": "back", "spacing": 240, "size": 1.15},
 		{"slot": "bank", "floor": "etop", "edge": "back", "depth": 40, "height": 8, "gap": 12},
-		{"slot": "shrub", "style": "wild_fern", "floor": "etop", "edge": "back", "spacing": 80, "size": 1.15},
+		{"slot": "shrub", "style": "wild_fern", "floor": "etop", "edge": "back", "spacing": 240, "size": 1.15},
 		{"slot": "bank", "floor": "look", "edge": "back", "depth": 40, "height": 8, "gap": 12},
-		{"slot": "shrub", "style": "wild_fern", "floor": "look", "edge": "back", "spacing": 90, "size": 1.15},
+		{"slot": "shrub", "style": "wild_fern", "floor": "look", "edge": "back", "spacing": 270, "size": 1.15},
 		{"slot": "bank", "floor": "far", "edge": "back", "depth": 40, "height": 8, "gap": 12},
-		{"slot": "shrub", "style": "wild_fern", "floor": "far", "edge": "back", "spacing": 80, "size": 1.15},
-		{"slot": "shrub", "style": "wild_fern", "floor": "beach", "edge": "left", "spacing": 75, "size": 1.1},
-		{"slot": "shrub", "style": "wild_fern", "floor": "yard", "edge": "back", "spacing": 90},
-		{"slot": "shrub", "style": "wild_fern", "floor": "eledge", "edge": "right", "spacing": 90},
-		{"slot": "shrub", "style": "wild_fern", "floor": "big", "edge": "left", "spacing": 90},
+		{"slot": "shrub", "style": "wild_fern", "floor": "far", "edge": "back", "spacing": 240, "size": 1.15},
+		{"slot": "shrub", "style": "wild_fern", "floor": "beach", "edge": "left", "spacing": 220, "size": 1.1},
+		{"slot": "shrub", "style": "wild_fern", "floor": "yard", "edge": "back", "spacing": 270},
+		{"slot": "shrub", "style": "wild_fern", "floor": "eledge", "edge": "right", "spacing": 270},
+		{"slot": "shrub", "style": "wild_fern", "floor": "big", "edge": "left", "spacing": 270},
 		{"slot": "clutter", "floor": "bank", "edge": "left", "spacing": 110, "moss": true},
 		{"slot": "clutter", "floor": "big", "edge": "back", "spacing": 110, "moss": true},
 		{"slot": "clutter", "floor": "beach", "edge": "left", "spacing": 120, "moss": true, "out": 70},
@@ -100,7 +102,7 @@ const DATA := {
 		{"kind": "rope_coil", "floor": "beach", "edge": "front", "along": 0.6, "out": 40},
 		{"slot": "lamp", "floor": "mill", "edge": "back", "along": 0.55, "size": 1.6},
 		{"slot": "lamp", "floor": "isle", "edge": "back", "along": 0.35, "size": 1.6},
-		{"slot": "shrub", "style": "wild_fern", "floor": "isle", "edge": "front", "span": [0.0, 0.45], "spacing": 70},
+		{"slot": "shrub", "style": "wild_fern", "floor": "isle", "edge": "front", "span": [0.0, 0.45], "spacing": 210},
 		{"slot": "bench", "floor": "yard", "edge": "front", "along": 0.5},
 		{"kind": "rope_coil", "floor": "bank", "edge": "front", "along": 0.4, "out": 40},
 		{"slot": "lamp", "floor": "loft", "edge": "back", "along": 0.85, "size": 1.6},

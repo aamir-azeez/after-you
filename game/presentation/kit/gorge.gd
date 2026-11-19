@@ -20,6 +20,9 @@ const MODEL := "res://assets/models/gorge_rock.glb"
 ## One stretch of wall: its width and height as modelled (m).
 const WALL_WIDE := 4.0
 const WALL_TALL := 5.0
+## Each stretch is laid this many times as wide as modelled: the strata read
+## as long ledges and the wall costs a third fewer triangles.
+const STRETCH := 1.5
 const BANDS := [Color(0.95, 0.42, 0.38), Color(0.98, 0.72, 0.36), Color(0.98, 0.93, 0.48), Color(0.52, 0.86, 0.52), Color(0.45, 0.66, 0.95), Color(0.62, 0.48, 0.88)]
 ## How see-through a rainbow is at its brightest.
 const RAINBOW_ALPHA := 0.42
@@ -42,7 +45,7 @@ static func _wall(world: Node3D, wall: Dictionary, holder: Node3D) -> void:
 	var end := float(wall.to) / 100.0
 	var index := 0
 	while x < end:
-		var wide := WALL_WIDE * (0.92 + 0.16 * fposmod(float(index) * 0.618, 1.0))
+		var wide := WALL_WIDE * STRETCH * (0.92 + 0.16 * fposmod(float(index) * 0.618, 1.0))
 		var middle := x + wide * 0.5
 		var open: bool = (wall.get("open", []) as Array).any(func(gap: Array) -> bool: return middle * 100.0 > float(gap[0]) and middle * 100.0 < float(gap[1]))
 		if not open:
