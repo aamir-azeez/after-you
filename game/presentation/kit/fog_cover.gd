@@ -53,6 +53,8 @@ const MASK_MARGIN := 7.0
 const STAMP_STEP := 1.0
 const MOST_STAMPS := 48
 const UPLOAD_GAP := 0.1
+## How long a new camera view holds before the mask is painted for it (s).
+const VIEW_SETTLE := 0.25
 
 const SHADER := """
 shader_type spatial;
@@ -138,6 +140,9 @@ var _paths: RefCounted
 ## A lantern's clearing growing now: lever id, where, and the world's clock it was lit at.
 var _growing := {}
 var _clock := 0.0
+var _pending_slope := Vector2.INF
+var _view_still := 0.0
+var _last_delta := 0.0
 
 ## The cover for a look preset's "cover" {"color", "deep", "density", "edge"}
 ## over `floors` (rects in cm with height_cm) under `parent`, thinned round
@@ -189,6 +194,7 @@ func paths_changed(change: Dictionary) -> void:
 ## few at a time, and the mask goes up when it changed (at most every UPLOAD_GAP).
 func advance(delta: float, clock: float) -> void:
 	_clock = clock
+	_last_delta = maxf(delta, 0.0)
 	_watch_view()
 	if not _growing.is_empty():
 		var grown := clampf((clock - float(_growing.since)) / LANTERN_GROW, 0.0, 1.0)
@@ -301,7 +307,18 @@ func _watch_view() -> void:
 	var back := camera.global_basis.z
 	if absf(back.y) < 0.05: return
 	var slope := Vector2(back.x, back.z) / back.y
-	if slope.distance_to(_slope) < 0.002: return
+	if slope.distance_to(_slope) < 0.002:
+		_view_still = 0.0
+		return
+	# The first view paints at once; a turning camera (an ending's circle)
+	# repaints only once it has held still.
+	if _pending_slope != Vector2.INF and _pending_slope.distance_to(slope) >= 0.002:
+		_pending_slope = slope
+		_view_still = 0.0
+		return
+	_view_still += _last_delta
+	if _pending_slope != Vector2.INF and _view_still < VIEW_SETTLE: return
+	_pending_slope = slope
 	_slope = slope
 	_repaint()
 
