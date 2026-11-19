@@ -49,6 +49,8 @@ static func environment() -> Environment:
 	sky.process_mode = Sky.PROCESS_MODE_QUALITY
 	var material := ShaderMaterial.new()
 	material.shader = SHADER
+	material.set_shader_parameter(CLOCK, 0.0)
+	material.set_shader_parameter(SHOOTING, 1.0)
 	sky.sky_material = material
 	env.sky = sky
 	return env
