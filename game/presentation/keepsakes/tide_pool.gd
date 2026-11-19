@@ -9,6 +9,7 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## the water runs past the top mark and spills. Together Hard: a gold lantern
 ## on the wheel post that lights at high tide.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+const Floats = preload("res://presentation/kit/floats.gd")
 const RADIUS := 1.05
 ## The water's height at low and high tide.
 const LOW := 0.18
@@ -21,6 +22,10 @@ const MARK := Vector3(0.95, 0, -0.75)
 const STONES: Array[Vector3] = [Vector3(-0.66, 0, 0), Vector3(-0.22, 0, 0.05), Vector3(0.22, 0, 0), Vector3(0.66, 0, 0.05)]
 ## Where the pip lands past the pool.
 const LANDING := Vector3(1.38, 0, -0.18)
+## The rock pool's water, and the toy boat's hull half height: it floats by the
+## float rule (kit/floats.gd "toy_boat"), its centre that far over its keel.
+const ROCK_WATER := 0.15
+const BOAT_HALF := 0.07
 
 func build(root: Node3D, state: Dictionary) -> Dictionary:
 	P.cyl(root, RADIUS + 0.05, 0.12, P.STONE, Vector3(0, 0.06, 0), RADIUS + 0.08)
@@ -47,9 +52,9 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		var at := ROCK_POOL
 		P.cyl(root, 0.5, 0.22, P.STONE_LIGHT, at + Vector3(0, 0.11, 0), 0.52)
 		P.ring(root, 0.5, 0.07, P.MINT, at + Vector3(0, 0.22, 0))
-		P.cyl(root, 0.44, 0.02, P.WATER, at + Vector3(0, 0.14, 0))
-		var boat := P.pivot(root, at + Vector3(0, 0.18, 0), "Boat")
-		P.sph(boat, 0.14, P.MINT_DEEP, Vector3.ZERO, Vector3(1.05, 0.5, 1.05))
+		P.cyl(root, 0.44, 0.02, P.WATER, at + Vector3(0, ROCK_WATER - 0.01, 0))
+		var boat := P.pivot(root, at + Vector3(0, _boat_y(), 0), "Boat")
+		P.sph(boat, BOAT_HALF * 2.0, P.MINT_DEEP, Vector3.ZERO, Vector3(1.05, 0.5, 1.05))
 		P.cyl(boat, 0.01, 0.24, P.WOOD, Vector3(0, 0.14, 0))
 		P.prism(boat, Vector3(0.14, 0.18, 0.015), P.SNOW, Vector3(0.06, 0.16, 0))
 		P.bar(root, Vector3(0.95, 0.42, 0.35), at + Vector3(-0.4, 0.22, 0), 0.12, P.STONE_LIGHT)
@@ -66,6 +71,10 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		P.gold_ball(root, Vector3(0, 2.3, -RADIUS - 0.05), 0.06)
 		parts.lantern = lamp
 	return parts
+
+## The toy boat's centre afloat on the rock pool.
+static func _boat_y() -> float:
+	return Floats.keel("toy_boat", ROCK_WATER) + BOAT_HALF
 
 func base_time() -> float:
 	return 2.4
@@ -101,10 +110,10 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			anim.move(weight, "position:y", WEIGHT.y, 1.95, 0.4)
 		"together":
 			var boat: Node3D = parts.boat
-			anim.move(boat, "position:y", ROCK_POOL.y + 0.27, 0.0, 0.3, Tween.TRANS_BACK, Tween.EASE_OUT)
+			anim.move(boat, "position:y", ROCK_POOL.y + _boat_y() + 0.09, 0.0, 0.3, Tween.TRANS_BACK, Tween.EASE_OUT)
 			anim.move(boat, "rotation:z", 0.2, 0.1, 0.2)
 			anim.move(boat, "rotation:z", -0.15, 0.3, 0.2)
-			anim.move(boat, "position:y", ROCK_POOL.y + 0.18, 0.35, 0.25)
+			anim.move(boat, "position:y", ROCK_POOL.y + _boat_y(), 0.35, 0.25)
 			anim.move(boat, "rotation:z", 0.0, 0.45, 0.15)
 			anim.sound(str(sounds.get("together", "")), 0.0)
 			# The water rocks under the boat as it settles.

@@ -10,6 +10,7 @@ extends "res://presentation/journey_world.gd"
 const WaterBodies = preload("res://presentation/kit/water_bodies.gd")
 const RampRules = preload("res://presentation/kit/ramp_rules.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
+const Floats = preload("res://presentation/kit/floats.gd")
 ## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
 const RAMP_RAISED := 0.95
 const RAMP_RATE := 1.6
@@ -923,7 +924,16 @@ func _build_foreshore() -> void:
 
 ## Rowboats moored in the channels (the dressing's "moored_boats") ride their
 ## water's level (and bob unless motion is reduced): a second cue for the tide.
+## Each sits by the float rule (kit/floats.gd "rowboat"): its keel at its
+## origin, solid up to its floorboards, which stay over the water all through
+## its bob, and open above them inside its gunwale.
+const BOAT_PLAN := Vector2(0.40, 0.92)
+const BOAT_SIDE := 0.04
 func _build_boats() -> void:
+	var spec_of: Dictionary = Floats.kind("rowboat")
+	var floor_y := float(spec_of.floor)
+	var top := float(spec_of.top)
+	var inside := BOAT_PLAN - Vector2.ONE * BOAT_SIDE * 2.0
 	for spec: Dictionary in dressing.get("moored_boats", []):
 		var boat := Node3D.new()
 		boat.name = "MooredBoat"
@@ -931,10 +941,16 @@ func _build_boats() -> void:
 		boat.rotation.y = float(spec.heading)
 		boat.set_meta("phase", float(spec.at[0]) * 0.013)
 		terrain.add_child(boat)
-		box(Vector3(0.40, 0.14, 0.92), TIMBER.lightened(0.10), Vector3(0, 0.05, 0), boat)
-		box(Vector3(0.32, 0.06, 0.82), TIMBER.darkened(0.25), Vector3(0, 0.10, 0), boat)
-		box(Vector3(0.24, 0.10, 0.20), TIMBER.lightened(0.10), Vector3(0, 0.06, 0.48), boat)
-		for z: float in [-0.18, 0.18]: box(Vector3(0.38, 0.03, 0.08), TIMBER.lightened(0.20), Vector3(0, 0.13, z), boat)
+		# The hull below the floorboards, solid, so no water shows through it.
+		box(Vector3(BOAT_PLAN.x, floor_y, BOAT_PLAN.y), TIMBER.lightened(0.10), Vector3(0, floor_y * 0.5, 0), boat)
+		box(Vector3(inside.x, 0.004, inside.y), TIMBER.darkened(0.25), Vector3(0, floor_y + 0.002, 0), boat).name = "BoatFloor"
+		# The gunwale round the open inside.
+		for side: int in [-1, 1]:
+			box(Vector3(BOAT_SIDE, top - floor_y, BOAT_PLAN.y), TIMBER.lightened(0.10), Vector3(side * (BOAT_PLAN.x - BOAT_SIDE) * 0.5, (top + floor_y) * 0.5, 0), boat)
+			box(Vector3(inside.x, top - floor_y, BOAT_SIDE), TIMBER.lightened(0.10), Vector3(0, (top + floor_y) * 0.5, side * (BOAT_PLAN.y - BOAT_SIDE) * 0.5), boat)
+		# Two seats across, and a short foredeck at the bow, all inside the hull.
+		for z: float in [-0.18, 0.12]: box(Vector3(inside.x, 0.025, 0.08), TIMBER.lightened(0.20), Vector3(0, top - 0.03, z), boat)
+		box(Vector3(inside.x, 0.025, 0.10), TIMBER.lightened(0.20), Vector3(0, top - 0.0125, inside.y * 0.5 - 0.05), boat)
 		cylinder(0.035, waters.wall_top() + 0.12 - waters.seabed(), PILE, Vector3(float(spec.at[0]) / 100.0 + 0.32, (waters.wall_top() + 0.12 + waters.seabed()) * 0.5, float(spec.at[1]) / 100.0 - 0.36), terrain).name = "MooringPile"
 		_boats.append(boat)
 		waters.ride(str(spec.water), _float_boat.bind(boat), true, boat)
@@ -1073,8 +1089,7 @@ func _clear_drowned() -> void:
 
 func _float_boat(level: float, boat: Node3D) -> void:
 	if not is_instance_valid(boat): return
-	var bob := 0.0 if reduced_motion else sin(_clock * 1.4 + float(boat.get_meta("phase"))) * 0.018
-	boat.position.y = level - 0.02 + bob
+	boat.position.y = Floats.keel("rowboat", level, _clock, float(boat.get_meta("phase")), reduced_motion)
 
 ## Warm pools of light under the bank lamps that name "bunting" in the
 ## dressing, and bunting strung from each to that point along its bank.

@@ -10,14 +10,15 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## The world shows each snapshot's item state (journey_world _present_items):
 ## on a spirit's back (carry: the root rides under the spirit, so it follows
 ## every step), resting at its place (rest), or bobbing on the water (rest with
-## `floating`, advance() each frame while motion is not reduced). The root is
-## the only part that changes, so it is the one moving part.
+## `floating`, advance() each frame while motion is not reduced). A float sits
+## by the float rule (kit/floats.gd, its style's kind, else a raft's): its
+## keel under the water's surface by its draft, its deck clear of it all
+## through its bob. The root is the only part that changes, so it is the one
+## moving part.
 const STYLES := ["parcel", "pipsport", "raft"]
+const Floats = preload("res://presentation/kit/floats.gd")
 ## Where an item sits on a spirit's back, in the spirit's own space.
 const BACK := Vector3(0.0, 0.62, -0.2)
-## How far a float bobs, and how fast.
-const BOB_M := 0.025
-const BOB_RATE := 2.2
 const NAVY := Color("2f3e66")
 const PAPER := Color("b98d5f")
 
@@ -62,13 +63,14 @@ func carry(actor: Node3D) -> void:
 		root.position = BACK
 		root.rotation = turn
 
-## Resting at `at` under `parent` (the terrain), bobbing when `floating`.
+## Resting at `at` under `parent` (the terrain), or, when `floating`, on the
+## water whose surface `at` is, bobbing.
 func rest(at: Vector3, parent: Node3D, floating: bool) -> void:
 	if root.get_parent() != parent: root.reparent(parent, false)
 	_rest_at = at
 	_floating = floating
 	root.rotation = Vector3.ZERO
-	root.position = at
+	root.position = Vector3(at.x, Floats.keel(style, at.y), at.z) if floating else at
 
 func moving() -> bool:
 	return _floating
@@ -76,7 +78,7 @@ func moving() -> bool:
 ## A float's bob, on the world's clock.
 func advance(delta: float) -> void:
 	_clock += delta
-	root.position = _rest_at + Vector3(0, sin(_clock * BOB_RATE) * BOB_M, 0)
+	root.position = Vector3(_rest_at.x, Floats.keel(style, _rest_at.y, _clock, 0.0, false), _rest_at.z)
 
 func moving_parts() -> Array[Node3D]:
 	return [root]
