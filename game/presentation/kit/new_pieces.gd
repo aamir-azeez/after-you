@@ -15,7 +15,9 @@ extends RefCounted
 ##     its head otherwise, or as a wheel ride ("wheel"), turning while open;
 ##   - water in a weight lift's pan while a lantern its lift reads burns (the
 ##     lantern pump fills the pan);
-##   - the fog round lantern levers (kit/fog.gd, the dressing's "fog" pick).
+##   - the fog round lantern levers (kit/fog.gd, the dressing's "fog" pick),
+##     and the thick fog over the whole stage when the dressing's look has a
+##     cover (kit/fog_cover.gd), thinned round every control.
 ## The lantern lever, the weight pans, the boards and the rope wheel are ordinary lever, pad
 ## and selector styles the world builds itself.
 ## Presentation only: nothing here feeds the simulation.
@@ -24,6 +26,7 @@ const Raft = preload("res://presentation/kit/pieces/raft.gd")
 const Lift = preload("res://presentation/kit/pieces/lift.gd")
 const RopeLadder = preload("res://presentation/kit/pieces/rope_ladder.gd")
 const Fog = preload("res://presentation/kit/fog.gd")
+const FogCover = preload("res://presentation/kit/fog_cover.gd")
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
 ## The water over a shut path behind the falls, and in a filled pan.
 const FALLS_WATER := Color(0.80, 0.90, 0.93, 0.55)
@@ -51,6 +54,7 @@ var _curtains: Dictionary = {}
 ## [{"node", "lever"}]: water in a pan while its lantern burns.
 var _fills: Array = []
 var fog: RefCounted
+var cover: RefCounted
 
 func _init(world: Node3D, view: Dictionary) -> void:
 	_world = world
@@ -146,6 +150,14 @@ func build(lantern_spots: Dictionary) -> void:
 			entry.piece = Raft.build(_world._piece_style("raft", str(platform.id)), centres, rect.size, _world.terrain)
 		_platforms.append(entry)
 	fog = Fog.build(str(_world.dressing.get("fog", "mist")) if not _world.dressing.is_empty() else "mist", _view, lantern_spots, _world.terrain)
+	var spots: Array = []
+	for field: String in ["levers", "controls", "pressure_pads", "ball_pads"]:
+		for spot: Dictionary in _view.get(field, []):
+			if not lantern_spots.has(str(spot.get("id", ""))): spots.append([_world.terrain.to_global(_world._at(spot)), float(spot.get("radius_cm", 28)) / 100.0])
+	if _view.has("goal") and _view.goal.has("position_cm"): spots.append([_world.terrain.to_global(_world._at(_view.goal)), float(_view.goal.get("radius_cm", 40)) / 100.0])
+	var lanterns: Dictionary = {}
+	for id: String in lantern_spots: lanterns[id] = _world.terrain.to_global(lantern_spots[id])
+	cover = FogCover.build(str(_world.dressing.get("look", "")), _view.get("islands", []), spots, lanterns, _world.terrain)
 
 ## Each snapshot: platforms toward their open stop, ladders hung or rolled,
 ## the fog cleared round lit lanterns.
@@ -175,6 +187,7 @@ func present(state: Dictionary, immediate: bool) -> void:
 			if str(player.get("surface_id", "")) == id or (at.distance_to(ladder.foot) < FOOT_REACH and height < float(ladder.low) + 0.2): hung = true
 		ladder.piece.set_pulled(not hung, immediate)
 	if fog != null: fog.present(state.get("levers", {}))
+	if cover != null: cover.present(state.get("levers", {}))
 
 func moving() -> bool:
 	if _ladders.values().any(func(ladder: Dictionary) -> bool: return ladder.piece.moving()): return true
@@ -194,6 +207,11 @@ func advance(delta: float) -> void:
 ## motion is reduced).
 func drift(seconds: float) -> void:
 	if fog != null: fog.drift(seconds)
+	if cover != null: cover.drift(seconds)
+
+## The cover's clear pocket round the played pip's spirit (global m), each frame.
+func follow(at: Vector3) -> void:
+	if cover != null: cover.follow(at)
 
 ## Every node that moves or changes after the build, kept whole by the static fold.
 func moving_nodes() -> Array:
@@ -201,6 +219,7 @@ func moving_nodes() -> Array:
 	for entry: Dictionary in _platforms: nodes.append_array(entry.piece.moving_parts())
 	for ladder: Dictionary in _ladders.values(): nodes.append_array(ladder.piece.moving_parts())
 	if fog != null: nodes.append(fog.node)
+	if cover != null: nodes.append(cover.node)
 	nodes.append_array(_curtains.values())
 	for fill: Dictionary in _fills: nodes.append(fill.node)
 	return nodes
