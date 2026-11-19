@@ -1,7 +1,8 @@
-import { physicalRecording, physicalAccepted as accepted } from "./protocol-physical-recording";
+import { openPhysicalRecording, physicalRecording, physicalAccepted as accepted } from "./protocol-physical-recording";
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
-import { comfortRules, openControls, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
+import { comfortRules, openControls, openTurns, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
+import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openTurnsProblem } from "./open-turns";
 import highDefinition from "./high-and-low.json";
 import highInitial from "./high-and-low-initial.json";
 import rollingDefinition from "./rolling-home.json";
@@ -10,18 +11,21 @@ import houseDefinition from "./a-house-for-two.json";
 import houseInitial from "./a-house-for-two-initial.json";
 import wellDefinition from "./the-wishing-well.json";
 import wellInitial from "./the-wishing-well-initial.json";
+import highV2Definition from "./high-and-low-v2.json";
+import highV2Initial from "./high-and-low-v2-initial.json";
 
 export const HIGH_AND_LOW_HASH = "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956";
 export const ROLLING_HOME_HASH = "d6aaa6006597dd5e4ce4dbc641d94c81c2ab17c55bd80b50c6a240e0e91cff87";
 export const HOUSE_HASH = "b868745e7bc025bb8fe5a49b698b15dfb0d428ea9fe905ce46fa46dd27d79867";
 export const WISHING_WELL_HASH = "4418a6f1ad6bdc3f1adee6d07d48184d03867a56a1b2d1d42c189584cfec5a94";
+export const HIGH_AND_LOW_V2_HASH = "87bb4afc25b939b1754940f952e54fc4698786762b1b1e13022f7556ac0fdc5f";
 
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; radius_cm: number; owner_slot?: string; prop_id?: string };
 type Definition = {
-  id: string; version: number; simulation_version: number; premium: boolean; islands: Surface[]; bridges: Surface[]; stairs: Surface[];
+  id: string; version: number; simulation_version: number; premium: boolean; turn_limits?: unknown; islands: Surface[]; bridges: Surface[]; stairs: Surface[];
   props: (Marker & { kind: string })[];
-  stages: { id: string; version: number; first_player_slot: string; gates: { route_id: string }[]; levers: Marker[]; ball_pads: Marker[]; pressure_pads: Marker[];
+  stages: { id: string; version: number; first_player_slot: string; turn_cap?: number; gates: { route_id: string }[]; levers: Marker[]; ball_pads: Marker[]; pressure_pads: Marker[];
     goal: Marker; goal_policy: { kind: string; prop_id?: string; socket_id?: string };
     source_policy: { kind: string; pad_id?: string; ball_pad_id?: string; prop_id?: string }; handoff?: Marker }[];
 };
@@ -40,8 +44,11 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // A definition declaring rules 9+ plays only those rules; published chapters keep 6/8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [6, 8];
-  const recording = physicalRecording(definition, key, 6, supported);
-  async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording): Promise<ChapterCheckpoint> {
+  // Open turns (14, open-turns.ts): a stage takes turns until both players stand at its goal; bounds and parser as every family's.
+  const opened = openTurns(definition.simulation_version) ? openPhysicalRecording(definition, key, 6, supported) : undefined;
+  const recording = opened ? opened.recording : physicalRecording(definition, key, 6, supported);
+  async function checkpoint(value: unknown, previous: ChapterCheckpoint, a: ChapterRecording, b: ChapterRecording, passes: readonly ChapterRecording[] = []): Promise<ChapterCheckpoint> {
+    if (opened) return openCheckpoint(value, previous, [a, ...passes, b]);
     boundedValue(value, MAX_CHECKPOINT_BYTES);
     const c = object(value); exact(c, CHECKPOINT_KEYS); catalog(c);
     const index = previous.stage_index + 1, stage = definition.stages[index - 1];
@@ -59,17 +66,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     const levers = object(mechanisms.levers), leverIds = [...new Set(completedStages.flatMap(stage => stage.levers.map(lever => lever.id)))];
     exact(levers, leverIds); need(Object.values(levers).every(value => value === true), "checkpoint_mechanism_mismatch");
     const players = object(c.players); exact(players, ["p0", "p1"]);
-    function surfacePosition(value: unknown, slot?: string): Record<string, unknown> {
-      const p = object(value), x = integer(p.x, -10_000, 10_000), z = integer(p.z, -10_000, 10_000), height = integer(p.height, 0, 10_000);
-      const surface = [...definition.islands, ...definition.bridges, ...definition.stairs].find(surface => surface.id === p.surface_id);
-      need(surface && x >= surface.rect_cm[0] && x <= surface.rect_cm[2] && z >= surface.rect_cm[1] && z <= surface.rect_cm[3], "checkpoint_surface_mismatch");
-      need(!surface.owner_slot || surface.owner_slot === slot, "checkpoint_surface_mismatch");
-      if (definition.bridges.includes(surface) || definition.stairs.includes(surface)) need(routes.includes(surface.id), "checkpoint_surface_mismatch");
-      const axis = surface.axis === "z" ? 1 : 0, coordinate = axis === 0 ? x : z;
-      const expectedHeight = surface.from_height_cm === undefined ? surface.height_cm :
-        surface.from_height_cm + Math.round((surface.to_height_cm! - surface.from_height_cm) * (coordinate - surface.rect_cm[axis]) / (surface.rect_cm[axis + 2] - surface.rect_cm[axis]));
-      need(height === expectedHeight, "checkpoint_surface_mismatch"); return p;
-    }
+    const surfacePosition = (value: unknown, slot?: string) => onSurface(value, routes, slot);
     for (const [slot, value] of Object.entries(players)) { exact(object(value), ["x", "z", "height", "surface_id"]); surfacePosition(value, slot); }
     const first = object(players[stage.first_player_slot]), second = object(players[stage.first_player_slot === "p0" ? "p1" : "p0"]);
     // A pushed ball reaches its cradle before the player behind it does.
@@ -95,12 +92,58 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       need(destination && prop.status === (claimed ? "claimed" : fitted ? "fitted" : "free") && prop.holder_slot === holder && prop.socket_id === (fitted ? destination.id : "") && inside(prop, destination, radius), "checkpoint_prop_mismatch");
       if (comfortRules(a.simulation_version) && fitted) need(prop.x === destination.position_cm[0] && prop.z === destination.position_cm[1], "checkpoint_prop_mismatch");
     }
+    return hashed(c);
+  }
+  /** A player or prop where it stands: inside a floor of the definition, at that floor's height, on a crossing only while it is latched. */
+  function onSurface(value: unknown, routes: readonly unknown[], slot?: string): Record<string, unknown> {
+    const p = object(value), x = integer(p.x, -10_000, 10_000), z = integer(p.z, -10_000, 10_000), height = integer(p.height, 0, 10_000);
+    const surface = [...definition.islands, ...definition.bridges, ...definition.stairs].find(surface => surface.id === p.surface_id);
+    need(surface && x >= surface.rect_cm[0] && x <= surface.rect_cm[2] && z >= surface.rect_cm[1] && z <= surface.rect_cm[3], "checkpoint_surface_mismatch");
+    need(!surface.owner_slot || surface.owner_slot === slot, "checkpoint_surface_mismatch");
+    if (definition.bridges.includes(surface) || definition.stairs.includes(surface)) need(routes.includes(surface.id), "checkpoint_surface_mismatch");
+    const axis = surface.axis === "z" ? 1 : 0, coordinate = axis === 0 ? x : z;
+    const expectedHeight = surface.from_height_cm === undefined ? surface.height_cm :
+      surface.from_height_cm + Math.round((surface.to_height_cm! - surface.from_height_cm) * (coordinate - surface.rect_cm[axis]) / (surface.rect_cm[axis + 2] - surface.rect_cm[axis]));
+    need(height === expectedHeight, "checkpoint_surface_mismatch"); return p;
+  }
+  async function hashed(c: Record<string, unknown>): Promise<ChapterCheckpoint> {
     const { checkpoint_hash, proof: ignoredProof, ...body } = c; void ignoredProof;
     need(typeof checkpoint_hash === "string" && HASH_PATTERN.test(checkpoint_hash) && await digest(canonicalJson(body)) === checkpoint_hash, "checkpoint_hash_mismatch");
     return c as ChapterCheckpoint;
   }
+  /** Open turns (open-turns.ts): the stage's turns by hash and a flat checkpoint, as the journey's. Both players end at the bell, and the
+   * first turn's own part is not asked again. A route latches only where it was open at the end, so the routes are the earlier ones plus
+   * any of this stage's gates; levers keep their values but this stage's. The turns are stored rows, so only header fields are read. */
+  async function openCheckpoint(value: unknown, previous: ChapterCheckpoint, all: readonly ChapterRecording[]): Promise<ChapterCheckpoint> {
+    const { open, limits } = opened!;
+    boundedValue(value, limits.checkpoint_bytes, limits.checkpoint_values);
+    const c = object(value); exact(c, OPEN_CHECKPOINT_KEYS); catalog(c);
+    const index = previous.stage_index + 1, stage = definition.stages[index - 1];
+    need(c.schema_version === OPEN_CHECKPOINT_SCHEMA && c.stage_index === index && stage && c.completed_stage_id === stage.id && c.next_stage_id === (definition.stages[index]?.id ?? ""), "checkpoint_stage_mismatch");
+    need(all.every(turn => turn.simulation_version === pinned) && all[0].role === "a" && all.slice(1).every(turn => turn.role === "b") &&
+      all.every((turn, i) => openAccepted(turn) && (i === 0 || turn.completed === (i === all.length - 1))), "checkpoint_recording_mismatch");
+    need(c.previous_checkpoint_hash === previous.checkpoint_hash && all.every((turn, i) => turn.checkpoint_hash === previous.checkpoint_hash && turn.stage_id === stage.id &&
+      (i === 0 || turn.source_recording_hash === all[i - 1].recording_hash)), "checkpoint_source_mismatch");
+    const problem = openTurnsProblem(open, index - 1, stage.first_player_slot, all, c.turn_hashes);
+    need(!problem, problem);
+    const mechanisms = object(c.mechanisms), prior = object(object(previous).mechanisms); exact(mechanisms, ["latched_bridges", "props", "levers"]);
+    const routes = mechanisms.latched_bridges, previousRoutes = prior.latched_bridges as string[];
+    need(Array.isArray(routes) && routes.every(route => typeof route === "string") && canonicalJson(routes) === canonicalJson([...new Set(routes)].sort()), "checkpoint_mechanism_mismatch");
+    const allowed = new Set([...previousRoutes, ...stage.gates.map(gate => gate.route_id)]);
+    need(routes.every(route => allowed.has(route)) && previousRoutes.every(route => routes.includes(route)), "checkpoint_mechanism_mismatch");
+    const levers = object(mechanisms.levers), priorLevers = object(prior.levers), leverIds = definition.stages.slice(0, index).flatMap(s => s.levers.map(lever => lever.id));
+    need(Object.keys(levers).every(id => leverIds.includes(id)) && Object.keys(priorLevers).every(id => id in levers), "checkpoint_mechanism_mismatch");
+    for (const id of Object.keys(levers)) need(typeof levers[id] === "boolean" && (stage.levers.some(lever => lever.id === id) || levers[id] === priorLevers[id]), "checkpoint_mechanism_mismatch");
+    const players = object(c.players); exact(players, ["p0", "p1"]);
+    for (const [slot, player] of Object.entries(players)) { exact(object(player), ["x", "z", "height", "surface_id"]); onSurface(player, routes, slot); }
+    need(stage.goal_policy.kind === "ring" && openStageEnds(slot => inside(object(players[slot]), stage.goal), true), "checkpoint_goal_mismatch");
+    exact(object(mechanisms.props), definition.props.map(prop => prop.id));
+    need(definition.props.length === 0, "checkpoint_prop_mismatch");
+    return hashed(c);
+  }
   return { key, recording_version: 6, simulation_version: pinned || 6, supported_simulation_versions: supported, premium: definition.premium, require_supported_simulation_on_join: true,
-    stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted };
+    stages: definition.stages, initial: () => structuredClone(initial), recording, checkpoint, accepted: opened ? openAccepted : accepted,
+    ...(opened ? { limits: opened.limits, max_branches: opened.open.branches, open_turns: opened.open } : {}) };
 }
 
 export const highAndLow = adapter(highDefinition, highInitial, HIGH_AND_LOW_HASH);
@@ -108,3 +151,5 @@ export const rollingHome = adapter(rollingDefinition, rollingInitial, ROLLING_HO
 export const houseForTwo = adapter(houseDefinition, houseInitial, HOUSE_HASH);
 /** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join. */
 export const wishingWell = adapter(wellDefinition, wellInitial, WISHING_WELL_HASH);
+/** Open turns (14): High and Low@1 with a lever atop the stair and one in the garden, so both players end at each bell. Unreleased. */
+export const highAndLowV2 = adapter(highV2Definition, highV2Initial, HIGH_AND_LOW_V2_HASH);

@@ -3,7 +3,7 @@ import { boundedValue, exact, MAX_CHECKPOINT_BYTES, MAX_RECORDING_BYTES, MAX_V2_
 import { comfortRules, openTurns, type ChapterKey, type ChapterLimits, type ChapterRecording } from "./chapter-types";
 import { MAX_ROW_BYTES } from "./row-bound";
 import { isPacked, packedKeys, unpackRecording } from "./recording-codec";
-import { MAX_OPEN_TURN_TICKS, isFingerprint } from "./open-turns";
+import { MAX_OPEN_TURN_TICKS, OPEN_TURNS_BRANCHES, isFingerprint, openBodyLimits, openTurnLimits, packedRecordingBytes, type OpenTurns } from "./open-turns";
 
 const RECORD_KEYS = ["schema_version", "simulation_version", "level_id", "level_version", "definition_hash", "stage_id", "stage_version", "checkpoint_hash", "role", "player_slot", "tick_rate", "duration_ticks", "catch_assistance", "actions", "replay_checks", "final_state_hash", "completed", "outcome", "source_recording_hash", "recording_hash"];
 const PACKED_KEYS = packedKeys(RECORD_KEYS);
@@ -33,6 +33,28 @@ export function scaledLimits(turns: Readonly<TurnLimits>): ChapterLimits {
   const scale = (published: number) => Math.ceil(published * factor);
   return { recording_bytes: scale(65_536), recording_values: scale(24_000), checkpoint_bytes: scale(MAX_CHECKPOINT_BYTES), checkpoint_values: scale(24_000),
     turn_body_bytes: scale(MAX_V2_BODY_BYTES), turn_body_values: scale(32_000) };
+}
+
+/** Open turns on a definition with no turn_limits: the published comfort recording bounds. */
+export const COMFORT_RECORDING: Readonly<ChapterLimits> = { recording_bytes: 65_536, recording_values: 24_000, checkpoint_bytes: MAX_CHECKPOINT_BYTES, checkpoint_values: 24_000, turn_body_bytes: 0, turn_body_values: 0 };
+/**
+ * An open turns chapter (open-turns.ts) on the physical record format, the one setup every family's adapter uses: every
+ * turn packed and as long as the second turn limit, a flat checkpoint, so no bound grows with the stages; the branches
+ * that fit (at most `maxBranches`); and a recording parser that takes packed turns only, before any other check (a
+ * stored row may be a turn's fingerprint). Throws at module load when the turns outgrow a room.
+ */
+export function openPhysicalRecording(definition: { simulation_version?: number; turn_limits?: unknown; stages: readonly { id: string; first_player_slot: string; turn_cap?: unknown }[] },
+  key: Readonly<ChapterKey>, version: 6 | 7, supported: readonly number[], maxBranches = OPEN_TURNS_BRANCHES):
+  { open: OpenTurns; limits: ChapterLimits; recording: (value: unknown, stored?: boolean) => Promise<ChapterRecording> } {
+  const turns = turnLimits(definition);
+  const open = openTurnLimits(definition.stages, packedRecordingBytes(turns?.b_ticks ?? 1200), maxBranches);
+  const limits = { ...(turns ? scaledLimits(turns) : COMFORT_RECORDING), ...openBodyLimits(open) };
+  checkTurnBounds(limits, open.branches);
+  const parsed = physicalRecording(definition, key, version, supported, undefined, turns, limits, true);
+  return { open, limits, recording: (value: unknown, stored = false) => {
+    if (!stored) need(value !== null && typeof value === "object" && isPacked(value), "packed_recording_required");
+    return parsed(value, stored);
+  } };
 }
 
 /** Room keys, ids and counters stored beside a pair's records and checkpoint. */
