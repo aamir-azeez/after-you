@@ -20,7 +20,9 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##       the wheel turns a half turn to each next value.
 ##
 ## Every style stands on its control's own spot. A valve's arrow turns at
-## VALVE_RATE and snaps on its first value; the rest snap. The world passes
+## VALVE_RATE and snaps on its first value, overshooting a little (VALVE_OVER)
+## as it stops; the rest snap, a lever's handle settling as a lever's does.
+## The world passes
 ## "values" (the selector's values in order) and, for a valve, "marks": per
 ## value, how many bands mark it on the dial (0: a bar).
 const Lever = preload("res://presentation/kit/pieces/lever.gd")
@@ -36,6 +38,8 @@ const VALVE_TOP := 0.97
 const VALVE_Y := 0.94
 const VALVE_SWEEP := 0.95
 const VALVE_RATE := 3.0
+## How far past its value the arrow swings as it stops (radians).
+const VALVE_OVER := 0.08
 const SIGN_AT := Vector3(0.10, 1.16, -0.19)
 ## A lamp's glass for each value it shows; any other value is dark ("off").
 const LAMP_DARK := Color("4a4038")
@@ -67,6 +71,7 @@ var _shown := 0.0
 var _target := 0.0
 var _count := 1
 var _placed := false
+var _over := 0.0
 var _wheel: Node3D
 var _lamp: MeshInstance3D
 var _shutter: Node3D
@@ -88,7 +93,11 @@ func set_value(index: int, immediate: bool = false) -> void:
 	var value := str(_values[index]) if index < _values.size() else ""
 	match style:
 		"valve":
-			_target = value_angle(index, _count)
+			var target := value_angle(index, _count)
+			if target != _target or immediate:
+				_stop_arrival()
+				_over = 0.0
+			_target = target
 			if immediate or not _placed:
 				_placed = true
 				_shown = _target
@@ -113,12 +122,21 @@ static func light_lamp(globe: MeshInstance3D, value: String) -> void:
 	globe.set_meta("value", value)
 
 func moving() -> bool:
-	return _shown != _target
+	return _shown != _target or _arriving() or (_lever != null and _lever.moving())
 
 func advance(delta: float) -> void:
-	if not moving(): return
-	_shown = move_toward(_shown, _target, maxf(delta, 0.0) * VALVE_RATE)
+	if _lever != null and _lever.moving(): _lever.advance(delta)
+	if _shown != _target:
+		var was := _shown
+		_shown = move_toward(_shown, _target, maxf(delta, 0.0) * VALVE_RATE)
+		if _shown == _target: _arrive(VALVE_OVER * signf(_shown - was))
+	elif _arriving():
+		_over = _arrival_step(delta)
+	else: return
 	_pose()
+
+func anchor_rest() -> Transform3D:
+	return _lever.anchor_rest() if _lever != null else anchor.transform
 
 ## How high the anchor stands over the spot.
 func anchor_lift() -> float:
@@ -269,4 +287,4 @@ func _make_valve(knob: Color, marks: Array) -> void:
 	Parts.box(Vector3(0.05, 0.03, 0.06), Parts.BRASS, Vector3(SIGN_AT.x, 1.133, SIGN_AT.z - 0.035), root)
 
 func _pose() -> void:
-	if is_instance_valid(_wheel): _wheel.rotation.y = _shown
+	if is_instance_valid(_wheel): _wheel.rotation.y = _shown + _over

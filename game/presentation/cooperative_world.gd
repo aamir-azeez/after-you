@@ -631,7 +631,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _physical_pads:
 		var pressed: bool = state.get("hold_pads", {}).get(id, false)
 		_glow(_physical_pads[id], LIGHT_COLOR, 1.0 if pressed else 0.0)
-		if pad_pieces.has(id): pad_pieces[id].set_held(pressed)
+		if pad_pieces.has(id): pad_pieces[id].set_held(pressed, immediate or reduced_motion)
 	_present_barriers(state)
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)

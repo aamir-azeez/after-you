@@ -11,7 +11,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## The raft (`root`) stands at the stop the snapshot opens and eases there
 ## from where it is at RATE, the live pip riding it (the simulation moves the
 ## pip at once; the spirit follows). Every stop has the same size, so one raft
-## fits them all.
+## fits them all. It drifts OVER past a stop as it arrives and settles back
+## (Motion.arrival), then rests exactly on the stop.
 const STYLES := ["logs"]
 const LOG := Color("8a6a4c")
 const LASHING := Color("c9b48a")
@@ -19,9 +20,13 @@ const ROPE := Color("c9b48a")
 ## Metres a second the raft travels.
 const RATE := 1.6
 const LOG_RADIUS := 0.06
+## How far past its stop the raft drifts as it arrives (m).
+const OVER := 0.02
 
 var _stops: Array[Vector3] = []
 var _target := Vector3.ZERO
+## The way the raft was going as it arrived.
+var _heading := Vector3.ZERO
 
 ## A raft in `style` over `stops` (each the stop's centre at its walking
 ## height, parent space) of `size` (x, z metres) under `parent`, at stop 0.
@@ -33,14 +38,24 @@ static func build(raft_style: String, stops: Array[Vector3], size: Vector2, pare
 ## Shows the raft at stop `index`: eased there, or at once.
 func set_value(index: int, immediate: bool = false) -> void:
 	if index < 0 or index >= _stops.size(): return
+	if _stops[index] != _target or immediate: _stop_arrival()
 	_target = _stops[index]
 	if immediate: root.position = _target
 
 func moving() -> bool:
-	return not root.position.is_equal_approx(_target)
+	return _arriving() or root.position != _target
 
 func advance(delta: float) -> void:
+	if not moving(): return
+	if _arriving():
+		root.position = _target + _heading * _arrival_step(delta)
+		return
+	var was := root.position
 	root.position = root.position.move_toward(_target, maxf(delta, 0.0) * RATE)
+	if root.position.is_equal_approx(_target):
+		root.position = _target
+		_heading = (_target - was).normalized()
+		_arrive(OVER)
 
 func moving_parts() -> Array[Node3D]:
 	return [root]
