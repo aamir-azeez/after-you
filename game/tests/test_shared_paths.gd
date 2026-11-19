@@ -413,6 +413,13 @@ const PIECE_OVERRIDES := {
 ## The base builders the overrides extend.
 const PIECE_BASES := ["res://presentation/island_world.gd", "res://presentation/lighthouse_world.gd", "res://presentation/cooperative_world.gd"]
 
+## (x) The one builder of a world's Environment and its space backdrop sky.
+const SPACE_BACKDROP := "res://presentation/kit/space_backdrop.gd"
+## Scripts that build an Environment themselves, with why.
+const OWN_ENVIRONMENTS := {
+	"res://presentation/kit/pip_stage.gd": "a pip shown alone on a clear background, no world behind it",
+}
+
 ## Suites that guard a shared path on their own and must stay in CI.
 const GUARD_SUITES := ["shared_paths", "full_screen_bleed", "pollen_mark", "connectivity", "owner_marks", "pair_tags", "fall_effect", "piece_styles", "open_hints"]
 ## (w) The one reader of the ready line, and the one builder of the goal beacon.
@@ -460,6 +467,7 @@ func _initialize() -> void:
 	_piece_styles()
 	_ui_icons()
 	_turn_guides()
+	_space_backdrop()
 	_suites()
 	for id: String in KNOWN_FAILURES:
 		_check(_known_seen.has(id), "KNOWN_FAILURES names '%s', which no check reached: delete it" % id)
@@ -1068,6 +1076,15 @@ func _turn_guides() -> void:
 	_check(readers == [READY_LINE_READER], "Only %s shows the ready line: %s" % [READY_LINE_READER, readers])
 	_check(_found("\\bOpenTurns\\.pinned\\(", str(_sources.get(READY_LINE_READER, ""))) > 0, "%s skips the ready line on open turns (OpenTurns.pinned)" % READY_LINE_READER)
 	_check(_found("\\bOpenTurns\\.pinned\\(", str(_sources.get(GOAL_BEACON_BUILDER, ""))) > 0, "%s builds the guide for every open turns chapter (OpenTurns.pinned)" % GOAL_BEACON_BUILDER)
+
+# (x) Space backdrop ------------------------------------------------------------
+
+func _space_backdrop() -> void:
+	var builders := []
+	for path: String in _sources:
+		if path != SPACE_BACKDROP and _found("\\bEnvironment\\.new\\(", _sources[path]) > 0: builders.append(path)
+	_check(builders == OWN_ENVIRONMENTS.keys(), "Worlds and the warm-up take their Environment from %s (SpaceBackdrop.environment); others build their own: %s" % [SPACE_BACKDROP, builders])
+	_check(_found("\\bSpaceBackdrop\\.environment\\(", str(_sources.get("res://presentation/island_world.gd", ""))) > 0 and _found("\\bSpaceBackdrop\\.environment\\(", str(_sources.get("res://services/gl_warmup.gd", ""))) > 0, "island_world and the GL warm-up build the same Environment (SpaceBackdrop.environment)")
 
 func _suites() -> void:
 	var shards := {}
