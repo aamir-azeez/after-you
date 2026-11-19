@@ -96,6 +96,10 @@ export const FLAG_VARS = Object.freeze({
   conservatoryV2Chapter: "CONSERVATORY_V2_CHAPTER_ENABLED",
   /** Creating High and Low@2 rooms (high-and-low@2, open turns), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
   highAndLowV2Chapter: "HIGH_AND_LOW_V2_CHAPTER_ENABLED",
+  /** Creating Rolling Home@2 rooms (rolling-home@2, open turns with the shared ball), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  rollingHomeV2Chapter: "ROLLING_HOME_V2_CHAPTER_ENABLED",
+  /** Creating A House for Two@2 rooms (a-house-for-two@2, open turns with the shared ball), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  houseForTwoV2Chapter: "A_HOUSE_FOR_TWO_V2_CHAPTER_ENABLED",
 } as const);
 
 /**

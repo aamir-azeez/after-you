@@ -27,12 +27,14 @@ static func rules_for(earlier: int) -> int:
 	return OpenControls.OPEN_TURNS_TIDE_RULES_VERSION if earlier in OpenControls.TIDE_RULES else OpenControls.OPEN_TURNS_RULES_VERSION
 
 ## `level` on open controls and open turns, each stage's cap from `caps`
-## ({stage id: turns}; a stage left out keeps DEFAULT_CAP). Changes and
-## returns `level`.
+## ({stage id: turns}; a stage left out keeps DEFAULT_CAP). A level with a
+## ball (its "props") takes the shared ball rules (17, runtime.gd
+## _shared_ball). Changes and returns `level`.
 static func pin(level: Dictionary, caps: Dictionary) -> Dictionary:
 	var earlier := int(level.get("simulation_version", 0))
 	OpenControls.pin(level)
 	level.simulation_version = rules_for(earlier)
+	if not level.get("props", []).is_empty() and level.simulation_version == OpenControls.OPEN_TURNS_RULES_VERSION: level.simulation_version = OpenControls.SHARED_BALL_RULES_VERSION
 	for stage: Dictionary in level.get("stages", []):
 		if caps.has(stage.id): stage.turn_cap = int(caps[stage.id])
 	return level
