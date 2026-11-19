@@ -18,18 +18,20 @@ const LAMP_GAIN := 2.5
 ## fill. Tuned against Balanced captures.
 const FILL_TO_AMBIENT := 0.25
 
+## A preset's optional "glints": how warm the water's glints turn near lamps
+## (presentation/kit/water_look.gd); 0 when it names none.
 const PRESETS := {
 	# The meadow day of Home, First Steps and the Relay Isles.
 	"day": {"sky": Color("123a3d"), "ambient": Color("c4e0d1"), "ambient_energy": 0.26, "sun": Color("fff0cb"), "sun_energy": 0.65, "bounce": Color("8ebbb2"), "bounce_energy": 0.24, "mote": Color("c1ddbd")},
 	# The Sleeping Lighthouse night, which every physical chapter inherited.
-	"night": {"sky": Color("111e32"), "ambient": Color("b0c9df"), "ambient_energy": 0.42, "sun": Color("c4d9ef"), "sun_energy": 0.72, "bounce": Color("859cba"), "bounce_energy": 0.28, "mote": Color("8aabc0")},
+	"night": {"sky": Color("111e32"), "ambient": Color("b0c9df"), "ambient_energy": 0.42, "sun": Color("c4d9ef"), "sun_energy": 0.72, "bounce": Color("859cba"), "bounce_energy": 0.28, "mote": Color("8aabc0"), "glints": 1.0},
 	# The Wishing Well dusk.
-	"dusk": {"sky": Color("2b2945"), "ambient": Color("aeb3cf"), "ambient_energy": 0.42, "sun": Color("f4d9bf"), "sun_energy": 0.72, "bounce": Color("8e95c6"), "bounce_energy": 0.3, "mote": Color("e7c48e")},
+	"dusk": {"sky": Color("2b2945"), "ambient": Color("aeb3cf"), "ambient_energy": 0.42, "sun": Color("f4d9bf"), "sun_energy": 0.72, "bounce": Color("8e95c6"), "bounce_energy": 0.3, "mote": Color("e7c48e"), "glints": 1.0},
 	# A sunny meadow for the physical chapters: the day family, a touch warmer
 	# and brighter so grass, timber and tile read warm rather than grey.
 	"meadow": {"sky": Color("1c4744"), "ambient": Color("e3e2c8"), "ambient_energy": 0.34, "sun": Color("fff0cb"), "sun_energy": 0.72, "bounce": Color("a6c4b0"), "bounce_energy": 0.24, "mote": Color("efe2b0")},
 	# Golden hour: lamps and windows glow, the sky is a warm plum dusk.
-	"golden": {"sky": Color("2f2a40"), "ambient": Color("d8ccc0"), "ambient_energy": 0.40, "sun": Color("f7ddc2"), "sun_energy": 0.68, "bounce": Color("9b97c6"), "bounce_energy": 0.28, "mote": Color("f2c98e")},
+	"golden": {"sky": Color("2f2a40"), "ambient": Color("d8ccc0"), "ambient_energy": 0.40, "sun": Color("f7ddc2"), "sun_energy": 0.68, "bounce": Color("9b97c6"), "bounce_energy": 0.28, "mote": Color("f2c98e"), "glints": 1.0},
 	# The Falls: a cool green day in the spray, deep green behind the cliffs.
 	"spray": {"sky": Color("1f3a33"), "ambient": Color("d4e3d4"), "ambient_energy": 0.36, "sun": Color("fff3d6"), "sun_energy": 0.70, "bounce": Color("9fc2b8"), "bounce_energy": 0.26, "mote": Color("e8f2ee")},
 	# Fog Marsh: soft and pale under the fog, a low sun and a high ambient.

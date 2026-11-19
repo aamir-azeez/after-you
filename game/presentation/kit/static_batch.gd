@@ -12,7 +12,7 @@ extends RefCounted
 ## with the lamps near it.
 ##
 ## Only plain leaves are folded: a MeshInstance3D with no script, no children,
-## no metadata, visible, one-surface primitive mesh, an opaque untextured
+## no metadata, visible, one-surface primitive or model mesh (kit/models.gd), an opaque untextured
 ## StandardMaterial3D override and no other material, and a transform that
 ## does not mirror. Any scale folds: a stretched leaf's normals are turned by
 ## its basis's inverse transpose, as the renderer turns them. Anything the owners hold on to (any
@@ -47,6 +47,9 @@ const FOLDED_META := "static_batch_folded"
 ## colour is the leaf's own look's, which a palette batch draws.
 const PARTS_META := "static_batch_parts"
 const PRIMITIVES := ["BoxMesh", "SphereMesh", "CylinderMesh", "TorusMesh", "QuadMesh", "PlaneMesh", "PrismMesh", "CapsuleMesh"]
+## On a one-surface mesh resource (kit/models.gd's slot meshes): it folds like
+## a primitive, the value naming its shape (model, part and slot).
+const MODEL_MESH_META := &"kit_model_mesh"
 ## Off only for comparing a folded and an unfolded frame in one process.
 static var enabled := true
 const SKIPPED_MATERIAL_PROPERTIES := ["resource_name", "resource_path", "resource_local_to_scene", "resource_scene_unique_id", "script"]
@@ -347,13 +350,15 @@ static func _signature(key: String, group: Array, job: Dictionary) -> Variant:
 	return signature
 
 ## A primitive mesh's class and every stored value (what its surface is made
-## from), once per mesh in a fold; null for any other mesh.
+## from), or a model mesh's name (MODEL_MESH_META), once per mesh in a fold;
+## null for any other mesh.
 static func _shape(mesh: Mesh, job: Dictionary) -> Variant:
 	var id := mesh.get_instance_id()
 	var shapes: Dictionary = job.shapes
 	if shapes.has(id): return shapes[id]
 	var shape: Variant = null
-	if mesh is PrimitiveMesh and mesh.get_class() in PRIMITIVES:
+	if mesh.has_meta(MODEL_MESH_META): shape = ["model", mesh.get_meta(MODEL_MESH_META)]
+	elif mesh is PrimitiveMesh and mesh.get_class() in PRIMITIVES:
 		var kind := mesh.get_class()
 		if not _shape_properties.has(kind):
 			var names: Array[StringName] = []
@@ -448,7 +453,7 @@ static func _base(node: Node3D, job: Dictionary) -> Dictionary:
 
 ## The batch a leaf can join, or "" when it must stay its own node.
 static func _key(leaf: MeshInstance3D, xform: Transform3D, materials: Dictionary) -> String:
-	if leaf.mesh == null or leaf.mesh.get_class() not in PRIMITIVES or leaf.mesh.get_surface_count() != 1: return ""
+	if leaf.mesh == null or not (leaf.mesh.get_class() in PRIMITIVES or leaf.mesh.has_meta(MODEL_MESH_META)) or leaf.mesh.get_surface_count() != 1: return ""
 	if not leaf.get_meta_list().is_empty() or leaf.material_overlay != null or leaf.get_surface_override_material(0) != null: return ""
 	if leaf.transparency != 0.0 or leaf.sorting_offset != 0.0 or leaf.visibility_range_end != 0.0 or leaf.visibility_range_begin != 0.0: return ""
 	var material := leaf.material_override as StandardMaterial3D

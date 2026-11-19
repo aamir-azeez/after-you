@@ -876,7 +876,7 @@ func _build_boats() -> void:
 		for z: float in [-0.18, 0.18]: box(Vector3(0.38, 0.03, 0.08), TIMBER.lightened(0.20), Vector3(0, 0.13, z), boat)
 		cylinder(0.035, waters.wall_top() + 0.12 - waters.seabed(), PILE, Vector3(float(spec.at[0]) / 100.0 + 0.32, (waters.wall_top() + 0.12 + waters.seabed()) * 0.5, float(spec.at[1]) / 100.0 - 0.36), terrain).name = "MooringPile"
 		_boats.append(boat)
-		waters.ride(str(spec.water), _float_boat.bind(boat), true)
+		waters.ride(str(spec.water), _float_boat.bind(boat), true, boat)
 
 ## Each ramp crossing (kit/ramp_rules.gd) gets a timber ramp on a hinge at its
 ## west end, with a winch drum on two posts beside the hinge. It starts raised;
