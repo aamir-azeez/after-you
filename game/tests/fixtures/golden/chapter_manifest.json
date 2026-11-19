@@ -260,6 +260,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"the-wishing-well@2": {
+			"definition_fixture": "cooperative/the-wishing-well-v2-definition.json",
+			"definition_hash": "bc277e6200e0e588b08b16b40b02ff7bc92d1c0f51822c56974190e7ab1bcfd9",
+			"family": "cooperative",
+			"flag": "THE_WISHING_WELL_V2_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "508593abc1668c7e104757871e9a09e19f13f395ef5e9b216c1aff3bab17f26f",
+			"initial_fixture": "cooperative/the-wishing-well-v2-initial-checkpoint.json",
+			"key": "the-wishing-well@2",
+			"level_id": "the-wishing-well",
+			"level_version": 2,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 6,
+			"simulation_version": 14,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				14
+			],
+			"unlock_fruits": 0
+		},
 		"turn-of-the-tide@1": {
 			"definition_fixture": "journey/turn-of-the-tide-definition.json",
 			"definition_hash": "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a",
@@ -339,6 +360,7 @@
 		"turn-of-the-tide@2",
 		"long-way-home@3",
 		"turn-of-the-tide@3",
-		"conservatory@2"
+		"conservatory@2",
+		"the-wishing-well@2"
 	]
 }

@@ -250,7 +250,8 @@ func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	cylinder(BUCKET_RADIUS, 0.05, TIMBER.darkened(0.15), Vector3(0, 0.025, 0), bucket)
 	var outline := ring(BUCKET_RADIUS - 0.07, GOLD, Vector3(0, 0.06, 0), bucket)
 	_physical_pads[pad.id] = outline
-	owner_marks.mark(str(pad.owner_slot), &"bucket", str(pad.id), Vector3.ZERO, bucket)
+	# Open controls: a bucket either pip may hold carries no owner's mark.
+	if pad.has("owner_slot"): owner_marks.mark(str(pad.owner_slot), &"bucket", str(pad.id), Vector3.ZERO, bucket)
 	# Staves round the back and sides; the front stays open toward the camera.
 	var count := 18
 	for index in range(count):
@@ -365,7 +366,7 @@ func _build_stair(stair: Dictionary) -> void:
 	var run := foot_z - top_z
 	for index in range(10):
 		var along := (float(index) + 0.5) / 10.0
-		var step := box(Vector3(width, 0.08, run / 10.0 + 0.02), STONE_LIGHT if stair.owner_slot == "p0" else Color("b9c7c0"), Vector3(0, -top_y * along - 0.04, run * along), pivot)
+		var step := box(Vector3(width, 0.08, run / 10.0 + 0.02), STONE_LIGHT if stair.get("owner_slot", "") == "p0" else Color("b9c7c0"), Vector3(0, -top_y * along - 0.04, run * along), pivot)
 		step.name = "Step"
 	for side: int in [-1, 1]:
 		_bar_between(Vector3(side * (width * 0.5 + 0.02), 0.02, 0), Vector3(side * (width * 0.5 + 0.02), -top_y + 0.02, run), 0.04, TIMBER, pivot)

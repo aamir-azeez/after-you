@@ -405,6 +405,8 @@ tap_reliability 1
 tester_access 2
 tester_access_integration 1
 tester_switches 2
+the_wishing_well_v2 3
+the_wishing_well_v2_world 3
 tide_world 3
 toast 1
 touch_scrolling 1
