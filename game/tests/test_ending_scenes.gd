@@ -323,6 +323,13 @@ func _screen(setup: Dictionary) -> void:
 	_check(float(mid.screen.bars) > 0.1 and float(mid.screen.bars) < 0.9 and is_equal_approx(float(held.screen.bars), 1.0) and is_equal_approx(float(end.screen.bars), 0.0), "the bars slide in, stay, then slide out")
 	_check(is_equal_approx(float(held.screen.tint_alpha), 0.4) and held.screen.tint == Color("ffcc88") and is_equal_approx(float(end.screen.tint_alpha), 1.0) and end.screen.tint == Color.BLACK, "the tint washes warm, then fades to black")
 	_check(float(held.camera.orbit) > 25.0 and is_equal_approx(float(end.camera.orbit), 30.0) and float(mid.camera.orbit) > 0.0, "the camera circles 30 degrees and stays turned")
+	var homing := {"cast": {"fallback": "p0"}, "steps": [{"do": "camera", "at": [1, 0, 1], "size": 4.0, "time": 1.0, "orbit": 40}, {"do": "wait", "time": 1.0}, {"do": "camera", "home": true, "time": 1.0}, {"do": "wait", "time": 1.0}]}
+	_check(EndingScene.check(homing).is_empty(), "a camera going home checks: %s" % EndingScene.check(homing))
+	var homed := EndingScene.compile(homing, _start_at())
+	var back := EndingScene.state(homed, float(homed.duration))
+	var away := EndingScene.state(homed, 1.0)
+	_check(back.camera.center == _start_at().camera and is_equal_approx(float(back.camera.size), float(_start_at().camera_size)) and is_equal_approx(float(back.camera.orbit), 0.0), "the camera glides home: the game's own view, unturned")
+	_check(float(away.camera.orbit) > 30.0 and float(away.camera.size) < 5.0, "it was away before it went home")
 	for bad: Dictionary in [{"do": "bars", "time": 0.5}, {"do": "tint", "color": "nope", "alpha": 0.5}, {"do": "tint", "color": "ffffff", "alpha": 2.0}]:
 		_check(not EndingScene.check({"cast": {"fallback": "p0"}, "steps": [bad, {"do": "wait", "time": 1.0}]}).is_empty(), "a bad %s step is refused" % bad.do)
 	var overlay := Control.new()
