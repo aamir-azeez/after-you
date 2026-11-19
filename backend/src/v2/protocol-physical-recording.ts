@@ -57,6 +57,25 @@ export function openPhysicalRecording(definition: { simulation_version?: number;
   } };
 }
 
+/**
+ * A completed stage's latched routes and levers against the checkpoint before it, the one check both physical families
+ * use (the journey on every rules, the cooperative family on open turns): routes are sorted, unique strings, keep every
+ * earlier one and add only this stage's gates' routes; levers name only levers of the stages so far, keep every earlier
+ * one, and change only this stage's. Returns the routes, then and now, and the levers.
+ */
+export function checkRoutesAndLevers(mechanisms: Record<string, unknown>, prior: Record<string, unknown>,
+  stages: readonly { gates: readonly { route_id: string }[]; levers: readonly { id: string }[] }[], index: number): { routes: string[]; previousRoutes: string[]; levers: Record<string, unknown> } {
+  const stage = stages[index - 1];
+  const levers = object(mechanisms.levers), priorLevers = object(prior.levers), leverIds = stages.slice(0, index).flatMap(s => s.levers.map(lever => lever.id));
+  need(Object.keys(levers).every(id => leverIds.includes(id)) && Object.keys(priorLevers).every(id => id in levers), "checkpoint_mechanism_mismatch");
+  for (const id of Object.keys(levers)) need(typeof levers[id] === "boolean" && (stage.levers.some(lever => lever.id === id) || levers[id] === priorLevers[id]), "checkpoint_mechanism_mismatch");
+  const routes = mechanisms.latched_bridges, previousRoutes = prior.latched_bridges as string[];
+  need(Array.isArray(routes) && routes.every(route => typeof route === "string") && canonicalJson(routes) === canonicalJson([...new Set(routes)].sort()), "checkpoint_mechanism_mismatch");
+  const allowed = new Set([...previousRoutes, ...stage.gates.map(gate => gate.route_id)]);
+  need(routes.every(route => allowed.has(route)) && previousRoutes.every(route => routes.includes(route)), "checkpoint_mechanism_mismatch");
+  return { routes: routes as string[], previousRoutes, levers };
+}
+
 /** Room keys, ids and counters stored beside a pair's records and checkpoint. */
 export const ROW_ENVELOPE_BYTES = 16_384;
 /** A pair row holds both records and the checkpoint that proves them, and

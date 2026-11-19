@@ -1,4 +1,4 @@
-import { openPhysicalRecording, physicalRecording, physicalAccepted as accepted } from "./protocol-physical-recording";
+import { checkRoutesAndLevers, openPhysicalRecording, physicalRecording, physicalAccepted as accepted } from "./protocol-physical-recording";
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
 import { comfortRules, openControls, openTurns, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
@@ -127,13 +127,7 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     const problem = openTurnsProblem(open, index - 1, stage.first_player_slot, all, c.turn_hashes);
     need(!problem, problem);
     const mechanisms = object(c.mechanisms), prior = object(object(previous).mechanisms); exact(mechanisms, ["latched_bridges", "props", "levers"]);
-    const routes = mechanisms.latched_bridges, previousRoutes = prior.latched_bridges as string[];
-    need(Array.isArray(routes) && routes.every(route => typeof route === "string") && canonicalJson(routes) === canonicalJson([...new Set(routes)].sort()), "checkpoint_mechanism_mismatch");
-    const allowed = new Set([...previousRoutes, ...stage.gates.map(gate => gate.route_id)]);
-    need(routes.every(route => allowed.has(route)) && previousRoutes.every(route => routes.includes(route)), "checkpoint_mechanism_mismatch");
-    const levers = object(mechanisms.levers), priorLevers = object(prior.levers), leverIds = definition.stages.slice(0, index).flatMap(s => s.levers.map(lever => lever.id));
-    need(Object.keys(levers).every(id => leverIds.includes(id)) && Object.keys(priorLevers).every(id => id in levers), "checkpoint_mechanism_mismatch");
-    for (const id of Object.keys(levers)) need(typeof levers[id] === "boolean" && (stage.levers.some(lever => lever.id === id) || levers[id] === priorLevers[id]), "checkpoint_mechanism_mismatch");
+    const { routes } = checkRoutesAndLevers(mechanisms, prior, definition.stages, index);
     const players = object(c.players); exact(players, ["p0", "p1"]);
     for (const [slot, player] of Object.entries(players)) { exact(object(player), ["x", "z", "height", "surface_id"]); onSurface(player, routes, slot); }
     need(stage.goal_policy.kind === "ring" && openStageEnds(slot => inside(object(players[slot]), stage.goal), true), "checkpoint_goal_mismatch");

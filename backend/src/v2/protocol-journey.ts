@@ -1,6 +1,6 @@
 import { ApiError, HASH_PATTERN, canonicalJson, digest, integer, object } from "../protocol";
 import { boundedValue, exact, MAX_CHECKPOINT_BYTES } from "./protocol-relay";
-import { checkTurnBounds, openPhysicalRecording, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
+import { checkRoutesAndLevers, checkTurnBounds, openPhysicalRecording, physicalRecording, physicalAccepted as accepted, scaledLimits, turnLimits, type TurnLimits } from "./protocol-physical-recording";
 import { openTurns, piecesRules, tideRules as tideRulesVersion, type ChapterAdapter, type ChapterCheckpoint, type ChapterRecording } from "./chapter-types";
 import { OPEN_CHECKPOINT_KEYS, OPEN_CHECKPOINT_SCHEMA, openAccepted, openStageEnds, openTurnsProblem } from "./open-turns";
 import { checkItemDefinition, checkItems, declaresItems, isItemTerm, itemHolds, type ItemDefinition } from "./protocol-items";
@@ -143,13 +143,7 @@ export function journeyAdapter(definition: Definition, initial: ChapterCheckpoin
       if (current) need(current.values.includes(value), "checkpoint_control_mismatch");
       else need(controls[id] === priorControls[id] && definition.stages.some(s => s.controls.some(control => control.id === id && control.values.includes(value))), "checkpoint_control_mismatch");
     }
-    const levers = object(mechanisms.levers), priorLevers = object(prior.levers), leverIds = definition.stages.slice(0, index).flatMap(s => s.levers.map(lever => lever.id));
-    need(Object.keys(levers).every(id => leverIds.includes(id)) && Object.keys(priorLevers).every(id => id in levers), "checkpoint_mechanism_mismatch");
-    for (const id of Object.keys(levers)) need(typeof levers[id] === "boolean" && (stage.levers.some(lever => lever.id === id) || levers[id] === priorLevers[id]), "checkpoint_mechanism_mismatch");
-    const routes = mechanisms.latched_bridges, previousRoutes = prior.latched_bridges as string[];
-    need(Array.isArray(routes) && routes.every(route => typeof route === "string") && canonicalJson(routes) === canonicalJson([...new Set(routes)].sort()), "checkpoint_mechanism_mismatch");
-    const allowed = new Set([...previousRoutes, ...stage.gates.map(gate => gate.route_id)]);
-    need(routes.every(route => allowed.has(route)) && previousRoutes.every(route => routes.includes(route)), "checkpoint_mechanism_mismatch");
+    const { routes, previousRoutes, levers } = checkRoutesAndLevers(mechanisms, prior, definition.stages, index);
     if (tideRules) need(routes.length === 0, "checkpoint_mechanism_mismatch");
     const players = object(c.players), stubs: string[] = []; exact(players, ["p0", "p1"]);
     for (const [slot, value] of Object.entries(players)) {
