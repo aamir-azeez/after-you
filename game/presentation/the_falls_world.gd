@@ -15,4 +15,4 @@ const ProtoLandmarks = preload("res://presentation/kit/proto_landmarks.gd")
 
 func _build_water_scenery() -> void:
 	super._build_water_scenery()
-	ProtoLandmarks.falls(terrain)
+	ProtoLandmarks.falls(self)
