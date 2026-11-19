@@ -12,6 +12,7 @@ extends RefCounted
 
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SoftMist = preload("res://presentation/kit/soft_mist.gd")
+const Models = preload("res://presentation/kit/models.gd")
 
 const TIMBER := Color("8a6b4e")
 const TIMBER_LIGHT := Color("b08a62")
@@ -683,33 +684,23 @@ const MILL_WHEEL_RADIUS := 0.62
 ## Radians a second a turning mill wheel goes round: a slow, steady turn.
 const MILL_WHEEL_SPIN := -0.45
 
-## A timber mill wheel on its axle, facing the camera (+z): a rim of planks,
-## three spokes across, a paddle at every rim plank and a post each side
-## under the axle. The wheel itself is one node, "Spin", whose meta "spin" is
-## its turn rate: the world turns it (presentation/water_world.gd); the posts
-## stand still.
+## The mill wheel, modelled in Blender (tools/blender/models/mill_wheel.py):
+## a timber wheel facing the camera (+z) with two rims, spokes, buckets and an
+## iron axle, on an A-frame each side. The frame is still and folds with the
+## scenery; the wheel is one node, "Spin", whose meta "spin" is its turn rate:
+## the world turns it (presentation/water_world.gd).
+const MILL_MODEL := "res://assets/models/mill_wheel.glb"
+const MILL_COLORS := {"timber": TIMBER, "timber_light": TIMBER_LIGHT, "timber_dark": TIMBER_DARK, "iron": Color("4f5458"), "stone": STONE_DARK}
+
 static func _mill_wheel(root: Node3D, s: float) -> void:
-	var r := MILL_WHEEL_RADIUS * s
-	var hub := Vector3(0, r + 0.08 * s, 0)
+	var frame := Models.still(MILL_MODEL, "mill_frame", MILL_COLORS, root)
+	frame.scale = Vector3.ONE * s
 	var wheel := Node3D.new()
 	wheel.name = "Spin"
-	wheel.position = hub
+	wheel.position = Models.transform(MILL_MODEL, "mill_rim").origin * s
 	wheel.set_meta("spin", MILL_WHEEL_SPIN)
 	root.add_child(wheel)
-	var planks := 12
-	for index in range(planks):
-		var a := float(index) / float(planks) * TAU
-		var rim := _box(Vector3(r * TAU / float(planks) + 0.01 * s, 0.06 * s, 0.16 * s), TIMBER, Vector3(cos(a), sin(a), 0) * r, wheel)
-		rim.rotation.z = a + PI * 0.5
-		var paddle := _box(Vector3(0.03 * s, 0.17 * s, 0.24 * s), TIMBER_LIGHT, Vector3(cos(a), sin(a), 0) * (r + 0.08 * s), wheel)
-		paddle.rotation.z = a
-	for index in range(3):
-		var spoke := _box(Vector3(r * 2.0 - 0.06 * s, 0.05 * s, 0.05 * s), TIMBER_DARK, Vector3.ZERO, wheel)
-		spoke.rotation.z = float(index) / 3.0 * PI + 0.2
-	var axle := _rod(0.09 * s, 0.34 * s, TIMBER_DARK, Vector3.ZERO, wheel)
-	axle.rotation.x = PI * 0.5
-	for side: float in [-1.0, 1.0]:
-		_box(Vector3(0.08 * s, hub.y - 0.08 * s, 0.08 * s), TIMBER_DARK, Vector3(0, (hub.y - 0.08 * s) * 0.5, side * 0.21 * s), root)
+	Models.moving(MILL_MODEL, "mill_rim", MILL_COLORS, wheel, false).scale = Vector3.ONE * s
 
 ## A red post box on a timber post: a slot across its front and a little
 ## pitched roof.
