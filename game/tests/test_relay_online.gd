@@ -868,6 +868,13 @@ func _button_named(app, text: String) -> Button:
 func _ok(data: Dictionary) -> Dictionary:
 	return {"ok":true,"status":200,"data":data}
 
+## A synthetic capability answer as the server gives it: a room-level-1 answer
+## holds at most 16 chapters, so more (unreleased ones included) come only as
+## the room-level-2 answer this build asks for (rooms_api.gd).
+static func room_level_caps(caps: Dictionary) -> Dictionary:
+	if caps.chapters.size() > 16: caps.merge({"room_level":2,"max_join_versions":16,"max_stages":8})
+	return caps
+
 func _check(value: bool, message: String) -> void:
 	checks += 1
 	if not value:
