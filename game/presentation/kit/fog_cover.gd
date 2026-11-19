@@ -11,7 +11,10 @@ extends RefCounted
 ## Only drawing: it reads the snapshot's levers and the drawn spirit, never the
 ## camera, and writes no depth. The drift runs on the world's clock (drift()),
 ## never the shader's own, so a replay or a memory looks the same each time and
-## reduce motion holds it still. Labels and bubbles draw after it.
+## reduce motion holds it still. It draws just over the water and under every
+## other see-through thing (render_priority -1), so bubbles, tags, the values'
+## chips and the lamps' glow stay on top of it; the spirits are solid, so the
+## other pip fades.
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const Look = preload("res://presentation/kit/look.gd")
 
@@ -21,8 +24,8 @@ const LAYERS := [1.5, 2.3]
 const MARGIN := 16.0
 ## The pocket round the played pip: clear within POCKET_CLEAR (m), full fog
 ## from POCKET_FULL.
-const POCKET_CLEAR := 1.0
-const POCKET_FULL := 3.0
+const POCKET_CLEAR := 1.2
+const POCKET_FULL := 3.4
 ## A control's thinned patch (m, at least; its own radius plus SPOT_ROOM), and
 ## a lit lantern's clearing; SPOT_HAZE is the share of fog left in a patch.
 const SPOT_RADIUS := 0.75
@@ -148,7 +151,7 @@ func _make(cover: Dictionary, floors: Array, spots: Array, lanterns: Dictionary,
 	var mesh := surface.commit()
 	_material = ShaderMaterial.new()
 	_material.shader = _cover_shader()
-	_material.render_priority = 1
+	_material.render_priority = -1
 	_material.set_shader_parameter("noise", _noise_texture())
 	_material.set_shader_parameter("tint", cover.get("color", Color(0.87, 0.89, 0.86)))
 	_material.set_shader_parameter("density", float(cover.get("density", 0.7)))
