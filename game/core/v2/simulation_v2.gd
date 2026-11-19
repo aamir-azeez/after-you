@@ -5,6 +5,9 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+## A socket with "solid" (Relay Isles @3's nest) is walked round and reached
+## from its edge; one without it is the plain spot it always was.
+const Solid = preload("res://core/solid_footprint.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 600
 const MOVE_PER_TICK := 8
@@ -223,11 +226,11 @@ func context_action() -> Dictionary:
 	if role == "a":
 		if _seed.status == "socket":
 			var socket := _entity(level.sockets, str(_seed.socket_id))
-			return {"id": "take", "label": "Take seed", "enabled": _near(_position(active_slot), _point(socket.position_cm), int(socket.radius_cm)), "target_id": socket.id}
+			return {"id": "take", "label": "Take seed", "enabled": Solid.within_reach(socket, _position(active_slot), PLAYER_RADIUS), "target_id": socket.id}
 		return {"id": "throw", "label": "Throw seed", "enabled": _seed.status == "held" and _seed.owner == active_slot and _on_plate(active_slot, stage.plate_id) and tick + _receiver_finish_budget() <= receiver_deadline(), "target_id": stage.bridge_id}
 	var destination := _entity(level.sockets, stage.destination)
 	if _seed.status == "held" and _seed.owner == active_slot:
-		return {"id": stage.goal_action, "label": "Place in relay" if stage.goal_action == "place_relay" else "Plant seed", "enabled": _near(_position(active_slot), _point(destination.position_cm), int(destination.radius_cm)), "target_id": destination.id}
+		return {"id": stage.goal_action, "label": "Place in relay" if stage.goal_action == "place_relay" else "Plant seed", "enabled": Solid.within_reach(destination, _position(active_slot), PLAYER_RADIUS), "target_id": destination.id}
 	return {"id": "catch", "label": "Catch seed", "enabled": _catch_possible(), "target_id": "seed"}
 
 func export_recording() -> Dictionary:
@@ -297,7 +300,16 @@ func walkable_at(x: int, z: int) -> bool:
 	for offset: Vector2i in [Vector2i.ZERO, Vector2i(-PLAYER_RADIUS, -PLAYER_RADIUS), Vector2i(PLAYER_RADIUS, -PLAYER_RADIUS), Vector2i(-PLAYER_RADIUS, PLAYER_RADIUS), Vector2i(PLAYER_RADIUS, PLAYER_RADIUS), Vector2i(PLAYER_RADIUS, 0), Vector2i(-PLAYER_RADIUS, 0), Vector2i(0, PLAYER_RADIUS), Vector2i(0, -PLAYER_RADIUS)]:
 		if _surface_at(Vector2i(x, z) + offset).is_empty():
 			return false
-	return true
+	return not _in_solid(Vector2i(x, z))
+
+## Whether a pip centred at `at` would stand in a solid socket on its own floor.
+func _in_solid(at: Vector2i) -> bool:
+	var surface := ""
+	for socket: Dictionary in level.sockets:
+		if Solid.of(socket).is_empty(): continue
+		if surface.is_empty(): surface = _surface_at(at)
+		if str(socket.get("surface_id", "")) == surface and Solid.blocked([socket], at, PLAYER_RADIUS): return true
+	return false
 
 func _surface_at(position: Vector2i) -> String:
 	for island: Dictionary in level.islands:
@@ -344,7 +356,7 @@ func _update_bridges() -> void:
 func _interact_first() -> void:
 	if _seed.status == "socket":
 		var socket := _entity(level.sockets, str(_seed.socket_id))
-		if stage.goal_action == "plant" and _near(_position(first_player_slot), _point(socket.position_cm), int(socket.radius_cm)):
+		if stage.goal_action == "plant" and Solid.within_reach(socket, _position(first_player_slot), PLAYER_RADIUS):
 			_seed.merge({"status": "held", "owner": first_player_slot, "socket_id": ""}, true)
 			_outcome.took_seed = true
 			_events.append("seed_taken")
@@ -414,7 +426,7 @@ func _interact_second() -> void:
 		return
 	var socket := _entity(level.sockets, stage.destination)
 	var pos := _point(socket.position_cm)
-	if not _near(_position(receiver), pos, int(socket.radius_cm)):
+	if not Solid.within_reach(socket, _position(receiver), PLAYER_RADIUS):
 		return
 	_seed.merge({"status": "socket" if stage.goal_action == "place_relay" else "planted", "owner": "", "socket_id": socket.id, "x": pos.x, "z": pos.y, "height": 35}, true)
 	if stage.goal_action == "place_relay":
