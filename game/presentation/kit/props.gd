@@ -39,6 +39,9 @@ const ROPE := Color("d1b98c")
 
 ## Kinds lower than this (metres) never hide a spirit or a control.
 const LOW := 0.16
+## Flat kinds that cover a patch of floor (rugs, and paths of stones or
+## boards): small markers on the floor keep off them (island_world.floor_covers).
+const FLOOR_COVERS := ["rug", "path"]
 ## A bank's top layer: this thick (metres), its top face half of it above the
 ## bank's height, so it never shares a depth with the bank's sides.
 const BANK_LAYER := 0.03
