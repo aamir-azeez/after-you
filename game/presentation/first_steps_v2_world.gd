@@ -19,9 +19,17 @@ const STONE := Color("bbccb5")
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
 	await super.show_stage(stage)
-	var landings: Array = stage.get("throws", []).map(func(thrown: Dictionary) -> String: return str(thrown.to))
+	var landings := _landings()
 	for spot: Dictionary in chapter_definition.get("item_spots", []):
 		if str(spot.id) not in landings: _build_spot(spot)
+
+## Every throw's landing spot in the chapter: the journey world rings them on
+## the stage that throws, and they are never a planter.
+func _landings() -> Array:
+	var found: Array = []
+	for stage: Dictionary in chapter_definition.get("stages", []):
+		for thrown: Dictionary in stage.get("throws", []): found.append(str(thrown.to))
+	return found
 
 ## A pedestal for a solid spot, a planter for any other.
 func _build_spot(spot: Dictionary) -> void:
@@ -44,5 +52,5 @@ func _item_point(state: Dictionary) -> Vector3:
 	for spot: Dictionary in chapter_definition.get("item_spots", []):
 		if str(spot.id) != str(state.spot): continue
 		if not Solid.of(spot).is_empty(): return at + Vector3(0, PEDESTAL_TOP, 0)
-		if (_shown_stage.get("throws", []) as Array).all(func(thrown: Dictionary) -> bool: return str(thrown.to) != str(spot.id)): return at + Vector3(0, SocketKit.PLANTER + 0.02, 0)
+		if str(spot.id) not in _landings(): return at + Vector3(0, SocketKit.PLANTER + 0.02, 0)
 	return at
