@@ -16,6 +16,8 @@ const SLIDE_MODEL := "res://assets/models/giant_steps_slide.glb"
 const SLIDE_COLORS := {"bed": P.WOOD_LIGHT, "rim": P.PEACH, "post": P.WOOD}
 const STEP_WIDTH := 0.36
 const TOWER := Vector3(1.15, 0, -0.45)
+## The Hard chute's middle line: against the tower's +X side, inside the footprint.
+const HARD_CHUTE_X := 1.48
 const SEESAW := Vector3(-1.4, 0, 0.3)
 
 ## The top of each step.
@@ -28,10 +30,15 @@ static func _tops() -> Array[Vector3]:
 static func _high(state: Dictionary) -> Vector3:
 	return Vector3(TOWER.x, 2.24, TOWER.z) if state.get("hard", false) else _tops()[4]
 
-## The chute from the top down to the grass.
+## The chute from the top down to the grass. On Hard it runs straight down
+## along the tower's side (x HARD_CHUTE_X), beside the ladder on its face
+## rather than over it.
 static func _chute(state: Dictionary) -> Array[Vector3]:
 	var high := _high(state)
-	var start := Vector3(high.x, high.y - 0.02, TOWER.z + 0.22 if state.get("hard", false) else 0.45)
+	if state.get("hard", false):
+		var top := high.y - 0.02
+		return [Vector3(HARD_CHUTE_X, top, TOWER.z), Vector3(HARD_CHUTE_X, top * 0.55, 1.05), Vector3(HARD_CHUTE_X, top * 0.22, 1.45), Vector3(HARD_CHUTE_X, 0.1, 1.75)]
+	var start := Vector3(high.x, high.y - 0.02, 0.45)
 	return [start, Vector3(start.x + 0.2, start.y * 0.55, 1.05), Vector3(start.x + 0.32, start.y * 0.22, 1.45), Vector3(start.x + 0.36, 0.1, 1.75)]
 
 func build(root: Node3D, state: Dictionary) -> Dictionary:
