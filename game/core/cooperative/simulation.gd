@@ -15,12 +15,14 @@ const COMFORT_ALIAS_VERSION := 9
 ## pad held by either pip and every lever worked by either. Only a definition
 ## that pins 12 plays them. A stage then completes only with every one of its
 ## levers on, as the server's checkpoint asks of every cooperative stage.
+## Open turns (14) ask no such thing: both pips at the goal is the whole
+## finish (core/physical/open_turns.gd), on the server too.
 
 func _open_controls() -> bool:
 	return simulation_version in [OPEN_RULES_VERSION, OpenControls.OPEN_TURNS_RULES_VERSION]
 
 func _may_complete() -> bool:
-	if not _open_controls(): return true
+	if not _open_controls() or _open_turns(): return true
 	for lever: Dictionary in stage.get("levers", []):
 		if not bool(_mechanisms.levers.get(lever.id, false)): return false
 	return true

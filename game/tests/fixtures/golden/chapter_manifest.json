@@ -110,6 +110,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"high-and-low@2": {
+			"definition_fixture": "cooperative/high-and-low-v2-definition.json",
+			"definition_hash": "87bb4afc25b939b1754940f952e54fc4698786762b1b1e13022f7556ac0fdc5f",
+			"family": "cooperative",
+			"flag": "HIGH_AND_LOW_V2_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "3ae185c9937992c642a7af8943482ea93fca7cda2ff7153ea46a46a8fd05efdc",
+			"initial_fixture": "cooperative/high-and-low-v2-initial-checkpoint.json",
+			"key": "high-and-low@2",
+			"level_id": "high-and-low",
+			"level_version": 2,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 6,
+			"simulation_version": 14,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				14
+			],
+			"unlock_fruits": 0
+		},
 		"long-way-home@1": {
 			"definition_fixture": "journey/long-way-home-definition.json",
 			"definition_hash": "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f",
@@ -339,6 +360,7 @@
 		"turn-of-the-tide@2",
 		"long-way-home@3",
 		"turn-of-the-tide@3",
-		"conservatory@2"
+		"conservatory@2",
+		"high-and-low@2"
 	]
 }

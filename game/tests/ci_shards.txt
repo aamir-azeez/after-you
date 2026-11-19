@@ -132,6 +132,8 @@ graphics_settings 3
 hard_mode 1
 hard_mode_room 2
 hard_mode_solo 2
+high_and_low_v2 2
+high_and_low_v2_world 2
 hint_length 3
 history_store 1
 history_sync 2
