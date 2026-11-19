@@ -1,9 +1,9 @@
 {
 	"a_recording_hash": "",
 	"b_recording_hash": "",
-	"checkpoint_hash": "a625ca5b71a46863f3651ebbb1b36f0c21ddd301f6164c253a581d0243e0fd1b",
+	"checkpoint_hash": "bfa69e2ce82f52f7ba35d0716f34994a925b48cccfcd72baa87bf5525fafb171",
 	"completed_stage_id": "",
-	"definition_hash": "90bf20fb2828ab7136c9f2f8fa44e9962b14c6c8dc7467cfef0c4e9eca74fe23",
+	"definition_hash": "ed98f45aee92fe2ff5350351bbc3a404a3cef1433f724384d9ba8d96acc107c3",
 	"level_id": "fog-marsh",
 	"level_version": 1,
 	"mechanisms": {
@@ -17,8 +17,8 @@
 				"holder": "",
 				"spot": "channel",
 				"surface_id": "",
-				"x": 2170,
-				"z": 40
+				"x": 6300,
+				"z": 56
 			}
 		},
 		"latched_bridges": [],
@@ -30,14 +30,14 @@
 		"p0": {
 			"height": 0,
 			"surface_id": "path",
-			"x": 150,
-			"z": -50
+			"x": 225,
+			"z": -70
 		},
 		"p1": {
 			"height": 0,
 			"surface_id": "boat-steps",
-			"x": 750,
-			"z": 360
+			"x": 2175,
+			"z": 504
 		}
 	},
 	"previous_checkpoint_hash": "",
