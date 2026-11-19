@@ -39,3 +39,7 @@ static func within_reach(entity: Dictionary, at: Vector2i, body_cm: int) -> bool
 
 static func _centre(entity: Dictionary) -> Vector2i:
 	return Vector2i(int(entity.position_cm[0]), int(entity.position_cm[1]))
+
+## Those of `entities` that have a solid footprint.
+static func solids(entities: Array) -> Array:
+	return entities.filter(func(entity: Variant) -> bool: return entity is Dictionary and not of(entity).is_empty())

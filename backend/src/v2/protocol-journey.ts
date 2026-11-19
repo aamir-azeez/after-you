@@ -21,6 +21,8 @@ import tideV3Definition from "./turn-of-the-tide-v3.json";
 import tideV3Initial from "./turn-of-the-tide-v3-initial.json";
 import conservatoryV2Definition from "./conservatory-v2.json";
 import conservatoryV2Initial from "./conservatory-v2-initial.json";
+import firstStepsV2Definition from "./first-steps-v2.json";
+import firstStepsV2Initial from "./first-steps-v2-initial.json";
 
 export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
 export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
@@ -30,6 +32,7 @@ export const TURN_OF_THE_TIDE_V2_HASH = "1f88aabb592fbf14640b50dd0644755d6afe522
 export const LONG_WAY_HOME_V3_HASH = "f840dd829fdb1285b2553cf3d0d5bf0d41a00387721c6678fcee9fc1e0348b81";
 export const TURN_OF_THE_TIDE_V3_HASH = "71a7eb45f220aeacefe3d982318f507698999196a11a23041430ac33726e29c1";
 export const CONSERVATORY_V2_HASH = "96499f4766718124c64380b6a9ab0452b5e7dde69f2f026b7d932b64cca2ca08";
+export const FIRST_STEPS_V2_HASH = "14badfd8264b785ca39d4f4e30be6a9d86d45ec95de931c04d6e6c4488646de3";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 export type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot?: string };
 export type Predicate = { all?: Predicate[]; any?: Predicate[]; not?: Predicate; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
@@ -221,3 +224,6 @@ export const turnOfTheTideV3: ChapterAdapter = journeyAdapter(tideV3Definition, 
 /** Open controls (12): Conservatory@1 with the court's two forks on a balcony only the first player reaches,
  * and the first turn ending at the court-wait spot on the court. Unreleased. */
 export const conservatoryV2 = journeyAdapter(conservatoryV2Definition, conservatoryV2Initial, CONSERVATORY_V2_HASH);
+/** Open turns with the new pieces (16): First Steps on the journey rules, its lift a weight lift, its seed a
+ * carried item on a solid pedestal, thrown from the loft or carried down. first-steps@1 keeps its own adapter. Unreleased. */
+export const firstStepsV2 = journeyAdapter(firstStepsV2Definition as Definition, firstStepsV2Initial, FIRST_STEPS_V2_HASH);

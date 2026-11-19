@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "59f2ad5ad1078525d2eeccc2ee2da75417f8a49ecea8a3204a30e11778828b72",
+	"completed": true,
+	"definition_hash": "14badfd8264b785ca39d4f4e30be6a9d86d45ec95de931c04d6e6c4488646de3",
+	"duration_ticks": 415,
+	"final_state_hash": "10ab1c5de6c563a3f1181255280ca7ad318e985083db064f164461f13c33f44e",
+	"level_id": "first-steps",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "ARkgZAACGQAaAGQCAEs8AAAgnAAC5wAkAJwCALUCAAADAAAWnAAC5wAMAJwCAOcCAAADAAAWAGQCABmCApwAAs4AoAEAAHqcAALnABYAZJXaveLimHNspUSA8eypPtmihrs8zMMpeGYE06jr/6/Djbk/Y2La1p3ttdoW/UFexVhU+tn4pnWAl1WFWxNHaiUbSFKg0zCyw16MJCHhoYF5ogpGXtwRH5A/turnGssLJ/En/cF1c1wDNz1OJs43QlcgY7ttfAsCA9Vma9DnN2DrDXRZKFWhbIqqowkB+jgrHlhKl5tJSEcb",
+	"player_slot": "p1",
+	"recording_hash": "a6faf5c65cd67a1ea7b4fee5667b8c4016f09c3dcbe92202a6f4a4cb1631480f",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "bb689616fb4a8e97b2c514ed7608a624c08f4fd881ed9946cfcdb410b0569753",
+	"stage_id": "a-place-to-grow",
+	"stage_version": 1,
+	"tick_rate": 30
+}

@@ -121,7 +121,7 @@ const SLOTS := {
 	"spillway": {"trickle": {}, "falls": {}},
 	# Rules 16's carried items and floats (kit/pieces/carried_item.gd) and the
 	# current that carries them (kit/pieces/current.gd).
-	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}},
+	"carried_item": {"parcel": {}, "pipsport": {}, "raft": {}, "seed": {}},
 	"current": {"ripples": {}, "chevrons": {}},
 	# The floor under the water (content/water/looks.gd SEABEDS): tiled sand,
 	# a pebbly stream bed or dark mud.

@@ -111,7 +111,7 @@ func build(lantern_spots: Dictionary) -> void:
 		var lift: bool = stops.all(func(stop: Dictionary) -> bool: return stop.rect_cm == stops[0].rect_cm)
 		var entry := {"stops": Array(platform.stops).map(func(id: Variant) -> String: return str(id)), "heights": heights, "lift": lift, "shown": heights[0], "target": heights[0]}
 		if lift:
-			entry.piece = Lift.build(_world._piece_style("lift", str(platform.id)), rect, heights.min(), heights.max(), _world.terrain)
+			entry.piece = Lift.build(_world._piece_style("lift", str(platform.id)), rect, heights.min(), heights.max(), _world.terrain, _drive(platform))
 			entry.piece.set_height(heights[0])
 			_fill_pans(platform, lantern_spots)
 		else:
@@ -200,6 +200,18 @@ func _fill_pans(platform: Dictionary, lantern_spots: Dictionary) -> void:
 				water.visible = false
 				_world.terrain.add_child(water)
 				_fills.append({"node": water, "lever": lever})
+
+## A lift's options: its winch rope runs to the first pad its rising gate
+## wants held (the power spot), when it has one.
+func _drive(platform: Dictionary) -> Dictionary:
+	var high := str(platform.stops[platform.stops.size() - 1])
+	for gate: Dictionary in _view.get("gates", []):
+		if str(gate.route_id) != high: continue
+		var found := {"pads": [], "levers": []}
+		_terms(gate.get("when", {}), found, false)
+		for pad: Dictionary in _view.get("pressure_pads", []):
+			if str(pad.id) in found.pads: return {"drive": _world._at(pad)}
+	return {}
 
 ## The pads a gate wants held and the levers it wants on (not under a "not").
 static func _terms(when: Dictionary, found: Dictionary, negated: bool) -> void:

@@ -88,6 +88,27 @@
 			],
 			"unlock_fruits": 0
 		},
+		"first-steps@2": {
+			"definition_fixture": "journey/first-steps-v2-definition.json",
+			"definition_hash": "14badfd8264b785ca39d4f4e30be6a9d86d45ec95de931c04d6e6c4488646de3",
+			"family": "journey",
+			"flag": "FIRST_STEPS_V2_CHAPTER_ENABLED",
+			"hard": false,
+			"initial_checkpoint_hash": "f5fe2b56510bd3888ebc090971995550ad4ba5713a75f2d0993c6ed381e3f850",
+			"initial_fixture": "journey/first-steps-v2-initial-checkpoint.json",
+			"key": "first-steps@2",
+			"level_id": "first-steps",
+			"level_version": 2,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 16,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				16
+			],
+			"unlock_fruits": 0
+		},
 		"high-and-low@1": {
 			"definition_fixture": "cooperative/high-and-low-definition.json",
 			"definition_hash": "6aa907e802c92445745a6452c6ec0850dd8e98724e689b58a8ec82915fb08956",
@@ -339,6 +360,7 @@
 		"turn-of-the-tide@2",
 		"long-way-home@3",
 		"turn-of-the-tide@3",
-		"conservatory@2"
+		"conservatory@2",
+		"first-steps@2"
 	]
 }

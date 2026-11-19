@@ -48,6 +48,11 @@ var _item_order: Array = []
 var _hands: Dictionary = {}
 var _legs_taken: Dictionary = {}
 var _memory_floor: Dictionary = {}
+## Rules 16's throws (carried_items.gd), set at reset: the stage's throws by
+## id, and each item in flight: {"throw": its id, "from": {x, z, height},
+## "left": ticks}.
+var _throws: Dictionary = {}
+var _flights: Dictionary = {}
 var _optics: Dictionary = {"segments":[],"signals":{}}
 ## Fixed once a reset sets the level and stage (_reset_mechanics): every
 ## bridge and stair in order, and each gate's route with its condition (null
@@ -314,7 +319,8 @@ func _on_closing() -> bool:
 	return _tide_rules() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
 
 func _may_complete() -> bool:
-	return not _on_closing() and _source_holds()
+	# Rules 16: never while an item flies, so a checkpoint never holds one.
+	return not _on_closing() and _source_holds() and _flights.is_empty()
 
 ## Open turns: a turn never passes with a spirit on a closing crossing or drowned.
 func _may_pass() -> bool:
@@ -489,6 +495,8 @@ func _state_body() -> Dictionary:
 	if _tide_rules():
 		value["closing"]=_closing.duplicate()
 		value["drowned"]=_drowned.duplicate()
+	# Rules 16: a stage with throws hashes what is in flight.
+	if not _throws.is_empty(): value["flights"]=_flights.duplicate(true)
 	return value
 
 func _sorted_latches() -> Array:
@@ -519,7 +527,10 @@ func _reset_items() -> void:
 	_hands = {}
 	_legs_taken = {}
 	_memory_floor = {}
+	_throws = {}
+	_flights = {}
 	if not _carrying: return
+	for thrown: Dictionary in stage.get("throws", []): _throws[str(thrown.id)] = thrown
 	if not _mechanisms.get("items") is Dictionary: _mechanisms["items"] = CarriedItems.initial(level)
 	var starts: Dictionary = stage.get("item_starts", {})
 	for id: Variant in starts: _mechanisms.items[str(id)] = CarriedItems.placed(level, str(starts[id]))
@@ -541,12 +552,13 @@ func _item_action() -> Dictionary:
 	var items: Dictionary = _mechanisms.items
 	var mine := CarriedItems.held_by(items, active_slot)
 	if not mine.is_empty():
+		if not _throws.is_empty() and not CarriedItems.throw_at(stage, player).is_empty(): return _action("throw", CarriedItems.LABELS.throw, true, mine)
 		if CarriedItems.held_by(items, other).is_empty() and CarriedItems.can_hand(level, _hands, player, _players[other], _routes): return _action("give", CarriedItems.LABELS.give, true, mine)
 		if not CarriedItems.lay(level, player, _standing_stops()).is_empty(): return _action("put", CarriedItems.LABELS.put, true, mine)
 		return _action("", "", false, "")
 	if _hands.has(str(player.surface_id)): return _action("", "", false, "")
 	for id: String in _item_order:
-		if CarriedItems.carriable(CarriedItems.item(level, id)) and CarriedItems.can_pick(player, items[id]): return _action("take", CarriedItems.LABELS.take, true, id)
+		if CarriedItems.carriable(CarriedItems.item(level, id)) and CarriedItems.can_pick(player, items[id], level): return _action("take", CarriedItems.LABELS.take, true, id)
 	return _action("", "", false, "")
 
 ## The live pip's press on an item; a later turn replays it from _own_toggles.
@@ -556,6 +568,7 @@ func _item_act(action: Dictionary) -> void:
 		"take": _take(id, active_slot)
 		"put": _put(id, _players[active_slot])
 		"give": _give(id, _other(active_slot))
+		"throw": _throw(id, active_slot)
 	(_own_toggles.get_or_add("items", {}) as Dictionary)[id] = str(action.id)
 
 func _take(id: String, slot: String) -> void:
@@ -567,6 +580,44 @@ func _give(id: String, slot: String) -> void:
 	_mechanisms.items[id] = CarriedItems.held(slot)
 	_legs_taken.erase(id)
 	_events.append("item_given:" + id)
+
+## Throws item `id` from `slot`'s hands, from the throw whose mark it stands in.
+func _throw(id: String, slot: String) -> bool:
+	var thrown := CarriedItems.throw_at(stage, _players[slot])
+	if thrown.is_empty(): return false
+	var from := {"x": int(_players[slot].x), "z": int(_players[slot].z), "height": int(_players[slot].height) + CarriedItems.THROW_LIFT_CM}
+	_flights[id] = {"throw": str(thrown.id), "from": from, "left": int(thrown.flight_ticks)}
+	_mechanisms.items[id] = CarriedItems.flying(from, from, 0, 1)
+	_legs_taken.erase(id)
+	_events.append("item_thrown:" + id)
+	return true
+
+## Each item in flight moves a tick along its arc; in its last ticks a pip
+## with empty hands at the landing catches it (the live pip first), and at
+## the end it lands at the landing spot.
+func _advance_flights() -> void:
+	for id: String in _item_order:
+		if not _flights.has(id): continue
+		var flight: Dictionary = _flights[id]
+		var thrown: Dictionary = _throws[flight.throw]
+		var landing := CarriedItems.spot(level, str(thrown.to))
+		var duration := int(thrown.flight_ticks)
+		flight.left = int(flight.left) - 1
+		var to := {"x": int(landing.position_cm[0]), "z": int(landing.position_cm[1]), "height": int(landing.get("height_cm", 0))}
+		_mechanisms.items[id] = CarriedItems.flying(flight.from, to, duration - int(flight.left), duration)
+		if int(flight.left) <= CarriedItems.CATCH_WINDOW_TICKS:
+			var catcher := ""
+			for slot: String in ([active_slot, memory_slot] if role == "b" else [active_slot]):
+				if catcher.is_empty() and CarriedItems.held_by(_mechanisms.items, slot).is_empty() and CarriedItems.can_catch(_players[slot], landing, int(thrown.catch_cm)): catcher = slot
+			if not catcher.is_empty():
+				_mechanisms.items[id] = CarriedItems.held(catcher)
+				_flights.erase(id)
+				_events.append("item_caught:" + id)
+				continue
+		if int(flight.left) <= 0:
+			_mechanisms.items[id] = CarriedItems.at_spot(landing)
+			_flights.erase(id)
+			_events.append("item_landed:" + id)
 
 ## Puts item `id` down where `at` (a player) stands; false off an island or
 ## a platform's standing stop.
@@ -599,9 +650,11 @@ func _replay_memory_items() -> void:
 			var held: bool = str(items[id].holder) == memory_slot
 			match str(acts[id]):
 				"take":
-					if CarriedItems.held_by(items, memory_slot).is_empty() and not _hands.has(str(memory.surface_id)) and CarriedItems.carriable(CarriedItems.item(level, str(id))) and CarriedItems.can_pick(memory, items[id]): _take(str(id), memory_slot)
+					if CarriedItems.held_by(items, memory_slot).is_empty() and not _hands.has(str(memory.surface_id)) and CarriedItems.carriable(CarriedItems.item(level, str(id))) and CarriedItems.can_pick(memory, items[id], level): _take(str(id), memory_slot)
 				"put":
 					if held: _put(str(id), memory)
+				"throw":
+					if held: _throw(str(id), memory_slot)
 				"give":
 					if held and CarriedItems.held_by(items, active_slot).is_empty() and CarriedItems.can_hand(level, _hands, memory, _players[active_slot], _routes): _give(str(id), active_slot)
 					elif held: _put(str(id), memory)
@@ -617,6 +670,7 @@ func _replay_memory_items() -> void:
 ## handles it, so it moves one leg per turn of the wheel and never two a tick.
 func _after_interact() -> void:
 	if not _carrying: return
+	if not _flights.is_empty(): _advance_flights()
 	var legs: Array = stage.get("current_legs", [])
 	for id: String in _item_order:
 		var state: Dictionary = _mechanisms.items[id]

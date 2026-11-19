@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "f5fe2b56510bd3888ebc090971995550ad4ba5713a75f2d0993c6ed381e3f850",
+	"completed": true,
+	"definition_hash": "14badfd8264b785ca39d4f4e30be6a9d86d45ec95de931c04d6e6c4488646de3",
+	"duration_ticks": 270,
+	"final_state_hash": "d9cfa7153a848410c01431c2412faa3db1695205ed936e66adf7a93af1d14417",
+	"level_id": "first-steps",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": true,
+		"source_ready": true
+	},
+	"packed": "AQx4AAAeZABGAAAWAGQCABlAZAACMgAyAAAKAGRCZAACSwBmAABF8H8cC8g6bbnyPWdk+R4rzKBgjsAEL2HydmxUj7N4fBAH+kSLQL+Uh6+83kccRgDDmtGN/Wmy0XZiWc1wcgWFM4u6fOtm8GeygW8F1Pr8NR79hPuWWuO1",
+	"player_slot": "p0",
+	"recording_hash": "b9e3e9b6a29d175d0e328ab5f8c9f0d132a38a0a3003824e9839521e833c8d20",
+	"role": "b",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "6b03e2c984f077f5b907f78e616d228b2317e9f5008ca8efd548c22e4c09c81f",
+	"stage_id": "a-little-lift",
+	"stage_version": 1,
+	"tick_rate": 30
+}

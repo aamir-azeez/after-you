@@ -743,11 +743,23 @@ func _build_items(stage: Dictionary) -> void:
 	var hands := CarriedItems.hands_routes(view)
 	for route: Dictionary in view.get("bridges", []) + view.get("stairs", []):
 		if hands.has(str(route.id)): _ladder_rungs(route)
+	# A throw's mark is a cream ring where the thrower stands; its landing the
+	# seed landing's ring of ticks (kit/pieces/socket.gd).
+	for thrown: Dictionary in view.get("throws", []):
+		var mark := ring(float(thrown.mark.get("radius_cm", CarriedItems.SPOT_RADIUS_CM)) / 100.0, CREAM, _at(thrown.mark) + Vector3(0, 0.03, 0), terrain)
+		mark.name = "ThrowMark_" + str(thrown.id)
+		var landing := Node3D.new()
+		landing.name = "ThrowLanding_" + str(thrown.id)
+		landing.position = _at(CarriedItems.spot(view, str(thrown.to)))
+		terrain.add_child(landing)
+		SocketKit.landing(landing)
 
 ## Where an item state rests in the terrain's space (on the water when its
 ## floor is none).
 func _item_point(state: Dictionary) -> Vector3:
 	if state.is_empty(): return Vector3.ZERO
+	# Thrown: where its arc has it.
+	if CarriedItems.in_flight(state): return Vector3(float(state.x), float(state.height), float(state.z)) / 100.0
 	return _at({"position_cm": [int(state.x), int(state.z)], "surface_id": str(state.surface_id)})
 
 ## Rungs across a both-hands crossing every RUNG_CM along it, at its height
@@ -784,5 +796,5 @@ func _present_items(state: Dictionary) -> void:
 		var piece: RefCounted = _item_pieces[id]
 		var holder := str(item_state.holder)
 		if not holder.is_empty() and actors.has(holder): piece.carry(actors[holder])
-		else: piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty())
+		else: piece.rest(_item_point(item_state), terrain, str(item_state.surface_id).is_empty() and not CarriedItems.in_flight(item_state))
 	if _current_piece != null: _current_piece.set_controls(state.get("controls", {}))

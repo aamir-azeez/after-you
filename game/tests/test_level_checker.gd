@@ -416,6 +416,8 @@ func _graph(plan: Dictionary, owned: bool = true) -> RefCounted:
 		floors[field] = plan.get(field, []).duplicate(true)
 	# The rules pin: on open controls either pip works a control (level_graph.gd).
 	if plan.has("simulation_version"): floors.simulation_version = plan.simulation_version
+	# Rules 16: the stage's moving platforms join their stops by ride edges (level_graph.gd build).
+	if not plan.get("platforms", []).is_empty(): floors["stages"] = [{"platforms": plan.platforms.duplicate(true)}]
 	if not owned:
 		for kind: String in ["bridges", "stairs"]:
 			for route: Dictionary in floors[kind]: route.erase("owner_slot")
