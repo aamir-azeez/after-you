@@ -16,6 +16,7 @@ extends SceneTree
 const Motion = preload("res://presentation/kit/motion.gd")
 const Spirit = preload("res://presentation/spirit_visual.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
+const Look = preload("res://presentation/spirit_look.gd")
 
 var checks := 0
 var failures := 0
@@ -215,7 +216,7 @@ func _carry_at(rate: int, reduced: bool = false) -> Dictionary:
 	var piece: RefCounted = CarriedItemKit.build("parcel", Vector3.ZERO, ground)
 	piece.carry(spirit)
 	var rest: Transform3D = piece.root.transform
-	var seen := {"rest_first": rest.origin == CarriedItemKit.BACK, "most": 0.0, "moved": false, "samples": {}}
+	var seen := {"rest_first": rest.origin == piece.back, "most": 0.0, "moved": false, "samples": {}}
 	var dt := 1.0 / float(rate)
 	_path(rate, [{"v": Vector3(2, 0, 0), "t": 1.0}], reduced, func(pip: Node3D, _at: float) -> void:
 		var item: Node3D = piece.root
@@ -223,7 +224,7 @@ func _carry_at(rate: int, reduced: bool = false) -> Dictionary:
 		seen.most = maxf(seen.most, item.basis.y.angle_to(Vector3.UP))
 		for mark: float in [0.1, 0.3]:
 			if absf(pip.stop_age - mark) < dt * 0.5: seen.samples[mark] = item.basis.y, spirit)
-	seen["rest"] = piece.root.transform == rest and piece.root.position == CarriedItemKit.BACK
+	seen["rest"] = piece.root.transform == rest and piece.root.position == piece.back
 	piece.rest(Vector3(5, 0, 0), ground, false)
 	for _frame in range(10): spirit.advance_motion(Vector3(0.04, 0, 0), 1.0 / 60.0, false)
 	seen["left"] = piece.root.position == Vector3(5, 0, 0) and piece.root.basis == Basis.IDENTITY
@@ -274,5 +275,12 @@ func _carried_turns() -> void:
 		var off: Vector3 = piece.root.global_position - spirit.global_position
 		var settled: bool = piece.root.transform == rest and Vector2(off.x, off.z).length() > 0.19
 		_check(frames < 600 and walking > 0.99 and standing > 0.999 and settled, "walking %s the pipsport rides behind the pip: %.4f walking, %.4f standing, at %s" % [way, walking, standing, off])
+		# Every part of it is behind the back of the head, so it shows.
+		var nearest := -INF
+		var to_facing: Transform3D = spirit.facing.global_transform.affine_inverse()
+		for node: Node in piece.root.find_children("*", "MeshInstance3D", true, false):
+			var mesh := node as MeshInstance3D
+			nearest = maxf(nearest, (to_facing * mesh.global_transform * mesh.get_aabb()).end.z)
+		_check(nearest < -Look.HEAD_HALF.z, "walking %s the pipsport hangs outside the head: its near face at z %.3f" % [way, nearest])
 	ground.free()
 	spirit.free()
