@@ -3842,7 +3842,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "f0e1f32a21683dea81cb27e93c9100292c6c98c5fae19d9d1676631696ac626c",
+					"hash": "1b96a04ba217a9eb14d2f8d7dc6bbf2ddf9035990a26573d00bdbf94b5908bcb",
 					"nodes": 1472,
 					"story_camera": {
 						"_follow_center": [
@@ -3896,7 +3896,7 @@
 						"@MeshInstance3D#9": "4981097d90f6b46f",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "fe5b364537ed6d3d",
-						"TurnOfTheTide": "1a1952ba3361b06b"
+						"TurnOfTheTide": "9f1cc70ab44d94ae"
 					}
 				},
 				"s1.b.mid": {
@@ -4486,7 +4486,7 @@
 						"OmniLight3D": 1,
 						"WorldEnvironment": 1
 					},
-					"hash": "fe5bdcffaa2eac3f7692bd7b4e9c10cdf1fd7a028fc354f1105365eabe7ab314",
+					"hash": "c11d3855604c77fc24fdd7edb6d5e64a9230a4c3a82352153dd0c155348b97c6",
 					"nodes": 1472,
 					"story_camera": {
 						"_follow_center": [
@@ -4540,7 +4540,7 @@
 						"@MeshInstance3D#9": "2a51917998221160",
 						"@Node": "1915fcc41e9a6ed2",
 						"@WorldEnvironment": "fe5b364537ed6d3d",
-						"TurnOfTheTide": "c322e37a0b55172a"
+						"TurnOfTheTide": "407db6f440be3f35"
 					}
 				},
 				"s1.b.mid": {
@@ -4768,7 +4768,7 @@
 				"s0.b.mid": "15e16a76b574535a983e5d1181dd53b8293e6372fc62c9bb92954f46ef3630e5",
 				"s0.start": "68dda299c2843d239ef844115c355313a1d1bb755bef2f0b1704d66a4f7d85ed",
 				"s1.a.end": "261c3cfd1c296df5561291f888afcd0fa04b42ceee9696d28cbe1b48a66d76b3",
-				"s1.b.end": "c0a9ebbcbdb3ceeb642f7756ac5c466d2b886541ad25d9eebd3c4d2c4e9f7cc7",
+				"s1.b.end": "3061a03cede7d20ef3e512b3fbc2f7d2d817c21ee10f376075bb027eb646787d",
 				"s1.b.mid": "dc82f93587be1aed16da5b2d20b407c027811ee39856dd24592655a42bb1dd2a",
 				"s1.start": "f183aa5e87aa259de480f264b32b2d45fcfe6d0cbace8b0e6d8039edb7a36016"
 			},
@@ -4779,7 +4779,7 @@
 				"s0.b.mid": "e119e1c77795c63beab64026a58106146fd718166989d76ad5fe863a3a4174f6",
 				"s0.start": "929fe990b064f96a36b3dd49f14d9e5624e3124802e162f692f74b0f4adfff07",
 				"s1.a.end": "831776d7a29d8e51e1d9ee7ca33ce9738f50bfc558c843722301f11715b8b0f5",
-				"s1.b.end": "6e9d933c0787e9dffebfe70bbb5f93194ac2e5469a11069b1229a684b8960ce7",
+				"s1.b.end": "8cb6c7b9ecc4e3072b4508926531436fefd50555997a1ed155529eba93e08108",
 				"s1.b.mid": "f6cecf5bd63291788d851ce4eb12ad824df314db8bef2d1ee76652562b5cf5af",
 				"s1.start": "35ce64eec5bbcfe40a77271701cc1d9ec483b05a1d1430b8a5311fd661d57577"
 			}
