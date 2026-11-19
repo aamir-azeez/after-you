@@ -53,6 +53,24 @@ const START_CROUCH := 0.11
 const START_STRETCH := 0.14
 const STOP_FROM := 0.3
 const MOTION_EVENT_END := 1.2
+## Turning: the body leans into the turn by TURN_LEAN radians for each radian
+## the facing still has to turn (at most TURN_LEAN_MOST), times the walk, so
+## the lean dies away as the facing catches up.
+const TURN_LEAN := 0.12
+const TURN_LEAN_MOST := 0.09
+## Dropping down a step, ledge or stair while walking: a descent faster than
+## DROP_SPEED m/s that started on a walking frame, at least DROP_FROM deep,
+## squashes the body when it ends (LAND_SQUASH per metre, at most LAND_MOST)
+## and settles. A lift (no walking) or a ride never lands.
+const DROP_SPEED := 0.6
+const DROP_FROM := 0.1
+const LAND_SQUASH := 0.5
+const LAND_MOST := 0.12
+## An item hung on the back (hang_on_back) rolls with each stride and bobs with
+## the hop, and swings forward and back when the pip stops.
+const BACK_ROLL := 0.07
+const BACK_BOB := 0.03
+const BACK_SWING := 0.16
 ## The startled wake (play_wake) and the moment in it when the goal rings:
 ## just after the hop lands (presentation/memory_wait.gd reads this).
 const WAKE_DURATION := SpiritIdle.WAKE_DURATION
@@ -105,6 +123,11 @@ var motion_blend := 0.0
 ## Seconds since this spirit last set off and last stopped (kit/motion.gd).
 var start_age := MOTION_EVENT_END
 var stop_age := MOTION_EVENT_END
+## Seconds since the last landing from a drop, its squash, and how far the
+## current descent has dropped so far (metres).
+var land_age := MOTION_EVENT_END
+var _land_amount := 0.0
+var _drop := 0.0
 var _walking := false
 var facing_target := 0.0
 ## Where the world's recorded movement has the spirit now, in its parent's
@@ -183,6 +206,11 @@ var _carried := false
 const BUMP_DURATION := 0.28
 const BUMP_FACE := 0.5
 var _bump_age := BUMP_DURATION
+## A carried item hung on the spirit's back (kit/pieces/carried_item.gd carry):
+## it rides under the spirit root at _back_at, turned _back_turn, and sways.
+var _back_item: Node3D = null
+var _back_at := Vector3.ZERO
+var _back_turn := Vector3.ZERO
 
 func _init(color: Color=Look.PEACH) -> void:
 	facing.name="Facing"
@@ -288,6 +316,8 @@ func reset_motion() -> void:
 	motion_blend=0.0
 	start_age=MOTION_EVENT_END
 	stop_age=MOTION_EVENT_END
+	land_age=MOTION_EVENT_END
+	_drop=0.0
 	_walking=false
 	throw_age=THROW_DURATION
 	release_age=RELEASE_SETTLE_DURATION
@@ -500,6 +530,8 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		_attention_initialized=false
 		_reunion_armed=false
 		_pose_blend=1.0
+		land_age=MOTION_EVENT_END
+		_drop=0.0
 		_apply_pose(0.0)
 		# Reduced motion changes the pose, not the player's sound preference.
 		if contacts>0 or landed: stepped.emit()
@@ -509,6 +541,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	var walking := speed>0.025
 	if walking and not _walking: start_age=0.0
 	elif _walking and not walking and motion_blend>=STOP_FROM: stop_age=0.0
+	_advance_drop(displacement,delta,walking)
 	_walking=walking
 	var target_blend := clampf(speed/WALK_SPEED,0.0,1.0) if speed>0.025 else 0.0
 	motion_blend=lerpf(motion_blend,target_blend,1.0-exp(-12.0*delta))
@@ -521,6 +554,61 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	_apply_reunion_sparkles()
 	# A stalled render frame must not release a burst of queued sounds.
 	if contacts>0 or landed: stepped.emit()
+
+## A descent that started on a walking frame (so not a lift, which never walks)
+## lands when it stops falling; a ride's hop has its own landing.
+func _advance_drop(displacement: Vector3, delta: float, walking: bool) -> void:
+	land_age=minf(MOTION_EVENT_END,land_age+delta)
+	var falling := -displacement.y/delta>=DROP_SPEED and _hop_age>=_hop_duration and not _carried
+	if falling and (_drop>0.0 or walking):
+		_drop-=displacement.y
+	elif _drop>0.0:
+		if _drop>=DROP_FROM:
+			land_age=0.0
+			_land_amount=minf(_drop*LAND_SQUASH,LAND_MOST)
+		_drop=0.0
+
+## How far the body leans into a turn now (radians, toward facing +X), from
+## how far the facing still has to turn: exactly 0 when the pip stands.
+func turn_lean() -> float:
+	if _reduced_motion or motion_blend==0.0: return 0.0
+	return clampf(angle_difference(facing.rotation.y,facing_target)*TURN_LEAN,-TURN_LEAN_MOST,TURN_LEAN_MOST)*motion_blend
+
+## The landing squash now (0 at rest).
+func landing_squash() -> float:
+	if _reduced_motion or land_age>=MOTION_EVENT_END: return 0.0
+	return Motion.settle(land_age,_land_amount,2.8,7.5)
+
+## Hangs `item` (a child of this spirit) on its back at `at`, turned `turn`
+## (euler): it sways with the stride and the stop from now on, until it is
+## taken off (reparented) or freed. Presentation only.
+func hang_on_back(item: Node3D, at: Vector3, turn: Vector3) -> void:
+	_back_item=item
+	_back_at=at
+	_back_turn=turn
+	_apply_back_sway()
+
+func _apply_back_sway() -> void:
+	if _back_item==null: return
+	if not is_instance_valid(_back_item) or _back_item.get_parent()!=self:
+		_back_item=null
+		return
+	var roll := 0.0
+	var swing := 0.0
+	var bob := 0.0
+	if not _reduced_motion:
+		roll=sin(stride_phase+expression_phase*0.18)*BACK_ROLL*motion_blend
+		bob=absf(sin(stride_phase))*BACK_BOB*motion_blend
+		# It swings on a little after the body stops, like the leaf.
+		if stop_age<MOTION_EVENT_END: swing=Motion.settle(stop_age-0.06,BACK_SWING,2.0,5.0)
+	if roll==0.0 and swing==0.0 and bob==0.0:
+		_back_item.position=_back_at
+		_back_item.rotation=_back_turn
+		return
+	# The sway is the pip's own (facing space); the item hangs in the root's.
+	var sway := Basis(facing.basis*Vector3.BACK,roll)*Basis(facing.basis*Vector3.RIGHT,swing)
+	_back_item.position=_back_at+Vector3(0,bob,0)
+	_back_item.basis=sway*Basis.from_euler(_back_turn)
 
 func _advance_expression(delta: float) -> void:
 	_expression_time+=delta
@@ -581,7 +669,7 @@ func _apply_pose(amount: float) -> void:
 		lean=Vector2.ZERO
 	upper_body.position=Vector3(sway*0.055,hop*0.072+launch*0.27+reunion*0.11+absf(sin(dance_phase))*dance*0.10,0)
 	# Positive X pitch leans +Z; negative Z roll leans +X in the facing pivot.
-	upper_body.rotation=Vector3(0.035*amount+lean.y,sway*0.14,cos(stride_phase+expression_phase*0.18)*0.032*amount-lean.x+sway*0.24)
+	upper_body.rotation=Vector3(0.035*amount+lean.y,sway*0.14,cos(stride_phase+expression_phase*0.18)*0.032*amount-lean.x+sway*0.24-turn_lean())
 	var squash := compression*0.18-hop*0.035-launch*0.065
 	# A ride's hop: crouch to take off, stretch with the feet tucked, squash to land.
 	var ride_tuck := 0.0
@@ -610,6 +698,7 @@ func _apply_pose(amount: float) -> void:
 		if stop_age<MOTION_EVENT_END:
 			squash+=Motion.settle(stop_age,0.09,2.6,7.0)
 			nod=Motion.settle(stop_age,0.14,2.2,5.5)
+		squash+=landing_squash()
 	upper_body.scale=Vector3(1.0+squash*0.45,1.0-squash,1.0+squash*0.45)
 	var settle := 0.0
 	if release_age>=0.0 and release_age<RELEASE_SETTLE_DURATION and not _reduced_motion:
@@ -669,6 +758,7 @@ func _apply_pose(amount: float) -> void:
 		if rest.body_shift!=Vector3.ZERO or rest.feet_forward!=0.0: feet[index].position+=rest.body_shift+Vector3(0,0,rest.feet_forward)
 		if (ride_tuck!=0.0 or _ride_sit!=0.0) and not _reduced_motion: feet[index].position+=Vector3(0,ride_tuck+_ride_sit*0.04,_ride_sit*0.18)
 	if not _doze_zs.is_empty(): _apply_doze_zs(idle)
+	_apply_back_sway()
 
 ## The pose layer's offsets this frame, faded by `idle` (none while walking).
 ## Reduce motion gives each pose's still frame: nothing at all for rest.
