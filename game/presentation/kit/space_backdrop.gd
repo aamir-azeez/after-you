@@ -11,13 +11,16 @@ extends RefCounted
 ## the world's own time, so it is the same at any frame rate, stops while the
 ## world is paused or out of the tree, and holds still under Reduce motion.
 ##
-## The far islands and cloud wisps sit in the world: each place has its own
-## layout (layout_seed, from the chapter's id or Home), and the layers shift as
-## the camera pans, each slower than the world, for depth. Zoom alone moves none
-## of them.
+## The far islands (each a tile of a small baked atlas: six shapes, mirrored or
+## not, sized and hazed by how far off they are) and cloud wisps sit in the
+## world: each place has its own layout (layout_seed, from the chapter's id or
+## Home), and the layers shift as the camera pans, each slower than the world,
+## for depth. Zoom alone moves none of them.
 
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const SHADER := preload("res://presentation/kit/space_backdrop.gdshader")
+## The far island shapes, baked from six island models (the shader's `islands`).
+const ISLAND_ATLAS := preload("res://assets/sky/far_islands.png")
 ## Accent kinds the shader draws round the view's edges.
 const ACCENTS := {"none": 0, "petals": 1, "fireflies": 2, "dust": 3}
 ## The clock wraps here, so a world left open for hours keeps its precision.
@@ -35,6 +38,7 @@ const DETAIL := &"detail"
 const SHOOTING := &"shooting"
 const LAYOUT := &"layout_seed"
 const ACCENT_LIGHTS := &"accents"
+const ISLANDS := &"islands"
 ## Edge lights the accent draws (the shader's ACCENT_LIGHTS).
 const ACCENT_COUNT := 7
 ## Metres of camera pan that shift a layer of share 1 by one screen height. A
@@ -112,6 +116,7 @@ static func environment() -> Environment:
 	material.set_shader_parameter(CLOCK, 0.0)
 	material.set_shader_parameter(SHOOTING, 1.0)
 	material.set_shader_parameter(LAYOUT, layout_seed(HOME))
+	material.set_shader_parameter(ISLANDS, ISLAND_ATLAS)
 	sky.sky_material = material
 	env.sky = sky
 	return env

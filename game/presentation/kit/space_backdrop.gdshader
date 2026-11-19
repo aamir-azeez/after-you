@@ -1,9 +1,10 @@
 shader_type sky;
 // The space behind every world (kit/space_backdrop.gd): the look's sky colour,
 // faint tiny stars, a few larger soft stars that twinkle, a shooting star now
-// and then, far island shapes drifting slowly, soft cloud wisps far below and
-// a few edge lights in the look's accent. The sky only shades pixels nothing
-// in the world covers, so none of it can ever show in front of a world.
+// and then, far floating islands drifting slowly (tiles of a small baked atlas),
+// soft cloud wisps far below and a few edge lights in the look's accent. The sky
+// only shades pixels nothing in the world covers, so none of it can ever show in
+// front of a world.
 // Everything moves with `clock`, the world's own time, never TIME: a still or
 // a clip stepped by fixed frames shows the same. Each layer shifts with the
 // camera by its own share of `parallax`, the far islands and wisps laid out by
@@ -29,12 +30,22 @@ uniform vec2 buffer_size = vec2(1920.0, 1080.0);
 uniform float detail = 1.0;
 // 0 under Reduce motion: no shooting star.
 uniform float shooting = 1.0;
+// The far islands (assets/sky/far_islands.png, baked from six island models by
+// the private Blender kit): one tile each, R the top's coverage, G the rock
+// underneath, B the light on them times coverage. Every tile has its grass top
+// on the same row and its middle in the middle.
+uniform sampler2D islands : filter_linear_mipmap, repeat_disable;
 
 const float SHOOT_EVERY = 9.0;
 const float SHOOT_LENGTH = 0.8;
 // The far islands and wisps repeat every this many screen heights across.
 const float FAR_TILE = 3.0;
 const int FAR_SLOTS = 4;
+const vec2 ISLAND_GRID = vec2(3.0, 2.0);
+const float ISLAND_KINDS = 6.0;
+// The tile's pixels across, and the share of it above the grass top.
+const float ISLAND_TILE = 128.0;
+const float ISLAND_TOP = 0.353;
 const int WISPS = 3;
 const int ACCENT_LIGHTS = 7;
 
@@ -60,14 +71,16 @@ vec4 star_cell(vec2 q, float on) {
 	return vec4(h.xy, length(fract(q) - at), 1.0);
 }
 
-// A far floating island: a flat cap over a rounded cone, `w` wide.
-float far_island(vec2 p, vec2 c, float w) {
-	vec2 l = (p - c) / w;
-	if (abs(l.x) > 1.1 || l.y < -0.3 || l.y > 0.95) return 0.0;
-	float cap = length(l * vec2(1.0, 5.5)) - 1.0;
-	float cone = max(abs(l.x) - (1.0 - l.y / 0.9) * 0.95, l.y - 0.85);
-	float body = l.y < 0.0 ? cap : min(cap, cone);
-	return 1.0 - smoothstep(-0.04, 0.04, body);
+// The atlas around one far island: `d` from its grass top's middle, `w` half its
+// tile's width, `kind` which tile, `flip` -1 for mirrored. Zero outside the tile.
+vec3 far_island(vec2 d, float w, float kind, float flip) {
+	vec2 t = vec2(0.5 + 0.5 * flip * d.x / w, ISLAND_TOP + 0.5 * d.y / w);
+	if (t.x < 0.0 || t.x > 1.0 || t.y < 0.0 || t.y > 1.0) return vec3(0.0);
+	vec2 cell = vec2(mod(kind, ISLAND_GRID.x), floor(kind / ISLAND_GRID.x));
+	// Its own mip level from its size on screen; the sample sits in a branch, so
+	// the level is worked out here rather than from screen derivatives.
+	float lod = max(log2(ISLAND_TILE / (2.0 * w * buffer_size.y)), 0.0);
+	return textureLod(islands, (cell + t) / ISLAND_GRID, lod).rgb;
 }
 
 void sky() {
@@ -81,6 +94,8 @@ void sky() {
 		vec2 shift = vec2(parallax.x, -parallax.y);
 		vec3 col = sky_color;
 		float seed = layout_seed * 97.0;
+		// How much of a far island covers this pixel; the stars stay behind it.
+		float veil = 0.0;
 
 		if (detail > 0.5) {
 			// Soft cloud wisps far below, long and thin, drifting with the islands.
@@ -98,19 +113,35 @@ void sky() {
 			}
 
 			// Far islands, two to four of them high or low, each drifting slowly at
-			// its own pace, the nearest of the far layers.
+			// its own pace, the nearest of the far layers. Each is a different one of
+			// the six shapes, maybe mirrored; the later slots are nearer, so larger
+			// and less hazy, and paint over the earlier ones.
 			vec2 q = p + shift * 0.3;
 			float drift = hash11(seed + 5.0) > 0.5 ? 1.0 : -1.0;
-			float shape = 0.0;
+			float first = floor(hash11(seed + 3.0) * ISLAND_KINDS);
 			for (int i = 0; i < FAR_SLOTS; i++) {
 				float fi = float(i);
 				vec3 h = hash32(vec2(fi + 1.0, seed));
 				if (i >= 2 && h.z < 0.35) continue;
 				float x = mod(q.x - (fi + 0.15 + 0.7 * h.x) * FAR_TILE / float(FAR_SLOTS) - drift * clock * (0.003 + 0.004 * h.z) + FAR_TILE * 0.5, FAR_TILE) - FAR_TILE * 0.5;
 				float y = (h.y < 0.4 ? -0.42 + 0.14 * h.y / 0.4 : 0.16 + 0.16 * (h.y - 0.4) / 0.6) + 0.006 * sin(clock * 0.21 + fi * 2.0);
-				shape = max(shape, far_island(vec2(x, q.y), vec2(0.0, y), 0.06 + 0.07 * fract(h.x * 7.0 + h.z)));
+				float near = (fi + 0.5 * h.z) / (float(FAR_SLOTS) - 0.5);
+				float w = mix(0.055, 0.14, near) * (0.85 + 0.3 * fract(h.x * 7.0 + h.z));
+				float flip = hash11(seed + fi * 13.0 + 7.0) > 0.5 ? -1.0 : 1.0;
+				vec3 tile = far_island(vec2(x, q.y - y), w, mod(first + fi * 5.0, ISLAND_KINDS), flip);
+				float cover = tile.r + tile.g;
+				if (cover < 0.004) continue;
+				// Two tones from the look: a grassy top toward its stars (or now and
+				// then its accent) and the rock in the far colour, lit from the upper
+				// left, then hazed toward the sky the farther it is.
+				vec3 tint = mix(star_color, accent_color, step(0.6, fract(h.y * 13.0)) * 0.4);
+				float lit = tile.b / cover;
+				vec3 top = mix(far_color, tint, 0.36) * (0.9 + 0.2 * lit);
+				vec3 rock = far_color * (0.78 + 0.3 * lit);
+				vec3 island = mix(mix(rock, top, tile.r / cover), sky_color, mix(0.55, 0.15, near));
+				col = mix(col, island, min(cover, 1.0) * 0.9);
+				veil = max(veil, min(cover, 1.0));
 			}
-			col = mix(col, far_color, shape * 0.55);
 		}
 
 		// Faint tiny stars, barely moving with the camera.
@@ -141,7 +172,7 @@ void sky() {
 				light += streak * sin(3.14159 * u) * 1.1;
 			}
 		}
-		col = mix(col, star_color, clamp(light, 0.0, 1.0));
+		col = mix(col, star_color, clamp(light, 0.0, 1.0) * (1.0 - veil));
 
 		// A few lights round the edges of the view, in the look's accent, each
 		// placed once a frame (SpaceBackdrop.advance) and drawn only near it.
