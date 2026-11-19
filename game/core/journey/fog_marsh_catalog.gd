@@ -66,7 +66,7 @@ static func source() -> Dictionary:
 			_bridge("west-boards", [450, -205, 1950, -109], 0, "path", "middle"), _bridge("reed-stones", [450, -9, 1950, 87], 0, "path", "middle"),
 			_bridge("high-boards", [450, -569, 3900, -473], 0, "path", "jetty"), _bridge("low-boards", [2124, 140, 2220, 350], 0, "middle", "boat-steps"),
 			_bridge("middle-jetty", [2400, -121, 3900, -25], 0, "middle", "jetty"),
-			_bridge("raft-boat", [2400, 420, 2800, 532], 0, "boat-steps", "jetty"), _bridge("raft-jetty", [4050, 210, 4170, 322], 0, "boat-steps", "jetty"),
+			_bridge("raft-boat", [2400, 420, 2520, 532], 0, "boat-steps", "jetty"), _bridge("raft-jetty", [4050, 210, 4170, 322], 0, "boat-steps", "jetty"),
 			_bridge("over-to-dock", [4350, -51, 5350, 45], 0, "jetty", "dock"), _bridge("plank", [5950, 439, 7550, 535], 0, "dock", "bank"),
 			_bridge("north-boards", [5950, -560, 6450, -426], 0, "dock", "north"), _bridge("stair", [7050, -560, 7550, -426], 0, "north", "landing"),
 			_bridge("bank-landing", [7724, -210, 7820, 210], 0, "landing", "bank"), _bridge("swirl-stones", [8000, 369, 8650, 465], 0, "bank", "reeds"),

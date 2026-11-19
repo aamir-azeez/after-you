@@ -17,6 +17,14 @@ extends RefCounted
 ## to an earlier tick (a retry, a fresh turn) drops what came after.
 const QUANTUM_CM := 25
 const MOST_KEPT := 64
+## A kept turn's file format; a file under any other is read as missing.
+const VERSION := 1
+## Persisted turns: once a service attaches a store (services/turn_paths_store.gd:
+## `persist` writes an id's bytes, `restore` reads them back), every walked
+## turn is kept there too and a miss reads it back, so a restart neither reads
+## the stage's traces nor simulates its turns again.
+static var persist := Callable()
+static var restore := Callable()
 
 ## Per recording hash: {"points": PackedInt32Array (x, z, height cm), "levers": {id: true}}.
 static var _kept: Dictionary = {}
@@ -56,7 +64,11 @@ static func _turn(sim: RefCounted, checkpoint: Dictionary, turns: Array, index: 
 	var record: Dictionary = turns[index]
 	var id := "%s|%s" % [str(checkpoint.get("checkpoint_hash", "")), str(record.get("recording_hash", ""))]
 	if _kept.has(id): return _kept[id]
-	var walked := {"points": PackedInt32Array(), "levers": {}}
+	var walked := _read(id)
+	if not walked.is_empty():
+		_keep(id, walked)
+		return walked
+	walked = {"points": PackedInt32Array(), "levers": {}}
 	var seen := {}
 	var trace: Dictionary = sim._proof_engine().memory_trace(sim.level, record, checkpoint, turns.slice(0, index))
 	if not trace.is_empty():
@@ -77,9 +89,22 @@ static func _turn(sim: RefCounted, checkpoint: Dictionary, turns: Array, index: 
 			again._tick(input)
 			_add(walked.points, seen, again._players[again.active_slot])
 			_levers(walked.levers, again._mechanisms)
+	_keep(id, walked)
+	if persist.is_valid(): persist.call(id, var_to_bytes([VERSION, id, walked.points, walked.levers]))
+	return walked
+
+static func _keep(id: String, walked: Dictionary) -> void:
 	if _kept.size() >= MOST_KEPT: _kept.erase(_kept.keys()[0])
 	_kept[id] = walked
-	return walked
+
+## A persisted turn, or {} when none is kept or it is not this one.
+static func _read(id: String) -> Dictionary:
+	if not restore.is_valid(): return {}
+	var bytes: Variant = restore.call(id)
+	if not bytes is PackedByteArray or bytes.is_empty(): return {}
+	var value: Variant = bytes_to_var(bytes)
+	if not value is Array or value.size() != 4 or value[0] != VERSION or value[1] != id or not value[2] is PackedInt32Array or value[2].size() % 3 != 0 or not value[3] is Dictionary: return {}
+	return {"points": value[2], "levers": value[3]}
 
 static func _levers(into: Dictionary, mechanisms: Dictionary) -> void:
 	var levers: Dictionary = mechanisms.get("levers", {})

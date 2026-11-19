@@ -898,7 +898,7 @@ static func _stamp_desk(root: Node3D, s: float) -> void:
 # warm pool a lantern throws on the boards ---
 
 const CLOTHS := [Color("f4ecd8"), Color("a9c6d8"), Color("e6aaa0"), Color("b7c99a")]
-const LAMP_POOL := Color(1.0, 0.78, 0.45, 0.42)
+const LAMP_POOL := Color(0.95, 0.6, 0.28, 0.26)
 
 ## Two posts and a line between them along x, with four cloths pegged on it.
 ## Each cloth hangs below the line, so no face of one meets the line's.
