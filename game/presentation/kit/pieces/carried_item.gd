@@ -6,6 +6,8 @@ extends "res://presentation/kit/pieces/piece.gd"
 ##   "parcel": a brown paper parcel tied with cream twine (the default).
 ##   "pipsport": a navy booklet with a gold crest on its cover.
 ##   "raft": a few lashed planks, for a float nobody carries.
+##   "seed": the seed every world draws (presentation/seed_visual.gd), First
+##       Steps' golden one.
 ##
 ## The world shows each snapshot's item state (journey_world _present_items):
 ## on a spirit's back (carry: the root rides under the spirit's facing pivot,
@@ -13,7 +15,7 @@ extends "res://presentation/kit/pieces/piece.gd"
 ## on the water (rest with `floating`, advance() each frame while motion is not
 ## reduced). The root is the only part that changes, so it is the one moving part.
 const Look = preload("res://presentation/spirit_look.gd")
-const STYLES := ["parcel", "pipsport", "raft"]
+const STYLES := ["parcel", "pipsport", "raft", "seed"]
 ## How far behind the back of a spirit's head a carried item's near face hangs
 ## (room for the head's hop and lean, which the item does not share).
 const BACK_GAP := 0.03
@@ -22,6 +24,10 @@ const BOB_M := 0.025
 const BOB_RATE := 2.2
 const NAVY := Color("2f3e66")
 const PAPER := Color("b98d5f")
+## The seed's half height and colour (island_world.gd's seed).
+const SEED_RADIUS := 0.13
+const SEED_GOLD := Color("ffda83")
+const SeedVisual = preload("res://presentation/seed_visual.gd")
 
 ## Where this item hangs on a spirit's back, in its facing pivot's space (the
 ## pip faces +Z there), turned `turn` (euler): see _back_from().
@@ -47,6 +53,9 @@ func _make(item_style: String, at: Vector3, parent: Node3D, options: Dictionary)
 			Parts.box(Vector3(0.16, 0.035, 0.22), NAVY, Vector3(0, 0.02, 0), root)
 			Parts.box(Vector3(0.012, 0.047, 0.232), NAVY.lightened(0.25), Vector3(-0.078, 0.02, 0), root)
 			Parts.disc(0.035, 0.008, Parts.GOLD, Vector3(0.01, 0.045, -0.02), root)
+		"seed":
+			# The seed's builder asks the world for its meshes: the terrain's parent.
+			SeedVisual.create(options.get("world", parent.get_parent()), SEED_RADIUS, SEED_GOLD, Vector3(0, SEED_RADIUS, 0), root)
 		"raft":
 			for index in range(4):
 				Parts.box(Vector3(0.18, 0.06, 0.72), Parts.TIMBER if index % 2 == 0 else Parts.TIMBER_LIGHT, Vector3(-0.285 + 0.19 * index, 0.03, 0), root)

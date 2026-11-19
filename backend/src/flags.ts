@@ -98,6 +98,8 @@ export const FLAG_VARS = Object.freeze({
   highAndLowV2Chapter: "HIGH_AND_LOW_V2_CHAPTER_ENABLED",
   /** Creating The Wishing Well@2 rooms (the-wishing-well@2, open turns), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
   theWishingWellV2Chapter: "THE_WISHING_WELL_V2_CHAPTER_ENABLED",
+  /** Creating First Steps@2 rooms (first-steps@2, open turns on the journey rules), read through the CHAPTERS table in v2/chapters.ts. Unreleased until the owner says. */
+  firstStepsV2Chapter: "FIRST_STEPS_V2_CHAPTER_ENABLED",
 } as const);
 
 /**

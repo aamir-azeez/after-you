@@ -99,9 +99,9 @@ const OPTIONAL := {
 	## value, shown upper-cased, where it differs from the catalog's own value.
 	## Names are PlayerCopy constants; the catalog value never changes.
 	"selector_names": {},
-	## {piece id: style}: pins one pad, lever, selector or goal to a style
-	## (content/dressing/prop_styles.gd SLOTS "pad", "lever", "selector",
-	## "goal"), over the dressing's and theme's pick for its slot
+	## {piece id: style}: pins one pad, lever, selector, goal or carried item to
+	## a style (content/dressing/prop_styles.gd SLOTS "pad", "lever", "selector",
+	## "goal", "carried_item"), over the dressing's and theme's pick for its slot
 	## (content/dressing/piece_styles.gd). Visual only.
 	"piece_styles": {},
 	## {lever id: the action button's words at that lever}, where they differ
@@ -167,6 +167,7 @@ const CHAPTERS := [
 	preload("res://content/chapters/conservatory_v2.gd"),
 	preload("res://content/chapters/high_and_low_v2.gd"),
 	preload("res://content/chapters/the_wishing_well_v2.gd"),
+	preload("res://content/chapters/first_steps_v2.gd"),
 ]
 
 ## Worked out once when this file loads, then only read (workers read it too).

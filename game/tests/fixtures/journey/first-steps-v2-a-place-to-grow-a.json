@@ -1,0 +1,24 @@
+{
+	"catch_assistance": true,
+	"checkpoint_hash": "59f2ad5ad1078525d2eeccc2ee2da75417f8a49ecea8a3204a30e11778828b72",
+	"completed": false,
+	"definition_hash": "14badfd8264b785ca39d4f4e30be6a9d86d45ec95de931c04d6e6c4488646de3",
+	"duration_ticks": 137,
+	"final_state_hash": "445bc011386704c17d96d16d53913257c0df489ce400da75db045f0dc0eb025b",
+	"level_id": "first-steps",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"packed": "ARQgZAACGQAaAGQCAEs8AAAgnAAC5wAkAJwCALUCAAADAAAWnAAC5wAMAJwCAOcCAAADAAAWAGQCABkKnAB0D0ZIcb9FQpekOR0FPvl7xprbji6QLeKoyL2xVSyZLw==",
+	"player_slot": "p1",
+	"recording_hash": "0e1c6d9c0313dfc2a516b0d9a4f14af21edf4cebe5e5184357556d0f5eb2aef0",
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 16,
+	"source_recording_hash": "",
+	"stage_id": "a-place-to-grow",
+	"stage_version": 1,
+	"tick_rate": 30
+}

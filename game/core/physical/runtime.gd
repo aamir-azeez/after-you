@@ -8,6 +8,7 @@ const OpenControls = preload("res://core/physical/open_controls.gd")
 const OpenTurns = preload("res://core/physical/open_turns.gd")
 const MemoryTrace = preload("res://core/physical/memory_trace.gd")
 const RecordingCodec = preload("res://core/v2/recording_codec.gd")
+const Solid = preload("res://core/solid_footprint.gd")
 const TICK_RATE := 30
 const MAX_TICKS := 900
 const MOVE_PER_TICK := 8
@@ -92,6 +93,9 @@ var _own_toggles: Dictionary = {"levers": {}, "controls": {}}
 ## hash, the recording and the navigation index read it instead of digesting
 ## the whole definition again. "" until first used.
 var _definition_hash := ""
+## The level's item spots that are solid (core/solid_footprint.gd), set at
+## reset: a pip walks round them. [] on every level without one.
+var _solids: Array = []
 
 ## `chain`: open turns only, the stage's turns before `prior_a` (the memory),
 ## oldest first; the memory replays over them as it was played.
@@ -124,6 +128,7 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String, chain: Array = []) -> void:
 	level = definition.duplicate(true)
 	_definition_hash = ""
+	_solids = Solid.solids(level.get("item_spots", []))
 	stage = stage_by_id(level, stage_id)
 	role = current_role
 	first_player_slot = stage.first_player_slot
@@ -277,7 +282,7 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
 	var position := Navigation.at(level, routes, _mechanisms.levers, previous, x, z, slot, PLAYER_RADIUS, true, cells)
-	if position.is_empty(): return false
+	if position.is_empty() or _in_solid(position): return false
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
 		var ball: Dictionary = _mechanisms.props[prop.id]
@@ -299,6 +304,12 @@ func _try_move(delta: Vector2i, cells: Dictionary, routes: Dictionary, slot: Str
 	_players[slot] = position
 	if slot == active_slot and int(previous.height) > int(position.height) + 2: _events.append("drop")
 	return true
+
+## Whether `position` stands in a solid spot on its own floor.
+func _in_solid(position: Dictionary) -> bool:
+	if _solids.is_empty(): return false
+	var floor := str(position.surface_id)
+	return Solid.blocked(_solids.filter(func(spot: Dictionary) -> bool: return str(spot.get("surface_id", "")) == floor), Vector2i(int(position.x), int(position.z)), PLAYER_RADIUS)
 
 func _can_push(ball: Dictionary) -> bool:
 	if ball.status == "fitted" or ball.status == "offered": return false

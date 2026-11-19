@@ -100,6 +100,8 @@ first_steps_lift_continuity 2
 first_steps_photo_world 2
 first_steps_preview 3
 first_steps_ui 1
+first_steps_v2 2
+first_steps_v2_world 2
 first_steps_world 2
 fold_present 2
 fold_untouched 1
@@ -161,6 +163,7 @@ intro_comfort 2
 invite_links 1
 ios_free_chapters 1
 ios_platform 1
+item_throws 2
 journey_corrections 3
 journey_proofs 2
 journey_seven 3
