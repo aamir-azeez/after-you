@@ -8,16 +8,18 @@ import { piecesRules } from "./chapter-types";
  * ({id, at, carry?}) and "item_spots" ({id, surface_id, position_cm, height_cm});
  * its checkpoints then hold mechanisms.items {id: {holder, spot, x, z, height, surface_id}}.
  * Held: holder "p0"/"p1", spot "", x, z, height 0 and surface_id "". Resting: holder "",
- * at an item spot (its place exactly) or loose on an island (spot "", on its floor at its height).
+ * at an item spot (its place exactly) or loose (spot ""): on an island, or on a stop of a
+ * stage's moving platform (a lift, a raft), which carries it as it carries a pip; on its floor at its height.
  * A float ("carry": false) only ever rests at a spot. A pip holds one item.
  * The predicate terms {item_id, carried} and {item_id, spot_id} are read here.
  * An envelope check like the rest of the checkpoint: the phones' replay proves each move.
  */
 export type ItemState = { holder: string; spot: string; x: number; z: number; height: number; surface_id: string };
 type Island = { id: string; rect_cm: number[]; height_cm?: number };
+type Platformed = { platforms?: { stops: string[] }[] };
 type ItemSpot = { id: string; surface_id: string; position_cm: number[]; height_cm?: number };
 type ItemEntry = { id: string; at: string; carry?: boolean };
-export type ItemDefinition = { simulation_version: number; islands: Island[]; items?: ItemEntry[]; item_spots?: ItemSpot[] };
+export type ItemDefinition = { simulation_version: number; islands: Island[]; bridges: Island[]; stages: Platformed[]; items?: ItemEntry[]; item_spots?: ItemSpot[] };
 const STATE_KEYS = ["holder", "spot", "x", "z", "height", "surface_id"] as const;
 
 function need(value: unknown, code = "checkpoint_item_mismatch"): asserts value { if (!value) throw new ApiError(422, code); }
@@ -40,7 +42,8 @@ export function checkItemDefinition(definition: ItemDefinition): void {
 export function checkItems(value: unknown, definition: ItemDefinition): Record<string, ItemState> {
   const items = object(value), entries = definition.items ?? [], states: Record<string, ItemState> = {};
   exact(items, entries.map(entry => entry.id));
-  const holders = new Set<string>();
+  const holders = new Set<string>(), stops = new Set(definition.stages.flatMap(stage => (stage.platforms ?? []).flatMap(platform => platform.stops)));
+  const floors = [...definition.islands, ...definition.bridges.filter(bridge => stops.has(bridge.id))];
   for (const entry of entries) {
     const state = object(items[entry.id]); exact(state, STATE_KEYS);
     need(typeof state.holder === "string" && typeof state.spot === "string" && typeof state.surface_id === "string");
@@ -53,8 +56,8 @@ export function checkItems(value: unknown, definition: ItemDefinition): Record<s
       const spot = (definition.item_spots ?? []).find(found => found.id === state.spot);
       need(spot && spot.position_cm[0] === x && spot.position_cm[1] === z && (spot.height_cm ?? 0) === height && spot.surface_id === state.surface_id);
     } else {
-      const island = definition.islands.find(found => found.id === state.surface_id);
-      need(entry.carry !== false && island && x >= island.rect_cm[0] && x <= island.rect_cm[2] && z >= island.rect_cm[1] && z <= island.rect_cm[3] && (island.height_cm ?? 0) === height);
+      const floor = floors.find(found => found.id === state.surface_id);
+      need(entry.carry !== false && floor && x >= floor.rect_cm[0] && x <= floor.rect_cm[2] && z >= floor.rect_cm[1] && z <= floor.rect_cm[3] && (floor.height_cm ?? 0) === height);
     }
     states[entry.id] = state as ItemState;
   }

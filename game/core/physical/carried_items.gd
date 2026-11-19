@@ -38,12 +38,17 @@ extends RefCounted
 ## The state: mechanisms.items {id: {"holder", "spot", "x", "z", "height",
 ## "surface_id"}}, in the checkpoint like controls, so it rides into the next
 ## stage. Held: holder "p0"/"p1", the rest empty. Resting: holder "", at a spot
-## (spot id and its place) or loose on an island where it was put down (spot "").
+## (spot id and its place) or loose where it was put down (spot ""): on an
+## island, or on a platform's stop (pieces_rules.gd), which carries it to the
+## same spot on the next stop when it moves, as it carries a pip
+## (core/journey/simulation.gd _move_platforms).
 ##
 ## Playing (core/journey/simulation.gd): one action button, as for levers
 ## ("Pick up", "Put down", "Hand over"), after controls and levers. A pip
 ## holds one item. Pick up within PICK_REACH_CM on the item's floor and
-## height. Put down only on an island (snapped to an item spot it stands in).
+## height (a platform's item at whichever stop it stands). Put down on an
+## island (snapped to an item spot it stands in) or on the stop a platform
+## stands at (a lift, a raft), never on another crossing.
 ## Hand over to the other pip, live or the memory, when they meet: on one
 ## floor within HAND_REACH_CM, or at the two ends of a "hands" crossing while
 ## it is open (hand it up the ladder; a shut trapdoor stops the hand up too).
@@ -54,9 +59,10 @@ extends RefCounted
 ## first ("the replay sees it gone"); a give out of reach puts the item down
 ## at the memory's feet; a memory that steps onto a "hands" crossing loaded
 ## (it was handed something it never had) puts it down where it last stood.
-## Limits: a raft opens crossings through gates ({"item_id", "spot_id"});
-## carrying a pip with it is a platform's job (pieces_rules.gd), not the
-## current's.
+## Limits: a float ("carry": false) opens crossings through gates
+## ({"item_id", "spot_id"}); carrying a pip or an item is a platform's job
+## (pieces_rules.gd), not the current's. An item on a platform weighs no pan:
+## a pan holds only what rests at its own item spot.
 ##
 ## Predicate terms (Seven.predicate, the level graph, the server's
 ## protocol-items.ts): {"item_id", "carried": true} while a pip holds it;
@@ -184,9 +190,12 @@ static func can_hand(level: Dictionary, hands: Dictionary, giver: Dictionary, ta
 	return false
 
 ## Where an item put down by `player` rests: snapped to an item spot on its
-## floor it stands in, else at its feet; {} off an island (a crossing).
-static func lay(level: Dictionary, player: Dictionary) -> Dictionary:
+## floor it stands in, else at its feet; at its feet on a platform's stop in
+## `stops` (the stage's stops the platforms stand at now, by id), where it
+## rides as a pip does; {} on any other crossing.
+static func lay(level: Dictionary, player: Dictionary, stops: Dictionary = {}) -> Dictionary:
 	var surface := str(player.surface_id)
+	if stops.has(surface): return {"holder": "", "spot": "", "x": int(player.x), "z": int(player.z), "height": int(player.height), "surface_id": surface}
 	if not level.get("islands", []).any(func(island: Dictionary) -> bool: return str(island.id) == surface): return {}
 	for found: Dictionary in level.get("item_spots", []):
 		if str(found.get("surface_id", "")) == surface and _by(player, {"x": found.position_cm[0], "z": found.position_cm[1], "height": found.get("height_cm", 0)}, int(found.get("radius_cm", SPOT_RADIUS_CM))): return at_spot(found)

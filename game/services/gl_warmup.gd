@@ -43,6 +43,8 @@ const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
 const PairTags = preload("res://presentation/kit/pair_tags.gd")
 const RouteBarriers = preload("res://presentation/kit/route_barriers.gd")
 const HeldPresses = preload("res://services/held_presses.gd")
+## Every body of water (presentation/kit/water_look.gd).
+const WATER_SURFACE = preload("res://presentation/kit/water_surface.gdshader")
 
 const IDLE_SECONDS := 1.0
 const STAMP_PATH := "user://gl-warmup-v1.json"
@@ -73,6 +75,8 @@ const MATERIALS: Array[Dictionary] = [
 	# The static fold's palette look (kit/primitives.gd palette_material), shown and faded by the cutaway.
 	{"vertex_color_is_srgb": true, "vertex_color_use_as_albedo": true},
 	{"transparency": BaseMaterial3D.TRANSPARENCY_ALPHA, "vertex_color_is_srgb": true, "vertex_color_use_as_albedo": true},
+	# The seabed under the water (presentation/kit/water_look.gd bed_material).
+	{"albedo_texture": true},
 ]
 ## Which listed keys each chapter draws: "m" indices into MATERIALS, "s" into
 ## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.
@@ -88,9 +92,9 @@ const CHAPTERS := {
 	"long-way-home@1": {"m": [0, 1, 2, 5, 6, 8, 12, 13], "s": [0, 1, 12, 16], "l": [0, 2]},
 	"long-way-home@2": {"m": [0, 1, 2, 5, 6, 8, 12, 13], "s": [0, 1, 12, 16], "l": [0, 2]},
 	"long-way-home@3": {"m": [0, 1, 2, 5, 6, 8, 12, 13], "s": [0, 1, 7, 16], "l": [0, 2]},
-	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13], "s": [0, 1, 7, 12, 16], "l": [0, 1, 2]},
-	"turn-of-the-tide@2": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13], "s": [0, 1, 7, 12, 16], "l": [0, 1, 2]},
-	"turn-of-the-tide@3": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13], "s": [0, 1, 7, 16], "l": [0, 1, 2]},
+	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14], "s": [0, 1, 7, 12, 16, 17], "l": [0, 1, 2]},
+	"turn-of-the-tide@2": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14], "s": [0, 1, 7, 12, 16, 17], "l": [0, 1, 2]},
+	"turn-of-the-tide@3": {"m": [0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14], "s": [0, 1, 7, 16, 17], "l": [0, 1, 2]},
 	"sleeping-lighthouse@1": {"m": [0, 1, 2, 3, 6, 8, 12], "s": [0], "l": [2]},
 	"sleeping-lighthouse@2": {"m": [0, 1, 2, 3, 6, 8, 12], "s": [0, 16], "l": [2]},
 }
@@ -221,7 +225,7 @@ static func order(first: String) -> Array:
 
 ## Every ShaderMaterial shader the worlds draw (then worn cosmetics and the race ghost's face).
 static func shaders() -> Array[Shader]:
-	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST, FallEffect.SHADER, PairTags.SHADER, SPIRIT_FACE_PATTERN, SPIRIT_BODY_PATTERN, TRAIL, RouteBarriers.SHADER]
+	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE, SPIRIT_FACE_GHOST, FallEffect.SHADER, PairTags.SHADER, SPIRIT_FACE_PATTERN, SPIRIT_BODY_PATTERN, TRAIL, RouteBarriers.SHADER, WATER_SURFACE]
 
 ## A material with exactly that key (a small white texture for each texture).
 static func material_for(key: Dictionary) -> StandardMaterial3D:

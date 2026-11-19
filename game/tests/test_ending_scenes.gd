@@ -5,6 +5,15 @@ extends SceneTree
 ## lands where playing through does; the first viewing cannot be skipped and
 ## later ones can; the cast follows the pipsport's holder; and the world gets
 ## its frame, camera and processing back with nothing of the scene left in it.
+## The "back" and "bounce" eases start at 0 and end at 1 (back runs past it,
+## bounce never does), and a Blender model prop (shape "model") checks, builds
+## as its painted part at its scale, fades and moves like any prop. Letterbox
+## bars slide in and out, a tint washes the screen, the camera circles its
+## point and stays turned, and bad bars or tints are refused. A tracking
+## camera follows a moving pip and hands on without a jump, a frame fits both
+## pips on a narrow and a wide screen, a shake sways the view only while it
+## runs and never with Reduce motion or Haptics off, and bad camera and shake
+## steps are refused.
 const EndingScene = preload("res://services/ending_scene.gd")
 const EndingSeen = preload("res://services/ending_seen.gd")
 const EndingPlayer = preload("res://presentation/ending_player.gd")
@@ -13,6 +22,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Simulation = preload("res://core/journey/simulation.gd")
 const Catalog = preload("res://core/journey/stage_catalog.gd")
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
+const BigChange = preload("res://presentation/kit/big_change.gd")
 const KEY := "turn-of-the-tide@3"
 const SCENES := ["the_falls", "fog_marsh"]
 ## Frame patterns a scene is played with: 30 and 60 a second, and uneven ones.
@@ -52,6 +63,9 @@ func _run() -> void:
 		_frame_rates(setup, name)
 		_skips(setup, name)
 	_handover(setup)
+	_kit(setup)
+	_screen(setup)
+	_camera(setup)
 	_long_frame(setup)
 	await _flow(setup)
 	_seen_store()
@@ -268,3 +282,136 @@ func _check(condition: bool, message: String) -> void:
 		failures += 1
 		push_error(message)
 		print("FAIL: " + message)
+
+## The motion kit's eases and Blender model props (tests/fixtures/models).
+func _kit(setup: Dictionary) -> void:
+	for ease: String in ["back", "bounce"]:
+		_check(absf(EndingScene._eased(ease, 0.0)) < 0.0001 and absf(EndingScene._eased(ease, 1.0) - 1.0) < 0.0001, "%s starts at 0 and ends at 1" % ease)
+	var most := 0.0
+	var low := 1.0
+	var high := 0.0
+	for step in range(101):
+		most = maxf(most, EndingScene._eased("back", step / 100.0))
+		low = minf(low, EndingScene._eased("bounce", step / 100.0))
+		high = maxf(high, EndingScene._eased("bounce", step / 100.0))
+	_check(most > 1.05, "back runs past the end before it settles: %.3f" % most)
+	_check(low >= 0.0 and high <= 1.0001, "bounce stays between start and end")
+	var data := {"cast": {"fallback": "p0"},
+		"props": {"wheel": {"shape": "model", "model": "res://tests/fixtures/models/kit_sample.glb", "part": "sample_rim",
+			"colors": {"wood": "8a6b4e", "metal": "4f5458"}, "at": [0, 1, 0], "scale": 2.0, "alpha": 0.5}},
+		"steps": [{"do": "prop", "id": "wheel", "to": [1, 1, 0], "time": 1.0, "ease": "back", "spin": 90}, {"do": "wait", "time": 1.2}]}
+	_check(EndingScene.check(data).is_empty(), "a model prop scene checks: %s" % EndingScene.check(data))
+	var broken := data.duplicate(true)
+	broken.props.wheel.model = "res://tests/fixtures/models/missing.glb"
+	_check(not EndingScene.check(broken).is_empty(), "a model prop with no model file is refused")
+	var player := _player(setup, data, true)
+	var wheel: Variant = player._props.get("wheel")
+	_check(wheel is MeshInstance3D and (wheel as MeshInstance3D).mesh != null, "the model prop is built as its painted part")
+	if wheel is MeshInstance3D:
+		_check((wheel as MeshInstance3D).scale.is_equal_approx(Vector3.ONE * 2.0), "the model prop stands at its scale")
+		_check(((wheel as MeshInstance3D).material_override as StandardMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_ALPHA, "a fading model prop gets its own see-through look")
+		var start: Vector3 = (wheel as MeshInstance3D).position
+		player.advance(1.0)
+		var placed: Vector3 = EndingScene.prop_position(player.compiled, "wheel", player.t)
+		_check((wheel as MeshInstance3D).position.distance_to(placed) < 0.01 and placed.distance_to(start) > 0.9, "the model prop moves like any prop")
+	_done(setup, player)
+
+## A tracking camera, a framed one and a shake.
+func _camera(setup: Dictionary) -> void:
+	var tracking := {"cast": {"fallback": "p0"}, "steps": [
+		{"do": "camera", "who": "carrier", "track": true, "size": 6.0, "time": 0.5}, {"do": "move", "who": "carrier", "to": [4, 0, 0], "time": 2.0},
+		{"do": "wait", "time": 2.0}, {"do": "camera", "at": [0, 0, 0], "size": 6.0, "time": 1.0}, {"do": "wait", "time": 1.0}]}
+	_check(EndingScene.check(tracking).is_empty(), "a tracking camera checks: %s" % EndingScene.check(tracking))
+	var tracked := EndingScene.compile(tracking, _start_at())
+	var mid := EndingScene.state(tracked, 1.2)
+	_check(mid.camera.center.is_equal_approx(EndingScene.position_of(tracked, "carrier", 1.2)) and mid.camera.center.distance_to(_start_at().carrier) > 0.5, "a tracking camera follows its pip as it moves")
+	var handed: Vector3 = EndingScene.state(tracked, 2.0).camera.center
+	_check(handed.is_equal_approx(EndingScene.position_of(tracked, "carrier", 2.0)) and EndingScene.state(tracked, 2.001).camera.center.distance_to(handed) < 0.01, "the next camera step starts where the track left off")
+	var aimed := tracking.duplicate(true)
+	aimed.steps[0].erase("track")
+	_check(EndingScene.state(EndingScene.compile(aimed, _start_at()), 1.2).camera.center.is_equal_approx(_start_at().carrier), "without track the camera stays where the pip stood")
+	var framing := {"cast": {"fallback": "p0"}, "steps": [{"do": "camera", "frame": ["carrier", "other"], "margin": 0.5, "time": 1.0}, {"do": "wait", "time": 1.0}]}
+	_check(EndingScene.check(framing).is_empty(), "a framing camera checks: %s" % EndingScene.check(framing))
+	var apart := _start_at()
+	apart.carrier = Vector3(6, 0, 0)
+	apart.other = Vector3(-6, 0, 2)
+	var axes := EndingScene.view_axes(0.0)
+	for aspect: float in [4.0 / 3.0, 20.0 / 9.0]:
+		apart.aspect = aspect
+		var framed := EndingScene.compile(framing, apart)
+		var end := EndingScene.state(framed, float(framed.duration))
+		var high := ViewFit.fit(float(end.camera.size), aspect) * 0.5
+		var wide := high * aspect
+		var inside := true
+		var most := Vector2.ZERO
+		for role: String in EndingScene.ROLES:
+			for lift: float in [0.0, EndingScene.FOLLOW_LIFT]:
+				var away: Vector3 = apart[role] + Vector3.UP * lift - end.camera.center
+				var flat := Vector2(absf(axes.x.dot(away)), absf(axes.y.dot(away)))
+				most = Vector2(maxf(most.x, flat.x), maxf(most.y, flat.y))
+				if flat.x > wide - 0.5 + 0.001 or flat.y > high - 0.5 + 0.001: inside = false
+		_check(inside, "a frame keeps both pips and its margin on screen at %.2f" % aspect)
+		_check(absf(most.x - (wide - 0.5)) < 0.001 or absf(most.y - (high - 0.5)) < 0.001, "a frame is snug on its tighter side at %.2f" % aspect)
+	var shaking := {"cast": {"fallback": "p0"}, "steps": [{"do": "shake", "amount": 2.0, "for": 0.6}]}
+	_check(EndingScene.check(shaking).is_empty(), "a shake checks: %s" % EndingScene.check(shaking))
+	var shook := EndingScene.compile(shaking, _start_at())
+	_check(is_equal_approx(float(shook.duration), 0.6), "a scene lasts until its shake ends")
+	_check(EndingScene.state(shook, 0.3).camera.shake != Vector2.ZERO and EndingScene.state(shook, 0.6).camera.shake == Vector2.ZERO, "a shake sways while it runs and is gone when its time ends")
+	_check(EndingScene.state(shook, 0.3).camera.shake.is_equal_approx(BigChange.offset(0.3, 0.6) * 2.0), "a shake is the big change's, times its amount")
+	shaking.steps.append({"do": "wait", "time": 1.0})
+	var camera: Camera3D = setup.world.camera
+	var places: Array = []
+	for setting: Array in [[false, true, [0.3]], [false, true, [0.1, 0.1, 0.1]], [true, true, [0.3]], [false, false, [0.3]], [false, true, [0.3, 0.4]]]:
+		setup.world.big_change_shake = setting[1]
+		var player := _player(setup, shaking, true)
+		player.reduced_motion = setting[0]
+		for step: float in setting[2]: player.advance(step)
+		var now := EndingScene.state(player.compiled, player.t)
+		places.append(camera.position.distance_to(now.camera.center + ViewFit.CAMERA_FROM))
+		_done(setup, player)
+	setup.world.big_change_shake = true
+	_check(places[0] > 0.001 and absf(places[0] - places[1]) < 0.0001, "a shake sways the view the same at any frame rate")
+	_check(places[2] < 0.0001 and places[3] < 0.0001, "Reduce motion or Haptics off keeps the view still")
+	_check(places[4] < 0.0001, "the view is still once the shake ends")
+	for bad: Dictionary in [{"do": "camera", "track": true, "size": 5.0}, {"do": "camera", "frame": []}, {"do": "camera", "frame": ["nobody"]}, {"do": "camera", "frame": [[1, 2]]},
+			{"do": "camera", "frame": ["carrier"], "margin": -1.0}, {"do": "camera", "frame": ["carrier"], "who": "other"}, {"do": "shake", "amount": 0.0, "for": 0.5},
+			{"do": "shake", "for": 0.0}, {"do": "shake", "for": 5.0}]:
+		_check(not EndingScene.check({"cast": {"fallback": "p0"}, "steps": [bad, {"do": "wait", "time": 1.0}]}).is_empty(), "a bad step is refused: %s" % bad)
+
+## Letterbox bars, a colour wash and a slow camera circle.
+func _screen(setup: Dictionary) -> void:
+	var data := {"cast": {"fallback": "p0"}, "steps": [
+		{"do": "bars", "show": true, "time": 0.5}, {"do": "tint", "color": "ffcc88", "alpha": 0.4, "time": 0.5},
+		{"do": "camera", "at": [0, 0, 0], "size": 8.0, "time": 1.0, "orbit": 30}, {"do": "wait", "time": 1.0},
+		{"do": "bars", "show": false, "time": 0.5}, {"do": "tint", "color": "000000", "alpha": 1.0, "time": 0.5}, {"do": "wait", "time": 0.5}]}
+	_check(EndingScene.check(data).is_empty(), "a scene with bars, a tint and an orbit checks: %s" % EndingScene.check(data))
+	var compiled := EndingScene.compile(data, _start_at())
+	var mid := EndingScene.state(compiled, 0.25)
+	var held := EndingScene.state(compiled, 0.9)
+	var end := EndingScene.state(compiled, float(compiled.duration))
+	_check(float(mid.screen.bars) > 0.1 and float(mid.screen.bars) < 0.9 and is_equal_approx(float(held.screen.bars), 1.0) and is_equal_approx(float(end.screen.bars), 0.0), "the bars slide in, stay, then slide out")
+	_check(is_equal_approx(float(held.screen.tint_alpha), 0.4) and held.screen.tint == Color("ffcc88") and is_equal_approx(float(end.screen.tint_alpha), 1.0) and end.screen.tint == Color.BLACK, "the tint washes warm, then fades to black")
+	_check(float(held.camera.orbit) > 25.0 and is_equal_approx(float(end.camera.orbit), 30.0) and float(mid.camera.orbit) > 0.0, "the camera circles 30 degrees and stays turned")
+	var homing := {"cast": {"fallback": "p0"}, "steps": [{"do": "camera", "at": [1, 0, 1], "size": 4.0, "time": 1.0, "orbit": 40}, {"do": "wait", "time": 1.0}, {"do": "camera", "home": true, "time": 1.0}, {"do": "wait", "time": 1.0}]}
+	_check(EndingScene.check(homing).is_empty(), "a camera going home checks: %s" % EndingScene.check(homing))
+	var homed := EndingScene.compile(homing, _start_at())
+	var back := EndingScene.state(homed, float(homed.duration))
+	var away := EndingScene.state(homed, 1.0)
+	_check(back.camera.center == _start_at().camera and is_equal_approx(float(back.camera.size), float(_start_at().camera_size)) and is_equal_approx(float(back.camera.orbit), 0.0), "the camera glides home: the game's own view, unturned")
+	_check(float(away.camera.orbit) > 30.0 and float(away.camera.size) < 5.0, "it was away before it went home")
+	for bad: Dictionary in [{"do": "bars", "time": 0.5}, {"do": "tint", "color": "nope", "alpha": 0.5}, {"do": "tint", "color": "ffffff", "alpha": 2.0}]:
+		_check(not EndingScene.check({"cast": {"fallback": "p0"}, "steps": [bad, {"do": "wait", "time": 1.0}]}).is_empty(), "a bad %s step is refused" % bad.do)
+	var overlay := Control.new()
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(overlay)
+	var player: Node = EndingPlayer.new()
+	player.skippable = true
+	root.add_child(player)
+	player.set_process(false)
+	_check(player.start(setup.world, data, setup.sim.snapshot(), overlay), "the screen scene starts")
+	player.advance(1.0)
+	var top: ColorRect = player._bars[0]
+	_check(top.visible and is_equal_approx(top.anchor_bottom, player.BAR_SHARE), "the top bar covers its share of the screen")
+	_check(player._tint.visible and is_equal_approx(player._tint.color.a, 0.4), "the wash is drawn at its alpha")
+	_done(setup, player)
+	overlay.free()

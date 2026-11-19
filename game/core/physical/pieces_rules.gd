@@ -12,8 +12,10 @@ extends RefCounted
 ##   on the new one, the live pip and the memory alike. A memory rides what
 ##   moves in the live world, not what moved in its own: once the two part,
 ##   it walks its recorded input from where it stands, and works only what it
-##   stands by (core/journey/simulation.gd _place_memory). Stops never close
-##   slowly. The weight lift and the raft on a rope wheel are platforms
+##   stands by (core/journey/simulation.gd _place_memory). A carried item put
+##   down on the stop a platform stands at rides the same way, and is picked
+##   up again at whichever stop it reaches (carried_items.gd). Stops never
+##   close slowly. The weight lift and the raft on a rope wheel are platforms
 ##   (core/blocks/stage_blocks.gd).
 ## - Sinking stones, the stage's "sinking": [bridge ids]: a stone holds one
 ##   pip; the second to step on pushes it under and the turn ends drowned.

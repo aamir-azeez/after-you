@@ -734,6 +734,9 @@ func _build_items(stage: Dictionary) -> void:
 		var look := pin if not pin.is_empty() else _piece_style("carried_item", id) if CarriedItems.carriable(item) else "raft"
 		var at := _item_point(start.get(id, {})) if str(start.get(id, {}).get("holder", "")).is_empty() else Vector3.ZERO
 		_item_pieces[id] = CarriedItemKit.build(look, at, terrain, {"id": id})
+		# On a world with the water kit, rings spread from it while it floats.
+		var water: Variant = get("waters")
+		if water != null: water.ripple_from(_item_pieces[id].root)
 	var legs: Array = []
 	for leg: Dictionary in view.get("current_legs", []):
 		legs.append({"from": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.from)))), "to": _item_point(CarriedItems.at_spot(CarriedItems.spot(view, str(leg.to)))), "control_id": str(leg.get("control_id", "")), "value": str(leg.get("value", ""))})

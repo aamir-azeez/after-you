@@ -211,12 +211,12 @@ func _first_stage(level: Dictionary) -> void:
 	_check(world._should_cutaway(span, _players(state, "p0", 624, 288, 0)), "The aqueduct fades over a spirit landing from the spout")
 	_check(not world._should_cutaway(span, _players(state, "p0", 900, 420, 0)) and not world._should_cutaway(span, _players(state, "p0", 624, 288, 48)), "The aqueduct stays solid when nobody is under it")
 	_check(not world._should_cutaway(quay, _players(state, "p0", 100, 300, 0)), "A quay never fades for a spirit on the beach in front of it")
-	var water_alpha: float = (world.waters.bodies.harbour.get_child(0).material_override as StandardMaterial3D).albedo_color.a
+	var water_alpha: float = ((world.waters.bodies.harbour.get_child(0).material_override as ShaderMaterial).get_shader_parameter(&"base_color") as Color).a
 	sim._players.p0 = {"x": 624, "z": 288, "height": 0, "surface_id": "e-beach"}
 	world.present(sim.snapshot(), true)
 	var faded: MeshInstance3D = span.find_child("aq-spanFloor", true, false)
 	_check(faded != null and faded.material_override.albedo_color.a < 0.5, "The spout landing shows through the faded aqueduct")
-	_check(is_equal_approx((world.waters.bodies.harbour.get_child(0).material_override as StandardMaterial3D).albedo_color.a, water_alpha), "Water never fades with a floor")
+	_check(is_equal_approx(((world.waters.bodies.harbour.get_child(0).material_override as ShaderMaterial).get_shader_parameter(&"base_color") as Color).a, water_alpha), "Water never fades with a floor")
 	# Camera: follows anywhere in the harbour, clamped to its full extent.
 	for case: Array in [[-1400, 0, -9.6, 0.0], [2200, 0, 17.28, 0.0], [300, -900, 3.0, -5.44], [300, 900, 3.0, 5.44], [-500, -160, -5.0, -1.6]]:
 		world.actors["p0"].position = Vector3(float(case[0]) / 100.0, 0, float(case[1]) / 100.0)

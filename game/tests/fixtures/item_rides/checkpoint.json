@@ -1,0 +1,145 @@
+{
+  "checkpoint_hash": "4395342d62b51876dd78ea545d25c56a320fdb1dedbbdc4fedff4e1b6eb1fb18",
+  "completed_stage_id": "home",
+  "definition_hash": "f4c5ae4b9b1ba742fb4b33a3baca27f2360e723e6f87d01c31bff157182e2527",
+  "level_id": "item-ride-witness",
+  "level_version": 1.0,
+  "mechanisms": {
+    "controls": {
+      "rope": "NORTH"
+    },
+    "items": {
+      "pipsport": {
+        "height": 0.0,
+        "holder": "",
+        "spot": "",
+        "surface_id": "lift-low",
+        "x": 460.0,
+        "z": 200.0
+      }
+    },
+    "latched_bridges": [],
+    "levers": {},
+    "props": {}
+  },
+  "next_stage_id": "",
+  "players": {
+    "p0": {
+      "height": 96.0,
+      "surface_id": "stilts",
+      "x": 700.0,
+      "z": 200.0
+    },
+    "p1": {
+      "height": 96.0,
+      "surface_id": "stilts",
+      "x": 700.0,
+      "z": 200.0
+    }
+  },
+  "previous_checkpoint_hash": "3a1b45ec23071229786b841b1a5ef293dece0032d146bd96bdfe611f1603110b",
+  "proof": {
+    "checkpoint": {
+      "a_recording_hash": "",
+      "b_recording_hash": "",
+      "checkpoint_hash": "3a1b45ec23071229786b841b1a5ef293dece0032d146bd96bdfe611f1603110b",
+      "completed_stage_id": "",
+      "definition_hash": "f4c5ae4b9b1ba742fb4b33a3baca27f2360e723e6f87d01c31bff157182e2527",
+      "level_id": "item-ride-witness",
+      "level_version": 1.0,
+      "mechanisms": {
+        "controls": {
+          "rope": "NORTH"
+        },
+        "items": {
+          "pipsport": {
+            "height": 0.0,
+            "holder": "p0",
+            "spot": "",
+            "surface_id": "",
+            "x": 0.0,
+            "z": 0.0
+          }
+        },
+        "latched_bridges": [],
+        "levers": {},
+        "props": {}
+      },
+      "next_stage_id": "home",
+      "players": {
+        "p0": {
+          "height": 0.0,
+          "surface_id": "landing",
+          "x": 200.0,
+          "z": 200.0
+        },
+        "p1": {
+          "height": 96.0,
+          "surface_id": "stilts",
+          "x": 700.0,
+          "z": 100.0
+        }
+      },
+      "previous_checkpoint_hash": "",
+      "proof": {},
+      "schema_version": 7.0,
+      "stage_index": 0.0
+    },
+    "turns": [
+      {
+        "catch_assistance": true,
+        "checkpoint_hash": "3a1b45ec23071229786b841b1a5ef293dece0032d146bd96bdfe611f1603110b",
+        "completed": false,
+        "definition_hash": "f4c5ae4b9b1ba742fb4b33a3baca27f2360e723e6f87d01c31bff157182e2527",
+        "duration_ticks": 547.0,
+        "final_state_hash": "9d5750d516c13039fb842c85c4ee66163b99dfdc099c2728f66f235a3e65bf1d",
+        "level_id": "item-ride-witness",
+        "level_version": 1.0,
+        "outcome": {
+          "objective_complete": false,
+          "source_ready": true
+        },
+        "packed": "ARI+ZAACGQACAAADAABgnAACtQAiAJwCAM7WBAAASABkAgAZhgFkAAIyABhkAAIyACQAnAIAtRQAAFiE6HzDdET49mKcNq3B+fvkig2XXs2Jls3efLuJSaVlbJLy8ChYsTp/OIHFx2uYbaHwB/N7IpKOX28PBYsnYrJldCnjO8yivqaJEHu9prcNDXp6/FW6L38jwOUdbRLp25dldhPXiwQtCTnXSKFnsPIqF3Q9Tr/nsd6i+UjHoKH4jHAybCGEITpciQJ1EjWpuONXAkx1lOey3dK5DfCNw5mg+wnuEVN6iu35trvQ+MVPCYQALKjf/7oJYZVtiiOlR9p/Cz+7wupC8I+0E/2mvCfgB1Uo1PeFYA==",
+        "player_slot": "p0",
+        "recording_hash": "56dab238240ad89e63fb3f49cb8d8f7fbe5ba3952e3991445da0ee3779424fa8",
+        "role": "a",
+        "schema_version": 7.0,
+        "simulation_version": 16.0,
+        "source_recording_hash": "",
+        "stage_id": "home",
+        "stage_version": 1.0,
+        "tick_rate": 30.0
+      },
+      {
+        "catch_assistance": true,
+        "checkpoint_hash": "3a1b45ec23071229786b841b1a5ef293dece0032d146bd96bdfe611f1603110b",
+        "completed": true,
+        "definition_hash": "f4c5ae4b9b1ba742fb4b33a3baca27f2360e723e6f87d01c31bff157182e2527",
+        "duration_ticks": 547.0,
+        "final_state_hash": "d17fdc7f0b7961cbd62e100fcd0943efeadd08e1df2a15236f1c4e751d2966ef",
+        "level_id": "item-ride-witness",
+        "level_version": 1.0,
+        "outcome": {
+          "objective_complete": true,
+          "source_ready": true
+        },
+        "packed": "AQ4YAGQCADKSAgAAPJwAAgAAAwAAImQAAjIAIpwAAs4AAgAAAwAAPGQA0gQAABtaF5llphyVDLg1RbR1pB+3si33T2vPzmAXqiO/7WLjgjDMEAJ7Zq/1eq3tBBAqetqkLGPGD8MN7XvMw/21DbJMKIKylclDVurb1rxnsuaW1T7dvFLmONC0zBQ7KjMeG9LeOyavBloVAohtalP7XB0tGmL/gkV6kHzGXYeCKaWpy7/0n9tLrHh4PlRrBF9tbCwRRYeH82G0xA09lIk4SloMJsNFcaJa9HNeGsa0fWYvSg0BpK3LNqdeesS2We1fDmWdgK11A14u8ZDkicRy3wg7JG1xIO4V8g==",
+        "player_slot": "p1",
+        "recording_hash": "16992341ad0dba39d3a1ff9c78d6d7bbff14c681606005deca8f88bbbf45b206",
+        "role": "b",
+        "schema_version": 7.0,
+        "simulation_version": 16.0,
+        "source_recording_hash": "56dab238240ad89e63fb3f49cb8d8f7fbe5ba3952e3991445da0ee3779424fa8",
+        "stage_id": "home",
+        "stage_version": 1.0,
+        "tick_rate": 30.0
+      }
+    ]
+  },
+  "schema_version": 8.0,
+  "stage_index": 1.0,
+  "turn_hashes": [
+    "56dab238240ad89e63fb3f49cb8d8f7fbe5ba3952e3991445da0ee3779424fa8",
+    "16992341ad0dba39d3a1ff9c78d6d7bbff14c681606005deca8f88bbbf45b206"
+  ]
+}

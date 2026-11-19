@@ -7,6 +7,8 @@ extends RefCounted
 ## open (with a flood in a walled stub while it is shut), and the locks
 ## (kit/water_locks.gd) at every opening, from the same plan. Visual only:
 ## nothing here feeds back into a simulation, a recording or a checkpoint.
+## How the water looks (ripples, foam, the seabed, rings, glints) is its
+## `look` (kit/water_look.gd), driven from these same steps.
 ##
 ## Each body is one mesh of its surface and the outer faces of its sides,
 ## under a root that moves and stretches with the level, so the water always
@@ -33,6 +35,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.gd")
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 const WallFade = preload("res://presentation/kit/wall_fade.gd")
+const WaterLook = preload("res://presentation/kit/water_look.gd")
 ## Water grid lines worked out between two build steps.
 const LINES_PER_STEP := 8
 ## Wall layout samples (4 cm apart) worked out between two build steps.
@@ -73,9 +76,12 @@ var _lock_targets: Dictionary = {}
 var _lock_shown: Dictionary = {}
 ## Things that ride a body's level: [body id, Callable(level)].
 var _riders: Array = []
+## How the water looks: its materials, seabed, edge maps, rings and glints.
+var look: WaterLook
 
 func _init(world: Node3D) -> void:
 	host = world
+	look = WaterLook.new(world)
 
 # --- Data ---
 
@@ -97,6 +103,7 @@ func start(stage: Dictionary, block: Dictionary, standing: Array = []) -> void:
 	_lock_shown.clear()
 	walled.clear()
 	kept_walled.clear()
+	look.start(block)
 	if water.is_empty(): return
 	walled = _walled_routes(stage)
 	kept_walled = _keepable_routes(stage, walled)
@@ -277,10 +284,14 @@ func build_bodies() -> void:
 	var cut: Array = basin_rects()
 	for id: String in walled: cut.append(_route(id).rect_cm)
 	for body: Dictionary in water.get("bodies", []):
-		var root := await build_body(str(body.node), body.rects, ([] if bool(body.get("basin", false)) else cut) + islands, body.color)
+		var holes: Array = ([] if bool(body.get("basin", false)) else cut) + islands
+		var root := await build_body(str(body.node), body.rects, holes, body.color)
+		var sheet := root.get_node_or_null("Water") as MeshInstance3D
+		if sheet != null: look.dress(str(body.id), body, sheet, [] if bool(body.get("basin", false)) else basin_rects())
 		# Shown before it is listed: nothing rides a body while it is built.
 		root.set_meta("target", rest_level(str(body.id)))
 		_show(root, rest_level(str(body.id)))
+		look.show_level(str(body.id), rest_level(str(body.id)))
 		bodies[str(body.id)] = root
 		await host._build_step()
 
@@ -407,9 +418,16 @@ static func _wet(x: float, z: float, regions: Array, holes: Array) -> bool:
 ## Calls `follow` with a body's level whenever its shown level changes: a
 ## boat that rides the water, a mast that keeps clear of it. Riders last until
 ## the next start(). A rider that `sways` (a boat bobbing) is also called by
-## bob() each frame the world animates.
-func ride(body: String, follow: Callable, sways: bool = false) -> void:
+## bob() each frame the world animates. A rider that floats on it (a boat)
+## passes its node as `floats`, so rings spread from it.
+func ride(body: String, follow: Callable, sways: bool = false, floats: Node3D = null) -> void:
 	_riders.append([body, follow, sways])
+	if floats != null: look.ripple_from(floats)
+
+## Rings spread from `node` while it stands at the water (a float, a pip):
+## the one way anything asks for rings (WaterLook.ripple_from).
+func ripple_from(node: Node3D, strength: float = 1.0) -> void:
+	look.ripple_from(node, strength)
 
 ## Calls every swaying rider with its body's shown level.
 func bob() -> void:
@@ -442,6 +460,7 @@ func _show(root: Node3D, level: float) -> void:
 		if rider[0] == id: (rider[1] as Callable).call(level)
 	for flood: String in floods:
 		if floods[flood].body == root: _fill(floods[flood], level)
+	look.show_level(id, level)
 
 ## Stretches a flood from the seabed to its water's `level`, as _show does a body.
 func _fill(flood: Dictionary, level: float) -> void:
@@ -465,18 +484,22 @@ func pace_closing(closing: Dictionary) -> void:
 		elif root.has_meta("rate"): root.remove_meta("rate")
 
 ## Moves every body toward its target, then the doors against the water shown
-## this frame. Returns whether any water flowed. Only work that moves: water
-## at rest with its doors still does none.
+## this frame, and the look's clock. Returns whether any water flowed. Water
+## at rest with its doors still only moves its ripples' clock (one float a
+## body), and nothing here allocates.
 func advance(delta: float) -> bool:
 	var flowing := false
-	for root: Node3D in bodies.values():
-		if not is_instance_valid(root): continue
+	for id: String in bodies:
+		var held: Variant = bodies[id]
+		if not is_instance_valid(held): continue
+		var root: Node3D = held
 		var target := float(root.get_meta("target"))
 		var shown := float(root.get_meta("shown"))
 		if not is_equal_approx(shown, target):
 			_show(root, move_toward(shown, target, float(root.get_meta("rate", float(water.get("rate", 1.0)))) * maxf(delta, 0.0)))
 			flowing = true
 		elif root.has_meta("rate"): root.remove_meta("rate")
+	look.advance(delta)
 	# The doors move after the water, against the water shown this frame.
 	if is_instance_valid(locks) and (flowing or locks.moving()): locks.advance(delta, lock_levels("shown"))
 	return flowing
@@ -781,7 +804,9 @@ func _build_flood(id: String, route: Dictionary, center: Vector3, width: float, 
 	host.terrain.add_child(flood)
 	# Its sides toward the camera stand 3 cm inside the pit, clear of the faces
 	# of its frame and pit floor.
-	var fill := Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.03, 1.0, depth - 0.03)), sheet.material_override if sheet != null else Primitives.fresh_material(body_data(body_id).color), Vector3(-0.015, -0.5, -0.015), flood)
+	var surface: Material = look.flood_material(body_id, Vector2(center.x - 0.015, center.z - 0.015))
+	if surface == null: surface = sheet.material_override if sheet != null else Primitives.fresh_material(body_data(body_id).color)
+	var fill := Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.03, 1.0, depth - 0.03)), surface, Vector3(-0.015, -0.5, -0.015), flood)
 	fill.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	floods[id] = {"node": flood, "body": body, "water": body_id, "key": "crossing:" + id}
 	_fill(floods[id], float(body.get_meta("shown")))
@@ -807,6 +832,11 @@ func build_locks(bake_path: String) -> void:
 	var dressing: Variant = host.get("dressing")
 	if dressing is Dictionary: locks.spill_style = str(dressing.get("spillway", "trickle"))
 	locks.build(stage_plan, host.terrain)
+	await host._build_step()
+	# Everything that holds the water or stands in it is built: the foam's edges.
+	var flooded: Array = []
+	for flood: Dictionary in floods.values(): flooded.append(flood.node)
+	await look.build_edges(bodies, flooded)
 
 ## This stage's water for the locks kit: every floor, sunken crossing (a pit
 ## sealed by its walls, dry in every state but a walled stub's, flooded with
@@ -864,6 +894,7 @@ func lock_levels(meta: String) -> Dictionary:
 ## dips while one stands in its mouth. Immediate snaps.
 func occupy(spirits: PackedVector2Array, routes: Dictionary, immediate: bool) -> void:
 	if fade != null: fade.occupy(spirits, immediate)
+	look.present()
 	if not is_instance_valid(locks): return
 	locks.present(lock_levels("target"), immediate)
 	locks.occupy(spirits, routes, immediate)
