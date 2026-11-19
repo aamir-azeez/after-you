@@ -187,6 +187,8 @@ func show_stage(stage: Dictionary) -> void:
 	await waters.build_walls()
 	await _build_step()
 	_build_chamber()
+	# The parapets and the chamber's walls now stand: a coil behind one goes.
+	drop_unseen_coils(waters.walls)
 	await _build_step()
 	_build_sea_gates()
 	await waters.build_locks(WaterLocks.bake_path(_chapter_key(), displayed_stage_id))
@@ -407,7 +409,11 @@ func _ghost(route: Dictionary) -> void:
 	ghost.name = "ShutCrossing_" + id
 	var faint := Primitives.fresh_material(Color(CREAM, 0.30))
 	faint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# Drawn before the water and writing depth: the water then covers only
+	# what of the outline sits under it, and what stands above it (stepping
+	# stones over half tide) stays in view.
 	faint.render_priority = -3
+	faint.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 	for node: Node in ghost.find_children("*", "MeshInstance3D", true, false):
 		(node as MeshInstance3D).material_override = faint
 		(node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

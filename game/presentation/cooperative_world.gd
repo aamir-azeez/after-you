@@ -399,6 +399,12 @@ func _hang_pulleys(view: Dictionary) -> void:
 		_weights[id] = piece.weight
 		piece.weight.set_meta("rest_y", piece.weight.position.y)
 
+## A world that builds walls in front of its pulley posts after them gives
+## them here (terrain space, kit/water_bodies.gd walls): a post's coil the
+## camera cannot see past them is left out (kit/pieces/pulley.gd).
+func drop_unseen_coils(blockers: Array[AABB]) -> void:
+	for piece: RefCounted in _pulleys.values(): piece.drop_unseen(blockers)
+
 ## Whether a crossing gets a pulley post: only where nothing else shows why
 ## it comes and goes. One rule for every world; a world that shows it some
 ## other way (Tide's gauges) says no as well.
