@@ -22,6 +22,7 @@ func _check(ok: bool, message: String) -> void:
 
 func _run() -> void:
 	_policy()
+	_layouts()
 	_settings()
 	_frame_rate_migration()
 	var viewport := SubViewport.new()
@@ -109,6 +110,22 @@ func _backdrop_motion(world: Node3D, name: String) -> void:
 	world.reduced_motion = false
 	world.advance_backdrop(0.25)
 	_check(is_equal_approx(float(material.get_shader_parameter(Backdrop.CLOCK)), float(held) + 0.25) and material.get_shader_parameter(Backdrop.SHOOTING) == 1.0, name + ": the backdrop moves by the world's time")
+	var key: String = world.backdrop_layout_key()
+	_check(key.get_slice("@", 0) == (Backdrop.HOME if name == "island" else "sleeping-lighthouse" if name == "lighthouse" else name.get_slice("@", 0)), name + ": the backdrop is laid out for this place, not " + key)
+	_check(is_equal_approx(float(material.get_shader_parameter(Backdrop.LAYOUT)), Backdrop.layout_seed(key)), name + ": the place's layout reaches the sky")
+	# The far layers sit in the world: a pan shifts them, zoom alone does not.
+	var camera: Camera3D = world.camera
+	var shift: Vector2 = material.get_shader_parameter(Backdrop.PARALLAX)
+	camera.size *= 2.0
+	world.advance_backdrop(0.0)
+	_check(material.get_shader_parameter(Backdrop.PARALLAX) == shift, name + ": zoom alone moves no layer of the backdrop")
+	camera.size *= 0.5
+	camera.global_position += camera.global_basis.x * 2.0
+	world.advance_backdrop(0.0)
+	var panned: Vector2 = material.get_shader_parameter(Backdrop.PARALLAX) - shift
+	_check(is_equal_approx(panned.x, 2.0 / Backdrop.PAN_SPAN) and is_zero_approx(panned.y), name + ": a pan shifts the backdrop with the camera")
+	camera.global_position -= camera.global_basis.x * 2.0
+	world.advance_backdrop(0.0)
 	Backdrop.advance(world.environment, 1.0, null, null, false)
 
 func _policy() -> void:
@@ -128,6 +145,24 @@ func _policy() -> void:
 		_check(Policy.motion_trails(quality) == keeps and Policy.fireflies(quality) == keeps and Policy.detail_dressing(quality) == keeps and Policy.fill_light(quality) == keeps and Policy.lantern_lights(quality) == keeps, quality + ": effect cuts belong to Low alone")
 		_check(Policy.backdrop_detail(quality) == keeps, quality + ": backdrop detail")
 	window_sized.free()
+
+## Every chapter and Home has its own far islands, the same on every visit and
+## through a gameplay update (@N+1).
+func _layouts() -> void:
+	var seen := {Backdrop.layout_seed(Backdrop.HOME): Backdrop.HOME}
+	for key: String in Registry.keys():
+		var id := key.get_slice("@", 0)
+		var layout := Backdrop.layout_seed(key)
+		_check(layout >= 0.0 and layout < 1.0 and layout == Backdrop.layout_seed(id), key + ": one layout for every version of a chapter")
+		if seen.has(layout) and seen[layout] != id: _check(false, "%s shares its backdrop layout with %s" % [id, seen[layout]])
+		seen[layout] = id
+	var env := Backdrop.environment()
+	Backdrop.set_layout(env, "turn-of-the-tide@2")
+	var once: Variant = env.sky.sky_material.get_shader_parameter(Backdrop.LAYOUT)
+	Backdrop.set_layout(Backdrop.environment(), "high-and-low@1")
+	Backdrop.set_layout(env, "turn-of-the-tide@2")
+	_check(env.sky.sky_material.get_shader_parameter(Backdrop.LAYOUT) == once, "a place's layout is the same each time it is built")
+	_check(Backdrop.environment().sky.sky_material.get_shader_parameter(Backdrop.LAYOUT) == Backdrop.layout_seed(Backdrop.HOME), "a new world starts with Home's layout")
 
 func _settings() -> void:
 	_check(Storage.defaults().settings.graphics_quality == "balanced", "Existing visual quality remains the default")

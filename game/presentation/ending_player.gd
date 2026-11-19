@@ -175,6 +175,9 @@ func _apply(now: Dictionary, delta: float, immediate: bool) -> void:
 		if sway != Vector2.ZERO and not reduced_motion and _world.get("big_change_shake") != false: camera.position += camera.basis.x * sway.x + camera.basis.y * sway.y
 		camera.h_offset = 0.0
 		camera.v_offset = 0.0
+	# The world's frame is paused, so the space behind it moves on here, on the
+	# scene's clock and with the scene's camera (kit/space_backdrop.gd).
+	if _world.has_method("advance_backdrop"): _world.advance_backdrop(delta)
 	for id: String in _props:
 		var prop: Dictionary = now.props[id]
 		var node: Node3D = _props[id]

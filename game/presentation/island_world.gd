@@ -95,6 +95,9 @@ var flowers: Array[Node3D] = []
 var environment: Environment
 ## The backdrop's own clock: the world's time while motion is allowed.
 var _backdrop_clock := 0.0
+## What the backdrop's layout was last read from: Home's owner and the loaded
+## level (by reference), so the key is worked out only when one changes.
+var _backdrop_from: Array = []
 var bridge_ready := false
 ## Home Explore raises the bridge while the explorer is near it (home_stage.gd).
 ## It counts only while a Home presentation owns the view; load_level clears it.
@@ -1835,10 +1838,22 @@ func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
 		_fireflies.append(fly)
 
 ## Moves the space backdrop on by delta seconds of the world's time (none
-## under Reduce motion) and shifts it with the camera.
+## under Reduce motion) and shifts it with the camera on screen. An ending
+## (ending_player.gd) calls it while the world's own frame is paused.
 func advance_backdrop(delta: float) -> void:
 	if not reduced_motion: _backdrop_clock += delta
+	var definition: Variant = get("chapter_definition")
+	if _backdrop_from.size() != 3 or _backdrop_from[0] != home_presentation_owner or not is_same(_backdrop_from[1], current_level) or not is_same(_backdrop_from[2], definition):
+		_backdrop_from = [home_presentation_owner, current_level, definition]
+		SpaceBackdrop.set_layout(environment, backdrop_layout_key())
 	SpaceBackdrop.advance(environment, _backdrop_clock, camera, get_viewport() if is_inside_tree() else null, reduced_motion)
+
+## Which far islands and wisps this world shows (SpaceBackdrop.layout_seed):
+## Home's own while Home holds the world, else the chapter's, the same on every
+## visit.
+func backdrop_layout_key() -> String:
+	var key := _chapter_key()
+	return SpaceBackdrop.HOME if home_presentation_owner != 0 or key.is_empty() else key
 
 func _advance_fireflies() -> void:
 	if reduced_motion: return

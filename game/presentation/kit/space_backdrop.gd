@@ -10,6 +10,11 @@ extends RefCounted
 ## GraphicsPolicy.backdrop_detail. advance() moves it once per world frame from
 ## the world's own time, so it is the same at any frame rate, stops while the
 ## world is paused or out of the tree, and holds still under Reduce motion.
+##
+## The far islands and cloud wisps sit in the world: each place has its own
+## layout (layout_seed, from the chapter's id or Home), and the layers shift as
+## the camera pans, each slower than the world, for depth. Zoom alone moves none
+## of them.
 
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const SHADER := preload("res://presentation/kit/space_backdrop.gdshader")
@@ -28,6 +33,30 @@ const PARALLAX := &"parallax"
 const BUFFER := &"buffer_size"
 const DETAIL := &"detail"
 const SHOOTING := &"shooting"
+const LAYOUT := &"layout_seed"
+## Metres of camera pan that shift a layer of share 1 by one screen height. A
+## fixed span, not the camera's size, so zooming never slides the sky.
+const PAN_SPAN := 10.0
+## Home's own layout key.
+const HOME := "home"
+
+## A place's layout, 0 to 1, from its key without any "@N" version, so a
+## gameplay update to a level keeps its sky. The same key gives the same layout
+## on every visit and every device (String.hash is fixed).
+static func layout_seed(key: String) -> float:
+	return float(key.get_slice("@", 0).hash() & 0xFFFF) / 65536.0
+
+## Lays out the far islands and wisps for a place (layout_seed).
+static func set_layout(env: Environment, key: String) -> void:
+	var material := _material(env)
+	if material != null: material.set_shader_parameter(LAYOUT, layout_seed(key))
+
+## The camera offset the layers shift by, in PAN_SPAN units: where the camera
+## looks across and up the screen, its offsets included.
+static func pan_shift(camera: Camera3D) -> Vector2:
+	var basis := camera.global_basis
+	var at := camera.global_position
+	return Vector2(at.dot(basis.x) + camera.h_offset, at.dot(basis.y) + camera.v_offset) / PAN_SPAN
 
 ## The 3D picture's size in pixels: the window's or the SubViewport's own
 ## pixels at the view's 3D scale. Zero without a view.
@@ -51,6 +80,7 @@ static func environment() -> Environment:
 	material.shader = SHADER
 	material.set_shader_parameter(CLOCK, 0.0)
 	material.set_shader_parameter(SHOOTING, 1.0)
+	material.set_shader_parameter(LAYOUT, layout_seed(HOME))
 	sky.sky_material = material
 	env.sky = sky
 	return env
@@ -69,7 +99,8 @@ static func apply_look(env: Environment, look: Dictionary) -> void:
 	material.set_shader_parameter(ACCENT, look.get("accent_color", look.stars))
 	material.set_shader_parameter(ACCENT_KIND, int(ACCENTS.get(str(look.get("accent", "none")), 0)))
 
-## Low draws half the faint stars and leaves out the far islands and edge lights.
+## Low draws half the faint stars and leaves out the far islands, cloud wisps
+## and edge lights.
 static func apply_quality(env: Environment, quality: Variant) -> void:
 	var material := _material(env)
 	if material != null: material.set_shader_parameter(DETAIL, 1.0 if GraphicsPolicy.backdrop_detail(quality) else 0.0)
@@ -79,9 +110,10 @@ static func detailed(env: Environment) -> bool:
 	var material := _material(env)
 	return material != null and float(material.get_shader_parameter(DETAIL)) > 0.5
 
-## Moves the backdrop to `clock` (seconds) and shifts it with the camera. The
-## view's shape and the camera are read here, so a resize, a rotation or a
-## world with no camera yet are all safe. Writes only what changed.
+## Moves the backdrop to `clock` (seconds) and shifts it with the camera on
+## screen: the view's current camera (an ending's or a planting's own), else
+## `camera`. The view's shape and the camera are read here, so a resize, a
+## rotation or a world with no camera yet are all safe. Writes only what changed.
 static func advance(env: Environment, clock: float, camera: Camera3D, view: Viewport, reduced_motion: bool) -> void:
 	var material := _material(env)
 	if material == null: return
@@ -90,8 +122,8 @@ static func advance(env: Environment, clock: float, camera: Camera3D, view: View
 	if material.get_shader_parameter(SHOOTING) != shooting: material.set_shader_parameter(SHOOTING, shooting)
 	var size := buffer_size(view)
 	if size.y > 0.0 and material.get_shader_parameter(BUFFER) != size: material.set_shader_parameter(BUFFER, size)
-	if is_instance_valid(camera) and camera.is_inside_tree() and camera.size > 0.0:
-		var basis := camera.global_basis
-		var at := camera.global_position
-		var shift := Vector2(at.dot(basis.x), at.dot(basis.y)) / camera.size
+	var shown := view.get_camera_3d() if view != null else null
+	if is_instance_valid(shown): camera = shown
+	if is_instance_valid(camera) and camera.is_inside_tree():
+		var shift := pan_shift(camera)
 		if material.get_shader_parameter(PARALLAX) != shift: material.set_shader_parameter(PARALLAX, shift)
