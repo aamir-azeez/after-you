@@ -9,7 +9,7 @@ const DATA := {
 	"look": "fog",
 	"seabed": "mud",
 	# PROTOTYPE: the close follow camera (island_world._follow_data).
-	"camera": {"follow": {"size": 6.2, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.5], "pan": [1.0, 0.7]}},
+	"camera": {"follow": {"size": 5.8, "axes": "xz", "lift": 1.0, "inset": [5.0, 1.6], "zoom": [0.75, 1.6], "pan": [1.0, 0.7]}},
 	"fireflies": 30,
 	"ground": {"*": "boardwalk", "path": "reed_bank", "reeds": "reed_bank", "bank": "reed_bank", "office": "timber"},
 	"picks": {"lamp": "lantern", "shrub": "green", "bank": "moss", "fence": "picket", "trim": "flowers", "clutter": "barrel"},
