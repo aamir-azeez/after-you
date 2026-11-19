@@ -15,16 +15,18 @@ const Level = preload("res://tests/carried_items_level.gd")
 const CarriedItemKit = preload("res://presentation/kit/pieces/carried_item.gd")
 const CurrentKit = preload("res://presentation/kit/pieces/current.gd")
 const Styles = preload("res://content/dressing/prop_styles.gd")
+const IslandWorld = preload("res://presentation/island_world.gd")
 var checks := 0
 var failures := 0
 
 func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
-	var holder := Node3D.new()
+	# The seed style asks a world for its meshes (presentation/seed_visual.gd).
+	var holder := IslandWorld.new()
 	root.add_child(holder)
 	for style: String in Styles.SLOTS.carried_item:
-		var piece: RefCounted = CarriedItemKit.build(style, Vector3.ZERO, holder, {"id": style})
+		var piece: RefCounted = CarriedItemKit.build(style, Vector3.ZERO, holder, {"id": style, "world": holder})
 		_check(piece.style == style and _meshes(piece.root) > 0 and piece.moving_parts() == [piece.root], "Carried item %s builds and keeps its root moving" % style)
 	_check(CarriedItemKit.build("teapot", Vector3.ZERO, holder).style == "parcel", "An unknown item style builds the parcel")
 	for style: String in Styles.SLOTS.current:
