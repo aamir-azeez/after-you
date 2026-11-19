@@ -20,7 +20,8 @@ const LIP_WIDE := 2.0
 const MIST := Color(0.97, 0.99, 0.99, 0.45)
 
 ## The lip (static) and the curtain (returned: shown while the path is shut)
-## for path `rect` (m, plan) at `height` (m), under `parent`.
+## for path `rect` (m, plan) at `height` (m, in `parent`'s space: the deck's
+## own, so the world's lift of the deck lifts it too), under `parent`.
 static func build(rect: Rect2, height: float, parent: Node3D) -> Node3D:
 	var long := rect.size.x >= rect.size.y
 	var span := rect.size.x if long else rect.size.y

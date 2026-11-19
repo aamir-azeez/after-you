@@ -76,7 +76,8 @@ func lay_deck(definition: Dictionary, deck: Node3D, width: float, depth: float, 
 	if style == "falls_path":
 		# The rock lip over the path and the falls' water pouring off it, shown
 		# while the path is shut (kit/pieces/falls_curtain.gd).
-		_curtains[str(definition.id)] = FallsCurtain.build(_rect(definition.rect_cm), float(definition.get("height_cm", 0)) / 100.0, _world.terrain)
+		# Beside the deck at the deck's own height, so whatever lifts the deck lifts it.
+		_curtains[str(definition.id)] = FallsCurtain.build(_rect(definition.rect_cm), deck.position.y, deck.get_parent() as Node3D)
 
 ## A one way stair's ladder, in place of the world's treads.
 func build_ladder(stair: Dictionary) -> void:

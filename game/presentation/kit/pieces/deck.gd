@@ -14,8 +14,8 @@ extends RefCounted
 ##       while the falls run, their water pours over it off a rock lip
 ##       (kit/pieces/falls_curtain.gd), so the closed path shows why.
 ##   "stones": sinking stones (sinking_stones). Round flat stones, wet at the
-##       rim, laid across the gap one per pip's step. Under water (shut) they
-##       are gone.
+##       rim, laid across the gap a hop apart with water between them. Under
+##       water (shut) they are gone.
 ## Every part stays inside the crossing's rectangle and at or under its walk,
 ## except the handrails, which stand on its long edges.
 const Parts = preload("res://presentation/kit/pieces/parts.gd")
@@ -30,7 +30,9 @@ const FLAG := Color("8a8f8a")
 const MOSS := Color("6f8f5a")
 const STONE := Color("9a9890")
 const STONE_WET := Color("6f746f")
-const STONE_STEP := 0.34
+## A stone every this far (m): a hop from stone to stone, with water showing
+## between them, so a row of stones reads as stones, not a strip.
+const STONE_STEP := 1.6
 
 ## Lays `style` into `deck` (a crossing `width` by `depth` m, along x when
 ## `across_x`), over its open span `low`..`high` (deck-local m along it).
@@ -62,7 +64,7 @@ static func lay(style: String, deck: Node3D, width: float, depth: float, across_
 			Parts.box(_along(across_x, length, 0.05, 0.04), MOSS, _on(across_x, middle, -0.015, span * 0.5 - 0.025), deck)
 		"stones":
 			var count := maxi(1, roundi(length / STONE_STEP))
-			var radius := minf(span * 0.45, length / float(count) * 0.48)
+			var radius := minf(span * 0.45, length / float(count) * 0.3)
 			for index in range(count):
 				var along := low + (float(index) + 0.5) * length / float(count)
 				Parts.disc(radius, 0.5, STONE_WET, _on(across_x, along, -0.28, 0.0), deck, radius * 0.9)
