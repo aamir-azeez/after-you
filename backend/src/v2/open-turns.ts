@@ -42,6 +42,10 @@ export const TURN_LETTERS = "abcdefghijklmnopqrst";
 export const OPEN_TURN_ID_PATTERN = /^t(?:[0-9]|[12][0-9]|3[01])-[0-7]-[a-t]$/;
 /** Checkpoints of open turns name every turn of their stage (turn_hashes) and nest nothing; published checkpoints stay schema 7. */
 export const OPEN_CHECKPOINT_SCHEMA = 8;
+/** An open turns checkpoint's keys: every turn of the stage by hash, in order, in place of the a and b hashes; no proof nests in it. */
+export const OPEN_CHECKPOINT_KEYS = ["schema_version", "level_id", "level_version", "definition_hash", "stage_index", "completed_stage_id", "next_stage_id", "players", "mechanisms", "previous_checkpoint_hash", "turn_hashes", "checkpoint_hash"];
+/** Open turns chapters keep seven branches, so their widest replay archive fits (openTurnLimits). */
+export const OPEN_TURNS_BRANCHES = 7;
 /** Room keys, ids and counters beside the records; the same allowance the pair row bound keeps (protocol-physical-recording.ts). */
 const ENVELOPE_BYTES = 16_384;
 /** A flat open turns checkpoint (players, mechanisms, hashes and up to 20 turn hashes: about 1 KB), with room to spare. */
@@ -136,6 +140,15 @@ export function recordingBytes(recording: ChapterRecording): number {
 /** Whether the next turn (`turn`, 1 based) must close the stage: it is the cap's turn. */
 export function mustFinish(open: OpenTurns, stage: number, turn: number): boolean {
   return turn >= 2 && turn >= open.caps[stage];
+}
+/**
+ * Why a closing checkpoint's turns (`all`: the first, the passes, the closing turn) break open turns, or "": past the
+ * stage's cap, a turn not the next pip's or shorter than its memory, or `turnHashes` not naming them in order. Every
+ * family's adapter asks it; the turns are stored rows, usually fingerprints, so only header fields are read.
+ */
+export function openTurnsProblem(open: OpenTurns, stageIndex: number, firstPlayer: string, all: readonly ChapterRecording[], turnHashes: unknown): string {
+  if (all.length > open.caps[stageIndex] || !all.every((turn, i) => turn.player_slot === turnSlot(firstPlayer, i + 1) && (i === 0 || turn.duration_ticks >= all[i - 1].duration_ticks))) return "checkpoint_recording_mismatch";
+  return canonicalJson(turnHashes) === canonicalJson(all.map(turn => turn.recording_hash)) ? "" : "checkpoint_source_mismatch";
 }
 /**
  * When an open turns stage ends (owner, 2026-11-14): both pips end a turn in the goal area (the live pip and the
