@@ -5,8 +5,9 @@ extends RefCounted
 ##   marsh(): landmarks looming half seen out of the fog (a sunken boat, an
 ##            old leaning windmill, a hut on stilts, dead trees, reed beds),
 ##            paled toward the fog the higher they stand.
-##   falls(): rainbows in the spray of the great falls, and rough rock
-##            draped over each tall floor's walls so the tiers read as cliff.
+##   falls(): solid rock under each raised reach so the tiers read as cliff,
+##            a long band of the Blender cliff's rock along the gorge's back,
+##            and rainbows in the spray of the great falls.
 ## World metres on the spread maps (core/journey/proto_spread.gd).
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const SoftMist = preload("res://presentation/kit/soft_mist.gd")
@@ -18,6 +19,7 @@ const BARK := Color("4a443b")
 const ROOF := Color("6e5a48")
 const REED := Color("8a8a56")
 const REED_HEAD := Color("5d4a33")
+const CLIFF := Color("6c7262")
 
 static func marsh(root: Node3D) -> void:
 	var holder := Node3D.new()
@@ -33,18 +35,55 @@ static func marsh(root: Node3D) -> void:
 	for at: Vector3 in [Vector3(4, 0, 7.4), Vector3(23, 0, -8.2), Vector3(35, 0, 8.0), Vector3(52, 0, -8.0), Vector3(80, 0, 7.6), Vector3(87, 0, 5.9), Vector3(91, 0, 8.1), Vector3(99, 0, -8.0)]:
 		_reeds(holder, at, 22)
 
-static func falls(root: Node3D) -> void:
+static func falls(world: Node3D) -> void:
+	var root: Node3D = world.terrain
 	var holder := Node3D.new()
 	holder.name = "ProtoRainbows"
 	root.add_child(holder)
-	# Rainbows hang in the spray in front of the great falls and the mill falls.
+	# Solid rock under every raised reach, up to just under its water: the
+	# tiers read as cliff, each pour falls down a rock face, and nothing
+	# shows through nine metres of clear water. (The full build gives each
+	# reach its own bed in the water kit.)
+	var seabed: float = world.waters.seabed()
+	for body: Dictionary in world.waters.water.get("bodies", []):
+		var low := INF
+		for level: Variant in body.levels.values(): low = minf(low, float(level))
+		if low < 0.5: continue
+		for r: Array in body.rects:
+			var size := Vector3((float(r[2]) - float(r[0])) / 100.0, low - 0.3 - seabed, (float(r[3]) - float(r[1])) / 100.0)
+			var centre := Vector3((float(r[0]) + float(r[2])) / 200.0, seabed + size.y * 0.5, (float(r[1]) + float(r[3])) / 200.0)
+			Primitives.mesh_node(Primitives.box_mesh(size), Primitives.shared_material(CLIFF), centre, holder).name = "TierRock"	# The gorge's back wall: one long band of the falls' layered, mossy rock
+	# (the Blender cliff's cheeks, big) behind every tier, standing on each
+	# reach's water, open where the great falls pour through it.
+	var Models: Script = load("res://presentation/kit/models.gd")
+	var Props: Script = load("res://presentation/kit/props.gd")
+	var gaps := [Vector2(52.0, 72.0), Vector2(22.5, 29.5), Vector2(99.5, 110.5)]
+	var x := -12.0
+	var index := 0
+	while x < 138.0:
+		var open := gaps.any(func(g: Vector2) -> bool: return x > g.x and x < g.y)
+		if not open:
+			var level := 0.0
+			for body: Dictionary in world.waters.water.get("bodies", []):
+				for r: Array in body.rects:
+					if x * 100.0 >= float(r[0]) and x * 100.0 < float(r[2]):
+						level = 99.0
+						for v: Variant in body.levels.values(): level = minf(level, float(v))
+			var size := 3.4 + 0.9 * fposmod(float(index) * 0.618, 1.0)
+			var part := "falls_cheek_left" if index % 2 == 0 else "falls_cheek_right"
+			var rock: Node3D = Models.still(Props.FALLS_MODEL, part, Props.FALLS_COLORS, holder)
+			rock.position = Vector3(x, level - 0.4, -9.6 - 1.4 * fposmod(float(index) * 0.37, 1.0))
+			rock.scale = Vector3.ONE * size
+			rock.rotation.y = 0.35 * (fposmod(float(index) * 0.73, 1.0) - 0.5)
+		x += 3.6
+		index += 1	# Rainbows hang in the spray in front of the great falls and the mill falls.
 	_rainbow(holder, Vector3(62.0, 5.6, -14.0), 6.5)
 	_rainbow(holder, Vector3(26.0, 2.2, -11.8), 3.2)
 	_rainbow(holder, Vector3(-6.0, -0.2, -3.4), 2.4)
 
-## A colour paled toward the fog by how high it stands (m).
+## A dark silhouette colour, paled toward the fog only where it stands above the fog's sheets (m).
 static func _faded(color: Color, y: float) -> Color:
-	return color.lerp(FOG, clampf(0.25 + y / 8.0, 0.0, 0.85))
+	return color.darkened(0.25).lerp(FOG, clampf((y - 3.0) / 9.0, 0.0, 0.55))
 
 static func _part(mesh: Mesh, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	var node := Primitives.mesh_node(mesh, Primitives.shared_material(_faded(color, at.y + parent.position.y)), at, parent)
@@ -53,6 +92,7 @@ static func _part(mesh: Mesh, color: Color, at: Vector3, parent: Node3D) -> Mesh
 static func _sunken_boat(parent: Node3D, at: Vector3, turn: float) -> void:
 	var boat := Node3D.new()
 	boat.position = at
+	boat.scale = Vector3.ONE * 1.3
 	boat.rotation = Vector3(0.18, turn, 0.32)
 	parent.add_child(boat)
 	_part(Primitives.box_mesh(Vector3(3.2, 0.5, 1.2)), WOOD, Vector3(0, 0, 0), boat)
@@ -65,6 +105,7 @@ static func _sunken_boat(parent: Node3D, at: Vector3, turn: float) -> void:
 static func _windmill(parent: Node3D, at: Vector3) -> void:
 	var mill := Node3D.new()
 	mill.position = at
+	mill.scale = Vector3.ONE * 1.6
 	mill.rotation = Vector3(0.05, 0.4, -0.14)
 	parent.add_child(mill)
 	_part(Primitives.cylinder_mesh(1.1, 5.6, 0.75, 8), Color("7d7462"), Vector3(0, 2.8, 0), mill)
@@ -85,6 +126,7 @@ static func _windmill(parent: Node3D, at: Vector3) -> void:
 static func _stilt_hut(parent: Node3D, at: Vector3) -> void:
 	var hut := Node3D.new()
 	hut.position = at
+	hut.scale = Vector3.ONE * 1.35
 	hut.rotation = Vector3(0.0, -0.3, 0.05)
 	parent.add_child(hut)
 	for x: float in [-1.1, 1.1]:
@@ -104,6 +146,7 @@ static func _stilt_hut(parent: Node3D, at: Vector3) -> void:
 static func _dead_tree(parent: Node3D, at: Vector3, kind: int) -> void:
 	var tree := Node3D.new()
 	tree.position = at
+	tree.scale = Vector3.ONE * 1.4
 	tree.rotation = Vector3(0.06 * (kind - 1), 0.7 * kind, 0.08 * (1 - kind))
 	parent.add_child(tree)
 	var tall := 3.4 + 1.1 * kind

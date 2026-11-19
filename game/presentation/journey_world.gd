@@ -547,6 +547,9 @@ func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 
 func _camera_center() -> Vector3:
 	var target := super._camera_center()
+	# A level with its own follow data (island_world._follow_data) follows
+	# across and up as that data says.
+	if str(_follow_data().get("axes", "x")) == "xz": return target
 	if not _completion_view: target.z = clampf(_focus_point().z,-1.1,2.0)
 	target.y = 0.45
 	return target
